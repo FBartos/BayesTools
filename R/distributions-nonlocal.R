@@ -103,11 +103,19 @@
   if("mode" %in% names(parameters)){
     mode <- .nonlocal_validate_mode(parameters[["mode"]], "mode")
     tau <- mode^2 / (2 * order)
+    if(!is.finite(tau) || mode^2 < .Machine$double.xmin){
+      tau <- exp(2 * log(mode) - log(2) - log(order))
+    }
     .nonlocal_validate_tau(tau, "mode")
   }else{
     tau <- parameters[["tau"]]
     .nonlocal_validate_tau(tau, "tau")
-    mode <- sqrt(2 * order * tau)
+    scaled_tau <- 2 * order * tau
+    mode <- if(is.finite(scaled_tau) && scaled_tau >= .Machine$double.xmin){
+      sqrt(scaled_tau)
+    }else{
+      sqrt(tau) * sqrt(2 * order)
+    }
     .nonlocal_validate_derived_mode(mode, "tau")
   }
 
@@ -171,6 +179,9 @@
   if("mode" %in% names(parameters)){
     mode <- .nonlocal_validate_mode(parameters[["mode"]], "mode")
     tau <- mode^2 * ((df + 1) / (2 * order))^(1 / order)
+    if(!is.finite(tau) || mode^2 < .Machine$double.xmin){
+      tau <- exp(2 * log(mode) + (log(df + 1) - log(2) - log(order)) / order)
+    }
     .nonlocal_validate_tau(tau, "mode")
   }else{
     tau <- parameters[["tau"]]
@@ -192,7 +203,10 @@
 
   .check_log(log)
   .BayesTools_require_native_nonlocal()
-  .Call("BayesTools_moment_d", x, location, tau, as.numeric(order), log, PACKAGE = "BayesTools")
+  out <- .Call("BayesTools_moment_d", x, location, tau, as.numeric(order), log, PACKAGE = "BayesTools")
+  .prior_numerical_result(out, x, .prior_numerical_nonlocal_domain(location, tau, order),
+    "density", "moment", if(log) "log" else "natural",
+    interior = is.finite(x) & x != location, rng = FALSE)
 }
 
 .pmoment_prior <- function(q, location, tau, order, lower.tail = TRUE, log.p = FALSE){
@@ -200,7 +214,10 @@
   .check_lower.tail(lower.tail)
   .check_log.p(log.p)
   .BayesTools_require_native_nonlocal()
-  .Call("BayesTools_moment_p", q, location, tau, as.numeric(order), lower.tail, log.p, PACKAGE = "BayesTools")
+  out <- .Call("BayesTools_moment_p", q, location, tau, as.numeric(order), lower.tail, log.p, PACKAGE = "BayesTools")
+  .prior_numerical_result(out, q, .prior_numerical_nonlocal_domain(location, tau, order),
+    "distribution", "moment", if(log.p) "log" else "natural",
+    interior = is.finite(q) & q != location, rng = FALSE)
 }
 
 .qmoment_prior <- function(p, location, tau, order, lower.tail = TRUE, log.p = FALSE){
@@ -208,20 +225,29 @@
   .check_lower.tail(lower.tail)
   .check_log.p(log.p)
   .BayesTools_require_native_nonlocal()
-  .Call("BayesTools_moment_q", p, location, tau, as.numeric(order), lower.tail, log.p, PACKAGE = "BayesTools")
+  out <- .Call("BayesTools_moment_q", p, location, tau, as.numeric(order), lower.tail, log.p, PACKAGE = "BayesTools")
+  .prior_numerical_result(out, p, .prior_numerical_nonlocal_domain(location, tau, order),
+    "quantile", "moment", "natural",
+    interior = if(log.p) is.finite(p) & p < 0 else p > 0 & p < 1, rng = FALSE)
 }
 
 .rmoment_prior <- function(n, location, tau, order){
 
   .BayesTools_require_native_nonlocal()
-  .Call("BayesTools_moment_r", as.integer(n), location, tau, as.numeric(order), PACKAGE = "BayesTools")
+  out <- .Call("BayesTools_moment_r", as.integer(n), location, tau, as.numeric(order), PACKAGE = "BayesTools")
+  .prior_numerical_result(out, rep(0, length(out)), .prior_numerical_nonlocal_domain(location, tau, order),
+    "sampling", "moment", "natural",
+    interior = rep(TRUE, length(out)), rng = TRUE)
 }
 
 .dinvmoment_prior <- function(x, location, tau, order, df, log = FALSE){
 
   .check_log(log)
   .BayesTools_require_native_nonlocal()
-  .Call("BayesTools_invmoment_d", x, location, tau, as.numeric(order), df, log, PACKAGE = "BayesTools")
+  out <- .Call("BayesTools_invmoment_d", x, location, tau, as.numeric(order), df, log, PACKAGE = "BayesTools")
+  .prior_numerical_result(out, x, .prior_numerical_nonlocal_domain(location, tau, order, df),
+    "density", "invmoment", if(log) "log" else "natural",
+    interior = is.finite(x) & x != location, rng = FALSE)
 }
 
 .pinvmoment_prior <- function(q, location, tau, order, df, lower.tail = TRUE, log.p = FALSE){
@@ -229,7 +255,10 @@
   .check_lower.tail(lower.tail)
   .check_log.p(log.p)
   .BayesTools_require_native_nonlocal()
-  .Call("BayesTools_invmoment_p", q, location, tau, as.numeric(order), df, lower.tail, log.p, PACKAGE = "BayesTools")
+  out <- .Call("BayesTools_invmoment_p", q, location, tau, as.numeric(order), df, lower.tail, log.p, PACKAGE = "BayesTools")
+  .prior_numerical_result(out, q, .prior_numerical_nonlocal_domain(location, tau, order, df),
+    "distribution", "invmoment", if(log.p) "log" else "natural",
+    interior = is.finite(q) & q != location, rng = FALSE)
 }
 
 .qinvmoment_prior <- function(p, location, tau, order, df, lower.tail = TRUE, log.p = FALSE){
@@ -237,11 +266,17 @@
   .check_lower.tail(lower.tail)
   .check_log.p(log.p)
   .BayesTools_require_native_nonlocal()
-  .Call("BayesTools_invmoment_q", p, location, tau, as.numeric(order), df, lower.tail, log.p, PACKAGE = "BayesTools")
+  out <- .Call("BayesTools_invmoment_q", p, location, tau, as.numeric(order), df, lower.tail, log.p, PACKAGE = "BayesTools")
+  .prior_numerical_result(out, p, .prior_numerical_nonlocal_domain(location, tau, order, df),
+    "quantile", "invmoment", "natural",
+    interior = if(log.p) is.finite(p) & p < 0 else p > 0 & p < 1, rng = FALSE)
 }
 
 .rinvmoment_prior <- function(n, location, tau, order, df){
 
   .BayesTools_require_native_nonlocal()
-  .Call("BayesTools_invmoment_r", as.integer(n), location, tau, as.numeric(order), df, PACKAGE = "BayesTools")
+  out <- .Call("BayesTools_invmoment_r", as.integer(n), location, tau, as.numeric(order), df, PACKAGE = "BayesTools")
+  .prior_numerical_result(out, rep(0, length(out)), .prior_numerical_nonlocal_domain(location, tau, order, df),
+    "sampling", "invmoment", "natural",
+    interior = rep(TRUE, length(out)), rng = TRUE)
 }

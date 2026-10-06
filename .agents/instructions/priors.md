@@ -38,6 +38,11 @@ Gamma coordinates in inverse-gamma and nonlocal kernels retain original-input
 logs when intermediate ratios, squares, or roots lose precision. The bounded
 small-shape Gamma series and certified leading log-root branch supplement the
 existing JRmath backend; unsupported precision remains explicitly unavailable.
+The certified inverse-moment small-root branch reconstructs its final log
+magnitude from the original lower Gamma log probability, df and order, avoiding
+overflow of the intermediate Gamma log root. This preserves the public integer
+order cap and the native declared parameter domain. Intermediate overflow alone
+does not establish a final range result.
 Simplex canonicalization requires finite nonnegative entries, a finite total
 and finite floating-roundoff bound before sum-to-one comparison or normalization.
 Preserve the existing near-one allowance and diagnostic labels; never normalize

@@ -90,7 +90,6 @@ test_that("nonlocal priors reject invalid parameterizations", {
   expect_error(prior("moment", list(m = .5)), "not supported")
   expect_error(prior("moment", list(mode = .Machine$double.xmin)), "mode")
   expect_error(prior("moment", list(mode = .Machine$double.xmax)), "mode")
-  expect_error(prior("moment", list(tau = .Machine$double.xmax)), "tau")
   expect_error(
     prior("moment", list(mode = .5, order = .Machine$integer.max + 1)),
     "order"
@@ -160,11 +159,17 @@ test_that("moment prior density, distribution, and quantiles match reference ide
   expect_true(is.finite(BayesTools:::.qmoment_prior(1e-170, .25, .125, 1, lower.tail = FALSE)))
   expect_true(is.finite(BayesTools:::.qmoment_prior(log(1e-300), .25, .125, 1, lower.tail = FALSE, log.p = TRUE)))
 
-  expect_equal(
-    stats::integrate(function(z) pdf(p, z), lower = -Inf, upper = Inf)$value,
-    1,
-    tolerance = 1e-8
-  )
+  range_warnings <- list()
+  integral <- withCallingHandlers(
+    stats::integrate(function(z) pdf(p, z), lower = -Inf, upper = Inf),
+    warning = function(condition){
+      range_warnings[[length(range_warnings) + 1L]] <<- condition
+      if(inherits(condition, "BayesTools_numerical_range_limit")) invokeRestart("muffleWarning")
+    })
+  expect_gt(length(range_warnings), 0)
+  expect_true(all(vapply(range_warnings, inherits, logical(1), "BayesTools_numerical_range_limit")))
+  expect_false(any(vapply(range_warnings, inherits, logical(1), "BayesTools_numerical_unavailable")))
+  expect_equal(integral$value, 1, tolerance = 1e-8)
 })
 
 test_that("inverse-moment prior density, distribution, and quantiles match reference identities", {
@@ -216,12 +221,18 @@ test_that("inverse-moment prior density, distribution, and quantiles match refer
   expect_true(is.finite(BayesTools:::.qinvmoment_prior(1e-12, .25, .5, 1, 3, lower.tail = FALSE)))
   expect_true(is.finite(BayesTools:::.qinvmoment_prior(log(1e-20), .25, .5, 1, 3, lower.tail = FALSE, log.p = TRUE)))
 
-  expect_equal(
+  range_warnings <- list()
+  integral <- withCallingHandlers(
     stats::integrate(function(z) pdf(p, z), lower = -Inf, upper = .25)$value +
       stats::integrate(function(z) pdf(p, z), lower = .25, upper = Inf)$value,
-    1,
-    tolerance = 1e-8
-  )
+    warning = function(condition){
+      range_warnings[[length(range_warnings) + 1L]] <<- condition
+      if(inherits(condition, "BayesTools_numerical_range_limit")) invokeRestart("muffleWarning")
+    })
+  expect_gt(length(range_warnings), 0)
+  expect_true(all(vapply(range_warnings, inherits, logical(1), "BayesTools_numerical_range_limit")))
+  expect_false(any(vapply(range_warnings, inherits, logical(1), "BayesTools_numerical_unavailable")))
+  expect_equal(integral, 1, tolerance = 1e-8)
 })
 
 test_that("native CDFs preserve finite near-unit log probabilities", {
@@ -502,11 +513,17 @@ test_that("nonlocal priors normalize truncation", {
     expect_true(all(q >= .25))
     expect_equal(cdf(p, q), probs, tolerance = 1e-12)
 
-    expect_equal(
-      stats::integrate(function(z) pdf(p, z), lower = .25, upper = Inf)$value,
-      1,
-      tolerance = 1e-8
-    )
+    range_warnings <- list()
+    integral <- withCallingHandlers(
+      stats::integrate(function(z) pdf(p, z), lower = .25, upper = Inf),
+      warning = function(condition){
+        range_warnings[[length(range_warnings) + 1L]] <<- condition
+        if(inherits(condition, "BayesTools_numerical_range_limit")) invokeRestart("muffleWarning")
+      })
+    expect_gt(length(range_warnings), 0)
+    expect_true(all(vapply(range_warnings, inherits, logical(1), "BayesTools_numerical_range_limit")))
+    expect_false(any(vapply(range_warnings, inherits, logical(1), "BayesTools_numerical_unavailable")))
+    expect_equal(integral$value, 1, tolerance = 1e-8)
 
     set.seed(3)
     draws <- rng(p, 100)
@@ -598,7 +615,12 @@ test_that("nonlocal prior density ranges are finite and nonnegative", {
     expect_true(all(is.finite(p_range)))
     expect_true(p_range[1] < p_range[2])
 
-    p_density <- density(p, n_points = 100)
+    if(p$distribution == "invmoment"){
+      expect_warning(p_density <- density(p, n_points = 100),
+                     class = "BayesTools_numerical_range_limit")
+    }else{
+      p_density <- density(p, n_points = 100)
+    }
     expect_true(all(is.finite(p_density$x)))
     expect_true(all(is.finite(p_density$y)))
     expect_true(all(p_density$y >= 0))
