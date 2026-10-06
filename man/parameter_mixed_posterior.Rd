@@ -37,6 +37,10 @@ element form returned by \code{\link[=as_mixed_posteriors]{as_mixed_posteriors()
 metadata that inference and plots need (\code{\link[=posterior_metadata]{posterior_metadata()}}):
 \describe{
 \item{\code{support}}{the exact support declared by the catalog.}
+\item{\code{components}}{ordinary mixture/spike component indices and declared
+supports decoded from the same original fitted indicator rows before
+public coordinate filtering. Conditioned draws keep their original row
+identities; component supports never come from observed draw ranges.}
 \item{\code{prior_density}}{the canonical prior density,
 \code{\link[=parameter_prior_density]{parameter_prior_density()}} (conditional on the inclusion event with
 \code{conditional = TRUE}).}

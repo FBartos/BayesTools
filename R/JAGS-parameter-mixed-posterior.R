@@ -6,6 +6,10 @@
 #' metadata that inference and plots need ([posterior_metadata()]):
 #' \describe{
 #'   \item{`support`}{the exact support declared by the catalog.}
+#'   \item{`components`}{ordinary mixture/spike component indices and declared
+#'   supports decoded from the same original fitted indicator rows before
+#'   public coordinate filtering. Conditioned draws keep their original row
+#'   identities; component supports never come from observed draw ranges.}
 #'   \item{`prior_density`}{the canonical prior density,
 #'   [parameter_prior_density()] (conditional on the inclusion event with
 #'   `conditional = TRUE`).}
@@ -240,10 +244,11 @@ parameter_gate_states <- function(fit, selection, draws = NULL){
 
   quantity <- selection$quantities[1L, , drop = FALSE]
   name <- quantity$canonical_name
-  draws <- .bt_parameter_draws_from_quantities(fit, quantity)
+  original_sources <- as.matrix(.fit_to_posterior(fit))
+  draws <- .bt_parameter_draws_from_quantities(fit, quantity, model_samples = original_sources)
   values <- unname(as.numeric(as.matrix(draws)[, 1L]))
   plan <- .bt_parameter_gate_plan(fit, quantity)
-  states <- .bt_parameter_gate_states(fit, plan, length(values))
+  states <- .bt_parameter_gate_states(fit, plan, length(values), model_samples = original_sources)
   if(!is.null(states$reason)) stop(states$reason)
 
   keep <- !is.na(values)
@@ -289,6 +294,7 @@ parameter_gate_states <- function(fit, selection, draws = NULL){
     states        = states,
     keep          = keep
   )
+  components <- .bt_parameter_mixed_posterior_components(fit, quantity, original_sources, keep)
 
   if(!is.null(plan) && identical(plan$kind,"ordered_projection") && length(plan$specs)==1L){
     spec <- plan$specs[[1L]]
@@ -304,6 +310,12 @@ parameter_gate_states <- function(fit, selection, draws = NULL){
   }else out <- values[keep]
   attr(out, "parameter")  <- name
   attr(out, "prior_list") <- prior_none()
+  key <- quantity$extraction_key[[1L]]
+  if(identical(key$type, "coordinate") && length(key$dependencies) == 1L &&
+     key$dependencies %in% names(attr(fit, "prior_list", exact = TRUE))){
+    attr(out, "prior_list") <- .bt_prior_without_multiply_by(
+      attr(fit, "prior_list", exact = TRUE)[[key$dependencies]])
+  }
   out <- .posterior_support_set(out, quantity$support[[1L]])
   if(!is.null(prior_density)){
     out <- .bt_meta_set(out, "prior_density", prior_density)
@@ -311,6 +323,8 @@ parameter_gate_states <- function(fit, selection, draws = NULL){
   if(!is.null(atoms)){
     out <- .posterior_atoms_set(out, atoms)
   }
+  if(!is.null(components)) out <- .posterior_components_set(out, components)
+  out <- .bt_meta_set(out, "draw_index", which(keep))
   if(!identical(quantity$definedness, "always")){
     out <- .bt_meta_set(out, "undefined_draws",
                         stats::setNames(quantity$definedness, name))
@@ -339,6 +353,45 @@ parameter_gate_states <- function(fit, selection, draws = NULL){
     "marginal_posterior"
   )
   out
+}
+
+# The semantic numeric columns are filtered public values. Component support
+# decoding instead reads the selected owners' original indicator rows before
+# that filtering, using the ordinary marginal producer's existing machinery.
+.bt_parameter_mixed_posterior_components <- function(fit, quantity, sources, keep){
+
+  key <- quantity$extraction_key[[1L]]
+  if(!key$type %in% c("coordinate", "factor_level") || !length(key$dependencies)) return(NULL)
+  priors <- .marginal_posterior_strip_multiply_by(attr(fit, "prior_list", exact = TRUE))
+  owners <- names(priors)[vapply(names(priors), function(owner){
+    any(key$dependencies %in% .prior_linear_prior_columns(owner, priors[[owner]]))
+  }, logical(1))]
+  if(!length(owners) || !any(vapply(priors[owners], .posterior_components_is_mixture, logical(1)))) return(NULL)
+  columns <- unique(unlist(lapply(owners, function(owner){
+    .prior_linear_prior_columns(owner, priors[[owner]])
+  }), use.names = FALSE))
+  weights <- stats::setNames(rep(0, length(columns)), columns)
+  weights[key$dependencies] <- if(identical(key$type, "coordinate")) 1 else key$weights
+  context <- .prior_density_context(priors[owners], columns)
+  source_children <- list()
+  for(owner in owners){
+    owner_prior <- priors[[owner]]
+    owner_columns <- intersect(.prior_linear_prior_columns(owner, owner_prior), colnames(sources))
+    if(!length(owner_columns)) return(NULL)
+    child <- as.numeric(sources[, owner_columns[[1L]]])
+    if(.posterior_components_is_mixture(owner_prior)){
+      indicator <- paste0(owner, "_indicator")
+      if(!indicator %in% colnames(sources)) return(NULL)
+      child <- .bt_draws_set_component(child,
+        .bt_component_from_indicator(owner_prior, sources[, indicator]),
+        if(is.prior.spike_and_slab(owner_prior)) "spike_and_slab" else "mixture")
+    }
+    source_children[[owner]] <- child
+  }
+  components <- .marginal_posterior_indicator_components(context, weights, source_children,
+    n_values = nrow(sources))
+  if(is.null(components)) return(NULL)
+  .posterior_components_new(components$index[keep], components$supports, components$keys)
 }
 
 # The 'condition' metadata of a catalog mixed posterior: unconditional, or

@@ -163,6 +163,32 @@ test_that("posterior atoms use actual joint gate frequencies", {
   expect_identical(components$supports[[2L]]$bounds, c(5, Inf))
 })
 
+test_that("catalog ordinary mixture components preserve estimator parity", {
+
+  for(prior in list(prior_mixture(list(prior("uniform", list(0, 1)),
+    prior("uniform", list(10, 11))), is_null = c(FALSE, FALSE)),
+    prior_spike_and_slab(prior("uniform", list(0, 1)), prior("point", list(.5))))){
+    spike <- is.prior.spike_and_slab(prior)
+    values <- if(spike) c(rep(0, 500), seq(.0005, .9995, length.out = 500)) else
+      c(seq(.0005, .9995, length.out = 500), seq(10.0005, 10.9995, length.out = 500))
+    indicator <- if(spike) rep(0:1, each = 500) else rep(1:2, each = 500)
+    fit <- .parameter_catalog_test_fit(coda::mcmc.list(coda::mcmc(cbind(theta = values,
+      theta_indicator = indicator))), list(theta = prior))
+    selection <- parameter_catalog_resolve(parameter_catalog(fit), "theta")
+    semantic <- parameter_mixed_posterior(fit, selection)
+    ordinary <- marginal_posterior(as_mixed_posteriors(fit, "theta"), "theta",
+      prior_samples = TRUE, use_formula = FALSE)
+    expect_identical(as.numeric(semantic), as.numeric(ordinary))
+    expect_identical(.posterior_components_get(semantic), .posterior_components_get(ordinary))
+    expect_equal(.posterior_atoms_get(semantic)$mass, .posterior_atoms_get(ordinary)$mass, tolerance = 0)
+    expect_identical(.bt_meta_condition(semantic, "averaged"), .bt_meta_condition(ordinary, "averaged"))
+    expect_equal(as.numeric(Savage_Dickey_BF(semantic, 1, silent = TRUE)),
+      as.numeric(Savage_Dickey_BF(ordinary, 1, silent = TRUE)), tolerance = 1e-14)
+    expect_identical(colnames(as.matrix(parameter_draws(fit, selection))), "theta")
+    expect_identical(.bt_meta_get(semantic, "draw_index"), seq_along(values))
+  }
+})
+
 test_that("distinct zero denominators refuse only requested numeric targets", {
 
   priors <- list(intercept = prior("point", list(5)), x = prior("point", list(2)),
