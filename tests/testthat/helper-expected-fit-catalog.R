@@ -1824,6 +1824,30 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       flags = list(simple_priors = TRUE, formulas = TRUE, random_effects = TRUE, add_parameters = TRUE, assertion_only = TRUE),
       note = "Row-indexed external SD source reconstructed by a values function of declared inputs."
     ),
+    catalog_row("fit_formula_multiplier_state", has_marglik = FALSE,
+      model_family = "gaussian-regression", formula = "~ x", scale_policy = "automatic,multiply-by",
+      prior_features = "point,formula,mixture,multiply-by",
+      expected_monitor = c("mu_intercept", "mu_x", "sigma_indicator", "sigma", "mu[1]", "mu[2]", "mu[3]"),
+      expected_formula_parameters = "mu", expected_formula_scale = "mu_x",
+      oracle_type = "formula-fixture-metadata", expected_chains = 2L, expected_iterations = 500L,
+      flags = list(formulas = TRUE, simple_priors = TRUE, mixture_priors = TRUE, add_parameters = TRUE, assertion_only = TRUE),
+      note = "Scaled point coefficients with an ordinary mixture multiplier and original-row identities."),
+    catalog_row("fit_formula_multiplier_zero", has_marglik = FALSE,
+      model_family = "gaussian-regression", formula = "~ x", scale_policy = "automatic,multiply-by",
+      prior_features = "point,formula,multiply-by",
+      expected_monitor = c("mu_intercept", "mu_x", "sigma", "dummy", "mu[1]", "mu[2]", "mu[3]"),
+      expected_formula_parameters = "mu", expected_formula_scale = "mu_x",
+      oracle_type = "formula-fixture-metadata", expected_chains = 2L, expected_iterations = 500L,
+      flags = list(formulas = TRUE, simple_priors = TRUE, add_parameters = TRUE, assertion_only = TRUE),
+      note = "Declared zero named multiplier with exact coefficient cancellation and an unrelated sampled primitive."),
+    catalog_row("fit_formula_multiplier_missing", has_marglik = FALSE,
+      model_family = "gaussian-regression", formula = "~ 1", scale_policy = "none",
+      prior_features = "point,formula",
+      expected_monitor = c("mu_intercept", "dummy", "mu[1]", "mu[2]", "mu[3]"),
+      expected_formula_parameters = "mu", oracle_type = "formula-fixture-metadata",
+      expected_chains = 2L, expected_iterations = 500L,
+      flags = list(formulas = TRUE, simple_priors = TRUE, add_parameters = TRUE, assertion_only = TRUE),
+      note = "Intercept-only point model for declared missing-coefficient mixture controls."),
     catalog_row(
       "fit_dnode_multiplied",
       has_marglik = FALSE,
@@ -2545,8 +2569,19 @@ expect_fit_formula_metadata <- function(fit, expected_formula_parameters = chara
         testthat::expect_gt(formula_scale[[parameter]][[term]]$sd, 0)
       }
     }
-  } else {
+  } else if(length(expected_formula_parameters) == 0L) {
     testthat::expect_null(formula_scale)
+  }else{
+    testthat::expect_setequal(names(formula_scale), expected_formula_parameters)
+    testthat::expect_true(all(vapply(formula_scale, length, integer(1)) == 0L))
+  }
+  for(parameter in expected_formula_parameters){
+    owner <- attr(formula_scale[[parameter]], "unscale_design", exact = TRUE)
+    testthat::expect_identical(owner$schema_version, 2L)
+    testthat::expect_identical(owner$owner_scope, "fit")
+    testthat::expect_true(owner$complete)
+    testthat::expect_identical(owner,
+      attr(formula_design[[parameter]]$formula_scale, "unscale_design", exact = TRUE))
   }
 
   invisible(TRUE)

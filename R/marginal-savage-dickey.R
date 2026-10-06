@@ -231,6 +231,9 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
 .Savage_Dickey_BF.fun    <- function(posterior, null_hypothesis, normal_approximation, silent, density_method,
                                      label = NULL, null_mass_NA = FALSE){
 
+  .bt_formula_measure_check(posterior, "prior_density")
+  .bt_formula_measure_check(posterior, "atoms")
+  .bt_linear_weight_space(posterior)
   prior <- .bt_meta_get(posterior, "prior_density")
   if(is.null(prior))
     stop("there are no prior densities for the posterior distribution", call. = FALSE)
@@ -650,7 +653,7 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
   # Preserve support and density metadata used by KDE / boundary reflection.
   kept_metadata <- .bt_meta_get_fields(
     posterior,
-    c("support", "posterior_density", "posterior_ordinate", "prior_density")
+    c("support", "posterior_density", "posterior_ordinate", "prior_density", "measure_unavailable")
   )
   kept_metadata <- kept_metadata[!vapply(kept_metadata, is.null, logical(1))]
   if(length(kept_metadata) > 0L){

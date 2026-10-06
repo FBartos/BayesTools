@@ -479,6 +479,7 @@
   transformed_samples <- .bt_meta_set(transformed_samples, "atoms", NULL)
   transformed_samples <- .bt_meta_set(transformed_samples, "quantities", transformed_quantities)
   transformed_samples <- .bt_meta_set(transformed_samples, "level_quantities", NULL)
+  transformed_samples <- .bt_formula_measure_linear(coefficient_samples, transformed_samples, design)
   # the level names of every factor of the term (one factor: its levels, the
   # cell names of the transformed columns)
   attr(transformed_samples, "level_names")       <- if(length(design_info[["level_names"]]) == 1L){
@@ -563,6 +564,7 @@
       attr(out, name) <- value[keep]
     }
   }
+  out <- .bt_formula_measure_linear(samples, out, diag(length(keep))[keep, , drop = FALSE])
   posterior_atoms <- .posterior_atoms_get(samples)
   if(!is.null(posterior_atoms)){
     out <- .posterior_atoms_set(
@@ -613,7 +615,7 @@
       if(length(dependencies) == 1L && isTRUE(weights == 1)) dependencies else NA_character_
     }, character(1))
   }
-  if(length(coordinates) != ncol(design) || anyNA(coordinates) ||
+  if(length(coordinates) != ncol(design) ||
      length(level_parts) != nrow(design)){
     return(NULL)
   }
@@ -627,14 +629,18 @@
     rows <- match(cells, level_quantities$column)
     quantity_ids[!is.na(rows)] <- level_quantities$quantity_id[rows[!is.na(rows)]]
   }
+  dynamic <- vapply(seq_len(nrow(design)), function(cell){
+    anyNA(coordinates[design[cell, ] != 0])
+  }, logical(1))
+  quantity_ids[dynamic] <- ""
   .bt_draws_quantity_table(
     columns      = columns,
     quantity_ids = quantity_ids,
     dependencies = lapply(seq_len(nrow(design)), function(cell){
-      coordinates[design[cell, ] != 0]
+      if(dynamic[[cell]]) character() else coordinates[design[cell, ] != 0]
     }),
     weights      = lapply(seq_len(nrow(design)), function(cell){
-      unname(as.numeric(design[cell, design[cell, ] != 0]))
+      if(dynamic[[cell]]) numeric() else unname(as.numeric(design[cell, design[cell, ] != 0]))
     }),
     label_parts  = level_parts
   )

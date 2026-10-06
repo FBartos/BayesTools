@@ -149,6 +149,11 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
 
   # auto-detect transform_scaled from samples attribute
   transform_scaled <- isTRUE(.bt_meta_get(samples, "transform_scaled"))
+  if(parameter %in% names(samples)){
+    .bt_formula_measure_check(samples[[parameter]], "atoms")
+    .bt_linear_weight_space(samples[[parameter]])
+    if(prior) .bt_formula_measure_check(samples[[parameter]], "prior_density")
+  }
 
   # handle transform_scaled: check for pre-computed prior densities
   prior_densities_transformed <- NULL

@@ -469,9 +469,11 @@
   .posterior_atoms_set(x,atoms)
 }
 
-.bt_ordered_formula_projections <- function(samples, weights, source_transforms=NULL){
+.bt_ordered_formula_projections <- function(samples, weights, source_transforms=NULL,
+                                            weight_space = "coefficient"){
 
   weights <- as.matrix(weights)
+  if(!weight_space %in% c("coefficient", "formula_contribution")) stop("Unknown ordered projection weight space.", call. = FALSE)
   check_real(as.vector(weights), "weights", check_length=0, allow_NA=FALSE)
   if(is.null(colnames(weights)) || anyDuplicated(colnames(weights)) || any(!is.finite(weights))){
     stop("'weights' must be finite named fitted-coordinate weights.", call. = FALSE)
@@ -511,9 +513,11 @@
   }
   source <- sources[[ordered_parameters[[1L]]]]
   n <- length(source$model)
+  formula_state <- if(identical(weight_space, "formula_contribution")) .bt_formula_state_get(samples) else NULL
+  if(identical(weight_space, "formula_contribution") && is.null(formula_state)) return(NULL)
   formula_scale <- .bt_meta_get(samples,"formula_scale")
   scaled <- stats::setNames(isTRUE(.bt_meta_get(samples,"transform_scaled")) &
-    vapply(prefixes,function(prefix) !is.null(formula_scale[[prefix]]),logical(1)),parameters)
+    vapply(prefixes,function(prefix) length(formula_scale[[prefix]]) > 0L,logical(1)),parameters)
   for(parameter in parameters){
     x <- samples[[parameter]]
     own <- sources[[parameter]]
@@ -642,6 +646,22 @@
     for(i in seq_len(nrow(weights))){
       target <- stats::setNames(as.numeric(weights[i,]),colnames(weights))
       target[names(target) %in% absent] <- 0
+      if(identical(weight_space, "formula_contribution")){
+        record <- formula_state$models[[model]]
+        active <- names(target)[target != 0]
+        folded <- character()
+        for(scale in record$formula_scale){
+          declaration <- attr(scale, "unscale_design", exact = TRUE)
+          constants <- .bt_formula_state_constants(scale)
+          for(column in intersect(active, names(declaration$multipliers))){
+            multiplier <- .bt_formula_multiplier_constant(declaration$multipliers[[column]], constants)
+            if(is.null(multiplier)) return(NULL)
+            target[[column]] <- target[[column]] * multiplier
+            folded <- c(folded, column)
+          }
+        }
+        if(length(setdiff(active, folded))) return(NULL)
+      }
       projection <- .bt_ordered_projection(specs,target,draws,priors)
       for(field in c("values","atom","state","exact")) projections[[i]][[field]][rows] <- projection[[field]]
       if(!is.null(projection$reason)) projections[[i]]$reason <- projection$reason

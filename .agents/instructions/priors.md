@@ -721,6 +721,16 @@ flags, linear weights, conditioning) live in one validated attribute,
 `bayestools_meta` (`R/draws-metadata.R`). Read and write them only through
 `.bt_meta_get()`/`.bt_meta_set()` (the public `posterior_metadata()` for
 downstream packages), never as free attributes; a unit lint test enforces it.
+Formula laws recursively strip child multiplier attributes and reattach only
+the compiler-owned top-level declaration; raw coefficient recipes remain raw.
+Shared states retain one owner. Unsupported ratios/products keep corrected
+numeric draws and explicit measure_unavailable entries, checked before every
+stale law/atom/support fallback. Bounded component certificates use declarations
+and actual original eligible joint gate frequencies, with exact posterior model
+probabilities, never prior component weights or finite allocated counts. Unknown
+component supports stay NULL/non-exact and preserve pooled posterior KDE when
+valid. linear_weight_space distinguishes coefficient recipes from fitted
+formula_contribution rows; those rows never pass through C/A again.
 Producers of the `condition` field set its logical `averaged` element
 (unconditional draws), which consumers read instead of comparing condition
 keys with a literal.

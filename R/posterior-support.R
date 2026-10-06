@@ -995,6 +995,12 @@ posterior_support_attribute <- function(bounds, points = NULL, type = NULL,
     return(.posterior_support_union(supports, source = "linear_prior_rows"))
   }
 
+  if(length(context$transforms) || identical(context$linear_weight_space, "formula_contribution")){
+    route <- .prior_density_route_context(context, weights, source_transforms,
+      output_transformation, output_transformation_arguments)
+    return(.bt_formula_route_support(route))
+  }
+
   if(inherits(context, "prior_density_context")){
     support <- .posterior_support_from_prior_list_weights(
       context$prior_list,
@@ -1325,7 +1331,12 @@ posterior_support_attribute <- function(bounds, points = NULL, type = NULL,
       weights <- rep(0, length(column_names))
       names(weights) <- column_names
       weights[[column]] <- 1
-      support[[column]] <- .posterior_support_from_prior_context_weights(context, weights)
+      available <- tryCatch(.posterior_support_from_prior_context_weights(context, weights),
+        BayesTools_formula_measure_unavailable = function(e) e)
+      if(inherits(available, "BayesTools_formula_measure_unavailable")){
+        samples <- .bt_formula_measure_mark(samples, column, "support", available$reason)
+        support[column] <- list(NULL)
+      }else support[column] <- list(available)
     }
     support <- support[!vapply(support, is.null, logical(1))]
     if(length(support) == 0L){
@@ -1354,7 +1365,12 @@ posterior_support_attribute <- function(bounds, points = NULL, type = NULL,
   weights <- rep(0, length(column_names))
   names(weights) <- column_names
   weights[[parameter]] <- 1
-  support <- .posterior_support_from_prior_context_weights(context, weights)
+  support <- tryCatch(.posterior_support_from_prior_context_weights(context, weights),
+    BayesTools_formula_measure_unavailable = function(e) e)
+  if(inherits(support, "BayesTools_formula_measure_unavailable")){
+    samples <- .bt_meta_set(samples, "support", NULL)
+    return(.bt_formula_measure_mark(samples, parameter, "support", support$reason))
+  }
   if(is.null(support)){
     return(samples)
   }

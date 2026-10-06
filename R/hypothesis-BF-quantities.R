@@ -793,8 +793,10 @@
       prior_list    = context[["prior_list"]],
       column_names  = context[["column_names"]],
       n_samples     = n,
-      formula_scale = context[["formula_scale"]]
+      formula_scale = context[["formula_scale"]],
+      retain_state = identical(context$linear_weight_space, "formula_contribution")
     )
+    samples <- .bt_formula_sample_contributions(context, samples)
     return(.hypothesis_complete_prior_sample_matrix(
       samples      = samples,
       column_names = context[["column_names"]],
@@ -826,8 +828,12 @@
     samples <- .generate_transformed_prior_samples(
       prior_list   = model_prior_list,
       column_names = context[["column_names"]],
-      n_samples    = length(rows)
+      n_samples    = length(rows),
+      retain_state = identical(context$linear_weight_space, "formula_contribution")
     )
+    leaf_context <- context
+    leaf_context$prior_list <- model_prior_list
+    samples <- .bt_formula_sample_contributions(leaf_context, samples)
     out[rows, ] <- .hypothesis_complete_prior_sample_matrix(
       samples      = samples,
       column_names = context[["column_names"]],
@@ -854,8 +860,12 @@
       prior_list    = context[["prior_lists"]][[i]],
       column_names  = context[["column_names"]],
       n_samples     = length(rows),
-      formula_scale = context[["formula_scale"]]
+      formula_scale = context[["formula_scale"]],
+      retain_state = identical(context$linear_weight_space, "formula_contribution")
     )
+    leaf_context <- context
+    leaf_context$prior_list <- context$prior_lists[[i]]
+    samples <- .bt_formula_sample_contributions(leaf_context, samples)
     out[rows, ] <- .hypothesis_complete_prior_sample_matrix(
       samples      = samples,
       column_names = context[["column_names"]],
@@ -1011,6 +1021,8 @@
 
 .hypothesis_level_linear_weights <- function(posterior){
 
+  .bt_formula_measure_check(posterior, "prior_density")
+  .bt_linear_weight_space(posterior)
   if(!is.null(.bt_meta_get(posterior, "joint_prior_transformation"))){
     stop("Joint prior information is unavailable for nonlinear transformed level hypotheses. Use untransformed levels or a direct scalar hypothesis.",
          call. = FALSE)

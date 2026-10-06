@@ -105,7 +105,9 @@
 #' @param parameter parameter of interest
 #' @param formula model formula (needs to be specified if \code{parameter} was part of a formula)
 #' @param at named list with predictor levels of the formula for which marginalization
-#' should be performed. If a predictor level is missing, \code{0} is used for continuous
+#' should be performed. Continuous values use fitted/SD units for fitted posterior
+#' views and original data units for views created with \code{transform_scaled = TRUE}.
+#' If a predictor level is missing, \code{0} is used for continuous
 #' predictors, the baseline factor level is used for factors with \code{contrast = "treatment"} prior
 #' distributions, and the parameter is completely omitted for factors with
 #' \code{contrast = "meandif"}, \code{contrast = "orthonormal"},
@@ -190,6 +192,16 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
   check_bool(prior_samples, "prior_samples")
   check_bool(use_formula, "use_formula")
   .check_transformation_input(transformation, transformation_arguments, transformation_settings)
+  unavailable <- .bt_meta_get(samples[[parameter]], "measure_unavailable")
+  if(!use_formula && !is.matrix(samples[[parameter]]) &&
+     (!is.null(unavailable) || !is.null(.bt_meta_get(samples[[parameter]], "prior_density")))){
+    if(prior_samples) .bt_formula_measure_check(samples[[parameter]], "prior_density")
+    out <- samples[[parameter]]
+    class(out) <- unique(c(class(out), "marginal_posterior.simple", "marginal_posterior"))
+    if(!is.null(transformation)) out <- .bt_posterior_transform(out,
+      .bt_posterior_transformation(transformation, transformation_arguments))
+    return(out)
+  }
   .marginal_posterior_check_untransformed(
     samples,
     if(use_formula && inherits(samples[[parameter]], "mixed_posteriors.formula")) names(samples) else parameter
@@ -203,6 +215,7 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
       formula_log_intercept <- attr(formula, "log(intercept)", exact = TRUE)
       formula <- .remove_response(formula)
       formula_parameter <- .bt_meta_get(samples[[parameter]], "formula_parameter")
+      formula_state <- .bt_formula_state_get(samples, parameter)
       log_intercept <- .marginal_posterior_log_intercept(
         samples               = samples,
         formula_log_intercept = formula_log_intercept,
@@ -486,7 +499,10 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
         terms[[length(terms) + 1L]] <- term
       }
 
-      marginal_posterior_samples <- .bt_dnode_linear_predictor_fixed(
+      marginal_posterior_samples <- if(!is.null(formula_state)){
+        .bt_formula_predictor_state(formula_state, formula, data, formula_parameter, log_intercept,
+          original = isTRUE(.bt_meta_get(samples, "transform_scaled")))
+      }else .bt_dnode_linear_predictor_fixed(
         terms        = terms,
         model_matrix = model_matrix,
         n_draws      = nrow(posterior_samples_matrix),
@@ -662,7 +678,9 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
           weights                  = prior_weights,
           column_name              = "intercept",
           source_transforms        = log_source_transforms,
-          model_component          = ensemble_model_component
+          model_component          = ensemble_model_component,
+          formula = formula, data = data, formula_state = formula_state,
+          formula_parameter = formula_parameter, prior_samples = prior_samples, n_grid = n_samples
         )
 
       }else{
@@ -680,13 +698,16 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
             weights                  = prior_weights,
             column_name              = level_names[lvl],
             source_transforms        = log_source_transforms,
-            model_component          = ensemble_model_component
+            model_component          = ensemble_model_component,
+            formula = formula, data = data[data_split[[lvl]], , drop = FALSE],
+            formula_state = formula_state, formula_parameter = formula_parameter,
+            prior_samples = prior_samples, n_grid = n_samples
           )
         }
       }
 
       # add priors
-      if(prior_samples){
+      if(prior_samples && is.null(formula_state)){
 
         if(sum(grepl(":", model_terms, fixed = TRUE)) > 5){
           warning(
@@ -816,6 +837,12 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
             temp_quantities
           )
         }
+        unavailable <- .bt_meta_get(marginal_factor_metadata, "measure_unavailable")
+        if(!is.null(unavailable)){
+          unavailable <- unavailable[unavailable$column == colnames(marginal_factor_metadata)[[lvl_i]], , drop = FALSE]
+          unavailable$column <- rep(level_names[[lvl_i]], nrow(unavailable))
+          temp_marginal_posterior_samples <- .bt_meta_set(temp_marginal_posterior_samples, "measure_unavailable", unavailable)
+        }
         temp_support <- NULL
         if(!is.null(marginal_factor_support)){
           temp_support <- .posterior_support_get(
@@ -835,10 +862,15 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
           weights <- rep(0, length(prior_density_context$column_names))
           names(weights) <- prior_density_context$column_names
           weights[colnames(factor_weights)] <- factor_weights[lvl_i, ]
-          temp_support <- .posterior_support_from_prior_context_weights(
+          temp_support <- tryCatch(.posterior_support_from_prior_context_weights(
             prior_density_context,
             weights
-          )
+          ), BayesTools_formula_measure_unavailable = function(e) e)
+          if(inherits(temp_support, "BayesTools_formula_measure_unavailable")){
+            temp_marginal_posterior_samples <- .bt_formula_measure_mark(temp_marginal_posterior_samples,
+              level_names[[lvl_i]], "support", temp_support$reason)
+            temp_support <- NULL
+          }
         }
         temp_marginal_posterior_samples <- .posterior_support_set(
           temp_marginal_posterior_samples,
@@ -1022,10 +1054,15 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
           names(weights) <- prior_density_context$column_names
           weights[colnames(factor_weights)] <- factor_weights[lvl_i, ]
 
-          prior_density <- .prior_density_from_context(
+          prior_density <- tryCatch(.prior_density_from_context(
             prior_density_context,
             weights
-          )
+          ), BayesTools_formula_measure_unavailable = function(e) e)
+          if(inherits(prior_density, "BayesTools_formula_measure_unavailable")){
+            marginal_posterior_samples[[level_names[[lvl_i]]]] <- .bt_formula_measure_mark(
+              marginal_posterior_samples[[level_names[[lvl_i]]]], level_names[[lvl_i]], "prior_density", prior_density$reason)
+            next
+          }
           marginal_posterior_samples[[level_names[lvl_i]]] <- .bt_meta_update(
             marginal_posterior_samples[[level_names[lvl_i]]],
             linear_weights = weights,
@@ -1275,8 +1312,30 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
                                                        prior_density_context, weights,
                                                        column_name,
                                                        source_transforms = NULL,
-                                                       model_component = NULL){
+                                                       model_component = NULL,
+                                                       formula = NULL, data = NULL,
+                                                       formula_state = NULL, formula_parameter = NULL,
+                                                       prior_samples = FALSE, n_grid = .prior_linear_density_default_grid()){
 
+  if(!is.null(formula_state)){
+    original <- isTRUE(.bt_meta_get(samples, "transform_scaled"))
+    weights <- .bt_formula_fitted_rows(formula, data, formula_state$models[[1L]], formula_parameter, original)
+    common <- all(vapply(formula_state$models, function(record){
+      identical(.bt_formula_fitted_rows(formula, data, record, formula_parameter, original), weights)
+    }, logical(1)))
+    ordered <- if(common) .bt_ordered_formula_projections(samples, weights, source_transforms,
+      weight_space = "formula_contribution") else NULL
+    if(!is.null(ordered)){
+      for(projection in ordered) .bt_ordered_require_measure(projection)
+      values <- as.vector(do.call(rbind, lapply(ordered, `[[`, "values")))
+      states <- as.vector(do.call(rbind, lapply(ordered, `[[`, "state")))
+      if(length(values) != length(marginal)) .bt_ordered_stop("Ordered formula sources do not align with marginal draw rows.")
+      replace <- .bt_ordered_projection_defined_rows(list(values = values, state = states), as.numeric(marginal))
+      marginal <- .bt_draws_transform_values(marginal, function(old){ old[replace] <- values[replace]; old })
+    }
+    return(.bt_formula_contribution_metadata(marginal, formula_state, formula, data,
+      formula_parameter, column_name, source_transforms, prior_samples, n_grid, original = original))
+  }
   log_columns <- intersect(names(source_transforms)[source_transforms == "log"], colnames(weights))
   if(length(log_columns) > 0L && any(weights[, log_columns] != 0)){
     marginal <- .bt_meta_set(marginal, "joint_prior_transformation", "log_intercept")

@@ -30,7 +30,9 @@ from models fitted with this version: they stop with an error of class
 \item{formula}{model formula (needs to be specified if \code{parameter} was part of a formula)}
 
 \item{at}{named list with predictor levels of the formula for which marginalization
-should be performed. If a predictor level is missing, \code{0} is used for continuous
+should be performed. Continuous values use fitted/SD units for fitted posterior
+views and original data units for views created with \code{transform_scaled = TRUE}.
+If a predictor level is missing, \code{0} is used for continuous
 predictors, the baseline factor level is used for factors with \code{contrast = "treatment"} prior
 distributions, and the parameter is completely omitted for factors with
 \code{contrast = "meandif"}, \code{contrast = "orthonormal"},

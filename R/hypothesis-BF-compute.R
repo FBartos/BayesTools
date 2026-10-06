@@ -292,6 +292,8 @@
   offset  <- linear[["constant"]]
   for(symbol in active){
     level <- marginals[[symbol]]
+    .bt_formula_measure_check(level, "prior_density")
+    .bt_linear_weight_space(level)
     atoms <- .posterior_atoms_get(level)
     if(is.null(atoms)){
       return(NULL)

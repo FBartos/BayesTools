@@ -61,6 +61,7 @@ posterior_atom_attribute <- function(point_masses = NULL, source = "user"){
 #' @export
 posterior_atoms_free <- function(x){
 
+  .bt_formula_measure_check(x, "atoms")
   if(is.null(.bt_meta_container(x)) &&
      !inherits(x, c("mixed_posteriors", "marginal_posterior"))){
     .bt_draws_stop_plain(
@@ -697,6 +698,7 @@ posterior_atoms_free <- function(x){
     return(list(
       components = indicators[rows, , drop = FALSE],
       probabilities = probabilities,
+      index = match(keys, unique_keys),
       model_mixture = FALSE
     ))
   }
@@ -990,74 +992,103 @@ posterior_atoms_free <- function(x){
 
 .posterior_atoms_unscale_mixed <- function(
     samples, model, model_samples, prior_list, formula_scale,
-    conditional, conditional_rule){
+    conditional, conditional_rule, n_grid = .prior_linear_density_default_grid()){
 
-  for(prefix in names(formula_scale)){
-    columns <- colnames(model_samples)[
-      .formula_scale_matches_prefix(colnames(model_samples), prefix)
-    ]
-    columns <- columns[
-      !.formula_scale_matches_prefix(columns, prefix, "__xREx__") &
-      !.formula_scale_matches_prefix(columns, prefix, "__xRE_ALLOCx") &
-      !.formula_scale_matches_prefix(columns, prefix, "__xRE_SUMMARY__")
-    ]
-    if(length(columns) == 0L) next
-    transform <- .bt_formula_coefficient_transform(
-      source_names = columns, formula_scale = formula_scale[[prefix]],
-      parameter = prefix
-    )
-    coefficient_columns <- lapply(names(samples), function(parameter){
-      .posterior_atoms_coefficient_columns(samples[[parameter]], parameter)
-    })
-    names(coefficient_columns) <- names(samples)
-    requested_columns <- unique(unlist(coefficient_columns, use.names = FALSE))
-    requested_columns <- intersect(requested_columns, transform$target_names)
-    if(length(requested_columns) == 0L) next
-    requested_design <- transform$matrix[requested_columns, , drop = FALSE]
-    active_columns <- colnames(requested_design)[colSums(abs(requested_design)) != 0]
-    contributors <- names(prior_list)[vapply(names(prior_list), function(name){
-      any(active_columns == name | startsWith(active_columns, paste0(name, "[")))
+  state <- .bt_formula_state_get(samples)
+  if(is.null(state)) return(samples)
+  attach_ordered <- function(x, transform, columns){
+    if(any(!is.finite(transform$matrix[columns, , drop = FALSE]))) return(x)
+    fixed <- intersect(names(prior_list), names(JAGS_formula_design(model, transform$parameter)$prior_list))
+    if(!any(vapply(prior_list[fixed], is.prior.ordered, logical(1)))) return(x)
+    weights <- .bt_formula_static_rows(transform, columns)
+    active <- colnames(weights)[colSums(abs(weights)) != 0]
+    contributors <- fixed[vapply(fixed, function(parameter){
+      any(active %in% .prior_linear_prior_columns(parameter, prior_list[[parameter]]))
     }, logical(1))]
-    continuous <- vapply(prior_list[contributors], function(prior){
-      is.prior.simple(prior) && !is.prior.point(prior) &&
-        !is.prior.discrete(prior) && !is.prior.spike_and_slab(prior) &&
-        !is.prior.mixture(prior) && is.null(attr(prior, "multiply_by", exact = TRUE))
-    }, logical(1))
-    if(length(contributors) > 0L && all(continuous) &&
-       all(rowSums(abs(requested_design)) > 0)){
-      # Nonconstant combinations of independent continuous coefficients remain
-      # atom-free, so their existing empty declarations require no draw replay.
+    requested <- fixed[fixed %in% union(contributors, intersect(names(samples), fixed))]
+    raw <- as_mixed_posteriors(model, unique(c(requested, intersect(conditional, names(prior_list)))),
+      conditional, conditional_rule, transform_scaled = FALSE, n_prior_samples = n_grid)
+    projections <- .bt_ordered_formula_projections(raw, weights,
+      transform$source_transforms[transform$source_transforms != "identity"], weight_space = "coefficient")
+    .bt_ordered_attach_linear_view(x, projections, weights, raw)
+  }
+  for(owner in names(samples)){
+    prefix <- .bt_meta_get(samples[[owner]], "formula_parameter")
+    if(is.null(prefix) || length(prefix) != 1L || !prefix %in% names(formula_scale)) next
+    columns <- .posterior_atoms_coefficient_columns(samples[[owner]], owner)
+    scale <- state$models[[1L]]$formula_scale[[prefix]]
+    spec <- attr(scale, "unscale_design", exact = TRUE)
+    transform <- .bt_formula_coefficient_transform(names(spec$multipliers), scale, prefix)
+    if(!all(columns %in% transform$target_names)) next
+    samples[[owner]] <- .bt_formula_dynamic_quantities(samples[[owner]], transform, columns)
+    source <- .bt_meta_get(samples[[owner]], "ordered_source")
+    if(!is.null(source) && length(scale) == 0L){
+      samples[[owner]] <- .bt_ordered_source_semantics(samples[[owner]],
+        diag(length(columns)), colnames(samples[[owner]]))
       next
     }
-    raw_samples <- as_mixed_posteriors(
-      model, parameters = unique(c(contributors, intersect(conditional, names(prior_list)))),
-      conditional = conditional, conditional_rule = conditional_rule,
-      transform_scaled = FALSE
-    )
-    plan <- .posterior_atoms_formula_plan(raw_samples, prior_list)
-    if(is.null(plan)){
-      stop("Joint posterior atom metadata are unavailable for unscaled coefficients of '",
-           prefix, "'.", call. = FALSE)
+    cached <- .bt_meta_get(samples, "prior_densities")
+    if(!is.matrix(samples[[owner]])){
+      samples[[owner]] <- .bt_formula_contribution_metadata(samples[[owner]], state,
+        NULL, NULL, prefix, owner, prior_samples = TRUE, n_grid = n_grid, coefficient = columns[[1L]],
+        prior_density = cached[[columns[[1L]]]])
+      context <- .bt_meta_get(samples, "prior_context")
+      weights <- stats::setNames(rep(0, length(context$column_names)), context$column_names)
+      weights[[columns[[1L]]]] <- 1
+      samples[[owner]] <- .bt_meta_assign(samples[[owner]], list(prior_context = context,
+        linear_weights = weights, linear_weight_space = "coefficient"))
+      samples[[owner]] <- attach_ordered(samples[[owner]], transform, columns)
+      next
     }
-    for(parameter in names(samples)){
-      target_columns <- coefficient_columns[[parameter]]
-      if(!all(target_columns %in% transform$target_names)) next
-      design <- transform$matrix[target_columns, , drop = FALSE]
-      atoms <- .posterior_atoms_joint_linear(
-        prior_list, plan, design,
-        source_transforms = transform$source_transforms,
-        output_transforms = transform$output_transforms,
-        samples = raw_samples
-      )
-      if(is.matrix(samples[[parameter]])){
-        # report the atoms under the sample column labels (e.g. factor levels)
-        atoms <- .posterior_atoms_rename_columns(atoms,colnames(samples[[parameter]]))
+    supports <- atom_marginals <- densities <- vector("list", length(columns))
+    names(supports) <- names(atom_marginals) <- names(densities) <- colnames(samples[[owner]])
+    unavailable <- NULL
+    for(i in seq_along(columns)){
+      column <- colnames(samples[[owner]])[[i]]
+      scalar <- as.numeric(samples[[owner]][, i])
+      attr(scalar, "parameter") <- column
+      scalar <- .bt_formula_contribution_metadata(scalar, state, NULL, NULL, prefix,
+        column, prior_samples = TRUE, n_grid = n_grid, coefficient = columns[[i]],
+        prior_density = cached[[columns[[i]]]])
+      supports[i] <- list(.bt_meta_get(scalar, "support"))
+      atom_marginals[i] <- list(.bt_meta_get(scalar, "atoms"))
+      densities[i] <- list(.bt_meta_get(scalar, "prior_density"))
+      unavailable <- rbind(unavailable, .bt_meta_get(scalar, "measure_unavailable"))
+    }
+    samples[[owner]] <- .bt_meta_assign(samples[[owner]], list(support = supports,
+      atoms = .posterior_atoms_new(column_names = colnames(samples[[owner]]),
+        source = "coefficient_recipe", marginals = atom_marginals),
+      components = NULL, prior_densities = densities, measure_unavailable = unavailable))
+    if(all(is.finite(transform$matrix[columns, , drop = FALSE]))){
+      weights <- .bt_formula_static_rows(transform, columns)
+      active <- colnames(weights)[colSums(abs(weights)) != 0]
+      contributors <- names(prior_list)[vapply(names(prior_list), function(parameter){
+        any(active %in% .prior_linear_prior_columns(parameter, prior_list[[parameter]]))
+      }, logical(1))]
+      raw <- as_mixed_posteriors(model, unique(c(contributors, intersect(conditional, names(prior_list)))),
+        conditional, conditional_rule, transform_scaled = FALSE, n_prior_samples = n_grid)
+      plan <- .posterior_atoms_formula_plan(raw, prior_list)
+      if(!is.null(plan)){
+        atoms <- .posterior_atoms_joint_linear(prior_list, plan, weights,
+          source_transforms = transform$source_transforms, output_transforms = transform$output_transforms,
+          samples = raw)
+        samples[[owner]] <- .posterior_atoms_set(samples[[owner]],
+          .posterior_atoms_rename_columns(atoms, colnames(samples[[owner]])))
+        unavailable <- .bt_meta_get(samples[[owner]], "measure_unavailable")
+        if(!is.null(unavailable)){
+          unavailable <- unavailable[unavailable$measure != "atoms", , drop = FALSE]
+          samples[[owner]] <- .bt_meta_set(samples[[owner]], "measure_unavailable",
+            if(nrow(unavailable)) unavailable else NULL)
+        }
       }
-      samples[[parameter]] <- .posterior_atoms_set(samples[[parameter]], atoms)
-      projections <- .bt_ordered_formula_projections(raw_samples,design,
-        transform$source_transforms[transform$source_transforms!="identity"])
-      if(!is.null(projections) && all(transform$output_transforms[target_columns]=="identity")){
-        samples[[parameter]] <- .bt_ordered_attach_linear_view(samples[[parameter]],projections,design,raw_samples)
+    }
+    if(!is.null(source)){
+      if(any(!is.finite(transform$matrix[columns, , drop = FALSE]))){
+        source$view_transformations <- c(source$view_transformations,
+          list(list(transformation = "unavailable", arguments = list())))
+        samples[[owner]] <- .bt_meta_set(samples[[owner]], "ordered_source", source)
+      }else{
+        samples[[owner]] <- attach_ordered(samples[[owner]], transform, columns)
       }
     }
   }

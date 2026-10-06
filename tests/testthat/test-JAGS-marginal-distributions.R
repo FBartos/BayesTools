@@ -4194,7 +4194,7 @@ test_that("use_formula = FALSE prior densities ignore the coefficient's own mult
   expect_equal(.prior_height_for_test(conditional_marginal, 1), stats::dnorm(1), tolerance = 1e-8)
 })
 
-test_that("transform_scaled raw-coefficient prior densities ignore multiply_by", {
+test_that("transform_scaled slope stays raw and intercept uses compiled products", {
 
   set.seed(1)
   data <- data.frame(x = rnorm(50, 3, 2))
@@ -4240,14 +4240,17 @@ test_that("transform_scaled raw-coefficient prior densities ignore multiply_by",
       value, .5 * stats::dnorm(value, 0, 1 / scale$sd)
     )
   }
-  # original-scale raw intercept b0 - (m / s) b: N(0, 1) or N(0, sqrt(1 + (m / s)^2))
+  # The original intercept is b0 - (m / s) b sigma. Integrate independently
+  # over log(sigma) ~ N(0, 1), alongside the spike component's N(0, 1).
   for(value in c(.5, -1)){
     .expect_prior_height_for_test(
       .bt_meta_update(
         structure(0),
         prior_density = prior_densities$mu_intercept
       ),
-      value, .5 * stats::dnorm(value) + .5 * stats::dnorm(value, 0, sqrt(1 + ratio^2))
+      value, .5 * stats::dnorm(value) + .5 * stats::integrate(function(log_sigma){
+        stats::dnorm(value, 0, sqrt(1 + ratio^2 * exp(2 * log_sigma))) * stats::dnorm(log_sigma)
+      }, -Inf, Inf, rel.tol = 1e-11, subdivisions = 500L)$value
     )
   }
   # linear-predictor targets keep the formula prior's multiply_by

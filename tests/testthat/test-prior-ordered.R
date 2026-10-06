@@ -172,6 +172,7 @@ test_that("ordered source retention follows selected model and row without extra
     attr(fit,"parameter_map") <- .bt_build_parameter_map(colnames(draws), prior_list = info$prior_list,
       formula_design=list(mu=info$formula_design))
     fit <- .bt_attach_fit_contract(.bt_attach_draw_geometry(fit))
+    fit <- attach_test_parameter_map(fit)
     list(fit=fit, prior=p, theta=theta, weights=weights)
   }
   models <- list(make(), make(c(.25,.75)))
@@ -230,9 +231,7 @@ test_that("ordered scalar measures use declared contractions and exact primitive
       class=c("runjags","BayesTools_fit","list"))
     attr(fit,"prior_list") <- info$prior_list
     attr(fit,"formula_design") <- list(mu=info$formula_design)
-    attr(fit,"parameter_map") <- .bt_build_parameter_map(colnames(chains[[1L]]),prior_list=info$prior_list,
-      formula_design=list(mu=info$formula_design))
-    fit <- .bt_attach_fit_contract(.bt_attach_draw_geometry(fit))
+    fit <- attach_test_parameter_map(fit)
     list(fit=fit,spec=spec,draws=draws)
   }
   zero <- make(prior("normal",list(0,1)),c(0,.5,.5))
@@ -546,9 +545,7 @@ test_that("ordered projections preserve slice events, shared unions and original
     attr(fit,"prior_list") <- bound
     attr(fit,"formula_design") <- list(mu=info$formula_design)
     if(!is.null(scale)) attr(fit,"formula_scale") <- list(mu=info$formula_scale)
-    attr(fit,"parameter_map") <- .bt_build_parameter_map(colnames(draws),prior_list=bound,
-      formula_design=list(mu=info$formula_design),formula_scale=attr(fit,"formula_scale",exact=TRUE))
-    fit <- .bt_attach_fit_contract(.bt_attach_draw_geometry(fit))
+    fit <- attach_test_parameter_map(fit)
     list(fit=fit,info=info,specs=specs,draws=draws)
   }
   N01 <- prior("normal",list(0,1))
@@ -686,12 +683,8 @@ test_that("scaled ordered formula marginals reuse aligned fitted ordinary source
         independent <- beta[,"mu_intercept"] + fitted_x*beta[,"mu_x"] + total*share
         weights <- c(mu_intercept=1,mu_x=fitted_x,
           setNames(as.numeric(seq_len(3L)<level),spec$coefficient_names))
-        if(scaled){
-          original_weights <- weights
-          original_weights[["mu_x"]] <- x
-          weights <- setNames(as.numeric(original_weights %*%
-            transform$matrix[names(original_weights),,drop=FALSE]),colnames(transform$matrix))
-        }
+        # Both views describe this physical fitted row directly. Remapping
+        # original coefficient weights through C changes its rounding.
         public <- JAGS_ordered_parameter_spec(fit,weights=weights,draws=draws)$values
         expect_equal(as.numeric(marginal[[level]]),independent,tolerance=5e-15)
         expect_identical(as.numeric(marginal[[level]]),public)

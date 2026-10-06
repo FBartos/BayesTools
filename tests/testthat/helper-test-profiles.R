@@ -34,6 +34,7 @@ bayestools_test_profile_contexts <- list(
     "distributions-tools",
     "draws-metadata",
     "factor-interaction-coefficients",
+    "formula-contribution-state",
     "fixture-catalog-static",
     "harrell-davis-quantile",
     "hypothesis-ast",
@@ -122,6 +123,7 @@ bayestools_test_profile_contexts <- list(
     "weightfunction-redesign"
   ),
   fixture = c(
+    "formula-contribution-fixture",
     "fixture-integrity",
     "hypothesis-BF-bridge",
     "JAGS-deterministic-nodes-fixture",

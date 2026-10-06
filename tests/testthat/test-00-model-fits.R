@@ -4969,7 +4969,11 @@ expect_formula_random_prior_only_bridge <- function(formula, data, prior_list,
     quiet = TRUE,
     progress.bar = "none"
   )
+  completed_scale <- .bt_formula_scale_finalize(formula_result$formula_scale,
+    formula_result$formula_design, formula_result$prior_list, formula_result$data, owner_scope = "fit")
+  formula_result$formula_design$formula_scale <- completed_scale
   attr(samples, "formula_design") <- list(mu = formula_result$formula_design)
+  attr(samples, "formula_scale") <- list(mu = completed_scale)
 
   marglik <- JAGS_bridgesampling(
     fit = samples,
@@ -5474,7 +5478,11 @@ test_that("JAGS marglik with formula works", {
   set.seed(1)
   model   <- rjags::jags.model(file = textConnection(model_syntax), inits = inits, n.chains = 2, quiet = TRUE)
   samples <- rjags::coda.samples(model = model, variable.names = monitor, n.iter = 5000, quiet = TRUE, progress.bar = "none")
+  completed_scale <- .bt_formula_scale_finalize(formula_result$formula_scale,
+    formula_result$formula_design, formula_result$prior_list, formula_result$data, owner_scope = "fit")
+  formula_result$formula_design$formula_scale <- completed_scale
   attr(samples, "formula_design") <- list(mu = formula_result$formula_design)
+  attr(samples, "formula_scale") <- list(mu = completed_scale)
 
   # Compute marginal likelihood using formula interface
   marglik <- JAGS_bridgesampling(
@@ -5686,7 +5694,11 @@ test_that("JAGS marglik with exp(intercept) formula works", {
   set.seed(1)
   model   <- rjags::jags.model(file = textConnection(model_syntax), inits = inits, n.chains = 2, quiet = TRUE)
   samples <- rjags::coda.samples(model = model, variable.names = monitor, n.iter = 5000, quiet = TRUE, progress.bar = "none")
+  completed_scale <- .bt_formula_scale_finalize(formula_result$formula_scale,
+    formula_result$formula_design, formula_result$prior_list, formula_result$data, owner_scope = "fit")
+  formula_result$formula_design$formula_scale <- completed_scale
   attr(samples, "formula_design") <- list(mu = formula_result$formula_design)
+  attr(samples, "formula_scale") <- list(mu = completed_scale)
 
   # Compute marginal likelihood using formula interface
   marglik <- JAGS_bridgesampling(
@@ -6033,7 +6045,11 @@ test_that("JAGS bridgesampling errors on fitted/rebuilt random design mismatches
 
   fixture <- make_bridge_random_fixture()
   fit <- coda::mcmc(matrix(0, nrow = 2, ncol = 1, dimnames = list(NULL, "dummy")))
+  completed_scale <- .bt_formula_scale_finalize(fixture$result$formula_scale,
+    fixture$result$formula_design, fixture$result$prior_list, fixture$result$data, owner_scope = "fit")
+  fixture$result$formula_design$formula_scale <- completed_scale
   attr(fit, "formula_design") <- list(mu = fixture$result$formula_design)
+  attr(fit, "formula_scale") <- list(mu = completed_scale)
 
   mismatch_data <- fixture$data
   mismatch_data$id <- factor(as.character(mismatch_data$id), levels = c("b", "a"))
@@ -6113,7 +6129,11 @@ test_that("JAGS bridgesampling supports formula random effects through prior_ran
     quiet = TRUE,
     progress.bar = "none"
   )
+  completed_scale <- .bt_formula_scale_finalize(formula_result$formula_scale,
+    formula_result$formula_design, formula_result$prior_list, formula_result$data, owner_scope = "fit")
+  formula_result$formula_design$formula_scale <- completed_scale
   attr(samples, "formula_design") <- list(mu = formula_result$formula_design)
+  attr(samples, "formula_scale") <- list(mu = completed_scale)
 
   marglik <- JAGS_bridgesampling(
     fit = samples,
@@ -6187,7 +6207,11 @@ test_that("JAGS bridgesampling supports continuous-time CAR formula random effec
     quiet = TRUE,
     progress.bar = "none"
   )
+  completed_scale <- .bt_formula_scale_finalize(formula_result$formula_scale,
+    formula_result$formula_design, formula_result$prior_list, formula_result$data, owner_scope = "fit")
+  formula_result$formula_design$formula_scale <- completed_scale
   attr(samples, "formula_design") <- list(mu = formula_result$formula_design)
+  attr(samples, "formula_scale") <- list(mu = completed_scale)
 
   marglik <- JAGS_bridgesampling(
     fit = samples,
@@ -6357,7 +6381,11 @@ test_that("JAGS bridgesampling supports Dirichlet variance-allocation random eff
     quiet = TRUE,
     progress.bar = "none"
   )
+  completed_scale <- .bt_formula_scale_finalize(formula_result$formula_scale,
+    formula_result$formula_design, formula_result$prior_list, formula_result$data, owner_scope = "fit")
+  formula_result$formula_design$formula_scale <- completed_scale
   attr(samples, "formula_design") <- list(mu = formula_result$formula_design)
+  attr(samples, "formula_scale") <- list(mu = completed_scale)
 
   marglik <- JAGS_bridgesampling(
     fit = samples,
@@ -6458,7 +6486,11 @@ test_that("JAGS bridgesampling reconstructs row-indexed external SD sources from
     quiet = TRUE,
     progress.bar = "none"
   )
+  completed_scale <- .bt_formula_scale_finalize(formula_result$formula_scale,
+    formula_result$formula_design, formula_result$prior_list, formula_result$data, owner_scope = "fit")
+  formula_result$formula_design$formula_scale <- completed_scale
   attr(samples, "formula_design") <- list(mu = formula_result$formula_design)
+  attr(samples, "formula_scale") <- list(mu = completed_scale)
   expect_false(any(grepl("^tau\\[", colnames(as.matrix(samples)))))
 
   marglik <- JAGS_bridgesampling(
@@ -6473,6 +6505,10 @@ test_that("JAGS bridgesampling reconstructs row-indexed external SD sources from
   expect_s3_class(marglik, "BayesTools_marglik")
   expect_equal(marglik$logml, 0, tolerance = 0.08)
 
+  completed_scale <- .bt_formula_scale_finalize(no_values_formula_result$formula_scale,
+    no_values_formula_result$formula_design, no_values_formula_result$prior_list,
+    no_values_formula_result$data, owner_scope = "fit")
+  no_values_formula_result$formula_design$formula_scale <- completed_scale
   graft_samples <- samples
   attr(graft_samples, "formula_design") <- list(mu = no_values_formula_result$formula_design)
   expect_error(
@@ -7644,6 +7680,48 @@ test_that("a fit created in a function does not keep that function's frame", {
     without_id(attr(large, "parameter_map")),
     without_id(attr(small, "parameter_map"))
   )
+})
+
+test_that("Compiled coefficient multiplier states have isolated current-format fits", {
+
+  priors <- list(intercept = prior("point", list(5)), x = prior("point", list(2)))
+  attr(priors$x, "multiply_by") <- "sigma"
+  data <- data.frame(x = c(10, 20, 30))
+  sigma <- prior_mixture(list(prior("point", list(0)),
+    prior("normal", list(0, 1), truncation = list(lower = 0), prior_weights = 3)),
+    is_null = c(TRUE, FALSE))
+  syntax <- "model{ for(i in 1:N){ y[i] ~ dnorm(mu[i], 1) } }"
+  fit <- JAGS_fit(syntax, data = list(N = 3L, y = c(5, 5, 5)), prior_list = list(sigma = sigma),
+    formula_list = list(mu = ~ x), formula_data_list = list(mu = data),
+    formula_prior_list = list(mu = priors), formula_scale_list = list(mu = TRUE), add_parameters = "mu",
+    chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 271)
+  source <- as.matrix(.fit_to_posterior(fit))
+  corrected <- transform_scale_samples(fit)
+  expected_predictor <- outer(2 * source[, "sigma"], c(-1, 0, 1)) + 5
+  expect_identical(nrow(source), 1000L)
+  expect_equal(unname(corrected[, "mu_intercept"]), 5 - 4 * source[, "sigma"], tolerance = 1e-12)
+  expect_equal(unname(corrected[, "mu_x"]), rep(.2, 1000L), tolerance = 1e-14)
+  expect_equal(unname(source[, c("mu[1]", "mu[2]", "mu[3]")]), unname(expected_predictor), tolerance = 1e-12)
+  model_registry[["fit_formula_multiplier_state"]] <<- save_fit(fit, "fit_formula_multiplier_state",
+    formulas = TRUE, simple_priors = TRUE, mixture_priors = TRUE, add_parameters = TRUE,
+    assertion_only = TRUE, note = "Scaled point coefficients with an ordinary mixture multiplier and original-row identities.")$registry_entry
+  zero <- JAGS_fit(syntax, data = list(N = 3L, y = c(5, 5, 5)),
+    prior_list = list(sigma = prior("point", list(0)), dummy = prior("normal", list(0, 1))),
+    formula_list = list(mu = ~ x), formula_data_list = list(mu = data),
+    formula_prior_list = list(mu = priors), formula_scale_list = list(mu = TRUE), add_parameters = "mu",
+    chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 272)
+  expect_identical(unname(transform_scale_samples(zero)[, "mu_intercept"]), rep(5, 1000L))
+  model_registry[["fit_formula_multiplier_zero"]] <<- save_fit(zero, "fit_formula_multiplier_zero",
+    formulas = TRUE, simple_priors = TRUE, add_parameters = TRUE, assertion_only = TRUE,
+    note = "Declared zero named multiplier with exact coefficient cancellation and an unrelated sampled primitive.")$registry_entry
+  missing <- JAGS_fit(syntax, data = list(N = 3L, y = c(5, 5, 5)),
+    prior_list = list(dummy = prior("normal", list(0, 1))),
+    formula_list = list(mu = ~ 1), formula_data_list = list(mu = data),
+    formula_prior_list = list(mu = list(intercept = prior("point", list(5)))), add_parameters = "mu",
+    chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 273)
+  model_registry[["fit_formula_multiplier_missing"]] <<- save_fit(missing, "fit_formula_multiplier_missing",
+    formulas = TRUE, simple_priors = TRUE, add_parameters = TRUE, assertion_only = TRUE,
+    note = "Intercept-only point model for declared missing-coefficient mixture controls.")$registry_entry
 })
 
 # ============================================================================ #

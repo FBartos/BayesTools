@@ -1260,6 +1260,279 @@ JAGS_formula_prior_density <- function(
   stop(condition)
 }
 
+.bt_formula_raw_children <- function(values, priors){
+
+  out <- list()
+  for(owner in names(priors)){
+    prior <- priors[[owner]]
+    out[[owner]] <- if(is.prior.spike_and_slab(prior)){
+      .as_mixed_posteriors.spike_and_slab(values, prior, owner)
+    }else if(is.prior.mixture(prior)){
+      .as_mixed_posteriors.mixture(values, prior, owner, character())
+    }else if(is.prior.factor(prior)){
+      .as_mixed_posteriors.factor(values, prior, owner)
+    }else if(is.prior.vector(prior)){
+      .as_mixed_posteriors.vector(values, prior, owner)
+    }else if(is.prior.simple(prior)){
+      .as_mixed_posteriors.simple(values, prior, owner)
+    }else NULL
+  }
+  class(out) <- c("as_mixed_posteriors", "mixed_posteriors")
+  out
+}
+
+.bt_formula_state_new <- function(fit, values, owners, draw_index = seq_len(nrow(values)),
+                                   condition_event = NULL){
+
+  designs <- attr(fit, "formula_design", exact = TRUE)
+  priors <- attr(fit, "prior_list", exact = TRUE)
+  selected <- Filter(function(design){
+    any(owners %in% intersect(names(design$prior_list), paste0(design$parameter, "_", design$model_terms)))
+  }, designs)
+  if(!length(selected)) return(NULL)
+  scales <- lapply(selected, `[[`, "formula_scale")
+  required <- retained_owners <- character()
+  for(prefix in names(selected)){
+    scale <- scales[[prefix]]
+    .bt_formula_scale_finalized_check(scale, prefix, require_owner = TRUE)
+    spec <- attr(scale, "unscale_design", exact = TRUE)
+    columns <- names(spec$multipliers)
+    selected_columns <- unique(unlist(lapply(intersect(owners, names(selected[[prefix]]$prior_list)), function(owner){
+      .prior_linear_prior_columns(owner, priors[[owner]])
+    }), use.names = FALSE))
+    selected_columns <- intersect(selected_columns, columns)
+    transform <- .bt_formula_coefficient_transform(columns, scale, prefix,
+      log_intercept = selected[[prefix]]$log_intercept)
+    numeric_dependencies <- transform$dependencies$source[
+      transform$dependencies$target %in% selected_columns]
+    numeric_dependencies <- union(numeric_dependencies, transform$state_dependencies$source[
+      transform$state_dependencies$target %in% selected_columns])
+    required <- union(required, numeric_dependencies)
+    active <- columns[colSums(abs(transform$basis_matrix[intersect(selected_columns, columns), , drop = FALSE])) != 0]
+    active <- union(active, selected_columns)
+    constants <- .bt_formula_state_constants(scale)
+    values <- .bt_formula_materialize_state(values, constants)
+    for(column in active){
+      zero <- column %in% names(constants) && constants[[column]] == 0 &&
+        transform$source_transforms[[column]] == "identity"
+      numerator <- .bt_formula_multiplier_constant(spec$multipliers[[column]], constants)
+      if(zero || (!is.null(numerator) && numerator == 0)) next
+      required <- union(required, column)
+      declaration <- spec$multipliers[[column]]
+      if(identical(declaration$type, "state")) required <- union(required, declaration$name)
+    }
+    retained_owners <- union(retained_owners, names(priors)[vapply(names(priors), function(owner){
+      any(active %in% .prior_linear_prior_columns(owner, priors[[owner]])) || owner %in% required
+    }, logical(1))])
+    for(owner in names(priors)[vapply(names(priors), function(owner){
+      is.prior.ordered(priors[[owner]]) && any(required %in% .prior_linear_prior_columns(owner, priors[[owner]]))
+    }, logical(1))]){
+      ordered_spec <- .bt_ordered_spec(owner, priors[[owner]])
+      replay <- .bt_deterministic_node_evaluate(.bt_dnode_ordered_coefficients(ordered_spec),
+        .bt_deterministic_lookup(values, priors))
+      if(is.null(replay)) .bt_ordered_stop(paste0("Ordered coefficient sources for '", owner, "' are unavailable."))
+      values[, ordered_spec$coefficient_names] <- replay
+    }
+    values <- .bt_formula_materialize_state(values, constants, validate = required)
+  }
+  retained_owners <- union(retained_owners, intersect(condition_event$conditional, names(priors)))
+  # Gate rows come from the same original eligible population as the output.
+  gate_owners <- retained_owners[vapply(priors[retained_owners], function(prior){
+    is.prior.mixture(prior) || is.prior.spike_and_slab(prior)
+  }, logical(1))]
+  gate_columns <- if(length(gate_owners)) paste0(gate_owners, "_indicator") else character()
+  required <- union(required, intersect(gate_columns, colnames(values)))
+  missing <- setdiff(required, colnames(values))
+  if(length(missing)) .bt_formula_transform_stop(
+    "Selected formula sources are unavailable in the supplied fitted state.",
+    reason = "missing_multiplier_state", missing = missing)
+  if(any(!is.finite(values[, required, drop = FALSE]))) .bt_formula_transform_stop(
+    "Selected formula sources are nonfinite in the supplied fitted state.", reason = "nonfinite_transform")
+  record_priors <- priors[retained_owners]
+  gate_plan <- if(all(gate_columns %in% colnames(values))){
+    raw <- .bt_formula_raw_children(values, record_priors)
+    .posterior_atoms_formula_plan(raw, record_priors)
+  }else NULL
+  if(!is.null(gate_plan)) gate_plan$draw_index <- as.integer(draw_index)
+  record <- list(prior_list = record_priors, formula_scale = scales,
+    required = required, gate_plan = gate_plan, eligible_n = nrow(values), prior_probability = 1,
+    condition_event = condition_event)
+  state <- list(schema_version = 1L, models = list(record),
+    model = rep(1L, nrow(values)), draw_index = as.integer(draw_index),
+    values = values[, required, drop = FALSE], posterior_model_probabilities = 1)
+  reason <- .bt_formula_state_validate(state)
+  if(!is.null(reason)) stop(reason, call. = FALSE)
+  state
+}
+
+.bt_formula_state_attach <- function(samples, state){
+
+  if(is.null(state)) return(samples)
+  samples <- .bt_meta_set(samples, "formula_state", state)
+  for(owner in names(samples)){
+    if(!is.null(.bt_meta_get(samples[[owner]], "formula_parameter"))){
+      samples[[owner]] <- .bt_meta_set(samples[[owner]], "formula_state", state)
+    }
+  }
+  samples
+}
+
+.bt_formula_state_get <- function(samples, parameter = NULL){
+
+  if(!is.null(parameter)){
+    child <- .bt_meta_get(samples[[parameter]], "formula_state")
+    if(!is.null(child)) return(child)
+  }
+  state <- .bt_meta_get(samples, "formula_state")
+  children <- Filter(Negate(is.null), lapply(samples, function(x) .bt_meta_get(x, "formula_state")))
+  if(length(children) && all(vapply(children, function(child){
+    identical(child$model, children[[1L]]$model) && identical(child$draw_index, children[[1L]]$draw_index)
+  }, logical(1)))) state <- children[[1L]]
+  state
+}
+
+.bt_formula_dynamic_quantities <- function(x, transform, coordinates){
+
+  dynamic <- transform$targets$map_type[match(coordinates, transform$targets$target)] == "state_dependent"
+  for(field in c("quantities", "original_scale_quantities")){
+    quantities <- .bt_meta_get(x, field)
+    if(is.null(quantities) || nrow(quantities) != length(coordinates)) next
+    for(row in which(dynamic)){
+      quantities$quantity_id[[row]] <- ""
+      quantities$dependencies[[row]] <- character()
+      quantities$weights[[row]] <- numeric()
+    }
+    x <- .bt_meta_set(x, field, quantities)
+  }
+  x
+}
+
+# Reuse marginal_posterior's row construction and ordered term mapping. Only
+# the caller's effective numeric scale changes the at data; declarations and
+# contrast ownership come from the immutable fitted owner.
+.bt_formula_fitted_rows <- function(formula, data, record, prefix, original = FALSE){
+
+  if(isTRUE(record$absent)) return(matrix(0, nrow(data), length(record$zero_coordinates),
+    dimnames = list(NULL, record$zero_coordinates)))
+  scale <- record$formula_scale[[prefix]]
+  spec <- attr(scale, "unscale_design", exact = TRUE)
+  .bt_formula_unscale_design_spec_check(spec, prefix)
+  fitted_data <- data
+  for(variable in if(original) intersect(spec$continuous, names(fitted_data)) else character()){
+    numeric_scale <- scale[[paste0(prefix, "_", variable)]]
+    if(!is.null(numeric_scale)) fitted_data[[variable]] <-
+      (fitted_data[[variable]] - numeric_scale$mean) / numeric_scale$sd
+  }
+  for(variable in intersect(names(spec$factor_levels), names(fitted_data))){
+    fitted_data[[variable]] <- factor(fitted_data[[variable]],
+      levels = spec$factor_levels[[variable]], ordered = spec$factor_ordered[[variable]])
+    fitted_data[[variable]] <- stats::`contrasts<-`(fitted_data[[variable]],
+      how.many = ncol(spec$contrast_matrices[[variable]]), value = spec$contrast_matrices[[variable]])
+  }
+  frame <- stats::model.frame(formula, data = fitted_data, na.action = NULL)
+  matrix <- .bt_model_matrix(frame, data = frame, formula = formula)
+  matrix[is.na(matrix)] <- 0
+  terms <- stats::terms(formula)
+  labels <- attr(terms, "term.labels")
+  assign <- attr(matrix, "assign")
+  columns <- names(spec$multipliers)
+  out <- matrix(0, nrow(data), length(columns), dimnames = list(NULL, columns))
+  intercept <- paste0(prefix, "_intercept")
+  if(attr(terms, "intercept") == 1L && intercept %in% columns) out[, intercept] <- 1
+  for(i in seq_along(labels)){
+    owner <- JAGS_parameter_names(labels[[i]], formula_parameter = prefix)
+    if(owner %in% record$zero_owners) next
+    prior <- record$prior_list[[owner]]
+    if(is.null(prior)) .bt_formula_transform_stop(
+      "The formula row needs an omitted coefficient owner.", reason = "missing_multiplier_state", state = owner)
+    info <- lapply(c("ordered", "factor_terms", "factor_design", "level_names", "levels"), function(name) attr(prior, name, exact = TRUE))
+    names(info) <- c("ordered", "factor_terms", "factor_design", "level_names", "levels")
+    info$ordered <- is.prior.ordered(prior)
+    if(is.prior.factor(prior)) info$levels <- .get_prior_factor_levels(prior)
+    term_data <- .marginal_posterior_term_data(matrix, assign, i, fitted_data, info, owner)
+    term_columns <- .prior_linear_prior_columns(owner, prior)
+    if(ncol(term_data) != length(term_columns)) stop("Persisted formula row columns disagree with their coefficient owner.", call. = FALSE)
+    out[, term_columns] <- term_data
+  }
+  out
+}
+
+.bt_formula_predictor_state <- function(state, formula, data, prefix, log_intercept, original = FALSE){
+
+  out <- matrix(0, nrow(data), nrow(state$values))
+  for(model in unique(state$model)){
+    rows <- which(state$model == model)
+    record <- state$models[[model]]
+    if(isTRUE(record$absent)){
+      if(log_intercept) .bt_formula_transform_stop(
+        "An absent formula model has no declared positive log-intercept source.", reason = "missing_multiplier_state")
+      next
+    }
+    weights <- .bt_formula_fitted_rows(formula, data, record, prefix, original)
+    scale <- record$formula_scale[[prefix]]
+    spec <- attr(scale, "unscale_design", exact = TRUE)
+    values <- .bt_formula_materialize_state(state$values[rows, , drop = FALSE], .bt_formula_state_constants(scale))
+    for(column in colnames(weights)[colSums(weights != 0) > 0]){
+      constant <- .bt_formula_multiplier_constant(spec$multipliers[[column]], .bt_formula_state_constants(scale))
+      point <- .bt_formula_state_constants(scale)[column]
+      if((!is.null(constant) && constant == 0) ||
+         (length(point) && !is.na(point) && point == 0 && !identical(column, paste0(prefix, "_intercept")))) next
+      if(!column %in% colnames(values)) .bt_formula_transform_stop(
+        "A selected formula coefficient state is unavailable.", reason = "missing_multiplier_state", state = column)
+      value <- values[, column]
+      if(log_intercept && identical(column, paste0(prefix, "_intercept"))) value <- log(value)
+      if(is.null(constant)){
+        name <- spec$multipliers[[column]]$name
+        if(!name %in% colnames(values)) .bt_formula_transform_stop(
+          "A selected formula multiplier state is unavailable.", reason = "missing_multiplier_state", state = name)
+        multiplier <- values[, name]
+      }else multiplier <- constant
+      contribution <- weights[, column, drop = FALSE] %*% matrix(value * multiplier, nrow = 1L)
+      if(any(!is.finite(contribution))) .bt_formula_transform_stop(
+        "Formula contribution arithmetic is nonfinite.", reason = "nonfinite_transform")
+      out[, rows] <- out[, rows, drop = FALSE] + contribution
+    }
+  }
+  if(any(!is.finite(out))) .bt_formula_transform_stop("Formula contribution arithmetic is nonfinite.", reason = "nonfinite_transform")
+  out
+}
+
+.bt_formula_contribution_context <- function(record, prefix, n_grid = .prior_linear_density_default_grid(),
+                                              priors = record$prior_list, active_columns = NULL,
+                                              condition_event = record$condition_event){
+
+  if(isTRUE(record$absent)){
+    context <- .prior_density_context(record$prior_list, record$zero_coordinates, n_grid = n_grid)
+    context$linear_weight_space <- "formula_contribution"
+    return(context)
+  }
+  scale <- record$formula_scale[[prefix]]
+  spec <- attr(scale, "unscale_design", exact = TRUE)
+  if(is.null(active_columns)) active_columns <- names(spec$multipliers)
+  for(column in intersect(active_columns, names(spec$multipliers))){
+    declaration <- spec$multipliers[[column]]
+    owner <- names(priors)[vapply(names(priors), function(owner){
+      column %in% .prior_linear_prior_columns(owner, priors[[owner]])
+    }, logical(1))]
+    if(length(owner) == 1L && is.prior.point(priors[[owner]]) &&
+       is.numeric(priors[[owner]]$parameters$location) && isTRUE(priors[[owner]]$parameters$location == 0)) next
+    if(identical(declaration$type, "state") &&
+       is.null(.bt_formula_multiplier_constant(declaration, .bt_formula_state_constants(scale))) &&
+       is.null(priors[[declaration$name]])) .bt_formula_density_stop(
+      "A compiled formula multiplier has no supplied prior law.",
+      parameter = prefix, reason = "missing_multiplier_law", state = declaration$name)
+  }
+  context <- .prior_density_build_context(priors, names(spec$multipliers), n_grid = n_grid,
+    conditional = condition_event$conditional, conditional_rule = if(is.null(condition_event$conditional_rule)) "AND" else condition_event$conditional_rule,
+    condition_event = condition_event)
+  context <- .bt_formula_prior_density_context_contributions(context,
+    list(parameter = prefix, source_names = names(spec$multipliers), multipliers = spec$multipliers,
+         state_constants = .bt_formula_state_constants(scale)))
+  context$formula_scale <- NULL
+  context$transforms <- list()
+  context
+}
+
 .bt_formula_route_atom_certificate <- function(route){
 
   if(route$type %in% c("log_scale_product", "truncated_normal_convolution")){
@@ -1306,6 +1579,175 @@ JAGS_formula_prior_density <- function(
   points <- .prior_density_ordinate_provenance_atoms(provenance)
   .posterior_support_new(support, points = if(is.null(points)) numeric() else points,
     source = "formula_contribution")
+}
+
+.bt_formula_contribution_metadata <- function(marginal, state, formula, data, prefix,
+                                               column, source_transforms = NULL,
+                                               prior_samples = FALSE, n_grid = .prior_linear_density_default_grid(),
+                                               coefficient = NULL, original = FALSE, prior_density = NULL){
+
+  laws <- model_supports <- model_atoms <- row_weights <- vector("list", length(state$models))
+  prior_available <- atoms_available <- support_available <- TRUE
+  prior_reason <- atom_reason <- support_reason <- "unsupported_contribution_measure"
+  component_supports <- list()
+  component_keys <- list()
+  n_rows <- if(is.null(coefficient)) nrow(data) else 1L
+  component_index <- rep(NA_integer_, nrow(state$values) * n_rows)
+  for(model in seq_along(state$models)){
+    record <- state$models[[model]]
+    output_transform <- NULL
+    if(is.null(coefficient)){
+      weights <- .bt_formula_fitted_rows(formula, data, record, prefix, original)
+      recipe_type <- "contribution_affine"
+      transform <- NULL
+    }else if(coefficient %in% record$zero_coordinates){
+      columns <- if(isTRUE(record$absent)) record$zero_coordinates else
+        names(attr(record$formula_scale[[prefix]], "unscale_design", exact = TRUE)$multipliers)
+      weights <- matrix(0, 1L, length(columns), dimnames = list(NULL, columns))
+      recipe_type <- "raw_affine"
+      transform <- NULL
+    }else{
+      scale <- record$formula_scale[[prefix]]
+      spec <- attr(scale, "unscale_design", exact = TRUE)
+      transform <- .bt_formula_coefficient_transform(names(spec$multipliers), scale, prefix,
+        log_intercept = isTRUE(attr(scale, "log_intercept", exact = TRUE)))
+      recipe <- transform$prior_recipes[[coefficient]]
+      if(is.null(recipe)) stop("Unknown coefficient measure target.", call. = FALSE)
+      if(identical(recipe$type, "unavailable")){
+        if(record$prior_probability > 0){ prior_available <- FALSE; prior_reason <- recipe$reason }
+        if(state$posterior_model_probabilities[[model]] > 0){
+          atoms_available <- support_available <- FALSE
+          atom_reason <- support_reason <- recipe$reason
+        }
+        next
+      }
+      weights <- matrix(recipe$weights, nrow = 1L, dimnames = list(NULL, names(recipe$weights)))
+      recipe_type <- recipe$type
+      source_transforms <- transform$source_transforms[transform$source_transforms == "log"]
+      if(length(source_transforms) == 0L) source_transforms <- NULL
+      if(identical(transform$output_transforms[[coefficient]], "exp")) output_transform <- "exp"
+    }
+    row_weights[[model]] <- weights
+    context_builder <- function(priors, conditional = TRUE){
+      if(identical(recipe_type, "contribution_affine")) return(.bt_formula_contribution_context(record, prefix, n_grid, priors,
+        colnames(weights)[colSums(weights != 0) > 0], condition_event = if(conditional) record$condition_event))
+      event <- if(conditional) record$condition_event
+      .bt_formula_prior_density_context_raw_sources(
+        .prior_density_build_context(priors, colnames(weights), n_grid = n_grid,
+          conditional = event$conditional, conditional_rule = if(is.null(event$conditional_rule)) "AND" else event$conditional_rule,
+          condition_event = event), colnames(weights))
+    }
+    build_route <- function(context, row){
+      .prior_density_route_context(context, weights[row, ], source_transforms,
+        output_transform, NULL)
+    }
+    context <- tryCatch(context_builder(record$prior_list),
+      BayesTools_formula_measure_unavailable = function(e) e)
+    if(inherits(context, "BayesTools_formula_measure_unavailable")){
+      if(record$prior_probability > 0){ prior_available <- FALSE; prior_reason <- context$reason }
+      if(state$posterior_model_probabilities[[model]] > 0){ atoms_available <- support_available <- FALSE }
+      next
+    }
+    routes <- lapply(seq_len(nrow(weights)), function(row){
+      build_route(context, row)
+    })
+    if(record$prior_probability > 0 && any(vapply(routes, function(route) identical(route$type, "unknown"), logical(1)))){
+      prior_available <- FALSE
+    }else if(prior_samples && record$prior_probability > 0){
+      laws[[model]] <- if(length(state$models) == 1L && !is.null(prior_density)) prior_density else
+        .prior_density_from_context_rows(context, weights, source_transforms = source_transforms,
+          output_transformation = output_transform)
+    }
+    if(state$posterior_model_probabilities[[model]] <= 0) next
+    plan <- record$gate_plan
+    if(is.null(plan)){
+      atoms_available <- support_available <- FALSE
+      atom_reason <- support_reason <- "missing_joint_component_states"
+      next
+    }
+    locations <- masses <- numeric()
+    supports <- list()
+    for(component in which(plan$probabilities > 0)){
+      this_component_supports <- list()
+      component_priors <- record$prior_list
+      for(owner in colnames(plan$components)) component_priors[[owner]] <- .posterior_atoms_component_prior(
+        component_priors[[owner]], plan$components[component, owner], FALSE,
+        .posterior_atoms_plan_total_indicator(plan, component, owner))
+      component_context <- context_builder(component_priors, conditional = FALSE)
+      for(row in seq_len(nrow(weights))){
+        route <- build_route(component_context, row)
+        certificate <- .bt_formula_route_atom_certificate(route)
+        if(identical(certificate$type, "unavailable")) atoms_available <- FALSE
+        if(identical(certificate$type, "point")){
+          locations <- c(locations, certificate$location)
+          masses <- c(masses, state$posterior_model_probabilities[[model]] * plan$probabilities[[component]] / nrow(weights))
+        }
+        support <- .bt_formula_route_support(route)
+        if(is.null(support)) support_available <- FALSE else{
+          supports[[length(supports) + 1L]] <- support
+          this_component_supports[[length(this_component_supports) + 1L]] <- support
+        }
+      }
+      component_supports[length(component_supports) + 1L] <- list(if(length(this_component_supports) == nrow(weights))
+        .posterior_support_union(this_component_supports, source = "formula_joint_component") else NULL)
+      global_component <- length(component_supports)
+      key <- stats::setNames(as.integer(plan$components[component, ]), colnames(plan$components))
+      if(length(state$models) > 1L) key <- c(.component = component)
+      component_keys[[global_component]] <- if(length(state$models) > 1L) c(.model = model, key) else key
+      model_rows <- which(state$model == model)
+      original_rows <- if(isTRUE(record$absent)) rep(1L, length(model_rows)) else
+        match(state$draw_index[model_rows], plan$draw_index)
+      if(anyNA(original_rows)) stop("Formula component rows do not belong to their original eligible population.", call. = FALSE)
+      selected <- model_rows[plan$index[original_rows] == component]
+      if(length(selected)){
+        output_rows <- unlist(lapply(selected, function(row) (row - 1L) * n_rows + seq_len(n_rows)), use.names = FALSE)
+        component_index[output_rows] <- global_component
+      }
+    }
+    model_atoms[[model]] <- data.frame(x = locations, mass = masses)
+    if(length(supports)) model_supports[[model]] <- .posterior_support_union(supports, source = "formula_contribution")
+  }
+  marginal <- .bt_meta_assign(marginal, list(support = NULL, atoms = NULL, components = NULL,
+    prior_density = NULL, prior_context = NULL, linear_weights = NULL, linear_weight_space = NULL))
+  if(prior_available && prior_samples){
+    positive <- which(vapply(state$models, function(record) record$prior_probability > 0, logical(1)))
+    probabilities <- vapply(state$models[positive], `[[`, numeric(1), "prior_probability")
+    probabilities <- probabilities / sum(probabilities)
+    dx <- min(vapply(laws[positive], function(law){
+      if(!is.null(law$density) && length(law$density$x) > 1L) diff(law$density$x)[[1L]] else Inf
+    }, numeric(1)))
+    if(!is.finite(dx)) dx <- NA_real_
+    law <- if(length(positive) == 1L) laws[[positive]] else
+      .prior_linear_density_mix(laws[positive], probabilities, dx = dx, n_grid = n_grid)
+    if(length(positive) > 1L) attr(law, "adaptive_evaluation") <- list(kind = "density_mixture",
+      arguments = list(dists = laws[positive], weights = probabilities, n_grid = n_grid))
+    marginal <- .bt_meta_set(marginal, "prior_density", law)
+  }else if(!prior_available) marginal <- .bt_formula_measure_mark(marginal, column, "prior_density", prior_reason)
+  if(atoms_available){
+    points <- .posterior_atoms_point_mass_table(do.call(rbind, model_atoms))
+    atoms <- .posterior_atoms_new(locations = matrix(points$x, ncol = 1L), mass = points$mass,
+      column_names = column, source = "formula_joint_component_frequencies")
+    marginal <- .posterior_atoms_set(marginal, atoms)
+  }else marginal <- .bt_formula_measure_mark(marginal, column, "atoms", atom_reason)
+  if(support_available){
+    marginal <- .posterior_support_set(marginal, .posterior_support_union(
+      model_supports[state$posterior_model_probabilities > 0], source = "formula_contribution"))
+  }else marginal <- .bt_formula_measure_mark(marginal, column, "support", support_reason)
+  if(!anyNA(component_index) && length(component_supports) &&
+     (length(state$models) > 1L || any(vapply(state$models, function(record){
+       any(vapply(record$prior_list, .posterior_components_is_mixture, logical(1)))
+     }, logical(1))))){
+    marginal <- .posterior_components_set(marginal,
+      .posterior_components_new(component_index, component_supports, do.call(rbind, component_keys)))
+  }
+  common <- row_weights[[1L]]
+  if(is.null(coefficient) && prior_available && all(vapply(row_weights, identical, logical(1), common)) && length(state$models) == 1L){
+    context <- .bt_formula_contribution_context(state$models[[1L]], prefix, n_grid,
+      active_columns = colnames(common)[colSums(common != 0) > 0])
+    marginal <- .bt_meta_assign(marginal, list(prior_context = context, linear_weights = common,
+      linear_weight_space = "formula_contribution"))
+  }
+  marginal
 }
 
 .bt_formula_density_stop <- function(message, ...){

@@ -91,8 +91,13 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
 
   # apply scale transformation to posterior samples if requested
   original_model_samples <- model_samples
+  formula_state <- .bt_formula_state_new(model, original_model_samples, parameters, source_rows,
+    condition_event = condition_event)
   if(transform_scaled && !is.null(formula_scale) && length(formula_scale) > 0){
-    model_samples <- .bt_transform_scale_posterior(model_samples, formula_scale)
+    model_samples <- .bt_transform_scale_posterior(model_samples, formula_scale,
+      targets = unique(unlist(lapply(parameters, function(owner){
+        .prior_linear_prior_columns(owner, priors[[owner]])
+      }), use.names = FALSE)))
     posterior_density_sources <- list()
     posterior_ordinate_sources <- list()
   }
@@ -297,11 +302,12 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
     }
   }
 
+  out <- .bt_formula_state_attach(out, formula_state)
   class(out) <- c(class(out), "as_mixed_posteriors", "mixed_posteriors")
   if(transform_scaled && !is.null(formula_scale) && length(formula_scale) > 0){
     out <- .posterior_atoms_unscale_mixed(
       out, model, original_model_samples, priors, formula_scale,
-      conditional, conditional_rule
+      conditional, conditional_rule, n_grid = n_prior_samples
     )
   }
   return(out)
