@@ -1,6 +1,9 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <limits>
+
+#include "structured-cholesky-count.h"
 
 #include <Rinternals.h>
 #include <R_ext/Error.h>
@@ -139,6 +142,15 @@ extern "C" SEXP BayesTools_structured_cholesky(SEXP rho,
   if(n_columns < 1){
     Rf_error("'coordinates' must contain at least one value.");
   }
+  const std::size_t element_limit = std::min(
+    static_cast<std::size_t>(R_XLEN_T_MAX),
+    std::numeric_limits<std::size_t>::max() / sizeof(double)
+  );
+  std::size_t checked_total;
+  if(!bt_structured_cholesky_checked_count(
+       n_draws, n_columns, element_limit, &checked_total)){
+    Rf_error("Structured Cholesky output dimensions exceed R's representable double-vector length.");
+  }
   const double *rho_ptr = REAL(rho_real);
   const double *coordinates_ptr = REAL(coordinates_real);
   for(std::size_t draw = 0; draw < n_draws; ++draw){
@@ -154,10 +166,10 @@ extern "C" SEXP BayesTools_structured_cholesky(SEXP rho,
 
   SEXP out = PROTECT(Rf_allocVector(
     REALSXP,
-    static_cast<R_xlen_t>(n_draws * n_columns * n_columns)
+    static_cast<R_xlen_t>(checked_total)
   ));
   double *out_ptr = REAL(out);
-  std::fill(out_ptr, out_ptr + n_draws * n_columns * n_columns, 0.0);
+  std::fill(out_ptr, out_ptr + checked_total, 0.0);
   if(is_cs){
     fill_cs(out_ptr, rho_ptr, n_draws, n_columns);
   }else{

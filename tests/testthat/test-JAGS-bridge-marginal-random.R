@@ -1,5 +1,45 @@
 skip_if_not_test_profile("unit")
 
+test_that("structured count preflight refuses geometry before dense diagnostics", {
+
+  expect_identical(.bt_random_effect_structured_cholesky_geometry(2L, 3L), 18)
+  for(dimensions in list(c(0, 1), c(1, 0), c(1.5, 2), c(Inf, 2), c(2^31, 1))){
+    expect_error(.bt_random_effect_structured_cholesky_geometry(dimensions[1L], dimensions[2L]),
+      "positive integer-sized", fixed = TRUE)
+  }
+  expect_error(.bt_random_effect_structured_cholesky_geometry(16L, 2^30),
+    "representable double-vector length", fixed = TRUE)
+  if(.Machine$sizeof.pointer >= 8L){
+    expect_identical(.bt_random_effect_structured_cholesky_geometry(1L, 2^26), 2^52)
+    expect_error(.bt_random_effect_structured_cholesky_geometry(2L, 2^26),
+      "representable double-vector length", fixed = TRUE)
+  }
+  result <- JAGS_formula(~ 1 + car(time | id), "mu",
+    data.frame(time = c(0, .5, 2), id = rep("a", 3L)),
+    list(intercept = prior("point", list(location = 0))),
+    prior_random = prior_random(sd = prior("point", list(location = 1)),
+      cor = prior("point", list(location = .5))))
+  term <- result$formula_design$random_effects[[1L]]
+  posterior <- matrix(0, 1L, 1L, dimnames = list(NULL, "unused"))
+  evaluator <- .bt_random_effect_compile_cholesky_evaluator(term, 3L, structure = "car")
+  reconstruction_calls <- 0L
+  native_calls <- 0L
+  testthat::local_mocked_bindings(
+    .bt_random_effect_structured_cholesky_geometry = function(...){
+      stop("geometry preflight refusal", call. = FALSE)
+    },
+    .bt_random_effect_structured_subset_cholesky = function(...){
+      reconstruction_calls <<- reconstruction_calls + 1L
+      stop("dense reconstruction was reached", call. = FALSE)
+    },
+    .bt_random_effect_native_structured_cholesky = function(...){
+      native_calls <<- native_calls + 1L
+      stop("native was reached", call. = FALSE)
+    }, .package = "BayesTools")
+  expect_error(evaluator(posterior), "geometry preflight refusal", fixed = TRUE)
+  expect_identical(c(native_calls, reconstruction_calls), c(0L, 0L))
+})
+
 test_that("compact partition checks agree with independent dense dependencies", {
 
   partitions <- list(list(1:4), list(1:2, 3:4), list(c(1L, 3L), c(2L, 4L)), as.list(1:4))

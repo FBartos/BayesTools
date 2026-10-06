@@ -1,4 +1,5 @@
 # version 0.3.1
+- structured Cholesky reconstruction checks representable array counts before native multiplication and refuses impossible geometry before R diagnostic reconstruction.
 - private bridge row-partition checks use exact coefficient supports and group kernels without allocating row-by-row adjacency arrays; public dense dependencies are unchanged.
 - marginal CAR covariance memory admission includes unavoidable draw-by-column factors and contraction work for full and diagonal output.
 - existing random-effect factor/variance unavailability and allocation support errors share the neutral BayesTools_random_effects_error parent while preserving leaf-specific handling.

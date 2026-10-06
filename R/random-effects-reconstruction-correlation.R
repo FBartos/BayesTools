@@ -163,6 +163,7 @@
       )
     }
 
+    .bt_random_effect_structured_cholesky_geometry(nrow(posterior), n_columns)
     tryCatch(
       .bt_random_effect_native_structured_cholesky(
         structure = structure,

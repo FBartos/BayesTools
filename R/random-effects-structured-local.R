@@ -672,3 +672,22 @@
   )
 }
 
+.bt_random_effect_structured_cholesky_geometry <- function(n_draws, n_columns){
+
+  dimensions <- c(n_draws, n_columns)
+  if(!is.numeric(dimensions) || length(n_draws) != 1L || length(n_columns) != 1L ||
+     anyNA(dimensions) || any(!is.finite(dimensions)) || any(dimensions < 1) ||
+     any(dimensions > .Machine$integer.max) || any(dimensions != floor(dimensions))){
+    stop("Structured Cholesky dimensions must be positive integer-sized scalars.", call. = FALSE)
+  }
+  limit <- if(.Machine$sizeof.pointer >= 8L) 2^52 else floor((2^32 - 1) / 8)
+  if(n_draws > floor(limit / n_columns)){
+    stop("Structured Cholesky output dimensions exceed R's representable double-vector length.", call. = FALSE)
+  }
+  partial <- n_draws * n_columns
+  if(partial > floor(limit / n_columns)){
+    stop("Structured Cholesky output dimensions exceed R's representable double-vector length.", call. = FALSE)
+  }
+  invisible(partial * n_columns)
+}
+
