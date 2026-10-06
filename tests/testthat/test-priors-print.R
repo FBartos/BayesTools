@@ -156,7 +156,7 @@ test_that("Random-effect specification print methods use prior notation", {
     "  w ~ Dirichlet(3, 1)",
     "  sigma_paper = sigma_study * sqrt(w[1])",
     "  sigma_country = sigma_study * sqrt(w[2])",
-    "block: study",
+    "block: study (formula-owned)",
     "  sigma ~ Gamma(2, 2)",
     "  cor ~ Normal(0, 0.5)",
     "  cor_scale: cor",
@@ -242,8 +242,9 @@ test_that("Random prior printing expands allocation and term priors", {
     )
   )
   expect_equal(utils::capture.output(print(pr_terms)), c(
-    "block: study",
+    "block: study (formula-owned)",
     "  sigma ~ Normal(0, 0.3)[0, Inf]",
+    "  cor: formula-owned",
     "  sigma_intercept ~ Normal(0, 0.15)[0, Inf]",
     "  sigma_dose ~ Normal(0, 0.35)[0, Inf]"
   ))

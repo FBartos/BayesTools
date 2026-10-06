@@ -4818,7 +4818,7 @@ test_that("prior_random rejects unsupported and ignored production settings", {
         id = random_block(sd = sd_prior, cor = rho_prior)
       )
     ),
-    "Block covariance override supplies a correlation prior, but structure 'id' has no correlation parameter",
+    "random-effect block 'id' supplies a correlation prior, but structure 'id' has no correlation parameter.",
     fixed = TRUE
   )
 })
@@ -12890,7 +12890,7 @@ test_that("structured random-effect terms use level-indexed factor columns and s
   )
 
   raw_inherited <- NULL
-  expect_warning(
+  expect_no_warning(
     raw_inherited <- JAGS_formula(
       formula = ~ 1 + har(f | id),
       parameter = "mu",
@@ -12906,15 +12906,15 @@ test_that("structured random-effect terms use level-indexed factor columns and s
           covariance = random_covariance(structure = "har")
         )
       )
-    ),
-    "valid correlation range",
-    fixed = TRUE
+    )
   )
   expect_equal(names(raw_inherited$prior_list), c("mu_intercept", "mu__xREx__id_f", "mu__xREx__id_rho"))
+  expect_identical(raw_inherited$prior_list$mu__xREx__id_rho$distribution, "uniform")
+  expect_equal(raw_inherited$prior_list$mu__xREx__id_rho$parameters, list(a = -1, b = 1))
   expect_false(grepl("rho_z", raw_inherited$formula_syntax, fixed = TRUE))
 
   raw_block_override <- NULL
-  expect_warning(
+  expect_no_warning(
     raw_block_override <- JAGS_formula(
       formula = ~ 1 + har(f | id),
       parameter = "mu",
@@ -12927,15 +12927,15 @@ test_that("structured random-effect terms use level-indexed factor columns and s
           covariance = random_covariance(structure = "har", cor_scale = "cor")
         )
       )
-    ),
-    "valid correlation range",
-    fixed = TRUE
+    )
   )
   expect_equal(names(raw_block_override$prior_list), c("mu_intercept", "mu__xREx__id_f", "mu__xREx__id_rho"))
+  expect_identical(raw_block_override$prior_list$mu__xREx__id_rho$distribution, "uniform")
+  expect_equal(raw_block_override$prior_list$mu__xREx__id_rho$parameters, list(a = -1, b = 1))
   expect_false(grepl("rho_z", raw_block_override$formula_syntax, fixed = TRUE))
 
   raw_top_scale_block_rho <- NULL
-  expect_warning(
+  expect_no_warning(
     raw_top_scale_block_rho <- JAGS_formula(
       formula = ~ 1 + har(f | id),
       parameter = "mu",
@@ -12948,12 +12948,10 @@ test_that("structured random-effect terms use level-indexed factor columns and s
           cor = prior("normal", list(0, 0.5))
         )
       )
-    ),
-    "valid correlation range",
-    fixed = TRUE
+    )
   )
-  expect_equal(names(raw_top_scale_block_rho$prior_list), c("mu_intercept", "mu__xREx__id_f", "mu__xREx__id_rho"))
-  expect_false(grepl("rho_z", raw_top_scale_block_rho$formula_syntax, fixed = TRUE))
+  expect_equal(names(raw_top_scale_block_rho$prior_list), c("mu_intercept", "mu__xREx__id_f", "mu__xREx__id_rho_z"))
+  expect_match(raw_top_scale_block_rho$formula_syntax, "tanh(mu__xREx__id_rho_z)", fixed = TRUE)
 
   car_result <- JAGS_formula(
     formula = ~ 1 + car(0 + time | id),

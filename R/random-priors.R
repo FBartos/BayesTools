@@ -16,8 +16,12 @@
 #' supplied in `...`. A top-level `cor` prior applies only to blocks whose
 #' resolved structure and dimension have a correlation parameter; it is not
 #' applied to `id()`, `diag()`, or single-column blocks. A block override
-#' `random_covariance(cor = NULL)` removes the inherited `cor` prior so that
-#' the structure default applies. A block SD supplied through either `sd` or
+#' with no covariance subcall inherits the shared covariance. A supplied
+#' `random_covariance()` or `cor` shorthand replaces the whole covariance
+#' object and uses its constructor defaults for omitted fields. In particular,
+#' `random_covariance(cor = NULL)` resets its correlation prior and scale to
+#' the formula defaults. A replacement also removes any shared covariance SD;
+#' if that was the only SD, supply a local or top-level SD prior. A block SD supplied through either `sd` or
 #' `covariance = random_covariance(sd = ...)` replaces the top-level SD
 #' supplied through either argument.
 #'
@@ -1008,6 +1012,7 @@ is.prior_random <- function(x){
   invisible(TRUE)
 }
 
+
 .bt_check_random_covariance <- function(x){
 
   if(!inherits(x, "random_covariance")){
@@ -1501,14 +1506,15 @@ is.prior_random <- function(x){
 
   if(block_name %in% names(prior_random$blocks)){
     override <- prior_random$blocks[[block_name]]
-    if(!is.null(override$covariance) &&
-       "cor" %in% .bt_random_covariance_explicit_fields(override$covariance)){
+    if(!is.null(override$covariance)){
+      .bt_check_random_covariance(override$covariance)
       inherited_cor <- FALSE
     }
     for(field in names(override)){
       if(!is.null(override[[field]])){
         if(identical(field, "covariance")){
-          block[[field]] <- .bt_random_merge_covariance(block[[field]], override[[field]])
+          block[[field]] <- override[[field]]
+          attr(block[[field]], "inherited_cor") <- NULL
         }else if(identical(field, "contrasts")){
           block[[field]] <- .bt_random_contrasts_normalize(override[[field]])
         }else if(identical(field, "sd_source")){
@@ -1540,6 +1546,7 @@ is.prior_random <- function(x){
   if(inherited_cor && !is.null(block$covariance$cor)){
     attr(block$covariance, "inherited_cor") <- TRUE
   }
+  .bt_check_random_covariance(block$covariance)
 
   class(block) <- c("random_block", "list")
   block
@@ -1603,81 +1610,6 @@ is.prior_random <- function(x){
   }
 
   cor_prior
-}
-
-.bt_random_merge_covariance <- function(base, override){
-
-  .bt_check_random_covariance(base)
-  .bt_check_random_covariance(override)
-
-  out <- base
-  override_fields <- .bt_random_covariance_explicit_fields(override)
-  base_fields <- .bt_random_covariance_explicit_fields(base)
-  for(field in c("structure", "sd", "cor")){
-    if(!is.null(override[[field]])){
-      out[[field]] <- override[[field]]
-    }
-  }
-  if("cor" %in% override_fields && is.null(override$cor)){
-    # An explicit `cor = NULL` removes the inherited correlation prior and the
-    # scale that belonged to it, so the structure default applies.
-    out["cor"] <- list(NULL)
-    out$cor_scale <- override$cor_scale
-    base_fields <- setdiff(base_fields, "cor_scale")
-  }
-  if("cor_scale" %in% override_fields){
-    out$cor_scale <- override$cor_scale
-  }
-  if(!is.null(out$structure)){
-    structure <- tolower(.bt_random_covariance_normalize(out$structure))
-    .bt_random_validate_explicit_covariance_override(
-      override = override,
-      override_fields = override_fields,
-      structure = structure
-    )
-    if(.bt_random_structure_uses_no_correlation(structure)){
-      out["cor"] <- list(NULL)
-    }
-  }
-
-  class(out) <- c("random_covariance", "list")
-  attr(out, "explicit_fields") <- unique(c(base_fields, override_fields))
-  out
-}
-
-.bt_random_validate_explicit_covariance_override <- function(override,
-                                                            override_fields,
-                                                            structure){
-
-  if(.bt_random_structure_uses_no_correlation(structure)){
-    if("cor" %in% override_fields && !is.null(override$cor)){
-      stop(
-        "Block covariance override supplies a correlation prior, but structure '",
-        structure, "' has no correlation parameter.",
-        call. = FALSE
-      )
-    }
-  }else if(.bt_random_structure_uses_lkj(structure)){
-    if("cor" %in% override_fields && !is.null(override$cor) &&
-       !inherits(override$cor, "prior_lkj")){
-      stop(
-        "Block covariance override supplies a scalar correlation prior, but structure '",
-        structure, "' uses an LKJ correlation prior.",
-        call. = FALSE
-      )
-    }
-  }else if(.bt_random_structure_uses_scalar_rho(structure)){
-    if("cor" %in% override_fields && !is.null(override$cor) &&
-       inherits(override$cor, "prior_lkj")){
-      stop(
-        "Block covariance override supplies an LKJ correlation prior, but structure '",
-        structure, "' uses a scalar correlation prior.",
-        call. = FALSE
-      )
-    }
-  }
-
-  invisible(TRUE)
 }
 
 .bt_random_covariance_explicit_fields <- function(x){

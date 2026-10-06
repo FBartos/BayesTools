@@ -149,6 +149,71 @@ test_that("block SD overrides replace SDs inherited through the other slot", {
   )
 })
 
+test_that("supplied block covariance replaces the shared object with constructor defaults", {
+  sd <- prior("gamma", list(2, 2))
+  local_cor <- prior("normal", list(0, .5))
+  shared_covariance <- random_covariance(cor = prior("normal", list(0, 1)), cor_scale = "logit")
+  data <- data.frame(g = factor(rep(c("a", "b"), each = 3)), index = factor(rep(1:3, 2)))
+  compile <- function(specification){
+    JAGS_formula(~ cs(index | g), "mu", data,
+      list(intercept = prior("point", list(0))), prior_random = specification)
+  }
+  for(local in list(random_block(cor = local_cor),
+                   random_block(covariance = random_covariance(cor = local_cor)))){
+    specification <- prior_random(sd = sd, covariance = shared_covariance, g = local)
+    block <- .bt_random_prior_for_block(specification, "g")
+    expect_identical(block$covariance$cor_scale, "fisher_z")
+    expect_identical(attr(block$covariance, "explicit_fields"), "cor")
+    expect_false(.bt_random_block_has_inherited_correlation(block))
+    result <- compile(specification)
+    expect_true("mu__xREx__g_rho_z" %in% names(result$prior_list))
+    expect_match(result$formula_syntax, "tanh(mu__xREx__g_rho_z)", fixed = TRUE)
+    expect_true("  cor_scale: fisher_z" %in% print(specification, silent = TRUE))
+  }
+  for(covariance in list(random_covariance(), random_covariance(structure = "CS"),
+                         random_covariance(sd = sd), random_covariance(cor_scale = "cor"))){
+    specification <- prior_random(sd = sd, covariance = shared_covariance,
+      g = random_block(covariance = covariance))
+    block <- .bt_random_prior_for_block(specification, "g")
+    expect_identical(block$covariance, covariance)
+    expect_false(.bt_random_block_has_inherited_correlation(block))
+    result <- compile(specification)
+    rho <- result$prior_list$mu__xREx__g_rho
+    expect_identical(rho$distribution, "uniform")
+    expect_equal(rho$parameters, list(a = -.5, b = 1))
+    expect_false(grepl("rho_z", result$formula_syntax, fixed = TRUE))
+  }
+  missing <- prior_random(sd = sd, covariance = shared_covariance, g = random_block())
+  inherited <- .bt_random_prior_for_block(missing, "g")
+  expect_identical(inherited$covariance$cor_scale, "logit")
+  expect_true(.bt_random_block_has_inherited_correlation(inherited))
+  expect_true("mu__xREx__g_rho_logit" %in% names(compile(missing)$prior_list))
+  expect_true(any(grepl("(when the formula block has a correlation parameter)",
+    print(missing, silent = TRUE), fixed = TRUE)))
+  for(scale in c("fisher_z", "logit")){
+    expect_error(compile(prior_random(sd = sd, covariance = shared_covariance,
+      g = random_block(covariance = random_covariance(cor_scale = scale)))),
+      "requires an explicit", fixed = TRUE)
+  }
+  explicit <- prior_random(sd = sd, covariance = shared_covariance,
+    g = random_block(covariance = random_covariance(cor = local_cor, cor_scale = "logit")))
+  expect_true("mu__xREx__g_rho_logit" %in% names(compile(explicit)$prior_list))
+  doubled <- prior_random(sd = sd, covariance = random_covariance(sd = prior("point", list(2))),
+    g = random_block(cor = local_cor))
+  expect_identical(.bt_random_prior_for_block(doubled, "g")$sd, sd)
+  expect_null(.bt_random_prior_for_block(doubled, "g")$covariance$sd)
+  expect_type(compile(doubled), "list")
+  expect_error(compile(prior_random(sd = sd, covariance = random_covariance(sd = sd))),
+    "SD prior was supplied both", fixed = TRUE)
+  expect_error(compile(prior_random(covariance = random_covariance(sd = sd),
+    g = random_block(cor = local_cor))), "Random-effect SD prior is missing.", fixed = TRUE)
+  malformed <- missing
+  malformed$blocks$g$covariance <- list(cor = local_cor)
+  expect_error(.bt_random_prior_for_block(malformed, "g"),
+    "'covariance' must be created with random_covariance().", fixed = TRUE)
+})
+
+
 test_that("top-level correlation priors apply only to correlated blocks", {
 
   sd_prior <- .parameterization_sd_prior()
@@ -239,10 +304,11 @@ test_that("block overrides can remove an inherited correlation prior", {
     g1 = random_block(covariance = random_covariance(cor = NULL))
   )
   expect_null(.bt_random_prior_for_block(cleared, "g1")$covariance$cor)
-  # The printed specification shows the removal instead of "inherits defaults".
+  # The parent-resolved print labels the dimension-dependent correlation.
   expect_identical(
-    utils::tail(utils::capture.output(print(cleared)), 2L),
-    c("block: g1", "  cor: structure default")
+    utils::tail(utils::capture.output(print(cleared)), 3L),
+    c("block: g1 (formula-owned)", "  sigma ~ Normal(0, 1)[0, Inf]",
+      "  cor: formula-owned")
   )
   expect_identical(
     utils::capture.output(print(random_block(covariance = random_covariance(cor = NULL)))),
@@ -313,7 +379,8 @@ test_that("random parameterization printing omits only the default", {
     study = random_block(parameterization = "noncentered")
   )
   expect_equal(utils::capture.output(print(specification)), c(
-    "block: study",
+    "block: study (formula-owned)",
+    "  cor: formula-owned",
     "  parameterization: noncentered",
     "settings",
     "  parameterization: centered"

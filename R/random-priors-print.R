@@ -92,7 +92,8 @@
 
 .bt_format_random_covariance_prior_lines <- function(x, digits_estimates,
                                                      include_structure = FALSE,
-                                                     include_sd = TRUE){
+                                                     include_sd = TRUE,
+                                                     correlation_qualifier = NULL){
 
   if(is.null(x)){
     return(if(include_structure) "covariance: inherit" else character())
@@ -111,21 +112,21 @@
     ))
   }
   if(!is.null(x$cor) && inherits(x$cor, "prior_lkj")){
-    lines <- c(lines, .bt_format_random_prior_equation(
+    lines <- c(lines, paste0(.bt_format_random_prior_equation(
       "R",
       .bt_format_prior_lkj_distribution(x$cor, digits_estimates)
-    ))
+    ), correlation_qualifier))
   }
   if(!is.null(x$cor) && !inherits(x$cor, "prior_lkj")){
-    lines <- c(lines, .bt_format_random_prior_equation(
+    lines <- c(lines, paste0(.bt_format_random_prior_equation(
       "cor",
       .bt_format_random_print_prior(x$cor, digits_estimates)
-    ))
+    ), correlation_qualifier))
   }
   explicit_fields <- attr(x, "explicit_fields", exact = TRUE)
   if((!is.null(x$cor) && !inherits(x$cor, "prior_lkj")) ||
      "cor_scale" %in% explicit_fields){
-    lines <- c(lines, paste0("cor_scale: ", x$cor_scale))
+    lines <- c(lines, paste0("cor_scale: ", x$cor_scale, correlation_qualifier))
   }
 
   if(length(header) > 0L){
@@ -189,9 +190,29 @@
 
 .bt_format_random_block_prior_lines <- function(x, digits_estimates,
                                                 name = NULL,
-                                                include_empty = TRUE){
+                                                include_empty = TRUE,
+                                                parent = NULL){
 
   header <- .bt_format_random_block_header(name, x$covariance)
+  resolved <- !is.null(parent)
+  no_correlation <- !is.null(x$covariance$structure) &&
+    x$covariance$structure %in% c("ID", "DIAG")
+  qualifier <- NULL
+  if(resolved){
+    if(is.null(x$covariance$structure)){
+      header <- paste0(header, " (formula-owned)")
+    }
+    if(.bt_random_block_has_inherited_correlation(x)){
+      if(no_correlation){
+        x$covariance["cor"] <- list(NULL)
+        attr(x$covariance, "explicit_fields") <- setdiff(
+          attr(x$covariance, "explicit_fields", exact = TRUE), "cor_scale"
+        )
+      }else{
+        qualifier <- " (when the formula block has a correlation parameter)"
+      }
+    }
+  }
   lines <- character()
   if(!is.null(x$sd)){
     lines <- c(lines, .bt_format_random_prior_equation(
@@ -211,9 +232,12 @@
     x$covariance,
     digits_estimates = digits_estimates,
     include_structure = FALSE,
-    include_sd = is.null(x$sd) && is.null(x$sd_source)
+    include_sd = is.null(x$sd) && is.null(x$sd_source),
+    correlation_qualifier = qualifier
   ))
-  if(!is.null(x$covariance) && is.null(x$covariance$cor) &&
+  if(resolved && !no_correlation && is.null(x$covariance$cor)){
+    lines <- c(lines, "cor: formula-owned")
+  }else if(!resolved && !is.null(x$covariance) && is.null(x$covariance$cor) &&
      "cor" %in% .bt_random_covariance_explicit_fields(x$covariance)){
     # A block `random_covariance(cor = NULL)` removes an inherited cor prior.
     lines <- c(lines, "cor: structure default")
@@ -244,13 +268,14 @@
       )
     )
   }
-  if(!is.null(x$monitor)){
+  if(!is.null(x$monitor) && (!resolved || !identical(x$monitor, parent$monitor))){
     lines <- c(lines, .bt_format_random_monitor_settings(x$monitor))
   }
-  if(!is.null(x$new_levels)){
+  if(!is.null(x$new_levels) && (!resolved || !identical(x$new_levels, parent$new_levels))){
     lines <- c(lines, paste0("new_levels: ", x$new_levels$method))
   }
-  if(!is.null(x$parameterization)){
+  if(!is.null(x$parameterization) &&
+     (!resolved || !identical(x$parameterization, parent$parameterization))){
     lines <- c(lines, paste0("parameterization: ", x$parameterization))
   }
 
@@ -637,10 +662,11 @@ print.prior_random <- function(x, digits_estimates = 2, silent = FALSE, ...){
     block_names <- names(x$blocks)
     for(i in seq_along(x$blocks)){
       lines <- c(lines, .bt_format_random_block_prior_lines(
-        x$blocks[[i]],
+        .bt_random_prior_for_block(x, block_names[[i]]),
         digits_estimates = digits_estimates,
         name = block_names[[i]],
-        include_empty = TRUE
+        include_empty = FALSE,
+        parent = x
       ))
     }
   }

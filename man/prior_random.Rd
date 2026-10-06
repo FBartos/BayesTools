@@ -233,8 +233,12 @@ by every random-effect block unless a named \code{random_block()} override is
 supplied in \code{...}. A top-level \code{cor} prior applies only to blocks whose
 resolved structure and dimension have a correlation parameter; it is not
 applied to \code{id()}, \code{diag()}, or single-column blocks. A block override
-\code{random_covariance(cor = NULL)} removes the inherited \code{cor} prior so that
-the structure default applies. A block SD supplied through either \code{sd} or
+with no covariance subcall inherits the shared covariance. A supplied
+\code{random_covariance()} or \code{cor} shorthand replaces the whole covariance
+object and uses its constructor defaults for omitted fields. In particular,
+\code{random_covariance(cor = NULL)} resets its correlation prior and scale to
+the formula defaults. A replacement also removes any shared covariance SD;
+if that was the only SD, supply a local or top-level SD prior. A block SD supplied through either \code{sd} or
 \code{covariance = random_covariance(sd = ...)} replaces the top-level SD
 supplied through either argument.
 
