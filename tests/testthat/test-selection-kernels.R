@@ -1,5 +1,68 @@
 skip_if_not_test_profile(c("unit", "fixture"))
 
+test_that("selection caches follow effective geometry and preserve segment precedence", {
+
+  original <- selection_backend_spec(prior_weightfunction("one-sided", .025, wf_fixed(c(1, .5))))
+  original$native_cache <- new.env(parent = emptyenv())
+  first <- selection_native_kernel_args(original, 2L)
+  fresh_args <- function(spec){
+    spec$native_cache <- new.env(parent = emptyenv())
+    selection_native_kernel_args(spec, 2L)
+  }
+  mutations <- list(
+    function(x){ x$sign <- -1L; x },
+    function(x){ x$z_lower <- x$step$z_lower - .1; x },
+    function(x){ x$z_upper <- x$step$z_upper + .1; x },
+    function(x){ x$p_cuts <- c(0, .1, 1); x },
+    function(x){ x$step$breaks <- c(0, .1, 1); x },
+    function(x){ x$telescope_probabilities <- TRUE; x },
+    function(x){ x$kernel_mode <- c(1L, 0L); x },
+    function(x){ x$has_phack <- TRUE; x$phack_q <- 2L; x },
+    function(x){ x$has_phack <- TRUE; x$phack_z_source <- c(.2, .5); x },
+    function(x){ x$has_phack <- TRUE; x$phack_z_dest <- c(.8, 1); x },
+    function(x){ x$segments <- list(bounds = c(-Inf, 0, Inf), step_bin = c(2L, 1L), phack_region = c(0L, 1L)); x }
+  )
+  for(mutate in mutations){
+    changed <- mutate(original)
+    expect_identical(selection_native_kernel_args(changed, 2L), fresh_args(changed))
+    expect_identical(selection_native_kernel_args(original, 2L), first)
+  }
+  for(container in c("data", "backend_data")){
+    fallback <- original
+    fallback$step <- NULL
+    fallback[[container]] <- list(sel_z_lower = first$static$z_lower,
+      sel_z_upper = first$static$z_upper, sel_p_cuts = c(0, .025, 1), sel_sign = 1L)
+    expect_identical(selection_native_kernel_args(fallback, 2L), fresh_args(fallback))
+    fallback[[container]]$sel_sign <- -1L
+    fallback[[container]]$sel_p_cuts <- c(0, .1, 1)
+    expect_identical(selection_native_kernel_args(fallback, 2L), fresh_args(fallback))
+    expect_identical(selection_native_kernel_args(original, 2L), first)
+  }
+  explicit <- original
+  explicit$segments <- list(bounds = first$static$segment_bounds,
+    step_bin = first$static$segment_step_bin, phack_region = first$static$segment_phack_region)
+  selection_native_kernel_args(explicit, 2L)
+  explicit$p_cuts <- c(1, 0)
+  expect_identical(selection_native_kernel_args(explicit, 2L), fresh_args(explicit))
+  derived <- original
+  derived$p_cuts <- c(1, 0)
+  expect_error(selection_native_kernel_args(derived, 2L), "break")
+  for(field in c("sign", "z_lower", "kernel_mode")){
+    changed <- original
+    changed[[field]] <- switch(field, sign = 0L, z_lower = c(NA_real_, 0), kernel_mode = c(1L, 4L))
+    expect_error(selection_native_kernel_args(changed, 2L), switch(field,
+      sign = "static sign", z_lower = "static z bounds", kernel_mode = "specification 'kernel_mode'"), fixed = TRUE)
+  }
+  invalid <- original
+  invalid$kernel_mode <- 4L
+  expect_error(selection_native_kernel_args(invalid, 0L), "'S'", fixed = TRUE)
+  old_cache <- original
+  old_cache$native_cache <- new.env(parent = emptyenv())
+  old_cache$native_cache$static <- first$static
+  old_cache$sign <- -1L
+  expect_identical(selection_native_kernel_args(old_cache, 2L), fresh_args(old_cache))
+})
+
 # TEST FILE: Selection kernel backend priors
 # ============================================================================ #
 

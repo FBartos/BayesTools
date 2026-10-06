@@ -1,4 +1,5 @@
 # version 0.3.1
+- selection native caches track effective static geometry and row routing, preserving explicit-segment precedence and revalidating changed inputs.
 - named group covariance columns are aligned to supplied row order before exact symmetry checks and triangle completion.
 - numeric random-effect groups retain exact double identity, stable ordinary labels and explicit ambiguity refusals on replay; formula-design schema 5 requires refitting older saved designs.
 - README examples use the supported marginal-likelihood constructor, named bridge-sampling arguments and the fitted model's stored priors for summaries.

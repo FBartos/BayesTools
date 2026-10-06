@@ -81,4 +81,7 @@ share one kernel routes on that kernel. When two or more \emph{different}
 active kernels coexist, their bitwise union names a third kernel rather
 than a route, and passing it is an error unless \code{bias_indicator} can
 map each row to a branch.
+Native caches are reused only when effective static geometry and complete
+row-routing inputs are unchanged. Explicit segments take precedence over
+p-value cuts; cuts are validated only when segments must be derived.
 }

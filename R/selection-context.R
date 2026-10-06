@@ -21,6 +21,9 @@
 #' active kernels coexist, their bitwise union names a third kernel rather
 #' than a route, and passing it is an error unless \code{bias_indicator} can
 #' map each row to a branch.
+#' Native caches are reused only when effective static geometry and complete
+#' row-routing inputs are unchanged. Explicit segments take precedence over
+#' p-value cuts; cuts are validated only when segments must be derived.
 #'
 #' @param context selection context list.
 #' @param selection_spec selection backend specification or context list.
@@ -270,37 +273,68 @@ selection_context_subset_observations <- function(context, idx){
 selection_native_static_args <- function(selection_spec){
 
   check_list(selection_spec, "selection_spec")
+  .selection_native_static_args_cached(
+    selection_spec, .selection_native_static_inputs(selection_spec)
+  )
+}
+
+.selection_native_static_inputs <- function(selection_spec){
+
+  mode <- .selection_spec_kernel_mode(selection_spec)
+  segments <- selection_spec[["segments"]]
+  if(!is.null(segments)){
+    segments <- list(
+      bounds = as.numeric(.selection_null_default(segments[["bounds"]], numeric())),
+      step_bin = as.integer(.selection_null_default(segments[["step_bin"]], integer())),
+      phack_region = as.integer(.selection_null_default(segments[["phack_region"]], integer()))
+    )
+  }
+  list(
+    args = list(
+      z_lower = as.numeric(.selection_spec_z_lower(selection_spec)),
+      z_upper = as.numeric(.selection_spec_z_upper(selection_spec)),
+      sign = as.integer(.selection_spec_sign(selection_spec)),
+      phack_q = as.integer(.selection_spec_phack_q(selection_spec)),
+      phack_z_source = as.numeric(.selection_spec_phack_z_source(selection_spec)),
+      phack_z_dest = as.numeric(.selection_spec_phack_z_dest(selection_spec)),
+      telescope_probabilities = isTRUE(selection_spec[["telescope_probabilities"]])
+    ),
+    segments = segments,
+    p_cuts = if(is.null(segments)) .selection_spec_p_cuts(selection_spec) else NULL,
+    has_phack = .selection_spec_has_phack(selection_spec),
+    kernel_active = any(mode != 0L)
+  )
+}
+
+.selection_native_static_args_cached <- function(selection_spec, inputs){
 
   cache <- selection_spec[["native_cache"]]
   if(is.environment(cache) &&
-     exists("static", envir = cache, inherits = FALSE)){
+     exists("static_key", envir = cache, inherits = FALSE) &&
+     identical(inputs, get("static_key", envir = cache, inherits = FALSE))){
     return(get("static", envir = cache, inherits = FALSE))
   }
 
-  segments <- selection_spec[["segments"]]
+  segments <- inputs$segments
   if(is.null(segments)){
-    segments <- .selection_native_segments(selection_spec)
+    segments <- .selection_native_segments(selection_spec, inputs = inputs)
   }
 
-  out <- list(
-    z_lower       = as.numeric(.selection_spec_z_lower(selection_spec)),
-    z_upper       = as.numeric(.selection_spec_z_upper(selection_spec)),
-    sign          = as.integer(.selection_spec_sign(selection_spec)),
-    phack_q       = as.integer(.selection_spec_phack_q(selection_spec)),
-    phack_z_source = as.numeric(.selection_spec_phack_z_source(selection_spec)),
-    phack_z_dest  = as.numeric(.selection_spec_phack_z_dest(selection_spec)),
-    segment_bounds = as.numeric(.selection_null_default(segments[["bounds"]], numeric())),
-    segment_step_bin = as.integer(.selection_null_default(segments[["step_bin"]], integer())),
-    segment_phack_region = as.integer(.selection_null_default(segments[["phack_region"]], integer())),
-    telescope_probabilities = isTRUE(selection_spec[["telescope_probabilities"]])
-  )
+  out <- inputs$args
+  out$segment_bounds <- segments$bounds
+  out$segment_step_bin <- segments$step_bin
+  out$segment_phack_region <- segments$phack_region
+  out <- out[c("z_lower", "z_upper", "sign", "phack_q", "phack_z_source",
+               "phack_z_dest", "segment_bounds", "segment_step_bin",
+               "segment_phack_region", "telescope_probabilities")]
   .selection_validate_native_static_args(
     out,
-    kernel_mode = .selection_spec_kernel_mode(selection_spec)
+    kernel_mode = as.integer(inputs$kernel_active)
   )
 
   if(is.environment(cache)){
     assign("static", out, envir = cache)
+    assign("static_key", inputs, envir = cache)
   }
 
   return(out)
@@ -314,6 +348,8 @@ selection_native_kernel_args <- function(selection_spec, S, alpha = NULL,
                                          kernel_mode = NULL){
 
   check_list(selection_spec, "selection_spec")
+  check_int(S, "S", lower = 1, allow_NA = FALSE)
+  static_inputs <- .selection_native_static_inputs(selection_spec)
 
   # Bridge sampling calls this once per evaluated state with S = 1, so the
   # row-wise arguments of a call are the constants the previous call already
@@ -329,6 +365,7 @@ selection_native_kernel_args <- function(selection_spec, S, alpha = NULL,
       alpha = alpha,
       phack_kind = phack_kind,
       kernel_mode = kernel_mode,
+      static = static_inputs,
       spec = selection_spec[.selection_native_kernel_args_fields()]
     )
   }else{
@@ -342,7 +379,6 @@ selection_native_kernel_args <- function(selection_spec, S, alpha = NULL,
      )){
     return(get("kernel_args", envir = cache, inherits = FALSE))
   }
-  check_int(S, "S", lower = 1, allow_NA = FALSE)
 
   # A row-wise argument is usually one value shared by every posterior row.
   # Validating the supplied value and expanding it afterwards keeps every
@@ -384,7 +420,7 @@ selection_native_kernel_args <- function(selection_spec, S, alpha = NULL,
     alpha       = alpha,
     phack_kind  = phack_kind,
     kernel_mode = kernel_mode,
-    static      = selection_native_static_args(selection_spec)
+    static      = .selection_native_static_args_cached(selection_spec, static_inputs)
   )
 
   if(!is.null(cache_key)){
@@ -1062,9 +1098,12 @@ selection_row_arg <- function(x, n, name){
   return(as.integer(bin))
 }
 
-.selection_native_segments <- function(selection_spec){
+.selection_native_segments <- function(selection_spec, inputs = NULL){
 
-  p_cuts <- .selection_spec_p_cuts(selection_spec)
+  if(is.null(inputs)){
+    inputs <- .selection_native_static_inputs(selection_spec)
+  }
+  p_cuts <- inputs$p_cuts
   z_lower <- stats::qnorm(p_cuts[-1], lower.tail = FALSE)
   z_upper <- stats::qnorm(
     p_cuts[-length(p_cuts)],
@@ -1072,9 +1111,9 @@ selection_row_arg <- function(x, n, name){
   )
   bounds <- c(-Inf, Inf, z_lower[is.finite(z_lower)], z_upper[is.finite(z_upper)])
 
-  has_phacking <- .selection_spec_has_phack(selection_spec)
-  phack_z_source <- .selection_spec_phack_z_source(selection_spec)
-  phack_z_dest <- .selection_spec_phack_z_dest(selection_spec)
+  has_phacking <- inputs$has_phack
+  phack_z_source <- inputs$args$phack_z_source
+  phack_z_dest <- inputs$args$phack_z_dest
   if(has_phacking){
     bounds <- c(bounds, phack_z_source, phack_z_dest)
   }
