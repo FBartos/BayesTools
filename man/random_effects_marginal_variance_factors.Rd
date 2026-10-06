@@ -46,7 +46,8 @@ Unsupported factor representations signal an error inheriting from
 also inherits from \code{BayesTools_random_effects_error}, \code{error}, and
 \code{condition}, and carries \code{message} and \code{call}. The shared parent includes
 invalid allocation support errors and does not itself imply unavailability.
-carries stable \code{block_name} and \code{reason} fields so downstream packages can
+The unavailability condition carries stable \code{block_name} and \code{reason}
+fields so downstream packages can
 distinguish structural unavailability from invalid inputs. \code{reason} is one
 of \code{"row_indexed_sd"}, \code{"multiple_columns"},
 \code{"non_diagonal_row_covariance"}, or \code{"repeated_groups"}.

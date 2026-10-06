@@ -1298,7 +1298,8 @@ random_effects_marginal_factor_product <- function(
 #'   also inherits from `BayesTools_random_effects_error`, `error`, and
 #'   `condition`, and carries `message` and `call`. The shared parent includes
 #'   invalid allocation support errors and does not itself imply unavailability.
-#'   carries stable `block_name` and `reason` fields so downstream packages can
+#'   The unavailability condition carries stable `block_name` and `reason`
+#'   fields so downstream packages can
 #'   distinguish structural unavailability from invalid inputs. `reason` is one
 #'   of `"row_indexed_sd"`, `"multiple_columns"`,
 #'   `"non_diagonal_row_covariance"`, or `"repeated_groups"`.
