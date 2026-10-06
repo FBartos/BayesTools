@@ -1044,7 +1044,17 @@
     }
     keys
   })
-  apply(do.call(cbind, row_keys), 1L, .bt_random_group_tuple_key)
+  tuple_keys <- apply(do.call(cbind, row_keys), 1L, .bt_random_group_tuple_key)
+  if(length(observations$component_names) == 1L){
+    value <- observations$component_values[[1L]]
+    if(is.character(value) || is.factor(value)){
+      unmatched <- which(!tuple_keys %in% random_term$group_tuple_keys)
+      aliases <- match(as.character(value[unmatched]), random_term$group_levels)
+      matched <- !is.na(aliases)
+      tuple_keys[unmatched[matched]] <- random_term$group_tuple_keys[aliases[matched]]
+    }
+  }
+  tuple_keys
 }
 
 .bt_random_group_observations <- function(term, data){

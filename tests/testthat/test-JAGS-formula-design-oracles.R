@@ -58,6 +58,14 @@ test_that("group ownership retains exact numeric identity and safe display repla
   expect_identical(replay(term, data[2:1, , drop = FALSE])$group_map, 2:1)
   expect_error(replay(term, data.frame(g = "0.3"), TRUE), "is ambiguous", fixed = TRUE)
   expect_identical(replay(term, data.frame(g = term$group_component_levels$g[2L]))$group_map, 2L)
+  for(allow_new in c(FALSE, TRUE)){
+    for(group_label in list(term$group_levels[2L], factor(term$group_levels[2L]))){
+      public <- replay(term, data.frame(g = group_label), allow_new)
+      expect_identical(public$group_map, 2L)
+      expect_identical(public$group_levels, term$group_levels)
+      expect_identical(public$group_tuple_keys, term$group_tuple_keys)
+    }
+  }
   expect_identical(replay(term, data.frame(g = .3 + 2 * .Machine$double.eps), TRUE)$group_map, 3L)
 
   ordinary <- compile(data.frame(g = c(2, 1, -0, 0)))$formula_design$random_effects[[1L]]
@@ -90,6 +98,15 @@ test_that("group ownership retains exact numeric identity and safe display repla
   dimnames(kernel) <- list(term$group_levels, term$group_levels)
   known <- compile(data, group_covariance = random_group_covariance(kernel))
   expect_equal(known$formula_design$random_effects[[1L]]$group_covariance$kernel, kernel)
+  known_term <- known$formula_design$random_effects[[1L]]
+  for(allow_new in c(FALSE, TRUE)){
+    for(group_label in list(known_term$group_levels[2L], factor(known_term$group_levels[2L]))){
+      public <- replay(known_term, data.frame(g = group_label), allow_new)
+      expect_identical(public$group_map, 2L)
+      expect_identical(public$group_levels, known_term$group_levels)
+      expect_identical(public$group_tuple_keys, known_term$group_tuple_keys)
+    }
+  }
   rounded <- matrix(1, 1L, 1L, dimnames = list("0.3", "0.3"))
   expect_error(compile(data, group_covariance = random_group_covariance(rounded)),
     "is missing fitted level(s)", fixed = TRUE)
