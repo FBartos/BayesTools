@@ -213,6 +213,35 @@ test_that("supplied block covariance replaces the shared object with constructor
     "'covariance' must be created with random_covariance().", fixed = TRUE)
 })
 
+test_that("multivariate SD laws refuse before constructor and late compiler mutation", {
+  for(distribution in c("mnormal", "mt")){
+    parameters <- if(distribution == "mnormal") list(mean = 0, sd = 1) else
+      list(location = 0, scale = 1, df = 5)
+    for(contrast in c("meandif", "orthonormal")){
+      sd <- prior_factor(distribution, parameters, contrast = contrast)
+      original <- sd
+      expect_error(random_block(sd = sd),
+        "Unsupported multivariate random-effect SD prior. Use nonnegative scalar SD priors.", fixed = TRUE)
+      expect_error(.bt_random_effect_force_nonnegative_prior_component(sd, "'sd'"),
+        "Unsupported multivariate random-effect SD prior. Use nonnegative scalar SD priors.", fixed = TRUE)
+      expect_identical(sd, original)
+    }
+  }
+  data <- data.frame(g = factor(rep(c("a", "b"), each = 3)), f = factor(rep(letters[1:3], 2)))
+  result <- JAGS_formula(~ diag(0 + f | g), "mu", data,
+    list(intercept = prior("point", list(0))),
+    prior_random = prior_random(g = random_block(sd = prior("gamma", list(2, 2)),
+      contrasts = c(f = "orthonormal"))))
+  expect_identical(result$formula_design$random_effects[[1]]$n_columns, 2L)
+  expect_match(JAGS_add_priors("model{}", result$prior_list), "dgamma", fixed = TRUE)
+  expect_silent(random_block(sd = prior("point", list(0))))
+  point_vector <- prior("mpoint", list(location = 0, K = 2))
+  expect_silent(random_block(sd = point_vector))
+  expect_identical(.bt_random_effect_force_nonnegative_prior_component(point_vector, "'sd'"), point_vector)
+  vector_slab <- prior_spike_and_slab(prior_factor("mnormal", list(0, 1), contrast = "orthonormal"))
+  expect_error(random_block(sd = vector_slab), "Unsupported multivariate random-effect SD prior", fixed = TRUE)
+  expect_silent(random_block(sd = prior_mixture(list(prior("gamma", list(2, 2)), prior("point", list(0))))))
+})
 
 test_that("top-level correlation priors apply only to correlated blocks", {
 

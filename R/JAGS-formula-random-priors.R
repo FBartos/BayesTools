@@ -1013,6 +1013,8 @@
 
 .bt_random_effect_force_nonnegative_prior_component <- function(prior, label){
 
+  .bt_check_random_sd_vector_prior(prior)
+
   if(is.prior.none(prior)){
     stop(
       "Random-effect SD prior ", label, " cannot use prior_none().",

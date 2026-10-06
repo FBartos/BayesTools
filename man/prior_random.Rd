@@ -255,6 +255,9 @@ truncated normal, gamma, point prior at zero, or mixture prior. When a
 structure needs multiple marginal standard deviations, a single \code{sd} prior is
 replicated over those SD components unless a more specific override is
 supplied by the random-effect resolver.
+Non-point multivariate Normal and t SD priors are unsupported; use
+nonnegative scalar SD priors. Deterministic nonnegative point vectors and
+supported independent factor priors retain their usual behavior.
 
 For ordinary estimation, use continuous positive SD priors. Use point or
 mixture priors at zero only when a random-effect component is intentionally

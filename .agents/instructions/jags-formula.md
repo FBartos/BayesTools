@@ -424,7 +424,8 @@ Missing local covariance subcalls inherit the shared covariance; supplied
 covariance constructors replace it completely with their constructor defaults,
 including removal of its covariance-only SD fallback. Parent prior printing uses
 the same resolved block and labels dimension-dependent correlation as
-formula-owned.
+formula-owned. Non-point vector SD laws are unsupported and refuse before
+nonnegative compiler mutation; scalar and deterministic point behavior remains.
 The scalar `cor_scale` omission/error rule applies to multi-column scalar
 correlation structures only. US/UN uses LKJ; ID/DIAG and single-column blocks
 have no applicable scalar correlation.

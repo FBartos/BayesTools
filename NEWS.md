@@ -1,5 +1,6 @@
 # version 0.3.1
 - supplied block covariance specifications use their own constructor defaults for omitted fields and replace the shared covariance completely; a missing subcall inherits it. Replacements remove a shared covariance-only SD, which must be supplied separately if needed. Parent prior printing shows the resolved block configuration and formula-owned unknown correlation fields.
+- unsupported non-point multivariate random-effect SD priors refuse before constructor or compiler mutation, retaining supported nonnegative scalar and deterministic point priors.
 - formula expression replay pairs multiple array indices pointwise as JAGS does, repeats only scalar indices, and refuses invalid coordinates or incompatible lengths.
 - coefficient transformations and their scalar or weighted prior-density requests report the existing typed unavailability condition when a requested formula parameter has no persisted design.
 - structured Cholesky reconstruction checks representable array counts before native multiplication and refuses impossible geometry before R diagnostic reconstruction.

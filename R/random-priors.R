@@ -37,6 +37,9 @@
 #' structure needs multiple marginal standard deviations, a single `sd` prior is
 #' replicated over those SD components unless a more specific override is
 #' supplied by the random-effect resolver.
+#' Non-point multivariate Normal and t SD priors are unsupported; use
+#' nonnegative scalar SD priors. Deterministic nonnegative point vectors and
+#' supported independent factor priors retain their usual behavior.
 #'
 #' For ordinary estimation, use continuous positive SD priors. Use point or
 #' mixture priors at zero only when a random-effect component is intentionally
@@ -990,7 +993,8 @@ is.prior_random <- function(x){
     return(invisible(TRUE))
   }
 
-  # Factor, vector, and simplex families carry their support in the structure
+  .bt_check_random_sd_vector_prior(x)
+  # Factor and simplex families carry their support in the structure
   # the backend resolves, not in a scalar truncation; leave those to it.
   if(is.prior.none(x) || !is.prior.simple(x)){
     return(invisible(TRUE))
@@ -1012,6 +1016,14 @@ is.prior_random <- function(x){
   invisible(TRUE)
 }
 
+.bt_check_random_sd_vector_prior <- function(x){
+
+  if(is.prior.vector(x) && !is.prior.point(x)){
+    stop("Unsupported multivariate random-effect SD prior. Use nonnegative scalar SD priors.",
+         call. = FALSE)
+  }
+  invisible(TRUE)
+}
 
 .bt_check_random_covariance <- function(x){
 

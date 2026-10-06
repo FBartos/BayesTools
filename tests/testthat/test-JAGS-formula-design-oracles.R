@@ -535,7 +535,8 @@ test_that("BayesTools contrasts resolve without search-path lookup", {
     group = factor(rep(c("a", "b", "c"), 2), levels = c("a", "b", "c")),
     id    = factor(rep(c("g1", "g2", "g3"), each = 2))
   )
-  random_result <- suppressWarnings(JAGS_formula(
+  random_result <- NULL
+  expect_no_warning(random_result <- JAGS_formula(
     formula   = ~ 1 + diag(0 + group | id),
     parameter = "mu",
     data      = prediction_data,
@@ -544,7 +545,8 @@ test_that("BayesTools contrasts resolve without search-path lookup", {
     ),
     prior_random = prior_random(
       id = random_block(
-        sd = prior_factor("mnormal", list(0, 1), contrast = "orthonormal")
+        sd = prior("gamma", list(2, 2)),
+        contrasts = c(group = "orthonormal")
       )
     )
   ))
@@ -11224,8 +11226,9 @@ test_that("transform_scale_samples unscales random-factor correlations in column
     f = factor(rep(c("a", "b", "c"), 3), levels = c("a", "b", "c")),
     id = factor(rep(c("g1", "g2", "g3"), each = 3))
   )
-  formula_result <- suppressWarnings(
-    JAGS_formula(
+  formula_result <- NULL
+  expect_no_warning(
+    formula_result <- JAGS_formula(
       formula = ~ 1 + us(1 + x + f | id),
       parameter = "mu",
       data = df,
@@ -11235,8 +11238,9 @@ test_that("transform_scale_samples unscales random-factor correlations in column
         id = random_block(
           sd = prior("gamma", list(2, 2)),
           terms = list(
-            f = prior_factor("mnormal", list(0, 1), contrast = "orthonormal")
+            f = prior("gamma", list(2, 2))
           ),
+          contrasts = c(f = "orthonormal"),
           cor = prior_lkj(eta = 1)
         )
       )
@@ -11977,8 +11981,9 @@ test_that("diag random-effect syntax handles slope-only and factor-slope designs
   )
   expect_true(is.prior.treatment(ordered_result$prior_list$mu__xREx__id_f))
 
-  random_only_orthonormal <- suppressWarnings(
-    JAGS_formula(
+  random_only_orthonormal <- NULL
+  expect_no_warning(
+    random_only_orthonormal <- JAGS_formula(
       formula = ~ 1 + diag(0 + f | id),
       parameter = "mu",
       data = factor_df,
@@ -11986,7 +11991,7 @@ test_that("diag random-effect syntax handles slope-only and factor-slope designs
         intercept = prior("normal", list(0, 1))
       ),
       prior_random = prior_random(
-        id = random_block(sd = prior_factor("mnormal", list(0, 1), contrast = "orthonormal"))
+        id = random_block(sd = prior("gamma", list(2, 2)), contrasts = c(f = "orthonormal"))
       )
     )
   )
@@ -11999,10 +12004,12 @@ test_that("diag random-effect syntax handles slope-only and factor-slope designs
     as.vector(expected_orthonormal),
     tolerance = 1e-12
   )
-  expect_true(is.prior.orthonormal(random_only_orthonormal$prior_list$mu__xREx__id_f))
+  expect_equal(unname(random_only_orthonormal$formula_design$random_effects[[1]]$contrast_matrices$f),
+               unname(contr.orthonormal(levels(factor_df$f))), tolerance = 0)
 
-  random_only_meandif <- suppressWarnings(
-    JAGS_formula(
+  random_only_meandif <- NULL
+  expect_no_warning(
+    random_only_meandif <- JAGS_formula(
       formula = ~ 1 + diag(0 + f | id),
       parameter = "mu",
       data = factor_df,
@@ -12010,7 +12017,7 @@ test_that("diag random-effect syntax handles slope-only and factor-slope designs
         intercept = prior("normal", list(0, 1))
       ),
       prior_random = prior_random(
-        id = random_block(sd = prior_factor("mnormal", list(0, 1), contrast = "meandif"))
+        id = random_block(sd = prior("gamma", list(2, 2)), contrasts = c(f = "meandif"))
       )
     )
   )
@@ -12023,7 +12030,8 @@ test_that("diag random-effect syntax handles slope-only and factor-slope designs
     as.vector(expected_meandif),
     tolerance = 1e-12
   )
-  expect_true(is.prior.meandif(random_only_meandif$prior_list$mu__xREx__id_f))
+  expect_equal(unname(random_only_meandif$formula_design$random_effects[[1]]$contrast_matrices$f),
+               unname(contr.meandif(levels(factor_df$f))), tolerance = 0)
 
   interaction_df <- data.frame(
     f = factor(rep(c("a", "b", "c"), 4), levels = c("a", "b", "c")),
@@ -12838,7 +12846,7 @@ test_that("structured random-effect terms use level-indexed factor columns and s
         )
       )
     ),
-    "ordinary scalar prior",
+    "Unsupported multivariate random-effect SD prior",
     fixed = TRUE
   )
   hcs_mixture_sd <- JAGS_formula(
