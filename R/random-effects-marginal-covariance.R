@@ -51,6 +51,12 @@
 #'   }
 #'
 #' @seealso [JAGS_formula_design()] [JAGS_fit()]
+#' @details Invalid supplied variance-allocation coordinates can signal
+#'   `BayesTools_random_effect_allocation_out_of_support`, inheriting from
+#'   `BayesTools_random_effects_error`, `error`, and `condition`, with `message`
+#'   and `call` fields. This is an input support error, distinct from structural
+#'   factor unavailability. [JAGS_bridgesampling()] converts this support leaf
+#'   to `BayesTools_marglik_out_of_support` during likelihood reconstruction.
 #' @export
 random_effects_marginal_vcov <- function(
     fit, parameter = NULL, data = NULL, posterior_samples = NULL,
@@ -452,6 +458,13 @@ random_effects_marginal_factor_diagonal <- function(
 #'   logical `diagonal_support` vector marks rows with a structurally declared
 #'   diagonal contribution, including when its evaluated SD is zero.
 #'
+#' @details Structurally unavailable representations signal
+#'   `BayesTools_random_effects_marginal_factor_unavailable`, inheriting from
+#'   `BayesTools_random_effects_error`, `error`, and `condition`. Its stable
+#'   `reason` field accompanies `message` and `call`. The shared parent also
+#'   includes invalid allocation support errors; it alone does not identify
+#'   structural unavailability.
+#'
 #' @seealso [random_effects_marginal_factor_states()]
 #' @export
 random_effects_marginal_diagonal_factor <- function(factors, cache = NULL){
@@ -504,6 +517,7 @@ random_effects_marginal_diagonal_factor <- function(factors, cache = NULL){
       ),
       class = c(
         "BayesTools_random_effects_marginal_factor_unavailable",
+        "BayesTools_random_effects_error",
         "error", "condition"
       )
     )
@@ -1276,6 +1290,9 @@ random_effects_marginal_factor_product <- function(
 #'
 #' @details Unsupported factor representations signal an error inheriting from
 #'   `BayesTools_random_effects_marginal_variance_unavailable`. The condition
+#'   also inherits from `BayesTools_random_effects_error`, `error`, and
+#'   `condition`, and carries `message` and `call`. The shared parent includes
+#'   invalid allocation support errors and does not itself imply unavailability.
 #'   carries stable `block_name` and `reason` fields so downstream packages can
 #'   distinguish structural unavailability from invalid inputs. `reason` is one
 #'   of `"row_indexed_sd"`, `"multiple_columns"`,
@@ -1516,7 +1533,8 @@ random_effects_marginal_variance_factors <- function(
   condition <- errorCondition(
     message = paste0(...),
     call = NULL,
-    class = "BayesTools_random_effects_marginal_variance_unavailable",
+    class = c("BayesTools_random_effects_marginal_variance_unavailable",
+              "BayesTools_random_effects_error"),
     block_name = random_term$block_name,
     reason = reason
   )

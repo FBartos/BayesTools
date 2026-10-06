@@ -78,6 +78,14 @@ BayesTools formula random effects. For each included random-effect block and
 posterior draw, the helper builds the observation-level contribution
 \eqn{Z_b G_b Z_b'} and sums contributions across blocks.
 }
+\details{
+Invalid supplied variance-allocation coordinates can signal
+\code{BayesTools_random_effect_allocation_out_of_support}, inheriting from
+\code{BayesTools_random_effects_error}, \code{error}, and \code{condition}, with \code{message}
+and \code{call} fields. This is an input support error, distinct from structural
+factor unavailability. \code{\link[=JAGS_bridgesampling]{JAGS_bridgesampling()}} converts this support leaf
+to \code{BayesTools_marglik_out_of_support} during likelihood reconstruction.
+}
 \seealso{
 \code{\link[=JAGS_formula_design]{JAGS_formula_design()}} \code{\link[=JAGS_fit]{JAGS_fit()}}
 }

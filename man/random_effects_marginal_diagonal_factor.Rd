@@ -33,6 +33,14 @@ compiled metadata, never from evaluated covariance values. Known group
 covariance uses its fixed Cholesky factor while retaining the complete
 coefficient covariance. Sampled zero SDs do not alter the structural supports.
 }
+\details{
+Structurally unavailable representations signal
+\code{BayesTools_random_effects_marginal_factor_unavailable}, inheriting from
+\code{BayesTools_random_effects_error}, \code{error}, and \code{condition}. Its stable
+\code{reason} field accompanies \code{message} and \code{call}. The shared parent also
+includes invalid allocation support errors; it alone does not identify
+structural unavailability.
+}
 \seealso{
 \code{\link[=random_effects_marginal_factor_states]{random_effects_marginal_factor_states()}}
 }

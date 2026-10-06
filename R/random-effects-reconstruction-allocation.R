@@ -574,6 +574,7 @@
     ),
     class = c(
       "BayesTools_random_effect_allocation_out_of_support",
+      "BayesTools_random_effects_error",
       "error",
       "condition"
     )

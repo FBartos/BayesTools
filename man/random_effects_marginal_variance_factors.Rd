@@ -43,6 +43,9 @@ factor is \eqn{Z K Z'}.
 \details{
 Unsupported factor representations signal an error inheriting from
 \code{BayesTools_random_effects_marginal_variance_unavailable}. The condition
+also inherits from \code{BayesTools_random_effects_error}, \code{error}, and
+\code{condition}, and carries \code{message} and \code{call}. The shared parent includes
+invalid allocation support errors and does not itself imply unavailability.
 carries stable \code{block_name} and \code{reason} fields so downstream packages can
 distinguish structural unavailability from invalid inputs. \code{reason} is one
 of \code{"row_indexed_sd"}, \code{"multiple_columns"},

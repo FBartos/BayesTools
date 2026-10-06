@@ -367,6 +367,12 @@ test_that("certified factor reduction preserves higher structural rank", {
   )
 
   factors$factor_plans[[1L]]$type <- character()
+  unavailable <- tryCatch(random_effects_marginal_diagonal_factor(factors), error = identity)
+  expect_identical(class(unavailable), c("BayesTools_random_effects_marginal_factor_unavailable",
+    "BayesTools_random_effects_error", "error", "condition"))
+  expect_identical(unavailable$call, NULL)
+  expect_type(unavailable$reason, "character")
+  expect_false(BayesTools:::.bt_JAGS_marglik_random_effect_support_error(unavailable))
   expect_error(
     random_effects_marginal_diagonal_factor(factors),
     "unsupported factor structure",

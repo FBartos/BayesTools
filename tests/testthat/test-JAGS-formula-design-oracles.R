@@ -6628,6 +6628,11 @@ test_that("external variance allocation sources generate scalar and row-indexed 
     invalid_weight_error,
     "BayesTools_random_effect_allocation_out_of_support"
   )
+  expect_identical(class(invalid_weight_error), c("BayesTools_random_effect_allocation_out_of_support",
+    "BayesTools_random_effects_error", "error", "condition"))
+  expect_identical(invalid_weight_error$call, NULL)
+  expect_type(invalid_weight_error$message, "character")
+  expect_true(BayesTools:::.bt_JAGS_marglik_random_effect_support_error(invalid_weight_error))
   bad_row_sd_leaf_target <- row_sd_leaf_result$formula_design$random_effects[[1]]
   bad_row_sd_leaf_target$sd_binding$allocations[[1L]]$target <- "block"
   expect_error(

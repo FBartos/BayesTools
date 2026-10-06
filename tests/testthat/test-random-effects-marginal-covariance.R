@@ -563,6 +563,8 @@ test_that("marginal variance factors protect diagonal-only known covariance use"
     fixed = TRUE
   )
   expect_identical(unavailable$block_name, "id")
+  expect_s3_class(unavailable, "BayesTools_random_effects_error")
+  expect_identical(unavailable$call, NULL)
   expect_identical(unavailable$reason, "non_diagonal_row_covariance")
   factors <- random_effects_marginal_variance_factors(
     result$formula_design,
