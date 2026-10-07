@@ -1175,7 +1175,8 @@ old behaviour.
     order puts the median inside the band, while batching shares computation.
     They replace empirical quantiles; only the line,
     the band, and the automatic y range that follows them change. Prior lines
-    computed from sampled draws keep the empirical quantiles.
+    computed from sampled draws keep the empirical quantiles; their automatic
+    y limits also include the uncertainty bands.
 
 ### Fixes
 - prior densities and distribution methods:

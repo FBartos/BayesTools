@@ -54,10 +54,10 @@ test_that("harrell_davis_quantile matches exact rational references", {
 test_that("harrell_davis_quantile reproduces values pinned from Hmisc::hdquantile", {
 
   # Pinned from Hmisc 5.2.5 (Hmisc::hdquantile(x, p), one probability per call)
-  # with the script .work/tmp/hd-bands/R1/make_hmisc_pins.R of the
-  # BayesToolsVerse workspace; the draws are regenerated from the seeds:
+  # The draws are regenerated from the seeds:
   #   set.seed(seed, kind = "Mersenne-Twister", normal.kind = "Inversion"); x <- draw(m)
-  # Hmisc is not a dependency of BayesTools.
+  # Hmisc is not a dependency of BayesTools. The workspace script
+  # .work/tmp/hd-bands/R1/make_hmisc_pins.R is historical development provenance.
   pins <- list(
     list(
       m = 1000, seed = 20261002L, draw = function(m) stats::rnorm(m),
@@ -97,7 +97,8 @@ test_that("harrell_davis_quantile weights are accurate in every cell, also in th
   # Per-cell relative error of the weights against an independent computation on
   # the log scale (pbeta(log.p = TRUE), cells up to the mode by differences of
   # the lower tail and the cells beyond it by differences of the upper tail),
-  # over the cells whose reference weight exceeds 1e-250. Measured maximum over
+  # over the cells whose reference weight exceeds 1e-250. In a separate
+  # development sweep, the measured maximum over
   # m = 100, 500, 2,000 and p = .001, .025, .5, .975, .999: 1.3e-13 (both
   # evaluate pbeta at the same double cell boundaries, so this is the rounding
   # of the two computations, not of the boundaries; against 80-digit mpmath
@@ -143,9 +144,13 @@ test_that("harrell_davis_quantile is accurate in the far tails of 100,000 draws"
   # of one at the top, y_(i) = 1(i > m - r), at p' = 1 - p give the mass above
   # (m - r) / m of Beta(a', b'). Pins computed at 80 digits with mpmath (continued
   # fraction, cross-checked against mpmath.betainc and quadrature of the density)
-  # by .work/tmp/hd-bands/R1b/mp_pins.py of the BayesToolsVerse workspace, for the
-  # exact doubles p and 1 - p. Tolerances from the measured relative errors of the
-  # double-precision results (.work/tmp/hd-bands/R1b/error_analysis.R): lower
+  # at the exact rational boundaries r/m and (m-r)/m, with shape parameters
+  # computed from the exact binary double probabilities p and 1-p. Convert
+  # each double with its integer ratio before 80-digit Beta-tail evaluation;
+  # cross-check the continued fraction against betainc and density quadrature.
+  # The workspace mp_pins.py and error_analysis.R under .work/tmp/hd-bands/R1b/
+  # are historical development provenance. Measured relative errors of the
+  # double-precision results were: lower
   # tail at most 3.0e-15, tolerance 1e-13; upper tail at most 6.0e-13, which is
   # the rounding of the cell boundary (m - r) / m (up to 1.1e-16) times the Beta
   # density near it (about 6e3), tolerance 2e-11. Both keep a margin of about 30.
@@ -341,9 +346,31 @@ test_that("harrell_davis_quantile builds the weights only for columns with finit
   expect_identical(harrell_davis_quantile(c(3, 1, 2), c(0, 1)), c(1, 3))
   expect_identical(weights_built, 0L)
 
-  # a finite column builds them (once), after the infinite column was summarized
+  # a finite column starts building them after the infinite column was summarized
   expect_error(harrell_davis_quantile(cbind(infinite[, 1], c(1, 2, 3, 4)), probs), "the weights were built", fixed = TRUE)
   expect_identical(weights_built, 1L)
+})
+
+test_that("Harrell-Davis weights are built once per unique interior probability", {
+
+  original_weights <- .harrell_davis_weights
+  probabilities_built <- numeric()
+  testthat::local_mocked_bindings(
+    .harrell_davis_weights = function(p, m) {
+      probabilities_built <<- c(probabilities_built, p)
+      original_weights(p, m)
+    },
+    .package = "BayesTools"
+  )
+  x <- cbind(infinite = c(1, 2, Inf, 4), first = c(3, 1, 4, 2), second = c(-2, 7, 0, 1))
+  probs <- c(1, .75, .25, .75, 0, .5, .25)
+  actual <- harrell_davis_quantile(x, probs)
+  expect_identical(probabilities_built, unique(probs[probs > 0 & probs < 1]))
+  expect_identical(actual[, "infinite"], stats::quantile(x[, "infinite"], probs, names = FALSE))
+  expected <- vapply(seq.int(2L, 3L), function(column) vapply(probs, function(p) {
+    if(p == 0) min(x[, column]) else if(p == 1) max(x[, column]) else hd_reference(x[, column], p)
+  }, numeric(1)), numeric(length(probs)))
+  expect_equal(unname(actual[, c("first", "second")]), expected, tolerance = 1e-14)
 })
 
 test_that("harrell_davis_quantile returns vectors and matrices with the documented shapes", {
