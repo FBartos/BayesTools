@@ -1,4 +1,9 @@
 # version 0.3.1
+- selected formula terms retain fitted factor coding and variable order, including reversed interaction requests, without requiring unused predictors.
+- scalar expression-point formula coefficients retain compact declared parent/data owners and replay through a registered deterministic family; valid monitors remain usable and unavailable replay has typed reasons.
+- bound ordinary factor mixture and spike-and-slab draws use exact raw/cell designs, independent scalar coefficient products, and unchanged joint multivariate laws and shared gates.
+- bridge fixed coefficients, named multipliers and every scalar random-effect SD path receive the same decoded natural state and retained scalar constants; malformed owners refuse without alias fallback.
+- selected formula mixtures retain complete fitted declarations to distinguish an absent term's declared zero from missing ownership metadata.
 - affine hypothesis readers retain a checked numerator and constant divisor, preserving translated point variability and strict/inclusive region boundaries; unresolved arithmetic refuses with numerical conditions.
 - exact prior and Normal posterior log ordinates are retained through Savage-Dickey inference, transitivity and BF-table formatting; live column metadata are invalidated by replacement and arithmetic.
 - supported scalar affine/Boolean prior regions use deterministic laws before sampled draws, with row-aligned numerical diagnostics and Monte Carlo-only BF errors.

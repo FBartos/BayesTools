@@ -102,6 +102,32 @@ condition.
 
 ## Formula Coordinates and Scaling
 
+Selected existing terms preserve the fitted terms' variable order, coding,
+raw columns, levels, and concrete contrasts on the actual matrix input.
+Equivalent interaction orders resolve before prior lookup. Selected replay
+requires only its own predictors and checks raw column identities.
+
+Expression-valued scalar point coefficients retain a compact private owner
+from the actual full prior declarations and needed model data. Its original
+AST and array dimensions are independent of prediction rows. Supported replay
+uses the bounded expression grammar in scalar mode, with no loop `i`, through
+the registered `point_expression` family; missing parents, syntax, scalar,
+index, cycle and owner failures remain distinct typed unavailability.
+Valid monitors supply ordinary values first; explicit replay replaces stale
+derived values from available parents. A monitor-only coefficient can supply
+its dependent formula without claiming the coefficient was recomputed.
+Affected missing owners require refitting. These additive owners leave
+unaffected formula/map schemas unchanged: expression points were already
+derived in map schema 10, and their new declared parents are compiled at
+the actual owner. Full public bridge prior-expression refusal remains.
+
+Bridge fixed and random reconstruction use one explicit natural state:
+retained scalar constants, decoded ordinary/formula-prior values, genuine
+sampled extras, and then available reconstructed formula parents. Natural
+owners override transformed row aliases; malformed or contradictory owners
+never fall back. Scalar SD and marginal batch/cache routes forward that state.
+Prediction data cannot shadow retained multiplier constants.
+
 Fixed-factor contrasts belong to `prior_factor()`, independently of the
 intercept. Removing the intercept specifies a structural zero intercept and
 preserves the prior-owned factor basis; it does not silently select indicator

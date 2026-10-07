@@ -104,6 +104,15 @@ snapshot. Supply an explicit
 expression-free formula to evaluate a selected subset without those offsets.
 Inline transformations, offsets, dot expansion, and arbitrary calls are not
 supported. Create transformed predictors as explicit columns in \code{data}.
+Selected existing terms retain fitted factor coding and variable order,
+including interactions requested with reversed variable order. Predictors
+outside the selected terms are not required. Expression-valued scalar point
+coefficients use valid monitors first, otherwise their retained declaration
+and owned model data. New prediction rows do not replace that owned data.
+Unsupported scalar replay, missing parents, cycles, and malformed values
+raise \code{BayesTools_formula_point_unavailable}; absent affected owners
+require refitting. This replay does not extend bridge prior-expression
+eligibility or establish a structural point law from constant draws.
 }
 \seealso{
 \code{\link[=JAGS_fit]{JAGS_fit()}} \code{\link[=JAGS_formula]{JAGS_formula()}}
