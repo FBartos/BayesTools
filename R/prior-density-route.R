@@ -500,7 +500,12 @@
       attr(folded_priors[[parameter]], "multiply_by") <- NULL
     }
     folded_weights <- weights
-    folded_weights[names(product$weights)] <- product$weights * k
+    folded <- tryCatch(.prior_linear_fold_scale(product$weights, k),
+      BayesTools_numerical_condition = function(e) e)
+    if(inherits(folded, "BayesTools_numerical_condition")) return(.prior_density_route_unknown(
+      reason = folded$reason, provenance = list(kind = "numerical_scale_unavailable",
+        numerical_condition = unclass(folded))))
+    folded_weights[names(product$weights)] <- folded
     return(.prior_density_route_linear(folded_priors, folded_weights, source_transforms, n_grid))
   }
   if(!.prior_density_simple_continuous(multiplier_prior)){
@@ -713,8 +718,12 @@
 
   split <- tryCatch(
     .prior_linear_split_multiply_groups(prior_list, weights),
+    BayesTools_numerical_condition = function(e) e,
     error = function(e) NULL
   )
+  if(inherits(split, "BayesTools_numerical_condition")) return(.prior_density_route_unknown(
+    reason = split$reason, provenance = list(kind = "numerical_scale_unavailable",
+      numerical_condition = unclass(split))))
   if(is.null(split)){
     return(.prior_density_route_unknown(
       reason     = NULL,

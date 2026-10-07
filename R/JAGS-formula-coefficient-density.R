@@ -1619,6 +1619,19 @@ JAGS_formula_prior_density <- function(
   list(type = "unavailable", location = NULL)
 }
 
+.bt_formula_route_numerical_scale_reason <- function(route){
+
+  if(identical(route$type, "unknown") &&
+     identical(route$provenance$kind, "numerical_scale_unavailable")) return(route$reason)
+  if(identical(route$type, "transform")) return(.bt_formula_route_numerical_scale_reason(route$source))
+  if(identical(route$type, "mixture")){
+    reasons <- lapply(route$components[route$weights > 0], .bt_formula_route_numerical_scale_reason)
+    reasons <- Filter(Negate(is.null), reasons)
+    if(length(reasons)) return(reasons[[1L]])
+  }
+  NULL
+}
+
 .bt_formula_route_support <- function(route){
 
   if(identical(route$type, "log_scale_product")){
@@ -1712,13 +1725,20 @@ JAGS_formula_prior_density <- function(
       BayesTools_formula_measure_unavailable = function(e) e)
     if(inherits(context, "BayesTools_formula_measure_unavailable")){
       if(record$prior_probability > 0){ prior_available <- FALSE; prior_reason <- context$reason }
-      if(state$posterior_model_probabilities[[model]] > 0){ atoms_available <- support_available <- FALSE }
+      if(state$posterior_model_probabilities[[model]] > 0){
+        atoms_available <- support_available <- FALSE
+        atom_reason <- support_reason <- context$reason
+      }
       next
     }
     routes <- lapply(seq_len(nrow(weights)), function(row){
       build_route(context, row)
     })
-    if(record$prior_probability > 0 && any(vapply(routes, function(route) identical(route$type, "unknown"), logical(1)))){
+    numerical_reasons <- Filter(Negate(is.null), lapply(routes, .bt_formula_route_numerical_scale_reason))
+    if(record$prior_probability > 0 && length(numerical_reasons)){
+      prior_available <- FALSE
+      prior_reason <- numerical_reasons[[1L]]
+    }else if(record$prior_probability > 0 && any(vapply(routes, function(route) identical(route$type, "unknown"), logical(1)))){
       prior_available <- FALSE
     }else if(prior_samples && record$prior_probability > 0){
       laws[[model]] <- if(length(state$models) == 1L && !is.null(prior_density)) prior_density else
@@ -1743,6 +1763,8 @@ JAGS_formula_prior_density <- function(
       component_context <- context_builder(component_priors, conditional = FALSE)
       for(row in seq_len(nrow(weights))){
         route <- build_route(component_context, row)
+        numerical_reason <- .bt_formula_route_numerical_scale_reason(route)
+        if(!is.null(numerical_reason)) atom_reason <- support_reason <- numerical_reason
         certificate <- .bt_formula_route_atom_certificate(route)
         if(identical(certificate$type, "unavailable")) atoms_available <- FALSE
         if(identical(certificate$type, "point")){

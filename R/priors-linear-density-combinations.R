@@ -872,6 +872,23 @@
   .prior_linear_density_normalize(out, warn = TRUE)
 }
 
+.prior_linear_fold_scale <- function(weights, multiplier){
+
+  folded <- weights * multiplier
+  failed <- is.finite(weights) & weights != 0 & is.finite(multiplier) & multiplier != 0 &
+    (folded == 0 | !is.finite(folded))
+  if(any(failed)){
+    condition <- .prior_numerical_condition("scale folding", "linear combination", "natural",
+      which(failed), "Numerical scale folding of finite nonzero declarations lost representable range",
+      error = TRUE)
+    condition$weights <- weights
+    condition$multiplier <- multiplier
+    condition$folded_weights <- folded
+    stop(condition)
+  }
+  folded
+}
+
 .prior_linear_split_multiply_groups <- function(prior_list, weights){
 
   additive_weights <- weights
@@ -902,7 +919,7 @@
       if(length(multiply_by) != 1L){
         stop("Numeric 'multiply_by' values must be scalar for deterministic prior densities.", call. = FALSE)
       }
-      additive_weights[present] <- additive_weights[present] * multiply_by
+      additive_weights[present] <- .prior_linear_fold_scale(additive_weights[present], multiply_by)
       next
     }
 
@@ -1147,6 +1164,11 @@
           "Evaluate the terms separately.",
           call. = FALSE
         )
+      }
+
+      if(is.prior.none(multiplier_prior) || is.prior.point(multiplier_prior)){
+        k <- if(is.prior.none(multiplier_prior)) 0 else multiplier_prior$parameters$location
+        .prior_linear_fold_scale(product_group$weights, k)
       }
 
       linear_dist <- .prior_linear_additive_combination_density(

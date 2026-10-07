@@ -775,6 +775,10 @@ probabilities, never prior component weights or finite allocated counts. Unknown
 component supports stay NULL/non-exact and preserve pooled posterior KDE when
 valid. linear_weight_space distinguishes coefficient recipes from fitted
 formula_contribution rows; those rows never pass through C/A again.
+Folding a numeric or point multiplier into a finite nonzero row weight must
+retain a representable nonzero scale. Lost range makes prior/atom/support
+measures explicitly unavailable with numerical-scale provenance; it never
+declares a zero atom or replays the failed fold through a grid fallback.
 Producers of the `condition` field set its logical `averaged` element
 (unconditional draws), which consumers read instead of comparing condition
 keys with a literal.
