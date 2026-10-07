@@ -508,12 +508,17 @@
     }
     keys <- components$keys[components$index, , drop = FALSE]
     for(column in colnames(keys)){
+      if(!is.null(draw_keys[[column]]) && !identical(draw_keys[[column]], keys[, column])){
+        .hypothesis_linear_target_stop(
+          "Repeated component keys do not match the original posterior rows.", "component_alignment")
+      }
       draw_keys[[column]] <- keys[, column]
     }
   }
   draw_keys <- do.call(cbind, draw_keys)
 
-  if(!".model" %in% colnames(draw_keys)){
+  if(!".model" %in% colnames(draw_keys) && length(context$transforms) == 0L &&
+     !identical(context$linear_weight_space, "formula_contribution")){
     # every mixture prior entering the combination needs its component;
     # without one (the mixture terms cancel), the pooled ordinate applies
     parameters <- .posterior_components_mixture_parameters(context, weights)
@@ -534,7 +539,7 @@
 
   .posterior_components_new(
     index    = index,
-    supports = .posterior_components_supports(
+    supports = .hypothesis_canonical_component_supports(
       context                         = context,
       keys                            = keys,
       weights                         = weights,
@@ -839,4 +844,28 @@
   }
 
   identical(unique(region_exprs), point_key)
+}
+
+.hypothesis_canonical_component_supports <- function(context, keys, weights,
+                                                      output_transformation = NULL,
+                                                      output_transformation_arguments = NULL){
+
+  formula <- length(context$transforms) > 0L ||
+    identical(context$linear_weight_space, "formula_contribution")
+  if(!formula) return(.posterior_components_supports(context, keys, weights,
+    output_transformation, output_transformation_arguments))
+  if(".model" %in% colnames(keys) || ".component" %in% colnames(keys)){
+    return(rep(list(NULL), nrow(keys)))
+  }
+  lapply(seq_len(nrow(keys)), function(row){
+    component_context <- context
+    for(owner in colnames(keys)){
+      source <- context$prior_list[[owner]]
+      if(is.null(source)) stop("Component keys reference a missing declared prior owner.", call. = FALSE)
+      component_context$prior_list[[owner]] <- .prior_density_copy_parent_attributes(
+        .posterior_atoms_component_prior(source, keys[row, owner], model_mixture = FALSE), source)
+    }
+    .posterior_support_from_prior_context_weights(component_context, weights,
+      output_transformation, output_transformation_arguments)
+  })
 }

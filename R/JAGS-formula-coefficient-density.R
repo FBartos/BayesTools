@@ -300,7 +300,8 @@ JAGS_formula_prior_density <- function(
              "' is structurally unavailable."),
       parameter = parameter,
       target = target,
-      reason = target_metadata$reason
+      reason = "structural_target_law_unavailable",
+      detail = target_metadata$reason
     )
   }
 
@@ -415,7 +416,8 @@ JAGS_formula_prior_density <- function(
              "' is structurally unavailable."),
       parameter = parameter,
       target = label,
-      reason = targets$reason[unavailable][[1L]]
+      reason = "structural_target_law_unavailable",
+      detail = targets$reason[unavailable][[1L]]
     )
   }
   nonlinear <- targets$map_type %in% c("exp_affine", "unsupported") |
@@ -1669,6 +1671,7 @@ JAGS_formula_prior_density <- function(
   laws <- model_supports <- model_atoms <- row_weights <- vector("list", length(state$models))
   prior_available <- atoms_available <- support_available <- TRUE
   prior_reason <- atom_reason <- support_reason <- "unsupported_contribution_measure"
+  prior_cause <- atom_cause <- support_cause <- NULL
   component_supports <- list()
   component_keys <- list()
   n_rows <- if(is.null(coefficient)) nrow(data) else 1L
@@ -1724,10 +1727,16 @@ JAGS_formula_prior_density <- function(
     context <- tryCatch(context_builder(record$prior_list),
       BayesTools_formula_measure_unavailable = function(e) e)
     if(inherits(context, "BayesTools_formula_measure_unavailable")){
-      if(record$prior_probability > 0){ prior_available <- FALSE; prior_reason <- context$reason }
+      detail <- if(is.null(context$detail)) conditionMessage(context) else context$detail
+      if(record$prior_probability > 0){
+        prior_available <- FALSE
+        prior_reason <- detail
+        prior_cause <- context$reason
+      }
       if(state$posterior_model_probabilities[[model]] > 0){
         atoms_available <- support_available <- FALSE
-        atom_reason <- support_reason <- context$reason
+        atom_reason <- support_reason <- detail
+        atom_cause <- support_cause <- context$reason
       }
       next
     }
@@ -1738,6 +1747,7 @@ JAGS_formula_prior_density <- function(
     if(record$prior_probability > 0 && length(numerical_reasons)){
       prior_available <- FALSE
       prior_reason <- numerical_reasons[[1L]]
+      prior_cause <- "numerical_scale_unavailable"
     }else if(record$prior_probability > 0 && any(vapply(routes, function(route) identical(route$type, "unknown"), logical(1)))){
       prior_available <- FALSE
     }else if(prior_samples && record$prior_probability > 0){
@@ -1764,7 +1774,10 @@ JAGS_formula_prior_density <- function(
       for(row in seq_len(nrow(weights))){
         route <- build_route(component_context, row)
         numerical_reason <- .bt_formula_route_numerical_scale_reason(route)
-        if(!is.null(numerical_reason)) atom_reason <- support_reason <- numerical_reason
+        if(!is.null(numerical_reason)){
+          atom_reason <- support_reason <- numerical_reason
+          atom_cause <- support_cause <- "numerical_scale_unavailable"
+        }
         certificate <- .bt_formula_route_atom_certificate(route)
         if(identical(certificate$type, "unavailable")) atoms_available <- FALSE
         if(identical(certificate$type, "point")){
@@ -1811,17 +1824,17 @@ JAGS_formula_prior_density <- function(
     if(length(positive) > 1L) attr(law, "adaptive_evaluation") <- list(kind = "density_mixture",
       arguments = list(dists = laws[positive], weights = probabilities, n_grid = n_grid))
     marginal <- .bt_meta_set(marginal, "prior_density", law)
-  }else if(!prior_available) marginal <- .bt_formula_measure_mark(marginal, column, "prior_density", prior_reason)
+  }else if(!prior_available) marginal <- .bt_formula_measure_mark(marginal, column, "prior_density", prior_reason, cause = prior_cause)
   if(atoms_available){
     points <- .posterior_atoms_point_mass_table(do.call(rbind, model_atoms))
     atoms <- .posterior_atoms_new(locations = matrix(points$x, ncol = 1L), mass = points$mass,
       column_names = column, source = "formula_joint_component_frequencies")
     marginal <- .posterior_atoms_set(marginal, atoms)
-  }else marginal <- .bt_formula_measure_mark(marginal, column, "atoms", atom_reason)
+  }else marginal <- .bt_formula_measure_mark(marginal, column, "atoms", atom_reason, cause = atom_cause)
   if(support_available){
     marginal <- .posterior_support_set(marginal, .posterior_support_union(
       model_supports[state$posterior_model_probabilities > 0], source = "formula_contribution"))
-  }else marginal <- .bt_formula_measure_mark(marginal, column, "support", support_reason)
+  }else marginal <- .bt_formula_measure_mark(marginal, column, "support", support_reason, cause = support_cause)
   if(!anyNA(component_index) && length(component_supports) &&
      (length(state$models) > 1L || any(vapply(state$models, function(record){
        any(vapply(record$prior_list, .posterior_components_is_mixture, logical(1)))
@@ -1842,8 +1855,7 @@ JAGS_formula_prior_density <- function(
 .bt_formula_density_stop <- function(message, ...){
 
   fields <- list(...)
-  measure <- !fields$reason %in% c("density_context_error", "invalid_prior_density_context",
-    "unsupported_fit_prior_context", "coordinate_source_mismatch")
+  measure <- fields$reason %in% .bt_formula_measure_causes
   condition <- structure(
     c(list(message = message, call = NULL), fields),
     class = c(
@@ -1856,3 +1868,7 @@ JAGS_formula_prior_density <- function(
   )
   stop(condition)
 }
+
+.bt_formula_measure_causes <- c("state_dependent_map", "nonlinear_map",
+  "incompatible_prior_recipes", "missing_multiplier_law", "numerical_scale_unavailable",
+  "structural_target_law_unavailable", "unsupported_contribution_measure")
