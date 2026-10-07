@@ -228,6 +228,11 @@ JAGS_evaluate_formula <- function(fit, formula = NULL, parameter,
     }
   }
 
+  # Select existing terms before looking up priors. Their fitted coding and
+  # variable order must survive a request for only part of the formula.
+  selected_terms <- .bt_formula_selected_terms(formula, fitted_design)
+  formula <- selected_terms$terms
+
   # select priors corresponding to the prior distribution
   prior_parameter <- sapply(prior_list, function(p) if(is.null(attr(p, "parameter", exact = TRUE))) "__none" else attr(p, "parameter", exact = TRUE))
   if(!any(parameter %in% unique(prior_parameter)))
@@ -344,8 +349,21 @@ JAGS_evaluate_formula <- function(fit, formula = NULL, parameter,
   if(anyNA(model_frame)){
     stop("Formula predictors contain missing values.", call. = FALSE)
   }
-  model_matrix <- .bt_model_matrix(model_frame, formula = formula, data = data)
+  attr(model_frame, "terms") <- formula_terms
+  model_matrix <- .bt_model_matrix(model_frame, formula = formula_terms, data = data)
   .bt_validate_model_matrix_finite(model_matrix, "Formula")
+  expected_columns <- selected_terms$raw_column_names
+  if(anyDuplicated(colnames(model_matrix)) || anyDuplicated(expected_columns) ||
+     length(expected_columns) != ncol(model_matrix) ||
+     !setequal(colnames(model_matrix), expected_columns)){
+    .bt_stop_refit_required("Selected formula columns disagree with their fitted design. Refit the model with this version of BayesTools.")
+  }
+  if(!identical(colnames(model_matrix), expected_columns)){
+    assignment <- attr(model_matrix, "assign")
+    permutation <- match(expected_columns, colnames(model_matrix))
+    model_matrix <- model_matrix[, permutation, drop = FALSE]
+    attr(model_matrix, "assign") <- assignment[permutation]
+  }
 
   ### evaluate the design matrix on the samples -> output[data, posterior]
   # The fixed part is the registered 'linear_predictor' node's fixed part.
@@ -583,8 +601,8 @@ JAGS_evaluate_formula <- function(fit, formula = NULL, parameter,
   if(is.null(formula)){
     formula <- fitted_design$formula
     # Stored design formulas intentionally drop their original environment.
-    # Use the user workspace as a pragmatic evaluation environment for replay.
-    environment(formula) <- globalenv()
+    # Replay uses explicit data and a safe lookup environment.
+    environment(formula) <- baseenv()
     if(isTRUE(fitted_design$log_intercept)){
       attr(formula, "log(intercept)") <- TRUE
     }
