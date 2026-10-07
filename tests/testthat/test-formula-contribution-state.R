@@ -464,3 +464,38 @@ test_that("ordered projections distinguish raw and compiled contribution spaces"
     expect_equal(as.numeric(row), c(13, 13), tolerance = 1e-14)
   }
 })
+test_that("ordered contribution replay declines lost finite multiplier folds", {
+
+  data <- expand.grid(f = ordered(c("early", "middle", "late"), levels = c("early", "middle", "late")), x = c(10, 20, 30))
+  for(multiplier in list(1e-200, "sigma", 0)){
+    ordered <- prior_ordered(prior("point", list(1e200)))
+    attr(ordered, "multiply_by") <- multiplier
+    compiled <- JAGS_formula(~ f + x, "mu", data,
+      list(intercept = prior("point", list(0)), f = ordered, x = prior("point", list(0))), formula_scale = TRUE)
+    prior <- compiled$prior_list$mu_f
+    set.seed(177)
+    draws <- .prior_ordered_draws(prior, 2L)
+    coefficients <- draws$coefficients
+    colnames(coefficients) <- .JAGS_prior_factor_names("mu_f", prior)
+    sources <- .prior_ordered_total_samples(draws, "mu_f")
+    spec <- .bt_ordered_spec("mu_f", prior)
+    for(record in .prior_ordered_dirichlet_records(prior)){
+      gamma <- draws$allocation_samples[[record$key]] * seq_len(2L)
+      colnames(gamma) <- spec$allocations[[record$key]]$gamma_coordinates
+      sources <- cbind(sources, gamma)
+    }
+    values <- cbind(mu_intercept = c(0, 0), mu_x = c(0, 0), sigma = rep(1e-200, 2L), coefficients, sources)
+    fit <- .parameter_catalog_test_fit(coda::mcmc.list(coda::mcmc(values)),
+      c(compiled$prior_list, list(sigma = prior("point", list(1e-200)))), list(mu = compiled$formula_design), list(mu = compiled$formula_scale))
+    mixed <- as_mixed_posteriors(fit, c("mu_intercept", "mu_f", "mu_x", "sigma"))
+    weights <- c(mu_intercept = 0, `mu_f[1]` = 1e-200, `mu_f[2]` = 1e-200, mu_x = 0)
+    actual <- sum(coefficients[1L, ] * if(identical(multiplier, 0)) 0 else 1e-200) * 1e-200
+    if(identical(multiplier, 0)) expect_identical(actual, 0) else expect_equal(actual / 1e-200, 1, tolerance = 1e-14)
+    replay <- .bt_ordered_formula_projections(mixed, matrix(weights, 1L, dimnames = list(NULL, names(weights))), weight_space = "formula_contribution")
+    if(identical(multiplier, 0)){
+      expect_identical(replay[[1L]]$values, c(0, 0))
+    }else{
+      expect_null(replay)
+    }
+  }
+})

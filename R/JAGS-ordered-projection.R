@@ -656,7 +656,10 @@
           for(column in intersect(active, names(declaration$multipliers))){
             multiplier <- .bt_formula_multiplier_constant(declaration$multipliers[[column]], constants)
             if(is.null(multiplier)) return(NULL)
-            target[[column]] <- target[[column]] * multiplier
+            folded_value <- target[[column]] * multiplier
+            if(!is.finite(folded_value) ||
+               (target[[column]] != 0 && multiplier != 0 && folded_value == 0)) return(NULL)
+            target[[column]] <- folded_value
             folded <- c(folded, column)
           }
         }
