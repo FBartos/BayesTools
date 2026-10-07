@@ -1,4 +1,6 @@
 # version 0.3.1
+- original coefficient ratios retain representable nonzero weights across multiplication range loss and refuse unresolved arithmetic; weighted logged dynamic outputs preserve nonlinear-map refusal while scalar transformed laws remain available.
+- numerical and point multiplier folds that lose representable scale retain formula values and mark prior, atom and support measures explicitly unavailable rather than declaring a zero point law.
 - inverse-gamma kernels retain original-input Gamma coordinates across overflowing ratios and subnormal roots, with the bounded small-shape series and explicit numerical availability and range conditions.
 - nonlocal kernels retain Gamma log coordinates across large scales and squared distances. Certified inverse-moment small roots reconstruct final magnitudes from the original log probability, df and order, preserving finite high-order quantiles and draws.
 - continuous prior truncation uses log interval masses and one-uniform nonlocal conditional inversion for central and extreme tail intervals. Unavailable normalization, sampling and initialization refuse explicitly; nonlocal mean and variance quadrature use strict cached log densities without raw PDF tail warnings.
