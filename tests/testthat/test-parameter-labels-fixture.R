@@ -157,14 +157,11 @@ test_that("original-scale random-effect SDs require the fitted design", {
   parameters <- c("mu__xREx__g_intercept", "mu__xREx__g_x")
   mixed <- as_mixed_posteriors(fit, parameters = parameters)
 
-  # the SD columns alone: standardization information without the fitted
-  # design (and the random-effect structure it comes with) stops instead of
-  # leaving the SDs standardized
-  expect_error(
-    ensemble_estimates_table(mixed, parameters = parameters,
-                             transform_scaled = TRUE, formula_scale = hand_built),
-    class = "BayesTools_formula_transform_unavailable"
-  )
+  # These producer draws retain their fitted scale and formula state. Partial
+  # numeric scale entries reuse that owned design and random-effect structure.
+  partial <- ensemble_estimates_table(mixed, parameters = parameters,
+                                       transform_scaled = TRUE,
+                                       formula_scale = hand_built)
   # the fitted object's formula_scale transforms them as the model table does
   ensemble <- ensemble_estimates_table(mixed, parameters = parameters,
                                        transform_scaled = TRUE,
@@ -173,6 +170,27 @@ test_that("original-scale random-effect SDs require the fitted design", {
                                        remove_diagnostics = TRUE)
   expect_equal(ensemble[, "Mean"], scaled_table[rownames(ensemble), "Mean"],
                tolerance = 1e-10)
+  expect_equal(as.data.frame(partial), as.data.frame(ensemble), tolerance = 1e-10)
+  expect_equal(unname(as.matrix(partial[, c("Mean", "Median", "0.025", "0.975")])),
+    unname(as.matrix(scaled_table[rownames(partial), c("Mean", "0.5", "0.025", "0.975")])),
+    tolerance = 1e-10)
+
+  # Remove the actual current owners through the metadata helpers: these SD
+  # columns now have standardization entries but no fitted design to use.
+  missing_design <- .bt_meta_set(mixed, "formula_state", NULL)
+  missing_design <- .bt_meta_set(missing_design, "formula_scale", NULL)
+  for(name in names(missing_design)){
+    missing_design[[name]] <- .bt_meta_set(missing_design[[name]], "formula_state", NULL)
+    missing_design[[name]] <- .bt_meta_set(missing_design[[name]], "formula_scale", NULL)
+  }
+  expect_null(.bt_formula_state_get(missing_design))
+  condition <- expect_error(
+    ensemble_estimates_table(missing_design, parameters = parameters,
+      transform_scaled = TRUE, formula_scale = hand_built),
+    class = "BayesTools_formula_transform_unavailable"
+  )
+  expect_identical(condition$reason, "missing_fitted_design")
+  expect_null(conditionCall(condition))
 })
 
 test_that("standardization passed for a fitted model takes its fitted structure", {
