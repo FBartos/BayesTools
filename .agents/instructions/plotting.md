@@ -94,6 +94,9 @@ jumps and checked generalized inversion, or a typed model/level limitation.
 
 Plotting density grids are approximations for display. They are not evidence
 for the structural classifications returned by `prior_density_ordinate()`.
+Explicit precomputed posterior plots require a matching valid continuous curve
+for every selected continuous leaf, resolved before discarding parent parameter
+and condition metadata. Pure atoms need no curve; KDE ignores stored curves.
 Keep requested display limits separate from transformation support. Custom
 transformations can declare `output_support = c(lower, upper)`; inverse-grid
 evaluation must exclude coordinates outside that interval, without clamping

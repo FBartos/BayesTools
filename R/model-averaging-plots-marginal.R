@@ -13,7 +13,9 @@
 #'
 #' @details Marginal posterior vectors may carry \code{posterior_density}
 #' metadata ([posterior_metadata()]) with \code{x} and \code{y} coordinates. These densities are used
-#' only when \code{density_method = "precomputed"}. Marginal KDE fallbacks use
+#' only when \code{density_method = "precomputed"}, which requires a matching
+#' valid curve for each selected continuous leaf. Pure-atom leaves need no
+#' continuous curve. Marginal plots with \code{density_method = "KDE"} use
 #' a standard KDE because marginal prior-density grids are numerical density
 #' ranges rather than true support metadata; this can intentionally differ from
 #' the support-reflected ordinate used by \code{\link{Savage_Dickey_BF}} when
@@ -172,6 +174,12 @@ plot_marginal <- function(samples, parameter, plot_type = "base", prior = FALSE,
   posterior_densities <- .marginal_posterior_parameter_posterior_densities(samples, parameter)
   level_metadata <- samples[[parameter]]
   levels <- if(is.list(level_metadata)) level_metadata else list(level_metadata)
+  if(identical(density_method, "precomputed")){
+    posterior_densities <- lapply(seq_along(levels), function(i){
+      name <- if(is.null(names(levels))) parameter else names(levels)[[i]]
+      .plot_data_selected_posterior_density(level_metadata, levels[[i]], name)
+    })
+  }
   reference <- attr(level_metadata, "factor_reference_levels", exact = TRUE)
   if(isTRUE(attr(level_metadata, "ordered", exact = TRUE)) && !is.null(reference)){
     if(!identical(names(reference), names(posterior_samples))){
@@ -294,6 +302,7 @@ plot_marginal <- function(samples, parameter, plot_type = "base", prior = FALSE,
   continuous <- .Savage_Dickey_BF.continuous_posterior(x, posterior_atoms)
   samples_density <- as.numeric(continuous$samples)
   continuous_mass <- continuous$continuous_mass
+  .plot_data_require_precomputed_density(posterior_density, density_method, continuous_mass)
   if(nrow(posterior_atoms$locations) > 0L){
     x_points <- as.numeric(posterior_atoms$locations[, 1L])
     y_points <- posterior_atoms$mass
@@ -309,8 +318,9 @@ plot_marginal <- function(samples, parameter, plot_type = "base", prior = FALSE,
     y_den <- posterior_density[["y"]]
 
     if(!is.null(transformation)){
-      x_den           <- .density.prior_transformation_x(x_den, transformation, transformation_arguments)
-      y_den           <- .density.prior_transformation_y(x_den, y_den, transformation, transformation_arguments)
+      transformed <- .density.prior_transformation_grid(x_den, y_den, transformation, transformation_arguments)
+      x_den <- transformed$x[!transformed$drop]
+      y_den <- transformed$y[!transformed$drop]
       samples_density <- .density.prior_transformation_x(samples_density, transformation, transformation_arguments)
     }
 

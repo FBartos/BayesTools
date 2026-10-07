@@ -375,11 +375,13 @@
   boundary_reflection <- FALSE
 
   # extract the relevant data
+  posterior_density <- if(identical(density_method, "precomputed")){
+    .plot_data_selected_posterior_density(samples, samples[[parameter]], parameter)
+  }else NULL
   samples    <- samples[[parameter]]
   .bt_formula_measure_check(samples, "atoms")
   .bt_ordered_source_require_measure(samples)
   prior_list <- attr(samples, "prior_list")
-  posterior_density <- .posterior_density_for_method(.bt_meta_get(samples, "posterior_density"), density_method)
   posterior_atoms <- .posterior_atoms_get(samples)
   if (!(is.prior.mixture(prior_list) || is.prior.spike_and_slab(prior_list)) && is.prior(prior_list))
     prior_list <- list(prior_list)
@@ -397,6 +399,7 @@
   continuous <- .Savage_Dickey_BF.continuous_posterior(samples, posterior_atoms)
   samples_density <- as.numeric(continuous$samples)
   continuous_mass <- continuous$continuous_mass
+  .plot_data_require_precomputed_density(posterior_density, density_method, continuous_mass)
   if(nrow(posterior_atoms$locations) > 0L){
     x_points <- as.numeric(posterior_atoms$locations[, 1L])
     y_points <- posterior_atoms$mass
@@ -416,8 +419,9 @@
       y_den <- posterior_density[["y"]]
 
       if(!is.null(transformation)){
-        x_den   <- .density.prior_transformation_x(x_den, transformation, transformation_arguments)
-        y_den   <- .density.prior_transformation_y(x_den, y_den, transformation, transformation_arguments)
+        transformed <- .density.prior_transformation_grid(x_den, y_den, transformation, transformation_arguments)
+        x_den <- transformed$x[!transformed$drop]
+        y_den <- transformed$y[!transformed$drop]
         samples_density <- .density.prior_transformation_x(samples_density, transformation, transformation_arguments)
       }
 

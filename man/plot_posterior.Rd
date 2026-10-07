@@ -145,7 +145,9 @@ the probability-mass axis, and \code{ylab2} controls its label.}
 \code{"KDE"} computes a kernel density estimate. Plot methods with exact
 finite prior-support bounds apply boundary reflection.
 \code{"precomputed"} uses valid \code{posterior_density} metadata when
-present and falls back to KDE otherwise. A precomputed density is the
+matching the selected parameter and condition; a missing or unusable
+continuous curve stops with a remedy to supply matching metadata or use
+\code{"KDE"}. Pure-atom targets need no continuous curve. A precomputed density is the
 continuous part of the posterior; atoms are drawn from the declared
 posterior atoms with either method.}
 }

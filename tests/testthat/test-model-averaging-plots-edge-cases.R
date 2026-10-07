@@ -3649,11 +3649,11 @@ test_that("factor posterior plot data draws declared atoms with stored densities
   attr(samples, "prior_list") <- list(point_prior, prior)
   samples <- attach_test_model_probabilities(samples, c(.4, .6))
   samples <- .bt_draws_set_component(samples, source = "model", component = c(rep(1, 40), rep(2, 60)))
-  samples <- .bt_meta_set(samples, "atoms", posterior_atom_attribute(
-    data.frame(x = 0, mass = .4)
-  ))
+  samples <- .bt_meta_set(samples, "atoms", .posterior_atoms_from_priors(
+    list(point_prior, prior), c(.4, .6), n_columns = 2L, column_names = colnames(samples),
+    posterior_pair = .bt_meta_get(samples, "model_probabilities")$posterior))
   class(samples) <- c("mixed_posteriors", "mixed_posteriors.factor", "mixed_posteriors.vector")
-  plot_data_for <- function(samples){
+  plot_data_for <- function(samples, density_method = "KDE"){
     BayesTools:::.plot_data_samples.factor(
       samples                  = list(mu_alloc = samples),
       parameter                = "mu_alloc",
@@ -3661,16 +3661,17 @@ test_that("factor posterior plot data draws declared atoms with stored densities
       transformation           = NULL,
       transformation_arguments = NULL,
       transformation_settings  = FALSE,
-      density_method           = "precomputed"
+      density_method           = density_method
     )
   }
   point_entries_of <- function(plot_data){
     plot_data[vapply(plot_data, inherits, logical(1), what = "density.prior.point")]
   }
   kde_points <- point_entries_of(plot_data_for(samples))
+  expect_error(plot_data_for(samples, "precomputed"), "Precomputed posterior density is unavailable", fixed = TRUE)
 
-  # a stored density of one level, or of both, is the continuous part: the
-  # point masses stay the declared atoms, as without stored densities
+  # Every selected continuous leaf needs a matching stored curve; KDE keeps
+  # the same declared atoms when curves are absent or only partially present.
   stored_random <- .posterior_density_for_test(
     parameter = "random",
     x         = stored_x,
@@ -3686,7 +3687,12 @@ test_that("factor posterior plot data draws declared atoms with stored densities
   for(stored in list(list(random = stored_random),
                      list(random = stored_random, systematic = stored_systematic))){
     samples <- .bt_meta_set(samples, "posterior_density", stored)
-    expect_no_warning(plot_data <- plot_data_for(samples))
+    if(length(stored) == 1L){
+      expect_error(plot_data_for(samples, "precomputed"), "Precomputed posterior density is unavailable", fixed = TRUE)
+      expect_equal(point_entries_of(plot_data_for(samples)), kde_points)
+      next
+    }
+    expect_no_warning(plot_data <- plot_data_for(samples, "precomputed"))
     point_entries <- point_entries_of(plot_data)
     expect_equal(names(point_entries), names(kde_points))
     expect_equal(length(point_entries), 1L)

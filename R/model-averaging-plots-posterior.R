@@ -29,7 +29,9 @@
 #' \code{"KDE"} computes a kernel density estimate. Plot methods with exact
 #' finite prior-support bounds apply boundary reflection.
 #' \code{"precomputed"} uses valid \code{posterior_density} metadata when
-#' present and falls back to KDE otherwise. A precomputed density is the
+#' matching the selected parameter and condition; a missing or unusable
+#' continuous curve stops with a remedy to supply matching metadata or use
+#' \code{"KDE"}. Pure-atom targets need no continuous curve. A precomputed density is the
 #' continuous part of the posterior; atoms are drawn from the declared
 #' posterior atoms with either method.
 #' @param ... additional graphical arguments. For mixed continuous and point
@@ -435,7 +437,7 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
                                                   n_points = n_points, n_samples = n_samples,
                                                   transformation = transformation, transformation_arguments = transformation_arguments,
                                                   transformation_settings = transformation_settings, prior_list_mu = prior_list_mu,
-                                                  effect_direction = effect_direction)
+                                                  effect_direction = effect_direction, force_samples = force_samples)
 
       # transplant common xlim and ylim
       plot_data_joined <- list(plot_data_prior, plot_data)
@@ -502,9 +504,14 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
       # use transformed or conditioned prior densities if available; the
       # prior list of a bias parameter already carries the branch weights
       # implied by the condition
-      plot_data_prior <- NULL
-      if(!bias_parameter &&
-         .plot_data_prior_should_use_context(samples, parameter, transform_scaled, prior_list)){
+      plot_data_prior <- .plot_data_attached_prior_density(
+        samples = samples, parameter = parameter, n_points = n_points,
+        x_range = xlim, transformation = transformation,
+        transformation_arguments = transformation_arguments,
+        transformation_settings = transformation_settings
+      )
+      if(is.null(plot_data_prior) && !bias_parameter &&
+        .plot_data_prior_should_use_context(samples, parameter, transform_scaled, prior_list)){
         plot_data_prior <- .plot_data_prior_density_context(
           prior_density_context      = prior_density_context,
           samples                   = samples,

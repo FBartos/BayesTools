@@ -7,6 +7,38 @@
   return(NULL)
 }
 
+# Resolve a plotted leaf while its parent identity and conditioning remain
+# available. An explicit continuous precomputed request never selects KDE.
+.plot_data_selected_posterior_density <- function(parent, child, parameter){
+
+  condition <- .marginal_posterior_condition_metadata(parent, child)
+  aliases <- .posterior_density_child_aliases(parent, child, parameter)
+  direct <- NULL
+  for(source in .posterior_density_sources(child)){
+    direct <- .posterior_density_from_sources(list(source), aliases,
+      conditional = condition$conditional, conditional_rule = condition$conditional_rule,
+      condition_key = condition$condition_key,
+      allow_unlabeled = identical(.posterior_density_kind(source), "density"))
+    if(!is.null(direct)) break
+  }
+  if(!is.null(direct)) return(.posterior_density_from_attribute(direct))
+  .posterior_density_from_attribute(.posterior_density_from_sources(
+    .posterior_density_sources(parent), aliases,
+    conditional = condition$conditional, conditional_rule = condition$conditional_rule,
+    condition_key = condition$condition_key
+  ))
+}
+
+.plot_data_require_precomputed_density <- function(density, density_method, continuous_mass){
+
+  if(identical(density_method, "precomputed") && continuous_mass > 0 && is.null(density)){
+    stop("Precomputed posterior density is unavailable for the selected parameter and condition. ",
+         "Provide matching valid 'posterior_density' metadata or set 'density_method' to 'KDE'.",
+         call. = FALSE)
+  }
+  invisible(NULL)
+}
+
 .posterior_density_usable_for_null <- function(posterior_density,
                                                null_hypothesis){
 

@@ -86,7 +86,9 @@ parameter that needs to be transformed.}
 \code{"KDE"} computes a kernel density estimate. Plot methods with exact
 finite prior-support bounds apply boundary reflection.
 \code{"precomputed"} uses valid \code{posterior_density} metadata when
-present and falls back to KDE otherwise. A precomputed density is the
+matching the selected parameter and condition; a missing or unusable
+continuous curve stops with a remedy to supply matching metadata or use
+\code{"KDE"}. Pure-atom targets need no continuous curve. A precomputed density is the
 continuous part of the posterior; atoms are drawn from the declared
 posterior atoms with either method.}
 }
@@ -100,7 +102,9 @@ Plot samples from the marginal posterior distributions
 \details{
 Marginal posterior vectors may carry \code{posterior_density}
 metadata (\code{\link[=posterior_metadata]{posterior_metadata()}}) with \code{x} and \code{y} coordinates. These densities are used
-only when \code{density_method = "precomputed"}. Marginal KDE fallbacks use
+only when \code{density_method = "precomputed"}, which requires a matching
+valid curve for each selected continuous leaf. Pure-atom leaves need no
+continuous curve. Marginal plots with \code{density_method = "KDE"} use
 a standard KDE because marginal prior-density grids are numerical density
 ranges rather than true support metadata; this can intentionally differ from
 the support-reflected ordinate used by \code{\link{Savage_Dickey_BF}} when
