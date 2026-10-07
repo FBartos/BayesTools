@@ -175,7 +175,12 @@ overrides retain fitted declarations. Original coefficients use
 prefix, with equal canonical multipliers canceled even at zero and declared
 zero terms elided. A different needed zero denominator refuses the requested
 numeric vector. C has finite static rows and all-NA dynamic rows; A remains
-finite. Formula values/measures use compiled contributions and fitted rows on
+finite. Nonzero ratio arithmetic preserves the ordinary multiplication-first
+grouping when its intermediates are normal, then tries ratio-first grouping;
+unresolved range loss refuses rather than declaring a zero coefficient.
+Weighted original-scale requests refuse nonidentity exp outputs, including
+state-dependent maps; a scalar exp target retains its declared transformed law.
+Formula values/measures use compiled contributions and fitted rows on
 both views. Public marginal `at` values retain fitted/SD units on fitted views
 and original units on original views; standardize only the latter to compare
 the same physical row. Retain fixed sources, actual multipliers and needed gate/replay
@@ -523,9 +528,9 @@ needed. Prediction matches exact keys first. Numeric input can display-match
 only character-owned training levels; character/factor input can match a unique
 fitted label, but ambiguous raw labels refuse before the new-level policy.
 The existing structured metric/index replay has its separate unique-label
-fallback policy; grouping ownership does not change that policy. Formula-design
-schema 5 requires persisted component ownership and refitting older designs;
-the coefficient-transform schema remains 2.
+fallback policy; grouping ownership does not change that policy. The current
+formula schemas above require persisted component ownership and refitting
+older designs.
 
 ## Verification
 

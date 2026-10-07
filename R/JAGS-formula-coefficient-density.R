@@ -418,7 +418,9 @@ JAGS_formula_prior_density <- function(
       reason = targets$reason[unavailable][[1L]]
     )
   }
-  nonlinear <- targets$map_type %in% c("exp_affine", "unsupported")
+  nonlinear <- targets$map_type %in% c("exp_affine", "unsupported") |
+    (targets$map_type == "state_dependent" &
+       transform$output_transforms[targets$target] != "identity")
   if(any(nonlinear)) .bt_formula_density_stop(
     paste0("Prior density of a weighted combination of target coefficients is ",
       "unavailable: the map of '", targets$target[nonlinear][[1L]],
@@ -671,6 +673,47 @@ JAGS_formula_prior_density <- function(
   NULL
 }
 
+# Retain the original grouping when its intermediate products are normal.
+# A ratio-first grouping can recover a representable final value when that
+# grouping loses range. Only final results may be subnormal; neither order
+# certifies zero from nonzero operands.
+.bt_formula_coefficient_ratio <- function(basis, numerator, denominator,
+                                           source, target, value = NULL){
+
+  normal <- function(x) is.finite(x) & abs(x) >= .Machine$double.xmin
+  final <- function(x) is.finite(x) & x != 0
+  if(is.null(value)){
+    product <- basis * numerator
+    direct <- product / denominator
+    valid <- normal(product) & final(direct)
+    ratio <- numerator / denominator
+    alternate <- ratio * basis
+    alternate_valid <- normal(ratio) & final(alternate)
+    zero <- numerator == 0
+  }else{
+    first <- basis * value
+    product <- first * numerator
+    direct <- product / denominator
+    valid <- normal(first) & normal(product) & final(direct)
+    ratio <- numerator / denominator
+    second <- ratio * value
+    alternate <- second * basis
+    alternate_valid <- normal(ratio) & normal(second) & final(alternate)
+    zero <- value == 0 | numerator == 0
+  }
+  resolved <- valid | alternate_valid | zero
+  if(any(!resolved)) .bt_formula_transform_stop(
+    "Original coefficient ratio arithmetic is numerically unavailable.",
+    source = source, target = target, reason = "nonfinite_transform",
+    observed = list(indices = which(!resolved), basis = basis, value = value,
+      numerator = numerator, denominator = denominator, product = product,
+      direct = direct, ratio = ratio, alternate = alternate))
+  out <- direct
+  out[!valid] <- rep_len(alternate, length(out))[!valid]
+  out[zero] <- 0
+  out
+}
+
 .bt_formula_coefficient_term <- function(source, target, basis, multipliers,
                                          constants, source_transforms){
 
@@ -684,7 +727,8 @@ JAGS_formula_prior_density <- function(
   zero <- zero_source || (!cancel && !is.null(constant_numerator) && constant_numerator == 0)
   static <- zero || cancel || (!is.null(constant_numerator) &&
                                 !is.null(constant_denominator) && constant_denominator != 0)
-  weight <- if(zero) 0 else if(cancel) basis else if(static) basis * constant_numerator / constant_denominator else NA_real_
+  weight <- if(zero) 0 else if(cancel) basis else if(static)
+    .bt_formula_coefficient_ratio(basis, constant_numerator, constant_denominator, source, target) else NA_real_
   list(zero = zero, cancel = cancel, static = static, weight = weight, basis = unname(basis))
 }
 
@@ -719,12 +763,17 @@ JAGS_formula_prior_density <- function(
     recipes[[target]] <- if(!dynamic[[target]]){
       list(type = "raw_affine", weights = stats::setNames(as.numeric(matrix[target, , drop = FALSE]), colnames(matrix)), reason = NA_character_)
     }else if(!is.null(denominator) && denominator != 0){
-      weights <- stats::setNames(as.numeric(basis[target, , drop = FALSE]) / denominator, colnames(basis))
-      for(source in names(weights)[weights != 0]){
+      weights <- stats::setNames(numeric(ncol(basis)), colnames(basis))
+      numerical_scale <- FALSE
+      for(source in colnames(basis)[basis[target, ] != 0]){
         if(.bt_formula_coefficient_term(source, target, basis[target, source], multipliers,
-                                        constants, source_transforms)$zero) weights[[source]] <- 0
+                                        constants, source_transforms)$zero) next
+        weight <- basis[target, source] / denominator
+        if(!is.finite(weight) || weight == 0) numerical_scale <- TRUE else weights[[source]] <- weight
       }
-      list(type = "contribution_affine", weights = weights, reason = NA_character_)
+      if(numerical_scale) list(type = "unavailable", weights = stats::setNames(numeric(), character()),
+        reason = "numerical_scale_unavailable") else
+          list(type = "contribution_affine", weights = weights, reason = NA_character_)
     }else{
       list(type = "unavailable", weights = stats::setNames(numeric(), character()),
         reason = "state_dependent_map")
@@ -941,13 +990,19 @@ JAGS_formula_prior_density <- function(
       }
       if(isTRUE(term$cancel)){
         contribution <- term$basis * value
+        if(any(value != 0 & contribution == 0)) .bt_formula_transform_stop(
+          "Original coefficient arithmetic is numerically unavailable.",
+          parameter = transform$parameter, source = source, target = name,
+          reason = "nonfinite_transform", observed = list(basis = term$basis, value = value,
+            contribution = contribution))
       }else{
         numerator <- multiplier(transform$multipliers[[source]])
         denominator <- multiplier(transform$multipliers[[name]])
         if(any(denominator == 0)) .bt_formula_transform_stop(
           paste0("Original coefficient '", name, "' has a zero multiplier denominator."),
           parameter = transform$parameter, target = name, reason = "zero_multiplier_denominator")
-        contribution <- term$basis * value * numerator / denominator
+        contribution <- .bt_formula_coefficient_ratio(term$basis, numerator, denominator,
+          source, name, value = value)
       }
       if(any(!is.finite(contribution))) .bt_formula_transform_stop(
         "Original coefficient arithmetic is nonfinite.", parameter = transform$parameter,
@@ -1126,8 +1181,10 @@ JAGS_formula_prior_density <- function(
   recipes <- transform$prior_recipes[names(weights)]
   types <- vapply(recipes, `[[`, character(1), "type")
   if(any(types == "unavailable")) .bt_formula_density_stop(
-    "The requested original coefficient prior law is unavailable for its state-dependent map.",
-    parameter = transform$parameter, target = names(weights), reason = "state_dependent_map")
+    paste0("The requested original coefficient prior law is unavailable: ",
+      recipes[[which(types == "unavailable")[[1L]]]]$reason, "."),
+    parameter = transform$parameter, target = names(weights),
+    reason = recipes[[which(types == "unavailable")[[1L]]]]$reason)
   # A static identity sibling can be expressed in the contribution space if
   # its own multiplier is an authoritative nonzero constant.
   type <- if(all(types == "raw_affine")) "raw_affine" else "contribution_affine"
@@ -1145,7 +1202,17 @@ JAGS_formula_prior_density <- function(
         .bt_formula_density_stop("The requested coefficient laws have incompatible prior recipes.",
           parameter = transform$parameter, target = names(weights), reason = "incompatible_prior_recipes")
       }
-      recipes[[target]]$weights <- transform$basis_matrix[target, ] / denominator
+      converted <- stats::setNames(numeric(length(transform$source_names)), transform$source_names)
+      for(source in transform$source_names[transform$basis_matrix[target, ] != 0]){
+        if(.bt_formula_coefficient_term(source, target, transform$basis_matrix[target, source],
+          transform$multipliers, transform$state_constants, transform$source_transforms)$zero) next
+        converted[[source]] <- transform$basis_matrix[target, source] / denominator
+        if(!is.finite(converted[[source]]) || converted[[source]] == 0) .bt_formula_density_stop(
+          "The requested coefficient prior law is unavailable because its contribution scale lost representable range.",
+          parameter = transform$parameter, target = names(weights), source = source,
+          reason = "numerical_scale_unavailable")
+      }
+      recipes[[target]]$weights <- converted
     }
   }
   out <- stats::setNames(rep(0, length(transform$source_names)), transform$source_names)

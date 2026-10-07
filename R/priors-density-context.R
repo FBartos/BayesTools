@@ -136,6 +136,7 @@
     if(length(cols) == 0L) next
     descriptor <- transform$descriptor
     if(transform$log_intercept && transform$intercept %in% cols &&
+       descriptor$targets$map_type[match(transform$intercept, descriptor$targets$target)] != "identity" &&
        !identical(unname(source_transforms[transform$intercept]), "log")){
       .bt_formula_density_stop("This coefficient combination requires the log of its transformed intercept.",
         parameter = descriptor$parameter, reason = "nonlinear_map")
