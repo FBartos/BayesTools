@@ -25,6 +25,17 @@ source(testthat::test_path("common-functions.R"))
   readRDS(file.path(temp_fits_dir, paste0(name, ".RDS")))
 }
 
+test_that("expression point coefficients replay genuine JAGS monitors through their registered family", {
+  fit <- .dnode_cached_fit("fit_dnode_point_expression")
+  posterior <- as.matrix(.fit_to_posterior(fit))
+  reduced <- posterior[, setdiff(colnames(posterior), c("mu_x", paste0("mu[", 1:24, "]"))), drop = FALSE]
+  rebuilt <- JAGS_evaluate_deterministic(fit, reduced, nodes = c("mu_x", "mu"))
+  expect_equal(as.numeric(rebuilt[, "mu_x"]), 2 * posterior[, "theta"] + .25, tolerance = 1e-14)
+  expect_equal(as.vector(rebuilt), as.vector(posterior[, colnames(rebuilt), drop = FALSE]), tolerance = 1e-14)
+  expect_equal(as.vector(JAGS_evaluate_formula(fit, parameter = "mu")),
+    as.vector(t(posterior[, paste0("mu[", 1:24, "]"), drop = FALSE])), tolerance = 1e-14)
+})
+
 # Removes every monitored coordinate of the family's nodes from the posterior,
 # rebuilds them, and returns the rebuilt and monitored columns.
 .dnode_rebuild <- function(fit, family){

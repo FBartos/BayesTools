@@ -189,7 +189,7 @@
   )
 
   coefficient_dependencies <- unlist(lapply(terms, function(term){
-    if(is.prior.point(term$prior)){
+    if(!is.null(.bt_formula_numeric_point(term$prior))){
       return(character())
     }
     .bt_dnode_linear_predictor_coefficient_names(term)
@@ -291,7 +291,12 @@
   if(is.null(lookup$fit)){
     return(NULL)
   }
+  design <- JAGS_formula_design(lookup$fit)[[node$node]]
+  constants <- .bt_formula_state_constants(design$formula_scale)
   for(name in node$dependencies){
+    prior <- lookup$prior_list[[sub("\\[[0-9]+\\]$", "", name)]]
+    if(name %in% names(constants) ||
+       (is.prior.point(prior) && is.expression(prior$parameters[["location"]]))) next
     if(is.null(.bt_deterministic_lookup_value(lookup, name))){
       return(NULL)
     }
@@ -305,6 +310,7 @@
     blocks = if(sampled) spec$sampled_blocks,
     posterior = lookup$draws
   )
+  if(is.null(values)) return(NULL)
 
   t(unname(values))
 }
@@ -392,11 +398,32 @@
   value_evaluators <- lapply(terms, function(term){
     names <- .bt_dnode_linear_predictor_coefficient_names(term)
     if(is.prior.point(term$prior)){
-      location <- term$prior[["parameters"]][["location"]]
-      n_values <- length(term$columns)
-      return(function(samples) rep(location, n_values))
+      return(function(samples, parameters = NULL){
+        as.vector(.bt_formula_point_values(term$name, term$prior, design,
+          samples, parameters, n_values = length(term$columns)))
+      })
     }
-    .bt_JAGS_bridge_compile_parameter_values(term$prior, names)
+    evaluator <- .bt_JAGS_bridge_compile_parameter_values(term$prior, names)
+    if(is.prior.ordered(term$prior)) return(function(samples, parameters = NULL) evaluator(samples))
+    coefficient_name <- term$name
+    distribution <- term$prior$distribution
+    function(samples, parameters = NULL){
+      values <- if(coefficient_name %in% names(parameters)){
+        parameters[[coefficient_name]]
+      }else if(all(names %in% names(parameters))){
+        unlist(parameters[names], use.names = FALSE)
+      }else NULL
+      if(is.null(values)) return(evaluator(samples))
+      if(!is.numeric(values) || !is.null(dim(values)) || length(values) != length(names) || any(!is.finite(values))){
+        .bt_formula_transform_stop("Natural formula coefficient state has malformed values.",
+          reason = "malformed_coefficient_state", state = coefficient_name)
+      }
+      if(identical(distribution, "invgamma")){
+        return(.bt_JAGS_marglik_invgamma_values(stats::setNames(as.list(values), names),
+          names, "'samples' does not contain all monitored formula prior parameters.", signal = TRUE))
+      }
+      unname(values)
+    }
   })
   multiplier_evaluators <- lapply(terms, function(term){
     if(is.null(term$multiply_by)){
@@ -437,7 +464,7 @@
     value = function(samples, prior_list_parameters){
       output <- numeric(n_rows)
       for(i in seq_along(terms)){
-        values <- value_evaluators[[i]](samples)
+        values <- value_evaluators[[i]](samples, prior_list_parameters)
         multiplier <- if(has_multiplier[[i]] && term_types[[i]] != "intercept"){
           multiplier_evaluators[[i]](prior_list_parameters)
         }

@@ -333,6 +333,10 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
       formula_add_parameters
     )
     for(parameter in names(formula_output)){
+      formula_output[[parameter]]$formula_design <- .bt_formula_point_finalize(
+        formula_output[[parameter]]$formula_design, combined_prior_list,
+        formula_data_list[[parameter]], data, expression_parameter_names
+      )
       formula_output[[parameter]]$formula_design <-
         .bt_formula_expression_finalize_design(
           design = formula_output[[parameter]]$formula_design,

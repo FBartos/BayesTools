@@ -1863,6 +1863,15 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       flags = list(simple_priors = TRUE, formulas = TRUE, assertion_only = TRUE),
       note = "Formula coefficients with fixed and parameter multipliers for linear-predictor marginal posteriors."
     ),
+    catalog_row("fit_dnode_point_expression", has_marglik = FALSE,
+      model_family = "gaussian-regression", formula = "~ x", scale_policy = "none",
+      prior_features = "point,simple,formula,expression",
+      expected_monitor = c("mu_intercept", "mu_x", "theta", "delta", paste0("mu[", 1:24, "]")),
+      expected_formula_parameters = "mu", oracle_type = "formula-fixture-metadata",
+      expected_chains = 1L, expected_iterations = 100L,
+      flags = list(simple_priors = TRUE, formulas = TRUE, expression_priors = TRUE,
+        add_parameters = TRUE, assertion_only = TRUE),
+      note = "Scalar expression point coefficient with declared ordinary parents and monitored linear predictor."),
     catalog_row(
       "fit_label_log_intercept",
       has_marglik = FALSE,

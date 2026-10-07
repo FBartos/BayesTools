@@ -406,11 +406,10 @@ JAGS_evaluate_formula <- function(fit, formula = NULL, parameter,
     n_draws = nrow(posterior),
     values_of = function(term){
       if(is.prior.point(term$prior)){
-        return(matrix(
-          term$prior$parameters[["location"]],
-          nrow = nrow(posterior),
-          ncol = if(identical(term$type, "factor")) .get_prior_factor_levels(term$prior) else 1
-        ))
+        name <- JAGS_parameter_names(term$model_term, formula_parameter = parameter)
+        return(.bt_formula_point_values(name, term$prior, fitted_design,
+          posterior, n_draws = nrow(posterior),
+          n_values = if(identical(term$type, "factor")) .get_prior_factor_levels(term$prior) else 1L))
       }
       columns <- if(identical(term$type, "intercept")){
         JAGS_parameter_names("intercept", formula_parameter = parameter)

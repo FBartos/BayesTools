@@ -175,7 +175,9 @@
   }
 
   if(identical(distribution, "point")){
-    location <- prior_object$parameters[["location"]]
+    location <- .bt_formula_numeric_point(prior_object)
+    if(is.null(location)) .bt_formula_point_stop(parameter_name,
+      "missing_point_owner", "this generic prior reader has no expression replay owner")
     return(list(
       log_prior = log_prior,
       parameters = function(samples){
@@ -247,7 +249,9 @@
   }
 
   if(is.prior.point(prior_object)){
-    location <- prior_object$parameters[["location"]]
+    location <- .bt_formula_numeric_point(prior_object)
+    if(is.null(location)) .bt_formula_point_stop(parameter_names[[1L]],
+      "missing_point_owner", "this generic coefficient reader has no expression replay owner")
     return(function(samples) rep(location, length(parameter_names)))
   }
 

@@ -193,6 +193,11 @@ NULL
     if(!is.prior.point(prior)){
       next
     }
+    if(is.expression(prior$parameters[["location"]])){
+      coordinates <- .prior_linear_prior_columns(parameter, prior)
+      if(all(coordinates %in% colnames(model_samples))) next
+      .bt_formula_point_stop(parameter, "missing_point_owner", "this generic summary reader has no expression replay owner")
+    }
     point_samples <- .point_prior_sample_matrix(
       prior = prior,
       parameter = parameter,
@@ -211,6 +216,10 @@ NULL
 }
 
 .point_prior_sample_matrix <- function(prior, parameter, n_samples){
+
+  if(is.null(.bt_formula_numeric_point(prior))){
+    .bt_formula_point_stop(parameter, "missing_point_owner", "this generic point reader requires a finite numeric scalar location")
+  }
 
   if(is.prior.factor(prior)){
     return(.generate_factor_prior_sample_matrix(

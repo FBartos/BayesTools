@@ -410,6 +410,9 @@ JAGS_formula_design <- function(fit, parameter = NULL){
 #' @param data data.frame the formula is fitted to: it determines the factor
 #' levels and the standardization of the design.
 #' @param model_data optional named list of the JAGS model data of the fit,
+#' also retained for expression-point coefficient dependencies and scalar
+#' multiplier/SD sources. Owned point-expression arrays retain their original
+#' dimensions independently of prediction-row counts.
 #' as the \code{data} argument of [JAGS_fit()]. \code{expression()} terms of
 #' \code{formula} may read these data besides \code{data}; the design keeps
 #' the data they read, as the fitted design does.
@@ -483,6 +486,9 @@ JAGS_formula_draws <- function(draws, formula, parameter, data, prior_list,
   formula_scale_info <- if(is.list(formula_scale_info)) formula_scale_info else list()
   owning_priors <- c(formula_design[[parameter]]$prior_list,
     supplied_priors[setdiff(names(supplied_priors), names(formula_design[[parameter]]$prior_list))])
+  formula_design[[parameter]] <- .bt_formula_point_finalize(
+    formula_design[[parameter]], owning_priors, data, model_data, draw_names
+  )
   completed_scale <- .bt_formula_scale_finalize(
     output$formula_scale, design = formula_design[[parameter]],
     prior_list = owning_priors,

@@ -98,6 +98,12 @@ weights. Replay accepts nonnegative Gamma values with a positive row sum;
 bridge stochastic-source checks retain their positive-coordinate rule.}
 \item{\code{"ordered_coefficient"}}{each ordered increment from its declared
 total slice and factor allocations. Shared allocation keys have one node.}
+\item{\code{"point_expression"}}{scalar expression-valued formula point
+coefficients and their declared expression-point parents. Replay uses
+the retained location AST, owned data, and available declared parents.
+It replaces stale coefficient monitors before dependent formula replay.
+A coefficient monitor can supply a formula when its parents are absent;
+that coefficient is then unavailable for explicit recomputation.}
 \item{\code{"linear_predictor"}}{the linear predictor of a formula
 parameter on the fitted rows: the intercept (or its logarithm), the
 continuous and factor terms with their \code{multiply_by} multipliers,
@@ -116,6 +122,12 @@ Nodes are evaluated with the arithmetic of the R evaluator, which reproduces
 the JAGS monitors exactly or to the last bits of floating-point rounding.
 Successful parent outputs replace stale derived columns before dependent
 nodes are evaluated, for every family.
+Point coefficient replay uses the bounded formula-expression arithmetic
+subset, requires one finite scalar per draw, and does not bind the loop
+index \code{i}. Unsupported replay syntax retains valid fitting and
+monitored-value routes, and reports
+\code{BayesTools_formula_point_unavailable} when replay is requested.
+Missing affected declaration ownership requires refitting.
 }
 \seealso{
 \code{\link[=JAGS_fit]{JAGS_fit()}} \code{\link[=parameter_coordinates]{parameter_coordinates()}} \code{\link[=transform_prior_samples]{transform_prior_samples()}}

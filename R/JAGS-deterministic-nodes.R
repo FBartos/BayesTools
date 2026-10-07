@@ -62,6 +62,12 @@
 #'   bridge stochastic-source checks retain their positive-coordinate rule.}
 #'   \item{\code{"ordered_coefficient"}}{each ordered increment from its declared
 #'   total slice and factor allocations. Shared allocation keys have one node.}
+#'   \item{\code{"point_expression"}}{scalar expression-valued formula point
+#'   coefficients and their declared expression-point parents. Replay uses
+#'   the retained location AST, owned data, and available declared parents.
+#'   It replaces stale coefficient monitors before dependent formula replay.
+#'   A coefficient monitor can supply a formula when its parents are absent;
+#'   that coefficient is then unavailable for explicit recomputation.}
 #'   \item{\code{"linear_predictor"}}{the linear predictor of a formula
 #'   parameter on the fitted rows: the intercept (or its logarithm), the
 #'   continuous and factor terms with their \code{multiply_by} multipliers,
@@ -80,6 +86,12 @@
 #' the JAGS monitors exactly or to the last bits of floating-point rounding.
 #' Successful parent outputs replace stale derived columns before dependent
 #' nodes are evaluated, for every family.
+#' Point coefficient replay uses the bounded formula-expression arithmetic
+#' subset, requires one finite scalar per draw, and does not bind the loop
+#' index \code{i}. Unsupported replay syntax retains valid fitting and
+#' monitored-value routes, and reports
+#' \code{BayesTools_formula_point_unavailable} when replay is requested.
+#' Missing affected declaration ownership requires refitting.
 #'
 #' @return \code{JAGS_deterministic_nodes()} returns a data frame with one row
 #' per node and the columns \code{node} (node name), \code{family},
@@ -164,7 +176,14 @@ JAGS_deterministic_evaluator <- function(fit, nodes = NULL){
     lookup$fit <- fit
     values <- vector("list", length(all_nodes))
     for(i in seq_along(all_nodes)){
-      node_values <- evaluators[[i]](lookup)
+      node_values <- tryCatch(evaluators[[i]](lookup),
+        BayesTools_formula_point_unavailable = identity)
+      if(inherits(node_values, "BayesTools_formula_point_unavailable")){
+        structural <- node_values$reason %in% c("missing_point_parent",
+          "unsupported_point_expression", "unsupported_point_row_index", "unresolved_point_parent")
+        if(!structural || (requested && all_nodes[[i]]$node %in% selected)) stop(node_values)
+        node_values <- NULL
+      }
       if(is.null(node_values) && requested && all_nodes[[i]]$node %in% selected){
         if(all_nodes[[i]]$family %in% c("ordered_allocation","ordered_coefficient")){
           .bt_ordered_stop(paste0("Ordered deterministic node '",all_nodes[[i]]$node,
@@ -223,7 +242,8 @@ JAGS_deterministic_evaluator <- function(fit, nodes = NULL){
   "prior_mixture",
   "ordered_allocation",
   "ordered_coefficient",
-  "linear_predictor"
+  "linear_predictor",
+  "point_expression"
 )
 
 .bt_deterministic_node <- function(family, node, coordinates,
@@ -269,6 +289,7 @@ JAGS_deterministic_evaluator <- function(fit, nodes = NULL){
     ordered_allocation = .bt_dnode_ordered_allocation_emit(node),
     ordered_coefficient = .bt_dnode_ordered_coefficient_emit(node),
     linear_predictor = .bt_dnode_linear_predictor_emit(node),
+    point_expression = node$spec$syntax,
     stop("Unsupported deterministic node family '", node$family, "'.", call. = FALSE)
   )
 }
@@ -287,6 +308,7 @@ JAGS_deterministic_evaluator <- function(fit, nodes = NULL){
     ordered_allocation = .bt_dnode_ordered_allocation_evaluate(node, lookup),
     ordered_coefficient = .bt_dnode_ordered_coefficient_evaluate(node, lookup),
     linear_predictor = .bt_dnode_linear_predictor_evaluate(node, lookup),
+    point_expression = .bt_dnode_point_expression_evaluate(node, lookup),
     stop("Unsupported deterministic node family '", node$family, "'.", call. = FALSE)
   )
   if(is.null(values)){
@@ -328,6 +350,32 @@ JAGS_deterministic_evaluator <- function(fit, nodes = NULL){
   }
   if(is.list(formula_design)){
     for(design in formula_design){
+      owner <- design$point_expression_owner
+      fixed <- intersect(names(design$prior_list), paste0(design$parameter, "_", design$model_terms))
+      if(is.null(owner) && any(vapply(design$prior_list[fixed], function(prior){
+        is.prior.point(prior) && is.expression(prior$parameters[["location"]])
+      }, logical(1)))){
+        .bt_stop_refit_required("Expression-point formula declarations are missing. Refit the model with this version of BayesTools.")
+      }
+      if(!is.null(owner)){
+        # Parent expressions precede dependent coefficients in the ordinary
+        # replay loop, which replaces stale derived columns before formula use.
+        ordered <- character()
+        add <- function(name, path = character()){
+          if(name %in% ordered || !name %in% names(owner$points)) return(invisible(NULL))
+          if(name %in% path) return(invisible(NULL))
+          for(parent in owner$points[[name]]$parameter_dependencies){
+            add(parent, c(path, name))
+          }
+          ordered <<- c(ordered, name)
+        }
+        for(name in owner$targets) add(name)
+        for(name in ordered){
+          if(!name %in% vapply(nodes, `[[`, character(1), "node")){
+            nodes[[length(nodes) + 1L]] <- .bt_dnode_point_expression(name, owner$prior_list[[name]], design)
+          }
+        }
+      }
       for(random_term in .bt_formula_design_random_effects(design)){
         nodes <- c(nodes, .bt_deterministic_nodes_random_term(
           random_term,

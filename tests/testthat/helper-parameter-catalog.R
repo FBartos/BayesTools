@@ -12,6 +12,8 @@
       if(is.null(scale)) scale <- design$formula_scale
       completed_scale <- .bt_formula_scale_finalize(scale, design,
         prior_list = prior_list, owner_scope = "fit")
+      formula_design[[parameter]] <- .bt_formula_point_finalize(design,
+        prior_list, design$source_data, parameter_names = colnames(chains[[1L]]))
       formula_design[[parameter]]$formula_scale <- completed_scale
       formula_scale[[parameter]] <- completed_scale
     }

@@ -72,6 +72,9 @@ attach_test_parameter_map <- function(fit, monitor_names = NULL) {
       if(is.null(scale)) scale <- design$formula_scale
       scale <- BayesTools:::.bt_formula_scale_finalize(scale, design,
         prior_list = attr(fit, "prior_list", exact = TRUE), owner_scope = "fit")
+      designs[[parameter]] <- BayesTools:::.bt_formula_point_finalize(design,
+        attr(fit, "prior_list", exact = TRUE), design$source_data,
+        parameter_names = colnames(as.matrix(BayesTools:::.fit_to_posterior(fit))))
       designs[[parameter]]$formula_scale <- scale
       scales[[parameter]] <- scale
     }

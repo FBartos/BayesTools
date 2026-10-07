@@ -70,6 +70,13 @@ the priors require stop with an error of class
 \code{BayesTools_marglik_input}); callers match the class, not the message.
 This includes ordinary scalar and vector priors. A named coordinate whose
 value is \code{NA} is present; literal point priors need no monitored coordinate.
+Formula reconstruction combines decoded ordinary and formula-prior values,
+genuine additional sampled sources, and retained scalar data before fixed
+coefficients, multipliers, and random-effect SDs are reconstructed. Natural
+owned state takes precedence over transformed aliases; malformed supplied
+owners refuse instead of falling back to a sample column. Expression-point
+replay is available through a fitted formula owner; generic prior readers
+without that owner report \code{BayesTools_formula_point_unavailable}.
 }
 \description{
 Extracts transformed parameters from the

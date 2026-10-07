@@ -83,6 +83,9 @@ random effects and which should be compiled as structural marginalized
 blocks.}
 
 \item{model_data}{optional named list of the JAGS model data of the fit,
+also retained for expression-point coefficient dependencies and scalar
+multiplier/SD sources. Owned point-expression arrays retain their original
+dimensions independently of prediction-row counts.
 as the \code{data} argument of \code{\link[=JAGS_fit]{JAGS_fit()}}. \code{expression()} terms of
 \code{formula} may read these data besides \code{data}; the design keeps
 the data they read, as the fitted design does.}

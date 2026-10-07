@@ -705,17 +705,19 @@
   x[do.call(cbind, indices)]
 }
 .bt_formula_expression_eval <- function(spec, data, n_rows,
-                                        parameter_values = list(), context){
+                                        parameter_values = list(), context,
+                                        mode = "row"){
 
   env_data <- data
-  env_data[["i"]] <- seq_len(n_rows)
+  if(identical(mode, "row")) env_data[["i"]] <- seq_len(n_rows)
   env_data[names(parameter_values)] <- parameter_values
-  env_data[["["]] <- .bt_formula_expression_index
+  env_data[["["]] <- if(identical(mode, "point")) .bt_formula_point_index else .bt_formula_expression_index
   value <- tryCatch(
     eval(spec$parsed, envir = list2env(env_data, parent = baseenv())),
     error = function(e) e
   )
   if(inherits(value, "error")){
+    if(identical(mode, "point") && inherits(value, "BayesTools_formula_point_unavailable")) stop(value)
     stop(
       context, " '", spec$label, "' could not be evaluated: ",
       conditionMessage(value),
@@ -726,7 +728,13 @@
     stop(context, " '", spec$label, "' must evaluate to numeric values.",
          call. = FALSE)
   }
+  if(identical(mode, "point") && !is.numeric(value)){
+    .bt_formula_point_stop(context, "nonnumeric_point_expression", "the result must be numeric")
+  }
   value <- as.numeric(value)
+  if(identical(mode, "point") && length(value) != 1L){
+    .bt_formula_point_stop(context, "nonscalar_point_expression", "the result must be one finite scalar")
+  }
   if(length(value) == 1L){
     value <- rep.int(value, n_rows)
   }
@@ -738,6 +746,8 @@
     )
   }
   if(any(!is.finite(value))){
+    if(identical(mode, "point")) .bt_formula_point_stop(context,
+      "nonfinite_point_expression", "the expression produced a nonfinite value")
     stop(context, " '", spec$label, "' produced non-finite values.",
          call. = FALSE)
   }

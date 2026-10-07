@@ -23,6 +23,13 @@
 #' \code{BayesTools_marglik_input}); callers match the class, not the message.
 #' This includes ordinary scalar and vector priors. A named coordinate whose
 #' value is \code{NA} is present; literal point priors need no monitored coordinate.
+#' Formula reconstruction combines decoded ordinary and formula-prior values,
+#' genuine additional sampled sources, and retained scalar data before fixed
+#' coefficients, multipliers, and random-effect SDs are reconstructed. Natural
+#' owned state takes precedence over transformed aliases; malformed supplied
+#' owners refuse instead of falling back to a sample column. Expression-point
+#' replay is available through a fitted formula owner; generic prior readers
+#' without that owner report \code{BayesTools_formula_point_unavailable}.
 #'
 #' @inheritParams JAGS_bridgesampling
 #' @export JAGS_marglik_parameters
@@ -104,6 +111,10 @@ JAGS_marglik_parameters                <- function(samples, prior_list){
 
 .JAGS_marglik_parameters.simple         <- function(samples, prior, parameter_name){
 
+  if(is.prior.point(prior) && is.null(.bt_formula_numeric_point(prior))){
+    .bt_formula_point_stop(parameter_name, "missing_point_owner", "this generic prior reader has no expression replay owner")
+  }
+
   .check_prior(prior)
   if(!is.prior.simple(prior))
     stop("improper prior provided")
@@ -140,7 +151,10 @@ JAGS_marglik_parameters                <- function(samples, prior_list){
   }
 
   if(is.prior.point(prior)){
-    return(rep(prior$parameters[["location"]], length(parameter_names)))
+    location <- .bt_formula_numeric_point(prior)
+    if(is.null(location)) .bt_formula_point_stop(parameter_names[[1L]],
+      "missing_point_owner", "this generic coefficient reader has no expression replay owner")
+    return(rep(location, length(parameter_names)))
   }
 
   if(prior[["distribution"]] == "invgamma"){

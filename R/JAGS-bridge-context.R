@@ -1516,8 +1516,7 @@
   prior_name <- sub("\\[[0-9]+\\]$", "", parameter_name)
   prior <- prior_list[[prior_name]]
   fixed <- if(!is.null(prior) && is.prior.point(prior)){
-    location <- prior$parameters[["location"]]
-    if(length(location) == 1L && !is.na(location)) location else NULL
+    .bt_formula_numeric_point(prior)
   }else{
     NULL
   }

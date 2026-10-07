@@ -2547,6 +2547,16 @@ test_that("Deterministic-node parity models fit correctly", {
   # The monitored linear predictor of a formula with a multiplier, an
   # expression, a factor, and latent LKJ and AR(1) random effects.
   x_prior <- prior("normal", list(0, 1))
+  model_registry[["fit_dnode_point_expression"]] <<- save_fit(
+    dnode_fit(~ x,
+      prior_list = list(intercept = prior("point", list(0)),
+        x = prior("point", list(location = expression(2 * theta + delta)))),
+      extra_prior = list(theta = prior("normal", list(0, 1)), delta = prior("point", list(.25))),
+      add_parameters = "mu", seed = 17L),
+    "fit_dnode_point_expression", simple_priors = TRUE, formulas = TRUE,
+    expression_priors = TRUE, add_parameters = TRUE, assertion_only = TRUE,
+    note = "Scalar expression point coefficient with an ordinary stochastic and literal point parent for registered-node monitor parity."
+  )$registry_entry
   attr(x_prior, "multiply_by") <- "b_scale"
   model_registry[["fit_dnode_linear_predictor"]] <<- save_fit(
     dnode_fit(

@@ -192,10 +192,9 @@
     return(NULL)
   }
 
-  location <- prior$parameters[["location"]]
-  if(length(location) != 1L || is.na(location)){
-    return(NULL)
-  }
+  location <- .bt_formula_numeric_point(prior)
+  if(is.null(location)) .bt_formula_point_stop(prior_name,
+    "missing_point_owner", "this scalar source reader has no expression replay owner")
 
   rep(location, nrow(posterior))
 }
