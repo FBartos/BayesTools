@@ -158,6 +158,28 @@
 }
 
 .get_prior_factor_levels       <- function(prior){
+  bound_design <- attr(prior, "factor_design", exact = TRUE)
+  if(is.matrix(bound_design)){
+    if(inherits(prior, c("prior.factor_mixture", "prior.factor_spike_and_slab")) &&
+       !any(vapply(prior, is.prior.ordered, logical(1)))){
+      dimensions <- c(list(attr(prior, "K", exact = TRUE)),
+        lapply(prior[vapply(prior, is.prior.factor, logical(1))], function(component){
+          if(!identical(attr(component, "factor_design", exact = TRUE), bound_design) ||
+             !identical(attr(component, "factor_contrasts", exact = TRUE), attr(prior, "factor_contrasts", exact = TRUE))){
+            stop("Bound factor components must share their declared coding and dimensions.", call. = FALSE)
+          }
+          component$parameters[["K"]]
+        }))
+      for(dimension in dimensions){
+        if(!is.null(dimension) && (length(dimension) != 1L ||
+           !(is.numeric(dimension) || (is.logical(dimension) && is.na(dimension))) ||
+           (!is.na(dimension) && (!is.finite(dimension) || dimension != ncol(bound_design))))){
+          stop("Bound factor dimensions disagree with an explicit 'K' declaration.", call. = FALSE)
+        }
+      }
+    }
+    return(ncol(bound_design))
+  }
   mixture_K <- attr(prior, "K", exact = TRUE)
   if(inherits(prior, "prior.factor_mixture") &&
      !is.null(mixture_K) && !is.na(mixture_K)){
@@ -218,6 +240,8 @@
         "meandif"           = is.prior.meandif(p),
         "ordered"           = is.prior.ordered(p),
         "K"                 = if(is.prior.ordered(p)) {
+          .get_prior_factor_levels(p)
+        }else if(is.matrix(attr(p, "factor_design", exact = TRUE))) {
           .get_prior_factor_levels(p)
         }else if(!is.null(p[["parameters"]][["K"]])) {
           p[["parameters"]][["K"]]

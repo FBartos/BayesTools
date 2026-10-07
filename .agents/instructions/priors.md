@@ -6,6 +6,14 @@ ordinates.
 
 ## Prior Contract
 
+Ordinary bound factor mixtures and spikes sample through their exact declared
+factor design. Scalar product components draw independent raw coordinates;
+joint mnormal/mt/mpoint retain their joint calls and mt's common scale.
+One component/inclusion gate per row is shared across all coordinates.
+Explicit conflicting K declarations refuse; standalone RNG/defaults and
+initialization keep their existing contracts. Ordered containers retain
+their separate policy.
+
 `prior()` creates the core `prior` S3 family. Distribution aliases and routing
 live in `R/priors.R`; constructors and parameter normalization live in
 `R/priors-constructors.R`; joint and marginal methods live in

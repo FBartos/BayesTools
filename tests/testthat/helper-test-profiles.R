@@ -35,6 +35,7 @@ bayestools_test_profile_contexts <- list(
     "draws-metadata",
     "factor-interaction-coefficients",
     "formula-contribution-state",
+    "priors-bound-factor-rng",
     "JAGS-formula-point-replay",
     "JAGS-formula-selected-replay",
     "formula-numerical-measures",

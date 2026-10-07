@@ -810,9 +810,7 @@ test_that("rng() factor_mixture with transform_factor_samples", {
     ),
     components = c("null", "alt")
   )
-  for (i in seq_along(p_mix)) {
-    p_mix[[i]]$parameters[["K"]] <- 2
-  }
+  p_mix <- prior_factor_levels(p_mix, 3)
 
   set.seed(1)
   samples <- rng(p_mix, 10, transform_factor_samples = FALSE)
@@ -838,9 +836,8 @@ test_that("rng() orthonormal prior with transform_factor_samples", {
 test_that("rng() factor spike-and-slab honours transform_factor_samples", {
 
   slab <- prior_factor("mnormal", list(0, 1), contrast = "meandif")
-  attr(slab, "levels") <- 3
   p <- prior_spike_and_slab(slab, prior_inclusion = prior("spike", list(.5)))
-  attr(p, "levels") <- 3
+  p <- prior_factor_levels(p, 3)
 
   set.seed(4103)
   raw <- rng(p, 50, transform_factor_samples = FALSE)

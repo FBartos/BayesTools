@@ -19,6 +19,12 @@
 #' otherwise. Levels given by their number are named \code{"1"}, \code{"2"},
 #' and so on. The factor is named after the parameter under which the prior is
 #' fitted.
+#' Bound mixture and spike-and-slab components use the declared design's raw
+#' coefficient and cell dimensions. Scalar component families draw independent
+#' raw coordinates; multivariate families retain their joint law, including
+#' a shared scale for multivariate t draws. Each row shares one component or
+#' inclusion gate across its coordinates. Standalone sampling and initialization
+#' retain their existing contracts.
 #'
 #' @return The prior distribution with its factor levels.
 #'

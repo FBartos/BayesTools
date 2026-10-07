@@ -140,8 +140,15 @@ NULL
     return(list(inclusion = inclusion))
   }
 
-  variable <- rng(.get_spike_and_slab_variable(prior), n,
-                  transform_factor_samples = transform_factor_samples)
+  variable <- if(inherits(prior, "prior.factor_spike_and_slab") &&
+                 is.matrix(attr(prior, "factor_design", exact = TRUE)) &&
+                 !is.prior.ordered(.get_spike_and_slab_variable(prior))){
+    .bt_rng_bound_factor_component(.get_spike_and_slab_variable(prior), n,
+      prior, transform_factor_samples)
+  }else{
+    rng(.get_spike_and_slab_variable(prior), n,
+        transform_factor_samples = transform_factor_samples)
+  }
   list(
     value                 = variable * inclusion,
     inclusion             = inclusion,
@@ -256,14 +263,25 @@ rng.prior   <- function(x, n, ...){
 
       prior_type <- .get_prior_factor_list_type(prior)
 
-      if(transform_factor_samples){
+      bound_design <- attr(prior, "factor_design", exact = TRUE)
+      if(any(vapply(prior, is.prior.ordered, logical(1)))) bound_design <- NULL
+      if(is.matrix(bound_design)){
+        .get_prior_factor_levels(prior)
+        x <- matrix(NA_real_, nrow = n,
+          ncol = if(transform_factor_samples) nrow(bound_design) else ncol(bound_design))
+      }else if(transform_factor_samples){
         x <- matrix(NA, nrow = n, ncol = prior_type[["K"]] + 1)
       }else{
         x <- matrix(NA, nrow = n, ncol = prior_type[["K"]])
       }
 
       for(component in unique(components)){
-        x[component == components,] <- rng(prior[[component]], sum(component == components), transform_factor_samples = transform_factor_samples)
+        x[component == components,] <- if(is.matrix(bound_design)){
+          .bt_rng_bound_factor_component(prior[[component]], sum(component == components),
+            prior, transform_factor_samples)
+        }else{
+          rng(prior[[component]], sum(component == components), transform_factor_samples = transform_factor_samples)
+        }
       }
 
     }else if(inherits(prior, "prior.simple_mixture")){
