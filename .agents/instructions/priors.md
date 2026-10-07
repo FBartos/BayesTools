@@ -167,6 +167,12 @@ agree - keep at least one test that compiles the real model.
 
 ## Structural Prior-Density Ordinates
 
+A posterior-only atom probability owner certifies that posterior measure's
+masses and scientific presence, not a prior law, context or recipe. Generic
+posterior-only draws may map their valid atoms without inventing a prior.
+Prior-side paired model/formula/ordered/context/recipe promises remain strict;
+an atom source label never supplies missing prior semantics.
+
 `prior_density_ordinate()` classifies the mathematical behavior of a prior at
 one exact finite value. Its stable schema and behavior values are public. Keep
 `R/prior-density-ordinate.R`, its roxygen documentation, and

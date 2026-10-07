@@ -1371,6 +1371,7 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
     marginal <- .posterior_atoms_set(marginal, atoms)
   }
   fitted_weights <- weights
+  marginal <- .bt_meta_update(marginal, linear_weights = weights, prior_context = prior_density_context)
   if(isTRUE(.bt_meta_get(samples,"transform_scaled"))){
     context <- .prior_density_context(prior_list,colnames(weights),formula_scale=.bt_meta_get(samples,"formula_scale"))
     fitted_weights <- matrix(0,nrow(weights),ncol(weights),dimnames=dimnames(weights))

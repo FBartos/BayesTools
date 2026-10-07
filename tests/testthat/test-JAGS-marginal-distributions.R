@@ -2661,13 +2661,22 @@ test_that("Savage_Dickey_BF applies the exactness rule of point hypotheses", {
   )
   expect_ordinate_class(bf_condition(three_t, 0), "BayesTools_inexact_ordinate")
 
-  # N(0, 1e-3) * Cauchy(0, 1): its quadrature at .3 is rejected by its
-  # diagnostics (an unclassed error before)
+  # The original Normal-Cauchy declaration now has a checked coordinate route.
   priors <- list(beta = prior("normal", list(0, 1e-3)), sigma = prior("cauchy", list(0, 1)))
   attr(priors$beta, "multiply_by") <- "sigma"
-  rejected <- bf_condition(BayesTools:::.prior_linear_combination_density(priors, c(beta = 1)), .3)
-  expect_ordinate_class(rejected, "BayesTools_inexact_ordinate")
-  expect_match(conditionMessage(rejected), "rejected by its diagnostics", fixed = TRUE)
+  independent <- function(sigma){
+    integral <- stats::integrate(function(z) z * stats::dnorm(z) / (1 + (sigma * z / .3)^2),
+      0, Inf, rel.tol = 1e-12, abs.tol = 0)
+    expect_identical(integral$message, "OK")
+    expect_lte(integral$abs.error, 1e-10 * integral$value)
+    (2 * sigma / (pi * .3^2)) * integral$value
+  }
+  law <- .prior_linear_combination_density(priors, c(beta = 1))
+  ordinate <- prior_density_ordinate(law, .3)
+  expect_lte(abs(exp(ordinate$log_density) / independent(.001) - 1), 1e-4)
+  expect_s3_class(bf_condition(law, .3), "BayesTools_BF")
+  exhausted <- bf_condition(.prior_linear_combination_density(priors, c(beta = 1), n_grid = 16), .3)
+  expect_ordinate_class(exhausted, "BayesTools_inexact_ordinate")
 
   # a density grid without provenance (an unclassed error before)
   grid <- structure(list(density = list(x = c(-3, 0, 3), y = c(0, 1 / 3, 0), mass = 1),

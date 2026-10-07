@@ -54,6 +54,15 @@ power and infinite mathematical support limits remain valid. No clipping or
 probability-mass repair is performed.
 
 The metadata are transformed as follows:
+A missing canonical prior law is first built from the complete declared
+source context and recipe, preserving its conditioning and coefficient or
+formula-contribution space. It is then transformed once. An attached law
+on the current output scale takes precedence over the original source
+context in plots. Known unsupported or numerical prior-law routes retain
+usable posterior draws and declare the prior density unavailable; requesting
+a prior overlay raises \code{BayesTools_formula_prior_density_unavailable}.
+Transformed publication-bias scalar prior overlays require a supported
+current-scale law and otherwise have the same explicit limitation.
 \describe{
 \item{\code{support}}{the bounds and points are mapped, and the bounds
 of decreasing transformations swapped. The support of a transformation

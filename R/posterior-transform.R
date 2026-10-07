@@ -53,6 +53,15 @@
 #' probability-mass repair is performed.
 #'
 #' The metadata are transformed as follows:
+#' A missing canonical prior law is first built from the complete declared
+#' source context and recipe, preserving its conditioning and coefficient or
+#' formula-contribution space. It is then transformed once. An attached law
+#' on the current output scale takes precedence over the original source
+#' context in plots. Known unsupported or numerical prior-law routes retain
+#' usable posterior draws and declare the prior density unavailable; requesting
+#' a prior overlay raises \code{BayesTools_formula_prior_density_unavailable}.
+#' Transformed publication-bias scalar prior overlays require a supported
+#' current-scale law and otherwise have the same explicit limitation.
 #' \describe{
 #'   \item{\code{support}}{the bounds and points are mapped, and the bounds
 #'   of decreasing transformations swapped. The support of a transformation
@@ -231,7 +240,8 @@ posterior_transform <- function(x, transformation, transformation_arguments = NU
   if(is.list(x) && !is.numeric(x)){
     x_attributes <- attributes(x)
     for(i in seq_along(x)){
-      x[[i]] <- .bt_posterior_transform_draws(x[[i]], map)
+      name <- if(is.null(names(x))) NULL else names(x)[[i]]
+      x[[i]] <- .bt_posterior_transform_draws(x[[i]], map, parent = x, parameter = name)
     }
     attributes(x) <- x_attributes
     # list-level metadata (e.g. sources of precomputed posterior densities)
@@ -246,7 +256,140 @@ posterior_transform <- function(x, transformation, transformation_arguments = NU
   .bt_posterior_transform_draws(x, map)
 }
 
-.bt_posterior_transform_draws <- function(x, map){
+.bt_posterior_transform_source_law <- function(x, parent = NULL, parameter = NULL){
+
+  fields <- .bt_meta_get_fields(x, .bt_meta_fields())
+  if(!is.null(fields$prior_density) || !is.null(fields$prior_densities) ||
+     (!is.null(fields$measure_unavailable) && any(fields$measure_unavailable$measure == "prior_density"))) return(x)
+  if(.plot_data_samples_without_prior(x)) return(x)
+  parent_fields <- if(is.null(parent)) list() else .bt_meta_get_fields(parent, .bt_meta_fields())
+  promise_fields <- c("prior_context", "linear_weights", "formula_state", "formula_parameter", "formula_scale",
+    "ordered_source", "model_probabilities")
+  bare <- is.null(attr(x, "prior_list", exact = TRUE)) &&
+    (is.null(parent) || is.null(attr(parent, "prior_list", exact = TRUE))) &&
+    all(vapply(c(fields[promise_fields], parent_fields[promise_fields]), is.null, logical(1)))
+  if(bare) return(x)
+  if(inherits(x, c("mixed_posteriors.weightfunction", "mixed_posteriors.bias"))){
+    return(.bt_formula_measure_mark(x, colnames(x), "prior_density",
+      "The transformed publication-bias scalar prior law is unavailable.",
+      cause = "unsupported_contribution_measure"))
+  }
+  if(length(fields$output_transformations)){
+    .bt_formula_density_stop("The transformed source has no current-scale prior law.",
+      target = parameter, reason = "structural_target_law_unavailable")
+  }
+  if(is.null(parameter)) parameter <- attr(x, "parameter", exact = TRUE)
+  if(is.null(parameter) && !is.null(fields$quantities) && nrow(fields$quantities) == 1L){
+    parameter <- fields$quantities$column[[1L]]
+  }
+  if(is.null(parent)){
+    parent <- stats::setNames(list(x), if(is.null(parameter)) "value" else parameter)
+    if(!is.null(fields$prior_context)) parent <- .bt_meta_set(parent, "prior_context", fields$prior_context)
+    if(!is.null(fields$condition)) parent <- .bt_meta_set(parent, "condition", fields$condition)
+    priors <- attr(x, "prior_list", exact = TRUE)
+    if(is.prior(priors) || (is.list(priors) && all(vapply(priors, is.prior, logical(1))))){
+      if(is.null(parameter) && is.null(fields$prior_context)){
+        .bt_formula_density_stop("The detached source prior has no declared target name.", reason = "unknown_target")
+      }
+      if(!is.null(parameter)) priors <- stats::setNames(list(priors), parameter)
+      attr(parent, "prior_list") <- priors
+    }
+  }
+  context <- if(!is.null(fields$prior_context)) fields$prior_context else parent_fields$prior_context
+  priors <- attr(parent, "prior_list", exact = TRUE)
+  if(is.null(priors) && !is.null(context)) priors <- context$prior_list
+  if(is.null(priors) && is.null(context)){
+    child_priors <- attr(x, "prior_list", exact = TRUE)
+    if(!is.null(child_priors)){
+      if(is.null(parameter) || length(parameter) != 1L){
+        .bt_formula_density_stop("The declared child prior has no unique target name.", reason = "unknown_target")
+      }
+      priors <- stats::setNames(list(child_priors), parameter)
+      attr(parent, "prior_list") <- priors
+    }
+  }
+  if(is.null(priors) && is.null(context)){
+    .bt_formula_density_stop("The source has no complete declared prior context.",
+      target = parameter, reason = "missing_source_context")
+  }
+  if(!is.null(priors) && all(vapply(priors, is.prior.none, logical(1)))) return(x)
+  build <- function(){
+    source <- if(is.null(fields$prior_context)) parent else .bt_meta_set(parent, "prior_context", fields$prior_context)
+    raw_coefficients <- if(is.null(fields$linear_weights)){
+      !isTRUE(fields$transform_scaled)
+    }else identical(.bt_linear_weight_space(x), "coefficient")
+    context <- .marginal_posterior_prior_density_context(source, priors,
+      column_names = context$column_names,
+      n_samples = if(is.null(context$n_grid)) .prior_linear_density_default_grid() else context$n_grid,
+      condition_source = x, raw_coefficients = raw_coefficients)
+    weights <- fields$linear_weights
+    if(is.null(weights) && is.matrix(x) && inherits(x, "mixed_posteriors.factor")){
+      target_parameter <- attr(x, "parameter", exact = TRUE)
+      if(is.null(target_parameter)) target_parameter <- parameter
+      factor_weights <- .prior_factor_level_weight_matrix(x, target_parameter, parent)
+      if(!all(colnames(factor_weights) %in% context$column_names)){
+        .bt_formula_density_stop("The factor prior recipe is not aligned with its source context.",
+          target = target_parameter, reason = "unknown_target")
+      }
+      weights <- matrix(0, nrow(factor_weights), length(context$column_names),
+        dimnames = list(colnames(x), context$column_names))
+      weights[, colnames(factor_weights)] <- factor_weights
+    }
+    if(is.null(weights)){
+      columns <- if(is.matrix(x)) colnames(x) else parameter
+      if(is.null(columns) || !all(columns %in% context$column_names)){
+        .bt_formula_density_stop("The source prior context has no declared target recipe.",
+          target = parameter, reason = "unknown_target")
+      }
+      weights <- diag(length(context$column_names))[match(columns, context$column_names), , drop = FALSE]
+      colnames(weights) <- context$column_names
+      rownames(weights) <- columns
+    }
+    if(is.null(dim(weights))) weights <- matrix(weights, nrow = 1L,
+      dimnames = list(parameter, names(weights)))
+    if(!is.matrix(x) && nrow(weights) > 1L){
+      density <- .prior_density_from_context_rows(context, weights)
+      if(!is.null(fields$linear_offset) && fields$linear_offset != 0){
+        density <- .prior_density_output_transform(density,
+          .bt_posterior_transformation("lin", list(a = fields$linear_offset, b = 1)))
+      }
+      return(.bt_meta_set(x, "prior_density", density))
+    }
+    if(is.matrix(x) && nrow(weights) != ncol(x)){
+      stop("The declared source prior recipe does not align with its draw columns.", call. = FALSE)
+    }
+    densities <- lapply(seq_len(nrow(weights)), function(i){
+      target <- if(nrow(weights) == 1L && !is.null(parameter)){
+        .marginal_posterior_simple_target(context, parameter)
+      }else list(source_transforms = NULL, output_transformation = NULL)
+      density <- .prior_density_from_context(context, stats::setNames(weights[i, ], colnames(weights)),
+        source_transforms = target$source_transforms, output_transformation = target$output_transformation)
+      if(!is.null(fields$linear_offset) && fields$linear_offset != 0){
+        density <- .prior_density_output_transform(density,
+          .bt_posterior_transformation("lin", list(a = fields$linear_offset, b = 1)))
+      }
+      density
+    })
+    if(nrow(weights) == 1L && !is.matrix(x)){
+      .bt_meta_set(x, "prior_density", densities[[1L]])
+    }else{
+      names(densities) <- if(is.null(rownames(weights))) colnames(x) else rownames(weights)
+      .bt_meta_set(x, "prior_densities", densities)
+    }
+  }
+  tryCatch(build(),
+    BayesTools_formula_measure_unavailable = function(condition){
+      if(!condition$reason %in% setdiff(.bt_formula_measure_causes, "missing_multiplier_law")) stop(condition)
+      .bt_formula_measure_mark(x, if(is.null(parameter)) colnames(x) else parameter,
+        "prior_density", conditionMessage(condition), cause = condition$reason, diagnostics = condition$diagnostics)
+    },
+    BayesTools_numerical_condition = function(condition){
+      .bt_formula_measure_mark(x, if(is.null(parameter)) colnames(x) else parameter,
+        "prior_density", conditionMessage(condition), cause = "numerical_scale_unavailable")
+    })
+}
+
+.bt_posterior_transform_draws <- function(x, map, parent = NULL, parameter = NULL){
 
   if(!.bt_meta_is_draws(x) ||
      (is.null(.bt_meta_container(x)) &&
@@ -263,8 +406,14 @@ posterior_transform <- function(x, transformation, transformation_arguments = NU
     c(as.numeric(x), if(!is.null(atoms)) as.numeric(atoms$locations))
   )
 
+  if(is.null(parameter)) parameter <- attr(x, "parameter", exact = TRUE)
+  if(is.null(parameter) && is.matrix(x)) parameter <- colnames(x)
+  x <- .bt_posterior_transform_source_law(x, parent, parameter)
+  fields <- .bt_meta_get_fields(x, .bt_meta_fields())
+
   out <- .bt_draws_transform_values(x, map$fun)
-  updates <- .bt_posterior_transform_fields(fields, map)
+  updates <- .bt_posterior_transform_fields(fields, map,
+    parameter = parameter)
   # the draws record the transformations applied to their values
   updates["output_transformations"] <- list(c(fields$output_transformations, map$name))
   out <- .bt_meta_assign(out, updates)
@@ -274,11 +423,31 @@ posterior_transform <- function(x, transformation, transformation_arguments = NU
 # The transformed values of the metadata fields present in 'fields' (a named
 # list of fields; NULL values are absent fields). NULL values in the result
 # remove a field.
-.bt_posterior_transform_fields <- function(fields, map){
+.bt_posterior_transform_fields <- function(fields, map, parameter = NULL){
 
   updates <- list()
   set <- function(field, value){
     updates[field] <<- list(value)
+  }
+  transform_prior <- function(density, column = parameter){
+    mark <- function(condition, cause){
+      if(is.null(column) && !is.null(fields$quantities)) column <- fields$quantities$column
+      if(is.null(column)) stop(condition)
+      holder <- .bt_meta_set(numeric(), "measure_unavailable",
+        if(!is.null(updates$measure_unavailable)) updates$measure_unavailable else fields$measure_unavailable)
+      for(target in column) holder <- .bt_formula_measure_mark(holder, target, "prior_density",
+        conditionMessage(condition), cause = cause, diagnostics = condition$diagnostics)
+      set("measure_unavailable", .bt_meta_get(holder, "measure_unavailable"))
+      NULL
+    }
+    tryCatch(.prior_density_output_transform(density, map),
+      BayesTools_formula_measure_unavailable = function(condition){
+        if(!condition$reason %in% setdiff(.bt_formula_measure_causes, "missing_multiplier_law")) stop(condition)
+        mark(condition, condition$reason)
+      },
+      BayesTools_numerical_condition = function(condition){
+        mark(condition, "numerical_scale_unavailable")
+      })
   }
   transform_support <- function(support){
     .posterior_support_transform(support, map$transformation, map$arguments)
@@ -313,13 +482,14 @@ posterior_transform <- function(x, transformation, transformation_arguments = NU
     ))
   }
   if(!is.null(fields$prior_density)){
-    set("prior_density", .prior_density_output_transform(fields$prior_density, map))
+    set("prior_density", transform_prior(fields$prior_density))
   }
   if(!is.null(fields$prior_densities)){
     densities <- fields$prior_densities
     for(i in seq_along(densities)){
       if(!is.null(densities[[i]])){
-        densities[i] <- list(.prior_density_output_transform(densities[[i]], map))
+        column <- if(is.null(names(densities))) parameter else names(densities)[[i]]
+        densities[i] <- list(transform_prior(densities[[i]], column))
       }
     }
     set("prior_densities", densities)
