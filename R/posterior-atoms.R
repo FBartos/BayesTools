@@ -833,7 +833,7 @@ posterior_atoms_free <- function(x){
 
   if(is.prior.spike_and_slab(prior_entry)){
     if(.bt_component_is_spike(prior_entry, component)){
-      return(prior("point", list(location = 0)))
+      return(prior_entry[[component]])
     }
     return(.get_spike_and_slab_variable(prior_entry))
   }

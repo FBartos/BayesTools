@@ -1,5 +1,28 @@
 skip_if_not_test_profile("unit")
 
+test_that("ordinary spike localization retains declared factor and interaction dimensions", {
+  data <- data.frame(f = factor(rep(c("a", "b", "c"), 2L)), x = 1:6)
+  p <- prior_spike_and_slab(prior_factor("mnormal", list(0, .25), contrast = "meandif"))
+  info <- JAGS_formula(~x*f, "mu", data, list(intercept = prior("normal", list(0, 1)),
+    x = prior("normal", list(0, 1)), f = p, "x:f" = p))
+  for(name in c("mu_f", "mu_x__xXx__f")){
+    bound <- info$prior_list[[name]]
+    null <- which(attr(bound, "components") == "null")
+    selected <- .posterior_atoms_component_prior(bound, null, model_mixture = FALSE)
+    expect_identical(selected, bound[[null]])
+    expect_identical(.prior_linear_prior_columns(name, selected), paste0(name, "[", 1:2, "]"))
+    weights <- setNames(c(1, -1), paste0(name, "[", 1:2, "]"))
+    dist <- .prior_linear_combination_density(setNames(list(selected), name), weights)
+    expect_equal(dist$points$x, 0, tolerance = 0)
+    expect_equal(dist$points$p, 1, tolerance = 0)
+    slab <- .posterior_atoms_component_prior(bound, which(attr(bound, "components") == "alternative"), model_mixture = FALSE)
+    expect_identical(slab, .get_spike_and_slab_variable(bound))
+  }
+  scalar <- prior_spike_and_slab(prior("normal", list(0, 1)))
+  index <- which(attr(scalar, "components") == "null")
+  expect_identical(.posterior_atoms_component_prior(scalar, index, FALSE), scalar[[index]])
+})
+
 test_that("complete declarations certify absent terms with a valid empty source state", {
   compiled <- JAGS_formula(~ 1, "mu", data.frame(x = c(1, 2, 3)),
     list(intercept = prior("normal", list(0, 1))))
