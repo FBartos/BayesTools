@@ -1,6 +1,48 @@
 skip_if_not_test_profile("unit")
 source(testthat::test_path("common-functions.R"))
 
+test_that("transformed whole ordered factors plot attached current-scale laws", {
+  fixture <- ordered_plot_test_fixture(prior("normal", list(0, .5)),
+    levels = c("systematic", "alternate", "random"))
+  factor <- transform_factor_samples(fixture$samples)
+  factor_exp <- factor
+  factor_exp$mu_f <- posterior_transform(factor$mu_f, "exp")
+  expect_identical(as.numeric(factor_exp$mu_f), exp(as.numeric(factor$mu_f)))
+  expect_identical(posterior_metadata(factor_exp$mu_f, "ordered_source")$primitives,
+    posterior_metadata(factor$mu_f, "ordered_source")$primitives)
+  expect_identical(posterior_metadata(factor_exp$mu_f, "linear_weight_space"),
+    posterior_metadata(factor$mu_f, "linear_weight_space"))
+  laws <- posterior_metadata(factor_exp$mu_f, "prior_densities")
+  expect_identical(names(laws), colnames(factor_exp$mu_f))
+  reference <- prior_density_ordinate(laws[[1L]], 1)
+  expect_identical(reference$behavior, "point_mass")
+  expect_identical(reference$point_mass, 1)
+  plotted <- plot_posterior(factor_exp, "mu_f", prior = TRUE,
+    plot_type = "ggplot", n_points = 64L, n_samples = 128L)
+  layers <- ggplot2::ggplot_build(plotted)$data
+  expect_true(all(vapply(layers[1:2], function(layer) all(layer$x > 0), logical(1))))
+  expect_equal_each(layers[[2L]]$y, stats::dnorm(log(layers[[2L]]$x), 0, .5) / layers[[2L]]$x,
+    tolerance = 2e-12)
+  mapped <- marginal_posterior(fixture$samples, "mu_f", formula = ~0 + f,
+    prior_samples = TRUE, transformation = "exp", n_samples = 128L)
+  marginal <- plot_marginal(list(mu_f = mapped), "mu_f", prior = TRUE,
+    plot_type = "ggplot", n_points = 64L, n_samples = 128L)
+  marginal_layers <- ggplot2::ggplot_build(marginal)$data
+  expect_equal(range(layers[[2L]]$x), range(marginal_layers[[2L]]$x), tolerance = 1e-14)
+  grDevices::pdf(NULL)
+  on.exit(grDevices::dev.off(), add = TRUE)
+  expect_no_warning(plot_posterior(factor_exp, "mu_f", prior = TRUE,
+    n_points = 64L, n_samples = 128L))
+  unavailable <- factor_exp
+  unavailable$mu_f <- .bt_formula_measure_mark(unavailable$mu_f,
+    colnames(unavailable$mu_f)[2L], "prior_density", "The current-scale law is unavailable.",
+    cause = "structural_target_law_unavailable")
+  expect_s3_class(plot_posterior(unavailable, "mu_f", prior = FALSE,
+    plot_type = "ggplot", n_points = 64L), "ggplot")
+  expect_error(plot_posterior(unavailable, "mu_f", prior = TRUE,
+    plot_type = "ggplot", n_points = 64L), class = "BayesTools_formula_measure_unavailable")
+})
+
 test_that("ordered direct displays retain both weighted non-reference priors", {
   fixture <- ordered_plot_test_fixture(prior("normal", list(0, .5)),
     levels = c("systematic", "alternate", "random"))

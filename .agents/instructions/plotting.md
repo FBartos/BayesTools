@@ -81,6 +81,8 @@ cannot shift. Ordered overlays match posterior colors with dashed defaults and
 one posterior-owned legend; mapped ordered posterior layers use automatic glyph
 participation when the legend is enabled. Mixed-measure displays retain exact
 atoms with unchanged probability masses and the active probability-axis mapping.
+Whole-factor overlays select attached current-scale per-level prior laws before
+reconstructing a law from the original factor sources.
 Direct overlay mapping and clipping checks inspect selected components only;
 an omitted reference cannot create a clipping warning. Explicit reference and
 genuine non-reference atom selections still use the active mapping and warn

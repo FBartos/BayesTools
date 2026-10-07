@@ -1,6 +1,6 @@
 .plot_data_prior_factor_density_transformed <- function(prior_density_context, samples, parameter, prior_list, n_points, x_range = NULL,
                                                         transformation = NULL, transformation_arguments = NULL,
-                                                        transformation_settings = FALSE){
+                                                        transformation_settings = FALSE, prior_densities = NULL){
 
   if(is.null(samples[[parameter]]) || !inherits(samples[[parameter]], "mixed_posteriors.factor")){
     return(NULL)
@@ -36,11 +36,20 @@
 
   plot_data <- list()
   for(level_i in seq_len(nrow(factor_weights))){
-    weights <- rep(0, length(prior_density_context$column_names))
-    names(weights) <- prior_density_context$column_names
-    weights[colnames(factor_weights)] <- factor_weights[level_i, ]
-
-    level_density <- .prior_density_from_context(prior_density_context, weights)
+    if(!is.null(prior_densities)){
+      # Attached laws already describe the current output scale, including
+      # any earlier posterior_transform(); do not rebuild them from sources.
+      level_density <- prior_densities[[rownames(factor_weights)[level_i]]]
+      if(!inherits(level_density, "prior_linear_density")){
+        .bt_formula_density_stop("The factor level has no attached current-scale prior law.",
+          target = rownames(factor_weights)[level_i], reason = "structural_target_law_unavailable")
+      }
+    }else{
+      weights <- rep(0, length(prior_density_context$column_names))
+      names(weights) <- prior_density_context$column_names
+      weights[colnames(factor_weights)] <- factor_weights[level_i, ]
+      level_density <- .prior_density_from_context(prior_density_context, weights)
+    }
     level_plot_data <- .prior_linear_density_to_plot_data(
       level_density,
       n_points                  = n_points,
@@ -243,6 +252,16 @@
   }
   prior_density <- .bt_meta_get(samples[[parameter]], "prior_density")
   if(!inherits(prior_density, "prior_linear_density")){
+    prior_densities <- .bt_meta_get(samples[[parameter]], "prior_densities")
+    if(!is.null(prior_densities) && inherits(samples[[parameter]], "mixed_posteriors.ordered_transformed")){
+      return(.plot_data_prior_factor_density_transformed(
+        prior_density_context = NULL, samples = samples, parameter = parameter,
+        prior_list = .simplify_prior_list(attr(samples[[parameter]], "prior_list")),
+        n_points = n_points, x_range = x_range, transformation = transformation,
+        transformation_arguments = transformation_arguments,
+        transformation_settings = transformation_settings, prior_densities = prior_densities
+      ))
+    }
     return(NULL)
   }
 
