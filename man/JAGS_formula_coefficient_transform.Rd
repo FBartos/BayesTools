@@ -76,7 +76,7 @@ route.
 scalar \code{\link[=prior]{prior()}} objects keyed by concrete fitted coordinate.
 }
 \description{
-\code{JAGS_formula_coefficient_transform()} exposes the exact fixed-coefficient
+\code{JAGS_formula_coefficient_transform()} exposes the declared fixed-coefficient
 transformation used by \code{\link[=transform_scale_samples]{transform_scale_samples()}}. It records fitted
 sources, original-scale targets, named source/output transforms, exact
 nonzero dependencies, and parameter-map structural metadata.
@@ -99,6 +99,10 @@ Compatible weighted requests share one context; declared point siblings may
 add a constant offset. Incompatible recipes refuse with
 \code{"incompatible_prior_recipes"}; unsupported stochastic denominators refuse
 with \code{"state_dependent_map"}. Unsupported dependence/products remain explicit.
+Uncanceled subnormal static ratio weights retain their static classification,
+but draw and declared-point evaluation use the original value-aware arithmetic.
+Continuous laws whose reused scale cannot retain that map have reason
+\code{numerical_scale_unavailable}; usable draws and certified point laws remain.
 
 \code{JAGS_formula_internal_coordinate_priors()} returns exact scalar priors for
 stochastic formula coordinates that are intentionally absent from the

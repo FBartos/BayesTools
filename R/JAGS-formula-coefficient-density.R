@@ -5,7 +5,7 @@
 #' Formula coefficient transformations and induced prior densities
 #'
 #' @description
-#' `JAGS_formula_coefficient_transform()` exposes the exact fixed-coefficient
+#' `JAGS_formula_coefficient_transform()` exposes the declared fixed-coefficient
 #' transformation used by [transform_scale_samples()]. It records fitted
 #' sources, original-scale targets, named source/output transforms, exact
 #' nonzero dependencies, and parameter-map structural metadata.
@@ -28,6 +28,10 @@
 #' add a constant offset. Incompatible recipes refuse with
 #' `"incompatible_prior_recipes"`; unsupported stochastic denominators refuse
 #' with `"state_dependent_map"`. Unsupported dependence/products remain explicit.
+#' Uncanceled subnormal static ratio weights retain their static classification,
+#' but draw and declared-point evaluation use the original value-aware arithmetic.
+#' Continuous laws whose reused scale cannot retain that map have reason
+#' `numerical_scale_unavailable`; usable draws and certified point laws remain.
 #'
 #' `JAGS_formula_internal_coordinate_priors()` returns exact scalar priors for
 #' stochastic formula coordinates that are intentionally absent from the
@@ -333,8 +337,14 @@ JAGS_formula_prior_density <- function(
     source_transforms <- NULL
   }
   output_transform <- transform$output_transforms[[target]]
+  output_arguments <- NULL
   if(identical(output_transform, "identity")){
     output_transform <- NULL
+  }
+  if(identical(target_metadata$structural_status, "structural") &&
+     any(transform$matrix[target_i, ] != 0 & abs(transform$matrix[target_i, ]) < .Machine$double.xmin)){
+    output_transform <- "lin"
+    output_arguments <- list(a = recipe$offset, b = 1)
   }
 
   density <- tryCatch(
@@ -342,7 +352,8 @@ JAGS_formula_prior_density <- function(
       context = density_context,
       weights = weights,
       source_transforms = source_transforms,
-      output_transformation = output_transform
+      output_transformation = output_transform,
+      output_transformation_arguments = output_arguments
     ),
     error = function(e){
       if(inherits(e, "BayesTools_formula_measure_unavailable")) stop(e)
@@ -731,7 +742,8 @@ JAGS_formula_prior_density <- function(
                                 !is.null(constant_denominator) && constant_denominator != 0)
   weight <- if(zero) 0 else if(cancel) basis else if(static)
     .bt_formula_coefficient_ratio(basis, constant_numerator, constant_denominator, source, target) else NA_real_
-  list(zero = zero, cancel = cancel, static = static, weight = weight, basis = unname(basis))
+  list(zero = zero, cancel = cancel, static = static, weight = weight, basis = unname(basis),
+    value_aware = static && !zero && !cancel && abs(weight) < .Machine$double.xmin)
 }
 
 .bt_formula_coefficient_analysis <- function(basis, multipliers, constants,
@@ -742,6 +754,7 @@ JAGS_formula_prior_density <- function(
   dependencies <- list()
   recipes <- list()
   dynamic <- stats::setNames(rep(FALSE, nrow(basis)), rownames(basis))
+  value_aware <- dynamic
   for(target in rownames(basis)){
     for(source in colnames(basis)[basis[target, ] != 0]){
       term <- .bt_formula_coefficient_term(source, target, basis[target, source],
@@ -759,6 +772,7 @@ JAGS_formula_prior_density <- function(
       }
       matrix[target, source] <- term$weight
       dynamic[[target]] <- dynamic[[target]] || !term$static
+      value_aware[[target]] <- value_aware[[target]] || term$value_aware
     }
     if(dynamic[[target]]) matrix[target, ] <- NA_real_
     denominator <- .bt_formula_multiplier_constant(multipliers[[target]], constants)
@@ -783,7 +797,14 @@ JAGS_formula_prior_density <- function(
   }
   finite_matrix <- matrix
   finite_matrix[is.na(finite_matrix)] <- 0
-  targets <- .bt_formula_coefficient_targets(finite_matrix, sources, output_transforms)
+  targets <- .bt_formula_coefficient_targets(finite_matrix, sources, output_transforms,
+    basis = basis, multipliers = multipliers, constants = constants)
+  for(target in names(value_aware)[value_aware & !dynamic]){
+    if(targets$structural_status[targets$target == target] != "structural"){
+      recipes[[target]] <- list(type = "unavailable", weights = stats::setNames(numeric(), character()),
+        reason = "numerical_scale_unavailable")
+    }
+  }
   targets$map_type[dynamic] <- "state_dependent"
   targets$structural_status[dynamic] <- "dependent"
   targets$fixed_value[dynamic] <- NA_real_
@@ -808,7 +829,7 @@ JAGS_formula_prior_density <- function(
 }
 
 .bt_formula_coefficient_targets <- function(matrix, sources,
-                                             output_transforms){
+                                             output_transforms, basis, multipliers, constants){
 
   rows <- vector("list", nrow(matrix))
   for(target_i in seq_len(nrow(matrix))){
@@ -829,7 +850,9 @@ JAGS_formula_prior_density <- function(
           value = .bt_formula_coefficient_fixed_value(
             matrix[target_i, dependencies],
             sources[dependencies, , drop = FALSE],
-            output_transforms[[target_i]]
+            output_transforms[[target_i]],
+            basis = basis[target_i, dependencies], multipliers = multipliers,
+            constants = constants, target = rownames(matrix)[target_i]
           ),
           reason = NA_character_
         ),
@@ -903,7 +926,7 @@ JAGS_formula_prior_density <- function(
 }
 
 .bt_formula_coefficient_fixed_value <- function(weights, sources,
-                                                output_transform){
+                                                output_transform, basis, multipliers, constants, target){
 
   values <- sources$fixed_value
   log_sources <- sources$source_transform == "log"
@@ -914,7 +937,18 @@ JAGS_formula_prior_density <- function(
     }
     values[log_sources] <- log(values[log_sources])
   }
-  value <- sum(unname(weights) * values)
+  contributions <- unname(weights) * values
+  for(i in seq_along(weights)){
+    source <- sources$source[[i]]
+    term <- .bt_formula_coefficient_term(source, target, basis[[i]], multipliers,
+      constants, stats::setNames(sources$source_transform, sources$source))
+    if(term$value_aware){
+      contributions[[i]] <- .bt_formula_coefficient_ratio(term$basis,
+        .bt_formula_multiplier_constant(multipliers[[source]], constants),
+        .bt_formula_multiplier_constant(multipliers[[target]], constants), source, target, value = values[[i]])
+    }
+  }
+  value <- sum(contributions)
   if(identical(output_transform, "exp")){
     value <- exp(value)
   }
@@ -977,7 +1011,18 @@ JAGS_formula_prior_density <- function(
         }
         source[, coordinate] <- value
       }
-      if(length(active)) target[, name] <- source %*% static_weights[active]
+      value_aware <- vapply(active, function(coordinate){
+        .bt_formula_coefficient_term(coordinate, name, transform$basis_matrix[name, coordinate],
+          transform$multipliers, transform$state_constants, transform$source_transforms)$value_aware
+      }, logical(1))
+      ordinary <- active[!value_aware]
+      if(length(ordinary)) target[, name] <- source[, ordinary, drop = FALSE] %*% static_weights[ordinary]
+      for(coordinate in active[value_aware]){
+        contribution <- .bt_formula_coefficient_ratio(transform$basis_matrix[name, coordinate],
+          multiplier(transform$multipliers[[coordinate]]), multiplier(transform$multipliers[[name]]),
+          coordinate, name, value = source[, coordinate])
+        target[, name] <- target[, name] + contribution
+      }
     }else{
     for(source in colnames(transform$basis_matrix)[transform$basis_matrix[name, ] != 0]){
       term <- .bt_formula_coefficient_term(source, name, transform$basis_matrix[name, source],
@@ -1191,8 +1236,18 @@ JAGS_formula_prior_density <- function(
   # its own multiplier is an authoritative nonzero constant.
   type <- if(all(types == "raw_affine")) "raw_affine" else "contribution_affine"
   offset <- 0
+  for(target in names(recipes)[types == "raw_affine"]){
+    target_metadata <- transform$targets[match(target, transform$targets$target), , drop = FALSE]
+    row <- transform$matrix[target, ]
+    if(identical(target_metadata$structural_status, "structural") &&
+       any(row != 0 & abs(row) < .Machine$double.xmin)){
+      offset <- offset + weights[[target]] * target_metadata$fixed_value
+      recipes[[target]]$weights[] <- 0
+    }
+  }
   if(length(unique(types)) > 1L){
     for(target in names(recipes)[types == "raw_affine"]){
+      if(all(recipes[[target]]$weights == 0)) next
       denominator <- .bt_formula_multiplier_constant(transform$multipliers[[target]], transform$state_constants)
       if(is.null(denominator) || denominator == 0){
         target_metadata <- transform$targets[match(target, transform$targets$target), , drop = FALSE]

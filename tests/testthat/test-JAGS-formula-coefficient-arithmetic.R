@@ -202,3 +202,72 @@ test_that("mixed coefficient recipes refuse unrepresentable contribution convers
   expect_s3_class(error, "BayesTools_formula_measure_unavailable")
   expect_identical(error$reason, "numerical_scale_unavailable")
 })
+
+test_that("static subnormal ratio weights use value-aware coefficient arithmetic", {
+
+  for(numerator in c(1e-200, -1e-200)){
+    observed <- list()
+    for(dynamic in c(FALSE, TRUE)){
+      fit <- .formula_ratio_test_fit(numerator = numerator, denominator = 1e23,
+        x_sd = 1e100, dynamic = dynamic, values = c(-1, 0, 1) * 1e200)
+      transform <- JAGS_formula_coefficient_transform(fit, "mu")
+      interaction <- transform$source_names[grepl("__xXx__", transform$source_names, fixed = TRUE)]
+      expected <- transform$basis_matrix["mu_x", interaction] * c(-1, 0, 1) * 1e200 * numerator / 1e23
+      value <- .bt_apply_formula_coefficient_transform(as.matrix(fit), transform, "mu_x")[, "mu_x"]
+      expect_identical(unname(value[2L]), 0)
+      expect_equal(unname(value[c(1L, 3L)] / expected[c(1L, 3L)]), c(1, 1), tolerance = 1e-14)
+      observed[[length(observed) + 1L]] <- unname(value)
+      if(!dynamic){
+        expect_identical(transform$targets$map_type[transform$targets$target == "mu_x"], "affine")
+        expect_error(JAGS_formula_prior_density(fit, "mu", target = "mu_x"), class = "BayesTools_formula_measure_unavailable")
+      }
+    }
+    expect_identical(observed[[1L]], observed[[2L]])
+  }
+  fit <- .formula_ratio_test_fit(numerator = 1e-200, denominator = 1e23, values = 1)
+  transform <- JAGS_formula_coefficient_transform(fit, "mu")
+  value <- .bt_apply_formula_coefficient_transform(as.matrix(fit), transform, "mu_x")[, "mu_x"]
+  expect_true(value != 0 && abs(value) < .Machine$double.xmin)
+  fit <- .formula_ratio_test_fit(numerator = 1e-200, denominator = 1e23, values = 1e-200)
+  expect_error(.bt_apply_formula_coefficient_transform(as.matrix(fit),
+    JAGS_formula_coefficient_transform(fit, "mu"), "mu_x"), class = "BayesTools_formula_transform_unavailable")
+})
+
+test_that("compiled finite-density and fixed ratio owners retain truthful values and measures", {
+
+  for(point in c(FALSE, TRUE)){
+    priors <- list(intercept = prior("point", list(0)), x = prior("point", list(0)),
+      y = prior("point", list(0)), `x:y` = if(point) prior("point", list(1e200)) else prior("lognormal", list(log(1e200), 1)))
+    attr(priors$x, "multiply_by") <- 1e23
+    attr(priors$`x:y`, "multiply_by") <- 1e-200
+    compiled <- JAGS_formula(~ 1 + x * y, "mu", data.frame(x = c(-1, 0, 1) * 1e100, y = c(0, 1, 2)), priors, formula_scale = TRUE)
+    columns <- names(compiled$prior_list)
+    interaction <- columns[grepl("__xXx__", columns, fixed = TRUE)]
+    draws <- matrix(0, 3L, length(columns), dimnames = list(NULL, columns))
+    draws[, interaction] <- 1e200
+    fit <- .parameter_catalog_test_fit(coda::mcmc.list(coda::mcmc(draws)), compiled$prior_list,
+      list(mu = compiled$formula_design), list(mu = compiled$formula_scale))
+    transform <- JAGS_formula_coefficient_transform(fit, "mu")
+    expected <- unname(transform$basis_matrix["mu_x", interaction]) * 1e200 * 1e-200 / 1e23
+    value <- .bt_apply_formula_coefficient_transform(as.matrix(fit), transform, "mu_x")[, "mu_x"]
+    expect_equal(unname(value / expected), rep(1, 3L), tolerance = 1e-14)
+    if(point){
+      target <- transform$targets[transform$targets$target == "mu_x", ]
+      expect_identical(target$structural_status, "structural")
+      expect_equal(target$fixed_value / expected, 1, tolerance = 1e-14)
+      expect_identical(prior_density_ordinate(JAGS_formula_prior_density(fit, "mu", target = "mu_x"), expected)$point_mass, 1)
+      expect_error(JAGS_formula_prior_density(fit, "mu", target = "mu_x", context = list()),
+        class = "BayesTools_formula_prior_density_unavailable")
+    }else{
+      expect_true(is.finite(lpdf(compiled$prior_list[[interaction]], 1e200)))
+      condition <- tryCatch(JAGS_formula_prior_density(fit, "mu", target = "mu_x"), error = identity)
+      expect_s3_class(condition, "BayesTools_formula_measure_unavailable")
+      expect_identical(condition$reason, "numerical_scale_unavailable")
+      leaf <- as_mixed_posteriors(fit, "mu_x", transform_scaled = TRUE)$mu_x
+      expect_equal(as.numeric(leaf) / expected, rep(1, 3L), tolerance = 1e-14)
+      expect_identical(unique(posterior_metadata(leaf, "measure_unavailable")$reason), "numerical_scale_unavailable")
+      expect_error(.bt_formula_measure_check(leaf, "prior_density"), class = "BayesTools_formula_measure_unavailable")
+    }
+    expect_s3_class(JAGS_formula_prior_density(fit, "mu", target = "mu_y"), "prior_density")
+  }
+})
