@@ -55,6 +55,32 @@
                               transformation_settings = transformation_settings, individual = individual, truncate_end = FALSE)
   }
 
+  # Components share original knots, even when a transformed boundary drops
+  # an ordinate in only one component. Bind only their common source indices.
+  continuous_indices <- which(vapply(plot_data, function(component){
+    inherits(component, c("density.prior.simple", "density.prior.orthonormal",
+                          "density.prior.meandif", "density.prior.PET", "density.prior.PEESE"))
+  }, logical(1)))
+  if(length(continuous_indices) > 0L){
+    source_indices <- lapply(plot_data[continuous_indices], function(component){
+      indices <- attr(component, "source_indices", exact = TRUE)
+      if(is.null(indices)) indices <- seq_along(component$x)
+      indices[is.finite(component$x) & is.finite(component$y)]
+    })
+    common_indices <- Reduce(intersect, source_indices)
+    if(length(common_indices) == 0L){
+      .bt_posterior_transformation_stop("domain", "the prior mixture has no common finite density knots")
+    }
+    for(k in seq_along(continuous_indices)){
+      i <- continuous_indices[[k]]
+      original_indices <- attr(plot_data[[i]], "source_indices", exact = TRUE)
+      if(is.null(original_indices)) original_indices <- seq_along(plot_data[[i]]$x)
+      keep <- match(common_indices, original_indices)
+      plot_data[[i]]$x <- plot_data[[i]]$x[keep]
+      plot_data[[i]]$y <- plot_data[[i]]$y[keep]
+    }
+  }
+
   # the complete samples are added to each output object
   x_sam    <- NULL
   x_points <- NULL
@@ -85,9 +111,13 @@
   # deal with continuous densities
   if(!is.null(y_den)){
     y_den <- apply(y_den, 2, sum)
-    if(any(sapply(1:nrow(x_den), function(i) !isTRUE(all.equal(x_den[1,], x_den[i,])))))
+    if(any(vapply(seq_len(nrow(x_den)), function(i) !identical(x_den[1,], x_den[i,]), logical(1))))
       stop("non-matching x-coordinates")
     x_den <- x_den[1,]
+    if(length(x_den) > 1L && all(diff(x_den) < 0)){
+      x_den <- rev(x_den)
+      y_den <- rev(y_den)
+    }
 
     # set the endpoints to zero if they correspond to truncation
     prior_list_simple <- prior_list[!sapply(prior_list, is.prior.point)]
@@ -97,6 +127,9 @@
       prior_list_simple_lower   <- .density.prior_transformation_x(prior_list_simple_lower, transformation, transformation_arguments)
       prior_list_simple_upper   <- .density.prior_transformation_x(prior_list_simple_upper, transformation, transformation_arguments)
     }
+    bounds <- sort(c(prior_list_simple_lower, prior_list_simple_upper))
+    prior_list_simple_lower <- bounds[1L]
+    prior_list_simple_upper <- bounds[2L]
     if(isTRUE(all.equal(prior_list_simple_lower, x_den[1])) | prior_list_simple_lower >= x_den[1]){
       y_den <- c(0, y_den)
       x_den <- c(x_den[1], x_den)

@@ -262,10 +262,12 @@ density.prior <- function(x,
 
 
   # transform the output, if requested
+  source_indices <- seq_along(x_seq)
   if(!is.null(transformation)){
     transformed <- .density.prior_transformation_grid(x_seq, x_den, transformation, transformation_arguments)
     x_seq   <- transformed$x[!transformed$drop]
     x_den   <- transformed$y[!transformed$drop]
+    source_indices <- source_indices[!transformed$drop]
     x_range <- .density.prior_transformation_x(x_range, transformation, transformation_arguments)
     if(!is.null(x_sam)){
       x_sam <- .density.prior_transformation_x(x_sam,   transformation, transformation_arguments)
@@ -286,6 +288,7 @@ density.prior <- function(x,
 
   class(out) <- c("density", "density.prior", "density.prior.simple")
   attr(out, "x_range") <- x_range
+  attr(out, "source_indices") <- source_indices
   attr(out, "y_range") <- c(0, max(x_den))
   if(boundary_reflection){
     attr(out, "boundary_reflection") <- TRUE
@@ -1352,11 +1355,13 @@ density.prior <- function(x,
 
 
   # transform the output, if requested
+  source_indices <- seq_along(x_seq)
   if(!is.null(transformation)){
     message("The transformation was applied to the differences from the mean. Note that non-linear transformations do not map from the orthonormal/meandif contrasts to the differences from the mean.")
     transformed <- .density.prior_transformation_grid(x_seq, x_den, transformation, transformation_arguments)
     x_seq   <- transformed$x[!transformed$drop]
     x_den   <- transformed$y[!transformed$drop]
+    source_indices <- source_indices[!transformed$drop]
     x_range <- .density.prior_transformation_x(x_range, transformation, transformation_arguments)
     if(!is.null(x_sam)){
       x_sam <- .density.prior_transformation_x(x_sam,   transformation, transformation_arguments)
@@ -1377,6 +1382,7 @@ density.prior <- function(x,
 
   class(out) <- c("density", "density.prior", if(is.prior.orthonormal(x)) "density.prior.orthonormal" else if(is.prior.meandif(x)) "density.prior.meandif")
   attr(out, "x_range") <- x_range
+  attr(out, "source_indices") <- source_indices
   attr(out, "y_range") <- c(0, max(x_den))
   if(boundary_reflection){
     attr(out, "boundary_reflection") <- TRUE
@@ -1818,6 +1824,34 @@ range.prior  <- function(x, quantiles = NULL, ..., na.rm = FALSE){
     invalid <- !drop & (!is.finite(x_new) | !is.finite(y_new))
     edge    <- cumprod(invalid | drop) == 1 | rev(cumprod(rev(invalid | drop))) == 1
     drop    <- drop | (invalid & edge)
+  }
+
+  retained <- which(!drop)
+  if(length(retained) == 0L || any(!is.finite(x_new[retained])) ||
+     any(is.nan(y_new[retained])) ||
+     any(!is.finite(y_new[retained]) & is.finite(y[retained])) || any(y_new[retained] < 0, na.rm = TRUE)){
+    .bt_posterior_transformation_stop("domain", "the continuous density grid has no complete finite transformed curve")
+  }
+  changes <- diff(x_new[retained])
+  source_changes <- diff(x[retained])
+  nonzero_changes <- changes[changes != 0]
+  tied <- changes == 0 & source_changes != 0
+  tanh_display <- is.character(transformation) && identical(transformation, "tanh")
+  if(tanh_display && any(tied) && length(unique(x_new[retained])) >= 2L &&
+     (all(nonzero_changes > 0) || all(nonzero_changes < 0))){
+    indices <- sort(unique(c(retained[which(tied)], retained[which(tied) + 1L])))
+    warning(structure(list(
+      message = "The transformed prior density display has tied rounded 'tanh' image knots. Original curve knots and source correspondence are retained; use a smaller source range to resolve the displayed grid.",
+      call = NULL, indices = indices, unresolved_values = x[indices],
+      operation = "density grid transformation", reason = "tied rounded tanh display images"),
+      class = c("BayesTools_prior_curve_unavailable", "BayesTools_plot_condition",
+        "BayesTools_numerical_condition", "warning", "condition")))
+    tied[] <- FALSE
+  }
+  if(length(changes) > 0L &&
+     (any(tied) || (tanh_display && length(unique(x_new[retained])) < 2L) ||
+      !(all(nonzero_changes > 0) || all(nonzero_changes < 0)))){
+    .bt_posterior_transformation_stop("nonmonotone", "the transformed density grid collapses or changes orientation")
   }
 
   list(x = x_new, y = y_new, drop = drop)

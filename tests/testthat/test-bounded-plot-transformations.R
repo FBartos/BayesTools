@@ -131,7 +131,18 @@ test_that("density transformations use analytic exp_lin limits and omit saturate
   expect_true(all(root_map$y[root_map$x == 0] == 0))
 
   cauchy <- prior("cauchy", list(0, .707))
-  tanh_map <- density(cauchy, transformation = "tanh")
+  conditions <- list()
+  tanh_map <- withCallingHandlers(density(cauchy, transformation = "tanh"),
+    BayesTools_prior_curve_unavailable = function(condition){
+      conditions[[length(conditions) + 1L]] <<- condition
+      invokeRestart("muffleWarning")
+    })
+  expect_length(conditions, 1L)
+  source <- density(cauchy)
+  indices <- attr(tanh_map, "source_indices", exact = TRUE)
+  expect_identical(tanh_map$x, tanh(source$x[indices]))
+  expect_identical(conditions[[1L]]$unresolved_values, source$x[conditions[[1L]]$indices])
+  expect_true(any(diff(tanh_map$x) == 0))
   expect_true(all(is.finite(tanh_map$y)))
   expect_true(all(abs(tanh_map$x) <= 1))
   interior <- abs(tanh_map$x) < .99
@@ -144,9 +155,16 @@ test_that("density transformations use analytic exp_lin limits and omit saturate
   path <- tempfile(fileext = ".pdf")
   grDevices::pdf(path)
   on.exit({grDevices::dev.off(); unlink(path)}, add = TRUE)
-  expect_no_error(plot(cauchy, transformation = "tanh"))
+  expect_warning(plot(cauchy, transformation = "tanh"), class = "BayesTools_prior_curve_unavailable")
   skip_if_not_installed("ggplot2")
-  expect_s3_class(plot(cauchy, transformation = "tanh", plot_type = "ggplot"), "ggplot")
+  expect_warning(ggplot <- plot(cauchy, transformation = "tanh", plot_type = "ggplot"),
+    class = "BayesTools_prior_curve_unavailable")
+  expect_s3_class(ggplot, "ggplot")
+  expect_error(.density.prior_transformation_grid(c(20, 21), c(1, 1), "tanh"),
+    class = "BayesTools_transformation")
+  custom <- list(fun = tanh, inv = atanh, jac = function(x) 1 - tanh(x)^2, output_support = c(-1, 1))
+  expect_error(.density.prior_transformation_grid(c(0, 17, 17.001), c(1, 1, 1), custom),
+    class = "BayesTools_nonmonotone_transformation")
 })
 
 test_that("transformation output support metadata is validated", {

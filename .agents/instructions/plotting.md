@@ -101,6 +101,13 @@ Individual omega plots consume producer-owned scalar atom/support declarations,
 including empty and unknown marginals, and never recover atom masses from prior
 shares or allocated draw counts. Transformed unsupported scalar prior overlays
 raise the existing prior-density limitation.
+Prior mixtures bind the common original source knots after component drops,
+with exact x/y/Jacobian correspondence and unchanged component weights and atoms.
+Approximate named tanh display grids retain tied finite rounded image knots with
+their exact source indices and ordinates, warning with the affected source values.
+They require two distinct images and consistent nonzero orientation; whole
+collapse, custom/affine collapse and invalid interior knots remain unavailable.
+This display convention does not relax atom, draw or inverse-region checks.
 Keep requested display limits separate from transformation support. Custom
 transformations can declare `output_support = c(lower, upper)`; inverse-grid
 evaluation must exclude coordinates outside that interval, without clamping

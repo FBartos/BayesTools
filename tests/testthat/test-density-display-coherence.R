@@ -166,6 +166,27 @@ test_that("narrow huge finite pieces retain physical geometry and kernel scale",
   expect_true(all(result$provenance$integration$piece_evaluations <= 8192L))
 })
 
+test_that("transformed prior mixtures keep original knot and Jacobian correspondence", {
+
+  priors <- list(prior("gamma", list(.5, 1)), prior("gamma", list(2, 1)))
+  grid <- seq(0, 5, length.out = 101)
+  data <- .plot_data_prior_list.simple(priors, grid, range(grid), NULL, 101, 1000,
+    FALSE, FALSE, "exp_lin", list(a = 0, b = .5), FALSE)
+  retained <- grid[-1L]
+  expected <- (.5 * stats::dgamma(retained, .5) + .5 * stats::dgamma(retained, 2)) * 2 * sqrt(retained)
+  expect_equal(data$density$x, sqrt(retained), tolerance = 1e-14)
+  expect_equal(data$density$y, expected, tolerance = 1e-12)
+
+  decreasing <- .plot_data_prior_list.simple(list(prior("uniform", list(0, 2))),
+    seq(0, 1, length.out = 11), c(0, 1), NULL, 11, 100,
+    FALSE, FALSE, "lin", list(a = 0, b = -1), FALSE)$density
+  expect_equal(decreasing$x[1L], -1)
+  expect_equal(decreasing$y[1L], .5)
+  expect_error(.plot_data_prior_list.simple(priors, grid, range(grid), NULL, 101, 1000,
+    FALSE, FALSE, "lin", list(a = 1e300, b = 1), FALSE),
+    class = "BayesTools_nonmonotone_transformation")
+})
+
 test_that("finite inverse region loss refuses while genuine support events remain exact", {
 
   law <- .prior_linear_combination_density(list(theta = prior("gamma", list(.001, 1))),
