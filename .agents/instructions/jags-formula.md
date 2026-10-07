@@ -6,6 +6,10 @@ or marginal likelihoods.
 
 ## Keep the Fitting Paths Synchronized
 
+Mixtures of ordered prior containers retain constructor and RNG support, but
+JAGS formula binding refuses with the ordered-unavailable condition family.
+Supported mixture or spike-and-slab behavior belongs on the ordered total.
+
 Unix builds with an explicit JAGS_ROOT or --with-jags-prefix use that prefix's
 headers, libraries and version, preserving explicit include/lib/version overrides.
 They never inherit unrestricted global pkg-config flags or fall back to unrelated

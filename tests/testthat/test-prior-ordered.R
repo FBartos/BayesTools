@@ -1,5 +1,41 @@
 skip_if_not_test_profile("unit")
 
+test_that("formula binding refuses ordered container mixtures without changing their sampler", {
+  levels <- c("lo", "mid", "hi")
+  data <- data.frame(f = ordered(levels, levels = levels))
+  bind <- function(p) JAGS_formula(~f, "mu", data,
+    list(intercept = prior("point", list(0)), f = p))
+  for(contrast in c("cumulative", "cumulative_levels")){
+    allocation <- if(contrast == "cumulative") c(.4, .6) else c(.2, .3, .5)
+    components <- lapply(c(2, 4), function(total) prior_factor_levels(
+      prior_ordered(prior("point", list(total)), allocation, contrast = contrast), levels))
+    mixture <- prior_mixture(components)
+    set.seed(2)
+    draws <- rng(mixture, 4L, transform_factor_samples = FALSE)
+    expect_identical(dim(draws), c(4L, length(allocation)))
+    expect_true(all(apply(draws, 1L, function(row) any(vapply(c(2, 4),
+      function(total) identical(as.numeric(row), total * allocation), logical(1))))))
+    condition <- expect_error(bind(mixture),
+      "JAGS formula binding is unavailable for mixtures of ordered prior containers. Put mixture or spike-and-slab behavior on 'prior_ordered(total = )' instead.",
+      fixed = TRUE, class = "BayesTools_ordered_coordinates_unavailable")
+    expect_s3_class(condition, "BayesTools_ordered_unavailable")
+    expect_null(conditionCall(condition))
+  }
+  total_mixture <- prior_ordered(prior_mixture(list(prior("normal", list(0, 1)),
+    prior("point", list(0)))), allocation = c(.4, .6))
+  expect_type(bind(total_mixture), "list")
+  for(p in list(prior_mixture(list(prior_factor("normal", list(0, 1), contrast = "independent"),
+      prior("point", list(0)))),
+    prior_mixture(list(prior_factor("normal", list(0, 1), contrast = "treatment"), prior_none())))){
+    expect_type(bind(p), "list")
+  }
+  wf <- prior_mixture(list(prior_weightfunction("one-sided", c(.05), wf_cumulative(c(2, 3))),
+    prior_weightfunction("one-sided", c(.05), wf_independent(prior("beta", list(1, 1)))),
+    prior_weightfunction("one-sided", c(.05), wf_fixed(c(1, .5))), prior_none()),
+    is_null = c(FALSE, FALSE, FALSE, TRUE))
+  expect_s3_class(wf, "prior.bias_mixture")
+})
+
 test_that("D6 ordered declarations reuse the Dirichlet minimum and binding revalidates it", {
 
   total <- prior("normal", list(0, 1))

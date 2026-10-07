@@ -384,6 +384,12 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
 
   # check that all predictors have a prior distribution
   check_list(prior_list, "prior_list", check_names = model_terms, allow_other = FALSE, all_objects = TRUE)
+  if(any(vapply(prior_list, function(p) is.prior.mixture(p) && is.prior.ordered(p), logical(1)))){
+    .bt_ordered_stop(paste0(
+      "JAGS formula binding is unavailable for mixtures of ordered prior containers. ",
+      "Put mixture or spike-and-slab behavior on 'prior_ordered(total = )' instead."
+    ))
+  }
 
   if(log_intercept){
     .bt_validate_formula_log_intercept_prior(prior_list)

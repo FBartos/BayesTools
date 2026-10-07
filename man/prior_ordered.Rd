@@ -52,6 +52,9 @@ preserve point masses and continuous probability separately for each level;
 point masses are not included in a kernel density estimate. Bridge sampling
 is available only when \code{total} is a simple scalar prior and
 \code{allocation} is fixed or a simple Dirichlet allocation.
+Mixtures of ordered prior containers can be constructed and sampled, but
+their binding in \code{JAGS_formula()} is unavailable. Put the mixture on
+\code{total} instead.
 
 Estimates tables with \code{transform_factors = TRUE} report the level
 effects (the first level of a \code{"cumulative"} contrast is the reference
