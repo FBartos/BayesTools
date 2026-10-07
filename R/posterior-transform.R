@@ -283,6 +283,7 @@ posterior_transform <- function(x, transformation, transformation_arguments = NU
   transform_support <- function(support){
     .posterior_support_transform(support, map$transformation, map$arguments)
   }
+  if(!is.null(fields$hypothesis_evaluation)) set("hypothesis_evaluation", NULL)
 
   if(!is.null(fields$support)){
     set("support", if(.posterior_metadata_is_container(fields$support)){

@@ -113,131 +113,134 @@
 .hypothesis_point_BF <- function(quantity, side, density_method,
                                  inverse = FALSE) {
 
-  # the label of a point hypothesis whose prior ordinate is estimated from
-  # user-supplied prior draws (warned about once per hypothesis_BF() call)
   inexact_prior <- NULL
-  marginal <- .hypothesis_point_marginal(quantity, side)
+  evaluation_value <- side$value
+  log_jacobian <- 0
+  marginal <- .hypothesis_point_marginal(quantity, side, density_method)
+  linear <- NULL
+  if(is.null(marginal)){
+    expression <- .hypothesis_side_expression(side)
+    symbols <- .hypothesis_expression_symbols(expression)
+    linear <- .hypothesis_linear_coefficients(expression, symbols, quantity$posterior_draws)
+    if(!is.null(linear)){
+      evaluation_value <- .hypothesis_affine_null(linear, side$value)
+      log_jacobian <- log(abs(linear$divisor))
+    }
+  }
   if(is.null(marginal) && density_method %in% c("KDE", "normal")){
-    # the exact joint prior density of a linear expression serves both
-    # posterior-ordinate estimators
     marginal <- .hypothesis_linear_point_marginal(quantity, side)
   }
+  if(is.null(marginal) && identical(density_method, "precomputed")){
+    if(!is.null(linear) && length(linear$coefficients) == 0L){
+      .hypothesis_check_prior_ordinate(.prior_linear_combination_density(
+        list(value = prior("point", list(0))), c(value = 1), n_grid = 64L),
+        evaluation_value, side$label)
+    }
+    .hypothesis_draw_density_height(numeric(), evaluation_value, "posterior", density_method)
+  }
   if(!is.null(marginal)){
-    .hypothesis_check_prior_ordinate(
-      marginal[["prior_density"]], side[["value"]], side[["label"]]
-    )
+    if(!is.null(marginal$evaluation_value)) evaluation_value <- marginal$evaluation_value
+    if(!is.null(marginal$log_jacobian)) log_jacobian <- marginal$log_jacobian
+    prior_ordinate <- .hypothesis_check_prior_ordinate(marginal$prior_density,
+      evaluation_value, side$label)
     normal_approximation <- identical(density_method, "normal")
     posterior <- .posterior_precomputed_child(
-      parent          = marginal[["posterior_parent"]],
-      child           = marginal[["posterior"]],
-      index           = marginal[["posterior_index"]],
-      null_hypothesis = side[["value"]],
-      density_method  = if(normal_approximation) "KDE" else density_method
-    )
-    inclusion_BF <- Savage_Dickey_BF(
-      posterior            = posterior,
-      null_hypothesis      = side[["value"]],
-      normal_approximation = normal_approximation,
-      silent               = TRUE,
-      density_method       = if(normal_approximation) "KDE" else density_method
-    )
-    prior_value <- .hypothesis_prior_density_height(
-      marginal[["prior_density"]],
-      side[["value"]]
-    )
-    .hypothesis_check_prior_density(prior_value, side[["label"]])
-    posterior_value <- prior_value / as.numeric(inclusion_BF)
-    BF <- posterior_value / prior_value
+      parent = marginal$posterior_parent, child = marginal$posterior,
+      index = marginal$posterior_index, null_hypothesis = evaluation_value,
+      density_method = if(normal_approximation) "KDE" else density_method)
+    inclusion_BF <- Savage_Dickey_BF(posterior, null_hypothesis = evaluation_value,
+      normal_approximation = normal_approximation, silent = TRUE,
+      density_method = if(normal_approximation) "KDE" else density_method)
+    log_prior <- attr(inclusion_BF, "log_prior_height", exact = TRUE)
+    log_posterior <- attr(inclusion_BF, "log_posterior_height", exact = TRUE)
+    log_BF <- -attr(inclusion_BF, "log_BF", exact = TRUE)
+    numerical_diagnostics <- attr(inclusion_BF, "numerical_diagnostics", exact = TRUE)
     bf_warnings <- attr(inclusion_BF, "warnings", exact = TRUE)
     BF_error <- attr(inclusion_BF, "BF_error_percent", exact = TRUE)
     density_source <- attr(inclusion_BF, "posterior_density_source", exact = TRUE)
     fallback_warnings <- attr(inclusion_BF, "posterior_density_fallback_warnings", exact = TRUE)
-    if(length(fallback_warnings) > 0L){
-      warning(
-        paste(unique(fallback_warnings), collapse = " "),
-        call. = FALSE
-      )
-    }
-    method <- if(identical(density_source, "normal")){
-      "Savage-Dickey (normal)"
-    }else if(identical(density_method, "precomputed") &&
-             identical(density_source, "precomputed")){
-      "Savage-Dickey (precomputed)"
-    }else{
-      "Savage-Dickey"
-    }
+    if(length(fallback_warnings) > 0L) warning(paste(unique(fallback_warnings), collapse = " "), call. = FALSE)
+    method <- if(identical(density_source, "normal")) "Savage-Dickey (normal)" else
+      if(identical(density_method, "precomputed") && identical(density_source, "precomputed"))
+        "Savage-Dickey (precomputed)" else "Savage-Dickey"
   }else{
-    posterior <- .hypothesis_eval_expression(
-      .hypothesis_side_expression(side),
-      quantity[["posterior_draws"]]
-    )
-    if(identical(density_method, "precomputed")){
-      # expression draws have no precomputed posterior density
-      .hypothesis_draw_density_height(posterior, side[["value"]], "posterior",
-                                      density_method)
-    }
+    posterior <- if(is.null(linear)){
+      .hypothesis_eval_expression(.hypothesis_side_expression(side), quantity$posterior_draws)
+    }else .hypothesis_affine_value(linear, quantity$posterior_draws)
     prior_density <- .hypothesis_expression_prior_density(quantity, side)
     if(!is.null(prior_density)){
-      .hypothesis_check_prior_ordinate(prior_density, side[["value"]], side[["label"]])
-      prior_value <- .hypothesis_prior_density_height(prior_density, side[["value"]])
+      prior_ordinate <- .hypothesis_check_prior_ordinate(prior_density, evaluation_value, side$label)
+      log_prior <- prior_ordinate$log_density
     }else if(.hypothesis_quantity_has_prior_structure(quantity)){
-      # a deterministic prior whose expression has no exact density: a
-      # kernel estimate from sampled prior draws would be an inexact ordinate
-      .hypothesis_stop_inexact_ordinate(
-        side[["label"]],
-        "the expression is not a linear combination with an exact prior density"
-      )
+      .hypothesis_stop_inexact_ordinate(side$label,
+        "the expression is not a linear combination with an exact prior density")
     }else{
-      prior <- .hypothesis_eval_expression(
-        .hypothesis_side_expression(side),
-        .hypothesis_prior_draws(quantity)
-      )
-      prior_value <- .hypothesis_draw_density_height(
-        prior,
-        side[["value"]],
-        "prior",
-        density_method
-      )
-      inexact_prior <- side[["label"]]
+      draws <- .hypothesis_prior_draws(quantity)
+      prior <- if(is.null(linear)) .hypothesis_eval_expression(.hypothesis_side_expression(side), draws) else
+        .hypothesis_affine_value(linear, draws)
+      log_prior <- .hypothesis_draw_density_log_height(prior, evaluation_value, "prior", density_method)
+      if(!identical(density_method, "normal")) .hypothesis_check_prior_density(exp(log_prior), side$label)
+      inexact_prior <- side$label
     }
-    .hypothesis_check_prior_density(prior_value, side[["label"]])
-    posterior_value <- .hypothesis_draw_density_height(
-      posterior,
-      side[["value"]],
-      "posterior",
-      density_method
-    )
-    BF <- posterior_value / prior_value
+    log_posterior <- .hypothesis_draw_density_log_height(posterior, evaluation_value, "posterior", density_method)
+    ratio <- .hypothesis_log_ratio(log_prior, log_posterior, normal = identical(density_method, "normal"))
+    log_BF <- -ratio$log_BF
+    numerical_diagnostics <- ratio$diagnostics
     bf_warnings <- NULL
     BF_error <- NA_real_
-    method <- if(identical(density_method, "normal")){
-      "Savage-Dickey (normal)"
-    }else{
-      "kernel Savage-Dickey"
-    }
+    method <- if(identical(density_method, "normal")) "Savage-Dickey (normal)" else "kernel Savage-Dickey"
   }
-
-  if(inverse){
-    BF <- 1 / as.numeric(BF)
-  }
-
-  return(list(
-    BF        = as.numeric(BF),
-    prior     = prior_value,
-    posterior = posterior_value,
-    method    = method,
-    BF_error  = if(is.null(BF_error)) NA_real_ else as.numeric(BF_error),
-    warning   = .hypothesis_collapse_warning(bf_warnings),
-    inexact_prior = inexact_prior
-  ))
+  if(inverse) log_BF <- -log_BF
+  log_prior <- as.numeric(log_prior)
+  log_posterior <- as.numeric(log_posterior)
+  log_prior <- log_prior + log_jacobian
+  log_posterior <- log_posterior + log_jacobian
+  numerical_diagnostics$log_prior_height <- log_prior
+  numerical_diagnostics$log_posterior_height <- log_posterior
+  numerical_diagnostics$evaluation_value <- evaluation_value
+  numerical_diagnostics$requested_value <- side$value
+  numerical_diagnostics$log_jacobian <- log_jacobian
+  list(BF = exp(log_BF), log_BF = log_BF, prior = exp(log_prior),
+    posterior = exp(log_posterior), log_prior_height = log_prior,
+    log_posterior_height = log_posterior, numerical_diagnostics = numerical_diagnostics,
+    method = method, BF_error = if(is.null(BF_error)) NA_real_ else as.numeric(BF_error),
+    warning = .hypothesis_collapse_warning(bf_warnings), inexact_prior = inexact_prior)
 }
 
 
-.hypothesis_point_marginal <- function(quantity, side) {
+.hypothesis_point_marginal <- function(quantity, side, density_method = "KDE") {
 
   if(!is.null(quantity[["posterior_marginal"]]) &&
      .hypothesis_expression_is_parameter(.hypothesis_side_expression(side),
                                          quantity[["parameter"]])){
+    posterior <- quantity$posterior_marginal
+    evaluation <- .bt_meta_get(posterior, "hypothesis_evaluation")
+    if(!is.null(evaluation) && !identical(density_method, "precomputed")){
+      if(!identical(as.numeric(posterior), evaluation$numerator / evaluation$divisor)){
+        stop("Affine hypothesis evaluation coordinates do not match the reported draws.", call. = FALSE)
+      }
+      context <- .bt_meta_get(posterior, "prior_context")
+      density <- .prior_density_from_context(context, evaluation$weights,
+        output_transformation = "lin",
+        output_transformation_arguments = list(a = evaluation$offset, b = 1))
+      unshifted <- evaluation$numerator
+      class(unshifted) <- c("marginal_posterior.simple", "marginal_posterior")
+      unshifted <- .bt_meta_assign(unshifted, list(prior_density = density,
+        atoms = .posterior_atoms_new(column_names = quantity$parameter, source = "linear_target"),
+        support = .posterior_support_from_prior_context_weights(context, evaluation$weights,
+          "lin", list(a = evaluation$offset, b = 1)),
+        condition = .bt_meta_get(posterior, "condition")))
+      components <- .posterior_components_get(posterior)
+      if(!is.null(components)){
+        unshifted <- .posterior_components_set(unshifted, .posterior_components_new(
+          components$index, lapply(components$supports, .posterior_support_transform,
+            transformation = "lin", transformation_arguments = list(a = 0, b = evaluation$divisor)),
+          components$keys))
+      }
+      return(list(posterior = unshifted, prior_density = density,
+        evaluation_value = .hypothesis_affine_product(side$value, evaluation$divisor),
+        log_jacobian = log(evaluation$divisor)))
+    }
     return(list(
       posterior        = quantity[["posterior_marginal"]],
       posterior_parent = quantity[["posterior_marginal_parent"]],
@@ -284,16 +287,24 @@
   }
   active <- names(linear[["coefficients"]])[linear[["coefficients"]] != 0]
   if(length(active) == 0L){
-    return(NULL)
+    constant_density <- .prior_linear_combination_density(list(value = prior("point", list(0))),
+      c(value = 1), n_grid = 64L)
+    .hypothesis_check_prior_ordinate(constant_density,
+      .hypothesis_affine_null(linear, side$value), side$label)
   }
 
   context <- NULL
   weights <- NULL
-  offset  <- linear[["constant"]]
+  space <- NULL
+  offset  <- 0
   for(symbol in active){
     level <- marginals[[symbol]]
     .bt_formula_measure_check(level, "prior_density")
-    .bt_linear_weight_space(level)
+    level_space <- .bt_linear_weight_space(level)
+    if(!is.null(space) && !identical(space, level_space)){
+      .hypothesis_linear_target_stop("Linear target levels use incompatible weight spaces.", "weight_space")
+    }
+    space <- level_space
     atoms <- .posterior_atoms_get(level)
     if(is.null(atoms)){
       return(NULL)
@@ -305,7 +316,8 @@
       if(is.null(fixed)){
         return(NULL)
       }
-      offset <- offset + linear[["coefficients"]][[symbol]] * fixed
+      offset <- .hypothesis_affine_sum(offset,
+        .hypothesis_affine_product(linear[["coefficients"]][[symbol]], fixed))
       next
     }
     level_context <- .bt_meta_get(level, "prior_context")
@@ -329,19 +341,28 @@
       return(NULL)
     }
     coefficient <- linear[["coefficients"]][[symbol]]
-    weights <- .hypothesis_add_linear_weights(weights, coefficient * level_weights)
-    offset  <- offset + coefficient * .hypothesis_level_linear_offset(level)
+    weights <- .hypothesis_add_linear_weights(weights,
+      .hypothesis_affine_product(coefficient, level_weights))
+    offset <- .hypothesis_affine_sum(offset,
+      .hypothesis_affine_product(coefficient, .hypothesis_level_linear_offset(level)))
   }
 
   shift <- list(a = offset, b = 1)
+  if(length(weights) == 0L || all(weights == 0)){
+    .hypothesis_check_prior_ordinate(.prior_density_from_context(context, weights,
+      output_transformation = "lin", output_transformation_arguments = shift),
+      .hypothesis_affine_null(linear, side$value), side$label)
+  }
   support <- .posterior_support_from_prior_context_weights(
     context,
     weights,
     output_transformation           = "lin",
     output_transformation_arguments = shift
   )
-  if(!.hypothesis_linear_support_usable(support)){
-    return(NULL)
+  if(!is.null(support) && !.hypothesis_linear_support_usable(support)){
+    if(identical(support$type, "interval") && length(support$points) == 0L){
+      support <- NULL
+    }else return(NULL)
   }
 
   n_draws <- nrow(quantity[["posterior_draws"]])
@@ -358,9 +379,11 @@
     output_transformation           = "lin",
     output_transformation_arguments = shift
   )
-  posterior <- .hypothesis_eval_expression(expr, quantity[["posterior_draws"]])
+  posterior <- .hypothesis_affine_value(linear, quantity[["posterior_draws"]])
   class(posterior) <- c("marginal_posterior.simple", "marginal_posterior")
-  posterior <- .bt_meta_set(posterior, "prior_density", prior_density)
+  posterior <- .bt_meta_assign(posterior, list(prior_density = prior_density,
+    prior_context = context, linear_weights = weights, linear_weight_space = space,
+    linear_offset = offset))
   posterior <- .posterior_support_set(posterior, support)
   posterior <- .posterior_atoms_set(posterior, .posterior_atoms_new(
     column_names = "value",
@@ -373,7 +396,9 @@
     posterior        = posterior,
     posterior_parent = NULL,
     posterior_index  = NULL,
-    prior_density    = prior_density
+    prior_density    = prior_density,
+    evaluation_value = .hypothesis_affine_null(linear, side$value),
+    log_jacobian     = log(abs(linear$divisor))
   ))
 }
 
@@ -428,61 +453,14 @@
 # also have a linear form.
 .hypothesis_linear_coefficients <- function(expr, symbols, draws) {
 
-  if(!.hypothesis_expression_linear_form(expr)){
-    return(NULL)
-  }
-
-  n_symbols <- length(symbols)
-  probe_values <- rbind(
-    0,
-    diag(n_symbols),
-    seq_len(n_symbols) * .37 - 1.21,
-    rev(seq_len(n_symbols)) * -.53 + .89
-  )
-  probe <- as.data.frame(
-    matrix(0, nrow = nrow(probe_values), ncol = ncol(draws),
-           dimnames = list(NULL, names(draws))),
-    check.names = FALSE
-  )
-  for(symbol_i in seq_len(n_symbols)){
-    probe[[symbols[symbol_i]]] <- probe_values[, symbol_i]
-  }
-
-  values <- tryCatch(
-    .hypothesis_eval_expression(expr, probe),
-    error = function(e) NULL
-  )
-  if(length(values) != nrow(probe_values)){
-    return(NULL)
-  }
-
-  constant <- values[1L]
-  coefficients <- values[1L + seq_len(n_symbols)] - constant
-  names(coefficients) <- symbols
-  predicted <- as.numeric(constant + probe_values %*% coefficients)
-  if(any(abs(values - predicted) > 1e-8 * pmax(1, abs(values)))){
-    return(NULL)
-  }
-
-  list(constant = constant, coefficients = coefficients)
+  missing <- setdiff(symbols, names(draws))
+  if(length(missing)) .hypothesis_stop_unknown_quantity(missing, names(draws))
+  .hypothesis_affine_read(expr, symbols)
 }
 
-
-# Only parentheses, sums, differences, negations, products and quotients can
-# combine the symbols of a linear expression; other functions and powers may
-# act only on constant subexpressions. Products or quotients of symbols pass
-# this check and are rejected by probing.
 .hypothesis_expression_linear_form <- function(expr) {
 
-  if(!is.call(expr) || length(.hypothesis_expression_symbols(expr)) == 0L){
-    return(TRUE)
-  }
-  fun <- .hypothesis_call_name(expr)
-  if(is.null(fun) || !fun %in% c("(", "+", "-", "*", "/")){
-    return(FALSE)
-  }
-
-  all(vapply(as.list(expr[-1L]), .hypothesis_expression_linear_form, logical(1)))
+  !is.null(.hypothesis_affine_read(expr, .hypothesis_expression_symbols(expr)))
 }
 
 

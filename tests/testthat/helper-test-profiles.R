@@ -39,6 +39,7 @@ bayestools_test_profile_contexts <- list(
     "fixture-catalog-static",
     "harrell-davis-quantile",
     "hypothesis-ast",
+    "hypothesis-inference-precision",
     "hypothesis-BF",
     "hypothesis-BF-parser-adversarial",
     "hypothesis-prior-region-grid",

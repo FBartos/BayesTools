@@ -45,7 +45,9 @@ otherwise), and, for levels whose conditioning was resolved per level,
 Read \code{averaged} instead of comparing \code{condition_key} with a
 literal key.}
 \item{\code{"measure_unavailable"}}{a plain data frame with exact columns
-\code{column}, \code{measure}, and \code{reason}, with unique column/measure
+\code{column}, \code{measure}, and \code{reason}, with an optional declared
+\code{cause} enum; absent causes use an already enumerated reason. Human
+reason text alone does not classify a measure refusal. With unique column/measure
 pairs. The measures are \code{prior_density}, \code{atoms}, or \code{support}.
 Entries prevent stale prior/density/support fallback while numeric draws
 remain usable. Atom/support refusals use

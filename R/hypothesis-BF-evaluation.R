@@ -200,10 +200,9 @@
 
 .hypothesis_draw_region_indicator <- function(side, draws) {
 
-  values <- .hypothesis_eval_condition(
-    .hypothesis_side_expression(side),
-    draws
-  )
+  expression <- .hypothesis_side_expression(side)
+  values <- .hypothesis_structural_condition(expression, draws)
+  if(is.null(values)) values <- .hypothesis_eval_condition(expression, draws)
 
   return(values)
 }
@@ -390,42 +389,22 @@
     return(NULL)
   }
 
-  lhs <- .hypothesis_unwrap_parentheses(expr[[2L]])
-  rhs <- .hypothesis_unwrap_parentheses(expr[[3L]])
-  if(!all(.hypothesis_expression_symbols(expr) %in% parameter)){
-    return(NULL)
-  }
-  # lhs - rhs = constant + coefficient * parameter; the relation holds below
-  # or above its root. A bare parameter compared with a constant keeps the
-  # constant as the exact boundary.
-  if(is.name(lhs) && length(.hypothesis_expression_symbols(rhs)) == 0L){
-    constant <- -tryCatch(.hypothesis_parse_number(rhs), error = function(e) NA_real_)
-    coefficient <- 1
-  }else if(is.name(rhs) && length(.hypothesis_expression_symbols(lhs)) == 0L){
-    constant <- tryCatch(.hypothesis_parse_number(lhs), error = function(e) NA_real_)
-    coefficient <- -1
-  }else{
-    linear <- tryCatch(
-      .hypothesis_linear_coefficients(call("-", lhs, rhs), parameter, template),
-      error = function(e) NULL
-    )
-    if(is.null(linear)){
-      return(NULL)
-    }
-    constant <- linear[["constant"]]
-    coefficient <- unname(linear[["coefficients"]][[1L]])
-  }
-  if(!is.finite(constant) || !is.finite(coefficient)){
-    return(NULL)
-  }
+  if(!all(.hypothesis_expression_symbols(expr) %in% parameter)) return(NULL)
+  comparison <- .hypothesis_affine_comparison(expr, parameter)
+  if(is.null(comparison)) return(NULL)
+  linear <- comparison$form
+  constant <- linear$constant
+  coefficient <- if(length(linear$coefficients) == 0L) 0 else unname(linear$coefficients[[parameter]])
   below <- fun %in% c("<", "<=")
   if(coefficient == 0){
-    holds <- if(below) constant < 0 || (fun == "<=" && constant == 0) else
-      constant > 0 || (fun == ">=" && constant == 0)
+    holds <- do.call(fun, list(constant, 0))
     return(.prior_region_intervals(if(holds) -Inf else numeric(),
                                    if(holds) Inf else numeric()))
   }
   boundary <- -constant / coefficient
+  if(!is.finite(boundary) || (constant != 0 && boundary == 0)){
+    .hypothesis_numerical_stop("boundary_range", "region boundary", region = TRUE)
+  }
   if(below == (coefficient > 0)){
     .prior_region_intervals(-Inf, boundary)
   }else{
@@ -438,6 +417,8 @@
 
   draws <- data.frame(values, check.names = FALSE)
   names(draws) <- parameter
+  structural <- .hypothesis_structural_condition(condition, draws)
+  if(!is.null(structural)) return(structural)
 
   .hypothesis_eval_condition(condition, draws)
 }

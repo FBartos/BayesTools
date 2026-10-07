@@ -84,8 +84,12 @@
     ordered_source = .bt_ordered_source_validate,
     formula_state = .bt_formula_state_validate,
     measure_unavailable = function(value){
-      if(is.data.frame(value) && identical(class(value), "data.frame") && identical(names(value), c("column", "measure", "reason")) &&
-         all(vapply(value, function(x) is.character(x) && !anyNA(x) && all(nzchar(x)), logical(1))) &&
+      columns <- c("column", "measure", "reason")
+      valid_cause <- !"cause" %in% names(value) || (is.character(value$cause) &&
+        all(is.na(value$cause) | value$cause %in% .bt_formula_measure_causes))
+      if(is.data.frame(value) && identical(class(value), "data.frame") &&
+         (identical(names(value), columns) || identical(names(value), c(columns, "cause"))) && valid_cause &&
+         all(vapply(value[columns], function(x) is.character(x) && !anyNA(x) && all(nzchar(x)), logical(1))) &&
          all(value$measure %in% c("prior_density", "atoms", "support")) &&
          !anyDuplicated(value[c("column", "measure")])) return(NULL)
       "it must be a plain column/measure/reason table with unique target measures"
@@ -191,6 +195,15 @@
     linear_offset = function(value){
       if(is.numeric(value) && length(value) == 1L) NULL else
         "it must be a number"
+    },
+    hypothesis_evaluation = function(value){
+      if(!is.list(value) || !is.numeric(value$numerator) || any(!is.finite(value$numerator)) ||
+         !is.numeric(value$divisor) || length(value$divisor) != 1L ||
+         !is.finite(value$divisor) || value$divisor <= 0 ||
+         !is.numeric(value$weights) || is.null(names(value$weights)) ||
+         any(!is.finite(value$weights)) || !is.numeric(value$offset) ||
+         length(value$offset) != 1L || !is.finite(value$offset)) return("invalid affine evaluation coordinates")
+      NULL
     },
     joint_prior_transformation = function(value){
       if(is.character(value) && length(value) == 1L) NULL else
@@ -300,7 +313,7 @@
   "prior_context", "prior_densities", "posterior_density",
   "posterior_densities", "posterior_ordinate", "posterior_ordinates",
   "formula_parameter", "log_intercept", "formula_scale", "transform_scaled",
-  "condition", "linear_weights", "linear_weight_space", "linear_offset", "joint_prior_transformation",
+  "condition", "linear_weights", "linear_weight_space", "linear_offset", "joint_prior_transformation", "hypothesis_evaluation",
   "quantities", "original_scale_quantities", "level_quantities",
   "output_transformations"
 )
@@ -411,6 +424,10 @@
         if(is.null(columns)) columns <- .bt_meta_get(x, "quantities")$column
         if(!is.null(columns) && any(!fields[[field]]$column %in% columns)) stop(
           "Unavailable measure keys must identify current draw columns.", call. = FALSE)
+      }
+      if(.bt_meta_is_draws(x) && identical(field, "hypothesis_evaluation") &&
+         !identical(as.numeric(x), fields[[field]]$numerator / fields[[field]]$divisor)){
+        stop("Affine hypothesis evaluation coordinates do not match the reported draws.", call. = FALSE)
       }
     }
   }
@@ -703,19 +720,24 @@
   selected <- unavailable$measure == measure & unavailable$column %in% column
   if(!any(selected)) return(invisible(TRUE))
   entry <- unavailable[which(selected)[1L], , drop = FALSE]
+  cause <- if("cause" %in% names(entry) && !is.na(entry$cause)) entry$cause else entry$reason
   if(identical(measure, "prior_density")) .bt_formula_density_stop(
     paste0("Prior density for '", entry$column, "' is unavailable: ", entry$reason, "."),
-    target = entry$column, reason = entry$reason)
+    target = entry$column, reason = cause, detail = entry$reason)
   stop(errorCondition(paste0("Formula ", measure, " for '", entry$column,
     "' are unavailable: ", entry$reason, "."), call = NULL,
-    class = c(paste0("BayesTools_formula_", measure, "_unavailable"), "BayesTools_formula_measure_unavailable"),
-    target = entry$column, reason = entry$reason))
+    class = c(paste0("BayesTools_formula_", measure, "_unavailable"),
+      if(cause %in% .bt_formula_measure_causes) "BayesTools_formula_measure_unavailable"),
+    target = entry$column, reason = cause, detail = entry$reason))
 }
 
-.bt_formula_measure_mark <- function(x, column, measure, reason){
+.bt_formula_measure_mark <- function(x, column, measure, reason, cause = NULL){
 
   unavailable <- .bt_meta_get(x, "measure_unavailable")
   entry <- data.frame(column = column, measure = measure, reason = reason, stringsAsFactors = FALSE)
+  if(!is.null(cause)) entry$cause <- cause
+  if(!is.null(unavailable) && "cause" %in% names(unavailable) && !"cause" %in% names(entry)) entry$cause <- NA_character_
+  if(!is.null(unavailable) && "cause" %in% names(entry) && !"cause" %in% names(unavailable)) unavailable$cause <- NA_character_
   if(!is.null(unavailable)) unavailable <- unavailable[!(unavailable$column == column & unavailable$measure == measure), , drop = FALSE]
   .bt_meta_set(x, "measure_unavailable", rbind(unavailable, entry))
 }
@@ -735,7 +757,8 @@
     entries <- unavailable[unavailable$column %in% active, , drop = FALSE]
     if(nrow(entries)) for(measure in unique(entries$measure)){
       target <- .bt_formula_measure_mark(target, target_columns[[row]], measure,
-        entries$reason[entries$measure == measure][[1L]])
+        entries$reason[entries$measure == measure][[1L]],
+        cause = if("cause" %in% names(entries)) entries$cause[entries$measure == measure][[1L]])
     }
   }
   target
@@ -784,7 +807,9 @@
 #'   Read \code{averaged} instead of comparing \code{condition_key} with a
 #'   literal key.}
 #'   \item{\code{"measure_unavailable"}}{a plain data frame with exact columns
-#'   \code{column}, \code{measure}, and \code{reason}, with unique column/measure
+#'   \code{column}, \code{measure}, and \code{reason}, with an optional declared
+#'   \code{cause} enum; absent causes use an already enumerated reason. Human
+#'   reason text alone does not classify a measure refusal. With unique column/measure
 #'   pairs. The measures are \code{prior_density}, \code{atoms}, or \code{support}.
 #'   Entries prevent stale prior/density/support fallback while numeric draws
 #'   remain usable. Atom/support refusals use

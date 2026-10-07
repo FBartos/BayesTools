@@ -88,8 +88,7 @@ hypothesis_linear_target <- function(posterior, hypothesis, parameter){
     )
   }
   if(length(coefficients) == 0L){
-    stop("A linear target must reference at least one level of '", parameter,
-         "' with a nonzero coefficient.", call. = FALSE)
+    .hypothesis_linear_target_stop("The linear target prior is a structural point measure.", "posterior_atoms")
   }
 
   levels <- .hypothesis_match_level_names(
@@ -102,6 +101,8 @@ hypothesis_linear_target <- function(posterior, hypothesis, parameter){
          "' once.", call. = FALSE)
   }
   names(coefficients) <- levels
+  numerator_coefficients <- forms[[1L]]$numerator_coefficients
+  names(numerator_coefficients) <- levels
 
   .hypothesis_validate_level_conditionals(posterior, parameter, levels)
   level_draws <- lapply(levels, function(level){
@@ -135,6 +136,10 @@ hypothesis_linear_target <- function(posterior, hypothesis, parameter){
     weights[1L, ]
   })
   names(level_weights) <- levels
+  level_spaces <- vapply(posterior[levels], .bt_linear_weight_space, character(1))
+  if(length(unique(level_spaces)) != 1L){
+    .hypothesis_linear_target_stop("Linear target levels use incompatible weight spaces.", "weight_space")
+  }
 
   context <- tryCatch(
     .hypothesis_child_prior_context(posterior, levels),
@@ -165,11 +170,15 @@ hypothesis_linear_target <- function(posterior, hypothesis, parameter){
     coefficients
   )
   if(length(weights) == 0L || all(weights == 0)){
-    stop("The linear target has zero combined linear weight.", call. = FALSE)
+    .hypothesis_linear_target_stop("The linear target prior is a structural point measure.", "posterior_atoms")
   }
-  offset <- sum(coefficients * vapply(
-    posterior[levels], .hypothesis_level_linear_offset, numeric(1)
-  ))
+  numerator_offset <- 0
+  for(level in levels){
+    numerator_offset <- .hypothesis_affine_sum(numerator_offset,
+      .hypothesis_affine_product(numerator_coefficients[[level]],
+        .hypothesis_level_linear_offset(posterior[[level]])))
+  }
+  offset <- .hypothesis_linear_target_divide(numerator_offset, forms[[1L]]$divisor)
   prior_density <- .prior_density_from_context(
     context, weights,
     output_transformation = if(offset != 0) "lin" else NULL,
@@ -196,20 +205,34 @@ hypothesis_linear_target <- function(posterior, hypothesis, parameter){
 
   values <- rep(0, draw_lengths[[1L]])
   for(level in levels){
-    values <- values + coefficients[[level]] * level_draws[[level]]
+    values <- .hypothesis_affine_sum(values,
+      .hypothesis_affine_product(numerator_coefficients[[level]], level_draws[[level]]))
+  }
+  numerator_values <- values
+  numerator_weights <- .hypothesis_linear_target_combine_weights(level_weights, numerator_coefficients)
+  values <- values / forms[[1L]]$divisor
+  if(any(!is.finite(values)) || any(numerator_values != 0 & values == 0)){
+    .hypothesis_numerical_stop("coefficient_range", "public linear target values")
   }
   class(values) <- c(
     "numeric", "marginal_posterior.linear_target", "marginal_posterior"
   )
   attr(values, "parameter")             <- target_name
-  values <- .bt_meta_set(values, "linear_weights", weights)
-  values <- .bt_meta_set(values, "linear_offset", offset)
-  values <- .bt_meta_set(values, "prior_density", prior_density)
-  values <- .bt_meta_set(values, "prior_context", context)
+  values <- .bt_meta_assign(values, list(linear_weights = weights,
+    linear_offset = offset, prior_density = prior_density, prior_context = context,
+    linear_weight_space = if(identical(context$linear_weight_space, "formula_contribution"))
+      "formula_contribution" else "coefficient"))
+  values <- .bt_meta_set(values, "hypothesis_evaluation", list(
+    numerator = numerator_values, divisor = forms[[1L]]$divisor,
+    weights = numerator_weights, offset = numerator_offset))
   values <- .bt_meta_set(values, "atoms", .posterior_atoms_new(
     column_names = target_name,
     source       = "linear_target"
   ))
+  values <- .posterior_support_set(values, .posterior_support_from_prior_context_weights(
+    context, weights, "lin", list(a = offset, b = 1)))
+  values <- .posterior_components_set(values, .hypothesis_linear_components(
+    posterior[levels], context, weights, list(a = offset, b = 1), draw_lengths[[1L]]))
   condition <- .bt_meta_get(posterior[[levels[[1L]]]], "condition")
   condition <- condition[intersect(names(condition), c(
     "conditional", "conditional_rule", "condition_key", "condition_event",
@@ -314,8 +337,10 @@ hypothesis_linear_target <- function(posterior, hypothesis, parameter){
     form <- .hypothesis_linear_target_form(side$expression, parameter)
     return(list(
       operator     = if(side$type == "point") "=" else "!=",
-      coefficients = form$coefficients,
-      value        = side$value - form$offset
+      coefficients = .hypothesis_linear_target_scaled_coefficients(form),
+      numerator_coefficients = form$coefficients,
+      value        = .hypothesis_linear_target_divide(.hypothesis_affine_null(form, side$value), form$divisor),
+      divisor      = form$divisor
     ))
   }
   if(!identical(side$type, "region") ||
@@ -330,8 +355,10 @@ hypothesis_linear_target <- function(posterior, hypothesis, parameter){
   form  <- .hypothesis_linear_target_add(left, right, -1)
   list(
     operator     = side$expression$operator,
-    coefficients = form$coefficients,
-    value        = -form$offset
+    coefficients = .hypothesis_linear_target_scaled_coefficients(form),
+    numerator_coefficients = form$coefficients,
+    value        = .hypothesis_linear_target_divide(-form$constant, form$divisor),
+    divisor      = form$divisor
   )
 }
 
@@ -340,99 +367,36 @@ hypothesis_linear_target <- function(posterior, hypothesis, parameter){
 # and level 'coefficients' (named by level, sorted, without zeros).
 .hypothesis_linear_target_form <- function(node, parameter){
 
-  not_linear <- function(){
-    stop(
-      "A linear target must be a linear combination of levels of '",
-      parameter, "' and numbers.",
-      call. = FALSE
-    )
+  expression <- .bt_hypothesis_node_language(node)
+  symbols <- .hypothesis_expression_symbols(.hypothesis_parse_expression(expression))
+  if(length(symbols) == 0L) return(.hypothesis_affine_read(expression, symbols))
+  references <- hypothesis_parse_level_reference(vapply(symbols, function(symbol){
+    .hypothesis_expression_text(as.name(symbol))
+  }, character(1)))
+  if(all(references$direct) && any(references$parameter != parameter)){
+    stop("A linear target may reference levels of only '", parameter, "'.", call. = FALSE)
   }
-  constant <- function(form){
-    length(form$coefficients) == 0L
+  if(any(!references$direct) || any(references$parameter != parameter)){
+    stop("A linear target must be a linear combination of levels of '", parameter,
+         "' and numbers.", call. = FALSE)
   }
-
-  if(identical(node$type, "literal")){
-    return(list(offset = node$value, coefficients = numeric()))
+  form <- .hypothesis_affine_read(expression, symbols)
+  if(is.null(form)){
+    stop("A linear target must be a linear combination of levels of '", parameter,
+         "' and numbers.", call. = FALSE)
   }
-  if(identical(node$type, "level_reference")){
-    if(!identical(node$parameter, parameter)){
-      stop("A linear target may reference levels of only '", parameter, "'.",
-           call. = FALSE)
-    }
-    return(list(
-      offset       = 0,
-      coefficients = stats::setNames(1, node$level)
-    ))
-  }
-  if(identical(node$type, "parentheses")){
-    return(.hypothesis_linear_target_form(node$expression, parameter))
-  }
-  if(!identical(node$type, "arithmetic")){
-    not_linear()
-  }
-
-  arguments <- lapply(node$arguments, .hypothesis_linear_target_form,
-                      parameter = parameter)
-  if(length(arguments) == 1L && node$operator %in% c("+", "-")){
-    return(.hypothesis_linear_target_scale(
-      arguments[[1L]], if(node$operator == "-") -1 else 1
-    ))
-  }
-  if(length(arguments) != 2L){
-    not_linear()
-  }
-  left  <- arguments[[1L]]
-  right <- arguments[[2L]]
-  switch(
-    node$operator,
-    "+" = .hypothesis_linear_target_add(left, right, 1),
-    "-" = .hypothesis_linear_target_add(left, right, -1),
-    "*" = if(constant(left)){
-      .hypothesis_linear_target_scale(right, left$offset)
-    }else if(constant(right)){
-      .hypothesis_linear_target_scale(left, right$offset)
-    }else{
-      not_linear()
-    },
-    "/" = if(constant(right) && right$offset != 0){
-      .hypothesis_linear_target_scale(left, 1 / right$offset)
-    }else{
-      not_linear()
-    },
-    not_linear()
-  )
+  names(form$coefficients) <- references$level[match(names(form$coefficients), references$symbol)]
+  form
 }
-
 
 .hypothesis_linear_target_add <- function(left, right, sign){
 
-  names_all <- sort(unique(c(
-    names(left$coefficients),
-    names(right$coefficients)
-  )))
-  coefficients <- stats::setNames(numeric(length(names_all)), names_all)
-  if(length(left$coefficients) > 0L){
-    coefficients[names(left$coefficients)] <- left$coefficients
-  }
-  if(length(right$coefficients) > 0L){
-    coefficients[names(right$coefficients)] <-
-      coefficients[names(right$coefficients)] + sign * right$coefficients
-  }
-  list(
-    offset       = left$offset + sign * right$offset,
-    coefficients = coefficients[coefficients != 0]
-  )
+  .hypothesis_affine_add(left, right, sign)
 }
-
 
 .hypothesis_linear_target_scale <- function(form, factor){
 
-  coefficients <- factor * form$coefficients
-  coefficients <- coefficients[coefficients != 0]
-  list(
-    offset       = factor * form$offset,
-    coefficients = coefficients[order(names(coefficients))]
-  )
+  .hypothesis_affine_scale(form, .hypothesis_affine_new(factor))
 }
 
 
@@ -444,7 +408,8 @@ hypothesis_linear_target <- function(posterior, hypothesis, parameter){
   for(level in names(level_weights)){
     columns_i <- names(level_weights[[level]])
     out[columns_i] <-
-      out[columns_i] + coefficients[[level]] * level_weights[[level]]
+      .hypothesis_affine_sum(out[columns_i],
+        .hypothesis_affine_product(coefficients[[level]], level_weights[[level]]))
   }
   out
 }
@@ -492,5 +457,23 @@ hypothesis_linear_target <- function(posterior, hypothesis, parameter){
     out$statements[[i]]$right$label <- ast$statements[[i]]$right$label
   }
   .bt_validate_hypothesis_ast(out)
+  out
+}
+
+.hypothesis_linear_target_scaled_coefficients <- function(form){
+
+  coefficients <- form$coefficients / form$divisor
+  if(any(!is.finite(coefficients)) || any(form$coefficients != 0 & coefficients == 0)){
+    .hypothesis_numerical_stop("coefficient_range", "public linear target units")
+  }
+  coefficients
+}
+
+.hypothesis_linear_target_divide <- function(value, divisor){
+
+  out <- value / divisor
+  if(!is.finite(out) || (value != 0 && out == 0) || out * divisor != value){
+    .hypothesis_numerical_stop("boundary_range", "compiled target threshold")
+  }
   out
 }
