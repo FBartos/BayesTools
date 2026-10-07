@@ -657,6 +657,12 @@
   constants <- spec$state_constants
   formula_points <- attr(formula_scale, "point_terms", exact = TRUE)
   needed <- unique(vapply(Filter(function(x) identical(x$type, "state"), spec$multipliers), `[[`, character(1), "name"))
+  if(!is.null(design)){
+    scalar_sd <- .bt_formula_design_random_effects(design)
+    scalar_sd <- Filter(function(term) !.bt_random_effect_has_row_indexed_external_sd(term), scalar_sd)
+    needed <- union(needed, unlist(lapply(scalar_sd, `[[`, "sd_parameter_names"), use.names = FALSE))
+    needed <- needed[!is.na(needed)]
+  }
   for(name in needed){
     candidates <- numeric()
     if(name %in% names(formula_points)) candidates <- c(candidates, formula_points[[name]])

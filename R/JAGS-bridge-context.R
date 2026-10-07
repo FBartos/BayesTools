@@ -1295,7 +1295,8 @@
       .bt_JAGS_marglik_explain_random_effect_sd_missing(
         samples,
         random_term,
-        prior_list
+        prior_list,
+        parameters = parameters
       )
       stop(
         "Random-effect SD metadata are incomplete for block '",
@@ -1332,18 +1333,8 @@
       length(direct_names) == random_term$n_columns &&
       !anyNA(direct_names) && length(ambiguity) == 0L
     if(direct){
-      if(is.list(parameters) &&
-         all(direct_names %in% names(parameters))){
-        parameter_values <- lapply(
-          parameters[direct_names],
-          as.numeric
-        )
-        parameter_lengths <- lengths(parameter_values)
-        if(all(parameter_lengths %in% c(1L, nrow(posterior)))){
-          return(unname(do.call(cbind, lapply(parameter_values, function(x){
-            if(length(x) == 1L) rep(x, nrow(posterior)) else x
-          }))))
-        }
+      if(is.list(parameters) && any(direct_names %in% names(parameters))){
+        return(evaluate(posterior, parameters = parameters, prefer_weights = TRUE))
       }
       direct <- !is.null(posterior_names)
     }
@@ -1492,7 +1483,11 @@
     return(TRUE)
   }
   for(coordinate in coordinates){
-    supplied <- as.numeric(parameters[[coordinate]])
+    supplied <- parameters[[coordinate]]
+    if(!is.numeric(supplied) || !is.null(dim(supplied)) || any(!is.finite(supplied))){
+      .bt_formula_transform_stop("A natural random-effect SD source must contain finite numeric values.",
+        reason = "malformed_sd_state", state = coordinate)
+    }
     reference <- .bt_JAGS_bridge_random_sd_posterior_value(
       coordinate = coordinate,
       bindings = bindings,
@@ -1533,7 +1528,12 @@
 
   function(posterior, parameters = NULL){
     if(is.list(parameters) && parameter_name %in% names(parameters)){
-      value <- as.numeric(parameters[[parameter_name]])
+      value <- parameters[[parameter_name]]
+      if(!is.numeric(value) || !is.null(dim(value)) ||
+         !length(value) %in% c(1L, nrow(posterior)) || any(!is.finite(value))){
+        .bt_formula_transform_stop("A natural random-effect SD source must contain finite row-aligned values.",
+          reason = "malformed_sd_state", state = parameter_name)
+      }
       if(length(value) == 1L){
         return(rep(value, nrow(posterior)))
       }

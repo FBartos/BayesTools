@@ -369,7 +369,8 @@ JAGS_marglik_parameters_formula      <- function(samples, formula_list, formula_
     return(.bt_JAGS_marglik_random_effect_structured_local_value(
       samples = samples,
       random_term = random_term,
-      prior_list = prior_list
+      prior_list = prior_list,
+      parameters = parameters
     ))
   }
 
@@ -391,7 +392,8 @@ JAGS_marglik_parameters_formula      <- function(samples, formula_list, formula_
     sd_values <- .bt_JAGS_marglik_random_effect_sd_values(
       samples = samples,
       random_term = random_term,
-      prior_list = prior_list
+      prior_list = prior_list,
+      parameters = parameters
     )
     contribution <- .bt_random_effect_structured_contribution_from_latent(
       random_term = random_term,
@@ -423,12 +425,13 @@ JAGS_marglik_parameters_formula      <- function(samples, formula_list, formula_
     )
   }
   sd_values <- if(!is.null(value_plan)){
-    value_plan$sd_evaluator$values(samples)
+    value_plan$sd_evaluator$values(samples, parameters = parameters)
   }else{
     .bt_JAGS_marglik_random_effect_sd_values(
       samples = samples,
       random_term = random_term,
-      prior_list = prior_list
+      prior_list = prior_list,
+      parameters = parameters
     )
   }
   if(structure %in% c("diag", "id")){
@@ -473,7 +476,7 @@ JAGS_marglik_parameters_formula      <- function(samples, formula_list, formula_
 }
 
 .bt_JAGS_marglik_random_effect_structured_local_value <- function(
-    samples, random_term, prior_list){
+    samples, random_term, prior_list, parameters = NULL){
 
   layout <- random_term$latent_layout
   if(!all(layout$node_names %in% names(samples))){
@@ -486,7 +489,8 @@ JAGS_marglik_parameters_formula      <- function(samples, formula_list, formula_
   sd_values <- .bt_JAGS_marglik_random_effect_sd_values(
     samples = samples,
     random_term = random_term,
-    prior_list = prior_list
+    prior_list = prior_list,
+    parameters = parameters
   )
   rho <- .bt_JAGS_marglik_random_effect_rho(samples, random_term)
   coefficients <- vector("list", layout$n_groups)
@@ -959,7 +963,10 @@ JAGS_marglik_parameters_formula      <- function(samples, formula_list, formula_
 }
 
 .bt_JAGS_marglik_random_effect_sd_values <- function(samples, random_term,
-                                                     prior_list){
+                                                     prior_list, parameters = NULL){
+
+  evaluator <- .bt_JAGS_bridge_compile_random_sd_evaluator(random_term, prior_list)
+  if(!is.null(evaluator)) return(evaluator$values(samples, parameters = parameters))
 
   .bt_JAGS_marglik_check_random_effect_dirichlet_samples(
     samples = samples,
@@ -1013,7 +1020,7 @@ JAGS_marglik_parameters_formula      <- function(samples, formula_list, formula_
 
 .bt_JAGS_marglik_explain_random_effect_sd_missing <- function(samples,
                                                               random_term,
-                                                              prior_list){
+                                                              prior_list, parameters = NULL){
 
   binding <- random_term$sd_binding
   if(!is.null(binding) && isTRUE(binding$true_allocation) &&
@@ -1022,7 +1029,8 @@ JAGS_marglik_parameters_formula      <- function(samples, formula_list, formula_
     if(!.bt_JAGS_marglik_random_effect_parameter_available(
       samples = samples,
       parameter_name = .bt_random_sd_binding_source_name(allocation$source),
-      prior_list = prior_list
+      prior_list = prior_list,
+      parameters = parameters
     )){
       .bt_JAGS_marglik_missing_columns("'posterior' does not contain all monitored formula prior parameters.")
     }
@@ -1066,7 +1074,8 @@ JAGS_marglik_parameters_formula      <- function(samples, formula_list, formula_
       .bt_JAGS_marglik_random_effect_parameter_available(
         samples = samples,
         parameter_name = parameter_name,
-        prior_list = prior_list
+        prior_list = prior_list,
+        parameters = parameters
       )
     }, logical(1))
     if(any(missing_sd)){
@@ -1079,7 +1088,16 @@ JAGS_marglik_parameters_formula      <- function(samples, formula_list, formula_
 
 .bt_JAGS_marglik_random_effect_parameter_available <- function(samples,
                                                                parameter_name,
-                                                               prior_list){
+                                                               prior_list, parameters = NULL){
+
+  if(parameter_name %in% names(parameters)){
+    value <- parameters[[parameter_name]]
+    if(!is.numeric(value) || length(value) != 1L || !is.finite(value)){
+      .bt_formula_transform_stop("A natural random-effect SD source must be one finite scalar.",
+        reason = "malformed_sd_state", state = parameter_name)
+    }
+    return(TRUE)
+  }
 
   if(parameter_name %in% names(samples)){
     return(TRUE)

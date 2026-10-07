@@ -536,7 +536,9 @@
 
   list(
     active = TRUE,
-    factor_states = function(posterior){
+    factor_states = function(posterior, parameters = NULL){
+      parameters <- .bt_JAGS_bridge_formula_source_base_parameters(NULL,
+        parameters, state_constants = .bt_formula_bridge_state_constants(formula_design_list))
       posterior <- as.matrix(posterior)
       if(nrow(posterior) < 1L ||
          (ncol(posterior) > 0L && is.null(colnames(posterior)))){
@@ -548,7 +550,8 @@
       out <- lapply(plans, function(plan){
         .bt_JAGS_bridge_marginal_random_factor_states_batch(
           plan = plan,
-          posterior = posterior
+          posterior = posterior,
+          parameters = parameters
         )
       })
       if(any(vapply(out, is.null, logical(1)))){
@@ -556,7 +559,9 @@
       }
       out
     },
-    factor_components = function(posterior){
+    factor_components = function(posterior, parameters = NULL){
+      parameters <- .bt_JAGS_bridge_formula_source_base_parameters(NULL,
+        parameters, state_constants = .bt_formula_bridge_state_constants(formula_design_list))
       posterior <- as.matrix(posterior)
       if(nrow(posterior) < 1L ||
          (ncol(posterior) > 0L && is.null(colnames(posterior)))){
@@ -568,7 +573,8 @@
       out <- lapply(plans, function(plan){
         .bt_JAGS_bridge_marginal_random_factor_components_batch(
           plan = plan,
-          posterior = posterior
+          posterior = posterior,
+          parameters = parameters
         )
       })
       if(any(vapply(out, is.null, logical(1)))){
@@ -576,7 +582,9 @@
       }
       out
     },
-    coefficient_scales = function(posterior, parameter, block){
+    coefficient_scales = function(posterior, parameter, block, parameters = NULL){
+      parameters <- .bt_JAGS_bridge_formula_source_base_parameters(NULL,
+        parameters, state_constants = .bt_formula_bridge_state_constants(formula_design_list))
       posterior <- as.matrix(posterior)
       plan <- plans[[parameter]]
       if(is.null(plan) || is.null(plan$blocks[[block]])){
@@ -586,7 +594,8 @@
       .bt_JAGS_bridge_marginal_random_block_coefficient_scales_batch(
         block_plan = plan$blocks[[block]],
         posterior = posterior,
-        prior_list = plan$prior_list
+        prior_list = plan$prior_list,
+        parameters = parameters
       )
     },
     coefficient_cholesky = function(posterior, parameter, block){
@@ -607,12 +616,18 @@
                           factor_state = FALSE,
                           sd_cache = NULL){
       posterior <- .bt_JAGS_marglik_random_effect_posterior_row(samples)
+      source_parameters <- .bt_JAGS_bridge_context_source_parameters(
+        samples, prior_parameters, formula_prior_parameters, formula_parameters,
+        state_constants = .bt_formula_bridge_state_constants(formula_design_list))
+      source_parameters <- .bt_parameter_source_forbid_formula_parameters(
+        source_parameters, forbidden_formula_parameters)
       if(isTRUE(factor_state) && !isTRUE(factor_covariance)){
         compact <- lapply(plans, function(plan){
           value <- .bt_JAGS_bridge_marginal_random_factor_state_posterior(
             plan = plan,
             posterior = posterior,
-            sd_cache = sd_cache
+            sd_cache = sd_cache,
+            parameters = source_parameters
           )
           if(is.null(value)){
             return(NULL)
@@ -624,16 +639,6 @@
           return(compact)
         }
       }
-      source_parameters <- .bt_JAGS_bridge_context_source_parameters(
-        samples = samples,
-        prior_parameters = prior_parameters,
-        formula_prior_parameters = formula_prior_parameters,
-        formula_parameters = formula_parameters
-      )
-      source_parameters <- .bt_parameter_source_forbid_formula_parameters(
-        source_parameters,
-        forbidden_formula_parameters
-      )
 
       out <- lapply(plans, function(plan){
         covariance <- .bt_JAGS_bridge_marginal_random_covariance(
@@ -675,14 +680,15 @@
 
 .bt_JAGS_bridge_marginal_random_factor_state_posterior <- function(plan,
                                                                    posterior,
-                                                                   sd_cache = NULL){
+                                                                   sd_cache = NULL,
+                                                                   parameters = NULL){
 
   if(!isTRUE(plan$factor_state) || is.null(plan$row_blocks)){
     return(NULL)
   }
   states <- lapply(
     plan$factor_state_evaluators,
-    function(evaluator) evaluator(posterior, sd_cache = sd_cache)
+    function(evaluator) evaluator(posterior, sd_cache = sd_cache, parameters = parameters)
   )
   if(any(vapply(states, is.null, logical(1)))){
     return(NULL)
@@ -701,7 +707,7 @@
     function(block_plan, prior_list, share_key = NULL, posterior_names = NULL){
 
   if(isTRUE(block_plan$row_indexed)){
-    return(function(posterior, sd_cache = NULL) NULL)
+    return(function(posterior, sd_cache = NULL, parameters = NULL) NULL)
   }
   random_term <- block_plan$random_term
   n_columns   <- ncol(block_plan$model_matrix)
@@ -742,8 +748,9 @@
   force(share_key)
   force(shared)
 
-  function(posterior, sd_cache = NULL){
-    shared_draws <- if(shared && is.environment(sd_cache) &&
+  function(posterior, sd_cache = NULL, parameters = NULL){
+    shared_draws <- if(shared && .bt_JAGS_bridge_random_sd_sources_agree(
+                         sd_evaluator$bindings, parameters, posterior) && is.environment(sd_cache) &&
                        exists(share_key, envir = sd_cache, inherits = FALSE)){
       cached <- get(share_key, envir = sd_cache, inherits = FALSE)
       if(is.numeric(cached) && length(cached) == n_columns){
@@ -757,11 +764,11 @@
     sd_draws <- if(!is.null(shared_draws)){
       shared_draws
     }else if(!is.null(sd_evaluator)){
-      sd_evaluator$posterior_draws(posterior)
+      sd_evaluator$posterior_draws(posterior, parameters = parameters)
     }else if(!is.null(direct_sd_evaluators)){
       values <- lapply(
         direct_sd_evaluators,
-        function(evaluator) evaluator(posterior)
+        function(evaluator) evaluator(posterior, parameters = parameters)
       )
       if(any(vapply(values, is.null, logical(1)))){
         NULL
@@ -799,7 +806,7 @@
 }
 
 .bt_JAGS_bridge_marginal_random_factor_components_batch <- function(
-    plan, posterior){
+    plan, posterior, parameters = NULL){
 
   attr(
     posterior,
@@ -809,7 +816,8 @@
     plan$blocks,
     .bt_JAGS_bridge_marginal_random_block_factor_components_batch,
     posterior = posterior,
-    prior_list = plan$prior_list
+    prior_list = plan$prior_list,
+    parameters = parameters
   )
   if(any(vapply(out, is.null, logical(1)))){
     return(NULL)
@@ -819,7 +827,7 @@
 }
 
 .bt_JAGS_bridge_marginal_random_factor_states_batch <- function(plan,
-                                                                 posterior){
+                                                                 posterior, parameters = NULL){
 
   if(!isTRUE(plan$factor_state) || is.null(plan$row_blocks)){
     return(NULL)
@@ -833,7 +841,8 @@
     plan$blocks,
     .bt_JAGS_bridge_marginal_random_block_factor_states_batch,
     posterior = posterior,
-    prior_list = plan$prior_list
+    prior_list = plan$prior_list,
+    parameters = parameters
   )
   if(any(vapply(block_states, is.null, logical(1)))){
     return(NULL)
@@ -854,10 +863,11 @@
 }
 
 .bt_JAGS_bridge_marginal_random_block_factor_states_batch <- function(
-    block_plan, posterior, prior_list) {
+    block_plan, posterior, prior_list, parameters = NULL) {
 
   components <- .bt_JAGS_bridge_marginal_random_block_factor_components_batch(
-    block_plan = block_plan, posterior = posterior, prior_list = prior_list)
+    block_plan = block_plan, posterior = posterior, prior_list = prior_list,
+    parameters = parameters)
   if (is.null(components)) return(NULL)
   n_columns <- ncol(block_plan$model_matrix)
   markov <- isTRUE(components$markov)
@@ -897,7 +907,7 @@
 
 
 .bt_JAGS_bridge_marginal_random_block_factor_components_batch <- function(
-    block_plan, posterior, prior_list){
+    block_plan, posterior, prior_list, parameters = NULL){
 
   random_term <- block_plan$random_term
   n_columns   <- ncol(block_plan$model_matrix)
@@ -969,7 +979,8 @@
     sd_draws <- .bt_JAGS_bridge_marginal_random_block_coefficient_scales_batch(
       block_plan = block_plan,
       posterior = posterior,
-      prior_list = prior_list
+      prior_list = prior_list,
+      parameters = parameters
     )
   }
   if(is.null(sd_draws)){
@@ -1005,7 +1016,7 @@
 
 
 .bt_JAGS_bridge_marginal_random_block_coefficient_scales_batch <- function(
-    block_plan, posterior, prior_list){
+    block_plan, posterior, prior_list, parameters = NULL){
 
   random_term <- block_plan$random_term
   n_columns   <- ncol(block_plan$model_matrix)
@@ -1017,7 +1028,7 @@
       prior_list = prior_list
     )
   }else{
-    block_plan$sd_evaluator$posterior_draws(posterior)
+    block_plan$sd_evaluator$posterior_draws(posterior, parameters = parameters)
   }
   if(is.null(sd_draws) && !is.null(block_plan$sd_evaluator)){
     sd_draws <- .bt_random_effect_sd_draws(
