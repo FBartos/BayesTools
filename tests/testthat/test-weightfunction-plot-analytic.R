@@ -111,7 +111,7 @@ test_that("posterior omega parameters use recorded component probabilities", {
   )
   colnames(samples) <- "omega[0.05,1]"
   attr(samples, "prior_list") <- prior_list
-  samples <- .bt_draws_set_component(samples, source = "model", component = c(rep(1, 3000), rep(2, 1000)))
+  samples <- .model_probability_component_set(samples, c(rep(1, 3000), rep(2, 1000)), prior_list, c(.6, .4))
   samples <- .bt_meta_set(samples, "atoms", BayesTools:::.posterior_atoms_from_priors(
       prior_list,
       probabilities = c(.6, .4),
@@ -150,7 +150,7 @@ test_that("individual omega posteriors keep masses and draws aligned with duplic
   )[rep(1, length(models_ind)), ]
   samples[continuous, "omega[0.05,1]"] <- seq(.01, .99, length.out = sum(continuous))
   attr(samples, "prior_list") <- prior_list
-  samples <- .bt_draws_set_component(samples, source = "model", component = models_ind)
+  samples <- .model_probability_component_set(samples, models_ind, prior_list, post_probs)
   samples <- .bt_meta_set(samples, "atoms", .posterior_atoms_from_priors(
     prior_list,
     post_probs,
@@ -249,7 +249,7 @@ test_that("weightfunction posterior bins follow the mixed columns when a model h
   omega <- matrix(1, nrow = length(models_ind), ncol = 4)
   omega[models_ind == 1, 3] <- seq(.2, .9, length.out = 60)
   colnames(omega) <- .weightfunction_omega_names(omega_cuts)
-  omega <- .bt_draws_set_component(omega, source = "model", component = models_ind)
+  omega <- .model_probability_component_set(omega, models_ind, priors, c(.6, 0, .4))
   attr(omega, "prior_list") <- priors
   omega <- .bt_meta_set(omega, "atoms", .posterior_atoms_from_priors(
     priors,
@@ -307,7 +307,7 @@ test_that("structurally fixed omega coordinates remain declared point masses", {
     "omega[0.05,1]" = seq(.005, .995, length.out = 100)
   )
   attr(samples, "prior_list") <- weight_prior
-  samples <- .bt_draws_set_component(samples, source = "model", component = rep(1, nrow(samples)))
+  samples <- .model_probability_component_set(samples, rep(1, nrow(samples)), list(weight_prior), 1)
   samples <- .bt_meta_set(samples, "atoms", BayesTools:::.posterior_atoms_from_priors(
       weight_prior,
       probabilities = 1,
@@ -564,7 +564,7 @@ test_that("posterior weightfunction plotting ranges include omega samples above 
   )
   colnames(omega_samples) <- c("omega[0,0.05]", "omega[0.05,1]")
   attr(omega_samples, "prior_list") <- list(log_prior)
-  omega_samples <- .bt_draws_set_component(omega_samples, source = "model", component = rep(1, nrow(omega_samples)))
+  omega_samples <- .model_probability_component_set(omega_samples, rep(1, nrow(omega_samples)), list(log_prior), 1)
   omega_samples <- .bt_meta_set(omega_samples, "atoms", .posterior_atoms_from_priors(
     list(log_prior),
     probabilities = 1,

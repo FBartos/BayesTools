@@ -459,7 +459,7 @@ test_that("individual posterior omega figures follow the summary-table columns",
   omega <- matrix(1, nrow = length(models_ind), ncol = 4)
   omega[models_ind == 1, 3] <- seq(.2, .9, length.out = 60)
   colnames(omega) <- .weightfunction_omega_names(omega_cuts)
-  omega <- .bt_draws_set_component(omega, source = "model", component = models_ind)
+  omega <- .model_probability_component_set(omega, models_ind, priors, c(.6, 0, .4))
   attr(omega, "prior_list") <- priors
   omega <- .bt_meta_set(omega, "atoms", .posterior_atoms_from_priors(
     priors,
