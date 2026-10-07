@@ -680,6 +680,23 @@ marginal_estimates_table <- function(samples, inference, parameters, probs = c(0
   row_diagnostics <- list()
   for(parameter in parameters){
 
+    # Align the producer once, before extracting any row-owned BF information.
+    parameter_inference <- inference[[parameter]]
+    if(is.list(samples[[parameter]]) && is.list(parameter_inference)){
+      sample_keys <- names(samples[[parameter]])
+      inference_keys <- names(parameter_inference)
+      if(!is.null(sample_keys) && !is.null(inference_keys)){
+        if(anyNA(sample_keys) || anyNA(inference_keys) ||
+           any(!nzchar(sample_keys)) || any(!nzchar(inference_keys)) ||
+           anyDuplicated(sample_keys) || anyDuplicated(inference_keys) ||
+           anyNA(match(sample_keys, inference_keys))){
+          stop(paste0("Marginal inference levels for '", parameter,
+                      "' cannot be aligned with the named sample levels."), call. = FALSE)
+        }
+        parameter_inference <- parameter_inference[match(sample_keys, inference_keys)]
+      }
+    }
+
     # the label parts of every level: rows and warnings are rendered from them
     level_parts  <- .bt_marginal_level_parts(samples[[parameter]], parameter)
     level_labels <- .bt_label(level_parts, style = "table", formula_prefix = formula_prefix)
@@ -690,27 +707,21 @@ marginal_estimates_table <- function(samples, inference, parameters, probs = c(0
     # extract the relevant information
     if(is.list(samples[[parameter]]) && length(samples[[parameter]]) > 1){
       temp_samples  <- .marginal_posterior_parameter_samples(samples, parameter)
-      temp_BF       <- do.call(c, inference[[parameter]])
-      temp_BF_error <- .marginal_inference_BF_error_percent(inference[[parameter]], temp_BF)
+      temp_BF       <- do.call(c, parameter_inference)
+      temp_BF_error <- .marginal_inference_BF_error_percent(parameter_inference, temp_BF)
       # the warnings of each level are keyed by that level
-      warning_levels <- if(!is.null(names(inference[[parameter]])) &&
-                           !is.null(names(samples[[parameter]]))){
-        match(names(inference[[parameter]]), names(samples[[parameter]]))
-      }else{
-        seq_along(inference[[parameter]])
-      }
-      temp_warnings <- do.call(c, lapply(seq_along(inference[[parameter]]), function(lvl) {
-        if(is.null(attr(inference[[parameter]][[lvl]], "warnings"))){
+      temp_warnings <- do.call(c, lapply(seq_along(parameter_inference), function(lvl) {
+        if(is.null(attr(parameter_inference[[lvl]], "warnings"))){
           return()
         }else{
-          paste0(level_warning_labels[[warning_levels[[lvl]]]], ": ", attr(inference[[parameter]][[lvl]], "warnings"))
+          paste0(level_warning_labels[[lvl]], ": ", attr(parameter_inference[[lvl]], "warnings"))
         }
       }))
     }else{
       temp_samples  <- .marginal_posterior_parameter_samples(samples, parameter)
       # a scalar Savage-Dickey BF keeps its attributes only when not subset
-      temp_BF       <- if(is.list(inference[[parameter]])) inference[[parameter]][[1]] else inference[[parameter]]
-      temp_BF_error <- .marginal_inference_BF_error_percent(inference[[parameter]], temp_BF)
+      temp_BF       <- if(is.list(parameter_inference)) parameter_inference[[1]] else parameter_inference
+      temp_BF_error <- .marginal_inference_BF_error_percent(parameter_inference, temp_BF)
       if(is.null(attr(temp_BF, "warnings"))){
         temp_warnings <- NULL
       }else{
@@ -719,7 +730,7 @@ marginal_estimates_table <- function(samples, inference, parameters, probs = c(0
     }
 
     producers <- if(is.list(samples[[parameter]]) && length(samples[[parameter]]) > 1L){
-      inference[[parameter]]
+      parameter_inference
     }else list(temp_BF)
     row_log_BF <- c(row_log_BF, vapply(producers, function(value){
       logs <- .BF_carrier_log(value)

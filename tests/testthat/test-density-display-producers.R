@@ -1,6 +1,30 @@
 skip_if_not_test_profile("fixture")
 source(testthat::test_path("common-functions.R"))
 
+test_that("named marginal BF rows retain actual producer fields when inference order changes", {
+
+  skip_if_missing_fits("fit_factor_orthonormal")
+  fit <- readRDS(file.path(temp_fits_dir, "fit_factor_orthonormal.RDS"))
+  mixed <- as_mixed_posteriors(fit, parameters = "p1")
+  marginal <- marginal_posterior(mixed, "p1", prior_samples = TRUE, use_formula = FALSE)
+  producers <- Savage_Dickey_BF(marginal, normal_approximation = TRUE, silent = TRUE)
+  names(producers) <- names(marginal)
+  samples <- list(p1 = marginal)
+  for(settings in list(list(), list(BF01 = TRUE), list(logBF = TRUE))){
+    reference <- do.call(marginal_estimates_table,
+      c(list(samples = samples, inference = list(p1 = producers), parameters = "p1"), settings))
+    reordered <- do.call(marginal_estimates_table,
+      c(list(samples = samples, inference = list(p1 = rev(producers)), parameters = "p1"), settings))
+    expect_equal(as.data.frame(reordered), as.data.frame(reference))
+    expect_identical(attr(reordered, "raw_log_BF"), attr(reference, "raw_log_BF"))
+    expect_identical(attr(reordered, "numerical_diagnostics"), attr(reference, "numerical_diagnostics"))
+    expect_identical(attr(reordered, "warnings"), attr(reference, "warnings"))
+  }
+  missing <- producers[-1L]
+  expect_error(marginal_estimates_table(samples, list(p1 = missing), "p1"),
+    "cannot be aligned", fixed = TRUE)
+})
+
 test_that("actual scalar producers match precomputed plot identity before transformations", {
 
   skip_if_missing_fits("fit_simple_normal")
