@@ -1168,8 +1168,9 @@ old behaviour.
     `BayesTools_harrell_davis_undefined`.
   - the median and 95% band of posterior PET-PEESE lines
     (`plot_posterior()` with `parameter = "PET"`, `"PEESE"`, or `"PETPEESE"`)
-    are Harrell-Davis quantiles of the draws of the line (one call, so the
-    median lies inside the band) instead of empirical quantiles; only the line,
+    are Harrell-Davis quantiles of the draws of the line; their nondecreasing
+    order puts the median inside the band, while batching shares computation.
+    They replace empirical quantiles; only the line,
     the band, and the automatic y range that follows them change. Prior lines
     computed from sampled draws keep the empirical quantiles.
 

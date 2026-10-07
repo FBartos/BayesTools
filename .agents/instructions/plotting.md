@@ -110,6 +110,8 @@ their exact source indices and ordinates, warning with the affected source value
 They require two distinct images and consistent nonzero orientation; whole
 collapse, custom/affine collapse and invalid interior knots remain unavailable.
 This display convention does not relax atom, draw or inverse-region checks.
+Posterior PET/PEESE bands use pointwise HD quantiles; sampled-prior bands retain
+empirical quantiles and deterministic prior bands retain their CDF inversion.
 PET/PEESE continuous-pair CDFs integrate over location probability, retain raw
 panel diagnostics, and share a total200 actual subdivisions per original pair.
 Each finite panel uses checked affine coordinates with its original physical

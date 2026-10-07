@@ -228,7 +228,11 @@ test_that("harrell_davis_quantile handles single draws, two draws, ties, and the
   )
   # a single deviating draw in constant draws moves the estimate by its weight only
   y <- c(rep(2, 40), 3)
-  expect_equal(harrell_davis_quantile(y, .5), 2 + BayesTools:::.harrell_davis_weights(.5, 41)[41], tolerance = 1e-14)
+  p <- .975
+  last_weight <- stats::pbeta(40 / 41, p * 42, (1 - p) * 42, lower.tail = FALSE)
+  estimate <- harrell_davis_quantile(y, p)
+  expect_gt(estimate, 2)
+  expect_equal(estimate - 2, last_weight, tolerance = 1e-14)
 })
 
 test_that("harrell_davis_quantile does not overflow for finite draws", {
@@ -272,12 +276,18 @@ test_that("harrell_davis_quantile falls back to the empirical quantile for infin
 
   # infinite draws of both signs make the empirical interpolation NaN
   nan_matrix <- cbind(ok = c(1, 2), bad = c(-Inf, Inf))
-  expect_error(
+  matrix_error <- expect_error(
     harrell_davis_quantile(nan_matrix, .5),
-    "column 2 of 'x'",
-    class = "BayesTools_harrell_davis_undefined"
+    "The Harrell-Davis quantile is unavailable: the empirical quantile of column 2 of 'x' is NaN because its infinite draws have opposite signs. Remove or recode the infinite draws.",
+    fixed = TRUE, class = "BayesTools_harrell_davis_undefined"
   )
-  expect_error(harrell_davis_quantile(c(-Inf, Inf), .5), class = "BayesTools_harrell_davis")
+  vector_error <- expect_error(harrell_davis_quantile(c(-Inf, Inf), .5),
+    "The Harrell-Davis quantile is unavailable: the empirical quantile of 'x' is NaN because its infinite draws have opposite signs. Remove or recode the infinite draws.",
+    fixed = TRUE, class = "BayesTools_harrell_davis_undefined")
+  for(condition in list(matrix_error, vector_error)){
+    expect_identical(class(condition), c("BayesTools_harrell_davis_undefined", "BayesTools_harrell_davis", "error", "condition"))
+    expect_null(conditionCall(condition))
+  }
   # ... unless the probabilities do not interpolate between them
   expect_identical(harrell_davis_quantile(c(-Inf, Inf), c(0, 1)), c(-Inf, Inf))
 
@@ -286,13 +296,14 @@ test_that("harrell_davis_quantile falls back to the empirical quantile for infin
   # number of draws and the R version: R 4.6 stops at 1e-320 with 1,000 draws but
   # not with 3 draws); a result is never NaN
   for (m in c(3, 1000)) {
+    # For draws 1:m, HD = E[ceiling(m * U)] <= 1 + m * E[U] = 1 + m * p.
     tiny <- tryCatch(
       harrell_davis_quantile(seq_len(m), 1e-320),
       BayesTools_harrell_davis_undefined = function(e) conditionMessage(e)
     )
     expect_true(
       (is.character(tiny) && grepl("Use values of 'probs' further from 0 and 1.", tiny, fixed = TRUE)) ||
-        (is.numeric(tiny) && tiny >= 1 && tiny <= m)
+        (is.numeric(tiny) && tiny >= 1 && tiny <= 1 + m * 1e-320)
     )
   }
   expect_equal(harrell_davis_quantile(c(1, 2, 3), 1e-12), 1, tolerance = 1e-9)

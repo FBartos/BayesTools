@@ -72,8 +72,9 @@
   return(out)
 }
 # The pointwise median and 95% band of the PET-PEESE line: by the Harrell-Davis
-# quantiles of the draws (posterior lines; one call, so that the median lies
-# inside the band) or, for the draws of a prior, by the empirical quantiles.
+# quantiles of the draws (posterior lines). Their nondecreasing order places
+# the median inside the band; batching the probabilities shares computation.
+# Prior draws use empirical quantiles.
 .petpeese_line_summary_from_samples <- function(samples, x_seq, transformation, transformation_arguments,
                                                 effect_direction = "positive",
                                                 quantile_method = c("harrell_davis", "empirical")){

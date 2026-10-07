@@ -47,10 +47,10 @@ Caveats of the estimator:
 \itemize{
 \item The quantiles of the columns are pointwise: the result is not a
 simultaneous band of the underlying curve.
-\item The estimate is smooth, not more accurate. The slowly varying Monte Carlo
-error of the empirical quantile across neighboring columns remains, and
-only more draws reduce it. Extreme probabilities (e.g., \code{0.0005}) are not
-estimated more accurately than by the empirical quantile. In simulations
+\item Smoothness gives no general accuracy guarantee relative to the empirical
+quantile, including at extreme probabilities (e.g., \code{0.0005}). Increasing
+the number of draws reduces Monte Carlo error; smoothing alone does not
+remove it. In simulations
 of smooth curves (lines with normal coefficients, probability \code{0.025},
 1,000 and 10,000 draws), the root mean squared error was about as large as
 that of the empirical quantile (median ratios of 0.92 and 0.97) and the
@@ -83,7 +83,8 @@ infinite draws of both signs). A column that contains an infinite draw is
 therefore summarized by the empirical quantile of that column
 (\code{stats::quantile()}, type 7). If that quantile is \code{NaN} (an interpolation
 between draws of \code{-Inf} and \code{Inf}), or if the weights of a probability
-cannot be computed numerically (a probability below about \code{1e-310}), the
+cannot be computed numerically (at tiny probabilities, with a limit that
+depends on the draw count and distribution-function implementation), the
 function stops with an error of class \code{BayesTools_harrell_davis_undefined}
 (also of the family class \code{BayesTools_harrell_davis}). The weights are
 computed only when a column with finite draws needs them, so columns of
