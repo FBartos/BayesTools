@@ -2777,26 +2777,29 @@ test_that("linear level expressions use the joint prior density for normal ordin
 })
 
 
-test_that("rejected prior-ordinate quadratures stop with the inexact class", {
+test_that("checked prior quadratures agree independently and exhausted budgets retain the inexact class", {
 
-  # N(0, 1e-3) * Cauchy(0, 1) is a pure scale mixture whose quadrature away
-  # from its offset is rejected by its diagnostics ('probably divergent')
   priors <- list(beta = prior("normal", list(0, 1e-3)), sigma = prior("cauchy", list(0, 1)))
   attr(priors$beta, "multiply_by") <- "sigma"
+  independent <- function(sigma){
+    integral <- stats::integrate(function(z) z * stats::dnorm(z) / (1 + (sigma * z / .3)^2),
+      0, Inf, rel.tol = 1e-12, abs.tol = 0)
+    expect_identical(integral$message, "OK")
+    expect_lte(integral$abs.error, 1e-10 * integral$value)
+    (2 * sigma / (pi * .3^2)) * integral$value
+  }
   density <- .prior_linear_combination_density(priors, c(beta = 1))
   ordinate <- prior_density_ordinate(density, .3)
-  expect_identical(ordinate$behavior, "regular")
-  expect_false(ordinate$exact)
-  expect_true(is.na(ordinate$log_density))
-  expect_false(ordinate$provenance$integration$converged)
+  expect_true(ordinate$exact)
+  expect_lte(abs(exp(ordinate$log_density) / independent(.001) - 1), 1e-4)
   posterior <- .hypothesis_marginal_posterior_for_test(stats::rnorm(1000, .01, .05), density)
-  condition <- tryCatch(
-    hypothesis_BF(posterior, hypothesis = "theta = 0.3", parameter = "theta"),
-    error = function(e) e
-  )
+  expect_s3_class(hypothesis_BF(posterior, hypothesis = "theta = 0.3", parameter = "theta"), "BayesTools_hypothesis_BF")
+  exhausted <- .prior_linear_combination_density(priors, c(beta = 1), n_grid = 16)
+  posterior <- .hypothesis_marginal_posterior_for_test(as.numeric(posterior), exhausted)
+  condition <- tryCatch(hypothesis_BF(posterior, hypothesis = "theta = 0.3", parameter = "theta"), error = identity)
   expect_s3_class(condition, "BayesTools_inexact_ordinate")
   expect_s3_class(condition, "BayesTools_hypothesis_ordinate")
-  expect_match(conditionMessage(condition), "rejected by its diagnostics", fixed = TRUE)
+
 })
 
 test_that("N28 symbolic and centered point-versus-region targets agree", {

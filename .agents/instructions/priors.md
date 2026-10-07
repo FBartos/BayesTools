@@ -226,6 +226,8 @@ inclusive comparisons at the mapped zero. Negative domains and zero atoms
 under negative powers retain explicit refusal.
 
 Full-precision rule: no ordinate is exact when its value is computed from a
+subnormal required primitive factor argument inside a scale-product quadrature,
+even when the original target is a normal positive double, or from a
 subnormal (nonzero, absolute value below `.Machine$double.xmin`), underflowed
 or non-finite intermediate (`.prior_density_full_precision()`,
 `.prior_density_affine_full_precision()` for a distance from an exact anchor
@@ -897,6 +899,20 @@ with the prior densities of the kept elements.
   `BayesTools_hypothesis_ordinate`).
 
 ## Numerical Evidence
+
+Conditional-Normal and scale-product ordinate leaves alone may supply log
+callbacks. Their quadrature coordinates keep physical pieces/endpoints and
+budget ownership, selecting finite log-magnitude transport only when initial
+mapped nodes preserve interior correspondence. Narrow unresolved log geometry
+preselects checked power-of-two affine transport, carrying its log Jacobian
+before exponentiation; a failed wide piece never retries an affine route.
+One-sided infinite transport uses the physical anchor's
+power-of-two scale and combines the full log Jacobian before exponentiation.
+Required range/collapse loss is a typed numerical refusal, distinct from a
+certified support-zero kernel and a regular final subnormal ordinate.
+Region inverses keep genuine endpoints and strict/inclusive atom events, refusing
+finite endpoint loss or collapse. Translate only known numerical conditions at
+the hypothesis-region boundary so valid sibling rows retain their diagnostics.
 
 Use distribution-library references, analytic identities, or independently
 derived results. Cover interior values, exact support boundaries, outside-

@@ -834,7 +834,7 @@ test_that("rejected region quadratures stop instead of using the grid", {
   n_pieces <- length(.prior_conditional_normal_breakpoints(spec, .5)) - 1L
   testthat::local_mocked_bindings(
     .prior_conditional_normal_piece = function(integrand, lower, upper, n_grid,
-                                               relative, absolute){
+                                               relative, absolute, log_integrand = NULL){
       list(value = .1, abs.error = 1e-3, message = "roundoff error was detected",
            evaluations = 21L)
     },
@@ -864,7 +864,7 @@ test_that("quadrature region probabilities may exceed one only within their abso
   total_error <- 1e-11
   testthat::local_mocked_bindings(
     .prior_conditional_normal_piece = function(integrand, lower, upper, n_grid,
-                                               relative, absolute){
+                                               relative, absolute, log_integrand = NULL){
       list(value = total / n_pieces, abs.error = total_error / n_pieces,
            message = "OK", evaluations = 21L)
     },

@@ -139,40 +139,158 @@
 # 'shared' returns a list of the terms that do not depend on the value. The
 # values of a leaf share most of their intervals, so the nodes and the shared
 # terms are computed once per distinct interval.
+.prior_density_quadrature_coordinate <- function(lower, upper, logarithmic = FALSE){
+
+  kind <- if(is.finite(lower) && is.finite(upper)) 0L else if(is.finite(lower)) 1L else -1L
+  anchor <- if(kind == 1L) lower else if(kind == -1L) upper else 0
+  out <- list(lower = if(kind == 0L) lower else 0,
+    upper = if(kind == 0L) upper else 1, kind = kind, anchor = anchor,
+    physical_lower = lower, physical_upper = upper, log_scale = 0)
+  if(kind != 0L && logarithmic){
+    exponent <- if(anchor == 0) 0 else floor(log2(abs(anchor)))
+    if(exponent == 1024) exponent <- 1023
+    scale <- 2^exponent
+    if(!is.finite(scale) || scale <= 0){
+      .prior_numerical_signal("quadrature coordinate", "declared", "finite", integer(),
+        "The physical anchor has no representable affine source scale", error = TRUE)
+    }
+    out$log_scale <- log(scale)
+  }else if(logarithmic && lower != 0 && upper != 0 && sign(lower) == sign(upper)){
+    bounds <- sort(log(abs(c(lower, upper))))
+    nodes <- bounds[1L] / 2 + bounds[2L] / 2 +
+      (bounds[2L] - bounds[1L]) / 2 * .prior_density_quadrature_rules()$finite$nodes
+    mapped <- sign(lower) * exp(nodes)
+    if(bounds[1L] < bounds[2L] && all(is.finite(mapped)) && all(mapped != 0) &&
+       all(mapped > lower & mapped < upper) && !anyDuplicated(mapped)){
+      out$lower <- bounds[1L]
+      out$upper <- bounds[2L]
+      out$kind <- 2L * sign(lower)
+    }else{
+      # Preselect an affine power-of-two transport for narrow physical
+      # geometry that rounded logarithms cannot preserve. This also carries
+      # the interval scale in log space before a tiny kernel is exponentiated.
+      exponent <- floor(log2(max(abs(c(lower, upper)))))
+      if(exponent == 1024) exponent <- 1023
+      scale <- 2^exponent
+      affine <- c(lower, upper) / scale
+      nodes <- affine[1L] / 2 + affine[2L] / 2 +
+        (affine[2L] - affine[1L]) / 2 * .prior_density_quadrature_rules()$finite$nodes
+      mapped <- scale * nodes
+      if(!is.finite(scale) || scale <= 0 || any(!is.finite(affine)) ||
+         any(affine == 0) || affine[1L] >= affine[2L] ||
+         any(!is.finite(mapped)) || any(mapped <= lower | mapped >= upper) || anyDuplicated(mapped)){
+        .prior_numerical_signal("quadrature coordinate", "declared", "finite", integer(),
+          "The narrow finite piece has no representable affine interior correspondence", error = TRUE)
+      }
+      out$lower <- affine[1L]
+      out$upper <- affine[2L]
+      out$kind <- 3L
+      out$log_scale <- log(scale)
+    }
+  }
+  out
+}
+
+.prior_density_quadrature_source <- function(nodes, kind, anchor, log_scale = 0){
+
+  kind <- rep_len(kind, length(nodes))
+  anchor <- rep_len(anchor, length(nodes))
+  log_scale <- rep_len(log_scale, length(nodes))
+  log_jacobian <- rep(0, length(nodes))
+  source <- nodes
+  infinite <- abs(kind) == 1L
+  logarithmic <- abs(kind) == 2L
+  affine <- kind == 3L
+  if(any(affine)){
+    source[affine] <- 2^round(log_scale[affine] / log(2)) * nodes[affine]
+    log_jacobian[affine] <- log_scale[affine]
+    if(any(!is.finite(source[affine]) | source[affine] == 0)){
+      .prior_numerical_signal("quadrature source map", "declared", "finite", which(affine),
+        "A required affine source node lost representable range", error = TRUE)
+    }
+  }
+  if(any(infinite)){
+    t <- nodes[infinite]
+    scale <- 2^round(log_scale[infinite] / log(2))
+    step <- scale * (1 - t) / t
+    mapped <- anchor[infinite] + kind[infinite] * step
+    bad <- !is.finite(mapped)
+    if(any(bad)){
+      mapped[bad] <- (anchor[infinite][bad] * t[bad] +
+        kind[infinite][bad] * scale[bad] * (1 - t[bad])) / t[bad]
+    }
+    if(any(!is.finite(mapped)) || any(t < 1 & mapped == anchor[infinite])){
+      .prior_numerical_signal("quadrature source map", "declared", "finite", which(infinite),
+        "A required physical source node lost representable range or correspondence", error = TRUE)
+    }
+    source[infinite] <- mapped
+    log_jacobian[infinite] <- log_scale[infinite] - 2 * log(t)
+  }
+  if(any(logarithmic)){
+    source[logarithmic] <- sign(kind[logarithmic]) * exp(nodes[logarithmic])
+    log_jacobian[logarithmic] <- nodes[logarithmic]
+    if(any(!is.finite(source[logarithmic]) | source[logarithmic] == 0)){
+      .prior_numerical_signal("quadrature source map", "declared", "finite", which(logarithmic),
+        "A required logarithmic source node lost representable range", error = TRUE)
+    }
+  }
+  list(source = source, log_jacobian = log_jacobian)
+}
+
 .prior_density_quadrature_evaluate <- function(integrand, lower, upper, kind,
-                                               anchor, index, rules){
+                                               anchor, index, rules,
+                                               physical_lower = lower, physical_upper = upper,
+                                               log_scale = rep(0, length(lower))){
 
   value <- error <- numeric(length(lower))
+  use_log <- !is.function(integrand) && is.function(integrand$log_value)
   for(infinite in c(FALSE, TRUE)){
-    selected <- which((kind != 0L) == infinite)
+    selected <- which((abs(kind) == 1L) == infinite)
     if(length(selected) == 0L){
       next
     }
     rule <- if(infinite) rules$infinite else rules$finite
     k <- length(rule$nodes)
-    interval <- complex(real = lower[selected], imaginary = upper[selected])
-    end <- complex(real = kind[selected], imaginary = anchor[selected])
-    key <- match(interval, interval) + (match(end, end) - 1) * length(selected)
+    # Exact tuple grouping avoids formatted-double keys and packed indices.
+    key <- rep(1L, length(selected))
+    for(field in list(lower, upper, kind, anchor, physical_lower, physical_upper, log_scale)){
+      tuple <- complex(real = key, imaginary = field[selected])
+      key <- match(tuple, tuple)
+    }
     distinct <- which(!duplicated(key))
     map <- match(key, key[distinct])
     first <- selected[distinct]
     centre <- (lower[first] + upper[first]) / 2
     half <- (upper[first] - lower[first]) / 2
     nodes <- rep(centre, each = k) + rep(half, each = k) * rule$nodes
-    source <- if(infinite){
-      direction <- rep(kind[first], each = k)
-      rep(anchor[first], each = k) + direction * (1 - nodes) / nodes
-    }else{
-      nodes
+    mapped <- if(use_log){
+      .prior_density_quadrature_source(nodes, rep(kind[first], each = k),
+        rep(anchor[first], each = k), rep(log_scale[first], each = k))
+    }else list(source = if(infinite){
+      rep(anchor[first], each = k) + rep(kind[first], each = k) * (1 - nodes) / nodes
+    }else nodes, log_jacobian = rep(0, length(nodes)))
+    source <- mapped$source
+    log_pieces <- which(abs(kind[first]) %in% c(2L, 3L))
+    for(piece in log_pieces){
+      selected_nodes <- (piece - 1L) * k + seq_len(k)
+      physical <- source[selected_nodes]
+      if(anyDuplicated(physical) || any(physical <= physical_lower[first[piece]] |
+                                         physical >= physical_upper[first[piece]])){
+        .prior_numerical_signal("quadrature source map", "declared", "finite", selected_nodes,
+          "Transported nodes lost physical interior order or correspondence", error = TRUE)
+      }
     }
     columns <- rep((map - 1L) * k, each = k) + seq_len(k)
     pair_index <- rep(index[selected], each = k)
     f <- if(is.function(integrand)){
       integrand(source[columns], pair_index)
     }else{
-      integrand$value(lapply(integrand$shared(source), `[`, columns), pair_index)
+      evaluator <- if(use_log) integrand$log_value else integrand$value
+      evaluator(lapply(integrand$shared(source), `[`, columns), pair_index)
     }
-    if(infinite){
+    if(use_log){
+      f <- exp(f + mapped$log_jacobian[columns])
+    }else if(infinite){
       f <- f / (nodes^2)[columns]
     }
     half <- half[map]
@@ -236,14 +354,23 @@
   }
   kind <- ifelse(is.finite(a) & is.finite(b), 0L, ifelse(is.finite(a), 1L, -1L))
   anchor <- ifelse(kind == 1L, a, ifelse(kind == -1L, b, 0))
-  lower <- ifelse(kind == 0L, a, 0)
-  upper <- ifelse(kind == 0L, b, 1)
+  logarithmic <- !is.function(integrand) && is.function(integrand$log_value)
+  coordinates <- lapply(seq_along(a), function(i){
+    .prior_density_quadrature_coordinate(a[[i]], b[[i]], logarithmic)
+  })
+  lower <- vapply(coordinates, `[[`, numeric(1), "lower")
+  upper <- vapply(coordinates, `[[`, numeric(1), "upper")
+  kind <- vapply(coordinates, `[[`, numeric(1), "kind")
+  log_scale <- vapply(coordinates, `[[`, numeric(1), "log_scale")
+  physical_lower <- a
+  physical_upper <- b
   keep <- lower < upper
   lower <- lower[keep]; upper <- upper[keep]; kind <- kind[keep]
   anchor <- anchor[keep]; index <- index[keep]
+  log_scale <- log_scale[keep]; physical_lower <- physical_lower[keep]; physical_upper <- physical_upper[keep]
 
   estimate <- .prior_density_quadrature_evaluate(
-    integrand, lower, upper, kind, anchor, index, rules
+    integrand, lower, upper, kind, anchor, index, rules, physical_lower, physical_upper, log_scale
   )
   value <- estimate$value
   error <- estimate$error
@@ -275,6 +402,7 @@
     pending <- active[index]
     lower <- lower[pending]; upper <- upper[pending]; kind <- kind[pending]
     anchor <- anchor[pending]; index <- index[pending]
+    log_scale <- log_scale[pending]; physical_lower <- physical_lower[pending]; physical_upper <- physical_upper[pending]
     value <- value[pending]; error <- error[pending]
     # bisect the intervals with the largest errors of each pending value;
     # an interval that can no longer be bisected ends that value's refinement
@@ -297,7 +425,7 @@
       integrand,
       c(left$lower, right$lower), c(left$upper, right$upper),
       rep(kind[split_at], 2L), rep(anchor[split_at], 2L), rep(index[split_at], 2L),
-      rules
+      rules, rep(physical_lower[split_at], 2L), rep(physical_upper[split_at], 2L), rep(log_scale[split_at], 2L)
     )
     n_split <- length(split_at)
     upper[split_at] <- middle
@@ -307,6 +435,9 @@
     upper <- c(upper, right$upper)
     kind <- c(kind, kind[split_at])
     anchor <- c(anchor, anchor[split_at])
+    log_scale <- c(log_scale, log_scale[split_at])
+    physical_lower <- c(physical_lower, physical_lower[split_at])
+    physical_upper <- c(physical_upper, physical_upper[split_at])
     index <- c(index, index[split_at])
     value <- c(value, halves$value[n_split + seq_len(n_split)])
     error <- c(error, halves$error[n_split + seq_len(n_split)])

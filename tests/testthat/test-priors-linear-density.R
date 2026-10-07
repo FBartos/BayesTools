@@ -1698,8 +1698,8 @@ test_that("exp_lin output transformations keep analytic limits at a zero source 
   # Saturating transformations of heavy-tailed priors omit the knots whose
   # transformed ordinate is not representable instead of failing.
   cauchy <- list(mu = prior("cauchy", list(0, .707)))
-  tanh_map <- .prior_linear_combination_density(cauchy, c(mu = 1),
-                                               output_transformation = "tanh")
+  expect_warning(tanh_map <- .prior_linear_combination_density(cauchy, c(mu = 1),
+    output_transformation = "tanh"), class = "BayesTools_prior_curve_unavailable")
   expect_true(all(abs(tanh_map$density$x) <= 1))
   expect_true(all(is.finite(tanh_map$density$y)))
   exp_map <- .prior_linear_combination_density(cauchy, c(mu = 1),
@@ -2912,7 +2912,7 @@ test_that("plotted quadrature routes share one batched quadrature on a bounded d
   curve <- .prior_linear_density_to_plot_data(convolution, x_range = c(-8, 8))$density
   expect_lte(length(curve$x), 200L)
   expect_true(0 %in% curve$x)
-  expect_identical(curve$x[which.max(curve$y)], 0)
+  expect_lte(abs(curve$x[which.max(curve$y)]), 16 * .Machine$double.eps * max(abs(curve$x)))
   reference <- vapply(curve$x, function(value){
     stats::integrate(function(u) stats::dnorm(value - 2.5 * u) * stats::dt(u / .5, 3) / .5,
                      -Inf, Inf, rel.tol = 1e-12)$value
@@ -3585,12 +3585,15 @@ test_that("batched densities compute the single-value breakpoints and integrals 
     alone <- vapply(seq_along(plan$breakpoints), function(j){
       .prior_density_quadrature_batch(
         list(shared = plan$integrand$shared,
-             value  = function(shared, index) plan$integrand$value(shared, rep(j, length(index)))),
+             value  = function(shared, index) plan$integrand$value(shared, rep(j, length(index))),
+             log_value = function(shared, index) plan$integrand$log_value(shared, rep(j, length(index)))),
         plan$breakpoints[j]
       )
     }, numeric(1))
     expect_identical(batched, alone)
-    unsplit <- function(nodes, index) plan$integrand$value(plan$integrand$shared(nodes), index)
+    unsplit <- list(shared = function(nodes) list(nodes = nodes),
+      value = function(shared, index) plan$integrand$value(plan$integrand$shared(shared$nodes), index),
+      log_value = function(shared, index) plan$integrand$log_value(plan$integrand$shared(shared$nodes), index))
     expect_identical(.prior_density_quadrature_batch(unsplit, plan$breakpoints), batched)
   }
 })

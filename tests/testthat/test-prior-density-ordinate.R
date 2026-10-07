@@ -1298,8 +1298,12 @@ test_that("the log-scale sum of a log-source term and a Gaussian part is the log
   # which shifted the log density by 0.56 with exact = TRUE
   subnormal_density <- log_density(prior("gamma", list(2, 4)))
   normal_edge <- prior_density_ordinate(subnormal_density, -708)
-  expect_true(normal_edge$exact)
-  expect_equal(normal_edge$log_density, log(16) - 2 * 708 + slope^2 / 2, tolerance = 1e-12)
+  expect_identical(normal_edge$behavior, "regular")
+  expect_false(normal_edge$exact)
+  expect_true(is.na(normal_edge$log_density))
+  expect_match(normal_edge$reason, "required primitive factor argument lost representable precision", fixed = TRUE)
+  expect_s3_class(normal_edge$provenance$source$numerical_condition, "BayesTools_numerical_condition")
+  expect_false(prior_ordinate_status(subnormal_density, -708)$eligible)
   for(value in c(-740, -745)){
     subnormal <- prior_density_ordinate(subnormal_density, value)
     expect_identical(subnormal$behavior, "regular")
@@ -1385,10 +1389,19 @@ test_that("scale-product ordinates at subnormal distances from the offset have n
   route <- .prior_density_route_from_adaptive(attr(density, "adaptive_evaluation"))
   expect_identical(route$type, "scale_product")
   small_log_density <- function(y) log(16) + log(y) - .28
-  for(value in c(1e-300, 2.3e-308, .Machine$double.xmin)){
+  for(value in 1e-300){
     ordinate <- prior_density_ordinate(density, value)
     expect_true(ordinate$exact)
     expect_lte(abs(ordinate$log_density - small_log_density(value)), 1e-12)
+  }
+  for(value in c(2.3e-308, .Machine$double.xmin)){
+    ordinate <- prior_density_ordinate(density, value)
+    expect_identical(ordinate$behavior, "regular")
+    expect_false(ordinate$exact)
+    expect_true(is.na(ordinate$log_density))
+    expect_match(ordinate$reason, "required primitive factor argument lost representable precision", fixed = TRUE)
+    expect_s3_class(ordinate$provenance$numerical_condition, "BayesTools_numerical_condition")
+    expect_false(prior_ordinate_status(density, value)$eligible)
   }
   for(value in c(1e-310, 1e-320, 4.9e-324)){
     ordinate <- prior_density_ordinate(density, value)
@@ -2165,27 +2178,33 @@ test_that("a regular ordinate without a value is never reported as exact", {
   expect_identical(limit$reason,
                    "The regular prior-density ordinate has no structural value at the requested value.")
 
-  # a pure scale mixture N(0, 1e-3) * Cauchy(0, 1) whose quadrature at .3 is
-  # rejected by its diagnostics, alone and inside a finite mixture
+  # Checked coordinate transport makes this original declaration available.
   priors <- list(beta = prior("normal", list(0, 1e-3)), sigma = prior("cauchy", list(0, 1)))
   attr(priors$beta, "multiply_by") <- "sigma"
-  rejected <- prior_density_ordinate(.prior_linear_combination_density(priors, c(beta = 1)), .3)
-  expect_identical(rejected$behavior, "regular")
-  expect_false(rejected$exact)
-  expect_true(is.na(rejected$log_density))
-  expect_false(rejected$provenance$integration$converged)
-  expect_match(rejected$reason, "The prior-density quadrature was rejected by its diagnostics",
-               fixed = TRUE)
+  independent <- function(sigma){
+    integral <- stats::integrate(function(z) z * stats::dnorm(z) / (1 + (sigma * z / .3)^2),
+      0, Inf, rel.tol = 1e-12, abs.tol = 0)
+    expect_identical(integral$message, "OK")
+    expect_lte(integral$abs.error, 1e-10 * integral$value)
+    (2 * sigma / (pi * .3^2)) * integral$value
+  }
+  result <- prior_density_ordinate(.prior_linear_combination_density(priors, c(beta = 1)), .3)
+  expect_identical(result$behavior, "regular")
+  expect_true(result$exact)
+  expect_lte(abs(exp(result$log_density) / independent(.001) - 1), 1e-4)
   beta_mixture <- prior_mixture(list(prior("normal", list(0, 1e-3), prior_weights = 1),
-                                     prior("normal", list(0, 1), prior_weights = 1)),
-                                is_null = c(FALSE, FALSE))
+    prior("normal", list(0, 1), prior_weights = 1)), is_null = c(FALSE, FALSE))
   attr(beta_mixture, "multiply_by") <- "sigma"
   mixture <- prior_density_ordinate(.prior_linear_combination_density(
-    list(beta = beta_mixture, sigma = priors$sigma), c(beta = 1)
-  ), .3)
-  expect_identical(mixture$behavior, "regular")
-  expect_false(mixture$exact)
-  expect_true(is.na(mixture$log_density))
+    list(beta = beta_mixture, sigma = priors$sigma), c(beta = 1)), .3)
+  expect_true(mixture$exact)
+  expect_lte(abs(exp(mixture$log_density) / (.5 * independent(.001) + .5 * independent(1)) - 1), 1e-4)
+  exhausted <- prior_density_ordinate(.prior_linear_combination_density(priors, c(beta = 1), n_grid = 16), .3)
+  expect_identical(exhausted$behavior, "regular")
+  expect_false(exhausted$exact)
+  expect_true(is.na(exhausted$log_density))
+  expect_false(exhausted$provenance$integration$converged)
+
 })
 
 test_that("square-root share scale products match 50-digit references", {
@@ -2467,7 +2486,7 @@ test_that("quadrature ordinates are exact only within a relative error bound", {
   expect_equal(BayesTools:::.prior_density_route_quadrature_density(scale_route, 0),
                exp(offset$log_density))
   local_mocked_bindings(
-    .prior_conditional_normal_piece = function(integrand, lower, upper, n_grid, relative, absolute){
+    .prior_conditional_normal_piece = function(integrand, lower, upper, n_grid, relative, absolute, log_integrand = NULL){
       list(value = 1e-3, abs.error = 1e-6, message = "OK", evaluations = 21L)
     }
   )

@@ -1458,21 +1458,36 @@
 # distinct node.
 .prior_conditional_normal_integrand_parts <- function(spec){
 
-  multiplier_lpdf <- .prior_simple_lpdf_evaluator(spec$multiplier)
+  multiplier_lpdf <- .prior_simple_lpdf_evaluator(spec$multiplier, purpose = "natural_integral")
+  evaluate <- function(shared, value){
+    residual <- value - shared$mean
+    z <- residual / shared$sd
+    structural_zero <- spec$additive_sd == 0 & shared$sd == 0
+    active <- !structural_zero
+    if(any(active & (!is.finite(residual) | !is.finite(z)))){
+      .prior_numerical_signal("conditional Normal kernel", "declared", "full precision",
+        which(active & (!is.finite(residual) | !is.finite(z))),
+        "Required residual or standardization lost representable range", error = TRUE)
+    }
+    log_kernel <- stats::dnorm(z, log = TRUE) - log(shared$sd)
+    if(any(active & !is.finite(log_kernel))){
+      .prior_numerical_signal("conditional Normal kernel", "declared", "logarithmic",
+        which(active & !is.finite(log_kernel)), "The finite Normal kernel lost logarithmic range", error = TRUE)
+    }
+    out <- log_kernel + shared$log_density
+    out[structural_zero] <- -Inf
+    out
+  }
   list(
     shared = function(multiplier){
       conditional <- .prior_conditional_normal_moments(spec, multiplier)
       list(mean = conditional$mean, sd = conditional$sd,
-           log_density = multiplier_lpdf(multiplier))
+           log_density = .prior_quadrature_log_density(spec$multiplier, multiplier, multiplier_lpdf))
     },
     value = function(shared, value){
-      out <- exp(stats::dnorm(value, shared$mean, shared$sd, log = TRUE) +
-                   shared$log_density)
-      if(spec$additive_sd == 0){
-        out[shared$sd == 0] <- 0
-      }
-      out
-    }
+      exp(evaluate(shared, value))
+    },
+    log_value = evaluate
   )
 }
 
@@ -1532,7 +1547,8 @@
     special     = special,
     integrand   = list(
       shared = parts$shared,
-      value  = function(shared, index) parts$value(shared, regular[index])
+      value  = function(shared, index) parts$value(shared, regular[index]),
+      log_value = function(shared, index) parts$log_value(shared, regular[index])
     ),
     breakpoints = .prior_conditional_normal_breakpoints_values(spec, regular, setup)
   )
@@ -1564,11 +1580,17 @@
   # integral with the full evaluation budget and its own diagnostics; the
   # ordinate is their sum, and the acceptance criterion applies to the total.
   integrand <- .prior_conditional_normal_integrand(spec)
-  integral <- .prior_conditional_normal_quadrature(
+  parts <- .prior_conditional_normal_integrand_parts(spec)
+  integral <- tryCatch(.prior_conditional_normal_quadrature(
     function(multiplier) integrand(multiplier, value),
     .prior_conditional_normal_breakpoints(spec, value), n_grid,
-    zero_message = "zero ordinate for a structurally positive density"
-  )
+    zero_message = "zero ordinate for a structurally positive density",
+    log_integrand = function(multiplier) parts$log_value(parts$shared(multiplier), value)
+  ), BayesTools_numerical_condition = function(condition) condition)
+  if(inherits(integral, "BayesTools_numerical_condition")){
+    return(.prior_density_ordinate_imprecise(value, integral$reason, "conditional_normal_mixture",
+      list(kind = "conditional_normal_mixture", numerical_condition = integral)))
+  }
   .prior_density_quadrature_ordinate(
     value, integral, "conditional_normal_mixture",
     list(
@@ -1712,15 +1734,21 @@
   spec <- list(additive_mean = 0, additive_sd = 1, product_mean = 0,
                product_sd = 0, multiplier = prior, bounds = c(lower, upper))
   points <- .prior_conditional_normal_breakpoints(spec, 0, extra = 0)
-  prior_lpdf <- tryCatch(.prior_simple_lpdf_evaluator(prior),
+  prior_lpdf <- tryCatch(.prior_simple_lpdf_evaluator(prior, purpose = "natural_integral"),
     BayesTools_numerical_unavailable = function(condition) condition)
   if(inherits(prior_lpdf, "BayesTools_numerical_unavailable")){
     return(.prior_inverse_moment_result(NA_real_, "quadrature", reason = prior_lpdf$message))
   }
   integral <- .prior_conditional_normal_quadrature(
     function(s){
-      out <- exp(prior_lpdf(s) - log(abs(s)))
-      out[s == 0] <- 0
+      out <- numeric(length(s))
+      active <- s != 0
+      log_kernel <- -log(abs(s[active]))
+      if(any(!is.finite(log_kernel))){
+        .prior_numerical_signal("inverse-moment integration kernel", prior$distribution, "log",
+          which(active)[!is.finite(log_kernel)], "The required kernel lost representable range", error = TRUE)
+      }
+      out[active] <- exp(prior_lpdf(s[active]) + log_kernel)
       out
     },
     points, n_grid,
@@ -1764,7 +1792,7 @@
 
   lower <- intervals[, 1L]
   upper <- intervals[, 2L]
-  multiplier_lpdf <- .prior_simple_lpdf_evaluator(spec$multiplier)
+  multiplier_lpdf <- .prior_simple_lpdf_evaluator(spec$multiplier, purpose = "natural_integral")
   integrand <- function(multiplier){
     conditional <- .prior_conditional_normal_moments(spec, multiplier)
     probability <- 0
@@ -1772,6 +1800,10 @@
       probability <- probability + .prior_normal_interval_probability(
         lower[i], upper[i], conditional$mean, conditional$sd
       )
+    }
+    if(any(!is.finite(probability))){
+      .prior_numerical_signal("conditional Normal region kernel", "declared", "finite",
+        which(!is.finite(probability)), "The required probability kernel is unavailable", error = TRUE)
     }
     log_density <- multiplier_lpdf(multiplier)
     out <- numeric(length(multiplier))
@@ -1943,20 +1975,47 @@
 # (as .prior_conditional_normal_integrand_parts()).
 .prior_scale_product_integrand_parts <- function(spec){
 
-  factor_lpdf <- .prior_simple_lpdf_evaluator(spec$factor)
-  multiplier_lpdf <- .prior_simple_lpdf_evaluator(spec$multiplier)
+  factor_lpdf <- .prior_simple_lpdf_evaluator(spec$factor, purpose = "natural_integral")
+  multiplier_lpdf <- .prior_simple_lpdf_evaluator(spec$multiplier, purpose = "natural_integral")
+  evaluate <- function(shared, distance){
+    distance <- rep_len(distance, length(shared$mapped))
+    argument <- distance / shared$mapped
+    active <- shared$mapped != 0
+    lost <- active & distance != 0 & !.prior_density_full_precision(argument)
+    if(any(lost)){
+      argument[lost] <- sign(distance[lost]) * sign(shared$mapped[lost]) *
+        exp(log(abs(distance[lost])) - log(abs(shared$mapped[lost])))
+    }
+    if(any(active & (!is.finite(argument) | (distance != 0 & !.prior_density_full_precision(argument))))){
+      .prior_numerical_signal("scale-product kernel", "declared", "full precision",
+        which(active & (!is.finite(argument) | (distance != 0 & !.prior_density_full_precision(argument)))),
+        "The required primitive factor argument lost representable precision", error = TRUE)
+    }
+    out <- rep(-Inf, length(argument))
+    out[active] <- .prior_quadrature_log_density(spec$factor, argument[active], factor_lpdf) +
+      shared$log_density[active] - shared$log_jacobian[active]
+    out
+  }
   list(
     shared = function(multiplier){
       mapped <- .prior_scale_product_map(spec, multiplier)
-      list(mapped = mapped, log_density = multiplier_lpdf(multiplier),
-           log_jacobian = log(abs(spec$scale * mapped)))
+      if(any(!is.finite(mapped))){
+        .prior_numerical_signal("scale-product source map", "declared", "finite", which(!is.finite(mapped)),
+          "The required mapped multiplier lost representable range", error = TRUE)
+      }
+      log_jacobian <- log(abs(spec$scale)) + log(abs(mapped))
+      active <- mapped != 0
+      if(any(active & !is.finite(log_jacobian))){
+        .prior_numerical_signal("scale-product Jacobian", "declared", "logarithmic",
+          which(active & !is.finite(log_jacobian)), "The required Jacobian lost representable range", error = TRUE)
+      }
+      list(mapped = mapped, log_density = .prior_quadrature_log_density(spec$multiplier, multiplier, multiplier_lpdf),
+           log_jacobian = log_jacobian)
     },
     value = function(shared, distance){
-      out <- exp(factor_lpdf(distance / shared$mapped) +
-                   shared$log_density - shared$log_jacobian)
-      out[shared$mapped == 0] <- 0
-      out
-    }
+      exp(evaluate(shared, distance))
+    },
+    log_value = evaluate
   )
 }
 
@@ -1996,7 +2055,8 @@
     special     = special,
     integrand   = list(
       shared = parts$shared,
-      value  = function(shared, index) parts$value(shared, distance[index])
+      value  = function(shared, index) parts$value(shared, distance[index]),
+      log_value = function(shared, index) parts$log_value(shared, distance[index])
     ),
     breakpoints = .prior_scale_product_breakpoints_values(spec, distance, setup)
   )
@@ -2137,12 +2197,18 @@
   }
   distance <- (value - spec$offset) / spec$scale
   integrand <- .prior_scale_product_integrand(spec)
-  integral <- .prior_conditional_normal_quadrature(
+  parts <- .prior_scale_product_integrand_parts(spec)
+  integral <- tryCatch(.prior_conditional_normal_quadrature(
     function(multiplier) integrand(multiplier, distance),
     .prior_scale_product_breakpoints(spec, distance), n_grid,
     zero_message = "zero ordinate for a structurally positive density",
-    kind = "scale_mixture"
-  )
+    kind = "scale_mixture",
+    log_integrand = function(multiplier) parts$log_value(parts$shared(multiplier), distance)
+  ), BayesTools_numerical_condition = function(condition) condition)
+  if(inherits(integral, "BayesTools_numerical_condition")){
+    provenance$numerical_condition <- integral
+    return(.prior_density_ordinate_imprecise(value, integral$reason, "scale_mixture", provenance))
+  }
   .prior_density_quadrature_ordinate(value, integral, "scale_mixture", provenance)
 }
 
@@ -2291,7 +2357,7 @@
   lower <- intervals[, 1L]
   upper <- intervals[, 2L]
   offset_inside <- as.numeric(any(spec$offset > lower & spec$offset < upper))
-  multiplier_lpdf <- .prior_simple_lpdf_evaluator(spec$multiplier)
+  multiplier_lpdf <- .prior_simple_lpdf_evaluator(spec$multiplier, purpose = "natural_integral")
   integrand <- function(multiplier){
     mapped <- .prior_scale_product_map(spec, multiplier)
     probability <- numeric(length(multiplier))
@@ -2306,6 +2372,10 @@
       )
     }
     probability[zero] <- offset_inside
+    if(any(!is.finite(probability))){
+      .prior_numerical_signal("scale-product region kernel", "declared", "finite",
+        which(!is.finite(probability)), "The required probability kernel is unavailable", error = TRUE)
+    }
     out <- numeric(length(multiplier))
     positive <- probability > 0
     out[positive] <- exp(log(probability[positive]) + multiplier_lpdf(multiplier[positive]))
@@ -2435,12 +2505,17 @@
 # x - c (vectorized over pairs).
 .prior_convolution_integrand <- function(spec){
 
-  first_lpdf <- .prior_simple_lpdf_evaluator(spec$first)
-  second_lpdf <- .prior_simple_lpdf_evaluator(spec$second)
+  first_lpdf <- .prior_simple_lpdf_evaluator(spec$first, purpose = "natural_integral")
+  second_lpdf <- .prior_simple_lpdf_evaluator(spec$second, purpose = "natural_integral")
   function(first, distance){
+    argument <- (distance - spec$weight * first) / spec$other
+    log_jacobian <- log(abs(spec$other))
+    if(any(!is.finite(argument)) || !is.finite(log_jacobian)){
+      .prior_numerical_signal("convolution integration map", "declared", "finite", seq_along(first),
+        "The required primitive argument or Jacobian lost representable range", error = TRUE)
+    }
     exp(first_lpdf(first) +
-          second_lpdf((distance - spec$weight * first) / spec$other) -
-          log(abs(spec$other)))
+          second_lpdf(argument) - log_jacobian)
   }
 }
 
@@ -2574,7 +2649,7 @@
 
   lower <- intervals[, 1L]
   upper <- intervals[, 2L]
-  first_lpdf <- .prior_simple_lpdf_evaluator(spec$first)
+  first_lpdf <- .prior_simple_lpdf_evaluator(spec$first, purpose = "natural_integral")
   integrand <- function(first){
     probability <- numeric(length(first))
     for(i in seq_along(lower)){
@@ -2585,6 +2660,10 @@
       }else{
         probability <- probability + .prior_scalar_interval_probability(spec$second, a, b)
       }
+    }
+    if(any(!is.finite(probability))){
+      .prior_numerical_signal("convolution region kernel", "declared", "finite",
+        which(!is.finite(probability)), "The required probability kernel is unavailable", error = TRUE)
     }
     out <- numeric(length(first))
     positive <- probability > 0
@@ -2604,17 +2683,54 @@
 
 # Mean and SD of the conditional normal N(a_m + b_m s, sqrt(a_s^2 + b_s^2 s^2))
 # at multiplier values s, with the SD computed without overflow.
+.prior_quadrature_log_density <- function(prior, values, evaluator){
+
+  out <- evaluator(values)
+  certified <- attr(out, "BayesTools_certified_log_tail", exact = TRUE)
+  attr(out, "BayesTools_certified_log_tail") <- NULL
+  certified_tail <- rep(FALSE, length(out))
+  certified_tail[certified] <- TRUE
+  structural_zero <- values < prior$truncation$lower | values > prior$truncation$upper
+  if(prior$distribution %in% c("moment", "invmoment")){
+    structural_zero <- structural_zero | values == prior$parameters$location
+  }
+  if(prior$distribution == "gamma" && prior$parameters$shape > 1){
+    structural_zero <- structural_zero | values == 0
+  }
+  if(prior$distribution == "beta"){
+    structural_zero <- structural_zero |
+      (values == 0 & prior$parameters$alpha > 1) |
+      (values == 1 & prior$parameters$beta > 1)
+  }
+  bad <- is.nan(out) | out == Inf | (out == -Inf & !structural_zero & !certified_tail)
+  if(any(bad)){
+    .prior_numerical_signal("quadrature log kernel", prior$distribution, "logarithmic", which(bad),
+      "An interior primitive density lost logarithmic range", error = TRUE)
+  }
+  out
+}
+
 .prior_conditional_normal_moments <- function(spec, multiplier){
 
   product_sd <- abs(multiplier) * spec$product_sd
+  product_mean <- multiplier * spec$product_mean
+  mean <- spec$additive_mean + product_mean
+  bad <- !is.finite(product_sd) | !is.finite(product_mean) | !is.finite(mean) |
+    (multiplier != 0 & spec$product_sd != 0 & product_sd == 0) |
+    (multiplier != 0 & spec$product_mean != 0 & product_mean == 0) |
+    (product_mean != 0 & spec$additive_mean != 0 & mean == spec$additive_mean)
+  if(any(bad)){
+    .prior_numerical_signal("conditional Normal moments", "declared", "full precision", which(bad),
+      "Required conditional moment arithmetic lost representable range", error = TRUE)
+  }
   if(spec$additive_sd == 0){
     # a pure scale mixture: the conditional SD is that of the multiplied term
-    return(list(mean = spec$additive_mean + multiplier * spec$product_mean,
+    return(list(mean = mean,
                 sd   = product_sd))
   }
   scale <- pmax(spec$additive_sd, product_sd)
   list(
-    mean = spec$additive_mean + multiplier * spec$product_mean,
+    mean = mean,
     sd   = scale * sqrt((spec$additive_sd / scale)^2 + (product_sd / scale)^2)
   )
 }
@@ -2657,7 +2773,8 @@
 .prior_conditional_normal_quadrature <- function(integrand, points, n_grid,
                                                  zero_message,
                                                  exact_piece = NULL,
-                                                 kind = "conditional_normal_mixture"){
+                                                 kind = "conditional_normal_mixture",
+                                                 log_integrand = NULL){
 
   tolerance <- .prior_linear_density_refinement_tolerance()
   n_pieces <- length(points) - 1L
@@ -2672,7 +2789,8 @@
     }
     .prior_conditional_normal_piece(
       integrand, points[i], points[i + 1L], n_grid,
-      relative = tolerance$relative, absolute = tolerance$quadrature_floor / n_pieces
+      relative = tolerance$relative, absolute = tolerance$quadrature_floor / n_pieces,
+      log_integrand = log_integrand
     )
   })
   total <- function(pieces){
@@ -2719,7 +2837,8 @@
     pieces[quadrature] <- lapply(which(quadrature), function(i){
       .prior_conditional_normal_piece(
         integrand, points[i], points[i + 1L], n_grid,
-        relative = tolerance$relative / 2, absolute = target
+        relative = tolerance$relative / 2, absolute = target,
+        log_integrand = log_integrand
       )
     })
     exact <- exact & !quadrature
@@ -2749,6 +2868,9 @@
     piece_evaluations = vapply(pieces, `[[`, integer(1), "evaluations"),
     piece_absolute_errors = vapply(pieces, `[[`, numeric(1), "abs.error")
   )
+  if(!is.null(log_integrand)) integration$piece_coordinates <- lapply(seq_len(n_pieces), function(i){
+    .prior_density_quadrature_coordinate(points[[i]], points[[i + 1L]], TRUE)
+  })
   if(!accepted && identical(integral$message, "OK")){
     # the observed metric, not the criterion (public-API message rules); the
     # criterion stays in 'error_bound'
@@ -3104,8 +3226,29 @@
 # for a converged result, so it gets one more interval and the evaluation cap
 # enforces the budget.
 .prior_conditional_normal_piece <- function(integrand, lower, upper, n_grid,
-                                            relative, absolute){
+                                            relative, absolute, log_integrand = NULL){
 
+  if(!is.null(log_integrand)){
+    coordinate <- .prior_density_quadrature_coordinate(lower, upper, TRUE)
+    lower <- coordinate$lower
+    upper <- coordinate$upper
+    integrand <- function(nodes){
+      mapped <- .prior_density_quadrature_source(nodes, coordinate$kind,
+        coordinate$anchor, coordinate$log_scale)
+      if(abs(coordinate$kind) %in% c(2L, 3L) &&
+         (anyDuplicated(mapped$source) || any(mapped$source <= coordinate$physical_lower |
+                                               mapped$source >= coordinate$physical_upper))){
+        .prior_numerical_signal("quadrature source map", "declared", "finite", seq_along(nodes),
+          "Transported nodes lost physical interior order or correspondence", error = TRUE)
+      }
+      values <- exp(log_integrand(mapped$source) + mapped$log_jacobian)
+      if(any(!is.finite(values))){
+        .prior_numerical_signal("quadrature transport", "declared", "natural", which(!is.finite(values)),
+          "The transported density integrand lost representable range", error = TRUE)
+      }
+      values
+    }
+  }
   initial_evaluations <- .prior_conditional_normal_initial_evaluations(c(lower, upper))
   max_intervals <- floor((n_grid + initial_evaluations) / (2 * initial_evaluations))
   evaluations <- 0L
@@ -3125,7 +3268,10 @@
                      subdivisions = max_intervals + 1L,
                      rel.tol = relative, abs.tol = absolute, stop.on.error = FALSE),
     error = function(e){
-      list(value = NA_real_, abs.error = NA_real_, message = conditionMessage(e))
+      if(identical(conditionMessage(e), "the integration evaluation budget was exhausted")){
+        return(list(value = NA_real_, abs.error = NA_real_, message = conditionMessage(e)))
+      }
+      stop(e)
     }
   )
   list(
