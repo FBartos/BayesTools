@@ -3903,12 +3903,13 @@ test_that("linear level hypotheses use the exact support of the combination", {
     str2lang("abs(`mu_f[B]` - `mu_f[A]` - 2)"), c("mu_f[B]", "mu_f[A]"), draws
   ))
   # functions of constants keep a linear form
-  expect_equal(
-    BayesTools:::.hypothesis_linear_coefficients(
-      str2lang("exp(0) * (`mu_f[B]` - `mu_f[A]`) / abs(-2) + 1"), c("mu_f[B]", "mu_f[A]"), draws
-    ),
-    list(constant = 1, coefficients = c("mu_f[B]" = .5, "mu_f[A]" = -.5))
+  form <- BayesTools:::.hypothesis_linear_coefficients(
+    str2lang("exp(0) * (`mu_f[B]` - `mu_f[A]`) / abs(-2) + 1"), c("mu_f[B]", "mu_f[A]"), draws
   )
+  expect_equal(form, list(constant = 2,
+    coefficients = c("mu_f[A]" = -1, "mu_f[B]" = 1), divisor = 2))
+  expect_equal((form$constant + as.numeric(as.matrix(draws[, names(form$coefficients), drop = FALSE]) %*%
+    form$coefficients)) / form$divisor, 1 + .5 * (draws[["mu_f[B]"]] - draws[["mu_f[A]"]]))
 })
 
 test_that("linear level hypotheses mix per-component ordinates of mixture terms", {
