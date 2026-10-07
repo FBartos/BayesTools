@@ -1,4 +1,7 @@
 # version 0.3.1
+- ordered whole-factor posterior overlays use attached current-scale per-level prior laws after `posterior_transform()`; the public `ordered_source` metadata accessor preserves the existing producer validators.
+- ordinary spike-and-slab replay uses ordinary inclusion-indicator errors; JAGS formula binding explicitly refuses mixtures of ordered containers while retaining their constructor and sampler. Mixture behavior on an ordered total remains supported.
+- Harrell-Davis documentation qualifies accuracy and tiny-probability limits; focused tests verify a resolvable last-draw contribution and complete opposite-infinity diagnostics without changing the estimator.
 - outer model inference retains original logarithmic odds across normalization, evidence offsets, conditioning and failure policies; ordinary numeric probabilities and seeded allocations keep their existing route when safe.
 - mixed draws and formula/ordered owners retain scientifically positive models even when displayed probabilities round to zero. Unrepresentable prior or atom laws refuse explicitly with structured model/log diagnostics while usable draws, independently known support and valid siblings remain available. Declared event-option products are combined before natural underflow; old probability-owner formats require recomputation/refitting.
 - prior plots check model ownership before omission or sampled fallback; measure-refusal diagnostics survive supported subsets, linear/output transforms and marginal views.
