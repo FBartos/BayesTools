@@ -78,7 +78,7 @@
       (declaration$route != "stabilized" || all(probabilities[subnormal] == exp(logs[subnormal]))) &&
       all(abs(log(probabilities[compare_logs]) - logs[compare_logs]) <= declaration$eta)
   }
-  if(!isTRUE(valid)) stop("Model probability ownership is missing or malformed. Recompute or refit with the current BayesTools version.", call. = FALSE)
+  if(!isTRUE(valid)) .bt_stop_refit_required("Model probability ownership is missing or malformed. Recompute or refit with the current BayesTools version.")
   if(normalized){
     .inclusion_BF_check_probs(probabilities, "model_probabilities")
     if(abs(.model_probability_log_sum(logs)) > declaration$eta) stop("Model log probabilities are not normalized.", call. = FALSE)
@@ -327,8 +327,8 @@
 
   if(!inherits(context, "prior_density_model_mixture_context") &&
      !inherits(context, "prior_density_conditional_context")) return(invisible(TRUE))
-  if(!.bt_formula_prior_density_context_valid(context)) stop("The model prior context is incomplete or malformed. Recompute or refit with the current BayesTools version.", call. = FALSE)
-  if(!identical(context$schema_version, 2L)) stop("Model prior contexts require current probability ownership. Recompute or refit with the current BayesTools version.", call. = FALSE)
+  if(!.bt_formula_prior_density_context_valid(context)) .bt_stop_refit_required("The model prior context is incomplete or malformed. Recompute or refit with the current BayesTools version.")
+  if(!identical(context$schema_version, 2L)) .bt_stop_refit_required("Model prior contexts require current probability ownership. Recompute or refit with the current BayesTools version.")
   .model_probability_validate(context$model_weights, context$model_log_weights,
     context$model_probability_declaration, normalized = TRUE)
   if(!context$model_probability_declaration$stage %in% c("prior", "conditional_prior", "event", "component")){

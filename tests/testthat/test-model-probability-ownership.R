@@ -1,6 +1,32 @@
 skip_if_not_test_profile("unit")
 source(testthat::test_path("common-functions.R"))
 
+test_that("model probability refit requirements retain exact typed diagnostics", {
+  priors <- list(prior("normal", list(0, 1)), prior("point", list(0)))
+  context <- .prior_density_model_mixture_context(list(theta = priors), "theta")
+  legacy <- context; legacy$schema_version <- 1L
+  malformed <- context; malformed$n_grid <- 0
+  pair <- .prior_model_probability_pair(priors)
+  partially_owned <- priors
+  partially_owned[[1L]] <- .set_prior_model_probability(priors[[1L]], pair$probabilities[[1L]],
+    pair$logs[[1L]], within(pair$declaration, model_indices <- model_indices[1L]))
+  cases <- list(
+    list(read = function() .model_probability_validate(.5, log(.5), NULL),
+      message = "Model probability ownership is missing or malformed. Recompute or refit with the current BayesTools version."),
+    list(read = function() .model_probability_context_validate(malformed),
+      message = "The model prior context is incomplete or malformed. Recompute or refit with the current BayesTools version."),
+    list(read = function() .model_probability_context_validate(legacy),
+      message = "Model prior contexts require current probability ownership. Recompute or refit with the current BayesTools version."),
+    list(read = function() .prior_model_probability_pair(partially_owned),
+      message = "The model prior distributions have incomplete probability ownership. Recompute or refit with the current BayesTools version.")
+  )
+  for(case in cases){
+    condition <- expect_error(case$read(), case$message, fixed = TRUE, class = "BayesTools_refit_required")
+    expect_identical(conditionMessage(condition), case$message)
+    expect_null(conditionCall(condition))
+  }
+})
+
 .model_probability_test_model <- function(prior_object, evidence, weight = 1) {
   values <- if(is.prior.point(prior_object)) rep(prior_object$parameters$location, 20) else seq(-1, 1, length.out = 20)
   values <- cbind(theta = values)

@@ -626,7 +626,7 @@ is.prior.mixture         <- function(x){
   logs <- vapply(priors, .prior_model_log_weight, numeric(1))
   declarations <- lapply(priors, attr, which = "model_probability_declaration", exact = TRUE)
   owned <- !vapply(declarations, is.null, logical(1))
-  if(any(owned) && !all(owned)) stop("The model prior distributions have incomplete probability ownership. Recompute or refit with the current BayesTools version.", call. = FALSE)
+  if(any(owned) && !all(owned)) .bt_stop_refit_required("The model prior distributions have incomplete probability ownership. Recompute or refit with the current BayesTools version.")
   if(all(owned)){
     identities <- vapply(declarations, function(x) x$model_indices, integer(1))
     if(anyDuplicated(identities)) stop("The model prior probability identities are not aligned.", call. = FALSE)
