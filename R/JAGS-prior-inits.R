@@ -250,6 +250,27 @@ JAGS_get_inits            <- function(prior_list, chains, seed){
 
     init[[parameter_name]] <- .prior_numerical_finite(rng(prior, 1), prior$distribution,
                                                    operation = "initialization")
+    if(prior$distribution %in% c("moment", "invmoment")){
+      value <- init[[parameter_name]]
+      log_density <- tryCatch(.prior_numerical_without_warnings(lpdf(prior, value)),
+        BayesTools_numerical_condition = function(condition) condition)
+      if(inherits(log_density, "BayesTools_numerical_condition")){
+        condition <- .prior_numerical_condition("initialization", prior$distribution, "log", seq_along(value),
+          "The declared normalized log density could not be resolved at supported precision", error = TRUE,
+          range = inherits(log_density, "BayesTools_numerical_range_limit"))
+        condition$values <- value
+        condition$parent <- log_density
+        stop(condition)
+      }
+      failed <- which(value == prior$parameters$location | !is.finite(log_density))
+      if(length(failed)){
+        condition <- .prior_numerical_condition("initialization", prior$distribution,
+          "log", failed, "This consumer requires finite usable normalized log density", error = TRUE)
+        condition$values <- value[failed]
+        condition$log_density <- log_density[failed]
+        stop(condition)
+      }
+    }
   }
 
   return(init)

@@ -387,3 +387,46 @@ test_that("public inference refuses unavailable inverse-moment ordinates", {
   expect_error(hypothesis_BF(posterior = posterior, hypothesis = "theta = 0", parameter = "theta"),
                class = "BayesTools_inexact_ordinate")
 })
+test_that("nonlocal JAGS starts require usable normalized log density without redrawing", {
+
+  requested <- integer()
+  priors <- list(prior("moment", list(mode = .5, location = .25), list(lower = -.75, upper = 1.25)),
+    prior("invmoment", list(tau = 1, df = 3), list(lower = -.01, upper = .01)))
+  testthat::with_mocked_bindings({
+    for(p in priors){
+      expect_identical(rng(p, 1L), p$parameters$location)
+      expect_identical(quant(p, .5), p$parameters$location)
+      condition <- tryCatch(.JAGS_init.simple(p, "theta"), error = identity)
+      expect_s3_class(condition, "BayesTools_numerical_unavailable")
+      expect_identical(condition$operation, "initialization")
+      expect_identical(condition$indices, 1L)
+      expect_identical(condition$values, p$parameters$location)
+    }
+  }, runif = function(n){requested <<- c(requested, n); rep(.5, n)}, .package = "stats")
+  expect_identical(requested, c(1L, 1, 1L, 1))
+  for(p in priors){
+    set.seed(616)
+    expected <- rng(p, 1L)
+    seed <- .Random.seed
+    set.seed(616)
+    observed <- .JAGS_init.simple(p, "theta")$theta
+    expect_identical(observed, expected)
+    expect_identical(.Random.seed, seed)
+    expect_true(is.finite(lpdf(p, observed)))
+  }
+})
+test_that("nonlocal finite starts retain range and unresolved normalized-density refusals", {
+
+  priors <- list(prior("moment", list(tau = 1)),
+    prior("invmoment", list(tau = 1, order = 1000, df = .Machine$double.xmin * .Machine$double.eps), list(lower = -1, upper = 1)))
+  values <- c(1e200, .5)
+  for(i in seq_along(priors)){
+    testthat::with_mocked_bindings({
+      condition <- tryCatch(.JAGS_init.simple(priors[[i]], "theta"), error = identity)
+      expect_s3_class(condition, "BayesTools_numerical_unavailable")
+      expect_identical(condition$operation, "initialization")
+      expect_identical(condition$values, values[i])
+      expect_identical(condition$indices, 1L)
+    }, rng = function(...) values[i])
+  }
+})
