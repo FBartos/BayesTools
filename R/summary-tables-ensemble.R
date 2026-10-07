@@ -670,6 +670,8 @@ marginal_estimates_table <- function(samples, inference, parameters, probs = c(0
   estimates_table <- NULL
   row_parts <- list()
   row_quantity_ids <- character()
+  row_log_BF <- numeric()
+  row_diagnostics <- list()
   for(parameter in parameters){
 
     # the label parts of every level: rows and warnings are rendered from them
@@ -710,6 +712,14 @@ marginal_estimates_table <- function(samples, inference, parameters, probs = c(0
       }
     }
 
+    producers <- if(is.list(samples[[parameter]]) && length(samples[[parameter]]) > 1L){
+      inference[[parameter]]
+    }else list(temp_BF)
+    row_log_BF <- c(row_log_BF, vapply(producers, function(value){
+      logs <- .BF_carrier_log(value)
+      if(is.null(logs)) log(as.numeric(value)) else logs
+    }, numeric(1)))
+    row_diagnostics <- c(row_diagnostics, lapply(producers, function(value) attr(value, "numerical_diagnostics")))
     # add estimates
     par_summary <- cbind(
       "Mean" = vapply(temp_samples, mean, numeric(1)),
@@ -743,7 +753,11 @@ marginal_estimates_table <- function(samples, inference, parameters, probs = c(0
   if(!has_BF_error){
     estimates_table[["BF_error_percent"]] <- NULL
   }
-  estimates_table[,"inclusion_BF"]   <- format_BF(estimates_table[,"inclusion_BF"], logBF = logBF, BF01 = BF01, inclusion = TRUE)
+  estimates_table[["inclusion_BF"]] <- .format_BF_from_log(row_log_BF,
+    logBF = logBF, BF01 = BF01, inclusion = TRUE,
+    BF = estimates_table[["inclusion_BF"]], diagnostics = row_diagnostics)
+  attr(estimates_table, "raw_log_BF") <- row_log_BF
+  attr(estimates_table, "numerical_diagnostics") <- row_diagnostics
   if(has_BF_error){
     attr(estimates_table[["BF_error_percent"]], "name") <- .BF_error_column_name(BF01)
   }

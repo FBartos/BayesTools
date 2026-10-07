@@ -1,5 +1,40 @@
 skip_if_not_test_profile("unit")
 
+test_that("point inference retains finite log ordinates and orientation", {
+
+  arguments <- list(posterior = c(1, 2, 3), prior = prior("normal", list(0, 1)),
+                    parameter = "theta", density_method = "normal",
+                    logBF = TRUE, columns = "all")
+  implicit <- do.call(hypothesis_BF, c(arguments, list(hypothesis = "theta = 40")))
+  explicit <- do.call(hypothesis_BF, c(arguments, list(hypothesis = "theta = 40 vs theta != 40")))
+  reverse <- do.call(hypothesis_BF, c(arguments, list(hypothesis = "theta != 40 vs theta = 40")))
+  expect_equal(c(implicit$BF, explicit$BF, reverse$BF), c(-78, 78, -78), tolerance = 1e-12)
+  expect_equal(attr(explicit, "raw_log_BF"), 78, tolerance = 1e-12)
+  expect_error(do.call(hypothesis_BF, c(arguments, list(hypothesis = "theta = 1e100"))),
+               class = "BayesTools_hypothesis_numerical_unavailable")
+})
+
+test_that("nonfinite Normal arithmetic refuses on raw and declared point readers", {
+
+  expect_error(hypothesis_BF(c(1, 2, 3), prior("normal", list(0, 1e200)),
+    "theta = 1e200", parameter = "theta", density_method = "normal"),
+    class = "BayesTools_hypothesis_numerical_unavailable")
+  expect_error(hypothesis_BF(c(-1e300, 0, 1e300), prior("normal", list(0, 1)),
+    "theta = 0", parameter = "theta", density_method = "normal"),
+    class = "BayesTools_hypothesis_numerical_unavailable")
+  law <- .prior_linear_combination_density(list(theta = prior("normal", list(0, 1))), c(theta = 1), n_grid = 128)
+  make_posterior <- function(values){
+    class(values) <- c("marginal_posterior.simple", "marginal_posterior", "numeric")
+    .bt_meta_assign(values, list(prior_density = law, atoms = posterior_atom_attribute()))
+  }
+  levels <- list(unavailable = make_posterior(c(-1e300, 0, 1e300)), valid = make_posterior(c(-1, 0, 1)))
+  class(levels) <- c("marginal_posterior.factor", "marginal_posterior", "list")
+  result <- Savage_Dickey_BF(levels, normal_approximation = TRUE, silent = TRUE)
+  expect_true(is.na(result$unavailable))
+  expect_equal(as.numeric(result$valid), 1, tolerance = 1e-14)
+  expect_s3_class(attr(result$unavailable, "numerical_diagnostics"), "BayesTools_hypothesis_numerical_unavailable")
+})
+
 test_that("affine point coordinates avoid collapsed translations", {
 
   arguments <- list(posterior = c(1, 2, 3), prior = prior("normal", list(0, 1)),
@@ -50,6 +85,60 @@ test_that("constant divisors preserve strict and inclusive atom boundaries", {
   expect_identical(observed, expected)
   expect_error(.hypothesis_linear_coefficients(parse(text = "theta * 1e-200 * 1e-200")[[1L]],
     "theta", draws), class = "BayesTools_hypothesis_numerical_unavailable")
+})
+
+test_that("live BF carriers preserve direction and invalidate changed values", {
+
+  values <- .format_BF_from_log(c(710, 750, 800), BF = rep(Inf, 3))
+  inverse <- .format_BF_from_log(c(710, 750, 800), BF01 = TRUE, BF = rep(Inf, 3))
+  expect_equal(as.numeric(inverse)[1L] / exp(-710), 1, tolerance = 1e-14)
+  expect_equal(attr(values[c(3, 1, 1)], "canonical_log_BF"), c(800, 710, 710))
+  expect_null(attr(values * 2, "canonical_log_BF"))
+  expect_null(attr(abs(values), "canonical_log_BF"))
+  changed <- values
+  changed[] <- rep(Inf, 3)
+  expect_null(attr(changed, "canonical_log_BF"))
+})
+
+test_that("log-bound tables bind row identity and never revive replaced carriers", {
+
+  result <- hypothesis_BF(c(1, 2, 3), prior("normal", list(0, 1)),
+    c("theta = 40", "theta = 41"), parameter = "theta", density_method = "normal")
+  selected <- result[c(2, 1, 1), , drop = FALSE]
+  expect_equal(as.numeric(update(selected, logBF = TRUE)$BF), c(-80, -78, -78), tolerance = 1e-12)
+  expect_equal(attr(selected, "raw_log_BF"), c(-80, -78, -78), tolerance = 1e-12)
+  replaced <- result
+  replaced$BF <- c(Inf, Inf)
+  expect_true(all(is.infinite(as.numeric(update(replaced, logBF = TRUE)$BF))))
+  replaced <- result
+  replaced$BF[] <- c(0, 0)
+  expect_null(attr(replaced$BF, "canonical_log_BF"))
+  expect_true(all(is.infinite(as.numeric(update(replaced, logBF = TRUE)$BF))))
+  for(exported in list(as.data.frame(selected), data.frame(selected))){
+    expect_null(attr(exported$BF10, "canonical_log_BF"))
+    expect_identical(class(exported), "data.frame")
+  }
+  expect_null(attr(result[, "Null", drop = FALSE], "raw_log_BF"))
+})
+
+test_that("huge finite prior logs retain eligibility with a genuine log ordinate", {
+
+  gaussian <- prior("normal", list(0, 1))
+  attr(gaussian, "multiply_by") <- "sigma"
+  law <- .prior_linear_combination_density(list(theta = gaussian, sigma = prior("lognormal", list(0, 40))),
+    c(theta = 1), n_grid = 128)
+  log_height <- prior_density_ordinate(law, 0)$log_density
+  expect_equal(log_height, 799.0810614667953, tolerance = 2e-13)
+  posterior <- c(-1, 0, 1)
+  class(posterior) <- c("marginal_posterior.simple", "marginal_posterior")
+  posterior <- .bt_meta_assign(posterior, list(prior_density = law, atoms = posterior_atom_attribute()))
+  expect_equal(attr(Savage_Dickey_BF(posterior, normal_approximation = TRUE, silent = TRUE), "log_BF"),
+    800, tolerance = 2e-13)
+  unit <- .posterior_log_ordinate_attribute(0, log_height, "unit point part", "precomputed")
+  expect_equal(.posterior_ordinate_from_attribute(unit, 0)$log_y, log_height)
+  expect_error(.hypothesis_log_ratio(-5e199, -5e199, normal = TRUE),
+    class = "BayesTools_hypothesis_numerical_unavailable")
+  expect_equal(.hypothesis_log_ratio(799.0811, 799.0811, normal = TRUE)$log_BF, 0)
 })
 
 test_that("formula measure classes cover declared laws and propagate missing metadata", {
@@ -134,6 +223,22 @@ test_that("public missing formula targets and priors propagate outside the measu
   missing_priors <- tryCatch(JAGS_formula_prior_density(fit, "mu", "mu_x"), error = identity)
   expect_true(inherits(missing_priors, "condition"))
   expect_false(inherits(missing_priors, "BayesTools_formula_measure_unavailable"))
+})
+
+test_that("marginal estimate exports remove hidden logs and preserve numeric values", {
+
+  posterior <- c(1, 2, 3)
+  class(posterior) <- c("marginal_posterior.simple", "marginal_posterior", "numeric")
+  law <- .prior_linear_combination_density(list(theta = prior("normal", list(0, 1))), c(theta = 1), n_grid = 128)
+  posterior <- .bt_meta_assign(posterior, list(prior_density = law, atoms = posterior_atom_attribute()))
+  BF <- Savage_Dickey_BF(posterior, null_hypothesis = 40, normal_approximation = TRUE, silent = TRUE)
+  result <- marginal_estimates_table(list(theta = posterior), list(theta = BF), "theta", logBF = TRUE)
+  expect_equal(as.numeric(result$inclusion_BF), -78, tolerance = 1e-12)
+  for(exported in list(as.data.frame(result), data.frame(result))){
+    expect_null(attr(exported$inclusion_BF, "canonical_log_BF"))
+    expect_null(attr(exported, "raw_log_BF"))
+    expect_equal(as.numeric(exported$inclusion_BF), -78, tolerance = 1e-12)
+  }
 })
 
 test_that("repeated component gates and declared weight spaces require alignment", {

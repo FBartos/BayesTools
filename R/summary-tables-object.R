@@ -11,6 +11,9 @@
 #' @exportS3Method
 print.BayesTools_table <- function(x, ...){
 
+  representation_notes <- unique(unlist(lapply(x, function(column){
+    attr(column, "representation_note", exact = TRUE)
+  }), use.names = FALSE))
   # print formatting
   # n_models is row-aligned (one denominator per table row), so the Models
   # column must see the full vector rather than n_models[[column]].
@@ -42,6 +45,8 @@ print.BayesTools_table <- function(x, ...){
   for(i in seq_along(attr(x, "footnotes"))){
     cat(paste0(attr(x, "footnotes")[i], "\n"))
   }
+
+  for(note in representation_notes) cat(paste0("Note: ", note, "\n"))
 
   # print warnings in red
   for(i in seq_along(attr(x, "warnings"))){
@@ -105,39 +110,114 @@ format_BF <- function(BF, logBF = FALSE, BF01 = FALSE, inclusion = FALSE){
 # beyond the double range keep finite log values instead of passing through
 # exp() to 0 or Inf. Natural-scale outputs use 'BF' when it is supplied.
 .format_BF_from_log <- function(log_BF, logBF = FALSE, BF01 = FALSE, inclusion = FALSE,
-                                bound_operator = NULL, BF = NULL){
+                                bound_operator = NULL, BF = NULL, diagnostics = NULL){
 
   BF_names <- names(log_BF)
-  log_BF   <- as.numeric(log_BF)
-  BF       <- if(is.null(BF)) exp(log_BF) else as.numeric(BF)
+  log_BF <- as.numeric(log_BF)
+  BF <- if(is.null(BF)) exp(log_BF) else as.numeric(BF)
   names(BF) <- BF_names
   attr(BF, "bound_operator") <- bound_operator
-
   out <- format_BF(BF, logBF = logBF, BF01 = BF01, inclusion = inclusion)
   if(logBF){
     out[] <- if(BF01) -log_BF else log_BF
+  }else if(BF01){
+    hidden <- is.finite(log_BF) & (BF == 0 | is.infinite(BF))
+    out[hidden] <- exp(-log_BF[hidden])
   }
-
+  attr(out, "canonical_log_BF") <- log_BF
+  attr(out, "producer_values") <- as.numeric(out)
+  attr(out, "carrier_logBF") <- logBF
+  attr(out, "carrier_BF01") <- BF01
+  attr(out, "numerical_diagnostics") <- diagnostics
+  if(!logBF && any(is.finite(log_BF) & (out == 0 | is.infinite(out)), na.rm = TRUE)){
+    attr(out, "representation_note") <- "Finite log Bayes factors are available for natural-scale values outside the floating-point range."
+  }
+  class(out) <- unique(c("BayesTools_BF", class(out)))
   out
+}
+
+.BF_carrier_attributes <- function(){
+
+  c("canonical_log_BF", "producer_values", "carrier_logBF", "carrier_BF01", "numerical_diagnostics")
+}
+
+.BF_carrier_log <- function(x){
+
+  logs <- attr(x, "canonical_log_BF", exact = TRUE)
+  if(!inherits(x, "BayesTools_BF") || length(logs) != length(x) ||
+     !identical(attr(x, "producer_values", exact = TRUE), as.numeric(x)) ||
+     !identical(attr(x, "carrier_logBF", exact = TRUE), attr(x, "logBF", exact = TRUE)) ||
+     !identical(attr(x, "carrier_BF01", exact = TRUE), attr(x, "BF01", exact = TRUE))) return(NULL)
+  logs
+}
+
+.BF_carrier_drop <- function(x){
+
+  for(attribute in .BF_carrier_attributes()) attr(x, attribute) <- NULL
+  for(attribute in c("log_BF", "log_prior_height", "log_posterior_height", "orientation", "representation_note")) attr(x, attribute) <- NULL
+  if(!any(!is.na(attr(x, "bound_operator")))) class(x) <- setdiff(class(x), "BayesTools_BF")
+  x
 }
 
 #' @export
 `[.BayesTools_BF` <- function(x, i, ...){
 
-  bound_operator <- attr(x, "bound_operator")
+  logs <- .BF_carrier_log(x)
   out <- NextMethod("[")
-
-  attr(out, "name")  <- attr(x, "name")
-  attr(out, "logBF") <- attr(x, "logBF")
-  attr(out, "BF01")  <- attr(x, "BF01")
-  if(!is.null(bound_operator)){
-    attr(out, "bound_operator") <- if(missing(i)) bound_operator else bound_operator[i]
-  }
-  if(any(!is.na(attr(out, "bound_operator")))){
+  for(attribute in c("name", "logBF", "BF01")) attr(out, attribute) <- attr(x, attribute)
+  bound <- attr(x, "bound_operator")
+  if(!is.null(bound)) attr(out, "bound_operator") <- if(missing(i)) bound else bound[i]
+  out <- .BF_carrier_drop(out)
+  if(!is.null(logs)){
+    index <- if(missing(i)) seq_along(x) else i
+    attr(out, "canonical_log_BF") <- logs[index]
+    attr(out, "producer_values") <- as.numeric(out)
+    attr(out, "carrier_logBF") <- attr(x, "logBF")
+    attr(out, "carrier_BF01") <- attr(x, "BF01")
+    diagnostics <- attr(x, "numerical_diagnostics")
+    if(length(diagnostics) == length(x)) attr(out, "numerical_diagnostics") <- diagnostics[index]
+    for(attribute in c("log_BF", "log_prior_height", "log_posterior_height")){
+      values <- attr(x, attribute, exact = TRUE)
+      if(length(values) == length(x)) attr(out, attribute) <- values[index]
+    }
+    attr(out, "orientation") <- attr(x, "orientation", exact = TRUE)
+    if(!isTRUE(attr(out, "logBF")) &&
+       any(is.finite(logs[index]) & (out == 0 | is.infinite(out)), na.rm = TRUE)){
+      attr(out, "representation_note") <- attr(x, "representation_note", exact = TRUE)
+    }
     class(out) <- unique(c("BayesTools_BF", class(out)))
   }
+  out
+}
 
-  return(out)
+#' @export
+`[<-.BayesTools_BF` <- function(x, i, ..., value){
+
+  .BF_carrier_drop(NextMethod("[<-"))
+}
+
+#' @export
+Ops.BayesTools_BF <- function(e1, e2){
+
+  if(inherits(e1, "BayesTools_BF")){
+    values <- as.numeric(e1)
+    names(values) <- names(e1)
+    e1 <- values
+  }
+  if(!missing(e2) && inherits(e2, "BayesTools_BF")){
+    values <- as.numeric(e2)
+    names(values) <- names(e2)
+    e2 <- values
+  }
+  if(missing(e2)) do.call(.Generic, list(e1)) else do.call(.Generic, list(e1, e2))
+}
+
+#' @export
+Math.BayesTools_BF <- function(x, ...){
+
+  values <- as.numeric(x)
+  names(values) <- names(x)
+  do.call(.Generic, c(list(values), list(...)))
 }
 
 #' @export
@@ -145,6 +225,9 @@ format_BF <- function(BF, logBF = FALSE, BF01 = FALSE, inclusion = FALSE){
 
   original_names <- names(x)
   original_col_attributes <- lapply(x, attributes)
+  row_indices <- if(missing(i) || (missing(j) && nargs() < 3L)) seq_len(nrow(x)) else {
+    if(is.character(i)) match(i, rownames(x)) else seq_len(nrow(x))[i]
+  }
 
   out <- NextMethod("[")
   if(!is.data.frame(out)){
@@ -157,7 +240,12 @@ format_BF <- function(BF, logBF = FALSE, BF01 = FALSE, inclusion = FALSE){
 
   if(length(source_cols) > 0 && any(valid_cols)){
     for(k in which(valid_cols)){
-      out[[k]] <- .restore_table_column_attributes(out[[k]], original_col_attributes[[source_cols[k]]])
+      source <- x[[source_cols[k]]]
+      if(inherits(source, "BayesTools_BF") && length(row_indices) == nrow(out)){
+        out[[k]] <- source[row_indices]
+      }else{
+        out[[k]] <- .restore_table_column_attributes(out[[k]], original_col_attributes[[source_cols[k]]])
+      }
     }
   }
 
@@ -189,7 +277,7 @@ format_BF <- function(BF, logBF = FALSE, BF01 = FALSE, inclusion = FALSE){
   }
   attr(out, "quantities") <- .subset_table_quantities(x, out)
   attr(out, "warnings") <- .subset_table_warnings(attr(x, "warnings"), selected_parameters, rownames(out))
-  out <- .subset_table_hypothesis_attributes(x, out)
+  out <- .subset_table_hypothesis_attributes(x, out, row_indices)
 
   out
 }
@@ -371,7 +459,8 @@ format_BF <- function(BF, logBF = FALSE, BF01 = FALSE, inclusion = FALSE){
 
 .restore_table_column_attributes <- function(column, source_attributes){
 
-  source_attributes <- source_attributes[!names(source_attributes) %in% c("names", "dim", "dimnames", "bound_operator")]
+  source_attributes <- source_attributes[!names(source_attributes) %in%
+    c("names", "dim", "dimnames", "bound_operator", .BF_carrier_attributes())]
   for(attribute in names(source_attributes)){
     attr(column, attribute) <- source_attributes[[attribute]]
   }
@@ -518,25 +607,21 @@ format_BF <- function(BF, logBF = FALSE, BF01 = FALSE, inclusion = FALSE){
   footnotes
 }
 
-.subset_table_hypothesis_attributes <- function(table, output){
+.subset_table_hypothesis_attributes <- function(table, output, row_indices = NULL){
 
-  if(!inherits(table, "BayesTools_hypothesis_BF")){
-    return(output)
-  }
-
-  raw_BF <- attr(table, "raw_BF")
-  attr(output, "raw_BF") <- NULL
-  if(!is.null(raw_BF) && length(raw_BF) == nrow(table)){
-    row_indices <- match(rownames(output), rownames(table))
-    if(length(row_indices) == nrow(output) &&
-       !any(is.na(row_indices)) &&
-       !anyDuplicated(row_indices)){
-      attr(output, "raw_BF") <- raw_BF[row_indices]
+  if(is.null(row_indices)) row_indices <- match(rownames(output), rownames(table))
+  for(attribute in c("raw_BF", "raw_log_BF", "numerical_diagnostics", "prior_numerical_diagnostics")){
+    values <- attr(table, attribute, exact = TRUE)
+    attr(output, attribute) <- NULL
+    if(attribute %in% c("raw_BF", "raw_log_BF") &&
+       !any(attr(output, "type") %in% c("BF", "inclusion_BF"))) next
+    if(length(values) == nrow(table) && length(row_indices) == nrow(output) && !anyNA(row_indices)){
+      attr(output, attribute) <- values[row_indices]
     }
   }
-
   output
 }
+
 
 .format_BF_column <- function(x){
 
@@ -569,7 +654,7 @@ format_BF <- function(BF, logBF = FALSE, BF01 = FALSE, inclusion = FALSE){
     attr(new_table, a) <- attr(table, a)
   }
 
-  new_table
+  .subset_table_hypothesis_attributes(table, new_table, seq_len(nrow(table)))
 }
 
 #' @title Adds column to BayesTools table
@@ -712,8 +797,15 @@ update.BayesTools_table <- function(object, title = NULL, footnotes = NULL, warn
     for(BF_col in which(BF_types)){
       BF_values <- object[[BF_col]]
       raw_BF    <- as.numeric(BF_values)
+      canonical <- .BF_carrier_log(BF_values)
       bound_operator <- .standardize_BF_bound_operator(attr(BF_values, "bound_operator"), length(BF_values))
       inclusion <- identical(attr(object, "type")[BF_col], "inclusion_BF")
+      if(!is.null(canonical)){
+        if(isTRUE(attr(BF_values, "BF01"))) bound_operator <- .invert_BF_bound_operator(bound_operator)
+        object[[BF_col]] <- .format_BF_from_log(canonical, logBF, BF01, inclusion,
+          bound_operator = bound_operator, diagnostics = attr(BF_values, "numerical_diagnostics"))
+        next
+      }
       if(isTRUE(attr(BF_values, "logBF"))){
         # stay in log space so that log-scale values survive re-formatting
         if(isTRUE(attr(BF_values, "BF01"))){
@@ -757,4 +849,22 @@ update.BayesTools_table <- function(object, title = NULL, footnotes = NULL, warn
   attr(object, "BF01")  <- BF01
 
   return(object)
+}
+
+# Plain coercions keep the existing layout and strip hidden BF carriers.
+# Hypothesis tables retain their established long-frame export.
+#' @export
+as.data.frame.BayesTools_table <- function(x, row.names = NULL, optional = FALSE, ...){
+
+  if(inherits(x, "BayesTools_hypothesis_BF")){
+    return(as.data.frame.BayesTools_hypothesis_BF(x, row.names, optional, ...))
+  }
+  out <- as.data.frame.data.frame(x, row.names = row.names, optional = optional, ...)
+  for(column in names(out)){
+    if(inherits(out[[column]], "BayesTools_BF")) out[[column]] <- .BF_carrier_drop(out[[column]])
+  }
+  for(attribute in c("raw_log_BF", "numerical_diagnostics", "prior_numerical_diagnostics")){
+    attr(out, attribute) <- NULL
+  }
+  out
 }

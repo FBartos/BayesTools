@@ -240,6 +240,8 @@ hypothesis_BF <- function(posterior, prior = NULL, hypothesis, parameter = NULL,
   )
 
   rows <- list()
+  log_results <- numeric()
+  numerical_diagnostics <- prior_numerical_diagnostics <- list()
   row_labels <- character()
   row_statements <- integer()
   inexact_priors <- character()
@@ -252,6 +254,9 @@ hypothesis_BF <- function(posterior, prior = NULL, hypothesis, parameter = NULL,
         density_method = density_method,
         allow_unavailable = length(quantities) > 1L
       )
+      log_results[[row_i]] <- if(is.null(result$log_BF)) log(result$BF) else result$log_BF
+      numerical_diagnostics[row_i] <- list(result$numerical_diagnostics)
+      prior_numerical_diagnostics[row_i] <- list(result$prior_numerical_diagnostics)
       rows[[row_i]] <- .hypothesis_BF_row(
         quantity = quantities[[quantity_i]],
         result   = result
@@ -266,18 +271,26 @@ hypothesis_BF <- function(posterior, prior = NULL, hypothesis, parameter = NULL,
   out <- do.call(rbind, rows)
   rownames(out) <- .hypothesis_BF_row_names(row_labels, row_statements)
   raw_BF <- out[["BF"]]
-  out[["BF"]] <- format_BF(raw_BF, logBF = logBF, BF01 = BF01)
+  out[["BF"]] <- .format_BF_from_log(log_results, logBF = logBF, BF01 = BF01,
+    BF = raw_BF, diagnostics = numerical_diagnostics)
   attr(out[["BF_error"]], "name") <- "error%(BF)"
 
   warnings <- .hypothesis_BF_table_warnings(out)
   out      <- out[, columns, drop = FALSE]
 
   attr(out, "raw_BF")   <- raw_BF
+  attr(out, "raw_log_BF") <- log_results
+  attr(out, "numerical_diagnostics") <- numerical_diagnostics
+  attr(out, "prior_numerical_diagnostics") <- prior_numerical_diagnostics
   attr(out, "hypothesis_ast") <- hypothesis_ast
   attr(out, "logBF")    <- logBF
   attr(out, "BF01")     <- BF01
   attr(out, "type")      <- .hypothesis_BF_table_types(colnames(out))
   attr(out, "footnotes") <- .hypothesis_BF_table_footnotes(colnames(out))
+  if(any(!vapply(prior_numerical_diagnostics, is.null, logical(1)))){
+    attr(out, "footnotes") <- c(attr(out, "footnotes"),
+      "Note: Deterministic prior-region diagnostics are stored in 'prior_numerical_diagnostics'; 'BF_error' reports Monte Carlo error only.")
+  }
   attr(out, "warnings")  <- warnings
   attr(out, "rownames")  <- TRUE
   class(out) <- c("BayesTools_table", "BayesTools_hypothesis_BF", "data.frame")

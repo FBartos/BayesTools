@@ -507,13 +507,18 @@ posterior_transform <- function(x, transformation, transformation_arguments = NU
 
   values <- .posterior_ordinate_values(ordinate)
   value <- suppressWarnings(map$fun(values$value))
-  height <- values$ordinate / abs(suppressWarnings(map$jac(values$value)))
-  if(any(!is.finite(value)) || any(!is.finite(height)) || any(height <= 0) ||
+  jacobian <- abs(suppressWarnings(map$jac(values$value)))
+  log_height <- if(is.null(values$log_ordinate)) NULL else values$log_ordinate - log(jacobian)
+  height <- if(is.null(log_height)) values$ordinate / jacobian else exp(log_height)
+  if(any(!is.finite(value)) ||
+     (is.null(log_height) && (any(!is.finite(height)) || any(height <= 0))) ||
+     (!is.null(log_height) && any(!is.finite(log_height))) ||
      anyDuplicated(value)){
     return(NULL)
   }
   ordinate$value <- value
   ordinate$ordinate <- height
+  if(!is.null(log_height)) ordinate$log_ordinate <- log_height
   ordinate["diagnostics"] <- list(.bt_posterior_transform_diagnostics(
     ordinate$diagnostics, map
   ))

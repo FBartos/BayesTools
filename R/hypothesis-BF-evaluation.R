@@ -685,16 +685,23 @@
 }
 
 
-.hypothesis_normal_density_height <- function(samples, value, label) {
+.hypothesis_normal_density_height <- function(samples, value, label, log = FALSE,
+                                               warn_cluster = TRUE) {
 
   sample_sd <- stats::sd(samples)
+  if(length(samples) >= 2L && all(is.finite(samples)) && !is.finite(sample_sd)){
+    .hypothesis_numerical_stop("normal_scale_unavailable", "normal density parameters",
+      inputs = list(label = label, standard_deviation = sample_sd),
+      diagnostics = list(label = label, standard_deviation = sample_sd, finite_positive_scale = TRUE))
+  }
   if(length(samples) < 2L || !is.finite(sample_sd) || sample_sd <= 0){
     stop("Cannot estimate ", label, " normal density from degenerate samples.",
          call. = FALSE)
   }
-  .hypothesis_warn_point_draw_cluster(samples, value, label)
+  if(isTRUE(warn_cluster)) .hypothesis_warn_point_draw_cluster(samples, value, label)
 
-  height <- stats::dnorm(value, mean = mean(samples), sd = sample_sd)
+  height <- stats::dnorm(value, mean = mean(samples), sd = sample_sd, log = log)
+  if(isTRUE(log)) return(as.numeric(height))
   if(!is.finite(height) || height < 0){
     stop("Could not estimate ", label,
          " normal density at the point hypothesis.", call. = FALSE)
@@ -1061,4 +1068,12 @@ prior_ordinate_status <- function(prior_density, values, labels = NULL){
   }
 
   return(invisible(TRUE))
+}
+
+.hypothesis_draw_density_log_height <- function(samples, value, label, density_method){
+
+  if(!identical(density_method, "normal")){
+    return(log(.hypothesis_draw_density_height(samples, value, label, density_method)))
+  }
+  .hypothesis_normal_density_height(samples, value, label, log = TRUE)
 }

@@ -122,4 +122,17 @@ mixture, only the draws of models whose support contains the null count.
 Diagnostic messages are stored in the \code{"warnings"} attribute of each
 Bayes factor and, unless \code{silent = TRUE}, emitted once per parameter
 or level, prefixed with its label (for example \code{mu[A]}).
+
+Affine expressions retain an unshifted linear numerator and a checked
+constant divisor. Point inference evaluates that numerator at the translated
+null; diagnostic density heights retain the requested quantity units. Numerical
+coefficient, boundary or log-ordinate resolution loss raises
+\code{BayesTools_hypothesis_numerical_unavailable} (ordinate parent) or
+\code{BayesTools_hypothesis_region_numerical_unavailable} (region parent), also
+\code{BayesTools_numerical_unavailable} and \code{BayesTools_numerical_condition}.
+The log-resolution screen is a conservative floating-point heuristic, not an
+estimator or backend error bound. Finite log values may correspond to displayed
+natural-scale zero or infinity. \code{raw_log_BF} and
+\code{numerical_diagnostics} retain aligned diagnostics; BF formatting uses the
+live column carrier, which replacement, arithmetic and Math operations invalidate.
 }

@@ -81,7 +81,9 @@
     }
     list(BF = NA_real_, BF_error = NA_real_, prior = NA_real_,
          posterior = NA_real_, method = "unavailable",
-         warning = conditionMessage(condition), inexact_prior = NULL)
+         warning = conditionMessage(condition), inexact_prior = NULL,
+         numerical_diagnostics = if(inherits(condition, "BayesTools_numerical_condition")) condition else NULL,
+         prior_numerical_diagnostics = if(inherits(condition, "BayesTools_hypothesis_region")) list(condition) else NULL)
   })
 }
 
@@ -614,11 +616,10 @@
                                allow_one = explicit)
 
   region_BF       <- region_posterior / region_prior
-  region_BF_error <- .hypothesis_region_BF_error_percent(quantity, region_side)
-  BF              <- point_BF[["BF"]] / region_BF
-  if(inverse){
-    BF <- 1 / BF
-  }
+  region_BF_error <- .hypothesis_region_BF_error_percent(quantity, region_side, region_prior)
+  log_BF <- point_BF$log_BF - (log(region_posterior) - log(region_prior))
+  if(inverse) log_BF <- -log_BF
+  BF <- exp(log_BF)
 
   warning <- point_BF[["warning"]]
   if(region_posterior == 0){
@@ -632,6 +633,9 @@
     BF        = BF,
     prior     = NA_real_,
     posterior = NA_real_,
+    log_BF    = log_BF,
+    numerical_diagnostics = point_BF$numerical_diagnostics,
+    prior_numerical_diagnostics = list(region = attr(region_prior, "numerical_diagnostics")),
     method    = "transitive Savage-Dickey",
     BF_error  = .hypothesis_combine_BF_error_percent(
       point_BF[["BF_error"]],

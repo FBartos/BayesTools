@@ -261,6 +261,7 @@
   return(list(
     x           = values[["value"]][index],
     y           = values[["ordinate"]][index],
+    log_y       = if(is.null(values$log_ordinate)) NULL else values$log_ordinate[index],
     method      = posterior_ordinate[["method"]],
     diagnostics = .posterior_ordinate_subset_diagnostics(
       posterior_ordinate[["diagnostics"]],
@@ -274,11 +275,15 @@
 
   value    <- posterior_ordinate[["value"]]
   ordinate <- posterior_ordinate[["ordinate"]]
+  logs <- if(inherits(posterior_ordinate, "BayesTools_posterior_log_ordinate")) posterior_ordinate$log_ordinate else NULL
+  valid_log <- !is.null(logs) && is.numeric(logs) && length(logs) == length(value) &&
+    all(is.finite(logs)) && identical(as.numeric(ordinate), exp(as.numeric(logs)))
   if(!identical(posterior_ordinate[["status"]], "ok") ||
      !is.numeric(value) || !is.numeric(ordinate) ||
      length(value) == 0L || length(value) != length(ordinate) ||
-     any(!is.finite(value)) || any(!is.finite(ordinate)) ||
-     any(ordinate <= 0) || anyDuplicated(value)){
+     any(!is.finite(value)) ||
+     (!valid_log && (any(!is.finite(ordinate)) || any(ordinate <= 0))) ||
+     (!is.null(logs) && !valid_log) || anyDuplicated(value)){
     stop(
       "Posterior ordinate metadata is invalid: it needs status 'ok' and unique, ",
       "finite 'value' entries with finite, positive 'ordinate' heights.",
@@ -286,7 +291,8 @@
     )
   }
 
-  list(value = as.numeric(value), ordinate = as.numeric(ordinate))
+  list(value = as.numeric(value), ordinate = as.numeric(ordinate),
+    log_ordinate = if(valid_log) as.numeric(logs) else NULL)
 }
 
 .posterior_ordinate_subset_diagnostics <- function(diagnostics, index){

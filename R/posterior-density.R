@@ -433,3 +433,25 @@ posterior_ordinate_has_value <- function(ordinate, value){
 
   return(unique(values[-1L][duplicated]))
 }
+
+# Internal producer for genuine log ordinates (the RoBMA unit point part).
+# Public natural-height constructors retain their finite-positive contract.
+.posterior_log_ordinate_attribute <- function(value, log_ordinate, method,
+                                               density_method, diagnostics = NULL, ...){
+
+  if(!is.numeric(log_ordinate) || any(!is.finite(log_ordinate)) ||
+     !is.numeric(value) || any(!is.finite(value)) ||
+     length(value) != length(log_ordinate) || anyDuplicated(value)){
+    stop("Log posterior ordinates require unique finite values and finite log heights.", call. = FALSE)
+  }
+  metadata <- list(...)
+  if(any(names(metadata) %in% c("status", "value", "ordinate", "log_ordinate", "method", "density_method", "diagnostics"))){
+    stop("Log posterior ordinate metadata cannot replace producer fields.", call. = FALSE)
+  }
+  out <- c(list(status = "ok", value = value, ordinate = exp(log_ordinate),
+    log_ordinate = log_ordinate, method = method, density_method = density_method,
+    diagnostics = diagnostics), metadata)
+  class(out) <- c("BayesTools_posterior_log_ordinate", "BayesTools_posterior_ordinate", "list")
+  .posterior_ordinate_values(out)
+  out
+}

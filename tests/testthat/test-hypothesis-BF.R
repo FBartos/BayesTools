@@ -671,7 +671,7 @@ test_that("hypothesis_BF returns compact BayesTools table by default", {
   expect_equal(attr(multi[2, , drop = FALSE], "raw_BF"),
                attr(multi, "raw_BF")[2])
 
-  expect_null(attr(multi[c(1, 1), , drop = FALSE], "raw_BF"))
+  expect_equal(attr(multi[c(1, 1), , drop = FALSE], "raw_BF"), attr(multi, "raw_BF")[c(1, 1)])
 
   mismatched <- multi[1, , drop = FALSE]
   rownames(mismatched) <- "missing"
@@ -701,7 +701,7 @@ test_that("hypothesis_BF row names identify repeated statements on one quantity"
   expect_identical(names(attr(out, "warnings")), "theta (3)")
   expect_equal(attr(out["theta (2)", , drop = FALSE], "raw_BF"),
                attr(out, "raw_BF")[2])
-  expect_null(attr(out[c(1, 1), , drop = FALSE], "raw_BF"))
+  expect_equal(attr(out[c(1, 1), , drop = FALSE], "raw_BF"), attr(out, "raw_BF")[c(1, 1)])
 
   single <- hypothesis_BF(
     posterior  = posterior,
@@ -930,7 +930,9 @@ test_that("hypothesis_BF region error omits variance of exact prior masses", {
   # Only the compound side's prior mass is estimated from prior draws.
   expect_equal(
     BayesTools:::.hypothesis_region_odds_BF_error_percent(
-      quantity, statement$left, statement$right
+      quantity, statement$left, statement$right,
+      .hypothesis_region_mass(quantity, statement$left, TRUE),
+      .hypothesis_region_mass(quantity, statement$right, TRUE)
     ),
     100 * sqrt(
       .hypothesis_log_odds_var_for_test(posterior > 0.2, abs(posterior) < 1) +
@@ -940,13 +942,15 @@ test_that("hypothesis_BF region error omits variance of exact prior masses", {
   )
   expect_identical(
     BayesTools:::.hypothesis_region_log_mass_mc_var(
-      quantity, statement$left, prior = TRUE
+      quantity, statement$left, prior = TRUE,
+      mass = .hypothesis_region_mass(quantity, statement$left, TRUE)
     ),
     0
   )
   expect_equal(
     BayesTools:::.hypothesis_region_log_mass_mc_var(
-      quantity, statement$right, prior = TRUE
+      quantity, statement$right, prior = TRUE,
+      mass = .hypothesis_region_mass(quantity, statement$right, TRUE)
     ),
     .hypothesis_log_prob_var_for_test(abs(prior_draws) < 1),
     tolerance = 1e-12

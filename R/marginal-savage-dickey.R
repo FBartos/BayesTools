@@ -82,6 +82,19 @@
 #' Bayes factor and, unless \code{silent = TRUE}, emitted once per parameter
 #' or level, prefixed with its label (for example \code{mu[A]}).
 #'
+#' Affine expressions retain an unshifted linear numerator and a checked
+#' constant divisor. Point inference evaluates that numerator at the translated
+#' null; diagnostic density heights retain the requested quantity units. Numerical
+#' coefficient, boundary or log-ordinate resolution loss raises
+#' \code{BayesTools_hypothesis_numerical_unavailable} (ordinate parent) or
+#' \code{BayesTools_hypothesis_region_numerical_unavailable} (region parent), also
+#' \code{BayesTools_numerical_unavailable} and \code{BayesTools_numerical_condition}.
+#' The log-resolution screen is a conservative floating-point heuristic, not an
+#' estimator or backend error bound. Finite log values may correspond to displayed
+#' natural-scale zero or infinity. \code{raw_log_BF} and
+#' \code{numerical_diagnostics} retain aligned diagnostics; BF formatting uses the
+#' live column carrier, which replacement, arithmetic and Math operations invalidate.
+#'
 #' @return \code{Savage_Dickey_BF} returns a Bayes factor. The prior ordinate
 #' at the null follows the exactness rule of [hypothesis_BF()] point
 #' hypotheses, with the same condition classes: a prior point mass at the null
@@ -165,11 +178,18 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
         null_hypothesis = null_hypothesis,
         density_method  = density_method
       )
-      bf[[i]] <- .Savage_Dickey_BF.fun(
+      bf[[i]] <- tryCatch(.Savage_Dickey_BF.fun(
         posterior_i, null_hypothesis, normal_approximation, silent, density_method,
         label        = .Savage_Dickey_BF.level_label(posterior, i),
         null_mass_NA = null_mass_NA
-      )
+      ), BayesTools_hypothesis_numerical_unavailable = function(condition){
+        if(!isTRUE(null_mass_NA)) stop(condition)
+        out <- NA_real_
+        attr(out, "warnings") <- conditionMessage(condition)
+        attr(out, "posterior_density_source") <- "numerical_unavailable"
+        attr(out, "numerical_diagnostics") <- condition
+        out
+      })
     }
     names(bf) <- names(posterior)
   }else{
@@ -502,14 +522,14 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
     height
   }
 
+  log_posterior_height <- NULL
   if(normal_approximation){
     if(continuous_mass <= 0 || length(continuous_samples) == 0L){
       posterior_height <- 0
     }else{
-      posterior_height <- .Savage_Dickey_BF.normal(
-        continuous_samples,
-        null_hypothesis
-      ) * continuous_mass
+      log_posterior_height <- .hypothesis_normal_density_height(continuous_samples,
+        null_hypothesis, "posterior", log = TRUE, warn_cluster = FALSE) + log(continuous_mass)
+      posterior_height <- exp(log_posterior_height)
     }
   }else if(!is.null(stored_posterior_ordinate)){
     support_exclusion <- .Savage_Dickey_BF.support_exclusion(
@@ -530,6 +550,7 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
       posterior_density_support_bounds <- support_exclusion[["bounds"]]
     }else{
       posterior_height <- stored_posterior_ordinate[["y"]]
+      log_posterior_height <- stored_posterior_ordinate$log_y
       posterior_density_source <- "precomputed"
       BF_error_percent <- .posterior_ordinate_bf_error_percent(stored_posterior_ordinate)
     }
@@ -587,8 +608,18 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
   }
 
   # the checked prior ordinate is regular with a finite log density
-  prior_height <- .prior_linear_density_exact_height(prior_ordinate)
-  BF <- exp(log(prior_height) - log(posterior_height))
+  log_prior_height <- prior_ordinate$log_density
+  if(is.null(log_posterior_height)) log_posterior_height <- log(posterior_height)
+  log_prior_height <- as.numeric(log_prior_height)
+  log_posterior_height <- as.numeric(log_posterior_height)
+  ratio <- .hypothesis_log_ratio(log_prior_height, log_posterior_height,
+    normal = isTRUE(normal_approximation) && continuous_mass > 0)
+  BF <- .format_BF_from_log(ratio$log_BF)
+  attr(BF, "log_BF") <- ratio$log_BF
+  attr(BF, "log_prior_height") <- log_prior_height
+  attr(BF, "log_posterior_height") <- log_posterior_height
+  attr(BF, "numerical_diagnostics") <- ratio$diagnostics
+  attr(BF, "orientation") <- "prior/posterior"
 
   if(!is.null(warnings)){
     attr(BF, "warnings") <- warnings
