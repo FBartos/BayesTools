@@ -558,7 +558,14 @@
   knots <- c(0, .25, .5, .75, 1)
   add_anchor <- function(value){
     if(is.null(value)) return(invisible(NULL))
-    probability <- optional(.petpeese_prior_component_cdf(mu, value), "location CDF anchor")
+    probability <- optional({
+      probability <- .petpeese_prior_component_cdf(mu, value)
+      if(probability > 0 && probability < 1 &&
+         (!.prior_density_full_precision(probability) || !.prior_density_full_precision(1 - probability))){
+        .petpeese_prior_numerical_stop("location CDF anchor", "An optional interior CDF anchor lost representable precision")
+      }
+      probability
+    }, "location CDF anchor")
     if(!is.null(probability)) knots <<- c(knots, probability)
     invisible(NULL)
   }

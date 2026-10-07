@@ -1,6 +1,50 @@
 skip_if_not_test_profile("unit")
 source(testthat::test_path("common-functions.R"))
 
+test_that("optional PET-PEESE anchors retain the full probability-domain integral", {
+  normal <- prior("normal", list(1, .5))
+  half_normal <- prior_PET("normal", list(0, 1))
+  mu_component <- .petpeese_prior_components(normal)[[1L]]
+  bias_component <- .petpeese_prior_components(half_normal)[[1L]]
+  se <- .015015015015015
+  q <- 2.91792553831964
+  actual <- .petpeese_prior_probability_integral(mu_component, bias_component, se, q)
+  # This oracle integrates in the physical bias coordinate, independently of
+  # the production location-probability partition and its optional anchors.
+  reference <- stats::integrate(function(b) stats::pnorm(q - se*b, 1, .5)*2*stats::dnorm(b),
+    0, Inf, rel.tol = 1e-11, abs.tol = 1e-11)$value
+  expect_equal(as.numeric(actual), reference, tolerance = 1e-7)
+  diagnostics <- attr(actual, "numerical_diagnostics")
+  expect_identical(range(diagnostics$knots), c(0, 1))
+  expect_false(any(diagnostics$knots == 3.26083326255223e-322))
+  required <- stats::pnorm(q, 1, .5)
+  expect_true(required %in% diagnostics$knots)
+  expect_true(any(vapply(diagnostics$optional_anchor_diagnostics, function(entry){
+    inherits(entry$condition, "BayesTools_numerical_unavailable") &&
+      identical(entry$condition$operation, "location CDF anchor")
+  }, logical(1))))
+  expect_lte(diagnostics$subdivisions, 200L)
+  mu <- prior_mixture(list(prior("point", list(0), prior_weights = 2),
+    prior("normal", list(-1, .5)), normal), is_null = c(TRUE, FALSE, FALSE))
+  bias <- list(prior_none(prior_weights = 5), half_normal)
+  context <- .petpeese_prior_cdf_context(bias, list(mu, mu), c(5, 1)/6)
+  physical_cdf <- function(q) {
+    no_bias <- .5*as.numeric(q >= 0) + .25*stats::pnorm(q, -1, .5) + .25*stats::pnorm(q, 1, .5)
+    pet <- .5*if(q >= 0) 2*stats::pnorm(q/se)-1 else 0
+    for(mean in c(-1, 1)){
+      pet <- pet + .25*stats::integrate(function(b) stats::pnorm(q-se*b, mean, .5)*2*stats::dnorm(b),
+        0, Inf, rel.tol = 1e-11, abs.tol = 1e-11)$value
+    }
+    (5*no_bias+pet)/6
+  }
+  for(p in c(.025, .5, .975)){
+    quantile <- .petpeese_prior_cdf_quantile(context, se, p)
+    reference <- if(p >= physical_cdf(-1e-10) && p <= physical_cdf(0)) 0 else
+      stats::uniroot(function(q) physical_cdf(q)-p, c(-10, 10), tol = 1e-12)$root
+    expect_equal(as.numeric(quantile), reference, tolerance = 1e-7)
+  }
+})
+
 test_that("ordered model plots use selected semantic levels and skip prior summaries", {
   models <- lapply(c(.5, 1), function(sd){
     fixture <- ordered_plot_test_fixture(prior("normal", list(1, sd)), c(.2, .3, .5))
