@@ -883,8 +883,7 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
     output$formula_syntax <- paste0(output$formula_syntax, "\n")
   }
   # Carry the fitted fixed-effect design with the formula-scale metadata so
-  # that every consumer derives original-scale coefficients from the design
-  # (the design's own formula_scale copy stays as fitted).
+  # that every consumer derives original-scale coefficients from the design.
   output$formula_scale <- .bt_formula_scale_with_unscale_design(
     output$formula_scale,
     output$formula_design

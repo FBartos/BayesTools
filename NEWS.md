@@ -1,4 +1,8 @@
 # version 0.3.1
+- named BF slicing aligns all producer metadata with visible rows, double-bracket replacement invalidates hidden logs, and finite-log positive bounds keep truthful endpoints after numeric underflow.
+- static subnormal coefficient ratio weights use bounded value-aware arithmetic, including declared fixed targets; affected uncertified continuous laws remain explicitly unavailable while usable draws and certified point/sibling laws are retained.
+- optional ordered contribution replay declines lost multiplier folds; logged formula levels retain their conservative nonlinear joint-prior marker.
+- nonlocal JAGS initial states require usable normalized log density without redraws; supplied single MCMC matrices preserve their recorded timing in ordinary and derived parameter extraction.
 - selected formula terms retain fitted factor coding and variable order, including reversed interaction requests, without requiring unused predictors.
 - scalar expression-point formula coefficients retain compact declared parent/data owners and replay through a registered deterministic family; valid monitors remain usable and unavailable replay has typed reasons.
 - bound ordinary factor mixture and spike-and-slab draws use exact raw/cell designs, independent scalar coefficient products, and unchanged joint multivariate laws and shared gates.

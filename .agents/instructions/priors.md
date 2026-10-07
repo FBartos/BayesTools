@@ -895,3 +895,8 @@ allow-list; missing targets/sources/priors/context and program failures propagat
 Moment constructor acceptance includes finite positive tau whose derived mode
 remains finite despite an overflowing intermediate product; a positive supplied
 mode can still fail because its derived tau loses representable range.
+Nonlocal JAGS initialization requires an actual finite usable normalized log
+density and rejects the excluded location. Preserve the ordinary bounded R
+sampling and quantile sign boundary and its RNG consumption; never redraw an
+unusable start. Live BF named slices align every row carrier by visible vector
+indexing, and both replacement operators invalidate ownership unconditionally.

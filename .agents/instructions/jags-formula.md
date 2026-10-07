@@ -574,3 +574,9 @@ retain chain timing. Extension, model convergence and bridge sampling refuse
 views with classed errors before runtime/default arguments are forced. Extend
 `fit$original_fit` and regenerate the view; missing view coordinates require
 regeneration, while ordinary fitted-metadata errors keep their refit contract.
+Uncanceled static ratio terms with subnormal stored weights use the original
+basis, source value and declared multiplier ratio for draws and fixed targets.
+Uncertified continuous laws from such scales are explicitly unavailable; do
+not infer an exact law from draws. Genuine supplied single `mcmc` matrices keep
+their own recorded timing through parameter extraction; plain matrices use
+the established default timing.
