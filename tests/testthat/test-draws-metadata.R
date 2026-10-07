@@ -266,6 +266,17 @@ test_that("attributes are never read by partial name matching", {
   expect_identical(labels[risky], character())
 })
 
+test_that("selected fitted terms use the exact order attribute", {
+  fitted <- stats::terms(~ x + y + x:y)
+  design <- list(terms = fitted, assign = 0:3, raw_column_names = c("intercept", "x", "y", "x:y"))
+  selected <- .bt_formula_selected_terms(~ x + x:y, design)$terms
+  expect_identical(attr(selected, "order", exact = TRUE), c(1L, 2L))
+  attr(design$terms, "order") <- NULL
+  attr(design$terms, "ordered_extra") <- c(7L, 8L, 9L)
+  selected <- .bt_formula_selected_terms(~ x + x:y, design)$terms
+  expect_null(attr(selected, "order", exact = TRUE))
+})
+
 test_that("draw-metadata accessors are exact and validate the field", {
 
   x <- 1:3

@@ -52,7 +52,7 @@
   }
   attr(selected, "factors") <- fitted_factors[needed, matched, drop = FALSE]
   attr(selected, "term.labels") <- fitted_labels[matched]
-  attr(selected, "order") <- attr(fitted, "order")[matched]
+  attr(selected, "order") <- attr(fitted, "order", exact = TRUE)[matched]
   attr(selected, "intercept") <- 1L
   attr(selected, "response") <- 0L
   attr(selected, ".Environment") <- baseenv()
