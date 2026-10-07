@@ -1,4 +1,34 @@
 skip_if_not_test_profile("unit")
+source(testthat::test_path("common-functions.R"))
+
+test_that("ordinary and ordered spike replay keep their respective invalid-state errors", {
+  info <- JAGS_formula(~x, "mu", data.frame(x = c(-1, 2)),
+    list(intercept = prior("point", list(1)),
+      x = prior_spike_and_slab(prior("normal", list(0, 1)), prior("point", list(.5)))))
+  draws <- cbind(mu_intercept = 1, mu_x = c(2, 0), mu_x_variable = c(2, 3), mu_x_indicator = c(1, 0))
+  fit <- .parameter_catalog_test_fit(coda::mcmc.list(coda::mcmc(draws)), info$prior_list,
+    formula_design = list(mu = info$formula_design))
+  expect_identical(as.numeric(JAGS_evaluate_deterministic(fit, draws, nodes = "mu_x")), c(2, 0))
+  for(value in c(.5, NA_real_, Inf)){
+    invalid <- draws
+    invalid[1L, "mu_x_indicator"] <- value
+    condition <- expect_error(JAGS_evaluate_deterministic(fit, invalid, nodes = "mu_x"),
+      "Inclusion indicator draws of 'mu_x' must be zero or one.", fixed = TRUE)
+    expect_identical(class(condition), c("simpleError", "error", "condition"))
+    expect_null(conditionCall(condition))
+  }
+  fixture <- ordered_plot_test_fixture(prior_spike_and_slab(prior("point", list(2)),
+    prior("point", list(.5))), prior("dirichlet", list(c(2, 2, 2))))
+  valid <- JAGS_evaluate_deterministic(fixture$fit, fixture$draws, nodes = "mu_f_ordered_total")
+  expect_identical(as.numeric(valid), 2 * fixture$draws[, "mu_f_ordered_total_indicator"])
+  invalid <- fixture$draws
+  invalid[1L, "mu_f_ordered_total_indicator"] <- .5
+  condition <- expect_error(JAGS_evaluate_deterministic(fixture$fit, invalid, nodes = "mu_f_ordered_total"),
+    "Ordered inclusion indicator draws must be zero or one.", fixed = TRUE,
+    class = "BayesTools_ordered_invalid_state")
+  expect_identical(class(condition), c("BayesTools_ordered_invalid_state", "BayesTools_ordered_unavailable", "error", "condition"))
+  expect_null(conditionCall(condition))
+})
 
 test_that("replay propagates ordinary parent outputs to all dependent families", {
   info <- JAGS_formula(~x,"mu",data.frame(x=c(-1,2)),list(intercept=prior("point",list(1)),

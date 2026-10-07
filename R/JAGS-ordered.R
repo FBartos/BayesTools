@@ -171,7 +171,11 @@ JAGS_ordered_parameter_spec <- function(fit, parameters = NULL, weights = NULL, 
   if(!is.prior.mixture(total)) return(NULL)
   metadata <- .prior_ordered_metadata(prior)
   name <- .prior_ordered_total_name(parameter)
-  if(metadata$theta_dim == 1L) return(.bt_dnode_prior_mixture(name, total))
+  if(metadata$theta_dim == 1L){
+    node <- .bt_dnode_prior_mixture(name, total)
+    if(is.prior.spike_and_slab(total)) node$spec$kind <- "ordered_spike_and_slab"
+    return(node)
+  }
   if(!is.prior.spike_and_slab(total)){
     .bt_ordered_stop("Multi-slice ordered interactions require a simple scalar 'total' prior.")
   }

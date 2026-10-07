@@ -118,6 +118,9 @@
 
   spec <- node$spec
   if(identical(spec$kind, "ordered_spike_and_slab")){
+    if(length(node$coordinates) == 1L){
+      return(paste0(node$node, " = ", node$node, "_variable * ", spec$indicator))
+    }
     component <- spec$components[[1L]]
     return(paste0(node$coordinates, " <- ", component$coordinates, " * ", spec$indicator))
   }
@@ -169,7 +172,10 @@
 
   if(spec$kind %in% c("spike_and_slab", "ordered_spike_and_slab")){
     if(any(!is.finite(indicator)) || any(!indicator %in% c(0, 1))){
-      .bt_ordered_stop("Ordered inclusion indicator draws must be zero or one.", "BayesTools_ordered_invalid_state")
+      if(identical(spec$kind, "ordered_spike_and_slab")){
+        .bt_ordered_stop("Ordered inclusion indicator draws must be zero or one.", "BayesTools_ordered_invalid_state")
+      }
+      stop("Inclusion indicator draws of '", node$node, "' must be zero or one.", call. = FALSE)
     }
     out <- matrix(0,n,length(node$coordinates))
     active <- indicator==1
