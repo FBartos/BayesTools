@@ -266,8 +266,7 @@ Math.BayesTools_BF <- function(x, ...){
 
   n_models <- attr(x, "n_models")
   if(!is.null(n_models) && length(n_models) == nrow(x)){
-    row_indices <- match(rownames(out), rownames(x))
-    if(length(row_indices) == nrow(out) && !any(is.na(row_indices))){
+    if(length(row_indices) == nrow(out)){
       attr(out, "n_models") <- n_models[row_indices]
     }
   }
@@ -281,11 +280,11 @@ Math.BayesTools_BF <- function(x, ...){
     selected_rows = rownames(out)
   )
 
-  selected_parameters <- .subset_table_parameters(x, out)
+  selected_parameters <- .subset_table_parameters(x, out, row_indices)
   if(!is.null(selected_parameters)){
     attr(out, "parameters") <- selected_parameters
   }
-  attr(out, "quantities") <- .subset_table_quantities(x, out)
+  attr(out, "quantities") <- .subset_table_quantities(x, out, row_indices)
   attr(out, "warnings") <- .subset_table_warnings(attr(x, "warnings"), selected_parameters, rownames(out))
   out <- .subset_table_hypothesis_attributes(x, out, row_indices)
 
@@ -478,15 +477,15 @@ Math.BayesTools_BF <- function(x, ...){
   column
 }
 
-.subset_table_parameters <- function(table, output){
+.subset_table_parameters <- function(table, output, row_indices = NULL){
 
   parameters <- attr(table, "parameters")
   if(is.null(parameters) || length(parameters) != nrow(table)){
     return(NULL)
   }
 
-  row_indices <- match(rownames(output), rownames(table))
-  if(any(is.na(row_indices))){
+  if(is.null(row_indices)) row_indices <- match(rownames(output), rownames(table))
+  if(length(row_indices) != nrow(output)){
     return(NULL)
   }
 
@@ -495,14 +494,14 @@ Math.BayesTools_BF <- function(x, ...){
 
 # The per-row quantity table of the rows kept by subsetting (NULL when the
 # table has none or the rows cannot be matched).
-.subset_table_quantities <- function(table, output){
+.subset_table_quantities <- function(table, output, row_indices = NULL){
 
   quantities <- attr(table, "quantities", exact = TRUE)
   if(is.null(quantities) || nrow(quantities) != nrow(table)){
     return(NULL)
   }
-  row_indices <- match(rownames(output), rownames(table))
-  if(anyNA(row_indices)){
+  if(is.null(row_indices)) row_indices <- match(rownames(output), rownames(table))
+  if(length(row_indices) != nrow(output)){
     return(NULL)
   }
   out <- quantities[row_indices, , drop = FALSE]
@@ -619,13 +618,15 @@ Math.BayesTools_BF <- function(x, ...){
 
 .subset_table_hypothesis_attributes <- function(table, output, row_indices = NULL){
 
+  explicit_rows <- !is.null(row_indices)
   if(is.null(row_indices)) row_indices <- match(rownames(output), rownames(table))
   for(attribute in c("raw_BF", "raw_log_BF", "numerical_diagnostics", "prior_numerical_diagnostics")){
     values <- attr(table, attribute, exact = TRUE)
     attr(output, attribute) <- NULL
     if(attribute %in% c("raw_BF", "raw_log_BF") &&
        !any(attr(output, "type") %in% c("BF", "inclusion_BF"))) next
-    if(length(values) == nrow(table) && length(row_indices) == nrow(output) && !anyNA(row_indices)){
+    if(length(values) == nrow(table) && length(row_indices) == nrow(output) &&
+       (explicit_rows || !anyNA(row_indices))){
       attr(output, attribute) <- values[row_indices]
     }
   }

@@ -290,6 +290,29 @@ test_that("PET-PEESE pair CDFs retain analytic Normal sums and actual subdivisio
   expect_identical(.petpeese_prior_scale("PEESE", 0, 1), 0)
 })
 
+test_that("public ensemble tables preserve duplicated and missing row denominator selection", {
+
+  models <- lapply(0:3, function(value){
+    list(marglik = .bt_marglik_manual_result(value), prior_weights = 1)
+  })
+  inference <- list(
+    first = ensemble_inference(models[1:2], "first", list(first = c(TRUE, FALSE)))$first,
+    second = ensemble_inference(models, "second", list(second = c(TRUE, TRUE, FALSE, FALSE)))$second
+  )
+  table <- ensemble_inference_table(inference, c("first", "second"))
+  expect_identical(attr(table, "n_models"), c(2L, 4L))
+  for(selection in list(c(2, 2), c("second", "second"), c(2, 1), c(FALSE, TRUE))){
+    selected <- table[selection, , drop = FALSE]
+    positions <- if(is.character(selection)) match(selection, rownames(table)) else seq_len(nrow(table))[selection]
+    expect_identical(attr(selected, "n_models"), attr(table, "n_models")[positions])
+    expect_equal(as.numeric(selected$inclusion_BF), as.numeric(table$inclusion_BF[positions]))
+  }
+  expect_identical(attr(table[c(NA_integer_, 2L), , drop = FALSE], "n_models"), c(NA_integer_, 4L))
+  expect_identical(attr(table[integer(), , drop = FALSE], "n_models"), integer())
+  expect_identical(attr(table["models"], "n_models"), attr(table, "n_models"))
+  expect_true(any(grepl("2/4", capture.output(print(table[c(2, 2), , drop = FALSE])), fixed = TRUE)))
+})
+
 test_that("PET-PEESE required support transitions refuse while optional anchors record omissions", {
 
   mu <- .petpeese_prior_components(prior("normal", list(0, 1)))[[1L]]
