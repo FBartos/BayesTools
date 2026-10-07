@@ -170,6 +170,18 @@ test_that("format_BF preserves finite-sample BF bounds across BF scales", {
   expect_equal(as.numeric(formatted), as.numeric(BF))
   expect_equal(attr(formatted, "bound_operator"), c(">", "<"))
   expect_equal(attr(formatted[1], "bound_operator"), ">")
+  expect_s3_class(formatted[1], "BayesTools_BF")
+  expect_s3_class(formatted[c(2, 1)], "BayesTools_BF")
+  expect_identical(attr(formatted[c(2, 1)], "bound_operator"), c("<", ">"))
+  expect_null(attr(formatted, "canonical_log_BF", exact = TRUE))
+  for(logBF in c(FALSE, TRUE)){
+    for(BF01 in c(FALSE, TRUE)){
+      bounded <- format_BF(BF, logBF = logBF, BF01 = BF01)
+      expect_s3_class(bounded[2:1], "BayesTools_BF")
+      expect_identical(attr(bounded[2:1], "logBF"), logBF)
+      expect_identical(attr(bounded[2:1], "BF01"), BF01)
+    }
+  }
 
   exclusion <- format_BF(BF, BF01 = TRUE, inclusion = TRUE)
   expect_equal(as.numeric(exclusion), 1 / as.numeric(BF))

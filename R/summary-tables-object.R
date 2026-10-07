@@ -191,6 +191,9 @@ format_BF <- function(BF, logBF = FALSE, BF01 = FALSE, inclusion = FALSE){
     }
     class(out) <- unique(c("BayesTools_BF", class(out)))
   }
+  if(any(!is.na(attr(out, "bound_operator", exact = TRUE)))){
+    class(out) <- unique(c("BayesTools_BF", class(out)))
+  }
   out
 }
 
