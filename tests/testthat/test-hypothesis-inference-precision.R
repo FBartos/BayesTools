@@ -27,6 +27,30 @@ test_that("named BF slices use the visible vector positions for every carrier", 
   expect_identical(.BF_carrier_log(values[]), .BF_carrier_log(values))
 })
 
+test_that("double bracket BF replacements unconditionally drop producer ownership", {
+
+  for(log_value in c(710, -750, 2)){
+    value <- .format_BF_from_log(log_value)
+    visible <- as.numeric(value)
+    value[[1L]] <- visible
+    expect_identical(as.numeric(value), visible)
+    expect_null(.BF_carrier_log(value))
+    expect_null(attr(value, "numerical_diagnostics"))
+    table <- data.frame(parameter = "a", BF = visible)
+    table$BF <- .format_BF_from_log(log_value)
+    class(table) <- c("BayesTools_table", "data.frame")
+    attr(table, "type") <- c("string", "BF")
+    table$BF[[1L]] <- visible
+    expect_null(.BF_carrier_log(table$BF))
+    expect_identical(as.numeric(update(table, logBF = TRUE)$BF), log(visible))
+    expect_identical(as.numeric(update(table, BF01 = TRUE)$BF), 1 / visible)
+  }
+  finite <- .format_BF_from_log(2)
+  finite[[1L]] <- 3
+  expect_null(.BF_carrier_log(finite))
+  expect_identical(as.numeric(finite), 3)
+})
+
 test_that("point inference retains finite log ordinates and orientation", {
 
   arguments <- list(posterior = c(1, 2, 3), prior = prior("normal", list(0, 1)),

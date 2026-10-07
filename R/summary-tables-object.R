@@ -199,6 +199,12 @@ format_BF <- function(BF, logBF = FALSE, BF01 = FALSE, inclusion = FALSE){
 }
 
 #' @export
+`[[<-.BayesTools_BF` <- function(x, i, ..., value){
+
+  .BF_carrier_drop(NextMethod("[[<-"))
+}
+
+#' @export
 Ops.BayesTools_BF <- function(e1, e2){
 
   if(inherits(e1, "BayesTools_BF")){
