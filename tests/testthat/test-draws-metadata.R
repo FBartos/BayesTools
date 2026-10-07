@@ -1,4 +1,30 @@
 skip_if_not_test_profile("unit")
+source(testthat::test_path("common-functions.R"))
+
+test_that("the public ordered source accessor preserves producer validation", {
+  fixture <- ordered_plot_test_fixture(prior("normal", list(0, .5)))
+  x <- fixture$samples$mu_f
+  source <- posterior_metadata(x, "ordered_source")
+  expect_identical(source, .bt_meta_get(x, "ordered_source"))
+  expect_null(posterior_metadata(1:3, "ordered_source"))
+  posterior_metadata(x, "ordered_source") <- NULL
+  expect_null(posterior_metadata(x, "ordered_source"))
+  posterior_metadata(x, "ordered_source") <- source
+  expect_identical(posterior_metadata(x, "ordered_source"), source)
+  expect_error(posterior_metadata(x, "ordered_source") <- list(),
+    "Draw metadata 'ordered_source' is invalid", fixed = TRUE)
+  misaligned <- .bt_ordered_source_subset(source, seq_len(nrow(x) - 1L))
+  expect_error(posterior_metadata(x, "ordered_source") <- misaligned,
+    "Draw metadata 'ordered_source' must have one row per draw.", fixed = TRUE)
+  malformed <- source
+  malformed$models[[1L]]$parameter <- "wrong"
+  expect_error(posterior_metadata(x, "ordered_source") <- malformed,
+    "its models must contain authoritative bound ordered specifications", fixed = TRUE)
+  stale <- x
+  stale[1L, 1L] <- stale[1L, 1L] + 1
+  expect_error(posterior_metadata(stale, "ordered_source"), class = "BayesTools_stale_metadata")
+  expect_error(posterior_metadata(stale, "ordered_source") <- source, class = "BayesTools_stale_metadata")
+})
 
 test_that("scalar marginal atom declarations validate positional schema and transform without joint inference", {
   empty <- .posterior_atoms_new(column_names="a")

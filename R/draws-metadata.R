@@ -690,7 +690,8 @@
   "support", "atoms", "undefined_draws", "prior_density", "prior_densities",
   "prior_context", "posterior_density", "posterior_densities",
   "posterior_ordinate", "posterior_ordinates", "condition", "linear_weights",
-  "quantities", "output_transformations", "measure_unavailable", "linear_weight_space"
+  "quantities", "output_transformations", "measure_unavailable", "linear_weight_space",
+  "ordered_source"
 )
 
 .bt_formula_state_validate <- function(value){
