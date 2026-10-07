@@ -990,7 +990,8 @@
       samples = samples,
       prior_parameters = prior_parameters,
       formula_prior_parameters = formula_prior_parameters,
-      formula_parameters = formula_parameters
+      formula_parameters = formula_parameters,
+      state_constants = .bt_formula_bridge_state_constants(formula_design_list)
     )
     .bt_parameter_source_forbid_formula_parameters(
       out,
@@ -1082,11 +1083,11 @@
 .bt_JAGS_bridge_context_source_parameters <- function(samples,
                                                       prior_parameters,
                                                       formula_prior_parameters,
-                                                      formula_parameters){
+                                                      formula_parameters,
+                                                      state_constants = list()){
 
-  out <- as.list(samples)
-  out[names(prior_parameters)] <- prior_parameters
-  out[names(formula_prior_parameters)] <- formula_prior_parameters
+  out <- .bt_JAGS_bridge_formula_source_base_parameters(samples,
+    prior_parameters, formula_prior_parameters, state_constants)
   out[names(formula_parameters)] <- formula_parameters
   out
 }

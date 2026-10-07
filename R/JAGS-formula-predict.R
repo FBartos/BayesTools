@@ -435,7 +435,15 @@ JAGS_evaluate_formula <- function(fit, formula = NULL, parameter,
       if(is.numeric(multiply_by)){
         return(rep(multiply_by, nrow(posterior)))
       }
-      posterior[, JAGS_parameter_names(multiply_by)]
+      name <- JAGS_parameter_names(multiply_by)
+      constants <- .bt_formula_state_constants(fitted_design$formula_scale)
+      if(name %in% names(constants)) return(rep(constants[[name]], nrow(posterior)))
+      prior <- attr(fit, "prior_list", exact = TRUE)[[name]]
+      if(is.prior.point(prior)) return(as.vector(.bt_formula_point_values(name, prior,
+        fitted_design, posterior, n_draws = nrow(posterior))))
+      if(!name %in% colnames(posterior)) .bt_JAGS_marglik_missing_columns(
+        paste0("Formula multiplier '", name, "' is unavailable in the supplied draws."))
+      posterior[, name]
     }
   )
 

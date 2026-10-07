@@ -10,6 +10,7 @@ JAGS_marglik_parameters_formula      <- function(samples, formula_list, formula_
 
   parameters <- list()
   random_parameters <- character()
+  fixed_plans <- list()
 
   for(parameter in names(formula_prior_list)){
     # check for log(intercept) attribute on the formula
@@ -53,26 +54,37 @@ JAGS_marglik_parameters_formula      <- function(samples, formula_list, formula_
         call. = FALSE
       )
     }
-    parameters[[parameter]] <- .bt_JAGS_marglik_parameters_formula_design(
-      samples = samples,
+    fixed_plans[[parameter]] <- .bt_dnode_linear_predictor_fixed_plan(
       design = design,
       formula_prior_list = parameter_prior_list,
-      prior_list_parameters = prior_list_parameters,
-      log_intercept = log_intercept
+      log_intercept = log_intercept,
+      context = "Bridge/marginal-likelihood reconstruction"
     )
   }
 
-  formula_prior_parameters <- if(length(random_parameters) > 0L){
-    JAGS_marglik_parameters(samples, do.call(c, unname(formula_prior_list)))
-  }else{
-    list()
+  formula_prior_parameters <- .bt_formula_decode_source_parameters(samples,
+    formula_prior_list, formula_design_list)
+  source_base <- .bt_JAGS_bridge_formula_source_base_parameters(samples,
+    prior_list_parameters, formula_prior_parameters,
+    .bt_formula_bridge_state_constants(formula_design_list))
+  for(parameter in names(fixed_plans)){
+    parameters[[parameter]] <- fixed_plans[[parameter]]$value(samples, source_base)
   }
+  if(length(random_parameters) > 0L){
+    # Preserve the public helper's full random-source decoding, validation and
+    # auxiliary error precedence after the fixed plans. Referenced fixed
+    # sources above are already natural before their first use.
+    random_source_priors <- do.call(c, unname(formula_prior_list))
+    random_source_priors <- Filter(function(prior) !.is_prior_expression(prior), random_source_priors)
+    formula_prior_parameters <- JAGS_marglik_parameters(samples, random_source_priors)
+  }
+
   for(parameter in random_parameters){
     design <- if(!is.null(formula_design_list)) formula_design_list[[parameter]] else NULL
     if(.bt_formula_design_has_sampled_random_effects(design)){
       source_parameters <- .bt_JAGS_marglik_parameter_source_parameters(
         samples = samples,
-        prior_list_parameters = prior_list_parameters,
+        prior_list_parameters = source_base,
         formula_parameters = parameters,
         formula_prior_parameters = formula_prior_parameters
       )
@@ -279,6 +291,10 @@ JAGS_marglik_parameters_formula      <- function(samples, formula_list, formula_
       "' is missing from 'prior_list_parameters'.",
       call. = FALSE
     )
+  }
+  if(!is.numeric(value) || length(value) != 1L || !is.null(dim(value)) || !is.finite(value)){
+    .bt_formula_transform_stop("A named formula multiplier must be one finite natural scalar.",
+      reason = "malformed_multiplier_state", state = multiply_by)
   }
 
   value

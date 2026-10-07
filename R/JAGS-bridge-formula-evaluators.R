@@ -11,6 +11,7 @@
 
   fixed_plans <- list()
   random_plans <- list()
+  state_constants <- .bt_formula_bridge_state_constants(formula_design_list)
 
   for(parameter in names(formula_prior_list)){
     formula_parameter <- if(!is.null(formula_list)) formula_list[[parameter]] else NULL
@@ -79,19 +80,20 @@
     parameters = function(samples, prior_list_parameters,
                           formula_prior_parameters = list()){
       parameters <- list()
+      if(length(formula_prior_parameters) == 0L){
+        formula_prior_parameters <- .bt_formula_decode_source_parameters(samples,
+          formula_prior_list, formula_design_list)
+      }
+      source_base <- .bt_JAGS_bridge_formula_source_base_parameters(samples,
+        prior_list_parameters, formula_prior_parameters, state_constants)
       for(parameter in names(fixed_plans)){
         parameters[[parameter]] <- fixed_plans[[parameter]]$value(
           samples = samples,
-          prior_list_parameters = prior_list_parameters
+          prior_list_parameters = source_base
         )
       }
 
       if(length(random_plans) > 0L){
-        source_base <- .bt_JAGS_bridge_formula_source_base_parameters(
-          samples = samples,
-          prior_list_parameters = prior_list_parameters,
-          formula_prior_parameters = formula_prior_parameters
-        )
         for(random_plan in random_plans){
           source_parameters <- .bt_JAGS_bridge_formula_source_parameters(
             source_base = source_base,
@@ -272,17 +274,77 @@
 
 .bt_JAGS_bridge_formula_source_base_parameters <- function(samples,
                                                            prior_list_parameters,
-                                                           formula_prior_parameters = list()){
+                                                           formula_prior_parameters = list(),
+                                                           state_constants = list()){
 
   out <- as.list(samples)
+  for(name in intersect(names(prior_list_parameters), names(formula_prior_parameters))){
+    if(!identical(prior_list_parameters[[name]], formula_prior_parameters[[name]])){
+      .bt_formula_transform_stop("Natural formula state has contradictory owners.", reason = "contradictory_state_constants", state = name)
+    }
+  }
   if(length(prior_list_parameters) > 0L){
     out[names(prior_list_parameters)] <- prior_list_parameters
   }
   if(length(formula_prior_parameters) > 0L){
     out[names(formula_prior_parameters)] <- formula_prior_parameters
   }
+  for(name in names(state_constants)){
+    declared <- c(prior_list_parameters, formula_prior_parameters)
+    if(name %in% names(declared) && (!is.numeric(declared[[name]]) ||
+       length(declared[[name]]) != 1L || !is.finite(declared[[name]]) ||
+       declared[[name]] != state_constants[[name]])){
+      .bt_formula_transform_stop("Natural formula state disagrees with its retained scalar declaration.", reason = "contradictory_state_constants", state = name)
+    }
+    out[[name]] <- state_constants[[name]]
+  }
 
   out
+}
+
+# Direct formula helpers need only referenced natural sources and declared
+# numeric points. Unused nuisance coordinates must not preempt the fixed-plan
+# missing-input checks or the allocation reader's cached auxiliary route.
+.bt_formula_decode_source_parameters <- function(samples, formula_prior_list,
+                                                  designs){
+
+  priors <- do.call(c, unname(formula_prior_list))
+  needed <- names(priors)[vapply(priors, function(prior){
+    !is.null(.bt_formula_numeric_point(prior))
+  }, logical(1))]
+  for(design in designs){
+    needed <- union(needed, intersect(names(design$prior_list),
+      paste0(design$parameter, "_", design$model_terms)))
+    needed <- union(needed, .bt_formula_predictor_multiplier_dependencies(design))
+    random_terms <- .bt_formula_design_random_effects(design)
+    needed <- union(needed, unlist(lapply(random_terms, `[[`, "sd_parameter_names"), use.names = FALSE))
+    for(term in random_terms){
+      if(.bt_random_effect_has_row_indexed_external_sd(term)){
+        source <- .bt_random_effect_row_indexed_source(term)
+        needed <- union(needed, as.character(.bt_parameter_source_inputs(source)))
+      }
+    }
+    owner <- design$point_expression_owner
+    if(!is.null(owner)) needed <- union(needed,
+      unlist(lapply(owner$points, `[[`, "parameter_dependencies"), use.names = FALSE))
+  }
+  needed <- unique(sub("\\[[0-9]+\\]$", "", needed[!is.na(needed)]))
+  priors <- priors[intersect(needed, names(priors))]
+  sample_names <- names(samples)
+  priors <- Filter(function(prior){
+    !.is_prior_expression(prior)
+  }, priors)
+  available <- vapply(names(priors), function(name){
+    prior <- priors[[name]]
+    if(!is.null(.bt_formula_numeric_point(prior))) return(TRUE)
+    if(is.prior.simplex(prior) && identical(prior$distribution, "dirichlet")){
+      eta_names <- paste0(.JAGS_prior_dirichlet_eta_name(name),
+        "[", seq_len(prior$parameters[["K"]]), "]")
+      return(all(eta_names %in% sample_names))
+    }
+    all(JAGS_to_monitor(stats::setNames(list(prior), name)) %in% sample_names)
+  }, logical(1))
+  JAGS_marglik_parameters(samples, priors[available])
 }
 
 .bt_JAGS_bridge_formula_source_parameters <- function(source_base,

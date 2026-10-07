@@ -705,6 +705,25 @@
   out
 }
 
+.bt_formula_bridge_state_constants <- function(designs){
+
+  out <- list()
+  for(design in designs){
+    constants <- .bt_formula_state_constants(design$formula_scale)
+    for(name in names(constants)){
+      value <- constants[[name]]
+      if(!is.numeric(value) || length(value) != 1L || !is.finite(value)){
+        .bt_formula_transform_stop("Retained formula scalar state is malformed.", reason = "malformed_state_constants", state = name)
+      }
+      if(!is.null(out[[name]]) && out[[name]] != value){
+        .bt_formula_transform_stop("Formula scalar declarations have contradictory owners.", reason = "contradictory_state_constants", state = name)
+      }
+      out[[name]] <- value
+    }
+  }
+  out
+}
+
 .bt_formula_materialize_state <- function(samples, constants, validate = character()){
 
   for(name in names(constants)){
