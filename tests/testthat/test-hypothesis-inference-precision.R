@@ -72,6 +72,19 @@ test_that("affine point coordinates avoid collapsed translations", {
   expect_equal(as.numeric(constant_function$BF), as.numeric(direct$BF), tolerance = 1e-12)
 })
 
+test_that("affine Boolean regions use exact declared probabilities", {
+
+  result <- hypothesis_BF(posterior = c(-2, -1, 1, 2),
+    prior = prior("normal", list(0, 1)), parameter = "theta",
+    hypothesis = "(theta + 1e100 > 1e100) & (theta / 49 <= 1)",
+    seed = 337, columns = "all")
+  expect_equal(result$prior, (stats::pnorm(49) - .5) / (1 - (stats::pnorm(49) - .5)), tolerance = 1e-14)
+  expect_true(length(attr(result, "prior_numerical_diagnostics")) == 1L)
+  expect_error(hypothesis_BF(c(-2, -1, 1, 2), prior("normal", list(0, 1)),
+    "theta * 1e-200 * 1e-200 > 0", parameter = "theta"),
+    class = "BayesTools_hypothesis_region_numerical_unavailable")
+})
+
 test_that("constant divisors preserve strict and inclusive atom boundaries", {
 
   draws <- data.frame(theta = c(48, 49, 50))
@@ -98,6 +111,43 @@ test_that("live BF carriers preserve direction and invalidate changed values", {
   changed <- values
   changed[] <- rep(Inf, 3)
   expect_null(attr(changed, "canonical_log_BF"))
+})
+
+test_that("declared atoms share the normalized region and Boolean event", {
+
+  law <- .prior_linear_combination_density(list(theta = prior_mixture(list(
+    prior("point", list(49)), prior("normal", list(49, 1))), is_null = c(TRUE, FALSE))),
+    c(theta = 1), n_grid = 1024)
+  forms <- c("theta / 49 >= 1", "theta / 49 > 1", "theta / -49 >= -1", "theta / -49 > -1",
+             "!(theta / 49 < 1)", "(theta / 49 >= 1) | (theta / 49 > 1)")
+  forms <- c(forms, "theta * (1 / 49) >= 1", "theta * (1 / 49) > 1")
+  masses <- vapply(forms, function(text){
+    .hypothesis_prior_density_prob(law, hypothesis_parse(text)$statements[[1L]]$left, "theta")
+  }, numeric(1))
+  expect_equal(unname(masses), c(.75, .25, .75, .25, .75, .75, .75, .25), tolerance = 1e-14)
+})
+
+test_that("supported deterministic masses and sampled fallback retain their variance", {
+
+  law <- .prior_linear_combination_density(list(theta = prior("normal", list(0, 1))), c(theta = 1), n_grid = 128)
+  quantity <- .hypothesis_quantity_from_draws(data.frame(theta = c(-2, -1, 1, 2)),
+    data.frame(theta = c(-3, -2, -1, 1)), "theta", parameter = "theta", prior_density = law)
+  scalar <- hypothesis_parse("theta > 0")$statements[[1L]]$left
+  boolean <- hypothesis_parse("theta > -1 & theta < 1")$statements[[1L]]$left
+  sampled <- hypothesis_parse("abs(theta) < 2")$statements[[1L]]$left
+  masses <- lapply(list(scalar, boolean, sampled), function(side) .hypothesis_region_mass(quantity, side, TRUE))
+  expect_equal(as.numeric(masses[[1L]]), .5, tolerance = 1e-14)
+  expect_equal(as.numeric(masses[[2L]]), stats::pnorm(1) - stats::pnorm(-1), tolerance = 1e-14)
+  expect_identical(attr(masses[[3L]], "route"), "sampled")
+  scalar_arguments <- list(quantity, scalar, TRUE)
+  sampled_arguments <- list(quantity, sampled, TRUE)
+  if("mass" %in% names(formals(.hypothesis_region_log_mass_mc_var))){
+    scalar_arguments$mass <- masses[[1L]]
+    sampled_arguments$mass <- masses[[3L]]
+  }
+  expect_identical(do.call(.hypothesis_region_log_mass_mc_var, scalar_arguments), 0)
+  expect_equal(do.call(.hypothesis_region_log_mass_mc_var, sampled_arguments),
+    stats::var(c(0, 0, 1, 1)) / (4 * .5^2), tolerance = 1e-14)
 })
 
 test_that("log-bound tables bind row identity and never revive replaced carriers", {

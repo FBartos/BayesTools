@@ -92,11 +92,11 @@ A BayesTools table of class \code{BayesTools_hypothesis_BF}. The
 percentage when available. Region odds errors are computed on
 \code{log(BF)} from prior/posterior region indicators using an iid
 delta-method approximation on the flattened draws; they do not adjust for
-MCMC autocorrelation. Prior region masses computed exactly from a prior
+MCMC autocorrelation. Prior region masses computed deterministically from a prior
 object's distribution function contribute no Monte Carlo error.
 Point-vs-region errors combine the available
 point-density and region-mass errors on the \code{log(BF)} scale.
-Point-null tests require a regular (positive and finite) prior density at
+Point-null tests require a regular prior ordinate with finite log density at
 the null value that \code{\link[=prior_density_ordinate]{prior_density_ordinate()}} classifies exactly from the
 prior's structure, on every route. Otherwise they stop with a classed error
 condition, which callers should match by class rather than by message:
@@ -231,6 +231,26 @@ exactly zero, stops with an error. Other prior densities and regions use the
 prior-density grid, which resolves the region boundaries on that grid: a
 boundary is located by bisection within each grid cell where the condition
 changes, but region features narrower than the grid spacing may be missed.
+
+Affine expressions retain an unshifted linear numerator and a checked
+constant divisor. Point inference evaluates that numerator at the translated
+null; diagnostic density heights retain the requested quantity units. Numerical
+coefficient, boundary or log-ordinate resolution loss raises
+\code{BayesTools_hypothesis_numerical_unavailable} (ordinate parent) or
+\code{BayesTools_hypothesis_region_numerical_unavailable} (region parent), also
+\code{BayesTools_numerical_unavailable} and \code{BayesTools_numerical_condition}.
+The log-resolution screen is a conservative floating-point heuristic, not an
+estimator or backend error bound. Finite log values may correspond to displayed
+natural-scale zero or infinity. \code{raw_log_BF} and
+\code{numerical_diagnostics} retain aligned diagnostics; BF formatting uses the
+live column carrier, which replacement, arithmetic and Math operations invalidate.
+Supported scalar affine and Boolean regions use deterministic prior laws
+even when prior draws are available. Unsupported regions retain their sampled
+route, or their existing no-draw grid route. Deterministic prior numerical
+diagnostics (method, absolute error and convergence when available) can be
+inspected with \code{attr(result, "prior_numerical_diagnostics")}; they are
+row-aligned through subsetting. \code{BF_error} remains Monte Carlo-only and
+omits prior Monte Carlo variance only for the actual deterministic route.
 
 Data-frame coercion returns a plain long frame with leading
 \code{component}, \code{parameter} (the displayed row identity), and

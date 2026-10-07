@@ -85,66 +85,47 @@
 .hypothesis_region_mass <- function(quantity, side, prior) {
 
   if(prior){
-    prior_object_mass <- .hypothesis_prior_object_region_mass(quantity, side)
-    if(!is.null(prior_object_mass)){
-      return(prior_object_mass)
+    deterministic <- .hypothesis_prior_object_region_mass(quantity, side)
+    if(!is.null(deterministic)) return(deterministic)
+    if(!is.null(quantity$prior_density) && !is.null(quantity$parameter)){
+      deterministic <- .hypothesis_prior_density_prob(quantity$prior_density, side,
+        quantity$parameter, deterministic_only = TRUE, with_diagnostics = TRUE)
+      if(!is.null(deterministic)) return(deterministic)
     }
   }
-
-  if(prior && is.null(quantity[["prior_draws"]])){
-    if(is.null(quantity[["prior_density"]])){
-      stop("Prior information is required for region hypotheses.",
-           call. = FALSE)
-    }
-    mass <- .hypothesis_prior_density_prob(
-      prior_density = quantity[["prior_density"]],
-      side          = side,
-      parameter     = quantity[["parameter"]]
-    )
+  if(prior && is.null(quantity$prior_draws)){
+    if(is.null(quantity$prior_density)) stop("Prior information is required for region hypotheses.", call. = FALSE)
+    mass <- .hypothesis_prior_density_prob(quantity$prior_density, side, quantity$parameter,
+      with_diagnostics = TRUE)
   }else{
-    draws <- if(prior){
-      quantity[["prior_draws"]]
-    }else{
-      quantity[["posterior_draws"]]
-    }
+    draws <- if(prior) quantity$prior_draws else quantity$posterior_draws
     mass <- .hypothesis_draw_region_mass(side, draws)
+    attr(mass, "route") <- "sampled"
   }
-
-  return(mass)
+  mass
 }
-
 
 .hypothesis_prior_object_region_mass <- function(quantity, side) {
 
-  prior_object <- quantity[["prior_object"]]
+  prior_object <- quantity$prior_object
   if(is.null(prior_object) || !is.prior.simple(prior_object) ||
-     is.prior.point(prior_object) || is.prior.discrete(prior_object)){
-    return(NULL)
+     is.prior.point(prior_object) || is.prior.discrete(prior_object)) return(NULL)
+  comparison <- .hypothesis_simple_parameter_comparison(side, quantity$parameter)
+  if(is.null(comparison)) return(NULL)
+  mass <- tryCatch(switch(comparison$operator,
+    "<" = cdf(prior_object, comparison$value), "<=" = cdf(prior_object, comparison$value),
+    ">" = ccdf(prior_object, comparison$value), ">=" = ccdf(prior_object, comparison$value)),
+    BayesTools_numerical_unavailable = function(condition){
+      .hypothesis_numerical_stop(condition$reason, "prior region probability",
+        diagnostics = condition, region = TRUE)
+    })
+  if(length(mass) != 1L || !is.finite(mass) || mass < 0 || mass > 1){
+    .hypothesis_numerical_stop("invalid_probability", "prior region probability",
+      inputs = mass, region = TRUE)
   }
-
-  comparison <- .hypothesis_simple_parameter_comparison(
-    side      = side,
-    parameter = quantity[["parameter"]]
-  )
-  if(is.null(comparison)){
-    return(NULL)
-  }
-
-  mass <- tryCatch(
-    switch(
-      comparison[["operator"]],
-      "<"  = cdf(prior_object, comparison[["value"]]),
-      "<=" = cdf(prior_object, comparison[["value"]]),
-      ">"  = ccdf(prior_object, comparison[["value"]]),
-      ">=" = ccdf(prior_object, comparison[["value"]])
-    ),
-    error = function(e) NULL
-  )
-  if(is.null(mass) || length(mass) != 1L || !is.finite(mass)){
-    return(NULL)
-  }
-
-  mass <- max(0, min(1, as.numeric(mass)))
+  mass <- as.numeric(mass)
+  attr(mass, "route") <- "deterministic"
+  attr(mass, "numerical_diagnostics") <- list(method = "distribution function", absolute_error = 0, convergence = TRUE)
   mass
 }
 
@@ -208,7 +189,8 @@
 }
 
 
-.hypothesis_prior_density_prob <- function(prior_density, side, parameter) {
+.hypothesis_prior_density_prob <- function(prior_density, side, parameter, deterministic_only = FALSE,
+                                            with_diagnostics = FALSE) {
 
   if(is.null(parameter)){
     stop("A quantity name is required for prior-density region tests.",
@@ -233,6 +215,7 @@
   }else{
     .prior_linear_density_region_probability(prior_density, region)
   }
+  if(is.null(exact) && isTRUE(deterministic_only)) return(NULL)
   prob <- if(is.null(exact)){
     .hypothesis_prior_density_grid_prob(prior_density, comparison, condition,
                                         parameter)
@@ -260,6 +243,13 @@
   }
   prob <- max(0, min(1, prob))
 
+  if(!isTRUE(with_diagnostics)) return(as.numeric(prob))
+  attr(prob, "route") <- if(is.null(exact)) "grid" else "deterministic"
+  attr(prob, "numerical_diagnostics") <- if(is.null(exact)) NULL else
+    attr(exact, "numerical_diagnostics", exact = TRUE)
+  if(!is.null(exact) && is.null(attr(prob, "numerical_diagnostics"))){
+    attr(prob, "numerical_diagnostics") <- list(method = "structural region probability", absolute_error = 0, convergence = TRUE)
+  }
   return(prob)
 }
 
@@ -986,22 +976,19 @@ prior_ordinate_status <- function(prior_density, values, labels = NULL){
   }
   linear <- .hypothesis_linear_coefficients(expr, symbols, quantity[["posterior_draws"]])
   adaptive <- attr(prior_density, "adaptive_evaluation", exact = TRUE)
-  if(is.null(linear) || linear$coefficients[[1L]] == 0 ||
-     !identical(adaptive$kind, "linear_combination") ||
-     !is.null(adaptive$arguments$output_transformation)){
-    return(NULL)
+  if(is.null(linear)) return(NULL)
+  if(length(linear$coefficients) == 0L){
+    return(.prior_linear_combination_density(list(value = prior("point", list(0))),
+      c(value = 1), n_grid = 64L))
   }
+  if(!identical(adaptive$kind, "linear_combination") ||
+     !is.null(adaptive$arguments$output_transformation)) return(NULL)
   arguments <- adaptive$arguments
   .prior_linear_combination_density(
-    prior_list        = arguments$prior_list,
-    weights           = linear$coefficients[[1L]] * arguments$weights,
-    n_grid            = arguments$n_grid,
-    tail_prob         = arguments$tail_prob,
-    source_transforms = arguments$source_transforms,
-    output_transformation = if(linear$constant != 0) "lin" else NULL,
-    output_transformation_arguments = if(linear$constant != 0){
-      list(a = linear$constant, b = 1)
-    }
+    prior_list = arguments$prior_list,
+    weights = .hypothesis_affine_product(linear$coefficients[[1L]], arguments$weights),
+    n_grid = arguments$n_grid, tail_prob = arguments$tail_prob,
+    source_transforms = arguments$source_transforms
   )
 }
 

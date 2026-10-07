@@ -448,11 +448,7 @@
 }
 
 
-# Coefficients of an expression that is linear in its symbols, from its values
-# at the origin, the unit vectors, and two checking points with mixed signs;
-# NULL for a nonlinear expression. Probing alone cannot see a kink outside the
-# probe points (abs(x - 2) is x - 2 at all of them), so the expression must
-# also have a linear form.
+# Structural affine numerator/divisor; unsupported symbol-bearing grammar has no route.
 .hypothesis_linear_coefficients <- function(expr, symbols, draws) {
 
   missing <- setdiff(symbols, names(draws))
@@ -475,7 +471,7 @@
   columns <- union(names(total), names(weights))
   out <- stats::setNames(numeric(length(columns)), columns)
   out[names(total)] <- out[names(total)] + total
-  out[names(weights)] <- out[names(weights)] + weights
+  out[names(weights)] <- .hypothesis_affine_sum(out[names(weights)], weights)
 
   out
 }
@@ -578,7 +574,7 @@
   }
 
   BF       <- (posterior_left / posterior_right) / (prior_left / prior_right)
-  BF_error <- .hypothesis_region_odds_BF_error_percent(quantity, left, right)
+  BF_error <- .hypothesis_region_odds_BF_error_percent(quantity, left, right, prior_left, prior_right)
   warning  <- NULL
   if(posterior_left == 0 || posterior_right == 0){
     warning <- "Posterior region mass is zero; reported BF is boundary-valued."
@@ -588,6 +584,9 @@
     BF        = BF,
     prior     = prior_left / prior_right,
     posterior = posterior_left / posterior_right,
+    log_BF    = log(posterior_left) - log(posterior_right) - log(prior_left) + log(prior_right),
+    prior_numerical_diagnostics = list(left = attr(prior_left, "numerical_diagnostics"),
+      right = attr(prior_right, "numerical_diagnostics")),
     method    = "prior-posterior odds",
     BF_error  = BF_error,
     warning   = warning
@@ -647,7 +646,7 @@
 }
 
 
-.hypothesis_region_odds_BF_error_percent <- function(quantity, left, right) {
+.hypothesis_region_odds_BF_error_percent <- function(quantity, left, right, prior_left = NULL, prior_right = NULL) {
 
   posterior_var <- .hypothesis_region_log_odds_mc_var(
     quantity = quantity,
@@ -659,14 +658,15 @@
     quantity = quantity,
     left     = left,
     right    = right,
-    prior    = TRUE
+    prior    = TRUE,
+    left_mass = prior_left, right_mass = prior_right
   )
 
   .hypothesis_log_BF_error_percent(c(posterior_var, prior_var))
 }
 
 
-.hypothesis_region_BF_error_percent <- function(quantity, side) {
+.hypothesis_region_BF_error_percent <- function(quantity, side, prior_mass = NULL) {
 
   posterior_var <- .hypothesis_region_log_mass_mc_var(
     quantity = quantity,
@@ -676,14 +676,15 @@
   prior_var     <- .hypothesis_region_log_mass_mc_var(
     quantity = quantity,
     side     = side,
-    prior    = TRUE
+    prior    = TRUE,
+    mass     = prior_mass
   )
 
   .hypothesis_log_BF_error_percent(c(posterior_var, prior_var))
 }
 
 
-.hypothesis_region_log_odds_mc_var <- function(quantity, left, right, prior) {
+.hypothesis_region_log_odds_mc_var <- function(quantity, left, right, prior, left_mass = NULL, right_mass = NULL) {
 
   if(prior && is.null(quantity[["prior_draws"]])){
     return(0)
@@ -697,8 +698,8 @@
   if(prior){
     # Prior masses computed from the prior object's distribution function are
     # exact and contribute no Monte Carlo variance.
-    left_exact  <- .hypothesis_region_prior_mass_exact(quantity, left)
-    right_exact <- .hypothesis_region_prior_mass_exact(quantity, right)
+    left_exact <- identical(attr(left_mass, "route"), "deterministic")
+    right_exact <- identical(attr(right_mass, "route"), "deterministic")
     if(left_exact && right_exact){
       return(0)
     }
@@ -716,20 +717,12 @@
 }
 
 
-.hypothesis_region_prior_mass_exact <- function(quantity, side) {
-
-  # Mirrors .hypothesis_region_mass(): the prior object's distribution
-  # function is used whenever it defines the region mass.
-  !is.null(.hypothesis_prior_object_region_mass(quantity, side))
-}
-
-
-.hypothesis_region_log_mass_mc_var <- function(quantity, side, prior) {
+.hypothesis_region_log_mass_mc_var <- function(quantity, side, prior, mass = NULL) {
 
   if(prior && is.null(quantity[["prior_draws"]])){
     return(0)
   }
-  if(prior && .hypothesis_region_prior_mass_exact(quantity, side)){
+  if(prior && identical(attr(mass, "route"), "deterministic")){
     return(0)
   }
 
@@ -873,3 +866,4 @@
       output_transformation, output_transformation_arguments)
   })
 }
+

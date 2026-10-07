@@ -458,6 +458,7 @@
     method         = if(result$quadratures > 0) "conditional_normal_quadrature" else "exact",
     quadratures    = result$quadratures,
     absolute_error = result$absolute_error,
+    convergence    = isTRUE(result$converged),
     evaluations    = result$evaluations
   )
   probability
