@@ -674,7 +674,8 @@
      !.bt_meta_is_index(value$model) || !.bt_meta_is_index(value$draw_index) ||
      length(value$model) != length(value$draw_index) ||
      !is.matrix(value$values) || !is.numeric(value$values) ||
-     nrow(value$values) != length(value$model) || is.null(colnames(value$values)) || anyDuplicated(colnames(value$values)) ||
+     nrow(value$values) != length(value$model) ||
+     (ncol(value$values) > 0L && is.null(colnames(value$values))) || anyDuplicated(colnames(value$values)) ||
      any(value$model > length(value$models)) || !is.numeric(value$posterior_model_probabilities) ||
      length(value$posterior_model_probabilities) != length(value$models) ||
      any(!is.finite(value$posterior_model_probabilities)) || any(value$posterior_model_probabilities < 0) ||

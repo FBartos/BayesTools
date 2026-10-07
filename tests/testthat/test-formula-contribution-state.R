@@ -1,5 +1,24 @@
 skip_if_not_test_profile("unit")
 
+test_that("complete declarations certify absent terms with a valid empty source state", {
+  compiled <- JAGS_formula(~ 1, "mu", data.frame(x = c(1, 2, 3)),
+    list(intercept = prior("normal", list(0, 1))))
+  fit <- .parameter_catalog_test_fit(coda::mcmc.list(coda::mcmc(cbind(mu_intercept = c(1, 2, 3)))),
+    compiled$prior_list, list(mu = compiled$formula_design))
+  state <- .bt_formula_state_new(fit, as.matrix(fit), "mu_g")
+  expect_identical(dim(state$values), c(3L, 0L))
+  expect_identical(names(state$models[[1L]]$declaration_priors), "mu_intercept")
+  expect_null(.bt_formula_state_validate(state))
+  malformed <- state
+  malformed$models[[1L]]$required <- "missing"
+  expect_identical(.bt_formula_state_validate(malformed), "required own-model formula states must be finite and present")
+  broken <- fit
+  design <- attr(broken, "formula_design")
+  design$mu$prior_list <- list()
+  attr(broken, "formula_design") <- design
+  expect_error(.bt_formula_state_new(broken, as.matrix(broken), "mu_g"), class = "BayesTools_formula_transform_unavailable")
+})
+
 .formula_state_test_fit <- function(multiplier = "sigma", mean = 20, sd = 10,
                                     intercept = prior("point", list(5)),
                                     slope = prior("point", list(2)),

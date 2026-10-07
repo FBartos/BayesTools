@@ -1356,7 +1356,7 @@ JAGS_formula_prior_density <- function(
   designs <- attr(fit, "formula_design", exact = TRUE)
   priors <- attr(fit, "prior_list", exact = TRUE)
   selected <- Filter(function(design){
-    any(owners %in% intersect(names(design$prior_list), paste0(design$parameter, "_", design$model_terms)))
+    any(startsWith(owners, paste0(design$parameter, "_")))
   }, designs)
   if(!length(selected)) return(NULL)
   scales <- lapply(selected, `[[`, "formula_scale")
@@ -1418,12 +1418,19 @@ JAGS_formula_prior_density <- function(
   if(any(!is.finite(values[, required, drop = FALSE]))) .bt_formula_transform_stop(
     "Selected formula sources are nonfinite in the supplied fitted state.", reason = "nonfinite_transform")
   record_priors <- priors[retained_owners]
+  declaration_owners <- unique(unlist(lapply(selected, function(design){
+    expected <- paste0(design$parameter, "_", design$model_terms)
+    if(!all(expected %in% names(design$prior_list))){
+      .bt_formula_transform_stop("A fitted formula declaration is incomplete.", reason = "missing_multiplier_state")
+    }
+    expected
+  }), use.names = FALSE))
   gate_plan <- if(all(gate_columns %in% colnames(values))){
     raw <- .bt_formula_raw_children(values, record_priors)
     .posterior_atoms_formula_plan(raw, record_priors)
   }else NULL
   if(!is.null(gate_plan)) gate_plan$draw_index <- as.integer(draw_index)
-  record <- list(prior_list = record_priors, formula_scale = scales,
+  record <- list(prior_list = record_priors, declaration_priors = priors[declaration_owners], formula_scale = scales,
     required = required, gate_plan = gate_plan, eligible_n = nrow(values), prior_probability = 1,
     condition_event = condition_event)
   state <- list(schema_version = 1L, models = list(record),
