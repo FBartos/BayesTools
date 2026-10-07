@@ -773,6 +773,26 @@ flags, linear weights, conditioning) live in one validated attribute,
 `bayestools_meta` (`R/draws-metadata.R`). Read and write them only through
 `.bt_meta_get()`/`.bt_meta_set()` (the public `posterior_metadata()` for
 downstream packages), never as free attributes; a unit lint test enforces it.
+Outer model probabilities retain original finite log odds with a compact paired
+declaration. Exact raw zero is structural; rounded numeric zero does not remove
+a model. Model-produced component metadata requires its complete paired owner;
+missing owners require recreation, never probabilities inferred from row counts.
+Model/conditional contexts and ordered sources use version2; formula
+states use schema2 with prior and posterior log model probabilities. Natural
+prior setters invalidate their old log owner; paired setters update both.
+Numerical laws that require positive normal model weights refuse through
+numerical_model_probability_unavailable before natural filtering. Optional
+measure_unavailable diagnostics carry only aligned model indices/log vectors
+and a declared stage; they survive supported transformations and consumers.
+Ordered projections without allocated rows require an existing complete atom
+certificate, otherwise structural_target_law_unavailable applies. Retain the
+original-fit exclusion fractions and formula gate plans they actually own;
+do not infer a missing population or fabricate atom-free structure.
+Complete fixed weightfunction declarations supply joint points through their
+actual omega mapping; null is declared one, and continuous families stay continuous.
+PET/PEESE point shortcuts require the complete paired regression declaration:
+equal mu plus equal bias type and point, or identically zero bias across types.
+Separate raw mu/bias point equality does not certify the mapped regression law.
 Formula laws recursively strip child multiplier attributes and reattach only
 the compiler-owned top-level declaration; raw coefficient recipes remain raw.
 Shared states retain one owner. Unsupported ratios/products keep corrected

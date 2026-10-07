@@ -36,6 +36,13 @@ Sys.setenv(BAYESTOOLS_TEST_FILES_DIR = test_files_dir)
 
 # Use skip_if_no_fits() for tests that need pre-fitted models.
 
+attach_test_model_probabilities <- function(draws, posterior_probs, prior_weights = rep(1, length(posterior_probs))){
+
+  BayesTools:::.bt_meta_set(draws, "model_probabilities", list(
+    prior = BayesTools:::.model_probability_prior(prior_weights),
+    posterior = BayesTools:::.model_probability_pair(posterior_probs, log(posterior_probs), "posterior", "raw")))
+}
+
 attach_test_parameter_map <- function(fit, monitor_names = NULL) {
   designs <- attr(fit, "formula_design", exact = TRUE)
   scales <- attr(fit, "formula_scale", exact = TRUE)

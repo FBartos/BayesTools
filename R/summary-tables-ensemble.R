@@ -369,6 +369,11 @@ ensemble_inference_table <- function(inference, parameters, logBF = FALSE, BF01 
   log_BF          <- NULL
   for(parameter in parameters){
     parameter_inference <- inference[[parameter]]
+    if(inherits(parameter_inference, "inference") ||
+       !is.null(attr(parameter_inference, "model_probability_declaration", exact = TRUE))){
+      .model_probability_inference_get(parameter_inference, "prior")
+      .model_probability_inference_get(parameter_inference, "posterior")
+    }
     is_null <- attr(parameter_inference, "is_null", exact = TRUE)
     if(is.null(is_null) || !is.logical(is_null)){
       stop(
@@ -449,6 +454,7 @@ ensemble_summary_table <- function(models, parameters, logBF = FALSE, BF01 = FAL
     if(!all(sapply(prior_list, is.prior)))
       stop("'model:priors' must be a list of priors.")
     model_inference <- model[["inference"]]
+    .model_probability_scalar_inference_validate(model_inference)
     check_list(model_inference, "model:inference", check_names = c("m_number", "marglik", "prior_prob", "post_prob", "inclusion_BF"), allow_other = TRUE, all_objects = TRUE)
     check_int(model_inference[["m_number"]],      "model_inference:model_number")
     check_real(model_inference[["marglik"]],      "model_inference:marglik")

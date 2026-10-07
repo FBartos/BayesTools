@@ -818,6 +818,7 @@
 
 .hypothesis_prior_samples_from_model_mixture_context <- function(context, n) {
 
+  .model_probability_context_measure_check(context)
   model_i <- sample(seq_along(context[["model_weights"]]), size = n,
                     replace = TRUE, prob = context[["model_weights"]])
   out <- .hypothesis_empty_prior_sample_matrix(context[["column_names"]], n)
@@ -847,6 +848,7 @@
 
 .hypothesis_prior_samples_from_conditional_context <- function(context, n) {
 
+  .model_probability_context_measure_check(context)
   out <- .hypothesis_empty_prior_sample_matrix(context[["column_names"]], n)
   if(length(context[["prior_lists"]]) == 0L){
     stop("No prior models remain after applying the conditional event.", call. = FALSE)

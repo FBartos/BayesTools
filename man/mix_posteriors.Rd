@@ -95,6 +95,18 @@ fitted source specifications. A parameterized total without an inclusion
 event, including a Bernoulli total, retains every state. A compound event
 must be applied once to full aligned sources; separately conditioned ordered
 parameters cannot be combined as joint draws by this function.
+
+Positive model declarations remain active when their visible probability
+rounds to zero. Numeric mixed draws remain usable. A prior law or atom law
+requiring model probabilities unavailable at full precision is explicitly
+refused with \code{BayesTools_formula_measure_unavailable} and the cause
+\code{numerical_model_probability_unavailable}; structured model/log
+diagnostics are retained in \code{\link[=posterior_metadata]{posterior_metadata()}}. Descriptive
+\code{marginal_posterior(use_formula = FALSE, prior_samples = FALSE)} remains
+available. An ordered projection with no allocated rows for a positive
+model requires a complete declared atom certificate; otherwise that measure
+has cause \code{structural_target_law_unavailable}. Independently known
+support and valid sibling measures remain available.
 }
 \seealso{
 \link{ensemble_inference} \link{BayesTools_ensemble_tables} \link{as_mixed_posteriors}

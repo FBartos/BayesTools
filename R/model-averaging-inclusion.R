@@ -117,7 +117,8 @@ inclusion_BF <- function(prior_probs, post_probs, margliks, is_null,
 }
 .inclusion_log_BF.margliks <- function(
     prior_probs, margliks, is_null,
-    on_failure = c("error", "drop", "zero")){
+    on_failure = c("error", "drop", "zero"), log_prior_probs = log(prior_probs),
+    prior_declaration = NULL){
 
   .inclusion_BF_check_probs(prior_probs, "prior_probs")
   check_real(margliks,  "margliks", check_length = length(prior_probs))
@@ -126,18 +127,19 @@ inclusion_BF <- function(prior_probs, post_probs, margliks, is_null,
   prepared <- .model_averaging_prepare_margliks(
     margliks,
     prior_probs,
+    log_prior_probs = log_prior_probs,
+    prior_declaration = prior_declaration,
     on_failure = on_failure
   )
   margliks <- prepared$margliks
   prior_probs <- prepared$prior_probs
+  log_prior_probs <- prepared$prior$logs
 
-  prior_alt  <- sum(prior_probs[!is_null])
-  prior_null <- sum(prior_probs[is_null])
-  if(prior_alt == 0 || prior_null == 0){
+  if(!any(is.finite(log_prior_probs[!is_null])) || !any(is.finite(log_prior_probs[is_null]))){
     return(NA_real_)
   }
 
-  active <- prior_probs > 0 & is.finite(margliks)
+  active <- is.finite(log_prior_probs) & is.finite(margliks)
   if(!any(active & !is_null)){
     return(-Inf)
   }
@@ -148,18 +150,20 @@ inclusion_BF <- function(prior_probs, post_probs, margliks, is_null,
   alt_ind  <- active & !is_null
   null_ind <- active & is_null
 
-  alt_log_marginal <- .inclusion_BF_log_marginal(
-    margliks[alt_ind],
-    prior_probs[alt_ind],
-    prior_alt
-  )
-  null_log_marginal <- .inclusion_BF_log_marginal(
-    margliks[null_ind],
-    prior_probs[null_ind],
-    prior_null
-  )
-
-  return(alt_log_marginal - null_log_marginal)
+  centered <- rep(-Inf, length(margliks))
+  centered[active] <- margliks[active] - max(margliks[active])
+  if(any(!is.finite(centered[active]))) .model_probability_range_stop(which(active))
+  group_evidence <- function(indices, group){
+    group_logs <- log_prior_probs[group]
+    group_logs <- .model_probability_normalize_logs(group_logs)
+    normalized <- group_logs[active[group]]
+    scores <- centered[indices] + normalized
+    if(any(!is.finite(scores))) .model_probability_range_stop(which(indices))
+    .model_probability_log_sum(scores)
+  }
+  result <- group_evidence(alt_ind, !is_null) - group_evidence(null_ind, is_null)
+  if(!is.finite(result)) .model_probability_range_stop(which(active))
+  result
 }
 
 .inclusion_BF_check_probs <- function(probs, name, check_length = 0){

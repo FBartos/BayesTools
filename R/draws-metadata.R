@@ -87,8 +87,12 @@
       columns <- c("column", "measure", "reason")
       valid_cause <- !"cause" %in% names(value) || (is.character(value$cause) &&
         all(is.na(value$cause) | value$cause %in% .bt_formula_measure_causes))
+      valid_diagnostics <- !"diagnostics" %in% names(value) || (is.list(value$diagnostics) &&
+        all(vapply(value$diagnostics, .bt_formula_measure_diagnostics_valid, logical(1))))
       if(is.data.frame(value) && identical(class(value), "data.frame") &&
-         (identical(names(value), columns) || identical(names(value), c(columns, "cause"))) && valid_cause &&
+         identical(names(value)[seq_along(columns)], columns) &&
+         all(names(value) %in% c(columns, "cause", "diagnostics")) &&
+         !anyDuplicated(names(value)) && valid_cause && valid_diagnostics &&
          all(vapply(value[columns], function(x) is.character(x) && !anyNA(x) && all(nzchar(x)), logical(1))) &&
          all(value$measure %in% c("prior_density", "atoms", "support")) &&
          !anyDuplicated(value[c("column", "measure")])) return(NULL)
@@ -103,8 +107,17 @@
         "it must be a prior density or a prior distribution"
     },
     prior_context = function(value){
+      .model_probability_context_validate(value)
       if(.bt_meta_is_prior_context(value)) NULL else
         "it must be a prior-density context"
+    },
+    model_probabilities = function(value){
+      if(!is.list(value) || !identical(names(value), c("prior", "posterior"))) return("it must contain paired prior and posterior model probabilities")
+      for(pair in value){
+        if(!is.list(pair) || !identical(names(pair), c("probabilities", "logs", "declaration"))) return("its model probability pairs are malformed")
+        .model_probability_validate(pair$probabilities, pair$logs, pair$declaration, normalized = TRUE)
+      }
+      NULL
     },
     prior_densities = function(value){
       if(is.list(value) && (!is.object(value) || inherits(value, "prior_density_list")) &&
@@ -309,7 +322,7 @@
 .bt_meta_field_names <- c(
   "support", "atoms", "components", "component", "component_source",
   "draw_index", "ordered_total_component", "ordered_source", "undefined_draws", "prior_density",
-  "formula_state", "measure_unavailable",
+  "formula_state", "measure_unavailable", "model_probabilities",
   "prior_context", "prior_densities", "posterior_density",
   "posterior_densities", "posterior_ordinate", "posterior_ordinates",
   "formula_parameter", "log_intercept", "formula_scale", "transform_scaled",
@@ -363,7 +376,11 @@
 .bt_meta_get <- function(x, field){
 
   .bt_meta_check_field(field)
-  .bt_meta_current_container(x)[[field]]
+  value <- .bt_meta_current_container(x)[[field]]
+  if(!is.null(value) && field %in% c("formula_state", "ordered_source", "prior_context", "measure_unavailable", "model_probabilities")){
+    .bt_validate_once(paste0("draw_metadata_", field), value, function() .bt_meta_validate(field, value))
+  }
+  value
 }
 
 # The values of several draw-metadata fields (a list named by 'fields', NULL
@@ -374,7 +391,13 @@
     .bt_meta_check_field(field)
   }
   meta <- .bt_meta_current_container(x)
-  stats::setNames(lapply(fields, function(field) meta[[field]]), fields)
+  stats::setNames(lapply(fields, function(field){
+    value <- meta[[field]]
+    if(!is.null(value) && field %in% c("formula_state", "ordered_source", "prior_context", "measure_unavailable", "model_probabilities")){
+      .bt_validate_once(paste0("draw_metadata_", field), value, function() .bt_meta_validate(field, value))
+    }
+    value
+  }), fields)
 }
 
 # The container of 'x' (NULL when 'x' carries none), checked to describe the
@@ -382,6 +405,9 @@
 .bt_meta_current_container <- function(x){
 
   meta <- .bt_meta_container(x)
+  if(!is.null(meta) && identical(meta$component_source, "model") && is.null(meta$model_probabilities)){
+    .bt_stop_refit_required("Model probability ownership is missing. Recreate these mixed posteriors from the original fits with the current BayesTools version.")
+  }
   if(!is.null(meta) && .bt_meta_is_draws(x)){
     .bt_meta_check_current(meta, .bt_meta_fingerprint(x))
   }
@@ -669,8 +695,8 @@
 
 .bt_formula_state_validate <- function(value){
 
-  if(!is.list(value) || !identical(names(value), c("schema_version", "models", "model", "draw_index", "values", "posterior_model_probabilities")) ||
-     !identical(value$schema_version, 1L) || !is.list(value$models) || !length(value$models) ||
+  if(!is.list(value) || !identical(names(value), c("schema_version", "models", "model", "draw_index", "values", "posterior_model_probabilities", "posterior_log_model_probabilities")) ||
+     !identical(value$schema_version, 2L) || !is.list(value$models) || !length(value$models) ||
      !.bt_meta_is_index(value$model) || !.bt_meta_is_index(value$draw_index) ||
      length(value$model) != length(value$draw_index) ||
      !is.matrix(value$values) || !is.numeric(value$values) ||
@@ -682,6 +708,12 @@
      abs(sum(value$posterior_model_probabilities) - 1) > 1e-12){
     return("it must be a versioned formula state with aligned rows and posterior model probabilities")
   }
+  declaration <- attr(value, "model_probability_declaration", exact = TRUE)
+  .model_probability_validate(value$posterior_model_probabilities,
+    value$posterior_log_model_probabilities, declaration$posterior, normalized = TRUE)
+  prior_probs <- vapply(value$models, `[[`, numeric(1), "prior_probability")
+  prior_logs <- vapply(value$models, `[[`, numeric(1), "prior_log_probability")
+  .model_probability_validate(prior_probs, prior_logs, declaration$prior, normalized = TRUE)
   for(model in seq_along(value$models)){
     record <- value$models[[model]]
     if(!is.list(record) || !is.list(record$prior_list) || !is.list(record$formula_scale) ||
@@ -705,6 +737,24 @@
   value
 }
 
+.bt_formula_measure_diagnostics_valid <- function(value){
+
+  if(is.null(value)) return(TRUE)
+  if(!is.list(value) || is.object(value) || !identical(names(value),
+    c("model_indices", "log_prior_probabilities", "log_posterior_probabilities", "stage"))) return(FALSE)
+  indices <- value$model_indices
+  valid_logs <- function(logs){
+    is.null(logs) || (is.numeric(logs) && length(logs) == length(indices) &&
+      !anyNA(logs) && all(is.finite(logs) | logs == -Inf))
+  }
+  is.integer(indices) && length(indices) > 0L && !anyNA(indices) &&
+    all(indices > 0L) && !anyDuplicated(indices) &&
+    (!is.null(value$log_prior_probabilities) || !is.null(value$log_posterior_probabilities)) &&
+    valid_logs(value$log_prior_probabilities) && valid_logs(value$log_posterior_probabilities) &&
+    is.character(value$stage) && length(value$stage) == 1L &&
+    !is.na(value$stage) && value$stage %in% c("prior", "posterior", "conditional_prior", "conditional_posterior", "event", "component")
+}
+
 .bt_formula_measure_check <- function(x, measure, column = NULL){
 
   unavailable <- .bt_meta_get(x, "measure_unavailable")
@@ -722,23 +772,27 @@
   if(!any(selected)) return(invisible(TRUE))
   entry <- unavailable[which(selected)[1L], , drop = FALSE]
   cause <- if("cause" %in% names(entry) && !is.na(entry$cause)) entry$cause else entry$reason
+  diagnostics <- if("diagnostics" %in% names(entry)) entry$diagnostics[[1L]] else NULL
   if(identical(measure, "prior_density")) .bt_formula_density_stop(
     paste0("Prior density for '", entry$column, "' is unavailable: ", entry$reason, "."),
-    target = entry$column, reason = cause, detail = entry$reason)
+    target = entry$column, reason = cause, detail = entry$reason, diagnostics = diagnostics)
   stop(errorCondition(paste0("Formula ", measure, " for '", entry$column,
     "' are unavailable: ", entry$reason, "."), call = NULL,
     class = c(paste0("BayesTools_formula_", measure, "_unavailable"),
       if(cause %in% .bt_formula_measure_causes) "BayesTools_formula_measure_unavailable"),
-    target = entry$column, reason = cause, detail = entry$reason))
+    target = entry$column, reason = cause, detail = entry$reason, diagnostics = diagnostics))
 }
 
-.bt_formula_measure_mark <- function(x, column, measure, reason, cause = NULL){
+.bt_formula_measure_mark <- function(x, column, measure, reason, cause = NULL, diagnostics = NULL){
 
   unavailable <- .bt_meta_get(x, "measure_unavailable")
   entry <- data.frame(column = column, measure = measure, reason = reason, stringsAsFactors = FALSE)
   if(!is.null(cause)) entry$cause <- cause
+  if(!is.null(diagnostics)) entry$diagnostics <- list(diagnostics)
   if(!is.null(unavailable) && "cause" %in% names(unavailable) && !"cause" %in% names(entry)) entry$cause <- NA_character_
   if(!is.null(unavailable) && "cause" %in% names(entry) && !"cause" %in% names(unavailable)) unavailable$cause <- NA_character_
+  if(!is.null(unavailable) && "diagnostics" %in% names(unavailable) && !"diagnostics" %in% names(entry)) entry$diagnostics <- list(NULL)
+  if(!is.null(unavailable) && "diagnostics" %in% names(entry) && !"diagnostics" %in% names(unavailable)) unavailable$diagnostics <- rep(list(NULL), nrow(unavailable))
   if(!is.null(unavailable)) unavailable <- unavailable[!(unavailable$column == column & unavailable$measure == measure), , drop = FALSE]
   .bt_meta_set(x, "measure_unavailable", rbind(unavailable, entry))
 }
@@ -759,7 +813,8 @@
     if(nrow(entries)) for(measure in unique(entries$measure)){
       target <- .bt_formula_measure_mark(target, target_columns[[row]], measure,
         entries$reason[entries$measure == measure][[1L]],
-        cause = if("cause" %in% names(entries)) entries$cause[entries$measure == measure][[1L]])
+        cause = if("cause" %in% names(entries)) entries$cause[entries$measure == measure][[1L]],
+        diagnostics = if("diagnostics" %in% names(entries)) entries$diagnostics[entries$measure == measure][[1L]])
     }
   }
   target
@@ -809,8 +864,17 @@
 #'   literal key.}
 #'   \item{\code{"measure_unavailable"}}{a plain data frame with exact columns
 #'   \code{column}, \code{measure}, and \code{reason}, with an optional declared
-#'   \code{cause} enum; absent causes use an already enumerated reason. Human
-#'   reason text alone does not classify a measure refusal. With unique column/measure
+#'   \code{cause} enum; absent causes use an already enumerated reason.
+#'   An optional \code{diagnostics} list column retains compact model probability
+#'   diagnostics. Each non-NULL cell is a plain list with \code{model_indices},
+#'   \code{log_prior_probabilities}, \code{log_posterior_probabilities}, and
+#'   \code{stage}; supplied log vectors align with positive unique integer
+#'   model indices. A missing log vector is NULL. Stage identifies prior,
+#'   posterior, conditional prior/posterior, event, or component probabilities.
+#'   The cause \code{numerical_model_probability_unavailable} identifies a
+#'   declared law whose active model probabilities cannot be represented at
+#'   full precision. Invalid metadata requires recomputation/refitting.
+#'   Human reason text alone does not classify a measure refusal. With unique column/measure
 #'   pairs. The measures are \code{prior_density}, \code{atoms}, or \code{support}.
 #'   Entries prevent stale prior/density/support fallback while numeric draws
 #'   remain usable. Atom/support refusals use

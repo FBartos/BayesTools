@@ -3189,6 +3189,7 @@
     c(sum(vapply(ranges, `[`, numeric(1), 1L)), sum(vapply(ranges, `[`, numeric(1), 2L)))
   }
   context_range <- function(density_context, weights, source_transforms){
+    .model_probability_context_measure_check(density_context, weights)
     if(inherits(density_context, "prior_density_context")){
       standardized <- .prior_density_context_standardized_weights(density_context, weights,
                                                                   source_transforms)
@@ -3975,7 +3976,8 @@
     ))
   }
   if(inherits(context, "prior_density_model_mixture_context")){
-    models <- which(is.finite(context$model_weights) & context$model_weights > 0)
+    .model_probability_context_validate(context)
+    models <- which(is.finite(context$model_log_weights))
     return(union_hull(lapply(models, function(model_i){
       .prior_linear_combination_support_hull(
         .prior_density_model_prior_list(context$prior_list, model_i),
@@ -3984,7 +3986,8 @@
     })))
   }
   if(inherits(context, "prior_density_conditional_context")){
-    models <- which(is.finite(context$model_weights) & context$model_weights > 0)
+    .model_probability_context_validate(context)
+    models <- which(is.finite(context$model_log_weights))
     return(union_hull(lapply(models, function(model_i){
       prior_list <- context$prior_lists[[model_i]]
       if(!is.null(context$formula_scale) && length(context$formula_scale) > 0L){
@@ -4176,6 +4179,7 @@
   context <- arguments$context
   weights <- arguments$weights
   source_transforms <- arguments$source_transforms
+  .model_probability_context_measure_check(context, weights)
 
   context_terms <- function(component_context, top_level){
     standardized <- tryCatch(

@@ -46,8 +46,17 @@ Read \code{averaged} instead of comparing \code{condition_key} with a
 literal key.}
 \item{\code{"measure_unavailable"}}{a plain data frame with exact columns
 \code{column}, \code{measure}, and \code{reason}, with an optional declared
-\code{cause} enum; absent causes use an already enumerated reason. Human
-reason text alone does not classify a measure refusal. With unique column/measure
+\code{cause} enum; absent causes use an already enumerated reason.
+An optional \code{diagnostics} list column retains compact model probability
+diagnostics. Each non-NULL cell is a plain list with \code{model_indices},
+\code{log_prior_probabilities}, \code{log_posterior_probabilities}, and
+\code{stage}; supplied log vectors align with positive unique integer
+model indices. A missing log vector is NULL. Stage identifies prior,
+posterior, conditional prior/posterior, event, or component probabilities.
+The cause \code{numerical_model_probability_unavailable} identifies a
+declared law whose active model probabilities cannot be represented at
+full precision. Invalid metadata requires recomputation/refitting.
+Human reason text alone does not classify a measure refusal. With unique column/measure
 pairs. The measures are \code{prior_density}, \code{atoms}, or \code{support}.
 Entries prevent stale prior/density/support fallback while numeric draws
 remain usable. Atom/support refusals use

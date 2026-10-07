@@ -1,6 +1,8 @@
 .plot_data_prior_list.simple         <- function(prior_list, x_seq, x_range, x_range_quant, n_points, n_samples, force_samples, individual,
                                                  transformation, transformation_arguments, transformation_settings){
 
+  .model_probability_plot_check(prior_list)
+  if(!is.prior(prior_list)) prior_list <- .model_probability_plot_priors(prior_list)
   if(is.prior.spike_and_slab(prior_list))
     prior_list <- list(prior_list)
 
@@ -174,6 +176,7 @@
   }
 
 
+  prior_list <- .model_probability_reindex_priors(prior_list)
   # return the input with fewer than 2 priors
   if(length(prior_list) < 2){
     return(prior_list)
@@ -200,17 +203,24 @@
 
   # find the duplicates and collect prior odds
   prior_weights <- unname(sapply(prior_list, .prior_model_weight))
+  prior_logs <- vapply(prior_list, .prior_model_log_weight, numeric(1))
+  owners <- lapply(prior_list, attr, which = "model_probability_declaration", exact = TRUE)
   to_remove  <- NULL
   for(i in 1:nrow(are_equal)){
     this_ind    <- c(1:ncol(are_equal))[are_equal[i,]]
     this_unique <- this_ind[1]
     prior_weights[this_unique] <- sum(prior_weights[this_ind])
+    prior_logs[this_unique] <- .model_probability_log_sum(prior_logs[this_ind])
     to_remove   <- c(to_remove, this_ind[-1])
   }
 
   # return prior odds
   for(i in seq_along(prior_list)){
-    prior_list[[i]] <- .set_prior_model_weight(prior_list[[i]], prior_weights[i])
+    prior_list[[i]] <- if(is.null(owners[[i]])) .set_prior_model_weight(prior_list[[i]], prior_weights[i]) else{
+      owner <- owners[[i]]
+      owner$eta <- max(owner$eta, .model_probability_eta(prior_logs, prior_logs))
+      .set_prior_model_probability(prior_list[[i]], prior_weights[i], prior_logs[i], owner)
+    }
   }
 
   # remove the duplicates
@@ -237,10 +247,10 @@
 
   out <- list()
   if(inclusion > 0){
-    out[[length(out) + 1L]] <- .set_prior_model_weight(variable, model_weight * inclusion)
+    out[[length(out) + 1L]] <- .model_probability_split_prior(prior, variable, inclusion)
   }
   if(inclusion < 1){
-    out[[length(out) + 1L]] <- .set_prior_model_weight(null, model_weight * (1 - inclusion))
+    out[[length(out) + 1L]] <- .model_probability_split_prior(prior, null, 1 - inclusion)
   }
 
   out

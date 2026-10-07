@@ -434,6 +434,9 @@ test_that("ordered scalar measures use declared contractions and exact primitive
     prior_factor_levels(prior_factor("normal",list(0,1),contrast="treatment"),levels(data$f)),"mu_f")
   unsupported_source$model[21:40] <- 2L
   unsupported_source$model_probabilities <- c(.5,.5)
+  probability_pair <- .model_probability_pair(c(.5,.5),log(c(.5,.5)),"posterior","raw")
+  unsupported_source$model_log_probabilities <- probability_pair$logs
+  unsupported_source$model_probability_declaration <- probability_pair$declaration
   unsupported_source$projection_context <- NULL
   unsupported <- .bt_meta_set(.bt_draws_transform_values(scalar,function(values) values+1),"ordered_source",unsupported_source)
   restored <- .bt_ordered_source_semantics(unsupported,matrix(1,1,1),scalar_columns)

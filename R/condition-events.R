@@ -409,6 +409,7 @@
   option_grid <- expand.grid(lapply(options, seq_along))
   keep <- logical(nrow(option_grid))
   model_weights <- numeric(nrow(option_grid))
+  model_log_weights <- rep(-Inf, nrow(option_grid))
   rule_fun <- .condition_event_rule_function(event[["conditional_rule"]])
 
   for(i in seq_len(nrow(option_grid))){
@@ -424,18 +425,25 @@
 
     keep[i] <- rule_fun(values)
     model_weights[i] <- prod(probabilities)
+    model_log_weights[i] <- sum(log(probabilities))
+    if(all(probabilities > 0) && !is.finite(model_log_weights[i])) .model_probability_range_stop(i)
   }
 
   event_probability <- sum(model_weights[keep & model_weights > 0])
+  log_event_probability <- .model_probability_log_sum(model_log_weights[keep])
 
-  option_grid <- option_grid[keep & model_weights > 0, , drop = FALSE]
-  model_weights <- model_weights[keep & model_weights > 0]
+  selected <- keep & is.finite(model_log_weights)
+  option_grid <- option_grid[selected, , drop = FALSE]
+  model_weights <- model_weights[selected]
+  model_log_weights <- model_log_weights[selected]
 
   if(nrow(option_grid) == 0L){
     return(list(
       prior_lists       = list(),
       weights           = numeric(),
-      event_probability = 0
+      log_weights       = numeric(),
+      event_probability = 0,
+      log_event_probability = -Inf
     ))
   }
 
@@ -454,10 +462,17 @@
     model_prior_list
   })
 
+  ordinary <- if(all(model_weights >= .Machine$double.xmin)) model_weights / sum(model_weights) else rep(NA_real_, length(model_weights))
+  pair <- .model_probability_prior(model_weights, model_log_weights, "event", ordinary = ordinary)
+  if(!.model_probability_safe(model_weights, model_log_weights,
+      .model_probability_eta(model_log_weights, model_log_weights))) event_probability <- exp(log_event_probability)
   list(
     prior_lists       = prior_lists,
-    weights           = model_weights / sum(model_weights),
-    event_probability = event_probability
+    weights           = pair$probabilities,
+    log_weights       = pair$logs,
+    model_probability_declaration = pair$declaration,
+    event_probability = event_probability,
+    log_event_probability = log_event_probability
   )
 }
 

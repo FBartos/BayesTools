@@ -2,6 +2,8 @@
                                                  transformation, transformation_arguments, transformation_settings, prior_list_mu,
                                                  effect_direction = "positive"){
 
+  pair <- .model_probability_petpeese_plot_check(prior_list, prior_list_mu)
+  prior_list <- .model_probability_plot_priors(prior_list, validated_pair = pair)
   # The x-axis is the standard error; the effect-size transformation applies
   # only to the regression line (y-axis), so 'transformation_settings' does
   # not rescale x.
@@ -19,7 +21,10 @@
       prior_list_mu            = prior_list_mu,
       effect_direction         = effect_direction
     ),
-    error = function(e) NULL
+    error = function(e){
+      if(inherits(e, "BayesTools_formula_measure_unavailable")) stop(e)
+      NULL
+    }
   )
 
   if(!is.null(deterministic)){
@@ -40,6 +45,8 @@
 .plot_data_prior_list.PETPEESE_deterministic <- function(prior_list, x_seq, n_points, transformation, transformation_arguments,
                                                          prior_list_mu, effect_direction = "positive"){
 
+  pair <- .model_probability_petpeese_plot_check(prior_list, prior_list_mu)
+  prior_list <- .model_probability_plot_priors(prior_list, validated_pair = pair)
   if(is.list(transformation)){
     stop("Custom transformations are handled by sampled PET-PEESE prior summaries.", call. = FALSE)
   }
@@ -561,6 +568,8 @@
                                                    transformation, transformation_arguments, prior_list_mu,
                                                    effect_direction = "positive"){
 
+  pair <- .model_probability_petpeese_plot_check(prior_list, prior_list_mu)
+  prior_list <- .model_probability_plot_priors(prior_list, validated_pair = pair)
   prior_weights  <- sapply(prior_list, .prior_model_weight)
   mixing_prop    <- prior_weights / sum(prior_weights)
 

@@ -13,6 +13,7 @@
 }
 .bias_prior_list_for_condition <- function(prior_list, condition_event){
 
+  .model_probability_plot_check(prior_list)
   prior_list_fallback <- .weightfunction_expand_bias_mixture_priors(prior_list)
 
   if(is.null(condition_event) ||
@@ -142,6 +143,10 @@
   # or combine them with OR, so mu and bias are paired within each model
   # option of the condition event rather than conditioned separately.
   prior_list <- attr(samples, "prior_list", exact = TRUE)
+  if(is.list(prior_list) && is.prior(prior_list[[mu_name]]) && is.prior(prior_list[["bias"]])){
+    .model_probability_plot_check(prior_list[[mu_name]])
+    .model_probability_plot_check(prior_list[["bias"]])
+  }
   if(!is.list(prior_list) || is.prior(prior_list) ||
      !is.prior(prior_list[[mu_name]]) || !is.prior(prior_list[["bias"]])){
     return(NULL)
@@ -159,6 +164,8 @@
   if(length(models[["prior_lists"]]) == 0L){
     stop("The condition of the samples has zero prior probability.", call. = FALSE)
   }
+  if(!is.null(models$log_weights)) .model_probability_measure_stop(list(
+    probabilities=models$weights, logs=models$log_weights, declaration=models$model_probability_declaration))
 
   mu_priors   <- list()
   bias_priors <- list()

@@ -868,7 +868,9 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
           ), BayesTools_formula_measure_unavailable = function(e) e)
           if(inherits(temp_support, "BayesTools_formula_measure_unavailable")){
             temp_marginal_posterior_samples <- .bt_formula_measure_mark(temp_marginal_posterior_samples,
-              level_names[[lvl_i]], "support", temp_support$reason)
+              level_names[[lvl_i]], "support",
+              if(is.null(temp_support$detail)) conditionMessage(temp_support) else temp_support$detail,
+              cause = temp_support$reason, diagnostics = temp_support$diagnostics)
             temp_support <- NULL
           }
         }
@@ -1060,7 +1062,9 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
           ), BayesTools_formula_measure_unavailable = function(e) e)
           if(inherits(prior_density, "BayesTools_formula_measure_unavailable")){
             marginal_posterior_samples[[level_names[[lvl_i]]]] <- .bt_formula_measure_mark(
-              marginal_posterior_samples[[level_names[[lvl_i]]]], level_names[[lvl_i]], "prior_density", prior_density$reason)
+              marginal_posterior_samples[[level_names[[lvl_i]]]], level_names[[lvl_i]], "prior_density",
+              if(is.null(prior_density$detail)) conditionMessage(prior_density) else prior_density$detail,
+              cause = prior_density$reason, diagnostics = prior_density$diagnostics)
             next
           }
           marginal_posterior_samples[[level_names[lvl_i]]] <- .bt_meta_update(
@@ -1705,7 +1709,9 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
   zero_prior <- prior("mpoint", list(location = location, K = K))
   model_weight <- .prior_model_weight(prior)
   if(!is.null(model_weight)){
-    zero_prior <- .set_prior_model_weight(zero_prior, model_weight)
+    owner <- attr(prior, "model_probability_declaration", exact = TRUE)
+    zero_prior <- if(is.null(owner)) .set_prior_model_weight(zero_prior, model_weight) else
+      .set_prior_model_probability(zero_prior, model_weight, .prior_model_log_weight(prior), owner)
   }
   for(attribute in c("parameter", "multiply_by")){
     attr(zero_prior, attribute) <- attr(prior, attribute, exact = TRUE)

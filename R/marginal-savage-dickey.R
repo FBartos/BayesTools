@@ -182,7 +182,13 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
         posterior_i, null_hypothesis, normal_approximation, silent, density_method,
         label        = .Savage_Dickey_BF.level_label(posterior, i),
         null_mass_NA = null_mass_NA
-      ), BayesTools_hypothesis_numerical_unavailable = function(condition){
+      ), BayesTools_formula_measure_unavailable = function(condition){
+        out <- NA_real_
+        attr(out, "warnings") <- conditionMessage(condition)
+        attr(out, "posterior_density_source") <- "measure_unavailable"
+        attr(out, "numerical_diagnostics") <- condition
+        out
+      }, BayesTools_hypothesis_numerical_unavailable = function(condition){
         if(!isTRUE(null_mass_NA)) stop(condition)
         out <- NA_real_
         attr(out, "warnings") <- conditionMessage(condition)

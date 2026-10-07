@@ -25,6 +25,13 @@
 #' @details Dropping every positive-prior-probability model stops because no
 #' finite marginal likelihood is available; it does not renormalize an empty
 #' model space.
+#' Original positive model odds retain their logarithmic declaration even when
+#' the visible probability rounds to zero. Evidence is centered before model
+#' probabilities and inclusion Bayes factors are evaluated. Finite evidence
+#' differences outside the logarithmic range stop with
+#' \code{BayesTools_numerical_condition}. The returned numeric fields remain
+#' ordinary probabilities; passing a visible zero to [inclusion_BF()] retains
+#' that function's exact supplied-zero meaning.
 #' @param margliks vector of natural-log marginal likelihoods
 #' @param is_null logical vector of indicators specifying whether the model corresponds
 #' to the null or alternative hypothesis (or an integer vector indexing models
@@ -75,18 +82,22 @@ compute_inference <- function(prior_weights, margliks, is_null = NULL,
   on_failure <- match.arg(on_failure)
   is_null <- .model_averaging_is_null(is_null, length(prior_weights))
 
-  prior_probs <- .model_averaging_prior_probs(prior_weights)
+  prior <- .model_probability_prior(prior_weights)
   prepared    <- .model_averaging_prepare_margliks(
     margliks,
-    prior_probs,
+    prior$probabilities,
+    log_prior_probs = prior$logs,
+    prior_declaration = prior$declaration,
     on_failure = on_failure
   )
   margliks    <- prepared$margliks
-  prior_probs <- prepared$prior_probs
-  post_probs  <- .model_averaging_post_probs(margliks, prior_probs)
+  prior <- prepared$prior
+  posterior <- .model_probability_posterior(margliks, prior)
   log_BF      <- .inclusion_log_BF.margliks(
-    prior_probs = prior_probs,
+    prior_probs = prior$probabilities,
+    log_prior_probs = prior$logs,
     margliks     = margliks,
+    prior_declaration = prior$declaration,
     is_null      = is_null,
     on_failure  = "error"
   )
@@ -98,13 +109,14 @@ compute_inference <- function(prior_weights, margliks, is_null = NULL,
   if(conditional){
     if(all(is_null))
       stop("Conditional inference requires at least one non-null model.", call. = FALSE)
-    prior_probs <- .model_averaging_prior_probs(ifelse(is_null, 0, prior_probs))
-    post_probs  <- .model_averaging_post_probs(margliks, prior_probs)
+    prior <- .model_probability_condition(prior, ifelse(is_null, -Inf, 0), "conditional_prior")
+    posterior <- .model_probability_posterior(margliks, prior)
+    posterior$declaration$stage <- "conditional_posterior"
   }
 
   output <- list(
-    prior_probs = prior_probs,
-    post_probs  = post_probs,
+    prior_probs = prior$probabilities,
+    post_probs  = posterior$probabilities,
     BF          = BF
   )
 
@@ -114,6 +126,7 @@ compute_inference <- function(prior_weights, margliks, is_null = NULL,
   # natural-log inclusion BF computed in log space for log-scale outputs
   attr(output, "log_BF")      <- log_BF
   class(output) <- c(class(output), "inference")
+  output <- .model_probability_inference_set(output, prior, posterior)
 
   return(output)
 }
@@ -127,26 +140,30 @@ compute_inference <- function(prior_weights, margliks, is_null = NULL,
     stop("At least one prior model weight must be positive.", call. = FALSE)
   }
 
-  scaled_weights <- prior_weights / max(prior_weights)
-  scaled_weights / sum(scaled_weights)
+  .model_probability_prior(prior_weights)$probabilities
 }
 
 .model_averaging_prepare_margliks <- function(
-    margliks, prior_probs, on_failure = c("error", "drop", "zero")){
+    margliks, prior_probs, on_failure = c("error", "drop", "zero"),
+    log_prior_probs = log(prior_probs), prior_declaration = NULL){
 
   on_failure <- match.arg(on_failure)
 
-  if(any(is.infinite(margliks) & margliks > 0 & prior_probs > 0, na.rm = TRUE)){
+  if(is.null(prior_declaration)) prior_declaration <- .model_probability_pair(
+    prior_probs, log_prior_probs, "prior", "raw")$declaration
+  .model_probability_validate(prior_probs, log_prior_probs, prior_declaration)
+  if(any(is.infinite(margliks) & margliks > 0 & is.finite(log_prior_probs), na.rm = TRUE)){
     stop("Infinite positive marginal likelihoods are not supported.", call. = FALSE)
   }
 
-  failed <- is.na(margliks) & prior_probs > 0
+  failed <- is.na(margliks) & is.finite(log_prior_probs)
   audit <- NULL
   if(any(failed)){
     failed_models <- which(failed)
     audit <- data.frame(
       model = failed_models,
       original_prior_prob = prior_probs[failed_models],
+      original_log_prior_prob = log_prior_probs[failed_models],
       policy = rep(on_failure, length(failed_models)),
       stringsAsFactors = FALSE
     )
@@ -163,17 +180,21 @@ compute_inference <- function(prior_weights, margliks, is_null = NULL,
         call = NULL,
         class = "BayesTools_marglik_failure",
         models = failed_models,
-        prior_probs = prior_probs[failed_models]
+        prior_probs = prior_probs[failed_models],
+        log_prior_probs = log_prior_probs[failed_models]
       )
       stop(condition)
     }
 
     if(identical(on_failure, "drop")){
-      prior_probs[failed] <- 0
-      if(sum(prior_probs) <= 0){
+      if(!any(is.finite(log_prior_probs[!failed]))){
         stop("No finite marginal likelihoods are available for models with positive prior probability.", call. = FALSE)
       }
-      prior_probs <- prior_probs / sum(prior_probs)
+      pair <- .model_probability_condition(list(probabilities = prior_probs, logs = log_prior_probs,
+        declaration = prior_declaration), ifelse(failed, -Inf, 0), "prior")
+      prior_probs <- pair$probabilities
+      log_prior_probs <- pair$logs
+      prior_declaration <- pair$declaration
       warning_message <- paste0(
         "Dropped model(s) ",
         paste(failed_models, collapse = ", "),
@@ -193,28 +214,22 @@ compute_inference <- function(prior_weights, margliks, is_null = NULL,
   # Convert them only after the positive-probability failure policy is resolved.
   margliks[is.na(margliks)] <- -Inf
 
-  if(!any(is.finite(margliks) & prior_probs > 0)){
+  if(!any(is.finite(margliks) & is.finite(log_prior_probs))){
     stop("No finite marginal likelihoods are available for models with positive prior probability.", call. = FALSE)
   }
 
   list(
     margliks = margliks,
     prior_probs = prior_probs,
+    prior = list(probabilities = prior_probs, logs = log_prior_probs, declaration = prior_declaration),
     audit = audit
   )
 }
 
-.model_averaging_post_probs <- function(margliks, prior_probs){
+.model_averaging_post_probs <- function(margliks, prior_probs, log_prior_probs = log(prior_probs)){
 
-  log_weights <- rep(-Inf, length(margliks))
-  active <- prior_probs > 0 & is.finite(margliks)
-  if(!any(active)){
-    stop("No finite marginal likelihoods are available for models with positive prior probability.", call. = FALSE)
-  }
-  log_weights[active] <- log(prior_probs[active]) + margliks[active]
-  normalizer <- max(log_weights)
-  weights <- exp(log_weights - normalizer)
-  unname(weights / sum(weights))
+  .model_probability_posterior(margliks,
+    .model_probability_pair(prior_probs, log_prior_probs, "prior", "raw"))$probabilities
 }
 
 .model_averaging_marglik_values <- function(model_list){
@@ -353,19 +368,24 @@ models_inference <- function(model_list,
 
   margliks    <- .model_averaging_marglik_values(model_list)
   prior_weights  <- sapply(model_list, function(model)model[["prior_weights"]])
-  prior_probs <- .model_averaging_prior_probs(prior_weights)
+  prior <- .model_probability_prior(prior_weights)
   prepared    <- .model_averaging_prepare_margliks(
     margliks,
-    prior_probs,
+    prior$probabilities,
+    log_prior_probs = prior$logs,
+    prior_declaration = prior$declaration,
     on_failure = on_failure
   )
   margliks    <- prepared$margliks
-  prior_probs <- prepared$prior_probs
-  post_probs  <- .model_averaging_post_probs(margliks, prior_probs)
+  prior <- prepared$prior
+  posterior <- .model_probability_posterior(margliks, prior)
+  prior_probs <- prior$probabilities
+  post_probs <- posterior$probabilities
   incl_log_BF <- vapply(seq_along(model_list), function(i){
     is_null <- rep(TRUE, length(model_list))
     is_null[i] <- FALSE
-    .inclusion_log_BF.margliks(prior_probs = prior_probs, margliks = margliks, is_null = is_null)
+    .inclusion_log_BF.margliks(prior_probs = prior_probs, log_prior_probs = prior$logs,
+      prior_declaration = prior$declaration, margliks = margliks, is_null = is_null)
   }, numeric(1))
   incl_BF     <- exp(incl_log_BF)
 
@@ -379,6 +399,11 @@ models_inference <- function(model_list,
     )
     # natural-log inclusion BF computed in log space for log-scale outputs
     attr(model_list[[i]][["inference"]], "inclusion_log_BF") <- incl_log_BF[i]
+    attr(model_list[[i]][["inference"]], "log_prior_prob") <- prior$logs[i]
+    attr(model_list[[i]][["inference"]], "log_post_prob") <- posterior$logs[i]
+    attr(model_list[[i]][["inference"]], "model_probability_declaration") <- list(
+      prior = within(prior$declaration, model_indices <- as.integer(i)),
+      posterior = within(posterior$declaration, model_indices <- as.integer(i)))
   }
 
   attr(model_list, "marglik_failure") <- prepared$audit

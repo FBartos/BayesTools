@@ -789,6 +789,9 @@ test_that("posterior_transform() refuses transformations that are not monotone a
   theta <- stats::rnorm(400, .3, .2)
   class(theta) <- c("mixed_posteriors", "mixed_posteriors.simple", class(theta))
   theta <- .bt_meta_set(theta, "draw_index", seq_along(theta))
+  theta <- .bt_meta_set(theta, "model_probabilities", list(
+    prior = .model_probability_pair(1, 0, "prior", "raw"),
+    posterior = .model_probability_pair(1, 0, "posterior", "raw")))
   theta <- .bt_draws_set_component(theta, source = "model", component = rep(1, length(theta)))
   attr(theta, "parameter")  <- "theta"
   attr(theta, "prior_list") <- prior("normal", list(0, 1))

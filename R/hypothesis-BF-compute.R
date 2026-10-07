@@ -76,13 +76,14 @@
   tryCatch(result, error = function(condition){
     if(!inherits(condition, c("BayesTools_hypothesis_ordinate",
                               "BayesTools_hypothesis_region",
-                              "BayesTools_transformation_image_unavailable"))){
+                              "BayesTools_transformation_image_unavailable",
+                              "BayesTools_formula_measure_unavailable"))){
       stop(condition)
     }
     list(BF = NA_real_, BF_error = NA_real_, prior = NA_real_,
          posterior = NA_real_, method = "unavailable",
          warning = conditionMessage(condition), inexact_prior = NULL,
-         numerical_diagnostics = if(inherits(condition, "BayesTools_numerical_condition")) condition else NULL,
+         numerical_diagnostics = if(inherits(condition, c("BayesTools_numerical_condition", "BayesTools_formula_measure_unavailable"))) condition else NULL,
          prior_numerical_diagnostics = if(inherits(condition, "BayesTools_hypothesis_region")) list(condition) else NULL)
   })
 }

@@ -578,14 +578,19 @@ is.prior.mixture         <- function(x){
 .prior_model_weight <- function(prior){
 
   prior_weight <- attr(prior, "model_prior_weights", exact = TRUE)
-  if(!is.null(prior_weight)){
-    return(prior_weight)
+  if(is.null(prior_weight)) prior_weight <- prior[["prior_weights"]]
+  declaration <- attr(prior, "model_probability_declaration", exact = TRUE)
+  logs <- attr(prior, "model_log_prior_weights", exact = TRUE)
+  if(!is.null(declaration) || !is.null(logs)){
+    .model_probability_validate(prior_weight, logs, declaration)
+    if(!declaration$stage %in% c("prior", "conditional_prior", "component", "event")) stop("The model prior probability stage is malformed.", call. = FALSE)
   }
-
-  prior[["prior_weights"]]
+  prior_weight
 }
 .set_prior_model_weight <- function(prior, prior_weight){
 
+  attr(prior, "model_log_prior_weights") <- NULL
+  attr(prior, "model_probability_declaration") <- NULL
   if(is.prior.mixture(prior)){
     attr(prior, "model_prior_weights") <- prior_weight
   }else{
@@ -593,6 +598,45 @@ is.prior.mixture         <- function(x){
   }
 
   prior
+}
+
+.prior_model_log_weight <- function(prior){
+
+  weight <- .prior_model_weight(prior)
+  if(is.null(weight)) weight <- 1
+  logs <- attr(prior, "model_log_prior_weights", exact = TRUE)
+  if(is.null(logs)) log(weight) else logs
+}
+
+.set_prior_model_probability <- function(prior, probability, log_probability, declaration){
+
+  .model_probability_validate(probability, log_probability, declaration)
+  prior <- .set_prior_model_weight(prior, probability)
+  attr(prior, "model_log_prior_weights") <- log_probability
+  attr(prior, "model_probability_declaration") <- declaration
+  prior
+}
+
+.prior_model_probability_pair <- function(priors, stage = "prior"){
+
+  weights <- vapply(priors, function(prior){
+    weight <- .prior_model_weight(prior)
+    if(is.null(weight)) 1 else weight
+  }, numeric(1))
+  logs <- vapply(priors, .prior_model_log_weight, numeric(1))
+  declarations <- lapply(priors, attr, which = "model_probability_declaration", exact = TRUE)
+  owned <- !vapply(declarations, is.null, logical(1))
+  if(any(owned) && !all(owned)) stop("The model prior distributions have incomplete probability ownership. Recompute or refit with the current BayesTools version.", call. = FALSE)
+  if(all(owned)){
+    identities <- vapply(declarations, function(x) x$model_indices, integer(1))
+    if(anyDuplicated(identities)) stop("The model prior probability identities are not aligned.", call. = FALSE)
+  }else identities <- seq_along(priors)
+  total <- sum(weights)
+  ordinary <- if(is.finite(total) && total >= .Machine$double.xmin) weights / total else rep(NA_real_, length(weights))
+  eta <- if(all(owned)) max(vapply(declarations, `[[`, numeric(1), "eta")) else 0
+  pair <- .model_probability_prior(weights, logs, stage, ordinary = ordinary, prior_eta = eta)
+  pair$declaration$model_indices <- as.integer(identities)
+  pair
 }
 .check_prior_weight <- function(prior_weights, name = "prior_weights"){
 

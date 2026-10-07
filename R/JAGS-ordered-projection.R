@@ -408,14 +408,12 @@
   source <- .bt_meta_get(x,"ordered_source")
   if(is.null(source)) return(x)
   existing <- .posterior_atoms_get(x)
-  if(is.null(source$model_probabilities)){
-    probabilities <- existing$component_probabilities
-    source$model_probabilities <- if(length(probabilities)==length(source$models)) probabilities else{
-      tabulate(source$model,nbins=length(source$models))/length(source$model)
-    }
-  }
+  reason <- .bt_ordered_source_validate(source)
+  if(!is.null(reason)) stop(reason, call. = FALSE)
   projections <- lapply(seq_len(nrow(design)),function(i) .bt_ordered_source_project(source,design[i,]))
-  marginals <- lapply(seq_along(projections),function(i) .bt_ordered_projection_atoms(projections[[i]],columns[[i]],source$model,source$model_probabilities))
+  marginals <- lapply(seq_along(projections),function(i){
+    .bt_ordered_source_projection_atoms(source,projections[[i]],columns[[i]],design[i,])
+  })
   names(marginals) <- columns
   values <- .bt_draws_plain(x)
   for(i in seq_along(projections)){
@@ -435,11 +433,26 @@
   source$projection_design <- design %*% old_design
   rownames(source$projection_design) <- columns
   x <- .bt_meta_set(x,"ordered_source",source)
+  unavailable <- .bt_meta_get(x,"measure_unavailable")
+  for(i in seq_along(marginals)){
+    if(inherits(marginals[[i]],"BayesTools_formula_measure_unavailable")){
+      condition <- marginals[[i]]
+      x <- .bt_formula_measure_mark(x,columns[[i]],"atoms",conditionMessage(condition),
+        cause=condition$reason,diagnostics=condition$diagnostics)
+      marginals[i] <- list(NULL)
+    }
+  }
+  if(!is.null(unavailable)){
+    refused <- unavailable$column[unavailable$measure=="atoms"]
+    for(i in which(columns %in% refused)) marginals[i] <- list(NULL)
+  }
   atoms <- .posterior_atoms_get(x)
   if(is.null(atoms)) atoms <- .posterior_atoms_new(column_names=columns)
   joint_locations <- do.call(cbind,lapply(projections,`[[`,"atom"))
   joint_rows <- rowSums(is.na(joint_locations))==0
-  if(all(!vapply(marginals,is.null,logical(1))) && nrow(atoms$locations)==0L){
+  if(all(!vapply(marginals,is.null,logical(1))) && nrow(atoms$locations)==0L &&
+     all(source$model_probabilities[is.finite(source$model_log_probabilities)] >= .Machine$double.xmin) &&
+     all(seq_along(source$models)[is.finite(source$model_log_probabilities)] %in% source$model)){
     locations <- unique(joint_locations[joint_rows,,drop=FALSE])
     mass <- vapply(seq_len(nrow(locations)),function(i){
       matching <- joint_rows
@@ -467,6 +480,70 @@
   }
   atoms$marginals <- marginals
   .posterior_atoms_set(x,atoms)
+}
+
+# A missing allocated model can contribute only through a complete declaration.
+# The ordinary within-model fractions retain the existing represented population.
+.bt_ordered_source_projection_atoms <- function(source,projection,column,weights){
+
+  pair <- list(probabilities=source$model_probabilities,logs=source$model_log_probabilities,
+    declaration=source$model_probability_declaration)
+  if(!is.null(source$projection_design)){
+    weights <- as.vector(as.numeric(weights) %*% source$projection_design)
+    names(weights) <- colnames(source$projection_design)
+  }
+  points <- data.frame(x=numeric(),mass=numeric(),log_mass=numeric())
+  continuous <- FALSE
+  for(model in which(is.finite(pair$logs))){
+    rows <- which(source$model==model)
+    if(length(rows)){
+      if(any(projection$state[rows]=="unavailable")) return(NULL)
+      continuous <- continuous || any(projection$state[rows]=="continuous")
+      locations <- unique(projection$atom[rows][!is.na(projection$atom[rows])])
+      for(location in locations){
+        fraction <- mean(!is.na(projection$atom[rows]) & projection$atom[rows]==location)
+        points <- rbind(points,data.frame(x=location,mass=pair$probabilities[[model]]*fraction,
+          log_mass=pair$logs[[model]]+log(fraction)))
+      }
+      next
+    }
+    spec <- source$models[[model]]
+    if(identical(spec$parameterization,"absent")){
+      route <- .prior_density_route_atom(0,1,list(kind="scalar_affine",offset=0,scale=0))
+    }else if(!is.null(spec$parameterization)){
+      point <- .posterior_atoms_point_location(spec$prior,length(weights))
+      route <- if(is.null(point)) .prior_density_route_unknown(NULL,list(kind="unsupported_provenance")) else
+        .prior_density_route_atom(sum(as.numeric(weights)*point),1,list(kind="scalar_affine",offset=sum(as.numeric(weights)*point),scale=0))
+    }else{
+      own <- if(is.null(names(weights))) stats::setNames(as.numeric(weights),spec$coefficient_names) else weights
+      priors <- stats::setNames(list(spec$prior),spec$parameter)
+      if(!is.null(source$projection_context)) priors <- source$projection_context$models[[model]]$priors
+      route <- .prior_density_route_linear(priors,own,NULL)
+    }
+    for(map in source$view_transformations){
+      if(identical(map$transformation,"unavailable")){
+        route <- .prior_density_route_unknown(NULL,list(kind="unsupported_provenance"))
+        break
+      }
+      original <- route
+      route <- .prior_density_route_transform(original,map$transformation,map$arguments,
+        hull=function() .prior_density_ordinate_provenance_support(.prior_density_route_provenance(original)))
+    }
+    certificate <- .bt_formula_route_atom_certificate(route)
+    if(identical(certificate$type,"unavailable")) return(errorCondition(
+      "The requested ordered atom law is unavailable because a positive model has no projection rows or complete atom certificate.",
+      call=NULL,class=c("BayesTools_formula_atoms_unavailable","BayesTools_formula_measure_unavailable"),
+      reason="structural_target_law_unavailable",
+      diagnostics=.model_probability_diagnostics(posterior=pair,stage=pair$declaration$stage)))
+    if(identical(certificate$type,"atom_free")) continuous <- TRUE else{
+      points <- rbind(points,data.frame(x=certificate$location,mass=pair$probabilities[[model]],log_mass=pair$logs[[model]]))
+    }
+  }
+  points <- .model_probability_atom_table(points,continuous,pair)
+  if(inherits(points,"BayesTools_formula_measure_unavailable")) return(points)
+  .posterior_atoms_new(matrix(points$x,ncol=1L),points$mass,column_names=column,
+    source="ordered_projection_structure",component_probabilities=pair$probabilities,
+    component_log_probabilities=pair$logs,model_probability_declaration=pair$declaration)
 }
 
 .bt_ordered_formula_projections <- function(samples, weights, source_transforms=NULL,
@@ -677,8 +754,8 @@
     if(!is.null(source_inputs[[model]])) primitives[rows,colnames(source_inputs[[model]])] <- source_inputs[[model]]
   }
   attr(projections,"context") <- list(models=contexts,primitives=primitives)
-  counts <- tabulate(source$model,nbins=length(source$models))
-  probabilities <- if(is.null(source$model_probabilities)) counts/sum(counts) else source$model_probabilities
+  .model_probability_validate(source$model_probabilities, source$model_log_probabilities, source$model_probability_declaration)
+  probabilities <- source$model_probabilities
   attr(projections,"model") <- source$model
   attr(projections,"probabilities") <- probabilities
   projections

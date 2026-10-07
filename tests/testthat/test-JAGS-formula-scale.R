@@ -1312,6 +1312,8 @@ test_that("ensemble_estimates_table transform_scaled works on mixed posterior sa
       formula_parameter = "mu",
       draw_index = seq_along(values),
       component = rep(1L, length(values)),
+      model_probabilities = list(prior = .model_probability_pair(1, 0, "prior", "raw"),
+        posterior = .model_probability_pair(1, 0, "posterior", "raw")),
       component_source = "model"
     )
   }

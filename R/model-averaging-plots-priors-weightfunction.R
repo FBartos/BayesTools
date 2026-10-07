@@ -55,6 +55,8 @@
 }
 .weightfunction_prior_list_context <- function(prior_list, one_sided = NULL, merge = TRUE){
 
+  .model_probability_plot_check(prior_list, allow_weightfunction_null = TRUE)
+  prior_list <- .model_probability_plot_priors(prior_list, allow_weightfunction_null = TRUE)
   omega_context <- attr(prior_list, "omega_context")
   if(is.null(one_sided)){
     one_sided <- if(!is.null(omega_context) && !is.null(omega_context$one_sided)){
@@ -88,10 +90,18 @@
     if(.weightfunction_prior_has_selection(prior_list[[i]])){
       selection_priors <- .selection_prior_selection_priors(prior_list[[i]])
       selection_prior  <- selection_priors[[1L]]
-      selection_prior$prior_weights <- prior_weights[i]
+      parent <- prior_list[[i]]
+      selection_prior <- .prior_density_copy_parent_attributes(selection_prior, parent)
+      if(!is.null(attr(selection_prior, "model_probability_declaration", exact = TRUE))){
+        if(!identical(unname(.prior_model_weight(selection_prior)), unname(prior_weights[i]))) stop(
+          "The selection prior has an independent model probability owner that contradicts its parent.", call. = FALSE)
+      }else selection_prior <- .set_prior_model_weight(selection_prior, prior_weights[i])
       prior_list[[i]] <- selection_prior
     }else if(!(is.prior.weightfunction(prior_list[[i]]) | is.prior.none(prior_list[[i]]))){
-      prior_list[[i]] <- .set_prior_model_weight(prior_none(), prior_weights[i])
+      prior_list[[i]] <- .prior_density_copy_parent_attributes(prior_none(), prior_list[[i]])
+      if(is.null(attr(prior_list[[i]], "model_probability_declaration", exact = TRUE))){
+        prior_list[[i]] <- .set_prior_model_weight(prior_list[[i]], prior_weights[i])
+      }
     }
   }
 
@@ -148,6 +158,14 @@
   for(i in seq_along(prior_list)){
     if(inherits(prior_list[[i]], "prior.bias_mixture")){
       prior_mixture_components <- prior_list[[i]]
+      owner <- attr(prior_mixture_components, "model_probability_declaration", exact = TRUE)
+      if(!is.null(owner)){
+        fractions <- attr(prior_mixture_components, "prior_weights", exact = TRUE)
+        fractions <- fractions / sum(fractions)
+        prior_mixture_components <- lapply(seq_along(prior_mixture_components), function(j){
+          .model_probability_split_prior(prior_list[[i]], prior_list[[i]][[j]], fractions[[j]])
+        })
+      }
       class(prior_mixture_components) <- NULL
       expanded <- c(expanded, prior_mixture_components)
     }else{
@@ -155,7 +173,7 @@
     }
   }
 
-  expanded
+  .model_probability_reindex_priors(expanded)
 }
 .weightfunction_prior_has_selection <- function(prior){
 

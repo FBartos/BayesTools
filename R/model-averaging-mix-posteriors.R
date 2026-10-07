@@ -30,6 +30,18 @@
 #' must be applied once to full aligned sources; separately conditioned ordered
 #' parameters cannot be combined as joint draws by this function.
 #'
+#' Positive model declarations remain active when their visible probability
+#' rounds to zero. Numeric mixed draws remain usable. A prior law or atom law
+#' requiring model probabilities unavailable at full precision is explicitly
+#' refused with \code{BayesTools_formula_measure_unavailable} and the cause
+#' \code{numerical_model_probability_unavailable}; structured model/log
+#' diagnostics are retained in [posterior_metadata()]. Descriptive
+#' \code{marginal_posterior(use_formula = FALSE, prior_samples = FALSE)} remains
+#' available. An ordered projection with no allocated rows for a positive
+#' model requires a complete declared atom certificate; otherwise that measure
+#' has cause \code{structural_target_law_unavailable}. Independently known
+#' support and valid sibling measures remain available.
+#'
 #' @param seed integer specifying seed for sampling posteriors for
 #' model averaging. The caller's random-number state (\code{.Random.seed} and
 #' \code{RNGkind()}) is restored afterwards. Defaults to \code{NULL}, which
@@ -108,8 +120,8 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
       parameter_priors <- lapply(priors,function(prior) prior[[parameter]])
       if(!any(vapply(parameter_priors,is.prior.ordered,logical(1)))) next
       condition <- .mix_posteriors_ordered_condition(fits,parameter_priors,parameter,inference[[parameter]])
-      inference[[parameter]]$post_probs <- condition$post_probs
-      inference[[parameter]]$prior_probs <- condition$prior_probs
+      inference[[parameter]] <- .model_probability_inference_set(inference[[parameter]],
+        condition$prior, condition$posterior)
       ordered_conditions[[parameter]] <- condition
     }
     .mix_posteriors_assert_aligned_post_probs(inference,parameters)
@@ -127,6 +139,8 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
     # prepare parameter specific values
     temp_parameter    <- parameters[p]
     temp_inference    <- inference[[temp_parameter]]
+    prior_pair <- .model_probability_inference_get(temp_inference, "prior")
+    posterior_pair <- .model_probability_inference_get(temp_inference, "posterior")
     temp_priors       <- lapply(priors, function(p) p[[temp_parameter]])
 
     if(all(sapply(temp_priors, is.null))){
@@ -149,10 +163,12 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
 
       # replace prior odds with the corresponding prior model odds
       for(i in seq_along(temp_priors)){
-        temp_priors[[i]] <- .set_prior_model_weight(temp_priors[[i]], temp_inference$prior_probs[i])
+        declaration <- prior_pair$declaration
+        declaration$model_indices <- as.integer(i)
+        temp_priors[[i]] <- .set_prior_model_probability(temp_priors[[i]], prior_pair$probabilities[i], prior_pair$logs[i], declaration)
       }
 
-      out[[temp_parameter]] <- .mix_posteriors.weightfunction(fits, temp_priors, temp_parameter, temp_inference$post_probs, common_sample_seed, n_samples)
+      out[[temp_parameter]] <- .mix_posteriors.weightfunction(fits, temp_priors, temp_parameter, temp_inference$post_probs, common_sample_seed, n_samples, posterior_pair = posterior_pair)
 
     }else if(any(sapply(temp_priors, is.prior.factor)) && all(sapply(temp_priors, is.prior.factor) | sapply(temp_priors, is.prior.point) | sapply(temp_priors, is.null))){
       # factor priors
@@ -166,11 +182,13 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
 
       # replace prior odds with the corresponding prior model odds
       for(i in seq_along(temp_priors)){
-        temp_priors[[i]] <- .set_prior_model_weight(temp_priors[[i]], temp_inference$prior_probs[i])
+        declaration <- prior_pair$declaration
+        declaration$model_indices <- as.integer(i)
+        temp_priors[[i]] <- .set_prior_model_probability(temp_priors[[i]], prior_pair$probabilities[i], prior_pair$logs[i], declaration)
       }
 
       out[[temp_parameter]] <- .mix_posteriors.factor(fits, temp_priors, temp_parameter, temp_inference$post_probs, common_sample_seed, n_samples,
-        ordered_condition=ordered_conditions[[temp_parameter]])
+        ordered_condition=ordered_conditions[[temp_parameter]], posterior_pair = posterior_pair)
 
     }else if(any(sapply(temp_priors, is.prior.vector)) && all(sapply(temp_priors, is.prior.vector) | sapply(temp_priors, is.prior.point) | sapply(temp_priors, is.null))){
       # vector priors:
@@ -179,7 +197,8 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
         temp_priors,
         temp_parameter,
         temp_inference$prior_probs,
-        temp_inference$post_probs
+        temp_inference$post_probs,
+        log_prior_probs = prior_pair$logs, log_post_probs = posterior_pair$logs
       )
 
       # replace missing priors with default prior: spike(0)
@@ -191,10 +210,12 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
 
       # replace prior odds with the corresponding prior model odds
       for(i in seq_along(temp_priors)){
-        temp_priors[[i]] <- .set_prior_model_weight(temp_priors[[i]], temp_inference$prior_probs[i])
+        declaration <- prior_pair$declaration
+        declaration$model_indices <- as.integer(i)
+        temp_priors[[i]] <- .set_prior_model_probability(temp_priors[[i]], prior_pair$probabilities[i], prior_pair$logs[i], declaration)
       }
 
-      out[[temp_parameter]] <- .mix_posteriors.vector(fits, temp_priors, temp_parameter, temp_inference$post_probs, common_sample_seed, n_samples)
+      out[[temp_parameter]] <- .mix_posteriors.vector(fits, temp_priors, temp_parameter, temp_inference$post_probs, common_sample_seed, n_samples, posterior_pair = posterior_pair)
 
     }else if(all(sapply(temp_priors, is.prior.simple) | sapply(temp_priors, is.prior.point) | sapply(temp_priors, is.null))){
       # simple priors:
@@ -208,14 +229,18 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
 
       # replace prior odds with the corresponding prior model odds
       for(i in seq_along(temp_priors)){
-        temp_priors[[i]] <- .set_prior_model_weight(temp_priors[[i]], temp_inference$prior_probs[i])
+        declaration <- prior_pair$declaration
+        declaration$model_indices <- as.integer(i)
+        temp_priors[[i]] <- .set_prior_model_probability(temp_priors[[i]], prior_pair$probabilities[i], prior_pair$logs[i], declaration)
       }
 
-      out[[temp_parameter]] <- .mix_posteriors.simple(fits, temp_priors, temp_parameter, temp_inference$post_probs, common_sample_seed, n_samples)
+      out[[temp_parameter]] <- .mix_posteriors.simple(fits, temp_priors, temp_parameter, temp_inference$post_probs, common_sample_seed, n_samples, posterior_pair = posterior_pair)
 
     }else{
       stop("The posterior samples cannot be mixed: unsupported mixture of prior distributions.")
     }
+    out[[temp_parameter]] <- .model_probability_mixed_measures(out[[temp_parameter]],
+      prior_pair, posterior_pair, temp_priors, temp_parameter)
 
     # the fitted coordinate and label parts of every column
     if(is.null(.bt_meta_get(out[[temp_parameter]], "quantities"))){
@@ -263,6 +288,7 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
         }), use.names = FALSE))
         records[[model]] <- list(prior_list = declared_priors, formula_scale = list(), required = character(),
           prior_probability = inference[[formula_owners[[1L]]]]$prior_probs[[model]],
+          prior_log_probability = attr(inference[[formula_owners[[1L]]]], "log_prior_probs", exact = TRUE)[[model]],
           condition_event = NULL, absent = TRUE, zero_coordinates = zero_columns,
           gate_plan = list(components = matrix(rep(1L, length(formula_owners)), nrow = 1L,
             dimnames = list(NULL, formula_owners)), probabilities = 1, index = 1L,
@@ -294,6 +320,7 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
         }), use.names = FALSE))
       }
       records[[model]]$prior_probability <- inference[[formula_owners[[1L]]]]$prior_probs[[model]]
+      records[[model]]$prior_log_probability <- attr(inference[[formula_owners[[1L]]]], "log_prior_probs", exact = TRUE)[[model]]
       requested <- which(model_index == model)
       block_rows <- match(row_index[requested], original_rows)
       if(anyNA(block_rows)) stop("Formula mixture draw rows do not belong to their eligible model population.", call. = FALSE)
@@ -302,9 +329,11 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
     columns <- unique(unlist(lapply(blocks, colnames), use.names = FALSE))
     values <- matrix(NA_real_, length(model_index), length(columns), dimnames = list(NULL, columns))
     for(model in seq_along(blocks)) values[model_index == model, colnames(blocks[[model]])] <- blocks[[model]]
-    state <- list(schema_version = 1L, models = records, model = as.integer(model_index),
+    state <- list(schema_version = 2L, models = records, model = as.integer(model_index),
       draw_index = as.integer(row_index), values = values,
-      posterior_model_probabilities = as.numeric(inference[[formula_owners[[1L]]]]$post_probs))
+      posterior_model_probabilities = as.numeric(inference[[formula_owners[[1L]]]]$post_probs),
+      posterior_log_model_probabilities = attr(inference[[formula_owners[[1L]]]], "log_post_probs", exact = TRUE))
+    attr(state, "model_probability_declaration") <- attr(inference[[formula_owners[[1L]]]], "model_probability_declaration", exact = TRUE)
     out <- .bt_formula_state_attach(out, state)
   }
   if(length(parameters)==1L && isTRUE(ordered_conditions[[parameters[[1L]]]]$has_nested_event)){
@@ -376,9 +405,13 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
   }
 
   reference <- as.numeric(inference[[parameters[[1L]]]][["post_probs"]])
+  reference_pair <- .model_probability_inference_get(inference[[parameters[[1L]]]], "posterior")
   for(parameter in parameters[-1L]){
     other <- as.numeric(inference[[parameter]][["post_probs"]])
-    if(!isTRUE(all.equal(reference, other, tolerance = 0, check.attributes = FALSE))){
+    other_pair <- .model_probability_inference_get(inference[[parameter]], "posterior")
+    if(!identical(reference_pair$logs, other_pair$logs) ||
+       !identical(reference_pair$declaration$model_indices, other_pair$declaration$model_indices) ||
+       !isTRUE(all.equal(reference, other, tolerance = 0, check.attributes = FALSE))){
       stop(
         "mix_posteriors() requires identical posterior model probabilities ",
         "across parameters so mixture draws stay aligned. Differing ",
@@ -428,7 +461,8 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
   prior
 }
 
-.mix_posteriors_validate_simplex_priors <- function(priors, parameter, prior_probs, post_probs){
+.mix_posteriors_validate_simplex_priors <- function(priors, parameter, prior_probs, post_probs,
+                                                  log_prior_probs = log(prior_probs), log_post_probs = log(post_probs)){
 
   simplex <- vapply(priors, .mix_posteriors_is_dirichlet_simplex, logical(1))
   if(!any(simplex)){
@@ -446,7 +480,7 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
     )
   }
 
-  contributing <- prior_probs > 0 | post_probs > 0
+  contributing <- is.finite(log_prior_probs) | is.finite(log_post_probs)
   missing <- vapply(priors, is.null, logical(1))
   if(any(missing & contributing)){
     stop(
@@ -483,13 +517,14 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
   priors
 }
 
-.mix_posteriors.simple         <- function(fits, priors, parameter, post_probs, seed = NULL, n_samples = 10000){
+.mix_posteriors.simple         <- function(fits, priors, parameter, post_probs, seed = NULL, n_samples = 10000, posterior_pair = NULL){
 
   # check input
   check_list(fits, "fits")
   check_list(priors, "priors", check_length = length(fits))
   check_char(parameter, "parameter")
   check_real(post_probs, "post_probs", lower = 0, upper = 1, check_length = length(fits))
+  if(is.null(posterior_pair)) posterior_pair <- .model_probability_pair(post_probs, log(post_probs), "posterior", "raw")
   check_real(seed, "seed", allow_NULL = TRUE)
   check_int(n_samples, "n_samples")
   if(!all(sapply(fits, inherits, what = "runjags") | sapply(fits, inherits, what = "stanfit") | sapply(fits, inherits, what = "null_model")))
@@ -568,7 +603,7 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
 
   samples <- unname(samples)
   samples <- .bt_meta_set(samples, "draw_index", draw_index)
-  samples <- .bt_draws_set_component(samples, model_component, "model")
+  samples <- .model_probability_component_set(samples, model_component, priors, post_probs, posterior_pair)
   attr(samples, "parameter")  <- parameter
   attr(samples, "prior_list") <- priors
   attr(samples, "interaction")       <- if(length(priors_info) == 0) FALSE else priors_info[["interaction"]]
@@ -579,6 +614,7 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
     .posterior_atoms_from_priors(
       priors,
       post_probs,
+      posterior_pair = posterior_pair,
       n_columns = 1L,
       column_names = parameter
     )
@@ -588,13 +624,14 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
   return(samples)
 }
 .mix_posteriors.vector         <- function(fits, priors, parameter, post_probs, seed = NULL, n_samples = 10000,
-                                           column_names = NULL){
+                                           column_names = NULL, posterior_pair = NULL){
 
   # check input
   check_list(fits, "fits")
   check_list(priors, "priors", check_length = length(fits))
   check_char(parameter, "parameter")
   check_real(post_probs, "post_probs", lower = 0, upper = 1, check_length = length(fits))
+  if(is.null(posterior_pair)) posterior_pair <- .model_probability_pair(post_probs, log(post_probs), "posterior", "raw")
   check_real(seed, "seed", allow_NULL = TRUE)
   check_int(n_samples, "n_samples")
   if(!all(sapply(fits, inherits, what = "runjags") | sapply(fits, inherits, what = "stanfit") | sapply(fits, inherits, what = "null_model")))
@@ -664,7 +701,7 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
   rownames(samples) <- NULL
   colnames(samples) <- if(is.null(column_names)) paste0(parameter,"[",1:K,"]") else column_names
   samples <- .bt_meta_set(samples, "draw_index", draw_index)
-  samples <- .bt_draws_set_component(samples, model_component, "model")
+  samples <- .model_probability_component_set(samples, model_component, priors, post_probs, posterior_pair)
   attr(samples, "parameter")  <- parameter
   attr(samples, "prior_list") <- priors
   samples <- .posterior_support_set_columns_from_prior_list(samples, priors)
@@ -673,6 +710,7 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
     .posterior_atoms_from_priors(
       priors,
       post_probs,
+      posterior_pair = posterior_pair,
       n_columns = K,
       column_names = colnames(samples)
     )
@@ -682,13 +720,14 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
   return(samples)
 }
 .mix_posteriors.factor         <- function(fits, priors, parameter, post_probs, seed = NULL, n_samples = 10000,
-                                           ordered_condition = NULL){
+                                           ordered_condition = NULL, posterior_pair = NULL){
 
   # check input
   check_list(fits, "fits")
   check_list(priors, "priors", check_length = length(fits))
   check_char(parameter, "parameter")
   check_real(post_probs, "post_probs", lower = 0, upper = 1, check_length = length(fits))
+  if(is.null(posterior_pair)) posterior_pair <- .model_probability_pair(post_probs, log(post_probs), "posterior", "raw")
   check_real(seed, "seed", allow_NULL = TRUE)
   check_int(n_samples, "n_samples")
   if(!all(sapply(fits, inherits, what = "runjags") | sapply(fits, inherits, what = "stanfit") | sapply(fits, inherits, what = "null_model")))
@@ -819,9 +858,10 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
     # coefficients `{j}`, never bracketed positions
     colnames(samples) <- .bt_label_prior_column_names(parameter, ordered_prior)
     samples <- .bt_meta_set(samples, "draw_index", draw_index)
-    samples <- .bt_draws_set_component(samples, model_component, "model")
+    samples <- .model_probability_component_set(samples, model_component, priors, post_probs, posterior_pair)
     samples <- .bt_meta_set(samples, "ordered_source",
-      .bt_ordered_source_new(parameter, source_models, source_samples, model_component, draw_index))
+      .bt_ordered_source_new(parameter, source_models, source_samples, model_component, draw_index,
+        posterior_pair = posterior_pair))
     attr(samples, "parameter")  <- parameter
     attr(samples, "prior_list") <- priors
     if(any(!is.na(total_indicator))){
@@ -833,7 +873,7 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
 
     if(levels == 1){
 
-      samples <- .mix_posteriors.simple(fits, priors, parameter, post_probs, seed, n_samples)
+      samples <- .mix_posteriors.simple(fits, priors, parameter, post_probs, seed, n_samples, posterior_pair = posterior_pair)
 
       draw_index <- .bt_meta_get(samples, "draw_index")
       model_component <- .bt_meta_get(samples, "component")
@@ -847,7 +887,7 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
         seed <- sample(666666, 1)
       }
 
-      samples <- lapply(1:levels, function(i) .mix_posteriors.simple(fits, priors, paste0(parameter, "[", i, "]"), post_probs, seed, n_samples))
+      samples <- lapply(1:levels, function(i) .mix_posteriors.simple(fits, priors, paste0(parameter, "[", i, "]"), post_probs, seed, n_samples, posterior_pair = posterior_pair))
 
       draw_index <- .bt_meta_get(samples[[1]], "draw_index")
       model_component <- .bt_meta_get(samples[[1]], "component")
@@ -863,7 +903,7 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
     factor_prior <- priors[vapply(priors, is.prior.factor, logical(1))][[1]]
     colnames(samples) <- .bt_label_prior_column_names(parameter, factor_prior)
     samples <- .bt_meta_set(samples, "draw_index", draw_index)
-    samples <- .bt_draws_set_component(samples, model_component, "model")
+    samples <- .model_probability_component_set(samples, model_component, priors, post_probs, posterior_pair)
     attr(samples, "parameter")  <- parameter
     attr(samples, "prior_list") <- priors
     class(samples) <- c("mixed_posteriors", "mixed_posteriors.factor", "mixed_posteriors.vector")
@@ -899,7 +939,7 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
     factor_prior <- priors[vapply(priors, is.prior.factor, logical(1))][[1]]
     colnames(samples) <- .bt_label_prior_column_names(parameter, factor_prior)
     samples <- .bt_meta_set(samples, "draw_index", draw_index)
-    samples <- .bt_draws_set_component(samples, model_component, "model")
+    samples <- .model_probability_component_set(samples, model_component, priors, post_probs, posterior_pair)
     attr(samples, "parameter")  <- parameter
     attr(samples, "prior_list") <- priors
     class(samples) <- c("mixed_posteriors", "mixed_posteriors.factor", "mixed_posteriors.vector")
@@ -915,7 +955,7 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
     factor_prior <- priors[vapply(priors, is.prior.factor, logical(1))][[1]]
     samples <- .mix_posteriors.vector(
       fits, priors, parameter, post_probs, seed, n_samples,
-      column_names = .bt_label_prior_column_names(parameter, factor_prior)
+      column_names = .bt_label_prior_column_names(parameter, factor_prior), posterior_pair = posterior_pair
     )
     class(samples) <- c(class(samples), "mixed_posteriors.factor")
 
@@ -957,8 +997,10 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
       post_probs,
       n_columns = ncol(samples),
       column_names = colnames(samples),
+      posterior_pair = posterior_pair,
       exclusion_probabilities = if(isTRUE(priors_info[["ordered"]])){
         .mix_posteriors_ordered_exclusion_probabilities(fits, priors, parameter, post_probs,
+          log_post_probs=if(!is.null(posterior_pair)) posterior_pair$logs else log(post_probs),
           eligible=if(!is.null(ordered_condition)) ordered_condition$eligible)
       }
     )
@@ -967,7 +1009,8 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
     samples <- .bt_ordered_source_semantics(samples,diag(ncol(samples)),colnames(samples))
     if(!is.null(ordered_condition)){
       source <- .bt_meta_get(samples,"ordered_source")
-      source$conditioning <- ordered_condition[c("prior_probs","post_probs","prior_fractions","posterior_fractions")]
+      source$conditioning <- ordered_condition[c("prior_probs","post_probs","log_prior_probs","log_post_probs","prior_fractions","prior_log_fractions","posterior_fractions")]
+      source$conditioning$model_probability_declaration <- list(prior=ordered_condition$prior$declaration,posterior=ordered_condition$posterior$declaration)
       samples <- .bt_meta_set(samples,"ordered_source",source)
       if(isTRUE(ordered_condition$has_nested_event)){
         samples <- .bt_meta_set(samples,"prior_context",.mix_posteriors_ordered_prior_context(
@@ -986,6 +1029,7 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
 
   eligible <- options <- vector("list",length(priors))
   posterior <- prior_probability <- numeric(length(priors))
+  prior_log_probability <- rep(-Inf, length(priors))
   nested <- FALSE
   for(i in seq_along(priors)){
     prior <- priors[[i]]
@@ -998,52 +1042,62 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
       mask <- .condition_event_posterior_mask(event,own,draws)
       options[[i]] <- .condition_event_model_options(own,event)
       prior_probability[[i]] <- options[[i]]$event_probability
+      prior_log_probability[[i]] <- options[[i]]$log_event_probability
     }else{
       mask <- rep(TRUE,nrow(draws))
-      options[[i]] <- list(prior_lists=list(setNames(list(prior),parameter)),weights=1,event_probability=1)
+      options[[i]] <- list(prior_lists=list(setNames(list(prior),parameter)),weights=1,log_weights=0,event_probability=1,log_event_probability=0)
       prior_probability[[i]] <- 1
+      prior_log_probability[[i]] <- 0
     }
     eligible[[i]] <- which(mask)
     posterior[[i]] <- mean(mask)
   }
-  post_weights <- inference$post_probs * posterior
-  prior_weights <- inference$prior_probs * prior_probability
-  if(!any(prior_weights>0)) stop("Conditional inference requires at least one non-null model.",call.=FALSE)
-  if(!any(post_weights>0)){
+  prior <- .model_probability_inference_get(inference, "prior")
+  post <- .model_probability_inference_get(inference, "posterior")
+  if(!any(is.finite(prior$logs) & is.finite(prior_log_probability))) stop("Conditional inference requires at least one non-null model.",call.=FALSE)
+  if(!any(is.finite(post$logs) & posterior > 0)){
     .bt_ordered_stop(paste0("The conditional posterior of '",parameter,
       "' is unavailable: no fitted draw lies in its declared inclusion event. Obtain more upstream posterior draws or use 'conditional = FALSE'."))
   }
+  prior <- .model_probability_condition(prior, prior_log_probability, "conditional_prior", prior_probability)
+  post <- .model_probability_condition(post, log(posterior), "conditional_posterior", posterior)
   list(eligible=eligible,prior_options=options,prior_fractions=prior_probability,
-    posterior_fractions=posterior,has_nested_event=nested,prior_probs=.model_averaging_prior_probs(prior_weights),
-    post_probs=.model_averaging_prior_probs(post_weights))
+    prior_log_fractions=prior_log_probability, posterior_fractions=posterior,has_nested_event=nested,
+    prior_probs=prior$probabilities, post_probs=post$probabilities,
+    log_prior_probs=prior$logs,log_post_probs=post$logs,prior=prior,posterior=post)
 }
 
 .mix_posteriors_ordered_prior_context <- function(priors, parameter, condition){
 
   prior_lists <- list()
   weights <- numeric()
+  log_weights <- numeric()
   for(i in seq_along(priors)){
     options <- condition$prior_options[[i]]
-    if(is.null(options) || condition$prior_probs[[i]]==0) next
+    if(is.null(options) || !is.finite(condition$log_prior_probs[[i]])) next
     prior_lists <- c(prior_lists,options$prior_lists)
     weights <- c(weights,condition$prior_probs[[i]] * options$weights)
+    log_weights <- c(log_weights,condition$log_prior_probs[[i]] + options$log_weights)
   }
   ordered <- priors[vapply(priors,is.prior.ordered,logical(1))][[1L]]
   event <- .condition_event(setNames(list(ordered),parameter),parameter)
-  structure(list(prior_list=setNames(list(priors),parameter),
+  pair <- .model_probability_prior(weights, log_weights, "conditional_prior")
+  structure(list(schema_version=2L,linear_weight_space="coefficient",prior_list=setNames(list(priors),parameter),
     column_names=.JAGS_prior_factor_names(parameter,ordered),formula_scale=NULL,transforms=list(),
     conditional=parameter,conditional_rule="AND",condition_event=event,condition_key=event$condition_key,
-    prior_lists=prior_lists,model_weights=weights,n_grid=.prior_linear_density_default_grid(),
+    prior_lists=prior_lists,model_weights=pair$probabilities,model_log_weights=pair$logs,
+    model_probability_declaration=pair$declaration,n_grid=.prior_linear_density_default_grid(),
     tail_prob=.prior_linear_density_tail_prob()),class="prior_density_conditional_context")
 }
 # Posterior probability that an ordered total (spike-and-slab, or a mixture
 # with point(0) components) is excluded within each model, from the fitted
 # total-prior indicator.
-.mix_posteriors_ordered_exclusion_probabilities <- function(fits, priors, parameter, post_probs,eligible=NULL){
+.mix_posteriors_ordered_exclusion_probabilities <- function(fits, priors, parameter, post_probs,eligible=NULL,
+                                                           log_post_probs=log(post_probs)){
 
   indicator_name <- paste0(.prior_ordered_total_name(parameter), "_indicator")
   vapply(seq_along(priors), function(i){
-    if(post_probs[i] <= 0 || !.mix_posteriors_ordered_total_has_indicator(priors[[i]])){
+    if(!is.finite(log_post_probs[i]) || !.mix_posteriors_ordered_total_has_indicator(priors[[i]])){
       return(0)
     }
     model_samples <- .extract_posterior_samples(fits[[i]], as_list = FALSE)
@@ -1075,13 +1129,14 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
     indicator_name, "'. Refit the model with this package version."
   )
 }
-.mix_posteriors.weightfunction <- function(fits, priors, parameter, post_probs, seed = NULL, n_samples = 10000){
+.mix_posteriors.weightfunction <- function(fits, priors, parameter, post_probs, seed = NULL, n_samples = 10000, posterior_pair = NULL){
 
   # check input
   check_list(fits, "fits")
   check_list(priors, "priors", check_length = length(fits))
   check_char(parameter, "parameter")
   check_real(post_probs, "post_probs", lower = 0, upper = 1, check_length = length(fits))
+  if(is.null(posterior_pair)) posterior_pair <- .model_probability_pair(post_probs, log(post_probs), "posterior", "raw")
   check_real(seed, "seed", allow_NULL = TRUE)
   check_int(n_samples, "n_samples")
   if(!all(sapply(fits, inherits, what = "runjags") | sapply(fits, inherits, what = "stanfit") | sapply(fits, inherits, what = "null_model")))
@@ -1144,7 +1199,7 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
   # each weight mixes different fitted coordinates across the models
   samples <- .bt_meta_set(samples, "quantities", .bt_verbatim_quantities(omega_names))
   samples <- .bt_meta_set(samples, "draw_index", draw_index)
-  samples <- .bt_draws_set_component(samples, model_component, "model")
+  samples <- .model_probability_component_set(samples, model_component, priors, post_probs, posterior_pair)
   attr(samples, "parameter")  <- parameter
   attr(samples, "prior_list") <- priors
   samples <- .posterior_support_set_weightfunction_columns(
@@ -1157,9 +1212,11 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
     .posterior_atoms_from_priors(
       priors,
       post_probs,
+      posterior_pair = posterior_pair,
       n_columns = ncol(samples),
       column_names = colnames(samples),
-      null_location = 1
+      null_location = 1,
+      point_locations = .model_probability_weightfunction_points(priors, omega_mapping, ncol(samples))
     )
   )
   class(samples) <- c("mixed_posteriors", "mixed_posteriors.weightfunction")

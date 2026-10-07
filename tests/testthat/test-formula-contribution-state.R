@@ -339,6 +339,47 @@ test_that("multiple prefixes use one original fitted snapshot", {
   .bt_attach_fit_contract(.bt_attach_draw_geometry(out))
 }
 
+test_that("formula model ownership retains unrepresentable prior probabilities", {
+  fit1 <- .formula_state_runjags_transport(.formula_state_test_fit())
+  fit2 <- .formula_state_runjags_transport(.formula_state_test_fit(extra_priors = list(sigma = prior("point", list(0))),
+    values = cbind(mu_intercept = c(5, 5), mu_x = c(2, 2), sigma = c(0, 0))))
+  models <- list(list(fit = fit1, marglik = bridgesampling_object(1000), prior_weights = 1e-300),
+    list(fit = fit2, marglik = bridgesampling_object(0), prior_weights = 1e100))
+  mixed <- mix_posteriors(models, c("mu_intercept", "mu_x"),
+    list(c(FALSE, FALSE), c(FALSE, FALSE)), seed = 73, n_samples = 20)
+  state <- .bt_meta_get(mixed, "formula_state")
+  expect_identical(state$schema_version, 2L)
+  expect_true(is.finite(state$models[[1L]]$prior_log_probability))
+  expect_true(all(is.finite(state$posterior_log_model_probabilities)))
+  expect_null(.bt_formula_state_validate(state))
+  rows <- marginal_posterior(mixed, "mu_intercept", ~ x, list(x = 1), prior_samples = FALSE)
+  row <- rows$intercept
+  expect_true(all(is.finite(row)))
+  condition <- tryCatch(.bt_formula_measure_check(row, "prior_density"), error = identity)
+  expect_s3_class(condition, "BayesTools_formula_measure_unavailable")
+  expect_identical(condition$reason, "numerical_model_probability_unavailable")
+  expect_identical(condition$diagnostics$model_indices, 1:2)
+  expect_equal(condition$diagnostics$log_prior_probabilities, c(-400 * log(10), 0), tolerance = 1e-12)
+  old <- state
+  old$schema_version <- 1L
+  expect_match(.bt_formula_state_validate(old), "versioned formula state")
+  malformed <- state
+  malformed$models[[1L]]$prior_log_probability <- -10
+  expect_error(.bt_formula_state_validate(malformed), "ownership")
+})
+
+test_that("equal compiled point contribution laws do not require representable model weights", {
+  fit <- .formula_state_runjags_transport(.formula_state_test_fit(multiplier = NULL, extra_priors = list(),
+    values = cbind(mu_intercept = c(5, 5), mu_x = c(2, 2))))
+  models <- list(list(fit = fit, marglik = bridgesampling_object(0), prior_weights = 1e-300),
+    list(fit = fit, marglik = bridgesampling_object(0), prior_weights = 1e100))
+  mixed <- mix_posteriors(models, c("mu_intercept", "mu_x"), list(c(FALSE, FALSE), c(FALSE, FALSE)), seed = 47, n_samples = 20)
+  row <- marginal_posterior(mixed, "mu_intercept", ~ x, list(x = 1), prior_samples = TRUE)$intercept
+  expect_true(all(as.numeric(row) == 7))
+  expect_identical(prior_density_ordinate(posterior_metadata(row, "prior_density"), 7)$behavior, "point_mass")
+  expect_identical(posterior_metadata(row, "atoms")$mass, 1)
+})
+
 test_that("positive posterior models without selected rows keep their atoms", {
 
   fit1 <- .formula_state_runjags_transport(.formula_state_test_fit())

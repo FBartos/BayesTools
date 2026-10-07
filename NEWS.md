@@ -1,4 +1,8 @@
 # version 0.3.1
+- outer model inference retains original logarithmic odds across normalization, evidence offsets, conditioning and failure policies; ordinary numeric probabilities and seeded allocations keep their existing route when safe.
+- mixed draws and formula/ordered owners retain scientifically positive models even when displayed probabilities round to zero. Unrepresentable prior or atom laws refuse explicitly with structured model/log diagnostics while usable draws, independently known support and valid siblings remain available. Declared event-option products are combined before natural underflow; old probability-owner formats require recomputation/refitting.
+- prior plots check model ownership before omission or sampled fallback; measure-refusal diagnostics survive supported subsets, linear/output transforms and marginal views.
+- complete fixed weightfunction declarations retain mapped joint point atoms, including exact equal-location aggregation before numeric mass rounding. Ordered projections without rows retain only laws certified by their existing declarations and otherwise mark the requested measure unavailable.
 - named BF slicing aligns all producer metadata with visible rows, double-bracket replacement invalidates hidden logs, and finite-log positive bounds keep truthful endpoints after numeric underflow.
 - static subnormal coefficient ratio weights use bounded value-aware arithmetic, including declared fixed targets; affected uncertified continuous laws remain explicitly unavailable while usable draws and certified point/sibling laws are retained.
 - optional ordered contribution replay declines lost multiplier folds; logged formula levels retain their conservative nonlinear joint-prior marker.

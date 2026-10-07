@@ -82,7 +82,7 @@
   do.call(cbind, sources)
 }
 
-.bt_ordered_source_new <- function(parameter, models, sources, model, draw_index){
+.bt_ordered_source_new <- function(parameter, models, sources, model, draw_index, posterior_pair = NULL){
 
   columns <- unique(unlist(lapply(sources, colnames), use.names = FALSE))
   values <- matrix(NA_real_, length(model), length(columns), dimnames = list(NULL, columns))
@@ -92,20 +92,33 @@
     source <- sources[[i]]
     values[rows, colnames(source)] <- source
   }
-  structure(list(version = 1L, parameter = parameter, models = models,
-    model = as.integer(model), draw_index = as.integer(draw_index), primitives = values),
+  if(is.null(posterior_pair)){
+    if(length(models) != 1L) stop("Ordered model probabilities require an explicit producer owner.", call. = FALSE)
+    posterior_pair <- .model_probability_pair(1, 0, "posterior", "ordinary")
+  }
+  .model_probability_validate(posterior_pair$probabilities, posterior_pair$logs, posterior_pair$declaration)
+  structure(list(version = 2L, parameter = parameter, models = models,
+    model = as.integer(model), draw_index = as.integer(draw_index), primitives = values,
+    model_probabilities = posterior_pair$probabilities, model_log_probabilities = posterior_pair$logs,
+    model_probability_declaration = posterior_pair$declaration),
     class = c("BayesTools_ordered_source", "list"))
 }
 
 .bt_ordered_source_validate <- function(value){
 
   if(!inherits(value, "BayesTools_ordered_source") || !is.list(value) ||
-     !identical(value$version, 1L) || !is.character(value$parameter) || length(value$parameter) != 1L ||
+     !identical(value$version, 2L) || !is.character(value$parameter) || length(value$parameter) != 1L ||
      !is.list(value$models) || !.bt_meta_is_index(value$model) || !.bt_meta_is_index(value$draw_index) ||
      any(value$model > length(value$models)) || !is.matrix(value$primitives) || !is.numeric(value$primitives) ||
      is.null(colnames(value$primitives)) || anyDuplicated(colnames(value$primitives)) ||
      length(value$model) != nrow(value$primitives) || length(value$draw_index) != nrow(value$primitives)){
     return("it must contain validated row-aligned ordered primitive sources and model provenance")
+  }
+  .model_probability_validate(value$model_probabilities, value$model_log_probabilities, value$model_probability_declaration, normalized = TRUE)
+  if(!is.null(value$conditioning)){
+    declaration <- value$conditioning$model_probability_declaration
+    .model_probability_validate(value$conditioning$prior_probs,value$conditioning$log_prior_probs,declaration$prior)
+    .model_probability_validate(value$conditioning$post_probs,value$conditioning$log_post_probs,declaration$posterior)
   }
   for(i in seq_along(value$models)){
     spec <- value$models[[i]]

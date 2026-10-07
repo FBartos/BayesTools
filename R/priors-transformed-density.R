@@ -46,6 +46,7 @@
 
   out <- list()
   unavailable <- NULL
+  unavailable_holder <- list()
   for(parameter in prior_columns){
     density <- entry$densities[[parameter]]
     if(is.null(density)){
@@ -58,8 +59,10 @@
         tail_prob    = tail_prob
       ), BayesTools_formula_measure_unavailable = function(e) e)
       if(inherits(density, "BayesTools_formula_measure_unavailable")){
-        unavailable <- rbind(unavailable, data.frame(column = parameter,
-          measure = "prior_density", reason = density$reason, stringsAsFactors = FALSE))
+        unavailable_holder <- .bt_formula_measure_mark(unavailable_holder, parameter, "prior_density",
+          if(is.null(density$detail)) conditionMessage(density) else density$detail,
+          cause = density$reason, diagnostics = density$diagnostics)
+        unavailable <- .bt_meta_get(unavailable_holder, "measure_unavailable")
         out[parameter] <- list(NULL)
         next
       }

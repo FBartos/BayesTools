@@ -1,6 +1,8 @@
 .bt_formula_context_check <- function(context){
 
-  if(!identical(context$schema_version, 1L) ||
+  expected_version <- if(inherits(context, "prior_density_model_mixture_context") ||
+    inherits(context, "prior_density_conditional_context")) 2L else 1L
+  if(!identical(context$schema_version, expected_version) ||
      !is.character(context$linear_weight_space) || length(context$linear_weight_space) != 1L ||
      is.na(context$linear_weight_space) ||
      !context$linear_weight_space %in% c("coefficient", "formula_contribution")){
@@ -198,24 +200,31 @@
   check_list(prior_list, "prior_list")
   check_char(column_names, "column_names", check_length = FALSE)
 
-  prior_weights <- do.call(cbind, lapply(prior_list, function(parameter_priors){
-    if(is.prior(parameter_priors)){
-      return(.prior_model_weight(parameter_priors))
-    }
-    sapply(parameter_priors, .prior_model_weight)
-  }))
+  model_priors <- lapply(prior_list, function(parameter_priors){
+    if(is.prior(parameter_priors)) list(parameter_priors) else parameter_priors
+  })
+  pairs <- lapply(model_priors, .prior_model_probability_pair)
+  prior_weights <- do.call(cbind, lapply(model_priors, function(priors) vapply(priors, .prior_model_weight, numeric(1))))
+  prior_logs <- lapply(model_priors, function(priors) vapply(priors, .prior_model_log_weight, numeric(1)))
 
   if(!all(prior_weights[, 1] == prior_weights)){
     stop("The model prior distributions are not aligned across parameters.", call. = FALSE)
   }
+  if(!all(vapply(prior_logs, identical, logical(1), prior_logs[[1L]])) ||
+     !all(vapply(pairs, function(pair){
+    identical(pair$logs, pairs[[1L]]$logs) && identical(pair$declaration$model_indices, pairs[[1L]]$declaration$model_indices)
+  }, logical(1)))) stop("The model prior log probabilities are not aligned across parameters.", call. = FALSE)
 
-  model_weights <- prior_weights[, 1]
-  model_weights <- model_weights / sum(model_weights)
+  pair <- pairs[[1L]]
 
   out <- list(
+    schema_version = 2L,
+    linear_weight_space = "coefficient",
     prior_list   = prior_list,
     column_names = column_names,
-    model_weights = model_weights,
+    model_weights = pair$probabilities,
+    model_log_weights = pair$logs,
+    model_probability_declaration = pair$declaration,
     n_grid       = n_grid,
     tail_prob    = tail_prob
   )
@@ -273,12 +282,22 @@
 
   parent_attributes <- attributes(parent)
   skip <- c("class", "names", "components", "prior_weights", "inclusion_prior")
+  child_owner <- attr(component, "model_probability_declaration", exact = TRUE)
+  parent_owner <- attr(parent, "model_probability_declaration", exact = TRUE)
+  skip <- c(skip, "model_prior_weights", "model_log_prior_weights", "model_probability_declaration")
 
   for(attribute in setdiff(names(parent_attributes), skip)){
     if(is.null(attr(component, attribute, exact = TRUE))){
       attr(component, attribute) <- parent_attributes[[attribute]]
     }
   }
+  if(is.null(child_owner) && !is.null(parent_owner)) component <- .set_prior_model_probability(
+    component, .prior_model_weight(parent), .prior_model_log_weight(parent), parent_owner)
+  if(is.null(child_owner) && is.null(parent_owner) &&
+     !is.null(attr(parent, "model_prior_weights", exact = TRUE))){
+    attr(component, "model_prior_weights") <- attr(parent, "model_prior_weights", exact = TRUE)
+  }
+  if(!is.null(child_owner)) .prior_model_weight(component)
 
   component
 }
@@ -319,6 +338,7 @@
   if(is.null(condition_models)){
     return(.prior_density_context(prior_list, column_names, formula_scale, n_grid, tail_prob))
   }
+  if(length(condition_models$prior_lists) == 0L) stop("No prior models remain after applying the conditional event.", call. = FALSE)
 
   # The coefficient transformations depend only on the formula scaling, not on
   # the conditioning event.
@@ -329,7 +349,7 @@
   }
 
   out <- list(
-    schema_version = 1L,
+    schema_version = 2L,
     linear_weight_space = "coefficient",
     prior_list      = prior_list,
     column_names    = column_names,
@@ -341,6 +361,8 @@
     condition_key   = condition_event[["condition_key"]],
     prior_lists     = condition_models$prior_lists,
     model_weights   = condition_models$weights,
+    model_log_weights = condition_models$log_weights,
+    model_probability_declaration = condition_models$model_probability_declaration,
     n_grid          = n_grid,
     tail_prob       = tail_prob
   )
@@ -500,6 +522,8 @@
                                         output_transformation_arguments = NULL,
                                         .record_evaluation = TRUE){
 
+  .model_probability_context_validate(context)
+  .model_probability_context_measure_check(context, weights)
   if(inherits(context, "prior_density_context")){
     out <- .prior_density_context_density(
       context                         = context,
@@ -561,6 +585,10 @@
                                               output_transformation_arguments = NULL,
                                               .record_evaluation = TRUE){
 
+  .model_probability_context_validate(context)
+  if(inherits(context, "prior_density_model_mixture_context") || inherits(context, "prior_density_conditional_context")){
+    .bt_formula_context_check(context)
+  }
   if(is.null(dim(weights))){
     return(.prior_density_from_context(
       context                         = context,

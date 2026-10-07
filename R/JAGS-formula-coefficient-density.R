@@ -1487,10 +1487,15 @@ JAGS_formula_prior_density <- function(
   if(!is.null(gate_plan)) gate_plan$draw_index <- as.integer(draw_index)
   record <- list(prior_list = record_priors, declaration_priors = priors[declaration_owners], formula_scale = scales,
     required = required, gate_plan = gate_plan, eligible_n = nrow(values), prior_probability = 1,
+    prior_log_probability = 0,
     condition_event = condition_event)
-  state <- list(schema_version = 1L, models = list(record),
+  state <- list(schema_version = 2L, models = list(record),
     model = rep(1L, nrow(values)), draw_index = as.integer(draw_index),
-    values = values[, required, drop = FALSE], posterior_model_probabilities = 1)
+    values = values[, required, drop = FALSE], posterior_model_probabilities = 1,
+    posterior_log_model_probabilities = 0)
+  attr(state, "model_probability_declaration") <- list(
+    prior = .model_probability_pair(1, 0, "prior", "ordinary")$declaration,
+    posterior = .model_probability_pair(1, 0, "posterior", "ordinary")$declaration)
   reason <- .bt_formula_state_validate(state)
   if(!is.null(reason)) stop(reason, call. = FALSE)
   state
@@ -1730,10 +1735,23 @@ JAGS_formula_prior_density <- function(
                                                prior_samples = FALSE, n_grid = .prior_linear_density_default_grid(),
                                                coefficient = NULL, original = FALSE, prior_density = NULL){
 
+  reason <- .bt_formula_state_validate(state)
+  if(!is.null(reason)) stop(reason, call. = FALSE)
+  declarations <- attr(state, "model_probability_declaration", exact = TRUE)
+  prior_pair <- list(probabilities = vapply(state$models, `[[`, numeric(1), "prior_probability"),
+    logs = vapply(state$models, `[[`, numeric(1), "prior_log_probability"), declaration = declarations$prior)
+  posterior_pair <- list(probabilities = state$posterior_model_probabilities,
+    logs = state$posterior_log_model_probabilities, declaration = declarations$posterior)
   laws <- model_supports <- model_atoms <- row_weights <- vector("list", length(state$models))
   prior_available <- atoms_available <- support_available <- TRUE
   prior_reason <- atom_reason <- support_reason <- "unsupported_contribution_measure"
   prior_cause <- atom_cause <- support_cause <- NULL
+  prior_diagnostics <- atom_diagnostics <- support_diagnostics <- NULL
+  prior_refusal <- tryCatch(.model_probability_measure_stop(prior_pair),
+    BayesTools_formula_measure_unavailable = function(condition) condition)
+  model_prior_available <- !inherits(prior_refusal, "BayesTools_formula_measure_unavailable")
+  point_declarations <- vector("list", length(state$models))
+  continuous <- FALSE
   component_supports <- list()
   component_keys <- list()
   n_rows <- if(is.null(coefficient)) nrow(data) else 1L
@@ -1759,8 +1777,8 @@ JAGS_formula_prior_density <- function(
       recipe <- transform$prior_recipes[[coefficient]]
       if(is.null(recipe)) stop("Unknown coefficient measure target.", call. = FALSE)
       if(identical(recipe$type, "unavailable")){
-        if(record$prior_probability > 0){ prior_available <- FALSE; prior_reason <- recipe$reason }
-        if(state$posterior_model_probabilities[[model]] > 0){
+        if(is.finite(record$prior_log_probability)){ prior_available <- FALSE; prior_reason <- recipe$reason }
+        if(is.finite(state$posterior_log_model_probabilities[[model]])){
           atoms_available <- support_available <- FALSE
           atom_reason <- support_reason <- recipe$reason
         }
@@ -1790,41 +1808,47 @@ JAGS_formula_prior_density <- function(
       BayesTools_formula_measure_unavailable = function(e) e)
     if(inherits(context, "BayesTools_formula_measure_unavailable")){
       detail <- if(is.null(context$detail)) conditionMessage(context) else context$detail
-      if(record$prior_probability > 0){
+      if(is.finite(record$prior_log_probability)){
         prior_available <- FALSE
         prior_reason <- detail
         prior_cause <- context$reason
+        prior_diagnostics <- context$diagnostics
       }
-      if(state$posterior_model_probabilities[[model]] > 0){
+      if(is.finite(state$posterior_log_model_probabilities[[model]])){
         atoms_available <- support_available <- FALSE
         atom_reason <- support_reason <- detail
         atom_cause <- support_cause <- context$reason
+        atom_diagnostics <- support_diagnostics <- context$diagnostics
       }
       next
     }
     routes <- lapply(seq_len(nrow(weights)), function(row){
       build_route(context, row)
     })
+    point_certificates <- lapply(routes, .bt_formula_route_atom_certificate)
+    point_model <- all(vapply(point_certificates, function(certificate) identical(certificate$type, "point"), logical(1)))
+    if(point_model) point_declarations[[model]] <- vapply(point_certificates, `[[`, numeric(1), "location")
     numerical_reasons <- Filter(Negate(is.null), lapply(routes, .bt_formula_route_numerical_scale_reason))
-    if(record$prior_probability > 0 && length(numerical_reasons)){
+    if(is.finite(record$prior_log_probability) && length(numerical_reasons)){
       prior_available <- FALSE
       prior_reason <- numerical_reasons[[1L]]
       prior_cause <- "numerical_scale_unavailable"
-    }else if(record$prior_probability > 0 && any(vapply(routes, function(route) identical(route$type, "unknown"), logical(1)))){
+    }else if(is.finite(record$prior_log_probability) && any(vapply(routes, function(route) identical(route$type, "unknown"), logical(1)))){
       prior_available <- FALSE
-    }else if(prior_samples && record$prior_probability > 0){
+    }else if(prior_samples && prior_available && is.finite(record$prior_log_probability) &&
+             (model_prior_available || point_model)){
       laws[[model]] <- if(length(state$models) == 1L && !is.null(prior_density)) prior_density else
         .prior_density_from_context_rows(context, weights, source_transforms = source_transforms,
           output_transformation = output_transform)
     }
-    if(state$posterior_model_probabilities[[model]] <= 0) next
+    if(!is.finite(state$posterior_log_model_probabilities[[model]])) next
     plan <- record$gate_plan
     if(is.null(plan)){
       atoms_available <- support_available <- FALSE
       atom_reason <- support_reason <- "missing_joint_component_states"
       next
     }
-    locations <- masses <- numeric()
+    locations <- masses <- log_masses <- numeric()
     supports <- list()
     for(component in which(plan$probabilities > 0)){
       this_component_supports <- list()
@@ -1842,9 +1866,12 @@ JAGS_formula_prior_density <- function(
         }
         certificate <- .bt_formula_route_atom_certificate(route)
         if(identical(certificate$type, "unavailable")) atoms_available <- FALSE
+        if(identical(certificate$type, "atom_free")) continuous <- TRUE
         if(identical(certificate$type, "point")){
           locations <- c(locations, certificate$location)
           masses <- c(masses, state$posterior_model_probabilities[[model]] * plan$probabilities[[component]] / nrow(weights))
+          log_masses <- c(log_masses, state$posterior_log_model_probabilities[[model]] +
+            log(plan$probabilities[[component]]) - log(nrow(weights)))
         }
         support <- .bt_formula_route_support(route)
         if(is.null(support)) support_available <- FALSE else{
@@ -1868,14 +1895,23 @@ JAGS_formula_prior_density <- function(
         component_index[output_rows] <- global_component
       }
     }
-    model_atoms[[model]] <- data.frame(x = locations, mass = masses)
+    model_atoms[[model]] <- data.frame(x = locations, mass = masses, log_mass = log_masses)
     if(length(supports)) model_supports[[model]] <- .posterior_support_union(supports, source = "formula_contribution")
+  }
+  declared_points <- point_declarations[is.finite(prior_pair$logs)]
+  point_law <- length(declared_points) > 0L && !any(vapply(declared_points, is.null, logical(1))) &&
+    all(vapply(declared_points, identical, logical(1), declared_points[[1L]]))
+  if(!model_prior_available && !point_law){
+    prior_available <- FALSE
+    prior_reason <- prior_refusal$detail
+    prior_cause <- prior_refusal$reason
+    prior_diagnostics <- prior_refusal$diagnostics
   }
   marginal <- .bt_meta_assign(marginal, list(support = NULL, atoms = NULL, components = NULL,
     prior_density = NULL, prior_context = NULL, linear_weights = NULL, linear_weight_space = NULL,
     joint_prior_transformation = NULL))
   if(prior_available && prior_samples){
-    positive <- which(vapply(state$models, function(record) record$prior_probability > 0, logical(1)))
+    positive <- which(vapply(state$models, function(record) is.finite(record$prior_log_probability), logical(1)))
     probabilities <- vapply(state$models[positive], `[[`, numeric(1), "prior_probability")
     probabilities <- probabilities / sum(probabilities)
     dx <- min(vapply(laws[positive], function(law){
@@ -1887,17 +1923,28 @@ JAGS_formula_prior_density <- function(
     if(length(positive) > 1L) attr(law, "adaptive_evaluation") <- list(kind = "density_mixture",
       arguments = list(dists = laws[positive], weights = probabilities, n_grid = n_grid))
     marginal <- .bt_meta_set(marginal, "prior_density", law)
-  }else if(!prior_available) marginal <- .bt_formula_measure_mark(marginal, column, "prior_density", prior_reason, cause = prior_cause)
+  }else if(!prior_available) marginal <- .bt_formula_measure_mark(marginal, column, "prior_density", prior_reason, cause = prior_cause, diagnostics = prior_diagnostics)
   if(atoms_available){
-    points <- .posterior_atoms_point_mass_table(do.call(rbind, model_atoms))
-    atoms <- .posterior_atoms_new(locations = matrix(points$x, ncol = 1L), mass = points$mass,
-      column_names = column, source = "formula_joint_component_frequencies")
-    marginal <- .posterior_atoms_set(marginal, atoms)
-  }else marginal <- .bt_formula_measure_mark(marginal, column, "atoms", atom_reason, cause = atom_cause)
+    points <- .model_probability_atom_table(do.call(rbind, model_atoms), continuous, posterior_pair)
+    if(inherits(points, "BayesTools_formula_measure_unavailable")){
+      atoms_available <- FALSE
+      atom_reason <- conditionMessage(points)
+      atom_cause <- points$reason
+      atom_diagnostics <- points$diagnostics
+    }else{
+      atoms <- .posterior_atoms_new(locations = matrix(points$x, ncol = 1L), mass = points$mass,
+        column_names = column, source = "formula_joint_component_frequencies",
+        component_probabilities = posterior_pair$probabilities,
+        component_log_probabilities = posterior_pair$logs, model_probability_declaration = posterior_pair$declaration)
+      marginal <- .posterior_atoms_set(marginal, atoms)
+    }
+  }
+  if(!atoms_available) marginal <- .bt_formula_measure_mark(marginal, column, "atoms", atom_reason, cause = atom_cause, diagnostics = atom_diagnostics)
   if(support_available){
     marginal <- .posterior_support_set(marginal, .posterior_support_union(
-      model_supports[state$posterior_model_probabilities > 0], source = "formula_contribution"))
-  }else marginal <- .bt_formula_measure_mark(marginal, column, "support", support_reason, cause = support_cause)
+      model_supports[is.finite(state$posterior_log_model_probabilities)], source = "formula_contribution"))
+  }else marginal <- .bt_formula_measure_mark(marginal, column, "support", support_reason, cause = support_cause, diagnostics = support_diagnostics)
+  marginal <- .bt_meta_set(marginal, "model_probabilities", list(prior = prior_pair, posterior = posterior_pair))
   if(!anyNA(component_index) && length(component_supports) &&
      (length(state$models) > 1L || any(vapply(state$models, function(record){
        any(vapply(record$prior_list, .posterior_components_is_mixture, logical(1)))
@@ -1938,4 +1985,5 @@ JAGS_formula_prior_density <- function(
 
 .bt_formula_measure_causes <- c("state_dependent_map", "nonlinear_map",
   "incompatible_prior_recipes", "missing_multiplier_law", "numerical_scale_unavailable",
-  "structural_target_law_unavailable", "unsupported_contribution_measure")
+  "structural_target_law_unavailable", "unsupported_contribution_measure",
+  "numerical_model_probability_unavailable")

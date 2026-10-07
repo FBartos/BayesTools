@@ -376,6 +376,7 @@
 
   # extract the relevant data
   samples    <- samples[[parameter]]
+  .bt_formula_measure_check(samples, "atoms")
   .bt_ordered_source_require_measure(samples)
   prior_list <- attr(samples, "prior_list")
   posterior_density <- .posterior_density_for_method(.bt_meta_get(samples, "posterior_density"), density_method)

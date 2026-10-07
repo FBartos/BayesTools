@@ -941,6 +941,8 @@
 .prior_density_route_context <- function(context, weights, source_transforms,
                                          transformation, transformation_arguments){
 
+  .model_probability_context_validate(context)
+  .model_probability_context_measure_check(context, weights)
   if(inherits(context, "prior_density_context")){
     standardized <- .prior_density_context_standardized_weights(context, weights, source_transforms)
     if(!is.null(source_transforms)){

@@ -1217,6 +1217,7 @@ test_that("marginal_posterior propagates exact scalar support from mixed samples
   theta <- seq(.001, .999, length.out = 101)
   class(theta) <- c("mixed_posteriors", "mixed_posteriors.simple", class(theta))
   theta <- .bt_meta_set(theta, "draw_index", seq_along(theta))
+  theta <- attach_test_model_probabilities(theta, 1)
   theta <- .bt_draws_set_component(theta, source = "model", component = rep(1, length(theta)))
   attr(theta, "parameter") <- "theta"
   attr(theta, "prior_list") <- theta_prior
@@ -1293,6 +1294,7 @@ test_that("marginal_posterior preserves an attached simple prior density", {
   theta <- seq(.1, .9, length.out = 101)
   class(theta) <- c("mixed_posteriors", "mixed_posteriors.simple", class(theta))
   theta <- .bt_meta_set(theta, "draw_index", seq_along(theta))
+  theta <- attach_test_model_probabilities(theta, 1)
   theta <- .bt_draws_set_component(theta, source = "model", component = rep(1, length(theta)))
   attr(theta, "parameter")  <- "theta"
   attr(theta, "prior_list") <- prior_none()
@@ -1332,6 +1334,7 @@ test_that("marginal_posterior infers support from the current prior context", {
   theta <- seq(11, 19, length.out = 51)
   class(theta) <- c("mixed_posteriors", "mixed_posteriors.simple", class(theta))
   theta <- .bt_meta_set(theta, "draw_index", seq_along(theta))
+  theta <- attach_test_model_probabilities(theta, 1)
   theta <- .bt_draws_set_component(theta, source = "model", component = rep(1, length(theta)))
   attr(theta, "parameter") <- "theta"
   attr(theta, "prior_list") <- raw_prior
@@ -1369,6 +1372,7 @@ test_that("marginal_posterior rebuilds conditional context for support", {
   theta <- seq(11, 19, length.out = 51)
   class(theta) <- c("mixed_posteriors", "mixed_posteriors.simple", class(theta))
   theta <- .bt_meta_set(theta, "draw_index", seq_along(theta))
+  theta <- attach_test_model_probabilities(theta, 1)
   theta <- .bt_draws_set_component(theta, source = "model", component = rep(1, length(theta)))
   attr(theta, "parameter") <- "theta"
   attr(theta, "prior_list") <- theta_prior
@@ -1495,6 +1499,7 @@ test_that("formula marginal support is propagated without prior densities", {
     class(theta)
   )
   theta <- .bt_meta_set(theta, "draw_index", seq_along(theta))
+  theta <- attach_test_model_probabilities(theta, 1)
   theta <- .bt_draws_set_component(theta, source = "model", component = rep(1, length(theta)))
   attr(theta, "parameter") <- "mu_x"
   theta <- .bt_meta_set(theta, "formula_parameter", "mu")
@@ -1543,6 +1548,7 @@ test_that("formula marginal_posterior attaches matched top-level precomputed met
     class(mu_intercept)
   )
   mu_intercept <- .bt_meta_set(mu_intercept, "draw_index", seq_along(mu_intercept))
+  mu_intercept <- attach_test_model_probabilities(mu_intercept, 1)
   mu_intercept <- .bt_draws_set_component(mu_intercept, source = "model", component = rep(1, length(mu_intercept)))
   attr(mu_intercept, "parameter") <- "mu_intercept"
   mu_intercept <- .bt_meta_set(mu_intercept, "formula_parameter", "mu")
@@ -1556,6 +1562,7 @@ test_that("formula marginal_posterior attaches matched top-level precomputed met
     class(mu_x)
   )
   mu_x <- .bt_meta_set(mu_x, "draw_index", seq_along(mu_x))
+  mu_x <- attach_test_model_probabilities(mu_x, 1)
   mu_x <- .bt_draws_set_component(mu_x, source = "model", component = rep(1, length(mu_x)))
   attr(mu_x, "parameter") <- "mu_x"
   mu_x <- .bt_meta_set(mu_x, "formula_parameter", "mu")

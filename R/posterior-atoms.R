@@ -139,7 +139,9 @@ posterior_atoms_free <- function(x){
                                  source = "structural",
                                  declared = TRUE,
                                  component_probabilities = NULL,
-                                 marginals = NULL){
+                                 marginals = NULL,
+                                 component_log_probabilities = NULL,
+                                 model_probability_declaration = NULL){
 
   if(is.null(locations)){
     n_columns <- if(is.null(column_names)) 1L else length(column_names)
@@ -173,7 +175,9 @@ posterior_atoms_free <- function(x){
       stop("Posterior component probabilities must have positive total mass.",
            call. = FALSE)
     }
-    component_probabilities <- component_probabilities / probability_sum
+    if(is.null(model_probability_declaration) && is.null(component_log_probabilities)){
+      component_probabilities <- component_probabilities / probability_sum
+    }else .model_probability_validate(component_probabilities, component_log_probabilities, model_probability_declaration)
   }
   if(!is.null(column_names)){
     if(length(column_names) != ncol(locations)){
@@ -205,6 +209,10 @@ posterior_atoms_free <- function(x){
     component_probabilities = component_probabilities
   )
   if(!is.null(marginals)) out$marginals <- marginals
+  if(!is.null(model_probability_declaration) || !is.null(component_log_probabilities)){
+    out$component_log_probabilities <- component_log_probabilities
+    out$model_probability_declaration <- model_probability_declaration
+  }
   class(out) <- c("BayesTools_posterior_atoms", "list")
   out
 }
@@ -228,6 +236,8 @@ posterior_atoms_free <- function(x){
     source = if(is.null(atoms$source)) "unknown" else atoms$source,
     declared = TRUE,
     component_probabilities = atoms$component_probabilities,
+    component_log_probabilities = atoms$component_log_probabilities,
+    model_probability_declaration = atoms$model_probability_declaration,
     marginals = atoms$marginals
   )
 }
@@ -355,7 +365,7 @@ posterior_atoms_free <- function(x){
                                          column_names = NULL,
                                          source = "model_probabilities",
                                          null_location = NULL,
-                                         exclusion_probabilities = NULL){
+                                         exclusion_probabilities = NULL, posterior_pair = NULL, point_locations = NULL){
 
   if(is.prior(priors) && length(probabilities) == 1L){
     priors <- list(priors)
@@ -373,13 +383,25 @@ posterior_atoms_free <- function(x){
          call. = FALSE)
   }
 
+  if(!is.null(point_locations) && (length(point_locations) != length(priors) ||
+     !all(vapply(point_locations, function(location){
+       is.null(location) || (is.numeric(location) && length(location) == n_columns && all(is.finite(location)))
+     }, logical(1))))){
+    stop("Declared model point locations must align with every model and target column.", call. = FALSE)
+  }
+  if(!is.null(posterior_pair)) return(tryCatch(
+    .model_probability_prior_atoms(priors, posterior_pair, n_columns, column_names,
+      source, null_location, exclusion_probabilities, point_locations),
+    BayesTools_formula_measure_unavailable = function(condition) condition))
+
   locations <- matrix(numeric(), nrow = 0L, ncol = n_columns)
   masses <- numeric()
   for(i in seq_along(priors)){
     if(probabilities[i] <= 0){
       next
     }
-    location <- .posterior_atoms_point_location(priors[[i]], n_columns)
+    location <- if(!is.null(point_locations) && !is.null(point_locations[[i]])) point_locations[[i]] else
+      .posterior_atoms_point_location(priors[[i]], n_columns)
     mass <- probabilities[i]
     if(is.null(location) && !is.null(null_location) &&
        .is_prior_weightfunction_null(priors[[i]])){
@@ -409,6 +431,36 @@ posterior_atoms_free <- function(x){
 
 .posterior_atoms_set <- function(samples, atoms){
 
+  if(inherits(atoms, "BayesTools_formula_measure_unavailable")){
+    columns <- if(is.matrix(samples)) colnames(samples) else attr(samples, "parameter", exact = TRUE)
+    ordered <- .bt_meta_get(samples, "ordered_source")
+    if(!is.null(ordered)){
+      marginals <- lapply(seq_along(columns), function(i){
+        weights <- diag(length(columns))[i, ]
+        projection <- .bt_ordered_source_project(ordered, weights)
+        .bt_ordered_source_projection_atoms(ordered, projection, columns[[i]], weights)
+      })
+      for(i in seq_along(marginals)){
+        if(inherits(marginals[[i]], "BayesTools_formula_measure_unavailable")){
+          condition <- marginals[[i]]
+          samples <- .bt_formula_measure_mark(samples, columns[[i]], "atoms", conditionMessage(condition),
+            cause = condition$reason, diagnostics = condition$diagnostics)
+          marginals[i] <- list(NULL)
+        }else if(is.null(marginals[[i]])){
+          samples <- .bt_formula_measure_mark(samples, columns[[i]], "atoms", conditionMessage(atoms),
+            cause = atoms$reason, diagnostics = atoms$diagnostics)
+        }
+      }
+      names(marginals) <- columns
+      return(.bt_meta_set(samples, "atoms", .posterior_atoms_new(column_names = columns, marginals = marginals,
+        component_probabilities = ordered$model_probabilities, component_log_probabilities = ordered$model_log_probabilities,
+        model_probability_declaration = ordered$model_probability_declaration)))
+    }
+    samples <- .bt_meta_set(samples, "atoms", NULL)
+    for(column in columns) samples <- .bt_formula_measure_mark(samples, column, "atoms",
+      if(is.null(atoms$detail)) atoms$message else atoms$detail, cause = atoms$reason, diagnostics = atoms$diagnostics)
+    return(samples)
+  }
   atoms <- .posterior_atoms_from_attribute(atoms)
   if(is.null(atoms)){
     stop("Cannot attach invalid posterior atom metadata.", call. = FALSE)
@@ -471,7 +523,9 @@ posterior_atoms_free <- function(x){
     column_names = colnames(atoms$locations)[column],
     source = atoms$source,
     declared = TRUE,
-    component_probabilities = atoms$component_probabilities
+    component_probabilities = atoms$component_probabilities,
+    component_log_probabilities = atoms$component_log_probabilities,
+    model_probability_declaration = atoms$model_probability_declaration
   )
 }
 
@@ -501,6 +555,8 @@ posterior_atoms_free <- function(x){
     source = paste0(atoms$source, ":transformed"),
     declared = TRUE,
     component_probabilities = atoms$component_probabilities,
+    component_log_probabilities = atoms$component_log_probabilities,
+    model_probability_declaration = atoms$model_probability_declaration,
     marginals = if(!is.null(atoms$marginals)) lapply(atoms$marginals, function(marginal){
       if(is.null(marginal)) NULL else .posterior_atoms_transform(marginal, transformation, transformation_arguments)
     })
@@ -528,6 +584,8 @@ posterior_atoms_free <- function(x){
     source = paste0(atoms$source, ":linear_transform"),
     declared = TRUE,
     component_probabilities = atoms$component_probabilities,
+    component_log_probabilities = atoms$component_log_probabilities,
+    model_probability_declaration = atoms$model_probability_declaration,
     marginals = if(!is.null(atoms$marginals)){
       stats::setNames(lapply(seq_len(nrow(design)), function(i){
         active <- which(design[i,] != 0)

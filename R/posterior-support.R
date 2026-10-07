@@ -574,6 +574,9 @@ posterior_support_attribute <- function(bounds, points = NULL, type = NULL,
   if(is.prior.mixture(priors)){
     weights <- attr(priors, "prior_weights", exact = TRUE)
   }else if(!is.prior(priors)){
+    if(all(vapply(priors, is.prior, logical(1)))){
+      return(which(is.finite(vapply(priors, .prior_model_log_weight, numeric(1)))))
+    }
     weights <- vapply(priors, function(prior){
       if(!is.prior(prior)){
         return(NA_real_)
@@ -1008,7 +1011,8 @@ posterior_support_attribute <- function(bounds, points = NULL, type = NULL,
       source_transforms = source_transforms
     )
   }else if(inherits(context, "prior_density_model_mixture_context")){
-    model_indices <- which(is.finite(context$model_weights) & context$model_weights > 0)
+    .model_probability_context_validate(context)
+    model_indices <- which(is.finite(context$model_log_weights))
     supports <- lapply(model_indices, function(model_i){
       .posterior_support_from_prior_list_weights(
         .prior_density_model_prior_list(context$prior_list, model_i),
@@ -1018,7 +1022,8 @@ posterior_support_attribute <- function(bounds, points = NULL, type = NULL,
     })
     support <- .posterior_support_union(supports, source = "linear_prior_models")
   }else if(inherits(context, "prior_density_conditional_context")){
-    model_indices <- which(is.finite(context$model_weights) & context$model_weights > 0)
+    .model_probability_context_validate(context)
+    model_indices <- which(is.finite(context$model_log_weights))
     supports <- lapply(model_indices, function(model_i){
       prior_list <- context$prior_lists[[model_i]]
       if(!is.null(context$formula_scale) && length(context$formula_scale) > 0L){

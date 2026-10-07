@@ -90,6 +90,13 @@ models for each model.
 Dropping every positive-prior-probability model stops because no
 finite marginal likelihood is available; it does not renormalize an empty
 model space.
+Original positive model odds retain their logarithmic declaration even when
+the visible probability rounds to zero. Evidence is centered before model
+probabilities and inclusion Bayes factors are evaluated. Finite evidence
+differences outside the logarithmic range stop with
+\code{BayesTools_numerical_condition}. The returned numeric fields remain
+ordinary probabilities; passing a visible zero to \code{\link[=inclusion_BF]{inclusion_BF()}} retains
+that function's exact supplied-zero meaning.
 }
 \seealso{
 \link{mix_posteriors} \link{BayesTools_ensemble_tables}

@@ -183,6 +183,7 @@ plot_marginal <- function(samples, parameter, plot_type = "base", prior = FALSE,
     levels <- levels[!reference]
   }
   if(prior){
+    for(level in levels) .bt_formula_measure_check(level, "prior_density")
     missing <- vapply(prior_densities, is.null, logical(1))
     # levels that declare no prior (prior_none()) have no prior curve; any
     # other level without a prior density was created without one
@@ -275,6 +276,7 @@ plot_marginal <- function(samples, parameter, plot_type = "base", prior = FALSE,
                                             posterior_density = NULL,
                                             density_method = c("KDE", "precomputed")){
 
+  .bt_formula_measure_check(x, "atoms")
   .bt_ordered_source_require_measure(x)
   x_points        <- NULL
   y_points        <- NULL
