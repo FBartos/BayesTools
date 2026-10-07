@@ -58,7 +58,8 @@
   # Components share original knots, even when a transformed boundary drops
   # an ordinate in only one component. Bind only their common source indices.
   continuous_indices <- which(vapply(plot_data, function(component){
-    inherits(component, c("density.prior.simple", "density.prior.orthonormal",
+    !inherits(component, "density.prior.point") &&
+      inherits(component, c("density.prior.simple", "density.prior.orthonormal",
                           "density.prior.meandif", "density.prior.PET", "density.prior.PEESE"))
   }, logical(1)))
   if(length(continuous_indices) > 0L){

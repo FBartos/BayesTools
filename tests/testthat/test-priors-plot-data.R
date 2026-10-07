@@ -1,5 +1,41 @@
 skip_if_not_test_profile("unit")
 
+test_that("orthonormal point mixtures retain every continuous transformed knot", {
+  normal <- prior_factor("mnorm", list(mean = 0, sd = 1), contrast = "orthonormal")
+  point <- prior_factor("spike", list(0), contrast = "orthonormal")
+  attr(normal, "levels") <- attr(point, "levels") <- 3L
+  priors <- list(normal = normal, point = point)
+  data <- suppressMessages(.plot_data_prior_list.simple(priors, x_seq = NULL,
+    x_range = c(.01, 5), x_range_quant = NULL, n_points = 500L, n_samples = 10000L,
+    force_samples = FALSE, individual = FALSE, transformation = "exp",
+    transformation_arguments = NULL, transformation_settings = TRUE))
+  expect_length(data$density$x, 500L)
+  expect_length(data$density$y, 500L)
+  # The declared orthonormal row is a projection of I - J/3; its variance
+  # under independent unit-variance coefficients is the row's squared norm.
+  contrast_row <- contr.orthonormal(3L)[1L, ]
+  variance <- sum(contrast_row^2)
+  expect_equal(variance, 2/3, tolerance = 1e-15)
+  expect_equal(as.numeric(data$density$y), .5 * stats::dnorm(log(data$density$x),
+    mean = 0, sd = sqrt(variance)) / data$density$x, tolerance = 1e-13)
+  expect_identical(as.numeric(data$points1$x), 1)
+  expect_identical(as.numeric(data$points1$y), .5)
+  figure <- suppressMessages(plot_prior_list(priors, plot_type = "ggplot", transformation = "exp",
+    transformation_settings = TRUE, xlim = c(.01, 5)))
+  expect_s3_class(figure, "ggplot")
+  expect_true(any(vapply(ggplot2::ggplot_build(figure)$data, nrow, integer(1)) == 500L))
+  grDevices::pdf(NULL)
+  on.exit(grDevices::dev.off(), add = TRUE)
+  expect_null(suppressMessages(plot_prior_list(priors, transformation = "exp",
+    transformation_settings = TRUE, xlim = c(.01, 5))))
+  ordinary <- .plot_data_prior_list.simple(list(prior("normal", list(0, 1)), prior("point", list(0))),
+    x_seq = NULL, x_range = c(-3, 3), x_range_quant = NULL, n_points = 31L,
+    n_samples = 10000L, force_samples = FALSE, individual = FALSE, transformation = NULL,
+    transformation_arguments = NULL, transformation_settings = FALSE)
+  expect_length(ordinary$density$x, 31L)
+  expect_equal(as.numeric(ordinary$density$y), .5 * stats::dnorm(ordinary$density$x), tolerance = 1e-14)
+})
+
 test_that("spike plotting preserves distinct nearby atoms and exact duplicates", {
 
   for(locations in list(c(0, 1e-10), c(1e6, 1e6 + .005), c(1, 1))){
