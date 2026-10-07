@@ -5,6 +5,8 @@
 #' @details Finite positive Bayes-factor bounds that would round to zero at
 #' three decimals are printed in scientific notation. This changes only their
 #' presentation; numeric values, BF direction and bound operators are retained.
+#' A validated finite-log positive endpoint whose natural value underflows is
+#' printed as \code{exp(log_endpoint)}.
 #'
 #' @return \code{print.BayesTools_table} returns \code{NULL}.
 #'
@@ -640,6 +642,14 @@ Math.BayesTools_BF <- function(x, ...){
     out[small_bound] <- vapply(x[small_bound], function(value){
       format(value, digits = 3, scientific = TRUE, trim = TRUE)
     }, character(1))
+  }
+  logs <- .BF_carrier_log(x)
+  if(!is.null(logs) && !isTRUE(attr(x, "logBF"))){
+    oriented_logs <- if(isTRUE(attr(x, "BF01"))) -logs else logs
+    hidden_bound <- !is.na(bound_operator) & is.finite(oriented_logs) & x == 0
+    if(any(hidden_bound, na.rm = TRUE)){
+      out[hidden_bound] <- paste0("exp(", format(oriented_logs[hidden_bound], trim = TRUE), ")")
+    }
   }
   has_bound <- !is.na(bound_operator) & !is.na(x)
   if(any(has_bound)){

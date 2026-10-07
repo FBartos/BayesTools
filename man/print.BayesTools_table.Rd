@@ -21,4 +21,6 @@ Print a BayesTools table
 Finite positive Bayes-factor bounds that would round to zero at
 three decimals are printed in scientific notation. This changes only their
 presentation; numeric values, BF direction and bound operators are retained.
+A validated finite-log positive endpoint whose natural value underflows is
+printed as \code{exp(log_endpoint)}.
 }

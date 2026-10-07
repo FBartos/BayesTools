@@ -51,6 +51,28 @@ test_that("double bracket BF replacements unconditionally drop producer ownershi
   expect_identical(as.numeric(finite), 3)
 })
 
+test_that("live positive log bounds retain a positive printed underflow endpoint", {
+
+  for(log_value in c(750, -750)){
+    value <- .format_BF_from_log(log_value, bound_operator = ">")
+    for(inverse in c(FALSE, TRUE)){
+      oriented <- .format_BF_from_log(log_value, BF01 = inverse, bound_operator = ">")
+      printed <- .format_BF_column(oriented)
+      endpoint <- if(inverse) -log_value else log_value
+      if(as.numeric(oriented) == 0) expect_identical(printed, paste0(if(inverse) "<" else ">", "exp(", endpoint, ")"))
+      expect_identical(.BF_carrier_log(oriented), log_value)
+    }
+  }
+  ordinary <- format_BF(0)
+  attr(ordinary, "bound_operator") <- "<"
+  expect_identical(.format_BF_column(ordinary), "<0.000")
+  replaced <- .format_BF_from_log(750, BF01 = TRUE, bound_operator = ">")
+  replaced[[1L]] <- 0
+  expect_identical(.format_BF_column(replaced), "<0.000")
+  small <- .format_BF_from_log(710, BF01 = TRUE, bound_operator = ">")
+  expect_identical(.format_BF_column(small), "<4.48e-309")
+})
+
 test_that("point inference retains finite log ordinates and orientation", {
 
   arguments <- list(posterior = c(1, 2, 3), prior = prior("normal", list(0, 1)),
