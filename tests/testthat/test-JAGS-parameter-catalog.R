@@ -5281,3 +5281,35 @@ test_that("R116 D8 nonfinite LKJ RNG mock preserves condition row indices", {
   expect_identical(condition$failed_draws, c(2L, 4L))
   expect_identical(condition$n_failed, 2L)
 })
+test_that("supplied single MCMC timing survives ordinary and derived extraction", {
+
+  ordinary <- .parameter_catalog_test_fit(coda::mcmc.list(coda::mcmc(cbind(theta = c(-1, 0, 1)))),
+    list(theta = prior("normal", list(0, 1))))
+  compiled <- JAGS_formula(~ 1 + diag(1 | id), "mu", data.frame(id = factor(c("a", "a", "b", "b"))),
+    list(intercept = prior("point", list(0))),
+    prior_random = prior_random(id = random_block(sd = prior("gamma", list(2, 2)))))
+  term <- compiled$formula_design$random_effects[[1L]]
+  columns <- c("mu_intercept", term$sd_parameter_names,
+    as.vector(.bt_random_effect_latent_names(term, term$n_groups, term$n_columns)))
+  draws <- matrix(0, 3L, length(columns), dimnames = list(NULL, columns))
+  draws[, term$sd_parameter_names] <- 1:3
+  derived <- .parameter_catalog_test_fit(coda::mcmc.list(coda::mcmc(draws)), compiled$prior_list,
+    list(mu = compiled$formula_design))
+  for(i in 1:2){
+    fit <- if(i == 1L) ordinary else derived
+    quantity <- if(i == 1L) "theta" else "(mu) var(intercept)"
+    expected <- if(i == 1L) c(-1, 0, 1) else c(1, 4, 9)
+    selected <- parameter_catalog_resolve(parameter_catalog(fit), quantity)
+    input <- coda::mcmc(as.matrix(fit), start = 1001, thin = 5)
+    output <- parameter_draws(fit, selected, model_samples = input)
+    expect_identical(attr(output[[1L]], "mcpar"), attr(input, "mcpar"))
+    expect_identical(as.numeric(output[[1L]]), expected)
+    plain <- parameter_draws(fit, selected, model_samples = as.matrix(fit))
+    expect_identical(attr(plain[[1L]], "mcpar"), c(1, 3, 1))
+    expect_identical(as.numeric(plain[[1L]]), expected)
+    matrix_input <- as.matrix(fit)
+    attr(matrix_input, "mcpar") <- c(1001, 1011, 5)
+    matrix_output <- parameter_draws(fit, selected, model_samples = matrix_input)
+    expect_identical(attr(matrix_output[[1L]], "mcpar"), c(1, 3, 1))
+  }
+})

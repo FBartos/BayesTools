@@ -82,6 +82,8 @@ random-effect aliases. Defaults to \code{FALSE}.}
 \item{model_samples}{optional numeric matrix containing the declared fitted
 source coordinates. This lets downstream summaries evaluate a selected semantic
 quantity on an already materialized posterior sample.
+A single \code{coda::mcmc} matrix retains its recorded sampling timing;
+plain matrices use the default timing.
 Ordered quantities also require the total, Gamma allocation and component
 indicator sources listed by \code{\link[=JAGS_ordered_parameter_spec]{JAGS_ordered_parameter_spec()}} in each term's
 \code{source_coordinates}; increment-only columns do not establish their

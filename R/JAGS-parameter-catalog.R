@@ -195,6 +195,8 @@
 #' @param model_samples optional numeric matrix containing the declared fitted
 #'   source coordinates. This lets downstream summaries evaluate a selected semantic
 #'   quantity on an already materialized posterior sample.
+#'   A single \code{coda::mcmc} matrix retains its recorded sampling timing;
+#'   plain matrices use the default timing.
 #'   Ordered quantities also require the total, Gamma allocation and component
 #'   indicator sources listed by [JAGS_ordered_parameter_spec()] in each term's
 #'   \code{source_coordinates}; increment-only columns do not establish their
@@ -573,7 +575,8 @@ parameter_draws.BayesTools_fit <- function(object, selection,
       out <- lapply(out, function(chain){
         values <- as.matrix(chain)
         colnames(values) <- quantities$canonical_name
-        coda::mcmc(values)
+        mcpar <- attr(chain, "mcpar", exact = TRUE)
+        coda::mcmc(values, start = mcpar[1L], end = mcpar[2L], thin = mcpar[3L])
       })
       return(coda::mcmc.list(out))
     }
@@ -5102,8 +5105,10 @@ parameter_transform_jacobian <- function(values, transform){
     )
   }
   values <- model_samples[, dependencies, drop = FALSE]
-
-  coda::mcmc.list(coda::mcmc(values))
+  mcpar <- if(inherits(model_samples, "mcmc")) attr(model_samples, "mcpar", exact = TRUE) else NULL
+  chain <- if(is.null(mcpar)) coda::mcmc(values) else
+    coda::mcmc(values, start = mcpar[1L], end = mcpar[2L], thin = mcpar[3L])
+  coda::mcmc.list(chain)
 }
 
 .bt_parameter_draw_factor_level <- function(key, model_samples){
