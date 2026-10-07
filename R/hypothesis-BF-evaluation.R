@@ -213,7 +213,11 @@
   exact <- if(is.null(region)){
     NULL
   }else{
-    .prior_linear_density_region_probability(prior_density, region)
+    tryCatch(.prior_linear_density_region_probability(prior_density, region),
+      BayesTools_numerical_condition = function(condition){
+        .hypothesis_numerical_stop(condition$reason, "prior region probability",
+          diagnostics = condition, region = TRUE)
+      })
   }
   if(is.null(exact) && isTRUE(deterministic_only)) return(NULL)
   prob <- if(is.null(exact)){

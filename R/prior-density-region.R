@@ -154,6 +154,43 @@
 
 # Mirrors .prior_density_ordinate_prior_affine(): offset + scale * S with S
 # from 'prior' (S = log(T) for a log source transformation).
+.prior_region_inverse_affine <- function(values, offset, scale){
+
+  difference <- values - offset
+  out <- difference / scale
+  required <- is.finite(values) & values != offset
+  bad <- required & (!.prior_density_full_precision(difference) |
+                     !.prior_density_full_precision(out))
+  if(any(bad)){
+    .prior_numerical_signal("region inversion", "affine", "full precision",
+      which(bad), "A finite region endpoint lost representable precision", error = TRUE)
+  }
+  out
+}
+
+.prior_region_inverse_exp <- function(values){
+
+  out <- exp(values)
+  bad <- is.finite(values) & !.prior_density_full_precision(out)
+  if(any(bad)){
+    .prior_numerical_signal("region inversion", "exponential", "full precision",
+      which(bad), "The exponential of a finite region endpoint lost representable precision", error = TRUE)
+  }
+  out
+}
+
+.prior_region_check_inverse_intervals <- function(original, mapped){
+
+  bad <- original[, 1L] < original[, 2L] &
+    is.finite(mapped[, 1L]) & is.finite(mapped[, 2L]) &
+    mapped[, 1L] == mapped[, 2L]
+  if(any(bad)){
+    .prior_numerical_signal("region inversion", "declared", "full precision",
+      which(bad), "Distinct region endpoints collapsed under the inverse map", error = TRUE)
+  }
+  mapped
+}
+
 .prior_region_prior_affine <- function(prior, region, offset, scale,
                                        source_transform = NULL){
 
@@ -197,7 +234,15 @@
     }else if(!is.null(source_transform)){
       return(.prior_region_unavailable())
     }
-    return(.prior_region_atoms(offset + scale * locations, probability, region))
+    scaled <- scale * locations
+    images <- offset + scaled
+    bad <- !is.finite(images) | (locations != 0 &
+      (!.prior_density_full_precision(scaled) | (offset != 0 & images == offset)))
+    if(any(bad)){
+      .prior_numerical_signal("region atom image", "affine", "full precision",
+        which(bad), "A declared atom image lost representable precision", error = TRUE)
+    }
+    return(.prior_region_atoms(images, probability, region))
   }
   if(!.prior_region_primitive_supported(prior)){
     return(.prior_region_unavailable())
@@ -210,13 +255,28 @@
     return(.prior_region_result(1))
   }
 
-  intervals <- (region$intervals - offset) / scale
+  source_hull <- unlist(prior$truncation[c("lower", "upper")], use.names = FALSE)
+  if(identical(source_transform, "log")) source_hull <- log(source_hull)
+  product_hull <- scale * source_hull
+  image_hull <- offset + product_hull
+  finite_source <- is.finite(source_hull)
+  safe <- !anyNA(image_hull) && all(!finite_source | is.finite(image_hull)) &&
+    !any(finite_source & source_hull != 0 &
+      (product_hull == 0 | (offset != 0 & image_hull == offset))) &&
+    !isTRUE(source_hull[1L] < source_hull[2L] && image_hull[1L] == image_hull[2L])
+  if(safe){
+    outside <- .prior_region_hull_probability(region, sort(image_hull))
+    if(!is.null(outside)) return(.prior_region_result(outside))
+  }
+
+  intervals <- .prior_region_inverse_affine(region$intervals, offset, scale)
   if(scale < 0){
     intervals <- intervals[, 2:1, drop = FALSE]
   }
   if(identical(source_transform, "log")){
-    intervals <- exp(intervals)
+    intervals <- .prior_region_inverse_exp(intervals)
   }
+  intervals <- .prior_region_check_inverse_intervals(region$intervals, intervals)
   intervals <- .prior_region_intervals(intervals[, 1L], intervals[, 2L])
   .prior_region_result(.prior_region_prior_mass(prior, intervals))
 }
@@ -362,8 +422,8 @@
   source <- switch(
     transformation,
     "lin" = {
-      mapped <- cbind((lower - arguments$a) / arguments$b,
-                      (upper - arguments$a) / arguments$b)
+      mapped <- cbind(.prior_region_inverse_affine(lower, arguments$a, arguments$b),
+                      .prior_region_inverse_affine(upper, arguments$a, arguments$b))
       if(arguments$b < 0) mapped[, 2:1, drop = FALSE] else mapped
     },
     "exp" = cbind(
@@ -376,7 +436,11 @@
     ),
     "exp_lin" = {
       inverse <- function(y){
-        out <- exp((log(pmax(y, 0)) - arguments$a) / arguments$b)
+        out <- rep(if(arguments$b > 0) 0 else Inf, length(y))
+        active <- y > 0
+        out[active] <- .prior_region_inverse_exp(.prior_region_inverse_affine(
+          log(y[active]), arguments$a, arguments$b
+        ))
         out[y <= 0] <- if(arguments$b > 0) 0 else Inf
         out
       }
@@ -387,6 +451,10 @@
   if(anyNA(source)){
     return(.prior_region_unavailable())
   }
+  # A positive-power map legitimately sends every nonpositive output bound
+  # to source zero. Its exact atom indicator still checks the forward image.
+  check <- if(identical(transformation, "exp_lin") && arguments$b > 0) upper > 0 else rep(TRUE, length(upper))
+  .prior_region_check_inverse_intervals(region$intervals[check, , drop = FALSE], source[check, , drop = FALSE])
   source_region <- list(
     intervals = .prior_region_intervals(source[, 1L], source[, 2L]),
     indicator = local({

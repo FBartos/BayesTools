@@ -1385,7 +1385,8 @@
     "scale_product" = .prior_region_scale_product(route$spec, region, route$n_grid),
     "log_scale_product" = .prior_region_scale_product(
       route$product$spec,
-      list(intervals = exp(region$intervals),
+      list(intervals = .prior_region_check_inverse_intervals(region$intervals,
+             .prior_region_inverse_exp(region$intervals)),
            indicator = function(values) region$indicator(log(values))),
       route$product$n_grid
     ),
@@ -1498,9 +1499,11 @@
     if(!isTRUE(plan$batch)){
       tolerance$relative <- .prior_linear_density_refinement_tolerance()$relative
     }
-    out[!zero & !plan$special] <- .prior_density_quadrature_batch(
+    out[!zero & !plan$special] <- tryCatch(.prior_density_quadrature_batch(
       plan$integrand, plan$breakpoints, tolerance
-    )
+    ), BayesTools_numerical_condition = function(condition){
+      rep(NA_real_, sum(!zero & !plan$special))
+    })
   }
   ordinate <- which(!zero & (plan$special | is.na(out)))
   out[ordinate] <- vapply(x[ordinate], function(value){
