@@ -97,6 +97,10 @@ for the structural classifications returned by `prior_density_ordinate()`.
 Explicit precomputed posterior plots require a matching valid continuous curve
 for every selected continuous leaf, resolved before discarding parent parameter
 and condition metadata. Pure atoms need no curve; KDE ignores stored curves.
+Individual omega plots consume producer-owned scalar atom/support declarations,
+including empty and unknown marginals, and never recover atom masses from prior
+shares or allocated draw counts. Transformed unsupported scalar prior overlays
+raise the existing prior-density limitation.
 Keep requested display limits separate from transformation support. Custom
 transformations can declare `output_support = c(lower, upper)`; inverse-grid
 evaluation must exclude coordinates outside that interval, without clamping

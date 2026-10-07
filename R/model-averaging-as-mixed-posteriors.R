@@ -593,6 +593,7 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
       null_location = 1
     )
   )
+  samples <- .posterior_weightfunction_declarations(samples, prior, 1, "single_model_structure")
   class(samples) <- c("mixed_posteriors", "mixed_posteriors.weightfunction")
 
   return(samples)
@@ -690,6 +691,7 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
   attr(samples, "prior_list") <- prior
   if(any(has_selection)){
     samples <- .weightfunction_set_omega_context(samples, omega_info)
+    samples <- .posterior_weightfunction_declarations(samples, prior, 1, "single_model_structure")
   }
   class(samples) <- c("mixed_posteriors", "mixed_posteriors.bias")
 
@@ -910,6 +912,12 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
       column_names = if(is.null(dim(samples))) parameter else colnames(samples)
     )
   )
+
+  if(inherits(prior, "prior.bias_mixture") && any(has_selection)){
+    atoms <- .posterior_atoms_get(samples)
+    samples <- .posterior_weightfunction_declarations(samples, prior,
+      atoms$component_probabilities, atoms$source)
+  }
 
   return(samples)
 }

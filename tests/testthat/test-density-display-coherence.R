@@ -27,6 +27,41 @@ test_that("posterior-only atomic ownership maps without inventing a prior promis
     "source has no complete declared prior context", fixed = TRUE)
 })
 
+test_that("scalar omega declarations retain actual log owners and independent support", {
+
+  priors <- list(prior_weightfunction("one-sided", .05, wf_fixed(c(1, .5))),
+    prior_weightfunction("one-sided", .1, wf_fixed(c(1, .25))))
+  columns <- .weightfunction_mapping_info(priors)$names
+  pair <- .model_probability_pair(c(1, 0), c(0, -1000), "posterior")
+  laws <- .posterior_weightfunction_scalar_laws(priors, pair$probabilities, columns,
+    posterior_pair = pair)
+  expect_equal(laws$marginals[[1L]]$mass, 1)
+  expect_identical(laws$marginals[[1L]]$component_log_probabilities, pair$logs)
+  expect_identical(laws$marginals[[1L]]$model_probability_declaration, pair$declaration)
+  expect_s3_class(laws$marginals[[2L]], "BayesTools_formula_atoms_unavailable")
+  expect_identical(laws$marginals[[2L]]$diagnostics$log_posterior_probabilities, pair$logs)
+  ordinary <- .model_probability_pair(c(.25, .75), log(c(.25, .75)), "posterior", "ordinary")
+  laws <- .posterior_weightfunction_scalar_laws(priors, ordinary$probabilities, columns,
+    posterior_pair = ordinary)
+  expect_equal(laws$marginals[[1L]]$mass, 1)
+  expect_equal(nrow(laws$marginals[[1L]]$locations), 1L)
+  expect_equal(laws$marginals[[2L]]$mass, c(.25, .75))
+  expect_equal(unname(laws$marginals[[2L]]$locations[, 1L]), c(.5, 1))
+  fixed <- prior_weightfunction("one-sided", .05, wf_fixed(c(1, .5)))
+  continuous <- prior_weightfunction("one-sided", .05, wf_cumulative(c(1, 1)))
+  probabilities <- c(.9, rep(.01, 8), .02 - 1e-16, 1e-16)
+  partition_pair <- .model_probability_pair(probabilities, log(probabilities), "posterior", "ordinary")
+  partition <- .posterior_weightfunction_scalar_laws(c(rep(list(fixed), 10), list(continuous)),
+    probabilities, c("omega[0,0.05]", "omega[0.05,1]"), posterior_pair = partition_pair)$marginals[[2L]]
+  if(inherits(partition, "BayesTools_formula_atoms_unavailable")){
+    expect_identical(partition$reason, "numerical_model_probability_unavailable")
+    expect_identical(partition$diagnostics$log_posterior_probabilities, partition_pair$logs)
+  }else{
+    expect_lt(sum(partition$mass), 1)
+    expect_identical(partition$component_log_probabilities, partition_pair$logs)
+  }
+})
+
 test_that("current declared coefficient and contribution recipes materialize their distinct laws", {
 
   slope <- prior("normal", list(0, 1))
@@ -50,6 +85,34 @@ test_that("current declared coefficient and contribution recipes materialize the
     expect_identical(.Random.seed, seed)
   }
   expect_identical(attr(context$prior_list$slope, "multiply_by", exact = TRUE), "scale")
+})
+
+test_that("bias simplification preserves raw prior shares and owned posterior scalar masses", {
+
+  # Synthetic declared-source carrier, without a fitted-model claim.
+  priors <- list(prior_PET("point", list(2), prior_weights = 3),
+    prior_weightfunction("one-sided", .05, wf_fixed(c(1, .5)), prior_weights = 7))
+  columns <- c("PET", .weightfunction_prior_list_context(priors, merge = FALSE)$omega_names)
+  pair <- .model_probability_pair(c(.25, .75), log(c(.25, .75)), "posterior", "ordinary")
+  values <- rbind(c(2, 1, 1), c(2, 1, 1), c(0, 1, .5), c(0, 1, .5))
+  colnames(values) <- columns
+  class(values) <- c("mixed_posteriors", "mixed_posteriors.bias", "matrix", "array")
+  attr(values, "prior_list") <- priors
+  values <- .posterior_atoms_set(values, .posterior_atoms_new(
+    rbind(c(2, 1, 1), c(0, 1, .5)), pair$probabilities, column_names = columns,
+    component_probabilities = pair$probabilities, component_log_probabilities = pair$logs,
+    model_probability_declaration = pair$declaration))
+  values <- .posterior_weightfunction_declarations(values, priors, pair$probabilities, posterior_pair = pair)
+  samples <- list(bias = values)
+  for(parameter in c("omega", "PET")){
+    selected <- .simplify_as_mixed_posterior_bias(samples, parameter)
+    leaf <- selected[[parameter]]
+    expect_identical(vapply(attr(leaf, "prior_list", exact = TRUE), .prior_model_weight, numeric(1)), c(3, 7))
+    atoms <- posterior_metadata(leaf, "atoms")
+    expect_identical(atoms$component_log_probabilities, pair$logs)
+    expect_identical(atoms$model_probability_declaration, pair$declaration)
+    if(parameter == "omega") expect_equal(atoms$marginals[[2L]]$mass, c(.25, .75))
+  }
 })
 
 test_that("new transformed-prior refusals preserve optional existing model diagnostics", {

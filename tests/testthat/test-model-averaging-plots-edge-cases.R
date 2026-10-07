@@ -1970,6 +1970,13 @@ test_that("omega posterior KDE does not infer spikes from exact sample values", 
   omega_samples <- .bt_draws_set_component(omega_samples, source = "model", component = rep(1, nrow(omega_samples)))
   omega_samples <- .bt_meta_set(omega_samples, "atoms", posterior_atom_attribute())
 
+  expect_error(BayesTools:::.plot_data_samples.weightparameter(list(omega = omega_samples),
+    "omega[0.05,1]", 512), "Posterior atom status is unknown", fixed = TRUE)
+  pair <- .bt_meta_get(omega_samples, "model_probabilities")$posterior
+  omega_samples <- .bt_meta_set(omega_samples, "atoms", NULL)
+  omega_samples <- .posterior_weightfunction_declarations(omega_samples,
+    attr(omega_samples, "prior_list"), pair$probabilities, posterior_pair = pair)
+
   plot_data <- BayesTools:::.plot_data_samples.weightparameter(
     samples = list(omega = omega_samples),
     parameter = "omega[0.05,1]",
@@ -2032,15 +2039,9 @@ test_that("omega prior and posterior curves integrate their continuous masses", 
   attr(omega_samples, "prior_list") <- prior_list$bias
   omega_samples <- attach_test_model_probabilities(omega_samples, c(.125, .375, .375, .125), prior_weights = c(1, 1/3, 1/3, 1/3))
   omega_samples <- .bt_draws_set_component(omega_samples, source = "model", component = models_ind)
-  omega_samples <- .bt_meta_set(omega_samples, "atoms", BayesTools:::.posterior_atoms_from_priors(
-      prior_list$bias,
-      as.numeric(table(factor(models_ind, levels = seq_along(prior_list$bias)))) /
-        length(models_ind),
-      n_columns = ncol(omega_samples),
-      column_names = colnames(omega_samples),
-      source = "test_model_probabilities",
-      null_location = 1
-    ))
+  pair <- .bt_meta_get(omega_samples, "model_probabilities")$posterior
+  omega_samples <- .posterior_weightfunction_declarations(omega_samples,
+    prior_list$bias, pair$probabilities, source = "test_model_probabilities", posterior_pair = pair)
 
   posterior_data <- BayesTools:::.plot_data_samples.weightparameter(
     samples = list(bias = omega_samples),

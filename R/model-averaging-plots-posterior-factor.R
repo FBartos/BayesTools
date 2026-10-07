@@ -15,120 +15,41 @@
   y_den    <- NULL
   boundary_reflection <- FALSE
 
-  # extract the relevant data
-  prior_list <- attr(samples, "prior_list")
-  # the component of each draw: its model in an ensemble, or its component of
-  # the weightfunction prior list
-  draw_component <- .bt_draws_component(samples)
+  # Scalar declarations, including an explicit empty marginal, determine
+  # the measure. Repeated posterior values never introduce an atom.
   posterior_atom_metadata <- .posterior_atoms_get(samples)
   if(is.null(posterior_atom_metadata)){
     .plot_data_stop_unknown_atoms()
   }
-  samples    <- samples[,parameter]
-  n_samples_total <- length(samples)
-  if (!(is.prior.mixture(prior_list) || is.prior.spike_and_slab(prior_list)) && is.prior(prior_list))
-    prior_list <- list(prior_list)
-
-  # One component per original prior entry: the model indicators and the
-  # recorded component probabilities index the unmerged prior list.
-  context <- .weightfunction_prior_list_context(prior_list, merge = FALSE)
-  parameter_ind <- match(parameter, context$omega_names)
-  if(is.na(parameter_ind)){
-    stop(
-      "Weightfunction posterior plotting is unavailable for '", parameter,
-      "' because it is not a weight of the weightfunction prior list.",
-      call. = FALSE
-    )
+  atoms <- .posterior_atoms_for_column(posterior_atom_metadata, parameter)
+  if(is.null(atoms)) .plot_data_stop_unknown_atoms()
+  density_bounds <- .posterior_support_bounds(samples, name = parameter, interval_only = TRUE)
+  samples <- samples[, parameter]
+  continuous <- .Savage_Dickey_BF.continuous_posterior(samples, atoms)
+  samples_density <- as.numeric(continuous$samples)
+  continuous_component_mass <- continuous$continuous_mass
+  if(nrow(atoms$locations) > 0L){
+    x_points <- as.numeric(atoms$locations[, 1L])
+    y_points <- atoms$mass
   }
-  components <- .weightfunction_prior_entry_components(
-    context,
-    parameter_ind
-  )
-
-  component_probabilities <- posterior_atom_metadata$component_probabilities
-  if(!is.null(component_probabilities)){
-    if(length(component_probabilities) != length(components)){
-      stop("Recorded weightfunction component probabilities do not match the weightfunction prior list.", call. = FALSE)
-    }
-    component_probabilities <- component_probabilities /
-      sum(component_probabilities)
-  }else{
-    if(length(draw_component) != n_samples_total ||
-       !all(draw_component %in% seq_along(components))){
-      stop("Weightfunction model indicators do not match the weightfunction prior list.", call. = FALSE)
-    }
-    component_probabilities <- tabulate(
-      draw_component,
-      nbins = length(components)
-    ) / n_samples_total
-  }
-  for(i in seq_along(components)){
-    components[[i]]$weight <- component_probabilities[i]
-  }
-  component_index <- which(component_probabilities > 0)
-  components      <- components[component_index]
-
-  point_components <- vapply(
-    components,
-    function(component) identical(component$type, "point"),
-    logical(1)
-  )
-  if(any(point_components)){
-    point_locations <- vapply(
-      components[point_components],
-      `[[`,
-      numeric(1),
-      "location"
-    )
-    point_masses <- vapply(
-      components[point_components],
-      `[[`,
-      numeric(1),
-      "weight"
-    )
-    point_keys <- sprintf("%a", point_locations)
-    x_points <- unname(vapply(
-      split(point_locations, point_keys),
-      function(x) x[1L],
-      numeric(1)
-    ))
-    y_points <- unname(vapply(
-      split(point_masses, point_keys),
-      sum,
-      numeric(1)
-    ))
-  }
-  continuous_component_mass <- sum(vapply(
-    components[!point_components],
-    `[[`,
-    numeric(1),
-    "weight"
-  ))
 
   # deal with the densities
-  if(any(!point_components)){
+  if(continuous_component_mass > 0){
 
-    continuous_components <- component_index[!point_components]
-    samples_density <- samples[draw_component %in% continuous_components]
-
-    if(length(samples_density) > 0){
+    if(length(samples_density) < 2L || diff(range(samples_density)) == 0){
+      stop("Weightfunction posterior density is unavailable for declared continuous samples with fewer than two distinct values.", call. = FALSE)
+    }else{
 
       # Use component support for reflection and a display range for evaluation.
-      density_components <- components[!point_components]
-      density_bounds <- .density.prior_weightfunction_components_bounds(
-        density_components
-      )
-      density_range <- .weightfunction_components_range(
-        density_components,
-        samples = samples_density
-      )
+      if(is.null(density_bounds)) density_bounds <- c(-Inf, Inf)
+      density_range <- .plot_data_samples_density_range(density_bounds)
 
       # get the density estimate
       density_continuous <- .density_kde_boundary(
         x      = samples_density,
         n      = n_points,
-        from   = density_range[1],
-        to     = density_range[2],
+        from   = density_range$from,
+        to     = density_range$to,
         bounds = density_bounds
       )
       x_den <- density_continuous$x
@@ -207,9 +128,10 @@
   # transform & extract the relevant data
   prior_list <- attr(samples[[parameter]], "prior_list")
   posterior_density_sources <- .posterior_density_sources(samples, samples[[parameter]])
-  posterior_density_conditional <- .bt_meta_condition(samples[[parameter]], "conditional")
-  posterior_density_conditional_rule <- .bt_meta_condition(samples[[parameter]], "conditional_rule")
-  posterior_density_condition_key <- .bt_meta_condition(samples[[parameter]], "condition_key")
+  density_condition <- .marginal_posterior_condition_metadata(samples, samples[[parameter]])
+  posterior_density_conditional <- density_condition$conditional
+  posterior_density_conditional_rule <- density_condition$conditional_rule
+  posterior_density_condition_key <- density_condition$condition_key
   if (!(is.prior.mixture(prior_list) || is.prior.spike_and_slab(prior_list)) && is.prior(prior_list))
     prior_list <- list(prior_list)
 
@@ -288,14 +210,16 @@
         ),
         density_method
       )
+      .plot_data_require_precomputed_density(posterior_density, density_method, level_mass)
 
       if(!is.null(posterior_density)){
 
         x_den <- posterior_density[["x"]]
         y_den <- posterior_density[["y"]]
         if(!is.null(transformation)){
-          x_den <- .density.prior_transformation_x(x_den, transformation, transformation_arguments)
-          y_den <- .density.prior_transformation_y(x_den, y_den, transformation, transformation_arguments)
+          transformed <- .density.prior_transformation_grid(x_den, y_den, transformation, transformation_arguments)
+          x_den <- transformed$x[!transformed$drop]
+          y_den <- transformed$y[!transformed$drop]
           level_samples <- .density.prior_transformation_x(level_samples, transformation, transformation_arguments)
         }
 

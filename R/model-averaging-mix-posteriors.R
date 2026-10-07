@@ -1219,6 +1219,7 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
       point_locations = .model_probability_weightfunction_points(priors, omega_mapping, ncol(samples))
     )
   )
+  samples <- .posterior_weightfunction_declarations(samples, priors, post_probs)
   class(samples) <- c("mixed_posteriors", "mixed_posteriors.weightfunction")
 
   return(samples)

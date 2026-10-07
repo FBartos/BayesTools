@@ -243,14 +243,45 @@
   }
   if (length(prior_ind) > 0) {
     for (i in prior_ind) {
-      temp_weight     <- prior_list[[i]][["prior_weights"]]
-      prior_list[[i]] <- if (parameter == "omega") prior_none() else prior("point", parameters = list(0))
-      prior_list[[i]][["prior_weights"]] <- temp_weight
+      parent_prior <- prior_list[[i]]
+      prior_list[[i]] <- .prior_density_copy_parent_attributes(
+        if(parameter == "omega") prior_none() else prior("point", parameters = list(0)), parent_prior)
+      if(is.null(attr(parent_prior, "model_probability_declaration", exact = TRUE))){
+        prior_list[[i]] <- .set_prior_model_weight(prior_list[[i]], .prior_model_weight(parent_prior))
+      }
     }
   }
 
   ### create new samples
-  new_samples <- samples[["bias"]][, grepl(parameter, colnames(samples[["bias"]])),drop=FALSE]
+  original <- samples[["bias"]]
+  selected <- grepl(parameter, colnames(original))
+  new_samples <- .bt_draws_plain(original)[, selected, drop = FALSE]
+  metadata <- .bt_meta_current_container(original)
+  columns <- colnames(new_samples)
+  if(!is.null(metadata)){
+    if(!is.null(metadata$atoms) && any(selected)){
+      atoms <- .posterior_atoms_from_attribute(metadata$atoms)
+      metadata$atoms <- .posterior_atoms_new(atoms$locations[, selected, drop = FALSE], atoms$mass,
+        column_names = columns, source = atoms$source,
+        component_probabilities = atoms$component_probabilities,
+        component_log_probabilities = atoms$component_log_probabilities,
+        model_probability_declaration = atoms$model_probability_declaration,
+        marginals = if(!is.null(atoms$marginals)) atoms$marginals[selected])
+    }else metadata$atoms <- NULL
+    for(field in c("support", "prior_densities")){
+      if(.posterior_metadata_is_container(metadata[[field]])) metadata[[field]] <- metadata[[field]][columns]
+    }
+    for(field in c("quantities", "original_scale_quantities", "level_quantities")){
+      if(!is.null(metadata[[field]]) && nrow(metadata[[field]]) == ncol(original)){
+        metadata[[field]] <- metadata[[field]][selected, , drop = FALSE]
+      }
+    }
+    if(!is.null(metadata$measure_unavailable)){
+      metadata$measure_unavailable <- metadata$measure_unavailable[
+        metadata$measure_unavailable$column %in% c(columns, parameter), , drop = FALSE]
+      if(nrow(metadata$measure_unavailable) == 0L) metadata$measure_unavailable <- NULL
+    }
+  }
   if(parameter %in% c("PET", "PEESE") && ncol(new_samples) == 0L){
     indicator <- .bt_draws_component(samples[["bias"]])
     atoms <- .posterior_atoms_get(samples[["bias"]])
@@ -276,7 +307,7 @@
   }
 
   ### store attribute
-  std_attrs  <- c("dim", "dimnames", "names", "prior_list", "mcpar")
+  std_attrs  <- c("dim", "dimnames", "names", "prior_list", "mcpar", .bt_meta_attribute)
   all_attrs  <- attributes(samples[["bias"]])
   to_restore <- setdiff(names(all_attrs), std_attrs)
 
@@ -284,10 +315,12 @@
   for (a in to_restore) {
     attr(new_samples, a) <- all_attrs[[a]]
   }
+  if(!is.null(metadata)) new_samples <- .bt_meta_write(new_samples, metadata, .bt_meta_fingerprint(new_samples))
   new_samples <- .bt_meta_refresh(new_samples)
 
   # remove `mixed_posteriors.bias` class
   class(new_samples) <- class(new_samples)[!class(new_samples) %in% "mixed_posteriors.bias"]
+  if(parameter == "omega") class(new_samples) <- unique(c(class(new_samples), "mixed_posteriors.weightfunction"))
 
   ### assign prior list and model indicator
   attr(prior_list, "omega_context") <- attr(samples[["bias"]], "omega_context")
@@ -302,9 +335,13 @@
           n_columns = 1L, column_names = parameter
         )
       }else{
+        pair <- .bt_meta_get(original, "model_probabilities")$posterior
+        if(is.null(pair) && !is.null(atoms$model_probability_declaration)) pair <- list(
+          probabilities = atoms$component_probabilities, logs = atoms$component_log_probabilities,
+          declaration = atoms$model_probability_declaration)
         .posterior_atoms_from_priors(
           prior_list, probabilities, n_columns = 1L,
-          column_names = parameter, source = atoms$source
+          column_names = parameter, source = atoms$source, posterior_pair = pair
         )
       }
       new_samples <- .posterior_atoms_set(new_samples, scalar_atoms)

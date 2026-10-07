@@ -43,3 +43,44 @@ test_that("actual transformed scalar producers attach their declared source prio
   expect_s3_class(Savage_Dickey_BF(transformed_marginal, null_hypothesis = 10,
     normal_approximation = TRUE), "BayesTools_BF")
 })
+
+test_that("actual publication-weight producers own fixed and reference scalar marginals", {
+
+  fixture_names <- c("fit_weightfunction_fixed", "fit_weightfunction_onesided2", "fit_wf_independent_gamma", "fit_bias_petpeese_hetero_wf")
+  skip_if_missing_fits(fixture_names)
+  fits <- lapply(fixture_names, function(name) readRDS(file.path(temp_fits_dir, paste0(name, ".RDS"))))
+  for(i in seq_len(3L)){
+    samples <- as_mixed_posteriors(fits[[i]], parameters = "omega")
+    atoms <- posterior_metadata(samples$omega, "atoms")
+    expect_identical(names(atoms$marginals), colnames(samples$omega))
+    expect_equal(unname(atoms$marginals[[1L]]$locations[, 1L]), 1)
+    expect_equal(atoms$marginals[[1L]]$mass, 1)
+    if(i == 1L){
+      expect_equal(unname(atoms$marginals[[2L]]$locations[, 1L]), .5)
+      mapped <- posterior_transform(samples, "lin", list(a = 0, b = 2))
+      expect_equal(unname(posterior_metadata(mapped$omega, "atoms")$marginals[[2L]]$locations[, 1L]), 1)
+      expect_error(plot_posterior(mapped, "omega", individual = TRUE, prior = TRUE),
+        class = "BayesTools_formula_prior_density_unavailable")
+    }else expect_length(atoms$marginals[[2L]]$mass, 0L)
+  }
+  bias <- as_mixed_posteriors(fits[[4L]], parameters = "bias")
+  atoms <- posterior_metadata(bias$bias, "atoms")
+  omega <- grep("^omega\\[", colnames(bias$bias), value = TRUE)
+  expect_true(all(!vapply(atoms$marginals[omega], is.null, logical(1))))
+  expect_true(all(vapply(atoms$marginals[omega], function(marginal){
+    !anyDuplicated(marginal$locations[, 1L])
+  }, logical(1))))
+  expect_equal(unname(atoms$marginals[[omega[[1L]]]]$locations[, 1L]), 1)
+  expect_equal(atoms$marginals[[omega[[1L]]]]$mass, 1)
+  pair <- .model_probability_pair(atoms$component_probabilities,
+    log(atoms$component_probabilities), "component", "raw")
+  for(marginal in atoms$marginals[omega]){
+    expect_identical(marginal$component_probabilities, atoms$component_probabilities)
+    expect_identical(marginal$component_log_probabilities, pair$logs)
+    expect_identical(marginal$model_probability_declaration, pair$declaration)
+  }
+  simplified <- .simplify_as_mixed_posterior_bias(bias, "omega")
+  expect_identical(posterior_metadata(simplified$omega, "atoms")$marginals, atoms$marginals[omega])
+  expect_identical(vapply(attr(simplified$omega, "prior_list", exact = TRUE), .prior_model_weight, numeric(1)),
+    vapply(.bias_samples_prior_list(bias), .prior_model_weight, numeric(1)))
+})

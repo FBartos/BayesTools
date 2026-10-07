@@ -425,7 +425,12 @@ posterior_atoms_free <- function(x){
     column_names = column_names,
     source = source,
     declared = TRUE,
-    component_probabilities = probabilities
+    component_probabilities = probabilities,
+    marginals = if(!is.null(column_names) &&
+      any(vapply(priors, is.prior.weightfunction, logical(1))) &&
+      all(vapply(priors, function(prior) is.prior.weightfunction(prior) || .is_prior_weightfunction_null(prior), logical(1)))){
+      .posterior_weightfunction_scalar_laws(priors, probabilities, column_names, source)$marginals
+    }else NULL
   )
 }
 
@@ -470,6 +475,126 @@ posterior_atoms_free <- function(x){
   }
   samples <- .bt_meta_set(samples, "atoms", atoms)
   samples
+}
+
+# Declare each retained scalar omega from its model/branch law. Joint atoms
+# remain separate; an unclassified non-omega column has a NULL marginal.
+.posterior_weightfunction_scalar_laws <- function(priors, probabilities, columns,
+                                                  source = "model_probabilities", posterior_pair = NULL){
+
+  expanded <- .weightfunction_expand_bias_mixture_priors(priors)
+  if(length(expanded) != length(probabilities)){
+    stop("Weightfunction branches and posterior probabilities do not align.", call. = FALSE)
+  }
+  if(is.null(posterior_pair)) posterior_pair <- .model_probability_pair(
+    probabilities, log(probabilities), "component", "raw")
+  .model_probability_validate(probabilities, posterior_pair$logs,
+    posterior_pair$declaration, normalized = TRUE)
+  # All declarations participate in the global bin map, including a branch
+  # with zero posterior probability; mapping never uses sampled occupancy.
+  mapped_priors <- lapply(expanded, function(prior) .set_prior_model_weight(prior, 1))
+  attr(mapped_priors, "omega_context") <- attr(priors, "omega_context", exact = TRUE)
+  context <- .weightfunction_prior_list_context(mapped_priors, merge = FALSE)
+  marginals <- supports <- stats::setNames(rep(list(NULL), length(columns)), columns)
+  for(column in intersect(columns, context$omega_names)){
+    components <- .weightfunction_prior_entry_components(context, match(column, context$omega_names))
+    locations <- rep(list(NULL), length(components))
+    component_priors <- vector("list", length(components))
+    component_supports <- list()
+    for(i in seq_along(components)){
+      component <- components[[i]]
+      location <- if(component$type == "point") component$location else NULL
+      if(component$type == "prior" && is.prior.point(component$prior)){
+        location <- component$prior$parameters$location
+        if(component$scale != "omega") location <- .density.prior_transformation_checked_x(location, "exp")
+      }
+      if(!is.null(location)) location <- unname(location)
+      locations[i] <- list(location)
+      component_priors[[i]] <- if(!is.null(location)) prior("point", list(location)) else
+        if(component$type == "beta") prior("beta", list(component$alpha, component$beta)) else component$prior
+      if(is.finite(posterior_pair$logs[[i]])) component_supports[[length(component_supports) + 1L]] <-
+        .posterior_support_from_weightfunction_component(component, source)
+    }
+    marginal <- .posterior_atoms_from_priors(component_priors, probabilities,
+      n_columns = 1L, column_names = column, source = source, posterior_pair = posterior_pair,
+      point_locations = locations)
+    if(!inherits(marginal, "BayesTools_formula_measure_unavailable")){
+      points <- .posterior_atoms_point_mass_table(list(x = marginal$locations[, 1L], mass = marginal$mass))
+      point_values <- vapply(locations, function(location){
+        if(is.null(location)) NA_real_ else location[[1L]]
+      }, numeric(1))
+      continuous <- any(is.finite(posterior_pair$logs) & is.na(point_values))
+      grouped_logs <- vapply(points$x, function(location){
+        .model_probability_log_sum(posterior_pair$logs[!is.na(point_values) & point_values == location])
+      }, numeric(1))
+      grouped_masses <- exp(grouped_logs)
+      lost <- any(grouped_masses == 0 | grouped_masses < .Machine$double.xmin) ||
+        (continuous && length(grouped_masses) > 0L && sum(grouped_masses) == 1)
+      if(lost){
+        marginal <- errorCondition(
+          "Posterior atoms are unavailable because positive model mass or a continuous remainder is not representable at full precision.",
+          call = NULL, class = c("BayesTools_formula_atoms_unavailable", "BayesTools_formula_measure_unavailable"),
+          reason = "numerical_model_probability_unavailable",
+          diagnostics = .model_probability_diagnostics(posterior = posterior_pair, stage = posterior_pair$declaration$stage))
+      }else{
+        if(continuous && sum(points$mass) == 1) points$mass <- grouped_masses
+        marginal <- .posterior_atoms_new(matrix(points$x, ncol = 1L), points$mass,
+          column_names = column, source = marginal$source,
+          component_probabilities = marginal$component_probabilities,
+          component_log_probabilities = marginal$component_log_probabilities,
+          model_probability_declaration = marginal$model_probability_declaration)
+      }
+    }
+    marginals[column] <- list(marginal)
+    supports[column] <- list(.posterior_support_union(component_supports, source))
+  }
+  list(marginals = marginals, supports = supports)
+}
+
+.posterior_weightfunction_declarations <- function(samples, priors, probabilities,
+                                                   source = "model_probabilities", posterior_pair = NULL){
+
+  if(!is.matrix(samples) || ncol(samples) == 0L) return(samples)
+  unavailable <- .bt_meta_get(samples, "measure_unavailable")
+  if(!is.null(unavailable) && any(unavailable$measure == "atoms")){
+    # A producer ownership refusal is authoritative; this declaration path
+    # cannot replace it using allocated rows or a new empty joint measure.
+    return(samples)
+  }
+  atoms <- .posterior_atoms_get(samples)
+  if(is.null(posterior_pair)){
+    owners <- .bt_meta_get(samples, "model_probabilities")
+    if(!is.null(owners)) posterior_pair <- owners$posterior else
+      if(!is.null(atoms$model_probability_declaration)) posterior_pair <- list(
+        probabilities = atoms$component_probabilities, logs = atoms$component_log_probabilities,
+        declaration = atoms$model_probability_declaration)
+  }
+  declarations <- .posterior_weightfunction_scalar_laws(priors, probabilities, colnames(samples), source, posterior_pair)
+  atoms <- .posterior_atoms_get(samples)
+  if(is.null(atoms)) atoms <- .posterior_atoms_new(column_names = colnames(samples),
+    source = source, component_probabilities = probabilities)
+  marginals <- if(is.null(atoms$marginals)) declarations$marginals else atoms$marginals
+  supports <- .bt_meta_get(samples, "support")
+  if(!.posterior_metadata_is_container(supports)) supports <- declarations$supports
+  for(column in names(declarations$marginals)){
+    condition <- declarations$marginals[[column]]
+    if(inherits(condition, "BayesTools_formula_measure_unavailable")){
+      samples <- .bt_formula_measure_mark(samples, column, "atoms", conditionMessage(condition),
+        cause = condition$reason, diagnostics = condition$diagnostics)
+      declarations$marginals[column] <- list(NULL)
+      marginals[column] <- list(NULL)
+    }
+  }
+  declared <- !vapply(declarations$marginals, is.null, logical(1))
+  marginals[declared] <- declarations$marginals[declared]
+  supports[declared] <- declarations$supports[declared]
+  atoms <- .posterior_atoms_new(atoms$locations, atoms$mass,
+    column_names = colnames(samples), source = atoms$source,
+    component_probabilities = atoms$component_probabilities,
+    component_log_probabilities = atoms$component_log_probabilities,
+    model_probability_declaration = atoms$model_probability_declaration, marginals = marginals)
+  samples <- .posterior_atoms_set(samples, atoms)
+  .posterior_support_set(samples, supports)
 }
 
 # The declared posterior atoms of 'samples' (their only source), or NULL when

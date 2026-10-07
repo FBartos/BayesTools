@@ -8,6 +8,7 @@
 - scale-product quadratures refuse a log height when any required primitive argument is subnormal, including some normal target coordinates near the floating-point boundary; their mathematical density remains regular and ordinary representable-target controls remain available.
 - deterministic prior-region inversion refuses lost or collapsed finite boundaries; hypothesis tables preserve valid siblings and their numerical refusal diagnostics.
 - precomputed posterior plots require a matching selected continuous curve. Posterior transformations materialize source-complete prior laws before mapping them once; unsupported prior overlays remain explicit.
+- individual publication-weight plots consume declared scalar atoms and support, including fixed/reference weights and actual posterior model or branch masses.
 - named BF slicing aligns all producer metadata with visible rows, double-bracket replacement invalidates hidden logs, and finite-log positive bounds keep truthful endpoints after numeric underflow.
 - static subnormal coefficient ratio weights use bounded value-aware arithmetic, including declared fixed targets; affected uncertified continuous laws remain explicitly unavailable while usable draws and certified point/sibling laws are retained.
 - optional ordered contribution replay declines lost multiplier folds; logged formula levels retain their conservative nonlinear joint-prior marker.
