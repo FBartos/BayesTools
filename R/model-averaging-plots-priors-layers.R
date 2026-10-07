@@ -76,7 +76,7 @@ lines_prior_list <- function(prior_list, xlim = NULL, x_seq = NULL, x_range_quan
                                                 n_points = n_points, n_samples = n_samples,
                                                 transformation = transformation, transformation_arguments = transformation_arguments,
                                                 transformation_settings = transformation_settings, prior_list_mu = prior_list_mu,
-                                                effect_direction = effect_direction)
+                                                effect_direction = effect_direction, force_samples = force_samples)
     .lines.prior.PETPEESE(plot_data = plot_data, ...)
 
   }else if(prior_type == "simple"){
@@ -184,7 +184,7 @@ geom_prior_list  <- function(prior_list, xlim = NULL, x_seq = NULL, x_range_quan
                                                 n_points = n_points, n_samples = n_samples,
                                                 transformation = transformation, transformation_arguments = transformation_arguments,
                                                 transformation_settings = transformation_settings, prior_list_mu = prior_list_mu,
-                                                effect_direction = effect_direction)
+                                                effect_direction = effect_direction, force_samples = force_samples)
     geom <- .geom_prior.PETPEESE(plot_data = plot_data, ...)
 
   }else if(prior_type == "simple"){

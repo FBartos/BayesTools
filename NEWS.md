@@ -11,6 +11,7 @@
 - individual publication-weight plots consume declared scalar atoms and support, including fixed/reference weights and actual posterior model or branch masses.
 - transformed prior mixtures align common original knots before binding and keep decreasing-map boundaries visible correctly.
 - approximate named tanh display grids retain tied rounded finite knots and their original source correspondence with an explicit warning; whole collapse and strict draw, atom and region image failures remain unavailable.
+- PET-PEESE prior CDFs use bounded probability-coordinate quadrature with checked affine panel transport and one total subdivision budget per independent pair; sampled summaries are selected explicitly or by supported structural fallback.
 - named BF slicing aligns all producer metadata with visible rows, double-bracket replacement invalidates hidden logs, and finite-log positive bounds keep truthful endpoints after numeric underflow.
 - static subnormal coefficient ratio weights use bounded value-aware arithmetic, including declared fixed targets; affected uncertified continuous laws remain explicitly unavailable while usable draws and certified point/sibling laws are retained.
 - optional ordered contribution replay declines lost multiplier folds; logged formula levels retain their conservative nonlinear joint-prior marker.

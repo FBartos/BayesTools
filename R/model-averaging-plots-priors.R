@@ -101,7 +101,7 @@ plot_prior_list <- function(prior_list, plot_type = "base",
                                                 n_points = n_points, n_samples = n_samples,
                                                 transformation = transformation, transformation_arguments = transformation_arguments,
                                                 transformation_settings = transformation_settings, prior_list_mu = prior_list_mu,
-                                                effect_direction = effect_direction)
+                                                effect_direction = effect_direction, force_samples = force_samples)
     plot <- .plot.prior.PETPEESE(prior_list, plot_type = plot_type, plot_data = plot_data, par_name = par_name, ...)
 
   }else if(prior_type %in% c("simple", "orthonormal", "meandif") ||

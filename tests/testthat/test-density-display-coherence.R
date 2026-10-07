@@ -1,5 +1,65 @@
 skip_if_not_test_profile("unit")
 
+test_that("finite PET panels retain tiny physical partitions without extrapolation artifacts", {
+
+  mu <- .petpeese_prior_components(prior("normal", list(.3, .7)))[[1L]]
+  bias <- .petpeese_prior_components(prior("normal", list(0, .4)))[[1L]]
+  q <- .30000000000001226
+  value <- .petpeese_prior_probability_integral(mu, bias, .5, q)
+  expect_equal(as.numeric(value), stats::pnorm(q, .3, sqrt(.7^2 + .2^2)), tolerance = 1e-7)
+  diagnostics <- attr(value, "numerical_diagnostics")
+  expect_lte(diagnostics$subdivisions, 200L)
+  expect_identical(diagnostics$subdivisions, sum(vapply(diagnostics$panels, `[[`, integer(1), "subdivisions")))
+  intervals <- do.call(rbind, lapply(diagnostics$panels, `[[`, "physical_interval"))
+  expect_identical(intervals[, 1L], head(diagnostics$knots, -1L))
+  expect_identical(intervals[, 2L], tail(diagnostics$knots, -1L))
+  expect_true(any(intervals[, 2L] - intervals[, 1L] < 1e-14))
+  expect_true(all(vapply(diagnostics$panels, function(panel){
+    identical(panel$coordinate, "affine probability panel") &&
+      identical(panel$jacobian, diff(panel$physical_interval)) &&
+      panel$subdivisions <= panel$cap && panel$status %in% c("OK", "criterion_converged_at_cap")
+  }, logical(1))))
+  priors <- list(prior_PET("normal", list(0, .4), truncation = list(-Inf, Inf)))
+  plotted <- .plot_data_prior_list.PETPEESE(priors, c(0, .5, 1), c(0, 1), NULL,
+    3, 64, NULL, NULL, FALSE, list(prior("normal", list(.3, .7))))
+  sd <- sqrt(.7^2 + (.4 * plotted$x)^2)
+  expect_equal(plotted$y, rep(.3, 3), tolerance = 1e-6)
+  expect_equal(plotted$y_lCI, .3 + stats::qnorm(.025) * sd, tolerance = 1e-6)
+  expect_equal(plotted$y_uCI, .3 + stats::qnorm(.975) * sd, tolerance = 1e-6)
+})
+
+test_that("PET panels retain directly represented default primitive tails and strict truncation limits", {
+
+  mu <- .petpeese_prior_components(prior("normal", list(0, 1)))[[1L]]
+  bias <- .petpeese_prior_components(prior("normal", list(0, 1), list(0, Inf)))[[1L]]
+  upper_p <- 2.9893409125836859e-17
+  quantile <- .petpeese_prior_component_quantile(mu, 1, upper_p = upper_p)
+  expect_equal(quantile, stats::qnorm(upper_p, lower.tail = FALSE), tolerance = 1e-12)
+  q <- 7.6096083718688288
+  value <- .petpeese_prior_probability_integral(mu, bias, 1, q)
+  expect_equal(as.numeric(value), stats::pnorm(q / sqrt(2))^2, tolerance = 1e-7)
+  diagnostics <- attr(value, "numerical_diagnostics")
+  expect_lte(diagnostics$subdivisions, 200L)
+  expect_equal(tail(diagnostics$panels, 1L)[[1L]]$physical_interval,
+    c(.99999999999998623, 1), tolerance = 1e-15)
+  for(scale in c(-1, 1)){
+    targets <- c(-2, 0, 2)
+    actual <- vapply(targets, function(q) as.numeric(.petpeese_prior_sum_cdf(mu, bias, scale, q)), numeric(1))
+    reference <- if(scale > 0) stats::pnorm(targets / sqrt(2))^2 else{
+      upper <- stats::pnorm(-targets / sqrt(2), lower.tail = FALSE)
+      2 * upper - upper^2
+    }
+    expect_equal(actual, reference, tolerance = 1e-7)
+  }
+  truncated <- .petpeese_prior_components(prior("normal", list(0, 1), list(-.5, .5)))[[1L]]
+  expect_error(.petpeese_prior_component_quantile(truncated, 1, upper_p),
+    "truncated lower probability lost", fixed = TRUE)
+  expect_error(.petpeese_prior_component_quantile(mu, 1, 0),
+    "interior probability tail was lost", fixed = TRUE)
+  expect_equal(.petpeese_prior_component_quantile(truncated, .75, .25),
+    stats::qnorm(stats::pnorm(-.5) + .75 * (stats::pnorm(.5) - stats::pnorm(-.5))), tolerance = 1e-12)
+})
+
 test_that("posterior-only atomic ownership maps without inventing a prior promise", {
 
   pair <- .model_probability_pair(c(.25, .75), log(c(.25, .75)), "posterior", "ordinary")
@@ -203,4 +263,58 @@ test_that("finite inverse region loss refuses while genuine support events remai
     c(theta = 2), n_grid = 512)
   expect_equal(as.numeric(.prior_linear_density_region_probability(ordinary,
     .hypothesis_prior_region(quote(theta < 1), "theta"))), stats::pnorm(.5))
+})
+
+test_that("PET-PEESE pair CDFs retain analytic Normal sums and actual subdivision counts", {
+
+  mu <- .petpeese_prior_components(prior("normal", list(.3, .8)))[[1L]]
+  bias <- .petpeese_prior_components(prior("normal", list(-.2, .4)))[[1L]]
+  for(scale in c(-2, .5, 0)){
+    value <- .petpeese_prior_sum_cdf(mu, bias, scale, .7)
+    expected <- stats::pnorm(.7, mean = .3 - .2 * scale, sd = sqrt(.8^2 + (.4 * scale)^2))
+    expect_lt(abs(as.numeric(value) - expected), 1e-7)
+    if(scale != 0){
+      diagnostic <- attr(value, "numerical_diagnostics")
+      expect_lte(diagnostic$subdivisions, 200L)
+      expect_equal(diagnostic$subdivisions,
+        sum(vapply(diagnostic$panels, `[[`, integer(1), "subdivisions")))
+      expect_true(all(vapply(diagnostic$panels, function(panel){
+        panel$message == "OK" || panel$status == "criterion_converged_at_cap"
+      }, logical(1))))
+    }
+  }
+  expect_error(.petpeese_prior_scale("PEESE", 1e-200, 1),
+    class = "BayesTools_numerical_condition")
+  expect_error(.petpeese_prior_scale("PEESE", 1e200, 1),
+    class = "BayesTools_numerical_condition")
+  expect_identical(.petpeese_prior_scale("PEESE", 0, 1), 0)
+})
+
+test_that("PET-PEESE required support transitions refuse while optional anchors record omissions", {
+
+  mu <- .petpeese_prior_components(prior("normal", list(0, 1)))[[1L]]
+  bias <- .petpeese_prior_components(prior("uniform", list(0, 1)))[[1L]]
+  # Overflow in a declared finite support transition must propagate before
+  # integration, even when quantile anchors are still representable.
+  expect_error(.petpeese_prior_probability_integral(mu, bias, 1e308, -1e308),
+    class = "BayesTools_numerical_condition")
+  refused_cdf <- mu
+  refused_cdf$cdf <- function(q){
+    if(any(q == -1)) .petpeese_prior_numerical_stop("required CDF test", "The support-transition CDF is unavailable")
+    stats::pnorm(q)
+  }
+  expect_error(.petpeese_prior_probability_integral(refused_cdf, bias, 1, 0),
+    class = "BayesTools_numerical_condition")
+  optional_bias <- bias
+  optional_bias$quant <- function(p){
+    if(any(p == .02)) .petpeese_prior_numerical_stop("optional quantile test", "The optional quantile is unavailable")
+    stats::qunif(p)
+  }
+  optional_bias$partition_cache <- new.env(parent = emptyenv())
+  result <- .petpeese_prior_probability_integral(mu, optional_bias, 1, 0)
+  expect_lt(abs(as.numeric(result) - (stats::pnorm(-1) + stats::dnorm(0) - stats::dnorm(1))), 1e-7)
+  omitted <- attr(result, "numerical_diagnostics")$optional_anchor_diagnostics
+  expect_true(any(vapply(omitted, function(entry){
+    entry$operation == "bias quantile 0.02" && inherits(entry$condition, "BayesTools_numerical_condition")
+  }, logical(1))))
 })

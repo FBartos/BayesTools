@@ -108,6 +108,16 @@ their exact source indices and ordinates, warning with the affected source value
 They require two distinct images and consistent nonzero orientation; whole
 collapse, custom/affine collapse and invalid interior knots remain unavailable.
 This display convention does not relax atom, draw or inverse-region checks.
+PET/PEESE continuous-pair CDFs integrate over location probability, retain raw
+panel diagnostics, and share a total200 actual subdivisions per original pair.
+Each finite panel uses checked affine coordinates with its original physical
+endpoints and width Jacobian, preserving the physical partition and criteria.
+Default-range continuous primitive quantiles consume the smaller directly
+represented lower or upper tail; truncated components retain their existing
+lower-probability route and refuse lost interior coordinates. Positive subnormal
+weighted CDF-panel terms remain governed by the CDF error criteria.
+Optional partition anchors retain numerical omission provenance; required event
+arithmetic, quantile ranges and solver limits refuse without sampled rescue.
 Keep requested display limits separate from transformation support. Custom
 transformations can declare `output_support = c(lower, upper)`; inverse-grid
 evaluation must exclude coordinates outside that interval, without clamping
