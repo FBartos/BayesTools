@@ -163,13 +163,15 @@ format_BF <- function(BF, logBF = FALSE, BF01 = FALSE, inclusion = FALSE){
 `[.BayesTools_BF` <- function(x, i, ...){
 
   logs <- .BF_carrier_log(x)
+  positions <- stats::setNames(seq_along(x), names(x))
+  index <- if(missing(i)) positions else positions[i]
+  index <- unname(index)
   out <- NextMethod("[")
   for(attribute in c("name", "logBF", "BF01")) attr(out, attribute) <- attr(x, attribute)
   bound <- attr(x, "bound_operator")
-  if(!is.null(bound)) attr(out, "bound_operator") <- if(missing(i)) bound else bound[i]
+  if(!is.null(bound)) attr(out, "bound_operator") <- bound[index]
   out <- .BF_carrier_drop(out)
   if(!is.null(logs)){
-    index <- if(missing(i)) seq_along(x) else i
     attr(out, "canonical_log_BF") <- logs[index]
     attr(out, "producer_values") <- as.numeric(out)
     attr(out, "carrier_logBF") <- attr(x, "logBF")

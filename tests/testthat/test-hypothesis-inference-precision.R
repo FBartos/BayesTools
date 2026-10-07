@@ -1,5 +1,32 @@
 skip_if_not_test_profile("unit")
 
+test_that("named BF slices use the visible vector positions for every carrier", {
+
+  values <- .format_BF_from_log(c(a = 710, b = 2, a = 750),
+    bound_operator = c(">", NA, ">"), diagnostics = list(list(id = 1), list(id = 2), list(id = 3)))
+  attr(values, "log_prior_height") <- c(10, 20, 30)
+  attr(values, "log_posterior_height") <- c(720, 22, 780)
+  for(index in list(c("b", "a", "a", "unknown"), c(3L, 1L, 1L, NA_integer_),
+                   c(TRUE, FALSE, TRUE), -2L)){
+    positions <- stats::setNames(seq_along(values), names(values))[index]
+    selected <- values[index]
+    expect_identical(as.numeric(selected), as.numeric(values)[positions])
+    expect_identical(.BF_carrier_log(selected), .BF_carrier_log(values)[positions])
+    expect_identical(attr(selected, "bound_operator"), attr(values, "bound_operator")[positions])
+    expect_identical(attr(selected, "numerical_diagnostics"), attr(values, "numerical_diagnostics")[positions])
+    expect_identical(attr(selected, "log_prior_height"), c(10, 20, 30)[positions])
+    expect_identical(attr(selected, "log_posterior_height"), c(720, 22, 780)[positions])
+  }
+  selected <- values[c("b", "a", "a", "unknown")]
+  table <- data.frame(parameter = seq_along(selected), BF = as.numeric(selected))
+  table$BF <- selected
+  class(table) <- c("BayesTools_table", "data.frame")
+  attr(table, "type") <- c("string", "BF")
+  expect_identical(as.numeric(update(table, logBF = TRUE)$BF), c(2, 710, 710, NA_real_))
+  expect_identical(as.numeric(update(table, BF01 = TRUE)$BF), exp(-c(2, 710, 710, NA_real_)))
+  expect_identical(.BF_carrier_log(values[]), .BF_carrier_log(values))
+})
+
 test_that("point inference retains finite log ordinates and orientation", {
 
   arguments <- list(posterior = c(1, 2, 3), prior = prior("normal", list(0, 1)),
