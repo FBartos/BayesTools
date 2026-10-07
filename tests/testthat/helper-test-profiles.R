@@ -27,6 +27,7 @@ bayestools_quiet_llm_reporter <- function(...) {
 
 bayestools_test_profile_contexts <- list(
   unit = c(
+    "condition-model-probabilities",
     "density-display-coherence",
     "backend-fingerprint",
     "bounded-plot-transformations",
@@ -89,6 +90,7 @@ bayestools_test_profile_contexts <- list(
     "model-averaging-compatibility-guards",
     "model-averaging-edge-cases",
     "model-averaging-plots-edge-cases",
+    "model-probability-ownership",
     "native-registration",
     "native-range",
     "parameter-labels",
