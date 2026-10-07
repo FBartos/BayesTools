@@ -1872,7 +1872,8 @@ JAGS_formula_prior_density <- function(
     if(length(supports)) model_supports[[model]] <- .posterior_support_union(supports, source = "formula_contribution")
   }
   marginal <- .bt_meta_assign(marginal, list(support = NULL, atoms = NULL, components = NULL,
-    prior_density = NULL, prior_context = NULL, linear_weights = NULL, linear_weight_space = NULL))
+    prior_density = NULL, prior_context = NULL, linear_weights = NULL, linear_weight_space = NULL,
+    joint_prior_transformation = NULL))
   if(prior_available && prior_samples){
     positive <- which(vapply(state$models, function(record) record$prior_probability > 0, logical(1)))
     probabilities <- vapply(state$models[positive], `[[`, numeric(1), "prior_probability")
@@ -1905,6 +1906,10 @@ JAGS_formula_prior_density <- function(
       .posterior_components_new(component_index, component_supports, do.call(rbind, component_keys)))
   }
   common <- row_weights[[1L]]
+  logged <- names(source_transforms)[source_transforms == "log"]
+  if(length(logged) && any(common[, intersect(logged, colnames(common)), drop = FALSE] != 0)){
+    marginal <- .bt_meta_set(marginal, "joint_prior_transformation", "log_intercept")
+  }
   if(is.null(coefficient) && prior_available && all(vapply(row_weights, identical, logical(1), common)) && length(state$models) == 1L){
     context <- .bt_formula_contribution_context(state$models[[1L]], prefix, n_grid,
       active_columns = colnames(common)[colSums(common != 0) > 0])

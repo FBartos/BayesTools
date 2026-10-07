@@ -499,3 +499,25 @@ test_that("ordered contribution replay declines lost finite multiplier folds", {
     }
   }
 })
+
+test_that("logged formula levels retain scalar Gaussian laws and conservative joint refusal", {
+
+  fit <- .formula_state_test_fit(multiplier = NULL, mean = 0, sd = 1,
+    intercept = prior("lognormal", list(.3, .5)), slope = prior("normal", list(0, .4)),
+    extra_priors = list(), log_intercept = TRUE,
+    values = cbind(mu_intercept = exp(c(.2, .4)), mu_x = c(-.1, .2)))
+  for(original in c(FALSE, TRUE)){
+    mixed <- as_mixed_posteriors(fit, c("mu_intercept", "mu_x"), transform_scaled = original)
+    levels <- marginal_posterior(mixed, "mu_x", ~ 1 + x, prior_samples = TRUE)
+    expect_length(levels, 3L)
+    for(i in seq_along(levels)){
+      expect_identical(.bt_meta_get(levels[[i]], "joint_prior_transformation"), "log_intercept")
+      expect_equal(as.numeric(levels[[i]]), c(.2, .4) + c(-1, 0, 1)[i] * c(-.1, .2), tolerance = 1e-14)
+      expect_equal(prior_density_ordinate(posterior_metadata(levels[[i]], "prior_density"), .3)$log_density,
+        stats::dnorm(.3, .3, sqrt(.5^2 + (c(-1, 0, 1)[i] * .4)^2), log = TRUE), tolerance = 1e-12)
+    }
+    expect_equal(as.numeric(levels[[1L]]) + as.numeric(levels[[3L]]), 2 * c(.2, .4), tolerance = 1e-14)
+    expect_error(.hypothesis_level_linear_weights(levels[[1L]]), "Joint prior information is unavailable", fixed = TRUE)
+    expect_error(.hypothesis_level_linear_weights(levels[[3L]]), "Joint prior information is unavailable", fixed = TRUE)
+  }
+})
