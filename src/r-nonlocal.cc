@@ -1,10 +1,44 @@
 #include "nonlocal/BTNonlocalCore.h"
+#include "gamma/BTGammaRange.h"
 
 #include <cmath>
+#include <cstring>
 
 #include <Rinternals.h>
 #include <R_ext/Error.h>
 #include <R_ext/Random.h>
+
+// Internal proving facts use the identical checker that enables certificates.
+// Only the ten meaningful x87 bytes are copied; padding is never exposed.
+extern "C" SEXP BayesTools_native_range_environment()
+{
+  bayestools::gamma::range::environment env = bayestools::gamma::range::current_environment();
+  const char *names[] = {"compiled_profile", "documented_cpu", "hypervisor", "control_word", "mxcsr",
+    "ln2_raw", "ln2_lower_raw", "ln2_upper_raw", "log2_raw", "threshold_raw", "available", "representation"};
+  SEXP out = PROTECT(Rf_allocVector(VECSXP, 12));
+  SEXP labels = PROTECT(Rf_allocVector(STRSXP, 12));
+  for(int i = 0; i < 12; ++i) SET_STRING_ELT(labels, i, Rf_mkChar(names[i]));
+  SET_VECTOR_ELT(out, 0, Rf_ScalarLogical(env.compiled_profile));
+  SET_VECTOR_ELT(out, 1, Rf_ScalarLogical(env.documented_cpu));
+  SET_VECTOR_ELT(out, 2, Rf_ScalarLogical(env.hypervisor));
+  SET_VECTOR_ELT(out, 3, Rf_ScalarInteger(env.compiled_profile ? env.control_word : NA_INTEGER));
+  SET_VECTOR_ELT(out, 4, Rf_ScalarInteger(env.compiled_profile ? env.mxcsr : NA_INTEGER));
+  const long double extended[] = {env.ln2, 0xb.17217f7d1cf79a4p-4L, 0xb.17217f7d1cf79b4p-4L};
+  const double doubles[] = {std::log(2.0), bayestools::gamma::range::far_threshold};
+  for(int i = 0; i < 5; ++i){
+    int size = env.compiled_profile ? (i < 3 ? 10 : 8) : 0;
+    SEXP bytes = PROTECT(Rf_allocVector(RAWSXP, size));
+    if(size) std::memcpy(RAW(bytes), i < 3 ? static_cast<const void*>(&extended[i]) :
+      static_cast<const void*>(&doubles[i - 3]), size);
+    SET_VECTOR_ELT(out, i + 5, bytes);
+    UNPROTECT(1);
+  }
+  SET_VECTOR_ELT(out, 10, Rf_ScalarLogical(env.available));
+  SET_VECTOR_ELT(out, 11, Rf_mkString(env.compiled_profile ? "x87-extended-little-endian-10" : "unsupported"));
+  Rf_setAttrib(out, R_NamesSymbol, labels);
+  UNPROTECT(2);
+  return out;
+}
 
 namespace {
 

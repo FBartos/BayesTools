@@ -1,5 +1,6 @@
 #include "BTInvGammaCore.h"
 #include "../gamma/BTGammaCore.h"
+#include "../gamma/BTGammaRange.h"
 
 #include <algorithm>
 #include <cfloat>
@@ -18,9 +19,10 @@ double quiet_nan()
   return std::numeric_limits<double>::quiet_NaN();
 }
 
-double radial_log(double x, double scale, double *represented_r = 0)
+double radial_log(double x, double scale, double *represented_r = 0, double *coordinate_error = 0)
 {
   if(represented_r) *represented_r = quiet_nan();
+  if(coordinate_error) *coordinate_error = quiet_nan();
   if(x <= 0.0) return infinity;
   if(x == infinity) return -infinity;
   double r = scale / x;
@@ -28,7 +30,12 @@ double radial_log(double x, double scale, double *represented_r = 0)
     if(represented_r) *represented_r = r;
     return std::log(r);
   }
-  return std::log(scale) - std::log(x);
+  double h = std::log(scale) - std::log(x);
+  if(coordinate_error && h > gamma::range::far_threshold &&
+     gamma::range::current_environment().available){
+    *coordinate_error = gamma::range::invgamma_error(h);
+  }
+  return h;
 }
 
 bool candidate_available(double x, double shape, double scale, double lower, double upper)
@@ -60,8 +67,9 @@ double log_density(double x, double shape, double scale)
   if(std::isnan(x)) return quiet_nan();
   if(x <= 0.0 || !std::isfinite(x)) return -infinity;
   double represented_r;
-  double log_r = radial_log(x, scale, &represented_r);
-  return gamma::log_prefix(shape, log_r, represented_r) - std::log(x);
+  double coordinate_error;
+  double log_r = radial_log(x, scale, &represented_r, &coordinate_error);
+  return gamma::log_prefix(shape, log_r, represented_r, coordinate_error) - std::log(x);
 }
 
 double cdf(double q, double shape, double scale, bool lower_tail, bool log_p)
@@ -70,8 +78,9 @@ double cdf(double q, double shape, double scale, bool lower_tail, bool log_p)
   if(q <= 0.0) return log_p ? (lower_tail ? -infinity : 0.0) : (lower_tail ? 0.0 : 1.0);
   if(q == infinity) return log_p ? (lower_tail ? 0.0 : -infinity) : (lower_tail ? 1.0 : 0.0);
   double represented_r;
-  double log_r = radial_log(q, scale, &represented_r);
-  gamma::tails out = gamma::probabilities(shape, log_r, represented_r);
+  double coordinate_error;
+  double log_r = radial_log(q, scale, &represented_r, &coordinate_error);
+  gamma::tails out = gamma::probabilities(shape, log_r, represented_r, coordinate_error);
   return log_p ? (lower_tail ? out.log_upper : out.log_lower) :
     (lower_tail ? out.upper : out.lower);
 }
@@ -101,7 +110,10 @@ double log_interval_mass(double shape, double scale, double lower, double upper)
 {
   if(!valid_parameters(shape, scale) || std::isnan(lower) || std::isnan(upper)) return quiet_nan();
   if(upper <= 0.0 || lower >= upper) return -infinity;
-  return gamma::log_interval_mass(shape, radial_log(upper, scale), radial_log(lower, scale));
+  double lower_error, upper_error;
+  double lo = radial_log(upper, scale, 0, &lower_error);
+  double hi = radial_log(lower, scale, 0, &upper_error);
+  return gamma::log_interval_mass(shape, lo, hi, lower_error, upper_error);
 }
 
 double truncated_quantile(double p, double shape, double scale, double lower, double upper)
@@ -109,8 +121,11 @@ double truncated_quantile(double p, double shape, double scale, double lower, do
   if(!valid_parameters(shape, scale) || !(p >= 0.0 && p <= 1.0 && lower < upper)) return quiet_nan();
   if(p == 0.0) return std::max(lower, 0.0);
   if(p == 1.0) return upper;
+  double lower_error, upper_error;
+  double lo = radial_log(upper, scale, 0, &lower_error);
+  double hi = radial_log(lower, scale, 0, &upper_error);
   double root = gamma::interval_log_quantile(std::log1p(-p), shape,
-    radial_log(upper, scale), radial_log(lower, scale));
+    lo, hi, lower_error, upper_error);
   double x = std::exp(std::log(scale) - root);
   return std::isfinite(x) && x > 0.0 && x > lower && x < upper ? x : quiet_nan();
 }

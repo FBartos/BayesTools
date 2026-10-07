@@ -42,7 +42,6 @@
     .prior_numerical_signal(operation, family, requested_scale, unavailable,
       "The declared interior calculation could not be resolved at supported precision",
       error = rng || bounded, rng = rng)
-    return(output)
   }
   if(!warn_range) return(output)
   range <- which(known & (is.infinite(output) |
@@ -62,6 +61,12 @@
   is.finite(location) && is.finite(tau) && tau > 0 &&
     is.finite(order) && order >= 1 && order == floor(order) &&
     (is.null(df) || (is.finite(df) && df > 0))
+}
+
+.prior_numerical_density_interior <- function(prior, x){
+
+  support <- if(prior$distribution == "invgamma") x > 0 else x != prior$parameters$location
+  is.finite(x) & x >= prior$truncation$lower & x <= prior$truncation$upper & support
 }
 
 .prior_numerical_finite <- function(values, family, operation = "sampling"){

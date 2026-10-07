@@ -1,5 +1,6 @@
 #include "BTNonlocalCore.h"
 #include "../gamma/BTGammaCore.h"
+#include "../gamma/BTGammaRange.h"
 
 #include <algorithm>
 #include <cfloat>
@@ -37,9 +38,10 @@ double log_distance(double x, double location)
 }
 
 double radial_log(double x, double location, double tau, double order, bool inverse,
-                  double *represented_r = 0)
+                  double *represented_r = 0, double *coordinate_error = 0)
 {
   if(represented_r) *represented_r = quiet_nan();
+  if(coordinate_error) *coordinate_error = quiet_nan();
   if(x == location) return inverse ? infinity : -infinity;
   if(!std::isfinite(x)) return inverse ? -infinity : infinity;
   double distance = std::fabs(x - location);
@@ -59,8 +61,14 @@ double radial_log(double x, double location, double tau, double order, bool inve
     }
   }
   double ld = log_distance(x, location);
-  double out = inverse ? order * (std::log(tau) - 2.0 * ld) :
-    2.0 * ld - log_two - std::log(tau);
+  double m = inverse ? std::log(tau) - 2.0 * ld : 2.0 * ld - log_two;
+  double out = inverse ? order * m : m - std::log(tau);
+  // Overflowing original subtraction uses logaddexp/exp, whose composed error
+  // is unproved here. Only finite represented original distances can certify.
+  if(coordinate_error && std::isfinite(distance) && distance > 0.0 &&
+     out > gamma::range::far_threshold && gamma::range::current_environment().available){
+    *coordinate_error = gamma::range::nonlocal_error(order, m, out, inverse);
+  }
   return std::isfinite(out) ? out : quiet_nan();
 }
 
@@ -118,8 +126,9 @@ double density(double x, double location, double tau, double order, double df, b
   if(std::isnan(x)) return quiet_nan();
   if(!std::isfinite(x) || x == location) return -infinity;
   double represented_r;
-  double log_r = radial_log(x, location, tau, order, inverse, &represented_r);
-  double prefix = gamma::log_prefix(shape_value(order, df, inverse), log_r, represented_r);
+  double coordinate_error;
+  double log_r = radial_log(x, location, tau, order, inverse, &represented_r, &coordinate_error);
+  double prefix = gamma::log_prefix(shape_value(order, df, inverse), log_r, represented_r, coordinate_error);
   return (inverse ? std::log(order) : 0.0) + prefix - log_distance(x, location);
 }
 
@@ -134,8 +143,9 @@ double probability(double q, double location, double tau, double order, double d
   }
   if(q == location) return log_p ? -log_two : 0.5;
   double represented_r;
-  double log_r = radial_log(q, location, tau, order, inverse, &represented_r);
-  gamma::tails tails = gamma::probabilities(shape_value(order, df, inverse), log_r, represented_r);
+  double coordinate_error;
+  double log_r = radial_log(q, location, tau, order, inverse, &represented_r, &coordinate_error);
+  gamma::tails tails = gamma::probabilities(shape_value(order, df, inverse), log_r, represented_r, coordinate_error);
   double small_log = (inverse ? tails.log_lower : tails.log_upper) - log_two;
   bool small = (q < location) == lower_tail;
   if(log_p) return small ? small_log : gamma::log1mexp(small_log);
@@ -174,11 +184,12 @@ double piece_mass(double lower, double upper, double location, double tau,
                   double order, double df, bool inverse)
 {
   if(!(lower < upper)) return -infinity;
-  double r1 = radial_log(lower, location, tau, order, inverse);
-  double r2 = radial_log(upper, location, tau, order, inverse);
+  double e1, e2;
+  double r1 = radial_log(lower, location, tau, order, inverse, 0, &e1);
+  double r2 = radial_log(upper, location, tau, order, inverse, 0, &e2);
   if(std::isnan(r1) || std::isnan(r2)) return quiet_nan();
   return gamma::log_interval_mass(shape_value(order, df, inverse),
-    std::min(r1, r2), std::max(r1, r2)) - log_two;
+    std::min(r1, r2), std::max(r1, r2), r1 <= r2 ? e1 : e2, r1 <= r2 ? e2 : e1) - log_two;
 }
 
 bool candidate_available(double value, double lower, double upper, double location,
@@ -333,12 +344,14 @@ double truncated_quantile(double p, double lower, double upper, double location,
     gamma::logdiffexp(log_u, ln - total) - (lp - total);
   double left = negative ? lower : std::max(lower, location);
   double right = negative ? std::min(upper, location) : upper;
-  double rleft = radial_log(left, location, tau, order, inverse);
-  double rright = radial_log(right, location, tau, order, inverse);
+  double eleft, eright;
+  double rleft = radial_log(left, location, tau, order, inverse, 0, &eleft);
+  double rright = radial_log(right, location, tau, order, inverse, 0, &eright);
   bool descending = negative != inverse;
   double radial_probability = descending ? gamma::log1mexp(relative) : relative;
   double root = gamma::interval_log_quantile(radial_probability, shape_value(order, df, inverse),
-    std::min(rleft, rright), std::max(rleft, rright));
+    std::min(rleft, rright), std::max(rleft, rright),
+    rleft <= rright ? eleft : eright, rleft <= rright ? eright : eleft);
   double out = reconstruct(root, location, tau, order, inverse, negative);
   return std::isfinite(out) && out > lower && out < upper ? out : quiet_nan();
 }

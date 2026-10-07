@@ -9,7 +9,9 @@ native-sources.o: \
 	distributions/DBTMoment.cc \
 	distributions/DBTInvMoment.cc \
 	functions/BTLKJCholesky.cc \
-	gamma/BTGammaCore.cc gamma/BTGammaCore.h \
+	gamma/BTGammaCore.cc gamma/BTGammaCore.h gamma/BTGammaRange.h \
 	invgamma/BTInvGammaCore.cc invgamma/BTInvGammaCore.h \
 	lkj/BTLKJCore.cc \
 	nonlocal/BTNonlocalCore.cc nonlocal/BTNonlocalCore.h
+
+r-nonlocal.o: gamma/BTGammaRange.h

@@ -252,13 +252,14 @@ JAGS_get_inits            <- function(prior_list, chains, seed){
                                                    operation = "initialization")
     if(prior$distribution %in% c("moment", "invmoment")){
       value <- init[[parameter_name]]
-      log_density <- tryCatch(.prior_numerical_without_warnings(lpdf(prior, value)),
+      log_density <- tryCatch(.prior_simple_lpdf_evaluator(prior)(value),
         BayesTools_numerical_condition = function(condition) condition)
       if(inherits(log_density, "BayesTools_numerical_condition")){
         condition <- .prior_numerical_condition("initialization", prior$distribution, "log", seq_along(value),
           "The declared normalized log density could not be resolved at supported precision", error = TRUE,
           range = inherits(log_density, "BayesTools_numerical_range_limit"))
         condition$values <- value
+        condition$log_density <- log_density$log_density
         condition$parent <- log_density
         stop(condition)
       }

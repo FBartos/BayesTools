@@ -79,6 +79,26 @@
 #' Aliases \code{"pmom"}, \code{"pimom"}, and \code{"inversemoment"} are
 #' accepted, and inverse-moment \code{df} may also be supplied as \code{nu}.
 #'
+#' Native inverse-gamma, moment and inverse-moment calculations distinguish
+#' certified finite-input tails outside logarithmic range from unavailable
+#' arithmetic. Direct density and log-density evaluations signal
+#' \code{BayesTools_numerical_range_limit}; unresolved calculations signal
+#' \code{BayesTools_numerical_unavailable}. Both inherit
+#' \code{BayesTools_numerical_condition} and retain the original input indices,
+#' operation, family and requested scale. Truncated evaluations warn only for
+#' points inside the declared support and truncation. Numerical tail zeros do
+#' not declare zero probability mass or point atoms. Nonempty intervals whose
+#' two endpoints both lose tail-log range can have unavailable normalization.
+#' Finite-required fitting and bridge consumers refuse these range results;
+#' natural integration may consume certified negative-infinite log tails only
+#' after checking normalization and the required kernel and Jacobian.
+#' Certification requires the inspected MinGW-w64 11.x x86-64 log backend,
+#' documented Intel or AMD instruction contracts, checked floating-point modes
+#' and a checked extended logarithmic constant. Other backends, overflowing
+#' original nonlocal distances and uncertified coordinates remain unavailable
+#' in this FAR regime. Constructor parameter domains and ordinary arithmetic
+#' are unchanged.
+#'
 #' @examples
 #' # create a standard normal prior distribution
 #' p1 <- prior(distribution = "normal", parameters = list(mean = 1, sd = 1))

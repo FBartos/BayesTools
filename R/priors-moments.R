@@ -83,11 +83,17 @@ mean.prior   <- function(x, ...){
         return(.prior_normal_truncated_moments(x, "mean"))
       }
 
-      prior_lpdf <- if(x$distribution %in% c("moment", "invmoment")) .prior_simple_lpdf_evaluator(x) else NULL
+      prior_lpdf <- if(x$distribution %in% c("moment", "invmoment")) .prior_simple_lpdf_evaluator(x, purpose = "natural_integral") else NULL
       integrand <- if(is.null(prior_lpdf)){
         function(x, prior) x * pdf(prior, x)
       }else{
-        function(x, prior) x * exp(prior_lpdf(x))
+        function(x, prior){
+          if(any(!is.finite(x))){
+            .prior_numerical_signal("mean integration kernel", prior$distribution, "finite",
+              which(!is.finite(x)), "The required kernel lost representable range", error = TRUE)
+          }
+          x * exp(prior_lpdf(x))
+        }
       }
       m <- stats::integrate(
         f       = integrand,
@@ -289,11 +295,18 @@ var.prior   <- function(x, ...){
         return(.prior_normal_truncated_moments(x, "var"))
       }
 
-      prior_lpdf <- if(x$distribution %in% c("moment", "invmoment")) .prior_simple_lpdf_evaluator(x) else NULL
+      prior_lpdf <- if(x$distribution %in% c("moment", "invmoment")) .prior_simple_lpdf_evaluator(x, purpose = "natural_integral") else NULL
       integrand <- if(is.null(prior_lpdf)){
         function(x, prior) x^2 * pdf(prior, x)
       }else{
-        function(x, prior) x^2 * exp(prior_lpdf(x))
+        function(x, prior){
+          kernel <- x^2
+          if(any(!is.finite(kernel))){
+            .prior_numerical_signal("variance integration kernel", prior$distribution, "finite",
+              which(!is.finite(kernel)), "The required kernel lost representable range", error = TRUE)
+          }
+          kernel * exp(prior_lpdf(x))
+        }
       }
       E2 <- stats::integrate(
         f       = integrand,

@@ -423,10 +423,15 @@ test_that("nonlocal finite starts retain range and unresolved normalized-density
   for(i in seq_along(priors)){
     testthat::with_mocked_bindings({
       condition <- tryCatch(.JAGS_init.simple(priors[[i]], "theta"), error = identity)
-      expect_s3_class(condition, "BayesTools_numerical_unavailable")
+      available <- .Call("BayesTools_native_range_environment", PACKAGE = "BayesTools")$available
+      expect_s3_class(condition, if(i == 1L && available) "BayesTools_numerical_range_limit" else "BayesTools_numerical_unavailable")
       expect_identical(condition$operation, "initialization")
       expect_identical(condition$values, values[i])
       expect_identical(condition$indices, 1L)
+      if(i == 1L && available){
+        expect_identical(condition$log_density, -Inf)
+        expect_s3_class(condition$parent, "BayesTools_numerical_range_limit")
+      }
     }, rng = function(...) values[i])
   }
 })

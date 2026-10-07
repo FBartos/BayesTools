@@ -1010,13 +1010,37 @@ quant.prior <- function(x, p, ...){
   }else{
     plan$log_normalizer
   }
-  log_lik <- .prior_simple_base_d(prior, x, log = TRUE) - log_normalizer
   outside <- !is.na(x) & (x < prior$truncation$lower | x > prior$truncation$upper)
+  if(!prior$distribution %in% c("invgamma", "moment", "invmoment")){
+    log_lik <- .prior_simple_base_d(prior, x, log = TRUE) - log_normalizer
+    log_lik[outside] <- -Inf
+    return(log_lik)
+  }
+  log_lik <- rep(-Inf, length(x))
+  log_lik[is.na(x)] <- x[is.na(x)]
+  eligible <- which(!is.na(x) & !outside)
+  if(length(eligible)){
+    log_lik[eligible] <- withCallingHandlers(
+      .prior_simple_base_d(prior, x[eligible], log = TRUE) - log_normalizer,
+      BayesTools_numerical_condition = function(condition){
+        # Only remap the package's native numerical provenance. Unrelated
+        # warnings and errors retain their original behavior.
+        if(inherits(condition, "warning")){
+          condition$indices <- eligible[condition$indices]
+          warning(condition)
+          invokeRestart("muffleWarning")
+        }
+      })
+  }
   log_lik[outside] <- -Inf
   log_lik
 }
 
-.prior_simple_lpdf_evaluator <- function(prior){
+.prior_simple_lpdf_evaluator <- function(prior, purpose = "finite"){
+
+  if(!purpose %in% c("finite", "natural_integral")){
+    stop("Unknown internal log-density evaluation purpose.", call. = FALSE)
+  }
 
   default_range <- .is_prior_default_range(prior)
   log_normalizer <- if(default_range ||
@@ -1035,13 +1059,45 @@ quant.prior <- function(x, p, ...){
   force(plan)
 
   function(x){
-    withCallingHandlers(.prior_simple_lpdf(prior, x, plan = plan),
+    tails <- list()
+    promote <- function(condition){
+      error <- condition
+      error$parent <- condition
+      class(error) <- c(setdiff(class(error), c("warning", "condition")), "error", "condition")
+      stop(error)
+    }
+    out <- withCallingHandlers(.prior_simple_lpdf(prior, x, plan = plan),
       BayesTools_numerical_unavailable = function(condition){
-        if(inherits(condition, "warning")){
-          class(condition) <- c(setdiff(class(condition), c("warning", "condition")), "error", "condition")
-          stop(condition)
-        }
+        if(inherits(condition, "warning")) promote(condition)
+      },
+      BayesTools_numerical_range_limit = function(condition){
+        if(!inherits(condition, "warning")) return(invisible(NULL))
+        if(purpose == "natural_integral" && (condition$operation != "density" ||
+           condition$requested_scale != "log" ||
+           !condition$family %in% c("invgamma", "moment", "invmoment") ||
+           condition$family != prior$distribution)) promote(condition)
+        tails[[length(tails) + 1L]] <<- condition
+        invokeRestart("muffleWarning")
       })
+    certified <- integer()
+    for(condition in tails){
+      indices <- condition$indices
+      if(!is.integer(indices) || !length(indices) || anyNA(indices) ||
+         any(indices < 1L | indices > length(out))) promote(condition)
+      condition$log_density <- out[indices]
+      if(purpose == "finite") promote(condition)
+      if(anyNA(out[indices]) || !all(out[indices] == -Inf) ||
+         !all(.prior_numerical_density_interior(prior, x)[indices])) promote(condition)
+      certified <- c(certified, indices)
+    }
+    if(purpose == "natural_integral"){
+      failed <- which(!is.na(x) & (is.na(out) | out == Inf))
+      if(length(failed)) .prior_numerical_signal("density", prior$distribution, "log", failed,
+        "Natural integration requires an available density with a certified negative-infinite tail",
+        error = TRUE)
+    }
+    if(length(certified)) attr(out, "BayesTools_certified_log_tail") <- unique(certified)
+    out
   }
 }
 
@@ -1052,6 +1108,16 @@ quant.prior <- function(x, p, ...){
   }
 
   if(prior[["distribution"]] != "point" && !is.prior.discrete(prior)){
+    if(prior$distribution %in% c("invgamma", "moment", "invmoment")){
+      log_density <- withCallingHandlers(.prior_simple_lpdf(prior, x),
+        BayesTools_numerical_condition = function(condition){
+          if(inherits(condition, "warning") && condition$operation == "density" &&
+             condition$requested_scale == "log") invokeRestart("muffleWarning")
+        })
+      interior <- .prior_numerical_density_interior(prior, x)
+      return(.prior_numerical_result(exp(log_density), x, TRUE, "density",
+        prior$distribution, "natural", interior))
+    }
     log_density <- .prior_numerical_without_warnings(.prior_simple_lpdf(prior, x))
     return(.prior_numerical_result(exp(log_density), x, TRUE, "density",
       prior$distribution, "natural", is.finite(log_density) | is.nan(log_density),

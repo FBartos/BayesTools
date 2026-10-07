@@ -27,6 +27,7 @@ bayestools_quiet_llm_reporter <- function(...) {
 
 bayestools_test_profile_contexts <- list(
   unit = c(
+    "density-display-coherence",
     "backend-fingerprint",
     "bounded-plot-transformations",
     "distributions-mpoint",
@@ -89,6 +90,7 @@ bayestools_test_profile_contexts <- list(
     "model-averaging-edge-cases",
     "model-averaging-plots-edge-cases",
     "native-registration",
+    "native-range",
     "parameter-labels",
     "prior-density-ordinate",
     "prior-ordered",
@@ -131,6 +133,7 @@ bayestools_test_profile_contexts <- list(
     "weightfunction-redesign"
   ),
   fixture = c(
+    "density-display-producers",
     "formula-contribution-fixture",
     "fixture-integrity",
     "hypothesis-BF-bridge",

@@ -46,6 +46,17 @@ Gamma coordinates in inverse-gamma and nonlocal kernels retain original-input
 logs when intermediate ratios, squares, or roots lose precision. The bounded
 small-shape Gamma series and certified leading log-root branch supplement the
 existing JRmath backend; unsupported precision remains explicitly unavailable.
+The FAR certificate is limited to the inspected static MinGW-w64 11.x x86-64
+log route, documented Intel/AMD instruction bounds and live RN/PC53-or64/SSE
+gradual-underflow checks, including preverified extended ln2 limits. Its
+original-input outward coordinate error must be below 1/4, h above the outward
+log(16*DBL_MAX) literal, shape positive and a*h finite. Original subtraction
+overflow has no exp/logaddexp certificate here. Each interval endpoint retains
+its own certificate. Missing certificates, shape underflow and incompatible
+profiles remain unavailable; constructor domains and ordinary routes stay fixed.
+FAR Gamma tails return log_lower 0, log_upper -Inf, lower 1 and upper 0;
+prefix returns -Inf directly. Two-FAR nonempty continuous intervals have positive
+mathematical mass but unavailable normalization, never declared zero mass.
 The certified inverse-moment small-root branch reconstructs its final log
 magnitude from the original lower Gamma log probability, df and order, avoiding
 overflow of the intermediate Gamma log root. This preserves the public integer
@@ -65,10 +76,16 @@ support point. This differs from uncertified magnitude/location rounding, which
 remains unavailable. JAGS sampling states and deterministic initialization
 additionally require a usable positive log density and refuse that location;
 general finite-required R collectors do not impose this state requirement.
-Truncated nonlocal mean and variance quadrature construct one strict cached
-log-density evaluator per integral. Available log densities may exponentiate
-to harmless natural tail zero inside these integrands; unavailable normalization
-or density arithmetic still stops before or during integration. The existing
+Truncated nonlocal mean and variance quadrature and natural density-integral
+leaves construct one cached log-density evaluator in natural-integral mode.
+Only native-family interior range warnings whose recorded results are -Inf
+can supply certified natural tail zero after finite normalization, kernel and
+Jacobian checks; unknown range causes, NaN/+Inf and unavailable arithmetic
+remain strict. The default finite-required mode promotes interior range and
+unavailable warnings to classed errors with original fields and parent payload.
+Public direct/truncated density methods retain both independent vector warning
+subsets and original indices, excluding structural support/truncation zeros.
+Primitive FAR density ordinates remain regular but inexact. The existing
 moment definitions, integral limits and quadrature settings remain in force.
 Ordinary Gamma priors retain constructor acceptance for every existing shape.
 For a numeric subnormal shape, normalization of a truncation that cuts positive

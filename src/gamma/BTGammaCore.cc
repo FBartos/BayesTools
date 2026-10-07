@@ -1,4 +1,5 @@
 #include "BTGammaCore.h"
+#include "BTGammaRange.h"
 
 #include <algorithm>
 #include <cfloat>
@@ -93,11 +94,12 @@ double log_gamma_ratio(double a)
   return (-std::log1p(a) / a + 0x1.b0ee6072093cep-2) + a * polynomial;
 }
 
-tails probabilities(double a, double log_r, double represented_r)
+tails probabilities(double a, double log_r, double represented_r, double coordinate_error)
 {
   if(!(std::isfinite(a) && a > 0.0) || std::isnan(log_r)) return missing_tails();
   if(log_r == neg_inf) return from_lower(neg_inf);
   if(log_r == pos_inf) return from_lower(0.0);
+  if(range::certified(a, log_r, coordinate_error)) return {0.0, neg_inf, 1.0, 0.0};
   double r = represented_r >= DBL_MIN && std::isfinite(represented_r) ? represented_r : std::exp(log_r);
   if(a <= 0.5 && log_r <= 0.0){
     double term = -r / (a + 1.0);
@@ -144,9 +146,10 @@ tails probabilities(double a, double log_r, double represented_r)
   return out;
 }
 
-double log_prefix(double a, double log_r, double represented_r)
+double log_prefix(double a, double log_r, double represented_r, double coordinate_error)
 {
   if(!(std::isfinite(a) && a > 0.0 && std::isfinite(log_r))) return unavailable();
+  if(range::certified(a, log_r, coordinate_error)) return neg_inf;
   double r = represented_r >= DBL_MIN && std::isfinite(represented_r) ? represented_r : std::exp(log_r);
   if(!std::isfinite(r)) return unavailable();
   double out = a <= 0.5 ? std::log(a) + a * (log_r - log_gamma_ratio(a)) - r :
@@ -180,12 +183,12 @@ double log_quantile(double log_p, double a, bool lower_tail, double *represented
   return unavailable();
 }
 
-double log_interval_mass(double a, double lo, double hi)
+double log_interval_mass(double a, double lo, double hi, double lower_error, double upper_error)
 {
   if(std::isnan(lo) || std::isnan(hi) || lo > hi) return unavailable();
   if(lo == hi) return neg_inf;
-  tails lower = probabilities(a, lo);
-  tails upper = probabilities(a, hi);
+  tails lower = probabilities(a, lo, -1.0, lower_error);
+  tails upper = probabilities(a, hi, -1.0, upper_error);
   double from_p = logdiffexp(upper.log_lower, lower.log_lower);
   double from_q = logdiffexp(lower.log_upper, upper.log_upper);
   double out = upper.log_lower <= log_half ? from_p :
@@ -197,15 +200,16 @@ double log_interval_mass(double a, double lo, double hi)
   return unavailable();
 }
 
-double interval_log_quantile(double log_p, double a, double lo, double hi)
+double interval_log_quantile(double log_p, double a, double lo, double hi,
+                             double lower_error, double upper_error)
 {
   if(!valid_log_probability(log_p) || !(lo < hi)) return unavailable();
   if(log_p == neg_inf) return lo;
   if(log_p == 0.0) return hi;
-  double mass = log_interval_mass(a, lo, hi);
+  double mass = log_interval_mass(a, lo, hi, lower_error, upper_error);
   if(!std::isfinite(mass)) return unavailable();
-  tails lower = probabilities(a, lo);
-  tails upper = probabilities(a, hi);
+  tails lower = probabilities(a, lo, -1.0, lower_error);
+  tails upper = probabilities(a, hi, -1.0, upper_error);
   double lp = logaddexp(lower.log_lower, log_p + mass);
   double lq = logaddexp(upper.log_upper, log1mexp(log_p) + mass);
   double out = !std::isnan(lp) && (std::isnan(lq) || lp <= lq) ?
