@@ -36,6 +36,9 @@
 
 .nonlocal_validate_tau <- function(tau, name){
 
+  if(identical(name, "mode") && (!is.finite(tau) || tau <= 0)){
+    stop("The supplied 'mode' yields a derived 'tau' outside representable positive range.", call. = FALSE)
+  }
   check_real(tau, name, lower = 0, allow_bound = FALSE, allow_NA = FALSE)
   .nonlocal_validate_finite(tau, name)
 

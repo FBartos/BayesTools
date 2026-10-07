@@ -869,3 +869,21 @@ calls and invalid metadata remain strict. Prior-region leaves share
 `BayesTools_hypothesis_region`; deterministic provenance is mandatory for
 regions. Opted-in point/marginal tables may report a known inexact ordinate as
 NA. Numerical refusal criteria, messages and budgets stay unchanged.
+
+
+Affine hypothesis arithmetic keeps a checked numerator/divisor; point readers
+estimate the unshifted linear part at the translated null and report heights in
+the requested quantity units. Structural constants reach declared eligibility
+before density estimation. Unknown grammar returns no route; supported numeric
+loss raises the narrow hypothesis numerical leaf under the ordinate or region
+and numerical families. Shared log-ratio screening uses the scalar relative
+1e-4 source as an absolute log budget; it is an operand-resolution heuristic.
+Live BayesTools_BF carriers bind canonical BF10 logs to values/direction/rows;
+plain replacement, Ops and Math invalidate them, and exports omit the carrier.
+Deterministic scalar affine/Boolean region routes precede prior draws and carry
+one actual numerical result into MC variance and prior_numerical_diagnostics.
+BF_error stays MC-only. Formula measure refusals have an explicit declared-cause
+allow-list; missing targets/sources/priors/context and program failures propagate.
+Moment constructor acceptance includes finite positive tau whose derived mode
+remains finite despite an overflowing intermediate product; a positive supplied
+mode can still fail because its derived tau loses representable range.

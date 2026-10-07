@@ -275,6 +275,16 @@ test_that("public missing formula targets and priors propagate outside the measu
   expect_false(inherits(missing_priors, "BayesTools_formula_measure_unavailable"))
 })
 
+test_that("nonlocal constructor diagnoses loss of derived tau", {
+
+  for(distribution in c("moment", "invmoment")){
+    parameters <- list(mode = 1e-200)
+    if(distribution == "invmoment") parameters$df <- 1
+    expect_error(prior(distribution, parameters),
+      "The supplied 'mode' yields a derived 'tau' outside representable positive range.", fixed = TRUE)
+  }
+})
+
 test_that("marginal estimate exports remove hidden logs and preserve numeric values", {
 
   posterior <- c(1, 2, 3)

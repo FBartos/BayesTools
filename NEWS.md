@@ -1,4 +1,9 @@
 # version 0.3.1
+- affine hypothesis readers retain a checked numerator and constant divisor, preserving translated point variability and strict/inclusive region boundaries; unresolved arithmetic refuses with numerical conditions.
+- exact prior and Normal posterior log ordinates are retained through Savage-Dickey inference, transitivity and BF-table formatting; live column metadata are invalidated by replacement and arithmetic.
+- supported scalar affine/Boolean prior regions use deterministic laws before sampled draws, with row-aligned numerical diagnostics and Monte Carlo-only BF errors.
+- formula combinations retain canonical contribution component supports and original gate alignment; only declared unsupported-law causes receive the formula-measure refusal family.
+- moment priors accept finite positive tau when a finite derived mode is representable despite an overflowing intermediate product; mode inputs whose derived tau loses representable range remain rejected.
 - original coefficient ratios retain representable nonzero weights across multiplication range loss and refuse unresolved arithmetic; weighted logged dynamic outputs preserve nonlinear-map refusal while scalar transformed laws remain available.
 - numerical and point multiplier folds that lose representable scale retain formula values and mark prior, atom and support measures explicitly unavailable rather than declaring a zero point law.
 - inverse-gamma kernels retain original-input Gamma coordinates across overflowing ratios and subnormal roots, with the bounded small-shape series and explicit numerical availability and range conditions.
