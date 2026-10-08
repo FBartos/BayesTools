@@ -1,5 +1,182 @@
 skip_if_not_test_profile("unit")
 
+test_that("ordered IDs reject malformed vectors and keep reusable factor maps", {
+  total <- prior("point", list(1))
+  for(id in list(character(), setNames(character(), character()))){
+    expect_error(prior_ordered(total, id = id),
+      "The 'id' argument must be NULL or contain at least one identifier.", fixed = TRUE)
+  }
+  expect_error(prior_ordered(total, id = c("a", "b")),
+    "The unnamed 'id' argument must contain exactly one identifier.", fixed = TRUE)
+  for(id in list(NULL, "shape", c(f = "shape"), c(f = "shape", g = "other"))){
+    expect_s3_class(prior_ordered(total, id = id), "prior.ordered")
+  }
+  data <- data.frame(f = ordered(c("lo", "mid", "hi")))
+  expect_type(JAGS_formula(~f, "mu", data, list(intercept = prior("point", list(0)),
+    f = prior_ordered(total, allocation = list(f = c(.4, .6), g = c(.2, .8)), id = c(g = "other")))), "list")
+  expect_error(JAGS_formula(~f, "mu", data, list(intercept = prior("point", list(0)),
+    f = prior_ordered(total, allocation = list(g = c(.4, .6))))), "f", fixed = TRUE)
+})
+
+test_that("ordered indicator-coded terms refuse even zero totals", {
+  data <- data.frame(f = ordered(rep(c("lo", "mid", "hi"), 2)), x = 1:6)
+  for(total in c(0, 10)){
+    condition <- expect_error(JAGS_formula(~f:x, "mu", data,
+      list(intercept = prior("point", list(0)),
+        "f:x" = prior_ordered(prior("point", list(total)), allocation = c(.2, .3, .5),
+          contrast = "cumulative_levels"))), "codes 'f' by level indicators", fixed = TRUE,
+      class = "BayesTools_ordered_unavailable")
+    expect_identical(conditionMessage(condition), paste0(
+      "The 'cumulative_levels' prior of the factor term 'f:x' is unavailable: the formula has no term 'x', ",
+      "so 'f:x' codes 'f' by level indicators and has one coefficient per level instead of 'cumulative_levels' ",
+      "contrast coefficients. Add 'x' to the formula to keep the 'cumulative_levels' contrast, or use ",
+      "prior_factor(contrast = \"independent\") for one independent coefficient per level."))
+    expect_null(conditionCall(condition))
+    expect_false(inherits(condition, "BayesTools_ordered_coordinates_unavailable"))
+  }
+  data <- expand.grid(f = ordered(c("lo", "mid", "hi")), g = ordered(c("a", "b", "c")))
+  p <- prior_ordered(prior("point", list(10)), allocation = list(f = c(.2, .3, .5), g = c(.1, .4, .5)),
+    contrast = "cumulative_levels")
+  condition <- expect_error(JAGS_formula(~f:g, "mu", data, list(intercept = prior("point", list(0)), "f:g" = p)),
+    "codes 'f' and 'g' by level indicators", fixed = TRUE, class = "BayesTools_ordered_unavailable")
+  expect_identical(conditionMessage(condition), paste0(
+    "The 'cumulative_levels' prior of the factor term 'f:g' is unavailable: the formula has no term 'g' or 'f', ",
+    "so 'f:g' codes 'f' and 'g' by level indicators and has one coefficient per level instead of 'cumulative_levels' ",
+    "contrast coefficients. Add 'g' and 'f' to the formula to keep the 'cumulative_levels' contrast, or use ",
+    "prior_factor(contrast = \"independent\") for one independent coefficient per level."))
+  expect_null(conditionCall(condition))
+  expect_false(inherits(condition, "BayesTools_ordered_coordinates_unavailable"))
+  expect_type(JAGS_formula(~f+g+f:g, "mu", data, list(intercept = prior("point", list(0)), f = p, g = p, "f:g" = p)), "list")
+})
+
+test_that("fixed ordered replay declares only stochastic source dependencies", {
+  data <- data.frame(f = ordered(c("lo", "mid", "hi")))
+  info <- JAGS_formula(~f, "mu", data, list(intercept = prior("point", list(0)),
+    f = prior_ordered(prior("point", list(10)), allocation = c(.25, .75))))
+  spec <- .bt_ordered_spec("mu_f", info$prior_list$mu_f)
+  node <- .bt_dnode_ordered_coefficients(spec)
+  expect_identical(node$dependencies, character())
+  expect_length(spec$allocations[[1L]]$coordinates, 2L)
+  empty <- matrix(numeric(), 2L, 0L, dimnames = list(NULL, character()))
+  expect_equal(.bt_deterministic_node_evaluate(node, .bt_deterministic_lookup(empty)),
+    matrix(rep(c(2.5, 7.5), each = 2L), 2L, dimnames = list(NULL, spec$coefficient_names)), tolerance = 0)
+  random <- JAGS_formula(~f, "mu", data, list(intercept = prior("point", list(0)),
+    f = prior_ordered(prior("normal", list(0, 1)))))
+  random_spec <- .bt_ordered_spec("mu_f", random$prior_list$mu_f)
+  expect_identical(.bt_dnode_ordered_coefficients(random_spec)$dependencies,
+    c(random_spec$total_names, random_spec$allocations[[1L]]$coordinates))
+})
+
+test_that("ordered mixture replay keeps ordered ownership and conditions", {
+  fixture <- ordered_plot_test_fixture(prior_mixture(list(prior("point", list(2)), prior("point", list(4)))),
+    allocation = prior("dirichlet", list(c(2, 2, 2))))
+  nodes <- JAGS_deterministic_nodes(fixture$fit)
+  expect_identical(nodes$parameter[nodes$node == "mu_f_ordered_total"], "mu_f")
+  for(value in c(3, 1.5, NA_real_, Inf)){
+    bad <- fixture$draws; bad[, "mu_f_ordered_total_indicator"] <- value
+    for(node in c("mu_f_ordered_total", "mu_f")){
+      condition <- expect_error(JAGS_evaluate_deterministic(fixture$fit, bad, nodes = node),
+        "Ordered total indicator 'mu_f_ordered_total_indicator' does not select a declared component.",
+        fixed = TRUE, class = "BayesTools_ordered_invalid_state")
+      expect_null(conditionCall(condition))
+    }
+  }
+  missing <- fixture$draws[, setdiff(colnames(fixture$draws), c("mu_f_ordered_total_indicator", "mu_f_ordered_total")), drop = FALSE]
+  condition <- expect_error(JAGS_evaluate_deterministic(fixture$fit, missing, nodes = "mu_f_ordered_total"),
+    "Ordered deterministic node 'mu_f_ordered_total' is unavailable from 'draws'. Include its declared primitive source coordinates.",
+    fixed = TRUE, class = "BayesTools_ordered_coordinates_unavailable")
+  expect_null(conditionCall(condition))
+  ordinary <- .bt_dnode_prior_mixture("theta", prior_mixture(list(prior("point", list(2)), prior("point", list(4)))))
+  condition <- expect_error(.bt_deterministic_node_evaluate(ordinary,
+    .bt_deterministic_lookup(matrix(3, 2L, 1L, dimnames = list(NULL, "theta_indicator")))),
+    "Mixture indicator draws of 'theta' must index a mixture component.", fixed = TRUE)
+  expect_identical(class(condition), c("simpleError", "error", "condition"))
+})
+
+test_that("expression-point ordered totals retain multi-slice snapshot monitors", {
+  data <- expand.grid(f = ordered(c("lo", "mid", "hi")), g = factor(c("a", "b", "c")))
+  info <- JAGS_formula(~f*g, "mu", data, list(intercept = prior("point", list(0)),
+    f = prior_ordered(prior("point", list(0)), allocation = c(.2, .8)),
+    g = prior_factor("normal", list(0, 1), contrast = "treatment"),
+    "f:g" = prior_ordered(prior("point", list(location = expression(sigma))), allocation = c(.2, .8))))
+  expect_true("mu_f__xXx__g_ordered_total" %in% JAGS_to_monitor(info$prior_list))
+  spec <- .bt_ordered_spec("mu_f__xXx__g", info$prior_list$mu_f__xXx__g)
+  snapshots <- matrix(c(2, 3, 4, 5), 2L, dimnames = list(NULL, spec$total_names))
+  expect_identical(.bt_ordered_total_values(spec, .bt_deterministic_lookup(snapshots)), snapshots)
+  expect_error(JAGS_ordered_density_kernel(info$prior_list["mu_f__xXx__g"]), class = "BayesTools_ordered_expression_unavailable")
+  literal <- info$prior_list$mu_f__xXx__g
+  literal$total <- prior("point", list(0))
+  expect_false("mu_f__xXx__g_ordered_total" %in% .JAGS_monitor.ordered(literal, "mu_f__xXx__g"))
+})
+
+test_that("ordered generated roots cannot alias ordinary declarations", {
+  data <- data.frame(f = ordered(rep(c("lo", "mid", "hi"), 2L)), x = 1:6,
+    f_ordered_alloc_f_1 = 1:6, f_ordered_total_indicator = 1:6)
+  bind <- function(formula, p, ordinary) JAGS_formula(formula, "mu", data,
+    c(list(intercept = prior("point", list(0)), f = p), ordinary))
+  expect_error(bind(~f+f_ordered_alloc_f_1, prior_ordered(prior("point", list(1))),
+    list(f_ordered_alloc_f_1 = prior("normal", list(0, 1)))), "mu_f_ordered_alloc_f_1", fixed = TRUE)
+  spike <- prior_ordered(prior_spike_and_slab(prior("normal", list(0, 1)), prior("bernoulli", list(.5))))
+  expect_error(bind(~f+f_ordered_total_indicator, spike,
+    list(f_ordered_total_indicator = prior("normal", list(0, 1)))), "mu_f_ordered_total_indicator", fixed = TRUE)
+  base <- bind(~f, spike, list())$prior_list
+  for(root in c("mu_f_ordered_total_variable", "mu_f_ordered_total_inclusion", "prior_par_eta_mu_f_ordered_alloc_f_1")){
+    expect_error(JAGS_add_priors("model{}", c(base, setNames(list(prior("normal", list(0, 1))), root))), root, fixed = TRUE)
+  }
+  mixture <- bind(~f, prior_ordered(prior_mixture(list(prior("normal", list(0, 1)), prior("point", list(0))))), list())$prior_list
+  expect_error(JAGS_add_priors("model{}", c(mixture, list(mu_f_ordered_total_component_1 = prior("normal", list(0, 1))))),
+    "mu_f_ordered_total_component_1", fixed = TRUE)
+  expect_type(bind(~f+f_ordered_alloc_f_1,
+    prior_ordered(prior("point", list(1)), allocation = c(.4, .6)),
+    list(f_ordered_alloc_f_1 = prior("normal", list(0, 1)))), "list")
+})
+
+test_that("joint ordered prior draws honor shared allocation IDs without shifting other streams", {
+  data <- data.frame(f = ordered(rep(c("lo", "mid", "hi"), 2L)), x = 1:6)
+  make <- function(shared) {
+    id <- if(shared) "shape" else NULL
+    info <- JAGS_formula(~f+x+f:x, "mu", data, list(intercept = prior("point", list(0)),
+      x = prior("normal", list(0, 1)), f = prior_ordered(prior("point", list(1)), id = id),
+      "f:x" = prior_ordered(prior("point", list(1)), id = id)))
+    columns <- c("mu_intercept", "mu_x", "mu_f[1]", "mu_f[2]", "mu_f__xXx__x[1]", "mu_f__xXx__x[2]",
+      "mu_f_ordered_total", "mu_f__xXx__x_ordered_total")
+    fit <- .parameter_catalog_test_fit(coda::mcmc.list(coda::mcmc(matrix(0, 2L, length(columns),
+      dimnames = list(NULL, columns)))), c(info$prior_list, list(after = prior("normal", list(0, 1)))),
+      formula_design = list(mu = info$formula_design))
+    list(fit = fit, priors = attr(fit, "prior_list"))
+  }
+  shared <- make(TRUE); unshared <- make(FALSE)
+  set.seed(716); previous_seed <- .Random.seed
+  joint <- transform_prior_samples(shared$fit, n_samples = 16L, seed = 17, formula_scale = list())
+  expect_identical(.Random.seed, previous_seed)
+  expect_identical(unname(joint[, c("mu_f[1]", "mu_f[2]")]), unname(joint[, c("mu_f__xXx__x[1]", "mu_f__xXx__x[2]")]))
+  control <- transform_prior_samples(unshared$fit, n_samples = 16L, seed = 17, formula_scale = list())
+  expect_false(identical(unname(control[, c("mu_f[1]", "mu_f[2]")]), unname(control[, c("mu_f__xXx__x[1]", "mu_f__xXx__x[2]")])))
+  shared_raw <- .generate_prior_sample_matrix(shared$priors, 16L, seed = 17)
+  unshared_raw <- .generate_prior_sample_matrix(unshared$priors, 16L, seed = 17)
+  expect_identical(shared_raw[, c("mu_x", "after")], unshared_raw[, c("mu_x", "after")])
+  expect_false(anyDuplicated(colnames(shared_raw)) > 0L)
+  set.seed(17)
+  first <- rng(shared$priors$mu_f, 16L, transform_factor_samples = FALSE)
+  second <- rng(shared$priors$mu_f__xXx__x, 16L, transform_factor_samples = FALSE)
+  expect_false(identical(first, second))
+})
+
+test_that("unbound ordered joint helpers retain their standalone streams and columns", {
+  p <- prior_ordered(prior("normal", list(0, 1)), id = "shape")
+  attr(p, "levels") <- 3L
+  ordinary <- prior("normal", list(0, 1))
+  actual <- .generate_prior_sample_matrix(list(a = p, b = p, ordinary = ordinary), 16L, seed = 17)
+  set.seed(17)
+  first <- rng(p, 16L, transform_factor_samples = FALSE)
+  second <- rng(p, 16L, transform_factor_samples = FALSE)
+  later <- rng(ordinary, 16L)
+  expect_identical(as.numeric(actual[, c("a[1]", "a[2]")]), as.numeric(first))
+  expect_identical(as.numeric(actual[, c("b[1]", "b[2]")]), as.numeric(second))
+  expect_identical(as.numeric(actual[, "ordinary"]), as.numeric(later))
+  expect_identical(colnames(actual), c("a[1]", "a[2]", "a_ordered_total", "b[1]", "b[2]", "b_ordered_total", "ordinary"))
+})
+
 test_that("formula binding refuses ordered container mixtures without changing their sampler", {
   levels <- c("lo", "mid", "hi")
   data <- data.frame(f = ordered(levels, levels = levels))
@@ -3065,181 +3242,4 @@ test_that("estimates tables show ordered totals and shares or the level effects"
   expect_null(attr(JAGS_estimates_table(scaled$fit, transform_scaled = FALSE), "footnotes"))
   expect_null(attr(JAGS_estimates_table(scaled$fit, transform_scaled = TRUE,
                                         transform_factors = TRUE), "footnotes"))
-})
-
-test_that("expression-point ordered totals retain multi-slice snapshot monitors", {
-  data <- expand.grid(f = ordered(c("lo", "mid", "hi")), g = factor(c("a", "b", "c")))
-  info <- JAGS_formula(~f*g, "mu", data, list(intercept = prior("point", list(0)),
-    f = prior_ordered(prior("point", list(0)), allocation = c(.2, .8)),
-    g = prior_factor("normal", list(0, 1), contrast = "treatment"),
-    "f:g" = prior_ordered(prior("point", list(location = expression(sigma))), allocation = c(.2, .8))))
-  expect_true("mu_f__xXx__g_ordered_total" %in% JAGS_to_monitor(info$prior_list))
-  spec <- .bt_ordered_spec("mu_f__xXx__g", info$prior_list$mu_f__xXx__g)
-  snapshots <- matrix(c(2, 3, 4, 5), 2L, dimnames = list(NULL, spec$total_names))
-  expect_identical(.bt_ordered_total_values(spec, .bt_deterministic_lookup(snapshots)), snapshots)
-  expect_error(JAGS_ordered_density_kernel(info$prior_list["mu_f__xXx__g"]), class = "BayesTools_ordered_expression_unavailable")
-  literal <- info$prior_list$mu_f__xXx__g
-  literal$total <- prior("point", list(0))
-  expect_false("mu_f__xXx__g_ordered_total" %in% .JAGS_monitor.ordered(literal, "mu_f__xXx__g"))
-})
-
-test_that("ordered indicator-coded terms refuse even zero totals", {
-  data <- data.frame(f = ordered(rep(c("lo", "mid", "hi"), 2)), x = 1:6)
-  for(total in c(0, 10)){
-    condition <- expect_error(JAGS_formula(~f:x, "mu", data,
-      list(intercept = prior("point", list(0)),
-        "f:x" = prior_ordered(prior("point", list(total)), allocation = c(.2, .3, .5),
-          contrast = "cumulative_levels"))), "codes 'f' by level indicators", fixed = TRUE,
-      class = "BayesTools_ordered_unavailable")
-    expect_identical(conditionMessage(condition), paste0(
-      "The 'cumulative_levels' prior of the factor term 'f:x' is unavailable: the formula has no term 'x', ",
-      "so 'f:x' codes 'f' by level indicators and has one coefficient per level instead of 'cumulative_levels' ",
-      "contrast coefficients. Add 'x' to the formula to keep the 'cumulative_levels' contrast, or use ",
-      "prior_factor(contrast = \"independent\") for one independent coefficient per level."))
-    expect_null(conditionCall(condition))
-    expect_false(inherits(condition, "BayesTools_ordered_coordinates_unavailable"))
-  }
-  data <- expand.grid(f = ordered(c("lo", "mid", "hi")), g = ordered(c("a", "b", "c")))
-  p <- prior_ordered(prior("point", list(10)), allocation = list(f = c(.2, .3, .5), g = c(.1, .4, .5)),
-    contrast = "cumulative_levels")
-  condition <- expect_error(JAGS_formula(~f:g, "mu", data, list(intercept = prior("point", list(0)), "f:g" = p)),
-    "codes 'f' and 'g' by level indicators", fixed = TRUE, class = "BayesTools_ordered_unavailable")
-  expect_identical(conditionMessage(condition), paste0(
-    "The 'cumulative_levels' prior of the factor term 'f:g' is unavailable: the formula has no term 'g' or 'f', ",
-    "so 'f:g' codes 'f' and 'g' by level indicators and has one coefficient per level instead of 'cumulative_levels' ",
-    "contrast coefficients. Add 'g' and 'f' to the formula to keep the 'cumulative_levels' contrast, or use ",
-    "prior_factor(contrast = \"independent\") for one independent coefficient per level."))
-  expect_null(conditionCall(condition))
-  expect_false(inherits(condition, "BayesTools_ordered_coordinates_unavailable"))
-  expect_type(JAGS_formula(~f+g+f:g, "mu", data, list(intercept = prior("point", list(0)), f = p, g = p, "f:g" = p)), "list")
-})
-
-test_that("ordered mixture replay keeps ordered ownership and conditions", {
-  fixture <- ordered_plot_test_fixture(prior_mixture(list(prior("point", list(2)), prior("point", list(4)))),
-    allocation = prior("dirichlet", list(c(2, 2, 2))))
-  nodes <- JAGS_deterministic_nodes(fixture$fit)
-  expect_identical(nodes$parameter[nodes$node == "mu_f_ordered_total"], "mu_f")
-  for(value in c(3, 1.5, NA_real_, Inf)){
-    bad <- fixture$draws; bad[, "mu_f_ordered_total_indicator"] <- value
-    for(node in c("mu_f_ordered_total", "mu_f")){
-      condition <- expect_error(JAGS_evaluate_deterministic(fixture$fit, bad, nodes = node),
-        "Ordered total indicator 'mu_f_ordered_total_indicator' does not select a declared component.",
-        fixed = TRUE, class = "BayesTools_ordered_invalid_state")
-      expect_null(conditionCall(condition))
-    }
-  }
-  missing <- fixture$draws[, setdiff(colnames(fixture$draws), c("mu_f_ordered_total_indicator", "mu_f_ordered_total")), drop = FALSE]
-  condition <- expect_error(JAGS_evaluate_deterministic(fixture$fit, missing, nodes = "mu_f_ordered_total"),
-    "Ordered deterministic node 'mu_f_ordered_total' is unavailable from 'draws'. Include its declared primitive source coordinates.",
-    fixed = TRUE, class = "BayesTools_ordered_coordinates_unavailable")
-  expect_null(conditionCall(condition))
-  ordinary <- .bt_dnode_prior_mixture("theta", prior_mixture(list(prior("point", list(2)), prior("point", list(4)))))
-  condition <- expect_error(.bt_deterministic_node_evaluate(ordinary,
-    .bt_deterministic_lookup(matrix(3, 2L, 1L, dimnames = list(NULL, "theta_indicator")))),
-    "Mixture indicator draws of 'theta' must index a mixture component.", fixed = TRUE)
-  expect_identical(class(condition), c("simpleError", "error", "condition"))
-})
-
-test_that("fixed ordered replay declares only stochastic source dependencies", {
-  data <- data.frame(f = ordered(c("lo", "mid", "hi")))
-  info <- JAGS_formula(~f, "mu", data, list(intercept = prior("point", list(0)),
-    f = prior_ordered(prior("point", list(10)), allocation = c(.25, .75))))
-  spec <- .bt_ordered_spec("mu_f", info$prior_list$mu_f)
-  node <- .bt_dnode_ordered_coefficients(spec)
-  expect_identical(node$dependencies, character())
-  expect_length(spec$allocations[[1L]]$coordinates, 2L)
-  empty <- matrix(numeric(), 2L, 0L, dimnames = list(NULL, character()))
-  expect_equal(.bt_deterministic_node_evaluate(node, .bt_deterministic_lookup(empty)),
-    matrix(rep(c(2.5, 7.5), each = 2L), 2L, dimnames = list(NULL, spec$coefficient_names)), tolerance = 0)
-  random <- JAGS_formula(~f, "mu", data, list(intercept = prior("point", list(0)),
-    f = prior_ordered(prior("normal", list(0, 1)))))
-  random_spec <- .bt_ordered_spec("mu_f", random$prior_list$mu_f)
-  expect_identical(.bt_dnode_ordered_coefficients(random_spec)$dependencies,
-    c(random_spec$total_names, random_spec$allocations[[1L]]$coordinates))
-})
-
-test_that("ordered IDs reject malformed vectors and keep reusable factor maps", {
-  total <- prior("point", list(1))
-  for(id in list(character(), setNames(character(), character()))){
-    expect_error(prior_ordered(total, id = id),
-      "The 'id' argument must be NULL or contain at least one identifier.", fixed = TRUE)
-  }
-  expect_error(prior_ordered(total, id = c("a", "b")),
-    "The unnamed 'id' argument must contain exactly one identifier.", fixed = TRUE)
-  for(id in list(NULL, "shape", c(f = "shape"), c(f = "shape", g = "other"))){
-    expect_s3_class(prior_ordered(total, id = id), "prior.ordered")
-  }
-  data <- data.frame(f = ordered(c("lo", "mid", "hi")))
-  expect_type(JAGS_formula(~f, "mu", data, list(intercept = prior("point", list(0)),
-    f = prior_ordered(total, allocation = list(f = c(.4, .6), g = c(.2, .8)), id = c(g = "other")))), "list")
-  expect_error(JAGS_formula(~f, "mu", data, list(intercept = prior("point", list(0)),
-    f = prior_ordered(total, allocation = list(g = c(.4, .6))))), "f", fixed = TRUE)
-})
-
-test_that("ordered generated roots cannot alias ordinary declarations", {
-  data <- data.frame(f = ordered(rep(c("lo", "mid", "hi"), 2L)), x = 1:6,
-    f_ordered_alloc_f_1 = 1:6, f_ordered_total_indicator = 1:6)
-  bind <- function(formula, p, ordinary) JAGS_formula(formula, "mu", data,
-    c(list(intercept = prior("point", list(0)), f = p), ordinary))
-  expect_error(bind(~f+f_ordered_alloc_f_1, prior_ordered(prior("point", list(1))),
-    list(f_ordered_alloc_f_1 = prior("normal", list(0, 1)))), "mu_f_ordered_alloc_f_1", fixed = TRUE)
-  spike <- prior_ordered(prior_spike_and_slab(prior("normal", list(0, 1)), prior("bernoulli", list(.5))))
-  expect_error(bind(~f+f_ordered_total_indicator, spike,
-    list(f_ordered_total_indicator = prior("normal", list(0, 1)))), "mu_f_ordered_total_indicator", fixed = TRUE)
-  base <- bind(~f, spike, list())$prior_list
-  for(root in c("mu_f_ordered_total_variable", "mu_f_ordered_total_inclusion", "prior_par_eta_mu_f_ordered_alloc_f_1")){
-    expect_error(JAGS_add_priors("model{}", c(base, setNames(list(prior("normal", list(0, 1))), root))), root, fixed = TRUE)
-  }
-  mixture <- bind(~f, prior_ordered(prior_mixture(list(prior("normal", list(0, 1)), prior("point", list(0))))), list())$prior_list
-  expect_error(JAGS_add_priors("model{}", c(mixture, list(mu_f_ordered_total_component_1 = prior("normal", list(0, 1))))),
-    "mu_f_ordered_total_component_1", fixed = TRUE)
-  expect_type(bind(~f+f_ordered_alloc_f_1,
-    prior_ordered(prior("point", list(1)), allocation = c(.4, .6)),
-    list(f_ordered_alloc_f_1 = prior("normal", list(0, 1)))), "list")
-})
-
-test_that("joint ordered prior draws honor shared allocation IDs without shifting other streams", {
-  data <- data.frame(f = ordered(rep(c("lo", "mid", "hi"), 2L)), x = 1:6)
-  make <- function(shared) {
-    id <- if(shared) "shape" else NULL
-    info <- JAGS_formula(~f+x+f:x, "mu", data, list(intercept = prior("point", list(0)),
-      x = prior("normal", list(0, 1)), f = prior_ordered(prior("point", list(1)), id = id),
-      "f:x" = prior_ordered(prior("point", list(1)), id = id)))
-    columns <- c("mu_intercept", "mu_x", "mu_f[1]", "mu_f[2]", "mu_f__xXx__x[1]", "mu_f__xXx__x[2]",
-      "mu_f_ordered_total", "mu_f__xXx__x_ordered_total")
-    fit <- .parameter_catalog_test_fit(coda::mcmc.list(coda::mcmc(matrix(0, 2L, length(columns),
-      dimnames = list(NULL, columns)))), c(info$prior_list, list(after = prior("normal", list(0, 1)))),
-      formula_design = list(mu = info$formula_design))
-    list(fit = fit, priors = attr(fit, "prior_list"))
-  }
-  shared <- make(TRUE); unshared <- make(FALSE)
-  set.seed(716); previous_seed <- .Random.seed
-  joint <- transform_prior_samples(shared$fit, n_samples = 16L, seed = 17, formula_scale = list())
-  expect_identical(.Random.seed, previous_seed)
-  expect_identical(unname(joint[, c("mu_f[1]", "mu_f[2]")]), unname(joint[, c("mu_f__xXx__x[1]", "mu_f__xXx__x[2]")]))
-  control <- transform_prior_samples(unshared$fit, n_samples = 16L, seed = 17, formula_scale = list())
-  expect_false(identical(unname(control[, c("mu_f[1]", "mu_f[2]")]), unname(control[, c("mu_f__xXx__x[1]", "mu_f__xXx__x[2]")])))
-  shared_raw <- .generate_prior_sample_matrix(shared$priors, 16L, seed = 17)
-  unshared_raw <- .generate_prior_sample_matrix(unshared$priors, 16L, seed = 17)
-  expect_identical(shared_raw[, c("mu_x", "after")], unshared_raw[, c("mu_x", "after")])
-  expect_false(anyDuplicated(colnames(shared_raw)) > 0L)
-  set.seed(17)
-  first <- rng(shared$priors$mu_f, 16L, transform_factor_samples = FALSE)
-  second <- rng(shared$priors$mu_f__xXx__x, 16L, transform_factor_samples = FALSE)
-  expect_false(identical(first, second))
-})
-
-test_that("unbound ordered joint helpers retain their standalone streams and columns", {
-  p <- prior_ordered(prior("normal", list(0, 1)), id = "shape")
-  attr(p, "levels") <- 3L
-  ordinary <- prior("normal", list(0, 1))
-  actual <- .generate_prior_sample_matrix(list(a = p, b = p, ordinary = ordinary), 16L, seed = 17)
-  set.seed(17)
-  first <- rng(p, 16L, transform_factor_samples = FALSE)
-  second <- rng(p, 16L, transform_factor_samples = FALSE)
-  later <- rng(ordinary, 16L)
-  expect_identical(as.numeric(actual[, c("a[1]", "a[2]")]), as.numeric(first))
-  expect_identical(as.numeric(actual[, c("b[1]", "b[2]")]), as.numeric(second))
-  expect_identical(as.numeric(actual[, "ordinary"]), as.numeric(later))
-  expect_identical(colnames(actual), c("a[1]", "a[2]", "a_ordered_total", "b[1]", "b[2]", "b_ordered_total", "ordinary"))
 })
