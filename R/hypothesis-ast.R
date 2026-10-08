@@ -11,6 +11,8 @@
 #' An explicit \code{vs} comparison requires two nonempty statements.
 #' `hypothesis_render()` renders that tree with token-safe quoting.
 #' `hypothesis_symbols()` returns exact parameter roots or an occurrence table.
+#' Quoted reserved names and ordinary identifiers retain their exact identity;
+#' numeric labels preserve the parsed values when rendered and parsed again.
 #'
 #' `hypothesis_rewrite()` replaces only exact symbol roots. Function names,
 #' literals, level labels, and longer identifiers are never edited.
@@ -599,7 +601,7 @@ hypothesis_resolve <- function(ast, catalog, namespace = NULL,
     return(list(type = "literal", source = source, value = as.numeric(expr)))
   }
   if(is.name(expr)){
-    name <- .hypothesis_decode_escaped_constant(as.character(expr))
+    name <- as.character(expr)
     reference <- .hypothesis_parse_level_symbol(name)
     if(isTRUE(reference$direct)){
       return(list(
@@ -665,11 +667,7 @@ hypothesis_resolve <- function(ast, catalog, namespace = NULL,
   switch(
     node$type,
     literal = node$value,
-    symbol = as.name(if(node$name %in% .hypothesis_escaped_constant_names()){
-      .hypothesis_escaped_constant_symbol(node$name)
-    }else{
-      node$name
-    }),
+    symbol = as.name(node$name),
     level_reference = as.name(paste0(
       node$parameter, "[", node$level, "]"
     )),

@@ -100,7 +100,7 @@
   if(is.character(expr)) expr <- .hypothesis_parse_expression(expr)
   if(is.numeric(expr) && length(expr) == 1L) return(.hypothesis_affine_new(expr))
   if(is.name(expr)){
-    name <- .hypothesis_decode_escaped_constant(as.character(expr))
+    name <- as.character(expr)
     if(!name %in% symbols) return(NULL)
     return(.hypothesis_affine_new(coefficients = stats::setNames(1, name)))
   }

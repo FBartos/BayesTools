@@ -489,20 +489,13 @@ hypothesis_normalize_level_references <- function(text){
 .hypothesis_expression_text <- function(expr){
 
   if(is.name(expr)){
-    name <- .hypothesis_decode_escaped_constant(as.character(expr))
-    if(name %in% .hypothesis_escaped_constant_names() ||
-       !identical(make.names(name), name)){
-      name <- gsub("`", "\\`", name, fixed = TRUE)
-      return(paste0("`", name, "`"))
-    }
-    return(name)
+    return(paste(deparse(expr, width.cutoff = 500L, backtick = TRUE), collapse = ""))
   }
-  expr <- .hypothesis_restore_escaped_constants(expr)
   # Numeric literals are rendered with their shortest round-trip label so
   # labels read as written (0.2, not 0.20000000000000001) while re-parsing
   # the text still reproduces the exact parsed values.
   placeholders <- .hypothesis_literal_placeholders(expr)
-  text <- paste(deparse(placeholders$expression, width.cutoff = 500L,
+  text <- paste(deparse(placeholders$expression, width.cutoff = 500L, backtick = TRUE,
                         control = c("keepNA", "keepInteger", "niceNames",
                                     "digits17")),
                 collapse = "")
@@ -516,11 +509,17 @@ hypothesis_normalize_level_references <- function(text){
 .hypothesis_literal_placeholders <- function(expr){
 
   labels <- character()
+  counter <- 0L
+  original_text <- paste(deparse(expr, width.cutoff = 500L, backtick = TRUE,
+    control = c("keepNA", "keepInteger", "niceNames", "digits17")), collapse = "")
   replace <- function(node){
     if(is.double(node) && length(node) == 1L && is.null(attributes(node)) &&
        is.finite(node) && node >= 0){
-      placeholder <- paste0(".BayesToolsHypothesisLiteral",
-                            length(labels) + 1L, ".")
+      repeat{
+        counter <<- counter + 1L
+        placeholder <- paste0(".BayesToolsHypothesisLiteral", counter, ".")
+        if(!grepl(placeholder, original_text, fixed = TRUE)) break
+      }
       labels[[placeholder]] <<- .hypothesis_literal_label(node)
       return(as.name(placeholder))
     }
@@ -544,19 +543,6 @@ hypothesis_normalize_level_references <- function(text){
     }
   }
   label
-}
-
-.hypothesis_restore_escaped_constants <- function(expr){
-
-  if(is.name(expr)){
-    return(as.name(
-      .hypothesis_decode_escaped_constant(as.character(expr))
-    ))
-  }
-  if(!is.call(expr)){
-    return(expr)
-  }
-  as.call(lapply(as.list(expr), .hypothesis_restore_escaped_constants))
 }
 
 .hypothesis_region_has_negated_equality <- function(expr, negated = FALSE){
@@ -780,42 +766,6 @@ hypothesis_normalize_level_references <- function(text){
   as.numeric(value)
 }
 
-.hypothesis_escaped_constant_names <- function(){
-  c("Inf", "NaN", "NA", "TRUE", "FALSE")
-}
-
-.hypothesis_escaped_constant_symbol <- function(name){
-  paste0(".BayesTools_escaped_constant_", name)
-}
-
-.hypothesis_protect_escaped_constants <- function(text){
-
-  for(name in .hypothesis_escaped_constant_names()){
-    text <- gsub(
-      paste0("`", name, "`"),
-      .hypothesis_escaped_constant_symbol(name),
-      text,
-      fixed = TRUE
-    )
-  }
-  text
-}
-
-.hypothesis_decode_escaped_constant <- function(name){
-
-  symbols <- vapply(
-    .hypothesis_escaped_constant_names(),
-    .hypothesis_escaped_constant_symbol,
-    character(1)
-  )
-  index <- match(name, symbols)
-  if(is.na(index)){
-    return(name)
-  }
-  .hypothesis_escaped_constant_names()[[index]]
-}
-
-
 .hypothesis_parse_expression <- function(text) {
 
   if(is.name(text) || is.call(text) || is.numeric(text) || is.integer(text) ||
@@ -827,8 +777,7 @@ hypothesis_normalize_level_references <- function(text){
          call. = FALSE)
   }
 
-  protected_text <- .hypothesis_protect_escaped_constants(text)
-  parsed <- tryCatch(parse(text = protected_text, keep.source = FALSE),
+  parsed <- tryCatch(parse(text = text, keep.source = FALSE),
                      error = function(e)e)
   if(inherits(parsed, "error") || length(parsed) != 1L){
     stop("Could not parse hypothesis expression '", text, "'.", call. = FALSE)
@@ -1024,7 +973,7 @@ hypothesis_normalize_level_references <- function(text){
 
   collect <- function(node){
     if(is.name(node)){
-      return(.hypothesis_decode_escaped_constant(as.character(node)))
+      return(as.character(node))
     }
     if(!is.call(node) || length(node) == 1L){
       return(character())

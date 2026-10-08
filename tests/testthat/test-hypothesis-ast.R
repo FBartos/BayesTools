@@ -1,5 +1,40 @@
 skip_if_not_test_profile("unit")
 
+test_that("hypothesis rendering preserves former codec and placeholder names", {
+  hypotheses <- c(".BayesToolsHypothesisLiteral1. + 1 = 0",
+    "prefix.BayesToolsHypothesisLiteral1.suffix + 1 = 0",
+    ".BayesTools_escaped_constant_Inf = 0",
+    "`Inf` + .BayesTools_escaped_constant_Inf + 0.30000000000000004 > `TRUE`",
+    "`NA` + `NaN` + `FALSE` > 0")
+  for(text in hypotheses){
+    ast <- hypothesis_parse(text)
+    reparsed <- hypothesis_parse(hypothesis_render(ast))
+    expect_identical(hypothesis_symbols(reparsed), hypothesis_symbols(ast))
+    expect_identical(reparsed$statements[[1L]]$left$expression, ast$statements[[1L]]$left$expression)
+    expect_identical(hypothesis_render(reparsed), hypothesis_render(ast))
+  }
+  expect_identical(hypothesis_symbols(hypothesis_parse(hypotheses[3L])), ".BayesTools_escaped_constant_Inf")
+  expression <- quote(theta[".BayesToolsHypothesisLiteral1."] + 1)
+  expect_identical(parse(text = .hypothesis_expression_text(expression))[[1L]], expression)
+  expression <- quote(.BayesToolsHypothesisLiteral1.(theta) + 1)
+  expect_identical(parse(text = .hypothesis_expression_text(expression))[[1L]], expression)
+  expression <- quote(`Inf` + .BayesTools_escaped_constant_Inf + 1)
+  expect_identical(.hypothesis_parse_expression(.hypothesis_expression_text(expression)), expression)
+  for(text in c("theta + TRUE > 0", "theta + Inf > 0", "theta <- 0", "sin(theta) > 0")) expect_error(hypothesis_parse(text))
+})
+
+test_that("quoted reserved names and former aliases retain separate draw values", {
+  draws <- data.frame(list("Inf" = c(1, 2), .BayesTools_escaped_constant_Inf = c(3, 4)), check.names = FALSE)
+  expression <- .hypothesis_parse_expression(".BayesTools_escaped_constant_Inf - `Inf`")
+  expect_identical(.hypothesis_eval_expression(expression, draws), c(2, 2))
+  expect_identical(.hypothesis_affine_value(.hypothesis_affine_read(expression, names(draws)), draws), c(2, 2))
+  ast <- hypothesis_parse("theta > 0.2")
+  from_ast <- hypothesis_BF(c(-1, 1), prior("normal", list(0, 1)), ast, parameter = "theta", seed = 17, columns = "all")
+  from_text <- hypothesis_BF(c(-1, 1), prior("normal", list(0, 1)), hypothesis_render(ast), parameter = "theta", seed = 17, columns = "all")
+  expect_identical(attr(from_ast, "raw_BF"), attr(from_text, "raw_BF"))
+  expect_identical(attr(from_ast, "raw_log_BF"), attr(from_text, "raw_log_BF"))
+})
+
 test_that("hypothesis AST preserves structure and quoted symbols", {
 
   hypothesis <- c(

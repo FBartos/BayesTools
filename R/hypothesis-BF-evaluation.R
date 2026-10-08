@@ -75,7 +75,7 @@
 
   expr <- .hypothesis_parse_expression(expr_text)
   if(is.name(expr)){
-    return(.hypothesis_decode_escaped_constant(as.character(expr)))
+    return(as.character(expr))
   }
 
   return(NULL)
@@ -588,14 +588,7 @@
 
 .hypothesis_draw_environment <- function(draws){
 
-  values <- as.list(draws)
-  for(name in intersect(
-    names(values),
-    .hypothesis_escaped_constant_names()
-  )){
-    values[[.hypothesis_escaped_constant_symbol(name)]] <- values[[name]]
-  }
-  list2env(values, parent = .hypothesis_eval_parent())
+  list2env(as.list(draws), parent = .hypothesis_eval_parent())
 }
 
 
