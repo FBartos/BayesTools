@@ -392,7 +392,7 @@ posterior_atoms_free <- function(x){
                                          column_names = NULL,
                                          source = "model_probabilities",
                                          null_location = NULL,
-                                         exclusion_probabilities = NULL, posterior_pair = NULL, point_locations = NULL){
+                                         exclusion_probabilities = NULL, posterior_pair = NULL, point_locations = NULL, component_atoms = NULL){
 
   if(is.prior(priors) && length(probabilities) == 1L){
     priors <- list(priors)
@@ -416,15 +416,33 @@ posterior_atoms_free <- function(x){
      }, logical(1))))){
     stop("Declared model point locations must align with every model and target column.", call. = FALSE)
   }
+  if(!is.null(component_atoms)){
+    if(length(component_atoms) != length(priors)){
+      stop("Within-model atom declarations must match the prior components.", call. = FALSE)
+    }
+    component_atoms <- lapply(component_atoms, function(atoms){
+      if(is.null(atoms)) return(NULL)
+      atoms <- .posterior_atoms_from_attribute(atoms)
+      if(is.null(atoms) || !atoms$joint_declared || ncol(atoms$locations) != n_columns){
+        stop("Within-model atom declarations must contain a complete aligned joint law.", call. = FALSE)
+      }
+      atoms
+    })
+  }
   if(!is.null(posterior_pair)) return(tryCatch(
     .model_probability_prior_atoms(priors, posterior_pair, n_columns, column_names,
-      source, null_location, exclusion_probabilities, point_locations),
+      source, null_location, exclusion_probabilities, point_locations, component_atoms),
     BayesTools_formula_measure_unavailable = function(condition) condition))
 
   locations <- matrix(numeric(), nrow = 0L, ncol = n_columns)
   masses <- numeric()
   for(i in seq_along(priors)){
     if(probabilities[i] <= 0){
+      next
+    }
+    if(!is.null(component_atoms) && !is.null(component_atoms[[i]])){
+      locations <- rbind(locations, component_atoms[[i]]$locations)
+      masses <- c(masses, probabilities[i] * component_atoms[[i]]$mass)
       next
     }
     location <- if(!is.null(point_locations) && !is.null(point_locations[[i]])) point_locations[[i]] else
@@ -807,40 +825,26 @@ posterior_atoms_free <- function(x){
     prior, n_columns, column_names = NULL, component = NULL,
     source = "ordered_total_structure"){
 
-  if(!is.prior.ordered(prior) ||
-     !.posterior_atoms_ordered_total_has_spike(prior$total)){
-    return(NULL)
-  }
+  if(!is.prior.ordered(prior) || !is.prior.mixture(prior$total)) return(NULL)
   prior <- .prior_ordered_default_bound(prior)
-  metadata <- .prior_ordered_metadata(prior)
-
-  exclusion_mass <- .posterior_atoms_ordered_exclusion(prior$total, component)
-  inclusion_mass <- 1 - exclusion_mass
-  locations <- if(exclusion_mass > 0){
-    matrix(0, nrow = 1L, ncol = n_columns)
+  total <- prior$total
+  if(is.null(component)){
+    probabilities <- .prior_density_ordinate_mixture_weights(total)
+    if(is.null(probabilities)) return(NULL)
   }else{
-    matrix(numeric(), nrow = 0L, ncol = n_columns)
+    component <- .posterior_atoms_check_components(total, component)
+    probabilities <- vapply(seq_along(total), function(i) mean(component == i), numeric(1))
   }
-  masses <- if(exclusion_mass > 0) exclusion_mass else numeric()
-
-  .posterior_atoms_new(
-    locations = locations,
-    mass = masses,
-    column_names = column_names,
-    source = source,
-    declared = TRUE,
-    component_probabilities = c(
-      excluded = exclusion_mass,
-      included = inclusion_mass
-    )
-  )
+  components <- lapply(total, function(part) .bt_ordered_localize_total(prior, part))
+  locations <- lapply(components, .posterior_atoms_point_location, n_columns = n_columns)
+  atoms <- .posterior_atoms_from_priors(components, probabilities, n_columns,
+    column_names, source, point_locations = locations)
+  rownames(atoms$locations) <- NULL
+  atoms
 }
 
-# The prior of one mixture component of a coefficient: 'component' indexes
-# the declared component list (the model of a model-averaged ensemble, the
-# component of a mixture or spike-and-slab prior, or for an ordered prior the
-# component of its total); 'total_component' is the component of the total of
-# an ordered prior selected within a model.
+# The prior of one declared mixture component, localized only after validating
+# the original bound ordered owner.
 .posterior_atoms_component_prior <- function(prior_entry, component,
                                              model_mixture,
                                              total_component = NA_integer_){

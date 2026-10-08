@@ -227,13 +227,20 @@
 }
 
 .model_probability_prior_atoms <- function(priors, pair, n_columns, column_names,
-                                           source, null_location, exclusion_probabilities, point_locations = NULL){
+                                           source, null_location, exclusion_probabilities, point_locations = NULL, component_atoms = NULL){
 
   .model_probability_validate(pair$probabilities, pair$logs, pair$declaration)
   locations <- matrix(numeric(), 0L, n_columns)
   log_masses <- numeric()
   continuous <- FALSE
   for(i in which(is.finite(pair$logs))){
+    if(!is.null(component_atoms) && !is.null(component_atoms[[i]])){
+      atoms <- component_atoms[[i]]
+      locations <- rbind(locations, atoms$locations)
+      log_masses <- c(log_masses, pair$logs[[i]] + log(atoms$mass))
+      continuous <- continuous || sum(atoms$mass) < 1
+      next
+    }
     location <- if(!is.null(point_locations) && !is.null(point_locations[[i]])) point_locations[[i]] else
       .posterior_atoms_point_location(priors[[i]], n_columns)
     fraction <- 1
@@ -264,7 +271,7 @@
   }
   if(all(pair$probabilities[is.finite(pair$logs)] >= .Machine$double.xmin)){
     ordinary <- .posterior_atoms_from_priors(priors, pair$probabilities, n_columns, column_names,
-      source, null_location, exclusion_probabilities, point_locations = point_locations)
+      source, null_location, exclusion_probabilities, point_locations = point_locations, component_atoms = component_atoms)
     if(all(ordinary$mass >= .Machine$double.xmin) && !(continuous && sum(ordinary$mass) == 1)){
       ordinary$component_log_probabilities <- pair$logs
       ordinary$model_probability_declaration <- pair$declaration

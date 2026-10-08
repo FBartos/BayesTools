@@ -1001,6 +1001,11 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
       n_columns = ncol(samples),
       column_names = colnames(samples),
       posterior_pair = posterior_pair,
+      component_atoms = if(isTRUE(priors_info[["ordered"]])){
+        .mix_posteriors_ordered_component_atoms(fits, priors, parameter, ncol(samples), colnames(samples),
+          log_post_probs = if(!is.null(posterior_pair)) posterior_pair$logs else log(post_probs),
+          eligible = if(!is.null(ordered_condition)) ordered_condition$eligible)
+      },
       exclusion_probabilities = if(isTRUE(priors_info[["ordered"]])){
         .mix_posteriors_ordered_exclusion_probabilities(fits, priors, parameter, post_probs,
           log_post_probs=if(!is.null(posterior_pair)) posterior_pair$logs else log(post_probs),
@@ -1095,6 +1100,30 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
 # Posterior probability that an ordered total (spike-and-slab, or a mixture
 # with point(0) components) is excluded within each model, from the fitted
 # total-prior indicator.
+.mix_posteriors_ordered_component_atoms <- function(fits, priors, parameter,
+                                                   n_columns, column_names,
+                                                   eligible = NULL, log_post_probs){
+
+  indicator_name <- paste0(.prior_ordered_total_name(parameter), "_indicator")
+  lapply(seq_along(priors), function(i){
+    prior <- priors[[i]]
+    if(!is.finite(log_post_probs[[i]]) || !is.prior.ordered(prior) ||
+       !is.prior.mixture(prior$total)) return(NULL)
+    model_samples <- .extract_posterior_samples(fits[[i]], as_list = FALSE)
+    if(!is.matrix(model_samples)){
+      model_samples <- matrix(model_samples, ncol = 1L)
+      colnames(model_samples) <- fits[[i]]$monitor
+    }
+    if(!indicator_name %in% colnames(model_samples)){
+      .mix_posteriors_stop_missing_total_indicator(parameter, indicator_name)
+    }
+    component <- .bt_component_from_indicator(prior$total, model_samples[, indicator_name])
+    if(!is.null(eligible)) component <- component[eligible[[i]]]
+    .posterior_atoms_from_ordered_total(prior, n_columns, column_names, component,
+      "original_ordered_total_posterior_indicator")
+  })
+}
+
 .mix_posteriors_ordered_exclusion_probabilities <- function(fits, priors, parameter, post_probs,eligible=NULL,
                                                            log_post_probs=log(post_probs)){
 
@@ -1122,7 +1151,7 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
 
   is.prior.ordered(prior) &&
     !.posterior_atoms_is_ordered_zero_total(prior) &&
-    .posterior_atoms_ordered_total_has_spike(prior$total)
+    is.prior.mixture(prior$total)
 }
 .mix_posteriors_stop_missing_total_indicator <- function(parameter, indicator_name){
 

@@ -3465,3 +3465,48 @@ test_that("internal ordered conditional localization retains canonical bound pro
   expect_identical(serialize(attr(fit, "prior_list"), NULL), original)
 })
 
+
+
+test_that("fixed ordered point-total components retain complete joint and scalar atoms", {
+
+  total <- prior_spike_and_slab(prior("point", list(2)), prior("beta", list(1, 1)))
+  fixture <- ordered_plot_test_fixture(total, allocation = c(.25, .75), levels = c("a", "b", "c"))
+  original_component <- .bt_component_from_indicator(total, fixture$draws[, "mu_f_ordered_total_indicator"])
+  expected_mass <- c(mean(vapply(original_component, .bt_component_is_spike, logical(1), prior = total)),
+    mean(!vapply(original_component, .bt_component_is_spike, logical(1), prior = total)))
+  check <- function(samples){
+    atoms <- posterior_metadata(samples$mu_f, "atoms")
+    order <- order(atoms$locations[, 1L])
+    expect_identical(unname(atoms$locations[order, , drop = FALSE]), matrix(c(0, .5, 0, 1.5), 2L))
+    expect_equal(atoms$mass[order], expected_mass, tolerance = 0)
+    for(i in seq_along(atoms$marginals)){
+      scalar <- atoms$marginals[[i]]; order <- order(scalar$locations[, 1L])
+      expect_equal(scalar$mass[order], expected_mass, tolerance = 0)
+      expect_identical(as.numeric(scalar$locations[order, 1L]), c(0, c(.5, 1.5)[[i]]))
+    }
+  }
+  check(fixture$samples)
+  model <- list(fit = fixture$fit, marglik = bridgesampling_object(0), prior_weights = 1)
+  check(mix_posteriors(list(model), "mu_f", list(FALSE), seed = 17, n_samples = 12))
+  fixed <- ordered_plot_test_fixture(prior("point", list(2)), c(.25, .75), levels = c("a", "b", "c"))
+  expect_identical(posterior_metadata(fixed$samples$mu_f, "atoms")$mass, 1)
+  normal <- ordered_plot_test_fixture(prior_spike_and_slab(prior("normal", list(0, 1)),
+    prior("beta", list(1, 1))), c(.25, .75), levels = c("a", "b", "c"))
+  expect_identical(nrow(posterior_metadata(normal$samples$mu_f, "atoms")$locations), 1L)
+  included <- mix_posteriors(list(model), "mu_f", list(FALSE), conditional = TRUE, seed = 17, n_samples = 12)
+  included_atoms <- posterior_metadata(included$mu_f, "atoms")
+  expect_identical(unname(included_atoms$locations), matrix(c(.5, 1.5), 1L))
+  expect_identical(included_atoms$mass, 1)
+  positive_total <- prior_mixture(list(prior("point", list(1)), prior("point", list(3))))
+  positive <- ordered_plot_test_fixture(positive_total, c(.25, .75), levels = c("a", "b", "c"))
+  component <- .bt_component_from_indicator(positive_total, positive$draws[, "mu_f_ordered_total_indicator"])
+  expected <- vapply(1:2, function(i) mean(component == i), numeric(1))
+  positive_model <- list(fit = positive$fit, marglik = bridgesampling_object(0), prior_weights = 1)
+  for(samples in list(positive$samples,
+                     mix_posteriors(list(positive_model), "mu_f", list(FALSE), seed = 17, n_samples = 12))){
+    atoms <- posterior_metadata(samples$mu_f, "atoms")
+    order <- order(atoms$locations[, 1L])
+    expect_identical(unname(atoms$locations[order, , drop = FALSE]), matrix(c(.25, .75, .75, 2.25), 2L))
+    expect_equal(atoms$mass[order], expected, tolerance = 0)
+  }
+})

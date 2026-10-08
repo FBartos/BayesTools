@@ -822,6 +822,10 @@ original-fit exclusion fractions and formula gate plans they actually own;
 do not infer a missing population or fabricate atom-free structure.
 Complete fixed weightfunction declarations supply joint points through their
 actual omega mapping; null is declared one, and continuous families stay continuous.
+Fixed-allocation ordered point-total components retain their complete joint
+point vectors with original eligible component frequencies. Successful scalar
+certification clears only that column's superseded atoms refusal; the joint
+condition and other refused measures remain.
 PET/PEESE point shortcuts require the complete paired regression declaration:
 equal mu plus equal bias type and point, or identically zero bias across types.
 Separate raw mu/bias point equality does not certify the mapped regression law.
