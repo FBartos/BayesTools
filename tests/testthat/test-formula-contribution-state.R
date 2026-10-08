@@ -1,5 +1,36 @@
 skip_if_not_test_profile("unit")
 
+test_that("irrelevant expression points do not block numeric subset generation", {
+  normal <- prior("normal", list(0, 1))
+  point <- prior("point", list(location = expression(2 * x)))
+  priors <- list(x = normal, expr_pt = point, after = prior("normal", list(2, .5)))
+  original <- priors
+  set.seed(817)
+  expected <- cbind(x = stats::rnorm(10), after = stats::rnorm(10, 2, .5))
+  for(retain in c(FALSE, TRUE)){
+    out <- .generate_transformed_prior_samples(priors, column_names = c("x", "after"),
+      n_samples = 10L, seed = 817, formula_scale = NULL, retain_state = retain)
+    expect_identical(out, expected)
+    expect_false("expr_pt" %in% colnames(out))
+  }
+  expect_identical(priors, original)
+  for(action in list(function() .generate_transformed_prior_samples(priors, c("x", "expr_pt"), 10L),
+    function() .generate_prior_sample_matrix(priors, 10L))){
+    condition <- expect_error(action(), class = "BayesTools_formula_transform_unavailable")
+    expect_identical(conditionMessage(condition), "Fresh expression-point replay is unavailable without a certified persisted recipe.")
+    expect_null(conditionCall(condition))
+  }
+  numeric <- list(x = normal, scalar = prior("point", list(2)), vector = prior("mpoint", list(location = 3, K = 2)),
+    factor = prior_factor_levels(prior_factor("point", list(4), contrast = "treatment"), c("a", "b", "c")))
+  out <- .generate_transformed_prior_samples(numeric,
+    c("x", "scalar", "vector", "factor[1]", "factor[2]"), 10L, seed = 817)
+  expect_identical(out[, "x"], expected[, "x"])
+  expect_true(all(out[, "scalar"] == 2))
+  expect_true(all(out[, "vector"] == 3))
+  expect_identical(unname(rng(numeric$vector, 10L)), matrix(3, 10L, 2L))
+  expect_true(all(out[, c("factor[1]", "factor[2]")] == 4))
+})
+
 test_that("ordinary spike localization retains declared factor and interaction dimensions", {
   data <- data.frame(f = factor(rep(c("a", "b", "c"), 2L)), x = 1:6)
   p <- prior_spike_and_slab(prior_factor("mnormal", list(0, .25), contrast = "meandif"))

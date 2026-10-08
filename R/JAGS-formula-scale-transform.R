@@ -274,6 +274,13 @@ transform_prior_samples <- function(fit, n_samples = 10000, seed = NULL, formula
 # @param seed Optional random seed
 # @param formula_scale Optional nested scaling information
 # @return Matrix with transformed prior samples
+.bt_expression_point_prior_names <- function(prior_list){
+
+  names(prior_list)[vapply(prior_list, function(prior){
+    is.prior.point(prior) && is.expression(prior$parameters$location)
+  }, logical(1))]
+}
+
 .generate_transformed_prior_samples <- function(
     prior_list, column_names, n_samples, seed = NULL, formula_scale = NULL,
     formula_design = NULL, retain_state = FALSE){
@@ -282,10 +289,7 @@ transform_prior_samples <- function(fit, n_samples = 10000, seed = NULL, formula
     .check_formula_scale_info(formula_scale)
   }
 
-  expression_points <- names(prior_list)[vapply(prior_list, function(prior){
-    is.prior.point(prior) && (!is.numeric(prior$parameters$location) ||
-      length(prior$parameters$location) != 1L || !is.finite(prior$parameters$location))
-  }, logical(1))]
+  expression_points <- .bt_expression_point_prior_names(prior_list)
   needed <- column_names
   for(prefix in names(formula_scale)){
     scale <- formula_scale[[prefix]]
@@ -303,12 +307,13 @@ transform_prior_samples <- function(fit, n_samples = 10000, seed = NULL, formula
     "Fresh expression-point replay is unavailable without a certified persisted recipe.",
     reason = "uncertified_point_replay", missing = unsupported)
 
-  prior_samples <- .generate_prior_sample_matrix(
-    prior_list     = prior_list,
+  generation_priors <- prior_list[!names(prior_list) %in% expression_points]
+  prior_samples <- if(length(generation_priors)) .generate_prior_sample_matrix(
+    prior_list     = generation_priors,
     n_samples      = n_samples,
     column_names   = NULL,
     seed           = seed
-  )
+  ) else matrix(numeric(), n_samples, 0L, dimnames = list(NULL, character()))
   retained_primitives <- prior_samples
   prior_samples <- .bt_add_lkj_prior_samples(
     samples        = prior_samples,
@@ -622,6 +627,10 @@ transform_prior_samples <- function(fit, n_samples = 10000, seed = NULL, formula
 # @return Matrix with prior samples (rows = samples, columns = parameters)
 .generate_prior_sample_matrix <- function(prior_list, n_samples, column_names = NULL, seed = NULL){
 
+  expression_points <- .bt_expression_point_prior_names(prior_list)
+  if(length(expression_points)) .bt_formula_transform_stop(
+    "Fresh expression-point replay is unavailable without a certified persisted recipe.",
+    reason = "uncertified_point_replay", missing = expression_points)
   if(!is.null(seed)){
     set.seed(seed)
   }
