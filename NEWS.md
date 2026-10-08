@@ -1,4 +1,7 @@
 # version 0.3.1
+- fixed spike inclusion uses its declared active component in weighted conditional support. Supported scalar additive formula grids retain declared atom freedom and support while exact point ordinates remain unknown.
+- empty level-reference parsing retains its typed table; undefined posterior region odds retain both prior numerical diagnostics, and deterministic mixture replay clearly rejects invalid indicators before indexing.
+- batched prior-density quadrature reuses its existing finite rule nodes during coordinate validation with unchanged coordinate arithmetic and numerical budgets.
 - hypothesis table indexing follows data-frame row and column selection, keeping canonical BF logs and row diagnostics aligned. Escaped names and integer literals retain coherent hypothesis AST rendering.
 - marginal plots retain original typed atom refusals when no certified scalar law is available; fixed exponential targets refuse underflow instead of declaring zero. Independently positive complements and accepted positive scalar subnormal prior masses retain authoritative log BF ratios.
 - scaled formula atom projections retain every compiler-expanded interaction weight and zero source column. Omitted ordinary parent priors supply their declared laws; missing component-dependent or unknown parent laws remain unavailable.
