@@ -171,7 +171,7 @@
 .condition_event_label_posterior_mask <- function(prior_list, model_samples,
                                                   label){
 
-  if(label %in% .condition_special_labels() &&
+  if((label == "bias" || label %in% .condition_special_labels()) &&
      .condition_event_has_bias_prior(prior_list)){
     prior <- prior_list[["bias"]]
     values <- .condition_event_bias_label_values(prior, label)
