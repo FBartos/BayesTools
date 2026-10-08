@@ -266,6 +266,24 @@
       )
     }
     metadata <- .prior_ordered_metadata(prior)
+    generated_names <- total_name
+    if(is.prior.spike_and_slab(prior$total)){
+      generated_names <- c(generated_names, paste0(total_name, c("_variable", "_inclusion", "_indicator")))
+    }else if(is.prior.mixture(prior$total)){
+      generated_names <- c(generated_names, paste0(total_name, "_indicator"),
+        paste0(total_name, "_component_", seq_along(prior$total)))
+    }
+    for(record in metadata$allocations){
+      if(identical(record$spec$type, "dirichlet")){
+        generated_names <- c(generated_names, record$node, .JAGS_prior_dirichlet_eta_name(record$node))
+      }
+    }
+    clashes <- intersect(generated_names, names(prior_list))
+    if(length(clashes)){
+      stop("Ordered prior '", names(prior_list)[i], "' generates JAGS node(s) ",
+        paste0("'", clashes, "'", collapse = ", "),
+        ", which conflict with another prior parameter.", call. = FALSE)
+    }
     for(record in metadata$allocations){
       signature <- .prior_ordered_allocation_signature(record)
       if(!is.null(node_registry[[record$node]]) &&

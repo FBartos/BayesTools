@@ -3174,3 +3174,25 @@ test_that("ordered IDs reject malformed vectors and keep reusable factor maps", 
   expect_error(JAGS_formula(~f, "mu", data, list(intercept = prior("point", list(0)),
     f = prior_ordered(total, allocation = list(g = c(.4, .6))))), "f", fixed = TRUE)
 })
+
+test_that("ordered generated roots cannot alias ordinary declarations", {
+  data <- data.frame(f = ordered(rep(c("lo", "mid", "hi"), 2L)), x = 1:6,
+    f_ordered_alloc_f_1 = 1:6, f_ordered_total_indicator = 1:6)
+  bind <- function(formula, p, ordinary) JAGS_formula(formula, "mu", data,
+    c(list(intercept = prior("point", list(0)), f = p), ordinary))
+  expect_error(bind(~f+f_ordered_alloc_f_1, prior_ordered(prior("point", list(1))),
+    list(f_ordered_alloc_f_1 = prior("normal", list(0, 1)))), "mu_f_ordered_alloc_f_1", fixed = TRUE)
+  spike <- prior_ordered(prior_spike_and_slab(prior("normal", list(0, 1)), prior("bernoulli", list(.5))))
+  expect_error(bind(~f+f_ordered_total_indicator, spike,
+    list(f_ordered_total_indicator = prior("normal", list(0, 1)))), "mu_f_ordered_total_indicator", fixed = TRUE)
+  base <- bind(~f, spike, list())$prior_list
+  for(root in c("mu_f_ordered_total_variable", "mu_f_ordered_total_inclusion", "prior_par_eta_mu_f_ordered_alloc_f_1")){
+    expect_error(JAGS_add_priors("model{}", c(base, setNames(list(prior("normal", list(0, 1))), root))), root, fixed = TRUE)
+  }
+  mixture <- bind(~f, prior_ordered(prior_mixture(list(prior("normal", list(0, 1)), prior("point", list(0))))), list())$prior_list
+  expect_error(JAGS_add_priors("model{}", c(mixture, list(mu_f_ordered_total_component_1 = prior("normal", list(0, 1))))),
+    "mu_f_ordered_total_component_1", fixed = TRUE)
+  expect_type(bind(~f+f_ordered_alloc_f_1,
+    prior_ordered(prior("point", list(1)), allocation = c(.4, .6)),
+    list(f_ordered_alloc_f_1 = prior("normal", list(0, 1)))), "list")
+})
