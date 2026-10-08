@@ -107,6 +107,8 @@
 #' @param at named list with predictor levels of the formula for which marginalization
 #' should be performed. Continuous values use fitted/SD units for fitted posterior
 #' views and original data units for views created with \code{transform_scaled = TRUE}.
+#' A manipulated continuous predictor is evaluated at the existing grid
+#' \code{c(-1, 0, 1)} in those same view units.
 #' If a predictor level is missing, \code{0} is used for continuous
 #' predictors, the baseline factor level is used for factors with \code{contrast = "treatment"} prior
 #' distributions, and the parameter is completely omitted for factors with

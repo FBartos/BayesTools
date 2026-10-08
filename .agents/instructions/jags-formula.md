@@ -106,6 +106,13 @@ condition.
 
 ## Formula Coordinates and Scaling
 
+Coefficient-transform target schemas include the existing `state_dependent`
+map type. Fixed exponential outputs must be finite and strictly positive;
+underflow remains unavailable rather than a structural zero. Manipulated
+continuous marginal grids use `c(-1, 0, 1)` in fitted/SD or original view units.
+Public linear-target coefficient/threshold range loss retains the existing
+typed hypothesis numerical refusal, without rounding or clamping.
+
 Selected existing terms preserve the fitted terms' variable order, coding,
 raw columns, levels, and concrete contrasts on the actual matrix input.
 Equivalent interaction orders resolve before prior lookup. Selected replay

@@ -53,6 +53,10 @@ diagnostics. Each non-NULL cell is a plain list with \code{model_indices},
 \code{stage}; supplied log vectors align with positive unique integer
 model indices. A missing log vector is NULL. Stage identifies prior,
 posterior, conditional prior/posterior, event, or component probabilities.
+A cell may alternatively contain the existing typed
+\code{BayesTools_ordered_expression_unavailable} condition, with a NULL
+call, retaining that ordered-expression refusal. Other condition objects
+are not accepted as diagnostics.
 The cause \code{numerical_model_probability_unavailable} identifies a
 declared law whose active model probabilities cannot be represented at
 full precision. Invalid metadata requires recomputation/refitting.

@@ -1,4 +1,6 @@
 # version 0.3.1
+- hypothesis table indexing follows data-frame row and column selection, keeping canonical BF logs and row diagnostics aligned. Escaped names and integer literals retain coherent hypothesis AST rendering.
+- marginal plots retain original typed atom refusals when no certified scalar law is available; fixed exponential targets refuse underflow instead of declaring zero. Independently positive complements and accepted positive scalar subnormal prior masses retain authoritative log BF ratios.
 - scaled formula atom projections retain every compiler-expanded interaction weight and zero source column. Omitted ordinary parent priors supply their declared laws; missing component-dependent or unknown parent laws remain unavailable.
 - diagonal multivariate Normal prior log densities avoid redundant covariance symmetry checks while retaining the same density engine and numerical validation.
 - factor contrast views retain scalar atom declarations certified from their full declared parent, including scaled interactions; uncertified scalar and joint laws retain their existing refusals.

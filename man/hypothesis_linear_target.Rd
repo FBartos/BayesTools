@@ -38,6 +38,11 @@ on columns the joint prior context does not contain). A reference to a
 level that \code{posterior} does not contain stops with an error of class
 \code{BayesTools_parameter_not_found} (also
 \code{BayesTools_parameter_resolution_error}), as in \code{\link[=hypothesis_BF]{hypothesis_BF()}}.
+Numerical loss in coefficients or translated thresholds stops with
+\code{BayesTools_hypothesis_numerical_unavailable} (also
+\code{BayesTools_hypothesis_ordinate}, \code{BayesTools_numerical_unavailable}, and
+\code{BayesTools_numerical_condition}). Unrepresentable target units are
+unavailable; the compiler does not round or clamp them into a valid target.
 }
 \description{
 When structured quantity labels are available, hypothesis tables display

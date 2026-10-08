@@ -56,6 +56,11 @@
 #'   level that `posterior` does not contain stops with an error of class
 #'   `BayesTools_parameter_not_found` (also
 #'   `BayesTools_parameter_resolution_error`), as in [hypothesis_BF()].
+#'   Numerical loss in coefficients or translated thresholds stops with
+#'   `BayesTools_hypothesis_numerical_unavailable` (also
+#'   `BayesTools_hypothesis_ordinate`, `BayesTools_numerical_unavailable`, and
+#'   `BayesTools_numerical_condition`). Unrepresentable target units are
+#'   unavailable; the compiler does not round or clamp them into a valid target.
 #'
 #' @export
 hypothesis_linear_target <- function(posterior, hypothesis, parameter){

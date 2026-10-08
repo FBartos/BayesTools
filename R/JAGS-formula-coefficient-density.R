@@ -255,7 +255,7 @@ JAGS_formula_coefficient_transform_schema <- function(){
       "Registry-linked source monitor status and fixed value.",
       paste0(
         "Target structural/dependent status, exact fixed value, map type ",
-        "(identity, affine, exp_affine, or unsupported), and the support of ",
+        "(identity, affine, exp_affine, state_dependent, or unsupported), and the support of ",
         "the map as a list column of c(lower, upper)."
       )
     ),

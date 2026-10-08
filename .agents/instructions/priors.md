@@ -906,6 +906,14 @@ with the prior densities of the kept elements.
 
 ## Numerical Evidence
 
+Scalar deterministic region producers retain authoritative backend log masses
+only for already accepted positive natural masses, including subnormals.
+Region-odds and transitive ratios share those logs; natural zero/nonfinite
+availability and Monte Carlo errors stay unchanged. An implicit rounded-one
+region is valid only when its independently evaluated complement is positive.
+Measure diagnostics also accept the narrow existing typed ordered-expression
+condition with call NULL; arbitrary conditions remain invalid metadata.
+
 Conditional-Normal and scale-product ordinate leaves alone may supply log
 callbacks. Their quadrature coordinates keep physical pieces/endpoints and
 budget ownership, selecting finite log-magnitude transport only when initial
