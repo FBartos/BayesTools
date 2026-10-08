@@ -742,13 +742,18 @@ test_that("ordered scalar measures use declared contractions and exact primitive
   expect_identical(.posterior_atoms_get(marginal_posterior(expression_spike_raw,"mu_f",use_formula=FALSE,prior_samples=FALSE)[[4L]])$mass,.5)
   expression_point <- make(prior("point",list(expression(tau))),theta=rep(2,40))
   expression_point_raw <- as_mixed_posteriors(expression_point$fit,"mu_f")
-  expect_false(posterior_atoms_free(expression_point_raw$mu_f))
+  expect_error(posterior_atoms_free(expression_point_raw$mu_f), class = "BayesTools_formula_measure_unavailable")
   point_levels <- transform_factor_samples(expression_point_raw)$mu_f
-  expect_identical(length(.posterior_atoms_get(point_levels)$marginals),4L)
-  expect_identical(vapply(.posterior_atoms_get(point_levels)$marginals,is.null,logical(1)),
+  expect_error(.posterior_atoms_get(point_levels), class = "BayesTools_formula_measure_unavailable")
+  expect_identical(length(.posterior_atoms_get(point_levels, allow_partial = TRUE)$marginals),4L)
+  expect_identical(vapply(.posterior_atoms_get(point_levels, allow_partial = TRUE)$marginals,is.null,logical(1)),
     setNames(c(FALSE,TRUE,TRUE,TRUE),colnames(point_levels)))
-  expect_error(marginal_posterior(expression_point_raw,"mu_f",use_formula=FALSE,prior_samples=FALSE),
-    class="BayesTools_ordered_expression_unavailable")
+  point_marginal <- marginal_posterior(expression_point_raw,"mu_f",use_formula=FALSE,prior_samples=FALSE)
+  expect_equal(.posterior_atoms_get(point_marginal[[1L]])$mass, 1, tolerance = 0)
+  for(level in point_marginal[-1L]){
+    class(level) <- unique(c(class(level), "marginal_posterior"))
+    expect_error(Savage_Dickey_BF(level, silent = TRUE), class = "BayesTools_formula_measure_unavailable")
+  }
   expect_error(.plot_data_factor_column_atoms(point_levels),class="BayesTools_ordered_expression_unavailable")
   expect_error(.plot_data_samples.factor(expression_point_raw,"mu_f",128,NULL,NULL,NULL),class="BayesTools_ordered_expression_unavailable")
   zero_expression_point <- make(prior("point",list(expression(tau))),c(0,.5,.5),theta=rep(2,40))
@@ -759,8 +764,12 @@ test_that("ordered scalar measures use declared contractions and exact primitive
   expect_identical(zero_distribution$points,data.frame(x=0,p=1))
   expect_identical(attr(zero_distribution,"ordered_measure",exact=TRUE)$allocation,
     zero_expression_point$spec$allocations[[1L]]$spec)
-  expect_error(marginal_posterior(expression_point_raw,"mu_f",formula=~0+f,prior_samples=FALSE),
-    class="BayesTools_ordered_expression_unavailable")
+  point_formula_marginal <- marginal_posterior(expression_point_raw,"mu_f",formula=~0+f,prior_samples=FALSE)
+  expect_equal(.posterior_atoms_get(point_formula_marginal[[1L]])$mass, 1, tolerance = 0)
+  for(level in point_formula_marginal[-1L]){
+    class(level) <- unique(c(class(level), "marginal_posterior"))
+    expect_error(Savage_Dickey_BF(level, silent = TRUE), class = "BayesTools_formula_measure_unavailable")
+  }
   expression_selection <- parameter_catalog_resolve(parameter_catalog(expression_point$fit),"f[top]",namespace="mu")
   expect_identical(as.numeric(as.matrix(parameter_draws(expression_point$fit,expression_selection))),rep(2,40))
   condition <- tryCatch(parameter_mixed_posterior(expression_point$fit,expression_selection),error=identity)

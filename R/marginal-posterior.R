@@ -789,7 +789,16 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
       # transform factor levels
       marginal_posterior_samples <- transform_factor_samples(samples)
       marginal_posterior_samples <- transform_treatment_samples(marginal_posterior_samples)[[parameter]]
-      .bt_ordered_source_require_measure(marginal_posterior_samples)
+      ordered_source <- .bt_meta_get(marginal_posterior_samples, "ordered_source")
+      marginal_factor_expression <- rep(list(NULL), ncol(marginal_posterior_samples))
+      if(!is.null(ordered_source)){
+        for(i in seq_len(ncol(marginal_posterior_samples))){
+          projection <- .bt_ordered_source_project(ordered_source, diag(ncol(marginal_posterior_samples))[i, ])
+          if(inherits(projection$reason, "BayesTools_ordered_expression_unavailable")){
+            marginal_factor_expression[i] <- list(projection$reason)
+          }else .bt_ordered_require_measure(projection)
+        }
+      }
       marginal_factor_atoms <- .posterior_atoms_get(marginal_posterior_samples, allow_partial = TRUE)
       marginal_posterior_samples <- .bt_meta_set(marginal_posterior_samples, "posterior_density", NULL)
       marginal_posterior_samples <- .bt_meta_set(marginal_posterior_samples, "posterior_ordinate", NULL)
@@ -842,6 +851,15 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
           unavailable <- unavailable[unavailable$column == colnames(marginal_factor_metadata)[[lvl_i]], , drop = FALSE]
           unavailable$column <- rep(level_names[[lvl_i]], nrow(unavailable))
           temp_marginal_posterior_samples <- .bt_meta_set(temp_marginal_posterior_samples, "measure_unavailable", unavailable)
+        }
+        refusal <- marginal_factor_expression[[lvl_i]]
+        if(!is.null(refusal)){
+          temp_marginal_posterior_samples <- .bt_meta_assign(temp_marginal_posterior_samples,
+            list(atoms = NULL, support = NULL, prior_density = NULL, posterior_density = NULL, posterior_ordinate = NULL, components = NULL))
+          for(measure in c("atoms", "support", "prior_density")) temp_marginal_posterior_samples <- .bt_formula_measure_mark(
+            temp_marginal_posterior_samples, level_names[[lvl_i]], measure, conditionMessage(refusal),
+            cause = "unsupported_contribution_measure", diagnostics = refusal)
+          return(temp_marginal_posterior_samples)
         }
         temp_support <- NULL
         if(!is.null(marginal_factor_support)){
@@ -1082,6 +1100,7 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
         }
 
         for(lvl_i in seq_along(level_names)){
+          if(!is.null(marginal_factor_expression[[lvl_i]])) next
           weights <- rep(0, length(prior_density_context$column_names))
           names(weights) <- prior_density_context$column_names
           weights[colnames(factor_weights)] <- factor_weights[lvl_i, ]
@@ -1360,12 +1379,24 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
     ordered <- if(common) .bt_ordered_formula_projections(samples, weights, source_transforms,
       weight_space = "formula_contribution") else NULL
     if(!is.null(ordered)){
-      for(projection in ordered) .bt_ordered_require_measure(projection)
       values <- as.vector(do.call(rbind, lapply(ordered, `[[`, "values")))
       states <- as.vector(do.call(rbind, lapply(ordered, `[[`, "state")))
       if(length(values) != length(marginal)) .bt_ordered_stop("Ordered formula sources do not align with marginal draw rows.")
       replace <- .bt_ordered_projection_defined_rows(list(values = values, state = states), as.numeric(marginal))
       marginal <- .bt_draws_transform_values(marginal, function(old){ old[replace] <- values[replace]; old })
+      refusals <- Filter(function(projection){
+        inherits(projection$reason, "BayesTools_ordered_expression_unavailable")
+      }, ordered)
+      if(length(refusals)){
+        refusal <- refusals[[1L]]$reason
+        marginal <- .bt_meta_assign(marginal, list(atoms = NULL, support = NULL, components = NULL,
+          prior_density = NULL, prior_context = NULL, linear_weights = NULL, linear_weight_space = NULL,
+          posterior_density = NULL, posterior_ordinate = NULL, joint_prior_transformation = NULL))
+        for(measure in c("atoms", "support", "prior_density")) marginal <- .bt_formula_measure_mark(
+          marginal, column_name, measure, conditionMessage(refusal),
+          cause = "unsupported_contribution_measure", diagnostics = refusal)
+        return(marginal)
+      }
     }
     return(.bt_formula_contribution_metadata(marginal, formula_state, formula, data,
       formula_parameter, column_name, source_transforms, prior_samples, n_grid, original = original))

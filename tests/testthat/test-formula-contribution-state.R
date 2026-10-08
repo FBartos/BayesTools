@@ -105,6 +105,41 @@ test_that("complete declarations certify absent terms with a valid empty source 
     list(mu = compiled$formula_scale))
 }
 
+test_that("expression ordered totals retain snapshots and per-level unavailable laws", {
+  data <- data.frame(f = ordered(rep(c("lo", "mid", "hi"), 2L), levels = c("lo", "mid", "hi")))
+  compiled <- JAGS_formula(~f, "mu", data, list(intercept = prior("point", list(0)),
+    f = prior_ordered(prior("point", list(expression(sigma))), allocation = c(.25, .75))))
+  compiled$prior_list$sigma <- prior("gamma", list(2, 2))
+  spec <- .bt_ordered_spec("mu_f", compiled$prior_list$mu_f)
+  sigma <- rep(c(2, 4), 4L)
+  coefficients <- cbind(.25 * sigma, .75 * sigma)
+  colnames(coefficients) <- spec$coefficient_names
+  draws <- cbind(mu_intercept = rep(0, 8L), sigma = sigma, coefficients,
+    stats::setNames(data.frame(sigma), spec$total_names))
+  fit <- .parameter_catalog_test_fit(coda::mcmc.list(coda::mcmc(as.matrix(draws))), compiled$prior_list,
+    formula_design = list(mu = compiled$formula_design), formula_scale = list(mu = compiled$formula_scale))
+  mixed <- as_mixed_posteriors(fit, names(compiled$prior_list))
+  for(formula_view in c(FALSE, TRUE)) for(prior_samples in c(FALSE, TRUE)){
+    levels <- if(formula_view) marginal_posterior(mixed, "mu_f", formula = ~f, prior_samples = prior_samples) else
+      marginal_posterior(mixed, "mu_f", use_formula = FALSE, prior_samples = prior_samples)
+    expect_identical(as.numeric(levels[[1L]]), rep(0, 8L))
+    expect_identical(as.numeric(levels[[2L]]), .25 * sigma)
+    expect_identical(as.numeric(levels[[3L]]), sigma)
+    expect_equal(.posterior_atoms_get(levels[[1L]])$mass, 1, tolerance = 0)
+    expect_equal(posterior_metadata(levels[[1L]], "support")$bounds, c(0, 0), tolerance = 0)
+    for(i in 2:3){
+      unavailable <- posterior_metadata(levels[[i]], "measure_unavailable")
+      expect_setequal(unavailable$measure, c("atoms", "support", "prior_density"))
+      expect_true(all(unavailable$cause == "unsupported_contribution_measure" | is.na(unavailable$cause)))
+      for(field in c("atoms", "support", "prior_density", "posterior_ordinate")) expect_null(posterior_metadata(levels[[i]], field))
+      scalar <- levels[[i]]
+      class(scalar) <- unique(c(class(scalar), "marginal_posterior"))
+      expect_error(Savage_Dickey_BF(scalar, silent = TRUE), class = "BayesTools_formula_measure_unavailable")
+    }
+    if(prior_samples) expect_equal(prior_density_ordinate(posterior_metadata(levels[[1L]], "prior_density"), 0)$point_mass, 1, tolerance = 0)
+  }
+})
+
 test_that("original coefficients read immutable fitted multiplier states", {
 
   fit <- .formula_state_test_fit()

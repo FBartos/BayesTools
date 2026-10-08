@@ -747,6 +747,10 @@
 .bt_formula_measure_diagnostics_valid <- function(value){
 
   if(is.null(value)) return(TRUE)
+  if(inherits(value, "BayesTools_ordered_expression_unavailable")){
+    return(inherits(value, "condition") && is.null(conditionCall(value)) &&
+      is.character(value$message) && length(value$message) == 1L && !is.na(value$message))
+  }
   if(!is.list(value) || is.object(value) || !identical(names(value),
     c("model_indices", "log_prior_probabilities", "log_posterior_probabilities", "stage"))) return(FALSE)
   indices <- value$model_indices

@@ -506,7 +506,14 @@
   for(model in which(is.finite(pair$logs))){
     rows <- which(source$model==model)
     if(length(rows)){
-      if(any(projection$state[rows]=="unavailable")) return(NULL)
+      if(any(projection$state[rows]=="unavailable")){
+        if(inherits(projection$reason, "BayesTools_ordered_expression_unavailable")) return(errorCondition(
+          conditionMessage(projection$reason), call = NULL,
+          class = c("BayesTools_formula_atoms_unavailable", "BayesTools_formula_measure_unavailable"),
+          reason = "unsupported_contribution_measure", detail = conditionMessage(projection$reason),
+          diagnostics = projection$reason))
+        return(NULL)
+      }
       continuous <- continuous || any(projection$state[rows]=="continuous")
       locations <- unique(projection$atom[rows][!is.na(projection$atom[rows])])
       for(location in locations){
