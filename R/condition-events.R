@@ -335,6 +335,7 @@
       family      = family[["name"]],
       prior       = NULL,
       probability = 1,
+      log_probability = 0,
       values      = values,
       replace     = FALSE
     )))
@@ -359,6 +360,7 @@
       family      = family[["name"]],
       prior       = option[["prior"]],
       probability = option[["probability"]],
+      log_probability = option[["log_probability"]],
       values      = values,
       replace     = TRUE
     )
@@ -368,11 +370,12 @@
 .condition_event_bias_options <- function(prior, labels){
 
   branches <- if(is.prior.mixture(prior)) prior else list(prior)
-  probabilities <- if(is.prior.mixture(prior)){
+  pair <- if(is.prior.mixture(prior)){
     prior_weights <- attr(prior, "prior_weights")
-    prior_weights / sum(prior_weights)
+    .model_probability_prior(prior_weights, stage = "component",
+      ordinary = prior_weights / sum(prior_weights))
   }else{
-    1
+    .model_probability_pair(1, 0, "component", "ordinary")
   }
   values <- .condition_event_bias_label_values(prior, labels)
   if(is.null(dim(values))){
@@ -383,7 +386,8 @@
     list(
       family      = "bias",
       prior       = branches[[i]],
-      probability = probabilities[i],
+      probability = pair$probabilities[i],
+      log_probability = pair$logs[i],
       values      = values[i, ],
       replace     = TRUE
     )
@@ -416,17 +420,19 @@
     values <- logical(length(event[["conditional"]]))
     names(values) <- event[["conditional"]]
     probabilities <- numeric(length(families))
+    log_probabilities <- numeric(length(families))
 
     for(j in seq_along(families)){
       option <- options[[j]][[option_grid[i, j]]]
       values[names(option[["values"]])] <- option[["values"]]
       probabilities[j] <- option[["probability"]]
+      log_probabilities[j] <- option[["log_probability"]]
     }
 
     keep[i] <- rule_fun(values)
     model_weights[i] <- prod(probabilities)
-    model_log_weights[i] <- sum(log(probabilities))
-    if(all(probabilities > 0) && !is.finite(model_log_weights[i])) .model_probability_range_stop(i)
+    model_log_weights[i] <- sum(log_probabilities)
+    if(all(is.finite(log_probabilities)) && !is.finite(model_log_weights[i])) .model_probability_range_stop(i)
   }
 
   event_probability <- sum(model_weights[keep & model_weights > 0])

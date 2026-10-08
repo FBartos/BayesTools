@@ -248,6 +248,7 @@
       list(
         prior       = prior[[i]],
         probability = probabilities[i],
+        log_probability = log(probabilities[i]),
         alternative = components[i] == "alternative"
       )
     }))
@@ -260,12 +261,14 @@
     }
 
     prior_weights <- attr(prior, "prior_weights")
-    prior_weights <- prior_weights / sum(prior_weights)
+    pair <- .model_probability_prior(prior_weights, stage = "component",
+      ordinary = prior_weights / sum(prior_weights))
 
     return(lapply(seq_along(prior), function(i){
       list(
         prior       = prior[[i]],
-        probability = prior_weights[i],
+        probability = pair$probabilities[i],
+        log_probability = pair$logs[i],
         alternative = components[i] == "alternative"
       )
     }))
@@ -274,6 +277,7 @@
   list(list(
     prior       = prior,
     probability = 1,
+    log_probability = 0,
     alternative = TRUE
   ))
 }

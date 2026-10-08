@@ -16,6 +16,43 @@ test_that("bias posterior masks use their declared event family", {
     "The parameter 'bias' is not a conditional parameter.", fixed = TRUE)
 })
 
+test_that("within-fit branch event logs preserve extreme finite raw weights", {
+  cases <- list(maximum = rep(.Machine$double.xmax, 2L), tiny = c(1e200, 1e-200), ordinary = c(1, 1))
+  for(w in cases){
+    p <- prior_mixture(list(prior("point", list(0), prior_weights = w[1L]),
+      prior("normal", list(0, 1), prior_weights = w[2L])), is_null = c(TRUE, FALSE))
+    original <- p
+    event <- .condition_event(list(theta = p), "theta", "AND")
+    result <- .condition_event_model_options(list(theta = p), event)
+    reference <- log(w[2L]) - max(log(w)) - log(sum(exp(log(w) - max(log(w)))))
+    expect_equal(result$log_event_probability, reference, tolerance = 1e-12)
+    expect_equal(result$event_probability, exp(reference), tolerance = 1e-15)
+    expect_length(result$prior_lists, 1L)
+    expect_identical(unname(result$weights), 1)
+    expect_identical(unname(result$log_weights), 0)
+    .model_probability_validate(result$weights, result$log_weights, result$model_probability_declaration, normalized = TRUE)
+    context <- .prior_density_conditional_context(list(theta = p), "theta", "theta")
+    expect_identical(context$model_weights, 1)
+    expect_identical(p, original)
+    options <- .prior_density_condition_component(p)
+    expect_true(is.finite(options[[2L]]$log_probability))
+    bias <- prior_mixture(list(prior_PET("normal", list(0, 1), prior_weights = w[1L]),
+      prior_PEESE("normal", list(0, 1), prior_weights = w[2L])))
+    bias_result <- .condition_event_model_options(list(bias = bias), .condition_event(list(bias = bias), "PEESE", "AND"))
+    expect_equal(bias_result$log_event_probability, reference, tolerance = 1e-12)
+    expect_identical(bias_result$weights, 1)
+  }
+  rare <- prior_spike_and_slab(prior("normal", list(0, 1)), prior("point", list(1e-200)))
+  result <- .condition_event_model_options(list(a = rare, b = rare), .condition_event(list(a = rare, b = rare), c("a", "b"), "AND"))
+  expect_equal(result$log_event_probability, 2 * log(1e-200), tolerance = 1e-12)
+  expect_identical(result$weights, 1)
+  expect_identical(result$event_probability, 0)
+  zero <- prior_spike_and_slab(prior("normal", list(0, 1)), prior("point", list(0)))
+  result <- .condition_event_model_options(list(theta = zero), .condition_event(list(theta = zero), "theta", "AND"))
+  expect_identical(result$log_event_probability, -Inf)
+  expect_length(result$prior_lists, 0L)
+})
+
 test_that("declared positive option products survive event underflow", {
   priors <- list(a = prior_spike_and_slab(prior("normal", list(0, 1)), prior("point", list(1e-200))),
     b = prior_spike_and_slab(prior("normal", list(0, 1)), prior("point", list(1e-200))))
