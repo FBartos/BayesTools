@@ -54,8 +54,8 @@
 #'   a point mass or in a sparse tail), the rounding of the cell boundaries
 #'   `i/m` can make it larger by a factor that grows roughly in proportion to
 #'   `sqrt(m * p / (1 - p))`. Measured binary-step examples with zeros and
-#'   the top `r` draws equal to one give about 40 with `m = 10000`, `r = 249`,
-#'   `p = 0.975`, and about 1,400 with `m = 100000`, `r = 50`, `p = 0.9995`.
+#'   the top `r` draws equal to one give about 40 with `m = 10000`, \code{r = 249},
+#'   `p = 0.975`, and about 1,400 with `m = 100000`, \code{r = 50}, `p = 0.9995`.
 #'   Differences between draws that are much smaller than
 #'   this error (e.g., the middle draw of `c(-1e16, 1, 1e16)`) are not
 #'   resolved.
