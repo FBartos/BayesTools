@@ -635,6 +635,12 @@ posterior_atoms_free <- function(x){
   }
   declared <- !vapply(declarations$marginals, is.null, logical(1))
   marginals[declared] <- declarations$marginals[declared]
+  unavailable <- .bt_meta_get(samples, "measure_unavailable")
+  if(!is.null(unavailable)){
+    unavailable <- unavailable[!(unavailable$measure == "atoms" &
+      unavailable$column %in% names(declared)[declared]), , drop = FALSE]
+    samples <- .bt_meta_set(samples, "measure_unavailable", if(nrow(unavailable)) unavailable else NULL)
+  }
   supported <- !vapply(declarations$supports, is.null, logical(1))
   supports[supported] <- declarations$supports[supported]
   if(is.null(joint_unavailable) || any(!vapply(marginals, is.null, logical(1)))){

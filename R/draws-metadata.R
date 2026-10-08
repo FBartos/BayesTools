@@ -804,7 +804,12 @@
   if(!is.null(unavailable) && "cause" %in% names(entry) && !"cause" %in% names(unavailable)) unavailable$cause <- NA_character_
   if(!is.null(unavailable) && "diagnostics" %in% names(unavailable) && !"diagnostics" %in% names(entry)) entry$diagnostics <- list(NULL)
   if(!is.null(unavailable) && "diagnostics" %in% names(entry) && !"diagnostics" %in% names(unavailable)) unavailable$diagnostics <- rep(list(NULL), nrow(unavailable))
-  if(!is.null(unavailable)) unavailable <- unavailable[!(unavailable$column == column & unavailable$measure == measure), , drop = FALSE]
+  if(!is.null(unavailable)){
+    replaced <- vapply(seq_len(nrow(unavailable)), function(i){
+      any(entry$column == unavailable$column[[i]] & entry$measure == unavailable$measure[[i]])
+    }, logical(1))
+    unavailable <- unavailable[!replaced, , drop = FALSE]
+  }
   .bt_meta_set(x, "measure_unavailable", rbind(unavailable, entry))
 }
 

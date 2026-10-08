@@ -108,6 +108,21 @@ test_that("joint numerical refusal retains independently declared omega scalars"
   atoms <- posterior_metadata(mixed$bias, "atoms")
   expect_s3_class(atoms, "BayesTools_posterior_atoms")
   expect_error(posterior_atoms_free(mixed$bias), class = "BayesTools_formula_measure_unavailable")
+  unavailable <- posterior_metadata(mixed$bias, "measure_unavailable")
+  reference <- colnames(mixed$bias)[[1L]]
+  expect_false(any(unavailable$measure == "atoms" & unavailable$column == reference))
+  expect_silent(.bt_formula_measure_check(mixed$bias, "atoms", reference))
+  for(i in 1:2){
+    reference_plot <- plot_posterior(mixed, "omega", individual = TRUE,
+      show_figures = 1L, plot_type = "ggplot")
+    expect_type(reference_plot, "list")
+    expect_identical(names(reference_plot), reference)
+    expect_s3_class(reference_plot[[1L]], "ggplot")
+  }
+  expect_error(plot_posterior(mixed, "omega", individual = TRUE,
+    show_figures = 2L, plot_type = "ggplot"), class = "BayesTools_formula_measure_unavailable")
+  expect_error(.bt_formula_measure_check(mixed$bias, "atoms", colnames(mixed$bias)[[2L]]),
+    class = "BayesTools_formula_measure_unavailable")
   plot <- tryCatch(.plot_data_samples.weightparameter(list(omega = mixed$bias), 1L, 128L), error = identity)
   expect_false(inherits(plot, "condition"))
   if(!inherits(plot, "condition")){
@@ -128,11 +143,15 @@ test_that("joint numerical refusal retains independently declared omega scalars"
     expect_null(.posterior_atoms_for_column(atoms, 2L))
     expect_error(.posterior_atoms_get(mixed$bias), class = "BayesTools_formula_measure_unavailable")
     expect_identical(.posterior_atoms_get(mixed$bias, allow_partial = TRUE), atoms)
-    transformed <- posterior_transform(mixed$bias, "lin", list(a = 2, b = 3))
+    expect_no_warning(transformed <- posterior_transform(mixed$bias, "lin", list(a = 2, b = 3)))
     expect_identical(dim(transformed), dim(mixed$bias))
     expect_equal(as.numeric(transformed), 2 + 3 * as.numeric(mixed$bias), tolerance = 0)
     transformed_atoms <- posterior_metadata(transformed, "atoms")
     expect_false(transformed_atoms$joint_declared)
+    expect_identical(transformed_atoms$joint_unavailable, atoms$joint_unavailable)
+    expect_silent(.bt_formula_measure_check(transformed, "atoms", reference))
+    expect_error(.bt_formula_measure_check(transformed, "atoms", colnames(transformed)[[2L]]),
+      class = "BayesTools_formula_measure_unavailable")
     expect_equal(as.numeric(.posterior_atoms_for_column(transformed_atoms, 1L)$locations[, 1L]), 5, tolerance = 0)
     expect_error(.posterior_atoms_get(transformed), class = "BayesTools_formula_measure_unavailable")
     design <- matrix(c(2, 0, 0), 1L, dimnames = list("selected", colnames(mixed$bias)))
@@ -732,5 +751,34 @@ test_that("bias-mixture scalar declarations use the retained compiler omega map"
       expect_s3_class(plot[[1L]], "ggplot")
     }
   }
+})
+
+test_that("scalar and multi-target refusal replacements preserve unrelated exact tuples", {
+
+  models <- list(.model_probability_weightfunction_model(prior_weightfunction("one-sided", .05, wf_fixed(c(1, .5)))),
+    .model_probability_weightfunction_model(prior_weightfunction("one-sided", .1, wf_fixed(c(1, .25))), -1000))
+  sample <- mix_posteriors(models, "bias", list(c(FALSE, FALSE)), seed = 47, n_samples = 20)$bias
+  diagnostics <- posterior_metadata(sample, "atoms")$joint_unavailable$diagnostics
+  x <- matrix(1:6, 2L, dimnames = list(NULL, c("a", "b", "c")))
+  x <- .bt_formula_measure_mark(x, c("a", "b"), "atoms", "Declared atoms unavailable.",
+    cause = "structural_target_law_unavailable", diagnostics = diagnostics)
+  x <- .bt_formula_measure_mark(x, "c", "support", "Declared support unavailable.",
+    cause = "unsupported_contribution_measure")
+  original <- posterior_metadata(x, "measure_unavailable")
+  x <- .bt_formula_measure_mark(x, c("a", "c"), "prior_density", "First prior law unavailable.",
+    cause = "unsupported_contribution_measure")
+  expect_no_warning(x <- .bt_formula_measure_mark(x, c("a", "b", "c"), "prior_density",
+    "Replacement prior law unavailable.", cause = "numerical_scale_unavailable"))
+  metadata <- posterior_metadata(x, "measure_unavailable")
+  expect_identical(as.list(metadata[seq_len(nrow(original)), , drop = FALSE]), as.list(original))
+  expect_identical(metadata$column[metadata$measure == "prior_density"], c("a", "b", "c"))
+  expect_true(all(metadata$reason[metadata$measure == "prior_density"] == "Replacement prior law unavailable."))
+  expect_no_warning(x <- .bt_formula_measure_mark(x, "b", "prior_density", "Scalar replacement unavailable.",
+    cause = "unsupported_contribution_measure"))
+  metadata <- posterior_metadata(x, "measure_unavailable")
+  expect_identical(as.list(metadata[seq_len(nrow(original)), , drop = FALSE]), as.list(original))
+  expect_identical(metadata$reason[metadata$column == "b" & metadata$measure == "prior_density"],
+    "Scalar replacement unavailable.")
+  expect_identical(nrow(metadata), 6L)
 })
 
