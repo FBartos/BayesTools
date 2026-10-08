@@ -64,3 +64,23 @@ test_that("public linear recipes reject nonfinite weights without mutation", {
   posterior_metadata(x, "linear_weights") <- finite
   expect_identical(posterior_metadata(x, "linear_weights"), finite)
 })
+
+test_that("list measure refusals emit exactly once at the actual level", {
+  good <- structure(seq(-1, 1, length.out = 100L), class = c("marginal_posterior.simple", "marginal_posterior"))
+  attr(good, "parameter") <- "theta"
+  posterior_metadata(good, "atoms") <- posterior_atom_attribute()
+  posterior_metadata(good, "prior_density") <- prior("normal", list(0, 1))
+  bad <- good
+  posterior_metadata(bad, "measure_unavailable") <- data.frame(column = "theta", measure = "atoms",
+    reason = "Declared contribution measure is unavailable", cause = "unsupported_contribution_measure")
+  parent <- structure(list(bad = bad, good = good), class = c("marginal_posterior.factor", "marginal_posterior", "list"), parameter = "theta")
+  messages <- character()
+  actual <- withCallingHandlers(Savage_Dickey_BF(parent, silent = FALSE), warning = function(w){messages <<- c(messages, conditionMessage(w)); invokeRestart("muffleWarning")})
+  expect_length(messages, 1L)
+  expect_match(messages, "theta[bad]:", fixed = TRUE)
+  expect_true(is.na(actual$bad))
+  expect_true(is.finite(actual$good))
+  expect_s3_class(attr(actual$bad, "numerical_diagnostics"), "BayesTools_formula_measure_unavailable")
+  expect_silent(Savage_Dickey_BF(parent, silent = TRUE))
+  expect_error(Savage_Dickey_BF(bad, silent = TRUE), class = "BayesTools_formula_measure_unavailable")
+})
