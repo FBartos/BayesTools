@@ -104,6 +104,13 @@
   weights <- recipe$weights
   if(length(weights) == 0L || any(!is.finite(weights)) || any(weights == 0) ||
      (!is.null(recipe$source_transforms) && any(!is.na(recipe$source_transforms)))) return(NULL)
+  columns <- unlist(lapply(names(recipe$prior_list), function(parameter){
+    prior <- recipe$prior_list[[parameter]]
+    if(is.null(prior)) return(character())
+    if(!is.prior(prior)) stop("All entries of 'prior_list' must be prior objects.", call. = FALSE)
+    .prior_linear_prior_columns(parameter, prior)
+  }), use.names = FALSE)
+  if(length(setdiff(names(weights), columns))) return(NULL)
   groups <- .prior_linear_weight_groups(recipe$prior_list, weights)
   continuous <- vapply(groups, function(group){
     length(group$weights) == 1L && length(group$columns) == 1L &&
