@@ -4,6 +4,34 @@ skip_if_not_test_profile("unit")
 # TEST FILE: Hypothesis Bayes Factors
 # ============================================================================ #
 
+.hypothesis_factor_marginal_for_test <- function(sd = 1, independent = FALSE){
+  formula <- JAGS_formula(if(independent) ~0+fac else ~fac, "mu", data.frame(fac = factor(c("A", "B", "C"))),
+    prior_list = if(independent) list(fac = prior_factor("normal", list(0, sd), contrast = "independent")) else
+      list(intercept = prior("normal", list(0, 1)), fac = prior_factor("normal", list(0, sd), contrast = "treatment")))
+  columns <- .JAGS_prior_factor_names("mu_fac", formula$prior_list$mu_fac)
+  posterior <- matrix(unlist(lapply(seq_along(columns), function(i) seq(-i, i, length.out = 201L))), 201L, dimnames = list(NULL, columns))
+  if(!independent) posterior <- cbind(mu_intercept = seq(-1, 1, length.out = 201L), posterior)
+  fit <- structure(coda::mcmc(posterior), class = c("mcmc", "BayesTools_fit"))
+  attr(fit, "prior_list") <- formula$prior_list
+  fit <- attach_test_parameter_map(fit)
+  marginal_posterior(as_mixed_posteriors(fit, "mu_fac"), "mu_fac", use_formula = FALSE, prior_samples = TRUE)
+}
+
+test_that("level targets require the same complete declared joint context", {
+  first <- .hypothesis_factor_marginal_for_test(independent = TRUE)
+  second <- .hypothesis_factor_marginal_for_test(sd = 2, independent = TRUE)
+  incompatible <- first; incompatible$B <- second$B
+  condition <- expect_error(hypothesis_linear_target(incompatible, "mu_fac[A] - mu_fac[B] = 0", "mu_fac"), class = "BayesTools_linear_target_unavailable")
+  expect_identical(condition$reason, "prior_context")
+  if(inherits(condition, "condition")) expect_null(conditionCall(condition))
+  expect_error(hypothesis_BF(incompatible, hypothesis = "mu_fac[A] - mu_fac[B] > 0", parameter = "mu_fac", seed = 19), "incompatible joint prior information", fixed = TRUE)
+  target <- hypothesis_linear_target(first, "mu_fac[A] - mu_fac[B] = 0", "mu_fac")
+  expect_identical(target$weights, c(`mu_fac[1]` = 1, `mu_fac[2]` = -1, `mu_fac[3]` = 0))
+  expect_equal(prior_density_ordinate(posterior_metadata(target$posterior, "prior_density"), 0)$log_density,
+    stats::dnorm(0, sd = sqrt(2), log = TRUE), tolerance = 1e-8)
+  expect_s3_class(hypothesis_BF(first, hypothesis = "mu_fac[A] - mu_fac[B] > 0", parameter = "mu_fac", seed = 19), "BayesTools_hypothesis_BF")
+})
+
 .hypothesis_marginal_posterior_for_test <- function(samples, prior_density){
 
   class(samples) <- c("marginal_posterior.simple", "marginal_posterior", class(samples))

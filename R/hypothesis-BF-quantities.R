@@ -611,7 +611,12 @@
     )
   }
 
-  child_contexts[[1]]
+  if(!all(vapply(child_contexts, identical, logical(1), child_contexts[[1L]]))){
+    stop("Level comparison prior contexts use incompatible joint prior information.",
+         call. = FALSE)
+  }
+
+  child_contexts[[1L]]
 }
 
 
