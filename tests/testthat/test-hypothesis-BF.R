@@ -70,6 +70,41 @@ test_that("fixed treatment baselines use the shared ordinate refusal rule", {
   }
 })
 
+test_that("transitive numerical zero over zero is explicitly undefined", {
+  call <- function(hypothesis, log = FALSE, reciprocal = FALSE, method = "KDE"){
+    withCallingHandlers(hypothesis_BF(c(0, 1), prior("uniform", list(-1000, 1000)), hypothesis,
+      parameter = "theta", density_method = method, columns = "all", logBF = log, BF01 = reciprocal),
+      warning = function(condition){
+        expect_match(conditionMessage(condition), "Gaussian KDE height is estimated from kernel tails", fixed = TRUE)
+        expect_null(conditionCall(condition))
+        invokeRestart("muffleWarning")
+      })
+  }
+  point <- call("theta = 100 vs theta != 100")
+  expect_identical(attr(point, "raw_log_BF"), -Inf)
+  region <- call("theta > 100")
+  expect_identical(region$posterior, 0)
+  for(flags in list(c(FALSE, FALSE), c(TRUE, FALSE), c(FALSE, TRUE), c(TRUE, TRUE))){
+    result <- call("theta = 100 vs theta > 100", flags[1L], flags[2L])
+    expect_identical(attr(result, "raw_BF"), NA_real_)
+    expect_identical(attr(result, "raw_log_BF"), NA_real_)
+    expect_true(is.na(as.numeric(result$BF)))
+    expect_false(is.nan(as.numeric(result$BF)))
+    expect_match(attr(result, "warnings")[[1L]], "both numerically zero", fixed = TRUE)
+    expect_match(attr(result, "warnings")[[1L]], "undefined", fixed = TRUE)
+    expect_identical(attr(result, "numerical_diagnostics")[[1L]]$log_posterior, -Inf)
+    expect_true(is.na(as.data.frame(result)[[if(flags[1L]) if(flags[2L]) "logBF01" else "logBF10" else if(flags[2L]) "BF01" else "BF10"]]))
+  }
+  one_sided <- call("theta = 100 vs theta < 100")
+  expect_identical(attr(one_sided, "raw_BF"), 0)
+  expect_identical(attr(one_sided, "raw_log_BF"), -Inf)
+  finite_log <- call("theta = 100 vs theta > 100", method = "normal")
+  expect_identical(attr(finite_log, "raw_BF"), Inf)
+  expect_identical(attr(finite_log, "raw_log_BF"), Inf)
+  finite <- call("theta = .5 vs theta > .5", method = "normal")
+  expect_true(is.finite(attr(finite, "raw_log_BF")))
+})
+
 .hypothesis_marginal_posterior_for_test <- function(samples, prior_density){
 
   class(samples) <- c("marginal_posterior.simple", "marginal_posterior", class(samples))

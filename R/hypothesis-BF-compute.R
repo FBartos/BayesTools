@@ -624,12 +624,18 @@
 
   region_BF       <- region_posterior / region_prior
   region_BF_error <- .hypothesis_region_BF_error_percent(quantity, region_side, region_prior)
-  log_BF <- point_BF$log_BF - (log(region_posterior) - log(region_prior))
+  undefined <- isTRUE(point_BF$log_BF == -Inf) && region_posterior == 0
+  log_BF <- if(undefined) NA_real_ else point_BF$log_BF - (log(region_posterior) - log(region_prior))
   if(inverse) log_BF <- -log_BF
   BF <- exp(log_BF)
 
   warning <- point_BF[["warning"]]
-  if(region_posterior == 0){
+  if(undefined){
+    warning <- .hypothesis_collapse_warning(c(
+      warning,
+      "The posterior point ordinate and region mass are both numerically zero; transitive BF is undefined."
+    ))
+  }else if(region_posterior == 0){
     warning <- .hypothesis_collapse_warning(c(
       warning,
       "Posterior region mass is zero; reported BF is boundary-valued."
