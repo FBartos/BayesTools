@@ -352,7 +352,8 @@ JAGS_add_priors           <- function(syntax, prior_list){
         }
         return(syntax)
       }
-      stop("Multi-slice ordered interactions require a simple scalar 'total' prior.", call. = FALSE)
+      .bt_ordered_stop("Multi-slice ordered interactions require a simple scalar, point, or spike-and-slab 'total' prior; general mixture totals are unavailable.",
+        "BayesTools_ordered_unavailable")
     }
 
     syntax <- ""

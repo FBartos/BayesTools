@@ -178,7 +178,8 @@ JAGS_ordered_parameter_spec <- function(fit, parameters = NULL, weights = NULL, 
     return(node)
   }
   if(!is.prior.spike_and_slab(total)){
-    .bt_ordered_stop("Multi-slice ordered interactions require a simple scalar 'total' prior.")
+    .bt_ordered_stop("Multi-slice ordered interactions require a simple scalar, point, or spike-and-slab 'total' prior; general mixture totals are unavailable.",
+      "BayesTools_ordered_unavailable")
   }
   variable <- .get_spike_and_slab_variable(total)
   coordinates <- paste0(name, "_variable[", seq_len(metadata$theta_dim), "]")

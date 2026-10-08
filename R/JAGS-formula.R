@@ -388,7 +388,7 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
     .bt_ordered_stop(paste0(
       "JAGS formula binding is unavailable for mixtures of ordered prior containers. ",
       "Put mixture or spike-and-slab behavior on 'prior_ordered(total = )' instead."
-    ))
+    ), "BayesTools_ordered_unavailable")
   }
 
   if(log_intercept){

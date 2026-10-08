@@ -17,8 +17,9 @@ test_that("formula binding refuses ordered container mixtures without changing t
       function(total) identical(as.numeric(row), total * allocation), logical(1))))))
     condition <- expect_error(bind(mixture),
       "JAGS formula binding is unavailable for mixtures of ordered prior containers. Put mixture or spike-and-slab behavior on 'prior_ordered(total = )' instead.",
-      fixed = TRUE, class = "BayesTools_ordered_coordinates_unavailable")
+      fixed = TRUE, class = "BayesTools_ordered_unavailable")
     expect_s3_class(condition, "BayesTools_ordered_unavailable")
+    expect_false(inherits(condition, "BayesTools_ordered_coordinates_unavailable"))
     expect_null(conditionCall(condition))
   }
   total_mixture <- prior_ordered(prior_mixture(list(prior("normal", list(0, 1)),
