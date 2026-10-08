@@ -77,9 +77,7 @@
   }
 
   if(is.list(allocation)){
-    if(is.null(names(allocation)) || any(!nzchar(names(allocation)))){
-      stop(paste0("The '", name, "' allocation list must be named."), call. = FALSE)
-    }
+    .prior_ordered_map_names_check(allocation, name)
     allocations <- lapply(seq_along(allocation), function(i){
       .prior_ordered_allocation_spec(allocation[[i]], paste0(name, "$", names(allocation)[i]))
     })
@@ -144,6 +142,11 @@
   }
 
   if(identical(allocation$type, "fixed")){
+    if(!is.numeric(allocation$weights) || anyNA(allocation$weights) ||
+       any(!is.finite(allocation$weights)) || any(allocation$weights < 0) ||
+       abs(sum(allocation$weights) - 1) > .Machine$double.eps * max(8, length(allocation$weights))){
+      stop("Fixed ordered allocations must be finite nonnegative simplex weights.", call. = FALSE)
+    }
     if(length(allocation$weights) != D){
       stop(
         "The fixed allocation for ordered factor '", factor_term,
@@ -166,6 +169,11 @@
     }
     if(any(!is.finite(allocation$alpha)) || any(allocation$alpha < 0.01)){
       stop("Dirichlet allocation concentrations must be finite and at least 0.01.", call. = FALSE)
+    }
+    if(!is.null(allocation$prior) &&
+       (!is.prior.simplex(allocation$prior) ||
+        !identical(allocation$alpha, allocation$prior$parameters$alpha))){
+      stop("Dirichlet allocation concentrations disagree with their declared prior.", call. = FALSE)
     }
     return(allocation)
   }
@@ -256,94 +264,62 @@
   )
 }
 
-.bt_validate_ordered_shared_allocations <- function(prior_list){
+.bt_validate_ordered_shared_allocations <- function(prior_list, bound_only = FALSE){
 
-  registry <- list()
-  node_registry <- list()
-  for(i in seq_along(prior_list)){
-    prior <- prior_list[[i]]
-    if(!is.prior.ordered(prior)){
-      next
-    }
-    total_name <- .prior_ordered_total_name(names(prior_list)[i])
-    if(total_name %in% names(prior_list)){
-      stop(
-        "Ordered prior '", names(prior_list)[i],
-        "' generates hidden total node '", total_name,
-        "', which conflicts with another prior parameter.",
-        call. = FALSE
-      )
-    }
-    metadata <- .prior_ordered_metadata(prior)
-    generated_names <- total_name
-    if(is.prior.spike_and_slab(prior$total)){
-      generated_names <- c(generated_names, paste0(total_name, c("_variable", "_inclusion", "_indicator")))
-    }else if(is.prior.mixture(prior$total)){
-      generated_names <- c(generated_names, paste0(total_name, "_indicator"),
-        paste0(total_name, "_component_", seq_along(prior$total)))
-    }
-    for(record in metadata$allocations){
-      if(identical(record$spec$type, "dirichlet")){
-        generated_names <- c(generated_names, record$node, .JAGS_prior_dirichlet_eta_name(record$node))
-      }
-    }
-    clashes <- intersect(generated_names, names(prior_list))
-    if(length(clashes)){
-      stop("Ordered prior '", names(prior_list)[i], "' generates JAGS node(s) ",
-        paste0("'", clashes, "'", collapse = ", "),
-        ", which conflict with another prior parameter.", call. = FALSE)
-    }
-    for(record in metadata$allocations){
-      signature <- .prior_ordered_allocation_signature(record)
-      if(!is.null(node_registry[[record$node]]) &&
-         !identical(node_registry[[record$node]]$key, record$key)){
-        previous_record <- node_registry[[record$node]]
-        previous_label <- if(is.null(previous_record$id)){
-          paste0("allocation key '", previous_record$key, "'")
-        }else{
-          paste0(
-            "allocation id '", previous_record$id,
-            "' for factor '", previous_record$factor, "'"
-          )
-        }
-        current_label <- if(is.null(record$id)){
-          paste0("allocation key '", record$key, "'")
-        }else{
-          paste0(
-            "allocation id '", record$id,
-            "' for factor '", record$factor, "'"
-          )
-        }
-        stop(
-          "Ordered ", previous_label, " and ", current_label,
-          " generate the same JAGS node '", record$node,
-          "'. Use identifiers that remain distinct after JAGS name normalization.",
-          call. = FALSE
-        )
-      }
-      node_registry[[record$node]] <- record
-      if(!is.null(registry[[record$key]])){
-        if(!identical(registry[[record$key]]$signature, signature)){
-          allocation_label <- if(is.null(record$id)){
-            paste0("allocation key '", record$key, "'")
-          }else{
-            paste0("allocation id '", record$id, "' for ordered factor '", record$factor, "'")
-          }
-          stop(
-            "Shared ordered ", allocation_label,
-            " is used with incompatible allocation specifications.",
-            call. = FALSE
-          )
-        }
-        next
-      }
-      registry[[record$key]] <- list(
-        signature = signature,
-        parameter = names(prior_list)[i]
-      )
+  ordered <- vapply(prior_list, is.prior.ordered, logical(1))
+  bound <- ordered & vapply(prior_list, function(prior){
+    !is.prior.mixture(prior) && !is.null(attr(prior, "ordered_metadata", exact = TRUE))
+  }, logical(1))
+  if(!bound_only && any(ordered)){
+    for(parameter in names(prior_list)[ordered]){
+      .bt_require_ordered_metadata(prior_list[[parameter]], parameter)
     }
   }
+  if(!any(bound)) return(invisible(TRUE))
+  for(parameter in names(prior_list)[bound]){
+    .bt_require_ordered_metadata(prior_list[[parameter]], parameter)
+  }
 
+  registry <- list()
+  allocations <- list()
+  register <- function(root, shape, owner){
+    previous <- registry[[root]]
+    if(!is.null(previous) &&
+       (!identical(previous$owner, owner) || !identical(previous$shape, shape))){
+      stop("JAGS node '", root, "' conflicts between prior owners '",
+        previous$owner, "' and '", owner,
+        "'. Use identifiers that remain distinct after JAGS name normalization.",
+        call. = FALSE)
+    }
+    registry[[root]] <<- list(owner = owner, shape = shape)
+  }
+  for(parameter in names(prior_list)){
+    prior <- prior_list[[parameter]]
+    owner <- paste0("parameter:", parameter)
+    if(bound[[parameter]]){
+      metadata <- .prior_ordered_metadata(prior)
+      roots <- .bt_ordered_total_emitted_roots(prior, parameter)
+      roots[[parameter]] <- as.integer(metadata$coefficient_dim)
+      for(root in names(roots)) register(root, roots[[root]], owner)
+      for(record in metadata$allocations){
+        signature <- .prior_ordered_allocation_signature(record)
+        previous <- allocations[[record$key]]
+        if(!is.null(previous) && !identical(previous, signature)){
+          stop("Shared ordered allocation key '", record$key,
+            "' is used with incompatible allocation specifications.", call. = FALSE)
+        }
+        allocations[[record$key]] <- signature
+        if(identical(record$spec$type, "dirichlet")){
+          allocation_owner <- paste0("allocation:", record$key)
+          register(record$node, as.integer(record$dim), allocation_owner)
+          register(.JAGS_prior_dirichlet_eta_name(record$node), as.integer(record$dim), allocation_owner)
+        }
+      }
+    }else if(!ordered[[parameter]]){
+      roots <- .bt_prior_emitted_roots(prior, parameter)
+      for(root in names(roots)) register(root, roots[[root]], owner)
+    }
+  }
   invisible(TRUE)
 }
 
@@ -386,20 +362,50 @@
   contrast_matrices
 }
 
-.bt_bind_ordered_prior_metadata <- function(prior, parameter_name){
+.bt_ordered_canonical_metadata <- function(prior, parameter_name){
 
-  if(!is.prior.ordered(prior)){
-    return(prior)
+  .prior_ordered_check_total(prior$total)
+  check_char(prior$contrast, "contrast", allow_values = .prior_ordered_contrast_values)
+  check_char(prior$id, "id", check_length = 0, allow_NULL = TRUE, allow_NA = FALSE)
+  if(!is.null(prior$id) && (length(prior$id) == 0L ||
+     any(!nzchar(trimws(prior$id))) || (is.null(names(prior$id)) && length(prior$id) != 1L))){
+    stop("Ordered allocation identifiers are malformed.", call. = FALSE)
   }
-
   level_names <- .factor_level_list(prior)
   factor_terms <- attr(prior, "factor_terms", exact = TRUE)
   factor_contrasts <- attr(prior, "factor_contrasts", exact = TRUE)
   factor_design <- attr(prior, "factor_design", exact = TRUE)
 
-  if(is.null(level_names) || is.null(factor_terms) ||
-     is.null(factor_contrasts) || is.null(factor_design)){
+  declared_levels <- attr(prior, "level_names", exact = TRUE)
+  valid_names <- function(x) is.character(x) && !anyNA(x) && all(nzchar(x)) && !anyDuplicated(x)
+  if(!is.character(parameter_name) || length(parameter_name) != 1L ||
+     is.na(parameter_name) || !nzchar(parameter_name) ||
+     !valid_names(factor_terms) || !length(factor_terms) ||
+     is.null(declared_levels) ||
+     (is.list(declared_levels) && !identical(names(declared_levels), factor_terms)) ||
+     (!is.list(declared_levels) && length(factor_terms) != 1L) || !is.list(level_names) ||
+     !identical(names(level_names), factor_terms) ||
+     any(!vapply(level_names, function(x) valid_names(x) && length(x) > 0L, logical(1))) ||
+     !is.character(factor_contrasts) || !identical(names(factor_contrasts), factor_terms) ||
+     anyNA(factor_contrasts) || !is.matrix(factor_design) || !is.numeric(factor_design) ||
+     any(!is.finite(factor_design))){
     stop("Ordered prior metadata are incomplete.", call. = FALSE)
+  }
+  if(!is.null(names(prior$id))) .prior_ordered_map_names_check(prior$id, "id")
+  if(identical(prior$allocation$type, "by_factor")){
+    .prior_ordered_map_names_check(prior$allocation$allocations, "allocation")
+  }
+  declared <- prior
+  attr(declared, "factor_design") <- NULL
+  design <- .factor_term_design_from_metadata(declared)$design
+  if(!identical(unname(factor_design), unname(design)) ||
+     !identical(attr(prior, "factor_cell_names", exact = TRUE), .factor_cell_labels(level_names))){
+    stop("Ordered factor design is inconsistent with its declared contrasts.", call. = FALSE)
+  }
+  levels <- attr(prior, "levels", exact = TRUE)
+  expected_levels <- if(.is_prior_interaction(prior)) ncol(factor_design) + 1L else length(level_names[[1L]])
+  if(!is.numeric(levels) || length(levels) != 1L || is.na(levels) || levels != expected_levels){
+    stop("Ordered factor levels are inconsistent with their declared design.", call. = FALSE)
   }
 
   ordered_terms <- factor_terms[
@@ -409,6 +415,9 @@
   ]
   if(length(ordered_terms) == 0L){
     stop("A prior_ordered() term must contain at least one ordered factor.", call. = FALSE)
+  }
+  if(any(factor_contrasts[ordered_terms] != .prior_ordered_contrast_name(prior$contrast))){
+    stop("Ordered contrasts disagree with the declared ordered prior.", call. = FALSE)
   }
 
   contrast_matrices <- .prior_ordered_component_contrast_dims(prior)
@@ -489,8 +498,15 @@
   total_node <- .bt_dnode_ordered_total(parameter_name,prior)
   metadata$numeric_literals$total_syntax <- .JAGS_prior.ordered_total(prior$total,
     .prior_ordered_total_name(parameter_name),metadata$theta_dim,total_node)
-  attr(prior,"ordered_metadata") <- metadata
+  metadata
+}
 
+.bt_bind_ordered_prior_metadata <- function(prior, parameter_name){
+
+  if(!is.prior.ordered(prior)) return(prior)
+  metadata <- .bt_ordered_canonical_metadata(prior, parameter_name)
+  attr(prior, "ordered_metadata") <- metadata
+  attr(prior, "coefficient_dim") <- metadata$coefficient_dim
   prior
 }
 
@@ -520,6 +536,7 @@
 
 .prior_ordered_coefficient_expression <- function(prior, parameter_name, coefficient_i){
 
+  .bt_require_ordered_metadata(prior, parameter_name)
   metadata <- .prior_ordered_metadata(prior)
   total_name <- .prior_ordered_total_name(parameter_name)
   slice <- metadata$slice_index[[coefficient_i]]
@@ -680,6 +697,7 @@
 
   prior <- .prior_ordered_default_bound(prior)
   metadata <- .prior_ordered_metadata(prior)
+  .bt_require_ordered_metadata(prior, metadata$parameter_name)
   total <- if(is.prior.spike_and_slab(prior$total)){
     list(.prior_ordered_total_draw(prior$total, n, slices = metadata$theta_dim))
   }else{

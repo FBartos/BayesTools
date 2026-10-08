@@ -419,6 +419,7 @@ JAGS_get_inits            <- function(prior_list, chains, seed){
 }
 .JAGS_init.ordered         <- function(prior, parameter_name, emitted_allocations = character()){
 
+  .bt_require_ordered_metadata(prior, parameter_name)
   .check_prior(prior, allow_expressions = TRUE)
   if(!is.prior.ordered(prior))
     stop("improper prior provided")

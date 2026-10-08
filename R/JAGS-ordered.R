@@ -8,6 +8,7 @@
 
 .bt_ordered_spec <- function(parameter, prior){
 
+  .bt_require_ordered_metadata(prior, parameter)
   metadata <- .prior_ordered_metadata(prior)
   total_names <- .prior_ordered_total_monitor_names(prior, parameter)
   allocations <- lapply(metadata$allocations, function(record){
@@ -96,14 +97,7 @@ JAGS_ordered_parameter_spec <- function(fit, parameters = NULL, weights = NULL, 
     }
     ordered <- ordered[unique(parameters)]
   }
-  for(prior in ordered){
-    metadata <- attr(prior, "ordered_metadata", exact = TRUE)
-    if(!.bt_ordered_metadata_valid(prior)){
-      .bt_stop_refit_required(
-        "Fitted ordered numeric provenance is unavailable. Refit the model with this version of BayesTools.",
-        class = "BayesTools_ordered_metadata_unavailable")
-    }
-  }
+  for(parameter in names(ordered)) .bt_require_ordered_metadata(ordered[[parameter]], parameter)
   specs <- Map(.bt_ordered_spec, names(ordered), ordered)
   if(length(specs)){
     catalog <- parameter_catalog(fit)
@@ -133,36 +127,28 @@ JAGS_ordered_parameter_spec <- function(fit, parameters = NULL, weights = NULL, 
   .bt_ordered_projection(specs, weights, draws, prior_list = priors)
 }
 
-.bt_ordered_metadata_valid <- function(prior){
+.bt_ordered_metadata_valid <- function(prior, parameter = NULL){
 
-  metadata <- attr(prior,"ordered_metadata",exact=TRUE)
-  required <- c("parameter_name","factor_terms","ordered_terms","ordinary_terms","factor_contrasts",
-    "coefficient_grid","slice_index","theta_dim","coefficient_dim","allocations","numeric_literals")
-  if(!is.list(metadata) || !all(required %in% names(metadata))) return(FALSE)
-  count <- function(x) is.numeric(x) && length(x)==1L && is.finite(x) && x>=1 && x==as.integer(x)
-  if(!count(metadata$theta_dim) || !count(metadata$coefficient_dim) ||
-     !is.data.frame(metadata$coefficient_grid) || nrow(metadata$coefficient_grid)!=metadata$coefficient_dim ||
-     !identical(names(metadata$coefficient_grid),metadata$factor_terms) ||
-     !is.numeric(metadata$slice_index) || length(metadata$slice_index)!=metadata$coefficient_dim ||
-     anyNA(metadata$slice_index) || any(!metadata$slice_index %in% seq_len(metadata$theta_dim)) ||
-     !is.list(metadata$allocations) || !length(metadata$allocations) || is.null(names(metadata$allocations))) return(FALSE)
-  valid <- vapply(metadata$allocations,function(record){
-    if(!is.list(record) || !all(c("key","factor","dim","spec") %in% names(record)) ||
-       !is.character(record$factor) || length(record$factor)!=1L || !is.list(record$spec) ||
-       !is.character(record$spec$type) || length(record$spec$type)!=1L) return(FALSE)
-    values <- if(identical(record$spec$type,"fixed")) record$spec$weights else record$spec$alpha
-    is.character(record$key) && length(record$key)==1L && record$factor %in% metadata$ordered_terms &&
-      count(record$dim) && record$spec$type %in% c("fixed","dirichlet") && is.numeric(values) &&
-      length(values)==record$dim && all(is.finite(values)) &&
-      if(identical(record$spec$type,"fixed")) all(values>=0) && abs(sum(values)-1)<=.Machine$double.eps*max(8,length(values)) else all(values>0)
-  },logical(1))
-  all(valid) && identical(metadata$numeric_literals$total,.bt_ordered_numeric_provenance(prior$total)) &&
-    identical(metadata$numeric_literals$total_syntax,.JAGS_prior.ordered_total(prior$total,
-      .prior_ordered_total_name(metadata$parameter_name),metadata$theta_dim,.bt_dnode_ordered_total(metadata$parameter_name,prior))) &&
-    identical(metadata$numeric_literals$allocations,lapply(metadata$allocations,function(record){
-      values <- if(identical(record$spec$type,"fixed")) record$spec$weights else record$spec$alpha
-      vapply(values,.prior_ordered_format_number,character(1))
-    }))
+  tryCatch({
+    if(!is.prior.ordered(prior) || is.prior.mixture(prior) || is.null(parameter)) return(FALSE)
+    canonical <- .bt_ordered_canonical_metadata(prior, parameter)
+    identical(attr(prior, "ordered_metadata", exact = TRUE), canonical) &&
+      identical(attr(prior, "coefficient_dim", exact = TRUE), canonical$coefficient_dim)
+  }, error = function(e) FALSE)
+}
+
+.bt_require_ordered_metadata <- function(prior, parameter){
+
+  if(is.prior.mixture(prior)){
+    .bt_ordered_stop("Mixtures of ordered prior containers cannot be bound to JAGS formulas. Put mixture behavior on 'total' instead.",
+      "BayesTools_ordered_unavailable")
+  }
+  if(!.bt_ordered_metadata_valid(prior, parameter)){
+    .bt_stop_refit_required(
+      "Fitted ordered numeric provenance is unavailable. Refit the model with this version of BayesTools.",
+      class = "BayesTools_ordered_metadata_unavailable")
+  }
+  invisible(TRUE)
 }
 
 .bt_dnode_ordered_total <- function(parameter, prior){

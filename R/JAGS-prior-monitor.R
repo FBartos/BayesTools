@@ -108,6 +108,7 @@ JAGS_to_monitor             <- function(prior_list){
 }
 .JAGS_monitor.ordered        <- function(prior, parameter_name){
 
+  .bt_require_ordered_metadata(prior, parameter_name)
   .check_prior(prior, allow_expressions = TRUE)
   if(!is.prior.ordered(prior))
     stop("improper prior provided")

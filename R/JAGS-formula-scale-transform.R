@@ -648,7 +648,7 @@ transform_prior_samples <- function(fit, n_samples = 10000, seed = NULL, formula
     is.prior.ordered(prior) && !is.prior.mixture(prior) &&
       !is.null(attr(prior, "ordered_metadata", exact = TRUE))
   }, logical(1))]
-  .bt_validate_ordered_shared_allocations(ordered_priors)
+  .bt_validate_ordered_shared_allocations(prior_list, bound_only = TRUE)
   allocation_registry <- new.env(parent = emptyenv())
 
   for(param_name in param_names){

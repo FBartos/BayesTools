@@ -52,13 +52,19 @@ Spike-and-slab or mixture behavior belongs on \code{total}; e.g.,
 \code{prior_ordered(prior_spike_and_slab(...))}. Ordered density methods
 preserve point masses and continuous probability separately for each level;
 point masses are not included in a kernel density estimate. Bridge sampling
-is available only when \code{total} is a simple scalar prior and
+is available only when \code{total} is a nonexpression, nondiscrete simple scalar prior and
 \code{allocation} is fixed or a simple Dirichlet allocation.
 Mixtures of ordered prior containers can be constructed and sampled, but
 their binding in \code{JAGS_formula()} is unavailable. Put the mixture on
 \code{total} instead. General mixture totals require a single slice;
 multi-slice interactions support simple scalar, point, and spike-and-slab
 totals. Unsupported binding raises \code{BayesTools_ordered_unavailable}.
+Factors use their bound \code{levels()} order, including character predictors
+converted to factors by the formula. Without \code{id}, each ordinary-factor
+slice has an independent allocation. With \code{id}, one allocation is shared
+by all slices and terms with the same id and factor. Joint prior sampling
+uses the first owner's allocation draws; separate standalone sampling calls
+remain independent.
 
 Estimates tables with \code{transform_factors = TRUE} report the level
 effects (the first level of a \code{"cumulative"} contrast is the reference
