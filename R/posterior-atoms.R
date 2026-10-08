@@ -1173,6 +1173,32 @@ posterior_atoms_free <- function(x){
   atoms
 }
 
+.posterior_atoms_unscale_joint <- function(atoms, scalar_marginals, columns, unavailable = NULL){
+
+  atoms <- .posterior_atoms_rename_columns(.posterior_atoms_from_attribute(atoms), columns)
+  joint_marginals <- atoms$marginals
+  certified <- character()
+  marginals <- scalar_marginals
+  if(!is.null(joint_marginals)){
+    for(column in columns){
+      marginal <- joint_marginals[[column]]
+      if(is.null(marginal)) next
+      marginal <- .posterior_atoms_from_attribute(marginal)
+      marginals[column] <- list(marginal)
+      if(isTRUE(marginal$declared)) certified <- c(certified, column)
+    }
+  }
+  atoms$marginals <- marginals
+  atoms <- .posterior_atoms_from_attribute(atoms)
+  if(!is.null(unavailable)){
+    .bt_meta_validate("measure_unavailable", unavailable)
+    unavailable <- unavailable[!(unavailable$measure == "atoms" &
+      unavailable$column %in% certified), , drop = FALSE]
+    if(nrow(unavailable) == 0L) unavailable <- NULL
+  }
+  list(atoms = atoms, certified_columns = certified, unavailable = unavailable)
+}
+
 .posterior_atoms_unscale_mixed <- function(
     samples, model, model_samples, prior_list, formula_scale,
     conditional, conditional_rule, n_grid = .prior_linear_density_default_grid()){
@@ -1255,14 +1281,10 @@ posterior_atoms_free <- function(x){
         atoms <- .posterior_atoms_joint_linear(prior_list, plan, weights,
           source_transforms = transform$source_transforms, output_transforms = transform$output_transforms,
           samples = raw)
-        samples[[owner]] <- .posterior_atoms_set(samples[[owner]],
-          .posterior_atoms_rename_columns(atoms, colnames(samples[[owner]])))
-        unavailable <- .bt_meta_get(samples[[owner]], "measure_unavailable")
-        if(!is.null(unavailable)){
-          unavailable <- unavailable[unavailable$measure != "atoms", , drop = FALSE]
-          samples[[owner]] <- .bt_meta_set(samples[[owner]], "measure_unavailable",
-            if(nrow(unavailable)) unavailable else NULL)
-        }
+        joint <- .posterior_atoms_unscale_joint(atoms, atom_marginals, colnames(samples[[owner]]),
+          .bt_meta_get(samples[[owner]], "measure_unavailable"))
+        samples[[owner]] <- .posterior_atoms_set(samples[[owner]], joint$atoms)
+        samples[[owner]] <- .bt_meta_set(samples[[owner]], "measure_unavailable", joint$unavailable)
       }
     }
     if(!is.null(source)){

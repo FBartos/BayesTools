@@ -1,5 +1,36 @@
 skip_if_not_test_profile("unit")
 
+test_that("local unscale joint assembly retains fresh scalar laws and scoped refusals", {
+  priors <- list(a = prior("point", list(0)), b = prior("normal", list(0, 1)))
+  plan <- list(components = matrix(1L, 1L, 2L, dimnames = list(NULL, c("a", "b"))), probabilities = 1, model_mixture = FALSE)
+  design <- diag(2L); dimnames(design) <- list(c("a", "b"), c("a", "b"))
+  joint <- .posterior_atoms_joint_linear(priors, plan, design)
+  marginals <- list(a = .posterior_atoms_new(matrix(0, 1L, 1L), 1, column_names = "a"), b = .posterior_atoms_new(column_names = "b"))
+  assembled <- .posterior_atoms_unscale_joint(joint, marginals, c("a", "b"))
+  expect_length(assembled$atoms$mass, 0L)
+  expect_identical(.posterior_atoms_for_column(assembled$atoms, "a")$mass, 1)
+  expect_identical(.posterior_atoms_for_column(assembled$atoms, "a")$locations, matrix(0, 1L, 1L, dimnames = list(NULL, "a")))
+  expect_length(.posterior_atoms_for_column(assembled$atoms, "b")$mass, 0L)
+  expect_identical(assembled$certified_columns, character())
+  for(field in c("locations", "mass", "component_probabilities", "component_log_probabilities", "model_probability_declaration")){
+    expect_identical(assembled$atoms[[field]], joint[[field]])
+  }
+  unknown <- marginals; unknown["a"] <- list(NULL)
+  refusals <- data.frame(column = c("a", "b"), measure = c("atoms", "support"), reason = c("Unknown scalar law", "Unknown support"))
+  assembled <- .posterior_atoms_unscale_joint(joint, unknown, c("a", "b"), refusals)
+  expect_null(.posterior_atoms_for_column(assembled$atoms, "a"))
+  expect_identical(assembled$unavailable, refusals)
+  certified <- joint; certified$marginals <- marginals
+  assembled <- .posterior_atoms_unscale_joint(certified, unknown, c("a", "b"), refusals)
+  expect_identical(assembled$certified_columns, c("a", "b"))
+  expect_identical(assembled$unavailable, refusals[2L, , drop = FALSE])
+  # Generic replacement keeps its existing full-replacement semantics.
+  values <- matrix(c(0, 1, 0, 2), 2L, byrow = TRUE, dimnames = list(NULL, c("a", "b")))
+  values <- .posterior_atoms_set(values, .posterior_atoms_new(column_names = c("a", "b"), marginals = marginals))
+  replacement <- .posterior_atoms_set(values, joint)
+  expect_length(.posterior_atoms_for_column(.posterior_atoms_get(replacement), "a")$mass, 0L)
+})
+
 .posterior_density_for_test <- function(x, y, method = "iwmde",
                                         density_method = "precomputed", ...){
   posterior_density_attribute(x = x, y = y, method = method,
