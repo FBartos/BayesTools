@@ -91,7 +91,7 @@ test_that("truncated native density warnings retain original eligible vector ind
 
 test_that("mixed native vectors report both unavailable and certified range subsets", {
 
-  if(!native_range_available()) return(invisible(NULL))
+  skip_if_not(native_range_available(), "The native FAR range certificate is unavailable on this runtime.")
   # One finite original distance certifies FAR; the other original subtraction
   # overflows and has no exp/logaddexp certificate.
   result <- native_range_capture(.dmoment_prior(c(-1e308, .Machine$double.xmax, NA_real_, NaN),
@@ -176,7 +176,7 @@ test_that("natural integration preserves unrelated failures and checked kernel i
 
 test_that("one FAR intervals normalize and invert while positive both FAR intervals refuse", {
 
-  if(!native_range_available()) return(invisible(NULL))
+  skip_if_not(native_range_available(), "The native FAR range certificate is unavailable on this runtime.")
   priors <- list(prior("invgamma", list(shape = 2, scale = 1), list(lower = 1e-310, upper = 1)),
     prior("moment", list(tau = 1), list(lower = 0, upper = 1e200)),
     prior("invmoment", list(tau = 1, df = 3), list(lower = 1e-200, upper = 1)))
@@ -203,7 +203,7 @@ test_that("one FAR intervals normalize and invert while positive both FAR interv
 
 test_that("nonlocal FAR starts retain the range parent without replacement draws", {
 
-  if(!native_range_available()) return(invisible(NULL))
+  skip_if_not(native_range_available(), "The native FAR range certificate is unavailable on this runtime.")
   p <- prior("moment", list(tau = 1))
   calls <- 0L
   testthat::with_mocked_bindings({
