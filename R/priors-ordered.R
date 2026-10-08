@@ -667,7 +667,7 @@
 # that they give ('quantity' stops after the totals or the allocations). The
 # slices of a spike-and-slab total share one inclusion probability and
 # indicator per draw, as in the fitted model.
-.prior_ordered_draws <- function(prior, n, quantity = "level"){
+.prior_ordered_draws <- function(prior, n, quantity = "level", allocation_registry = NULL){
 
   prior <- .prior_ordered_default_bound(prior)
   metadata <- .prior_ordered_metadata(prior)
@@ -690,6 +690,21 @@
       next
     }
     allocation_samples[[record$key]] <- .prior_ordered_allocation_rng(record$spec, n)
+    if(!is.null(allocation_registry)){
+      signature <- .prior_ordered_allocation_signature(record)
+      owned <- allocation_registry[[record$key]]
+      if(is.null(owned)){
+        allocation_registry[[record$key]] <- list(signature = signature,
+          samples = allocation_samples[[record$key]])
+      }else{
+        if(!identical(signature, owned$signature)){
+          stop("Shared ordered allocation key '", record$key,
+            "' is used with incompatible allocation specifications.", call. = FALSE)
+        }
+        # Consume every per-prior stream before reusing the first owner's law.
+        allocation_samples[[record$key]] <- owned$samples
+      }
+    }
   }
   out$allocation_samples <- allocation_samples
   if(quantity == "allocation"){

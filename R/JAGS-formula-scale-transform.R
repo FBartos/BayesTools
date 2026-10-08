@@ -537,7 +537,7 @@ transform_prior_samples <- function(fit, n_samples = 10000, seed = NULL, formula
 # spike-and-slab or mixture prior (its indicator, and the inclusion
 # probability and slab draws of a spike-and-slab prior).
 .generate_factor_prior_sample_matrix <- function(prior, parameter, n_samples,
-                                                 auxiliary = FALSE){
+                                                 auxiliary = FALSE, allocation_registry = NULL){
 
   K <- .get_prior_factor_levels(prior)
   if(is.null(K) || is.na(K)){
@@ -580,9 +580,18 @@ transform_prior_samples <- function(fit, n_samples = 10000, seed = NULL, formula
   }else if(is.prior.ordered(prior)){
     # the coefficients in the random-number stream of rng(), with the fitted
     # nodes of the total
-    draws <- .prior_ordered_draws(prior, n_samples)
+    draws <- .prior_ordered_draws(prior, n_samples, allocation_registry = allocation_registry)
     samples <- draws$coefficients
     auxiliary_samples <- .prior_ordered_total_samples(draws, parameter)
+    if(!is.null(allocation_registry)){
+      for(record in .prior_ordered_dirichlet_records(prior)){
+        if(isTRUE(allocation_registry[[record$key]]$exported)) next
+        allocation <- draws$allocation_samples[[record$key]]
+        colnames(allocation) <- paste0(record$node, "[", seq_len(record$dim), "]")
+        auxiliary_samples <- cbind(auxiliary_samples, allocation)
+        allocation_registry[[record$key]]$exported <- TRUE
+      }
+    }
   }else if(is.prior.orthonormal(prior) || is.prior.meandif(prior)){
     prior$parameters[["K"]] <- K
     samples <- rng(prior, n_samples, transform_factor_samples = FALSE)
@@ -626,6 +635,12 @@ transform_prior_samples <- function(fit, n_samples = 10000, seed = NULL, formula
 
   # Initialize list to collect samples (handles varying column counts per prior)
   samples_list <- list()
+  ordered_priors <- prior_list[vapply(prior_list, function(prior){
+    is.prior.ordered(prior) && !is.prior.mixture(prior) &&
+      !is.null(attr(prior, "ordered_metadata", exact = TRUE))
+  }, logical(1))]
+  .bt_validate_ordered_shared_allocations(ordered_priors)
+  allocation_registry <- new.env(parent = emptyenv())
 
   for(param_name in param_names){
     prior <- prior_list[[param_name]]
@@ -642,7 +657,8 @@ transform_prior_samples <- function(fit, n_samples = 10000, seed = NULL, formula
 
     }else if(is.prior.factor(prior) || inherits(prior, "prior.factor_mixture") || inherits(prior, "prior.factor_spike_and_slab")){
       samples_list[[param_name]] <- .generate_factor_prior_sample_matrix(
-        prior, param_name, n_samples, auxiliary = TRUE
+        prior, param_name, n_samples, auxiliary = TRUE,
+        allocation_registry = if(param_name %in% names(ordered_priors)) allocation_registry else NULL
       )
 
     }else if(is.prior.spike_and_slab(prior)){

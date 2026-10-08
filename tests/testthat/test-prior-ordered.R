@@ -3197,3 +3197,49 @@ test_that("ordered generated roots cannot alias ordinary declarations", {
     prior_ordered(prior("point", list(1)), allocation = c(.4, .6)),
     list(f_ordered_alloc_f_1 = prior("normal", list(0, 1)))), "list")
 })
+
+test_that("joint ordered prior draws honor shared allocation IDs without shifting other streams", {
+  data <- data.frame(f = ordered(rep(c("lo", "mid", "hi"), 2L)), x = 1:6)
+  make <- function(shared) {
+    id <- if(shared) "shape" else NULL
+    info <- JAGS_formula(~f+x+f:x, "mu", data, list(intercept = prior("point", list(0)),
+      x = prior("normal", list(0, 1)), f = prior_ordered(prior("point", list(1)), id = id),
+      "f:x" = prior_ordered(prior("point", list(1)), id = id)))
+    columns <- c("mu_intercept", "mu_x", "mu_f[1]", "mu_f[2]", "mu_f__xXx__x[1]", "mu_f__xXx__x[2]",
+      "mu_f_ordered_total", "mu_f__xXx__x_ordered_total")
+    fit <- .parameter_catalog_test_fit(coda::mcmc.list(coda::mcmc(matrix(0, 2L, length(columns),
+      dimnames = list(NULL, columns)))), c(info$prior_list, list(after = prior("normal", list(0, 1)))),
+      formula_design = list(mu = info$formula_design))
+    list(fit = fit, priors = attr(fit, "prior_list"))
+  }
+  shared <- make(TRUE); unshared <- make(FALSE)
+  set.seed(716); previous_seed <- .Random.seed
+  joint <- transform_prior_samples(shared$fit, n_samples = 16L, seed = 17, formula_scale = list())
+  expect_identical(.Random.seed, previous_seed)
+  expect_identical(unname(joint[, c("mu_f[1]", "mu_f[2]")]), unname(joint[, c("mu_f__xXx__x[1]", "mu_f__xXx__x[2]")]))
+  control <- transform_prior_samples(unshared$fit, n_samples = 16L, seed = 17, formula_scale = list())
+  expect_false(identical(unname(control[, c("mu_f[1]", "mu_f[2]")]), unname(control[, c("mu_f__xXx__x[1]", "mu_f__xXx__x[2]")])))
+  shared_raw <- .generate_prior_sample_matrix(shared$priors, 16L, seed = 17)
+  unshared_raw <- .generate_prior_sample_matrix(unshared$priors, 16L, seed = 17)
+  expect_identical(shared_raw[, c("mu_x", "after")], unshared_raw[, c("mu_x", "after")])
+  expect_false(anyDuplicated(colnames(shared_raw)) > 0L)
+  set.seed(17)
+  first <- rng(shared$priors$mu_f, 16L, transform_factor_samples = FALSE)
+  second <- rng(shared$priors$mu_f__xXx__x, 16L, transform_factor_samples = FALSE)
+  expect_false(identical(first, second))
+})
+
+test_that("unbound ordered joint helpers retain their standalone streams and columns", {
+  p <- prior_ordered(prior("normal", list(0, 1)), id = "shape")
+  attr(p, "levels") <- 3L
+  ordinary <- prior("normal", list(0, 1))
+  actual <- .generate_prior_sample_matrix(list(a = p, b = p, ordinary = ordinary), 16L, seed = 17)
+  set.seed(17)
+  first <- rng(p, 16L, transform_factor_samples = FALSE)
+  second <- rng(p, 16L, transform_factor_samples = FALSE)
+  later <- rng(ordinary, 16L)
+  expect_identical(as.numeric(actual[, c("a[1]", "a[2]")]), as.numeric(first))
+  expect_identical(as.numeric(actual[, c("b[1]", "b[2]")]), as.numeric(second))
+  expect_identical(as.numeric(actual[, "ordinary"]), as.numeric(later))
+  expect_identical(colnames(actual), c("a[1]", "a[2]", "a_ordered_total", "b[1]", "b[2]", "b_ordered_total", "ordinary"))
+})

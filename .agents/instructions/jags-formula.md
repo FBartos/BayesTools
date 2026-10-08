@@ -364,8 +364,12 @@ names.
   spike-and-slab priors and the inclusion probability and slab draws of
   spike-and-slab priors come from the components of their `rng()` draws (the
   stream of the other columns is unchanged); so do ordered-prior totals with
-  these nodes of a spike-and-slab or mixture total, whose theta slices share
-  one inclusion probability and indicator, as in the fitted model. Latent
+  these nodes of a spike-and-slab or single-slice mixture total. Multi-slice
+  spike-and-slab totals share one inclusion probability and indicator, as in
+  the fitted model; general mixture totals require one slice. Joint ordered
+  prior draws reuse the first allocation under each declared shared `(id, factor)`
+  key, while consuming every original per-prior RNG stream. Standalone prior
+  calls remain independent. Latent
   group effects, nodes derived only from them, the component nodes of
   mixtures, and the auxiliaries of Dirichlet priors have no prior draws;
   catalog quantities that need them are unavailable from prior draws.
