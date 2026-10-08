@@ -152,3 +152,27 @@ test_that("recursive mixture laws consume numeric formula multipliers once", {
   expect_identical(unname(posterior_metadata(leaf, "support")$bounds), c(-Inf, Inf))
 })
 
+
+
+test_that("wrapped unknown coefficient laws retain recursive eligibility refusals", {
+
+  make <- function(slope){
+    formula <- ~ x; attr(formula, "log(intercept)") <- TRUE
+    info <- JAGS_formula(formula, "mu", data.frame(x = c(1, 2, 3)),
+      list(intercept = prior("gamma", list(2, 1)), x = slope), formula_scale = TRUE)
+    draws <- cbind(mu_intercept = c(1, 2, 3), mu_x = c(-.2, 0, .2))
+    .parameter_catalog_test_fit(coda::mcmc.list(coda::mcmc(draws)), info$prior_list,
+      list(mu = info$formula_design), list(mu = info$formula_scale))
+  }
+  refused <- as_mixed_posteriors(make(prior("t", list(0, 1, 5))), "mu_intercept",
+    transform_scaled = TRUE)$mu_intercept
+  unavailable <- posterior_metadata(refused, "measure_unavailable")
+  expect_true(any(unavailable$measure == "prior_density"))
+  expect_null(posterior_metadata(refused, "prior_density"))
+  condition <- expect_error(.bt_formula_measure_check(refused, "prior_density"),
+    class = "BayesTools_formula_measure_unavailable")
+  expect_identical(condition$reason, "unsupported_contribution_measure")
+  supported <- as_mixed_posteriors(make(prior("normal", list(0, 1))), "mu_intercept",
+    transform_scaled = TRUE)$mu_intercept
+  expect_s3_class(posterior_metadata(supported, "prior_density"), "prior_linear_density")
+})

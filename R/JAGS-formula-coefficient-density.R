@@ -1740,6 +1740,15 @@ JAGS_formula_prior_density <- function(
   NULL
 }
 
+.bt_formula_route_law_unavailable <- function(route){
+
+  if(identical(route$type, "unknown")) return(is.null(route$recipe) || is.null(route$additive_measure))
+  if(identical(route$type, "transform")) return(.bt_formula_route_law_unavailable(route$source))
+  if(identical(route$type, "mixture")) return(any(vapply(
+    route$components[route$weights > 0], .bt_formula_route_law_unavailable, logical(1))))
+  FALSE
+}
+
 .bt_formula_route_support <- function(route){
 
   if(!is.null(route$additive_measure)) return(route$additive_measure$support)
@@ -1873,9 +1882,7 @@ JAGS_formula_prior_density <- function(
       prior_available <- FALSE
       prior_reason <- numerical_reasons[[1L]]
       prior_cause <- "numerical_scale_unavailable"
-    }else if(is.finite(record$prior_log_probability) && any(vapply(routes, function(route){
-      identical(route$type, "unknown") && (is.null(route$recipe) || is.null(route$additive_measure))
-    }, logical(1)))){
+    }else if(is.finite(record$prior_log_probability) && any(vapply(routes, .bt_formula_route_law_unavailable, logical(1)))){
       prior_available <- FALSE
     }else if(prior_samples && prior_available && is.finite(record$prior_log_probability) &&
              (model_prior_available || point_model)){
