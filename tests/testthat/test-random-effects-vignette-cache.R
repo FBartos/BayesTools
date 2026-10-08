@@ -1020,6 +1020,16 @@ test_that("regeneration removes cached fits and guards dependency drift", {
   expect_identical(unname(tools::md5sum(cache_file)), original_md5)
 })
 
+test_that("installed namespaces refuse the repository implementation checkpoint", {
+  project_root <- normalizePath(testthat::test_path("..", ".."), winslash = "/", mustWork = TRUE)
+  namespace_root <- normalizePath(getNamespaceInfo(asNamespace("BayesTools"), "path"), winslash = "/", mustWork = TRUE)
+  skip_if(identical(namespace_root, project_root), "The installed-namespace refusal control requires an installed namespace.")
+  condition <- expect_error(.random_effects_vignette_current_implementation(
+    dependencies = .random_effects_test_dependencies(), project_root = project_root),
+    "The loaded BayesTools namespace is not the current source tree. Run pkgload::load_all() from the BayesTools project and restart RandomEffects cache regeneration.", fixed = TRUE)
+  expect_null(conditionCall(condition))
+})
+
 test_that("loaded BayesTools implementation must match the current source", {
   dependencies <- .random_effects_test_dependencies()
   project_root <- normalizePath(
@@ -1027,6 +1037,9 @@ test_that("loaded BayesTools implementation must match the current source", {
     winslash = "/",
     mustWork = TRUE
   )
+  namespace_root <- normalizePath(getNamespaceInfo(asNamespace("BayesTools"), "path"), winslash = "/", mustWork = TRUE)
+  skip_if_not(identical(namespace_root, project_root),
+    "The positive implementation check requires a source-host namespace; installed namespaces are tested by the refusal control.")
   current <- .random_effects_vignette_current_implementation(
     dependencies = dependencies,
     cache_file = file.path(project_root, "vignettes", "RandomEffects.RDS"),
