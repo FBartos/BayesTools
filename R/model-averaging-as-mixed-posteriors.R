@@ -590,7 +590,9 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
       n_columns = ncol(samples),
       column_names = colnames(samples),
       source = "single_model_structure",
-      null_location = 1
+      null_location = 1,
+      point_locations = .model_probability_weightfunction_points(list(prior),
+        omega_info$mapping, ncol(samples))
     )
   )
   samples <- .posterior_weightfunction_declarations(samples, prior, 1, "single_model_structure")

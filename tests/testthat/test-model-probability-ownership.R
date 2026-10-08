@@ -681,3 +681,22 @@ test_that("PET plot guards certify the joint mapped point target", {
   expect_error(.plot_data_prior_list.PETPEESE_deterministic(continuous, 0, 1, NULL, NULL,
     rep(list(prior("point", list(7))), 2)), class = "BayesTools_formula_measure_unavailable")
 })
+
+
+test_that("single fixed weightfunctions declare one complete joint point", {
+
+  fixed <- prior_weightfunction("one-sided", .05, wf_fixed(c(1, .5)))
+  fit <- .model_probability_weightfunction_model(fixed)$fit
+  samples <- as_mixed_posteriors(fit, "bias")$bias
+  atoms <- posterior_metadata(samples, "atoms")
+  expect_true(atoms$joint_declared)
+  expect_identical(unname(atoms$locations), matrix(c(1, .5), 1L))
+  expect_identical(atoms$mass, 1)
+  expect_identical(vapply(atoms$marginals, function(x) x$locations[1L, 1L], numeric(1)),
+    stats::setNames(c(1, .5), colnames(samples)))
+  continuous <- prior_weightfunction("one-sided", .05, wf_independent(prior("beta", list(2, 2))))
+  sibling <- as_mixed_posteriors(.model_probability_weightfunction_model(continuous)$fit, "bias")$bias
+  expect_identical(nrow(posterior_metadata(sibling, "atoms")$locations), 0L)
+  expect_identical(posterior_metadata(sibling, "atoms")$marginals[[1L]]$mass, 1)
+})
+
