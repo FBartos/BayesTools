@@ -255,8 +255,8 @@ Math.BayesTools_BF <- function(x, ...){
 
   original_names <- names(x)
   original_col_attributes <- lapply(x, attributes)
-  row_indices <- if(missing(i) || (missing(j) && nargs() < 3L)) seq_len(nrow(x)) else {
-    if(is.character(i)) match(i, rownames(x)) else seq_len(nrow(x))[i]
+  row_indices <- if(missing(i) || (missing(j) && (nargs() - !missing(drop)) < 3L)) seq_len(nrow(x)) else {
+    if(is.character(i)) pmatch(i, rownames(x), duplicates.ok = TRUE) else seq_len(nrow(x))[i]
   }
 
   out <- NextMethod("[")

@@ -1,17 +1,32 @@
 skip_if_not_test_profile("unit")
 
-.hypothesis_factor_marginal_for_test <- function(sd = 1, independent = FALSE){
-  formula <- JAGS_formula(if(independent) ~0+fac else ~fac, "mu", data.frame(fac = factor(c("A", "B", "C"))),
-    prior_list = if(independent) list(fac = prior_factor("normal", list(0, sd), contrast = "independent")) else
-      list(intercept = prior("normal", list(0, 1)), fac = prior_factor("normal", list(0, sd), contrast = "treatment")))
-  columns <- .JAGS_prior_factor_names("mu_fac", formula$prior_list$mu_fac)
-  posterior <- matrix(unlist(lapply(seq_along(columns), function(i) seq(-i, i, length.out = 201L))), 201L, dimnames = list(NULL, columns))
-  if(!independent) posterior <- cbind(mu_intercept = seq(-1, 1, length.out = 201L), posterior)
-  fit <- structure(coda::mcmc(posterior), class = c("mcmc", "BayesTools_fit"))
-  attr(fit, "prior_list") <- formula$prior_list
-  fit <- attach_test_parameter_map(fit)
-  marginal_posterior(as_mixed_posteriors(fit, "mu_fac"), "mu_fac", use_formula = FALSE, prior_samples = TRUE)
-}
+test_that("hypothesis table indices retain ordinary data-frame row ownership", {
+  table <- hypothesis_BF(c(rep(-1, 2), rep(0, 3), rep(1, 5), rep(2, 10)),
+    prior("normal", list(0, 1)),
+    c("theta > -0.5", "theta > 0.5", "theta > 1.5", "theta > 2.5"), parameter = "theta", seed = 1)
+  plain <- table
+  class(plain) <- "data.frame"
+  plain$BF <- as.numeric(plain$BF)
+  partial <- table["theta (1", , drop = FALSE]
+  expect_identical(rownames(partial), rownames(plain["theta (1", , drop = FALSE]))
+  expect_identical(partial$BF, table$BF[1L])
+  expect_warning(columns <- table[4:1, drop = FALSE], "'drop' argument will be ignored", fixed = TRUE)
+  expect_warning(plain_columns <- plain[4:1, drop = FALSE], "'drop' argument will be ignored", fixed = TRUE)
+  expect_identical(names(columns), names(plain_columns))
+  expect_identical(rownames(columns), rownames(table))
+  expect_identical(columns$BF, table$BF)
+  selections <- list(partial = partial, columns = columns, duplicate = table[c("theta (1", "theta (1"), , drop = FALSE],
+    reverse = table[4:1, , drop = FALSE])
+  indices <- list(1L, 1:4, c(1L, 1L), 4:1)
+  for(i in seq_along(selections)){
+    for(attribute in c("raw_BF", "raw_log_BF", "numerical_diagnostics", "prior_numerical_diagnostics", "n_models")){
+      original <- attr(table, attribute, exact = TRUE)
+      if(!is.null(original)) expect_identical(attr(selections[[i]], attribute, exact = TRUE), original[indices[[i]]])
+    }
+    expect_identical(attr(selections[[i]]$BF, "canonical_log_BF", exact = TRUE),
+      attr(table$BF[indices[[i]]], "canonical_log_BF", exact = TRUE))
+  }
+})
 
 test_that("level targets require the same complete declared joint context", {
   first <- .hypothesis_factor_marginal_for_test(independent = TRUE)
