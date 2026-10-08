@@ -32,6 +32,26 @@ test_that("level targets require the same complete declared joint context", {
   expect_s3_class(hypothesis_BF(first, hypothesis = "mu_fac[A] - mu_fac[B] > 0", parameter = "mu_fac", seed = 19), "BayesTools_hypothesis_BF")
 })
 
+test_that("region BF uses its canonical log before natural representation", {
+  reference <- 1.104835212292940058e-312
+  reference_log <- -718.30685281944005469
+  for(flags in list(c(FALSE, FALSE), c(TRUE, FALSE), c(FALSE, TRUE), c(TRUE, TRUE))){
+    result <- hypothesis_BF(c(2, 721), prior("exponential", list(rate = 1)), "theta > 1 vs theta > 720", parameter = "theta", columns = "all", logBF = flags[1L], BF01 = flags[2L])
+    raw <- attr(result, "raw_BF")
+    expect_true(raw > 0)
+    expect_true(abs(raw / reference - 1) < 1e-10)
+    expect_equal(attr(result, "raw_log_BF"), reference_log, tolerance = 1e-10)
+    visible <- as.numeric(result$BF)
+    if(flags[1L]) expect_equal(visible, if(flags[2L]) -reference_log else reference_log, tolerance = 1e-10) else if(flags[2L]) expect_identical(visible, Inf) else expect_identical(visible, raw)
+    expect_identical(as.data.frame(result)[[if(flags[1L]) if(flags[2L]) "logBF01" else "logBF10" else if(flags[2L]) "BF01" else "BF10"]], visible)
+  }
+  swapped <- hypothesis_BF(c(2, 721), prior("exponential", list(rate = 1)), "theta > 720 vs theta > 1", parameter = "theta", BF01 = TRUE, columns = "all")
+  expect_true(abs(as.numeric(swapped$BF) / reference - 1) < 1e-10)
+  moderate <- hypothesis_BF(c(2, 721), prior("exponential", list(rate = 1)), "theta > 1 vs theta > 10", parameter = "theta", columns = "all")
+  expect_equal(attr(moderate, "raw_BF"), 2 * exp(-9), tolerance = 1e-12)
+  expect_error(hypothesis_BF(c(2, 721), prior("exponential", list(rate = 1)), "theta > 1 vs theta > 1600", parameter = "theta"), "Prior region mass", fixed = TRUE)
+})
+
 .hypothesis_marginal_posterior_for_test <- function(samples, prior_density){
 
   class(samples) <- c("marginal_posterior.simple", "marginal_posterior", class(samples))

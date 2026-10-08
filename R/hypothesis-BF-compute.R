@@ -574,7 +574,8 @@
     ))
   }
 
-  BF       <- (posterior_left / posterior_right) / (prior_left / prior_right)
+  log_BF   <- log(posterior_left) - log(posterior_right) - log(prior_left) + log(prior_right)
+  BF       <- exp(log_BF)
   BF_error <- .hypothesis_region_odds_BF_error_percent(quantity, left, right, prior_left, prior_right)
   warning  <- NULL
   if(posterior_left == 0 || posterior_right == 0){
@@ -585,7 +586,7 @@
     BF        = BF,
     prior     = prior_left / prior_right,
     posterior = posterior_left / posterior_right,
-    log_BF    = log(posterior_left) - log(posterior_right) - log(prior_left) + log(prior_right),
+    log_BF    = log_BF,
     prior_numerical_diagnostics = list(left = attr(prior_left, "numerical_diagnostics"),
       right = attr(prior_right, "numerical_diagnostics")),
     method    = "prior-posterior odds",
