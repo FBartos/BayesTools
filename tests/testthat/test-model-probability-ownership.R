@@ -1,4 +1,5 @@
 skip_if_not_test_profile("unit")
+
 test_that("owned structural zero splits agree without subtracting infinities", {
   owned <- function(value, log_value){
     pair <- .model_probability_pair(value, log_value, "prior", "raw")
@@ -51,7 +52,6 @@ test_that("plain identical scalar point targets exclude only unrelated zero weig
   transformed$transforms <- primitive$transforms
   expect_error(.prior_density_from_context(transformed, c(mu_intercept = 1, mu_x = 0)), class = "BayesTools_formula_measure_unavailable")
 })
-
 source(testthat::test_path("common-functions.R"))
 
 test_that("model probability refit requirements retain exact typed diagnostics", {

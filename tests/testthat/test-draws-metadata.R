@@ -1,4 +1,5 @@
 skip_if_not_test_profile("unit")
+
 test_that("empty public measure refusal tables clear metadata after validation", {
   x <- c(1, 2); attr(x, "parameter") <- "theta"
   table <- data.frame(column = "theta", measure = "atoms", reason = "Known unavailable")
@@ -30,7 +31,6 @@ test_that("affine hypothesis row recipes follow every selected draw", {
   }
   expect_identical(.bt_meta_get(x, "hypothesis_evaluation"), original)
 })
-
 source(testthat::test_path("common-functions.R"))
 
 test_that("the public ordered source accessor preserves producer validation", {
