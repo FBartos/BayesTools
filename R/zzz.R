@@ -273,10 +273,6 @@ BayesTools_load_JAGS_module <- function(quiet = TRUE, warn = TRUE){
   }
 
   loaded <- .BayesTools_native_routines_loaded(pkgname = pkgname)
-  if(!loaded){
-    .BayesTools_private$native_dll_path <- NULL
-    .BayesTools_private$native_dll_loaded_manually <- FALSE
-  }
   if(!loaded && warn){
     message <- paste0(
       "BayesTools native routines failed to load from the package DLL. ",
