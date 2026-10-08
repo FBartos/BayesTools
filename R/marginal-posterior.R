@@ -409,8 +409,9 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
 
 
       ### get the design matrix
-      model_frame  <- stats::model.frame(formula, data = data, na.action = NULL)
-      model_matrix <- .bt_model_matrix(model_frame, data = model_frame, formula = formula)
+      evaluation_formula <- if(attr(stats::terms(formula), "intercept") == 0L) formula_add_intercept(formula) else formula
+      model_frame  <- stats::model.frame(evaluation_formula, data = data, na.action = NULL)
+      model_matrix <- .bt_model_matrix(model_frame, data = model_frame, formula = evaluation_formula)
 
       # replaces NAs by zero to omit the corresponding coefficients
       model_matrix[is.na(model_matrix)] <- 0

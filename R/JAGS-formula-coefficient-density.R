@@ -1565,8 +1565,9 @@ JAGS_formula_prior_density <- function(
     fitted_data[[variable]] <- stats::`contrasts<-`(fitted_data[[variable]],
       how.many = ncol(spec$contrast_matrices[[variable]]), value = spec$contrast_matrices[[variable]])
   }
-  frame <- stats::model.frame(formula, data = fitted_data, na.action = NULL)
-  matrix <- .bt_model_matrix(frame, data = frame, formula = formula)
+  evaluation_formula <- if(attr(stats::terms(formula), "intercept") == 0L) formula_add_intercept(formula) else formula
+  frame <- stats::model.frame(evaluation_formula, data = fitted_data, na.action = NULL)
+  matrix <- .bt_model_matrix(frame, data = frame, formula = evaluation_formula)
   matrix[is.na(matrix)] <- 0
   terms <- stats::terms(formula)
   labels <- attr(terms, "term.labels")

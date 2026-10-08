@@ -129,6 +129,32 @@ test_that("retained ordered interactions use their continuous components in both
   }
 })
 
+test_that("no-intercept row evaluation keeps the bound ordinary contrast basis", {
+  data <- data.frame(g = factor(rep(c("a", "b", "c"), 2L)), x = c(1, 2, 3, 1, 2, 3))
+  for(contrast in c("treatment", "meandif", "orthonormal")){
+    family <- if(contrast == "treatment") "normal" else "mnormal"
+    compiled <- JAGS_formula(~g*x, "mu", data, list(intercept = prior("point", list(7)), x = prior("point", list(2)),
+      g = prior_factor(family, list(0, 1), contrast = contrast),
+      `g:x` = prior_factor(family, list(0, 1), contrast = contrast)))
+    draws <- .generate_prior_sample_matrix(compiled$prior_list, 8L, seed = 17)
+    fit <- .parameter_catalog_test_fit(coda::mcmc.list(coda::mcmc(draws)), compiled$prior_list,
+      formula_design = list(mu = compiled$formula_design), formula_scale = list(mu = compiled$formula_scale))
+    samples <- as_mixed_posteriors(fit, names(compiled$prior_list))
+    state <- .bt_formula_state_get(samples)
+    omitted <- .bt_formula_fitted_rows(~g*x-1, data, state$models[[1L]], "mu")
+    included <- .bt_formula_fitted_rows(~g*x, data, state$models[[1L]], "mu")
+    expect_identical(omitted[, "mu_intercept"], rep(0, nrow(data)))
+    included[, "mu_intercept"] <- 0
+    expect_equal(omitted, included, tolerance = 0)
+    marginal <- marginal_posterior(samples, "mu_g", formula = ~g*x-1, at = list(x = 2), prior_samples = FALSE)
+    basis <- attr(compiled$prior_list$mu_g, "factor_design")
+    ordinary <- draws[, .prior_linear_prior_columns("mu_g", compiled$prior_list$mu_g), drop = FALSE] %*% t(basis)
+    interaction_owner <- names(compiled$prior_list)[grepl("__xXx__", names(compiled$prior_list), fixed = TRUE)]
+    interactions <- draws[, .prior_linear_prior_columns(interaction_owner, compiled$prior_list[[interaction_owner]]), drop = FALSE] %*% t(attr(compiled$prior_list[[interaction_owner]], "factor_design"))
+    for(i in seq_len(3L)) expect_equal(as.numeric(marginal[[i]]), ordinary[, i] + 2 * interactions[, i] + 4, tolerance = 1e-12)
+  }
+})
+
 test_that("expression ordered totals retain snapshots and per-level unavailable laws", {
   data <- data.frame(f = ordered(rep(c("lo", "mid", "hi"), 2L), levels = c("lo", "mid", "hi")))
   compiled <- JAGS_formula(~f, "mu", data, list(intercept = prior("point", list(0)),
