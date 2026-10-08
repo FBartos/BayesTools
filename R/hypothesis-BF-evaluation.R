@@ -277,6 +277,10 @@
   prob <- max(0, min(1, prob))
 
   if(!isTRUE(with_diagnostics)) return(as.numeric(prob))
+  if(!is.null(exact) && prob > 0){
+    log_mass <- attr(exact, "log_mass", exact = TRUE)
+    if(!is.null(log_mass)) attr(prob, "log_mass") <- log_mass
+  }
   attr(prob, "route") <- if(is.null(exact)) "grid" else "deterministic"
   attr(prob, "numerical_diagnostics") <- if(is.null(exact)) NULL else
     attr(exact, "numerical_diagnostics", exact = TRUE)

@@ -21,11 +21,13 @@
 # unsupported families, transformations or contexts) is unavailable here, and
 # the caller keeps its grid evaluation.
 
-.prior_region_result <- function(probability, integration = NULL){
+.prior_region_result <- function(probability, integration = NULL,
+                                  log_mass = attr(probability, "log_mass", exact = TRUE)){
 
   list(
     available      = TRUE,
-    probability    = probability,
+    probability    = as.numeric(probability),
+    log_mass       = log_mass,
     absolute_error = if(is.null(integration)) 0 else integration$absolute_error,
     converged      = if(is.null(integration)) TRUE else isTRUE(integration$converged),
     messages       = if(is.null(integration) || isTRUE(integration$converged)){
@@ -56,6 +58,9 @@
   list(
     available      = TRUE,
     probability    = sum(weights * vapply(results, `[[`, numeric(1), "probability")),
+    log_mass       = if(all(vapply(results, function(result) !is.null(result$log_mass), logical(1)))){
+      .model_probability_log_sum(log(weights) + vapply(results, `[[`, numeric(1), "log_mass"))
+    }else NULL,
     absolute_error = sum(weights * vapply(results, `[[`, numeric(1), "absolute_error")),
     converged      = all(vapply(results, `[[`, logical(1), "converged")),
     messages       = unique(unlist(lapply(results, `[[`, "messages"), use.names = FALSE)),
@@ -127,7 +132,7 @@
   if(anyNA(inside)){
     return(.prior_region_unavailable())
   }
-  .prior_region_result(sum(probability[inside]))
+  .prior_region_result(sum(probability[inside]), log_mass = log(sum(probability[inside])))
 }
 
 # Probability of the source intervals under a simple continuous prior, from
@@ -148,6 +153,18 @@
       mass <- upper_cdf - lower_cdf
     }
     probability <- probability + max(0, as.numeric(mass))
+  }
+  if(probability > 0){
+    lower <- pmax(intervals[, 1L], prior$truncation$lower)
+    upper <- pmin(intervals[, 2L], prior$truncation$upper)
+    positive <- lower < upper
+    log_mass <- .model_probability_log_sum(.prior_simple_log_interval_mass(prior,
+      lower[positive], upper[positive]) - .prior_simple_log_C(prior))
+    if(length(log_mass) != 1L || !is.finite(log_mass) || log_mass > 0){
+      .prior_numerical_signal("region log probability", prior$distribution, "log", 1L,
+        "The accepted positive scalar region mass has no valid backend log probability", error = TRUE)
+    }
+    attr(probability, "log_mass") <- log_mass
   }
   probability
 }
@@ -252,7 +269,7 @@
     return(.prior_region_unavailable())
   }
   if(.prior_region_whole(region)){
-    return(.prior_region_result(1))
+    return(.prior_region_result(1, log_mass = 0))
   }
 
   source_hull <- unlist(prior$truncation[c("lower", "upper")], use.names = FALSE)
@@ -266,7 +283,7 @@
     !isTRUE(source_hull[1L] < source_hull[2L] && image_hull[1L] == image_hull[2L])
   if(safe){
     outside <- .prior_region_hull_probability(region, sort(image_hull))
-    if(!is.null(outside)) return(.prior_region_result(outside))
+    if(!is.null(outside)) return(.prior_region_result(outside, log_mass = log(outside)))
   }
 
   intervals <- .prior_region_inverse_affine(region$intervals, offset, scale)
@@ -522,6 +539,7 @@
     ))
   }
   probability <- result$probability
+  if(probability > 0 && !is.null(result$log_mass)) attr(probability, "log_mass") <- result$log_mass
   attr(probability, "numerical_diagnostics") <- list(
     method         = if(result$quadratures > 0) "conditional_normal_quadrature" else "exact",
     quadratures    = result$quadratures,

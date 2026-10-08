@@ -907,8 +907,9 @@ with the prior densities of the kept elements.
   components' shares of the continuous draws. Shared or unavailable supports
   keep the pooled estimate.
 - A null outside the continuous draws gives the finite kernel-tail value with
-  a warning that it is not reliable evidence, once per parameter or level;
-  never `Inf`.
+  a warning that it is not reliable evidence, once per parameter or level.
+  A kernel sum below the representable range retains numerical zero and its
+  boundary-valued Bayes factor; no floor is added.
 - A declared posterior point mass at the null leaves the ratio undefined:
   level lists and marginal inference return `NA` with the reason in the
   `"warnings"` attribute and compute the other levels; a scalar call stops
@@ -919,6 +920,9 @@ with the prior densities of the kept elements.
 
 Scalar deterministic region producers retain authoritative backend log masses
 only for already accepted positive natural masses, including subnormals.
+Scalar affine structural routes carry the same truncation-aware backend logs
+through their result and hypothesis consumers. Mixture/row log sums use only
+component-provided logs; natural quadrature logs are not backend-exact.
 Region-odds and transitive ratios share those logs; natural zero/nonfinite
 availability and Monte Carlo errors stay unchanged. An implicit rounded-one
 region is valid only when its independently evaluated complement is positive.

@@ -903,3 +903,60 @@ test_that("point terms at negative locations do not warn in region probabilities
   expect_no_warning(probability <- .hypothesis_prior_density_prob(shifted, side, "theta"))
   expect_lt(abs(probability - region_references$normal_cauchy[["theta > 0.5"]]), 1e-8)
 })
+
+
+test_that("public positive-unit scalar marginals retain accepted backend region logs", {
+
+  info <- JAGS_formula(~ x, "mu", data.frame(x = c(-1, 0, 1)),
+    list(intercept = prior("point", list(0)), x = prior("exp", list(1))))
+  draws <- cbind(mu_intercept = 0, mu_x = c(.5, 2, 721, 745))
+  fit <- .parameter_catalog_test_fit(coda::mcmc.list(coda::mcmc(draws)), info$prior_list,
+    list(mu = info$formula_design), list(mu = info$formula_scale))
+  mixed <- as_mixed_posteriors(fit, names(info$prior_list))
+  leaf <- marginal_posterior(mixed, "mu_intercept", formula = ~ x,
+    at = list(x = 1), prior_samples = TRUE)$intercept
+  for(value in c(1, 720, 744)){
+    statement <- sprintf("theta > %.17g", value)
+    direct <- hypothesis_BF(as.numeric(leaf), prior("exp", list(1)), statement,
+      parameter = "theta", columns = "all")
+    marginal <- hypothesis_BF(leaf, hypothesis = statement, parameter = "theta", columns = "all")
+    expect_equal(attr(marginal, "raw_log_BF"), attr(direct, "raw_log_BF"), tolerance = 1e-12)
+    side <- hypothesis_parse(statement)$statements[[1L]]$left
+    probability <- .hypothesis_prior_density_prob(posterior_metadata(leaf, "prior_density"),
+      side, "theta", with_diagnostics = TRUE)
+    expect_identical(attr(probability, "log_mass"), -value)
+  }
+  expect_error(hypothesis_BF(leaf, hypothesis = "theta > 1000", parameter = "theta"),
+    class = "BayesTools_hypothesis_region")
+  # Independent truncated exponential, negative affine, finite interval and
+  # union identities distinguish authoritative logs from natural rounding.
+  prior <- prior("exp", list(1), list(0, 10))
+  law <- .prior_linear_combination_density(list(x = prior), c(x = -2))
+  for(statement in c("theta > -4 & theta < -2", "theta > -2 | theta < -18")){
+    side <- hypothesis_parse(statement)$statements[[1L]]$left
+    probability <- .hypothesis_prior_density_prob(law, side, "theta", with_diagnostics = TRUE)
+    reference <- if(grepl("|", statement, fixed = TRUE))
+      ((1 - exp(-1)) + (exp(-9) - exp(-10))) / (1 - exp(-10)) else
+      (exp(-1) - exp(-2)) / (1 - exp(-10))
+    expect_lt(abs(as.numeric(probability) - reference), 1e-14)
+    expect_lt(abs(attr(probability, "log_mass") - log(reference)), 1e-14)
+  }
+})
+
+test_that("structural mixture and row probabilities sum supplied scalar logs", {
+
+  mixture <- prior_mixture(list(prior("exp", list(1)), prior("exp", list(.5))))
+  law <- .prior_linear_combination_density(list(x = mixture), c(x = 1))
+  context <- .prior_density_context(list(x = prior("exp", list(1))), "x")
+  rows <- .prior_density_from_context_rows(context, matrix(c(1, 2, 1), ncol = 1L,
+    dimnames = list(NULL, "x")))
+  side <- hypothesis_parse("theta > 744")$statements[[1L]]$left
+  log_sum <- function(logs) max(logs) + log(sum(exp(logs - max(logs))))
+  for(case in list(list(law = law, logs = c(-744, -372) - log(2), weights = c(.5, .5)),
+                   list(law = rows, logs = c(-744 + log(2 / 3), -372 + log(1 / 3)), weights = c(2 / 3, 1 / 3)))){
+    probability <- .hypothesis_prior_density_prob(case$law, side, "theta", with_diagnostics = TRUE)
+    expect_equal(attr(probability, "log_mass"), log_sum(case$logs), tolerance = 1e-12)
+    reference <- sum(case$weights * pexp(c(744, 372), lower.tail = FALSE))
+    expect_lt(abs(as.numeric(probability) / reference - 1), 8 * .Machine$double.eps)
+  }
+})
