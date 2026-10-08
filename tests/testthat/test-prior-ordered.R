@@ -3138,3 +3138,21 @@ test_that("ordered mixture replay keeps ordered ownership and conditions", {
     "Mixture indicator draws of 'theta' must index a mixture component.", fixed = TRUE)
   expect_identical(class(condition), c("simpleError", "error", "condition"))
 })
+
+test_that("fixed ordered replay declares only stochastic source dependencies", {
+  data <- data.frame(f = ordered(c("lo", "mid", "hi")))
+  info <- JAGS_formula(~f, "mu", data, list(intercept = prior("point", list(0)),
+    f = prior_ordered(prior("point", list(10)), allocation = c(.25, .75))))
+  spec <- .bt_ordered_spec("mu_f", info$prior_list$mu_f)
+  node <- .bt_dnode_ordered_coefficients(spec)
+  expect_identical(node$dependencies, character())
+  expect_length(spec$allocations[[1L]]$coordinates, 2L)
+  empty <- matrix(numeric(), 2L, 0L, dimnames = list(NULL, character()))
+  expect_equal(.bt_deterministic_node_evaluate(node, .bt_deterministic_lookup(empty)),
+    matrix(rep(c(2.5, 7.5), each = 2L), 2L, dimnames = list(NULL, spec$coefficient_names)), tolerance = 0)
+  random <- JAGS_formula(~f, "mu", data, list(intercept = prior("point", list(0)),
+    f = prior_ordered(prior("normal", list(0, 1)))))
+  random_spec <- .bt_ordered_spec("mu_f", random$prior_list$mu_f)
+  expect_identical(.bt_dnode_ordered_coefficients(random_spec)$dependencies,
+    c(random_spec$total_names, random_spec$allocations[[1L]]$coordinates))
+})

@@ -201,8 +201,10 @@ JAGS_ordered_parameter_spec <- function(fit, parameters = NULL, weights = NULL, 
 .bt_dnode_ordered_coefficients <- function(spec){
 
   .bt_deterministic_node("ordered_coefficient", spec$parameter, spec$coefficient_names,
-    dependencies = c(spec$total_names,
-      unlist(lapply(spec$allocations, `[[`, "coordinates"), use.names = FALSE)),
+    dependencies = c(if(!is.prior.point(spec$total_prior) || .is_prior_expression(spec$total_prior)) spec$total_names,
+      unlist(lapply(spec$allocations, function(record){
+        if(identical(record$spec$type, "dirichlet")) record$coordinates else character()
+      }), use.names = FALSE)),
     parameter = spec$parameter, spec = spec)
 }
 
