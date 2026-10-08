@@ -1,5 +1,20 @@
 skip_if_not_test_profile("unit")
 
+test_that("dependency-only expression points retain the existing fresh-sampling refusal", {
+  info <- JAGS_formula(~x, "mu", data.frame(x = c(10, 20, 30)),
+    list(intercept = prior("normal", list(0, 1)), x = prior("point", list(location = expression(2 * mu_intercept)))), formula_scale = TRUE)
+  fit <- structure(coda::mcmc(cbind(mu_intercept = c(1, 2), mu_x = c(2, 4))), class = c("mcmc", "BayesTools_fit"))
+  attr(fit, "prior_list") <- info$prior_list
+  attr(fit, "formula_design") <- list(mu = info$formula_design)
+  attr(fit, "formula_scale") <- list(mu = info$formula_scale)
+  fit <- attach_test_parameter_map(fit)
+  condition <- expect_error(.generate_transformed_prior_samples(attr(fit, "prior_list"), "mu_intercept", 4L, seed = 17,
+    formula_scale = attr(fit, "formula_scale"), formula_design = attr(fit, "formula_design")), class = "BayesTools_formula_transform_unavailable")
+  expect_identical(conditionMessage(condition), "Fresh expression-point replay is unavailable without a certified persisted recipe.")
+  expect_identical(condition$missing, "mu_x")
+  expect_null(conditionCall(condition))
+})
+
 test_that("irrelevant expression points do not block numeric subset generation", {
   normal <- prior("normal", list(0, 1))
   point <- prior("point", list(location = expression(2 * x)))
