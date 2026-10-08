@@ -237,6 +237,7 @@ transform_prior_samples <- function(fit, n_samples = 10000, seed = NULL, formula
   if(is.null(prior_list)){
     stop("'fit' must have 'prior_list' attribute.")
   }
+  .bt_validate_ordered_shared_allocations(prior_list)
 
   # Extract formula_scale from fit if not provided; the fitted structure is
   # the model's, whatever standardization is passed
@@ -631,10 +632,6 @@ transform_prior_samples <- function(fit, n_samples = 10000, seed = NULL, formula
   if(length(expression_points)) .bt_formula_transform_stop(
     "Fresh expression-point replay is unavailable without a certified persisted recipe.",
     reason = "uncertified_point_replay", missing = expression_points)
-  if(!is.null(seed)){
-    set.seed(seed)
-  }
-
   # Determine which parameters to sample
   param_names <- names(prior_list)
 
@@ -650,6 +647,10 @@ transform_prior_samples <- function(fit, n_samples = 10000, seed = NULL, formula
   }, logical(1))]
   .bt_validate_ordered_shared_allocations(prior_list, bound_only = TRUE)
   allocation_registry <- new.env(parent = emptyenv())
+
+  if(!is.null(seed)){
+    set.seed(seed)
+  }
 
   for(param_name in param_names){
     prior <- prior_list[[param_name]]

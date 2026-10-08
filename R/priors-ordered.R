@@ -275,6 +275,16 @@
       .bt_require_ordered_metadata(prior_list[[parameter]], parameter)
     }
   }
+  if(bound_only){
+    former_bound <- ordered & !bound & vapply(prior_list, function(prior){
+      !is.prior.mixture(prior) && any(vapply(c("factor_design", "factor_terms", "coefficient_dim"), function(field){
+        !is.null(attr(prior, field, exact = TRUE))
+      }, logical(1)))
+    }, logical(1))
+    for(parameter in names(prior_list)[former_bound]){
+      .bt_require_ordered_metadata(prior_list[[parameter]], parameter)
+    }
+  }
   if(!any(bound)) return(invisible(TRUE))
   for(parameter in names(prior_list)[bound]){
     .bt_require_ordered_metadata(prior_list[[parameter]], parameter)

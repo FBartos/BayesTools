@@ -1,5 +1,43 @@
 skip_if_not_test_profile("unit")
 
+test_that("missing ordered recipes cannot default-bind former formula owners", {
+  data <- data.frame(f = ordered(rep(c("lo", "mid", "hi"), 2L)), x = 1:6)
+  info <- JAGS_formula(~f+x+f:x, "mu", data, list(intercept = prior("point", list(0)), x = prior("normal", list(0, 1)),
+    f = prior_ordered(prior("normal", list(0, 1)), id = c(f = "shape")),
+    "f:x" = prior_ordered(prior("normal", list(0, 1)), id = c(f = "shape"))))
+  original <- info$prior_list
+  draws <- .generate_prior_sample_matrix(original, 8L, seed = 17)
+  fit <- .parameter_catalog_test_fit(coda::mcmc.list(coda::mcmc(draws)), original,
+    formula_design = list(mu = info$formula_design))
+  stripped <- original
+  for(parameter in names(stripped)[vapply(stripped, is.prior.ordered, logical(1))]) attr(stripped[[parameter]], "ordered_metadata") <- NULL
+  calls <- 0L; leaf_rng <- rng
+  testthat::local_mocked_bindings(rng = function(...){calls <<- calls + 1L; leaf_rng(...)}, .package = "BayesTools")
+  for(priors in list(stripped["mu_f"], stripped)){
+    set.seed(113); before <- .Random.seed
+    condition <- expect_error(.generate_prior_sample_matrix(priors, 4L, seed = 17), class = "BayesTools_ordered_metadata_unavailable")
+    expect_s3_class(condition, "BayesTools_refit_required")
+    expect_null(conditionCall(condition))
+    expect_identical(.Random.seed, before)
+  }
+  for(design in list(list(mu = info$formula_design), NULL, "absent")){
+    for(scale in list(NULL, list())){
+      bad <- fit; attr(bad, "prior_list") <- stripped
+      attr(bad, "formula_design") <- design; attr(bad, "formula_scale") <- scale
+      set.seed(113); before <- .Random.seed
+      condition <- expect_error(transform_prior_samples(bad, 4L, seed = 17, formula_scale = scale), class = "BayesTools_ordered_metadata_unavailable")
+      expect_null(conditionCall(condition))
+      expect_identical(.Random.seed, before)
+    }
+  }
+  expect_identical(calls, 0L)
+  expect_type(transform_prior_samples(fit, 4L, seed = 17, formula_scale = list()), "double")
+  unbound <- prior_ordered(prior("point", list(10)), c(.25, .75)); attr(unbound, "levels") <- 3L
+  expect_equal(unname(.generate_prior_sample_matrix(list(f = unbound), 4L, seed = 17)[, c("f[1]", "f[2]")]), matrix(rep(c(2.5, 7.5), each = 4L), 4L), tolerance = 0)
+  container <- prior_mixture(list(prior_factor_levels(unbound, c("lo", "mid", "hi")), prior_factor_levels(unbound, c("lo", "mid", "hi"))))
+  expect_type(.generate_prior_sample_matrix(list(f = container), 4L, seed = 17), "double")
+})
+
 test_that("ordered persisted recipes match declarations and their actual owner", {
   fixture <- ordered_plot_test_fixture(prior("point", list(10)), c(.25, .75),
     levels = c("lo", "mid", "hi"))
