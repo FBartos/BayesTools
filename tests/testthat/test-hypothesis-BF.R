@@ -3144,3 +3144,24 @@ test_that("R116 N05 source collection retains only compatible raw ordinate leave
   expect_error(.posterior_ordinate_from_sources(list(invalid), "theta"), "Posterior ordinate metadata is invalid", fixed = TRUE)
   expect_error(posterior_ordinate_append(theta, theta), "cannot contain duplicate values", fixed = TRUE)
 })
+test_that("undefined posterior region odds retain both deterministic prior diagnostics", {
+
+  compiled <- JAGS_formula(~ x, "mu", data.frame(x = c(-1, 0, 1)),
+    list(intercept = prior("normal", list(0, 1)), x = prior("t", list(0, 1, 5))))
+  draws <- cbind(mu_intercept = c(-.3, 0, .3), mu_x = c(-.1, 0, .1))
+  fit <- .parameter_catalog_test_fit(coda::mcmc.list(coda::mcmc(draws)), compiled$prior_list,
+    list(mu = compiled$formula_design), list(mu = compiled$formula_scale))
+  mixed <- as_mixed_posteriors(fit, names(compiled$prior_list), transform_scaled = FALSE)
+  leaf <- marginal_posterior(mixed, "mu_x", formula = ~ x, prior_samples = TRUE)[[1L]]
+  out <- hypothesis_BF(leaf, hypothesis = "theta > 1 vs theta < -1", parameter = "theta", columns = "all")
+  diagnostics <- attr(out, "prior_numerical_diagnostics")[[1L]]
+  left <- hypothesis_BF(leaf, hypothesis = "theta > 1 vs theta <= 1", parameter = "theta", columns = "all")
+  right <- hypothesis_BF(leaf, hypothesis = "theta < -1 vs theta >= -1", parameter = "theta", columns = "all")
+  expect_identical(diagnostics$left, attr(left, "prior_numerical_diagnostics")[[1L]]$left)
+  expect_identical(diagnostics$right, attr(right, "prior_numerical_diagnostics")[[1L]]$left)
+  expect_true(length(diagnostics$left) > 0L && length(diagnostics$right) > 0L)
+  expect_true(is.na(attr(out, "raw_BF")))
+  expect_true(is.na(attr(out, "raw_log_BF")))
+  expect_true(is.na(out$BF_error))
+  expect_match(attr(out, "warnings"), "Both posterior region masses are zero", fixed = TRUE)
+})

@@ -574,6 +574,8 @@
       BF        = NA_real_,
       prior     = prior_left / prior_right,
       posterior = NA_real_,
+      prior_numerical_diagnostics = list(left = attr(prior_left, "numerical_diagnostics"),
+        right = attr(prior_right, "numerical_diagnostics")),
       method    = "prior-posterior odds",
       BF_error  = NA_real_,
       warning   = "Both posterior region masses are zero; region-odds BF is undefined."
