@@ -337,8 +337,16 @@ JAGS_deterministic_evaluator <- function(fit, nodes = NULL){
 # The generated deterministic nodes of a fit, keyed by node name.
 .bt_deterministic_nodes_fit <- function(fit){
 
+  prior_list <- attr(fit, "prior_list", exact = TRUE)
+  for(prior in prior_list[vapply(prior_list, is.prior.ordered, logical(1))]){
+    if(!.bt_ordered_metadata_valid(prior)){
+      .bt_stop_refit_required(
+        "Fitted ordered numeric provenance is unavailable. Refit the model with this version of BayesTools.",
+        class = "BayesTools_ordered_metadata_unavailable")
+    }
+  }
   .bt_deterministic_nodes(
-    prior_list = attr(fit, "prior_list", exact = TRUE),
+    prior_list = prior_list,
     formula_design = attr(fit, "formula_design", exact = TRUE)
   )
 }

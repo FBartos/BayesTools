@@ -110,6 +110,15 @@ test_that("ordered recipes replay primitive chains and batched kernels independe
   attr(old_priors$mu_f, "ordered_metadata") <- old_metadata
   attr(fit, "prior_list") <- old_priors
   expect_error(JAGS_ordered_parameter_spec(fit), class = "BayesTools_ordered_metadata_unavailable")
+  for(read in list(function() JAGS_deterministic_nodes(fit),
+      function() JAGS_deterministic_evaluator(fit, nodes = "mu_f"),
+      function() JAGS_evaluate_deterministic(fit, supplied, nodes = "mu_f"))){
+    condition <- expect_error(read(),
+      "Fitted ordered numeric provenance is unavailable. Refit the model with this version of BayesTools.",
+      fixed = TRUE, class = "BayesTools_ordered_metadata_unavailable")
+    expect_s3_class(condition, "BayesTools_refit_required")
+    expect_null(conditionCall(condition))
+  }
   expect_error(parameter_draws(fit,selected,model_samples=supplied_view),class="BayesTools_ordered_metadata_unavailable")
   expect_identical(as.numeric(as_mixed_posteriors(fit,"mu_intercept")$mu_intercept),rep(0,2))
 })
