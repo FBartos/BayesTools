@@ -430,10 +430,21 @@
   weight <- .prior_model_weight(parent)
   if(is.null(weight)) weight <- 1
   owner <- attr(parent, "model_probability_declaration", exact = TRUE)
-  if(is.null(owner)) return(.set_prior_model_weight(child, weight * fraction))
+  if(is.null(owner)){
+    value <- weight * fraction
+    if(weight > 0 && fraction > 0 && (!is.finite(value) || value == 0)){
+      .prior_numerical_signal("probability split", "model", "natural", 1L,
+        "The positive unowned split is not representable; use paired model probability ownership",
+        range = TRUE, error = TRUE)
+    }
+    return(.set_prior_model_weight(child, value))
+  }
   logs <- .prior_model_log_weight(parent) + log(fraction)
   child_owner <- attr(child, "model_probability_declaration", exact = TRUE)
-  if(!is.null(child_owner) && abs(.prior_model_log_weight(child) - logs) > max(owner$eta, child_owner$eta)){
+  child_log <- if(!is.null(child_owner)) .prior_model_log_weight(child)
+  if(!is.null(child_owner) && !isTRUE(child_log == logs) &&
+     (!is.finite(child_log) || !is.finite(logs) ||
+      abs(child_log - logs) > max(owner$eta, child_owner$eta))){
     stop("An independent child model probability owner contradicts the requested parent split.", call. = FALSE)
   }
   owner$stage <- "component"

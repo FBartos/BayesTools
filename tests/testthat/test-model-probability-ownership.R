@@ -1,4 +1,34 @@
 skip_if_not_test_profile("unit")
+test_that("owned structural zero splits agree without subtracting infinities", {
+  owned <- function(value, log_value){
+    pair <- .model_probability_pair(value, log_value, "prior", "raw")
+    .set_prior_model_probability(prior("normal", list(0, 1)), pair$probabilities, pair$logs, pair$declaration)
+  }
+  result <- .model_probability_split_prior(owned(0, -Inf), owned(0, -Inf), .5)
+  expect_identical(.prior_model_weight(result), 0)
+  expect_identical(.prior_model_log_weight(result), -Inf)
+  expect_identical(attr(result, "model_probability_declaration")$stage, "component")
+  finite <- .model_probability_split_prior(owned(1, 0), owned(.5, log(.5)), .5)
+  expect_identical(.prior_model_weight(finite), .5)
+  expect_identical(.prior_model_log_weight(finite), log(.5))
+  for(child in list(owned(1, 0), owned(.25, log(.25)))){
+    expect_error(.model_probability_split_prior(owned(0, -Inf), child, .5), "contradicts the requested parent split", fixed = TRUE)
+  }
+  expect_identical(.prior_model_weight(.model_probability_split_prior(prior("normal", list(0, 1)), prior("normal", list(0, 1)), .5)), .5)
+  expect_identical(.prior_model_weight(.model_probability_split_prior(owned(0, -Inf), prior("normal", list(0, 1)), .5)), 0)
+  tiny <- prior_spike_and_slab(prior("normal", list(0, 1)), prior("point", list(1e-200)), prior_weights = 1e-200)
+  condition <- expect_error(.plot_prior_spike_and_slab_components(tiny), class = "BayesTools_numerical_range_limit")
+  expect_s3_class(condition, "BayesTools_numerical_condition")
+  expect_identical(condition$operation, "probability split")
+  expect_identical(condition$requested_scale, "natural")
+  expect_null(conditionCall(condition))
+  pair <- .model_probability_pair(1e-200, log(1e-200), "prior", "raw")
+  parent <- .set_prior_model_probability(prior("normal", list(0, 1)), pair$probabilities, pair$logs, pair$declaration)
+  retained <- .model_probability_split_prior(parent, prior("normal", list(0, 1)), 1e-200)
+  expect_identical(.prior_model_weight(retained), 0)
+  expect_equal(.prior_model_log_weight(retained), 2 * log(1e-200), tolerance = 1e-12)
+})
+
 source(testthat::test_path("common-functions.R"))
 
 test_that("model probability refit requirements retain exact typed diagnostics", {
