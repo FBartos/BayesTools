@@ -4255,3 +4255,32 @@ test_that("N03 unrepresentable normal scales and invalid weights remain refused"
                "The 'mean' must be defined.", fixed = TRUE)
   expect_error(BayesTools:::.prior_linear_vector_scalar_prior(vector_prior, c(NA_real_, 1)))
 })
+
+
+test_that("consumed numeric scales survive stored recipes and retained Cauchy siblings", {
+
+  scaled <- prior("uniform", list(-1, 1)); attr(scaled, "multiply_by") <- 2
+  plain <- prior("uniform", list(-2, 2))
+  for(siblings in list(list(y = prior("uniform", list(-1, 1)), z = prior("uniform", list(-1, 1))),
+                       list(y = prior("cauchy", list(0, 1)), z = prior("cauchy", list(0, 1))))){
+    priors <- c(list(x = scaled), siblings)
+    reference_priors <- c(list(x = plain), siblings)
+    weights <- c(x = 1, y = 1, z = 1)
+    route <- .prior_density_route_linear(priors, weights, NULL, 4096L)
+    reference <- .prior_density_route_linear(reference_priors, weights, NULL, 4096L)
+    if(identical(route$type, "unknown")){
+      actual_grid <- .prior_density_route_recipe_grid(route$recipe)
+      reference_grid <- .prior_density_route_recipe_grid(reference$recipe)
+      expect_equal(actual_grid$density$x, reference_grid$density$x, tolerance = 0)
+      expect_equal(actual_grid$density$y, reference_grid$density$y, tolerance = 0)
+      expect_identical(actual_grid$points, reference_grid$points)
+      expect_identical(route$recipe$weights, c(x = 2, y = 1, z = 1))
+      expect_null(attr(route$recipe$prior_list$x, "multiply_by", exact = TRUE))
+      expect_identical(route$recipe$prior_list$x$parameters, scaled$parameters)
+      expect_identical(route$additive_measure$support, reference$additive_measure$support)
+    }else{
+      expect_equal(.prior_density_route_ordinate(route, 0)$log_density,
+        .prior_density_route_ordinate(reference, 0)$log_density, tolerance = 1e-12)
+    }
+  }
+})

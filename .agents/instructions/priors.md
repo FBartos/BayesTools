@@ -829,6 +829,8 @@ condition and other refused measures remain.
 PET/PEESE point shortcuts require the complete paired regression declaration:
 equal mu plus equal bias type and point, or identically zero bias across types.
 Separate raw mu/bias point equality does not certify the mapped regression law.
+Numeric owner multipliers consumed by an additive split are removed before
+recursive mixture, Cauchy, or grid-recipe reuse. Genuine state products remain.
 Formula laws recursively strip child multiplier attributes and reattach only
 the compiler-owned top-level declaration; raw coefficient recipes remain raw.
 Shared states retain one owner. Unsupported ratios/products keep corrected

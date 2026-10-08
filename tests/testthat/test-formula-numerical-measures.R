@@ -128,3 +128,27 @@ test_that("independent additive formula grids retain their numerical laws", {
     y = recipe$prior_list$y), c("x[1]" = 1, "x[2]" = 1, y = 1), NULL, 4096)
   expect_null(.prior_density_route_additive_measure(unsupported))
 })
+
+
+test_that("recursive mixture laws consume numeric formula multipliers once", {
+
+  x <- prior_spike_and_slab(prior("normal", list(0, 1)), prior("point", list(.5)))
+  attr(x, "multiply_by") <- 2
+  info <- JAGS_formula(~ x + z, "mu", data.frame(x = c(-1, 0, 1), z = c(1, 0, -1)),
+    list(intercept = prior("point", list(0)), x = x, z = prior("normal", list(0, 1))))
+  draws <- .generate_prior_sample_matrix(info$prior_list, 40L, seed = 17)
+  fit <- .parameter_catalog_test_fit(coda::mcmc.list(coda::mcmc(draws)), info$prior_list,
+    list(mu = info$formula_design), list(mu = info$formula_scale))
+  samples <- as_mixed_posteriors(fit, names(info$prior_list))
+  leaf <- marginal_posterior(samples, "mu_intercept", formula = ~ x + z,
+    at = list(x = 1, z = 1), prior_samples = TRUE)$intercept
+  law <- posterior_metadata(leaf, "prior_density")
+  for(value in c(-1, 0, 1)){
+    expected <- .5 * dnorm(value, sd = sqrt(5)) + .5 * dnorm(value)
+    expect_lt(abs(exp(prior_density_ordinate(law, value)$log_density) - expected), 1e-12)
+    expect_lt(abs(.prior_linear_density_height(law, value) - expected), 1e-8)
+  }
+  expect_true(posterior_atoms_free(leaf))
+  expect_identical(unname(posterior_metadata(leaf, "support")$bounds), c(-Inf, Inf))
+})
+

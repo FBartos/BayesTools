@@ -772,6 +772,16 @@
     ))
   }
 
+  # The split has consumed each active numeric owner scale into these weights.
+  # Remove that owner attribute before recursion, while retaining state products.
+  for(parameter in names(prior_list)){
+    prior <- prior_list[[parameter]]
+    if(!is.null(prior) && is.numeric(attr(prior, "multiply_by", exact = TRUE)) &&
+       any(.prior_linear_prior_columns(parameter, prior) %in% names(weights))){
+      attr(prior, "multiply_by") <- NULL
+      prior_list[[parameter]] <- prior
+    }
+  }
   weights <- split$additive_weights
   weights <- weights[weights != 0]
 
