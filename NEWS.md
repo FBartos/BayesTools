@@ -1,4 +1,8 @@
 # version 0.3.1
+- joint ordered prior draws honor declared shared allocation IDs while preserving unrelated RNG streams. Formula binding rejects indicator-coded ordered terms and clashes with emitted ordered nodes; replay retains ordered provenance, source dependencies, term ownership, and typed conditions. Expression-point totals keep their multi-slice fitted snapshot monitors.
+- ordered `cumulative` totals represent the first-to-last effect; `cumulative_levels` totals represent the last level's effect from zero. General mixture totals require one slice; multi-slice totals support simple, point, and spike-and-slab priors.
+- orthonormal point mixtures preserve their full continuous transformed grid; optional PET-PEESE partition anchors that lack full precision retain diagnostics without losing integration mass. Ordinary factor spikes retain their declared joint dimensions after component localization, and bounded BF subsets retain their class.
+- model probability refit requirements use the existing typed condition family with unchanged diagnostic messages.
 - ordered whole-factor posterior overlays use attached current-scale per-level prior laws after `posterior_transform()`; the public `ordered_source` metadata accessor preserves the existing producer validators.
 - ordinary spike-and-slab replay uses ordinary inclusion-indicator errors; JAGS formula binding explicitly refuses mixtures of ordered containers while retaining their constructor and sampler. Mixture behavior on an ordered total remains supported.
 - Harrell-Davis documentation qualifies accuracy and tiny-probability limits; focused tests verify a resolvable last-draw contribution and complete opposite-infinity diagnostics without changing the estimator.
