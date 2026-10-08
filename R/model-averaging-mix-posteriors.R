@@ -743,9 +743,7 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
 
   # gather and check compatibility of prior distributions
   priors_info <- lapply(priors, function(p){
-    if(is.prior.point(p) | is.prior.none(p)){
-      return(FALSE)
-    }else if(is.prior.factor(p)){
+    if(is.prior.factor(p)){
       return(list(
         "levels"            = .get_prior_factor_levels(p),
         "level_names"       = .get_prior_factor_level_names(p),
@@ -762,6 +760,8 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
         "meandif"           = is.prior.meandif(p),
         "ordered"           = is.prior.ordered(p)
       ))
+    }else if(is.prior.point(p) | is.prior.none(p)){
+      return(FALSE)
     }else{
       stop("unsupported prior type")
     }

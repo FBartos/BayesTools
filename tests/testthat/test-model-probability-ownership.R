@@ -110,6 +110,37 @@ test_that("weightfunction null locations are exactly one", {
   expect_true(.is_prior_weightfunction_null(prior("point", list(1))))
 })
 
+test_that("compiled factor point mixtures retain the declared factor shape", {
+  make <- function(location, contrast, levels = c("a", "b", "c")){
+    data <- data.frame(f = factor(rep(levels, 2L), levels = levels))
+    compiled <- JAGS_formula(~f, "mu", data, list(intercept = prior("point", list(0)),
+      f = prior_factor("point", list(location), contrast = contrast)))
+    draws <- .generate_prior_sample_matrix(compiled$prior_list, 8L, seed = 17)
+    fit <- structure(list(mcmc = coda::mcmc.list(coda::mcmc(draws)), sample = 8L,
+      summary.pars = list(mutate = NULL), monitor = colnames(draws)), class = c("runjags", "BayesTools_fit", "list"))
+    attr(fit, "prior_list") <- compiled$prior_list
+    attr(fit, "formula_design") <- list(mu = compiled$formula_design)
+    list(fit = attach_test_parameter_map(fit), marglik = bridgesampling_object(0), prior_weights = 1)
+  }
+  for(contrast in c("treatment", "independent")){
+    models <- list(make(0, contrast), make(2, contrast))
+    mixed <- mix_posteriors(models, "mu_f", list(c(FALSE, FALSE)), seed = 1, n_samples = 20L)
+    expect_true(all(mixed$mu_f %in% c(0, 2)))
+    expect_identical(attr(mixed$mu_f, "factor_design"), attr(attr(models[[1L]]$fit, "prior_list")$mu_f, "factor_design"))
+    atoms <- .posterior_atoms_get(mixed$mu_f)
+    expect_true(atoms$joint_declared)
+    expect_equal(sort(atoms$mass), c(.5, .5), tolerance = 0)
+    levels <- marginal_posterior(mixed, "mu_f", use_formula = FALSE, prior_samples = FALSE)
+    expect_identical(names(levels), c("a", "b", "c"))
+    if(contrast == "treatment"){
+      expect_identical(as.numeric(levels[[1L]]), rep(0, 20L))
+      expect_equal(.posterior_atoms_get(levels[[1L]])$mass, 1, tolerance = 0)
+    }
+    incompatible <- list(models[[1L]], make(2, contrast, c("u", "v", "w")))
+    expect_error(mix_posteriors(incompatible, "mu_f", list(c(FALSE, FALSE)), seed = 1, n_samples = 20L))
+  }
+})
+
 .model_probability_reference <- function(weights, evidence) {
   raw <- log(weights)
   raw <- raw - max(raw)
