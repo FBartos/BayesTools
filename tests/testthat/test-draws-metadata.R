@@ -1,4 +1,23 @@
 skip_if_not_test_profile("unit")
+test_that("empty public measure refusal tables clear metadata after validation", {
+  x <- c(1, 2); attr(x, "parameter") <- "theta"
+  table <- data.frame(column = "theta", measure = "atoms", reason = "Known unavailable")
+  posterior_metadata(x, "measure_unavailable") <- table
+  expect_identical(posterior_metadata(x, "measure_unavailable"), table)
+  for(value in list(table[FALSE, , drop = FALSE], NULL)){
+    y <- x
+    posterior_metadata(y, "measure_unavailable") <- value
+    expect_null(posterior_metadata(y, "measure_unavailable"))
+    expect_identical(as.numeric(y), c(1, 2))
+  }
+  original <- serialize(x, NULL)
+  condition <- tryCatch({posterior_metadata(x, "measure_unavailable") <- "a"; NULL}, error = identity)
+  expect_s3_class(condition, "error")
+  expect_identical(conditionMessage(condition), "Draw metadata 'measure_unavailable' is invalid: it must be a plain column/measure/reason table with unique target measures.")
+  expect_null(conditionCall(condition))
+  expect_identical(serialize(x, NULL), original)
+})
+
 source(testthat::test_path("common-functions.R"))
 
 test_that("the public ordered source accessor preserves producer validation", {

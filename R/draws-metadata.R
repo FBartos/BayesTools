@@ -433,7 +433,10 @@
     fields$linear_weight_space <- if(is.null(fields$linear_weights)) NULL else
       if(identical(context$linear_weight_space, "formula_contribution")) "formula_contribution" else "coefficient"
   }
-  if(!is.null(fields$measure_unavailable) && nrow(fields$measure_unavailable) == 0L) fields$measure_unavailable <- NULL
+  if(!is.null(fields$measure_unavailable)){
+    .bt_meta_validate("measure_unavailable", fields$measure_unavailable)
+    if(nrow(fields$measure_unavailable) == 0L) fields["measure_unavailable"] <- list(NULL)
+  }
   for(field in names(fields)){
     .bt_meta_check_field(field)
     if(!is.null(fields[[field]])){
