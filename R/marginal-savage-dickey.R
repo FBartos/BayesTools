@@ -481,7 +481,13 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
       ))
     }
   }
-  if(!is.null(stored_posterior_density) && is.null(stored_posterior_ordinate)){
+  support_exclusion <- if(!normal_approximation &&
+    (!is.null(stored_posterior_ordinate) || !is.null(stored_posterior_density))){
+    .Savage_Dickey_BF.support_exclusion(posterior,
+      null_hypothesis = null_hypothesis, source_support = stored_posterior_density_support)
+  }else NULL
+  if(!is.null(stored_posterior_density) && is.null(stored_posterior_ordinate) &&
+     !isTRUE(support_exclusion[["excluded"]])){
     posterior_range <- range(stored_posterior_density[["x"]], finite = TRUE)
     if(null_hypothesis < posterior_range[1] || null_hypothesis > posterior_range[2]){
       stop(
@@ -491,6 +497,7 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
     }
   }
   if(is.null(stored_posterior_ordinate) &&
+     !isTRUE(support_exclusion[["excluded"]]) &&
      (null_hypothesis < posterior_range[1] || null_hypothesis > posterior_range[2]) &&
      !isTRUE(null_at_support_boundary)){
     warnings <- c(warnings, .Savage_Dickey_BF_extrapolation_warning)
@@ -540,11 +547,6 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
       posterior_height <- exp(log_posterior_height)
     }
   }else if(!is.null(stored_posterior_ordinate)){
-    support_exclusion <- .Savage_Dickey_BF.support_exclusion(
-      posterior,
-      null_hypothesis = null_hypothesis,
-      source_support  = stored_posterior_density_support
-    )
     warnings <- c(warnings, support_exclusion[["warnings"]])
     if(isTRUE(support_exclusion[["excluded"]])){
       fallback_warning <- paste0(
@@ -563,11 +565,6 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
       BF_error_percent <- .posterior_ordinate_bf_error_percent(stored_posterior_ordinate)
     }
   }else if(!is.null(stored_posterior_density)){
-    support_exclusion <- .Savage_Dickey_BF.support_exclusion(
-      posterior,
-      null_hypothesis = null_hypothesis,
-      source_support  = stored_posterior_density[["support"]]
-    )
     warnings <- c(warnings, support_exclusion[["warnings"]])
     if(isTRUE(support_exclusion[["excluded"]])){
       fallback_warning <- paste0(

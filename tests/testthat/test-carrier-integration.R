@@ -84,3 +84,21 @@ test_that("list measure refusals emit exactly once at the actual level", {
   expect_silent(Savage_Dickey_BF(parent, silent = TRUE))
   expect_error(Savage_Dickey_BF(bad, silent = TRUE), class = "BayesTools_formula_measure_unavailable")
 })
+
+test_that("validated exact support exclusion precedes a stored grid's span guard", {
+  x <- structure(seq(0, 1, length.out = 301L), class = c("marginal_posterior.simple", "marginal_posterior"))
+  attr(x, "parameter") <- "theta"
+  posterior_metadata(x, "atoms") <- posterior_atom_attribute()
+  posterior_metadata(x, "prior_density") <- prior("normal", list(0, 1))
+  posterior_metadata(x, "posterior_density") <- posterior_density_attribute(seq(0, 1, length.out = 101L), rep(.5, 101L),
+    method = "support-guard", density_method = "qCMDE", support = posterior_support_attribute(c(0, 1)))
+  result <- Savage_Dickey_BF(x, -.5, silent = TRUE, density_method = "precomputed")
+  expect_identical(as.numeric(result), Inf)
+  expect_identical(attr(result, "posterior_density_source"), "exact_support_exclusion")
+  expect_true(attr(result, "posterior_density_fallback"))
+  expect_match(attr(result, "posterior_density_fallback_warnings"), "Ignoring the precomputed posterior density", fixed = TRUE)
+  expect_false(any(grepl("extrapolation", attr(result, "warnings"))))
+  posterior_metadata(x, "posterior_density") <- posterior_density_attribute(seq(0, 1, length.out = 101L), rep(.5, 101L),
+    method = "unmatched-support", density_method = "qCMDE", support = posterior_support_attribute(c(-1, 1)))
+  expect_error(Savage_Dickey_BF(x, -.5, silent = TRUE, density_method = "precomputed"), "does not span", fixed = TRUE)
+})
