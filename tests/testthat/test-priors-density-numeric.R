@@ -8,6 +8,39 @@ skip_if_not_test_profile("unit")
   sum(diff(density$x) * (head(density$y, -1) + tail(density$y, -1)) / 2)
 }
 
+test_that("diagonal multivariate Normal log densities retain checked and independent identities", {
+
+  for(k in c(1L, 2L, 5L)) for(spec in list(c(.3, .7), c(-4, .02), c(3e6, 2e6))){
+    mean <- spec[[1L]]
+    sd <- spec[[2L]]
+    p <- prior("mnormal", list(mean = mean, sd = sd, K = k))
+    x <- mean + sd * seq(-1.25, 1.75, length.out = k)
+    rows <- rbind(first = x, second = mean + sd * seq(.2, 2.2, length.out = k))
+    covariance <- diag(sd^2, k)
+    expect_identical(lpdf(p, x), mvtnorm::dmvnorm(x, rep(mean, k), covariance, log = TRUE))
+    expect_identical(lpdf(p, rows), mvtnorm::dmvnorm(rows, rep(mean, k), covariance, log = TRUE))
+    expect_equal(lpdf(p, x), sum(stats::dnorm(x, mean, sd, log = TRUE)), tolerance = 1e-12)
+    independent <- rowSums(matrix(stats::dnorm(as.numeric(rows), mean, sd, log = TRUE),
+      nrow = nrow(rows), dimnames = dimnames(rows)))
+    expect_equal(lpdf(p, rows), independent, tolerance = 1e-12)
+  }
+})
+
+test_that("internally diagonal Normal densities omit only the redundant symmetry check", {
+
+  original <- mvtnorm::dmvnorm
+  observed <- NULL
+  testthat::local_mocked_bindings(dmvnorm = function(x, mean, sigma, log, checkSymmetry = TRUE){
+    observed <<- list(sigma = sigma, log = log, checkSymmetry = checkSymmetry)
+    original(x, mean = mean, sigma = sigma, log = log, checkSymmetry = checkSymmetry)
+  }, .package = "mvtnorm")
+  p <- prior("mnormal", list(mean = 1, sd = 2, K = 2L))
+  expect_identical(lpdf(p, c(0, 1)), original(c(0, 1), c(1, 1), diag(4, 2), log = TRUE))
+  expect_false(observed$checkSymmetry)
+  expect_true(observed$log)
+  expect_identical(observed$sigma, diag(4, 2))
+})
+
 test_that("density transformation Jacobians use absolute inverse derivatives", {
   expect_equal(
     BayesTools:::.density.prior_transformation_y(

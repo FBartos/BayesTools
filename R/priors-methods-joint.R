@@ -566,7 +566,9 @@ lpdf.prior  <- function(x, y, ...){
 
     log_lik <- switch(
       prior[["distribution"]],
-      "mnormal"    = mvtnorm::dmvnorm(x, mean = par1, sigma = par2, log = TRUE),
+      # par2 is freshly constructed as diagonal above. Revisit this if general
+      # covariance is supported; all other dmvnorm checks remain in effect.
+      "mnormal"    = mvtnorm::dmvnorm(x, mean = par1, sigma = par2, log = TRUE, checkSymmetry = FALSE),
       "mt"         = mvtnorm::dmvt(x, delta = par1, sigma = par2, df = prior$parameter[["df"]], type = "shifted", log = TRUE),
       "mpoint"     = dmpoint(x, location = par1, log = TRUE)
     )

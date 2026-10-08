@@ -1,4 +1,5 @@
 # version 0.3.1
+- diagonal multivariate Normal prior log densities avoid redundant covariance symmetry checks while retaining the same density engine and numerical validation.
 - factor contrast views retain scalar atom declarations certified from their full declared parent, including scaled interactions; uncertified scalar and joint laws retain their existing refusals.
 - live BF formatting preserves canonical logarithms across views; validated exact support exclusion precedes precomputed-grid span checks. List measure refusals emit their labelled warning when requested, and removing finite linear recipes clears their companion space.
 - partial atom declarations retain certified scalar marginals and an explicit typed joint refusal through transformations. Posterior support follows finite posterior model logs; fixed spike inclusion boundaries use only their declared active support. Weightfunction null points are exactly one, and point-valued factor mixtures retain their factor design.
