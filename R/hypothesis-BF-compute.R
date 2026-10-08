@@ -565,9 +565,9 @@
   posterior_right <- .hypothesis_region_mass(quantity, right, prior = FALSE)
 
   .hypothesis_check_prior_mass(prior_left, left[["label"]],
-                               allow_one = explicit)
+                               allow_one = explicit || isTRUE(is.finite(prior_right) && prior_right > 0))
   .hypothesis_check_prior_mass(prior_right, right[["label"]],
-                               allow_one = explicit)
+                               allow_one = explicit || isTRUE(is.finite(prior_left) && prior_left > 0))
 
   if(posterior_left == 0 && posterior_right == 0){
     return(list(

@@ -28,6 +28,28 @@ test_that("hypothesis table indices retain ordinary data-frame row ownership", {
   }
 })
 
+test_that("implicit near-one prior regions use their independently positive complement", {
+  distribution <- prior("normal", list(0, 1))
+  expect_identical(cdf(distribution, 10), 1)
+  expect_gt(ccdf(distribution, 10), 0)
+  for(text in c("theta > 10", "theta <= 10")){
+    explicit <- if(text == "theta > 10") "theta > 10 vs theta <= 10" else "theta <= 10 vs theta > 10"
+    implicit <- hypothesis_BF(c(9, 11), distribution, text, parameter = "theta", seed = 1, columns = "all")
+    compared <- hypothesis_BF(c(9, 11), distribution, explicit, parameter = "theta", seed = 1, columns = "all")
+    expect_identical(attr(implicit, "raw_log_BF"), attr(compared, "raw_log_BF"))
+    expect_identical(attr(implicit, "prior_numerical_diagnostics"), attr(compared, "prior_numerical_diagnostics"))
+    expected <- -stats::pnorm(10, lower.tail = FALSE, log.p = TRUE)
+    if(text == "theta <= 10") expected <- -expected
+    expect_equal(attr(implicit, "raw_log_BF"), expected, tolerance = 1e-12)
+  }
+  half <- prior("normal", list(0, 1), list(0, Inf))
+  positive <- tryCatch(hypothesis_BF(c(1, 2), half, "theta > 0", parameter = "theta"), error = identity)
+  zero <- tryCatch(hypothesis_BF(c(1, 2), half, "theta <= 0", parameter = "theta"), error = identity)
+  expect_s3_class(positive, "BayesTools_prior_region_mass_unavailable")
+  expect_identical(positive$reason, "zero_complement")
+  expect_identical(zero$reason, "zero_or_nonfinite")
+})
+
 test_that("level targets require the same complete declared joint context", {
   first <- .hypothesis_factor_marginal_for_test(independent = TRUE)
   second <- .hypothesis_factor_marginal_for_test(sd = 2, independent = TRUE)
