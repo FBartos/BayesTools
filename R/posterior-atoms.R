@@ -17,6 +17,11 @@
 #' \code{marginals}, named in the full draw-column order. Scalar extraction
 #' prefers these declarations; a continuous joint measure can have a point
 #' marginal, for example the last level of an ordered point-total prior.
+#' When a producer can certify only scalar marginals, the object records
+#' \code{joint_declared = FALSE} and retains its typed joint refusal in
+#' \code{joint_unavailable}. Its empty joint table is dimensional storage.
+#' It does not declare an atom-free joint law. Scalar selection uses only
+#' certified marginals; whole-law inference retains the joint refusal.
 #'
 #' @export
 posterior_atom_attribute <- function(point_masses = NULL, source = "user"){
@@ -51,6 +56,8 @@ posterior_atom_attribute <- function(point_masses = NULL, source = "user"){
 #' and the joint measure have no positive atomic mass;
 #' \code{FALSE} when the draws declare a point mass or do not declare their
 #' atom status. Plain numeric draws, which carry no metadata, are an error.
+#' An explicitly unavailable joint law signals its retained typed condition,
+#' even when one or more scalar marginals have valid certificates.
 #'
 #' @examples
 #' draws <- structure(stats::rnorm(10), class = c("marginal_posterior.simple", "marginal_posterior"))
@@ -141,7 +148,11 @@ posterior_atoms_free <- function(x){
                                  component_probabilities = NULL,
                                  marginals = NULL,
                                  component_log_probabilities = NULL,
-                                 model_probability_declaration = NULL){
+                                 model_probability_declaration = NULL,
+                                 joint_declared = TRUE, joint_unavailable = NULL){
+
+  check_bool(declared, "declared", allow_NA = FALSE)
+  check_bool(joint_declared, "joint_declared", allow_NA = FALSE)
 
   if(is.null(locations)){
     n_columns <- if(is.null(column_names)) 1L else length(column_names)
@@ -194,20 +205,34 @@ posterior_atoms_free <- function(x){
     marginals <- lapply(marginals, function(marginal){
       if(is.null(marginal)) return(NULL)
       marginal <- .posterior_atoms_from_attribute(marginal)
-      if(ncol(marginal$locations) != 1L || !is.null(marginal$marginals)){
+      if(!isTRUE(marginal$joint_declared) || ncol(marginal$locations) != 1L || !is.null(marginal$marginals)){
         stop("Each posterior scalar marginal must declare a single column without nested marginals.", call. = FALSE)
       }
       marginal
     })
   }
 
+  if(!joint_declared){
+    if(nrow(locations) != 0L || length(mass) != 0L || is.null(marginals) ||
+       is.null(colnames(locations)) || anyNA(colnames(locations)) || any(!nzchar(colnames(locations))) || anyDuplicated(colnames(locations)) ||
+       all(vapply(marginals, is.null, logical(1))) ||
+       !inherits(joint_unavailable, "condition") ||
+       !inherits(joint_unavailable, c("BayesTools_formula_atoms_unavailable", "BayesTools_formula_measure_unavailable"))){
+      stop("Partial posterior atoms require certified scalar marginals and a typed joint refusal, with no declared joint mass.", call. = FALSE)
+    }
+  }else if(!is.null(joint_unavailable)){
+    stop("Complete posterior atoms cannot carry a joint-unavailable condition.", call. = FALSE)
+  }
+
   out <- list(
     declared = isTRUE(declared),
+    joint_declared = joint_declared,
     locations = locations,
     mass = mass,
     source = source,
     component_probabilities = component_probabilities
   )
+  if(!joint_declared) out$joint_unavailable <- joint_unavailable
   if(!is.null(marginals)) out$marginals <- marginals
   if(!is.null(model_probability_declaration) || !is.null(component_log_probabilities)){
     out$component_log_probabilities <- component_log_probabilities
@@ -238,7 +263,9 @@ posterior_atoms_free <- function(x){
     component_probabilities = atoms$component_probabilities,
     component_log_probabilities = atoms$component_log_probabilities,
     model_probability_declaration = atoms$model_probability_declaration,
-    marginals = atoms$marginals
+    marginals = atoms$marginals,
+    joint_declared = if(is.null(atoms$joint_declared)) TRUE else atoms$joint_declared,
+    joint_unavailable = atoms$joint_unavailable
   )
 }
 
@@ -436,10 +463,12 @@ posterior_atoms_free <- function(x){
 
 .posterior_atoms_set <- function(samples, atoms){
 
-  if(inherits(atoms, "BayesTools_formula_measure_unavailable")){
+  if(inherits(atoms, c("BayesTools_formula_atoms_unavailable", "BayesTools_formula_measure_unavailable"))){
     columns <- if(is.matrix(samples)) colnames(samples) else attr(samples, "parameter", exact = TRUE)
     ordered <- .bt_meta_get(samples, "ordered_source")
     if(!is.null(ordered)){
+      for(column in columns) samples <- .bt_formula_measure_mark(samples, column, "atoms",
+        if(is.null(atoms$detail)) atoms$message else atoms$detail, cause = atoms$reason, diagnostics = atoms$diagnostics)
       marginals <- lapply(seq_along(columns), function(i){
         weights <- diag(length(columns))[i, ]
         projection <- .bt_ordered_source_project(ordered, weights)
@@ -457,9 +486,11 @@ posterior_atoms_free <- function(x){
         }
       }
       names(marginals) <- columns
+      if(all(vapply(marginals, is.null, logical(1)))) return(.bt_meta_set(samples, "atoms", NULL))
       return(.bt_meta_set(samples, "atoms", .posterior_atoms_new(column_names = columns, marginals = marginals,
         component_probabilities = ordered$model_probabilities, component_log_probabilities = ordered$model_log_probabilities,
-        model_probability_declaration = ordered$model_probability_declaration)))
+        model_probability_declaration = ordered$model_probability_declaration,
+        joint_declared = FALSE, joint_unavailable = atoms)))
     }
     samples <- .bt_meta_set(samples, "atoms", NULL)
     for(column in columns) samples <- .bt_formula_measure_mark(samples, column, "atoms",
@@ -556,12 +587,12 @@ posterior_atoms_free <- function(x){
 
   if(!is.matrix(samples) || ncol(samples) == 0L) return(samples)
   unavailable <- .bt_meta_get(samples, "measure_unavailable")
-  if(!is.null(unavailable) && any(unavailable$measure == "atoms")){
-    # A producer ownership refusal is authoritative; this declaration path
-    # cannot replace it using allocated rows or a new empty joint measure.
-    return(samples)
-  }
-  atoms <- .posterior_atoms_get(samples)
+  joint_unavailable <- if(!is.null(unavailable) && any(unavailable$measure == "atoms")){
+    tryCatch(.bt_formula_measure_check(samples, "atoms", unavailable$column[unavailable$measure == "atoms"]),
+      BayesTools_formula_atoms_unavailable = function(condition) condition)
+  }else NULL
+  atoms <- .posterior_atoms_get(samples, allow_partial = TRUE)
+  if(!is.null(atoms) && !atoms$joint_declared) joint_unavailable <- atoms$joint_unavailable
   if(is.null(posterior_pair)){
     owners <- .bt_meta_get(samples, "model_probabilities")
     if(!is.null(owners)) posterior_pair <- owners$posterior else
@@ -570,9 +601,7 @@ posterior_atoms_free <- function(x){
         declaration = atoms$model_probability_declaration)
   }
   declarations <- .posterior_weightfunction_scalar_laws(priors, probabilities, colnames(samples), source, posterior_pair)
-  atoms <- .posterior_atoms_get(samples)
-  if(is.null(atoms)) atoms <- .posterior_atoms_new(column_names = colnames(samples),
-    source = source, component_probabilities = probabilities)
+  atoms <- .posterior_atoms_get(samples, allow_partial = TRUE)
   marginals <- if(is.null(atoms$marginals)) declarations$marginals else atoms$marginals
   supports <- .bt_meta_get(samples, "support")
   if(!.posterior_metadata_is_container(supports)) supports <- declarations$supports
@@ -588,20 +617,26 @@ posterior_atoms_free <- function(x){
   declared <- !vapply(declarations$marginals, is.null, logical(1))
   marginals[declared] <- declarations$marginals[declared]
   supports[declared] <- declarations$supports[declared]
-  atoms <- .posterior_atoms_new(atoms$locations, atoms$mass,
-    column_names = colnames(samples), source = atoms$source,
-    component_probabilities = atoms$component_probabilities,
-    component_log_probabilities = atoms$component_log_probabilities,
-    model_probability_declaration = atoms$model_probability_declaration, marginals = marginals)
-  samples <- .posterior_atoms_set(samples, atoms)
+  if(is.null(joint_unavailable) || any(!vapply(marginals, is.null, logical(1)))){
+    atoms <- .posterior_atoms_new(if(is.null(joint_unavailable)) atoms$locations else NULL,
+      if(is.null(joint_unavailable) && !is.null(atoms)) atoms$mass else numeric(),
+      column_names = colnames(samples), source = if(is.null(atoms)) source else atoms$source,
+      component_probabilities = if(is.null(posterior_pair)) probabilities else posterior_pair$probabilities,
+      component_log_probabilities = posterior_pair$logs,
+      model_probability_declaration = posterior_pair$declaration, marginals = marginals,
+      joint_declared = is.null(joint_unavailable), joint_unavailable = joint_unavailable)
+    samples <- .posterior_atoms_set(samples, atoms)
+  }else samples <- .bt_meta_set(samples, "atoms", NULL)
   .posterior_support_set(samples, supports)
 }
 
 # The declared posterior atoms of 'samples' (their only source), or NULL when
 # the atom status is undeclared.
-.posterior_atoms_get <- function(samples){
+.posterior_atoms_get <- function(samples, allow_partial = FALSE){
 
+  check_bool(allow_partial, "allow_partial", allow_NA = FALSE)
   atoms <- .posterior_atoms_from_attribute(.bt_meta_get(samples, "atoms"))
+  if(!is.null(atoms) && !atoms$joint_declared && !allow_partial) stop(atoms$joint_unavailable)
   if(!is.null(atoms) && is.matrix(samples) && ncol(samples)==ncol(atoms$locations) && !is.null(colnames(samples))){
     atoms <- .posterior_atoms_rename_columns(atoms,colnames(samples))
   }
@@ -634,6 +669,7 @@ posterior_atoms_free <- function(x){
     return(NULL)
   }
   if(!is.null(atoms$marginals)) return(atoms$marginals[[column]])
+  if(!atoms$joint_declared) return(NULL)
 
   x <- atoms$locations[, column]
   point_masses <- data.frame(x = x, mass = atoms$mass)
@@ -682,6 +718,8 @@ posterior_atoms_free <- function(x){
     component_probabilities = atoms$component_probabilities,
     component_log_probabilities = atoms$component_log_probabilities,
     model_probability_declaration = atoms$model_probability_declaration,
+    joint_declared = atoms$joint_declared,
+    joint_unavailable = atoms$joint_unavailable,
     marginals = if(!is.null(atoms$marginals)) lapply(atoms$marginals, function(marginal){
       if(is.null(marginal)) NULL else .posterior_atoms_transform(marginal, transformation, transformation_arguments)
     })
@@ -695,12 +733,31 @@ posterior_atoms_free <- function(x){
   if(is.null(atoms)){
     return(NULL)
   }
-  if(!is.matrix(design) || ncol(design) != ncol(atoms$locations)){
+  if(!is.matrix(design) || !is.numeric(design) || any(!is.finite(design)) || ncol(design) != ncol(atoms$locations)){
     stop("The atom transformation design does not match the joint atom locations.",
          call. = FALSE)
   }
   if(is.null(column_names)) column_names <- rownames(design)
   if(is.null(column_names) && !is.null(atoms$marginals)) column_names <- paste0("value",seq_len(nrow(design)))
+
+  marginals <- if(!is.null(atoms$marginals)){
+    stats::setNames(lapply(seq_len(nrow(design)), function(i){
+      active <- which(design[i, ] != 0)
+      if(length(active) == 0L) return(.posterior_atoms_new(matrix(0, 1L, 1L), 1, column_names = column_names[[i]]))
+      if(length(active) != 1L) return(NULL)
+      marginal <- atoms$marginals[[active]]
+      if(is.null(marginal)) return(NULL)
+      .posterior_atoms_new(marginal$locations * design[i, active], marginal$mass,
+        column_names = column_names[[i]], source = paste0(marginal$source, ":linear_transform"),
+        component_probabilities = marginal$component_probabilities,
+        component_log_probabilities = marginal$component_log_probabilities,
+        model_probability_declaration = marginal$model_probability_declaration)
+    }), column_names)
+  }else NULL
+  if(!atoms$joint_declared){
+    if(nrow(design) == 1L && !is.null(marginals[[1L]])) return(marginals[[1L]])
+    if(is.null(marginals) || all(vapply(marginals, is.null, logical(1)))) return(atoms$joint_unavailable)
+  }
 
   .posterior_atoms_new(
     locations = atoms$locations %*% t(design),
@@ -711,17 +768,8 @@ posterior_atoms_free <- function(x){
     component_probabilities = atoms$component_probabilities,
     component_log_probabilities = atoms$component_log_probabilities,
     model_probability_declaration = atoms$model_probability_declaration,
-    marginals = if(!is.null(atoms$marginals)){
-      stats::setNames(lapply(seq_len(nrow(design)), function(i){
-        active <- which(design[i,] != 0)
-        if(length(active) == 0L) return(.posterior_atoms_new(matrix(0,1L,1L),1,column_names=column_names[[i]]))
-        if(length(active) != 1L) return(NULL)
-        marginal <- atoms$marginals[[active]]
-        if(is.null(marginal)) return(NULL)
-        .posterior_atoms_new(marginal$locations * design[i,active], marginal$mass,
-          column_names=column_names[[i]],source=paste0(marginal$source,":linear_transform"))
-      }),column_names)
-    }
+    marginals = marginals,
+    joint_declared = atoms$joint_declared, joint_unavailable = atoms$joint_unavailable
   )
 }
 

@@ -17,12 +17,16 @@
 
   # Scalar declarations, including an explicit empty marginal, determine
   # the measure. Repeated posterior values never introduce an atom.
-  posterior_atom_metadata <- .posterior_atoms_get(samples)
+  posterior_atom_metadata <- .posterior_atoms_get(samples, allow_partial = TRUE)
   if(is.null(posterior_atom_metadata)){
     .plot_data_stop_unknown_atoms()
   }
   atoms <- .posterior_atoms_for_column(posterior_atom_metadata, parameter)
-  if(is.null(atoms)) .plot_data_stop_unknown_atoms()
+  if(is.null(atoms)){
+    column <- if(is.character(parameter)) parameter else colnames(samples)[parameter]
+    .bt_formula_measure_check(samples, "atoms", column)
+    .plot_data_stop_unknown_atoms()
+  }
   density_bounds <- .posterior_support_bounds(samples, name = parameter, interval_only = TRUE)
   samples <- samples[, parameter]
   continuous <- .Savage_Dickey_BF.continuous_posterior(samples, atoms)
@@ -324,7 +328,7 @@
 .plot_data_factor_column_atoms <- function(samples){
 
   .bt_ordered_source_require_measure(samples)
-  posterior_atoms <- .posterior_atoms_get(samples)
+  posterior_atoms <- .posterior_atoms_get(samples, allow_partial = TRUE)
   if(is.null(posterior_atoms)){
     .plot_data_stop_unknown_atoms()
   }

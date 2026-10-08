@@ -22,6 +22,11 @@ BayesTools producers can additionally declare positional scalar
 \code{marginals}, named in the full draw-column order. Scalar extraction
 prefers these declarations; a continuous joint measure can have a point
 marginal, for example the last level of an ordered point-total prior.
+When a producer can certify only scalar marginals, the object records
+\code{joint_declared = FALSE} and retains its typed joint refusal in
+\code{joint_unavailable}. Its empty joint table is dimensional storage.
+It does not declare an atom-free joint law. Scalar selection uses only
+certified marginals; whole-law inference retains the joint refusal.
 }
 \description{
 Creates exact posterior measure metadata used to distinguish a

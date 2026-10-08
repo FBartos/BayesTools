@@ -398,14 +398,14 @@
     .plot_data_selected_posterior_density(samples, samples[[parameter]], parameter)
   }else NULL
   samples    <- samples[[parameter]]
-  .bt_formula_measure_check(samples, "atoms")
   .bt_ordered_source_require_measure(samples)
   prior_list <- attr(samples, "prior_list")
-  posterior_atoms <- .posterior_atoms_get(samples)
+  posterior_atoms <- .posterior_atoms_get(samples, allow_partial = TRUE)
   if (!(is.prior.mixture(prior_list) || is.prior.spike_and_slab(prior_list)) && is.prior(prior_list))
     prior_list <- list(prior_list)
 
   if(is.null(posterior_atoms)){
+    .bt_formula_measure_check(samples, "atoms")
     .plot_data_stop_unknown_atoms()
   }
   posterior_atoms <- .posterior_atoms_for_column(
@@ -413,6 +413,7 @@
     if(ncol(posterior_atoms$locations) == 1L) 1L else parameter
   )
   if(is.null(posterior_atoms)){
+    .bt_formula_measure_check(samples, "atoms")
     stop("Simple posterior plotting is unavailable because atom metadata do not identify the requested parameter.", call. = FALSE)
   }
   continuous <- .Savage_Dickey_BF.continuous_posterior(samples, posterior_atoms)

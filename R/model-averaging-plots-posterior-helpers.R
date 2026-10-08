@@ -266,7 +266,8 @@
         component_probabilities = atoms$component_probabilities,
         component_log_probabilities = atoms$component_log_probabilities,
         model_probability_declaration = atoms$model_probability_declaration,
-        marginals = if(!is.null(atoms$marginals)) atoms$marginals[selected])
+        marginals = if(!is.null(atoms$marginals)) atoms$marginals[selected],
+        joint_declared = atoms$joint_declared, joint_unavailable = atoms$joint_unavailable)
     }else metadata$atoms <- NULL
     for(field in c("support", "prior_densities")){
       if(.posterior_metadata_is_container(metadata[[field]])) metadata[[field]] <- metadata[[field]][columns]
@@ -284,7 +285,7 @@
   }
   if(parameter %in% c("PET", "PEESE") && ncol(new_samples) == 0L){
     indicator <- .bt_draws_component(samples[["bias"]])
-    atoms <- .posterior_atoms_get(samples[["bias"]])
+    atoms <- .posterior_atoms_get(samples[["bias"]], allow_partial = TRUE)
     probabilities <- if(is.null(atoms)) NULL else atoms$component_probabilities
     active <- unique(c(which(probabilities > 0), indicator))
     if(length(indicator) != nrow(new_samples) ||
@@ -326,7 +327,7 @@
   attr(prior_list, "omega_context") <- attr(samples[["bias"]], "omega_context")
   attr(new_samples, "prior_list") <- prior_list
   if(parameter %in% c("PET", "PEESE") && ncol(new_samples) == 1L){
-    atoms <- .posterior_atoms_get(samples[["bias"]])
+    atoms <- .posterior_atoms_get(samples[["bias"]], allow_partial = TRUE)
     if(!is.null(atoms)){
       probabilities <- atoms$component_probabilities
       scalar_atoms <- if(is.null(probabilities)){

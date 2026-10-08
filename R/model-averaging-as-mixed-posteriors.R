@@ -914,7 +914,7 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
   )
 
   if(inherits(prior, "prior.bias_mixture") && any(has_selection)){
-    atoms <- .posterior_atoms_get(samples)
+    atoms <- .posterior_atoms_get(samples, allow_partial = TRUE)
     samples <- .posterior_weightfunction_declarations(samples, prior,
       atoms$component_probabilities, atoms$source)
   }

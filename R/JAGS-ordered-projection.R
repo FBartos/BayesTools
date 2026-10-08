@@ -407,7 +407,8 @@
 
   source <- .bt_meta_get(x,"ordered_source")
   if(is.null(source)) return(x)
-  existing <- .posterior_atoms_get(x)
+  existing <- .posterior_atoms_get(x, allow_partial = TRUE)
+  joint_unavailable <- existing$joint_unavailable
   reason <- .bt_ordered_source_validate(source)
   if(!is.null(reason)) stop(reason, call. = FALSE)
   projections <- lapply(seq_len(nrow(design)),function(i) .bt_ordered_source_project(source,design[i,]))
@@ -437,20 +438,21 @@
   for(i in seq_along(marginals)){
     if(inherits(marginals[[i]],"BayesTools_formula_measure_unavailable")){
       condition <- marginals[[i]]
+      if(is.null(joint_unavailable)) joint_unavailable <- condition
       x <- .bt_formula_measure_mark(x,columns[[i]],"atoms",conditionMessage(condition),
         cause=condition$reason,diagnostics=condition$diagnostics)
       marginals[i] <- list(NULL)
     }
   }
-  if(!is.null(unavailable)){
+  if(!is.null(unavailable) && is.null(joint_unavailable)){
     refused <- unavailable$column[unavailable$measure=="atoms"]
     for(i in which(columns %in% refused)) marginals[i] <- list(NULL)
   }
-  atoms <- .posterior_atoms_get(x)
+  atoms <- .posterior_atoms_get(x, allow_partial = TRUE)
   if(is.null(atoms)) atoms <- .posterior_atoms_new(column_names=columns)
   joint_locations <- do.call(cbind,lapply(projections,`[[`,"atom"))
   joint_rows <- rowSums(is.na(joint_locations))==0
-  if(all(!vapply(marginals,is.null,logical(1))) && nrow(atoms$locations)==0L &&
+  if(is.null(joint_unavailable) && all(!vapply(marginals,is.null,logical(1))) && nrow(atoms$locations)==0L &&
      all(source$model_probabilities[is.finite(source$model_log_probabilities)] >= .Machine$double.xmin) &&
      all(seq_along(source$models)[is.finite(source$model_log_probabilities)] %in% source$model)){
     locations <- unique(joint_locations[joint_rows,,drop=FALSE])
@@ -478,7 +480,14 @@
       }
     }
   }
-  atoms$marginals <- marginals
+  if(!is.null(joint_unavailable)){
+    if(all(vapply(marginals, is.null, logical(1)))) return(.bt_meta_set(x, "atoms", NULL))
+    atoms <- .posterior_atoms_new(column_names = columns, source = atoms$source,
+      component_probabilities = atoms$component_probabilities,
+      component_log_probabilities = atoms$component_log_probabilities,
+      model_probability_declaration = atoms$model_probability_declaration,
+      marginals = marginals, joint_declared = FALSE, joint_unavailable = joint_unavailable)
+  }else atoms$marginals <- marginals
   .posterior_atoms_set(x,atoms)
 }
 

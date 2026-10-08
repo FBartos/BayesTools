@@ -790,7 +790,7 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
       marginal_posterior_samples <- transform_factor_samples(samples)
       marginal_posterior_samples <- transform_treatment_samples(marginal_posterior_samples)[[parameter]]
       .bt_ordered_source_require_measure(marginal_posterior_samples)
-      marginal_factor_atoms <- .posterior_atoms_get(marginal_posterior_samples)
+      marginal_factor_atoms <- .posterior_atoms_get(marginal_posterior_samples, allow_partial = TRUE)
       marginal_posterior_samples <- .bt_meta_set(marginal_posterior_samples, "posterior_density", NULL)
       marginal_posterior_samples <- .bt_meta_set(marginal_posterior_samples, "posterior_ordinate", NULL)
       marginal_factor_metadata <- marginal_posterior_samples

@@ -464,7 +464,7 @@
     design              = design,
     columns             = colnames(transformed_samples)
   )
-  posterior_atoms <- .posterior_atoms_get(coefficient_samples)
+  posterior_atoms <- .posterior_atoms_get(coefficient_samples, allow_partial = TRUE)
   old_attributes <- attributes(coefficient_samples)
   old_class <- class(coefficient_samples)
   old_attributes <- old_attributes[
@@ -565,7 +565,7 @@
     }
   }
   out <- .bt_formula_measure_linear(samples, out, diag(length(keep))[keep, , drop = FALSE])
-  posterior_atoms <- .posterior_atoms_get(samples)
+  posterior_atoms <- .posterior_atoms_get(samples, allow_partial = TRUE)
   if(!is.null(posterior_atoms)){
     out <- .posterior_atoms_set(
       out,

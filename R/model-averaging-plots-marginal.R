@@ -273,7 +273,13 @@ plot_marginal <- function(samples, parameter, plot_type = "base", prior = FALSE,
 
   lapply(levels, function(level){
     out <- as.numeric(level)
-    atoms <- .posterior_atoms_get(level)
+    atoms <- .posterior_atoms_get(level, allow_partial = TRUE)
+    if(!is.null(atoms) && !atoms$joint_declared){
+      if(ncol(atoms$locations) != 1L) stop(atoms$joint_unavailable)
+      scalar <- .posterior_atoms_for_column(atoms, 1L)
+      if(is.null(scalar)) stop(atoms$joint_unavailable)
+      atoms <- scalar
+    }
     if(!is.null(atoms)){
       out <- .posterior_atoms_set(out, atoms)
     }
@@ -284,21 +290,25 @@ plot_marginal <- function(samples, parameter, plot_type = "base", prior = FALSE,
                                             posterior_density = NULL,
                                             density_method = c("KDE", "precomputed")){
 
-  .bt_formula_measure_check(x, "atoms")
   .bt_ordered_source_require_measure(x)
   x_points        <- NULL
   y_points        <- NULL
   density_method <- .posterior_density_method(density_method)
   posterior_density <- .posterior_density_for_method(posterior_density, density_method)
-  posterior_atoms <- .posterior_atoms_get(x)
+  posterior_atoms <- .posterior_atoms_get(x, allow_partial = TRUE)
 
   if(is.null(posterior_atoms)){
+    .bt_formula_measure_check(x, "atoms")
     .plot_data_stop_unknown_atoms()
   }
   if(ncol(posterior_atoms$locations) != 1L){
     stop("Marginal posterior plotting is unavailable for multivariate atom metadata.", call. = FALSE)
   }
   posterior_atoms <- .posterior_atoms_for_column(posterior_atoms, 1L)
+  if(is.null(posterior_atoms)){
+    .bt_formula_measure_check(x, "atoms")
+    .plot_data_stop_unknown_atoms()
+  }
   continuous <- .Savage_Dickey_BF.continuous_posterior(x, posterior_atoms)
   samples_density <- as.numeric(continuous$samples)
   continuous_mass <- continuous$continuous_mass

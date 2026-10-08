@@ -101,6 +101,63 @@ test_that("model probability refit requirements retain exact typed diagnostics",
 }
 
 # This oracle centers evidence before combining it with the original raw logs.
+test_that("joint numerical refusal retains independently declared omega scalars", {
+  first <- prior_weightfunction("one-sided", .05, wf_fixed(c(1, .5)))
+  second <- prior_weightfunction("one-sided", .1, wf_fixed(c(1, .25)))
+  mixed <- mix_posteriors(list(.model_probability_weightfunction_model(first),
+    .model_probability_weightfunction_model(second, -1000)), "bias", list(c(FALSE, FALSE)), seed = 47, n_samples = 20)
+  atoms <- posterior_metadata(mixed$bias, "atoms")
+  expect_s3_class(atoms, "BayesTools_posterior_atoms")
+  expect_error(posterior_atoms_free(mixed$bias), class = "BayesTools_formula_measure_unavailable")
+  plot <- tryCatch(.plot_data_samples.weightparameter(list(omega = mixed$bias), 1L, 128L), error = identity)
+  expect_false(inherits(plot, "condition"))
+  if(!inherits(plot, "condition")){
+    expect_equal(plot$points1$x, 1, tolerance = 0)
+    expect_equal(plot$points1$y, 1, tolerance = 0)
+    expect_null(plot$density)
+  }
+  unknown <- tryCatch(.plot_data_samples.weightparameter(list(omega = mixed$bias), 2L, 128L), error = identity)
+  expect_s3_class(unknown, "BayesTools_formula_measure_unavailable")
+  if(!is.null(atoms)){
+    expect_false(atoms$joint_declared)
+    expect_s3_class(atoms$joint_unavailable, "BayesTools_formula_measure_unavailable")
+    expect_identical(atoms$joint_unavailable$diagnostics$log_posterior_probabilities, c(0, -1000))
+    expect_null(conditionCall(atoms$joint_unavailable))
+    expect_identical(dim(atoms$locations), c(0L, 3L))
+    expect_equal(as.numeric(.posterior_atoms_for_column(atoms, 1L)$locations[, 1L]), 1, tolerance = 0)
+    expect_equal(.posterior_atoms_for_column(atoms, 1L)$mass, 1, tolerance = 0)
+    expect_null(.posterior_atoms_for_column(atoms, 2L))
+    expect_error(.posterior_atoms_get(mixed$bias), class = "BayesTools_formula_measure_unavailable")
+    expect_identical(.posterior_atoms_get(mixed$bias, allow_partial = TRUE), atoms)
+    transformed <- posterior_transform(mixed$bias, "lin", list(a = 2, b = 3))
+    expect_identical(dim(transformed), dim(mixed$bias))
+    expect_equal(as.numeric(transformed), 2 + 3 * as.numeric(mixed$bias), tolerance = 0)
+    transformed_atoms <- posterior_metadata(transformed, "atoms")
+    expect_false(transformed_atoms$joint_declared)
+    expect_equal(as.numeric(.posterior_atoms_for_column(transformed_atoms, 1L)$locations[, 1L]), 5, tolerance = 0)
+    expect_error(.posterior_atoms_get(transformed), class = "BayesTools_formula_measure_unavailable")
+    design <- matrix(c(2, 0, 0), 1L, dimnames = list("selected", colnames(mixed$bias)))
+    scalar <- .posterior_atoms_linear_transform(atoms, design)
+    expect_true(scalar$joint_declared)
+    expect_equal(as.numeric(scalar$locations[, 1L]), 2, tolerance = 0)
+    design[1L, 2L] <- 1
+    expect_s3_class(.posterior_atoms_linear_transform(atoms, design), "BayesTools_formula_measure_unavailable")
+    simplified <- .simplify_as_mixed_posterior_bias(mixed, "omega")
+    expect_false(posterior_metadata(simplified$omega, "atoms")$joint_declared)
+    numeric_copy <- as.numeric(mixed$bias[, 1L])
+    posterior_metadata(numeric_copy, "atoms") <- atoms
+    expect_error(.posterior_atoms_get(numeric_copy), class = "BayesTools_formula_measure_unavailable")
+    malformed <- atoms; malformed$joint_declared <- c(FALSE, FALSE)
+    expect_error(.posterior_atoms_from_attribute(malformed))
+    malformed <- atoms; malformed$marginals <- rep(list(NULL), 3L); names(malformed$marginals) <- colnames(atoms$locations)
+    expect_error(.posterior_atoms_from_attribute(malformed), "certified scalar marginals", fixed = TRUE)
+  }
+  equal <- mix_posteriors(list(.model_probability_weightfunction_model(first),
+    .model_probability_weightfunction_model(first, -1000)), "bias", list(c(FALSE, FALSE)), seed = 47, n_samples = 20)
+  expect_true(.posterior_atoms_get(equal$bias)$joint_declared)
+  expect_equal(.posterior_atoms_get(equal$bias)$mass, 1, tolerance = 0)
+})
+
 test_that("weightfunction null locations are exactly one", {
   wf <- prior_weightfunction("one-sided", .05, wf_fixed(c(1, .5)))
   expect_error(weightfunctions_mapping(list(wf, prior("point", list(1 - 1e-9)))))

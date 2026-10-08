@@ -16,6 +16,8 @@ posterior_atoms_free(x)
 and the joint measure have no positive atomic mass;
 \code{FALSE} when the draws declare a point mass or do not declare their
 atom status. Plain numeric draws, which carry no metadata, are an error.
+An explicitly unavailable joint law signals its retained typed condition,
+even when one or more scalar marginals have valid certificates.
 }
 \description{
 Reads the declared posterior atoms of BayesTools posterior
