@@ -58,10 +58,41 @@ test_that("native FAR densities distinguish range from unavailable backends and 
     expect_identical(condition$operation, "density")
     expect_identical(condition$requested_scale, "log")
     expect_null(condition$call)
+    if(available){
+      expect_identical(conditionMessage(condition), paste0("The ", priors[[i]]$distribution,
+        " prior density is numerically outside the requested representable range. ",
+        "Inspect the declared numerical limit and the numerical condition."))
+    }
     if(available) expect_identical(result$value[1L], -Inf) else expect_true(is.nan(result$value[1L]))
     natural <- native_range_capture(pdf(priors[[i]], values[i]))
     if(available) expect_identical(natural$value, 0) else expect_true(is.nan(natural$value))
+    if(available){
+      expect_identical(conditionMessage(natural$conditions[[1L]]), paste0("The ", priors[[i]]$distribution,
+        " prior density is numerically outside the requested representable range. ",
+        "Use an available logarithmic result or inspect the declared numerical limit."))
+      expect_identical(natural$conditions[[1L]]$indices, 1L)
+      expect_identical(natural$conditions[[1L]]$requested_scale, "natural")
+      expect_null(conditionCall(natural$conditions[[1L]]))
+    }
   }
+})
+
+test_that("finite range requests preserve the condition while recommending inspection", {
+  result <- native_range_capture(.prior_numerical_result(Inf, 1, TRUE, "density", "moment", "finite"))
+  expect_identical(result$value, Inf)
+  expect_identical(class(result$conditions[[1L]]), c("BayesTools_numerical_range_limit",
+    "BayesTools_numerical_condition", "warning", "condition"))
+  expect_identical(conditionMessage(result$conditions[[1L]]), paste0(
+    "The moment prior density is numerically outside the requested representable range. ",
+    "Inspect the declared numerical limit and the numerical condition."))
+  expect_identical(result$conditions[[1L]]$indices, 1L)
+  expect_identical(result$conditions[[1L]]$requested_scale, "finite")
+  expect_null(conditionCall(result$conditions[[1L]]))
+  condition <- expect_error(.prior_numerical_result(Inf, 1, TRUE, "density", "moment", "finite", bounded = TRUE),
+    class = "BayesTools_numerical_range_limit")
+  expect_identical(class(condition), c("BayesTools_numerical_range_limit", "BayesTools_numerical_condition", "error", "condition"))
+  expect_identical(condition$indices, 1L)
+  expect_null(conditionCall(condition))
 })
 
 test_that("truncated native density warnings retain original eligible vector indices", {

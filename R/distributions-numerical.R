@@ -50,7 +50,8 @@
       (family == "invgamma" & operation %in% c("quantile", "sampling"))))))
   if(length(range)){
     .prior_numerical_signal(operation, family, requested_scale, range,
-      "Use an available logarithmic result or inspect the declared numerical limit",
+      if(identical(requested_scale, "natural")) "Use an available logarithmic result or inspect the declared numerical limit" else
+        "Inspect the declared numerical limit and the numerical condition",
       range = TRUE, error = bounded, rng = rng && bounded)
   }
   output
