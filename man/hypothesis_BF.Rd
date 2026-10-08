@@ -129,7 +129,9 @@ warning of classes \code{BayesTools_inexact_ordinate} and
 \code{BayesTools_hypothesis_ordinate}.
 Region tests require positive prior mass for every compared region. An
 implicit region statement is compared with its complement, which therefore
-also needs positive prior mass; explicit comparisons such as
+also needs positive prior mass. Independently evaluated complements remain
+valid even when the other natural probability rounds to one. Explicit
+comparisons such as
 \code{"theta > 0.5 vs theta > 0"} accept an encompassing region with prior
 mass one. Rows are labelled by quantity; when several statements refer to
 the same quantity, the statement number is appended, e.g.
@@ -260,6 +262,9 @@ diagnostics (method, absolute error and convergence when available) can be
 inspected with \code{attr(result, "prior_numerical_diagnostics")}; they are
 row-aligned through subsetting. \code{BF_error} remains Monte Carlo-only and
 omits prior Monte Carlo variance only for the actual deterministic route.
+Accepted positive scalar prior-region probabilities retain their backend
+log probabilities for canonical BF ratios, including positive subnormal
+masses. Natural zero or non-finite prior masses remain unavailable.
 
 Data-frame coercion returns a plain long frame with leading
 \code{component}, \code{parameter} (the displayed row identity), and

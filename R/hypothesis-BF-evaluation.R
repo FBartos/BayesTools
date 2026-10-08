@@ -124,6 +124,35 @@
       inputs = mass, region = TRUE)
   }
   mass <- as.numeric(mass)
+  # Natural zero keeps its existing availability policy. For an accepted
+  # positive mass, retain the backend log before natural subnormal rounding.
+  if(mass > 0){
+    lower_tail <- comparison$operator %in% c("<", "<=")
+    log_mass <- tryCatch({
+      if(.is_prior_default_range(prior_object)){
+        .prior_simple_base_p(prior_object, comparison$value,
+          lower.tail = lower_tail, log.p = TRUE)
+      }else{
+        lower <- prior_object$truncation[["lower"]]
+        upper <- prior_object$truncation[["upper"]]
+        if(comparison$value <= lower || comparison$value >= upper){
+          0
+        }else{
+          bounds <- if(lower_tail) c(lower, comparison$value) else c(comparison$value, upper)
+          .prior_simple_log_interval_mass(prior_object, bounds[[1L]], bounds[[2L]]) -
+            .prior_simple_log_C(prior_object)
+        }
+      }
+    }, BayesTools_numerical_unavailable = function(condition){
+      .hypothesis_numerical_stop(condition$reason, "prior region log probability",
+        diagnostics = condition, region = TRUE)
+    })
+    if(length(log_mass) != 1L || !is.finite(log_mass) || log_mass > 0){
+      .hypothesis_numerical_stop("invalid_log_probability", "prior region log probability",
+        inputs = log_mass, region = TRUE)
+    }
+    attr(mass, "log_mass") <- as.numeric(log_mass)
+  }
   attr(mass, "route") <- "deterministic"
   attr(mass, "numerical_diagnostics") <- list(method = "distribution function", absolute_error = 0, convergence = TRUE)
   mass
@@ -1016,8 +1045,8 @@ prior_ordinate_status <- function(prior_density, values, labels = NULL){
 .hypothesis_check_prior_mass <- function(mass, label, allow_one = FALSE) {
 
   # A region with prior mass one is a valid encompassing hypothesis in an
-  # explicit comparison. An implicit statement compares a region with its
-  # complement, which then has zero prior mass.
+  # explicit comparison. An implicit comparison permits a rounded-one side
+  # only when its independently evaluated complement has positive mass.
   if(!is.finite(mass) || mass <= 0){
     stop(errorCondition(
       paste0("Prior region mass for hypothesis '", label, "' is zero or non-finite."),

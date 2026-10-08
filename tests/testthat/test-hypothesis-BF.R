@@ -50,6 +50,60 @@ test_that("implicit near-one prior regions use their independently positive comp
   expect_identical(zero$reason, "zero_or_nonfinite")
 })
 
+test_that("positive deterministic subnormal region masses retain authoritative log odds", {
+  distribution <- prior("exp", list(1))
+  for(cut in c(1, 720, 744)){
+    posterior <- c(cut - 1, cut + 1)
+    texts <- c(paste("theta >", cut), paste("theta >", cut, "vs theta <=", cut),
+      paste("theta <=", cut), paste("theta <=", cut, "vs theta >", cut))
+    for(i in seq_along(texts)){
+      result <- tryCatch(hypothesis_BF(posterior, distribution, texts[[i]], parameter = "theta", seed = 1, columns = "all"), error = identity)
+      expect_false(inherits(result, "error"), info = texts[[i]])
+      if(inherits(result, "error")) next
+      expected <- -stats::pexp(cut, lower.tail = FALSE, log.p = TRUE) + stats::pexp(cut, log.p = TRUE)
+      if(i > 2L) expected <- -expected
+      expect_equal(attr(result, "raw_log_BF"), expected, tolerance = 1e-12)
+      for(logBF in c(FALSE, TRUE)) for(BF01 in c(FALSE, TRUE)){
+        viewed <- update(result, logBF = logBF, BF01 = BF01)
+        expect_identical(attr(viewed, "raw_log_BF"), attr(result, "raw_log_BF"))
+        expect_identical(attr(viewed$BF, "canonical_log_BF"), attr(result$BF, "canonical_log_BF"))
+      }
+      diagnostics <- attr(result, "prior_numerical_diagnostics")[[1L]]
+      expect_identical(diagnostics$left$method, "distribution function")
+      expect_identical(diagnostics$left$absolute_error, 0)
+    }
+  }
+  comparison <- hypothesis_BF(c(2, 721), distribution, "theta > 1 vs theta > 720", parameter = "theta", seed = 1)
+  expect_equal(attr(comparison, "raw_log_BF"), log(2) - 719, tolerance = 1e-12)
+  truncated <- prior("exp", list(1), list(0, 745))
+  result <- hypothesis_BF(c(743, 744.5), truncated, "theta > 744 vs theta <= 744", parameter = "theta", seed = 1)
+  tail_log <- -744 + log1p(-exp(-1)) - log1p(-exp(-745))
+  expect_equal(attr(result, "raw_log_BF"), -tail_log, tolerance = 1e-12)
+  point <- hypothesis_BF(c(0, 2, 745), distribution, "theta = 1", parameter = "theta", seed = 1)
+  transitive <- hypothesis_BF(c(0, 2, 745), distribution, "theta = 1 vs theta > 744", parameter = "theta", seed = 1)
+  expect_equal(attr(transitive, "raw_log_BF"), -attr(point, "raw_log_BF") + log(3) - 744, tolerance = 1e-12)
+  for(cut in c(1000, 1600)){
+    for(text in c(paste("theta >", cut), paste("theta <=", cut),
+                 paste("theta >", cut, "vs theta <=", cut), paste("theta <=", cut, "vs theta >", cut))){
+      expect_error(hypothesis_BF(c(cut - 1, cut + 1), distribution, text, parameter = "theta", seed = 1),
+        class = "BayesTools_prior_region_mass_unavailable")
+    }
+  }
+})
+
+.hypothesis_factor_marginal_for_test <- function(sd = 1, independent = FALSE){
+  formula <- JAGS_formula(if(independent) ~0+fac else ~fac, "mu", data.frame(fac = factor(c("A", "B", "C"))),
+    prior_list = if(independent) list(fac = prior_factor("normal", list(0, sd), contrast = "independent")) else
+      list(intercept = prior("normal", list(0, 1)), fac = prior_factor("normal", list(0, sd), contrast = "treatment")))
+  columns <- .JAGS_prior_factor_names("mu_fac", formula$prior_list$mu_fac)
+  posterior <- matrix(unlist(lapply(seq_along(columns), function(i) seq(-i, i, length.out = 201L))), 201L, dimnames = list(NULL, columns))
+  if(!independent) posterior <- cbind(mu_intercept = seq(-1, 1, length.out = 201L), posterior)
+  fit <- structure(coda::mcmc(posterior), class = c("mcmc", "BayesTools_fit"))
+  attr(fit, "prior_list") <- formula$prior_list
+  fit <- attach_test_parameter_map(fit)
+  marginal_posterior(as_mixed_posteriors(fit, "mu_fac"), "mu_fac", use_formula = FALSE, prior_samples = TRUE)
+}
+
 test_that("level targets require the same complete declared joint context", {
   first <- .hypothesis_factor_marginal_for_test(independent = TRUE)
   second <- .hypothesis_factor_marginal_for_test(sd = 2, independent = TRUE)

@@ -580,7 +580,11 @@
     ))
   }
 
-  log_BF   <- log(posterior_left) - log(posterior_right) - log(prior_left) + log(prior_right)
+  prior_left_log <- attr(prior_left, "log_mass", exact = TRUE)
+  prior_right_log <- attr(prior_right, "log_mass", exact = TRUE)
+  if(is.null(prior_left_log)) prior_left_log <- log(prior_left)
+  if(is.null(prior_right_log)) prior_right_log <- log(prior_right)
+  log_BF   <- log(posterior_left) - log(posterior_right) - prior_left_log + prior_right_log
   BF       <- exp(log_BF)
   BF_error <- .hypothesis_region_odds_BF_error_percent(quantity, left, right, prior_left, prior_right)
   warning  <- NULL
@@ -625,7 +629,9 @@
   region_BF       <- region_posterior / region_prior
   region_BF_error <- .hypothesis_region_BF_error_percent(quantity, region_side, region_prior)
   undefined <- isTRUE(point_BF$log_BF == -Inf) && region_posterior == 0
-  log_BF <- if(undefined) NA_real_ else point_BF$log_BF - (log(region_posterior) - log(region_prior))
+  region_prior_log <- attr(region_prior, "log_mass", exact = TRUE)
+  if(is.null(region_prior_log)) region_prior_log <- log(region_prior)
+  log_BF <- if(undefined) NA_real_ else point_BF$log_BF - (log(region_posterior) - region_prior_log)
   if(inverse) log_BF <- -log_BF
   BF <- exp(log_BF)
 
