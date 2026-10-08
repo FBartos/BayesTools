@@ -151,6 +151,9 @@
   }
 
   if(identical(spec$kind, "bias_term")){
+    if(any(!is.finite(indicator))){
+      stop("Bias indicator draws of '", node$node, "' must be finite.", call. = FALSE)
+    }
     values <- rep(0, n)
     active <- indicator == spec$branch
     if(any(active)){
@@ -192,6 +195,10 @@
      any(!is.finite(indicator) | !indicator %in% seq_along(spec$components))){
     .bt_ordered_stop(paste0("Ordered total indicator '", spec$indicator,
       "' does not select a declared component."), "BayesTools_ordered_invalid_state")
+  }
+  if(any(!is.finite(indicator)) || any(!indicator %in% seq_along(spec$components))){
+    stop("Mixture indicator draws of '", node$node,
+      "' must index a mixture component.", call. = FALSE)
   }
   for(k in unique(indicator)){
     if(!k %in% seq_along(spec$components)){

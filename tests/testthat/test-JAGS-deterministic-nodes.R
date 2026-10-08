@@ -649,3 +649,31 @@ test_that("prior draws carry the fitted nodes of ordered-prior totals", {
   }
 })
 
+test_that("ordinary mixture and bias replay reject nonfinite indicators before indexing", {
+
+  priors <- list(theta = prior_mixture(list(prior("normal", list(0, 1)), prior("point", list(2)))))
+  draws <- cbind(theta = c(1, 2), theta_component_1 = c(1, 3), theta_indicator = c(1, 2))
+  fit <- .parameter_catalog_test_fit(coda::mcmc.list(coda::mcmc(draws)), priors)
+  expect_identical(as.numeric(JAGS_evaluate_deterministic(fit, draws, nodes = "theta")), c(1, 2))
+  for(value in c(NA_real_, NaN, Inf, -Inf, 0, 3, 1.5)){
+    invalid <- draws
+    invalid[2L, "theta_indicator"] <- value
+    condition <- expect_error(JAGS_evaluate_deterministic(fit, invalid, nodes = "theta"),
+      "Mixture indicator draws of 'theta' must index a mixture component.", fixed = TRUE)
+    expect_null(conditionCall(condition))
+  }
+  bias_priors <- list(bias = prior_mixture(list(prior_none(), prior_PET("normal", list(0, 1)))))
+  bias_draws <- cbind(PET = c(0, 3), PET_1 = c(2, 3), bias_indicator = c(1, 2))
+  bias_fit <- .parameter_catalog_test_fit(coda::mcmc.list(coda::mcmc(bias_draws)), bias_priors)
+  expect_identical(as.numeric(JAGS_evaluate_deterministic(bias_fit, bias_draws, nodes = "PET")), c(0, 3))
+  inactive <- bias_draws[, c("PET", "bias_indicator")]
+  inactive[, "bias_indicator"] <- 1
+  expect_identical(as.numeric(JAGS_evaluate_deterministic(bias_fit, inactive, nodes = "PET")), c(0, 0))
+  for(value in c(NA_real_, NaN, Inf, -Inf)){
+    invalid <- bias_draws
+    invalid[2L, "bias_indicator"] <- value
+    condition <- expect_error(JAGS_evaluate_deterministic(bias_fit, invalid, nodes = "PET"),
+      "Bias indicator draws of 'PET' must be finite.", fixed = TRUE)
+    expect_null(conditionCall(condition))
+  }
+})
