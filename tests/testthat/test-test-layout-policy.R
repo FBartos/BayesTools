@@ -347,7 +347,8 @@ test_that("configure accepts only JAGS 4.x from every version source", {
   jags4    <- .layout_fake_jags_tree(file.path(work, "jags4"), 4L)
   jags5    <- .layout_fake_jags_tree(file.path(work, "jags5"), 5L)
   prefix5  <- .layout_fake_jags_tree(file.path(work, "JAGS-5.0.0"), 4L)
-  prefix43 <- .layout_fake_jags_tree(file.path(work, "JAGS-4.3.2"), 4L)
+  prefix43 <- .layout_fake_jags_tree(file.path(work, "JAGS-4.3.2"), 4L,
+    libraries = c("libjags.a", "libjrmath.a"))
 
   # pkg-config stubs placed first on PATH: one without JAGS metadata (so a
   # system jags.pc cannot leak into the other version sources) and one that
@@ -811,7 +812,8 @@ test_that("R133 explicit Unix prefixes keep version headers libraries and rpath 
   dir.create(file.path(pkg, "src"), recursive = TRUE)
   file.copy(configure, file.path(pkg, "configure"))
   file.copy(makevars, file.path(pkg, "src/Makevars.in"))
-  selected4 <- .layout_fake_jags_tree(file.path(work, "JAGS-4.3.1"), 4L)
+  selected4 <- .layout_fake_jags_tree(file.path(work, "JAGS-4.3.1"), 4L,
+    libraries = c("libjags.so", "libjrmath.so"))
   selected5 <- .layout_fake_jags_tree(file.path(work, "JAGS-5.0.0"), 5L)
   global <- .layout_fake_jags_tree(file.path(work, "global"), 4L)
   missing <- file.path(work, "missing/JAGS-4.3.1")
@@ -841,7 +843,9 @@ test_that("R133 explicit Unix prefixes keep version headers libraries and rpath 
     expect_true(is.character(accepted$makevars))
     if(is.character(accepted$makevars)){
       expect_match(accepted$makevars, paste0("-I", selected4, "/include/JAGS"), fixed = TRUE)
-      expect_match(accepted$makevars, paste0("-L", selected4, "/lib"), fixed = TRUE)
+      expect_match(accepted$makevars, paste0(selected4, "/lib/libjags.so"), fixed = TRUE)
+      expect_match(accepted$makevars, paste0(selected4, "/lib/libjrmath.so"), fixed = TRUE)
+      expect_false(grepl("-ljags|-ljrmath", accepted$makevars))
       expect_match(accepted$makevars, paste0("-Wl,-rpath,", selected4, "/lib"), fixed = TRUE)
       expect_false(grepl(global, accepted$makevars, fixed = TRUE))
     }
@@ -849,6 +853,15 @@ test_that("R133 explicit Unix prefixes keep version headers libraries and rpath 
     expect_identical(rejected$status, 1L)
     expect_match(rejected$output, "JAGS prefix reported 5.0.0", fixed = TRUE)
     expect_null(rejected$makevars)
+    for(libraries in list(character(), "libjags.so", "libjrmath.so")){
+      selected <- .layout_fake_jags_tree(file.path(work, paste0("missing-libraries-", length(libraries),
+        if(length(libraries)) libraries), "JAGS-4.3.1"), 4L, libraries = libraries)
+      rejected <- run("4.3.1", selected, selector)
+      expect_identical(rejected$status, 1L, info = rejected$output)
+      expect_match(rejected$output, "selected JAGS", fixed = TRUE)
+      expect_match(rejected$output, paste0(selected, "/lib"), fixed = TRUE)
+      expect_null(rejected$makevars)
+    }
   }
   expect_identical(run("4.3.1")$status, 0L)
   expect_identical(run("5.0.0")$status, 1L)
@@ -856,4 +869,37 @@ test_that("R133 explicit Unix prefixes keep version headers libraries and rpath 
   expect_identical(missing_result$status, 1L)
   expect_match(missing_result$output, "JAGS headers were not found", fixed = TRUE)
   expect_null(missing_result$makevars)
+})
+
+test_that("explicit Unix selected files also reach the linked version probe", {
+  skip_on_cran()
+  sh <- unname(Sys.which("sh"))
+  skip_if(!nzchar(sh), "A POSIX shell is required to run configure.")
+  work <- normalizePath(withr::local_tempdir(), winslash = "/")
+  pkg <- file.path(work, "pkg")
+  dir.create(file.path(pkg, "src"), recursive = TRUE)
+  file.copy(.layout_repository_file("configure"), file.path(pkg, "configure"))
+  file.copy(.layout_repository_file("src", "Makevars.in"), file.path(pkg, "src/Makevars.in"))
+  selected <- .layout_fake_jags_tree(file.path(work, "selected"), 4L,
+    libraries = c("libjags.so", "libjrmath.so"))
+  home <- file.path(work, "fake-r")
+  dir.create(file.path(home, "bin"), recursive = TRUE)
+  compiler <- file.path(work, "compiler")
+  arguments <- file.path(work, "compiler-arguments")
+  .layout_write_lf(c("#!/bin/sh", "case \"$3\" in", paste0("CXX) echo '", compiler, "' ;;"), "esac"),
+    file.path(home, "bin/R"))
+  .layout_write_lf(c("#!/bin/sh", paste0("printf '%s\\n' \"$@\" > '", arguments, "'"),
+    "printf '%s\\n' '#!/bin/sh' 'echo 4.3.1' > conftest-jags-version", "chmod +x conftest-jags-version", "exit 0"), compiler)
+  Sys.chmod(c(file.path(home, "bin/R"), compiler), "0755")
+  result <- .layout_run_tool(sh, "./configure", pkg,
+    c(.layout_jags_env_unset(), JAGS_ROOT = selected, R_HOME = home))
+  expect_identical(result$status, 0L, info = result$output)
+  expect_match(result$output, "4.3.1 with jags_version()", fixed = TRUE)
+  passed <- readLines(arguments)
+  expect_true(all(file.path(selected, "lib", c("libjags.so", "libjrmath.so")) %in% passed))
+  expect_false(any(passed %in% c("-ljags", "-ljrmath")))
+  makevars <- paste(readLines(file.path(pkg, "src/Makevars")), collapse = "\n")
+  expect_true(all(vapply(file.path(selected, "lib", c("libjags.so", "libjrmath.so")),
+    function(path) grepl(path, makevars, fixed = TRUE), logical(1))))
+  expect_false(grepl("-ljags|-ljrmath", makevars))
 })

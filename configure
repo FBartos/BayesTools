@@ -9,6 +9,7 @@ JAGS_REQUIRED_MAJOR="4"
 JAGS_SUPPORTED_RANGE="JAGS 4.x (>= ${JAGS_MIN_VERSION}, < 5.0.0)"
 JAGS_CFLAGS=""
 JAGS_LIBS="-ljags"
+JRMATH_LIBS="-ljrmath"
 JAGS_RPATH=""
 JAGS_INCLUDE_DIR="${JAGS_INCLUDE_DIR}"
 JAGS_LIB_DIR="${JAGS_LIB_DIR}"
@@ -101,6 +102,21 @@ jags_header_dir() {
   return 1
 }
 
+jags_selected_library() {
+  case "`uname -s 2>/dev/null`" in
+    Darwin) jags_library_suffixes="dylib so a" ;;
+    *)      jags_library_suffixes="so a dylib" ;;
+  esac
+  for suffix in $jags_library_suffixes; do
+    candidate="${JAGS_LIB_DIR}/lib${1}.${suffix}"
+    if [ -f "$candidate" ]; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done
+  return 1
+}
+
 sed_escape() {
   printf '%s\n' "$1" | sed 's/[&\\]/\\&/g'
 }
@@ -170,7 +186,7 @@ EOF
 
   if ${CXX} ${CPPFLAGS} ${CXXFLAGS} ${JAGS_CFLAGS} \
       -o conftest-jags-version conftest-jags-version.cc \
-      ${LDFLAGS} ${JAGS_LIBS} ${JAGS_RPATH} -ljrmath \
+      ${LDFLAGS} ${JAGS_LIBS} ${JAGS_RPATH} ${JRMATH_LIBS} \
       >/dev/null 2>conftest-jags-version.err; then
     JAGS_PROBE_VERSION=`./conftest-jags-version 2>/dev/null`
     status=$?
@@ -312,6 +328,19 @@ if [ -n "$JAGS_LIB_DIR" ]; then
   JAGS_LIBS="-L${JAGS_LIB_DIR} ${JAGS_LIBS}"
 fi
 
+if [ -n "$JAGS_PREFIX" ]; then
+  JAGS_SELECTED_LIBRARY=`jags_selected_library jags`
+  if [ -z "$JAGS_SELECTED_LIBRARY" ]; then
+    as_error "The selected JAGS library 'jags' was not found in '${JAGS_LIB_DIR}'."
+  fi
+  JRMATH_SELECTED_LIBRARY=`jags_selected_library jrmath`
+  if [ -z "$JRMATH_SELECTED_LIBRARY" ]; then
+    as_error "The selected JAGS JRmath library 'jrmath' was not found in '${JAGS_LIB_DIR}'."
+  fi
+  JAGS_LIBS="$JAGS_SELECTED_LIBRARY"
+  JRMATH_LIBS="$JRMATH_SELECTED_LIBRARY"
+fi
+
 if [ -n "$JAGS_LIB_DIR" ]; then
   jags_add_rpath "$JAGS_LIB_DIR"
 fi
@@ -343,10 +372,12 @@ as_echo "creating src/Makevars"
 
 JAGS_CFLAGS_SED=`sed_escape "$JAGS_CFLAGS"`
 JAGS_LIBS_SED=`sed_escape "$JAGS_LIBS"`
+JRMATH_LIBS_SED=`sed_escape "$JRMATH_LIBS"`
 JAGS_RPATH_SED=`sed_escape "$JAGS_RPATH"`
 
 sed \
   -e "s|@JAGS_CFLAGS@|${JAGS_CFLAGS_SED}|g" \
   -e "s|@JAGS_LIBS@|${JAGS_LIBS_SED}|g" \
+  -e "s|@JRMATH_LIBS@|${JRMATH_LIBS_SED}|g" \
   -e "s|@JAGS_RPATH@|${JAGS_RPATH_SED}|g" \
   src/Makevars.in > src/Makevars
