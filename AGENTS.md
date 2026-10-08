@@ -76,9 +76,10 @@ fixtures; run it when fitting inputs or backend behavior changed, following the
 testing guide. Visual profiles are `visual` and `visual-fixture`.
 
 Native JAGS distributions live in `src/distributions/`; shared kernels are in
-`src/invgamma/`, `src/lkj/`, and `src/nonlocal/`. Registrations are in
-`src/BayesTools.cc` and `src/init.c`. Keep registrations and `Makevars*` source
-lists consistent when native sources change.
+`src/gamma/`, `src/invgamma/`, `src/lkj/`, and `src/nonlocal/`. Registrations are in
+`src/BayesTools.cc` and `src/init.c`; the R symbol inventory is
+`.BayesTools_native_symbols()` in `R/zzz.R`. Keep these inventories and
+`Makevars*` source lists consistent when native sources change.
 
 ## Documentation and release
 
