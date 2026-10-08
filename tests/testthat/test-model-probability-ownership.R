@@ -141,6 +141,37 @@ test_that("compiled factor point mixtures retain the declared factor shape", {
   }
 })
 
+test_that("empty allocated absent sources retain the complete ordered declaration", {
+  ordered <- ordered_plot_test_fixture(prior("point", list(4)), allocation = c(.25, .75), levels = c("a", "b", "c"))$fit
+  compiled <- JAGS_formula(~1, "mu", data.frame(f = factor(c("a", "b", "c"))), list(intercept = prior("point", list(0))))
+  draws <- .generate_prior_sample_matrix(compiled$prior_list, 8L, seed = 17)
+  absent <- structure(list(mcmc = coda::mcmc.list(coda::mcmc(draws)), sample = 8L,
+    summary.pars = list(mutate = NULL), monitor = colnames(draws)), class = c("runjags", "BayesTools_fit", "list"))
+  attr(absent, "prior_list") <- compiled$prior_list
+  attr(absent, "formula_design") <- list(mu = compiled$formula_design)
+  absent <- attach_test_parameter_map(absent)
+  for(evidence in c(-Inf, -1000)){
+    models <- list(list(fit = ordered, marglik = bridgesampling_object(evidence), prior_weights = 1),
+      list(fit = absent, marglik = bridgesampling_object(0), prior_weights = 1))
+    mixed <- mix_posteriors(models, "mu_f", list(c(FALSE, TRUE)), seed = 1, n_samples = 20L)
+    source <- posterior_metadata(mixed$mu_f, "ordered_source")
+    expect_identical(dim(source$primitives), c(20L, 0L))
+    expect_null(.bt_ordered_source_validate(source))
+    expect_identical(source$model, rep(2L, 20L))
+    expect_length(source$models, 2L)
+    expect_true(is.prior.ordered(source$models[[1L]]$prior))
+    expect_identical(source$model_log_probabilities[1L], evidence)
+    expect_true(all(as.numeric(mixed$mu_f) == 0))
+    if(is.finite(evidence)) expect_error(posterior_atoms_free(mixed$mu_f), class = "BayesTools_formula_measure_unavailable") else
+      expect_equal(sum(.posterior_atoms_get(mixed$mu_f)$mass), 1, tolerance = 0)
+  }
+  source <- posterior_metadata(as_mixed_posteriors(ordered, "mu_f")$mu_f, "ordered_source")
+  invalid <- source; invalid$primitives <- invalid$primitives[, 0L, drop = FALSE]
+  expect_match(.bt_ordered_source_validate(invalid), "allocated ordered primitive", fixed = TRUE)
+  invalid <- source; invalid$primitives <- invalid$primitives[, setdiff(colnames(invalid$primitives), invalid$models[[1L]]$total_names), drop = FALSE]
+  expect_false(is.null(.bt_ordered_source_validate(invalid)))
+})
+
 .model_probability_reference <- function(weights, evidence) {
   raw <- log(weights)
   raw <- raw - max(raw)

@@ -110,7 +110,7 @@
      !identical(value$version, 2L) || !is.character(value$parameter) || length(value$parameter) != 1L ||
      !is.list(value$models) || !.bt_meta_is_index(value$model) || !.bt_meta_is_index(value$draw_index) ||
      any(value$model > length(value$models)) || !is.matrix(value$primitives) || !is.numeric(value$primitives) ||
-     is.null(colnames(value$primitives)) || anyDuplicated(colnames(value$primitives)) ||
+     (ncol(value$primitives) > 0L && (is.null(colnames(value$primitives)) || anyDuplicated(colnames(value$primitives)))) ||
      length(value$model) != nrow(value$primitives) || length(value$draw_index) != nrow(value$primitives)){
     return("it must contain validated row-aligned ordered primitive sources and model provenance")
   }
@@ -131,7 +131,11 @@
       return("its models must contain authoritative bound ordered specifications")
     }
     if(!length(rows)) next
+    if(ncol(value$primitives) == 0L) return("its allocated ordered primitive coordinates are missing")
     if(!all(spec$total_names %in% colnames(value$primitives))) return("its declared total coordinates are missing")
+    if(!is.null(spec$total_node) && !spec$total_node$spec$indicator %in% colnames(value$primitives)){
+      return("its declared total indicator coordinate is missing")
+    }
     for(record in spec$allocations){
       if(!all(record$coordinates %in% colnames(value$primitives))) return("its declared allocation coordinates are missing")
       if(length(rows)) .bt_ordered_allocation_values(record, value$primitives[rows, , drop = FALSE])
