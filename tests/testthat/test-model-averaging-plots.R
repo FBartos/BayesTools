@@ -103,7 +103,7 @@ test_that("ordered direct selections retain original positions", {
   })
   one_visible <- ordered_plot_test_fixture(prior("point", list(2)),
     prior("dirichlet", list(c(.5, .25, .25))))
-  vdiffr::expect_doppelganger("ordered-direct-one-visible-multiple-ggplot", function(){
+  vdiffr::expect_doppelganger("ordered-one-visible-multiple-ggplot", function(){
     set.seed(600)
     render_selection(one_visible$prior, -1L)
   })
@@ -120,7 +120,7 @@ test_that("ordered direct finite point-slab levels show analytic curves and full
         plot(fixture$prior, show_figures = level, plot_type = backend, xlim = c(0, 2),
           n_points = 64L, n_samples = 128L, xlab = "Level effect")
       }
-      vdiffr::expect_doppelganger(paste0("ordered-direct-finite-pointslab-level", level, "-", backend),
+      vdiffr::expect_doppelganger(paste0("ordered-finite-pointslab-level", level, "-", backend),
         if(backend == "base") draw else draw())
     }
   }
@@ -206,7 +206,7 @@ test_that("ordered transformed mixed overlays retain the active probability mapp
           transformation = "exp", col = "orange", lty = 2)
       }
     }
-    vdiffr::expect_doppelganger(paste0("ordered-direct-transformed-overlay-", backend),
+    vdiffr::expect_doppelganger(paste0("ordered-transformed-overlay-", backend),
       if(backend == "base") draw else draw())
   }
 })
