@@ -1581,8 +1581,8 @@ JAGS_formula_prior_density <- function(
     prior <- record$prior_list[[owner]]
     if(is.null(prior)) .bt_formula_transform_stop(
       "The formula row needs an omitted coefficient owner.", reason = "missing_multiplier_state", state = owner)
-    info <- lapply(c("ordered", "factor_terms", "factor_design", "level_names", "levels"), function(name) attr(prior, name, exact = TRUE))
-    names(info) <- c("ordered", "factor_terms", "factor_design", "level_names", "levels")
+    info <- lapply(c("ordered", "term_components", "factor_terms", "factor_design", "level_names", "levels"), function(name) attr(prior, name, exact = TRUE))
+    names(info) <- c("ordered", "term_components", "factor_terms", "factor_design", "level_names", "levels")
     info$ordered <- is.prior.ordered(prior)
     if(is.prior.factor(prior)) info$levels <- .get_prior_factor_levels(prior)
     term_data <- .marginal_posterior_term_data(matrix, assign, i, fitted_data, info, owner)

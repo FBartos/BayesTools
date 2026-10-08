@@ -105,6 +105,30 @@ test_that("complete declarations certify absent terms with a valid empty source 
     list(mu = compiled$formula_scale))
 }
 
+test_that("retained ordered interactions use their continuous components in both views", {
+  data <- data.frame(f = ordered(rep(c("lo", "mid", "hi"), 3L), levels = c("lo", "mid", "hi")), x = rep(c(10, 20, 30), each = 3L))
+  compiled <- JAGS_formula(~f+x+f:x, "mu", data, list(intercept = prior("point", list(0)), x = prior("point", list(0)),
+    f = prior_ordered(prior("point", list(0)), allocation = c(.25, .75)),
+    `f:x` = prior_ordered(prior("point", list(4)), allocation = c(.25, .75))), formula_scale = list(x = TRUE))
+  draws <- .generate_prior_sample_matrix(compiled$prior_list, 8L, seed = 17)
+  fit <- .parameter_catalog_test_fit(coda::mcmc.list(coda::mcmc(draws)), compiled$prior_list,
+    formula_design = list(mu = compiled$formula_design), formula_scale = list(mu = compiled$formula_scale))
+  scale <- attr(fit, "formula_scale")$mu[[1L]]
+  for(original in c(FALSE, TRUE)){
+    samples <- as_mixed_posteriors(fit, names(compiled$prior_list), transform_scaled = original)
+    for(fitted_x in c(0, 2)){
+      physical_x <- scale$mean + fitted_x * scale$sd
+      actual <- marginal_posterior(samples, "mu_f", formula = ~f+x+f:x,
+        at = list(x = if(original) physical_x else fitted_x), prior_samples = FALSE)
+      expect_equal(as.numeric(actual[[1L]]), rep(0, 8L), tolerance = 0)
+      expect_equal(as.numeric(actual[[2L]]), rep(fitted_x, 8L), tolerance = 1e-14)
+      expect_equal(as.numeric(actual[[3L]]), rep(4 * fitted_x, 8L), tolerance = 1e-14)
+      prediction <- JAGS_predict_formula(fit, "mu", data = data.frame(f = ordered(c("lo", "mid", "hi"), levels = c("lo", "mid", "hi")), x = physical_x), formula_target = "fixed")
+      expect_equal(unname(prediction$value[3L, ]), rep(4 * fitted_x, 8L), tolerance = 1e-14)
+    }
+  }
+})
+
 test_that("expression ordered totals retain snapshots and per-level unavailable laws", {
   data <- data.frame(f = ordered(rep(c("lo", "mid", "hi"), 2L), levels = c("lo", "mid", "hi")))
   compiled <- JAGS_formula(~f, "mu", data, list(intercept = prior("point", list(0)),
