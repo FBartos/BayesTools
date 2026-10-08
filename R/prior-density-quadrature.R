@@ -139,7 +139,8 @@
 # 'shared' returns a list of the terms that do not depend on the value. The
 # values of a leaf share most of their intervals, so the nodes and the shared
 # terms are computed once per distinct interval.
-.prior_density_quadrature_coordinate <- function(lower, upper, logarithmic = FALSE){
+.prior_density_quadrature_coordinate <- function(lower, upper, logarithmic = FALSE,
+                                                 finite_nodes = .prior_density_quadrature_rules()$finite$nodes){
 
   kind <- if(is.finite(lower) && is.finite(upper)) 0L else if(is.finite(lower)) 1L else -1L
   anchor <- if(kind == 1L) lower else if(kind == -1L) upper else 0
@@ -158,7 +159,7 @@
   }else if(logarithmic && lower != 0 && upper != 0 && sign(lower) == sign(upper)){
     bounds <- sort(log(abs(c(lower, upper))))
     nodes <- bounds[1L] / 2 + bounds[2L] / 2 +
-      (bounds[2L] - bounds[1L]) / 2 * .prior_density_quadrature_rules()$finite$nodes
+      (bounds[2L] - bounds[1L]) / 2 * finite_nodes
     mapped <- sign(lower) * exp(nodes)
     if(bounds[1L] < bounds[2L] && all(is.finite(mapped)) && all(mapped != 0) &&
        all(mapped > lower & mapped < upper) && !anyDuplicated(mapped)){
@@ -174,7 +175,7 @@
       scale <- 2^exponent
       affine <- c(lower, upper) / scale
       nodes <- affine[1L] / 2 + affine[2L] / 2 +
-        (affine[2L] - affine[1L]) / 2 * .prior_density_quadrature_rules()$finite$nodes
+        (affine[2L] - affine[1L]) / 2 * finite_nodes
       mapped <- scale * nodes
       if(!is.finite(scale) || scale <= 0 || any(!is.finite(affine)) ||
          any(affine == 0) || affine[1L] >= affine[2L] ||
@@ -356,7 +357,7 @@
   anchor <- ifelse(kind == 1L, a, ifelse(kind == -1L, b, 0))
   logarithmic <- !is.function(integrand) && is.function(integrand$log_value)
   coordinates <- lapply(seq_along(a), function(i){
-    .prior_density_quadrature_coordinate(a[[i]], b[[i]], logarithmic)
+    .prior_density_quadrature_coordinate(a[[i]], b[[i]], logarithmic, rules$finite$nodes)
   })
   lower <- vapply(coordinates, `[[`, numeric(1), "lower")
   upper <- vapply(coordinates, `[[`, numeric(1), "upper")
