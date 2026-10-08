@@ -97,6 +97,33 @@
        source_transforms = source_transforms, n_grid = n_grid)
 }
 
+# Declared scalar independent summands certify a numerical additive grid's
+# atom freedom and exact support, while its point ordinate remains unknown.
+.prior_density_route_additive_measure <- function(recipe){
+
+  weights <- recipe$weights
+  if(length(weights) == 0L || any(!is.finite(weights)) || any(weights == 0) ||
+     (!is.null(recipe$source_transforms) && any(!is.na(recipe$source_transforms)))) return(NULL)
+  groups <- .prior_linear_weight_groups(recipe$prior_list, weights)
+  continuous <- vapply(groups, function(group){
+    length(group$weights) == 1L && length(group$columns) == 1L &&
+      .prior_density_simple_continuous(group$prior)
+  }, logical(1))
+  points <- vapply(groups, function(group){
+    prior <- group$prior
+    location <- prior$parameters[["location"]]
+    length(group$weights) == 1L && length(group$columns) == 1L &&
+      is.prior.point(prior) && !is.prior.vector(prior) &&
+      !.is_prior_expression(prior) && is.null(attr(prior, "multiply_by", exact = TRUE)) &&
+      is.numeric(location) && length(location) == 1L && is.finite(location)
+  }, logical(1))
+  if(!any(continuous) || !all(continuous | points)) return(NULL)
+  support <- .posterior_support_from_prior_list_weights(recipe$prior_list, weights,
+    source = "formula_contribution")
+  if(is.null(support) || !isTRUE(support$exact)) return(NULL)
+  list(type = "atom_free", support = support)
+}
+
 .prior_density_route_mixture <- function(components, weights,
                                          provenance_extra = list()){
   list(type = "mixture", components = components, weights = weights,
@@ -713,6 +740,7 @@
       vector_t$prior_list, vector_t$weights, vector_t$source_transforms, n_grid
     )
     route$multivariate_t <- vector_t$provenance
+    if(identical(route$type, "unknown")) route$additive_measure <- NULL
     return(route)
   }
 
@@ -769,7 +797,8 @@
     return(list(type = "log_scale_product", product = product))
   }
 
-  .prior_density_route_unknown(
+  recipe <- .prior_density_route_recipe(prior_list, weights, source_transforms, n_grid)
+  route <- .prior_density_route_unknown(
     reason     = "General numerical convolutions are not structurally classified.",
     provenance = list(
       kind              = "general_convolution",
@@ -779,8 +808,10 @@
       }, character(1)),
       source_transforms = .prior_density_ordinate_compact(source_transforms)
     ),
-    recipe     = .prior_density_route_recipe(prior_list, weights, source_transforms, n_grid)
+    recipe     = recipe
   )
+  route$additive_measure <- .prior_density_route_additive_measure(recipe)
+  route
 }
 
 # A named monotone output transformation of 'source'. 'hull' returns the exact

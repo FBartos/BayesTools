@@ -74,3 +74,57 @@ test_that("ordinary and genuine zero multiply folds retain declared measures", {
     }
   }
 })
+test_that("independent additive formula grids retain their numerical laws", {
+
+  data <- data.frame(x1 = c(-1, 0, 1, -1, 0, 1), x2 = c(1, -1, 0, 0, 1, -1))
+  compiled <- JAGS_formula(~ x1 + x2, "mu", data,
+    list(intercept = prior("normal", list(0, 1)), x1 = prior("t", list(0, 1, 5)),
+      x2 = prior("t", list(0, 1, 7))))
+  draws <- cbind(mu_intercept = seq(-1, 1, length.out = 40),
+    mu_x1 = seq(-2, 2, length.out = 40), mu_x2 = cos(1:40) / 3)
+  fit <- .parameter_catalog_test_fit(coda::mcmc.list(coda::mcmc(draws)), compiled$prior_list,
+    list(mu = compiled$formula_design), list(mu = compiled$formula_scale))
+  mixed <- as_mixed_posteriors(fit, names(compiled$prior_list), transform_scaled = FALSE)
+  levels <- marginal_posterior(mixed, "mu_x1", formula = ~ x1 + x2,
+    at = list(x2 = 1), prior_samples = TRUE)
+  for(i in seq_along(levels)){
+    x1 <- c(-1, 0, 1)[i]
+    leaf <- levels[[i]]
+    expect_equal(as.numeric(leaf), draws[, "mu_intercept"] + x1 * draws[, "mu_x1"] + draws[, "mu_x2"])
+    law <- posterior_metadata(leaf, "prior_density")
+    expect_s3_class(law, "prior_linear_density")
+    expect_true(posterior_atoms_free(leaf))
+    support <- posterior_metadata(leaf, "support")
+    expect_true(support$exact)
+    expect_identical(unname(support$bounds), c(-Inf, Inf))
+    if(x1 != 0){
+      ordinate <- prior_density_ordinate(law, 0)
+      expect_identical(ordinate$behavior, "unknown")
+      expect_false(ordinate$exact)
+      expect_error(hypothesis_BF(leaf, hypothesis = "theta = 0", parameter = "theta"),
+        class = "BayesTools_inexact_ordinate")
+      route <- .prior_density_route_linear(compiled$prior_list,
+        c(mu_intercept = 1, mu_x1 = x1, mu_x2 = 1), NULL, law$n_grid)
+      reference <- .prior_density_route_recipe_grid(route$recipe)
+      expect_equal(law$density, reference$density)
+      expect_equal(law$point, reference$point)
+    }
+  }
+  recipe <- .prior_density_route_recipe(list(x = prior("uniform", list(1, 2)),
+    y = prior("t", list(0, 1, 5)), z = prior("point", list(3))), c(x = -2, y = 1, z = 1), NULL, 4096)
+  expect_identical(.prior_density_route_additive_measure(recipe)$type, "atom_free")
+  for(transform in c("log", "unknown")){
+    unsupported <- recipe
+    unsupported$source_transforms <- c(x = transform)
+    expect_null(.prior_density_route_additive_measure(unsupported))
+  }
+  unsupported <- recipe
+  attr(unsupported$prior_list$x, "multiply_by") <- 2
+  expect_null(.prior_density_route_additive_measure(unsupported))
+  unsupported <- recipe
+  unsupported$prior_list$z <- prior("point", list(expression(x)))
+  expect_null(.prior_density_route_additive_measure(unsupported))
+  unsupported <- .prior_density_route_recipe(list(x = prior("mnormal", list(0, 1, 2)),
+    y = recipe$prior_list$y), c("x[1]" = 1, "x[2]" = 1, y = 1), NULL, 4096)
+  expect_null(.prior_density_route_additive_measure(unsupported))
+})

@@ -1676,6 +1676,7 @@ JAGS_formula_prior_density <- function(
 
 .bt_formula_route_atom_certificate <- function(route){
 
+  if(!is.null(route$additive_measure)) return(list(type = "atom_free", location = NULL))
   if(route$type %in% c("log_scale_product", "truncated_normal_convolution")){
     return(list(type = "atom_free", location = NULL))
   }
@@ -1708,6 +1709,7 @@ JAGS_formula_prior_density <- function(
 
 .bt_formula_route_support <- function(route){
 
+  if(!is.null(route$additive_measure)) return(route$additive_measure$support)
   if(identical(route$type, "log_scale_product")){
     return(.posterior_support_log(.bt_formula_route_support(route$product)))
   }
@@ -1838,7 +1840,9 @@ JAGS_formula_prior_density <- function(
       prior_available <- FALSE
       prior_reason <- numerical_reasons[[1L]]
       prior_cause <- "numerical_scale_unavailable"
-    }else if(is.finite(record$prior_log_probability) && any(vapply(routes, function(route) identical(route$type, "unknown"), logical(1)))){
+    }else if(is.finite(record$prior_log_probability) && any(vapply(routes, function(route){
+      identical(route$type, "unknown") && (is.null(route$recipe) || is.null(route$additive_measure))
+    }, logical(1)))){
       prior_available <- FALSE
     }else if(prior_samples && prior_available && is.finite(record$prior_log_probability) &&
              (model_prior_available || point_model)){

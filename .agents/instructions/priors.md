@@ -474,6 +474,13 @@ components and totals (and their variances) of nested variance allocations
 with a term of the scale prior times two or more independent allocation
 shares.
 
+Formula marginal levels retain the numerical grid of an untransformed sum of
+independent scalar simple continuous priors and numeric points. At least one
+nonzero continuous summand certifies atom freedom; declared support algebra
+certifies the additive support. These certificates do not make an unknown
+point ordinate exact. Products, vector dependence, expression points, and
+unknown source transforms do not qualify for this additive certificate.
+
 Plotted linear-combination prior densities (`.prior_linear_density_to_plot_data()`)
 evaluate the same route at every plotted value: closed forms vectorized over
 the plotting grid, and quadrature leaves by one batched quadrature over all
