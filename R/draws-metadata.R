@@ -430,8 +430,8 @@
   if("linear_weights" %in% names(fields) && !"linear_weight_space" %in% names(fields)){
     context <- fields$prior_context
     if(is.null(context)) context <- .bt_meta_get(x, "prior_context")
-    fields$linear_weight_space <- if(is.null(fields$linear_weights)) NULL else
-      if(identical(context$linear_weight_space, "formula_contribution")) "formula_contribution" else "coefficient"
+    fields["linear_weight_space"] <- list(if(is.null(fields$linear_weights)) NULL else
+      if(identical(context$linear_weight_space, "formula_contribution")) "formula_contribution" else "coefficient")
   }
   if(!is.null(fields$measure_unavailable)){
     .bt_meta_validate("measure_unavailable", fields$measure_unavailable)

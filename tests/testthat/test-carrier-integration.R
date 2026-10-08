@@ -36,3 +36,12 @@ test_that("public formatting retains a live carrier's canonical source logs", {
     expect_identical(as.numeric(format_BF(invalidated, logBF = TRUE)), log(as.numeric(invalidated)))
   }
 })
+
+test_that("removing a public linear recipe clears its companion space", {
+  x <- c(1, 2, 3)
+  posterior_metadata(x, "linear_weights") <- c(a = 1)
+  expect_identical(posterior_metadata(x, "linear_weight_space"), "coefficient")
+  posterior_metadata(x, "linear_weights") <- NULL
+  expect_null(posterior_metadata(x, "linear_weights"))
+  expect_null(posterior_metadata(x, "linear_weight_space"))
+})
