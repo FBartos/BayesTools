@@ -3251,3 +3251,16 @@ test_that("ordered named maps require unique nonempty non-NA names", {
     expect_error(prior_ordered(total, allocation = setNames(list(c(.25, .75), c(.5, .5)), map_names)), "unique, nonempty, non-NA", fixed = TRUE)
   }
 })
+
+test_that("fixed ordered replay retains named empty matrix dimensions", {
+  original <- JAGS_formula(~f, "mu", data.frame(f = ordered(c("lo", "mid", "hi"))),
+    list(intercept = prior("point", list(0)), f = prior_ordered(prior("point", list(10)), c(.25, .75))))$prior_list$mu_f
+  spec <- .bt_ordered_spec("mu_f", original)
+  for(n in c(0L, 2L)){
+    draws <- matrix(numeric(n), n, 1L, dimnames = list(NULL, "unused"))
+    out <- .bt_deterministic_node_evaluate(.bt_dnode_ordered_coefficients(spec), .bt_deterministic_lookup(draws))
+    expect_identical(dim(out), c(n, 2L))
+    expect_identical(colnames(out), spec$coefficient_names)
+    expect_equal(unname(out), matrix(rep(c(2.5, 7.5), each = n), n, 2L), tolerance = 0)
+  }
+})

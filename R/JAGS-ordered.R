@@ -212,7 +212,7 @@ JAGS_ordered_parameter_spec <- function(fit, parameters = NULL, weights = NULL, 
 .bt_ordered_allocation_values <- function(record, draws){
 
   if(identical(record$spec$type, "fixed")){
-    return(matrix(rep(record$spec$weights, each = nrow(draws)), nrow = nrow(draws)))
+    return(matrix(rep(record$spec$weights, each = nrow(draws)), nrow = nrow(draws), ncol = record$dim))
   }
   if(all(record$gamma_coordinates %in% colnames(draws))){
     eta <- draws[, record$gamma_coordinates, drop = FALSE]
