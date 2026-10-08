@@ -3103,3 +3103,29 @@ test_that("ordered indicator-coded terms refuse even zero totals", {
   expect_false(inherits(condition, "BayesTools_ordered_coordinates_unavailable"))
   expect_type(JAGS_formula(~f+g+f:g, "mu", data, list(intercept = prior("point", list(0)), f = p, g = p, "f:g" = p)), "list")
 })
+
+test_that("ordered mixture replay keeps ordered ownership and conditions", {
+  fixture <- ordered_plot_test_fixture(prior_mixture(list(prior("point", list(2)), prior("point", list(4)))),
+    allocation = prior("dirichlet", list(c(2, 2, 2))))
+  nodes <- JAGS_deterministic_nodes(fixture$fit)
+  expect_identical(nodes$parameter[nodes$node == "mu_f_ordered_total"], "mu_f")
+  for(value in c(3, 1.5, NA_real_, Inf)){
+    bad <- fixture$draws; bad[, "mu_f_ordered_total_indicator"] <- value
+    for(node in c("mu_f_ordered_total", "mu_f")){
+      condition <- expect_error(JAGS_evaluate_deterministic(fixture$fit, bad, nodes = node),
+        "Ordered total indicator 'mu_f_ordered_total_indicator' does not select a declared component.",
+        fixed = TRUE, class = "BayesTools_ordered_invalid_state")
+      expect_null(conditionCall(condition))
+    }
+  }
+  missing <- fixture$draws[, setdiff(colnames(fixture$draws), c("mu_f_ordered_total_indicator", "mu_f_ordered_total")), drop = FALSE]
+  condition <- expect_error(JAGS_evaluate_deterministic(fixture$fit, missing, nodes = "mu_f_ordered_total"),
+    "Ordered deterministic node 'mu_f_ordered_total' is unavailable from 'draws'. Include its declared primitive source coordinates.",
+    fixed = TRUE, class = "BayesTools_ordered_coordinates_unavailable")
+  expect_null(conditionCall(condition))
+  ordinary <- .bt_dnode_prior_mixture("theta", prior_mixture(list(prior("point", list(2)), prior("point", list(4)))))
+  condition <- expect_error(.bt_deterministic_node_evaluate(ordinary,
+    .bt_deterministic_lookup(matrix(3, 2L, 1L, dimnames = list(NULL, "theta_indicator")))),
+    "Mixture indicator draws of 'theta' must index a mixture component.", fixed = TRUE)
+  expect_identical(class(condition), c("simpleError", "error", "condition"))
+})

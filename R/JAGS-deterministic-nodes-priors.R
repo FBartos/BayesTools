@@ -188,6 +188,11 @@
   }
 
   out <- matrix(NA_real_, nrow = n, ncol = length(node$coordinates))
+  if(identical(spec$kind, "ordered_mixture") &&
+     any(!is.finite(indicator) | !indicator %in% seq_along(spec$components))){
+    .bt_ordered_stop(paste0("Ordered total indicator '", spec$indicator,
+      "' does not select a declared component."), "BayesTools_ordered_invalid_state")
+  }
   for(k in unique(indicator)){
     if(!k %in% seq_along(spec$components)){
       stop(

@@ -173,7 +173,8 @@ JAGS_ordered_parameter_spec <- function(fit, parameters = NULL, weights = NULL, 
   name <- .prior_ordered_total_name(parameter)
   if(metadata$theta_dim == 1L){
     node <- .bt_dnode_prior_mixture(name, total)
-    if(is.prior.spike_and_slab(total)) node$spec$kind <- "ordered_spike_and_slab"
+    node$parameter <- parameter
+    node$spec$kind <- if(is.prior.spike_and_slab(total)) "ordered_spike_and_slab" else "ordered_mixture"
     return(node)
   }
   if(!is.prior.spike_and_slab(total)){

@@ -185,7 +185,8 @@ JAGS_deterministic_evaluator <- function(fit, nodes = NULL){
         node_values <- NULL
       }
       if(is.null(node_values) && requested && all_nodes[[i]]$node %in% selected){
-        if(all_nodes[[i]]$family %in% c("ordered_allocation","ordered_coefficient")){
+        if(all_nodes[[i]]$family %in% c("ordered_allocation","ordered_coefficient") ||
+           isTRUE(all_nodes[[i]]$spec$kind %in% c("ordered_mixture", "ordered_spike_and_slab"))){
           .bt_ordered_stop(paste0("Ordered deterministic node '",all_nodes[[i]]$node,
             "' is unavailable from 'draws'. Include its declared primitive source coordinates."))
         }
