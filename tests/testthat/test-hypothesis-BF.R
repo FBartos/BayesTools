@@ -52,6 +52,24 @@ test_that("region BF uses its canonical log before natural representation", {
   expect_error(hypothesis_BF(c(2, 721), prior("exponential", list(rate = 1)), "theta > 1 vs theta > 1600", parameter = "theta"), "Prior region mass", fixed = TRUE)
 })
 
+test_that("fixed treatment baselines use the shared ordinate refusal rule", {
+  posterior <- .hypothesis_factor_marginal_for_test()
+  for(method in c("KDE", "normal")){
+    for(null in c(0, 1)){
+      condition <- expect_error(hypothesis_BF(posterior, hypothesis = paste0("2 * mu_fac[A] = ", null), parameter = "mu_fac", density_method = method),
+        class = if(null == 0) "BayesTools_point_mass_at_null" else "BayesTools_zero_ordinate")
+      expect_null(conditionCall(condition))
+    }
+    whole <- hypothesis_BF(posterior, hypothesis = "2 * mu_fac = 0", parameter = "mu_fac", density_method = method, columns = "all")
+    expect_true(is.na(attr(whole, "raw_BF")[1L]))
+    expect_true(all(is.finite(attr(whole, "raw_BF")[-1L])))
+    expect_match(attr(whole, "warnings")[[1L]], "point", ignore.case = TRUE)
+    contrast <- hypothesis_BF(posterior, hypothesis = "mu_fac[B] - mu_fac[A] = 0", parameter = "mu_fac", density_method = method, columns = "all")
+    direct <- hypothesis_BF(posterior, hypothesis = "mu_fac[B] = 0", parameter = "mu_fac", density_method = method, columns = "all")
+    expect_equal(attr(contrast, "raw_log_BF"), attr(direct, "raw_log_BF"), tolerance = 1e-12)
+  }
+})
+
 .hypothesis_marginal_posterior_for_test <- function(samples, prior_density){
 
   class(samples) <- c("marginal_posterior.simple", "marginal_posterior", class(samples))

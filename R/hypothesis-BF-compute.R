@@ -351,6 +351,12 @@
   }
 
   shift <- list(a = offset, b = 1)
+  if(is.null(context) && length(weights) == 0L){
+    constant_density <- .prior_linear_combination_density(
+      list(value = prior("point", list(offset))), c(value = 1), n_grid = 64L)
+    .hypothesis_check_prior_ordinate(constant_density,
+      .hypothesis_affine_null(linear, side$value), side$label)
+  }
   if(length(weights) == 0L || all(weights == 0)){
     .hypothesis_check_prior_ordinate(.prior_density_from_context(context, weights,
       output_transformation = "lin", output_transformation_arguments = shift),
