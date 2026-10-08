@@ -596,6 +596,11 @@ hypothesis_resolve <- function(ast, catalog, namespace = NULL,
 
 .bt_hypothesis_ast_node <- function(expr){
 
+  .bt_hypothesis_rewrite_node(.bt_hypothesis_ast_node_raw(expr), character())
+}
+
+.bt_hypothesis_ast_node_raw <- function(expr){
+
   source <- .hypothesis_expression_text(expr)
   if(is.numeric(expr) || is.integer(expr)){
     return(list(type = "literal", source = source, value = as.numeric(expr)))

@@ -635,3 +635,33 @@ test_that("empty level references retain the documented column types", {
     parameter = character(), level = character(), direct = logical(), stringsAsFactors = FALSE))
   expect_identical(hypothesis_parse_level_reference("theta[a]")$direct, TRUE)
 })
+
+
+test_that("bracket whitespace is canonical throughout level-reference trees", {
+
+  hypotheses <- c("`mu[ a ]` > 0", "(2 * `mu[ a ]` + 1) > 0",
+    "!(`mu[ a ]` <= 0) & (`mu[ b ]` / 2 > -1)")
+  canonical <- gsub("[ a ]", "[a]", gsub("[ b ]", "[b]", hypotheses, fixed = TRUE), fixed = TRUE)
+  for(i in seq_along(hypotheses)){
+    ast <- hypothesis_parse(hypotheses[[i]])
+    expect_identical(hypothesis_render(ast), hypothesis_render(hypothesis_parse(canonical[[i]])))
+    occurrences <- hypothesis_symbols(ast, occurrences = TRUE)
+    expect_true(all(occurrences$level %in% c("a", "b")))
+    rewritten <- hypothesis_rewrite(ast, c(mu = "location"))
+    expect_identical(hypothesis_symbols(rewritten), "location")
+    expect_identical(hypothesis_render(hypothesis_parse(hypothesis_render(rewritten))), hypothesis_render(rewritten))
+  }
+  reference <- hypothesis_parse_level_reference("`mu[ a ]`")
+  canonical_reference <- hypothesis_parse_level_reference("`mu[a]`")
+  expect_identical(reference[, setdiff(names(reference), "input")],
+    canonical_reference[, setdiff(names(canonical_reference), "input")])
+  expect_identical(reference$input, "`mu[ a ]`")
+  expect_identical(canonical_reference$input, "`mu[a]`")
+  fixture <- ordered_plot_test_fixture(prior("normal", list(0, 1)), c(.25, .75),
+    levels = c("a", "b", "c"))
+  marginal <- marginal_posterior(fixture$samples, "mu_f", use_formula = FALSE, prior_samples = TRUE)
+  run <- function(text) hypothesis_BF(marginal, hypothesis = text, parameter = "mu_f", columns = "all", seed = 17)
+  expect_identical(attr(run("`mu_f[ b ]` > 0"), "raw_log_BF"),
+    attr(run("`mu_f[b]` > 0"), "raw_log_BF"))
+  expect_identical(hypothesis_symbols(hypothesis_parse("ordinary_name > 0")), "ordinary_name")
+})
