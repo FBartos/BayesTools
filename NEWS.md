@@ -1,5 +1,6 @@
 # version 0.3.1
 - fixed spike inclusion uses its declared active component in weighted conditional support. Supported scalar additive formula grids retain declared atom freedom and support while exact point ordinates remain unknown.
+* Preserve declared formula scales across recursive laws, complete fixed weight and ordered point atoms, canonical level references, and authoritative scalar region logs; validate bias branch membership and cumulative Gamma totals.
 - empty level-reference parsing retains its typed table; undefined posterior region odds retain both prior numerical diagnostics, and deterministic mixture replay clearly rejects invalid indicators before indexing.
 - batched prior-density quadrature reuses its existing finite rule nodes during coordinate validation with unchanged coordinate arithmetic and numerical budgets.
 - hypothesis table indexing follows data-frame row and column selection, keeping canonical BF logs and row diagnostics aligned. Escaped names and integer literals retain coherent hypothesis AST rendering.

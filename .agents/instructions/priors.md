@@ -74,7 +74,7 @@ An exact nonlocal conditional sign-boundary uniform retains its inverse-CDF
 location in bounded R sampling, even though the density is zero at that isolated
 support point. This differs from uncertified magnitude/location rounding, which
 remains unavailable. JAGS sampling states and deterministic initialization
-additionally require a usable positive log density and refuse that location;
+additionally require a finite usable normalized log density and refuse that location;
 general finite-required R collectors do not impose this state requirement.
 Truncated nonlocal mean and variance quadrature and natural density-integral
 leaves construct one cached log-density evaluator in natural-integral mode.

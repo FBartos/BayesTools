@@ -213,7 +213,13 @@
     }
     for(draw in seq_len(n)){
       eta <- free[draw, ]
-      std_eta <- eta / sum(eta)
+      total <- sum(eta)
+      if(!is.finite(total) || total <= 0){
+        .prior_numerical_signal("cumulative weight normalization", "gamma", "natural", draw,
+          paste0("The finite positive Gamma auxiliary total for '",
+            paste(free_names, collapse = ", "), "' is not finite and positive"), error = TRUE)
+      }
+      std_eta <- eta / total
       omega[draw, ] <- rev(cumsum(rev(std_eta)))
     }
     return(omega)

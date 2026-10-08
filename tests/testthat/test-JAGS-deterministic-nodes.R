@@ -711,3 +711,34 @@ test_that("missing fitted bias branch counts retain the explicit refit refusal",
   expect_null(conditionCall(condition))
 })
 
+
+
+test_that("cumulative omega replay refuses overflowing positive Gamma totals", {
+
+  prior <- prior_weightfunction("two-sided", c(.025, .05), wf_cumulative(c(2, 3, 4)))
+  node <- .bt_dnode_omega("omega", prior)
+  names <- .bt_dnode_omega_free_names(prior)
+  draws <- matrix(c(2, 3, 4), 1L, dimnames = list(NULL, names))
+  monitored <- cbind(draws, matrix(c(1, 7 / 9, 4 / 9), 1L,
+    dimnames = list(NULL, paste0("omega[", 1:3, "]"))))
+  fit <- .parameter_catalog_test_fit(coda::mcmc.list(coda::mcmc(monitored)), list(bias = prior))
+  # Preserve the existing divide-then-cumulative arithmetic, whose rounded
+  # 7/9 value differs from a single direct division by one ulp.
+  expected <- rev(cumsum(rev(c(2, 3, 4) / 9)))
+  expected <- matrix(expected[c(1, 2, 3, 2, 1)], 1L)
+  expect_equal(unname(JAGS_evaluate_deterministic(fit, draws, nodes = "omega")), expected, tolerance = 0)
+  invalid <- draws; invalid[,] <- 1e308
+  condition <- expect_error(JAGS_evaluate_deterministic(fit, invalid, nodes = "omega"),
+    class = "BayesTools_numerical_unavailable")
+  expect_s3_class(condition, "BayesTools_numerical_condition")
+  expect_identical(condition$operation, "cumulative weight normalization")
+  expect_identical(condition$indices, 1L)
+  expect_null(conditionCall(condition))
+  binary <- prior_weightfunction("one-sided", .05, wf_cumulative(c(2, 3)))
+  binary_names <- .bt_dnode_omega_free_names(binary)
+  binary_draws <- matrix(.4, 1L, dimnames = list(NULL, binary_names))
+  binary_monitored <- cbind("omega[1]" = 1, binary_draws)
+  binary_fit <- .parameter_catalog_test_fit(coda::mcmc.list(coda::mcmc(binary_monitored)), list(bias = binary))
+  expect_equal(unname(JAGS_evaluate_deterministic(binary_fit, binary_draws, nodes = "omega")),
+    matrix(c(1, .4), 1L), tolerance = 0)
+})
