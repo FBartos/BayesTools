@@ -18,6 +18,19 @@ test_that("empty public measure refusal tables clear metadata after validation",
   expect_identical(serialize(x, NULL), original)
 })
 
+test_that("affine hypothesis row recipes follow every selected draw", {
+  x <- .bt_meta_set(c(1, 2, 3), "hypothesis_evaluation", list(numerator = c(1, 2, 3), divisor = 1, weights = c(theta = 1), offset = 0))
+  original <- .bt_meta_get(x, "hypothesis_evaluation")
+  for(rows in list(c(3L, 1L), c(2L, 2L, 1L), integer())){
+    y <- .bt_draws_subset_rows(x, rows)
+    recipe <- .bt_meta_get(y, "hypothesis_evaluation")
+    expect_identical(recipe$numerator, original$numerator[rows])
+    expect_identical(as.numeric(y), recipe$numerator / recipe$divisor)
+    for(field in c("divisor", "weights", "offset")) expect_identical(recipe[[field]], original[[field]])
+  }
+  expect_identical(.bt_meta_get(x, "hypothesis_evaluation"), original)
+})
+
 source(testthat::test_path("common-functions.R"))
 
 test_that("the public ordered source accessor preserves producer validation", {

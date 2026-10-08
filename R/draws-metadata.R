@@ -491,6 +491,9 @@
   }
   if(!is.null(meta$ordered_source)) meta$ordered_source <- .bt_ordered_source_subset(meta$ordered_source, rows)
   if(!is.null(meta$formula_state)) meta$formula_state <- .bt_formula_state_subset(meta$formula_state, rows)
+  if(!is.null(meta$hypothesis_evaluation)){
+    meta$hypothesis_evaluation$numerator <- meta$hypothesis_evaluation$numerator[rows]
+  }
   if(!is.null(meta$components) && length(meta$components$index)==NROW(x)){
     meta$components <- .posterior_components_new(meta$components$index[rows],meta$components$supports,meta$components$keys)
   }
