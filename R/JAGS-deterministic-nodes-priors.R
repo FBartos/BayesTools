@@ -81,6 +81,7 @@
       kind = "bias_term",
       indicator = "bias_indicator",
       branch = which(is_term),
+      branch_count = length(prior),
       source = source
     )
   )
@@ -151,8 +152,17 @@
   }
 
   if(identical(spec$kind, "bias_term")){
+    if(!is.numeric(spec$branch_count) || length(spec$branch_count) != 1L ||
+       !is.finite(spec$branch_count) || spec$branch_count < 1 ||
+       spec$branch_count != floor(spec$branch_count) ||
+       !all(spec$branch %in% seq_len(spec$branch_count))){
+      .bt_stop_refit_required("The fitted bias-term branch declaration is missing or inconsistent. Refit the model with this version of BayesTools.")
+    }
     if(any(!is.finite(indicator))){
       stop("Bias indicator draws of '", node$node, "' must be finite.", call. = FALSE)
+    }
+    if(any(!indicator %in% seq_len(spec$branch_count))){
+      stop("Bias indicator draws of '", node$node, "' must index a declared bias branch.", call. = FALSE)
     }
     values <- rep(0, n)
     active <- indicator == spec$branch
@@ -201,13 +211,6 @@
       "' must index a mixture component.", call. = FALSE)
   }
   for(k in unique(indicator)){
-    if(!k %in% seq_along(spec$components)){
-      stop(
-        "Mixture indicator draws of '", node$node,
-        "' must index a mixture component.",
-        call. = FALSE
-      )
-    }
     values <- component_values(spec$components[[k]])
     if(is.null(values)){
       return(NULL)

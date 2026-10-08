@@ -677,3 +677,37 @@ test_that("ordinary mixture and bias replay reject nonfinite indicators before i
     expect_null(conditionCall(condition))
   }
 })
+
+
+test_that("PET and PEESE replay require exact declared finite branch membership", {
+
+  for(term in c("PET", "PEESE")){
+    active <- if(term == "PET") prior_PET("normal", list(0, 1)) else prior_PEESE("normal", list(0, 1))
+    priors <- list(bias = prior_mixture(list(prior_none(), active)))
+    draws <- cbind(value = c(0, 3), source = c(2, 3), bias_indicator = c(1, 2))
+    colnames(draws)[1:2] <- c(term, paste0(term, "_1"))
+    fit <- .parameter_catalog_test_fit(coda::mcmc.list(coda::mcmc(draws)), priors)
+    expect_identical(as.numeric(JAGS_evaluate_deterministic(fit, draws, nodes = term)), c(0, 3))
+    for(value in c(0, 3, 1.5)){
+      invalid <- draws; invalid[2L, "bias_indicator"] <- value
+      condition <- expect_error(JAGS_evaluate_deterministic(fit, invalid, nodes = term),
+        paste0("Bias indicator draws of '", term, "' must index a declared bias branch."), fixed = TRUE)
+      expect_null(conditionCall(condition))
+    }
+  }
+})
+
+test_that("missing fitted bias branch counts retain the explicit refit refusal", {
+
+  priors <- list(bias = prior_mixture(list(prior_none(), prior_PET("normal", list(0, 1)))))
+  draws <- cbind(PET = c(0, 3), PET_1 = c(2, 3), bias_indicator = c(1, 2))
+  fit <- .parameter_catalog_test_fit(coda::mcmc.list(coda::mcmc(draws)), priors)
+  node <- .bt_dnode_prior_mixture_bias_term("bias", priors$bias, "PET")
+  node$spec$branch_count <- NULL
+  local_mocked_bindings(.bt_deterministic_nodes_fit = function(fit) list(PET = node), .package = "BayesTools")
+  condition <- expect_error(JAGS_evaluate_deterministic(fit, draws, nodes = "PET"),
+    class = "BayesTools_refit_required")
+  expect_identical(conditionMessage(condition), "The fitted bias-term branch declaration is missing or inconsistent. Refit the model with this version of BayesTools.")
+  expect_null(conditionCall(condition))
+})
+

@@ -60,7 +60,9 @@ parameters, prediction, marginal posteriors of formula parameters,
 random-effect unscaling, and convergence-role parents use the family
 evaluators. Declared dependencies are the coordinates the R evaluator reads. A
 new generated node gets a family and a parity test against the JAGS monitors,
-not another evaluator. Intercept priors cannot carry `multiply_by`; it scales
+not another evaluator. Bias-term specs retain their declared branch count;
+finite indicators must exactly index that declaration before inactive zeros
+are constructed. Missing or inconsistent fitted declarations require refitting. Intercept priors cannot carry `multiply_by`; it scales
 only formula-term coefficients.
 
 Seeding belongs to the same contract. Initial values are drawn after
