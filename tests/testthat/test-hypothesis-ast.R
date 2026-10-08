@@ -628,3 +628,10 @@ test_that("an AST is validated once per content and modifications are rechecked"
   )
   expect_identical(calls, before)
 })
+test_that("empty level references retain the documented column types", {
+
+  result <- hypothesis_parse_level_reference(character())
+  expect_identical(result, data.frame(input = character(), symbol = character(),
+    parameter = character(), level = character(), direct = logical(), stringsAsFactors = FALSE))
+  expect_identical(hypothesis_parse_level_reference("theta[a]")$direct, TRUE)
+})

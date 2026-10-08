@@ -73,6 +73,10 @@ hypothesis_parse_point_reference <- function(hypothesis,
 #' @export
 hypothesis_parse_level_reference <- function(text){
 
+  if(is.character(text) && length(text) == 0L){
+    return(data.frame(input = character(), symbol = character(), parameter = character(),
+      level = character(), direct = logical(), stringsAsFactors = FALSE))
+  }
   check_char(text, "text", check_length = 0, allow_NA = FALSE)
 
   rows <- lapply(text, function(text_i){
