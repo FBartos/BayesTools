@@ -101,6 +101,15 @@ test_that("model probability refit requirements retain exact typed diagnostics",
 }
 
 # This oracle centers evidence before combining it with the original raw logs.
+test_that("weightfunction null locations are exactly one", {
+  wf <- prior_weightfunction("one-sided", .05, wf_fixed(c(1, .5)))
+  expect_error(weightfunctions_mapping(list(wf, prior("point", list(1 - 1e-9)))))
+  expect_silent(weightfunctions_mapping(list(wf, prior("point", list(1)))))
+  expect_silent(weightfunctions_mapping(list(wf, prior_none())))
+  expect_false(.is_prior_weightfunction_null(prior("point", list(1 - 1e-9))))
+  expect_true(.is_prior_weightfunction_null(prior("point", list(1))))
+})
+
 .model_probability_reference <- function(weights, evidence) {
   raw <- log(weights)
   raw <- raw - max(raw)

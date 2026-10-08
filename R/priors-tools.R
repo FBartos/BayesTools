@@ -390,7 +390,8 @@ is.prior.weightfunction  <- function(x){
   is.prior.none(x) ||
     (is.prior.point(x) &&
        length(x$parameters[["location"]]) == 1L &&
-       isTRUE(all.equal(x$parameters[["location"]], 1)))
+       is.numeric(x$parameters[["location"]]) &&
+       isTRUE(x$parameters[["location"]] == 1))
 }
 #' @rdname is.prior
 is.prior.factor          <- function(x){
