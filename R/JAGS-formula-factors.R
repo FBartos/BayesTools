@@ -428,7 +428,8 @@
   ))
 }
 
-.transform_factor_contrast_samples <- function(coefficient_samples, metadata, parameter, transformed_class){
+.transform_factor_contrast_samples <- function(coefficient_samples, metadata, parameter, transformed_class,
+                                               sample_context = NULL){
 
   if(!is.matrix(coefficient_samples)){
     coefficient_samples <- matrix(coefficient_samples, ncol = 1)
@@ -488,17 +489,50 @@
     design_info[["level_names"]]
   }
   attr(transformed_samples, "factor_cell_names") <- design_info[["cell_names"]]
-  if(!is.null(posterior_atoms)){
-    transformed_samples <- .posterior_atoms_set(
-      transformed_samples,
-      .posterior_atoms_linear_transform(
-        posterior_atoms,
-        design,
-        column_names = colnames(transformed_samples)
-      )
-    )
-  }
   class(transformed_samples) <- unique(c(old_class, class(transformed_samples), transformed_class))
+  if(!is.null(posterior_atoms)){
+    transformed_atoms <- .posterior_atoms_linear_transform(
+      posterior_atoms,
+      design,
+      column_names = colnames(transformed_samples)
+    )
+    if(!is.null(sample_context) && !inherits(transformed_atoms, "condition") &&
+       !is.null(transformed_atoms$marginals) && any(vapply(transformed_atoms$marginals, is.null, logical(1)))){
+      prior_list <- attr(sample_context, "prior_list", exact = TRUE)
+      if(is.null(prior_list)){
+        prior_list <- lapply(sample_context, attr, which = "prior_list", exact = TRUE)
+      }
+      weights <- .prior_factor_level_weight_matrix(transformed_samples, parameter, samples = sample_context)
+      prior_columns <- unlist(lapply(names(prior_list), function(name){
+        prior <- .prior_linear_representative_prior(prior_list[[name]])
+        if(is.null(prior)) character() else .prior_linear_prior_columns(name, prior)
+      }), use.names = FALSE)
+      columns <- colnames(transformed_samples)
+      rows <- match(columns, rownames(weights))
+      aligned <- !anyNA(rows) && !is.null(colnames(weights)) &&
+        !anyNA(colnames(weights)) && !anyDuplicated(colnames(weights)) &&
+        all(colnames(weights) %in% prior_columns) && all(is.finite(weights))
+      if(aligned){
+        for(i in which(vapply(transformed_atoms$marginals, is.null, logical(1)))){
+          # The full declared parent establishes this scalar law; empty joint
+          # atom storage and continuous coordinate marginals do not establish it.
+          scalar_atoms <- tryCatch(.posterior_atoms_formula(sample_context, prior_list,
+            weights[rows[[i]], , drop = FALSE], column_name = columns[[i]]),
+            BayesTools_formula_measure_unavailable = function(condition) condition,
+            BayesTools_ordered_expression_unavailable = function(condition) condition)
+          if(is.null(scalar_atoms) || inherits(scalar_atoms, "condition")) next
+          transformed_atoms$marginals[i] <- list(scalar_atoms)
+          unavailable <- .bt_meta_get(transformed_samples, "measure_unavailable")
+          if(!is.null(unavailable)){
+            unavailable <- unavailable[!(unavailable$column == columns[[i]] & unavailable$measure == "atoms"), , drop = FALSE]
+            transformed_samples <- .bt_meta_set(transformed_samples, "measure_unavailable",
+              if(nrow(unavailable)) unavailable else NULL)
+          }
+        }
+      }
+    }
+    transformed_samples <- .posterior_atoms_set(transformed_samples, transformed_atoms)
+  }
   if(inherits(transformed_samples,"mixed_posteriors.ordered_transformed")){
     source <- .bt_meta_get(transformed_samples,"ordered_source")
     if(is.null(source$view_transformations)){
@@ -697,7 +731,8 @@ transform_meandif_samples <- function(samples){
         coefficient_samples = meandif_samples,
         metadata            = meandif_samples,
         parameter           = names(samples)[i],
-        transformed_class   = "mixed_posteriors.meandif_transformed"
+        transformed_class   = "mixed_posteriors.meandif_transformed",
+        sample_context      = samples
       )
     }
   }
@@ -731,7 +766,8 @@ transform_orthonormal_samples <- function(samples){
         coefficient_samples = orthonormal_samples,
         metadata            = orthonormal_samples,
         parameter           = names(samples)[i],
-        transformed_class   = "mixed_posteriors.orthonormal_transformed"
+        transformed_class   = "mixed_posteriors.orthonormal_transformed",
+        sample_context      = samples
       )
     }
   }
@@ -752,7 +788,8 @@ transform_treatment_samples <- function(samples){
         coefficient_samples = treatment_samples,
         metadata            = treatment_samples,
         parameter           = names(samples)[i],
-        transformed_class   = "mixed_posteriors.treatment_transformed"
+        transformed_class   = "mixed_posteriors.treatment_transformed",
+        sample_context      = samples
       )
     }
   }
@@ -774,7 +811,8 @@ transform_ordered_samples <- function(samples){
         coefficient_samples = ordered_samples,
         metadata            = ordered_samples,
         parameter           = names(samples)[i],
-        transformed_class   = "mixed_posteriors.ordered_transformed"
+        transformed_class   = "mixed_posteriors.ordered_transformed",
+        sample_context      = samples
       )
     }
   }

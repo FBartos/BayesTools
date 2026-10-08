@@ -4105,6 +4105,83 @@ test_that("plot_posterior handles transformed scaled factor-interaction priors",
   expect_gt(length(plot$layers), 1)
 })
 
+test_that("scaled factor contrasts retain independently declared scalar level laws", {
+
+  fixture <- .scaled_multi_factor_interaction_samples(n_posterior = 24, n_prior = 128)
+  parameter <- "mu_x__xXx__a__xXx__b"
+  transformed <- transform_factor_samples(fixture$samples)[[parameter]]
+  columns <- paste0("mu_x__xXx__a[dif: ", rep(c("a1", "a2"), times = 3),
+    "]__xXx__b[dif: ", rep(c("b1", "b2", "b3"), each = 2), "]")
+  expect_identical(colnames(transformed), columns)
+  atoms <- .posterior_atoms_get(transformed, allow_partial = TRUE)
+  expect_identical(names(atoms$marginals), columns)
+  for(i in seq_along(columns)){
+    scalar <- .posterior_atoms_for_column(atoms, i)
+    expect_false(is.null(scalar))
+    if(is.null(scalar)) next
+    expect_identical(scalar, .posterior_atoms_for_column(atoms, columns[[i]]))
+    expect_true(scalar$declared)
+    expect_identical(dim(scalar$locations), c(0L, 1L))
+    expect_identical(colnames(scalar$locations), columns[[i]])
+    expect_identical(scalar$mass, numeric())
+  }
+
+  # Without the parent declaration, the generic coordinate projection cannot
+  # certify multi-coordinate rows from continuous margins or empty joint atoms.
+  input <- fixture$samples[[parameter]]
+  uncertified <- .transform_factor_contrast_samples(input, input, parameter,
+    "mixed_posteriors.orthonormal_transformed")
+  uncertified_atoms <- .posterior_atoms_get(uncertified, allow_partial = TRUE)
+  expect_identical(vapply(seq_along(columns), function(i)
+    is.null(.posterior_atoms_for_column(uncertified_atoms, i)), logical(1)),
+    c(FALSE, FALSE, TRUE, TRUE, TRUE, TRUE))
+  expect_error(plot_posterior(stats::setNames(list(uncertified), parameter), parameter,
+    plot_type = "ggplot", prior = FALSE, n_points = 32),
+    "atom metadata do not identify the factor columns", fixed = TRUE)
+})
+
+test_that("factor scalar recovery preserves declared mixture masses and zero references", {
+
+  point <- prior_factor_levels(prior_factor("point", list(0), contrast = "meandif"), c("a", "b", "c"))
+  continuous <- prior_factor_levels(prior_factor("mnormal", list(0, 1), contrast = "meandif"), c("a", "b", "c"))
+  values <- rbind(matrix(0, 40, 2), cbind(seq(-1, 1, length.out = 60), seq(2, 3, length.out = 60)))
+  colnames(values) <- c("theta{1}", "theta{2}")
+  values <- attach_test_model_probabilities(values, c(.25, .75))
+  values <- .bt_draws_set_component(values, source = "model", component = c(rep(1, 40), rep(2, 60)))
+  joint <- .posterior_atoms_from_priors(list(point, continuous), c(.25, .75),
+    n_columns = 2L, column_names = colnames(values),
+    posterior_pair = .bt_meta_get(values, "model_probabilities")$posterior)
+  scalar_marginals <- stats::setNames(lapply(seq_len(2L), function(i) .posterior_atoms_for_column(joint, i)), colnames(values))
+  atoms <- .posterior_atoms_new(joint$locations, joint$mass, column_names = colnames(values),
+    source = joint$source, component_probabilities = joint$component_probabilities,
+    component_log_probabilities = joint$component_log_probabilities,
+    model_probability_declaration = joint$model_probability_declaration, marginals = scalar_marginals)
+  values <- .posterior_atoms_set(values, atoms)
+  attr(values, "prior_list") <- list(point, continuous)
+  for(name in .bt_factor_metadata_required){
+    attr(values, name) <- attr(continuous, name, exact = TRUE)
+  }
+  attr(values, "meandif") <- TRUE
+  class(values) <- c("mixed_posteriors", "mixed_posteriors.factor", "mixed_posteriors.vector", "matrix")
+  transformed <- transform_meandif_samples(list(theta = values))$theta
+  transformed_atoms <- .posterior_atoms_get(transformed, allow_partial = TRUE)
+  for(i in seq_len(ncol(transformed))){
+    scalar <- .posterior_atoms_for_column(transformed_atoms, i)
+    expect_false(is.null(scalar))
+    if(is.null(scalar)) next
+    expect_identical(as.numeric(scalar$locations), 0)
+    expect_identical(scalar$mass, .25)
+    expect_identical(colnames(scalar$locations), colnames(transformed)[[i]])
+  }
+
+  fixture <- .scaled_default_treatment_interaction_samples(n_posterior = 20, n_prior = 128)
+  treatment <- transform_treatment_samples(fixture$samples)$mu_alloc
+  reference <- .posterior_atoms_for_column(.posterior_atoms_get(treatment, allow_partial = TRUE), 1L)
+  expect_identical(as.numeric(reference$locations), 0)
+  expect_identical(reference$mass, 1)
+  expect_true(all(treatment[, 1L] == 0))
+})
+
 test_that("plot_posterior owns factor legends in transformed prior overlays", {
 
   fixture <- .scaled_default_treatment_interaction_samples(n_posterior = 20, n_prior = 128)
