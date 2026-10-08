@@ -3441,3 +3441,27 @@ test_that("estimates tables show ordered totals and shares or the level effects"
   expect_null(attr(JAGS_estimates_table(scaled$fit, transform_scaled = TRUE,
                                         transform_factors = TRUE), "footnotes"))
 })
+
+
+test_that("internal ordered conditional localization retains canonical bound provenance", {
+
+  data <- data.frame(f = ordered(rep(c("low", "mid", "high"), 2L),
+    levels = c("low", "mid", "high")), x = c(-1, 0, 1, -1, 0, 1))
+  info <- JAGS_formula(~ f + x, "mu", data, list(intercept = prior("point", list(0)),
+    f = prior_ordered(prior_spike_and_slab(prior("normal", list(0, 1)), prior("point", list(.5))),
+      allocation = c(.25, .75)),
+    x = prior_spike_and_slab(prior("normal", list(0, 1)), prior("point", list(.5)))))
+  draws <- .generate_prior_sample_matrix(info$prior_list, 40L, seed = 17)
+  fit <- .parameter_catalog_test_fit(coda::mcmc.list(coda::mcmc(draws)), info$prior_list,
+    list(mu = info$formula_design), list(mu = info$formula_scale))
+  original <- serialize(attr(fit, "prior_list"), NULL)
+  for(rule in c("OR", "AND")){
+    mixed <- as_mixed_posteriors(fit, c("mu_intercept", "mu_f", "mu_x"),
+      conditional = c("mu_f", "mu_x"), conditional_rule = rule)
+    levels <- marginal_posterior(mixed, "mu_f", formula = ~ f + x,
+      at = list(x = 1), prior_samples = TRUE)
+    expect_true(all(vapply(levels, function(x) !is.null(posterior_metadata(x, "prior_density")), logical(1))))
+  }
+  expect_identical(serialize(attr(fit, "prior_list"), NULL), original)
+})
+

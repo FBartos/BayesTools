@@ -65,8 +65,10 @@ JAGS_ordered_density_kernel <- function(prior_list, allocation_chart = NULL){
 
 .bt_ordered_localize_total <- function(prior, total){
 
+  parameter <- .prior_ordered_metadata(prior)$parameter_name
+  .bt_require_ordered_metadata(prior, parameter)
   prior$total <- total
-  prior
+  .bt_bind_ordered_prior_metadata(prior, parameter)
 }
 
 .bt_ordered_compile_density <- function(prior_list, allocation_chart = NULL,
