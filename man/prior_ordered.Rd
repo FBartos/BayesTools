@@ -13,8 +13,9 @@ prior_ordered(
 )
 }
 \arguments{
-\item{total}{scalar prior for the total effect from the first to the last
-ordered level.}
+\item{total}{scalar prior for the first-to-last effect with
+\code{"cumulative"}, or the last level's effect from the zero baseline with
+\code{"cumulative_levels"}.}
 
 \item{allocation}{allocation prior or fixed split. \code{NULL} creates a
 late-bound flat Dirichlet allocation with dimension determined by the formula

@@ -365,8 +365,9 @@ prior_factor <- function(distribution, parameters, truncation = list(lower = -In
 #' by separating a scalar total effect from an allocation of that effect across
 #' ordered-level increments.
 #'
-#' @param total scalar prior for the total effect from the first to the last
-#' ordered level.
+#' @param total scalar prior for the first-to-last effect with
+#' \code{"cumulative"}, or the last level's effect from the zero baseline with
+#' \code{"cumulative_levels"}.
 #' @param allocation allocation prior or fixed split. \code{NULL} creates a
 #' late-bound flat Dirichlet allocation with dimension determined by the formula
 #' term. Numeric vectors specify fixed splits of finite nonnegative weights
