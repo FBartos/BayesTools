@@ -897,3 +897,62 @@ test_that("N35 unnamed and permuted conditionals preserve the declared active su
   expect_error(call(list(NULL, NULL), c("beta", "beta")),
     "'marginal_parameters' must contain unique, nonmissing, nonempty parameter names.", fixed = TRUE)
 })
+
+.factor_level_atom_samples_for_test <- function(contrast = "meandif"){
+  formula <- JAGS_formula(~fac, "mu", data.frame(fac = factor(c("A", "B", "C"))),
+    list(intercept = prior("normal", list(0, 1)), fac = prior_factor("mnormal", list(0, 1), contrast = contrast)), formula_scale = TRUE)
+  columns <- .JAGS_prior_factor_names("mu_fac", formula$prior_list$mu_fac)
+  values <- cbind(mu_intercept = seq(-1, 1, length.out = 20L),
+    matrix(c(seq(-2, 2, length.out = 20L), seq(-3, 3, length.out = 20L)), 20L, dimnames = list(NULL, columns)))
+  fit <- .mock_marginal_fit(values, formula$prior_list)
+  attr(fit, "formula_scale") <- list(mu = formula$formula_scale)
+  fit <- attach_test_parameter_map(fit, monitor_names = colnames(values))
+  mixed <- as_mixed_posteriors(fit, "mu_fac", transform_scaled = TRUE)
+  # Valid scalar declarations reproduce the partial projected metadata of the
+  # public fitted meandif producer without adding a fitted formula-state stub.
+  scalar_columns <- colnames(mixed$mu_fac)
+  marginals <- stats::setNames(lapply(scalar_columns, function(column) .posterior_atoms_new(column_names = column)), scalar_columns)
+  posterior_metadata(mixed$mu_fac, "atoms") <- .posterior_atoms_new(column_names = scalar_columns, marginals = marginals)
+  list(mixed = mixed,
+    values = values[, columns, drop = FALSE], design = attr(formula$prior_list$mu_fac, "factor_design"))
+}
+
+test_that("factor level extraction derives missing scalar atom certificates from its formula", {
+  for(contrast in c("meandif", "orthonormal")){
+    fixture <- .factor_level_atom_samples_for_test(contrast)
+    posterior <- marginal_posterior(fixture$mixed, "mu_fac", use_formula = FALSE, prior_samples = TRUE)
+    for(i in seq_along(posterior)){
+      expect_equal(as.numeric(posterior[[i]]), as.vector(fixture$values %*% fixture$design[i, ]), tolerance = 1e-12)
+      atoms <- posterior_metadata(posterior[[i]], "atoms")
+      expect_true(isTRUE(atoms$declared))
+      expect_length(atoms$mass, 0L)
+      expect_true(posterior_atoms_free(posterior[[i]]))
+    }
+  }
+})
+
+test_that("factor scalar certificate fallback preserves unknown laws and strict errors", {
+  fixture <- .factor_level_atom_samples_for_test()
+  unknown <- with_mocked_bindings(marginal_posterior(fixture$mixed, "mu_fac", use_formula = FALSE, prior_samples = TRUE),
+    .posterior_atoms_formula = function(...) NULL, .package = "BayesTools")
+  expect_true(posterior_atoms_free(unknown$A))
+  for(level in c("B", "C")){
+    expect_true(all(is.finite(as.numeric(unknown[[level]]))))
+    expect_null(posterior_metadata(unknown[[level]], "atoms"))
+    condition <- expect_error(posterior_atoms_free(unknown[[level]]), class = "BayesTools_formula_atoms_unavailable")
+    expect_s3_class(condition, "BayesTools_formula_measure_unavailable")
+    if(inherits(condition, "condition")) expect_null(conditionCall(condition))
+  }
+  refusal <- errorCondition("Controlled scalar atom refusal", call = NULL, class = "BayesTools_formula_measure_unavailable",
+    reason = "structural_target_law_unavailable", detail = "Controlled declared law is unavailable",
+    diagnostics = .model_probability_diagnostics(posterior = .model_probability_pair(1, 0, "posterior", "ordinary"), stage = "posterior"))
+  unavailable <- with_mocked_bindings(marginal_posterior(fixture$mixed, "mu_fac", use_formula = FALSE, prior_samples = TRUE),
+    .posterior_atoms_formula = function(...) stop(refusal), .package = "BayesTools")
+  table <- posterior_metadata(unavailable$B, "measure_unavailable")
+  expect_identical(table$column, "B")
+  expect_identical(table$measure, "atoms")
+  expect_identical(table$cause, refusal$reason)
+  expect_identical(table$diagnostics[[1L]], refusal$diagnostics)
+  expect_error(with_mocked_bindings(marginal_posterior(fixture$mixed, "mu_fac", use_formula = FALSE, prior_samples = TRUE),
+    .posterior_atoms_formula = function(...) stop("Ordinary helper error", call. = FALSE), .package = "BayesTools"), "Ordinary helper error", fixed = TRUE)
+})

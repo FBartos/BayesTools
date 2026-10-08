@@ -895,10 +895,40 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
               lvl_i
             )
           }
-          temp_marginal_posterior_samples <- .posterior_atoms_set(
-            temp_marginal_posterior_samples,
-            temp_atoms
-          )
+          if(is.null(temp_atoms)){
+            prior_columns <- unlist(lapply(names(prior_list), function(name){
+              prior <- .prior_linear_representative_prior(prior_list[[name]])
+              if(is.null(prior)) character() else .prior_linear_prior_columns(name, prior)
+            }), use.names = FALSE)
+            aligned <- is.matrix(factor_weights) && lvl_i <= nrow(factor_weights) &&
+              !is.null(colnames(factor_weights)) && !anyNA(colnames(factor_weights)) &&
+              !anyDuplicated(colnames(factor_weights)) &&
+              all(colnames(factor_weights) %in% prior_columns) &&
+              all(is.finite(factor_weights[lvl_i, ]))
+            if(aligned){
+              temp_atoms <- tryCatch(.posterior_atoms_formula(samples, prior_list,
+                factor_weights[lvl_i, , drop = FALSE],
+                column_name = colnames(marginal_posterior_samples)[[lvl_i]]),
+                BayesTools_formula_measure_unavailable = function(condition) condition)
+            }
+          }
+          if(is.null(temp_atoms) || inherits(temp_atoms, "BayesTools_formula_measure_unavailable")){
+            temp_marginal_posterior_samples <- .bt_meta_set(temp_marginal_posterior_samples, "atoms", NULL)
+            temp_marginal_posterior_samples <- .bt_formula_measure_mark(temp_marginal_posterior_samples,
+              level_names[[lvl_i]], "atoms",
+              if(is.null(temp_atoms)) "A declared scalar posterior atom certificate is unavailable for this factor level" else
+                if(is.null(temp_atoms$detail)) conditionMessage(temp_atoms) else temp_atoms$detail,
+              cause = if(is.null(temp_atoms)) "structural_target_law_unavailable" else temp_atoms$reason,
+              diagnostics = if(is.null(temp_atoms)) NULL else temp_atoms$diagnostics)
+          }else{
+            temp_marginal_posterior_samples <- .posterior_atoms_set(temp_marginal_posterior_samples, temp_atoms)
+            unavailable <- .bt_meta_get(temp_marginal_posterior_samples, "measure_unavailable")
+            if(!is.null(unavailable)){
+              unavailable <- unavailable[!(unavailable$column == level_names[[lvl_i]] & unavailable$measure == "atoms"), , drop = FALSE]
+              temp_marginal_posterior_samples <- .bt_meta_set(temp_marginal_posterior_samples, "measure_unavailable",
+                if(nrow(unavailable)) unavailable else NULL)
+            }
+          }
         }
         posterior_density <- .posterior_density_from_sources(
           sources          = posterior_density_sources,
