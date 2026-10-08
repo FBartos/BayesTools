@@ -5,7 +5,9 @@
 #' @param parameter parameter name to be plotted. Use \code{"PETPEESE"}
 #' for PET-PEESE plot with parameters \code{"PET"} and \code{"PEESE"},
 #' and \code{"weightfunction"} for plotting a weightfunction with
-#' parameters \code{"omega"}.
+#' parameters \code{"omega"}. The combined \code{"PETPEESE"} curve requires
+#' \code{individual = FALSE}; use \code{"PET"} or \code{"PEESE"} for individual
+#' coefficient densities.
 #' @param prior whether prior distribution should be added to the figure.
 #' When samples were prepared with \code{as_mixed_posteriors(..., transform_scaled = TRUE)},
 #' the transformed prior samples are automatically used.
@@ -139,6 +141,10 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
     parameter <- "PET"
   }else if(tolower(gsub("-", "", gsub("_", "", gsub(".", "", parameter, fixed = TRUE),fixed = TRUE), fixed = TRUE)) %in% "peese"){
     parameter <- "PEESE"
+  }
+
+  if(identical(parameter, "PETPEESE") && individual){
+    stop("'parameter = \"PETPEESE\"' is unavailable with 'individual = TRUE'. Use 'parameter = \"PET\"' or 'parameter = \"PEESE\"' for individual densities, or 'individual = FALSE' for the combined curve.", call. = FALSE)
   }
 
   if(show_data && !identical(parameter, "omega")){

@@ -1,4 +1,5 @@
 # version 0.3.1
+- combined PETPEESE posterior curves clearly refuse 'individual = TRUE', directing individual densities to the PET or PEESE selectors.
 - fixed spike inclusion uses its declared active component in weighted conditional support. Supported scalar additive formula grids retain declared atom freedom and support while exact point ordinates remain unknown.
 * Preserve declared formula scales across recursive laws, complete fixed weight and ordered point atoms, canonical level references, and authoritative scalar region logs; validate bias branch membership and cumulative Gamma totals.
 - empty level-reference parsing retains its typed table; undefined posterior region odds retain both prior numerical diagnostics, and deterministic mixture replay clearly rejects invalid indicators before indexing.

@@ -782,3 +782,26 @@ test_that("scalar and multi-target refusal replacements preserve unrelated exact
   expect_identical(nrow(metadata), 6L)
 })
 
+test_that("combined PETPEESE names clearly refuse individual densities", {
+
+  bias <- prior_mixture(list(prior_none(), prior_weightfunction("two-sided", .05, wf_fixed(c(1, .4)))))
+  draws <- matrix(c(1, 1, 1, 1, 2, 1, .4, 1), 2L, byrow = TRUE,
+    dimnames = list(NULL, c("bias_indicator", "omega[1]", "omega[2]", "omega[3]")))
+  fit <- .parameter_catalog_test_fit(coda::mcmc.list(coda::mcmc(draws)), list(bias = bias))
+  samples <- as_mixed_posteriors(fit, "bias", conditional = "omega")
+  message <- "'parameter = \"PETPEESE\"' is unavailable with 'individual = TRUE'. Use 'parameter = \"PET\"' or 'parameter = \"PEESE\"' for individual densities, or 'individual = FALSE' for the combined curve."
+  for(parameter in c("PETPEESE", "petpeese", "Pet-Peese", "pet_peese", "pet.peese")){
+    condition <- expect_error(plot_posterior(samples, parameter, individual = TRUE, prior = FALSE),
+      message, fixed = TRUE)
+    expect_null(conditionCall(condition))
+  }
+  priors <- list(mu = prior("normal", list(0, 1)), PET = prior_PET("normal", list(0, 1)),
+    PEESE = prior_PEESE("normal", list(0, 1)))
+  draws <- .generate_prior_sample_matrix(priors, 60L, seed = 17)
+  fit <- .parameter_catalog_test_fit(coda::mcmc.list(coda::mcmc(draws)), priors)
+  samples <- as_mixed_posteriors(fit, names(priors))
+  for(parameter in c("PET", "PEESE")) expect_s3_class(
+    plot_posterior(samples, parameter, individual = TRUE, prior = FALSE, plot_type = "ggplot"), "ggplot")
+  expect_s3_class(plot_posterior(samples, "PETPEESE", individual = FALSE,
+    prior = FALSE, plot_type = "ggplot"), "ggplot")
+})
