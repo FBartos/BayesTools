@@ -616,7 +616,8 @@ posterior_atoms_free <- function(x){
   }
   declared <- !vapply(declarations$marginals, is.null, logical(1))
   marginals[declared] <- declarations$marginals[declared]
-  supports[declared] <- declarations$supports[declared]
+  supported <- !vapply(declarations$supports, is.null, logical(1))
+  supports[supported] <- declarations$supports[supported]
   if(is.null(joint_unavailable) || any(!vapply(marginals, is.null, logical(1)))){
     atoms <- .posterior_atoms_new(if(is.null(joint_unavailable)) atoms$locations else NULL,
       if(is.null(joint_unavailable) && !is.null(atoms)) atoms$mass else numeric(),

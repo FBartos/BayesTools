@@ -608,7 +608,8 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
   attr(samples, "prior_list") <- priors
   attr(samples, "interaction")       <- if(length(priors_info) == 0) FALSE else priors_info[["interaction"]]
   attr(samples, "interaction_terms") <- priors_info[["interaction_terms"]]
-  samples <- .posterior_support_set_from_prior_list(samples, priors)
+  support_pair <- .bt_meta_get(samples, "model_probabilities")$posterior
+  samples <- .posterior_support_set_from_prior_list(samples, priors[is.finite(support_pair$logs)])
   samples <- .posterior_atoms_set(
     samples,
     .posterior_atoms_from_priors(
@@ -704,7 +705,8 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
   samples <- .model_probability_component_set(samples, model_component, priors, post_probs, posterior_pair)
   attr(samples, "parameter")  <- parameter
   attr(samples, "prior_list") <- priors
-  samples <- .posterior_support_set_columns_from_prior_list(samples, priors)
+  support_pair <- .bt_meta_get(samples, "model_probabilities")$posterior
+  samples <- .posterior_support_set_columns_from_prior_list(samples, priors[is.finite(support_pair$logs)])
   samples <- .posterior_atoms_set(
     samples,
     .posterior_atoms_from_priors(
@@ -981,7 +983,8 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
   }
 
   if(isTRUE(priors_info[["treatment"]]) || isTRUE(priors_info[["independent"]])){
-    factor_support <- .posterior_support_from_prior_list(priors)
+    support_pair <- .bt_meta_get(samples, "model_probabilities")$posterior
+    factor_support <- .posterior_support_from_prior_list(priors[is.finite(support_pair$logs)])
     if(!is.null(factor_support) && !is.null(colnames(samples))){
       samples <- .bt_meta_set(samples, "support", stats::setNames(
         rep(list(factor_support), ncol(samples)),

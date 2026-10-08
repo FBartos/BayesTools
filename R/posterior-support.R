@@ -606,6 +606,17 @@ posterior_support_attribute <- function(bounds, points = NULL, type = NULL,
                                   type = "points"))
   }
   if(is.prior.spike_and_slab(prior)){
+    inclusion <- .get_spike_and_slab_inclusion(prior)
+    if(is.prior.point(inclusion)){
+      probability <- inclusion$parameters[["location"]]
+      if(is.numeric(probability) && length(probability) == 1L && isTRUE(probability == 0)){
+        spike <- which(attr(prior, "components", exact = TRUE) == "null")
+        return(.posterior_support_from_prior(prior[[spike]], source))
+      }
+      if(is.numeric(probability) && length(probability) == 1L && isTRUE(probability == 1)){
+        return(.posterior_support_from_prior(.get_spike_and_slab_variable(prior), source))
+      }
+    }
     variable_support <- .posterior_support_from_prior(
       .get_spike_and_slab_variable(prior),
       source = source
@@ -1183,8 +1194,10 @@ posterior_support_attribute <- function(bounds, points = NULL, type = NULL,
     key <- keys[key_i, , drop = TRUE]
     names(key) <- colnames(keys)
     if(model_mixture){
-      model_weight <- context$model_weights[key[[".model"]]]
-      if(!is.finite(model_weight) || model_weight <= 0){
+      .model_probability_validate(context$model_weights, context$model_log_weights,
+        context$model_probability_declaration, normalized = TRUE)
+      model_log_weight <- context$model_log_weights[key[[".model"]]]
+      if(!is.finite(model_log_weight)){
         return(NULL)
       }
     }

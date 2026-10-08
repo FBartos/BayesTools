@@ -158,6 +158,36 @@ test_that("joint numerical refusal retains independently declared omega scalars"
   expect_equal(.posterior_atoms_get(equal$bias)$mass, 1, tolerance = 0)
 })
 
+test_that("posterior support uses declared posterior logs and fixed inclusion boundaries", {
+  narrow <- .model_probability_test_model(prior("uniform", list(1, 2)), 0)
+  broad <- .model_probability_test_model(prior("uniform", list(-20, 20)), -Inf)
+  narrow$fit$mcmc <- coda::mcmc.list(coda::mcmc(cbind(theta = seq(1.1, 1.9, length.out = 20))))
+  # Reattach the unchanged declared geometry after replacing this synthetic fixture's draws.
+  narrow$fit <- attach_test_parameter_map(narrow$fit)
+  for(evidence in c(-Inf, -1000)){
+    broad$marglik <- bridgesampling_object(evidence)
+    mixed <- mix_posteriors(list(narrow, broad), "theta", list(c(FALSE, FALSE)), seed = 3, n_samples = 20)
+    expected <- if(is.infinite(evidence)) c(1, 2) else c(-20, 20)
+    expect_identical(posterior_metadata(mixed$theta, "support")$bounds, expected)
+    expect_length(attr(mixed$theta, "prior_list"), 2L)
+  }
+  for(probability in c(0, 1, .5, 1 - 1e-9)){
+    p <- prior_spike_and_slab(prior("uniform", list(1, 2)), prior("point", list(probability)))
+    support <- .posterior_support_from_prior(p)
+    expected <- if(probability == 0) c(0, 0) else if(probability == 1) c(1, 2) else c(0, 2)
+    expect_identical(support$bounds, expected)
+  }
+  first <- narrow; first$prior_weights <- 1e-300
+  second <- broad; second$prior_weights <- 1e100; second$marglik <- bridgesampling_object(0)
+  mixed <- mix_posteriors(list(first, second), "theta", list(c(FALSE, FALSE)), seed = 3, n_samples = 20)
+  context <- .prior_density_model_mixture_context(list(theta = attr(mixed$theta, "prior_list")), "theta")
+  expect_identical(context$model_weights[1L], 0)
+  expect_true(is.finite(context$model_log_weights[1L]))
+  supports <- .posterior_components_supports(context, data.frame(.model = 1:2), c(theta = 1))
+  expect_identical(supports[[1L]]$bounds, c(1, 2))
+  expect_identical(supports[[2L]]$bounds, c(-20, 20))
+})
+
 test_that("weightfunction null locations are exactly one", {
   wf <- prior_weightfunction("one-sided", .05, wf_fixed(c(1, .5)))
   expect_error(weightfunctions_mapping(list(wf, prior("point", list(1 - 1e-9)))))
