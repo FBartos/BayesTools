@@ -29,8 +29,9 @@ allocations. For terms with multiple ordered factors, use a named list.}
 \code{"cumulative_levels"} uses \code{nlevels(f)} increments and gives the
 first level a non-zero allocation share.}
 
-\item{id}{optional allocation-sharing id. For terms with multiple ordered
-factors, use a named character vector.}
+\item{id}{optional allocation-sharing id. Sharing uses the id and factor
+together. For terms with multiple ordered factors, use a named character
+vector; partial named maps may be reused across terms.}
 
 \item{prior_weights}{prior odds associated with a given distribution.
 The value is passed into the model fitting function, which creates models

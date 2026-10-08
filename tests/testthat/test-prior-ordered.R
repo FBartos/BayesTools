@@ -3156,3 +3156,21 @@ test_that("fixed ordered replay declares only stochastic source dependencies", {
   expect_identical(.bt_dnode_ordered_coefficients(random_spec)$dependencies,
     c(random_spec$total_names, random_spec$allocations[[1L]]$coordinates))
 })
+
+test_that("ordered IDs reject malformed vectors and keep reusable factor maps", {
+  total <- prior("point", list(1))
+  for(id in list(character(), setNames(character(), character()))){
+    expect_error(prior_ordered(total, id = id),
+      "The 'id' argument must be NULL or contain at least one identifier.", fixed = TRUE)
+  }
+  expect_error(prior_ordered(total, id = c("a", "b")),
+    "The unnamed 'id' argument must contain exactly one identifier.", fixed = TRUE)
+  for(id in list(NULL, "shape", c(f = "shape"), c(f = "shape", g = "other"))){
+    expect_s3_class(prior_ordered(total, id = id), "prior.ordered")
+  }
+  data <- data.frame(f = ordered(c("lo", "mid", "hi")))
+  expect_type(JAGS_formula(~f, "mu", data, list(intercept = prior("point", list(0)),
+    f = prior_ordered(total, allocation = list(f = c(.4, .6), g = c(.2, .8)), id = c(g = "other")))), "list")
+  expect_error(JAGS_formula(~f, "mu", data, list(intercept = prior("point", list(0)),
+    f = prior_ordered(total, allocation = list(g = c(.4, .6))))), "f", fixed = TRUE)
+})

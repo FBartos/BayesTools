@@ -378,8 +378,9 @@ prior_factor <- function(distribution, parameters, truncation = list(lower = -In
 #' \code{nlevels(f) - 1} increments and sets the first level effect to zero.
 #' \code{"cumulative_levels"} uses \code{nlevels(f)} increments and gives the
 #' first level a non-zero allocation share.
-#' @param id optional allocation-sharing id. For terms with multiple ordered
-#' factors, use a named character vector.
+#' @param id optional allocation-sharing id. Sharing uses the id and factor
+#' together. For terms with multiple ordered factors, use a named character
+#' vector; partial named maps may be reused across terms.
 #' @inheritParams prior
 #'
 #' @details Spike-and-slab or mixture behavior belongs on \code{total}; e.g.,
@@ -416,6 +417,12 @@ prior_ordered <- function(total,
 
   check_char(contrast, "contrast", allow_values = .prior_ordered_contrast_values)
   check_char(id, "id", check_length = 0, allow_NULL = TRUE, allow_NA = FALSE)
+  if(!is.null(id) && length(id) == 0L){
+    stop("The 'id' argument must be NULL or contain at least one identifier.", call. = FALSE)
+  }
+  if(!is.null(id) && is.null(names(id)) && length(id) != 1L){
+    stop("The unnamed 'id' argument must contain exactly one identifier.", call. = FALSE)
+  }
   if(!is.null(id) && any(!nzchar(trimws(id)))){
     stop("The 'id' argument cannot contain empty strings.", call. = FALSE)
   }
