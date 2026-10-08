@@ -21,3 +21,10 @@ format_BF(BF, logBF = FALSE, BF01 = FALSE, inclusion = FALSE)
 \description{
 Formats Bayes factor
 }
+\details{
+Valid live Bayes-factor carriers retain their canonical BF10
+logarithms when reformatted into either direction and scale. This preserves
+finite logs and representable reciprocals when the natural display is zero
+or infinite. Replaced or arithmetically modified vectors follow ordinary
+numeric formatting.
+}

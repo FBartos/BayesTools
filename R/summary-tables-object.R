@@ -61,6 +61,11 @@ print.BayesTools_table <- function(x, ...){
 #' @title Format Bayes factor
 #'
 #' @description Formats Bayes factor
+#' @details Valid live Bayes-factor carriers retain their canonical BF10
+#' logarithms when reformatted into either direction and scale. This preserves
+#' finite logs and representable reciprocals when the natural display is zero
+#' or infinite. Replaced or arithmetically modified vectors follow ordinary
+#' numeric formatting.
 #'
 #' @param BF Bayes factor(s)
 #' @param logBF log(BF)
@@ -71,6 +76,18 @@ print.BayesTools_table <- function(x, ...){
 #'
 #' @export
 format_BF <- function(BF, logBF = FALSE, BF01 = FALSE, inclusion = FALSE){
+
+  canonical <- .BF_carrier_log(BF)
+  if(!is.null(canonical)){
+    check_bool(logBF, "logBF", allow_NA = FALSE)
+    check_bool(BF01, "BF01", allow_NA = FALSE)
+    check_bool(inclusion, "inclusion", allow_NA = FALSE)
+    names(canonical) <- names(BF)
+    bound <- .standardize_BF_bound_operator(attr(BF, "bound_operator"), length(BF))
+    if(isTRUE(attr(BF, "BF01", exact = TRUE))) bound <- .invert_BF_bound_operator(bound)
+    return(.format_BF_from_log(canonical, logBF, BF01, inclusion,
+      bound_operator = bound, diagnostics = attr(BF, "numerical_diagnostics", exact = TRUE)))
+  }
 
   if(!is.numeric(BF)){
     check_real(BF, "BF", lower = 0, check_length = FALSE, allow_NA = TRUE)
