@@ -565,7 +565,7 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
 
         # rename continuous predictors levels
         for(i in seq_along(at_manipulated)){
-          if(predictors_type[[at_manipulated[i]]] == "continuous"){
+          if(predictors_type[[at_manipulated[i]]] == "continuous" && !isTRUE(.bt_meta_get(samples, "transform_scaled"))){
             at_index_output.names[[manipulated_predictors[i]]] <- paste0(at_index_output.names[[manipulated_predictors[i]]], "SD")
           }
         }

@@ -155,6 +155,20 @@ test_that("no-intercept row evaluation keeps the bound ordinary contrast basis",
   }
 })
 
+test_that("original continuous labels report their unchanged original-unit grid", {
+  fit <- .formula_state_test_fit(multiplier = 1)
+  fitted <- as_mixed_posteriors(fit, c("mu_intercept", "mu_x"))
+  original <- as_mixed_posteriors(fit, c("mu_intercept", "mu_x"), transform_scaled = TRUE)
+  fitted_levels <- marginal_posterior(fitted, "mu_x", formula = ~x, prior_samples = FALSE)
+  original_levels <- marginal_posterior(original, "mu_x", formula = ~x, prior_samples = FALSE)
+  expect_identical(names(fitted_levels), c("-1SD", "0SD", "1SD"))
+  expect_identical(names(original_levels), c("-1", "0", "1"))
+  expect_identical(attr(original_levels, "level_names"), names(original_levels))
+  expected <- .bt_formula_predictor_state(.bt_formula_state_get(original), ~x,
+    data.frame(x = c(-1, 0, 1)), "mu", FALSE, original = TRUE)
+  for(i in seq_along(original_levels)) expect_equal(as.numeric(original_levels[[i]]), expected[i, ], tolerance = 0)
+})
+
 test_that("expression ordered totals retain snapshots and per-level unavailable laws", {
   data <- data.frame(f = ordered(rep(c("lo", "mid", "hi"), 2L), levels = c("lo", "mid", "hi")))
   compiled <- JAGS_formula(~f, "mu", data, list(intercept = prior("point", list(0)),
