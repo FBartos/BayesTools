@@ -356,6 +356,7 @@
       .prior_density_model_prior_list(context$prior_list, i)
     }) else context$prior_lists[indices]
     if(.model_probability_point_declarations(priors)) return(invisible(TRUE))
+    if(.model_probability_plain_target_points(priors, context, weights)) return(invisible(TRUE))
     .model_probability_measure_stop(.model_probability_context_pair(context))
   }
   invisible(TRUE)
@@ -423,6 +424,32 @@
   })
   if(any(vapply(points, function(model) any(vapply(model, is.null, logical(1))), logical(1)))) return(FALSE)
   all(vapply(points, identical, logical(1), points[[1L]]))
+}
+
+.model_probability_plain_target_points <- function(prior_lists, context, weights){
+
+  if(!length(prior_lists) || length(context$transforms) || length(context$formula_scale) ||
+     !identical(context$linear_weight_space, "coefficient") ||
+     !is.numeric(weights) || !is.null(dim(weights)) || any(!is.finite(weights)) ||
+     is.null(names(weights)) || anyNA(names(weights)) || any(!nzchar(names(weights))) ||
+     anyDuplicated(names(weights)) || anyDuplicated(context$column_names)) return(FALSE)
+  active <- names(weights)[weights != 0]
+  if(!length(active) || !all(active %in% context$column_names)) return(FALSE)
+  points <- lapply(prior_lists, function(priors){
+    if(!all(active %in% names(priors)) || anyDuplicated(names(priors))) return(NULL)
+    selected <- priors[active]
+    valid <- vapply(selected, function(prior){
+      location <- prior$parameters$location
+      is.prior.point(prior) && is.prior.simple(prior) &&
+        !is.prior.vector(prior) && !is.prior.factor(prior) &&
+        !.is_prior_expression(prior) && is.null(attr(prior, "multiply_by", exact = TRUE)) &&
+        is.numeric(location) && length(location) == 1L && is.finite(location)
+    }, logical(1))
+    if(!all(valid)) return(NULL)
+    lapply(selected, function(prior) prior$parameters$location)
+  })
+  !any(vapply(points, is.null, logical(1))) &&
+    all(vapply(points, identical, logical(1), points[[1L]]))
 }
 
 .model_probability_split_prior <- function(parent, child, fraction){

@@ -29,6 +29,29 @@ test_that("owned structural zero splits agree without subtracting infinities", {
   expect_equal(.prior_model_log_weight(retained), 2 * log(1e-200), tolerance = 1e-12)
 })
 
+test_that("plain identical scalar point targets exclude only unrelated zero weights", {
+  weights <- c(1e-300, 1e100)
+  a <- lapply(weights, function(w) prior("point", list(2), prior_weights = w))
+  b <- lapply(weights, function(w) prior("normal", list(0, 1), prior_weights = w))
+  context <- .prior_density_model_mixture_context(list(a = a, b = b), c("a", "b"))
+  density <- .prior_density_from_context(context, c(a = 1, b = 0))
+  expect_identical(density$points, data.frame(x = 2, p = 1))
+  expect_null(density$density)
+  expect_error(.prior_density_from_context(context, c(a = 1, b = 1)), class = "BayesTools_formula_measure_unavailable")
+  unequal <- context; unequal$prior_list$a[[2L]] <- prior("point", list(3), prior_weights = weights[2L])
+  expect_error(.prior_density_from_context(unequal, c(a = 1, b = 0)), class = "BayesTools_formula_measure_unavailable")
+  multiplier <- context
+  for(i in seq_along(a)) attr(multiplier$prior_list$a[[i]], "multiply_by") <- "b"
+  expect_error(.prior_density_from_context(multiplier, c(a = 1, b = 0)), class = "BayesTools_formula_measure_unavailable")
+  expect_identical(.prior_density_from_context(context, c(a = 0, b = 0))$points, data.frame(x = 0, p = 1))
+  compiled <- JAGS_formula(~x, "mu", data.frame(x = c(10, 20, 30)),
+    list(intercept = prior("point", list(2)), x = prior("normal", list(0, 1))), formula_scale = TRUE)
+  primitive <- .prior_density_context(compiled$prior_list, c("mu_intercept", "mu_x"), list(mu = compiled$formula_scale))
+  transformed <- .prior_density_model_mixture_context(list(mu_intercept = a, mu_x = b), c("mu_intercept", "mu_x"))
+  transformed$transforms <- primitive$transforms
+  expect_error(.prior_density_from_context(transformed, c(mu_intercept = 1, mu_x = 0)), class = "BayesTools_formula_measure_unavailable")
+})
+
 source(testthat::test_path("common-functions.R"))
 
 test_that("model probability refit requirements retain exact typed diagnostics", {
