@@ -1,5 +1,25 @@
 skip_if_not_test_profile("unit")
 
+test_that("escaped literal roots preserve statement grammar on roundtrip", {
+  roots <- c("a`b", "a` vs b", "a`=b", "a`>=b", "a`&b", "a`|b",
+    "a`<-b", "a\\b", "a`\\ vs b", "a\\`b", "a\\\\`b", "a vs b", "TRUE")
+  for(root in roots){
+    for(text in c("theta = 0", "theta > 0", "theta > 0 vs theta <= 0")){
+      rewritten <- hypothesis_rewrite(hypothesis_parse(text), c(theta = root))
+      reparsed <- tryCatch(hypothesis_parse(hypothesis_render(rewritten)), error = identity)
+      expect_false(inherits(reparsed, "error"), info = root)
+      if(inherits(reparsed, "error")) next
+      expect_identical(hypothesis_symbols(reparsed), root)
+      expect_identical(hypothesis_render(reparsed), hypothesis_render(rewritten))
+      expect_identical(lapply(reparsed$statements, function(x) x$left$expression),
+        lapply(rewritten$statements, function(x) x$left$expression))
+    }
+  }
+  expect_identical(hypothesis_symbols(hypothesis_parse("theta[level A] > 0")), "theta")
+  for(text in c("theta <- 0", "theta > 0 vs phi <- 1", "sin(theta) > 0",
+                "theta + TRUE > 0", "theta + Inf > 0")) expect_error(hypothesis_parse(text))
+})
+
 test_that("hypothesis rendering preserves former codec and placeholder names", {
   hypotheses <- c(".BayesToolsHypothesisLiteral1. + 1 = 0",
     "prefix.BayesToolsHypothesisLiteral1.suffix + 1 = 0",

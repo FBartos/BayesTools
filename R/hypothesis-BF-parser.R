@@ -196,14 +196,12 @@ hypothesis_normalize_level_references <- function(text){
 .hypothesis_reject_assignment_arrow <- function(text) {
 
   chars <- strsplit(text, "", fixed = TRUE)[[1L]]
-  in_backtick <- FALSE
+  quoted <- .hypothesis_quoted_characters(chars)
 
   i <- 1L
   while(i <= length(chars)){
     ch <- chars[[i]]
-    if(ch == "`"){
-      in_backtick <- !in_backtick
-    }else if(!in_backtick && ch == "<" && i < length(chars) &&
+    if(!quoted[[i]] && ch == "<" && i < length(chars) &&
              chars[[i + 1L]] == "-"){
       stop("Hypothesis uses '<-'. Use '=' or '==' for equality hypotheses.",
            call. = FALSE)
@@ -217,52 +215,76 @@ hypothesis_normalize_level_references <- function(text){
 
 .hypothesis_normalize_level_references <- function(text) {
 
-  ends_in_backtick <- endsWith(text, "`")
-  pieces <- strsplit(text, "`", fixed = TRUE)[[1L]]
-  if(ends_in_backtick){
-    pieces <- c(pieces, "")
-  }
-  if(length(pieces) == 0L){
-    return(text)
-  }
-
-  for(i in seq_along(pieces)){
-    if(i %% 2L == 1L){
-      pieces[[i]] <- gsub(
+  chars <- strsplit(text, "", fixed = TRUE)[[1L]]
+  if(length(chars) == 0L) return(text)
+  # Quoted level labels inside brackets belong to the reference being
+  # normalized; only existing backtick roots are protected at this stage.
+  quoted <- .hypothesis_quoted_characters(chars, quotes = "`")
+  runs <- rle(quoted)
+  ends <- cumsum(runs$lengths)
+  starts <- c(1L, head(ends, -1L) + 1L)
+  pieces <- vapply(seq_along(ends), function(i){
+    piece <- paste0(chars[seq.int(starts[[i]], ends[[i]])], collapse = "")
+    if(!runs$values[[i]]){
+      piece <- gsub(
         "\\b([A-Za-z.][A-Za-z0-9._]*(?::[A-Za-z.][A-Za-z0-9._]*)*)\\s*\\[\\s*([^\\]\\[]+)\\s*\\]",
         "`\\1[\\2]`",
-        pieces[[i]],
+        piece,
         perl = TRUE
       )
-      pieces[[i]] <- gsub(
+      piece <- gsub(
         "`([^`\\[]+)\\[\\s*([^\\]\\[]*\\S)\\s*\\]`",
         "`\\1[\\2]`",
-        pieces[[i]],
+        piece,
         perl = TRUE
       )
     }
-  }
+    piece
+  }, character(1))
 
-  paste(pieces, collapse = "`")
+  paste0(pieces, collapse = "")
 }
 
+# Same quote/escape state as the AST alias scanner, including backslash parity.
+.hypothesis_quoted_characters <- function(chars, quotes = c("`", "'", "\"")){
+
+  quoted <- rep(FALSE, length(chars))
+  quote <- ""
+  escaped <- FALSE
+  for(i in seq_along(chars)){
+    current <- chars[[i]]
+    if(nzchar(quote)){
+      quoted[[i]] <- TRUE
+      if(escaped){
+        escaped <- FALSE
+      }else if(identical(current, "\\")){
+        escaped <- TRUE
+      }else if(identical(current, quote)){
+        quote <- ""
+      }
+    }else if(current %in% quotes){
+      quote <- current
+      quoted[[i]] <- TRUE
+    }
+  }
+  quoted
+}
 
 .hypothesis_split_vs <- function(hypothesis) {
 
   chars <- strsplit(hypothesis, "", fixed = TRUE)[[1L]]
-  in_backtick <- FALSE
+  quoted <- .hypothesis_quoted_characters(chars)
   depth <- 0L
   found <- integer()
 
   i <- 1L
   while(i <= length(chars)){
     ch <- chars[[i]]
-    if(ch == "`"){
-      in_backtick <- !in_backtick
+    if(quoted[[i]]){
       i <- i + 1L
       next
     }
-    if(!in_backtick){
+    if(!quoted[[i]]){
       if(ch == "("){
         depth <- depth + 1L
       }else if(ch == ")"){
@@ -643,7 +665,7 @@ hypothesis_normalize_level_references <- function(text){
 .hypothesis_find_relation <- function(text) {
 
   chars       <- strsplit(text, "", fixed = TRUE)[[1L]]
-  in_backtick <- FALSE
+  quoted      <- .hypothesis_quoted_characters(chars)
   depth       <- 0L
   found       <- list()
   two_char    <- c("<=", ">=", "==", "!=")
@@ -652,12 +674,11 @@ hypothesis_normalize_level_references <- function(text){
   i <- 1L
   while(i <= length(chars)){
     ch <- chars[[i]]
-    if(ch == "`"){
-      in_backtick <- !in_backtick
+    if(quoted[[i]]){
       i <- i + 1L
       next
     }
-    if(!in_backtick){
+    if(!quoted[[i]]){
       if(ch == "("){
         depth <- depth + 1L
       }else if(ch == ")"){
@@ -702,11 +723,9 @@ hypothesis_normalize_level_references <- function(text){
 .hypothesis_has_boolean <- function(text) {
 
   chars       <- strsplit(text, "", fixed = TRUE)[[1L]]
-  in_backtick <- FALSE
-  for(ch in chars){
-    if(ch == "`"){
-      in_backtick <- !in_backtick
-    }else if(!in_backtick && ch %in% c("&", "|")){
+  quoted      <- .hypothesis_quoted_characters(chars)
+  for(i in seq_along(chars)){
+    if(!quoted[[i]] && chars[[i]] %in% c("&", "|")){
       return(TRUE)
     }
   }
