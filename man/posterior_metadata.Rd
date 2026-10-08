@@ -56,8 +56,8 @@ posterior, conditional prior/posterior, event, or component probabilities.
 The cause \code{numerical_model_probability_unavailable} identifies a
 declared law whose active model probabilities cannot be represented at
 full precision. Invalid metadata requires recomputation/refitting.
-Human reason text alone does not classify a measure refusal. With unique column/measure
-pairs. The measures are \code{prior_density}, \code{atoms}, or \code{support}.
+Human reason text alone does not classify a measure refusal. Tables use
+unique column/measure pairs. The measures are \code{prior_density}, \code{atoms}, or \code{support}.
 Entries prevent stale prior/density/support fallback while numeric draws
 remain usable. Atom/support refusals use
 \code{BayesTools_formula_atoms_unavailable} and

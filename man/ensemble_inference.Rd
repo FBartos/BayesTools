@@ -72,8 +72,7 @@ unique complete names matching its requested parameters.}
 }
 \value{
 \code{compute_inference} returns a named list of prior probabilities,
-posterior probabilities, and Bayes factors, \code{ppoint} gives the
-distribution function, \code{ensemble_inference} gives a list of named lists of
+posterior probabilities, and Bayes factors. \code{ensemble_inference} gives a list of named lists of
 inferences for each parameter, and \code{models_inference} returns a list of
 models, each expanded by the inference list.
 }
