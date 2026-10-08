@@ -27,6 +27,7 @@ bayestools_quiet_llm_reporter <- function(...) {
 
 bayestools_test_profile_contexts <- list(
   unit = c(
+    "carrier-integration",
     "condition-model-probabilities",
     "density-display-coherence",
     "backend-fingerprint",
