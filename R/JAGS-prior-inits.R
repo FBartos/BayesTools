@@ -256,7 +256,9 @@ JAGS_get_inits            <- function(prior_list, chains, seed){
         BayesTools_numerical_condition = function(condition) condition)
       if(inherits(log_density, "BayesTools_numerical_condition")){
         condition <- .prior_numerical_condition("initialization", prior$distribution, "log", seq_along(value),
-          "The declared normalized log density could not be resolved at supported precision", error = TRUE,
+          if(inherits(log_density, "BayesTools_numerical_range_limit")){
+            "This consumer requires finite usable normalized log density; inspect the declared numerical limit and the numerical condition"
+          }else "The declared normalized log density could not be resolved at supported precision", error = TRUE,
           range = inherits(log_density, "BayesTools_numerical_range_limit"))
         condition$values <- value
         condition$log_density <- log_density$log_density

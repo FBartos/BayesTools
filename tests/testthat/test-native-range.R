@@ -1,5 +1,49 @@
 skip_if_not_test_profile("unit")
 
+test_that("numerical range advice matches the requested operation", {
+  reason <- function(operation, scale){
+    condition <- NULL
+    value <- withCallingHandlers(.prior_numerical_result(Inf, 1, TRUE, operation, "invgamma", scale),
+      warning = function(w){condition <<- w; invokeRestart("muffleWarning")})
+    expect_identical(value, Inf)
+    expect_s3_class(condition, "BayesTools_numerical_range_limit")
+    expect_null(conditionCall(condition))
+    expect_identical(condition$operation, operation)
+    expect_identical(condition$requested_scale, scale)
+    condition$reason
+  }
+  for(operation in c("density", "distribution")){
+    expect_identical(reason(operation, "natural"), "Use an available logarithmic result or inspect the declared numerical limit")
+  }
+  for(operation in c("quantile", "sampling")){
+    expect_identical(reason(operation, "natural"), "Inspect the declared numerical limit and the numerical condition")
+  }
+  for(scale in c("log", "finite")){
+    expect_identical(reason("density", scale), "Inspect the declared numerical limit and the numerical condition")
+  }
+})
+
+test_that("initialization retains parent range meaning and consumes one draw", {
+  for(range in c(FALSE, TRUE)){
+    parent <- .prior_numerical_condition("density", "moment", "log", 1L, "Controlled parent", range = range, error = TRUE)
+    parent$log_density <- if(range) Inf else NaN
+    count <- 0L
+    condition <- testthat::with_mocked_bindings(
+      expect_error(.JAGS_init.simple(prior("moment", list(location = 0, tau = 1, order = 1)), "theta"), class = "BayesTools_numerical_condition"),
+      rng = function(...){count <<- count + 1L; .5}, .prior_simple_lpdf_evaluator = function(...) function(value) stop(parent), .package = "BayesTools")
+    expect_identical(count, 1L)
+    expect_identical(condition$parent, parent)
+    expect_identical(condition$values, .5)
+    expect_identical(condition$log_density, parent$log_density)
+    expect_identical(condition$indices, 1L)
+    expect_null(conditionCall(condition))
+    expect_identical(inherits(condition, "BayesTools_numerical_range_limit"), range)
+    expect_identical(condition$reason, if(range){
+      "This consumer requires finite usable normalized log density; inspect the declared numerical limit and the numerical condition"
+    }else "The declared normalized log density could not be resolved at supported precision")
+  }
+})
+
 native_range_capture <- function(expression){
 
   conditions <- list()
