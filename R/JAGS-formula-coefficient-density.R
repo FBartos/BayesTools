@@ -937,7 +937,7 @@ JAGS_formula_prior_density <- function(
     }
     values[log_sources] <- log(values[log_sources])
   }
-  contributions <- unname(weights) * values
+  contributions <- numeric(length(weights))
   for(i in seq_along(weights)){
     source <- sources$source[[i]]
     term <- .bt_formula_coefficient_term(source, target, basis[[i]], multipliers,
@@ -946,6 +946,9 @@ JAGS_formula_prior_density <- function(
       contributions[[i]] <- .bt_formula_coefficient_ratio(term$basis,
         .bt_formula_multiplier_constant(multipliers[[source]], constants),
         .bt_formula_multiplier_constant(multipliers[[target]], constants), source, target, value = values[[i]])
+    }else{
+      contributions[[i]] <- .bt_formula_checked_product(unname(weights[[i]]), values[[i]],
+        target = target, source = source)
     }
   }
   value <- sum(contributions)
@@ -1020,7 +1023,11 @@ JAGS_formula_prior_density <- function(
           transform$multipliers, transform$state_constants, transform$source_transforms)$value_aware
       }, logical(1))
       ordinary <- active[!value_aware]
-      if(length(ordinary)) target[, name] <- source[, ordinary, drop = FALSE] %*% static_weights[ordinary]
+      if(length(ordinary)){
+        for(coordinate in ordinary) .bt_formula_checked_product(source[, coordinate], static_weights[[coordinate]],
+          parameter = transform$parameter, target = name, source = coordinate, transform = TRUE)
+        target[, name] <- source[, ordinary, drop = FALSE] %*% static_weights[ordinary]
+      }
       for(coordinate in active[value_aware]){
         contribution <- .bt_formula_coefficient_ratio(transform$basis_matrix[name, coordinate],
           multiplier(transform$multipliers[[coordinate]]), multiplier(transform$multipliers[[name]]),
@@ -1226,6 +1233,24 @@ JAGS_formula_prior_density <- function(
   out
 }
 
+.bt_formula_checked_product <- function(left, right, parameter = NULL,
+                                         target = NULL, source = NULL,
+                                         transform = FALSE){
+
+  product <- left * right
+  bad <- !is.finite(product) | (left != 0 & right != 0 & product == 0)
+  if(any(bad)){
+    message <- "Formula coefficient composition is unavailable because a nonzero product lost representable range."
+    fields <- list(parameter = parameter, target = target, source = source,
+      observed = list(indices = which(bad), left = left, right = right, product = product))
+    if(transform) do.call(.bt_formula_transform_stop,
+      c(list(message, reason = "nonfinite_transform"), fields)) else
+        do.call(.bt_formula_density_stop,
+          c(list(message, reason = "numerical_scale_unavailable"), fields))
+  }
+  product
+}
+
 .bt_formula_prior_recipe_weights <- function(transform, weights){
 
   weights <- weights[weights != 0]
@@ -1245,7 +1270,8 @@ JAGS_formula_prior_density <- function(
     row <- transform$matrix[target, ]
     if(identical(target_metadata$structural_status, "structural") &&
        any(row != 0 & abs(row) < .Machine$double.xmin)){
-      offset <- offset + weights[[target]] * target_metadata$fixed_value
+      offset <- offset + .bt_formula_checked_product(weights[[target]], target_metadata$fixed_value,
+        parameter = transform$parameter, target = target)
       recipes[[target]]$weights[] <- 0
     }
   }
@@ -1256,7 +1282,8 @@ JAGS_formula_prior_density <- function(
       if(is.null(denominator) || denominator == 0){
         target_metadata <- transform$targets[match(target, transform$targets$target), , drop = FALSE]
         if(identical(target_metadata$structural_status, "structural") && is.finite(target_metadata$fixed_value)){
-          offset <- offset + weights[[target]] * target_metadata$fixed_value
+          offset <- offset + .bt_formula_checked_product(weights[[target]], target_metadata$fixed_value,
+        parameter = transform$parameter, target = target)
           recipes[[target]]$weights <- stats::setNames(rep(0, length(transform$source_names)), transform$source_names)
           next
         }
@@ -1277,7 +1304,13 @@ JAGS_formula_prior_density <- function(
     }
   }
   out <- stats::setNames(rep(0, length(transform$source_names)), transform$source_names)
-  for(target in names(weights)) out <- out + weights[[target]] * recipes[[target]]$weights
+  for(target in names(weights)){
+    out <- out + .bt_formula_checked_product(weights[[target]], recipes[[target]]$weights,
+      parameter = transform$parameter, target = target, source = names(out))
+    if(any(!is.finite(out)) || !is.finite(offset)) .bt_formula_density_stop(
+      "Formula coefficient composition is unavailable because its sum lost representable range.",
+      parameter = transform$parameter, target = target, reason = "numerical_scale_unavailable")
+  }
   list(type = type, weights = out[out != 0], offset = offset)
 }
 

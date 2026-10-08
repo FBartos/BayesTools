@@ -271,3 +271,55 @@ test_that("compiled finite-density and fixed ratio owners retain truthful values
     expect_s3_class(JAGS_formula_prior_density(fit, "mu", target = "mu_y"), "prior_density")
   }
 })
+
+
+test_that("weighted static recipes refuse lost nonzero products and retain cancellation", {
+
+  info <- JAGS_formula(~ x, "mu", data.frame(x = c(-2, 0, 2)),
+    list(intercept = prior("point", list(0)), x = prior("normal", list(0, 1))), formula_scale = TRUE)
+  draws <- cbind(mu_intercept = 0, mu_x = c(-1, 0, 1))
+  fit <- .parameter_catalog_test_fit(coda::mcmc.list(coda::mcmc(draws)), info$prior_list,
+    list(mu = info$formula_design), list(mu = info$formula_scale))
+  tiny <- .Machine$double.xmin * .Machine$double.eps
+  condition <- expect_error(JAGS_formula_prior_density(fit, "mu", weights = c(mu_x = tiny)),
+    class = "BayesTools_formula_measure_unavailable")
+  expect_identical(condition$reason, "numerical_scale_unavailable")
+  expect_null(conditionCall(condition))
+  ordinary <- JAGS_formula_prior_density(fit, "mu", weights = c(mu_x = .5))
+  expect_equal(prior_density_ordinate(ordinary, 0)$log_density,
+    dnorm(0, sd = .25, log = TRUE), tolerance = 1e-14)
+  zero <- JAGS_formula_prior_density(fit, "mu", weights = c(mu_intercept = 1))
+  expect_identical(prior_density_ordinate(zero, 0)$point_mass, 1)
+  shifted_info <- JAGS_formula(~ x, "mu", data.frame(x = c(0, 2, 4)),
+    list(intercept = prior("point", list(0)), x = prior("normal", list(0, 1))), formula_scale = TRUE)
+  shifted_fit <- .parameter_catalog_test_fit(coda::mcmc.list(coda::mcmc(draws)), shifted_info$prior_list,
+    list(mu = shifted_info$formula_design), list(mu = shifted_info$formula_scale))
+  cancelled <- JAGS_formula_prior_density(shifted_fit, "mu", weights = c(mu_intercept = 1, mu_x = 2))
+  expect_identical(prior_density_ordinate(cancelled, 0)$point_mass, 1)
+})
+
+test_that("ordinary fixed and draw products never certify lost nonzero values", {
+
+  tiny <- .Machine$double.xmin * .Machine$double.eps
+  make <- function(slope, values){
+    info <- JAGS_formula(~ x, "mu", data.frame(x = c(-2, 0, 2)),
+      list(intercept = prior("point", list(0)), x = slope), formula_scale = TRUE)
+    draws <- cbind(mu_intercept = 0, mu_x = values)
+    .parameter_catalog_test_fit(coda::mcmc.list(coda::mcmc(draws)), info$prior_list,
+      list(mu = info$formula_design), list(mu = info$formula_scale))
+  }
+  fixed <- make(prior("point", list(tiny)), rep(tiny, 3L))
+  descriptor <- JAGS_formula_coefficient_transform(fixed, "mu")
+  target <- descriptor$targets[descriptor$targets$target == "mu_x", , drop = FALSE]
+  expect_identical(target$structural_status, "unavailable")
+  expect_true(is.na(target$fixed_value))
+  expect_identical(as.numeric(as_mixed_posteriors(fixed, "mu_x", transform_scaled = FALSE)$mu_x), rep(tiny, 3L))
+  normal <- make(prior("normal", list(0, 1)), c(tiny, 2 * tiny, tiny))
+  expect_error(as_mixed_posteriors(normal, "mu_x", transform_scaled = TRUE),
+    class = "BayesTools_formula_transform_unavailable")
+  expect_identical(as.numeric(as_mixed_posteriors(normal, "mu_x", transform_scaled = FALSE)$mu_x), c(tiny, 2 * tiny, tiny))
+  ordinary <- make(prior("normal", list(0, 1)), c(-1, 0, 1))
+  expect_identical(as.numeric(as_mixed_posteriors(ordinary, "mu_x", transform_scaled = TRUE)$mu_x), c(-.5, 0, .5))
+  zero <- make(prior("point", list(0)), rep(0, 3L))
+  expect_identical(as.numeric(as_mixed_posteriors(zero, "mu_x", transform_scaled = TRUE)$mu_x), rep(0, 3L))
+})

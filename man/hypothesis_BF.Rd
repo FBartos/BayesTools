@@ -110,7 +110,11 @@ or a density grid without recorded provenance). Each of
 these conditions also has class \code{BayesTools_hypothesis_ordinate}.
 For a whole-factor statement expanded into several quantities, known
 ordinate errors produce an \code{NA} row with method \code{"unavailable"}
-and the original reason; valid siblings are computed. Direct scalar and
+and the original reason; valid siblings are computed. Declared formula
+measure refusals of class \code{BayesTools_formula_measure_unavailable}
+behave likewise, preserving their original reason and diagnostics. Only
+the declared formula-measure cause allow-list is localized; metadata,
+refit, and programming errors propagate. Direct scalar and
 explicitly indexed tests remain strict. Known numerical prior-region errors
 behave likewise, with classes \code{BayesTools_prior_region_mass_unavailable},
 \code{BayesTools_prior_region_route_unavailable},
