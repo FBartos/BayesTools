@@ -100,7 +100,6 @@ test_that("model probability refit requirements retain exact typed diagnostics",
   list(fit = attach_test_parameter_map(fit), marglik = bridgesampling_object(evidence), prior_weights = weight)
 }
 
-# This oracle centers evidence before combining it with the original raw logs.
 test_that("joint numerical refusal retains independently declared omega scalars", {
   first <- prior_weightfunction("one-sided", .05, wf_fixed(c(1, .5)))
   second <- prior_weightfunction("one-sided", .1, wf_fixed(c(1, .25)))
@@ -259,6 +258,7 @@ test_that("empty allocated absent sources retain the complete ordered declaratio
   expect_false(is.null(.bt_ordered_source_validate(invalid)))
 })
 
+# This oracle centers evidence before combining it with the original raw logs.
 .model_probability_reference <- function(weights, evidence) {
   raw <- log(weights)
   raw <- raw - max(raw)
