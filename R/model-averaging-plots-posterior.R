@@ -188,7 +188,8 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
     if (individual) {
 
       # bias plot parameters require special extraction
-      if (!is.null(samples[["bias"]]) && inherits(samples[["bias"]], "mixed_posteriors.bias")) {
+      if (!is.null(samples[["bias"]]) && inherits(samples[["bias"]],
+          c("mixed_posteriors.bias", "mixed_posteriors.weightfunction"))) {
         samples <- .simplify_as_mixed_posterior_bias(samples, parameter)
       }
       prior_list  <- attr(samples[[parameter]], "prior_list")

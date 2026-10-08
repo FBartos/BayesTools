@@ -700,3 +700,37 @@ test_that("single fixed weightfunctions declare one complete joint point", {
   expect_identical(posterior_metadata(sibling, "atoms")$marginals[[1L]]$mass, 1)
 })
 
+
+
+test_that("bias-mixture scalar declarations use the retained compiler omega map", {
+
+  for(type in c("two-sided", "one-sided")){
+    prior <- prior_mixture(list(prior_none(),
+      prior_weightfunction(type, .05, wf_fixed(c(1, .5)))))
+    draws <- .generate_prior_sample_matrix(list(bias = prior), 20L, seed = 17)
+    fit <- .parameter_catalog_test_fit(coda::mcmc.list(coda::mcmc(draws)), list(bias = prior))
+    # Materialize the registered deterministic monitors from the declared
+    # fixed weight branches; the generic raw-prior collector omits them.
+    draws <- cbind(draws, JAGS_evaluate_deterministic(fit, draws, nodes = "omega"))
+    fit <- .parameter_catalog_test_fit(coda::mcmc.list(coda::mcmc(draws)), list(bias = prior))
+    samples <- as_mixed_posteriors(fit, "bias", conditional = "omega")$bias
+    context <- attr(samples, "omega_context", exact = TRUE)
+    atoms <- posterior_metadata(samples, "atoms")
+    expect_identical(ncol(samples), length(context$names))
+    expect_gt(ncol(samples), 0L)
+    expect_identical(names(atoms$marginals), colnames(samples))
+    expect_true(all(vapply(atoms$marginals, Negate(is.null), logical(1))))
+    reference <- which(context$mapping[[1L]] == 1L)
+    expect_true(length(reference) > 0L)
+    expect_true(all(vapply(atoms$marginals[reference], function(x)
+      identical(as.numeric(x$locations), 1) && identical(x$mass, 1), logical(1))))
+    for(i in 1:2){
+      plot <- plot_posterior(list(bias = samples), "omega", individual = TRUE,
+        prior = FALSE, show_figures = reference[[1L]], plot_type = "ggplot")
+      expect_type(plot, "list")
+      expect_identical(names(plot), colnames(samples)[reference[[1L]]])
+      expect_s3_class(plot[[1L]], "ggplot")
+    }
+  }
+})
+

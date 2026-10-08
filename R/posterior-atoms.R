@@ -618,6 +618,7 @@ posterior_atoms_free <- function(x){
         probabilities = atoms$component_probabilities, logs = atoms$component_log_probabilities,
         declaration = atoms$model_probability_declaration)
   }
+  attr(priors, "omega_context") <- attr(samples, "omega_context", exact = TRUE)
   declarations <- .posterior_weightfunction_scalar_laws(priors, probabilities, colnames(samples), source, posterior_pair)
   atoms <- .posterior_atoms_get(samples, allow_partial = TRUE)
   marginals <- if(is.null(atoms$marginals)) declarations$marginals else atoms$marginals
