@@ -442,7 +442,7 @@ test_that("draw metadata is one validated container", {
   expect_identical(posterior_metadata(x, "linear_weights"), weights)
   expect_error(
     posterior_metadata(x, "linear_weights") <- "mu_x",
-    "Draw metadata 'linear_weights' is invalid: it must be a numeric vector or matrix.",
+    "Draw metadata 'linear_weights' is invalid: it must be a finite numeric vector or matrix.",
     fixed = TRUE
   )
   densities <- list(mu = BayesTools:::.prior_linear_combination_density(

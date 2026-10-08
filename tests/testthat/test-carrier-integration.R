@@ -45,3 +45,22 @@ test_that("removing a public linear recipe clears its companion space", {
   expect_null(posterior_metadata(x, "linear_weights"))
   expect_null(posterior_metadata(x, "linear_weight_space"))
 })
+
+test_that("public linear recipes reject nonfinite weights without mutation", {
+  x <- c(1, 2, 3)
+  for(value in c(NA_real_, NaN, Inf, -Inf)){
+    for(weights in list(c(a = value), matrix(value, 1L, 1L, dimnames = list("target", "a")))){
+      original <- serialize(x, NULL)
+      condition <- tryCatch({posterior_metadata(x, "linear_weights") <- weights; NULL}, error = identity)
+      expect_s3_class(condition, "error")
+      if(inherits(condition, "condition")){
+        expect_match(conditionMessage(condition), "finite numeric vector or matrix", fixed = TRUE)
+        expect_null(conditionCall(condition))
+      }
+      expect_identical(serialize(x, NULL), original)
+    }
+  }
+  finite <- matrix(c(1, 0, -2, 3), 2L, dimnames = list(c("A", "B"), c("a", "b")))
+  posterior_metadata(x, "linear_weights") <- finite
+  expect_identical(posterior_metadata(x, "linear_weights"), finite)
+})

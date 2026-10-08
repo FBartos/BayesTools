@@ -198,7 +198,7 @@
       NULL
     },
     linear_weights = function(value){
-      if(is.numeric(value)) NULL else "it must be a numeric vector or matrix"
+      if(is.numeric(value) && all(is.finite(value))) NULL else "it must be a finite numeric vector or matrix"
     },
     linear_weight_space = function(value){
       if(is.character(value) && length(value) == 1L && !is.na(value) &&
