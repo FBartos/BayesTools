@@ -951,6 +951,10 @@ JAGS_formula_prior_density <- function(
   value <- sum(contributions)
   if(identical(output_transform, "exp")){
     value <- exp(value)
+    if(!is.finite(value) || value <= 0){
+      stop("The structurally fixed exponential target value is not finite and positive.",
+           call. = FALSE)
+    }
   }
   if(!is.finite(value)){
     stop("The structurally fixed target value is not finite.", call. = FALSE)

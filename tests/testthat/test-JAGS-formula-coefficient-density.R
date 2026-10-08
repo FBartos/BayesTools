@@ -1,5 +1,38 @@
 skip_if_not_test_profile("unit")
 
+test_that("fixed exponential target underflow remains unavailable", {
+  make <- function(slope, logarithmic = TRUE){
+    formula <- ~x
+    if(logarithmic) attr(formula, "log(intercept)") <- TRUE
+    compiled <- JAGS_formula(formula, "mu", data.frame(x = c(0, 1, 2)),
+      list(intercept = prior("point", list(if(logarithmic) 1 else 0)),
+        x = prior("point", list(slope))), formula_scale = TRUE)
+    .parameter_catalog_test_fit(
+      coda::mcmc.list(coda::mcmc(cbind(mu_intercept = rep(if(logarithmic) 1 else 0, 3L),
+        mu_x = rep(slope, 3L)))), compiled$prior_list,
+      list(mu = compiled$formula_design), list(mu = compiled$formula_scale))
+  }
+  extreme <- make(1000)
+  transform <- JAGS_formula_coefficient_transform(extreme, "mu")
+  target <- transform$targets[transform$targets$target == "mu_intercept", ]
+  expect_identical(target$structural_status, "unavailable")
+  expect_true(is.na(target$fixed_value))
+  expect_true(!is.na(target$reason) && nzchar(target$reason))
+  refusal <- expect_error(as_mixed_posteriors(extreme, "mu_intercept", transform_scaled = TRUE),
+    class = "BayesTools_formula_transform_unavailable")
+  expect_identical(refusal$reason, "nonfinite_transform")
+  expect_equal(as.numeric(as_mixed_posteriors(extreme, "mu_x", transform_scaled = TRUE)$mu_x), rep(1000, 3L))
+  moderate <- make(2)
+  target <- JAGS_formula_coefficient_transform(moderate, "mu")$targets
+  expect_equal(target$fixed_value[target$target == "mu_intercept"], exp(-2), tolerance = 0)
+  expect_equal(as.numeric(as_mixed_posteriors(moderate, "mu_intercept", transform_scaled = TRUE)$mu_intercept),
+    rep(exp(-2), 3L), tolerance = 0)
+  zero <- make(0, FALSE)
+  target <- JAGS_formula_coefficient_transform(zero, "mu")$targets
+  expect_identical(target$structural_status[target$target == "mu_intercept"], "structural")
+  expect_equal(target$fixed_value[target$target == "mu_intercept"], 0, tolerance = 0)
+})
+
 .formula_coefficient_density_fit <- function(formula_result,
                                              sampled_columns){
 
