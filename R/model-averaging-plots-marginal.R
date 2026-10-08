@@ -272,14 +272,21 @@ plot_marginal <- function(samples, parameter, plot_type = "base", prior = FALSE,
   }
 
   lapply(levels, function(level){
-    out <- as.numeric(level)
     atoms <- .posterior_atoms_get(level, allow_partial = TRUE)
+    if(is.null(atoms)) .bt_formula_measure_check(level, "atoms")
     if(!is.null(atoms) && !atoms$joint_declared){
-      if(ncol(atoms$locations) != 1L) stop(atoms$joint_unavailable)
+      if(ncol(atoms$locations) != 1L){
+        .bt_formula_measure_check(level, "atoms")
+        stop(atoms$joint_unavailable)
+      }
       scalar <- .posterior_atoms_for_column(atoms, 1L)
-      if(is.null(scalar)) stop(atoms$joint_unavailable)
+      if(is.null(scalar)){
+        .bt_formula_measure_check(level, "atoms")
+        stop(atoms$joint_unavailable)
+      }
       atoms <- scalar
     }
+    out <- as.numeric(level)
     if(!is.null(atoms)){
       out <- .posterior_atoms_set(out, atoms)
     }

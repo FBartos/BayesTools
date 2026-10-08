@@ -250,6 +250,15 @@ test_that("empty allocated absent sources retain the complete ordered declaratio
     expect_true(all(as.numeric(mixed$mu_f) == 0))
     if(is.finite(evidence)) expect_error(posterior_atoms_free(mixed$mu_f), class = "BayesTools_formula_measure_unavailable") else
       expect_equal(sum(.posterior_atoms_get(mixed$mu_f)$mass), 1, tolerance = 0)
+    if(is.finite(evidence)){
+      levels <- marginal_posterior(mixed, "mu_f", use_formula = FALSE, prior_samples = FALSE)
+      extracted <- .plot_data_marginal_level_samples(list(reference = levels[[1L]]), "reference")[[1L]]
+      expect_false(posterior_atoms_free(extracted))
+      density <- .plot_data_marginal_samples.den(extracted, 64L, NULL, NULL, NULL)
+      expect_equal(density$points1$x, 0, tolerance = 0)
+      expect_equal(density$points1$y, 1, tolerance = 0)
+      expect_error(posterior_atoms_free(mixed$mu_f), class = "BayesTools_formula_measure_unavailable")
+    }
   }
   source <- posterior_metadata(as_mixed_posteriors(ordered, "mu_f")$mu_f, "ordered_source")
   invalid <- source; invalid$primitives <- invalid$primitives[, 0L, drop = FALSE]
@@ -337,6 +346,15 @@ test_that("tiny posterior model laws do not become structural zero", {
   descriptive <- marginal_posterior(mixed, "theta", use_formula = FALSE, prior_samples = FALSE)
   expect_true(all(is.finite(descriptive)))
   expect_error(posterior_atoms_free(descriptive), class = "BayesTools_formula_measure_unavailable")
+  original <- tryCatch(posterior_atoms_free(descriptive), error = identity)
+  plotting <- tryCatch(plot_marginal(list(theta = descriptive), "theta",
+    prior = FALSE, plot_type = "ggplot"), error = identity)
+  expect_identical(class(plotting), class(original))
+  expect_identical(conditionMessage(plotting), conditionMessage(original))
+  expect_identical(plotting$reason, original$reason)
+  expect_identical(plotting$detail, original$detail)
+  expect_identical(plotting$diagnostics, original$diagnostics)
+  expect_null(conditionCall(plotting))
 })
 
 test_that("unrepresentable prior model laws retain usable mixed draws", {
