@@ -3,7 +3,7 @@
 .bt_ordered_stop <- function(message, class = "BayesTools_ordered_coordinates_unavailable"){
 
   stop(structure(list(message = message, call = NULL),
-    class = c(class, "BayesTools_ordered_unavailable", "error", "condition")))
+    class = unique(c(class, "BayesTools_ordered_unavailable", "error", "condition"))))
 }
 
 .bt_ordered_spec <- function(parameter, prior){

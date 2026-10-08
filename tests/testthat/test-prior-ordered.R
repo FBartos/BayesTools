@@ -1284,7 +1284,7 @@ test_that("ordered interactions expand through the formula binder", {
         "f:g" = prior_ordered(prior("normal", list(0, 1)))
       )
     ),
-    "non-hierarchical factor interaction"
+    "by level indicators", fixed = TRUE
   )
 })
 
@@ -3071,4 +3071,35 @@ test_that("expression-point ordered totals retain multi-slice snapshot monitors"
   literal <- info$prior_list$mu_f__xXx__g
   literal$total <- prior("point", list(0))
   expect_false("mu_f__xXx__g_ordered_total" %in% .JAGS_monitor.ordered(literal, "mu_f__xXx__g"))
+})
+
+test_that("ordered indicator-coded terms refuse even zero totals", {
+  data <- data.frame(f = ordered(rep(c("lo", "mid", "hi"), 2)), x = 1:6)
+  for(total in c(0, 10)){
+    condition <- expect_error(JAGS_formula(~f:x, "mu", data,
+      list(intercept = prior("point", list(0)),
+        "f:x" = prior_ordered(prior("point", list(total)), allocation = c(.2, .3, .5),
+          contrast = "cumulative_levels"))), "codes 'f' by level indicators", fixed = TRUE,
+      class = "BayesTools_ordered_unavailable")
+    expect_identical(conditionMessage(condition), paste0(
+      "The 'cumulative_levels' prior of the factor term 'f:x' is unavailable: the formula has no term 'x', ",
+      "so 'f:x' codes 'f' by level indicators and has one coefficient per level instead of 'cumulative_levels' ",
+      "contrast coefficients. Add 'x' to the formula to keep the 'cumulative_levels' contrast, or use ",
+      "prior_factor(contrast = \"independent\") for one independent coefficient per level."))
+    expect_null(conditionCall(condition))
+    expect_false(inherits(condition, "BayesTools_ordered_coordinates_unavailable"))
+  }
+  data <- expand.grid(f = ordered(c("lo", "mid", "hi")), g = ordered(c("a", "b", "c")))
+  p <- prior_ordered(prior("point", list(10)), allocation = list(f = c(.2, .3, .5), g = c(.1, .4, .5)),
+    contrast = "cumulative_levels")
+  condition <- expect_error(JAGS_formula(~f:g, "mu", data, list(intercept = prior("point", list(0)), "f:g" = p)),
+    "codes 'f' and 'g' by level indicators", fixed = TRUE, class = "BayesTools_ordered_unavailable")
+  expect_identical(conditionMessage(condition), paste0(
+    "The 'cumulative_levels' prior of the factor term 'f:g' is unavailable: the formula has no term 'g' or 'f', ",
+    "so 'f:g' codes 'f' and 'g' by level indicators and has one coefficient per level instead of 'cumulative_levels' ",
+    "contrast coefficients. Add 'g' and 'f' to the formula to keep the 'cumulative_levels' contrast, or use ",
+    "prior_factor(contrast = \"independent\") for one independent coefficient per level."))
+  expect_null(conditionCall(condition))
+  expect_false(inherits(condition, "BayesTools_ordered_coordinates_unavailable"))
+  expect_type(JAGS_formula(~f+g+f:g, "mu", data, list(intercept = prior("point", list(0)), f = p, g = p, "f:g" = p)), "list")
 })

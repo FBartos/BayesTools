@@ -1117,13 +1117,15 @@
       "meandif"
     }else if(is.prior.orthonormal(this_prior)){
       "orthonormal"
+    }else if(is.prior.ordered(this_prior)){
+      this_prior$contrast
     }
     zero_prior <- if(is.prior.mixture(this_prior)){
       all(vapply(this_prior, .posterior_atoms_is_zero_point, logical(1)))
     }else{
       .posterior_atoms_is_zero_point(this_prior)
     }
-    if(is.null(contrast) || zero_prior){
+    if(is.null(contrast) || (zero_prior && !is.prior.ordered(this_prior))){
       next
     }
 
@@ -1139,7 +1141,7 @@
     missing_terms <- vapply(indicator_factors, function(indicator_factor){
       paste0(setdiff(components, indicator_factor), collapse = ":")
     }, character(1))
-    stop(
+    message <- paste0(
       "The '", contrast, "' prior of the factor term '", model_term,
       "' is unavailable: the formula has no term ",
       paste0("'", missing_terms, "'", collapse = " or "),
@@ -1150,9 +1152,12 @@
       paste0("'", missing_terms, "'", collapse = " and "),
       " to the formula to keep the '", contrast, "' contrast, or use ",
       "prior_factor(contrast = \"independent\") for one independent ",
-      "coefficient per level.",
-      call. = FALSE
+      "coefficient per level."
     )
+    if(is.prior.ordered(this_prior)){
+      .bt_ordered_stop(message, "BayesTools_ordered_unavailable")
+    }
+    stop(message, call. = FALSE)
   }
 
   invisible(TRUE)
