@@ -428,6 +428,7 @@ prior_ordered <- function(total,
   if(!is.null(id) && any(!nzchar(trimws(id)))){
     stop("The 'id' argument cannot contain empty strings.", call. = FALSE)
   }
+  if(!is.null(names(id))) .prior_ordered_map_names_check(id, "id")
   .check_prior_weight(prior_weights)
   .prior_ordered_check_total(total)
 

@@ -3243,3 +3243,11 @@ test_that("estimates tables show ordered totals and shares or the level effects"
   expect_null(attr(JAGS_estimates_table(scaled$fit, transform_scaled = TRUE,
                                         transform_factors = TRUE), "footnotes"))
 })
+
+test_that("ordered named maps require unique nonempty non-NA names", {
+  total <- prior("point", list(10))
+  for(map_names in list(c("f", "f"), c("f", NA_character_), c("f", ""))){
+    expect_error(prior_ordered(total, id = setNames(c("a", "b"), map_names)), "unique, nonempty, non-NA", fixed = TRUE)
+    expect_error(prior_ordered(total, allocation = setNames(list(c(.25, .75), c(.5, .5)), map_names)), "unique, nonempty, non-NA", fixed = TRUE)
+  }
+})

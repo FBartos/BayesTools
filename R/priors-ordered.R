@@ -50,6 +50,15 @@
   invisible(TRUE)
 }
 
+.prior_ordered_map_names_check <- function(x, name){
+
+  map_names <- names(x)
+  if(is.null(map_names) || anyNA(map_names) || any(!nzchar(map_names)) || anyDuplicated(map_names)){
+    stop("The '", name, "' map must have unique, nonempty, non-NA names.", call. = FALSE)
+  }
+  invisible(TRUE)
+}
+
 .prior_ordered_allocation_spec <- function(allocation, name = "allocation"){
 
   if(is.null(allocation)){
