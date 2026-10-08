@@ -1,9 +1,5 @@
 skip_if_not_test_profile("unit")
 
-# ============================================================================ #
-# TEST FILE: Hypothesis Bayes Factors
-# ============================================================================ #
-
 .hypothesis_factor_marginal_for_test <- function(sd = 1, independent = FALSE){
   formula <- JAGS_formula(if(independent) ~0+fac else ~fac, "mu", data.frame(fac = factor(c("A", "B", "C"))),
     prior_list = if(independent) list(fac = prior_factor("normal", list(0, sd), contrast = "independent")) else
@@ -104,6 +100,10 @@ test_that("transitive numerical zero over zero is explicitly undefined", {
   finite <- call("theta = .5 vs theta > .5", method = "normal")
   expect_true(is.finite(attr(finite, "raw_log_BF")))
 })
+
+# ============================================================================ #
+# TEST FILE: Hypothesis Bayes Factors
+# ============================================================================ #
 
 .hypothesis_marginal_posterior_for_test <- function(samples, prior_density){
 

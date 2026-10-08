@@ -77,7 +77,16 @@
 #' are selected by these column names; other spellings are rejected.
 #' @param ... unused.
 #'
-#' @details The hypothesis language deliberately accepts only a small,
+#' @details Level combinations require the same complete declared joint prior
+#' context. Fixed reference levels use the shared typed ordinate refusals;
+#' whole-factor requests retain results for eligible sibling levels.
+#' Region Bayes factors are calculated from their canonical log ratios even
+#' when intermediate diagnostic odds are outside the natural-scale range.
+#' A transitive ratio with both a numerically zero posterior point ordinate and
+#' zero posterior region mass is undefined and returns \code{NA} with a warning
+#' recorded in the result.
+#'
+#' The hypothesis language deliberately accepts only a small,
 #' non-programmable subset of R expressions:
 #'
 #' \preformatted{
