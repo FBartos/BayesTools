@@ -956,3 +956,33 @@ test_that("factor scalar certificate fallback preserves unknown laws and strict 
   expect_error(with_mocked_bindings(marginal_posterior(fixture$mixed, "mu_fac", use_formula = FALSE, prior_samples = TRUE),
     .posterior_atoms_formula = function(...) stop("Ordinary helper error", call. = FALSE), .package = "BayesTools"), "Ordinary helper error", fixed = TRUE)
 })
+test_that("fixed spike inclusion preserves weighted independent conditional support", {
+
+  for(probability in c(0, 1, .5)){
+    priors <- list(theta = prior_spike_and_slab(prior("uniform", list(a = 1, b = 2)),
+      prior_inclusion = prior("point", list(probability))),
+      phi = prior_spike_and_slab(prior("normal", list(0, 1)),
+        prior_inclusion = prior("point", list(.5))))
+    states <- if(probability == 0) 0 else if(probability == 1) 1 else 0:1
+    gates <- expand.grid(theta_indicator = states, phi_indicator = 0:1, repetition = 1:4)
+    draws <- cbind(theta = gates$theta_indicator * seq(1.1, 1.9, length.out = nrow(gates)),
+      phi = gates$phi_indicator * seq(-.9, .9, length.out = nrow(gates)),
+      theta_indicator = gates$theta_indicator, phi_indicator = gates$phi_indicator)
+    fit <- .parameter_catalog_test_fit(coda::mcmc.list(coda::mcmc(draws)), priors)
+    raw <- as_mixed_posteriors(fit, c("theta", "phi"), transform_scaled = FALSE)
+    conditioned <- as_mixed_posteriors(fit, c("theta", "phi"), conditional = "phi", transform_scaled = FALSE)
+    context <- posterior_metadata(conditioned, "prior_context")
+    expect_s3_class(context, "prior_density_conditional_context")
+    expect_identical(context$linear_weight_space, "coefficient")
+    expect_length(context$transforms, 0L)
+    bounds <- if(probability == 0) c(0, 0) else if(probability == 1) c(1, 2) else c(0, 2)
+    for(weight in c(1, 2, -3)){
+      support <- .posterior_support_from_prior_context_weights(context, c(theta = weight, phi = 0))
+      expect_identical(unname(support$bounds), range(weight * bounds))
+      expect_identical(unname(support$points), if(probability == 1) numeric() else 0)
+    }
+    expect_identical(posterior_metadata(raw$theta, "support")$bounds,
+      posterior_metadata(conditioned$theta, "support")$bounds)
+    expect_identical(unname(posterior_metadata(conditioned$theta, "support")$bounds), bounds)
+  }
+})

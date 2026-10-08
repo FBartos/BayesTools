@@ -891,6 +891,21 @@ posterior_support_attribute <- function(bounds, points = NULL, type = NULL,
                                   type = "points"))
   }
   if(is.prior.spike_and_slab(prior)){
+    inclusion <- .get_spike_and_slab_inclusion(prior)
+    if(is.prior.point(inclusion)){
+      probability <- inclusion$parameters[["location"]]
+      if(is.numeric(probability) && length(probability) == 1L && isTRUE(probability == 0)){
+        spike <- which(attr(prior, "components", exact = TRUE) == "null")
+        spike_group <- group
+        spike_group$prior <- prior[[spike]]
+        return(.posterior_support_group_linear(spike_group, source = source))
+      }
+      if(is.numeric(probability) && length(probability) == 1L && isTRUE(probability == 1)){
+        variable_group <- group
+        variable_group$prior <- .get_spike_and_slab_variable(prior)
+        return(.posterior_support_group_linear(variable_group, source = source))
+      }
+    }
     variable_group <- group
     variable_group$prior <- .get_spike_and_slab_variable(prior)
     return(.posterior_support_union(list(
