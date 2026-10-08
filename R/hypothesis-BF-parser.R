@@ -535,14 +535,14 @@ hypothesis_normalize_level_references <- function(text){
   original_text <- paste(deparse(expr, width.cutoff = 500L, backtick = TRUE,
     control = c("keepNA", "keepInteger", "niceNames", "digits17")), collapse = "")
   replace <- function(node){
-    if(is.double(node) && length(node) == 1L && is.null(attributes(node)) &&
+    if(is.numeric(node) && length(node) == 1L && is.null(attributes(node)) &&
        is.finite(node) && node >= 0){
       repeat{
         counter <<- counter + 1L
         placeholder <- paste0(".BayesToolsHypothesisLiteral", counter, ".")
         if(!grepl(placeholder, original_text, fixed = TRUE)) break
       }
-      labels[[placeholder]] <<- .hypothesis_literal_label(node)
+      labels[[placeholder]] <<- .hypothesis_literal_label(as.numeric(node))
       return(as.name(placeholder))
     }
     if(is.call(node)){

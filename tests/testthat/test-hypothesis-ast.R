@@ -20,6 +20,27 @@ test_that("escaped literal roots preserve statement grammar on roundtrip", {
                 "theta + TRUE > 0", "theta + Inf > 0")) expect_error(hypothesis_parse(text))
 })
 
+test_that("integer hypothesis literals share double semantic rendering", {
+  integer_text <- c("theta = 1L", "theta > 1L", "2L * theta = 0",
+    "theta > -1L", "theta / 2L > 0", "theta^2L > 1L")
+  double_text <- gsub("L", "", integer_text, fixed = TRUE)
+  for(i in seq_along(integer_text)){
+    integer_ast <- tryCatch(hypothesis_parse(integer_text[[i]]), error = identity)
+    expect_false(inherits(integer_ast, "error"), info = integer_text[[i]])
+    if(inherits(integer_ast, "error")) next
+    double_ast <- hypothesis_parse(double_text[[i]])
+    expect_identical(integer_ast$statements[[1L]]$left$label, integer_text[[i]])
+    expect_identical(integer_ast$statements[[1L]]$left$expression,
+      double_ast$statements[[1L]]$left$expression)
+    expect_identical(hypothesis_render(integer_ast), hypothesis_render(double_ast))
+    reparsed <- hypothesis_parse(hypothesis_render(integer_ast))
+    expect_identical(reparsed$statements[[1L]]$left$expression,
+      double_ast$statements[[1L]]$left$expression)
+    expect_identical(reparsed$statements[[1L]]$left$value,
+      double_ast$statements[[1L]]$left$value)
+  }
+})
+
 test_that("hypothesis rendering preserves former codec and placeholder names", {
   hypotheses <- c(".BayesToolsHypothesisLiteral1. + 1 = 0",
     "prefix.BayesToolsHypothesisLiteral1.suffix + 1 = 0",
