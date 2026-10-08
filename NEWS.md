@@ -1,4 +1,5 @@
 # version 0.3.1
+- scaled formula atom projections retain every compiler-expanded interaction weight and zero source column. Omitted ordinary parent priors supply their declared laws; missing component-dependent or unknown parent laws remain unavailable.
 - diagonal multivariate Normal prior log densities avoid redundant covariance symmetry checks while retaining the same density engine and numerical validation.
 - factor contrast views retain scalar atom declarations certified from their full declared parent, including scaled interactions; uncertified scalar and joint laws retain their existing refusals.
 - live BF formatting preserves canonical logarithms across views; validated exact support exclusion precedes precomputed-grid span checks. List measure refusals emit their labelled warning when requested, and removing finite linear recipes clears their companion space.

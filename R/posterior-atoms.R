@@ -1061,7 +1061,8 @@ posterior_atoms_free <- function(x){
     # the log of the unscaled intercept of a log-intercept formula scaling is
     # linear in the fitted coefficients with the log of the fitted intercept
     # (its 'log' source transformation, applied to its atom locations below)
-    standardized <- matrix(0, nrow(weights), ncol(weights), dimnames = dimnames(weights))
+    standardized <- matrix(0, nrow(weights), length(context$column_names),
+      dimnames = list(rownames(weights), context$column_names))
     for(i in seq_len(nrow(weights))){
       row <- .prior_density_context_standardized_weights(context, weights[i, ], source_transforms)
       standardized[i, names(row)] <- row
@@ -1081,9 +1082,29 @@ posterior_atoms_free <- function(x){
     return(NULL)
   }
 
+  active_columns <- colnames(weights)[colSums(abs(weights)) != 0]
+  active_owners <- names(prior_list)[vapply(names(prior_list), function(parameter){
+    any(active_columns == parameter |
+      startsWith(active_columns, paste0(parameter, "[")))
+  }, logical(1))]
+  owned_columns <- vapply(active_columns, function(column){
+    any(column == active_owners | startsWith(column, paste0(active_owners, "[")))
+  }, logical(1))
+  if(!all(owned_columns)){
+    return(NULL)
+  }
+  missing_owners <- setdiff(active_owners, colnames(plan$components))
+  ordinary <- vapply(prior_list[missing_owners], function(prior){
+    is.prior(prior) && !is.prior.mixture(prior) &&
+      !is.prior.spike_and_slab(prior) && !is.prior.ordered(prior)
+  }, logical(1))
+  if(!all(ordinary)){
+    return(NULL)
+  }
+
   atom_locations <- numeric()
   atom_masses <- numeric()
-  parameter_names <- colnames(plan$components)
+  parameter_names <- union(colnames(plan$components), missing_owners)
   for(component_i in seq_len(nrow(plan$components))){
     coefficient_locations <- rep(NA_real_, ncol(weights))
     names(coefficient_locations) <- colnames(weights)
@@ -1094,12 +1115,17 @@ posterior_atoms_free <- function(x){
       if(!any(parameter_columns)){
         next
       }
-      component_prior <- .posterior_atoms_component_prior(
-        prior_list[[parameter]],
-        plan$components[component_i, parameter],
-        model_mixture = plan$model_mixture,
-        total_component = .posterior_atoms_plan_total_indicator(plan, component_i, parameter)
-      )
+      component_prior <- if(parameter %in% missing_owners){
+        # An ordinary declared prior has no unobserved component selection.
+        prior_list[[parameter]]
+      }else{
+        .posterior_atoms_component_prior(
+          prior_list[[parameter]],
+          plan$components[component_i, parameter],
+          model_mixture = plan$model_mixture,
+          total_component = .posterior_atoms_plan_total_indicator(plan, component_i, parameter)
+        )
+      }
       if(is.null(component_prior)){
         next
       }
@@ -1107,6 +1133,9 @@ posterior_atoms_free <- function(x){
         component_prior,
         sum(parameter_columns)
       )
+      if(parameter %in% missing_owners && is.prior.point(component_prior) && is.null(location)){
+        return(NULL)
+      }
       if(!is.null(location)){
         coefficient_locations[parameter_columns] <- location
       }

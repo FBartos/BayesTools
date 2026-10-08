@@ -1,5 +1,142 @@
 skip_if_not_test_profile("unit")
 
+.expanded_formula_atom_fixture <- function(point = FALSE, scaled = TRUE, mixture = FALSE){
+
+  contrast <- if(point) "treatment" else "meandif"
+  data <- expand.grid(
+    g = factor(c("lo", "mid", "hi"), levels = c("lo", "mid", "hi")),
+    x = c(2, 4, 8, 10)
+  )
+  main <- if(point){
+    prior_factor("point", list(1), contrast = contrast)
+  }else{
+    prior_factor("mnormal", list(0, 0.5), contrast = contrast)
+  }
+  interaction <- if(point){
+    prior_factor("point", list(3), contrast = contrast)
+  }else{
+    prior_factor("mnormal", list(0, 0.5), contrast = contrast)
+  }
+  if(mixture){
+    interaction <- prior_mixture(list(interaction,
+      prior_factor("normal", list(0, 0.5), contrast = contrast)))
+  }
+  compiled <- JAGS_formula(
+    ~ g * x, "mu", data,
+    prior_list = list(intercept = prior("normal", list(0, 1)),
+      x = prior("normal", list(0, 1)), g = main, "g:x" = interaction),
+    formula_scale = if(scaled) list(x = TRUE) else NULL
+  )
+  values <- .generate_prior_sample_matrix(compiled$prior_list, 32L, seed = 343)
+  fit <- structure(list(mcmc = coda::mcmc.list(coda::mcmc(values)),
+    sample = 32L, summary.pars = list(mutate = NULL), monitor = colnames(values)),
+    class = c("runjags", "BayesTools_fit", "list"))
+  attr(fit, "prior_list") <- compiled$prior_list
+  attr(fit, "formula_design") <- list(mu = compiled$formula_design)
+  attr(fit, "formula_scale") <- list(mu = compiled$formula_scale)
+  fit <- attach_test_parameter_map(fit)
+  list(compiled = compiled, fit = fit,
+    full = as_mixed_posteriors(fit, names(compiled$prior_list),
+      transform_scaled = scaled, n_prior_samples = 32L),
+    selected = as_mixed_posteriors(fit, "mu_g",
+      transform_scaled = scaled, n_prior_samples = 32L))
+}
+
+test_that("scaled formula atom rows retain expanded compiler source weights", {
+
+  fixture <- .expanded_formula_atom_fixture()
+  prior_list <- fixture$compiled$prior_list
+  factor_design <- attr(prior_list$mu_g, "factor_design")
+  weights <- factor_design[2:3, , drop = FALSE]
+  colnames(weights) <- .prior_linear_prior_columns("mu_g", prior_list$mu_g)
+  rownames(weights) <- c("mu_g[dif: mid]", "mu_g[dif: hi]")
+  context <- .prior_density_context(prior_list, colnames(weights),
+    formula_scale = attr(fixture$fit, "formula_scale"))
+  transform <- JAGS_formula_coefficient_transform(fixture$fit, "mu")
+  expected <- weights %*% transform$matrix[colnames(weights), , drop = FALSE]
+  standardized <- matrix(0, nrow(weights), length(context$column_names),
+    dimnames = list(rownames(weights), context$column_names))
+  for(i in seq_len(nrow(weights))){
+    row <- .prior_density_context_standardized_weights(context, weights[i, ])
+    standardized[i, names(row)] <- row
+  }
+  expect_equal(standardized[, colnames(expected), drop = FALSE], expected,
+    tolerance = 1e-14)
+  expect_identical(sort(context$column_names), sort(transform$source_names))
+  expect_true(any(expected[, startsWith(colnames(expected), "mu_g__xXx__x"), drop = FALSE] != 0))
+  expect_identical(expected[, c("mu_intercept", "mu_x"), drop = FALSE],
+    matrix(0, 2L, 2L, dimnames = list(rownames(weights), c("mu_intercept", "mu_x"))))
+
+  atoms <- .posterior_atoms_formula(fixture$selected, prior_list, weights,
+    column_name = "contrast")
+  expect_true(atoms$declared)
+  expect_identical(atoms$mass, numeric())
+  expect_identical(dim(atoms$locations), c(0L, 1L))
+  # Each row has a nonzero independent, untruncated Gaussian main effect.
+  # Its declared law proves non-atomicity independently of observed draw values.
+  expect_identical(prior_list$mu_g$distribution, "mnormal")
+  expect_identical(prior_list$mu_g$parameters$sd, 0.5)
+  levels <- marginal_posterior(fixture$selected, "mu_g", use_formula = FALSE)
+  expect_identical(names(levels), c("lo", "mid", "hi"))
+  expect_identical(levels[["mid"]], levels[[2L]])
+  expect_true(all(vapply(levels, function(level){
+    .posterior_atoms_get(level)$declared && length(.posterior_atoms_get(level)$mass) == 0L
+  }, logical(1))))
+  expect_s3_class(plot_posterior(fixture$selected, "mu_g", prior = TRUE,
+    plot_type = "ggplot"), "ggplot")
+})
+
+test_that("expanded point formula projections retain full-parent points and zero rows", {
+
+  fixture <- .expanded_formula_atom_fixture(point = TRUE)
+  prior_list <- fixture$compiled$prior_list
+  weights <- attr(prior_list$mu_g, "factor_design")[1:2, , drop = FALSE]
+  colnames(weights) <- .prior_linear_prior_columns("mu_g", prior_list$mu_g)
+  rownames(weights) <- c("reference", "mid")
+  transform <- JAGS_formula_coefficient_transform(fixture$fit, "mu")
+  source_weights <- weights %*% transform$matrix[colnames(weights), , drop = FALSE]
+  points <- stats::setNames(rep(0, length(transform$source_names)), transform$source_names)
+  points[colnames(weights)] <- 1
+  points[startsWith(names(points), "mu_g__xXx__x")] <- 3
+  expected <- as.numeric(source_weights %*% points)
+  atoms <- .posterior_atoms_formula(fixture$full, prior_list, weights)
+  expect_equal(sort(atoms$locations[, 1L]), sort(expected), tolerance = 1e-14)
+  expect_equal(atoms$mass, c(0.5, 0.5), tolerance = 0)
+  expect_true(atoms$declared)
+  unscaled <- .expanded_formula_atom_fixture(point = TRUE, scaled = FALSE)
+  ordinary <- .posterior_atoms_formula(unscaled$full, unscaled$compiled$prior_list, weights)
+  expect_equal(sort(ordinary$locations[, 1L]), c(0, 1), tolerance = 0)
+  expect_equal(ordinary$mass, c(0.5, 0.5), tolerance = 0)
+})
+
+test_that("expanded atom rows require actual laws for every active parent", {
+
+  point <- .expanded_formula_atom_fixture(point = TRUE)
+  transform <- JAGS_formula_coefficient_transform(point$fit, "mu")
+  # Supply a legitimate complete target-space row to isolate law ownership
+  # from the separate compact-column allocation regression above.
+  weights <- matrix(0, 1L, length(transform$source_names),
+    dimnames = list("mid", transform$source_names))
+  weights[, "mu_g[1]"] <- 1
+  full <- .posterior_atoms_formula(point$full, point$compiled$prior_list, weights)
+  selected <- .posterior_atoms_formula(point$selected, point$compiled$prior_list, weights)
+  expect_identical(selected, full)
+
+  mixture <- .expanded_formula_atom_fixture(point = TRUE, mixture = TRUE)
+  full_mixture <- .posterior_atoms_formula(mixture$full, mixture$compiled$prior_list, weights)
+  selected_mixture <- .posterior_atoms_formula(mixture$selected, mixture$compiled$prior_list, weights)
+  expect_equal(full_mixture$locations, full$locations, tolerance = 0)
+  expect_equal(full_mixture$mass,
+    mean(.bt_draws_component(mixture$full$mu_g__xXx__x) == 1L), tolerance = 0)
+  expect_null(selected_mixture)
+
+  ordinary <- .expanded_formula_atom_fixture(point = TRUE, scaled = FALSE)
+  unknown_weights <- cbind(weights, unknown_source = 1)
+  expect_null(.posterior_atoms_formula(ordinary$full,
+    ordinary$compiled$prior_list, unknown_weights))
+  expect_null(.posterior_atoms_formula(list(), ordinary$compiled$prior_list, weights))
+})
+
 test_that("as_mixed_posteriors handles treatment factor-continuous interaction coefficients", {
 
   df <- data.frame(
