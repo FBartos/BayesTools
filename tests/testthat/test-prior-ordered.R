@@ -3056,3 +3056,19 @@ test_that("estimates tables show ordered totals and shares or the level effects"
   expect_null(attr(JAGS_estimates_table(scaled$fit, transform_scaled = TRUE,
                                         transform_factors = TRUE), "footnotes"))
 })
+
+test_that("expression-point ordered totals retain multi-slice snapshot monitors", {
+  data <- expand.grid(f = ordered(c("lo", "mid", "hi")), g = factor(c("a", "b", "c")))
+  info <- JAGS_formula(~f*g, "mu", data, list(intercept = prior("point", list(0)),
+    f = prior_ordered(prior("point", list(0)), allocation = c(.2, .8)),
+    g = prior_factor("normal", list(0, 1), contrast = "treatment"),
+    "f:g" = prior_ordered(prior("point", list(location = expression(sigma))), allocation = c(.2, .8))))
+  expect_true("mu_f__xXx__g_ordered_total" %in% JAGS_to_monitor(info$prior_list))
+  spec <- .bt_ordered_spec("mu_f__xXx__g", info$prior_list$mu_f__xXx__g)
+  snapshots <- matrix(c(2, 3, 4, 5), 2L, dimnames = list(NULL, spec$total_names))
+  expect_identical(.bt_ordered_total_values(spec, .bt_deterministic_lookup(snapshots)), snapshots)
+  expect_error(JAGS_ordered_density_kernel(info$prior_list["mu_f__xXx__g"]), class = "BayesTools_ordered_expression_unavailable")
+  literal <- info$prior_list$mu_f__xXx__g
+  literal$total <- prior("point", list(0))
+  expect_false("mu_f__xXx__g_ordered_total" %in% .JAGS_monitor.ordered(literal, "mu_f__xXx__g"))
+})

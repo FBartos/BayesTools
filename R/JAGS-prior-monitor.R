@@ -128,7 +128,7 @@ JAGS_to_monitor             <- function(prior_list){
     )
   }else if(metadata$theta_dim == 1L){
     monitor <- c(monitor, JAGS_to_monitor(setNames(list(prior$total), total_name)))
-  }else if(!is.prior.point(prior$total)){
+  }else if(!is.prior.point(prior$total) || .is_prior_expression(prior$total)){
     monitor <- c(monitor, total_name)
   }
 
