@@ -9,7 +9,6 @@
 \alias{.process_spike_and_slab}
 \alias{.apply_parameter_transformations}
 \alias{.transform_factor_contrasts}
-\alias{.rename_factor_levels}
 \title{Helper functions for extracting and formatting posterior distributions}
 \usage{
 .extract_posterior_samples(fit, as_list = FALSE)
@@ -28,6 +27,10 @@
   remove_formulas = NULL,
   keep_parameters = NULL,
   keep_formulas = NULL,
+  remove_random_effects = NULL,
+  keep_random_effects = NULL,
+  remove_random_structures = NULL,
+  keep_random_structures = NULL,
   remove_spike_0 = TRUE
 )
 
@@ -51,10 +54,11 @@
   model_samples,
   prior_list,
   transform_factors = FALSE,
-  transformations = NULL
+  transformations = NULL,
+  components = list(),
+  with_label_parts = FALSE,
+  raw_model_samples = NULL
 )
-
-.rename_factor_levels(model_samples, prior_list)
 }
 \arguments{
 \item{fit}{a JAGS model fit object}
@@ -81,6 +85,14 @@ the corresponding parameters (PET, PEESE, omega) are also added to the keep list
 
 \item{keep_formulas}{character vector of formula names whose parameters should be kept (all others removed unless in keep_parameters)}
 
+\item{remove_random_effects}{character vector of random-effect names/blocks to remove.}
+
+\item{keep_random_effects}{character vector of random-effect names/blocks to keep while leaving non-random parameters unaffected.}
+
+\item{remove_random_structures}{character vector of random-effect covariance structures to remove.}
+
+\item{keep_random_structures}{character vector of random-effect covariance structures to keep while leaving non-random parameters unaffected.}
+
 \item{remove_spike_0}{whether to remove spike at 0 priors}
 
 \item{par}{parameter name}
@@ -94,11 +106,24 @@ the corresponding parameters (PET, PEESE, omega) are also added to the keep list
 \item{transformations}{list of transformations to apply}
 
 \item{transform_factors}{whether to transform orthonormal/meandif to differences}
+
+\item{components}{mixture components summarized as parameters of their
+own: a list keyed by those parameters with the mixture's \code{parameter}
+and the \code{component}}
+
+\item{with_label_parts}{whether the label parts of the transformed columns
+are attached as the \code{"label_parts"} attribute}
+
+\item{raw_model_samples}{optional aligned fitted primitive draws used to
+retain ordered source semantics through a factor transformation}
 }
 \value{
 matrix or mcmc.list of posterior samples
 
-list with cleaned model_samples and updated prior_list
+list with cleaned model_samples, updated prior_list, and the
+columns of the publication-weight bins that the selection priors declare as
+structural constants (structural: the reference bin, every bin of fixed
+weights), with the bins named by their p-value intervals
 
 updated model_samples matrix
 
@@ -109,8 +134,6 @@ list with updated model_samples, prior_list, and warnings
 updated model_samples matrix
 
 updated model_samples matrix
-
-updated model_samples matrix with renamed columns
 }
 \description{
 Internal helper functions to extract posterior samples from JAGS

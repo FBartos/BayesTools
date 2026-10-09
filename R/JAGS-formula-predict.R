@@ -1,0 +1,644 @@
+#' @title Evaluate JAGS formula using posterior samples
+#'
+#' @description Evaluates a JAGS formula on a posterior distribution obtained
+#' from a fitted model, through the formula design that [JAGS_fit()] stores
+#' for the formula parameter (the processed formula, factor levels and
+#' contrasts, and the standardization of predictors). Posterior or prior
+#' draws without a fit are evaluated through the same design, built by
+#' [JAGS_formula_draws()]. Fits created by BayesTools 0.3.0, which store no
+#' design, must be refitted: they stop with an error of class
+#' \code{BayesTools_refit_required} (see [JAGS_validate_fit_contract()]).
+#' Formula random effects can be evaluated for existing
+#' grouping levels when either standardized latent random effects and covariance
+#' hyperparameters were monitored via \code{random_monitor(latent = TRUE)}, or
+#' the group-level coefficients were monitored via
+#' \code{random_monitor(coefficients = TRUE)}; otherwise, and for
+#' random-effect blocks compiled as marginalized, conditional evaluation stops
+#' with an error of class \code{BayesTools_refit_monitoring} (also
+#' \code{BayesTools_refit_required}).
+#' Row-indexed external random-effect SD sources, such as
+#' \code{random_sd_source("tau", shape = "row")}, are evaluated from latent
+#' random effects only. Model generation automatically monitors the required
+#' latent effects for these blocks. The posterior samples must either contain
+#' source columns named \code{tau[1]}, ..., \code{tau[N]}. When prediction
+#' \code{data} are supplied, \code{fitted_rows} must explicitly map each
+#' prediction row to its fitted observation index. Alternatively, the source
+#' must provide a
+#' \code{parameter_source()} \code{values} function for reconstructing row-wise
+#' source values from the posterior samples and supplied prediction data.
+#' Literal \code{expression()} terms use the replayable subset documented by
+#' [JAGS_formula()] and are evaluated against prediction data using JAGS-style
+#' row indexing through \code{i}.
+#' Array expressions such as \code{X[i, column[i]]} pair the coordinates
+#' pointwise. Each index must contain finite positive integers within its
+#' array dimension; scalar indices repeat across a common nonzero vector
+#' length. One-index expressions retain ordinary vector indexing.
+#' Sampled parameter references are reconstructed separately for every posterior
+#' draw. Replaying a fitted formula restores the
+#' stored expression syntax, dependency classification, and fitted data
+#' snapshot. Supply an explicit
+#' expression-free formula to evaluate a selected subset without those offsets.
+#' Inline transformations, offsets, dot expansion, and arbitrary calls are not
+#' supported. Create transformed predictors as explicit columns in \code{data}.
+#' Selected existing terms retain fitted factor coding and variable order,
+#' including interactions requested with reversed variable order. Predictors
+#' outside the selected terms are not required. Expression-valued scalar point
+#' coefficients use valid monitors first, otherwise their retained declaration
+#' and owned model data. New prediction rows do not replace that owned data.
+#' Unsupported scalar replay, missing parents, cycles, and malformed values
+#' raise \code{BayesTools_formula_point_unavailable}; absent affected owners
+#' require refitting. This replay does not extend bridge prior-expression
+#' eligibility or establish a structural point law from constant draws.
+#'
+#' @param fit model fitted with [JAGS_fit()] with a formula for
+#' \code{parameter}, or posterior draws carrying its formula design
+#' ([JAGS_formula_draws()]).
+#' @param formula formula specifying the right hand side of the assignment (the
+#' left hand side is ignored). If `NULL`, the fitted formula stored in
+#' `formula_design` metadata is used. If the formula has a
+#' \code{"log(intercept)"} attribute set to \code{TRUE}, the intercept values
+#' will be log-transformed before computing the linear predictor.
+#' @param parameter name of the parameter created with the formula
+#' @param data data.frame containing predictors included in the formula. If
+#' `NULL`, versioned original-scale fitted source data from `formula_design`
+#' metadata are used.
+#' @param fitted_rows optional integer vector mapping supplied prediction rows
+#' to fitted observation indices. It is required whenever `data` is supplied
+#' and a selected random-effect block uses a posterior-indexed row source.
+#' Reordering and duplicate indices are supported. Callback-computed row
+#' sources do not use this mapping.
+#' @param prior_list named list of prior distribution of parameters specified
+#' within the \code{formula}. If `NULL`, fitted priors from `formula_design`
+#' metadata are used.
+#' @param formula_target formula prediction target. `"fixed"` evaluates only
+#' the fixed formula contribution. `"conditional"` evaluates fixed effects plus
+#' fitted or explicitly generated random-effect contributions. `NULL` (the
+#' default) evaluates the fixed formula of fits without random effects and
+#' stops for fits with random effects, which need an explicit target.
+#' @param blocks optional random-effect block names used with
+#' `formula_target = "conditional"`.
+#' @param new_levels optional new-level policy used only with
+#' `formula_target = "conditional"`. Use a `random_new_levels()` object or one
+#' of `"error"`, `"zero"`, or `"sample"`. Grouping levels declared in the
+#' fitted grouping factor but without rows in the fitting data are predicted as
+#' new levels, except in blocks with a known group covariance; see
+#' [prior_random()].
+#'
+#'
+#' @return \code{JAGS_evaluate_formula} returns a matrix of the evaluated posterior samples on
+#' the supplied data.
+#'
+#' @seealso [JAGS_fit()] [JAGS_formula()]
+#' @export
+JAGS_evaluate_formula <- function(fit, formula = NULL, parameter,
+                                  data = NULL, prior_list = NULL,
+                                  formula_target = NULL, blocks = NULL,
+                                  new_levels = NULL, fitted_rows = NULL){
+
+  .bt_JAGS_evaluate_formula(
+    fit = fit,
+    formula = formula,
+    parameter = parameter,
+    data = data,
+    prior_list = prior_list,
+    formula_target = formula_target,
+    blocks = blocks,
+    new_levels = new_levels,
+    fitted_rows = fitted_rows
+  )
+}
+
+.bt_JAGS_evaluate_formula <- function(fit, formula = NULL, parameter,
+                                      data = NULL, prior_list = NULL,
+                                      formula_target = NULL, blocks = NULL,
+                                      new_levels = NULL, fitted_rows = NULL,
+                                      return_components = FALSE,
+                                      posterior = NULL){
+
+  check_char(parameter, "parameter", allow_NA = FALSE)
+  .bt_check_jags_node_name(parameter, "parameter")
+  data_supplied <- !is.null(data)
+  if(!is.null(fitted_rows) && !data_supplied){
+    stop("'fitted_rows' can be supplied only with 'data'.", call. = FALSE)
+  }
+  formula_target <- .bt_formula_prediction_target(
+    formula_target,
+    allow_marginal = FALSE,
+    context = "JAGS_evaluate_formula()"
+  )
+  if(!is.null(blocks)){
+    check_char(blocks, "blocks", check_length = 0, allow_NA = FALSE)
+    if(anyDuplicated(blocks)){
+      stop("'blocks' must be unique.", call. = FALSE)
+    }
+  }
+  if(!is.null(blocks) && !identical(formula_target, "conditional")){
+    stop("'blocks' can be used only with formula_target = \"conditional\".", call. = FALSE)
+  }
+  if(!is.null(new_levels) && !identical(formula_target, "conditional")){
+    stop("'new_levels' can be used only with formula_target = \"conditional\".", call. = FALSE)
+  }
+  if(!is.null(new_levels)){
+    new_levels <- .bt_random_new_levels_resolve(new_levels)
+  }
+  replay_fitted_formula <- is.null(formula)
+  fitted_design <- .bt_JAGS_evaluate_formula_design(fit, parameter)
+  resolved_inputs <- .bt_JAGS_evaluate_formula_resolve_inputs(
+    fit = fit,
+    formula = formula,
+    parameter = parameter,
+    data = data,
+    prior_list = prior_list,
+    fitted_design = fitted_design
+  )
+  formula <- resolved_inputs$formula
+  data <- resolved_inputs$data
+  prior_list <- resolved_inputs$prior_list
+  fitted_design <- resolved_inputs$fitted_design
+
+  if(!inherits(formula, "formula"))
+    stop("'formula' must be a formula", call. = FALSE)
+  expressions_to_eval <- .bt_resolve_formula_expression_terms(
+    formula = formula,
+    fitted_design = fitted_design,
+    replay_fitted_formula = replay_fitted_formula
+  )
+  formula <- .remove_expressions(formula)
+  if(!is.data.frame(data))
+    stop("'data' must be a data.frame")
+  expression_source_data <- data
+  if(!is.null(fitted_rows)){
+    check_int(
+      fitted_rows,
+      "fitted_rows",
+      lower = 1L,
+      check_length = nrow(data),
+      allow_NA = FALSE
+    )
+  }
+  check_list(prior_list, "prior_list")
+  if(any(!sapply(prior_list, is.prior)))
+    stop("'prior_list' must be a list of priors.")
+
+  # extract the posterior distribution (or evaluate supplied draws)
+  if(is.null(posterior)){
+    posterior <- as.matrix(.fit_to_posterior(fit))
+  }
+  .bt_JAGS_evaluate_formula_validate_posterior_names(posterior)
+
+  # remove the specified response (would crash the model.frame if not included)
+  formula <- .remove_response(formula)
+  .bt_validate_formula_replay_grammar(formula)
+  formula_has_random <- .has_random_effects(formula)
+  fitted_has_random <- .bt_formula_design_has_any_random_effects(fitted_design)
+  if(!is.null(blocks) && !fitted_has_random){
+    stop(
+      "The fitted formula for parameter '", parameter,
+      "' does not include random-effect blocks.",
+      call. = FALSE
+    )
+  }
+  if(is.null(formula_target) && fitted_has_random){
+    stop(
+      "The fitted formula for parameter '", parameter, "' includes random ",
+      "effects, so JAGS_evaluate_formula() needs an explicit 'formula_target': ",
+      "'fixed' (fixed effects only) or 'conditional' (fixed effects plus ",
+      "random-effect contributions). Use JAGS_predict_formula() for ",
+      "formula_target = 'marginal'.",
+      call. = FALSE
+    )
+  }
+  if(identical(formula_target, "fixed")){
+    formula <- .remove_random_effects(formula)
+  }else if(formula_has_random ||
+           (identical(formula_target, "conditional") && fitted_has_random)){
+    return(.bt_JAGS_evaluate_formula_with_random_effects(
+      fit = fit,
+      formula = formula,
+      parameter = parameter,
+      data = data,
+      prior_list = prior_list,
+      posterior = posterior,
+      formula_target = formula_target,
+      blocks = blocks,
+      new_levels = new_levels,
+      fitted_rows = fitted_rows,
+      data_supplied = data_supplied,
+      expressions_to_eval = expressions_to_eval,
+      return_components = return_components
+    ))
+  }
+  log_intercept <- isTRUE(attr(formula, "log(intercept)"))
+  no_intercept_specified <- attr(stats::terms(formula), "intercept") == 0
+  if(no_intercept_specified){
+    formula <- formula_add_intercept(formula)
+    if(log_intercept){
+      attr(formula, "log(intercept)") <- TRUE
+    }
+  }
+
+  # Select existing terms before looking up priors. Their fitted coding and
+  # variable order must survive a request for only part of the formula.
+  selected_terms <- .bt_formula_selected_terms(formula, fitted_design)
+  formula <- selected_terms$terms
+
+  # select priors corresponding to the prior distribution
+  prior_parameter <- sapply(prior_list, function(p) if(is.null(attr(p, "parameter", exact = TRUE))) "__none" else attr(p, "parameter", exact = TRUE))
+  if(!any(parameter %in% unique(prior_parameter)))
+    stop("The specified parameter '", parameter, "' was not used in any of the prior distributions.")
+  prior_list_formula <- prior_list[prior_parameter == parameter]
+  names(prior_list_formula) <- vapply(names(prior_list_formula), function(prior_name){
+    .bt_label(
+      .bt_label_parts_term(prior_name, prior_list_formula[[prior_name]]),
+      style          = "table",
+      formula_prefix = FALSE
+    )
+  }, character(1), USE.NAMES = FALSE)
+  if(no_intercept_specified){
+    prior_list_formula[["intercept"]] <- prior(
+      "spike", list(if(log_intercept) 1 else 0)
+    )
+  }
+
+  # extract the terms information from the formula
+  formula_terms    <- stats::terms(formula)
+  has_intercept    <- attr(formula_terms, "intercept") == 1
+  predictors       <- as.character(attr(formula_terms, "variables"))[-1]
+  model_terms      <- c(if(has_intercept) "intercept", attr(formula_terms, "term.labels"))
+
+  # check that all predictors have data and prior distribution
+  if(!all(predictors %in% colnames(data)))
+    stop(paste0("The ", paste0("'", predictors[!predictors %in% colnames(data)], "'", collapse = ", ")," predictor variable is missing in the data."))
+  missing_terms <- model_terms[!model_terms %in% names(prior_list_formula)]
+  if(length(missing_terms) > 0L)
+    stop(paste0("The prior distribution for the ", paste0("'", missing_terms, "'", collapse = ", ")," term is missing in the prior_list."))
+  if(log_intercept){
+    .bt_validate_formula_log_intercept_prior(prior_list_formula)
+  }
+
+  # obtain predictors characteristics -- based on prior distributions used to fit the original model
+  # (i.e., do not truest the supplied data -- probably passed by the user)
+  model_terms_type <- sapply(model_terms, function(model_term){
+    if(model_term == "intercept"){
+      return("continuous")
+    }else if(is.prior.factor(prior_list_formula[[model_term]]) || inherits(prior_list_formula[[model_term]], "prior.factor_mixture") || inherits(prior_list_formula[[model_term]], "prior.factor_spike_and_slab")){
+      return("factor")
+    }else if(is.prior.simple(prior_list_formula[[model_term]]) || inherits(prior_list_formula[[model_term]], "prior.simple_mixture") || inherits(prior_list_formula[[model_term]], "prior.simple_spike_and_slab")){
+      return("continuous")
+    } else {
+      stop(paste0("Unrecognized prior distribution for the '", model_term, "' term."))
+    }
+  })
+  predictors_type <- .bt_JAGS_evaluate_predictor_types(
+    predictors = predictors,
+    fitted_design = fitted_design
+  )
+
+  # check that passed data correspond to the specified priors (factor levels etc...) and set the proper contrasts
+  if(any(predictors_type == "factor")){
+
+    # check the proper data input for each factor prior
+    for(factor in names(predictors_type[predictors_type == "factor"])){
+
+      factor_metadata <- .bt_JAGS_evaluate_factor_metadata(
+        predictor = factor,
+        fitted_design = fitted_design
+      )
+      .bt_validate_categorical_level_names(
+        factor_metadata$levels,
+        factor,
+        context = "Fitted factor metadata"
+      )
+      .bt_validate_categorical_values(
+        data[[factor]],
+        factor,
+        context = "Factor predictor"
+      )
+      observed_levels <- unique(as.character(data[[factor]]))
+      observed_levels <- observed_levels[!is.na(observed_levels)]
+      if(any(!observed_levels %in% factor_metadata$levels)){
+        stop(paste0("Levels specified in the '", factor, "' factor variable do not match the levels used for model specification."))
+      }
+
+      data[[factor]] <- if(factor_metadata$ordered){
+        ordered(data[[factor]], levels = factor_metadata$levels)
+      }else{
+        factor(data[[factor]], levels = factor_metadata$levels)
+      }
+      attr(data[[factor]], "contrasts") <- factor_metadata$contrast
+    }
+  }
+  if(any(predictors_type == "continuous")){
+
+    # check the proper data input for each continuous prior
+    for(continuous in names(predictors_type[predictors_type == "continuous"])){
+
+      # select the corresponding prior in the variable
+      this_prior <- prior_list_formula[[continuous]]
+
+      if(is.prior.factor(this_prior)|| is.prior.discrete(this_prior) || is.prior.PET(this_prior) || is.prior.PEESE(this_prior) || is.prior.weightfunction(this_prior)){
+        stop(paste0("Unsupported prior distribution defined for '", continuous, "' continuous variable. See '?prior' for details."))
+      }
+    }
+
+    data <- .bt_apply_formula_scale_to_data(
+      fitted_design = fitted_design,
+      data = data,
+      predictors_type = predictors_type
+    )
+  }
+
+  # get the design matrix
+  model_frame  <- tryCatch(
+    stats::model.frame(formula, data = data, na.action = stats::na.pass),
+    error = function(e){
+      stop(conditionMessage(e), call. = FALSE)
+    }
+  )
+  if(anyNA(model_frame)){
+    stop("Formula predictors contain missing values.", call. = FALSE)
+  }
+  attr(model_frame, "terms") <- formula_terms
+  model_matrix <- .bt_model_matrix(model_frame, formula = formula_terms, data = data)
+  .bt_validate_model_matrix_finite(model_matrix, "Formula")
+  expected_columns <- selected_terms$raw_column_names
+  if(anyDuplicated(colnames(model_matrix)) || anyDuplicated(expected_columns) ||
+     length(expected_columns) != ncol(model_matrix) ||
+     !setequal(colnames(model_matrix), expected_columns)){
+    .bt_stop_refit_required("Selected formula columns disagree with their fitted design. Refit the model with this version of BayesTools.")
+  }
+  if(!identical(colnames(model_matrix), expected_columns)){
+    assignment <- attr(model_matrix, "assign")
+    permutation <- match(expected_columns, colnames(model_matrix))
+    model_matrix <- model_matrix[, permutation, drop = FALSE]
+    attr(model_matrix, "assign") <- assignment[permutation]
+  }
+
+  ### evaluate the design matrix on the samples -> output[data, posterior]
+  # The fixed part is the registered 'linear_predictor' node's fixed part.
+  if(has_intercept){
+    terms_indexes    <- attr(model_matrix, "assign") + 1
+    terms_indexes[1] <- 0
+  }else{
+    terms_indexes    <- attr(model_matrix, "assign")
+  }
+  terms <- list()
+  if(has_intercept){
+    terms[[1L]] <- .bt_dnode_linear_predictor_term(
+      parameter = parameter,
+      model_term = "intercept",
+      type = "intercept",
+      columns = 1L,
+      prior = prior_list_formula[["intercept"]],
+      log = log_intercept
+    )
+  }
+  for(i in unique(terms_indexes[terms_indexes > 0])){
+    term <- .bt_dnode_linear_predictor_term(
+      parameter = parameter,
+      model_term = model_terms[i],
+      type = if(model_terms_type[i] == "factor") "factor" else "continuous",
+      columns = which(terms_indexes == i),
+      prior = prior_list_formula[[model_terms[i]]]
+    )
+    term$coefficient_names <- paste0(
+      JAGS_parameter_names(model_terms[i], formula_parameter = parameter),
+      if(model_terms_type[i] == "factor" && .get_prior_factor_levels(term$prior) > 1){
+        paste0("[", 1:.get_prior_factor_levels(term$prior), "]")
+      }
+    )
+    terms[[length(terms) + 1L]] <- term
+  }
+  output <- .bt_dnode_linear_predictor_fixed(
+    terms = terms,
+    model_matrix = model_matrix,
+    n_draws = nrow(posterior),
+    values_of = function(term){
+      if(is.prior.point(term$prior)){
+        name <- JAGS_parameter_names(term$model_term, formula_parameter = parameter)
+        return(.bt_formula_point_values(name, term$prior, fitted_design,
+          posterior, n_draws = nrow(posterior),
+          n_values = if(identical(term$type, "factor")) .get_prior_factor_levels(term$prior) else 1L))
+      }
+      columns <- if(identical(term$type, "intercept")){
+        JAGS_parameter_names("intercept", formula_parameter = parameter)
+      }else{
+        term$coefficient_names
+      }
+      missing_columns <- setdiff(columns, colnames(posterior))
+      if(length(missing_columns) > 0L){
+        stop(
+          "JAGS_evaluate_formula() needs the posterior draws of the coefficient(s) ",
+          paste0("'", missing_columns, "'", collapse = ", "),
+          " of parameter '", parameter, "', which the draws do not contain.",
+          call. = FALSE
+        )
+      }
+      posterior[, columns, drop = FALSE]
+    },
+    multiplier_of = function(term){
+      multiply_by <- term$multiply_by
+      if(is.null(multiply_by)){
+        return(NULL)
+      }
+      if(is.numeric(multiply_by)){
+        return(rep(multiply_by, nrow(posterior)))
+      }
+      name <- JAGS_parameter_names(multiply_by)
+      constants <- .bt_formula_state_constants(fitted_design$formula_scale)
+      if(name %in% names(constants)) return(rep(constants[[name]], nrow(posterior)))
+      prior <- attr(fit, "prior_list", exact = TRUE)[[name]]
+      if(is.prior.point(prior)) return(as.vector(.bt_formula_point_values(name, prior,
+        fitted_design, posterior, n_draws = nrow(posterior))))
+      if(!name %in% colnames(posterior)) .bt_JAGS_marglik_missing_columns(
+        paste0("Formula multiplier '", name, "' is unavailable in the supplied draws."))
+      posterior[, name]
+    }
+  )
+
+  if(length(expressions_to_eval) > 0L){
+    expression_data <- .bt_formula_expression_merge_data(
+      expression_source_data,
+      if(!data_supplied) fitted_design$expression_data else NULL,
+      context = paste0(
+        "JAGS_evaluate_formula() for parameter '", parameter, "'"
+      )
+    )
+    output <- output + .bt_formula_expression_contribution_matrix(
+      expressions = expressions_to_eval,
+      data = expression_data,
+      n_rows = nrow(data),
+      n_draws = nrow(posterior),
+      context = paste0(
+        "JAGS_evaluate_formula() for parameter '", parameter, "'"
+      ),
+      samples = posterior
+    )
+  }
+
+  if(isTRUE(return_components)){
+    random <- output
+    random[] <- 0
+    return(list(value = output, fixed = output, random = random))
+  }
+  return(output)
+}
+
+.bt_JAGS_evaluate_predictor_types <- function(predictors, fitted_design){
+
+  if(length(predictors) == 0L){
+    return(stats::setNames(character(), character()))
+  }
+
+  design_types <- fitted_design$predictor_types
+  predictors_type <- stats::setNames(
+    as.character(design_types[match(predictors, names(design_types))]),
+    predictors
+  )
+  if(anyNA(predictors_type) ||
+     any(!predictors_type %in% c("continuous", "factor"))){
+    invalid <- names(predictors_type)[
+      is.na(predictors_type) |
+        !predictors_type %in% c("continuous", "factor")
+    ]
+    stop(
+      "The predictor(s) ",
+      paste0("'", invalid, "'", collapse = ", "),
+      " are not predictors of the fitted formula of parameter '",
+      fitted_design$parameter, "'.",
+      call. = FALSE
+    )
+  }
+
+  predictors_type
+}
+
+# The fitted levels, ordering, and concrete contrast matrix of a factor
+# predictor, from the fitted formula design.
+.bt_JAGS_evaluate_factor_metadata <- function(predictor, fitted_design){
+
+  fitted_levels <- fitted_design$xlevels[[predictor]]
+  fitted_contrast <- fitted_design$contrast_matrices[[predictor]]
+  if(is.null(fitted_levels) || length(fitted_levels) == 0L ||
+     is.null(fitted_contrast)){
+    .bt_stop_refit_required(
+      "The fitted formula design of parameter '", fitted_design$parameter,
+      "' has no levels or contrast matrix for factor predictor '", predictor,
+      "'. Refit the model with this version of BayesTools."
+    )
+  }
+
+  list(
+    levels = as.character(fitted_levels),
+    ordered = is.ordered(fitted_design$model_frame[[predictor]]),
+    contrast = fitted_contrast
+  )
+}
+
+.bt_formula_prediction_target <- function(formula_target,
+                                          allow_marginal = TRUE,
+                                          context = "Formula prediction"){
+
+  if(is.null(formula_target)){
+    return(NULL)
+  }
+  check_char(formula_target, "formula_target", check_length = 1,
+             allow_NULL = FALSE, allow_NA = FALSE)
+  allowed <- c("fixed", "conditional", if(isTRUE(allow_marginal)) "marginal")
+  if(!formula_target %in% allowed){
+    stop(
+      context, " supports formula_target = ",
+      paste0("'", allowed, "'", collapse = ", "),
+      if(!isTRUE(allow_marginal)) ". Use JAGS_predict_formula() for formula_target = 'marginal'." else ".",
+      call. = FALSE
+    )
+  }
+
+  formula_target
+}
+
+.bt_JAGS_evaluate_formula_validate_posterior_names <- function(posterior){
+
+  posterior_names <- colnames(posterior)
+  if(is.null(posterior_names) || length(posterior_names) != ncol(posterior) ||
+     anyNA(posterior_names) || any(!nzchar(posterior_names))){
+    stop(
+      "Posterior samples used by JAGS_evaluate_formula() must have non-empty column names.",
+      call. = FALSE
+    )
+  }
+  if(anyDuplicated(posterior_names)){
+    duplicated_names <- unique(posterior_names[duplicated(posterior_names)])
+    stop(
+      "Posterior samples used by JAGS_evaluate_formula() must have unique ",
+      "column names. Duplicated column(s): ",
+      paste0(
+        "'", duplicated_names[seq_len(min(4L, length(duplicated_names)))], "'",
+        collapse = ", "
+      ),
+      if(length(duplicated_names) > 4L) ", ..." else "",
+      ".",
+      call. = FALSE
+    )
+  }
+
+  invisible(NULL)
+}
+
+.bt_JAGS_evaluate_formula_design <- function(fit, parameter,
+                                             context = "JAGS_evaluate_formula()"){
+
+  formula_design <- attr(fit, "formula_design", exact = TRUE)
+  fitted_design <- if(is.list(formula_design)) formula_design[[parameter]]
+  if(is.null(fitted_design)){
+    .bt_stop_refit_required(
+      context, " needs the fitted formula design of parameter '", parameter,
+      "': pass a fit from JAGS_fit() with a formula for '", parameter,
+      "', or posterior draws with the design built by JAGS_formula_draws(). ",
+      "Refit the model with the current BayesTools version if it was fitted by ",
+      "BayesTools 0.3.0."
+    )
+  }
+  .bt_validate_formula_design_replay_schema(fitted_design, context = context)
+
+  fitted_design
+}
+
+.bt_JAGS_evaluate_formula_resolve_inputs <- function(fit, formula,
+                                                     parameter, data,
+                                                     prior_list,
+                                                     fitted_design){
+
+  .bt_validate_formula_design_replay_schema(
+    fitted_design,
+    context = "JAGS_evaluate_formula()"
+  )
+
+  if(is.null(formula)){
+    formula <- fitted_design$formula
+    # Stored design formulas intentionally drop their original environment.
+    # Replay uses explicit data and a safe lookup environment.
+    environment(formula) <- baseenv()
+    if(isTRUE(fitted_design$log_intercept)){
+      attr(formula, "log(intercept)") <- TRUE
+    }
+  }
+  if(is.null(data)){
+    data <- fitted_design$source_data
+  }
+  if(is.null(prior_list)){
+    fit_prior_list <- attr(fit, "prior_list", exact = TRUE)
+    prior_list <- if(is.list(fit_prior_list) && length(fit_prior_list) > 0L){
+      fit_prior_list
+    }else{
+      fitted_design$prior_list
+    }
+  }
+
+  list(
+    formula = formula,
+    data = data,
+    prior_list = prior_list,
+    fitted_design = fitted_design
+  )
+}

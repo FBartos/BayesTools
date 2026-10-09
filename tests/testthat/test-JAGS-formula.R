@@ -80,6 +80,48 @@ test_that("formula_add_intercept repairs only top-level no-intercept terms", {
   expect_error(formula_add_intercept("~ x - 1"), "'formula' must be a formula.", fixed = TRUE)
 })
 
+test_that("JAGS_formula rejects scaled intercept priors", {
+
+  data <- data.frame(x = c(-1, 0.5, 2))
+  message <- paste0(
+    "The intercept prior 'prior_list[[\"intercept\"]]' has a 'multiply_by' ",
+    "attribute, but intercept priors cannot be scaled. Remove 'multiply_by' ",
+    "from the intercept prior; it is supported only for the priors of ",
+    "formula terms."
+  )
+  log_formula <- ~ 1 + x
+  attr(log_formula, "log(intercept)") <- TRUE
+  for(multiply_by in list(2, "s")){
+    intercept_prior <- prior("gamma", list(shape = 2, rate = 1))
+    attr(intercept_prior, "multiply_by") <- multiply_by
+    for(formula in list(~ 1 + x, ~ 0 + x, log_formula)){
+      expect_error(
+        JAGS_formula(
+          formula, "mu", data,
+          list(intercept = intercept_prior, x = prior("normal", list(0, 1)))
+        ),
+        message,
+        fixed = TRUE
+      )
+    }
+    # A default continuous prior with a multiplier cannot fill the intercept.
+    expect_error(
+      JAGS_formula(~ 1 + x, "mu", data, list("__default_continuous" = intercept_prior)),
+      message,
+      fixed = TRUE
+    )
+  }
+
+  # Term priors keep their multiplier.
+  x_prior <- prior("normal", list(0, 1))
+  attr(x_prior, "multiply_by") <- 2
+  result <- JAGS_formula(
+    ~ 1 + x, "mu", data,
+    list(intercept = prior("normal", list(0, 1)), x = x_prior)
+  )
+  expect_match(result$formula_syntax, "mu_intercept + 2 * mu_x * mu_data_x[i]", fixed = TRUE)
+})
+
 test_that("JAGS_formula stores exact fitted formula design metadata", {
 
   df <- data.frame(
@@ -104,6 +146,16 @@ test_that("JAGS_formula stores exact fitted formula design metadata", {
   design <- result$formula_design
 
   expect_s3_class(design, "BayesTools_formula_design")
+  expect_identical(design$schema_version, 6L)
+  expect_identical(
+    design$stored_data_scale,
+    c(
+      source_data = "original",
+      expression_data = "original",
+      model_frame = "model",
+      model_matrix = "model"
+    )
+  )
   expect_identical(design$parameter, "mu")
   expect_equal(design$formula, ~ x + x2 + f, ignore_formula_env = TRUE)
   expect_equal(nrow(design$model_frame), nrow(df))
@@ -113,6 +165,10 @@ test_that("JAGS_formula stores exact fitted formula design metadata", {
   expect_equal(design$assign, attr(design$model_matrix, "assign"))
   expect_equal(attr(design$terms, "term.labels"), c("x", "x2", "f"))
   expect_equal(design$contrasts$f, "contr.treatment")
+  expect_equal(
+    design$contrast_matrices$f,
+    stats::contr.treatment(c("a", "b"))
+  )
   expect_equal(design$xlevels$f, c("a", "b"))
   expect_equal(design$predictors, c("x", "x2", "f"))
   expect_equal(design$predictor_types, c(x = "continuous", x2 = "continuous", f = "factor"))
@@ -314,13 +370,6 @@ test_that("Expression handling functions work", {
   f5 <- formula(y ~ expression(x) + z)
   f6 <- formula(y ~ expression(x) + z + expression(b))
 
-  expect_true(!.has_expression(f1))
-  expect_true(!.has_expression(f2))
-  expect_true(.has_expression(f3))
-  expect_true(.has_expression(f4))
-  expect_true(.has_expression(f5))
-  expect_true(.has_expression(f6))
-
   expect_equal(.extract_expressions(f3), list("x"))
   expect_equal(.extract_expressions(f4), list("x"))
   expect_equal(.extract_expressions(f5), list("x"))
@@ -352,25 +401,27 @@ test_that("Random effects handling functions work", {
   expect_true(.has_random_effects(f6))
   expect_true(.has_random_effects(f7))
 
-  t1 <- list("1 | id")
-  t2 <- list("1 + x_cont1 | id")
-  t3 <- list("x_cont1 | id", "0 + x_cont2 || group")
-  attr(t1[[1]], "grouping_factor") <- "id"
-  attr(t2[[1]], "grouping_factor") <- "id"
-  attr(t3[[1]], "grouping_factor") <- "id"
-  attr(t3[[2]], "grouping_factor") <- "group"
-  attr(t1[[1]], "independent") <- FALSE
-  attr(t2[[1]], "independent") <- FALSE
-  attr(t3[[1]], "independent") <- FALSE
-  attr(t3[[2]], "independent") <- TRUE
+  parsed_f3 <- .bt_parse_random_effects(f3)$terms
+  parsed_f4 <- .bt_parse_random_effects(f4)$terms
+  parsed_f7 <- .bt_parse_random_effects(f7)$terms
 
-  expect_equal(.extract_random_effects(f1), list())
-  expect_equal(.extract_random_effects(f2), list())
-  expect_equal(.extract_random_effects(f3), t1)
-  expect_equal(.extract_random_effects(f4), t2)
-  expect_equal(.extract_random_effects(f5), t2)
-  expect_equal(.extract_random_effects(f6), t2)
-  expect_equal(.extract_random_effects(f7), t3)
+  expect_length(parsed_f3, 1L)
+  expect_equal(parsed_f3[[1]]$term_formula, ~ 1, ignore_formula_env = TRUE)
+  expect_equal(parsed_f3[[1]]$group_label, "id")
+  expect_false(isTRUE(parsed_f3[[1]]$independent))
+
+  expect_length(parsed_f4, 1L)
+  expect_equal(parsed_f4[[1]]$term_formula, ~ 1 + x_cont1, ignore_formula_env = TRUE)
+  expect_equal(parsed_f4[[1]]$group_label, "id")
+  expect_false(isTRUE(parsed_f4[[1]]$independent))
+
+  expect_length(parsed_f7, 2L)
+  expect_equal(parsed_f7[[1]]$term_formula, ~ x_cont1, ignore_formula_env = TRUE)
+  expect_equal(parsed_f7[[1]]$group_label, "id")
+  expect_false(isTRUE(parsed_f7[[1]]$independent))
+  expect_equal(parsed_f7[[2]]$term_formula, ~ 0 + x_cont2, ignore_formula_env = TRUE)
+  expect_equal(parsed_f7[[2]]$group_label, "group")
+  expect_true(isTRUE(parsed_f7[[2]]$independent))
 
   expect_equal(.remove_random_effects(f1), formula( ~ 1), ignore_formula_env = TRUE)
   expect_equal(.remove_random_effects(f2), formula( ~ x_cont1), ignore_formula_env = TRUE)
@@ -406,15 +457,6 @@ test_that("-1 (no intercept) formula handling works correctly", {
   expect_equal(result_basic$prior_list$mu_intercept$parameters$location, 0)
   expect_true(grepl("mu_intercept", result_basic$formula_syntax))
 
-  # Test 2: Helper function test
-  expect_equal(.add_intercept_to_formula(~ x - 1), ~ x, ignore_formula_env = TRUE)
-  expect_equal(.add_intercept_to_formula(~ x + y - 1), ~ x + y, ignore_formula_env = TRUE)
-  expect_equal(.add_intercept_to_formula(~ - 1), ~ 1, ignore_formula_env = TRUE)
-
-  expect_equal(.add_intercept_to_formula(~ x + 0), ~ x, ignore_formula_env = TRUE)
-  expect_equal(.add_intercept_to_formula(~ x + y + 0), ~ x + y, ignore_formula_env = TRUE)
-  expect_equal(.add_intercept_to_formula(~ 0), ~ 1, ignore_formula_env = TRUE)
-
   skip_if_not_installed("coda")
 
   prior_list_continuous <- list(
@@ -426,6 +468,7 @@ test_that("-1 (no intercept) formula handling works correctly", {
   posterior <- matrix(c(1, 2), nrow = 2)
   colnames(posterior) <- "mu_x_cont"
   posterior <- coda::as.mcmc(posterior)
+  attr(posterior, "formula_design") <- list(mu = result_continuous$formula_design)
 
   expect_false("mu_intercept" %in% colnames(posterior))
   expect_equal(
@@ -457,7 +500,7 @@ test_that("log(intercept) attribute works for specifying log(int) + sum(beta_i *
 
   # Test 1: Basic -1 formula functionality
   prior_list_basic <- list(
-    "intercept" = prior("normal", list(0, 1)),
+    "intercept" = prior("gamma", list(2, 1)),
     "x_fac3md"  = prior_factor("mnormal", contrast = "meandif", list(0, 1))
   )
 
@@ -473,7 +516,7 @@ test_that("log(intercept) attribute works for specifying log(int) + sum(beta_i *
                                data = df_test[, "x_fac3md", drop = FALSE],
                                prior_list = prior_list_basic)
 
-  # generates normal intercept
+  # generates an ordinary intercept
   expect_equal(
     result_basic[["formula_syntax"]],
     "for(i in 1:N_mu){\n  mu[i] = mu_intercept + inprod(mu_x_fac3md, mu_data_x_fac3md[i,])\n}\n"
@@ -485,11 +528,16 @@ test_that("log(intercept) attribute works for specifying log(int) + sum(beta_i *
     "for(i in 1:N_mu){\n  mu[i] = log(mu_intercept) + inprod(mu_x_fac3md, mu_data_x_fac3md[i,])\n}\n"
   )
 
+  expect_false(result_basic$formula_design$log_intercept)
+  expect_true(result_log$formula_design$log_intercept)
+
   # everything else should match
   result_basic[["formula_syntax"]] <- NULL
   result_log[["formula_syntax"]]   <- NULL
   result_basic[["formula"]] <- NULL
   result_log[["formula"]]   <- NULL
+  result_basic[["formula_design"]][["log_intercept"]] <- NULL
+  result_log[["formula_design"]][["log_intercept"]]   <- NULL
   expect_equal(result_basic, result_log)
 })
 
@@ -521,6 +569,11 @@ test_that("JAGS_evaluate_formula works with log(intercept) attribute", {
   samples <- matrix(c(2, 0.5), nrow = 1)
   colnames(samples) <- c("mu_intercept", "mu_x_cont")
   samples <- coda::as.mcmc.list(coda::as.mcmc(samples))
+  formula_log <- ~ x_cont
+  attr(formula_log, "log(intercept)") <- TRUE
+  # the samples with the designs of the formulas without and with log(intercept)
+  samples_no_log <- JAGS_formula_draws(samples, ~ x_cont, "mu", df_test, prior_list)
+  samples_log <- JAGS_formula_draws(samples, formula_log, "mu", df_test, prior_list)
 
   # New data for prediction
   new_data <- data.frame(x_cont = c(0, 1, -1))
@@ -530,16 +583,14 @@ test_that("JAGS_evaluate_formula works with log(intercept) attribute", {
   # For x_cont =  1: result = 2 + 0.5 * 1 = 2.5
   # For x_cont = -1: result = 2 + 0.5 * (-1) = 1.5
   formula_no_log <- ~ x_cont
-  result_no_log <- JAGS_evaluate_formula(samples, formula_no_log, "mu", new_data, prior_list_processed)
+  result_no_log <- JAGS_evaluate_formula(samples_no_log, formula_no_log, "mu", new_data, prior_list_processed)
   expect_equal(as.vector(result_no_log[,1]), c(2, 2.5, 1.5), tolerance = 1e-10)
 
   # Test with log(intercept): result = log(intercept) + x_cont * data
   # For x_cont =  0: result = log(2) + 0.5 * 0 = log(2)
   # For x_cont =  1: result = log(2) + 0.5 * 1 = log(2) + 0.5
   # For x_cont = -1: result = log(2) + 0.5 * (-1) = log(2) - 0.5
-  formula_log <- ~ x_cont
-  attr(formula_log, "log(intercept)") <- TRUE
-  result_log <- JAGS_evaluate_formula(samples, formula_log, "mu", new_data, prior_list_processed)
+  result_log <- JAGS_evaluate_formula(samples_log, formula_log, "mu", new_data, prior_list_processed)
   expect_equal(as.vector(result_log[,1]), c(log(2), log(2) + 0.5, log(2) - 0.5), tolerance = 1e-10)
 })
 

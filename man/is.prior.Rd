@@ -7,10 +7,12 @@
 \alias{is.prior.simple}
 \alias{is.prior.discrete}
 \alias{is.prior.vector}
+\alias{is.prior.simplex}
 \alias{is.prior.PET}
 \alias{is.prior.PEESE}
 \alias{is.prior.weightfunction}
 \alias{is.prior.factor}
+\alias{is.prior.ordered}
 \alias{is.prior.orthonormal}
 \alias{is.prior.treatment}
 \alias{is.prior.independent}
@@ -31,6 +33,8 @@ is.prior.discrete(x)
 
 is.prior.vector(x)
 
+is.prior.simplex(x)
+
 is.prior.PET(x)
 
 is.prior.PEESE(x)
@@ -38,6 +42,8 @@ is.prior.PEESE(x)
 is.prior.weightfunction(x)
 
 is.prior.factor(x)
+
+is.prior.ordered(x)
 
 is.prior.orthonormal(x)
 

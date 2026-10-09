@@ -31,6 +31,186 @@ source(testthat::test_path("common-functions.R"))
 
 skip_if_not_installed("vdiffr")
 
+test_that("ordered level plots preserve declared curves atoms and custom styles", {
+  fixed <- ordered_plot_test_fixture(prior("normal", list(0, 1)), c(.2, .3, .5))
+  fixtures <- list(
+    raw_custom = fixed$samples,
+    pretransformed_custom = transform_factor_samples(fixed$samples),
+    singular_allocation = ordered_plot_test_fixture(prior("normal", list(0, 1)))$samples,
+    intrinsic_gamma = ordered_plot_test_fixture(prior("gamma", list(.5, 1)))$samples,
+    zero_share = ordered_plot_test_fixture(prior("normal", list(0, 1)), c(0, .3, .7))$samples,
+    point_fixed = ordered_plot_test_fixture(prior("point", list(2)), c(.2, .3, .5))$samples,
+    point_last = ordered_plot_test_fixture(prior("point", list(2)))$samples,
+    upper_endpoint = ordered_plot_test_fixture(prior("point", list(2)),
+      prior("dirichlet", list(c(2, 2, .5))))$samples)
+  for(name in names(fixtures)){
+    for(backend in c("base", "ggplot")){
+      args <- list(samples = fixtures[[name]], parameter = "mu_f", prior = TRUE,
+        plot_type = backend, n_points = 64L, n_samples = 128L)
+      if(grepl("custom$", name)){
+        args$col <- c("red", "blue", "green")
+        args$legend_labels <- c("Middle", "Late", "Last")
+      }
+      if(backend == "base"){
+        vdiffr::expect_doppelganger(paste0("ordered-", name, "-base"),
+          function() do.call(plot_posterior, args))
+      }else{
+        vdiffr::expect_doppelganger(paste0("ordered-", name, "-ggplot"),
+          do.call(plot_posterior, args))
+      }
+    }
+  }
+})
+
+test_that("ordered direct mixed-total displays retain declared spike atoms", {
+  fixture <- ordered_plot_test_fixture(
+    prior_spike_and_slab(prior("point", list(2)), prior("point", list(.5))),
+    prior("dirichlet", list(c(2, 2, .5))))
+  for(backend in c("base", "ggplot")){
+    draw <- function(){
+      set.seed(600)
+      plot(fixture$prior, show_figures = 3L, plot_type = backend,
+        n_points = 64L, n_samples = 128L, xlab = "Level effect")
+    }
+    vdiffr::expect_doppelganger(paste0("ordered-direct-mixed-spike-", backend),
+      if(backend == "base") draw else draw())
+  }
+})
+
+test_that("ordered direct selections retain original positions", {
+  render_selection <- function(prior, show_figures){
+    plots <- plot(prior, show_figures = show_figures, plot_type = "ggplot",
+      n_points = 64, n_samples = 128, xlab = "Level effect")
+    grid::grid.newpage()
+    grid::pushViewport(grid::viewport(layout = grid::grid.layout(1L, length(plots))))
+    for(i in seq_along(plots)){
+      viewport <- grid::viewport(layout.pos.row = 1L, layout.pos.col = i)
+      if(is.null(plots[[i]])){
+        grid::pushViewport(viewport)
+        grid::grid.text(paste("Figure", i, "omitted"))
+        grid::popViewport()
+      }else{
+        print(plots[[i]], newpage = FALSE, vp = viewport)
+      }
+    }
+    grid::popViewport()
+  }
+  upper <- ordered_plot_test_fixture(prior("point", list(2)),
+    prior("dirichlet", list(c(2, 2, .5))))
+  vdiffr::expect_doppelganger("ordered-direct-omitted-last-ggplot", function(){
+    set.seed(600)
+    render_selection(upper$prior, -4L)
+  })
+  one_visible <- ordered_plot_test_fixture(prior("point", list(2)),
+    prior("dirichlet", list(c(.5, .25, .25))))
+  vdiffr::expect_doppelganger("ordered-one-visible-multiple-ggplot", function(){
+    set.seed(600)
+    render_selection(one_visible$prior, -1L)
+  })
+})
+
+test_that("ordered direct finite point-slab levels show analytic curves and full-total atoms", {
+  fixture <- ordered_plot_test_fixture(
+    prior_spike_and_slab(prior("point", list(2)), prior("point", list(.5))),
+    prior("dirichlet", list(c(2, 2, 2))))
+  for(level in c(2L, 4L)){
+    for(backend in c("base", "ggplot")){
+      draw <- function(){
+        set.seed(600)
+        plot(fixture$prior, show_figures = level, plot_type = backend, xlim = c(0, 2),
+          n_points = 64L, n_samples = 128L, xlab = "Level effect")
+      }
+      vdiffr::expect_doppelganger(paste0("ordered-finite-pointslab-level", level, "-", backend),
+        if(backend == "base") draw else draw())
+    }
+  }
+})
+
+test_that("ordered direct default omits only the reference level", {
+  fixture <- ordered_plot_test_fixture(prior("normal", list(0, .5)),
+    levels = c("systematic", "alternate", "random"))
+  vdiffr::expect_doppelganger("ordered-direct-reference-only-base", function(){
+    set.seed(600)
+    graphics::par(mfrow = c(1, 2))
+    plot(fixture$prior, xlim = c(-3, 3), n_points = 64L, n_samples = 128L, xlab = "Level effect")
+  })
+  vdiffr::expect_doppelganger("ordered-direct-reference-only-ggplot", function(){
+    set.seed(600)
+    plots <- plot(fixture$prior, plot_type = "ggplot", xlim = c(-3, 3),
+      n_points = 64L, n_samples = 128L, xlab = "Level effect")
+    grid::grid.newpage()
+    grid::pushViewport(grid::viewport(layout = grid::grid.layout(1L, length(plots))))
+    for(i in seq_along(plots)){
+      viewport <- grid::viewport(layout.pos.row = 1L, layout.pos.col = i)
+      if(is.null(plots[[i]])){
+        grid::pushViewport(viewport)
+        grid::grid.text(paste("Figure", i, "omitted"))
+        grid::popViewport()
+      }else print(plots[[i]], newpage = FALSE, vp = viewport)
+    }
+    grid::popViewport()
+  })
+})
+
+test_that("ordered model estimates have prior and posterior visual coverage", {
+  models <- lapply(c(.5, 1), function(sd){
+    fixture <- ordered_plot_test_fixture(prior("normal", list(0, sd)))
+    list(fit = fixture$fit, marglik = bridgesampling_object(0), prior_weights = 1,
+      fit_summary = JAGS_estimates_table(fixture$fit, remove_diagnostics = TRUE))
+  })
+  models <- models_inference(models)
+  inference <- ensemble_inference(models, "mu_f", list(c(FALSE, FALSE)))
+  mixed <- mix_posteriors(models, "mu_f", is_null_list = list(c(FALSE, FALSE)), n_samples = 200L, seed = 178)
+  for(prior in c(FALSE, TRUE)){
+    vdiffr::expect_doppelganger(paste0("ordered-models-prior-", prior, "-base"), function(){
+      graphics::par(mfrow = c(3, 1))
+      plot_models(models, mixed, inference, "mu_f", prior = prior)
+    })
+    plots <- plot_models(models, mixed, inference, "mu_f", prior = prior, plot_type = "ggplot")
+    for(level in c(1L, 3L)){
+      vdiffr::expect_doppelganger(paste0("ordered-models-prior-", prior, "-level", level, "-ggplot"), plots[[level]])
+    }
+  }
+})
+
+test_that("ordered small-alpha Normal partial priors retain their finite curves", {
+  fixture <- ordered_plot_test_fixture(prior("normal", list(0, 1)),
+    prior("dirichlet", list(c(.5, .25, .25))))
+  for(level in c(2L, 3L)){
+    for(backend in c("base", "ggplot")){
+      draw <- function(){
+        plot(fixture$prior, show_figures = level, plot_type = backend,
+          xlim = c(-3, 3), n_points = 64L, xlab = "Level effect")
+      }
+      vdiffr::expect_doppelganger(paste0("ordered-direct-small-alpha-level", level, "-", backend),
+        if(backend == "base") draw else draw())
+    }
+  }
+})
+
+test_that("ordered transformed mixed overlays retain the active probability mapping", {
+  fixture <- ordered_plot_test_fixture(prior_spike_and_slab(
+    prior("point", list(-2)), prior("point", list(.5))),
+    prior("dirichlet", list(c(2, 2, .5))))
+  priors <- list(prior("normal", list(0, .5), prior_weights = .5),
+    prior("point", list(0), prior_weights = .5))
+  for(backend in c("base", "ggplot")){
+    draw <- function(){
+      base <- plot_prior_list(priors, plot_type = backend, ylim = c(0, 2),
+        ylim2 = c(0, .6), xlim = c(-1, 2), xlab = "Transformed effect")
+      if(backend == "base"){
+        lines(fixture$prior, show_parameter = 3L, n_points = 64L,
+          transformation = "exp", col = "orange", lty = 2)
+      }else{
+        base + geom_prior(fixture$prior, show_parameter = 3L, n_points = 64L,
+          transformation = "exp", col = "orange", lty = 2)
+      }
+    }
+    vdiffr::expect_doppelganger(paste0("ordered-transformed-overlay-", backend),
+      if(backend == "base") draw else draw())
+  }
+})
+
 
 # ============================================================================ #
 # SECTION 1: plot_prior_list basic tests
@@ -112,7 +292,7 @@ test_that("plot_prior_list handles orthonormal priors", {
   )
 
   # Base plot with transformation
-  vdiffr::expect_doppelganger("plot-prior-list-orthonormal-spike-and-slab", function() {
+  vdiffr::expect_doppelganger("prior-list-orthonormal-spike-and-slab", function() {
     suppressMessages(plot_prior_list(prior_list2, transformation = "exp", transformation_settings = TRUE, xlim = c(0.01, 5)))
   })
 
@@ -435,12 +615,12 @@ test_that("plot_models handles order argument", {
   })
 
   # Test with transformation ggplot
-  vdiffr::expect_doppelganger("plot-models-order-trans-ggplot", function() {
+  vdiffr::expect_doppelganger("plot-models-order-trans-ggplot", {
     BayesTools::plot_models(models, mixed_posteriors, inference, "m", transformation = "exp", plot_type = "ggplot")
   })
 
   # Test with transformation and prior ggplot
-  vdiffr::expect_doppelganger("plot-models-order-trans-prior-ggplot", function() {
+  vdiffr::expect_doppelganger("plot-models-order-trans-prior-ggplot", {
     BayesTools::plot_models(models, mixed_posteriors, inference, "m", prior = TRUE, transformation = "exp", plot_type = "ggplot")
   })
 
@@ -631,7 +811,7 @@ test_that("linear transformation matches expected behavior", {
   attr(fit, "prior_list") <- prior_list
   attr(fit, "formula_scale") <- formula_scale
 
-  return(fit)
+  attach_test_parameter_map(fit)
 }
 
 .integrate_density_mass <- function(x, y) {
@@ -654,15 +834,15 @@ test_that("transform_scaled is auto-detected from samples attribute", {
 
   # Verify the attribute is set
 
-  expect_true(isTRUE(attr(samples_scaled, "transform_scaled")))
-  expect_false(is.null(attr(samples_scaled, "prior_densities")))
+  expect_true(isTRUE(.bt_meta_get(samples_scaled, "transform_scaled")))
+  expect_false(is.null(.bt_meta_get(samples_scaled, "prior_densities")))
   expect_null(attr(samples_scaled, "prior_samples"))
 
   # Extract without transform_scaled
   samples_unscaled <- as_mixed_posteriors(fit, parameters = "mu_intercept", transform_scaled = FALSE)
 
   # Verify the attribute is NOT set
-  expect_null(attr(samples_unscaled, "transform_scaled"))
+  expect_null(.bt_meta_get(samples_unscaled, "transform_scaled"))
 })
 
 
@@ -737,15 +917,12 @@ test_that("transform_scaled helper preserves total mass under user transformatio
 
 test_that("plot_posterior errors when transformed prior densities are missing", {
   skip_if_not_visual_tests()
-  sample_entry <- structure(
-    rnorm(64),
-    class = c("mixed_posteriors.formula", "mixed_posteriors.simple", "mixed_posteriors"),
-    formula_parameter = "mu",
-    prior_list = list(prior("normal", list(0, 1)))
+  sample_entry <- .bt_meta_update(
+    structure(rnorm(64), class = c("mixed_posteriors.formula", "mixed_posteriors.simple", "mixed_posteriors"), prior_list = list(prior("normal", list(0, 1)))),
+    formula_parameter = "mu"
   )
-  samples <- structure(
-    list(mu_x1 = sample_entry),
-    class = c("as_mixed_posteriors", "mixed_posteriors"),
+  samples <- .bt_meta_update(
+    structure(list(mu_x1 = sample_entry), class = c("as_mixed_posteriors", "mixed_posteriors")),
     transform_scaled = TRUE
   )
 
@@ -770,7 +947,7 @@ test_that("transform_scaled visual: spike prior remains atomic", {
     attr(prior_list[[i]], "parameter") <- "mu"
   }
 
-  formula_scale <- list(mu = list(mu_x1 = list(mean = 5, sd = 2)))
+  formula_scale <- list(mu = formula_scale_for_test(~ x1, list(x1 = list(mean = 5, sd = 2))))
   attr(formula_scale$mu, "log_intercept") <- FALSE
 
   posterior_samples <- cbind(
@@ -787,7 +964,7 @@ test_that("transform_scaled visual: spike prior remains atomic", {
   )
 
   expect_equal(
-    BayesTools:::.prior_linear_density_point_mass(attr(samples_scaled, "prior_densities")$mu_x1, 0),
+    BayesTools:::.prior_linear_density_point_mass(.bt_meta_get(samples_scaled, "prior_densities")$mu_x1, 0),
     1
   )
 
@@ -824,7 +1001,7 @@ test_that("transform_scaled visual: conditional mixture prior removes spike", {
     attr(prior_list[[i]], "parameter") <- "mu"
   }
 
-  formula_scale <- list(mu = list(mu_x1 = list(mean = 5, sd = 2)))
+  formula_scale <- list(mu = formula_scale_for_test(~ x1, list(x1 = list(mean = 5, sd = 2))))
   attr(formula_scale$mu, "log_intercept") <- FALSE
 
   indicator <- sample(c(1L, 2L), size = 4000, replace = TRUE)
@@ -850,15 +1027,15 @@ test_that("transform_scaled visual: conditional mixture prior removes spike", {
   )
 
   expect_gt(
-    BayesTools:::.prior_linear_density_point_mass(attr(samples_unconditional, "prior_densities")$mu_x1, 0),
+    BayesTools:::.prior_linear_density_point_mass(.bt_meta_get(samples_unconditional, "prior_densities")$mu_x1, 0),
     0
   )
   expect_equal(
-    BayesTools:::.prior_linear_density_point_mass(attr(samples_conditional, "prior_densities")$mu_x1, 0),
+    BayesTools:::.prior_linear_density_point_mass(.bt_meta_get(samples_conditional, "prior_densities")$mu_x1, 0),
     0
   )
 
-  vdiffr::expect_doppelganger("transform-scaled-conditional-mixture-prior", function() {
+  vdiffr::expect_doppelganger("ts-conditional-mixture-prior", function() {
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
     par(mfrow = c(1, 2))

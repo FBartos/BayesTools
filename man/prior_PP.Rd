@@ -37,12 +37,12 @@ converted into a generalized t-distribution with \code{df = 1}.}
 by a \code{location}, \code{scale}, and \code{df} parameters.}
 \item{\code{"gamma"}}{for a gamma distribution characterized
 by either \code{shape} and \code{rate}, or \code{shape} and
-\code{scale} parameters. The later is internally converted to
+\code{scale} parameters. The latter is internally converted to
 the \code{shape} and \code{rate} parametrization}
 \item{\code{"invgamma"}}{for an inverse-gamma distribution
 characterized by a \code{shape} and \code{scale} parameters. The
-JAGS part uses a 1/gamma distribution with a shape and rate
-parameter.}
+JAGS part uses the BayesTools module distribution
+\code{dbt_invgamma(shape, scale)} on the natural parameter.}
 \item{\code{"beta"}}{for a beta distribution
 characterized by an \code{alpha} and \code{beta} parameters.}
 \item{\code{"exp"}}{for an exponential distribution
@@ -51,6 +51,26 @@ parameter. The later is internally converted to
 \code{rate}.}
 \item{\code{"uniform"}}{for a uniform distribution defined on a
 range from \code{a} to \code{b}}
+\item{\code{"moment"}}{for a Johnson-Rossell moment prior characterized
+by exactly one of \code{mode} or \code{tau}, an optional \code{order}
+that defaults to 1, and an optional \code{location} that defaults to 0.}
+\item{\code{"invmoment"}}{for a Johnson-Rossell inverse-moment prior
+characterized by exactly one of \code{mode} or \code{tau}, a \code{df},
+an optional \code{order} that defaults to 1, and an optional
+\code{location} that defaults to 0.}
+\item{\code{"dirichlet"}}{for a Dirichlet distribution over a simplex,
+whose finite nonnegative coordinates must have a finite total and roundoff
+bound and sum to one within that bound,
+characterized by a concentration vector \code{alpha}. Numeric entries
+must be finite and at least \code{0.01}; this is a supported-input minimum,
+not a numerical guarantee. Positive expression-valued concentrations retain
+their existing JAGS-only support: expression containers, including literal
+elements, are not statically evaluated or validated, and R random generation
+refuses them. Cumulative weight functions and ordered allocations require
+numeric concentrations. Accepted sampling can still be unavailable; see
+\code{\link{prior_functions}}. Two-bin cumulative JAGS initialization near
+the minimum can repeatedly refuse unrepresentable interior ratios. Density
+and plot methods show one beta marginal per simplex coordinate.}
 }}
 
 \item{parameters}{list of appropriate parameters for a given

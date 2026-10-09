@@ -5,8 +5,8 @@ skip_if_not_test_profile("unit")
 # ============================================================================ #
 #
 # PURPOSE:
-#   Tests for interpret and interpret2 functions that generate human-readable
-#   summaries of Bayesian inference results.
+#   Tests for interpret and interpret_records functions that generate
+#   human-readable summaries of Bayesian inference results.
 #
 # DEPENDENCIES:
 #   - common-functions.R: test_reference_text, REFERENCE_DIR
@@ -19,138 +19,6 @@ skip_if_not_test_profile("unit")
 
 REFERENCE_DIR <<- testthat::test_path("..", "results", "interpret")
 source(testthat::test_path("common-functions.R"))
-
-
-test_that("interpret2 function works", {
-
-  set.seed(1)
-
-  # Test basic interpret2 with all fields
-  info1 <- list(
-    list(
-      inference_name        = "Effect",
-      inference_BF_name     = "BF10",
-      inference_BF          = 3.5,
-      estimate_name         = "mu",
-      estimate_samples      = rnorm(1000, 0.3, 0.15),
-      estimate_units        = "kg",
-      estimate_conditional  = FALSE
-    )
-  )
-
-  result1 <- interpret2(info1, "RoBMA")
-  test_reference_text(result1, "interpret2_basic.txt")
-  expect_match(result1, "RoBMA found moderate evidence in favor of the Effect")
-  expect_match(result1, "BF10 = 3.50")
-  expect_match(result1, "model-averaged")
-  expect_match(result1, "kg")
-
-  # Test with conditional = TRUE
-  info2 <- list(
-    list(
-      inference_name        = "Effect",
-      inference_BF_name     = "BF10",
-      inference_BF          = 15,
-      estimate_name         = "mu",
-      estimate_samples      = rnorm(1000, 0.5, 0.1),
-      estimate_units        = NULL,
-      estimate_conditional  = TRUE
-    )
-  )
-
-  result2 <- interpret2(info2, "Test")
-  test_reference_text(result2, "interpret2_conditional.txt")
-  expect_match(result2, "strong evidence in favor")
-  expect_match(result2, "conditional")
-  expect_false(grepl("model-averaged", result2))
-
-  # Test evidence against (BF < 1)
-  info3 <- list(
-    list(
-      inference_name        = "Effect",
-      inference_BF_name     = "BF01",
-      inference_BF          = 0.1,
-      estimate_name         = "mu",
-      estimate_samples      = rnorm(1000, 0, 0.05),
-      estimate_units        = NULL,
-      estimate_conditional  = NULL
-    )
-  )
-
-  result3 <- interpret2(info3, "Method")
-  test_reference_text(result3, "interpret2_evidence_against.txt")
-  expect_match(result3, "moderate evidence against the Effect")
-  expect_match(result3, "BF01 = 0.100")
-
-  # Test weak evidence
-  info4 <- list(
-    list(
-      inference_name        = "Effect",
-      inference_BF_name     = "BF",
-      inference_BF          = 1.5,
-      estimate_name         = "delta",
-      estimate_samples      = rnorm(1000, 0.1, 0.1),
-      estimate_units        = NULL,
-      estimate_conditional  = FALSE
-    )
-  )
-
-  result4 <- interpret2(info4, "Test")
-  test_reference_text(result4, "interpret2_weak_evidence.txt")
-  expect_match(result4, "weak evidence in favor")
-
-  # Test without estimate samples (inference only)
-  info5 <- list(
-    list(
-      inference_name        = "Bias",
-      inference_BF_name     = "BF_pb",
-      inference_BF          = 5
-    )
-  )
-
-  result5 <- interpret2(info5, "RoBMA")
-  test_reference_text(result5, "interpret2_inference_only.txt")
-  expect_match(result5, "RoBMA found moderate evidence in favor of the Bias")
-  expect_match(result5, "BF_pb = 5.00")
-  expect_false(grepl("estimate", result5))
-
-  # Test multiple specifications
-  info6 <- list(
-    list(
-      inference_name        = "Effect",
-      inference_BF_name     = "BF10",
-      inference_BF          = 10,
-      estimate_name         = "mu",
-      estimate_samples      = rnorm(1000, 0.3, 0.1),
-      estimate_units        = NULL,
-      estimate_conditional  = FALSE
-    ),
-    list(
-      inference_name        = "Bias",
-      inference_BF_name     = "BF_pb",
-      inference_BF          = 0.5
-    )
-  )
-
-  result6 <- interpret2(info6, "Test")
-  test_reference_text(result6, "interpret2_multiple.txt")
-  expect_match(result6, "Effect")
-  expect_match(result6, "Bias")
-
-  # Test without method
-  info7 <- list(
-    list(
-      inference_name        = "Effect",
-      inference_BF_name     = "BF",
-      inference_BF          = 2
-    )
-  )
-
-  result7 <- interpret2(info7, NULL)
-  test_reference_text(result7, "interpret2_no_method.txt")
-  expect_match(result7, "found weak evidence")
-
-})
 
 
 test_that(".interpret.BF helper function works", {
@@ -244,19 +112,6 @@ test_that(".interpret.BF reports finite-sample BF bounds", {
   )
 
   expect_identical(
-    interpret2(
-      list(list(
-        inference_name = "effect",
-        inference_BF = 9,
-        inference_BF_name = "Inclusion BF",
-        inference_BF_bound_operator = ">"
-      )),
-      "Method"
-    ),
-    "Method found at least moderate evidence in favor of the effect, Inclusion BF > 9.00."
-  )
-
-  expect_identical(
     interpret(
       list(effect = list(BF = 9, BF_bound_operator = ">")),
       list(dummy = 1),
@@ -282,10 +137,6 @@ test_that(".interpret.BF rejects invalid Bayes factors before formatting", {
 
   expect_error(
     BayesTools:::.interpret.BF("2", "effect", NULL),
-    "numeric vector"
-  )
-  expect_error(
-    interpret2(list(list(inference_name = "effect", inference_BF = "2")), "Method"),
     "numeric vector"
   )
   expect_error(
@@ -355,47 +206,6 @@ test_that(".interpret.par rejects empty and malformed estimate samples", {
   )
   expect_error(
     BayesTools:::.interpret.par(c(1, 2), NULL, NULL, FALSE),
-    "estimate_name"
-  )
-
-})
-
-
-test_that("interpret2 maps wrappers to core helpers and validates missing fields", {
-
-  info <- list(
-    list(
-      inference_name        = "Effect",
-      inference_BF_name     = "BF10",
-      inference_BF          = 3,
-      estimate_name         = "mu",
-      estimate_samples      = c(1, 2, 3),
-      estimate_units        = "kg",
-      estimate_conditional  = TRUE
-    )
-  )
-
-  expected <- paste0(
-    "Method found ",
-    BayesTools:::.interpret.BF(3, "Effect", "BF10"),
-    ", ",
-    BayesTools:::.interpret.par(c(1, 2, 3), "mu", "kg", TRUE),
-    "."
-  )
-  expect_identical(interpret2(info, "Method"), expected)
-
-  inference_only <- list(list(inference_name = "Effect", inference_BF = 2))
-  expect_identical(
-    interpret2(inference_only, NULL),
-    paste0(" found ", BayesTools:::.interpret.BF(2, "Effect", NULL), ".")
-  )
-
-  expect_error(
-    interpret2(list(list(inference_name = "Effect")), "Method"),
-    "inference_BF"
-  )
-  expect_error(
-    interpret2(list(list(inference_name = "Effect", inference_BF = 2, estimate_samples = c(1, 2))), "Method"),
     "estimate_name"
   )
 
@@ -487,7 +297,6 @@ test_that("interpret_records normalizes ordered table and direct-record sources"
         upper_value = 1.50,
         lower_prob = 0.025,
         upper_prob = 0.975,
-        interval_level = 0.95,
         conditioning = "conditional on effect inclusion"
       )
     ),
@@ -545,6 +354,7 @@ test_that("interpret_records normalizes ordered table and direct-record sources"
   expect_equal(estimate$central_name, "mode")
   expect_equal(estimate$central_value, 1.25)
   expect_equal(estimate$conditioning, "conditional on effect inclusion")
+  expect_equal(estimate$interval_level, 0.95)
 
   moderator_estimate <- records[records$record_id == "moderators.moderator.x1.estimate", ]
   expect_equal(moderator_estimate$central_name, "mean")
@@ -649,7 +459,180 @@ test_that("interpret_records matches explicitly requested padded probability col
 })
 
 
-test_that("interpret_tables aliases interpret_records and supports optional missing entries", {
+test_that("interpret_records labels fallback intervals with their own probabilities", {
+
+  estimates <- data.frame(
+    Mean = 0.3,
+    "0.025" = 0.1,
+    "0.5" = 0.3,
+    "0.975" = 0.5,
+    check.names = FALSE
+  )
+  rownames(estimates) <- "mu"
+  source <- list(
+    type = "table",
+    data = estimates,
+    schema = list(lower_prob = 0.05, upper_prob = 0.95)
+  )
+  plan <- list(list(kind = "estimate", source = "est", row = "mu"))
+
+  out <- interpret_records(sources = list(est = source), plan = plan)
+  expect_equal(out$lower_value, 0.1)
+  expect_equal(out$upper_value, 0.5)
+  expect_equal(out$lower_prob, 0.025)
+  expect_equal(out$upper_prob, 0.975)
+  expect_equal(out$interval_level, 0.95)
+
+  text <- interpret_records(sources = list(est = source), plan = plan, output = "text")
+  expect_match(text, "95%", fixed = TRUE)
+  expect_false(grepl("90%", text, fixed = TRUE))
+})
+
+
+test_that("interpret_records supports central-only estimate tables", {
+
+  estimates <- ensemble_estimates_table(
+    samples = list(theta = c(-1, 0, 2)),
+    parameters = "theta",
+    probs = NULL
+  )
+  plan <- list(list(
+    kind = "estimate",
+    source = "estimates",
+    row = "theta"
+  ))
+
+  out <- interpret_records(
+    sources = list(estimates = estimates),
+    plan = plan
+  )
+  text <- interpret_records(
+    sources = list(estimates = estimates),
+    plan = plan,
+    output = "text"
+  )
+
+  expect_equal(out$central_name, "mean")
+  expect_equal(out$central_value, mean(c(-1, 0, 2)))
+  expect_true(is.na(out$lower_value))
+  expect_true(is.na(out$upper_value))
+  expect_true(is.na(out$interval_level))
+  expect_false(grepl("interval", text, fixed = TRUE))
+})
+
+test_that("interpret_records derives interval levels from endpoint probabilities", {
+  estimate <- list(
+    kind = "estimate",
+    parameter = "theta",
+    central_name = "mean",
+    central_value = 0,
+    lower_value = -1,
+    upper_value = 1,
+    lower_prob = 0.025,
+    upper_prob = 0.975
+  )
+  out <- interpret_records(
+    sources = list(estimate = estimate),
+    plan = list(list(kind = "estimate", source = "estimate"))
+  )
+  expect_equal(out$interval_level, 0.95)
+
+  arbitrary <- data.frame(
+    Mean = 0,
+    lower = -1,
+    upper = 1,
+    check.names = FALSE
+  )
+  arbitrary_out <- interpret_records(
+    sources = list(arbitrary = list(
+      data = arbitrary,
+      schema = list(
+        central = "Mean",
+        lower = "lower",
+        upper = "upper"
+      )
+    )),
+    plan = list(list(
+      kind = "estimate",
+      source = "arbitrary",
+      row = 1
+    ))
+  )
+  arbitrary_text <- interpret_records(
+    sources = list(arbitrary = list(
+      data = arbitrary,
+      schema = list(
+        central = "Mean",
+        lower = "lower",
+        upper = "upper"
+      )
+    )),
+    plan = list(list(
+      kind = "estimate",
+      source = "arbitrary",
+      row = 1
+    )),
+    output = "text"
+  )
+  expect_true(is.na(arbitrary_out$interval_level))
+  expect_match(arbitrary_text, "uncertainty interval", fixed = TRUE)
+
+  invalid_inputs <- list(
+    schema = function(){
+      interpret_records(
+        sources = list(estimates = list(
+          data = arbitrary,
+          schema = list(
+            central = "Mean",
+            lower = "lower",
+            upper = "upper",
+            interval_level = 0.95
+          )
+        )),
+        plan = list(list(kind = "estimate", source = "estimates"))
+      )
+    },
+    plan = function(){
+      interpret_records(
+        sources = list(estimates = arbitrary),
+        plan = list(list(
+          kind = "estimate",
+          source = "estimates",
+          interval_level = 0.95
+        ))
+      )
+    },
+    record = function(){
+      bad_record <- estimate
+      bad_record$interval_level <- 0.95
+      interpret_records(
+        sources = list(estimate = bad_record),
+        plan = list(list(kind = "estimate", source = "estimate"))
+      )
+    },
+    records = function(){
+      bad_records <- as.data.frame(estimate, check.names = FALSE)
+      bad_records$interval_level <- 0.95
+      interpret_records(
+        sources = list(estimates = list(
+          type = "records",
+          data = bad_records
+        )),
+        plan = list(list(kind = "estimate", source = "estimates"))
+      )
+    }
+  )
+  for(invalid_input in invalid_inputs){
+    expect_error(
+      invalid_input(),
+      "'interval_level' is derived output and cannot be supplied",
+      fixed = TRUE
+    )
+  }
+})
+
+
+test_that("interpret_records supports optional missing entries", {
 
   table <- data.frame(
     BF = 4,
@@ -670,12 +653,21 @@ test_that("interpret_tables aliases interpret_records and supports optional miss
     list(kind = "evidence", source = "missing_joint", optional = TRUE, section = "moderators", item_id = "optional")
   )
 
-  records <- interpret_tables(sources, spec)
+  records <- interpret_records(sources, spec)
 
   expect_equal(nrow(records), 1)
   expect_equal(records$record_id, "moderators.joint.evidence")
   expect_equal(records$BF_canonical_value, 4)
 
+})
+
+
+test_that("the removed interpret2 and interpret_tables are not exported", {
+
+  exports <- getNamespaceExports("BayesTools")
+  expect_true("interpret" %in% exports)
+  expect_true("interpret_records" %in% exports)
+  expect_false(any(c("interpret2", "interpret_tables") %in% exports))
 })
 
 
@@ -687,4 +679,96 @@ test_that("interpret function input validation works", {
   # Test invalid specification elements
   expect_error(interpret(list(), list(), list(list(inference = 1)), "Test"))
 
+})
+
+test_that("N22 fallback endpoints retain their actual probability labels", {
+
+  source <- data.frame(Mean = .3, "0.025" = .1, "0.975" = .5,
+                       check.names = FALSE, row.names = "mu")
+  plan <- list(list(kind = "estimate", source = "est", row = "mu",
+                    lower_prob = .05, upper_prob = .95, label = "chosen label"))
+  records <- interpret_records(list(est = source), plan)
+  expect_equal(unlist(records[c("lower_value", "upper_value")], use.names = FALSE), c(.1, .5))
+  expect_equal(unlist(records[c("lower_prob", "upper_prob", "interval_level")],
+                      use.names = FALSE), c(.025, .975, .95), tolerance = 1e-15)
+  expect_identical(records$label, "chosen label")
+  text <- interpret_records(list(est = source), plan, output = "text")
+  expect_match(paste(text, collapse = "\n"), "95%", fixed = TRUE)
+  expect_false(grepl("90%", paste(text, collapse = "\n"), fixed = TRUE))
+})
+
+test_that("N22 exact requested and inferred probabilities keep the source interval", {
+
+  source <- data.frame(Mean = .3, "0.025" = .1, "0.975" = .5,
+                       check.names = FALSE, row.names = "mu")
+  for(probabilities in list(list(lower_prob = .025, upper_prob = .975), list())){
+    plan <- list(c(list(kind = "estimate", source = "est", row = "mu"), probabilities))
+    records <- interpret_records(list(est = source), plan)
+    expect_equal(unlist(records[c("lower_prob", "upper_prob", "interval_level")],
+                        use.names = FALSE), c(.025, .975, .95), tolerance = 1e-15)
+  }
+})
+
+test_that("N73 expanded estimates stay together before the next plan item", {
+
+  source <- data.frame(Mean = c(.3, .4), "0.025" = c(.1, .2), "0.975" = c(.5, .6),
+                       check.names = FALSE, row.names = c("a", "b"))
+  plan <- list(list(kind = "for_each", source = "est", rows = c("a", "b"),
+                    template = "estimate"), list(kind = "note", text = "after"))
+  records <- interpret_records(list(est = source), plan)
+  expect_identical(records$kind, c("estimate", "estimate", "note"))
+  expect_identical(records$row[1:2], c("a", "b"))
+  expect_equal(records$order, c(1, 1, 2), tolerance = 0)
+  text <- interpret_records(list(est = source), plan, output = "text")
+  expect_identical(tail(text, 1L), "after")
+})
+
+test_that("N73 paired child records stay adjacent in row order", {
+
+  estimates <- data.frame(Mean = c(.3, .4), "0.025" = c(.1, .2), "0.975" = c(.5, .6),
+                          check.names = FALSE, row.names = c("a", "b"))
+  evidence <- data.frame(prior_prob = c(.5, .5), post_prob = c(2 / 3, .2),
+                         inclusion_BF = c(2, 1 / 4), row.names = c("a", "b"))
+  plan <- list(list(kind = "for_each", source = "tests", pair_with = "est",
+                    rows = c("a", "b")), list(kind = "note", text = "after"))
+  records <- interpret_records(list(tests = evidence, est = estimates), plan)
+  expect_identical(records$kind, c("evidence", "estimate", "evidence", "estimate", "note"))
+  expect_identical(records$row[1:4], c("a", "a", "b", "b"))
+  expect_equal(records$order, c(1, 1, 1, 1, 2), tolerance = 0)
+  expect_identical(records$order, c(1, 1, 1, 1, 2))
+})
+
+test_that("N73 ordinary explicitly ordered plan items remain stable", {
+
+  plan <- list(list(kind = "note", order = 3, text = "last"),
+               list(kind = "note", order = 1, text = "first"),
+               list(kind = "note", order = 1, text = "second"))
+  expect_identical(as.character(interpret_records(list(est = data.frame(Mean = .3, row.names = "mu")), plan, output = "text")),
+                   c("first", "second", "last"))
+})
+
+test_that("N73 explicit pair reference order overrides retain precedence", {
+
+  estimates <- data.frame(Mean = .3, row.names = "a")
+  evidence <- data.frame(prior_prob = .5, post_prob = 2 / 3, inclusion_BF = 2, row.names = "a")
+  plan <- list(list(kind = "pair", order = 2,
+                    evidence = list(source = "tests", row = "a", order = 5),
+                    estimate = list(source = "est", row = "a", order = 1)),
+               list(kind = "note", order = 3, text = "between"))
+  records <- interpret_records(list(tests = evidence, est = estimates), plan)
+  expect_identical(records$kind, c("estimate", "note", "evidence"))
+  expect_equal(records$order, c(1, 3, 5), tolerance = 0)
+})
+
+test_that("N73 explicit integer reference orders retain their representation", {
+
+  estimates <- data.frame(Mean = .3, row.names = "a")
+  evidence <- data.frame(prior_prob = .5, post_prob = 2 / 3, inclusion_BF = 2, row.names = "a")
+  plan <- list(list(kind = "pair", order = 2L,
+                    evidence = list(source = "tests", row = "a", order = 5L),
+                    estimate = list(source = "est", row = "a", order = 1L)),
+               list(kind = "note", order = 3L, text = "between"))
+  records <- interpret_records(list(tests = evidence, est = estimates), plan)
+  expect_identical(records$kind, c("estimate", "note", "evidence"))
+  expect_identical(records$order, c(1L, 3L, 5L))
 })

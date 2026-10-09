@@ -2,9 +2,6 @@
 % Please edit documentation in R/JAGS-diagnostics.R
 \name{JAGS_diagnostics}
 \alias{JAGS_diagnostics}
-\alias{JAGS_diagnostics_density}
-\alias{JAGS_diagnostics_autocorrelation}
-\alias{JAGS_diagnostics_trace}
 \title{Plot diagnostics of a 'JAGS' model}
 \usage{
 JAGS_diagnostics(
@@ -18,50 +15,6 @@ JAGS_diagnostics(
   n_points = 1000,
   transformations = NULL,
   transform_factors = FALSE,
-  transform_orthonormal = FALSE,
-  short_name = FALSE,
-  parameter_names = FALSE,
-  formula_prefix = TRUE,
-  ...
-)
-
-JAGS_diagnostics_density(
-  fit,
-  parameter,
-  plot_type = "base",
-  xlim = NULL,
-  n_points = 1000,
-  transformations = NULL,
-  transform_factors = FALSE,
-  transform_orthonormal = FALSE,
-  short_name = FALSE,
-  parameter_names = FALSE,
-  formula_prefix = TRUE,
-  ...
-)
-
-JAGS_diagnostics_trace(
-  fit,
-  parameter,
-  plot_type = "base",
-  ylim = NULL,
-  transformations = NULL,
-  transform_factors = FALSE,
-  transform_orthonormal = FALSE,
-  short_name = FALSE,
-  parameter_names = FALSE,
-  formula_prefix = TRUE,
-  ...
-)
-
-JAGS_diagnostics_autocorrelation(
-  fit,
-  parameter,
-  plot_type = "base",
-  lags = 30,
-  transformations = NULL,
-  transform_factors = FALSE,
-  transform_orthonormal = FALSE,
   short_name = FALSE,
   parameter_names = FALSE,
   formula_prefix = TRUE,
@@ -69,7 +22,8 @@ JAGS_diagnostics_autocorrelation(
 )
 }
 \arguments{
-\item{fit}{a JAGS model fitted via \code{\link[=JAGS_fit]{JAGS_fit()}}}
+\item{fit}{a JAGS model fitted via \code{\link[=JAGS_fit]{JAGS_fit()}} or a derived-draw view from
+\code{\link[=JAGS_with_draws]{JAGS_with_draws()}}. Diagnostics describe the supplied view draws.}
 
 \item{parameter}{parameter to be plotted}
 
@@ -94,11 +48,20 @@ to specific parameters}
 
 \item{transform_factors}{whether factors with orthonormal/meandif
 prior distribution should be transformed to differences from the
-grand mean}
-
-\item{transform_orthonormal}{(to be depreciated) whether factors
-with orthonormal prior distributions should be transformed to
-differences from the grand mean}
+grand mean, and factors with \code{\link[=prior_ordered]{prior_ordered()}} prior distribution to
+their level effects (without the reference level of a \code{"cumulative"}
+contrast, which is fixed at zero). Untransformed ordered factors show the
+sampled parameters: \code{runjags_estimates_table()} reports the total
+effect (\code{<term>_ordered_total}) and the allocation shares of the
+random allocations (\code{<term>_ordered_allocation[<level>]}, the share
+of the total added when reaching \code{<level>}; fixed allocations have no
+rows). \code{ensemble_estimates_table()} reports retained fitted totals and
+the union of allocation shares sampled by any declared ordered model.
+Fixed ordered allocations fill that union with their declared constants.
+Models without the ordered parameterization have undefined (\code{NA})
+shares, with their defined fraction reported in a footnote. Shares remain
+defined on zero-total and excluded spike draws of an ordered model. Legacy
+mixed objects without retained sources must be recreated from source fits.}
 
 \item{short_name}{whether prior distribution names should be
 shorted}
@@ -119,6 +82,18 @@ of class 'ggplot2' if \code{plot_type = "ggplot2"}.
 \description{
 Creates density plots, trace plots, and autocorrelation plots
 for a given parameter of a JAGS model.
+}
+\details{
+Autocorrelation uses the retained original iteration positions.
+Requested lags without finite observation pairs, beyond the retained chain,
+or with nonfinite autocorrelation are retained as \code{NA}. One warning per
+parameter and chain has classes \code{BayesTools_autocorrelation_unavailable}
+and \code{BayesTools_plot_condition}, with \code{parameter}, \code{chain},
+\code{unavailable_lags}, \code{pair_count} and \code{reason} fields.
+Computed x/y objects retain full-length \code{pair_count} and
+\code{unavailability_reason} attributes; both renderers display finite bars
+only. No iteration compression, replacement estimate or confidence band is
+introduced.
 }
 \seealso{
 \code{\link[=JAGS_fit]{JAGS_fit()}} \code{\link[=JAGS_check_convergence]{JAGS_check_convergence()}}

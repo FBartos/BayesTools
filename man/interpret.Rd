@@ -2,12 +2,9 @@
 % Please edit documentation in R/interpret.R
 \name{interpret}
 \alias{interpret}
-\alias{interpret2}
 \title{Interpret ensemble inference and estimates}
 \usage{
 interpret(inference, samples, specification, method)
-
-interpret2(specification, method = NULL)
 }
 \arguments{
 \item{inference}{model inference created by \link{ensemble_inference}}

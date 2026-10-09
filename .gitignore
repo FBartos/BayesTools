@@ -12,8 +12,22 @@ BayesTools_*.tar.gz
 ..Rcheck/
 Rplots.pdf
 check/
+/src/Makevars
+/src/*.o
+/src/**/*.o
+/src/*.dll
+/src/**/*.dll
+/src/*.so
+/src/**/*.so
 
-# bulky local caches, PDFs, query caches, and contribution artifacts ignored.
-
+# Bulky local caches, PDFs, query caches, and contribution artifacts.
+/.dev/lme4
+.positai
 CLAUDE.md
 .StatsVault/
+/.agents/tmp
+/.dev/mcmc-error
+
+# Snapshot and reference-table candidates awaiting review.
+*.new.svg
+*.new.txt

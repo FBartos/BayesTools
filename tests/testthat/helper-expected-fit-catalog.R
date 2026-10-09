@@ -17,7 +17,8 @@ bayestools_registry_flag_columns <- function() {
     "autofit",
     "parallel",
     "thinning",
-    "add_parameters"
+    "add_parameters",
+    "assertion_only"
   )
 }
 
@@ -41,10 +42,48 @@ bayestools_optional_fit_requirements <- function() {
   )
 }
 
+.bayestools_random_z_monitors <- function(stem, n_groups, n_columns) {
+  as.vector(outer(
+    seq_len(n_groups),
+    seq_len(n_columns),
+    function(group, column) paste0(stem, "[", group, ",", column, "]")
+  ))
+}
+
+.bayestools_indexed_monitors <- function(name, n) {
+  paste0(name, "[", seq_len(n), "]")
+}
+
+# The Cholesky factor and correlation cells, LKJ primitives, and (monitored
+# with the primitives) partial correlations of a K-term LKJ block.
+.bayestools_lkj_monitors <- function(stem, K, cpc = FALSE) {
+  matrix_cells <- function(matrix_name) {
+    .bayestools_random_z_monitors(paste0(stem, "_xRE_CORx_", matrix_name), K, K)
+  }
+  n_pairs <- K * (K - 1L) / 2L
+  c(
+    matrix_cells("L"),
+    matrix_cells("R"),
+    .bayestools_indexed_monitors(paste0(stem, "_xRE_CORx_lkj_u"), n_pairs),
+    if (cpc) .bayestools_indexed_monitors(paste0(stem, "_xRE_CORx_lkj_cpc"), n_pairs)
+  )
+}
+
+# The Dirichlet weights of a variance allocation and their gamma auxiliaries.
+.bayestools_allocation_weight_monitors <- function(weight, K) {
+  c(
+    .bayestools_indexed_monitors(weight, K),
+    .bayestools_indexed_monitors(paste0("prior_par_eta_", weight), K)
+  )
+}
+
 .bayestools_find_calls <- function(expr, fun) {
   matches <- list()
 
   walk <- function(x) {
+    if(missing(x)){
+      return(invisible(NULL))
+    }
     if (is.expression(x)) {
       for (item in as.list(x)) {
         walk(item)
@@ -217,7 +256,7 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       formula = NA_character_,
       scale_policy = "point-prior-fixed",
       prior_features = "simple,point",
-      expected_monitor = "s",
+      expected_monitor = c("m", "s"),
       expected_formula_parameters = character(),
       expected_formula_scale = character(),
       oracle_type = "fixture-metadata",
@@ -225,7 +264,7 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       expected_iterations = 500L,
       tolerance = NA_real_,
       flags = list(simple_priors = TRUE),
-      note = "Spike mean fixture; deterministic point prior must not be monitored."
+      note = "Spike mean fixture; deterministic point prior remains a structural monitor."
     ),
     list(
       model_name = "fit_simple_various",
@@ -235,7 +274,7 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       formula = NA_character_,
       scale_policy = "point-prior-fixed",
       prior_features = "simple,point",
-      expected_monitor = c("p1", "p2", "p3", "p4", "p5", "p6", "inv_p6", "p7", "p8", "p9"),
+      expected_monitor = c("p1", "p2", "p3", "p4", "p5", "p6", "p7", "p8", "p9", "p10"),
       expected_formula_parameters = character(),
       expected_formula_scale = character(),
       oracle_type = "fixture-metadata",
@@ -243,7 +282,7 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       expected_iterations = 500L,
       tolerance = NA_real_,
       flags = list(simple_priors = TRUE),
-      note = "Prior-only scalar fixture; point prior component is deterministic and inverse-gamma exposes its inverse monitor."
+      note = "Prior-only scalar fixture; point priors remain structural monitors and inverse-gamma is monitored on its natural scale."
     ),
     list(
       model_name = "fit_simple_pub_bias",
@@ -307,7 +346,7 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       formula = NA_character_,
       scale_policy = "none",
       prior_features = "simple,weightfunction",
-      expected_monitor = c("m", "omega[1]", "omega[2]", "eta[1]", "eta[2]"),
+      expected_monitor = c("m", "omega[1]", "omega[2]"),
       expected_formula_parameters = character(),
       expected_formula_scale = character(),
       oracle_type = "fixture-metadata",
@@ -516,6 +555,42 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       note = "Formula regression fixture with continuous predictor and two-level treatment factor."
     ),
     list(
+      model_name = "fit_formula_treatment_positive",
+      profile = "fixture",
+      has_marglik = TRUE,
+      model_family = "gaussian-regression",
+      formula = "~ x_cont1 + x_fac2t",
+      scale_policy = "none",
+      prior_features = "simple,formula,factor,truncated",
+      expected_monitor = c("mu_intercept", "mu_x_cont1", "mu_x_fac2t", "sigma"),
+      expected_formula_parameters = "mu",
+      expected_formula_scale = character(),
+      oracle_type = "formula-fixture-metadata",
+      expected_chains = 2L,
+      expected_iterations = 500L,
+      tolerance = NA_real_,
+      flags = list(simple_priors = TRUE, factor_priors = TRUE, formulas = TRUE),
+      note = "Formula regression fixture with continuous predictor and positive-truncated two-level treatment factor."
+    ),
+    list(
+      model_name = "fit_formula_treatment_negative",
+      profile = "fixture",
+      has_marglik = TRUE,
+      model_family = "gaussian-regression",
+      formula = "~ x_cont1 + x_fac2t",
+      scale_policy = "none",
+      prior_features = "simple,formula,factor,truncated",
+      expected_monitor = c("mu_intercept", "mu_x_cont1", "mu_x_fac2t", "sigma"),
+      expected_formula_parameters = "mu",
+      expected_formula_scale = character(),
+      oracle_type = "formula-fixture-metadata",
+      expected_chains = 2L,
+      expected_iterations = 500L,
+      tolerance = NA_real_,
+      flags = list(simple_priors = TRUE, factor_priors = TRUE, formulas = TRUE),
+      note = "Formula regression fixture with continuous predictor and negative-truncated two-level treatment factor."
+    ),
+    list(
       model_name = "fit_formula_orthonormal",
       profile = "fixture",
       has_marglik = TRUE,
@@ -717,6 +792,7 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       expected_monitor = c(
         "mu_intercept",
         "mu_x_cont1",
+        "sigma_exp_intercept",
         "sigma_exp_x_fac2t",
         "sigma"
       ),
@@ -791,7 +867,7 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       formula = NA_character_,
       scale_policy = "expression-linked",
       prior_features = "simple,expression",
-      expected_monitor = c("x", "x_sigma", "inv_x_sigma"),
+      expected_monitor = c("x", "x_sigma"),
       expected_formula_parameters = character(),
       expected_formula_scale = character(),
       oracle_type = "fixture-metadata",
@@ -799,7 +875,7 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       expected_iterations = 500L,
       tolerance = NA_real_,
       flags = list(simple_priors = TRUE, expression_priors = TRUE),
-      note = "Expression prior fixture with monitored hyperparameter and inverse scale."
+      note = "Expression prior fixture with monitored hyperparameter and natural inverse-gamma scale."
     ),
     list(
       model_name = "fit_expression_mixture",
@@ -809,7 +885,7 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       formula = NA_character_,
       scale_policy = "expression-linked,mixture-indicator",
       prior_features = "simple,mixture,expression",
-      expected_monitor = c("x_indicator", "x", "x_sigma", "inv_x_sigma"),
+      expected_monitor = c("x_indicator", "x", "x_sigma"),
       expected_formula_parameters = character(),
       expected_formula_scale = character(),
       oracle_type = "fixture-metadata",
@@ -817,7 +893,7 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       expected_iterations = 500L,
       tolerance = NA_real_,
       flags = list(simple_priors = TRUE, mixture_priors = TRUE, expression_priors = TRUE),
-      note = "Expression mixture fixture with monitored component indicator and inverse scale."
+      note = "Expression mixture fixture with monitored component indicator and natural inverse-gamma scale."
     ),
     list(
       model_name = "fit_add_parameters",
@@ -864,7 +940,7 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       model_family = "prior-only-weightfunction",
       scale_policy = "weightfunction-cumulative",
       prior_features = "weightfunction",
-      expected_monitor = c("omega[1]", "omega[2]", "eta[1]", "eta[2]"),
+      expected_monitor = c("omega[1]", "omega[2]"),
       expected_chains = 2L,
       expected_iterations = 500L,
       flags = list(weightfunction_priors = TRUE),
@@ -888,7 +964,7 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       model_family = "prior-only-weightfunction",
       scale_policy = "weightfunction-cumulative",
       prior_features = "weightfunction",
-      expected_monitor = c("omega[1]", "omega[2]", "omega[3]", "eta[1]", "eta[2]"),
+      expected_monitor = c("omega[1]", "omega[2]", "omega[3]"),
       expected_chains = 2L,
       expected_iterations = 500L,
       flags = list(weightfunction_priors = TRUE),
@@ -943,7 +1019,7 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       note = "Heterogeneous publication-bias mixture with five omega monitors."
     ),
     catalog_row(
-      "fit_bias_petpeese_heterogeneous_wf",
+      "fit_bias_petpeese_hetero_wf",
       has_marglik = FALSE,
       model_family = "prior-only-publication-bias-mixture",
       scale_policy = "mixture-indicator,weightfunction",
@@ -997,7 +1073,10 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       formula = "~ 1 + (1 || id)",
       scale_policy = "random-effects",
       prior_features = "simple,formula,random-effects",
-      expected_monitor = c("mu_intercept", "mu__xREx__id_intercept", "sigma"),
+      expected_monitor = c(
+        "mu_intercept", "mu__xREx__id_intercept", "sigma",
+        .bayestools_random_z_monitors("mu__xREx__id_xRE_Zx", 10L, 1L)
+      ),
       expected_formula_parameters = "mu",
       oracle_type = "formula-fixture-metadata",
       expected_chains = 2L,
@@ -1012,7 +1091,10 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       formula = "~ 1 + (0 + x_cont1 || id)",
       scale_policy = "random-effects",
       prior_features = "simple,formula,random-effects",
-      expected_monitor = c("mu_intercept", "mu__xREx__id_x_cont1", "sigma"),
+      expected_monitor = c(
+        "mu_intercept", "mu__xREx__id_x_cont1", "sigma",
+        .bayestools_random_z_monitors("mu__xREx__id_xRE_Zx", 10L, 1L)
+      ),
       expected_formula_parameters = "mu",
       oracle_type = "formula-fixture-metadata",
       expected_chains = 2L,
@@ -1029,7 +1111,8 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       prior_features = "simple,formula,factor,random-effects",
       expected_monitor = c(
         "mu_intercept", "mu_x_cont1", "mu__xREx__id_intercept",
-        "mu__xREx__id_x_fac3[1]", "mu__xREx__id_x_fac3[2]", "sigma"
+        "mu__xREx__id_x_fac3[1]", "mu__xREx__id_x_fac3[2]", "sigma",
+        .bayestools_random_z_monitors("mu__xREx__id_xRE_Zx", 10L, 3L)
       ),
       expected_formula_parameters = "mu",
       oracle_type = "formula-fixture-metadata",
@@ -1047,7 +1130,9 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       prior_features = "simple,formula,factor,random-effects",
       expected_monitor = c(
         "mu_intercept", "mu_x_fac3[1]", "mu_x_fac3[2]",
-        "mu__xREx__id_intercept", "mu__xREx__id_x_fac3", "sigma"
+        "mu__xREx__id_intercept",
+        "mu__xREx__id_x_fac3[1]", "mu__xREx__id_x_fac3[2]", "sigma",
+        .bayestools_random_z_monitors("mu__xREx__id_xRE_Zx", 10L, 3L)
       ),
       expected_formula_parameters = "mu",
       oracle_type = "formula-fixture-metadata",
@@ -1065,10 +1150,15 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       prior_features = "simple,formula,factor,random-effects,spike-and-slab",
       expected_monitor = c(
         "mu_x_fac3[1]", "mu_x_fac3[2]", "mu_x_fac3[3]",
+        "mu_intercept",
         "mu__xREx__id_x_fac3_indicator",
-        "mu__xREx__id_x_fac3[1]", "mu__xREx__id_x_fac3[2]", "mu__xREx__id_x_fac3[3]",
-        "mu__xREx__id_x_fac3_variable[1]", "mu__xREx__id_x_fac3_variable[2]", "mu__xREx__id_x_fac3_variable[3]",
-        "sigma"
+        "mu__xREx__id_x_fac3_inclusion",
+        "mu__xREx__id_x_fac3[1]", "mu__xREx__id_x_fac3[2]",
+        "mu__xREx__id_x_fac3[3]",
+        "mu__xREx__id_x_fac3_variable[1]", "mu__xREx__id_x_fac3_variable[2]",
+        "mu__xREx__id_x_fac3_variable[3]",
+        "sigma",
+        .bayestools_random_z_monitors("mu__xREx__id_xRE_Zx", 10L, 3L)
       ),
       expected_formula_parameters = "mu",
       oracle_type = "formula-fixture-metadata",
@@ -1084,7 +1174,13 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       formula = "~ x_fac2i + x_fac3o + x_fac3t + x_fac3md - 1",
       scale_policy = "point-prior-fixed",
       prior_features = "formula,factor,point",
-      expected_monitor = "sigma",
+      expected_monitor = c(
+        "mu_x_fac2i[1]", "mu_x_fac2i[2]",
+        "mu_x_fac3o[1]", "mu_x_fac3o[2]",
+        "mu_x_fac3t[1]", "mu_x_fac3t[2]",
+        "mu_x_fac3md[1]", "mu_x_fac3md[2]",
+        "mu_intercept", "sigma"
+      ),
       expected_formula_parameters = "mu",
       oracle_type = "formula-fixture-metadata",
       expected_chains = 2L,
@@ -1102,7 +1198,8 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       expected_monitor = c(
         "mu_intercept_indicator", "mu_intercept",
         "mu_x_cont1_indicator", "mu_x_cont1",
-        "mu_x_fac3t_indicator", "mu_x_fac3t[1]", "mu_x_fac3t[2]",
+        "mu_x_fac3t_indicator", "mu_x_fac3t_inclusion",
+        "mu_x_fac3t[1]", "mu_x_fac3t[2]",
         "mu_x_fac3t_variable[1]", "mu_x_fac3t_variable[2]",
         "sigma_indicator", "sigma"
       ),
@@ -1122,7 +1219,9 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       model_family = "prior-only-expression",
       scale_policy = "expression-linked,spike-and-slab-indicator",
       prior_features = "simple,expression,spike-and-slab",
-      expected_monitor = c("x_indicator", "x", "x_variable", "x_sigma", "inv_x_sigma"),
+      expected_monitor = c(
+        "x_indicator", "x_inclusion", "x", "x_variable", "x_sigma"
+      ),
       expected_chains = 2L,
       expected_iterations = 500L,
       flags = list(simple_priors = TRUE, spike_and_slab_priors = TRUE, expression_priors = TRUE),
@@ -1171,7 +1270,12 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       formula = "~ x_cont1 + x_fac2t + x_cont1 * x_fac3md",
       scale_policy = "point-prior-fixed,multiply-by",
       prior_features = "formula,factor,interaction,point",
-      expected_monitor = c("mu_intercept", "mu_x_cont1", "sigma"),
+      expected_monitor = c(
+        "mu_intercept", "mu_x_cont1", "mu_x_fac2t",
+        "mu_x_fac3md[1]", "mu_x_fac3md[2]",
+        "mu_x_cont1__xXx__x_fac3md[1]", "mu_x_cont1__xXx__x_fac3md[2]",
+        "sigma"
+      ),
       expected_formula_parameters = "mu",
       oracle_type = "formula-fixture-metadata",
       expected_chains = 2L,
@@ -1209,10 +1313,13 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       expected_monitor = c(
         "mu_intercept",
         "mu_x_cont1_indicator", "mu_x_cont1",
-        "mu_x_fac2t_indicator", "mu_x_fac2t", "mu_x_fac2t_variable",
-        "mu_x_fac3md_indicator", "mu_x_fac3md[1]", "mu_x_fac3md[2]",
+        "mu_x_fac2t_indicator", "mu_x_fac2t_inclusion",
+        "mu_x_fac2t", "mu_x_fac2t_variable",
+        "mu_x_fac3md_indicator", "mu_x_fac3md_inclusion",
+        "mu_x_fac3md[1]", "mu_x_fac3md[2]",
         "mu_x_fac3md_variable[1]", "mu_x_fac3md_variable[2]",
         "mu_x_cont1__xXx__x_fac3md_indicator",
+        "mu_x_cont1__xXx__x_fac3md_inclusion",
         "mu_x_cont1__xXx__x_fac3md[1]", "mu_x_cont1__xXx__x_fac3md[2]",
         "mu_x_cont1__xXx__x_fac3md_variable[1]", "mu_x_cont1__xXx__x_fac3md_variable[2]",
         "sigma"
@@ -1232,7 +1339,7 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       has_marglik = TRUE,
       model_family = "prior-only-publication-bias",
       prior_features = "publication-bias,PET",
-      expected_monitor = "PET",
+      expected_monitor = c("mu", "PET"),
       expected_chains = 1L,
       expected_iterations = 2000L,
       flags = list(pub_bias_priors = TRUE),
@@ -1243,7 +1350,7 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       has_marglik = TRUE,
       model_family = "prior-only-publication-bias",
       prior_features = "publication-bias,PEESE",
-      expected_monitor = "PEESE",
+      expected_monitor = c("mu", "PEESE"),
       expected_chains = 1L,
       expected_iterations = 2000L,
       flags = list(pub_bias_priors = TRUE),
@@ -1266,7 +1373,7 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       model_family = "prior-only-weightfunction",
       scale_policy = "weightfunction-cumulative",
       prior_features = "weightfunction",
-      expected_monitor = c("omega[1]", "omega[2]", "eta[1]", "eta[2]"),
+      expected_monitor = c("omega[1]", "omega[2]"),
       expected_chains = 1L,
       expected_iterations = 2000L,
       flags = list(weightfunction_priors = TRUE),
@@ -1278,7 +1385,7 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       model_family = "prior-only-weightfunction",
       scale_policy = "weightfunction-cumulative",
       prior_features = "weightfunction",
-      expected_monitor = c("omega[1]", "omega[2]", "omega[3]", "eta[1]", "eta[2]"),
+      expected_monitor = c("omega[1]", "omega[2]", "omega[3]"),
       expected_chains = 1L,
       expected_iterations = 2000L,
       flags = list(weightfunction_priors = TRUE),
@@ -1332,7 +1439,8 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       prior_features = "formula,publication-bias,weightfunction,mixture,spike-and-slab",
       expected_monitor = c(
         "mu_intercept_indicator", "mu_intercept",
-        "mu_x_cont1_indicator", "mu_x_cont1", "mu_x_cont1_variable",
+        "mu_x_cont1_indicator", "mu_x_cont1_inclusion",
+        "mu_x_cont1", "mu_x_cont1_variable",
         "mu_x_fac2t_indicator", "mu_x_fac2t",
         "mu_x_fac3t_indicator", "mu_x_fac3t[1]", "mu_x_fac3t[2]",
         "sigma_indicator", "sigma",
@@ -1391,6 +1499,699 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       flags = list(simple_priors = TRUE, formulas = TRUE),
       tolerance = 1e-10,
       note = "Dual-parameter formula fixture with scaled mean and log-sigma predictors."
+    ),
+    catalog_row(
+      "fit_dnode_allocation",
+      has_marglik = FALSE,
+      model_family = "gaussian-regression-random-effects",
+      formula = '~ 1 + x + us(1 + x | g) + random(1 | d, name = "d", covariance = "diag")',
+      scale_policy = "random-effects,variance-allocation,automatic",
+      prior_features = "simple,formula,random-effects,variance-allocation",
+      expected_monitor = c(
+        "mu_intercept", "mu_x", "mu__xRE_ALLOCx_tot__allocation_sd",
+        .bayestools_allocation_weight_monitors("mu__xRE_ALLOCx_tot__weight", 2L),
+        "mu__xRE_ALLOCx_tot__include_d_prob",
+        .bayestools_allocation_weight_monitors("mu__xRE_ALLOCx_gc__weight", 2L),
+        "mu__xRE_ALLOCx_tot__include_d_indicator", "mu__xREx__g_intercept", "mu__xREx__g_x",
+        .bayestools_lkj_monitors("mu__xREx__g", 2L),
+        .bayestools_random_z_monitors("mu__xREx__g_xRE_Zx", 6L, 2L),
+        "mu__xREx__d_intercept",
+        .bayestools_random_z_monitors("mu__xREx__d_xRE_Zx", 3L, 1L)
+      ),
+      expected_formula_parameters = "mu",
+      expected_formula_scale = c(mu = "mu_x"),
+      oracle_type = "formula-fixture-metadata",
+      expected_chains = 1L,
+      expected_iterations = 100L,
+      flags = list(simple_priors = TRUE, formulas = TRUE, random_effects = TRUE, assertion_only = TRUE),
+      note = "Gated total-variance allocation with a mean-variance SD-component child for deterministic-node parity."
+    ),
+    catalog_row(
+      "fit_dnode_allocation_external",
+      has_marglik = FALSE,
+      model_family = "gaussian-regression-random-effects",
+      formula = '~ 1 + random(1 | g, name = "g", covariance = "diag") + random(1 | d, name = "d", covariance = "diag")',
+      scale_policy = "random-effects,variance-allocation,external-sd-source",
+      prior_features = "simple,formula,random-effects,variance-allocation",
+      expected_monitor = c(
+        "mu_intercept",
+        .bayestools_allocation_weight_monitors("mu__xRE_ALLOCx_tot__weight", 2L),
+        "tau", "mu__xREx__g_intercept",
+        .bayestools_random_z_monitors("mu__xREx__g_xRE_Zx", 6L, 1L),
+        "mu__xREx__d_intercept",
+        .bayestools_random_z_monitors("mu__xREx__d_xRE_Zx", 3L, 1L)
+      ),
+      expected_formula_parameters = "mu",
+      oracle_type = "formula-fixture-metadata",
+      expected_chains = 1L,
+      expected_iterations = 100L,
+      flags = list(simple_priors = TRUE, formulas = TRUE, random_effects = TRUE, assertion_only = TRUE),
+      note = "Variance allocation rooted in an external scalar SD source for deterministic-node parity."
+    ),
+    catalog_row(
+      "fit_dnode_correlation",
+      has_marglik = FALSE,
+      model_family = "gaussian-regression-random-effects",
+      formula = '~ 1 + cs(t | g) + ar1(t | s) + car(time | d) + hcs(t | p)',
+      scale_policy = "random-effects,scalar-correlation",
+      prior_features = "simple,formula,random-effects,scalar-correlation",
+      expected_monitor = c(
+        "mu_intercept", "mu__xREx__g_sd", "mu__xREx__g_rho_logit", "mu__xREx__s_sd", "mu__xREx__s_rho_z", "mu__xREx__d_sd", "mu__xREx__d_rho_logit",
+        .bayestools_indexed_monitors("mu__xREx__p_t", 4L),
+        "mu__xREx__p_rho_z", "mu__xREx__g_rho",
+        .bayestools_random_z_monitors("mu__xREx__g_xRE_Zx", 6L, 4L),
+        "mu__xREx__s_rho",
+        .bayestools_random_z_monitors("mu__xREx__s_xRE_Zx", 4L, 4L),
+        "mu__xREx__d_rho",
+        .bayestools_random_z_monitors("mu__xREx__d_xRE_Zx", 3L, 4L),
+        "mu__xREx__p_rho",
+        .bayestools_random_z_monitors("mu__xREx__p_xRE_Zx", 3L, 4L)
+      ),
+      expected_formula_parameters = "mu",
+      oracle_type = "formula-fixture-metadata",
+      expected_chains = 1L,
+      expected_iterations = 100L,
+      flags = list(simple_priors = TRUE, formulas = TRUE, random_effects = TRUE, assertion_only = TRUE),
+      note = "Compound-symmetry, AR(1), CAR, and heterogeneous compound-symmetry scalar correlations for deterministic-node parity."
+    ),
+    catalog_row(
+      "fit_dnode_lkj",
+      has_marglik = FALSE,
+      model_family = "gaussian-regression-random-effects",
+      formula = '~ 1 + x + z + us(1 + x + z | g) + us(1 + x | s)',
+      scale_policy = "random-effects,lkj,automatic",
+      prior_features = "simple,formula,random-effects,lkj",
+      expected_monitor = c(
+        "mu_intercept", "mu_x", "mu_z", "mu__xREx__g_intercept", "mu__xREx__g_x", "mu__xREx__g_z", "mu__xREx__s_intercept", "mu__xREx__s_x",
+        .bayestools_lkj_monitors("mu__xREx__g", 3L, cpc = TRUE),
+        .bayestools_random_z_monitors("mu__xREx__g_xRE_Zx", 6L, 3L),
+        .bayestools_lkj_monitors("mu__xREx__s", 2L),
+        .bayestools_random_z_monitors("mu__xREx__s_xRE_Zx", 4L, 2L)
+      ),
+      expected_formula_parameters = "mu",
+      expected_formula_scale = c(mu = "mu_x"),
+      oracle_type = "formula-fixture-metadata",
+      expected_chains = 1L,
+      expected_iterations = 100L,
+      flags = list(simple_priors = TRUE, formulas = TRUE, random_effects = TRUE, assertion_only = TRUE),
+      note = "LKJ Cholesky, correlation, and partial-correlation blocks for deterministic-node parity."
+    ),
+    catalog_row(
+      "fit_dnode_omega_cumulative",
+      has_marglik = FALSE,
+      model_family = "normal-location-weightfunction",
+      scale_policy = "weightfunction",
+      prior_features = "simple,weightfunction",
+      expected_monitor = c(
+        "m",
+        .bayestools_indexed_monitors("omega", 5L),
+        .bayestools_indexed_monitors("eta", 3L)
+      ),
+      expected_chains = 1L,
+      expected_iterations = 100L,
+      flags = list(simple_priors = TRUE, weightfunction_priors = TRUE, assertion_only = TRUE),
+      note = "Two-sided cumulative weight function for publication-weight node parity."
+    ),
+    catalog_row(
+      "fit_dnode_omega_binary",
+      has_marglik = FALSE,
+      model_family = "normal-location-weightfunction",
+      scale_policy = "weightfunction",
+      prior_features = "simple,weightfunction",
+      expected_monitor = c(
+        "m",
+        .bayestools_indexed_monitors("omega", 3L)
+      ),
+      expected_chains = 1L,
+      expected_iterations = 100L,
+      flags = list(simple_priors = TRUE, weightfunction_priors = TRUE, assertion_only = TRUE),
+      note = "Two-sided binary weight function for publication-weight node parity."
+    ),
+    catalog_row(
+      "fit_dnode_omega_log_independent",
+      has_marglik = FALSE,
+      model_family = "normal-location-weightfunction",
+      scale_policy = "weightfunction",
+      prior_features = "simple,weightfunction",
+      expected_monitor = c(
+        "m",
+        .bayestools_indexed_monitors("omega", 3L),
+        "log_omega[2]", "log_omega[3]"
+      ),
+      expected_chains = 1L,
+      expected_iterations = 100L,
+      flags = list(simple_priors = TRUE, weightfunction_priors = TRUE, assertion_only = TRUE),
+      note = "One-sided independent log-weight function for publication-weight node parity."
+    ),
+    catalog_row(
+      "fit_dnode_omega_fixed",
+      has_marglik = FALSE,
+      model_family = "normal-location-weightfunction",
+      scale_policy = "weightfunction",
+      prior_features = "simple,weightfunction",
+      expected_monitor = c(
+        "m",
+        .bayestools_indexed_monitors("omega", 3L)
+      ),
+      expected_chains = 1L,
+      expected_iterations = 100L,
+      flags = list(simple_priors = TRUE, weightfunction_priors = TRUE, assertion_only = TRUE),
+      note = "One-sided fixed weight function for publication-weight node parity."
+    ),
+    catalog_row(
+      "fit_dnode_omega_bias_mixture",
+      has_marglik = FALSE,
+      model_family = "normal-location-publication-bias",
+      scale_policy = "mixture-indicator,weightfunction",
+      prior_features = "simple,publication-bias,weightfunction,mixture,add-parameters",
+      expected_monitor = c(
+        "m", "bias_indicator",
+        .bayestools_indexed_monitors("omega", 5L),
+        "PET",
+        .bayestools_indexed_monitors("eta_component_2", 3L),
+        "omega_ratio_component_3", "log_omega_component_4[2]", "log_omega_component_4[3]"
+      ),
+      expected_chains = 1L,
+      expected_iterations = 100L,
+      flags = list(simple_priors = TRUE, pub_bias_priors = TRUE, weightfunction_priors = TRUE, mixture_priors = TRUE, add_parameters = TRUE, assertion_only = TRUE),
+      note = "Publication-bias mixture of PET and weight functions with monitored component weights for publication-weight node parity."
+    ),
+    catalog_row(
+      "fit_dnode_mixture",
+      has_marglik = FALSE,
+      model_family = "normal-location-mixture",
+      scale_policy = "mixture-indicator,spike-and-slab-indicator,weightfunction",
+      prior_features = "simple,spike-and-slab,mixture,publication-bias,weightfunction,add-parameters",
+      expected_monitor = c(
+        "m", "a_indicator", "a_inclusion", "a", "a_variable", "b_indicator", "b", "bias_indicator",
+        .bayestools_indexed_monitors("omega", 3L),
+        "PET", "PEESE", "b_component_1", "b_component_3", "PET_1", "PEESE_1",
+        .bayestools_indexed_monitors("eta_component_3", 3L)
+      ),
+      expected_chains = 1L,
+      expected_iterations = 100L,
+      flags = list(simple_priors = TRUE, pub_bias_priors = TRUE, weightfunction_priors = TRUE, spike_and_slab_priors = TRUE, mixture_priors = TRUE, add_parameters = TRUE, assertion_only = TRUE),
+      note = "Spike-and-slab, mixture, and publication-bias mixture priors with monitored components for mixture-node parity."
+    ),
+    catalog_row(
+      "fit_dnode_mixture_factor",
+      has_marglik = FALSE,
+      model_family = "gaussian-regression",
+      formula = '~ 1 + x + t',
+      scale_policy = "mixture-indicator,spike-and-slab-indicator",
+      prior_features = "simple,formula,factor,spike-and-slab,mixture,add-parameters",
+      expected_monitor = c(
+        "mu_intercept", "mu_x_indicator", "mu_x_inclusion", "mu_x", "mu_x_variable", "mu_t_indicator",
+        .bayestools_indexed_monitors("mu_t", 3L),
+        .bayestools_indexed_monitors("mu_t_component_2", 3L)
+      ),
+      expected_formula_parameters = "mu",
+      oracle_type = "formula-fixture-metadata",
+      expected_chains = 1L,
+      expected_iterations = 100L,
+      flags = list(simple_priors = TRUE, factor_priors = TRUE, spike_and_slab_priors = TRUE, mixture_priors = TRUE, formulas = TRUE, add_parameters = TRUE, assertion_only = TRUE),
+      note = "Formula spike-and-slab coefficient and treatment-factor mixture for mixture-node parity."
+    ),
+    catalog_row(
+      "fit_dnode_linear_predictor",
+      has_marglik = FALSE,
+      model_family = "gaussian-regression-random-effects",
+      formula = '~ 1 + x + d + expression(0.25 * z[i]) + us(1 + x | g) + ar1(t | s)',
+      scale_policy = "random-effects,lkj,scalar-correlation,multiply-by,automatic",
+      prior_features = "simple,formula,factor,random-effects,expression,multiply-by,add-parameters",
+      expected_monitor = c(
+        "mu_intercept", "mu_x", "mu_d[1]", "mu_d[2]", "mu__xREx__g_intercept", "mu__xREx__g_x", "mu__xREx__s_sd", "mu__xREx__s_rho_z", "b_scale",
+        .bayestools_indexed_monitors("mu", 24L),
+        .bayestools_lkj_monitors("mu__xREx__g", 2L),
+        .bayestools_random_z_monitors("mu__xREx__g_xRE_Zx", 6L, 2L),
+        "mu__xREx__s_rho",
+        .bayestools_random_z_monitors("mu__xREx__s_xRE_Zx", 4L, 4L)
+      ),
+      expected_formula_parameters = "mu",
+      expected_formula_scale = c(mu = "mu_x"),
+      oracle_type = "formula-fixture-metadata",
+      expected_chains = 1L,
+      expected_iterations = 100L,
+      flags = list(simple_priors = TRUE, factor_priors = TRUE, formulas = TRUE, random_effects = TRUE, add_parameters = TRUE, assertion_only = TRUE),
+      note = "Monitored linear predictor with a multiplier, an expression, a factor, and latent random effects."
+    ),
+    catalog_row(
+      "fit_dnode_mean_centered",
+      has_marglik = FALSE,
+      model_family = "gaussian-regression-random-effects",
+      formula = '~ 1 + x + id(1 | g)',
+      scale_policy = "random-effects,mean-centered",
+      prior_features = "simple,formula,random-effects,add-parameters",
+      expected_monitor = c(
+        "mu_intercept", "mu_x", "mu__xREx__g_sd",
+        .bayestools_indexed_monitors("mu", 24L),
+        .bayestools_random_z_monitors("mu__xREx__g_xRE_Zx", 6L, 1L)
+      ),
+      expected_formula_parameters = "mu",
+      oracle_type = "formula-fixture-metadata",
+      expected_chains = 1L,
+      expected_iterations = 100L,
+      flags = list(simple_priors = TRUE, formulas = TRUE, random_effects = TRUE, add_parameters = TRUE, assertion_only = TRUE),
+      note = "Monitored linear predictor of a mean-centered random intercept with latent effects."
+    ),
+    catalog_row(
+      "fit_dnode_ar1",
+      has_marglik = FALSE,
+      model_family = "gaussian-regression-random-effects",
+      formula = '~ 1 + ar1(t | s)',
+      scale_policy = "random-effects,scalar-correlation",
+      prior_features = "simple,formula,random-effects,scalar-correlation",
+      expected_monitor = c(
+        "mu_intercept", "mu__xREx__s_sd", "mu__xREx__s_rho_z", "mu__xREx__s_rho",
+        .bayestools_random_z_monitors("mu__xREx__s_xRE_Zx", 4L, 4L)
+      ),
+      expected_formula_parameters = "mu",
+      oracle_type = "formula-fixture-metadata",
+      expected_chains = 1L,
+      expected_iterations = 100L,
+      flags = list(simple_priors = TRUE, formulas = TRUE, random_effects = TRUE, assertion_only = TRUE),
+      note = "AR(1) random-effect block for deterministic-node selection checks."
+    ),
+    catalog_row(
+      "fit_dnode_row_source",
+      has_marglik = FALSE,
+      model_family = "gaussian-regression-random-effects",
+      formula = '~ 1 + x + random(1 | g, name = "g", covariance = "diag") + diag(1 + x | s)',
+      scale_policy = "random-effects,variance-allocation,external-sd-source",
+      prior_features = "simple,formula,random-effects,variance-allocation,add-parameters",
+      expected_monitor = c(
+        "mu_intercept", "mu_x",
+        .bayestools_allocation_weight_monitors("mu__xRE_ALLOCx_tot__weight", 2L),
+        "mu__xRE_ALLOCx_tot__include_g_prob",
+        .bayestools_allocation_weight_monitors("mu__xRE_ALLOCx_sc__weight", 2L),
+        "tau_scale",
+        .bayestools_indexed_monitors("tau", 24L),
+        .bayestools_indexed_monitors("mu", 24L),
+        "mu__xRE_ALLOCx_tot__include_g_indicator",
+        .bayestools_random_z_monitors("mu__xREx__g_xRE_Zx", 6L, 1L),
+        .bayestools_random_z_monitors("mu__xREx__s_xRE_Zx", 4L, 2L)
+      ),
+      expected_formula_parameters = "mu",
+      oracle_type = "formula-fixture-metadata",
+      expected_chains = 1L,
+      expected_iterations = 100L,
+      flags = list(simple_priors = TRUE, formulas = TRUE, random_effects = TRUE, add_parameters = TRUE, assertion_only = TRUE),
+      note = "Row-indexed external SD source split by a gated allocation and SD components."
+    ),
+    catalog_row(
+      "fit_dnode_row_source_values",
+      has_marglik = FALSE,
+      model_family = "gaussian-regression-random-effects",
+      formula = '~ 1 + x + random(1 | g, name = "g", covariance = "diag") + diag(1 + x | s)',
+      scale_policy = "random-effects,variance-allocation,external-sd-source",
+      prior_features = "simple,formula,random-effects,variance-allocation,add-parameters",
+      expected_monitor = c(
+        "mu_intercept", "mu_x",
+        .bayestools_allocation_weight_monitors("mu__xRE_ALLOCx_tot__weight", 2L),
+        "mu__xRE_ALLOCx_tot__include_g_prob",
+        .bayestools_allocation_weight_monitors("mu__xRE_ALLOCx_sc__weight", 2L),
+        "tau_scale",
+        .bayestools_indexed_monitors("tau", 24L),
+        .bayestools_indexed_monitors("mu", 24L),
+        "mu__xRE_ALLOCx_tot__include_g_indicator",
+        .bayestools_random_z_monitors("mu__xREx__g_xRE_Zx", 6L, 1L),
+        .bayestools_random_z_monitors("mu__xREx__s_xRE_Zx", 4L, 2L)
+      ),
+      expected_formula_parameters = "mu",
+      oracle_type = "formula-fixture-metadata",
+      expected_chains = 1L,
+      expected_iterations = 100L,
+      flags = list(simple_priors = TRUE, formulas = TRUE, random_effects = TRUE, add_parameters = TRUE, assertion_only = TRUE),
+      note = "Row-indexed external SD source reconstructed by a values function of declared inputs."
+    ),
+    catalog_row("fit_formula_multiplier_state", has_marglik = FALSE,
+      model_family = "gaussian-regression", formula = "~ x", scale_policy = "automatic,multiply-by",
+      prior_features = "point,formula,mixture,multiply-by",
+      expected_monitor = c("mu_intercept", "mu_x", "sigma_indicator", "sigma", "mu[1]", "mu[2]", "mu[3]"),
+      expected_formula_parameters = "mu", expected_formula_scale = "mu_x",
+      oracle_type = "formula-fixture-metadata", expected_chains = 2L, expected_iterations = 500L,
+      flags = list(formulas = TRUE, simple_priors = TRUE, mixture_priors = TRUE, add_parameters = TRUE, assertion_only = TRUE),
+      note = "Scaled point coefficients with an ordinary mixture multiplier and original-row identities."),
+    catalog_row("fit_formula_multiplier_zero", has_marglik = FALSE,
+      model_family = "gaussian-regression", formula = "~ x", scale_policy = "automatic,multiply-by",
+      prior_features = "point,formula,multiply-by",
+      expected_monitor = c("mu_intercept", "mu_x", "sigma", "dummy", "mu[1]", "mu[2]", "mu[3]"),
+      expected_formula_parameters = "mu", expected_formula_scale = "mu_x",
+      oracle_type = "formula-fixture-metadata", expected_chains = 2L, expected_iterations = 500L,
+      flags = list(formulas = TRUE, simple_priors = TRUE, add_parameters = TRUE, assertion_only = TRUE),
+      note = "Declared zero named multiplier with exact coefficient cancellation and an unrelated sampled primitive."),
+    catalog_row("fit_formula_multiplier_missing", has_marglik = FALSE,
+      model_family = "gaussian-regression", formula = "~ 1", scale_policy = "none",
+      prior_features = "point,formula",
+      expected_monitor = c("mu_intercept", "dummy", "mu[1]", "mu[2]", "mu[3]"),
+      expected_formula_parameters = "mu", oracle_type = "formula-fixture-metadata",
+      expected_chains = 2L, expected_iterations = 500L,
+      flags = list(formulas = TRUE, simple_priors = TRUE, add_parameters = TRUE, assertion_only = TRUE),
+      note = "Intercept-only point model for declared missing-coefficient mixture controls."),
+    catalog_row(
+      "fit_dnode_multiplied",
+      has_marglik = FALSE,
+      model_family = "gaussian-regression",
+      formula = '~ 1 + x + z',
+      scale_policy = "multiply-by",
+      prior_features = "simple,formula,multiply-by",
+      expected_monitor = c("mu_intercept", "mu_x", "mu_z", "b_scale"),
+      expected_formula_parameters = "mu",
+      oracle_type = "formula-fixture-metadata",
+      expected_chains = 1L,
+      expected_iterations = 100L,
+      flags = list(simple_priors = TRUE, formulas = TRUE, assertion_only = TRUE),
+      note = "Formula coefficients with fixed and parameter multipliers for linear-predictor marginal posteriors."
+    ),
+    catalog_row("fit_dnode_point_expression", has_marglik = FALSE,
+      model_family = "gaussian-regression", formula = "~ x", scale_policy = "none",
+      prior_features = "point,simple,formula,expression",
+      expected_monitor = c("mu_intercept", "mu_x", "theta", "delta", paste0("mu[", 1:24, "]")),
+      expected_formula_parameters = "mu", oracle_type = "formula-fixture-metadata",
+      expected_chains = 1L, expected_iterations = 100L,
+      flags = list(simple_priors = TRUE, formulas = TRUE, expression_priors = TRUE,
+        add_parameters = TRUE, assertion_only = TRUE),
+      note = "Scalar expression point coefficient with declared ordinary parents and monitored linear predictor."),
+    catalog_row(
+      "fit_label_log_intercept",
+      has_marglik = FALSE,
+      model_family = "gaussian-regression",
+      formula = '~ 1 + x',
+      scale_policy = "automatic,log-intercept",
+      prior_features = "simple,formula,formula_scale",
+      expected_monitor = c("mu_intercept", "mu_x"),
+      expected_formula_parameters = "mu",
+      expected_formula_scale = c(mu = "mu_x"),
+      oracle_type = "formula-fixture-metadata",
+      expected_chains = 1L,
+      expected_iterations = 200L,
+      flags = list(simple_priors = TRUE, formulas = TRUE, assertion_only = TRUE),
+      note = "Log-intercept formula with a standardized predictor for label and transform checks."
+    ),
+    catalog_row(
+      "fit_label_ordered",
+      has_marglik = FALSE,
+      model_family = "gaussian-regression",
+      formula = '~ 1 + f',
+      scale_policy = "ordered-allocation",
+      prior_features = "simple,formula,factor,ordered",
+      expected_monitor = c(
+        "mu_intercept", "mu_f[1]", "mu_f[2]", "mu_f_ordered_total",
+        .bayestools_indexed_monitors("prior_par_eta_mu_f_ordered_alloc_f_1", 2L)
+      ),
+      expected_formula_parameters = "mu",
+      oracle_type = "formula-fixture-metadata",
+      expected_chains = 1L,
+      expected_iterations = 100L,
+      flags = list(simple_priors = TRUE, factor_priors = TRUE, formulas = TRUE, assertion_only = TRUE),
+      note = "Ordered-factor formula with internal allocation shares for semantic-table labels."
+    ),
+    catalog_row(
+      "fit_ordered_literal_point",
+      has_marglik=FALSE,model_family="gaussian-regression",formula='~ 1 + f',
+      scale_policy="ordered-allocation",prior_features="simple,formula,factor,ordered,point",
+      expected_monitor=c("mu_intercept",paste0("mu_f[",1:3,"]"),"mu_f_ordered_total"),
+      expected_formula_parameters="mu",oracle_type="formula-fixture-metadata",
+      expected_chains=1L,expected_iterations=100L,
+      flags=list(simple_priors=TRUE,factor_priors=TRUE,formulas=TRUE,assertion_only=TRUE),
+      note="Fixed ordered total 2.5 and weights 1:3/6 for faithful literals and exact scalar atoms."
+    ),
+    catalog_row(
+      "fit_label_random_slope",
+      has_marglik = FALSE,
+      model_family = "gaussian-regression-random-effects",
+      formula = '~ 1 + x + (1 + x || g)',
+      scale_policy = "random-effects,automatic",
+      prior_features = "simple,formula,random-effects",
+      expected_monitor = c(
+        "mu_intercept", "mu_x", "mu__xREx__g_intercept", "mu__xREx__g_x",
+        .bayestools_random_z_monitors("mu__xREx__g_xRE_Zx", 4L, 2L)
+      ),
+      expected_formula_parameters = "mu",
+      expected_formula_scale = c(mu = "mu_x"),
+      oracle_type = "formula-fixture-metadata",
+      expected_chains = 1L,
+      expected_iterations = 200L,
+      flags = list(simple_priors = TRUE, formulas = TRUE, random_effects = TRUE, assertion_only = TRUE),
+      note = "Independent random intercept and slope of a standardized predictor for original-scale SD labels."
+    ),
+    catalog_row(
+      "fit_label_random_slope_only",
+      has_marglik = FALSE,
+      model_family = "gaussian-regression-random-effects",
+      formula = '~ 1 + x + (0 + x || g)',
+      scale_policy = "random-effects,automatic",
+      prior_features = "simple,formula,random-effects",
+      expected_monitor = c(
+        "mu_intercept", "mu_x", "mu__xREx__g_x",
+        .bayestools_random_z_monitors("mu__xREx__g_xRE_Zx", 4L, 1L)
+      ),
+      expected_formula_parameters = "mu",
+      expected_formula_scale = c(mu = "mu_x"),
+      oracle_type = "formula-fixture-metadata",
+      expected_chains = 1L,
+      expected_iterations = 200L,
+      flags = list(simple_priors = TRUE, formulas = TRUE, random_effects = TRUE, assertion_only = TRUE),
+      note = "Random slope of a standardized predictor without a random intercept for original-scale SD labels."
+    ),
+    catalog_row(
+      "fit_label_random_intercept",
+      has_marglik = FALSE,
+      model_family = "gaussian-regression-random-effects",
+      formula = '~ 1 + x + (1 | g)',
+      scale_policy = "random-effects,automatic",
+      prior_features = "simple,formula,random-effects",
+      expected_monitor = c(
+        "mu_intercept", "mu_x", "mu__xREx__g_intercept",
+        .bayestools_random_z_monitors("mu__xREx__g_xRE_Zx", 4L, 1L)
+      ),
+      expected_formula_parameters = "mu",
+      expected_formula_scale = c(mu = "mu_x"),
+      oracle_type = "formula-fixture-metadata",
+      expected_chains = 1L,
+      expected_iterations = 200L,
+      flags = list(simple_priors = TRUE, formulas = TRUE, random_effects = TRUE, assertion_only = TRUE),
+      note = "Random intercept with a standardized fixed predictor for original-scale SD structures."
+    ),
+    catalog_row(
+      "fit_label_random_factor_slope",
+      has_marglik = FALSE,
+      model_family = "gaussian-regression-random-effects",
+      formula = '~ 1 + f + (1 + f || g)',
+      scale_policy = "random-effects",
+      prior_features = "simple,formula,factor,random-effects",
+      expected_monitor = c(
+        "mu_intercept", "mu_f[1]", "mu_f[2]", "mu__xREx__g_intercept", "mu__xREx__g_f[1]", "mu__xREx__g_f[2]",
+        .bayestools_random_z_monitors("mu__xREx__g_xRE_Zx", 4L, 3L)
+      ),
+      expected_formula_parameters = "mu",
+      oracle_type = "formula-fixture-metadata",
+      expected_chains = 1L,
+      expected_iterations = 200L,
+      flags = list(simple_priors = TRUE, factor_priors = TRUE, formulas = TRUE, random_effects = TRUE, assertion_only = TRUE),
+      note = "Independent random treatment-factor slope for random-effect SD column labels."
+    ),
+    catalog_row(
+      "fit_label_allocation",
+      has_marglik = FALSE,
+      model_family = "gaussian-regression-random-effects",
+      formula = '~ 1 + x + (1 | g) + random(1 | d, name = "d", covariance = "diag")',
+      scale_policy = "random-effects,variance-allocation,automatic",
+      prior_features = "simple,formula,random-effects,variance-allocation",
+      expected_monitor = c(
+        "mu_intercept", "mu_x", "mu__xRE_ALLOCx_tot__allocation_sd",
+        .bayestools_allocation_weight_monitors("mu__xRE_ALLOCx_tot__weight", 2L),
+        "mu__xREx__g_intercept",
+        .bayestools_random_z_monitors("mu__xREx__g_xRE_Zx", 5L, 1L),
+        "mu__xREx__d_intercept",
+        .bayestools_random_z_monitors("mu__xREx__d_xRE_Zx", 4L, 1L)
+      ),
+      expected_formula_parameters = "mu",
+      expected_formula_scale = c(mu = "mu_x"),
+      oracle_type = "formula-fixture-metadata",
+      expected_chains = 1L,
+      expected_iterations = 200L,
+      flags = list(simple_priors = TRUE, formulas = TRUE, random_effects = TRUE, assertion_only = TRUE),
+      note = "Total-variance allocation of two random intercepts with a standardized fixed predictor."
+    ),
+    catalog_row(
+      "fit_re_summary_allocated",
+      has_marglik = FALSE,
+      model_family = "gaussian-regression-random-effects",
+      formula = '~ 1 + x + us(1 + x | g) + us(1 + x | s) + us(1 + x | t) + us(1 + x | p)',
+      scale_policy = "random-effects,lkj,variance-allocation,mixture-indicator,spike-and-slab-indicator,automatic",
+      prior_features = "simple,formula,random-effects,lkj,variance-allocation,mixture,spike-and-slab",
+      expected_monitor = c(
+        "mu_intercept", "mu_x", "mu__xRE_ALLOCx_g_split__allocation_sd", "mu__xRE_ALLOCx_s_gate__allocation_sd", "mu__xRE_ALLOCx_s_gate__include_s_prob", "mu__xRE_ALLOCx_t_split__allocation_sd_indicator", "mu__xRE_ALLOCx_t_split__allocation_sd",
+        .bayestools_allocation_weight_monitors("mu__xRE_ALLOCx_g_split__weight", 2L),
+        .bayestools_allocation_weight_monitors("mu__xRE_ALLOCx_s_split__weight", 2L),
+        .bayestools_allocation_weight_monitors("mu__xRE_ALLOCx_t_split__weight", 2L),
+        "mu__xREx__p_intercept_indicator", "mu__xREx__p_intercept_inclusion", "mu__xREx__p_intercept", "mu__xREx__p_intercept_variable", "mu__xREx__p_x_indicator", "mu__xREx__p_x_inclusion", "mu__xREx__p_x", "mu__xREx__p_x_variable", "mu__xRE_ALLOCx_s_gate__include_s_indicator", "mu__xREx__g_intercept", "mu__xREx__g_x",
+        .bayestools_lkj_monitors("mu__xREx__g", 2L),
+        .bayestools_random_z_monitors("mu__xREx__g_xRE_Zx", 4L, 2L),
+        "mu__xREx__s_intercept", "mu__xREx__s_x",
+        .bayestools_lkj_monitors("mu__xREx__s", 2L),
+        .bayestools_random_z_monitors("mu__xREx__s_xRE_Zx", 4L, 2L),
+        "mu__xREx__t_intercept", "mu__xREx__t_x",
+        .bayestools_lkj_monitors("mu__xREx__t", 2L),
+        .bayestools_random_z_monitors("mu__xREx__t_xRE_Zx", 4L, 2L),
+        .bayestools_lkj_monitors("mu__xREx__p", 2L),
+        .bayestools_random_z_monitors("mu__xREx__p_xRE_Zx", 4L, 2L)
+      ),
+      expected_formula_parameters = "mu",
+      expected_formula_scale = c(mu = "mu_x"),
+      oracle_type = "formula-fixture-metadata",
+      expected_chains = 1L,
+      expected_iterations = 200L,
+      flags = list(simple_priors = TRUE, spike_and_slab_priors = TRUE, mixture_priors = TRUE, formulas = TRUE, random_effects = TRUE, assertion_only = TRUE),
+      note = "Correlated blocks with allocated, gated, spike-sourced, and spike-and-slab SDs for point-free correlations."
+    ),
+    catalog_row(
+      "fit_re_summary_linear_predictor",
+      has_marglik = FALSE,
+      model_family = "gaussian-regression",
+      formula = '~ 0 + x + z',
+      scale_policy = "none",
+      prior_features = "simple,formula,add-parameters",
+      expected_monitor = c(
+        "mu_x", "mu_z", "mu_intercept",
+        .bayestools_indexed_monitors("mu", 6L)
+      ),
+      expected_formula_parameters = "mu",
+      oracle_type = "formula-fixture-metadata",
+      expected_chains = 1L,
+      expected_iterations = 100L,
+      flags = list(simple_priors = TRUE, formulas = TRUE, add_parameters = TRUE, assertion_only = TRUE),
+      note = "Monitored linear predictor with a row that is 0 in every draw."
+    ),
+    catalog_row(
+      "fit_re_summary_point_components",
+      has_marglik = FALSE,
+      model_family = "gaussian-regression-random-effects",
+      formula = '~ 1 + x + f + (1 | g)',
+      scale_policy = "random-effects,mixture-indicator,spike-and-slab-indicator",
+      prior_features = "formula,factor,random-effects,mixture,spike-and-slab",
+      expected_monitor = c(
+        "mu_intercept_indicator", "mu_intercept", "mu_x_indicator", "mu_x_inclusion", "mu_x", "mu_x_variable", "mu_f_indicator", "mu_f_inclusion", "mu_f[1]", "mu_f[2]", "mu_f_variable[1]", "mu_f_variable[2]", "mu__xREx__g_intercept_indicator", "mu__xREx__g_intercept_inclusion", "mu__xREx__g_intercept", "mu__xREx__g_intercept_variable",
+        .bayestools_random_z_monitors("mu__xREx__g_xRE_Zx", 4L, 1L)
+      ),
+      expected_formula_parameters = "mu",
+      oracle_type = "formula-fixture-metadata",
+      expected_chains = 1L,
+      expected_iterations = 200L,
+      flags = list(factor_priors = TRUE, spike_and_slab_priors = TRUE, mixture_priors = TRUE, formulas = TRUE, random_effects = TRUE, assertion_only = TRUE),
+      note = "Mixture and spike-and-slab formula and random-effect SD priors with point components."
+    ),
+    catalog_row(
+      "fit_re_summary_mixture_sd",
+      has_marglik = FALSE,
+      model_family = "gaussian-regression-random-effects",
+      formula = '~ 1 + (1 | g)',
+      scale_policy = "random-effects,mixture-indicator",
+      prior_features = "simple,formula,random-effects,mixture",
+      expected_monitor = c(
+        "mu_intercept", "mu__xREx__g_intercept_indicator", "mu__xREx__g_intercept",
+        .bayestools_random_z_monitors("mu__xREx__g_xRE_Zx", 4L, 1L)
+      ),
+      expected_formula_parameters = "mu",
+      oracle_type = "formula-fixture-metadata",
+      expected_chains = 1L,
+      expected_iterations = 200L,
+      flags = list(simple_priors = TRUE, mixture_priors = TRUE, formulas = TRUE, random_effects = TRUE, assertion_only = TRUE),
+      note = "Random-intercept SD with a three-component mixture prior of weights 1:2:1."
+    ),
+    catalog_row(
+      "fit_formula_draws_scaled_random",
+      has_marglik = FALSE,
+      model_family = "gaussian-regression-random-effects",
+      formula = "~ 1 + x * d + diag(1 | g)",
+      scale_policy = "automatic,random-effects",
+      prior_features = "simple,factor,formula,interaction,random-effects",
+      expected_monitor = c(
+        "mu_intercept", "mu_x", "mu_d[1]", "mu_d[2]",
+        "mu_x__xXx__d[1]", "mu_x__xXx__d[2]", "mu__xREx__g_intercept",
+        .bayestools_random_z_monitors("mu__xREx__g_xRE_Zx", 6L, 1L)
+      ),
+      expected_formula_parameters = "mu",
+      expected_formula_scale = c(mu = "mu_x"),
+      oracle_type = "formula-fixture-metadata",
+      expected_chains = 1L,
+      expected_iterations = 100L,
+      tolerance = 1e-14,
+      flags = list(simple_priors = TRUE, factor_priors = TRUE, formulas = TRUE,
+        random_effects = TRUE, interactions = TRUE, assertion_only = TRUE),
+      note = "Scaled meandif factor interaction with sampled random intercepts for rebuilding formula draws."
+    ),
+    catalog_row(
+      "fit_formula_draws_expression_data",
+      has_marglik = FALSE,
+      model_family = "gaussian-regression-expression",
+      formula = "~ 1 + x + expression(v[i])",
+      scale_policy = "none",
+      prior_features = "simple,formula,expression-data",
+      expected_monitor = c("mu_intercept", "mu_x"),
+      expected_formula_parameters = "mu",
+      oracle_type = "formula-fixture-metadata",
+      expected_chains = 1L,
+      expected_iterations = 100L,
+      tolerance = 1e-14,
+      flags = list(simple_priors = TRUE, formulas = TRUE, assertion_only = TRUE),
+      note = "Formula expression reading JAGS model data for rebuilding formula draws."
+    ),
+    catalog_row(
+      "fit_convergence_observed_data",
+      has_marglik = FALSE,
+      model_family = "normal-regression-monitored-data",
+      scale_policy = "monitored-data",
+      prior_features = "simple,add-parameters",
+      expected_monitor = c(
+        "mu", "b", "N",
+        .bayestools_indexed_monitors("x", 10L),
+        .bayestools_indexed_monitors("y", 10L)
+      ),
+      expected_chains = 2L,
+      expected_iterations = 100L,
+      flags = list(simple_priors = TRUE, add_parameters = TRUE, assertion_only = TRUE),
+      note = "Monitored fully and partly observed data for convergence roles."
+    ),
+    catalog_row(
+      "fit_lkj_diagonal_K2",
+      has_marglik = FALSE,
+      model_family = "gaussian-regression-random-effects",
+      formula = '~ 1 + x + z + (1 + x | id)',
+      scale_policy = "random-effects,lkj,automatic",
+      prior_features = "simple,formula,random-effects,lkj",
+      expected_monitor = c(
+        "mu_intercept", "mu_x", "mu_z", "mu__xREx__id_intercept", "mu__xREx__id_x",
+        .bayestools_lkj_monitors("mu__xREx__id", 2L),
+        .bayestools_random_z_monitors("mu__xREx__id_xRE_Zx", 6L, 2L)
+      ),
+      expected_formula_parameters = "mu",
+      expected_formula_scale = c(mu = "mu_x"),
+      oracle_type = "formula-fixture-metadata",
+      expected_chains = 2L,
+      expected_iterations = 300L,
+      flags = list(simple_priors = TRUE, formulas = TRUE, random_effects = TRUE, assertion_only = TRUE),
+      note = "Two-term LKJ random-effect block with a standardized slope for exact correlation diagonals and composite original-scale correlations."
+    ),
+    catalog_row(
+      "fit_lkj_diagonal_K3",
+      has_marglik = FALSE,
+      model_family = "gaussian-regression-random-effects",
+      formula = '~ 1 + x + z + (1 + x + z | id)',
+      scale_policy = "random-effects,lkj",
+      prior_features = "simple,formula,random-effects,lkj",
+      expected_monitor = c(
+        "mu_intercept", "mu_x", "mu_z", "mu__xREx__id_intercept", "mu__xREx__id_x", "mu__xREx__id_z",
+        .bayestools_lkj_monitors("mu__xREx__id", 3L),
+        .bayestools_random_z_monitors("mu__xREx__id_xRE_Zx", 6L, 3L)
+      ),
+      expected_formula_parameters = "mu",
+      oracle_type = "formula-fixture-metadata",
+      expected_chains = 2L,
+      expected_iterations = 300L,
+      flags = list(simple_priors = TRUE, formulas = TRUE, random_effects = TRUE, assertion_only = TRUE),
+      note = "Three-term LKJ random-effect block for exact correlation diagonals and raw backend-coordinate labels."
     )
   ))
 
@@ -1698,7 +2499,8 @@ expect_marglik_file_present_or_absent <- function(model_name, catalog = bayestoo
 }
 
 expect_marglik_object <- function(marglik) {
-  testthat::expect_s3_class(marglik, "bridge")
+  testthat::expect_s3_class(marglik, "BayesTools_marglik")
+  testthat::expect_identical(marglik$scale, "natural_log")
   testthat::expect_true("logml" %in% names(marglik))
   testthat::expect_type(marglik$logml, "double")
   testthat::expect_length(marglik$logml, 1L)
@@ -1814,8 +2616,19 @@ expect_fit_formula_metadata <- function(fit, expected_formula_parameters = chara
         testthat::expect_gt(formula_scale[[parameter]][[term]]$sd, 0)
       }
     }
-  } else {
+  } else if(length(expected_formula_parameters) == 0L) {
     testthat::expect_null(formula_scale)
+  }else{
+    testthat::expect_setequal(names(formula_scale), expected_formula_parameters)
+    testthat::expect_true(all(vapply(formula_scale, length, integer(1)) == 0L))
+  }
+  for(parameter in expected_formula_parameters){
+    owner <- attr(formula_scale[[parameter]], "unscale_design", exact = TRUE)
+    testthat::expect_identical(owner$schema_version, 2L)
+    testthat::expect_identical(owner$owner_scope, "fit")
+    testthat::expect_true(owner$complete)
+    testthat::expect_identical(owner,
+      attr(formula_design[[parameter]]$formula_scale, "unscale_design", exact = TRUE))
   }
 
   invisible(TRUE)

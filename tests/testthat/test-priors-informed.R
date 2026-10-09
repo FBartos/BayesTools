@@ -86,19 +86,38 @@ test_that("Informed prior distributions match the specification", {
   medicine_table <- strsplit(medicine_table, ",")[[1]]
   medicine_table <- matrix(medicine_table, ncol = 12, byrow = T)
 
-  for(i in 1:nrow(medicine_table)){
-    # test prior for the effect
-    p1 <- prior_informed(medicine_table[i,1], parameter = "effect", type = "smd")
-    expect_equal(p1$distribution, "t")
-    expect_equal(p1$parameters, list("location" = as.numeric(medicine_table[i,5]), "scale" = as.numeric(medicine_table[i,6]), "df" = as.numeric(medicine_table[i,7])))
-    expect_equal(p1$truncation, list("lower" = -Inf, "upper" = Inf))
-
-    # test prior for the heterogeneity
-    p2 <- prior_informed(medicine_table[i,1], parameter = "heterogeneity", type = "smd")
-    expect_equal(p2$distribution, "invgamma")
-    expect_equal(p2$parameters, list("shape" = as.numeric(medicine_table[i,10]), "scale" = as.numeric(medicine_table[i,11])))
-    expect_equal(p2$truncation, list("lower" = 0, "upper" = Inf))
+  # Every row of a table is checked: the distributions, parameters and
+  # truncations of the priors of all rows are collected and compared with those
+  # of the published table at once, element by element as one row at a time was
+  # (the parameters and the truncation of a row as named lists, each value at
+  # the tolerance of a single number).
+  informed_priors <- function(names, parameter, type){
+    priors <- lapply(names, prior_informed, parameter = parameter, type = type)
+    list(
+      distribution = lapply(priors, `[[`, "distribution"),
+      parameters   = lapply(priors, `[[`, "parameters"),
+      truncation   = lapply(priors, `[[`, "truncation")
+    )
   }
+  published_priors <- function(distribution, parameter_names, values, lower, upper){
+    list(
+      distribution = rep(list(distribution), nrow(values)),
+      parameters   = lapply(seq_len(nrow(values)), function(i){
+        stats::setNames(as.list(values[i, ]), parameter_names)
+      }),
+      truncation   = rep(list(list(lower = lower, upper = upper)), nrow(values))
+    )
+  }
+
+  # test priors for the effect and the heterogeneity of every medicine
+  expect_equal(
+    informed_priors(medicine_table[, 1], "effect", "smd"),
+    published_priors("t", c("location", "scale", "df"), apply(medicine_table[, 5:7], 2L, as.numeric), -Inf, Inf)
+  )
+  expect_equal(
+    informed_priors(medicine_table[, 1], "heterogeneity", "smd"),
+    published_priors("invgamma", c("shape", "scale"), apply(medicine_table[, 10:11], 2L, as.numeric), 0, Inf)
+  )
 
   ### other
   expect_error(prior_informed("random"))
@@ -280,66 +299,37 @@ test_that("Informed prior distributions match the specification", {
   paper_logRR <- matrix(gsub("\n", "", strsplit(paper_logRR, "&")[[1]], fixed = TRUE), ncol = 3, byrow = T)
   paper_RD    <- matrix(gsub("\n", "", strsplit(paper_RD,    "&")[[1]], fixed = TRUE), ncol = 3, byrow = T)
 
-  for(i in 1:nrow(paper_logOR)){
-    # test prior for the effect
-    p1     <- prior_informed(paper_logOR[i,1], parameter = "effect", type = "logOR")
-    p1pars <- as.numeric(strsplit(gsub(")", "", gsub("Student-t(", "", paper_logOR[i,2], fixed = TRUE), fixed = TRUE), ",")[[1]])
-    expect_equal(p1$distribution, "t")
-    expect_equal(p1$parameters, list("location" = p1pars[1], "scale" = p1pars[2], "df" = p1pars[3]))
-    expect_equal(p1$truncation, list("lower" = -Inf, "upper" = Inf))
-
-    # test prior for the heterogeneity
-    if(gsub(" ", "", paper_logOR[i,3], fixed = TRUE) == "---"){
-      expect_error(prior_informed(paper_logOR[i,1], parameter = "heterogeneity", type = "logOR"))
-    }else{
-      p2     <- prior_informed(paper_logOR[i,1], parameter = "heterogeneity", type = "logOR")
-      p2pars <- as.numeric(strsplit(gsub(")", "", gsub("Inv-Gamma(", "", paper_logOR[i,3], fixed = TRUE), fixed = TRUE), ",")[[1]])
-      expect_equal(p2$distribution, "invgamma")
-      expect_equal(p2$parameters, list("shape" = p2pars[1], "scale" = p2pars[2]))
-      expect_equal(p2$truncation, list("lower" = 0, "upper" = Inf))
-    }
+  # The parameters of a published prior, "Student-t(0, 0.48, 3)" as c(0, 0.48, 3)
+  published_parameters <- function(text, label){
+    as.numeric(strsplit(gsub(")", "", gsub(label, "", text, fixed = TRUE), fixed = TRUE), ",")[[1]])
   }
-
-  for(i in 1:nrow(paper_logRR)){
-    # test prior for the effect
-    p1     <- prior_informed(paper_logRR[i,1], parameter = "effect", type = "logRR")
-    p1pars <- as.numeric(strsplit(gsub(")", "", gsub("Student-t(", "", paper_logRR[i,2], fixed = TRUE), fixed = TRUE), ",")[[1]])
-    expect_equal(p1$distribution, "t")
-    expect_equal(p1$parameters, list("location" = p1pars[1], "scale" = p1pars[2], "df" = p1pars[3]))
-    expect_equal(p1$truncation, list("lower" = -Inf, "upper" = Inf))
-
-    # test prior for the heterogeneity
-    if(gsub(" ", "", paper_logRR[i,3], fixed = TRUE) == "---"){
-      expect_error(prior_informed(paper_logRR[i,1], parameter = "heterogeneity", type = "logRR"))
-    }else{
-      p2     <- prior_informed(paper_logRR[i,1], parameter = "heterogeneity", type = "logRR")
-      p2pars <- as.numeric(strsplit(gsub(")", "", gsub("Inv-Gamma(", "", paper_logRR[i,3], fixed = TRUE), fixed = TRUE), ",")[[1]])
-      expect_equal(p2$distribution, "invgamma")
-      expect_equal(p2$parameters, list("shape" = p2pars[1], "scale" = p2pars[2]))
-      expect_equal(p2$truncation, list("lower" = 0, "upper" = Inf))
+  # Every medicine of a published table: the effect prior, and the heterogeneity
+  # prior where the table has one (a missing heterogeneity, '---', is refused).
+  check_paper_table <- function(paper, type, heterogeneity, distribution, parameter_names){
+    expect_equal(
+      informed_priors(paper[, 1], "effect", type),
+      published_priors(
+        "t", c("location", "scale", "df"),
+        t(vapply(paper[, 2], published_parameters, numeric(3L), label = "Student-t(", USE.NAMES = FALSE)),
+        -Inf, Inf
+      )
+    )
+    missing <- gsub(" ", "", paper[, 3], fixed = TRUE) == "---"
+    for(name in paper[missing, 1]){
+      expect_error(prior_informed(name, parameter = "heterogeneity", type = type))
     }
+    expect_equal(
+      informed_priors(paper[!missing, 1], "heterogeneity", type),
+      published_priors(
+        distribution, parameter_names,
+        t(vapply(paper[!missing, 3], published_parameters, numeric(2L), label = heterogeneity, USE.NAMES = FALSE)),
+        0, Inf
+      )
+    )
   }
-
-  for(i in 1:nrow(paper_RD)){
-    # test prior for the effect
-    p1     <- prior_informed(paper_RD[i,1], parameter = "effect", type = "RD")
-    p1pars <- as.numeric(strsplit(gsub(")", "", gsub("Student-t(", "", paper_RD[i,2], fixed = TRUE), fixed = TRUE), ",")[[1]])
-    expect_equal(p1$distribution, "t")
-    expect_equal(p1$parameters, list("location" = p1pars[1], "scale" = p1pars[2], "df" = p1pars[3]))
-    expect_equal(p1$truncation, list("lower" = -Inf, "upper" = Inf))
-
-    # test prior for the heterogeneity
-    if(gsub(" ", "", paper_RD[i,3], fixed = TRUE) == "---"){
-      expect_error(prior_informed(paper_RD[i,1], parameter = "heterogeneity", type = "RD"))
-    }else{
-      p2     <- prior_informed(paper_RD[i,1], parameter = "heterogeneity", type = "RD")
-      p2pars <- as.numeric(strsplit(gsub(")", "", gsub("Normal(", "", paper_RD[i,3], fixed = TRUE), fixed = TRUE), ",")[[1]])
-      expect_equal(p2$distribution, "normal")
-      expect_equal(p2$parameters, list("mean" = p2pars[1], "sd" = p2pars[2]))
-      expect_equal(p2$truncation, list("lower" = 0, "upper" = Inf))
-    }
-  }
-
+  check_paper_table(paper_logOR, "logOR", "Inv-Gamma(", "invgamma", c("shape", "scale"))
+  check_paper_table(paper_logRR, "logRR", "Inv-Gamma(", "invgamma", c("shape", "scale"))
+  check_paper_table(paper_RD,    "RD",    "Normal(",    "normal",   c("mean", "sd"))
   expect_equal(print(prior_informed("cochrane", parameter = "effect", type = "logRR"), silent = TRUE),        "Student-t(0, 0.32, 3)")
   expect_equal(print(prior_informed("cochrane", parameter = "heterogeneity", type = "logRR"), silent = TRUE), "InvGamma(1.51, 0.23)")
 })

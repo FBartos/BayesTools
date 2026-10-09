@@ -1,0 +1,23 @@
+PKG_CPPFLAGS=@JAGS_CFLAGS@ -DR_NO_REMAP
+PKG_LIBS=@JAGS_LIBS@ @JAGS_RPATH@ @JRMATH_LIBS@
+
+$(SHLIB): native-sources.o
+
+native-sources.o: \
+	distributions/DBTLKJCPC.cc \
+	distributions/DBTInvGamma.cc \
+	distributions/DBTMoment.cc \
+	distributions/DBTInvMoment.cc \
+	functions/BTLKJCholesky.cc \
+	distributions/DBTLKJCPC.h distributions/DBTInvGamma.h \
+	distributions/DBTMoment.h distributions/DBTInvMoment.h functions/BTLKJCholesky.h \
+	gamma/BTGammaCore.cc gamma/BTGammaCore.h gamma/BTGammaRange.h \
+	invgamma/BTInvGammaCore.cc invgamma/BTInvGammaCore.h \
+	lkj/BTLKJCore.cc lkj/BTLKJCore.h \
+	nonlocal/BTNonlocalCore.cc nonlocal/BTNonlocalCore.h
+
+BayesTools.o: distributions/DBTLKJCPC.h distributions/DBTInvGamma.h \
+	distributions/DBTMoment.h distributions/DBTInvMoment.h functions/BTLKJCholesky.h
+r-invgamma.o: invgamma/BTInvGammaCore.h
+r-nonlocal.o: nonlocal/BTNonlocalCore.h gamma/BTGammaRange.h
+r-lkj.o: lkj/BTLKJCore.h

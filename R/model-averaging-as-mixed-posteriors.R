@@ -1,0 +1,925 @@
+#' @title Export BayesTools JAGS model posterior distribution as model-average posterior distributions via \code{mix_posteriors}
+#'
+#' @description Creates a model-averages posterior distributions on a single
+#' model that allows mimicking the [mix_posteriors] functionality. This function
+#' is useful when the model-averaged ensemble is based on [prior_spike_and_slab]
+#' or [prior_mixture] priors - the model-averaging is done within the model.
+#'
+#' @param model model fit via the [JAGS_fit] function with this version of
+#' BayesTools. Fits without its parameter map and fit contract (such as fits
+#' created by BayesTools 0.3.0) must be refitted: they stop with an error of
+#' class `BayesTools_refit_required` (see [JAGS_validate_fit_contract()]).
+#' @param conditional a character vector of parameters to be conditioned on
+#' @param conditional_rule a character string specifying the rule for conditioning.
+#' Either "AND" or "OR". Defaults to "AND".
+#' @param force_plots temporal argument allowing to generate conditional posterior samples
+#' suitable for prior and posterior plots. Only available when conditioning on a
+#' single parameter.
+#' @param transform_scaled whether to transform samples from standardized (scaled) to
+#' original (unscaled) scale. When \code{TRUE}, posterior samples are
+#' transformed, and the result can be directly passed to [plot_posterior] which will
+#' automatically detect the transformation and use transformed deterministic prior densities.
+#' Requires a model fitted with \code{formula_scale_list}. Defaults to \code{FALSE}.
+#' The transformed prior densities are computed for the requested
+#' \code{parameters} only and are kept for the fitted object, so repeated calls
+#' with the same fit, priors, conditioning, and \code{n_prior_samples} reuse them.
+#' @param n_prior_samples controls the numerical grid used for transformed
+#' prior densities when \code{transform_scaled = TRUE}. Defaults to 10000.
+#' @inheritParams ensemble_inference
+#'
+#' @return \code{as_mix_posteriors} returns a named list of mixed posterior
+#' distributions (either a vector of matrix).
+#'
+#' @seealso [mix_posteriors]
+#'
+#' @name as_mixed_posteriors
+#' @export
+as_mixed_posteriors <- function(model, parameters, conditional = NULL, conditional_rule = "AND", force_plots = FALSE,
+                                 transform_scaled = FALSE, n_prior_samples = 10000){
+
+  # check input
+  if(!inherits(model, "BayesTools_fit"))
+    stop("'model' must be a 'BayesTools_fit'")
+  .bt_require_fit_contract(model, "model")
+  check_char(parameters, "parameters", check_length = FALSE)
+  check_char(conditional, "conditional", check_length = FALSE, allow_values = c(parameters, "PET", "PEESE", "PETPEESE", "omega", "phacking", "alpha", "pi_null"), allow_NULL = TRUE)
+  check_char(conditional_rule, "conditional_rule", allow_values = c("AND", "OR"))
+  check_bool(transform_scaled, "transform_scaled")
+  check_int(n_prior_samples, "n_prior_samples", lower = 1)
+
+  # extract the list of priors
+  priors <- attr(model, "prior_list")
+  ordered_specs <- JAGS_ordered_parameter_spec(model,intersect(parameters,names(priors)[vapply(priors,is.prior.ordered,logical(1))]))
+  prior_density_priors <- priors
+  formula_scale <- attr(model, "formula_scale")
+  condition_event <- .condition_event(
+    prior_list        = priors,
+    conditional       = conditional,
+    conditional_rule  = conditional_rule
+  )
+
+  # extract the samples
+  model_samples <- .extract_posterior_samples(model, as_list = FALSE)
+  if(!is.matrix(model_samples)){
+    # deal with automatic coercion into a vector in case of a single predictor
+    model_samples <- matrix(model_samples, ncol = 1)
+    colnames(model_samples) <- model$monitor
+  }
+  posterior_density_sources <- .posterior_density_sources(model, model_samples)
+  posterior_ordinate_sources <- .posterior_ordinate_sources(model, model_samples)
+  source_rows <- seq_len(nrow(model_samples))
+
+  # apply conditioning
+  if(length(condition_event[["conditional"]]) > 0){
+
+    # subset the posterior distribution
+    conditioning_samples <- .condition_event_posterior_mask(
+      event        = condition_event,
+      prior_list   = priors,
+      model_samples = model_samples
+    )
+
+    if(sum(conditioning_samples) == 0){
+      warning("No samples left after conditioning.", call. = FALSE, immediate. = TRUE)
+      return(list())
+    }
+
+
+    model_samples <- .bt_draws_subset_rows(model_samples, conditioning_samples)
+    source_rows <- source_rows[conditioning_samples]
+  }
+
+  # apply scale transformation to posterior samples if requested
+  original_model_samples <- model_samples
+  formula_state <- .bt_formula_state_new(model, original_model_samples, parameters, source_rows,
+    condition_event = condition_event)
+  if(transform_scaled && !is.null(formula_scale) && length(formula_scale) > 0){
+    model_samples <- .bt_transform_scale_posterior(model_samples, formula_scale,
+      targets = unique(unlist(lapply(parameters, function(owner){
+        .prior_linear_prior_columns(owner, priors[[owner]])
+      }), use.names = FALSE)))
+    posterior_density_sources <- list()
+    posterior_ordinate_sources <- list()
+  }
+
+  out    <- list()
+  catalog <- parameter_catalog(model)
+
+  for(p in seq_along(parameters)){
+
+    # prepare parameter specific values
+    temp_parameter <- parameters[p]
+    temp_prior     <- priors[[temp_parameter]]
+
+    if(is.prior.spike_and_slab(temp_prior)){
+      # spike and slab priors
+      out[[temp_parameter]] <- .as_mixed_posteriors.spike_and_slab(model_samples, temp_prior, temp_parameter)
+
+    }else if(is.prior.mixture(temp_prior)){
+      # mixture priors
+      out[[temp_parameter]] <- .as_mixed_posteriors.mixture(
+        model_samples, temp_prior, temp_parameter,
+        condition_event[["conditional"]],
+        conditional_rule = condition_event[["conditional_rule"]]
+      )
+
+    }else if(is_prior_phacking(temp_prior)){
+      # p-hacking priors
+      out[[temp_parameter]] <- .as_mixed_posteriors.phacking(model_samples, temp_prior, temp_parameter)
+
+    }else if(is_prior_bias(temp_prior)){
+      # composed publication-bias priors
+      out[[temp_parameter]] <- .as_mixed_posteriors.bias(model_samples, temp_prior, temp_parameter, condition_event[["conditional"]])
+
+    }else if(is.prior.weightfunction(temp_prior)){
+      # weight functions
+      out[[temp_parameter]] <- .as_mixed_posteriors.weightfunction(model_samples, temp_prior, temp_parameter)
+
+    }else if(is.prior.factor(temp_prior)){
+      # factor priors
+      out[[temp_parameter]] <- .as_mixed_posteriors.factor(model_samples, temp_prior, temp_parameter)
+
+    }else if(is.prior.vector(temp_prior)){
+      # vector priors
+      out[[temp_parameter]] <- .as_mixed_posteriors.vector(model_samples, temp_prior, temp_parameter)
+
+    }else if(is.prior.simple(temp_prior)){
+      # simple priors
+      out[[temp_parameter]] <- .as_mixed_posteriors.simple(model_samples, temp_prior, temp_parameter)
+
+    }else{
+      stop("The posterior samples cannot be mixed: unsupported prior distributions.")
+    }
+
+    # add formula relevant information
+    if(is.prior.ordered(temp_prior)){
+      spec <- ordered_specs[[temp_parameter]]
+      retained <- .bt_ordered_source_new(temp_parameter, list(spec),
+        list(.bt_ordered_source_rows(spec, original_model_samples, seq_len(nrow(original_model_samples)))),
+        rep(1L, length(source_rows)), source_rows)
+      out[[temp_parameter]] <- .bt_meta_set(out[[temp_parameter]], "ordered_source", retained)
+      out[[temp_parameter]] <- .bt_meta_set(out[[temp_parameter]], "draw_index", source_rows)
+      formula_parameter <- .bt_label_formula_parameter(temp_prior)
+      if(!transform_scaled || is.null(formula_scale[[formula_parameter]])){
+        out[[temp_parameter]] <- .bt_ordered_source_semantics(out[[temp_parameter]],
+          diag(ncol(out[[temp_parameter]])),colnames(out[[temp_parameter]]))
+      }
+    }
+    if(!is.null(attr(temp_prior, which = "parameter", exact = TRUE))){
+      class(out[[temp_parameter]]) <- c(class(out[[temp_parameter]]), "mixed_posteriors.formula")
+      out[[temp_parameter]] <- .bt_meta_set(out[[temp_parameter]], "formula_parameter", attr(temp_prior, which = "parameter", exact = TRUE))
+      out[[temp_parameter]] <- .bt_meta_set(out[[temp_parameter]], "log_intercept", .mixed_posteriors_formula_log_intercept(
+        list(model),
+        attr(temp_prior, which = "parameter", exact = TRUE)
+      ))
+    }
+    if(transform_scaled && !is.null(formula_scale) && length(formula_scale) > 0){
+      out[[temp_parameter]] <- .posterior_support_drop(
+        out[[temp_parameter]],
+        recursive = TRUE
+      )
+    }
+
+    # the fitted coordinate and label parts of every column, describing the
+    # draws on the scale they hold (columns that are a fitted coordinate name
+    # the catalog quantity of that coordinate)
+    verbatim <- .bt_meta_get(out[[temp_parameter]], "quantities")
+    if(!is.null(verbatim)){
+      out[[temp_parameter]] <- .bt_meta_set(
+        out[[temp_parameter]],
+        "quantities",
+        .bt_mixed_coordinate_quantity_ids(verbatim, catalog)
+      )
+    }
+    if(is.null(.bt_meta_get(out[[temp_parameter]], "quantities"))){
+      out[[temp_parameter]] <- .bt_mixed_set_quantities(
+        out[[temp_parameter]],
+        parameter      = temp_parameter,
+        prior          = temp_prior,
+        columns        = if(is.null(dim(out[[temp_parameter]]))){
+          temp_parameter
+        }else{
+          colnames(out[[temp_parameter]])
+        },
+        catalog        = catalog,
+        original_scale = transform_scaled && !is.null(formula_scale) &&
+          length(formula_scale) > 0
+      )
+    }
+
+    # add conditioning information
+    out[[temp_parameter]] <- .condition_event_set_attributes(
+      out[[temp_parameter]],
+      condition_event
+    )
+
+    out[[temp_parameter]] <- .posterior_density_attach(
+      samples            = out[[temp_parameter]],
+      sources            = posterior_density_sources,
+      parameter          = temp_parameter,
+      conditional        = condition_event[["conditional"]],
+      conditional_rule   = conditional_rule,
+      condition_key      = condition_event[["condition_key"]],
+      allow_unlabeled    = length(parameters) == 1L
+    )
+    out[[temp_parameter]] <- .posterior_ordinate_attach(
+      samples            = out[[temp_parameter]],
+      sources            = posterior_ordinate_sources,
+      parameter          = temp_parameter,
+      conditional        = condition_event[["conditional"]],
+      conditional_rule   = conditional_rule,
+      condition_key      = condition_event[["condition_key"]],
+      allow_unlabeled    = length(parameters) == 1L
+    )
+
+  }
+
+  attr(out, "prior_list")       <- priors
+  out <- .condition_event_set_attributes(out, condition_event)
+  if(length(posterior_density_sources) > 0L){
+    out <- .bt_meta_set(out, "posterior_density", posterior_density_sources[[1]])
+    if(length(posterior_density_sources) > 1L){
+      out <- .bt_meta_set(out, "posterior_densities", posterior_density_sources[-1])
+    }
+  }
+  if(length(posterior_ordinate_sources) > 0L){
+    out <- .bt_meta_set(out, "posterior_ordinate", posterior_ordinate_sources[[1]])
+    if(length(posterior_ordinate_sources) > 1L){
+      out <- .bt_meta_set(out, "posterior_ordinates", posterior_ordinate_sources[-1])
+    }
+  }
+
+  # propagate formula_scale attribute for transform_scaled support
+  if(!is.null(formula_scale)){
+    out <- .bt_meta_set(out, "formula_scale", formula_scale)
+  }
+
+  # generate and store transformed prior densities if requested
+  if(transform_scaled && !is.null(formula_scale) && length(formula_scale) > 0){
+    # The stored densities describe the unscaled monitored coefficients, which
+    # are raw JAGS nodes: a formula prior's 'multiply_by' scales only the linear
+    # predictor. The stored context keeps it for linear-predictor targets.
+    prior_densities <- .generate_transformed_prior_densities(
+      prior_list       = .marginal_posterior_strip_multiply_by(prior_density_priors),
+      column_names     = colnames(model_samples),
+      n_grid           = n_prior_samples,
+      formula_scale    = formula_scale,
+      conditional      = condition_event[["conditional"]],
+      conditional_rule = conditional_rule,
+      condition_event  = condition_event,
+      parameters       = parameters,
+      memo             = .bt_prior_density_memo(model)
+    )
+    out <- .bt_meta_set(out, "prior_densities", prior_densities)
+    out <- .bt_meta_set(out, "prior_context", .prior_density_build_context(
+      prior_list       = prior_density_priors,
+      column_names     = colnames(model_samples),
+      formula_scale    = formula_scale,
+      n_grid           = n_prior_samples,
+      conditional      = condition_event[["conditional"]],
+      conditional_rule = conditional_rule,
+      condition_event  = condition_event
+    ))
+    out <- .bt_meta_set(out, "transform_scaled", TRUE)
+  }else{
+    out <- .bt_meta_set(out, "prior_context", .prior_density_build_context(
+      prior_list       = prior_density_priors,
+      column_names     = colnames(model_samples),
+      n_grid           = n_prior_samples,
+      conditional      = condition_event[["conditional"]],
+      conditional_rule = conditional_rule,
+      condition_event  = condition_event
+    ))
+  }
+  if(length(condition_event[["conditional"]]) > 0L ||
+     (transform_scaled && !is.null(formula_scale) && length(formula_scale) > 0L)){
+    prior_density_context <- .bt_meta_get(out, "prior_context")
+    for(parameter in names(out)){
+      out[[parameter]] <- .posterior_support_set_from_prior_context(
+        out[[parameter]],
+        prior_density_context
+      )
+    }
+  }
+
+  out <- .bt_formula_state_attach(out, formula_state)
+  class(out) <- c(class(out), "as_mixed_posteriors", "mixed_posteriors")
+  if(transform_scaled && !is.null(formula_scale) && length(formula_scale) > 0){
+    out <- .posterior_atoms_unscale_mixed(
+      out, model, original_model_samples, priors, formula_scale,
+      conditional, conditional_rule, n_grid = n_prior_samples
+    )
+  }
+  return(out)
+}
+
+.as_mixed_posteriors.simple         <- function(model_samples, prior, parameter){
+
+  # check input
+  check_char(parameter, "parameter", check_length = FALSE)
+
+  # gather information about the prior distribution
+  prior_info <- list(
+    "interaction"       = .is_prior_interaction(prior),
+    "interaction_terms" = attr(prior, "interaction_terms")
+  )
+
+  # prepare output objects
+  samples <- model_samples[, parameter]
+
+  # format the output
+  samples <- unname(samples)
+  attr(samples, "parameter")  <- parameter
+  attr(samples, "prior_list") <- prior
+  attr(samples, "interaction")       <- if(length(prior_info) == 0) FALSE else prior_info[["interaction"]]
+  attr(samples, "interaction_terms") <- prior_info[["interaction_terms"]]
+  samples <- .posterior_support_set_from_prior_list(samples, prior)
+  samples <- .posterior_atoms_set(
+    samples,
+    .posterior_atoms_from_priors(
+      prior,
+      1,
+      n_columns = 1L,
+      column_names = parameter,
+      source = "single_model_structure"
+    )
+  )
+  class(samples) <- c("mixed_posteriors", "mixed_posteriors.simple")
+
+  return(samples)
+}
+.as_mixed_posteriors.vector         <- function(model_samples, prior, parameter,
+                                                column_names = NULL){
+
+  # check input
+  check_char(parameter, "parameter", check_length = FALSE)
+
+  # gather information about the prior distribution
+  K <- prior$parameters[["K"]]
+  if(length(K) != 1)
+    stop("all vector prior must be of the same length")
+
+  # prepare output objects
+  if(K == 1){
+    samples <- model_samples[, parameter, drop = FALSE]
+  }else{
+    samples <- model_samples[, paste0(parameter,"[",1:K,"]"), drop = FALSE]
+  }
+
+  rownames(samples) <- NULL
+  colnames(samples) <- if(is.null(column_names)){
+    paste0(parameter,"[",1:K,"]")
+  }else{
+    column_names
+  }
+  attr(samples, "parameter")  <- parameter
+  attr(samples, "prior_list") <- prior
+  samples <- .posterior_support_set_columns_from_prior_list(samples, prior)
+  samples <- .posterior_atoms_set(
+    samples,
+    .posterior_atoms_from_priors(
+      prior,
+      1,
+      n_columns = K,
+      column_names = colnames(samples),
+      source = "single_model_structure"
+    )
+  )
+  class(samples) <- c("mixed_posteriors", "mixed_posteriors.vector")
+
+  return(samples)
+}
+.as_mixed_posteriors.factor         <- function(model_samples, prior, parameter){
+
+  # check input
+  check_char(parameter, "parameter", check_length = FALSE)
+  prior <- .complete_factor_metadata(prior, parameter)
+
+  # gather information about the prior distribution
+  prior_info <- list(
+    "levels"            = .get_prior_factor_levels(prior),
+    "level_names"       = .get_prior_factor_level_names(prior),
+    "interaction"       = .is_prior_interaction(prior),
+    "interaction_terms" = attr(prior, "interaction_terms"),
+    "term_components"   = attr(prior, "term_components"),
+    "factor_terms"      = attr(prior, "factor_terms"),
+    "factor_contrasts"  = attr(prior, "factor_contrasts"),
+    "factor_design"     = attr(prior, "factor_design"),
+    "factor_cell_names" = attr(prior, "factor_cell_names"),
+    "treatment"         = is.prior.treatment(prior),
+    "independent"       = is.prior.independent(prior),
+    "orthonormal"       = is.prior.orthonormal(prior),
+    "meandif"           = is.prior.meandif(prior),
+    "ordered"           = is.prior.ordered(prior)
+  )
+
+
+  if(prior_info[["ordered"]]){
+
+    coefficient_names <- .JAGS_prior_factor_names(parameter, prior)
+    samples <- model_samples[, coefficient_names, drop = FALSE]
+    ordered_total_component <- NULL
+    if(is.prior.mixture(prior$total)){
+      indicator_name <- paste0(
+        .prior_ordered_total_name(parameter),
+        "_indicator"
+      )
+      if(!indicator_name %in% colnames(model_samples)){
+        .bt_stop_refit_required(
+          "The fitted samples for ordered factor '", parameter,
+          "' do not contain the required total-prior indicator '",
+          indicator_name, "'. Refit the model with this package version."
+        )
+      }
+      ordered_total_component <- .bt_component_from_indicator(
+        prior$total,
+        model_samples[, indicator_name]
+      )
+    }
+
+    rownames(samples) <- NULL
+    # The first ordered coordinate is a level cell; later ones are increments,
+    # contrast coefficients `{j}`, never bracketed positions.
+    colnames(samples) <- .bt_label_prior_column_names(parameter, prior)
+    attr(samples, "parameter")  <- parameter
+    attr(samples, "prior_list") <- prior
+    if(!is.null(ordered_total_component)){
+      samples <- .bt_meta_set(samples, "ordered_total_component", ordered_total_component)
+    }
+    class(samples) <- c("mixed_posteriors", "mixed_posteriors.factor", "mixed_posteriors.vector")
+
+  }else if(prior_info[["treatment"]]){
+
+    if(prior_info[["levels"]] == 1){
+
+      samples <- .as_mixed_posteriors.simple(model_samples, prior, parameter)
+      samples <- matrix(samples, ncol = 1)
+
+    }else{
+
+      samples <- lapply(1:prior_info[["levels"]], function(i) .as_mixed_posteriors.simple(model_samples, prior, paste0(parameter, "[", i, "]")))
+      samples <- do.call(cbind, samples)
+
+    }
+
+    rownames(samples) <- NULL
+    # Level cells from the term's design (a full-rank interaction such as
+    # `~ g + g:x` includes the first level); cumulative increments of an
+    # interaction with an ordered factor are contrast coefficients `{j}`.
+    colnames(samples) <- .bt_label_prior_column_names(parameter, prior)
+    attr(samples, "parameter")  <- parameter
+    attr(samples, "prior_list") <- prior
+    class(samples) <- c("mixed_posteriors", "mixed_posteriors.factor", "mixed_posteriors.vector")
+
+  }else if(prior_info[["independent"]]){
+
+    if(prior_info[["levels"]] == 1){
+
+      samples <- .as_mixed_posteriors.simple(model_samples, prior, parameter)
+      samples <- matrix(samples, ncol = 1)
+
+    }else{
+
+      samples <- lapply(1:prior_info[["levels"]], function(i) .as_mixed_posteriors.simple(model_samples, prior, paste0(parameter, "[", i, "]")))
+      samples <- do.call(cbind, samples)
+
+    }
+
+    rownames(samples) <- NULL
+    colnames(samples) <- .bt_label_prior_column_names(parameter, prior)
+    attr(samples, "parameter")  <- parameter
+    attr(samples, "prior_list") <- prior
+    class(samples) <- c("mixed_posteriors", "mixed_posteriors.factor", "mixed_posteriors.vector")
+
+  }else if(prior_info[["orthonormal"]] | prior_info[["meandif"]]){
+
+    prior$parameters[["K"]] <- prior_info[["levels"]]
+    samples <- .as_mixed_posteriors.vector(
+      model_samples,
+      prior,
+      parameter,
+      column_names = .bt_label_prior_column_names(parameter, prior)
+    )
+    class(samples) <- c(class(samples), "mixed_posteriors.factor")
+
+  }
+
+  attr(samples, "levels")            <- prior_info[["levels"]]
+  attr(samples, "level_names")       <- prior_info[["level_names"]]
+  attr(samples, "interaction")       <- if(length(prior_info) == 0) FALSE else prior_info[["interaction"]]
+  attr(samples, "interaction_terms") <- prior_info[["interaction_terms"]]
+  attr(samples, "term_components")   <- prior_info[["term_components"]]
+  attr(samples, "factor_terms")      <- prior_info[["factor_terms"]]
+  attr(samples, "factor_contrasts")  <- prior_info[["factor_contrasts"]]
+  attr(samples, "factor_design")     <- prior_info[["factor_design"]]
+  attr(samples, "factor_cell_names") <- prior_info[["factor_cell_names"]]
+  attr(samples, "treatment")         <- prior_info[["treatment"]]
+  attr(samples, "independent")       <- prior_info[["independent"]]
+  attr(samples, "orthonormal")       <- prior_info[["orthonormal"]]
+  attr(samples, "meandif")           <- prior_info[["meandif"]]
+  attr(samples, "ordered")           <- prior_info[["ordered"]]
+  attr(samples, "ordered_metadata")  <- attr(prior, "ordered_metadata")
+
+  if(isTRUE(prior_info[["treatment"]]) || isTRUE(prior_info[["independent"]])){
+    factor_support <- .posterior_support_from_prior_list(prior)
+    if(!is.null(factor_support) && !is.null(colnames(samples))){
+      samples <- .bt_meta_set(samples, "support", stats::setNames(
+        rep(list(factor_support), ncol(samples)),
+        colnames(samples)
+      ))
+    }
+  }
+
+  ordered_atoms <- .posterior_atoms_from_ordered_total(
+    prior,
+    n_columns = ncol(samples),
+    column_names = colnames(samples),
+    component = if(prior_info[["ordered"]]){
+      .bt_meta_get(samples, "ordered_total_component")
+    }else{
+      NULL
+    },
+    source = "ordered_total_posterior_indicator"
+  )
+  samples <- .posterior_atoms_set(
+    samples,
+    if(is.null(ordered_atoms)){
+      .posterior_atoms_from_priors(
+        prior,
+        1,
+        n_columns = ncol(samples),
+        column_names = colnames(samples),
+        source = "single_model_structure"
+      )
+    }else{
+      ordered_atoms
+    }
+  )
+
+  return(samples)
+}
+.as_mixed_posteriors.weightfunction <- function(model_samples, prior, parameter){
+
+  # check input
+  check_char(parameter, "parameter", check_length = FALSE)
+
+
+  # obtain mapping for the weight coefficients
+  omega_info    <- .weightfunction_mapping_info(list(prior))
+  omega_names   <- omega_info$names
+  omega_par     <- omega_info$pars
+
+  # prepare output objects
+  samples <- model_samples[, omega_par, drop = FALSE]
+
+  rownames(samples) <- NULL
+  colnames(samples) <- omega_names
+  samples <- .bt_meta_set(samples, "quantities", .bt_verbatim_quantities(
+    omega_names,
+    omega_par
+  ))
+  attr(samples, "parameter")  <- parameter
+  attr(samples, "prior_list") <- prior
+  samples <- .weightfunction_set_omega_context(samples, omega_info)
+  samples <- .posterior_support_set_weightfunction_columns(samples, prior, omega_info)
+  samples <- .posterior_atoms_set(
+    samples,
+    .posterior_atoms_from_priors(
+      prior,
+      1,
+      n_columns = ncol(samples),
+      column_names = colnames(samples),
+      source = "single_model_structure",
+      null_location = 1,
+      point_locations = .model_probability_weightfunction_points(list(prior),
+        omega_info$mapping, ncol(samples))
+    )
+  )
+  samples <- .posterior_weightfunction_declarations(samples, prior, 1, "single_model_structure")
+  class(samples) <- c("mixed_posteriors", "mixed_posteriors.weightfunction")
+
+  return(samples)
+}
+.as_mixed_posteriors.phacking      <- function(model_samples, prior, parameter){
+
+  # check input
+  check_char(parameter, "parameter", check_length = FALSE)
+
+  par_names <- intersect(.phacking_report_parameter(prior), colnames(model_samples))
+  samples   <- model_samples[, par_names, drop = FALSE]
+
+  rownames(samples) <- NULL
+  samples <- .bt_meta_set(samples, "quantities", .bt_verbatim_quantities(
+    par_names,
+    par_names
+  ))
+  attr(samples, "parameter")  <- parameter
+  attr(samples, "prior_list") <- prior
+  class(samples) <- c("mixed_posteriors", "mixed_posteriors.phacking")
+
+  return(samples)
+}
+.as_mixed_posteriors.bias          <- function(model_samples, prior, parameter, conditional){
+
+  # check input
+  check_char(parameter, "parameter", check_length = FALSE)
+
+  branch_info   <- .selection_prior_branch_info(prior)
+  has_selection <- vapply(branch_info, function(x) !is.null(x$selection), logical(1))
+  has_phacking  <- vapply(branch_info, function(x) !is.null(x$phacking),  logical(1))
+
+  out_names <- NULL
+  par_names <- NULL
+
+  if(any(has_selection)){
+    selection_priors <- lapply(branch_info[has_selection], function(x) x$selection)
+    omega_info       <- .weightfunction_mapping_info(selection_priors, one_sided = TRUE)
+    omega_names      <- omega_info$names
+    omega_par        <- omega_info$pars
+  }
+  if(any(has_phacking)){
+    phacking_priors <- lapply(branch_info[has_phacking], function(x) x$phacking)
+    phacking_par    <- .selection_phacking_report_parameters(phacking_priors)
+    phacking_names  <- phacking_par
+  }
+
+  if(length(conditional) > 0 && any(c("omega", "phacking", "alpha", "pi_null") %in% conditional)){
+    if("omega" %in% conditional && any(has_selection)){
+      out_names <- c(out_names, omega_names)
+      par_names <- c(par_names, omega_par)
+    }
+    if("phacking" %in% conditional && any(has_phacking)){
+      out_names <- c(out_names, phacking_names)
+      par_names <- c(par_names, phacking_par)
+    }
+    if("alpha" %in% conditional && any(has_phacking)){
+      out_names <- c(out_names, "alpha")
+      par_names <- c(par_names, "alpha")
+    }
+    if("pi_null" %in% conditional && any(has_phacking)){
+      out_names <- c(out_names, "pi_null")
+      par_names <- c(par_names, "pi_null")
+    }
+  }else{
+    if(any(has_selection)){
+      out_names <- c(out_names, omega_names)
+      par_names <- c(par_names, omega_par)
+    }
+    if(any(has_phacking)){
+      out_names <- c(out_names, phacking_names)
+      par_names <- c(par_names, phacking_par)
+    }
+  }
+
+  if(is.null(par_names)){
+    par_names <- character()
+    out_names <- character()
+  }
+  keep_unique <- !duplicated(par_names)
+  par_names <- par_names[keep_unique]
+  out_names <- out_names[keep_unique]
+  keep_par <- par_names %in% colnames(model_samples)
+  par_names <- par_names[keep_par]
+  out_names <- out_names[keep_par]
+  samples   <- model_samples[, par_names, drop = FALSE]
+
+  rownames(samples) <- NULL
+  colnames(samples) <- out_names
+  samples <- .bt_meta_set(samples, "quantities", .bt_verbatim_quantities(
+    out_names,
+    par_names
+  ))
+  attr(samples, "parameter")  <- parameter
+  attr(samples, "prior_list") <- prior
+  if(any(has_selection)){
+    samples <- .weightfunction_set_omega_context(samples, omega_info)
+    samples <- .posterior_weightfunction_declarations(samples, prior, 1, "single_model_structure")
+  }
+  class(samples) <- c("mixed_posteriors", "mixed_posteriors.bias")
+
+  return(samples)
+}
+.as_mixed_posteriors.spike_and_slab <- function(model_samples, prior, parameter){
+
+  # check input
+  check_char(parameter, "parameter", check_length = FALSE)
+
+  prior_variable <- .get_spike_and_slab_variable(prior)
+  # the variable part is named after the formula parameter of the prior
+  if(is.null(attr(prior_variable, "parameter", exact = TRUE))){
+    attr(prior_variable, "parameter") <- attr(prior, "parameter", exact = TRUE)
+  }
+
+  # prepare output objects
+  if(is.prior.factor(prior_variable)){
+
+    samples <- .as_mixed_posteriors.factor(model_samples, prior_variable, parameter)
+
+  }else if(is.prior.simple(prior_variable)){
+
+    samples <- .as_mixed_posteriors.simple(model_samples, prior_variable, parameter)
+
+  }
+  samples <- .bt_draws_set_component(
+    samples,
+    .bt_component_from_indicator(prior, model_samples[, paste0(parameter, "_indicator")]),
+    "spike_and_slab"
+  )
+
+  class(samples) <- c("mixed_posteriors.spike_and_slab", class(samples))
+  attr(samples, "prior_list") <- prior
+  if(!is.null(dim(samples))){
+    samples <- .posterior_support_set_columns_from_prior_list(samples, prior)
+  }else{
+    samples <- .posterior_support_set_from_prior_list(samples, prior)
+  }
+  samples <- .posterior_atoms_set(
+    samples,
+    .posterior_atoms_from_components(
+      prior        = prior,
+      component    = .bt_meta_get(samples, "component"),
+      n_columns    = if(is.null(dim(samples))) 1L else ncol(samples),
+      column_names = if(is.null(dim(samples))) parameter else colnames(samples)
+    )
+  )
+
+  return(samples)
+}
+.as_mixed_posteriors.mixture        <- function(model_samples, prior, parameter, conditional,
+                                                conditional_rule = "AND"){
+
+  # check input
+  check_char(parameter, "parameter", check_length = FALSE)
+
+
+  # prepare output objects
+  if(inherits(prior, "prior.bias_mixture")){
+
+    is_PET            <- sapply(prior, is.prior.PET)
+    is_PEESE          <- sapply(prior, is.prior.PEESE)
+    branch_info       <- .selection_prior_branch_info(prior)
+    has_selection     <- vapply(branch_info, function(x) !is.null(x$selection), logical(1))
+    has_phacking      <- vapply(branch_info, function(x) !is.null(x$phacking), logical(1))
+
+    # prepare weightfunction parameter names
+    if(any(has_selection)){
+      selection_priors <- lapply(branch_info[has_selection], function(x) x$selection)
+      omega_info    <- .weightfunction_mapping_info(selection_priors, one_sided = TRUE)
+      omega_names   <- omega_info$names
+      omega_par     <- omega_info$pars
+    }
+    if(any(has_phacking)){
+      phacking_priors <- lapply(branch_info[has_phacking], function(x) x$phacking)
+      phacking_par    <- .selection_phacking_report_parameters(phacking_priors)
+      phacking_names  <- phacking_par
+    }
+
+    # deal with conditional parameters
+    if(length(conditional) > 0 && any(c("PET", "PEESE", "PETPEESE", "omega", "phacking", "alpha", "pi_null") %in% conditional)){
+
+      out_names <- NULL
+      par_names <- NULL
+
+      if("omega" %in% conditional && any(has_selection)){
+        out_names <- c(out_names, omega_names)
+        par_names <- c(par_names, omega_par)
+      }
+      if("phacking" %in% conditional && any(has_phacking)){
+        out_names <- c(out_names, phacking_names)
+        par_names <- c(par_names, phacking_par)
+      }
+      if("alpha" %in% conditional && any(has_phacking)){
+        out_names <- c(out_names, "alpha")
+        par_names <- c(par_names, "alpha")
+      }
+      if("pi_null" %in% conditional && any(has_phacking)){
+        out_names <- c(out_names, "pi_null")
+        par_names <- c(par_names, "pi_null")
+      }
+      if("PETPEESE" %in% conditional){
+        # subset in case only PET/PEESE is supplied
+        out_names <- c(out_names, colnames(model_samples)[colnames(model_samples) %in% c("PET", "PEESE")])
+        par_names <- c(par_names, colnames(model_samples)[colnames(model_samples) %in% c("PET", "PEESE")])
+      }
+      if("PET" %in% conditional && any(is_PET)){
+        out_names <- c(out_names, "PET")
+        par_names <- c(par_names, "PET")
+      }
+      if("PEESE" %in% conditional && any(is_PEESE)){
+        out_names <- c(out_names, "PEESE")
+        par_names <- c(par_names, "PEESE")
+      }
+
+      if(identical(conditional_rule, "OR") && length(conditional) > 1L){
+        # an OR event also contains draws of branches outside the labels:
+        # keep the columns of every branch present in the conditioned draws
+        present <- unique(as.integer(model_samples[, paste0(parameter, "_indicator")]))
+        present <- seq_along(prior) %in% present
+        if(any(present & has_selection)){
+          out_names <- c(out_names, omega_names)
+          par_names <- c(par_names, omega_par)
+        }
+        if(any(present & has_phacking)){
+          out_names <- c(out_names, phacking_names)
+          par_names <- c(par_names, phacking_par)
+        }
+        if(any(present & is_PET)){
+          out_names <- c(out_names, "PET")
+          par_names <- c(par_names, "PET")
+        }
+        if(any(present & is_PEESE)){
+          out_names <- c(out_names, "PEESE")
+          par_names <- c(par_names, "PEESE")
+        }
+      }
+
+    }else{
+
+      out_names <- NULL
+      par_names <- NULL
+
+      if(any(has_selection)){
+        out_names <- c(out_names, omega_names)
+        par_names <- c(par_names, omega_par)
+      }
+      if(any(has_phacking)){
+        out_names <- c(out_names, phacking_names)
+        par_names <- c(par_names, phacking_par)
+      }
+      if(any(is_PET)){
+        out_names <- c(out_names, "PET")
+        par_names <- c(par_names, "PET")
+      }
+      if(any(is_PEESE)){
+        out_names <- c(out_names, "PEESE")
+        par_names <- c(par_names, "PEESE")
+      }
+    }
+
+    # select samples
+    if(is.null(par_names)){
+      par_names <- character()
+      out_names <- character()
+    }
+    keep_unique <- !duplicated(par_names)
+    par_names <- par_names[keep_unique]
+    out_names <- out_names[keep_unique]
+    keep_par <- par_names %in% colnames(model_samples)
+    par_names <- par_names[keep_par]
+    out_names <- out_names[keep_par]
+    samples   <- model_samples[, par_names,drop=FALSE]
+    indicator <- model_samples[,paste0(parameter, "_indicator")]
+
+    rownames(samples) <- NULL
+    colnames(samples) <- out_names
+    samples <- .bt_meta_set(samples, "quantities", .bt_verbatim_quantities(
+      out_names,
+      par_names
+    ))
+    samples <- .bt_draws_set_component(
+      samples,
+      .bt_component_from_indicator(prior, indicator),
+      "mixture"
+    )
+    attr(samples, "parameter")  <- parameter
+    attr(samples, "prior_list") <- prior
+    if(any(has_selection)){
+      samples <- .weightfunction_set_omega_context(samples, omega_info)
+    }
+    class(samples) <- c("mixed_posteriors", "mixed_posteriors.bias")
+
+  }else{
+
+    if(inherits(prior, "prior.simple_mixture")){
+      samples <- .as_mixed_posteriors.simple(model_samples, prior, parameter)
+    }else if(inherits(prior, "prior.factor_mixture")){
+      samples <- .as_mixed_posteriors.factor(model_samples, prior, parameter)
+    }
+    samples <- .bt_draws_set_component(
+      samples,
+      .bt_component_from_indicator(prior, model_samples[, paste0(parameter, "_indicator")]),
+      "mixture"
+    )
+
+  }
+
+  class(samples) <- c("mixed_posteriors.mixture", class(samples))
+  attr(samples, "prior_list") <- prior
+  samples <- .posterior_atoms_set(
+    samples,
+    .posterior_atoms_from_components(
+      prior        = prior,
+      component    = .bt_meta_get(samples, "component"),
+      n_columns    = if(is.null(dim(samples))) 1L else ncol(samples),
+      column_names = if(is.null(dim(samples))) parameter else colnames(samples)
+    )
+  )
+
+  if(inherits(prior, "prior.bias_mixture") && any(has_selection)){
+    atoms <- .posterior_atoms_get(samples, allow_partial = TRUE)
+    samples <- .posterior_weightfunction_declarations(samples, prior,
+      atoms$component_probabilities, atoms$source)
+  }
+
+  return(samples)
+}

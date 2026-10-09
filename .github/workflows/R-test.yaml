@@ -58,15 +58,15 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-jags-
 
-      # Cache JAGS installation (macOS)  
-      - name: Cache JAGS (macOS)
+      # Cache the JAGS 4.3.2 installer (macOS). BayesTools requires JAGS 4.x;
+      # Homebrew's jags formula installs JAGS 5, so the official universal
+      # package is used instead.
+      - name: Cache JAGS installer (macOS)
         if: runner.os == 'macOS'
         uses: actions/cache@v5
         with:
-          path: /opt/homebrew
-          key: ${{ runner.os }}-jags-${{ hashFiles('.github/workflows/R-test.yaml') }}
-          restore-keys: |
-            ${{ runner.os }}-jags-
+          path: ~/jags-installer
+          key: ${{ runner.os }}-jags-pkg-4.3.2
 
       - name: Install System Dependencies (Linux)
         if: runner.os == 'Linux'
@@ -99,24 +99,33 @@ jobs:
           echo JAGS_MAJOR_VERSION=4>> %GITHUB_ENV%
           echo PATH=C:\Program Files\JAGS\JAGS-4.3.1\bin;%PATH%>> %GITHUB_ENV%
 
+      # Install JAGS 4.3.2 on macOS from the official universal package, which
+      # installs into /usr/local (library, JAGS headers, jags.pc, jags binary)
       - name: Install JAGS (macOS)
         if: runner.os == 'macOS'
         run: |
-          if ! command -v jags &> /dev/null; then
-            echo "JAGS not found in cache, installing via brew..."
-            brew update
-            brew install jags
-          else
-            echo "JAGS found in cache, skipping installation"
+          # Remove a Homebrew jags first: on Intel runners Homebrew also links
+          # into /usr/local, where the package installs JAGS 4.3.2.
+          if brew list --formula jags > /dev/null 2>&1; then
+            brew uninstall --ignore-dependencies jags
           fi
+          mkdir -p ~/jags-installer
+          if [ ! -f ~/jags-installer/JAGS-4.3.2.pkg ]; then
+            echo "JAGS installer not found in cache, downloading..."
+            curl --retry 3 --fail -L -o ~/jags-installer/JAGS-4.3.2.pkg \
+              https://sourceforge.net/projects/mcmc-jags/files/JAGS/4.x/Mac%20OS%20X/JAGS-4.3.2.pkg/download
+          fi
+          sudo installer -pkg ~/jags-installer/JAGS-4.3.2.pkg -target /
 
+      # Point pkg-config at the JAGS 4.3.2 installation; configure rejects any
+      # JAGS major version other than 4 with a clear message
       - name: Set Environment Variables (macOS)
         if: runner.os == 'macOS'
         run: |
-          JAGS_BIN=$(brew --prefix jags)/bin
-          echo "JAGS_ROOT=$(brew --prefix jags)" >> $GITHUB_ENV
-          echo "PATH=$JAGS_BIN:$PATH" >> $GITHUB_ENV
-          echo "PKG_CONFIG_PATH=$(brew --prefix jags)/lib/pkgconfig" >> $GITHUB_ENV
+          echo "PKG_CONFIG_PATH=/usr/local/lib/pkgconfig" >> $GITHUB_ENV
+          if command -v pkg-config > /dev/null 2>&1; then
+            echo "pkg-config reports JAGS $(PKG_CONFIG_PATH=/usr/local/lib/pkgconfig pkg-config --modversion jags)"
+          fi
 
       - name: Select Test Profile
         shell: pwsh
@@ -131,9 +140,12 @@ jobs:
         run: |
           options(repos = c(CRAN = "https://cloud.r-project.org"))
           
-          # Check if packages are already installed before installing
+          # Check installation without loading namespaces: loading RoBMA would
+          # load a cached BayesTools DLL that the installation step cannot
+          # replace on Windows while this process holds it.
           required_packages <- c('devtools', 'testthat', 'vdiffr', 'lme4', 'BayesFactor', 'RoBMA', 'runjags', 'rjags', 'rstan')
-          missing_packages <- required_packages[!sapply(required_packages, requireNamespace, quietly = TRUE)]
+          is_installed <- nzchar(vapply(required_packages, function(package) system.file(package = package), character(1)))
+          missing_packages <- required_packages[!is_installed]
           
           if (length(missing_packages) > 0) {
             cat("Installing missing packages:", paste(missing_packages, collapse = ", "), "\n")
@@ -141,7 +153,12 @@ jobs:
           } else {
             cat("All required packages are already installed\n")
           }
-          
+        shell: Rscript {0}
+
+      # Install BayesTools in a fresh process that has not loaded any package
+      - name: Install BayesTools
+        run: |
+          options(repos = c(CRAN = "https://cloud.r-project.org"))
           devtools::install()
         shell: Rscript {0}
 

@@ -83,6 +83,28 @@ test_that("Inverse-gamma prior distribution works", {
 
 })
 
+test_that("Moment prior distribution works", {
+
+  vdiffr::expect_doppelganger("prior-moment-1", function(){
+    test_nonlocal_prior(prior("moment", list(mode = .5, location = .25)))
+  })
+  vdiffr::expect_doppelganger("prior-moment-2", function(){
+    test_nonlocal_prior(prior("moment", list(mode = .5, location = .25), list(.25, Inf)))
+  })
+
+})
+
+test_that("Inverse-moment prior distribution works", {
+
+  vdiffr::expect_doppelganger("prior-invmoment-1", function(){
+    test_nonlocal_prior(prior("invmoment", list(mode = .5, df = 6, location = .25)))
+  })
+  vdiffr::expect_doppelganger("prior-invmoment-2", function(){
+    test_nonlocal_prior(prior("invmoment", list(mode = .5, df = 6, location = .25), list(.25, Inf)))
+  })
+
+})
+
 test_that("Exponential prior distribution works", {
 
   vdiffr::expect_doppelganger("prior-exp-1", function()test_prior(prior("exp", list(1.5))))
@@ -281,9 +303,7 @@ test_that("Prior mixture distributions work", {
     is_null = c(T, F, F)
   )
 
-  for(i in seq_along(p4)){
-    p4[[i]]$parameters[["K"]] <- 3
-  }
+  p4 <- prior_factor_levels(p4, 4)
 
 
   vdiffr::expect_doppelganger("prior-mixture-4", function()hist(rng(p4, 10000, transform_factor_samples = FALSE), main = print(p4, plot = T), breaks = 50, freq = FALSE))
@@ -300,7 +320,7 @@ test_that("Prior mixture distributions work", {
   p6 <- prior_mixture(
     list(
       prior_none(),
-      prior("spike", list(1)),
+      prior("spike", list(0)),
       prior_factor("mnormal", list(0, 1),  contrast = "orthonormal")
     ), components = c("a", "b", "c")
   )
@@ -311,12 +331,8 @@ test_that("Prior mixture distributions work", {
       prior_factor("beta", list(3, 1),  contrast = "treatment")
     )
   )
-  for(i in seq_along(p6)){
-    p6[[i]]$parameters[["K"]] <- 2
-  }
-  for(i in seq_along(p7)){
-    p7[[i]]$parameters[["K"]] <- 2
-  }
+  p6 <- prior_factor_levels(p6, 3)
+  p7 <- prior_factor_levels(p7, 3)
 
   vdiffr::expect_doppelganger("prior-mixture-6", function()hist(rng(p5, 10000, transform_factor_samples = FALSE), main = print(p5, plot = T), breaks = 50, freq = FALSE))
   vdiffr::expect_doppelganger("prior-mixture-7", function()hist(rng(p6, 10000, transform_factor_samples = FALSE), main = print(p6, plot = T), breaks = 50, freq = FALSE))

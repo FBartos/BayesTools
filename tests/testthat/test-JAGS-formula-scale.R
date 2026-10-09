@@ -44,7 +44,9 @@ test_that("JAGS_formula accepts and validates formula_scale parameter", {
     formula_scale = NULL
   )
 
-  expect_false("formula_scale" %in% names(result))
+  expect_true("formula_scale" %in% names(result))
+  expect_length(result$formula_scale, 0L)
+  expect_identical(attr(result$formula_scale, "unscale_design")$owner_scope, "compiler")
   expect_equal(unname(result$data$mu_data_x_cont), as.numeric(df$x_cont))
 
   # Test 2: formula_scale with standardization
@@ -77,7 +79,8 @@ test_that("JAGS_formula accepts and validates formula_scale parameter", {
     formula_scale = list(x_cont = FALSE)
   )
 
-  expect_false("formula_scale" %in% names(result_not_scaled))
+  expect_true("formula_scale" %in% names(result_not_scaled))
+  expect_length(result_not_scaled$formula_scale, 0L)
   expect_equal(unname(result_not_scaled$data$mu_data_x_cont), as.numeric(df$x_cont))
 
 })
@@ -195,16 +198,14 @@ test_that("transform_scale_samples transforms coefficients correctly", {
   )
   colnames(posterior) <- c("mu_intercept", "mu_x_cont", "mu_x_fac")
 
-  # Scale information (x_cont was standardized with mean=5, sd=2)
-  # Use nested structure keyed by parameter name
+  # Scale information (x_cont was standardized with mean=5, sd=2), with the
+  # fitted design of ~ x_cont + x_fac
   formula_scale <- list(
-    mu = list(
-      mu_x_cont = list(mean = 5, sd = 2)
-    )
+    mu = formula_scale_for_test(~ x_cont + x_fac, list(x_cont = list(mean = 5, sd = 2)))
   )
 
   # Transform back to original scale
-  posterior_original <- transform_scale_samples(posterior, formula_scale)
+  posterior_original <- BayesTools:::.bt_transform_scale_posterior(posterior, formula_scale)
 
   # Check that x_cont coefficient is rescaled (divided by sd)
   expect_equal(posterior_original[, "mu_x_cont"], posterior[, "mu_x_cont"] / 2)
@@ -238,16 +239,16 @@ test_that("transform_scale_samples handles interaction terms correctly", {
   )
   colnames(posterior) <- c("mu_intercept", "mu_x1", "mu_x2", "mu_x1__xXx__x2")
 
-  # Scale information - use nested structure keyed by parameter name
+  # Scale information with the fitted design of ~ x1 * x2
   formula_scale <- list(
-    mu = list(
-      mu_x1 = list(mean = 5, sd = 2),
-      mu_x2 = list(mean = 10, sd = 4)
-    )
+    mu = formula_scale_for_test(~ x1 * x2, list(
+      x1 = list(mean = 5, sd = 2),
+      x2 = list(mean = 10, sd = 4)
+    ))
   )
 
   # Transform back to original scale
-  posterior_original <- transform_scale_samples(posterior, formula_scale)
+  posterior_original <- BayesTools:::.bt_transform_scale_posterior(posterior, formula_scale)
 
   # The interaction coefficient should be divided by (sd_x1 * sd_x2) = 2 * 4 = 8
   expect_equal(
@@ -275,6 +276,43 @@ test_that("transform_scale_samples handles interaction terms correctly", {
   expect_equal(posterior_original[, "mu_intercept"], expected_intercept, tolerance = 1e-10)
 })
 
+test_that("transform_scale_samples rejects incomplete centered interactions", {
+
+  posterior <- matrix(
+    c(1, 3),
+    nrow = 1,
+    dimnames = list(NULL, c("mu_intercept", "mu_x__xXx__z"))
+  )
+  # ~ x:z without its main effects: centering x and z induces x and z terms
+  formula_scale <- list(mu = formula_scale_for_test(~ x:z, list(
+    x = list(mean = 10, sd = 2),
+    z = list(mean = 20, sd = 5)
+  )))
+
+  error <- tryCatch(
+    BayesTools:::.bt_transform_scale_posterior(posterior, formula_scale),
+    error = identity
+  )
+  expect_s3_class(error, "BayesTools_formula_transform_unavailable")
+  expect_identical(error$reason, "original_scale_not_representable")
+
+  zero_centered_scale <- formula_scale
+  zero_centered_scale$mu$mu_x$mean <- 0
+  zero_centered_scale$mu$mu_z$mean <- 0
+  expect_equal(
+    BayesTools:::.bt_transform_scale_posterior(posterior, zero_centered_scale),
+    cbind(mu_intercept = 1, mu_x__xXx__z = 0.3)
+  )
+
+  # the interaction coefficient alone is no coefficient vector of a
+  # representable original-scale model either
+  interaction_only <- posterior[, "mu_x__xXx__z", drop = FALSE]
+  expect_error(
+    BayesTools:::.bt_transform_scale_posterior(interaction_only, formula_scale),
+    class = "BayesTools_formula_transform_unavailable"
+  )
+})
+
 test_that("transform_scale_samples handles indexed factor interactions", {
 
   posterior <- matrix(
@@ -298,13 +336,17 @@ test_that("transform_scale_samples handles indexed factor interactions", {
     "mu_alloc__xXx__year[2]"
   )
 
-  formula_scale <- list(
-    mu = list(
-      mu_year = list(mean = 10, sd = 2)
+  # the fitted design of ~ alloc * year with a treatment-coded three-level alloc
+  formula_scale <- list(mu = formula_scale_for_test(
+    ~ alloc * year,
+    list(year = list(mean = 10, sd = 2)),
+    data = data.frame(
+      alloc = factor(rep(c("a", "b", "c"), 4)),
+      year  = sin(seq_len(12))
     )
-  )
+  ))
 
-  posterior_original <- transform_scale_samples(posterior, formula_scale)
+  posterior_original <- BayesTools:::.bt_transform_scale_posterior(posterior, formula_scale)
 
   expect_equal(posterior_original[, "mu_year"], posterior[, "mu_year"] / 2, tolerance = 1e-10)
   expect_equal(
@@ -353,14 +395,19 @@ test_that("transform_scale_samples handles higher-order indexed factor interacti
     "mu_group__xXx__x1__xXx__x2[2]"
   )
 
-  formula_scale <- list(
-    mu = list(
-      mu_x1 = list(mean = 10, sd = 2),
-      mu_x2 = list(mean = 100, sd = 5)
+  # the fitted design of ~ group * x1 * x2 with a treatment-coded
+  # three-level group
+  formula_scale <- list(mu = formula_scale_for_test(
+    ~ group * x1 * x2,
+    list(x1 = list(mean = 10, sd = 2), x2 = list(mean = 100, sd = 5)),
+    data = data.frame(
+      group = factor(rep(c("a", "b", "c"), 8)),
+      x1    = sin(seq_len(24)),
+      x2    = cos(seq_len(24))
     )
-  )
+  ))
 
-  posterior_original <- transform_scale_samples(posterior, formula_scale)
+  posterior_original <- BayesTools:::.bt_transform_scale_posterior(posterior, formula_scale)
 
   expected <- cbind(
     mu_intercept = 881,
@@ -382,77 +429,95 @@ test_that("transform_scale_samples handles higher-order indexed factor interacti
 
 test_that("transform_scale_samples handles multi-factor indexed interactions", {
 
-  posterior <- matrix(
-    c(
-      1.0, 1.5,
-      0.4, 0.6,
-      2.0, 3.0,
-      4.0, 5.0,
-      0.8, 1.0,
-      1.2, 1.4
-    ),
-    nrow = 2,
-    byrow = FALSE
-  )
-  colnames(posterior) <- c(
-    "mu_intercept",
-    "mu_x1",
-    "mu_a__xXx__b[1]",
-    "mu_a__xXx__b[2]",
-    "mu_a__xXx__x1__xXx__b[1]",
-    "mu_a__xXx__x1__xXx__b[2]"
-  )
-
-  formula_scale <- list(
-    mu = list(
-      mu_x1 = list(mean = 10, sd = 2)
+  # the fitted design of ~ x1 * a * b (treatment-coded a with two and b with
+  # three levels): the interaction a:b and x1:a:b have two coordinates each
+  formula_scale <- list(mu = formula_scale_for_test(
+    ~ x1 * a * b,
+    list(x1 = list(mean = 10, sd = 2)),
+    data = data.frame(
+      x1 = sin(seq_len(24)),
+      a  = factor(rep(c("a1", "a2"), 12)),
+      b  = factor(rep(c("b1", "b2", "b3"), each = 8))
     )
+  ))
+  columns <- BayesTools:::.bt_formula_unscale_coefficient_names(
+    attr(formula_scale$mu, "unscale_design"), "mu"
+  )
+  expect_identical(columns, c(
+    "mu_intercept", "mu_x1", "mu_a", "mu_b[1]", "mu_b[2]",
+    "mu_x1__xXx__a", "mu_x1__xXx__b[1]", "mu_x1__xXx__b[2]",
+    "mu_a__xXx__b[1]", "mu_a__xXx__b[2]",
+    "mu_x1__xXx__a__xXx__b[1]", "mu_x1__xXx__a__xXx__b[2]"
+  ))
+  posterior <- matrix(
+    c(1.0, 0.4, 0.3, 0.2, -0.1, 0.5, 0.6, -0.2, 2.0, 4.0, 0.8, 1.2,
+      1.5, 0.6, 0.1, 0.3, -0.2, 0.4, 0.7, -0.3, 3.0, 5.0, 1.0, 1.4),
+    nrow = 2,
+    byrow = TRUE,
+    dimnames = list(NULL, columns)
   )
 
-  posterior_original <- transform_scale_samples(posterior, formula_scale)
+  posterior_original <- BayesTools:::.bt_transform_scale_posterior(posterior, formula_scale)
 
   expect_equal(posterior_original[, "mu_x1"], posterior[, "mu_x1"] / 2, tolerance = 1e-10)
-  expect_equal(
-    posterior_original[, "mu_a__xXx__x1__xXx__b[1]"],
-    posterior[, "mu_a__xXx__x1__xXx__b[1]"] / 2,
-    tolerance = 1e-10
-  )
-  expect_equal(
-    posterior_original[, "mu_a__xXx__x1__xXx__b[2]"],
-    posterior[, "mu_a__xXx__x1__xXx__b[2]"] / 2,
-    tolerance = 1e-10
-  )
-  expect_equal(
-    posterior_original[, "mu_a__xXx__b[1]"],
-    posterior[, "mu_a__xXx__b[1]"] - posterior_original[, "mu_a__xXx__x1__xXx__b[1]"] * 10,
-    tolerance = 1e-10
-  )
-  expect_equal(
-    posterior_original[, "mu_a__xXx__b[2]"],
-    posterior[, "mu_a__xXx__b[2]"] - posterior_original[, "mu_a__xXx__x1__xXx__b[2]"] * 10,
-    tolerance = 1e-10
-  )
+  for(k in 1:2){
+    three_way <- paste0("mu_x1__xXx__a__xXx__b[", k, "]")
+    two_way <- paste0("mu_a__xXx__b[", k, "]")
+    expect_equal(posterior_original[, three_way], posterior[, three_way] / 2, tolerance = 1e-10)
+    expect_equal(
+      posterior_original[, two_way],
+      posterior[, two_way] - posterior_original[, three_way] * 10,
+      tolerance = 1e-10
+    )
+  }
   expect_equal(
     posterior_original[, "mu_intercept"],
     posterior[, "mu_intercept"] - posterior_original[, "mu_x1"] * 10,
     tolerance = 1e-10
   )
 
+  # the same columns as mixed posterior elements that identify their fitted
+  # coordinates
+  element <- function(names){
+    x <- posterior[, names, drop = length(names) == 1L]
+    x <- BayesTools:::.bt_meta_set(x, "formula_parameter", "mu")
+    if(length(names) == 1L){
+      return(x)
+    }
+    # each column is its fitted coordinate of formula parameter 'mu'
+    quantities <- BayesTools:::.bt_verbatim_quantities(names, coordinates = names)
+    quantities$label_parts <- I(BayesTools:::.bt_label_parts_update(
+      quantities$label_parts, formula_parameter = "mu"
+    ))
+    BayesTools:::.bt_meta_set(x, "quantities", quantities)
+  }
   samples_list <- list(
-    mu_intercept = posterior[, "mu_intercept"],
-    mu_x1 = posterior[, "mu_x1"],
-    mu_a__xXx__b = posterior[, c("mu_a__xXx__b[1]", "mu_a__xXx__b[2]"), drop = FALSE],
-    mu_a__xXx__x1__xXx__b = posterior[, c("mu_a__xXx__x1__xXx__b[1]", "mu_a__xXx__x1__xXx__b[2]"), drop = FALSE]
+    mu_intercept = element("mu_intercept"),
+    mu_x1 = element("mu_x1"),
+    mu_a__xXx__b = element(c("mu_a__xXx__b[1]", "mu_a__xXx__b[2]")),
+    mu_x1__xXx__a__xXx__b = element(c("mu_x1__xXx__a__xXx__b[1]", "mu_x1__xXx__a__xXx__b[2]")),
+    mu_x1__xXx__a = element("mu_x1__xXx__a"),
+    mu_a = element("mu_a"),
+    mu_b = element(c("mu_b[1]", "mu_b[2]")),
+    mu_x1__xXx__b = element(c("mu_x1__xXx__b[1]", "mu_x1__xXx__b[2]"))
   )
   samples_list_original <- BayesTools:::.transform_scale_samples_list(samples_list, formula_scale)
 
-  expect_equal(samples_list_original$mu_intercept, posterior_original[, "mu_intercept"], tolerance = 1e-10)
-  expect_equal(samples_list_original$mu_x1, posterior_original[, "mu_x1"], tolerance = 1e-10)
-  expect_equal(samples_list_original$mu_a__xXx__b, posterior_original[, c("mu_a__xXx__b[1]", "mu_a__xXx__b[2]")], tolerance = 1e-10)
-  expect_equal(samples_list_original$mu_a__xXx__x1__xXx__b, posterior_original[, c("mu_a__xXx__x1__xXx__b[1]", "mu_a__xXx__x1__xXx__b[2]")], tolerance = 1e-10)
+  expect_equal(as.numeric(samples_list_original$mu_intercept), posterior_original[, "mu_intercept"], tolerance = 1e-10)
+  expect_equal(as.numeric(samples_list_original$mu_x1), posterior_original[, "mu_x1"], tolerance = 1e-10)
+  expect_equal(
+    matrix(as.numeric(samples_list_original$mu_a__xXx__b), nrow = nrow(posterior)),
+    unname(posterior_original[, c("mu_a__xXx__b[1]", "mu_a__xXx__b[2]")]),
+    tolerance = 1e-10
+  )
+  expect_equal(
+    matrix(as.numeric(samples_list_original$mu_x1__xXx__a__xXx__b), nrow = nrow(posterior)),
+    unname(posterior_original[, c("mu_x1__xXx__a__xXx__b[1]", "mu_x1__xXx__a__xXx__b[2]")]),
+    tolerance = 1e-10
+  )
 })
 
-test_that("transform_scale_samples links unindexed two-level factor terms to indexed interactions", {
+test_that("transform_scale_samples transforms two-level factor-by-continuous terms", {
 
   posterior <- matrix(
     c(
@@ -464,23 +529,24 @@ test_that("transform_scale_samples links unindexed two-level factor terms to ind
     nrow = 2,
     byrow = FALSE
   )
-  colnames(posterior) <- c("mu_intercept", "mu_x", "mu_a", "mu_x__xXx__a[1]")
+  colnames(posterior) <- c("mu_intercept", "mu_x", "mu_a", "mu_x__xXx__a")
 
-  formula_scale <- list(
-    mu = list(
-      mu_x = list(mean = 10, sd = 2)
-    )
-  )
-  posterior_original <- transform_scale_samples(posterior, formula_scale)
+  # the fitted design of ~ x * a with a treatment-coded two-level a
+  formula_scale <- list(mu = formula_scale_for_test(
+    ~ x * a,
+    list(x = list(mean = 10, sd = 2)),
+    data = data.frame(x = sin(seq_len(12)), a = factor(rep(c("A", "B"), 6)))
+  ))
+  posterior_original <- BayesTools:::.bt_transform_scale_posterior(posterior, formula_scale)
 
   expect_equal(
-    posterior_original[, "mu_x__xXx__a[1]"],
-    posterior[, "mu_x__xXx__a[1]"] / 2,
+    posterior_original[, "mu_x__xXx__a"],
+    posterior[, "mu_x__xXx__a"] / 2,
     tolerance = 1e-10
   )
   expect_equal(
     posterior_original[, "mu_a"],
-    posterior[, "mu_a"] - posterior_original[, "mu_x__xXx__a[1]"] * 10,
+    posterior[, "mu_a"] - posterior_original[, "mu_x__xXx__a"] * 10,
     tolerance = 1e-10
   )
 })
@@ -493,16 +559,73 @@ test_that("transform_scale_samples validates malformed formula_scale metadata", 
   )
 
   expect_error(
-    transform_scale_samples(posterior, list(mu = list(mu_x1 = list(mean = 0)))),
+    BayesTools:::.bt_transform_scale_posterior(posterior, list(mu = list(mu_x1 = list(mean = 0)))),
     "sd"
   )
   expect_error(
-    transform_scale_samples(posterior, list(mu = list(mu_x1 = list(mean = 0, sd = 0)))),
+    BayesTools:::.bt_transform_scale_posterior(posterior, list(mu = list(mu_x1 = list(mean = 0, sd = 0)))),
     "higher than 0"
   )
   expect_error(
-    transform_scale_samples(posterior, list(mu = list(mu_x1 = list(mean = NA_real_, sd = 1)))),
+    BayesTools:::.bt_transform_scale_posterior(posterior, list(mu = list(mu_x1 = list(mean = NA_real_, sd = 1)))),
     "NA/NaN"
+  )
+  expect_error(
+    BayesTools:::.bt_transform_scale_posterior(posterior, list(mu = list(mu_x1 = list(mean = Inf, sd = 1)))),
+    "mean.*finite"
+  )
+  expect_error(
+    BayesTools:::.bt_transform_scale_posterior(posterior, list(mu = list(mu_x1 = list(mean = -Inf, sd = 1)))),
+    "mean.*finite"
+  )
+  expect_error(
+    BayesTools:::.bt_transform_scale_posterior(posterior, list(mu = list(mu_x1 = list(mean = 0, sd = Inf)))),
+    "sd.*finite"
+  )
+  expect_error(
+    BayesTools:::.bt_transform_scale_posterior(
+      posterior,
+      list(
+        mu = list(mu_x1 = list(mean = 0, sd = 1)),
+        mu = list(mu_x1 = list(mean = 0, sd = 1))
+      )
+    ),
+    "duplicate parameter names"
+  )
+  expect_error(
+    BayesTools:::.bt_transform_scale_posterior(
+      posterior,
+      list(mu = list(
+        mu_x1 = list(mean = 0, sd = 1),
+        mu_x1 = list(mean = 1, sd = 2)
+      ))
+    ),
+    "duplicate term names"
+  )
+})
+
+test_that("transform_scale_samples treats parameter prefixes literally", {
+
+  posterior <- matrix(
+    c(10, 2, 100, 20),
+    nrow = 1,
+    dimnames = list(
+      NULL,
+      c("mu.x_intercept", "mu.x_x", "muAx_intercept", "muAx_x")
+    )
+  )
+  formula_scale <- list(
+    "mu.x" = formula_scale_for_test(~ x, list(x = list(mean = 5, sd = 2)),
+                                    parameter = "mu.x")
+  )
+
+  expect_equal(
+    BayesTools:::.bt_transform_scale_posterior(posterior, formula_scale),
+    matrix(
+      c(5, 1, 100, 20),
+      nrow = 1,
+      dimnames = dimnames(posterior)
+    )
   )
 })
 
@@ -513,13 +636,12 @@ test_that("transform_scale_samples warns when formula_scale prefix is unused", {
     mu_x1 = c(0.5, 0.75)
   )
   formula_scale <- list(
-    beta = list(
-      beta_x1 = list(mean = 5, sd = 2)
-    )
+    beta = formula_scale_for_test(~ x1, list(x1 = list(mean = 5, sd = 2)),
+                                  parameter = "beta")
   )
 
   expect_warning(
-    posterior_same <- transform_scale_samples(posterior, formula_scale),
+    posterior_same <- BayesTools:::.bt_transform_scale_posterior(posterior, formula_scale),
     "none of its parameter prefixes match the posterior columns"
   )
   expect_equal(posterior_same, posterior)
@@ -531,15 +653,15 @@ test_that("transform_scale_samples warns on unused terms but still applies match
     mu_intercept = c(1, 2),
     mu_x1 = c(0.5, 0.75)
   )
+  # the fitted design of ~ x1, with standardization information of a term
+  # the formula does not contain
   formula_scale <- list(
-    mu = list(
-      mu_x1 = list(mean = 5, sd = 2),
-      mu_x2 = list(mean = 10, sd = 4)
-    )
+    mu = formula_scale_for_test(~ x1, list(x1 = list(mean = 5, sd = 2)))
   )
+  formula_scale$mu$mu_x2 <- list(mean = 10, sd = 4)
 
   expect_warning(
-    posterior_transformed <- transform_scale_samples(posterior, formula_scale),
+    posterior_transformed <- BayesTools:::.bt_transform_scale_posterior(posterior, formula_scale),
     "Ignoring unused formula_scale"
   )
 
@@ -565,7 +687,10 @@ test_that("transform_prior_samples respects seed and validates formula_scale", {
     mu_intercept = prior("normal", list(0, 1)),
     mu_x1 = prior("normal", list(0.25, 0.5))
   )
-  attr(fit, "formula_scale") <- list(mu = list(mu_x1 = list(mean = 5, sd = 2)))
+  attr(fit, "formula_scale") <- list(
+    mu = formula_scale_for_test(~ x1, list(x1 = list(mean = 5, sd = 2)))
+  )
+  fit <- attach_test_parameter_map(fit)
 
   samples_a <- transform_prior_samples(fit, n_samples = 256, seed = 101)
   samples_b <- transform_prior_samples(fit, n_samples = 256, seed = 101)
@@ -575,11 +700,24 @@ test_that("transform_prior_samples respects seed and validates formula_scale", {
   expect_false(isTRUE(all.equal(samples_a, samples_c)))
 
   bad_fit <- fit
-  attr(bad_fit, "formula_scale") <- list(mu = list(mu_x1 = list(mean = 5, sd = 0)))
+  bad_scale <- attr(fit, "formula_scale")
+  bad_scale$mu$mu_x1$sd <- 0
+  attr(bad_fit, "formula_scale") <- bad_scale
 
   expect_error(
     transform_prior_samples(bad_fit, n_samples = 32, seed = 1),
     "higher than 0"
+  )
+
+  unsupported_prior <- list(distribution = "unsupported")
+  class(unsupported_prior) <- c("prior", "prior.unsupported")
+  expect_error(
+    BayesTools:::.generate_prior_sample_matrix(
+      list(theta = unsupported_prior),
+      n_samples = 4
+    ),
+    "Could not generate samples for prior 'theta'",
+    fixed = TRUE
   )
 })
 
@@ -618,7 +756,9 @@ test_that("transform_prior_samples handles scaled multi-factor interactions", {
   fit <- coda::mcmc(matrix(0, nrow = 4, ncol = length(posterior_columns), dimnames = list(NULL, posterior_columns)))
   class(fit) <- c("mcmc", "BayesTools_fit")
   attr(fit, "prior_list") <- prior_list
+  attr(fit, "formula_design") <- list(mu = formula_result$formula_design)
   attr(fit, "formula_scale") <- list(mu = formula_result$formula_scale)
+  fit <- attach_test_parameter_map(fit)
 
   prior_samples <- transform_prior_samples(fit, n_samples = 64, seed = 401)
 
@@ -629,6 +769,53 @@ test_that("transform_prior_samples handles scaled multi-factor interactions", {
   expect_equal(nrow(prior_samples), 64L)
   expect_equal(ncol(prior_samples[, interaction_columns, drop = FALSE]), 2L)
   expect_equal(ncol(prior_samples[, scaled_interaction_columns, drop = FALSE]), 2L)
+})
+
+test_that("design-derived unscaling equals the name-paired map on scaled fixtures", {
+
+  skip_if_no_fits()
+
+  for(model_name in c("fit_formula_auto_scaled", "fit_dual_param_regression")){
+    fit <- readRDS(file.path(temp_fits_dir, paste0(model_name, ".RDS")))
+    formula_scale <- attr(fit, "formula_scale")
+    expect_false(is.null(formula_scale))
+
+    for(parameter in names(formula_scale)){
+      spec <- BayesTools:::.bt_formula_unscale_design_spec(
+        JAGS_formula_design(fit, parameter)
+      )
+      data <- BayesTools:::.bt_formula_unscale_design_data(
+        spec, formula_scale[[parameter]], parameter
+      )
+      X_s <- BayesTools:::.bt_formula_unscale_model_matrix(
+        spec, data$standardized, parameter
+      )
+      X_o <- BayesTools:::.bt_formula_unscale_model_matrix(
+        spec, data$original, parameter
+      )
+      coefficient_names <- BayesTools:::.bt_formula_unscale_coefficient_names(
+        spec, parameter
+      )
+      name_paired <- BayesTools:::.build_unscale_matrix_by_names(
+        coefficient_names, formula_scale[[parameter]], parameter,
+        require_closure = FALSE
+      )
+      least_squares <- qr.solve(X_o, X_s)
+      expect_equal(unname(least_squares), unname(name_paired), tolerance = 1e-10,
+                   info = paste(model_name, parameter))
+
+      transform <- BayesTools:::.bt_formula_unscale_design_transform(
+        spec, formula_scale[[parameter]], parameter
+      )
+      expect_identical(transform$method, "name_paired")
+    }
+
+    posterior <- as.matrix(BayesTools:::.fit_to_posterior(fit))
+    expect_identical(
+      transform_scale_samples(fit),
+      BayesTools:::.bt_transform_scale_posterior(posterior, formula_scale)
+    )
+  }
 })
 
 test_that("Manual and automatic scaling produce equivalent results", {
@@ -804,14 +991,16 @@ test_that("Marginal likelihoods match for manual and automatic scaling", {
     formula_list = list(mu = formula_manual$formula),
     formula_data_list = list(mu = formula_manual$data),
     formula_prior_list = list(mu = formula_manual$prior_list),
-    prior_list_parameters = list()
+    prior_list_parameters = list(),
+    formula_design_list = list(mu = formula_manual$formula_design)
   )
   parameters_auto <- JAGS_marglik_parameters_formula(
     samples,
     formula_list = list(mu = formula_auto$formula),
     formula_data_list = list(mu = formula_auto$data),
     formula_prior_list = list(mu = formula_auto$prior_list),
-    prior_list_parameters = list()
+    prior_list_parameters = list(),
+    formula_design_list = list(mu = formula_auto$formula_design)
   )
 
   expect_equal(parameters_manual, parameters_auto, tolerance = 1e-12)
@@ -903,7 +1092,7 @@ test_that("runjags_estimates_table with transform_scaled unscales coefficients",
 
   parameters <- c("mu_intercept", "mu_x_cont1", "mu_x_cont2", "mu_x_cont1__xXx__x_cont2")
   posterior_scaled <- as.matrix(suppressWarnings(coda::as.mcmc(fit_auto)))
-  posterior_expected <- transform_scale_samples(posterior_scaled[, parameters, drop = FALSE], formula_scale)
+  posterior_expected <- BayesTools:::.bt_transform_scale_posterior(posterior_scaled[, parameters, drop = FALSE], formula_scale)
   expected_means <- colMeans(posterior_expected)
   names(expected_means) <- c(
     "(mu) intercept",
@@ -974,8 +1163,8 @@ test_that("runjags_estimates_table transform_scaled with return_samples works", 
   # beta_x1_orig = beta_x1_z/sd_x1 - beta_int_orig * mean_x2
   expected_x1 <- samples_scaled[, "(mu) x_cont1"] / sd_x_cont1 - unscaled_int * mean_x_cont2
   expect_equal(
-    samples_unscaled[, "(mu) x_cont1"],
-    expected_x1,
+    as.numeric(samples_unscaled[, "(mu) x_cont1"]),
+    as.numeric(expected_x1),
     tolerance = 1e-10
   )
 })
@@ -987,7 +1176,7 @@ test_that("ensemble_estimates_table with transform_scaled unscales coefficients"
 
   # Load pre-fitted models
   fit_auto     <- readRDS(file.path(temp_fits_dir, "fit_formula_auto_scaled.RDS"))
-  marglik_auto <- structure(list(logml = -20), class = "bridge")
+  marglik_auto <- bridgesampling_object(-20)
 
   formula_scale <- attr(fit_auto, "formula_scale")
 
@@ -1060,7 +1249,7 @@ test_that("as_mixed_posteriors transform_scaled matches direct posterior and pri
   parameters <- c("mu_intercept", "mu_x_cont1", "mu_x_cont2", "mu_x_cont1__xXx__x_cont2")
 
   posterior_scaled <- as.matrix(suppressWarnings(coda::as.mcmc(fit_auto)))
-  posterior_expected <- transform_scale_samples(posterior_scaled[, parameters, drop = FALSE], formula_scale)
+  posterior_expected <- BayesTools:::.bt_transform_scale_posterior(posterior_scaled[, parameters, drop = FALSE], formula_scale)
 
   set.seed(123)
   samples_scaled <- as_mixed_posteriors(
@@ -1069,7 +1258,7 @@ test_that("as_mixed_posteriors transform_scaled matches direct posterior and pri
     transform_scaled = TRUE,
     n_prior_samples = 512
   )
-  expect_true(isTRUE(attr(samples_scaled, "transform_scaled")))
+  expect_true(isTRUE(.bt_meta_get(samples_scaled, "transform_scaled")))
   expect_s3_class(samples_scaled$mu_intercept, "mixed_posteriors.formula")
   expect_equal(as.numeric(samples_scaled$mu_intercept), as.numeric(posterior_expected[, "mu_intercept"]), tolerance = 1e-10)
   expect_equal(as.numeric(samples_scaled$mu_x_cont1), as.numeric(posterior_expected[, "mu_x_cont1"]), tolerance = 1e-10)
@@ -1079,7 +1268,7 @@ test_that("as_mixed_posteriors transform_scaled matches direct posterior and pri
     as.numeric(posterior_expected[, "mu_x_cont1__xXx__x_cont2"]),
     tolerance = 1e-10
   )
-  prior_densities <- attr(samples_scaled, "prior_densities")
+  prior_densities <- .bt_meta_get(samples_scaled, "prior_densities")
   expect_s3_class(prior_densities, "prior_density_list")
   expect_true(all(parameters %in% names(prior_densities)))
   expect_null(attr(samples_scaled, "prior_samples"))
@@ -1104,23 +1293,28 @@ test_that("ensemble_estimates_table transform_scaled works on mixed posterior sa
     mu_x_cont1__xXx__x_cont2 = c(0.12, 0.10, 0.08, 0.06)
   )
   formula_scale <- list(
-    mu = list(
-      mu_x_cont1 = list(mean = 5, sd = 2),
-      mu_x_cont2 = list(mean = 10, sd = 4)
-    )
+    mu = formula_scale_for_test(~ x_cont1 * x_cont2, list(
+      x_cont1 = list(mean = 5, sd = 2),
+      x_cont2 = list(mean = 10, sd = 4)
+    ))
   )
 
   make_formula_samples <- function(values, parameter_name) {
-    structure(
-      unname(values),
-      class = c("mixed_posteriors.formula", "mixed_posteriors.simple", "mixed_posteriors"),
+    .bt_meta_update(
+      structure(
+        unname(values),
+        class = c("mixed_posteriors.formula", "mixed_posteriors.simple", "mixed_posteriors"),
+        parameter = parameter_name,
+        prior_list = prior("normal", list(0, 1)),
+        interaction = grepl("__xXx__", parameter_name),
+        interaction_terms = if(grepl("__xXx__", parameter_name)) c("x_cont1", "x_cont2") else NULL
+      ),
       formula_parameter = "mu",
-      sample_ind = seq_along(values),
-      models_ind = rep(1L, length(values)),
-      parameter = parameter_name,
-      prior_list = prior("normal", list(0, 1)),
-      interaction = grepl("__xXx__", parameter_name),
-      interaction_terms = if(grepl("__xXx__", parameter_name)) c("x_cont1", "x_cont2") else NULL
+      draw_index = seq_along(values),
+      component = rep(1L, length(values)),
+      model_probabilities = list(prior = .model_probability_pair(1, 0, "prior", "raw"),
+        posterior = .model_probability_pair(1, 0, "posterior", "raw")),
+      component_source = "model"
     )
   }
 
@@ -1130,7 +1324,7 @@ test_that("ensemble_estimates_table transform_scaled works on mixed posterior sa
   names(mixed_posteriors) <- colnames(posterior_scaled)
   class(mixed_posteriors) <- c("mixed_posteriors")
 
-  posterior_expected <- transform_scale_samples(posterior_scaled, formula_scale)
+  posterior_expected <- BayesTools:::.bt_transform_scale_posterior(posterior_scaled, formula_scale)
   estimates_unscaled <- ensemble_estimates_table(
     samples = mixed_posteriors,
     parameters = colnames(posterior_scaled),
@@ -1236,7 +1430,7 @@ test_that("transform_scale_samples works with dual parameter model", {
   posterior <- as.matrix(fit_dual$mcmc[[1]])
 
   # Transform to original scale
-  posterior_transformed <- transform_scale_samples(posterior, formula_scale)
+  posterior_transformed <- BayesTools:::.bt_transform_scale_posterior(posterior, formula_scale)
 
   # Get scale parameters (nested structure)
   mu_scale        <- formula_scale$mu$mu_x_mu
@@ -1269,7 +1463,7 @@ test_that("as_mixed_posteriors transform_scaled works for dual parameter models"
   parameters <- c("log_sigma_intercept", "log_sigma_x_sigma")
 
   posterior_scaled <- as.matrix(suppressWarnings(coda::as.mcmc(fit_dual)))
-  posterior_expected <- transform_scale_samples(posterior_scaled[, parameters, drop = FALSE], formula_scale)
+  posterior_expected <- BayesTools:::.bt_transform_scale_posterior(posterior_scaled[, parameters, drop = FALSE], formula_scale)
 
   samples_scaled <- as_mixed_posteriors(
     fit_dual,
@@ -1278,7 +1472,7 @@ test_that("as_mixed_posteriors transform_scaled works for dual parameter models"
     n_prior_samples = 256
   )
 
-  expect_true(isTRUE(attr(samples_scaled, "transform_scaled")))
+  expect_true(isTRUE(.bt_meta_get(samples_scaled, "transform_scaled")))
   expect_equal(
     as.numeric(samples_scaled$log_sigma_intercept),
     as.numeric(posterior_expected[, "log_sigma_intercept"]),
@@ -1418,52 +1612,41 @@ test_that("JAGS_evaluate_formula applies scaling correctly for dual parameter mo
 # This approach validates both the implementation AND the derivation.
 # ============================================================================ #
 
-# Helper: Create formula_scale from data frame and variable names
-# Creates nested structure matching JAGS_fit output: list(mu = list(mu_x1 = list(mean, sd)))
-.make_formula_scale <- function(df, var_names, prefix = "mu") {
-  param_scale <- list()
-  for (var in var_names) {
-    param_name <- paste0(prefix, "_", var)
-    param_scale[[param_name]] <- list(
-      mean = mean(df[[var]]),
-      sd   = sd(df[[var]])
-    )
-  }
-  # Return nested structure keyed by parameter name
+# Helper: formula_scale of the fitted design of 'formula' (as JAGS_fit()
+# stores it), standardizing 'var_names' by their sample mean and SD:
+# list(mu = list(mu_x1 = list(mean, sd), ...)) with the fitted design attached
+.make_formula_scale <- function(df, var_names, formula, prefix = "mu") {
   result <- list()
-  result[[prefix]] <- param_scale
+  result[[prefix]] <- formula_scale_for_test(
+    formula,
+    stats::setNames(lapply(var_names, function(var) {
+      list(mean = mean(df[[var]]), sd = sd(df[[var]]))
+    }), var_names),
+    data = df[all.vars(formula)],
+    parameter = prefix
+  )
   result
 }
 
-# Helper: Convert lm coefficients to posterior matrix format (repeated rows)
-# Uses the same naming convention as JAGS (__xXx__ for interactions)
-.lm_coefs_to_posterior <- function(coefs, prefix = "mu", n_rep = 10) {
-  # Convert names: "(Intercept)" -> "mu_intercept", "x1:x2" -> "mu_x1__xXx__x2"
-  new_names <- names(coefs)
-  new_names <- gsub("\\(Intercept\\)", "intercept", new_names)
-  new_names <- gsub(":", "__xXx__", new_names)
-  new_names <- paste0(prefix, "_", new_names)
-
-  # Remove scale() wrapper from names if present
-  new_names <- gsub("scale\\(([^)]+)\\)", "\\1", new_names)
+# Helper: Convert lm coefficients to posterior matrix format (repeated rows),
+# named by the fitted coefficient coordinates of the design in
+# 'formula_scale': the lm coefficients (without the scale() wrappers) are the
+# design's model-matrix columns, in the same order
+.lm_coefs_to_posterior <- function(coefs, formula_scale, prefix = "mu", n_rep = 10) {
+  spec <- attr(formula_scale[[prefix]], "unscale_design")
+  lm_names <- gsub("scale\\(([^)]+)\\)", "\\1", names(coefs))
+  stopifnot(identical(lm_names, spec$raw_column_names))
 
   posterior <- matrix(rep(coefs, each = n_rep), nrow = n_rep, ncol = length(coefs))
-  colnames(posterior) <- new_names
+  colnames(posterior) <- BayesTools:::.bt_formula_unscale_coefficient_names(spec, prefix)
   posterior
 }
 
-# Helper to reorder lm coefficients to match posterior column order
+# Helper to order lm coefficients as the posterior columns: both follow the
+# model-matrix columns of the formula
 .reorder_lm_coefs <- function(coef_unscaled, posterior_transformed) {
-  # Build mapping from posterior names to lm names
-  posterior_names <- colnames(posterior_transformed)
-  lm_names <- sapply(posterior_names, function(nm) {
-    # Remove mu_ prefix
-    stripped <- sub("^mu_", "", nm)
-    if (stripped == "intercept") return("(Intercept)")
-    # Replace __xXx__ with :
-    gsub("__xXx__", ":", stripped)
-  })
-  coef_unscaled[lm_names]
+  stopifnot(length(coef_unscaled) == ncol(posterior_transformed))
+  coef_unscaled
 }
 
 
@@ -1485,9 +1668,9 @@ test_that("lm validation: simple standardization (one predictor)", {
   coef_unscaled <- coef(fit_unscaled)
 
   # Transform scaled coefficients
-  posterior_scaled <- .lm_coefs_to_posterior(coef_scaled)
-  formula_scale <- .make_formula_scale(df, "x1")
-  posterior_transformed <- transform_scale_samples(posterior_scaled, formula_scale)
+  formula_scale <- .make_formula_scale(df, "x1", ~ x1)
+  posterior_scaled <- .lm_coefs_to_posterior(coef_scaled, formula_scale)
+  posterior_transformed <- BayesTools:::.bt_transform_scale_posterior(posterior_scaled, formula_scale)
 
   # Compare
   expect_equal(
@@ -1516,9 +1699,9 @@ test_that("lm validation: multiple predictors (no interaction)", {
   coef_unscaled <- coef(fit_unscaled)
 
   # Transform
-  posterior_scaled <- .lm_coefs_to_posterior(coef_scaled)
-  formula_scale <- .make_formula_scale(df, c("x1", "x2"))
-  posterior_transformed <- transform_scale_samples(posterior_scaled, formula_scale)
+  formula_scale <- .make_formula_scale(df, c("x1", "x2"), ~ x1 + x2)
+  posterior_scaled <- .lm_coefs_to_posterior(coef_scaled, formula_scale)
+  posterior_transformed <- BayesTools:::.bt_transform_scale_posterior(posterior_scaled, formula_scale)
 
   # Compare
   expect_equal(
@@ -1548,9 +1731,9 @@ test_that("lm validation: two-way interaction (both scaled)", {
   coef_unscaled <- coef(fit_unscaled)
 
   # Transform
-  posterior_scaled <- .lm_coefs_to_posterior(coef_scaled)
-  formula_scale <- .make_formula_scale(df, c("x1", "x2"))
-  posterior_transformed <- transform_scale_samples(posterior_scaled, formula_scale)
+  formula_scale <- .make_formula_scale(df, c("x1", "x2"), ~ x1 * x2)
+  posterior_scaled <- .lm_coefs_to_posterior(coef_scaled, formula_scale)
+  posterior_transformed <- BayesTools:::.bt_transform_scale_posterior(posterior_scaled, formula_scale)
 
   # Compare all coefficients
   expect_equal(
@@ -1581,9 +1764,9 @@ test_that("lm validation: two-way interaction (partial scaling)", {
   coef_unscaled <- coef(fit_unscaled)
 
   # Transform - only x1 is in formula_scale
-  posterior_scaled <- .lm_coefs_to_posterior(coef_scaled)
-  formula_scale <- .make_formula_scale(df, "x1")  # Only x1 scaled
-  posterior_transformed <- transform_scale_samples(posterior_scaled, formula_scale)
+  formula_scale <- .make_formula_scale(df, "x1", ~ x1 * x2)  # Only x1 scaled
+  posterior_scaled <- .lm_coefs_to_posterior(coef_scaled, formula_scale)
+  posterior_transformed <- BayesTools:::.bt_transform_scale_posterior(posterior_scaled, formula_scale)
 
   # Compare
   expect_equal(
@@ -1619,9 +1802,9 @@ test_that("lm validation: three-way interaction (all scaled)", {
   coef_unscaled <- coef(fit_unscaled)
 
   # Transform
-  posterior_scaled <- .lm_coefs_to_posterior(coef_scaled)
-  formula_scale <- .make_formula_scale(df, c("x1", "x2", "x3"))
-  posterior_transformed <- transform_scale_samples(posterior_scaled, formula_scale)
+  formula_scale <- .make_formula_scale(df, c("x1", "x2", "x3"), ~ x1 * x2 * x3)
+  posterior_scaled <- .lm_coefs_to_posterior(coef_scaled, formula_scale)
+  posterior_transformed <- BayesTools:::.bt_transform_scale_posterior(posterior_scaled, formula_scale)
 
   # Compare all coefficients
   expect_equal(
@@ -1658,9 +1841,9 @@ test_that("lm validation: three-way interaction (partial scaling)", {
   coef_unscaled <- coef(fit_unscaled)
 
   # Transform - only x1 and x2 are scaled
-  posterior_scaled <- .lm_coefs_to_posterior(coef_scaled)
-  formula_scale <- .make_formula_scale(df, c("x1", "x2"))
-  posterior_transformed <- transform_scale_samples(posterior_scaled, formula_scale)
+  formula_scale <- .make_formula_scale(df, c("x1", "x2"), ~ x1 * x2 * x3)
+  posterior_scaled <- .lm_coefs_to_posterior(coef_scaled, formula_scale)
+  posterior_transformed <- BayesTools:::.bt_transform_scale_posterior(posterior_scaled, formula_scale)
 
   # Compare all coefficients
   expect_equal(
@@ -1696,9 +1879,9 @@ test_that("lm validation: four-way interaction", {
   coef_unscaled <- coef(fit_unscaled)
 
   # Transform
-  posterior_scaled <- .lm_coefs_to_posterior(coef_scaled)
-  formula_scale <- .make_formula_scale(df, c("x1", "x2", "x3", "x4"))
-  posterior_transformed <- transform_scale_samples(posterior_scaled, formula_scale)
+  formula_scale <- .make_formula_scale(df, c("x1", "x2", "x3", "x4"), ~ x1 * x2 * x3 * x4)
+  posterior_scaled <- .lm_coefs_to_posterior(coef_scaled, formula_scale)
+  posterior_transformed <- BayesTools:::.bt_transform_scale_posterior(posterior_scaled, formula_scale)
 
   # Compare all coefficients
   expect_equal(
@@ -1734,11 +1917,11 @@ test_that("lm validation: five-way interaction (warning test)", {
   coef_unscaled <- coef(fit_unscaled)
 
   # Transform - expect warning about 5+ way interaction
-  posterior_scaled <- .lm_coefs_to_posterior(coef_scaled)
-  formula_scale <- .make_formula_scale(df, c("x1", "x2", "x3", "x4", "x5"))
+  formula_scale <- .make_formula_scale(df, c("x1", "x2", "x3", "x4", "x5"), ~ x1 * x2 * x3 * x4 * x5)
+  posterior_scaled <- .lm_coefs_to_posterior(coef_scaled, formula_scale)
 
   expect_warning(
-    posterior_transformed <- transform_scale_samples(posterior_scaled, formula_scale),
+    posterior_transformed <- BayesTools:::.bt_transform_scale_posterior(posterior_scaled, formula_scale),
     "5-way or higher interactions"
   )
 
@@ -1780,9 +1963,9 @@ test_that("lm validation: complex model from user example", {
   coef_unscaled <- coef(fit_unscaled)
 
   # Transform
-  posterior_scaled <- .lm_coefs_to_posterior(coef_scaled)
-  formula_scale <- .make_formula_scale(df_orig, c("x1", "x2", "x3", "x4", "x5"))
-  posterior_transformed <- transform_scale_samples(posterior_scaled, formula_scale)
+  formula_scale <- .make_formula_scale(df_orig, c("x1", "x2", "x3", "x4", "x5"), ~ x1 * x2 + x3 * x4 * x5)
+  posterior_scaled <- .lm_coefs_to_posterior(coef_scaled, formula_scale)
+  posterior_transformed <- BayesTools:::.bt_transform_scale_posterior(posterior_scaled, formula_scale)
 
   # Compare all coefficients
   expect_equal(
@@ -1814,9 +1997,9 @@ test_that("lm validation: factor + scaled continuous interaction", {
   coef_unscaled <- coef(fit_unscaled)
 
   # Transform - only x1 is scaled (f1 is factor, not scaled)
-  posterior_scaled <- .lm_coefs_to_posterior(coef_scaled)
-  formula_scale <- .make_formula_scale(df, "x1")
-  posterior_transformed <- transform_scale_samples(posterior_scaled, formula_scale)
+  formula_scale <- .make_formula_scale(df, "x1", ~ x1 * f1)
+  posterior_scaled <- .lm_coefs_to_posterior(coef_scaled, formula_scale)
+  posterior_transformed <- BayesTools:::.bt_transform_scale_posterior(posterior_scaled, formula_scale)
 
   # Compare
   expect_equal(
@@ -1850,9 +2033,9 @@ test_that("lm validation: factor + unscaled continuous interaction", {
   coef_unscaled <- coef(fit_unscaled)
 
   # Transform - only x2 is scaled
-  posterior_scaled <- .lm_coefs_to_posterior(coef_scaled)
-  formula_scale <- .make_formula_scale(df, "x2")
-  posterior_transformed <- transform_scale_samples(posterior_scaled, formula_scale)
+  formula_scale <- .make_formula_scale(df, "x2", ~ x1 * f1 + x2 * f1)
+  posterior_scaled <- .lm_coefs_to_posterior(coef_scaled, formula_scale)
+  posterior_transformed <- BayesTools:::.bt_transform_scale_posterior(posterior_scaled, formula_scale)
 
   # Compare
   expect_equal(
@@ -1884,9 +2067,9 @@ test_that("lm validation: multi-level factor with scaled continuous", {
   coef_unscaled <- coef(fit_unscaled)
 
   # Transform
-  posterior_scaled <- .lm_coefs_to_posterior(coef_scaled)
-  formula_scale <- .make_formula_scale(df, "x1")
-  posterior_transformed <- transform_scale_samples(posterior_scaled, formula_scale)
+  formula_scale <- .make_formula_scale(df, "x1", ~ x1 * f1)
+  posterior_scaled <- .lm_coefs_to_posterior(coef_scaled, formula_scale)
+  posterior_transformed <- BayesTools:::.bt_transform_scale_posterior(posterior_scaled, formula_scale)
 
   # Compare
   expect_equal(
@@ -1917,9 +2100,9 @@ test_that("lm validation: two factors with scaled continuous interaction", {
   coef_unscaled <- coef(fit_unscaled)
 
   # Transform
-  posterior_scaled <- .lm_coefs_to_posterior(coef_scaled)
-  formula_scale <- .make_formula_scale(df, "x1")
-  posterior_transformed <- transform_scale_samples(posterior_scaled, formula_scale)
+  formula_scale <- .make_formula_scale(df, "x1", ~ x1 * f1 * f2)
+  posterior_scaled <- .lm_coefs_to_posterior(coef_scaled, formula_scale)
+  posterior_transformed <- BayesTools:::.bt_transform_scale_posterior(posterior_scaled, formula_scale)
 
   # Compare
   expect_equal(
@@ -1963,9 +2146,9 @@ test_that("lm validation: complex model with factors and mixed scaling", {
   coef_unscaled <- coef(fit_unscaled)
 
   # Transform - only x1, x2, x3 are scaled
-  posterior_scaled <- .lm_coefs_to_posterior(coef_scaled)
-  formula_scale <- .make_formula_scale(df, c("x1", "x2", "x3"))
-  posterior_transformed <- transform_scale_samples(posterior_scaled, formula_scale)
+  formula_scale <- .make_formula_scale(df, c("x1", "x2", "x3"), ~ x1 * f1 + x2 + x3 + x4 * f1 + x5)
+  posterior_scaled <- .lm_coefs_to_posterior(coef_scaled, formula_scale)
+  posterior_transformed <- BayesTools:::.bt_transform_scale_posterior(posterior_scaled, formula_scale)
 
   # Compare
   expect_equal(
@@ -2002,9 +2185,9 @@ test_that("lm validation: factor interactions with multiple scaled continuous", 
   coef_unscaled <- coef(fit_unscaled)
 
   # Transform
-  posterior_scaled <- .lm_coefs_to_posterior(coef_scaled)
-  formula_scale <- .make_formula_scale(df, c("x1", "x2"))
-  posterior_transformed <- transform_scale_samples(posterior_scaled, formula_scale)
+  formula_scale <- .make_formula_scale(df, c("x1", "x2"), ~ x1 * x2 * f1)
+  posterior_scaled <- .lm_coefs_to_posterior(coef_scaled, formula_scale)
+  posterior_transformed <- BayesTools:::.bt_transform_scale_posterior(posterior_scaled, formula_scale)
 
   # Compare
   expect_equal(

@@ -1,4 +1,641 @@
 skip_if_not_test_profile("unit")
+source(testthat::test_path("common-functions.R"))
+
+test_that("optional PET-PEESE anchors retain the full probability-domain integral", {
+  normal <- prior("normal", list(1, .5))
+  half_normal <- prior_PET("normal", list(0, 1))
+  mu_component <- .petpeese_prior_components(normal)[[1L]]
+  bias_component <- .petpeese_prior_components(half_normal)[[1L]]
+  se <- .015015015015015
+  q <- 2.91792553831964
+  actual <- .petpeese_prior_probability_integral(mu_component, bias_component, se, q)
+  # This oracle integrates in the physical bias coordinate, independently of
+  # the production location-probability partition and its optional anchors.
+  reference <- stats::integrate(function(b) stats::pnorm(q - se*b, 1, .5)*2*stats::dnorm(b),
+    0, Inf, rel.tol = 1e-11, abs.tol = 1e-11)$value
+  expect_equal(as.numeric(actual), reference, tolerance = 1e-7)
+  diagnostics <- attr(actual, "numerical_diagnostics")
+  expect_identical(range(diagnostics$knots), c(0, 1))
+  expect_false(any(diagnostics$knots == 3.26083326255223e-322))
+  required <- stats::pnorm(q, 1, .5)
+  expect_true(required %in% diagnostics$knots)
+  expect_true(any(vapply(diagnostics$optional_anchor_diagnostics, function(entry){
+    inherits(entry$condition, "BayesTools_numerical_unavailable") &&
+      identical(entry$condition$operation, "location CDF anchor")
+  }, logical(1))))
+  expect_lte(diagnostics$subdivisions, 200L)
+  mu <- prior_mixture(list(prior("point", list(0), prior_weights = 2),
+    prior("normal", list(-1, .5)), normal), is_null = c(TRUE, FALSE, FALSE))
+  bias <- list(prior_none(prior_weights = 5), half_normal)
+  context <- .petpeese_prior_cdf_context(bias, list(mu, mu), c(5, 1)/6)
+  physical_cdf <- function(q) {
+    no_bias <- .5*as.numeric(q >= 0) + .25*stats::pnorm(q, -1, .5) + .25*stats::pnorm(q, 1, .5)
+    pet <- .5*if(q >= 0) 2*stats::pnorm(q/se)-1 else 0
+    for(mean in c(-1, 1)){
+      pet <- pet + .25*stats::integrate(function(b) stats::pnorm(q-se*b, mean, .5)*2*stats::dnorm(b),
+        0, Inf, rel.tol = 1e-11, abs.tol = 1e-11)$value
+    }
+    (5*no_bias+pet)/6
+  }
+  for(p in c(.025, .5, .975)){
+    quantile <- .petpeese_prior_cdf_quantile(context, se, p)
+    reference <- if(p >= physical_cdf(-1e-10) && p <= physical_cdf(0)) 0 else
+      stats::uniroot(function(q) physical_cdf(q)-p, c(-10, 10), tol = 1e-12)$root
+    expect_equal(as.numeric(quantile), reference, tolerance = 1e-7)
+  }
+})
+
+test_that("ordered model plots use selected semantic levels and skip prior summaries", {
+  models <- lapply(c(.5, 1), function(sd){
+    fixture <- ordered_plot_test_fixture(prior("normal", list(1, sd)), c(.2, .3, .5))
+    list(fit = fixture$fit, marglik = bridgesampling_object(0), prior_weights = 1,
+      fit_summary = JAGS_estimates_table(fixture$fit, remove_diagnostics = TRUE))
+  })
+  models <- models_inference(models)
+  inference <- ensemble_inference(models, "mu_f", list(c(FALSE, FALSE)))
+  mixed <- mix_posteriors(models, "mu_f", is_null_list = list(c(FALSE, FALSE)),
+    n_samples = 200L, seed = 178)
+  transformed <- .transformed_factor_drop_structural_levels(transform_factor_samples(mixed)$mu_f)
+  plots <- plot_models(models, mixed, inference, "mu_f", plot_type = "ggplot", prior = FALSE)
+  expect_length(plots, 3L)
+  # The first layer is the selected scalar model-averaged interval, not a
+  # flattening across factor levels.
+  for(i in seq_along(plots)){
+    expect_equal(range(ggplot2::ggplot_build(plots[[i]])$data[[3L]]$x),
+      unname(quantile(transformed[, i], c(.025, .975))), tolerance = 1e-14)
+  }
+  validating_transform <- list(fun = function(x){
+    if(anyNA(x)) stop("The transformation does not accept missing values.")
+    x + 3
+  }, inv = function(x) x - 3, jac = function(x) rep(1, length(x)))
+  transformed_plots <- plot_models(models, mixed, inference, "mu_f",
+    plot_type = "ggplot", prior = FALSE, transformation = validating_transform)
+  expect_length(transformed_plots, 3L)
+  for(i in seq_along(transformed_plots)){
+    expect_equal(range(ggplot2::ggplot_build(transformed_plots[[i]])$data[[3L]]$x),
+      3 + unname(quantile(transformed[, i], c(.025, .975))), tolerance = 1e-14)
+  }
+  unsupported <- ordered_plot_test_fixture(prior("t", list(0, 1, 1)))
+  prior_list <- list(unsupported$prior, unsupported$prior)
+  metadata_only <- .plot_models_data_prior(prior_list, lapply(models, `[[`, "inference"),
+    prior = FALSE, parameter = "mu_f[middle]")
+  expect_true(all(is.na(metadata_only[, c("y", "y_lCI", "y_uCI")])))
+  expect_identical(metadata_only$BF, vapply(models, function(m) m$inference$inclusion_BF, numeric(1)))
+  error <- tryCatch(.plot_models_ordered_prior_summary(unsupported$prior, "mu_f[middle]", 2), error = identity)
+  expect_s3_class(error, "BayesTools_prior_interval_unavailable")
+  expect_identical(conditionMessage(error), paste0("Prior interval/mean for model 2 and level 'mu_f[middle]' ",
+    "is unavailable: the total mean is undefined, non-finite, or depends on an unresolved expression. ",
+    "Set 'prior = FALSE' to plot posterior estimates."))
+  expect_length(plot_models(models, mixed, inference, "mu_f", plot_type = "ggplot", prior = TRUE), 3L)
+})
+
+test_that("ordered prior model intervals use analytic means and generalized structural quantiles", {
+  fixed <- ordered_plot_test_fixture(prior("normal", list(2, 3)), c(.2, .3, .5))
+  expect_equal(.plot_models_ordered_prior_summary(fixed$prior, "mu_f[middle]", 1),
+    c(.4, qnorm(c(.025, .975), .4, .6)), tolerance = 1e-12)
+  point <- ordered_plot_test_fixture(prior("point", list(2)),
+    prior("dirichlet", list(c(2, 3, 4))))
+  expect_equal(.plot_models_ordered_prior_summary(point$prior, "mu_f[middle]", 1),
+    c(2 * 2 / 9, 2 * qbeta(c(.025, .975), 2, 7)), tolerance = 1e-12)
+  mixture <- ordered_plot_test_fixture(prior_spike_and_slab(prior("point", list(2)), prior("point", list(.8))),
+    prior("dirichlet", list(c(2, 3, 4))))
+  expect_equal(.plot_models_ordered_prior_summary(mixture$prior, "mu_f[last]", 1),
+    c(1.6, 0, 2), tolerance = 1e-12)
+  expect_equal(.plot_models_ordered_prior_summary(mixture$prior, "mu_f[middle]", 1),
+    c(.8 * 2 * 2 / 9, 0, 2 * qbeta((.975 - .2) / .8, 2, 7)), tolerance = 2e-7)
+  random <- ordered_plot_test_fixture(prior("normal", list(1, 2)),
+    prior("dirichlet", list(c(2, 3, 4))))
+  summary <- .plot_models_ordered_prior_summary(random$prior, "mu_f[middle]", 1)
+  expect_equal(summary[1L], 2 / 9, tolerance = 1e-14)
+  independent_cdf <- function(x) integrate(function(s) pnorm(x / s, 1, 2) * dbeta(s, 2, 7),
+    0, 1, rel.tol = 1e-10)$value
+  expect_equal(vapply(summary[2:3], independent_cdf, numeric(1)), c(.025, .975), tolerance = 1e-7)
+  columns <- .JAGS_prior_factor_names("mu_f", random$prior)
+  bracket <- .prior_density_from_context(posterior_metadata(random$samples, "prior_context"),
+    setNames(c(1, 0, 0), columns))
+  # A numerical display range is a starting bracket, never support. Narrow
+  # it deliberately while keeping the exact prior provenance unchanged.
+  bracket$density$x <- seq(-.01, .01, length.out = length(bracket$density$x))
+  expect_equal(.plot_models_prior_quantiles(bracket, c(.025, .975), 1, "mu_f[middle]"),
+    summary[2:3], tolerance = 2e-7)
+  uniform <- ordered_plot_test_fixture(prior("uniform", list(-2, 6)), c(.2, .3, .5))
+  expect_equal(.plot_models_ordered_prior_summary(uniform$prior, "mu_f[middle]", 1),
+    c(.4, qunif(c(.025, .975), -.4, 1.2)), tolerance = 1e-12)
+  student <- ordered_plot_test_fixture(prior("t", list(1, 2, 5)), c(.2, .3, .5))
+  expect_equal(.plot_models_ordered_prior_summary(student$prior, "mu_f[middle]", 1),
+    c(.2, .2 * (1 + 2 * qt(c(.025, .975), 5))), tolerance = 1e-12)
+  context <- .prior_density_context(list(source = prior("normal", list(2, 3))), "source")
+  signed <- .prior_density_from_context(context, c(source = -2))
+  expect_equal(.plot_models_prior_quantiles(signed, c(.025, .975), 1, "signed"),
+    qnorm(c(.025, .975), -4, 6), tolerance = 1e-12)
+  binary_context <- .prior_density_context(list(source = prior("bernoulli", list(.975))), "source")
+  signed_binary <- .prior_density_from_context(binary_context, c(source = -2))
+  expect_identical(.plot_models_prior_quantiles(signed_binary, c(.025, .975), 1, "signed_binary"),
+    c(-2, -2))
+  expression <- prior_ordered(prior("normal", list(expression(location), 1)), allocation = c(.2, .3, .5))
+  attr(expression, "levels") <- 4
+  expression <- .prior_ordered_default_bound(expression, "mu_f")
+  expect_error(.plot_models_ordered_prior_summary(expression, "mu_f[2]", 3),
+    class = "BayesTools_prior_interval_unavailable")
+  data <- expand.grid(f = ordered(c("a", "b", "c")), g = ordered(c("A", "B", "C")))
+  info <- JAGS_formula(~f*g, "mu", data, list(intercept = prior("point", list(0)),
+    f = prior_ordered(prior("normal", list(0, 1))),
+    g = prior_ordered(prior("normal", list(0, 1))),
+    `f:g` = prior_ordered(prior("normal", list(2, 1)))))
+  interaction <- info$prior_list[[which(vapply(info$prior_list, function(x){
+    is.prior.ordered(x) && length(.prior_ordered_metadata(x)$ordered_terms) == 2L
+  }, logical(1)))]]
+  parameter <- .prior_ordered_metadata(interaction)$parameter_name
+  names <- .bt_label(.bt_label_factor_level_parts(parameter, interaction,
+    transformation = "none"), style = "selector")
+  expect_error(.plot_models_ordered_prior_summary(interaction, names[[5L]], 4),
+    class = "BayesTools_prior_interval_unavailable")
+})
+
+test_that("ordered prior overlays omit only the design reference and retain level styles", {
+  fixture <- ordered_plot_test_fixture(prior("normal", list(0, .5)),
+    levels = c("systematic", "alternate", "random"))
+  prior_data <- function(samples){
+    .plot_data_prior_factor_density_transformed(posterior_metadata(samples, "prior_context"),
+      samples, "mu_f", list(fixture$prior), 64L)
+  }
+  raw <- prior_data(fixture$samples)
+  expect_identical(raw, prior_data(transform_factor_samples(fixture$samples)))
+  expect_identical(vapply(raw, attr, character(1), "level_name"),
+    c(level1_density = "mu_f[alternate]", level2_density = "mu_f[random]"))
+  expect_identical(attr(raw, "factor_level_universe")$name, c("mu_f[alternate]", "mu_f[random]"))
+  expect_true(all(vapply(raw, function(x) all(is.finite(x$x) & is.finite(x$y)), logical(1))))
+  for(samples in list(fixture$samples, transform_factor_samples(fixture$samples))){
+    plot <- plot_posterior(samples, "mu_f", prior = TRUE, plot_type = "ggplot", n_points = 64,
+      col = c("red", "blue"), legend_labels = c("A", "R"))
+    built <- ggplot2::ggplot_build(plot)
+    expect_identical(vapply(built$data[1:2], function(x) unique(x$colour), character(1)), c("red", "blue"))
+    expect_identical(vapply(built$data[1:2], function(x) unique(x$linetype), numeric(1)), c(2, 2))
+    expect_identical(sort(unique(built$data[[3L]]$colour)), c("blue", "red"))
+    expect_identical(plot$scales$get_scales("colour")$breaks, c("A", "R"))
+    expect_length(built$plot$guides$params, 1L)
+    partial <- built$data[[1L]]
+    selected <- unique(c(1L, which.min(abs(partial$x)), which.max(partial$y)))
+    for(i in selected){
+      reference <- stats::integrate(function(share){
+        stats::dnorm(partial$x[i] / share, 0, .5) / share
+      }, 0, 1, rel.tol = 1e-12, abs.tol = 1e-14)
+      expect_lt(reference$abs.error, 1e-10)
+      expect_equal(partial$y[i], reference$value, tolerance = 2e-10)
+    }
+    expect_equal_each(built$data[[2L]]$y,
+      stats::dnorm(built$data[[2L]]$x, 0, .5), tolerance = 1e-14)
+  }
+  explicit <- plot_posterior(fixture$samples, "mu_f", prior = TRUE, plot_type = "ggplot",
+    n_points = 64, dots_prior = list(col = "purple", lty = 3))
+  expect_true(all(vapply(ggplot2::ggplot_build(explicit)$data[1:2], function(x){
+    identical(unique(x$colour), "purple") && identical(unique(x$linetype), 3)
+  }, logical(1))))
+  marginal <- marginal_posterior(fixture$samples, "mu_f", use_formula = FALSE,
+    prior_samples = TRUE, n_samples = 128L)
+  data <- .plot_data_marginal_samples(list(mu_f = marginal), "mu_f", TRUE, 64, NULL, NULL, FALSE)
+  expect_identical(attr(data, "factor_level_universe")$name, c("alternate", "random"))
+  expect_true(all(vapply(data, function(x) length(attr(x, "prior")) > 0L, logical(1))))
+  selection <- parameter_catalog_resolve(parameter_catalog(fixture$fit), "f[alternate]", namespace = "mu")
+  scalar <- parameter_mixed_posterior(fixture$fit, selection)
+  expect_length(ggplot2::ggplot_build(plot_posterior(list(theta = scalar), "theta", prior = TRUE,
+    plot_type = "ggplot", n_points = 64))$data, 2L)
+})
+
+test_that("ordered overlay styles use exact line argument names", {
+  fixture <- ordered_plot_test_fixture(prior("normal", list(0, .5)), c(.4, .6),
+    levels = c("systematic", "alternate", "random"))
+  plot_data <- .plot_data_samples.factor(fixture$samples, "mu_f", 32L, NULL, NULL, FALSE)
+  posterior_col <- c("red", "blue")
+  default_col <- grDevices::palette.colors(n = 3L)[-1L]
+  for(name in c("col.fill", "col.axis", "col.lab", "col.main")){
+    other_color <- stats::setNames(list("grey60"), name)
+    inherited <- .plot_ordered_overlay_styles(other_color, plot_data, list(col = posterior_col))
+    expect_identical(inherited[["col"]], posterior_col)
+    expect_identical(inherited[[name]], other_color[[name]])
+    expect_identical(inherited[["lty"]], 2)
+    defaults <- .plot_ordered_overlay_styles(list(), plot_data, other_color)
+    expect_identical(defaults, list(col = default_col, lty = 2))
+  }
+  for(style in list(list(lty = 3), list(linetype = "dotted"),
+    list(lty = 3, linetype = "dotted"))){
+    explicit <- c(list(col = c("purple", "orange"), col.fill = "grey80"), style)
+    expect_identical(.plot_ordered_overlay_styles(explicit, plot_data,
+      list(col = posterior_col)), explicit)
+  }
+  expect_identical(.plot_ordered_overlay_styles(list(), plot_data,
+    list(lty = 3, linetype = "dotted")), list(col = .plot.prior_settings()[["col"]], lty = 2))
+  nonordered <- attr(plot_data, "factor_level_universe", exact = TRUE)
+  attr(nonordered, "ordered") <- FALSE
+  attr(plot_data, "factor_level_universe") <- nonordered
+  unchanged <- list(col.fill = "grey80", linetype = "dotted")
+  expect_identical(.plot_ordered_overlay_styles(unchanged, plot_data,
+    list(col = posterior_col)), unchanged)
+})
+
+test_that("ordered posterior and marginal overlays retain line colors with forwarded fills", {
+  fixture <- ordered_plot_test_fixture(prior("normal", list(0, .5)), c(.4, .6),
+    levels = c("systematic", "alternate", "random"))
+  marginal <- marginal_posterior(fixture$samples, "mu_f", use_formula = FALSE,
+    prior_samples = TRUE, n_samples = 128L)
+  universe <- attr(.plot_data_samples.factor(fixture$samples, "mu_f", 32L,
+    NULL, NULL, FALSE), "factor_level_universe", exact = TRUE)
+  expect_identical(universe$name, c("mu_f[alternate]", "mu_f[random]"))
+  expect_identical(universe$style_index, 1:2)
+  base_lines <- list()
+  original_lines <- graphics::lines
+  testthat::local_mocked_bindings(
+    lines = function(...){
+      base_lines[[length(base_lines) + 1L]] <<- list(...)
+      original_lines(...)
+    },
+    .package = "graphics"
+  )
+  grDevices::pdf(NULL)
+  on.exit(grDevices::dev.off(), add = TRUE)
+  for(method in c("posterior", "marginal")){
+    plot_fun <- if(method == "posterior") plot_posterior else plot_marginal
+    samples <- if(method == "posterior") fixture$samples else list(mu_f = marginal)
+    for(posterior_col in list(c("red", "blue"), NULL)){
+      # RoBMA forwards this fill while leaving whole-term line colors to
+      # BayesTools. Use its real mixed-posterior producer, not hand-made densities.
+      dots <- list(dots_prior = list(col.fill = "#B3B3B34C"))
+      expected_col <- if(is.null(posterior_col)) grDevices::palette.colors(3L)[-1L] else posterior_col
+      if(is.null(posterior_col)) dots[["col.fill"]] <- "grey80" else dots[["col"]] <- posterior_col
+      args <- c(list(samples = samples, parameter = "mu_f", prior = TRUE, n_points = 32L), dots)
+      plot <- do.call(plot_fun, c(args, list(plot_type = "ggplot")))
+      built <- ggplot2::ggplot_build(plot)
+      expect_identical(vapply(built$data[1:2], function(x) unique(x$colour), character(1)), expected_col)
+      expect_identical(vapply(built$data[1:2], function(x) unique(x$linetype), numeric(1)), c(2, 2))
+      expect_identical(sort(unique(built$data[[3L]]$colour)), sort(expected_col))
+      base_lines <- list()
+      do.call(plot_fun, c(args, list(plot_type = "base")))
+      expect_length(base_lines, 4L)
+      expect_identical(vapply(base_lines, `[[`, character(1), "col"), rep(expected_col, 2L))
+      expect_equal(vapply(base_lines, `[[`, numeric(1), "lty"), c(2, 2, 1, 1))
+    }
+  }
+})
+
+test_that("non-reference ordered zero levels and mixed atoms remain visible", {
+  for(allocation in list(c(0, .3, .7), NULL)){
+    fixture <- ordered_plot_test_fixture(prior("point", list(2)), allocation)
+    data <- .plot_data_samples.factor(fixture$samples, "mu_f", 64, NULL, NULL, FALSE)
+    points <- data[vapply(data, inherits, logical(1), "density.prior.point")]
+    expect_true(any(vapply(points, function(x) identical(x$x, 2) && identical(x$y, 1), logical(1))))
+    if(!is.null(allocation)){
+      expect_true(any(vapply(points, function(x) identical(x$x, 0) && identical(x$y, 1), logical(1))))
+    }
+  }
+  zero <- ordered_plot_test_fixture(prior("normal", list(0, 1)), c(0, .3, .7))
+  marginal <- marginal_posterior(zero$samples, "mu_f", use_formula = FALSE, prior_samples = TRUE)
+  expect_identical(as.numeric(marginal$middle), rep(0, 120L))
+  atoms <- .posterior_atoms_get(marginal$middle)
+  expect_identical(atoms$mass, 1)
+  expect_identical(as.numeric(atoms$locations), 0)
+  point <- ordered_plot_test_fixture(prior("point", list(2)),
+    prior("dirichlet", list(c(2, 2, .5))))
+  columns <- .JAGS_prior_factor_names("mu_f", point$prior)
+  context <- posterior_metadata(point$samples, "prior_context")
+  endpoint <- .prior_density_from_context(context, stats::setNames(c(1, 1, 0), columns))
+  ordinate <- prior_density_ordinate(endpoint, 2)
+  expect_identical(ordinate$behavior, "infinite")
+  expect_identical(ordinate$point_mass, 0)
+  expect_true(ordinate$exact)
+  fixture <- ordered_plot_test_fixture(
+    prior_spike_and_slab(prior("point", list(-2)), prior("point", list(.5))),
+    prior("dirichlet", list(c(2, 2, .5))))
+  for(transformation in list(list(name = "exp", arguments = NULL, location = 1),
+    list(name = "tanh", arguments = NULL, location = 0),
+    list(name = "lin", arguments = list(a = 3, b = -2), location = 3))){
+    original <- density(fixture$prior, n_points = 64L, transformation = transformation$name,
+      transformation_arguments = transformation$arguments)
+    displayed <- .plot_data_ordered_prior_display(original)[[3L]]
+    expect_identical(displayed$continuous, original[[3L]]$continuous)
+    expect_equal(displayed$atoms, data.frame(location = transformation$location, mass = .5))
+    direct <- plot(fixture$prior, show_figures = 3L, plot_type = "ggplot", n_points = 64L,
+      transformation = transformation$name, transformation_arguments = transformation$arguments)
+    layers <- ggplot2::ggplot_build(direct)$data
+    expect_length(layers, 2L)
+    expect_equal(layers[[2L]]$x, transformation$location)
+    geom <- ggplot2::ggplot() + geom_prior(fixture$prior, show_parameter = 3L, n_points = 64L,
+      transformation = transformation$name, transformation_arguments = transformation$arguments)
+    expect_equal(ggplot2::ggplot_build(geom)$data[[2L]]$x, transformation$location)
+  }
+})
+
+test_that("ordered guides give each level only its posterior curve or point glyph", {
+  skip_if(packageVersion("ggplot2") < "3.5.0", "Computed guide participation needs ggplot2 >= 3.5.0.")
+  fixtures <- list(point_last = ordered_plot_test_fixture(prior("point", list(2))),
+    zero_share = ordered_plot_test_fixture(prior("normal", list(0, 1)), c(0, .3, .7)),
+    all_point = ordered_plot_test_fixture(prior("point", list(2)), c(.2, .3, .5)))
+  for(name in names(fixtures)){
+    fixture <- fixtures[[name]]
+    plot <- plot_posterior(fixture$samples, "mu_f", prior = TRUE, plot_type = "ggplot",
+      n_points = 64, col = c("red", "blue", "green"), legend_labels = c("M", "L", "E"))
+    guides <- ggplot2::ggplot_build(plot)$plot$guides$params
+    expect_length(guides, 1L)
+    guide <- guides[[1L]]
+    expect_identical(guide$key$.label, c("M", "L", "E"))
+    expect_identical(guide$key$colour, c("red", "blue", "green"))
+    point_keys <- switch(name, point_last = c(FALSE, FALSE, TRUE),
+      zero_share = c(TRUE, FALSE, FALSE), all_point = rep(TRUE, 3L))
+    point_decor <- guide$decor[grepl("^geom_segment", names(guide$decor))]
+    curve_decor <- guide$decor[grepl("^geom_line", names(guide$decor))]
+    point_draws <- Reduce(`|`, lapply(point_decor, function(x) x$data$.draw), init = rep(FALSE, 3L))
+    curve_draws <- Reduce(`|`, lapply(curve_decor, function(x) x$data$.draw), init = rep(FALSE, 3L))
+    expect_identical(point_draws, point_keys)
+    expect_identical(curve_draws, !point_keys)
+    hidden <- plot_posterior(fixture$samples, "mu_f", prior = TRUE,
+      plot_type = "ggplot", n_points = 64, legend = FALSE)
+    expect_length(ggplot2::ggplot_build(hidden)$plot$guides$params, 0L)
+    mapped <- hidden$layers[vapply(hidden$layers, function(layer){
+      "colour" %in% names(layer$mapping)
+    }, logical(1))]
+    expect_gt(length(mapped), 0L)
+    expect_true(all(vapply(mapped, function(layer) identical(layer$show.legend, FALSE), logical(1))))
+  }
+})
+
+.posterior_density_for_test <- function(x, y, method = "iwmde",
+                                        density_method = "precomputed", ...){
+  posterior_density_attribute(x = x, y = y, method = method,
+                              density_method = density_method, ...)
+}
+
+.posterior_ordinate_for_test <- function(value, ordinate, method = "qCMDE",
+                                         density_method = "precomputed", ...){
+  posterior_ordinate_attribute(value = value, ordinate = ordinate,
+                               method = method,
+                               density_method = density_method, ...)
+}
+
+test_that("simple plots select the requested named atom coordinate", {
+
+  theta <- rep(2, 20)
+  attr(theta, "prior_list") <- prior("point", list(2))
+  theta <- attach_test_model_probabilities(theta, 1)
+  theta <- .bt_draws_set_component(theta, source = "model", component = rep(1L, 20))
+  theta <- .bt_meta_set(theta, "atoms", BayesTools:::.posterior_atoms_new(
+    matrix(c(7, 2), nrow = 1L, dimnames = list(NULL, c("other", "theta"))),
+    mass = 1
+  ))
+  plotted <- BayesTools:::.plot_data_samples.simple(
+    list(theta = theta), "theta", 64, NULL, NULL, FALSE
+  )
+  expect_equal(plotted$points1$x, 2)
+  expect_equal(plotted$points1$y, 1)
+})
+
+test_that("PET and PEESE plots rebuild scalar atoms from bias branches", {
+
+  prior_list <- list(bias = prior_mixture(list(
+    prior_none(), prior_PET("normal", list(0, 1)), prior_PEESE("normal", list(0, 1))
+  )))
+  posterior <- cbind(
+    bias_indicator = rep(1:3, each = 10),
+    PET = c(rep(0, 10), seq(.1, 1, length.out = 10), rep(0, 10)),
+    PEESE = c(rep(0, 20), seq(.2, 2, length.out = 10))
+  )
+  fit <- coda::mcmc(posterior)
+  class(fit) <- c("mcmc", "BayesTools_fit")
+  attr(fit, "prior_list") <- prior_list
+  fit <- attach_test_parameter_map(fit)
+  samples <- as_mixed_posteriors(fit, "bias")
+  # Declared branch probabilities remain authoritative even after resampling.
+  bias_atoms <- .bt_meta_get(samples$bias, "atoms")
+  bias_atoms$component_probabilities <- c(.2, .3, .5)
+  samples$bias <- .bt_meta_set(samples$bias, "atoms", bias_atoms)
+  for(parameter in c("PET", "PEESE")){
+    scalar <- BayesTools:::.simplify_as_mixed_posterior_bias(samples, parameter)
+    atoms <- BayesTools:::.posterior_atoms_get(scalar[[parameter]])
+    expect_identical(colnames(atoms$locations), parameter)
+    plotted <- BayesTools:::.plot_data_samples.simple(
+      scalar, parameter, 64, NULL, NULL, FALSE
+    )
+    expect_equal(plotted$points1$x, 0)
+    expect_equal(plotted$points1$y, if(parameter == "PET") .7 else .5)
+    expect_equal(length(plotted$density$samples), 10L)
+    expect_s3_class(
+      plot_posterior(samples, parameter, individual = TRUE, plot_type = "ggplot", n_points = 64),
+      "ggplot"
+    )
+    conditioned <- as_mixed_posteriors(fit, "bias", conditional = parameter)
+    conditional_scalar <- BayesTools:::.simplify_as_mixed_posterior_bias(conditioned, parameter)
+    expect_length(BayesTools:::.posterior_atoms_get(conditional_scalar[[parameter]])$mass, 0L)
+    conditional_plot <- BayesTools:::.plot_data_samples.simple(
+      conditional_scalar, parameter, 64, NULL, NULL, FALSE
+    )
+    expect_identical(names(conditional_plot), "density")
+  }
+})
+
+test_that("conditional bias plots restore omitted structural scalar values", {
+
+  prior_list <- list(bias = prior_mixture(list(
+    prior_weightfunction("one-sided", .05, wf_fixed(c(1, .5))),
+    prior_PET("normal", list(0, 1)), prior_PEESE("normal", list(0, 1))
+  )))
+  posterior <- cbind(
+    bias_indicator = rep(1:3, each = 6),
+    "omega[1]" = 1,
+    "omega[2]" = c(rep(.5, 6), rep(1, 12)),
+    PET = c(rep(0, 6), seq(.1, 1, length.out = 6), rep(0, 6)),
+    PEESE = c(rep(0, 12), seq(.2, 2, length.out = 6))
+  )
+  fit <- coda::mcmc(posterior)
+  class(fit) <- c("mcmc", "BayesTools_fit")
+  attr(fit, "prior_list") <- prior_list
+  fit <- attach_test_parameter_map(fit)
+  for(condition in list(NULL, "PETPEESE", "PET", "omega")){
+    samples <- as_mixed_posteriors(fit, "bias", conditional = condition, force_plots = TRUE)
+    for(parameter in c("PET", "PEESE")){
+      scalar <- BayesTools:::.simplify_as_mixed_posterior_bias(samples, parameter)
+      indicator <- .bt_meta_get(scalar[[parameter]], "component")
+      expected <- posterior[posterior[, "bias_indicator"] %in% unique(indicator), parameter]
+      expect_equal(as.numeric(scalar[[parameter]]), as.numeric(expected))
+      expect_identical(colnames(scalar[[parameter]]), parameter)
+      expect_identical(colnames(BayesTools:::.posterior_atoms_get(scalar[[parameter]])$locations), parameter)
+      expect_s3_class(plot_posterior(
+        samples, parameter, individual = TRUE, prior = TRUE, plot_type = "ggplot", n_points = 64
+      ), "ggplot")
+    }
+  }
+
+  incomplete <- as_mixed_posteriors(fit, "bias")
+  incomplete$bias <- incomplete$bias[, colnames(incomplete$bias) != "PET", drop = FALSE]
+  attributes_to_restore <- attributes(as_mixed_posteriors(fit, "bias")$bias)
+  for(attribute in setdiff(names(attributes_to_restore), c("dim", "dimnames"))){
+    attr(incomplete$bias, attribute) <- attributes_to_restore[[attribute]]
+  }
+  # the restored metadata describe the draws without the PET column
+  incomplete$bias <- BayesTools:::.bt_meta_refresh(incomplete$bias)
+  expect_error(
+    BayesTools:::.simplify_as_mixed_posterior_bias(incomplete, "PET"),
+    "Posterior samples for 'PET' are unavailable because an active bias branch is not a point prior.",
+    fixed = TRUE
+  )
+})
+
+.scaled_atom_plot_samples_for_test <- function(slope, slope_prior, indicator = NULL){
+
+  posterior <- cbind(mu_intercept = rep(0, length(slope)), mu_x = slope)
+  if(!is.null(indicator)){
+    posterior <- cbind(posterior, mu_x_indicator = indicator)
+  }
+  fit <- coda::mcmc(posterior)
+  class(fit) <- c("mcmc", "BayesTools_fit")
+  attr(fit, "prior_list") <- list(mu_intercept = prior("point", list(0)), mu_x = slope_prior)
+  attr(fit, "formula_scale") <- list(mu = formula_scale_for_test(~ x, list(x = list(mean = 5, sd = 2))))
+  fit <- attach_test_parameter_map(fit)
+  fit <- BayesTools:::.bt_attach_parameter_map(fit, monitor_names = colnames(posterior))
+  as_mixed_posteriors(fit, c("mu_intercept", "mu_x"), transform_scaled = TRUE)
+}
+
+test_that("public posterior plots retain unscaled fixed coefficient locations", {
+
+  samples <- .scaled_atom_plot_samples_for_test(rep(1, 20), prior("point", list(1)))
+  expected <- c(mu_intercept = -2.5, mu_x = .5)
+  for(parameter in names(expected)){
+    for(show_prior in c(FALSE, TRUE)){
+      plot <- plot_posterior(samples, parameter, plot_type = "ggplot", prior = show_prior)
+      layers <- ggplot2::ggplot_build(plot)$data
+      expect_length(layers, if(show_prior) 2L else 1L)
+      for(layer in layers){
+        expect_equal(layer$x, unname(expected[parameter]))
+        expect_equal(layer$xend, layer$x)
+        expect_equal(layer$yend, 1)
+      }
+    }
+  }
+})
+
+test_that("unscaled intercept plots use joint continuous and atomic contributors", {
+
+  slopes <- seq(-1, 1, length.out = 20)
+  continuous <- .scaled_atom_plot_samples_for_test(slopes, prior("normal", list(0, 1)))
+  mixed <- .scaled_atom_plot_samples_for_test(
+    c(rep(0, 8), seq(.1, 1, length.out = 12)),
+    prior_spike_and_slab(prior("normal", list(0, 1)), prior("point", list(.5))),
+    indicator = c(rep(0L, 8), rep(1L, 12))
+  )
+  # A declared mass remains authoritative when it differs from draw frequency.
+  declared <- mixed
+  declared$mu_intercept <- .bt_meta_set(declared$mu_intercept, "atoms", posterior_atom_attribute(
+    data.frame(x = 0, mass = .25)
+  ))
+  for(samples in list(continuous, mixed, declared)){
+    atoms <- BayesTools:::.posterior_atoms_get(samples$mu_intercept)
+    values <- as.numeric(samples$mu_intercept)
+    values <- values[!values %in% as.numeric(atoms$locations)]
+    plot_data <- BayesTools:::.plot_data_samples.simple(
+      samples, "mu_intercept", 64, NULL, NULL, FALSE
+    )
+    expected <- stats::density(values, n = 64)
+    expect_equal(as.numeric(plot_data$density$samples), values)
+    expect_equal(plot_data$density$x, expected$x)
+    expect_equal(plot_data$density$y, expected$y * (1 - sum(atoms$mass)))
+    points <- plot_data[vapply(plot_data, inherits, logical(1), "density.prior.point")]
+    expect_equal(length(points), length(atoms$mass))
+    if(length(atoms$mass) > 0){
+      expect_equal(points[[1]]$x, 0)
+      expect_equal(points[[1]]$y, atoms$mass)
+    }
+    layers <- ggplot2::ggplot_build(plot_posterior(
+      samples, "mu_intercept", plot_type = "ggplot", n_points = 64
+    ))$data
+    expect_true(any(vapply(layers, nrow, integer(1)) > 1L))
+  }
+})
+
+test_that("precomputed simple densities draw the declared atoms of the samples", {
+
+  samples <- .scaled_atom_plot_samples_for_test(rep(1, 20), prior("point", list(1)))
+  stored_x <- seq(-5, 5, length.out = 64)
+  stored_y <- .75 * stats::dnorm(stored_x)
+  # posterior densities describe the continuous part only: their point masses
+  # are the declared atoms of the draws
+  expect_error(
+    .posterior_density_for_test(
+      x = stored_x, y = stored_y, method = "user",
+      point_masses = data.frame(x = 2, mass = .25)
+    ),
+    paste0(
+      "Posterior densities do not carry 'point_masses': declare the point ",
+      "masses of the posterior as the 'atoms' metadata of its draws with ",
+      "'posterior_atom_attribute()'."
+    ),
+    fixed = TRUE
+  )
+  samples$mu_intercept <- .bt_meta_set(samples$mu_intercept, "posterior_density", .posterior_density_for_test(
+    x = stored_x, y = stored_y, method = "user"
+  ))
+  expect_no_warning(plotted <- BayesTools:::.plot_data_samples.simple(
+    samples, "mu_intercept", 64, NULL, NULL, FALSE, density_method = "precomputed"
+  ))
+  expect_equal(plotted$density$x, stored_x)
+  expect_equal(plotted$density$y, stored_y)
+  # the unscaled intercept -2.5 of the point priors (-slope * mean / sd)
+  expect_equal(plotted$points1$x, -2.5)
+  expect_equal(plotted$points1$y, 1)
+})
+
+test_that("declared continuous constant draws cannot become plotting atoms", {
+
+  samples <- rep(0, 20)
+  attr(samples, "prior_list") <- list(prior("normal", list(0, 1)))
+  samples <- attach_test_model_probabilities(samples, 1)
+  samples <- .bt_draws_set_component(samples, source = "model", component = rep(1L, 20))
+  samples <- .bt_meta_set(samples, "atoms", posterior_atom_attribute())
+  expected_error <- paste0(
+    "Posterior density is unavailable for declared continuous samples with fewer than two distinct values. ",
+    "Provide valid 'posterior_density' metadata (posterior_metadata()) and set 'density_method' to 'precomputed'."
+  )
+  expect_error(
+    BayesTools:::.plot_data_samples.simple(list(theta = samples), "theta", 64, NULL, NULL, FALSE),
+    expected_error, fixed = TRUE
+  )
+  expect_error(
+    BayesTools:::.plot_data_marginal_samples.den(samples, 64, NULL, NULL, FALSE),
+    expected_error, fixed = TRUE
+  )
+  stored <- .posterior_density_for_test(x = seq(-3, 3, length.out = 64), y = stats::dnorm(seq(-3, 3, length.out = 64)))
+  samples <- .bt_meta_set(samples, "posterior_density", stored)
+  expect_equal(
+    BayesTools:::.plot_data_samples.simple(
+      list(theta = samples), "theta", 64, NULL, NULL, FALSE, density_method = "precomputed"
+    )$density$y,
+    stored$y
+  )
+  expect_equal(
+    BayesTools:::.plot_data_marginal_samples.den(
+      samples, 64, NULL, NULL, FALSE, posterior_density = stored, density_method = "precomputed"
+    )$density$y,
+    stored$y
+  )
+
+  # without an atom declaration, plotting stops instead of inferring atoms
+  # from the prior list, the model indicators, or constant draws
+  samples <- .bt_meta_set(samples, "atoms", NULL)
+  samples <- .bt_meta_set(samples, "posterior_density", NULL)
+  unknown_atoms <- "Posterior atom status is unknown. Plotting posterior samples requires an explicit atom/no-atom declaration"
+  expect_error(
+    BayesTools:::.plot_data_samples.simple(list(theta = samples), "theta", 64, NULL, NULL, FALSE),
+    unknown_atoms, fixed = TRUE
+  )
+  expect_error(
+    BayesTools:::.plot_data_marginal_samples.den(samples, 64, NULL, NULL, FALSE),
+    unknown_atoms, fixed = TRUE
+  )
+  expect_error(
+    BayesTools:::.plot_data_samples.simple(list(theta = numeric()), "theta", 64, NULL, NULL, FALSE),
+    unknown_atoms, fixed = TRUE
+  )
+  expect_error(
+    BayesTools:::.plot_data_marginal_samples.den(numeric(), 64, NULL, NULL, FALSE),
+    unknown_atoms, fixed = TRUE
+  )
+})
 
 # ============================================================================ #
 # TEST FILE: Model Averaging Plots Edge Cases
@@ -19,6 +656,10 @@ skip_if_not_test_profile("unit")
 #
 # TAGS: @edge-cases, @plots, @input-validation
 # ============================================================================ #
+
+.model_plot_density_mass <- function(density) {
+  sum(diff(density$x) * (head(density$y, -1) + tail(density$y, -1)) / 2)
+}
 
 
 # ============================================================================ #
@@ -368,11 +1009,15 @@ test_that("plot_models conditional view filters nulls before probability orderin
 
 test_that("posterior plot data separates spike mass from continuous samples", {
   theta <- c(rep(0, 3), seq_len(7))
-  attr(theta, "models_ind") <- c(rep(1, 3), rep(2, 7))
+  theta <- attach_test_model_probabilities(theta, c(.3, .7))
+  theta <- .bt_draws_set_component(theta, source = "model", component = c(rep(1, 3), rep(2, 7)))
   attr(theta, "prior_list") <- list(
     prior("point", list(location = 0)),
     prior("normal", list(mean = 0, sd = 1))
   )
+  theta <- .bt_meta_set(theta, "atoms", posterior_atom_attribute(
+    data.frame(x = 0, mass = .3)
+  ))
 
   plot_data <- BayesTools:::.plot_data_samples.simple(
     samples = list(theta = theta),
@@ -390,6 +1035,1178 @@ test_that("posterior plot data separates spike mass from continuous samples", {
 
   dx <- plot_data$density$x[2] - plot_data$density$x[1]
   expect_equal(sum(plot_data$density$y) * dx, .7, tolerance = .08)
+})
+
+test_that("posterior base overlays reuse the active probability scale", {
+
+  make_samples <- function(point_count, continuous){
+
+    theta <- c(rep(0, point_count), continuous)
+    theta <- attach_test_model_probabilities(theta, c(point_count, length(continuous)) / (point_count + length(continuous)))
+    theta <- .bt_draws_set_component(theta, source = "model", component = c(
+      rep(1L, point_count),
+      rep(2L, length(continuous))
+    ))
+    attr(theta, "prior_list") <- list(
+      prior("point", list(location = 0)),
+      prior("normal", list(mean = 0, sd = 1))
+    )
+    theta <- .bt_meta_set(theta, "atoms", posterior_atom_attribute(
+      data.frame(x = 0, mass = point_count / length(theta))
+    ))
+    class(theta) <- c("mixed_posteriors.simple", "mixed_posteriors")
+
+    return(list(theta = theta))
+  }
+
+  base_samples <- make_samples(
+    point_count = 50,
+    continuous  = seq(-0.1, 0.1, length.out = 50)
+  )
+  overlay_samples <- make_samples(
+    point_count = 60,
+    continuous  = seq(-5, 5, length.out = 40)
+  )
+
+  scales <- numeric()
+  testthat::local_mocked_bindings(
+    .lines.prior.point = function(plot_data, scale_y2 = 1, ...){
+
+      scales <<- c(scales, scale_y2)
+      return(invisible(NULL))
+    },
+    .package = "BayesTools"
+  )
+
+  file <- tempfile(fileext = ".png")
+  grDevices::png(file)
+  on.exit({
+    grDevices::dev.off()
+    unlink(file)
+  }, add = TRUE)
+
+  plot_posterior(base_samples, "theta", prior = TRUE)
+  base_scale <- tail(scales, 1L)
+
+  overlay_data <- BayesTools:::.plot_data_samples.simple(
+    samples                  = overlay_samples,
+    parameter                = "theta",
+    n_points                 = 1000,
+    transformation           = NULL,
+    transformation_arguments = NULL,
+    transformation_settings  = FALSE
+  )
+  overlay_scale <- BayesTools:::.get_scale_y2(overlay_data)
+  expect_false(isTRUE(all.equal(base_scale, overlay_scale)))
+
+  expect_warning(
+    plot_posterior(overlay_samples, "theta", add = TRUE),
+    "wider 'ylim2'"
+  )
+  expect_equal(tail(scales, 1L), base_scale, tolerance = 1e-12)
+
+  plot_posterior(overlay_samples, "theta", add = TRUE, scale_y2 = 7)
+  expect_equal(tail(scales, 1L), 7, tolerance = 1e-12)
+
+  plot_posterior(
+    base_samples,
+    "theta",
+    prior = TRUE,
+    ylim  = c(0, 12.5),
+    ylim2 = c(0, 1)
+  )
+  explicit_scale <- tail(scales, 1L)
+  expect_equal(
+    explicit_scale,
+    BayesTools:::.plot_scale_y2_from_limits(c(0, 12.5), c(0, 1)),
+    tolerance = 1e-12
+  )
+  expect_no_warning(
+    plot_posterior(overlay_samples, "theta", add = TRUE)
+  )
+  expect_equal(tail(scales, 1L), explicit_scale, tolerance = 1e-12)
+
+  scale_state <- BayesTools:::.plot_scale_y2_state_current()
+  expect_equal(scale_state[["scale_y2"]], explicit_scale, tolerance = 1e-12)
+  expect_equal(scale_state[["ylim2"]], c(0, 1))
+
+  graphics::plot(0, 0, xlim = c(-10, 10), ylim = c(0, 1))
+  plot_posterior(overlay_samples, "theta", add = TRUE)
+  expect_equal(tail(scales, 1L), overlay_scale, tolerance = 1e-12)
+})
+
+test_that("secondary-axis limits use one mapping for axes and point masses", {
+
+  theta <- c(rep(0, 50), seq(-1, 1, length.out = 50))
+  theta <- attach_test_model_probabilities(theta, c(.5, .5))
+  theta <- .bt_draws_set_component(theta, source = "model", component = c(rep(1L, 50), rep(2L, 50)))
+  theta <- .bt_meta_set(theta, "atoms", posterior_atom_attribute(
+    data.frame(x = 0, mass = .5)
+  ))
+  attr(theta, "prior_list") <- list(
+    prior("point", list(location = 0)),
+    prior("normal", list(mean = 0, sd = 1))
+  )
+  class(theta) <- c("mixed_posteriors.simple", "mixed_posteriors")
+
+  plot_data <- BayesTools:::.plot_data_samples.simple(
+    samples                  = list(theta = theta),
+    parameter                = "theta",
+    n_points                 = 1000,
+    transformation           = NULL,
+    transformation_arguments = NULL,
+    transformation_settings  = FALSE
+  )
+
+  axis_type  <- NULL
+  axis_scale <- NULL
+  point_scale <- NULL
+  testthat::local_mocked_bindings(
+    .plot.prior_empty = function(type, dots, ...){
+
+      axis_type  <<- type
+      axis_scale <<- dots[[".scale_y2_resolved"]]
+      return(invisible(NULL))
+    },
+    .plot_scale_y2_remember = function(...) invisible(NULL),
+    .lines.prior.simple = function(...) invisible(NULL),
+    .lines.prior.point = function(plot_data, scale_y2 = 1, ...){
+
+      point_scale <<- scale_y2
+      return(invisible(NULL))
+    },
+    .package = "BayesTools"
+  )
+
+  BayesTools:::.plot_prior_list.both(
+    plot_data = plot_data,
+    plot_type = "base",
+    ylim      = c(0, 12.5),
+    ylim2     = c(0, 1)
+  )
+  expect_identical(axis_type, "both")
+  expect_equal(axis_scale, point_scale, tolerance = 1e-12)
+
+  BayesTools:::.plot_prior_list.both(
+    plot_data = plot_data["density"],
+    plot_type = "base",
+    ylim      = c(0, 12.5),
+    ylim2     = c(0, 1)
+  )
+  expect_identical(axis_type, "both")
+  expect_equal(
+    axis_scale,
+    BayesTools:::.plot_scale_y2_from_limits(c(0, 12.5), c(0, 1)),
+    tolerance = 1e-12
+  )
+
+  ggplot <- BayesTools:::.plot_prior_list.both(
+    plot_data = plot_data,
+    plot_type = "ggplot",
+    ylim      = c(0, 12.5),
+    ylim2     = c(0, 1)
+  )
+  ggplot_scale <- attr(ggplot, "scale_y2")
+  y_scale      <- ggplot$scales$get_scales("y")
+  point_yend <- unlist(lapply(ggplot$layers, function(layer){
+    if("yend" %in% names(layer$data)) layer$data$yend else NULL
+  }))
+  expect_equal(ggplot_scale, axis_scale, tolerance = 1e-12)
+  expect_equal(
+    y_scale$secondary.axis$breaks,
+    pretty(c(0, 1)) * ggplot_scale,
+    tolerance = 1e-12
+  )
+  expect_equal(
+    max(point_yend),
+    max(plot_data[["points1"]]$y) * ggplot_scale,
+    tolerance = 1e-12
+  )
+})
+
+test_that("prior line overlays reuse the active probability scale", {
+
+  point_scale <- NULL
+  testthat::local_mocked_bindings(
+    .plot_scale_y2_state_current = function(){
+      list(scale_y2 = 9, ylim2 = c(0, 1), usr = c(0, 1, 0, 9))
+    },
+    .lines.prior.simple = function(...) invisible(NULL),
+    .lines.prior.point = function(plot_data, scale_y2 = 1, ...){
+
+      point_scale <<- scale_y2
+      return(invisible(NULL))
+    },
+    .package = "BayesTools"
+  )
+
+  lines_prior_list(list(
+    prior("point", list(location = 0)),
+    prior("normal", list(mean = 0, sd = 1))
+  ))
+  expect_equal(point_scale, 9)
+})
+
+test_that("bounded posterior KDE reflects support and keeps spike mass separate", {
+  theta <- c(rep(0, 20), seq(.005, .995, length.out = 80))
+  theta <- attach_test_model_probabilities(theta, c(.2, .8))
+  theta <- .bt_draws_set_component(theta, source = "model", component = c(rep(1, 20), rep(2, 80)))
+  theta <- .bt_meta_set(theta, "atoms", posterior_atom_attribute(
+    data.frame(x = 0, mass = .2)
+  ))
+  attr(theta, "prior_list") <- list(
+    prior("point", list(location = 0)),
+    prior("uniform", list(0, 1))
+  )
+
+  plot_data <- BayesTools:::.plot_data_samples.simple(
+    samples = list(theta = theta),
+    parameter = "theta",
+    n_points = 512,
+    transformation = NULL,
+    transformation_arguments = NULL,
+    transformation_settings = FALSE
+  )
+
+  expect_equal(plot_data$points1$x, 0)
+  expect_equal(plot_data$points1$y, .2)
+  expect_false(any(plot_data$density$samples == 0))
+  expect_equal(plot_data$density$samples, theta[21:100])
+  expect_equal(range(plot_data$density$x), c(0, 1))
+  expect_equal(plot_data$density$x[1:2], c(0, 0), tolerance = 1e-12)
+  expect_equal(plot_data$density$y[1], 0)
+  expect_gt(plot_data$density$y[2], 0)
+  expect_equal(tail(plot_data$density$x, 2), c(1, 1), tolerance = 1e-12)
+  expect_gt(tail(plot_data$density$y, 2)[1], 0)
+  expect_equal(tail(plot_data$density$y, 1), 0)
+  expect_equal(.model_plot_density_mass(plot_data$density), .8, tolerance = .03)
+  expect_true(isTRUE(attr(plot_data$density, "boundary_reflection")))
+})
+
+test_that("conditional posterior prior overlay uses conditioned spike-and-slab slab", {
+  prior_list <- list(
+    theta = prior_spike_and_slab(
+      prior("normal", list(mean = 1, sd = 0.2)),
+      prior_inclusion = prior("point", list(location = 0.5))
+    )
+  )
+
+  posterior <- cbind(
+    theta           = c(rep(0, 50), seq(0.5, 1.5, length.out = 50)),
+    theta_indicator = c(rep(0, 50), rep(1, 50))
+  )
+  fit <- coda::mcmc(posterior)
+  class(fit) <- c("mcmc", "BayesTools_fit")
+  attr(fit, "prior_list") <- prior_list
+  fit <- attach_test_parameter_map(fit)
+
+  samples <- as_mixed_posteriors(
+    model       = fit,
+    parameters  = "theta",
+    conditional = "theta"
+  )
+  prior_list_plot <- BayesTools:::.simplify_prior_list(attr(samples$theta, "prior_list"))
+
+  expect_true(BayesTools:::.plot_data_prior_should_use_context(
+    samples = samples,
+    parameter = "theta",
+    transform_scaled = FALSE,
+    prior_list = prior_list_plot
+  ))
+
+  plot_data_prior <- BayesTools:::.plot_data_prior_density_context(
+    prior_density_context = .bt_meta_get(samples, "prior_context"),
+    samples = samples,
+    parameter = "theta",
+    prior_list = prior_list_plot,
+    n_points = 128,
+    x_range = NULL,
+    transformation = NULL,
+    transformation_arguments = NULL,
+    transformation_settings = FALSE
+  )
+
+  expect_equal(names(plot_data_prior), "density")
+  expect_false(any(vapply(plot_data_prior, inherits, logical(1), what = "density.prior.point")))
+  expect_gt(max(plot_data_prior$density$y), 0)
+
+  expect_s3_class(
+    plot_posterior(samples, "theta", plot_type = "ggplot", prior = TRUE),
+    "ggplot"
+  )
+})
+
+test_that("posterior prior overlays use the spike-and-slab inclusion probability", {
+
+  prior_list <- list(
+    theta = prior_spike_and_slab(
+      prior("normal", list(mean = 0, sd = 1)),
+      prior_inclusion = prior("point", list(location = 0.2))
+    )
+  )
+  posterior <- cbind(
+    theta           = c(rep(0, 60), seq(-1, 1, length.out = 40)),
+    theta_indicator = c(rep(0, 60), rep(1, 40))
+  )
+  fit <- coda::mcmc(posterior)
+  class(fit) <- c("mcmc", "BayesTools_fit")
+  attr(fit, "prior_list") <- prior_list
+  fit <- attach_test_parameter_map(fit)
+
+  samples <- as_mixed_posteriors(fit, parameters = "theta")
+  prior_list_plot <- BayesTools:::.simplify_prior_list(attr(samples$theta, "prior_list"))
+  expect_equal(
+    vapply(prior_list_plot, BayesTools:::.prior_model_weight, numeric(1)),
+    c(.2, .8)
+  )
+
+  plot <- plot_posterior(samples, "theta", plot_type = "ggplot", prior = TRUE, n_points = 512)
+  layers <- ggplot2::ggplot_build(plot)$data
+  scale_y2 <- plot$bt_scale_y2_state$scale_y2
+
+  # prior layers precede the posterior layers: slab .2 * N(0, 1), spike .8
+  expect_equal(max(layers[[1]]$y), .2 * stats::dnorm(0), tolerance = 1e-3)
+  expect_equal(layers[[2]]$x, 0)
+  expect_equal(layers[[2]]$yend / scale_y2, .8, tolerance = 1e-12)
+})
+
+test_that("conditional posterior prior overlays do not scale raw coefficients by multiply_by", {
+
+  # The monitored column is the coefficient node itself; 'multiply_by' only
+  # scales its contribution to the linear predictor (mu = ... + sigma * theta * x).
+  theta_prior <- prior_spike_and_slab(
+    prior("normal", list(mean = 0, sd = 1)),
+    prior_inclusion = prior("point", list(location = 0.5))
+  )
+  attr(theta_prior, "multiply_by") <- "sigma"
+  prior_list <- list(
+    theta = theta_prior,
+    gamma = prior_spike_and_slab(
+      prior("normal", list(mean = 0, sd = 1)),
+      prior_inclusion = prior("point", list(location = 0.5))
+    ),
+    sigma = prior("lognormal", list(meanlog = 0, sdlog = 1))
+  )
+
+  theta_included <- rep(c(1, 1, 0, 0), each = 25)
+  gamma_included <- rep(c(1, 0, 1, 0), each = 25)
+  posterior <- cbind(
+    theta           = theta_included * seq(-1.5, 1.5, length.out = 100),
+    theta_indicator = theta_included,
+    gamma           = gamma_included * seq(-1, 1, length.out = 100),
+    gamma_indicator = gamma_included,
+    sigma           = seq(.5, 2, length.out = 100)
+  )
+  fit <- coda::mcmc(posterior)
+  class(fit) <- c("mcmc", "BayesTools_fit")
+  attr(fit, "prior_list") <- prior_list
+  fit <- attach_test_parameter_map(fit)
+
+  prior_layer <- function(samples, parameter){
+    plot <- plot_posterior(samples, parameter, plot_type = "ggplot", prior = TRUE, n_points = 512)
+    ggplot2::ggplot_build(plot)$data[[1]]
+  }
+
+  # conditional on its own inclusion: the N(0, 1) slab, peak dnorm(0), not the
+  # N(0, 1) x sigma product (peak exp(1/2) * dnorm(0), heavy tails)
+  samples_self <- as_mixed_posteriors(fit, parameters = "theta", conditional = "theta")
+  layer_self <- prior_layer(samples_self, "theta")
+  expect_equal(max(layer_self$y), stats::dnorm(0), tolerance = 1e-3)
+  expect_lt(max(abs(layer_self$x)), 10)
+
+  # conditional on another parameter: 0.5 * N(0, 1) slab plus the spike
+  samples_other <- as_mixed_posteriors(fit, parameters = c("theta", "gamma"), conditional = "gamma")
+  layer_other <- prior_layer(samples_other, "theta")
+  expect_equal(max(layer_other$y), .5 * stats::dnorm(0), tolerance = 1e-3)
+  expect_lt(max(abs(layer_other$x)), 10)
+})
+
+test_that("conditional posterior prior overlays propagate context failures", {
+
+  prior_list <- list(
+    theta = prior_spike_and_slab(
+      prior("normal", list(mean = 0, sd = 1)),
+      prior_inclusion = prior("point", list(location = 0.5))
+    ),
+    gamma = prior_spike_and_slab(
+      prior("normal", list(mean = 0, sd = 1)),
+      prior_inclusion = prior("point", list(location = 0.5))
+    )
+  )
+  theta_included <- rep(c(1, 1, 0, 0), each = 25)
+  gamma_included <- rep(c(1, 0, 1, 0), each = 25)
+  posterior <- cbind(
+    theta           = theta_included * seq(-1.5, 1.5, length.out = 100),
+    theta_indicator = theta_included,
+    gamma           = gamma_included * seq(-1, 1, length.out = 100),
+    gamma_indicator = gamma_included
+  )
+  fit <- coda::mcmc(posterior)
+  class(fit) <- c("mcmc", "BayesTools_fit")
+  attr(fit, "prior_list") <- prior_list
+  fit <- attach_test_parameter_map(fit)
+  samples <- as_mixed_posteriors(fit, parameters = c("theta", "gamma"), conditional = "gamma")
+
+  # the conditional prior overlay is built from the density context; a
+  # failure there is an error, not a silent switch to the unconditional prior
+  testthat::local_mocked_bindings(
+    .prior_density_build_context = function(...) stop("context failure", call. = FALSE),
+    .prior_density_from_context  = function(...) stop("context failure", call. = FALSE),
+    .package = "BayesTools"
+  )
+  expect_error(
+    plot_posterior(samples, "theta", plot_type = "ggplot", prior = TRUE, n_points = 64),
+    "context failure",
+    fixed = TRUE
+  )
+})
+
+test_that("plot_posterior handles attached point priors outside xlim", {
+
+  theta <- .bt_meta_update(
+    structure(rep(0, 64), class = c("mixed_posteriors.simple", "mixed_posteriors"), prior_list = list(prior("spike", list(0)))),
+    component = rep(1L, 64),
+    model_probabilities = list(prior = .model_probability_pair(1, 0, "prior", "raw"),
+      posterior = .model_probability_pair(1, 0, "posterior", "raw")),
+    component_source = "model",
+    prior_density = BayesTools:::.prior_linear_density_point(0),
+    atoms = posterior_atom_attribute(data.frame(x = 0, mass = 1))
+  )
+  samples <- list(theta = theta)
+
+  expect_null(BayesTools:::.plot_data_attached_prior_density(
+    samples = samples,
+    parameter = "theta",
+    n_points = 32,
+    x_range = c(10, 20)
+  ))
+  expect_s3_class(
+    plot_posterior(
+      samples,
+      "theta",
+      prior = TRUE,
+      plot_type = "ggplot",
+      xlim = c(10, 20),
+      n_points = 32
+    ),
+    "ggplot"
+  )
+})
+
+test_that("conditional PET/PEESE prior overlays do not reintroduce excluded bias branches", {
+  prior_list <- list(
+    bias = prior_mixture(
+      list(
+        prior_none(prior_weights = 1),
+        prior_PET("normal", list(mean = 0, sd = 1), prior_weights = 1),
+        prior_PEESE("normal", list(mean = 0, sd = 1), prior_weights = 1)
+      ),
+      is_null = c(TRUE, FALSE, FALSE)
+    )
+  )
+
+  posterior <- cbind(
+    bias_indicator = c(rep(1, 20), rep(2, 20), rep(3, 20)),
+    PET            = c(rep(0, 20), seq(0.1, 1.0, length.out = 20), rep(0, 20)),
+    PEESE          = c(rep(0, 20), rep(0, 20), seq(0.2, 1.2, length.out = 20))
+  )
+  fit <- coda::mcmc(posterior)
+  class(fit) <- c("mcmc", "BayesTools_fit")
+  attr(fit, "prior_list") <- prior_list
+  fit <- attach_test_parameter_map(fit)
+
+  samples <- as_mixed_posteriors(
+    model       = fit,
+    parameters  = "bias",
+    conditional = "PEESE",
+    force_plots = TRUE
+  )
+  simplified <- BayesTools:::.simplify_as_mixed_posterior_bias(samples, "PEESE")
+  prior_list_plot <- BayesTools:::.simplify_prior_list(attr(simplified$PEESE, "prior_list"))
+
+  point_prior <- vapply(prior_list_plot, is.prior.point, logical(1))
+  expect_true(all(vapply(prior_list_plot[point_prior], BayesTools:::.prior_model_weight, numeric(1)) == 0))
+
+  plot_data <- BayesTools:::.plot_data_samples.simple(
+    samples = simplified,
+    parameter = "PEESE",
+    n_points = 128,
+    transformation = NULL,
+    transformation_arguments = NULL,
+    transformation_settings = FALSE
+  )
+  expect_equal(names(plot_data), "density")
+  expect_equal(plot_data$density$samples, posterior[posterior[, "bias_indicator"] == 3, "PEESE"])
+
+  plot_data_prior <- BayesTools:::.plot_data_prior_list.simple(
+    prior_list = prior_list_plot,
+    x_seq = NULL,
+    x_range = NULL,
+    x_range_quant = NULL,
+    n_points = 128,
+    n_samples = 10000,
+    force_samples = FALSE,
+    individual = FALSE,
+    transformation = NULL,
+    transformation_arguments = NULL,
+    transformation_settings = FALSE
+  )
+
+  expect_equal(names(plot_data_prior), "density")
+  expect_false(any(vapply(plot_data_prior, inherits, logical(1), what = "density.prior.point")))
+
+  expect_s3_class(
+    plot_posterior(samples, "PEESE", plot_type = "ggplot", prior = TRUE, individual = TRUE),
+    "ggplot"
+  )
+})
+
+test_that("full PET-PEESE and weightfunction prior overlays follow the bias condition", {
+
+  prior_list <- list(
+    mu   = prior("normal", list(mean = 0, sd = 1)),
+    bias = prior_mixture(
+      list(
+        prior_none(prior_weights = 1),
+        prior_weightfunction("one-sided", c(.05), wf_cumulative(c(1, 1)), prior_weights = 1),
+        prior_PET("normal", list(mean = 0, sd = 1), prior_weights = 1)
+      ),
+      is_null = c(TRUE, FALSE, FALSE)
+    )
+  )
+  indicator <- rep(1:3, each = 20)
+  posterior <- cbind(
+    mu             = seq(-1, 1, length.out = 60),
+    bias_indicator = indicator,
+    "omega[1]"     = 1,
+    "omega[2]"     = ifelse(indicator == 2, seq(.1, .9, length.out = 60), 1),
+    PET            = ifelse(indicator == 3, seq(.1, 1.5, length.out = 60), 0)
+  )
+  fit <- coda::mcmc(posterior)
+  class(fit) <- c("mcmc", "BayesTools_fit")
+  attr(fit, "prior_list") <- prior_list
+  fit <- attach_test_parameter_map(fit)
+
+  # independent reference: mu ~ N(0, 1) plus a PET ~ N(0, 1)[0, Inf) branch
+  # with probability p_PET (other branches have PET = PEESE = 0)
+  mixture_quantile <- function(p, se, p_PET){
+    pet_cdf <- function(q){
+      stats::integrate(function(b) stats::pnorm(q - se * b) * 2 * stats::dnorm(b),
+                       lower = 0, upper = Inf, rel.tol = 1e-10)$value
+    }
+    cdf <- function(q) (1 - p_PET) * stats::pnorm(q) + p_PET * pet_cdf(q)
+    stats::uniroot(function(q) cdf(q) - p, c(-10, 10), tol = 1e-12)$root
+  }
+  prior_band <- function(samples){
+    plot <- plot_posterior(samples, "PETPEESE", plot_type = "ggplot", prior = TRUE, n_points = 3)
+    ggplot2::ggplot_build(plot)$data[[2]]
+  }
+
+  # conditional on PET-PEESE: only the PET branch remains
+  samples_con <- as_mixed_posteriors(fit, parameters = c("mu", "bias"), conditional = "PETPEESE", force_plots = TRUE)
+  expect_warning(band_con <- prior_band(samples_con), NA)
+  expect_equal(band_con$x, c(0, .5, 1))
+  expect_equal(band_con$y[2:3], c(mixture_quantile(.5, .5, 1), mixture_quantile(.5, 1, 1)), tolerance = 1e-6)
+  expect_gt(band_con$y[3], .5)
+
+  # unconditional: the weightfunction branch keeps its weight with PET = 0,
+  # so P(PET) = 1/3 rather than 1/2
+  samples <- as_mixed_posteriors(fit, parameters = c("mu", "bias"))
+  prior_data <- ggplot2::ggplot_build(
+    plot_posterior(samples, "PETPEESE", plot_type = "ggplot", prior = TRUE, n_points = 3)
+  )$data[[1]]
+  upper <- prior_data$y[prior_data$x == 1]
+  expect_equal(max(upper), mixture_quantile(.975, 1, 1 / 3), tolerance = 1e-6)
+
+  # conditional on omega: the weightfunction prior alone, omega[0.05,1] ~ Beta(1, 1)
+  samples_omega <- as_mixed_posteriors(fit, parameters = "bias", conditional = "omega", force_plots = TRUE)
+  wf_prior <- ggplot2::ggplot_build(
+    plot_posterior(samples_omega, "weightfunction", plot_type = "ggplot", prior = TRUE)
+  )$data[[2]]
+  expect_equal(unique(wf_prior$y), c(1, .5), tolerance = 1e-8)
+})
+
+test_that("full PET-PEESE prior overlays keep the mu mixture weights", {
+
+  prior_list <- list(
+    mu   = prior_mixture(
+      list(
+        prior("spike",  list(0),       prior_weights = 2),
+        prior("normal", list(-1, 0.5), prior_weights = 1),
+        prior("normal", list( 1, 0.5), prior_weights = 1)
+      ),
+      is_null = c(TRUE, FALSE, FALSE)
+    ),
+    bias = prior_mixture(
+      list(
+        prior_none(prior_weights = 1),
+        prior_PET("normal", list(mean = 0, sd = 1), prior_weights = 1)
+      ),
+      is_null = c(TRUE, FALSE)
+    )
+  )
+  mu_indicator <- rep(1:3, length.out = 60)
+  bias_indicator <- rep(1:2, each = 30)
+  posterior <- cbind(
+    mu             = ifelse(mu_indicator == 1, 0, seq(-1.5, 1.5, length.out = 60)),
+    mu_indicator   = mu_indicator,
+    bias_indicator = bias_indicator,
+    PET            = ifelse(bias_indicator == 2, seq(.1, 1.5, length.out = 60), 0)
+  )
+  fit <- coda::mcmc(posterior)
+  class(fit) <- c("mcmc", "BayesTools_fit")
+  attr(fit, "prior_list") <- prior_list
+  fit <- attach_test_parameter_map(fit)
+
+  # independent reference for mu + se * PET with PET ~ N(0, 1)[0, Inf) and
+  # mu ~ .5 * spike(0) + .25 * N(-1, .5) + .25 * N(1, .5)
+  reference_quantile <- function(p, se){
+    component_cdf <- function(q, mean, sd){
+      stats::integrate(function(b) stats::pnorm(q - se * b, mean, sd) * 2 * stats::dnorm(b),
+                       lower = 0, upper = Inf, rel.tol = 1e-10)$value
+    }
+    cdf <- function(q){
+      .5 * max(0, 2 * stats::pnorm(q / se) - 1) +
+        .25 * component_cdf(q, -1, .5) + .25 * component_cdf(q, 1, .5)
+    }
+    stats::uniroot(function(q) cdf(q) - p, c(-10, 10), tol = 1e-12)$root
+  }
+
+  samples <- as_mixed_posteriors(fit, parameters = c("mu", "bias"), conditional = "PETPEESE", force_plots = TRUE)
+  layers <- ggplot2::ggplot_build(
+    plot_posterior(samples, "PETPEESE", plot_type = "ggplot", prior = TRUE, n_points = 3)
+  )$data
+  band   <- layers[[1]]
+  median <- layers[[2]]
+
+  expect_equal(median$y[3], reference_quantile(.5, 1), tolerance = 1e-6)
+  expect_equal(max(band$y[band$x == 1]), reference_quantile(.975, 1), tolerance = 1e-6)
+  expect_equal(min(band$y[band$x == 1]), reference_quantile(.025, 1), tolerance = 1e-6)
+})
+
+test_that("full PET-PEESE prior overlays follow a condition on mu", {
+
+  prior_list <- list(
+    mu   = prior_mixture(
+      list(
+        prior("spike",  list(0),       prior_weights = 2),
+        prior("normal", list(-1, 0.5), prior_weights = 1),
+        prior("normal", list( 1, 0.5), prior_weights = 1)
+      ),
+      is_null = c(TRUE, FALSE, FALSE)
+    ),
+    bias = prior_mixture(
+      list(
+        prior_none(prior_weights = 1),
+        prior_PET("normal", list(mean = 0, sd = 1), prior_weights = 1)
+      ),
+      is_null = c(TRUE, FALSE)
+    )
+  )
+  mu_indicator   <- rep(1:3, length.out = 120)
+  bias_indicator <- rep(1:2, each = 60)
+  posterior <- cbind(
+    mu             = ifelse(mu_indicator == 1, 0, seq(-1.5, 1.5, length.out = 120)),
+    mu_indicator   = mu_indicator,
+    bias_indicator = bias_indicator,
+    PET            = ifelse(bias_indicator == 2, seq(.1, 1.5, length.out = 120), 0)
+  )
+  fit <- coda::mcmc(posterior)
+  class(fit) <- c("mcmc", "BayesTools_fit")
+  attr(fit, "prior_list") <- prior_list
+  fit <- attach_test_parameter_map(fit)
+
+  # independent reference: mixture over (mu component, bias branch) pairs of
+  # mu + se * PET with PET ~ N(0, 1)[0, Inf) and mu ~ spike(0) / N(-1 or 1, .5)
+  pair_cdf <- function(q, se, mu_mean, pet){
+    if(is.na(mu_mean)){
+      return(max(0, 2 * stats::pnorm(q / se) - 1))
+    }
+    if(!pet){
+      return(stats::pnorm(q, mu_mean, .5))
+    }
+    stats::integrate(function(b) stats::pnorm(q - se * b, mu_mean, .5) * 2 * stats::dnorm(b),
+                     lower = 0, upper = Inf, rel.tol = 1e-10)$value
+  }
+  reference_quantile <- function(p, se, pairs){
+    cdf <- function(q) sum(vapply(seq_len(nrow(pairs)), function(i){
+      pairs$weight[i] * pair_cdf(q, se, pairs$mu[i], pairs$pet[i])
+    }, numeric(1)))
+    stats::uniroot(function(q) cdf(q) - p, c(-10, 10), tol = 1e-12)$root
+  }
+  prior_line <- function(samples, plot_type){
+    if(plot_type == "ggplot"){
+      plot <- plot_posterior(samples, "PETPEESE", plot_type = "ggplot", prior = TRUE, n_points = 3)
+      return(ggplot2::ggplot_build(plot)$data[[2]]$y)
+    }
+    drawn <- list()
+    testthat::local_mocked_bindings(
+      .lines.prior.PETPEESE = function(plot_data, ...){
+        drawn[[length(drawn) + 1L]] <<- plot_data$y
+        invisible(NULL)
+      },
+      .package = "BayesTools"
+    )
+    device_file <- tempfile(fileext = ".pdf")
+    grDevices::pdf(device_file)
+    on.exit(grDevices::dev.off(), add = TRUE)
+    plot_posterior(samples, "PETPEESE", plot_type = "base", prior = TRUE, n_points = 3)
+    drawn[[1L]]
+  }
+
+  # mu AND PET-PEESE: slab components of mu with the PET branch
+  pairs_and <- data.frame(mu = c(-1, 1), pet = c(TRUE, TRUE), weight = c(.5, .5))
+  samples_and <- as_mixed_posteriors(fit, parameters = c("mu", "bias"), conditional = c("mu", "PETPEESE"), force_plots = TRUE)
+  expect_false(any(samples_and$mu == 0))
+  line_and <- prior_line(samples_and, "ggplot")
+  expect_equal(line_and[2:3], c(reference_quantile(.5, .5, pairs_and), reference_quantile(.5, 1, pairs_and)), tolerance = 1e-6)
+  expect_equal(prior_line(samples_and, "base"), line_and, tolerance = 1e-12)
+
+  # mu OR PET-PEESE: mu and bias are dependent under the condition
+  pairs_or <- data.frame(
+    mu     = c(NA, -1, -1, 1, 1),
+    pet    = c(TRUE, FALSE, TRUE, FALSE, TRUE),
+    weight = c(2, 1, 1, 1, 1) / 6
+  )
+  samples_or <- as_mixed_posteriors(fit, parameters = c("mu", "bias"), conditional = c("mu", "PETPEESE"),
+                                    conditional_rule = "OR", force_plots = TRUE)
+  line_or <- prior_line(samples_or, "ggplot")
+  expect_equal(line_or[2:3], c(reference_quantile(.5, .5, pairs_or), reference_quantile(.5, 1, pairs_or)), tolerance = 1e-6)
+  expect_equal(prior_line(samples_or, "base"), line_or, tolerance = 1e-12)
+
+  # mu only: the unconditioned bias mixture with the slab components of mu
+  pairs_mu <- data.frame(mu = c(-1, -1, 1, 1), pet = c(FALSE, TRUE, FALSE, TRUE), weight = rep(.25, 4))
+  samples_mu <- as_mixed_posteriors(fit, parameters = c("mu", "bias"), conditional = "mu", force_plots = TRUE)
+  line_mu <- prior_line(samples_mu, "ggplot")
+  expect_equal(line_mu[2:3], c(reference_quantile(.5, .5, pairs_mu), reference_quantile(.5, 1, pairs_mu)), tolerance = 1e-6)
+})
+
+test_that("weightfunction and individual bias prior overlays follow OR conditions with other parameters", {
+
+  prior_list <- list(
+    mu   = prior_mixture(
+      list(
+        prior("spike",  list(0),       prior_weights = 2),
+        prior("normal", list(-1, 0.5), prior_weights = 1),
+        prior("normal", list( 1, 0.5), prior_weights = 1)
+      ),
+      is_null = c(TRUE, FALSE, FALSE)
+    ),
+    bias = prior_mixture(
+      list(
+        prior_none(prior_weights = 1),
+        prior_weightfunction("one-sided", c(.05), wf_cumulative(c(1, 1)), prior_weights = 1),
+        prior_PET("normal", list(mean = 0, sd = 1), prior_weights = 1),
+        prior_PEESE("normal", list(mean = 0, sd = 1), prior_weights = 1)
+      ),
+      is_null = c(TRUE, FALSE, FALSE, FALSE)
+    )
+  )
+  mu_indicator   <- rep(1:3, length.out = 240)
+  bias_indicator <- rep(1:4, each = 60)
+  posterior <- cbind(
+    mu             = ifelse(mu_indicator == 1, 0, seq(-1.5, 1.5, length.out = 240)),
+    mu_indicator   = mu_indicator,
+    bias_indicator = bias_indicator,
+    "omega[1]"     = 1,
+    "omega[2]"     = ifelse(bias_indicator == 2, seq(.05, .95, length.out = 240), 1),
+    PET            = ifelse(bias_indicator == 3, seq(.1, 1.5, length.out = 240), 0),
+    PEESE          = ifelse(bias_indicator == 4, seq(.1, 1.5, length.out = 240), 0)
+  )
+  fit <- coda::mcmc(posterior)
+  class(fit) <- c("mcmc", "BayesTools_fit")
+  attr(fit, "prior_list") <- prior_list
+  fit <- attach_test_parameter_map(fit)
+
+  # P(mu included) = .5 and equal bias branch weights, so under
+  # 'mu OR <bias label>' the labelled branch has P = .4 and every other
+  # branch .2; under AND only the labelled branch remains
+  base_calls <- function(code, functions){
+    drawn <- list()
+    recorder <- function(name){
+      force(name)
+      function(plot_data, ...){
+        drawn[[length(drawn) + 1L]] <<- list(name = name, plot_data = plot_data)
+        invisible(NULL)
+      }
+    }
+    bindings <- stats::setNames(lapply(functions, recorder), functions)
+    do.call(testthat::local_mocked_bindings, c(bindings, list(.package = "BayesTools")))
+    device_file <- tempfile(fileext = ".pdf")
+    grDevices::pdf(device_file)
+    on.exit({
+      grDevices::dev.off()
+      unlink(device_file)
+    }, add = TRUE)
+    code()
+    drawn
+  }
+  first_call <- function(calls, name){
+    calls[[which(vapply(calls, `[[`, character(1), "name") == name)[1L]]]$plot_data
+  }
+
+  # weightfunction overlay, mu OR omega: omega[0.05,1] mean .4 * .5 + .6 * 1
+  samples_or <- as_mixed_posteriors(fit, parameters = c("mu", "bias"), conditional = c("mu", "omega"),
+                                    conditional_rule = "OR", force_plots = TRUE)
+  expect_equal(
+    vapply(BayesTools:::.bias_samples_prior_list(samples_or), BayesTools:::.prior_model_weight, numeric(1)),
+    c(.2, .4, .2, .2)
+  )
+  wf_layer <- ggplot2::ggplot_build(
+    plot_posterior(samples_or, "weightfunction", plot_type = "ggplot", prior = TRUE)
+  )$data[[2]]
+  expect_equal(unique(wf_layer$y), c(1, .8), tolerance = 1e-8)
+  wf_base <- first_call(base_calls(function(){
+    plot_posterior(samples_or, "weightfunction", prior = TRUE)
+  }, ".lines.prior.weightfunction"), ".lines.prior.weightfunction")
+  expect_equal(unname(wf_base$y), wf_layer$y, tolerance = 1e-12)
+
+  # individual omega overlay, mu OR omega: mass .6 at one, Beta(1, 1) with .4
+  omega_plot <- plot_posterior(samples_or, "omega", plot_type = "ggplot", prior = TRUE, individual = TRUE, show_figures = 2)[[1]]
+  omega_layers <- ggplot2::ggplot_build(omega_plot)$data
+  expect_equal(omega_layers[[2]]$yend / omega_plot$bt_scale_y2_state$scale_y2, .6, tolerance = 1e-12)
+  expect_equal(max(omega_layers[[1]]$y), .4, tolerance = 1e-8)
+
+  # individual PET and PEESE overlays, mu OR PET / PEESE: spike .6 at zero
+  for(label in c("PET", "PEESE")){
+    samples_label <- as_mixed_posteriors(fit, parameters = c("mu", "bias"), conditional = c("mu", label),
+                                         conditional_rule = "OR", force_plots = TRUE)
+    label_plot <- plot_posterior(samples_label, label, plot_type = "ggplot", prior = TRUE, individual = TRUE)
+    label_layers <- ggplot2::ggplot_build(label_plot)$data
+    expect_equal(label_layers[[2]]$x, 0)
+    expect_equal(label_layers[[2]]$yend / label_plot$bt_scale_y2_state$scale_y2, .6, tolerance = 1e-12)
+    expect_equal(max(label_layers[[1]]$y), .4 * 2 * stats::dnorm(0), tolerance = 1e-3)
+
+    label_base <- base_calls(function(){
+      plot_posterior(samples_label, label, prior = TRUE, individual = TRUE)
+    }, c(".lines.prior.simple", ".lines.prior.point"))
+    expect_equal(first_call(label_base, ".lines.prior.point")$y, .6, tolerance = 1e-12)
+    expect_equal(first_call(label_base, ".lines.prior.simple")$y, label_layers[[1]]$y, tolerance = 1e-12)
+  }
+
+  # AND conditions keep only the labelled branch
+  samples_and <- as_mixed_posteriors(fit, parameters = c("mu", "bias"), conditional = c("mu", "omega"),
+                                     force_plots = TRUE)
+  expect_equal(
+    vapply(BayesTools:::.bias_samples_prior_list(samples_and), BayesTools:::.prior_model_weight, numeric(1)),
+    c(0, 1, 0, 0)
+  )
+})
+
+test_that("OR conditions keep the bias columns of every branch in the event", {
+
+  prior_list <- list(
+    mu   = prior_mixture(
+      list(
+        prior("spike",  list(0),       prior_weights = 2),
+        prior("normal", list(-1, 0.5), prior_weights = 1),
+        prior("normal", list( 1, 0.5), prior_weights = 1)
+      ),
+      is_null = c(TRUE, FALSE, FALSE)
+    ),
+    bias = prior_mixture(
+      list(
+        prior_none(prior_weights = 1),
+        prior_weightfunction("one-sided", c(.05), wf_cumulative(c(1, 1)), prior_weights = 1),
+        prior_PET("normal", list(mean = 0, sd = 1), prior_weights = 1)
+      ),
+      is_null = c(TRUE, FALSE, FALSE)
+    )
+  )
+  mu_indicator   <- rep(1:3, length.out = 180)
+  bias_indicator <- rep(1:3, each = 60)
+  posterior <- cbind(
+    mu             = ifelse(mu_indicator == 1, 0, seq(-1.5, 1.5, length.out = 180)),
+    mu_indicator   = mu_indicator,
+    bias_indicator = bias_indicator,
+    "omega[1]"     = 1,
+    "omega[2]"     = ifelse(bias_indicator == 2, seq(.05, .95, length.out = 180), 1),
+    PET            = ifelse(bias_indicator == 3, seq(.1, 1.5, length.out = 180), 0)
+  )
+  fit <- coda::mcmc(posterior)
+  class(fit) <- c("mcmc", "BayesTools_fit")
+  attr(fit, "prior_list") <- prior_list
+  fit <- attach_test_parameter_map(fit)
+  omega_columns <- c("omega[0,0.05]", "omega[0.05,1]")
+
+  # 'mu OR omega' contains draws of every bias branch with mu included, so the
+  # PET column stays; AND and a single label keep the labelled columns only
+  samples_or <- as_mixed_posteriors(fit, parameters = c("mu", "bias"), conditional = c("mu", "omega"),
+                                    conditional_rule = "OR", force_plots = TRUE)
+  in_event <- mu_indicator != 1 | bias_indicator == 2
+  expect_equal(nrow(samples_or$bias), sum(in_event))
+  expect_equal(colnames(samples_or$bias), c(omega_columns, "PET"))
+  expect_equal(unname(samples_or$bias[, "PET"]), unname(posterior[in_event, "PET"]))
+  samples_and <- as_mixed_posteriors(fit, parameters = c("mu", "bias"), conditional = c("mu", "omega"),
+                                     force_plots = TRUE)
+  expect_equal(colnames(samples_and$bias), omega_columns)
+  samples_single <- as_mixed_posteriors(fit, parameters = c("mu", "bias"), conditional = "omega",
+                                        conditional_rule = "OR", force_plots = TRUE)
+  expect_equal(colnames(samples_single$bias), omega_columns)
+
+  # the PET-PEESE plot under 'mu OR omega' runs: posterior Harrell-Davis
+  # quantiles of mu + se * PET over the conditioned draws (the median blends the
+  # atom of the draws with mu = PET = 0 with its continuous neighbors), and the
+  # prior overlay against a
+  # quadrature reference over the (mu component, bias branch) pairs in the
+  # event: (spike, wf) 1/4, (N(-1 or 1, .5), none or wf) 1/4 each and
+  # (N(-1 or 1, .5), PET) 1/8 each, with PET ~ N(0, 1)[0, Inf)
+  plot <- plot_posterior(samples_or, "PETPEESE", plot_type = "ggplot", prior = TRUE, n_points = 3)
+  layers <- ggplot2::ggplot_build(plot)$data
+  se_grid <- c(0, .5, 1)
+  band <- function(layer){
+    rbind(
+      lower = vapply(se_grid, function(se) min(layer$y[abs(layer$x - se) < 1e-12]), numeric(1)),
+      upper = vapply(se_grid, function(se) max(layer$y[abs(layer$x - se) < 1e-12]), numeric(1))
+    )
+  }
+  posterior_line <- vapply(se_grid, function(se){
+    line <- posterior[in_event, "mu"] + se * posterior[in_event, "PET"]
+    vapply(c(.025, .5, .975), function(p) hd_reference(line, p), numeric(1))
+  }, numeric(3))
+  expect_equal(layers[[4]]$y, posterior_line[2, ], tolerance = 1e-12)
+  expect_equal(band(layers[[3]]), posterior_line[c(1, 3), ], tolerance = 1e-12, ignore_attr = TRUE)
+
+  pairs <- data.frame(
+    mu     = c(NA, -1, -1, 1, 1),
+    pet    = c(FALSE, FALSE, TRUE, FALSE, TRUE),
+    weight = c(2, 2, 1, 2, 1) / 8
+  )
+  pair_cdf <- function(q, se, mu_mean, pet){
+    if(is.na(mu_mean)){
+      return(as.numeric(q >= 0))
+    }
+    if(!pet){
+      return(stats::pnorm(q, mu_mean, .5))
+    }
+    stats::integrate(function(b) stats::pnorm(q - se * b, mu_mean, .5) * 2 * stats::dnorm(b),
+                     lower = 0, upper = Inf, rel.tol = 1e-10)$value
+  }
+  reference_quantile <- function(p, se){
+    cdf <- function(q) sum(vapply(seq_len(nrow(pairs)), function(i){
+      pairs$weight[i] * pair_cdf(q, se, pairs$mu[i], pairs$pet[i])
+    }, numeric(1)))
+    stats::uniroot(function(q) cdf(q) - p, c(-10, 10), tol = 1e-12)$root
+  }
+  reference_band <- rbind(
+    lower = vapply(se_grid, function(se) reference_quantile(.025, se), numeric(1)),
+    upper = vapply(se_grid, function(se) reference_quantile(.975, se), numeric(1))
+  )
+  expect_equal(band(layers[[1]]), reference_band, tolerance = 1e-6)
+  # the spike of mu at zero carries the prior median (P(< 0) < .5 < P(<= 0))
+  expect_lt(max(abs(layers[[2]]$y)), 1e-6)
+})
+
+test_that("omega posterior KDE does not infer spikes from exact sample values", {
+  continuous_samples <- seq(.005, .995, length.out = 75)
+  omega_samples <- cbind(
+    "omega[0,0.05]" = rep(1, 100),
+    "omega[0.05,1]" = c(rep(1, 25), continuous_samples)
+  )
+  attr(omega_samples, "prior_list") <- list(
+    prior_weightfunction(
+      "one-sided",
+      c(.05),
+      wf_independent(prior("beta", list(1, 1)))
+    )
+  )
+  omega_samples <- attach_test_model_probabilities(omega_samples, 1)
+  omega_samples <- .bt_draws_set_component(omega_samples, source = "model", component = rep(1, nrow(omega_samples)))
+  omega_samples <- .bt_meta_set(omega_samples, "atoms", posterior_atom_attribute())
+
+  expect_error(BayesTools:::.plot_data_samples.weightparameter(list(omega = omega_samples),
+    "omega[0.05,1]", 512), "Posterior atom status is unknown", fixed = TRUE)
+  pair <- .bt_meta_get(omega_samples, "model_probabilities")$posterior
+  omega_samples <- .bt_meta_set(omega_samples, "atoms", NULL)
+  omega_samples <- .posterior_weightfunction_declarations(omega_samples,
+    attr(omega_samples, "prior_list"), pair$probabilities, posterior_pair = pair)
+
+  plot_data <- BayesTools:::.plot_data_samples.weightparameter(
+    samples = list(omega = omega_samples),
+    parameter = "omega[0.05,1]",
+    n_points = 512
+  )
+
+  expect_null(plot_data$points1)
+  expect_true(any(plot_data$density$samples == 1))
+  expect_equal(plot_data$density$samples, omega_samples[, "omega[0.05,1]"])
+  expect_equal(range(plot_data$density$x), c(0, 1))
+  expect_equal(plot_data$density$x[1:2], c(0, 0), tolerance = 1e-12)
+  expect_equal(plot_data$density$y[1], 0)
+  expect_gt(plot_data$density$y[2], 0)
+  expect_equal(tail(plot_data$density$x, 2), c(1, 1), tolerance = 1e-12)
+  expect_gt(tail(plot_data$density$y, 2)[1], 0)
+  expect_equal(tail(plot_data$density$y, 1), 0)
+  expect_equal(.model_plot_density_mass(plot_data$density), 1, tolerance = .03)
+  expect_true(isTRUE(attr(plot_data$density, "boundary_reflection")))
+})
+
+test_that("omega prior and posterior curves integrate their continuous masses", {
+  prior_list <- list(
+    bias = prior_mixture(
+      list(
+        prior_none(prior_weights = 1),
+        prior_weightfunction("two-sided", c(.05), wf_cumulative(c(1, 1)), prior_weights = 1 / 3),
+        prior_weightfunction("one-sided", c(.025, .05), wf_cumulative(c(1, 1, 1)), prior_weights = 1 / 3),
+        prior_PET("normal", list(0, 1), prior_weights = 1 / 3)
+      ),
+      is_null = c(TRUE, FALSE, FALSE, FALSE)
+    )
+  )
+  parameter <- "omega[0.05,0.975]"
+
+  prior_data <- BayesTools:::.plot_data_prior_list.weightparameter(
+    prior_list$bias,
+    parameter = parameter,
+    n_points = 2048,
+    n_samples = 1
+  )
+  prior_point_mass <- sum(vapply(prior_data, function(component) {
+    if(inherits(component, "density.prior.point")) component$y else 0
+  }, numeric(1)))
+
+  n_samples <- 4000
+  models_ind <- c(rep(1, 500), rep(2, 1500), rep(3, 1500), rep(4, 500))
+  omega_samples <- matrix(
+    1,
+    nrow = n_samples,
+    ncol = 4,
+    dimnames = list(NULL, c(
+      "omega[0,0.025]",
+      "omega[0.025,0.05]",
+      "omega[0.05,0.975]",
+      "omega[0.975,1]"
+    ))
+  )
+  omega_samples[models_ind == 2, parameter] <- seq(.005, .995, length.out = sum(models_ind == 2))
+  omega_samples[models_ind == 3, parameter] <- seq(.995, .005, length.out = sum(models_ind == 3))
+  attr(omega_samples, "prior_list") <- prior_list$bias
+  omega_samples <- attach_test_model_probabilities(omega_samples, c(.125, .375, .375, .125), prior_weights = c(1, 1/3, 1/3, 1/3))
+  omega_samples <- .bt_draws_set_component(omega_samples, source = "model", component = models_ind)
+  pair <- .bt_meta_get(omega_samples, "model_probabilities")$posterior
+  omega_samples <- .posterior_weightfunction_declarations(omega_samples,
+    prior_list$bias, pair$probabilities, source = "test_model_probabilities", posterior_pair = pair)
+
+  posterior_data <- BayesTools:::.plot_data_samples.weightparameter(
+    samples = list(bias = omega_samples),
+    parameter = parameter,
+    n_points = 512
+  )
+
+  expect_equal(.model_plot_density_mass(prior_data$density), 1 / 3, tolerance = 1e-3)
+  expect_equal(prior_point_mass, 2 / 3, tolerance = 1e-8)
+  expect_equal(.model_plot_density_mass(posterior_data$density), .75, tolerance = .03)
+  expect_equal(posterior_data$points1$y, .25, tolerance = 1e-8)
+  expect_equal(.model_plot_density_mass(prior_data$density) + prior_point_mass, 1, tolerance = 1e-3)
+  expect_equal(.model_plot_density_mass(posterior_data$density) + posterior_data$points1$y, 1, tolerance = .03)
+  expect_gt(.model_plot_density_mass(posterior_data$density), .model_plot_density_mass(prior_data$density))
+})
+
+test_that("posterior plot data uses stored posterior density when available", {
+  theta <- seq(-2, 2, length.out = 40)
+  stored_x <- seq(-3, 3, length.out = 61)
+  stored_y <- stats::dnorm(stored_x, mean = .25, sd = .9)
+  theta <- attach_test_model_probabilities(theta, 1)
+  theta <- .bt_draws_set_component(theta, source = "model", component = rep(1, length(theta)))
+  theta <- .bt_meta_set(theta, "atoms", posterior_atom_attribute())
+  attr(theta, "prior_list") <- list(prior("normal", list(mean = 0, sd = 1)))
+  theta <- .bt_meta_set(theta, "posterior_density", .posterior_density_for_test(
+    x      = stored_x,
+    y      = stored_y,
+    method = "iwmde"
+  ))
+
+  plot_data <- BayesTools:::.plot_data_samples.simple(
+    samples = list(theta = theta),
+    parameter = "theta",
+    n_points = 16,
+    transformation = NULL,
+    transformation_arguments = NULL,
+    transformation_settings = FALSE,
+    density_method = "precomputed"
+  )
+
+  expect_equal(plot_data$density$x, stored_x)
+  expect_equal(plot_data$density$y, stored_y)
+  expect_equal(attr(plot_data$density, "posterior_density_method"), "iwmde")
+})
+
+test_that("posterior plot data draws declared atoms with a stored continuous density", {
+  theta <- c(rep(0, 25), seq(-2, 2, length.out = 75))
+  stored_x <- seq(-2, 2, length.out = 51)
+  stored_y <- .75 * stats::dnorm(stored_x)
+  theta <- attach_test_model_probabilities(theta, c(.25, .75))
+  theta <- .bt_draws_set_component(theta, source = "model", component = c(rep(1, 25), rep(2, 75)))
+  theta <- .bt_meta_set(theta, "atoms", posterior_atom_attribute(
+    data.frame(x = 0, mass = .25)
+  ))
+  attr(theta, "prior_list") <- list(
+    prior("point", list(location = 0)),
+    prior("normal", list(mean = 0, sd = 1))
+  )
+  theta <- .bt_meta_set(theta, "posterior_density", .posterior_density_for_test(
+    x      = stored_x,
+    y      = stored_y,
+    method = "iwmde"
+  ))
+
+  # the stored density is the continuous part and the declared atom its
+  # point mass, as with a kernel density estimate
+  expect_no_warning(plot_data <- BayesTools:::.plot_data_samples.simple(
+    samples                  = list(theta = theta),
+    parameter                = "theta",
+    n_points                 = 16,
+    transformation           = NULL,
+    transformation_arguments = NULL,
+    transformation_settings  = FALSE,
+    density_method           = "precomputed"
+  ))
+
+  expect_equal(plot_data$density$x, stored_x)
+  expect_equal(plot_data$density$y, stored_y)
+  point_entries <- plot_data[vapply(plot_data, inherits, logical(1), "density.prior.point")]
+  expect_equal(length(point_entries), 1L)
+  expect_equal(point_entries[[1L]]$x, 0)
+  expect_equal(point_entries[[1L]]$y, .25)
+
+  kde_data <- BayesTools:::.plot_data_samples.simple(
+    samples                  = list(theta = theta),
+    parameter                = "theta",
+    n_points                 = 16,
+    transformation           = NULL,
+    transformation_arguments = NULL,
+    transformation_settings  = FALSE,
+    density_method           = "KDE"
+  )
+  expect_equal(kde_data$points1[c("x", "y")], point_entries[[1L]][c("x", "y")])
+})
+
+test_that("posterior plot data ignores stored density by default", {
+  theta <- seq(-2, 2, length.out = 40)
+  stored_x <- seq(-3, 3, length.out = 61)
+  stored_y <- stats::dnorm(stored_x, mean = .25, sd = .9)
+  theta <- attach_test_model_probabilities(theta, 1)
+  theta <- .bt_draws_set_component(theta, source = "model", component = rep(1, length(theta)))
+  theta <- .bt_meta_set(theta, "atoms", posterior_atom_attribute())
+  attr(theta, "prior_list") <- list(prior("normal", list(mean = 0, sd = 1)))
+  theta <- .bt_meta_set(theta, "posterior_density", .posterior_density_for_test(
+    x      = stored_x,
+    y      = stored_y,
+    method = "iwmde"
+  ))
+
+  plot_data <- BayesTools:::.plot_data_samples.simple(
+    samples = list(theta = theta),
+    parameter = "theta",
+    n_points = 16,
+    transformation = NULL,
+    transformation_arguments = NULL,
+    transformation_settings = FALSE
+  )
+
+  expect_equal(length(plot_data$density$x), 16)
+  expect_false(identical(plot_data$density$x, stored_x))
+  expect_null(attr(plot_data$density, "posterior_density_method"))
 })
 
 test_that("plot-model posterior data falls back to point priors for absent rows", {
@@ -459,6 +2276,122 @@ test_that("PET-PEESE prior plot data uses deterministic linear-combination summa
   expect_equal(plot_data$y, c(0, 0, 0), tolerance = 1e-8)
   expect_equal(plot_data$y_lCI, stats::qnorm(.025) * c(0, 0.5, 1), tolerance = 0.02)
   expect_equal(plot_data$y_uCI, stats::qnorm(.975) * c(0, 0.5, 1), tolerance = 0.02)
+  expect_equal(
+    attr(plot_data, "y_range"),
+    range(plot_data$y, plot_data$y_lCI, plot_data$y_uCI)
+  )
+})
+
+test_that("PET-PEESE public prior plots include uncertainty ribbons in y limits", {
+
+  pet_prior <- prior_PET(
+    "normal",
+    list(0, 1),
+    truncation = list(-Inf, Inf)
+  )
+  mu_prior <- prior("spike", list(0))
+
+  list_plot <- plot_prior_list(
+    prior_list = list(pet_prior),
+    prior_list_mu = list(mu_prior),
+    plot_type = "ggplot",
+    xlim = c(0, 1),
+    n_points = 3
+  )
+  list_ribbon <- list_plot$layers[[1]]$data$y
+  list_limits <- list_plot$scales$get_scales("y")$limits
+
+  expect_lte(min(list_limits), min(list_ribbon))
+  expect_gte(max(list_limits), max(list_ribbon))
+
+  single_plot <- plot(
+    pet_prior,
+    plot_type = "ggplot",
+    xlim = c(0, 1),
+    n_points = 3
+  )
+  single_ribbon <- single_plot$layers[[1]]$data$y
+  single_limits <- single_plot$scales$get_scales("y")$limits
+
+  expect_lte(min(single_limits), min(single_ribbon))
+  expect_gte(max(single_limits), max(single_ribbon))
+})
+
+test_that("PET-PEESE public prior plots order ribbons after decreasing transformations", {
+
+  x_seq <- c(0, 0.5, 1)
+  bias_priors <- list(
+    PET = prior_PET(
+      "normal",
+      list(0, 1),
+      truncation = list(-Inf, Inf)
+    ),
+    PEESE = prior_PEESE(
+      "normal",
+      list(0, 1),
+      truncation = list(-Inf, Inf)
+    )
+  )
+  se_scale <- list(PET = x_seq, PEESE = x_seq^2)
+
+  for(prior_name in names(bias_priors)){
+    prior_plot <- plot(
+      bias_priors[[prior_name]],
+      plot_type = "ggplot",
+      x_seq = x_seq,
+      transformation = "lin",
+      transformation_arguments = list(a = 2, b = -3)
+    )
+
+    ribbon <- prior_plot$layers[[1]]$data
+    n_points <- length(x_seq)
+    lower <- ribbon$y[seq_len(n_points)]
+    upper <- rev(tail(ribbon$y, n_points))
+
+    expect_true(all(lower <= upper))
+    expect_equal(
+      lower,
+      (2 - 3 * stats::qnorm(.975)) * se_scale[[prior_name]]
+    )
+    expect_equal(
+      upper,
+      (2 - 3 * stats::qnorm(.025)) * se_scale[[prior_name]]
+    )
+  }
+})
+
+test_that("plot_prior_list keeps retained components paired with their weights", {
+
+  point_priors <- list(
+    prior("point", list(100), prior_weights = 1),
+    prior("point", list(0), prior_weights = 9999)
+  )
+  point_plot <- plot_prior_list(
+    point_priors,
+    plot_type = "ggplot",
+    n_samples = 10000
+  )
+  point_data <- point_plot$layers[[1]]$data
+
+  expect_equal(point_data$x, 0)
+  expect_equal(point_data$yend, .9999)
+
+  continuous_priors <- list(
+    prior("normal", list(100, 1), prior_weights = 1),
+    prior("normal", list(0, 1), prior_weights = 9999)
+  )
+  density_plot <- plot_prior_list(
+    continuous_priors,
+    plot_type = "ggplot",
+    xlim = c(-5, 105),
+    n_points = 1101,
+    n_samples = 10000
+  )
+  density_data <- density_plot$layers[[1]]$data
+
+  expect_equal(density_data$x[which.max(density_data$y)], 0)
+  expect_equal(max(density_data$y), stats::dnorm(0) * .9999, tolerance = 1e-10)
+  expect_equal(.model_plot_density_mass(density_data), .9999, tolerance = 1e-5)
 })
 
 test_that("factor ggplot prior point layers use point plot data", {
@@ -499,6 +2432,127 @@ test_that("factor ggplot prior point layers use point plot data", {
   expect_equal(sum(segment_layers), 1)
   expect_equal(NROW(segment_data), 1)
   expect_equal(segment_data[["x"]], 0, tolerance = 1e-8)
+})
+
+test_that("transformed prior grids honor display-scale plotting ranges", {
+
+  normal_prior  <- prior("normal", list(0, 1))
+  prior_density <- BayesTools:::.prior_linear_combination_density(
+    prior_list = list(theta = normal_prior),
+    weights    = c(theta = 1),
+    n_grid     = 512
+  )
+  plot_data <- BayesTools:::.prior_linear_density_to_plot_data(
+    prior_density,
+    n_points                = 1001,
+    x_range                 = c(0, 4),
+    transformation          = "exp",
+    transformation_settings = TRUE
+  )
+  density_data <- plot_data[["density"]]
+  expected_x   <- seq(0, 4, length.out = 1001)[-1]
+
+  expect_equal(density_data[["x"]], expected_x)
+  expect_equal(
+    density_data[["y"]],
+    stats::dnorm(log(expected_x)) / expected_x,
+    tolerance = sqrt(.Machine$double.eps)
+  )
+  expect_true(all(is.finite(density_data[["x"]])))
+  expect_true(all(is.finite(density_data[["y"]])))
+
+  direct_density <- density(
+    normal_prior,
+    x_range                 = c(0, 4),
+    n_points                = 1001,
+    transformation          = "exp",
+    transformation_settings = TRUE
+  )
+  expect_equal(direct_density[["x"]], expected_x)
+  expect_equal(
+    direct_density[["y"]],
+    stats::dnorm(log(expected_x)) / expected_x,
+    tolerance = sqrt(.Machine$double.eps)
+  )
+})
+
+test_that("marginal prior grids receive the displayed plotting range", {
+
+  set.seed(1)
+  prior_density <- BayesTools:::.prior_linear_combination_density(
+    prior_list = list(theta = prior("normal", list(0, 1))),
+    weights    = c(theta = 1),
+    n_grid     = 512
+  )
+  posterior <- stats::rnorm(100)
+  class(posterior) <- c(
+    "marginal_posterior.simple",
+    "marginal_posterior",
+    class(posterior)
+  )
+  posterior <- .bt_meta_set(posterior, "prior_density", prior_density)
+  posterior <- .bt_meta_set(posterior, "atoms", posterior_atom_attribute())
+
+  plot <- plot_marginal(
+    samples                 = list(theta = posterior),
+    parameter               = "theta",
+    prior                   = TRUE,
+    n_points                = 101,
+    transformation          = "exp",
+    transformation_settings = TRUE,
+    xlim                    = c(0, 2),
+    plot_type               = "ggplot"
+  )
+  prior_data <- plot[["layers"]][[1]][["data"]]
+
+  expect_equal(prior_data[["x"]], seq(0, 2, length.out = 101)[-1])
+  expect_true(all(is.finite(prior_data[["y"]])))
+})
+
+test_that("marginal prior overlays include posterior point-mass limits", {
+
+  prior_density <- BayesTools:::.prior_linear_combination_density(
+    prior_list = list(theta = prior_mixture(
+      list(
+        prior("spike", list(0), prior_weights = 1),
+        prior("normal", list(0, 1), prior_weights = 4)
+      ),
+      is_null = c(TRUE, FALSE)
+    )),
+    weights = c(theta = 1),
+    n_grid  = 512
+  )
+  set.seed(2)
+  posterior <- c(rep(0, 80), stats::rnorm(20))
+  class(posterior) <- c(
+    "marginal_posterior.simple",
+    "marginal_posterior",
+    class(posterior)
+  )
+  posterior <- .bt_meta_set(posterior, "prior_density", prior_density)
+  posterior <- .bt_meta_set(posterior, "atoms", posterior_atom_attribute(
+    list(x = 0, mass = .8)
+  ))
+
+  file <- tempfile(fileext = ".png")
+  grDevices::png(file)
+  on.exit({
+    grDevices::dev.off()
+    unlink(file)
+  }, add = TRUE)
+
+  expect_no_warning(
+    plot_marginal(list(theta = posterior), "theta", prior = TRUE)
+  )
+  scale_state <- BayesTools:::.plot_scale_y2_state_current()
+  expect_gte(max(scale_state[["ylim2"]]), .8)
+  expect_warning(
+    plot_marginal(
+      list(theta = posterior), "theta",
+      prior = TRUE, ylim2 = c(0, .5)
+    ),
+    "wider 'ylim2'"
+  )
 })
 
 test_that("factor plot data normalization preserves unnamed points", {
@@ -742,8 +2796,10 @@ test_that("factor plots map component-expanded prior styles back to levels", {
   set.seed(917)
   level_1 <- stats::rnorm(80, -0.25, 0.4)
   level_2 <- stats::rnorm(80,  0.35, 0.4)
-  attr(level_1, "prior_density") <- density
-  attr(level_2, "prior_density") <- density
+  level_1 <- .bt_meta_set(level_1, "prior_density", density)
+  level_2 <- .bt_meta_set(level_2, "prior_density", density)
+  level_1 <- .bt_meta_set(level_1, "atoms", posterior_atom_attribute())
+  level_2 <- .bt_meta_set(level_2, "atoms", posterior_atom_attribute())
 
   theta <- list(A = level_1, B = level_2)
   class(theta) <- c("marginal_posterior.factor", "marginal_posterior")
@@ -863,8 +2919,10 @@ test_that("omega plot helpers use selection components from composed bias priors
     byrow = TRUE
   )
   colnames(model) <- c("omega[1]", "omega[2]", "alpha", "pi_null", "phack_kind")
-  class(model) <- c("matrix", "BayesTools_fit")
+  model <- coda::mcmc(model)
+  class(model) <- c("mcmc", "BayesTools_fit")
   attr(model, "prior_list") <- list(bias = bias)
+  model <- attach_test_parameter_map(model)
 
   mixed <- as_mixed_posteriors(model, parameters = "bias")
 
@@ -907,8 +2965,10 @@ test_that("omega plot helpers preserve composed selection branches in bias mixtu
     byrow = TRUE
   )
   colnames(model) <- c("bias_indicator", "omega[1]", "omega[2]", "alpha", "pi_null", "phack_kind")
-  class(model) <- c("matrix", "BayesTools_fit")
+  model <- coda::mcmc(model)
+  class(model) <- c("mcmc", "BayesTools_fit")
   attr(model, "prior_list") <- list(bias = bias)
+  model <- attach_test_parameter_map(model)
 
   mixed <- as_mixed_posteriors(model, parameters = "bias")
   omega_samples <- BayesTools:::.simplify_as_mixed_posterior_bias(mixed, "omega")
@@ -937,7 +2997,8 @@ test_that("omega plot helpers preserve composed selection branches in bias mixtu
   omega_samples <- matrix(c(rep(1, 20), rep(.5, 20)), ncol = 2)
   colnames(omega_samples) <- c("omega[0,0.05]", "omega[0.05,1]")
   attr(omega_samples, "prior_list") <- list(weight_prior)
-  attr(omega_samples, "models_ind") <- rep(1, nrow(omega_samples))
+  omega_samples <- attach_test_model_probabilities(omega_samples, 1)
+  omega_samples <- .bt_draws_set_component(omega_samples, source = "model", component = rep(1, nrow(omega_samples)))
   class(omega_samples) <- c("matrix", "mixed_posteriors")
 
   samples <- list(omega = omega_samples)
@@ -1173,6 +3234,39 @@ test_that("PET-PEESE prior plot data transforms ordered CDF quantiles", {
   expect_equal(lin_plot$y_uCI, 2 - 3 * stats::qnorm(.025) * x_seq, tolerance = 1e-4)
 })
 
+test_that("PET-PEESE prior plot data keeps the standard-error axis untransformed", {
+
+  prior_list    <- list(prior_PET("normal", list(0, 1)))
+  prior_list_mu <- list(prior("normal", list(0, 1)))
+
+  # independent reference: median of mu + se * PET, PET ~ N(0, 1)[0, Inf)
+  reference_median <- function(se){
+    cdf <- function(q){
+      stats::integrate(function(b) stats::pnorm(q - se * b) * 2 * stats::dnorm(b),
+                       lower = 0, upper = Inf, rel.tol = 1e-10)$value
+    }
+    stats::uniroot(function(q) cdf(q) - .5, c(-5, 5), tol = 1e-12)$root
+  }
+
+  plot_data <- BayesTools:::.plot_data_prior_list.PETPEESE(
+    prior_list, x_seq = NULL, x_range = c(0, 1), x_range_quant = NULL,
+    n_points = 3, n_samples = 1000,
+    transformation = "exp", transformation_arguments = NULL, transformation_settings = TRUE,
+    prior_list_mu = prior_list_mu
+  )
+  expect_equal(plot_data$x, c(0, .5, 1))
+  expect_equal(attr(plot_data, "x_range"), c(0, 1))
+  expect_equal(plot_data$y, exp(c(0, reference_median(.5), reference_median(1))), tolerance = 1e-6)
+
+  # the public prior plot and its posterior overlay share the [0, 1] axis
+  plot <- plot_prior_list(
+    prior_list, plot_type = "ggplot", n_points = 3, prior_list_mu = prior_list_mu,
+    transformation = "exp", transformation_settings = TRUE
+  )
+  layers <- ggplot2::ggplot_build(plot)$data
+  expect_equal(range(unlist(lapply(layers, `[[`, "x"))), c(0, 1))
+})
+
 test_that("PET-PEESE prior plot data falls back to samples for custom transformations", {
 
   set.seed(1)
@@ -1205,13 +3299,18 @@ test_that("PET-PEESE prior plot data falls back to samples for custom transforma
   expect_equal(dim(plot_data$samples), c(100, 3))
   expect_true(all(plot_data$y_lCI <= plot_data$y))
   expect_true(all(plot_data$y <= plot_data$y_uCI))
+  expect_equal(
+    attr(plot_data, "y_range"),
+    range(plot_data$y, plot_data$y_lCI, plot_data$y_uCI)
+  )
 })
 
 test_that("PET-PEESE posterior plot data does not recycle coefficient rows", {
 
   make_samples <- function(x, prior) {
     attr(x, "prior_list") <- list(prior)
-    attr(x, "models_ind") <- rep(1, length(x))
+    x <- attach_test_model_probabilities(x, 1)
+    x <- .bt_draws_set_component(x, source = "model", component = rep(1, length(x)))
     class(x) <- c("mixed_posteriors", "mixed_posteriors.simple")
     x
   }
@@ -1238,6 +3337,29 @@ test_that("PET-PEESE posterior plot data does not recycle coefficient rows", {
   expect_equal(plot_data$y, c(0.5, 3))
 })
 
+test_that("PET-PEESE posterior plot data rejects unrelated bias columns", {
+
+  bias_samples <- cbind(
+    omega = c(0.5, 0.75),
+    alpha = c(1, 2)
+  )
+
+  expect_error(
+    BayesTools:::.plot_data_samples.PETPEESE(
+      samples                  = list(mu = c(0, 1), bias = bias_samples),
+      x_seq                    = c(0, 1),
+      x_range                  = c(0, 1),
+      x_range_quant            = NULL,
+      n_points                 = 2,
+      transformation           = NULL,
+      transformation_arguments = NULL,
+      transformation_settings  = FALSE
+    ),
+    "At least one 'PET' or 'PEESE' model needs to be specified.",
+    fixed = TRUE
+  )
+})
+
 test_that("PET-PEESE posterior plot data honors negative effect direction", {
   samples <- list(
     mu    = c(0, 1, 2, 3),
@@ -1259,12 +3381,19 @@ test_that("PET-PEESE posterior plot data honors negative effect direction", {
   )
 
   expected_samples <- sapply(x_seq, function(x) samples$mu - samples$PET * x - samples$PEESE * x^2)
-  expected_quantiles <- apply(expected_samples, 2, stats::quantile, probs = c(.500, .025, .975), names = FALSE)
+  # posterior lines use the Harrell-Davis quantiles (hd_reference(), common-functions.R)
+  expected_quantiles <- apply(expected_samples, 2, function(y) {
+    vapply(c(.500, .025, .975), function(p) hd_reference(y, p), numeric(1))
+  })
 
   expect_equal(plot_data$samples, expected_samples)
   expect_equal(plot_data$y, expected_quantiles[1,])
   expect_equal(plot_data$y_lCI, expected_quantiles[2,])
   expect_equal(plot_data$y_uCI, expected_quantiles[3,])
+  expect_equal(
+    attr(plot_data, "y_range"),
+    range(plot_data$y, plot_data$y_lCI, plot_data$y_uCI)
+  )
 
   intercept_fallback <- BayesTools:::.plot_data_samples.PETPEESE(
     samples = list(mu_intercept = samples$mu, PET = samples$PET, PEESE = samples$PEESE),
@@ -1281,6 +3410,103 @@ test_that("PET-PEESE posterior plot data honors negative effect direction", {
   expect_equal(intercept_fallback$y, plot_data$y)
 })
 
+test_that("PET-PEESE posterior lines use Harrell-Davis quantiles for the band and the median", {
+
+  hd_columns <- function(x) {
+    apply(x, 2, function(y) vapply(c(.500, .025, .975), function(p) hd_reference(y, p), numeric(1)))
+  }
+
+  set.seed(3)
+  n_draws <- 400
+  samples <- list(
+    mu    = stats::rnorm(n_draws, .2, .1),
+    PET   = stats::rnorm(n_draws, .5, .3),
+    PEESE = stats::rnorm(n_draws, 0, .2)
+  )
+  x_seq <- seq(0, 1, length.out = 7)
+  line_data <- function(transformation = NULL) {
+    BayesTools:::.plot_data_samples.PETPEESE(
+      samples = samples, x_seq = x_seq, x_range = c(0, 1), x_range_quant = NULL,
+      n_points = length(x_seq), transformation = transformation,
+      transformation_arguments = NULL, transformation_settings = FALSE
+    )
+  }
+
+  # the band and the median of one call, over the (transformed) draws
+  plot_data <- line_data()
+  expected  <- hd_columns(plot_data$samples)
+  expect_equal(plot_data$y,     expected[1, ], tolerance = 1e-12)
+  expect_equal(plot_data$y_lCI, expected[2, ], tolerance = 1e-12)
+  expect_equal(plot_data$y_uCI, expected[3, ], tolerance = 1e-12)
+  expect_true(all(plot_data$y_lCI < plot_data$y & plot_data$y < plot_data$y_uCI))
+  expect_equal(attr(plot_data, "y_range"), range(plot_data$y, plot_data$y_lCI, plot_data$y_uCI))
+
+  # the draws, the grid, and the other elements are unchanged
+  expect_equal(
+    plot_data$samples,
+    sapply(x_seq, function(x) samples$mu + samples$PET * x + samples$PEESE * x^2)
+  )
+  expect_identical(plot_data$x, x_seq)
+
+  # the kinks of the empirical quantiles are not reproduced
+  empirical <- apply(plot_data$samples, 2, stats::quantile, probs = c(.500, .025, .975), names = FALSE)
+  expect_false(isTRUE(all.equal(plot_data$y_lCI, empirical[2, ])))
+  # ... but estimate the same quantile (within a fraction of the Monte Carlo scale of the draws)
+  expect_lt(max(abs(plot_data$y_lCI - empirical[2, ])), 0.3 * max(apply(plot_data$samples, 2, stats::sd)))
+
+  # draws are transformed first, the quantiles of the transformed draws follow
+  transformed <- line_data("exp")
+  expect_equal(transformed$samples, exp(plot_data$samples))
+  expect_equal(transformed$y_uCI, hd_columns(exp(plot_data$samples))[3, ], tolerance = 1e-12)
+  expect_false(isTRUE(all.equal(transformed$y_uCI, exp(plot_data$y_uCI))))
+})
+
+test_that("PET-PEESE prior lines from sampled draws keep the empirical quantiles", {
+
+  line_samples <- cbind(
+    mu    = c(0, .1, .3, -.2, .5, .2, 0, .4),
+    PET   = c(.2, 0, .4, .1, -.3, .6, .2, 0),
+    PEESE = c(0, 0, 0, .3, .1, 0, -.1, .2)
+  )
+  x_seq <- c(0, .5, 1)
+
+  summary <- BayesTools:::.petpeese_line_summary_from_samples(
+    line_samples, x_seq, NULL, NULL, quantile_method = "empirical"
+  )
+  expected <- apply(summary$samples, 2, stats::quantile, probs = c(.500, .025, .975), names = FALSE)
+  expect_identical(summary$median, expected[1, ])
+  expect_identical(summary$lCI,    expected[2, ])
+  expect_identical(summary$uCI,    expected[3, ])
+
+  hd <- BayesTools:::.petpeese_line_summary_from_samples(line_samples, x_seq, NULL, NULL)
+  expect_identical(hd$samples, summary$samples)
+  expect_equal(
+    rbind(hd$median, hd$lCI, hd$uCI),
+    harrell_davis_quantile(summary$samples, c(.500, .025, .975)),
+    tolerance = 1e-14
+  )
+  expect_error(
+    BayesTools:::.petpeese_line_summary_from_samples(line_samples, x_seq, NULL, NULL, quantile_method = "type7"),
+    "'arg' should be one of"
+  )
+
+  # the sampled prior line (used when the deterministic summaries are unavailable)
+  set.seed(4)
+  prior_data <- BayesTools:::.plot_data_prior_list.PETPEESE_sampled(
+    prior_list               = list(prior_PET("normal", list(0, 1), truncation = list(-Inf, Inf))),
+    x_seq                    = x_seq,
+    n_points                 = length(x_seq),
+    n_samples                = 200,
+    transformation           = NULL,
+    transformation_arguments = NULL,
+    prior_list_mu            = list(prior("spike", list(0)))
+  )
+  expected <- apply(prior_data$samples, 2, stats::quantile, probs = c(.500, .025, .975), names = FALSE)
+  expect_identical(prior_data$y,     expected[1, ])
+  expect_identical(prior_data$y_lCI, expected[2, ])
+  expect_identical(prior_data$y_uCI, expected[3, ])
+})
+
 test_that("factor posterior density curves keep continuous mass scale", {
 
   set.seed(1)
@@ -1295,7 +3521,9 @@ test_that("factor posterior density curves keep continuous mass scale", {
   attr(prior, "level_names") <- c("alternate", "random", "systematic")
 
   attr(samples, "prior_list") <- prior
-  attr(samples, "models_ind") <- rep(1, nrow(samples))
+  samples <- attach_test_model_probabilities(samples, 1)
+  samples <- .bt_draws_set_component(samples, source = "model", component = rep(1, nrow(samples)))
+  samples <- .bt_meta_set(samples, "atoms", posterior_atom_attribute())
   class(samples) <- c("mixed_posteriors", "mixed_posteriors.factor", "mixed_posteriors.vector")
 
   plot_data <- BayesTools:::.plot_data_samples.factor(
@@ -1315,7 +3543,347 @@ test_that("factor posterior density curves keep continuous mass scale", {
   expect_equal(unname(areas), c(1, 1), tolerance = 0.08)
 })
 
-test_that("factor posterior plot data aggregates duplicate point-mass models", {
+test_that("bounded factor posterior KDE reflects each level support", {
+  n_samples <- 4000
+  samples <- cbind(
+    `theta[A]` = seq(.005, .995, length.out = n_samples),
+    `theta[B]` = rev(seq(.005, .995, length.out = n_samples))
+  )
+
+  prior <- prior_factor("uniform", list(0, 1), contrast = "independent")
+  attr(prior, "levels") <- 2
+  attr(prior, "level_names") <- c("A", "B")
+
+  attr(samples, "prior_list") <- prior
+  samples <- attach_test_model_probabilities(samples, 1)
+  samples <- .bt_draws_set_component(samples, source = "model", component = rep(1, nrow(samples)))
+  samples <- .bt_meta_set(samples, "atoms", posterior_atom_attribute())
+  class(samples) <- c("mixed_posteriors", "mixed_posteriors.factor", "mixed_posteriors.vector", "matrix")
+
+  plot_data <- BayesTools:::.plot_data_samples.factor(
+    samples = list(theta = samples),
+    parameter = "theta",
+    n_points = 512,
+    transformation = NULL,
+    transformation_arguments = NULL,
+    transformation_settings = FALSE
+  )
+
+  density_entries <- plot_data[vapply(plot_data, inherits, logical(1), what = "density.prior.simple")]
+  areas <- vapply(density_entries, .model_plot_density_mass, numeric(1))
+  ranges <- t(vapply(density_entries, function(density) range(density$x), numeric(2)))
+
+  expect_length(density_entries, 2)
+  expect_equal(unname(vapply(density_entries, attr, numeric(1), which = "level")), 1:2)
+  expect_equal(unname(vapply(density_entries, attr, character(1), which = "level_name")), colnames(samples))
+  expect_equal(unname(areas), c(1, 1), tolerance = .03)
+  expect_equal(unname(ranges), matrix(c(0, 1, 0, 1), ncol = 2, byrow = TRUE))
+  expect_true(all(vapply(density_entries, function(density){
+    isTRUE(attr(density, "boundary_reflection"))
+  }, logical(1))))
+})
+
+test_that("transformed bounded factor posterior KDE avoids singular endpoints", {
+  n_samples <- 4000
+  samples <- cbind(
+    `theta[A]` = seq(.005, .995, length.out = n_samples),
+    `theta[B]` = rev(seq(.005, .995, length.out = n_samples))
+  )
+
+  prior <- prior_factor("uniform", list(0, 1), contrast = "independent")
+  attr(prior, "levels") <- 2
+  attr(prior, "level_names") <- c("A", "B")
+
+  attr(samples, "prior_list") <- prior
+  samples <- attach_test_model_probabilities(samples, 1)
+  samples <- .bt_draws_set_component(samples, source = "model", component = rep(1, nrow(samples)))
+  samples <- .bt_meta_set(samples, "atoms", posterior_atom_attribute())
+  class(samples) <- c("mixed_posteriors", "mixed_posteriors.factor", "mixed_posteriors.vector", "matrix")
+
+  plot_data <- BayesTools:::.plot_data_samples.factor(
+    samples = list(theta = samples),
+    parameter = "theta",
+    n_points = 512,
+    transformation = "exp_lin",
+    transformation_arguments = NULL,
+    transformation_settings = FALSE
+  )
+
+  density_entries <- plot_data[vapply(plot_data, inherits, logical(1), what = "density.prior.simple")]
+
+  expect_length(density_entries, 2)
+  expect_true(all(vapply(density_entries, function(density){
+    all(is.finite(density$x)) && all(is.finite(density$y))
+  }, logical(1))))
+  expect_true(all(vapply(density_entries, function(density){
+    min(density$x) > 0 && max(density$x) < 1
+  }, logical(1))))
+  expect_true(all(vapply(density_entries, function(density){
+    isTRUE(attr(density, "boundary_reflection"))
+  }, logical(1))))
+})
+
+test_that("factor posterior plot data uses level-matched stored densities", {
+
+  n_samples <- 100
+  samples <- cbind(
+    `mu_alloc[random]`     = seq(-1, 0, length.out = n_samples),
+    `mu_alloc[systematic]` = seq(1, 2, length.out = n_samples)
+  )
+
+  prior <- prior_factor_levels(
+    prior_factor("normal", list(0, 1), contrast = "treatment"),
+    c("alternate", "random", "systematic")
+  )
+
+  stored_random_x <- seq(-2, 1, length.out = 31)
+  stored_systematic_x <- seq(0, 3, length.out = 31)
+  attr(samples, "prior_list") <- prior
+  samples <- attach_test_model_probabilities(samples, 1)
+  samples <- .bt_draws_set_component(samples, source = "model", component = rep(1, nrow(samples)))
+  samples <- .bt_meta_set(samples, "atoms", posterior_atom_attribute())
+  samples <- .bt_meta_set(samples, "posterior_density", list(
+    random = .posterior_density_for_test(
+      parameter = "random",
+      x         = stored_random_x,
+      y         = stats::dnorm(stored_random_x, mean = -.5, sd = .5),
+      method    = "iwmde"
+    ),
+    systematic = .posterior_density_for_test(
+      parameter = "systematic",
+      x         = stored_systematic_x,
+      y         = stats::dnorm(stored_systematic_x, mean = 1.5, sd = .5),
+      method    = "iwmde"
+    )
+  ))
+  class(samples) <- c("mixed_posteriors", "mixed_posteriors.factor", "mixed_posteriors.vector")
+
+  plot_data <- BayesTools:::.plot_data_samples.factor(
+    samples                  = list(mu_alloc = samples),
+    parameter                = "mu_alloc",
+    n_points                 = 16,
+    transformation           = NULL,
+    transformation_arguments = NULL,
+    transformation_settings  = FALSE,
+    density_method           = "precomputed"
+  )
+
+  expect_equal(plot_data$density1$x, stored_random_x)
+  expect_equal(plot_data$density2$x, stored_systematic_x)
+  expect_equal(attr(plot_data$density1, "posterior_density_method"), "iwmde")
+  expect_equal(attr(plot_data$density2, "posterior_density_method"), "iwmde")
+})
+
+test_that("factor posterior plot data draws declared atoms with stored densities", {
+
+  samples <- cbind(
+    `mu_alloc[random]`     = c(rep(0, 40), seq(-1, 0, length.out = 60)),
+    `mu_alloc[systematic]` = c(rep(0, 40), seq(1, 2, length.out = 60))
+  )
+
+  prior <- prior_factor_levels(
+    prior_factor("normal", list(0, 1), contrast = "treatment"),
+    c("alternate", "random", "systematic")
+  )
+  point_prior <- prior_factor_levels(
+    prior_factor("point", list(location = 0), contrast = "treatment"),
+    c("alternate", "random", "systematic")
+  )
+
+  stored_x <- seq(-2, 2, length.out = 31)
+  attr(samples, "prior_list") <- list(point_prior, prior)
+  samples <- attach_test_model_probabilities(samples, c(.4, .6))
+  samples <- .bt_draws_set_component(samples, source = "model", component = c(rep(1, 40), rep(2, 60)))
+  samples <- .bt_meta_set(samples, "atoms", .posterior_atoms_from_priors(
+    list(point_prior, prior), c(.4, .6), n_columns = 2L, column_names = colnames(samples),
+    posterior_pair = .bt_meta_get(samples, "model_probabilities")$posterior))
+  class(samples) <- c("mixed_posteriors", "mixed_posteriors.factor", "mixed_posteriors.vector")
+  plot_data_for <- function(samples, density_method = "KDE"){
+    BayesTools:::.plot_data_samples.factor(
+      samples                  = list(mu_alloc = samples),
+      parameter                = "mu_alloc",
+      n_points                 = 16,
+      transformation           = NULL,
+      transformation_arguments = NULL,
+      transformation_settings  = FALSE,
+      density_method           = density_method
+    )
+  }
+  point_entries_of <- function(plot_data){
+    plot_data[vapply(plot_data, inherits, logical(1), what = "density.prior.point")]
+  }
+  kde_points <- point_entries_of(plot_data_for(samples))
+  expect_error(plot_data_for(samples, "precomputed"), "Precomputed posterior density is unavailable", fixed = TRUE)
+
+  # Every selected continuous leaf needs a matching stored curve; KDE keeps
+  # the same declared atoms when curves are absent or only partially present.
+  stored_random <- .posterior_density_for_test(
+    parameter = "random",
+    x         = stored_x,
+    y         = .6 * stats::dnorm(stored_x),
+    method    = "iwmde"
+  )
+  stored_systematic <- .posterior_density_for_test(
+    parameter = "systematic",
+    x         = stored_x,
+    y         = .6 * stats::dnorm(stored_x),
+    method    = "iwmde"
+  )
+  for(stored in list(list(random = stored_random),
+                     list(random = stored_random, systematic = stored_systematic))){
+    samples <- .bt_meta_set(samples, "posterior_density", stored)
+    if(length(stored) == 1L){
+      expect_error(plot_data_for(samples, "precomputed"), "Precomputed posterior density is unavailable", fixed = TRUE)
+      expect_equal(point_entries_of(plot_data_for(samples)), kde_points)
+      next
+    }
+    expect_no_warning(plot_data <- plot_data_for(samples, "precomputed"))
+    point_entries <- point_entries_of(plot_data)
+    expect_equal(names(point_entries), names(kde_points))
+    expect_equal(length(point_entries), 1L)
+    expect_equal(point_entries[[1L]]$x, 0)
+    expect_equal(point_entries[[1L]]$y, .4)
+    expect_equal(plot_data$density1$x, stored_x)
+    expect_equal(attr(plot_data$density1, "posterior_density_method"), "iwmde")
+  }
+})
+
+test_that("factor posterior plot data matches interaction cell aliases", {
+
+  n_samples <- 80
+  samples <- cbind(
+    `mu_a[A]__xXx__b[B]` = seq(-1, 0, length.out = n_samples),
+    `mu_a[C]__xXx__b[D]` = seq(1, 2, length.out = n_samples)
+  )
+
+  prior <- prior_factor("normal", list(0, 1), contrast = "independent")
+  attr(prior, "levels") <- 2
+  attr(prior, "level_names") <- list(a = c("A", "C"), b = c("B", "D"))
+  attr(prior, "factor_cell_names") <- c("A, B", "C, D")
+
+  stored_ab_x <- seq(-2, 1, length.out = 31)
+  stored_cd_x <- seq(0, 3, length.out = 31)
+  attr(samples, "prior_list") <- prior
+  samples <- attach_test_model_probabilities(samples, 1)
+  samples <- .bt_draws_set_component(samples, source = "model", component = rep(1, nrow(samples)))
+  samples <- .bt_meta_set(samples, "atoms", posterior_atom_attribute())
+  attr(samples, "level_names") <- attr(prior, "level_names")
+  attr(samples, "factor_cell_names") <- attr(prior, "factor_cell_names")
+  samples <- .bt_meta_set(samples, "posterior_density", list(
+    "A, B" = .posterior_density_for_test(
+      parameter = "A, B",
+      x         = stored_ab_x,
+      y         = stats::dnorm(stored_ab_x, mean = -.5, sd = .5),
+      method    = "iwmde"
+    ),
+    "C, D" = .posterior_density_for_test(
+      parameter = "C, D",
+      x         = stored_cd_x,
+      y         = stats::dnorm(stored_cd_x, mean = 1.5, sd = .5),
+      method    = "iwmde"
+    )
+  ))
+  class(samples) <- c("mixed_posteriors", "mixed_posteriors.factor", "mixed_posteriors.vector")
+
+  plot_data <- BayesTools:::.plot_data_samples.factor(
+    samples                  = list(mu_a__xXx__b = samples),
+    parameter                = "mu_a__xXx__b",
+    n_points                 = 16,
+    transformation           = NULL,
+    transformation_arguments = NULL,
+    transformation_settings  = FALSE,
+    density_method           = "precomputed"
+  )
+
+  expect_equal(plot_data$density1$x, stored_ab_x)
+  expect_equal(plot_data$density2$x, stored_cd_x)
+  expect_equal(attr(plot_data$density1, "posterior_density_method"), "iwmde")
+  expect_equal(attr(plot_data$density2, "posterior_density_method"), "iwmde")
+})
+
+test_that("density_method is named-only on exported plot APIs", {
+
+  expect_gt(
+    match("density_method", names(formals(plot_posterior))),
+    match("...", names(formals(plot_posterior)))
+  )
+  expect_gt(
+    match("density_method", names(formals(plot_marginal))),
+    match("...", names(formals(plot_marginal)))
+  )
+})
+
+test_that("factor posterior plot data uses declared point masses per column", {
+
+  prior <- prior_factor("normal", list(0, 1), contrast = "treatment")
+  point_prior <- prior_factor("point", list(location = 0), contrast = "treatment")
+  attr(prior, "levels") <- 3
+  attr(prior, "level_names") <- c("a", "b", "c")
+  attr(point_prior, "levels") <- 3
+  attr(point_prior, "level_names") <- c("a", "b", "c")
+
+  factor_samples <- function(values, atoms){
+    colnames(values) <- c("theta[b]", "theta[c]")
+    attr(values, "prior_list") <- list(point_prior, prior)
+    values <- attach_test_model_probabilities(values, if(is.null(atoms$component_probabilities)) c(sum(atoms$mass), 1 - sum(atoms$mass)) else atoms$component_probabilities)
+    values <- .bt_draws_set_component(values, source = "model", component = c(rep(1, 40), rep(2, 60)))
+    values <- .bt_meta_set(values, "atoms", atoms)
+    class(values) <- c("mixed_posteriors", "mixed_posteriors.factor", "mixed_posteriors.vector")
+    list(theta = values)
+  }
+  density_mass <- function(density){
+    sum(diff(density$x) * (head(density$y, -1) + tail(density$y, -1)) / 2)
+  }
+  continuous <- cbind(seq(-1.5, -.1, length.out = 60), seq(.1, 1.5, length.out = 60))
+
+  # declared model probabilities (.25 / .75) differ from the draw frequencies
+  # (40 / 60); the declared masses are authoritative
+  values <- rbind(matrix(0, nrow = 40, ncol = 2), continuous)
+  atoms <- BayesTools:::.posterior_atoms_from_priors(
+    list(point_prior, prior), c(.25, .75),
+    n_columns = 2L, column_names = c("theta[b]", "theta[c]")
+  )
+  plot_data <- BayesTools:::.plot_data_samples.factor(
+    factor_samples(values, atoms), "theta", n_points = 512,
+    transformation = NULL, transformation_arguments = NULL, transformation_settings = FALSE
+  )
+  expect_equal(plot_data$points1$x, 0)
+  expect_equal(plot_data$points1$y, .25)
+  expect_equal(density_mass(plot_data$density1), .75, tolerance = .02)
+  expect_equal(density_mass(plot_data$density2), .75, tolerance = .02)
+  expect_equal(plot_data$density1$samples, continuous[, 1])
+
+  # column-specific atoms: level b has one atom, level c two
+  values_joint <- rbind(
+    matrix(0, nrow = 20, ncol = 2),
+    cbind(rep(0, 20), rep(1, 20)),
+    continuous
+  )
+  atoms_joint <- BayesTools:::.posterior_atoms_new(
+    locations = rbind(c(0, 0), c(0, 1)),
+    mass = c(.2, .2),
+    column_names = c("theta[b]", "theta[c]"),
+    source = "test"
+  )
+  plot_data_joint <- BayesTools:::.plot_data_samples.factor(
+    factor_samples(values_joint, atoms_joint), "theta", n_points = 512,
+    transformation = NULL, transformation_arguments = NULL, transformation_settings = FALSE
+  )
+  point_entries <- plot_data_joint[vapply(plot_data_joint, inherits, logical(1), "density.prior.point")]
+  point_summary <- data.frame(
+    level = vapply(point_entries, function(point) attr(point, "level"), numeric(1)),
+    x     = vapply(point_entries, function(point) point$x, numeric(1)),
+    y     = vapply(point_entries, function(point) point$y, numeric(1))
+  )
+  point_summary <- point_summary[order(point_summary$level, point_summary$x), ]
+  expect_equal(point_summary$level, c(1, 2, 2))
+  expect_equal(point_summary$x, c(0, 0, 1))
+  expect_equal(point_summary$y, c(.4, .2, .2))
+  expect_equal(density_mass(plot_data_joint$density1), .6, tolerance = .02)
+  expect_equal(plot_data_joint$density2$samples, continuous[, 2])
+})
+
+test_that("factor posterior plot data aggregates duplicate declared point masses", {
 
   samples_matrix <- matrix(
     c(
@@ -1325,7 +3893,11 @@ test_that("factor posterior plot data aggregates duplicate point-mass models", {
     ncol = 2,
     dimnames = list(NULL, c("theta[A]", "theta[B]"))
   )
-  attr(samples_matrix, "models_ind") <- c(rep(1, 2), rep(2, 3), rep(3, 5))
+  samples_matrix <- attach_test_model_probabilities(samples_matrix, c(.2, .3, .5))
+  samples_matrix <- .bt_draws_set_component(samples_matrix, source = "model", component = c(rep(1, 2), rep(2, 3), rep(3, 5)))
+  samples_matrix <- .bt_meta_set(samples_matrix, "atoms", posterior_atom_attribute(
+    data.frame(x = c(0, 0, 2), mass = c(.2, .3, .5))
+  ))
   attr(samples_matrix, "prior_list") <- list(
     prior_factor("point", list(location = 0), contrast = "treatment"),
     prior_factor("point", list(location = 0), contrast = "treatment"),
@@ -1393,7 +3965,9 @@ test_that("factor posterior plot data aggregates duplicate point-mass models", {
   fit <- coda::mcmc(posterior)
   class(fit) <- c("mcmc", "BayesTools_fit")
   attr(fit, "prior_list") <- prior_list
+  attr(fit, "formula_design") <- list(mu = formula_result$formula_design)
   attr(fit, "formula_scale") <- list(mu = formula_result$formula_scale)
+  fit <- attach_test_parameter_map(fit)
 
   samples <- as_mixed_posteriors(
     fit,
@@ -1439,7 +4013,9 @@ test_that("factor posterior plot data aggregates duplicate point-mass models", {
   fit <- coda::mcmc(posterior)
   class(fit) <- c("BayesTools_fit", class(fit))
   attr(fit, "prior_list") <- prior_list
+  attr(fit, "formula_design") <- list(mu = formula_result$formula_design)
   attr(fit, "formula_scale") <- list(mu = formula_result$formula_scale)
+  fit <- attach_test_parameter_map(fit)
 
   samples <- as_mixed_posteriors(
     fit,
@@ -1458,7 +4034,7 @@ test_that("transformed factor prior plot data uses indexed prior density columns
   prior_list <- fixture$prior_list
 
   plot_data <- BayesTools:::.plot_data_prior_factor_density_transformed(
-    prior_density_context = attr(samples, "prior_density_context"),
+    prior_density_context = .bt_meta_get(samples, "prior_context"),
     samples = samples,
     parameter = "mu_x__xXx__a__xXx__b",
     prior_list = attr(samples$mu_x__xXx__a__xXx__b, "prior_list"),
@@ -1494,7 +4070,7 @@ test_that("transformed treatment factor prior plot data omits reference coeffici
   expect_false(any(rowSums(abs(factor_weights)) == 0))
 
   plot_data <- BayesTools:::.plot_data_prior_factor_density_transformed(
-    prior_density_context = attr(samples, "prior_density_context"),
+    prior_density_context = .bt_meta_get(samples, "prior_context"),
     samples               = samples,
     parameter             = "mu_alloc",
     prior_list            = attr(samples$mu_alloc, "prior_list"),
@@ -1529,6 +4105,83 @@ test_that("plot_posterior handles transformed scaled factor-interaction priors",
   expect_gt(length(plot$layers), 1)
 })
 
+test_that("scaled factor contrasts retain independently declared scalar level laws", {
+
+  fixture <- .scaled_multi_factor_interaction_samples(n_posterior = 24, n_prior = 128)
+  parameter <- "mu_x__xXx__a__xXx__b"
+  transformed <- transform_factor_samples(fixture$samples)[[parameter]]
+  columns <- paste0("mu_x__xXx__a[dif: ", rep(c("a1", "a2"), times = 3),
+    "]__xXx__b[dif: ", rep(c("b1", "b2", "b3"), each = 2), "]")
+  expect_identical(colnames(transformed), columns)
+  atoms <- .posterior_atoms_get(transformed, allow_partial = TRUE)
+  expect_identical(names(atoms$marginals), columns)
+  for(i in seq_along(columns)){
+    scalar <- .posterior_atoms_for_column(atoms, i)
+    expect_false(is.null(scalar))
+    if(is.null(scalar)) next
+    expect_identical(scalar, .posterior_atoms_for_column(atoms, columns[[i]]))
+    expect_true(scalar$declared)
+    expect_identical(dim(scalar$locations), c(0L, 1L))
+    expect_identical(colnames(scalar$locations), columns[[i]])
+    expect_identical(scalar$mass, numeric())
+  }
+
+  # Without the parent declaration, the generic coordinate projection cannot
+  # certify multi-coordinate rows from continuous margins or empty joint atoms.
+  input <- fixture$samples[[parameter]]
+  uncertified <- .transform_factor_contrast_samples(input, input, parameter,
+    "mixed_posteriors.orthonormal_transformed")
+  uncertified_atoms <- .posterior_atoms_get(uncertified, allow_partial = TRUE)
+  expect_identical(vapply(seq_along(columns), function(i)
+    is.null(.posterior_atoms_for_column(uncertified_atoms, i)), logical(1)),
+    c(FALSE, FALSE, TRUE, TRUE, TRUE, TRUE))
+  expect_error(plot_posterior(stats::setNames(list(uncertified), parameter), parameter,
+    plot_type = "ggplot", prior = FALSE, n_points = 32),
+    "atom metadata do not identify the factor columns", fixed = TRUE)
+})
+
+test_that("factor scalar recovery preserves declared mixture masses and zero references", {
+
+  point <- prior_factor_levels(prior_factor("point", list(0), contrast = "meandif"), c("a", "b", "c"))
+  continuous <- prior_factor_levels(prior_factor("mnormal", list(0, 1), contrast = "meandif"), c("a", "b", "c"))
+  values <- rbind(matrix(0, 40, 2), cbind(seq(-1, 1, length.out = 60), seq(2, 3, length.out = 60)))
+  colnames(values) <- c("theta{1}", "theta{2}")
+  values <- attach_test_model_probabilities(values, c(.25, .75))
+  values <- .bt_draws_set_component(values, source = "model", component = c(rep(1, 40), rep(2, 60)))
+  joint <- .posterior_atoms_from_priors(list(point, continuous), c(.25, .75),
+    n_columns = 2L, column_names = colnames(values),
+    posterior_pair = .bt_meta_get(values, "model_probabilities")$posterior)
+  scalar_marginals <- stats::setNames(lapply(seq_len(2L), function(i) .posterior_atoms_for_column(joint, i)), colnames(values))
+  atoms <- .posterior_atoms_new(joint$locations, joint$mass, column_names = colnames(values),
+    source = joint$source, component_probabilities = joint$component_probabilities,
+    component_log_probabilities = joint$component_log_probabilities,
+    model_probability_declaration = joint$model_probability_declaration, marginals = scalar_marginals)
+  values <- .posterior_atoms_set(values, atoms)
+  attr(values, "prior_list") <- list(point, continuous)
+  for(name in .bt_factor_metadata_required){
+    attr(values, name) <- attr(continuous, name, exact = TRUE)
+  }
+  attr(values, "meandif") <- TRUE
+  class(values) <- c("mixed_posteriors", "mixed_posteriors.factor", "mixed_posteriors.vector", "matrix")
+  transformed <- transform_meandif_samples(list(theta = values))$theta
+  transformed_atoms <- .posterior_atoms_get(transformed, allow_partial = TRUE)
+  for(i in seq_len(ncol(transformed))){
+    scalar <- .posterior_atoms_for_column(transformed_atoms, i)
+    expect_false(is.null(scalar))
+    if(is.null(scalar)) next
+    expect_identical(as.numeric(scalar$locations), 0)
+    expect_identical(scalar$mass, .25)
+    expect_identical(colnames(scalar$locations), colnames(transformed)[[i]])
+  }
+
+  fixture <- .scaled_default_treatment_interaction_samples(n_posterior = 20, n_prior = 128)
+  treatment <- transform_treatment_samples(fixture$samples)$mu_alloc
+  reference <- .posterior_atoms_for_column(.posterior_atoms_get(treatment, allow_partial = TRUE), 1L)
+  expect_identical(as.numeric(reference$locations), 0)
+  expect_identical(reference$mass, 1)
+  expect_true(all(treatment[, 1L] == 0))
+})
+
 test_that("plot_posterior owns factor legends in transformed prior overlays", {
 
   fixture <- .scaled_default_treatment_interaction_samples(n_posterior = 20, n_prior = 128)
@@ -1552,4 +4205,169 @@ test_that("plot_posterior owns factor legends in transformed prior overlays", {
     ),
     0L
   )
+})
+
+
+test_that("point-mass clipping warnings follow visible probability bounds", {
+
+  make_priors <- function(mass) {
+
+    list(
+      prior("point", list(location = 0), prior_weights = mass),
+      prior("normal", list(mean = 0, sd = 1), prior_weights = 1 - mass)
+    )
+  }
+  grDevices::pdf(NULL)
+  on.exit(grDevices::dev.off(), add = TRUE)
+  plot_prior_list(make_priors(.7), ylim = c(0, 1), ylim2 = c(0, .735))
+  state <- BayesTools:::.plot_scale_y2_state_current()
+
+  # Pretty ticks and base axis padding make .75 visible above the requested
+  # upper limit .735, while the .9 arrow lies outside the actual plot region.
+  tip_y <- graphics::grconvertY(c(.75, .9) * state[["scale_y2"]], "user", "nfc")
+  plot_top <- graphics::grconvertY(graphics::par("usr")[[4L]], "user", "nfc")
+  expect_equal(state[["ylim2"]], c(0, .735))
+  expect_lt(tip_y[[1L]], plot_top)
+  expect_gt(tip_y[[2L]], plot_top)
+  expect_no_warning(lines_prior_list(make_priors(.75)))
+  expect_warning(
+    lines_prior_list(make_priors(.9)),
+    paste0(
+      "Point-mass probabilities outside the active secondary-axis limits ",
+      "will be clipped. Redraw the initial plot with a wider 'ylim2'."
+    ),
+    fixed = TRUE
+  )
+  expect_identical(BayesTools:::.plot_scale_y2_state_current(), state)
+})
+
+
+test_that("ggplot overlays reuse mixed-plot clipping bounds", {
+
+  skip_if_not_installed("ggplot2")
+  make_priors <- function(mass) {
+
+    list(
+      prior("point", list(location = 0), prior_weights = mass),
+      prior("normal", list(mean = 0, sd = 1), prior_weights = 1 - mass)
+    )
+  }
+  plot <- plot_prior_list(
+    make_priors(.7),
+    plot_type = "ggplot",
+    ylim = c(0, 1),
+    ylim2 = c(0, .735)
+  )
+  expect_false(is.null(plot$bt_scale_y2_state))
+  expect_no_warning(plot + geom_prior_list(make_priors(.75)))
+  expect_warning(
+    plot + geom_prior_list(make_priors(.9)),
+    paste0(
+      "Point-mass probabilities outside the active secondary-axis limits ",
+      "will be clipped. Redraw the initial plot with a wider 'ylim2'."
+    ),
+    fixed = TRUE
+  )
+  overlay <- plot + geom_prior_list(make_priors(.75))
+  expect_identical(overlay$bt_scale_y2_state, plot$bt_scale_y2_state)
+})
+
+test_that("ordered factor posterior plots show level effects by level label", {
+
+  levels <- c("5", "10", "20")
+  data <- data.frame(g = ordered(rep(levels, 2), levels = levels))
+  ordered_plot_data <- function(contrast){
+    result <- JAGS_formula(~ 1 + g, "mu", data, list(
+      intercept = prior("normal", list(0, 1)),
+      g = prior_ordered(prior("normal", list(0, 1)), contrast = contrast)
+    ))
+    columns <- c(
+      "mu_intercept",
+      BayesTools:::.JAGS_prior_factor_names("mu_g", result$prior_list$mu_g)
+    )
+    set.seed(1)
+    samples <- matrix(
+      abs(stats::rnorm(200L * length(columns))),
+      nrow = 200L,
+      dimnames = list(NULL, columns)
+    )
+    spec <- .bt_ordered_spec("mu_g",result$prior_list$mu_g)
+    total <- abs(stats::rnorm(200L))
+    gamma <- matrix(stats::rexp(200L*length(spec$coefficient_names)),200L)
+    colnames(gamma) <- spec$allocations[[1L]]$gamma_coordinates
+    samples[,spec$coefficient_names] <- total * gamma/rowSums(gamma)
+    samples <- cbind(samples,mu_g_ordered_total=total,gamma)
+    fit <- structure(
+      list(mcmc = coda::mcmc.list(coda::mcmc(samples)), sample = 200L),
+      class = c("runjags", "BayesTools_fit", "list")
+    )
+    attr(fit, "prior_list") <- result$prior_list
+    attr(fit, "formula_design") <- list(mu = result$formula_design)
+    fit <- attach_test_parameter_map(fit)
+    mixed <- as_mixed_posteriors(fit, parameters = "mu_g")
+    plot_data <- BayesTools:::.plot_data_samples.factor(
+      mixed,
+      parameter = "mu_g",
+      n_points = 64,
+      transformation = NULL,
+      transformation_arguments = NULL,
+      transformation_settings = FALSE
+    )
+    list(
+      samples = samples,
+      level_names = vapply(plot_data, attr, character(1), "level_name"),
+      level_samples = lapply(plot_data, function(x) as.numeric(x$samples))
+    )
+  }
+
+  # Cumulative: level "5" is structurally zero; the plotted levels are the
+  # level effects, not the increments labelled "1" and "2".
+  cumulative <- ordered_plot_data("cumulative")
+  expect_identical(
+    unname(cumulative$level_names),
+    c("mu_g[10]", "mu_g[20]")
+  )
+  expect_equal(
+    cumulative$level_samples[[2L]],
+    as.numeric(cumulative$samples[, "mu_g[1]"] + cumulative$samples[, "mu_g[2]"]),
+    tolerance = 1e-14
+  )
+  cumulative_levels <- ordered_plot_data("cumulative_levels")
+  expect_identical(
+    unname(cumulative_levels$level_names),
+    paste0("mu_g[", levels, "]")
+  )
+})
+
+test_that("base posterior legends preserve level colors with grey prior overlays across contrasts", {
+  for(contrast in c("meandif", "treatment", "independent", "orthonormal", "ordered")){
+    if(contrast == "ordered"){
+      samples <- ordered_plot_test_fixture()$samples
+      parameter <- "mu_f"
+    }else{
+      data <- data.frame(g = factor(rep(c("early", "middle", "late"), 3L),
+        levels = c("early", "middle", "late")))
+      info <- JAGS_formula(~g, "mu", data, list(intercept = prior("normal", list(0, 1)),
+        g = prior_factor(if(contrast %in% c("meandif", "orthonormal")) "mnormal" else "normal",
+          list(0, 1), contrast = contrast)))
+      columns <- .JAGS_prior_factor_names("mu_g", info$prior_list$mu_g)
+      set.seed(178)
+      values <- cbind(mu_intercept = seq(-1, 1, length.out = 120L),
+        matrix(rnorm(120L * length(columns)), 120L, dimnames = list(NULL, columns)))
+      fit <- structure(list(mcmc = coda::mcmc.list(coda::mcmc(values)), sample = 120L),
+        class = c("runjags", "BayesTools_fit", "list"))
+      attr(fit, "prior_list") <- info$prior_list
+      attr(fit, "formula_design") <- list(mu = info$formula_design)
+      samples <- as_mixed_posteriors(attach_test_parameter_map(fit), "mu_g", n_prior_samples = 128L)
+      parameter <- "mu_g"
+    }
+    without <- .capture_graphics_legend_calls_for_test(plot_posterior(samples, parameter,
+      prior = FALSE, n_points = 64))
+    with <- .capture_graphics_legend_calls_for_test(plot_posterior(samples, parameter,
+      prior = TRUE, n_points = 64, dots_prior = list(col = "grey60", lty = 1)))
+    expect_length(without, 1L)
+    expect_length(with, 1L)
+    expect_identical(with[[1L]]$col, without[[1L]]$col)
+    expect_identical(with[[1L]]$col, grDevices::palette.colors(length(with[[1L]]$legend) + 1L)[-1L])
+  }
 })

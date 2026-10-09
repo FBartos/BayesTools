@@ -1,5 +1,98 @@
 skip_if_not_test_profile("unit")
 
+test_that("orthonormal point mixtures retain every continuous transformed knot", {
+  normal <- prior_factor("mnorm", list(mean = 0, sd = 1), contrast = "orthonormal")
+  point <- prior_factor("spike", list(0), contrast = "orthonormal")
+  attr(normal, "levels") <- attr(point, "levels") <- 3L
+  priors <- list(normal = normal, point = point)
+  data <- suppressMessages(.plot_data_prior_list.simple(priors, x_seq = NULL,
+    x_range = c(.01, 5), x_range_quant = NULL, n_points = 500L, n_samples = 10000L,
+    force_samples = FALSE, individual = FALSE, transformation = "exp",
+    transformation_arguments = NULL, transformation_settings = TRUE))
+  expect_length(data$density$x, 500L)
+  expect_length(data$density$y, 500L)
+  # The declared orthonormal row is a projection of I - J/3; its variance
+  # under independent unit-variance coefficients is the row's squared norm.
+  contrast_row <- contr.orthonormal(3L)[1L, ]
+  variance <- sum(contrast_row^2)
+  expect_equal(variance, 2/3, tolerance = 1e-15)
+  expect_equal(as.numeric(data$density$y), .5 * stats::dnorm(log(data$density$x),
+    mean = 0, sd = sqrt(variance)) / data$density$x, tolerance = 1e-13)
+  expect_identical(as.numeric(data$points1$x), 1)
+  expect_identical(as.numeric(data$points1$y), .5)
+  figure <- suppressMessages(plot_prior_list(priors, plot_type = "ggplot", transformation = "exp",
+    transformation_settings = TRUE, xlim = c(.01, 5)))
+  expect_s3_class(figure, "ggplot")
+  expect_true(any(vapply(ggplot2::ggplot_build(figure)$data, nrow, integer(1)) == 500L))
+  grDevices::pdf(NULL)
+  on.exit(grDevices::dev.off(), add = TRUE)
+  expect_null(suppressMessages(plot_prior_list(priors, transformation = "exp",
+    transformation_settings = TRUE, xlim = c(.01, 5))))
+  ordinary <- .plot_data_prior_list.simple(list(prior("normal", list(0, 1)), prior("point", list(0))),
+    x_seq = NULL, x_range = c(-3, 3), x_range_quant = NULL, n_points = 31L,
+    n_samples = 10000L, force_samples = FALSE, individual = FALSE, transformation = NULL,
+    transformation_arguments = NULL, transformation_settings = FALSE)
+  expect_length(ordinary$density$x, 31L)
+  expect_equal(as.numeric(ordinary$density$y), .5 * stats::dnorm(ordinary$density$x), tolerance = 1e-14)
+})
+
+test_that("spike plotting preserves distinct nearby atoms and exact duplicates", {
+
+  for(locations in list(c(0, 1e-10), c(1e6, 1e6 + .005), c(1, 1))){
+    priors <- lapply(locations, function(location) prior("spike", list(location)))
+    samples <- rep(locations, each = 2)
+    attr(samples, "prior_list") <- priors
+    samples <- .bt_meta_set(samples, "atoms", posterior_atom_attribute(
+      data.frame(x = locations, mass = c(.5, .5))
+    ))
+    plot_data <- BayesTools:::.plot_data_samples.simple(
+      list(theta = samples), "theta", 64, NULL, NULL, FALSE
+    )
+    points <- plot_data[vapply(plot_data, inherits, logical(1), "density.prior.point")]
+    expect_equal(sum(vapply(points, `[[`, numeric(1), "y")), 1)
+    expect_equal(vapply(points, `[[`, numeric(1), "x"), unique(locations), ignore_attr = TRUE)
+    expect_equal(
+      vapply(points, `[[`, numeric(1), "y"),
+      rep(1 / length(unique(locations)), length(unique(locations))),
+      ignore_attr = TRUE
+    )
+  }
+
+  plot_data <- list(x = c(0, 0, 1), y = c(.2, .3, .5))
+  layer <- BayesTools:::.geom_prior.point(plot_data)
+  expect_equal(layer$data$x, plot_data$x)
+  expect_equal(layer$data$yend, plot_data$y)
+})
+
+test_that("weight prior plotting preserves adjacent representable atom locations", {
+
+  locations <- c(1, 1 + .Machine$double.eps, 1, .5)
+  components <- lapply(locations, function(location){
+    list(type = "point", location = location, weight = 1 / 4)
+  })
+  plotted <- BayesTools:::.plot_data_prior_weightparameter_components(
+    components, parameter = "omega", n_points = 10
+  )
+  expect_length(plotted, 3L)
+  expect_equal(unname(vapply(plotted, function(x) x$y, numeric(1))), c(1 / 4, 1 / 2, 1 / 4))
+  expect_equal(unname(vapply(plotted, function(x) x$x, numeric(1))), sort(unique(locations)), tolerance = 0)
+})
+
+test_that("PET-PEESE plot functions retain truncated-normal tail probabilities", {
+
+  p <- prior_PET("normal", list(0, 1), truncation = list(40, 41))
+  functions <- BayesTools:::.petpeese_prior_simple_functions(p)
+  probabilities <- c(.1, .5, .9)
+  quantiles <- functions$quant(probabilities)
+  expect_true(all(is.finite(quantiles)))
+  expect_equal(functions$cdf(quantiles), probabilities, tolerance = 1e-10)
+  expect_equal(functions$ccdf(quantiles), 1 - probabilities, tolerance = 1e-10)
+  expected_pdf <- exp(stats::dnorm(quantiles, log = TRUE) -
+    stats::pnorm(40, lower.tail = FALSE, log.p = TRUE))
+  # The omitted upper tail has relative mass below exp(-40).
+  expect_equal(functions$pdf(quantiles), expected_pdf, tolerance = 1e-12)
+})
+
 # ============================================================================ #
 # TEST FILE: Prior Plot Data Semantics
 # ============================================================================ #
@@ -162,7 +255,7 @@ test_that("geom_prior contributes exact density and point-mass layers", {
   expect_equal(point_layer$x, 0.5)
   expect_equal(point_layer$xend, 0.5)
   expect_equal(point_layer$y, 0)
-  expect_equal(point_layer$yend, 1)
+  expect_equal(point_layer$yend, 2)
 })
 
 test_that("prior plot data rejects invalid plotting options before rendering", {
@@ -175,4 +268,314 @@ test_that("prior plot data rejects invalid plotting options before rendering", {
     "function or character string"
   )
   expect_error(ggplot2::ggplot() + geom_prior(p, scale_y2 = -1), "'scale_y2'")
+})
+
+
+test_that("base probability axes fit panels without moving subsequent overlays", {
+
+  grDevices::pdf(NULL, width = 10, height = 8)
+  on.exit(grDevices::dev.off(), add = TRUE)
+  graphics::par(mfrow = c(2, 2))
+  original_mar <- graphics::par("mar")
+  priors <- list(
+    prior("normal", list(mean = 0, sd = 1)),
+    prior("point", list(location = 0))
+  )
+
+  for (panel in seq_len(2L)) {
+    plot_prior_list(priors)
+    expect_equal(graphics::par("mfg")[1:2], c(1L, panel))
+    expect_equal(graphics::par("mar"), original_mar)
+
+    # The title is three lines beyond the plot's right edge, inside its panel.
+    right_edge <- graphics::grconvertX(graphics::par("usr")[[2L]], "user", "nfc")
+    right_space <- (1 - right_edge) * graphics::par("fin")[[1L]]
+    expect_gt(right_space, 3 * graphics::par("csi") * graphics::par("mex"))
+
+    overlay_before <- graphics::grconvertX(c(-1, 0, 1), "user", "ndc")
+    lines_prior_list(priors, col = "red", lty = 2)
+    expect_equal(graphics::grconvertX(c(-1, 0, 1), "user", "ndc"), overlay_before)
+  }
+
+  plot(priors[[1L]])
+  right_edge <- graphics::grconvertX(graphics::par("usr")[[2L]], "user", "nfc")
+  expect_equal(
+    (1 - right_edge) * graphics::par("fin")[[1L]],
+    original_mar[[4L]] * graphics::par("csi") * graphics::par("mex")
+  )
+
+  custom_mar <- original_mar
+  custom_mar[[4L]] <- 6.1
+  graphics::par(mar = custom_mar)
+  plot_prior_list(priors)
+  expect_equal(graphics::par("mar"), custom_mar)
+})
+
+test_that("weightfunction rescale keeps two-cut coordinates aligned", {
+
+  two_cut <- list(
+    x     = c(0, 1),
+    y     = c(1, 1),
+    y_lCI = c(1, 1),
+    y_uCI = c(1, 1)
+  )
+  x_at <- BayesTools:::.weightfunction_plot_x_at(two_cut, TRUE)
+  expect_equal(x_at, c(0, 1))
+  expect_length(x_at, length(two_cut$y))
+
+  three_cut <- list(
+    x = c(0, .05, .05, 1),
+    y = c(1, 1, .25, .25)
+  )
+  x_at3 <- BayesTools:::.weightfunction_plot_x_at(three_cut, TRUE)
+  expect_equal(x_at3, c(0, .5, .5, 1))
+  expect_length(x_at3, length(three_cut$y))
+})
+
+test_that("individual weightfunction and PET overlays use the selected component", {
+
+  weight <- prior_weightfunction("one-sided", c(.05), wf_fixed(c(1, .25)))
+  selected <- density(weight, individual = TRUE)[[1]]
+  weight_plot <- ggplot2::ggplot() +
+    geom_prior(weight, individual = TRUE, show_parameter = 1)
+  weight_layer <- ggplot2::ggplot_build(weight_plot)$data[[1]]
+
+  expect_equal(unique(weight_layer$x), unique(selected$x[selected$y != 0]))
+  expect_equal(weight_layer$yend, selected$y[selected$y != 0])
+
+  pet <- prior_PET("normal", list(0, 1))
+  x <- seq(0, 2, length.out = 5)
+  pet_data <- density(pet, individual = TRUE, x_seq = x)
+  pet_plot <- ggplot2::ggplot() + geom_prior(pet, individual = TRUE, x_seq = x)
+  pet_layer <- ggplot2::ggplot_build(pet_plot)$data[[1]]
+
+  expect_equal(pet_layer$x, pet_data$x)
+  expect_equal(pet_layer$y, pet_data$y, tolerance = 1e-12)
+})
+
+test_that("individual weight-function index k is the k-th omega of the summary tables", {
+
+  # Cumulative weights: omega_k = sum_{j >= k} theta_j with theta ~
+  # Dirichlet(alpha), so by Dirichlet aggregation omega_1 = 1 and
+  # omega_k ~ Beta(sum(alpha[k:J]), sum(alpha[1:(k - 1)])) for k >= 2.
+  cases <- list(
+    list(prior = prior_weightfunction("one-sided", c(.025, .05), wf_cumulative(c(1, 2, 3))),
+         alpha = c(1, 2, 3)),
+    list(prior = prior_weightfunction("two-sided", c(.05, .10), wf_cumulative(c(2, 1, 4))),
+         alpha = c(2, 1, 4))
+  )
+
+  drawn <- list()
+  record <- function(plot_data, ...){
+    drawn[[length(drawn) + 1L]] <<- plot_data
+    invisible(NULL)
+  }
+  testthat::local_mocked_bindings(
+    .plot.prior.simple  = function(x, plot_type, plot_data, ...) record(plot_data),
+    .plot.prior.point   = function(x, plot_type, plot_data, ...) record(plot_data),
+    .lines.prior.simple = function(plot_data, ...) record(plot_data),
+    .lines.prior.point  = function(plot_data, ...) record(plot_data),
+    .package = "BayesTools"
+  )
+  expect_omega <- function(x, y, k, alpha, info){
+    if(k == 1L){
+      expect_equal(unique(x), 1, info = info)
+      return(invisible())
+    }
+    inside <- x > 0 & x < 1
+    expect_gt(sum(inside), 10)
+    expect_equal(
+      y[inside],
+      stats::dbeta(x[inside], sum(alpha[k:length(alpha)]), sum(alpha[seq_len(k - 1L)])),
+      tolerance = 1e-10,
+      info = info
+    )
+  }
+
+  for(case in cases){
+    p <- case$prior
+    J <- nrow(p$bins)
+    # The k-th omega printed by the summary tables (one-sided p-value scale,
+    # as in RoBMA) maps to the prior's k-th weight, and its interval is the
+    # prior's k-th bin (two-sided bins are twice the one-sided p-values).
+    table_cuts <- weightfunctions_mapping(list(p), cuts_only = TRUE, one_sided = TRUE)
+    expect_equal(weightfunctions_mapping(list(p), one_sided = TRUE)[[1]][seq_len(J)], seq_len(J))
+
+    for(k in seq_len(J)){
+      info <- paste(p$side, "k =", k)
+      table_interval <- table_cuts[c(k, k + 1L)]
+      if(p$side == "two-sided"){
+        table_interval <- pmin(2 * table_interval, 1)
+      }
+      expect_equal(c(p$bins$lower[k], p$bins$upper[k]), table_interval, info = info)
+
+      drawn <- list()
+      plot(p, individual = TRUE, show_figures = k)
+      lines(p, individual = TRUE, show_parameter = k)
+      expect_length(drawn, 2L)
+      for(plot_data in drawn){
+        expect_equal(attr(plot_data, "steps"), table_interval, info = info)
+        expect_omega(plot_data$x, plot_data$y, k, case$alpha, info)
+      }
+
+      layer <- ggplot2::ggplot_build(
+        ggplot2::ggplot() + geom_prior(p, individual = TRUE, show_parameter = k)
+      )$data[[1]]
+      expect_omega(layer$x, layer$y, k, case$alpha, info)
+    }
+
+    # The default omits the reference weight fixed at 1.
+    drawn <- list()
+    plot(p, individual = TRUE)
+    expect_equal(
+      lapply(drawn, attr, "steps"),
+      lapply(2:J, function(k) c(p$bins$lower[k], p$bins$upper[k]))
+    )
+
+    expect_error(
+      plot(p, individual = TRUE, show_figures = J + 1L),
+      paste0("'show_figures' must be between -", J, " and ", J,
+             ", excluding 0, for a weight function with ", J, " publication weights."),
+      fixed = TRUE
+    )
+    expect_error(
+      lines(p, individual = TRUE, show_parameter = J + 1L),
+      paste0("'show_parameter' must be between 1 and ", J,
+             " for a weight function with ", J, " publication weights."),
+      fixed = TRUE
+    )
+  }
+})
+
+test_that("individual posterior omega figures follow the summary-table columns", {
+
+  priors <- list(
+    prior_weightfunction("two-sided", c(.05), wf_cumulative(c(1, 1))),
+    .set_prior_model_weight(prior_weightfunction("one-sided", c(.01), wf_cumulative(c(1, 1))), 0),
+    prior_none()
+  )
+  omega_cuts <- weightfunctions_mapping(priors, cuts_only = TRUE)
+  models_ind <- rep(c(1, 3), c(60, 40))
+  omega <- matrix(1, nrow = length(models_ind), ncol = 4)
+  omega[models_ind == 1, 3] <- seq(.2, .9, length.out = 60)
+  colnames(omega) <- .weightfunction_omega_names(omega_cuts)
+  omega <- .model_probability_component_set(omega, models_ind, priors, c(.6, 0, .4))
+  attr(omega, "prior_list") <- priors
+  omega <- .bt_meta_set(omega, "atoms", .posterior_atoms_from_priors(
+    priors,
+    c(.6, 0, .4),
+    n_columns = ncol(omega),
+    column_names = colnames(omega),
+    null_location = 1
+  ))
+  class(omega) <- c("mixed_posteriors", "mixed_posteriors.weightfunction")
+  samples <- list(omega = omega)
+  class(samples) <- c("mixed_posteriors", "list")
+
+  for(k in seq_len(ncol(omega))){
+    figure <- plot_posterior(samples, "omega", plot_type = "ggplot", individual = TRUE, show_figures = k)
+    expect_identical(names(figure), colnames(omega)[k])
+  }
+})
+
+test_that("plot_prior_list individual PET-PEESE uses the parameter density", {
+
+  pet <- prior_PET("normal", list(0, 1))
+  x <- seq(0, 2, length.out = 5)
+  pet_data <- density(pet, individual = TRUE, x_seq = x)
+  g <- plot_prior_list(
+    list(pet),
+    individual = TRUE,
+    plot_type  = "ggplot",
+    x_seq      = x
+  )
+  layer <- ggplot2::ggplot_build(g)$data[[1]]
+
+  expect_s3_class(g, "ggplot")
+  expect_equal(layer$x, pet_data$x)
+  expect_equal(layer$y, pet_data$y, tolerance = 1e-12)
+})
+
+test_that("plot_prior_list rejects individual weightfunction lists", {
+
+  weight <- prior_weightfunction("one-sided", c(.05), wf_fixed(c(1, .25)))
+  expect_error(
+    plot_prior_list(list(weight), individual = TRUE),
+    "individual = TRUE"
+  )
+})
+
+test_that("lines.prior reuses the active probability scale", {
+
+  point_scale <- NULL
+  testthat::local_mocked_bindings(
+    .plot_scale_y2_state_current = function(){
+      list(scale_y2 = 9, ylim2 = c(0, 1), usr = c(0, 1, 0, 9))
+    },
+    .lines.prior.point = function(plot_data, scale_y2 = 1, ...){
+
+      point_scale <<- scale_y2
+      return(invisible(NULL))
+    },
+    .package = "BayesTools"
+  )
+
+  lines(prior("point", list(location = 0)))
+  expect_equal(point_scale, 9)
+})
+
+test_that("spike-and-slab prior plots use the inclusion probability", {
+
+  x <- seq(-2, 2, length.out = 9)
+  p <- prior_spike_and_slab(
+    prior("normal", list(mean = 0, sd = .5)),
+    prior_inclusion = prior("spike", list(.3))
+  )
+  expected_slab <- .3 * stats::dnorm(x, 0, .5)
+
+  # ggplot plot(): slab .3 * N(0, .5) (peak .239) and spike mass .7
+  g <- plot(p, plot_type = "ggplot", x_seq = x)
+  layers <- prior_plot_layer_data(g)
+  expect_equal(layers[[1]]$x, x)
+  expect_equal(layers[[1]]$y, expected_slab, tolerance = 1e-12)
+  expect_equal(layers[[2]]$x, 0)
+  expect_equal(layers[[2]]$yend / attr(g, "scale_y2"), .7, tolerance = 1e-12)
+
+  # geom_prior() on its own probability scale
+  geom_layers <- prior_plot_layer_data(ggplot2::ggplot() + geom_prior(p, x_seq = x, scale_y2 = 2))
+  expect_equal(geom_layers[[1]]$y, expected_slab, tolerance = 1e-12)
+  expect_equal(geom_layers[[2]]$yend / 2, .7, tolerance = 1e-12)
+
+  # base plot() and lines() agree
+  drawn <- list()
+  testthat::local_mocked_bindings(
+    .lines.prior.simple = function(plot_data, ...){
+      drawn$slab <<- c(drawn$slab, max(plot_data$y))
+      invisible(NULL)
+    },
+    .lines.prior.point = function(plot_data, scale_y2 = 1, ...){
+      drawn$spike <<- c(drawn$spike, plot_data$y)
+      invisible(NULL)
+    },
+    .package = "BayesTools"
+  )
+  device_file <- tempfile(fileext = ".pdf")
+  grDevices::pdf(device_file)
+  on.exit(grDevices::dev.off(), add = TRUE)
+  plot(p, x_seq = x)
+  lines(p, x_seq = x)
+  expect_equal(drawn$slab, rep(.3 * stats::dnorm(0, 0, .5), 2), tolerance = 1e-12)
+  expect_equal(drawn$spike, rep(.7, 2), tolerance = 1e-12)
+})
+
+test_that("geom_prior spike-and-slab xlim includes the spike at zero", {
+
+  p <- prior_spike_and_slab(
+    prior("normal", list(mean = 3, sd = .2), truncation = list(2, 4))
+  )
+  g <- ggplot2::ggplot() + geom_prior(p)
+  layers <- ggplot2::ggplot_build(g)$data
+
+  expect_true(any(layers[[2]]$x == 0))
+  expect_lte(min(layers[[1]]$x), 0)
 })

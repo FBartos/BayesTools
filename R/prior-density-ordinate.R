@@ -1,0 +1,2605 @@
+#' Classify a prior-density ordinate
+#'
+#' @description
+#' `prior_density_ordinate()` classifies the mathematical behavior of a prior at
+#' one exact value. The classification uses the prior definition and
+#' deterministic provenance recorded on linear-combination prior densities. It
+#' does not use samples, kernel density estimates, numerical grids, or nearby
+#' probe values to establish the behavior.
+#' Declared atom producers refuse nonrepresentable finite-source transformation
+#' images with \code{BayesTools_transformation_image_unavailable} (parent
+#' \code{BayesTools_transformation}); fields \code{transformation},
+#' \code{source_values} and \code{images} identify the failing entries, with
+#' \code{call = NULL}. Conservative provenance certification remains unknown
+#' when an image cannot be established, without manufacturing a boundary atom.
+#'
+#' @param x A BayesTools prior object or a `prior_linear_density` object produced
+#'   by BayesTools' deterministic prior-density builders.
+#' @param value One finite, non-missing numeric value at which to classify the
+#'   prior ordinate.
+#'
+#' @return A named list of class `prior_density_ordinate` with fields:
+#'
+#' * `schema_version`: the stable result-schema version, currently `"1"`;
+#' * `value`: the requested value;
+#' * `behavior`: one of `"regular"`, `"zero"`, `"infinite"`,
+#'   `"point_mass"`, `"undefined"`, or `"unknown"`;
+#' * `log_density`: the continuous log-density ordinate, when available;
+#' * `point_mass`: discrete probability at exactly `value`;
+#' * `exact`: whether `behavior` follows from deterministic prior provenance
+#'   and, for a `"regular"` ordinate, `log_density` is available (in closed
+#'   form or from a quadrature accepted by its diagnostics). A regular ordinate
+#'   without a value (a quadrature rejected by its diagnostics, a density
+#'   whose evaluation point, or a value computed from `value` on the way to
+#'   it, is not representable at full double precision, e.g. a subnormal
+#'   value or distance from an offset, or a boundary limit without a
+#'   structural value) has `exact = FALSE`, `log_density = NA`
+#'   and the failure in `reason`; `exact = TRUE` never comes with a missing
+#'   regular `log_density`;
+#' * `method`: a machine-readable classification method;
+#' * `reason`: `NULL` for an ordinary regular ordinate and a concise diagnostic
+#'   otherwise;
+#' * `provenance`: compact deterministic information used for classification.
+#'   When `behavior` is `"point_mass"` (and only then), it contains
+#'   `continuous_behavior`: the behavior of the continuous part of the prior at
+#'   `value`, i.e., of the measure without its point masses, as one of
+#'   `"regular"`, `"zero"`, `"infinite"`, `"undefined"`, or `"unknown"`, with
+#'   the same meaning as `behavior`. It is `"zero"` when the prior has no
+#'   continuous part there (e.g., a point prior) and `"unknown"` when the
+#'   continuous part has no structural classification. `log_density` is then
+#'   the log density of that continuous part (not renormalized by the
+#'   continuous probability), which for an `"unknown"` continuous part may be a
+#'   numerical grid value or `NA`.
+#'
+#' A `regular` classification is structural. Consequently, `log_density` may
+#' be `-Inf` when an otherwise positive finite density underflows in ordinary
+#' floating-point evaluation. General numerical convolutions, products, and
+#' arbitrary user transformations are reported as `unknown` unless exact point
+#' mass establishes the requested behavior.
+#' Named monotone transformations retain their normalized arguments and declared
+#' source support and atoms through composition. Two-term convolutions retain
+#' their independent primitive definitions and signed support hull. Missing
+#' structural support gives `unknown`, while a known invalid transformation
+#' domain gives `undefined`. Finite endpoints or atoms whose images round to
+#' an exponential or hyperbolic-tangent limit do not certify exact provenance.
+#' Constant affine routes declare a point even without a source definition.
+#' A stored point-only measure has exact zero continuous density away from its
+#' atoms, including when no adaptive provenance is attached. Positive continuous
+#' grids and deferred measures without a declared continuous mass remain unknown.
+#' For `exp_lin`, positive powers are defined on nonnegative sources and map a
+#' zero atom to zero with its original mass. The continuous density retains its
+#' original mixture weight; atoms have no Jacobian density contribution. Negative
+#' powers still refuse zero atoms, and negative source domains remain undefined.
+#' Supported conditional-normal mixtures are structurally regular because they
+#' include an independent positive-variance Gaussian term. A product term
+#' (`multiply_by`) without an additive normal term is a pure scale mixture:
+#' away from its deterministic offset it is regular, and at the offset its
+#' density is \eqn{\phi(b_m / b_s) E[1 / |s|] / b_s} for a multiplied
+#' \eqn{N(b_m, b_s)} term and multiplier \eqn{s}, finite exactly when the
+#' multiplier's declared density vanishes at zero and infinite otherwise.
+#' Closed inverse moments retain their logarithms even when the natural
+#' moment overflows. Provenance records availability, its reason and a
+#' floating-resolution diagnostic; the diagnostic is not a rigorous
+#' special-function error bound. Unsupported mapped-Beta shifts, differences
+#' of log normalizers and unresolved offset arithmetic give a structurally
+#' regular inexact ordinate with no log density. For example, a standard
+#' Normal multiplied by a Lognormal with meanlog zero and sdlog 40 has
+#' offset log density \eqn{800 - \log(2\pi)/2}, which remains available.
+#' Levels of ordered priors are the ordered total times their Dirichlet
+#' allocation share and are classified in the same way; a non-normal total or
+#' multiplied term uses the analogous `"scale_mixture"` quadrature. Their
+#' ordinates use
+#' quadrature over the multiplier's declared support, split at its bounds, at
+#' quantiles of its declared prior (spaced out next to a bound with infinite
+#' density) and around the location peak of the conditional normal density
+#' (kept next to such a bound) when the multiplied standard deviation is at
+#' most half of the absolute value of its mean (always for a Gaussian
+#' convolution), and retain
+#' integration errors and evaluation budgets in `provenance`. Every independent
+#' quadrature
+#' (each piece of a split integral, each distinct design row, model or
+#' conditional mixture component, and spike-and-slab or mixture leaf) receives
+#' the full evaluation budget of the
+#' density (its grid size) and its own convergence check. `provenance` reports
+#' the evaluations summed over all of them; its `budget` is the grid size per
+#' split integral (the budget of each of its pieces), summed over rows,
+#' components and leaves. Split integrals also keep each piece's evaluations
+#' and absolute error, and row mixtures each row's diagnostics. An accepted
+#' quadrature has `exact = TRUE` (the structural classification), while
+#' `provenance$integration$exact = FALSE` describes the numerical ordinate.
+#' A quadrature rejected by its diagnostics keeps the behavior `"regular"`
+#' with `exact = FALSE`, `log_density = NA`, the rejection in `reason` and its
+#' diagnostics (`converged = FALSE`) in `provenance`; requesting a density
+#' height then rejects the result.
+#'
+#' Mixture ordinates (model-averaged and conditional mixtures, and linear
+#' combinations of mixture or spike-and-slab priors) are the probability-
+#' weighted sums of their component ordinates, each classified by its own
+#' method; a component with a truncated prior at its support bound uses the
+#' one-sided limit inside the support. If any component remains `unknown`, the
+#' whole mixture is `unknown`. In any linear combination (inside or outside a
+#' mixture), a Gaussian term plus one other continuous scalar term is a
+#' Gaussian convolution evaluated by the same quadrature over that term's
+#' declared support. When that term is a truncated normal, the density is the
+#' closed form (method `"truncated_normal_convolution"`)
+#' \eqn{\phi(x; m, s) [\Phi(\beta(x)) - \Phi(\alpha(x))] / [\Phi(B) - \Phi(A)]}:
+#' \eqn{m} and \eqn{s^2} are the sums of the means and variances of the
+#' untruncated terms, \eqn{A} and \eqn{B} the standardized truncation bounds,
+#' and \eqn{\alpha(x)} and \eqn{\beta(x)} the truncation bounds standardized
+#' by the normal distribution of the truncated term given the sum \eqn{x}.
+#' The exponential of a log-transformed positive term \eqn{X} plus a Gaussian
+#' part \eqn{G} (e.g. the unscaled intercept of a `log(intercept)` formula
+#' scaling) is the scale product of \eqn{X} and the lognormal
+#' \eqn{\exp(G)} (method `"scale_mixture"`), and the log-scale sum
+#' \eqn{\log(X) + G} is the log image of that product, with density
+#' \eqn{f(e^z) e^z} (method `"scale_mixture"`, provenance kind
+#' `"log_scale_product"`).
+#' A linear combination \eqn{a'X} of a multivariate t vector prior
+#' (`"mt"`, and `"mcauchy"` with one degree of freedom; e.g. levels and
+#' contrasts of mean-difference and orthonormal factor priors) with location
+#' \eqn{\mu}, scale \eqn{s} (the scale matrix \eqn{s^2 I}) and \eqn{\nu}
+#' degrees of freedom is the univariate t with location \eqn{\mu \sum_j a_j},
+#' scale \eqn{s \|a\|}{s ||a||} and \eqn{\nu} degrees of freedom; it enters the
+#' combination as that scalar term, recorded in `provenance$multivariate_t`
+#' (alone it is exact with method `"scalar_affine"`).
+#' Sums of Cauchy terms are Cauchy (method
+#' `"scalar_affine"`), and two other continuous scalar terms without a
+#' Gaussian part are a `"convolution"` quadrature over one term's declared
+#' support; where finite support bounds of both terms meet at `value`, the
+#' ordinate is classified from the terms' declared behavior at those bounds
+#' (the positive finite limit at an end of the support where the density
+#' exponents sum to one, e.g. two arcsine terms, is `unknown`). Sums of three
+#' or more non-normal terms, or of a Gaussian part and two or more non-normal
+#' terms, are `unknown`.
+#'
+#' @examples
+#' normal_prior <- prior("normal", list(mean = 0, sd = 1))
+#' prior_density_ordinate(normal_prior, 0)
+#'
+#' gamma_prior <- prior("gamma", list(shape = 0.5, rate = 1))
+#' prior_density_ordinate(gamma_prior, 0)
+#'
+#' mixture_prior <- prior_mixture(
+#'   list(
+#'     prior("point", list(location = 0), prior_weights = 1),
+#'     prior("normal", list(mean = 0, sd = 1), prior_weights = 3)
+#'   ),
+#'   is_null = c(TRUE, FALSE)
+#' )
+#' prior_density_ordinate(mixture_prior, 0)
+#'
+#' @export
+prior_density_ordinate <- function(x, value){
+
+  check_real(value, "value", allow_NA = FALSE)
+  if(!is.finite(value)){
+    stop("The 'value' argument must be finite.", call. = FALSE)
+  }
+  value <- as.numeric(value)
+
+  if(is.prior(x)){
+    return(.prior_density_ordinate_prior(x, value))
+  }
+  if(inherits(x, "prior_linear_density")){
+    return(.prior_density_ordinate_linear(x, value))
+  }
+
+  stop(
+    "The 'x' argument must be a BayesTools prior or prior_linear_density object.",
+    call. = FALSE
+  )
+}
+
+#' Whether a prior density has deterministic provenance
+#'
+#' @description
+#' `prior_density_has_provenance()` tells whether the prior measure of `x` is
+#' available from deterministic provenance, so that its density heights,
+#' ordinate values and region probabilities are evaluated by BayesTools (from
+#' structural routes, or from numerical grids refined under error control).
+#' It is the public signal for densities without such provenance, whose
+#' region probabilities a caller has to obtain in another way (e.g. from
+#' prior draws).
+#'
+#' @details A BayesTools prior object is its own provenance. A
+#' `prior_linear_density` has provenance when its builder recorded the prior
+#' measure it describes (every density built by the BayesTools prior-density
+#' builders, e.g. [JAGS_formula_prior_density()], [parameter_prior_density()]
+#' and the prior densities of [marginal_posterior()]), unless that measure
+#' contains a `multiply_by` product without a structural density route. It has
+#' none when it is a numerical density grid without that record (e.g. the
+#' standard-deviation components of nested variance allocations) or such a
+#' product: both are used for plotting only, and their heights and region
+#' probabilities stop. A density of point masses only is exact without a
+#' record.
+#'
+#' Provenance does not make an ordinate exact: a combination without a
+#' structural route (e.g. three non-normal terms) has provenance and refined
+#' grid region probabilities, while its ordinates are `"unknown"`, so point
+#' hypotheses need [prior_ordinate_status()]. The `method` field of
+#' [prior_density_ordinate()] does not separate the cases: it is
+#' `"unsupported_provenance"` for a grid without provenance and for a
+#' combination without a structural route alike, and `"named_transform"` for
+#' such a combination under an output transformation.
+#'
+#' @param x A BayesTools prior or `prior_linear_density` object.
+#'
+#' @return `TRUE` or `FALSE`.
+#'
+#' @examples
+#' prior_density_has_provenance(prior("normal", list(mean = 0, sd = 1)))
+#'
+#' @seealso [prior_density_ordinate()], [prior_ordinate_status()]
+#' @export
+prior_density_has_provenance <- function(x){
+
+  if(is.prior(x)){
+    return(TRUE)
+  }
+  if(!inherits(x, "prior_linear_density")){
+    stop(
+      "The 'x' argument must be a BayesTools prior or prior_linear_density object.",
+      call. = FALSE
+    )
+  }
+  adaptive <- attr(x, "adaptive_evaluation", exact = TRUE)
+  if(is.null(adaptive)){
+    # point masses alone are exact
+    return(is.null(x$density) || !isTRUE(x$density$mass > 0))
+  }
+  if(!is.list(adaptive) || !is.character(adaptive$kind) ||
+     length(adaptive$kind) != 1L || !is.list(adaptive$arguments)){
+    return(FALSE)
+  }
+  !.prior_density_route_has_general_product(.prior_density_route_from_adaptive(adaptive))
+}
+
+.prior_density_ordinate_behaviors <- function(){
+  c("regular", "zero", "infinite", "point_mass", "undefined", "unknown")
+}
+
+.prior_density_ordinate_methods <- function(){
+  c(
+    "primitive", "point", "finite_mixture", "scalar_affine",
+    "linear_normal", "conditional_normal_mixture", "truncated_normal_convolution",
+    "scale_mixture", "convolution", "named_transform", "unsupported_provenance"
+  )
+}
+
+.prior_density_ordinate_reason <- function(behavior){
+
+  switch(
+    behavior,
+    "regular" = NULL,
+    "zero" = "The continuous prior density is zero at the requested value.",
+    "infinite" = paste0(
+      "The continuous prior density tends to positive infinity at the ",
+      "requested value."
+    ),
+    "point_mass" = paste0(
+      "The prior assigns positive discrete probability to the requested value."
+    ),
+    "undefined" = paste0(
+      "The prior-density ordinate is not mathematically defined at the ",
+      "requested value."
+    ),
+    "unknown" = paste0(
+      "The prior-density behavior is not available from supported ",
+      "deterministic provenance."
+    )
+  )
+}
+
+.prior_density_ordinate_result <- function(value, behavior, log_density,
+                                           point_mass = 0, exact = TRUE,
+                                           method, reason = NULL,
+                                           provenance = list(),
+                                           continuous_behavior = behavior){
+
+  if(!behavior %in% .prior_density_ordinate_behaviors()){
+    stop("Unknown prior-density ordinate behavior.", call. = FALSE)
+  }
+  if(!is.character(method) || length(method) != 1L || is.na(method) ||
+     !method %in% .prior_density_ordinate_methods()){
+    stop("Unknown prior-density ordinate method.", call. = FALSE)
+  }
+  if(is.null(reason) && !identical(behavior, "regular")){
+    reason <- .prior_density_ordinate_reason(behavior)
+  }
+  if(identical(behavior, "regular") && isTRUE(is.na(log_density))){
+    # a regular ordinate without a value (a quadrature rejected by its
+    # diagnostics, or a boundary limit without a structural value) is not
+    # exact: 'exact = TRUE' always comes with an available log density
+    exact <- FALSE
+    if(is.null(reason)){
+      reason <- .prior_density_ordinate_unavailable_reason(provenance)
+    }
+  }
+  if(identical(behavior, "point_mass")){
+    provenance$continuous_behavior <- continuous_behavior
+  }
+
+  out <- list(
+    schema_version = "1",
+    value       = as.numeric(value),
+    behavior    = behavior,
+    log_density = as.numeric(log_density),
+    point_mass  = as.numeric(point_mass),
+    exact       = isTRUE(exact),
+    method      = as.character(method),
+    reason      = reason,
+    provenance  = provenance
+  )
+  class(out) <- c("prior_density_ordinate", "list")
+  out
+}
+
+# An ordinate without a value because an argument derived from the requested
+# value ('what') is not representable at full precision
+# (.prior_density_full_precision()): 'behavior' is the structural class where
+# the route has established it ("regular" inside the support) and "unknown"
+# otherwise; never exact.
+.prior_density_ordinate_imprecise <- function(value, what, method, provenance,
+                                              behavior = "regular"){
+
+  .prior_density_ordinate_result(
+    value       = value,
+    behavior    = behavior,
+    log_density = NA_real_,
+    exact       = FALSE,
+    method      = method,
+    reason      = paste0(
+      what, " is not representable at full precision in ordinary ",
+      "floating-point arithmetic."
+    ),
+    provenance  = provenance
+  )
+}
+
+# Reason of a regular ordinate without a value: the rejected quadrature's
+# diagnostics, or a structural limit that is not available.
+.prior_density_ordinate_unavailable_reason <- function(provenance){
+
+  integration <- .prior_density_ordinate_integration(provenance)
+  if(is.list(integration) && isFALSE(integration$converged)){
+    return(paste0(
+      "The prior-density quadrature was rejected by its diagnostics: ",
+      "integration reported '", integration$message, "' with absolute error ",
+      format(integration$absolute_error), "."
+    ))
+  }
+  "The regular prior-density ordinate has no structural value at the requested value."
+}
+
+.prior_density_ordinate_continuous_behavior <- function(x){
+
+  if(identical(x$behavior, "point_mass")){
+    behavior <- x$provenance$continuous_behavior
+    if(is.character(behavior) && length(behavior) == 1L &&
+       behavior %in% .prior_density_ordinate_behaviors()){
+      return(behavior)
+    }
+    return("unknown")
+  }
+  x$behavior
+}
+
+.prior_density_ordinate_compact <- function(x, max_length = 32L){
+
+  if(is.null(x)){
+    return(NULL)
+  }
+  if(is.function(x) || is.environment(x)){
+    return("<omitted>")
+  }
+  if(is.expression(x) || is.call(x) || is.language(x)){
+    return(paste(deparse(x, width.cutoff = 120L), collapse = ""))
+  }
+  if(is.atomic(x)){
+    if(length(x) <= max_length){
+      return(x)
+    }
+    return(list(
+      length = length(x),
+      first  = utils::head(x, 4L),
+      last   = utils::tail(x, 4L)
+    ))
+  }
+  if(is.list(x)){
+    if(length(x) > max_length){
+      return(list(
+        length = length(x),
+        first  = lapply(utils::head(x, 4L),
+                        .prior_density_ordinate_compact,
+                        max_length = max_length),
+        last   = lapply(utils::tail(x, 4L),
+                        .prior_density_ordinate_compact,
+                        max_length = max_length)
+      ))
+    }
+    out <- lapply(x, .prior_density_ordinate_compact, max_length = max_length)
+    names(out) <- names(x)
+    return(out)
+  }
+  as.character(class(x))
+}
+
+.prior_density_ordinate_prior_provenance <- function(prior){
+
+  list(
+    kind       = "primitive",
+    family     = if(!is.null(prior$distribution)) prior$distribution else "unknown",
+    parameters = .prior_density_ordinate_compact(prior$parameters),
+    truncation = .prior_density_ordinate_compact(prior$truncation)
+  )
+}
+
+.prior_density_ordinate_prior_definition_provenance <- function(prior){
+
+  if(is.prior.spike_and_slab(prior) || is.prior.mixture(prior)){
+    weights <- .prior_density_ordinate_mixture_weights(prior)
+    if(is.null(weights)){
+      return(list(
+        kind         = "unsupported_provenance",
+        source_class = class(prior)
+      ))
+    }
+    return(list(
+      kind       = "finite_mixture",
+      weights    = unname(weights),
+      components = Map(function(component, weight){
+        list(
+          weight     = unname(weight),
+          provenance =
+            .prior_density_ordinate_prior_definition_provenance(component)
+        )
+      }, prior, weights)
+    ))
+  }
+  if(is.prior.none(prior)){
+    return(list(
+      kind       = "primitive",
+      family     = "none",
+      location   = 0,
+      truncation = c(lower = 0, upper = 0)
+    ))
+  }
+  .prior_density_ordinate_prior_provenance(prior)
+}
+
+.prior_density_ordinate_unknown_prior <- function(prior, value, reason = NULL){
+
+  if(is.null(reason)){
+    reason <- .prior_density_ordinate_reason("unknown")
+  }
+  .prior_density_ordinate_result(
+    value       = value,
+    behavior    = "unknown",
+    log_density = NA_real_,
+    exact       = FALSE,
+    method      = "unsupported_provenance",
+    reason      = reason,
+    provenance  = list(
+      kind         = "unsupported_provenance",
+      source_class = class(prior),
+      family       = if(!is.null(prior$distribution)) prior$distribution else NULL
+    )
+  )
+}
+
+.prior_density_ordinate_prior <- function(prior, value){
+
+  if(is.prior.spike_and_slab(prior) || is.prior.mixture(prior)){
+    return(.prior_density_ordinate_prior_mixture(prior, value))
+  }
+  if(is.prior.none(prior)){
+    return(.prior_density_ordinate_atom_result(
+      value      = value,
+      locations  = 0,
+      probability = 1,
+      method     = "point",
+      provenance = list(kind = "primitive", family = "none", location = 0)
+    ))
+  }
+  if(is.prior.vector(prior) || is.prior.factor(prior) ||
+     is.prior.weightfunction(prior) || is_prior_phacking(prior) ||
+     is_prior_bias(prior) || is.prior.PET(prior) || is.prior.PEESE(prior)){
+    return(.prior_density_ordinate_unknown_prior(prior, value))
+  }
+  if(is.prior.simple(prior)){
+    return(.prior_density_ordinate_primitive(prior, value))
+  }
+
+  .prior_density_ordinate_unknown_prior(prior, value)
+}
+
+.prior_density_ordinate_parameters_numeric <- function(prior){
+
+  parameters <- prior$parameters
+  is.list(parameters) && length(parameters) > 0L &&
+    all(vapply(parameters, function(parameter){
+      is.numeric(parameter) && is.vector(parameter) && length(parameter) == 1L &&
+        !is.na(parameter) && is.finite(parameter)
+    }, logical(1)))
+}
+
+.prior_density_ordinate_atom_result <- function(value, locations, probability,
+                                                method, provenance){
+
+  keep <- is.finite(locations) & is.finite(probability) & probability > 0
+  locations <- locations[keep]
+  probability <- probability[keep]
+  point_mass <- sum(probability[locations == value])
+
+  if(point_mass > 0){
+    return(.prior_density_ordinate_result(
+      value               = value,
+      behavior            = "point_mass",
+      log_density         = -Inf,
+      point_mass          = point_mass,
+      exact               = TRUE,
+      method              = method,
+      provenance          = provenance,
+      continuous_behavior = "zero"
+    ))
+  }
+
+  .prior_density_ordinate_result(
+    value       = value,
+    behavior    = "zero",
+    log_density = -Inf,
+    exact       = TRUE,
+    method      = method,
+    reason      = "The discrete prior has no mass at the requested value.",
+    provenance  = provenance
+  )
+}
+
+.prior_density_ordinate_primitive <- function(prior, value){
+
+  provenance <- .prior_density_ordinate_prior_provenance(prior)
+  family <- prior$distribution
+  supported <- c(
+    "normal", "lognormal", "t", "gamma", "invgamma", "beta", "exp",
+    "uniform", "moment", "invmoment", "point", "bernoulli"
+  )
+  if(!is.character(family) || length(family) != 1L || !family %in% supported ||
+     !.prior_density_ordinate_parameters_numeric(prior)){
+    return(.prior_density_ordinate_unknown_prior(prior, value))
+  }
+
+  if(identical(family, "point")){
+    return(.prior_density_ordinate_atom_result(
+      value       = value,
+      locations   = prior$parameters$location,
+      probability = 1,
+      method       = "point",
+      provenance   = provenance
+    ))
+  }
+
+  if(identical(family, "bernoulli")){
+    discrete <- tryCatch(
+      .prior_simple_truncated_discrete(prior),
+      error = function(e) NULL
+    )
+    if(is.null(discrete)){
+      return(.prior_density_ordinate_unknown_prior(prior, value))
+    }
+    return(.prior_density_ordinate_atom_result(
+      value       = value,
+      locations   = discrete$support,
+      probability = discrete$prob,
+      method       = "point",
+      provenance   = provenance
+    ))
+  }
+
+  truncation <- prior$truncation
+  valid_truncation <- is.list(truncation) &&
+    all(c("lower", "upper") %in% names(truncation)) &&
+    all(vapply(truncation[c("lower", "upper")], function(bound){
+      is.numeric(bound) && length(bound) == 1L && !is.na(bound)
+    }, logical(1)))
+  if(!valid_truncation){
+    return(.prior_density_ordinate_unknown_prior(prior, value))
+  }
+  lower <- truncation$lower
+  upper <- truncation$upper
+
+  if(value < lower || value > upper){
+    return(.prior_density_ordinate_result(
+      value       = value,
+      behavior    = "zero",
+      log_density = -Inf,
+      exact       = TRUE,
+      method      = "primitive",
+      reason      = "The requested value is outside the prior support.",
+      provenance  = provenance
+    ))
+  }
+
+  behavior <- switch(
+    family,
+    "normal" = "regular",
+    "t" = "regular",
+    "uniform" = "regular",
+    "exp" = "regular",
+    "lognormal" = if(value == 0) "zero" else "regular",
+    "invgamma" = if(value == 0) "zero" else "regular",
+    "gamma" = if(value == 0){
+      if(prior$parameters$shape < 1) "infinite" else
+        if(prior$parameters$shape == 1) "regular" else "zero"
+    }else{
+      "regular"
+    },
+    "beta" = if(value == 0){
+      if(prior$parameters$alpha < 1) "infinite" else
+        if(prior$parameters$alpha == 1) "regular" else "zero"
+    }else if(value == 1){
+      if(prior$parameters$beta < 1) "infinite" else
+        if(prior$parameters$beta == 1) "regular" else "zero"
+    }else{
+      "regular"
+    },
+    "moment" = if(value == prior$parameters$location) "zero" else "regular",
+    "invmoment" = if(value == prior$parameters$location) "zero" else "regular"
+  )
+
+  if(identical(behavior, "zero")){
+    return(.prior_density_ordinate_result(
+      value       = value,
+      behavior    = behavior,
+      log_density = -Inf,
+      exact       = TRUE,
+      method      = "primitive",
+      provenance  = provenance
+    ))
+  }
+  if(identical(behavior, "infinite")){
+    return(.prior_density_ordinate_result(
+      value       = value,
+      behavior    = behavior,
+      log_density = Inf,
+      exact       = TRUE,
+      method      = "primitive",
+      provenance  = provenance
+    ))
+  }
+  # a nonzero subnormal value: the distribution functions rescale their
+  # argument (e.g. dgamma() divides it by the scale), which rounds it to a
+  # multiple of the smallest subnormal (a gamma(3, 0.7) log density was off by
+  # 2.8e-4 at 1e-320); every scalar route evaluates its argument here
+  retained_coordinates <- family %in% c("invgamma", "moment", "invmoment")
+  if(!retained_coordinates && is.finite(value) && !.prior_density_affine_full_precision(value)){
+    return(.prior_density_ordinate_imprecise(
+      value, "The value at which the density is evaluated", "primitive", provenance
+    ))
+  }
+  # the rescaled argument of a normal value whose log the family takes:
+  # dgamma() evaluates at value / scale (scale = 1 / rate), which enters its
+  # log unless the shape is 1, and dlnorm() takes log(value * sdlog); both are
+  # rounded when subnormal (a gamma(2, 1e-20) log density was off by 1.1e-5 at
+  # 1e-300)
+  rescaled <- switch(
+    family,
+    "gamma"     = if(isTRUE(prior$parameters$shape != 1)) value * prior$parameters$rate else value,
+    "lognormal" = value * prior$parameters$sdlog,
+    value
+  )
+  if(!retained_coordinates && is.finite(value) && value != 0 && isFALSE(.prior_density_full_precision(rescaled))){
+    return(.prior_density_ordinate_imprecise(
+      value, "The rescaled argument of the density", "primitive", provenance
+    ))
+  }
+
+  numerical_condition <- NULL
+  log_density <- tryCatch(withCallingHandlers(
+    .prior_simple_lpdf(prior, value),
+    BayesTools_numerical_condition = function(condition){
+      numerical_condition <<- condition
+      if(inherits(condition, "warning")) invokeRestart("muffleWarning")
+    }),
+    BayesTools_numerical_unavailable = function(condition){
+      numerical_condition <<- condition
+      NA_real_
+    }
+  )
+  if(!is.null(numerical_condition)){
+    provenance$numerical_condition <- unclass(numerical_condition)
+    return(.prior_density_ordinate_imprecise(value,
+      paste0("The declared prior density (", numerical_condition$reason, ")"),
+      "primitive", provenance))
+  }
+  if(!is.numeric(log_density) || length(log_density) != 1L ||
+     is.na(log_density) || (is.infinite(log_density) && log_density > 0)){
+    log_density <- NA_real_
+  }
+  # extraDistr::dlst() evaluates the t density before its log: a subnormal
+  # density is rounded (a Cauchy log density was off by 4.1e-4 at 1e160, and a
+  # Jacobian factor above 1 carries that error to ordinary ordinates, 5e-4 for
+  # the log image of a half-Cauchy term at z = 370); a density that underflows
+  # to 0 keeps the underflow convention (-Inf)
+  if(identical(family, "t") && is.finite(log_density) &&
+     isTRUE(.prior_simple_base_d(prior, value, log = TRUE) < log(.Machine$double.xmin))){
+    return(.prior_density_ordinate_imprecise(
+      value, "The t density at the requested value", "primitive", provenance
+    ))
+  }
+
+  .prior_density_ordinate_result(
+    value       = value,
+    behavior    = "regular",
+    log_density = log_density,
+    exact       = TRUE,
+    method      = "primitive",
+    reason      = if(identical(log_density, -Inf)){
+      paste0(
+        "The continuous prior density is structurally regular, but its ",
+        "log-density underflows in ordinary floating-point arithmetic."
+      )
+    }else if(is.na(log_density)){
+      paste0(
+        "The continuous prior density is structurally regular, but its ",
+        "log-density is unavailable in ordinary floating-point arithmetic."
+      )
+    }else{
+      NULL
+    },
+    provenance  = provenance
+  )
+}
+
+.prior_density_ordinate_mixture_weights <- function(prior){
+
+  if(is.prior.spike_and_slab(prior)){
+    inclusion <- tryCatch(
+      mean(.get_spike_and_slab_inclusion(prior)),
+      error = function(e) NA_real_
+    )
+    components <- attr(prior, "components", exact = TRUE)
+    if(!is.numeric(inclusion) || length(inclusion) != 1L ||
+       !is.finite(inclusion) || inclusion < 0 || inclusion > 1 ||
+       !is.character(components) || length(components) != length(prior)){
+      return(NULL)
+    }
+    weights <- ifelse(components == "alternative", inclusion, 1 - inclusion)
+  }else{
+    weights <- attr(prior, "prior_weights", exact = TRUE)
+  }
+
+  if(!is.numeric(weights) || length(weights) != length(prior) ||
+     anyNA(weights) || any(!is.finite(weights)) || any(weights < 0) ||
+     sum(weights) <= 0){
+    return(NULL)
+  }
+  weights / sum(weights)
+}
+
+.prior_density_ordinate_log_sum <- function(log_density, weights){
+
+  positive <- weights > 0
+  log_density <- log_density[positive]
+  weights <- weights[positive]
+  if(length(log_density) == 0L){
+    return(-Inf)
+  }
+  if(anyNA(log_density)){
+    return(NA_real_)
+  }
+  terms <- log(weights) + log_density
+  if(any(is.infinite(terms) & terms > 0)){
+    return(Inf)
+  }
+  if(all(is.infinite(terms) & terms < 0)){
+    return(-Inf)
+  }
+  maximum <- max(terms)
+  maximum + log(sum(exp(terms - maximum)))
+}
+
+.prior_density_ordinate_combine <- function(results, weights, value,
+                                            method = "finite_mixture",
+                                            provenance_extra = list()){
+
+  positive <- weights > 0
+  results <- results[positive]
+  weights <- weights[positive]
+  weights <- weights / sum(weights)
+
+  continuous <- vapply(
+    results,
+    .prior_density_ordinate_continuous_behavior,
+    character(1)
+  )
+  continuous_behavior <- if(any(continuous == "undefined")){
+    "undefined"
+  }else if(any(continuous == "infinite")){
+    "infinite"
+  }else if(all(continuous %in% c("regular", "zero")) &&
+           any(continuous == "regular")){
+    "regular"
+  }else if(all(continuous == "zero")){
+    "zero"
+  }else{
+    "unknown"
+  }
+
+  point_mass <- sum(weights * vapply(results, `[[`, numeric(1), "point_mass"))
+  log_density <- .prior_density_ordinate_log_sum(
+    vapply(results, `[[`, numeric(1), "log_density"),
+    weights
+  )
+  if(identical(continuous_behavior, "undefined")){
+    log_density <- NA_real_
+  }else if(identical(continuous_behavior, "infinite")){
+    log_density <- Inf
+  }else if(identical(continuous_behavior, "zero")){
+    log_density <- -Inf
+  }
+  component_provenance <- Map(function(result, weight){
+    list(
+      weight              = unname(weight),
+      behavior            = result$behavior,
+      continuous_behavior = .prior_density_ordinate_continuous_behavior(result),
+      point_mass           = result$point_mass,
+      provenance           = result$provenance
+    )
+  }, results, weights)
+  provenance <- c(
+    list(
+      kind       = "finite_mixture",
+      weights    = unname(weights),
+      components = component_provenance
+    ),
+    provenance_extra
+  )
+
+  if(point_mass > 0){
+    return(.prior_density_ordinate_result(
+      value               = value,
+      behavior            = "point_mass",
+      log_density         = log_density,
+      point_mass          = point_mass,
+      exact               = TRUE,
+      method              = method,
+      provenance          = provenance,
+      continuous_behavior = continuous_behavior
+    ))
+  }
+
+  component_exact <- vapply(results, `[[`, logical(1), "exact")
+  exact <- if(identical(continuous_behavior, "undefined")){
+    any(component_exact[continuous == "undefined"])
+  }else if(identical(continuous_behavior, "infinite")){
+    any(component_exact[continuous == "infinite"])
+  }else if(continuous_behavior %in% c("regular", "zero")){
+    all(component_exact)
+  }else{
+    FALSE
+  }
+  .prior_density_ordinate_result(
+    value       = value,
+    behavior    = continuous_behavior,
+    log_density = log_density,
+    exact       = exact,
+    method      = method,
+    provenance  = provenance
+  )
+}
+
+.prior_density_ordinate_prior_mixture <- function(prior, value){
+
+  weights <- .prior_density_ordinate_mixture_weights(prior)
+  if(is.null(weights)){
+    return(.prior_density_ordinate_unknown_prior(
+      prior,
+      value,
+      "The finite-mixture weights are not available as exact numeric values."
+    ))
+  }
+  results <- lapply(prior, .prior_density_ordinate_prior, value = value)
+  .prior_density_ordinate_combine(results, weights, value)
+}
+
+.prior_density_ordinate_wrap <- function(source, value, log_jacobian,
+                                         method, provenance){
+
+  # a regular source whose log density is -Inf underflows (e.g. a t density,
+  # which extraDistr::dlst() evaluates before its log); a Jacobian factor
+  # above 1 can make the transformed density representable (the log image of
+  # a half-Cauchy term at z = 700 is exp(-700.45), not 0), so its value is not
+  # available
+  if(identical(source$behavior, "regular") && identical(source$log_density, -Inf) &&
+     isTRUE(log_jacobian < 0)){
+    return(.prior_density_ordinate_result(
+      value       = value,
+      behavior    = "regular",
+      log_density = NA_real_,
+      exact       = FALSE,
+      method      = method,
+      reason      = paste0(
+        "The source density underflows in ordinary floating-point arithmetic, ",
+        "and the Jacobian factor of the transformation, above 1, can make the ",
+        "transformed density representable."
+      ),
+      provenance  = provenance
+    ))
+  }
+  continuous_behavior <- .prior_density_ordinate_continuous_behavior(source)
+  log_density <- source$log_density
+  if(!is.na(log_density)){
+    log_density <- log_density - log_jacobian
+  }
+  if(.prior_density_ordinate_has_quadrature(source$provenance)){
+    provenance$source <- source$provenance
+    provenance$integration_scale <- exp(-log_jacobian)
+  }
+
+  .prior_density_ordinate_result(
+    value               = value,
+    behavior            = source$behavior,
+    log_density         = log_density,
+    point_mass          = source$point_mass,
+    exact               = source$exact,
+    method              = method,
+    reason              = source$reason,
+    provenance          = provenance,
+    continuous_behavior = continuous_behavior
+  )
+}
+
+# Whether a provenance record contains a numerical quadrature (an
+# 'integration' record with a non-exact value).
+.prior_density_ordinate_has_quadrature <- function(provenance){
+
+  if(!is.list(provenance)) return(FALSE)
+  if(is.list(provenance[["integration"]]) &&
+     identical(provenance[["integration"]][["exact"]], FALSE)) return(TRUE)
+  any(vapply(provenance, .prior_density_ordinate_has_quadrature, logical(1)))
+}
+
+.prior_density_ordinate_integration <- function(provenance){
+
+  if(!is.list(provenance)) return(NULL)
+  if(!is.null(provenance[["integration"]])) return(provenance[["integration"]])
+  if(!is.null(provenance$components)){
+    components <- lapply(provenance$components, function(component){
+      .prior_density_ordinate_integration(component$provenance)
+    })
+    included <- !vapply(components, is.null, logical(1))
+    if(!any(included)) return(NULL)
+    weights <- vapply(provenance$components, `[[`, numeric(1), "weight")[included]
+    components <- components[included]
+    return(list(
+      kind = "conditional_normal_mixture", exact = FALSE,
+      absolute_error = sum(weights * vapply(components, `[[`, numeric(1), "absolute_error")),
+      error_bound = sum(weights * vapply(components, `[[`, numeric(1), "error_bound")),
+      evaluations = sum(vapply(components, `[[`, numeric(1), "evaluations")),
+      budget = sum(vapply(components, `[[`, numeric(1), "budget")),
+      converged = all(vapply(components, `[[`, logical(1), "converged")),
+      message = paste(unique(vapply(components, `[[`, character(1), "message")), collapse = "; ")
+    ))
+  }
+  if(!is.null(provenance$source) && !is.null(provenance$integration_scale)){
+    integration <- .prior_density_ordinate_integration(provenance$source)
+    if(!is.null(integration)){
+      integration$absolute_error <- integration$absolute_error * provenance$integration_scale
+      integration$error_bound <- integration$error_bound * provenance$integration_scale
+    }
+    return(integration)
+  }
+  NULL
+}
+
+.prior_density_ordinate_prior_affine <- function(prior, value, offset, scale,
+                                                 source_transform = NULL){
+
+  provenance <- list(
+    kind             = "scalar_affine",
+    offset           = unname(offset),
+    scale            = unname(scale),
+    source_transform = source_transform,
+    source           = if(is.prior(prior)){
+      .prior_density_ordinate_prior_definition_provenance(prior)
+    }else{
+      list(kind = "unsupported_provenance")
+    }
+  )
+  if(!is.finite(offset) || !is.finite(scale)){
+    return(.prior_density_ordinate_result(
+      value       = value,
+      behavior    = "unknown",
+      log_density = NA_real_,
+      exact       = FALSE,
+      method      = "unsupported_provenance",
+      reason      = "The scalar affine provenance is degenerate or non-finite.",
+      provenance  = provenance
+    ))
+  }
+  if(scale == 0){
+    return(.prior_density_ordinate_atom_result(
+      value       = value,
+      locations   = offset,
+      probability = 1,
+      method       = "scalar_affine",
+      provenance   = provenance
+    ))
+  }
+
+  if(is.prior.spike_and_slab(prior) || is.prior.mixture(prior)){
+    weights <- .prior_density_ordinate_mixture_weights(prior)
+    if(is.null(weights)){
+      return(.prior_density_ordinate_unknown_prior(prior, value))
+    }
+    components <- lapply(prior, function(component){
+      .prior_density_ordinate_prior_affine(
+        component,
+        value,
+        offset,
+        scale,
+        source_transform
+      )
+    })
+    mixture <- .prior_density_ordinate_combine(components, weights, value)
+    continuous_behavior <-
+      .prior_density_ordinate_continuous_behavior(mixture)
+    mixture_provenance <- mixture$provenance
+    mixture$method <- "scalar_affine"
+    mixture$provenance <- provenance
+    mixture$provenance$component_classification <-
+      mixture_provenance$components
+    if(identical(mixture$behavior, "point_mass")){
+      mixture$provenance$continuous_behavior <- continuous_behavior
+    }
+    return(mixture)
+  }
+
+  if(is.prior.none(prior)){
+    location <- 0
+    return(.prior_density_ordinate_atom_result(
+      value       = value,
+      locations   = offset + scale * location,
+      probability = 1,
+      method       = "scalar_affine",
+      provenance   = provenance
+    ))
+  }
+
+  if(is.prior.simple(prior) &&
+     prior$distribution %in% c("point", "bernoulli")){
+    if(identical(prior$distribution, "point")){
+      locations <- prior$parameters$location
+      probability <- 1
+    }else{
+      discrete <- .prior_simple_truncated_discrete(prior)
+      locations <- discrete$support
+      probability <- discrete$prob
+    }
+    if(identical(source_transform, "log")){
+      if(any(locations <= 0)){
+        return(.prior_density_ordinate_result(
+          value       = value,
+          behavior    = "undefined",
+          log_density = NA_real_,
+          exact       = TRUE,
+          method      = "named_transform",
+          reason      = "The log source transformation is undefined for a prior atom.",
+          provenance  = provenance
+        ))
+      }
+      locations <- log(locations)
+    }else if(!is.null(source_transform)){
+      return(.prior_density_ordinate_unknown_prior(prior, value))
+    }
+    return(.prior_density_ordinate_atom_result(
+      value       = value,
+      locations   = offset + scale * locations,
+      probability = probability,
+      method       = "scalar_affine",
+      provenance   = provenance
+    ))
+  }
+
+  # a value at a bound of the mapped support is that bound (its adjacent double
+  # included: the mapped bound is rounded, and its inverse image can round just
+  # outside the source support, which would be classified as the density 0
+  # outside it); the ordinate there is the one-sided limit inside, as for the
+  # named transformations
+  source_value <- .prior_density_ordinate_affine_endpoint(
+    provenance$source, offset, scale, source_transform, value
+  )
+  if(is.null(source_value)){
+    # the inverse affine value, unless it is the offset's exact image 0, must
+    # be representable at full precision: a subnormal one is rounded (a
+    # gamma(2, 4) term with weight 3 was off by 4.9e-4 in log at 1e-320), and
+    # one that underflows to 0 would be classified at the source's bound (a
+    # structural zero for weight 1e30 at 1e-300) or overflows
+    source_value <- (value - offset) / scale
+    if(!.prior_density_affine_full_precision(value, offset, scale)){
+      return(.prior_density_ordinate_imprecise(
+        value, "The inverse affine value", "unsupported_provenance", provenance,
+        behavior = "unknown"
+      ))
+    }
+  }
+
+  if(is.null(source_transform)){
+    source <- if(is.prior.simple(prior)){
+      .prior_density_ordinate_primitive(prior, source_value)
+    }else{
+      .prior_density_ordinate_unknown_prior(prior, source_value)
+    }
+  }else if(identical(source_transform, "log")){
+    source <- .prior_density_ordinate_log_source(prior, source_value)
+  }else{
+    return(.prior_density_ordinate_result(
+      value       = value,
+      behavior    = "unknown",
+      log_density = NA_real_,
+      exact       = FALSE,
+      method      = "unsupported_provenance",
+      reason      = "The source transformation is not supported structurally.",
+      provenance  = provenance
+    ))
+  }
+
+  .prior_density_ordinate_wrap(
+    source       = source,
+    value        = value,
+    log_jacobian = log(abs(scale)),
+    method       = "scalar_affine",
+    provenance   = provenance
+  )
+}
+
+.prior_density_ordinate_log_source <- function(prior, value){
+
+  provenance <- list(
+    kind           = "named_transform",
+    transformation = "log",
+    arguments      = list(),
+    source         = .prior_density_ordinate_prior_provenance(prior)
+  )
+  if(!is.prior.simple(prior) || is.prior.discrete(prior) ||
+     is.prior.point(prior)){
+    return(.prior_density_ordinate_unknown_prior(prior, value))
+  }
+  lower <- prior$truncation$lower
+  upper <- prior$truncation$upper
+  if(!is.numeric(lower) || length(lower) != 1L || is.na(lower) ||
+     !is.numeric(upper) || length(upper) != 1L || is.na(upper)){
+    return(.prior_density_ordinate_unknown_prior(prior, value))
+  }
+  if(lower < 0){
+    return(.prior_density_ordinate_result(
+      value       = value,
+      behavior    = "undefined",
+      log_density = NA_real_,
+      exact       = TRUE,
+      method      = "named_transform",
+      reason      = "The log source transformation is not defined on the prior support.",
+      provenance  = provenance
+    ))
+  }
+  if((lower > 0 && value < log(lower)) ||
+     (is.finite(upper) && value > log(upper))){
+    return(.prior_density_ordinate_result(
+      value       = value,
+      behavior    = "zero",
+      log_density = -Inf,
+      exact       = TRUE,
+      method      = "named_transform",
+      reason      = "The requested value is outside the transformed prior support.",
+      provenance  = provenance
+    ))
+  }
+
+  # e^z must be representable at full precision: below about z = -708.4 it
+  # is subnormal (rounded; off by 2.6e-3 in log at -740 for a gamma(2, 4)
+  # term) or 0, which the primitive would classify at the bound (a structural
+  # zero or infinity instead of a regular density), and above about 709.8 it
+  # overflows, so that the density f_X(e^z) e^z is not evaluated at all.
+  # A value at the log of a positive bound is that bound: exp(log(upper)) can
+  # round just above upper, outside the prior support
+  original_value <- exp(value)
+  bounds <- c(lower, upper)
+  bounds <- bounds[is.finite(bounds) & bounds > 0]
+  at_bound <- vapply(log(bounds), .prior_density_ordinate_endpoint_matches,
+                     logical(1), value = value)
+  if(any(at_bound)){
+    original_value <- bounds[at_bound][1L]
+  }
+  if(!.prior_density_full_precision(original_value)){
+    return(.prior_density_ordinate_imprecise(
+      value, "The exponential of the requested value", "named_transform", provenance
+    ))
+  }
+  source <- .prior_density_ordinate_primitive(prior, original_value)
+  .prior_density_ordinate_wrap(
+    source       = source,
+    value        = value,
+    log_jacobian = -value,
+    method       = "named_transform",
+    provenance   = provenance
+  )
+}
+
+.prior_density_ordinate_point_group_location <- function(group, source_transforms){
+
+  prior <- group$prior
+  if(is.prior.none(prior)){
+    return(0)
+  }
+  if(!is.prior.point(prior)){
+    return(NULL)
+  }
+  location <- prior$parameters$location
+  transforms <- source_transforms[names(group$weights)]
+  transformed <- rep(location, length(group$weights))
+  use_log <- !is.na(transforms) & transforms == "log"
+  unsupported <- !is.na(transforms) & transforms != "log"
+  if(any(unsupported) || (any(use_log) && location <= 0)){
+    return(NA_real_)
+  }
+  # only log-transformed terms take the log (a negative location of an
+  # untransformed point term would otherwise warn about a discarded NaN)
+  if(any(use_log)){
+    transformed[use_log] <- log(location)
+  }
+  sum(group$weights * transformed)
+}
+
+.prior_density_ordinate_stable_norm <- function(x){
+
+  maximum <- max(abs(x))
+  if(maximum == 0){
+    return(0)
+  }
+  maximum * sqrt(sum((x / maximum)^2))
+}
+
+.prior_density_ordinate_linear_normal <- function(prior_list, weights,
+                                                  source_transforms, value){
+
+  groups <- tryCatch(
+    .prior_linear_weight_groups(prior_list, weights),
+    error = function(e) NULL
+  )
+  if(is.null(groups)){
+    return(NULL)
+  }
+
+  mean_terms <- numeric()
+  scale_terms <- numeric()
+  terms <- list()
+  for(group in groups){
+    prior <- group$prior
+    transforms <- source_transforms[names(group$weights)]
+    transforms[is.na(transforms)] <- "none"
+
+    point_location <- .prior_density_ordinate_point_group_location(
+      group,
+      source_transforms
+    )
+    if(length(point_location) == 1L){
+      if(is.na(point_location)){
+        return(NULL)
+      }
+      mean_terms <- c(mean_terms, point_location)
+      terms[[length(terms) + 1L]] <- list(
+        parameter = group$parameter,
+        family    = if(is.prior.none(prior)) "none" else prior$distribution,
+        weights   = .prior_density_ordinate_compact(group$weights),
+        source_transform = .prior_density_ordinate_compact(transforms)
+      )
+      next
+    }
+
+    if(is.prior.mixture(prior) || is.prior.spike_and_slab(prior) ||
+       is.prior.ordered(prior)){
+      return(NULL)
+    }
+    full_support <- is.list(prior$truncation) &&
+      identical(prior$truncation$lower, -Inf) &&
+      identical(prior$truncation$upper, Inf)
+    lognormal_support <- is.list(prior$truncation) &&
+      identical(prior$truncation$lower, 0) &&
+      identical(prior$truncation$upper, Inf)
+
+    if(is.prior.vector(prior) && identical(prior$distribution, "mnormal") &&
+       all(transforms == "none") && full_support){
+      location <- prior$parameters$mean
+      scale <- prior$parameters$sd
+      family <- "mnormal"
+    }else if(is.prior.simple(prior) && identical(prior$distribution, "normal") &&
+             all(transforms == "none") && full_support){
+      location <- prior$parameters$mean
+      scale <- prior$parameters$sd
+      family <- "normal"
+    }else if(is.prior.simple(prior) && identical(prior$distribution, "lognormal") &&
+             all(transforms == "log") && lognormal_support){
+      location <- prior$parameters$meanlog
+      scale <- prior$parameters$sdlog
+      family <- "lognormal"
+    }else{
+      return(NULL)
+    }
+
+    mean_terms <- c(mean_terms, sum(group$weights) * location)
+    scale_terms <- c(scale_terms, abs(group$weights) * scale)
+    terms[[length(terms) + 1L]] <- list(
+      parameter = group$parameter,
+      family    = family,
+      weights   = .prior_density_ordinate_compact(group$weights),
+      source_transform = .prior_density_ordinate_compact(transforms)
+    )
+  }
+
+  if(length(scale_terms) == 0L){
+    return(NULL)
+  }
+  location <- sum(mean_terms)
+  scale <- .prior_density_ordinate_stable_norm(scale_terms)
+  provenance <- list(
+    kind    = "linear_normal",
+    mean    = location,
+    sd      = scale,
+    weights = .prior_density_ordinate_compact(weights),
+    terms   = terms,
+    support = c(lower = -Inf, upper = Inf)
+  )
+  if(!is.finite(location) || !is.finite(scale) || scale <= 0){
+    return(.prior_density_ordinate_result(
+      value       = value,
+      behavior    = "unknown",
+      log_density = NA_real_,
+      exact       = FALSE,
+      method      = "unsupported_provenance",
+      reason      = "The analytic normal parameters are not representable.",
+      provenance  = provenance
+    ))
+  }
+  log_density <- stats::dnorm(
+    value,
+    mean = location,
+    sd = scale,
+    log = TRUE
+  )
+
+  .prior_density_ordinate_result(
+    value       = value,
+    behavior    = "regular",
+    log_density = log_density,
+    exact       = TRUE,
+    method      = "linear_normal",
+    reason      = if(identical(log_density, -Inf)){
+      paste0(
+        "The continuous prior density is structurally regular, but its ",
+        "log-density underflows in ordinary floating-point arithmetic."
+      )
+    }else{
+      NULL
+    },
+    provenance  = provenance
+  )
+}
+
+.prior_density_ordinate_deterministic_offset <- function(prior_list, weights,
+                                                         source_transforms){
+
+  weights <- weights[weights != 0]
+  if(length(weights) == 0L){
+    return(0)
+  }
+  groups <- tryCatch(
+    .prior_linear_weight_groups(prior_list, weights),
+    error = function(e) NULL
+  )
+  if(is.null(groups)){
+    return(NULL)
+  }
+  locations <- vapply(groups, function(group){
+    location <- .prior_density_ordinate_point_group_location(
+      group,
+      source_transforms
+    )
+    if(length(location) != 1L || is.na(location)) NA_real_ else location
+  }, numeric(1))
+  if(anyNA(locations)){
+    return(NULL)
+  }
+  sum(locations)
+}
+
+# Conditional-normal specification of a Gaussian convolution (Gaussian terms
+# plus one other continuous scalar term); NULL for other combinations.
+.prior_density_ordinate_gaussian_convolution_spec <- function(prior_list, weights,
+                                                              source_transforms){
+
+  groups <- tryCatch(
+    .prior_linear_weight_groups(prior_list, weights),
+    error = function(e) NULL
+  )
+  if(is.null(groups) || length(groups) < 2L){
+    return(NULL)
+  }
+  if(is.null(source_transforms)){
+    source_transforms <- stats::setNames(rep(NA_character_, length(weights)), names(weights))
+  }
+  gaussian <- vapply(groups, function(group){
+    point <- .prior_density_ordinate_point_group_location(group, source_transforms)
+    if(length(point) == 1L){
+      return(!is.na(point))
+    }
+    normal <- .prior_density_ordinate_linear_normal(
+      stats::setNames(list(group$prior), group$parameter),
+      group$weights, source_transforms, 0
+    )
+    !is.null(normal) && isTRUE(normal$exact) &&
+      identical(normal$method, "linear_normal")
+  }, logical(1))
+  if(sum(!gaussian) != 1L){
+    return(NULL)
+  }
+
+  other <- groups[[which(!gaussian)]]
+  prior <- other$prior
+  if(length(other$weights) != 1L || !is.finite(other$weights) ||
+     !is.na(source_transforms[names(other$weights)]) ||
+     !is.prior.simple(prior) || is.prior.point(prior) ||
+     is.prior.discrete(prior) || is.prior.mixture(prior) ||
+     is.prior.spike_and_slab(prior) || is.prior.vector(prior) ||
+     is.prior.ordered(prior) || .is_prior_expression(prior) ||
+     !is.null(attr(prior, "multiply_by", exact = TRUE))){
+    return(NULL)
+  }
+  bounds <- unlist(prior$truncation[c("lower", "upper")], use.names = FALSE)
+  if(!is.numeric(bounds) || length(bounds) != 2L || anyNA(bounds) ||
+     bounds[1L] >= bounds[2L]){
+    return(NULL)
+  }
+
+  gaussian_weights <- do.call(c, unname(lapply(groups[gaussian], `[[`, "weights")))
+  normal <- .prior_density_ordinate_linear_normal(
+    prior_list, gaussian_weights, source_transforms, 0
+  )
+  if(is.null(normal) || !isTRUE(normal$exact) ||
+     !identical(normal$method, "linear_normal") ||
+     !is.finite(normal$provenance$sd) || normal$provenance$sd <= 0){
+    return(NULL)
+  }
+
+  list(
+    additive_mean = normal$provenance$mean,
+    additive_sd   = normal$provenance$sd,
+    product_mean  = unname(other$weights[[1L]]),
+    product_sd    = 0,
+    multiplier    = prior,
+    bounds        = bounds,
+    sources       = list(
+      additive   = names(groups)[gaussian],
+      multiplied = character(),
+      multiplier = other$parameter
+    )
+  )
+}
+
+# Classification of the linear combination sum_j weights[j] * term_j at
+# 'value' through its structural route (R/prior-density-route.R).
+.prior_density_ordinate_linear_base <- function(prior_list, weights,
+                                                source_transforms, value,
+                                                n_grid = .prior_linear_density_default_grid()){
+
+  .prior_density_route_ordinate(
+    .prior_density_route_linear(prior_list, weights, source_transforms, n_grid),
+    value
+  )
+}
+
+.prior_density_ordinate_transform_arguments <- function(transformation,
+                                                        arguments){
+
+  if(is.null(arguments)){
+    arguments <- list()
+  }
+  if(!is.list(arguments)){
+    return(NULL)
+  }
+  allowed <- if(transformation %in% c("lin", "exp_lin")) c("a", "b") else character()
+  argument_names <- names(arguments)
+  if((length(arguments) > 0L &&
+      (is.null(argument_names) || anyNA(argument_names) ||
+       any(!nzchar(argument_names)) || anyDuplicated(argument_names))) ||
+     any(!argument_names %in% allowed)){
+    return(NULL)
+  }
+  if(any(vapply(arguments, function(argument){
+    !is.numeric(argument) || length(argument) != 1L ||
+      is.na(argument) || !is.finite(argument)
+  }, logical(1)))){
+    return(NULL)
+  }
+  if(transformation %in% c("lin", "exp_lin")){
+    if(is.null(arguments$a)) arguments$a <- 0
+    if(is.null(arguments$b)) arguments$b <- 1
+    arguments <- arguments[c("a", "b")]
+  }
+  arguments
+}
+
+# A source-less scalar affine route can declare a constant atom.
+.prior_density_ordinate_provenance_constant <- function(provenance){
+
+  if(is.list(provenance) && identical(provenance$kind, "scalar_affine") &&
+     is.numeric(provenance$offset) && length(provenance$offset) == 1L &&
+     is.finite(provenance$offset) && is.numeric(provenance$scale) &&
+     length(provenance$scale) == 1L && isTRUE(provenance$scale == 0)){
+    return(unname(provenance$offset))
+  }
+  NULL
+}
+
+# Structural limits may be infinite; images of finite values must retain their
+# mathematical domain rather than round to an exponential or tanh boundary.
+.prior_density_ordinate_provenance_image <- function(values, transformation, arguments){
+
+  mapped <- switch(transformation,
+    "lin" = arguments$a + arguments$b * values,
+    "exp" = exp(values),
+    "exp_lin" = exp(arguments$a + arguments$b * log(values)),
+    "tanh" = tanh(values),
+    NULL
+  )
+  if(is.null(mapped) || anyNA(mapped)) return(NULL)
+  if(any(.density.prior_transformation_image_bad(values, mapped, transformation, arguments))) return(NULL)
+  mapped
+}
+
+.prior_density_ordinate_provenance_support <- function(provenance){
+
+  if(!is.list(provenance)){
+    return(NULL)
+  }
+  kind <- provenance$kind
+  constant <- .prior_density_ordinate_provenance_constant(provenance)
+  if(!is.null(constant)) return(c(lower = constant, upper = constant))
+  if(identical(kind, "primitive")){
+    truncation <- provenance$truncation
+    if(is.list(truncation)){
+      lower <- truncation$lower
+      upper <- truncation$upper
+    }else{
+      lower <- truncation[["lower"]]
+      upper <- truncation[["upper"]]
+    }
+    if(is.numeric(lower) && length(lower) == 1L && !is.na(lower) &&
+       is.numeric(upper) && length(upper) == 1L && !is.na(upper)){
+      return(c(lower = lower, upper = upper))
+    }
+  }
+  if(identical(kind, "linear_normal")){
+    return(c(lower = -Inf, upper = Inf))
+  }
+  if(identical(kind, "scale_mixture") && is.numeric(provenance$support) &&
+     length(provenance$support) == 2L && !anyNA(provenance$support)){
+    # the support hull of the scale-product route
+    return(c(lower = provenance$support[[1L]], upper = provenance$support[[2L]]))
+  }
+  if(identical(kind, "scalar_affine") && is.list(provenance$source)){
+    support <- .prior_density_ordinate_provenance_support(provenance$source)
+    if(is.null(support)){
+      return(NULL)
+    }
+    if(identical(provenance$source_transform, "log")){
+      if(support[1L] < 0){
+        return(NULL)
+      }
+      support <- c(
+        if(support[1L] == 0) -Inf else log(support[1L]),
+        if(is.infinite(support[2L])) Inf else log(support[2L])
+      )
+    }
+    mapped <- .prior_density_ordinate_provenance_image(
+      support, "lin", list(a = provenance$offset, b = provenance$scale)
+    )
+    if(is.null(mapped)) return(NULL)
+    return(range(mapped))
+  }
+  if(identical(kind, "convolution")){
+    weights <- provenance$weights
+    terms <- provenance$terms
+    if(!is.numeric(provenance$offset) || length(provenance$offset) != 1L ||
+       !is.finite(provenance$offset) || !is.numeric(weights) ||
+       any(!is.finite(weights)) || !is.list(terms) || length(terms) != length(weights)){
+      return(NULL)
+    }
+    bounds <- rep(provenance$offset, 2L)
+    for(i in which(weights != 0)){
+      support <- .prior_density_ordinate_provenance_support(terms[[i]])
+      if(is.null(support)) return(NULL)
+      mapped <- .prior_density_ordinate_provenance_image(support, "lin", list(a = 0, b = weights[i]))
+      if(is.null(mapped)) return(NULL)
+      previous_bounds <- bounds
+      term_bounds <- range(mapped)
+      bounds <- previous_bounds + term_bounds
+      if(anyNA(bounds) || any(is.finite(previous_bounds) & is.finite(term_bounds) &
+                             !is.finite(bounds))) return(NULL)
+    }
+    return(c(lower = bounds[1L], upper = bounds[2L]))
+  }
+  if(identical(kind, "named_transform")){
+    transformation <- provenance$transformation
+    if(!is.character(transformation) || length(transformation) != 1L ||
+       !transformation %in% c("lin", "exp", "exp_lin", "tanh")) return(NULL)
+    arguments <- .prior_density_ordinate_transform_arguments(transformation, provenance$arguments)
+    if(is.null(arguments)) return(NULL)
+    if(transformation %in% c("lin", "exp_lin") && arguments$b == 0){
+      location <- if(transformation == "lin") arguments$a else exp(arguments$a)
+      if(!is.finite(location) || transformation == "exp_lin" && location == 0) return(NULL)
+      return(c(lower = location, upper = location))
+    }
+    support <- .prior_density_ordinate_provenance_support(provenance$source)
+    if(is.null(support) || transformation == "exp_lin" && support[1L] < 0) return(NULL)
+    mapped <- .prior_density_ordinate_provenance_image(support, transformation, arguments)
+    if(is.null(mapped)) return(NULL)
+    return(c(lower = min(mapped), upper = max(mapped)))
+  }
+  if(identical(kind, "finite_mixture") && length(provenance$components) > 0L){
+    components <- provenance$components[vapply(
+      provenance$components,
+      function(component){
+        is.null(component$weight) ||
+          (is.numeric(component$weight) && length(component$weight) == 1L &&
+             is.finite(component$weight) && component$weight > 0)
+      },
+      logical(1)
+    )]
+    if(length(components) == 0L){
+      return(NULL)
+    }
+    supports <- lapply(components, function(component){
+      .prior_density_ordinate_provenance_support(component$provenance)
+    })
+    if(any(vapply(supports, is.null, logical(1)))){
+      return(NULL)
+    }
+    return(c(
+      lower = min(vapply(supports, `[[`, numeric(1), 1L)),
+      upper = max(vapply(supports, `[[`, numeric(1), 2L))
+    ))
+  }
+  NULL
+}
+
+.prior_density_ordinate_provenance_all_family <- function(provenance, family){
+
+  if(!is.list(provenance)){
+    return(FALSE)
+  }
+  if(identical(provenance$kind, "primitive")){
+    return(identical(provenance$family, family))
+  }
+  if(identical(provenance$kind, "finite_mixture")){
+    components <- provenance$components[vapply(
+      provenance$components,
+      function(component){
+        is.null(component$weight) ||
+          (is.numeric(component$weight) && length(component$weight) == 1L &&
+             is.finite(component$weight) && component$weight > 0)
+      },
+      logical(1)
+    )]
+    return(length(components) > 0L && all(vapply(
+      components,
+      function(component){
+        .prior_density_ordinate_provenance_all_family(
+          component$provenance,
+          family
+        )
+      },
+      logical(1)
+    )))
+  }
+  FALSE
+}
+
+.prior_density_ordinate_provenance_atoms <- function(provenance){
+
+  if(!is.list(provenance)){
+    return(NULL)
+  }
+  kind <- provenance$kind
+  constant <- .prior_density_ordinate_provenance_constant(provenance)
+  if(!is.null(constant)) return(constant)
+  if(identical(kind, "linear_normal") ||
+     (identical(kind, "scale_mixture") && !is.null(provenance$support))){
+    # a scale-product route multiplies two continuous terms
+    return(numeric())
+  }
+  if(identical(kind, "primitive")){
+    family <- provenance$family
+    if(identical(family, "none")){
+      return(0)
+    }
+    if(identical(family, "point")){
+      location <- provenance$parameters$location
+      if(is.numeric(location) && length(location) == 1L &&
+         is.finite(location)){
+        return(unname(location))
+      }
+      return(NULL)
+    }
+    if(identical(family, "bernoulli")){
+      probability <- provenance$parameters$probability
+      if(!is.numeric(probability) || length(probability) != 1L ||
+         !is.finite(probability) || probability < 0 || probability > 1){
+        return(NULL)
+      }
+      locations <- c(0, 1)[c(1 - probability, probability) > 0]
+      support <- .prior_density_ordinate_provenance_support(provenance)
+      if(is.null(support)){
+        return(NULL)
+      }
+      return(locations[locations >= support[1L] & locations <= support[2L]])
+    }
+    return(numeric())
+  }
+  if(identical(kind, "finite_mixture")){
+    components <- provenance$components[vapply(
+      provenance$components,
+      function(component){
+        is.null(component$weight) ||
+          (is.numeric(component$weight) && length(component$weight) == 1L &&
+             is.finite(component$weight) && component$weight > 0)
+      },
+      logical(1)
+    )]
+    atoms <- lapply(components, function(component){
+      .prior_density_ordinate_provenance_atoms(component$provenance)
+    })
+    if(any(vapply(atoms, is.null, logical(1)))){
+      return(NULL)
+    }
+    return(unlist(atoms, use.names = FALSE))
+  }
+  if(identical(kind, "scalar_affine") && is.list(provenance$source)){
+    atoms <- .prior_density_ordinate_provenance_atoms(provenance$source)
+    if(is.null(atoms)){
+      return(NULL)
+    }
+    if(identical(provenance$source_transform, "log")){
+      if(any(atoms <= 0)){
+        return(NA_real_)
+      }
+      atoms <- log(atoms)
+    }else if(!is.null(provenance$source_transform)){
+      return(NULL)
+    }
+    return(.prior_density_ordinate_provenance_image(
+      atoms, "lin", list(a = provenance$offset, b = provenance$scale)
+    ))
+  }
+  if(identical(kind, "convolution")){
+    weights <- provenance$weights
+    terms <- provenance$terms
+    if(!is.numeric(provenance$offset) || length(provenance$offset) != 1L ||
+       !is.finite(provenance$offset) || !is.numeric(weights) ||
+       any(!is.finite(weights)) || !is.list(terms) || length(terms) != length(weights)) return(NULL)
+    active <- which(weights != 0)
+    if(length(active) == 0L) return(unname(provenance$offset))
+    atoms <- lapply(terms[active], .prior_density_ordinate_provenance_atoms)
+    if(any(vapply(atoms, function(x) !is.null(x) && length(x) == 0L, logical(1)))) return(numeric())
+    return(NULL)
+  }
+  if(identical(kind, "named_transform")){
+    transformation <- provenance$transformation
+    if(!is.character(transformation) || length(transformation) != 1L ||
+       !transformation %in% c("lin", "exp", "exp_lin", "tanh")) return(NULL)
+    arguments <- .prior_density_ordinate_transform_arguments(transformation, provenance$arguments)
+    if(is.null(arguments)) return(NULL)
+    if(transformation %in% c("lin", "exp_lin") && arguments$b == 0){
+      location <- if(transformation == "lin") arguments$a else exp(arguments$a)
+      if(!is.finite(location) || transformation == "exp_lin" && location == 0) return(NULL)
+      return(unname(location))
+    }
+    atoms <- .prior_density_ordinate_provenance_atoms(provenance$source)
+    if(is.null(atoms)) return(NULL)
+    if(transformation == "exp_lin" && any(atoms < 0 | atoms == 0 & arguments$b < 0)) return(NULL)
+    mapped <- .prior_density_ordinate_provenance_image(atoms, transformation, arguments)
+    if(is.null(mapped) || any(!is.finite(mapped))) return(NULL)
+    return(unname(mapped))
+  }
+  NULL
+}
+
+.prior_density_ordinate_tail_behavior <- function(provenance, direction,
+                                                  transformation){
+
+  support <- .prior_density_ordinate_provenance_support(provenance)
+  if(!is.null(support)){
+    bound <- if(direction < 0) support[1L] else support[2L]
+    if(is.finite(bound)){
+      return("zero")
+    }
+  }
+
+  kind <- provenance$kind
+  if(identical(kind, "linear_normal")){
+    return("zero")
+  }
+  if(identical(kind, "scalar_affine") && is.list(provenance$source)){
+    if(identical(provenance$source_transform, "log")){
+      if(identical(transformation, "exp") && direction < 0){
+        return(.prior_density_ordinate_exp_lin_boundary(
+          provenance$source,
+          provenance$scale
+        ))
+      }
+      if(identical(transformation, "tanh") &&
+         .prior_density_ordinate_provenance_all_family(
+           provenance$source,
+           "lognormal"
+         )){
+        return("zero")
+      }
+      return("unknown")
+    }
+    source_direction <- direction * sign(provenance$scale)
+    return(.prior_density_ordinate_tail_behavior(
+      provenance$source,
+      source_direction,
+      transformation
+    ))
+  }
+  if(identical(kind, "finite_mixture")){
+    components <- provenance$components[vapply(
+      provenance$components,
+      function(component){
+        is.null(component$weight) ||
+          (is.numeric(component$weight) && length(component$weight) == 1L &&
+             is.finite(component$weight) && component$weight > 0)
+      },
+      logical(1)
+    )]
+    if(length(components) == 0L) return("unknown")
+    behavior <- vapply(components, function(component){
+      .prior_density_ordinate_tail_behavior(
+        component$provenance,
+        direction,
+        transformation
+      )
+    }, character(1))
+    if(any(behavior == "infinite")) return("infinite")
+    if(any(behavior == "unknown")) return("unknown")
+    if(any(behavior == "regular")) return("regular")
+    return("zero")
+  }
+  if(identical(kind, "primitive")){
+    family <- provenance$family
+    if(family %in% c("normal", "moment")) return("zero")
+    if(family %in% c("t", "invmoment")) return("infinite")
+    if(identical(transformation, "tanh") &&
+       identical(family, "lognormal") && direction > 0) return("infinite")
+  }
+  "unknown"
+}
+
+# Log density at 0 of exp(a) X^b (b > 0) where X's density behaves like
+# C x^(b - 1) at its lower bound 0 (a "regular" exp_lin boundary): the limit
+# of f_X(x) / (b exp(a) x^(b - 1)) is C / (b exp(a)). NA when C is not
+# structurally known, and for b < 0 (the image of X's upper tail).
+.prior_density_ordinate_exp_lin_zero_log_limit <- function(provenance, a, b){
+
+  if(b <= 0){
+    return(NA_real_)
+  }
+  .prior_density_ordinate_lower_log_coefficient(provenance, b) - log(b) - a
+}
+
+# Log of the coefficient C in f(x) ~ C x^(p - 1) as x -> 0+ for a source
+# supported on [0, ...): closed forms for primitive beta (exponent alpha)
+# and gamma (exponent shape) densities divided by their truncation mass, and
+# the density at the bound for exponent-one families; a positive scaling s
+# multiplies C by s^(-p), and finite mixtures sum the contributions of their
+# components (-Inf, i.e. 0, for a component whose exponent exceeds p). NA
+# when C is not structurally known.
+.prior_density_ordinate_lower_log_coefficient <- function(provenance, p){
+
+  if(!is.null(.prior_density_ordinate_provenance_constant(provenance))) return(-Inf)
+  kind <- provenance$kind
+  if(identical(kind, "primitive") && provenance$family %in% c("point", "none", "bernoulli")) return(-Inf)
+  if(identical(kind, "finite_mixture")){
+    terms <- vapply(provenance$components, function(component){
+      weight <- component$weight
+      if(!is.numeric(weight) || length(weight) != 1L || !is.finite(weight) ||
+         weight <= 0){
+        return(-Inf)
+      }
+      log(weight) + .prior_density_ordinate_lower_log_coefficient(
+        component$provenance, p
+      )
+    }, numeric(1))
+    if(length(terms) == 0L || anyNA(terms)){
+      return(NA_real_)
+    }
+    top <- max(terms)
+    if(top == -Inf){
+      return(-Inf)
+    }
+    return(top + log(sum(exp(terms - top))))
+  }
+  if(identical(kind, "scalar_affine")){
+    offset <- provenance$offset
+    scale <- provenance$scale
+    if(!is.list(provenance$source) || !is.null(provenance$source_transform) ||
+       !is.numeric(offset) || length(offset) != 1L || !isTRUE(offset == 0) ||
+       !is.numeric(scale) || length(scale) != 1L || !isTRUE(scale > 0)){
+      return(NA_real_)
+    }
+    return(.prior_density_ordinate_lower_log_coefficient(provenance$source, p) -
+             p * log(scale))
+  }
+  if(!identical(kind, "primitive") || !is.list(provenance$truncation) ||
+     !isTRUE(provenance$truncation$lower == 0)){
+    return(NA_real_)
+  }
+  family <- provenance$family
+  parameters <- provenance$parameters
+  upper <- provenance$truncation$upper
+  exponent <- switch(
+    family,
+    "beta"    = parameters$alpha,
+    "gamma"   = parameters$shape,
+    "normal"  = 1,
+    "exp"     = 1,
+    "uniform" = 1,
+    NA_real_
+  )
+  if(!is.numeric(exponent) || length(exponent) != 1L || !is.finite(exponent)){
+    return(NA_real_)
+  }
+  if(exponent > p){
+    return(-Inf)
+  }
+  if(exponent < p){
+    return(NA_real_)
+  }
+  if(identical(family, "beta")){
+    mass <- stats::pbeta(upper, parameters$alpha, parameters$beta)
+    return(-lbeta(parameters$alpha, parameters$beta) - log(mass))
+  }
+  if(identical(family, "gamma")){
+    mass <- stats::pgamma(upper, shape = parameters$shape, rate = parameters$rate)
+    return(parameters$shape * log(parameters$rate) - lgamma(parameters$shape) -
+             log(mass))
+  }
+  bound <- tryCatch(
+    .prior_density_ordinate_primitive(
+      prior(family, parameters, provenance$truncation), 0
+    ),
+    error = function(e) NULL
+  )
+  if(is.null(bound) ||
+     !identical(.prior_density_ordinate_continuous_behavior(bound), "regular")){
+    return(NA_real_)
+  }
+  bound$log_density
+}
+
+.prior_density_ordinate_exp_lin_boundary <- function(provenance, b){
+
+  if(!is.null(.prior_density_ordinate_provenance_constant(provenance))) return("zero")
+  if(identical(provenance$kind, "primitive") &&
+     provenance$family %in% c("point", "none", "bernoulli")) return("zero")
+  support <- .prior_density_ordinate_provenance_support(provenance)
+  if(!is.null(support)){
+    relevant <- if(b > 0) support[1L] else support[2L]
+    if(is.finite(relevant) && relevant > 0){
+      return("zero")
+    }
+  }
+  if(identical(provenance$kind, "finite_mixture")){
+    components <- provenance$components[vapply(
+      provenance$components,
+      function(component){
+        is.null(component$weight) ||
+          (is.numeric(component$weight) && length(component$weight) == 1L &&
+             is.finite(component$weight) && component$weight > 0)
+      },
+      logical(1)
+    )]
+    if(length(components) == 0L) return("unknown")
+    behavior <- vapply(components, function(component){
+      .prior_density_ordinate_exp_lin_boundary(component$provenance, b)
+    }, character(1))
+    if(any(behavior == "infinite")) return("infinite")
+    if(any(behavior == "unknown")) return("unknown")
+    if(any(behavior == "regular")) return("regular")
+    return("zero")
+  }
+  if(identical(provenance$kind, "scalar_affine") &&
+     is.list(provenance$source) &&
+     is.null(provenance$source_transform) &&
+     is.numeric(provenance$offset) && length(provenance$offset) == 1L &&
+     is.finite(provenance$offset) && provenance$offset == 0 &&
+     is.numeric(provenance$scale) && length(provenance$scale) == 1L &&
+     is.finite(provenance$scale) && provenance$scale > 0){
+    return(.prior_density_ordinate_exp_lin_boundary(provenance$source, b))
+  }
+  if(identical(provenance$kind, "scale_mixture") && b > 0 &&
+     isTRUE(provenance$offset == 0) && !is.null(support) &&
+     isTRUE(support[[1L]] == 0)){
+    # a scale product at its offset 0, the lower bound of its support: a
+    # finite positive limit is the exponent-one case x^0, and an infinite one
+    # stays infinite under a power b >= 1
+    offset_behavior <- provenance$offset_behavior
+    if(identical(offset_behavior, "regular")){
+      exponent <- 1 - b
+      return(if(exponent > 0) "zero" else if(exponent < 0) "infinite" else "regular")
+    }
+    if(identical(offset_behavior, "infinite") && b >= 1){
+      return("infinite")
+    }
+    return("unknown")
+  }
+  if(!identical(provenance$kind, "primitive")){
+    return("unknown")
+  }
+
+  family <- provenance$family
+  parameters <- provenance$parameters
+  if(identical(family, "lognormal")){
+    return("zero")
+  }
+  if(b < 0 && family %in% c("gamma", "exp")){
+    return("zero")
+  }
+  if(b > 0 && identical(family, "invgamma")){
+    return("zero")
+  }
+  exponent <- if(b > 0){
+    if(identical(family, "normal")) 1 - b else
+      if(identical(family, "gamma")) parameters$shape - b else
+        if(identical(family, "exp")) 1 - b else
+          if(identical(family, "beta")) parameters$alpha - b else
+            if(identical(family, "uniform")) 1 - b else NA_real_
+  }else{
+    if(identical(family, "invgamma")){
+      -(parameters$shape + b) / b
+    }else{
+      NA_real_
+    }
+  }
+  if(is.na(exponent)) return("unknown")
+  if(exponent > 0) "zero" else if(exponent < 0) "infinite" else "regular"
+}
+
+.prior_density_ordinate_endpoint_matches <- function(output, value){
+
+  if(!is.finite(output) || !is.finite(value)){
+    return(FALSE)
+  }
+  if(output == value){
+    return(TRUE)
+  }
+  # the adjacent double of an endpoint counts as the endpoint (transformed
+  # endpoints are rounded), but not when either is subnormal or zero: an
+  # endpoint at 0 maps exactly, and its neighbour, the smallest subnormal, is
+  # not the endpoint (it was classified as the bound 0)
+  if(!.prior_density_full_precision(output) || !.prior_density_full_precision(value)){
+    return(FALSE)
+  }
+
+  midpoint <- output / 2 + value / 2
+  midpoint == output || midpoint == value
+}
+
+.prior_density_ordinate_endpoint_source <- function(source_provenance,
+                                                     transformation,
+                                                     arguments, value){
+
+  support <- .prior_density_ordinate_provenance_support(source_provenance)
+  if(is.null(support)){
+    return(NULL)
+  }
+
+  source_values <- unname(support[is.finite(support)])
+  if(length(source_values) > 0L){
+    output_values <- switch(
+      transformation,
+      lin = arguments$a + arguments$b * source_values,
+      exp = exp(source_values),
+      exp_lin = {
+        valid <- source_values > 0
+        output <- rep(NA_real_, length(source_values))
+        output[valid] <- exp(
+          arguments$a + arguments$b * log(source_values[valid])
+        )
+        output
+      },
+      tanh = tanh(source_values)
+    )
+    matched <- which(vapply(
+      output_values,
+      .prior_density_ordinate_endpoint_matches,
+      logical(1),
+      value = value
+    ))
+    if(length(matched) > 0L){
+      return(source_values[matched[1L]])
+    }
+  }
+
+  if(identical(transformation, "exp_lin")){
+    source_values <- unname(support[is.finite(support) & support > 0])
+    output_values <- exp(arguments$a) * source_values^arguments$b
+    matched <- which(vapply(
+      output_values,
+      .prior_density_ordinate_endpoint_matches,
+      logical(1),
+      value = value
+    ))
+    if(length(matched) > 0L){
+      return(source_values[matched[1L]])
+    }
+  }
+
+  if(identical(transformation, "exp") &&
+     identical(source_provenance$kind, "scalar_affine") &&
+     identical(source_provenance$source_transform, "log") &&
+     is.list(source_provenance$source)){
+    original_support <-
+      .prior_density_ordinate_provenance_support(source_provenance$source)
+    if(!is.null(original_support)){
+      original_values <- unname(
+        original_support[is.finite(original_support) & original_support > 0]
+      )
+      output_values <- exp(source_provenance$offset) *
+        original_values^source_provenance$scale
+      matched <- which(vapply(
+        output_values,
+        .prior_density_ordinate_endpoint_matches,
+        logical(1),
+        value = value
+      ))
+      if(length(matched) > 0L){
+        return(
+          source_provenance$offset + source_provenance$scale *
+            log(original_values[matched[1L]])
+        )
+      }
+    }
+  }
+
+  NULL
+}
+
+# The source value (S, or log(T) for a log source transformation) of a bound of
+# the support of offset + scale * S that 'value' matches, as the endpoint of a
+# 'lin' transformation of the scalar prior with provenance 'source_provenance';
+# NULL when 'value' is not such a bound.
+.prior_density_ordinate_affine_endpoint <- function(source_provenance, offset,
+                                                    scale, source_transform,
+                                                    value){
+
+  if(!is.null(source_transform)){
+    if(!identical(source_transform, "log")){
+      return(NULL)
+    }
+    source_provenance <- list(
+      kind             = "scalar_affine",
+      offset           = 0,
+      scale            = 1,
+      source_transform = "log",
+      source           = source_provenance
+    )
+  }
+  .prior_density_ordinate_endpoint_source(
+    source_provenance, "lin", list(a = offset, b = scale), value
+  )
+}
+
+.prior_density_ordinate_named_transform <- function(classifier, source_provenance,
+                                                    transformation, arguments,
+                                                    value){
+
+  provenance <- list(
+    kind           = "named_transform",
+    transformation = if(is.character(transformation)) transformation else "custom",
+    arguments      = .prior_density_ordinate_compact(arguments),
+    source         = source_provenance
+  )
+  if(!is.character(transformation) || length(transformation) != 1L ||
+     !transformation %in% c("lin", "exp", "exp_lin", "tanh")){
+    return(.prior_density_ordinate_result(
+      value       = value,
+      behavior    = "unknown",
+      log_density = NA_real_,
+      exact       = FALSE,
+      method      = "unsupported_provenance",
+      reason      = "Arbitrary user transformations are not structurally classified.",
+      provenance  = provenance
+    ))
+  }
+  arguments <- .prior_density_ordinate_transform_arguments(
+    transformation,
+    arguments
+  )
+  if(is.null(arguments)){
+    return(.prior_density_ordinate_result(
+      value       = value,
+      behavior    = "undefined",
+      log_density = NA_real_,
+      exact       = TRUE,
+      method      = "named_transform",
+      reason      = "The named transformation arguments are invalid.",
+      provenance  = provenance
+    ))
+  }
+  provenance$arguments <- arguments
+
+  if(identical(transformation, "lin")){
+    if(arguments$b == 0){
+      return(.prior_density_ordinate_atom_result(
+        value       = value,
+        locations   = arguments$a,
+        probability = 1,
+        method       = "named_transform",
+        provenance   = provenance
+      ))
+    }
+    source_value <- .prior_density_ordinate_endpoint_source(
+      source_provenance,
+      transformation,
+      arguments,
+      value
+    )
+    if(is.null(source_value)){
+      # the inverse map of a value other than an exact support endpoint (as
+      # the scalar affine route)
+      if(!.prior_density_affine_full_precision(value, arguments$a, arguments$b)){
+        return(.prior_density_ordinate_imprecise(
+          value, "The inverse linear value", "unsupported_provenance", provenance,
+          behavior = "unknown"
+        ))
+      }
+      source_value <- (value - arguments$a) / arguments$b
+    }
+    source <- classifier(source_value)
+    return(.prior_density_ordinate_wrap(
+      source,
+      value,
+      log(abs(arguments$b)),
+      "named_transform",
+      provenance
+    ))
+  }
+
+  if(identical(transformation, "exp")){
+    if(value < 0){
+      return(.prior_density_ordinate_result(
+        value       = value,
+        behavior    = "zero",
+        log_density = -Inf,
+        exact       = TRUE,
+        method      = "named_transform",
+        reason      = "The requested value is outside the transformed prior support.",
+        provenance  = provenance
+      ))
+    }
+    if(value == 0){
+      behavior <- .prior_density_ordinate_tail_behavior(
+        source_provenance,
+        -1,
+        "exp"
+      )
+      return(.prior_density_ordinate_result(
+        value       = value,
+        behavior    = behavior,
+        log_density = if(behavior == "zero") -Inf else
+          if(behavior == "infinite") Inf else NA_real_,
+        exact       = !identical(behavior, "unknown"),
+        method      = if(behavior == "unknown") "unsupported_provenance" else "named_transform",
+        provenance  = provenance
+      ))
+    }
+    source_value <- .prior_density_ordinate_endpoint_source(
+      source_provenance,
+      transformation,
+      arguments,
+      value
+    )
+    if(is.null(source_value)){
+      # always at full precision or the exact image 0 of the value 1: the log
+      # of a positive double is finite, and |log(value)| >= 1.1e-16 otherwise
+      source_value <- log(value)
+    }
+    source <- classifier(source_value)
+    return(.prior_density_ordinate_wrap(
+      source,
+      value,
+      log(value),
+      "named_transform",
+      provenance
+    ))
+  }
+
+  if(identical(transformation, "tanh")){
+    if(abs(value) > 1){
+      return(.prior_density_ordinate_result(
+        value       = value,
+        behavior    = "zero",
+        log_density = -Inf,
+        exact       = TRUE,
+        method      = "named_transform",
+        reason      = "The requested value is outside the transformed prior support.",
+        provenance  = provenance
+      ))
+    }
+    if(abs(value) == 1){
+      behavior <- .prior_density_ordinate_tail_behavior(
+        source_provenance,
+        sign(value),
+        "tanh"
+      )
+      return(.prior_density_ordinate_result(
+        value       = value,
+        behavior    = behavior,
+        log_density = if(behavior == "zero") -Inf else
+          if(behavior == "infinite") Inf else NA_real_,
+        exact       = !identical(behavior, "unknown"),
+        method      = if(behavior == "unknown") "unsupported_provenance" else "named_transform",
+        provenance  = provenance
+      ))
+    }
+    source_value <- .prior_density_ordinate_endpoint_source(
+      source_provenance,
+      transformation,
+      arguments,
+      value
+    )
+    if(is.null(source_value)){
+      source_value <- atanh(value)
+      # atanh() returns a subnormal value itself (the rule as for the value)
+      if(!.prior_density_affine_full_precision(source_value)){
+        return(.prior_density_ordinate_imprecise(
+          value, "The inverse tanh value", "unsupported_provenance", provenance,
+          behavior = "unknown"
+        ))
+      }
+    }
+    source <- classifier(source_value)
+    return(.prior_density_ordinate_wrap(
+      source,
+      value,
+      log1p(-value^2),
+      "named_transform",
+      provenance
+    ))
+  }
+
+  if(arguments$b == 0){
+    location <- exp(arguments$a)
+    if(!is.finite(location) || location == 0){
+      return(.prior_density_ordinate_result(
+        value       = value,
+        behavior    = "unknown",
+        log_density = NA_real_,
+        exact       = FALSE,
+        method      = "unsupported_provenance",
+        reason      = paste0(
+          "The constant transformed point is not representable in ordinary ",
+          "floating-point arithmetic."
+        ),
+        provenance  = provenance
+      ))
+    }
+    return(.prior_density_ordinate_atom_result(
+      value       = value,
+      locations   = location,
+      probability = 1,
+      method       = "named_transform",
+      provenance   = provenance
+    ))
+  }
+  support <- .prior_density_ordinate_provenance_support(source_provenance)
+  if(is.null(support)){
+    return(.prior_density_ordinate_result(
+      value       = value,
+      behavior    = "unknown",
+      log_density = NA_real_,
+      exact       = FALSE,
+      method      = "unsupported_provenance",
+      reason      = "The exponential-linear transformation lacks structural-domain information for its source.",
+      provenance  = provenance
+    ))
+  }
+  if(support[1L] < 0){
+    return(.prior_density_ordinate_result(
+      value       = value,
+      behavior    = "undefined",
+      log_density = NA_real_,
+      exact       = TRUE,
+      method      = "named_transform",
+      reason      = paste0(
+        "The exponential-linear transformation is not defined on the ",
+        "established source support."
+      ),
+      provenance  = provenance
+    ))
+  }
+  atoms <- .prior_density_ordinate_provenance_atoms(source_provenance)
+  if(!is.null(atoms) && (anyNA(atoms) ||
+     any(atoms < 0 | atoms == 0 & arguments$b < 0))){
+    return(.prior_density_ordinate_result(
+      value       = value,
+      behavior    = "undefined",
+      log_density = NA_real_,
+      exact       = TRUE,
+      method      = "named_transform",
+      reason      = paste0(
+        "The exponential-linear transformation is undefined for a positive-",
+        "probability source atom."
+      ),
+      provenance  = provenance
+    ))
+  }
+  if(value < 0){
+    return(.prior_density_ordinate_result(
+      value       = value,
+      behavior    = "zero",
+      log_density = -Inf,
+      exact       = TRUE,
+      method      = "named_transform",
+      reason      = "The requested value is outside the transformed prior support.",
+      provenance  = provenance
+    ))
+  }
+  if(value == 0){
+    behavior <- .prior_density_ordinate_exp_lin_boundary(
+      source_provenance,
+      arguments$b
+    )
+    return(.prior_density_ordinate_result(
+      value       = value,
+      behavior    = behavior,
+      log_density = if(behavior == "zero") -Inf else
+        if(behavior == "infinite") Inf else if(behavior == "regular"){
+          .prior_density_ordinate_exp_lin_zero_log_limit(
+            source_provenance, arguments$a, arguments$b
+          )
+        }else NA_real_,
+      exact       = !identical(behavior, "unknown"),
+      method      = if(behavior == "unknown") "unsupported_provenance" else "named_transform",
+      provenance  = provenance
+    ))
+  }
+  source_value <- .prior_density_ordinate_endpoint_source(
+    source_provenance,
+    transformation,
+    arguments,
+    value
+  )
+  if(is.null(source_value)){
+    # exp() of the inverse map rounds to a subnormal, underflows to 0 or
+    # overflows at extreme values (x = y^2 for b = 1/2 was off by 1.7e-5 in
+    # log at y = 1e-160, where x = 1e-320)
+    source_value <- exp((log(value) - arguments$a) / arguments$b)
+    if(!.prior_density_full_precision(source_value)){
+      return(.prior_density_ordinate_imprecise(
+        value, "The inverse transformed value", "unsupported_provenance", provenance,
+        behavior = "unknown"
+      ))
+    }
+  }
+  source <- classifier(source_value)
+  log_jacobian <- log(abs(arguments$b)) + arguments$a +
+    (arguments$b - 1) * log(source_value)
+  .prior_density_ordinate_wrap(
+    source,
+    value,
+    log_jacobian,
+    "named_transform",
+    provenance
+  )
+}
+
+.prior_density_ordinate_from_adaptive <- function(adaptive, value){
+
+  route <- .prior_density_route_from_adaptive(adaptive)
+  if(is.null(route)){
+    return(NULL)
+  }
+  .prior_density_route_ordinate(route, value)
+}
+
+.prior_density_ordinate_numeric_hash <- function(x){
+
+  encoded <- paste(
+    c(dim(x), sprintf("%a", as.numeric(x))),
+    collapse = "\r"
+  )
+  bytes <- as.integer(charToRaw(encoded))
+  hash <- 0
+  for(byte in bytes){
+    hash <- (hash * 131 + byte) %% 2147483647
+  }
+  sprintf("%08x", as.integer(hash))
+}
+
+.prior_density_ordinate_grid_log_density <- function(x, value){
+
+  if(is.null(x$density) || !is.list(x$density) ||
+     is.null(x$density$mass) || x$density$mass <= 0){
+    return(-Inf)
+  }
+  height <- tryCatch(
+    .prior_linear_density_grid_height(x, value),
+    error = function(e) NA_real_
+  )
+  if(!is.numeric(height) || length(height) != 1L || is.na(height) || height < 0){
+    return(NA_real_)
+  }
+  if(height == 0) -Inf else log(height)
+}
+
+.prior_density_ordinate_linear <- function(x, value){
+
+  adaptive <- attr(x, "adaptive_evaluation", exact = TRUE)
+  result <- .prior_density_ordinate_from_adaptive(adaptive, value)
+  if(is.null(result) && isTRUE(.prior_linear_density_continuous_mass(x) == 0)){
+    result <- .prior_density_ordinate_result(
+      value       = value,
+      behavior    = "zero",
+      log_density = -Inf,
+      exact       = TRUE,
+      method      = "point",
+      reason      = "The declared prior measure has no continuous part.",
+      provenance  = list(kind = "point_only_measure")
+    )
+  }
+  if(is.null(result)){
+    # a density grid without provenance; its builder may record why none
+    # exists (e.g. SD components of nested variance allocations)
+    reason <- attr(x, "provenance_unavailable", exact = TRUE)
+    result <- .prior_density_ordinate_result(
+      value       = value,
+      behavior    = "unknown",
+      log_density = .prior_density_ordinate_grid_log_density(x, value),
+      exact       = FALSE,
+      method      = "unsupported_provenance",
+      reason      = if(is.character(reason) && length(reason) == 1L) reason,
+      provenance  = list(
+        kind         = "unsupported_provenance",
+        source_class = class(x)
+      )
+    )
+  }
+
+  stored_point_mass <- .prior_linear_density_point_mass(x, value)
+  continuous_behavior <- .prior_density_ordinate_continuous_behavior(result)
+  result$point_mass <- stored_point_mass
+  if(stored_point_mass > 0){
+    result$behavior <- "point_mass"
+    result$exact <- TRUE
+    result$reason <- .prior_density_ordinate_reason("point_mass")
+    result$provenance$continuous_behavior <- continuous_behavior
+    result$provenance$point_locations <- if(!is.null(x$points)){
+      .prior_density_ordinate_compact(x$points$x[x$points$p > 0])
+    }else{
+      numeric()
+    }
+  }else if(identical(result$behavior, "point_mass")){
+    result$behavior <- continuous_behavior
+    result$reason <- .prior_density_ordinate_reason(continuous_behavior)
+  }
+
+  if(result$behavior %in% c("unknown", "point_mass") &&
+     is.na(result$log_density)){
+    result$log_density <- .prior_density_ordinate_grid_log_density(x, value)
+  }
+  result$value <- value
+  class(result) <- c("prior_density_ordinate", "list")
+  result
+}

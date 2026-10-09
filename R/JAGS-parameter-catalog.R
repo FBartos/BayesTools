@@ -1,0 +1,5308 @@
+# Metadata-only semantic parameter catalog and deferred draw extraction.
+
+.bt_parameter_selection_version <- 1L
+
+.bt_parameter_catalog_quantity_columns <- c(
+  "quantity_id", "canonical_name", "provider", "namespace", "role",
+  "formula_parameter", "owner_type", "owner_name", "quantity", "scale_role",
+  "parent_quantity_id", "arguments",
+  "term", "component", "display_label",
+  "fitted_scale", "display_scale", "status", "fixed_value", "internal",
+  "source_type", "support", "definedness", "label_parts", "extraction_key"
+)
+.bt_parameter_catalog_alias_columns <- c(
+  "alias", "quantity_id", "namespace", "component", "simplified", "label_parts"
+)
+
+#' Semantic parameter catalogs and deferred draw extraction
+#'
+#' @description
+#' `parameter_catalog()` returns the semantic quantities and aliases from the
+#' fitted object's versioned [parameter_map()]. The catalog contains only
+#' metadata: selectable quantities, exact aliases, and serializable extraction
+#' keys. Square brackets after a factor term always hold a level label, never a
+#' coordinate position. Fixed factor terms, including ordinary factor priors
+#' whose levels are labelled `1, ..., K`, expose every level or interaction cell
+#' as a quantity named `<parameter>[<level>]`, so `term[level]`,
+#' `<parameter>[level]`, and `term` plus `component = "level"` all select the
+#' level with that label. Treatment and independent cells and the first ordered
+#' coordinate are structurally the fitted coordinate; reference cells are
+#' structural zeroes; and the remaining cells are reconstructed from the
+#' persisted term-only design matrix. A coordinate that is not a level cell (a
+#' mean-difference or orthonormal coefficient, or a later ordered increment) is
+#' coefficient `j` of the contrast coding, named `<parameter>{j}` and displayed
+#' as `term{j}`. The level names of transformed summaries,
+#' `<parameter>[dif: level]`, and the row labels those summaries display,
+#' `(formula) term[dif: level]` and `term[dif: level]`, are aliases of the
+#' level quantity. JAGS
+#' coordinate names such as `mu_g[1]` remain backend columns, used by
+#' [JAGS_materialize_draws()], and do not select factor quantities. Ordinary
+#' level labels remain unchanged; syntax-sensitive characters (including curly
+#' braces) are percent-escaped and ambiguous interaction tokens are quoted so
+#' that every component remains hypothesis-safe and injective. These are
+#' coefficient-level quantities, distinct from estimated marginal means based
+#' on full predictions.
+#' Continuous coefficients retain their ordinary, canonical and fitted backend
+#' selectors; their backend names are not factor-level labels, so selectors such
+#' as `x[mu_x]` and `intercept[mu_intercept]` are unavailable. Parameter-map
+#' schema 10 requires refitting older maps rather than retaining their aliases.
+#' [parameter_coordinates()] is the linked concrete posterior-coordinate view;
+#' the catalog is the semantic view of the same fitted map. Random-effect
+#' canonical names follow `(formula) owner: quantity(arguments)`, with `owner: `
+#' omitted for a bare or unnamed one-entry random formula, retained for an
+#' explicitly named one-entry list, and required when multiple blocks need
+#' disambiguation. Parentheses contain parameter or
+#' coefficient names, while square brackets inside an argument contain its
+#' factor or index level. Examples include `(mu) study: sd(intercept)`,
+#' `(mu) study: cor(group[sensitivity],group[specificity])`, and
+#' `(mu) var_prop(study)`. Formula-prefix omission is accepted as
+#' an alias. Additional aliases are limited to genuine semantic equivalences,
+#' such as a CS/HCS pairwise correlation referring to its shared `cor`.
+#' Random-effect quantities also carry centrally generated simplified aliases.
+#' These remove a sole intercept argument and may omit a redundant owner, but
+#' are considered by resolvers only when `simplify_names = TRUE`.
+#' For a log-intercept formula, `exp(intercept)` is an alias of the fitted
+#' coefficient quantity. Selecting that alias does not itself unscale the
+#' coefficient. RoBMA's `standardized_coefficients` setting selects the display
+#' scale independently of the alias.
+#'
+#' Identity random-effect summaries reuse their sampled or structural
+#' coordinate. Summaries requiring a scale or covariance transformation expose
+#' only the transformed quantity; their fitted-scale inputs and all other
+#' private implementation coordinates remain dependencies rather than public
+#' catalog rows. Raw estimates tables
+#' (`JAGS_estimates_table(random_effects_summary = "raw")`) show these backend
+#' coordinates for inspection; their row labels are not catalog aliases.
+#' Each random extraction key records whether its source mapping
+#' is an identity, one-to-one transform, or composite, together with the source
+#' coordinate, prior, and transform when those are defined.
+#' Constructing or resolving the catalog never accesses posterior draws.
+#'
+#' `parameter_catalog_extend()` adds plain-data quantities and aliases owned by
+#' another provider; the `"BayesTools"` provider name is reserved for native
+#' quantities. `parameter_catalog_resolve()` applies optional namespace
+#' and component filters and returns a versioned selection only when the match
+#' is unique. Otherwise it stops with an error of class
+#' `BayesTools_parameter_not_found` or `BayesTools_parameter_ambiguous` (both
+#' also `BayesTools_parameter_resolution_error`). A contrast-coefficient
+#' selector `term{j}` whose coordinate is a level (the coordinates of treatment
+#' and independent contrasts and the first ordered coordinate have no
+#' coefficient quantity) stops with class `BayesTools_selector_unavailable`
+#' (also `BayesTools_hypothesis_target` and
+#' `BayesTools_parameter_resolution_error`), whose message and field `level`
+#' name the level in the same form, e.g. `g[10]` for `g{1}` of a treatment
+#' factor with levels 5, 10, and 20.
+#'
+#' `parameter_draws()` is the deferred extraction boundary. The BayesTools fit
+#' method reads only the coordinates declared by the selected
+#' extraction key; a quantity whose source coordinates were not monitored
+#' (catalog status `"unavailable"`) stops with an error of class
+#' `BayesTools_refit_monitoring` (also `BayesTools_refit_required`).
+#' Downstream packages can provide methods for package-owned
+#' derived quantities. For gated total-variance allocations, realized
+#' `sd_total` and `var_total` draws include the all-off zero branch.
+#' `var_prop(...)` draws are normalized over active components and are `NA` on
+#' draws where the realized allocation total is zero. Original-scale
+#' random-effect correlations (`cor(...)` of LKJ blocks) are `NA` on draws
+#' where the correlation is undefined, i.e. where one of its SDs is zero.
+#' Each catalog quantity declares its `definedness` (`"always"`, or the reason
+#' of possibly undefined draws: `"correlation"`, or `"allocation_active"` for
+#' the variance shares of gated total-variance allocations) and its exact
+#' `support` from the prior provenance of its source coordinates (`NULL` when
+#' it is not derivable). The `mcmc.list` returned by `parameter_draws()`
+#' carries these as draw metadata ([posterior_metadata()]): `support`, keyed by
+#' canonical name, and `undefined_draws`, a character vector named by the
+#' canonical names of the possibly undefined quantities with their reasons.
+#' Summaries such as [ensemble_estimates_table()] accept missing draws only for
+#' columns carrying this declaration: callers that extract a numeric vector
+#' keep it by copying the element with
+#' `posterior_metadata(x, "undefined_draws") <- `.
+#'
+#' `parameter_prior_density()` constructs a deterministic
+#' `prior_linear_density` for supported map-defined quantities: fitted
+#' coordinates and factor levels (the weighted sum of their fitted
+#' coordinates under the fitted prior, whose `multiply_by` scales enter only
+#' the linear predictor; structural levels are point masses at their fixed
+#' value), one-to-one transformations, Dirichlet allocation marginals, and
+#' allocation-derived component SDs. Variance proportions are conditional on
+#' positive allocation variance. A shared parent inclusion gate cancels from
+#' that conditional law, leaving the Dirichlet marginal
+#' `Beta(alpha_i, sum(alpha) - alpha_i)`. Independently gated components keep the mixed measure
+#' over the realized active set: atoms at 0 and 1, and a Beta mixture over
+#' nonempty sets of other active components. It returns
+#' `NULL` when the fitted map does
+#' not declare a supported deterministic prior composition; for fitted
+#' coordinates and factor levels, only when no fitted prior owns their
+#' coordinates (an owning prior-list entry that is not a BayesTools prior
+#' stops). The density records
+#' the source prior and transform it was built from, so its heights and region
+#' probabilities are evaluated on that prior's structural route (bounded-logit
+#' correlations on the refined numerical grid). Allocated SDs are the scale
+#' prior T times an independent multiplier of the fitted model, whose
+#' Dirichlet weights w span all components of the allocation: a component
+#' SD is T sqrt(k w_i) (k the number of components of a mean-variance
+#' allocation, 1 otherwise) while the gates of its allocation chain are on and
+#' 0 otherwise, and an allocation total (`sd_total`, `var_total`) is
+#' T sqrt(sum of w over the active components), 0 without an active
+#' component and T with all of them, times the allocation chain of its parents
+#' (their gates and Dirichlet shares) for a nested allocation. Their densities
+#' (and those of the variances) are exact: the atoms at zero, and the
+#' continuous parts as mixtures over the gate configurations of the scale prior
+#' and of the one-dimensional integrals over the Beta share margins (e.g., the
+#' total of an ungated allocation that splits the component of a gate-only
+#' allocation is the scale prior times the gate). SD
+#' components and totals of nested allocations with two or more allocation
+#' shares are products of density grids without such provenance, returned for
+#' plotting only (heights, region probabilities and point hypotheses are
+#' unavailable, and their ordinates name the reason). The SD of a gate-only
+#' allocation (one term with an inclusion gate) is the scale prior times its
+#' gate, and an inclusion indicator (of an allocation gate, or
+#' `inclusion(...)` of a component of a spike-and-slab or mixture SD prior) has
+#' the Bernoulli prior of its marginal inclusion probability (points at 0 and
+#' 1; the prior weight of the component, or the expected inclusion probability
+#' of a spike-and-slab prior) and the exact support \{0, 1\}.
+#' A pairwise correlation of an unstructured random-effect block with K
+#' columns and an LKJ(eta) prior has the exact LKJ marginal: `2 B - 1` with
+#' `B ~ Beta(eta - 1 + K/2, eta - 1 + K/2)` \insertCite{lewandowski2009generating}{BayesTools}.
+#' This is its prior on the fitted scale, also when the SDs of the block have
+#' inclusion gates or point masses (the correlation matrix is a priori
+#' independent of them), and on the original scale of scaled predictors when
+#' each coefficient of the pair is one rescaled fitted coefficient (e.g. two
+#' scaled slopes; the correlation is then the fitted one wherever both SDs are
+#' positive). An original-scale correlation that mixes fitted coefficients,
+#' such as that of the intercept and a slope of a centred predictor, combines
+#' the correlation with the SDs and returns `NULL`.
+#'
+#' `parameter_transform()` returns the one-to-one map from the selected source
+#' coordinate to its public semantic quantity when that map exists. Composite
+#' quantities return `NULL`. The forward, inverse, and Jacobian helpers are the
+#' authoritative evaluators for these serializable descriptors, so downstream
+#' consumers do not need to reproduce backend correlation, allocation, or
+#' formula-scale transformations.
+#'
+#' @param object fitted object.
+#' @param catalog a `BayesTools_parameter_catalog` object.
+#' @param quantities quantity rows matching the quantity schema.
+#' @param aliases alias rows matching the alias schema.
+#' @param provider scalar provider name owning every added quantity.
+#' @param alias scalar exact canonical name or alias.
+#' @param namespace optional exact namespace filter.
+#' @param component optional exact component filter.
+#' @param simplify_names whether to accept centrally generated simplified
+#'   random-effect aliases. Defaults to `FALSE`.
+#' @param selection a `BayesTools_parameter_selection` returned by
+#'   `parameter_catalog_resolve()`.
+#' @param model_samples optional numeric matrix containing the declared fitted
+#'   source coordinates. This lets downstream summaries evaluate a selected semantic
+#'   quantity on an already materialized posterior sample.
+#'   A single \code{coda::mcmc} matrix retains its recorded sampling timing;
+#'   plain matrices use the default timing.
+#'   Ordered quantities also require the total, Gamma allocation and component
+#'   indicator sources listed by [JAGS_ordered_parameter_spec()] in each term's
+#'   \code{source_coordinates}; increment-only columns do not establish their
+#'   semantic values or structural measure. Include those primitive sources, or
+#'   omit \code{model_samples} to read the complete fitted draws. Missing supplied
+#'   ordered sources raise \code{BayesTools_ordered_coordinates_unavailable}.
+#' @param transform a serializable transform descriptor returned by
+#'   `parameter_transform()`.
+#' @param n_grid number of grid points used for deterministic induced prior
+#'   densities.
+#' @param tail_prob probability omitted from each continuous source-prior tail
+#'   when constructing a finite numerical grid.
+#' @param values numeric values on the source scale for
+#'   `parameter_transform_forward()` and `parameter_transform_jacobian()`, or
+#'   on the public quantity scale for `parameter_transform_inverse()`.
+#' @param ... arguments for methods.
+#'
+#' @return `parameter_catalog()` and `parameter_catalog_extend()` return a
+#' `BayesTools_parameter_catalog`. `parameter_catalog_schema()` returns schema
+#' descriptions. `parameter_catalog_resolve()` returns a
+#' `BayesTools_parameter_selection`. `parameter_draws()` returns a
+#' `coda::mcmc.list` for BayesTools-owned quantities.
+#' `parameter_prior_density()` returns a `prior_linear_density` or `NULL`.
+#' `parameter_transform()` returns a serializable transform descriptor or
+#' `NULL`; the transform helpers return numeric values.
+#'
+#' @references
+#' \insertAllCited{}
+#'
+#' @export parameter_catalog
+#' @export parameter_catalog_schema
+#' @export parameter_catalog_extend
+#' @export parameter_catalog_resolve
+#' @export parameter_draws
+#' @export parameter_prior_density
+#' @export parameter_transform
+#' @export parameter_transform_forward
+#' @export parameter_transform_inverse
+#' @export parameter_transform_jacobian
+#' @name parameter_catalog
+NULL
+
+#' @rdname parameter_catalog
+parameter_catalog <- function(object, ...){
+
+  UseMethod("parameter_catalog")
+}
+
+#' @rdname parameter_catalog
+#' @exportS3Method parameter_catalog BayesTools_fit
+parameter_catalog.BayesTools_fit <- function(object, ...){
+
+  JAGS_validate_fit_contract(object, requires = "parameter_map")
+  .bt_parameter_map_catalog(parameter_map(object))
+}
+
+#' @rdname parameter_catalog
+parameter_catalog_schema <- function(){
+
+  quantities <- data.frame(
+    field = .bt_parameter_catalog_quantity_columns,
+    type = c(
+      rep("character", 11L), "list", rep("character", 6L),
+      "numeric", "logical", "character", "list", "character", "list", "list"
+    ),
+    description = c(
+      "Stable provider-namespaced quantity identifier.",
+      "Exact canonical semantic name.",
+      "Package or subsystem owning extraction.",
+      "Exact resolver namespace.",
+      "Semantic role.",
+      "Owning formula output parameter, or an empty string.",
+      "Semantic owner type, such as random_block or variance_allocation, or an empty string.",
+      "Stable semantic owner name, or an empty string.",
+      "Semantic quantity such as sd, cor, var_prop, var_mult, or sd_mult, or an empty string.",
+      "Allocation scale role: total, common, or an empty string.",
+      "Owning aggregate quantity identifier for a nested quantity, or an empty string.",
+      "Ordered semantic parameter arguments; factor/index levels use square brackets inside each argument.",
+      "Formula term or semantic subterm, or an empty string.",
+      "Quantity component, or an empty string.",
+      "Unambiguous default display label.",
+      "Scale of stored dependency coordinates.",
+      "Scale of the selected quantity.",
+      "One of sampled, structural, derived, or unavailable.",
+      "Exact structural value; otherwise NA.",
+      "Whether the quantity is private implementation metadata.",
+      "Relationship to concrete source coordinates: identity, one_to_one_transform, composite, or none.",
+      "Exact support of the quantity from the prior provenance of its source coordinates (a posterior_support_attribute() object), or NULL when it is not derivable.",
+      "Draws where the quantity is defined: 'always', or the reason of possibly undefined (NA) draws ('correlation': an SD is zero; 'allocation_active': no allocation component is active).",
+      "Structured label parts from which parameter_labels() renders the selector, table, plot, and warning labels of the quantity (NULL for extension quantities described by their display label only).",
+      "Serializable plain-data extraction recipe."
+    ),
+    stringsAsFactors = FALSE
+  )
+  aliases <- data.frame(
+    field = .bt_parameter_catalog_alias_columns,
+    type = c(rep("character", 4L), "logical", "list"),
+    description = c(
+      "Exact accepted alias.",
+      "Quantity identifier targeted by the alias.",
+      "Exact resolver namespace.",
+      "Optional component filter, or an empty string.",
+      "Whether the alias requires 'simplify_names = TRUE'.",
+      paste0(
+        "Label parts from which parameter_labels(style = \"table\") renders the ",
+        "alias (a random-effect alias under a caller 'vocabulary'); NULL for ",
+        "extension aliases without them."
+      )
+    ),
+    stringsAsFactors = FALSE
+  )
+  list(
+    schema_version = .bt_parameter_map_version,
+    quantities = quantities,
+    aliases = aliases
+  )
+}
+
+#' @rdname parameter_catalog
+parameter_catalog_extend <- function(catalog, quantities, aliases,
+                                     provider){
+
+  .bt_validate_parameter_catalog(catalog)
+  check_char(provider, "provider", check_length = 1L, allow_NA = FALSE)
+  if(is.data.frame(aliases) && !"label_parts" %in% names(aliases)){
+    # extension aliases without label parts
+    aliases$label_parts <- I(rep(list(NULL), nrow(aliases)))
+  }
+  if(!grepl("^[A-Za-z][A-Za-z0-9.]*$", provider)){
+    stop("'provider' must start with a letter and contain only letters, numbers, and dots.",
+         call. = FALSE)
+  }
+  if(identical(provider, "BayesTools")){
+    stop("'BayesTools' is reserved for quantities created by BayesTools.",
+         call. = FALSE)
+  }
+  .bt_validate_parameter_catalog_tables(
+    quantities,
+    aliases,
+    known_quantity_ids = c(
+      catalog$quantities$quantity_id,
+      quantities$quantity_id
+    ),
+    memo = NULL
+  )
+  if(nrow(quantities) == 0L && nrow(aliases) == 0L){
+    stop("At least one extension quantity or alias must be supplied.",
+         call. = FALSE)
+  }
+  if(any(quantities$provider != provider)){
+    stop("Every extension quantity must be owned by 'provider'.", call. = FALSE)
+  }
+  provider_prefix <- paste0(provider, "::")
+  if(any(!startsWith(quantities$quantity_id, provider_prefix))){
+    stop("Every extension 'quantity_id' must start with the provider namespace '",
+         provider_prefix, "'.", call. = FALSE)
+  }
+  collisions <- intersect(
+    catalog$quantities$quantity_id,
+    quantities$quantity_id
+  )
+  if(length(collisions) > 0L){
+    stop(
+      "Extension quantity IDs already exist: ",
+      paste0("'", collisions, "'", collapse = ", "),
+      ".",
+      call. = FALSE
+    )
+  }
+
+  out <- catalog
+  out$quantities <- rbind(out$quantities, quantities)
+  out$aliases <- rbind(out$aliases, aliases)
+  rownames(out$quantities) <- NULL
+  rownames(out$aliases) <- NULL
+  .bt_validate_parameter_catalog(out)
+  out
+}
+
+#' @rdname parameter_catalog
+parameter_catalog_resolve <- function(catalog, alias, namespace = NULL,
+                                      component = NULL,
+                                      simplify_names = FALSE){
+
+  .bt_validate_parameter_catalog(catalog)
+  check_char(alias, "alias", check_length = 1L, allow_NA = FALSE)
+  check_char(namespace, "namespace", check_length = 1L, allow_NULL = TRUE,
+             allow_NA = FALSE)
+  check_char(component, "component", check_length = 1L, allow_NULL = TRUE,
+             allow_NA = FALSE)
+  check_bool(simplify_names, "simplify_names", allow_NA = FALSE)
+
+  quantities <- catalog$quantities
+  public <- !quantities$internal
+  canonical_rows <- public & quantities$canonical_name == alias
+  if(!is.null(namespace)){
+    canonical_rows <- canonical_rows & quantities$namespace == namespace
+  }
+  if(!is.null(component)){
+    canonical_rows <- canonical_rows & quantities$component == component
+  }
+  canonical_ids <- quantities$quantity_id[canonical_rows]
+  alias_rows <- catalog$aliases$alias == alias &
+    (!catalog$aliases$simplified | simplify_names)
+  if(!is.null(namespace)){
+    alias_rows <- alias_rows & catalog$aliases$namespace == namespace
+  }
+  if(!is.null(component)){
+    alias_rows <- alias_rows & catalog$aliases$component == component
+  }
+  candidate_ids <- unique(c(
+    canonical_ids,
+    catalog$aliases$quantity_id[alias_rows]
+  ))
+  candidates <- quantities[
+    quantities$quantity_id %in% candidate_ids & public,
+    ,
+    drop = FALSE
+  ]
+
+  # every refused contrast-coefficient selector contains `{`
+  if(nrow(candidates) == 0L && grepl("{", alias, fixed = TRUE)){
+    refused <- .bt_parameter_catalog_level_coefficient_selectors(catalog)
+    refused <- refused[
+      refused$selector == alias &
+        (is.null(namespace) | refused$namespace %in% namespace),
+      ,
+      drop = FALSE
+    ]
+    if(nrow(refused) > 0L){
+      .bt_parameter_catalog_selector_unavailable_stop(refused)
+    }
+  }
+  if(nrow(candidates) == 0L){
+    available <- sort(unique(c(
+      quantities$canonical_name[public],
+      catalog$aliases$alias[
+        catalog$aliases$quantity_id %in% quantities$quantity_id[public] &
+          (!catalog$aliases$simplified | simplify_names)
+      ]
+    )))
+    .bt_parameter_catalog_stop(
+      class = "BayesTools_parameter_not_found",
+      message = paste0("No public parameter quantity matches '", alias, "'."),
+      alias = alias,
+      available = available
+    )
+  }
+  if(nrow(candidates) > 1L){
+    candidates <- candidates[order(candidates$quantity_id), , drop = FALSE]
+    .bt_parameter_catalog_stop(
+      class = "BayesTools_parameter_ambiguous",
+      message = paste0(
+        "Parameter alias '", alias, "' is ambiguous; use 'namespace' or ",
+        "'component' to select one quantity."
+      ),
+      alias = alias,
+      candidates = candidates
+    )
+  }
+
+  out <- list(
+    schema_version = .bt_parameter_selection_version,
+    parameter_map_version = catalog$schema_version,
+    quantity_id = candidates$quantity_id,
+    quantities = candidates
+  )
+  class(out) <- c("BayesTools_parameter_selection", "list")
+  .bt_validate_parameter_selection(out)
+  out
+}
+
+#' @rdname parameter_catalog
+parameter_draws <- function(object, selection, ...){
+
+  UseMethod("parameter_draws")
+}
+
+#' @rdname parameter_catalog
+parameter_prior_density <- function(object, selection, ...){
+
+  UseMethod("parameter_prior_density")
+}
+
+#' @rdname parameter_catalog
+#' @exportS3Method parameter_draws BayesTools_fit
+parameter_draws.BayesTools_fit <- function(object, selection,
+                                            model_samples = NULL, ...){
+
+  catalog <- parameter_catalog(object)
+  .bt_validate_parameter_selection(selection, catalog = catalog)
+  quantities <- selection$quantities
+
+  .bt_parameter_draws_from_quantities(
+    object        = object,
+    quantities    = quantities,
+    model_samples = model_samples
+  )
+}
+
+# Draws of catalog quantities with the catalog's draw metadata: the exact
+# supports of the quantities, keyed by canonical name, and the quantities
+# whose draws may be undefined (NA) with the reason of their definedness.
+.bt_parameter_draws_from_quantities <- function(
+    object, quantities, model_samples = NULL){
+
+  draws <- .bt_parameter_draws_values(object, quantities, model_samples)
+  transformed_source <- !is.null(model_samples) &&
+    (length(.bt_draws_output_transformations(model_samples))>0L || isTRUE(.bt_meta_get(model_samples,"transform_scaled")))
+  for(i in seq_len(nrow(quantities))){
+    if(transformed_source){
+      .bt_ordered_quantity_plan(object,quantities[i,,drop=FALSE])
+      next
+    }
+    projection <- .bt_ordered_quantity_projection(object,quantities[i,,drop=FALSE],
+      if(!is.null(model_samples)) as.matrix(model_samples))
+    if(is.null(projection)) next
+    flat <- as.matrix(draws)
+    if(nrow(flat)!=length(projection$values)) stop("Ordered quantity sources do not align with their draw rows.",call.=FALSE)
+    position <- 0L
+    for(chain in seq_along(draws)){
+      rows <- position + seq_len(nrow(draws[[chain]]))
+      if(length(rows)) draws[[chain]][,i] <- projection$values[rows]
+      position <- position + length(rows)
+    }
+  }
+  supports <- stats::setNames(quantities$support, quantities$canonical_name)
+  supports <- supports[!vapply(supports, is.null, logical(1))]
+  if(length(supports) > 0L){
+    draws <- .bt_meta_set(draws, "support", unclass(supports))
+  }
+  undefined <- quantities$definedness != "always"
+  if(any(undefined)){
+    draws <- .bt_meta_set(draws, "undefined_draws", stats::setNames(
+      quantities$definedness[undefined],
+      quantities$canonical_name[undefined]
+    ))
+  }
+  draws
+}
+
+.bt_parameter_draws_values <- function(object, quantities, model_samples = NULL){
+
+  if(any(quantities$provider != "BayesTools")){
+    stop(
+      "The selection contains quantities owned by another provider; use that provider's 'parameter_draws()' method.",
+      call. = FALSE
+    )
+  }
+  unavailable <- quantities$status == "unavailable"
+  if(any(unavailable)){
+    .bt_stop_refit_required(
+      "The parameter quantity '", quantities$canonical_name[unavailable][[1L]],
+      "' is unavailable in this fit: its source coordinates are not part of ",
+      "the posterior draws. Refit the model with those coordinates monitored.",
+      class = "BayesTools_refit_monitoring"
+    )
+  }
+
+  ordinary <- vapply(
+    quantities$extraction_key,
+    function(key) identical(key$type, "coordinate"),
+    logical(1)
+  )
+  if(all(ordinary)){
+    if(!is.null(model_samples)){
+      dependencies <- vapply(
+        quantities$extraction_key,
+        function(key) key$dependencies[[1L]],
+        character(1)
+      )
+      out <- .bt_parameter_draw_supplied_dependencies(
+        model_samples,
+        dependencies
+      )
+      out <- lapply(out, function(chain){
+        values <- as.matrix(chain)
+        colnames(values) <- quantities$canonical_name
+        mcpar <- attr(chain, "mcpar", exact = TRUE)
+        coda::mcmc(values, start = mcpar[1L], end = mcpar[2L], thin = mcpar[3L])
+      })
+      return(coda::mcmc.list(out))
+    }
+    return(JAGS_materialize_draws(
+      object,
+      parameters = quantities$canonical_name,
+      include_internal = FALSE
+    ))
+  }
+  if(nrow(quantities) != 1L){
+    stop("Mixed or multiple derived selections are not supported in one extraction call.",
+         call. = FALSE)
+  }
+
+  key <- quantities$extraction_key[[1L]]
+  dependencies <- if(is.null(model_samples)){
+    .bt_parameter_draw_dependencies(object, key$dependencies)
+  }else{
+    .bt_parameter_draw_supplied_dependencies(
+      model_samples,
+      key$dependencies
+    )
+  }
+  out <- vector("list", length(dependencies))
+  for(chain_i in seq_along(dependencies)){
+    chain <- dependencies[[chain_i]]
+    model_samples <- if(identical(key$type, "factor_level") &&
+                        length(key$dependencies) == 0L){
+      matrix(
+        numeric(),
+        nrow = nrow(chain),
+        ncol = 0L,
+        dimnames = list(NULL, character())
+      )
+    }else{
+      as.matrix(chain)
+    }
+    values <- if(identical(key$type, "factor_level")){
+      .bt_parameter_draw_factor_level(key, model_samples)
+    }else{
+      .bt_parameter_draw_random_summary(
+        fit = object,
+        key = key,
+        model_samples = model_samples
+      )
+    }
+    values <- matrix(
+      as.numeric(values),
+      ncol = 1L,
+      dimnames = list(NULL, quantities$canonical_name)
+    )
+    mcpar <- attr(chain, "mcpar", exact = TRUE)
+    out[[chain_i]] <- coda::mcmc(
+      values,
+      start = mcpar[1L],
+      end = mcpar[2L],
+      thin = mcpar[3L]
+    )
+  }
+  coda::mcmc.list(out)
+}
+
+#' @rdname parameter_catalog
+#' @exportS3Method parameter_prior_density BayesTools_fit
+parameter_prior_density.BayesTools_fit <- function(
+    object, selection, n_grid = .prior_linear_density_default_grid(),
+    tail_prob = .prior_linear_density_tail_prob(), ...){
+
+  catalog <- parameter_catalog(object)
+  .bt_validate_parameter_selection(selection, catalog = catalog)
+  if(nrow(selection$quantities) != 1L){
+    stop("'selection' must contain exactly one parameter quantity.",
+         call. = FALSE)
+  }
+  check_int(n_grid, "n_grid", lower = 16)
+  check_real(tail_prob, "tail_prob", lower = 0, upper = 0.5,
+             allow_bound = FALSE)
+
+  .bt_parameter_prior_density_quantity(
+    object    = object,
+    selection = selection,
+    n_grid    = n_grid,
+    tail_prob = tail_prob
+  )
+}
+
+# The prior density of the one quantity of a validated selection. With
+# 'conditional', the density of a gated random-effect allocation quantity is
+# conditional on its inclusion event (parameter_mixed_posterior()): the
+# component's gates on for a component SD or variance, its own gate on for a
+# variance proportion, and any component active for an allocation total.
+.bt_parameter_prior_density_quantity <- function(object, selection, n_grid,
+                                                 tail_prob,
+                                                 conditional = FALSE){
+
+  quantity <- selection$quantities[1L, , drop = FALSE]
+  if(!identical(quantity$provider, "BayesTools")){
+    stop("The selected quantity is owned by another provider.",
+         call. = FALSE)
+  }
+  key <- quantity$extraction_key[[1L]]
+  if(key$type %in% c("coordinate", "factor_level")){
+    out <- .bt_parameter_prior_density_coordinates(
+      object = object,
+      quantity = quantity,
+      key = key,
+      n_grid = n_grid,
+      tail_prob = tail_prob
+    )
+    if(!is.null(out)){
+      attr(out, "parameter_prior_density") <- list(
+        quantity_id = quantity$quantity_id,
+        source = "fitted_parameter_map"
+      )
+    }
+    return(out)
+  }
+  if(!identical(key$type, "random_summary")){
+    return(NULL)
+  }
+
+  out <- if(key$evaluator %in% c("sd", "sd_variance") &&
+             (isTRUE(key$allocation_derived) ||
+                .bt_parameter_prior_density_gate_only_sd(object, key))){
+    .bt_parameter_prior_density_random_component_sd(
+      object = object,
+      key = key,
+      n_grid = n_grid,
+      tail_prob = tail_prob,
+      conditional = conditional,
+      square = identical(key$evaluator, "sd_variance")
+    )
+  }else if(identical(key$evaluator, "allocation_inclusion")){
+    .bt_parameter_prior_density_inclusion(
+      object = object,
+      key = key,
+      n_grid = n_grid,
+      tail_prob = tail_prob
+    )
+  }else if(identical(key$evaluator, "inclusion")){
+    .bt_parameter_prior_density_indicator(
+      object = object,
+      quantity = quantity,
+      key = key,
+      n_grid = n_grid,
+      tail_prob = tail_prob
+    )
+  }else if(identical(key$evaluator, "allocation")){
+    .bt_parameter_prior_density_allocation_quantity(
+      object = object,
+      selection = selection,
+      key = key,
+      n_grid = n_grid,
+      tail_prob = tail_prob,
+      conditional = conditional
+    )
+  }else if(key$evaluator %in% c("allocation_sd", "allocation_var") &&
+           identical(key$source_type, "composite")){
+    .bt_parameter_prior_density_allocation_total(
+      object = object,
+      key = key,
+      n_grid = n_grid,
+      tail_prob = tail_prob,
+      conditional = conditional
+    )
+  }else if(identical(key$evaluator, "correlation")){
+    .bt_parameter_prior_density_lkj_correlation(
+      object = object,
+      key = key,
+      n_grid = n_grid,
+      tail_prob = tail_prob
+    )
+  }else{
+    .bt_parameter_prior_density_direct_quantity(
+      object = object,
+      selection = selection,
+      key = key,
+      n_grid = n_grid,
+      tail_prob = tail_prob
+    )
+  }
+  if(!is.null(out)){
+    attr(out, "parameter_prior_density") <- c(
+      list(
+        quantity_id = quantity$quantity_id,
+        source = "fitted_parameter_map"
+      ),
+      if(isTRUE(conditional)) list(conditional = "inclusion")
+    )
+  }
+  out
+}
+
+# Prior density of a fitted coordinate or a factor level, the weighted sum
+# sum_j w_j beta_j of its fitted coordinates: the prior-density context of
+# the priors owning those coordinates (a coefficient's 'multiply_by' scales
+# only its linear-predictor contribution, not the coefficient) evaluated at
+# the level's weights. Structural quantities are their fixed value. NULL only
+# when no fitted prior owns the coordinates; an owner that is not a BayesTools
+# prior (or a list of them) stops, and failures to build the prior-density
+# context propagate.
+.bt_parameter_prior_density_coordinates <- function(object, quantity, key,
+                                                    n_grid, tail_prob){
+
+  dependencies <- key$dependencies
+  if(length(dependencies) == 0L || identical(quantity$status, "structural")){
+    fixed <- quantity$fixed_value
+    if(!is.numeric(fixed) || length(fixed) != 1L || !is.finite(fixed)){
+      return(NULL)
+    }
+    return(.bt_parameter_prior_density_scalar(
+      prior("point", list(location = fixed)),
+      n_grid = n_grid,
+      tail_prob = tail_prob
+    ))
+  }
+  weights <- if(identical(key$type, "coordinate")){
+    rep(1, length(dependencies))
+  }else{
+    key$weights
+  }
+
+  prior_list <- .marginal_posterior_strip_multiply_by(
+    attr(object, "prior_list", exact = TRUE)
+  )
+  if(!is.list(prior_list) || length(prior_list) == 0L){
+    return(NULL)
+  }
+  owner_columns <- lapply(names(prior_list), function(parameter){
+    columns <- .prior_linear_prior_columns(parameter, prior_list[[parameter]])
+    if(any(dependencies %in% columns)) columns else NULL
+  })
+  names(owner_columns) <- names(prior_list)
+  owners <- names(owner_columns)[!vapply(owner_columns, is.null, logical(1))]
+  columns <- unlist(owner_columns[owners], use.names = FALSE)
+  if(length(owners) == 0L || !all(dependencies %in% columns)){
+    return(NULL)
+  }
+  unsupported <- owners[!vapply(
+    prior_list[owners], .bt_parameter_prior_density_is_prior, logical(1)
+  )]
+  if(length(unsupported) > 0L){
+    stop(
+      "The prior density of '", quantity$canonical_name, "' is unavailable: ",
+      "the prior distribution of '", unsupported[1L], "' is not a BayesTools prior.",
+      call. = FALSE
+    )
+  }
+
+  context <- .prior_density_build_context(
+    prior_list   = prior_list[owners],
+    column_names = columns,
+    n_grid       = n_grid,
+    tail_prob    = tail_prob
+  )
+  full_weights <- stats::setNames(numeric(length(columns)), columns)
+  full_weights[dependencies] <- weights
+  .prior_density_from_context(context, full_weights)
+}
+
+# Whether a prior-list entry is a BayesTools prior or a model list of them
+# (the prior-list entries a prior-density context accepts).
+.bt_parameter_prior_density_is_prior <- function(prior){
+
+  if(is.prior(prior)){
+    return(TRUE)
+  }
+  is.list(prior) && !is.object(prior) && length(prior) > 0L &&
+    all(vapply(prior, is.prior, logical(1)))
+}
+
+.bt_parameter_prior_density_direct_quantity <- function(
+    object, selection, key, n_grid, tail_prob){
+
+  if(!key$source_type %in% c("identity", "one_to_one_transform")){
+    return(NULL)
+  }
+  prior_list <- attr(object, "prior_list", exact = TRUE)
+  source_prior <- if(nzchar(key$source_prior) &&
+                     key$source_prior %in% names(prior_list)){
+    prior_list[[key$source_prior]]
+  }else{
+    NULL
+  }
+  if(is.null(source_prior) || !is.prior(source_prior) ||
+     .prior_linear_prior_dimension(source_prior) != 1L){
+    return(NULL)
+  }
+  transform <- .bt_parameter_transform_from_quantity(
+    object,
+    selection$quantities[1L, , drop = FALSE]
+  )
+  .bt_parameter_prior_density_transformed(
+    source_prior,
+    transform,
+    n_grid = n_grid,
+    tail_prob = tail_prob
+  )
+}
+
+# Prior density of a pairwise correlation of an LKJ(eta) block with K columns.
+# Every off-diagonal correlation r of an LKJ(eta) correlation matrix has the
+# marginal (r + 1) / 2 ~ Beta(eta - 1 + K / 2, eta - 1 + K / 2)
+# (Lewandowski, Kurowicka, and Joe, 2009): the first-row correlations are the
+# canonical partial correlations of the emitted primitives, whose shape is
+# eta + (K - 2) / 2, and the LKJ density is invariant under permutations of
+# the columns. The primitives are a priori independent of every SD, gate, and
+# allocation node, so the marginal is also the prior of the correlation given
+# any SD or gate state, e.g. given the SDs that define it. The quantity has
+# this density when it is the fitted-scale correlation, or +-1 times it: on
+# the fitted scale and, in a scaled block, when the original-scale
+# coefficients of the pair are each one rescaled fitted coefficient (e.g. two
+# scaled slopes, whose original-scale correlation is the fitted one wherever
+# both SDs are positive). A pair mixing several fitted coefficients (the
+# intercept and a slope of a centred predictor) combines the correlation with
+# the SDs and returns NULL.
+.bt_parameter_prior_density_lkj_correlation <- function(object, key, n_grid,
+                                                         tail_prob){
+
+  random_term <- .bt_parameter_catalog_find_random_term(object, key)
+  correlation <- random_term$correlation
+  K <- random_term$n_columns
+  eta <- correlation$eta
+  if(!is.list(correlation) || !identical(correlation$type, "lkj") ||
+     !is.numeric(K) || length(K) != 1L || is.na(K) || K < 2L ||
+     !is.numeric(eta) || length(eta) != 1L || !is.finite(eta) || eta <= 0 ||
+     !is.numeric(key$index) || length(key$index) != 1L ||
+     key$index > K * (K - 1L) / 2L){
+    return(NULL)
+  }
+  pair <- utils::combn(seq_len(K), 2L)[, key$index]
+  unscale <- .bt_parameter_prior_density_random_unscale_matrix(
+    object      = object,
+    random_term = random_term,
+    parameter   = key$formula_parameter
+  )
+  if(is.null(unscale)){
+    return(NULL)
+  }
+  sources <- lapply(pair, function(row) which(unscale[row, ] != 0))
+  if(any(lengths(sources) != 1L) || sources[[1L]] == sources[[2L]]){
+    return(NULL)
+  }
+
+  # the Beta margin is symmetric, so a sign flip of the pair keeps it
+  shape <- eta - 1 + K / 2
+  .bt_parameter_prior_density_transformed(
+    prior("beta", list(alpha = shape, beta = shape)),
+    list(type = "affine", offset = -1, scale = 2),
+    n_grid = n_grid,
+    tail_prob = tail_prob
+  )
+}
+
+# The map from the fitted-scale coefficients of a random-effect block to the
+# coefficients its summaries report, rows and columns in block column order:
+# the identity on the fitted scale, and the unscale matrix that
+# .apply_random_sd_column_unscale() applies to the covariance of a scaled
+# block. NULL when a scaled block has no column-wise map (fits without SD-leaf
+# metadata).
+.bt_parameter_prior_density_random_unscale_matrix <- function(object,
+                                                               random_term,
+                                                               parameter){
+
+  K <- random_term$n_columns
+  formula_scale <- attr(object, "formula_scale", exact = TRUE)
+  if(.bt_parameter_catalog_random_sd_is_direct(
+    random_term   = random_term,
+    parameter     = parameter,
+    formula_scale = formula_scale
+  )){
+    return(diag(K))
+  }
+  sd_names <- unique(random_term$sd_parameter_names)
+  sd_names <- sd_names[!is.na(sd_names)]
+  parameter_scale <- formula_scale[[parameter]]
+  groups <- .random_sd_column_unscale_groups(
+    random_sd_cols = sd_names,
+    formula_scale  = parameter_scale,
+    prefix         = parameter
+  )
+  if(is.null(groups) || length(groups) != 1L ||
+     length(groups[[1L]]$column_terms) != K){
+    return(NULL)
+  }
+
+  .build_unscale_matrix_by_names(
+    paste0(parameter, "_", groups[[1L]]$column_terms),
+    parameter_scale,
+    parameter,
+    require_closure = FALSE
+  )
+}
+
+.bt_parameter_prior_density_allocation_quantity <- function(
+    object, selection, key, n_grid, tail_prob, conditional = FALSE){
+
+  random_term <- if(nzchar(key$random_block)){
+    .bt_parameter_catalog_find_random_term(object, key)
+  }else{
+    NULL
+  }
+  allocation <- .bt_parameter_catalog_find_allocation(
+    object,
+    key,
+    random_term
+  )
+  prior_list <- attr(object, "prior_list", exact = TRUE)
+  source_prior <- prior_list[[allocation$weight_name]]
+  transform <- .bt_parameter_transform_from_quantity(
+    object,
+    selection$quantities[1L, , drop = FALSE]
+  )
+  if(is.null(transform)){
+    if(!identical(selection$quantities$quantity, "var_prop") ||
+       !identical(allocation$scale, "total_variance")){
+      return(NULL)
+    }
+    return(.bt_parameter_prior_density_gated_var_prop(
+      allocation = allocation,
+      source_prior = source_prior,
+      prior_list = prior_list,
+      index = key$index,
+      n_grid = n_grid,
+      tail_prob = tail_prob,
+      conditional = conditional
+    ))
+  }
+  index <- key$index
+  if(identical(selection$quantities$quantity, "sd_mult") &&
+     index > allocation$n_targets){
+    index <- index - allocation$n_targets
+  }
+  beta_prior <- .bt_parameter_prior_density_simplex_marginal(
+    source_prior,
+    index
+  )
+  if(is.null(beta_prior)){
+    return(NULL)
+  }
+  .bt_parameter_prior_density_transformed(
+    beta_prior,
+    transform,
+    n_grid = n_grid,
+    tail_prob = tail_prob
+  )
+}
+
+.bt_parameter_prior_density_gated_var_prop_free_gate_limit <- function(){
+  20L
+}
+
+# Prior probability that a scalar scale prior, or a finite mixture of such
+# priors (e.g. a model-averaged scale), is positive.
+.bt_parameter_prior_density_positive_probability <- function(prior_object){
+
+  if(is.null(prior_object) || !is.prior(prior_object)){
+    return(NA_real_)
+  }
+  if(is.prior.mixture(prior_object) || is.prior.spike_and_slab(prior_object)){
+    weights <- .prior_density_ordinate_mixture_weights(prior_object)
+    if(is.null(weights)){
+      return(NA_real_)
+    }
+    components <- vapply(seq_along(weights), function(i){
+      .bt_parameter_prior_density_positive_probability(prior_object[[i]])
+    }, numeric(1))
+    return(sum(weights * components))
+  }
+  if(!is.prior.simple(prior_object)){
+    return(NA_real_)
+  }
+  probability <- tryCatch(ccdf(prior_object, 0), error = function(e) NA_real_)
+  if(!is.numeric(probability) || length(probability) != 1L ||
+     !is.finite(probability)){
+    return(NA_real_)
+  }
+  as.numeric(probability)
+}
+
+# Prior inclusion probability of the allocation gate 'indicator_name'.
+.bt_parameter_prior_density_gate_probability <- function(prior_list,
+                                                         indicator_name){
+
+  gate_priors <- Filter(function(prior){
+    identical(attr(prior, "random_allocation_indicator", exact = TRUE),
+              indicator_name)
+  }, prior_list)
+  if(length(gate_priors) != 1L){
+    return(NA_real_)
+  }
+  .bt_parameter_prior_density_inclusion_probability(gate_priors[[1L]])
+}
+
+.bt_parameter_prior_density_inclusion_probability <- function(prior_object){
+
+  if(is.null(prior_object) || !is.prior(prior_object)){
+    return(NA_real_)
+  }
+  probability <- mean(prior_object)
+  if(!is.numeric(probability) || length(probability) != 1L ||
+     !is.finite(probability) || probability < 0 || probability > 1){
+    return(NA_real_)
+  }
+  probability
+}
+
+.bt_parameter_prior_density_allocation_parent_gate_probability <- function(
+    allocation, prior_list){
+
+  parent_factors <- allocation$parent_factors
+  if(!is.list(parent_factors) || length(parent_factors) == 0L){
+    return(1)
+  }
+
+  probability <- 1
+  for(parent in parent_factors){
+    if(is.null(parent$inclusion_name) || !nzchar(parent$inclusion_name)){
+      next
+    }
+    gate_priors <- Filter(function(prior){
+      identical(attr(prior, "random_allocation_indicator", exact = TRUE),
+                parent$inclusion_name)
+    }, prior_list)
+    if(length(gate_priors) != 1L){
+      return(NA_real_)
+    }
+    parent_probability <- .bt_parameter_prior_density_inclusion_probability(
+      gate_priors[[1L]]
+    )
+    if(!is.finite(parent_probability) || parent_probability <= 0){
+      return(parent_probability)
+    }
+    probability <- probability * parent_probability
+  }
+  probability
+}
+
+.bt_parameter_prior_density_allocation_component_probabilities <- function(
+    allocation, K){
+
+  probability <- rep(1, K)
+  inclusion <- allocation$inclusion
+  if(!is.list(inclusion) || length(inclusion) == 0L){
+    return(probability)
+  }
+
+  for(record in inclusion){
+    index <- record$index
+    if(!is.numeric(index) || length(index) != 1L || is.na(index) ||
+       index != as.integer(index) || index < 1L || index > K){
+      return(NULL)
+    }
+    component_probability <- .bt_parameter_prior_density_inclusion_probability(
+      record$prior
+    )
+    if(!is.finite(component_probability)){
+      return(NULL)
+    }
+    probability[[as.integer(index)]] <- component_probability
+  }
+  probability
+}
+
+.bt_parameter_prior_density_gated_var_prop <- function(
+    allocation, source_prior, prior_list, index, n_grid, tail_prob,
+    conditional = FALSE){
+
+  positive_scale <- .bt_parameter_prior_density_positive_probability(
+    allocation$source$prior
+  )
+  if(!is.finite(positive_scale) || positive_scale <= 0){
+    return(NULL)
+  }
+
+  parent_probability <- .bt_parameter_prior_density_allocation_parent_gate_probability(
+    allocation,
+    prior_list
+  )
+  if(!is.numeric(parent_probability) || length(parent_probability) != 1L ||
+     !is.finite(parent_probability) || parent_probability <= 0 ||
+     parent_probability > 1){
+    return(NULL)
+  }
+
+  if(!is.prior.simplex(source_prior) ||
+     !identical(source_prior$distribution, "dirichlet")){
+    return(NULL)
+  }
+  alpha <- source_prior$parameters$alpha
+  if(!is.numeric(alpha) || length(alpha) < 2L ||
+     any(!is.finite(alpha)) || any(alpha <= 0) ||
+     !is.numeric(index) || length(index) != 1L || is.na(index) ||
+     index != as.integer(index) || index < 1L || index > length(alpha)){
+    return(NULL)
+  }
+  index <- as.integer(index)
+  K <- length(alpha)
+  probability <- .bt_parameter_prior_density_allocation_component_probabilities(
+    allocation,
+    K
+  )
+  if(is.null(probability)){
+    return(NULL)
+  }
+  if(isTRUE(conditional)){
+    # conditional on the component's own gate: the proportion given that it
+    # is active (the atom at 0 of an inactive component drops out)
+    probability[[index]] <- 1
+  }
+
+  .bt_parameter_prior_density_gated_var_prop_mixture(
+    alpha = alpha,
+    index = index,
+    probability = probability,
+    n_grid = n_grid,
+    tail_prob = tail_prob
+  )
+}
+
+.bt_parameter_prior_density_gated_var_prop_mixture <- function(
+    alpha, index, probability, n_grid, tail_prob){
+
+  K <- length(alpha)
+  p_i <- probability[[index]]
+  others <- seq_len(K)[-index]
+  p_others <- probability[others]
+  alpha_i <- alpha[[index]]
+  alpha_others <- alpha[others]
+
+  p_all_off <- prod(1 - probability)
+  p_positive <- 1 - p_all_off
+  if(!is.finite(p_positive) || p_positive <= 0){
+    return(NULL)
+  }
+
+  always_off <- p_others <= 0
+  always_on <- p_others >= 1
+  free <- !always_off & !always_on
+  fixed_beta <- sum(alpha_others[always_on])
+  free_alpha <- alpha_others[free]
+  free_p <- p_others[free]
+  n_free <- length(free_p)
+  if(n_free > .bt_parameter_prior_density_gated_var_prop_free_gate_limit()){
+    stop(
+      "Independently gated variance-proportion prior density is unavailable for more than 20 free inclusion gates.",
+      call. = FALSE
+    )
+  }
+
+  p_others_all_off <- prod(1 - p_others)
+  p_atom0 <- (1 - p_i) * (1 - p_others_all_off) / p_positive
+  p_atom1 <- p_i * p_others_all_off / p_positive
+
+  mix_weight <- 1
+  mix_beta <- fixed_beta
+  if(n_free > 0L){
+    for(j in seq_len(n_free)){
+      mix_weight <- c(mix_weight * (1 - free_p[[j]]), mix_weight * free_p[[j]])
+      mix_beta <- c(mix_beta, mix_beta + free_alpha[[j]])
+    }
+  }
+
+  cont_keep <- mix_beta > 0
+  cont_weight <- (p_i / p_positive) * mix_weight[cont_keep]
+  cont_beta <- mix_beta[cont_keep]
+  if(length(cont_beta) > 0L){
+    key <- sprintf("%a", cont_beta)
+    unique_key <- unique(key)
+    grouped_beta <- cont_beta[match(unique_key, key)]
+    grouped_weight <- vapply(unique_key, function(k){
+      sum(cont_weight[key == k])
+    }, numeric(1), USE.NAMES = FALSE)
+  }else{
+    grouped_beta <- numeric()
+    grouped_weight <- numeric()
+  }
+
+  # The measure is one mixture prior (atoms at 0 and 1 and Beta components),
+  # so its density carries the deterministic provenance of that prior.
+  components <- list()
+  if(p_atom0 > 0){
+    components[[length(components) + 1L]] <- prior(
+      "point", list(location = 0), prior_weights = p_atom0
+    )
+  }
+  if(p_atom1 > 0){
+    components[[length(components) + 1L]] <- prior(
+      "point", list(location = 1), prior_weights = p_atom1
+    )
+  }
+  for(j in seq_along(grouped_beta)){
+    if(grouped_weight[[j]] > 0){
+      components[[length(components) + 1L]] <- prior(
+        "beta",
+        list(alpha = alpha_i, beta = grouped_beta[[j]]),
+        prior_weights = grouped_weight[[j]]
+      )
+    }
+  }
+  if(length(components) == 0L){
+    return(NULL)
+  }
+  measure <- if(length(components) == 1L){
+    components[[1L]]
+  }else{
+    prior_mixture(
+      components,
+      is_null = vapply(components, is.prior.point, logical(1))
+    )
+  }
+  .bt_parameter_prior_density_scalar(
+    measure,
+    n_grid = n_grid,
+    tail_prob = tail_prob
+  )
+}
+
+# The allocation chain of an allocation-derived component SD: its
+# allocation, the scalar source prior, and the factors (Dirichlet weight,
+# index, scale and optional inclusion gate) from the root allocation to the
+# component. NULL when the component SD is not a direct allocation product.
+.bt_parameter_prior_density_component_chain <- function(object, key){
+
+  random_term <- .bt_parameter_catalog_find_random_term(object, key)
+  if(!.bt_parameter_catalog_random_sd_is_direct(
+    random_term = random_term,
+    parameter = key$formula_parameter,
+    formula_scale = attr(object, "formula_scale", exact = TRUE)
+  )){
+    return(NULL)
+  }
+  binding <- random_term$sd_binding
+  if(is.null(binding) || !isTRUE(binding$true_allocation) ||
+     length(binding$allocations) != 1L ||
+     !is.numeric(key$index) || length(key$index) != 1L ||
+     is.na(key$index)){
+    return(NULL)
+  }
+  allocation <- binding$allocations[[1L]]
+  target <- .bt_random_effect_allocation_target_metadata(allocation)
+  source <- allocation$source
+  source_prior <- source$prior
+  if(is.null(source_prior) || !is.prior(source_prior) ||
+     .prior_linear_prior_dimension(source_prior) != 1L){
+    return(NULL)
+  }
+  if(identical(target, "sd_component")){
+    leaf_index <- allocation$leaf_index_by_column
+    if(length(leaf_index) < key$index || is.na(leaf_index[[key$index]])){
+      return(NULL)
+    }
+    factors <- allocation$parent_factors
+    factors[[length(factors) + 1L]] <- list(
+      weight_name = allocation$weight_name,
+      index = leaf_index[[key$index]],
+      scale = allocation$scale,
+      n_targets = allocation$n_targets
+    )
+  }else if(identical(target, "block")){
+    factors <- allocation$factors
+  }else{
+    return(NULL)
+  }
+
+  list(allocation = allocation, source_prior = source_prior, factors = factors)
+}
+
+# The prior density of an allocation-derived component SD (or, with 'square',
+# its variance): the scale prior T times the multiplier of its allocation
+# chain (.prior_allocation_product_density()). The chain's gates are on with
+# probability p (the product of their inclusion probabilities; 1 under
+# 'conditional', the inclusion event), when the SD is T sqrt(k w_i), w_i ~
+# Beta(a_i, a_- - a_i) of the one Dirichlet factor (k = K for mean-variance,
+# 1 for total-variance allocations), or T for a chain of gates only; off it
+# is 0. A nested allocation, whose chain multiplies two or more Dirichlet
+# shares, has no structural route: its product grid is a plotting density,
+# refused for heights and point hypotheses with the reason recorded.
+.bt_parameter_prior_density_random_component_sd <- function(
+    object, key, n_grid, tail_prob, conditional = FALSE, square = FALSE){
+
+  chain <- .bt_parameter_prior_density_component_chain(object, key)
+  if(is.null(chain)){
+    return(NULL)
+  }
+  prior_list <- attr(object, "prior_list", exact = TRUE)
+  active_probability <- 1
+  for(factor in chain$factors){
+    if(!is.null(factor$inclusion_name) &&
+       is.character(factor$inclusion_name) &&
+       length(factor$inclusion_name) == 1L &&
+       !is.na(factor$inclusion_name) && nzchar(factor$inclusion_name)){
+      gate_probability <- .bt_parameter_prior_density_gate_probability(
+        prior_list,
+        factor$inclusion_name
+      )
+      if(!is.finite(gate_probability)){
+        return(NULL)
+      }
+      active_probability <- active_probability * gate_probability
+    }
+  }
+  # conditional on the inclusion event (every gate of the chain on), the
+  # gate atom drops out
+  if(isTRUE(conditional)){
+    active_probability <- 1
+  }
+  weighted <- Filter(function(factor) !is.null(factor$weight_name), chain$factors)
+  if(length(weighted) > 1L){
+    return(.bt_parameter_prior_density_nested_component_sd(
+      chain, prior_list, 1 - active_probability, n_grid, tail_prob, square
+    ))
+  }
+
+  multipliers <- list(.prior_allocation_point(0, 1 - active_probability))
+  if(length(weighted) == 0L){
+    multipliers[[2L]] <- .prior_allocation_point(1, active_probability)
+  }else{
+    share <- .bt_parameter_prior_density_factor_share(weighted[[1L]], prior_list)
+    if(is.null(share)){
+      return(NULL)
+    }
+    share$weight <- active_probability
+    multipliers[[2L]] <- share
+  }
+  .prior_allocation_product_density(
+    source_prior = chain$source_prior,
+    multipliers  = multipliers,
+    n_grid       = n_grid,
+    tail_prob    = tail_prob,
+    square       = square
+  )
+}
+
+# Whether a composite random-effect SD is scaled by gate-only allocations
+# (a single term with an inclusion gate and no weights): the SD is then the
+# scale prior times its gates, not an allocation-derived share.
+.bt_parameter_prior_density_gate_only_sd <- function(object, key){
+
+  if(!identical(key$type, "random_summary") ||
+     !identical(key$source_type, "composite") ||
+     !is.character(key$random_block) || !nzchar(key$random_block)){
+    return(FALSE)
+  }
+  random_term <- .bt_parameter_catalog_find_random_term(object, key)
+  allocations <- random_term$sd_binding$allocations
+  length(allocations) > 0L && all(vapply(allocations, function(allocation){
+    isTRUE(allocation$gate_only)
+  }, logical(1)))
+}
+
+# The prior of an allocation inclusion indicator: Bernoulli with the gate's
+# marginal inclusion probability (the mean of its probability prior), points
+# at 0 and 1.
+.bt_parameter_prior_density_inclusion <- function(object, key, n_grid,
+                                                  tail_prob){
+
+  .bt_parameter_prior_density_bernoulli(
+    probability = .bt_parameter_prior_density_gate_probability(
+      attr(object, "prior_list", exact = TRUE),
+      key$source_parameter
+    ),
+    n_grid      = n_grid,
+    tail_prob   = tail_prob
+  )
+}
+
+# Prior of the inclusion indicator of a component of a spike-and-slab or
+# mixture prior of a random-effect SD (the 'inclusion' random summary): the
+# Bernoulli on {0, 1} whose probability of 1 is the prior probability of the
+# component (the expected prior inclusion probability of a spike-and-slab
+# prior, whose inclusion probability may have its own prior).
+.bt_parameter_prior_density_indicator <- function(object, quantity, key,
+                                                  n_grid, tail_prob){
+
+  prior <- attr(object, "prior_list", exact = TRUE)[[key$source_prior]]
+  .bt_parameter_prior_density_bernoulli(
+    probability = .bt_prior_component_probability(prior, quantity$component),
+    n_grid      = n_grid,
+    tail_prob   = tail_prob
+  )
+}
+
+# The prior probability of the component 'component' (a label of the prior's
+# 'components' attribute) of a spike-and-slab or mixture prior; NA when it is
+# not defined.
+.bt_prior_component_probability <- function(prior, component){
+
+  if(!is.prior(prior) || !(is.prior.spike_and_slab(prior) || is.prior.mixture(prior))){
+    return(NA_real_)
+  }
+  components <- attr(prior, "components", exact = TRUE)
+  if(is.prior.spike_and_slab(prior)){
+    probability <- .bt_parameter_prior_density_inclusion_probability(
+      .get_spike_and_slab_inclusion(prior)
+    )
+    return(switch(
+      component,
+      "alternative" = probability,
+      "null"        = 1 - probability,
+      NA_real_
+    ))
+  }
+  weights <- attr(prior, "prior_weights", exact = TRUE)
+  if(!is.numeric(weights) || length(weights) != length(components) ||
+     any(!is.finite(weights)) || any(weights < 0) || sum(weights) <= 0 ||
+     !component %in% components){
+    return(NA_real_)
+  }
+  sum(weights[components == component]) / sum(weights)
+}
+
+# The Bernoulli prior density of an inclusion indicator with probability
+# 'probability' of 1 (points at 0 and 1); NULL when the probability is not
+# available.
+.bt_parameter_prior_density_bernoulli <- function(probability, n_grid, tail_prob){
+
+  if(!is.numeric(probability) || length(probability) != 1L ||
+     !is.finite(probability) || probability < 0 || probability > 1){
+    return(NULL)
+  }
+  components <- list()
+  if(probability < 1){
+    components[[length(components) + 1L]] <- prior(
+      "point", list(location = 0), prior_weights = 1 - probability
+    )
+  }
+  if(probability > 0){
+    components[[length(components) + 1L]] <- prior(
+      "point", list(location = 1), prior_weights = probability
+    )
+  }
+  measure <- if(length(components) == 1L){
+    components[[1L]]
+  }else{
+    prior_mixture(components, is_null = c(TRUE, FALSE))
+  }
+  .bt_parameter_prior_density_scalar(measure, n_grid = n_grid, tail_prob = tail_prob)
+}
+
+# The mapped share sqrt(k w_i) of one Dirichlet allocation factor: w_i ~
+# Beta(a_i, a_- - a_i), k = K for a mean-variance and 1 for a total-variance
+# allocation; NULL when the factor's weights or scale are not declared.
+.bt_parameter_prior_density_factor_share <- function(factor, prior_list){
+
+  beta_prior <- .bt_parameter_prior_density_simplex_marginal(
+    prior_list[[factor$weight_name]],
+    factor$index
+  )
+  if(is.null(beta_prior)){
+    return(NULL)
+  }
+  scale <- if(identical(factor$scale, "mean_variance")){
+    factor$n_targets
+  }else if(identical(factor$scale, "total_variance")){
+    1
+  }else{
+    return(NULL)
+  }
+  .prior_allocation_share(
+    alpha  = beta_prior$parameters$alpha,
+    beta   = beta_prior$parameters$beta,
+    scale  = as.numeric(scale),
+    weight = 1
+  )
+}
+
+# The density grid of the scale prior times a product of independent
+# square-root shares (each a .prior_allocation_share()): the numerical product
+# of the scale prior's density with the density of each sqrt(scale * S),
+# S ~ Beta(alpha, beta).
+.bt_parameter_prior_density_share_product_dist <- function(source_prior, shares,
+                                                           n_grid, tail_prob){
+
+  dist <- .bt_parameter_prior_density_scalar(
+    source_prior,
+    n_grid = n_grid,
+    tail_prob = tail_prob
+  )
+  for(share in shares){
+    factor_dist <- .bt_parameter_prior_density_transformed(
+      prior("beta", list(alpha = share$alpha, beta = share$beta)),
+      list(type = "sqrt_scale", scale = share$scale),
+      n_grid = n_grid,
+      tail_prob = tail_prob
+    )
+    dist <- .prior_linear_density_product(dist, factor_dist, n_grid = n_grid)
+  }
+  dist
+}
+
+# The plotting density of the scale prior times a mixture of share products:
+# 'terms' are lists with a probability 'weight' and the 'shares' of the term
+# (the scale prior alone without shares), and 'zero' is the probability of the
+# exact atom at zero. A product of two or more independent square-root shares
+# has no one-dimensional route, so its product of density grids is a plotting
+# density; the 'provenance_unavailable' attribute names 'what' as the reason,
+# which ordinates report and point hypotheses refuse with.
+.bt_parameter_prior_density_share_product_grid <- function(source_prior, terms,
+                                                           zero, n_grid,
+                                                           tail_prob, square,
+                                                           what){
+
+  positive <- Filter(function(term) term$weight > 0, terms)
+  terms <- if(length(positive) > 0L) positive else terms[1L]
+  dists <- lapply(terms, function(term){
+    .bt_parameter_prior_density_share_product_dist(
+      source_prior, term$shares, n_grid, tail_prob
+    )
+  })
+  dist <- dists[[1L]]
+  if(zero > 0 || length(dists) > 1L){
+    dx <- vapply(dists, .prior_linear_density_dx, numeric(1))
+    dx <- dx[is.finite(dx) & dx > 0]
+    dx <- if(length(dx) > 0L) min(dx) else 1 / max(n_grid - 1L, 1L)
+    dist <- .prior_linear_density_normalize(
+      .prior_linear_density_mix(
+        c(list(.prior_linear_density_point(0)), dists),
+        c(zero, vapply(terms, `[[`, numeric(1), "weight")),
+        dx = dx,
+        n_grid = n_grid
+      ),
+      warn = TRUE
+    )
+  }
+  if(isTRUE(square)){
+    dist <- .prior_linear_density_transform(dist, "exp_lin", list(a = 0, b = 2))
+  }
+  attr(dist, "provenance_unavailable") <- paste0(
+    "The prior density of ", what, " of a nested variance allocation ",
+    "(the scale prior times two or more independent allocation shares) has no ",
+    "structural route; its numerical product grid is used only for plotting."
+  )
+  dist
+}
+
+# Component SD of a nested allocation: the scale prior times two or more
+# independent square-root shares has no one-dimensional route; its product of
+# density grids (with the exact gate atom at zero) is a plotting density.
+.bt_parameter_prior_density_nested_component_sd <- function(chain, prior_list,
+                                                            zero, n_grid,
+                                                            tail_prob, square){
+
+  shares <- list()
+  for(factor in chain$factors){
+    if(is.null(factor$weight_name)){
+      next
+    }
+    share <- .bt_parameter_prior_density_factor_share(factor, prior_list)
+    if(is.null(share)){
+      return(NULL)
+    }
+    shares[[length(shares) + 1L]] <- share
+  }
+  .bt_parameter_prior_density_share_product_grid(
+    source_prior = chain$source_prior,
+    terms        = list(list(weight = 1 - zero, shares = shares)),
+    zero         = zero,
+    n_grid       = n_grid,
+    tail_prob    = tail_prob,
+    square       = square,
+    what         = "an SD component"
+  )
+}
+
+# The multiplier of the own components of an allocation's total: the scale
+# prior's factor sqrt(sum_{j in A} w_j) over the active component set A, as the
+# probability 'zero' of the empty set (total 0) and 'terms' of the nonempty
+# sets: the full set (the weights sum to one: no share; the total is the scale
+# prior) and each partial set, a share sqrt(W_A), W_A ~ Beta(a_A, a_- - a_A),
+# with the probabilities of the sets of equal Beta parameters merged. Component
+# inclusion gates of a total-variance allocation make A random; other scales
+# and allocations without gates have the full set only, and a gate-only
+# allocation is its gates (all on: the scale prior; else 0). With 'conditional'
+# the empty set drops out (renormalized over the nonempty sets). NULL when the
+# multiplier is not available from the declared priors.
+.bt_parameter_prior_density_allocation_own_multiplier <- function(
+    allocation, prior_list, conditional = FALSE){
+
+  if(isTRUE(allocation$gate_only)){
+    probability <- 1
+    for(record in allocation$inclusion){
+      gate_probability <- .bt_parameter_prior_density_inclusion_probability(record$prior)
+      if(!is.finite(gate_probability)){
+        return(NULL)
+      }
+      probability <- probability * gate_probability
+    }
+    if(isTRUE(conditional)){
+      if(probability <= 0){
+        return(NULL)
+      }
+      probability <- 1
+    }
+    return(list(
+      zero  = 1 - probability,
+      terms = list(list(weight = probability, shares = list()))
+    ))
+  }
+
+  K <- allocation$n_targets
+  probability <- if(identical(allocation$scale, "total_variance")){
+    .bt_parameter_prior_density_allocation_component_probabilities(allocation, K)
+  }else{
+    rep(1, K)
+  }
+  weight_prior <- prior_list[[allocation$weight_name]]
+  if(is.null(probability) || !is.prior.simplex(weight_prior) ||
+     !identical(weight_prior$distribution, "dirichlet") ||
+     length(weight_prior$parameters$alpha) != K){
+    return(NULL)
+  }
+  alpha <- weight_prior$parameters$alpha
+
+  free <- which(probability > 0 & probability < 1)
+  if(length(free) > .bt_parameter_prior_density_gated_var_prop_free_gate_limit()){
+    stop(
+      "Independently gated allocation-total prior density is unavailable for more than 20 free inclusion gates.",
+      call. = FALSE
+    )
+  }
+  # active sets: always-on components plus every subset of the free gates
+  active <- matrix(probability >= 1, nrow = 1L)
+  set_probability <- 1
+  for(k in free){
+    off <- active
+    on <- active
+    on[, k] <- TRUE
+    active <- rbind(off, on)
+    set_probability <- c(set_probability * (1 - probability[[k]]),
+                         set_probability * probability[[k]])
+  }
+  size <- rowSums(active)
+  if(isTRUE(conditional)){
+    # conditional on an active component, the empty set drops out
+    if(sum(set_probability[size > 0L]) <= 0){
+      return(NULL)
+    }
+    set_probability[size == 0L] <- 0
+    set_probability <- set_probability / sum(set_probability)
+  }
+
+  terms <- list(list(weight = sum(set_probability[size == K]), shares = list()))
+  partial <- which(size > 0L & size < K & set_probability > 0)
+  shares <- lapply(partial, function(i){
+    c(alpha = sum(alpha[active[i, ]]), beta = sum(alpha[!active[i, ]]))
+  })
+  keys <- vapply(shares, function(share){
+    paste(sprintf("%a", share), collapse = ":")
+  }, character(1))
+  for(key_i in unique(keys)){
+    share <- shares[[match(key_i, keys)]]
+    terms[[length(terms) + 1L]] <- list(
+      weight = sum(set_probability[partial[keys == key_i]]),
+      shares = list(.prior_allocation_share(
+        alpha  = share[["alpha"]],
+        beta   = share[["beta"]],
+        scale  = 1,
+        weight = 1
+      ))
+    )
+  }
+  list(zero = sum(set_probability[size == 0L]), terms = terms)
+}
+
+# Total SD (or, with 'square', variance) of an allocation: the scale prior T
+# times the multiplier chain of its parent allocations (the gates of the chain
+# as point multipliers and each parent Dirichlet share as a Beta share, as for
+# its component SDs) times sqrt(sum_{j in A} w_j) over its own active component
+# set A (.bt_parameter_prior_density_allocation_own_multiplier()). The density
+# is the .prior_allocation_product_density() mixture when every term has at
+# most one share (no parent share, or one parent share and no partial own set):
+# exact atoms and ordinates. A term with two or more independent shares has no
+# one-dimensional route; the density is then a product of density grids used
+# for plotting only (as for the SD components of nested allocations). With
+# 'conditional' the parent gates are on and the empty own set drops out
+# (renormalized over the nonempty sets): the event that the total is positive.
+.bt_parameter_prior_density_allocation_total <- function(object, key,
+                                                         n_grid, tail_prob,
+                                                         conditional = FALSE){
+
+  random_term <- if(nzchar(key$random_block)){
+    .bt_parameter_catalog_find_random_term(object, key)
+  }else{
+    NULL
+  }
+  allocation <- .bt_parameter_catalog_find_allocation(object, key, random_term)
+  source <- allocation$source
+  if(!is.list(source) || !identical(source$shape, "scalar") ||
+     !is.prior(source$prior) ||
+     .prior_linear_prior_dimension(source$prior) != 1L){
+    return(NULL)
+  }
+  prior_list <- attr(object, "prior_list", exact = TRUE)
+  square <- identical(key$evaluator, "allocation_var")
+
+  own <- .bt_parameter_prior_density_allocation_own_multiplier(
+    allocation, prior_list, conditional = conditional
+  )
+  if(is.null(own)){
+    return(NULL)
+  }
+  parent_probability <- if(isTRUE(conditional)){
+    1
+  }else{
+    .bt_parameter_prior_density_allocation_parent_gate_probability(
+      allocation, prior_list
+    )
+  }
+  if(!is.numeric(parent_probability) || length(parent_probability) != 1L ||
+     !is.finite(parent_probability)){
+    return(NULL)
+  }
+  parent_shares <- list()
+  for(factor in allocation$parent_factors){
+    if(is.null(factor$weight_name)){
+      next
+    }
+    share <- .bt_parameter_prior_density_factor_share(factor, prior_list)
+    if(is.null(share)){
+      return(NULL)
+    }
+    parent_shares[[length(parent_shares) + 1L]] <- share
+  }
+
+  # the total is 0 with probability 'zero' (a parent gate or the whole own set
+  # off), and otherwise the scale prior times the shares of the term
+  zero <- (1 - parent_probability) + parent_probability * own$zero
+  terms <- lapply(own$terms, function(term){
+    list(
+      weight = parent_probability * term$weight,
+      shares = c(parent_shares, term$shares)
+    )
+  })
+  terms <- Filter(function(term) term$weight > 0, terms)
+  if(any(vapply(terms, function(term) length(term$shares) > 1L, logical(1)))){
+    return(.bt_parameter_prior_density_share_product_grid(
+      source_prior = source$prior,
+      terms        = terms,
+      zero         = zero,
+      n_grid       = n_grid,
+      tail_prob    = tail_prob,
+      square       = square,
+      what         = "the total"
+    ))
+  }
+
+  multipliers <- list(
+    .prior_allocation_point(0, zero),
+    .prior_allocation_point(1, sum(vapply(terms, function(term){
+      if(length(term$shares) == 0L) term$weight else 0
+    }, numeric(1))))
+  )
+  shared <- Filter(function(term) length(term$shares) == 1L, terms)
+  keys <- vapply(shared, function(term){
+    share <- term$shares[[1L]]
+    paste(sprintf("%a", c(share$alpha, share$beta, share$scale)), collapse = ":")
+  }, character(1))
+  for(key_i in unique(keys)){
+    members <- shared[keys == key_i]
+    share <- members[[1L]]$shares[[1L]]
+    share$weight <- sum(vapply(members, `[[`, numeric(1), "weight"))
+    multipliers[[length(multipliers) + 1L]] <- share
+  }
+  .prior_allocation_product_density(
+    source_prior = source$prior,
+    multipliers  = multipliers,
+    n_grid       = n_grid,
+    tail_prob    = tail_prob,
+    square       = square
+  )
+}
+
+.bt_parameter_prior_density_simplex_marginal <- function(prior_object,
+                                                         index){
+
+  if(!is.prior.simplex(prior_object) ||
+     !identical(prior_object$distribution, "dirichlet")){
+    return(NULL)
+  }
+  alpha <- prior_object$parameters$alpha
+  if(!is.numeric(alpha) || length(alpha) < 2L ||
+     any(!is.finite(alpha)) || any(alpha <= 0) ||
+     !is.numeric(index) || length(index) != 1L || is.na(index) ||
+     index != as.integer(index) || index < 1L || index > length(alpha)){
+    return(NULL)
+  }
+  index <- as.integer(index)
+  prior(
+    "beta",
+    list(alpha = alpha[[index]], beta = sum(alpha[-index]))
+  )
+}
+
+.bt_parameter_prior_density_scalar <- function(
+    prior_object, n_grid, tail_prob, output_transformation = NULL,
+    output_transformation_arguments = NULL){
+
+  .prior_linear_combination_density(
+    prior_list = list(source = prior_object),
+    weights = c(source = 1),
+    n_grid = n_grid,
+    tail_prob = tail_prob,
+    output_transformation = output_transformation,
+    output_transformation_arguments = output_transformation_arguments
+  )
+}
+
+# Density of the semantic transform of a scalar source prior, built with the
+# transform as the output transformation so that the density records its
+# deterministic provenance: affine maps are 'lin', 'tanh' is named, and the
+# square-root and square maps of a nonnegative source are 'exp_lin'
+# (sqrt(s x) = exp(log(s) / 2) x^(1/2), (s x)^2 = exp(2 log(s)) x^2).
+# Bounded-logit maps have no named equivalent: their provenance records the
+# map itself, and heights use the refined numerical grid.
+.bt_parameter_prior_density_transformed <- function(prior_object, transform,
+                                                    n_grid, tail_prob){
+
+  if(is.null(transform)){
+    return(NULL)
+  }
+  scalar <- function(output_transformation = NULL, arguments = NULL){
+    .bt_parameter_prior_density_scalar(
+      prior_object,
+      n_grid = n_grid,
+      tail_prob = tail_prob,
+      output_transformation = output_transformation,
+      output_transformation_arguments = arguments
+    )
+  }
+  nonnegative <- function(){
+    lower <- prior_object$truncation$lower
+    is.numeric(lower) && length(lower) == 1L && !is.na(lower) && lower >= 0
+  }
+  switch(
+    transform$type,
+    "identity" = scalar(),
+    "affine" = scalar("lin", list(a = transform$offset, b = transform$scale)),
+    "tanh" = scalar("tanh"),
+    "sqrt_scale" = if(nonnegative()){
+      scalar("exp_lin", list(a = log(transform$scale) / 2, b = 1 / 2))
+    },
+    "square" = if(nonnegative()){
+      scalar("exp_lin", list(
+        a = 2 * log(.bt_parameter_transform_square_scale(transform)),
+        b = 2
+      ))
+    },
+    "bounded_logit" = scalar(.bt_parameter_prior_density_bounded_logit(
+      transform$lower, transform$upper
+    )),
+    NULL
+  )
+}
+
+# lower + (upper - lower) * plogis(x) as a transformation list whose closures
+# capture only the two bounds.
+.bt_parameter_prior_density_bounded_logit <- function(lower, upper){
+
+  force(lower)
+  width <- upper - lower
+  list(
+    fun = function(x) lower + width * stats::plogis(x),
+    inv = function(x) stats::qlogis((x - lower) / width),
+    jac = function(x) width * stats::plogis(x) * (1 - stats::plogis(x))
+  )
+}
+
+#' @rdname parameter_catalog
+parameter_transform <- function(object, selection){
+
+  if(!inherits(object, "BayesTools_fit")){
+    stop("'object' must be a BayesTools fit.", call. = FALSE)
+  }
+  catalog <- parameter_catalog(object)
+  .bt_validate_parameter_selection(selection, catalog = catalog)
+  if(nrow(selection$quantities) != 1L){
+    stop("'selection' must contain exactly one parameter quantity.",
+         call. = FALSE)
+  }
+  quantity <- selection$quantities[1L, , drop = FALSE]
+
+  .bt_parameter_transform_from_quantity(object, quantity)
+}
+
+.bt_parameter_transform_from_quantity <- function(object, quantity){
+
+  if(!identical(quantity$provider, "BayesTools")){
+    stop("The selected quantity is owned by another provider.",
+         call. = FALSE)
+  }
+  key <- quantity$extraction_key[[1L]]
+  if(!identical(key$type, "random_summary") ||
+     identical(key$source_type, "composite")){
+    return(NULL)
+  }
+
+  source_transform <- key$source_transform
+  transform <- if(identical(source_transform, "identity") ||
+                  identical(source_transform, "var_prop")){
+    list(type = "identity")
+  }else if(identical(source_transform, "lkj2")){
+    list(type = "affine", offset = -1, scale = 2)
+  }else if(identical(source_transform, "fisher_z")){
+    list(type = "tanh")
+  }else if(identical(source_transform, "logit")){
+    random_term <- .bt_parameter_catalog_find_random_term(object, key)
+    bounds <- random_term$correlation$bounds
+    if(!is.numeric(bounds) || length(bounds) != 2L ||
+       any(!is.finite(bounds)) || bounds[1L] >= bounds[2L]){
+      return(NULL)
+    }
+    list(
+      type = "bounded_logit",
+      lower = unname(bounds[1L]),
+      upper = unname(bounds[2L])
+    )
+  }else if(identical(source_transform, "square")){
+    list(type = "square")
+  }else if(identical(source_transform, "random_var")){
+    formula_scale <- attr(object, "formula_scale", exact = TRUE)
+    if(is.null(formula_scale) || length(formula_scale) == 0L){
+      list(type = "square")
+    }else if(is.numeric(key$source_scale) &&
+             length(key$source_scale) == 1L &&
+             is.finite(key$source_scale) && key$source_scale > 0){
+      list(type = "square", scale = key$source_scale)
+    }else{
+      NULL
+    }
+  }else if(identical(source_transform, "random_sd")){
+    formula_scale <- attr(object, "formula_scale", exact = TRUE)
+    if(is.null(formula_scale) || length(formula_scale) == 0L){
+      list(type = "identity")
+    }else if(is.numeric(key$source_scale) &&
+             length(key$source_scale) == 1L &&
+             is.finite(key$source_scale) && key$source_scale > 0){
+      list(type = "affine", offset = 0, scale = key$source_scale)
+    }else{
+      NULL
+    }
+  }else if(source_transform %in% c("var_mult", "sd_mult")){
+    random_term <- if(nzchar(key$random_block)){
+      .bt_parameter_catalog_find_random_term(object, key)
+    }else{
+      NULL
+    }
+    allocation <- .bt_parameter_catalog_find_allocation(
+      object,
+      key,
+      random_term
+    )
+    allocation_scale <- .bt_random_effect_allocation_scale_metadata(
+      allocation,
+      context = "Parameter transform"
+    )
+    n_targets <- .bt_random_effect_summary_allocation_n_targets(
+      allocation,
+      K = allocation$n_targets
+    )
+    variance_scale <- if(identical(allocation_scale, "mean_variance")){
+      as.numeric(n_targets)
+    }else{
+      1
+    }
+    if(identical(source_transform, "var_mult")){
+      list(type = "affine", offset = 0, scale = variance_scale)
+    }else{
+      list(type = "sqrt_scale", scale = variance_scale)
+    }
+  }else{
+    NULL
+  }
+
+  if(!is.null(transform)){
+    .bt_validate_parameter_transform(transform)
+  }
+  transform
+}
+
+#' @rdname parameter_catalog
+parameter_transform_forward <- function(values, transform){
+
+  .bt_validate_parameter_transform(transform)
+  if(identical(transform$type, "identity")){
+    return(values)
+  }
+  if(identical(transform$type, "affine")){
+    return(transform$offset + transform$scale * values)
+  }
+  if(identical(transform$type, "tanh")){
+    return(tanh(values))
+  }
+  if(identical(transform$type, "bounded_logit")){
+    return(transform$lower +
+      (transform$upper - transform$lower) * stats::plogis(values))
+  }
+  if(identical(transform$type, "sqrt_scale")){
+    scaled <- transform$scale * values
+    out <- rep(NaN, length(scaled))
+    valid <- !is.na(scaled) & scaled >= 0
+    out[valid] <- sqrt(scaled[valid])
+    return(out)
+  }
+  if(identical(transform$type, "square")){
+    return((.bt_parameter_transform_square_scale(transform) * values)^2)
+  }
+
+  stop("Unsupported semantic parameter transform.", call. = FALSE)
+}
+
+#' @rdname parameter_catalog
+parameter_transform_inverse <- function(values, transform){
+
+  .bt_validate_parameter_transform(transform)
+  if(identical(transform$type, "identity")){
+    return(values)
+  }
+  if(identical(transform$type, "affine")){
+    return((values - transform$offset) / transform$scale)
+  }
+  if(identical(transform$type, "tanh")){
+    return(atanh(values))
+  }
+  if(identical(transform$type, "bounded_logit")){
+    probability <- (values - transform$lower) /
+      (transform$upper - transform$lower)
+    return(stats::qlogis(probability))
+  }
+  if(identical(transform$type, "sqrt_scale")){
+    return(values^2 / transform$scale)
+  }
+  if(identical(transform$type, "square")){
+    return(sqrt(values) / .bt_parameter_transform_square_scale(transform))
+  }
+
+  stop("Unsupported semantic parameter transform.", call. = FALSE)
+}
+
+#' @rdname parameter_catalog
+parameter_transform_jacobian <- function(values, transform){
+
+  .bt_validate_parameter_transform(transform)
+  if(identical(transform$type, "identity")){
+    return(rep(1, length(values)))
+  }
+  if(identical(transform$type, "affine")){
+    return(rep(abs(transform$scale), length(values)))
+  }
+  if(identical(transform$type, "tanh")){
+    return(1 - tanh(values)^2)
+  }
+  if(identical(transform$type, "bounded_logit")){
+    probability <- stats::plogis(values)
+    return((transform$upper - transform$lower) *
+      probability * (1 - probability))
+  }
+  if(identical(transform$type, "sqrt_scale")){
+    scaled <- transform$scale * values
+    out <- rep(NaN, length(scaled))
+    valid <- !is.na(scaled) & scaled >= 0
+    out[valid] <- transform$scale / (2 * sqrt(scaled[valid]))
+    return(out)
+  }
+  if(identical(transform$type, "square")){
+    return(2 * .bt_parameter_transform_square_scale(transform)^2 * abs(values))
+  }
+
+  stop("Unsupported semantic parameter transform.", call. = FALSE)
+}
+
+.bt_validate_parameter_transform <- function(transform){
+
+  scalar_number <- function(value, finite = TRUE){
+    is.numeric(value) && length(value) == 1L && !is.na(value) &&
+      (!finite || is.finite(value))
+  }
+  valid <- is.list(transform) &&
+    is.character(transform$type) && length(transform$type) == 1L &&
+    !is.na(transform$type) && transform$type %in% c(
+      "identity", "affine", "tanh", "bounded_logit", "sqrt_scale",
+      "square"
+    )
+  if(valid && identical(transform$type, "affine")){
+    valid <- scalar_number(transform$offset) &&
+      scalar_number(transform$scale) && transform$scale != 0
+  }
+  if(valid && identical(transform$type, "bounded_logit")){
+    valid <- scalar_number(transform$lower) &&
+      scalar_number(transform$upper) && transform$lower < transform$upper
+  }
+  if(valid && identical(transform$type, "sqrt_scale")){
+    valid <- scalar_number(transform$scale) && transform$scale > 0
+  }
+  if(valid && identical(transform$type, "square") && !is.null(transform$scale)){
+    valid <- scalar_number(transform$scale) && transform$scale > 0
+  }
+  if(!valid){
+    stop("Unsupported semantic parameter transform.", call. = FALSE)
+  }
+
+  invisible(TRUE)
+}
+
+# The optional 'scale' of a square transform: (scale * x)^2.
+.bt_parameter_transform_square_scale <- function(transform){
+
+  if(is.null(transform$scale)) 1 else transform$scale
+}
+
+# The table is a constant, built once per session; callers get the shared
+# value, which R copies before any modification.
+.bt_parameter_catalog_empty_quantities <- function(){
+
+  out <- .BayesTools_private$parameter_catalog_empty_quantities
+  if(is.null(out)){
+    out <- .bt_parameter_catalog_empty_quantities_build()
+    .BayesTools_private$parameter_catalog_empty_quantities <- out
+  }
+  out
+}
+
+.bt_parameter_catalog_empty_quantities_build <- function(){
+
+  out <- data.frame(
+    quantity_id = character(),
+    canonical_name = character(),
+    provider = character(),
+    namespace = character(),
+    role = character(),
+    formula_parameter = character(),
+    owner_type = character(),
+    owner_name = character(),
+    quantity = character(),
+    scale_role = character(),
+    parent_quantity_id = character(),
+    term = character(),
+    component = character(),
+    display_label = character(),
+    fitted_scale = character(),
+    display_scale = character(),
+    status = character(),
+    fixed_value = numeric(),
+    internal = logical(),
+    source_type = character(),
+    definedness = character(),
+    stringsAsFactors = FALSE
+  )
+  out$arguments <- I(list())
+  out$support <- I(list())
+  out <- out[, setdiff(.bt_parameter_catalog_quantity_columns,
+                       c("label_parts", "extraction_key")),
+             drop = FALSE]
+  out$label_parts <- I(list())
+  out$extraction_key <- I(list())
+  out
+}
+
+# The table is a constant, built once per session; callers get the shared
+# value, which R copies before any modification.
+.bt_parameter_catalog_empty_aliases <- function(){
+
+  out <- .BayesTools_private$parameter_catalog_empty_aliases
+  if(is.null(out)){
+    out <- data.frame(
+      alias = character(),
+      quantity_id = character(),
+      namespace = character(),
+      component = character(),
+      simplified = logical(),
+      stringsAsFactors = FALSE
+    )
+    out$label_parts <- I(list())
+    .BayesTools_private$parameter_catalog_empty_aliases <- out
+  }
+  out
+}
+
+.bt_parameter_catalog_new <- function(quantities, aliases){
+
+  out <- list(
+    schema_version = .bt_parameter_map_version,
+    quantities = quantities,
+    aliases = aliases
+  )
+  class(out) <- c("BayesTools_parameter_catalog", "list")
+  .bt_validate_parameter_catalog(out)
+  out
+}
+
+.bt_parameter_catalog_quantity_id <- function(canonical_name, namespace,
+                                               role){
+
+  encoded <- .bt_parameter_encode(list(
+    kind = "catalog",
+    formula_parameter = namespace,
+    term = canonical_name,
+    role = role
+  ))
+  paste0("BayesTools::", encoded)
+}
+
+.bt_parameter_catalog_quantity <- function(
+    canonical_name, namespace, role, formula_parameter = "", term = "",
+    component = "", label_parts = NULL,
+    fitted_scale = "fitted_original", display_scale = fitted_scale,
+    status = "derived", fixed_value = NA_real_, internal = FALSE,
+    owner_type = "", owner_name = "", quantity = "",
+    scale_role = "", parent_quantity_id = "",
+    arguments = character(), source_type = "none", extraction_key){
+
+  # The canonical name is the selector of the label parts; the default display
+  # label is their table label. Quantities without label parts (extensions of
+  # other providers) are displayed by their canonical name.
+  if(is.null(label_parts)){
+    display_label <- canonical_name
+  }else{
+    selector <- .bt_label(label_parts, style = "selector")
+    if(!identical(selector, canonical_name)){
+      stop(
+        "Parameter catalog label parts do not render the canonical name '",
+        canonical_name, "' (they render '", selector, "').",
+        call. = FALSE
+      )
+    }
+    display_label <- .bt_label(
+      label_parts,
+      style          = "table",
+      formula_prefix = TRUE,
+      simplify       = TRUE
+    )
+  }
+  # One row in the column order of the schema, built directly: the row is the
+  # empty table with one value per column, without the per-row cost of the
+  # data frame assignment methods.
+  values <- list(
+    quantity_id        = .bt_parameter_catalog_quantity_id(canonical_name, namespace, role),
+    canonical_name     = as.character(canonical_name),
+    provider           = "BayesTools",
+    namespace          = as.character(namespace),
+    role               = as.character(role),
+    formula_parameter  = as.character(formula_parameter),
+    owner_type         = as.character(owner_type),
+    owner_name         = as.character(owner_name),
+    quantity           = as.character(quantity),
+    scale_role         = as.character(scale_role),
+    parent_quantity_id = as.character(parent_quantity_id),
+    arguments          = I(list(as.character(arguments))),
+    term               = as.character(term),
+    component          = as.character(component),
+    display_label      = as.character(display_label),
+    fitted_scale       = as.character(fitted_scale),
+    display_scale      = as.character(display_scale),
+    status             = as.character(status),
+    fixed_value        = as.numeric(fixed_value),
+    internal           = as.logical(internal),
+    source_type        = as.character(source_type),
+    # declared by .bt_parameter_catalog_add_support() when the catalog is built
+    support            = I(list(NULL)),
+    definedness        = "always",
+    label_parts        = I(list(label_parts)),
+    extraction_key     = I(list(extraction_key))
+  )
+  # a field without exactly one value would give the row a column of another
+  # length, which no data frame method would have built
+  wrong_length <- names(values)[lengths(values) != 1L]
+  if(length(wrong_length) > 0L){
+    stop(
+      "Parameter catalog quantity fields must each hold one value: ",
+      paste0("'", wrong_length, "'", collapse = ", "), ".",
+      call. = FALSE
+    )
+  }
+  structure(
+    values[.bt_parameter_catalog_quantity_columns],
+    row.names = 1L,
+    class = "data.frame"
+  )
+}
+
+# Contrasts whose term design rows are exact 0/1 structure. For these, a design
+# row equal to a unit vector states that the level cell is that coordinate.
+# Mean-difference and orthonormal rows come from an eigendecomposition, where a
+# unit row is a floating-point coincidence, never a structural identity.
+.bt_parameter_catalog_structural_contrasts <- function(){
+
+  c(
+    "contr.treatment",
+    "contr.independent",
+    "contr.ordered_cumulative",
+    "contr.ordered_cumulative_levels"
+  )
+}
+
+.bt_parameter_catalog_factor_prior <- function(parameter, prior){
+
+  if(!.bt_prior_is_factor_family(prior) ||
+     .bt_is_random_effect_prior(prior)){
+    return(NULL)
+  }
+  .complete_factor_metadata(prior, parameter)
+}
+
+# For each fitted coordinate (design column) of a factor term, the design row
+# (level cell) that the coordinate structurally is, or NA.
+.bt_factor_direct_cells <- function(prior, design){
+
+  .bt_factor_direct_cells_design(
+    design,
+    attr(prior, "factor_contrasts", exact = TRUE)
+  )
+}
+
+.bt_factor_direct_cells_design <- function(design, contrasts){
+
+  direct <- rep.int(NA_integer_, ncol(design))
+  if(length(contrasts) == 0L ||
+     !all(as.character(contrasts) %in%
+            .bt_parameter_catalog_structural_contrasts())){
+    return(direct)
+  }
+  # A unit row: exactly one nonzero entry, equal to one.
+  nonzero <- design != 0
+  unit_rows <- which(rowSums(nonzero) == 1L)
+  if(length(unit_rows) == 0L){
+    return(direct)
+  }
+  unit_columns <- max.col(nonzero[unit_rows, , drop = FALSE], ties.method = "first")
+  unit <- design[cbind(unit_rows, unit_columns)] == 1
+  unit_rows <- unit_rows[unit]
+  unit_columns <- unit_columns[unit]
+  for(coordinate in seq_len(ncol(design))){
+    matches <- unit_rows[unit_columns == coordinate]
+    if(length(matches) == 1L){
+      direct[coordinate] <- matches
+    }
+  }
+  direct
+}
+
+# The catalog component of factor label parts: the level token of a cell, or
+# `{j}` of a contrast coefficient.
+.bt_parameter_catalog_factor_component <- function(parts){
+
+  if(!is.na(parts$coefficient)){
+    return(paste0("{", parts$coefficient, "}"))
+  }
+  .bt_label_cell_token(parts$levels)
+}
+
+# Maps every fixed factor term (formula terms of all contrasts and ordinary
+# factor priors, whose level labels are 1..K by construction) to label-keyed
+# quantities: one `<parameter>[<level token>]` quantity per level or cell, and
+# one `<parameter>{j}` quantity per coordinate that is not a structural level
+# cell. JAGS coordinate names are backend columns, never factor selectors.
+.bt_parameter_catalog_factor_map <- function(coordinates, prior_list,
+                                             derived = character()){
+
+  out <- list(
+    quantities = .bt_parameter_catalog_empty_quantities(),
+    coordinates = character()
+  )
+  if(length(prior_list) == 0L || is.null(names(prior_list))){
+    return(out)
+  }
+  quantity_rows <- list()
+  for(parameter in names(prior_list)){
+    prior <- .bt_parameter_catalog_factor_prior(
+      parameter,
+      prior_list[[parameter]]
+    )
+    if(is.null(prior)){
+      next
+    }
+    expected_coordinate_names <- .JAGS_prior_factor_names(parameter, prior)
+    coordinate_names <- .bt_parameter_catalog_coordinates(
+      coordinates,
+      expected_coordinate_names
+    )
+    coordinate_index <- suppressWarnings(as.integer(
+      .bt_parameter_coordinates_index(coordinate_names)
+    ))
+    if(length(coordinate_names) > 1L){
+      coordinate_names <- coordinate_names[order(coordinate_index)]
+    }
+    coordinate_rows <- match(coordinate_names, coordinates$coordinate_name)
+    if(length(coordinate_names) != length(expected_coordinate_names) ||
+       anyNA(coordinate_rows) ||
+       (length(coordinate_names) > 1L && anyNA(coordinate_index)) ||
+       length(unique(coordinates$role[coordinate_rows])) != 1L ||
+       !coordinates$role[coordinate_rows][1L] %in%
+         c("fixed_coefficient", "parameter")){
+      .bt_stop_refit_required(
+        "Parameter catalog factor coordinates are missing or malformed for '",
+        parameter, "'. Refit the model with this version of BayesTools."
+      )
+    }
+    coordinate_metadata <- coordinates[coordinate_rows, , drop = FALSE]
+    design_info <- .factor_term_design_from_metadata(prior)
+    design <- design_info$design
+    if(is.null(design_info$level_names)){
+      .bt_stop_refit_required(
+        "Parameter catalog factor levels are missing for '", parameter,
+        "'. Refit the model with this version of BayesTools."
+      )
+    }
+    owner_fields <- c("formula_parameter", "term", "fitted_scale")
+    if(any(vapply(owner_fields, function(field){
+      length(unique(coordinate_metadata[[field]])) != 1L
+    }, logical(1)))){
+      .bt_stop_refit_required(
+        "Parameter catalog factor coordinates have inconsistent ownership for '",
+        parameter, "'. Refit the model with this version of BayesTools."
+      )
+    }
+
+    formula_parameter <- coordinate_metadata$formula_parameter[1L]
+    namespace <- if(nzchar(formula_parameter)) formula_parameter else "model"
+    role <- coordinate_metadata$role[1L]
+    # Ordinary factor priors own no formula term; the prior name is the term.
+    term <- if(nzchar(coordinate_metadata$term[1L])){
+      coordinate_metadata$term[1L]
+    }else{
+      parameter
+    }
+    label_parts <- .bt_label_parts_factor(
+      parameter         = parameter,
+      prior             = prior,
+      formula_parameter = formula_parameter,
+      term              = term
+    )
+    if(ncol(design) != length(coordinate_names) ||
+       nrow(design) != length(label_parts$cells) ||
+       any(!is.finite(design))){
+      .bt_stop_refit_required(
+        "Parameter catalog factor metadata disagree with parameter coordinates for '",
+        parameter, "'. Refit the model with this version of BayesTools."
+      )
+    }
+    cell_selectors <- .bt_label(label_parts$cells, style = "selector")
+    if(anyDuplicated(cell_selectors) ||
+       !all(startsWith(cell_selectors, paste0(parameter, "[")))){
+      .bt_stop_refit_required(
+        "Parameter catalog factor metadata do not identify the level cells of '",
+        parameter, "' uniquely. Refit the model with this version of BayesTools."
+      )
+    }
+    fitted_scale <- coordinate_metadata$fitted_scale[1L]
+    coordinate_status <- ifelse(
+      coordinate_names %in% derived,
+      "derived",
+      coordinate_metadata$monitor_status
+    )
+    factor_quantity <- function(parts, status, fixed_value, source_type,
+                                dependencies, weights){
+      .bt_parameter_catalog_quantity(
+        canonical_name = .bt_label(parts, style = "selector"),
+        namespace = namespace,
+        role = role,
+        formula_parameter = formula_parameter,
+        term = term,
+        component = .bt_parameter_catalog_factor_component(parts),
+        label_parts = parts,
+        fitted_scale = fitted_scale,
+        display_scale = fitted_scale,
+        status = status,
+        fixed_value = fixed_value,
+        internal = FALSE,
+        source_type = source_type,
+        extraction_key = list(
+          type = "factor_level",
+          dependencies = dependencies,
+          weights = weights
+        )
+      )
+    }
+
+    direct_cells <- label_parts$direct
+
+    for(cell in seq_len(nrow(design))){
+      parts <- label_parts$cells[[cell]]
+      direct <- match(cell, direct_cells)
+      if(!is.na(direct)){
+        status <- coordinate_status[direct]
+        quantity <- factor_quantity(
+          parts = parts,
+          status = status,
+          fixed_value = if(identical(status, "structural")){
+            coordinate_metadata$fixed_value[direct]
+          }else{
+            NA_real_
+          },
+          source_type = "identity",
+          dependencies = coordinate_names[direct],
+          weights = 1
+        )
+      }else{
+        nonzero <- which(design[cell, ] != 0)
+        dependencies <- coordinate_names[nonzero]
+        weights <- unname(as.numeric(design[cell, nonzero]))
+        dependency_status <- coordinate_status[nonzero]
+        structural <- length(nonzero) == 0L ||
+          all(dependency_status == "structural")
+        unavailable <- length(nonzero) > 0L &&
+          any(dependency_status == "unavailable")
+        quantity <- factor_quantity(
+          parts = parts,
+          status = if(structural){
+            "structural"
+          }else if(unavailable){
+            "unavailable"
+          }else{
+            "derived"
+          },
+          fixed_value = if(!structural){
+            NA_real_
+          }else if(length(nonzero) == 0L){
+            0
+          }else{
+            sum(weights * coordinate_metadata$fixed_value[nonzero])
+          },
+          source_type = if(length(dependencies) == 0L){
+            "structural_zero"
+          }else if(length(dependencies) == 1L){
+            "identity"
+          }else{
+            "composite"
+          },
+          dependencies = dependencies,
+          weights = weights
+        )
+      }
+      quantity_rows[[length(quantity_rows) + 1L]] <- quantity
+    }
+
+    for(coordinate in which(is.na(direct_cells))){
+      status <- coordinate_status[coordinate]
+      quantity <- factor_quantity(
+        parts = label_parts$coordinates[[coordinate]],
+        status = status,
+        fixed_value = if(identical(status, "structural")){
+          coordinate_metadata$fixed_value[coordinate]
+        }else{
+          NA_real_
+        },
+        source_type = "identity",
+        dependencies = coordinate_names[coordinate],
+        weights = 1
+      )
+      quantity_rows[[length(quantity_rows) + 1L]] <- quantity
+    }
+    out$coordinates <- c(out$coordinates, coordinate_names)
+  }
+  if(length(quantity_rows) > 0L){
+    out$quantities <- .bt_parameter_catalog_bind_quantities(quantity_rows)
+  }
+  out
+}
+
+.bt_parameter_catalog_factor_coefficient_component <- function(index){
+
+  paste0("{", index, "}")
+}
+
+# Coordinates owned by a point prior with an expression location are
+# deterministic functions of other nodes: derived, never structural.
+.bt_parameter_catalog_derived_coordinates <- function(coordinates, prior_list){
+
+  if(length(prior_list) == 0L || is.null(names(prior_list))){
+    return(character())
+  }
+  expression_points <- names(prior_list)[vapply(prior_list, function(prior){
+    is.prior.point(prior) && .is_prior_expression(prior)
+  }, logical(1))]
+  bases <- .bt_parameter_coordinates_base(coordinates$coordinate_name)
+  coordinates$coordinate_name[
+    bases %in% expression_points & coordinates$monitor_status == "sampled"
+  ]
+}
+
+.bt_parameter_catalog_coordinate_quantities <- function(
+    coordinates, suppress = character(), derived = character(),
+    prior_list = NULL, formula_design = NULL){
+
+  out <- .bt_parameter_catalog_empty_quantities()
+  keep <- coordinates$role != "backend_anchor" & !coordinates$internal &
+    !coordinates$coordinate_name %in% suppress
+  coordinates <- coordinates[keep, , drop = FALSE]
+  if(nrow(coordinates) == 0L){
+    return(out)
+  }
+  label_parts <- .bt_parameter_coordinates_row_label_parts(
+    coordinates    = coordinates,
+    prior_list     = prior_list,
+    formula_design = formula_design
+  )
+  coordinate_rows <- .bt_parameter_catalog_rows(coordinates)
+  rows <- vector("list", nrow(coordinates))
+  for(i in seq_len(nrow(coordinates))){
+    row <- coordinate_rows[[i]]
+    namespace <- if(nzchar(row$formula_parameter)){
+      row$formula_parameter
+    }else{
+      "model"
+    }
+    rows[[i]] <- .bt_parameter_catalog_quantity(
+      canonical_name = row$coordinate_name,
+      namespace = namespace,
+      role = row$role,
+      formula_parameter = row$formula_parameter,
+      term = row$term,
+      component = row$column,
+      label_parts = .bt_label_parts_update(
+        label_parts[[i]],
+        selector = row$coordinate_name
+      )[[1L]],
+      fitted_scale = row$fitted_scale,
+      display_scale = row$fitted_scale,
+      status = if(row$coordinate_name %in% derived){
+        "derived"
+      }else{
+        row$monitor_status
+      },
+      fixed_value = row$fixed_value,
+      internal = FALSE,
+      source_type = "identity",
+      extraction_key = list(
+        type = "coordinate",
+        dependencies = row$coordinate_name
+      )
+    )
+  }
+  .bt_parameter_catalog_bind_quantities(rows)
+}
+
+.bt_parameter_catalog_level_alias <- function(term, component){
+
+  if(startsWith(component, "{")){
+    paste0(term, component)
+  }else{
+    paste0(term, "[", component, "]")
+  }
+}
+
+# Label parts of an alias: the first candidate whose table label is the alias
+# text, otherwise the alias text itself as one component (an alias that is no
+# table label of structured parts, such as the canonical name of a fitted
+# coordinate or the selector of a transformed factor level).
+.bt_parameter_catalog_alias_parts <- function(alias, candidates = list(),
+                                              labels = NULL){
+
+  # the first candidate whose table label is the alias
+  if(is.null(labels)){
+    labels <- vapply(candidates, .bt_label, character(1), style = "table")
+  }
+  matched <- match(alias, labels)
+  if(!is.na(matched)){
+    return(candidates[[matched]])
+  }
+
+  .bt_label_parts(alias, selector = alias)
+}
+
+# Label parts whose table label is the table label of 'parts' without the
+# formula prefix ('formula_prefix = FALSE') and with the simplified
+# random-effect arguments ('simplify = TRUE').
+.bt_parameter_catalog_alias_rendering <- function(parts, formula_prefix = TRUE,
+                                                  simplify = FALSE){
+
+  if(!formula_prefix){
+    parts$formula_parameter <- ""
+  }
+  if(simplify && !is.null(parts$random)){
+    parts$random$arguments <- parts$random$display_arguments
+  }
+  .bt_validate_label_parts(parts)
+  parts
+}
+
+# The aliases of a quantity rendered from label parts: 'values' with the
+# label parts each one is rendered from.
+.bt_parameter_catalog_rendered_aliases <- function(parts_list){
+
+  parts_list <- Filter(Negate(is.null), parts_list)
+  values <- vapply(parts_list, .bt_label, character(1), style = "table")
+  keep <- !duplicated(values)
+  list(values = values[keep], parts = parts_list[keep])
+}
+
+# Labels a quantity is selected by besides its canonical name: every label
+# the summaries render for it - its table labels with and without the formula
+# prefix, the exp(intercept) label of the log intercept in original-scale
+# tables, and for factor level cells the level names and table rows of
+# transformed contrasts - with the label parts each is rendered from.
+# Random-effect quantities have their own semantic aliases.
+.bt_parameter_catalog_label_aliases <- function(quantity, formula_scale = NULL){
+
+  parts <- quantity$label_parts[[1L]]
+  if(is.null(parts)){
+    return(list(values = character(), parts = list()))
+  }
+  original_scale <- .bt_label_parts_log_intercept(parts, formula_scale)[[1L]]
+  renderings <- list(
+    .bt_parameter_catalog_alias_rendering(parts, formula_prefix = TRUE),
+    .bt_parameter_catalog_alias_rendering(parts, formula_prefix = FALSE)
+  )
+  if(!identical(original_scale, parts)){
+    # the original-scale label differs only for the log intercept; otherwise
+    # its renderings repeat the two above
+    renderings <- c(renderings, list(
+      .bt_parameter_catalog_alias_rendering(original_scale, formula_prefix = TRUE),
+      .bt_parameter_catalog_alias_rendering(original_scale, formula_prefix = FALSE)
+    ))
+  }
+  if(.bt_parameter_catalog_is_factor_quantity(quantity) &&
+     length(parts$levels) > 0L){
+    dif <- .bt_label_parts_update(parts, transformation = "dif")[[1L]]
+    selector <- .bt_label(dif, style = "selector")
+    renderings <- c(
+      renderings,
+      list(
+        .bt_parameter_catalog_alias_parts(selector),
+        .bt_parameter_catalog_alias_rendering(dif, formula_prefix = TRUE),
+        .bt_parameter_catalog_alias_rendering(dif, formula_prefix = FALSE)
+      )
+    )
+  }
+  .bt_parameter_catalog_rendered_aliases(renderings)
+}
+
+.bt_parameter_catalog_aliases <- function(quantities, formula_design = NULL,
+                                          formula_scale = NULL){
+
+  out <- .bt_parameter_catalog_empty_aliases()
+  public <- quantities[!quantities$internal, , drop = FALSE]
+  if(nrow(public) == 0L){
+    return(out)
+  }
+  # the alias rows are collected as vectors and built into one table at the end
+  pieces <- list()
+  secondary <- list()
+  # 'aliases' holds the alias values and the label parts each is rendered from
+  add_aliases <- function(quantity, aliases, simplified){
+    keep <- !is.na(aliases$values) & nzchar(aliases$values) &
+      !duplicated(aliases$values)
+    values <- aliases$values[keep]
+    if(length(values) == 0L){
+      return(invisible(NULL))
+    }
+    pieces[[length(pieces) + 1L]] <<- list(
+      alias       = values,
+      quantity_id = rep(quantity$quantity_id, length(values)),
+      namespace   = rep(quantity$namespace, length(values)),
+      component   = rep(quantity$component, length(values)),
+      simplified  = rep(simplified, length(values)),
+      parts       = unname(aliases$parts[keep])
+    )
+    invisible(NULL)
+  }
+  for(quantity in .bt_parameter_catalog_rows(public)){
+    parts <- quantity$label_parts[[1L]]
+    if(startsWith(quantity$role, "random_")){
+      aliases <- .bt_parameter_catalog_rendered_aliases(c(
+        if(!is.null(parts)){
+          list(.bt_parameter_catalog_alias_rendering(parts, formula_prefix = FALSE))
+        },
+        .bt_parameter_catalog_random_correlation_aliases(
+          quantity,
+          formula_design
+        )
+      ))
+    }else{
+      structured <- if(!is.null(parts)){
+        list(
+          parts,
+          .bt_parameter_catalog_alias_rendering(parts, formula_prefix = FALSE)
+        )
+      }else{
+        list()
+      }
+      values <- unique(c(
+        quantity$canonical_name,
+        quantity$display_label,
+        quantity$term,
+        if(nzchar(quantity$term) && nzchar(quantity$component) &&
+           .bt_parameter_catalog_is_factor_quantity(quantity)){
+          .bt_parameter_catalog_level_alias(
+            quantity$term,
+            quantity$component
+          )
+        }else{
+          character()
+        }
+      ))
+      values <- values[!is.na(values) & nzchar(values)]
+      structured_labels <- vapply(structured, .bt_label, character(1),
+                                  style = "table")
+      aliases <- list(
+        values = values,
+        parts  = lapply(values, .bt_parameter_catalog_alias_parts,
+                        candidates = structured, labels = structured_labels)
+      )
+      # rendered labels that may coincide with another quantity's selector
+      label_aliases <- .bt_parameter_catalog_label_aliases(quantity, formula_scale)
+      new_labels <- !label_aliases$values %in% values
+      if(any(new_labels)){
+        secondary[[length(secondary) + 1L]] <- list(
+          alias       = label_aliases$values[new_labels],
+          quantity_id = rep(quantity$quantity_id, sum(new_labels)),
+          parts       = unname(label_aliases$parts[new_labels])
+        )
+      }
+    }
+    add_aliases(quantity, aliases, simplified = FALSE)
+    if(startsWith(quantity$role, "random_")){
+      add_aliases(
+        quantity,
+        .bt_parameter_catalog_random_simplified_aliases(quantity),
+        simplified = TRUE
+      )
+    }
+  }
+  if(length(pieces) == 0L){
+    return(out)
+  }
+  out <- .bt_parameter_catalog_alias_table(pieces)
+  out <- out[!duplicated(out[setdiff(names(out), "label_parts")]), , drop = FALSE]
+  rownames(out) <- NULL
+  secondary_table <- if(length(secondary) > 0L){
+    table <- data.frame(
+      alias = unlist(lapply(secondary, `[[`, "alias"), use.names = FALSE),
+      quantity_id = unlist(lapply(secondary, `[[`, "quantity_id"), use.names = FALSE),
+      stringsAsFactors = FALSE
+    )
+    table$label_parts <- I(do.call(c, lapply(secondary, `[[`, "parts")))
+    table
+  }
+  .bt_parameter_catalog_secondary_aliases(
+    out,
+    public,
+    secondary = secondary_table
+  )
+}
+
+# The alias table of the collected pieces (alias values with their owner and
+# label parts, one piece per quantity and kind of alias).
+.bt_parameter_catalog_alias_table <- function(pieces){
+
+  field <- function(name){
+    unlist(lapply(pieces, `[[`, name), use.names = FALSE)
+  }
+  out <- data.frame(
+    alias       = field("alias"),
+    quantity_id = field("quantity_id"),
+    namespace   = field("namespace"),
+    component   = field("component"),
+    simplified  = field("simplified"),
+    stringsAsFactors = FALSE
+  )
+  out$label_parts <- I(do.call(c, lapply(pieces, `[[`, "parts")))
+  out
+}
+
+.bt_parameter_catalog_is_factor_quantity <- function(quantity){
+
+  key <- quantity$extraction_key[[1L]]
+  is.list(key) && identical(key$type, "factor_level")
+}
+
+# Adds the rendered labels of the quantities (secondary label-to-quantity
+# rows, with their label parts) as aliases unless a label is rendered for
+# several quantities or already names a different quantity in the same
+# namespace.
+.bt_parameter_catalog_secondary_aliases <- function(aliases, public,
+                                                    secondary = NULL){
+
+  if(is.null(secondary) || nrow(secondary) == 0L){
+    return(aliases)
+  }
+  quantity_rows <- match(secondary$quantity_id, public$quantity_id)
+  secondary <- secondary[!is.na(quantity_rows), , drop = FALSE]
+  quantity_rows <- quantity_rows[!is.na(quantity_rows)]
+  if(nrow(secondary) == 0L){
+    return(aliases)
+  }
+  added <- data.frame(
+    alias = secondary$alias,
+    quantity_id = secondary$quantity_id,
+    namespace = public$namespace[quantity_rows],
+    component = public$component[quantity_rows],
+    simplified = FALSE,
+    stringsAsFactors = FALSE
+  )
+  added$label_parts <- I(unname(unclass(secondary$label_parts)))
+  added <- added[!duplicated(added[setdiff(names(added), "label_parts")]), , drop = FALSE]
+  added <- added[!is.na(added$alias) & nzchar(added$alias), , drop = FALSE]
+  if(nrow(added) == 0L){
+    return(aliases)
+  }
+
+  label_key <- function(alias, namespace){
+    paste(alias, namespace, sep = "\r")
+  }
+  # A label shown for several coordinates identifies none of them.
+  added_key <- label_key(added$alias, added$namespace)
+  added_owners <- tapply(added$quantity_id, added_key, function(x){
+    length(unique(x))
+  })
+  added <- added[added_owners[added_key] == 1L, , drop = FALSE]
+
+  # Existing selectors of another quantity in the namespace take precedence.
+  existing <- unique(data.frame(
+    key = c(
+      label_key(aliases$alias, aliases$namespace),
+      label_key(public$canonical_name, public$namespace)
+    ),
+    quantity_id = c(aliases$quantity_id, public$quantity_id),
+    stringsAsFactors = FALSE
+  ))
+  added_key <- label_key(added$alias, added$namespace)
+  existing_owners <- table(existing$key)
+  first_owner <- existing$quantity_id[match(added_key, existing$key)]
+  free <- is.na(first_owner) |
+    (as.integer(existing_owners[added_key]) == 1L &
+       first_owner == added$quantity_id)
+  added <- added[free, , drop = FALSE]
+  if(nrow(added) == 0L){
+    return(aliases)
+  }
+
+  out <- rbind(aliases, added)
+  out <- out[!duplicated(out[setdiff(names(out), "label_parts")]), , drop = FALSE]
+  rownames(out) <- NULL
+  out
+}
+
+# The simplified aliases of a random-effect quantity (with its label parts):
+# its simplified table labels with and without the formula prefix, and
+# without its owner.
+.bt_parameter_catalog_random_simplified_aliases <- function(quantity){
+
+  parts <- quantity$label_parts[[1L]]
+  if(is.null(parts) || is.null(parts$random)){
+    return(list(values = character(), parts = list()))
+  }
+  without_owner <- parts
+  without_owner$random$owner <- ""
+
+  .bt_parameter_catalog_rendered_aliases(list(
+    .bt_parameter_catalog_alias_rendering(parts, formula_prefix = TRUE, simplify = TRUE),
+    .bt_parameter_catalog_alias_rendering(parts, formula_prefix = FALSE, simplify = TRUE),
+    .bt_parameter_catalog_alias_rendering(without_owner, formula_prefix = FALSE,
+                                          simplify = TRUE)
+  ))
+}
+
+# The label parts of the pairwise aliases of the shared correlation of a
+# compound-symmetry (cs, hcs) block: the correlation of every pair of its
+# components, with and without the formula prefix.
+.bt_parameter_catalog_random_correlation_aliases <- function(
+    quantity, formula_design){
+
+  if(!identical(quantity$role, "random_correlation")){
+    return(list())
+  }
+  parts <- quantity$label_parts[[1L]]
+  if(is.null(parts) || is.null(parts$random)){
+    return(list())
+  }
+  key <- quantity$extraction_key[[1L]]
+  random_term <- .bt_parameter_catalog_alias_random_term(
+    formula_design,
+    key
+  )
+  if(!is.list(random_term)){
+    return(list())
+  }
+  owners <- .bt_parameter_catalog_random_public_block_owner(
+    formula_design,
+    quantity$formula_parameter,
+    random_term
+  )
+  if(!is.character(owners) || anyNA(owners)){
+    return(list())
+  }
+
+  if(!identical(key$evaluator, "rho")){
+    return(list())
+  }
+  structure <- .bt_random_effect_summary_term_structure(random_term)
+  if(!structure %in% c("cs", "hcs")){
+    return(list())
+  }
+  components <- .bt_random_effect_summary_column_components(random_term)
+  if(length(components) < 2L){
+    return(list())
+  }
+  pairs <- utils::combn(components, 2L)
+  out <- list()
+  for(formula_prefix in c(TRUE, FALSE)){
+    for(owner in owners){
+      for(pair in seq_len(ncol(pairs))){
+        pair_parts <- parts
+        pair_parts$random <- list(
+          owner             = owner,
+          quantity          = "cor",
+          arguments         = pairs[, pair],
+          display_arguments = pairs[, pair]
+        )
+        out[[length(out) + 1L]] <- .bt_parameter_catalog_alias_rendering(
+          pair_parts,
+          formula_prefix = formula_prefix
+        )
+      }
+    }
+  }
+  out
+}
+
+.bt_parameter_catalog_random_public_block_owner <- function(
+    formula_design, parameter, random_term){
+
+  designs <- .bt_random_effect_summary_designs(formula_design)
+  designs <- Filter(function(design){
+    identical(design$parameter, parameter)
+  }, designs)
+  terms <- unlist(lapply(designs, `[[`, "random_effects"), recursive = FALSE)
+  blocks <- unique(vapply(terms, `[[`, character(1), "block_name"))
+  if(length(blocks) <= 1L && !isTRUE(random_term$component_visible)){
+    return("")
+  }
+
+  .bt_random_effect_public_name(random_term)
+}
+
+.bt_parameter_catalog_alias_random_term <- function(formula_design, key){
+
+  designs <- .bt_random_effect_summary_designs(formula_design)
+  designs <- Filter(function(design){
+    identical(design$parameter, key$formula_parameter)
+  }, designs)
+  terms <- unlist(lapply(designs, `[[`, "random_effects"), recursive = FALSE)
+  terms <- Filter(function(term){
+    identical(term$block_name, key$random_block)
+  }, terms)
+
+  if(length(terms) == 1L) terms[[1L]] else NULL
+}
+
+.bt_parameter_catalog_coordinates <- function(coordinates, names){
+
+  names <- unique(names[!is.na(names) & nzchar(names)])
+  if(length(names) == 0L){
+    return(character())
+  }
+  bases <- .bt_parameter_coordinates_base(coordinates$coordinate_name)
+  unique(coordinates$coordinate_name[
+    coordinates$coordinate_name %in% names |
+      coordinates$monitor_name %in% names |
+      bases %in% names
+  ])
+}
+
+.bt_parameter_catalog_random_block_dependencies <- function(
+    coordinates, formula_parameter, random_block,
+    roles = c("random_sd", "random_correlation")){
+
+  coordinates$coordinate_name[
+    coordinates$formula_parameter == formula_parameter &
+      coordinates$random_block == random_block &
+      coordinates$role %in% roles
+  ]
+}
+
+.bt_parameter_catalog_random_correlation_sources <- function(coordinates,
+                                                             random_term){
+
+  structure <- .bt_random_effect_summary_term_structure(random_term)
+  correlation <- .bt_random_effect_correlation_metadata(
+    random_term,
+    structure = structure,
+    context = "Parameter catalog"
+  )
+  if(is.null(correlation)){
+    return(character())
+  }
+  if(identical(correlation$type, "lkj")){
+    primitive_dependencies <- .bt_parameter_catalog_coordinates(
+      coordinates,
+      correlation$primitive_names
+    )
+    n_pairs <- random_term$n_columns * (random_term$n_columns - 1L) / 2L
+    if(length(primitive_dependencies) == n_pairs){
+      return(primitive_dependencies)
+    }
+    return(.bt_parameter_catalog_coordinates(
+      coordinates,
+      as.vector(.bt_random_effect_cholesky_names(
+        random_term,
+        random_term$n_columns
+      ))
+    ))
+  }
+  if(identical(correlation$type, "rho")){
+    return(.bt_parameter_catalog_coordinates(
+      coordinates,
+      c(correlation$rho_name, correlation$sample_name)
+    ))
+  }
+  character()
+}
+
+.bt_parameter_catalog_allocation_names <- function(allocation){
+
+  if(is.null(allocation)){
+    return(character())
+  }
+  source_name <- if(is.null(allocation$source)){
+    character()
+  }else{
+    .bt_random_sd_binding_source_name(allocation$source)
+  }
+  factors <- c(allocation$factors, allocation$parent_factors)
+  factor_names <- unlist(lapply(factors, function(factor){
+    c(factor$weight_name, factor$inclusion_name)
+  }), use.names = FALSE)
+  inclusion_names <- unlist(lapply(allocation$inclusion, function(record){
+    record$indicator_name
+  }), use.names = FALSE)
+  unique(c(
+    allocation$weight_name,
+    allocation$scale_name,
+    allocation$source_node,
+    source_name,
+    factor_names,
+    inclusion_names
+  ))
+}
+
+.bt_parameter_catalog_allocation_scale_names <- function(allocation){
+
+  if(is.null(allocation) || !is.list(allocation$source) ||
+     !identical(allocation$source$shape, "scalar")){
+    return(character())
+  }
+  factor_names <- unlist(lapply(allocation$parent_factors, function(factor){
+    c(factor$weight_name, factor$inclusion_name)
+  }), use.names = FALSE)
+  unique(c(
+    .bt_random_sd_binding_source_name(allocation$source),
+    factor_names
+  ))
+}
+
+# A scalar allocation source that is absent from the parameter map (for
+# example, a source node that was not monitored) leaves every quantity scaled
+# by it unevaluable.
+.bt_parameter_catalog_allocation_source_missing <- function(allocation,
+                                                             coordinates){
+
+  source <- allocation$source
+  is.list(source) && identical(source$shape, "scalar") &&
+    length(.bt_parameter_catalog_coordinates(
+      coordinates,
+      .bt_random_sd_binding_source_name(source)
+    )) == 0L
+}
+
+.bt_parameter_catalog_random_status <- function(
+    key, coordinates, prior_list, formula_design, formula_scale){
+
+  dependency_rows <- match(key$dependencies, coordinates$coordinate_name)
+  if(anyNA(dependency_rows)){
+    .bt_stop_refit_required(
+      "Parameter catalog random-summary dependencies are missing from the parameter map. Refit the model with this version of BayesTools."
+    )
+  }
+  dependency_status <- coordinates$monitor_status[dependency_rows]
+  if(any(dependency_status == "unavailable")){
+    return(list(status = "unavailable", fixed_value = NA_real_))
+  }
+  if(any(dependency_status == "sampled")){
+    return(list(status = "sampled", fixed_value = NA_real_))
+  }
+
+  values <- matrix(
+    coordinates$fixed_value[dependency_rows],
+    nrow = 1L,
+    dimnames = list(NULL, key$dependencies)
+  )
+  fit <- structure(
+    list(),
+    prior_list = prior_list,
+    formula_design = formula_design,
+    formula_scale = formula_scale
+  )
+  fixed_value <- tryCatch(
+    .bt_parameter_draw_random_summary(fit, key, values),
+    error = function(error) error
+  )
+  if(inherits(fixed_value, "error") || length(fixed_value) != 1L ||
+     !is.finite(fixed_value)){
+    .bt_stop_refit_required(
+      "Parameter catalog could not evaluate a structural random summary from its declared dependencies. Refit the model with this version of BayesTools."
+    )
+  }
+  list(status = "structural", fixed_value = as.numeric(fixed_value))
+}
+
+# A one-to-one random summary (identity or square of one source coordinate) is
+# structural exactly when that coordinate is structural, whatever the status
+# of the other coordinates its block evaluator reads.
+.bt_parameter_catalog_random_source_status <- function(source, coordinates,
+                                                       source_transform){
+
+  row <- match(source, coordinates$coordinate_name)
+  if(length(source) != 1L || is.na(row) ||
+     !source_transform %in% c("identity", "square")){
+    .bt_stop_refit_required(
+      "Parameter catalog one-to-one random-summary source metadata are malformed. Refit the model with this version of BayesTools."
+    )
+  }
+  status <- coordinates$monitor_status[row]
+  if(!identical(status, "structural")){
+    return(list(status = status, fixed_value = NA_real_))
+  }
+  value <- coordinates$fixed_value[row]
+  if(identical(source_transform, "square")){
+    value <- value^2
+  }
+
+  list(status = "structural", fixed_value = as.numeric(value))
+}
+
+.bt_parameter_catalog_random_sd_is_direct <- function(
+    random_term, parameter, formula_scale){
+
+  if(is.null(formula_scale) || length(formula_scale) == 0L ||
+     is.null(formula_scale[[parameter]]) ||
+     length(formula_scale[[parameter]]) == 0L){
+    return(TRUE)
+  }
+  sd_names <- unique(random_term$sd_parameter_names)
+  sd_names <- sd_names[!is.na(sd_names)]
+  parameter_scale <- formula_scale[[parameter]]
+  column_groups <- .random_sd_column_unscale_groups(
+    random_sd_cols = sd_names,
+    formula_scale = parameter_scale,
+    prefix = parameter
+  )
+  term_map <- if(is.null(column_groups)){
+    .random_sd_term_map(sd_names, parameter_scale, parameter)
+  }else{
+    character()
+  }
+  (is.null(column_groups) || length(column_groups) == 0L) &&
+    length(term_map) == 0L
+}
+
+.bt_parameter_catalog_random_sd_source_scale <- function(
+    random_term, index, source_parameter, prior_list, parameter,
+    formula_scale){
+
+  # The caller has already proved a one-coordinate homogeneous SD transform
+  # from the parameter map. Evaluate its unit response through the same
+  # unscaling engine used for posterior draws.
+  model_samples <- matrix(
+    1,
+    ncol = 1L,
+    dimnames = list(NULL, source_parameter)
+  )
+  summary <- .bt_random_effect_summary_sd_samples(
+    random_term = random_term,
+    model_samples = model_samples,
+    prior_list = prior_list,
+    parameter = parameter,
+    formula_scale = formula_scale
+  )
+  if(is.null(summary) || ncol(summary$values) < index){
+    .bt_stop_refit_required(
+      "Parameter catalog could not resolve a one-coordinate random-SD transform. Refit the model with this version of BayesTools."
+    )
+  }
+  scale <- as.numeric(summary$values[, index])
+  if(length(scale) != 1L || !is.finite(scale) || scale <= 0){
+    .bt_stop_refit_required(
+      "Parameter catalog random-SD transform must have one finite positive source scale. Refit the model with this version of BayesTools."
+    )
+  }
+  unname(scale)
+}
+
+.bt_parameter_catalog_random_definitions <- function(coordinates, prior_list,
+                                                     formula_design,
+                                                     formula_scale = NULL){
+
+  out <- list(
+    derived = .bt_parameter_catalog_empty_quantities(),
+    suppress = character()
+  )
+  if(is.null(prior_list)){
+    prior_list <- list()
+  }
+  out$suppress <- unique(c(
+    out$suppress,
+    names(.bt_parameter_coordinates_random_prior_auxiliary_owners(prior_list)),
+    .bt_random_variance_allocation_inclusion_indicator_names(formula_design)
+  ))
+  random_design <- .bt_random_effect_summary_designs(formula_design)
+  if(length(random_design) == 0L){
+    return(out)
+  }
+
+  rows <- list()
+  used_names <- character()
+  add_definition <- function(raw_name, role, parameter, label,
+                             evaluator, dependencies, metadata = NULL,
+                             block = "",
+                             term = "", component = "",
+                             fitted_scale = "fitted_covariance",
+                             display_scale = "original",
+                             owner_type, owner_name, quantity,
+                             public_owner = owner_name,
+                              scale_role = "", parent_quantity_id = "",
+                              arguments = character(),
+                              display_arguments = arguments,
+                              source_type, source_parameter = "",
+                              source_prior = "",
+                              source_transform = "identity",
+                              source_scale = NA_real_,
+                              allocation_derived = FALSE,
+                              status_source = NULL,
+                              unavailable = FALSE){
+    canonical_name <- .bt_random_effect_semantic_name(
+      parameter = parameter,
+      owner = public_owner,
+      quantity = quantity,
+      arguments = arguments,
+      formula_prefix = TRUE
+    )
+    if(canonical_name %in% used_names){
+      stop(
+        "Random-effect semantic parameter names are not unique: '",
+        canonical_name,
+        "'. Assign unique random-block or variance-allocation names.",
+        call. = FALSE
+      )
+    }
+    used_names <<- c(used_names, canonical_name)
+    namespace <- if(nzchar(parameter)) parameter else "model"
+    dependencies <- unique(dependencies)
+    if(identical(source_transform, "identity") && is.na(source_scale)){
+      source_scale <- 1
+    }
+    key <- c(
+      list(
+        type = "random_summary",
+        evaluator = evaluator,
+        formula_parameter = parameter,
+        random_block = block,
+        summary_name = raw_name,
+        dependencies = dependencies,
+        source_type = source_type,
+        source_parameter = source_parameter,
+        source_prior = source_prior,
+        source_transform = source_transform,
+        source_scale = source_scale,
+        allocation_derived = allocation_derived
+      ),
+      metadata[names(metadata) %in% c(
+        "prior_name", "allocation_label", "parent_allocation", "index"
+      )]
+    )
+    label_parts <- .bt_label_parts(
+      components        = if(nzchar(term)) term else quantity,
+      formula_parameter = parameter,
+      random            = list(
+        owner             = public_owner,
+        quantity          = quantity,
+        arguments         = as.character(arguments),
+        display_arguments = as.character(display_arguments)
+      )
+    )
+    state <- if(isTRUE(unavailable)){
+      list(status = "unavailable", fixed_value = NA_real_)
+    }else{
+      .bt_parameter_catalog_random_status(
+        key = key,
+        coordinates = coordinates,
+        prior_list = prior_list,
+        formula_design = formula_design,
+        formula_scale = formula_scale
+      )
+    }
+    if(!is.null(status_source) && !identical(state$status, "unavailable")){
+      state <- .bt_parameter_catalog_random_source_status(
+        source = status_source,
+        coordinates = coordinates,
+        source_transform = source_transform
+      )
+    }
+    rows[[length(rows) + 1L]] <<- .bt_parameter_catalog_quantity(
+      canonical_name = canonical_name,
+      namespace = namespace,
+      role = role,
+      formula_parameter = parameter,
+      term = term,
+      component = component,
+      label_parts = label_parts,
+      fitted_scale = fitted_scale,
+      display_scale = display_scale,
+      status = state$status,
+      fixed_value = state$fixed_value,
+      owner_type = owner_type,
+      owner_name = owner_name,
+      quantity = quantity,
+      scale_role = scale_role,
+      parent_quantity_id = parent_quantity_id,
+      arguments = arguments,
+      source_type = source_type,
+      extraction_key = key
+    )
+    invisible(NULL)
+  }
+
+  add_allocation <- function(allocation, parameter, random_term = NULL){
+    if(is.null(allocation)){
+      return(invisible(NULL))
+    }
+    K <- allocation$n_targets
+    gate_only <- isTRUE(allocation$gate_only)
+    if(!is.numeric(K) || length(K) != 1L || is.na(K) ||
+       K < if(gate_only) 1L else 2L){
+      .bt_stop_refit_required("Random-effect allocation metadata have no valid 'n_targets'. Refit the model with this version of BayesTools.")
+    }
+    K <- as.integer(K)
+    allocation_type <- .bt_random_effect_summary_allocation_type(allocation)
+    allocation_owner <- .bt_random_effect_allocation_public_name(allocation)
+    allocation_public_owner <- allocation_owner
+    if(!is.null(random_term) && !nzchar(allocation_owner) && identical(
+      .bt_random_effect_summary_allocation_target(allocation),
+      "sd_component"
+    )){
+      allocation_owner <- .bt_random_effect_public_name(random_term)
+      allocation_public_owner <-
+        .bt_parameter_catalog_random_public_block_owner(
+          formula_design,
+          parameter,
+          random_term
+        )
+    }
+    components <- .bt_random_effect_summary_allocation_components(
+      allocation,
+      K = K,
+      random_term = random_term
+    )
+    block <- if(is.null(random_term)) "" else random_term$block_name
+    metadata <- list(
+      allocation_label = allocation$label,
+      parent_allocation = if(is.null(allocation$parent)) "" else
+        allocation$parent$allocation,
+      allocation = allocation,
+      random_term = random_term
+    )
+    scale_role <- .bt_random_effect_allocation_scale_role(allocation)
+    scale_names <- .bt_parameter_catalog_allocation_scale_names(allocation)
+    # The allocation scale is evaluable only from its scalar source
+    # coordinate; without it (a row-shaped or unmonitored source) the
+    # sd/var totals are unavailable, and gate or weight coordinates must not
+    # stand in as their dependencies.
+    source_available <- length(scale_names) > 0L &&
+      !.bt_parameter_catalog_allocation_source_missing(allocation, coordinates)
+    allocation_gate_names <-
+      .bt_random_effect_summary_allocation_gate_names(allocation)
+    component_gate_names <-
+      .bt_random_effect_summary_allocation_gate_names(
+        allocation,
+        include_parents = FALSE
+      )
+    realized_total <- identical(scale_role, "total") &&
+      length(component_gate_names) > 0L
+    if(realized_total && source_available){
+      scale_names <- unique(c(
+        scale_names,
+        allocation$weight_name,
+        component_gate_names
+      ))
+    }
+    scale_dependencies <- .bt_parameter_catalog_coordinates(
+      coordinates,
+      scale_names
+    )
+    if(source_available && !gate_only){
+      source_name <- .bt_random_sd_binding_source_name(allocation$source)
+      parent_factors <- allocation$parent_factors
+      if(is.null(parent_factors)){
+        parent_factors <- list()
+      }
+      direct_scale <- length(parent_factors) == 0L && !realized_total
+      source_prior <- if(direct_scale && source_name %in% names(prior_list)){
+        source_name
+      }else{
+        ""
+      }
+      sd_quantity <- .bt_random_effect_allocation_sd_quantity(allocation)
+      add_definition(
+        raw_name = .bt_random_effect_summary_name(
+          parameter = parameter,
+          type = sd_quantity,
+          parts = allocation$label
+        ),
+        role = paste0("random_", sd_quantity),
+        parameter = parameter,
+        label = allocation$label,
+        evaluator = "allocation_sd",
+        dependencies = scale_dependencies,
+        metadata = metadata,
+        block = block,
+        term = allocation$label,
+        component = allocation$label,
+        owner_type = "variance_allocation",
+        owner_name = allocation_owner,
+        public_owner = allocation_public_owner,
+        quantity = sd_quantity,
+        scale_role = scale_role,
+        source_type = if(direct_scale) "identity" else "composite",
+        source_parameter = if(direct_scale) source_name else "",
+        source_prior = source_prior,
+        source_transform = "identity"
+      )
+      var_quantity <- .bt_random_effect_allocation_var_quantity(allocation)
+      add_definition(
+        raw_name = .bt_random_effect_summary_name(
+          parameter = parameter,
+          type = var_quantity,
+          parts = allocation$label
+        ),
+        role = paste0("random_", var_quantity),
+        parameter = parameter,
+        label = allocation$label,
+        evaluator = "allocation_var",
+        dependencies = scale_dependencies,
+        metadata = metadata,
+        block = block,
+        term = allocation$label,
+        component = allocation$label,
+        owner_type = "variance_allocation",
+        owner_name = allocation_owner,
+        public_owner = allocation_public_owner,
+        quantity = var_quantity,
+        scale_role = scale_role,
+        source_type = if(direct_scale){
+          "one_to_one_transform"
+        }else{
+          "composite"
+        },
+        source_parameter = if(direct_scale) source_name else "",
+        source_prior = source_prior,
+        source_transform = "square"
+      )
+    }
+    out$suppress <<- unique(c(out$suppress, scale_dependencies))
+    dependencies <- .bt_parameter_catalog_coordinates(
+      coordinates,
+      c(allocation$weight_name, allocation_gate_names)
+    )
+    out$suppress <<- unique(c(out$suppress, dependencies))
+    if(!gate_only) for(i in seq_len(K)){
+      raw_name <- .bt_random_effect_summary_name(
+        parameter = parameter,
+        type = allocation_type$name,
+        parts = c(allocation$label, components[i])
+      )
+      add_definition(
+        raw_name = raw_name,
+        role = paste0("random_", allocation_type$summary),
+        parameter = parameter,
+        label = paste0(allocation_type$label, "(", allocation$label,
+                       ": ", components[i], ")"),
+        evaluator = "allocation",
+        dependencies = dependencies,
+        metadata = c(metadata, list(index = i)),
+        block = block,
+        term = allocation$label,
+        component = components[i],
+        fitted_scale = "unitless",
+        display_scale = "unitless",
+        owner_type = "variance_allocation",
+        owner_name = allocation_owner,
+        public_owner = allocation_public_owner,
+        quantity = allocation_type$summary,
+        scale_role = scale_role,
+        arguments = components[i],
+        source_type = if(identical(allocation_type$summary, "var_prop") &&
+                         length(allocation_gate_names) == 0L){
+          "identity"
+        }else if(identical(allocation_type$summary, "var_prop")){
+          "composite"
+        }else{
+          "one_to_one_transform"
+        },
+        source_parameter = if(identical(allocation_type$summary, "var_prop") &&
+                              length(allocation_gate_names) > 0L){
+          ""
+        }else{
+          allocation$weight_name
+        },
+        source_prior = if(identical(allocation_type$summary, "var_prop") &&
+                          length(allocation_gate_names) > 0L){
+          ""
+        }else{
+          allocation$weight_name
+        },
+        source_transform = allocation_type$summary
+      )
+      if(identical(.bt_random_effect_summary_allocation_target(allocation),
+                   "sd_component")){
+        multiplier_name <- .bt_random_effect_summary_name(
+          parameter = parameter,
+          type = "sd_mult",
+          parts = c(allocation$label, components[i])
+        )
+        add_definition(
+          raw_name = multiplier_name,
+          role = "random_sd_mult",
+          parameter = parameter,
+          label = allocation$label,
+          evaluator = "allocation",
+          dependencies = dependencies,
+          metadata = c(metadata, list(index = K + i)),
+          block = block,
+          term = allocation$label,
+          component = components[i],
+          fitted_scale = "unitless",
+          display_scale = "unitless",
+          owner_type = "variance_allocation",
+          owner_name = allocation_owner,
+          public_owner = allocation_public_owner,
+          quantity = "sd_mult",
+          scale_role = scale_role,
+          arguments = components[i],
+          source_type = "one_to_one_transform",
+          source_parameter = allocation$weight_name,
+          source_prior = allocation$weight_name,
+          source_transform = "sd_mult"
+        )
+      }
+    }
+    inclusion <- allocation$inclusion
+    if(!is.null(inclusion) && length(inclusion) > 0L){
+      inclusion_i <- 0L
+      for(component_label in names(inclusion)){
+        inclusion_i <- inclusion_i + 1L
+        component_name <- .bt_random_effect_allocation_component_name(
+          allocation,
+          component_label
+        )
+        raw_name <- .bt_random_effect_summary_name(
+          parameter = parameter,
+          type = "inclusion",
+          parts = c(allocation$label, component_label)
+        )
+        inclusion_dependencies <- .bt_parameter_catalog_coordinates(
+          coordinates,
+          inclusion[[component_label]]$indicator_name
+        )
+        add_definition(
+          raw_name = raw_name,
+          role = "random_inclusion",
+          parameter = parameter,
+          label = paste0("inclusion(", allocation$label, ": ",
+                         component_name, ")"),
+          evaluator = "allocation_inclusion",
+          dependencies = inclusion_dependencies,
+          metadata = c(metadata, list(index = inclusion_i)),
+          block = block,
+          term = allocation$label,
+          component = component_name,
+          fitted_scale = "unitless",
+          display_scale = "unitless",
+          owner_type = "variance_allocation",
+          owner_name = allocation_owner,
+          public_owner = allocation_public_owner,
+          quantity = "inclusion",
+          arguments = component_name,
+          source_type = "identity",
+          source_parameter = inclusion[[component_label]]$indicator_name,
+          source_prior = inclusion[[component_label]]$indicator_name
+        )
+      }
+    }
+    invisible(NULL)
+  }
+
+  seen_allocations <- character()
+  for(design in random_design){
+    parameter <- design$parameter
+    for(random_term in design$random_effects){
+      block <- random_term$block_name
+      group <- .bt_random_effect_summary_group_label(random_term)
+      owner <- .bt_random_effect_public_name(random_term)
+      public_owner <- .bt_parameter_catalog_random_public_block_owner(
+        formula_design,
+        parameter,
+        random_term
+      )
+      structure <- .bt_random_effect_summary_term_structure(random_term)
+      term_metadata <- list(random_term = random_term)
+      external_sd <- !is.null(random_term$sd_binding) &&
+        .bt_random_sd_binding_has_external_source(random_term$sd_binding) &&
+        !isTRUE(random_term$sd_binding$true_allocation)
+      sd_names <- unique(random_term$sd_parameter_names)
+      sd_names <- sd_names[!is.na(sd_names)]
+      if(!external_sd && length(sd_names) > 0L){
+        components <- .bt_random_effect_summary_sd_components(
+          random_term,
+          sd_names
+        )
+        direct_sd <- .bt_parameter_catalog_random_sd_is_direct(
+          random_term = random_term,
+          parameter = parameter,
+          formula_scale = formula_scale
+        )
+        allocation_sd <- !is.null(random_term$sd_binding) &&
+          length(random_term$sd_binding$allocations) > 0L
+        allocation_derived <- allocation_sd && !all(vapply(
+          random_term$sd_binding$allocations,
+          function(allocation) isTRUE(allocation$gate_only),
+          logical(1)
+        ))
+        direct_source <- direct_sd && !allocation_sd
+        # SD rows scaled by an allocation source missing from the map cannot
+        # be evaluated; they are unavailable, as are the allocation totals.
+        allocation_source_missing <- allocation_sd && any(vapply(
+          random_term$sd_binding$allocations,
+          .bt_parameter_catalog_allocation_source_missing,
+          logical(1),
+          coordinates = coordinates
+        ))
+        allocation_dependencies <- .bt_parameter_catalog_coordinates(
+          coordinates,
+          unlist(lapply(
+            random_term$sd_binding$allocations,
+            .bt_parameter_catalog_allocation_names
+          ), use.names = FALSE)
+        )
+        correlation_source_dependencies <-
+          .bt_parameter_catalog_random_correlation_sources(
+            coordinates,
+            random_term
+          )
+        sd_dependencies <- if(allocation_sd){
+          unique(c(
+            allocation_dependencies,
+            if(!direct_sd) correlation_source_dependencies else character()
+          ))
+        }else{
+          unique(c(
+            .bt_parameter_catalog_coordinates(coordinates, sd_names),
+            if(!direct_sd) correlation_source_dependencies else character()
+          ))
+        }
+        for(i in seq_along(sd_names)){
+          sd_quantity <- "sd"
+          sd_arguments <- .bt_random_effect_semantic_sd_arguments(
+            components[i]
+          )
+          sd_display_arguments <-
+            .bt_random_effect_semantic_sd_display_arguments(
+              random_term,
+              components[i]
+            )
+          raw_name <- .bt_random_effect_summary_name(
+            parameter = parameter,
+            type = "sd",
+            parts = c(block, components[i])
+          )
+          label <- .bt_random_effect_sd_summary_label(
+            component = components[i],
+            random_term = random_term
+          )
+          out$suppress <- unique(c(
+            out$suppress,
+            intersect(sd_names[i], coordinates$coordinate_name)
+          ))
+          dependencies <- if(direct_source){
+            .bt_parameter_catalog_coordinates(coordinates, sd_names)
+          }else{
+            sd_dependencies
+          }
+          source_coordinate <- .bt_parameter_catalog_coordinates(
+            coordinates,
+            sd_names[i]
+          )
+          source_type <- if(direct_source){
+            "identity"
+          }else if(length(dependencies) == 1L){
+            if(allocation_sd) "composite" else "one_to_one_transform"
+          }else{
+            "composite"
+          }
+          source_prior <- .bt_parameter_coordinates_base(sd_names[i])
+          if(!source_prior %in% names(prior_list)){
+            source_prior <- ""
+          }
+          source_parameter <- if(direct_source &&
+                                 length(source_coordinate) == 1L){
+            source_coordinate
+          }else if(!allocation_sd && length(dependencies) == 1L){
+            dependencies
+          }else{
+            ""
+          }
+          source_transform <- if(direct_source) "identity" else "random_sd"
+          status_source <- if(direct_source &&
+                              length(source_coordinate) == 1L){
+            source_coordinate
+          }else{
+            NULL
+          }
+          source_scale <- if(identical(source_type, "one_to_one_transform") &&
+                             nzchar(source_parameter)){
+            .bt_parameter_catalog_random_sd_source_scale(
+              random_term = random_term,
+              index = i,
+              source_parameter = source_parameter,
+              prior_list = prior_list,
+              parameter = parameter,
+              formula_scale = formula_scale
+            )
+          }else{
+            NA_real_
+          }
+          add_definition(
+            raw_name = raw_name,
+            role = "random_sd",
+            parameter = parameter,
+            label = label,
+            evaluator = "sd",
+            dependencies = dependencies,
+            metadata = c(term_metadata, list(index = i)),
+            block = block,
+            term = block,
+            component = components[i],
+            owner_type = "random_block",
+            owner_name = owner,
+            public_owner = public_owner,
+            quantity = sd_quantity,
+            arguments = sd_arguments,
+            display_arguments = sd_display_arguments,
+            source_type = source_type,
+            source_parameter = source_parameter,
+            source_prior = source_prior,
+            source_transform = source_transform,
+            source_scale = source_scale,
+            allocation_derived = allocation_derived,
+            status_source = status_source,
+            unavailable = allocation_source_missing
+          )
+          var_name <- .bt_random_effect_summary_name(
+            parameter = parameter,
+            type = "var",
+            parts = c(block, components[i])
+          )
+          add_definition(
+            raw_name = var_name,
+            role = "random_var",
+            parameter = parameter,
+            label = label,
+            evaluator = "sd_variance",
+            dependencies = dependencies,
+            metadata = c(term_metadata, list(index = i)),
+            block = block,
+            term = block,
+            component = components[i],
+            owner_type = "random_block",
+            owner_name = owner,
+            public_owner = public_owner,
+            quantity = "var",
+            arguments = sd_arguments,
+            display_arguments = sd_display_arguments,
+            # var = sd^2 is one-to-one exactly when sd is; a scaled SD
+            # (sd = s * source) gives var = (s * source)^2.
+            source_type = if(direct_source ||
+                             identical(source_type, "one_to_one_transform")){
+              "one_to_one_transform"
+            }else{
+              "composite"
+            },
+            source_parameter = if(direct_source ||
+                                  identical(source_type, "one_to_one_transform")){
+              source_parameter
+            }else{
+              ""
+            },
+            source_prior = source_prior,
+            source_transform = if(!direct_source &&
+                                  identical(source_type, "one_to_one_transform")){
+              "random_var"
+            }else{
+              "square"
+            },
+            source_scale = if(!direct_source &&
+                              identical(source_type, "one_to_one_transform")){
+              source_scale
+            }else{
+              NA_real_
+            },
+            allocation_derived = allocation_derived,
+            status_source = status_source,
+            unavailable = allocation_source_missing
+          )
+        }
+      }
+
+      inclusion_names <- .bt_random_effect_summary_inclusion_prior_names(
+        random_term,
+        prior_list
+      )
+      inclusion_i <- 0L
+      for(prior_name in inclusion_names){
+        prior <- prior_list[[prior_name]]
+        prior_components <- attr(prior, "components", exact = TRUE)
+        summary_components <- if(is.prior.spike_and_slab(prior)){
+          "alternative"
+        }else{
+          unique(prior_components)
+        }
+        for(summary_component in summary_components){
+          inclusion_i <- inclusion_i + 1L
+          parts <- c(block, .bt_random_effect_summary_safe_label(prior_name))
+          if(!is.prior.spike_and_slab(prior)){
+            parts <- c(parts, summary_component)
+          }
+          raw_name <- .bt_random_effect_summary_name(
+            parameter = parameter,
+            type = "inclusion",
+            parts = parts
+          )
+          effect <- .bt_random_effect_summary_inclusion_effect_label(
+            random_term,
+            prior_name
+          )
+          effect_parameter <- if(identical(effect, owner)){
+            "sd"
+          }else{
+            paste0("sd(", effect, ")")
+          }
+          argument <- if(is.prior.spike_and_slab(prior)){
+            effect_parameter
+          }else{
+            paste0(effect_parameter, "[", summary_component, "]")
+          }
+          label <- if(is.prior.spike_and_slab(prior)){
+            paste0(effect, " | ", group, " (inclusion)")
+          }else{
+            paste0(effect, " | ", group, " (inclusion: ",
+                   summary_component, ")")
+          }
+          add_definition(
+            raw_name = raw_name,
+            role = "random_inclusion",
+            parameter = parameter,
+            label = label,
+            evaluator = "inclusion",
+            dependencies = .bt_parameter_catalog_coordinates(
+              coordinates,
+              paste0(prior_name, "_indicator")
+            ),
+            metadata = c(term_metadata, list(index = inclusion_i)),
+            block = block,
+            term = block,
+            component = summary_component,
+            fitted_scale = "unitless",
+            display_scale = "unitless",
+            owner_type = "random_block",
+            owner_name = owner,
+            public_owner = public_owner,
+            quantity = "inclusion",
+            arguments = argument,
+            source_type = "identity",
+            source_parameter = paste0(prior_name, "_indicator"),
+            source_prior = prior_name
+          )
+        }
+      }
+
+      correlation <- .bt_random_effect_correlation_metadata(
+        random_term,
+        structure = structure,
+        context = "Parameter catalog"
+      )
+      if(!is.null(correlation) && identical(correlation$type, "rho")){
+        raw_name <- .bt_random_effect_summary_name(
+          parameter = parameter,
+          type = "cor",
+          parts = block
+        )
+        rho_scale <- .bt_random_effect_rho_scale_metadata(
+          correlation,
+          random_term,
+          context = "Parameter catalog"
+        )
+        source_parameter <- if(identical(rho_scale, "rho")){
+          correlation$rho_name
+        }else{
+          correlation$sample_name
+        }
+        dependencies <- .bt_parameter_catalog_coordinates(
+          coordinates,
+          c(correlation$rho_name, correlation$sample_name)
+        )
+        out$suppress <- unique(c(out$suppress, dependencies))
+        source_prior <- correlation$prior_name
+        if(is.null(source_prior) || length(source_prior) != 1L ||
+           is.na(source_prior) || !source_prior %in% names(prior_list)){
+          source_prior <- .bt_parameter_coordinates_base(source_parameter)
+        }
+        if(!source_prior %in% names(prior_list)){
+          source_prior <- ""
+        }
+        add_definition(
+          raw_name = raw_name,
+          role = "random_correlation",
+          parameter = parameter,
+          label = owner,
+          evaluator = "rho",
+          dependencies = dependencies,
+          metadata = term_metadata,
+          block = block,
+          term = block,
+          fitted_scale = "fitted_covariance",
+          display_scale = "unitless",
+          owner_type = "random_block",
+          owner_name = owner,
+          public_owner = public_owner,
+          quantity = "cor",
+          source_type = if(identical(rho_scale, "rho")){
+            "identity"
+          }else{
+            "one_to_one_transform"
+          },
+          source_parameter = source_parameter,
+          source_prior = source_prior,
+          source_transform = if(identical(rho_scale, "rho")){
+            "identity"
+          }else{
+            rho_scale
+          }
+        )
+      }
+      if(!is.null(correlation) && identical(correlation$type, "lkj") &&
+         random_term$n_columns > 1L){
+        pairs <- utils::combn(seq_len(random_term$n_columns), 2L)
+        components <- .bt_random_effect_summary_column_components(random_term)
+        scaled_correlation <- !.bt_parameter_catalog_random_sd_is_direct(
+          random_term = random_term,
+          parameter = parameter,
+          formula_scale = formula_scale
+        )
+        correlation_suppress <- .bt_parameter_catalog_random_block_dependencies(
+          coordinates,
+          formula_parameter = parameter,
+          random_block = block,
+          roles = c("random_sd", "random_correlation")
+        )
+        correlation_dependencies <-
+          .bt_parameter_catalog_random_correlation_sources(
+            coordinates,
+            random_term
+          )
+        if(scaled_correlation){
+          correlation_dependencies <- unique(c(
+            correlation_dependencies,
+            .bt_parameter_catalog_coordinates(coordinates, sd_names),
+            .bt_parameter_catalog_coordinates(
+              coordinates,
+              unlist(lapply(
+                random_term$sd_binding$allocations,
+                .bt_parameter_catalog_allocation_names
+              ), use.names = FALSE)
+            )
+          ))
+        }
+        out$suppress <- unique(c(out$suppress, correlation_suppress))
+        one_to_one <- random_term$n_columns == 2L && !scaled_correlation &&
+          length(correlation$primitive_names) == 1L
+        for(i in seq_len(ncol(pairs))){
+          pair <- components[pairs[, i]]
+          raw_name <- .bt_random_effect_summary_name(
+            parameter = parameter,
+            type = "cor",
+            parts = c(block, pair)
+          )
+          add_definition(
+            raw_name = raw_name,
+            role = "random_correlation",
+            parameter = parameter,
+            label = paste0("cor(", pair[1L], ",", pair[2L],
+                           " | ", group, ")"),
+            evaluator = "correlation",
+            dependencies = correlation_dependencies,
+            metadata = c(term_metadata, list(index = i)),
+            block = block,
+            term = block,
+            component = paste0(pair[1L], ",", pair[2L]),
+            fitted_scale = "fitted_covariance",
+            display_scale = "unitless",
+            owner_type = "random_block",
+            owner_name = owner,
+            public_owner = public_owner,
+            quantity = "cor",
+            arguments = pair,
+            source_type = if(one_to_one){
+              "one_to_one_transform"
+            }else{
+              "composite"
+            },
+            source_parameter = if(one_to_one){
+              correlation$primitive_names
+            }else{
+              ""
+            },
+            source_transform = if(one_to_one) "lkj2" else "lkj"
+          )
+        }
+      }
+
+      allocations <- if(is.null(random_term$sd_binding)){
+        list()
+      }else{
+        random_term$sd_binding$allocations
+      }
+      for(allocation in allocations){
+        allocation_key <- paste(parameter, allocation$label, sep = "::")
+        if(!allocation_key %in% seen_allocations){
+          add_allocation(allocation, parameter, random_term)
+          seen_allocations <- c(seen_allocations, allocation_key)
+        }
+      }
+    }
+    for(allocation in design$random_allocations){
+      allocation_key <- paste(parameter, allocation$label, sep = "::")
+      if(!allocation_key %in% seen_allocations){
+        add_allocation(allocation, parameter)
+        seen_allocations <- c(seen_allocations, allocation_key)
+      }
+    }
+  }
+
+  if(length(rows) > 0L){
+    out$derived <- do.call(rbind, rows)
+    rownames(out$derived) <- NULL
+    allocation_rows <- which(
+      out$derived$owner_type == "variance_allocation"
+    )
+    allocation_labels <- vapply(allocation_rows, function(i){
+      key <- out$derived$extraction_key[[i]]
+      if(!is.character(key$allocation_label) ||
+         length(key$allocation_label) != 1L ||
+         is.na(key$allocation_label) || !nzchar(key$allocation_label)){
+        .bt_stop_refit_required(
+          "Parameter catalog variance-allocation metadata require one non-empty allocation label. Refit the model with this version of BayesTools."
+        )
+      }
+      key$allocation_label
+    }, character(1))
+    # Allocation labels are unique only within one formula parameter.
+    allocation_parameters <- out$derived$formula_parameter[allocation_rows]
+    allocation_owner_key <- function(parameter, label){
+      .bt_random_group_tuple_key(c(parameter, label))
+    }
+    allocation_keys <- vapply(seq_along(allocation_rows), function(row_i){
+      allocation_owner_key(
+        allocation_parameters[row_i],
+        allocation_labels[row_i]
+      )
+    }, character(1))
+    allocation_owners <- unique(allocation_keys)
+    allocation_sd_ids <- stats::setNames(rep("", length(allocation_owners)),
+                                          allocation_owners)
+    for(owner in allocation_owners){
+      candidates <- allocation_rows[
+        allocation_keys == owner &
+          out$derived$quantity[allocation_rows] %in% c("sd_total", "sd_common")
+      ]
+      if(length(candidates) == 1L){
+        allocation_sd_ids[[owner]] <- out$derived$quantity_id[candidates]
+      }
+    }
+    for(row_i in seq_along(allocation_rows)){
+      i <- allocation_rows[row_i]
+      owner <- allocation_keys[row_i]
+      if(!out$derived$quantity[i] %in% c("sd_total", "sd_common")){
+        out$derived$parent_quantity_id[i] <- allocation_sd_ids[[owner]]
+        next
+      }
+      key <- out$derived$extraction_key[[i]]
+      parent <- key$parent_allocation
+      if(is.character(parent) && length(parent) == 1L && nzchar(parent)){
+        parent_owner <- allocation_owner_key(allocation_parameters[row_i], parent)
+        if(parent_owner %in% names(allocation_sd_ids)){
+          out$derived$parent_quantity_id[i] <- allocation_sd_ids[[parent_owner]]
+        }
+      }
+    }
+  }
+  out
+}
+
+.bt_build_parameter_catalog <- function(coordinates, prior_list = NULL,
+                                        formula_design = NULL,
+                                        formula_scale = NULL){
+
+  .bt_validate_parameter_coordinates(coordinates)
+  derived <- .bt_parameter_catalog_derived_coordinates(
+    coordinates = coordinates,
+    prior_list = prior_list
+  )
+  factor_map <- .bt_parameter_catalog_factor_map(
+    coordinates = coordinates,
+    prior_list = prior_list,
+    derived = derived
+  )
+  random_map <- .bt_parameter_catalog_random_definitions(
+    coordinates = coordinates,
+    prior_list = prior_list,
+    formula_design = formula_design,
+    formula_scale = formula_scale
+  )
+  base <- .bt_parameter_catalog_coordinate_quantities(
+    coordinates = coordinates,
+    suppress = c(random_map$suppress, factor_map$coordinates),
+    derived = derived,
+    prior_list = prior_list,
+    formula_design = formula_design
+  )
+  quantities <- rbind(base, factor_map$quantities, random_map$derived)
+  rownames(quantities) <- NULL
+  quantities <- .bt_parameter_catalog_add_support(
+    quantities     = quantities,
+    prior_list     = prior_list,
+    formula_design = formula_design,
+    formula_scale  = formula_scale
+  )
+  aliases <- .bt_parameter_catalog_aliases(
+    quantities,
+    formula_design,
+    formula_scale = formula_scale
+  )
+  .bt_parameter_catalog_new(quantities, aliases)
+}
+
+# Exact support and definedness of the catalog quantities, declared when the
+# catalog is built from the prior provenance of the quantities' source
+# coordinates (never from draws). A support that is not derivable is NULL.
+.bt_parameter_catalog_add_support <- function(quantities, prior_list,
+                                              formula_design = NULL,
+                                              formula_scale = NULL){
+
+  if(nrow(quantities) == 0L){
+    return(quantities)
+  }
+  # What the quantities of one catalog share is computed once here: the
+  # prior list without 'multiply_by' and the columns its priors own.
+  object <- structure(
+    list(),
+    prior_list     = prior_list,
+    formula_design = formula_design,
+    formula_scale  = formula_scale,
+    linear_support = .bt_parameter_catalog_linear_support_context(prior_list)
+  )
+  rows <- .bt_parameter_catalog_rows(quantities)
+  quantities$support <- I(lapply(rows, function(row){
+    .bt_parameter_catalog_quantity_support(object = object, quantity = row)
+  }))
+  quantities$definedness <- vapply(rows, function(row){
+    .bt_parameter_catalog_quantity_definedness(object = object, quantity = row)
+  }, character(1))
+  quantities
+}
+
+# The quantities table of one-row quantity tables (from
+# .bt_parameter_catalog_quantity()), which is the rbind() of the rows without
+# its per-row cost: every column of the schema is concatenated once.
+.bt_parameter_catalog_bind_quantities <- function(rows){
+
+  columns <- lapply(.bt_parameter_catalog_quantity_columns, function(name){
+    values <- lapply(rows, .subset2, name)
+    if(is.list(values[[1L]])){
+      # list columns hold one element per row and are marked as I()
+      I(do.call(c, lapply(values, unclass)))
+    }else{
+      unlist(values, use.names = FALSE)
+    }
+  })
+  names(columns) <- .bt_parameter_catalog_quantity_columns
+
+  structure(
+    columns,
+    row.names = .set_row_names(length(rows)),
+    class = "data.frame"
+  )
+}
+
+# The rows of a quantities table as lists with the value of every column, read
+# as the fields of a one-row table ('$field', '[[1L]]' of a list column)
+# without subsetting the data frame row by row.
+.bt_parameter_catalog_rows <- function(quantities){
+
+  columns <- unclass(quantities)
+  lapply(seq_len(nrow(quantities)), function(i){
+    lapply(columns, function(column) column[i])
+  })
+}
+
+.bt_parameter_catalog_quantity_support <- function(object, quantity){
+
+  if(identical(quantity$status, "unavailable")){
+    return(NULL)
+  }
+  if(identical(quantity$status, "structural")){
+    return(.posterior_support_point(quantity$fixed_value, source = "catalog"))
+  }
+  key <- quantity$extraction_key[[1L]]
+  if(key$type %in% c("coordinate", "factor_level")){
+    weights <- if(identical(key$type, "coordinate")){
+      rep(1, length(key$dependencies))
+    }else{
+      key$weights
+    }
+    return(.bt_parameter_catalog_linear_support(
+      prior_list = attr(object, "prior_list", exact = TRUE),
+      weights    = stats::setNames(as.numeric(weights), key$dependencies),
+      context    = attr(object, "linear_support", exact = TRUE)
+    ))
+  }
+  if(!identical(key$type, "random_summary")){
+    return(NULL)
+  }
+
+  # one-to-one quantities: the source prior's support mapped by the transform
+  # (an inclusion indicator is 0 or 1, whatever prior its source names)
+  if(key$source_type %in% c("identity", "one_to_one_transform") &&
+     !identical(quantity$quantity, "inclusion")){
+    source_support <- .bt_parameter_catalog_source_support(object, key)
+    transform <- .bt_parameter_transform_from_quantity(object, quantity)
+    if(!is.null(source_support) && !is.null(transform)){
+      return(.bt_parameter_catalog_transform_support(source_support, transform))
+    }
+  }
+
+  .bt_parameter_catalog_random_support(object, quantity, key)
+}
+
+# Support of a linear combination of fitted coordinates under their priors
+# (a coefficient's 'multiply_by' scales only its linear-predictor
+# contribution); NULL when a coordinate has no owning prior.
+.bt_parameter_catalog_linear_support <- function(prior_list, weights,
+                                                 context = NULL){
+
+  if(!is.list(prior_list) || length(prior_list) == 0L || length(weights) == 0L){
+    return(NULL)
+  }
+  if(is.null(context)){
+    context <- .bt_parameter_catalog_linear_support_context(prior_list)
+  }
+  if(!all(names(weights) %in% context$owned)){
+    return(NULL)
+  }
+  .posterior_support_from_prior_list_weights(context$prior_list, weights, source = "catalog")
+}
+
+# The prior list of the linear supports without 'multiply_by', and the columns
+# its single priors own.
+.bt_parameter_catalog_linear_support_context <- function(prior_list){
+
+  if(!is.list(prior_list) || length(prior_list) == 0L){
+    return(NULL)
+  }
+  prior_list <- .marginal_posterior_strip_multiply_by(prior_list)
+  owned <- unlist(lapply(names(prior_list), function(parameter){
+    if(!is.prior(prior_list[[parameter]])){
+      return(NULL)
+    }
+    .prior_linear_prior_columns(parameter, prior_list[[parameter]])
+  }), use.names = FALSE)
+
+  list(prior_list = prior_list, owned = owned)
+}
+
+# Support of the source prior of a one-to-one random-effect quantity: the
+# named prior, or the Beta(eta, eta) of an LKJ pairwise correlation.
+.bt_parameter_catalog_source_support <- function(object, key){
+
+  prior_list <- attr(object, "prior_list", exact = TRUE)
+  if(nzchar(key$source_prior) && key$source_prior %in% names(prior_list)){
+    source_prior <- prior_list[[key$source_prior]]
+    if(is.prior.simplex(source_prior)){
+      # a Dirichlet weight lies in (0, 1)
+      return(.posterior_support_new(c(0, 1), source = "catalog", type = "interval"))
+    }
+    if(!is.prior(source_prior) || .prior_linear_prior_dimension(source_prior) != 1L){
+      return(NULL)
+    }
+    return(.posterior_support_from_prior(source_prior, source = "catalog"))
+  }
+  if(identical(key$source_transform, "lkj2")){
+    return(.posterior_support_new(c(0, 1), source = "catalog", type = "interval"))
+  }
+
+  NULL
+}
+
+# A support mapped by a monotone transform descriptor (parameter_transform()).
+.bt_parameter_catalog_transform_support <- function(support, transform){
+
+  map <- function(values){
+    if(length(values) == 0L){
+      return(values)
+    }
+    parameter_transform_forward(values, transform)
+  }
+  if(identical(transform$type, "square") && support$bounds[1L] < 0){
+    # a square is monotone only on a nonnegative source
+    return(NULL)
+  }
+  bounds <- map(support$bounds)
+  points <- map(support$points)
+  if(anyNA(bounds) || anyNA(points)){
+    return(NULL)
+  }
+
+  .posterior_support_new(
+    bounds = range(bounds),
+    points = points,
+    exact  = support$exact,
+    source = "catalog",
+    type   = support$type
+  )
+}
+
+# Supports of composite random-effect quantities: correlations lie in
+# [-1, 1], variance shares in [0, 1], multipliers between zero and the
+# allocation scale, and inclusion indicators at 0 and 1. Composite SDs and
+# variances are nonnegative; their hull [0, Inf) is exact only when every
+# scale prior is supported on [0, Inf).
+.bt_parameter_catalog_random_support <- function(object, quantity, key){
+
+  interval <- function(lower, upper, exact = TRUE){
+    .posterior_support_new(c(lower, upper), exact = exact, source = "catalog",
+                           type = "interval")
+  }
+  switch(
+    quantity$quantity,
+    "cor"       = interval(-1, 1),
+    "var_prop"  = interval(0, 1),
+    "inclusion" = .posterior_support_new(c(0, 1), points = c(0, 1), source = "catalog",
+                                         type = "points"),
+    "var_mult"  = ,
+    "sd_mult"   = {
+      scale <- .bt_parameter_catalog_allocation_variance_scale(object, key)
+      if(is.null(scale)){
+        NULL
+      }else if(identical(quantity$quantity, "var_mult")){
+        interval(0, scale)
+      }else{
+        interval(0, sqrt(scale))
+      }
+    },
+    "sd"        = ,
+    "var"       = ,
+    "sd_total"  = ,
+    "var_total" = ,
+    "sd_common" = ,
+    "var_common" = interval(
+      0, Inf,
+      exact = .bt_parameter_catalog_unbounded_scale(object, key)
+    ),
+    NULL
+  )
+}
+
+# The variance scale of an allocation's multipliers: the number of targets
+# for mean-variance allocations, 1 for total-variance allocations.
+.bt_parameter_catalog_allocation_variance_scale <- function(object, key){
+
+  random_term <- if(nzchar(key$random_block)){
+    .bt_parameter_catalog_find_random_term(object, key)
+  }else{
+    NULL
+  }
+  allocation <- .bt_parameter_catalog_find_allocation(object, key, random_term)
+  if(is.null(allocation)){
+    return(NULL)
+  }
+  scale <- .bt_random_effect_allocation_scale_metadata(
+    allocation,
+    context = "Parameter catalog support"
+  )
+  if(identical(scale, "mean_variance")){
+    return(as.numeric(.bt_random_effect_summary_allocation_n_targets(
+      allocation,
+      K = allocation$n_targets
+    )))
+  }
+  1
+}
+
+# Whether the scale priors of a composite random-effect SD or variance are all
+# supported on [0, Inf): a composite SD is positively homogeneous in the
+# scales, so it then reaches every value in (0, Inf). A scale bounded away
+# from zero can bound the composite away from zero as well (e.g. the
+# original-scale intercept SD sqrt(sd_0^2 + c^2 sd_1^2) of a scaled
+# predictor), and a scale bounded above bounds it above, so the hull is then
+# not exact.
+.bt_parameter_catalog_unbounded_scale <- function(object, key){
+
+  prior_list <- attr(object, "prior_list", exact = TRUE)
+  scale_priors <- prior_list[intersect(key$dependencies, names(prior_list))]
+  scale_priors <- Filter(function(prior){
+    is.prior(prior) && !is.prior.simplex(prior) && !is.prior.discrete(prior) &&
+      .prior_linear_prior_dimension(prior) == 1L
+  }, scale_priors)
+  if(length(scale_priors) == 0L){
+    return(FALSE)
+  }
+  all(vapply(scale_priors, function(prior){
+    support <- .posterior_support_from_prior(prior, source = "catalog")
+    !is.null(support) && isTRUE(support$exact) && support$bounds[1L] == 0 &&
+      is.infinite(support$bounds[2L])
+  }, logical(1)))
+}
+
+# Draws where a catalog quantity is defined: original-scale correlations are
+# undefined where an SD is zero, and variance shares of gated total-variance
+# allocations where no component is active.
+.bt_parameter_catalog_quantity_definedness <- function(object, quantity){
+
+  key <- quantity$extraction_key[[1L]]
+  if(!identical(key$type, "random_summary")){
+    return("always")
+  }
+  if(identical(key$evaluator, "correlation")){
+    return("correlation")
+  }
+  if(identical(key$evaluator, "allocation") &&
+     identical(quantity$quantity, "var_prop")){
+    random_term <- if(nzchar(key$random_block)){
+      .bt_parameter_catalog_find_random_term(object, key)
+    }else{
+      NULL
+    }
+    allocation <- .bt_parameter_catalog_find_allocation(object, key, random_term)
+    if(!is.null(allocation) &&
+       identical(.bt_random_effect_allocation_scale_metadata(
+         allocation,
+         context = "Parameter catalog definedness"
+       ), "total_variance") &&
+       length(.bt_random_effect_summary_allocation_gate_names(allocation)) > 0L){
+      return("allocation_active")
+    }
+  }
+
+  "always"
+}
+
+.bt_parameter_catalog_valid_native_key <- function(key, quantity){
+
+  if(identical(key$type, "coordinate")){
+    return(
+      length(key$dependencies) == 1L &&
+        identical(key$dependencies, quantity$canonical_name)
+    )
+  }
+  if(identical(key$type, "factor_level")){
+    return(
+      is.numeric(key$weights) && !anyNA(key$weights) &&
+        all(is.finite(key$weights)) &&
+        length(key$weights) == length(key$dependencies)
+    )
+  }
+  if(!identical(key$type, "random_summary")){
+    return(FALSE)
+  }
+  scalar_character <- function(value, allow_empty = FALSE){
+    is.character(value) && length(value) == 1L && !is.na(value) &&
+      (allow_empty || nzchar(value))
+  }
+  evaluators <- c(
+    "allocation_sd", "allocation_var", "sd", "sd_variance", "inclusion",
+    "rho", "correlation",
+    "allocation", "allocation_inclusion"
+  )
+  if(!scalar_character(key$evaluator) ||
+     !key$evaluator %in% evaluators ||
+     !scalar_character(key$formula_parameter, allow_empty = TRUE) ||
+     !scalar_character(key$random_block, allow_empty = TRUE) ||
+     !scalar_character(key$summary_name) ||
+     !scalar_character(key$source_type) ||
+     !key$source_type %in% c(
+       "identity", "one_to_one_transform", "composite"
+     ) ||
+     !scalar_character(key$source_parameter, allow_empty = TRUE) ||
+     !scalar_character(key$source_prior, allow_empty = TRUE) ||
+     !scalar_character(key$source_transform) ||
+     !is.numeric(key$source_scale) || length(key$source_scale) != 1L){
+    return(FALSE)
+  }
+  if(key$evaluator %in% c("sd", "sd_variance", "inclusion", "correlation")){
+    return(
+      is.numeric(key$index) && length(key$index) == 1L &&
+        !is.na(key$index) && key$index == as.integer(key$index) &&
+        key$index >= 1L
+    )
+  }
+  if(key$evaluator %in% c(
+    "allocation_sd", "allocation_var", "allocation", "allocation_inclusion"
+  )){
+    return(
+      scalar_character(key$allocation_label) &&
+        (key$evaluator %in% c("allocation_sd", "allocation_var") ||
+           (is.numeric(key$index) && length(key$index) == 1L &&
+              !is.na(key$index) && key$index == as.integer(key$index) &&
+              key$index >= 1L))
+    )
+  }
+  identical(key$evaluator, "rho")
+}
+
+# Validates the tables once per distinct content: a later call with tables
+# identical() to validated ones returns without checking them again, and any
+# modified table is checked in full (see .bt_validate_once()). 'memo' names the
+# kind of tables ("catalog" for a whole catalog, "selection" for the few rows
+# of a selection) so that the two do not compete for the same entries; NULL
+# validates without memo, as for the tables of a catalog extension.
+.bt_validate_parameter_catalog_tables <- function(
+    quantities, aliases,
+    known_quantity_ids = quantities$quantity_id,
+    memo = "catalog"){
+
+  if(is.null(memo) || !is.data.frame(quantities) || !is.data.frame(aliases)){
+    return(.bt_validate_parameter_catalog_tables_uncached(
+      quantities, aliases, known_quantity_ids
+    ))
+  }
+  # the default known IDs are those of 'quantities', so they need no key of
+  # their own; an explicit NULL is a different request from the default
+  known_key <- if(missing(known_quantity_ids)){
+    structure(list(), class = "BayesTools_default_known_ids")
+  }else{
+    known_quantity_ids
+  }
+  .bt_validate_once(
+    paste0("parameter_", memo, "_tables"),
+    list(quantities, aliases, known_key),
+    function() .bt_validate_parameter_catalog_tables_uncached(
+      quantities, aliases, known_quantity_ids
+    )
+  )
+}
+
+.bt_validate_parameter_catalog_tables_uncached <- function(
+    quantities, aliases,
+    known_quantity_ids = quantities$quantity_id){
+
+  valid <- is.data.frame(quantities) && is.data.frame(aliases) &&
+    identical(names(quantities), .bt_parameter_catalog_quantity_columns) &&
+    identical(names(aliases), .bt_parameter_catalog_alias_columns)
+  if(!valid){
+    .bt_stop_refit_required("Parameter catalog tables have a missing or unsupported schema. Refit or rebuild the catalog with this version of BayesTools.")
+  }
+  character_columns <- setdiff(
+    .bt_parameter_catalog_quantity_columns,
+    c("arguments", "fixed_value", "internal", "support", "label_parts",
+      "extraction_key")
+  )
+  if(!all(vapply(quantities[character_columns], is.character, logical(1))) ||
+     !is.list(quantities$arguments) ||
+     !all(vapply(quantities$arguments, function(arguments){
+       is.character(arguments) && !anyNA(arguments)
+     }, logical(1))) ||
+     !is.numeric(quantities$fixed_value) ||
+     !is.logical(quantities$internal) ||
+     !is.list(quantities$extraction_key) ||
+     !all(vapply(
+       aliases[setdiff(names(aliases), c("simplified", "label_parts"))],
+       is.character,
+       logical(1)
+     )) ||
+     !is.logical(aliases$simplified) ||
+     !is.list(aliases$label_parts) ||
+     !all(vapply(aliases$label_parts, function(parts){
+       is.null(parts) || inherits(parts, "BayesTools_label_parts")
+     }, logical(1))) ||
+     !is.list(quantities$support) ||
+     !all(vapply(quantities$support, function(support){
+       is.null(support) || inherits(support, "BayesTools_posterior_support")
+     }, logical(1))) ||
+     !is.list(quantities$label_parts) ||
+     !all(vapply(seq_along(quantities$label_parts), function(i){
+       parts <- quantities$label_parts[[i]]
+       if(is.null(parts)){
+         return(!identical(quantities$provider[i], "BayesTools"))
+       }
+       inherits(parts, "BayesTools_label_parts")
+     }, logical(1))) ||
+     anyNA(quantities[setdiff(names(quantities),
+                             c("fixed_value", "support", "label_parts",
+                               "extraction_key"))]) ||
+     anyNA(aliases[setdiff(names(aliases), "label_parts")])){
+    .bt_stop_refit_required("Parameter catalog tables contain malformed field types or missing metadata. Refit or rebuild the catalog with this version of BayesTools.")
+  }
+  required_nonempty <- c(
+    "quantity_id", "canonical_name", "provider", "namespace", "role",
+    "display_label", "fitted_scale", "display_scale", "status",
+    "source_type"
+  )
+  if(any(!nzchar(as.matrix(quantities[required_nonempty]))) ||
+     any(!nzchar(aliases$alias)) || any(!nzchar(aliases$quantity_id)) ||
+     any(!nzchar(aliases$namespace)) ||
+     anyDuplicated(quantities$quantity_id) ||
+     any(!quantities$source_type %in%
+           c("identity", "one_to_one_transform", "composite",
+             "structural_zero", "none")) ||
+     any(!quantities$status %in%
+           c("sampled", "structural", "derived", "unavailable")) ||
+     any(!quantities$definedness %in%
+           c("always", names(.bt_undefined_draws_reasons))) ||
+     any(!is.na(quantities$fixed_value[quantities$status != "structural"])) ||
+     any(!is.finite(quantities$fixed_value[quantities$status == "structural"]))){
+    .bt_stop_refit_required("Parameter catalog tables contain invalid names, statuses, or structural values. Refit or rebuild the catalog with this version of BayesTools.")
+  }
+  # `quantity_id` is the key; `canonical_name` is a selector, and
+  # `parameter_catalog_resolve()` narrows it by namespace and component before
+  # reporting a typed ambiguity. Two providers describing one term under the
+  # same public name is therefore legitimate - that is what
+  # `parameter_catalog_extend()` exists to produce - and only rows that the
+  # resolver could not tell apart are rejected here.
+  selector <- duplicated(quantities[c("canonical_name", "namespace", "component")])
+  if(any(selector)){
+    stop(
+      "Parameter catalog quantities repeat the selector '",
+      quantities$canonical_name[selector][[1L]],
+      "' within one namespace and component, so it cannot be resolved. ",
+      "Give the extending provider a distinct canonical name or component.",
+      call. = FALSE
+    )
+  }
+  provider_prefix <- paste0(quantities$provider, "::")
+  if(any(!startsWith(quantities$quantity_id, provider_prefix))){
+    .bt_stop_refit_required("Parameter catalog quantity IDs do not match their providers. Refit or rebuild the catalog with this version of BayesTools.")
+  }
+  if(any(!aliases$quantity_id %in% known_quantity_ids)){
+    .bt_stop_refit_required("Parameter catalog aliases reference unknown quantity IDs. Refit or rebuild the catalog with this version of BayesTools.")
+  }
+  if(any(!quantities$scale_role %in% c("", "total", "common")) ||
+     any(nzchar(quantities$parent_quantity_id) &
+           !quantities$parent_quantity_id %in% known_quantity_ids) ||
+     any(quantities$parent_quantity_id == quantities$quantity_id)){
+    .bt_stop_refit_required("Parameter catalog quantities contain invalid scale hierarchy metadata. Refit or rebuild the catalog with this version of BayesTools.")
+  }
+  random <- startsWith(quantities$role, "random_")
+  if(any(random & (
+    !nzchar(quantities$owner_type) |
+      (!nzchar(quantities$owner_name) &
+         quantities$owner_type != "variance_allocation") |
+      !nzchar(quantities$quantity) |
+      quantities$source_type == "none"
+  ))){
+    .bt_stop_refit_required("Parameter catalog random quantities contain incomplete semantic ownership or source metadata. Refit or rebuild the catalog with this version of BayesTools.")
+  }
+  valid_keys <- vapply(seq_len(nrow(quantities)), function(i){
+    key <- quantities$extraction_key[[i]]
+    valid <- is.list(key) && is.character(key$type) && length(key$type) == 1L &&
+      !is.na(key$type) && nzchar(key$type) &&
+      is.character(key$dependencies) && !anyNA(key$dependencies) &&
+      !anyDuplicated(key$dependencies)
+    if(!isTRUE(valid)){
+      return(FALSE)
+    }
+    if(!identical(quantities$provider[i], "BayesTools")){
+      return(TRUE)
+    }
+    .bt_parameter_catalog_valid_native_key(
+      key,
+      quantities[i, , drop = FALSE]
+    )
+  }, logical(1))
+  if(!all(valid_keys)){
+    .bt_stop_refit_required("Parameter catalog extraction keys are malformed. Refit or rebuild the catalog with this version of BayesTools.")
+  }
+  invisible(TRUE)
+}
+
+.bt_validate_parameter_catalog <- function(catalog){
+
+  valid <- inherits(catalog, "BayesTools_parameter_catalog") &&
+    is.list(catalog) &&
+    identical(names(catalog), c("schema_version", "quantities", "aliases")) &&
+    identical(catalog$schema_version, .bt_parameter_map_version)
+  if(!valid){
+    .bt_stop_refit_required("Parameter catalog metadata are missing or unsupported. Refit or rebuild the catalog with this version of BayesTools.")
+  }
+  .bt_validate_parameter_catalog_tables(catalog$quantities, catalog$aliases)
+  invisible(TRUE)
+}
+
+.bt_parameter_catalog_stop <- function(class, message, ...){
+
+  condition <- structure(
+    c(list(message = message, call = NULL), list(...)),
+    class = c(class, "BayesTools_parameter_resolution_error", "error",
+              "condition")
+  )
+  stop(condition)
+}
+
+# Contrast-coefficient selectors `<term>{j}` of the fitted factor coordinates
+# that are structurally a level cell (the coordinates of treatment and
+# independent contrasts, and the first ordered coordinate). The catalog has a
+# `{j}` quantity only for coordinates that are not a level cell, so a level
+# coordinate is the one-coordinate, unit-weight level cell of a coordinate
+# without a `{j}` quantity. One row per refused selector (the selector, table
+# labels, and term alias forms of `{j}`) with the level cell rendered in the
+# same form, its term, quantity id and namespace. Selectors that name a
+# catalog quantity are never refused.
+.bt_parameter_catalog_level_coefficient_selectors <- function(catalog){
+
+  out <- data.frame(
+    selector    = character(),
+    level       = character(),
+    term        = character(),
+    coefficient = integer(),
+    quantity_id = character(),
+    namespace   = character(),
+    stringsAsFactors = FALSE
+  )
+  quantities <- catalog$quantities
+  keys <- quantities$extraction_key
+  parts <- unclass(quantities$label_parts)
+  factor_rows <- !quantities$internal &
+    vapply(keys, function(key){
+      is.list(key) && identical(key$type, "factor_level")
+    }, logical(1)) &
+    !vapply(parts, is.null, logical(1))
+  if(!any(factor_rows)){
+    return(out)
+  }
+  dependency <- vapply(keys, function(key){
+    if(is.list(key) && length(key$dependencies) == 1L &&
+       identical(as.numeric(key$weights), 1)){
+      key$dependencies[[1L]]
+    }else{
+      NA_character_
+    }
+  }, character(1))
+  coefficient <- rep(NA_integer_, length(parts))
+  coefficient[factor_rows] <- vapply(parts[factor_rows], function(part){
+    part$coefficient
+  }, integer(1))
+  cell <- rep(FALSE, length(parts))
+  cell[factor_rows] <- vapply(parts[factor_rows], function(part){
+    length(part$levels) > 0L && !isTRUE(part$marginal) &&
+      identical(part$transformation, "none")
+  }, logical(1))
+  coefficient_coordinates <- dependency[factor_rows & !is.na(coefficient)]
+  cells <- which(factor_rows & cell & !is.na(dependency) &
+                   !dependency %in% coefficient_coordinates)
+  shared <- dependency[cells][duplicated(dependency[cells])]
+  cells <- cells[!dependency[cells] %in% shared]
+
+  rows <- lapply(cells, function(i){
+    index <- .bt_parameter_coordinates_index(dependency[[i]])
+    j <- if(nzchar(index)) suppressWarnings(as.integer(index)) else 1L
+    if(is.na(j) || j < 1L){
+      return(NULL)
+    }
+    level_parts <- parts[[i]]
+    coefficient_parts <- .bt_label_parts_update(
+      level_parts,
+      levels      = character(),
+      coefficient = j
+    )[[1L]]
+    data.frame(
+      selector = c(
+        .bt_label(coefficient_parts, style = "selector"),
+        .bt_label(coefficient_parts, style = "table", formula_prefix = TRUE),
+        .bt_label(coefficient_parts, style = "table", formula_prefix = FALSE),
+        .bt_parameter_catalog_level_alias(
+          quantities$term[[i]],
+          .bt_parameter_catalog_factor_coefficient_component(j)
+        )
+      ),
+      level = c(
+        .bt_label(level_parts, style = "selector"),
+        .bt_label(level_parts, style = "table", formula_prefix = TRUE),
+        .bt_label(level_parts, style = "table", formula_prefix = FALSE),
+        .bt_parameter_catalog_level_alias(
+          quantities$term[[i]],
+          quantities$component[[i]]
+        )
+      ),
+      term        = paste(level_parts$components, collapse = ":"),
+      coefficient = j,
+      quantity_id = quantities$quantity_id[[i]],
+      namespace   = quantities$namespace[[i]],
+      stringsAsFactors = FALSE
+    )
+  })
+  rows <- rows[!vapply(rows, is.null, logical(1))]
+  if(length(rows) == 0L){
+    return(out)
+  }
+  out <- do.call(rbind, rows)
+  # one level form per selector and level (the first, rendered in its style)
+  out <- out[!duplicated(out[, c("selector", "quantity_id")]), , drop = FALSE]
+  # a selector naming a catalog quantity of the same namespace is never
+  # refused; one naming a quantity of another namespace is refused within this
+  # namespace (a namespace-filtered resolution does not see the other one)
+  known <- c(
+    paste(quantities$namespace, quantities$canonical_name, sep = "\r"),
+    paste(catalog$aliases$namespace, catalog$aliases$alias, sep = "\r")
+  )
+  out <- out[!paste(out$namespace, out$selector, sep = "\r") %in% known, ,
+             drop = FALSE]
+  rownames(out) <- NULL
+  out
+}
+
+# Refuses a contrast-coefficient selector `<term>{j}` whose coordinate is a
+# level (rows of .bt_parameter_catalog_level_coefficient_selectors() for one
+# selector): class BayesTools_selector_unavailable (parents
+# BayesTools_hypothesis_target and BayesTools_parameter_resolution_error),
+# with the fields 'selector', 'level' (the level forms), and 'quantity_id'.
+.bt_parameter_catalog_selector_unavailable_stop <- function(refused){
+
+  selector <- refused$selector[[1L]]
+  levels <- unique(refused$level)
+  .bt_parameter_catalog_stop(
+    class = c("BayesTools_selector_unavailable", "BayesTools_hypothesis_target"),
+    message = paste0(
+      "Selector '", selector, "' is unavailable: coefficient ",
+      refused$coefficient[[1L]], " of factor term '", refused$term[[1L]],
+      "' is a level, not a contrast coefficient. Select it by its level ",
+      "label, ", paste0("'", levels, "'", collapse = " or "), "."
+    ),
+    selector    = selector,
+    level       = levels,
+    quantity_id = unique(refused$quantity_id)
+  )
+}
+
+.bt_validate_parameter_selection <- function(selection, catalog = NULL){
+
+  valid <- inherits(selection, "BayesTools_parameter_selection") &&
+    is.list(selection) &&
+    identical(
+      names(selection),
+      c("schema_version", "parameter_map_version", "quantity_id",
+        "quantities")
+    ) &&
+    identical(selection$schema_version, .bt_parameter_selection_version) &&
+    identical(selection$parameter_map_version,
+              .bt_parameter_map_version) &&
+    is.character(selection$quantity_id) &&
+    length(selection$quantity_id) == nrow(selection$quantities)
+  if(!valid){
+    stop("Parameter selection metadata are missing or unsupported. Resolve the parameter again with this version of BayesTools.",
+         call. = FALSE)
+  }
+  .bt_validate_parameter_catalog_tables(
+    selection$quantities,
+    .bt_parameter_catalog_empty_aliases(),
+    known_quantity_ids = unique(c(
+      selection$quantities$quantity_id,
+      selection$quantities$parent_quantity_id[
+        nzchar(selection$quantities$parent_quantity_id)
+      ]
+    )),
+    memo = "selection"
+  )
+  if(!identical(selection$quantity_id, selection$quantities$quantity_id)){
+    stop("Parameter selection IDs and quantity metadata disagree. Resolve the parameter again.",
+         call. = FALSE)
+  }
+  if(!is.null(catalog)){
+    expected <- match(selection$quantity_id, catalog$quantities$quantity_id)
+    if(anyNA(expected)){
+      stop("The parameter selection does not belong to this fitted catalog.",
+           call. = FALSE)
+    }
+    catalog_rows <- catalog$quantities[expected, , drop = FALSE]
+    if(!identical(selection$quantities, catalog_rows)){
+      stop("The parameter selection is stale or does not belong to this fitted catalog.",
+           call. = FALSE)
+    }
+  }
+  invisible(TRUE)
+}
+
+.bt_parameter_draw_dependencies <- function(fit, dependencies){
+
+  JAGS_materialize_draws(
+    fit,
+    parameters = dependencies,
+    include_internal = TRUE
+  )
+}
+
+.bt_parameter_draw_supplied_dependencies <- function(model_samples,
+                                                      dependencies){
+
+  if(!is.matrix(model_samples) || !is.numeric(model_samples) ||
+     is.null(colnames(model_samples)) || anyDuplicated(colnames(model_samples))){
+    stop("'model_samples' must be a numeric matrix with unique column names.",
+         call. = FALSE)
+  }
+  missing <- setdiff(dependencies, colnames(model_samples))
+  if(length(missing) > 0L){
+    stop(
+      "The supplied 'model_samples' are missing declared source coordinates: ",
+      paste(missing, collapse = ", "),
+      ".",
+      call. = FALSE
+    )
+  }
+  values <- model_samples[, dependencies, drop = FALSE]
+  mcpar <- if(inherits(model_samples, "mcmc")) attr(model_samples, "mcpar", exact = TRUE) else NULL
+  chain <- if(is.null(mcpar)) coda::mcmc(values) else
+    coda::mcmc(values, start = mcpar[1L], end = mcpar[2L], thin = mcpar[3L])
+  coda::mcmc.list(chain)
+}
+
+.bt_parameter_draw_factor_level <- function(key, model_samples){
+
+  dependency_names <- colnames(model_samples)
+  valid_dependencies <- if(length(key$dependencies) == 0L){
+    ncol(model_samples) == 0L
+  }else{
+    identical(dependency_names, key$dependencies)
+  }
+  if(!isTRUE(valid_dependencies)){
+    stop(
+      "Selected factor level is unavailable from its declared dependencies.",
+      call. = FALSE
+    )
+  }
+  as.vector(model_samples %*% key$weights)
+}
+
+.bt_parameter_catalog_find_random_term <- function(fit, key){
+
+  designs <- attr(fit, "formula_design", exact = TRUE)
+  design <- designs[[key$formula_parameter]]
+  if(is.null(design)){
+    .bt_stop_refit_required("Selected random summary has no matching formula design. Refit the model with this version of BayesTools.")
+  }
+  matches <- vapply(design$random_effects, function(term){
+    identical(term$block_name, key$random_block)
+  }, logical(1))
+  if(sum(matches) != 1L){
+    .bt_stop_refit_required("Selected random summary has no unique random-effect block. Refit the model with this version of BayesTools.")
+  }
+  design$random_effects[[which(matches)]]
+}
+
+.bt_parameter_catalog_find_allocation <- function(fit, key, random_term){
+
+  designs <- attr(fit, "formula_design", exact = TRUE)
+  design <- designs[[key$formula_parameter]]
+  allocations <- list()
+  if(!is.null(random_term) && !is.null(random_term$sd_binding)){
+    allocations <- random_term$sd_binding$allocations
+  }
+  allocations <- c(allocations, design$random_allocations)
+  allocation_keys <- vapply(allocations, function(allocation){
+    allocation$label
+  }, character(1))
+  allocations <- allocations[!duplicated(allocation_keys)]
+  matches <- vapply(allocations, function(allocation){
+    identical(allocation$label, key$allocation_label)
+  }, logical(1))
+  if(sum(matches) != 1L){
+    .bt_stop_refit_required("Selected random summary has no unique variance-allocation definition. Refit the model with this version of BayesTools.")
+  }
+  allocations[[which(matches)]]
+}
+
+.bt_parameter_catalog_complete_cholesky_triangle <- function(random_term,
+                                                             model_samples){
+
+  structure <- .bt_random_effect_summary_term_structure(random_term)
+  correlation <- .bt_random_effect_correlation_metadata(
+    random_term,
+    structure = structure,
+    context = "Parameter catalog"
+  )
+  if(is.null(correlation) || !identical(correlation$type, "lkj") ||
+     random_term$n_columns < 2L){
+    return(model_samples)
+  }
+  names <- .bt_random_effect_cholesky_names(
+    random_term,
+    random_term$n_columns
+  )
+  upper_names <- names[upper.tri(names)]
+  missing <- upper_names[!upper_names %in% colnames(model_samples)]
+  if(length(missing) == 0L){
+    return(model_samples)
+  }
+  zeroes <- matrix(
+    0,
+    nrow = nrow(model_samples),
+    ncol = length(missing),
+    dimnames = list(NULL, missing)
+  )
+  cbind(model_samples, zeroes)
+}
+
+.bt_parameter_draw_random_summary <- function(fit, key, model_samples){
+
+  prior_list <- attr(fit, "prior_list", exact = TRUE)
+  evaluator <- key$evaluator
+  random_term <- if(nzchar(key$random_block)){
+    .bt_parameter_catalog_find_random_term(fit, key)
+  }else{
+    NULL
+  }
+  if(!is.null(random_term)){
+    model_samples <- .bt_parameter_catalog_complete_cholesky_triangle(
+      random_term,
+      model_samples
+    )
+  }
+  if(evaluator %in% c("allocation_sd", "allocation_var")){
+    allocation <- .bt_parameter_catalog_find_allocation(
+      fit,
+      key,
+      random_term
+    )
+    values <- .bt_random_effect_summary_allocation_scale_samples(
+      allocation = allocation,
+      model_samples = model_samples,
+      prior_list = prior_list
+    )
+    if(is.null(values)){
+      stop("Selected random allocation scale is unavailable from its declared dependencies.",
+           call. = FALSE)
+    }
+    return(if(identical(evaluator, "allocation_var")) values^2 else values)
+  }else if(evaluator %in% c("sd", "sd_variance")){
+    summary <- .bt_random_effect_summary_sd_samples(
+      random_term = random_term,
+      model_samples = model_samples,
+      prior_list = prior_list,
+      parameter = key$formula_parameter,
+      formula_scale = attr(fit, "formula_scale", exact = TRUE)
+    )
+    values <- summary$values[, key$index]
+    return(if(identical(evaluator, "sd_variance")) values^2 else values)
+  }
+  if(identical(evaluator, "inclusion")){
+    summary <- .bt_random_effect_summary_inclusion_samples(
+      random_term = random_term,
+      model_samples = model_samples,
+      prior_list = prior_list,
+      parameter = key$formula_parameter
+    )
+    match <- match(key$summary_name, summary$names)
+    if(is.na(match)){
+      stop("Selected random inclusion summary is unavailable from its declared dependencies.",
+           call. = FALSE)
+    }
+    return(summary$values[, match])
+  }
+  if(identical(evaluator, "rho")){
+    return(.bt_random_effect_summary_rho_samples(random_term, model_samples))
+  }
+  if(identical(evaluator, "correlation")){
+    complete <- .bt_random_effect_summary_complete_scaled_samples(
+      random_term = random_term,
+      model_samples = model_samples,
+      prior_list = prior_list,
+      parameter = key$formula_parameter,
+      formula_scale = attr(fit, "formula_scale", exact = TRUE)
+    )
+    summary <- .bt_random_effect_summary_correlation_samples(
+      random_term,
+      complete
+    )
+    return(summary$values[, key$index])
+  }
+  if(identical(evaluator, "allocation_inclusion")){
+    values <- .bt_random_effect_allocation_gate_draws(
+      parameter_name = key$source_parameter,
+      posterior = model_samples
+    )
+    if(is.null(values)){
+      stop(
+        "Selected random allocation inclusion is unavailable from its declared dependency.",
+        call. = FALSE
+      )
+    }
+    return(values)
+  }
+  if(identical(evaluator, "allocation")){
+    allocation <- .bt_parameter_catalog_find_allocation(
+      fit,
+      key,
+      random_term
+    )
+    summary <- .bt_random_effect_summary_allocation_samples(
+      allocation = allocation,
+      random_term = random_term,
+      model_samples = model_samples,
+      prior_list = prior_list,
+      include_multipliers = TRUE
+    )
+    match <- match(key$summary_name, summary$names)
+    if(is.na(match)){
+      stop("Selected random allocation summary is unavailable from its declared dependencies.",
+           call. = FALSE)
+    }
+    return(summary$values[, match])
+  }
+
+  stop("Unsupported BayesTools parameter-catalog extraction key.", call. = FALSE)
+}

@@ -1,0 +1,154 @@
+# Testing
+
+Use this guide for changes under `tests/testthat/`, `tools/test-profile.R`, or
+the test workflows.
+
+In BayesToolsVerse, the shared validation guide defines tests, verification,
+and scenarios. Profiles below select existing runner lanes; they do not make
+expensive fitting part of the routine development loop. Use the workspace's
+configured R and private agent library when available.
+
+## Development Workflow
+
+Always use the LLM reporter. Prefer the profile runner, for example:
+
+```powershell
+Rscript tools/test-profile.R unit
+```
+
+For ad hoc `devtools::test()` calls, set `AGENT=1` and pass
+`testthat::LlmReporter$new()`. Run the narrowest relevant profile first; do not
+use repeated full-suite runs as an iteration loop.
+
+## Test Profiles
+
+- `unit`: fast package-critical tests without live JAGS fitting or visual
+  snapshots.
+- `fixture`: tests using cached fits, tables, and reference output.
+- `visual`: pure `vdiffr` plot tests.
+- `visual-fixture`: visual tests that load cached JAGS fits.
+- `fit`: centralized live fitting and marginal-likelihood generation. It
+  refreshes the cache unless `BAYESTOOLS_TEST_SKIP_REFIT=TRUE` is set
+  intentionally for a validated cache.
+- `all`: every profile; this is the default CI and coverage profile.
+
+Start with relevant `unit` tests. Use `fixture` for cached-object behavior and
+`visual`/`visual-fixture` for affected plotting. Add `fit` before dependent
+profiles when a fitting change invalidates required caches; post-fit or
+plotting changes alone do not require refitting. Establish one representative
+path before expanding expensive validation.
+
+## Test Organization and Caches
+
+This package uses testthat edition 3. Do not add `context()`.
+
+- Put `skip_if_not_test_profile()` at the top of every new `test-*.R` file.
+- Shared helpers live in `tests/testthat/common-functions.R`.
+- Profile routing lives in `tests/testthat/helper-test-profiles.R`.
+- Only `tests/testthat/test-00-model-fits.R` may fit ordinary models or compute
+  marginal likelihoods for cached fixtures. Other tests must load cached fits.
+- The expected fit catalog lives in
+  `tests/testthat/helper-expected-fit-catalog.R`. Update the fitting file and
+  catalog together when a new cached fit is necessary.
+- Reuse existing fits whenever possible. Missing or stale required fits are not
+  passing release evidence.
+- Fits that exist only to carry structural fixture assertions are saved with
+  `save_fit(..., assertion_only = TRUE)`. They have no reviewed summary-table
+  baselines; the catalog-wide summary-table test covers the other fits.
+
+The profile runner stores caches below `BAYESTOOLS_TEST_FILES_DIR`, using a
+temporary directory by default. Relevant controls are
+`BAYESTOOLS_TEST_PROFILE`, `BAYESTOOLS_TEST_FILES_DIR`, and
+`BAYESTOOLS_TEST_SKIP_REFIT`.
+
+Run `fit` after fitting, prior/data input, generated JAGS, native distribution,
+scaling, parameter-map, or marginal-likelihood changes. The centralized fit file
+refreshes the required catalog by default; reuse it only when the existing cache
+has been intentionally validated. Do not run `fit` for unrelated plotting,
+summary, documentation, or post-fit changes.
+
+The `model-fit` cache marker hashes what defines the cached objects: the fitting
+test file, the native sources in `src/`, the catalog and registry helpers,
+`DESCRIPTION` without `Version`, `Author`, `Built`, `Packaged`, and the
+publication-only `Repository` and `Date/Publication` fields, and the deparsed code of the
+package functions that the fit generators reach. Reachability is a static,
+over-including closure (`.test_cache_reached_package_objects()` states the
+rules) from the package functions named by the `save_fit()` blocks and the
+setup code of `test-00-model-fits.R`, by the hashed helpers, and by `.onLoad()`.
+Editing code that no generator reaches (inference, plotting, summaries,
+prior-density ordinates), a comment, or the package version leaves the marker
+current; editing a reached function, a native source, or the fitting test file
+makes the cache stale until `fit` runs. The assertion blocks of the fitting file
+test the post-fit interface of live fits; they run with the file, which a
+current cache skips and the `fit` profile reruns by default.
+
+Do not modify `GENERATE_REFERENCE_FILES` unless the maintainer explicitly asks.
+
+The interactive `test_tests()` runner, loaded by the project `.Rprofile` and
+invoked comprehensively by sourcing `.dev/user-tests.R`, caches changed
+`test_reference_table()` output beside its baseline as `<name>.new.txt`. After
+the test summary, it opens testthat's snapshot reviewer for explicit
+Accept/Reject/Skip decisions. Accept replaces the baseline, Reject removes the
+candidate, and Skip keeps it for later review. Non-interactive runs retain
+candidates and never update baselines.
+
+`test_tests()` runs all five lanes by default. It reuses a validated fit cache;
+use `refit = TRUE` to clean and rebuild it. With `filter`, refitting first runs
+the centralized `fit` lane and then the selected test files. `regenerate = TRUE`
+combines refitting with forced snapshot review. BayesTools has no timing
+baselines, so `update_timings = TRUE` fails explicitly. Interactive calls use
+the standard progress reporter and leave `AGENT` unset; agent-oriented output
+is available explicitly with `reporter = "llm"`.
+
+## Correctness Evidence
+
+- Test behavior, transformations, failure paths, and invariants rather than
+  implementation trivia.
+- Use analytic identities or independent reference implementations for
+  numerical kernels.
+- Justify tolerances from numerical or Monte Carlo error. Do not use a broad
+  package-wide tolerance merely because it makes a test pass.
+- A failing expectation requires diagnosis. Generate a candidate when the
+  intended result changed; accept a verified baseline change only after
+  maintainer or explicitly delegated review.
+- Stochastic printed signatures check structure and numeric value classes.
+  Summary sections also compare current public sample-table means and SDs with
+  base R and single-model probabilities with their declared and inferred values;
+  finite value mutations must fail these numeric oracles. Structured row
+  metadata retains the declared SD/quantile blanks of inclusion rows.
+- Do not add redundant matrices, samples, fits, or assertions for coverage
+  alone.
+- A test that checks many elements (rows, levels, grid points) makes each check
+  but asserts once per unit: vectorize exact comparisons, or wrap a per-element
+  loop in `expectation_problems()` (`helper-expectation-problems.R`) and assert
+  that no problem was collected. Every `expect_*` call costs milliseconds inside
+  a test (testthat sets up reproducible output for each comparison), so
+  thousands of them dominate a fast check. `helper-expectation-problems.R`
+  masks `expect_equal()`, `expect_identical()`, `expect_true()` and
+  `expect_false()` in the test files with versions that record a success at once
+  where testthat's comparison cannot fail (identical values and no comparison
+  option but a valid tolerance, or an unclassed logical `TRUE` or `FALSE`) and
+  otherwise make testthat's own expectation, so failures read as before;
+  `expect_equal_each()` applies the tolerance of `expect_equal()` on one number
+  to every element of two numeric vectors.
+- Treat Codecov misses as leads, not goals. Reduce reports to missed clusters,
+  then add adversarial assertions only for meaningful behavior. Prefer targeted
+  `covr` after the relevant profile; report unrelated local coverage failures
+  and rely on CI for the final delta.
+
+## Visual Regression
+
+Use the existing `vdiffr::expect_doppelganger()` pattern and the relevant
+visual profile. Structural plot-data tests supplement visual snapshots; they do
+not replace them.
+
+Retain candidates for review; accept intentional visual changes only after
+maintainer or explicitly delegated review. Keep stochastic plot inputs
+deterministic so a snapshot represents rendering behavior rather than random
+draws.
+
+## Final Verification
+
+Run focused tests after each meaningful change. Before handoff, run the profile
+sequence required by the affected subsystem when practical. State exactly what
+ran, what did not, and why.

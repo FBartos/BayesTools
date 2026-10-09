@@ -1,11 +1,93 @@
 skip_if_not_test_profile("unit")
 
+test_that("local unscale joint assembly retains fresh scalar laws and scoped refusals", {
+  priors <- list(a = prior("point", list(0)), b = prior("normal", list(0, 1)))
+  plan <- list(components = matrix(1L, 1L, 2L, dimnames = list(NULL, c("a", "b"))), probabilities = 1, model_mixture = FALSE)
+  design <- diag(2L); dimnames(design) <- list(c("a", "b"), c("a", "b"))
+  joint <- .posterior_atoms_joint_linear(priors, plan, design)
+  marginals <- list(a = .posterior_atoms_new(matrix(0, 1L, 1L), 1, column_names = "a"), b = .posterior_atoms_new(column_names = "b"))
+  assembled <- .posterior_atoms_unscale_joint(joint, marginals, c("a", "b"))
+  expect_length(assembled$atoms$mass, 0L)
+  expect_identical(.posterior_atoms_for_column(assembled$atoms, "a")$mass, 1)
+  expect_identical(.posterior_atoms_for_column(assembled$atoms, "a")$locations, matrix(0, 1L, 1L, dimnames = list(NULL, "a")))
+  expect_length(.posterior_atoms_for_column(assembled$atoms, "b")$mass, 0L)
+  expect_identical(assembled$certified_columns, character())
+  for(field in c("locations", "mass", "component_probabilities", "component_log_probabilities", "model_probability_declaration")){
+    expect_identical(assembled$atoms[[field]], joint[[field]])
+  }
+  unknown <- marginals; unknown["a"] <- list(NULL)
+  refusals <- data.frame(column = c("a", "b"), measure = c("atoms", "support"), reason = c("Unknown scalar law", "Unknown support"))
+  assembled <- .posterior_atoms_unscale_joint(joint, unknown, c("a", "b"), refusals)
+  expect_null(.posterior_atoms_for_column(assembled$atoms, "a"))
+  expect_identical(assembled$unavailable, refusals)
+  certified <- joint; certified$marginals <- marginals
+  assembled <- .posterior_atoms_unscale_joint(certified, unknown, c("a", "b"), refusals)
+  expect_identical(assembled$certified_columns, c("a", "b"))
+  expect_identical(assembled$unavailable, refusals[2L, , drop = FALSE])
+  # Generic replacement keeps its existing full-replacement semantics.
+  values <- matrix(c(0, 1, 0, 2), 2L, byrow = TRUE, dimnames = list(NULL, c("a", "b")))
+  values <- .posterior_atoms_set(values, .posterior_atoms_new(column_names = c("a", "b"), marginals = marginals))
+  replacement <- .posterior_atoms_set(values, joint)
+  expect_length(.posterior_atoms_for_column(.posterior_atoms_get(replacement), "a")$mass, 0L)
+})
+
+.posterior_density_for_test <- function(x, y, method = "iwmde",
+                                        density_method = "precomputed", ...){
+  posterior_density_attribute(x = x, y = y, method = method,
+                              density_method = density_method, ...)
+}
+
+.posterior_ordinate_for_test <- function(value, ordinate, method = "qCMDE",
+                                         density_method = "precomputed", ...){
+  posterior_ordinate_attribute(value = value, ordinate = ordinate,
+                               method = method,
+                               density_method = density_method, ...)
+}
+
 .mock_marginal_fit <- function(posterior, prior_list) {
   fit <- coda::mcmc(posterior)
   class(fit) <- c("mcmc", "BayesTools_fit")
   attr(fit, "prior_list") <- prior_list
-  fit
+  attach_test_parameter_map(fit)
 }
+
+test_that("unscaled coefficient atoms follow joint structural contributors", {
+
+  make_fit <- function(slope, slope_prior, indicator = NULL){
+    posterior <- cbind(mu_intercept = rep(0, length(slope)), mu_x = slope)
+    if(!is.null(indicator)) posterior <- cbind(posterior, mu_x_indicator = indicator)
+    fit <- .mock_marginal_fit(
+      posterior, list(mu_intercept = prior("point", list(0)), mu_x = slope_prior)
+    )
+    attr(fit, "formula_scale") <- list(mu = formula_scale_for_test(~ x, list(x = list(mean = 5, sd = 2))))
+    attach_test_parameter_map(fit, monitor_names = colnames(posterior))
+  }
+  fit <- make_fit(rep(1, 20), prior("point", list(1)))
+  fixed <- as_mixed_posteriors(fit, c("mu_intercept", "mu_x"), transform_scaled = TRUE)
+  expect_equal(as.numeric(.posterior_atoms_get(fixed$mu_intercept)$locations), -2.5)
+  expect_equal(as.numeric(.posterior_atoms_get(fixed$mu_x)$locations), .5)
+  expect_equal(.posterior_atoms_get(fixed$mu_intercept)$mass, 1)
+  marginal <- marginal_posterior(fixed, "mu_x", use_formula = FALSE, prior_samples = TRUE)
+  expect_equal(as.numeric(.posterior_atoms_get(marginal)$locations), .5)
+
+  fit <- make_fit(seq(-1, 1, length.out = 20), prior("normal", list(0, 1)))
+  continuous <- as_mixed_posteriors(fit, "mu_intercept", transform_scaled = TRUE)
+  expect_length(.posterior_atoms_get(continuous$mu_intercept)$mass, 0L)
+  expect_equal(as.numeric(continuous$mu_intercept), -2.5 * seq(-1, 1, length.out = 20))
+
+  fit <- make_fit(
+    c(rep(0, 8), seq(.1, 1, length.out = 12)),
+    prior_spike_and_slab(prior("normal", list(0, 1)), prior("point", list(.5))),
+    indicator = c(rep(0L, 8), rep(1L, 12))
+  )
+  mixed <- as_mixed_posteriors(fit, "mu_intercept", transform_scaled = TRUE)
+  expect_equal(.posterior_atoms_get(mixed$mu_intercept)$mass, .4)
+  expect_equal(as.numeric(.posterior_atoms_get(mixed$mu_intercept)$locations), 0)
+  conditional <- as_mixed_posteriors(
+    fit, c("mu_intercept", "mu_x"), conditional = "mu_x", transform_scaled = TRUE
+  )
+  expect_length(.posterior_atoms_get(conditional$mu_intercept)$mass, 0L)
+})
 
 test_that("as_mixed_posteriors applies AND and OR conditioning exactly", {
 
@@ -36,8 +118,10 @@ test_that("as_mixed_posteriors applies AND and OR conditioning exactly", {
 
   expect_equal(as.numeric(and_samples$mu_a), c(30, 31))
   expect_equal(as.numeric(and_samples$mu_b), c(40, 41))
-  expect_equal(attr(and_samples$mu_a, "models_ind"), c(1, 1))
-  expect_equal(attr(and_samples$mu_b, "models_ind"), c(1, 1))
+  # the component of a spike-and-slab prior: its slab (1) or spike (2)
+  expect_equal(.bt_meta_get(and_samples$mu_a, "component"), c(1L, 1L))
+  expect_equal(.bt_meta_get(and_samples$mu_b, "component"), c(1L, 1L))
+  expect_identical(.bt_meta_get(and_samples$mu_a, "component_source"), "spike_and_slab")
 
   or_samples <- as_mixed_posteriors(
     fit,
@@ -48,8 +132,362 @@ test_that("as_mixed_posteriors applies AND and OR conditioning exactly", {
 
   expect_equal(as.numeric(or_samples$mu_a), c(10, 0, 30, 31))
   expect_equal(as.numeric(or_samples$mu_b), c(0, 20, 40, 41))
-  expect_equal(attr(or_samples$mu_a, "models_ind"), c(1, 0, 1, 1))
-  expect_equal(attr(or_samples$mu_b, "models_ind"), c(0, 1, 1, 1))
+  expect_equal(.bt_meta_get(or_samples$mu_a, "component"), c(1L, 2L, 1L, 1L))
+  expect_equal(.bt_meta_get(or_samples$mu_b, "component"), c(2L, 1L, 1L, 1L))
+})
+
+test_that("unknown and non-conditional labels fail closed", {
+
+  prior_list <- list(
+    mu_a = prior_spike_and_slab(
+      prior("normal", list(0, 1)),
+      prior_inclusion = prior("point", list(0.5))
+    ),
+    theta = prior("normal", list(0, 1))
+  )
+  posterior <- cbind(
+    mu_a = c(0, 10),
+    theta = c(1, 2),
+    mu_a_indicator = c(0, 1)
+  )
+  fit <- .mock_marginal_fit(posterior, prior_list)
+
+  expect_error(
+    as_mixed_posteriors(fit, parameters = "theta", conditional = "theta"),
+    "The parameter 'theta' is not a conditional parameter.",
+    fixed = TRUE
+  )
+  expect_error(
+    as_mixed_posteriors(fit, parameters = "mu_a", conditional = "omega"),
+    "The parameter 'omega' is not a conditional parameter.",
+    fixed = TRUE
+  )
+  expect_error(
+    BayesTools:::.condition_event_family_options(
+      prior_list,
+      list(name = "<unknown>:PETT", type = "unknown", labels = "PETT")
+    ),
+    "The parameter 'PETT' is not a conditional parameter.",
+    fixed = TRUE
+  )
+})
+
+test_that("as_mixed_posteriors refreshes support from conditional context", {
+
+  prior_list <- list(
+    theta = prior_spike_and_slab(
+      prior("uniform", list(10, 20)),
+      prior_inclusion = prior("point", list(0.5))
+    )
+  )
+  posterior <- cbind(
+    theta           = c(0, 11, 0, 18),
+    theta_indicator = c(0, 1, 0, 1)
+  )
+  fit <- .mock_marginal_fit(posterior, prior_list)
+
+  averaged <- as_mixed_posteriors(fit, parameters = "theta")
+  conditional <- as_mixed_posteriors(
+    fit,
+    parameters  = "theta",
+    conditional = "theta"
+  )
+
+  expect_equal(
+    BayesTools:::.posterior_support_bounds(averaged$theta, exact_only = FALSE),
+    c(0, 20)
+  )
+  expect_false(BayesTools:::.posterior_support_get(averaged$theta)$exact)
+  expect_equal(BayesTools:::.posterior_support_bounds(conditional$theta), c(10, 20))
+})
+
+test_that("as_mixed_posteriors propagates named upstream posterior densities", {
+
+  prior_list <- list(theta = prior("normal", list(0, 1)))
+  posterior <- cbind(theta = seq(-1, 1, length.out = 21))
+  fit <- .mock_marginal_fit(posterior, prior_list)
+
+  stored_x <- seq(-2, 2, length.out = 41)
+  stored_y <- stats::dnorm(stored_x, mean = .25, sd = .8)
+  fit <- .bt_meta_set(fit, "posterior_density", list(
+    theta = .posterior_density_for_test(
+      parameter = "theta",
+      x         = stored_x,
+      y         = stored_y,
+      method    = "iwmde"
+    )
+  ))
+
+  mixed <- as_mixed_posteriors(fit, parameters = "theta")
+  marginal <- marginal_posterior(
+    samples       = mixed,
+    parameter     = "theta",
+    prior_samples = TRUE,
+    use_formula   = FALSE,
+    n_samples     = 128
+  )
+  plot_data <- BayesTools:::.plot_data_samples.simple(
+    samples                  = mixed,
+    parameter                = "theta",
+    n_points                 = 16,
+    transformation           = NULL,
+    transformation_arguments = NULL,
+    transformation_settings  = FALSE,
+    density_method           = "precomputed"
+  )
+
+  expect_equal(.bt_meta_get(mixed$theta, "posterior_density")$method, "iwmde")
+  expect_equal(.bt_meta_get(marginal, "posterior_density")$x, stored_x)
+  expect_equal(plot_data$density$x, stored_x)
+  expect_equal(plot_data$density$y, stored_y)
+})
+
+test_that("as_mixed_posteriors does not reuse stale conditional densities", {
+
+  prior_list <- list(
+    theta = prior_spike_and_slab(
+      prior("normal", list(0, 1)),
+      prior_inclusion = prior("point", list(0.5))
+    ),
+    phi = prior_spike_and_slab(
+      prior("normal", list(0, 1)),
+      prior_inclusion = prior("point", list(0.5))
+    )
+  )
+  posterior <- cbind(
+    theta           = c(0, 1, 0, 2, 3),
+    phi             = c(0, 0, 4, 5, 6),
+    theta_indicator = c(0, 1, 0, 1, 1),
+    phi_indicator   = c(0, 0, 1, 1, 1)
+  )
+  stored_density <- .posterior_density_for_test(
+    parameter = "theta",
+    x         = seq(-3, 3, length.out = 61),
+    y         = rep(1, 61),
+    method    = "iwmde"
+  )
+  fit <- .mock_marginal_fit(posterior, prior_list)
+  fit <- .bt_meta_set(fit, "posterior_density", list(theta = stored_density))
+
+  stale <- as_mixed_posteriors(
+    fit,
+    parameters       = c("theta", "phi"),
+    conditional      = c("theta", "phi"),
+    conditional_rule = "OR"
+  )
+  expect_null(.bt_meta_get(stale$theta, "posterior_density"))
+
+  stored_density$conditional <- c("phi", "theta")
+  stored_density$conditional_rule <- "OR"
+  fit <- .bt_meta_set(fit, "posterior_density", list(theta = stored_density))
+  matched <- as_mixed_posteriors(
+    fit,
+    parameters       = c("theta", "phi"),
+    conditional      = c("theta", "phi"),
+    conditional_rule = "OR"
+  )
+  mismatched <- as_mixed_posteriors(
+    fit,
+    parameters       = c("theta", "phi"),
+    conditional      = c("theta", "phi"),
+    conditional_rule = "AND"
+  )
+
+  expect_equal(.bt_meta_get(matched$theta, "posterior_density")$method, "iwmde")
+  expect_null(.bt_meta_get(mismatched$theta, "posterior_density"))
+})
+
+test_that("formula marginals do not inherit raw coefficient densities", {
+
+  prior_list <- list(
+    mu_intercept = prior("normal", list(0, 1)),
+    mu_x         = prior("normal", list(0, 1))
+  )
+  attr(prior_list$mu_intercept, "parameter") <- "mu"
+  attr(prior_list$mu_x, "parameter") <- "mu"
+
+  fit <- .mock_marginal_fit(
+    cbind(
+      mu_intercept = seq(-.5, .5, length.out = 11),
+      mu_x         = seq(1, 2, length.out = 11)
+    ),
+    prior_list
+  )
+  fit <- .bt_meta_set(fit, "posterior_density", list(
+    mu_x = .posterior_density_for_test(
+      parameter = "mu_x",
+      x         = seq(-2, 2, length.out = 41),
+      y         = rep(1, 41),
+      method    = "iwmde"
+    )
+  ))
+
+  samples <- as_mixed_posteriors(fit, parameters = c("mu_intercept", "mu_x"))
+  marginal <- marginal_posterior(
+    samples       = samples,
+    parameter     = "mu_x",
+    formula       = ~ x,
+    prior_samples = TRUE,
+    n_samples     = 128
+  )
+
+  expect_true(all(vapply(marginal, function(level) {
+    is.null(.bt_meta_get(level, "posterior_density"))
+  }, logical(1))))
+})
+
+test_that("factor marginals attach only level-matched densities", {
+
+  formula_result <- JAGS_formula(
+    formula    = ~ fac,
+    parameter  = "mu",
+    data       = data.frame(fac = factor(c("A", "B", "C"), levels = c("A", "B", "C"))),
+    prior_list = list(
+      intercept = prior("normal", list(0, 1)),
+      fac       = prior_factor("normal", list(0, 1), contrast = "treatment")
+    )
+  )
+  fit <- .mock_marginal_fit(
+    cbind(
+      "mu_fac[1]" = seq(-1, 0, length.out = 11),
+      "mu_fac[2]" = seq(1, 2, length.out = 11)
+    ),
+    formula_result[["prior_list"]]
+  )
+  stored_x <- seq(-3, 3, length.out = 31)
+  fit <- .bt_meta_set(fit, "posterior_density", list(
+    "mu_fac[1]" = .posterior_density_for_test(
+      parameter = "mu_fac[1]",
+      x         = stored_x,
+      y         = rep(100, length(stored_x)),
+      method    = "raw-coefficient"
+    ),
+    B = .posterior_density_for_test(
+      parameter = "B",
+      x         = stored_x,
+      y         = stats::dnorm(stored_x, mean = -0.5, sd = .8),
+      method    = "iwmde"
+    ),
+    C = .posterior_density_for_test(
+      parameter = "C",
+      x         = stored_x,
+      y         = stats::dnorm(stored_x, mean = 1.5, sd = .8),
+      method    = "iwmde"
+    )
+  ))
+
+  samples <- as_mixed_posteriors(fit, parameters = "mu_fac")
+  marginal <- marginal_posterior(
+    samples     = samples,
+    parameter   = "mu_fac",
+    use_formula = FALSE
+  )
+
+  expect_null(.bt_meta_get(marginal$A, "posterior_density"))
+  expect_equal(.bt_meta_get(marginal$B, "posterior_density")$method, "iwmde")
+  expect_equal(.bt_meta_get(marginal$C, "posterior_density")$method, "iwmde")
+  expect_false(identical(.bt_meta_get(marginal$B, "posterior_density")$method, "raw-coefficient"))
+})
+
+test_that("as_marginal_inference rejects precomputed marginal-inference BFs", {
+
+  prior_list <- list(theta = prior("normal", list(0, 1)))
+  fit <- .mock_marginal_fit(
+    cbind(theta = seq(-3, 3, length.out = 301)),
+    prior_list
+  )
+  stored_x <- seq(-4, 4, length.out = 401)
+  stored_y <- stats::dnorm(stored_x, mean = .75, sd = .9)
+  fit <- .bt_meta_set(fit, "posterior_density", list(
+    theta = .posterior_density_for_test(
+      parameter = "theta",
+      x         = stored_x,
+      y         = stored_y,
+      method    = "iwmde"
+    )
+  ))
+
+  expect_error(
+    as_marginal_inference(
+      model                = fit,
+      marginal_parameters = "theta",
+      parameters          = "theta",
+      conditional_list    = list(theta = NULL),
+      conditional_rule    = "AND",
+      formula             = NULL,
+      n_samples           = 256,
+      silent              = TRUE,
+      density_method      = "precomputed"
+    ),
+    "not supported"
+  )
+  inference <- as_marginal_inference(
+    model                = fit,
+    marginal_parameters = "theta",
+    parameters          = "theta",
+    conditional_list    = list(theta = NULL),
+    conditional_rule    = "AND",
+    formula             = NULL,
+    n_samples           = 256,
+    silent              = TRUE,
+    density_method      = "KDE"
+  )
+
+  expect_equal(attr(inference, "density_method"), "KDE")
+})
+
+test_that("as_marginal_inference can return marginals without Bayes factors", {
+
+  prior_list <- list(theta = prior("point", list(0)))
+  fit <- .mock_marginal_fit(cbind(theta = rep(0, 20)), prior_list)
+
+  inference <- as_marginal_inference(
+    model                = fit,
+    marginal_parameters = "theta",
+    parameters          = "theta",
+    conditional_list    = list(theta = NULL),
+    conditional_rule    = "AND",
+    formula             = NULL,
+    compute_BF          = FALSE
+  )
+
+  expect_equal(as.numeric(inference[["averaged"]][["theta"]]), rep(0, 20))
+  expect_equal(as.numeric(inference[["conditional"]][["theta"]]), rep(0, 20))
+  expect_length(inference[["inference"]], 0L)
+})
+
+test_that("as_marginal_inference does not consume raw stored posterior ordinates", {
+
+  prior_list <- list(theta = prior("normal", list(0, 1)))
+  fit <- .mock_marginal_fit(
+    cbind(theta = seq(-3, 3, length.out = 301)),
+    prior_list
+  )
+  fit <- .bt_meta_set(fit, "posterior_ordinate", list(
+    theta = .posterior_ordinate_for_test(
+      parameter   = "theta",
+      value       = .25,
+      ordinate    = .5,
+      method      = "qCMDE",
+      diagnostics = list(relative_mcse = .2)
+    )
+  ))
+
+  expect_error(
+    as_marginal_inference(
+      model                = fit,
+      marginal_parameters = "theta",
+      parameters          = "theta",
+      conditional_list    = list(theta = NULL),
+      conditional_rule    = "AND",
+      formula             = NULL,
+      null_hypothesis     = .25,
+      n_samples           = 256,
+      silent              = TRUE,
+      density_method      = "precomputed"
+    ),
+    "not supported"
+  )
 })
 
 test_that("marginal_posterior evaluates formula terms exactly on default grid", {
@@ -95,6 +533,7 @@ test_that("conditional spike-and-slab prior densities use the slab", {
   fit <- coda::mcmc(posterior)
   class(fit) <- c("mcmc", "BayesTools_fit")
   attr(fit, "prior_list") <- prior_list
+  fit <- attach_test_parameter_map(fit)
 
   samples <- as_mixed_posteriors(
     model       = fit,
@@ -109,7 +548,96 @@ test_that("conditional spike-and-slab prior densities use the slab", {
     n_samples     = 128
   )
 
-  expect_equal(.prior_linear_density_point_mass(attr(marginal, "prior_density"), 0), 0)
+  expect_equal(.prior_linear_density_point_mass(.bt_meta_get(marginal, "prior_density"), 0), 0)
+})
+
+test_that("as_marginal_inference conditions scalar spike-and-slab marginals", {
+
+  prior_list <- list(
+    theta = prior_spike_and_slab(
+      prior("normal", list(mean = 1, sd = 0.2)),
+      prior_inclusion = prior("point", list(location = 0.5))
+    )
+  )
+  posterior <- cbind(
+    theta           = c(0, 10, 0, 20, 30),
+    theta_indicator = c(0, 1, 0, 1, 1)
+  )
+  fit <- .mock_marginal_fit(posterior, prior_list)
+
+  inference <- as_marginal_inference(
+    model                = fit,
+    marginal_parameters = "theta",
+    parameters          = "theta",
+    conditional_list    = list(theta = "theta"),
+    conditional_rule    = "AND",
+    formula             = NULL,
+    null_hypothesis     = 0.123,
+    n_samples           = 128,
+    silent              = TRUE
+  )
+
+  averaged <- inference[["averaged"]][["theta"]]
+  conditional <- inference[["conditional"]][["theta"]]
+  direct <- marginal_posterior(
+    samples = as_mixed_posteriors(
+      model       = fit,
+      parameters  = "theta",
+      conditional = "theta"
+    ),
+    parameter     = "theta",
+    prior_samples = TRUE,
+    use_formula   = FALSE,
+    n_samples     = 128
+  )
+
+  expect_s3_class(conditional, "marginal_posterior.simple")
+  expect_equal(as.numeric(averaged), c(0, 10, 0, 20, 30))
+  expect_equal(as.numeric(conditional), c(10, 20, 30))
+  expect_equal(as.numeric(conditional), as.numeric(direct))
+  expect_equal(.bt_meta_condition(conditional, "effective_conditional"), "theta")
+  expect_equal(.bt_meta_condition(conditional, "effective_conditional_rule"), "AND")
+  expect_equal(
+    .bt_meta_condition(conditional, "condition_key"),
+    BayesTools:::.condition_event_key("theta", "AND")
+  )
+  expect_gt(.prior_linear_density_point_mass(.bt_meta_get(averaged, "prior_density"), 0), 0)
+  expect_equal(.prior_linear_density_point_mass(.bt_meta_get(conditional, "prior_density"), 0), 0)
+})
+
+
+test_that("marginal inference rejects row-varying active linear weights", {
+
+  prior_list <- list(
+    theta = prior_spike_and_slab(
+      prior("normal", list(mean = 0, sd = 1)),
+      prior_inclusion = prior("point", list(location = 0.5))
+    ),
+    phi = prior_spike_and_slab(
+      prior("normal", list(mean = 0, sd = 1)),
+      prior_inclusion = prior("point", list(location = 0.5))
+    )
+  )
+  marginal <- list(
+    varying = .bt_meta_update(
+      structure(1:2),
+      linear_weights = matrix(
+        c(1, 0, 0, 1),
+        nrow = 2,
+        byrow = TRUE,
+        dimnames = list(NULL, c("theta", "phi"))
+      )
+    )
+  )
+
+  expect_error(
+    BayesTools:::.marginal_inference_level_conditionals(
+      marginal    = marginal,
+      prior_list  = prior_list,
+      conditional = c("theta", "phi")
+    ),
+    "Row-varying active conditional sets"
+  )
 })
 
 
@@ -149,6 +677,7 @@ test_that("marginal inference conditions formula levels by active weights", {
   fit <- coda::mcmc(posterior)
   class(fit) <- c("mcmc", "BayesTools_fit")
   attr(fit, "prior_list") <- prior_list
+  fit <- attach_test_parameter_map(fit)
 
   inference <- as_marginal_inference(
     model                = fit,
@@ -160,6 +689,7 @@ test_that("marginal inference conditions formula levels by active weights", {
     ),
     conditional_rule    = "OR",
     formula             = ~ x,
+    null_hypothesis     = 0.123,
     n_samples           = 128,
     silent              = TRUE
   )
@@ -167,12 +697,15 @@ test_that("marginal inference conditions formula levels by active weights", {
   zero_level <- inference[["conditional"]][["mu_x"]][["0SD"]]
   intercept <- inference[["conditional"]][["mu_intercept"]][["intercept"]]
 
-  expect_equal(attr(zero_level, "effective_conditional"), "mu_intercept")
+  expect_equal(.bt_meta_condition(zero_level, "effective_conditional"), "mu_intercept")
+  expect_equal(.bt_meta_condition(zero_level, "effective_conditional_rule"), "OR")
+  expect_equal(.bt_meta_condition(zero_level, "condition_key"), BayesTools:::.condition_event_key("mu_intercept", "OR"))
   expect_equal(mean(as.numeric(zero_level) == 0), 0)
-  expect_equal(.prior_linear_density_point_mass(attr(zero_level, "prior_density"), 0), 0)
-  expect_equal(attr(intercept, "effective_conditional"), "mu_intercept")
+  expect_equal(.prior_linear_density_point_mass(.bt_meta_get(zero_level, "prior_density"), 0), 0)
+  expect_equal(.bt_meta_condition(intercept, "effective_conditional"), "mu_intercept")
+  expect_equal(.bt_meta_condition(intercept, "condition_key"), BayesTools:::.condition_event_key("mu_intercept", "OR"))
   expect_equal(mean(as.numeric(intercept) == 0), 0)
-  expect_equal(.prior_linear_density_point_mass(attr(intercept, "prior_density"), 0), 0)
+  expect_equal(.prior_linear_density_point_mass(.bt_meta_get(intercept, "prior_density"), 0), 0)
 
   inference_mu_only <- as_marginal_inference(
     model                = fit,
@@ -181,13 +714,14 @@ test_that("marginal inference conditions formula levels by active weights", {
     conditional_list    = list(mu_x = "mu_x"),
     conditional_rule    = "OR",
     formula             = ~ x,
+    null_hypothesis     = 0.123,
     n_samples           = 128,
     silent              = TRUE
   )
 
   zero_level_mu_only <- inference_mu_only[["conditional"]][["mu_x"]][["0SD"]]
 
-  expect_equal(attr(zero_level_mu_only, "effective_conditional"), character())
+  expect_equal(.bt_meta_condition(zero_level_mu_only, "effective_conditional"), character())
   expect_true(is.numeric(zero_level_mu_only))
   expect_gt(length(zero_level_mu_only), 0)
 })
@@ -239,6 +773,7 @@ test_that("marginal inference conditions treatment factor levels by active weigh
   fit <- coda::mcmc(posterior)
   class(fit) <- c("mcmc", "BayesTools_fit")
   attr(fit, "prior_list") <- formula_result[["prior_list"]]
+  fit <- attach_test_parameter_map(fit)
 
   inference <- as_marginal_inference(
     model                = fit,
@@ -247,6 +782,7 @@ test_that("marginal inference conditions treatment factor levels by active weigh
     conditional_list    = list(mu_fac = c("mu_intercept", "mu_fac")),
     conditional_rule    = "OR",
     formula             = ~ fac,
+    null_hypothesis     = 0.123,
     n_samples           = 128,
     silent              = TRUE
   )
@@ -254,15 +790,26 @@ test_that("marginal inference conditions treatment factor levels by active weigh
   factor_levels <- inference[["conditional"]][["mu_fac"]]
   averaged_levels <- inference[["averaged"]][["mu_fac"]]
 
-  expect_equal(attr(factor_levels[["A"]], "effective_conditional"), "mu_intercept")
-  expect_equal(attr(factor_levels[["B"]], "effective_conditional"), c("mu_intercept", "mu_fac"))
-  expect_equal(attr(factor_levels[["C"]], "effective_conditional"), c("mu_intercept", "mu_fac"))
+  expect_equal(.bt_meta_condition(factor_levels[["A"]], "effective_conditional"), "mu_intercept")
+  expect_equal(.bt_meta_condition(factor_levels[["B"]], "effective_conditional"), c("mu_intercept", "mu_fac"))
+  expect_equal(.bt_meta_condition(factor_levels[["C"]], "effective_conditional"), c("mu_intercept", "mu_fac"))
+  expect_s3_class(.bt_meta_get(factor_levels[["A"]], "prior_context"), "prior_density_conditional_context")
+  expect_s3_class(.bt_meta_get(factor_levels[["B"]], "prior_context"), "prior_density_conditional_context")
+  expect_false(is.null(.bt_meta_condition(factor_levels[["A"]], "resolved_condition_event")))
+  expect_false(identical(
+    .bt_meta_condition(factor_levels[["A"]], "resolved_condition_event"),
+    .bt_meta_condition(factor_levels[["B"]], "resolved_condition_event")
+  ))
+  expect_identical(
+    .bt_meta_condition(factor_levels[["B"]], "resolved_condition_event"),
+    .bt_meta_condition(factor_levels[["C"]], "resolved_condition_event")
+  )
   expect_equal(mean(as.numeric(factor_levels[["A"]]) == 0), 0)
   expect_equal(mean(as.numeric(factor_levels[["B"]]) == 0), 0)
   expect_equal(mean(as.numeric(factor_levels[["C"]]) == 0), 0)
-  expect_equal(.prior_linear_density_point_mass(attr(factor_levels[["A"]], "prior_density"), 0), 0)
-  expect_equal(.prior_linear_density_point_mass(attr(factor_levels[["B"]], "prior_density"), 0), 0)
-  expect_equal(.prior_linear_density_point_mass(attr(factor_levels[["C"]], "prior_density"), 0), 0)
+  expect_equal(.prior_linear_density_point_mass(.bt_meta_get(factor_levels[["A"]], "prior_density"), 0), 0)
+  expect_equal(.prior_linear_density_point_mass(.bt_meta_get(factor_levels[["B"]], "prior_density"), 0), 0)
+  expect_equal(.prior_linear_density_point_mass(.bt_meta_get(factor_levels[["C"]], "prior_density"), 0), 0)
   expect_false(length(factor_levels[["A"]]) == length(factor_levels[["B"]]))
 
   averaged_plot_data <- .plot_data_marginal_samples(
@@ -318,13 +865,124 @@ test_that("marginal inference conditions treatment factor levels by active weigh
     conditional_list    = list(mu_fac = "mu_fac"),
     conditional_rule    = "OR",
     formula             = ~ fac,
+    null_hypothesis     = 0.123,
     n_samples           = 128,
     silent              = TRUE
   )
 
   factor_only_levels <- inference_factor_only[["conditional"]][["mu_fac"]]
 
-  expect_equal(attr(factor_only_levels[["A"]], "effective_conditional"), character())
-  expect_equal(attr(factor_only_levels[["B"]], "effective_conditional"), "mu_fac")
-  expect_equal(attr(factor_only_levels[["C"]], "effective_conditional"), "mu_fac")
+  expect_equal(.bt_meta_condition(factor_only_levels[["A"]], "effective_conditional"), character())
+  expect_equal(.bt_meta_condition(factor_only_levels[["B"]], "effective_conditional"), "mu_fac")
+  expect_equal(.bt_meta_condition(factor_only_levels[["C"]], "effective_conditional"), "mu_fac")
+})
+
+test_that("N35 unnamed and permuted conditionals preserve the declared active subset", {
+
+  prior_list <- list(beta = prior_spike_and_slab(prior("normal", list(0, 1)),
+    prior_inclusion = prior("point", list(.5))))
+  fit <- .mock_marginal_fit(cbind(beta = c(1, 2, 3, 4, 0, 0),
+                                 beta_indicator = c(1, 1, 1, 1, 0, 0)), prior_list)
+  call <- function(conditionals, keys = "beta"){
+    as_marginal_inference(fit, keys, "beta", conditionals, "AND", NULL,
+                          n_samples = 50, silent = TRUE, compute_BF = FALSE)
+  }
+  named <- call(list(beta = "beta"))
+  expect_identical(call(list("beta")), named)
+  expect_equal(as.numeric(named$conditional$beta), 1:4)
+  expect_identical(.bt_meta_get(named$conditional$beta, "condition")$conditional_rule, "AND")
+  expect_equal(as.numeric(call(list(NULL))$conditional$beta), c(1:4, 0, 0))
+  expect_error(call(list(other = "beta")),
+    "The 'conditional_list' list must be unnamed or uniquely named for every requested parameter.", fixed = TRUE)
+  expect_error(call(list(NULL, NULL), c("beta", "beta")),
+    "'marginal_parameters' must contain unique, nonmissing, nonempty parameter names.", fixed = TRUE)
+})
+
+.factor_level_atom_samples_for_test <- function(contrast = "meandif"){
+  formula <- JAGS_formula(~fac, "mu", data.frame(fac = factor(c("A", "B", "C"))),
+    list(intercept = prior("normal", list(0, 1)), fac = prior_factor("mnormal", list(0, 1), contrast = contrast)), formula_scale = TRUE)
+  columns <- .JAGS_prior_factor_names("mu_fac", formula$prior_list$mu_fac)
+  values <- cbind(mu_intercept = seq(-1, 1, length.out = 20L),
+    matrix(c(seq(-2, 2, length.out = 20L), seq(-3, 3, length.out = 20L)), 20L, dimnames = list(NULL, columns)))
+  fit <- .mock_marginal_fit(values, formula$prior_list)
+  attr(fit, "formula_scale") <- list(mu = formula$formula_scale)
+  fit <- attach_test_parameter_map(fit, monitor_names = colnames(values))
+  mixed <- as_mixed_posteriors(fit, "mu_fac", transform_scaled = TRUE)
+  # Valid scalar declarations reproduce the partial projected metadata of the
+  # public fitted meandif producer without adding a fitted formula-state stub.
+  scalar_columns <- colnames(mixed$mu_fac)
+  marginals <- stats::setNames(lapply(scalar_columns, function(column) .posterior_atoms_new(column_names = column)), scalar_columns)
+  posterior_metadata(mixed$mu_fac, "atoms") <- .posterior_atoms_new(column_names = scalar_columns, marginals = marginals)
+  list(mixed = mixed,
+    values = values[, columns, drop = FALSE], design = attr(formula$prior_list$mu_fac, "factor_design"))
+}
+
+test_that("factor level extraction derives missing scalar atom certificates from its formula", {
+  for(contrast in c("meandif", "orthonormal")){
+    fixture <- .factor_level_atom_samples_for_test(contrast)
+    posterior <- marginal_posterior(fixture$mixed, "mu_fac", use_formula = FALSE, prior_samples = TRUE)
+    for(i in seq_along(posterior)){
+      expect_equal(as.numeric(posterior[[i]]), as.vector(fixture$values %*% fixture$design[i, ]), tolerance = 1e-12)
+      atoms <- posterior_metadata(posterior[[i]], "atoms")
+      expect_true(isTRUE(atoms$declared))
+      expect_length(atoms$mass, 0L)
+      expect_true(posterior_atoms_free(posterior[[i]]))
+    }
+  }
+})
+
+test_that("factor scalar certificate fallback preserves unknown laws and strict errors", {
+  fixture <- .factor_level_atom_samples_for_test()
+  unknown <- with_mocked_bindings(marginal_posterior(fixture$mixed, "mu_fac", use_formula = FALSE, prior_samples = TRUE),
+    .posterior_atoms_formula = function(...) NULL, .package = "BayesTools")
+  expect_true(posterior_atoms_free(unknown$A))
+  for(level in c("B", "C")){
+    expect_true(all(is.finite(as.numeric(unknown[[level]]))))
+    expect_null(posterior_metadata(unknown[[level]], "atoms"))
+    condition <- expect_error(posterior_atoms_free(unknown[[level]]), class = "BayesTools_formula_atoms_unavailable")
+    expect_s3_class(condition, "BayesTools_formula_measure_unavailable")
+    if(inherits(condition, "condition")) expect_null(conditionCall(condition))
+  }
+  refusal <- errorCondition("Controlled scalar atom refusal", call = NULL, class = "BayesTools_formula_measure_unavailable",
+    reason = "structural_target_law_unavailable", detail = "Controlled declared law is unavailable",
+    diagnostics = .model_probability_diagnostics(posterior = .model_probability_pair(1, 0, "posterior", "ordinary"), stage = "posterior"))
+  unavailable <- with_mocked_bindings(marginal_posterior(fixture$mixed, "mu_fac", use_formula = FALSE, prior_samples = TRUE),
+    .posterior_atoms_formula = function(...) stop(refusal), .package = "BayesTools")
+  table <- posterior_metadata(unavailable$B, "measure_unavailable")
+  expect_identical(table$column, "B")
+  expect_identical(table$measure, "atoms")
+  expect_identical(table$cause, refusal$reason)
+  expect_identical(table$diagnostics[[1L]], refusal$diagnostics)
+  expect_error(with_mocked_bindings(marginal_posterior(fixture$mixed, "mu_fac", use_formula = FALSE, prior_samples = TRUE),
+    .posterior_atoms_formula = function(...) stop("Ordinary helper error", call. = FALSE), .package = "BayesTools"), "Ordinary helper error", fixed = TRUE)
+})
+test_that("fixed spike inclusion preserves weighted independent conditional support", {
+
+  for(probability in c(0, 1, .5)){
+    priors <- list(theta = prior_spike_and_slab(prior("uniform", list(a = 1, b = 2)),
+      prior_inclusion = prior("point", list(probability))),
+      phi = prior_spike_and_slab(prior("normal", list(0, 1)),
+        prior_inclusion = prior("point", list(.5))))
+    states <- if(probability == 0) 0 else if(probability == 1) 1 else 0:1
+    gates <- expand.grid(theta_indicator = states, phi_indicator = 0:1, repetition = 1:4)
+    draws <- cbind(theta = gates$theta_indicator * seq(1.1, 1.9, length.out = nrow(gates)),
+      phi = gates$phi_indicator * seq(-.9, .9, length.out = nrow(gates)),
+      theta_indicator = gates$theta_indicator, phi_indicator = gates$phi_indicator)
+    fit <- .parameter_catalog_test_fit(coda::mcmc.list(coda::mcmc(draws)), priors)
+    raw <- as_mixed_posteriors(fit, c("theta", "phi"), transform_scaled = FALSE)
+    conditioned <- as_mixed_posteriors(fit, c("theta", "phi"), conditional = "phi", transform_scaled = FALSE)
+    context <- posterior_metadata(conditioned, "prior_context")
+    expect_s3_class(context, "prior_density_conditional_context")
+    expect_identical(context$linear_weight_space, "coefficient")
+    expect_length(context$transforms, 0L)
+    bounds <- if(probability == 0) c(0, 0) else if(probability == 1) c(1, 2) else c(0, 2)
+    for(weight in c(1, 2, -3)){
+      support <- .posterior_support_from_prior_context_weights(context, c(theta = weight, phi = 0))
+      expect_identical(unname(support$bounds), range(weight * bounds))
+      expect_identical(unname(support$points), if(probability == 1) numeric() else 0)
+    }
+    expect_identical(posterior_metadata(raw$theta, "support")$bounds,
+      posterior_metadata(conditioned$theta, "support")$bounds)
+    expect_identical(unname(posterior_metadata(conditioned$theta, "support")$bounds), bounds)
+  }
 })

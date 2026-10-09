@@ -1,0 +1,1897 @@
+#' @title Create BayesTools model tables
+#'
+#' @description Creates model summary based on a model objects or
+#' provides estimates table for a runjags fit.
+#'
+#' @param model model object containing a list of \code{priors}
+#' and \code{inference} object, The \code{inference} must be a
+#' named list with information about the model: model number
+#' \code{m_number}, marginal likelihood \code{marglik}, prior and
+#' posterior probability \code{prior_prob} and \code{post_prob},
+#' and model inclusion Bayes factor \code{inclusion_BF}
+#' @param fit runjags model fit or a derived-draw view from [JAGS_with_draws()].
+#' Estimates and inference describe its supplied draws; chain diagnostics use
+#' the actual retained chain geometry.
+#' @param conditional summarizes estimates conditional on being included
+#' in the model for spike and slab priors. Defaults to \code{FALSE}.
+#' @param transformations named list of transformations to be applied
+#' to specific parameters
+#' @param model_description named list with additional description
+#' to be added to the table
+#' @param remove_inclusion whether estimates of the inclusion probabilities
+#' should be excluded from the summary table. Defaults to \code{FALSE}.
+#' Retained inclusion rows (spike-and-slab and mixture indicators, random-effect
+#' and variance-allocation inclusion gates) report the posterior inclusion
+#' probability as \code{Mean} together with the MCMC diagnostics; their SD and
+#' quantile cells are empty.
+#' @param remove_parameters parameters to be removed from the summary.
+#' Can be \code{NULL} (default, no removal), a character vector of parameter
+#' names to remove, or \code{TRUE} to remove all parameters that are not
+#' part of any formula. For formula random effects, character filters also
+#' accept semantic selectors \code{"random"}, \code{"random_sd"},
+#' \code{"random_cor"},
+#' \code{"random_var_prop"}, \code{"random_var_mult"},
+#' \code{"random_allocation"}, and \code{"random_sd_mult"}.
+#' @param remove_formulas character vector of formula names whose parameters
+#' should be removed from the summary. Defaults to \code{NULL}.
+#' @param keep_parameters character vector of parameter names to keep.
+#' All other parameters will be removed unless they belong to formulas
+#' specified in \code{keep_formulas}. The random-effect aliases listed for
+#' \code{remove_parameters} can also be used here, for example
+#' \code{keep_parameters = c("random_sd", "random_cor")}.
+#' @param keep_formulas character vector of formula names whose parameters
+#' should be kept. All other parameters will be removed unless they are
+#' specified in \code{keep_parameters}. Defaults to \code{NULL}.
+#' @param random_effects_summary random-effect reporting mode for JAGS estimates
+#' tables. \code{"standard"} replaces raw implementation parameters with the
+#' semantic quantities corresponding to the fitted prior parameterization:
+#' directly specified block scales, correlations, inclusion probabilities,
+#' allocation aggregate SDs, and variance proportions or multipliers.
+#' Inclusion indicators do not add allocation-derived component SDs to this
+#' standard set.
+#' \code{"full"} additionally includes deterministic representations such as
+#' aggregate variances, allocation-derived component SDs, and alternate SD or
+#' variance multipliers.
+#' \code{"raw"} keeps the historical raw monitored parameters on their fitted
+#' scale, and
+#' \code{"none"} removes random-effect parameters from the table. The
+#' \code{"standard"} and \code{"full"} modes always obtain public semantic
+#' quantities from the fitted parameter map on their declared display scale,
+#' and omit the internal (unnormalized gamma) allocation nodes of
+#' ordered-factor priors.
+#' The \code{"raw"} rows of random-effect and allocation implementation
+#' coordinates (fitted-scale SDs, Cholesky factors and correlation matrices,
+#' LKJ primitives, standardized group effects, and allocation nodes) are
+#' backend coordinates shown for inspection: their labels describe the
+#' coordinate, but they are not catalog quantities and do not select one in
+#' [parameter_catalog_resolve()], hypotheses, or plots.
+#' \code{transform_scaled = TRUE} additionally transforms remaining formula
+#' coefficients. Internal latent and realized group-coefficient coordinates
+#' are omitted when \code{transform_scaled = TRUE}, including in \code{"raw"}
+#' mode, because those coordinates remain on the fitted standardized scale.
+#' @param simplify_names whether semantic random-effect row names should use
+#' simplified display labels. A sole random intercept is shown as `sd`, while
+#' canonical names such as `sd(intercept)` remain stored in the parameter map.
+#' Defaults to `FALSE`.
+#' @param random_effects_metadata whether to add random-effect metadata columns
+#' to JAGS estimates tables. When \code{TRUE}, the table includes the
+#' user-facing random-effect name, grouping label, and covariance structure
+#' type for random-effect rows. Defaults to \code{FALSE}.
+#' @param remove_random_effects,keep_random_effects character vectors of
+#' random-effect names/blocks used to remove or keep random-effect rows.
+#' These match explicit \code{name = } values, generated block names, and
+#' grouping labels. Non-random parameters are left unaffected; combine with
+#' \code{keep_parameters = "random"} to return only the selected random-effect
+#' rows.
+#' @param remove_random_structures,keep_random_structures character vectors of
+#' random-effect covariance structures (for example \code{"diag"}, \code{"us"},
+#' \code{"ar1"}, or \code{"hcs"}) used to remove or keep random-effect rows.
+#' Non-random parameters are left unaffected.
+#' @param return_samples whether to return the transoformed and formated samples
+#' instead of the table. Defaults to \code{FALSE}.
+#' @param remove_diagnostics whether to exclude MCMC diagnostics (MCMC error,
+#' ESS, R-hat) from the output table. Defaults to \code{FALSE}. Setting to
+#' \code{TRUE} will exclude diagnostics columns regardless of the
+#' \code{conditional} setting.
+#' @param diagnostic_columns MCMC diagnostic columns to display in JAGS
+#' estimates tables. Can be \code{"all"}, \code{"none"}, \code{TRUE},
+#' \code{FALSE}, or a character vector containing any subset of
+#' \code{"MCMC_error"}, \code{"MCMC_SD_error"}, \code{"ESS"}, and
+#' \code{"R_hat"}. Defaults to the
+#' \code{BayesTools.JAGS_estimates_diagnostic_columns} option, or all
+#' diagnostics unless \code{remove_diagnostics = TRUE}.
+#' @param BF_diagnostics whether to add MCMC diagnostics for Bayes factors
+#' computed from model indicator frequencies. The Bayes factor error is
+#' reported as a relative Monte Carlo standard error percentage. Defaults to
+#' \code{FALSE}.
+#' @param BF_diagnostic_columns MCMC diagnostic columns to display in JAGS
+#' inclusion Bayes factor tables. Can be \code{"all"}, \code{"none"},
+#' \code{TRUE}, \code{FALSE}, or a character vector containing any subset of
+#' \code{"ESS"}, \code{"MCMC_error"}, and \code{"BF_error_percent"}.
+#' Defaults to the \code{BayesTools.JAGS_BF_diagnostic_columns} option, or all
+#' diagnostics when \code{BF_diagnostics = TRUE} and none otherwise.
+#' @inheritParams BayesTools_ensemble_tables
+#'
+#'
+#' @return \code{model_summary_table} returns a table with
+#' overview of the fitted model, \code{runjags_estimates_table} returns
+#' a table with MCMC estimates, and \code{runjags_estimates_empty_table}
+#' returns an empty estimates table. All of the tables are objects of
+#' class 'BayesTools_table'. The estimates table carries the per-row quantity
+#' table \code{attr(table, "quantities")}: a data frame with one row per table
+#' row and the columns \code{row} (the row label), \code{quantity_id} (the
+#' [parameter_catalog()] quantity id of the quantity the row's label names,
+#' its canonical name or an exact alias such as a transformed factor level
+#' \code{<parameter>[dif: level]}; \code{""} for rows that are not catalog
+#' quantities, such as inclusion rows, mixture components, backend
+#' coordinates, ordered-factor allocation shares, and rows whose values
+#' \code{transformations} changed, whose
+#' label parts record the transformation as \code{"custom"}), and
+#' \code{label_parts} (the label parts the row label is
+#' rendered from; [parameter_labels()] renders them, also with another formula
+#' parameter or random-effect quantity names). With
+#' \code{transform_scaled = TRUE}, the rows of standardized coefficients
+#' (including the exponentiated log intercept, an alias of the intercept) show
+#' their catalog quantity on the original predictor scale. Subsetting the
+#' table subsets its quantity table.
+#'
+#' @details For product-space JAGS inclusion Bayes factors, posterior
+#' inclusion probabilities of exactly 0 or 1 cannot produce a finite
+#' point estimate of the model odds ratio. In that case, inclusion BFs
+#' marked with \code{"<"} or \code{">"} are finite-sample bounds: posterior
+#' inclusion probabilities of 0 or 1 were replaced by \code{1/S} or
+#' \code{(S - 1)/S}, where \code{S} is the number of posterior samples.
+#' This is a reporting convention, not an unbiased finite Bayes-factor
+#' estimate. If the prior inclusion probability is exactly 0 or 1, the
+#' inclusion Bayes factor is undefined and reported as \code{NA}, because
+#' the corresponding inclusion/exclusion comparison was not tested.
+#'
+#' An original-scale random-effect correlation is defined in a posterior draw
+#' whenever both of its SDs are positive, including draws with a singular
+#' covariance (for example, a zero scaled intercept SD with a nonzero scaled
+#' slope SD gives an intercept-slope correlation of \eqn{\pm 1}{+-1}). It is
+#' missing in draws with a zero SD (for example, an excluded spike-and-slab SD
+#' of a scaled slope). The affected rows are summarized over the defined draws,
+#' and a table footnote reports the share of defined draws for each affected
+#' row. Raw Cholesky and LKJ-primitive coordinates
+#' (\code{random_effects_summary = "raw"}) exist only for positive-definite
+#' correlation matrices and are also missing in singular draws.
+#'
+#' @export JAGS_summary_table
+#' @export JAGS_estimates_table
+#' @export JAGS_inference_table
+#' @export model_summary_table
+#' @export runjags_estimates_table
+#' @export runjags_inference_table
+#' @export model_summary_empty_table
+#' @export JAGS_inference_empty_table
+#' @export JAGS_estimates_empty_table
+#' @export runjags_estimates_empty_table
+#' @export runjags_inference_empty_table
+#' @export stan_estimates_table
+#' @name BayesTools_model_tables
+#'
+#' @seealso [BayesTools_ensemble_tables]
+NULL
+
+#' @rdname BayesTools_model_tables
+model_summary_table <- function(model, model_description = NULL, title = NULL, footnotes = NULL, warnings = NULL,
+                                remove_spike_0 = TRUE, short_name = FALSE, formula_prefix = TRUE, remove_parameters = NULL){
+
+  # check input
+  check_list(model, "model", check_names = "inference", allow_other = TRUE, all_objects = TRUE)
+  prior_list <- attr(model[["fit"]], "prior_list")
+  check_list(prior_list, "model:priors")
+  if(!all(sapply(prior_list, is.prior)))
+    stop("'model:priors' must be a list of priors.")
+  model_inference <- model[["inference"]]
+  .model_probability_scalar_inference_validate(model_inference)
+  check_list(model_inference, "model:inference", check_names = c("m_number", "marglik", "prior_prob", "post_prob", "inclusion_BF"), allow_other = TRUE, all_objects = TRUE)
+  check_int(model_inference[["m_number"]],      "model_inference:model_number")
+  check_real(model_inference[["marglik"]],      "model_inference:marglik")
+  check_real(model_inference[["prior_prob"]],   "model_inference:prior_prob",   lower = 0, upper = 1)
+  check_real(model_inference[["post_prob"]],    "model_inference:post_prob",   lower = 0, upper = 1)
+  check_real(model_inference[["inclusion_BF"]], "model_inference:inclusion_BF", lower = 0)
+  check_list(model_description, "model_description", allow_NULL = TRUE)
+  check_bool(remove_spike_0, "remove_spike_0", allow_NA = FALSE)
+  check_bool(short_name, "short_name", allow_NA = FALSE)
+  check_char(title, "title", allow_NULL = TRUE)
+  check_char(footnotes, "footnotes", check_length = 0, allow_NULL = TRUE)
+  check_char(warnings, "warnings", check_length = 0, allow_NULL = TRUE)
+  check_bool(formula_prefix, "formula_prefix")
+  check_char(remove_parameters, "remove_parameters", allow_NULL = TRUE, check_length = 0)
+
+  # prepare the columns
+  summary_names  <- c(
+    "Model",
+    if(!is.null(model_description)) names(model_description),
+    "Prior prob.",
+    "log(marglik)",
+    "Post. prob.",
+    "Inclusion BF")
+  summary_values <- c(
+    model_inference[["m_number"]],
+    if(!is.null(model_description)) unlist(model_description),
+    .format_column(model_inference[["prior_prob"]],   "probability"),
+    .format_column(model_inference[["marglik"]],      "marglik"),
+    .format_column(model_inference[["post_prob"]],    "probability"),
+    .format_column(model_inference[["inclusion_BF"]], "BF"))
+
+  summary_priors  <- "Parameter prior distributions"
+  for(i in seq_along(prior_list)){
+    # get the prior name
+    if(is.prior.none(prior_list[[i]])){
+      next
+    }else if(remove_spike_0 && is.prior.point(prior_list[[i]]) && prior_list[[i]][["parameters"]][["location"]] == 0 || (names(prior_list)[[i]] %in% remove_parameters)){
+      next
+    }else if(is.prior.weightfunction(prior_list[[i]]) | is.prior.PET(prior_list[[i]]) | is.prior.PEESE(prior_list[[i]]) |
+             is_prior_phacking(prior_list[[i]]) | is_prior_bias(prior_list[[i]])){
+      temp_prior <- print(prior_list[[i]], silent = TRUE, short_name = short_name)
+    }else if(is.prior.simple(prior_list[[i]]) | is.prior.vector(prior_list[[i]]) | is.prior.factor(prior_list[[i]]) | is.prior.spike_and_slab(prior_list[[i]]) | is.prior.mixture(prior_list[[i]])){
+      temp_prior <- paste0(
+        .bt_label(
+          .bt_label_parts_term(names(prior_list)[i], prior_list[[i]]),
+          style = "table",
+          formula_prefix = formula_prefix
+        ),
+        " ~ ",
+        print(prior_list[[i]], silent = TRUE, short_name = short_name, inline = TRUE)
+      )
+    }else if(is.prior.point(prior_list[[i]])){
+      temp_prior <- paste0(
+        .bt_label(
+          .bt_label_parts_term(names(prior_list)[i], prior_list[[i]]),
+          style = "table",
+          formula_prefix = formula_prefix
+        ),
+        " = ",
+        print(prior_list[[i]], silent = TRUE, short_name = short_name)
+      )
+    }
+    summary_priors <- c(summary_priors, temp_prior)
+  }
+
+  if(length(summary_names) > length(summary_priors)){
+    summary_priors <- c(summary_priors, rep("", length(summary_names) - length(summary_priors)))
+  }else if(length(summary_names) < length(summary_priors)){
+    summary_names  <- c(summary_names,  rep("", length(summary_priors) - length(summary_names)))
+    summary_values <- c(summary_values, rep("", length(summary_priors) - length(summary_values)))
+  }
+  summary_names <- paste0(summary_names, "  ")
+
+  summary_table <- data.frame(cbind(
+    summary_names,
+    summary_values,
+    rep("           ", length(summary_names)),
+    summary_priors
+  ))
+  names(summary_table) <- NULL
+
+  # prepare output
+  class(summary_table)             <- c("BayesTools_table", class(summary_table))
+  attr(summary_table, "type")      <- c("string_left", "string", "string", "prior")
+  attr(summary_table, "rownames")  <- FALSE
+  attr(summary_table, "as.matrix") <- TRUE
+  attr(summary_table, "title")     <- title
+  attr(summary_table, "footnotes") <- footnotes
+  attr(summary_table, "warnings")  <- warnings
+
+  return(summary_table)
+}
+
+#' @rdname BayesTools_model_tables
+runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, footnotes = NULL, warnings = NULL, conditional = FALSE,
+                                     probs = c(0.025, 0.5, 0.975), remove_spike_0 = TRUE, transform_factors = FALSE,
+                                     formula_prefix = TRUE, remove_inclusion = FALSE, remove_parameters = NULL, remove_formulas = NULL,
+                                     keep_parameters = NULL, keep_formulas = NULL, return_samples = FALSE, transform_scaled = FALSE,
+                                     random_effects_summary = c("standard", "full", "raw", "none"),
+                                     simplify_names = FALSE,
+                                     random_effects_metadata = FALSE,
+                                     remove_random_effects = NULL, keep_random_effects = NULL,
+                                     remove_random_structures = NULL, keep_random_structures = NULL,
+                                     remove_diagnostics = FALSE,
+                                     diagnostic_columns = getOption("BayesTools.JAGS_estimates_diagnostic_columns", if(remove_diagnostics) "none" else "all")){
+
+  if(inherits(fit, "runjags")) .check_runjags()
+  # most of the code is shared with .diagnostics_plot_data function (keep them in sync on update)
+
+  # check fits
+  if(!.bt_is_jags_analysis_fit(fit))
+    stop("'fit' must be a runjags fit")
+  if(!inherits(fit, "BayesTools_fit"))
+    stop("'fit' must be a BayesTools fit")
+  coordinates <- parameter_coordinates(fit)
+  prior_list <- attr(fit, "prior_list")
+  check_list(prior_list, "prior_list")
+  if(!all(sapply(prior_list, is.prior)))
+    stop("'prior_list' must be a list of priors.")
+  check_list(transformations, "transformations", allow_NULL = TRUE)
+  if(!is.null(transformations) && any(!sapply(transformations, function(trans)is.function(trans[["fun"]]))))
+    stop("'transformations' must be list of functions in the 'fun' element.")
+  check_char(title, "title", allow_NULL = TRUE)
+  check_char(footnotes, "footnotes", check_length = 0, allow_NULL = TRUE)
+  check_char(warnings, "warnings", check_length = 0, allow_NULL = TRUE)
+  check_real(probs, "probs", lower = 0, upper = 1, check_length = 0)
+  check_bool(remove_spike_0, "remove_spike_0", allow_NA = FALSE)
+  check_bool(conditional, "conditional", allow_NA = FALSE)
+  check_bool(transform_factors, "transform_factors")
+  check_bool(formula_prefix, "formula_prefix")
+  check_bool(transform_scaled, "transform_scaled")
+  random_effects_summary <- match.arg(random_effects_summary)
+  check_bool(simplify_names, "simplify_names", allow_NA = FALSE)
+  check_bool(random_effects_metadata, "random_effects_metadata")
+  check_bool(remove_diagnostics, "remove_diagnostics")
+  diagnostic_columns <- .normalize_diagnostic_columns(diagnostic_columns, .JAGS_estimates_diagnostic_columns(), "diagnostic_columns")
+  if(remove_diagnostics){
+    diagnostic_columns <- character()
+  }
+  summary_diagnostic_columns <- if(conditional) character() else diagnostic_columns
+  if(!is.null(remove_parameters) && !is.logical(remove_parameters))
+    check_char(remove_parameters, "remove_parameters", allow_NULL = TRUE, check_length = 0)
+  if(is.logical(remove_parameters))
+    check_bool(remove_parameters, "remove_parameters")
+  check_char(remove_formulas, "remove_formulas", allow_NULL = TRUE, check_length = 0)
+  check_char(keep_parameters, "keep_parameters", allow_NULL = TRUE, check_length = 0)
+  check_char(keep_formulas, "keep_formulas", allow_NULL = TRUE, check_length = 0)
+  check_char(remove_random_effects, "remove_random_effects", allow_NULL = TRUE, check_length = 0)
+  check_char(keep_random_effects, "keep_random_effects", allow_NULL = TRUE, check_length = 0)
+  check_char(remove_random_structures, "remove_random_structures", allow_NULL = TRUE, check_length = 0)
+  check_char(keep_random_structures, "keep_random_structures", allow_NULL = TRUE, check_length = 0)
+
+  # get model samples
+  model_samples <- .extract_posterior_samples(fit, as_list = FALSE)
+  raw_model_samples <- model_samples
+
+  formula_scale <- NULL
+  if(transform_scaled){
+    formula_scale <- attr(fit, "formula_scale")
+  }
+
+  random_summary <- .bt_parameter_catalog_random_summary_samples(
+    fit = fit,
+    model_samples = model_samples,
+    prior_list = prior_list,
+    coordinates = coordinates,
+    mode = random_effects_summary,
+    simplify_names = simplify_names
+  )
+  model_samples <- random_summary$model_samples
+  prior_list <- random_summary$prior_list
+  random_included <- list()
+  if(conditional){
+    conditioned <- .bt_random_effect_summary_condition_on_inclusion(
+      fit = fit,
+      model_samples = model_samples,
+      raw_model_samples = raw_model_samples,
+      prior_list = prior_list,
+      warnings = warnings
+    )
+    model_samples <- conditioned$model_samples
+    warnings <- conditioned$warnings
+    random_included <- conditioned$included
+  }
+
+  # Transform scaled coefficients after deriving random-effect summaries. This
+  # lets summaries reconstruct point-prior/allocation SDs before covariance
+  # transformations, while fixed effects still retain all interaction columns.
+  if(transform_scaled && !is.null(formula_scale) && length(formula_scale) > 0){
+    omitted <- .filter_parameters(prior_list, remove_parameters = remove_parameters,
+      remove_formulas = remove_formulas, keep_parameters = keep_parameters,
+      keep_formulas = keep_formulas, remove_random_effects = remove_random_effects,
+      keep_random_effects = keep_random_effects, remove_random_structures = remove_random_structures,
+      keep_random_structures = keep_random_structures, remove_spike_0 = FALSE)
+    requested <- unique(unlist(lapply(setdiff(names(prior_list), omitted), function(owner){
+      .prior_linear_prior_columns(owner, prior_list[[owner]])
+    }), use.names = FALSE))
+    model_samples <- .bt_transform_scale_posterior(model_samples, formula_scale, targets = requested)
+    model_samples <- .bt_remove_internal_random_coordinates(
+      posterior = model_samples,
+      coordinates = coordinates
+    )
+  }
+
+  model_samples <- .materialize_missing_point_prior_samples(model_samples, prior_list)
+  if(remove_inclusion){
+    random_inclusion <- vapply(
+      prior_list,
+      function(prior) identical(attr(prior, "random_summary", exact = TRUE), "inclusion"),
+      logical(1)
+    )
+    if(any(random_inclusion)){
+      random_inclusion_names <- names(prior_list)[random_inclusion]
+      model_samples <- model_samples[, !colnames(model_samples) %in% random_inclusion_names, drop = FALSE]
+      prior_list <- prior_list[!random_inclusion]
+    }
+  }
+
+  ### remove un-wanted estimates (or support values) - spike and slab priors already dealt with later (also remove the item from prior list)
+  # compute filtered parameters using the helper function
+  remove_params_vec <- .filter_parameters(
+    prior_list        = prior_list,
+    remove_parameters = remove_parameters,
+    remove_formulas   = remove_formulas,
+    keep_parameters   = keep_parameters,
+    keep_formulas     = keep_formulas,
+    remove_random_effects = remove_random_effects,
+    keep_random_effects = keep_random_effects,
+    remove_random_structures = remove_random_structures,
+    keep_random_structures = keep_random_structures,
+    remove_spike_0    = FALSE
+  )
+  if(remove_spike_0){
+    remove_params_vec <- unique(c(
+      remove_params_vec,
+      .bt_JAGS_estimates_spike_0_parameters(
+        prior_list = prior_list,
+        model_samples = model_samples,
+        transformed = transform_scaled && !is.null(formula_scale) && length(formula_scale) > 0,
+        formula_scale = formula_scale
+      )
+    ))
+  }
+
+  cleaned       <- .remove_auxiliary_parameters(model_samples, prior_list, remove_params_vec)
+  model_samples <- cleaned$model_samples
+  prior_list    <- cleaned$prior_list
+  structural_columns <- cleaned$structural
+  # semantic summaries omit the internal allocation shares the parameter map
+  # declares for ordered-factor priors; raw summaries show every coordinate
+  if(!identical(random_effects_summary, "raw")){
+    model_samples <- .bt_JAGS_estimates_remove_internal_allocations(
+      model_samples = model_samples,
+      coordinates   = coordinates
+    )
+  }
+  model_samples <- .bt_JAGS_estimates_filter_raw_random_columns(
+    model_samples = model_samples,
+    prior_list = prior_list,
+    coordinates = coordinates,
+    remove_parameters = remove_parameters,
+    remove_formulas = remove_formulas,
+    keep_parameters = keep_parameters,
+    keep_formulas = keep_formulas,
+    remove_random_effects = remove_random_effects,
+    keep_random_effects = keep_random_effects,
+    remove_random_structures = remove_random_structures,
+    keep_random_structures = keep_random_structures
+  )
+
+  # simplify mixture and spike and slab priors to simple priors
+  # the samples and summary can be dealt with as any other prior (i.e., transformations later)
+  # (the created inclusion-indicator columns are recorded for the summary,
+  # and the label parts of every column the summary creates)
+  inclusion_columns <- character()
+  created_parts <- list()
+  component_priors <- list()
+  if(conditional){
+    for(par in names(prior_list)){
+      prior <- prior_list[[par]]
+      if(!is.prior.ordered(prior) || !is.prior.mixture(prior$total)) next
+      included <- .condition_event_label_posterior_mask(prior_list,raw_model_samples,par)
+      columns <- intersect(c(.JAGS_prior_factor_names(par,prior),.prior_ordered_total_monitor_names(prior,par)),colnames(model_samples))
+      model_samples[!included,columns] <- NA_real_
+      warnings <- c(warnings,.runjags_conditional_warning(columns,sum(included)))
+    }
+  }
+  for(par in names(prior_list)){
+    if(is.prior.spike_and_slab(prior_list[[par]])){
+
+      # process spike and slab using helper function; its only new column is
+      # the renamed inclusion indicator
+      term_parts    <- .bt_label_parts_term(par, prior_list[[par]])
+      processed     <- .process_spike_and_slab(model_samples, prior_list, par, conditional, remove_inclusion, warnings)
+      new_columns   <- setdiff(
+        colnames(processed$model_samples),
+        colnames(model_samples)
+      )
+      inclusion_columns <- c(inclusion_columns, new_columns)
+      for(column in new_columns){
+        created_parts[[column]] <- .bt_label_parts_update(term_parts, inclusion = "")[[1L]]
+      }
+      model_samples <- processed$model_samples
+      prior_list    <- processed$prior_list
+      warnings      <- processed$warnings
+
+    }else if(is.prior.mixture(prior_list[[par]])){
+
+      term_parts <- .bt_label_parts_term(par, prior_list[[par]])
+      mixture_coordinate_parts <- .bt_label_parts_prior(par, prior_list[[par]])$parts
+
+      # check for publication bias component
+      is_bias_mixture <- inherits(prior_list[[par]], "prior.bias_mixture")
+      is_PET          <- sapply(prior_list[[par]], is.prior.PET)
+      is_PEESE        <- sapply(prior_list[[par]], is.prior.PEESE)
+      if(is_bias_mixture){
+        branch_info   <- .selection_prior_branch_info(prior_list[[par]])
+        has_selection <- vapply(branch_info, function(x) !is.null(x$selection), logical(1))
+        has_phacking  <- vapply(branch_info, function(x) !is.null(x$phacking), logical(1))
+      }else{
+        branch_info   <- vector("list", length(prior_list[[par]]))
+        has_selection <- rep(FALSE, length(prior_list[[par]]))
+        has_phacking  <- rep(FALSE, length(prior_list[[par]]))
+      }
+
+      # distinguish between null/alternative and component type notations
+      components <- attr(prior_list[[par]], "components")
+
+      if(any(is_PET | is_PEESE | has_selection | has_phacking)){
+
+        omega_cuts <- if(any(has_selection)){
+          selection_priors <- lapply(branch_info[has_selection], function(x) x$selection)
+          weightfunctions_mapping(selection_priors, cuts_only = TRUE, one_sided = TRUE)
+        }else{
+          c(0, 1)
+        }
+        omega_names_old <- paste0("omega[", seq_len(length(omega_cuts) - 1L), "]")
+
+        # change the samples between conditional/averaged based on the preferences
+        if(conditional){
+
+          if(any(is_PET)){
+            # compute the number of conditional samples
+            n_conditional_samples <- sum(model_samples[,colnames(model_samples) == paste0(par, "_indicator")] %in% which(is_PET))
+
+            # replace null samples with NAs (important for later transformations)
+            model_samples[!model_samples[,colnames(model_samples) == paste0(par, "_indicator")] %in% which(is_PET), "PET"] <- NA
+
+            # add warnings about conditional summary
+            warnings <- c(warnings, .runjags_conditional_warning("PET", n_conditional_samples))
+          }
+
+          if(any(is_PEESE)){
+            # compute the number of conditional samples
+            n_conditional_samples <- sum(model_samples[,colnames(model_samples) == paste0(par, "_indicator")] %in% which(is_PEESE))
+
+            # replace null samples with NAs (important for later transformations)
+            model_samples[!model_samples[,colnames(model_samples) == paste0(par, "_indicator")] %in% which(is_PEESE), "PEESE"] <- NA
+
+            # add warnings about conditional summary
+            warnings <- c(warnings, .runjags_conditional_warning("PEESE", n_conditional_samples))
+          }
+
+          if(any(has_selection)){
+            # compute the number of conditional samples
+            n_conditional_samples <- sum(model_samples[,colnames(model_samples) == paste0(par, "_indicator")] %in% which(has_selection))
+
+            # replace null samples with NAs (important for later transformations)
+            model_samples[!model_samples[,colnames(model_samples) == paste0(par, "_indicator")] %in% which(has_selection), colnames(model_samples) %in% omega_names_old] <- NA
+
+            # add warnings about conditional summary
+            warnings <- c(warnings, .runjags_conditional_warning("omega", n_conditional_samples))
+          }
+
+          if(any(has_phacking)){
+            # compute the number of conditional samples
+            n_conditional_samples <- sum(model_samples[,colnames(model_samples) == paste0(par, "_indicator")] %in% which(has_phacking))
+
+            # replace non-p-hacking samples with NAs
+            phacking_report_columns <- .selection_phacking_report_parameters(lapply(branch_info[has_phacking], function(x) x$phacking))
+            phacking_columns <- intersect(c(phacking_report_columns, "phack_kind"), colnames(model_samples))
+            if(length(phacking_columns) > 0){
+              model_samples[!model_samples[,colnames(model_samples) == paste0(par, "_indicator")] %in% which(has_phacking), phacking_columns] <- NA
+            }
+
+            # add warnings about conditional summary
+            warning_columns <- intersect(phacking_report_columns, phacking_columns)
+            if(length(warning_columns) > 0){
+              warnings <- c(warnings, .runjags_conditional_warning(warning_columns, n_conditional_samples))
+            }
+          }
+
+        }
+
+        # re-format the weightfunctions
+        if(any(has_selection) || any(has_phacking)){
+
+          # rename
+          omega_names     <- sapply(1:(length(omega_cuts)-1), function(i)paste0("omega[",omega_cuts[i],",",omega_cuts[i+1],"]"))
+          omega_columns <- which(colnames(model_samples) %in% omega_names_old)
+          colnames(model_samples)[omega_columns] <- omega_names[match(colnames(model_samples)[omega_columns], omega_names_old)]
+          structural_columns <- c(structural_columns, .structural_weight_columns(
+            par, prior_list[[par]], omega_names_old, omega_names
+          ))
+
+          # remove if requested
+          if("omega" %in% remove_parameters){
+            model_samples <- model_samples[,!colnames(model_samples) %in% omega_names,drop=FALSE]
+          }
+        }
+
+        # add the simpler priors to the prior list
+        if(any(is_PET)){
+          prior_list[["PET"]] <- prior_list[[par]][[which(is_PET)[1]]]
+        }
+        if(any(is_PEESE)){
+          prior_list[["PEESE"]] <- prior_list[[par]][[which(is_PEESE)[1]]]
+        }
+        if(any(has_selection) && !"omega" %in% remove_parameters){
+          prior_list[["omega"]] <- branch_info[has_selection][[1]]$selection
+        }
+        if(any(has_phacking)){
+          phacking_priors <- lapply(branch_info[has_phacking], function(x) x$phacking)
+          drop_phacking <- .selection_phacking_unreported_parameters(phacking_priors)
+          model_samples <- model_samples[, !colnames(model_samples) %in% drop_phacking, drop = FALSE]
+
+          phacking_report_columns <- .selection_phacking_report_parameters(phacking_priors)
+          for(phacking_report_column in phacking_report_columns){
+            prior_list[[phacking_report_column]] <- phacking_priors[[1]]$alpha
+          }
+        }
+
+      }else{
+
+        # prepare parameter names
+        if(inherits(prior_list[[par]], "prior.factor_mixture")){
+          par_names <- .JAGS_prior_factor_names(par, prior_list[[par]])
+        }else{
+          par_names <- par
+        }
+
+        # change the samples between conditional/averaged based on the preferences
+        if(conditional){
+
+          if(all(components %in% c("null", "alternative"))){
+
+            # select the corresponding indicators
+            this_component_indicator <- which(components == "alternative")
+
+            # compute the number of conditional samples
+            n_conditional_samples <- sum(model_samples[,colnames(model_samples) == paste0(par, "_indicator")] %in% this_component_indicator)
+
+            # replace null samples with NAs (important for later transformations)
+            model_samples[!model_samples[,colnames(model_samples) == paste0(par, "_indicator")] %in% this_component_indicator, par_names] <- NA
+
+            # add warnings about conditional summary
+            warnings <- c(warnings, .runjags_conditional_warning(par_names, n_conditional_samples))
+
+          }else{
+
+            # remove the join samples and replace with individual conditional samples
+            # (each component becomes the parameter 'par[component]'; factor
+            # coefficients keep their own indices within it)
+            is_factor_mixture <- inherits(prior_list[[par]], "prior.factor_mixture")
+            joint_columns    <- colnames(model_samples) %in% par_names
+            temp_position    <- min(which(joint_columns))
+            temp_all_samples <- model_samples[, par_names, drop = FALSE]
+            temp_new_samples <- list()
+            model_samples    <- model_samples[, !joint_columns, drop = FALSE]
+
+             # component-by-component replacement
+            for(component in unique(components[components != "null"])){
+
+              # the component prior carries the formula attachment of the mixture
+              component_par   <- paste0(par, "[", component, "]")
+              component_prior <- prior_list[[par]][[which(components == component)[1]]]
+              attr(component_prior, "parameter") <- attr(prior_list[[par]], "parameter", exact = TRUE)
+
+              # create component specific samples
+              temp_par_names <- if(is_factor_mixture){
+                .JAGS_prior_factor_names(component_par, component_prior)
+              }else{
+                component_par
+              }
+              temp_new_samples[[component]]           <- temp_all_samples
+              colnames(temp_new_samples[[component]]) <- temp_par_names
+              component_parts <- .bt_label_parts_update(
+                if(is_factor_mixture) mixture_coordinate_parts else list(term_parts),
+                component = component
+              )
+              for(i in seq_along(temp_par_names)){
+                created_parts[[temp_par_names[i]]] <- component_parts[[i]]
+              }
+              component_priors[[component_par]] <- list(
+                parameter = par,
+                component = component
+              )
+
+              # select the corresponding indicators
+              this_component_indicator <- which(components == component)
+
+              # compute the number of conditional samples
+              n_conditional_samples <- sum(model_samples[,colnames(model_samples) == paste0(par, "_indicator")] %in% this_component_indicator)
+
+              # replace null samples with NAs (important for later transformations)
+              temp_new_samples[[component]][!model_samples[,colnames(model_samples) == paste0(par, "_indicator")] %in% this_component_indicator,] <- NA
+
+              # add warnings about conditional summary
+              warnings <- c(warnings, .runjags_conditional_warning(temp_par_names, n_conditional_samples))
+
+              # forward transformations to the conditional estimates; factor
+              # components always replace the mixture so that their
+              # coefficients are labelled and transformed as factor levels
+              if(!is.null(transformations[[par]])){
+                transformations[[component_par]] <- transformations[[par]]
+              }
+              if(is_factor_mixture || !is.null(transformations[[par]])){
+                prior_list[[component_par]] <- component_prior
+              }
+            }
+
+            # place the transformed samples back
+            model_samples <- cbind(
+              if(temp_position > 1) model_samples[,1:(temp_position-1),drop=FALSE],
+              do.call(cbind, temp_new_samples),
+              if(temp_position <= ncol(model_samples)) model_samples[,temp_position:ncol(model_samples),drop=FALSE]
+            )
+
+            # remove the original parameter transformations
+            if(!is.null(transformations[[par]])){
+              transformations[[par]] <- NULL
+              prior_list[[par]]      <- NULL
+            }else if(is_factor_mixture){
+              prior_list[[par]]      <- NULL
+            }
+          }
+        }
+      }
+
+      # remove/rename the inclusions probabilities
+      if(remove_inclusion){
+        model_samples   <- model_samples[,colnames(model_samples) != paste0(par, "_indicator"),drop=FALSE]
+      }else{
+        if(all(components %in% c("null", "alternative"))){
+          # replace and rename in the samples
+          model_samples[,colnames(model_samples) == paste0(par, "_indicator")] <- ifelse(
+            model_samples[,colnames(model_samples) == paste0(par, "_indicator")] %in% which(components == "alternative"), 1, 0)
+          colnames(model_samples)[colnames(model_samples) == paste0(par, "_indicator")] <- paste0(par, " (inclusion)")
+          inclusion_columns <- c(inclusion_columns, paste0(par, " (inclusion)"))
+          created_parts[[paste0(par, " (inclusion)")]] <- .bt_label_parts_update(
+            term_parts,
+            inclusion = ""
+          )[[1L]]
+        }else{
+          # extract
+          temp_position <- min(which(colnames(model_samples) %in% paste0(par, "_indicator")))
+          temp_samples  <- model_samples[,colnames(model_samples) == paste0(par, "_indicator")]
+          model_samples <- model_samples[,colnames(model_samples) != paste0(par, "_indicator"),drop=FALSE]
+
+          # compute component specific indicators
+          temp_new_samples <- lapply(unique(components), function(component) ifelse(temp_samples %in% which(components == component), 1, 0))
+          temp_new_samples <- do.call(cbind, temp_new_samples)
+          colnames(temp_new_samples) <- paste0(par, " (inclusion: ", unique(components),")")
+          inclusion_columns <- c(inclusion_columns, colnames(temp_new_samples))
+          for(component in unique(components)){
+            created_parts[[paste0(par, " (inclusion: ", component, ")")]] <- .bt_label_parts_update(
+              term_parts,
+              inclusion = component
+            )[[1L]]
+          }
+
+          # place the transformed samples back
+          model_samples <- cbind(
+            if(temp_position > 1) model_samples[,1:(temp_position-1),drop=FALSE],
+            temp_new_samples,
+            if(temp_position <= ncol(model_samples)) model_samples[,temp_position:ncol(model_samples),drop=FALSE]
+          )
+        }
+      }
+    }
+  }
+
+  # untransformed ordered-factor priors show their total and allocation
+  if(!transform_factors){
+    ordered <- .bt_JAGS_estimates_ordered_allocations(
+      model_samples     = model_samples,
+      raw_model_samples = raw_model_samples,
+      prior_list        = prior_list,
+      conditional       = conditional
+    )
+    model_samples <- ordered$model_samples
+    created_parts <- c(created_parts, ordered$created)
+    if(ordered$fitted_scale){
+      footnotes <- c(footnotes,.bt_ordered_fitted_scale_footnote())
+    }
+  }
+
+  # remove transformations for removed variables
+  if(!is.null(transformations)){
+    transformations <-  transformations[names(transformations) %in% names(prior_list)]
+  }
+  # the columns whose values the transformations change (factor levels
+  # transformed after the contrast transformation are added below)
+  transformed_columns <- unlist(
+    .parameter_transformation_columns(transformations, prior_list, transform_factors),
+    use.names = FALSE
+  )
+
+  # apply transformations (not orthornormal if they are to be returned transformed to diffs)
+  model_samples <- .apply_parameter_transformations(model_samples, transformations, prior_list, transform_factors)
+
+  # transform orthonormal factors to differences from mean
+  model_samples <- .transform_factor_contrasts(model_samples, prior_list, transform_factors, transformations,
+                                               components = component_priors, with_label_parts = TRUE,
+                                               raw_model_samples = if(!transform_scaled) raw_model_samples)
+  contrast_parts <- attr(model_samples, "label_parts", exact = TRUE)
+  created_parts <- c(created_parts, contrast_parts)
+  attr(model_samples, "label_parts") <- NULL
+  if(transform_factors){
+    model_samples <- .bt_JAGS_estimates_ordered_remove_totals(model_samples, prior_list)
+  }
+  transformed_columns <- c(transformed_columns, names(contrast_parts)[vapply(
+    contrast_parts,
+    function(part) length(.bt_label_output_transformation(part)) > 0L,
+    logical(1)
+  )])
+
+  # label every column from its label parts: the parameter names are the
+  # columns' selectors, the row labels their table labels
+  column_parts <- .bt_estimates_column_parts(
+    columns     = colnames(model_samples),
+    fit         = fit,
+    created     = created_parts,
+    coordinates = coordinates
+  )
+  # the transformed columns hold no catalog quantity: their label parts
+  # record the transformation (their labels are unchanged)
+  transformed <- colnames(model_samples) %in% transformed_columns
+  column_parts[transformed] <- lapply(column_parts[transformed], function(part){
+    if(length(.bt_label_output_transformation(part)) > 0L){
+      return(part)
+    }
+    .bt_label_parts_add_output_transformation(part, "custom")[[1L]]
+  })
+  parameter_names <- .bt_label(column_parts, style = "selector")
+  if(transform_scaled){
+    column_parts <- .bt_label_parts_log_intercept(column_parts, formula_scale)
+  }
+  colnames(model_samples) <- .bt_label(
+    column_parts,
+    style          = "table",
+    formula_prefix = formula_prefix,
+    simplify       = simplify_names
+  )
+
+  # return samples if requested
+  if(return_samples){
+    attr(model_samples, "prior_list") <- prior_list
+    return(model_samples)
+  }
+
+  # compute the summary
+  if(ncol(model_samples) == 0){
+    empty_table <- runjags_estimates_empty_table(
+      probs              = probs,
+      title              = title,
+      footnotes          = footnotes,
+      warnings           = warnings,
+      remove_diagnostics = remove_diagnostics,
+      diagnostic_columns = summary_diagnostic_columns
+    )
+    attr(empty_table, "quantities") <- .bt_table_quantities(character(), list())
+    if(random_effects_metadata){
+      empty_table <- .bt_random_effect_summary_add_metadata_columns(
+        table = empty_table,
+        parameter_names = character(),
+        prior_list = prior_list,
+        coordinates = coordinates
+      )
+    }
+    return(empty_table)
+  }else{
+    n_samples <- NULL
+    n_chains <- NULL
+    if(length(summary_diagnostic_columns) > 0L){
+      chains <- .extract_posterior_samples(fit, as_list = TRUE)
+      chain_counts <- vapply(chains, nrow, integer(1))
+      if(length(chain_counts) == 0L || length(unique(chain_counts)) != 1L ||
+         sum(chain_counts) != nrow(model_samples)){
+        stop("The retained chains disagree with the pooled draw count.", call. = FALSE)
+      }
+      n_samples <- chain_counts[[1L]]
+      n_chains <- length(chains)
+    }
+    runjags_summary <- .runjags_summary_fast(
+      model_samples       = model_samples,
+      n_samples           = n_samples,
+      n_chains            = n_chains,
+      conditional         = conditional,
+      probs               = probs,
+      remove_diagnostics  = remove_diagnostics,
+      diagnostic_columns  = diagnostic_columns,
+      inclusion           = .runjags_summary_inclusion_rows(
+        parameter_names   = parameter_names,
+        prior_list        = prior_list,
+        formula_design    = attr(fit, "formula_design"),
+        inclusion_columns = inclusion_columns
+      ),
+      structural          = parameter_names %in% structural_columns
+    )
+    footnotes <- c(footnotes, .bt_random_effect_summary_correlation_footnotes(
+      model_samples   = model_samples,
+      parameter_names = parameter_names,
+      prior_list      = prior_list,
+      coordinates     = coordinates,
+      included        = random_included,
+      cholesky_names  = .bt_random_effect_summary_cholesky_coordinate_names(
+        attr(fit, "formula_design", exact = TRUE)
+      )
+    ))
+  }
+
+  # prepare output
+  n_estimate_cols <- 2 + length(probs)  # Mean, SD, quantiles
+  class(runjags_summary)              <- c("BayesTools_table", "BayesTools_runjags_summary", class(runjags_summary))
+  attr(runjags_summary, "type")       <- c(rep("estimate", n_estimate_cols), summary_diagnostic_columns)
+  attr(runjags_summary, "parameters") <- parameter_names
+  attr(runjags_summary, "quantities") <- .bt_table_quantities(
+    rows         = rownames(runjags_summary),
+    label_parts  = column_parts,
+    quantity_ids = .bt_table_quantity_ids(column_parts, parameter_catalog(fit))
+  )
+  attr(runjags_summary, "rownames")   <- TRUE
+  attr(runjags_summary, "title")      <- title
+  attr(runjags_summary, "footnotes")  <- footnotes
+  attr(runjags_summary, "warnings")   <- warnings
+  if(random_effects_metadata){
+    runjags_summary <- .bt_random_effect_summary_add_metadata_columns(
+      table = runjags_summary,
+      parameter_names = parameter_names,
+      prior_list = prior_list,
+      coordinates = coordinates
+    )
+  }
+
+  return(runjags_summary)
+}
+
+# Parameters with a spike prior at zero are omitted from estimates tables. On
+# the original scale of scaled predictors, such a coefficient can be a
+# non-zero combination of other coefficients (for example, a factor main
+# effect in the presence of a scaled interaction); it is then reported.
+.bt_JAGS_estimates_spike_0_parameters <- function(prior_list, model_samples,
+                                                  transformed = FALSE, formula_scale = NULL){
+
+  spike_0 <- names(prior_list)[vapply(prior_list, function(prior){
+    is.prior.point(prior) &&
+      isTRUE(all(prior[["parameters"]][["location"]] == 0))
+  }, logical(1))]
+  if(!transformed || length(spike_0) == 0L){
+    return(spike_0)
+  }
+
+  spike_0[vapply(spike_0, function(parameter){
+    prefix <- attr(prior_list[[parameter]], "parameter", exact = TRUE)
+    if(is.null(prefix) || is.null(formula_scale[[prefix]])) return(TRUE)
+    scale <- formula_scale[[prefix]]
+    spec <- attr(scale, "unscale_design", exact = TRUE)
+    transform <- .bt_formula_coefficient_transform(names(spec$multipliers), scale, prefix)
+    columns <- .prior_linear_prior_columns(parameter, prior_list[[parameter]])
+    targets <- transform$targets[match(columns, transform$targets$target), , drop = FALSE]
+    all(targets$structural_status == "structural") && all(targets$fixed_value == 0)
+  }, logical(1))]
+}
+
+# Untransformed estimates show the sampled parameters of ordered-factor
+# priors: the total effect and its allocation across the ordered increments.
+# The increment columns (total x allocation) are replaced by the allocation
+# shares of every Dirichlet allocation of the term, normalized from the
+# monitored gamma nodes; fixed allocations have no draws and no rows. The
+# shares follow the total columns (or take the place of the increments when
+# the total is not monitored). The totals and shares are the fitted
+# parameters: when transform_scaled changed the increments of a term (its
+# original-scale level effects are no longer a total times an allocation),
+# 'fitted_scale' is TRUE. Returns the samples, the label parts of the created
+# share columns, and 'fitted_scale'.
+.bt_JAGS_estimates_ordered_allocations <- function(model_samples,
+                                                   raw_model_samples,
+                                                   prior_list, conditional = FALSE){
+
+  created <- list()
+  fitted_scale <- FALSE
+  for(par in names(prior_list)){
+    prior <- prior_list[[par]]
+    if(!is.prior.ordered(prior)){
+      next
+    }
+    increments <- .JAGS_prior_factor_names(par, prior)
+    if(!any(colnames(model_samples) %in% increments)){
+      next
+    }
+    present <- intersect(increments, colnames(model_samples))
+    if(all(present %in% colnames(raw_model_samples)) &&
+       any(model_samples[, present] != raw_model_samples[, present], na.rm = TRUE)){
+      fitted_scale <- TRUE
+    }
+    position <- min(which(colnames(model_samples) %in% increments))
+    model_samples <- model_samples[, !colnames(model_samples) %in% increments, drop = FALSE]
+
+    shares <- .bt_ordered_allocation_shares(par, prior, raw_model_samples)
+    if(conditional && is.prior.mixture(prior$total)){
+      included <- .condition_event_label_posterior_mask(prior_list,raw_model_samples,par)
+      shares$samples[!included,] <- NA_real_
+    }
+    if(ncol(shares$samples) == 0L){
+      next
+    }
+    total_columns <- which(startsWith(
+      colnames(model_samples),
+      .prior_ordered_total_name(par)
+    ))
+    if(length(total_columns) > 0L){
+      position <- max(total_columns) + 1L
+    }
+    model_samples <- cbind(
+      if(position > 1L) model_samples[, seq_len(position - 1L), drop = FALSE],
+      shares$samples,
+      if(position <= ncol(model_samples)) model_samples[, position:ncol(model_samples), drop = FALSE]
+    )
+    created[colnames(shares$samples)] <- shares$parts
+  }
+
+  list(model_samples = model_samples, created = created, fitted_scale = fitted_scale)
+}
+
+# The allocation shares of the Dirichlet allocations of the ordered prior
+# 'prior' of 'parameter' (eta / sum(eta) per draw of the monitored gamma
+# nodes 'prior_par_eta_<node>'), one column per ordered increment named by
+# the level it reaches: '<parameter>_ordered_allocation[<level>]', with the
+# ordered factor ('_<factor>') when the term has several and the theta slice
+# ('[<slice>]') when the term has slice-specific allocations. Shared ('id')
+# allocations are shown with every term that uses them.
+# Transformed estimates show the level effects of ordered-factor priors, so
+# their total effect (the effect of the last level) and the slab draws of a
+# spike-and-slab total are removed; the inclusion indicator and probability
+# of a spike-and-slab total remain.
+.bt_JAGS_estimates_ordered_remove_totals <- function(model_samples, prior_list){
+
+  for(par in names(prior_list)){
+    prior <- prior_list[[par]]
+    if(!is.prior.ordered(prior)){
+      next
+    }
+    total_name <- .prior_ordered_total_name(par)
+    remove <- colnames(model_samples) %in% .prior_ordered_total_monitor_names(prior, par) |
+      startsWith(colnames(model_samples), paste0(total_name, "_variable"))
+    model_samples <- model_samples[, !remove, drop = FALSE]
+  }
+
+  model_samples
+}
+
+# Columns of the internal allocation coordinates of fixed (non-random) priors
+# (the Dirichlet allocation shares of ordered-factor priors), as the fitted
+# parameter map declares them, removed from semantic summaries.
+.bt_JAGS_estimates_remove_internal_allocations <- function(model_samples,
+                                                           coordinates){
+
+  if(is.null(coordinates) || ncol(model_samples) == 0L){
+    return(model_samples)
+  }
+  internal <- coordinates$coordinate_name[
+    coordinates$internal & coordinates$role == "parameter" &
+      !nzchar(coordinates$random_block)
+  ]
+  model_samples[, !colnames(model_samples) %in% internal, drop = FALSE]
+}
+
+.bt_JAGS_estimates_filter_raw_random_columns <- function(model_samples,
+                                                         prior_list,
+                                                         coordinates = NULL,
+                                                         formula_design = NULL,
+                                                         remove_parameters = NULL,
+                                                         remove_formulas = NULL,
+                                                         keep_parameters = NULL,
+                                                         keep_formulas = NULL,
+                                                         remove_random_effects = NULL,
+                                                         keep_random_effects = NULL,
+                                                         remove_random_structures = NULL,
+                                                         keep_random_structures = NULL){
+
+  if(is.null(coordinates)){
+    coordinates <- .bt_build_parameter_coordinates(
+      columns = colnames(model_samples),
+      prior_list = prior_list,
+      formula_design = formula_design
+    )
+  }
+  model_samples <- .bt_random_effect_summary_filter_raw_columns(
+    model_samples = model_samples,
+    coordinates = coordinates,
+    remove_random_effects = remove_random_effects,
+    keep_random_effects = keep_random_effects,
+    remove_random_structures = remove_random_structures,
+    keep_random_structures = keep_random_structures
+  )
+
+  column_names <- colnames(model_samples)
+  if(length(column_names) == 0L){
+    return(model_samples)
+  }
+  .bt_validate_parameter_coordinates(coordinates)
+  coordinate_rows <- match(column_names, coordinates$coordinate_name)
+  registered <- !is.na(coordinate_rows)
+  row_roles <- rep("", length(column_names))
+  row_roles[registered] <- coordinates$role[coordinate_rows[registered]]
+  raw_random <- registered &
+    (startsWith(row_roles, "random_") | row_roles == "allocation")
+  if(!any(raw_random)){
+    return(model_samples)
+  }
+
+  remove_aliases <- .bt_JAGS_estimates_random_aliases(remove_parameters)
+  keep_aliases <- .bt_JAGS_estimates_random_aliases(keep_parameters)
+  keep_active <- !is.null(keep_parameters) || !is.null(keep_formulas)
+  if(length(remove_aliases) == 0L && length(remove_formulas) == 0L && !keep_active){
+    return(model_samples)
+  }
+
+  random_prior_columns <- .bt_JAGS_estimates_random_prior_columns(
+    column_names = column_names,
+    prior_list = prior_list
+  )
+  remove_columns <- rep(FALSE, length(column_names))
+  random_blocks <- unique(
+    coordinates$random_block[coordinate_rows[raw_random]]
+  )
+
+  for(random_block in random_blocks){
+      term_columns <- raw_random &
+        coordinates$random_block[coordinate_rows] == random_block
+      if(!any(term_columns)){
+        next
+      }
+      formula_parameter <- unique(
+        coordinates$formula_parameter[coordinate_rows[term_columns]]
+      )
+      formula_parameter <- formula_parameter[nzchar(formula_parameter)]
+      remove_formula <- any(formula_parameter %in% remove_formulas)
+      keep_formula <- any(formula_parameter %in% keep_formulas)
+
+      if(remove_formula || .bt_JAGS_estimates_random_alias_has_all(remove_aliases)){
+        remove_columns <- remove_columns | term_columns
+      }else if(.bt_JAGS_estimates_random_alias_has_correlation(remove_aliases)){
+        remove_columns <- remove_columns |
+          (term_columns & row_roles == "random_correlation")
+      }
+
+      if(keep_active){
+        keep_columns <- random_prior_columns
+        if(keep_formula || .bt_JAGS_estimates_random_alias_has_all(keep_aliases)){
+          keep_columns <- keep_columns | term_columns
+        }
+        if(.bt_JAGS_estimates_random_alias_has_correlation(keep_aliases)){
+          keep_columns <- keep_columns |
+            (term_columns & row_roles == "random_correlation")
+        }
+        if(!is.null(keep_random_effects) || !is.null(keep_random_structures)){
+          term_matches <- TRUE
+          if(!is.null(keep_random_effects)){
+            term_coordinate_rows <- coordinate_rows[term_columns]
+            term_matches <- term_matches &&
+              (random_block %in% keep_random_effects ||
+                 any(coordinates$random_name[
+                   term_coordinate_rows
+                 ] %in% keep_random_effects) ||
+                 any(coordinates$random_grouping[
+                   term_coordinate_rows
+                 ] %in% keep_random_effects))
+          }
+          if(!is.null(keep_random_structures)){
+            term_matches <- term_matches && any(
+              coordinates$random_structure[
+                coordinate_rows[term_columns]
+              ] %in% keep_random_structures
+            )
+          }
+          if(term_matches){
+            keep_columns <- keep_columns | term_columns
+          }
+        }
+        remove_columns <- remove_columns | (term_columns & !keep_columns)
+      }
+  }
+
+  model_samples[, !remove_columns, drop = FALSE]
+}
+
+.bt_JAGS_estimates_random_prior_columns <- function(column_names, prior_list){
+
+  if(length(prior_list) == 0L){
+    return(rep(FALSE, length(column_names)))
+  }
+  random_flags <- .bt_random_effect_prior_flags(prior_list)
+  random_prior_names <- random_flags$name[random_flags$any]
+
+  .bt_random_effect_summary_parameter_columns(
+    column_names = column_names,
+    parameter_names = random_prior_names
+  )
+}
+
+.bt_JAGS_estimates_random_aliases <- function(parameters){
+
+  if(is.null(parameters) || !is.character(parameters)){
+    return(character())
+  }
+
+  intersect(
+    parameters,
+    c(
+      "random", "random_sd", "random_cor", "random_var_prop",
+      "random_var_mult", "random_allocation", "random_sd_mult"
+    )
+  )
+}
+
+.bt_JAGS_estimates_random_alias_has_all <- function(aliases){
+
+  "random" %in% aliases
+}
+
+.bt_JAGS_estimates_random_alias_has_correlation <- function(aliases){
+
+  "random_cor" %in% aliases
+}
+
+#' @rdname BayesTools_model_tables
+runjags_inference_table  <- function(fit, title = NULL, footnotes = NULL, warnings = NULL, formula_prefix = TRUE,
+                                     logBF = FALSE, BF01 = FALSE, BF_diagnostics = FALSE,
+                                     BF_diagnostic_columns = getOption("BayesTools.JAGS_BF_diagnostic_columns", if(BF_diagnostics) "all" else "none")){
+
+  # check fits
+  if(!.bt_is_jags_analysis_fit(fit))
+    stop("'fit' must be a runjags fit")
+  if(!inherits(fit, "BayesTools_fit"))
+    stop("'fit' must be a BayesTools fit")
+  prior_list <- attr(fit, "prior_list")
+  check_list(prior_list, "prior_list")
+  if(!all(sapply(prior_list, is.prior)))
+    stop("'prior_list' must be a list of priors.")
+  check_char(title, "title", allow_NULL = TRUE)
+  check_char(footnotes, "footnotes", check_length = 0, allow_NULL = TRUE)
+  check_char(warnings, "warnings", check_length = 0, allow_NULL = TRUE)
+  check_bool(formula_prefix, "formula_prefix")
+  check_bool(logBF, "logBF", allow_NA = FALSE)
+  check_bool(BF01,  "BF01",  allow_NA = FALSE)
+  check_bool(BF_diagnostics, "BF_diagnostics")
+  BF_diagnostic_columns <- .normalize_diagnostic_columns(BF_diagnostic_columns, .JAGS_BF_diagnostic_columns(), "BF_diagnostic_columns")
+  BF_diagnostics        <- length(BF_diagnostic_columns) > 0
+  BF_error_diagnostics  <- "BF_error_percent" %in% BF_diagnostic_columns
+
+  # return empty table if none of the priors defines a model component
+  if(!any(sapply(prior_list, function(p){
+    is.prior.spike_and_slab(p) | is.prior.mixture(p) |
+      .bt_is_random_allocation_inclusion_prior(p)
+  }))){
+    runjags_summary <- runjags_inference_empty_table(
+      title          = title,
+      footnotes      = footnotes,
+      warnings       = warnings,
+      logBF          = logBF,
+      BF01           = BF01,
+      BF_diagnostics = BF_diagnostics,
+      BF_diagnostic_columns = BF_diagnostic_columns
+    )
+    return(runjags_summary)
+  }
+
+  # extract samples
+  model_samples   <- .extract_posterior_samples(fit, as_list = FALSE)
+  if(BF_diagnostics){
+    model_samples_list <- .extract_posterior_samples(fit, as_list = TRUE)
+  }else{
+    model_samples_list <- NULL
+  }
+  runjags_summary <- data.frame(matrix(nrow = 0, ncol = 4 + length(BF_diagnostic_columns)))
+  colnames(runjags_summary) <- c("Parameter", "prior_prob", "post_prob", "inclusion_BF", BF_diagnostic_columns)
+  BF_bound_operators <- character()
+  parameter_roles <- character()
+  row_labels <- character()
+
+  for(par in names(prior_list)){
+    # the row and warning labels of the parameter, rendered from the prior
+    term_parts <- .bt_label_parts_term(par, prior_list[[par]])
+    term_label <- .bt_label(term_parts, style = "table", formula_prefix = formula_prefix)
+    term_warning_label <- .bt_label(term_parts, style = "warning", formula_prefix = formula_prefix)
+    if(is.prior.spike_and_slab(prior_list[[par]])){
+
+      temp_prior_prob <- mean(.get_spike_and_slab_inclusion(prior_list[[par]]))
+      temp_post_prob  <- mean(model_samples[,paste0(par, "_indicator")])
+      temp_BF         <- inclusion_BF(
+        prior_probs = c(null = 1 - temp_prior_prob, alternative = temp_prior_prob),
+        post_probs  = c(null = 1 - temp_post_prob,  alternative = temp_post_prob),
+        is_null     = c(TRUE, FALSE)
+      )
+      temp_BF_reporting <- .indicator_BF_reporting_value(temp_BF, temp_post_prob, temp_prior_prob, nrow(model_samples))
+      temp_row        <- data.frame(
+        Parameter    = par,
+        prior_prob   = temp_prior_prob,
+        post_prob    = temp_post_prob,
+        inclusion_BF = temp_BF_reporting$value
+      )
+      if(BF_diagnostics){
+        temp_indicator_list <- .runjags_indicator_list(model_samples_list, paste0(par, "_indicator"), 1)
+        temp_diagnostics    <- .indicator_BF_diagnostics(temp_indicator_list, temp_prior_prob, temp_BF)
+        temp_row            <- cbind(temp_row, .indicator_BF_diagnostic_row(temp_diagnostics)[, BF_diagnostic_columns, drop = FALSE])
+        if(BF_error_diagnostics){
+          warnings <- c(warnings, .indicator_BF_warnings(term_warning_label, temp_diagnostics))
+        }
+      }
+
+      runjags_summary <- rbind(runjags_summary, temp_row)
+      BF_bound_operators <- c(BF_bound_operators, temp_BF_reporting$operator)
+      parameter_roles <- c(parameter_roles, "model_inclusion")
+      row_labels <- c(row_labels, term_label)
+    }else if(is.prior.mixture(prior_list[[par]])){
+
+      # extract the components and prior probabilities
+      mixture_role <- if(isTRUE(attr(
+        prior_list[[par]], "random_allocation_sd", exact = TRUE
+      ))){
+        "random_slab"
+      }else{
+        "model_inclusion"
+      }
+      components      <- attr(prior_list[[par]], "components")
+      temp_prior_prob <- attr(prior_list[[par]], "prior_weights")
+      temp_prior_prob <- sapply(unique(components), function(component) sum(temp_prior_prob[which(components == component)])) / sum(temp_prior_prob)
+      temp_post_prob  <- sapply(unique(components), function(component) mean(model_samples[,paste0(par, "_indicator")] %in% which(components == component)))
+
+      # if only null and alternative are specified, removed the null component
+      if(all(components %in% c("null", "alternative"))){
+
+        if(all(components == "null")){
+          temp_prior_prob <- c(temp_prior_prob, "alternative" = 0)
+          temp_post_prob  <- c(temp_post_prob,  "alternative" = 0)
+        }
+        if(all(components == "alternative")){
+          temp_prior_prob <- c("null" = 0, temp_prior_prob)
+          temp_post_prob  <- c("null" = 0,  temp_post_prob)
+        }
+
+        temp_BF  <- inclusion_BF(prior_probs = temp_prior_prob, post_probs = temp_post_prob, is_null = names(temp_post_prob) != "alternative")
+        temp_BF_reporting <- .indicator_BF_reporting_value(temp_BF, temp_post_prob[["alternative"]], temp_prior_prob[["alternative"]], nrow(model_samples))
+        temp_row <- data.frame(
+          Parameter    = par,
+          prior_prob   = temp_prior_prob[["alternative"]],
+          post_prob    = temp_post_prob[["alternative"]],
+          inclusion_BF = temp_BF_reporting$value
+        )
+        if(BF_diagnostics){
+          temp_indicator_list <- .runjags_indicator_list(model_samples_list, paste0(par, "_indicator"), which(components == "alternative"))
+          temp_diagnostics    <- .indicator_BF_diagnostics(temp_indicator_list, temp_prior_prob[["alternative"]], temp_BF)
+          temp_row            <- cbind(temp_row, .indicator_BF_diagnostic_row(temp_diagnostics)[, BF_diagnostic_columns, drop = FALSE])
+          if(BF_error_diagnostics){
+            warnings <- c(warnings, .indicator_BF_warnings(term_warning_label, temp_diagnostics))
+          }
+        }
+
+        runjags_summary <- rbind(runjags_summary, temp_row)
+        BF_bound_operators <- c(BF_bound_operators, temp_BF_reporting$operator)
+        parameter_roles <- c(parameter_roles, mixture_role)
+        row_labels <- c(row_labels, term_label)
+
+      }else{
+
+        # compute summary for each component (rows and warnings name the
+        # component after the term, as the component rows of estimates tables)
+        for(component in unique(components)){
+          component_parts <- .bt_label_parts_update(term_parts, component = component)
+          temp_parameter <- paste0(par, " [", component, "]")
+          temp_BF        <- inclusion_BF(prior_probs = temp_prior_prob, post_probs = temp_post_prob, is_null = names(temp_post_prob) != component)
+          temp_BF_reporting <- .indicator_BF_reporting_value(temp_BF, temp_post_prob[[component]], temp_prior_prob[[component]], nrow(model_samples))
+          temp_row       <- data.frame(
+            Parameter    = paste0(par, " [", component, "]"),
+            prior_prob   = temp_prior_prob[[component]],
+            post_prob    = temp_post_prob[[component]],
+            inclusion_BF = temp_BF_reporting$value
+          )
+          if(BF_diagnostics){
+            temp_indicator_list <- .runjags_indicator_list(model_samples_list, paste0(par, "_indicator"), which(components == component))
+            temp_diagnostics    <- .indicator_BF_diagnostics(temp_indicator_list, temp_prior_prob[[component]], temp_BF)
+            temp_row            <- cbind(temp_row, .indicator_BF_diagnostic_row(temp_diagnostics)[, BF_diagnostic_columns, drop = FALSE])
+            if(BF_error_diagnostics){
+              warnings <- c(warnings, .indicator_BF_warnings(
+                .bt_label(component_parts, style = "warning", formula_prefix = formula_prefix),
+                temp_diagnostics
+              ))
+            }
+          }
+
+          runjags_summary <- rbind(runjags_summary, temp_row)
+          BF_bound_operators <- c(BF_bound_operators, temp_BF_reporting$operator)
+          parameter_roles <- c(parameter_roles, mixture_role)
+          row_labels <- c(row_labels, .bt_label(
+            component_parts,
+            style          = "table",
+            formula_prefix = formula_prefix
+          ))
+        }
+
+      }
+    }else if(.bt_is_random_allocation_inclusion_prior(prior_list[[par]])){
+
+      indicator_name <- attr(
+        prior_list[[par]],
+        "random_allocation_indicator",
+        exact = TRUE
+      )
+      temp_prior_prob <- mean(prior_list[[par]])
+      temp_post_prob <- mean(model_samples[, indicator_name])
+      temp_BF <- inclusion_BF(
+        prior_probs = c(null = 1 - temp_prior_prob, alternative = temp_prior_prob),
+        post_probs = c(null = 1 - temp_post_prob, alternative = temp_post_prob),
+        is_null = c(TRUE, FALSE)
+      )
+      temp_BF_reporting <- .indicator_BF_reporting_value(
+        temp_BF,
+        temp_post_prob,
+        temp_prior_prob,
+        nrow(model_samples)
+      )
+      allocation_parts <- .bt_random_allocation_inference_parts(
+        fit = fit,
+        indicator_name = indicator_name
+      )
+      temp_parameter <- .bt_label(allocation_parts, style = "table",
+                                  formula_prefix = formula_prefix)
+      temp_row <- data.frame(
+        Parameter = temp_parameter,
+        prior_prob = temp_prior_prob,
+        post_prob = temp_post_prob,
+        inclusion_BF = temp_BF_reporting$value
+      )
+      if(BF_diagnostics){
+        temp_indicator_list <- .runjags_indicator_list(
+          model_samples_list,
+          indicator_name,
+          1
+        )
+        temp_diagnostics <- .indicator_BF_diagnostics(
+          temp_indicator_list,
+          temp_prior_prob,
+          temp_BF
+        )
+        temp_row <- cbind(
+          temp_row,
+          .indicator_BF_diagnostic_row(temp_diagnostics)[
+            , BF_diagnostic_columns, drop = FALSE
+          ]
+        )
+        if(BF_error_diagnostics){
+          warnings <- c(
+            warnings,
+            .indicator_BF_warnings(
+              .bt_label(allocation_parts, style = "warning", formula_prefix = formula_prefix),
+              temp_diagnostics
+            )
+          )
+        }
+      }
+
+      runjags_summary <- rbind(runjags_summary, temp_row)
+      BF_bound_operators <- c(
+        BF_bound_operators,
+        temp_BF_reporting$operator
+      )
+      parameter_roles <- c(parameter_roles, "random_inclusion")
+      row_labels <- c(row_labels, temp_parameter)
+    }
+  }
+
+  # store parameter names before removing formula attachments
+  parameter_names           <- runjags_summary$Parameter
+  rownames(runjags_summary) <- parameter_names
+  runjags_summary           <- runjags_summary[,-1]
+
+  # format BF and BF MC error on the requested scale
+  temp_inclusion_BF <- runjags_summary[,"inclusion_BF"]
+  attr(temp_inclusion_BF, "bound_operator") <- BF_bound_operators
+  runjags_summary[["inclusion_BF"]] <- format_BF(temp_inclusion_BF, logBF = logBF, BF01 = BF01, inclusion = TRUE)
+  if("MCMC_error" %in% BF_diagnostic_columns){
+    attr(runjags_summary[["MCMC_error"]], "name") <- "error(Post. prob.)"
+  }
+  if("BF_error_percent" %in% BF_diagnostic_columns){
+    attr(runjags_summary[["BF_error_percent"]], "name") <- .BF_error_column_name(BF01)
+  }
+
+  # row labels rendered from the priors
+  rownames(runjags_summary) <- row_labels
+
+  class(runjags_summary)               <- c("BayesTools_table", "BayesTools_runjags_inference", class(runjags_summary))
+  attr(runjags_summary, "type")        <- c("prior_prob", "post_prob", "inclusion_BF", .JAGS_BF_diagnostic_column_types(BF_diagnostic_columns))
+  attr(runjags_summary, "parameters")  <- parameter_names
+  attr(runjags_summary, "parameter_roles") <- parameter_roles
+  attr(runjags_summary, "rownames")    <- TRUE
+  attr(runjags_summary, "title")       <- title
+  attr(runjags_summary, "footnotes")   <- footnotes
+  attr(runjags_summary, "warnings")    <- warnings
+
+  return(runjags_summary)
+}
+
+.bt_random_effect_summary_condition_on_inclusion <- function(
+    fit, model_samples, raw_model_samples, prior_list, warnings){
+
+  designs <- attr(fit, "formula_design", exact = TRUE)
+  included_draws <- list()
+  for(parameter_name in intersect(colnames(model_samples), names(prior_list))){
+    prior <- prior_list[[parameter_name]]
+    summary_type <- attr(prior, "random_summary", exact = TRUE)
+    if(is.null(summary_type) || identical(summary_type, "inclusion")){
+      next
+    }
+
+    gate_names <- character()
+    formula_parameter <- attr(prior, "parameter", exact = TRUE)
+    random_block <- attr(prior, "random_factor", exact = TRUE)
+    if(!is.null(formula_parameter) && !is.null(random_block) &&
+       !is.null(designs[[formula_parameter]])){
+      random_terms <- designs[[formula_parameter]]$random_effects
+      matches <- vapply(random_terms, function(term){
+        identical(term$block_name, random_block)
+      }, logical(1))
+      if(sum(matches) == 1L){
+        binding <- random_terms[[which(matches)]]$sd_binding
+        if(!is.null(binding)){
+          gate_names <- c(
+            gate_names,
+            unlist(lapply(binding$factors, `[[`, "inclusion_name"),
+                   use.names = FALSE)
+          )
+        }
+      }
+    }
+
+    allocation <- attr(prior, "random_allocation_metadata", exact = TRUE)
+    if(is.list(allocation) && is.list(allocation$parent_factors)){
+      gate_names <- c(
+        gate_names,
+        unlist(lapply(allocation$parent_factors, `[[`, "inclusion_name"),
+               use.names = FALSE)
+      )
+    }
+    gate_names <- unique(gate_names[
+      !is.na(gate_names) & nzchar(gate_names)
+    ])
+    if(length(gate_names) == 0L){
+      next
+    }
+    missing <- setdiff(gate_names, colnames(raw_model_samples))
+    if(length(missing) > 0L){
+      stop(
+        "Conditional random-effect summaries are missing Bernoulli indicator '",
+        missing[1L],
+        "'.",
+        call. = FALSE
+      )
+    }
+    included <- rowSums(
+      raw_model_samples[, gate_names, drop = FALSE] != 1
+    ) == 0L
+    model_samples[!included, parameter_name] <- NA_real_
+    included_draws[[parameter_name]] <- included
+    warnings <- c(
+      warnings,
+      .runjags_conditional_warning(parameter_name, sum(included))
+    )
+  }
+
+  list(
+    model_samples = model_samples,
+    warnings = warnings,
+    included = included_draws
+  )
+}
+
+# An original-scale random-effect correlation is defined when both SDs are
+# positive (singular draws included) and missing (NA) when an SD is zero; the
+# table statistics summarize only the defined draws. Each affected row reports
+# that share; conditional summaries count only the draws retained by
+# conditioning (`included`). Raw Cholesky and LKJ-primitive coordinates
+# (`cholesky_names`, role `random_correlation_coordinate`) exist only for
+# positive-definite correlation matrices.
+.bt_random_effect_summary_correlation_footnotes <- function(model_samples,
+                                                            parameter_names,
+                                                            prior_list,
+                                                            coordinates,
+                                                            included = list(),
+                                                            cholesky_names = character()){
+
+  footnotes <- character()
+  for(i in seq_along(parameter_names)){
+    parameter_name <- parameter_names[[i]]
+    prior <- prior_list[[parameter_name]]
+    summary_correlation <- !is.null(prior) && identical(
+      attr(prior, "random_summary", exact = TRUE),
+      "cor"
+    )
+    coordinate_row <- match(parameter_name, coordinates$coordinate_name)
+    coordinate_role <- if(is.na(coordinate_row)){
+      ""
+    }else{
+      coordinates$role[coordinate_row]
+    }
+    coordinate_correlation <- isTRUE(
+      startsWith(coordinate_role, "random_correlation")
+    )
+    if(!summary_correlation && !coordinate_correlation){
+      next
+    }
+    positive_definite_coordinate <- !summary_correlation && (
+      identical(coordinate_role, "random_correlation_coordinate") ||
+        parameter_name %in% cholesky_names
+    )
+
+    values <- model_samples[, i]
+    retained <- included[[parameter_name]]
+    if(is.null(retained)){
+      retained <- rep(TRUE, length(values))
+    }
+    n_draws <- sum(retained)
+    n_defined <- sum(retained & !is.na(values))
+    if(n_defined < n_draws){
+      footnotes <- c(footnotes, .bt_undefined_draws_footnote(
+        row = colnames(model_samples)[[i]],
+        n_defined = n_defined,
+        n_draws = n_draws,
+        reason = if(positive_definite_coordinate){
+          "positive_definite"
+        }else{
+          "correlation"
+        }
+      ))
+    }
+  }
+
+  if(length(footnotes) == 0L){
+    return(NULL)
+  }
+
+  footnotes
+}
+
+# Raw Cholesky-factor coordinate names of the LKJ random-effect blocks.
+.bt_random_effect_summary_cholesky_coordinate_names <- function(formula_design){
+
+  terms <- unlist(
+    lapply(
+      .bt_random_effect_summary_designs(formula_design),
+      .bt_formula_design_random_effects
+    ),
+    recursive = FALSE
+  )
+  names <- lapply(terms, function(random_term){
+    correlation <- random_term$correlation
+    n_columns <- random_term$n_columns
+    if(!is.list(correlation) || !identical(correlation$type, "lkj") ||
+       !is.numeric(n_columns) || length(n_columns) != 1L ||
+       is.na(n_columns) || n_columns < 2L){
+      return(character())
+    }
+    as.vector(.bt_random_effect_cholesky_names(random_term, n_columns))
+  })
+
+  unique(unlist(names, use.names = FALSE))
+}
+
+.bt_is_random_allocation_inclusion_prior <- function(prior){
+
+  allocation <- attr(prior, "random_allocation", exact = TRUE)
+  component <- attr(prior, "random_allocation_inclusion", exact = TRUE)
+  indicator <- attr(prior, "random_allocation_indicator", exact = TRUE)
+  is.character(allocation) && length(allocation) == 1L && nzchar(allocation) &&
+    is.character(component) && length(component) == 1L && nzchar(component) &&
+    is.character(indicator) && length(indicator) == 1L && nzchar(indicator)
+}
+
+# Label parts of the random-effect inclusion quantity whose source is the
+# allocation indicator 'indicator_name'.
+.bt_random_allocation_inference_parts <- function(fit, indicator_name){
+
+  quantities <- parameter_catalog(fit)$quantities
+  matches <- quantities$role == "random_inclusion" & vapply(
+    quantities$extraction_key,
+    function(key){
+      identical(key$source_parameter, indicator_name)
+    },
+    logical(1)
+  )
+  if(sum(matches) != 1L){
+    .bt_stop_refit_required(
+      "Random-effect inclusion metadata have no unique semantic quantity. Refit the model with this version of BayesTools."
+    )
+  }
+  quantities$label_parts[[which(matches)]]
+}
+
+#' @rdname BayesTools_model_tables
+JAGS_estimates_table <- runjags_estimates_table
+
+#' @rdname BayesTools_model_tables
+JAGS_inference_table <- runjags_inference_table
+
+#' @rdname BayesTools_model_tables
+JAGS_summary_table   <- model_summary_table
+
+#' @rdname BayesTools_model_tables
+model_summary_empty_table <- function(model_description = NULL, title = NULL, footnotes = NULL, warnings = NULL){
+
+  check_list(model_description, "model_description", allow_NULL = TRUE)
+
+  summary_names  <- c(
+    "Model",
+    if(!is.null(model_description)) names(model_description),
+    "Prior prob.",
+    "log(marglik)",
+    "Post. prob.",
+    "Inclusion BF")
+
+
+  summary_names <- paste0(summary_names, "  ")
+
+  empty_table <- data.frame(cbind(
+    summary_names,
+    rep("",            length(summary_names)),
+    rep("           ", length(summary_names)),
+    c("Parameter prior distributions", rep("", length(summary_names) - 1))
+  ))
+  names(empty_table) <- NULL
+
+  # prepare output
+  class(empty_table)             <- c("BayesTools_table", class(empty_table))
+  attr(empty_table, "type")      <- c("string_left", "string", "string", "prior")
+  attr(empty_table, "rownames")  <- FALSE
+  attr(empty_table, "as.matrix") <- TRUE
+  attr(empty_table, "title")     <- title
+  attr(empty_table, "footnotes") <- footnotes
+  attr(empty_table, "warnings")  <- warnings
+
+  return(empty_table)
+}
+
+#' @rdname BayesTools_model_tables
+runjags_estimates_empty_table <- function(probs = c(0.025, 0.5, 0.975), title = NULL, footnotes = NULL, warnings = NULL,
+                                          remove_diagnostics = FALSE,
+                                          diagnostic_columns = getOption("BayesTools.JAGS_estimates_diagnostic_columns", if(remove_diagnostics) "none" else "all")){
+
+  check_bool(remove_diagnostics, "remove_diagnostics")
+  diagnostic_columns <- .normalize_diagnostic_columns(diagnostic_columns, .JAGS_estimates_diagnostic_columns(), "diagnostic_columns")
+  if(remove_diagnostics){
+    diagnostic_columns <- character()
+  }
+  n_estimate_cols <- 2 + length(probs)  # Mean, SD, quantiles
+  empty_table <- data.frame(matrix(nrow = 0, ncol = n_estimate_cols + length(diagnostic_columns)), check.names = FALSE)
+  colnames(empty_table) <- c("Mean", "SD", as.character(probs), diagnostic_columns)
+
+  class(empty_table)             <- c("BayesTools_table", "BayesTools_runjags_summary", class(empty_table))
+  attr(empty_table, "type")      <- c(rep("estimate", n_estimate_cols), diagnostic_columns)
+  attr(empty_table, "rownames")  <- FALSE
+  attr(empty_table, "title")     <- title
+  attr(empty_table, "footnotes") <- footnotes
+  attr(empty_table, "warnings")  <- warnings
+
+  return(empty_table)
+}
+
+#' @rdname BayesTools_model_tables
+runjags_inference_empty_table <- function(title = NULL, footnotes = NULL, warnings = NULL,
+                                          logBF = FALSE, BF01 = FALSE, BF_diagnostics = FALSE,
+                                          BF_diagnostic_columns = getOption("BayesTools.JAGS_BF_diagnostic_columns", if(BF_diagnostics) "all" else "none")){
+
+  check_char(title, "title", allow_NULL = TRUE)
+  check_char(footnotes, "footnotes", check_length = 0, allow_NULL = TRUE)
+  check_char(warnings, "warnings", check_length = 0, allow_NULL = TRUE)
+  check_bool(logBF, "logBF", allow_NA = FALSE)
+  check_bool(BF01,  "BF01",  allow_NA = FALSE)
+  check_bool(BF_diagnostics, "BF_diagnostics")
+  BF_diagnostic_columns <- .normalize_diagnostic_columns(BF_diagnostic_columns, .JAGS_BF_diagnostic_columns(), "BF_diagnostic_columns")
+  BF_diagnostics        <- length(BF_diagnostic_columns) > 0
+
+  empty_table <- data.frame(matrix(nrow = 0, ncol = 3 + length(BF_diagnostic_columns)))
+  colnames(empty_table) <- c("prior_prob", "post_prob", "inclusion_BF", BF_diagnostic_columns)
+  attr(empty_table[["inclusion_BF"]], "name") <- .BF_column_name(logBF = logBF, BF01 = BF01, inclusion = TRUE)
+  if("MCMC_error" %in% BF_diagnostic_columns){
+    attr(empty_table[["MCMC_error"]], "name") <- "error(Post. prob.)"
+  }
+  if("BF_error_percent" %in% BF_diagnostic_columns){
+    attr(empty_table[["BF_error_percent"]], "name") <- .BF_error_column_name(BF01)
+  }
+
+  class(empty_table)             <- c("BayesTools_table", "BayesTools_runjags_inference", class(empty_table))
+  attr(empty_table, "type")      <- c("prior_prob", "post_prob", "inclusion_BF", .JAGS_BF_diagnostic_column_types(BF_diagnostic_columns))
+  attr(empty_table, "rownames")  <- FALSE
+  attr(empty_table, "title")     <- title
+  attr(empty_table, "footnotes") <- footnotes
+  attr(empty_table, "warnings")  <- warnings
+
+  return(empty_table)
+}
+
+#' @rdname BayesTools_model_tables
+JAGS_estimates_empty_table <- runjags_estimates_empty_table
+
+#' @rdname BayesTools_model_tables
+JAGS_inference_empty_table <- runjags_inference_empty_table
+
+#' @rdname BayesTools_model_tables
+stan_estimates_table  <- function(fit, transformations = NULL, title = NULL, footnotes = NULL, warnings = NULL){
+
+  # this is a simplification of the runjags_estimates_table function for stan
+  .check_rstan()
+
+  # check fits
+  if(!inherits(fit, "stanfit"))
+    stop("'fit' must be a rstan fit")
+  prior_list <- attr(fit, "prior_list")
+  check_list(prior_list, "prior_list")
+  if(!all(sapply(prior_list, is.prior)))
+    stop("'prior_list' must be a list of priors.")
+  check_list(transformations, "transformations", allow_NULL = TRUE)
+  if(!is.null(transformations) && any(!sapply(transformations, function(trans)is.function(trans[["fun"]]))))
+    stop("'transformations' must be list of functions in the 'fun' element.")
+  check_char(title, "title", allow_NULL = TRUE)
+  check_char(footnotes, "footnotes", check_length = 0, allow_NULL = TRUE)
+  check_char(warnings, "warnings", check_length = 0, allow_NULL = TRUE)
+
+  # obtain model information
+  stan_summary  <- data.frame(rstan::summary(fit)$summary)
+  model_samples <- .extract_stan(fit, drop = FALSE)
+
+  # remove un-wanted columns
+  stan_summary <- stan_summary[,!colnames(stan_summary) %in% c("X25.", "X75."), drop = FALSE]
+
+  # remove un-wanted rows
+  stan_summary <- stan_summary[-nrow(stan_summary),, drop = FALSE]
+
+  # rename columns to match runjags output
+  colnames(stan_summary) <- c("Mean", "MCerr", "SD", "Lower95", "Median", "Upper95", "SSeff", "psrf")
+
+  # add MC.ofSD estimates
+  stan_summary[, "MC.ofSD"] <- stan_summary[, "MCerr"] / stan_summary[, "SD"]
+
+
+  # apply transformations
+  if(!is.null(transformations)){
+    for(par in names(transformations)){
+      model_samples[,par] <- do.call(transformations[[par]][["fun"]], c(list(model_samples[,par]), transformations[[par]][["arg"]]))
+      transformed_summary <- .stan_transformed_summary(model_samples[,par], stan_summary[par, "SSeff"])
+      stan_summary[par, names(transformed_summary)] <- transformed_summary
+      stan_summary[par, "MC.ofSD"] <- stan_summary[par, "MCerr"] / stan_summary[par, "SD"]
+    }
+  }
+
+
+  # rename the rest
+  colnames(stan_summary)[colnames(stan_summary) == "Lower95"] <- "0.025"
+  colnames(stan_summary)[colnames(stan_summary) == "Median"]  <- "0.5"
+  colnames(stan_summary)[colnames(stan_summary) == "Upper95"] <- "0.975"
+  colnames(stan_summary)[colnames(stan_summary) == "MCerr"]   <- "MCMC_error"
+  colnames(stan_summary)[colnames(stan_summary) == "MC.ofSD"] <- "MCMC_SD_error"
+  colnames(stan_summary)[colnames(stan_summary) == "SSeff"]   <- "ESS"
+  colnames(stan_summary)[colnames(stan_summary) == "psrf"]    <- "R_hat"
+
+  # reorder the columns
+  stan_summary <- stan_summary[,c("Mean", "SD", "0.025", "0.5", "0.975", "MCMC_error", "MCMC_SD_error", "ESS", "R_hat"), drop = FALSE]
+
+  # store parameter names
+  parameter_names <- rownames(stan_summary)
+
+  # prepare output
+  class(stan_summary)              <- c("BayesTools_table", "BayesTools_stan_summary", class(stan_summary))
+  attr(stan_summary, "type")       <- c(rep("estimate", 5), "MCMC_error", "MCMC_SD_error", "ESS", "R_hat")
+  attr(stan_summary, "parameters") <- parameter_names
+  attr(stan_summary, "rownames")   <- TRUE
+  attr(stan_summary, "title")      <- title
+  attr(stan_summary, "footnotes")  <- footnotes
+  attr(stan_summary, "warnings")   <- warnings
+
+  return(stan_summary)
+}
+
+.stan_transformed_summary <- function(samples, SSeff){
+
+  samples <- as.numeric(samples)
+  qs      <- stats::quantile(samples, probs = c(0.025, 0.5, 0.975), na.rm = TRUE, names = FALSE)
+  sd      <- stats::sd(samples, na.rm = TRUE)
+  MCerr   <- if(is.finite(SSeff) && SSeff > 0) sd / sqrt(SSeff) else NA_real_
+
+  c(
+    "Mean"    = mean(samples, na.rm = TRUE),
+    "MCerr"   = MCerr,
+    "SD"      = sd,
+    "Lower95" = qs[1],
+    "Median"  = qs[2],
+    "Upper95" = qs[3]
+  )
+}

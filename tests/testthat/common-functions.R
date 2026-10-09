@@ -5,6 +5,13 @@ if (!exists("GENERATE_REFERENCE_FILES")) {
   GENERATE_REFERENCE_FILES <- FALSE
 }
 
+if (!exists("cache_reference_table_candidate", mode = "function")) {
+  source(
+    testthat::test_path("helper-00-reference-table-review.R"),
+    local = environment()
+  )
+}
+
 
 test_files_dir <- Sys.getenv("BAYESTOOLS_TEST_FILES_DIR")
 if (test_files_dir == "") {
@@ -29,6 +36,286 @@ Sys.setenv(BAYESTOOLS_TEST_FILES_DIR = test_files_dir)
 
 # Use skip_if_no_fits() for tests that need pre-fitted models.
 
+attach_test_model_probabilities <- function(draws, posterior_probs, prior_weights = rep(1, length(posterior_probs))){
+
+  BayesTools:::.bt_meta_set(draws, "model_probabilities", list(
+    prior = BayesTools:::.model_probability_prior(prior_weights),
+    posterior = BayesTools:::.model_probability_pair(posterior_probs, log(posterior_probs), "posterior", "raw")))
+}
+
+attach_test_parameter_map <- function(fit, monitor_names = NULL) {
+  designs <- attr(fit, "formula_design", exact = TRUE)
+  scales <- attr(fit, "formula_scale", exact = TRUE)
+  for(parameter in names(scales)){
+    fixture_design <- attr(scales[[parameter]], "test_formula_design", exact = TRUE)
+    if(is.null(fixture_design)) next
+    attr(scales[[parameter]], "test_formula_design") <- NULL
+    if(is.null(designs[[parameter]])){
+      priors <- attr(fit, "prior_list", exact = TRUE)
+      for(owner in intersect(names(fixture_design$prior_list), names(priors))){
+        bound <- attributes(fixture_design$prior_list[[owner]])
+        fields <- setdiff(names(bound), c("names", "class", names(attributes(priors[[owner]]))))
+        for(field in fields) attr(priors[[owner]], field) <- bound[[field]]
+      }
+      attr(fit, "prior_list") <- priors
+      fixture_design$prior_list <- priors[names(fixture_design$prior_list)]
+      attr(scales[[parameter]], "unscale_design") <- BayesTools:::.bt_formula_unscale_design_spec(fixture_design)
+      attr(scales[[parameter]], "point_terms") <- BayesTools:::.formula_scale_point_terms(
+        fixture_design$prior_list, parameter, fixture_design$model_terms)
+      fixture_design$formula_scale <- scales[[parameter]]
+      designs[[parameter]] <- fixture_design
+    }
+  }
+  if(is.list(designs)){
+    if(is.null(scales)) scales <- list()
+    for(parameter in names(designs)){
+      design <- designs[[parameter]]
+      spec <- attr(design$formula_scale, "unscale_design", exact = TRUE)
+      if(!inherits(design, "BayesTools_formula_design") ||
+         !identical(design$schema_version, BayesTools:::.bt_formula_design_schema_version()) ||
+         is.null(spec) || !identical(spec$schema_version, 2L) ||
+         !identical(spec$owner_scope, "compiler") || !isFALSE(spec$complete)) next
+      scale <- scales[[parameter]]
+      if(is.null(scale)) scale <- design$formula_scale
+      scale <- BayesTools:::.bt_formula_scale_finalize(scale, design,
+        prior_list = attr(fit, "prior_list", exact = TRUE), owner_scope = "fit")
+      designs[[parameter]] <- BayesTools:::.bt_formula_point_finalize(design,
+        attr(fit, "prior_list", exact = TRUE), design$source_data,
+        parameter_names = colnames(as.matrix(BayesTools:::.fit_to_posterior(fit))))
+      designs[[parameter]]$formula_scale <- scale
+      scales[[parameter]] <- scale
+    }
+    attr(fit, "formula_design") <- designs
+    attr(fit, "formula_scale") <- scales
+  }
+  fit <- BayesTools:::.bt_attach_parameter_map(
+    fit,
+    monitor_names = monitor_names
+  )
+  fit <- BayesTools:::.bt_attach_draw_geometry(fit)
+  BayesTools:::.bt_attach_fit_contract(fit)
+}
+
+# Deterministic source-complete ordered fixture for computed and visual plots.
+# These are synthetic draws, not fitted posterior reference values.
+ordered_plot_test_fixture <- function(total = prior("normal", list(1, 1)),
+                                      allocation = NULL, contrast = "cumulative",
+                                      levels = c("early", "middle", "late", "last")){
+  data <- data.frame(f = ordered(rep(levels, 3L), levels = levels))
+  formula <- JAGS_formula(~f, "mu", data, list(intercept = prior("normal", list(0, 1)),
+    f = prior_ordered(total, allocation = allocation, contrast = contrast)))
+  prior <- formula$prior_list$mu_f
+  set.seed(178)
+  draws <- BayesTools:::.prior_ordered_draws(prior, 120L)
+  coefficients <- draws$coefficients
+  colnames(coefficients) <- BayesTools:::.JAGS_prior_factor_names("mu_f", prior)
+  sources <- BayesTools:::.prior_ordered_total_samples(draws, "mu_f")
+  for(record in BayesTools:::.prior_ordered_dirichlet_records(prior)){
+    gamma <- draws$allocation_samples[[record$key]] * seq_len(120L)
+    colnames(gamma) <- BayesTools:::.bt_ordered_spec("mu_f", prior)$allocations[[record$key]]$gamma_coordinates
+    sources <- cbind(sources, gamma)
+  }
+  values <- cbind(mu_intercept = seq(-1, 1, length.out = 120L), coefficients, sources)
+  fit <- structure(list(mcmc = coda::mcmc.list(coda::mcmc(values)), sample = 120L,
+    summary.pars = list(mutate = NULL), monitor = colnames(values)),
+    class = c("runjags", "BayesTools_fit", "list"))
+  attr(fit, "prior_list") <- formula$prior_list
+  attr(fit, "formula_design") <- list(mu = formula$formula_design)
+  fit <- attach_test_parameter_map(fit)
+  list(fit = fit, prior = prior, draws = values,
+    samples = as_mixed_posteriors(fit, "mu_f", n_prior_samples = 128L))
+}
+
+# The Harrell-Davis estimator (Harrell and Davis, 1982) by its definition: the
+# cell weights are the differences of the Beta(p (m + 1), (1 - p) (m + 1))
+# distribution function over the cells ((i - 1) / m, i / m] of the sorted
+# draws. The reference of the tests of harrell_davis_quantile() and of the
+# posterior PET-PEESE lines.
+hd_reference <- function(x, p) {
+  m <- length(x)
+  w <- diff(stats::pbeta((0:m) / m, p * (m + 1), (1 - p) * (m + 1)))
+  sum(w * sort(x))
+}
+
+# A mock backend result with the fitted metadata that functions reading a fit
+# require: one draw column per chain of 'end.state', an empty parameter map,
+# draw geometry, and the fit contract.
+contract_test_backend_fit <- function(fit) {
+  chains <- max(length(fit[["end.state"]]), 1L)
+  fit[["mcmc"]] <- do.call(coda::mcmc.list, lapply(seq_len(chains), function(chain) {
+    coda::mcmc(matrix(0, nrow = 2L, ncol = 1L, dimnames = list(NULL, "x")))
+  }))
+  fit[["summary.pars"]] <- list(mutate = NULL)
+  attr(fit, "parameter_map") <- BayesTools:::.bt_build_parameter_map(character())
+  fit <- BayesTools:::.bt_attach_draw_geometry(fit)
+  BayesTools:::.bt_attach_fit_contract(fit)
+}
+
+# The formula_scale of one formula parameter as a fitted model stores it: the
+# standardization of each predictor in 'scale' (a named list of
+# list(mean, sd)) together with the fitted design of 'formula', which
+# original-scale transforms require. Formulas of continuous predictors get
+# placeholder data; priors default to normal coefficients and treatment-coded
+# factor terms ('data' and 'prior_list' as for JAGS_formula()).
+formula_scale_for_test <- function(formula, scale, data = NULL,
+                                   prior_list = NULL, parameter = "mu") {
+  if (is.null(data)) {
+    variables <- all.vars(formula)
+    data <- as.data.frame(stats::setNames(
+      lapply(seq_along(variables), function(i) sin(seq_len(24) * i) + i),
+      variables
+    ))
+  }
+  if (is.null(prior_list)) {
+    terms_object <- stats::terms(formula)
+    labels <- attr(terms_object, "term.labels")
+    factors <- names(data)[vapply(data, is.factor, logical(1))]
+    prior_list <- stats::setNames(lapply(labels, function(label) {
+      if (any(strsplit(label, ":", fixed = TRUE)[[1L]] %in% factors)) {
+        prior_factor("normal", list(0, 1), contrast = "treatment")
+      } else {
+        prior("normal", list(0, 1))
+      }
+    }), labels)
+    if (attr(terms_object, "intercept") == 1L) {
+      prior_list <- c(list(intercept = prior("normal", list(0, 1))), prior_list)
+    }
+  }
+  result <- JAGS_formula(
+    formula       = formula,
+    parameter     = parameter,
+    data          = data,
+    prior_list    = prior_list,
+    formula_scale = stats::setNames(rep(list(TRUE), length(scale)), names(scale))
+  )
+  out <- result$formula_scale
+  for (predictor in names(scale)) {
+    out[[paste0(parameter, "_", predictor)]] <- list(
+      mean = scale[[predictor]][["mean"]],
+      sd   = scale[[predictor]][["sd"]]
+    )
+  }
+  attr(out, "test_formula_design") <- result$formula_design
+  out
+}
+
+# Zero draws for the prior-list coordinates that a mock posterior does not
+# monitor, so that the fitted object's parameter map is complete.
+complete_test_posterior <- function(posterior, prior_list) {
+  coordinates <- unlist(lapply(names(prior_list), function(parameter) {
+    prior <- prior_list[[parameter]]
+    if (is.prior.factor(prior) || is.prior.vector(prior)) {
+      BayesTools:::.JAGS_prior_factor_names(parameter, prior)
+    } else {
+      parameter
+    }
+  }), use.names = FALSE)
+  missing <- setdiff(coordinates, colnames(posterior))
+  cbind(
+    posterior,
+    matrix(0, nrow = nrow(posterior), ncol = length(missing),
+           dimnames = list(NULL, missing))
+  )
+}
+
+build_test_parameter_coordinates <- function(columns, monitor_names = columns,
+                                          prior_list = NULL,
+                                          formula_design = NULL,
+                                          formula_scale = NULL) {
+  BayesTools:::.bt_build_parameter_coordinates(
+    columns = columns,
+    monitor_names = monitor_names,
+    prior_list = prior_list,
+    formula_design = formula_design,
+    formula_scale = formula_scale
+  )
+}
+
+# Paths of the formulas, terms objects, and closures stored in 'x' (list
+# elements and attributes, recursively) whose environment a saved copy of 'x'
+# serializes with everything it holds: any environment other than the base or
+# empty environment or a namespace. Environments are not entered.
+stored_environment_paths <- function(x, path = "x") {
+  captured <- function(env) {
+    !(identical(env, baseenv()) || identical(env, emptyenv()) || isNamespace(env))
+  }
+  out <- character()
+  visit <- function(x, path) {
+    if (is.environment(x)) {
+      return(invisible())
+    }
+    if (is.function(x)) {
+      if (!is.primitive(x) && captured(environment(x))) {
+        out <<- c(out, path)
+      }
+      return(invisible())
+    }
+    if (inherits(x, "formula")) {
+      env <- attr(x, ".Environment", exact = TRUE)
+      if (is.environment(env) && captured(env)) {
+        out <<- c(out, path)
+      }
+    }
+    x_attributes <- attributes(x)
+    for (name in setdiff(names(x_attributes), c(".Environment", "names", "class", "dim", "dimnames", "row.names"))) {
+      visit(x_attributes[[name]], paste0("attr(", path, ", \"", name, "\")"))
+    }
+    if (is.list(x)) {
+      element_names <- names(x)
+      for (i in seq_along(x)) {
+        element_path <- if (!is.null(element_names) && !is.na(element_names[[i]]) && nzchar(element_names[[i]])) {
+          paste0(path, "$", element_names[[i]])
+        } else {
+          paste0(path, "[[", i, "]]")
+        }
+        visit(x[[i]], element_path)
+      }
+    }
+    invisible()
+  }
+  visit(x, path)
+  out
+}
+
+# The caller's random-number state: whether '.Random.seed' exists, its value,
+# and the generator kinds.
+.caller_rng_state <- function() {
+  exists <- exists(".Random.seed", envir = globalenv(), inherits = FALSE)
+  list(
+    exists = exists,
+    seed = if (exists) get(".Random.seed", envir = globalenv(), inherits = FALSE),
+    kind = RNGkind()
+  )
+}
+
+# A seeded call leaves the caller's generator as it found it (a Mersenne-Twister
+# or an L'Ecuyer-CMRG state, or no '.Random.seed' at all), and its value does
+# not depend on the caller's state. Callers preserve and restore the seed and
+# the generator kinds around it.
+.expect_scoped_rng <- function(label, run) {
+  values <- list()
+  for (caller_seed in c(1, 2)) {
+    set.seed(caller_seed)
+    before <- .caller_rng_state()
+    values[[caller_seed]] <- run()
+    expect_identical(.caller_rng_state(), before, info = label)
+  }
+  expect_identical(values[[1L]], values[[2L]], info = label)
+
+  RNGkind("L'Ecuyer-CMRG")
+  set.seed(3)
+  before <- .caller_rng_state()
+  run()
+  expect_identical(.caller_rng_state(), before, info = label)
+
+  RNGkind("Mersenne-Twister")
+  rm(".Random.seed", envir = globalenv())
+  kind <- RNGkind()
+  run()
+  expect_false(exists(".Random.seed", envir = globalenv(), inherits = FALSE), info = label)
+  expect_identical(RNGkind(), kind, info = label)
+}
+
 # ============================================================================ #
 # HELPER FUNCTIONS: Reference File Testing
 # ============================================================================ #
@@ -36,19 +323,28 @@ Sys.setenv(BAYESTOOLS_TEST_FILES_DIR = test_files_dir)
 # Process reference file: save if GENERATE_REFERENCE_FILES=TRUE, test otherwise
 test_reference_table <- function(table, filename, info_msg = NULL,
                                  print_dir = REFERENCE_DIR) {
+  ref_file <- file.path(print_dir, filename)
   if (GENERATE_REFERENCE_FILES) {
     # Save mode
     if (!dir.exists(print_dir)) {
       dir.create(print_dir, recursive = TRUE)
     }
     writeLines(capture_output_lines(table, print = TRUE, width = 150),
-               file.path(print_dir, filename))
+               ref_file)
+    unlink(reference_table_candidate_path(ref_file))
   } else {
     # Test mode
-    ref_file <- file.path(print_dir, filename)
     if (file.exists(ref_file)) {
       expected_output <- readLines(ref_file, warn = FALSE)
       actual_output   <- capture_output_lines(table, print = TRUE, width = 150)
+      candidate <- cache_reference_table_candidate(
+        actual_output,
+        expected_output,
+        ref_file
+      )
+      if (!is.null(candidate)) {
+        info_msg <- reference_table_failure_info(info_msg, candidate)
+      }
       expect_equal(actual_output, expected_output, info = info_msg)
     } else {
       skip(paste("Reference file", filename, "not found."))
@@ -85,7 +381,12 @@ parse_numeric_table_lines <- function(lines) {
   })
   value_widths <- lengths(row_values)
   if (length(unique(value_widths)) != 1L) {
-    stop("Parsed numeric table rows have inconsistent widths.", call. = FALSE)
+    data_width <- max(value_widths)
+    candidate_rows <- which(is_row)
+    keep <- value_widths == data_width
+    is_row[candidate_rows[!keep]] <- FALSE
+    row_data <- row_data[keep, , drop = FALSE]
+    row_values <- row_values[keep]
   }
   values <- do.call(rbind, row_values)
   colnames(values) <- paste0("V", seq_len(ncol(values)))
@@ -101,8 +402,101 @@ normalize_reference_non_table_lines <- function(lines) {
   gsub("\\s+", " ", trimws(lines))
 }
 
-test_reference_table_numeric <- function(table, filename, tolerance = 1e-2,
-                                         info_msg = NULL, print_dir = REFERENCE_DIR) {
+stochastic_reference_value_classes <- function(values) {
+
+  classes <- matrix("finite", nrow = nrow(values), ncol = ncol(values))
+  classes[is.infinite(values) & values > 0] <- "positive_infinity"
+  classes[is.infinite(values) & values < 0] <- "negative_infinity"
+  classes[is.na(values)] <- "missing"
+  classes[is.nan(values)] <- "not_a_number"
+  dimnames(classes) <- dimnames(values)
+  classes
+}
+
+stochastic_reference_non_table_lines <- function(lines) {
+
+  lines <- normalize_reference_non_table_lines(lines)
+  lines <- gsub(
+    "based on [0-9][0-9,]* samples",
+    "based on <sample-count> samples",
+    lines,
+    perl = TRUE
+  )
+  sub(
+    paste0(
+      "^(log\\(marglik\\)\\s+)",
+      "(<?[-+]?[0-9]*\\.?[0-9]+(?:[eE][-+]?[0-9]+)?)",
+      "(\\s+.*)?$"
+    ),
+    "\\1<finite>\\3",
+    lines,
+    perl = TRUE
+  )
+}
+
+stochastic_reference_signature <- function(lines) {
+
+  parsed <- parse_numeric_table_lines(lines)
+  list(
+    row_layout = parsed$is_row,
+    row_labels = unname(parsed$labels),
+    value_classes = unname(stochastic_reference_value_classes(parsed$values)),
+    non_table_lines = stochastic_reference_non_table_lines(
+      lines[!parsed$is_row]
+    )
+  )
+}
+
+expect_stochastic_table_invariants <- function(table, info_msg = NULL) {
+
+  for (name in names(table)) {
+    values <- table[[name]]
+    if (!is.numeric(values)) {
+      next
+    }
+    expect_false(any(is.nan(values)), info = info_msg)
+
+    if (name %in% c(
+      "SD", "MCMC_error", "MCMC_SD_error", "ESS", "R_hat",
+      "BF_error", "BF_error_percent", "max_MCMC_error",
+      "max_MCMC_SD_error", "min_ESS", "max_R_hat"
+    )) {
+      expect_true(
+        all(is.na(values) | values >= 0),
+        info = info_msg
+      )
+    }
+    if (name %in% c("prior_prob", "post_prob")) {
+      expect_true(
+        all(is.na(values) | (values >= 0 & values <= 1)),
+        info = info_msg
+      )
+    }
+  }
+
+  probabilities <- suppressWarnings(as.numeric(names(table)))
+  quantile_columns <- which(
+    is.finite(probabilities) & probabilities >= 0 & probabilities <= 1
+  )
+  if (length(quantile_columns) > 1L) {
+    quantile_columns <- quantile_columns[order(probabilities[quantile_columns])]
+    quantiles <- as.matrix(table[, quantile_columns, drop = FALSE])
+    for (i in seq_len(nrow(quantiles))) {
+      finite <- is.finite(quantiles[i, ])
+      if (sum(finite) > 1L) {
+        expect_true(
+          all(diff(quantiles[i, finite]) >= 0),
+          info = info_msg
+        )
+      }
+    }
+  }
+
+  invisible(TRUE)
+}
+
+test_reference_table_stochastic <- function(table, filename, info_msg = NULL,
+                                            print_dir = REFERENCE_DIR) {
   if (GENERATE_REFERENCE_FILES) {
     test_reference_table(table, filename, info_msg = info_msg, print_dir = print_dir)
   } else {
@@ -111,16 +505,25 @@ test_reference_table_numeric <- function(table, filename, tolerance = 1e-2,
       expected_output <- readLines(ref_file, warn = FALSE)
       actual_output   <- capture_output_lines(table, print = TRUE, width = 150)
 
-      expected_table <- parse_numeric_table_lines(expected_output)
-      actual_table   <- parse_numeric_table_lines(actual_output)
+      actual_signature   <- stochastic_reference_signature(actual_output)
+      expected_signature <- stochastic_reference_signature(expected_output)
+      candidate <- cache_reference_table_candidate(
+        actual_output,
+        expected_output,
+        ref_file,
+        actual_comparison   = actual_signature,
+        expected_comparison = expected_signature
+      )
+      if (!is.null(candidate)) {
+        info_msg <- reference_table_failure_info(info_msg, candidate)
+      }
 
-      expect_equal(actual_table$labels, expected_table$labels, info = info_msg)
-      expect_equal(actual_table$values, expected_table$values, tolerance = tolerance, info = info_msg)
       expect_equal(
-        normalize_reference_non_table_lines(actual_output[!actual_table$is_row]),
-        normalize_reference_non_table_lines(expected_output[!expected_table$is_row]),
+        actual_signature,
+        expected_signature,
         info = info_msg
       )
+      expect_stochastic_table_invariants(table, info_msg = info_msg)
     } else {
       skip(paste("Reference file", filename, "not found."))
     }
@@ -303,8 +706,7 @@ if (isNamespaceLoaded("BayesTools")) {
 #' Test a prior distribution for consistency
 #'
 #' Validates that a prior distribution's rng, pdf, cdf, quant, mean, and sd
-
-' functions work correctly and are mutually consistent.
+#' functions work correctly and are mutually consistent.
 #'
 #' @param prior A prior object to test
 #' @param skip_moments Logical; skip mean/sd validation (for distributions
@@ -344,6 +746,85 @@ test_prior <- function(prior, skip_moments = FALSE) {
     expect_equal(mean(samples), mean(prior), tolerance = 1e-2)
     expect_equal(sd(samples), sd(prior), tolerance = 1e-2)
   }
+  return(invisible())
+}
+
+test_nonlocal_prior <- function(prior, skip_moments = FALSE, moment_tolerance = 1e-2) {
+  set.seed(1)
+  samples <- rng(prior, 100000)
+
+  sample_range <- stats::quantile(samples, c(.005, .995), names = FALSE)
+  xlim <- range(c(range(prior), sample_range), finite = TRUE)
+  xlim <- range(pretty(xlim))
+
+  hist(
+    samples,
+    main = print(prior, plot = TRUE),
+    breaks = 80,
+    freq = FALSE,
+    xlim = xlim,
+    col = "grey90",
+    border = "grey70"
+  )
+  lines(prior, xlim = xlim, individual = TRUE, col = "black", lwd = 2)
+
+  prior_median <- quant(prior, 0.5)
+  sample_median <- stats::median(samples)
+  prior_mean <- mean(prior)
+  sample_mean <- mean(samples)
+
+  legend_text <- "prior density"
+  legend_col <- "black"
+  legend_lty <- 1
+  legend_lwd <- 2
+
+  abline(v = prior_median, col = "blue", lwd = 2)
+  abline(v = sample_median, col = "blue", lwd = 2, lty = 3)
+  legend_text <- c(legend_text, "prior median", "sample median")
+  legend_col <- c(legend_col, "blue", "blue")
+  legend_lty <- c(legend_lty, 1, 3)
+  legend_lwd <- c(legend_lwd, 2, 2)
+
+  if (is.finite(prior_mean) && is.finite(sample_mean)) {
+    abline(v = prior_mean, col = "red", lwd = 2)
+    abline(v = sample_mean, col = "red", lwd = 2, lty = 3)
+    legend_text <- c(legend_text, "prior mean", "sample mean")
+    legend_col <- c(legend_col, "red", "red")
+    legend_lty <- c(legend_lty, 1, 3)
+    legend_lwd <- c(legend_lwd, 2, 2)
+  }
+
+  modes <- prior$parameters[["location"]] + c(-1, 1) * prior$parameters[["mode"]]
+  modes <- modes[
+    modes >= prior$truncation[["lower"]] &
+      modes <= prior$truncation[["upper"]]
+  ]
+  if (length(modes) > 0L) {
+    abline(v = modes, col = "purple", lwd = 2, lty = 4)
+    legend_text <- c(legend_text, "mode")
+    legend_col <- c(legend_col, "purple")
+    legend_lty <- c(legend_lty, 4)
+    legend_lwd <- c(legend_lwd, 2)
+  }
+
+  legend(
+    "topright",
+    legend = legend_text,
+    col = legend_col,
+    lty = legend_lty,
+    lwd = legend_lwd,
+    bty = "n"
+  )
+
+  expect_equal(.25, cdf(prior, quant(prior, 0.25)), tolerance = 1e-4)
+  expect_equal(.50, cdf(prior, prior_median), tolerance = 1e-4)
+  expect_equal(.25, ccdf(prior, quant(prior, 0.75)), tolerance = 1e-4)
+
+  if (!skip_moments) {
+    expect_equal(sample_mean - prior_mean, 0, tolerance = moment_tolerance)
+    expect_equal(sd(samples) - sd(prior), 0, tolerance = moment_tolerance)
+  }
+
   return(invisible())
 }
 
@@ -491,7 +972,9 @@ test_meandif <- function(prior, skip_moments = FALSE) {
   )
 }
 
-# Helper function to save fitted models and register metadata
+# Helper function to save fitted models and register metadata. Assertion-only
+# fits carry structural assertions of fixture tests; they have no reviewed
+# summary-table baselines.
 save_fit <- function(fit, name, marglik = NULL, simple_priors = FALSE, vector_priors = FALSE,
                      factor_priors = FALSE, pub_bias_priors = FALSE,
                      weightfunction_priors = FALSE, spike_and_slab_priors = FALSE,
@@ -499,7 +982,7 @@ save_fit <- function(fit, name, marglik = NULL, simple_priors = FALSE, vector_pr
                      random_effects = FALSE, interactions = FALSE,
                      expression_priors = FALSE, multi_formula = FALSE,
                      autofit = FALSE, parallel = FALSE, thinning = FALSE,
-                     add_parameters = FALSE, note = "") {
+                     add_parameters = FALSE, assertion_only = FALSE, note = "") {
 
   registry_entry <- data.frame(
     model_name = name,
@@ -520,16 +1003,33 @@ save_fit <- function(fit, name, marglik = NULL, simple_priors = FALSE, vector_pr
     parallel = parallel,
     thinning = thinning,
     add_parameters = add_parameters,
+    assertion_only = assertion_only,
     note = note,
     stringsAsFactors = FALSE
   )
 
   attr(fit, "fixture_metadata") <- .fixture_metadata_from_registry_entry(registry_entry)
-  saveRDS(fit, file = file.path(temp_fits_dir, paste0(name, ".RDS")))
+  fit_file <- file.path(temp_fits_dir, paste0(name, ".RDS"))
+  marglik_file <- file.path(temp_marglik_dir, paste0(name, ".RDS"))
+
+  saveRDS(fit, file = fit_file)
 
   # Save marglik if provided
   if (!is.null(marglik)) {
-    saveRDS(marglik, file = file.path(temp_marglik_dir, paste0(name, ".RDS")))
+    saveRDS(marglik, file = marglik_file)
+  }
+
+  expect_true(file.exists(fit_file), info = paste("Saved fit artifact for", name))
+  expect_identical(registry_entry$model_name, name)
+  expect_identical(registry_entry$has_marglik, !is.null(marglik))
+  expect_identical(attr(fit, "fixture_metadata")$model_name, name)
+  expect_identical(attr(fit, "fixture_metadata")$has_marglik, !is.null(marglik))
+
+  if (!is.null(marglik)) {
+    expect_true(
+      file.exists(marglik_file),
+      info = paste("Saved marginal-likelihood artifact for", name)
+    )
   }
 
   # Return model metadata entry for registry
@@ -613,11 +1113,78 @@ save_fit <- function(fit, name, marglik = NULL, simple_priors = FALSE, vector_pr
   }
   package_source_files <- unique(package_source_files)
   package_source_files <- package_source_files[file.exists(package_source_files)]
+  if(length(package_source_files) == 0L){
+    return(stats::setNames(character(), character()))
+  }
   names(package_source_files) <- paste0(
     "package_R_",
     tools::file_path_sans_ext(basename(package_source_files))
   )
   package_source_files
+}
+
+.test_cache_package_src_files <- function(files = character(), patterns = character()) {
+  package_src_dir <- file.path(testthat::test_path("..", ".."), "src")
+  if(!dir.exists(package_src_dir)){
+    return(stats::setNames(character(), character()))
+  }
+
+  package_source_files <- file.path(package_src_dir, files)
+  for (pattern in patterns) {
+    package_source_files <- c(
+      package_source_files,
+      list.files(package_src_dir, pattern = pattern, full.names = TRUE, recursive = TRUE)
+    )
+  }
+  package_source_files <- unique(package_source_files)
+  package_source_files <- package_source_files[file.exists(package_source_files)]
+  if(length(package_source_files) == 0L){
+    return(stats::setNames(character(), character()))
+  }
+
+  relative_paths <- substring(
+    normalizePath(package_source_files, winslash = "/", mustWork = TRUE),
+    nchar(normalizePath(package_src_dir, winslash = "/", mustWork = TRUE)) + 2L
+  )
+  names(package_source_files) <- paste0(
+    "package_src_",
+    gsub("[^A-Za-z0-9]+", "_", relative_paths)
+  )
+  package_source_files
+}
+
+# The parse data of an R source file, parsed once per test run. The tests that
+# scan the package sources read the same files, and parsing them dominates the
+# cost of each scan. The result is keyed by the content of the file, so a
+# rewritten file is parsed again. With 'children = TRUE' the data carry the row
+# indices of the children of every node as the attribute "children" (named by
+# the id of the parent), so that a scan reads the children of a node without
+# searching the whole table; the index is built on first request.
+.test_source_parse_data <- local({
+  cache <- new.env(parent = emptyenv())
+  function(file, children = FALSE) {
+    key <- unname(tools::md5sum(file))
+    if (is.na(key)) {
+      stop("Cannot read the source file '", file, "'.", call. = FALSE)
+    }
+    if (is.null(cache[[key]])) {
+      cache[[key]] <- utils::getParseData(
+        parse(file, keep.source = TRUE, encoding = "UTF-8")
+      )
+    }
+    if (children && is.null(attr(cache[[key]], "children", exact = TRUE))) {
+      parse_data <- cache[[key]]
+      attr(parse_data, "children") <- split(seq_len(nrow(parse_data)), parse_data$parent)
+      cache[[key]] <- parse_data
+    }
+    cache[[key]]
+  }
+})
+
+.test_cache_package_sources_available <- function() {
+
+  package_r_dir <- file.path(testthat::test_path("..", ".."), "R")
+  dir.exists(package_r_dir) && length(list.files(package_r_dir, pattern = "\\.R$", full.names = TRUE)) > 0L
 }
 
 .test_cache_existing_test_files <- function(files) {
@@ -631,20 +1198,15 @@ save_fit <- function(fit, name, marglik = NULL, simple_priors = FALSE, vector_pr
 }
 
 .test_cache_source_files <- function(name) {
+  # The package R code that defines a cached object enters the model-fit key
+  # as the reachable functions (.test_cache_package_function_hashes()), not as
+  # whole files, so editing code the fit generators never reach keeps the cache
+  # current. The package DESCRIPTION enters it without its version
+  # (.test_cache_description_hashes()).
   generator_sources <- c(
-    description = testthat::test_path("..", "..", "DESCRIPTION"),
-    .test_cache_package_r_files(
-      files = c(
-        "JAGS-fit.R",
-        "JAGS-formula.R",
-        "JAGS-marglik.R",
-        "priors.R",
-        "priors-tools.R",
-        "priors-informed.R",
-        "selection-kernels.R",
-        "tools.R"
-      ),
-      patterns = "^distributions-.*\\.R$"
+    .test_cache_package_src_files(
+      files = c("Makevars.in", "Makevars.win", "Makevars.win.common", "Makevars.ucrt"),
+      patterns = "\\.(c|cc|h)$"
     ),
     test_00_model_fits = testthat::test_path("test-00-model-fits.R")
   )
@@ -653,10 +1215,66 @@ save_fit <- function(fit, name, marglik = NULL, simple_priors = FALSE, vector_pr
     .test_cache_package_r_files(
       files = c(
         "JAGS-fit.R",
+        "JAGS-runtime.R",
+        "JAGS-convergence.R",
+        "JAGS-prior-syntax.R",
+        "JAGS-prior-inits.R",
+        "JAGS-prior-monitor.R",
+        "JAGS-fit-settings.R",
         "JAGS-formula.R",
+        "JAGS-formula-design.R",
+        "JAGS-formula-random-design.R",
+        "JAGS-formula-random-matrices.R",
+        "random-effects-memory.R",
+        "JAGS-formula-random-priors.R",
+        "JAGS-formula-helpers.R",
+        "JAGS-formula-predict.R",
+        "JAGS-formula-predict-target.R",
+        "JAGS-formula-predict-random.R",
+        "JAGS-formula-factors.R",
+        "JAGS-formula-scale.R",
+        "JAGS-formula-scale-random-sd.R",
+        "JAGS-formula-scale-transform.R",
+        "JAGS-formula-contrasts.R",
+        "JAGS-parameter-names.R",
+        "aaa-parameter-map.R",
+        "JAGS-parameter-coordinates.R",
+        "JAGS-parameter-catalog.R",
+        "JAGS-draw-geometry.R",
+        "JAGS-fit-contract.R",
+        "JAGS-formula-random.R",
+        "JAGS-lkj-cholesky.R",
         "model-averaging.R",
+        "model-averaging-mix-posteriors.R",
+        "model-averaging-as-mixed-posteriors.R",
+        "model-averaging-inclusion.R",
+        "posterior-density.R",
+        "posterior-density-matching.R",
+        "posterior-density-sources.R",
+        "posterior-density-children.R",
+        "posterior-density-attributes.R",
+        "random-effects-formula.R",
+        "random-group-covariance.R",
+        "random-effects-allocation.R",
+        "random-effects-sd-binding.R",
+        "random-effects-sd-binding-context.R",
+        "random-effects-metadata.R",
+        "random-effects-reconstruction.R",
+        "random-effects-reconstruction-allocation.R",
+        "random-effects-reconstruction-correlation.R",
+        "random-effects-sd-spec.R",
+        "random-effects-summary.R",
+        "random-effects-summary-sd.R",
+        "random-effects-summary-metadata.R",
+        "random-effects-summary-display.R",
+        "random-priors.R",
         "selection-kernels.R",
-        "summary-tables.R",
+        "selection-context.R",
+        "selection-backend-helpers.R",
+        "summary-tables-ensemble.R",
+        "summary-tables-model.R",
+        "summary-tables-object.R",
+        "summary-tables-formatting.R",
         "interpret.R"
       )
     ),
@@ -665,12 +1283,15 @@ save_fit <- function(fit, name, marglik = NULL, simple_priors = FALSE, vector_pr
     semantic_oracles = testthat::test_path("helper-semantic-oracles.R"),
     .test_cache_existing_test_files(c(
       "test-fixture-integrity.R",
+      "test-JAGS-deterministic-nodes-fixture.R",
       "test-JAGS-ensemble-tables.R",
       "test-JAGS-fit.R",
       "test-JAGS-formula-scale.R",
       "test-JAGS-formula.R",
       "test-JAGS-summary-tables.R",
       "test-model-averaging.R",
+      "test-parameter-labels-fixture.R",
+      "test-random-effects-summary-posterior-fixture.R",
       "test-selection-kernels.R",
       "test-summary-tables.R",
       "test-weightfunction-redesign.R"
@@ -681,10 +1302,73 @@ save_fit <- function(fit, name, marglik = NULL, simple_priors = FALSE, vector_pr
     .test_cache_package_r_files(
       files = c(
         "JAGS-fit.R",
+        "JAGS-runtime.R",
+        "JAGS-convergence.R",
+        "JAGS-prior-syntax.R",
+        "JAGS-prior-inits.R",
+        "JAGS-prior-monitor.R",
+        "JAGS-fit-settings.R",
+        "JAGS-formula.R",
+        "JAGS-formula-design.R",
+        "JAGS-formula-random-design.R",
+        "JAGS-formula-random-matrices.R",
+        "random-effects-memory.R",
+        "JAGS-formula-random-priors.R",
+        "JAGS-formula-helpers.R",
+        "JAGS-formula-predict.R",
+        "JAGS-formula-predict-target.R",
+        "JAGS-formula-predict-random.R",
+        "JAGS-formula-factors.R",
+        "JAGS-formula-scale.R",
+        "JAGS-formula-scale-random-sd.R",
+        "JAGS-formula-scale-transform.R",
+        "JAGS-formula-contrasts.R",
+        "JAGS-parameter-names.R",
+        "aaa-parameter-map.R",
+        "JAGS-parameter-coordinates.R",
+        "JAGS-parameter-catalog.R",
+        "JAGS-draw-geometry.R",
+        "JAGS-fit-contract.R",
+        "JAGS-formula-random.R",
+        "JAGS-lkj-cholesky.R",
+        "marginal-posterior.R",
+        "marginal-prior-mixing.R",
+        "marginal-savage-dickey.R",
+        "marginal-inference.R",
         "model-averaging.R",
-        "model-averaging-plots.R",
+        "model-averaging-mix-posteriors.R",
+        "model-averaging-as-mixed-posteriors.R",
+        "model-averaging-inclusion.R",
+        "model-averaging-plots-priors.R",
+        "model-averaging-plots-priors-weightfunction.R",
+        "model-averaging-plots-priors-petpeese.R",
+        "model-averaging-plots-priors-simple.R",
+        "model-averaging-plots-priors-layers.R",
+        "model-averaging-plots-posterior.R",
+        "model-averaging-plots-posterior-simple.R",
+        "model-averaging-plots-posterior-bias.R",
+        "model-averaging-plots-posterior-factor.R",
+        "model-averaging-plots-models.R",
+        "model-averaging-plots-posterior-helpers.R",
+        "model-averaging-plots-marginal.R",
+        "posterior-density.R",
+        "posterior-density-matching.R",
+        "posterior-density-sources.R",
+        "posterior-density-children.R",
+        "posterior-density-attributes.R",
         "priors-plot.R",
-        "summary-tables.R"
+        "priors-plot-layers.R",
+        "random-effects-formula.R",
+        "random-group-covariance.R",
+        "random-effects-summary.R",
+        "random-effects-summary-sd.R",
+        "random-effects-summary-metadata.R",
+        "random-effects-summary-display.R",
+        "random-priors.R",
+        "summary-tables-ensemble.R",
+        "summary-tables-model.R",
+        "summary-tables-object.R",
+        "summary-tables-formatting.R"
       )
     ),
     common_functions = testthat::test_path("common-functions.R"),
@@ -733,6 +1417,10 @@ save_fit <- function(fit, name, marglik = NULL, simple_priors = FALSE, vector_pr
       catalog_registry_flag_columns = "bayestools_registry_flag_columns",
       catalog_registry_schema_columns = "bayestools_registry_schema_columns",
       catalog_optional_fit_requirements = "bayestools_optional_fit_requirements",
+      catalog_random_z_monitors = ".bayestools_random_z_monitors",
+      catalog_indexed_monitors = ".bayestools_indexed_monitors",
+      catalog_lkj_monitors = ".bayestools_lkj_monitors",
+      catalog_allocation_weight_monitors = ".bayestools_allocation_weight_monitors",
       catalog_find_calls = ".bayestools_find_calls",
       catalog_static_string = ".bayestools_static_string",
       catalog_static_logical = ".bayestools_static_logical",
@@ -761,10 +1449,351 @@ save_fit <- function(fit, name, marglik = NULL, simple_priors = FALSE, vector_pr
   }, character(1))
 }
 
+# The fingerprint of the package DESCRIPTION that ignores what is not source
+# content: the version, author line, build fields, and publication-only
+# Repository and Date/Publication fields. It uses the same source identity as
+# the vignette caches, so these metadata changes do not change the model-fit key.
+.test_cache_description_md5 <- function(path) {
+  description <- read.dcf(path, all = TRUE)
+  # read.dcf() marks the file's bytes as native text; convert them from the
+  # declared encoding so the fingerprint does not depend on the session locale
+  encoding <- description[["Encoding"]]
+  if (is.null(encoding)) {
+    encoding <- "UTF-8"
+  }
+  description[] <- lapply(description, iconv, from = encoding, to = "UTF-8")
+  if (anyNA(unlist(description, use.names = FALSE))) {
+    stop("DESCRIPTION is not valid text in its declared encoding.", call. = FALSE)
+  }
+  description[c("Author", "Built", "Packaged", "Version", "Repository", "Date/Publication")] <- NULL
+  description <- description[order(names(description), method = "radix")]
+  values <- vapply(description, function(value) {
+    gsub("[[:space:]]+", " ", trimws(value))
+  }, character(1))
+  .test_cache_text_md5(paste(names(values), values, sep = ": ", collapse = "\n"))
+}
+
+.test_cache_description_hashes <- function(name) {
+  description_file <- testthat::test_path("..", "..", "DESCRIPTION")
+  if (!identical(name, "model-fit") || !file.exists(description_file)) {
+    return(stats::setNames(character(), character()))
+  }
+
+  c(description = .test_cache_description_md5(description_file))
+}
+
+# What a piece of R code (a function with the defaults of its arguments, a call,
+# or an expression vector) refers to, as sets of names:
+# - 'used': the functions it calls and the variables it reads that are not
+#   local to it (a symbol that is an argument or an assigned variable of the
+#   code is local, except where it is called);
+# - 'strings': its string constants (a function can be named by a string, and
+#   a class is named by one);
+# - 'generics': the generics it dispatches with 'UseMethod()';
+# - 'prefixes': the string constants inside the function argument of
+#   'do.call()', 'match.fun()', 'get()' and the like when that argument is a
+#   computed name, which are the prefixes of such a name.
+.test_cache_code_references <- function(code) {
+  locals <- character()
+  called <- character()
+  read <- character()
+  strings <- character()
+  generics <- character()
+  prefixes <- character()
+
+  pieces_of <- function(x) {
+    if (is.call(x) || is.pairlist(x) || is.expression(x) || is.list(x)) {
+      as.list(x)
+    } else {
+      list()
+    }
+  }
+  collect_strings <- function(x) {
+    if (is.character(x)) {
+      return(x)
+    }
+    found <- character()
+    for (piece in pieces_of(x)) {
+      if (!missing(piece)) {
+        found <- c(found, collect_strings(piece))
+      }
+    }
+    found
+  }
+  assignment_heads <- c("<-", "<<-", "=")
+  collect_locals <- function(x) {
+    if (is.call(x) && is.symbol(x[[1L]])) {
+      head_name <- as.character(x[[1L]])
+      if (identical(head_name, "function")) {
+        locals <<- c(locals, names(x[[2L]]))
+      } else if (head_name %in% assignment_heads && length(x) == 3L) {
+        target <- x[[2L]]
+        # a replacement such as names(x)[i] <- v changes the local x with the
+        # replacement functions 'names<-' and '[<-'
+        while (is.call(target) && length(target) >= 2L) {
+          if (is.symbol(target[[1L]])) {
+            called <<- c(called, paste0(as.character(target[[1L]]), "<-"))
+          }
+          target <- target[[2L]]
+        }
+        if (is.symbol(target) || is.character(target)) {
+          locals <<- c(locals, as.character(target))
+        }
+      } else if (identical(head_name, "for") && length(x) >= 2L) {
+        locals <<- c(locals, as.character(x[[2L]]))
+      }
+    }
+    for (piece in pieces_of(x)) {
+      if (!missing(piece)) {
+        collect_locals(piece)
+      }
+    }
+    invisible(NULL)
+  }
+
+  naming_calls <- c("do.call", "match.fun", "get", "get0", "mget", "getFromNamespace", "exists")
+  visit <- function(x) {
+    if (is.symbol(x)) {
+      read <<- c(read, as.character(x))
+    } else if (is.character(x)) {
+      strings <<- c(strings, x)
+    } else if (is.call(x)) {
+      head <- x[[1L]]
+      arguments <- as.list(x)[-1L]
+      if (is.symbol(head)) {
+        head_name <- as.character(head)
+        called <<- c(called, head_name)
+        if (identical(head_name, "UseMethod") && length(x) > 1L && is.character(x[[2L]])) {
+          generics <<- c(generics, x[[2L]])
+        }
+        if (head_name %in% naming_calls && length(x) > 1L && is.call(x[[2L]])) {
+          prefixes <<- c(prefixes, collect_strings(x[[2L]]))
+        }
+        # the second argument of $ and @ is a field name, not a variable
+        if (head_name %in% c("$", "@")) {
+          arguments <- arguments[1L]
+        }
+      } else {
+        visit(head)
+      }
+      for (argument in arguments) {
+        if (!missing(argument)) {
+          visit(argument)
+        }
+      }
+    } else {
+      for (piece in pieces_of(x)) {
+        if (!missing(piece)) {
+          visit(piece)
+        }
+      }
+    }
+    invisible(NULL)
+  }
+
+  if (is.function(code)) {
+    locals <- names(formals(code))
+    collect_locals(body(code))
+    collect_locals(formals(code))
+    visit(body(code))
+    visit(formals(code))
+  } else {
+    collect_locals(code)
+    visit(code)
+  }
+
+  list(
+    used = unique(c(called, setdiff(read, locals))),
+    strings = unique(strings),
+    generics = unique(generics),
+    prefixes = unique(prefixes[nzchar(prefixes)])
+  )
+}
+
+# The registered S3 methods of a namespace as a matrix of generic, class, and
+# the name of the method function.
+.test_cache_s3_registry <- function(namespace) {
+  registry <- tryCatch(
+    getNamespaceInfo(namespace, "S3methods"),
+    error = function(e) NULL
+  )
+  if (is.null(registry)) {
+    return(matrix(character(), nrow = 0L, ncol = 3L))
+  }
+
+  registry <- matrix(as.character(registry[, 1:3]), ncol = 3L)
+  registry[!is.na(registry[, 3L]), , drop = FALSE]
+}
+
+# The objects of a namespace that code starting from the names 'roots' can
+# reach, as a static over-approximation: the closure under the names and string
+# constants of the reached functions, with the defaults of their arguments.
+# 'root_strings' are string constants of the starting code. Added to the
+# closure are
+# - the methods 'generic.class' of every generic that a reached function
+#   dispatches with 'UseMethod()';
+# - the registered S3 methods of every generic that reached code uses (and of
+#   the group generics), when the class is "default" or named by a string or a
+#   name of reached code, since an object of a class that reached code never
+#   names is not dispatched on;
+# - for a computed function name such as paste0(".prior_", distribution), the
+#   functions of the prefix completed by the string constants of the calling
+#   function, or all functions of the prefix when none matches.
+# Environments of the namespace (caches and registries of a session) are left
+# out.
+.test_cache_reached_package_objects <- function(roots, root_strings = character(),
+                                                namespace = asNamespace("BayesTools"),
+                                                s3_registry = .test_cache_s3_registry(namespace)) {
+  available <- ls(namespace, all.names = TRUE)
+  group_generics <- c("Ops", "Math", "Summary", "Complex")
+  methods_of_class <- function(used, named) {
+    dispatched <- s3_registry[, 1L] %in% c(used, group_generics) &
+      (s3_registry[, 2L] == "default" | s3_registry[, 2L] %in% named)
+    s3_registry[dispatched, 3L]
+  }
+
+  reached <- character()
+  used <- unique(roots)
+  named <- unique(c(roots, root_strings))
+  pending <- intersect(unique(c(roots, root_strings)), available)
+  while (length(pending) > 0L) {
+    discovered <- character()
+    for (name in pending) {
+      value <- get(name, envir = namespace, inherits = FALSE)
+      if (is.environment(value)) {
+        next
+      }
+      reached <- c(reached, name)
+      if (!is.function(value)) {
+        next
+      }
+
+      references <- .test_cache_code_references(value)
+      used <- union(used, references$used)
+      named <- union(named, c(references$used, references$strings))
+      discovered <- c(discovered, references$used, references$strings)
+      for (generic in references$generics) {
+        discovered <- c(discovered, available[startsWith(available, paste0(generic, "."))])
+      }
+      for (prefix in references$prefixes) {
+        completed <- paste0(prefix, references$strings)
+        completed <- completed[completed %in% available]
+        if (length(completed) == 0L) {
+          completed <- available[startsWith(available, prefix)]
+        }
+        discovered <- c(discovered, completed)
+      }
+    }
+
+    discovered <- c(discovered, methods_of_class(used, named))
+    pending <- setdiff(intersect(unique(discovered), available), reached)
+  }
+
+  sort(unique(reached), method = "radix")
+}
+
+# What starts the model-fit key: the code that generates the cached fits and
+# marginal likelihoods, which is the blocks of the fitting test file that call
+# save_fit() (the file's setup code outside the test blocks is included, its
+# helper definitions are not, since they serve the assertion blocks), the
+# helpers whose functions the key hashes, and the package load hooks. The
+# assertion blocks of the file test the post-fit interface of live fits; they
+# do not define a cached object.
+.test_cache_fit_generator_roots <- function() {
+  fit_file <- testthat::test_path("test-00-model-fits.R")
+  expressions <- if (file.exists(fit_file)) {
+    parse(fit_file, keep.source = FALSE, encoding = "UTF-8")
+  } else {
+    expression()
+  }
+
+  is_call_of <- function(x, name) {
+    is.call(x) && identical(x[[1L]], as.name(name))
+  }
+  is_function_definition <- function(x) {
+    (is_call_of(x, "<-") || is_call_of(x, "=")) && is_call_of(x[[3L]], "function")
+  }
+  is_test_block <- vapply(expressions, is_call_of, logical(1), name = "test_that")
+  saves_fit <- vapply(expressions, function(x) "save_fit" %in% all.names(x), logical(1))
+  is_definition <- vapply(expressions, is_function_definition, logical(1))
+  generators <- expressions[saves_fit | (!is_test_block & !is_definition)]
+
+  helpers <- Filter(is.function, lapply(
+    unname(.test_cache_source_functions("model-fit")),
+    function(function_name) get0(function_name, mode = "function")
+  ))
+  references <- lapply(c(list(generators), helpers), .test_cache_code_references)
+
+  list(
+    roots = unique(c(unlist(lapply(references, `[[`, "used")), ".onLoad", ".onAttach")),
+    strings = unique(unlist(lapply(references, `[[`, "strings")))
+  )
+}
+
+# The hash of the code of a package object: the 128-bit rlang::hash() of its
+# deparsed code, which is independent of comments and layout (the md5 of a file
+# per function would cost seconds). Numbers are deparsed with 17 significant
+# digits, which identify a double: the default 15 would leave the hash unchanged
+# when a numeric literal changes beyond its 15th digit.
+.test_cache_object_hash <- function(object) {
+  code <- deparse(
+    object,
+    control = c("keepNA", "keepInteger", "niceNames", "showAttributes", "digits17")
+  )
+  rlang::hash(paste(code, collapse = "\n"))
+}
+
+# The hashes of the package functions that the fit generators reach and of the
+# namespace constants that they read, named by the object
+# (.test_cache_object_hash()). Computing them takes about two seconds, so the
+# hashes of the loaded package namespace are kept for the R session, for this
+# namespace object and fitting test file; the cache checks of the test files
+# share them, and a reloaded namespace or an edited test file computes them
+# again. The session option that keeps them is not named "BayesTools.*":
+# JAGS_runtime_cluster() forwards those options to its workers.
+.test_cache_package_function_hashes <- function(name, namespace = asNamespace("BayesTools")) {
+  if (!identical(name, "model-fit")) {
+    return(stats::setNames(character(), character()))
+  }
+
+  use_memo <- identical(namespace, asNamespace("BayesTools"))
+  fit_file_md5 <- .test_cache_file_md5(testthat::test_path("test-00-model-fits.R"))
+  memo <- getOption("bayestools_test_cache_memo")
+  if (use_memo && is.list(memo) && identical(memo$namespace, namespace) &&
+      identical(memo$fit_file_md5, fit_file_md5)) {
+    return(memo$hashes)
+  }
+
+  starting_points <- .test_cache_fit_generator_roots()
+  reached <- .test_cache_reached_package_objects(
+    starting_points$roots,
+    starting_points$strings,
+    namespace
+  )
+  objects <- lapply(reached, get, envir = namespace, inherits = FALSE)
+  hashes <- vapply(objects, .test_cache_object_hash, character(1))
+  prefix <- ifelse(vapply(objects, is.function, logical(1)), "package_fn_", "package_obj_")
+  hashes <- stats::setNames(hashes, paste0(prefix, reached))
+
+  if (use_memo) {
+    options(bayestools_test_cache_memo = list(
+      namespace = namespace,
+      fit_file_md5 = fit_file_md5,
+      hashes = hashes
+    ))
+  }
+  hashes
+}
+
 .test_cache_source_hashes <- function(name) {
   source_files <- .test_cache_source_files(name)
   file_hashes <- vapply(source_files, .test_cache_file_md5, character(1))
-  c(file_hashes, .test_cache_function_hashes(name))
+  c(
+    .test_cache_description_hashes(name),
+    file_hashes,
+    .test_cache_function_hashes(name),
+    .test_cache_package_function_hashes(name)
+  )
 }
 
 .test_cache_marker_values <- function(indicator_file) {
@@ -835,11 +1864,21 @@ save_fit <- function(fit, name, marglik = NULL, simple_priors = FALSE, vector_pr
   }
 
   source_hashes <- .test_cache_source_hashes(name)
-  for (source_name in names(source_hashes)) {
-    key <- paste0("source_md5_", source_name)
-    if (!identical(marker_value(key), unname(source_hashes[[source_name]]))) {
+  source_keys <- if (length(source_hashes) > 0L) {
+    paste0("source_md5_", names(source_hashes))
+  } else {
+    character()
+  }
+  for (index in seq_along(source_hashes)) {
+    if (!identical(marker_value(source_keys[[index]]), unname(source_hashes[[index]]))) {
       return(FALSE)
     }
+  }
+  # a source that left the key (a function the generators no longer reach, a
+  # removed file) makes the marker stale as well
+  recorded_keys <- grep("^source_md5_", names(marker), value = TRUE)
+  if (length(setdiff(recorded_keys, source_keys)) > 0L) {
+    return(FALSE)
   }
 
   TRUE

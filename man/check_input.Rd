@@ -14,7 +14,7 @@ check_bool(
   name = deparse(substitute(x)),
   check_length = 1,
   allow_NULL = FALSE,
-  allow_NA = TRUE,
+  allow_NA = FALSE,
   call = ""
 )
 
@@ -108,6 +108,14 @@ returns \code{NULL}, called for the input check.
 A set of convenience functions for checking
 objects/arguments to a function passed by a user.
 }
+\section{NA values}{
+
+\code{allow_NA} defaults to \code{TRUE} for \code{check_char},
+\code{check_int}, and \code{check_real}, but to \code{FALSE} for
+\code{check_bool}: a missing value cannot be used as a switch, so an
+\code{NA} flag is rejected unless \code{allow_NA = TRUE} is requested.
+}
+
 \examples{
 # check whether the object is logical
 check_bool(TRUE, name = "input")

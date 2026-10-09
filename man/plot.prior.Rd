@@ -37,8 +37,8 @@ or ggplot2 \code{"ggplot"} for plotting.}
 automatically obtaining \code{x_range}
 if both \code{x_range} and \code{x_seq}
 are unspecified. Defaults to \code{0.005}
-for all but Cauchy, Student-t, Gamma, and
-Inverse-gamme distributions that use
+for all but Cauchy, Student-t, Gamma, inverse-gamma,
+moment, and inverse-moment distributions that use
 \code{0.010}.}
 
 \item{n_points}{number of equally spaced points
@@ -50,7 +50,14 @@ analytically (or if samples are forced with
 \code{force_samples = TRUE})}
 
 \item{force_samples}{should prior be sampled instead
-of obtaining analytic solution whenever possible}
+of obtaining analytic solution whenever possible. For supported ordered
+mixed measures, exact analytic curves and atoms are retained and the
+requested samples are attached to each component. Supported scalar ordered
+literal point totals and mixtures whose total components are all literal
+points do not sample, store draws, or advance the RNG when
+\code{force_samples = FALSE}. With \code{force_samples = TRUE}, their
+original seeded draws are attached without replacing the analytic measure.
+Other ordered families retain their existing sampling fallback.}
 
 \item{transformation}{transformation to be applied
 to the prior distribution. Either a character
@@ -61,8 +68,12 @@ specifying one of the prepared transformations:
 \item{exp}{exponential transformation}
 }, or a list containing the transformation function \code{fun},
 inverse transformation function \code{inv}, and derivative of the
-transformation \code{jac}, evaluated on the original support. See examples
-for details.}
+transformation \code{jac}, evaluated on the original support. A custom
+transformation can also declare \code{output_support = c(lower, upper)}.
+Display grids on the transformed scale are evaluated only within these
+bounds; a wider plotting range is retained without extending the density.
+Infinite inverse values at support boundaries are omitted from continuous
+density grids. Point masses retain their transformed locations.}
 
 \item{transformation_arguments}{a list with named arguments for
 the \code{transformation}}
@@ -73,7 +84,16 @@ the transformed support}
 
 \item{show_figures}{which figures should be returned in case of
 multiple plots are generated. Useful when priors for the omega
-parameter are plotted and \code{individual = TRUE}.}
+parameter are plotted and \code{individual = TRUE}. For weight functions
+plotted individually by \code{plot.prior()} and \code{plot_posterior()},
+figure \code{k} shows the publication weight omega of the \code{k}-th
+p-value interval in ascending order, the order in which summary tables
+(including RoBMA's) print the omegas; figure 1 is the reference weight of
+the most significant interval. In \code{plot.prior()}, a negative \code{k}
+omits figure \code{-k} (the default \code{-1} omits the reference weight
+fixed at 1). For a two-sided weight function prior, the intervals are its
+two-sided p-value bins; tables on the one-sided p-value scale print these
+weights first and then repeat them for the mirrored intervals.}
 
 \item{individual}{should individual densities be returned
 (e.g., in case of weightfunction)}
@@ -85,14 +105,52 @@ weightfunction is plotted.}
 specified. Only relevant if the prior corresponds to a mu
 parameter that needs to be transformed.}
 
-\item{...}{additional arguments}
+\item{...}{additional graphical arguments. For mixed continuous and point
+distributions, \code{ylim} controls the density axis, \code{ylim2} controls
+the probability-mass axis, and \code{ylab2} controls its label.}
 }
 \value{
 \code{plot.prior} returns either \code{NULL} or
 an object of class 'ggplot' if plot_type is \code{plot_type = "ggplot"}.
+Dirichlet simplex priors are plotted as one beta marginal per coordinate;
+the ggplot method returns a list unless a single figure is selected. Ordered
+ggplot results use the original figure indices: a multiple-figure selection
+returns a list through the largest selected index, with \code{NULL} entries
+for unselected figures, including the default reference level. A bare
+ggplot is returned only when exactly one figure is selected; a selection of
+several figures always returns a positional list, even if one figure is visible. For an
+ordered level with mixed probability measure, the continuous density and
+exact probability-mass arrows are drawn together without rescaling either
+component.
 }
 \description{
 Plots a prior object
+}
+\details{
+Declared point locations whose transformation images are not
+representable stop with \code{BayesTools_transformation_image_unavailable},
+parent \code{BayesTools_transformation}. Its \code{call} is \code{NULL} and
+its \code{transformation}, \code{source_values} and \code{images} fields
+identify the matched failing finite entries; see \code{\link[=posterior_transform]{posterior_transform()}}.
+
+Ordered prior plots retain the continuous density of every
+non-reference level, including priors with an infinite density at an exact
+point. Only nonfinite plotting ordinates are omitted; finite ordinates and
+declared point masses are unchanged. An infinite density point is not a
+probability mass. This display rule also applies to \code{\link[=lines.prior]{lines.prior()}} and
+\code{\link[=geom_prior]{geom_prior()}} and leaves \code{\link[=density.prior]{density.prior()}} and \code{\link[=prior_density_ordinate]{prior_density_ordinate()}}
+unchanged. Unknown or unsupported density routes keep their existing
+limitations.
+Direct ordered plots and layers omit persisted zero-design reference levels
+from the default selection. Explicit selectors retain the original level
+numbering and can select a reference level. Genuine non-reference zero and
+point levels remain visible.
+Finite displayed peak heights depend on the evaluation grid and do not
+represent an infinite mathematical peak. A direct ordered curve with no
+finite plotting ordinate stops with class \code{BayesTools_prior_curve_unavailable}
+(also \code{BayesTools_plot_condition}); supply \code{x_seq} containing
+finite density ordinates. Probability-axis mapping and clipping checks use
+selected components only, including an explicitly selected reference.
 }
 \examples{
 # create some prior distributions

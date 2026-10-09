@@ -1,5 +1,11 @@
 #' @title Plots a prior object
 #'
+#' @details Declared point locations whose transformation images are not
+#' representable stop with \code{BayesTools_transformation_image_unavailable},
+#' parent \code{BayesTools_transformation}. Its \code{call} is \code{NULL} and
+#' its \code{transformation}, \code{source_values} and \code{images} fields
+#' identify the matched failing finite entries; see [posterior_transform()].
+#'
 #' @param x a prior
 #' @param plot_type whether to use a base plot \code{"base"}
 #' or ggplot2 \code{"ggplot"} for plotting.
@@ -11,8 +17,19 @@
 #' weightfunction is plotted.
 #' @param show_figures which figures should be returned in case of
 #' multiple plots are generated. Useful when priors for the omega
-#' parameter are plotted and \code{individual = TRUE}.
-#' @param ... additional arguments
+#' parameter are plotted and \code{individual = TRUE}. For weight functions
+#' plotted individually by \code{plot.prior()} and \code{plot_posterior()},
+#' figure \code{k} shows the publication weight omega of the \code{k}-th
+#' p-value interval in ascending order, the order in which summary tables
+#' (including RoBMA's) print the omegas; figure 1 is the reference weight of
+#' the most significant interval. In \code{plot.prior()}, a negative \code{k}
+#' omits figure \code{-k} (the default \code{-1} omits the reference weight
+#' fixed at 1). For a two-sided weight function prior, the intervals are its
+#' two-sided p-value bins; tables on the one-sided p-value scale print these
+#' weights first and then repeat them for the mirrored intervals.
+#' @param ... additional graphical arguments. For mixed continuous and point
+#' distributions, \code{ylim} controls the density axis, \code{ylim2} controls
+#' the probability-mass axis, and \code{ylab2} controls its label.
 #' @inheritParams density.prior
 #'
 #' @examples
@@ -38,6 +55,35 @@
 #'
 #' @return \code{plot.prior} returns either \code{NULL} or
 #' an object of class 'ggplot' if plot_type is \code{plot_type = "ggplot"}.
+#' Dirichlet simplex priors are plotted as one beta marginal per coordinate;
+#' the ggplot method returns a list unless a single figure is selected. Ordered
+#' ggplot results use the original figure indices: a multiple-figure selection
+#' returns a list through the largest selected index, with \code{NULL} entries
+#' for unselected figures, including the default reference level. A bare
+#' ggplot is returned only when exactly one figure is selected; a selection of
+#' several figures always returns a positional list, even if one figure is visible. For an
+#' ordered level with mixed probability measure, the continuous density and
+#' exact probability-mass arrows are drawn together without rescaling either
+#' component.
+#'
+#' @details Ordered prior plots retain the continuous density of every
+#' non-reference level, including priors with an infinite density at an exact
+#' point. Only nonfinite plotting ordinates are omitted; finite ordinates and
+#' declared point masses are unchanged. An infinite density point is not a
+#' probability mass. This display rule also applies to [lines.prior()] and
+#' [geom_prior()] and leaves [density.prior()] and [prior_density_ordinate()]
+#' unchanged. Unknown or unsupported density routes keep their existing
+#' limitations.
+#' Direct ordered plots and layers omit persisted zero-design reference levels
+#' from the default selection. Explicit selectors retain the original level
+#' numbering and can select a reference level. Genuine non-reference zero and
+#' point levels remain visible.
+#' Finite displayed peak heights depend on the evaluation grid and do not
+#' represent an infinite mathematical peak. A direct ordered curve with no
+#' finite plotting ordinate stops with class \code{BayesTools_prior_curve_unavailable}
+#' (also \code{BayesTools_plot_condition}); supply \code{x_seq} containing
+#' finite density ordinates. Probability-axis mapping and clipping checks use
+#' selected components only, including an explicitly selected reference.
 #'
 #' @seealso [prior()] [lines.prior()]  [geom_prior()]
 #' @rdname plot.prior
@@ -55,6 +101,15 @@ plot.prior <- function(x, plot_type = "base",
   check_bool(rescale_x, "rescale_x")
   check_int(show_figures, "show_figures", allow_NULL = TRUE)
 
+  # spike-and-slab priors are mixtures whose components carry unit weights;
+  # plot them with the inclusion probability
+  if(is.prior.spike_and_slab(x)){
+    x <- .plot_prior_spike_and_slab_components(x)
+    return(plot_prior_list(x, plot_type = plot_type, x_seq = x_seq, xlim = xlim, x_range_quant = x_range_quant, n_points = n_points,
+                           n_samples = n_samples, force_samples = force_samples, transformation = transformation,
+                           transformation_arguments = transformation_arguments, transformation_settings = transformation_settings,
+                           show_figures = show_figures, individual = individual, rescale_x = rescale_x, par_name = par_name, ...))
+  }
   if(is.prior.mixture(x)){
     class(x) <- NULL
     return(plot_prior_list(x, plot_type = plot_type, x_seq = x_seq, xlim = xlim, x_range_quant = x_range_quant, n_points = n_points,
@@ -94,17 +149,16 @@ plot.prior <- function(x, plot_type = "base",
       }
     }
 
-    # plot individual weights
+    # plot individual weights; figure k is the weight of the k-th p-value
+    # interval in ascending order, as printed in the summary tables
     if(individual){
       # deal with the multiple figures
+      .weightfunction_check_individual_index(show_figures, length(plot_data), "show_figures")
       if(is.null(show_figures)){
         plots_ind <- c(1:length(plot_data))
       }else{
         plots_ind <- c(1:length(plot_data))[show_figures]
       }
-
-      # reverse the order
-      plot_data <- plot_data[length(plot_data):1]
 
       plots <- list()
       for(figure in plots_ind){
@@ -159,9 +213,31 @@ plot.prior <- function(x, plot_type = "base",
     }
   }
 
+  # ordered factor prior plots
+  if(is.prior.ordered(x)){
+    selected <- if(is.null(show_figures)) .plot_ordered_prior_default_figures(x) else seq_along(plot_data)[show_figures]
+    plot_data <- .plot_data_ordered_prior_display(plot_data, selected)
+    plots <- .plot.prior.simplex(x = x, plot_type = plot_type, plot_data = plot_data, show_figures = show_figures, par_name = par_name, ...)
+    if(plot_type == "ggplot"){
+      return(plots)
+    }else{
+      return(invisible())
+    }
+  }
+
   # plot orthonormal and meandif priors
   if(is.prior.orthonormal(x) | is.prior.meandif(x)){
     plots <- .plot.prior.orthonormal_or_meandif(x = x, plot_type = plot_type, plot_data = plot_data, par_name = par_name, ...)
+    if(plot_type == "ggplot"){
+      return(plots)
+    }else{
+      return(invisible())
+    }
+  }
+
+  # simplex prior plots
+  if(is.prior.simplex(x)){
+    plots <- .plot.prior.simplex(x = x, plot_type = plot_type, plot_data = plot_data, show_figures = show_figures, par_name = par_name, ...)
     if(plot_type == "ggplot"){
       return(plots)
     }else{
@@ -188,6 +264,157 @@ plot.prior <- function(x, plot_type = "base",
       return(invisible())
     }
   }
+}
+
+# Individual weight-function indices refer to the publication weights of the
+# p-value intervals in ascending order (the reference weight first).
+.weightfunction_check_individual_index <- function(index, n_weights, name, select_one = FALSE){
+
+  valid <- if(select_one){
+    !is.null(index) && index >= 1 && index <= n_weights
+  }else{
+    is.null(index) || (index != 0 && abs(index) <= n_weights)
+  }
+  if(!valid){
+    stop(
+      "'", name, "' must be ",
+      if(select_one) paste0("between 1 and ", n_weights) else paste0("between -", n_weights, " and ", n_weights, ", excluding 0,"),
+      " for a weight function with ", n_weights, " publication weights.",
+      call. = FALSE
+    )
+  }
+
+  invisible(TRUE)
+}
+
+.plot.prior.simplex       <- function(x, plot_type, plot_data, show_figures = NULL, par_name = NULL, ...){
+
+  if(is.null(show_figures)){
+    plots_ind <- if(is.prior.ordered(x)) .plot_ordered_prior_default_figures(x) else seq_along(plot_data)
+  }else{
+    plots_ind <- seq_along(plot_data)[show_figures]
+  }
+  selected_ind <- plots_ind
+  plots <- if(is.prior.ordered(x) && plot_type == "ggplot" && length(selected_ind) > 1L){
+    vector("list", max(selected_ind))
+  }else{
+    list()
+  }
+  for(figure in plots_ind){
+    component_name <- if(is.null(par_name)){
+      names(plot_data)[figure]
+    }else{
+      paste0(par_name, "[", figure, "]")
+    }
+    if(inherits(plot_data[[figure]], "density.prior.mixed_measure")){
+      plots[[figure]] <- .plot_prior_mixed_measure(
+        x = x,
+        plot_type = plot_type,
+        plot_data = plot_data[[figure]],
+        par_name = component_name,
+        ...
+      )
+    }else if(inherits(plot_data[[figure]], "density.prior.point")){
+      plots[[figure]] <- .plot.prior.point(
+        x = x,
+        plot_type = plot_type,
+        plot_data = plot_data[[figure]],
+        par_name = component_name,
+        ...
+      )
+    }else{
+      plots[[figure]] <- .plot.prior.simple(
+        x = x,
+        plot_type = plot_type,
+        plot_data = plot_data[[figure]],
+        par_name = component_name,
+        ...
+      )
+    }
+  }
+
+  if(plot_type == "ggplot" && length(selected_ind) == 1L){
+    plots <- plots[[plots_ind]]
+  }
+
+  return(plots)
+}
+
+# Direct selectors retain declared level numbering. Only the default selection
+# omits rows that the persisted contrast design fixes at the reference zero.
+.plot_ordered_prior_default_figures <- function(prior){
+
+  prior <- .prior_ordered_default_bound(prior)
+  design <- as.matrix(.factor_term_design_from_metadata(prior)$design)
+  which(rowSums(design != 0) > 0)
+}
+
+# Keep the actual finite ordinates of every non-reference continuous curve.
+# Infinite density at one point is not a probability mass.
+.plot_data_ordered_prior_display <- function(plot_data, selected = seq_along(plot_data)){
+
+  for(i in selected){
+    component <- plot_data[[i]]
+    if(inherits(component, "density.prior.simple") &&
+       !inherits(component, "density.prior.mixed_measure")){
+      keep <- is.finite(component$x) & is.finite(component$y)
+      if(!any(keep)){
+        stop(structure(
+          list(message = paste0(
+            "The ordered prior density curve is unavailable: the requested 'x_seq' ",
+            "contains no finite plotting ordinate. Supply 'x_seq' with finite density ordinates."
+          ), call = NULL),
+          class = c("BayesTools_prior_curve_unavailable", "BayesTools_plot_condition", "error", "condition")
+        ))
+      }
+      if(all(keep)) next
+      component$x <- component$x[keep]
+      component$y <- component$y[keep]
+      attr(component, "x_range") <- range(component$x)
+      attr(component, "y_range") <- c(0, max(component$y))
+      plot_data[[i]] <- component
+    }
+  }
+  plot_data
+}
+
+.plot_prior_mixed_measure  <- function(x, plot_type, plot_data,
+                                      par_name = NULL, ...){
+
+  dots <- list(...)
+  xlim <- attr(plot_data, "x_range")
+  ylim <- attr(plot_data, "y_range", exact = TRUE)
+
+  short_name <- if(is.null(dots[["short_name"]])) FALSE else dots[["short_name"]]
+  parameter_names <- if(is.null(dots[["parameter_names"]])) FALSE else dots[["parameter_names"]]
+  prior_label <- .plot.prior_label(x, plot_data, short_name, parameter_names)
+
+  main <- ""
+  xlab <- bquote(
+    .(if(!is.null(par_name)) bquote(.(par_name)~"~"))~.(prior_label)
+  )
+  has_atoms <- !is.null(plot_data$atoms) && nrow(plot_data$atoms) > 0L
+  has_continuous <- !is.null(plot_data$continuous) && nrow(plot_data$continuous) > 0L
+  ylab <- if(has_atoms && has_continuous) "Density / probability mass" else if(has_atoms) "Probability" else "Density"
+
+  if(is.null(dots[["main"]])) dots$main <- main
+  if(is.null(dots[["xlab"]])) dots$xlab <- xlab
+  if(is.null(dots[["ylab"]])) dots$ylab <- ylab
+  if(is.null(dots[["xlim"]])) dots$xlim <- xlim
+  if(is.null(dots[["ylim"]])) dots$ylim <- ylim
+
+  if(plot_type == "base"){
+    .plot.prior_empty("simple", dots)
+    .lines_prior_mixed_measure(plot_data, ...)
+    return(invisible())
+  }
+
+  plot <- .ggplot.prior_empty("simple", dots)
+  geoms <- .geom_prior_mixed_measure(plot_data, ...)
+  if(length(geoms) > 0L){
+    plot <- plot + geoms
+  }
+  plot
 }
 
 .plot.prior.point          <- function(x, plot_type, plot_data, par_name = NULL, ...){
@@ -241,7 +468,7 @@ plot.prior <- function(x, plot_type = "base",
   dots      <- list(...)
 
   xlim      <- attr(plot_data, "x_range")
-  ylim      <- attr(plot_data, "y_range")
+  ylim      <- attr(plot_data, "y_range", exact = TRUE)
 
   short_name      <- if(is.null(dots[["short_name"]]))      FALSE else dots[["short_name"]]
   parameter_names <- if(is.null(dots[["parameter_names"]])) FALSE else dots[["parameter_names"]]
@@ -285,7 +512,7 @@ plot.prior <- function(x, plot_type = "base",
   dots      <- list(...)
 
   xlim      <- attr(plot_data, "x_range")
-  ylim      <- attr(plot_data, "y_range")
+  ylim      <- attr(plot_data, "y_range", exact = TRUE)
 
   short_name      <- if(is.null(dots[["short_name"]]))      FALSE else dots[["short_name"]]
   parameter_names <- if(is.null(dots[["parameter_names"]])) FALSE else dots[["parameter_names"]]
@@ -337,17 +564,11 @@ plot.prior <- function(x, plot_type = "base",
   ylab      <- if(!is.null(dots[["ylab"]])) dots[["ylab"]] else "Probability"
 
   xlim      <- attr(plot_data, "x_range")
-  ylim      <- if(!is.null(dots[["ylim"]])) dots[["ylim"]] else attr(plot_data, "y_range")
+  ylim      <- if(!is.null(dots[["ylim"]])) dots[["ylim"]] else attr(plot_data, "y_range", exact = TRUE)
 
   # weightfunction specific stuff (required for axes)
   x_cuts <- plot_data$x
-
-  if(rescale_x){
-    x_at <- seq(0, 1, length.out = length(unique(plot_data$x)))
-    x_at <- x_at[c(1, sort(rep(2:(length(x_at)-1), 2)), length(x_at))]
-  }else{
-    x_at <- x_cuts
-  }
+  x_at   <- .weightfunction_plot_x_at(plot_data, rescale_x)
 
   # add it to the user input if desired
   if(is.null(dots[["main"]])) dots$main <-  main
@@ -394,7 +615,7 @@ plot.prior <- function(x, plot_type = "base",
   ylab      <- if(!is.null(dots[["ylab"]])) dots[["ylab"]] else "Effect size"
 
   xlim      <- attr(plot_data, "x_range")
-  ylim      <- if(!is.null(dots[["ylim"]])) dots[["ylim"]] else attr(plot_data, "y_range")
+  ylim      <- if(!is.null(dots[["ylim"]])) dots[["ylim"]] else attr(plot_data, "y_range", exact = TRUE)
 
   # add it to the user input if desired
   if(is.null(dots[["main"]])) dots$main <-  main
@@ -432,7 +653,7 @@ plot.prior <- function(x, plot_type = "base",
   dots      <- list(...)
 
   xlim      <- attr(plot_data, "x_range")
-  ylim      <- attr(plot_data, "y_range")
+  ylim      <- attr(plot_data, "y_range", exact = TRUE)
 
   short_name      <- if(is.null(dots[["short_name"]]))      FALSE else dots[["short_name"]]
   parameter_names <- if(is.null(dots[["parameter_names"]])) FALSE else dots[["parameter_names"]]
@@ -476,7 +697,7 @@ plot.prior <- function(x, plot_type = "base",
   dots      <- list(...)
 
   xlim      <- attr(plot_data, "x_range")
-  ylim      <- attr(plot_data, "y_range")
+  ylim      <- attr(plot_data, "y_range", exact = TRUE)
 
   short_name      <- if(is.null(dots[["short_name"]]))      FALSE else dots[["short_name"]]
   parameter_names <- if(is.null(dots[["parameter_names"]])) FALSE else dots[["parameter_names"]]
@@ -561,8 +782,20 @@ plot.prior <- function(x, plot_type = "base",
 
     ylim2    <- if(!is.null(dots[["ylim2"]]))     dots[["ylim2"]]     else ylim
     ylab2    <- if(!is.null(dots[["ylab2"]]))     dots[["ylab2"]]     else ""
-    scale_y2 <- if(!is.null(dots[["scale_y2"]]))  dots[["scale_y2"]]  else .plot.prior_settings()[["scale_y2"]]
-    scale_y2 <- scale_y2 * max(pretty(ylim)) / max(pretty(ylim2))
+    scale_y2 <- if(!is.null(dots[[".scale_y2_resolved"]])){
+      dots[[".scale_y2_resolved"]]
+    }else{
+      .plot_scale_y2_from_limits(ylim, ylim2, dots[["scale_y2"]])
+    }
+
+    # Reserve the same space as an ordinary labelled y axis for this panel.
+    mar <- graphics::par("mar")
+    if(mar[[4L]] < 4.1){
+      plot_mar <- mar
+      plot_mar[[4L]] <- 4.1
+      graphics::par(mar = plot_mar)
+      on.exit(graphics::par(mar = mar), add = TRUE)
+    }
 
     graphics::plot(NA, type = "n", bty  = "n", las = 1, xlab = xlab, ylab = ylab, main = main,
                    xlim = xlim, ylim = range(c(pretty(ylim), pretty(ylim2) * scale_y2)), axes = FALSE,
@@ -571,7 +804,9 @@ plot.prior <- function(x, plot_type = "base",
     graphics::axis(1, at = x_at, labels = x_labels, col = col.axis, cex = cex.axis)
     graphics::axis(2, at = pretty(ylim),             labels = pretty(ylim),  col = col.axis, cex = cex.axis, las = 1)
     graphics::axis(4, at = pretty(ylim2) * scale_y2, labels = pretty(ylim2), col = col.axis, cex = cex.axis, las = 1)
-    graphics::mtext(ylab2, side = 4, line = 3)
+    graphics::mtext(ylab2, side = 4, line = 3,
+                    cex = cex.lab * graphics::par("cex"), col = col.lab,
+                    font = graphics::par("font.lab"))
 
     return(invisible(list(scale_y2 = scale_y2)))
   }
@@ -636,8 +871,11 @@ plot.prior <- function(x, plot_type = "base",
 
     ylim2    <- if(!is.null(dots[["ylim2"]]))     dots[["ylim2"]]     else ylim
     ylab2    <- if(!is.null(dots[["ylab2"]]))     dots[["ylab2"]]     else ""
-    scale_y2 <- if(!is.null(dots[["scale_y2"]]))  dots[["scale_y2"]]  else .plot.prior_settings()[["scale_y2"]]
-    scale_y2 <- scale_y2 * max(pretty(ylim)) / max(pretty(ylim2))
+    scale_y2 <- if(!is.null(dots[[".scale_y2_resolved"]])){
+      dots[[".scale_y2_resolved"]]
+    }else{
+      .plot_scale_y2_from_limits(ylim, ylim2, dots[["scale_y2"]])
+    }
 
     plot <- ggplot2::ggplot()
     plot <- plot + ggplot2::ggtitle(main)
@@ -646,6 +884,12 @@ plot.prior <- function(x, plot_type = "base",
 
     attr(plot, "scale_y2") <- scale_y2
     attr(plot, "sec_axis") <- TRUE
+    plot$bt_scale_y2_state <- list(
+      scale_y2 = scale_y2,
+      ylim2    = ylim2,
+      usr      = c(NA_real_, NA_real_,
+                   range(c(pretty(ylim), pretty(ylim2) * scale_y2)))
+    )
 
   }
 
@@ -705,26 +949,242 @@ plot.prior <- function(x, plot_type = "base",
   width     = 0.20
   ))
 }
-.get_scale_y2        <- function(plot_data, ...){
+.weightfunction_plot_x_at <- function(plot_data, rescale_x){
 
-  dots      <- list(...)
-
-  if(any(sapply(plot_data, inherits, what = "density.prior.simple")) & any(sapply(plot_data, inherits, what = "density.prior.point"))){
-
-    ylim  <- range(as.vector(sapply(plot_data[sapply(plot_data, inherits, what = "density.prior.simple")], attr, which = "y_range")))
-    ylim2 <- range(as.vector(sapply(plot_data[sapply(plot_data, inherits, what = "density.prior.point")],  attr, which = "y_range")))
-
-    scale_y2 <- if(!is.null(dots[["scale_y2"]]))  dots[["scale_y2"]]  else .plot.prior_settings()[["scale_y2"]]
-    scale_y2 <- scale_y2 * max(pretty(ylim)) / max(pretty(ylim2))
-
-  }else{
-
-    scale_y2 <- 1
-
+  x_cuts <- plot_data$x
+  if(!isTRUE(rescale_x)){
+    return(x_cuts)
   }
 
-  return(scale_y2)
+  x_at <- seq(0, 1, length.out = length(unique(x_cuts)))
+  if(length(x_at) > 2L){
+    x_at <- x_at[c(1, sort(rep(2:(length(x_at) - 1L), 2)), length(x_at))]
+  }
+
+  x_at
 }
+.plot_scale_y2_overlay <- function(plot_data, scale_y2 = NULL){
+
+  if(!is.null(scale_y2)){
+    return(scale_y2)
+  }
+
+  scale_y2_state <- .plot_scale_y2_state_current()
+  if(!is.null(scale_y2_state)){
+    .plot_point_mass_warn_outside(plot_data, scale_y2_state)
+    return(scale_y2_state[["scale_y2"]])
+  }
+
+  1
+}
+.plot_scale_y2_from_limits <- function(ylim, ylim2, scale_y2 = NULL){
+
+  if(is.null(scale_y2)){
+    scale_y2 <- .plot.prior_settings()[["scale_y2"]]
+  }
+
+  return(scale_y2 * max(pretty(ylim)) / max(pretty(ylim2)))
+}
+.plot_scale_y2_resolve <- function(plot_data, dots = list()){
+
+  is_simple <- sapply(plot_data, inherits, what = "density.prior.simple")
+  is_point  <- sapply(plot_data, inherits, what = "density.prior.point")
+
+  if(any(is_simple) && (any(is_point) || !is.null(dots[["ylim2"]]))){
+    ylim <- if(!is.null(dots[["ylim"]])){
+      dots[["ylim"]]
+    }else{
+      range(as.vector(sapply(plot_data[is_simple], attr, which = "y_range", exact = TRUE)))
+    }
+    ylim2 <- if(!is.null(dots[["ylim2"]])){
+      dots[["ylim2"]]
+    }else{
+      range(as.vector(sapply(plot_data[is_point], attr, which = "y_range", exact = TRUE)))
+    }
+    return(.plot_scale_y2_from_limits(ylim, ylim2, dots[["scale_y2"]]))
+  }
+
+  return(1)
+}
+.get_scale_y2        <- function(plot_data, ...){
+
+  return(.plot_scale_y2_resolve(plot_data, list(...)))
+}
+
+.plot_scale_y2_remember <- function(scale_y2, ylim2 = NULL){
+
+  device <- as.integer(grDevices::dev.cur())
+  if(device == 1L){
+    return(invisible(NULL))
+  }
+
+  states <- .BayesTools_private$plot_scale_y2_states
+  if(is.null(states)){
+    states <- list()
+  }
+  key <- as.character(device)
+
+  if(is.null(scale_y2)){
+    states[[key]] <- NULL
+  }else{
+    states[[key]] <- list(
+      scale_y2 = scale_y2,
+      ylim2    = ylim2,
+      usr      = unname(graphics::par("usr"))
+    )
+  }
+  .BayesTools_private$plot_scale_y2_states <- states
+
+  return(invisible(NULL))
+}
+
+.plot_scale_y2_state_current <- function(){
+
+  device <- as.integer(grDevices::dev.cur())
+  if(device == 1L){
+    return(NULL)
+  }
+
+  states <- .BayesTools_private$plot_scale_y2_states
+  state  <- states[[as.character(device)]]
+  if(is.null(state)){
+    return(NULL)
+  }
+
+  usr <- tryCatch(
+    unname(graphics::par("usr")),
+    error = function(error) NULL
+  )
+  if(!isTRUE(all.equal(usr, state[["usr"]], tolerance = 1e-12))){
+    .plot_scale_y2_remember(NULL)
+    return(NULL)
+  }
+
+  return(state)
+}
+.plot_point_mass_warn_outside <- function(plot_data, scale_y2_state){
+
+  if(is.null(scale_y2_state)){
+    return(invisible(NULL))
+  }
+
+  if(inherits(plot_data, "density.prior.point")){
+    plot_data <- list(plot_data)
+  }
+
+  probabilities <- unlist(lapply(plot_data, function(component){
+    if(inherits(component, "density.prior.point")) component$y else
+      if(inherits(component, "density.prior.mixed_measure")) component$atoms$mass
+  }))
+  if(length(probabilities) == 0L){
+    return(invisible(NULL))
+  }
+
+  ylim2 <- scale_y2_state[["usr"]][3:4] / scale_y2_state[["scale_y2"]]
+  if(any(probabilities < min(ylim2) | probabilities > max(ylim2))){
+    warning(
+      "Point-mass probabilities outside the active secondary-axis limits ",
+      "will be clipped. Redraw the initial plot with a wider 'ylim2'.",
+      call. = FALSE
+    )
+  }
+
+  return(invisible(NULL))
+}
+
+.plot_scale_y2_state_from_ggplot <- function(plot){
+
+  state <- plot$bt_scale_y2_state
+  if(!is.null(state)){
+    return(state)
+  }
+
+  scale_y2 <- attr(plot, "scale_y2")
+  y_scale <- tryCatch(plot$scales$get_scales("y"), error = function(e) NULL)
+  limits <- if(!is.null(y_scale)) y_scale$limits else NULL
+  if(is.null(scale_y2) || is.null(limits) || length(limits) != 2L ||
+     any(!is.finite(limits))){
+    return(NULL)
+  }
+
+  list(
+    scale_y2 = scale_y2,
+    ylim2    = limits / scale_y2,
+    usr      = c(NA_real_, NA_real_, limits)
+  )
+}
+
+.bt_ggplot_prior_overlay <- function(geoms, plot_data, scale_y2 = NULL,
+                                     point_builders = NULL,
+                                     other_geoms = NULL){
+
+  if(inherits(geoms, "BayesTools_prior_overlay")){
+    return(geoms)
+  }
+
+  structure(
+    list(
+      geoms = geoms,
+      plot_data = plot_data,
+      scale_y2 = scale_y2,
+      point_builders = point_builders,
+      other_geoms = other_geoms
+    ),
+    class = "BayesTools_prior_overlay"
+  )
+}
+
+.bt_geom_prior_point_overlay <- function(plot_data, scale_y2 = NULL, ...){
+
+  built_scale <- if(is.null(scale_y2)) 1 else scale_y2
+  .bt_ggplot_prior_overlay(
+    geoms = .geom_prior.point(plot_data, scale_y2 = built_scale, ...),
+    plot_data = plot_data,
+    scale_y2 = scale_y2,
+    point_builders = list(list(
+      fun = .geom_prior.point,
+      plot_data = plot_data,
+      dots = list(...)
+    ))
+  )
+}
+
+#' @exportS3Method ggplot2::ggplot_add
+ggplot_add.BayesTools_prior_overlay <- function(object, plot, object_name){
+
+  state <- .plot_scale_y2_state_from_ggplot(plot)
+  scale_y2 <- object[["scale_y2"]]
+  geoms <- object[["geoms"]]
+  if(is.null(scale_y2) && !is.null(state) &&
+     is.list(object[["point_builders"]]) &&
+     length(object[["point_builders"]]) > 0L){
+    scale_y2 <- state[["scale_y2"]]
+    rebuilt <- lapply(object[["point_builders"]], function(builder){
+      do.call(builder$fun, c(list(plot_data = builder$plot_data,
+                                  scale_y2 = scale_y2), builder$dots))
+    })
+    geoms <- c(object[["other_geoms"]], rebuilt)
+  }
+  if(!is.null(state)){
+    .plot_point_mass_warn_outside(object[["plot_data"]], state)
+  }
+  if(is.null(geoms)){
+    return(plot)
+  }
+  if(inherits(geoms, "ggproto") || inherits(geoms, "Layer")){
+    geoms <- list(geoms)
+  }
+  geoms <- geoms[!vapply(geoms, is.null, logical(1))]
+  if(length(geoms) == 0L){
+    return(plot)
+  }
+  plot <- ggplot2::ggplot_add(geoms, plot, object_name)
+  if(!is.null(state)){
+    plot$bt_scale_y2_state <- state
+  }
+  plot
+}
+
 .transfer_dots       <- function(dots, ...){
 
   dots_main <- list(...)
@@ -732,8 +1192,10 @@ plot.prior <- function(x, plot_type = "base",
   dots$main      <- if(!is.null(dots_main[["main"]]))     dots_main[["main"]]
   dots$xlab      <- if(!is.null(dots_main[["xlab"]]))     dots_main[["xlab"]]
   dots$ylab      <- if(!is.null(dots_main[["ylab"]]))     dots_main[["ylab"]]
+  dots$ylab2     <- if(!is.null(dots_main[["ylab2"]]))    dots_main[["ylab2"]]
   dots$xlim      <- if(!is.null(dots_main[["xlim"]]))     dots_main[["xlim"]]
   dots$ylim      <- if(!is.null(dots_main[["ylim"]]))     dots_main[["ylim"]]
+  dots$ylim2     <- if(!is.null(dots_main[["ylim2"]]))    dots_main[["ylim2"]]
   dots$col.main  <- if(!is.null(dots_main[["col.main"]])) dots_main[["col.main"]]
   dots$cex.axis  <- if(!is.null(dots_main[["cex.axis"]])) dots_main[["cex.axis"]]
   dots$cex.lab   <- if(!is.null(dots_main[["cex.lab"]]))  dots_main[["cex.lab"]]
@@ -744,578 +1206,4 @@ plot.prior <- function(x, plot_type = "base",
   dots$x_labels  <- if(!is.null(dots_main[["x_labels"]])) dots_main[["x_labels"]]
 
   return(dots)
-}
-
-
-
-#' @title Add prior object to a plot
-#'
-#' @param x a prior
-#' @param xlim plotting range of the prior
-#' @param rescale_x allows to rescale x-axis in case a
-#' weightfunction is plotted.
-#' @param show_parameter which parameter should be returned in case of
-#' multiple parameters per prior. Useful when priors for the omega
-#' parameter are plotted and \code{individual = TRUE}.
-#' @param scale_y2 scaling factor for a secondary axis
-#' @param ... additional arguments
-#' @inheritParams density.prior
-#'
-#' @return \code{lines.prior} returns \code{NULL}.
-#'
-#' @seealso [plot.prior()] [geom_prior()]
-#' @rdname lines.prior
-#' @export
-lines.prior <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_points = 1000,
-                        n_samples = 10000, force_samples = FALSE,
-                        transformation = NULL, transformation_arguments = NULL, transformation_settings = FALSE,
-                        show_parameter = if(individual) 1 else NULL, individual = FALSE, rescale_x = FALSE, scale_y2 = 1, ...){
-
-  # check input (most arguments are checked within density)
-  .check_prior(x)
-  check_bool(individual, "individual")
-  check_bool(rescale_x, "rescale_x")
-  check_int(show_parameter, "show_parameter", allow_NULL = TRUE)
-  check_real(scale_y2, "scale_y2", lower = 0)
-
-  if(is.prior.mixture(x)){
-    return(lines_prior_list(x, xlim = xlim, x_seq = x_seq, x_range_quant = x_range_quant, n_points = n_points,
-                            n_samples = n_samples, force_samples = force_samples,
-                            transformation = transformation, transformation_arguments = transformation_arguments, transformation_settings = transformation_settings,
-                            rescale_x = rescale_x, scale_y2 = scale_y2, ...))
-  }
-
-
-
-  # get the plotting data
-  if(is.null(xlim) & is.null(x_seq)){
-    if((is.prior.PET(x) | is.prior.PEESE(x) | is.prior.weightfunction(x)) & !individual){
-      xlim   <- c(0, 1)
-    }else if(is.prior.spike_and_slab(x)){
-      xlim   <- range(c(0,range(.get_spike_and_slab_variable(x), quantiles = x_range_quant)))
-      xlim   <- range(pretty(xlim))
-    }else{
-      xlim   <- range(x, quantiles = x_range_quant)
-      xlim   <- range(pretty(xlim))
-    }
-  }
-  plot_data <- density(x = x, x_seq = x_seq, x_range = xlim, x_range_quant = x_range_quant,
-                       n_points = n_points, n_samples = n_samples, force_samples = force_samples,
-                       transformation = transformation, transformation_arguments = transformation_arguments,
-                       transformation_settings = transformation_settings, individual = individual)
-
-
-  # plot a weightfunction
-  if(is.prior.weightfunction(x) & !individual){
-    .lines.prior.weightfunction(plot_data = plot_data, rescale_x = rescale_x, ...)
-    return(invisible())
-  }else if(is.prior.weightfunction(x) & individual){
-    if(inherits(plot_data[[show_parameter]], "density.prior.simple")){
-      .lines.prior.simple(plot_data, ...)
-    }else if(inherits(plot_data[[show_parameter]], "density.prior.point")){
-      .lines.prior.point(plot_data, scale_y2 = scale_y2, ...)
-    }
-    return(invisible())
-  }
-
-  # plot PET-PEESE
-  if((is.prior.PET(x) | is.prior.PEESE(x))){
-    if(!individual){
-      .lines.prior.PETPEESE(plot_data, ...)
-    }else if(inherits(plot_data, "density.prior.simple")){
-      .lines.prior.simple(plot_data, ...)
-    }else if(inherits(plot_data, "density.prior.point")){
-      .lines.prior.point(plot_data, scale_y2 = scale_y2, ...)
-    }
-    return(invisible())
-  }
-
-  # plot spike and slab prior
-  if(is.prior.spike_and_slab(x)){
-    .lines.prior.spike_and_slab(plot_data, ...)
-    return(invisible())
-  }
-
-  # point prior plots
-  if(is.prior.point(x)){
-    .lines.prior.point(plot_data, scale_y2 = scale_y2, ...)
-    return(invisible())
-  }
-
-  # plot orthonormal and meandif plots
-  if(is.prior.orthonormal(x) | is.prior.meandif(x)){
-    .lines.prior.orthonormal_or_meandif(plot_data, ...)
-    return(invisible())
-  }
-
-  # plot discrete prior
-  if(is.prior.discrete(x)){
-    .lines.prior.discrete(plot_data, ...)
-    return(invisible())
-  }
-
-  # default prior plots
-  if(is.prior.simple(x)){
-    .lines.prior.simple(plot_data, ...)
-    return(invisible())
-  }
-
-  return(invisible())
-}
-
-#' @title Add prior object to a ggplot
-#'
-#' @inheritParams lines.prior
-#' @inheritParams density.prior
-#'
-#' @return \code{geom_prior_list} returns an object of class 'ggplot'.
-#'
-#' @seealso [plot.prior()] [lines.prior()]
-#' @rdname geom_prior
-#' @export
-geom_prior  <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_points = 1000,
-                        n_samples = 10000, force_samples = FALSE,
-                        transformation = NULL, transformation_arguments = NULL, transformation_settings = FALSE,
-                        show_parameter = if(individual) 1 else NULL, individual = FALSE, rescale_x = FALSE, scale_y2 = 1, ...){
-
-  # check input (most arguments are checked within density)
-  .check_prior(x)
-  check_bool(individual, "individual")
-  check_bool(rescale_x, "rescale_x")
-  check_int(show_parameter, "show_parameter", allow_NULL = TRUE)
-  check_real(scale_y2, "scale_y2", lower = 0)
-
-  if(is.prior.mixture(x)){
-    class(x) <- NULL
-    return(geom_prior_list(x, xlim = xlim, x_seq = x_seq, x_range_quant = x_range_quant, n_points = n_points,
-                            n_samples = n_samples, force_samples = force_samples,
-                            transformation = transformation, transformation_arguments = transformation_arguments, transformation_settings = transformation_settings,
-                            rescale_x = rescale_x, scale_y2 = scale_y2, ...))
-  }
-
-  # get the plotting data
-  if(is.null(xlim) & is.null(x_seq)){
-    if((is.prior.PET(x) | is.prior.PEESE(x) | is.prior.weightfunction(x)) & !individual){
-      xlim   <- c(0, 1)
-    }else{
-      xlim   <- range(x, quantiles = x_range_quant)
-      xlim   <- range(pretty(xlim))
-    }
-  }
-  plot_data <- density(x = x, x_seq = x_seq, x_range = xlim, x_range_quant = x_range_quant,
-                       n_points = n_points, n_samples = n_samples, force_samples = force_samples,
-                       transformation = transformation, transformation_arguments = transformation_arguments,
-                       transformation_settings = transformation_settings, individual = individual)
-
-
-  # plot a weightfunction
-  if(is.prior.weightfunction(x)){
-    if(!individual){
-      geom <- .geom_prior.weightfunction(plot_data = plot_data, rescale_x = rescale_x, ...)
-    }else if(inherits(plot_data[[show_parameter]], "density.prior.simple")){
-      geom <- .geom_prior.simple(plot_data, ...)
-    }else if(inherits(plot_data[[show_parameter]], "density.prior.point")){
-      geom <- .geom_prior.point(plot_data, ...)
-    }
-    return(geom)
-  }
-
-
-  # plot PET-PEESE
-  if((is.prior.PET(x) | is.prior.PEESE(x))){
-    if(!individual){
-      geom <- .geom_prior.PETPEESE(plot_data, ...)
-    }else if(inherits(plot_data, "density.prior.simple")){
-      .geom_prior.simple(plot_data, ...)
-    }else if(inherits(plot_data, "density.prior.point")){
-      geom <- .geom_prior.point(plot_data, ...)
-    }
-    return(geom)
-  }
-
-
-  # plot spike and slab prior
-  if(is.prior.spike_and_slab(x)){
-    geom <- .geom_prior.spike_and_slab(plot_data, ...)
-    return(geom)
-  }
-
-
-  # plot point prior
-  if(is.prior.point(x)){
-    geom <- .geom_prior.point(plot_data, ...)
-    return(geom)
-  }
-
-
-  # plot orthonormal and meandif prior
-  if(is.prior.orthonormal(x) | is.prior.meandif(x)){
-    geom <- .geom_prior.orthonormal_or_meandif(plot_data, ...)
-    return(geom)
-  }
-
-
-  # plot discrete prior
-  if(is.prior.discrete(x)){
-    geom <- .geom_prior.discrete(plot_data, ...)
-    return(geom)
-  }
-
-
-  # default prior plots
-  if(is.prior.simple(x)){
-    geom <- .geom_prior.simple(plot_data, ...)
-    return(geom)
-  }
-
-  return(invisible())
-}
-
-
-# base plot prior plot elements
-.lines.prior.simple          <- function(plot_data, ...){
-
-  dots      <- list(...)
-  col       <- if(!is.null(dots[["col"]]))      dots[["col"]]      else .plot.prior_settings()[["col"]]
-  lwd       <- if(!is.null(dots[["lwd"]]))      dots[["lwd"]]      else .plot.prior_settings()[["lwd"]]
-  lty       <- if(!is.null(dots[["lty"]]))      dots[["lty"]]      else .plot.prior_settings()[["lty"]]
-
-
-  graphics::lines(x = plot_data$x, y = plot_data$y, type = "l", lwd = lwd, lty = lty, col = col)
-
-  return(invisible())
-}
-.lines.prior.discrete        <- function(plot_data, ...){
-
-  dots      <- list(...)
-  col       <- if(!is.null(dots[["col"]]))   dots[["col"]]   else .plot.prior_settings()[["col"]]
-  width     <- if(!is.null(dots[["width"]])) dots[["width"]] else .plot.prior_settings()[["width"]]
-  lwd       <- if(!is.null(dots[["lwd"]]))   dots[["lwd"]]   else .plot.prior_settings()[["lwd"]]
-  lty       <- if(!is.null(dots[["lty"]]))   dots[["lty"]]   else .plot.prior_settings()[["lty"]]
-
-  graphics::rect(
-    xleft   = plot_data$x - width/2,
-    ybottom = 0,
-    xright  = plot_data$x + width/2,
-    ytop    = plot_data$y,
-    lwd = lwd, lty = lty, col = col)
-
-  return(invisible())
-}
-.lines.prior.point           <- function(plot_data, scale_y2 = 1, ...){
-
-  dots      <- list(...)
-  col       <- if(!is.null(dots[["col"]]))      dots[["col"]]      else .plot.prior_settings()[["col"]]
-  lwd       <- if(!is.null(dots[["lwd"]]))      dots[["lwd"]]      else .plot.prior_settings()[["lwd"]]
-  lty       <- if(!is.null(dots[["lty"]]))      dots[["lty"]]      else .plot.prior_settings()[["lty"]]
-
-  if(!all(plot_data$y == 0)){
-    graphics::arrows(
-      x0 = plot_data$x[plot_data$y != 0],
-      y0 = 0,
-      y1 = plot_data$y[plot_data$y != 0] * scale_y2,
-      lwd = 2*lwd, lty = lty, col = col)
-  }
-
-  return(invisible())
-}
-.lines.prior.weightfunction  <- function(plot_data, rescale_x, ...){
-
-  dots      <- list(...)
-  col       <- if(!is.null(dots[["col"]]))      dots[["col"]]      else .plot.prior_settings()[["col"]]
-  col.fill  <- if(!is.null(dots[["col.fill"]])) dots[["col.fill"]] else .plot.prior_settings()[["col.fill"]]
-  lwd       <- if(!is.null(dots[["lwd"]]))      dots[["lwd"]]      else .plot.prior_settings()[["lwd"]]
-  lty       <- if(!is.null(dots[["lty"]]))      dots[["lty"]]      else .plot.prior_settings()[["lty"]]
-
-  # weightfunction specific stuff
-  x_cuts <- plot_data$x
-  x_mean <- plot_data$y
-  x_lCI  <- plot_data$y_lCI
-  x_uCI  <- plot_data$y_uCI
-
-  if(rescale_x){
-    x_at <- seq(0, 1, length.out = length(unique(plot_data$x)))
-    x_at <- x_at[c(1, sort(rep(2:(length(x_at)-1), 2)), length(x_at))]
-  }else{
-    x_at <- x_cuts
-  }
-
-
-  graphics::polygon(
-    x   = c(x_at,  rev(x_at)),
-    y   = c(x_lCI, rev(x_uCI)),
-    col = col.fill, border = NA
-  )
-  graphics::lines(x_at, x_mean, lwd = lwd, lty = lty, col = col)
-
-
-  return(invisible())
-}
-.lines.prior.PETPEESE        <- function(plot_data, ...){
-
-  dots      <- list(...)
-  col       <- if(!is.null(dots[["col"]]))      dots[["col"]]      else .plot.prior_settings()[["col"]]
-  col.fill  <- if(!is.null(dots[["col.fill"]])) dots[["col.fill"]] else .plot.prior_settings()[["col.fill"]]
-  lwd       <- if(!is.null(dots[["lwd"]]))      dots[["lwd"]]      else .plot.prior_settings()[["lwd"]]
-  lty       <- if(!is.null(dots[["lty"]]))      dots[["lty"]]      else .plot.prior_settings()[["lty"]]
-
-
-  graphics::polygon(
-    x   = c(plot_data$x,     rev(plot_data$x)),
-    y   = c(plot_data$y_lCI, rev(plot_data$y_uCI)),
-    col = col.fill, border = NA
-  )
-  graphics::lines(plot_data$x, plot_data$y, lwd = lwd, lty = lty, col = col)
-
-
-  return(invisible())
-}
-.lines.prior.orthonormal_or_meandif <- function(plot_data, ...){
-
-  dots      <- list(...)
-  col       <- if(!is.null(dots[["col"]]))      dots[["col"]]      else .plot.prior_settings()[["col"]]
-  lwd       <- if(!is.null(dots[["lwd"]]))      dots[["lwd"]]      else .plot.prior_settings()[["lwd"]]
-  lty       <- if(!is.null(dots[["lty"]]))      dots[["lty"]]      else .plot.prior_settings()[["lty"]]
-
-
-  graphics::lines(x = plot_data$x, y = plot_data$y, type = "l", lwd = lwd, lty = lty, col = col)
-
-  return(invisible())
-}
-.lines.prior.factor          <- function(plot_data, ...){
-
-  dots <- list(...)
-  col  <- if(!is.null(dots[["col"]][dots[["level"]]])) dots[["col"]][dots[["level"]]] else .plot.prior_settings()[["col"]]
-  lty  <- if(!is.null(dots[["lty"]][dots[["level"]]])) dots[["lty"]][dots[["level"]]] else .plot.prior_settings()[["lty"]]
-  lwd  <- if(!is.null(dots[["lwd"]]))                  dots[["lwd"]]                  else .plot.prior_settings()[["lwd"]]
-
-  graphics::lines(x = plot_data$x, y = plot_data$y, type = "l", lwd = lwd, lty = lty, col = col)
-
-  return(invisible())
-}
-.lines.prior.spike_and_slab  <- function(plot_data, ...){
-
-  .lines.prior.simple(plot_data[["variable"]], ...)
-  .lines.prior.point(plot_data[["inclusion"]], ...)
-
-  return(invisible())
-}
-
-# ggplot prior plot elements
-.geom_prior.simple           <- function(plot_data, ...){
-
-  dots      <- list(...)
-  col       <- if(!is.null(dots[["col"]]))      dots[["col"]]      else .plot.prior_settings()[["col"]]
-  lwd       <- if(!is.null(dots[["size"]]))     dots[["size"]]     else  if(!is.null(dots[["lwd"]])) dots[["lwd"]] else .plot.prior_settings()[["lwd"]]
-  lty       <- if(!is.null(dots[["linetype"]])) dots[["linetype"]] else  if(!is.null(dots[["lty"]])) dots[["lty"]] else .plot.prior_settings()[["lty"]]
-
-  geom <- ggplot2::geom_line(
-    data    = data.frame(
-      x = plot_data$x,
-      y = plot_data$y),
-    mapping = ggplot2::aes(
-      x = .data[["x"]],
-      y = .data[["y"]]),
-    linewidth = lwd, linetype = lty, color = col)
-
-  return(geom)
-}
-.geom_prior.discrete         <- function(plot_data, ...){
-
-  dots      <- list(...)
-  col       <- if(!is.null(dots[["col"]]))   dots[["col"]]   else .plot.prior_settings()[["col"]]
-  width     <- if(!is.null(dots[["width"]])) dots[["width"]] else .plot.prior_settings()[["width"]]
-  lwd       <- if(!is.null(dots[["lwd"]]))   dots[["lwd"]]   else .plot.prior_settings()[["lwd"]]
-  lty       <- if(!is.null(dots[["lty"]]))   dots[["lty"]]   else .plot.prior_settings()[["lty"]]
-
-  geom <-   geom <- ggplot2::geom_bar(
-    data    = data.frame(
-      x = plot_data$x,
-      y = plot_data$y),
-    mapping = ggplot2::aes(
-      x      = .data[["x"]],
-      weight = .data[["y"]]),
-    linewidth = lwd, linetype = lty, color = col, fill = col, width = width)
-
-  return(geom)
-}
-.geom_prior.point            <- function(plot_data, scale_y2 = 1, ...){
-
-  dots      <- list(...)
-  col       <- if(!is.null(dots[["col"]]))      dots[["col"]]      else .plot.prior_settings()[["col"]]
-  lwd       <- if(!is.null(dots[["size"]]))     dots[["size"]]     else  if(!is.null(dots[["lwd"]])) dots[["lwd"]] else .plot.prior_settings()[["lwd"]]
-  lty       <- if(!is.null(dots[["linetype"]])) dots[["linetype"]] else  if(!is.null(dots[["lty"]])) dots[["lty"]] else .plot.prior_settings()[["lty"]]
-
-  if(!all(plot_data$y == 0)){
-    geom <- ggplot2::geom_segment(
-      data    = data.frame(
-        x    = unique(plot_data$x[plot_data$y != 0]),
-        xend = unique(plot_data$x[plot_data$y != 0]),
-        y    = 0,
-        yend = plot_data$y[plot_data$y != 0] * scale_y2),
-      mapping = ggplot2::aes(
-        x    = .data[["x"]],
-        xend = .data[["xend"]],
-        y    = .data[["y"]],
-        yend = .data[["yend"]]),
-      arrow     = ggplot2::arrow(length = ggplot2::unit(0.5, "cm")),
-      linewidth = 2*lwd, linetype = lty, color = col)
-  }else{
-    geom <- NULL
-  }
-
-  return(geom)
-}
-.geom_prior.weightfunction   <- function(plot_data, rescale_x, ...){
-
-  dots      <- list(...)
-  col       <- if(!is.null(dots[["col"]]))      dots[["col"]]      else .plot.prior_settings()[["col"]]
-  col.fill  <- if(!is.null(dots[["col.fill"]])) dots[["col.fill"]] else .plot.prior_settings()[["col.fill"]]
-  lwd       <- if(!is.null(dots[["size"]]))     dots[["size"]]     else  if(!is.null(dots[["lwd"]])) dots[["lwd"]] else .plot.prior_settings()[["lwd"]]
-  lty       <- if(!is.null(dots[["linetype"]])) dots[["linetype"]] else  if(!is.null(dots[["lty"]])) dots[["lty"]] else .plot.prior_settings()[["lty"]]
-
-  # weightfunction specific stuff
-  x_cuts <- plot_data$x
-  x_mean <- plot_data$y
-  x_lCI  <- plot_data$y_lCI
-  x_uCI  <- plot_data$y_uCI
-
-  if(rescale_x){
-    x_at <- seq(0, 1, length.out = length(unique(plot_data$x)))
-    x_at <- x_at[c(1, sort(rep(2:(length(x_at)-1), 2)), length(x_at))]
-  }else{
-    x_at <- x_cuts
-  }
-
-
-  geom <- list(
-    ggplot2::geom_polygon(
-      data    = data.frame(
-        x = c(x_at,  rev(x_at)),
-        y = c(x_lCI, rev(x_uCI))),
-      mapping = ggplot2::aes(
-        x = .data[["x"]],
-        y = .data[["y"]]),
-      fill    = col.fill
-    ),
-    ggplot2::geom_line(
-      data    = data.frame(
-        x = x_at,
-        y = x_mean),
-      mapping = ggplot2::aes(
-        x = .data[["x"]],
-        y = .data[["y"]]),
-      linewidth = lwd, linetype = lty, color = col)
-  )
-
-  return(geom)
-}
-.geom_prior.PETPEESE         <- function(plot_data, ...){
-
-  dots      <- list(...)
-  col       <- if(!is.null(dots[["col"]]))      dots[["col"]]      else .plot.prior_settings()[["col"]]
-  col.fill  <- if(!is.null(dots[["col.fill"]])) dots[["col.fill"]] else .plot.prior_settings()[["col.fill"]]
-  lwd       <- if(!is.null(dots[["size"]]))     dots[["size"]]     else  if(!is.null(dots[["lwd"]])) dots[["lwd"]] else .plot.prior_settings()[["lwd"]]
-  lty       <- if(!is.null(dots[["linetype"]])) dots[["linetype"]] else  if(!is.null(dots[["lty"]])) dots[["lty"]] else .plot.prior_settings()[["lty"]]
-
-
-  geom <-  list(
-    ggplot2::geom_polygon(
-      data    = data.frame(
-        x = c(plot_data$x,  rev(plot_data$x)),
-        y = c(plot_data$y_lCI, rev(plot_data$y_uCI))),
-      mapping = ggplot2::aes(
-        x = .data[["x"]],
-        y = .data[["y"]]),
-      fill    = col.fill
-    ),
-    ggplot2::geom_line(
-      data    = data.frame(
-        x = plot_data$x,
-        y = plot_data$y),
-      mapping = ggplot2::aes(
-        x = .data[["x"]],
-        y = .data[["y"]]),
-      linewidth = lwd, linetype = lty, color = col)
-  )
-
-  return(geom)
-}
-.geom_prior.orthonormal_or_meandif <- function(plot_data, ...){
-
-  dots      <- list(...)
-  col       <- if(!is.null(dots[["col"]]))      dots[["col"]]      else .plot.prior_settings()[["col"]]
-  lwd       <- if(!is.null(dots[["size"]]))     dots[["size"]]     else  if(!is.null(dots[["lwd"]])) dots[["lwd"]] else .plot.prior_settings()[["lwd"]]
-  lty       <- if(!is.null(dots[["linetype"]])) dots[["linetype"]] else  if(!is.null(dots[["lty"]])) dots[["lty"]] else .plot.prior_settings()[["lty"]]
-
-  geom <- ggplot2::geom_line(
-    data    = data.frame(
-      x = plot_data$x,
-      y = plot_data$y),
-    mapping = ggplot2::aes(
-      x = .data[["x"]],
-      y = .data[["y"]]),
-    linewidth = lwd, linetype = lty, color = col)
-
-  return(geom)
-}
-.geom_prior.factors          <- function(plot_data, ...){
-
-  # this function notably differs from the .line_prior.factor counterpart
-  # - it's so much more difficult to draw custom legend in ggplot2 ... :(
-
-  dots <- list(...)
-  col  <- if(!is.null(dots[["col"]]))      dots[["col"]]      else rep(.plot.prior_settings()[["col"]], length(dots[["level_names"]]))
-  lty  <- if(!is.null(dots[["linetype"]])) dots[["linetype"]]
-  else  if(!is.null(dots[["lty"]]))        dots[["lty"]]      else rep(.plot.prior_settings()[["lty"]], length(dots[["level_names"]]))
-  lwd  <- if(!is.null(dots[["size"]]))     dots[["size"]]
-  else  if(!is.null(dots[["lwd"]]))        dots[["lwd"]]      else .plot.prior_settings()[["lwd"]]
-  legend_title <- if(!is.null(dots[["legend_title"]])) dots[["legend_title"]] else NULL
-
-  names(col) <- dots[["level_names"]]
-  names(lty) <- dots[["level_names"]]
-
-  if(!is.null(dots[["hardcode"]]) && dots[["hardcode"]]){
-    geom <- lapply(unique(plot_data$level), function(lvl){
-      ggplot2::geom_line(
-        data    = plot_data[plot_data$level == lvl,],
-        mapping = ggplot2::aes(
-          x        = .data[["x"]],
-          y        = .data[["y"]]),
-        linewidth = 1, show.legend = dots[["legend"]], color = col[lvl], linetype = lty[lvl])
-    })
-  }else{
-    geom <- list(
-      ggplot2::geom_line(
-        data    = plot_data,
-        mapping = ggplot2::aes(
-          x        = .data[["x"]],
-          y        = .data[["y"]],
-          color    = .data[["level"]],
-          linetype = .data[["level"]],
-          group    = .data[["level"]]),
-        linewidth = 1, show.legend = dots[["legend"]]),
-      ggplot2::scale_linetype_manual(
-        name   = legend_title,
-        values = lty,
-        breaks = dots[["level_names"]],
-        labels = dots[["level_names"]]),
-      ggplot2::scale_color_manual(
-        name   = legend_title,
-        values = col,
-        breaks = dots[["level_names"]],
-        labels = dots[["level_names"]]))
-  }
-
-
-  return(geom)
-}
-.geom_prior.spike_and_slab   <- function(plot_data, ...){
-
-  geom <- list(
-    .geom_prior.simple(plot_data[["variable"]], ...),
-    .geom_prior.point(plot_data[["inclusion"]], ...)
-  )
-
-  return(geom)
 }

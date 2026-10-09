@@ -25,7 +25,6 @@
 #' @return \code{interpret} returns character.
 #'
 #' @export interpret
-#' @export interpret2
 #' @name interpret
 #'
 #' @seealso [ensemble_inference] [mix_posteriors] [BayesTools_model_tables] [BayesTools_ensemble_tables]
@@ -60,35 +59,6 @@ interpret <- function(inference, samples, specification, method){
   return(output)
 }
 
-#' @rdname interpret
-interpret2                <- function(specification, method = NULL){
-
-  # check input
-  check_list(specification, "specification", check_length = 0)
-  sapply(specification, function(s){
-    check_char(s$inference_name,       "inference_name",        allow_NULL = TRUE)
-    check_char(s$inference_BF_name,    "inference_BF_name",     allow_NULL = TRUE)
-    if(!is.null(s$inference_BF) && !is.numeric(s$inference_BF))
-      stop("The 'inference_BF' argument must be a numeric vector.", call. = FALSE)
-    check_real(if(is.null(s$inference_BF)) NULL else as.numeric(s$inference_BF), "inference_BF", allow_NULL = TRUE)
-    check_char(s$inference_BF_bound_operator, "inference_BF_bound_operator", allow_values = c("<", ">"), allow_NULL = TRUE)
-    check_char(s$estimate_name,        "estimate_name",         allow_NULL = TRUE)
-    check_real(s$estimate_samples,     "estimate_samples",      allow_NULL = TRUE, check_length = 0)
-    check_char(s$estimate_units,       "estimate_units",        allow_NULL = TRUE)
-    check_bool(s$estimate_conditional, "estimate_conditional",  allow_NULL = TRUE)
-  })
-  check_char(method, allow_NULL = TRUE)
-
-
-  output <- ""
-
-  for(i in seq_along(specification)){
-    output <- paste0(output, .interpret.specification2(specification[[i]], method), if(i != length(specification)) " ")
-  }
-
-  return(output)
-}
-
 .interpret.specification  <- function(inference, samples, specification, method){
 
   temp_inference <- inference[[specification[["inference"]]]]
@@ -110,19 +80,6 @@ interpret2                <- function(specification, method = NULL){
   temp_par <- samples[[specification[["samples"]]]]
   text_par <- .interpret.par(temp_par, if(!is.null(specification[["samples_name"]])) specification[["samples_name"]] else specification[["samples"]],
                              specification[["samples_units"]], specification[["samples_conditional"]])
-
-  return(paste0(method, " found ", text_BF, ", ", text_par, "."))
-}
-.interpret.specification2 <- function(specification, method){
-
-  text_BF <- .interpret.BF(specification[["inference_BF"]], specification[["inference_name"]], specification[["inference_BF_name"]],
-                           specification[["inference_BF_bound_operator"]])
-
-  if(is.null(specification[["estimate_samples"]])){
-    return(paste0(method, " found ", text_BF, "."))
-  }
-
-  text_par <- .interpret.par(specification[["estimate_samples"]], specification[["estimate_name"]], specification[["estimate_units"]], specification[["estimate_conditional"]])
 
   return(paste0(method, " found ", text_BF, ", ", text_par, "."))
 }
@@ -226,7 +183,10 @@ interpret2                <- function(specification, method = NULL){
 #' \code{BF}, \code{central}, \code{lower}, \code{upper}, and metadata such as
 #' \code{BF_orientation}, \code{BF_scale}, \code{BF_name},
 #' \code{BF_bound_operator}, \code{lower_prob}, \code{upper_prob},
-#' \code{interval_level}, \code{units}, and \code{conditioning}.
+#' \code{units}, and \code{conditioning}. \code{interval_level} is not accepted
+#' as input; normalized estimate records derive it from
+#' \code{upper_prob - lower_prob}, or retain \code{NA} when endpoint
+#' probabilities are unknown.
 #' @param plan ordered list specifying which records to create. Plan items can
 #' have \code{kind = "evidence"}, \code{"estimate"}, \code{"pair"},
 #' \code{"test_estimate"}, \code{"for_each"}, \code{"header"}, \code{"note"},
@@ -239,14 +199,10 @@ interpret2                <- function(specification, method = NULL){
 #' @param missing how missing optional sources or rows should be handled.
 #' @param method optional method name used only by the generic text renderer.
 #' @param digits number of digits used only by the generic text renderer.
-#' @param spec alias for \code{plan} used by \code{interpret_tables}.
-#' @param ... additional arguments passed from \code{interpret_tables} to
-#' \code{interpret_records}.
 #'
 #' @return \code{interpret_records} returns a data frame with class
 #' \code{"BayesTools_interpret_records"} when \code{output = "records"}, or a
-#' character vector when \code{output = "text"}. \code{interpret_tables} is a
-#' convenience wrapper around \code{interpret_records}.
+#' character vector when \code{output = "text"}.
 #'
 #' @export
 interpret_records <- function(sources, plan, output = c("records", "text"),
@@ -265,6 +221,7 @@ interpret_records <- function(sources, plan, output = c("records", "text"),
     stop("The 'sources' argument must be a named list.", call. = FALSE)
   }
 
+  .interpret_reject_interval_level_input(plan, "plan")
   sources <- .interpret_prepare_sources(sources)
   plan    <- .interpret_expand_plan(plan, sources, missing)
 
@@ -294,10 +251,33 @@ interpret_records <- function(sources, plan, output = c("records", "text"),
   return(records)
 }
 
-#' @rdname interpret_records
-#' @export
-interpret_tables <- function(sources, spec, ...){
-  interpret_records(sources = sources, plan = spec, ...)
+.interpret_reject_interval_level_input <- function(x, path){
+
+  if(!is.list(x)){
+    return(invisible(TRUE))
+  }
+  object_names <- names(x)
+  if(!is.null(object_names) && "interval_level" %in% object_names){
+    stop(
+      "'interval_level' is derived output and cannot be supplied in ",
+      path,
+      ". Supply 'lower_prob' and 'upper_prob' instead.",
+      call. = FALSE
+    )
+  }
+  for(i in seq_along(x)){
+    child_name <- if(!is.null(object_names) && nzchar(object_names[[i]])){
+      object_names[[i]]
+    }else{
+      as.character(i)
+    }
+    .interpret_reject_interval_level_input(
+      x[[i]],
+      paste0(path, ":", child_name)
+    )
+  }
+
+  invisible(TRUE)
 }
 
 .interpret_prepare_sources <- function(sources){
@@ -328,6 +308,33 @@ interpret_tables <- function(sources, spec, ...){
     }
     if(length(schema) > 0){
       check_list(schema, paste0("sources:", source_name, ":schema"), check_length = 0)
+    }
+    .interpret_reject_interval_level_input(
+      schema,
+      paste0("sources:", source_name, ":schema")
+    )
+    if(identical(type, "record")){
+      .interpret_reject_interval_level_input(
+        source[["data"]],
+        paste0("sources:", source_name, ":data")
+      )
+    }else if(identical(type, "records")){
+      records_data <- source[["data"]]
+      if(inherits(records_data, "data.frame")){
+        if("interval_level" %in% colnames(records_data)){
+          stop(
+            "'interval_level' is derived output and cannot be supplied in ",
+            "sources:", source_name,
+            ":data. Supply 'lower_prob' and 'upper_prob' instead.",
+            call. = FALSE
+          )
+        }
+      }else{
+        .interpret_reject_interval_level_input(
+          records_data,
+          paste0("sources:", source_name, ":data")
+        )
+      }
     }
 
     out[[source_name]] <- list(
@@ -463,7 +470,7 @@ interpret_tables <- function(sources, spec, ...){
     child[["template"]] <- NULL
     child[["pair_with"]] <- NULL
     child[["row"]] <- row
-    child[["order"]] <- base_order + j
+    child[["order"]] <- base_order
     child[["item_id"]] <- .interpret_item_id(item, row)
 
     if(template == "pair"){
@@ -528,7 +535,7 @@ interpret_tables <- function(sources, spec, ...){
     records <- list()
     if(!is.null(item[["evidence"]])){
       evidence <- .interpret_ref_record(
-        ref     = .interpret_merge_ref(item[["evidence"]], item, "evidence", 0),
+        ref     = .interpret_merge_ref(item[["evidence"]], item, "evidence"),
         kind    = "evidence",
         sources = sources,
         missing = missing
@@ -539,7 +546,7 @@ interpret_tables <- function(sources, spec, ...){
     }
     if(!is.null(item[["estimate"]])){
       estimate <- .interpret_ref_record(
-        ref     = .interpret_merge_ref(item[["estimate"]], item, "estimate", 0.1),
+        ref     = .interpret_merge_ref(item[["estimate"]], item, "estimate"),
         kind    = "estimate",
         sources = sources,
         missing = missing
@@ -552,7 +559,7 @@ interpret_tables <- function(sources, spec, ...){
   }
 
   record <- .interpret_ref_record(
-    ref     = .interpret_merge_ref(item, item, kind, 0),
+    ref     = .interpret_merge_ref(item, item, kind),
     kind    = kind,
     sources = sources,
     missing = missing
@@ -564,7 +571,7 @@ interpret_tables <- function(sources, spec, ...){
   return(list(record))
 }
 
-.interpret_merge_ref <- function(ref, item, kind, order_offset){
+.interpret_merge_ref <- function(ref, item, kind){
 
   if(is.null(ref)){
     ref <- list()
@@ -580,7 +587,7 @@ interpret_tables <- function(sources, spec, ...){
   }
 
   ref[["kind"]] <- kind
-  ref[["order"]] <- .interpret_or(ref[["order"]], item[["order"]] + order_offset)
+  ref[["order"]] <- .interpret_or(ref[["order"]], item[["order"]] + 0)
   ref[["item_id"]] <- .interpret_or(ref[["item_id"]], ref[["id"]])
 
   return(ref)
@@ -821,7 +828,9 @@ interpret_tables <- function(sources, spec, ...){
     units          = .interpret_table_scalar("units", data, row_index, schema, ref),
     conditioning   = .interpret_table_scalar("conditioning", data, row_index, schema, ref)
   )
+  interval_probabilities <- record[c("lower_prob", "upper_prob", "interval_level")]
   record <- .interpret_merge_lists(record, ref)
+  record[names(interval_probabilities)] <- interval_probabilities
 
   return(.interpret_complete_record(record, ref, source[["name"]], row_label))
 }
@@ -973,14 +982,16 @@ interpret_tables <- function(sources, spec, ...){
   }
 
   if(is.null(lower) || is.null(upper)){
+    # Fall back to the widest probability columns, labelled with their own
+    # probabilities rather than with requested ones that are not available.
     probability_columns <- .interpret_probability_columns(data)
     probability_columns <- setdiff(probability_columns, central_column)
     if(length(probability_columns) >= 2L){
       probs <- as.numeric(probability_columns)
       lower <- probability_columns[which.min(probs)]
       upper <- probability_columns[which.max(probs)]
-      lower_prob <- .interpret_or(lower_prob, as.numeric(lower))
-      upper_prob <- .interpret_or(upper_prob, as.numeric(upper))
+      lower_prob <- as.numeric(lower)
+      upper_prob <- as.numeric(upper)
     }
   }
 
@@ -998,8 +1009,9 @@ interpret_tables <- function(sources, spec, ...){
     upper_prob <- suppressWarnings(as.numeric(upper))
   }
 
-  interval_level <- .interpret_or(ref[["interval_level"]], schema[["interval_level"]])
-  if(is.null(interval_level) && is.finite(lower_prob) && is.finite(upper_prob)){
+  interval_level <- NA_real_
+  if(length(lower_prob) == 1L && is.finite(lower_prob) &&
+     length(upper_prob) == 1L && is.finite(upper_prob)){
     interval_level <- upper_prob - lower_prob
   }
 
@@ -1008,7 +1020,7 @@ interpret_tables <- function(sources, spec, ...){
     upper          = upper,
     lower_prob     = if(is.null(lower_prob)) NA_real_ else as.numeric(lower_prob),
     upper_prob     = if(is.null(upper_prob)) NA_real_ else as.numeric(upper_prob),
-    interval_level = if(is.null(interval_level)) NA_real_ else as.numeric(interval_level)
+    interval_level = as.numeric(interval_level)
   )
 }
 
@@ -1080,6 +1092,16 @@ interpret_tables <- function(sources, spec, ...){
   record[["row"]]     <- .interpret_fill(record[["row"]], row)
   record[["order"]]   <- .interpret_fill(record[["order"]], item[["order"]])
   record[["record_id"]] <- .interpret_fill(record[["record_id"]], .interpret_record_id(record))
+  record[["interval_level"]] <- if(
+    length(record[["lower_prob"]]) == 1L &&
+    is.finite(record[["lower_prob"]]) &&
+    length(record[["upper_prob"]]) == 1L &&
+    is.finite(record[["upper_prob"]])
+  ){
+    record[["upper_prob"]] - record[["lower_prob"]]
+  }else{
+    NA_real_
+  }
 
   record
 }

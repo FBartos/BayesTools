@@ -37,6 +37,71 @@ test_that("validated fixture cache marker belongs to the active cache directory"
   expect_cache_completion_marker("model-fit")
 })
 
+test_that("cached factor fits carry canonical contrast metadata", {
+  registry_file <- file.path(test_files_dir, "model_registry.RDS")
+  expect_true(file.exists(registry_file), info = paste("Missing fixture registry:", registry_file))
+
+  registry <- readRDS(registry_file)
+  factor_flags <- registry$factor_priors
+  factor_flags[is.na(factor_flags)] <- FALSE
+  factor_fit_names <- registry$model_name[factor_flags]
+
+  factor_prior_objects <- function(prior){
+    out <- list()
+    if(is.prior.factor(prior)){
+      out <- c(out, list(prior))
+    }
+    if((is.prior.mixture(prior) || is.prior.spike_and_slab(prior)) && length(prior) > 0){
+      prior_components <- vapply(prior, is.prior, logical(1))
+      for(component_i in which(prior_components)){
+        out <- c(out, factor_prior_objects(prior[[component_i]]))
+      }
+    }
+    out
+  }
+
+  n_checked <- 0L
+  for(model_name in factor_fit_names){
+    fit_file <- file.path(temp_fits_dir, paste0(model_name, ".RDS"))
+    expect_true(file.exists(fit_file), info = paste("Missing cached fit:", fit_file))
+
+    fit <- readRDS(fit_file)
+    prior_list <- attr(fit, "prior_list", exact = TRUE)
+    expect_true(is.list(prior_list), info = paste("Missing prior list for", model_name))
+
+    factor_priors <- unlist(
+      lapply(prior_list, factor_prior_objects),
+      recursive = FALSE
+    )
+
+    for(prior in factor_priors){
+      level_names <- BayesTools:::.factor_level_list(prior)
+      if(is.null(level_names)){
+        next
+      }
+      n_checked <- n_checked + 1L
+      expect_false(
+        is.null(attr(prior, "factor_terms", exact = TRUE)),
+        info = paste("Missing factor_terms for", model_name)
+      )
+      expect_false(
+        is.null(attr(prior, "factor_contrasts", exact = TRUE)),
+        info = paste("Missing factor_contrasts for", model_name)
+      )
+      expect_false(
+        is.null(attr(prior, "factor_design", exact = TRUE)),
+        info = paste("Missing factor_design for", model_name)
+      )
+      expect_false(
+        is.null(attr(prior, "factor_cell_names", exact = TRUE)),
+        info = paste("Missing factor_cell_names for", model_name)
+      )
+    }
+  }
+
+  expect_true(n_checked > 0, info = "No cached factor priors were checked.")
+})
+
 test_that("fixture cache metadata rejects stale artifact declarations", {
   registry_file <- file.path(test_files_dir, "model_registry.RDS")
   expect_true(file.exists(registry_file), info = paste("Missing fixture registry:", registry_file))
@@ -143,7 +208,14 @@ test_that("fixture artifact validators reject malformed temporary RDS payloads",
     class = "expectation_failure"
   )
 
-  malformed_marglik <- structure(list(logml = NA_real_), class = "bridge")
+  malformed_marglik <- structure(
+    list(
+      schema_version = 1L,
+      logml = NA_real_,
+      scale = "natural_log"
+    ),
+    class = c("BayesTools_marglik", "list")
+  )
   saveRDS(malformed_marglik, malformed_marglik_file)
   expect_error(
     expect_marglik_object(readRDS(malformed_marglik_file)),
@@ -162,29 +234,51 @@ test_that("registry artifact policy matches cached fit and marginal-likelihood f
 test_that("cataloged fixture files expose expected monitors and metadata", {
   catalog <- bayestools_required_fit_catalog()
 
+  # every check of a fixture is made and its failures are collected, so the
+  # test makes one expectation per fixture instead of one per check
   for (model_name in catalog$model_name) {
     row <- catalog[catalog$model_name == model_name, , drop = FALSE]
-    fit_file <- expect_fit_file_present(model_name, catalog = catalog)
-    marglik_file <- expect_marglik_file_present_or_absent(model_name, catalog = catalog)
+    problems <- expectation_problems({
+      fit_file <- expect_fit_file_present(model_name, catalog = catalog)
+      marglik_file <- expect_marglik_file_present_or_absent(model_name, catalog = catalog)
 
-    fit <- readRDS(fit_file)
-    expect_fit_declared_metadata(fit, row)
-    if (length(row$expected_monitor[[1]]) > 0L) {
-      expect_fit_monitors(fit, row$expected_monitor[[1]])
-      expect_fit_formula_metadata(
-        fit,
-        expected_formula_parameters = row$expected_formula_parameters[[1]],
-        expected_formula_scale = row$expected_formula_scale[[1]]
-      )
-      expect_fit_sample_dimensions(
-        fit,
-        expected_chains = row$expected_chains,
-        expected_iterations = row$expected_iterations
-      )
-    }
+      fit <- readRDS(fit_file)
+      expect_fit_declared_metadata(fit, row)
+      if (length(row$expected_monitor[[1]]) > 0L) {
+        expect_fit_monitors(fit, row$expected_monitor[[1]])
+        expect_fit_formula_metadata(
+          fit,
+          expected_formula_parameters = row$expected_formula_parameters[[1]],
+          expected_formula_scale = row$expected_formula_scale[[1]]
+        )
+        expect_fit_sample_dimensions(
+          fit,
+          expected_chains = row$expected_chains,
+          expected_iterations = row$expected_iterations
+        )
+      }
 
-    if (isTRUE(row$has_marglik)) {
-      expect_marglik_object(readRDS(marglik_file))
-    }
+      if (isTRUE(row$has_marglik)) {
+        expect_marglik_object(readRDS(marglik_file))
+      }
+    })
+    expect_identical(problems, character(), info = model_name)
+  }
+})
+
+test_that("cached fits keep no environment of the code that fitted them", {
+  # The fixture fits are created inside the fitting tests: a formula, terms
+  # object, or closure stored with such an environment would carry the test
+  # workspace into every saved fit. Fits also leave without runjags' compiled
+  # rjags model, closures over the frame that compiled it.
+  catalog <- bayestools_required_fit_catalog()
+
+  for (model_name in catalog$model_name) {
+    fit <- readRDS(expect_fit_file_present(model_name, catalog = catalog))
+    expect_identical(
+      stored_environment_paths(fit, model_name),
+      character(),
+      info = model_name
+    )
   }
 })
