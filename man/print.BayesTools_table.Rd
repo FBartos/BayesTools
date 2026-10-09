@@ -19,8 +19,10 @@ Print a BayesTools table
 }
 \details{
 Finite positive Bayes-factor bounds that would round to zero at
-three decimals are printed in scientific notation. This changes only their
-presentation; numeric values, BF direction and bound operators are retained.
+three decimals are printed as reciprocals (for example \code{<1/10000}),
+or as \code{exp()} of their logarithm when the reciprocal overflows. This
+changes only their presentation; numeric values, BF direction and bound
+operators are retained.
 A validated finite-log positive endpoint whose natural value underflows is
 printed as \code{exp(log_endpoint)}.
 }

@@ -3,8 +3,10 @@
 #' @param x a BayesTools_values_tables
 #' @param ... additional arguments.
 #' @details Finite positive Bayes-factor bounds that would round to zero at
-#' three decimals are printed in scientific notation. This changes only their
-#' presentation; numeric values, BF direction and bound operators are retained.
+#' three decimals are printed as reciprocals (for example \code{<1/10000}),
+#' or as \code{exp()} of their logarithm when the reciprocal overflows. This
+#' changes only their presentation; numeric values, BF direction and bound
+#' operators are retained.
 #' A validated finite-log positive endpoint whose natural value underflows is
 #' printed as \code{exp(log_endpoint)}.
 #'
@@ -660,8 +662,11 @@ Math.BayesTools_BF <- function(x, ...){
   bound_operator <- .standardize_BF_bound_operator(attr(x, "bound_operator"), length(x))
   small_bound <- !is.na(bound_operator) & is.finite(x) & x > 0 & round(x, 3) == 0
   if(any(small_bound)){
+    # Shown as reciprocals (1/10000), mirroring large bounds (>10000.000).
     out[small_bound] <- vapply(x[small_bound], function(value){
-      format(value, digits = 3, scientific = TRUE, trim = TRUE)
+      reciprocal <- 1 / value
+      if(is.finite(reciprocal)) paste0("1/", format(round(reciprocal), trim = TRUE)) else
+        paste0("exp(", format(log(value), trim = TRUE), ")")
     }, character(1))
   }
   logs <- .BF_carrier_log(x)

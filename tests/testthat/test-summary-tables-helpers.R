@@ -2087,8 +2087,8 @@ test_that("R116 N69 bounded positive Bayes factors never print a rounded zero bo
   attr(values, "bound_operator") <- c("<", ">", "<", "<", ">", "<", "<", ">", NA)
   original <- values
   formatted <- .format_BF_column(values)
-  expect_identical(formatted[1:2], c("<1e-04", ">1e-04"))
-  expect_match(formatted[3L], "^<[^0].*e-324$")
+  expect_identical(formatted[1:2], c("<1/10000", ">1/10000"))
+  expect_identical(formatted[3L], paste0("<exp(", format(log(values[[3L]]), trim = TRUE), ")"))
   ordinary <- format(round(values, 3), nsmall = 3)
   ordinary_index <- c(4:6, 8L)
   expect_identical(formatted[ordinary_index], paste0(attr(values, "bound_operator")[ordinary_index], trimws(ordinary[ordinary_index])))
@@ -2104,7 +2104,7 @@ test_that("R116 N69 bounded positive Bayes factors never print a rounded zero bo
   class(table) <- c("BayesTools_table", "data.frame")
   attr(table, "type") <- "BF"
   before <- table
-  expect_output(print(table), "<1e-04", fixed = TRUE)
+  expect_output(print(table), "<1/10000", fixed = TRUE)
   expect_identical(table, before)
   expect_identical(as.numeric(as.data.frame(table)$BF), as.numeric(original))
   expect_identical(as.numeric(data.frame(table)$BF), as.numeric(original))
