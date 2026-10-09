@@ -199,9 +199,6 @@
     x$covariance$structure %in% c("ID", "DIAG")
   qualifier <- NULL
   if(resolved){
-    if(is.null(x$covariance$structure)){
-      header <- paste0(header, " (formula-owned)")
-    }
     if(.bt_random_block_has_inherited_correlation(x)){
       if(no_correlation){
         x$covariance["cor"] <- list(NULL)
@@ -235,9 +232,7 @@
     include_sd = is.null(x$sd) && is.null(x$sd_source),
     correlation_qualifier = qualifier
   ))
-  if(resolved && !no_correlation && is.null(x$covariance$cor)){
-    lines <- c(lines, "cor: formula-owned")
-  }else if(!resolved && !is.null(x$covariance) && is.null(x$covariance$cor) &&
+  if(!resolved && !is.null(x$covariance) && is.null(x$covariance$cor) &&
      "cor" %in% .bt_random_covariance_explicit_fields(x$covariance)){
     # A block `random_covariance(cor = NULL)` removes an inherited cor prior.
     lines <- c(lines, "cor: structure default")

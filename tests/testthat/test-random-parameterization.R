@@ -333,11 +333,10 @@ test_that("block overrides can remove an inherited correlation prior", {
     g1 = random_block(covariance = random_covariance(cor = NULL))
   )
   expect_null(.bt_random_prior_for_block(cleared, "g1")$covariance$cor)
-  # The parent-resolved print labels the dimension-dependent correlation.
+  # The parent-resolved print lists no correlation prior for the block.
   expect_identical(
-    utils::tail(utils::capture.output(print(cleared)), 3L),
-    c("block: g1 (formula-owned)", "  sigma ~ Normal(0, 1)[0, Inf]",
-      "  cor: formula-owned")
+    utils::tail(utils::capture.output(print(cleared)), 2L),
+    c("block: g1", "  sigma ~ Normal(0, 1)[0, Inf]")
   )
   expect_identical(
     utils::capture.output(print(random_block(covariance = random_covariance(cor = NULL)))),
@@ -408,8 +407,7 @@ test_that("random parameterization printing omits only the default", {
     study = random_block(parameterization = "noncentered")
   )
   expect_equal(utils::capture.output(print(specification)), c(
-    "block: study (formula-owned)",
-    "  cor: formula-owned",
+    "block: study",
     "  parameterization: noncentered",
     "settings",
     "  parameterization: centered"
