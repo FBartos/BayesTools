@@ -2105,6 +2105,10 @@ test_that("R116 N69 bounded positive Bayes factors never print a rounded zero bo
   attr(table, "type") <- "BF"
   before <- table
   expect_output(print(table), "<1/10000", fixed = TRUE)
+  # Log-BF columns keep significant digits instead of reciprocals.
+  small_log <- exp(1e-5)
+  attr(small_log, "bound_operator") <- "<"
+  expect_identical(.format_BF_column(format_BF(small_log, logBF = TRUE)), "<1e-05")
   expect_identical(table, before)
   expect_identical(as.numeric(as.data.frame(table)$BF), as.numeric(original))
   expect_identical(as.numeric(data.frame(table)$BF), as.numeric(original))

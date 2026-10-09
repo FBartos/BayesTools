@@ -662,7 +662,10 @@ Math.BayesTools_BF <- function(x, ...){
   bound_operator <- .standardize_BF_bound_operator(attr(x, "bound_operator"), length(x))
   small_bound <- !is.na(bound_operator) & is.finite(x) & x > 0 & round(x, 3) == 0
   logs <- .BF_carrier_log(x)
-  if(any(small_bound)){
+  if(any(small_bound) && isTRUE(attr(x, "logBF"))){
+    # A small positive log-BF bound keeps significant digits.
+    out[small_bound] <- format(x[small_bound], digits = 3, scientific = TRUE, trim = TRUE)
+  }else if(any(small_bound)){
     # Shown as reciprocals (1/10000), mirroring large bounds (>10000.000);
     # an overflowing reciprocal shows the (canonical) logarithm instead.
     small_logs <- if(!is.null(logs) && !isTRUE(attr(x, "logBF"))){
