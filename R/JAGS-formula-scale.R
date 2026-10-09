@@ -864,6 +864,12 @@
   formula_scale
 }
 
+# Whether any formula parameter has a scaled predictor.
+.bt_formula_scale_has_scaled <- function(formula_scale){
+
+  is.list(formula_scale) && any(lengths(formula_scale) > 0L)
+}
+
 .bt_formula_scale_list_with_unscale_designs <- function(formula_scale, designs){
 
   if(is.null(formula_scale) || length(formula_scale) == 0L ||

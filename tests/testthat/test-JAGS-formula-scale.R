@@ -899,6 +899,24 @@ test_that("Downstream functions work with scaled models", {
   expect_equal(JAGS_estimates_table(fit_manual), JAGS_estimates_table(fit_auto))
 })
 
+test_that("fits without scaled predictors keep their coefficients and simple priors", {
+
+  skip_if_no_fits()
+
+  # Every formula parameter records its unscale design, but without a scaled
+  # predictor the original-scale transformation is the identity.
+  fit_manual <- readRDS(file.path(temp_fits_dir, "fit_formula_manual_scaled.RDS"))
+  fit_auto   <- readRDS(file.path(temp_fits_dir, "fit_formula_auto_scaled.RDS"))
+  expect_false(.bt_formula_scale_has_scaled(attr(fit_manual, "formula_scale")))
+  expect_true(.bt_formula_scale_has_scaled(attr(fit_auto, "formula_scale")))
+
+  transformed <- as_mixed_posteriors(fit_manual, parameters = "mu_x_cont1", transform_scaled = TRUE)
+  plain       <- as_mixed_posteriors(fit_manual, parameters = "mu_x_cont1")
+  expect_null(.bt_meta_get(transformed, "prior_densities"))
+  expect_false(isTRUE(.bt_meta_get(transformed, "transform_scaled")))
+  expect_equal(as.numeric(transformed$mu_x_cont1), as.numeric(plain$mu_x_cont1))
+})
+
 test_that("Marginal likelihoods match for manual and automatic scaling", {
 
   marglik_files <- file.path(

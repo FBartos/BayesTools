@@ -52,6 +52,10 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
   ordered_specs <- JAGS_ordered_parameter_spec(model,intersect(parameters,names(priors)[vapply(priors,is.prior.ordered,logical(1))]))
   prior_density_priors <- priors
   formula_scale <- attr(model, "formula_scale")
+  # Only scaled predictors define an original-scale transformation; entries
+  # without one (which still carry their unscale design) map every
+  # coefficient to itself.
+  scaled <- transform_scaled && .bt_formula_scale_has_scaled(formula_scale)
   condition_event <- .condition_event(
     prior_list        = priors,
     conditional       = conditional,
@@ -93,7 +97,7 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
   original_model_samples <- model_samples
   formula_state <- .bt_formula_state_new(model, original_model_samples, parameters, source_rows,
     condition_event = condition_event)
-  if(transform_scaled && !is.null(formula_scale) && length(formula_scale) > 0){
+  if(scaled){
     model_samples <- .bt_transform_scale_posterior(model_samples, formula_scale,
       targets = unique(unlist(lapply(parameters, function(owner){
         .prior_linear_prior_columns(owner, priors[[owner]])
@@ -160,7 +164,7 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
       out[[temp_parameter]] <- .bt_meta_set(out[[temp_parameter]], "ordered_source", retained)
       out[[temp_parameter]] <- .bt_meta_set(out[[temp_parameter]], "draw_index", source_rows)
       formula_parameter <- .bt_label_formula_parameter(temp_prior)
-      if(!transform_scaled || is.null(formula_scale[[formula_parameter]])){
+      if(!scaled || is.null(formula_scale[[formula_parameter]])){
         out[[temp_parameter]] <- .bt_ordered_source_semantics(out[[temp_parameter]],
           diag(ncol(out[[temp_parameter]])),colnames(out[[temp_parameter]]))
       }
@@ -173,7 +177,7 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
         attr(temp_prior, which = "parameter", exact = TRUE)
       ))
     }
-    if(transform_scaled && !is.null(formula_scale) && length(formula_scale) > 0){
+    if(scaled){
       out[[temp_parameter]] <- .posterior_support_drop(
         out[[temp_parameter]],
         recursive = TRUE
@@ -202,8 +206,7 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
           colnames(out[[temp_parameter]])
         },
         catalog        = catalog,
-        original_scale = transform_scaled && !is.null(formula_scale) &&
-          length(formula_scale) > 0
+        original_scale = scaled
       )
     }
 
@@ -255,7 +258,7 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
   }
 
   # generate and store transformed prior densities if requested
-  if(transform_scaled && !is.null(formula_scale) && length(formula_scale) > 0){
+  if(scaled){
     # The stored densities describe the unscaled monitored coefficients, which
     # are raw JAGS nodes: a formula prior's 'multiply_by' scales only the linear
     # predictor. The stored context keeps it for linear-predictor targets.
@@ -291,8 +294,7 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
       condition_event  = condition_event
     ))
   }
-  if(length(condition_event[["conditional"]]) > 0L ||
-     (transform_scaled && !is.null(formula_scale) && length(formula_scale) > 0L)){
+  if(length(condition_event[["conditional"]]) > 0L || scaled){
     prior_density_context <- .bt_meta_get(out, "prior_context")
     for(parameter in names(out)){
       out[[parameter]] <- .posterior_support_set_from_prior_context(
@@ -304,7 +306,7 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
 
   out <- .bt_formula_state_attach(out, formula_state)
   class(out) <- c(class(out), "as_mixed_posteriors", "mixed_posteriors")
-  if(transform_scaled && !is.null(formula_scale) && length(formula_scale) > 0){
+  if(scaled){
     out <- .posterior_atoms_unscale_mixed(
       out, model, original_model_samples, priors, formula_scale,
       conditional, conditional_rule, n_grid = n_prior_samples
