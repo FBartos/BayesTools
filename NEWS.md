@@ -1,5 +1,5 @@
 # version 0.3.1
-- factor marginals retain their structural weights when a scalar prior law is unavailable.
+- factor marginals retain their structural weights when a scalar prior law is unavailable. Ordered expression totals produce the declared measure refusal before numeric range or density calculations, preserving exact zero projections.
 - combined PETPEESE posterior curves clearly refuse 'individual = TRUE', directing individual densities to the PET or PEESE selectors.
 - fixed spike inclusion uses its declared active component in weighted conditional support. Supported scalar additive formula grids retain declared atom freedom and support while exact point ordinates remain unknown.
 * Preserve declared formula scales across recursive laws, complete fixed weight and ordered point atoms, canonical level references, and authoritative scalar region logs; validate bias branch membership and cumulative Gamma totals.

@@ -763,6 +763,16 @@ test_that("ordered scalar measures use declared contractions and exact primitive
     expect_null(posterior_metadata(level, "prior_density"))
     expect_error(.bt_formula_measure_check(level, "prior_density"), class = "BayesTools_formula_measure_unavailable")
   }
+  range_refusal <- tryCatch(.prior_ordered_linear_range(expression_point$spec$prior,
+    rep(1, 3L), 1:3, 1e-4), error = identity)
+  distribution_refusal <- tryCatch(.prior_ordered_total_linear_distribution(expression_point$spec$prior$total,
+    .01, 128L, 1e-4), error = identity)
+  for(refusal in list(range_refusal, distribution_refusal)){
+    expect_s3_class(refusal, "BayesTools_formula_prior_density_unavailable")
+    expect_s3_class(refusal, "BayesTools_formula_measure_unavailable")
+    expect_identical(refusal$reason, "unsupported_contribution_measure")
+    expect_s3_class(refusal$diagnostics, "BayesTools_ordered_expression_unavailable")
+  }
   expect_equal(.posterior_atoms_get(point_marginal[[1L]])$mass, 1, tolerance = 0)
   for(level in point_marginal[-1L]){
     class(level) <- unique(c(class(level), "marginal_posterior"))

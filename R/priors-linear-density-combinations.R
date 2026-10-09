@@ -511,6 +511,7 @@
 .prior_ordered_total_linear_distribution <- function(total, dx, n_grid,
                                                       tail_prob){
 
+  .prior_ordered_total_linear_measure_check(total)
   total_group <- list(
     prior = total,
     weights = c(.ordered_total = 1),
@@ -525,12 +526,23 @@
   )
 }
 
+.prior_ordered_total_linear_measure_check <- function(total){
+
+  if(.bt_ordered_total_has_expression(total)){
+    condition <- .bt_ordered_expression_reason()
+    .bt_formula_density_stop(conditionMessage(condition),
+      reason = "unsupported_contribution_measure", diagnostics = condition)
+  }
+  invisible(NULL)
+}
+
 .prior_ordered_linear_range <- function(ordered_prior, weights, indices,
                                         tail_prob){
 
   ordered_prior <- .prior_ordered_default_bound(ordered_prior)
   share <- .prior_ordered_linear_share(ordered_prior, weights, indices)
   if(identical(share$type,"point") && share$scale==0) return(c(0,0))
+  .prior_ordered_total_linear_measure_check(ordered_prior$total)
   total_group <- list(
     prior = ordered_prior$total,
     weights = c(.ordered_total = 1),

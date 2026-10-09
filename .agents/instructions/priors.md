@@ -920,6 +920,11 @@ with the prior densities of the kept elements.
 
 ## Numerical Evidence
 
+Ordered expression totals refuse nonzero linear range and distribution requests
+with the existing formula-measure condition and ordered-expression diagnostics.
+Exact zero allocation projections remain point masses. Factor marginal weights
+and their prior context remain available independently of scalar-law availability.
+
 Scalar deterministic region producers retain authoritative backend log masses
 only for already accepted positive natural masses, including subnormals.
 Scalar affine structural routes carry the same truncation-aware backend logs
