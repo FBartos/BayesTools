@@ -749,6 +749,20 @@ test_that("ordered scalar measures use declared contractions and exact primitive
   expect_identical(vapply(.posterior_atoms_get(point_levels, allow_partial = TRUE)$marginals,is.null,logical(1)),
     setNames(c(FALSE,TRUE,TRUE,TRUE),colnames(point_levels)))
   point_marginal <- marginal_posterior(expression_point_raw,"mu_f",use_formula=FALSE,prior_samples=FALSE)
+  point_prior_marginal <- marginal_posterior(expression_point_raw,"mu_f",use_formula=FALSE,prior_samples=TRUE,n_samples=128L)
+  for(level_i in seq_along(point_prior_marginal)){
+    weights <- posterior_metadata(point_prior_marginal[[level_i]], "linear_weights")
+    expect_true(is.numeric(weights))
+    expect_true(all(is.finite(weights)))
+    expect_false(is.null(posterior_metadata(point_prior_marginal[[level_i]], "prior_context")))
+    expect_identical(as.numeric(point_prior_marginal[[level_i]]), as.numeric(point_marginal[[level_i]]))
+  }
+  expect_true(all(posterior_metadata(point_prior_marginal[[1L]], "linear_weights") == 0))
+  expect_true(all(posterior_metadata(point_prior_marginal[[4L]], "linear_weights")[expression_point$spec$coefficient_names] == 1))
+  for(level in point_prior_marginal[-1L]){
+    expect_null(posterior_metadata(level, "prior_density"))
+    expect_error(.bt_formula_measure_check(level, "prior_density"), class = "BayesTools_formula_measure_unavailable")
+  }
   expect_equal(.posterior_atoms_get(point_marginal[[1L]])$mass, 1, tolerance = 0)
   for(level in point_marginal[-1L]){
     class(level) <- unique(c(class(level), "marginal_posterior"))

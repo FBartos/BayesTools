@@ -1103,10 +1103,15 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
         }
 
         for(lvl_i in seq_along(level_names)){
-          if(!is.null(marginal_factor_expression[[lvl_i]])) next
           weights <- rep(0, length(prior_density_context$column_names))
           names(weights) <- prior_density_context$column_names
           weights[colnames(factor_weights)] <- factor_weights[lvl_i, ]
+          marginal_posterior_samples[[level_names[lvl_i]]] <- .bt_meta_update(
+            marginal_posterior_samples[[level_names[lvl_i]]],
+            linear_weights = weights,
+            prior_context  = prior_density_context
+          )
+          if(!is.null(marginal_factor_expression[[lvl_i]])) next
 
           prior_density <- tryCatch(.prior_density_from_context(
             prior_density_context,
