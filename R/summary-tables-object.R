@@ -661,15 +661,21 @@ Math.BayesTools_BF <- function(x, ...){
   out <- format(round(x, digits = 3), nsmall = 3)
   bound_operator <- .standardize_BF_bound_operator(attr(x, "bound_operator"), length(x))
   small_bound <- !is.na(bound_operator) & is.finite(x) & x > 0 & round(x, 3) == 0
+  logs <- .BF_carrier_log(x)
   if(any(small_bound)){
-    # Shown as reciprocals (1/10000), mirroring large bounds (>10000.000).
-    out[small_bound] <- vapply(x[small_bound], function(value){
-      reciprocal <- 1 / value
+    # Shown as reciprocals (1/10000), mirroring large bounds (>10000.000);
+    # an overflowing reciprocal shows the (canonical) logarithm instead.
+    small_logs <- if(!is.null(logs) && !isTRUE(attr(x, "logBF"))){
+      (if(isTRUE(attr(x, "BF01"))) -logs else logs)[small_bound]
+    }else{
+      log(x[small_bound])
+    }
+    out[small_bound] <- vapply(seq_len(sum(small_bound)), function(i){
+      reciprocal <- 1 / x[small_bound][i]
       if(is.finite(reciprocal)) paste0("1/", format(round(reciprocal), trim = TRUE)) else
-        paste0("exp(", format(log(value), trim = TRUE), ")")
+        paste0("exp(", format(small_logs[i], trim = TRUE), ")")
     }, character(1))
   }
-  logs <- .BF_carrier_log(x)
   if(!is.null(logs) && !isTRUE(attr(x, "logBF"))){
     oriented_logs <- if(isTRUE(attr(x, "BF01"))) -logs else logs
     hidden_bound <- !is.na(bound_operator) & is.finite(oriented_logs) & x == 0

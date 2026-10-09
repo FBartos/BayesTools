@@ -70,7 +70,7 @@ test_that("live positive log bounds retain a positive printed underflow endpoint
   replaced[[1L]] <- 0
   expect_identical(.format_BF_column(replaced), "<0.000")
   small <- .format_BF_from_log(710, BF01 = TRUE, bound_operator = ">")
-  expect_identical(.format_BF_column(small), "<4.48e-309")
+  expect_identical(.format_BF_column(small), "<exp(-710)")
 })
 
 test_that("point inference retains finite log ordinates and orientation", {
