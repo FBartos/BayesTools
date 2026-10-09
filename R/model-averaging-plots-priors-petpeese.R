@@ -1201,6 +1201,9 @@
       gh[i] <- ifelse(side[i] == -1L, gh[i] / 2, gh[i])
       side[i] <- -1L
     }
+    # Cells that did not reach the tolerance within the iteration budget use
+    # the scalar quantile.
+    exact[cells[!exact[cells] & (hi - lo) > 1e-8 * pmax(1, abs(lo), abs(hi))]] <<- TRUE
     resolved <- !exact[cells]
     out[cells[resolved]] <<- hi[resolved]
     for(i in cells[!resolved]){
