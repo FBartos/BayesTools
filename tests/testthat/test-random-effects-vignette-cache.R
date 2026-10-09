@@ -1558,6 +1558,16 @@ test_that("text fingerprints normalize line endings and use relative labels", {
     "src/Makevars.win",
     "src/Makevars.win.common"
   ) %in% names(package_sources)))
+})
+
+test_that("source checkout build-ignore policy preserves RandomEffects cache packaging", {
+  project_root <- normalizePath(
+    testthat::test_path("..", ".."),
+    winslash = "/",
+    mustWork = TRUE
+  )
+  skip_if_not(file.exists(file.path(project_root, ".Rbuildignore")),
+    "Source checkout build-ignore policy is unavailable in this archive/check host.")
 
   buildignore <- readLines(
     file.path(project_root, ".Rbuildignore"),
@@ -1577,7 +1587,6 @@ test_that("text fingerprints normalize line endings and use relative labels", {
   expect_false("^vignettes($|/)" %in% buildignore)
   expect_true("^src/Makevars$" %in% buildignore)
 })
-
 test_that("DESCRIPTION fingerprints ignore build fields and the version", {
   description_root <- withr::local_tempdir()
   source_description <- file.path(description_root, "source")

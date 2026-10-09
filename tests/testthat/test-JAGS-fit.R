@@ -546,65 +546,6 @@ test_that("runjags_estimates_table works with fitted models", {
 # ============================================================================ #
 # SECTION 7: JAGS_extend tests
 # ============================================================================ #
-test_that("JAGS_extend works correctly", {
-
-  skip_if_not_installed("rjags")
-  skip_on_cran()
-  skip_if_no_fits()
-
-  fit_simple <- readRDS(file.path(temp_fits_dir, "fit_simple_normal.RDS"))
-  formula_design <- attr(fit_simple, "formula_design", exact = TRUE)
-
-  # Test the extension mechanics without waiting on convergence precision targets.
-  extend_control <- list(
-    max_Rhat     = NULL,
-    min_ESS      = NULL,
-    max_error    = NULL,
-    max_SD_error = NULL,
-    max_time     = list(time = 30, unit = "secs"),
-    sample_extend = 1,
-    restarts     = 1,
-    max_extend   = 1
-  )
-
-  # Test extending a fitted model
-  fit_extended <- JAGS_extend(
-    fit_simple,
-    autofit_control = extend_control,
-    silent = TRUE
-  )
-
-  # Test extending a fitted model with parallel
-  fit_extended2 <- JAGS_extend(
-    fit_simple,
-    autofit_control = extend_control,
-    parallel = TRUE,
-    cores = 2,
-    silent = TRUE
-  )
-
-  # Check that the extended fit is still a BayesTools_fit
-  expect_true(inherits(fit_extended, "BayesTools_fit"))
-  expect_true(inherits(fit_extended, "runjags"))
-  expect_true(inherits(fit_extended2, "BayesTools_fit"))
-  expect_true(inherits(fit_extended2, "runjags"))
-
-  # Check that attributes are preserved
-  expect_true(!is.null(attr(fit_extended, "prior_list")))
-  expect_true(!is.null(attr(fit_extended, "model_syntax")))
-  expect_true(!is.null(attr(fit_extended2, "prior_list")))
-  expect_true(!is.null(attr(fit_extended2, "model_syntax")))
-  expect_identical(attr(fit_extended, "formula_design"), formula_design)
-  expect_identical(attr(fit_extended2, "formula_design"), formula_design)
-
-  # Check that the extended fit has more samples
-  original_samples  <- nrow(suppressWarnings(coda::as.mcmc(fit_simple)))
-  extended_samples  <- nrow(suppressWarnings(coda::as.mcmc(fit_extended)))
-  extended_samples2 <- nrow(suppressWarnings(coda::as.mcmc(fit_extended2)))
-  expect_true(extended_samples  >= original_samples)
-  expect_true(extended_samples2 >= original_samples)
-
-})
 
 
 # ============================================================================ #

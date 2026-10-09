@@ -7810,6 +7810,83 @@ test_that("Compiled coefficient multiplier states have isolated current-format f
     note = "Intercept-only point model for declared missing-coefficient mixture controls.")$registry_entry
 })
 
+test_that("Formula draws scaled random fixture is cached", {
+
+  skip_if_not_installed("rjags")
+  skip_if_not_installed("runjags")
+  set.seed(11)
+  data <- data.frame(
+    x = stats::rnorm(24, 5, 3),
+    d = factor(rep(c("a", "b", "c"), 8)),
+    g = factor(rep(sprintf("g%d", 1:6), each = 4))
+  )
+  prior_list <- list(
+    intercept = prior("normal", list(0, 1)),
+    x = prior("normal", list(0, 1)),
+    d = prior_factor("mnormal", list(0, 1), contrast = "meandif"),
+    "x:d" = prior_factor("mnormal", list(0, 1), contrast = "meandif")
+  )
+  random_priors <- prior_random(g = random_block(
+    sd = prior("normal", list(0, 1), list(0, Inf)),
+    monitor = random_monitor(latent = TRUE)
+  ))
+  formula <- ~ 1 + x * d + diag(1 | g)
+  y <- stats::rnorm(nrow(data), 0.1 * data$x, 1)
+  fit <- suppressWarnings(JAGS_fit(
+    model_syntax = "model{\n  for(i in 1:N_mu){\n    y[i] ~ dnorm(mu[i], 1)\n  }\n}",
+    data = list(y = y),
+    formula_list = list(mu = formula),
+    formula_data_list = list(mu = data),
+    formula_prior_list = list(mu = prior_list),
+    formula_scale_list = list(mu = list(x = TRUE)),
+    formula_random_prior_list = list(mu = random_priors),
+    chains = 1, adapt = 50, burnin = 50, sample = 100, seed = 1, silent = TRUE
+  ))
+  attr(fit, "formula_draws_inputs") <- list(
+    data = data, prior_list = prior_list,
+    formula = BayesTools:::.bt_rhs_formula(formula[[2L]], env = baseenv()), y = y,
+    random_priors = random_priors
+  )
+  model_registry[["fit_formula_draws_scaled_random"]] <<- save_fit(
+    fit, "fit_formula_draws_scaled_random",
+    simple_priors = TRUE, factor_priors = TRUE, formulas = TRUE,
+    random_effects = TRUE, interactions = TRUE, assertion_only = TRUE,
+    note = "Scaled meandif factor interaction with sampled random intercepts for rebuilding formula draws."
+  )$registry_entry
+})
+
+test_that("Formula draws expression data fixture is cached", {
+
+  skip_if_not_installed("rjags")
+  skip_if_not_installed("runjags")
+  set.seed(3)
+  n <- 20
+  data <- data.frame(x = stats::rnorm(n))
+  v <- stats::runif(n, 1, 2)
+  y <- stats::rnorm(n, 0.5 * data$x + v, 1)
+  normal <- prior("normal", list(0, 1))
+  prior_list <- list(intercept = normal, x = normal)
+  formula <- ~ 1 + x + expression(v[i])
+  # 'v' is JAGS model data of the fit, not formula data
+  fit <- suppressWarnings(JAGS_fit(
+    model_syntax = "model{\n  for(i in 1:N_mu){\n    y[i] ~ dnorm(mu[i], 1)\n  }\n}",
+    data = list(y = y, v = v),
+    formula_list = list(mu = formula),
+    formula_data_list = list(mu = data),
+    formula_prior_list = list(mu = prior_list),
+    chains = 1, adapt = 50, burnin = 50, sample = 100, seed = 7, silent = TRUE
+  ))
+  attr(fit, "formula_draws_inputs") <- list(
+    data = data, prior_list = prior_list,
+    formula = BayesTools:::.bt_rhs_formula(formula[[2L]], env = baseenv()), y = y, v = v
+  )
+  model_registry[["fit_formula_draws_expression_data"]] <<- save_fit(
+    fit, "fit_formula_draws_expression_data",
+    simple_priors = TRUE, formulas = TRUE, assertion_only = TRUE,
+    note = "Formula expression reading JAGS model data for rebuilding formula draws."
+  )$registry_entry
+})
+
 # ============================================================================ #
 # SAVE MODEL REGISTRY
 # ============================================================================ #
@@ -7845,3 +7922,64 @@ test_that("Model registry is created and saved", {
     registry_file = registry_file
   )
 })
+
+test_that("JAGS_extend works correctly", {
+
+  skip_if_not_installed("rjags")
+  skip_on_cran()
+  skip_if_no_fits()
+
+  fit_simple <- readRDS(file.path(temp_fits_dir, "fit_simple_normal.RDS"))
+  formula_design <- attr(fit_simple, "formula_design", exact = TRUE)
+
+  # Test the extension mechanics without waiting on convergence precision targets.
+  extend_control <- list(
+    max_Rhat     = NULL,
+    min_ESS      = NULL,
+    max_error    = NULL,
+    max_SD_error = NULL,
+    max_time     = list(time = 30, unit = "secs"),
+    sample_extend = 1,
+    restarts     = 1,
+    max_extend   = 1
+  )
+
+  # Test extending a fitted model
+  fit_extended <- JAGS_extend(
+    fit_simple,
+    autofit_control = extend_control,
+    silent = TRUE
+  )
+
+  # Test extending a fitted model with parallel
+  fit_extended2 <- JAGS_extend(
+    fit_simple,
+    autofit_control = extend_control,
+    parallel = TRUE,
+    cores = 2,
+    silent = TRUE
+  )
+
+  # Check that the extended fit is still a BayesTools_fit
+  expect_true(inherits(fit_extended, "BayesTools_fit"))
+  expect_true(inherits(fit_extended, "runjags"))
+  expect_true(inherits(fit_extended2, "BayesTools_fit"))
+  expect_true(inherits(fit_extended2, "runjags"))
+
+  # Check that attributes are preserved
+  expect_true(!is.null(attr(fit_extended, "prior_list")))
+  expect_true(!is.null(attr(fit_extended, "model_syntax")))
+  expect_true(!is.null(attr(fit_extended2, "prior_list")))
+  expect_true(!is.null(attr(fit_extended2, "model_syntax")))
+  expect_identical(attr(fit_extended, "formula_design"), formula_design)
+  expect_identical(attr(fit_extended2, "formula_design"), formula_design)
+
+  # Check that the extended fit has more samples
+  original_samples  <- nrow(suppressWarnings(coda::as.mcmc(fit_simple)))
+  extended_samples  <- nrow(suppressWarnings(coda::as.mcmc(fit_extended)))
+  extended_samples2 <- nrow(suppressWarnings(coda::as.mcmc(fit_extended2)))
+  expect_true(extended_samples  >= original_samples)
+  expect_true(extended_samples2 >= original_samples)
+
+})
+

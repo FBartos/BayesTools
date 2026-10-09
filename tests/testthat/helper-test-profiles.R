@@ -144,6 +144,7 @@ bayestools_test_profile_contexts <- list(
     "JAGS-ensemble-tables",
     "JAGS-fit",
     "JAGS-formula-scale",
+    "JAGS-formula-draws-fixture",
     "JAGS-formula",
     "JAGS-summary-tables",
     "model-averaging",

@@ -2101,6 +2101,44 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       note = "Random-intercept SD with a three-component mixture prior of weights 1:2:1."
     ),
     catalog_row(
+      "fit_formula_draws_scaled_random",
+      has_marglik = FALSE,
+      model_family = "gaussian-regression-random-effects",
+      formula = "~ 1 + x * d + diag(1 | g)",
+      scale_policy = "automatic,random-effects",
+      prior_features = "simple,factor,formula,interaction,random-effects",
+      expected_monitor = c(
+        "mu_intercept", "mu_x", "mu_d[1]", "mu_d[2]",
+        "mu_x__xXx__d[1]", "mu_x__xXx__d[2]", "mu__xREx__g_intercept",
+        .bayestools_random_z_monitors("mu__xREx__g_xRE_Zx", 6L, 1L)
+      ),
+      expected_formula_parameters = "mu",
+      expected_formula_scale = c(mu = "mu_x"),
+      oracle_type = "formula-fixture-metadata",
+      expected_chains = 1L,
+      expected_iterations = 100L,
+      tolerance = 1e-14,
+      flags = list(simple_priors = TRUE, factor_priors = TRUE, formulas = TRUE,
+        random_effects = TRUE, interactions = TRUE, assertion_only = TRUE),
+      note = "Scaled meandif factor interaction with sampled random intercepts for rebuilding formula draws."
+    ),
+    catalog_row(
+      "fit_formula_draws_expression_data",
+      has_marglik = FALSE,
+      model_family = "gaussian-regression-expression",
+      formula = "~ 1 + x + expression(v[i])",
+      scale_policy = "none",
+      prior_features = "simple,formula,expression-data",
+      expected_monitor = c("mu_intercept", "mu_x"),
+      expected_formula_parameters = "mu",
+      oracle_type = "formula-fixture-metadata",
+      expected_chains = 1L,
+      expected_iterations = 100L,
+      tolerance = 1e-14,
+      flags = list(simple_priors = TRUE, formulas = TRUE, assertion_only = TRUE),
+      note = "Formula expression reading JAGS model data for rebuilding formula draws."
+    ),
+    catalog_row(
       "fit_convergence_observed_data",
       has_marglik = FALSE,
       model_family = "normal-regression-monitored-data",
