@@ -125,6 +125,12 @@ lower-probability route and refuse lost interior coordinates. Positive subnormal
 weighted CDF-panel terms remain governed by the CDF error criteria.
 Optional partition anchors retain numerical omission provenance; required event
 arithmetic, quantile ranges and solver limits refuse without sampled rescue.
+Deterministic prior bands evaluate that CDF for all x-values and probabilities
+together (`.petpeese_prior_quantile_band()`): each continuous pair integrates
+over the location-probability window where the bias CDF varies, on panels
+anchored per row at the images of fixed bias quantiles, with the same 1e-7 CDF
+criterion; cells not resolved within it, and contexts without a continuous
+pair, use the scalar quantile above with its diagnostics and refusals.
 Keep requested display limits separate from transformation support. Custom
 transformations can declare `output_support = c(lower, upper)`; inverse-grid
 evaluation must exclude coordinates outside that interval, without clamping

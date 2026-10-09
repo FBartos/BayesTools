@@ -857,33 +857,33 @@
 # H is monotone and equals 1 (within eps) below x_lo = q - max(s * b_eps,
 # s * b_(1 - eps)) and 0 (within eps) above x_hi = q - min(...), so
 #   P(Y <= q) = F_mu(x_lo) + int_{F_mu(x_lo)}^{F_mu(x_hi)} H(Q_mu(u)) du + O(eps).
-# The window ends are where the bias support bounds enter, so the integrand is
-# smooth inside. It is integrated with Gauss-Kronrod (15/7) panels graded
-# toward both window ends; the two end slivers are split geometrically and
-# bounded by monotonicity. Rows whose error estimate exceeds the criterion of
-# .petpeese_prior_probability_integral() are retried with E_b[F_mu(q - s * b)]
-# on fixed bias-quantile nodes and with twice finer windowed panels, and any
+# The window is integrated with Gauss-Kronrod (15/7) panels whose boundaries
+# combine edges graded toward both window ends with, for every row, the
+# images of fixed bias quantiles (the anchors of the scalar partition), so no
+# transition of H can fall between the nodes of one panel; the two end
+# slivers are split geometrically and bounded by monotonicity. Rows whose
+# error estimate exceeds the criterion of .petpeese_prior_probability_integral()
+# are retried with E_b[F_mu(q - s * b)] on bias-coordinate panels anchored at
+# the images of fixed mu quantiles and with finer windowed panels, and any
 # remaining cell uses the exact scalar quantile of .petpeese_prior_cdf_quantile().
 
 .petpeese_band_eps <- function() 1e-12
 
-.petpeese_band_rule <- function(levels, ratio){
+# Probabilities whose quantile images anchor the panels of each row.
+.petpeese_band_anchor_probabilities <- function(){
 
-  rule   <- .prior_density_quadrature_rules()$infinite
-  edges  <- c(ratio^-(levels:1), .5)
-  starts <- c(edges[-length(edges)], 1 - rev(edges[-1L]))
-  ends   <- c(edges[-1L], 1 - rev(edges[-length(edges)]))
-  half   <- (ends - starts) / 2
-  n      <- length(rule$nodes)
-  difference <- matrix(0, n * length(half), length(half))
-  for(i in seq_along(half)){
-    difference[(i - 1L) * n + seq_len(n), i] <- half[i] * (rule$kronrod - rule$gauss)
-  }
+  c(1e-6, 1e-3, .02, .25, .5, .75, .98, 1 - 1e-3, 1 - 1e-6)
+}
+
+# Graded panel edges on (0, 1) in both tail coordinates; the slivers below the
+# first and above the last edge are treated separately.
+.petpeese_band_edges <- function(levels, ratio){
+
+  inner <- ratio^-(levels:1)
   list(
-    t          = as.vector(outer(rule$nodes, half) + rep((starts + ends) / 2, each = n)),
-    kronrod    = as.vector(outer(rule$kronrod, half)),
-    difference = difference,
-    sliver     = edges[1L]
+    lower  = c(inner, .5, 1 - rev(inner)),
+    upper  = c(1 - inner, .5, rev(inner)),
+    sliver = inner[[1L]]
   )
 }
 
@@ -895,8 +895,14 @@
 
   lower   <- prior$truncation[["lower"]]
   upper   <- prior$truncation[["upper"]]
-  F_lower <- .prior_simple_base_p(prior, lower)
-  S_upper <- .prior_simple_base_p(prior, upper, lower.tail = FALSE)
+  # A t prior with one degree of freedom is the Cauchy distribution.
+  base_p  <- if(identical(prior[["distribution"]], "t") && identical(prior$parameters[["df"]], 1)){
+    function(x, lower.tail = TRUE) stats::pcauchy(x, prior$parameters[["location"]], prior$parameters[["scale"]], lower.tail = lower.tail)
+  }else{
+    function(x, lower.tail = TRUE) .prior_simple_base_p(prior, x, lower.tail = lower.tail)
+  }
+  F_lower <- base_p(lower)
+  S_upper <- base_p(upper, lower.tail = FALSE)
   mass    <- 1 - F_lower - S_upper
   if(!is.finite(mass) || mass < 1e-3){
     return(list(
@@ -904,43 +910,129 @@
       ccdf = function(x) .prior_simple_ccdf(prior, x)
     ))
   }
+  normalize <- function(out, x, below, above){
+    out[out < 0] <- 0
+    out[out > 1] <- 1
+    out[x <= lower] <- below
+    out[x >= upper] <- above
+    out
+  }
   list(
-    cdf = function(x){
-      out <- pmin(1, pmax(0, (.prior_simple_base_p(prior, x) - F_lower) / mass))
-      out[x <= lower] <- 0
-      out[x >= upper] <- 1
-      out
-    },
-    ccdf = function(x){
-      out <- pmin(1, pmax(0, (.prior_simple_base_p(prior, x, lower.tail = FALSE) - S_upper) / mass))
-      out[x <= lower] <- 1
-      out[x >= upper] <- 0
-      out
-    }
+    cdf  = function(x) normalize((base_p(x) - F_lower) / mass, x, 0, 1),
+    ccdf = function(x) normalize((base_p(x, lower.tail = FALSE) - S_upper) / mass, x, 1, 0)
   )
+}
+
+# Quantiles at node probabilities given in both tails. Default-range priors
+# use the base quantile of the smaller represented tail directly (nonfinite
+# nodes make their rows unresolved); truncated priors use the component's
+# checked quantile.
+.petpeese_band_quantile_function <- function(component){
+
+  if(!.is_prior_default_range(component$prior)){
+    return(function(p, upper_p) .petpeese_prior_component_quantile(component, p, upper_p))
+  }
+  prior <- component$prior
+  function(p, upper_p){
+    out <- p
+    lower <- p <= upper_p
+    out[lower]  <- .prior_simple_base_q(prior, p[lower])
+    out[!lower] <- .prior_simple_base_q(prior, upper_p[!lower], lower.tail = FALSE)
+    out
+  }
+}
+
+# Interior points where a nonlocal prior has zero density (its quantile
+# function has an infinite derivative there); they are fixed panel anchors.
+.petpeese_band_zero_density <- function(prior){
+
+  if(prior[["distribution"]] %in% c("moment", "invmoment")){
+    location <- prior$parameters[["location"]]
+    if(is.numeric(location) && length(location) == 1L &&
+       location > prior$truncation[["lower"]] && location < prior$truncation[["upper"]]){
+      return(location)
+    }
+  }
+  numeric()
 }
 
 .petpeese_band_pair <- function(mu, bias){
 
   eps <- .petpeese_band_eps()
-  quantiles <- function(component, p, upper_p){
-    out <- tryCatch(.petpeese_prior_component_quantile(component, p, upper_p),
+  quantiles <- function(component, p){
+    out <- tryCatch(.petpeese_prior_component_quantile(component, p, 1 - p),
       BayesTools_numerical_condition = function(e) NULL)
     if(is.null(out) || any(!is.finite(out))) NULL else out
   }
-  bias_range <- quantiles(bias, c(eps, 1 - eps), c(1 - eps, eps))
-  if(is.null(bias_range)){
+  anchors    <- .petpeese_band_anchor_probabilities()
+  bias_range <- quantiles(bias, c(eps, 1 - eps))
+  bias_knots <- quantiles(bias, anchors)
+  if(is.null(bias_range) || is.null(bias_knots)){
     return(NULL)
   }
-  fixed <- .petpeese_band_rule(16L, 4)
   list(
     mu           = mu,
+    bias         = bias,
     bias_range   = bias_range,
-    bias         = .petpeese_band_cdf_functions(bias$prior),
+    bias_knots   = c(bias_knots, .petpeese_band_zero_density(bias$prior)),
+    mu_knots     = c(quantiles(mu, anchors), .petpeese_band_zero_density(mu$prior)),
+    mu_zero      = .petpeese_band_zero_density(mu$prior),
+    bias_cdf     = .petpeese_band_cdf_functions(bias$prior),
     mu_cdf       = .petpeese_band_cdf_functions(mu$prior)$cdf,
-    fixed        = fixed,
-    bias_nodes   = quantiles(bias, fixed$t, 1 - fixed$t)
+    mu_quantile  = .petpeese_band_quantile_function(mu),
+    bias_quantile = .petpeese_band_quantile_function(bias)
   )
+}
+
+# Gauss-Kronrod (15/7) integral over (0, 1) on per-row panels. 'lower' and
+# 'upper' hold every row's sorted panel boundaries in both tail coordinates
+# (upper = 1 - lower, each accurate in its own tail); 'evaluate' receives the
+# node coordinates in both tails and returns the integrand.
+.petpeese_band_panels <- function(lower, upper, evaluate){
+
+  rule    <- .prior_density_quadrature_rules()$infinite
+  n_node  <- length(rule$nodes)
+  n_panel <- ncol(lower) - 1L
+  start   <- lower[, -ncol(lower), drop = FALSE]
+  start_u <- upper[, -ncol(upper), drop = FALSE]
+  width   <- ifelse(start <= .5, lower[, -1L, drop = FALSE] - start, start_u - upper[, -1L, drop = FALSE])
+  width   <- pmax(width, 0)
+  half    <- width / 2
+  panel   <- rep(seq_len(n_panel), each = n_node)
+  offset  <- matrix(rep(rule$nodes, n_panel), nrow(lower), n_node * n_panel, byrow = TRUE) *
+    half[, panel, drop = FALSE]
+  values <- evaluate(start[, panel, drop = FALSE] + half[, panel, drop = FALSE] + offset,
+    start_u[, panel, drop = FALSE] - half[, panel, drop = FALSE] - offset)
+  value <- numeric(nrow(lower))
+  error <- numeric(nrow(lower))
+  difference <- rule$kronrod - rule$gauss
+  for(j in seq_len(n_panel)){
+    columns <- (j - 1L) * n_node + seq_len(n_node)
+    value <- value + half[, j] * drop(values[, columns, drop = FALSE] %*% rule$kronrod)
+    error <- error + half[, j] * abs(drop(values[, columns, drop = FALSE] %*% difference))
+  }
+  invalid <- !is.finite(value) | rowSums(!is.finite(values)) > 0
+  error[invalid] <- Inf
+  list(value = value, error = error)
+}
+
+# Per-row panel boundaries: the graded edges and the anchors (both tail
+# coordinates, NA anchors dropped by placing them on an edge).
+.petpeese_band_boundaries <- function(edges, anchor_lower, anchor_upper){
+
+  n <- nrow(anchor_lower)
+  low_bound <- edges$lower[[1L]]
+  high_bound <- edges$lower[[length(edges$lower)]]
+  inside <- is.finite(anchor_lower) & is.finite(anchor_upper) &
+    anchor_lower > low_bound & anchor_upper > edges$upper[[length(edges$upper)]]
+  anchor_lower[!inside] <- low_bound
+  anchor_upper[!inside] <- edges$upper[[1L]]
+  lower <- cbind(matrix(edges$lower, n, length(edges$lower), byrow = TRUE), anchor_lower)
+  upper <- cbind(matrix(edges$upper, n, length(edges$upper), byrow = TRUE), anchor_upper)
+  # Sort every row at once: by row, then by boundary.
+  index <- order(rep(seq_len(n), ncol(lower)), as.vector(lower))
+  list(lower = matrix(as.vector(lower)[index], n, byrow = TRUE),
+       upper = matrix(as.vector(upper)[index], n, byrow = TRUE))
 }
 
 # H(x) = P(scale * b <= q - x) at a matrix x with one row per (q, scale).
@@ -949,12 +1041,13 @@
   arguments <- (q - x) / scale
   out <- matrix(NA_real_, nrow(arguments), ncol(arguments))
   positive <- scale > 0
-  if(any(positive)) out[positive, ] <- pair$bias$cdf(arguments[positive, , drop = FALSE])
-  if(any(!positive)) out[!positive, ] <- pair$bias$ccdf(arguments[!positive, , drop = FALSE])
+  if(any(positive)) out[positive, ] <- pair$bias_cdf$cdf(arguments[positive, , drop = FALSE])
+  if(any(!positive)) out[!positive, ] <- pair$bias_cdf$ccdf(arguments[!positive, , drop = FALSE])
   out
 }
 
-.petpeese_band_window_cdf <- function(pair, q, scale, rule){
+# E_mu[H(mu)] on the mu-probability window of each row.
+.petpeese_band_window_cdf <- function(pair, q, scale, edges){
 
   ends  <- outer(scale, pair$bias_range)
   x_lo  <- q - pmax(ends[, 1L], ends[, 2L])
@@ -971,51 +1064,79 @@
   if(length(open) == 0L){
     return(list(value = value, error = error))
   }
-
   # Quadrature nodes a truncated effect prior cannot represent (its quantile
   # is computed from the lower tail only) leave these rows to the other rules.
-  unresolved <- function(condition){
+  tryCatch({
+    out <- .petpeese_band_window_rows(pair, q[open], scale[open], edges, x_lo[open], x_hi[open],
+      u_a[open], w_a[open], w_b[open], width[open])
+    value[open] <- out$value
+    error[open] <- error[open] + out$error
+    list(value = value, error = error)
+  }, BayesTools_numerical_condition = function(condition){
     error[open] <- Inf
     list(value = value, error = error)
-  }
-  tryCatch(.petpeese_band_window_rows(pair, q, scale, rule, open, x_lo, x_hi, u_a, w_a, w_b, width, value, error),
-    BayesTools_numerical_condition = unresolved)
+  })
 }
 
-.petpeese_band_window_rows <- function(pair, q, scale, rule, open, x_lo, x_hi, u_a, w_a, w_b, width, value, error){
+.petpeese_band_window_rows <- function(pair, q, scale, edges, x_lo, x_hi, u_a, w_a, w_b, width){
 
-  q_open <- q[open]
-  s_open <- scale[open]
-  u_open <- u_a[open]
-  w_open <- w_a[open]
-  dw     <- width[open]
-  quantile_matrix <- function(p, upper_p){
-    matrix(.petpeese_prior_component_quantile(pair$mu, as.vector(p), as.vector(upper_p)), nrow = length(open))
+  mu_quantile <- function(t, t_upper){
+    matrix(pair$mu_quantile(as.vector(u_a + width * t), as.vector(w_b + width * t_upper)), nrow = length(q))
   }
-  values <- .petpeese_band_H(pair, q_open, s_open,
-    quantile_matrix(u_open + outer(dw, rule$t), w_open - outer(dw, rule$t)))
-  integral   <- drop(values %*% rule$kronrod)
-  quadrature <- rowSums(abs(values %*% rule$difference))
+  # Anchors: the images of the bias quantiles and the zero-density points of
+  # a nonlocal effect prior, in the window coordinate t.
+  x_anchor <- cbind(q - outer(scale, pair$bias_knots), matrix(pair$mu_zero, length(q), length(pair$mu_zero), byrow = TRUE))
+  anchor_lower <- (.petpeese_prior_component_cdf(pair$mu, x_anchor) - u_a) / width
+  anchor_upper <- (.petpeese_prior_component_ccdf(pair$mu, x_anchor) - w_b) / width
+  dim(anchor_lower) <- dim(anchor_upper) <- dim(x_anchor)
+  bounds <- .petpeese_band_boundaries(edges, anchor_lower, anchor_upper)
+  inner <- .petpeese_band_panels(bounds$lower, bounds$upper, function(t, t_upper){
+    .petpeese_band_H(pair, q, scale, mu_quantile(t, t_upper))
+  })
 
   # End slivers [0, sliver] and [1 - sliver, 1], split geometrically toward
   # the window ends; H is monotone, so each piece lies between its end values.
-  k <- rule$sliver * 4^-(0:12)
+  k <- edges$sliver * 4^-(0:12)
   piece <- -diff(c(k, 0))
-  h_lower <- .petpeese_band_H(pair, q_open, s_open, cbind(
-    quantile_matrix(u_open + outer(dw, k), w_open - outer(dw, k)), x_lo[open]))
-  upper_w <- w_b[open] + outer(dw, k)
-  h_upper <- .petpeese_band_H(pair, q_open, s_open, cbind(
-    quantile_matrix(1 - upper_w, upper_w), x_hi[open]))
+  k_matrix <- matrix(k, length(q), length(k), byrow = TRUE)
+  h_lower <- .petpeese_band_H(pair, q, scale, cbind(mu_quantile(k_matrix, 1 - k_matrix), x_lo))
+  h_upper <- .petpeese_band_H(pair, q, scale, cbind(mu_quantile(1 - k_matrix, k_matrix), x_hi))
   sliver <- function(h, combine) drop(combine(h[, -ncol(h), drop = FALSE], h[, -1L, drop = FALSE]) %*% piece) / 2
   slivers      <- sliver(h_lower, `+`) + sliver(h_upper, `+`)
   sliver_error <- sliver(h_lower, function(a, b) abs(a - b)) + sliver(h_upper, function(a, b) abs(a - b))
 
-  value[open] <- u_open + dw * (integral + slivers)
-  error[open] <- error[open] + dw * (quadrature + sliver_error)
-  invalid <- !is.finite(value[open]) | rowSums(!is.finite(values)) > 0 |
-    rowSums(!is.finite(h_lower)) > 0 | rowSums(!is.finite(h_upper)) > 0
-  error[open[invalid]] <- Inf
-  list(value = value, error = error)
+  error <- width * (inner$error + sliver_error)
+  error[rowSums(!is.finite(h_lower)) > 0 | rowSums(!is.finite(h_upper)) > 0] <- Inf
+  list(value = u_a + width * (inner$value + slivers), error = error)
+}
+
+# E_b[F_mu(q - s * b)] on bias-probability panels anchored at the images of
+# the mu quantiles; the slivers beyond the graded edges are bounded by their
+# width because the integrand lies in [0, 1].
+.petpeese_band_bias_cdf <- function(pair, q, scale, edges){
+
+  z <- (q - matrix(pair$mu_knots, length(q), length(pair$mu_knots), byrow = TRUE)) / scale
+  anchor_lower <- pair$bias_cdf$cdf(z)
+  anchor_upper <- pair$bias_cdf$ccdf(z)
+  dim(anchor_lower) <- dim(anchor_upper) <- dim(z)
+  # Fixed anchors at zero-density points of a nonlocal bias prior.
+  zero <- .petpeese_band_zero_density(pair$bias$prior)
+  if(length(zero)){
+    anchor_lower <- cbind(anchor_lower, matrix(pair$bias_cdf$cdf(zero), length(q), length(zero), byrow = TRUE))
+    anchor_upper <- cbind(anchor_upper, matrix(pair$bias_cdf$ccdf(zero), length(q), length(zero), byrow = TRUE))
+  }
+  bounds <- .petpeese_band_boundaries(edges, anchor_lower, anchor_upper)
+  tryCatch({
+    inner <- .petpeese_band_panels(bounds$lower, bounds$upper, function(v, v_upper){
+      b <- matrix(pair$bias_quantile(as.vector(v), as.vector(v_upper)), nrow = length(q))
+      values <- pair$mu_cdf(q - scale * b)
+      dim(values) <- dim(b)
+      values
+    })
+    list(value = inner$value + edges$sliver, error = inner$error + edges$sliver)
+  }, BayesTools_numerical_condition = function(condition){
+    list(value = rep(NA_real_, length(q)), error = rep(Inf, length(q)))
+  })
 }
 
 .petpeese_band_criterion <- function(value, error){
@@ -1035,16 +1156,8 @@
     error[rows[better]] <<- candidate$error[better]
   }
   rows <- which(!.petpeese_band_criterion(value, error))
-  if(length(rows) && !is.null(pair$bias_nodes)){
-    values <- pair$mu_cdf(q[rows] - outer(scale[rows], pair$bias_nodes))
-    dim(values) <- c(length(rows), length(pair$bias_nodes))
-    fixed <- pair$fixed
-    candidate <- list(
-      value = drop(values %*% fixed$kronrod) + fixed$sliver * (values[, 1L] + values[, ncol(values)]),
-      error = rowSums(abs(values %*% fixed$difference)) + 2 * fixed$sliver
-    )
-    candidate$error[!is.finite(candidate$value) | rowSums(!is.finite(values)) > 0] <- Inf
-    replace(rows, candidate)
+  if(length(rows) && !is.null(pair$mu_knots)){
+    replace(rows, .petpeese_band_bias_cdf(pair, q[rows], scale[rows], rules$bias))
   }
   rows <- which(!.petpeese_band_criterion(value, error))
   if(length(rows)){
@@ -1071,7 +1184,8 @@
   list(
     models         = models,
     continuous     = continuous,
-    rules          = list(coarse = .petpeese_band_rule(10L, 4), fine = .petpeese_band_rule(40L, 2)),
+    rules          = list(coarse = .petpeese_band_edges(10L, 4), bias = .petpeese_band_edges(16L, 4),
+                          fine = .petpeese_band_edges(40L, 2)),
     direction_sign = context$direction_sign
   )
 }

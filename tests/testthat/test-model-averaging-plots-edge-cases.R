@@ -99,6 +99,38 @@ test_that("vectorized PET-PEESE prior bands reproduce the scalar quantiles", {
     expect_lte(max(abs(vapply(band[, i], oracle, numeric(1)) - probs)), 2e-7)
   }
 
+  # Two-sided heavy-tailed bias priors at tiny scales concentrate the bias
+  # transition far inside the window; references integrate the effect density
+  # times the Cauchy CDF, split at the images of the bias quantiles.
+  cauchy_oracle <- function(q, s, density, lower, spike = 0){
+    breaks <- q - s * stats::qcauchy(c(1e-9, 1e-6, 1e-3, .02, .25, .5, .75, .98, 1 - 1e-3, 1 - 1e-6, 1 - 1e-9))
+    breaks <- sort(unique(c(lower, breaks[breaks > lower], Inf)))
+    slab <- sum(vapply(seq_len(length(breaks) - 1L), function(i){
+      stats::integrate(function(x) density(x) * stats::pcauchy((q - x) / s), breaks[i], breaks[i + 1L],
+        rel.tol = 1e-12, abs.tol = 1e-15, subdivisions = 1000L)$value
+    }, numeric(1)))
+    spike * stats::pcauchy(q / s) + (1 - spike) * slab
+  }
+  two_sided <- prior_PEESE("cauchy", list(0, 1), truncation = list(lower = -Inf, upper = Inf))
+  x <- c(5e-5, 1e-4, 1.5e-4)
+  context <- .petpeese_prior_cdf_context(list(two_sided), list(prior("lognormal", list(-1, .5))), 1)
+  band <- .petpeese_prior_quantile_band(context, x, probs)
+  for(i in seq_along(x)){
+    F <- vapply(band[, i], cauchy_oracle, numeric(1), s = x[i]^2,
+      density = function(z) stats::dlnorm(z, -1, .5), lower = 0)
+    expect_lte(max(abs(F - probs)), 2e-7)
+  }
+  mu <- prior_mixture(list(prior("point", list(0), prior_weights = 3), prior("normal", list(0, .7), prior_weights = 2)),
+    is_null = c(TRUE, FALSE))
+  context <- .petpeese_prior_cdf_context(list(two_sided), list(mu), 1)
+  x <- c(1e-4, 3e-4, 6e-4)
+  band <- .petpeese_prior_quantile_band(context, x, probs)
+  for(i in seq_along(x)){
+    F <- vapply(band[, i], cauchy_oracle, numeric(1), s = x[i]^2,
+      density = function(z) stats::dnorm(z, 0, .7), lower = -Inf, spike = .6)
+    expect_lte(max(abs(F - probs)), 2e-7)
+  }
+
   # Cells the vectorized evaluation cannot resolve use the scalar quantile.
   x <- c(.1, .4, .7)
   local_mocked_bindings(.petpeese_band_criterion = function(value, error) rep(FALSE, length(value)))
