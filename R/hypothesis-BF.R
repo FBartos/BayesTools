@@ -325,10 +325,6 @@ hypothesis_BF <- function(posterior, prior = NULL, hypothesis, parameter = NULL,
   attr(out, "BF01")     <- BF01
   attr(out, "type")      <- .hypothesis_BF_table_types(colnames(out))
   attr(out, "footnotes") <- .hypothesis_BF_table_footnotes(colnames(out))
-  if(any(!vapply(prior_numerical_diagnostics, is.null, logical(1)))){
-    attr(out, "footnotes") <- c(attr(out, "footnotes"),
-      "Note: Deterministic prior-region diagnostics are stored in 'prior_numerical_diagnostics'; 'BF_error' reports Monte Carlo error only.")
-  }
   attr(out, "warnings")  <- warnings
   attr(out, "rownames")  <- TRUE
   class(out) <- c("BayesTools_table", "BayesTools_hypothesis_BF", "data.frame")
@@ -374,6 +370,8 @@ print.BayesTools_hypothesis_BF <- function(x, ...) {
 #' existing percent relative-error units. Declared nonmissing bounds are in
 #' \code{BF_bound_operator}. Unmatched/global warnings have component
 #' \code{"hypothesis/warnings"}. Compact printing retains its existing layout.
+#' \code{cbind()} binds the displayed columns of hypothesis tables (with their
+#' row names, at full precision) into a plain data frame.
 #' @exportS3Method
 as.data.frame.BayesTools_hypothesis_BF <- function(x, row.names = NULL,
                                                   optional = FALSE, ...){
@@ -430,5 +428,14 @@ as.data.frame.BayesTools_hypothesis_BF <- function(x, row.names = NULL,
   }
   rownames(out) <- row.names
   out
+}
+
+#' @exportS3Method
+cbind.BayesTools_hypothesis_BF <- function(..., deparse.level = 1){
+
+  arguments <- lapply(list(...), function(x){
+    if(inherits(x, "BayesTools_hypothesis_BF")) .BayesTools_table_plain_frame(x) else x
+  })
+  do.call(cbind, c(arguments, list(deparse.level = deparse.level)))
 }
 

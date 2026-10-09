@@ -900,6 +900,12 @@ as.data.frame.BayesTools_table <- function(x, row.names = NULL, optional = FALSE
   if(inherits(x, "BayesTools_hypothesis_BF")){
     return(as.data.frame.BayesTools_hypothesis_BF(x, row.names, optional, ...))
   }
+  .BayesTools_table_plain_frame(x, row.names = row.names, optional = optional, ...)
+}
+
+# The displayed columns of a table as a plain data frame at full precision.
+.BayesTools_table_plain_frame <- function(x, row.names = NULL, optional = FALSE, ...){
+
   out <- as.data.frame.data.frame(x, row.names = row.names, optional = optional, ...)
   for(column in names(out)){
     if(inherits(out[[column]], "BayesTools_BF")) out[[column]] <- .BF_carrier_drop(out[[column]])

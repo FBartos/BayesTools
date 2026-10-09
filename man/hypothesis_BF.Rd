@@ -278,4 +278,6 @@ according to the displayed column attributes; \code{BF_error} retains its
 existing percent relative-error units. Declared nonmissing bounds are in
 \code{BF_bound_operator}. Unmatched/global warnings have component
 \code{"hypothesis/warnings"}. Compact printing retains its existing layout.
+\code{cbind()} binds the displayed columns of hypothesis tables (with their
+row names, at full precision) into a plain data frame.
 }

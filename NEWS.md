@@ -101,7 +101,7 @@
 - explicit hypothesis comparisons now require both nonempty sides.
 - marginal conditional lists bind unnamed entries positionally and complete named lists by key; ambiguous names and repeated marginal keys fail clearly.
 - compiled linear targets use their persisted quantity labels in hypothesis table rows when available, with the existing fallback for targets without labels.
-- hypothesis tables export plain full-precision data frames with displayed row identities, BF flags and declared bounds, retaining all warnings; selected BF bounds and compact table printing remain aligned.
+- hypothesis tables export plain full-precision data frames with displayed row identities, BF flags and declared bounds, retaining all warnings; selected BF bounds and compact table printing remain aligned, and `cbind()` binds the displayed columns of hypothesis tables.
 - symbolic point-versus-region hypotheses certify the same centered scalar target; reversed spellings retain their documented conservative refusal.
 - dropping every positive-prior model now gives the intended empty-model-space error before normalization and emits no false renormalization warning.
 - parameter-matched ensemble null masks now bind by name while legacy differently named lists stay positional; marginal inference binds and normalizes masks before model filtering.

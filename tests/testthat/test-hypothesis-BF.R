@@ -3165,3 +3165,18 @@ test_that("undefined posterior region odds retain both deterministic prior diagn
   expect_true(is.na(out$BF_error))
   expect_match(attr(out, "warnings"), "Both posterior region masses are zero", fixed = TRUE)
 })
+
+test_that("cbind() of hypothesis tables binds their displayed columns", {
+
+  set.seed(1)
+  table <- hypothesis_BF(posterior = stats::rnorm(1000, .3, .5), prior = prior("normal", list(0, 1)),
+    parameter = "theta", hypothesis = c("theta > 0", "theta < .5"), seed = 1)
+  bound <- cbind(table, table[, 3:4])
+  expect_identical(class(bound), "data.frame")
+  expect_identical(names(bound), c(names(table), names(table)[3:4]))
+  expect_identical(rownames(bound), rownames(table))
+  expect_equal(as.numeric(bound[[3L]]), as.numeric(table[[3L]]))
+  expect_equal(as.numeric(bound[[5L]]), as.numeric(table[[3L]]))
+  # Coercion keeps the long export with identity columns.
+  expect_identical(names(as.data.frame(table))[1:3], c("component", "parameter", "warning"))
+})

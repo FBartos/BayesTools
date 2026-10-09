@@ -153,6 +153,7 @@ test_that("affine Boolean regions use exact declared probabilities", {
     seed = 337, columns = "all")
   expect_equal(result$prior, (stats::pnorm(49) - .5) / (1 - (stats::pnorm(49) - .5)), tolerance = 1e-14)
   expect_true(length(attr(result, "prior_numerical_diagnostics")) == 1L)
+  expect_false(any(grepl("prior_numerical_diagnostics", utils::capture.output(print(result)), fixed = TRUE)))
   expect_error(hypothesis_BF(c(-2, -1, 1, 2), prior("normal", list(0, 1)),
     "theta * 1e-200 * 1e-200 > 0", parameter = "theta"),
     class = "BayesTools_hypothesis_region_numerical_unavailable")
