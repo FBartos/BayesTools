@@ -1,4 +1,5 @@
 # version 0.3.1
+- deterministic PET-PEESE prior bands evaluate the model-averaged CDF for all x-values and probabilities at once (windowed Gauss-Kronrod quadrature in the effect probability coordinate, with the existing 1e-7 CDF criterion and the scalar path for any unresolved cell), reducing typical prior band plots from minutes to seconds.
 - row-wise prior log densities evaluate contrast-coded factor priors and multivariate Normal, t and point vector priors for all posterior rows in one joint density call instead of a per-row scalar fallback; every row keeps the same joint density.
 - factor marginals retain their structural weights when a scalar prior law is unavailable. Ordered expression totals produce the declared measure refusal before numeric range or density calculations, preserving exact zero projections.
 - combined PETPEESE posterior curves clearly refuse 'individual = TRUE', directing individual densities to the PET or PEESE selectors.

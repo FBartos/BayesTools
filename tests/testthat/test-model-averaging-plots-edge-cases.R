@@ -45,6 +45,55 @@ test_that("optional PET-PEESE anchors retain the full probability-domain integra
   }
 })
 
+test_that("vectorized PET-PEESE prior bands reproduce the scalar quantiles", {
+
+  probs <- c(.5, .025, .975)
+  check_band <- function(context, x, check){
+    band <- .petpeese_prior_quantile_band(context, x, probs)
+    expect_identical(dim(band), c(3L, length(x)))
+    expect_true(all(is.finite(band)))
+    for(i in check){
+      expect_equal(band[, i], .petpeese_prior_cdf_quantile(context, x[i], probs), tolerance = 1e-4)
+      if(x[i] > 0){
+        # The exact CDF at the band quantile meets the band's 1e-7 criterion.
+        for(j in seq_along(probs)){
+          expect_lte(abs(as.numeric(.petpeese_prior_cdf(context, band[j, i], x[i])) - probs[j]), 2e-7)
+        }
+      }
+    }
+    band
+  }
+
+  # RoBMA-like ensemble: no-bias, PET and PEESE models over a spike-and-normal
+  # effect, with half-Cauchy bias priors.
+  mu <- prior_mixture(list(prior("point", list(0), prior_weights = 1), prior("normal", list(0, .7))),
+    is_null = c(TRUE, FALSE))
+  bias <- list(prior_none(prior_weights = 2), prior_PET("cauchy", list(0, 1), prior_weights = 1),
+    prior_PEESE("cauchy", list(0, 5), prior_weights = 1))
+  context <- .petpeese_prior_cdf_context(bias, list(mu, mu, mu), c(2, 1, 1) / 4)
+  x <- seq(0, 1, length.out = 101)
+  check_band(context, x, c(1L, 2L, 11L, 37L, 101L))
+
+  # Negative effect direction and a half-normal bias, against an independent
+  # physical-coordinate integral: P(Y <= q) = E_b[Phi(q + se * b; .3, .5)].
+  mu <- prior("normal", list(.3, .5))
+  context <- .petpeese_prior_cdf_context(list(prior_PET("normal", list(0, 1))), list(mu), 1,
+    effect_direction = "negative")
+  x <- seq(.05, 2, length.out = 41)
+  band <- .petpeese_prior_quantile_band(context, x, probs)
+  for(i in c(1L, 20L, 41L)){
+    oracle <- function(q) stats::integrate(function(b) stats::pnorm(q + x[i] * b, .3, .5) * 2 * stats::dnorm(b),
+      0, Inf, rel.tol = 1e-11, abs.tol = 1e-13)$value
+    expect_lte(max(abs(vapply(band[, i], oracle, numeric(1)) - probs)), 2e-7)
+  }
+
+  # Cells the vectorized evaluation cannot resolve use the scalar quantile.
+  x <- c(.1, .4, .7)
+  local_mocked_bindings(.petpeese_band_criterion = function(value, error) rep(FALSE, length(value)))
+  expect_identical(.petpeese_prior_quantile_band(context, x, probs),
+    vapply(x, function(se) .petpeese_prior_cdf_quantile(context, se, probs), numeric(3)))
+})
+
 test_that("ordered model plots use selected semantic levels and skip prior summaries", {
   models <- lapply(c(.5, 1), function(sd){
     fixture <- ordered_plot_test_fixture(prior("normal", list(1, sd)), c(.2, .3, .5))

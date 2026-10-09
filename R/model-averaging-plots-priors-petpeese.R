@@ -75,9 +75,7 @@
     effect_direction = effect_direction
   )
 
-  quantiles <- vapply(x_seq, function(se){
-    .petpeese_prior_cdf_quantile(context, se, c(.500, .025, .975))
-  }, numeric(3))
+  quantiles <- .petpeese_prior_quantile_band(context, x_seq, c(.500, .025, .975))
 
   if(!is.null(transformation)){
     quantiles <- .petpeese_transform_quantiles(
@@ -848,4 +846,408 @@
   attr(out, "y_range") <- range(out$y, out$y_lCI, out$y_uCI)
 
   return(out)
+}
+
+# Vectorized prior quantile band ---------------------------------------------
+#
+# The band evaluates the same model-averaged CDF as .petpeese_prior_cdf() for
+# all x-values and probabilities at once. For a continuous mu component and a
+# continuous bias component, Y = mu + s * b with s != 0 and
+#   P(Y <= q) = E_mu[H(mu)],  H(x) = P(s * b <= q - x).
+# H is monotone and equals 1 (within eps) below x_lo = q - max(s * b_eps,
+# s * b_(1 - eps)) and 0 (within eps) above x_hi = q - min(...), so
+#   P(Y <= q) = F_mu(x_lo) + int_{F_mu(x_lo)}^{F_mu(x_hi)} H(Q_mu(u)) du + O(eps).
+# The window ends are where the bias support bounds enter, so the integrand is
+# smooth inside. It is integrated with Gauss-Kronrod (15/7) panels graded
+# toward both window ends; the two end slivers are split geometrically and
+# bounded by monotonicity. Rows whose error estimate exceeds the criterion of
+# .petpeese_prior_probability_integral() are retried with E_b[F_mu(q - s * b)]
+# on fixed bias-quantile nodes and with twice finer windowed panels, and any
+# remaining cell uses the exact scalar quantile of .petpeese_prior_cdf_quantile().
+
+.petpeese_band_eps <- function() 1e-12
+
+.petpeese_band_rule <- function(levels, ratio){
+
+  rule   <- .prior_density_quadrature_rules()$infinite
+  edges  <- c(ratio^-(levels:1), .5)
+  starts <- c(edges[-length(edges)], 1 - rev(edges[-1L]))
+  ends   <- c(edges[-1L], 1 - rev(edges[-length(edges)]))
+  half   <- (ends - starts) / 2
+  n      <- length(rule$nodes)
+  difference <- matrix(0, n * length(half), length(half))
+  for(i in seq_along(half)){
+    difference[(i - 1L) * n + seq_len(n), i] <- half[i] * (rule$kronrod - rule$gauss)
+  }
+  list(
+    t          = as.vector(outer(rule$nodes, half) + rep((starts + ends) / 2, each = n)),
+    kronrod    = as.vector(outer(rule$kronrod, half)),
+    difference = difference,
+    sliver     = edges[1L]
+  )
+}
+
+# Truncation-normalized CDF/CCDF from the base distribution functions. Only
+# absolute accuracy enters the band's criterion, so the direct normalization
+# is used when the truncation mass is not small; otherwise the package's
+# logarithmic implementations.
+.petpeese_band_cdf_functions <- function(prior){
+
+  lower   <- prior$truncation[["lower"]]
+  upper   <- prior$truncation[["upper"]]
+  F_lower <- .prior_simple_base_p(prior, lower)
+  S_upper <- .prior_simple_base_p(prior, upper, lower.tail = FALSE)
+  mass    <- 1 - F_lower - S_upper
+  if(!is.finite(mass) || mass < 1e-3){
+    return(list(
+      cdf  = function(x) .prior_simple_cdf(prior, x),
+      ccdf = function(x) .prior_simple_ccdf(prior, x)
+    ))
+  }
+  list(
+    cdf = function(x){
+      out <- pmin(1, pmax(0, (.prior_simple_base_p(prior, x) - F_lower) / mass))
+      out[x <= lower] <- 0
+      out[x >= upper] <- 1
+      out
+    },
+    ccdf = function(x){
+      out <- pmin(1, pmax(0, (.prior_simple_base_p(prior, x, lower.tail = FALSE) - S_upper) / mass))
+      out[x <= lower] <- 1
+      out[x >= upper] <- 0
+      out
+    }
+  )
+}
+
+.petpeese_band_pair <- function(mu, bias){
+
+  eps <- .petpeese_band_eps()
+  quantiles <- function(component, p, upper_p){
+    out <- tryCatch(.petpeese_prior_component_quantile(component, p, upper_p),
+      BayesTools_numerical_condition = function(e) NULL)
+    if(is.null(out) || any(!is.finite(out))) NULL else out
+  }
+  bias_range <- quantiles(bias, c(eps, 1 - eps), c(1 - eps, eps))
+  if(is.null(bias_range)){
+    return(NULL)
+  }
+  fixed <- .petpeese_band_rule(16L, 4)
+  list(
+    mu           = mu,
+    bias_range   = bias_range,
+    bias         = .petpeese_band_cdf_functions(bias$prior),
+    mu_cdf       = .petpeese_band_cdf_functions(mu$prior)$cdf,
+    fixed        = fixed,
+    bias_nodes   = quantiles(bias, fixed$t, 1 - fixed$t)
+  )
+}
+
+# H(x) = P(scale * b <= q - x) at a matrix x with one row per (q, scale).
+.petpeese_band_H <- function(pair, q, scale, x){
+
+  arguments <- (q - x) / scale
+  out <- matrix(NA_real_, nrow(arguments), ncol(arguments))
+  positive <- scale > 0
+  if(any(positive)) out[positive, ] <- pair$bias$cdf(arguments[positive, , drop = FALSE])
+  if(any(!positive)) out[!positive, ] <- pair$bias$ccdf(arguments[!positive, , drop = FALSE])
+  out
+}
+
+.petpeese_band_window_cdf <- function(pair, q, scale, rule){
+
+  ends  <- outer(scale, pair$bias_range)
+  x_lo  <- q - pmax(ends[, 1L], ends[, 2L])
+  x_hi  <- q - pmin(ends[, 1L], ends[, 2L])
+  # The window in mu's probability coordinate, kept in both tails.
+  u_a   <- .petpeese_prior_component_cdf(pair$mu, x_lo)
+  w_a   <- .petpeese_prior_component_ccdf(pair$mu, x_lo)
+  u_b   <- .petpeese_prior_component_cdf(pair$mu, x_hi)
+  w_b   <- .petpeese_prior_component_ccdf(pair$mu, x_hi)
+  width <- ifelse(u_a <= .5, u_b - u_a, w_a - w_b)
+  value <- u_a
+  error <- rep(.petpeese_band_eps(), length(q))
+  open  <- which(width > 0)
+  if(length(open) == 0L){
+    return(list(value = value, error = error))
+  }
+
+  # Quadrature nodes a truncated effect prior cannot represent (its quantile
+  # is computed from the lower tail only) leave these rows to the other rules.
+  unresolved <- function(condition){
+    error[open] <- Inf
+    list(value = value, error = error)
+  }
+  tryCatch(.petpeese_band_window_rows(pair, q, scale, rule, open, x_lo, x_hi, u_a, w_a, w_b, width, value, error),
+    BayesTools_numerical_condition = unresolved)
+}
+
+.petpeese_band_window_rows <- function(pair, q, scale, rule, open, x_lo, x_hi, u_a, w_a, w_b, width, value, error){
+
+  q_open <- q[open]
+  s_open <- scale[open]
+  u_open <- u_a[open]
+  w_open <- w_a[open]
+  dw     <- width[open]
+  quantile_matrix <- function(p, upper_p){
+    matrix(.petpeese_prior_component_quantile(pair$mu, as.vector(p), as.vector(upper_p)), nrow = length(open))
+  }
+  values <- .petpeese_band_H(pair, q_open, s_open,
+    quantile_matrix(u_open + outer(dw, rule$t), w_open - outer(dw, rule$t)))
+  integral   <- drop(values %*% rule$kronrod)
+  quadrature <- rowSums(abs(values %*% rule$difference))
+
+  # End slivers [0, sliver] and [1 - sliver, 1], split geometrically toward
+  # the window ends; H is monotone, so each piece lies between its end values.
+  k <- rule$sliver * 4^-(0:12)
+  piece <- -diff(c(k, 0))
+  h_lower <- .petpeese_band_H(pair, q_open, s_open, cbind(
+    quantile_matrix(u_open + outer(dw, k), w_open - outer(dw, k)), x_lo[open]))
+  upper_w <- w_b[open] + outer(dw, k)
+  h_upper <- .petpeese_band_H(pair, q_open, s_open, cbind(
+    quantile_matrix(1 - upper_w, upper_w), x_hi[open]))
+  sliver <- function(h, combine) drop(combine(h[, -ncol(h), drop = FALSE], h[, -1L, drop = FALSE]) %*% piece) / 2
+  slivers      <- sliver(h_lower, `+`) + sliver(h_upper, `+`)
+  sliver_error <- sliver(h_lower, function(a, b) abs(a - b)) + sliver(h_upper, function(a, b) abs(a - b))
+
+  value[open] <- u_open + dw * (integral + slivers)
+  error[open] <- error[open] + dw * (quadrature + sliver_error)
+  invalid <- !is.finite(value[open]) | rowSums(!is.finite(values)) > 0 |
+    rowSums(!is.finite(h_lower)) > 0 | rowSums(!is.finite(h_upper)) > 0
+  error[open[invalid]] <- Inf
+  list(value = value, error = error)
+}
+
+.petpeese_band_criterion <- function(value, error){
+
+  is.finite(value) & is.finite(error) & error <= pmax(1e-7, 1e-7 * abs(value))
+}
+
+# P(Y <= q) of one continuous pair at rows (q, scale), scale != 0.
+.petpeese_band_pair_cdf <- function(pair, q, scale, rules){
+
+  out   <- .petpeese_band_window_cdf(pair, q, scale, rules$coarse)
+  value <- out$value
+  error <- out$error
+  replace <- function(rows, candidate){
+    better <- candidate$error < error[rows]
+    value[rows[better]] <<- candidate$value[better]
+    error[rows[better]] <<- candidate$error[better]
+  }
+  rows <- which(!.petpeese_band_criterion(value, error))
+  if(length(rows) && !is.null(pair$bias_nodes)){
+    values <- pair$mu_cdf(q[rows] - outer(scale[rows], pair$bias_nodes))
+    dim(values) <- c(length(rows), length(pair$bias_nodes))
+    fixed <- pair$fixed
+    candidate <- list(
+      value = drop(values %*% fixed$kronrod) + fixed$sliver * (values[, 1L] + values[, ncol(values)]),
+      error = rowSums(abs(values %*% fixed$difference)) + 2 * fixed$sliver
+    )
+    candidate$error[!is.finite(candidate$value) | rowSums(!is.finite(values)) > 0] <- Inf
+    replace(rows, candidate)
+  }
+  rows <- which(!.petpeese_band_criterion(value, error))
+  if(length(rows)){
+    replace(rows, .petpeese_band_window_cdf(pair, q[rows], scale[rows], rules$fine))
+  }
+  list(value = value, ok = .petpeese_band_criterion(value, error))
+}
+
+.petpeese_band_plan <- function(context){
+
+  continuous <- FALSE
+  models <- lapply(context$models, function(model){
+    terms <- list()
+    for(mu in model$mu){
+      for(bias in model$bias){
+        both <- mu$type == "continuous" && bias$type == "continuous"
+        continuous <<- continuous || both
+        terms[[length(terms) + 1L]] <- list(mu = mu, bias = bias, weight = mu$weight * bias$weight,
+          continuous = both, pair = if(both) .petpeese_band_pair(mu, bias))
+      }
+    }
+    list(weight = model$weight, type = model$type, terms = terms)
+  })
+  list(
+    models         = models,
+    continuous     = continuous,
+    rules          = list(coarse = .petpeese_band_rule(10L, 4), fine = .petpeese_band_rule(40L, 2)),
+    direction_sign = context$direction_sign
+  )
+}
+
+# Vectorized closed-form atom cases of .petpeese_prior_sum_cdf() (scale != 0).
+.petpeese_band_atom_cdf <- function(mu, bias, scale, q){
+
+  if(mu$type == "atom" && bias$type == "atom"){
+    return(as.numeric(q >= .petpeese_prior_sum_checked(mu$x, scale, bias$x)))
+  }
+  if(mu$type == "atom"){
+    threshold <- .prior_region_inverse_affine(q, mu$x, scale)
+    out <- numeric(length(q))
+    positive <- scale > 0
+    if(any(positive)) out[positive] <- .petpeese_prior_component_cdf(bias, threshold[positive])
+    if(any(!positive)) out[!positive] <- .petpeese_prior_component_ccdf(bias, threshold[!positive])
+    return(out)
+  }
+  .petpeese_prior_component_cdf(mu, .petpeese_prior_sum_checked(q, -scale, bias$x))
+}
+
+# Model-averaged CDF at rows q with per-row model scales; 'ok' is FALSE where
+# a continuous pair is not resolved within the criterion.
+.petpeese_band_cdf <- function(plan, q, scales){
+
+  cdf <- numeric(length(q))
+  ok  <- rep(TRUE, length(q))
+  for(m in seq_along(plan$models)){
+    model <- plan$models[[m]]
+    scale <- scales[, m]
+    zero  <- scale == 0
+    rows  <- which(!zero)
+    for(term in model$terms){
+      value <- numeric(length(q))
+      if(any(zero)) value[zero] <- .petpeese_prior_component_cdf(term$mu, q[zero])
+      if(length(rows)){
+        if(!term$continuous){
+          value[rows] <- .petpeese_band_atom_cdf(term$mu, term$bias, scale[rows], q[rows])
+        }else if(is.null(term$pair)){
+          ok[rows] <- FALSE
+        }else{
+          out <- .petpeese_band_pair_cdf(term$pair, q[rows], scale[rows], plan$rules)
+          value[rows] <- out$value
+          ok[rows] <- ok[rows] & out$ok
+        }
+      }
+      cdf <- cdf + model$weight * term$weight * value
+    }
+  }
+  list(cdf = cdf, ok = ok)
+}
+
+# Prior quantiles of the PET-PEESE regression line at every x (rows: probs,
+# columns: x_seq). Contexts without a continuous mu/bias pair keep the scalar
+# path; otherwise a coarse subset of x is solved from the full CDF ranges and
+# the remaining x start from brackets around the interpolated solutions.
+.petpeese_prior_quantile_band <- function(context, x_seq, probs){
+
+  plan <- .petpeese_band_plan(context)
+  if(!plan$continuous){
+    return(vapply(x_seq, function(se) .petpeese_prior_cdf_quantile(context, se, probs), numeric(length(probs))))
+  }
+
+  n_x <- length(x_seq)
+  n_p <- length(probs)
+  se  <- rep(x_seq, each = n_p)
+  p   <- rep(probs, times = n_x)
+  scales <- vapply(plan$models, function(model){
+    vapply(x_seq, function(x) .petpeese_prior_scale(model$type, x, plan$direction_sign), numeric(1))
+  }, numeric(n_x))
+  scales <- matrix(scales, nrow = n_x)[rep(seq_len(n_x), each = n_p), , drop = FALSE]
+  out   <- rep(NA_real_, n_x * n_p)
+  exact <- rep(FALSE, n_x * n_p)
+
+  evaluate <- function(cells, x){
+    value <- .petpeese_band_cdf(plan, x, scales[cells, , drop = FALSE])
+    exact[cells[!value$ok]] <<- TRUE
+    value$cdf
+  }
+  # Bracket expansion, then Illinois (modified regula falsi) iterations with a
+  # bisection safeguard, to the tolerance of the scalar quantile search.
+  solve <- function(cells, lo, hi, width){
+    flo <- evaluate(cells, lo)
+    fhi <- evaluate(cells, hi)
+    for(iter in seq_len(80L)){
+      down <- !exact[cells] & flo >= p[cells]
+      up   <- !exact[cells] & fhi <  p[cells]
+      if(!any(down | up)) break
+      if(any(down)){
+        hi[down]  <- lo[down]
+        fhi[down] <- flo[down]
+        lo[down]  <- lo[down] - width[down]
+        flo[down] <- evaluate(cells[down], lo[down])
+      }
+      if(any(up)){
+        lo[up]  <- hi[up]
+        flo[up] <- fhi[up]
+        hi[up]  <- hi[up] + width[up]
+        fhi[up] <- evaluate(cells[up], hi[up])
+      }
+      width[down | up] <- 2 * width[down | up]
+    }
+    exact[cells[!exact[cells] & (flo >= p[cells] | fhi < p[cells])]] <<- TRUE
+    gl   <- flo - p[cells]
+    gh   <- fhi - p[cells]
+    side <- integer(length(cells))
+    last_width <- hi - lo
+    for(iter in seq_len(200L)){
+      active <- !exact[cells] & (hi - lo) > 1e-8 * pmax(1, abs(lo), abs(hi))
+      if(!any(active)) break
+      a <- which(active)
+      x <- (lo[a] * gh[a] - hi[a] * gl[a]) / (gh[a] - gl[a])
+      bisect <- !is.finite(x) | x <= lo[a] | x >= hi[a] |
+        (iter %% 4L == 0L & (hi[a] - lo[a]) > .5 * last_width[a])
+      x[bisect] <- lo[a][bisect] / 2 + hi[a][bisect] / 2
+      if(iter %% 4L == 0L) last_width[a] <- hi[a] - lo[a]
+      g <- evaluate(cells[a], x) - p[cells[a]]
+      above <- g >= 0
+      i <- a[above]
+      hi[i] <- x[above]
+      gh[i] <- g[above]
+      gl[i] <- ifelse(side[i] == 1L, gl[i] / 2, gl[i])
+      side[i] <- 1L
+      i <- a[!above]
+      lo[i] <- x[!above]
+      gl[i] <- g[!above]
+      gh[i] <- ifelse(side[i] == -1L, gh[i] / 2, gh[i])
+      side[i] <- -1L
+    }
+    resolved <- !exact[cells]
+    out[cells[resolved]] <<- hi[resolved]
+    for(i in cells[!resolved]){
+      out[i] <<- .petpeese_prior_cdf_one_quantile(context, se[i], p[i])
+    }
+    invisible(NULL)
+  }
+
+  closed  <- vapply(seq_along(out), function(i) .petpeese_prior_fast_quantile(context, se[i], p[i]), numeric(1))
+  out[is.finite(closed)] <- closed[is.finite(closed)]
+  pending <- !is.finite(closed)
+  x_index <- rep(seq_len(n_x), each = n_p)
+
+  coarse_x <- unique(round(seq(1, n_x, length.out = min(n_x, 33L))))
+  coarse   <- which(pending & x_index %in% coarse_x)
+  if(length(coarse)){
+    unique_se <- unique(se[coarse])
+    ranges <- vapply(unique_se, function(x) .petpeese_prior_cdf_range(context, x), numeric(2))
+    index  <- match(se[coarse], unique_se)
+    lo <- ranges[1L, index]
+    hi <- ranges[2L, index]
+    usable <- is.finite(lo) & is.finite(hi) & lo < hi
+    for(i in coarse[!usable]){
+      out[i] <- .petpeese_prior_cdf_one_quantile(context, se[i], p[i])
+    }
+    if(any(usable)){
+      solve(coarse[usable], lo[usable], hi[usable],
+        pmax(1, hi[usable] - lo[usable], abs(lo[usable]), abs(hi[usable])))
+    }
+  }
+
+  fine <- which(pending & !(x_index %in% coarse_x))
+  if(length(fine)){
+    grid   <- matrix(out, nrow = n_p)
+    guess  <- matrix(NA_real_, n_p, n_x)
+    spread <- matrix(NA_real_, n_p, n_x)
+    for(j in seq_len(n_p)){
+      known <- coarse_x[is.finite(grid[j, coarse_x])]
+      guess[j, ] <- stats::approx(x_seq[known], grid[j, known], x_seq, rule = 2)$y
+      # Bracket half-width: the change across the enclosing coarse interval.
+      cell <- findInterval(seq_len(n_x), known, all.inside = TRUE)
+      spread[j, ] <- abs(grid[j, known[cell + 1L]] - grid[j, known[cell]])
+    }
+    g <- as.vector(guess)[fine]
+    d <- as.vector(spread)[fine] + 1e-6 * pmax(1, abs(g))
+    solve(fine, g - d, g + d, 2 * d)
+  }
+
+  matrix(out, nrow = n_p)
 }
