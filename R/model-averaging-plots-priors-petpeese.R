@@ -859,9 +859,10 @@
 #   P(Y <= q) = F_mu(x_lo) + int_{F_mu(x_lo)}^{F_mu(x_hi)} H(Q_mu(u)) du + O(eps).
 # The window is integrated with Gauss-Kronrod (15/7) panels whose boundaries
 # combine edges graded toward both window ends with, for every row, the
-# images of fixed bias quantiles (the anchors of the scalar partition), so no
-# transition of H can fall between the nodes of one panel; the two end
-# slivers are split geometrically and bounded by monotonicity. Rows whose
+# images of fixed bias quantiles (the anchors of the scalar partition), which
+# bounds the change of H within each panel by the gap between consecutive
+# anchor probabilities; the two end slivers are split geometrically and
+# bounded by monotonicity. Rows whose
 # error estimate exceeds the criterion of .petpeese_prior_probability_integral()
 # are retried with E_b[F_mu(q - s * b)] on bias-coordinate panels anchored at
 # the images of fixed mu quantiles and with finer windowed panels, and any
@@ -924,9 +925,9 @@
 }
 
 # Quantiles at node probabilities given in both tails. Default-range priors
-# use the base quantile of the smaller represented tail directly (nonfinite
-# nodes make their rows unresolved); truncated priors use the component's
-# checked quantile.
+# use the base quantile of the smaller represented tail directly (infinite
+# nodes give the limits of H, NaN nodes make their rows unresolved);
+# truncated priors use the component's checked quantile.
 .petpeese_band_quantile_function <- function(component){
 
   if(!.is_prior_default_range(component$prior)){
@@ -970,12 +971,17 @@
   if(is.null(bias_range) || is.null(bias_knots)){
     return(NULL)
   }
+  # Without finite effect anchors the bias-coordinate rule is skipped.
+  mu_knots <- quantiles(mu, anchors)
+  if(!is.null(mu_knots)){
+    mu_knots <- c(mu_knots, .petpeese_band_zero_density(mu$prior))
+  }
   list(
     mu           = mu,
     bias         = bias,
     bias_range   = bias_range,
     bias_knots   = c(bias_knots, .petpeese_band_zero_density(bias$prior)),
-    mu_knots     = c(quantiles(mu, anchors), .petpeese_band_zero_density(mu$prior)),
+    mu_knots     = mu_knots,
     mu_zero      = .petpeese_band_zero_density(mu$prior),
     bias_cdf     = .petpeese_band_cdf_functions(bias$prior),
     mu_cdf       = .petpeese_band_cdf_functions(mu$prior)$cdf,
@@ -1022,7 +1028,6 @@
 
   n <- nrow(anchor_lower)
   low_bound <- edges$lower[[1L]]
-  high_bound <- edges$lower[[length(edges$lower)]]
   inside <- is.finite(anchor_lower) & is.finite(anchor_upper) &
     anchor_lower > low_bound & anchor_upper > edges$upper[[length(edges$upper)]]
   anchor_lower[!inside] <- low_bound

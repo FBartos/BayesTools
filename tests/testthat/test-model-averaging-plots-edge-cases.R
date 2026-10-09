@@ -111,14 +111,21 @@ test_that("vectorized PET-PEESE prior bands reproduce the scalar quantiles", {
     }, numeric(1)))
     spike * stats::pcauchy(q / s) + (1 - spike) * slab
   }
+  # The quantile solver's tolerance is 1e-8 * max(1, |q|) in x; near a spike
+  # the CDF moves far more than 2e-7 within it, so each quantile is checked
+  # against the reference CDF at both ends of its tolerance.
+  expect_quantiles <- function(quantiles, reference){
+    tolerance <- 1e-8 * pmax(1, abs(quantiles))
+    expect_true(all(vapply(quantiles - tolerance, reference, numeric(1)) <= probs + 2e-7))
+    expect_true(all(vapply(quantiles + tolerance, reference, numeric(1)) >= probs - 2e-7))
+  }
   two_sided <- prior_PEESE("cauchy", list(0, 1), truncation = list(lower = -Inf, upper = Inf))
   x <- c(5e-5, 1e-4, 1.5e-4)
   context <- .petpeese_prior_cdf_context(list(two_sided), list(prior("lognormal", list(-1, .5))), 1)
   band <- .petpeese_prior_quantile_band(context, x, probs)
   for(i in seq_along(x)){
-    F <- vapply(band[, i], cauchy_oracle, numeric(1), s = x[i]^2,
-      density = function(z) stats::dlnorm(z, -1, .5), lower = 0)
-    expect_lte(max(abs(F - probs)), 2e-7)
+    expect_quantiles(band[, i], function(q) cauchy_oracle(q, x[i]^2,
+      density = function(z) stats::dlnorm(z, -1, .5), lower = 0))
   }
   mu <- prior_mixture(list(prior("point", list(0), prior_weights = 3), prior("normal", list(0, .7), prior_weights = 2)),
     is_null = c(TRUE, FALSE))
@@ -126,8 +133,18 @@ test_that("vectorized PET-PEESE prior bands reproduce the scalar quantiles", {
   x <- c(1e-4, 3e-4, 6e-4)
   band <- .petpeese_prior_quantile_band(context, x, probs)
   for(i in seq_along(x)){
-    F <- vapply(band[, i], cauchy_oracle, numeric(1), s = x[i]^2,
-      density = function(z) stats::dnorm(z, 0, .7), lower = -Inf, spike = .6)
+    expect_quantiles(band[, i], function(q) cauchy_oracle(q, x[i]^2,
+      density = function(z) stats::dnorm(z, 0, .7), lower = -Inf, spike = .6))
+  }
+
+  # An effect prior whose anchor quantiles are not representable skips the
+  # bias-coordinate rule; the band still meets the CDF criterion.
+  context <- .petpeese_prior_cdf_context(list(prior_PET("t", list(0, 1, 3))), list(prior("gamma", list(.019, 1))), 1)
+  expect_null(.petpeese_band_plan(context)$models[[1L]]$terms[[1L]]$pair$mu_knots)
+  x <- c(.05, .2, .6)
+  band <- .petpeese_prior_quantile_band(context, x, probs)
+  for(i in seq_along(x)){
+    F <- vapply(band[, i], .petpeese_prior_cdf, numeric(1), context = context, se = x[i])
     expect_lte(max(abs(F - probs)), 2e-7)
   }
 
