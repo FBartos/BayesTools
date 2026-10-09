@@ -15,9 +15,6 @@
 #' @exportS3Method
 print.BayesTools_table <- function(x, ...){
 
-  representation_notes <- unique(unlist(lapply(x, function(column){
-    attr(column, "representation_note", exact = TRUE)
-  }), use.names = FALSE))
   # print formatting
   # n_models is row-aligned (one denominator per table row), so the Models
   # column must see the full vector rather than n_models[[column]].
@@ -49,8 +46,6 @@ print.BayesTools_table <- function(x, ...){
   for(i in seq_along(attr(x, "footnotes"))){
     cat(paste0(attr(x, "footnotes")[i], "\n"))
   }
-
-  for(note in representation_notes) cat(paste0("Note: ", note, "\n"))
 
   # print warnings in red
   for(i in seq_along(attr(x, "warnings"))){
@@ -150,9 +145,6 @@ format_BF <- function(BF, logBF = FALSE, BF01 = FALSE, inclusion = FALSE){
   attr(out, "carrier_logBF") <- logBF
   attr(out, "carrier_BF01") <- BF01
   attr(out, "numerical_diagnostics") <- diagnostics
-  if(!logBF && any(is.finite(log_BF) & (out == 0 | is.infinite(out)), na.rm = TRUE)){
-    attr(out, "representation_note") <- "Finite log Bayes factors are available for natural-scale values outside the floating-point range."
-  }
   class(out) <- unique(c("BayesTools_BF", class(out)))
   out
 }
@@ -175,7 +167,7 @@ format_BF <- function(BF, logBF = FALSE, BF01 = FALSE, inclusion = FALSE){
 .BF_carrier_drop <- function(x){
 
   for(attribute in .BF_carrier_attributes()) attr(x, attribute) <- NULL
-  for(attribute in c("log_BF", "log_prior_height", "log_posterior_height", "orientation", "representation_note")) attr(x, attribute) <- NULL
+  for(attribute in c("log_BF", "log_prior_height", "log_posterior_height", "orientation")) attr(x, attribute) <- NULL
   if(!any(!is.na(attr(x, "bound_operator")))) class(x) <- setdiff(class(x), "BayesTools_BF")
   x
 }
@@ -204,10 +196,6 @@ format_BF <- function(BF, logBF = FALSE, BF01 = FALSE, inclusion = FALSE){
       if(length(values) == length(x)) attr(out, attribute) <- values[index]
     }
     attr(out, "orientation") <- attr(x, "orientation", exact = TRUE)
-    if(!isTRUE(attr(out, "logBF")) &&
-       any(is.finite(logs[index]) & (out == 0 | is.infinite(out)), na.rm = TRUE)){
-      attr(out, "representation_note") <- attr(x, "representation_note", exact = TRUE)
-    }
     class(out) <- unique(c("BayesTools_BF", class(out)))
   }
   if(any(!is.na(attr(out, "bound_operator", exact = TRUE)))){
