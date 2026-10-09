@@ -1,4 +1,5 @@
 # version 0.3.1
+- row-wise prior log densities evaluate contrast-coded factor priors and multivariate Normal, t and point vector priors for all posterior rows in one joint density call instead of a per-row scalar fallback; every row keeps the same joint density.
 - factor marginals retain their structural weights when a scalar prior law is unavailable. Ordered expression totals produce the declared measure refusal before numeric range or density calculations, preserving exact zero projections.
 - combined PETPEESE posterior curves clearly refuse 'individual = TRUE', directing individual densities to the PET or PEESE selectors.
 - fixed spike inclusion uses its declared active component in weighted conditional support. Supported scalar additive formula grids retain declared atom freedom and support while exact point ordinates remain unknown.

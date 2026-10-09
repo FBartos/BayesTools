@@ -245,6 +245,20 @@ JAGS_marglik_priors_rows_evaluator <- function(prior_list){
     })
   }
 
+  # Contrast-coded factors carry one joint vector prior over their coordinates,
+  # evaluated exactly as the scalar bridge evaluator does for each row.
+  if(is.prior.factor(prior_object) && !is.prior.ordered(prior_object) &&
+     !is.prior.mixture(prior_object) &&
+     (is.prior.orthonormal(prior_object) || is.prior.meandif(prior_object))){
+    prior_object$parameters[["K"]] <- .get_prior_factor_levels(prior_object)
+    return(.bt_JAGS_marglik_compile_vector_prior_rows(prior_object, parameter_name))
+  }
+  if(is.prior.vector(prior_object) && !is.prior.factor(prior_object) &&
+     !is.prior.mixture(prior_object) &&
+     prior_object[["distribution"]] %in% c("mnormal", "mt", "mpoint")){
+    return(.bt_JAGS_marglik_compile_vector_prior_rows(prior_object, parameter_name))
+  }
+
   if(is.prior.PET(prior_object)){
     parameter_name <- "PET"
   }else if(is.prior.PEESE(prior_object)){
@@ -295,6 +309,36 @@ JAGS_marglik_priors_rows_evaluator <- function(prior_list){
   }
 
   return(NULL)
+}
+
+
+# Joint vector priors evaluate every row in one density call; each row has the
+# same multivariate density as the scalar bridge evaluator, and point-mass
+# vectors contribute zero as they do there.
+.bt_JAGS_marglik_compile_vector_prior_rows <- function(prior_object, parameter_name){
+
+  force(prior_object)
+  n_coordinates <- prior_object$parameters[["K"]]
+  parameter_names <- if(n_coordinates == 1L){
+    parameter_name
+  }else{
+    paste0(parameter_name, "[", seq_len(n_coordinates), "]")
+  }
+
+  if(identical(prior_object[["distribution"]], "mpoint")){
+    return(function(samples) numeric(nrow(samples)))
+  }
+
+  function(samples){
+    if(!all(parameter_names %in% colnames(samples)))
+      .bt_JAGS_marglik_missing_columns("'samples' does not contain all monitored vector prior parameters.")
+    if(nrow(samples) == 0L){
+      return(numeric())
+    }
+
+    values <- as.matrix(samples[, parameter_names, drop = FALSE])
+    return(unname(lpdf(prior_object, values)))
+  }
 }
 
 

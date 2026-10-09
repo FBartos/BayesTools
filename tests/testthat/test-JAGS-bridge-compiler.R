@@ -112,6 +112,65 @@ test_that("row prior fallback preserves named numeric data-frame rows", {
   )
 })
 
+test_that("joint factor and vector priors evaluate all rows without the scalar fallback", {
+
+  data <- data.frame(f = factor(rep(c("a", "b", "c"), 2)))
+  meandif <- JAGS_formula(~f, "mu", data, list(
+    intercept = prior("normal", list(0, 1)),
+    f = prior_factor("mnormal", list(0, .35), contrast = "meandif")
+  ))$prior_list
+  orthonormal <- prior_factor("mt", list(0, .5, 3), contrast = "orthonormal")
+  attr(orthonormal, "levels") <- 4L
+  prior_lists <- list(
+    meandif,
+    list(o = orthonormal),
+    list(v = prior("mt", list(.2, .8, 5, 3)), p = prior("mpoint", list(0, 2)))
+  )
+  draws <- c(-1.3, -.2, 0, .4, 2.5, 7)
+  samples_for <- function(prior_list){
+    names <- unlist(lapply(names(prior_list), function(name){
+      prior_object <- prior_list[[name]]
+      if(is.prior.factor(prior_object) && !is.prior.treatment(prior_object)){
+        k <- BayesTools:::.get_prior_factor_levels(prior_object)
+      }else if(is.prior.vector(prior_object)){
+        k <- prior_object$parameters[["K"]]
+      }else{
+        k <- 1L
+      }
+      if(k == 1L) name else paste0(name, "[", seq_len(k), "]")
+    }))
+    matrix(draws[(seq_len(6L * length(names)) - 1L) %% length(draws) + 1L] *
+      rep(seq_along(names), each = 6L) / 2, nrow = 6L,
+      dimnames = list(NULL, names))
+  }
+
+  for(prior_list in prior_lists){
+    samples <- samples_for(prior_list)
+    expected <- vapply(seq_len(nrow(samples)), function(i){
+      JAGS_marglik_priors(samples[i, ], prior_list)
+    }, numeric(1))
+    expect_true(all(is.finite(expected)))
+    local({
+      local_mocked_bindings(
+        .bt_JAGS_bridge_compile_prior_list_evaluator = function(...){
+          stop("scalar row fallback used")
+        }
+      )
+      evaluator <- JAGS_marglik_priors_rows_evaluator(prior_list)
+      expect_equal(evaluator(samples), expected, tolerance = 1e-12)
+      expect_equal(evaluator(as.data.frame(samples)), expected, tolerance = 1e-12)
+      expect_equal(evaluator(samples[3L, , drop = FALSE]), expected[3L], tolerance = 1e-12)
+      expect_length(evaluator(samples[FALSE, , drop = FALSE]), 0L)
+      vector_column <- grep("\\[1\\]$", colnames(samples), value = TRUE)[1L]
+      expect_error(
+        evaluator(samples[, setdiff(colnames(samples), vector_column), drop = FALSE]),
+        "'samples' does not contain all monitored vector prior parameters.",
+        fixed = TRUE
+      )
+    })
+  }
+})
+
 test_that("inverse-gamma coordinates are read only from the prior's own columns", {
 
   factor_prior <- prior_factor("invgamma", list(2, 1), contrast = "independent")
