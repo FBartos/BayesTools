@@ -72,7 +72,19 @@ test_that("vectorized PET-PEESE prior bands reproduce the scalar quantiles", {
     prior_PEESE("cauchy", list(0, 5), prior_weights = 1))
   context <- .petpeese_prior_cdf_context(bias, list(mu, mu, mu), c(2, 1, 1) / 4)
   x <- seq(0, 1, length.out = 101)
-  check_band(context, x, c(1L, 2L, 11L, 37L, 101L))
+  band <- check_band(context, x, c(1L, 2L, 11L, 37L, 101L))
+  # Independent physical-coordinate CDF of the same ensemble at se = .5.
+  pair_cdf <- function(q, s, scale){
+    spike <- if(q > 0) 2 / pi * atan(q / (s * scale)) else 0
+    slab <- stats::integrate(function(b) stats::pnorm(q - s * b, 0, .7) * 2 * stats::dcauchy(b, 0, scale),
+      0, Inf, rel.tol = 1e-11, abs.tol = 1e-13)$value
+    (spike + slab) / 2
+  }
+  oracle <- function(q){
+    no_bias <- (as.numeric(q >= 0) + stats::pnorm(q, 0, .7)) / 2
+    (2 * no_bias + pair_cdf(q, .5, 1) + pair_cdf(q, .5^2, 5)) / 4
+  }
+  expect_lte(max(abs(vapply(band[, 51L], oracle, numeric(1)) - probs)), 2e-7)
 
   # Negative effect direction and a half-normal bias, against an independent
   # physical-coordinate integral: P(Y <= q) = E_b[Phi(q + se * b; .3, .5)].
