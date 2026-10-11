@@ -69,35 +69,53 @@
   return(unique(aliases))
 }
 
+# The names under which a stored density or ordinate belongs to one level of a
+# marginal posterior, for the producer, the child resolver and the
+# revalidation of a scalar level: the list name, the level name and level
+# labels, 'parameter[x]' for each of them, and the factor cell names.
+.posterior_density_level_aliases <- function(parameter, sample_name = NULL,
+                                             level_name = NULL, level = NULL,
+                                             factor_cell_names = NULL){
+
+  labels <- Filter(Negate(is.null), list(sample_name, level_name, level))
+  qualified <- if(!is.null(parameter)){
+    lapply(labels, function(label) paste0(parameter, "[", label, "]"))
+  }
+
+  return(.posterior_density_aliases(labels, qualified, factor_cell_names))
+}
+
 .posterior_density_sample_aliases <- function(samples, sample_name = NULL){
 
+  parameter         <- attr(samples, "parameter", exact = TRUE)
+  level_name        <- attr(samples, "level_name", exact = TRUE)
+  level             <- attr(samples, "level", exact = TRUE)
+  factor_cell_names <- attr(samples, "factor_cell_names", exact = TRUE)
+
+  if(is.null(level_name) && is.null(level)){
+    return(.posterior_density_aliases(sample_name, parameter, factor_cell_names))
+  }
+
   return(.posterior_density_aliases(
-    sample_name,
-    attr(samples, "parameter", exact = TRUE),
-    attr(samples, "level_name", exact = TRUE),
-    attr(samples, "factor_cell_names", exact = TRUE)
+    parameter,
+    .posterior_density_level_aliases(parameter, sample_name, level_name, level,
+                                     factor_cell_names)
   ))
 }
 
 .posterior_density_child_aliases <- function(parent, child, sample_name = NULL){
 
   parent_parameter <- attr(parent, "parameter", exact = TRUE)
-  child_level <- attr(child, "level_name", exact = TRUE)
-  if(is.null(child_level)){
-    child_level <- attr(child, "level", exact = TRUE)
-  }
 
   return(.posterior_density_aliases(
-    sample_name,
     attr(child, "parameter", exact = TRUE),
-    child_level,
-    if(!is.null(parent_parameter) && !is.null(sample_name)){
-      paste0(parent_parameter, "[", sample_name, "]")
-    },
-    if(!is.null(parent_parameter) && !is.null(child_level)){
-      paste0(parent_parameter, "[", child_level, "]")
-    },
-    attr(child, "factor_cell_names", exact = TRUE)
+    .posterior_density_level_aliases(
+      parent_parameter,
+      sample_name,
+      attr(child, "level_name", exact = TRUE),
+      attr(child, "level", exact = TRUE),
+      attr(child, "factor_cell_names", exact = TRUE)
+    )
   ))
 }
 

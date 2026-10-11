@@ -5102,6 +5102,94 @@ test_that("N08 equal simplex coefficients and omitted coefficients keep their me
   expect_identical(omitted$bounds, c(0, 5))
 })
 
+test_that("stored level densities and ordinates under the package's qualified labels are accepted", {
+
+  # Formula-level densities labelled 'mu_x[1SD]' or '1SD' belong to the level
+  # (producer, child resolver and revalidation share one alias rule).
+  set.seed(1)
+  n <- 400
+  make_part <- function(values, name){
+    class(values) <- c("mixed_posteriors", "mixed_posteriors.simple",
+                       "mixed_posteriors.formula", class(values))
+    values <- .bt_meta_set(values, "draw_index", seq_along(values))
+    values <- attach_test_model_probabilities(values, 1)
+    values <- .bt_draws_set_component(values, source = "model", component = rep(1, length(values)))
+    attr(values, "parameter") <- name
+    values <- .bt_meta_set(values, "formula_parameter", "mu")
+    attr(values, "prior_list") <- prior("normal", list(0, 1))
+    values
+  }
+  samples <- list(mu_intercept = make_part(rep(0, n), "mu_intercept"),
+                  mu_x = make_part(rnorm(n, .3, .5), "mu_x"))
+  class(samples) <- c("mixed_posteriors", "list")
+  grid <- seq(-3, 3, length.out = 301)
+  expected <- c(`-1SD` = 0.42328026, `0SD` = 0.59860868, `1SD` = 0.42328026)
+  for(make_label in list(function(level) paste0("mu_x[", level, "]"), function(level) level)){
+    densities <- lapply(names(expected), function(level) posterior_density_attribute(
+      x = grid, y = dnorm(grid, .3, .5), method = "formula-density",
+      density_method = "precomputed", parameter = make_label(level)))
+    marginal <- marginal_posterior(
+      .bt_meta_set(samples, "posterior_density", setNames(densities, c("a", "b", "c"))),
+      parameter = "mu_x", formula = y ~ x, prior_samples = TRUE
+    )
+    for(i in seq_along(marginal)){
+      marginal[[i]] <- .bt_meta_set(marginal[[i]], "atoms", posterior_atom_attribute())
+    }
+    bf <- Savage_Dickey_BF(marginal, null_hypothesis = 0, silent = TRUE,
+                           density_method = "precomputed")
+    stored <- dnorm(0, .3, .5)
+    prior_height <- vapply(marginal, function(level){
+      BayesTools:::.prior_linear_density_height(.bt_meta_get(level, "prior_density"), 0)
+    }, numeric(1))
+    expect_equal(vapply(bf, as.numeric, numeric(1)), prior_height / stored, tolerance = 1e-8)
+    expect_equal(unname(vapply(bf, as.numeric, numeric(1))), unname(expected), tolerance = 1e-6)
+  }
+})
+
+test_that("treatment-factor level ordinates labelled with the qualified level name drive the BF", {
+
+  compiled <- JAGS_formula(~ fac, "mu", data.frame(fac = factor(c("A", "B", "C"))),
+    list(intercept = prior("normal", list(0, 1)),
+         fac = prior_factor("normal", list(0, 1), contrast = "treatment")))
+  fit <- .mock_mixing_fit_for_marginal(
+    cbind(mu_intercept = seq(-1, 1, length.out = 101),
+          "mu_fac[1]" = seq(-2, 2, length.out = 101),
+          "mu_fac[2]" = seq(-1.5, 1.5, length.out = 101)),
+    compiled$prior_list)
+  levels <- marginal_posterior(as_mixed_posteriors(fit, c("mu_intercept", "mu_fac")), "mu_fac",
+                               formula = ~ fac, prior_samples = TRUE)
+  expect_identical(names(levels), c("A", "B", "C"))
+  analytic <- c(A = dnorm(0, sd = 1), B = dnorm(0, sd = sqrt(2)), C = dnorm(0, sd = sqrt(2))) / .5
+
+  for(label in list(function(level) paste0("mu_fac[", level, "]"), function(level) level)){
+    stored <- setNames(lapply(names(levels), function(level)
+      posterior_ordinate_attribute(0, .5, "probe", "precomputed", parameter = label(level))),
+      names(levels))
+    labelled <- levels
+    posterior_metadata(labelled, "posterior_ordinate") <- stored
+    bf <- Savage_Dickey_BF(labelled, 0, silent = TRUE, density_method = "precomputed")
+    expect_equal(vapply(bf, as.numeric, numeric(1)), analytic, tolerance = 1e-6)
+    # the scalar level resolved through the same rule
+    child <- BayesTools:::.posterior_precomputed_child(labelled, labelled[["B"]], "B", 0, "precomputed")
+    expect_equal(as.numeric(BayesTools:::.Savage_Dickey_BF.fun(
+      child, 0, normal_approximation = FALSE, silent = TRUE, density_method = "precomputed")),
+      analytic[["B"]], tolerance = 1e-6)
+    point <- hypothesis_BF(labelled, hypothesis = "mu_fac[B] = 0", density_method = "precomputed")
+    expect_equal(attr(point, "raw_BF"), analytic[["B"]], tolerance = 1e-6)
+  }
+
+  # a label naming another level is not accepted
+  other <- levels
+  posterior_metadata(other, "posterior_ordinate") <- setNames(lapply(names(levels), function(level)
+    posterior_ordinate_attribute(0, .5, "probe", "precomputed", parameter = "mu_fac[C]")), names(levels))
+  child <- BayesTools:::.posterior_precomputed_child(other, other[["B"]], "B", 0, "precomputed")
+  expect_error(
+    BayesTools:::.Savage_Dickey_BF.fun(child, 0, normal_approximation = FALSE, silent = TRUE,
+                                       density_method = "precomputed"),
+    "requires valid posterior ordinate or posterior density metadata"
+  )
+})
+
 # File-level skips: All remaining tests in this file require pre-fitted models
 skip_if_not_visual_fixture_tests()
 skip_if_no_fits()

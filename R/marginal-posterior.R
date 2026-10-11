@@ -1992,15 +1992,11 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
 
   for(i in seq_along(marginal)){
     sample_name <- if(!is.null(sample_names)) sample_names[[i]] else NULL
-    child_level <- attr(marginal[[i]], "level_name", exact = TRUE)
-    if(is.null(child_level)){
-      child_level <- attr(marginal[[i]], "level", exact = TRUE)
-    }
-    aliases <- .posterior_density_aliases(
+    aliases <- .posterior_density_level_aliases(
+      parameter,
       sample_name,
-      child_level,
-      if(!is.null(sample_name)) paste0(parameter, "[", sample_name, "]"),
-      if(!is.null(child_level)) paste0(parameter, "[", child_level, "]"),
+      attr(marginal[[i]], "level_name", exact = TRUE),
+      attr(marginal[[i]], "level", exact = TRUE),
       attr(marginal[[i]], "factor_cell_names", exact = TRUE)
     )
 
