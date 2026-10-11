@@ -119,6 +119,45 @@ test_that("level targets require the same complete declared joint context", {
   expect_s3_class(hypothesis_BF(first, hypothesis = "mu_fac[A] - mu_fac[B] > 0", parameter = "mu_fac", seed = 19), "BayesTools_hypothesis_BF")
 })
 
+test_that("explicit-level regions over one linear combination use the exact prior mass", {
+
+  independent <- .hypothesis_factor_marginal_for_test(independent = TRUE)
+  odds <- function(p) p / (1 - p)
+  difference <- odds(stats::pnorm(0.5, sd = sqrt(2), lower.tail = FALSE))
+  interval <- odds(stats::pnorm(1) - stats::pnorm(-1))
+  prior_odds <- function(posterior, hypothesis, seed){
+    hypothesis_BF(posterior, hypothesis = hypothesis, parameter = "mu_fac", columns = "all",
+                  seed = seed)[["prior"]]
+  }
+
+  # independent N(0, 1) levels: P(A > 0) = 1/2 and A - B ~ N(0, 2) exactly,
+  # whatever the seed of the (unused) sampled joint-context prior draws
+  for(seed in 1:2){
+    expect_equal(prior_odds(independent, "mu_fac[A] > 0", seed), 1, tolerance = 1e-12)
+    expect_equal(prior_odds(independent, "mu_fac[A] > mu_fac[B] + 0.5", seed), difference, tolerance = 1e-12)
+    expect_equal(prior_odds(independent, "mu_fac[A] > -1 & mu_fac[A] < 1", seed), interval, tolerance = 1e-12)
+  }
+
+  # a treatment baseline is a constant offset of the same combination:
+  # B - A with A = 0 and B ~ N(0, 1)
+  treatment <- .hypothesis_factor_marginal_for_test()
+  expect_equal(prior_odds(treatment, "mu_fac[B] > mu_fac[A] + 0.5", 1),
+               odds(stats::pnorm(0.5, lower.tail = FALSE)), tolerance = 1e-12)
+
+  # the mass carries the deterministic route; regions of two different
+  # combinations keep the sampled joint-context draws
+  region_mass <- function(hypothesis){
+    statement <- hypothesis_parse(hypothesis)$statements[[1L]]
+    quantity <- .as_hypothesis_quantities(independent, NULL, list(statement), "mu_fac")[[1L]]
+    .hypothesis_region_mass(quantity, statement$left, prior = TRUE)
+  }
+  expect_identical(attr(region_mass("mu_fac[A] > mu_fac[B] + 0.5"), "route"), "deterministic")
+  expect_equal(as.numeric(region_mass("mu_fac[A] > mu_fac[B] + 0.5")),
+               stats::pnorm(0.5, sd = sqrt(2), lower.tail = FALSE), tolerance = 1e-12)
+  expect_identical(attr(region_mass("mu_fac[A] > 0 & mu_fac[B] > 0"), "route"), "sampled")
+  expect_identical(attr(region_mass("abs(mu_fac[A]) > 1"), "route"), "sampled")
+})
+
 test_that("region BF uses its canonical log before natural representation", {
   reference <- 1.104835212292940058e-312
   reference_log <- -718.30685281944005469

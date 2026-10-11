@@ -298,59 +298,14 @@
       .hypothesis_affine_null(linear, side$value), side$label)
   }
 
-  context <- NULL
-  weights <- NULL
-  space <- NULL
-  offset  <- 0
-  for(symbol in active){
-    level <- marginals[[symbol]]
-    .bt_formula_measure_check(level, "prior_density")
-    level_space <- .bt_linear_weight_space(level)
-    if(!is.null(space) && !identical(space, level_space)){
-      .hypothesis_linear_target_stop("Linear target levels use incompatible weight spaces.", "weight_space")
-    }
-    space <- level_space
-    atoms <- .posterior_atoms_get(level)
-    if(is.null(atoms)){
-      return(NULL)
-    }
-    if(any(atoms$mass > 0)){
-      # a structurally fixed level (a reference level: its prior and
-      # posterior are one point) adds a constant to the combination
-      fixed <- .hypothesis_fixed_level_value(level, atoms)
-      if(is.null(fixed)){
-        return(NULL)
-      }
-      offset <- .hypothesis_affine_sum(offset,
-        .hypothesis_affine_product(linear[["coefficients"]][[symbol]], fixed))
-      next
-    }
-    level_context <- .bt_meta_get(level, "prior_context")
-    if(!.hypothesis_is_prior_density_context(level_context) ||
-       (!is.null(context) && !identical(level_context, context))){
-      return(NULL)
-    }
-    context <- level_context
-    level_weights <- .bt_meta_get(level, "linear_weights")
-    if(is.null(level_weights) ||
-       !is.null(.bt_meta_get(level, "joint_prior_transformation"))){
-      return(NULL)
-    }
-    if(!is.null(dim(level_weights))){
-      if(nrow(level_weights) != 1L){
-        return(NULL)
-      }
-      level_weights <- stats::setNames(as.numeric(level_weights[1L, ]), colnames(level_weights))
-    }
-    if(is.null(names(level_weights))){
-      return(NULL)
-    }
-    coefficient <- linear[["coefficients"]][[symbol]]
-    weights <- .hypothesis_add_linear_weights(weights,
-      .hypothesis_affine_product(coefficient, level_weights))
-    offset <- .hypothesis_affine_sum(offset,
-      .hypothesis_affine_product(coefficient, .hypothesis_level_linear_offset(level)))
+  combination <- .hypothesis_linear_level_combination(marginals, linear[["coefficients"]])
+  if(is.null(combination)){
+    return(NULL)
   }
+  context <- combination[["context"]]
+  weights <- combination[["weights"]]
+  space <- combination[["space"]]
+  offset <- combination[["offset"]]
 
   shift <- list(a = offset, b = 1)
   if(is.null(context) && length(weights) == 0L){
@@ -411,6 +366,73 @@
     evaluation_value = .hypothesis_affine_null(linear, side$value),
     log_jacobian     = log(abs(linear$divisor))
   ))
+}
+
+
+# The joint-context combination of the levels of a linear form: the shared
+# prior context, the summed level weights and the offset of the combination
+# (structurally fixed levels add their value), and the weight space of the
+# levels. 'coefficients' are named by level symbol. NULL when the combination
+# has no certifiable joint prior (see .hypothesis_linear_point_marginal()); a
+# classed refusal for levels in incompatible weight spaces.
+.hypothesis_linear_level_combination <- function(marginals, coefficients) {
+
+  active <- names(coefficients)[coefficients != 0]
+  context <- NULL
+  weights <- NULL
+  space <- NULL
+  offset  <- 0
+  for(symbol in active){
+    level <- marginals[[symbol]]
+    .bt_formula_measure_check(level, "prior_density")
+    level_space <- .bt_linear_weight_space(level)
+    if(!is.null(space) && !identical(space, level_space)){
+      .hypothesis_linear_target_stop("Linear target levels use incompatible weight spaces.", "weight_space")
+    }
+    space <- level_space
+    atoms <- .posterior_atoms_get(level)
+    if(is.null(atoms)){
+      return(NULL)
+    }
+    if(any(atoms$mass > 0)){
+      # a structurally fixed level (a reference level: its prior and
+      # posterior are one point) adds a constant to the combination
+      fixed <- .hypothesis_fixed_level_value(level, atoms)
+      if(is.null(fixed)){
+        return(NULL)
+      }
+      offset <- .hypothesis_affine_sum(offset,
+        .hypothesis_affine_product(coefficients[[symbol]], fixed))
+      next
+    }
+    level_context <- .bt_meta_get(level, "prior_context")
+    if(!.hypothesis_is_prior_density_context(level_context) ||
+       (!is.null(context) && !identical(level_context, context))){
+      return(NULL)
+    }
+    context <- level_context
+    level_weights <- .bt_meta_get(level, "linear_weights")
+    if(is.null(level_weights) ||
+       !is.null(.bt_meta_get(level, "joint_prior_transformation"))){
+      return(NULL)
+    }
+    if(!is.null(dim(level_weights))){
+      if(nrow(level_weights) != 1L){
+        return(NULL)
+      }
+      level_weights <- stats::setNames(as.numeric(level_weights[1L, ]), colnames(level_weights))
+    }
+    if(is.null(names(level_weights))){
+      return(NULL)
+    }
+    coefficient <- coefficients[[symbol]]
+    weights <- .hypothesis_add_linear_weights(weights,
+      .hypothesis_affine_product(coefficient, level_weights))
+    offset <- .hypothesis_affine_sum(offset,
+      .hypothesis_affine_product(coefficient, .hypothesis_level_linear_offset(level)))
+  }
+
+  list(context = context, weights = weights, offset = offset, space = space)
 }
 
 

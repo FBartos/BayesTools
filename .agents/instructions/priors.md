@@ -749,6 +749,17 @@ convolution whose region probability comes only from pieces evaluated as 0
 (a representable probability below 2 * Phi(-10) of their mass under T, e.g. a
 region far below a bounded or nonnegative T).
 
+The prior mass of a `hypothesis_BF()` region over explicit factor levels whose
+comparisons all concern one linear combination of the levels (a single level
+is the combination with coefficient 1, e.g. `mu_fac[A] > mu_fac[B] + 0.5`,
+also through `(`, `!`, `&`, `|`) is the exact mass under the joint-context
+density of that combination, the density its point null uses
+(`.hypothesis_linear_level_combination()`), with `route = "deterministic"`.
+Nonlinear expressions, comparisons of different combinations
+(`mu_fac[A] > 0 & mu_fac[B] > 0`) and levels without their own prior
+context keep the sampled joint-context draws; levels in incompatible weight
+spaces keep them as well, while the point route refuses that case.
+
 For the other prior-region probabilities, integrate the continuous grid's
 piecewise-linear interpolant up to the exact region boundaries (the comparison
 value, or boundaries located by bisection within the cells where a composite

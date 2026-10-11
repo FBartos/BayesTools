@@ -92,6 +92,8 @@
         quantity$parameter, deterministic_only = TRUE, with_diagnostics = TRUE)
       if(!is.null(deterministic)) return(deterministic)
     }
+    deterministic <- .hypothesis_level_region_mass(quantity, side)
+    if(!is.null(deterministic)) return(deterministic)
   }
   if(prior && is.null(quantity$prior_draws)){
     if(is.null(quantity$prior_density)) stop("Prior information is required for region hypotheses.", call. = FALSE)
@@ -103,6 +105,92 @@
     attr(mass, "route") <- "sampled"
   }
   mass
+}
+
+# Prior mass of a region over explicit levels of one factor whose comparisons
+# are all of one linear combination of the levels (a single level is the
+# combination with coefficient 1): the exact mass under the joint-context
+# density of that combination, the density the point route uses, instead of
+# sampled joint-context draws. NULL (the sampled route) for nonlinear
+# expressions, comparisons of different combinations, and levels without a
+# certifiable joint prior; levels in incompatible weight spaces also keep the
+# sampled route, any other refusal propagates.
+.hypothesis_level_region_mass <- function(quantity, side) {
+
+  if(is.null(quantity[["posterior_marginals"]])){
+    return(NULL)
+  }
+  expression <- .hypothesis_side_expression(side)
+  marginals <- .hypothesis_symbol_marginals(quantity, .hypothesis_expression_symbols(expression))
+  if(is.null(marginals)){
+    return(NULL)
+  }
+  target <- .bt_hypothesis_linear_target_name
+  rewritten <- .hypothesis_level_region_rewrite(expression, target)
+  if(is.null(rewritten)){
+    return(NULL)
+  }
+  combination <- tryCatch(
+    .hypothesis_linear_level_combination(marginals, rewritten[["coefficients"]]),
+    BayesTools_linear_target_unavailable = function(condition){
+      if(identical(condition[["reason"]], "weight_space")) NULL else stop(condition)
+    }
+  )
+  if(is.null(combination) || is.null(combination[["context"]]) ||
+     length(combination[["weights"]]) == 0L || all(combination[["weights"]] == 0)){
+    return(NULL)
+  }
+  prior_density <- .prior_density_from_context(
+    combination[["context"]], combination[["weights"]],
+    output_transformation           = "lin",
+    output_transformation_arguments = list(a = combination[["offset"]], b = 1)
+  )
+  .hypothesis_prior_density_prob(prior_density,
+    list(expression = .bt_hypothesis_ast_node(rewritten[["condition"]])), target,
+    deterministic_only = TRUE, with_diagnostics = TRUE)
+}
+
+# A region over levels as the same region over the scalar linear target symbol
+# (the rewrite of hypothesis_linear_target()), through `(`, `!`, `&` and `|`:
+# every comparison leaf must have the same scaled level coefficients. NULL for
+# any other expression or for leaves of different combinations. Returns the
+# rewritten condition and the level coefficients of the combination.
+.hypothesis_level_region_rewrite <- function(expression, target) {
+
+  coefficients <- NULL
+  rewrite <- function(node){
+    fun <- .hypothesis_call_name(node)
+    if(is.null(fun)){
+      return(NULL)
+    }
+    if(fun %in% c("(", "!")){
+      inner <- rewrite(node[[2L]])
+      return(if(is.null(inner)) NULL else as.call(list(node[[1L]], inner)))
+    }
+    if(fun %in% c("&", "|")){
+      left  <- rewrite(node[[2L]])
+      right <- rewrite(node[[3L]])
+      return(if(is.null(left) || is.null(right)) NULL else
+        as.call(list(node[[1L]], left, right)))
+    }
+    if(!fun %in% c("<", "<=", ">", ">=")){
+      return(NULL)
+    }
+    comparison <- .hypothesis_affine_comparison(node, .hypothesis_expression_symbols(node))
+    if(is.null(comparison) || length(comparison$form$coefficients) == 0L){
+      return(NULL)
+    }
+    scaled <- .hypothesis_linear_target_scaled_coefficients(comparison$form)
+    if(is.null(coefficients)){
+      coefficients <<- scaled
+    }else if(!identical(coefficients, scaled)){
+      return(NULL)
+    }
+    call(fun, as.name(target),
+         .hypothesis_linear_target_divide(comparison$value, comparison$form$divisor))
+  }
+  condition <- rewrite(expression)
+  if(is.null(condition)) NULL else list(condition = condition, coefficients = coefficients)
 }
 
 .hypothesis_prior_object_region_mass <- function(quantity, side) {

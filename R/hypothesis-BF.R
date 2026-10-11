@@ -168,8 +168,13 @@
 #' \code{numerical_diagnostics} retain aligned diagnostics; BF formatting uses the
 #' live column carrier, which replacement, arithmetic and Math operations invalidate.
 #' Supported scalar affine and Boolean regions use deterministic prior laws
-#' even when prior draws are available. Unsupported regions retain their sampled
-#' route, or their existing no-draw grid route. Deterministic prior numerical
+#' even when prior draws are available, as do regions over explicit factor
+#' levels whose comparisons are all of one linear combination of the levels
+#' (e.g., \code{mu_fac[A] > mu_fac[B] + 0.5}), which use the exact structural
+#' mass of that combination. Unsupported regions (nonlinear expressions or
+#' comparisons of different combinations, e.g., \code{mu_fac[A] > 0 &
+#' mu_fac[B] > 0}) retain their sampled route, or their existing no-draw grid
+#' route. Deterministic prior numerical
 #' diagnostics (method, absolute error and convergence when available) can be
 #' inspected with \code{attr(result, "prior_numerical_diagnostics")}; they are
 #' row-aligned through subsetting. \code{BF_error} remains Monte Carlo-only and
