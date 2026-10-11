@@ -83,8 +83,15 @@ test_that("posterior-only atomic ownership maps without inventing a prior promis
   promised <- draws
   promised <- .bt_meta_set(promised, "model_probabilities", list(
     prior = .model_probability_pair(c(.25, .75), log(c(.25, .75)), "prior", "ordinary"), posterior = pair))
-  expect_error(posterior_transform(promised, "lin", list(a = 1, b = 2)),
-    "source has no complete declared prior context", fixed = TRUE)
+  # a source that promises a prior but keeps no prior context still transforms:
+  # its values and atoms map, and its prior law is recorded as unavailable
+  transformed <- posterior_transform(promised, "lin", list(a = 1, b = 2))
+  expect_identical(as.numeric(transformed), c(7, 7, 11))
+  expect_identical(as.numeric(posterior_metadata(transformed, "atoms")$locations), c(7, 11))
+  expect_null(posterior_metadata(transformed, "prior_density"))
+  unavailable <- posterior_metadata(transformed, "measure_unavailable")
+  expect_identical(unavailable$measure, "prior_density")
+  expect_identical(unavailable$cause, "missing_source_context")
 })
 
 test_that("scalar omega declarations retain actual log owners and independent support", {
