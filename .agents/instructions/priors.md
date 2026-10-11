@@ -454,11 +454,19 @@ term (X^w W) and a non-Gaussian other term keep the general convolution.
 Two simple continuous terms (after merging) that are not both normal
 and have no Gaussian part are a two-term `convolution`: the 1-D integral over
 the first term (the one with an infinite density at a finite bound when only
-one has such a bound) of its density times the other term's density, split at
+one has such a bound, otherwise a term without a 1/x^2 tail when only the other
+has one) of its density times the other term's density, split at
 the first term's bounds and quantiles and at the images of the other term's
 quantiles and finite bounds, with the conditional-normal budget and
 acceptance criterion; its region probability integrates the first term's
-density times the other term's exact region probability. Where finite bounds
+density times the other term's exact region probability. A term has a 1/x^2 or
+heavier tail when it is a `t` with `df <= 1` and an infinite truncation bound
+or an inverse gamma with shape <= 1 and an infinite upper bound. Known
+limitation: when both terms have such a tail (e.g. a half-Cauchy and an
+inverse-gamma(1) term), QUADPACK can flag the infinite end piece of a region
+with an infinite bound ("roundoff error", "probably divergent") and the
+probability stops, as for a heavy-tailed conditional-normal multiplier below;
+the ordinate is exact. Where finite bounds
 of both terms meet at the value, the ordinate is classified from their
 exponents p (1 for a positive finite density, above 1 for a vanishing one,
 the gamma or beta shape for an infinite one): with e = p_A + p_B - 1 an end of

@@ -663,10 +663,31 @@
   list(prior_list = prior_list, weights = weights, source_transforms = source_transforms)
 }
 
+# A simple continuous term whose density decays like x^-2 or slower: a t with
+# df <= 1 and an infinite truncation bound, an inverse gamma with shape <= 1
+# and an infinite upper bound. The region quadrature over such a term hits the
+# QUADPACK roundoff flag at an infinite end piece.
+.prior_density_route_heavy_tail <- function(prior){
+
+  truncation <- prior$truncation
+  if(identical(prior$distribution, "t")){
+    df <- prior$parameters$df
+    return(is.numeric(df) && length(df) == 1L && isTRUE(df <= 1) &&
+             any(is.infinite(unlist(truncation[c("lower", "upper")], use.names = FALSE))))
+  }
+  if(identical(prior$distribution, "invgamma")){
+    shape <- prior$parameters$shape
+    return(is.numeric(shape) && length(shape) == 1L && isTRUE(shape <= 1) &&
+             identical(truncation$upper, Inf))
+  }
+  FALSE
+}
+
 # Two simple continuous scalar terms (not both normal) plus points: the
 # two-term convolution quadrature over the first term, the one with an
-# infinite density at a finite bound when only one has such a bound. NULL for
-# other combinations.
+# infinite density at a finite bound when only one has such a bound, else the
+# one without a 1/x^2 tail when only the other has one. NULL for other
+# combinations.
 .prior_density_route_convolution <- function(prior_list, weights, source_transforms, n_grid){
 
   groups <- tryCatch(
@@ -707,6 +728,10 @@
     }, logical(1)))
   }, logical(1))
   if(identical(singular, c(FALSE, TRUE))){
+    terms <- terms[2:1]
+  }
+  heavy <- vapply(terms, function(term) .prior_density_route_heavy_tail(term$prior), logical(1))
+  if(identical(heavy, c(TRUE, FALSE))){
     terms <- terms[2:1]
   }
   list(

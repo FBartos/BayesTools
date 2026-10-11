@@ -510,6 +510,89 @@ test_that("a numeric multiply_by owner scale is applied once beside a determinis
                tolerance = 1e-8)
 })
 
+test_that("two-term convolution regions integrate over the term without a 1/x^2 tail", {
+
+  # a 1/x^2-tail term (Cauchy, half-Cauchy, inverse gamma with shape 1) with a
+  # gamma, beta or uniform partner: the region probability integrates the
+  # partner's density times the heavy term's exact region probability in both
+  # list orders (the heavy-tailed first term hit the QUADPACK roundoff flag)
+  heavy <- list(
+    cauchy = list(
+      prior = prior("cauchy", list(0, 1)),
+      lower = function(x) stats::pcauchy(x),
+      upper = function(x) stats::pcauchy(x, lower.tail = FALSE)
+    ),
+    halfcauchy = list(
+      prior = prior("cauchy", list(0, 1), list(0, Inf)),
+      lower = function(x) ifelse(x <= 0, 0, 2 * stats::pcauchy(x) - 1),
+      upper = function(x) ifelse(x <= 0, 1, 2 * stats::pcauchy(x, lower.tail = FALSE))
+    ),
+    invgamma = list(
+      prior = prior("invgamma", list(1, .5)),
+      lower = function(x) ifelse(x <= 0, 0, stats::pgamma(1 / pmax(x, 1e-300), 1, rate = .5, lower.tail = FALSE)),
+      upper = function(x) ifelse(x <= 0, 1, stats::pgamma(1 / pmax(x, 1e-300), 1, rate = .5))
+    )
+  )
+  partners <- list(
+    gamma   = list(prior = prior("gamma", list(2, 1)), density = function(g) stats::dgamma(g, 2, 1), range = c(0, Inf)),
+    beta    = list(prior = prior("beta", list(2, 2)), density = function(g) stats::dbeta(g, 2, 2), range = c(0, 1)),
+    uniform = list(prior = prior("uniform", list(0, 1)), density = function(g) stats::dunif(g, 0, 1), range = c(0, 1))
+  )
+  regions <- list(
+    "theta > 0" = function(term, g) term$upper(-g),
+    "theta < 1" = function(term, g) term$lower(1 - g),
+    "theta < -1 | theta > 1" = function(term, g) term$lower(-1 - g) + term$upper(1 - g)
+  )
+  reference <- function(term, partner, region){
+    knots <- unique(c(partner$range[1L], if(partner$range[1L] < 1 && 1 < partner$range[2L]) 1, partner$range[2L]))
+    sum(vapply(seq_len(length(knots) - 1L), function(i){
+      stats::integrate(function(g) partner$density(g) * region(term, g),
+                       knots[i], knots[i + 1L], rel.tol = 1e-13, subdivisions = 1000L)$value
+    }, numeric(1)))
+  }
+
+  for(term_name in names(heavy)){
+    for(partner_name in names(partners)){
+      for(heavy_first in c(TRUE, FALSE)){
+        terms <- list(a = heavy[[term_name]]$prior, b = partners[[partner_name]]$prior)
+        density <- .prior_linear_combination_density(
+          if(heavy_first) terms else terms[c("b", "a")], c(a = 1, b = 1)
+        )
+        route <- .prior_density_route_from_adaptive(attr(density, "adaptive_evaluation", exact = TRUE))
+        expect_identical(route$type, "convolution")
+        for(hypothesis in names(regions)){
+          label <- paste(term_name, partner_name, if(heavy_first) "heavy first" else "heavy second", hypothesis)
+          probability <- tryCatch(
+            as.numeric(.prior_linear_density_region_probability(
+              density, .hypothesis_prior_region(str2lang(hypothesis), "theta")
+            )),
+            error = function(e) conditionMessage(e)
+          )
+          expect_equal(probability, reference(heavy[[term_name]], partners[[partner_name]], regions[[hypothesis]]),
+                       tolerance = 1e-8, label = label)
+        }
+      }
+    }
+  }
+})
+
+test_that("1/x^2 tails are recognised by family, parameter and truncation", {
+
+  tail <- .prior_density_route_heavy_tail
+  expect_true(tail(prior("cauchy", list(0, 1))))
+  expect_true(tail(prior("t", list(0, 1, .5))))
+  expect_true(tail(prior("cauchy", list(0, 1), list(0, Inf))))
+  expect_true(tail(prior("t", list(0, 1, 1L), list(-Inf, 2))))
+  expect_false(tail(prior("t", list(0, 1, 1.5))))
+  expect_false(tail(prior("t", list(0, 1, 1), list(-2, 2))))
+  expect_true(tail(prior("invgamma", list(1, 1))))
+  expect_true(tail(prior("invgamma", list(.5, 1))))
+  expect_false(tail(prior("invgamma", list(2, 1))))
+  expect_false(tail(prior("invgamma", list(1, 1), list(0, 5))))
+  expect_false(tail(prior("lognormal", list(0, 2))))
+  expect_false(tail(prior("gamma", list(1, 1))))
+})
+
 test_that("mixture region probabilities sum their components and exact point masses", {
 
   intercept <- prior("normal", list(0, 1))
