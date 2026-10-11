@@ -7,6 +7,7 @@ JAGS_marglik_parameters_formula      <- function(samples, formula_list, formula_
   if(length(formula_prior_list) == 0){
     return(list())
   }
+  .check_prior_list_unique_names(formula_prior_list, "formula_prior_list")
 
   parameters <- list()
   random_parameters <- character()

@@ -112,6 +112,54 @@ test_that("row prior fallback preserves named numeric data-frame rows", {
   )
 })
 
+test_that("row-wise prior evaluators validate the prior list as the scalar evaluator does", {
+
+  normal <- prior("normal", list(0, 1))
+  samples <- cbind(mu = c(.3, -.2))
+  invalid_lists <- list(
+    duplicate = list(mu = normal, mu = normal),
+    unnamed = list(normal),
+    partly_named = list(mu = normal, normal),
+    not_priors = list(mu = 1),
+    single_prior = normal
+  )
+  for(prior_list in invalid_lists){
+    scalar <- tryCatch(JAGS_marglik_priors(samples[1L, ], prior_list), error = conditionMessage)
+    expect_type(scalar, "character")
+    expect_error(JAGS_marglik_priors_rows(samples, prior_list), scalar, fixed = TRUE)
+    expect_error(JAGS_marglik_priors_rows_evaluator(prior_list), scalar, fixed = TRUE)
+  }
+  expect_error(JAGS_marglik_priors_rows(samples, invalid_lists$duplicate),
+               "must not contain duplicate names ('mu').", fixed = TRUE)
+  expect_error(JAGS_marglik_priors_rows(samples, invalid_lists$unnamed),
+               "must be a fully named list.", fixed = TRUE)
+
+  # valid and empty lists keep their values
+  expect_equal(JAGS_marglik_priors_rows(samples, list(mu = normal)),
+               stats::dnorm(samples[, 1L], log = TRUE), tolerance = 1e-14)
+  expect_identical(JAGS_marglik_priors_rows(samples, NULL), c(0, 0))
+  expect_identical(JAGS_marglik_priors_rows(samples, list()), c(0, 0))
+})
+
+test_that("formula parameter replay requires a fully named formula prior list", {
+
+  data <- data.frame(x = c(-1, 0, 2, 3))
+  formula <- JAGS_formula(~ 1 + x, parameter = "mu", data = data, prior_list = list(
+    intercept = prior("normal", list(0, 1)), x = prior("normal", list(0, 1))
+  ))
+  samples <- c(mu_intercept = .2, mu_x = .5)
+  replay <- function(formula_prior_list){
+    JAGS_marglik_parameters_formula(samples, list(mu = ~ 1 + x), list(mu = data),
+      formula_prior_list, list(), formula_design_list = list(mu = formula$formula_design))
+  }
+  expect_equal(replay(list(mu = formula$prior_list))$mu, .2 + .5 * data$x, tolerance = 1e-14)
+  expect_error(replay(list(formula$prior_list)), "The 'formula_prior_list' argument must be a fully named list.",
+               fixed = TRUE)
+  expect_error(replay(list(mu = formula$prior_list, formula$prior_list)),
+               "The 'formula_prior_list' argument must be a fully named list.", fixed = TRUE)
+  expect_identical(replay(list()), list())
+})
+
 test_that("joint factor and vector priors evaluate all rows without the scalar fallback", {
 
   data <- data.frame(f = factor(rep(c("a", "b", "c"), 2)))

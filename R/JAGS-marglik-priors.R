@@ -50,6 +50,19 @@ JAGS_marglik_priors                <- function(samples, prior_list){
 }
 
 
+# The prior list of the scalar and the row-wise evaluators: a fully named list
+# of priors with unique names.
+.bt_JAGS_marglik_check_prior_list <- function(prior_list){
+
+  if(!is.list(prior_list))
+    stop("'prior_list' must be a list.", call. = FALSE)
+  if(is.prior(prior_list) | !all(sapply(prior_list, is.prior)))
+    stop("'prior_list' must be a list of priors.", call. = FALSE)
+  .check_prior_list_unique_names(prior_list)
+
+  invisible(TRUE)
+}
+
 .bt_JAGS_marglik_priors <- function(samples, prior_list, emitted_allocations = character()){
 
   # return zero log prior contribution in case that no prior was specified
@@ -57,11 +70,7 @@ JAGS_marglik_priors                <- function(samples, prior_list){
     return(0)
   }
 
-  if(!is.list(prior_list))
-    stop("'prior_list' must be a list.")
-  if(is.prior(prior_list) | !all(sapply(prior_list, is.prior)))
-    stop("'prior_list' must be a list of priors.")
-  .check_prior_list_unique_names(prior_list)
+  .bt_JAGS_marglik_check_prior_list(prior_list)
 
 
   # add the resulting parameters
@@ -180,6 +189,7 @@ JAGS_marglik_priors_rows_evaluator <- function(prior_list){
   if(length(prior_list) == 0L){
     return(function(samples) numeric(nrow(samples)))
   }
+  .bt_JAGS_marglik_check_prior_list(prior_list)
 
   evaluators <- vector("list", length(prior_list))
   allocation_keys <- character()
