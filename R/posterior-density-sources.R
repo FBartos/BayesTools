@@ -71,6 +71,9 @@
   }
 
   for(i in seq_along(source)){
+    if(.posterior_density_foreign_element(source_names, i, aliases, selected_by_name)){
+      next
+    }
     out <- .posterior_density_from_source(
       source             = source[[i]],
       aliases            = aliases,
@@ -88,6 +91,20 @@
   }
 
   return(NULL)
+}
+
+# Inside a container that was itself selected by name, an element with a
+# non-empty name that is not one of the aliases belongs to another level and is
+# skipped by the positional fallback; unnamed elements stay positional.
+.posterior_density_foreign_element <- function(source_names, index, aliases,
+                                               selected_by_name){
+
+  if(!isTRUE(selected_by_name) || is.null(source_names)){
+    return(FALSE)
+  }
+  element_name <- source_names[[index]]
+
+  return(!is.na(element_name) && nzchar(element_name) && !element_name %in% aliases)
 }
 
 .posterior_density_sources <- function(...){
@@ -313,6 +330,9 @@
   }
 
   for(i in seq_along(source)){
+    if(.posterior_density_foreign_element(source_names, i, aliases, selected_by_name)){
+      next
+    }
     out <- c(out, .posterior_ordinate_collect_from_source(
       source             = source[[i]],
       aliases            = aliases,
@@ -383,6 +403,9 @@
   }
 
   for(i in seq_along(source)){
+    if(.posterior_density_foreign_element(source_names, i, aliases, selected_by_name)){
+      next
+    }
     out <- .posterior_ordinate_from_source(
       source             = source[[i]],
       aliases            = aliases,

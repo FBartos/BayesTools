@@ -5190,6 +5190,77 @@ test_that("treatment-factor level ordinates labelled with the qualified level na
   )
 })
 
+test_that("a level never takes another level's stored density or ordinate", {
+
+  # 'list(mu = list(A = dA, B = dB))': level C has no entry and gets none; a
+  # parameter-keyed entry no longer applies to every level.
+  prior_density <- BayesTools:::.prior_linear_combination_density(
+    list(theta = prior("normal", list(0, 1))), c(theta = 1))
+  set.seed(1)
+  make_level <- function(level, mean){
+    x <- rnorm(1000, mean, .5)
+    class(x) <- c("marginal_posterior.simple", "marginal_posterior", class(x))
+    x <- .bt_meta_set(x, "prior_density", prior_density)
+    x <- .bt_meta_set(x, "atoms", posterior_atom_attribute())
+    attr(x, "parameter") <- "mu"
+    attr(x, "level_name") <- level
+    x
+  }
+  grid <- seq(-4, 4, length.out = 801)
+  make_density <- function(mean, method) posterior_density_attribute(
+    grid, dnorm(grid, mean, .5), method = method, density_method = "precomputed")
+  make_ordinate <- function(mean, method) posterior_ordinate_attribute(
+    0, dnorm(0, mean, .5), method = method, density_method = "precomputed")
+  levels <- list(A = make_level("A", .2), B = make_level("B", .6), C = make_level("C", 1.4))
+  class(levels) <- c("marginal_posterior", "list")
+  attr(levels, "parameter") <- "mu"
+  bf_of <- function(parent, level){
+    child <- BayesTools:::.posterior_precomputed_child(
+      parent, parent[[level]], level, 0, "precomputed")
+    list(child = child, bf = function() as.numeric(BayesTools:::.Savage_Dickey_BF.fun(
+      child, 0, normal_approximation = FALSE, silent = TRUE, density_method = "precomputed")))
+  }
+  refusal <- "requires valid posterior ordinate or posterior density metadata"
+
+  # nested container, ordinates
+  nested <- .bt_meta_set(levels, "posterior_ordinate", list(mu = list(
+    A = make_ordinate(.2, "ordinate-A"), B = make_ordinate(.6, "ordinate-B"))))
+  expect_equal(bf_of(nested, "A")$bf(), dnorm(0) / dnorm(0, .2, .5), tolerance = 1e-8)
+  expect_equal(bf_of(nested, "B")$bf(), dnorm(0) / dnorm(0, .6, .5), tolerance = 1e-8)
+  expect_error(bf_of(nested, "C")$bf(), refusal)
+  expect_null(.bt_meta_get(bf_of(nested, "C")$child, "posterior_ordinate"))
+  expect_error(Savage_Dickey_BF(nested, 0, silent = TRUE, density_method = "precomputed"), refusal)
+
+  # nested container, densities, and the plotted density
+  nested <- .bt_meta_set(levels, "posterior_density", list(mu = list(
+    A = make_density(.2, "density-A"), B = make_density(.6, "density-B"))))
+  expect_identical(.bt_meta_get(bf_of(nested, "A")$child, "posterior_density")$method, "density-A")
+  expect_identical(.bt_meta_get(bf_of(nested, "B")$child, "posterior_density")$method, "density-B")
+  expect_null(.bt_meta_get(bf_of(nested, "C")$child, "posterior_density"))
+  expect_equal(bf_of(nested, "A")$bf(), dnorm(0) / dnorm(0, .2, .5), tolerance = 1e-6)
+  expect_error(bf_of(nested, "C")$bf(), refusal)
+  expect_identical(
+    BayesTools:::.plot_data_selected_posterior_density(nested, nested[["A"]], "A")$method,
+    "density-A")
+  expect_null(BayesTools:::.plot_data_selected_posterior_density(nested, nested[["C"]], "C"))
+
+  # an entry keyed by the parameter only is nobody's level
+  flat <- .bt_meta_set(levels, "posterior_density", list(mu = make_density(.2, "density-mu")))
+  for(level in names(levels)){
+    expect_null(.bt_meta_get(bf_of(flat, level)$child, "posterior_density"))
+  }
+  expect_error(Savage_Dickey_BF(flat, 0, silent = TRUE, density_method = "precomputed"), refusal)
+
+  # top-level positional descent and entries named by the level are unchanged
+  by_level <- .bt_meta_set(levels, "posterior_ordinate", list(
+    A = make_ordinate(.2, "ordinate-A"), B = make_ordinate(.6, "ordinate-B"),
+    C = make_ordinate(1.4, "ordinate-C")))
+  expect_equal(vapply(Savage_Dickey_BF(by_level, 0, silent = TRUE, density_method = "precomputed"),
+                      as.numeric, numeric(1)),
+               c(A = dnorm(0) / dnorm(0, .2, .5), B = dnorm(0) / dnorm(0, .6, .5),
+                 C = dnorm(0) / dnorm(0, 1.4, .5)), tolerance = 1e-8)
+})
+
 # File-level skips: All remaining tests in this file require pre-fitted models
 skip_if_not_visual_fixture_tests()
 skip_if_no_fits()

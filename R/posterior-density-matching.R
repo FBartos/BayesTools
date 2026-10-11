@@ -85,6 +85,8 @@
   return(.posterior_density_aliases(labels, qualified, factor_cell_names))
 }
 
+# A level never takes the entry of the bare parent parameter or of another
+# level: the level aliases do not contain the parent parameter.
 .posterior_density_sample_aliases <- function(samples, sample_name = NULL){
 
   parameter         <- attr(samples, "parameter", exact = TRUE)
@@ -96,27 +98,24 @@
     return(.posterior_density_aliases(sample_name, parameter, factor_cell_names))
   }
 
-  return(.posterior_density_aliases(
-    parameter,
-    .posterior_density_level_aliases(parameter, sample_name, level_name, level,
-                                     factor_cell_names)
-  ))
+  return(.posterior_density_level_aliases(parameter, sample_name, level_name, level,
+                                          factor_cell_names))
 }
 
 .posterior_density_child_aliases <- function(parent, child, sample_name = NULL){
 
-  parent_parameter <- attr(parent, "parameter", exact = TRUE)
+  parent_parameter  <- attr(parent, "parameter", exact = TRUE)
+  level_name        <- attr(child, "level_name", exact = TRUE)
+  level             <- attr(child, "level", exact = TRUE)
+  factor_cell_names <- attr(child, "factor_cell_names", exact = TRUE)
 
-  return(.posterior_density_aliases(
-    attr(child, "parameter", exact = TRUE),
-    .posterior_density_level_aliases(
-      parent_parameter,
-      sample_name,
-      attr(child, "level_name", exact = TRUE),
-      attr(child, "level", exact = TRUE),
-      attr(child, "factor_cell_names", exact = TRUE)
-    )
-  ))
+  if(is.null(sample_name) && is.null(level_name) && is.null(level)){
+    return(.posterior_density_aliases(attr(child, "parameter", exact = TRUE),
+                                      factor_cell_names))
+  }
+
+  return(.posterior_density_level_aliases(parent_parameter, sample_name, level_name,
+                                          level, factor_cell_names))
 }
 
 # Metadata of a posterior density or ordinate attribute; containers carry none.
