@@ -576,6 +576,29 @@ test_that("two-term convolution regions integrate over the term without a 1/x^2 
   }
 })
 
+test_that("t terms with one degree of freedom merge into the exact Cauchy sum for any numeric type", {
+
+  # C(0, 1) + C(1, 2) = C(1, 3); an integer df of 1 is the same Cauchy term
+  for(df in list(1, 1L)){
+    density <- .prior_linear_combination_density(
+      list(a = prior("t", list(0, 1, df)), b = prior("t", list(1, 2, df))), c(a = 1, b = 1)
+    )
+    route <- .prior_density_route_from_adaptive(attr(density, "adaptive_evaluation", exact = TRUE))
+    expect_identical(route$type, "scalar")
+    expect_equal(
+      region_probability(density, "theta > 0"),
+      stats::pcauchy(0, 1, 3, lower.tail = FALSE), tolerance = 1e-12
+    )
+  }
+  # other degrees of freedom are not merged
+  other <- .prior_linear_combination_density(
+    list(a = prior("t", list(0, 1, 2L)), b = prior("t", list(1, 2, 2L))), c(a = 1, b = 1)
+  )
+  expect_false(identical(
+    .prior_density_route_from_adaptive(attr(other, "adaptive_evaluation", exact = TRUE))$type, "scalar"
+  ))
+})
+
 test_that("1/x^2 tails are recognised by family, parameter and truncation", {
 
   tail <- .prior_density_route_heavy_tail

@@ -637,9 +637,9 @@
   }
   is_cauchy <- function(group){
     prior <- group$prior
-    .prior_density_simple_continuous(prior) &&
-      (identical(prior$distribution, "cauchy") ||
-         (identical(prior$distribution, "t") && identical(prior$parameters$df, 1))) &&
+    df <- prior$parameters$df
+    .prior_density_simple_continuous(prior) && identical(prior$distribution, "t") &&
+      is.numeric(df) && length(df) == 1L && isTRUE(df == 1) &&
       identical(prior$truncation$lower, -Inf) && identical(prior$truncation$upper, Inf) &&
       all(is.na(source_transforms[names(group$weights)]))
   }
