@@ -300,6 +300,42 @@
   prior_list
 }
 
+# A supplied non-formula prior must have the semantics of the stored prior of
+# the same name (see .bt_JAGS_bridge_prior_semantics()) when the fit stores its
+# prior list: otherwise the bridge targets a different model than the fitted
+# one. Supplied names the fit does not store, and stored names omitted from
+# 'prior_list' (callers may integrate those parameters in their callback),
+# stay allowed.
+.bt_JAGS_bridge_check_supplied_priors <- function(prior_list, fit, formula_design_list){
+
+  if(!is.list(prior_list)){
+    return(invisible(TRUE))
+  }
+  stored <- .bt_JAGS_bridge_prior_list_from_fit(fit, formula_design_list)
+  if(!is.list(stored)){
+    return(invisible(TRUE))
+  }
+  overlap <- intersect(names(prior_list), names(stored))
+  different <- overlap[!vapply(overlap, function(name){
+    identical(
+      .bt_JAGS_bridge_prior_semantics(prior_list[[name]]),
+      .bt_JAGS_bridge_prior_semantics(stored[[name]])
+    )
+  }, logical(1))]
+  if(length(different) > 0L){
+    .bt_stop_refit_required(
+      "JAGS_bridgesampling() received priors in 'prior_list' that differ from ",
+      "the fitted priors: ",
+      paste(utils::head(different, 8L), collapse = ", "),
+      if(length(different) > 8L) ", ..." else "",
+      ". Remove them from 'prior_list' to use the fitted priors, or refit the ",
+      "model with the intended priors."
+    )
+  }
+
+  invisible(TRUE)
+}
+
 # The part of a prior that defines its distribution: the class (prior type and
 # contrast), the fields (distribution, parameters, truncation, and the fields of
 # ordered priors), and the attributes 'multiply_by', 'components',

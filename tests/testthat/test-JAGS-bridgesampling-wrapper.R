@@ -490,6 +490,51 @@ test_that("a bridge target without any declared parameter is refused, not evalua
   }
 })
 
+test_that("supplied non-formula priors must match the priors stored in the fit", {
+
+  set.seed(16)
+  draws <- cbind(mu = abs(stats::rnorm(400)), sigma = stats::rgamma(400, 2, 2))
+  fit <- coda::as.mcmc(draws)
+  class(fit) <- c("mcmc", "BayesTools_fit")
+  attr(fit, "prior_list") <- list(
+    mu    = prior("normal", list(0, 1), list(0, Inf)),
+    sigma = prior("gamma", list(2, 2))
+  )
+  fit <- attach_test_parameter_map(fit)
+  callback <- function(parameters, data) 0
+
+  # the stored priors, omitted or supplied identically, give one target
+  stored <- JAGS_bridgesampling(fit, callback, seed = 1)
+  identical_priors <- JAGS_bridgesampling(fit, callback, seed = 1, prior_list = list(
+    mu    = prior("normal", list(0, 1), list(0, Inf)),
+    sigma = prior("gamma", list(2, 2))
+  ))
+  expect_identical(identical_priors[["logml"]], stored[["logml"]])
+  expect_true(is.finite(stored[["logml"]]))
+
+  # a supplied prior that differs from the stored one targets another model
+  truncation <- expect_error(
+    JAGS_bridgesampling(fit, callback, seed = 1, prior_list = list(
+      mu = prior("normal", list(0, 1)), sigma = prior("gamma", list(2, 2))
+    )),
+    class = "BayesTools_refit_required"
+  )
+  expect_match(conditionMessage(truncation), "differ from the fitted priors: mu.", fixed = TRUE)
+  parameters <- expect_error(
+    JAGS_bridgesampling(fit, callback, seed = 1, prior_list = list(
+      mu = prior("normal", list(0, 2), list(0, Inf)), sigma = prior("gamma", list(2, 1))
+    )),
+    class = "BayesTools_refit_required"
+  )
+  expect_match(conditionMessage(parameters), "differ from the fitted priors: mu, sigma.", fixed = TRUE)
+
+  # a deliberate subset of the stored priors stays allowed
+  subset <- JAGS_bridgesampling(fit, callback, seed = 1, prior_list = list(
+    mu = prior("normal", list(0, 1), list(0, Inf))
+  ))
+  expect_true(is.finite(subset[["logml"]]))
+})
+
 test_that("BayesTools fits require the parameter map for bridge replay", {
 
   fit <- coda::as.mcmc(matrix(

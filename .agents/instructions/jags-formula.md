@@ -35,6 +35,15 @@ names before reading a posterior row and uses `BayesTools_missing_monitored_colu
 (parent `BayesTools_marglik_input`) for absent coordinates. Preserve row-value
 shapes and names; a present NA value is distinct from an absent name, and literal
 point priors need no monitor.
+A bridge target declares its coordinates through the stored or supplied
+non-formula priors, the formula priors, and `add_parameters`; a target with none
+is refused (`BayesTools_marglik_input`), and only a target whose declared
+coordinates are all point-fixed is evaluated exactly. For a fit that stores its
+priors, a supplied non-formula prior must have the semantics of the stored prior
+of the same name (`BayesTools_refit_required` otherwise, as for formula priors);
+supplied names the fit does not store, and stored names omitted from
+`prior_list`, stay allowed because callers may integrate omitted parameters in
+their callback.
 Bridge sampling checks affine rank of varying finite supplied coordinates before
 bound transformations, then checks the transformed coordinates separately with
 the existing QR tolerance and diagnostics. Constant columns retain the existing

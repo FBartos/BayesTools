@@ -46,7 +46,12 @@ returns the log of the unnormalized posterior density of the model part}
 \item{prior_list}{named list of prior distributions
 (names correspond to the parameter names) of parameters not specified within the
 \code{formula_list}. For \code{BayesTools_fit} objects, stored non-formula
-priors are used when \code{prior_list = NULL}. Formula priors are taken from
+priors are used when \code{prior_list = NULL}; a supplied prior must specify
+the same prior as the stored prior of the same name (distribution,
+parameters, truncation, \code{multiply_by}, and mixture components and
+weights; an error of class \code{BayesTools_refit_required} otherwise),
+while stored priors omitted from \code{prior_list} stay allowed. Formula
+priors are taken from
 the stored formula metadata: a formula prior supplied here is ignored when
 it specifies the same prior as the fitted formula prior (distribution,
 parameters, truncation, contrast, \code{multiply_by}, and mixture
