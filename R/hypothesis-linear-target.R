@@ -476,13 +476,24 @@ hypothesis_linear_target_side <- function(side, parameter){
 
   columns <- sort(unique(unlist(lapply(level_weights, names), use.names = FALSE)))
   out <- stats::setNames(numeric(length(columns)), columns)
+  scale <- out
   for(level in names(level_weights)){
     columns_i <- names(level_weights[[level]])
-    out[columns_i] <-
-      .hypothesis_affine_sum(out[columns_i],
-        .hypothesis_affine_product(coefficients[[level]], level_weights[[level]]))
+    term <- .hypothesis_affine_product(coefficients[[level]], level_weights[[level]])
+    out[columns_i] <- .hypothesis_affine_sum(out[columns_i], term)
+    scale[columns_i] <- scale[columns_i] + abs(term)
   }
-  out
+  .hypothesis_linear_weights_cancel(out, scale)
+}
+
+# A combined level weight that is a cancellation residue (|w| within a few
+# rounding errors of the sum of the absolute values of its terms, as the grand
+# mean of the level effects of a sum-to-zero coding) is structurally zero.
+.hypothesis_linear_weights_cancel <- function(weights, scale){
+
+  weights[abs(weights) <= 8 * .Machine$double.eps * scale[names(weights)]] <- 0
+
+  weights
 }
 
 

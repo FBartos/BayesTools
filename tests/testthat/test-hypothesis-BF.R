@@ -119,6 +119,58 @@ test_that("level targets require the same complete declared joint context", {
   expect_s3_class(hypothesis_BF(first, hypothesis = "mu_fac[A] - mu_fac[B] > 0", parameter = "mu_fac", seed = 19), "BayesTools_hypothesis_BF")
 })
 
+.hypothesis_contrast_marginal_for_test <- function(contrast, n_levels = 5L, seed = 1){
+  levels <- LETTERS[seq_len(n_levels)]
+  formula <- JAGS_formula(~ fac, "mu", data.frame(fac = factor(levels)),
+    prior_list = list(intercept = prior("normal", list(0, 1)),
+                      fac = prior_factor("mnormal", list(0, 1), contrast = contrast)))
+  columns <- .JAGS_prior_factor_names("mu_fac", formula$prior_list$mu_fac)
+  set.seed(seed)
+  posterior <- cbind(mu_intercept = rnorm(201L, sd = .3),
+    matrix(rnorm(201L * length(columns), sd = .3), 201L, dimnames = list(NULL, columns)))
+  fit <- structure(coda::mcmc(posterior), class = c("mcmc", "BayesTools_fit"))
+  attr(fit, "prior_list") <- formula$prior_list
+  fit <- attach_test_parameter_map(fit)
+  marginal_posterior(as_mixed_posteriors(fit, "mu_fac"), "mu_fac", use_formula = FALSE, prior_samples = TRUE)
+}
+
+test_that("a grand mean of sum-to-zero level effects is a structural point measure", {
+
+  # the level effects of the orthonormal and meandif codings sum to zero, but the
+  # floating-point weights of their sum carry rounding residue (an 'exact'
+  # N(0, 1e-16) prior otherwise): the combination is refused exactly as an
+  # exactly zero combination is
+  zero <- "mu_fac[A] - mu_fac[A] + mu_fac[B] - mu_fac[B] = 0"
+  for(contrast in c("orthonormal", "meandif")){
+    levels <- .hypothesis_contrast_marginal_for_test(contrast)
+    zero_target <- expect_error(hypothesis_linear_target(levels, zero, "mu_fac"),
+                                class = "BayesTools_linear_target_unavailable")
+    zero_BF <- expect_error(hypothesis_BF(levels, hypothesis = zero, parameter = "mu_fac"),
+                            class = "BayesTools_point_mass_at_null")
+    for(hypothesis in c("(mu_fac[A] + mu_fac[B] + mu_fac[C] + mu_fac[D] + mu_fac[E]) / 5 = 0",
+                        "mu_fac[A] + mu_fac[B] + mu_fac[C] + mu_fac[D] + mu_fac[E] = 0")){
+      target <- expect_error(hypothesis_linear_target(levels, hypothesis, "mu_fac"),
+                             class = "BayesTools_linear_target_unavailable")
+      expect_identical(target$reason, zero_target$reason)
+      expect_identical(target$reason, "posterior_atoms")
+      if(inherits(target, "condition")){
+        expect_identical(conditionMessage(target), conditionMessage(zero_target))
+      }
+      point <- expect_error(hypothesis_BF(levels, hypothesis = hypothesis, parameter = "mu_fac"),
+                            class = "BayesTools_point_mass_at_null")
+      if(inherits(point, "condition")){
+        expect_identical(conditionMessage(point), conditionMessage(zero_BF))
+      }
+    }
+
+    # an ordinary contrast keeps its weights and its Bayes factor
+    target <- hypothesis_linear_target(levels, "mu_fac[A] - mu_fac[B] = 0", "mu_fac")
+    expect_equal(sum(abs(target$weights)) > 0, TRUE)
+    expect_s3_class(hypothesis_BF(levels, hypothesis = "mu_fac[A] - mu_fac[B] = 0",
+                                  parameter = "mu_fac"), "BayesTools_hypothesis_BF")
+  }
+})
+
 test_that("explicit-level regions over one linear combination use the exact prior mass", {
 
   independent <- .hypothesis_factor_marginal_for_test(independent = TRUE)

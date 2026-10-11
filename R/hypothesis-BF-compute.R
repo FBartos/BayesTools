@@ -380,6 +380,7 @@
   active <- names(coefficients)[coefficients != 0]
   context <- NULL
   weights <- NULL
+  weight_scale <- NULL
   space <- NULL
   offset  <- 0
   for(symbol in active){
@@ -426,10 +427,14 @@
       return(NULL)
     }
     coefficient <- coefficients[[symbol]]
-    weights <- .hypothesis_add_linear_weights(weights,
-      .hypothesis_affine_product(coefficient, level_weights))
+    term <- .hypothesis_affine_product(coefficient, level_weights)
+    weights <- .hypothesis_add_linear_weights(weights, term)
+    weight_scale <- .hypothesis_add_linear_weights(weight_scale, abs(term), checked = FALSE)
     offset <- .hypothesis_affine_sum(offset,
       .hypothesis_affine_product(coefficient, .hypothesis_level_linear_offset(level)))
+  }
+  if(!is.null(weights)){
+    weights <- .hypothesis_linear_weights_cancel(weights, weight_scale)
   }
 
   list(context = context, weights = weights, offset = offset, space = space)
@@ -493,7 +498,7 @@
 }
 
 
-.hypothesis_add_linear_weights <- function(total, weights) {
+.hypothesis_add_linear_weights <- function(total, weights, checked = TRUE) {
 
   if(is.null(total)){
     return(weights)
@@ -502,7 +507,11 @@
   columns <- union(names(total), names(weights))
   out <- stats::setNames(numeric(length(columns)), columns)
   out[names(total)] <- out[names(total)] + total
-  out[names(weights)] <- .hypothesis_affine_sum(out[names(weights)], weights)
+  out[names(weights)] <- if(checked){
+    .hypothesis_affine_sum(out[names(weights)], weights)
+  }else{
+    out[names(weights)] + weights
+  }
 
   out
 }
