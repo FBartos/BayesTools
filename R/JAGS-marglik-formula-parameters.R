@@ -1197,6 +1197,16 @@ JAGS_marglik_parameters_formula      <- function(samples, formula_list, formula_
   ))
 }
 
+# Marginal-likelihood inputs that cannot define the target. Callers match the
+# class BayesTools_marglik_input, never the message.
+.bt_JAGS_marglik_input_error <- function(message){
+
+  stop(structure(
+    list(message = message, call = NULL),
+    class = c("BayesTools_marglik_input", "error", "condition")
+  ))
+}
+
 # Marginal-likelihood inputs ('samples' of the bridge evaluators and of
 # JAGS_marglik_parameters(), JAGS_marglik_priors() and their formula
 # versions) that lack monitored coordinates the evaluators read. Callers match

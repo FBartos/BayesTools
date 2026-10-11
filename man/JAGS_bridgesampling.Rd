@@ -232,7 +232,10 @@ If every bridge coordinate is fixed by a point prior,
 \code{JAGS_bridgesampling()} evaluates \code{log_posterior} once at the reconstructed
 fixed parameter values. The returned marginal likelihood is exact and uses
 the aggregation rule \code{"exact_zero_dimensional"}; no bridge repetitions are
-performed.
+performed. A target that declares no coordinate at all (no non-formula
+prior, formula prior, or \code{add_parameters} entry, for example raw draws with
+\code{prior_list} omitted) is an error of class \code{BayesTools_marglik_input}, not
+an exact evaluation.
 
 \code{use_neff} is passed to \link[bridgesampling]{bridge_sampler} as the logical
 flag that upstream defines. \pkg{bridgesampling} computes the effective

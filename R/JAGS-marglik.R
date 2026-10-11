@@ -171,7 +171,10 @@
 #' `JAGS_bridgesampling()` evaluates `log_posterior` once at the reconstructed
 #' fixed parameter values. The returned marginal likelihood is exact and uses
 #' the aggregation rule `"exact_zero_dimensional"`; no bridge repetitions are
-#' performed.
+#' performed. A target that declares no coordinate at all (no non-formula
+#' prior, formula prior, or `add_parameters` entry, for example raw draws with
+#' `prior_list` omitted) is an error of class `BayesTools_marglik_input`, not
+#' an exact evaluation.
 #'
 #' `use_neff` is passed to \link[bridgesampling]{bridge_sampler} as the logical
 #' flag that upstream defines. \pkg{bridgesampling} computes the effective
@@ -403,6 +406,13 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
     formula_design_list = formula_design_list,
     formula_prior_list = formula_prior_list
   )
+  if(length(all_prior_list) == 0L && length(add_parameters) == 0L){
+    .bt_JAGS_marglik_input_error(paste0(
+      "Bridge sampling cannot proceed without any declared parameter: no prior, ",
+      "formula prior, or additional parameter specifies a coordinate of the bridge ",
+      "target. Supply 'prior_list', or a BayesTools fit that stores its priors."
+    ))
+  }
   posterior <- .bt_JAGS_bridge_normalize_singleton_coordinates(
     posterior, random_bridge_parameters$parameters
   )

@@ -462,6 +462,34 @@ test_that("JAGS_bridgesampling evaluates fixed scalar and vector models exactly"
   expect_identical(result[["diagnostics"]][["chains"]][["draws"]], 20L)
 })
 
+test_that("a bridge target without any declared parameter is refused, not evaluated exactly", {
+
+  constant <- function(parameters, data) -2.5
+  raw <- coda::as.mcmc(matrix(0, nrow = 20, ncol = 1, dimnames = list(NULL, "mu")))
+  fit <- raw
+  class(fit) <- c("mcmc", "BayesTools_fit")
+  attr(fit, "prior_list") <- list(mu = prior("point", list(0)))
+  fit <- attach_test_parameter_map(fit)
+
+  # raw draws with the prior list omitted, and an empty prior list
+  expect_error(JAGS_bridgesampling(raw, constant), class = "BayesTools_marglik_input")
+  expect_error(JAGS_bridgesampling(raw, constant, prior_list = list()), class = "BayesTools_marglik_input")
+  expect_error(JAGS_bridgesampling(fit, constant, prior_list = list()), class = "BayesTools_marglik_input")
+  declared <- tryCatch(JAGS_bridgesampling(raw, constant), error = function(e) conditionMessage(e))
+  expect_match(declared, "without any declared parameter", fixed = TRUE)
+  expect_match(declared, "'prior_list'", fixed = TRUE)
+
+  # declared point coordinates keep the exact zero-dimensional route
+  for(result in list(
+    JAGS_bridgesampling(raw, constant, prior_list = list(mu = prior("point", list(0)))),
+    JAGS_bridgesampling(fit, constant, prior_list = list(mu = prior("point", list(0)))),
+    JAGS_bridgesampling(fit, constant)
+  )){
+    expect_identical(result[["aggregation"]][["rule"]], "exact_zero_dimensional")
+    expect_equal(result[["logml"]], -2.5, tolerance = 0)
+  }
+})
+
 test_that("BayesTools fits require the parameter map for bridge replay", {
 
   fit <- coda::as.mcmc(matrix(
