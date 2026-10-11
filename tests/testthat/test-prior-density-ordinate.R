@@ -2655,6 +2655,51 @@ test_that("R116 D2 positive powers retain zero atoms and weighted continuous ord
   expect_equal(prior_density_ordinate(mixed, 4)$point_mass, .5)
 })
 
+test_that("a point-mass ordinate reports the structural limit of a regular continuous part", {
+
+  # Y = X^2 for X ~ point(0) | gamma(2, 1) | gamma(2, 1) truncated to [1, Inf):
+  # the gamma component (exponent shape - b = 0) has the finite limit
+  # weight * C / b at 0, the truncated component has no mass near 0
+  square_density <- function(components){
+    .prior_linear_combination_density(
+      list(x = prior_mixture(components, is_null = c(TRUE, rep(FALSE, length(components) - 1L)))),
+      c(x = 1), n_grid = 128, output_transformation = "exp_lin",
+      output_transformation_arguments = list(a = 0, b = 2)
+    )
+  }
+  with_truncated <- prior_density_ordinate(square_density(list(
+    prior("point", list(0), prior_weights = 1),
+    prior("gamma", list(2, 1), prior_weights = 1),
+    prior("gamma", list(2, 1), list(1, Inf), prior_weights = 1)
+  )), 0)
+  expect_identical(with_truncated$behavior, "point_mass")
+  expect_equal(with_truncated$point_mass, 1 / 3)
+  expect_identical(with_truncated$provenance$continuous_behavior, "regular")
+  expect_equal(with_truncated$log_density, log(1 / 3 * 1 / 2), tolerance = 1e-12)
+
+  control <- prior_density_ordinate(square_density(list(
+    prior("point", list(0), prior_weights = 1),
+    prior("gamma", list(2, 1), prior_weights = 2)
+  )), 0)
+  expect_identical(control$provenance$continuous_behavior, "regular")
+  expect_equal(control$log_density, log(2 / 3 * 1 / 2), tolerance = 1e-12)
+
+  # a regular part without a structural value is NA, the display grid supplies
+  # a value only where the continuous part is unknown
+  density <- square_density(list(
+    prior("point", list(0), prior_weights = 1),
+    prior("gamma", list(2, 1), prior_weights = 2)
+  ))
+  local_mocked_bindings(.prior_density_ordinate_exp_lin_zero_log_limit = function(...) NA_real_)
+  regular <- prior_density_ordinate(density, 0)
+  expect_identical(regular$provenance$continuous_behavior, "regular")
+  expect_identical(regular$log_density, NA_real_)
+  local_mocked_bindings(.prior_density_ordinate_exp_lin_boundary = function(...) "unknown")
+  unknown <- prior_density_ordinate(density, 0)
+  expect_identical(unknown$provenance$continuous_behavior, "unknown")
+  expect_identical(unknown$log_density, .prior_density_ordinate_grid_log_density(density, 0))
+})
+
 test_that("R116 D2 posterior producer maps declared zero states without changing mass", {
 
   draws <- cbind(x = c(rep(0, 12), seq(.1, 2, length.out = 24)), x_indicator = rep(c(0, 1), c(12, 24)))

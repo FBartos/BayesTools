@@ -1909,6 +1909,11 @@ prior_density_has_provenance <- function(x){
   if(!is.null(.prior_density_ordinate_provenance_constant(provenance))) return(-Inf)
   kind <- provenance$kind
   if(identical(kind, "primitive") && provenance$family %in% c("point", "none", "bernoulli")) return(-Inf)
+  support <- .prior_density_ordinate_provenance_support(provenance)
+  if(!is.null(support) && is.finite(support[1L]) && support[1L] > 0){
+    # no mass near 0: the component contributes nothing at the boundary
+    return(-Inf)
+  }
   if(identical(kind, "finite_mixture")){
     terms <- vapply(provenance$components, function(component){
       weight <- component$weight
@@ -2595,7 +2600,9 @@ prior_density_has_provenance <- function(x){
     result$reason <- .prior_density_ordinate_reason(continuous_behavior)
   }
 
-  if(result$behavior %in% c("unknown", "point_mass") &&
+  # the display grid supplies a log density only where the structural answer is
+  # unknown: a regular continuous part without a structural value stays NA
+  if(identical(.prior_density_ordinate_continuous_behavior(result), "unknown") &&
      is.na(result$log_density)){
     result$log_density <- .prior_density_ordinate_grid_log_density(x, value)
   }
