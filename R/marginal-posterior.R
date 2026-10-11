@@ -722,7 +722,7 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
         if(intercept_term){
 
           prior_weights <- linear_weights
-          prior_density <- .prior_density_from_context_rows(
+          prior_density <- .marginal_posterior_level_prior_density(
             prior_density_context,
             prior_weights,
             source_transforms = log_source_transforms
@@ -738,7 +738,7 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
 
           for(lvl in seq_along(level_names)){
             prior_weights <- level_prior_weights[[level_names[lvl]]]
-            prior_density <- .prior_density_from_context_rows(
+            prior_density <- .marginal_posterior_level_prior_density(
               prior_density_context,
               prior_weights,
               source_transforms = log_source_transforms
@@ -1657,6 +1657,64 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
     ),
     keys     = keys
   )
+}
+
+# The prior density of a formula level: the law of its stored joint prior
+# context at the level's linear weights (a row mixture for the several design
+# rows of a level), with the intercept source on the log scale for log-intercept
+# formulas ('source_transforms'), shifted by the level's linear offset. It is
+# shared by marginal_posterior(prior_samples = TRUE) and by the source law of
+# transformed formula levels (posterior_transform()).
+.marginal_posterior_level_prior_density <- function(context, weights,
+                                                    source_transforms = NULL,
+                                                    linear_offset = NULL){
+
+  density <- .prior_density_from_context_rows(
+    context,
+    weights,
+    source_transforms = source_transforms
+  )
+  if(!is.null(linear_offset) && linear_offset != 0){
+    density <- .prior_density_output_transform(
+      density,
+      .bt_posterior_transformation("lin", list(a = linear_offset, b = 1))
+    )
+  }
+
+  density
+}
+
+# The source transformations of the stored joint prior context of a formula level
+# with the joint prior transformation 'joint_prior_transformation': the log
+# source of the intercept of a log-intercept formula. A level whose
+# transformation is not reproduced, or whose intercept is not a context column,
+# has no current-scale prior law (classed, so that the prior density is
+# recorded as unavailable).
+.marginal_posterior_level_source_transforms <- function(joint_prior_transformation,
+                                                        formula_parameter,
+                                                        context, target = NULL){
+
+  if(is.null(joint_prior_transformation)){
+    return(NULL)
+  }
+  if(!identical(joint_prior_transformation, "log_intercept")){
+    .bt_formula_density_stop(
+      paste0("The joint prior transformation '", joint_prior_transformation,
+             "' of the source level has no reproducible prior law."),
+      target = target, reason = "structural_target_law_unavailable"
+    )
+  }
+  intercept <- if(!is.null(formula_parameter)){
+    JAGS_parameter_names("intercept", formula_parameter = formula_parameter)
+  }
+  if(is.null(intercept) || !intercept %in% context$column_names){
+    .bt_formula_density_stop(
+      "The log-intercept source of the source level is not a column of its prior context.",
+      target = target, reason = "structural_target_law_unavailable"
+    )
+  }
+
+  stats::setNames("log", intercept)
 }
 
 # The prior-density target of the simple marginal posterior of 'parameter' in

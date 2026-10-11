@@ -5383,6 +5383,137 @@ test_that("the kernel posterior ordinate refuses degenerate continuous draws", {
   )
 })
 
+.formula_level_samples_for_test <- function(formula, prior_list, posterior, parameter, data,
+                                            design = c("none", "log", "full")){
+  design <- match.arg(design)
+  formula_result <- JAGS_formula(formula = formula, parameter = parameter, data = data, prior_list = prior_list)
+  fit <- list(mcmc = coda::mcmc.list(coda::mcmc(posterior)), summary.pars = list(mutate = NULL),
+              monitor = colnames(posterior), sample = nrow(posterior))
+  class(fit) <- c("runjags", "BayesTools_fit")
+  attr(fit, "prior_list") <- formula_result$prior_list
+  if(identical(design, "full")){
+    attr(fit, "formula_design") <- stats::setNames(list(formula_result$formula_design), parameter)
+    attr(fit, "formula_scale") <- stats::setNames(list(formula_result$formula_scale), parameter)
+  }
+  fit <- attach_test_parameter_map(fit)
+  if(identical(design, "log")){
+    attr(fit, "formula_design") <- stats::setNames(list(list(log_intercept = TRUE)), parameter)
+  }
+  as_mixed_posteriors(fit, parameters = colnames(posterior), n_prior_samples = 1000)
+}
+
+test_that("transformed log-intercept formula levels use the lognormal prior law", {
+
+  log_formula <- ~ x
+  attr(log_formula, "log(intercept)") <- TRUE
+  set.seed(2)
+  posterior <- cbind(ls_intercept = stats::rlnorm(100, -1, .2), ls_x = stats::rnorm(100, -.2, .1))
+  priors <- list(intercept = prior("lognormal", list(0, .5)), x = prior("normal", list(0, .5)))
+  # the level is log(b0) + b1 x ~ N(0, .5 sqrt(1 + x^2)), so its exp is lognormal
+  scales <- c(`-1SD` = .5 * sqrt(2), `0SD` = .5, `1SD` = .5 * sqrt(2))
+
+  for(design in c("log", "full")){
+    samples <- .formula_level_samples_for_test(log_formula, priors, posterior, "ls",
+      data.frame(x = c(-1, 0, 1)), design)
+    # (a formula state is compiled for the full design only)
+    expect_identical(!is.null(.bt_formula_state_get(samples, "ls_x")), identical(design, "full"))
+    transformed <- marginal_posterior(samples, "ls_x", formula = ~ x, prior_samples = FALSE,
+                                      transformation = "exp")
+    reference <- marginal_posterior(samples, "ls_x", formula = ~ x, prior_samples = TRUE,
+                                    transformation = "exp")
+    for(level in names(scales)){
+      for(value in c(.5, 1, 2)){
+        expect_equal(.prior_height_for_test(transformed[[level]], value),
+                     stats::dlnorm(value, 0, scales[[level]]), tolerance = 1e-8)
+        expect_equal(.prior_height_for_test(transformed[[level]], value),
+                     .prior_height_for_test(reference[[level]], value), tolerance = 1e-8)
+      }
+    }
+  }
+})
+
+test_that("transformed formula levels with several design rows or only the intercept have a prior law", {
+
+  set.seed(3)
+  posterior <- cbind(mu_intercept = rnorm(200, .3, .1), mu_x = rnorm(200, .2, .1), mu_z = rnorm(200, -.1, .1))
+  priors <- list(intercept = prior("normal", list(0, 1)), x = prior("normal", list(0, .5)),
+                 z = prior("normal", list(0, .5)))
+  data <- data.frame(x = c(-1, 0, 1), z = c(1, 0, -1))
+  for(design in c("none", "full")){
+    samples <- .formula_level_samples_for_test(~ x + z, priors, posterior, "mu", data, design)
+    # level 1SD at two values of z: the linear predictor b0 + b1 + z b2 ~ N(0, sqrt(1.5)) at both rows
+    untransformed <- marginal_posterior(samples, "mu_x", formula = ~ x + z, at = list(z = c(-1, 1)),
+                                        prior_samples = FALSE)
+    expect_identical(dim(untransformed[["1SD"]]), c(2L, 200L))
+    reference <- marginal_posterior(samples, "mu_x", formula = ~ x + z, at = list(z = c(-1, 1)),
+                                    prior_samples = TRUE, transformation = "lin",
+                                    transformation_arguments = list(a = 0, b = 2))
+    transformed <- marginal_posterior(samples, "mu_x", formula = ~ x + z, at = list(z = c(-1, 1)),
+                                      prior_samples = FALSE, transformation = "lin",
+                                      transformation_arguments = list(a = 0, b = 2))
+    exponentiated <- posterior_transform(untransformed, "exp")
+    for(value in c(0, 1, 2)){
+      expect_equal(.prior_height_for_test(transformed[["1SD"]], value),
+                   stats::dnorm(value, 0, 2 * sqrt(1.5)), tolerance = 1e-8)
+      expect_equal(.prior_height_for_test(transformed[["1SD"]], value),
+                   .prior_height_for_test(reference[["1SD"]], value), tolerance = 1e-8)
+    }
+    for(value in c(.5, 1, 2)){
+      expect_equal(.prior_height_for_test(exponentiated[["1SD"]], value),
+                   stats::dlnorm(value, 0, sqrt(1.5)), tolerance = 1e-8)
+      expect_equal(.prior_height_for_test(posterior_transform(untransformed[["1SD"]], "exp"), value),
+                   stats::dlnorm(value, 0, sqrt(1.5)), tolerance = 1e-8)
+    }
+
+    # the intercept level (a one-row matrix of draws)
+    intercept <- marginal_posterior(samples, "mu_intercept", formula = ~ 1, prior_samples = FALSE)
+    expect_identical(names(intercept), "intercept")
+    for(value in c(.5, 1, 2)){
+      expect_equal(.prior_height_for_test(posterior_transform(intercept, "exp")[["intercept"]], value),
+                   stats::dlnorm(value, 0, 1), tolerance = 1e-8)
+      expect_equal(.prior_height_for_test(posterior_transform(intercept[["intercept"]], "exp"), value),
+                   stats::dlnorm(value, 0, 1), tolerance = 1e-8)
+    }
+  }
+})
+
+test_that("transformed formula levels keep the multiplier of the coefficient prior", {
+
+  x_prior <- prior("normal", list(0, .5))
+  attr(x_prior, "multiply_by") <- 2
+  set.seed(2)
+  posterior <- cbind(mu_intercept = stats::rnorm(200, .3, .1), mu_x = stats::rnorm(200, .2, .1))
+  samples <- .formula_level_samples_for_test(~ x, list(intercept = prior("normal", list(0, 1)), x = x_prior),
+    posterior, "mu", data.frame(x = c(-1, 0, 1)), "none")
+  transformed <- marginal_posterior(samples, "mu_x", formula = ~ x, prior_samples = FALSE,
+                                    transformation = "lin", transformation_arguments = list(a = 1, b = 2))
+  # level 1SD is b0 + 2 b1 ~ N(0, sqrt(2)), so 1 + 2 level ~ N(1, 2 sqrt(2))
+  for(value in c(0, 1, 3)){
+    expect_equal(.prior_height_for_test(transformed[["1SD"]], value),
+                 stats::dnorm(value, 1, 2 * sqrt(2)), tolerance = 1e-8)
+  }
+})
+
+test_that("a transformed formula level whose prior law cannot be reproduced records it unavailable", {
+
+  set.seed(3)
+  posterior <- cbind(mu_intercept = rnorm(200, .3, .1), mu_x = rnorm(200, .2, .1))
+  samples <- .formula_level_samples_for_test(~ x, list(intercept = prior("normal", list(0, 1)),
+    x = prior("normal", list(0, .5))), posterior, "mu", data.frame(x = c(-1, 0, 1)), "none")
+  levels <- marginal_posterior(samples, "mu_x", formula = ~ x, prior_samples = FALSE)
+  # a joint transformation that is not the log intercept, and a log intercept
+  # whose formula parameter is unknown
+  for(transformation in c("tanh", "log_intercept")){
+    level <- .bt_meta_set(levels[["1SD"]], "joint_prior_transformation", transformation)
+    level <- .bt_meta_set(level, "quantities", NULL)
+    transformed <- posterior_transform(level, "exp")
+    expect_null(.bt_meta_get(transformed, "prior_density"))
+    unavailable <- .bt_meta_get(transformed, "measure_unavailable")
+    expect_identical(unavailable$measure, "prior_density")
+    expect_identical(unavailable$cause, "structural_target_law_unavailable")
+  }
+})
+
 # File-level skips: All remaining tests in this file require pre-fitted models
 skip_if_not_visual_fixture_tests()
 skip_if_no_fits()

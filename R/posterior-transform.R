@@ -313,7 +313,28 @@ posterior_transform <- function(x, transformation, transformation_arguments = NU
       target = parameter, reason = "missing_source_context")
   }
   if(!is.null(priors) && all(vapply(priors, is.prior.none, logical(1)))) return(x)
+  stored_context <- context
   build <- function(){
+    # a formula level (with linear weights): the law of its stored joint prior
+    # context as stored, built as marginal_posterior(prior_samples = TRUE) builds it
+    if(!is.null(fields$linear_weights) && !is.null(stored_context)){
+      formula_parameter <- fields$formula_parameter
+      if(is.null(formula_parameter)) formula_parameter <- parent_fields$formula_parameter
+      if(is.null(formula_parameter) && !is.null(fields$quantities) && nrow(fields$quantities) == 1L){
+        formula_parameter <- fields$quantities$label_parts[[1L]]$formula_parameter
+      }
+      level_weights <- fields$linear_weights
+      if(is.null(dim(level_weights))) level_weights <- matrix(level_weights, nrow = 1L,
+        dimnames = list(NULL, names(level_weights)))
+      density <- .marginal_posterior_level_prior_density(
+        stored_context,
+        level_weights,
+        source_transforms = .marginal_posterior_level_source_transforms(
+          fields$joint_prior_transformation, formula_parameter, stored_context, parameter),
+        linear_offset = fields$linear_offset
+      )
+      return(.bt_meta_set(x, "prior_density", density))
+    }
     source <- if(is.null(fields$prior_context)) parent else .bt_meta_set(parent, "prior_context", fields$prior_context)
     raw_coefficients <- if(is.null(fields$linear_weights)){
       !isTRUE(fields$transform_scaled)
@@ -355,7 +376,7 @@ posterior_transform <- function(x, transformation, transformation_arguments = NU
       }
       return(.bt_meta_set(x, "prior_density", density))
     }
-    if(is.matrix(x) && nrow(weights) != ncol(x)){
+    if(is.null(fields$linear_weights) && is.matrix(x) && nrow(weights) != ncol(x)){
       stop("The declared source prior recipe does not align with its draw columns.", call. = FALSE)
     }
     densities <- lapply(seq_len(nrow(weights)), function(i){
