@@ -142,6 +142,21 @@
   )
 }
 
+# Bias indicator draws of a bias mixture are finite integers that index a
+# declared branch, for the registered bias-term nodes and the bias-mixture
+# parameters of the marginal likelihood alike.
+.bt_dnode_bias_indicator_check <- function(indicator, branch_count, name){
+
+  if(any(!is.finite(indicator))){
+    stop("Bias indicator draws of '", name, "' must be finite.", call. = FALSE)
+  }
+  if(any(!indicator %in% seq_len(branch_count))){
+    stop("Bias indicator draws of '", name, "' must index a declared bias branch.", call. = FALSE)
+  }
+
+  invisible(TRUE)
+}
+
 .bt_dnode_prior_mixture_evaluate <- function(node, lookup){
 
   spec <- node$spec
@@ -158,12 +173,7 @@
        !all(spec$branch %in% seq_len(spec$branch_count))){
       .bt_stop_refit_required("The fitted bias-term branch declaration is missing or inconsistent. Refit the model with this version of BayesTools.")
     }
-    if(any(!is.finite(indicator))){
-      stop("Bias indicator draws of '", node$node, "' must be finite.", call. = FALSE)
-    }
-    if(any(!indicator %in% seq_len(spec$branch_count))){
-      stop("Bias indicator draws of '", node$node, "' must index a declared bias branch.", call. = FALSE)
-    }
+    .bt_dnode_bias_indicator_check(indicator, spec$branch_count, node$node)
     values <- rep(0, n)
     active <- indicator == spec$branch
     if(any(active)){

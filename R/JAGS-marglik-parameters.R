@@ -432,6 +432,7 @@ JAGS_marglik_parameters                <- function(samples, prior_list){
     if(is.null(indicator)){
       missing_stop()
     }
+    .bt_dnode_bias_indicator_check(indicator, length(branches), parameter_name)
     branch <- indicator[[1L]]
     if(has_phacking[[branch]]){
       alpha_name <- paste0("alpha_component_", branch)

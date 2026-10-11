@@ -697,6 +697,29 @@ test_that("PET and PEESE replay require exact declared finite branch membership"
   }
 })
 
+test_that("bias-mixture p-hacking parameters require exact declared finite branch membership", {
+
+  # none | p-hacking: branch 2 is active; the recorded values are those of
+  # alpha = .2 under the linear form
+  mixture <- prior_mixture(list(prior_none(), prior_phacking(form = "linear")))
+  evaluate <- function(indicator){
+    JAGS_marglik_parameters(c(bias_indicator = indicator, alpha_component_2 = .2), list(bias = mixture))
+  }
+  expect_equal(unlist(evaluate(2)), c(alpha = .2, pi_null = 0.016736439550630287,
+    beta_null = 1.3686147670805848), tolerance = 1e-12)
+  expect_identical(evaluate(1), list(alpha = 0, pi_null = 0, beta_null = 0))
+  for(value in c(1.5, 2.7, 0, -1, 3)){
+    condition <- expect_error(evaluate(value),
+      "Bias indicator draws of 'bias' must index a declared bias branch.", fixed = TRUE)
+    expect_null(conditionCall(condition))
+  }
+  for(value in c(NA_real_, NaN, Inf, -Inf)){
+    condition <- expect_error(evaluate(value),
+      "Bias indicator draws of 'bias' must be finite.", fixed = TRUE)
+    expect_null(conditionCall(condition))
+  }
+})
+
 test_that("missing fitted bias branch counts retain the explicit refit refusal", {
 
   priors <- list(bias = prior_mixture(list(prior_none(), prior_PET("normal", list(0, 1)))))
