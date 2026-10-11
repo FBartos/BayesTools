@@ -348,18 +348,23 @@ hypothesis_linear_target <- function(posterior, hypothesis, parameter){
       divisor      = form$divisor
     ))
   }
+  # a simple region in any number of parentheses is a simple region
+  comparison <- side$expression
+  while(identical(comparison$type, "parentheses")){
+    comparison <- comparison$expression
+  }
   if(!identical(side$type, "region") ||
-     !identical(side$expression$type, "comparison") ||
-     !side$expression$operator %in% c("<", "<=", ">", ">=")){
+     !identical(comparison$type, "comparison") ||
+     !comparison$operator %in% c("<", "<=", ">", ">=")){
     stop("Linear targets support only point and simple region statements.",
          call. = FALSE)
   }
 
-  left  <- .hypothesis_linear_target_form(side$expression$left, parameter)
-  right <- .hypothesis_linear_target_form(side$expression$right, parameter)
+  left  <- .hypothesis_linear_target_form(comparison$left, parameter)
+  right <- .hypothesis_linear_target_form(comparison$right, parameter)
   form  <- .hypothesis_linear_target_add(left, right, -1)
   list(
-    operator     = side$expression$operator,
+    operator     = comparison$operator,
     coefficients = .hypothesis_linear_target_scaled_coefficients(form),
     numerator_coefficients = form$coefficients,
     value        = .hypothesis_linear_target_divide(-form$constant, form$divisor),

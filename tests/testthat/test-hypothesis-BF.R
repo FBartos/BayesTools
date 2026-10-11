@@ -171,6 +171,46 @@ test_that("a grand mean of sum-to-zero level effects is a structural point measu
   }
 })
 
+test_that("a parenthesized simple region compiles as a linear target", {
+
+  levels <- .hypothesis_factor_marginal_for_test()
+  plain_text <- "mu_fac[B] - mu_fac[A] > 0.5"
+  plain <- hypothesis_linear_target(levels, plain_text, "mu_fac")
+  plain_side <- .hypothesis_linear_target_side(
+    hypothesis_parse(plain_text)$statements[[1L]]$left, "mu_fac")
+  for(text in c("(mu_fac[B] - mu_fac[A] > 0.5)", "((mu_fac[B] - mu_fac[A]) > 0.5)",
+                "((mu_fac[B] - mu_fac[A] > 0.5))")){
+    side <- .hypothesis_linear_target_side(hypothesis_parse(text)$statements[[1L]]$left, "mu_fac")
+    expect_identical(side, plain_side)
+    target <- hypothesis_linear_target(levels, text, "mu_fac")
+    expect_identical(target$weights, plain$weights)
+    expect_identical(hypothesis_render(target$hypothesis), hypothesis_render(plain$hypothesis))
+    expect_identical(as.numeric(target$posterior), as.numeric(plain$posterior))
+  }
+
+  # statements that are neither point nor simple region statements keep the refusal
+  for(text in c("(mu_fac[B] > 0 & mu_fac[A] > 0)", "!(mu_fac[B] > 0)")){
+    expect_error(
+      hypothesis_linear_target(levels, text, "mu_fac"),
+      "Linear targets support only point and simple region statements."
+    )
+  }
+})
+
+test_that("the exported linear side reads a parenthesized simple region", {
+
+  plain <- hypothesis_linear_target_side(
+    hypothesis_parse("mu_fac[B] - mu_fac[A] > 0.5")$statements[[1L]]$left, "mu_fac")
+  for(text in c("(mu_fac[B] - mu_fac[A] > 0.5)", "((mu_fac[B] - mu_fac[A]) > 0.5)")){
+    expect_identical(
+      hypothesis_linear_target_side(hypothesis_parse(text)$statements[[1L]]$left, "mu_fac"),
+      plain)
+  }
+  expect_identical(plain$operator, ">")
+  expect_identical(plain$coefficients, c(A = -1, B = 1))
+  expect_identical(plain$value, 0.5)
+})
+
 test_that("explicit-level regions over one linear combination use the exact prior mass", {
 
   independent <- .hypothesis_factor_marginal_for_test(independent = TRUE)
