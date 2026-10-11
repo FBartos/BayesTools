@@ -217,7 +217,9 @@ combined with the element-wise operators \code{&} and \code{|};
 non-syntactic parameter names. In particular, escaped identifiers such as
 \code{`Inf`} refer to parameters, while unescaped \code{Inf}, \code{NaN},
 \code{NA}, \code{TRUE}, and \code{FALSE} are reserved literals and are
-rejected.
+rejected. Whitespace-delimited \code{vs} (in any case) outside backticks is
+the separator word of a hypothesis, so a parameter named \code{vs} is written
+with backticks (\code{`vs`}), as \code{hypothesis_render()} writes it.
 
 \tabular{lll}{
 \strong{Form} \tab \strong{Status} \tab \strong{Reason} \cr

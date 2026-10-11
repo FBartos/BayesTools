@@ -153,9 +153,10 @@ hypothesis_parse <- function(hypothesis, catalog = NULL, namespace = NULL,
     refused <- refused[!refused$selector %in% names, , drop = FALSE]
     names <- unique(c(names, refused$selector))
   }
+  # (a syntactic alias 'vs' is the statement separator and is quoted as well)
   names <- names[
     nzchar(names) &
-      make.names(names) != names
+      (make.names(names) != names | tolower(names) == "vs")
   ]
   if(length(names) == 0L){
     return(hypothesis)
@@ -529,7 +530,12 @@ hypothesis_resolve <- function(ast, catalog, namespace = NULL,
 
   node <- list(type = "symbol", source = root, name = root)
   reparsed <- tryCatch({
+    # inside a full statement, where the statement separator is also read
     rendered <- .bt_hypothesis_render_node(node)
+    statement <- paste("0 +", rendered, "> 0")
+    if(length(.hypothesis_split_vs(statement)) != 1L){
+      stop("the root splits the statement", call. = FALSE)
+    }
     normalized <- .hypothesis_normalize_level_references(rendered)
     .bt_hypothesis_ast_node(.hypothesis_parse_expression(normalized))
   }, error = function(e){

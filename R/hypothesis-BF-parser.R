@@ -320,8 +320,8 @@ hypothesis_normalize_level_references <- function(text){
 
   if(length(parts) == 0L || length(parts) > 2L ||
      (length(found) == 1L && length(parts) != 2L)){
-    stop("Hypothesis must contain one statement or one explicit 'vs' comparison.",
-         call. = FALSE)
+    stop("Hypothesis must contain one statement or one explicit 'vs' comparison. ",
+         "Quote a parameter named 'vs' in backticks.", call. = FALSE)
   }
 
   return(parts)
@@ -515,7 +515,7 @@ hypothesis_normalize_level_references <- function(text){
 .hypothesis_expression_text <- function(expr){
 
   if(is.name(expr)){
-    return(paste(deparse(expr, width.cutoff = 500L, backtick = TRUE), collapse = ""))
+    return(.hypothesis_symbol_text(expr))
   }
   # Numeric literals are rendered with their shortest round-trip label so
   # labels read as written (0.2, not 0.20000000000000001) while re-parsing
@@ -530,6 +530,17 @@ hypothesis_normalize_level_references <- function(text){
                  text, fixed = TRUE)
   }
   text
+}
+
+# The text of a symbol. Whitespace-delimited 'vs' (any case) is the statement
+# separator, so a symbol with that name is quoted although it is syntactic.
+.hypothesis_symbol_text <- function(symbol){
+
+  if(identical(tolower(as.character(symbol)), "vs")){
+    return(paste0("`", as.character(symbol), "`"))
+  }
+
+  paste(deparse(symbol, width.cutoff = 500L, backtick = TRUE), collapse = "")
 }
 
 .hypothesis_literal_placeholders <- function(expr){
@@ -547,6 +558,15 @@ hypothesis_normalize_level_references <- function(text){
         if(!grepl(placeholder, original_text, fixed = TRUE)) break
       }
       labels[[placeholder]] <<- .hypothesis_literal_label(as.numeric(node))
+      return(as.name(placeholder))
+    }
+    if(is.name(node) && identical(tolower(as.character(node)), "vs")){
+      repeat{
+        counter <<- counter + 1L
+        placeholder <- paste0(".BayesToolsHypothesisLiteral", counter, ".")
+        if(!grepl(placeholder, original_text, fixed = TRUE)) break
+      }
+      labels[[placeholder]] <<- .hypothesis_symbol_text(node)
       return(as.name(placeholder))
     }
     if(is.call(node)){

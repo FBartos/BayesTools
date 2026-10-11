@@ -20,6 +20,58 @@ test_that("escaped literal roots preserve statement grammar on roundtrip", {
                 "theta + TRUE > 0", "theta + Inf > 0")) expect_error(hypothesis_parse(text))
 })
 
+test_that("a symbol named vs is quoted so that rendered hypotheses reparse", {
+
+  # whitespace-delimited 'vs' (any case) is the statement separator, so a
+  # parameter with that name must be written with backticks
+  for(name in c("vs", "VS", "Vs", "vS")){
+    text <- paste0("am = ", name)
+    rendered <- hypothesis_render(hypothesis_parse(text))
+    expect_identical(rendered, paste0("am - `", name, "` = 0"))
+    reparsed <- hypothesis_parse(rendered)
+    expect_identical(hypothesis_render(reparsed), rendered)
+    expect_identical(hypothesis_symbols(reparsed), c("am", name))
+    expect_identical(hypothesis_symbols(hypothesis_parse(text)), c("am", name))
+  }
+  expect_identical(
+    hypothesis_render(hypothesis_parse("am - `vs` > 0 & abs(`vs`) < 2")),
+    "am - `vs` > 0 & abs(`vs`) < 2"
+  )
+  explicit <- hypothesis_render(hypothesis_parse("am = `vs` vs am > `vs`"))
+  expect_identical(explicit, "am - `vs` = 0 vs am > `vs`")
+  expect_identical(hypothesis_render(hypothesis_parse(explicit)), explicit)
+  # an ordinary symbol is not quoted
+  expect_identical(hypothesis_render(hypothesis_parse("am = bs")), "am - bs = 0")
+
+})
+
+test_that("a rewrite to the root vs reparses", {
+
+  rewritten <- hypothesis_rewrite(hypothesis_parse("theta > 0 & phi > 0"), c(phi = "vs"))
+  rendered <- hypothesis_render(rewritten)
+  expect_identical(rendered, "theta > 0 & `vs` > 0")
+  reparsed <- hypothesis_parse(rendered)
+  expect_identical(hypothesis_symbols(reparsed), c("theta", "vs"))
+  expect_identical(hypothesis_render(reparsed), rendered)
+
+})
+
+test_that("a catalog alias named vs is quoted by the catalog-aware parser", {
+
+  catalog <- .bt_build_parameter_catalog(.bt_build_parameter_coordinates(columns = c("am", "vs")))
+  ast <- hypothesis_parse("am - vs > 0", catalog = catalog)
+  expect_identical(hypothesis_symbols(ast), c("am", "vs"))
+  expect_identical(hypothesis_render(ast), "am - `vs` > 0")
+  expect_identical(hypothesis_render(hypothesis_parse(hypothesis_render(ast), catalog = catalog)),
+                   "am - `vs` > 0")
+
+})
+
+test_that("the statement separator error names the backtick remedy", {
+
+  expect_error(hypothesis_parse("theta = 0 vs "), "Quote a parameter named 'vs' in backticks.", fixed = TRUE)
+})
+
 test_that("integer hypothesis literals share double semantic rendering", {
   integer_text <- c("theta = 1L", "theta > 1L", "2L * theta = 0",
     "theta > -1L", "theta / 2L > 0", "theta^2L > 1L")
