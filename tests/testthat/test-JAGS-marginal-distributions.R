@@ -5261,6 +5261,56 @@ test_that("a level never takes another level's stored density or ordinate", {
                  C = dnorm(0) / dnorm(0, 1.4, .5)), tolerance = 1e-8)
 })
 
+test_that("stored ordinates of a later source only fill the null values no earlier source supplies", {
+
+  # a primary 'posterior_ordinate' and a secondary 'posterior_ordinates' at the same
+  # null: the primary is used for it (contract: source precedence)
+  fit <- .mock_mixing_fit_for_marginal(
+    cbind(theta = seq(-2, 2, length.out = 101)), list(theta = prior("normal", list(0, 1))))
+  primary <- posterior_ordinate_attribute(0, .5, "primary", "precomputed", parameter = "theta")
+  secondary <- posterior_ordinate_attribute(0, 100, "secondary", "precomputed", parameter = "theta")
+  posterior_metadata(fit, "posterior_ordinate") <- list(theta = primary)
+  posterior_metadata(fit, "posterior_ordinates") <- list(theta = secondary)
+
+  marginal <- marginal_posterior(as_mixed_posteriors(fit, "theta"), "theta", prior_samples = TRUE)
+  attached <- posterior_metadata(marginal, "posterior_ordinate")
+  expect_identical(attached$method, "primary")
+  expect_equal(attached$value, 0)
+  expect_equal(
+    as.numeric(Savage_Dickey_BF(marginal, 0, silent = TRUE, density_method = "precomputed")),
+    dnorm(0) / .5, tolerance = 1e-8)
+
+})
+
+test_that("a later ordinate source keeps its other null values with their class and diagnostics", {
+
+  primary <- posterior_ordinate_attribute(0, .5, "primary", "precomputed", parameter = "theta")
+  secondary <- posterior_ordinate_attribute(0, 100, "secondary", "precomputed", parameter = "theta")
+  later <- posterior_ordinate_attribute(c(0, 1, 2), c(100, .3, .2), "secondary", "precomputed",
+    diagnostics = list(relative_mcse = c(.1, .2, .3)), parameter = "theta")
+  later_log <- BayesTools:::.posterior_log_ordinate_attribute(c(0, 3), log(c(100, .1)),
+    "secondary-log", "precomputed", diagnostics = list(relative_mcse = c(.4, .5)), parameter = "theta")
+  merged <- BayesTools:::.posterior_ordinate_from_sources(list(primary, later), "theta")
+  expect_s3_class(merged, "BayesTools_posterior_ordinates")
+  expect_equal(vapply(merged$ordinates, function(entry) entry$method, ""), c("primary", "secondary"))
+  expect_equal(merged$ordinates[[2]]$value, c(1, 2))
+  expect_equal(merged$ordinates[[2]]$ordinate, c(.3, .2))
+  expect_equal(merged$ordinates[[2]]$diagnostics$relative_mcse, c(.2, .3))
+  expect_equal(BayesTools:::.posterior_ordinate_from_attribute(merged, 0)$y, .5)
+  expect_equal(BayesTools:::.posterior_ordinate_from_attribute(merged, 2)$y, .2)
+
+  merged_log <- BayesTools:::.posterior_ordinate_from_sources(list(primary, later_log), "theta")
+  expect_s3_class(merged_log$ordinates[[2]], "BayesTools_posterior_log_ordinate")
+  expect_equal(merged_log$ordinates[[2]]$value, 3)
+  expect_equal(merged_log$ordinates[[2]]$log_ordinate, log(.1))
+  expect_equal(merged_log$ordinates[[2]]$diagnostics$relative_mcse, .5)
+
+  # an entry whose null values are all supplied is dropped; the first source is kept as is
+  expect_identical(BayesTools:::.posterior_ordinate_from_sources(list(primary, secondary), "theta"), primary)
+  expect_identical(BayesTools:::.posterior_ordinate_from_sources(list(secondary, primary), "theta"), secondary)
+  expect_identical(BayesTools:::.posterior_ordinate_from_sources(list(later), "theta"), later)
+})
+
 # File-level skips: All remaining tests in this file require pre-fitted models
 skip_if_not_visual_fixture_tests()
 skip_if_no_fits()

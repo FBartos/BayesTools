@@ -307,7 +307,7 @@
 
   for(name in names(diagnostics)){
     value <- diagnostics[[name]]
-    if(is.atomic(value) && length(value) > 1L && length(value) >= index){
+    if(is.atomic(value) && length(value) > 1L && length(value) >= max(index)){
       diagnostics[[name]] <- value[index]
     }
   }

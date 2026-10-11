@@ -227,9 +227,12 @@
   }
 
   if(is.null(null_hypothesis)){
+    # source precedence applies per null value: an entry of a later source keeps
+    # only the null values that no earlier source supplies
     matches <- list()
+    supplied <- numeric()
     for(source in sources){
-      matches <- c(matches, .posterior_ordinate_collect_from_source(
+      source_matches <- .posterior_ordinate_collect_from_source(
         source             = source,
         aliases            = aliases,
         conditional        = conditional,
@@ -238,7 +241,14 @@
         allow_unlabeled    = allow_unlabeled,
         selected_by_name   = FALSE,
         depth              = 0L
-      ))
+      )
+      if(length(supplied) > 0L){
+        source_matches <- .posterior_ordinate_without_values(source_matches, supplied)
+      }
+      supplied <- c(supplied, unlist(lapply(
+        source_matches, .posterior_ordinate_value_candidates
+      ), use.names = FALSE))
+      matches <- c(matches, source_matches)
     }
     matches <- .posterior_ordinate_unique_sources(matches)
     if(length(matches) == 0L){
@@ -343,6 +353,48 @@
       selected_by_name   = selected_by_name,
       depth              = depth + 1L
     ))
+  }
+
+  return(out)
+}
+
+# The matched ordinate attributes without the null values in 'values'; an entry
+# left without values is dropped, and a partly supplied entry keeps its class
+# and its other fields with its value-wise fields subset.
+.posterior_ordinate_without_values <- function(matches, values){
+
+  out <- list()
+  for(match in matches){
+    entries <- .posterior_ordinate_entries(match)
+    kept <- lapply(entries, function(entry){
+      entry_values <- .posterior_ordinate_values(entry)[["value"]]
+      keep <- which(!entry_values %in% values)
+      if(length(keep) == length(entry_values)){
+        return(entry)
+      }
+      if(length(keep) == 0L){
+        return(NULL)
+      }
+      for(field in intersect(c("value", "ordinate", "log_ordinate"), names(entry))){
+        entry[[field]] <- entry[[field]][keep]
+      }
+      entry[["diagnostics"]] <- .posterior_ordinate_subset_diagnostics(
+        entry[["diagnostics"]], keep
+      )
+      .posterior_ordinate_values(entry)
+      entry
+    })
+    kept <- kept[!vapply(kept, is.null, logical(1))]
+    if(identical(kept, entries)){
+      out <- c(out, list(match))
+    }else if(length(kept) == 1L){
+      out <- c(out, kept)
+    }else if(length(kept) > 1L){
+      out <- c(out, list(structure(
+        list(status = "ok", ordinates = kept),
+        class = c("BayesTools_posterior_ordinates", "list")
+      )))
+    }
   }
 
   return(out)
