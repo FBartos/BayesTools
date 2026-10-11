@@ -190,6 +190,8 @@ posterior_density_attribute <- function(x, y, method, density_method,
 #' \code{posterior_ordinate} metadata of posterior draws
 #' ([posterior_metadata()]).
 #'
+#' @seealso [posterior_log_ordinate_attribute()]
+#'
 #' @export
 posterior_ordinate_attribute <- function(value, ordinate, method,
                                          density_method,
@@ -454,4 +456,88 @@ posterior_ordinate_has_value <- function(ordinate, value){
   class(out) <- c("BayesTools_posterior_log_ordinate", "BayesTools_posterior_ordinate", "list")
   .posterior_ordinate_values(out)
   out
+}
+
+#' @title Posterior ordinate attributes from log heights
+#'
+#' @description Constructs a posterior-ordinate attribute from the natural
+#' logarithm of the posterior heights. It is the log-height counterpart of
+#' [posterior_ordinate_attribute()], for posterior ordinates whose natural-scale
+#' height underflows: \code{posterior_ordinate_attribute()} requires finite
+#' positive heights, while a log height only has to be finite.
+#'
+#' @details The attribute stores the fields \code{status} (\code{"ok"}),
+#' \code{value}, \code{ordinate} (equal to \code{exp(log_ordinate)}, so it can
+#' underflow to \code{0} while \code{log_ordinate} stays finite),
+#' \code{log_ordinate}, \code{method}, \code{density_method},
+#' \code{diagnostics}, and the additional metadata. Consumers that evaluate
+#' a Bayes factor from a stored ordinate (e.g., [Savage_Dickey_BF()]) use the
+#' log height when it is present, and [posterior_transform()] maps it with the
+#' Jacobian of the transformation.
+#'
+#' The values are unique and finite and there is one log height per value.
+#' Additional metadata must be named with unique names and cannot replace the
+#' fields \code{status}, \code{value}, \code{ordinate}, \code{log_ordinate},
+#' \code{method}, \code{density_method}, \code{diagnostics}, \code{x},
+#' \code{y}, \code{null_hypothesis}, \code{height}, \code{posterior_height},
+#' \code{ordinates}, \code{posterior_ordinate}, \code{posterior_ordinates}, and
+#' \code{estimator}.
+#'
+#' @param value numeric null-hypothesis value or values.
+#' @param log_ordinate numeric natural logarithm of the posterior ordinate
+#' height or heights, one per \code{value}.
+#' @param method estimator label stored in the attribute.
+#' @param density_method public density method label stored in the attribute.
+#' @param diagnostics optional estimator diagnostics.
+#' @param ... additional named metadata fields, for example \code{parameter},
+#' \code{conditional}, or \code{conditional_rule}.
+#'
+#' @return \code{posterior_log_ordinate_attribute()} returns a list of class
+#' \code{c("BayesTools_posterior_log_ordinate", "BayesTools_posterior_ordinate",
+#' "list")} with the fields listed in the details, suitable for the
+#' \code{posterior_ordinate} metadata of posterior draws
+#' ([posterior_metadata()]).
+#'
+#' @seealso [posterior_ordinate_attribute()] [posterior_metadata()]
+#'
+#' @examples
+#' # a height of exp(-1000) underflows to zero on the natural scale
+#' attribute <- posterior_log_ordinate_attribute(
+#'   value          = 0,
+#'   log_ordinate   = -1000,
+#'   method         = "example",
+#'   density_method = "precomputed"
+#' )
+#' attribute$ordinate
+#' attribute$log_ordinate
+#'
+#' @export
+posterior_log_ordinate_attribute <- function(value, log_ordinate, method,
+                                             density_method,
+                                             diagnostics = NULL, ...){
+
+  check_char(method, "method", check_length = 1, allow_NA = FALSE)
+  check_char(density_method, "density_method", check_length = 1,
+             allow_NA = FALSE)
+  metadata <- list(...)
+  metadata_names <- names(metadata)
+  if(length(metadata) > 0L &&
+     (is.null(metadata_names) || anyNA(metadata_names) ||
+      any(!nzchar(metadata_names)) || anyDuplicated(metadata_names))){
+    stop("Additional posterior ordinate metadata must have unique, nonmissing names.",
+         call. = FALSE)
+  }
+  reserved <- c(
+    "status", "value", "ordinate", "log_ordinate", "method", "density_method",
+    "diagnostics", "x", "y", "null_hypothesis", "height",
+    "posterior_height", "ordinates", "posterior_ordinate",
+    "posterior_ordinates", "estimator"
+  )
+  if(any(metadata_names %in% reserved)){
+    stop("Additional posterior ordinate metadata cannot replace reserved fields.",
+         call. = FALSE)
+  }
+
+  .posterior_log_ordinate_attribute(value, log_ordinate, method, density_method,
+                                    diagnostics, ...)
 }

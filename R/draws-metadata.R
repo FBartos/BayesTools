@@ -794,6 +794,82 @@
     target = entry$column, reason = cause, detail = entry$reason, diagnostics = diagnostics))
 }
 
+#' @title Check that a measure of posterior draws is available
+#'
+#' @description Stops with the declared typed refusal when the metadata of
+#' posterior draws mark a measure of a column as unavailable. The refusals are
+#' declared in the \code{measure_unavailable} field of the draws
+#' ([posterior_metadata()]), for example for the prior density of a quantity
+#' whose prior law cannot be certified. Calling it before the
+#' \code{prior_density}, \code{atoms}, or \code{support} metadata are read
+#' separates a refused measure from a measure that was never declared.
+#'
+#' @details Draws without a \code{measure_unavailable} declaration, and
+#' declarations of other measures or other columns, pass. When several entries
+#' match, the first one in the declaration table is raised. Stale or invalid
+#' draw metadata are refused by the metadata reader.
+#'
+#' The refusal is an error condition with a \code{NULL} call, the
+#' \code{message}, and the fields \code{target} (the column), \code{reason}
+#' (the declared \code{cause} when the entry has one, otherwise the reason
+#' text), \code{detail} (the reason text of the entry), and \code{diagnostics}
+#' (the compact model probability diagnostics of the entry, or \code{NULL}).
+#' Its classes depend on the measure and end with \code{"error"} and
+#' \code{"condition"}:
+#'
+#' - \code{"prior_density"}: \code{BayesTools_formula_prior_density_unavailable},
+#'   \code{BayesTools_formula_measure_unavailable} (only when \code{reason} is
+#'   an enumerated measure cause of the \code{measure_unavailable} metadata),
+#'   and \code{BayesTools_formula_transform_unavailable}.
+#' - \code{"atoms"}: \code{BayesTools_formula_atoms_unavailable} and, under the
+#'   same condition, \code{BayesTools_formula_measure_unavailable}.
+#' - \code{"support"}: \code{BayesTools_formula_support_unavailable} and, under
+#'   the same condition, \code{BayesTools_formula_measure_unavailable}.
+#'
+#' Callers should match these classes and the field \code{reason} rather than
+#' the message.
+#'
+#' @param x posterior draws with metadata, such as the results of
+#' [as_mixed_posteriors()], [mix_posteriors()], or [marginal_posterior()].
+#' @param measure the measure that is about to be read: \code{"prior_density"},
+#' \code{"atoms"}, or \code{"support"}.
+#' @param column \code{NULL}, or a character vector of the columns of \code{x}
+#' to check. \code{NULL} checks the column names of matrix draws, otherwise the
+#' column of the single declared quantity or the \code{parameter} attribute.
+#'
+#' @return \code{posterior_measure_check()} returns \code{invisible(TRUE)} when
+#' \code{posterior_metadata(x, "measure_unavailable")} has no entry for
+#' \code{measure} in \code{column}, and otherwise raises the refusal described
+#' in the details.
+#'
+#' @seealso [posterior_metadata()]
+#'
+#' @examples
+#' draws <- c(0.1, 0.2, 0.3)
+#' attr(draws, "parameter") <- "theta"
+#' posterior_metadata(draws, "measure_unavailable") <- data.frame(
+#'   column  = "theta",
+#'   measure = "atoms",
+#'   reason  = "the atoms are not declared"
+#' )
+#'
+#' posterior_measure_check(draws, "support")
+#' tryCatch(
+#'   posterior_measure_check(draws, "atoms"),
+#'   error = function(e) class(e)
+#' )
+#'
+#' @export
+posterior_measure_check <- function(x, measure, column = NULL){
+
+  check_char(measure, "measure", check_length = 1, allow_NA = FALSE,
+             allow_values = c("prior_density", "atoms", "support"))
+  check_char(column, "column", check_length = 0, allow_NULL = TRUE,
+             allow_NA = FALSE)
+
+  .bt_formula_measure_check(x, measure, column)
+}
+
 .bt_formula_measure_mark <- function(x, column, measure, reason, cause = NULL, diagnostics = NULL){
 
   unavailable <- .bt_meta_get(x, "measure_unavailable")

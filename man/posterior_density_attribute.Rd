@@ -117,3 +117,6 @@ mass. The point masses are the posterior atoms of the draws, which are
 declared only in their \code{atoms} metadata with
 \code{\link[=posterior_atom_attribute]{posterior_atom_attribute()}}; densities do not carry point masses.
 }
+\seealso{
+\code{\link[=posterior_log_ordinate_attribute]{posterior_log_ordinate_attribute()}}
+}
