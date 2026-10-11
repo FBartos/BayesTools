@@ -337,6 +337,37 @@
   paste0(parameter_name, "_ordered_total")
 }
 
+#' @title Name of the total node of an ordered prior
+#'
+#' @description Returns the name of the node that holds the total effect of an
+#' ordered prior ([prior_ordered()]) for a parameter in the JAGS model:
+#' \code{<parameter>_ordered_total}, without any index. When the total is a
+#' mixture (for example a spike and slab), its inclusion indicator is named by
+#' appending \code{_indicator} to this name.
+#'
+#' @param parameter_name a character vector of parameter names: non-missing and
+#' not empty.
+#'
+#' @return \code{prior_ordered_total_name()} returns a character vector with
+#' \code{<parameter_name>_ordered_total} for each element of
+#' \code{parameter_name}.
+#'
+#' @seealso [prior_ordered()]
+#'
+#' @examples
+#' prior_ordered_total_name("mu_f")
+#'
+#' @export
+prior_ordered_total_name <- function(parameter_name){
+
+  check_char(parameter_name, "parameter_name", check_length = 0, allow_NA = FALSE)
+  if(any(!nzchar(parameter_name))){
+    stop("The 'parameter_name' argument cannot contain empty strings.", call. = FALSE)
+  }
+
+  .prior_ordered_total_name(parameter_name)
+}
+
 .prior_ordered_format_number <- function(x){
   if(length(x) != 1L || is.na(x) || !is.finite(x)){
     stop("Fixed ordered allocation weights must be finite.", call. = FALSE)

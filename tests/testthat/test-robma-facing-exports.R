@@ -1,4 +1,5 @@
 skip_if_not_test_profile("unit")
+source(testthat::test_path("common-functions.R"))
 
 # Public entry points to BayesTools helpers that downstream packages (RoBMA)
 # previously reached through the unexported namespace. Each export is a
@@ -726,4 +727,214 @@ test_that("hypothesis_linear_target_side() validates its arguments", {
   stale$source <- "f[B] > 0"
   expect_error(hypothesis_linear_target_side(stale, "f"),
                "Hypothesis AST side source is inconsistent with its expression.", fixed = TRUE)
+})
+
+test_that("prior_ordered_total_name() names the ordered total node", {
+
+  expect_identical(prior_ordered_total_name("mu_f"), "mu_f_ordered_total")
+  names <- c("mu_f", "g", "a b")
+  expect_identical(prior_ordered_total_name(names), paste0(names, "_ordered_total"))
+  expect_identical(prior_ordered_total_name(names), BayesTools:::.prior_ordered_total_name(names))
+
+  # the name is the one of the total node of the generated model; the
+  # inclusion indicator of a mixture total appends '_indicator'
+  data <- data.frame(f = ordered(rep(c("a", "b", "c"), 2), levels = c("a", "b", "c")))
+  compile <- function(total){
+    JAGS_formula(~ f, "mu", data, list(
+      intercept = prior("normal", list(0, 1)),
+      f         = prior_ordered(total)
+    ))$prior_list
+  }
+  simple <- compile(prior("normal", list(1, 1)))
+  expect_true(prior_ordered_total_name("mu_f") %in% JAGS_to_monitor(simple))
+  expect_true(grepl(prior_ordered_total_name("mu_f"), JAGS_add_priors("model{}", simple), fixed = TRUE))
+  mixture <- compile(prior_mixture(
+    list(prior("spike", list(0)), prior("normal", list(1, 1))), is_null = c(TRUE, FALSE)
+  ))
+  expect_true(paste0(prior_ordered_total_name("mu_f"), "_indicator") %in% JAGS_to_monitor(mixture))
+
+  expect_error(prior_ordered_total_name(NULL), "The 'parameter_name' argument cannot be NULL.", fixed = TRUE)
+  expect_error(prior_ordered_total_name(character()), "The 'parameter_name' argument cannot be NULL.", fixed = TRUE)
+  expect_error(prior_ordered_total_name(1), "The 'parameter_name' argument must be a character vector.", fixed = TRUE)
+  expect_error(prior_ordered_total_name(NA_character_), "The 'parameter_name' argument cannot contain NA/NaN values.", fixed = TRUE)
+  expect_error(prior_ordered_total_name(c("a", NA)), "The 'parameter_name' argument cannot contain NA/NaN values.", fixed = TRUE)
+  expect_error(prior_ordered_total_name(""), "The 'parameter_name' argument cannot contain empty strings.", fixed = TRUE)
+  expect_error(prior_ordered_total_name(c("a", "")), "The 'parameter_name' argument cannot contain empty strings.", fixed = TRUE)
+})
+
+test_that("simplify_as_mixed_posterior_bias() extracts the scalar bias components", {
+
+  prior_list <- list(bias = prior_mixture(list(
+    prior_weightfunction("one-sided", .05, wf_fixed(c(1, .5))),
+    prior_PET("normal", list(0, 1)), prior_PEESE("normal", list(0, 1))
+  )))
+  posterior <- cbind(
+    bias_indicator = rep(1:3, each = 6),
+    "omega[1]" = 1,
+    "omega[2]" = c(rep(.5, 6), rep(1, 12)),
+    PET = c(rep(0, 6), seq(.1, 1, length.out = 6), rep(0, 6)),
+    PEESE = c(rep(0, 12), seq(.2, 2, length.out = 6))
+  )
+  fit <- coda::mcmc(posterior)
+  class(fit) <- c("mcmc", "BayesTools_fit")
+  attr(fit, "prior_list") <- prior_list
+  fit <- attach_test_parameter_map(fit)
+  samples <- as_mixed_posteriors(fit, "bias")
+  samples$other <- c(10, 20)
+
+  for(parameter in c("PET", "PEESE", "omega")){
+    scalar <- simplify_as_mixed_posterior_bias(samples, parameter)
+    expect_equal(scalar, BayesTools:::.simplify_as_mixed_posterior_bias(samples, parameter))
+    expect_setequal(names(scalar), c(parameter, "other"))
+    expect_identical(scalar$other, c(10, 20))
+    expect_false(inherits(scalar[[parameter]], "mixed_posteriors.bias"))
+    expect_identical(nrow(scalar[[parameter]]), nrow(samples$bias))
+    expect_identical(length(attr(scalar[[parameter]], "prior_list")), 3L)
+  }
+  for(parameter in c("PET", "PEESE")){
+    scalar <- simplify_as_mixed_posterior_bias(samples, parameter)[[parameter]]
+    expect_identical(colnames(scalar), parameter)
+    expect_equal(as.numeric(scalar), unname(posterior[, parameter]))
+    expect_identical(colnames(BayesTools:::.posterior_atoms_get(scalar)$locations), parameter)
+    # the branches without the component are null values with their weights
+    expect_true(all(vapply(attr(scalar, "prior_list")[c(1L, if(parameter == "PET") 3L else 2L)],
+                           is.prior.point, logical(1))))
+  }
+  omega <- simplify_as_mixed_posterior_bias(samples, "omega")$omega
+  omega_columns <- grep("omega", colnames(samples$bias), value = TRUE)
+  expect_length(omega_columns, 2L)
+  expect_identical(colnames(omega), omega_columns)
+  expect_s3_class(omega, "mixed_posteriors.weightfunction")
+  expect_equal(as.numeric(omega[, 1L]), unname(posterior[, "omega[1]"]))
+  expect_equal(as.numeric(omega[, 2L]), unname(posterior[, "omega[2]"]))
+
+  # the typed refusal of the internal extraction remains
+  incomplete <- samples
+  incomplete$bias <- incomplete$bias[, colnames(incomplete$bias) != "PET", drop = FALSE]
+  for(attribute in setdiff(names(attributes(samples$bias)), c("dim", "dimnames"))){
+    attr(incomplete$bias, attribute) <- attributes(samples$bias)[[attribute]]
+  }
+  incomplete$bias <- BayesTools:::.bt_meta_refresh(incomplete$bias)
+  expect_error(
+    simplify_as_mixed_posterior_bias(incomplete, "PET"),
+    "Posterior samples for 'PET' are unavailable because an active bias branch is not a point prior.",
+    fixed = TRUE
+  )
+
+  # the arguments are validated before the extraction
+  expect_error(simplify_as_mixed_posterior_bias(samples, "PETPEESE"),
+               "The 'PETPEESE' values are not recognized by the 'parameter' argument.", fixed = TRUE)
+  expect_error(simplify_as_mixed_posterior_bias(samples, "bias"),
+               "The 'bias' values are not recognized by the 'parameter' argument.", fixed = TRUE)
+  expect_error(simplify_as_mixed_posterior_bias(samples, c("PET", "PEESE")),
+               "The 'parameter' argument must have length '1'.", fixed = TRUE)
+  expect_error(simplify_as_mixed_posterior_bias(samples, NA_character_),
+               "The 'parameter' argument cannot contain NA/NaN values.", fixed = TRUE)
+  expect_error(simplify_as_mixed_posterior_bias(samples, NULL),
+               "The 'parameter' argument cannot be NULL.", fixed = TRUE)
+  expect_error(simplify_as_mixed_posterior_bias(samples, 1),
+               "The 'parameter' argument must be a character vector.", fixed = TRUE)
+  bias_message <- "The 'samples' argument must be a list with a 'bias' element of class 'mixed_posteriors.bias'"
+  expect_error(simplify_as_mixed_posterior_bias(NULL, "PET"), bias_message, fixed = TRUE)
+  expect_error(simplify_as_mixed_posterior_bias(samples$bias, "PET"), bias_message, fixed = TRUE)
+  expect_error(simplify_as_mixed_posterior_bias(list(), "PET"), bias_message, fixed = TRUE)
+  expect_error(simplify_as_mixed_posterior_bias(list(bias = 1:3), "PET"), bias_message, fixed = TRUE)
+  expect_error(simplify_as_mixed_posterior_bias(list(PET = samples$bias), "PET"), bias_message, fixed = TRUE)
+})
+
+.robma_facing_prior_density <- function(){
+
+  BayesTools:::.prior_linear_combination_density(
+    prior_list = list(beta = prior_mixture(
+      list(
+        prior("spike", list(0), prior_weights = 1),
+        prior("normal", list(0, 1), prior_weights = 1)
+      ),
+      is_null = c(TRUE, FALSE)
+    )),
+    weights = c(beta = 1),
+    n_grid  = 256
+  )
+}
+
+test_that("plot() of a prior linear density draws its plot data", {
+
+  density <- .robma_facing_prior_density()
+  expect_s3_class(density, "prior_linear_density")
+  expect_false(inherits(density, "prior"))
+  expect_identical(
+    utils::getS3method("plot", "prior_linear_density"),
+    BayesTools:::plot.prior_linear_density
+  )
+  # plot() of a prior keeps its own method
+  expect_identical(
+    utils::getS3method("plot", "prior"),
+    BayesTools:::plot.prior
+  )
+  expect_null(utils::getS3method("plot", "prior_linear_density_deferred", optional = TRUE))
+
+  # ggplot: the layers of the internal renderer on the same plot data
+  plot_data <- BayesTools:::.prior_linear_density_to_plot_data(density, n_points = 64, x_range = c(-3, 3))
+  direct <- BayesTools:::.plot_prior_list.both(plot_data, plot_type = "ggplot", par_name = "beta")
+  plotted <- plot(density, plot_type = "ggplot", n_points = 64, xlim = c(-3, 3), par_name = "beta")
+  expect_s3_class(plotted, "ggplot")
+  geoms <- function(plot) unname(vapply(plot$layers, function(layer) class(layer$geom)[[1L]], character(1)))
+  expect_identical(geoms(plotted), c("GeomLine", "GeomSegment"))
+  expect_identical(geoms(plotted), geoms(direct))
+  expect_equal(lapply(plotted$layers, `[[`, "data"), lapply(direct$layers, `[[`, "data"))
+  curve <- plotted$layers[[1L]]$data
+  expect_equal(curve$y, .5 * stats::dnorm(curve$x), tolerance = 1e-3)
+  expect_equal(range(curve$x), c(-3, 3))
+  atom <- plotted$layers[[2L]]$data
+  expect_equal(atom$x, 0)
+  expect_gt(atom$yend, 0)
+
+  # the transformation arguments and the graphical arguments reach the renderer
+  transformed <- plot(density, plot_type = "ggplot", n_points = 64, xlim = c(0, 4),
+                      transformation = "exp", transformation_settings = TRUE, ylim = c(0, 1))
+  transformed_data <- BayesTools:::.prior_linear_density_to_plot_data(
+    density, n_points = 64, x_range = c(0, 4), transformation = "exp", transformation_settings = TRUE
+  )
+  expect_equal(
+    lapply(transformed$layers, `[[`, "data"),
+    lapply(BayesTools:::.plot_prior_list.both(transformed_data, "ggplot", ylim = c(0, 1))$layers, `[[`, "data")
+  )
+  expect_s3_class(
+    plot(density, plot_type = "ggplot", n_points = 64, xlim = c(-3, 3), add = TRUE),
+    "BayesTools_prior_overlay"
+  )
+  expect_s3_class(plot(BayesTools:::.prior_linear_density_point(2), plot_type = "ggplot"), "ggplot")
+
+  # base graphics: invisible NULL, one device, and overlays keep the axis scale
+  grDevices::pdf(NULL)
+  on.exit(grDevices::dev.off(), add = TRUE)
+  result <- withVisible(plot(density, n_points = 64, xlim = c(-3, 3)))
+  expect_false(result$visible)
+  expect_null(result$value)
+  expect_silent(plot(density, plot_type = "base", n_points = 64, xlim = c(-3, 3), add = TRUE, col = "red"))
+  expect_false(withVisible(plot(density, n_points = 64, par_name = "beta", lwd = 2))$visible)
+})
+
+test_that("plot() of a prior linear density validates its arguments", {
+
+  density <- .robma_facing_prior_density()
+
+  expect_error(plot(density, plot_type = "plotly"),
+               "The 'plotly' values are not recognized by the 'plot_type' argument.", fixed = TRUE)
+  expect_error(plot(density, plot_type = c("base", "ggplot")),
+               "The 'plot_type' argument must have length '1'.", fixed = TRUE)
+  expect_error(plot(density, n_points = 1), "The 'n_points' must be equal or higher than 2.", fixed = TRUE)
+  expect_error(plot(density, n_points = 10.5), "The 'n_points' argument must be an integer vector.", fixed = TRUE)
+  expect_error(plot(density, n_points = c(10, 20)), "The 'n_points' argument must have length '1'.", fixed = TRUE)
+  expect_error(plot(density, xlim = 1), "The 'xlim' argument must have length '2'.", fixed = TRUE)
+  expect_error(plot(density, xlim = c("a", "b")), "The 'xlim' argument must be a numeric vector.", fixed = TRUE)
+  expect_error(plot(density, transformation = 3), "Uknown format of the 'transformation' argument.", fixed = TRUE)
+
+  # a density without a curve and without a point mass has nothing to draw
+  testthat::local_mocked_bindings(
+    .prior_linear_density_to_plot_data = function(...) list(),
+    .package = "BayesTools"
+  )
+  expect_error(plot(density, plot_type = "ggplot"),
+               "The prior density has neither a continuous curve nor a point mass to plot.", fixed = TRUE)
 })

@@ -266,6 +266,85 @@ plot.prior <- function(x, plot_type = "base",
   }
 }
 
+#' @title Plot a prior linear density
+#'
+#' @description Plots the prior density of a quantity that is a linear
+#' combination of fitted coordinates, as returned by [parameter_prior_density()]
+#' and [JAGS_formula_prior_density()]: the continuous part as a curve, and
+#' the point masses as arrows on a secondary probability axis.
+#'
+#' @details Continuous parts are drawn as curves and point masses as arrows
+#' on the probability axis, as for the priors of [plot.prior()]. A continuous
+#' part without an exact route that cannot be resolved is omitted with a
+#' warning of class \code{BayesTools_prior_curve_unavailable} (also
+#' \code{BayesTools_plot_condition}), and the declared point masses are still
+#' drawn. A density with neither a curve nor a point mass in the plotted range
+#' stops with an error.
+#'
+#' @param x a \code{prior_linear_density} object.
+#' @param plot_type whether to use a base plot \code{"base"} or ggplot2
+#' \code{"ggplot"} for plotting.
+#' @param n_points number of plotting points. A density that needs numerical
+#' integration (a Gaussian convolution, a scale mixture, or a sum of two
+#' non-normal terms) is plotted at no more than 200 equally spaced points plus
+#' its support bounds, jumps, peaks and atoms.
+#' @param xlim optional plotting range of length two, on the untransformed
+#' scale (on the transformed scale when \code{transformation_settings = TRUE}).
+#' @param transformation optional transformation applied to the density: one of
+#' the prepared transformations of [density.prior()] (\code{"lin"},
+#' \code{"tanh"}, \code{"exp"}), or a list with the functions \code{fun},
+#' \code{inv}, and \code{jac}.
+#' @param transformation_arguments optional list with named arguments for the
+#' \code{transformation}.
+#' @param transformation_settings whether \code{xlim} is supplied on the
+#' transformed scale.
+#' @param par_name optional label of the x-axis.
+#' @param ... additional graphical arguments, as in [plot.prior()]. For
+#' mixed continuous and point densities, \code{ylim} controls the density axis,
+#' \code{ylim2} the probability axis, \code{ylab2} its label, and
+#' \code{scale_y2} the scaling factor of the probability axis. \code{add = TRUE}
+#' adds the density to the current base plot, which keeps the scaling of its
+#' probability axis, or, for \code{plot_type = "ggplot"}, returns an overlay
+#' that is added to an existing prior plot with \code{+}.
+#'
+#' @return \code{plot.prior_linear_density()} returns an object of class
+#' 'ggplot' if \code{plot_type = "ggplot"} (an overlay of class
+#' \code{BayesTools_prior_overlay} if \code{add = TRUE}), and otherwise
+#' draws the base plot and returns \code{NULL} invisibly.
+#'
+#' @seealso [plot.prior()] [parameter_prior_density()]
+#' [JAGS_formula_prior_density()] [prior_density_ordinate()]
+#'
+#' @export
+plot.prior_linear_density <- function(x, plot_type = "base", n_points = 1000, xlim = NULL,
+                                      transformation = NULL, transformation_arguments = NULL,
+                                      transformation_settings = FALSE, par_name = NULL, ...){
+
+  check_char(plot_type, "plot_type", allow_values = c("base", "ggplot"))
+  check_int(n_points, "n_points", lower = 2)
+  check_real(xlim, "xlim", check_length = 2, allow_NULL = TRUE)
+
+  plot_data <- .prior_linear_density_to_plot_data(
+    x,
+    n_points                 = n_points,
+    x_range                  = xlim,
+    transformation           = transformation,
+    transformation_arguments = transformation_arguments,
+    transformation_settings  = transformation_settings
+  )
+  if(length(plot_data) == 0L){
+    stop("The prior density has neither a continuous curve nor a point mass to plot.", call. = FALSE)
+  }
+
+  plot <- .plot_prior_list.both(plot_data, plot_type = plot_type, par_name = par_name, ...)
+
+  if(plot_type == "ggplot"){
+    return(plot)
+  }else{
+    return(invisible())
+  }
+}
+
 # Individual weight-function indices refer to the publication weights of the
 # p-value intervals in ascending order (the reference weight first).
 .weightfunction_check_individual_index <- function(index, n_weights, name, select_one = FALSE){

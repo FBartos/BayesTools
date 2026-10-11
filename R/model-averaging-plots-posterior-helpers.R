@@ -355,3 +355,51 @@
 
   return(samples)
 }
+
+#' @title Scalar PET, PEESE or omega posterior from a bias mixed posterior
+#'
+#' @description Extracts the posterior of one component of a bias mixture from
+#' model-averaged posterior samples that hold the whole mixture as one
+#' \code{bias} element, so that the component can be handled like any other
+#' scalar parameter (for example plotted or summarized as a single
+#' parameter). The component keeps the model-averaged posterior over all bias
+#' branches: branches without the component contribute a null value (zero for
+#' PET and PEESE, no selection for omega) with their model probabilities.
+#'
+#' @details \code{samples} is the output of [as_mixed_posteriors()] or
+#' [mix_posteriors()] for a bias mixture (e.g., a mixture of [prior_PET()],
+#' [prior_PEESE()], [prior_weightfunction()] and [prior_none()] priors), whose
+#' \code{bias} element has the class \code{mixed_posteriors.bias}. For
+#' \code{"PET"} and \code{"PEESE"} the scalar column is the one of the bias
+#' element; a bias mixture without that column is represented by the point
+#' locations of its branches, which requires every active branch to be a point
+#' prior. The draw metadata (atoms, support, prior densities, quantities, and
+#' measure refusals) and the \code{prior_list} of the component are subset to
+#' it; the model weights of the branches are kept.
+#'
+#' @param samples the output of [as_mixed_posteriors()] or [mix_posteriors()]:
+#' a list with an element \code{bias} of class \code{mixed_posteriors.bias}.
+#' @param parameter the component to extract: \code{"PET"}, \code{"PEESE"}, or
+#' \code{"omega"}.
+#'
+#' @return \code{simplify_as_mixed_posterior_bias()} returns \code{samples}
+#' without the \code{bias} element and with the element
+#' \code{samples[[parameter]]}: the mixed posterior of the component (a single
+#' column for \code{"PET"} and \code{"PEESE"}, the \code{omega} columns for
+#' \code{"omega"}, the latter with the class \code{mixed_posteriors.weightfunction})
+#' and its metadata. The other elements of \code{samples} are unchanged.
+#'
+#' @seealso [as_mixed_posteriors()] [mix_posteriors()] [plot_posterior()]
+#'
+#' @export
+simplify_as_mixed_posterior_bias <- function(samples, parameter){
+
+  check_char(parameter, "parameter", check_length = 1, allow_NA = FALSE,
+             allow_values = c("PET", "PEESE", "omega"))
+  if(!is.list(samples) || !inherits(samples[["bias"]], "mixed_posteriors.bias")){
+    stop("The 'samples' argument must be a list with a 'bias' element of class 'mixed_posteriors.bias', as returned by 'as_mixed_posteriors()' or 'mix_posteriors()'.",
+         call. = FALSE)
+  }
+
+  .simplify_as_mixed_posterior_bias(samples, parameter)
+}
