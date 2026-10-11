@@ -927,6 +927,67 @@
   component_names
 }
 
+#' @title Grouping variables and group keys of a compiled random-effect term
+#'
+#' @description \code{random_group_component_names()} returns the names of the
+#' grouping variables of a compiled random-effect term.
+#' \code{random_group_prediction_keys()} assigns each row of a data frame the key
+#' of its group, so that the rows of new data can be matched to the fitted
+#' groups of the term (or to groups that were not fitted) when random effects
+#' are predicted or marginalized.
+#'
+#' @details A compiled random-effect term is an element of the
+#' \code{random_effects} of a formula design: the design returned by
+#' [JAGS_formula()] (\code{JAGS_formula(...)$formula_design$random_effects[[i]]})
+#' or the design stored with a fit or with draws
+#' (\code{JAGS_formula_design(fit, parameter)$random_effects[[i]]}). Pass the
+#' element unchanged; its fields are not part of the public interface.
+#'
+#' An interaction (\code{g1:g2}) or nested (\code{g1/g2}) grouping expression
+#' has one grouping variable per component, returned in the order of the
+#' fitted groups.
+#'
+#' The keys of \code{random_group_prediction_keys()} are character strings
+#' whose format is not part of the interface. Rows with the same grouping values
+#' share a key; a row whose grouping values identify a fitted group of the term
+#' has the key of that group, and a row with values that are not a fitted group
+#' has a key of its own that differs from the keys of all fitted groups.
+#' A grouping value is matched to the fitted levels by its exact value; a value
+#' that matches no fitted level but equals the label of exactly one fitted level
+#' takes that level, and a label shared by several fitted levels stops with an
+#' error. A term without its fitted grouping ownership (a design stored by an
+#' earlier version) stops with an error of class
+#' \code{BayesTools_refit_required}. A grouping variable that is missing in
+#' \code{data} or contains missing values stops with an error.
+#'
+#' @param term a compiled random-effect term (a list), see the details.
+#' @param data a data frame with the grouping variables of \code{term} and one
+#' row per observation to be keyed.
+#'
+#' @return \code{random_group_component_names()} returns a character vector of
+#' the names of the grouping variables of \code{term}.
+#'
+#' @seealso [JAGS_formula()] [JAGS_formula_design()] [random_effects_formula()]
+#'
+#' @export
+random_group_component_names <- function(term){
+
+  check_list(term, "term")
+  .bt_random_group_term_check(term)
+
+  .bt_random_group_component_names(term)
+}
+
+.bt_random_group_term_check <- function(term){
+
+  if(is.null(term[["group_expr"]])){
+    stop("The 'term' argument must be a compiled random-effect term with a grouping expression.",
+         call. = FALSE)
+  }
+
+  invisible(TRUE)
+}
+
 .bt_random_group_tuple_key <- function(values){
 
   values <- enc2utf8(as.character(values))
@@ -1055,6 +1116,28 @@
     }
   }
   tuple_keys
+}
+
+#' @rdname random_group_component_names
+#'
+#' @return \code{random_group_prediction_keys()} returns a character vector
+#' with one key per row of \code{data}: the key of the fitted group for rows in
+#' a fitted group of \code{term}, and a distinct key for rows in a new group.
+#'
+#' @export
+random_group_prediction_keys <- function(term, data){
+
+  check_list(term, "term")
+  .bt_random_group_validate_ownership(term)
+  .bt_random_group_term_check(term)
+  if(!is.data.frame(data)){
+    stop("The 'data' argument must be a data frame.", call. = FALSE)
+  }
+
+  .bt_random_group_prediction_tuple_keys(
+    term,
+    .bt_random_group_observations(term, data)
+  )
 }
 
 .bt_random_group_observations <- function(term, data){

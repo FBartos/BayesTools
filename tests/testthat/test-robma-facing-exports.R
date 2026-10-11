@@ -492,3 +492,150 @@ test_that("JAGS_formula_scale_finalize() validates its arguments", {
   expect_error(finalize(scale, design, owner_scope = TRUE),
                "The 'owner_scope' argument must be a character vector.", fixed = TRUE)
 })
+
+.robma_facing_random_term <- function(formula, data, ...){
+
+  JAGS_formula(
+    formula, "mu", data,
+    list(intercept = prior("normal", list(0, 1))),
+    prior_random = prior_random(...)
+  )$formula_design$random_effects[[1L]]
+}
+
+test_that("random group helpers equal the internal chain on compiled terms", {
+
+  sd_prior <- prior("normal", list(0, 1), list(0, Inf))
+  fitted <- data.frame(g = c("a", "b", "c", "a"))
+  term <- .robma_facing_random_term(~ 1 + diag(1 | g), fitted, sd = sd_prior)
+
+  expect_identical(random_group_component_names(term), "g")
+  expect_identical(random_group_component_names(term), BayesTools:::.bt_random_group_component_names(term))
+
+  new_data <- data.frame(g = c("b", "z", "a", "b", "z"))
+  keys <- random_group_prediction_keys(term, new_data)
+  expect_identical(
+    keys,
+    BayesTools:::.bt_random_group_prediction_tuple_keys(
+      term, BayesTools:::.bt_random_group_observations(term, new_data)
+    )
+  )
+  expect_type(keys, "character")
+  expect_length(keys, nrow(new_data))
+  # fitted groups carry their fitted key, a new group a key of its own
+  fitted_keys <- term$group_tuple_keys[match(c("b", "a"), term$group_levels)]
+  expect_identical(keys[c(1L, 3L)], fitted_keys)
+  expect_identical(keys[4L], keys[1L])
+  expect_identical(keys[5L], keys[2L])
+  expect_false(keys[2L] %in% term$group_tuple_keys)
+  expect_identical(
+    random_group_prediction_keys(term, fitted),
+    term$group_tuple_keys[match(fitted$g, term$group_levels)]
+  )
+  # a factor column and a data frame with other columns give the same keys
+  expect_identical(
+    random_group_prediction_keys(term, data.frame(other = 1:3, g = factor(c("c", "a", "b")))),
+    term$group_tuple_keys[match(c("c", "a", "b"), term$group_levels)]
+  )
+
+  # the stored design of draws carries the same term
+  draws <- JAGS_formula_draws(
+    cbind(mu_intercept = c(1, 2)), ~ 1 + diag(1 | g), "mu", fitted,
+    list(intercept = prior("normal", list(0, 1))),
+    prior_random = prior_random(sd = sd_prior)
+  )
+  stored <- JAGS_formula_design(draws, "mu")$random_effects[[1L]]
+  expect_identical(random_group_component_names(stored), "g")
+  expect_identical(random_group_prediction_keys(stored, new_data), keys)
+
+  # grouping by several variables
+  tuples <- data.frame(
+    g1 = factor(rep(c("b", "a", "b", "a"), 2), levels = c("a", "b")),
+    g2 = factor(rep(c("y", "y", "x", "x"), 2), levels = c("x", "y"))
+  )
+  prediction <- data.frame(
+    g1 = as.character(tuples$g1[c(4L, 1L, 2L)]),
+    g2 = c("x", "y", "w")
+  )
+  check_tuple_term <- function(block){
+
+    expect_identical(random_group_component_names(block), c("g1", "g2"))
+    expect_identical(random_group_component_names(block), BayesTools:::.bt_random_group_component_names(block))
+    block_keys <- random_group_prediction_keys(block, prediction)
+    expect_identical(
+      block_keys,
+      BayesTools:::.bt_random_group_prediction_tuple_keys(
+        block, BayesTools:::.bt_random_group_observations(block, prediction)
+      )
+    )
+    expect_identical(
+      block_keys[1:2],
+      block$group_tuple_keys[match(c("a:x", "b:y"), block$group_levels)]
+    )
+    expect_false(block_keys[3L] %in% block$group_tuple_keys)
+  }
+  check_tuple_term(.robma_facing_random_term(~ 1 + diag(1 | g1:g2), tuples, g1_g2 = random_block(sd = sd_prior)))
+  check_tuple_term(.robma_facing_random_term(~ 1 + diag(1 | g1 / g2), tuples, sd = sd_prior))
+})
+
+test_that("random_group_prediction_keys() keeps the matching rules of the fitted levels", {
+
+  sd_prior <- prior("normal", list(0, 1), list(0, Inf))
+  adjacent <- c(.3, .3 + .Machine$double.eps)
+  term <- .robma_facing_random_term(~ 1 + diag(1 | g), data.frame(g = adjacent), sd = sd_prior)
+  expect_identical(
+    random_group_prediction_keys(term, data.frame(g = adjacent[2:1])),
+    term$group_tuple_keys[2:1]
+  )
+  expect_identical(
+    random_group_prediction_keys(term, data.frame(g = term$group_levels[2L])),
+    term$group_tuple_keys[2L]
+  )
+  expect_error(
+    random_group_prediction_keys(term, data.frame(g = "0.3")),
+    "Random-effect grouping value '0.3' for component 'g' is ambiguous", fixed = TRUE
+  )
+  new_group <- random_group_prediction_keys(term, data.frame(g = .3 + 2 * .Machine$double.eps))
+  expect_false(new_group %in% term$group_tuple_keys)
+})
+
+test_that("random group helpers validate the term and the data", {
+
+  sd_prior <- prior("normal", list(0, 1), list(0, Inf))
+  term <- .robma_facing_random_term(~ 1 + diag(1 | g), data.frame(g = c("a", "b")), sd = sd_prior)
+
+  expect_error(random_group_component_names(NULL), "The 'term' argument cannot be NULL.", fixed = TRUE)
+  expect_error(random_group_component_names(list()), "The 'term' argument cannot be NULL.", fixed = TRUE)
+  expect_error(random_group_component_names("g"), "The 'term' argument must be a list.", fixed = TRUE)
+  expect_error(random_group_component_names(1), "The 'term' argument must be a list.", fixed = TRUE)
+  expect_error(random_group_component_names(list(group_label = "g")),
+               "The 'term' argument must be a compiled random-effect term with a grouping expression.", fixed = TRUE)
+  expect_error(random_group_prediction_keys(NULL, data.frame(g = "a")),
+               "The 'term' argument cannot be NULL.", fixed = TRUE)
+  expect_error(random_group_prediction_keys("g", data.frame(g = "a")),
+               "The 'term' argument must be a list.", fixed = TRUE)
+
+  # the ownership validator runs first
+  expect_error(random_group_prediction_keys(list(group_expr = quote(g)), "not data"),
+               class = "BayesTools_refit_required")
+  stale <- term
+  stale$group_component_identity_keys <- NULL
+  expect_error(random_group_prediction_keys(stale, data.frame(g = "a")),
+               class = "BayesTools_refit_required")
+  stale <- term
+  stale$group_components <- "h"
+  expect_error(random_group_prediction_keys(stale, data.frame(g = "a")),
+               class = "BayesTools_refit_required")
+
+  expect_error(random_group_prediction_keys(term, list(g = "a")),
+               "The 'data' argument must be a data frame.", fixed = TRUE)
+  expect_error(random_group_prediction_keys(term, matrix("a", dimnames = list(NULL, "g"))),
+               "The 'data' argument must be a data frame.", fixed = TRUE)
+  expect_error(random_group_prediction_keys(term, NULL),
+               "The 'data' argument must be a data frame.", fixed = TRUE)
+
+  # the checks of the internal observations remain
+  expect_error(random_group_prediction_keys(term, data.frame(h = "a")),
+               "The 'g' random-effect grouping variable is missing in the data set.", fixed = TRUE)
+  expect_error(random_group_prediction_keys(term, data.frame(g = c("a", NA))),
+               "Random-effect grouping expression 'g' must not contain missing values.", fixed = TRUE)
+})
