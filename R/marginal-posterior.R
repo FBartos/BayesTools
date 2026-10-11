@@ -195,8 +195,15 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
   check_bool(use_formula, "use_formula")
   .check_transformation_input(transformation, transformation_arguments, transformation_settings)
   unavailable <- .bt_meta_get(samples[[parameter]], "measure_unavailable")
+  # The element is returned as it is when it already stores a prior density, or
+  # when a measure is unavailable and no prior law is requested or the prior
+  # density itself is unavailable; with a requested prior law, other
+  # unavailable measures (e.g., the atoms) leave the ordinary path to build it.
+  has_prior_density <- !is.null(.bt_meta_get(samples[[parameter]], "prior_density"))
+  prior_density_unavailable <- !is.null(unavailable) && any(unavailable$measure == "prior_density")
   if(!use_formula && !is.matrix(samples[[parameter]]) &&
-     (!is.null(unavailable) || !is.null(.bt_meta_get(samples[[parameter]], "prior_density")))){
+     (has_prior_density ||
+      (!is.null(unavailable) && (!prior_samples || prior_density_unavailable)))){
     if(prior_samples) .bt_formula_measure_check(samples[[parameter]], "prior_density")
     out <- samples[[parameter]]
     class(out) <- unique(c(class(out), "marginal_posterior.simple", "marginal_posterior"))

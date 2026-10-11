@@ -5613,6 +5613,52 @@ for(contrast in c("treatment", "meandif", "orthonormal")){
   })
 }
 
+test_that("use_formula = FALSE builds the prior law when only the atoms are unavailable", {
+
+  # a model with log marginal likelihood -1000 beside the main one: the atoms of the
+  # mixture are unavailable at full precision, the prior law (a 0.5 point mass at 0
+  # and a 0.5 N(0, 1) part) is not
+  set.seed(1)
+  n <- 200
+  models <- list(
+    list(fit = .mock_mixing_fit_for_marginal(cbind(mu = rnorm(n, .3, .1)),
+           list(mu = prior("normal", list(0, 1)))),
+         marglik = bridgesampling_object(0), prior_weights = 1),
+    list(fit = .mock_mixing_fit_for_marginal(cbind(mu = rep(0, n)),
+           list(mu = prior("spike", list(0)))),
+         marglik = bridgesampling_object(-1000), prior_weights = 1)
+  )
+  mixed <- mix_posteriors(models, parameters = "mu", is_null_list = list(mu = c(FALSE, TRUE)),
+                          seed = 1, n_samples = n)
+  expect_identical(posterior_metadata(mixed$mu, "measure_unavailable")$measure, "atoms")
+  expect_null(posterior_metadata(mixed$mu, "prior_density"))
+
+  explicit <- marginal_posterior(mixed, "mu", prior_samples = TRUE, use_formula = FALSE)
+  default <- marginal_posterior(mixed, "mu", prior_samples = TRUE)
+  for(marginal in list(explicit, default)){
+    density <- posterior_metadata(marginal, "prior_density")
+    expect_false(is.null(density))
+    expect_equal(exp(prior_density_ordinate(density, .5)$log_density), .5 * stats::dnorm(.5),
+                 tolerance = 1e-8)
+    expect_equal(prior_density_ordinate(density, 0)$point_mass, .5, tolerance = 1e-12)
+    expect_identical(posterior_metadata(marginal, "measure_unavailable")$measure, "atoms")
+  }
+  expect_equal(exp(prior_density_ordinate(posterior_metadata(explicit, "prior_density"), .5)$log_density),
+               exp(prior_density_ordinate(posterior_metadata(default, "prior_density"), .5)$log_density))
+
+  # a descriptive request keeps the element without a prior law
+  descriptive <- marginal_posterior(mixed, "mu", prior_samples = FALSE, use_formula = FALSE)
+  expect_null(posterior_metadata(descriptive, "prior_density"))
+  expect_identical(posterior_metadata(descriptive, "measure_unavailable")$measure, "atoms")
+
+  # an unavailable prior density itself is still refused when a prior law is requested
+  unavailable <- mixed
+  unavailable$mu <- .bt_formula_measure_mark(unavailable$mu, "mu", "prior_density",
+    "The prior law is unavailable.", cause = "structural_target_law_unavailable")
+  expect_error(marginal_posterior(unavailable, "mu", prior_samples = TRUE, use_formula = FALSE),
+               class = "BayesTools_formula_measure_unavailable")
+})
+
 # File-level skips: All remaining tests in this file require pre-fitted models
 skip_if_not_visual_fixture_tests()
 skip_if_no_fits()
