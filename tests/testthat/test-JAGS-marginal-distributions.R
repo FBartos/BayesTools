@@ -5514,6 +5514,62 @@ test_that("a transformed formula level whose prior law cannot be reproduced reco
   }
 })
 
+test_that("transforming formula marginals of mixed models records the missing prior law", {
+
+  # two models, one without the factor: the formula marginals of the mixture keep
+  # no joint prior context, so a transformation cannot rebuild the prior law
+  data <- data.frame(g = factor(c("A", "B", "A")))
+  make_model <- function(with_factor){
+    formula <- if(with_factor) ~ g else ~ 1
+    priors <- list(intercept = prior("normal", list(0, 1)))
+    if(with_factor) priors$g <- prior_factor("normal", list(0, 1), contrast = "treatment")
+    spec <- JAGS_formula(formula, "mu", data, priors)
+    draws <- cbind(mu_intercept = seq(-.3, .3, length.out = 20))
+    if(with_factor) draws <- cbind(draws, mu_g = seq(.2, .5, length.out = 20))
+    fit <- structure(list(mcmc = coda::mcmc.list(coda::mcmc(draws)), sample = 20L,
+      summary.pars = list(mutate = NULL), monitor = colnames(draws)),
+      class = c("runjags", "BayesTools_fit", "list"))
+    attr(fit, "prior_list") <- spec$prior_list
+    attr(fit, "formula_design") <- list(mu = spec$formula_design)
+    attr(fit, "formula_scale") <- list(mu = spec$formula_scale)
+    list(fit = attach_test_parameter_map(fit), marglik = bridgesampling_object(0), prior_weights = 1)
+  }
+  mixed <- mix_posteriors(list(make_model(TRUE), make_model(FALSE)),
+    c("mu_intercept", "mu_g"), list(mu_intercept = c(FALSE, FALSE), mu_g = c(FALSE, TRUE)),
+    seed = 1, n_samples = 40L)
+
+  raw <- marginal_posterior(mixed, "mu_g", formula = ~ g, n_samples = 128)
+  expect_identical(names(raw), c("A", "B"))
+
+  # the transformed values and the other metadata remain; the prior law is unavailable
+  transformed <- marginal_posterior(mixed, "mu_g", formula = ~ g, prior_samples = FALSE,
+                                    transformation = "exp", n_samples = 128)
+  for(level in names(raw)){
+    expect_equal(as.numeric(transformed[[level]]), exp(as.numeric(raw[[level]])))
+    expect_null(.bt_meta_get(transformed[[level]], "prior_density"))
+    unavailable <- posterior_metadata(transformed[[level]], "measure_unavailable")
+    expect_identical(unavailable$measure, "prior_density")
+    expect_identical(unavailable$cause, "missing_source_context")
+    expect_false(is.null(posterior_metadata(transformed[[level]], "support")))
+    expect_false(is.null(posterior_metadata(transformed[[level]], "atoms")))
+  }
+  condition <- tryCatch(BayesTools:::.Savage_Dickey_BF.fun(
+    transformed[["B"]], 0, normal_approximation = FALSE, silent = TRUE, density_method = "KDE"),
+    error = function(e) e)
+  expect_s3_class(condition, "BayesTools_formula_measure_unavailable")
+  bf <- Savage_Dickey_BF(transformed, silent = TRUE)
+  expect_true(all(is.na(vapply(bf, as.numeric, numeric(1)))))
+  expect_identical(attr(bf[["B"]], "posterior_density_source"), "measure_unavailable")
+
+  # prior_samples = TRUE keeps the transformed prior law
+  with_prior <- marginal_posterior(mixed, "mu_g", formula = ~ g, prior_samples = TRUE,
+                                   transformation = "exp", n_samples = 128)
+  expect_equal(
+    exp(prior_density_ordinate(posterior_metadata(with_prior[["B"]], "prior_density"), 1)$log_density),
+    .5 * stats::dlnorm(1, 0, 1) + .5 * stats::dlnorm(1, 0, sqrt(2)), tolerance = 1e-3)
+  expect_null(posterior_metadata(with_prior[["B"]], "measure_unavailable"))
+})
+
 # File-level skips: All remaining tests in this file require pre-fitted models
 skip_if_not_visual_fixture_tests()
 skip_if_no_fits()

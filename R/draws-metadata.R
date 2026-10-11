@@ -969,7 +969,11 @@ posterior_measure_check <- function(x, measure, column = NULL){
 #'   are not accepted as diagnostics.
 #'   The cause \code{numerical_model_probability_unavailable} identifies a
 #'   declared law whose active model probabilities cannot be represented at
-#'   full precision. Invalid metadata requires recomputation/refitting.
+#'   full precision. The cause \code{missing_source_context} identifies a prior
+#'   density that a transformation could not rebuild because the source has
+#'   neither a declared prior context nor priors (formula marginals of several
+#'   models keep none); the transformed values and other metadata remain.
+#'   Invalid metadata requires recomputation/refitting.
 #'   Human reason text alone does not classify a measure refusal. Tables use
 #'   unique column/measure pairs. The measures are \code{prior_density}, \code{atoms}, or \code{support}.
 #'   Entries prevent stale prior/density/support fallback while numeric draws

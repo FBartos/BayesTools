@@ -309,8 +309,15 @@ posterior_transform <- function(x, transformation, transformation_arguments = NU
     }
   }
   if(is.null(priors) && is.null(context)){
-    .bt_formula_density_stop("The source has no complete declared prior context.",
-      target = parameter, reason = "missing_source_context")
+    # (formula marginals of several models keep no prior context): the values
+    # and the other metadata are transformed, the prior law is unavailable
+    target <- if(!is.null(parameter)) parameter else if(!is.null(fields$quantities)) fields$quantities$column else colnames(x)
+    if(length(target) == 0L){
+      .bt_formula_density_stop("The source has no complete declared prior context.",
+        target = parameter, reason = "unknown_target")
+    }
+    return(.bt_formula_measure_mark(x, target, "prior_density",
+      "The source has no complete declared prior context.", cause = "missing_source_context"))
   }
   if(!is.null(priors) && all(vapply(priors, is.prior.none, logical(1)))) return(x)
   stored_context <- context
