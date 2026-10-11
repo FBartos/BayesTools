@@ -6927,3 +6927,52 @@ test_that("transform_scaled raw coefficients of fit_complex_mixed use their own 
     .expect_prior_height_for_test(marginal, value, .5 * stats::dnorm(value))
   }
 })
+
+test_that("a recoverable curve warning keeps the transformed prior law of a formula level", {
+
+  fit0     <- readRDS(file.path(temp_fits_dir, "fit_marginal_0.RDS"))
+  fit1     <- readRDS(file.path(temp_fits_dir, "fit_marginal_1.RDS"))
+  marglik0 <- readRDS(file.path(temp_marglik_dir, "fit_marginal_0.RDS"))
+  marglik1 <- readRDS(file.path(temp_marglik_dir, "fit_marginal_1.RDS"))
+  marglik1$logml <- marglik0$logml
+  parameters <- c("sigma", "mu_intercept", "mu_x_cont1", "mu_x_fac2t", "mu_x_fac3md",
+                  "mu_x_cont1__xXx__x_fac3md")
+  mixed <- mix_posteriors(
+    model_list   = list(list(fit = fit0, marglik = marglik0, prior_weights = 1),
+                        list(fit = fit1, marglik = marglik1, prior_weights = 1)),
+    parameters   = parameters,
+    is_null_list = list(sigma = c(FALSE, FALSE), mu_intercept = c(FALSE, FALSE),
+      mu_x_cont1 = c(FALSE, FALSE), mu_x_fac2t = c(TRUE, FALSE), mu_x_fac3md = c(TRUE, FALSE),
+      mu_x_cont1__xXx__x_fac3md = c(TRUE, FALSE)),
+    seed         = 1,
+    conditional  = FALSE
+  )
+  formula <- ~ x_cont1 + x_fac2t + x_cont1 * x_fac3md
+
+  untransformed <- marginal_posterior(mixed, "mu_x_cont1", formula = formula,
+                                      prior_samples = TRUE, n_samples = 512)
+  warnings <- list()
+  transformed <- withCallingHandlers(
+    marginal_posterior(mixed, "mu_x_cont1", formula = formula, prior_samples = TRUE,
+                       n_samples = 512, transformation = "tanh"),
+    warning = function(condition){
+      warnings[[length(warnings) + 1L]] <<- condition
+      invokeRestart("muffleWarning")
+    })
+
+  # the tied rounded image knots of the display curve are a recoverable warning
+  expect_true(any(vapply(warnings, inherits, logical(1), what = "BayesTools_prior_curve_unavailable")))
+  y <- c(-0.7, -0.2, 0.3, 0.8)
+  for(level in c("-1SD", "1SD")){
+    expect_null(posterior_metadata(transformed[[level]], "measure_unavailable"))
+    density <- posterior_metadata(transformed[[level]], "prior_density")
+    expect_false(is.null(density))
+    source <- posterior_metadata(untransformed[[level]], "prior_density")
+    # the density of tanh(x): p(atanh(y)) / (1 - y^2)
+    expected <- vapply(atanh(y), function(v) exp(prior_density_ordinate(source, v)$log_density),
+                       numeric(1)) / (1 - y^2)
+    observed <- vapply(y, function(v) exp(prior_density_ordinate(density, v)$log_density), numeric(1))
+    expect_equal(observed, expected, tolerance = 1e-8)
+  }
+  expect_null(posterior_metadata(transformed[["0SD"]], "measure_unavailable"))
+})

@@ -418,7 +418,10 @@ posterior_transform <- function(x, transformation, transformation_arguments = NU
       .bt_formula_measure_mark(x, if(is.null(parameter)) colnames(x) else parameter,
         "prior_density", conditionMessage(condition), cause = condition$reason, diagnostics = condition$diagnostics)
     },
-    BayesTools_numerical_condition = function(condition){
+    # only errors: a recoverable warning (e.g., tied image knots of a display
+    # curve) propagates and the law that was built is kept
+    error = function(condition){
+      if(!inherits(condition, "BayesTools_numerical_condition")) stop(condition)
       .bt_formula_measure_mark(x, if(is.null(parameter)) colnames(x) else parameter,
         "prior_density", conditionMessage(condition), cause = "numerical_scale_unavailable")
     })
@@ -480,7 +483,8 @@ posterior_transform <- function(x, transformation, transformation_arguments = NU
         if(!condition$reason %in% setdiff(.bt_formula_measure_causes, "missing_multiplier_law")) stop(condition)
         mark(condition, condition$reason)
       },
-      BayesTools_numerical_condition = function(condition){
+      error = function(condition){
+        if(!inherits(condition, "BayesTools_numerical_condition")) stop(condition)
         mark(condition, "numerical_scale_unavailable")
       })
   }
