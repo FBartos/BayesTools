@@ -469,6 +469,23 @@
        provenance = provenance)
 }
 
+# The split of 'multiply_by' groups consumes each active numeric owner scale
+# into its additive weights. Remove that owner attribute from the priors before
+# a recursion on those weights, so the scale is applied once; state products
+# (character owners) are retained. 'weights' are the weights the split read.
+.prior_density_route_strip_owner_scales <- function(prior_list, weights){
+
+  for(parameter in names(prior_list)){
+    prior <- prior_list[[parameter]]
+    if(!is.null(prior) && is.numeric(attr(prior, "multiply_by", exact = TRUE)) &&
+       any(.prior_linear_prior_columns(parameter, prior) %in% names(weights))){
+      attr(prior, "multiply_by") <- NULL
+      prior_list[[parameter]] <- prior
+    }
+  }
+  prior_list
+}
+
 # Route of a combination with 'multiply_by' products. One product term
 # X = a + b * s (additive part a, multiplied part b, multiplier s):
 # * mixture and spike-and-slab terms (also of the multiplier) are expanded
@@ -560,7 +577,10 @@
     }
     folded_transforms <- source_transforms[names(folded_weights)]
     names(folded_transforms) <- names(folded_weights)
-    return(.prior_density_route_linear(prior_list, folded_weights, folded_transforms, n_grid))
+    return(.prior_density_route_linear(
+      .prior_density_route_strip_owner_scales(prior_list, weights),
+      folded_weights, folded_transforms, n_grid
+    ))
   }
 
   spec <- .prior_conditional_normal_spec(prior_list, split, source_transforms)
@@ -772,16 +792,7 @@
     ))
   }
 
-  # The split has consumed each active numeric owner scale into these weights.
-  # Remove that owner attribute before recursion, while retaining state products.
-  for(parameter in names(prior_list)){
-    prior <- prior_list[[parameter]]
-    if(!is.null(prior) && is.numeric(attr(prior, "multiply_by", exact = TRUE)) &&
-       any(.prior_linear_prior_columns(parameter, prior) %in% names(weights))){
-      attr(prior, "multiply_by") <- NULL
-      prior_list[[parameter]] <- prior
-    }
-  }
+  prior_list <- .prior_density_route_strip_owner_scales(prior_list, weights)
   weights <- split$additive_weights
   weights <- weights[weights != 0]
 

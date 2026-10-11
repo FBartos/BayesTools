@@ -449,6 +449,67 @@ test_that("conditional-normal scale-mixture region probabilities match independe
   ))
 })
 
+test_that("a numeric multiply_by owner scale is applied once beside a deterministic multiplied part", {
+
+  # X = 2 a + c s with a ~ N(0, 1) carrying the numeric scale 2 and the
+  # deterministic multiplied part c = .5 (a point with the owner "s") of a
+  # gamma(2, 2) multiplier; references integrate the declared law
+  scaled <- prior("normal", list(0, 1))
+  attr(scaled, "multiply_by") <- 2
+  multiplier <- prior("gamma", list(2, 2))
+  expect_route <- function(density, reference_density, reference_probability, points){
+    for(x in points){
+      ordinate <- prior_density_ordinate(density, x)
+      expect_true(ordinate$exact)
+      expect_equal(exp(ordinate$log_density), reference_density(x), tolerance = 1e-8)
+    }
+    region <- list(intervals = .prior_region_intervals(1, Inf), indicator = function(v) v > 1)
+    expect_equal(as.numeric(.prior_linear_density_region_probability(density, region)),
+                 reference_probability, tolerance = 1e-8)
+  }
+
+  point <- prior("point", list(.5))
+  attr(point, "multiply_by") <- "s"
+  density <- .prior_linear_combination_density(
+    list(a = scaled, b = point, s = multiplier), c(a = 1, b = 1)
+  )
+  expect_route(
+    density,
+    function(x) stats::integrate(function(s) stats::dnorm(x - .5 * s, 0, 2) * stats::dgamma(s, 2, 2),
+                                 0, Inf, rel.tol = 1e-12)$value,
+    stats::integrate(function(s) stats::pnorm(1 - .5 * s, 0, 2, lower.tail = FALSE) * stats::dgamma(s, 2, 2),
+                     0, Inf, rel.tol = 1e-12)$value,
+    c(-1, .3, 2)
+  )
+
+  # the spike of a spike-and-slab multiplied part is the point at 0 times sigma
+  slab <- prior_spike_and_slab(prior("normal", list(0, 1)), prior("point", list(.5)))
+  attr(slab, "multiply_by") <- "sigma"
+  sigma <- prior("normal", list(0, 1), list(0, Inf))
+  density <- .prior_linear_combination_density(
+    list(a = scaled, b = slab, sigma = sigma), c(a = 1, b = 1)
+  )
+  expect_route(
+    density,
+    function(x) .5 * stats::dnorm(x, 0, 2) +
+      .5 * stats::integrate(function(s) stats::dnorm(x, 0, sqrt(4 + s^2)) * 2 * stats::dnorm(s),
+                            0, Inf, rel.tol = 1e-12)$value,
+    .5 * stats::pnorm(1, 0, 2, lower.tail = FALSE) +
+      .5 * stats::integrate(function(s) stats::pnorm(1, 0, sqrt(4 + s^2), lower.tail = FALSE) * 2 * stats::dnorm(s),
+                            0, Inf, rel.tol = 1e-12)$value,
+    c(0, 1, 3)
+  )
+
+  # a zero multiplied part leaves the scaled term alone
+  zero <- prior("point", list(0))
+  attr(zero, "multiply_by") <- "s"
+  density <- .prior_linear_combination_density(
+    list(a = scaled, b = zero, s = multiplier), c(a = 1, b = 1)
+  )
+  expect_equal(exp(prior_density_ordinate(density, 0)$log_density), stats::dnorm(0, 0, 2),
+               tolerance = 1e-8)
+})
+
 test_that("mixture region probabilities sum their components and exact point masses", {
 
   intercept <- prior("normal", list(0, 1))
