@@ -49,7 +49,9 @@ reference weight first. Every individual-omega selector (`show_figures`,
 `show_parameter`) follows that order.
 
 Prior plot dispatch and layers live in `R/priors-plot.R` and
-`R/priors-plot-layers.R`. Model-averaging plot families live in
+`R/priors-plot-layers.R`; `plot.prior_linear_density()` in `R/priors-plot.R`
+draws a prior linear density from `.prior_linear_density_to_plot_data()` through
+`.plot_prior_list.both()`. Model-averaging plot families live in
 `R/model-averaging-plots*.R`. JAGS diagnostic data and rendering live in
 `R/JAGS-diagnostics.R`. Inspect the current family before adding helpers or
 source files.

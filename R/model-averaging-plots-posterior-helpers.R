@@ -363,8 +363,9 @@
 #' \code{bias} element, so that the component can be handled like any other
 #' scalar parameter (for example plotted or summarized as a single
 #' parameter). The component keeps the model-averaged posterior over all bias
-#' branches: branches without the component contribute a null value (zero for
-#' PET and PEESE, no selection for omega) with their model probabilities.
+#' branches: in the \code{prior_list} of the result, the branches without the
+#' component are replaced by a null prior (a point at zero for PET and PEESE,
+#' \code{prior_none()} for omega) that keeps their model weights.
 #'
 #' @details \code{samples} is the output of [as_mixed_posteriors()] or
 #' [mix_posteriors()] for a bias mixture (e.g., a mixture of [prior_PET()],

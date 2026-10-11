@@ -60,9 +60,9 @@ the canonical logarithms. A plain numeric vector given to \code{\link[=format_BF
 returns an unclassed vector (it has the class \code{BayesTools_BF} only
 while a non-missing bound operator is present). The carrier stores the
 logarithms in private attributes; \code{\link[=BF_carrier_drop]{BF_carrier_drop()}} removes them.
-Arithmetic on the carrier, replacing its values, and subsetting that
-breaks the correspondence between values and logarithms return ordinary
-numbers.
+Subsetting keeps the logarithms of the selected values, arithmetic on the
+carrier returns ordinary numbers, and replacing values removes the carrier
+attributes.
 }
 \examples{
 # a Bayes factor beyond the double range keeps its finite logarithm

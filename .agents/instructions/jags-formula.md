@@ -208,6 +208,10 @@ Formula-design 6, unscale-design 2 and coefficient-transform 3 require refitting
 older formats. One private finalizer completes current compiler specs from
 actual full priors and owned scalar data for fit/draws-only producers, writing
 the same owner to both carriers; fit readers never complete missing ownership.
+`JAGS_formula_point_finalize()` and `JAGS_formula_scale_finalize()` are the
+validated public wrappers of the point and scale finalizers for downstream
+packages that rebuild a fitted design; the expression finalization and the
+formula-data merge of `JAGS_fit()` stay private.
 Explicit prior-only entry points may complete a current compiler copy. Numeric
 overrides retain fitted declarations. Original coefficients use
 `sum_k A[j,k] * z_k * m_k / m_j` on one immutable original snapshot for every

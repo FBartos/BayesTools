@@ -953,12 +953,12 @@
 #' has the key of that group, and a row with values that are not a fitted group
 #' has a key of its own that differs from the keys of all fitted groups.
 #' A grouping value is matched to the fitted levels by its exact value; a value
-#' that matches no fitted level but equals the label of exactly one fitted level
-#' takes that level, and a label shared by several fitted levels stops with an
-#' error. A term without its fitted grouping ownership (a design stored by an
-#' earlier version) stops with an error of class
-#' \code{BayesTools_refit_required}. A grouping variable that is missing in
-#' \code{data} or contains missing values stops with an error.
+#' that matches no fitted level but equals the label (or the displayed value) of
+#' exactly one fitted level takes that level, and a label shared by several
+#' fitted levels stops with an error. A term without its fitted grouping
+#' ownership (a design stored by an earlier version) stops with an error of
+#' class \code{BayesTools_refit_required}. A grouping variable that is missing
+#' in \code{data} or contains missing values stops with an error.
 #'
 #' @param term a compiled random-effect term (a list), see the details.
 #' @param data a data frame with the grouping variables of \code{term} and one

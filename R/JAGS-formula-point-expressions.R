@@ -115,9 +115,8 @@
 #' @description Completes the \code{formula_design} and \code{formula_scale}
 #' returned by [JAGS_formula()] in the way [JAGS_fit()] does before it stores
 #' them in a fit. The functions let a caller rebuild the formula design of a
-#' fitted model outside \code{JAGS_fit()}, for example for a model that is
-#' fitted without some of its coordinates, and then attach it to the draws of
-#' that model.
+#' fitted model outside \code{JAGS_fit()}, for example to replace the design
+#' stored with a fit.
 #'
 #' @details [JAGS_formula()] returns a fresh design and scale. \code{JAGS_fit()}
 #' completes them for each formula parameter in this order: first

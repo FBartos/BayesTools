@@ -165,9 +165,9 @@ format_BF <- function(BF, logBF = FALSE, BF01 = FALSE, inclusion = FALSE){
 #' returns an unclassed vector (it has the class \code{BayesTools_BF} only
 #' while a non-missing bound operator is present). The carrier stores the
 #' logarithms in private attributes; [BF_carrier_drop()] removes them.
-#' Arithmetic on the carrier, replacing its values, and subsetting that
-#' breaks the correspondence between values and logarithms return ordinary
-#' numbers.
+#' Subsetting keeps the logarithms of the selected values, arithmetic on the
+#' carrier returns ordinary numbers, and replacing values removes the carrier
+#' attributes.
 #'
 #' @param log_BF numeric vector of natural-logarithm BF10 values (the Bayes
 #' factor in favor of the alternative hypothesis). Names are kept. Missing
