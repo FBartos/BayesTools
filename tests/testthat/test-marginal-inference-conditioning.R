@@ -986,3 +986,85 @@ test_that("fixed spike inclusion preserves weighted independent conditional supp
     expect_identical(unname(posterior_metadata(conditioned$theta, "support")$bounds), bounds)
   }
 })
+
+test_that("an empty conditioning event makes only its own levels unavailable", {
+
+  # treatment-coded spike-and-slab factor with no occupied slab draw
+  make_fit <- function(columns, priors){
+    fit <- coda::mcmc(columns)
+    class(fit) <- c("mcmc", "BayesTools_fit")
+    attr(fit, "prior_list") <- priors
+    attach_test_parameter_map(fit)
+  }
+  compiled <- JAGS_formula(~ fac, "mu", data.frame(fac = factor(c("A", "B", "C"))),
+    list(intercept = prior("normal", list(0, 1)),
+         fac = prior_spike_and_slab(prior_factor("normal", list(0, 1), contrast = "treatment"),
+                                    prior_inclusion = prior("point", list(.5)))))
+  fit <- make_fit(cbind(mu_intercept = seq(-1, 1, length.out = 101),
+                        "mu_fac[1]" = 0, "mu_fac[2]" = 0, mu_fac_indicator = 0L),
+                  compiled$prior_list)
+  run <- function(fit, marginal_parameters, parameters, conditional_list, formula, compute_BF = TRUE){
+    warnings <- character()
+    inference <- withCallingHandlers(
+      as_marginal_inference(fit, marginal_parameters, parameters, conditional_list, "AND", formula,
+                            n_samples = 128, silent = TRUE, compute_BF = compute_BF),
+      warning = function(condition){
+        warnings <<- c(warnings, conditionMessage(condition))
+        invokeRestart("muffleWarning")
+      })
+    list(inference = inference, warnings = warnings)
+  }
+
+  for(compute_BF in c(FALSE, TRUE)){
+    result <- run(fit, "mu_fac", c("mu_intercept", "mu_fac"), list(mu_fac = "mu_fac"), ~ fac, compute_BF)
+    inference <- result$inference
+    # levels B and C (event: the factor is included) are unavailable, with the warning once
+    expect_identical(result$warnings, "No samples left after conditioning.")
+    expect_identical(names(inference$conditional$mu_fac), "A")
+    expect_identical(attr(inference$conditional$mu_fac, "level_names"), "A")
+    # the averaged marginal keeps every level, the baseline has an empty effective set
+    expect_identical(names(inference$averaged$mu_fac), c("A", "B", "C"))
+    expect_length(inference$averaged$mu_fac$A, 101)
+    expect_equal(as.numeric(inference$conditional$mu_fac$A), as.numeric(inference$averaged$mu_fac$A))
+    expect_identical(.bt_meta_condition(inference$conditional$mu_fac$A, "effective_conditional"), character())
+    if(compute_BF){
+      expect_identical(names(inference$inference$mu_fac), "A")
+      table <- marginal_estimates_table(inference$conditional, inference$inference, "mu_fac")
+      expect_identical(nrow(table), 1L)
+      expect_no_error(capture.output(print(table)))
+    }else{
+      expect_length(inference$inference, 0)
+    }
+    # a level they are asked for that is absent gets the existing unknown-level result
+    expect_error(
+      hypothesis_BF(inference, hypothesis = "mu_fac[B] = 0", parameter = "mu_fac"),
+      "Hypothesis references unknown level 'B' for parameter 'mu_fac'.", fixed = TRUE
+    )
+  }
+
+  # no level is available: the averaged marginal stays, one warning per distinct event
+  both <- JAGS_formula(~ fac, "mu", data.frame(fac = factor(c("A", "B", "C"))),
+    list(intercept = prior_spike_and_slab(prior("normal", list(0, 1)),
+                                          prior_inclusion = prior("point", list(.5))),
+         fac = prior_spike_and_slab(prior_factor("normal", list(0, 1), contrast = "treatment"),
+                                    prior_inclusion = prior("point", list(.5)))))
+  both_fit <- make_fit(cbind(mu_intercept = 0, "mu_fac[1]" = 0, "mu_fac[2]" = 0,
+                             mu_intercept_indicator = 0L, mu_fac_indicator = 0L),
+                       both$prior_list)
+  result <- run(both_fit, "mu_fac", c("mu_intercept", "mu_fac"),
+                list(mu_fac = c("mu_intercept", "mu_fac")), ~ fac)
+  expect_identical(result$warnings, rep("No samples left after conditioning.", 2L))
+  expect_identical(names(result$inference$averaged), "mu_fac")
+  expect_false("mu_fac" %in% names(result$inference$conditional))
+  expect_false("mu_fac" %in% names(result$inference$inference))
+
+  # a scalar marginal with an empty event
+  scalar_fit <- make_fit(cbind(theta = 0, theta_indicator = 0L),
+    list(theta = prior_spike_and_slab(prior("normal", list(0, 1)),
+                                      prior_inclusion = prior("point", list(.5)))))
+  result <- run(scalar_fit, "theta", "theta", list(theta = "theta"), NULL)
+  expect_identical(result$warnings, "No samples left after conditioning.")
+  expect_true("theta" %in% names(result$inference$averaged))
+  expect_false("theta" %in% names(result$inference$conditional))
+  expect_false("theta" %in% names(result$inference$inference))
+})

@@ -95,6 +95,12 @@ attribute.
 Known prior-ordinate refusals also produce \code{NA} plus the original
 reason, including scalar marginal table results; direct scalar
 \code{Savage_Dickey_BF()} remains strict.
+A level whose effective conditional subset is non-empty and leaves no
+draws is unavailable: it gets the warning \code{"No samples left after
+conditioning."} (once per distinct conditioning event) and is absent from the
+\code{conditional} and \code{inference} entries of its parameter, while the
+other levels and the \code{averaged} marginals are kept. A parameter without
+an available level has no \code{conditional} or \code{inference} entry.
 }
 \seealso{
 \link{marginal_inference} \link{as_mixed_posteriors}

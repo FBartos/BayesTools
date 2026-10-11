@@ -180,6 +180,12 @@ marginal_inference <- function(model_list, marginal_parameters, parameters, is_n
 #' Known prior-ordinate refusals also produce \code{NA} plus the original
 #' reason, including scalar marginal table results; direct scalar
 #' \code{Savage_Dickey_BF()} remains strict.
+#' A level whose effective conditional subset is non-empty and leaves no
+#' draws is unavailable: it gets the warning \code{"No samples left after
+#' conditioning."} (once per distinct conditioning event) and is absent from the
+#' \code{conditional} and \code{inference} entries of its parameter, while the
+#' other levels and the \code{averaged} marginals are kept. A parameter without
+#' an available level has no \code{conditional} or \code{inference} entry.
 #'
 #' @return \code{as_marginal_inference} returns an object of class 'marginal_inference'.
 #'
@@ -250,8 +256,10 @@ as_marginal_inference <- function(model, marginal_parameters, parameters, condit
       force_plots        = force_plots
     )
 
+    # a parameter without an available level keeps its averaged marginal and
+    # has no conditional or inference entry
     if(length(out[["conditional"]][[marginal_parameters[i]]]) == 0){
-      out[["averaged"]][[marginal_parameters[i]]] <- NULL
+      out[["conditional"]][[marginal_parameters[i]]] <- NULL
       next
     }
 
@@ -348,6 +356,8 @@ as_marginal_inference <- function(model, marginal_parameters, parameters, condit
 
   conditional_marginal <- averaged_marginal
   marginal_cache <- list()
+  empty_keys <- character()
+  unavailable_levels <- character()
 
   for(level in names(level_conditionals)){
     level_conditional <- level_conditionals[[level]]
@@ -367,7 +377,8 @@ as_marginal_inference <- function(model, marginal_parameters, parameters, condit
       next
     }
 
-    if(is.null(marginal_cache[[key]])){
+    # an empty event is evaluated (and warned about) once per condition key
+    if(is.null(marginal_cache[[key]]) && !key %in% empty_keys){
       conditional_posterior <- as_mixed_posteriors(
         model            = model,
         parameters       = parameters,
@@ -376,10 +387,10 @@ as_marginal_inference <- function(model, marginal_parameters, parameters, condit
         force_plots      = force_plots
       )
 
-      if(length(conditional_posterior) == 0){
-        return(list())
+      conditional_marginal_key <- if(length(conditional_posterior) == 0){
+        list()
       }else{
-        marginal_cache[[key]] <- marginal_posterior(
+        marginal_posterior(
           samples       = conditional_posterior,
           parameter     = marginal_parameter,
           formula       = formula,
@@ -387,10 +398,22 @@ as_marginal_inference <- function(model, marginal_parameters, parameters, condit
           n_samples     = n_samples
         )
       }
+      if(length(conditional_marginal_key) == 0){
+        empty_keys <- c(empty_keys, key)
+      }else{
+        marginal_cache[[key]] <- conditional_marginal_key
+      }
     }
 
-    if(length(marginal_cache[[key]]) == 0){
-      return(list())
+    # an empty event affects only the levels that condition on it: the level is
+    # unavailable (no conditional draws are invented) and the other levels keep
+    # their documented result
+    if(key %in% empty_keys){
+      if(scalar_marginal){
+        return(list())
+      }
+      unavailable_levels <- c(unavailable_levels, level)
+      next
     }
 
     if(scalar_marginal){
@@ -409,5 +432,35 @@ as_marginal_inference <- function(model, marginal_parameters, parameters, condit
     }
   }
 
+  if(length(unavailable_levels) > 0L){
+    conditional_marginal <- .marginal_inference_drop_levels(
+      conditional_marginal, unavailable_levels
+    )
+    if(length(conditional_marginal) == 0L){
+      return(list())
+    }
+  }
+
   conditional_marginal
+}
+
+# The levels of a marginal posterior without the dropped (unavailable) ones; the
+# level metadata of the list follow the retained levels.
+.marginal_inference_drop_levels <- function(marginal, levels){
+
+  all_levels <- names(marginal)
+  for(level in levels){
+    marginal[[level]] <- NULL
+  }
+  kept <- !all_levels %in% levels
+  level_names <- attr(marginal, "level_names", exact = TRUE)
+  if(length(level_names) == length(all_levels)){
+    attr(marginal, "level_names") <- level_names[kept]
+  }
+  level_at <- attr(marginal, "level_at", exact = TRUE)
+  if(is.data.frame(level_at) && nrow(level_at) == length(all_levels)){
+    attr(marginal, "level_at") <- level_at[kept, , drop = FALSE]
+  }
+
+  marginal
 }
