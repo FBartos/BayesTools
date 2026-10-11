@@ -122,6 +122,7 @@ bayestools_test_profile_contexts <- list(
     "random-effects-summary-posterior",
     "random-effects-vignette-cache",
     "reference-table-review",
+    "robma-facing-exports",
     "selection-kernels",
     "simplex-finite-total",
     "snapshot-path-portability",

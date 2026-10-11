@@ -149,6 +149,80 @@ format_BF <- function(BF, logBF = FALSE, BF01 = FALSE, inclusion = FALSE){
   out
 }
 
+#' @title Format Bayes factors from natural-log values
+#'
+#' @description Builds a Bayes factor from natural-logarithm BF10 values without
+#' passing them through \code{exp()}. Output on the logarithmic scale
+#' (\code{logBF = TRUE}) and in the inverse orientation (\code{BF01 = TRUE}) is
+#' computed in log space, so Bayes factors beyond the double range (an
+#' \code{exp(log_BF)} equal to \code{0} or \code{Inf}) keep finite logarithms
+#' and representable reciprocals. [format_BF()] cannot recover them from the
+#' natural-scale numbers.
+#'
+#' @details The result is the Bayes-factor carrier that [format_BF()] returns
+#' when it receives such a carrier: reformatting it with [format_BF()] keeps
+#' the canonical logarithms. A plain numeric vector given to [format_BF()]
+#' returns an unclassed vector (it has the class \code{BayesTools_BF} only
+#' while a non-missing bound operator is present). The carrier stores the
+#' logarithms in private attributes; [BF_carrier_drop()] removes them.
+#' Arithmetic on the carrier, replacing its values, and subsetting that
+#' breaks the correspondence between values and logarithms return ordinary
+#' numbers.
+#'
+#' @param log_BF numeric vector of natural-logarithm BF10 values (the Bayes
+#' factor in favor of the alternative hypothesis). Names are kept. Missing
+#' values (\code{NA}, \code{NaN}) are propagated.
+#' @param logBF whether the logarithm of the Bayes factor is returned.
+#' @param BF01 whether the inverse Bayes factor (the BF01 orientation) is
+#' returned.
+#' @param inclusion whether the Bayes factor is an inclusion Bayes factor (for
+#' naming purposes).
+#' @param bound_operator \code{NULL} (all values exact), or a character vector
+#' with one element per value of \code{log_BF}: \code{NA} for an exact value,
+#' \code{"<"} or \code{">"} when the value is an upper or lower bound of the
+#' Bayes factor. The operators refer to the BF10 values in \code{log_BF} and
+#' are stored in the orientation of the output (inverted when
+#' \code{BF01 = TRUE}, see [invert_BF_bound_operator()]).
+#' @param diagnostics \code{NULL}, or a list with one element per value of
+#' \code{log_BF} (elements can be \code{NULL}) holding numerical diagnostics of
+#' the individual Bayes factors, stored with the carrier.
+#'
+#' @return \code{format_BF_from_log()} returns a numeric vector of class
+#' \code{c("BayesTools_BF", "numeric")} with the names of \code{log_BF}. Its
+#' public attributes are \code{name} (for example \code{"BF"}, \code{"1/BF"},
+#' \code{"Inclusion BF"}, \code{"Exclusion BF"}, wrapped in \code{log()} when
+#' \code{logBF = TRUE}), \code{logBF}, \code{BF01}, and \code{bound_operator}.
+#'
+#' @seealso [format_BF()] [BF_carrier_drop()] [invert_BF_bound_operator()]
+#'
+#' @examples
+#' # a Bayes factor beyond the double range keeps its finite logarithm
+#' BF <- format_BF_from_log(c(a = 2, b = 800))
+#' format_BF(BF, logBF = TRUE)
+#' format_BF(BF, BF01 = TRUE, logBF = TRUE)
+#'
+#' @export
+format_BF_from_log <- function(log_BF, logBF = FALSE, BF01 = FALSE, inclusion = FALSE,
+                               bound_operator = NULL, diagnostics = NULL){
+
+  check_real(log_BF, "log_BF", check_length = 0, allow_NA = TRUE)
+  check_bool(logBF, "logBF", allow_NA = FALSE)
+  check_bool(BF01, "BF01", allow_NA = FALSE)
+  check_bool(inclusion, "inclusion", allow_NA = FALSE)
+  if(!is.null(bound_operator)){
+    .BF_bound_operator_check(bound_operator, "bound_operator")
+    if(length(bound_operator) != length(log_BF)){
+      stop("The 'bound_operator' argument must have one element per value of 'log_BF'.", call. = FALSE)
+    }
+  }
+  if(!is.null(diagnostics) && (!is.list(diagnostics) || length(diagnostics) != length(log_BF))){
+    stop("The 'diagnostics' argument must be NULL or a list with one element per value of 'log_BF'.", call. = FALSE)
+  }
+
+  .format_BF_from_log(log_BF, logBF, BF01, inclusion, bound_operator,
+    BF = NULL, diagnostics = diagnostics)
+}
+
 .BF_carrier_attributes <- function(){
 
   c("canonical_log_BF", "producer_values", "carrier_logBF", "carrier_BF01", "numerical_diagnostics")
@@ -170,6 +244,43 @@ format_BF <- function(BF, logBF = FALSE, BF01 = FALSE, inclusion = FALSE){
   for(attribute in c("log_BF", "log_prior_height", "log_posterior_height", "orientation")) attr(x, attribute) <- NULL
   if(!any(!is.na(attr(x, "bound_operator")))) class(x) <- setdiff(class(x), "BayesTools_BF")
   x
+}
+
+#' @title Remove the carrier attributes of a Bayes factor
+#'
+#' @description Removes the private attributes with which a Bayes-factor
+#' carrier (see [format_BF_from_log()]) retains its canonical logarithms, so
+#' that the values can be stored in a plain data frame or compared as ordinary
+#' numbers.
+#'
+#' @details The names and the public attributes \code{name}, \code{logBF},
+#' \code{BF01}, and \code{bound_operator} are kept. The class
+#' \code{BayesTools_BF} is kept only while a non-missing bound operator remains,
+#' as for the result of [format_BF()] on a plain vector. A numeric vector
+#' without carrier attributes is returned with the same rule applied to its
+#' class.
+#'
+#' @param x a numeric vector, typically a Bayes factor created by
+#' [format_BF_from_log()] or [format_BF()].
+#'
+#' @return \code{BF_carrier_drop()} returns \code{x} without its carrier
+#' attributes.
+#'
+#' @seealso [format_BF_from_log()] [format_BF()]
+#'
+#' @examples
+#' BF <- format_BF_from_log(c(a = 2, b = 800))
+#' names(attributes(BF))
+#' names(attributes(BF_carrier_drop(BF)))
+#'
+#' @export
+BF_carrier_drop <- function(x){
+
+  if(!is.numeric(x)){
+    stop("The 'x' argument must be a numeric vector.", call. = FALSE)
+  }
+
+  .BF_carrier_drop(x)
 }
 
 #' @export
@@ -457,6 +568,50 @@ Math.BayesTools_BF <- function(x, ...){
   operator[operator == "TEMP_GT"] <- ">"
 
   return(operator)
+}
+
+#' @title Invert the orientation of Bayes factor bound operators
+#'
+#' @description Swaps \code{"<"} and \code{">"}: the bound operators of a Bayes
+#' factor in the BF10 orientation become those of its reciprocal in the BF01
+#' orientation, and the other way round. Missing operators (exact values) are
+#' kept.
+#'
+#' @param operator a character vector of bound operators (\code{"<"}, \code{">"}
+#' or \code{NA}), or a vector of only \code{NA} values. Other values are
+#' rejected.
+#'
+#' @return \code{invert_BF_bound_operator()} returns a character vector of the
+#' length of \code{operator} (without names) with the operators swapped.
+#'
+#' @seealso [format_BF_from_log()] [format_BF()]
+#'
+#' @examples
+#' invert_BF_bound_operator(c("<", ">", NA))
+#'
+#' @export
+invert_BF_bound_operator <- function(operator){
+
+  .BF_bound_operator_check(operator, "operator")
+
+  .invert_BF_bound_operator(operator)
+}
+
+# Bound operators of the public Bayes factor helpers: a character vector (or a
+# vector of only NA) whose non-missing values are '<' or '>'.
+.BF_bound_operator_check <- function(operator, name){
+
+  if(!(is.character(operator) || (is.logical(operator) && all(is.na(operator))))){
+    stop("The '", name, "' argument must be a character vector of '<' and '>' bound operators (NA for exact values).",
+         call. = FALSE)
+  }
+  invalid <- !is.na(operator) & !operator %in% c("<", ">")
+  if(any(invalid)){
+    stop("The '", paste0(unique(operator[invalid]), collapse = "', '"), "' values are not recognized by the '",
+         name, "' argument. Bound operators must be '<', '>', or NA.", call. = FALSE)
+  }
+
+  invisible(TRUE)
 }
 
 .match_table_columns <- function(output_names, input_names){
