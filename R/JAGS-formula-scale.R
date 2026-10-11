@@ -689,6 +689,34 @@
   formula_scale
 }
 
+#' @rdname JAGS_formula_point_finalize
+#' @param formula_scale the \code{formula_scale} element returned by
+#' [JAGS_formula()] (\code{NULL} is returned unchanged).
+#' @param owner_scope the owner of the completed scale: \code{"fit"} for the
+#' scale of a fitted model, as [JAGS_fit()] stores it, or \code{"prior_only"}
+#' for a design used for prior densities without a fit.
+#'
+#' @return \code{JAGS_formula_scale_finalize()} returns \code{formula_scale}
+#' with the completed \code{unscale_design} attribute (the resolved
+#' \code{state_constants}, \code{owner_scope}, and \code{complete = TRUE}), or
+#' \code{NULL} for a \code{NULL} scale.
+#'
+#' @export
+JAGS_formula_scale_finalize <- function(formula_scale, design = NULL,
+                                        prior_list = list(), model_data = NULL,
+                                        owner_scope = "fit"){
+
+  check_list(formula_scale, "formula_scale", allow_NULL = TRUE)
+  .bt_formula_finalize_design_check(design, allow_NULL = TRUE)
+  check_list(prior_list, "prior_list", allow_NULL = TRUE)
+  check_list(model_data, "model_data", allow_NULL = TRUE)
+  check_char(owner_scope, "owner_scope", check_length = 1, allow_NA = FALSE,
+             allow_values = c("fit", "prior_only"))
+
+  .bt_formula_scale_finalize(formula_scale, design, prior_list, model_data,
+                             owner_scope)
+}
+
 .bt_formula_scale_finalized_check <- function(formula_scale, prefix, require_owner = FALSE){
 
   if(!require_owner && (is.null(formula_scale) || length(formula_scale) == 0L)) return(invisible(TRUE))

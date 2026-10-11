@@ -306,3 +306,189 @@ test_that("posterior_measure_check() validates its arguments", {
   expect_error(posterior_measure_check(draws, "atoms", NA_character_),
                "The 'column' argument cannot contain NA/NaN values.", fixed = TRUE)
 })
+
+test_that("JAGS_formula_point_finalize() equals the internal point finalization", {
+
+  data <- data.frame(x = c(-2, -1, 1, 2))
+  priors <- list(
+    intercept = prior("point", list(0)),
+    x         = prior("point", list(location = expression(2 * theta + model_c[2])))
+  )
+  output <- JAGS_formula(~ x, "mu", data, priors)
+  owning <- c(output$prior_list, list(theta = prior("normal", list(0, 1))))
+  model_data <- list(model_c = c(10, 20))
+  parameters <- c("theta", "mu_x")
+
+  finalized <- JAGS_formula_point_finalize(
+    output$formula_design, owning, data, model_data, parameters
+  )
+  expect_identical(
+    finalized,
+    BayesTools:::.bt_formula_point_finalize(
+      output$formula_design, owning, data, model_data, parameters
+    )
+  )
+  owner <- finalized$point_expression_owner
+  expect_identical(owner$targets, "mu_x")
+  expect_setequal(names(owner$prior_list), c("mu_x", "theta"))
+  expect_identical(owner$extra_parents, character())
+  expect_identical(names(owner$data), "model_c")
+  expect_identical(names(owner$points), "mu_x")
+  expect_null(output$formula_design$point_expression_owner)
+
+  # the defaults of the optional arguments
+  expect_identical(
+    JAGS_formula_point_finalize(output$formula_design, owning, data),
+    BayesTools:::.bt_formula_point_finalize(output$formula_design, owning, data)
+  )
+  expect_identical(
+    JAGS_formula_point_finalize(output$formula_design, owning, NULL, NULL, NULL),
+    BayesTools:::.bt_formula_point_finalize(output$formula_design, owning, NULL, NULL, character())
+  )
+
+  # a design without expression-point coefficients is returned unchanged
+  plain <- JAGS_formula(~ x, "mu", data, list(
+    intercept = prior("normal", list(0, 1)), x = prior("normal", list(0, 1))
+  ))
+  expect_identical(
+    JAGS_formula_point_finalize(plain$formula_design, plain$prior_list, data),
+    plain$formula_design
+  )
+
+  # the typed refusals of the internal finalization remain
+  expect_error(
+    JAGS_formula_point_finalize(output$formula_design, unname(owning), data, model_data, parameters),
+    class = "BayesTools_formula_point_unavailable"
+  )
+  expect_error(
+    JAGS_formula_point_finalize(output$formula_design, owning, list(model_c = c(1, 2)), model_data, parameters),
+    class = "BayesTools_formula_point_unavailable"
+  )
+})
+
+test_that("JAGS_formula_point_finalize() validates its arguments", {
+
+  data <- data.frame(x = c(-2, -1, 1, 2))
+  output <- JAGS_formula(~ x, "mu", data, list(
+    intercept = prior("normal", list(0, 1)), x = prior("normal", list(0, 1))
+  ))
+  design <- output$formula_design
+  finalize <- function(...) JAGS_formula_point_finalize(...)
+
+  for(invalid in list(NULL, list(), unclass(design), "design", data)){
+    expect_error(finalize(invalid, output$prior_list, data),
+                 "The 'design' argument must be a formula design returned by 'JAGS_formula()'.", fixed = TRUE)
+  }
+  expect_error(finalize(design, NULL, data), "The 'prior_list' argument cannot be NULL.", fixed = TRUE)
+  expect_error(finalize(design, list(), data), "The 'prior_list' argument cannot be NULL.", fixed = TRUE)
+  expect_error(finalize(design, 1, data), "The 'prior_list' argument must be a list.", fixed = TRUE)
+  expect_error(finalize(design, output$prior_list, 1),
+               "The 'formula_data' argument must be NULL, a data frame, or a named list.", fixed = TRUE)
+  expect_error(finalize(design, output$prior_list, "data"),
+               "The 'formula_data' argument must be NULL, a data frame, or a named list.", fixed = TRUE)
+  expect_error(finalize(design, output$prior_list, data, model_data = 1),
+               "The 'model_data' argument must be a list.", fixed = TRUE)
+  expect_error(finalize(design, output$prior_list, data, parameter_names = 1),
+               "The 'parameter_names' argument must be a character vector.", fixed = TRUE)
+  expect_error(finalize(design, output$prior_list, data, parameter_names = c("a", NA)),
+               "The 'parameter_names' argument cannot contain NA/NaN values.", fixed = TRUE)
+})
+
+test_that("JAGS_formula_scale_finalize() equals the internal scale finalization", {
+
+  slope <- prior("normal", list(0, 1))
+  attr(slope, "multiply_by") <- "sigma"
+  data <- data.frame(x = c(10, 20, 30, 45))
+  output <- JAGS_formula(
+    ~ x, "mu", data,
+    list(intercept = prior("normal", list(0, 1)), x = slope),
+    formula_scale = TRUE
+  )
+  design <- JAGS_formula_point_finalize(output$formula_design, output$prior_list, data)
+  expect_false(isTRUE(attr(output$formula_scale, "unscale_design")$complete))
+
+  scale <- JAGS_formula_scale_finalize(
+    output$formula_scale, design, output$prior_list, list(sigma = 3)
+  )
+  expect_identical(
+    scale,
+    BayesTools:::.bt_formula_scale_finalize(
+      output$formula_scale, design, prior_list = output$prior_list,
+      model_data = list(sigma = 3), owner_scope = "fit"
+    )
+  )
+  specification <- attr(scale, "unscale_design")
+  expect_identical(specification$state_constants, c(sigma = 3))
+  expect_identical(specification$owner_scope, "fit")
+  expect_true(specification$complete)
+
+  prior_only <- JAGS_formula_scale_finalize(
+    output$formula_scale, design, output$prior_list, list(sigma = 3), owner_scope = "prior_only"
+  )
+  expect_identical(attr(prior_only, "unscale_design")$owner_scope, "prior_only")
+  expect_identical(
+    prior_only,
+    BayesTools:::.bt_formula_scale_finalize(
+      output$formula_scale, design, output$prior_list, list(sigma = 3), "prior_only"
+    )
+  )
+
+  # the scalar state also comes from a point prior of the model
+  from_prior <- JAGS_formula_scale_finalize(
+    output$formula_scale, design, c(output$prior_list, list(sigma = prior("point", list(3))))
+  )
+  expect_identical(attr(from_prior, "unscale_design")$state_constants, c(sigma = 3))
+
+  # the defaults and the empty scale
+  expect_identical(
+    JAGS_formula_scale_finalize(output$formula_scale),
+    BayesTools:::.bt_formula_scale_finalize(output$formula_scale)
+  )
+  expect_null(JAGS_formula_scale_finalize(NULL))
+  unscaled <- JAGS_formula(~ x, "mu", data, list(
+    intercept = prior("normal", list(0, 1)), x = prior("normal", list(0, 1))
+  ))
+  expect_identical(
+    JAGS_formula_scale_finalize(unscaled$formula_scale, unscaled$formula_design, unscaled$prior_list),
+    BayesTools:::.bt_formula_scale_finalize(unscaled$formula_scale, unscaled$formula_design, unscaled$prior_list)
+  )
+
+  # contradictory owners of one state keep the typed refusal
+  contradictory <- tryCatch(
+    JAGS_formula_scale_finalize(
+      output$formula_scale, design,
+      c(output$prior_list, list(sigma = prior("point", list(2)))), list(sigma = 3)
+    ),
+    error = identity
+  )
+  expect_s3_class(contradictory, "BayesTools_formula_transform_unavailable")
+  expect_identical(contradictory$reason, "contradictory_state_constants")
+})
+
+test_that("JAGS_formula_scale_finalize() validates its arguments", {
+
+  data <- data.frame(x = c(10, 20, 30, 45))
+  output <- JAGS_formula(~ x, "mu", data, list(
+    intercept = prior("normal", list(0, 1)), x = prior("normal", list(0, 1))
+  ), formula_scale = TRUE)
+  design <- output$formula_design
+  scale <- output$formula_scale
+  finalize <- function(...) JAGS_formula_scale_finalize(...)
+
+  expect_error(finalize(1), "The 'formula_scale' argument must be a list.", fixed = TRUE)
+  expect_error(finalize("scale"), "The 'formula_scale' argument must be a list.", fixed = TRUE)
+  for(invalid in list(list(), unclass(design), "design", data)){
+    expect_error(finalize(scale, invalid),
+                 "The 'design' argument must be a formula design returned by 'JAGS_formula()' or NULL.", fixed = TRUE)
+  }
+  expect_error(finalize(scale, design, 1), "The 'prior_list' argument must be a list.", fixed = TRUE)
+  expect_error(finalize(scale, design, list(), 1), "The 'model_data' argument must be a list.", fixed = TRUE)
+  expect_error(finalize(scale, design, owner_scope = "compiler"),
+               "The 'compiler' values are not recognized by the 'owner_scope' argument.", fixed = TRUE)
+  expect_error(finalize(scale, design, owner_scope = c("fit", "prior_only")),
+               "The 'owner_scope' argument must have length '1'.", fixed = TRUE)
+  expect_error(finalize(scale, design, owner_scope = NA_character_),
+               "The 'owner_scope' argument cannot contain NA/NaN values.", fixed = TRUE)
+  expect_error(finalize(scale, design, owner_scope = TRUE),
+               "The 'owner_scope' argument must be a character vector.", fixed = TRUE)
+})
