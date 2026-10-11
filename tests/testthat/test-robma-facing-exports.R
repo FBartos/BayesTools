@@ -639,3 +639,91 @@ test_that("random group helpers validate the term and the data", {
   expect_error(random_group_prediction_keys(term, data.frame(g = c("a", NA))),
                "Random-effect grouping expression 'g' must not contain missing values.", fixed = TRUE)
 })
+
+test_that("hypothesis_linear_target_side() equals the internal side reading", {
+
+  statement <- function(text) hypothesis_parse(text)$statements[[1L]]
+
+  region <- statement("f[A] - 2*f[B] > 0.5")
+  reading <- hypothesis_linear_target_side(region$left, "f")
+  expect_identical(reading, BayesTools:::.hypothesis_linear_target_side(region$left, "f"))
+  expect_identical(names(reading), c("operator", "coefficients", "numerator_coefficients", "value", "divisor"))
+  expect_identical(reading$operator, ">")
+  expect_identical(reading$coefficients, c(A = 1, B = -2))
+  expect_identical(reading$numerator_coefficients, c(A = 1, B = -2))
+  expect_identical(reading$value, 0.5)
+  expect_identical(reading$divisor, 1)
+  # the implicit complement side reads the same combination
+  complement <- hypothesis_linear_target_side(region$right, "f")
+  expect_identical(complement, BayesTools:::.hypothesis_linear_target_side(region$right, "f"))
+  expect_identical(complement$operator, "<=")
+  expect_identical(complement$coefficients, reading$coefficients)
+  expect_identical(complement$value, reading$value)
+
+  # the divisor scales the coefficients, not the numerator
+  point <- statement("(f[A] + f[B])/2 = 0")
+  halves <- hypothesis_linear_target_side(point$left, "f")
+  expect_identical(halves, BayesTools:::.hypothesis_linear_target_side(point$left, "f"))
+  expect_identical(halves$operator, "=")
+  expect_identical(halves$coefficients, c(A = .5, B = .5))
+  expect_identical(halves$numerator_coefficients, c(A = 1, B = 1))
+  expect_identical(halves$value, 0)
+  expect_identical(halves$divisor, 2)
+  expect_identical(hypothesis_linear_target_side(point$right, "f")$operator, "!=")
+
+  # constants move to the value, levels sort by name and cancel to zero
+  moved <- hypothesis_linear_target_side(statement("f[B] + 1 < 2*f[A] + 3 - f[B]")$left, "f")
+  expect_identical(moved, BayesTools:::.hypothesis_linear_target_side(
+    statement("f[B] + 1 < 2*f[A] + 3 - f[B]")$left, "f"
+  ))
+  expect_identical(moved$operator, "<")
+  expect_identical(moved$coefficients, c(A = -2, B = 2))
+  expect_identical(moved$value, 2)
+  expect_identical(
+    hypothesis_linear_target_side(statement("f[A] + f[B] - f[B] != 1")$left, "f")$coefficients,
+    c(A = 1)
+  )
+
+  # a side of another parameter is not a target of this parameter
+  expect_error(
+    hypothesis_linear_target_side(statement("g[A] > 0")$left, "f"),
+    "A linear target may reference levels of only 'f'.", fixed = TRUE
+  )
+  expect_error(
+    hypothesis_linear_target_side(statement("f[A]^2 > 0")$left, "f"),
+    "A linear target must be a linear combination of levels of 'f' and numbers.", fixed = TRUE
+  )
+  expect_error(
+    hypothesis_linear_target_side(statement("f[A] > 0 & f[B] > 0")$left, "f"),
+    "Linear targets support only point and simple region statements.", fixed = TRUE
+  )
+})
+
+test_that("hypothesis_linear_target_side() validates its arguments", {
+
+  side <- hypothesis_parse("f[A] > 0")$statements[[1L]]$left
+
+  expect_error(hypothesis_linear_target_side(side, ""),
+               "The 'parameter' argument cannot be an empty string.", fixed = TRUE)
+  expect_error(hypothesis_linear_target_side(side, NULL),
+               "The 'parameter' argument cannot be NULL.", fixed = TRUE)
+  expect_error(hypothesis_linear_target_side(side, c("f", "g")),
+               "The 'parameter' argument must have length '1'.", fixed = TRUE)
+  expect_error(hypothesis_linear_target_side(side, NA_character_),
+               "The 'parameter' argument cannot contain NA/NaN values.", fixed = TRUE)
+  expect_error(hypothesis_linear_target_side(side, 1),
+               "The 'parameter' argument must be a character vector.", fixed = TRUE)
+
+  malformed <- "Hypothesis AST contains a malformed side. Parse the hypothesis again."
+  expect_error(hypothesis_linear_target_side(NULL, "f"), malformed, fixed = TRUE)
+  expect_error(hypothesis_linear_target_side("f[A] > 0", "f"), malformed, fixed = TRUE)
+  expect_error(hypothesis_linear_target_side(side$expression, "f"), malformed, fixed = TRUE)
+  expect_error(hypothesis_linear_target_side(unclass(side)[c("type", "expression")], "f"), malformed, fixed = TRUE)
+  altered <- side
+  altered$type <- "other"
+  expect_error(hypothesis_linear_target_side(altered, "f"), malformed, fixed = TRUE)
+  stale <- side
+  stale$source <- "f[B] > 0"
+  expect_error(hypothesis_linear_target_side(stale, "f"),
+               "Hypothesis AST side source is inconsistent with its expression.", fixed = TRUE)
+})

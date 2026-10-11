@@ -367,6 +367,72 @@ hypothesis_linear_target <- function(posterior, hypothesis, parameter){
   )
 }
 
+#' @title Linear form of one side of a hypothesis statement
+#'
+#' @description Reads one side of a statement of a hypothesis syntax tree as a
+#' linear combination of the levels of one parameter, \eqn{\sum_l c_l L_l},
+#' compared with a value by the operator of the side. It is the per-side
+#' reading that [hypothesis_linear_target()] uses, and it identifies the
+#' combination of levels that a statement is about without a posterior:
+#' statements with identical \code{coefficients} refer to the same linear
+#' combination, however their level expressions are written. The coefficients
+#' are not normalized, so a multiple of a combination has other coefficients.
+#'
+#' @details The side is a \code{left} or \code{right} element of a statement
+#' of a \code{BayesTools_hypothesis_ast} (see [hypothesis_parse()] and
+#' [hypothesis_ast_schema()]): a point side (\code{=}, \code{!=}), or a region
+#' side with a simple comparison (\code{<}, \code{<=}, \code{>}, \code{>=}). In
+#' a comparison the right expression is subtracted from the left expression.
+#' The expressions are linear in the level references of \code{parameter} (for
+#' example \code{f[A]}) and numbers: sums and differences, level references
+#' multiplied or divided by numbers, and parentheses. Levels of other
+#' parameters, other terms, and other kinds of sides stop with an error.
+#' Numerical loss in the coefficients or the value stops with an error of class
+#' \code{BayesTools_hypothesis_numerical_unavailable}, as in
+#' [hypothesis_linear_target()].
+#'
+#' @param side one side (\code{left} or \code{right}) of a statement of a
+#' \code{BayesTools_hypothesis_ast}, for example
+#' \code{hypothesis_parse("f[A] > f[B]")$statements[[1]]$left}.
+#' @param parameter the parameter whose levels the side references, as a single
+#' non-empty string (\code{"f"} for \code{f[A]}).
+#'
+#' @return \code{hypothesis_linear_target_side()} returns a list with
+#' \describe{
+#'   \item{\code{operator}}{the operator of the side: \code{"="} or \code{"!="}
+#'   for point sides, and the comparison operator for region sides.}
+#'   \item{\code{coefficients}}{a named numeric vector of the coefficients of
+#'   the levels divided by \code{divisor}, named by level, sorted by level,
+#'   without zero coefficients.}
+#'   \item{\code{numerator_coefficients}}{the coefficients of the levels before
+#'   the division by \code{divisor}.}
+#'   \item{\code{value}}{the value that the combination is compared with, in
+#'   the unit of \code{coefficients} (the value after moving the constants of
+#'   the expressions to it and dividing by \code{divisor}).}
+#'   \item{\code{divisor}}{the divisor of the expression.}
+#' }
+#'
+#' @seealso [hypothesis_linear_target()] [hypothesis_parse()]
+#'
+#' @examples
+#' side <- hypothesis_parse("f[A] - 2*f[B] > 0.5")$statements[[1]]$left
+#' hypothesis_linear_target_side(side, "f")
+#'
+#' side <- hypothesis_parse("(f[A] + f[B])/2 = 0")$statements[[1]]$left
+#' hypothesis_linear_target_side(side, "f")
+#'
+#' @export
+hypothesis_linear_target_side <- function(side, parameter){
+
+  check_char(parameter, "parameter", check_length = 1L, allow_NA = FALSE)
+  if(!nzchar(parameter)){
+    stop("The 'parameter' argument cannot be an empty string.", call. = FALSE)
+  }
+  .bt_validate_hypothesis_side(side)
+
+  .hypothesis_linear_target_side(side, parameter)
+}
+
 
 # An expression linear in the levels of 'parameter' as a constant 'offset'
 # and level 'coefficients' (named by level, sorted, without zeros).
