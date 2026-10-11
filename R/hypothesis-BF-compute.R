@@ -170,6 +170,7 @@
     posterior <- if(is.null(linear)){
       .hypothesis_eval_expression(.hypothesis_side_expression(side), quantity$posterior_draws)
     }else .hypothesis_affine_value(linear, quantity$posterior_draws)
+    continuous <- .hypothesis_continuous_draw_mask(quantity)
     prior_density <- .hypothesis_expression_prior_density(quantity, side)
     if(!is.null(prior_density)){
       prior_ordinate <- .hypothesis_check_prior_ordinate(prior_density, evaluation_value, side$label)
@@ -185,7 +186,8 @@
       if(!identical(density_method, "normal")) .hypothesis_check_prior_density(exp(log_prior), side$label)
       inexact_prior <- side$label
     }
-    log_posterior <- .hypothesis_draw_density_log_height(posterior, evaluation_value, "posterior", density_method)
+    log_posterior <- .hypothesis_continuous_draw_log_height(posterior, continuous,
+      evaluation_value, "posterior", density_method)
     ratio <- .hypothesis_log_ratio(log_prior, log_posterior, normal = identical(density_method, "normal"))
     log_BF <- -ratio$log_BF
     numerical_diagnostics <- ratio$diagnostics

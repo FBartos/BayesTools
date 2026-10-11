@@ -435,6 +435,72 @@ test_that("hypothesis_BF warns for exact point masses in raw point-null draws", 
 })
 
 
+test_that("raw-draw point nulls use the continuous draws of a prior with declared atoms", {
+
+  # spike at 0.2 (prior weight 1/4) and N(0, 1) slab (3/4); 40% of the
+  # posterior draws sit at the spike, 60% are N(0.4, 0.3) continuous draws
+  spike <- prior_mixture(list(
+    prior("point", list(location = 0.2), prior_weights = 1),
+    prior("normal", list(mean = 0, sd = 1), prior_weights = 3)
+  ), is_null = c(TRUE, FALSE))
+  set.seed(6)
+  continuous <- stats::rnorm(6000, 0.4, 0.3)
+  posterior <- c(rep(0.2, 4000), continuous)
+  kde_height <- function(x, value){
+    bw <- stats::bw.nrd0(x)
+    mean(stats::dnorm((value - x) / bw)) / bw
+  }
+
+  # the absolutely continuous posterior ordinate is the continuous share times
+  # the kernel sum of the continuous draws (bandwidth of those draws)
+  for(value in c(0.25, 0.5, 1)){
+    out <- hypothesis_BF(posterior, spike, paste("theta =", value), parameter = "theta",
+                         columns = "all", seed = 1)
+    expect_equal(
+      attr(out, "raw_BF"),
+      .75 * stats::dnorm(value) / (.6 * kde_height(continuous, value)),
+      tolerance = 1e-10
+    )
+  }
+  normal <- hypothesis_BF(posterior, spike, "theta = 0.25", parameter = "theta",
+                          density_method = "normal", columns = "all", seed = 1)
+  expect_equal(
+    attr(normal, "raw_BF"),
+    .75 * stats::dnorm(.25) / (.6 * stats::dnorm(.25, mean(continuous), stats::sd(continuous))),
+    tolerance = 1e-10
+  )
+
+  # an affine expression of the parameter masks the raw draws first
+  scaled <- hypothesis_BF(posterior, spike, "2 * theta = 0.5", parameter = "theta",
+                          columns = "all", seed = 1)
+  expect_equal(attr(scaled, "raw_BF"), attr(
+    hypothesis_BF(posterior, spike, "theta = 0.25", parameter = "theta", columns = "all", seed = 1),
+    "raw_BF"), tolerance = 1e-10)
+
+  # without declared atoms every draw enters the kernel sum
+  plain <- hypothesis_BF(posterior, prior("normal", list(0, 1)), "theta = 0.25",
+                         parameter = "theta", columns = "all", seed = 1)
+  expect_equal(attr(plain, "raw_BF"), stats::dnorm(.25) / kde_height(posterior, .25),
+               tolerance = 1e-10)
+
+  # no continuous draw: zero continuous height; one: the degenerate-sample refusal
+  expect_identical(
+    attr(hypothesis_BF(rep(0.2, 50), spike, "theta = 0.25", parameter = "theta",
+                       columns = "all", seed = 1), "raw_BF"),
+    Inf
+  )
+  expect_error(
+    hypothesis_BF(rep(0.2, 50), spike, "theta = 0.25", parameter = "theta",
+                  density_method = "normal", seed = 1),
+    class = "BayesTools_hypothesis_numerical_unavailable"
+  )
+  expect_error(
+    hypothesis_BF(c(rep(0.2, 50), 0.4), spike, "theta = 0.25", parameter = "theta", seed = 1),
+    "degenerate samples"
+  )
+})
+
+
 test_that("hypothesis_BF KDEs retain Gaussian tails beyond sample grids", {
 
   posterior <- seq(-1, 1, length.out = 101)

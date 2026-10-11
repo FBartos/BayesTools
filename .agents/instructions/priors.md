@@ -795,7 +795,11 @@ at the null with bandwidth `bw.nrd0()` of the (per-component) continuous
 draws, reflected at finite exact support bounds, never an evaluation grid,
 interpolation or binning (a grid spanning a long-tailed draw range is coarser
 than the bandwidth). The raw-draw ordinates of `hypothesis_BF()` use the same
-kernel sum without reflection. A kernel sum below the double range (draws
+kernel sum without reflection; for numeric draws with a prior object that
+declares point masses, the kernel runs over the draws not exactly at a
+declared atom location (matched on the parameter draws before any expression
+is evaluated) and is scaled by their share, and without such draws the
+continuous height is zero. A kernel sum below the double range (draws
 many bandwidths from the null) is 0, and the Bayes factor is then +Inf; no
 numerical floor is added. A null outside the prior's exact support has a
 zero prior ordinate (classified structurally, never from the range of a

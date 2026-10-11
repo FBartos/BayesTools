@@ -1094,3 +1094,42 @@ prior_ordinate_status <- function(prior_density, values, labels = NULL){
   }
   .hypothesis_normal_density_height(samples, value, label, log = TRUE)
 }
+
+# The draws of a numeric quantity that are not at a declared point-mass
+# location of its prior (TRUE for the absolutely continuous part); NULL when
+# the prior density declares no point mass. The locations come from the
+# declared prior density on the parameter scale, never from the draws, and are
+# matched exactly on the raw parameter draws, before any expression is
+# evaluated.
+.hypothesis_continuous_draw_mask <- function(quantity){
+
+  parameter <- quantity[["parameter"]]
+  draws <- quantity[["posterior_draws"]]
+  points <- quantity[["prior_density"]][["points"]]
+  if(is.null(parameter) || !parameter %in% names(draws) ||
+     !is.data.frame(points) || nrow(points) == 0L){
+    return(NULL)
+  }
+  locations <- points[["x"]][points[["p"]] > 0]
+  if(length(locations) == 0L){
+    return(NULL)
+  }
+  !(draws[[parameter]] %in% locations)
+}
+
+# Log posterior ordinate at 'value' from raw draws. With a 'continuous' mask
+# the ordinate is that of the absolutely continuous part: the continuous
+# share of the draws times the kernel (or normal) height of the continuous
+# draws only. Without continuous draws the height is zero.
+.hypothesis_continuous_draw_log_height <- function(samples, continuous, value, label,
+                                                   density_method){
+
+  if(is.null(continuous) || all(continuous) || length(continuous) != length(samples)){
+    return(.hypothesis_draw_density_log_height(samples, value, label, density_method))
+  }
+  if(!any(continuous)){
+    return(-Inf)
+  }
+  log(mean(continuous)) +
+    .hypothesis_draw_density_log_height(samples[continuous], value, label, density_method)
+}

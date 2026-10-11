@@ -53,7 +53,10 @@
 #' point-null tests use boundary reflection when exact support metadata is
 #' attached to the marginal posterior or to matched \code{posterior_density}
 #' metadata; numeric and data-frame expression tests use standard Gaussian
-#' sample KDE. A point hypothesis on a linear expression of marginal-posterior
+#' sample KDE. For numeric draws with a prior object that declares point
+#' masses, the posterior ordinate is that of the absolutely continuous part:
+#' the share of the draws not at a declared point-mass location times the KDE
+#' of those draws. A point hypothesis on a linear expression of marginal-posterior
 #' parameters or levels (sums, differences, and constant multiples, e.g.,
 #' \code{mu[B] - mu[A] = 0}; functions and powers only of constants) is tested
 #' as a Savage-Dickey ratio of that linear combination: the prior density and
