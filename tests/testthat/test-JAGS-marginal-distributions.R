@@ -5311,6 +5311,78 @@ test_that("a later ordinate source keeps its other null values with their class 
   expect_identical(BayesTools:::.posterior_ordinate_from_sources(list(later), "theta"), later)
 })
 
+test_that("the kernel posterior ordinate refuses degenerate continuous draws", {
+
+  prior_density <- BayesTools:::.prior_linear_combination_density(
+    list(theta = prior("normal", list(0, 1))), c(theta = 1))
+  make_marginal <- function(draws, atoms = posterior_atom_attribute()){
+    class(draws) <- c("marginal_posterior.simple", "marginal_posterior", class(draws))
+    draws <- .bt_meta_set(draws, "prior_density", prior_density)
+    .bt_meta_set(draws, "atoms", atoms)
+  }
+  unavailable <- "BayesTools_hypothesis_numerical_unavailable"
+  expect_unavailable <- function(object, reason){
+    condition <- tryCatch(object, error = function(e) e)
+    expect_s3_class(condition, unavailable)
+    if(inherits(condition, unavailable)){
+      expect_identical(condition$reason, reason)
+      expect_match(conditionMessage(condition), "rejected by diagnostics", fixed = TRUE)
+    }
+  }
+
+  few <- "fewer_than_two_finite_continuous_draws"
+  expect_unavailable(Savage_Dickey_BF(make_marginal(rep(NA_real_, 20)), silent = TRUE), few)
+  expect_unavailable(Savage_Dickey_BF(make_marginal(c(.3, rep(NA_real_, 19))), silent = TRUE), few)
+  expect_unavailable(Savage_Dickey_BF(make_marginal(numeric(0)), silent = TRUE), few)
+  # a single continuous draw beside a declared point mass elsewhere
+  expect_unavailable(Savage_Dickey_BF(
+    make_marginal(c(.2, rep(2, 99)), posterior_atom_attribute(list(x = 2, mass = .99))),
+    silent = TRUE), few)
+  expect_unavailable(Savage_Dickey_BF(make_marginal(rep(.3, 50)), silent = TRUE),
+                     "zero_spread_continuous_draws")
+
+  # a level of a list gets an NA Bayes factor with the reason; the other levels are kept
+  set.seed(1)
+  levels <- list(healthy = make_marginal(rnorm(200, .3, 1)),
+                 single = make_marginal(c(.3, rep(NA_real_, 99))),
+                 constant = make_marginal(rep(.3, 50)))
+  class(levels) <- c("marginal_posterior", "list")
+  bf <- Savage_Dickey_BF(levels, silent = TRUE)
+  expect_true(is.finite(bf$healthy) && bf$healthy > 0)
+  for(level in c("single", "constant")){
+    expect_true(is.na(bf[[level]]))
+    expect_match(attr(bf[[level]], "warnings"), "rejected by diagnostics", fixed = TRUE)
+    expect_identical(attr(bf[[level]], "posterior_density_source"), "numerical_unavailable")
+  }
+  expect_equal(as.numeric(bf$healthy),
+               as.numeric(Savage_Dickey_BF(levels$healthy, silent = TRUE)), tolerance = 1e-12)
+
+  # the normal route, a stored ordinate and an exact support excluding the null are unchanged
+  healthy <- levels$healthy
+  expect_equal(
+    as.numeric(Savage_Dickey_BF(healthy, silent = TRUE, normal_approximation = TRUE)),
+    dnorm(0) / dnorm(0, mean(healthy), sd(healthy)), tolerance = 1e-8)
+  stored <- .bt_meta_set(levels$single, "posterior_ordinate",
+    posterior_ordinate_attribute(0, .5, "stored", "precomputed"))
+  expect_equal(as.numeric(Savage_Dickey_BF(stored, silent = TRUE, density_method = "precomputed")),
+               dnorm(0) / .5, tolerance = 1e-8)
+  excluded <- .bt_meta_set(make_marginal(rep(2, 50)), "support",
+    posterior_support_attribute(bounds = c(1, Inf), exact = TRUE))
+  expect_false(inherits(tryCatch(Savage_Dickey_BF(excluded, silent = TRUE), error = function(e) e), unavailable))
+
+  # a scalar marginal of as_marginal_inference() stops with the classed condition
+  fit <- coda::mcmc(cbind(theta = c(.5, rep(0, 99)), theta_indicator = c(1L, rep(0L, 99))))
+  class(fit) <- c("mcmc", "BayesTools_fit")
+  attr(fit, "prior_list") <- list(theta = prior_spike_and_slab(
+    prior("normal", list(0, 1)), prior_inclusion = prior("point", list(.5))))
+  fit <- attach_test_parameter_map(fit)
+  expect_error(
+    as_marginal_inference(fit, "theta", "theta", list(theta = "theta"), "AND", NULL,
+                          n_samples = 128, silent = TRUE),
+    class = unavailable
+  )
+})
+
 # File-level skips: All remaining tests in this file require pre-fitted models
 skip_if_not_visual_fixture_tests()
 skip_if_no_fits()

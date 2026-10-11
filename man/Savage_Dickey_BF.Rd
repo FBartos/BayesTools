@@ -123,6 +123,12 @@ Diagnostic messages are stored in the \code{"warnings"} attribute of each
 Bayes factor and, unless \code{silent = TRUE}, emitted once per parameter
 or level, prefixed with its label (for example \code{mu[A]}).
 
+The KDE posterior ordinate needs at least two finite continuous draws with
+positive spread (unless exact support excludes the null). With fewer, or with
+identical draws, a scalar call stops with
+\code{BayesTools_hypothesis_numerical_unavailable}, and a level of a list (or
+of marginal inference) gets an \code{NA} Bayes factor with the reason.
+
 Affine expressions retain an unshifted linear numerator and a checked
 constant divisor. Point inference evaluates that numerator at the translated
 null; diagnostic density heights retain the requested quantity units. Numerical

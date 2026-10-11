@@ -82,6 +82,12 @@
 #' Bayes factor and, unless \code{silent = TRUE}, emitted once per parameter
 #' or level, prefixed with its label (for example \code{mu[A]}).
 #'
+#' The KDE posterior ordinate needs at least two finite continuous draws with
+#' positive spread (unless exact support excludes the null). With fewer, or with
+#' identical draws, a scalar call stops with
+#' \code{BayesTools_hypothesis_numerical_unavailable}, and a level of a list (or
+#' of marginal inference) gets an \code{NA} Bayes factor with the reason.
+#'
 #' Affine expressions retain an unshifted linear numerator and a checked
 #' constant divisor. Point inference evaluates that numerator at the translated
 #' null; diagnostic density heights retain the requested quantity units. Numerical
@@ -444,6 +450,13 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
     }
   }
 
+  # the kernel route needs usable continuous draws (before they are ranged)
+  if(!isTRUE(normal_approximation) && is.null(stored_posterior_ordinate) &&
+     is.null(stored_posterior_density) && is.null(component_plan) &&
+     continuous_mass > 0){
+    .Savage_Dickey_BF.kde_check_draws(continuous_samples, null_hypothesis)
+  }
+
   # (a null outside the exact support of the prior has a zero prior ordinate
   # and has stopped above)
   posterior_range <- if(length(continuous_samples) > 0L){
@@ -707,6 +720,38 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
     component_index = if(!is.null(component_index)) component_index[keep],
     components      = components
   )
+}
+
+# A kernel density estimate of the posterior ordinate needs at least two finite
+# continuous draws with positive spread (a bandwidth of fewer or of identical
+# draws is arbitrary), unless the exact support excludes the null and the
+# ordinate is exactly zero. The classed condition is the one of the numerical
+# hypothesis diagnostics: a scalar call stops with it, a level of a list gets an
+# NA Bayes factor with its reason.
+.Savage_Dickey_BF.kde_check_draws <- function(samples, null_hypothesis){
+
+  sample_values <- as.numeric(samples)
+  sample_values <- sample_values[is.finite(sample_values)]
+  support_bounds <- .posterior_support_for_kde(samples)[["bounds"]]
+  if(!is.null(support_bounds) &&
+     (null_hypothesis < support_bounds[1] || null_hypothesis > support_bounds[2])){
+    return(invisible(NULL))
+  }
+
+  if(length(sample_values) < 2L){
+    .hypothesis_numerical_stop(
+      "fewer_than_two_finite_continuous_draws", "posterior kernel density ordinate",
+      inputs = list(finite_draws = length(sample_values))
+    )
+  }
+  if(all(sample_values == sample_values[[1L]])){
+    .hypothesis_numerical_stop(
+      "zero_spread_continuous_draws", "posterior kernel density ordinate",
+      inputs = list(finite_draws = length(sample_values), value = sample_values[[1L]])
+    )
+  }
+
+  invisible(NULL)
 }
 
 # Per-component posterior ordinates of a model mixture whose continuous
