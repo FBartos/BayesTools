@@ -5570,6 +5570,49 @@ test_that("transforming formula marginals of mixed models records the missing pr
   expect_null(posterior_metadata(with_prior[["B"]], "measure_unavailable"))
 })
 
+for(contrast in c("treatment", "meandif", "orthonormal")){
+  local({
+    contrast <- contrast
+    test_that(paste("raw", contrast, "factor coefficient matrices transform with the identity recipe"), {
+
+      prior_factor_i <- if(identical(contrast, "treatment")){
+        prior_factor("normal", list(0, 1), contrast = contrast)
+      }else{
+        prior_factor("mnormal", list(0, 1), contrast = contrast)
+      }
+      compiled <- JAGS_formula(~ fac, "mu", data.frame(fac = factor(LETTERS[1:3])),
+        list(intercept = prior("normal", list(0, 1)), fac = prior_factor_i))
+      set.seed(1)
+      draws <- cbind(mu_intercept = rnorm(60), "mu_fac[1]" = rnorm(60), "mu_fac[2]" = rnorm(60))
+      fit <- coda::mcmc(draws)
+      class(fit) <- c("mcmc", "BayesTools_fit")
+      attr(fit, "prior_list") <- compiled$prior_list
+      fit <- attach_test_parameter_map(fit)
+      mixed <- as_mixed_posteriors(fit, c("mu_intercept", "mu_fac"))
+      factor_draws <- mixed[["mu_fac"]]
+      expect_identical(dim(factor_draws), c(60L, 2L))
+
+      transformed <- posterior_transform(factor_draws, "lin", list(a = 1, b = 2))
+      expect_equal(as.numeric(transformed), 1 + 2 * as.numeric(factor_draws), tolerance = 1e-12)
+      # each coefficient column has its own N(0, 1) prior law, transformed
+      densities <- posterior_metadata(transformed, "prior_densities")
+      expect_identical(names(densities), colnames(factor_draws))
+      expect_null(posterior_metadata(transformed, "measure_unavailable"))
+      for(column in names(densities)){
+        for(value in c(-1, 1, 3)){
+          expect_equal(exp(prior_density_ordinate(densities[[column]], value)$log_density),
+                       stats::dnorm(value, 1, 2), tolerance = 1e-8)
+        }
+      }
+
+      whole <- posterior_transform(mixed, "lin", list(a = 1, b = 2))
+      expect_equal(as.numeric(whole[["mu_fac"]]), 1 + 2 * as.numeric(factor_draws), tolerance = 1e-12)
+      expect_equal(as.numeric(whole[["mu_intercept"]]), 1 + 2 * as.numeric(mixed[["mu_intercept"]]),
+                   tolerance = 1e-12)
+    })
+  })
+}
+
 # File-level skips: All remaining tests in this file require pre-fitted models
 skip_if_not_visual_fixture_tests()
 skip_if_no_fits()

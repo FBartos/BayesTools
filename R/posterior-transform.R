@@ -359,6 +359,13 @@ posterior_transform <- function(x, transformation, transformation_arguments = NU
         .bt_formula_density_stop("The factor prior recipe is not aligned with its source context.",
           target = target_parameter, reason = "unknown_target")
       }
+      if(nrow(factor_weights) != ncol(x) && ncol(factor_weights) == ncol(x)){
+        # raw coefficient columns (contrast-coded levels are linear in them): each
+        # column is its own coefficient, the identity recipe over the stored columns
+        coefficient_columns <- colnames(factor_weights)
+        factor_weights <- diag(ncol(x))
+        dimnames(factor_weights) <- list(colnames(x), coefficient_columns)
+      }
       weights <- matrix(0, nrow(factor_weights), length(context$column_names),
         dimnames = list(colnames(x), context$column_names))
       weights[, colnames(factor_weights)] <- factor_weights
