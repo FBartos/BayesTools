@@ -13654,9 +13654,10 @@ test_that("random slopes of a two-level factor name the scalar SD node of their 
       monitor = monitor
     ))
   }
+  # the carrier monitors the nodes JAGS emits for the SD priors
   carrier_fit <- function(result, correlated){
     term <- result$formula_design$random_effects[[1L]]
-    sd_names <- unique(term$sd_parameter_names)
+    sd_names <- sd_prior_nodes(result)
     values <- c(mu_intercept = 0, stats::setNames(seq_along(sd_names) / 2, sd_names))
     if(correlated){
       n <- length(sd_names)
