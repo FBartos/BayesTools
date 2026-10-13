@@ -321,3 +321,80 @@ test_that("output guard reports the conservative peak and safer alternative", {
     )
   )
 })
+
+test_that("alternate marginal covariance builders pass the shared memory ceiling", {
+
+  old_limit <- getOption(.random_memory_option)
+  on.exit(.random_memory_restore_option(old_limit), add = TRUE)
+  .random_memory_restore_option(Inf)
+  data <- data.frame(id = factor(seq_len(20L)))
+  result <- JAGS_formula(
+    formula = ~ 1 + (1 | id),
+    parameter = "mu",
+    data = data,
+    prior_list = list(intercept = prior("normal", list(0, 1))),
+    prior_random = prior_random(
+      id = random_block(sd = prior("normal", list(0, 1), list(0, Inf)))
+    ),
+    random_effects_compile = random_effects_compile(marginalized = "id")
+  )
+  random_term <- result$formula_design$random_effects[[1L]]
+  sd_name <- unique(random_term$sd_parameter_names)
+  posterior <- matrix(2, nrow = 1L, ncol = 1L, dimnames = list(NULL, sd_name))
+  factors <- random_effects_marginal_factor_states(
+    result$formula_design,
+    posterior_samples = posterior,
+    prior_list = result$prior_list,
+    row_blocks = as.list(seq_len(20L))
+  )
+  primary <- function(){
+    random_effects_marginal_vcov(
+      result$formula_design,
+      posterior_samples = posterior,
+      prior_list = result$prior_list
+    )
+  }
+  dense <- function() random_effects_marginal_factor_vcov(factors)
+  variance <- function() random_effects_marginal_variance_factors(result$formula_design)
+
+  reference_dense <- dense()
+  reference_variance <- variance()
+  expect_identical(dim(reference_dense), c(1L, 20L, 20L))
+  expect_equal(unname(reference_dense[1L, , ]), diag(4, 20L), tolerance = 1e-12)
+  expect_equal(unname(reference_variance$blocks$id$row_multiplier), rep(1, 20L))
+
+  # one draw of 20 x 20 doubles: the shared estimate is three payloads
+  estimate <- BayesTools:::.bt_random_effect_output_memory_estimate(
+    "test", n_rows = 20L, n_draws = 1L, covariance = TRUE
+  )
+  expect_equal(estimate$peak_bytes, 3 * 8 * 20^2)
+
+  .random_memory_restore_option(100)
+  expect_error(primary(), "random-effect marginal covariance for block 'id' exceeds option", fixed = TRUE)
+  expect_error(
+    dense(),
+    paste0("Estimated peak memory for random_effects_marginal_factor_vcov() ",
+           "exceeds option 'BayesTools.random_effects_memory_limit_bytes'. ",
+           "Dimensions: 1 draws x 20 rows x 20 rows; primary payload: 3,200 bytes"),
+    fixed = TRUE
+  )
+  expect_error(
+    variance(),
+    paste0("Estimated peak memory for random_effects_marginal_variance_factors() ",
+           "for block 'id' exceeds option ",
+           "'BayesTools.random_effects_memory_limit_bytes'."),
+    fixed = TRUE
+  )
+  expect_error(dense(), "Raise the option", fixed = TRUE)
+  expect_error(variance(), "Raise the option", fixed = TRUE)
+
+  # all three builders sit on the same threshold
+  .random_memory_restore_option(estimate$peak_bytes - 1)
+  expect_error(primary(), "exceeds option", fixed = TRUE)
+  expect_error(dense(), "exceeds option", fixed = TRUE)
+  expect_error(variance(), "exceeds option", fixed = TRUE)
+  .random_memory_restore_option(estimate$peak_bytes)
+  expect_no_error(primary())
+  expect_identical(dense(), reference_dense)
+  expect_identical(variance()$blocks, reference_variance$blocks)
+})

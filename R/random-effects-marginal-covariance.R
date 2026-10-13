@@ -666,6 +666,21 @@ random_effects_marginal_factor_vcov <- function(factors){
   components <- .bt_random_effect_marginal_factor_input(factors)
   n_rows <- components$n_rows
   plans  <- components$plans
+  .bt_random_effect_check_memory(
+    estimate = .bt_random_effect_output_memory_estimate(
+      operation = "random_effects_marginal_factor_vcov()",
+      n_rows = n_rows,
+      n_draws = components$n_draws,
+      covariance = TRUE
+    ),
+    alternative = paste0(
+      "Reduce the number of rows or posterior draws, or use ",
+      "random_effects_marginal_factor_diagonal() or ",
+      "random_effects_marginal_factor_product() when the dense covariance is ",
+      "not needed. Raise the option (or set it to Inf) only after verifying ",
+      "the operation's memory budget."
+    )
+  )
   out <- array(0, dim = c(components$n_draws, n_rows, n_rows))
   designs <- lapply(seq_along(plans), function(block){
     .bt_random_effect_marginal_factor_block_design(
@@ -1467,6 +1482,20 @@ random_effects_marginal_variance_factors <- function(
     )
   }
 
+  # The row covariance below is a dense rows x rows matrix.
+  .bt_random_effect_check_memory(
+    estimate = .bt_random_effect_output_memory_estimate(
+      operation = "random_effects_marginal_variance_factors()",
+      n_rows = nrow(block_data$model_matrix),
+      n_draws = 1L,
+      covariance = TRUE
+    ),
+    block_name = random_term$block_name,
+    alternative = paste0(
+      "Reduce the number of rows or selected blocks. Raise the option (or set ",
+      "it to Inf) only after verifying the operation's memory budget."
+    )
+  )
   row_covariance <- .bt_random_effect_marginal_variance_base_covariance(
     random_term = random_term,
     model_matrix = block_data$model_matrix,
