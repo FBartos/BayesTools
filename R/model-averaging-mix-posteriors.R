@@ -150,6 +150,9 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
         call. = FALSE
       )
     }
+    # the priors the models declare; the branches below replace the missing
+    # ones by spikes, which never define the labels of the mixed columns
+    declared_priors <- temp_priors
 
     if(any(sapply(temp_priors, is.prior.weightfunction)) && all(sapply(temp_priors, is.prior.weightfunction) | sapply(temp_priors, .is_prior_weightfunction_null) | sapply(temp_priors, is.null))){
       # weightfunctions:
@@ -247,7 +250,7 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
       out[[temp_parameter]] <- .mix_posteriors_set_quantities(
         samples   = out[[temp_parameter]],
         parameter = temp_parameter,
-        priors    = temp_priors,
+        priors    = declared_priors,
         fits      = fits
       )
     }
@@ -345,14 +348,25 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
 
 # Mixed draws of one parameter with the quantities of their columns: label
 # parts and fitted coordinates from a model prior that defines it, and catalog
-# quantities from the first fit whose parameter map contains it.
+# quantities from the first fit whose parameter map contains it. 'priors' are
+# the priors the models declare for the parameter (NULL for a model that lacks
+# it); a model that lacks the parameter never supplies its labels. A sampled
+# prior defines the columns before a point prior, and a factor prior before a
+# scalar one.
 .mix_posteriors_set_quantities <- function(samples, parameter, priors, fits){
 
-  defined <- vapply(priors, function(prior){
+  declared <- !vapply(priors, is.null, logical(1))
+  defined <- declared & vapply(priors, function(prior){
     !is.null(prior) && !is.prior.point(prior) && !is.prior.none(prior)
   }, logical(1))
   if(!any(defined)){
-    defined <- !vapply(priors, is.null, logical(1))
+    defined <- declared
+  }
+  factor <- defined & vapply(priors, function(prior){
+    !is.null(prior) && is.prior.factor(prior)
+  }, logical(1))
+  if(any(factor)){
+    defined <- factor
   }
   prior <- priors[[which(defined)[1L]]]
   catalog <- NULL

@@ -653,3 +653,54 @@ test_that("as_mixed_posteriors works with ensemble tables", {
 
 })
 
+
+# A model without the parameter (here a null model) never supplies the labels
+# of the mixed columns: with only spike priors among the models that declare
+# it, the spike that replaces the missing prior used to define them.
+for(spec in list(
+  list(parameter = "mu_x_fac3md", fit = "fit_marginal_0",
+       columns = c("mu_x_fac3md{1}", "mu_x_fac3md{2}"),
+       labels  = c("(mu) x_fac3md{1}", "(mu) x_fac3md{2}")),
+  list(parameter = "mu_x_fac2t", fit = "fit_marginal_0",
+       columns = "mu_x_fac2t[B]",
+       labels  = "(mu) x_fac2t[B]"),
+  list(parameter = "mu_x_fac3t", fit = "fit_spike_factors",
+       columns = c("mu_x_fac3t[B]", "mu_x_fac3t[C]"),
+       labels  = c("(mu) x_fac3t[B]", "(mu) x_fac3t[C]"))
+)){
+  test_that(paste0("labels of mixed '", spec$parameter, "' do not depend on the model order"), {
+
+    skip_if_no_fits()
+    skip_if_not_installed("rjags")
+    skip_if_not_installed("bridgesampling")
+    skip_if_missing_fits(spec$fit)
+
+    null_model <- list(
+      fit = structure(list(), class = "null_model"),
+      marglik = bridgesampling_object(-150),
+      prior_weights = 1
+    )
+    spike_model <- list(
+      fit = readRDS(file.path(temp_fits_dir, paste0(spec$fit, ".RDS"))),
+      marglik = if(spec$fit == "fit_marginal_0") readRDS(file.path(temp_marglik_dir, "fit_marginal_0.RDS")) else bridgesampling_object(0),
+      prior_weights = 1
+    )
+    mix_order <- function(models){
+      mix_posteriors(models, spec$parameter, setNames(list(rep(TRUE, length(models))), spec$parameter),
+                     seed = 1, n_samples = 50)[[spec$parameter]]
+    }
+
+    null_first  <- mix_order(list(null_model, spike_model))
+    null_last   <- mix_order(list(spike_model, null_model))
+    null_middle <- mix_order(list(spike_model, null_model, spike_model))
+
+    for(mixed in list(null_first, null_last, null_middle)){
+      quantities <- .bt_draws_quantities(mixed)
+      expect_identical(colnames(mixed), spec$columns)
+      expect_identical(parameter_labels(quantities, style = "table"), spec$labels)
+      expect_true(all(nzchar(quantities$quantity_id)))
+    }
+    expect_identical(.bt_draws_quantities(null_first), .bt_draws_quantities(null_last))
+    expect_identical(.bt_draws_quantities(null_first), .bt_draws_quantities(null_middle))
+  })
+}
