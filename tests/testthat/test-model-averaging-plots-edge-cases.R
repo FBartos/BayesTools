@@ -4573,3 +4573,48 @@ test_that("bias mixtures declare the points of their none and fixed weight-funct
     expect_equal(BayesTools:::.posterior_atoms_for_column(atoms, column)$mass, .7)
   }
 })
+
+test_that("restored PET and PEESE columns carry their quantities and support", {
+
+  prior_list <- list(bias = prior_mixture(list(
+    prior_weightfunction("one-sided", .05, wf_fixed(c(1, .5))),
+    prior_PET("normal", list(0, 1)), prior_PEESE("normal", list(0, 1))
+  )))
+  posterior <- cbind(
+    bias_indicator = rep(1:3, each = 6),
+    "omega[1]" = 1,
+    "omega[2]" = c(rep(.5, 6), rep(1, 12)),
+    PET = c(rep(0, 6), seq(.1, 1, length.out = 6), rep(0, 6)),
+    PEESE = c(rep(0, 12), seq(.2, 2, length.out = 6))
+  )
+  fit <- coda::mcmc(posterior)
+  class(fit) <- c("mcmc", "BayesTools_fit")
+  attr(fit, "prior_list") <- prior_list
+  fit <- attach_test_parameter_map(fit)
+
+  for(condition in c("PET", "PEESE", "omega")){
+    samples <- as_mixed_posteriors(fit, "bias", conditional = condition)
+    for(parameter in c("PET", "PEESE")){
+      restored <- !parameter %in% colnames(samples$bias)
+      scalar <- BayesTools:::.simplify_as_mixed_posterior_bias(samples, parameter)
+      draws <- scalar[[parameter]]
+
+      # the draw metadata describe the column
+      expect_identical(.bt_draws_quantities(draws)$column, parameter)
+      table <- ensemble_estimates_table(scalar, parameter)
+      expect_identical(rownames(table), parameter)
+      expect_equal(table[parameter, "Mean"], mean(as.numeric(draws)))
+
+      # a restored column is the point at zero of the branches that fix it
+      if(restored){
+        support <- .posterior_support_get(draws, parameter)
+        expect_identical(support$type, "points")
+        expect_equal(support$points, 0)
+        expect_equal(support$bounds, c(0, 0))
+        expect_true(support$exact)
+        expect_true(all(as.numeric(draws) == 0))
+        expect_equal(unname(unlist(table[parameter, c("Mean", "Median", "0.025", "0.975")])), rep(0, 4))
+      }
+    }
+  }
+})

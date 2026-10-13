@@ -305,6 +305,16 @@
       locations[match(indicator, active)], ncol = 1L,
       dimnames = list(NULL, parameter)
     )
+    # the restored column holds the locations of the branches that fix it: its
+    # quantities and its support (the point of each active location, or their
+    # union) replace those of the absent column
+    if(!is.null(metadata)){
+      metadata$quantities <- .bt_verbatim_quantities(parameter)
+      metadata$support <- stats::setNames(list(.posterior_support_union(
+        lapply(unique(locations), .posterior_support_point, source = "prior_list"),
+        source = "prior_list"
+      )), parameter)
+    }
   }
 
   ### store attribute

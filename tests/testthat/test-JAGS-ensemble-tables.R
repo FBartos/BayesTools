@@ -704,3 +704,21 @@ for(spec in list(
     expect_identical(.bt_draws_quantities(null_first), .bt_draws_quantities(null_middle))
   })
 }
+
+test_that("a bias mixture without the requested PET branch is summarized as a point at zero", {
+
+  skip_if_no_fits()
+  skip_if_not_installed("rjags")
+  skip_if_missing_fits("fit_complex_bias")
+
+  fit <- readRDS(file.path(temp_fits_dir, "fit_complex_bias.RDS"))
+  samples <- as_mixed_posteriors(fit, c("mu", "bias"), conditional = "PEESE")
+  expect_false("PET" %in% colnames(samples$bias))
+
+  restored <- BayesTools:::.simplify_as_mixed_posterior_bias(samples, "PET")
+  expect_identical(.bt_draws_quantities(restored$PET)$column, "PET")
+  table <- ensemble_estimates_table(restored, "PET")
+  expect_identical(rownames(table), "PET")
+  expect_equal(unname(unlist(table["PET", ])), rep(0, ncol(table)))
+  expect_equal(.posterior_support_get(restored$PET, "PET")$points, 0)
+})
