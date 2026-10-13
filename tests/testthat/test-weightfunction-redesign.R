@@ -872,3 +872,54 @@ test_that("omega diagnostics reject bias mixtures without weightfunctions", {
     "at least one weightfunction component"
   )
 })
+
+test_that("fitted bias mixtures declare the points of their none and fixed weight-function branches", {
+
+  skip_if_not_test_profile("fixture")
+  skip_if_not_installed("rjags")
+  skip_if_missing_fits("fit_bias_petpeese_hetero_wf")
+
+  fit <- readRDS(file.path(temp_fits_dir, "fit_bias_petpeese_hetero_wf.RDS"))
+  samples <- as_mixed_posteriors(fit, parameters = "bias")$bias
+  atoms <- .posterior_atoms_get(samples)
+  draws <- .bt_draws_plain(samples)
+  component <- .bt_meta_get(samples, "component")
+  omega_names <- c("omega[0,0.025]", "omega[0.025,0.05]", "omega[0.05,0.1]", "omega[0.1,0.975]", "omega[0.975,1]")
+
+  # branch 1 is the none branch, branch 7 the fixed weight function: their
+  # joint points carry the branch masses, which are the draw fractions
+  expect_true(atoms$joint_declared)
+  expect_identical(colnames(atoms$locations), c(omega_names, "PET", "PEESE"))
+  expect_equal(unname(atoms$locations), rbind(
+    c(rep(1, 5), 0, 0),
+    c(1, .4, .4, .4, 1, 0, 0)
+  ))
+  expect_equal(atoms$mass, c(mean(component == 1L), mean(component == 7L)))
+  for(row in seq_len(nrow(atoms$locations))){
+    expect_equal(
+      mean(apply(draws, 1L, function(draw) all(draw == atoms$locations[row, ]))),
+      atoms$mass[[row]]
+    )
+  }
+
+  # PET and PEESE are fixed at zero by every other branch, the continuous
+  # weight functions included
+  for(column in c("PET", "PEESE")){
+    marginal <- .posterior_atoms_for_column(atoms, column)
+    expect_equal(as.numeric(marginal$locations), 0)
+    expect_equal(marginal$mass, mean(draws[, column] == 0))
+  }
+  expect_equal(.posterior_atoms_for_column(atoms, "PET")$mass,
+               mean(component != 2L))
+  expect_equal(.posterior_atoms_for_column(atoms, "PEESE")$mass,
+               mean(component != 5L))
+
+  # the scalar omega marginals are the declared branch points
+  for(column in omega_names){
+    marginal <- .posterior_atoms_for_column(atoms, column)
+    expect_equal(marginal$mass, vapply(as.numeric(marginal$locations), function(location){
+      mean(draws[, column] == location)
+    }, numeric(1)))
+  }
+  expect_equal(as.numeric(.posterior_atoms_for_column(atoms, "omega[0.025,0.05]")$locations), c(.4, 1))
+})

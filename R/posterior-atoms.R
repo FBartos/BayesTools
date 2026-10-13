@@ -526,6 +526,48 @@ posterior_atoms_free <- function(x){
   samples
 }
 
+# The scalar marginal of one column from the point 'locations' of its model or
+# branch components (NULL where the component samples the column) and their
+# 'probabilities' (the pair 'posterior_pair' holds them with their logs): the
+# point masses grouped by location, or the typed refusal when a positive mass
+# or the continuous remainder is not representable at full precision.
+.posterior_scalar_point_marginal <- function(component_priors, locations, probabilities,
+                                             column, source, posterior_pair){
+
+  marginal <- .posterior_atoms_from_priors(component_priors, probabilities,
+    n_columns = 1L, column_names = column, source = source, posterior_pair = posterior_pair,
+    point_locations = locations)
+  if(!inherits(marginal, "BayesTools_formula_measure_unavailable")){
+    points <- .posterior_atoms_point_mass_table(list(x = marginal$locations[, 1L], mass = marginal$mass))
+    point_values <- vapply(locations, function(location){
+      if(is.null(location)) NA_real_ else location[[1L]]
+    }, numeric(1))
+    continuous <- any(is.finite(posterior_pair$logs) & is.na(point_values))
+    grouped_logs <- vapply(points$x, function(location){
+      .model_probability_log_sum(posterior_pair$logs[!is.na(point_values) & point_values == location])
+    }, numeric(1))
+    grouped_masses <- exp(grouped_logs)
+    lost <- any(grouped_masses == 0 | grouped_masses < .Machine$double.xmin) ||
+      (continuous && length(grouped_masses) > 0L && sum(grouped_masses) == 1)
+    if(lost){
+      marginal <- errorCondition(
+        "Posterior atoms are unavailable because positive model mass or a continuous remainder is not representable at full precision.",
+        call = NULL, class = c("BayesTools_formula_atoms_unavailable", "BayesTools_formula_measure_unavailable"),
+        reason = "numerical_model_probability_unavailable",
+        diagnostics = .model_probability_diagnostics(posterior = posterior_pair, stage = posterior_pair$declaration$stage))
+    }else{
+      if(continuous && sum(points$mass) == 1) points$mass <- grouped_masses
+      marginal <- .posterior_atoms_new(matrix(points$x, ncol = 1L), points$mass,
+        column_names = column, source = marginal$source,
+        component_probabilities = marginal$component_probabilities,
+        component_log_probabilities = marginal$component_log_probabilities,
+        model_probability_declaration = marginal$model_probability_declaration)
+    }
+  }
+
+  marginal
+}
+
 # Declare each retained scalar omega from its model/branch law. Joint atoms
 # remain separate; an unclassified non-omega column has a NULL marginal.
 .posterior_weightfunction_scalar_laws <- function(priors, probabilities, columns,
@@ -564,36 +606,8 @@ posterior_atoms_free <- function(x){
       if(is.finite(posterior_pair$logs[[i]])) component_supports[[length(component_supports) + 1L]] <-
         .posterior_support_from_weightfunction_component(component, source)
     }
-    marginal <- .posterior_atoms_from_priors(component_priors, probabilities,
-      n_columns = 1L, column_names = column, source = source, posterior_pair = posterior_pair,
-      point_locations = locations)
-    if(!inherits(marginal, "BayesTools_formula_measure_unavailable")){
-      points <- .posterior_atoms_point_mass_table(list(x = marginal$locations[, 1L], mass = marginal$mass))
-      point_values <- vapply(locations, function(location){
-        if(is.null(location)) NA_real_ else location[[1L]]
-      }, numeric(1))
-      continuous <- any(is.finite(posterior_pair$logs) & is.na(point_values))
-      grouped_logs <- vapply(points$x, function(location){
-        .model_probability_log_sum(posterior_pair$logs[!is.na(point_values) & point_values == location])
-      }, numeric(1))
-      grouped_masses <- exp(grouped_logs)
-      lost <- any(grouped_masses == 0 | grouped_masses < .Machine$double.xmin) ||
-        (continuous && length(grouped_masses) > 0L && sum(grouped_masses) == 1)
-      if(lost){
-        marginal <- errorCondition(
-          "Posterior atoms are unavailable because positive model mass or a continuous remainder is not representable at full precision.",
-          call = NULL, class = c("BayesTools_formula_atoms_unavailable", "BayesTools_formula_measure_unavailable"),
-          reason = "numerical_model_probability_unavailable",
-          diagnostics = .model_probability_diagnostics(posterior = posterior_pair, stage = posterior_pair$declaration$stage))
-      }else{
-        if(continuous && sum(points$mass) == 1) points$mass <- grouped_masses
-        marginal <- .posterior_atoms_new(matrix(points$x, ncol = 1L), points$mass,
-          column_names = column, source = marginal$source,
-          component_probabilities = marginal$component_probabilities,
-          component_log_probabilities = marginal$component_log_probabilities,
-          model_probability_declaration = marginal$model_probability_declaration)
-      }
-    }
+    marginal <- .posterior_scalar_point_marginal(component_priors, locations,
+      probabilities, column, source, posterior_pair)
     marginals[column] <- list(marginal)
     supports[column] <- list(.posterior_support_union(component_supports, source))
   }
@@ -654,6 +668,58 @@ posterior_atoms_free <- function(x){
     samples <- .posterior_atoms_set(samples, atoms)
   }else samples <- .bt_meta_set(samples, "atoms", NULL)
   .posterior_support_set(samples, supports)
+}
+
+# Declare the point at zero of the PET and PEESE columns of a bias mixture:
+# every branch that does not sample the term fixes it at zero (the continuous
+# weight functions and the branches of the other family included), so the
+# point carries their summed mass. The scalar marginals merge into those the
+# atoms already hold (the omega marginals of
+# .posterior_weightfunction_declarations()); atoms without marginals keep the
+# marginals their joint table implies for the other columns.
+.posterior_bias_declarations <- function(samples, priors, probabilities,
+                                         source = "model_probabilities"){
+
+  columns <- intersect(c("PET", "PEESE"), colnames(samples))
+  atoms <- .posterior_atoms_get(samples, allow_partial = TRUE)
+  if(length(columns) == 0L || is.null(atoms)) return(samples)
+  branches <- as.list(priors)
+  if(length(branches) != length(probabilities)){
+    stop("Bias branches and posterior probabilities do not align.", call. = FALSE)
+  }
+  posterior_pair <- .model_probability_pair(probabilities, log(probabilities), "component", "raw")
+  marginals <- atoms$marginals
+  if(is.null(marginals)){
+    marginals <- stats::setNames(lapply(colnames(samples), function(column){
+      .posterior_atoms_for_column(atoms, column)
+    }), colnames(samples))
+  }
+  for(column in columns){
+    sampled <- vapply(branches, if(column == "PET") is.prior.PET else is.prior.PEESE, logical(1))
+    locations <- rep(list(0), length(branches))
+    locations[sampled] <- list(NULL)
+    component_priors <- lapply(seq_along(branches), function(i){
+      if(sampled[[i]]) branches[[i]] else prior("point", list(0))
+    })
+    marginal <- .posterior_scalar_point_marginal(component_priors, locations,
+      probabilities, column, source, posterior_pair)
+    if(inherits(marginal, "BayesTools_formula_measure_unavailable")){
+      samples <- .bt_formula_measure_mark(samples, column, "atoms", conditionMessage(marginal),
+        cause = marginal$reason, diagnostics = marginal$diagnostics)
+      marginal <- NULL
+    }
+    marginals[column] <- list(marginal)
+  }
+  atoms <- .posterior_atoms_new(
+    if(atoms$joint_declared) atoms$locations,
+    if(atoms$joint_declared) atoms$mass else numeric(),
+    column_names = colnames(samples), source = atoms$source,
+    component_probabilities = atoms$component_probabilities,
+    component_log_probabilities = atoms$component_log_probabilities,
+    model_probability_declaration = atoms$model_probability_declaration,
+    marginals = marginals,
+    joint_declared = atoms$joint_declared, joint_unavailable = atoms$joint_unavailable)
+  .posterior_atoms_set(samples, atoms)
 }
 
 # The declared posterior atoms of 'samples' (their only source), or NULL when
@@ -801,9 +867,12 @@ posterior_atoms_free <- function(x){
 
 # Posterior atoms of a mixture or spike-and-slab parameter of a single fit
 # from the posterior component index of its draws (an index into the prior's
-# component list).
+# component list). 'point_locations' and 'null_location' declare the points of
+# components that are not point priors (see .posterior_atoms_from_priors()).
 .posterior_atoms_from_components <- function(prior, component, n_columns,
-                                             column_names = NULL){
+                                             column_names = NULL,
+                                             point_locations = NULL,
+                                             null_location = NULL){
 
   component <- .posterior_atoms_check_components(prior, component)
 
@@ -824,7 +893,9 @@ posterior_atoms_free <- function(x){
     probabilities = probabilities,
     n_columns = n_columns,
     column_names = column_names,
-    source = "posterior_indicator"
+    source = "posterior_indicator",
+    null_location = null_location,
+    point_locations = point_locations
   )
 }
 

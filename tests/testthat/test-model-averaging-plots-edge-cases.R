@@ -4481,3 +4481,95 @@ test_that("base posterior legends preserve level colors with grey prior overlays
     expect_identical(with[[1L]]$col, grDevices::palette.colors(length(with[[1L]]$legend) + 1L)[-1L])
   }
 })
+
+test_that("bias mixtures declare the points of their none and fixed weight-function branches", {
+
+  prior_list <- list(bias = prior_mixture(list(
+    prior_none(),
+    prior_weightfunction("one-sided", .05, wf_fixed(c(1, .5))),
+    prior_weightfunction("one-sided", .05, wf_cumulative(c(1, 1))),
+    prior_PET("normal", list(0, 1)),
+    prior_PEESE("normal", list(0, 1))
+  )))
+  posterior <- cbind(
+    bias_indicator = rep(1:5, each = 8),
+    "omega[1]" = 1,
+    "omega[2]" = c(rep(1, 8), rep(.5, 8), seq(.15, .85, length.out = 8), rep(1, 16)),
+    PET = c(rep(0, 24), seq(.1, 1, length.out = 8), rep(0, 8)),
+    PEESE = c(rep(0, 32), seq(.2, 2, length.out = 8))
+  )
+  fit <- coda::mcmc(posterior)
+  class(fit) <- c("mcmc", "BayesTools_fit")
+  attr(fit, "prior_list") <- prior_list
+  fit <- attach_test_parameter_map(fit)
+
+  # a joint table row per point branch, with the mass of its branch
+  samples <- as_mixed_posteriors(fit, "bias")$bias
+  atoms <- BayesTools:::.posterior_atoms_get(samples)
+  expect_identical(colnames(atoms$locations), c("omega[0,0.05]", "omega[0.05,1]", "PET", "PEESE"))
+  expect_equal(unname(atoms$locations), rbind(c(1, 1, 0, 0), c(1, .5, 0, 0)))
+  expect_equal(atoms$mass, c(.2, .2))
+  draws <- BayesTools:::.bt_draws_plain(samples)
+  for(row in seq_len(nrow(atoms$locations))){
+    expect_equal(mean(apply(draws, 1L, function(draw) all(draw == atoms$locations[row, ]))), atoms$mass[[row]])
+  }
+
+  # the PET and PEESE points at zero carry every branch that does not sample
+  # the term (the continuous weight function and the other family included)
+  for(column in c("PET", "PEESE")){
+    marginal <- BayesTools:::.posterior_atoms_for_column(atoms, column)
+    expect_equal(as.numeric(marginal$locations), 0)
+    expect_equal(marginal$mass, mean(draws[, column] == 0))
+    expect_equal(marginal$mass, .8)
+  }
+  # the omega marginals are unchanged
+  expect_equal(BayesTools:::.posterior_atoms_for_column(atoms, "omega[0,0.05]")$mass, 1)
+  omega <- BayesTools:::.posterior_atoms_for_column(atoms, "omega[0.05,1]")
+  expect_equal(as.numeric(omega$locations), c(.5, 1))
+  expect_equal(omega$mass, c(.2, .6))
+
+  # conditioning keeps the points of the active branches only
+  for(condition in c("omega", "PET", "PETPEESE")){
+    conditioned <- as_mixed_posteriors(fit, "bias", conditional = condition)$bias
+    atoms <- BayesTools:::.posterior_atoms_get(conditioned)
+    draws <- BayesTools:::.bt_draws_plain(conditioned)
+    expect_identical(colnames(atoms$locations), colnames(draws))
+    switch(condition,
+      omega = {
+        expect_equal(unname(atoms$locations), rbind(c(1, .5)))
+        expect_equal(atoms$mass, .5)
+      },
+      PET = {
+        expect_length(atoms$mass, 0L)
+        expect_length(BayesTools:::.posterior_atoms_for_column(atoms, "PET")$mass, 0L)
+      },
+      PETPEESE = {
+        expect_length(atoms$mass, 0L)
+        for(column in c("PET", "PEESE")){
+          expect_equal(BayesTools:::.posterior_atoms_for_column(atoms, column)$mass, .5)
+          expect_equal(mean(draws[, column] == 0), .5)
+        }
+      }
+    )
+  }
+
+  # a mixture without a weight function declares the points that remain
+  posterior <- cbind(
+    bias_indicator = rep(1:3, c(4, 3, 3)),
+    PET = c(rep(0, 4), .1, .2, .3, rep(0, 3)),
+    PEESE = c(rep(0, 7), .1, .2, .3)
+  )
+  fit <- coda::mcmc(posterior)
+  class(fit) <- c("mcmc", "BayesTools_fit")
+  attr(fit, "prior_list") <- list(bias = prior_mixture(list(
+    prior_none(), prior_PET("normal", list(0, 1)), prior_PEESE("normal", list(0, 1))
+  )))
+  fit <- attach_test_parameter_map(fit)
+  atoms <- BayesTools:::.posterior_atoms_get(as_mixed_posteriors(fit, "bias")$bias)
+  expect_identical(colnames(atoms$locations), c("PET", "PEESE"))
+  expect_equal(unname(atoms$locations), rbind(c(0, 0)))
+  expect_equal(atoms$mass, .4)
+  for(column in c("PET", "PEESE")){
+    expect_equal(BayesTools:::.posterior_atoms_for_column(atoms, column)$mass, .7)
+  }
+})

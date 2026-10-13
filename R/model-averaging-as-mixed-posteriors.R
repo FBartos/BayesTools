@@ -913,15 +913,55 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
       prior        = prior,
       component    = .bt_meta_get(samples, "component"),
       n_columns    = if(is.null(dim(samples))) 1L else ncol(samples),
-      column_names = if(is.null(dim(samples))) parameter else colnames(samples)
+      column_names = if(is.null(dim(samples))) parameter else colnames(samples),
+      point_locations = if(inherits(prior, "prior.bias_mixture")){
+        .as_mixed_posteriors_bias_points(prior, colnames(samples), if(any(has_selection)) omega_info)
+      }
     )
   )
 
-  if(inherits(prior, "prior.bias_mixture") && any(has_selection)){
+  if(inherits(prior, "prior.bias_mixture")){
+    if(any(has_selection)){
+      atoms <- .posterior_atoms_get(samples, allow_partial = TRUE)
+      samples <- .posterior_weightfunction_declarations(samples, prior,
+        atoms$component_probabilities, atoms$source)
+    }
     atoms <- .posterior_atoms_get(samples, allow_partial = TRUE)
-    samples <- .posterior_weightfunction_declarations(samples, prior,
+    samples <- .posterior_bias_declarations(samples, prior,
       atoms$component_probabilities, atoms$source)
   }
 
   return(samples)
+}
+
+# The joint point of each branch of a bias mixture over the columns of its
+# draws (NULL where a branch samples a column): the none branch is the null
+# weight function (every omega at 1) without PET and PEESE (both 0), and a
+# fixed weight function is its fixed omegas with PET = PEESE = 0. Branches
+# sampling any column (PET, PEESE, a continuous weight function, p-hacking)
+# have no joint point. Draws with columns other than omega, PET and PEESE (the
+# p-hacking parameters) declare no joint points: the value of those columns
+# in a point branch is not declared by the prior.
+.as_mixed_posteriors_bias_points <- function(prior, columns, omega_info = NULL){
+
+  omega_names <- if(is.null(omega_info)) character() else omega_info$names
+  known <- c(omega_names, "PET", "PEESE")
+  if(length(columns) == 0L || !all(columns %in% known)) return(NULL)
+
+  branch_info   <- .selection_prior_branch_info(prior)
+  has_selection <- vapply(branch_info, function(x) !is.null(x$selection), logical(1))
+  has_phacking  <- vapply(branch_info, function(x) !is.null(x$phacking), logical(1))
+  selection_position <- cumsum(has_selection)
+  lapply(seq_along(prior), function(k){
+    branch <- prior[[k]]
+    omega <- if(is.prior.none(branch)){
+      rep(1, length(omega_names))
+    }else if(has_selection[[k]] && !has_phacking[[k]] && !is.prior.PET(branch) && !is.prior.PEESE(branch)){
+      .model_probability_weightfunction_points(list(branch_info[[k]]$selection),
+        omega_info$mapping[selection_position[[k]]], length(omega_names))[[1L]]
+    }
+    if(is.null(omega)) return(NULL)
+    values <- stats::setNames(c(omega, 0, 0), known)
+    unname(values[columns])
+  })
 }
