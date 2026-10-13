@@ -1648,6 +1648,11 @@ random_effects_marginal_variance_factors <- function(
       random_term = random_term,
       data = data
     )
+    block_structure <- .bt_random_effect_structure(
+      random_term,
+      context = "Random-effect marginal covariance metadata"
+    )
+    block_columns <- ncol(block_data$model_matrix)
     .bt_random_effect_check_memory(
       estimate = .bt_random_effect_output_memory_estimate(
         operation = "random-effect marginal covariance",
@@ -1655,10 +1660,14 @@ random_effects_marginal_variance_factors <- function(
         n_draws = nrow(posterior),
         covariance = TRUE,
         diagonal_only = diagonal_only,
-        car_columns = if(identical(random_term$structure, "car")) ncol(block_data$model_matrix) else NULL
+        car_columns = if(identical(block_structure, "car")) block_columns else NULL,
+        n_columns = block_columns,
+        factor_structure = !block_structure %in% c("diag", "id", "car") &&
+          block_columns > 1L,
+        known_group = .bt_random_effect_has_known_group_covariance(random_term)
       ),
       block_name = random_term$block_name,
-      alternative = if(identical(random_term$structure, "car")){
+      alternative = if(identical(block_structure, "car")){
         paste0(
           "Reduce the number of rows, posterior draws, selected blocks, or ",
           "random-effect coefficient/time columns. ",
@@ -2455,48 +2464,52 @@ random_effects_marginal_variance_factors <- function(
       posterior = posterior
     )
   }
-  group_kernel <- group_covariance$kernel[group_map, group_map, drop = FALSE]
+  coefficient_covariance_draw <- function(draw){
+    if(is.null(correlation)){
+      diag(sd_draws[draw, ]^2, nrow = n_columns, ncol = n_columns)
+    }else{
+      correlation[draw, , ] * tcrossprod(sd_draws[draw, ])
+    }
+  }
   if(isTRUE(diagonal_only)){
+    # The diagonal of K[group_map, group_map] * (Z C Z') needs the kernel
+    # diagonal and the quadratic form of each design row: O(rows) per draw,
+    # without the rows x rows kernel expansion or design covariance.
+    kernel_diagonal <- diag(group_covariance$kernel)[group_map]
     out <- matrix(
       NA_real_,
       nrow = n_draws,
       ncol = n_rows,
       dimnames = list(draw = NULL, row = row_names)
     )
-  }else{
-    out <- array(
-      NA_real_,
-      dim = c(n_draws, n_rows, n_rows),
-      dimnames = list(draw = NULL, row = row_names, column = row_names)
-    )
+    for(draw in seq_len(n_draws)){
+      out[draw, ] <- kernel_diagonal * rowSums(
+        (model_matrix %*% coefficient_covariance_draw(draw)) * model_matrix
+      )
+    }
+    return(list(samples = out, sample_dim = c(n_draws, n_rows)))
   }
+
+  group_kernel <- group_covariance$kernel[group_map, group_map, drop = FALSE]
+  out <- array(
+    NA_real_,
+    dim = c(n_draws, n_rows, n_rows),
+    dimnames = list(draw = NULL, row = row_names, column = row_names)
+  )
   lower <- lower.tri(group_kernel)
   for(draw in seq_len(n_draws)){
-    coefficient_covariance <- if(is.null(correlation)){
-      diag(sd_draws[draw, ]^2, nrow = n_columns, ncol = n_columns)
-    }else{
-      correlation[draw, , ] * tcrossprod(sd_draws[draw, ])
-    }
     design_covariance <- tcrossprod(
-      model_matrix %*% coefficient_covariance,
+      model_matrix %*% coefficient_covariance_draw(draw),
       model_matrix
     )
     covariance <- group_kernel * design_covariance
     covariance[lower] <- t(covariance)[lower]
-    if(isTRUE(diagonal_only)){
-      out[draw, ] <- diag(covariance)
-    }else{
-      out[draw, , ] <- covariance
-    }
+    out[draw, , ] <- covariance
   }
 
   list(
     samples = out,
-    sample_dim = if(isTRUE(diagonal_only)){
-      c(n_draws, n_rows)
-    }else{
-      c(n_draws, n_rows, n_rows)
-    }
+    sample_dim = c(n_draws, n_rows, n_rows)
   )
 }
 

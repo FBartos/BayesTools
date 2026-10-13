@@ -427,6 +427,63 @@ test_that("known group covariance uses tau squared times ZKZ prime", {
   )
 })
 
+test_that("known group diagonal-only output matches the quadratic form of every design row", {
+
+  df <- data.frame(
+    id = factor(rep(c("b", "a", "c"), 4L), levels = c("b", "a", "c")),
+    x = seq(-1, 1, length.out = 12L),
+    z = c(0.5, -1, 2, 0, 1.5, -0.5, 1, 0.25, -2, 1, 0, 0.75)
+  )
+  K <- matrix(
+    c(4, 1, .5,
+      1, 9, 2,
+      .5, 2, 16),
+    nrow = 3,
+    byrow = TRUE,
+    dimnames = list(c("a", "b", "c"), c("a", "b", "c"))
+  )
+  result <- .re_cov_formula(
+    formula = random_effects_formula(
+      ~ 1 + us(1 + x + z | id),
+      group_covariance = random_group_covariance(K, scale = "none")
+    ),
+    data = df,
+    prior_random = prior_random(id = random_block(sd = .re_cov_sd_prior()))
+  )
+  random_term <- .re_cov_term(result, "id")
+  expect_identical(random_term$structure, "us")
+  sds <- rbind(c(0.5, 1, 2), c(1.5, 0.25, 1))
+  lowers <- list(
+    matrix(c(1, 0, 0, 0.3, sqrt(1 - 0.3^2), 0, -0.2, 0.4, sqrt(1 - 0.2^2 - 0.4^2)),
+           3L, byrow = TRUE),
+    matrix(c(1, 0, 0, -0.6, 0.8, 0, 0.1, 0.1, sqrt(1 - 0.02)), 3L, byrow = TRUE)
+  )
+  posterior <- .re_cov_posterior_draws(
+    c(.re_cov_sd_values(random_term, sds[1L, ]),
+      .re_cov_cholesky_values(random_term, lowers[[1L]])),
+    c(.re_cov_sd_values(random_term, sds[2L, ]),
+      .re_cov_cholesky_values(random_term, lowers[[2L]]))
+  )
+  out <- .re_cov_output(result, posterior)
+  diagonal <- .re_cov_output(result, posterior, diagonal_only = TRUE)
+
+  Z <- random_term$model_matrix
+  group <- as.character(df$id)
+  expected <- t(vapply(seq_len(2L), function(draw){
+    coefficient_covariance <- (lowers[[draw]] %*% t(lowers[[draw]])) *
+      tcrossprod(sds[draw, ])
+    vapply(seq_len(nrow(Z)), function(row){
+      K[group[row], group[row]] * drop(Z[row, ] %*% coefficient_covariance %*% Z[row, ])
+    }, numeric(1))
+  }, numeric(nrow(Z))))
+
+  expect_identical(dim(diagonal$samples), c(2L, nrow(Z)))
+  expect_equal(unname(diagonal$samples), expected, tolerance = 1e-12)
+  expect_equal(unname(diagonal$samples), .re_cov_dense_diagonal(out),
+               tolerance = 1e-12)
+  expect_identical(colnames(diagonal$samples), rownames(Z))
+})
+
 test_that("marginal variance factors support diagonal known group covariance scaling", {
 
   df <- data.frame(

@@ -388,13 +388,212 @@ test_that("alternate marginal covariance builders pass the shared memory ceiling
   expect_error(dense(), "Raise the option", fixed = TRUE)
   expect_error(variance(), "Raise the option", fixed = TRUE)
 
-  # all three builders sit on the same threshold
+  # the alternate builders sit on the threshold of the shared estimate
   .random_memory_restore_option(estimate$peak_bytes - 1)
-  expect_error(primary(), "exceeds option", fixed = TRUE)
   expect_error(dense(), "exceeds option", fixed = TRUE)
   expect_error(variance(), "exceeds option", fixed = TRUE)
   .random_memory_restore_option(estimate$peak_bytes)
-  expect_no_error(primary())
   expect_identical(dense(), reference_dense)
   expect_identical(variance()$blocks, reference_variance$blocks)
+  .random_memory_restore_option(1e6)
+  expect_no_error(primary())
+})
+
+# Runs `call` with the memory guard recording the peak estimate it admitted and,
+# where R can profile memory, the largest vector the call allocated.
+.random_memory_measure <- function(call){
+
+  admitted <- numeric()
+  original <- BayesTools:::.bt_random_effect_check_memory
+  profile <- isTRUE(unname(capabilities("profmem")))
+  log <- tempfile(fileext = ".log")
+  on.exit(unlink(log), add = TRUE)
+  value <- testthat::with_mocked_bindings(
+    {
+      if(profile){
+        utils::Rprofmem(log, threshold = 1000)
+      }
+      tryCatch(call(), finally = if(profile) utils::Rprofmem(NULL))
+    },
+    .bt_random_effect_check_memory = function(estimate, ...){
+      admitted <<- c(admitted, estimate$peak_bytes)
+      original(estimate, ...)
+    },
+    .package = "BayesTools"
+  )
+  largest <- if(profile){
+    sizes <- suppressWarnings(as.numeric(sub(" .*", "", readLines(log))))
+    max(0, sizes, na.rm = TRUE)
+  }else{
+    NA_real_
+  }
+
+  list(value = value, admitted = admitted, largest = largest, profile = profile)
+}
+
+.random_memory_covariance <- function(result, posterior, diagonal_only){
+
+  random_effects_marginal_vcov(
+    result$formula_design,
+    posterior_samples = posterior,
+    prior_list = result$prior_list,
+    diagonal_only = diagonal_only
+  )
+}
+
+.random_memory_known_group <- function(n_rows){
+
+  data <- data.frame(id = factor(rep(c("a", "b"), length.out = n_rows)))
+  kernel <- diag(2L)
+  dimnames(kernel) <- list(c("a", "b"), c("a", "b"))
+  JAGS_formula(
+    random_effects_formula(
+      ~ 1 | id,
+      group_covariance = random_group_covariance(kernel, scale = "none")
+    ),
+    parameter = "mu",
+    data = data,
+    prior_list = list(intercept = prior("normal", list(0, 1))),
+    prior_random = prior_random(
+      id = random_block(sd = prior("normal", list(0, 1), list(0, Inf)))
+    )
+  )
+}
+
+test_that("known-group diagonal output is linear in the rows and covered by its estimate", {
+
+  old_limit <- getOption(.random_memory_option)
+  on.exit(.random_memory_restore_option(old_limit), add = TRUE)
+  .random_memory_restore_option(Inf)
+  n_rows <- 1000L
+  result <- .random_memory_known_group(n_rows)
+  random_term <- result$formula_design$random_effects[[1L]]
+  posterior <- matrix(
+    2, nrow = 1L, ncol = 1L,
+    dimnames = list(NULL, unique(random_term$sd_parameter_names))
+  )
+
+  # admitted under a ceiling far below the rows x rows matrices
+  .random_memory_restore_option(50000)
+  measured <- .random_memory_measure(
+    function() .random_memory_covariance(result, posterior, diagonal_only = TRUE)
+  )
+  expect_identical(dim(measured$value$samples), c(1L, n_rows))
+  expect_equal(unname(measured$value$samples[1L, ]), rep(4, n_rows))
+  expect_length(measured$admitted, 1L)
+  expect_lt(measured$admitted, 50000)
+  if(measured$profile){
+    expect_lte(measured$largest, measured$admitted)
+  }
+
+  # the full output keeps the rows x rows matrices and budgets their working copies
+  .random_memory_restore_option(Inf)
+  small_result <- .random_memory_known_group(200L)
+  full <- .random_memory_measure(
+    function() .random_memory_covariance(small_result, posterior, diagonal_only = FALSE)
+  )
+  expect_identical(dim(full$value$samples), c(1L, 200L, 200L))
+  # the kernel expansion, mask and covariance copies come on top of 3 outputs
+  expect_gte(full$admitted, (3 * 8 + 44) * 200^2)
+  if(full$profile){
+    expect_lte(full$largest, full$admitted)
+  }
+  .random_memory_restore_option(1500000)
+  expect_error(
+    .random_memory_covariance(small_result, posterior, diagonal_only = FALSE),
+    "exceeds option 'BayesTools.random_effects_memory_limit_bytes'",
+    fixed = TRUE
+  )
+})
+
+test_that("the output estimate budgets the SD draws and coefficient factors of every structure", {
+
+  old_limit <- getOption(.random_memory_option)
+  on.exit(.random_memory_restore_option(old_limit), add = TRUE)
+  .random_memory_restore_option(Inf)
+  data <- data.frame(
+    id = factor(c("a", "a")),
+    f = factor(c("level1", "level2"), levels = paste0("level", 1:10))
+  )
+  compile <- function(structure){
+    formula <- stats::as.formula(paste0("~ 1 + ", structure, "(0 + f | id)"))
+    JAGS_formula(
+      formula,
+      parameter = "mu",
+      data = data,
+      prior_list = list(intercept = prior("normal", list(0, 1))),
+      prior_random = prior_random(
+        id = random_block(
+          sd = prior("normal", list(0, 1), list(0, Inf)),
+          contrasts = c(f = "independent")
+        )
+      )
+    )
+  }
+  n_draws <- 100L
+  posterior_for <- function(result, cholesky){
+    term <- result$formula_design$random_effects[[1L]]
+    values <- stats::setNames(
+      rep(1, length(unique(term$sd_parameter_names))),
+      unique(term$sd_parameter_names)
+    )
+    if(cholesky){
+      coordinates <- .bt_random_effect_cholesky_names(term, term$n_columns)
+      values <- c(values, stats::setNames(
+        as.vector(diag(term$n_columns)), as.vector(coordinates)
+      ))
+    }
+    matrix(rep(values, each = n_draws), n_draws, dimnames = list(NULL, names(values)))
+  }
+
+  # 10 coefficient columns, 2 rows, 100 draws: the SD draw matrix of a DIAG
+  # block and the Cholesky and correlation draws of a US block exceed what the
+  # output alone admitted (9,600 bytes against a 10,000-byte ceiling)
+  for(structure in c("diag", "us")){
+    result <- compile(structure)
+    posterior <- posterior_for(result, cholesky = identical(structure, "us"))
+    for(diagonal_only in c(FALSE, TRUE)){
+      .random_memory_restore_option(10000)
+      expect_error(
+        .random_memory_covariance(result, posterior, diagonal_only),
+        "10 coefficient columns",
+        fixed = TRUE,
+        info = paste(structure, diagonal_only)
+      )
+      .random_memory_restore_option(1e6)
+      measured <- .random_memory_measure(
+        function() .random_memory_covariance(result, posterior, diagonal_only)
+      )
+      expect_gt(measured$admitted, 10000)
+      if(measured$profile){
+        expect_lte(measured$largest, measured$admitted)
+      }
+    }
+  }
+
+  # the components of the estimate
+  estimate <- BayesTools:::.bt_random_effect_output_memory_estimate(
+    "test", n_rows = 2L, n_draws = 100L, covariance = TRUE,
+    n_columns = 10L, factor_structure = TRUE, known_group = TRUE
+  )
+  expect_identical(
+    estimate$components,
+    c(output_working = 3 * 8 * 100 * 2 * 2,
+      sd_draws_working = 2 * 8 * 100 * 10,
+      coefficient_factor_working = 2 * 8 * 100 * 10 * 10,
+      coefficient_contraction_working = 4 * 8 * 2 * 10,
+      known_group_working = 44 * 2 * 2)
+  )
+  diagonal <- BayesTools:::.bt_random_effect_output_memory_estimate(
+    "test", n_rows = 2L, n_draws = 100L, covariance = TRUE, diagonal_only = TRUE,
+    n_columns = 10L, known_group = TRUE
+  )
+  expect_identical(
+    diagonal$components,
+    c(output_working = 3 * 8 * 100 * 2,
+      sd_draws_working = 2 * 8 * 100 * 10,
+      known_group_working = 2 * 8 * 2 * 10)
+  )
+  expect_equal(estimate$peak_bytes, sum(estimate$components))
+  expect_match(estimate$dimensions, "10 coefficient columns", fixed = TRUE)
 })

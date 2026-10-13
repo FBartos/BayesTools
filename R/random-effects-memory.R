@@ -136,13 +136,29 @@
   )
 }
 
+# The marginal covariance output and, when the block is described, the working
+# arrays of its coefficient columns (`n_columns` is the block's number of
+# random-effect columns):
+# - sd_draws_working: the SD draw matrix (draws x columns) and its validation
+#   copy, read for every structure;
+# - coefficient_factor_working / coefficient_contraction_working:
+#   `factor_structure` blocks (a correlation structure other than ID, DIAG and
+#   CAR) hold the Cholesky and correlation draws (2 x draws x columns^2) and a
+#   rows x columns design contraction (4 copies), as `car_columns` does for CAR;
+# - known_group_working: a known group kernel forms, for the full output, the
+#   rows x rows kernel expansion (K[group_map, group_map]), its lower-triangle
+#   mask and three rows x rows covariance copies per draw (44 bytes per
+#   entry); its diagonal-only output keeps two rows x columns contractions.
 .bt_random_effect_output_memory_estimate <- function(
     operation,
     n_rows,
     n_draws,
     covariance = FALSE,
     diagonal_only = FALSE,
-    car_columns = NULL){
+    car_columns = NULL,
+    n_columns = NULL,
+    factor_structure = FALSE,
+    known_group = FALSE){
 
   entries <- if(isTRUE(covariance) && !isTRUE(diagonal_only)){
     .bt_random_effect_memory_product(n_draws, n_rows, n_rows)
@@ -155,6 +171,23 @@
     components <- c(components,
       car_factor_working = .bt_random_effect_memory_product(2, 8, n_draws, car_columns, car_columns),
       car_contraction_working = .bt_random_effect_memory_product(4, 8, n_rows, car_columns))
+  }
+  if(!is.null(n_columns)){
+    components <- c(components,
+      sd_draws_working = .bt_random_effect_memory_product(2, 8, n_draws, n_columns))
+    if(isTRUE(factor_structure)){
+      components <- c(components,
+        coefficient_factor_working = .bt_random_effect_memory_product(2, 8, n_draws, n_columns, n_columns),
+        coefficient_contraction_working = .bt_random_effect_memory_product(4, 8, n_rows, n_columns))
+    }
+    if(isTRUE(known_group)){
+      components <- c(components,
+        known_group_working = if(isTRUE(covariance) && !isTRUE(diagonal_only)){
+          .bt_random_effect_memory_product(5 * 8 + 4, n_rows, n_rows)
+        }else{
+          .bt_random_effect_memory_product(2, 8, n_rows, n_columns)
+        })
+    }
   }
   peak <- sum(components)
   if(!is.finite(peak)){
@@ -179,10 +212,17 @@
         format(n_draws, scientific = FALSE, trim = TRUE),
         " draws"
       )
-    }, if(!is.null(car_columns)) paste0(
-      "; ", format(car_columns, scientific = FALSE, trim = TRUE),
-      " coefficient/time columns"
-    )),
+    }, if(!is.null(car_columns)){
+      paste0(
+        "; ", format(car_columns, scientific = FALSE, trim = TRUE),
+        " coefficient/time columns"
+      )
+    }else if(!is.null(n_columns)){
+      paste0(
+        "; ", format(n_columns, scientific = FALSE, trim = TRUE),
+        " coefficient columns"
+      )
+    }),
     payload_bytes = payload,
     peak_bytes = peak,
     components = components
