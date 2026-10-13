@@ -101,3 +101,45 @@ test_that("point source, syntax, shape, cycle, and owner refusals remain distinc
   expect_error(.bt_JAGS_bridge_compile_parameter_values(prior("point", list(location = expression(theta))), "mu_x"), class = "BayesTools_formula_point_unavailable")
   expect_error(JAGS_bridgesampling_posterior(cbind(mu_x = 1:20), list(mu_x = prior("point", list(location = expression(theta))))), "expression")
 })
+
+test_that("an expression-point multiplier is retained in the owner and replayed like a coefficient", {
+  x <- c(-2, -1, 1, 2)
+  scaled <- prior("normal", list(0, 1))
+  attr(scaled, "multiply_by") <- "sigma"
+  multiplier_carrier <- function(sigma, with_column){
+    draws <- cbind(mu_intercept = c(.1, .2), mu_x = c(.5, -.5), theta = c(1, 3))
+    if(with_column) draws <- cbind(draws, sigma = 2 * draws[, "theta"])
+    attr(draws, "prior_list") <- list(theta = prior("normal", list(0, 1)), sigma = sigma)
+    JAGS_formula_draws(draws, ~ 1 + x, "mu", data.frame(x = x),
+      list(intercept = prior("normal", list(0, 1)), x = scaled))
+  }
+  expected <- function(x_new) vapply(1:2, function(draw){
+    c(.1, .2)[draw] + 2 * c(1, 3)[draw] * c(.5, -.5)[draw] * x_new
+  }, numeric(length(x_new)))
+  for(with_column in c(TRUE, FALSE)){
+    carrier <- multiplier_carrier(prior("point", list(location = expression(2 * theta))), with_column)
+    owner <- attr(carrier, "formula_design")$mu$point_expression_owner
+    expect_identical(owner$targets, "sigma")
+    expect_identical(names(owner$points), "sigma")
+    expect_identical(owner$points$sigma$parameter_dependencies, "theta")
+    expect_equal(unname(JAGS_evaluate_formula(carrier, parameter = "mu")), expected(x))
+    predicted <- JAGS_predict_formula(carrier, "mu", data = data.frame(x = c(1, 2)), formula_target = "fixed")
+    expect_equal(unname(predicted$value), expected(c(1, 2)))
+    fit <- .point_replay_fit(carrier)
+    table <- JAGS_deterministic_nodes(fit)
+    row <- match("sigma", table$node)
+    expect_false(is.na(row))
+    expect_identical(table$family[[row]], "point_expression")
+    expect_identical(table$dependencies[[row]], "theta")
+    expect_true("sigma" %in% table$dependencies[[match("mu", table$node)]])
+  }
+  # a numeric point multiplier needs no owner
+  numeric_multiplier <- multiplier_carrier(prior("point", list(4)), FALSE)
+  expect_null(attr(numeric_multiplier, "formula_design")$mu$point_expression_owner)
+  # an expression multiplier that the owner lost still asks for a refit
+  carrier <- multiplier_carrier(prior("point", list(location = expression(2 * theta))), FALSE)
+  design <- attr(carrier, "formula_design")
+  design$mu$point_expression_owner <- NULL
+  attr(carrier, "formula_design") <- design
+  expect_error(JAGS_evaluate_formula(carrier, parameter = "mu"), class = "BayesTools_refit_required")
+})
