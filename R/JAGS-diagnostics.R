@@ -275,12 +275,17 @@ JAGS_diagnostics                 <- function(fit, parameter, type, plot_type = "
     model_samples <- model_samples[,parameter,drop = FALSE]
   }
 
-  # deal with bias mixture dispatching
+  # deal with bias mixture dispatching: a component of the bias prior takes
+  # its support from the whole bias prior (a mixture or a single prior); a
+  # single bias prior is wrapped in a named list, so that the blocks below
+  # see a list of priors and never its fields
   if(parameter %in% c("PET", "PEESE", "omega", "alpha", "pi_null") && !is.null(prior_list[["bias"]])){
-    prior_list      <- prior_list[["bias"]]
+    prior_support   <- prior_list[["bias"]]
+    prior_list      <- if(is.prior.mixture(prior_support)) prior_support else list(bias = prior_support)
     parameter_names <- parameter
   }else{
     prior_list      <- prior_list[parameter]
+    prior_support   <- prior_list[[parameter]]
     parameter_names <- parameter
   }
 
@@ -337,7 +342,7 @@ JAGS_diagnostics                 <- function(fit, parameter, type, plot_type = "
   attr(model_samples, "chain")     <- do.call(c, samples_chain)
   attr(model_samples, "iter")      <- do.call(c, samples_iter)
   attr(model_samples, "parameter") <- parameter
-  attr(model_samples, "prior")     <- if(is.prior.mixture(prior_list)) prior_list else prior_list[[parameter]]
+  attr(model_samples, "prior")     <- prior_support
   # Diagnostic transformations are validated against the selected parameter;
   # reflected KDE bounds are therefore no longer on the same support scale.
   attr(model_samples, "density_support_transformed") <- !is.null(transformations)

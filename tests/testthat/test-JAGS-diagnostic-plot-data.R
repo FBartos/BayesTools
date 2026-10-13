@@ -563,3 +563,184 @@ test_that("R116 D10 physical short chains pad requested lags without recomputati
   plot <- ggplot2::ggplot() + .geom_diagnostics.autocorrelation(chain)
   expect_identical(as.integer(ggplot2::ggplot_build(plot)$data[[1L]]$x), 0:5)
 })
+
+# The chains of a diagnostics test fit: the columns of `draws` for the first
+# chain and the same draws in reverse order for the second one.
+.diagnostics_two_chain_fit_for_test <- function(draws){
+
+  fit <- coda::mcmc.list(
+    coda::mcmc(draws),
+    coda::mcmc(draws[rev(seq_len(nrow(draws))), , drop = FALSE])
+  )
+  class(fit) <- c("BayesTools_fit", class(fit))
+  fit
+}
+
+# The mass of a diagnostic density between the bounds, and its largest ordinate
+# outside of them (zero for a density that respects the support).
+.diagnostic_density_support_check <- function(density, bounds){
+
+  inside <- density$x >= bounds[1] & density$x <= bounds[2]
+  list(
+    mass    = .diagnostic_density_mass(list(x = density$x[inside], y = density$y[inside])),
+    outside = if(any(!inside)) max(density$y[!inside]) else 0
+  )
+}
+
+test_that("diagnostics of the components of a single bias prior use the bounds of the prior", {
+
+  selection <- prior_weightfunction("one-sided", c(.025), wf_cumulative(c(1, 1)))
+  phacking  <- prior_phacking(form = "linear")
+  single    <- prior_bias(selection, phacking)
+  mixture   <- prior_mixture(list(prior_none(), single))
+
+  pi_null_bounds <- .diagnostics_prior_bounds(mixture, "pi_null")
+  expect_equal(pi_null_bounds, list(lower = 0, upper = 0.0836822), tolerance = 1e-6)
+
+  grid  <- seq(.005, .995, length.out = 300)
+  fit   <- .diagnostics_two_chain_fit_for_test(cbind(
+    "omega[1]" = 1,
+    "omega[2]" = grid,
+    alpha      = grid,
+    pi_null    = pi_null_bounds$upper * grid
+  ))
+  xlim  <- list(
+    omega   = c(-.25, 1.25),
+    alpha   = c(-.25, 1.25),
+    pi_null = pi_null_bounds$upper * c(-.25, 1.25)
+  )
+  names <- c(omega = "omega[0.025,1]", alpha = "alpha", pi_null = "pi_null")
+  upper <- c(omega = 1, alpha = 1, pi_null = pi_null_bounds$upper)
+
+  for(parameter in c("omega", "alpha", "pi_null")){
+
+    single_data  <- .diagnostics_plot_data(fit, parameter, list(bias = single),  NULL, FALSE)
+    mixture_data <- .diagnostics_plot_data(fit, parameter, list(bias = mixture), NULL, FALSE)
+
+    # the component keeps its own column, named by its parameter
+    expect_identical(colnames(single_data), names[[parameter]])
+    expect_identical(as.numeric(single_data), as.numeric(mixture_data))
+    expect_identical(attr(single_data, "prior"), single)
+
+    # the same bounds as the component inside a bias mixture
+    bounds_single  <- .diagnostics_density_bounds(attr(single_data, "prior"), parameter, colnames(single_data))
+    bounds_mixture <- .diagnostics_density_bounds(attr(mixture_data, "prior"), parameter, colnames(mixture_data))
+    expect_equal(bounds_single, bounds_mixture)
+    expect_equal(unlist(bounds_single), c(lower = 0, upper = upper[[parameter]]))
+
+    # the density is the one of the mixture and stays on the support
+    density_single  <- .diagnostics_plot_data_density(single_data,  n_points = 256, xlim = xlim[[parameter]])
+    density_mixture <- .diagnostics_plot_data_density(mixture_data, n_points = 256, xlim = xlim[[parameter]])
+    expect_equal(density_single, density_mixture)
+    expect_identical(names(density_single), names[[parameter]])
+    for(chain_density in density_single[[1]]){
+      check <- .diagnostic_density_support_check(chain_density, c(0, upper[[parameter]]))
+      expect_true(isTRUE(attr(chain_density, "boundary_reflection")))
+      expect_equal(check$mass, 1, tolerance = .03)
+      expect_identical(check$outside, 0)
+    }
+  }
+
+  # the composite parameter reports the omega bin and the null mass
+  composite_data <- .diagnostics_plot_data(fit, "bias", list(bias = single), NULL, FALSE)
+  expect_identical(colnames(composite_data), c("omega[0.025,1]", "pi_null"))
+})
+
+test_that("diagnostics of a single PET, PEESE, weightfunction or p-hacking bias prior use its bounds", {
+
+  # `component` names the parameter of the same column in the bias mixture
+  expect_bounds <- function(fit, parameter, component, bias, bounds, xlim){
+
+    plot_data <- .diagnostics_plot_data(fit, parameter, list(bias = bias), NULL, FALSE)
+    mixture   <- .diagnostics_plot_data(fit, component, list(bias = prior_mixture(list(prior_none(), bias))), NULL, FALSE)
+    expect_identical(attr(plot_data, "prior"), bias)
+    expect_identical(as.numeric(plot_data), as.numeric(mixture))
+    expect_equal(
+      unlist(.diagnostics_density_bounds(attr(plot_data, "prior"), attr(plot_data, "parameter"), colnames(plot_data)[1])),
+      c(lower = bounds[1], upper = bounds[2])
+    )
+    density <- .diagnostics_plot_data_density(plot_data, n_points = 256, xlim = xlim)
+    for(chain_density in density[[1]]){
+      check <- .diagnostic_density_support_check(chain_density, bounds)
+      expect_true(isTRUE(attr(chain_density, "boundary_reflection")))
+      expect_identical(check$outside, 0)
+      expect_gt(check$mass, .9)
+    }
+    invisible(plot_data)
+  }
+
+  grid <- seq(.005, 2.995, length.out = 300)
+
+  # PET and PEESE: the truncation of the prior; 'bias' names the PET column
+  for(bias in list(prior_PET("normal", list(0, 1), truncation = list(0, Inf)),
+                   prior_PEESE("normal", list(0, 1), truncation = list(0, Inf)))){
+    column <- if(is.prior.PET(bias)) "PET" else "PEESE"
+    fit    <- .diagnostics_two_chain_fit_for_test(matrix(grid, ncol = 1L, dimnames = list(NULL, column)))
+    for(parameter in c(column, "bias")){
+      plot_data <- expect_bounds(fit, parameter, column, bias, c(0, Inf), c(-1, 4))
+      expect_identical(colnames(plot_data), column)
+    }
+  }
+
+  # a standalone weightfunction: its weights
+  weightfunction <- prior_weightfunction("one-sided", c(.025), wf_cumulative(c(1, 1)))
+  fit <- .diagnostics_two_chain_fit_for_test(cbind("omega[1]" = 1, "omega[2]" = seq(.005, .995, length.out = 300)))
+  for(parameter in c("omega", "bias")){
+    plot_data <- expect_bounds(fit, parameter, "omega", weightfunction, c(0, 1), c(-.25, 1.25))
+    expect_identical(colnames(plot_data), "omega[0.025,1]")
+  }
+
+  # a standalone p-hacking prior: the share of rejections and the null mass
+  phacking <- prior_phacking(form = "linear")
+  upper    <- .diagnostics_prior_bounds(phacking, "pi_null")$upper
+  fit <- .diagnostics_two_chain_fit_for_test(cbind(
+    alpha   = seq(.005, .995, length.out = 300),
+    pi_null = upper * seq(.005, .995, length.out = 300)
+  ))
+  expect_bounds(fit, "alpha",   "alpha",   phacking, c(0, 1),     c(-.25, 1.25))
+  expect_bounds(fit, "pi_null", "pi_null", phacking, c(0, upper), upper * c(-.25, 1.25))
+})
+
+test_that("JAGS_diagnostics() draws the components of a single bias prior", {
+
+  selection <- prior_weightfunction("one-sided", c(.025), wf_cumulative(c(1, 1)))
+  bias      <- prior_bias(selection, prior_phacking(form = "linear"))
+  upper     <- .diagnostics_prior_bounds(bias, "pi_null")$upper
+
+  grid  <- seq(.005, .995, length.out = 120)
+  draws <- cbind(
+    mu         = seq(-1, 1, length.out = 120),
+    "omega[1]" = 1,
+    "omega[2]" = grid,
+    alpha      = rev(grid),
+    phack_kind = 1,
+    pi_null    = upper * grid
+  )
+  fit <- structure(list(
+    mcmc = coda::mcmc.list(coda::mcmc(draws)),
+    summary.pars = list(mutate = NULL)
+  ), class = c("BayesTools_fit", "runjags"))
+  attr(fit, "prior_list") <- list(mu = prior("normal", list(0, 1)), bias = bias)
+  fit <- attach_test_parameter_map(fit)
+
+  for(parameter in c("omega", "alpha", "pi_null", "bias")){
+    for(type in c("density", "trace", "autocorrelation")){
+      plots <- JAGS_diagnostics(fit, parameter, type, plot_type = "ggplot", n_points = 64)
+      if(inherits(plots, "ggplot")) plots <- list(plots)
+      expect_length(plots, if(parameter == "bias") 2L else 1L)
+      for(plot in plots){
+        expect_s3_class(plot, "ggplot")
+        expect_true(all(is.finite(ggplot2::ggplot_build(plot)$data[[1]]$y)))
+      }
+    }
+  }
+
+  # the density of alpha lives on [0, 1]
+  alpha_density <- ggplot2::ggplot_build(
+    JAGS_diagnostics(fit, "alpha", "density", plot_type = "ggplot", xlim = c(-.25, 1.25), n_points = 256)
+  )$data[[1]]
+  outside <- alpha_density$x < 0 | alpha_density$x > 1
+  expect_true(any(outside))
+  expect_identical(alpha_density$y[outside], rep(0, sum(outside)))
+  expect_gt(max(alpha_density$y), .5)
+})
