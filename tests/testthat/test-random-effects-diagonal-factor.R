@@ -419,6 +419,80 @@ test_that("batched factor reduction preserves row scales and zero draws", {
 })
 
 
+test_that("the diagonal-factor plan of a three-level design is the hand-checked one", {
+
+  n_rows <- 6L
+  plan <- function(plans, row_blocks){
+    .bt_random_effect_marginal_diagonal_factor_plan(plans, row_blocks, n_rows)
+  }
+  ones <- matrix(1, n_rows, 1L)
+
+  # Studies hold the estimates 1:3 (id 2) and 4:6 (id 1); every estimate is its
+  # own group. Groups are visited in order of first appearance, not sorted, and
+  # their ids stay integers.
+  plans <- list(
+    study = list(type = "group", model_matrix = ones,
+                 group_map = c(2L, 2L, 2L, 1L, 1L, 1L),
+                 coefficient_structure = "diagonal"),
+    estimate = list(type = "group", model_matrix = ones, group_map = 1:6,
+                    coefficient_structure = "diagonal")
+  )
+  loading <- function(group, rows){
+    list(factor_index = 1L, group = group, column = 1L, rows = rows)
+  }
+  singleton <- function(row){
+    list(factor_index = 2L, group = row, column = 1L, rows = row, row = row)
+  }
+
+  by_study <- plan(plans, list(1:3, 4:6))
+  expect_identical(by_study, list(
+    available = TRUE,
+    reason = "",
+    blocks = list(
+      list(rows = 1:3,
+           diagonal = lapply(1:3, singleton),
+           loadings = list(loading(2L, 1:3))),
+      list(rows = 4:6,
+           diagonal = lapply(4:6, singleton),
+           loadings = list(loading(1L, 4:6)))
+    )
+  ))
+  single_block <- plan(plans, list(1:6))
+  expect_identical(
+    single_block$blocks[[1L]]$loadings,
+    list(loading(2L, 1:3), loading(1L, 4:6))
+  )
+  expect_identical(single_block$blocks[[1L]]$diagonal, lapply(1:6, singleton))
+  expect_identical(
+    plan(plans, list(4:6, 1:3))$blocks[[1L]]$loadings,
+    list(loading(1L, 4:6))
+  )
+
+  # a row block that splits a group is not a structural factor
+  split_study <- plan(plans, list(1:2, 3:6))
+  expect_false(split_study$available)
+  expect_identical(split_study$reason, "row blocks split a covariance factor")
+
+  # a dense factor visits only the coefficient columns with structural rows in
+  # the block: the second column is structurally zero in the first block
+  dense <- list(
+    g = list(type = "group", model_matrix = cbind(1, c(0, 0, 0, 1, 1, 1)),
+             group_map = c(1L, 1L, 1L, 2L, 2L, 2L),
+             coefficient_structure = "dense")
+  )
+  dense_loading <- function(group, column, rows){
+    list(factor_index = 1L, group = group, column = column, rows = rows)
+  }
+  dense_plan <- plan(dense, list(1:3, 4:6))
+  expect_identical(dense_plan$blocks[[1L]]$loadings, list(dense_loading(1L, 1L, 1:3)))
+  expect_identical(dense_plan$blocks[[1L]]$diagonal, list())
+  expect_identical(
+    dense_plan$blocks[[2L]]$loadings,
+    list(dense_loading(2L, 1L, 4:6), dense_loading(2L, 2L, 4:6))
+  )
+})
+
+
 test_that("bridge factor reduction caches only invariant contract plans", {
 
   factors <- .rank_one_factor_fixture()

@@ -827,19 +827,53 @@ random_effects_marginal_factor_vcov <- function(factors){
         return(unavailable("known group covariance is not positive definite"))
       }
     }
+    group_map <- as.integer(factor$group_map)
+    n_columns <- ncol(factor$model_matrix)
+    # The rows with a structural contribution of each coefficient column do not
+    # depend on the row block. Without a group kernel they are split by group
+    # once, groups in order of first appearance, and every row block visits only
+    # the groups it touches.
+    structural <- lapply(seq_len(n_columns), function(column){
+      model_columns <- if(identical(factor$coefficient_structure, "diagonal")){
+        column
+      }else{
+        seq.int(column, n_columns)
+      }
+      structural_rows <- which(
+        rowSums(factor$model_matrix[, model_columns, drop = FALSE] != 0) > 0
+      )
+      if(!is.null(group_factor)){
+        return(list(rows = structural_rows))
+      }
+      groups <- unique(group_map[structural_rows])
+      group_rank <- rep(NA_integer_, n_rows)
+      group_rank[structural_rows] <- match(group_map[structural_rows], groups)
+      list(
+        rows          = structural_rows,
+        groups        = groups,
+        group_rank    = group_rank,
+        rows_by_group = split(
+          structural_rows,
+          factor(group_rank[structural_rows], levels = seq_along(groups))
+        )
+      )
+    })
     plan_components[[factor_index]] <- list(
       model_matrix          = factor$model_matrix,
-      group_map             = as.integer(factor$group_map),
+      group_map             = group_map,
       group_covariance      = if(is.null(group_factor)) NULL else kernel,
-      coefficient_structure = factor$coefficient_structure
+      coefficient_structure = factor$coefficient_structure,
+      structural            = structural
     )
   }
 
+  in_block <- logical(n_rows)
   blocks <- vector("list", length(normalized_blocks))
   for(block_index in seq_along(normalized_blocks)){
     rows                <- normalized_blocks[[block_index]]
     diagonal_components <- list()
     rank_components     <- list()
+    in_block[rows]      <- TRUE
 
     for(factor_index in seq_along(plan_components)){
       factor      <- plan_components[[factor_index]]
@@ -853,17 +887,8 @@ random_effects_marginal_factor_vcov <- function(factors){
         t(chol(factor$group_covariance[group_levels, group_levels, drop = FALSE]))
       }
       for(column in seq_len(n_columns)){
-        model_columns <- if(identical(
-            factor$coefficient_structure,
-            "diagonal"
-          )){
-          column
-        }else{
-          seq.int(column, n_columns)
-        }
-        structural_rows <- which(
-          rowSums(model_matrix[, model_columns, drop = FALSE] != 0) > 0
-        )
+        structural      <- factor$structural[[column]]
+        structural_rows <- structural$rows
         if(!is.null(group_factor)){
           inside  <- intersect(structural_rows, rows)
           outside <- setdiff(structural_rows, rows)
@@ -874,25 +899,29 @@ random_effects_marginal_factor_vcov <- function(factors){
             return(unavailable("row blocks split a covariance factor"))
           }
         }
+        group_ranks <- NULL
         groups <- if(is.null(group_factor)){
-          unique(group_map[structural_rows])
+          group_ranks <- structural$group_rank[rows]
+          group_ranks <- sort(unique(group_ranks[!is.na(group_ranks)]))
+          structural$groups[group_ranks]
         }else{
           seq_len(ncol(group_factor))
         }
-        for(group in groups){
-          multiplier <- if(is.null(group_factor)){
-            as.numeric(group_map == group)
+        for(group_index in seq_along(groups)){
+          group <- groups[[group_index]]
+          if(is.null(group_factor)){
+            full_support <- structural$rows_by_group[[group_ranks[[group_index]]]]
+            support <- full_support[in_block[full_support]]
           }else{
-            values <- numeric(n_rows)
-            values[rows] <- group_factor[match(group_map[rows], group_levels), group]
-            values
+            multiplier <- numeric(n_rows)
+            multiplier[rows] <- group_factor[match(group_map[rows], group_levels), group]
+            full_support <- structural_rows[multiplier[structural_rows] != 0]
+            support <- intersect(full_support, rows)
           }
-          full_support <- structural_rows[multiplier[structural_rows] != 0]
-          support <- intersect(full_support, rows)
           if(length(support) == 0L){
             next
           }
-          if(length(full_support) > 1L && !all(full_support %in% rows)){
+          if(length(full_support) > 1L && length(support) < length(full_support)){
             return(unavailable("row blocks split a covariance factor"))
           }
           component <- list(
@@ -915,6 +944,7 @@ random_effects_marginal_factor_vcov <- function(factors){
       }
     }
 
+    in_block[rows] <- FALSE
     blocks[[block_index]] <- list(
       rows     = rows,
       diagonal = diagonal_components,
