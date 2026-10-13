@@ -3470,6 +3470,173 @@ test_that("JAGS_fit runs dummy structured random-effect formula models", {
   expect_true(any(grepl("mu__xREx__id_xRE_CORx_L", colnames(as.matrix(fit_us$mcmc)), fixed = TRUE)))
 })
 
+test_that("emitted marginal random-effect covariance JAGS syntax reproduces random_effects_marginal_vcov()", {
+
+  skip_if_not_installed("runjags")
+  skip_if_not_installed("rjags")
+  skip_on_cran()
+
+  # The syntax of JAGS_formula_random_marginal_covariance() is only text until
+  # JAGS executes it: fit it for structures whose factor, distance, group
+  # kernel and row-multiplier handling differ and compare the monitored nodes
+  # of every draw with the covariance computed from the same draws in R.
+  set.seed(93)
+  data <- data.frame(
+    g = factor(rep(c("a", "b", "c"), each = 4L)),
+    x = round(stats::rnorm(12L), 2),
+    z = round(stats::rnorm(12L), 2),
+    f = factor(rep(c("p", "q", "r", "s"), 3L)),
+    time = rep(c(0, 0.5, 2, 5), 3L),
+    se = round(stats::runif(12L, 0.5, 1.5), 2)
+  )
+  y <- stats::rnorm(nrow(data))
+  kernel <- matrix(
+    c(1, .3, .1, .3, 1, .4, .1, .4, 1), 3L,
+    dimnames = list(c("a", "b", "c"), c("a", "b", "c"))
+  )
+  sd_prior <- prior("gamma", list(4, 6))
+  by_group <- unname(split(seq_len(nrow(data)), data$g))
+  row_sd_syntax <- paste0(
+    "for(i in 1:N){ tau[i] <- se[i] * s_tau }\n",
+    "s_tau ~ dgamma(4, 6)\n"
+  )
+  cases <- list(
+    us = list(
+      formula = ~ 1 + us(1 + x + z | g),
+      prior_random = prior_random(sd = sd_prior),
+      row_blocks = by_group
+    ),
+    hcs = list(
+      formula = ~ 1 + hcs(f | g),
+      prior_random = prior_random(sd = sd_prior),
+      row_blocks = by_group
+    ),
+    ar1 = list(
+      formula = ~ 1 + ar1(f | g),
+      prior_random = prior_random(sd = sd_prior),
+      row_blocks = by_group
+    ),
+    car = list(
+      formula = ~ 1 + car(time | g),
+      prior_random = prior_random(sd = sd_prior),
+      row_blocks = by_group
+    ),
+    known_us = list(
+      formula = random_effects_formula(
+        ~ 1 + us(1 + x | g),
+        group_covariance = random_group_covariance(kernel)
+      ),
+      prior_random = prior_random(sd = sd_prior),
+      row_blocks = list(seq_len(nrow(data)))
+    ),
+    row_indexed_sd = list(
+      formula = ~ 1 + us(1 + x | g),
+      prior_random = prior_random(
+        g = random_block(sd_source = random_sd_source("tau", shape = "row"))
+      ),
+      row_blocks = by_group,
+      syntax = row_sd_syntax,
+      monitor = "tau"
+    )
+  )
+
+  max_error <- function(compiled, draws, covariance, row_blocks){
+    error <- 0
+    for(block in seq_along(row_blocks)){
+      rows <- row_blocks[[block]]
+      if(identical(compiled$representation, "dense")){
+        pairs <- BayesTools:::.bt_lower_triangle_pairs(rows)
+        columns <- paste0(compiled$lower_names[block], "[", seq_len(nrow(pairs)), "]")
+        reference <- t(vapply(seq_len(dim(covariance)[1L]), function(draw){
+          matrix(covariance[draw, , ], dim(covariance)[2L])[cbind(pairs$row_1, pairs$row_2)]
+        }, numeric(nrow(pairs))))
+        if(nrow(pairs) == 1L){
+          reference <- t(reference)
+        }
+        node <- draws[, columns, drop = FALSE]
+        error <- max(error, abs(node - reference) / pmax(1, abs(reference)))
+      }else{
+        rank <- compiled$loading_ranks[block]
+        for(draw in seq_len(dim(covariance)[1L])){
+          diagonal <- draws[draw, paste0(compiled$diagonal_names[block], "[", seq_along(rows), "]")]
+          loading <- if(rank > 0L){
+            matrix(
+              draws[draw, paste0(
+                compiled$loading_names[block], "[",
+                rep(seq_along(rows), rank), ",", rep(seq_len(rank), each = length(rows)), "]"
+              )],
+              length(rows), rank
+            )
+          }else{
+            matrix(0, length(rows), 0L)
+          }
+          reference <- covariance[draw, rows, rows]
+          error <- max(
+            error,
+            abs(diag(diagonal, length(rows)) + tcrossprod(loading) - reference) /
+              pmax(1, abs(reference))
+          )
+        }
+      }
+    }
+
+    error
+  }
+
+  for(case_name in names(cases)){
+    case <- cases[[case_name]]
+    compile <- random_effects_compile(marginalized = "g")
+    specification <- JAGS_formula(
+      case$formula, "mu", data,
+      list(intercept = prior("normal", list(0, 1))),
+      prior_random = case$prior_random,
+      random_effects_compile = compile
+    )
+    for(representation in c("dense", "auto")){
+      info <- paste(case_name, representation)
+      compiled <- JAGS_formula_random_marginal_covariance(
+        specification$formula_design, case$row_blocks,
+        prefix = "rmc", representation = representation
+      )
+      expect_identical(
+        compiled$representation,
+        if(identical(representation, "dense")) "dense" else "diagonal_factor",
+        info = info
+      )
+      monitors <- if(identical(compiled$representation, "dense")){
+        compiled$lower_names
+      }else{
+        c(compiled$diagonal_names, compiled$loading_names[!is.na(compiled$loading_names)])
+      }
+      fit <- suppressWarnings(JAGS_fit(
+        model_syntax = paste0(
+          "model{\n for(i in 1:N){ y[i] ~ dnorm(mu[i], 1) }\n",
+          case$syntax, compiled$syntax, "\n}\n"
+        ),
+        data = c(list(y = y, N = length(y), se = data$se), compiled$data),
+        formula_list = list(mu = case$formula),
+        formula_data_list = list(mu = data),
+        formula_prior_list = list(mu = list(intercept = prior("normal", list(0, 1)))),
+        formula_random_prior_list = list(mu = case$prior_random),
+        formula_random_effects_compile_list = list(mu = compile),
+        add_parameters = c(monitors, case$monitor),
+        chains = 1, adapt = 100, burnin = 50, sample = 100, thin = 5,
+        silent = TRUE, seed = 1
+      ))
+      expect_s3_class(fit, "BayesTools_fit")
+      if(!inherits(fit, "BayesTools_fit")){
+        next
+      }
+      draws <- as.matrix(coda::as.mcmc.list(fit$mcmc))
+      covariance <- random_effects_marginal_vcov(fit, parameter = "mu")$samples
+
+      expect_identical(dim(covariance)[1L], nrow(draws), info = info)
+      error <- max_error(compiled, draws, covariance, case$row_blocks)
+      expect_lte(error, 1e-12, label = paste(info, "maximum relative error"))
+    }
+  }
+})
+
 test_that("JAGS_fit monitors random coefficients for observed-level prediction", {
 
   skip_if_not_installed("runjags")
