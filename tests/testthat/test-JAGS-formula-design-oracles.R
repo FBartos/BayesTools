@@ -13736,3 +13736,80 @@ test_that("random slopes of a two-level factor name the scalar SD node of their 
     c("mu__xREx__id_intercept", sd_prior_nodes(three)[-1L])
   )
 })
+
+test_that("structured random-effect indexes with a single level compile", {
+
+  testthat::skip_if_not_installed("runjags")
+
+  # one index level is one indicator column and has no correlation parameter
+  one_level <- data.frame(g = factor(c("a", "a", "b", "b")), time = 0)
+  priors <- list(intercept = prior("normal", list(0, 1)))
+  sd_prior <- prior("normal", list(0, 1), truncation = list(0, Inf))
+  compile <- function(formula, data){
+    JAGS_formula(formula, "mu", data, priors, prior_random = prior_random(
+      sd = sd_prior, cor = prior("normal", list(0, 0.5))
+    ))
+  }
+
+  for(structure in c("cs", "hcs", "ar1", "har")){
+    result <- compile(stats::as.formula(paste0("~ 1 + ", structure, "(time | g)")), one_level)
+    term <- result$formula_design$random_effects[[1L]]
+    expect_identical(term$structure, structure, label = structure)
+    expect_identical(term$n_columns, 1L, label = structure)
+    expect_identical(term$column_names, "time0", label = structure)
+    sd_name <- if(structure %in% c("cs", "ar1")) "mu__xREx__g_sd" else "mu__xREx__g_time"
+    expect_identical(unique(term$sd_parameter_names), sd_name, label = structure)
+    expect_identical(names(result$prior_list), c("mu_intercept", sd_name), label = structure)
+    expect_false(grepl("rho|_CORx_|dbt_lkj", result$formula_syntax), label = structure)
+
+    posterior <- matrix(c(0, 0.5), nrow = 2L, ncol = 2L, byrow = TRUE,
+                        dimnames = list(NULL, c("mu_intercept", sd_name)))
+    fit <- list(mcmc = coda::mcmc.list(coda::mcmc(posterior)),
+                summary.pars = list(mutate = NULL),
+                monitor = colnames(posterior), sample = nrow(posterior))
+    class(fit) <- c("runjags", "BayesTools_fit")
+    attr(fit, "prior_list") <- result$prior_list
+    attr(fit, "formula_design") <- list(mu = result$formula_design)
+    attr(fit, "formula_scale") <- list(mu = result$formula_scale)
+    table <- JAGS_estimates_table(attach_test_parameter_map(fit), remove_diagnostics = TRUE)
+    expect_identical(
+      rownames(table),
+      c("(mu) intercept", if(structure %in% c("cs", "ar1")) "(mu) sd" else "(mu) sd(time[0])"),
+      label = structure
+    )
+  }
+
+  # replayed data with a single index level builds the same indicator column
+  replay <- BayesTools:::.bt_random_effect_design_matrix(
+    ~ time - 1,
+    data.frame(time = factor(rep("0", 3L))),
+    preserve_no_intercept_contrasts = FALSE,
+    structure = "hcs"
+  )$model_matrix
+  expect_identical(dim(replay), c(3L, 1L))
+  expect_true(all(replay == 1))
+  expect_identical(colnames(replay), "time0")
+
+  # the indicator matrix equals the model.matrix() coding of a multi-level index
+  index_data <- data.frame(
+    time = factor(c("b", "a", "c", "a", "b"), levels = c("a", "b", "c"))
+  )
+  stats::contrasts(index_data$time) <- "contr.treatment"
+  for(structure in c("cs", "hcs", "ar1", "har")){
+    indicator <- BayesTools:::.bt_random_effect_design_matrix(
+      ~ time - 1, index_data, preserve_no_intercept_contrasts = FALSE, structure = structure
+    )$model_matrix
+    reference <- BayesTools:::.bt_model_matrix(
+      stats::model.frame(~ time - 1, index_data), formula = ~ time - 1, data = index_data
+    )
+    expect_identical(indicator, reference, label = structure)
+  }
+  multi_level <- compile(~ 1 + hcs(time | g), data.frame(
+    g = factor(rep(c("a", "b"), each = 2L)), time = rep(1:2, 2L)
+  ))
+  expect_identical(multi_level$formula_design$random_effects[[1L]]$n_columns, 2L)
+  expect_identical(
+    multi_level$formula_design$random_effects[[1L]]$sd_parameter_names,
+    paste0("mu__xREx__g_time[", 1:2, "]")
+  )
+})

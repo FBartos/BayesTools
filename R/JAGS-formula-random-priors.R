@@ -6,7 +6,8 @@
                                              context = "Factor predictor",
                                              validate_direct_factor_prior = TRUE,
                                              contrast_overrides = NULL,
-                                             term_factors = NULL){
+                                             term_factors = NULL,
+                                             allow_single_level = FALSE){
 
   factor_predictors <- names(predictors_type)[predictors_type == "factor"]
   if(length(factor_predictors) == 0L){
@@ -104,6 +105,10 @@
       data[[factor_name]] <- ordered(data[[factor_name]], levels = levels(data[[factor_name]]))
     }
 
+    if(isTRUE(allow_single_level) && nlevels(data[[factor_name]]) < 2L){
+      # a single level has no contrasts to set
+      next
+    }
     if(!is.null(contrast_name)){
       stats::contrasts(data[[factor_name]]) <- contrast_name
     }else if(is.null(attr(data[[factor_name]], "contrasts"))){
@@ -119,7 +124,8 @@
                                                            model_terms,
                                                            model_terms_type,
                                                            prior_list,
-                                                           contrast_overrides = NULL){
+                                                           contrast_overrides = NULL,
+                                                           allow_single_level = FALSE){
 
   .bt_apply_factor_prior_contrasts(
     data = data,
@@ -129,7 +135,8 @@
     prior_list = prior_list,
     context = "Random-effect factor predictor",
     validate_direct_factor_prior = FALSE,
-    contrast_overrides = contrast_overrides
+    contrast_overrides = contrast_overrides,
+    allow_single_level = allow_single_level
   )
 }
 

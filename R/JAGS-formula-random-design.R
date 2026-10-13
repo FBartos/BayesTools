@@ -399,7 +399,9 @@
     model_terms = model_terms,
     model_terms_type = model_terms_type,
     prior_list = prior_list,
-    contrast_overrides = block_prior$contrasts
+    contrast_overrides = block_prior$contrasts,
+    # the index of these structures is coded by one indicator per level
+    allow_single_level = random_structure %in% c("cs", "hcs", "ar1", "har")
   )
 
   preserve_no_intercept_contrasts <- !random_structure %in% c(

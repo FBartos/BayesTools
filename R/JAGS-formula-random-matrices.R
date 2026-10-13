@@ -31,7 +31,15 @@
       call. = FALSE
     )
   }
-  model_matrix <- .bt_model_matrix(model_frame, formula = matrix_formula, data = data)
+  term_labels <- attr(formula_terms, "term.labels")
+  model_matrix <- if(isTRUE(structure %in% c("cs", "hcs", "ar1", "har")) &&
+                     length(term_labels) == 1L && ncol(model_frame) == 1L &&
+                     is.factor(model_frame[[1L]])){
+    # the index of the covariance structure is coded by one indicator per level
+    .bt_random_effect_index_indicator_matrix(model_frame, term_labels)
+  }else{
+    .bt_model_matrix(model_frame, formula = matrix_formula, data = data)
+  }
   .bt_validate_model_matrix_finite(model_matrix, label)
 
   if(!has_intercept && isTRUE(preserve_no_intercept_contrasts)){
@@ -50,6 +58,27 @@
     model_matrix = model_matrix,
     exact_indicator = structure %in% c("cs", "hcs", "ar1", "har")
   )
+}
+
+# The level-indicator design of a structured index factor, as model.matrix()
+# builds it for `~ index - 1`, but also for an index with a single level.
+.bt_random_effect_index_indicator_matrix <- function(model_frame, term_label){
+
+  index <- model_frame[[1L]]
+  index_levels <- levels(index)
+  model_matrix <- outer(as.integer(index), seq_along(index_levels), "==") + 0
+  dimnames(model_matrix) <- list(
+    row.names(model_frame),
+    paste0(term_label, index_levels)
+  )
+  attr(model_matrix, "assign") <- rep(1L, length(index_levels))
+  index_contrasts <- attr(index, "contrasts", exact = TRUE)
+  attr(model_matrix, "contrasts") <- stats::setNames(
+    list(if(is.null(index_contrasts)) "contr.treatment" else index_contrasts),
+    names(model_frame)[1L]
+  )
+
+  model_matrix
 }
 
 .bt_random_effect_normalize_structured_formula <- function(formula, data,
