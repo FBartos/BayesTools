@@ -22,9 +22,10 @@ random-number state (\code{.Random.seed} and \code{RNGkind()}) is restored
 afterwards. With \code{NULL}, the caller's random-number stream is used.}
 
 \item{formula_scale}{optional nested list containing standardization information.
-If not provided, extracted from \code{fit} attribute. The transformation is
-derived from the fitted structure stored in \code{fit}: the fixed-effect
-design, a log intercept, and the random-effect SD structure.}
+If not provided, extracted from \code{fit} attribute. An entry must name
+every predictor that \code{fit} standardized for that parameter. The
+transformation is derived from the fitted structure stored in \code{fit}: the
+fixed-effect design, a log intercept, and the random-effect SD structure.}
 }
 \value{
 A matrix of prior samples on the original (unscaled) scale, with

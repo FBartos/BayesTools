@@ -10,9 +10,10 @@
 #' information keyed by parameter name, replacing the \code{formula_scale}
 #' attribute of \code{fit}. Each parameter entry contains scaling info (mean and
 #' sd) for each standardized predictor, e.g.,
-#' \code{list(mu = list(mu_x1 = list(mean = 0, sd = 1)))}. The transformation is
-#' derived from the fitted structure stored in \code{fit}: the fixed-effect
-#' design, a log intercept, and the random-effect SD structure.
+#' \code{list(mu = list(mu_x1 = list(mean = 0, sd = 1)))}. An entry must name
+#' every predictor that \code{fit} standardized for that parameter. The
+#' transformation is derived from the fitted structure stored in \code{fit}: the
+#' fixed-effect design, a log intercept, and the random-effect SD structure.
 #'
 #' @details The function transforms regression coefficients and intercepts
 #' to account for predictor standardization using a combinatorial approach that
@@ -152,9 +153,10 @@ transform_scale_samples <- function(fit, formula_scale = NULL){
 #' random-number state (\code{.Random.seed} and \code{RNGkind()}) is restored
 #' afterwards. With \code{NULL}, the caller's random-number stream is used.
 #' @param formula_scale optional nested list containing standardization information.
-#' If not provided, extracted from \code{fit} attribute. The transformation is
-#' derived from the fitted structure stored in \code{fit}: the fixed-effect
-#' design, a log intercept, and the random-effect SD structure.
+#' If not provided, extracted from \code{fit} attribute. An entry must name
+#' every predictor that \code{fit} standardized for that parameter. The
+#' transformation is derived from the fitted structure stored in \code{fit}: the
+#' fixed-effect design, a log intercept, and the random-effect SD structure.
 #'
 #' @details When models use auto-scaling (standardizing predictors), the posterior
 #' samples are on the standardized scale. To correctly visualize priors on the

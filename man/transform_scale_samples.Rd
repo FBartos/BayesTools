@@ -14,9 +14,10 @@ and other fit objects are not supported.}
 information keyed by parameter name, replacing the \code{formula_scale}
 attribute of \code{fit}. Each parameter entry contains scaling info (mean and
 sd) for each standardized predictor, e.g.,
-\code{list(mu = list(mu_x1 = list(mean = 0, sd = 1)))}. The transformation is
-derived from the fitted structure stored in \code{fit}: the fixed-effect
-design, a log intercept, and the random-effect SD structure.}
+\code{list(mu = list(mu_x1 = list(mean = 0, sd = 1)))}. An entry must name
+every predictor that \code{fit} standardized for that parameter. The
+transformation is derived from the fitted structure stored in \code{fit}: the
+fixed-effect design, a log intercept, and the random-effect SD structure.}
 }
 \value{
 A numeric matrix of posterior samples transformed back to the

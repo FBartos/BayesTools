@@ -2264,3 +2264,35 @@ test_that("a hand-built formula_scale is completed with the fitted log-intercept
   expect_equal(prior_samples, transform_prior_samples(auto_fit, n_samples = 500, seed = 1),
     tolerance = 1e-12)
 })
+
+test_that("a formula_scale override must name every standardized predictor of the fit", {
+
+  df <- data.frame(
+    x1 = c(1, 3, 7, 2, 6, 11, 4, 5, 9, 8),
+    x2 = c(10, 12, 9, 20, 15, 11, 30, 8, 25, 13)
+  )
+  priors <- list(
+    intercept = prior("normal", list(0, 1)), x1 = prior("normal", list(0, 1)),
+    x2 = prior("normal", list(0, 1)), "x1:x2" = prior("normal", list(0, 1))
+  )
+  scaled <- JAGS_formula(~ x1 * x2, "mu", df, priors, formula_scale = list(x1 = TRUE, x2 = TRUE))
+  draws <- cbind(mu_intercept = 1, mu_x1 = 0.5, mu_x2 = -0.3, mu_x1__xXx__x2 = 0.2)
+  fit <- .manual_scale_carrier_fit(JAGS_formula_draws(
+    draws, ~ x1 * x2, "mu", df, priors, formula_scale = list(x1 = TRUE, x2 = TRUE)))
+
+  full <- list(mu = scaled$formula_scale)
+  expect_identical(transform_scale_samples(fit, formula_scale = full), transform_scale_samples(fit))
+
+  partial <- scaled$formula_scale
+  partial$mu_x2 <- NULL
+  message <- paste0(
+    "The 'formula_scale' entry for parameter 'mu' omits the standardized predictor 'mu_x2' of the fitted model. ",
+    "Supply the mean and SD of every standardized predictor, ",
+    "or leave 'formula_scale' unspecified to use the fitted values."
+  )
+  expect_error(transform_scale_samples(fit, formula_scale = list(mu = partial)), message, fixed = TRUE)
+  expect_error(transform_prior_samples(fit, n_samples = 10, seed = 1, formula_scale = list(mu = partial)),
+    message, fixed = TRUE)
+  none <- list()
+  expect_error(transform_scale_samples(fit, formula_scale = list(mu = none)), "'mu_x1', 'mu_x2'", fixed = TRUE)
+})

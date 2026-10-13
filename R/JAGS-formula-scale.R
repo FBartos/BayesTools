@@ -470,6 +470,18 @@
   fitted_scale <- attr(fit, "formula_scale", exact = TRUE)
   if(is.list(fitted_scale)){
     for(parameter in intersect(names(formula_scale), names(fitted_scale))){
+      # The override replaces the fitted scale: a predictor it omits would be
+      # treated as unscaled, giving a result of mixed scales.
+      omitted <- setdiff(names(fitted_scale[[parameter]]), names(formula_scale[[parameter]]))
+      if(length(omitted) > 0L){
+        stop(
+          "The 'formula_scale' entry for parameter '", parameter, "' omits the standardized predictor",
+          if(length(omitted) > 1L) "s", " ", paste0("'", omitted, "'", collapse = ", "),
+          " of the fitted model. Supply the mean and SD of every standardized predictor, ",
+          "or leave 'formula_scale' unspecified to use the fitted values.",
+          call. = FALSE
+        )
+      }
       fitted_attributes <- attributes(fitted_scale[[parameter]])
       .bt_formula_scale_finalized_check(fitted_scale[[parameter]], parameter)
       attributes(formula_scale[[parameter]]) <- c(
