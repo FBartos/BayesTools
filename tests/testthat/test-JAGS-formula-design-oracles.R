@@ -14048,3 +14048,76 @@ test_that("random factor interactions match factors to terms by their exact name
     fixed = TRUE
   )
 })
+
+test_that("SD components of mixed-contrast random interactions are level cells only when the column is that cell", {
+
+  testthat::skip_if_not_installed("runjags")
+
+  df <- data.frame(
+    study = factor(rep(paste0("s", 1:6), each = 12)),
+    f = factor(rep(c("x", "y", "z"), 24), levels = c("x", "y", "z")),
+    g = factor(rep(c("p", "q"), each = 36), levels = c("p", "q"))
+  )
+  compile <- function(formula, f_contrast, g_contrast){
+    data <- df
+    stats::contrasts(data$f) <- f_contrast
+    stats::contrasts(data$g) <- g_contrast
+    JAGS_formula(
+      formula, "mu", data, list(intercept = prior("normal", list(0, 1))),
+      prior_random = prior_random(sd = prior("gamma", list(2, 2)))
+    )
+  }
+  leaf_terms <- function(result){
+    unname(result$formula_design$random_effects[[1L]]$sd_leaves$leaf_terms)
+  }
+  both <- ~ 1 + diag(1 + f * g | study, hom = FALSE)
+  coefficients <- c("f__xXx__g{1}", "f__xXx__g{2}")
+
+  # the interaction columns are products with a contrast coefficient, not cells
+  treatment_orthonormal <- compile(both, "contr.treatment", "contr.orthonormal")
+  expect_identical(
+    leaf_terms(treatment_orthonormal),
+    c("intercept", "f[y]", "f[z]", "g{1}", coefficients)
+  )
+  expect_identical(
+    leaf_terms(compile(both, "contr.orthonormal", "contr.treatment")),
+    c("intercept", "f{1}", "f{2}", "g[q]", coefficients)
+  )
+  expect_identical(
+    leaf_terms(compile(both, "contr.meandif", "contr.treatment")),
+    c("intercept", "f{1}", "f{2}", "g[q]", coefficients)
+  )
+  # the public labels follow the leaf terms
+  expect_identical(
+    rownames(.oracle_independent_sd_table(treatment_orthonormal)),
+    c("(mu) intercept", "(mu) sd(intercept)", "(mu) sd(f[y])", "(mu) sd(f[z])",
+      "(mu) sd(g{1})", "(mu) sd(f:g{1})", "(mu) sd(f:g{2})")
+  )
+
+  # treatment and treatment: the interaction columns are the (y, q) and (z, q) cells
+  treatment_treatment <- compile(both, "contr.treatment", "contr.treatment")
+  expect_identical(
+    leaf_terms(treatment_treatment),
+    c("intercept", "f[y]", "f[z]", "g[q]", "f[y]__xXx__g[q]", "f[z]__xXx__g[q]")
+  )
+  # independent f and treatment g: the interaction columns are direct cells too
+  independent_treatment <- compile(both, "contr.independent", "contr.treatment")
+  expect_identical(
+    leaf_terms(independent_treatment),
+    c("intercept", "f[x]", "f[y]", "f[z]", "g[q]",
+      "f[x]__xXx__g[q]", "f[y]__xXx__g[q]", "f[z]__xXx__g[q]")
+  )
+  expect_identical(
+    rownames(.oracle_independent_sd_table(independent_treatment)),
+    c("(mu) intercept", "(mu) sd(intercept)", "(mu) sd(f[x])", "(mu) sd(f[y])",
+      "(mu) sd(f[z])", "(mu) sd(g[q])", "(mu) sd(f[x]:g[q])", "(mu) sd(f[y]:g[q])",
+      "(mu) sd(f[z]:g[q])")
+  )
+  # the f:g-only term is coded by level indicators
+  only_interaction <- compile(~ 1 + diag(1 + f:g | study, hom = FALSE),
+                              "contr.treatment", "contr.treatment")
+  expect_identical(
+    leaf_terms(only_interaction),
+    c("intercept", paste0("f[", c("x", "y", "z"), "]__xXx__g[", rep(c("p", "q"), each = 3L), "]"))
+  )
+})

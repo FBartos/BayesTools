@@ -540,22 +540,28 @@
   )
 
   # The level cells coded by a factor term's design columns, which SD factor
-  # priors of the term carry as their factor design.
+  # priors of the term carry as their factor design and the SD component
+  # labels are read from. A term's design is built once per block.
+  factor_term_designs <- list()
   factor_term_design <- function(model_term){
 
-    .bt_random_effect_factor_term_design(
-      model_term = model_term,
-      model_terms = model_terms,
-      formula = formula,
-      data = data,
-      predictors = predictors,
-      predictors_type = predictors_type,
-      has_intercept = has_intercept,
-      preserve_no_intercept_contrasts = preserve_no_intercept_contrasts,
-      structure = random_structure,
-      block_name = random_term$block_name,
-      n_block_columns = n_par
-    )
+    if(is.null(factor_term_designs[[model_term]])){
+      factor_term_designs[[model_term]] <<- .bt_random_effect_factor_term_design(
+        model_term = model_term,
+        model_terms = model_terms,
+        formula = formula,
+        data = data,
+        predictors = predictors,
+        predictors_type = predictors_type,
+        has_intercept = has_intercept,
+        preserve_no_intercept_contrasts = preserve_no_intercept_contrasts,
+        structure = random_structure,
+        block_name = random_term$block_name,
+        n_block_columns = n_par
+      )
+    }
+
+    factor_term_designs[[model_term]]
   }
 
   # Resolve the canonical SD leaves and bindings before choosing a sampled

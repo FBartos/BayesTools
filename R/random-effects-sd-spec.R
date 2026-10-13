@@ -33,7 +33,8 @@
       data = data,
       random_structure = random_structure,
       has_intercept = has_intercept,
-      homogeneous_sd = homogeneous_sd
+      homogeneous_sd = homogeneous_sd,
+      factor_term_design = factor_term_design
     ))
   }
 
@@ -60,7 +61,8 @@
       data = data,
       random_structure = random_structure,
       has_intercept = has_intercept,
-      homogeneous_sd = homogeneous_sd
+      homogeneous_sd = homogeneous_sd,
+      factor_term_design = factor_term_design
     )
     sd_binding$sd_component_names <- sd_leaves$leaf_names
     sd_binding$sd_component_terms <- sd_leaves$leaf_terms
@@ -167,7 +169,8 @@
     has_intercept = has_intercept,
     homogeneous_sd = homogeneous_sd,
     prior_list = prior_list,
-    prior_nodes = TRUE
+    prior_nodes = TRUE,
+    factor_term_design = factor_term_design
   )
   if(!identical(unname(sd_leaves$leaf_names_by_column), unname(sd_parameter_names))){
     stop("Random-effect SD leaf metadata are inconsistent with generated SD parameters.", call. = FALSE)
@@ -688,7 +691,8 @@
                                                 predictors_type, data,
                                                 random_structure,
                                                 has_intercept,
-                                                homogeneous_sd){
+                                                homogeneous_sd,
+                                                factor_term_design = NULL){
 
   terms_indexes <- .bt_random_effect_term_indexes(model_matrix, has_intercept)
   allocation_info <- sd_binding$allocations[[1L]]
@@ -704,7 +708,8 @@
       data = data,
       random_structure = random_structure,
       has_intercept = has_intercept,
-      homogeneous_sd = homogeneous_sd
+      homogeneous_sd = homogeneous_sd,
+      factor_term_design = factor_term_design
     ))
   }
 
@@ -725,7 +730,8 @@
     data = data,
     random_structure = random_structure,
     has_intercept = has_intercept,
-    homogeneous_sd = homogeneous_sd
+    homogeneous_sd = homogeneous_sd,
+    factor_term_design = factor_term_design
   )
 
   if(isTRUE(homogeneous_sd)){
@@ -810,7 +816,8 @@
                                                  has_intercept,
                                                  homogeneous_sd,
                                                  prior_list = NULL,
-                                                 prior_nodes = FALSE){
+                                                 prior_nodes = FALSE,
+                                                 factor_term_design = NULL){
 
   n_columns <- ncol(model_matrix)
   terms_indexes <- .bt_random_effect_term_indexes(model_matrix, has_intercept)
@@ -857,8 +864,7 @@
             columns = columns,
             predictors_type = predictors_type,
             data = data,
-            contrast = contrast,
-            random_structure = random_structure
+            factor_term_design = factor_term_design
           )
           leaf_terms[columns] <- leaf_term_labels
           leaf_names[columns] <- sd_node_names(model_term, length(columns))
@@ -1077,10 +1083,14 @@
   out
 }
 
+# SD component labels of a random factor term whose columns are level cells or
+# treatment-coded levels. In an interaction, a column is labelled by its level
+# cell (`f[a]__xXx__g[u]`) only when it is structurally that one cell, from the
+# term's stored per-factor-coded design ('factor_term_design'); any other
+# column is contrast coefficient `j`.
 .bt_random_effect_factor_sd_leaf_terms <- function(model_term, columns,
                                                    predictors_type, data,
-                                                   contrast,
-                                                   random_structure){
+                                                   factor_term_design = NULL){
 
   n_parameters <- length(columns)
   # Without identifiable level cells, a column is a contrast coefficient.
@@ -1099,29 +1109,23 @@
   }
 
   if(is.list(level_names)){
-    candidate_level_names <- list(level_names)
-    treatment_level_names <- lapply(level_names, function(level_name){
-      level_name[-1L]
-    })
-    if(all(lengths(treatment_level_names) > 0L)){
-      candidate_level_names <- c(candidate_level_names, list(treatment_level_names))
+    if(!is.function(factor_term_design)){
+      stop("Random-effect SD leaves require the random-effect term design.", call. = FALSE)
     }
-    if(identical(contrast, "contr.treatment") &&
-       !random_structure %in% c("cs", "hcs", "ar1", "car", "har")){
-      candidate_level_names <- rev(candidate_level_names)
+    term_design <- factor_term_design(model_term)
+    if(ncol(term_design$design) != n_parameters){
+      return(coefficient_terms)
     }
-
-    for(candidate in candidate_level_names){
-      if(prod(lengths(candidate)) != n_parameters){
-        next
-      }
-      return(.format_factor_level_parameter_names(
-        parameter = model_term,
-        level_names = candidate,
-        n_parameters = n_parameters
-      ))
+    direct <- .bt_factor_direct_cells_design(term_design$design, term_design$factor_contrasts)
+    if(all(is.na(direct))){
+      return(coefficient_terms)
     }
-
+    cell_names <- .format_factor_level_parameter_names(
+      parameter = model_term,
+      level_names = level_names,
+      n_parameters = nrow(term_design$design)
+    )
+    coefficient_terms[!is.na(direct)] <- cell_names[direct[!is.na(direct)]]
     return(coefficient_terms)
   }
 
@@ -1159,7 +1163,8 @@
                                                        data,
                                                        random_structure,
                                                        has_intercept,
-                                                       homogeneous_sd){
+                                                       homogeneous_sd,
+                                                       factor_term_design = NULL){
 
   allocation_info <- sd_binding$allocations[[1L]]
   leaves <- .bt_random_effect_resolved_sd_leaves(
@@ -1171,7 +1176,8 @@
     data = data,
     random_structure = random_structure,
     has_intercept = has_intercept,
-    homogeneous_sd = homogeneous_sd
+    homogeneous_sd = homogeneous_sd,
+    factor_term_design = factor_term_design
   )
   K <- length(leaves$leaf_names)
   if(K < 2L){
