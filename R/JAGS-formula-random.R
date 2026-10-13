@@ -1260,6 +1260,10 @@ random_group_prediction_keys <- function(term, data){
   )
 }
 
+# Labels that are shared (also with 'existing' labels) are disambiguated by
+# their exact tuple keys; unique labels are kept. A disambiguated label that
+# still equals another label of the final set takes the smallest unused integer
+# suffix (' #2', ' #3', ...), in group order.
 .bt_random_group_unique_labels <- function(labels, tuple_keys,
                                            existing = character()){
 
@@ -1267,12 +1271,18 @@ random_group_prediction_keys <- function(term, data){
   duplicate_labels <- duplicated(combined) |
     duplicated(combined, fromLast = TRUE)
   duplicate_labels <- tail(duplicate_labels, length(labels))
-  labels[duplicate_labels] <- paste0(
-    labels[duplicate_labels],
-    " [",
-    tuple_keys[duplicate_labels],
-    "]"
-  )
+  taken <- c(existing, labels[!duplicate_labels])
+  for(i in which(duplicate_labels)){
+    keyed <- paste0(labels[i], " [", tuple_keys[i], "]")
+    label <- keyed
+    suffix <- 1L
+    while(label %in% taken){
+      suffix <- suffix + 1L
+      label <- paste0(keyed, " #", suffix)
+    }
+    labels[i] <- label
+    taken <- c(taken, label)
+  }
   labels
 }
 

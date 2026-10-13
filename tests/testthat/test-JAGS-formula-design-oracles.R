@@ -13813,3 +13813,67 @@ test_that("structured random-effect indexes with a single level compile", {
     paste0("mu__xREx__g_time[", 1:2, "]")
   )
 })
+
+test_that("generated grouping labels are unique against the final label set", {
+
+  unique_labels <- BayesTools:::.bt_random_group_unique_labels
+
+  # shared labels take their tuple key; unique labels are unchanged
+  expect_identical(
+    unique_labels(c("a", "b", "a"), c("k1", "k2", "k3")),
+    c("a [k1]", "b", "a [k3]")
+  )
+  # a generated label that equals an ordinary label takes the smallest unused
+  # integer suffix and leaves the ordinary label alone
+  expect_identical(
+    unique_labels(c("a", "a", "a [k1]"), c("k1", "k2", "k3")),
+    c("a [k1] #2", "a [k2]", "a [k1]")
+  )
+  expect_identical(
+    unique_labels(c("a", "a", "a [k1]", "a [k1] #2"), c("k1", "k2", "k3", "k4")),
+    c("a [k1] #3", "a [k2]", "a [k1]", "a [k1] #2")
+  )
+  # two generated labels that coincide keep the first
+  expect_identical(
+    unique_labels(c("a [x]", "a [x]", "a", "a"), c("k", "k", "x", "y")),
+    c("a [x] [k]", "a [x] [k] #2", "a [x]", "a [y]")
+  )
+  # and the same against the labels that exist already (new prediction groups)
+  expect_identical(
+    unique_labels("a", "k1", existing = c("a", "a [k1]")),
+    "a [k1] #2"
+  )
+  expect_false(anyDuplicated(unique_labels(
+    c("a", "a", "a [k1]", "a [k1] #2", "b"), c("k1", "k2", "k3", "k4", "k5"),
+    existing = c("a [k2] #2")
+  )) > 0L)
+
+  # interaction groups whose labels contain the separator and a generated suffix
+  collision_data <- data.frame(
+    a = c("a", "a:b", "a"),
+    b = c("b:c", "c", "b:c [3:c:a|5:c:b:c]")
+  )
+  built <- JAGS_formula(
+    ~ 1 + diag(1 | a:b),
+    "mu",
+    collision_data,
+    list(intercept = prior("normal", list(0, 1))),
+    prior_random = prior_random(
+      a_b = random_block(sd = prior("normal", list(0, 1), truncation = list(0, Inf)))
+    )
+  )
+  term <- built$formula_design$random_effects[[1L]]
+  expect_identical(term$n_groups, 3L)
+  expect_identical(
+    term$group_levels,
+    c("a:b:c [3:c:a|5:c:b:c] #2", "a:b:c [3:c:a|5:c:b:c]", "a:b:c [5:c:a:b|3:c:c]")
+  )
+  expect_identical(term$group_map, c(1L, 3L, 2L))
+
+  # prediction replay of the fitted data matches every row to its fitted group
+  replay <- BayesTools:::.bt_random_effect_prediction_data(
+    term, collision_data, group_data = collision_data
+  )
+  expect_identical(replay$group_map, term$group_map)
+  expect_identical(replay$group_levels, term$group_levels)
+})
