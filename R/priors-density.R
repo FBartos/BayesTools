@@ -1228,12 +1228,12 @@ density.prior <- function(x,
 
     class(out) <- c("density", "density.prior", "density.prior.weightfunction")
     attr(out, "x_range") <- c(0, 1)
-    attr(out, "y_range") <- c(0, max(1, x_mean, x_lCI, x_uCI, na.rm = TRUE))
+    attr(out, "y_range") <- .weightfunction_plot_y_range(x_mean, x_lCI, x_uCI)
   }
 
   return(out)
 }
-.density.prior.PETPEESE               <- function(x, x_seq, x_range, n_points, n_samples, force_samples, individual, transformation, transformation_arguments, truncate_end){
+.density.prior.PETPEESE              <- function(x, x_seq, x_range, n_points, n_samples, force_samples, individual, transformation, transformation_arguments, truncate_end){
 
   # create either distribution for the parameter or the PET/PEESE function
   if(individual){

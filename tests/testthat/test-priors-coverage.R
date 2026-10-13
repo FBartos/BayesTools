@@ -1504,6 +1504,65 @@ test_that("log_omega weightfunction priors expose exact transformed marginals", 
   expect_equal(var(p_wf), c(0, lognormal_var, lognormal_var), tolerance = 1e-8)
 })
 
+test_that("log_omega weight moments follow the log-weight prior's exponential moments", {
+  moments <- function(p){
+    p_wf <- prior_weightfunction("one-sided", .05, wf_independent(p, scale = "log_omega"))
+    c(mean = mean(p_wf)[2], var = var(p_wf)[2])
+  }
+  lognormal_moments <- function(mu, s) c(exp(mu + s^2 / 2), exp(2 * mu + s^2) * expm1(s^2))
+  # exact lognormal identities, also for concentrated and wide priors
+  for(case in list(c(2, .01), c(log(1.5), .001), c(0, 10), c(.25, .5))){
+    expect_equal(unname(moments(prior("normal", list(case[1], case[2])))), lognormal_moments(case[1], case[2]), tolerance = 1e-8)
+  }
+
+  reference <- function(density, lower, upper, anchor = 0){
+    m <- vapply(1:2, function(k){
+      stats::integrate(function(x) exp(k * (x - anchor)) * density(x), lower, upper, rel.tol = 1e-13)$value
+    }, numeric(1))
+    c(mean = exp(anchor) * m[1], var = exp(2 * anchor) * (m[2] - m[1]^2))
+  }
+  # truncated normal, bounded priors and a truncated heavy tail: integration
+  trunc <- function(x) stats::dnorm(x) / (stats::pnorm(2) - stats::pnorm(-1))
+  expect_equal(unname(moments(prior("normal", list(0, 1), list(-1, 2)))), unname(reference(trunc, -1, 2)), tolerance = 1e-8)
+  expect_equal(unname(moments(prior("beta", list(2, 3)))), unname(reference(function(x) stats::dbeta(x, 2, 3), 0, 1)), tolerance = 1e-8)
+  expect_equal(unname(moments(prior("uniform", list(-1, 1)))), c(sinh(1), (exp(2) - exp(-2)) / 4 - sinh(1)^2), tolerance = 1e-8)
+  expect_equal(unname(moments(prior("uniform", list(-30, -29)))), c(exp(-29) * (1 - exp(-1)), exp(-58) * ((1 - exp(-2)) / 2 - (1 - exp(-1))^2)), tolerance = 1e-8)
+  t_trunc <- prior("t", list(0, .5, 30), list(-Inf, 2))
+  expect_equal(unname(moments(t_trunc)), unname(reference(function(x) pdf(t_trunc, x), -Inf, 2, anchor = 1)), tolerance = 1e-8)
+  # gamma and exponential with enough rate: finite exponential moments
+  expect_equal(unname(moments(prior("gamma", list(2, 3)))), c(2.25, (3 / (3 - 2))^2 - 2.25^2), tolerance = 1e-8)
+  expect_equal(unname(moments(prior("exp", list(3)))), c(3 / 2, 3 / 1 - (3 / 2)^2), tolerance = 1e-8)
+
+  # right tails without (enough) exponential moments give infinite moments
+  expect_identical(unname(moments(prior("t", list(0, .5, 30)))), c(Inf, Inf))
+  expect_identical(unname(moments(prior("lognormal", list(0, .5)))), c(Inf, Inf))
+  expect_identical(unname(moments(prior("invgamma", list(3, 2)))), c(Inf, Inf))
+  gamma_moments <- moments(prior("gamma", list(2, 1.5)))
+  expect_equal(unname(gamma_moments[1]), 9, tolerance = 1e-8)
+  expect_identical(unname(gamma_moments[2]), Inf)
+  expect_identical(unname(moments(prior("exp", list(1)))), c(Inf, Inf))
+  # a truncated right tail has all moments
+  expect_true(all(is.finite(moments(t_trunc))))
+
+  # a moment that no integration resolves, or that no double holds, is refused
+  inverse_moment <- prior("invmoment", list(location = 0, tau = 1, order = 1, df = 3))
+  component <- list(type = "prior", scale = "log_omega", prior = inverse_moment)
+  expect_error(.prior_weightfunction_component_mean(component), class = "BayesTools_numerical_unavailable")
+  expect_error(.prior_weightfunction_component_var(component), class = "BayesTools_numerical_unavailable")
+  wide <- list(type = "prior", scale = "log_omega", prior = prior("normal", list(0, 40)))
+  expect_error(.prior_weightfunction_component_mean(wide), class = "BayesTools_numerical_range_limit")
+  expect_error(.prior_weightfunction_component_var(wide), class = "BayesTools_numerical_range_limit")
+
+  # the plotted mean is the same quantity
+  p_wf <- prior_weightfunction("one-sided", .05, wf_independent(prior("normal", list(2, .01)), scale = "log_omega"))
+  plotted <- .weightfunction_prior_marginal_components(.weightfunction_prior_list_context(list(p_wf)), 2)[[1]]
+  expect_equal(.weightfunction_component_mean(plotted), mean(p_wf)[[2]])
+  heavy <- list(type = "prior", scale = "log_omega", prior = prior("t", list(0, .5, 30)), weight = 1)
+  expect_identical(.weightfunction_component_mean(heavy), Inf)
+  expect_identical(.weightfunction_mixture_mean(list(heavy, list(type = "point", location = 1, weight = 0))), Inf)
+  expect_identical(.weightfunction_mixture_mean(list(modifyList(heavy, list(weight = 0)), list(type = "point", location = 1, weight = 1))), 1)
+})
+
 test_that("cumulative weightfunction priors expose exact beta marginals", {
   alpha <- c(1, 2, 3)
   p_wf <- prior_weightfunction(

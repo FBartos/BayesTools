@@ -35,7 +35,7 @@
 
   class(out) <- c("density", "density.prior", "density.prior.weightfunction")
   attr(out, "x_range") <- c(0, 1)
-  attr(out, "y_range") <- c(0, max(1, x_mean, x_lCI, x_uCI, na.rm = TRUE))
+  attr(out, "y_range") <- .weightfunction_plot_y_range(x_mean, x_lCI, x_uCI)
 
   return(out)
 }
@@ -271,20 +271,7 @@
     component$type,
     "point" = component$location,
     "beta"  = component$alpha / (component$alpha + component$beta),
-    "prior" = if(component$scale == "omega"){
-      mean(component$prior)
-    }else{
-      stats::integrate(
-        f     = function(x, prior) {
-          y <- exp(x) * pdf(prior, x)
-          y[!is.finite(y)] <- 0
-          y
-        },
-        lower = component$prior$truncation[["lower"]],
-        upper = component$prior$truncation[["upper"]],
-        prior = component$prior
-      )$value
-    },
+    "prior" = .prior_weightfunction_component_mean(component),
     "one_minus_product_beta" = {
       1 - (component$u_alpha / (component$u_alpha + component$u_beta)) *
         (component$v_alpha / (component$v_alpha + component$v_beta))
@@ -414,7 +401,9 @@
 }
 .weightfunction_mixture_mean <- function(components){
 
+  # a component without weight contributes nothing, also when its mean is Inf
   sum(vapply(components, function(component){
+    if(component$weight == 0) return(0)
     component$weight * .weightfunction_component_mean(component)
   }, numeric(1)))
 }

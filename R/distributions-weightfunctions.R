@@ -17,3 +17,15 @@
     y = sort(rep(seq_len(n_bins), 2L))
   )
 }
+# Plotted mean of a weight that has none (a heavy right tail on the log scale
+# makes E[omega] infinite): the mean line is omitted for that bin, so NA breaks
+# the line, and the y range comes from the finite values.
+.weightfunction_plot_mean <- function(x_mean){
+
+  x_mean[!is.finite(x_mean)] <- NA_real_
+  x_mean
+}
+.weightfunction_plot_y_range <- function(x_mean, x_lCI, x_uCI){
+
+  c(0, max(1, .weightfunction_plot_mean(x_mean), x_lCI, x_uCI, na.rm = TRUE))
+}

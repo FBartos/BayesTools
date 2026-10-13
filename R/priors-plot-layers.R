@@ -401,7 +401,7 @@ geom_prior  <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
   lty       <- if(!is.null(dots[["lty"]]))      dots[["lty"]]      else .plot.prior_settings()[["lty"]]
 
   # weightfunction specific stuff
-  x_mean <- plot_data$y
+  x_mean <- .weightfunction_plot_mean(plot_data$y)
   x_lCI  <- plot_data$y_lCI
   x_uCI  <- plot_data$y_uCI
   x_at   <- .weightfunction_plot_x_at(plot_data, rescale_x)
@@ -566,7 +566,7 @@ geom_prior  <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
   lty       <- if(!is.null(dots[["linetype"]])) dots[["linetype"]] else  if(!is.null(dots[["lty"]])) dots[["lty"]] else .plot.prior_settings()[["lty"]]
 
   # weightfunction specific stuff
-  x_mean <- plot_data$y
+  x_mean <- .weightfunction_plot_mean(plot_data$y)
   x_lCI  <- plot_data$y_lCI
   x_uCI  <- plot_data$y_uCI
   x_at   <- .weightfunction_plot_x_at(plot_data, rescale_x)
@@ -589,7 +589,7 @@ geom_prior  <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
       mapping = ggplot2::aes(
         x = .data[["x"]],
         y = .data[["y"]]),
-      linewidth = lwd, linetype = lty, color = col)
+      linewidth = lwd, linetype = lty, color = col, na.rm = TRUE)
   )
 
   return(geom)

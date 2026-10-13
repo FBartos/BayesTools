@@ -691,16 +691,7 @@ wf_independent <- function(prior, scale = "omega"){
       if(component$scale == "omega"){
         mean(component$prior)
       }else{
-        stats::integrate(
-          f     = function(x, prior) {
-            y <- exp(x) * pdf(prior, x)
-            y[!is.finite(y)] <- 0
-            y
-          },
-          lower = component$prior$truncation[["lower"]],
-          upper = component$prior$truncation[["upper"]],
-          prior = component$prior
-        )$value
+        .prior_weightfunction_log_omega_moments(component$prior, "mean")
       }
     }
   )
@@ -716,19 +707,125 @@ wf_independent <- function(prior, scale = "omega"){
       if(component$scale == "omega"){
         var(component$prior)
       }else{
-        m1 <- .prior_weightfunction_component_mean(component)
-        m2 <- stats::integrate(
-          f     = function(x, prior) {
-            y <- exp(2 * x) * pdf(prior, x)
-            y[!is.finite(y)] <- 0
-            y
-          },
-          lower = component$prior$truncation[["lower"]],
-          upper = component$prior$truncation[["upper"]],
-          prior = component$prior
-        )$value
-        m2 - m1^2
+        .prior_weightfunction_log_omega_moments(component$prior, "var")
       }
     }
   )
+}
+# Mean and variance of the weight omega = exp(X) of a prior X on the log scale,
+# from m_k = E[exp(k X)] on the truncation range (log m_k, possibly Inf, from
+# .prior_weightfunction_log_omega_log_moment()). The mean is Inf when m_1 is
+# Inf and the variance is Inf when m_2 is Inf. This helper serves the
+# distribution methods and the plotted mean of the weightfunction plots.
+.prior_weightfunction_log_omega_moments <- function(prior, moment = c("mean", "var")){
+
+  moment <- match.arg(moment)
+  family <- prior[["distribution"]]
+  limit  <- function(what){
+    .prior_numerical_signal(what, family, "natural", integer(),
+      paste0("The ", what, " of the weight exceeds the largest representable double"),
+      range = TRUE, error = TRUE)
+  }
+
+  log_m1 <- .prior_weightfunction_log_omega_log_moment(prior, 1)
+  if(is.infinite(log_m1)){
+    return(Inf)
+  }
+  if(moment == "mean"){
+    if(log_m1 > log(.Machine$double.xmax)) limit("mean")
+    return(exp(log_m1))
+  }
+
+  log_m2 <- .prior_weightfunction_log_omega_log_moment(prior, 2)
+  if(is.infinite(log_m2)){
+    return(Inf)
+  }
+
+  # Var = m_1^2 (m_2 / m_1^2 - 1) with m_2 / m_1^2 >= 1 (Jensen)
+  gap <- log_m2 - 2 * log_m1
+  if(!is.finite(gap) || gap < 0){
+    .prior_numerical_signal("variance", family, "natural", integer(),
+      "The variance of the weight is not resolvable in double-precision arithmetic",
+      error = TRUE)
+  }
+  log_var <- 2 * log_m1 + log(expm1(gap))
+  if(log_var > log(.Machine$double.xmax)) limit("variance")
+
+  exp(log_var)
+}
+# log E[exp(k X)] of a prior X on its truncation range [a, b]; Inf when the
+# moment does not exist.
+# - normal: closed form, log m_k = k mu + k^2 sd^2 / 2 + log[Phi(b' - k sd) -
+#   Phi(a' - k sd)] - log[Phi(b') - Phi(a')] (a', b' standardized bounds), from
+#   the stable log interval mass of the normal with the shifted mean mu + k sd^2.
+# - b = Inf and a right tail without exponential moments (t, lognormal,
+#   invgamma; gamma and exponential with rate <= k): Inf.
+# - otherwise integration of exp(k (x - x0)) f(x) around the anchor x0 (the
+#   median, so the integral is at least 1/2 whatever the scale of the prior),
+#   split at the 1e-6, 1/2 and 1 - 1e-6 quantiles. A failed or non-finite
+#   integral, including a divergent one, is refused as numerically unavailable.
+.prior_weightfunction_log_omega_log_moment <- function(prior, k){
+
+  family     <- prior[["distribution"]]
+  parameters <- prior[["parameters"]]
+  lower      <- prior$truncation[["lower"]]
+  upper      <- prior$truncation[["upper"]]
+
+  if(family == "normal"){
+    shifted <- prior
+    shifted$parameters[["mean"]] <- parameters[["mean"]] + k * parameters[["sd"]]^2
+    return(
+      k * parameters[["mean"]] + k^2 * parameters[["sd"]]^2 / 2 +
+        .prior_normal_log_interval_mass(shifted, lower, upper) -
+        .prior_normal_log_interval_mass(prior, lower, upper)
+    )
+  }
+
+  if(is.infinite(upper)){
+    if(family %in% c("t", "lognormal", "invgamma")){
+      return(Inf)
+    }
+    if(family %in% c("gamma", "exp") && parameters[["rate"]] <= k){
+      return(Inf)
+    }
+  }
+
+  unavailable <- function(reason){
+    .prior_numerical_signal("weight moment integration", family, "finite", integer(),
+      reason, error = TRUE)
+  }
+  # an error that is not already a classed numerical condition becomes one
+  refuse <- function(prefix){
+    function(e){
+      if(inherits(e, "BayesTools_numerical_condition")) stop(e)
+      unavailable(paste0(prefix, " (", conditionMessage(e), ")"))
+    }
+  }
+
+  anchors <- tryCatch(
+    .prior_numerical_without_warnings(quant(prior, c(1e-6, .5, 1 - 1e-6))),
+    error = refuse("The quantiles that split the integration range could not be resolved"))
+  if(any(!is.finite(anchors))){
+    unavailable("The quantiles that split the integration range are not finite")
+  }
+  anchor <- anchors[2L]
+  breaks <- sort(unique(c(lower, pmin(pmax(anchors, lower), upper), upper)))
+
+  log_density <- .prior_simple_lpdf_evaluator(prior, purpose = "natural_integral")
+  integrand   <- function(x) exp(k * (x - anchor) + log_density(x))
+
+  total <- 0
+  for(i in seq_len(length(breaks) - 1L)){
+    piece <- tryCatch(
+      stats::integrate(integrand, lower = breaks[i], upper = breaks[i + 1L],
+                       rel.tol = 1e-10, subdivisions = 500L, stop.on.error = FALSE),
+      error = refuse("The integration failed"))
+    if(!identical(piece$message, "OK") || !is.finite(piece$value)){
+      unavailable(paste0("The integral over the truncation range is divergent or could not be resolved (",
+                         piece$message, ")"))
+    }
+    total <- total + piece$value
+  }
+
+  k * anchor + log(total)
 }
