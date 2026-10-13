@@ -324,9 +324,7 @@
         needed <- union(needed, as.character(.bt_parameter_source_inputs(source)))
       }
     }
-    owner <- design$point_expression_owner
-    if(!is.null(owner)) needed <- union(needed,
-      unlist(lapply(owner$points, `[[`, "parameter_dependencies"), use.names = FALSE))
+    needed <- union(needed, .bt_formula_predictor_point_dependencies(design))
   }
   needed <- unique(sub("\\[[0-9]+\\]$", "", needed[!is.na(needed)]))
   priors <- priors[intersect(needed, names(priors))]

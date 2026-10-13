@@ -6,10 +6,11 @@
 #' `JAGS_formula_coordinate_dependencies()` reports every fitted formula
 #' predictor that structurally depends on the supplied posterior coordinates.
 #' It uses the persisted formula designs and parameter map, including direct
-#' coefficients, formula expressions, coefficient multipliers, and external
-#' random-effect SD sources. A row-source callback is reported as opaque for
-#' every queried coordinate because its R code may inspect arbitrary posterior
-#' parameters.
+#' coefficients, formula expressions, coefficient multipliers, the parents of
+#' expression-point coefficients and multipliers (`"point_expression"`), and
+#' external random-effect SD sources. A row-source callback is reported as
+#' opaque for every queried coordinate because its R code may inspect arbitrary
+#' posterior parameters.
 #'
 #' @param fit fitted object created by [JAGS_fit()].
 #' @param coordinates unique fitted coordinate names.
@@ -115,9 +116,9 @@ JAGS_formula_coordinate_dependencies <- function(fit, coordinates){
 #'
 #' The accessor reports `"affine"` only when the stored metadata proves that
 #' the selected update is additive on the fitted predictor scale. Coordinates
-#' reused by formula expressions, coefficient multipliers, or random-effect
-#' scale sources are reported as non-affine or unsupported so callers can
-#' retain a generic evaluator.
+#' reused by formula expressions, coefficient multipliers, expression-point
+#' coefficients, or random-effect scale sources are reported as non-affine or
+#' unsupported so callers can retain a generic evaluator.
 #'
 #' A logged intercept is additive in its own logarithm rather than in the
 #' fitted coordinate: the predictor adds `log(new) - log(current)` times the
@@ -475,8 +476,20 @@ JAGS_formula_predictor_basis <- function(fit, directions,
       "parameter_dependencies"
     ), use.names = FALSE)),
     multiplier = .bt_formula_predictor_multiplier_dependencies(design),
-    random_sd_source = .bt_formula_predictor_random_dependencies(design)
+    random_sd_source = .bt_formula_predictor_random_dependencies(design),
+    point_expression = .bt_formula_predictor_point_dependencies(design)
   )
+}
+
+# The parent parameters of every expression point the design retains, that is
+# the coefficients and multipliers declared as `point(expression(...))` and
+# the parents of their parents, as the owner closed them.
+.bt_formula_predictor_point_dependencies <- function(design){
+
+  owner <- design$point_expression_owner
+  if(is.null(owner)) return(character())
+  unique(unlist(lapply(owner$points, `[[`, "parameter_dependencies"),
+                use.names = FALSE))
 }
 
 .bt_formula_predictor_has_opaque_random_dependency <- function(design){
@@ -510,6 +523,12 @@ JAGS_formula_predictor_basis <- function(fit, directions,
     return(paste(
       "Selected coefficient coordinates are reused by a persisted formula",
       "expression."
+    ))
+  }
+  if("point_expression" %in% types){
+    return(paste(
+      "Selected coefficient coordinates are parents of a persisted",
+      "expression-point coefficient or multiplier."
     ))
   }
   if("multiplier" %in% types){

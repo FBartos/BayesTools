@@ -40,6 +40,19 @@ skip_if_not_test_profile("unit")
   attach_test_parameter_map(samples)
 }
 
+# A fit object carrying the finalized designs of a JAGS_formula_draws() result.
+.formula_predictor_basis_carrier_fit <- function(carrier) {
+
+  fit <- coda::mcmc.list(coda::mcmc(as.matrix(carrier)))
+  class(fit) <- c("BayesTools_fit", class(fit))
+  for (name in c("prior_list", "formula_design", "formula_scale")) {
+    attr(fit, name) <- attr(carrier, name)
+  }
+  fit <- .bt_attach_parameter_map(fit)
+  fit <- .bt_attach_draw_geometry(fit)
+  .bt_attach_fit_contract(fit)
+}
+
 
 test_that("formula predictor bases preserve exact factor columns and ordering", {
 
@@ -455,4 +468,81 @@ test_that("formula dependencies include external random SD sources", {
   expect_equal(dependencies$coordinate_name, "tau")
   expect_equal(dependencies$formula_parameter, "mu")
   expect_equal(dependencies$dependency_type, "random_sd_source")
+})
+
+
+test_that("coordinates read by expression points are predictor dependencies", {
+
+  data <- data.frame(x = c(-2, -1, 1, 2), z = c(1, 3, -1, 0))
+  dependency_frame <- function(coordinate_name, dependency_type) {
+    data.frame(
+      coordinate_name = coordinate_name,
+      formula_parameter = "mu",
+      dependency_type = dependency_type,
+      stringsAsFactors = FALSE
+    )
+  }
+
+  # An external parent of an expression-point coefficient.
+  draws <- cbind(theta = c(.25, .75), mu_x = c(.5, 1.5))
+  attr(draws, "prior_list") <- list(theta = prior("normal", list(0, 1)))
+  carrier <- JAGS_formula_draws(
+    draws, ~ x, "mu", data["x"],
+    list(
+      intercept = prior("point", list(0)),
+      x = prior("point", list(location = expression(2 * theta)))
+    )
+  )
+  fit <- .formula_predictor_basis_carrier_fit(carrier)
+  expect_equal(
+    JAGS_formula_coordinate_dependencies(fit, c("theta", "mu_x")),
+    dependency_frame(c("theta", "mu_x"), c("point_expression", "coefficient"))
+  )
+
+  # A fitted coefficient that feeds an expression-point coefficient: moving
+  # mu_z by one moves the predictor by z + 2 x, not by the column of z.
+  draws <- cbind(mu_intercept = c(.1, .2), mu_z = c(.25, .75))
+  attr(draws, "prior_list") <- list()
+  priors <- list(
+    intercept = prior("normal", list(0, 1)),
+    z = prior("normal", list(0, 1)),
+    x = prior("point", list(location = expression(2 * mu_z)))
+  )
+  carrier <- JAGS_formula_draws(draws, ~ x + z, "mu", data, priors)
+  fit <- .formula_predictor_basis_carrier_fit(carrier)
+  expect_equal(
+    JAGS_formula_coordinate_dependencies(fit, "mu_z"),
+    dependency_frame(c("mu_z", "mu_z"), c("coefficient", "point_expression"))
+  )
+  moved <- draws
+  moved[, "mu_z"] <- moved[, "mu_z"] + 1
+  moved_carrier <- JAGS_formula_draws(moved, ~ x + z, "mu", data, priors)
+  expect_equal(
+    unname(JAGS_evaluate_formula(moved_carrier, parameter = "mu") -
+             JAGS_evaluate_formula(carrier, parameter = "mu")),
+    unname(outer(data$z + 2 * data$x, c(1, 1)))
+  )
+  basis <- JAGS_formula_predictor_basis(fit, directions = c(mu_z = 1))
+  expect_identical(basis$status, "unsupported")
+  expect_match(basis$reason, "expression-point")
+  expect_null(basis$basis)
+
+  # The parents of an expression-point multiplier and of its parents.
+  scaled <- prior("normal", list(0, 1))
+  attr(scaled, "multiply_by") <- "sigma"
+  draws <- cbind(mu_intercept = c(.1, .2), mu_x = c(.5, -.5), theta = c(1, 3))
+  attr(draws, "prior_list") <- list(
+    theta = prior("normal", list(0, 1)),
+    delta = prior("point", list(location = expression(theta + 1))),
+    sigma = prior("point", list(location = expression(2 * delta)))
+  )
+  carrier <- JAGS_formula_draws(
+    draws, ~ 1 + x, "mu", data["x"],
+    list(intercept = prior("normal", list(0, 1)), x = scaled)
+  )
+  fit <- .formula_predictor_basis_carrier_fit(carrier)
+  expect_equal(
+    JAGS_formula_coordinate_dependencies(fit, c("theta", "mu_x")),
+    dependency_frame(c("theta", "mu_x"), c("point_expression", "coefficient"))
+  )
 })

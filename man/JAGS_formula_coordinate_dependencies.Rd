@@ -20,10 +20,11 @@ fitted formula predictors depends on the supplied coordinates.
 \code{JAGS_formula_coordinate_dependencies()} reports every fitted formula
 predictor that structurally depends on the supplied posterior coordinates.
 It uses the persisted formula designs and parameter map, including direct
-coefficients, formula expressions, coefficient multipliers, and external
-random-effect SD sources. A row-source callback is reported as opaque for
-every queried coordinate because its R code may inspect arbitrary posterior
-parameters.
+coefficients, formula expressions, coefficient multipliers, the parents of
+expression-point coefficients and multipliers (\code{"point_expression"}), and
+external random-effect SD sources. A row-source callback is reported as
+opaque for every queried coordinate because its R code may inspect arbitrary
+posterior parameters.
 }
 \seealso{
 \code{\link[=JAGS_formula_design]{JAGS_formula_design()}} \code{\link[=parameter_map]{parameter_map()}}

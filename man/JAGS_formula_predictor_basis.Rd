@@ -33,9 +33,9 @@ direction, including fitted random effects.
 
 The accessor reports \code{"affine"} only when the stored metadata proves that
 the selected update is additive on the fitted predictor scale. Coordinates
-reused by formula expressions, coefficient multipliers, or random-effect
-scale sources are reported as non-affine or unsupported so callers can
-retain a generic evaluator.
+reused by formula expressions, coefficient multipliers, expression-point
+coefficients, or random-effect scale sources are reported as non-affine or
+unsupported so callers can retain a generic evaluator.
 
 A logged intercept is additive in its own logarithm rather than in the
 fitted coordinate: the predictor adds \code{log(new) - log(current)} times the
