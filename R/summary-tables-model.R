@@ -941,8 +941,10 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
 .bt_JAGS_estimates_spike_0_parameters <- function(prior_list, model_samples,
                                                   transformed = FALSE, formula_scale = NULL){
 
+  # an expression location is not a numeric zero
   spike_0 <- names(prior_list)[vapply(prior_list, function(prior){
     is.prior.point(prior) &&
+      is.numeric(prior[["parameters"]][["location"]]) &&
       isTRUE(all(prior[["parameters"]][["location"]] == 0))
   }, logical(1))]
   if(!transformed || length(spike_0) == 0L){

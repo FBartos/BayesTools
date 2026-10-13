@@ -1484,3 +1484,22 @@ test_that("stan_estimates_table works with stored fit", {
   expect_summary_matches_samples(stan_summary2, transformed_stan_samples)
 
 })
+
+test_that("estimates tables show an expression-point coefficient like any point prior with a nonzero location", {
+
+  skip_if_not_installed("rjags")
+  skip_if_missing_fits("fit_dnode_point_expression")
+
+  fit <- readRDS(file.path(temp_fits_dir, "fit_dnode_point_expression.RDS"))
+  posterior <- as.matrix(.fit_to_posterior(fit))
+  for(transform_scaled in c(FALSE, TRUE)){
+    estimates <- JAGS_estimates_table(fit, transform_scaled = transform_scaled)
+    expect_true(all(c("(mu) x", "theta", "delta") %in% rownames(estimates)))
+    # the numeric point at 0.25 and the expression point are both reported
+    expect_equal(estimates["delta", "Mean"], 0.25)
+    expect_equal(estimates["(mu) x", "Mean"], mean(posterior[, "mu_x"]), tolerance = 1e-8)
+    expect_equal(estimates["(mu) x", "Mean"], mean(2 * posterior[, "theta"] + 0.25), tolerance = 1e-8)
+  }
+  # the spike at zero of the intercept is still omitted from the fitted table
+  expect_false("(mu) intercept" %in% rownames(JAGS_estimates_table(fit)))
+})
