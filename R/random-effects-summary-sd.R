@@ -2,7 +2,8 @@
                                                               model_samples,
                                                               prior_list,
                                                               parameter = NULL,
-                                                              formula_scale = NULL){
+                                                              formula_scale = NULL,
+                                                              formula_design = NULL){
 
   sd_names <- unique(random_term$sd_parameter_names)
   sd_names <- sd_names[!is.na(sd_names)]
@@ -64,7 +65,8 @@
     random_sd_cols = sd_names,
     formula_scale = parameter_scale,
     prefix = parameter,
-    correlation_required_groups = correlation_required_groups
+    correlation_required_groups = correlation_required_groups,
+    formula_design = formula_design
   )
   # The unscaled correlation matrix columns hold the original-scale
   # correlations, which are defined also in singular draws where the
@@ -190,7 +192,8 @@
 .bt_random_effect_summary_sd_samples <- function(random_term, model_samples,
                                                  prior_list,
                                                  parameter = NULL,
-                                                 formula_scale = NULL){
+                                                 formula_scale = NULL,
+                                                 formula_design = NULL){
 
   if(!is.null(random_term$sd_binding) &&
      .bt_random_sd_binding_has_external_source(random_term$sd_binding) &&
@@ -210,7 +213,8 @@
     model_samples = model_samples,
     prior_list = prior_list,
     parameter = parameter,
-    formula_scale = formula_scale
+    formula_scale = formula_scale,
+    formula_design = formula_design
   )
 
   components <- .bt_random_effect_summary_sd_components(random_term, sd_names)
@@ -252,7 +256,8 @@
         values = values,
         sd_names = sd_names,
         parameter = parameter,
-        formula_scale = formula_scale
+        formula_scale = formula_scale,
+        formula_design = formula_design
       )
     }else{
       fallback_values <- fallback[, fallback_columns[fallback_used], drop = FALSE]
@@ -261,7 +266,8 @@
         values = fallback_values,
         sd_names = sd_names[fallback_used],
         parameter = parameter,
-        formula_scale = formula_scale
+        formula_scale = formula_scale,
+        formula_design = formula_design
       )
     }
   }

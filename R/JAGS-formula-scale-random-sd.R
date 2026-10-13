@@ -28,9 +28,17 @@
   cbind(posterior, point_matrix)
 }
 
+# Original-scale random-effect SDs (and correlations) of the scaled blocks.
+#
+# @param formula_design the fitted formula design of the parameter (or NULL):
+#   when it holds the block that owns an SD group, the block's own design
+#   defines the map from its fitted-scale to its original-scale coefficients
+#   (see .random_sd_unscale_matrix()); without it, hand-built SD-leaf
+#   metadata are transformed by pairing coefficient names.
 .apply_random_sd_unscale <- function(posterior, random_sd_cols, formula_scale,
                                      prefix,
-                                     correlation_required_groups = NULL){
+                                     correlation_required_groups = NULL,
+                                     formula_design = NULL){
 
   if(length(random_sd_cols) == 0){
     return(posterior)
@@ -47,7 +55,8 @@
       column_groups = column_groups,
       formula_scale = formula_scale,
       prefix = prefix,
-      correlation_required_groups = correlation_required_groups
+      correlation_required_groups = correlation_required_groups,
+      formula_design = formula_design
     ))
   }
 
@@ -80,13 +89,12 @@
       )
     }
 
-    pseudo_terms <- paste0(prefix, "_", group_terms)
-    names(pseudo_terms) <- group_cols
-    M <- .build_unscale_matrix_by_names(
-      unname(pseudo_terms),
-      formula_scale,
-      prefix,
-      require_closure = FALSE
+    M <- .random_sd_unscale_matrix(
+      column_terms = group_terms,
+      formula_scale = formula_scale,
+      prefix = prefix,
+      random_term = .random_sd_design_block(formula_design, group_key, group_cols),
+      source_data = formula_design$source_data
     )
 
     source_sd <- posterior[, group_cols, drop = FALSE]
@@ -136,7 +144,8 @@
 
 .apply_random_sd_column_unscale <- function(posterior, column_groups,
                                             formula_scale, prefix,
-                                            correlation_required_groups = NULL){
+                                            correlation_required_groups = NULL,
+                                            formula_design = NULL){
 
   if(length(column_groups) == 0L){
     return(posterior)
@@ -150,12 +159,12 @@
 
   for(group in column_groups){
     group_key <- group$group_key
-    pseudo_terms <- paste0(prefix, "_", group$column_terms)
-    M <- .build_unscale_matrix_by_names(
-      pseudo_terms,
-      formula_scale,
-      prefix,
-      require_closure = FALSE
+    M <- .random_sd_unscale_matrix(
+      column_terms = group$column_terms,
+      formula_scale = formula_scale,
+      prefix = prefix,
+      random_term = .random_sd_design_block(formula_design, group_key, group$leaf_names),
+      source_data = formula_design$source_data
     )
 
     source_sd <- posterior[, group$leaf_names_by_column, drop = FALSE]
@@ -224,6 +233,125 @@
   }
 
   posterior
+}
+
+# The fitted random-effect block of 'formula_design' that owns the SD group:
+# the block named by the group's key (the block name the SD coordinates are
+# keyed by) whose SD coordinates include the group's leaves. NULL when there is
+# no fitted design or it holds no such block (hand-built SD-leaf metadata).
+.random_sd_design_block <- function(formula_design, group_key, leaf_names){
+
+  blocks <- .bt_formula_design_random_effects(formula_design)
+  if(length(blocks) == 0L || length(group_key) != 1L || is.na(group_key)){
+    return(NULL)
+  }
+
+  owner <- vapply(blocks, function(block){
+    identical(block$block_name, group_key) &&
+      all(leaf_names %in% block$sd_parameter_names)
+  }, logical(1))
+  if(sum(owner) != 1L){
+    return(NULL)
+  }
+
+  blocks[[which(owner)]]
+}
+
+# The map A from the fitted-scale coefficients of a scaled random-effect block
+# to its original-scale coefficients (rows and columns in block column order);
+# the covariance of the block transforms as A Sigma A'. With the fitted block
+# it is derived from the block's design exactly as the fixed-effect map is
+# (.bt_formula_unscale_design_transform()), so a factor that a scaled slope
+# interacts with is carried by the design and not by coefficient names. A
+# block whose scaled design has no original-scale representation in its own
+# columns (a term that would have to be induced, e.g. the implied intercept of
+# `(0 + x | g)`) keeps the documented name-paired map, which drops the induced
+# terms; any other failure propagates. Without the fitted block the map pairs
+# coefficient names.
+.random_sd_unscale_matrix <- function(column_terms, formula_scale, prefix,
+                                      random_term = NULL, source_data = NULL){
+
+  if(!is.null(random_term)){
+    spec <- .bt_random_effect_unscale_design_spec(random_term, source_data)
+    if(!is.null(spec)){
+      transform <- tryCatch(
+        .bt_formula_unscale_design_transform(spec, formula_scale, prefix),
+        BayesTools_formula_transform_unavailable = function(condition){
+          if(!identical(condition$reason, "original_scale_not_representable")){
+            stop(condition)
+          }
+          NULL
+        }
+      )
+      if(!is.null(transform)){
+        if(nrow(transform$matrix) != length(column_terms)){
+          .bt_stop_refit_required(
+            "Random-effect design metadata for block '", random_term$block_name,
+            "' disagree with its SD columns. Refit the model with this version of BayesTools."
+          )
+        }
+        return(unname(transform$matrix))
+      }
+    }
+  }
+
+  .build_unscale_matrix_by_names(
+    paste0(prefix, "_", column_terms),
+    formula_scale,
+    prefix,
+    require_closure = FALSE
+  )
+}
+
+# The unscale-design specification of a fitted random-effect block, in the
+# format of .bt_formula_unscale_design_spec(): the block's formula (with its
+# own intercept control), factor levels and concrete contrasts, and its fitted
+# column layout. The variables of the block that are not factors are the
+# continuous ones; those named in 'formula_scale' are the scaled ones, and
+# logical predictors are those that are logical in the fitted source data.
+# NULL for a block record without a design to rebuild.
+.bt_random_effect_unscale_design_spec <- function(random_term, source_data = NULL){
+
+  if(!inherits(random_term$term_formula, "formula") ||
+     is.null(random_term$model_terms) || is.null(random_term$assign) ||
+     is.null(random_term$raw_column_names)){
+    return(NULL)
+  }
+
+  variables <- all.vars(random_term$term_formula)
+  factors <- intersect(names(random_term$xlevels), variables)
+  factor_levels <- lapply(factors, function(factor_name){
+    as.character(random_term$xlevels[[factor_name]])
+  })
+  names(factor_levels) <- factors
+  factor_ordered <- vapply(factors, function(factor_name) FALSE, logical(1))
+  names(factor_ordered) <- factors
+  contrast_matrices <- random_term$contrast_matrices[factors]
+  names(contrast_matrices) <- factors
+  continuous <- setdiff(variables, factors)
+  continuous_logical <- vapply(continuous, function(predictor){
+    is.data.frame(source_data) && is.logical(source_data[[predictor]])
+  }, logical(1))
+  names(continuous_logical) <- continuous
+  formula <- random_term$term_formula
+  environment(formula) <- emptyenv()
+
+  list(
+    schema_version     = .bt_formula_unscale_design_spec_version,
+    formula            = formula,
+    continuous         = continuous,
+    continuous_logical = continuous_logical,
+    factor_levels      = factor_levels,
+    factor_ordered     = factor_ordered,
+    contrast_matrices  = contrast_matrices,
+    model_terms        = as.character(random_term$model_terms),
+    assign             = as.integer(random_term$assign),
+    raw_column_names   = as.character(random_term$raw_column_names),
+    multipliers        = stats::setNames(list(), character()),
+    state_constants    = stats::setNames(numeric(), character()),
+    owner_scope        = "compiler",
+    complete           = FALSE
+  )
 }
 
 .random_sd_shared_leaf_is_invariant <- function(

@@ -145,7 +145,8 @@
 
 .bt_random_effect_summary_unscale_sd_fallback <- function(values, sd_names,
                                                           parameter,
-                                                          formula_scale){
+                                                          formula_scale,
+                                                          formula_design = NULL){
 
   if(is.null(parameter) || is.null(formula_scale) || length(formula_scale) == 0L ||
      is.null(formula_scale[[parameter]]) || length(formula_scale[[parameter]]) == 0L){
@@ -156,7 +157,8 @@
     posterior = values,
     random_sd_cols = sd_names,
     formula_scale = formula_scale[[parameter]],
-    prefix = parameter
+    prefix = parameter,
+    formula_design = formula_design
   )
   transformed[, sd_names, drop = FALSE]
 }

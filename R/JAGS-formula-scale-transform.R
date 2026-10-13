@@ -45,6 +45,16 @@
 #' \code{~ x + x:f} with \code{x} standardized) have no original-scale
 #' representation, and the function stops.
 #'
+#' The original-scale random-effect SDs and correlations of a block with a
+#' standardized slope are transformed the same way, from the fitted design of
+#' the block: when the standardized block columns equal the original-scale
+#' columns times a matrix \eqn{A}, the block coefficients transform as
+#' \eqn{A u} and their covariance as \eqn{A \Sigma A'}. A block whose
+#' original-scale design is not spanned by its own columns (a term that would
+#' have to be induced, such as the implied intercept of \code{(0 + x | g)}) has
+#' no such matrix and keeps the pairing of coefficient names, which drops the
+#' induced term.
+#'
 #' @return A numeric matrix of posterior samples transformed back to the
 #' original predictor scale, with chains merged in their existing order.
 #' When no scaling information is supplied, the function returns the sample
@@ -99,7 +109,8 @@ transform_scale_samples <- function(fit, formula_scale = NULL){
     formula_design
   )
 
-  posterior <- .apply_unscale_transform(as.matrix(posterior), formula_scale, targets = targets)
+  posterior <- .apply_unscale_transform(as.matrix(posterior), formula_scale, targets = targets,
+    formula_design = formula_design)
   .bt_remove_internal_random_coordinates(
     posterior = posterior,
     coordinates = coordinates
@@ -349,7 +360,8 @@ transform_prior_samples <- function(fit, n_samples = 10000, seed = NULL, formula
     retained_primitives[, retained_columns, drop = FALSE])
 
   if(!is.null(formula_scale) && length(formula_scale) > 0){
-    prior_samples <- .apply_unscale_transform(prior_samples, formula_scale, targets = column_names)
+    prior_samples <- .apply_unscale_transform(prior_samples, formula_scale, targets = column_names,
+      formula_design = formula_design)
   }
 
   if(retain_state) return(prior_samples)

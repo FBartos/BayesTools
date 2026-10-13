@@ -1097,12 +1097,22 @@ JAGS_formula_scale_finalize <- function(formula_scale, design = NULL,
   # data-column names, so base functions suffice for model-frame evaluation.
   formula <- spec$formula
   environment(formula) <- baseenv()
-  model_frame <- stats::model.frame(
-    formula,
-    data = data,
-    na.action = stats::na.fail
-  )
-  model_matrix <- .bt_model_matrix(model_frame, formula = formula, data = data)
+  if(attr(stats::terms(formula), "intercept") == 0L){
+    # A random-effect block without an intercept keeps the contrast coding of
+    # its factors: it is built as the block's own design matrix is.
+    model_matrix <- .bt_random_effect_design_matrix(
+      formula,
+      data,
+      preserve_no_intercept_contrasts = TRUE
+    )$model_matrix
+  }else{
+    model_frame <- stats::model.frame(
+      formula,
+      data = data,
+      na.action = stats::na.fail
+    )
+    model_matrix <- .bt_model_matrix(model_frame, formula = formula, data = data)
+  }
   if(!identical(colnames(model_matrix), spec$raw_column_names) ||
      !identical(as.integer(attr(model_matrix, "assign")), spec$assign)){
     .bt_stop_refit_required(
@@ -1325,8 +1335,12 @@ JAGS_formula_scale_finalize <- function(formula_scale, design = NULL,
 # @param posterior Matrix of posterior samples with parameter names as column names
 # @param formula_scale Nested list with scaling info keyed by parameter name:
 #   list(mu = list(mu_x1 = list(mean, sd)), log_sigma = list(log_sigma_x = list(mean, sd)))
+# @param formula_design Optional fitted formula designs keyed by parameter name;
+#   the random-effect SDs of a parameter are unscaled with the design of its
+#   blocks (see .apply_random_sd_unscale()).
 # @return Transformed posterior matrix
-.apply_unscale_transform <- function(posterior, formula_scale, targets = NULL) {
+.apply_unscale_transform <- function(posterior, formula_scale, targets = NULL,
+                                     formula_design = NULL) {
 
   if (is.null(formula_scale) || length(formula_scale) == 0) {
     return(posterior)
@@ -1351,7 +1365,8 @@ JAGS_formula_scale_finalize <- function(formula_scale, design = NULL,
 
     matched_prefix <- TRUE
     posterior <- .apply_unscale_transform_single(posterior, param_scale, prefix = param_name,
-      fitted_state = fitted_state, targets = targets)
+      fitted_state = fitted_state, targets = targets,
+      formula_design = formula_design[[param_name]])
   }
 
   if(!matched_prefix){
@@ -1371,7 +1386,8 @@ JAGS_formula_scale_finalize <- function(formula_scale, design = NULL,
 # @param prefix Parameter prefix (e.g., "mu")
 # @return Transformed posterior matrix
 .apply_unscale_transform_single <- function(posterior, formula_scale, prefix,
-                                             fitted_state = posterior, targets = NULL) {
+                                             fitted_state = posterior, targets = NULL,
+                                             formula_design = NULL) {
 
   if (is.null(formula_scale) || length(formula_scale) == 0) {
     return(posterior)
@@ -1430,7 +1446,8 @@ JAGS_formula_scale_finalize <- function(formula_scale, design = NULL,
   if(length(random_sd_cols) > 0L){
     .bt_formula_scale_require_design(formula_scale, prefix)
   }
-  posterior <- .apply_random_sd_unscale(posterior, random_sd_cols, formula_scale, prefix)
+  posterior <- .apply_random_sd_unscale(posterior, random_sd_cols, formula_scale, prefix,
+    formula_design = formula_design)
 
   return(posterior)
 }

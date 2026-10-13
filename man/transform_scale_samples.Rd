@@ -60,6 +60,16 @@ nested terms such as \code{~ f/x}. Formulas whose centered terms induce
 lower-order effects that the fitted formula does not contain (e.g.,
 \code{~ x + x:f} with \code{x} standardized) have no original-scale
 representation, and the function stops.
+
+The original-scale random-effect SDs and correlations of a block with a
+standardized slope are transformed the same way, from the fitted design of
+the block: when the standardized block columns equal the original-scale
+columns times a matrix \eqn{A}, the block coefficients transform as
+\eqn{A u} and their covariance as \eqn{A \Sigma A'}. A block whose
+original-scale design is not spanned by its own columns (a term that would
+have to be induced, such as the implied intercept of \code{(0 + x | g)}) has
+no such matrix and keeps the pairing of coefficient names, which drops the
+induced term.
 }
 \seealso{
 \code{\link[=JAGS_formula]{JAGS_formula()}} \code{\link[=JAGS_fit]{JAGS_fit()}}

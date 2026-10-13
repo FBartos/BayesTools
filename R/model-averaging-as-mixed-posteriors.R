@@ -99,6 +99,7 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
     condition_event = condition_event)
   if(scaled){
     model_samples <- .bt_transform_scale_posterior(model_samples, formula_scale,
+      formula_design = attr(model, "formula_design", exact = TRUE),
       targets = unique(unlist(lapply(parameters, function(owner){
         .prior_linear_prior_columns(owner, priors[[owner]])
       }), use.names = FALSE)))

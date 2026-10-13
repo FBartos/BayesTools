@@ -383,7 +383,8 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
     requested <- unique(unlist(lapply(setdiff(names(prior_list), omitted), function(owner){
       .prior_linear_prior_columns(owner, prior_list[[owner]])
     }), use.names = FALSE))
-    model_samples <- .bt_transform_scale_posterior(model_samples, formula_scale, targets = requested)
+    model_samples <- .bt_transform_scale_posterior(model_samples, formula_scale,
+      formula_design = attr(fit, "formula_design", exact = TRUE), targets = requested)
     model_samples <- .bt_remove_internal_random_coordinates(
       posterior = model_samples,
       coordinates = coordinates

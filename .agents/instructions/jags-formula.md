@@ -249,6 +249,23 @@ random intercept, such as `(0 + x | g)`, likewise implies an original-scale
 random intercept `-u m / s`, perfectly correlated with the slope `u / s`; its
 summaries report only the block's own coefficients.
 
+Random-effect SDs and correlations of a block with a scaled slope follow the
+block's own design, as the fixed coefficients do: when the standardized block
+columns equal the original-scale columns times a matrix `A` (verified on the
+synthetic grid of `.bt_formula_unscale_design_transform()`), the coefficients
+transform as `u_o = A u_s` and the covariance as `A Sigma A'`. A factor that
+enters the block as a main effect and in an interaction with the scaled slope
+(`diag(1 + f + f:x | g)`) is representable, so the induced shifts of the
+intercept and of the factor levels are reported. Every route that has the fit
+passes its fitted formula design (`transform_scale_samples()`,
+`transform_prior_samples()`, estimates tables, mixed posteriors, catalog
+random summaries); the block is found by its block name and SD coordinates.
+A block with no such matrix in its own columns (`(0 + x | g)`, `diag(1 + f:x | g)`,
+`us(0 + f + x:f | g)`: a term would have to be induced) keeps the documented
+name-paired map that drops it, and only the
+`original_scale_not_representable` refusal selects it; any other failure
+propagates. Hand-built SD-leaf metadata without the fitted design pair names.
+
 Independence is also specified on the centered scale. `(1 + x || g)` or
 `diag()` with scaled `x` has independent `u0`, `u1` (SDs `t0`, `t1`); the
 original-scale intercept `u0 - u1 m / s` and slope `u1 / s` then have

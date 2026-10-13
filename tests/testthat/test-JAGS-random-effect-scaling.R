@@ -1305,3 +1305,265 @@ test_that("a hand-built formula_scale unscales random-effect SDs like the automa
   }
   expect_identical(attr(completed, "random_effect_correlation_required"), "__xREx__id")
 })
+
+# Independent reference for the original-scale map of a random-effect block:
+# the block's design on a grid of original-scale predictor values and on the
+# standardized values satisfies Z_s = Z_o A, so the block coefficients transform
+# as u_o = A u_s and their covariance as A Sigma A'.
+random_block_unscale_reference <- function(rhs, grid, m, s, contrasts = list()){
+
+  grid_scaled <- grid
+  grid_scaled$x <- (grid$x - m) / s
+  for(factor_name in names(contrasts)){
+    stats::contrasts(grid[[factor_name]]) <- contrasts[[factor_name]]
+    stats::contrasts(grid_scaled[[factor_name]]) <- contrasts[[factor_name]]
+  }
+  Z_original <- stats::model.matrix(rhs, grid)
+  Z_scaled <- stats::model.matrix(rhs, grid_scaled)
+  A <- qr.solve(Z_original, Z_scaled)
+  stopifnot(max(abs(Z_original %*% A - Z_scaled)) < 1e-10)
+
+  A
+}
+
+random_block_scale_fit <- function(formula, data, prior_random, extra = NULL, tau = NULL){
+
+  formula_result <- JAGS_formula(
+    formula, "mu", data,
+    prior_list = list(intercept = prior("normal", list(0, 1)), x = prior("normal", list(0, 1))),
+    formula_scale = list(x = TRUE),
+    prior_random = prior_random
+  )
+  sd_names <- unlist(lapply(formula_result$formula_design$random_effects, function(term){
+    unique(term$sd_parameter_names)
+  }))
+  if(is.null(tau)) tau <- seq_along(sd_names) / 2
+  posterior <- matrix(
+    rep(c(0, 0, tau, extra$values), 3L), nrow = 3L, byrow = TRUE,
+    dimnames = list(NULL, c("mu_intercept", "mu_x", sd_names, extra$names))
+  )
+
+  list(
+    formula_result = formula_result,
+    fit = make_random_scale_table_fit(formula_result, posterior),
+    sd_names = sd_names,
+    tau = tau
+  )
+}
+
+random_block_scale_data <- function(){
+
+  set.seed(5)
+  data.frame(
+    x  = rnorm(36, mean = 10, sd = 2),
+    f  = factor(rep(c("a", "b", "c"), length.out = 36)),
+    id = factor(rep(paste0("g", 1:6), each = 6))
+  )
+}
+
+random_block_scale_monitor <- function(correlation = FALSE){
+
+  random_monitor(latent = FALSE, coefficients = FALSE, correlation = correlation)
+}
+
+test_that("random-effect SDs of a block with a factor-by-scaled-slope term follow the block design", {
+
+  skip_if_not_installed("runjags")
+
+  df <- random_block_scale_data()
+  m <- mean(df$x)
+  s <- stats::sd(df$x)
+  grid <- expand.grid(f = factor(c("a", "b", "c")), x = c(-1, 0, 1, 2))
+  block <- function(...){
+    prior_random(id = random_block(
+      sd = prior("gamma", list(2, 2)), monitor = random_block_scale_monitor(), ...
+    ))
+  }
+
+  # `f` enters the block through its main effect and through its interaction
+  # with the scaled slope: the induced shift of the intercept and of the factor
+  # levels (u0 - m / s times the slopes by level) is not carried by coefficient
+  # names.
+  cases <- list(
+    list(~ 1 + x + diag(1 + f + f:x | id), ~ f + f:x, block(), list()),
+    list(~ 1 + x + diag(1 + f + f:x | id), ~ f + f:x, block(contrasts = c(f = "meandif")),
+         list(f = contr.meandif(3))),
+    list(~ 1 + x + diag(1 + f * x | id), ~ f * x, block(), list()),
+    list(~ 1 + x + diag(1 + x | id), ~ x, block(), list())
+  )
+  for(case in cases){
+    setup <- random_block_scale_fit(case[[1L]], df, case[[3L]])
+    A <- random_block_unscale_reference(case[[2L]], grid, m, s, case[[4L]])
+    expected <- unname(sqrt(diag(A %*% diag(setup$tau^2, nrow = length(setup$tau)) %*% t(A))))
+    transformed <- transform_scale_samples(setup$fit)
+    expect_equal(
+      unname(transformed[1L, setup$sd_names]), expected, tolerance = 1e-10,
+      info = paste(deparse(case[[1L]]), paste(names(case[[4L]]), collapse = ","))
+    )
+  }
+
+  # the analytic intercept SD of centered sum-to-zero level contrasts is
+  # sqrt(tau0^2 + (m / s)^2 * sum(tau_slopes_by_level^2) / 9)
+  setup <- random_block_scale_fit(~ 1 + x + diag(1 + f + f:x | id), df, block(contrasts = c(f = "meandif")))
+  expect_equal(
+    unname(transform_scale_samples(setup$fit)[1L, setup$sd_names[1L]]),
+    sqrt(setup$tau[1L]^2 + (m / s)^2 * sum(setup$tau[4:6]^2) / 9),
+    tolerance = 1e-12
+  )
+
+  # hand-checked case: six rows, SDs 1:6, intercept SD 5.5627730894
+  df_small <- data.frame(
+    x = 1:6, f = factor(c("a", "b", "c", "a", "b", "c")),
+    id = factor(c("u", "u", "u", "v", "v", "v"))
+  )
+  small <- random_block_scale_fit(
+    ~ 1 + x + diag(1 + f + f:x | id), df_small, block(contrasts = c(f = "meandif")), tau = 1:6
+  )
+  expect_equal(
+    unname(transform_scale_samples(small$fit)[1L, small$sd_names[1L]]),
+    5.562773089426212, tolerance = 1e-12
+  )
+})
+
+test_that("every consumer of the original-scale random-effect SDs uses the block design", {
+
+  skip_if_not_installed("runjags")
+
+  df <- random_block_scale_data()
+  grid <- expand.grid(f = factor(c("a", "b", "c")), x = c(-1, 0, 1, 2))
+  setup <- random_block_scale_fit(
+    ~ 1 + x + diag(1 + f + f:x | id), df,
+    prior_random(id = random_block(
+      sd = prior("gamma", list(2, 2)), monitor = random_block_scale_monitor()
+    ))
+  )
+  A <- random_block_unscale_reference(~ f + f:x, grid, mean(df$x), stats::sd(df$x))
+  expected <- unname(sqrt(diag(A %*% diag(setup$tau^2) %*% t(A))))
+  expect_gt(abs(expected[1L] - setup$tau[1L]), 5)
+
+  # JAGS_estimates_table(transform_scaled = TRUE)
+  samples <- JAGS_estimates_table(
+    setup$fit, transform_scaled = TRUE, remove_diagnostics = TRUE, return_samples = TRUE
+  )
+  expect_equal(
+    unname(samples[1L, grep("sd(", colnames(samples), fixed = TRUE)]),
+    expected, tolerance = 1e-10
+  )
+
+  # random-effect summaries through the parameter catalog
+  catalog <- parameter_catalog(setup$fit)
+  draws <- parameter_draws(setup$fit, parameter_catalog_resolve(catalog, "(mu) sd(f[b])"))
+  expect_equal(unname(drop(as.matrix(draws))[1L]), expected[2L], tolerance = 1e-10)
+
+  # mixed posteriors of the SD parameters
+  mixed <- as_mixed_posteriors(setup$fit, "mu__xREx__id_f", transform_scaled = TRUE)
+  expect_equal(unname(mixed$mu__xREx__id_f[1L, ]), expected[2:3], tolerance = 1e-10)
+
+  # prior draws on the original scale
+  prior_draws <- transform_prior_samples(setup$fit, n_samples = 6L, seed = 3)
+  raw <- .generate_prior_sample_matrix(setup$formula_result$prior_list, 6L, column_names = NULL, seed = 3)
+  expect_equal(
+    unname(prior_draws[, setup$sd_names]),
+    unname(sqrt(raw[, setup$sd_names]^2 %*% t(A^2))),
+    tolerance = 1e-10
+  )
+})
+
+test_that("a correlated block with a factor-by-scaled-slope term transforms its covariance by the block map", {
+
+  skip_if_not_installed("runjags")
+
+  df <- random_block_scale_data()
+  grid <- expand.grid(f = factor(c("a", "b", "c")), x = c(-1, 0, 1, 2))
+  K <- 6L
+  correlation <- matrix(0.3, K, K)
+  diag(correlation) <- 1
+  correlation_names <- outer(seq_len(K), seq_len(K), Vectorize(function(row, column){
+    paste0("mu__xREx__id_xRE_CORx_R[", row, ",", column, "]")
+  }))
+  setup <- random_block_scale_fit(
+    ~ 1 + x + us(1 + f + f:x | id), df,
+    prior_random(id = random_block(
+      sd = prior("gamma", list(2, 2)), cor = prior_lkj(eta = 1),
+      monitor = random_block_scale_monitor(correlation = TRUE)
+    )),
+    extra = list(values = as.vector(correlation), names = as.vector(correlation_names))
+  )
+  A <- random_block_unscale_reference(~ f + f:x, grid, mean(df$x), stats::sd(df$x))
+  covariance <- A %*% diag(setup$tau) %*% correlation %*% diag(setup$tau) %*% t(A)
+  transformed <- transform_scale_samples(setup$fit)
+
+  expect_equal(unname(transformed[1L, setup$sd_names]), unname(sqrt(diag(covariance))), tolerance = 1e-10)
+  expect_equal(
+    unname(matrix(transformed[1L, as.vector(correlation_names)], K, K)),
+    unname(stats::cov2cor(covariance)),
+    tolerance = 1e-10
+  )
+})
+
+test_that("blocks that share a grouping variable use their own design", {
+
+  skip_if_not_installed("runjags")
+
+  df <- random_block_scale_data()
+  grid <- expand.grid(f = factor(c("a", "b", "c")), x = c(-1, 0, 1, 2))
+  setup <- random_block_scale_fit(
+    ~ 1 + x + random(1 + x | id, name = "slope", covariance = "diag") +
+      random(1 + f + f:x | id, name = "level", covariance = "diag"),
+    df,
+    prior_random(
+      slope = random_block(sd = prior("gamma", list(2, 2)), monitor = random_block_scale_monitor()),
+      level = random_block(sd = prior("gamma", list(2, 2)), monitor = random_block_scale_monitor())
+    )
+  )
+  m <- mean(df$x)
+  s <- stats::sd(df$x)
+  A_slope <- random_block_unscale_reference(~ x, grid, m, s)
+  A_level <- random_block_unscale_reference(~ f + f:x, grid, m, s)
+  transformed <- transform_scale_samples(setup$fit)
+
+  expect_equal(
+    unname(transformed[1L, setup$sd_names]),
+    unname(c(sqrt(diag(A_slope %*% diag(setup$tau[1:2]^2) %*% t(A_slope))),
+      sqrt(diag(A_level %*% diag(setup$tau[3:8]^2) %*% t(A_level))))),
+    tolerance = 1e-10
+  )
+})
+
+test_that("a block with no original-scale representation keeps the documented drop policy", {
+
+  skip_if_not_installed("runjags")
+
+  df <- random_block_scale_data()
+  s <- stats::sd(df$x)
+  block <- prior_random(id = random_block(
+    sd = prior("gamma", list(2, 2)), monitor = random_block_scale_monitor()
+  ))
+
+  # `f:x` needs the per-level indicators, which no column of the block carries:
+  # the SD of the realized intercept stays the fitted one (documented), and
+  # the slopes by level are divided by the SD of the predictor.
+  setup <- random_block_scale_fit(~ 1 + x + diag(1 + f:x | id), df, block)
+  expect_equal(
+    unname(transform_scale_samples(setup$fit)[1L, setup$sd_names]),
+    c(setup$tau[1L], setup$tau[-1L] / s), tolerance = 1e-12
+  )
+  # `(0 + x | g)` implies an intercept that no column carries
+  setup <- random_block_scale_fit(~ 1 + x + diag(0 + x | id), df, block)
+  expect_equal(
+    unname(transform_scale_samples(setup$fit)[1L, setup$sd_names]),
+    setup$tau / s, tolerance = 1e-12
+  )
+
+  # any other failure of the block design propagates
+  setup <- random_block_scale_fit(~ 1 + x + diag(1 + f + f:x | id), df, block)
+  design <- attr(setup$fit, "formula_design")
+  term <- design$mu$random_effects[[1L]]
+  term$raw_column_names <- rev(term$raw_column_names)
+  design$mu$random_effects[[1L]] <- term
+  attr(setup$fit, "formula_design") <- design
+  expect_error(
+    transform_scale_samples(setup$fit),
+    "do not reproduce the fitted design", fixed = TRUE
+  )
+})

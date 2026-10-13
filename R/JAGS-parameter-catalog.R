@@ -963,11 +963,13 @@ parameter_prior_density.BayesTools_fit <- function(
     return(NULL)
   }
 
-  .build_unscale_matrix_by_names(
-    paste0(parameter, "_", groups[[1L]]$column_terms),
-    parameter_scale,
-    parameter,
-    require_closure = FALSE
+  design <- attr(object, "formula_design", exact = TRUE)[[parameter]]
+  .random_sd_unscale_matrix(
+    column_terms  = groups[[1L]]$column_terms,
+    formula_scale = parameter_scale,
+    prefix        = parameter,
+    random_term   = random_term,
+    source_data   = design$source_data
   )
 }
 
@@ -3338,7 +3340,7 @@ parameter_transform_jacobian <- function(values, transform){
 
 .bt_parameter_catalog_random_sd_source_scale <- function(
     random_term, index, source_parameter, prior_list, parameter,
-    formula_scale){
+    formula_scale, formula_design = NULL){
 
   # The caller has already proved a one-coordinate homogeneous SD transform
   # from the parameter map. Evaluate its unit response through the same
@@ -3353,7 +3355,8 @@ parameter_transform_jacobian <- function(values, transform){
     model_samples = model_samples,
     prior_list = prior_list,
     parameter = parameter,
-    formula_scale = formula_scale
+    formula_scale = formula_scale,
+    formula_design = formula_design
   )
   if(is.null(summary) || ncol(summary$values) < index){
     .bt_stop_refit_required(
@@ -3905,7 +3908,8 @@ parameter_transform_jacobian <- function(values, transform){
               source_parameter = source_parameter,
               prior_list = prior_list,
               parameter = parameter,
-              formula_scale = formula_scale
+              formula_scale = formula_scale,
+              formula_design = design
             )
           }else{
             NA_real_
@@ -5234,7 +5238,8 @@ parameter_transform_jacobian <- function(values, transform){
       model_samples = model_samples,
       prior_list = prior_list,
       parameter = key$formula_parameter,
-      formula_scale = attr(fit, "formula_scale", exact = TRUE)
+      formula_scale = attr(fit, "formula_scale", exact = TRUE),
+      formula_design = attr(fit, "formula_design", exact = TRUE)[[key$formula_parameter]]
     )
     values <- summary$values[, key$index]
     return(if(identical(evaluator, "sd_variance")) values^2 else values)
@@ -5262,7 +5267,8 @@ parameter_transform_jacobian <- function(values, transform){
       model_samples = model_samples,
       prior_list = prior_list,
       parameter = key$formula_parameter,
-      formula_scale = attr(fit, "formula_scale", exact = TRUE)
+      formula_scale = attr(fit, "formula_scale", exact = TRUE),
+      formula_design = attr(fit, "formula_design", exact = TRUE)[[key$formula_parameter]]
     )
     summary <- .bt_random_effect_summary_correlation_samples(
       random_term,
