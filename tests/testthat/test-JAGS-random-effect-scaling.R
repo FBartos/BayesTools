@@ -1567,3 +1567,45 @@ test_that("a block with no original-scale representation keeps the documented dr
     "do not reproduce the fitted design", fixed = TRUE
   )
 })
+
+test_that("a logical predictor in a block with a scaled slope gets design-derived SDs", {
+
+  skip_if_not_installed("runjags")
+
+  # `flag` enters the block through its main effect and through `flag:x`; the
+  # interaction is indicator coded (flagFALSE:x, flagTRUE:x) and shares one SD.
+  # The least-squares map gives the two columns equal weights only up to
+  # rounding.
+  df <- random_block_scale_data()
+  df$flag <- rep(c(TRUE, FALSE), 18)
+  grid <- expand.grid(flag = c(FALSE, TRUE), x = c(-1, 0, 1, 2))
+  setup <- random_block_scale_fit(
+    ~ 1 + x + diag(1 + flag + flag:x | id), df,
+    prior_random(id = random_block(
+      sd = prior("gamma", list(2, 2)), monitor = random_block_scale_monitor()
+    ))
+  )
+  A <- random_block_unscale_reference(~ flag + flag:x, grid, mean(df$x), stats::sd(df$x))
+  expect_identical(nrow(A), 4L)
+  expect_identical(length(setup$sd_names), 3L)
+  tau_columns <- setup$tau[c(1L, 2L, 3L, 3L)]
+  expected <- unname(sqrt(diag(A %*% diag(tau_columns^2) %*% t(A))))
+  # the two indicator columns of the shared SD transform to the same SD
+  expect_equal(expected[3L], expected[4L], tolerance = 1e-12)
+  expect_gt(abs(expected[1L] - setup$tau[1L]), 5)
+
+  transformed <- transform_scale_samples(setup$fit)
+  expect_equal(unname(transformed[1L, setup$sd_names]), expected[1:3], tolerance = 1e-10)
+
+  # the default estimates table returns the design-derived SDs
+  samples <- JAGS_estimates_table(setup$fit, remove_diagnostics = TRUE, return_samples = TRUE)
+  expect_equal(
+    unname(samples[1L, grep("sd(", colnames(samples), fixed = TRUE)]),
+    expected[1:3], tolerance = 1e-10
+  )
+  table <- as.data.frame(JAGS_estimates_table(setup$fit))
+  expect_equal(
+    unname(table[grep("sd(", rownames(table), fixed = TRUE), "Mean"]),
+    expected[1:3], tolerance = 1e-10
+  )
+})

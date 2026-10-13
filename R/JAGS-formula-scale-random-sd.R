@@ -369,12 +369,15 @@
     nrow = nrow(M),
     dimnames = list(NULL, leaf_names)
   )
+  # The weights come from a least-squares map, so equal weights agree only up to
+  # rounding of a few ulps relative to their magnitude.
   target_weights <- variance_weights[target_columns, , drop = FALSE]
   all(vapply(seq_len(nrow(target_weights)), function(i){
-    identical(
+    isTRUE(all.equal(
       unname(target_weights[i, , drop = TRUE]),
-      unname(target_weights[1L, , drop = TRUE])
-    )
+      unname(target_weights[1L, , drop = TRUE]),
+      tolerance = 1e-12
+    ))
   }, logical(1)))
 }
 
