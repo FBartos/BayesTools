@@ -483,16 +483,20 @@ test_that("targeted convergence checks retain requested product-space indicators
     monitor = "mu"
   )
 
+  # The indicator is stuck at 0 in one chain and at 1 in the other: its pooled
+  # draws vary, so R-hat is the value Inf that fails the criterion.
   expect_false(targeted)
   diagnostics <- attr(targeted, "diagnostics")
   expect_equal(
     setNames(diagnostics$state, diagnostics$parameter),
     c(
       mu = "assessable",
-      mu_indicator = "not_assessable",
+      mu_indicator = "assessable",
       mu_inclusion = "not_requested"
     )
   )
+  expect_match(attr(targeted, "errors"), "R-hat Inf for 'mu_indicator'",
+               fixed = TRUE, all = FALSE)
 
   explicit_inclusion <- JAGS_check_convergence(
     fit,
@@ -506,8 +510,10 @@ test_that("targeted convergence checks retain requested product-space indicators
   expect_false(explicit_inclusion)
   expect_equal(
     attr(explicit_inclusion, "diagnostics")$state,
-    c("assessable", "not_requested", "not_assessable")
+    c("assessable", "not_requested", "assessable")
   )
+  expect_match(attr(explicit_inclusion, "errors"), "R-hat Inf for 'mu_inclusion'",
+               fixed = TRUE, all = FALSE)
 })
 
 test_that("a base convergence monitor selects every indexed element", {
@@ -608,6 +614,76 @@ test_that("not-assessable diagnostics require an explicit opt-in to ignore", {
     "not_assessable"
   )
   expect_null(attr(result, "errors"))
+})
+
+test_that("chains stuck at different values fail the criteria and are not ignored", {
+
+  # Each chain is constant but at a different value: the pooled draws vary, so
+  # R-hat is Inf and ESS is 0. These are values that fail the criteria, not
+  # undefined results that allow_not_assessable may ignore.
+  stuck_low <- matrix(rep(-5, 200), ncol = 1, dimnames = list(NULL, "mu"))
+  stuck_high <- matrix(rep(5, 200), ncol = 1, dimnames = list(NULL, "mu"))
+  stuck_fit <- .mock_convergence_fit(
+    stuck_low, stuck_high, list(mu = prior("normal", list(0, 1)))
+  )
+  for(allow in c(TRUE, FALSE)){
+    result <- JAGS_check_convergence(stuck_fit, allow_not_assessable = allow)
+    expect_false(result)
+    errors <- attr(result, "errors")
+    expect_match(errors, "R-hat Inf for 'mu' is larger than the set target (1.05).",
+                 fixed = TRUE, all = FALSE)
+    expect_match(errors, "ESS 0 for 'mu' is lower than the set target (500).",
+                 fixed = TRUE, all = FALSE)
+    expect_false(any(grepl("not assessable", errors, fixed = TRUE)))
+    diagnostics <- attr(result, "diagnostics")
+    expect_identical(diagnostics$state, "assessable")
+    expect_identical(diagnostics$Rhat, Inf)
+    expect_identical(diagnostics$ESS, 0)
+  }
+
+  # one criterion at a time
+  r_hat_only <- JAGS_check_convergence(
+    stuck_fit, max_Rhat = 1.05, min_ESS = NULL, max_error = NULL,
+    max_SD_error = NULL, allow_not_assessable = TRUE
+  )
+  expect_false(r_hat_only)
+  expect_match(attr(r_hat_only, "errors"), "R-hat Inf for 'mu'", fixed = TRUE)
+  ess_only <- JAGS_check_convergence(
+    stuck_fit, max_Rhat = NULL, min_ESS = 500, max_error = NULL,
+    max_SD_error = NULL, allow_not_assessable = TRUE
+  )
+  expect_false(ess_only)
+  expect_match(attr(ess_only, "errors"), "ESS 0 for 'mu'", fixed = TRUE)
+
+  # a model indicator stuck in different components per chain
+  indicator_priors <- list(mu = prior_mixture(list(
+    prior("normal", list(0, 1)),
+    prior("normal", list(1, 1))
+  )))
+  indicator_fit <- .mock_convergence_fit(
+    cbind(mu_indicator = rep(1, 200)), cbind(mu_indicator = rep(2, 200)),
+    indicator_priors
+  )
+  stuck_indicator <- JAGS_check_convergence(
+    indicator_fit, check_indicators = TRUE, allow_not_assessable = TRUE
+  )
+  expect_false(stuck_indicator)
+  expect_match(attr(stuck_indicator, "errors"), "R-hat Inf for 'mu_indicator",
+               fixed = TRUE, all = FALSE)
+
+  # a column that is constant when pooled stays not assessable, unchanged
+  constant <- matrix(rep(1, 200), ncol = 1, dimnames = list(NULL, "mu"))
+  constant_fit <- .mock_convergence_fit(
+    constant, constant, list(mu = prior("normal", list(0, 1)))
+  )
+  ignored <- JAGS_check_convergence(constant_fit, allow_not_assessable = TRUE)
+  expect_true(ignored)
+  expect_identical(attr(ignored, "diagnostics")$state, "not_assessable")
+  expect_true(is.na(attr(ignored, "diagnostics")$Rhat))
+  expect_true(is.na(attr(ignored, "diagnostics")$ESS))
+  refused <- JAGS_check_convergence(constant_fit)
+  expect_false(refused)
+  expect_match(attr(refused, "errors"), "not assessable for 'mu'", fixed = TRUE, all = FALSE)
 })
 
 test_that("weightfunction reference omega bins are structural constants", {

@@ -44,8 +44,13 @@
 #' parameters.
 #' @param allow_not_assessable whether requested sampled parameters with
 #' undefined diagnostics may be ignored. Defaults to \code{FALSE}. A sampled
-#' column that never changes, including a constant model indicator, is not
-#' evidence of convergence and remains not assessable, whatever its draws.
+#' column that never changes when its chains are pooled, including a constant
+#' model indicator, is not evidence of convergence and remains not assessable,
+#' as does a diagnostic whose computation failed. A diagnostic computed on
+#' draws that vary is a value, not an undefined result, and is assessed even
+#' when it is infinite or zero: chains that are each constant but at different
+#' values give an R-hat of \code{Inf} and an ESS of 0, which fail
+#' \code{max_Rhat} and \code{min_ESS} whatever this argument is.
 #'
 #' @details \code{JAGS_fit()} assigns every fitted coordinate one convergence
 #' role, stored in the \code{convergence_role} column of
@@ -579,7 +584,11 @@ JAGS_check_convergence <- function(
           multivariate = FALSE,
           autoburnin = FALSE
         )[["psrf"]])
-        max(psrf[1L, ], na.rm = FALSE)
+        # Chains that are each constant at different values give a point
+        # estimate of Inf with an NaN upper bound: the value is Inf.
+        estimates <- psrf[1L, ]
+        estimates <- estimates[!is.na(estimates)]
+        if(length(estimates) == 0L) NA_real_ else max(estimates)
       },
       error = function(e) NA_real_
     )
@@ -589,9 +598,6 @@ JAGS_check_convergence <- function(
       suppressWarnings(as.numeric(coda::effectiveSize(mcmc_samples)[[1L]])),
       error = function(e) NA_real_
     )
-    if(identical(output[["ESS"]], 0)){
-      output[["ESS"]] <- NA_real_
-    }
   }
   if(assess_error || assess_SD_error){
     statistics <- tryCatch(
@@ -613,11 +619,14 @@ JAGS_check_convergence <- function(
     }
   }
 
+  # Draws that vary are always assessed: a diagnostic that is infinite or zero
+  # is a value that fails its criterion, not an undefined result. Only a
+  # diagnostic whose computation failed (NA or NaN) is not assessable.
   enabled_names <- names(enabled)[enabled]
-  output[["assessable"]] <- all(is.finite(unlist(output[enabled_names])))
+  output[["assessable"]] <- !any(is.na(unlist(output[enabled_names])))
   if(!output[["assessable"]]){
     for(name in enabled_names){
-      if(!is.finite(output[[name]])){
+      if(is.na(output[[name]])){
         output[[name]] <- NA_real_
       }
     }
@@ -650,7 +659,7 @@ JAGS_check_convergence <- function(
     )
     for(row in which(not_assessable)){
       unavailable <- names(enabled)[
-        enabled & !is.finite(unlist(diagnostics[row, names(enabled)]))
+        enabled & is.na(unlist(diagnostics[row, names(enabled)]))
       ]
       fails <- c(
         fails,

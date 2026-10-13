@@ -68,8 +68,13 @@ parameters.}
 
 \item{allow_not_assessable}{whether requested sampled parameters with
 undefined diagnostics may be ignored. Defaults to \code{FALSE}. A sampled
-column that never changes, including a constant model indicator, is not
-evidence of convergence and remains not assessable, whatever its draws.}
+column that never changes when its chains are pooled, including a constant
+model indicator, is not evidence of convergence and remains not assessable,
+as does a diagnostic whose computation failed. A diagnostic computed on
+draws that vary is a value, not an undefined result, and is assessed even
+when it is infinite or zero: chains that are each constant but at different
+values give an R-hat of \code{Inf} and an ESS of 0, which fail
+\code{max_Rhat} and \code{min_ESS} whatever this argument is.}
 }
 \value{
 \code{JAGS_check_convergence} returns a boolean indicating whether
