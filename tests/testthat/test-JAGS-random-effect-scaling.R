@@ -1240,3 +1240,68 @@ test_that("independent scaled random slopes imply the documented original-scale 
   # The worked magnitude in the documentation: equal SDs and m / s = 2.5.
   expect_equal(-2.5 / sqrt(1 + 2.5^2), -0.9284767, tolerance = 1e-7)
 })
+
+test_that("a hand-built formula_scale unscales random-effect SDs like the automatic fit", {
+
+  set.seed(3)
+  df <- data.frame(id = factor(rep(letters[1:8], each = 6)), x = rnorm(48, mean = 10, sd = 3))
+  m <- mean(df$x)
+  s <- stats::sd(df$x)
+  df_manual <- df
+  df_manual$x <- (df$x - m) / s
+  manual_scale <- list(mu = list(mu_x = list(mean = m, sd = s)))
+  priors <- list(intercept = prior("normal", list(0, 5)), x = prior("normal", list(0, 2)))
+  fit_of <- function(carrier){
+    fit <- coda::mcmc.list(coda::mcmc(as.matrix(carrier)))
+    class(fit) <- c("BayesTools_fit", class(fit))
+    for(name in c("prior_list", "formula_design", "formula_scale")){
+      attr(fit, name) <- attr(carrier, name)
+    }
+    fit <- .bt_attach_parameter_map(fit)
+    fit <- .bt_attach_draw_geometry(fit)
+    .bt_attach_fit_contract(fit)
+  }
+
+  # independent block: the standardized SDs map to the original-scale SDs
+  formula <- ~ 1 + x + diag(1 + x | id)
+  random_priors <- prior_random(id = random_block(
+    sd = prior("normal", list(0, 1), list(0, Inf)),
+    monitor = random_monitor(latent = FALSE, coefficients = FALSE, correlation = FALSE)
+  ))
+  compiled <- JAGS_formula(formula, "mu", df_manual, priors, prior_random = random_priors)
+  draws <- .generate_prior_sample_matrix(compiled$prior_list, 4L, seed = 7)
+  manual_fit <- fit_of(JAGS_formula_draws(draws, formula, "mu", df_manual, priors,
+    prior_random = random_priors))
+  auto_fit <- fit_of(JAGS_formula_draws(draws, formula, "mu", df, priors,
+    prior_random = random_priors, formula_scale = list(x = TRUE)))
+  transformed <- transform_scale_samples(manual_fit, formula_scale = manual_scale)
+  sd_columns <- grep("__xREx__", colnames(draws), value = TRUE)
+  expect_length(sd_columns, 2L)
+  expect_false(isTRUE(all.equal(unname(transformed[, sd_columns]), unname(draws[, sd_columns]))))
+  expect_equal(transformed, transform_scale_samples(auto_fit), tolerance = 1e-12)
+
+  # correlated block with a point intercept: the completion carries the same
+  # structure that the automatic scaling attaches
+  formula <- ~ 1 + x + us(1 + x | id)
+  priors$intercept <- prior("point", list(1.5))
+  random_priors <- prior_random(id = random_block(
+    sd = prior("gamma", list(2, 2)), cor = prior_lkj(eta = 1.5)
+  ))
+  automatic <- JAGS_formula(formula, "mu", df, priors, prior_random = random_priors,
+    formula_scale = list(x = TRUE))
+  manual <- JAGS_formula(formula, "mu", df_manual, priors, prior_random = random_priors)
+  scale <- .bt_formula_scale_finalize(manual$formula_scale, manual$formula_design,
+    prior_list = manual$prior_list, owner_scope = "fit")
+  design <- manual$formula_design
+  design$formula_scale <- scale
+  fit <- structure(list(), class = "BayesTools_fit")
+  attr(fit, "formula_scale") <- list(mu = scale)
+  attr(fit, "formula_design") <- list(mu = design)
+  completed <- .bt_formula_scale_list_complete(manual_scale, fit)$mu
+  for(key in c("parameter", "log_intercept", "point_terms",
+               "random_effect_sd_leaves", "random_effect_correlation_required")){
+    expect_false(is.null(attr(automatic$formula_scale, key, exact = TRUE)))
+    expect_identical(attr(completed, key, exact = TRUE), attr(automatic$formula_scale, key, exact = TRUE))
+  }
+  expect_identical(attr(completed, "random_effect_correlation_required"), "__xREx__id")
+})

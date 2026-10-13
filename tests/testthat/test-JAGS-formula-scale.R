@@ -2215,3 +2215,52 @@ test_that("lm validation: factor interactions with multiple scaled continuous", 
   )
 })
 
+
+# A fit that stores only the fitted design (no automatic scaling), as JAGS_fit()
+# stores a formula that was standardized by hand.
+.manual_scale_carrier_fit <- function(carrier){
+
+  fit <- coda::mcmc.list(coda::mcmc(as.matrix(carrier)))
+  class(fit) <- c("BayesTools_fit", class(fit))
+  for(name in c("prior_list", "formula_design", "formula_scale")){
+    attr(fit, name) <- attr(carrier, name)
+  }
+  fit <- .bt_attach_parameter_map(fit)
+  fit <- .bt_attach_draw_geometry(fit)
+  .bt_attach_fit_contract(fit)
+}
+
+test_that("a hand-built formula_scale is completed with the fitted log-intercept structure", {
+
+  set.seed(3)
+  df <- data.frame(x = rnorm(48, mean = 10, sd = 3))
+  m <- mean(df$x)
+  s <- stats::sd(df$x)
+  manual_scale <- list(mu = list(mu_x = list(mean = m, sd = s)))
+  formula <- ~ x
+  attr(formula, "log(intercept)") <- TRUE
+  priors <- list(
+    intercept = prior("normal", list(1, 0.5), list(0, Inf)),
+    x         = prior("normal", list(0, 1))
+  )
+  draws <- cbind(mu_intercept = c(1.2, 0.8, 1.0), mu_x = c(0.1, -0.2, 0.05))
+
+  manual_fit <- .manual_scale_carrier_fit(JAGS_formula_draws(
+    draws, formula, "mu", data.frame(x = (df$x - m) / s), priors))
+  auto_fit <- .manual_scale_carrier_fit(JAGS_formula_draws(
+    draws, formula, "mu", df, priors, formula_scale = list(x = TRUE)))
+  expect_identical(names(attributes(attr(manual_fit, "formula_scale")$mu)), "unscale_design")
+
+  # the log intercept is unscaled as exp(log(a) - b m / s), not linearly
+  transformed <- transform_scale_samples(manual_fit, formula_scale = manual_scale)
+  expect_equal(unname(transformed[, "mu_intercept"]),
+    exp(log(draws[, "mu_intercept"]) - draws[, "mu_x"] * m / s), tolerance = 1e-12)
+  expect_equal(unname(transformed[, "mu_x"]), draws[, "mu_x"] / s, tolerance = 1e-12)
+  expect_equal(transformed, transform_scale_samples(auto_fit), tolerance = 1e-12)
+
+  prior_samples <- transform_prior_samples(manual_fit, n_samples = 500, seed = 1,
+    formula_scale = manual_scale)
+  expect_true(all(prior_samples[, "mu_intercept"] > 0))
+  expect_equal(prior_samples, transform_prior_samples(auto_fit, n_samples = 500, seed = 1),
+    tolerance = 1e-12)
+})

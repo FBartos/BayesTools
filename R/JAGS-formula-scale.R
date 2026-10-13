@@ -486,8 +486,69 @@
                                     attr(fitted_scale[[parameter]], "unscale_design", exact = TRUE))){
       .bt_stop_refit_required("Formula declaration carriers disagree. Refit the model with this version of BayesTools.")
     }
+    # A fit without automatic scaling stores only the fitted design: the
+    # structure follows from it, as if the predictors had been scaled.
+    if(is.null(attr(formula_scale[[parameter]], "parameter", exact = TRUE))){
+      formula_scale[[parameter]] <- .bt_formula_scale_design_structure(formula_scale[[parameter]], design)
+    }
   }
   formula_scale
+}
+
+# The formula-scale structure beyond the means and SDs: the formula parameter,
+# the log-intercept flag, the numeric point terms, and the random-effect SD
+# leaves of each block (keyed '__xREx__<block>') with the blocks whose
+# correlation the SD transform needs. JAGS_formula() attaches it to the scale
+# it builds; 'random_sd_leaves = NULL' attaches no random-effect structure.
+.bt_formula_scale_attach_structure <- function(formula_scale, parameter, log_intercept,
+                                               point_terms = NULL, random_sd_leaves = NULL,
+                                               random_correlation_required = character()){
+
+  attr(formula_scale, "parameter") <- parameter
+  attr(formula_scale, "log_intercept") <- log_intercept
+  if(length(point_terms) > 0L){
+    attr(formula_scale, "point_terms") <- point_terms
+  }
+  if(!is.null(random_sd_leaves)){
+    attr(formula_scale, "random_effect_sd_leaves") <- random_sd_leaves
+    if(length(random_correlation_required) > 0L){
+      attr(formula_scale, "random_effect_correlation_required") <- unique(random_correlation_required)
+    }
+  }
+  formula_scale
+}
+
+# The structure JAGS_formula() would have attached had the predictors of the
+# fitted design been scaled automatically, taken from the stored design.
+.bt_formula_scale_design_structure <- function(formula_scale, design){
+
+  random_sd_leaves <- NULL
+  random_correlation_required <- character()
+  random_terms <- .bt_formula_design_random_effects(design)
+  if(length(random_terms) > 0L){
+    random_sd_leaves <- list()
+    for(random_term in random_terms){
+      random_key <- paste0("__xREx__", random_term$block_name)
+      random_sd_leaves[[random_key]] <- random_term$sd_leaves
+      n_columns <- random_term$n_columns
+      if(.bt_random_effect_structure(random_term) %in% c("us", "cs", "hcs", "ar1", "car", "har") &&
+         is.numeric(n_columns) && length(n_columns) == 1L && !is.na(n_columns) && n_columns > 1L){
+        random_correlation_required <- c(random_correlation_required, random_key)
+      }
+    }
+  }
+  .bt_formula_scale_attach_structure(
+    formula_scale,
+    parameter = design$parameter,
+    log_intercept = isTRUE(design$log_intercept),
+    point_terms = .formula_scale_point_terms(
+      prior_list = design$prior_list,
+      parameter = design$parameter,
+      model_terms = design$model_terms
+    ),
+    random_sd_leaves = random_sd_leaves,
+    random_correlation_required = random_correlation_required
+  )
 }
 
 

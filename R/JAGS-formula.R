@@ -754,24 +754,20 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
   if(exists("scale_info") && length(scale_info) > 0){
     # add parameter prefix to scale_info names for consistency
     names(scale_info) <- paste0(parameter, "_", names(scale_info))
-    # store the parameter prefix as an attribute for later retrieval
-    attr(scale_info, "parameter") <- parameter
-    # store log_intercept attribute for proper unscaling transformation
-    attr(scale_info, "log_intercept") <- log_intercept
-    point_terms <- .formula_scale_point_terms(
-      prior_list = prior_list,
+    # store the parameter, the log_intercept flag (for the unscaling
+    # transformation), the point terms and the random-effect SD structure
+    scale_info <- .bt_formula_scale_attach_structure(
+      scale_info,
       parameter = parameter,
-      model_terms = model_terms
+      log_intercept = log_intercept,
+      point_terms = .formula_scale_point_terms(
+        prior_list = prior_list,
+        parameter = parameter,
+        model_terms = model_terms
+      ),
+      random_sd_leaves = if(length(random_scale_terms) > 0) random_sd_leaves,
+      random_correlation_required = random_correlation_required
     )
-    if(length(point_terms) > 0L){
-      attr(scale_info, "point_terms") <- point_terms
-    }
-    if(length(random_scale_terms) > 0){
-      attr(scale_info, "random_effect_sd_leaves") <- random_sd_leaves
-      if(length(random_correlation_required) > 0L){
-        attr(scale_info, "random_effect_correlation_required") <- unique(random_correlation_required)
-      }
-    }
     output$formula_scale <- scale_info
   }
 
