@@ -222,10 +222,11 @@ JAGS_diagnostics                 <- function(fit, parameter, type, plot_type = "
     if(sum(model_samples[,colnames(model_samples) == paste0(parameter, "_indicator")] != 0) < 10)
       stop("The parameter with a spike and slab prior did not result in enough samples under the slab for producing a diagnostic figure.")
 
-    # change the samples between conditional
+    # change the samples between conditional: the excluded rows of every
+    # coefficient column of the parameter (the indexed columns of a factor)
     model_samples[
       model_samples[,colnames(model_samples) == paste0(parameter, "_indicator")] == 0,
-      colnames(model_samples) == parameter] <- NA
+      colnames(model_samples) == parameter | startsWith(colnames(model_samples), paste0(parameter, "["))] <- NA
 
     # modify the parameter list
     prior_list[[parameter]] <- .get_spike_and_slab_variable(prior_list[[parameter]])

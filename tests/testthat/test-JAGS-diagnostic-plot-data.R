@@ -744,3 +744,49 @@ test_that("JAGS_diagnostics() draws the components of a single bias prior", {
   expect_identical(alpha_density$y[outside], rep(0, sum(outside)))
   expect_gt(max(alpha_density$y), .5)
 })
+
+test_that("diagnostic plot data masks the spike rows of every coefficient of a factor spike-and-slab", {
+
+  info <- JAGS_formula(
+    ~ f, "mu", data.frame(f = factor(c("a", "b", "c"))),
+    list(
+      intercept = prior("point", list(0)),
+      f = prior_spike_and_slab(prior_factor("normal", list(0, 1), contrast = "treatment"))
+    )
+  )
+  indicator <- rep(c(0, 1, 1), 6)
+  draws <- cbind(
+    mu_f_indicator = indicator,
+    "mu_f[1]"      = indicator * seq_along(indicator),
+    "mu_f[2]"      = indicator * (seq_along(indicator) + 1)
+  )
+  fit <- structure(list(
+    mcmc = coda::mcmc.list(coda::mcmc(draws)),
+    summary.pars = list(mutate = NULL)
+  ), class = c("BayesTools_fit", "runjags"))
+  attr(fit, "prior_list")     <- info$prior_list
+  attr(fit, "formula_design") <- list(mu = info$formula_design)
+  fit <- attach_test_parameter_map(fit)
+
+  plot_data <- .diagnostics_plot_data(fit, "mu_f", info$prior_list, NULL, FALSE)
+
+  # six of the 18 draws are excluded: the same rows are NA in each coefficient
+  excluded <- which(indicator == 0)
+  expect_identical(colnames(plot_data), c("mu_f[b]", "mu_f[c]"))
+  expect_identical(sum(is.na(plot_data)), 12L)
+  expect_identical(which(is.na(plot_data[, "mu_f[b]"])), excluded)
+  expect_identical(which(is.na(plot_data[, "mu_f[c]"])), excluded)
+  expect_identical(as.numeric(plot_data[-excluded, "mu_f[b]"]), draws[-excluded, "mu_f[1]"])
+  expect_identical(as.numeric(plot_data[-excluded, "mu_f[c]"]), draws[-excluded, "mu_f[2]"])
+  expect_identical(attr(plot_data, "iter"), seq_len(18L))
+
+  # the diagnostics describe the draws under the slab only
+  density_data <- .diagnostics_plot_data_density(plot_data, n_points = 64, xlim = NULL)
+  for(coefficient in c("mu_f[b]", "mu_f[c]")){
+    included <- as.numeric(plot_data[-excluded, coefficient])
+    expect_equal(attr(density_data[[coefficient]], "x_range"), range(included))
+    expect_equal(density_data[[coefficient]][[1]]$bw, stats::bw.nrd0(included))
+  }
+  trace_data <- .diagnostics_plot_data_trace(plot_data, n_points = 64, ylim = NULL)
+  expect_identical(which(is.na(trace_data[["mu_f[b]"]][[1]]$y)), excluded)
+})
