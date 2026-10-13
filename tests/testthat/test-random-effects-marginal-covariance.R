@@ -858,6 +858,79 @@ test_that("us covariance uses monitored LKJ Cholesky samples", {
   )
 })
 
+test_that("diagonal-only output validates correlation Cholesky draws like the dense output", {
+
+  df <- data.frame(
+    id = factor(c("a", "a", "b", "b"), levels = c("a", "b")),
+    x = c(0, 1, 2, 3)
+  )
+  unit_diagonal <- "must define correlation matrices with unit diagonal"
+  # Row 2 of the invalid factor has squared norm 1.17, so it is no correlation
+  # Cholesky factor.
+  invalid_L <- matrix(c(1, 0.6, 0, 0.9), 2L)
+  rho <- 0.6
+  valid_L <- matrix(c(1, rho, 0, sqrt(1 - rho^2)), 2L)
+  formula <- ~ 1 + random(1 + x | id, name = "id", covariance = "us")
+  tau <- c(2, 3, 5, 7)
+
+  # ordinary SD draws read from the posterior
+  ordinary <- .re_cov_formula(
+    formula = formula,
+    data = df,
+    prior_random = prior_random(id = random_block(sd = .re_cov_sd_prior()))
+  )
+  ordinary_term <- .re_cov_term(ordinary, "id")
+  ordinary_posterior <- function(L){
+    .re_cov_posterior(c(
+      .re_cov_sd_values(ordinary_term, c(2, 3)),
+      .re_cov_cholesky_values(ordinary_term, L)
+    ))
+  }
+
+  # a row-indexed external SD source (the second diagonal-only route)
+  indexed <- .re_cov_formula(
+    formula = formula,
+    data = df,
+    prior_random = prior_random(
+      id = random_block(sd_source = random_sd_source("tau", shape = "row"))
+    )
+  )
+  indexed_term <- .re_cov_term(indexed, "id")
+  indexed_posterior <- function(L){
+    .re_cov_posterior(c(
+      stats::setNames(tau, paste0("tau[", seq_along(tau), "]")),
+      .re_cov_cholesky_values(indexed_term, L)
+    ))
+  }
+
+  cases <- list(
+    list(result = ordinary, term = ordinary_term, posterior = ordinary_posterior,
+         label = "ordinary"),
+    list(result = indexed, term = indexed_term, posterior = indexed_posterior,
+         label = "row-indexed")
+  )
+  for(case in cases){
+    valid <- case$posterior(valid_L)
+    dense <- .re_cov_output(case$result, valid)
+    diagonal <- .re_cov_output(case$result, valid, diagonal_only = TRUE)
+    expect_equal(unname(diagonal$samples), .re_cov_dense_diagonal(dense),
+                 tolerance = 1e-12, info = case$label)
+
+    invalid <- case$posterior(invalid_L)
+    expect_error(.re_cov_output(case$result, invalid), unit_diagonal,
+                 fixed = TRUE, info = case$label)
+    expect_error(.re_cov_output(case$result, invalid, diagonal_only = TRUE),
+                 unit_diagonal, fixed = TRUE, info = case$label)
+  }
+  # a non-finite entry is refused by the diagonal-only output with the dense message
+  for(case in cases){
+    non_finite <- case$posterior(valid_L)
+    non_finite[1L, paste0(case$term$parameter_stem, "_xRE_CORx_L[2,2]")] <- NA_real_
+    expect_error(.re_cov_output(case$result, non_finite, diagonal_only = TRUE),
+                 "must be finite", fixed = TRUE, info = case$label)
+  }
+})
+
 test_that("us covariance can reconstruct LKJ primitive samples", {
 
   df <- data.frame(

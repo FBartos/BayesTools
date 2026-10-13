@@ -2354,6 +2354,12 @@ random_effects_marginal_variance_factors <- function(
         posterior = posterior
       )
     }
+    .bt_random_effect_marginal_covariance_validate_correlation_cholesky(
+      cholesky = cholesky,
+      random_term = random_term,
+      n_columns = n_columns,
+      posterior = posterior
+    )
     return(.bt_random_effect_marginal_variance_cholesky(
       random_term = random_term,
       model_matrix = model_matrix,
@@ -2622,6 +2628,12 @@ random_effects_marginal_variance_factors <- function(
         posterior = posterior
       )
     }
+    .bt_random_effect_marginal_covariance_validate_correlation_cholesky(
+      cholesky = cholesky,
+      random_term = random_term,
+      n_columns = n_columns,
+      posterior = posterior
+    )
     return(.bt_random_effect_marginal_variance_cholesky(
       random_term = random_term,
       model_matrix = model_matrix,
