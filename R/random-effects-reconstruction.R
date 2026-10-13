@@ -24,6 +24,12 @@
     if(is.null(sd_draws)){
       return(NULL)
     }
+    .bt_random_effect_reconstruction_check_sd_draws(
+      sd_draws = sd_draws,
+      random_term = random_term,
+      posterior = posterior,
+      n_columns = n_columns
+    )
     structured_contribution <- .bt_random_effect_structured_contribution_from_latent(
       random_term = random_term,
       model_matrix = model_matrix,
@@ -54,6 +60,12 @@
   if(is.null(sd_draws)){
     return(NULL)
   }
+  .bt_random_effect_reconstruction_check_sd_draws(
+    sd_draws = sd_draws,
+    random_term = random_term,
+    posterior = posterior,
+    n_columns = n_columns
+  )
 
   if(structure %in% c("diag", "id")){
     return(.bt_random_effect_independent_contribution_from_latent(
@@ -84,6 +96,24 @@
     z_draws = z_draws,
     sd_draws = sd_draws,
     cholesky = cholesky
+  )
+}
+
+# Monitored or allocation-derived SD draws enter the reconstruction as scales:
+# a negative, infinite or missing value would silently reverse, blow up or drop
+# the conditional prediction, so they are checked as new-group sampling checks
+# its SD draws.
+.bt_random_effect_reconstruction_check_sd_draws <- function(
+    sd_draws, random_term, posterior, n_columns){
+
+  .bt_random_effect_marginal_covariance_validate_draw_matrix(
+    draws = sd_draws,
+    n_draws = nrow(posterior),
+    n_columns = n_columns,
+    label = "SD",
+    random_term = random_term,
+    nonnegative = TRUE,
+    context = "Random-effect prediction"
   )
 }
 

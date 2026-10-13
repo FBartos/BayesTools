@@ -169,6 +169,216 @@ test_that("latent reconstruction rejects duplicate posterior coordinates", {
   )
 })
 
+test_that("latent reconstruction refuses invalid random-effect SD draws", {
+
+  sd_message <- function(block){
+    paste0("Random-effect prediction SD draws for block '", block,
+           "' must be finite and non-negative.")
+  }
+  reconstruct <- function(random_term, posterior, prior_list){
+    .bt_try_random_effect_contribution_from_latent(
+      random_term = random_term,
+      model_matrix = random_term$model_matrix,
+      group_map = random_term$group_map,
+      posterior = posterior,
+      prior_list = prior_list
+    )
+  }
+
+  # monitored SDs of independent blocks (the dense latent route)
+  for(structure in c("diag", "id")){
+    fixture <- .independent_backend_fixture(structure)
+    sd_name <- fixture$random_term$sd_parameter_names[[1L]]
+    for(invalid in c(-1, Inf, NA_real_)){
+      posterior <- fixture$posterior
+      posterior[1L, sd_name] <- invalid
+      expect_error(
+        reconstruct(fixture$random_term, posterior, fixture$result$prior_list),
+        sd_message("id"),
+        fixed = TRUE,
+        info = paste(structure, invalid)
+      )
+    }
+    # a zero SD stays valid and reconstructs the zero scale
+    fixture$posterior[1L, sd_name] <- 0
+    expect_equal(
+      unname(reconstruct(fixture$random_term, fixture$posterior, fixture$result$prior_list)),
+      unname(.independent_backend_existing_oracle(fixture)),
+      tolerance = 1e-12,
+      info = structure
+    )
+  }
+
+  # monitored SDs of a structured block (the structured latent route)
+  structured_data <- data.frame(
+    id = factor(rep(c("a", "b"), each = 3L)),
+    index = factor(rep(1:3, 2L))
+  )
+  structured <- JAGS_formula(
+    formula = ~ 1 + cs(index | id),
+    parameter = "mu",
+    data = structured_data,
+    prior_list = list(intercept = prior("point", list(0))),
+    prior_random = prior_random(
+      id = random_block(
+        sd = .independent_backend_sd_prior(),
+        cor = prior("normal", list(0, 0.5)),
+        monitor = random_monitor(latent = TRUE, coefficients = FALSE, correlation = FALSE)
+      )
+    )
+  )
+  structured_term <- structured$formula_design$random_effects[[1L]]
+  structured_z <- .bt_random_effect_latent_names(
+    random_term = structured_term,
+    n_groups = structured_term$n_groups,
+    n_columns = structured_term$n_columns
+  )
+  structured_sd <- structured_term$sd_parameter_names[[1L]]
+  structured_posterior <- matrix(
+    0, nrow = 2L, ncol = 2L + length(structured_z),
+    dimnames = list(NULL, c(
+      structured_sd, structured_term$correlation$sample_name, as.vector(structured_z)
+    ))
+  )
+  structured_posterior[, structured_sd] <- c(2, 3)
+  structured_posterior[, structured_term$correlation$sample_name] <- c(0.2, -0.3)
+  structured_posterior[, as.vector(structured_z)] <- rbind(
+    c(1, 2, 3, 4, 5, 6),
+    c(-1, 0.5, 2, -2, 1, 0)
+  )
+  valid <- reconstruct(structured_term, structured_posterior, structured$prior_list)
+  expect_equal(dim(valid), c(6L, 2L))
+  expect_true(all(is.finite(valid)))
+  for(invalid in c(-1, Inf, NA_real_)){
+    posterior <- structured_posterior
+    posterior[1L, structured_sd] <- invalid
+    expect_error(
+      reconstruct(structured_term, posterior, structured$prior_list),
+      sd_message("id"),
+      fixed = TRUE,
+      info = paste("cs", invalid)
+    )
+  }
+  posterior <- structured_posterior
+  posterior[1L, structured_sd] <- 0
+  expect_equal(unname(reconstruct(structured_term, posterior, structured$prior_list)[, 1L]), rep(0, 6L))
+
+  # SDs derived from the monitored allocation nodes
+  allocation_data <- data.frame(
+    id = factor(c("a", "a", "b", "b")),
+    drug = factor(c("d1", "d2", "d1", "d2")),
+    x = c(-1, 0, 1, 2)
+  )
+  allocated <- JAGS_formula(
+    formula = ~ 1 + diag(1 + x | id) + diag(1 | drug),
+    parameter = "mu",
+    data = allocation_data,
+    prior_list = list(intercept = prior("point", list(0))),
+    prior_random = prior_random(allocation = list(
+      random_variance_allocation(
+        "root", terms = c(group = "id", drug = "drug"),
+        sd = prior("gamma", list(2, 2)),
+        weights = prior("dirichlet", list(c(1, 1)))
+      ),
+      random_variance_allocation(
+        "child", terms = "id", target = "sd_component",
+        parent = allocation_ref("root", "group"), scale = "total_variance",
+        weights = prior("dirichlet", list(c(1, 1)))
+      )
+    ))
+  )
+  allocated_term <- allocated$formula_design$random_effects[[1L]]
+  root <- allocated$formula_design$random_allocations$root
+  child <- allocated$formula_design$random_allocations$child
+  allocated_z <- .bt_random_effect_latent_names(
+    random_term = allocated_term,
+    n_groups = allocated_term$n_groups,
+    n_columns = allocated_term$n_columns
+  )
+  total_name <- grep("allocation_sd", names(allocated$prior_list), value = TRUE)
+  allocated_posterior <- matrix(
+    c(2, 0.25, 0.75, 0.36, 0.64, 1, 2, 3, 4),
+    nrow = 1L,
+    dimnames = list(NULL, c(
+      total_name,
+      paste0(root$weight_name, "[", 1:2, "]"),
+      paste0(child$weight_name, "[", 1:2, "]"),
+      as.vector(allocated_z)
+    ))
+  )
+  expected_sd <- 2 * sqrt(0.25) * sqrt(c(0.36, 0.64))
+  expected_effects <- sweep(
+    matrix(c(1, 2, 3, 4), nrow = 2L), 2L, expected_sd, "*"
+  )
+  expect_equal(
+    as.vector(reconstruct(allocated_term, allocated_posterior, allocated$prior_list)),
+    unname(rowSums(allocated_term$model_matrix *
+                     expected_effects[allocated_term$group_map, , drop = FALSE])),
+    tolerance = 1e-12
+  )
+  for(invalid in c(-2, Inf, NA_real_)){
+    posterior <- allocated_posterior
+    posterior[1L, total_name] <- invalid
+    expect_error(
+      suppressWarnings(reconstruct(allocated_term, posterior, allocated$prior_list)),
+      sd_message("id"),
+      fixed = TRUE,
+      info = paste("allocation", invalid)
+    )
+  }
+
+  # the public conditional evaluation of existing groups refuses them like the
+  # sampling of a new group does
+  evaluation_data <- data.frame(id = factor(c("a", "a", "b", "b")))
+  evaluation <- JAGS_formula(
+    formula = ~ 1 + diag(1 | id),
+    parameter = "mu",
+    data = evaluation_data,
+    prior_list = list(intercept = prior("point", list(0))),
+    prior_random = prior_random(
+      id = random_block(
+        sd = prior("gamma", list(2, 2)),
+        monitor = random_monitor(latent = TRUE, coefficients = FALSE)
+      )
+    )
+  )
+  evaluation_term <- evaluation$formula_design$random_effects[[1L]]
+  evaluation_z <- .bt_random_effect_latent_names(
+    random_term = evaluation_term,
+    n_groups = evaluation_term$n_groups,
+    n_columns = evaluation_term$n_columns
+  )
+  conditional <- function(sd_value, data = NULL, new_levels = "error"){
+    values <- stats::setNames(
+      c(0, sd_value, 1, 2),
+      c("mu_intercept", evaluation_term$sd_parameter_names, as.vector(evaluation_z))
+    )
+    fit <- coda::mcmc(matrix(values, nrow = 1L, dimnames = list(NULL, names(values))))
+    attr(fit, "formula_design") <- list(mu = evaluation$formula_design)
+    attr(fit, "prior_list") <- evaluation$prior_list
+    JAGS_evaluate_formula(
+      fit, parameter = "mu", formula_target = "conditional", data = data,
+      new_levels = new_levels
+    )
+  }
+  expect_equal(as.vector(conditional(2)), c(2, 2, 4, 4))
+  expect_equal(as.vector(conditional(0)), rep(0, 4L))
+  for(invalid in c(-1, Inf, NA_real_)){
+    expect_error(
+      conditional(invalid),
+      sd_message("id"),
+      fixed = TRUE,
+      info = paste("existing", invalid)
+    )
+    expect_error(
+      conditional(invalid, data = data.frame(id = factor("c")), new_levels = "sample"),
+      sd_message("id"),
+      fixed = TRUE,
+      info = paste("new group", invalid)
+    )
+  }
+})
+
 test_that("point-prior random scales support zero-dimensional bridge rows", {
 
   data <- data.frame(
