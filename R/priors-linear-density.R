@@ -724,7 +724,7 @@
       x <- lhs$density$x
       fx <- lhs$density$y
       dx_x <- .prior_linear_density_dx(lhs)
-      zero_tol <- .prior_linear_density_grid_tol() * max(1, max(abs(x), na.rm = TRUE))
+      zero_tol <- .prior_linear_density_grid_tol() * max(abs(x), na.rm = TRUE)
       keep <- is.finite(x) & is.finite(fx) & fx > 0 & abs(x) > zero_tol
       x <- x[keep]
       fx <- fx[keep]

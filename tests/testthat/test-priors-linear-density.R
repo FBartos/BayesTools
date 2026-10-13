@@ -4284,3 +4284,33 @@ test_that("consumed numeric scales survive stored recipes and retained Cauchy si
     }
   }
 })
+
+test_that("the product grid does not depend on the unit of its terms", {
+
+  product_grid <- function(rate){
+    first <- prior("gamma", list(2, rate))
+    second <- prior("gamma", list(3, rate))
+    attr(first, "multiply_by") <- "s"
+    attr(second, "multiply_by") <- "s"
+    priors <- list(b1 = first, b2 = second, s = prior("lognormal", list(0, .5)))
+    density <- .prior_linear_combination_density(priors, c(b1 = 1, b2 = 1))$density
+    # rescaled to the unit rate: Z = G * S with G ~ gamma(5, 1) and S the lognormal
+    x <- density$x * rate
+    y <- density$y / rate
+    list(x = x, y = y, heights = stats::approx(x, y, xout = c(2, 5, 10))$y, mean = sum(x * y) * (x[2] - x[1]))
+  }
+  reference <- vapply(c(2, 5, 10), function(z){
+    stats::integrate(function(s) stats::dgamma(z / s, 5, 1) / s * stats::dlnorm(s, 0, .5), 0, Inf, rel.tol = 1e-10)$value
+  }, numeric(1))
+
+  unit <- product_grid(1)
+  # the grid's own quadrature error is about 1e-3 relative at these heights
+  expect_equal(unit$heights, reference, tolerance = 2e-3)
+  expect_equal(unit$mean, 5 * exp(.5^2 / 2), tolerance = 2e-3)
+  for(rate in c(1e3, 1e8, 1e9, 3e9, 1e10)){
+    scaled <- product_grid(rate)
+    expect_equal(scaled$heights, unit$heights, tolerance = 1e-12)
+    expect_equal(scaled$mean, unit$mean, tolerance = 1e-12)
+    expect_equal(scaled$y, unit$y, tolerance = 1e-10)
+  }
+})
