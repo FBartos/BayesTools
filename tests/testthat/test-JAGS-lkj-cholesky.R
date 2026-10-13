@@ -83,6 +83,43 @@ test_that("LKJ primitive helpers enforce open u support before native transforms
   expect_equal(prior_values[2], -Inf)
 })
 
+test_that("LKJ Cholesky innovation factor is computed from the primitive", {
+
+  # sqrt(1 - cpc^2) with cpc = 2u - 1 equals 2 sqrt(u) sqrt(1 - u). From the
+  # rounded partial correlation it is lost for a small interior u (cpc rounds
+  # to -1), although the LKJ density of such a u is finite: under eta = 0.1 a
+  # first-percentile draw is about 9e-18.
+  innovation <- function(u) 2 * sqrt(u) * sqrt(1 - u)
+  u_small <- stats::qbeta(0.01, 0.1, 0.1)
+  expect_lt(u_small, 1e-16)
+  expect_true(is.finite(
+    BayesTools:::.bt_lkj_cholesky_cpc_u_log_prior(u_small, K = 2, eta = 0.1)
+  ))
+
+  u_grid <- c(u_small, 1e-300, 1e-17, 1e-12, 1e-8, 0.3, 0.5,
+              1 - 1e-8, 1 - 1e-12, 1 - 2^-52)
+  for(u in u_grid){
+    L <- BayesTools:::.bt_lkj_cholesky_cpc_u_to_L(u, K = 2)
+    expect_equal(L[2L, 1L], 2 * u - 1, tolerance = 1e-12)
+    expect_gt(L[2L, 2L], 0)
+    # a relative comparison (expect_equal() is absolute below the tolerance)
+    expect_lt(abs(L[2L, 2L] / innovation(u) - 1), 1e-12)
+  }
+  expect_equal(
+    BayesTools:::.bt_lkj_cholesky_cpc_u_to_L(1e-300, K = 2)[2L, 2L],
+    2e-150,
+    tolerance = 1e-12
+  )
+
+  # the factors multiply along a row; a unit-norm row and a positive diagonal
+  u3 <- c(u_small, 1e-300, 0.25)
+  L3 <- BayesTools:::.bt_lkj_cholesky_cpc_u_to_L(u3, K = 3)
+  expect_lt(abs(L3[3L, 3L] / (innovation(u3[2L]) * innovation(u3[3L])) - 1), 1e-12)
+  expect_lt(abs(L3[2L, 2L] / innovation(u3[1L]) - 1), 1e-12)
+  expect_true(all(diag(L3) > 0))
+  expect_equal(rowSums(L3^2), rep(1, 3), tolerance = 1e-12)
+})
+
 test_that("native LKJ transforms enforce open u support directly", {
 
   BayesTools:::.BayesTools_require_native_lkj()

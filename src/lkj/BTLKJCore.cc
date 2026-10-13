@@ -52,12 +52,31 @@ bool valid_alpha(double const *alpha, unsigned int length)
   return true;
 }
 
+namespace {
+
+// Preserve the LKJ transform on [0, 1] and keep descendant evaluation
+// finite while JAGS rejects stochastic proposals outside that support.
+double clamp_u(double u)
+{
+  return std::max(0.0, std::min(1.0, u));
+}
+
+// The innovation factor sqrt(1 - cpc^2) of a primitive u in [0, 1], with
+// cpc = 2u - 1, equals 2 sqrt(u) sqrt(1 - u). It is computed from u itself:
+// the rounded cpc loses it for a small interior u (cpc rounds to -1 and the
+// factor to 0, although it is of order sqrt(u) and the prior density of such
+// a u is finite), and 1 - u is exact for u >= 1/2.
+double innovation_from_u(double u)
+{
+  u = clamp_u(u);
+  return 2.0 * std::sqrt(u) * std::sqrt(1.0 - u);
+}
+
+}
+
 double cpc_from_u(double u)
 {
-  // Preserve the LKJ transform on [0, 1] and keep descendant evaluation
-  // finite while JAGS rejects stochastic proposals outside that support.
-  u = std::max(0.0, std::min(1.0, u));
-  return 2.0 * u - 1.0;
+  return 2.0 * clamp_u(u) - 1.0;
 }
 
 double pair_alpha(unsigned int i, unsigned int K, double eta)
@@ -76,19 +95,6 @@ void fill_alpha(double *alpha, unsigned int K, double eta)
   }
 }
 
-double sqrt_one_minus_square(double x)
-{
-  double square = x * x;
-  double value = 1.0 - square;
-  double roundoff_bound =
-    4.0 * std::numeric_limits<double>::epsilon() *
-    std::max(1.0, std::fabs(square));
-  if(value < 0.0 && value >= -roundoff_bound){
-    value = 0.0;
-  }
-  return std::sqrt(value);
-}
-
 void fill_cholesky_from_u(double *value, double const *u, unsigned int K)
 {
   fill_cholesky_from_u_strided(value, u, K, 1);
@@ -102,9 +108,9 @@ void fill_cholesky_from_u_strided(double *value, double const *u, unsigned int K
   for(unsigned int row = 2; row <= K; ++row){
     double multiplier = 1.0;
     for(unsigned int column = 1; column < row; ++column){
-      double cpc = cpc_from_u(u[cpc_index(column, row) * stride]);
-      value[flat_index(row, column, K)] = cpc * multiplier;
-      multiplier *= sqrt_one_minus_square(cpc);
+      double u_value = u[cpc_index(column, row) * stride];
+      value[flat_index(row, column, K)] = cpc_from_u(u_value) * multiplier;
+      multiplier *= innovation_from_u(u_value);
     }
     value[flat_index(row, row, K)] = multiplier;
   }
