@@ -314,7 +314,10 @@ bound keeps its breakpoints (closer peak points, i.e. rounding residues, are
 still dropped). Breakpoints closer than
 1e-9 of their magnitude (at least 1) are merged, so no piece is only a few
 ulps wide, but the merge width never exceeds half the peak's local SD, so the
-peak breakpoints are never merged. Every piece gets the full budget, and the
+peak breakpoints are never merged. In a two-term convolution the images of
+the other term's finite support bounds are never thinned or merged away (the
+neighbouring breakpoint is dropped instead), so a narrow piece beside a
+singular bound keeps its own breakpoint. Every piece gets the full budget, and the
 acceptance criterion applies to the summed value and error: every piece
 converged, a positive value, and a reported absolute error of at most 1e-4 of
 the value. The criterion is purely relative (Savage-Dickey uses log

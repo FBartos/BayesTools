@@ -2495,6 +2495,7 @@
   targets <- c(quantiles, second_bounds)
   list(
     targets = targets[is.finite(targets)],
+    bounds  = second_bounds[is.finite(second_bounds)],
     spec    = list(additive_mean = 0, additive_sd = 1, product_mean = 0, product_sd = 0,
                    multiplier = spec$first, bounds = spec$bounds),
     first   = .prior_conditional_normal_breakpoint_setup(spec$first, spec$bounds)
@@ -2504,12 +2505,17 @@
 .prior_convolution_breakpoints <- function(spec, distances,
                                            setup = .prior_convolution_breakpoint_setup(spec)){
 
-  images <- as.vector(outer(distances, setup$targets, function(d, q) (d - spec$other * q) / spec$weight))
+  image <- function(d, q) (d - spec$other * q) / spec$weight
+  images <- as.vector(outer(distances, setup$targets, image))
+  # the images of the other term's support bounds are never thinned or merged
+  # away: the density is singular or discontinuous there
+  protected <- as.vector(outer(distances, setup$bounds, image))
   .prior_conditional_normal_breakpoints(
     setup$spec,
     value = 0,
     extra = images[is.finite(images)],
-    setup = setup$first
+    setup = setup$first,
+    protected = protected[is.finite(protected)]
   )
 }
 
@@ -2983,7 +2989,7 @@
 }
 
 .prior_conditional_normal_breakpoints <- function(spec, value, extra = numeric(),
-                                                  setup = NULL){
+                                                  setup = NULL, protected = numeric()){
 
   if(is.null(setup)){
     setup <- .prior_conditional_normal_breakpoint_setup(spec$multiplier, spec$bounds)
@@ -3059,7 +3065,7 @@
         if(distance[i] >= start){
           next
         }
-        exempt <- is_peak[i] && distance[i] >= widths[i]
+        exempt <- (is_peak[i] && distance[i] >= widths[i]) || inner[i] %in% protected
         if(exempt || distance[i] >= 1e-3 * last){
           last <- distance[i]
         }else{
@@ -3076,13 +3082,28 @@
     scale <- max(1, abs(c(a, b))[is.finite(c(a, b))])
     max(16 * .Machine$double.eps * scale, min(1e-9 * scale, peak_width / 2))
   }
+  # a protected point (the image of a support bound) is kept, replacing the
+  # unprotected point it is too close to; the support ends are always kept
   points <- lower
+  is_protected <- FALSE
   for(point in inner){
-    if(point - points[length(points)] >= minimum_width(points[length(points)], point)){
+    last <- points[length(points)]
+    keep_point <- point %in% protected
+    if(point - last >= minimum_width(last, point)){
       points <- c(points, point)
+      is_protected <- c(is_protected, keep_point)
+    }else if(keep_point){
+      if(length(points) > 1L && !is_protected[length(points)]){
+        points[length(points)] <- point
+        is_protected[length(points)] <- TRUE
+      }else{
+        points <- c(points, point)
+        is_protected <- c(is_protected, TRUE)
+      }
     }
   }
-  if(length(points) > 1L && upper - points[length(points)] < minimum_width(points[length(points)], upper)){
+  if(length(points) > 1L && !is_protected[length(points)] &&
+     upper - points[length(points)] < minimum_width(points[length(points)], upper)){
     points <- points[-length(points)]
   }
   c(points, upper)

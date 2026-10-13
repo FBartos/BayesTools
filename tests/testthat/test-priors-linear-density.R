@@ -4363,3 +4363,54 @@ test_that("a two-term convolution ordinate matches the ends of its support by th
   expect_identical(plan$zero, c(FALSE, FALSE, FALSE, TRUE))
   expect_identical(plan$special, c(FALSE, TRUE, TRUE, FALSE))
 })
+
+test_that("convolution breakpoints keep the images of support bounds beside a singular bound", {
+
+  combination <- function(priors, weights = c(a = 1, b = 1)){
+    .prior_linear_combination_density(priors, weights, n_grid = 4096L)
+  }
+  ordinate_matches <- function(density, x, reference, tolerance = 1e-6, reported = TRUE){
+    ordinate <- prior_density_ordinate(density, x)
+    expect_true(ordinate$exact)
+    expect_identical(ordinate$behavior, "regular")
+    estimate <- exp(ordinate$log_density)
+    expect_equal(estimate, reference, tolerance = tolerance)
+    if(reported) expect_lte(abs(estimate - reference), ordinate$provenance$integration$absolute_error)
+  }
+  region_matches <- function(priors, x, reference){
+    spec <- .prior_density_route_linear(priors, c(a = 1, b = 1), NULL, 4096L)$spec
+    expect_equal(.prior_convolution_region(spec, matrix(c(0, x), nrow = 1), 4096L)$value, reference, tolerance = 1e-6)
+  }
+
+  # Gamma(.1, rate) + Gamma(.1, rate) = Gamma(.2, rate) in any unit
+  for(rate in c(1, 1e3, 1e6)){
+    priors <- list(a = prior("gamma", list(.1, rate)), b = prior("gamma", list(.1, rate)))
+    x <- .2 / rate
+    ordinate_matches(combination(priors), x, stats::dgamma(x, .2, rate))
+    region_matches(priors, x, stats::pgamma(x, .2, rate))
+  }
+  # ... and in either order of unequal shapes
+  for(rate in c(1, 1e6)){
+    for(shapes in list(c(.6, .3), c(.3, .6))){
+      priors <- list(a = prior("gamma", list(shapes[1], rate)), b = prior("gamma", list(shapes[2], rate)))
+      x <- 1 / rate
+      ordinate_matches(combination(priors), x, stats::dgamma(x, .9, rate))
+      region_matches(priors, x, stats::pgamma(x, .9, rate))
+    }
+  }
+  # a gamma term first and a very narrow uniform term: a mean over [x - w, x]
+  width <- 1e-8
+  for(x in c(1, 5)){
+    reference <- stats::integrate(function(a) stats::dgamma(a, 2, 1), x - width, x, rel.tol = 1e-12, abs.tol = 0)$value / width
+    ordinate_matches(combination(list(a = prior("gamma", list(2, 1)), b = prior("uniform", list(0, width)))), x, reference)
+    ordinate_matches(combination(list(a = prior("uniform", list(0, width)), b = prior("gamma", list(2, 1)))), x, reference,
+                     reported = FALSE)
+  }
+  # regular ordinates next to the shared end of the support stay available
+  for(shapes in list(c(.3, 2), c(2, .3))){
+    density <- combination(list(a = prior("gamma", list(shapes[1], 1)), b = prior("gamma", list(shapes[2], 1))))
+    for(x in c(1e-8, 1e-6, 5e-6)){
+      ordinate_matches(density, x, stats::dgamma(x, 2.3, 1))
+    }
+  }
+})
