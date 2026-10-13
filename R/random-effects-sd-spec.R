@@ -954,19 +954,26 @@
 
 # Component labels of the level cells of a random factor term: each factor
 # level is attached to its factor component inside an interaction term
-# (`f[a]__xXx__g[u]`), not appended to the full interaction string.
-.format_factor_level_parameter_names <- function(parameter, level_names, n_parameters = NULL) {
+# (`f[a]__xXx__g[u]`), not appended to the full interaction string. The factors
+# are matched to the components by their exact names; 'prefix' is the
+# random-term prefix (`<parameter>__xREx__<block>_`) that a prior-list entry
+# name carries before the first component.
+.format_factor_level_parameter_names <- function(parameter, level_names, n_parameters = NULL,
+                                                 prefix = "") {
 
   if (!is.list(level_names)) {
     return(paste0(parameter, "[", level_names, "]"))
   }
 
   parameter_terms <- strsplit(parameter, "__xXx__", fixed = TRUE)[[1]]
+  term_names <- parameter_terms
+  if (nzchar(prefix) && startsWith(term_names[1L], prefix)) {
+    term_names[1L] <- substring(term_names[1L], nchar(prefix) + 1L)
+  }
   factor_terms <- names(level_names)
   factor_positions <- vapply(factor_terms, function(factor_term) {
     factor_position <- which(
-      parameter_terms == factor_term |
-        endsWith(parameter_terms, paste0("_", factor_term))
+      parameter_terms == factor_term | term_names == factor_term
     )
 
     if (length(factor_position) == 1) {
@@ -982,10 +989,9 @@
       formatted_terms <- parameter_terms
 
       for (factor_term in factor_terms) {
-        formatted_terms[factor_positions[[factor_term]]] <- sub(
-          paste0(factor_term, "$"),
-          paste0(factor_term, "[", level_grid[[factor_term]][i], "]"),
-          formatted_terms[factor_positions[[factor_term]]]
+        formatted_terms[factor_positions[[factor_term]]] <- paste0(
+          formatted_terms[factor_positions[[factor_term]]],
+          "[", level_grid[[factor_term]][i], "]"
         )
       }
 

@@ -732,6 +732,23 @@ parameter_labels <- function(x, style = c("selector", "table", "plot", "warning"
   )
 }
 
+# The prefix `<formula parameter>__xREx__<block>_` of a random-effect prior-list
+# entry name, from the block the prior declares; "" without a declared block.
+.bt_label_random_term_prefix <- function(parameter, prior){
+
+  block <- attr(prior, "random_factor", exact = TRUE)
+  if(!is.character(block) || length(block) != 1L || is.na(block) || !nzchar(block)){
+    return("")
+  }
+  marker <- paste0("__xREx__", block, "_")
+  position <- regexpr(marker, parameter, fixed = TRUE)
+  if(position < 1L){
+    return("")
+  }
+
+  substr(parameter, 1L, position + nchar(marker) - 1L)
+}
+
 # Label parts of the coordinates of a random-effect factor prior (the SD
 # coordinates of a random factor slope, which are not catalog factor terms),
 # named after the prior-list entry: a coordinate that is structurally one
@@ -759,7 +776,8 @@ parameter_labels <- function(x, style = c("selector", "table", "plot", "warning"
   cell_names <- .format_factor_level_parameter_names(
     parameter,
     level_names,
-    nrow(design)
+    nrow(design),
+    prefix = .bt_label_random_term_prefix(parameter, prior)
   )
   direct <- .bt_factor_direct_cells(prior, design)
   parts <- lapply(seq_len(ncol(design)), function(coordinate){

@@ -13940,3 +13940,111 @@ test_that("car() refuses an explicit intercept and accepts the redundant 0 and -
     )
   }
 })
+
+# The estimates table of a block with independent SDs, from a synthetic carrier
+# fit that holds the SD nodes of the block's priors.
+.oracle_independent_sd_table <- function(result){
+
+  term <- result$formula_design$random_effects[[1L]]
+  owners <- unique(sub("\\[[0-9]+\\]$", "", term$sd_parameter_names))
+  nodes <- unlist(lapply(owners, function(owner){
+    owner_prior <- result$prior_list[[owner]]
+    if(is.prior.factor(owner_prior)){
+      BayesTools:::.JAGS_prior_factor_names(owner, owner_prior)
+    }else{
+      owner
+    }
+  }), use.names = FALSE)
+  values <- c(mu_intercept = 0, stats::setNames(seq_along(nodes) / 2, nodes))
+  posterior <- matrix(rep(values, 2L), nrow = 2L, byrow = TRUE,
+                      dimnames = list(NULL, names(values)))
+  fit <- list(mcmc = coda::mcmc.list(coda::mcmc(posterior)),
+              summary.pars = list(mutate = NULL),
+              monitor = colnames(posterior), sample = nrow(posterior))
+  class(fit) <- c("runjags", "BayesTools_fit")
+  attr(fit, "prior_list") <- result$prior_list
+  attr(fit, "formula_design") <- list(mu = result$formula_design)
+  attr(fit, "formula_scale") <- list(mu = result$formula_scale)
+
+  JAGS_estimates_table(attach_test_parameter_map(fit), remove_diagnostics = TRUE)
+}
+
+test_that("random factor interactions match factors to terms by their exact names", {
+
+  testthat::skip_if_not_installed("runjags")
+
+  # factors named x_g and g (and g and age_g) coexist in one term
+  df <- data.frame(
+    x_g = factor(rep(c("a", "b"), 6)),
+    g = factor(rep(c("p", "q", "r"), 4)),
+    age_g = factor(rep(c("u", "v"), each = 6)),
+    h = factor(rep(c("x", "y", "z"), 4)),
+    id = factor(rep(paste0("s", 1:4), each = 3))
+  )
+  priors <- list(intercept = prior("normal", list(0, 1)))
+  compile <- function(formula){
+    JAGS_formula(formula, "mu", df, priors,
+                 prior_random = prior_random(sd = prior("gamma", list(2, 2))))
+  }
+  leaf_terms <- function(result){
+    result$formula_design$random_effects[[1L]]$sd_leaves$leaf_terms
+  }
+
+  suffix_first <- compile(~ 1 + diag(1 + x_g:g | id))
+  expect_identical(
+    unname(leaf_terms(suffix_first)),
+    c("intercept", paste0("x_g[", c("a", "b"), "]__xXx__g[", rep(c("p", "q", "r"), each = 2L), "]"))
+  )
+  suffix_last <- compile(~ 1 + diag(1 + g:x_g | id))
+  expect_identical(
+    unname(leaf_terms(suffix_last)),
+    c("intercept", paste0("g[", c("p", "q", "r"), "]__xXx__x_g[", rep(c("a", "b"), each = 3L), "]"))
+  )
+  expect_identical(
+    unname(leaf_terms(compile(~ 1 + diag(1 + g * age_g | id, hom = FALSE)))),
+    c("intercept", "g[q]", "g[r]", "age_g[v]", "g[q]__xXx__age_g[v]", "g[r]__xXx__age_g[v]")
+  )
+  expect_identical(
+    unname(leaf_terms(compile(~ 1 + diag(1 + age_g * g | id, hom = FALSE)))),
+    c("intercept", "age_g[v]", "g[q]", "g[r]", "age_g[v]__xXx__g[q]", "age_g[v]__xXx__g[r]")
+  )
+  expect_identical(
+    unname(leaf_terms(compile(~ 1 + diag(1 + h:g | id))))[2:4],
+    c("h[x]__xXx__g[p]", "h[y]__xXx__g[p]", "h[z]__xXx__g[p]")
+  )
+
+  # the coordinate labels of the same priors are formatted by the same rule
+  expect_identical(
+    rownames(.oracle_independent_sd_table(suffix_first)),
+    c("(mu) intercept", "(mu) sd(intercept)",
+      paste0("(mu) sd(x_g[", c("a", "b"), "]:g[", rep(c("p", "q", "r"), each = 2L), "])"))
+  )
+  expect_identical(
+    rownames(.oracle_independent_sd_table(suffix_last)),
+    c("(mu) intercept", "(mu) sd(intercept)",
+      paste0("(mu) sd(g[", c("p", "q", "r"), "]:x_g[", rep(c("a", "b"), each = 3L), "])"))
+  )
+
+  # the formatter itself: exact names, the random-term prefix, no suffix matching
+  format_names <- BayesTools:::.format_factor_level_parameter_names
+  levels <- list(x_g = c("a", "b"), g = c("p", "q"))
+  expect_identical(
+    format_names("x_g__xXx__g", levels, 4L),
+    c("x_g[a]__xXx__g[p]", "x_g[b]__xXx__g[p]", "x_g[a]__xXx__g[q]", "x_g[b]__xXx__g[q]")
+  )
+  expect_identical(
+    format_names("mu__xREx__id_x_g__xXx__g", levels, 4L, prefix = "mu__xREx__id_"),
+    c("mu__xREx__id_x_g[a]__xXx__g[p]", "mu__xREx__id_x_g[b]__xXx__g[p]",
+      "mu__xREx__id_x_g[a]__xXx__g[q]", "mu__xREx__id_x_g[b]__xXx__g[q]")
+  )
+  expect_error(
+    format_names("mu__xREx__id_x_g__xXx__g", levels, 4L),
+    "factor metadata do not match",
+    fixed = TRUE
+  )
+  expect_error(
+    format_names("pre_x__xXx__g", list(x = c("a", "b"), g = c("p", "q")), 4L),
+    "factor metadata do not match",
+    fixed = TRUE
+  )
+})
