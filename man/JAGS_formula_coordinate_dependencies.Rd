@@ -21,10 +21,13 @@ fitted formula predictors depends on the supplied coordinates.
 predictor that structurally depends on the supplied posterior coordinates.
 It uses the persisted formula designs and parameter map, including direct
 coefficients, formula expressions, coefficient multipliers, the parents of
-expression-point coefficients and multipliers (\code{"point_expression"}), and
-external random-effect SD sources. A row-source callback is reported as
-opaque for every queried coordinate because its R code may inspect arbitrary
-posterior parameters.
+expression-point coefficients and multipliers (\code{"point_expression"}), the
+coordinates a random block samples itself (\code{"random_effect"}: SDs, latent
+deviations, group coefficients, correlations, and SD allocations and
+inclusions), and
+external random-effect SD sources (\code{"random_sd_source"}). A row-source
+callback is reported as opaque for every queried coordinate because its R
+code may inspect arbitrary posterior parameters.
 }
 \seealso{
 \code{\link[=JAGS_formula_design]{JAGS_formula_design()}} \code{\link[=parameter_map]{parameter_map()}}

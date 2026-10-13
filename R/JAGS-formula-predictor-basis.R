@@ -7,10 +7,13 @@
 #' predictor that structurally depends on the supplied posterior coordinates.
 #' It uses the persisted formula designs and parameter map, including direct
 #' coefficients, formula expressions, coefficient multipliers, the parents of
-#' expression-point coefficients and multipliers (`"point_expression"`), and
-#' external random-effect SD sources. A row-source callback is reported as
-#' opaque for every queried coordinate because its R code may inspect arbitrary
-#' posterior parameters.
+#' expression-point coefficients and multipliers (`"point_expression"`), the
+#' coordinates a random block samples itself (`"random_effect"`: SDs, latent
+#' deviations, group coefficients, correlations, and SD allocations and
+#' inclusions), and
+#' external random-effect SD sources (`"random_sd_source"`). A row-source
+#' callback is reported as opaque for every queried coordinate because its R
+#' code may inspect arbitrary posterior parameters.
 #'
 #' @param fit fitted object created by [JAGS_fit()].
 #' @param coordinates unique fitted coordinate names.
@@ -69,6 +72,10 @@ JAGS_formula_coordinate_dependencies <- function(fit, coordinates){
       if(identical(coordinate_row$role, "fixed_coefficient") &&
          identical(coordinate_row$formula_parameter, parameter)){
         types <- c(types, "coefficient")
+      }
+      if(coordinate_row$role %in% .bt_formula_predictor_random_roles &&
+         identical(coordinate_row$formula_parameter, parameter)){
+        types <- c(types, "random_effect")
       }
       coordinate_base <- .bt_parameter_coordinates_base(coordinate_name)
       for(type in names(dependencies)){
@@ -554,6 +561,23 @@ JAGS_formula_predictor_basis <- function(fit, directions,
   }
   "Selected coefficient coordinates have unsupported formula dependencies."
 }
+
+# The fitted coordinates a random block samples itself: its SDs, latent
+# deviations, group coefficients, means, correlations, the variance
+# allocations of its SDs, and the inclusion gates of its SDs. They enter the
+# conditional predictor of the block's formula parameter.
+.bt_formula_predictor_random_roles <- c(
+  "random_sd",
+  "random_sd_variable",
+  "random_latent",
+  "random_correlation",
+  "random_correlation_coordinate",
+  "random_group_coefficient",
+  "random_mean_coordinate",
+  "random_inclusion_indicator",
+  "random_inclusion_probability",
+  "allocation"
+)
 
 .bt_formula_predictor_random_dependencies <- function(design){
 

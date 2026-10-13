@@ -565,3 +565,38 @@ test_that("marginal posteriors of formula parameters evaluate the linear predict
     expect_identical(as.vector(marginal[[i]]), unname(evaluated[i, ]))
   }
 })
+
+test_that("every coordinate a random block samples is a dependency of its formula parameter", {
+
+  random_roles <- c(
+    "random_sd", "random_sd_variable", "random_latent", "random_correlation",
+    "random_correlation_coordinate", "random_group_coefficient",
+    "random_mean_coordinate", "random_inclusion_indicator",
+    "random_inclusion_probability", "allocation"
+  )
+  roles_seen <- character()
+  for(name in c("fit_dnode_allocation", "fit_dnode_allocation_external",
+                "fit_dnode_lkj", "fit_dnode_mean_centered",
+                "fit_re_summary_allocated", "fit_re_summary_mixture_sd")){
+    fit <- .dnode_cached_fit(name)
+    coordinates <- parameter_coordinates(fit)
+    owned <- coordinates[coordinates$role %in% random_roles, ]
+    roles_seen <- union(roles_seen, owned$role)
+    dependencies <- JAGS_formula_coordinate_dependencies(fit, owned$coordinate_name)
+    expect_identical(dependencies$coordinate_name, owned$coordinate_name)
+    expect_identical(dependencies$formula_parameter, rep("mu", nrow(owned)))
+    expect_identical(dependencies$dependency_type, rep("random_effect", nrow(owned)))
+  }
+  expect_true(all(c("random_sd", "random_latent", "random_correlation",
+                    "random_correlation_coordinate", "random_sd_variable",
+                    "random_inclusion_indicator", "random_inclusion_probability",
+                    "allocation") %in% roles_seen))
+
+  # the external SD source of a block is still one random_sd_source row
+  external <- .dnode_cached_fit("fit_dnode_allocation_external")
+  expect_equal(
+    JAGS_formula_coordinate_dependencies(external, "tau"),
+    data.frame(coordinate_name = "tau", formula_parameter = "mu",
+               dependency_type = "random_sd_source", stringsAsFactors = FALSE)
+  )
+})

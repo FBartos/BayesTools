@@ -545,6 +545,60 @@ test_that("formula dependencies include external random SD sources", {
 })
 
 
+test_that("a random block's own sampled coordinates are predictor dependencies", {
+
+  data <- data.frame(g = factor(c("a", "a", "b")))
+  formula <- ~ 1 + random(1 | g, name = "block", covariance = "diag")
+  priors <- list(intercept = prior("point", list(0)))
+  random_priors <- prior_random(
+    parameterization = "noncentered",
+    block = random_block(
+      sd = prior("gamma", list(2, 2)),
+      monitor = random_monitor(latent = TRUE)
+    )
+  )
+  compiled <- JAGS_formula(formula, "mu", data, priors, prior_random = random_priors)
+  draws <- .generate_prior_sample_matrix(compiled$prior_list, 2L, seed = 7)
+  term <- compiled$formula_design$random_effects[[1L]]
+  latent_names <- as.vector(.bt_random_effect_latent_names(
+    term, length(term$group_levels), term$n_columns
+  ))
+  draws <- cbind(draws, matrix(
+    c(1, 2, -1, -2), 2L, dimnames = list(NULL, latent_names)
+  ))
+  carrier <- JAGS_formula_draws(
+    draws, formula, "mu", data, priors, prior_random = random_priors
+  )
+  fit <- .formula_predictor_basis_carrier_fit(carrier)
+  coordinates <- parameter_coordinates(fit)
+  sd_name <- coordinates$coordinate_name[coordinates$role == "random_sd"]
+  owned <- coordinates[coordinates$role %in% c("random_sd", "random_latent"), ]
+  expect_length(sd_name, 1L)
+  expect_identical(sort(unique(owned$role)), c("random_latent", "random_sd"))
+
+  dependencies <- JAGS_formula_coordinate_dependencies(fit, owned$coordinate_name)
+  expect_identical(dependencies$coordinate_name, owned$coordinate_name)
+  expect_identical(dependencies$formula_parameter, rep("mu", nrow(owned)))
+  expect_identical(dependencies$dependency_type, rep("random_effect", nrow(owned)))
+
+  # doubling the SD doubles the conditional predictor: the dependency is real
+  doubled <- as.matrix(carrier)
+  doubled[, sd_name] <- 2 * doubled[, sd_name]
+  doubled_carrier <- JAGS_formula_draws(
+    doubled, formula, "mu", data, priors, prior_random = random_priors
+  )
+  expect_equal(
+    JAGS_evaluate_formula(doubled_carrier, parameter = "mu", formula_target = "conditional"),
+    2 * JAGS_evaluate_formula(carrier, parameter = "mu", formula_target = "conditional")
+  )
+
+  # the basis still refuses coordinates that are not fixed coefficients
+  basis <- JAGS_formula_predictor_basis(fit, directions = stats::setNames(1, sd_name))
+  expect_identical(basis$status, "unsupported")
+  expect_null(basis$basis)
+})
+
+
 test_that("coordinates read by expression points are predictor dependencies", {
 
   data <- data.frame(x = c(-2, -1, 1, 2), z = c(1, 3, -1, 0))
