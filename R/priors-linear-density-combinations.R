@@ -2553,6 +2553,14 @@
   }))
 }
 
+# A value that matches an end of the support hull counts as that end (the
+# endpoint convention of the meeting points), not as a value beyond it.
+.prior_convolution_hull_end <- function(hull, value){
+
+  isTRUE(.prior_density_ordinate_endpoint_matches(hull[1L], value)) ||
+    isTRUE(.prior_density_ordinate_endpoint_matches(hull[2L], value))
+}
+
 # Batched plan of the convolution density at the values 'x' (as
 # .prior_conditional_normal_density_plan()): values outside the support hull
 # have a zero density ('zero'), and meeting points of support bounds are
@@ -2562,6 +2570,8 @@
 
   hull <- .prior_convolution_hull(spec)
   zero <- x < hull[1L] | x > hull[2L]
+  beyond <- which(zero)
+  zero[beyond] <- !vapply(x[beyond], function(value) .prior_convolution_hull_end(hull, value), logical(1))
   special <- rep(FALSE, length(x))
   for(meeting in .prior_convolution_meeting_points(spec)){
     special <- special | vapply(x, function(value){
@@ -2597,7 +2607,8 @@
       exact = exact, method = method, reason = reason, provenance = provenance
     )
   }
-  if(value < hull[1L] || value > hull[2L]){
+  at_end <- .prior_convolution_hull_end(hull, value)
+  if((value < hull[1L] || value > hull[2L]) && !at_end){
     return(result("zero", -Inf, reason = "The requested value is outside the prior support."))
   }
 
@@ -2620,7 +2631,6 @@
                   reason = "The density where two support bounds meet is not structurally classified."))
   }
   if(is.finite(exponent)){
-    at_end <- value == hull[1L] || value == hull[2L]
     if(at_end && exponent > 0){
       return(result("zero", -Inf))
     }

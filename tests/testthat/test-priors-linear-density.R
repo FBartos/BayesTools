@@ -4314,3 +4314,52 @@ test_that("the product grid does not depend on the unit of its terms", {
     expect_equal(scaled$y, unit$y, tolerance = 1e-10)
   }
 })
+
+test_that("a two-term convolution ordinate matches the ends of its support by the endpoint convention", {
+
+  beta <- prior("beta", list(.5, .5))
+  uniform <- prior("uniform", list(0, 1))
+  pair <- function(term, weights) .prior_linear_combination_density(list(a = term, b = term), weights)
+  beta_pair <- pair(beta, c(a = .1, b = .2))
+  uniform_pair <- pair(uniform, c(a = .1, b = .2))
+
+  # the double 0.3 beside the computed end 0.1 + 0.2 is that end, not an inner meeting
+  for(value in c(.1 + .2, .3)){
+    infinite_ends <- prior_density_ordinate(beta_pair, value)
+    expect_identical(infinite_ends$behavior, "unknown")
+    expect_false(infinite_ends$exact)
+    vanishing_ends <- prior_density_ordinate(uniform_pair, value)
+    expect_identical(vanishing_ends$behavior, "zero")
+    expect_true(vanishing_ends$exact)
+    expect_identical(vanishing_ends$log_density, -Inf)
+  }
+  # the unclassified positive limit is refused instead of returned as Inf
+  expect_error(.prior_linear_density_height(beta_pair, .3),
+               "did not converge within the documented grid-refinement error criterion|remains outside the numerical approximation range")
+  expect_identical(as.numeric(.prior_linear_density_height(uniform_pair, .3)), 0)
+  # interior values are unchanged
+  expect_identical(prior_density_ordinate(beta_pair, .15)$behavior, "regular")
+  expect_equal(as.numeric(.prior_linear_density_height(uniform_pair, .15)), 5, tolerance = 1e-9)
+
+  # the support guard uses the same convention: 0.1 + 0.7 is the double below 0.8
+  beta_wide <- pair(beta, c(a = .1, b = .7))
+  uniform_wide <- pair(uniform, c(a = .1, b = .7))
+  expect_identical(.1 + .7 == .8, FALSE)
+  for(value in c(.1 + .7, .8)){
+    end <- prior_density_ordinate(beta_wide, value)
+    expect_identical(end$behavior, "unknown")
+    expect_false(grepl("outside the prior support", end$reason, fixed = TRUE))
+    zero_end <- prior_density_ordinate(uniform_wide, value)
+    expect_identical(zero_end$behavior, "zero")
+    expect_false(grepl("outside the prior support", zero_end$reason, fixed = TRUE))
+  }
+  outside <- prior_density_ordinate(beta_wide, .8 + 1e-6)
+  expect_identical(outside$behavior, "zero")
+  expect_match(outside$reason, "outside the prior support", fixed = TRUE)
+
+  # the batched plan takes the same classification
+  spec <- .prior_density_route_linear(list(a = uniform, b = uniform), c(a = .1, b = .7), NULL, 128L)$spec
+  plan <- .prior_convolution_density_plan(spec, c(.4, .8, .1 + .7, .9))
+  expect_identical(plan$zero, c(FALSE, FALSE, FALSE, TRUE))
+  expect_identical(plan$special, c(FALSE, TRUE, TRUE, FALSE))
+})
