@@ -515,6 +515,37 @@ test_that("JAGS LKJ-Cholesky module backend uses compiled distribution and trans
   expect_false(grepl("dwish", module$syntax, fixed = TRUE))
 })
 
+test_that("LKJ module and formula syntax numbers use a fixed decimal mark", {
+
+  withr::local_options(OutDec = ",")
+
+  module <- JAGS_lkj_corr_cholesky("Omega", K = 3, eta = 1.5)
+  expect_true(grepl("Omega_lkj_alpha[3] <- 1.5", module$syntax, fixed = TRUE))
+  expect_false(grepl("<- [0-9]+,[0-9]", module$syntax))
+
+  df <- data.frame(
+    x = c(-1, 0, 1, 2, -2, 3),
+    id = factor(c("b", "a", "b", "c", "a", "c"))
+  )
+  result <- JAGS_formula(
+    formula = ~ 1 + x + random(1 + x | id, name = "study"),
+    parameter = "mu",
+    data = df,
+    prior_list = list(
+      intercept = prior("normal", list(0, 1)),
+      x = prior("normal", list(0, 1))
+    ),
+    prior_random = prior_random(
+      cor = prior_lkj(eta = 1.5),
+      study = random_block(
+        sd = prior("normal", list(0, 1), truncation = list(lower = 0, upper = Inf))
+      )
+    )
+  )
+  expect_true(grepl("_lkj_alpha[1] <- 1.5", result$formula_syntax, fixed = TRUE))
+  expect_false(grepl("<- [0-9]+,[0-9]", result$formula_syntax))
+})
+
 test_that("compiled backend keeps generated syntax compact for larger dimensions", {
   module <- JAGS_lkj_corr_cholesky(
     name = "Sigma",

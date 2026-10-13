@@ -51,7 +51,7 @@ JAGS_lkj_corr_cholesky <- function(name, K, eta = 1,
     for(p in seq_len(n_pairs)){
       syntax <- c(
         syntax,
-        paste0(alpha_name, "[", p, "] <- ", .bt_jags_number(pairs$alpha[p]))
+        paste0(alpha_name, "[", p, "] <- ", .bt_JAGS_numeric_literal(pairs$alpha[p]))
       )
     }
     syntax <- c(
@@ -385,10 +385,6 @@ JAGS_lkj_corr_cholesky <- function(name, K, eta = 1,
   }
 
   alpha
-}
-
-.bt_jags_number <- function(x){
-  format(x, scientific = FALSE, digits = 17, trim = TRUE)
 }
 
 .bt_lkj_cholesky_flat_index <- function(row, column, K){
