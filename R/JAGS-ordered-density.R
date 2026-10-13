@@ -115,6 +115,11 @@ JAGS_ordered_density_kernel <- function(prior_list, allocation_chart = NULL){
   evaluate <- function(samples){
     if(is.data.frame(samples)) samples <- as.matrix(samples)
     result <- numeric(nrow(samples))
+    # Rows outside the support of any factor (total or allocation) have a zero
+    # density whatever the other factors are: a -Inf factor is combined with a
+    # genuine +Inf factor (an allocation density at a zero share) only through
+    # this mask, which is applied last.
+    excluded <- logical(nrow(samples))
     for(spec in specs){
       states <- .bt_ordered_total_components(spec, samples)
       if(strict_bridge && !is.prior.point(spec$total_prior) && !all(spec$total_names %in% colnames(samples))){
@@ -130,7 +135,9 @@ JAGS_ordered_density_kernel <- function(prior_list, allocation_chart = NULL){
             "' are unavailable in 'samples'. Include the declared total source coordinates."))
         }
         for(slice in seq_along(spec$total_names)){
-          result[rows] <- result[rows] + lpdf(prior, total_values[rows, slice])
+          term <- lpdf(prior, total_values[rows, slice])
+          excluded[rows] <- excluded[rows] | (!is.na(term) & term == -Inf)
+          result[rows] <- result[rows] + term
         }
       }
     }
@@ -146,27 +153,32 @@ JAGS_ordered_density_kernel <- function(prior_list, allocation_chart = NULL){
       invalid <- rowSums(!is.finite(eta))>0L | rowSums(if(strict_bridge) eta<=0 else eta<0,na.rm=TRUE)>0L |
         !is.finite(eta_sum) | eta_sum<=0
       chart <- allocation_chart[[key]]
+      accumulate <- function(term){
+        excluded <<- excluded | (!is.na(term) & term == -Inf)
+        result <<- result + term
+      }
       if(is.null(chart)){
         for(j in seq_len(record$dim)){
-          result <- result + stats::dgamma(eta[, j], shape = record$spec$alpha[[j]], rate = 1, log = TRUE)
+          accumulate(stats::dgamma(eta[, j], shape = record$spec$alpha[[j]], rate = 1, log = TRUE))
         }
       }else if(identical(chart$kind, "group")){
         J <- chart$J
         K <- setdiff(seq_len(record$dim), J)
-        result <- result + stats::dbeta(rowSums(eta[, J, drop = FALSE]) / rowSums(eta),
-          sum(record$spec$alpha[J]), sum(record$spec$alpha[K]), log = TRUE)
+        accumulate(stats::dbeta(rowSums(eta[, J, drop = FALSE]) / rowSums(eta),
+          sum(record$spec$alpha[J]), sum(record$spec$alpha[K]), log = TRUE))
       }else{
         indices <- chart$indices
         pair_sum <- rowSums(eta[,indices,drop=FALSE])
         if(any(!invalid & pair_sum<=0)) .bt_ordered_stop("The ordered gamma-pair chart requires a positive pair sum.","BayesTools_ordered_invalid_state")
-        result <- result + stats::dbeta(eta[, indices[[1L]]] / pair_sum,
-          record$spec$alpha[[indices[[1L]]]], record$spec$alpha[[indices[[2L]]]], log = TRUE)
+        accumulate(stats::dbeta(eta[, indices[[1L]]] / pair_sum,
+          record$spec$alpha[[indices[[1L]]]], record$spec$alpha[[indices[[2L]]]], log = TRUE))
         for(j in setdiff(seq_len(record$dim), indices)){
-          result <- result + stats::dgamma(eta[, j], shape = record$spec$alpha[[j]], rate = 1, log = TRUE)
+          accumulate(stats::dgamma(eta[, j], shape = record$spec$alpha[[j]], rate = 1, log = TRUE))
         }
       }
-      result[invalid] <- -Inf
+      excluded <- excluded | invalid
     }
+    result[excluded] <- -Inf
     result
   }
   list(evaluate = evaluate, allocation_keys = names(records))

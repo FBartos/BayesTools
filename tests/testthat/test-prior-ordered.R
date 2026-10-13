@@ -525,6 +525,27 @@ test_that("ordered kernels preserve alternating mixture states and pair chart Ja
     setNames(list(list(kind="pair",indices=1L)),record$key))
   for(candidate in malformed) expect_error(JAGS_ordered_density_kernel(info$prior_list["mu_f"],candidate),"allocation_chart",fixed=TRUE)
 })
+test_that("the ordered density kernel excludes rows outside any factor's support", {
+  data <- data.frame(f = ordered(c("lo", "mid", "hi"), levels = c("lo", "mid", "hi")))
+  info <- JAGS_formula(~ f, "mu", data, list(intercept = prior("point", list(0)),
+    f = prior_ordered(prior("uniform", list(0, 1)), allocation = prior("dirichlet", list(c(.5, .5))))))
+  spec <- .bt_ordered_spec("mu_f", info$prior_list$mu_f)
+  # total, gamma1, gamma2: a supported boundary with an infinite allocation density,
+  # the same boundary with a total outside its support, and a total and gamma outside theirs
+  samples <- rbind(c(.5, 0, 1), c(2, 0, 1), c(2, 1, 1), c(-1, 0, 0), c(.5, -1, 1))
+  colnames(samples) <- c(spec$total_names, spec$allocations[[1L]]$gamma_coordinates)
+  kernel <- JAGS_ordered_density_kernel(info$prior_list["mu_f"])
+  expect_identical(kernel(samples), c(Inf, -Inf, -Inf, -Inf, -Inf))
+  expect_equal(unname(kernel(samples[1L, , drop = FALSE])),
+    stats::dunif(.5, 0, 1, log = TRUE) + stats::dgamma(0, .5, 1, log = TRUE) + stats::dgamma(1, .5, 1, log = TRUE))
+  # a chart keeps the same exclusion
+  chart <- stats::setNames(list(list(kind = "group", J = 1L)), spec$allocations[[1L]]$key)
+  expect_identical(JAGS_ordered_density_kernel(info$prior_list["mu_f"], chart)(samples), c(Inf, -Inf, -Inf, -Inf, -Inf))
+  # the strict bridge evaluator also refuses a zero gamma on the supported boundary
+  strict <- .bt_ordered_compile_density(info$prior_list["mu_f"], strict_bridge = TRUE)$evaluate
+  expect_identical(strict(samples), rep(-Inf, 5L))
+})
+
 
 test_that("ordered active kernels localize each nested total event", {
   data <- data.frame(f = ordered(rep(c("lo", "mid", "hi"), 2)), g = factor(rep(c("a", "b"), 3)))
