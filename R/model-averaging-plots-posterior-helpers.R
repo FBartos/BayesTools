@@ -2,13 +2,12 @@
 # prior list and the per-draw model indicators.
 .plot_data_stop_unknown_atoms <- function(){
 
-  stop(
+  .bt_stop_refit_required(
     "Posterior atom status is unknown. Plotting posterior samples requires an ",
     "explicit atom/no-atom declaration; attach posterior_atom_attribute() ",
     "metadata or use a BayesTools posterior producer that records it. ",
     "Posteriors created by BayesTools 0.3.0 do not record it: recompute them ",
-    "with the current version (refitting models fitted with 0.3.0).",
-    call. = FALSE
+    "with the current version (refitting models fitted with 0.3.0)."
   )
 }
 .bias_prior_list_for_condition <- function(prior_list, condition_event){

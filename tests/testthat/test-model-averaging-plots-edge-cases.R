@@ -4618,3 +4618,23 @@ test_that("restored PET and PEESE columns carry their quantities and support", {
     }
   }
 })
+
+test_that("the unknown-atoms refusal of posterior plots asks for a refit by class", {
+
+  fit <- coda::mcmc(cbind(m = stats::qnorm(stats::ppoints(50))))
+  class(fit) <- c("mcmc", "BayesTools_fit")
+  attr(fit, "prior_list") <- list(m = prior("normal", list(0, 1)))
+  fit <- attach_test_parameter_map(fit)
+  samples <- as_mixed_posteriors(fit, "m")
+  expect_s3_class(plot_posterior(samples, "m", plot_type = "ggplot"), "ggplot")
+
+  # posteriors without an atom declaration (as created by BayesTools 0.3.0)
+  # must be recomputed
+  samples$m <- .bt_meta_set(samples$m, "atoms", NULL)
+  condition <- tryCatch(plot_posterior(samples, "m", plot_type = "ggplot"), error = function(e) e)
+  expect_s3_class(condition, "BayesTools_refit_required")
+  expect_match(conditionMessage(condition),
+    "Posterior atom status is unknown. Plotting posterior samples requires an explicit atom/no-atom declaration",
+    fixed = TRUE)
+  expect_match(conditionMessage(condition), "(refitting models fitted with 0.3.0).", fixed = TRUE)
+})

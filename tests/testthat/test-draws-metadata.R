@@ -1339,3 +1339,26 @@ test_that("reading several draw-metadata fields fingerprints the draws once", {
   expect_error(.marginal_posterior_condition_metadata(list(mu = x), condition_source = x),
                class = "BayesTools_stale_metadata")
 })
+
+test_that("the unknown-atoms refusal of Savage-Dickey asks for a refit by class", {
+
+  x <- c(rep(0, 20), stats::qnorm(stats::ppoints(80)))
+  posterior_metadata(x, "prior_density") <- BayesTools:::.prior_linear_combination_density(
+    prior_list = list(source = prior("normal", list(0, 1))),
+    weights    = c(source = 1)
+  )
+  posterior_metadata(x, "posterior_density") <- posterior_density_attribute(
+    x            = seq(-3, 3, length.out = 61),
+    y            = stats::dnorm(seq(-3, 3, length.out = 61)) * .8,
+    method         = "test",
+    density_method = "precomputed"
+  )
+  class(x) <- c("marginal_posterior.simple", "marginal_posterior")
+
+  condition <- tryCatch(Savage_Dickey_BF(x), error = function(e) e)
+  expect_s3_class(condition, "BayesTools_refit_required")
+  expect_match(conditionMessage(condition),
+    "Posterior atom status is unknown. Savage-Dickey evaluation requires an explicit atom/no-atom declaration",
+    fixed = TRUE)
+  expect_match(conditionMessage(condition), "(refitting models fitted with 0.3.0).", fixed = TRUE)
+})
