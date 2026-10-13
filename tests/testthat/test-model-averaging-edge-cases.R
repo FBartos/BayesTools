@@ -1643,3 +1643,68 @@ test_that("N27 dropping every positive-prior model gives the intended error with
     "No finite marginal likelihoods are available for models with positive prior probability.")
   expect_length(messages, 0L)
 })
+
+test_that("mix_posteriors reads the fitted values of expression-valued point priors", {
+
+  mixture_model <- function(fit, logml = 0){
+    list(fit = fit, marglik = .mock_bridge(logml), prior_weights = 1)
+  }
+
+  # a derived parameter of a simple fit
+  theta <- c(1, 2, 3)
+  simple_fit <- .mock_runjags_fit_for_mixing(
+    cbind(theta = theta, derived = 2 * theta),
+    list(
+      theta   = prior("normal", list(0, 1)),
+      derived = prior("point", list(location = expression(2 * theta)))
+    )
+  )
+  mixed <- mix_posteriors(list(mixture_model(simple_fit)), "derived", list(FALSE),
+                          seed = 17, n_samples = 8)[["derived"]]
+  index <- .bt_meta_get(mixed, "draw_index")
+  expect_true(is.numeric(mixed))
+  expect_identical(as.numeric(mixed), 2 * theta[index])
+  expect_identical(as.numeric(mixed),
+                   as.numeric(as_mixed_posteriors(simple_fit, "derived")[["derived"]])[index])
+
+  # a numeric point location is still replicated; the models keep their rows
+  numeric_fit <- .mock_runjags_fit_for_mixing(
+    cbind(theta = theta, derived = rep(5, 3)),
+    list(
+      theta   = prior("normal", list(0, 1)),
+      derived = prior("point", list(location = 5))
+    )
+  )
+  mixed <- mix_posteriors(list(mixture_model(simple_fit), mixture_model(numeric_fit)),
+                          "derived", list(c(FALSE, FALSE)), seed = 17, n_samples = 40)[["derived"]]
+  index     <- .bt_meta_get(mixed, "draw_index")
+  component <- .bt_meta_get(mixed, "component")
+  expect_true(all(c(1L, 2L) %in% component))
+  expect_true(is.numeric(mixed))
+  expect_identical(as.numeric(mixed)[component == 1L], 2 * theta[index[component == 1L]])
+  expect_identical(as.numeric(mixed)[component == 2L], rep(5, sum(component == 2L)))
+
+  # a compiled formula coefficient declared by an expression
+  compiled <- JAGS_formula(
+    ~ x, "mu", data.frame(x = c(10, 20, 30)),
+    list(
+      intercept = prior("normal", list(0, 1)),
+      x         = prior("point", list(location = expression(2 * mu_intercept)))
+    )
+  )
+  formula_fit <- .mock_runjags_fit_for_mixing(
+    cbind(mu_intercept = c(1, 2, 3), mu_x = c(2, 4, 6)),
+    compiled$prior_list
+  )
+  attr(formula_fit, "formula_design") <- list(mu = compiled$formula_design)
+  attr(formula_fit, "formula_scale")  <- list(mu = compiled$formula_scale)
+  formula_fit <- attach_test_parameter_map(formula_fit)
+
+  mixed <- mix_posteriors(list(mixture_model(formula_fit)), "mu_x", list(FALSE),
+                          seed = 17, n_samples = 8)[["mu_x"]]
+  index <- .bt_meta_get(mixed, "draw_index")
+  expect_true(is.numeric(mixed))
+  expect_identical(as.numeric(mixed), c(2, 4, 6)[index])
+  expect_identical(as.numeric(mixed),
+                   as.numeric(as_mixed_posteriors(formula_fit, "mu_x")[["mu_x"]])[index])
+})

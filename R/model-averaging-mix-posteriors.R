@@ -517,6 +517,13 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
   priors
 }
 
+# A point prior with a numeric location is replicated. An expression-valued
+# point (a derived parameter or formula coefficient such as `2 * theta`) is a
+# deterministic node of the fit, so its mixed draws are the fitted values.
+.mix_posteriors_is_numeric_point <- function(prior){
+  is.prior.point(prior) && !is.expression(prior$parameters[["location"]])
+}
+
 .mix_posteriors.simple         <- function(fits, priors, parameter, post_probs, seed = NULL, n_samples = 10000, posterior_pair = NULL){
 
   # check input
@@ -590,7 +597,7 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
     # sample indexes
     temp_ind <- sample(nrow(model_samples), sample_counts[i], replace = TRUE)
 
-    if(is.prior.point(priors[[i]])){
+    if(.mix_posteriors_is_numeric_point(priors[[i]])){
       # not sampling the priors as the samples would be already transformed
       samples <- c(samples, rep(priors[[i]]$parameters[["location"]], length(temp_ind)))
     }else{
