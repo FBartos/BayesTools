@@ -1610,6 +1610,77 @@ test_that("a logical predictor in a block with a scaled slope gets design-derive
   )
 })
 
+test_that("the weights of a shared random-effect SD leaf are compared relative to their magnitude", {
+
+  skip_if_not_installed("runjags")
+
+  # two columns that share leaf "a" (target rows 1 and 2) next to leaf "b" (column 3);
+  # `first` and `second` are the weights of the two target rows on the two leaves
+  invariant <- function(first, second){
+    M <- rbind(
+      c(sqrt(first[1L]), 0, sqrt(first[2L])),
+      c(sqrt(second[1L]), 0, sqrt(second[2L])),
+      0
+    )
+    .random_sd_shared_leaf_is_invariant(
+      M, c("a", "a", "b"), target_columns = 1:2, correlated = FALSE
+    )
+  }
+
+  # an absolute tolerance would merge weights of order 1e-14
+  expect_false(invariant(c(1e-14, 1e-14), c(2e-14, 1e-14)))
+  expect_false(invariant(c(1e-14, 2e-14), c(2e-14, 4e-14)))
+  expect_true(invariant(c(1, 2) * 1e-14, c(1, 2) * 1e-14 * (1 + 1e-15)))
+  # equal weights up to rounding of a few ulps, whatever their magnitude
+  expect_true(invariant(c(1, 2), c(1, 2) * (1 + 1e-15)))
+  expect_true(invariant(c(1, 2) * 1e6, c(1, 2) * 1e6 * (1 - 1e-15)))
+  expect_false(invariant(c(1, 2), c(1, 2) * (1 + 1e-9)))
+  # all-zero weights are equal
+  expect_true(invariant(c(0, 0), c(0, 0)))
+
+  # a shared leaf whose columns genuinely transform to different SDs is refused
+  # also when the weights are of order 1 / sd(x)^2 for a predictor with a very
+  # large SD (`flagFALSE:x` and `flagTRUE:x` share one SD, and only the TRUE
+  # level picks up the induced term of `flag:x:z`)
+  shared_leaf_samples <- function(x_sd){
+    set.seed(11)
+    df <- data.frame(
+      x  = rnorm(48, 3 * x_sd, x_sd),
+      z  = rnorm(48, 1, 1),
+      id = factor(rep(paste0("g", 1:8), each = 6)),
+      flag = rep(c(TRUE, FALSE), 24)
+    )
+    formula_result <- JAGS_formula(
+      ~ 1 + x + z + diag(1 + flag + z + flag:z + flag:x + x:z + flag:x:z | id), "mu", df,
+      prior_list = list(
+        intercept = prior("normal", list(0, 1)),
+        x = prior("normal", list(0, 1)),
+        z = prior("normal", list(0, 1))
+      ),
+      formula_scale = list(x = TRUE, z = TRUE),
+      prior_random = prior_random(id = random_block(
+        sd = prior("gamma", list(2, 2)), monitor = random_block_scale_monitor()
+      ))
+    )
+    sd_names <- unique(unlist(lapply(formula_result$formula_design$random_effects, function(term){
+      term$sd_parameter_names
+    })))
+    posterior <- matrix(
+      rep(c(0, 0, 0, seq_along(sd_names) / 2), 3L), nrow = 3L, byrow = TRUE,
+      dimnames = list(NULL, c("mu_intercept", "mu_x", "mu_z", sd_names))
+    )
+    make_random_scale_table_fit(formula_result, posterior)
+  }
+  shared <- "mu__xREx__id_flag__xXx__x"
+  for(x_sd in c(2, 1e7, 1e8)){
+    expect_error(
+      transform_scale_samples(shared_leaf_samples(x_sd)),
+      paste0("Random-effect SD column '", shared, "' cannot be unscaled because its shared design columns transform to different SDs."),
+      fixed = TRUE, info = paste("sd(x) =", x_sd)
+    )
+  }
+})
+
 # Mixed posteriors of the fixed and SD coordinates of a fitted block, on the
 # fitted scale, and the same without the fitted block design in their formula
 # state or without any formula state.

@@ -458,13 +458,19 @@
     dimnames = list(NULL, leaf_names)
   )
   # The weights come from a least-squares map, so equal weights agree only up to
-  # rounding of a few ulps relative to their magnitude.
+  # rounding of a few ulps relative to their magnitude. The comparison is
+  # relative to the larger weight, whatever its size: all.equal() compares
+  # absolutely when the differing elements have a mean magnitude below the
+  # tolerance, which merges weights of order 1 / sd^2 of a predictor with a very
+  # large SD (all-zero vectors are equal before the scale is used).
   target_weights <- variance_weights[target_columns, , drop = FALSE]
+  first_weights <- unname(target_weights[1L, , drop = TRUE])
   all(vapply(seq_len(nrow(target_weights)), function(i){
+    weights <- unname(target_weights[i, , drop = TRUE])
     isTRUE(all.equal(
-      unname(target_weights[i, , drop = TRUE]),
-      unname(target_weights[1L, , drop = TRUE]),
-      tolerance = 1e-12
+      weights, first_weights,
+      tolerance = 1e-12,
+      scale = max(abs(c(weights, first_weights)))
     ))
   }, logical(1)))
 }
