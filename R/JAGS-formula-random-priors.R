@@ -924,8 +924,13 @@
 .bt_random_prior_terms_to_prior_list <- function(block_prior, model_terms,
                                                 homogeneous_sd = FALSE){
 
-  sd_prior <- block_prior$sd
-  covariance_sd <- if(!is.null(block_prior$covariance)) block_prior$covariance$sd else NULL
+  # A block controlled by an external SD source has no SD prior of its own.
+  if(!is.null(block_prior[["sd_source", exact = TRUE]])){
+    return(list())
+  }
+
+  sd_prior <- block_prior[["sd", exact = TRUE]]
+  covariance_sd <- if(!is.null(block_prior$covariance)) block_prior$covariance[["sd", exact = TRUE]] else NULL
   if(!is.null(sd_prior) && !is.null(covariance_sd)){
     stop(
       "Random-effect SD prior was supplied both as 'sd' and 'covariance = random_covariance(sd = ...)'. Supply it in only one place.",

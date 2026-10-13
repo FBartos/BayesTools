@@ -1531,7 +1531,9 @@ is.prior_random <- function(x){
           block[[field]] <- .bt_random_contrasts_normalize(override[[field]])
         }else if(identical(field, "sd_source")){
           block[[field]] <- override[[field]]
-          block$sd <- NULL
+          # Keep an explicit NULL entry: after dropping the element, `block$sd`
+          # would partially match `sd_source`.
+          block["sd"] <- list(NULL)
           if(!is.null(block$covariance)){
             block$covariance$sd <- NULL
           }

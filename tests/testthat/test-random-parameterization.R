@@ -149,6 +149,52 @@ test_that("block SD overrides replace SDs inherited through the other slot", {
   )
 })
 
+test_that("a block controlled by an SD source has no SD prior and prints none", {
+
+  tau <- random_sd_source("tau")
+  top_sd <- prior("gamma", list(1, 1))
+  resolved_block <- function(specification){
+    .bt_random_prior_for_block(specification, "study")
+  }
+
+  # `block$sd` must not partially match `sd_source`, with or without a
+  # top-level default SD.
+  without_default <- prior_random(study = random_block(sd_source = tau))
+  with_default <- prior_random(sd = top_sd, study = random_block(sd_source = tau))
+  for(specification in list(without_default, with_default)){
+    block <- resolved_block(specification)
+    expect_null(block$sd)
+    expect_null(block[["sd", exact = TRUE]])
+    expect_identical(block$sd_source, tau)
+    expect_identical(.bt_random_prior_terms_to_prior_list(block, "intercept"), list())
+    expect_identical(
+      .bt_random_prior_terms_to_prior_list(block, c("intercept", "x"), homogeneous_sd = TRUE),
+      list()
+    )
+  }
+  expect_identical(
+    print(without_default, silent = TRUE),
+    c("block: study", "  sigma = tau")
+  )
+  expect_identical(
+    print(with_default, silent = TRUE),
+    c("defaults", "  sigma ~ Gamma(1, 1)", "block: study", "  sigma = tau")
+  )
+
+  # A block without any SD still refuses, and an own SD still overrides the default.
+  expect_error(
+    .bt_random_prior_terms_to_prior_list(resolved_block(prior_random()), "intercept"),
+    "Random-effect SD prior is missing",
+    fixed = TRUE
+  )
+  own_sd <- prior("normal", list(0, 1), truncation = list(0, Inf))
+  own <- .bt_random_prior_terms_to_prior_list(
+    resolved_block(prior_random(sd = top_sd, study = random_block(sd = own_sd))),
+    "intercept"
+  )
+  expect_identical(own, list(intercept = own_sd))
+})
+
 test_that("supplied block covariance replaces the shared object with constructor defaults", {
   sd <- prior("gamma", list(2, 2))
   local_cor <- prior("normal", list(0, .5))
