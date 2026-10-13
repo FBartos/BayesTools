@@ -50,8 +50,10 @@ Random-effect terms have two distinct left-side grammars:
 factor slopes, and interactions are supported. Plain \code{(expr | group)}
 defaults to \code{us()}, and \code{expr || group} to \code{diag()}.
 \item \code{cs()} / \code{hcs()}, \code{ar1()} / \code{ar()} / \code{har()}, and \code{car()} use a
-structure-owned index specification. They reject explicit intercept
-controls and do not accept \code{random_block(contrasts = ...)}.
+structure-owned index specification. They do not accept
+\code{random_block(contrasts = ...)}. \code{cs()}, \code{hcs()}, \code{ar1()}, and \code{har()}
+reject explicit intercept controls; \code{car()} has no intercept, so it rejects
+an explicit \code{1} and accepts the redundant \code{0} and \code{- 1}.
 }
 
 Random-coefficient factor coding comes from the block's resolved contrast

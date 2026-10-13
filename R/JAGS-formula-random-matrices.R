@@ -91,6 +91,16 @@
 
   if(identical(structure, "car")){
     out$formula <- .bt_random_effect_formula_without_intercept(formula)
+    rhs_index <- if(length(formula) == 3L) 3L else 2L
+    if(.bt_random_effect_car_has_explicit_intercept(formula[[rhs_index]])){
+      # the time variable is checked first, as the design matrix does
+      .bt_random_effect_car_time_variable(stats::terms(out$formula))
+      stop(
+        "CAR random-effect terms have no intercept, so an explicit '1' is not accepted. ",
+        "Use 'car(time | group)'; '0' and '- 1' are accepted and redundant.",
+        call. = FALSE
+      )
+    }
     return(out)
   }
 
@@ -143,6 +153,36 @@
   )
 
   out
+}
+
+# TRUE when the CAR specification asks for an intercept ('1 + time', 'time + 1',
+# 'time - 0'): CAR never has one, and `- 1` is appended to the specification.
+.bt_random_effect_car_has_explicit_intercept <- function(expr){
+
+  if(is.numeric(expr) && length(expr) == 1L){
+    return(identical(as.numeric(expr), 1))
+  }
+  if(!is.call(expr)){
+    return(FALSE)
+  }
+  if(identical(expr[[1L]], as.name("(")) && length(expr) == 2L){
+    return(.bt_random_effect_car_has_explicit_intercept(expr[[2L]]))
+  }
+  if(identical(expr[[1L]], as.name("+"))){
+    return(any(vapply(
+      as.list(expr)[-1L],
+      .bt_random_effect_car_has_explicit_intercept,
+      logical(1)
+    )))
+  }
+  if(identical(expr[[1L]], as.name("-")) && length(expr) == 3L){
+    return(
+      .bt_random_effect_car_has_explicit_intercept(expr[[2L]]) ||
+        (is.numeric(expr[[3L]]) && identical(as.numeric(expr[[3L]]), 0))
+    )
+  }
+
+  FALSE
 }
 
 .bt_random_effect_formula_without_intercept <- function(formula){
@@ -511,17 +551,7 @@
   invisible(NULL)
 }
 
-.bt_random_effect_car_design_matrix <- function(formula, data,
-                                                car_time_values = NULL){
-
-  formula_terms <- stats::terms(formula)
-  has_intercept <- attr(formula_terms, "intercept") == 1L
-  if(has_intercept){
-    stop(
-      "CAR random-effect terms require exactly one untransformed time variable. Use 'car(time | group)'.",
-      call. = FALSE
-    )
-  }
+.bt_random_effect_car_time_variable <- function(formula_terms){
 
   term_labels <- attr(formula_terms, "term.labels")
   predictors <- as.character(attr(formula_terms, "variables"))[-1L]
@@ -533,7 +563,14 @@
     )
   }
 
-  time_name <- predictors
+  predictors
+}
+
+.bt_random_effect_car_design_matrix <- function(formula, data,
+                                                car_time_values = NULL){
+
+  formula_terms <- stats::terms(formula)
+  time_name <- .bt_random_effect_car_time_variable(formula_terms)
   if(!time_name %in% names(data)){
     stop("The '", time_name, "' CAR time variable is missing in the data set.", call. = FALSE)
   }

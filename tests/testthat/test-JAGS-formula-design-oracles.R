@@ -13877,3 +13877,66 @@ test_that("generated grouping labels are unique against the final label set", {
   expect_identical(replay$group_map, term$group_map)
   expect_identical(replay$group_levels, term$group_levels)
 })
+
+test_that("car() refuses an explicit intercept and accepts the redundant 0 and - 1", {
+
+  car_data <- data.frame(
+    time = c(0, 0.5, 2, 0, 0.5, 2),
+    id = factor(c("a", "a", "a", "b", "b", "b"), levels = c("a", "b"))
+  )
+  compile <- function(formula){
+    JAGS_formula(
+      formula, "mu", car_data,
+      list(intercept = prior("normal", list(0, 1))),
+      prior_random = prior_random(id = random_block(
+        sd = prior("gamma", list(2, 2)),
+        cor = prior("normal", list(0, 0.5))
+      ))
+    )
+  }
+
+  # 'car(1 + time | id)' used to drop the requested intercept without a message
+  for(term in c("1 + time", "time + 1", "(1) + time", "time - 0", "0 + 1 + time")){
+    for(formula in list(
+      stats::as.formula(paste0("~ 1 + car(", term, " | id)")),
+      stats::as.formula(paste0("~ 1 + random(", term, " | id, covariance = \"car\")"))
+    )){
+      expect_error(
+        compile(formula),
+        "CAR random-effect terms have no intercept, so an explicit '1' is not accepted",
+        fixed = TRUE,
+        info = deparse(formula)
+      )
+    }
+  }
+  expect_error(
+    compile(~ 1 + car(1 + time | id)),
+    "'0' and '- 1' are accepted and redundant.",
+    fixed = TRUE
+  )
+
+  # the time variable is checked first
+  expect_error(
+    compile(~ 1 + car(1 | id)),
+    "CAR random-effect terms require exactly one untransformed time variable",
+    fixed = TRUE
+  )
+  expect_error(
+    compile(~ 1 + car(1 + time + id | id)),
+    "CAR random-effect terms require exactly one untransformed time variable",
+    fixed = TRUE
+  )
+
+  # 0 and - 1 request what CAR already does
+  reference <- compile(~ 1 + car(time | id))
+  for(term in c("0 + time", "time - 1", "-1 + time", "time + 0", "0 + time - 1")){
+    accepted <- compile(stats::as.formula(paste0("~ 1 + car(", term, " | id)")))
+    expect_identical(accepted$formula_syntax, reference$formula_syntax, info = term)
+    expect_identical(accepted$data, reference$data, info = term)
+    expect_identical(
+      accepted$formula_design$random_effects[[1L]]$column_names,
+      reference$formula_design$random_effects[[1L]]$column_names,
+      info = term
+    )
+  }
+})

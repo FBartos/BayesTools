@@ -509,7 +509,9 @@ Keep the parser's two random-effect families separate:
   coefficient per group level and no random intercept; `0 + group` alone does
   not require level indicators.
 - `cs()` / `hcs()`, `ar1()` / `ar()` / `har()`, and `car()` own an index basis.
-  They reject intercept controls and block contrast overrides. Discrete indices
+  They reject block contrast overrides. `cs()`, `hcs()`, `ar1()`, and `har()`
+  reject intercept controls; `car()` has no intercept, so it rejects an explicit
+  `1` and accepts the redundant `0` and `- 1`. Discrete indices
   use persisted factor levels or sorted unique values; `car()` uses actual
   finite numeric distances. CS/HCS accepts one or more discrete columns,
   combining multiple columns by their observed interaction. AR1/HAR accepts

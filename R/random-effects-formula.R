@@ -31,8 +31,10 @@
 #'   factor slopes, and interactions are supported. Plain `(expr | group)`
 #'   defaults to `us()`, and `expr || group` to `diag()`.
 #' * `cs()` / `hcs()`, `ar1()` / `ar()` / `har()`, and `car()` use a
-#'   structure-owned index specification. They reject explicit intercept
-#'   controls and do not accept `random_block(contrasts = ...)`.
+#'   structure-owned index specification. They do not accept
+#'   `random_block(contrasts = ...)`. `cs()`, `hcs()`, `ar1()`, and `har()`
+#'   reject explicit intercept controls; `car()` has no intercept, so it rejects
+#'   an explicit `1` and accepts the redundant `0` and `- 1`.
 #'
 #' Random-coefficient factor coding comes from the block's resolved contrast
 #' metadata. It reuses an already established fixed-factor contrast by default;
