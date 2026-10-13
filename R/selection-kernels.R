@@ -371,7 +371,7 @@ selection_backend_spec <- function(priors,
   )
 
   if(uses_indicator){
-    prior_code <- c(prior_code, paste0("bias_indicator ~ dcat(c(", paste0(prior_weights, collapse = ", "), "))"))
+    prior_code <- c(prior_code, paste0("bias_indicator ~ dcat(c(", paste0(.JAGS_prior_number(prior_weights), collapse = ", "), "))"))
   }
 
   for(i in seq_along(branches)){

@@ -116,7 +116,7 @@ JAGS_add_priors           <- function(syntax, prior_list){
     prior <- .prior_expression_to_character(prior)
   }
   number <- function(value){
-    if(numeric_literals && is.numeric(value) && all(is.finite(value))) .prior_ordered_format_number(value) else value
+    if(numeric_literals && is.numeric(value) && all(is.finite(value))) .prior_ordered_format_number(value) else .JAGS_prior_number(value)
   }
 
   # JAGS cannot bound a uniform distribution with T(): a truncated uniform
@@ -181,7 +181,7 @@ JAGS_add_priors           <- function(syntax, prior_list){
   if(prior[["distribution"]] == "dirichlet"){
     eta_name <- .JAGS_prior_dirichlet_eta_name(parameter_name)
     syntax <- paste0(vapply(seq_len(prior$parameters[["K"]]), function(i){
-      paste0(eta_name, "[", i, "] ~ dgamma(", prior$parameters[["alpha"]][i], ", 1)\n")
+      paste0(eta_name, "[", i, "] ~ dgamma(", .JAGS_prior_number(prior$parameters[["alpha"]][i]), ", 1)\n")
     }, character(1)), collapse = "")
     for(i in seq_len(prior$parameters[["K"]])){
       syntax <- paste0(
@@ -204,14 +204,15 @@ JAGS_add_priors           <- function(syntax, prior_list){
       "mt"      = prior$parameter[["scale"]]
     )
 
-    par2 <- .JAGS_parameter_to_precision(par2)
+    par1 <- .JAGS_prior_number(par1)
+    par2 <- .JAGS_prior_number(.JAGS_parameter_to_precision(par2))
 
     # TODO: beautify this code by specific JAGS distributions?
     if(prior[["distribution"]] == "mt"){
       # using the chisq * covariance parametrization since the mt fails with 1 df
       # (using a common df parameter as in Rouder et al. 2012)
       syntax <- paste0("prior_par1_", parameter_name, " = rep(0,", prior$parameter[["K"]], ")\n")
-      syntax <- paste0(syntax, "prior_par_s_", parameter_name, " ~ dgamma(", prior$parameter[["df"]]/2, ", ", prior$parameter[["df"]]/2,")\n")
+      syntax <- paste0(syntax, "prior_par_s_", parameter_name, " ~ dgamma(", .JAGS_prior_number(prior$parameter[["df"]]/2), ", ", .JAGS_prior_number(prior$parameter[["df"]]/2),")\n")
       syntax <- paste0(
         syntax,
         "for(i in 1:", prior$parameters[["K"]], "){\n",
@@ -247,7 +248,7 @@ JAGS_add_priors           <- function(syntax, prior_list){
 
     syntax <- paste0(
       "for(i in 1:", prior$parameters[["K"]], "){\n",
-      "  ", parameter_name, "[i] = ", prior$parameter[["location"]], " \n",
+      "  ", parameter_name, "[i] = ", .JAGS_prior_number(prior$parameter[["location"]]), " \n",
       "}\n")
 
   }
@@ -517,7 +518,7 @@ JAGS_add_priors           <- function(syntax, prior_list){
       spec <- selection_backend_spec(prior_list, include_init = FALSE)
       syntax <- .JAGS_selection_backend_syntax(spec)
     }else{
-      syntax <- paste0(" bias_indicator ~ dcat(c(", paste0(prior_weights, collapse = ", "), "))\n")
+      syntax <- paste0(" bias_indicator ~ dcat(c(", paste0(.JAGS_prior_number(prior_weights), collapse = ", "), "))\n")
     }
 
     if(any(is_PET)){
@@ -554,7 +555,11 @@ JAGS_add_priors           <- function(syntax, prior_list){
   }else{
 
     prior_weights    <- attr(prior_list, "prior_weights")
-    if(numeric_literals) prior_weights <- vapply(prior_weights,.prior_ordered_format_number,character(1))
+    prior_weights <- if(numeric_literals){
+      vapply(prior_weights,.prior_ordered_format_number,character(1))
+    }else{
+      .JAGS_prior_number(prior_weights)
+    }
     prior_components <- as.list(prior_list)
     class(prior_components) <- "list"
     names(prior_components) <- paste0(parameter_name, "_component_", seq_along(prior_components))
@@ -583,6 +588,33 @@ JAGS_add_priors           <- function(syntax, prior_list){
   if(!grepl("}", syntax, fixed = TRUE))
     stop("syntax must be a JAGS model syntax")
   return(syntax)
+}
+# The text of a numeric constant of the emitted JAGS syntax. A constant that
+# JAGS reads as another double is sampled as another value than the one the
+# prior declares (an atom would no longer equal its declared location), so the
+# text of as.character() (15 significant digits) is kept where it parses back to
+# the same double, and otherwise the shortest of 16 and 17 significant digits
+# that does is used (sprintf() always writes the '.' decimal mark). Text (an
+# expression) is returned as it is.
+.JAGS_prior_number <- function(value){
+
+  if(!is.numeric(value)){
+    return(value)
+  }
+
+  vapply(as.double(value), function(x){
+    text <- as.character(x)
+    if(!is.finite(x) || identical(as.numeric(text), x)){
+      return(text)
+    }
+    for(digits in 16:17){
+      text <- sprintf(paste0("%.", digits, "g"), x)
+      if(identical(as.numeric(text), x)){
+        break
+      }
+    }
+    text
+  }, character(1), USE.NAMES = FALSE)
 }
 .JAGS_parameter_to_precision <- function(parameter){
 

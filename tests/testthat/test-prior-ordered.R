@@ -926,16 +926,18 @@ test_that("ordered scalar measures use declared contractions and exact primitive
   expect_true(all(as.numeric(near)!=0))
 })
 
-test_that("mixture numeric literals preserve round-trip dcat weights only when requested", {
+test_that("mixture dcat weights are round-trip literals with and without numeric literals", {
   weights <- c(1/7,6/7)
   total <- prior_mixture(list(prior("point",list(0),prior_weights=weights[1]),prior("normal",list(0,1),prior_weights=weights[2])))
   stored <- attr(total,"prior_weights",exact=TRUE)
-  syntax <- .JAGS_prior.mixture(total,"theta",numeric_literals=TRUE)
-  literal <- regmatches(syntax,regexec("dcat\\(c\\(([^)]+)\\)\\)",syntax))[[1L]][2L]
-  expect_identical(as.numeric(strsplit(literal,",",fixed=TRUE)[[1L]]),stored)
-  legacy <- .JAGS_prior.mixture(total,"theta",numeric_literals=FALSE)
-  expect_match(legacy,paste0("dcat(c(",paste0(stored,collapse=", "),"))"),fixed=TRUE)
-  expect_false(identical(legacy,syntax))
+  for(numeric_literals in c(TRUE,FALSE)){
+    syntax <- .JAGS_prior.mixture(total,"theta",numeric_literals=numeric_literals)
+    literal <- regmatches(syntax,regexec("dcat\\(c\\(([^)]+)\\)\\)",syntax))[[1L]][2L]
+    expect_identical(as.numeric(strsplit(literal,",",fixed=TRUE)[[1L]]),stored)
+  }
+  # weights that parse back from 15 significant digits keep their text
+  simple <- prior_mixture(list(prior("point",list(0),prior_weights=.25),prior("normal",list(0,1),prior_weights=.75)))
+  expect_match(.JAGS_prior.mixture(simple,"theta",numeric_literals=FALSE),"dcat(c(0.25, 0.75))",fixed=TRUE)
 })
 
 test_that("ordered projections localize ordinary point and continuous components", {

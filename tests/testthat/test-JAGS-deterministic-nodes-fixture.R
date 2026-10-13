@@ -265,15 +265,15 @@ test_that("publication-weight nodes reproduce the JAGS monitors of every weight 
     reduced <- posterior[, setdiff(colnames(posterior), removed), drop = FALSE]
     rebuilt <- JAGS_evaluate_deterministic(fit, draws = reduced, nodes = "omega")
     # Mapped, binary, and independent weights are copies of their free
-    # coordinates (bit-identical). The cumulative weights normalize and sum
-    # the gamma auxiliaries in a different order than JAGS, and fixed weights
-    # are emitted as 15-digit literals (1/3): both differ by a few ulps.
+    # coordinates, and fixed weights are emitted as round-trip literals
+    # (bit-identical). The cumulative weights normalize and sum the gamma
+    # auxiliaries in a different order than JAGS and differ by a few ulps.
     expect_equal(
       unname(rebuilt[, coordinates]),
       unname(posterior[, coordinates]),
       tolerance = 1e-14
     )
-    if(name %in% c("binary", "log_independent")){
+    if(name %in% c("binary", "log_independent", "fixed")){
       expect_identical(unname(rebuilt[, coordinates]), unname(posterior[, coordinates]))
     }
 
@@ -293,6 +293,24 @@ test_that("publication-weight nodes reproduce the JAGS monitors of every weight 
       )
     }
   }
+})
+
+test_that("fixed publication weights of a fit are their declared atoms exactly", {
+
+  fit <- .dnode_cached_fit("fit_dnode_omega_fixed")
+  posterior <- as.matrix(BayesTools:::.fit_to_posterior(fit))
+
+  # the weights of wf_fixed(c(1, 1/3, 0.2)) reach JAGS as the declared doubles
+  expect_true(all(posterior[, "omega[1]"] == 1))
+  expect_true(all(posterior[, "omega[2]"] == 1/3))
+  expect_true(all(posterior[, "omega[3]"] == 0.2))
+
+  # every draw equals its atom: the exact-equality share of the atoms is one
+  samples <- as_mixed_posteriors(fit, parameters = "omega")$omega
+  atoms   <- BayesTools:::.posterior_atoms_get(samples)
+  draws   <- BayesTools:::.bt_draws_plain(samples)
+  expect_identical(as.numeric(atoms$locations), c(1, 1/3, 0.2))
+  expect_identical(mean(apply(draws, 1L, function(draw) all(draw == atoms$locations[1L, ]))), 1)
 })
 
 test_that("spike-and-slab and mixture nodes reproduce the JAGS monitors and give the marginal-likelihood parameters", {

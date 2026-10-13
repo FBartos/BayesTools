@@ -58,7 +58,7 @@
       omega_ratio_name <- node_names$omega_ratio
       beta_parameters <- .weightfunction_alpha_marginal(prior$weights$alpha, 2L)
       syntax <- paste0(syntax,
-        omega_ratio_name, " ~ dbeta(", beta_parameters$alpha, ", ", beta_parameters$beta, ")\n",
+        omega_ratio_name, " ~ dbeta(", .JAGS_prior_number(beta_parameters$alpha), ", ", .JAGS_prior_number(beta_parameters$beta), ")\n",
         omega_local, "[1] <- 1\n",
         omega_local, "[2] <- ", omega_ratio_name, "\n"
       )
@@ -67,7 +67,7 @@
       std_eta_name <- node_names$std_eta
 
       for(i in seq_len(J)){
-        syntax <- paste0(syntax, eta_name, "[", i, "] ~ dgamma(", prior$weights$alpha[i], ", 1)\n")
+        syntax <- paste0(syntax, eta_name, "[", i, "] ~ dgamma(", .JAGS_prior_number(prior$weights$alpha[i]), ", 1)\n")
       }
       syntax <- paste0(syntax,
         "for(j in 1:", J, "){\n",
@@ -82,7 +82,7 @@
 
   }else if(prior$weights$type == "fixed"){
     for(i in seq_len(J)){
-      syntax <- paste0(syntax, omega_local, "[", i, "] <- ", prior$weights$omega[i], "\n")
+      syntax <- paste0(syntax, omega_local, "[", i, "] <- ", .JAGS_prior_number(prior$weights$omega[i]), "\n")
     }
 
   }else if(prior$weights$type == "independent"){

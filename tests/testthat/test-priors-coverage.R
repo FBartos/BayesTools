@@ -1686,3 +1686,118 @@ test_that("weightfunction marginal CCDFs preserve extreme upper tails", {
     tolerance = 1e-12
   )
 })
+
+test_that("the literal of a numeric constant is the shortest text that parses back", {
+
+  # the rule: the as.character() text where it parses back, otherwise the
+  # shortest of 16 and 17 significant digits that does
+  expect_identical(.JAGS_prior_number(0.5), "0.5")
+  expect_identical(.JAGS_prior_number(c(0, 1, -2.5, 100, 1e5, 1e-5, 0.1)), c("0", "1", "-2.5", "100", "1e+05", "1e-05", "0.1"))
+  expect_identical(.JAGS_prior_number(1/3), "0.3333333333333333")
+  expect_identical(.JAGS_prior_number(0.1 + 0.2), "0.30000000000000004")
+  expect_identical(.JAGS_prior_number(1e8 + 1e-7), "100000000.0000001")
+  expect_identical(.JAGS_prior_number("expression"), "expression")
+  expect_identical(.JAGS_prior_number(numeric()), character())
+  hard <- c(1/3, 2/3, 0.1 + 0.2, 1e8 + 1e-7, pi, -exp(1), sqrt(2) * 1e10, 1e-300 / 3, 1e22 + 1e6, 123456789.123456789, 5L)
+  expect_identical(as.numeric(.JAGS_prior_number(hard)), as.numeric(hard))
+})
+
+test_that("numeric constants of the emitted JAGS syntax parse back to the declared doubles", {
+
+  # `number` is the first capture of `pattern` in the syntax of `prior_list`
+  number <- "(-?[0-9][0-9.]*(?:e[+-]?[0-9]+)?)"
+  captured <- function(prior_list, pattern){
+    syntax  <- JAGS_add_priors("model{}", prior_list)
+    pattern <- gsub("<num>", number, pattern, fixed = TRUE)
+    matches <- regmatches(syntax, regexec(pattern, syntax, perl = TRUE))[[1]]
+    expect_gt(length(matches), 1L)
+    as.numeric(matches[-1])
+  }
+
+  # a spike at 1/3 is sampled as the declared atom; 0.5 keeps its text
+  for(location in c(1/3, 2/3, 0.1 + 0.2, 1e8 + 1e-7, pi, -1/7, 1e-300, 0.5, 2, 100)){
+    expect_identical(captured(list(x = prior("spike", list(location))), "x = <num>\n"), location)
+  }
+  expect_identical(
+    JAGS_add_priors("model{}", list(x = prior("spike", list(.5)))),
+    "model{\n x = 0.5\n\n}"
+  )
+
+  # means, precisions and truncation bounds
+  expect_identical(
+    captured(list(x = prior("normal", list(1e8 + 1e-7, 1e-8))), "x ~ dnorm\\(<num>,<num>\\)"),
+    c(1e8 + 1e-7, 1 / (1e-8)^2)
+  )
+  expect_identical(
+    JAGS_add_priors("model{}", list(x = prior("normal", list(0, 1)))),
+    "model{\n x ~ dnorm(0,1)\n\n}"
+  )
+  expect_identical(
+    captured(list(x = prior("normal", list(0, 1), truncation = list(1/3, 2/3))), "x ~ dnorm\\(0,1\\)T\\(<num>,<num>\\)"),
+    c(1/3, 2/3)
+  )
+  expect_identical(
+    captured(list(x = prior("gamma", list(1/3, 2/7))), "x ~ dgamma\\(<num>,<num>\\)"),
+    c(1/3, 2/7)
+  )
+  expect_identical(
+    captured(list(x = prior("t", list(1/3, 1/7, 2/3))), "x ~ dt\\(<num>,<num>,<num>\\)"),
+    c(1/3, 1 / (1/7)^2, 2/3)
+  )
+
+  # vector priors
+  expect_identical(
+    captured(list(x = prior("mnormal", list(mean = 1/3, sd = 1/7, K = 2))), "prior_par1_x = rep\\(<num>,2\\)"),
+    1/3
+  )
+  expect_identical(
+    captured(list(x = prior("mnormal", list(mean = 1/3, sd = 1/7, K = 2))), "prior_par2_x\\[i,i\\] <- <num>"),
+    1 / (1/7)^2
+  )
+  mt <- prior("mt", list(location = 1/3, scale = 1/7, df = 3.3, K = 2))
+  expect_identical(captured(list(x = mt), "prior_par_s_x ~ dgamma\\(<num>, <num>\\)"), rep(3.3 / 2, 2))
+  expect_identical(captured(list(x = mt), "prior_par2_x\\[i,i\\] <- <num>"), 1 / (1/7)^2)
+  expect_identical(captured(list(x = mt), "\\) \\+ <num> \n"), 1/3)
+  expect_identical(
+    captured(list(x = prior("dirichlet", list(alpha = c(1/3, 2/3, 1)))), "prior_par_eta_x\\[2\\] ~ dgamma\\(<num>, 1\\)"),
+    2/3
+  )
+  expect_identical(
+    captured(list(x = prior("mpoint", list(location = 1/3, K = 2))), "x\\[i\\] = <num> \n"),
+    1/3
+  )
+
+  # the weights of a mixture
+  weights <- c(1/3, 2/3)
+  normals <- list(
+    prior("normal", list(0, 1), prior_weights = weights[1]),
+    prior("normal", list(1, 1), prior_weights = weights[2])
+  )
+  expect_identical(
+    captured(list(x = prior_mixture(normals)), "x_indicator ~ dcat\\(c\\(<num>, <num>\\)\\)"),
+    weights
+  )
+  pet_peese <- prior_mixture(list(
+    prior_PET("normal", list(0, 1), prior_weights = weights[1]),
+    prior_PEESE("normal", list(0, 1), prior_weights = weights[2])
+  ))
+  expect_identical(captured(list(bias = pet_peese), "bias_indicator ~ dcat\\(c\\(<num>, <num>\\)\\)"), weights)
+  selection <- prior_mixture(list(
+    prior_none(prior_weights = weights[1]),
+    prior_weightfunction("one-sided", c(.05), wf_fixed(c(1, .5)), prior_weights = weights[2])
+  ))
+  expect_identical(captured(list(bias = selection), "bias_indicator ~ dcat\\(c\\(<num>, <num>\\)\\)"), weights)
+
+  # fixed weights and the shapes of cumulative weights
+  fixed <- prior_weightfunction("one-sided", c(.05, .1), wf_fixed(c(1, 1/3, 0.2)))
+  expect_identical(captured(list(omega = fixed), "omega\\[2\\] <- <num>\n"), 1/3)
+  expect_identical(captured(list(omega = fixed), "omega\\[3\\] <- <num>\n"), 0.2)
+  cumulative <- prior_weightfunction("one-sided", c(.05, .1), wf_cumulative(c(1/3, 0.7, 1)))
+  expect_identical(captured(list(omega = cumulative), "eta\\[1\\] ~ dgamma\\(<num>, 1\\)"), 1/3)
+  binary <- prior_weightfunction("one-sided", c(.05), wf_cumulative(c(1/3, 2/3)))
+  beta   <- .weightfunction_alpha_marginal(c(1/3, 2/3), 2L)
+  expect_identical(
+    captured(list(omega = binary), "omega_ratio ~ dbeta\\(<num>, <num>\\)"),
+    c(beta$alpha, beta$beta)
+  )
+})
