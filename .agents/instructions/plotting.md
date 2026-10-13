@@ -56,6 +56,16 @@ draws a prior linear density from `.prior_linear_density_to_plot_data()` through
 `R/JAGS-diagnostics.R`. Inspect the current family before adding helpers or
 source files.
 
+The density diagnostics reflect at the support of the whole prior: a mixture
+takes the union of the continuous supports of its components (points are
+atoms, orthonormal and meandif components the real line; a factor component
+only resolves the columns), the components of a bias prior take the support of
+the whole bias prior, whether a mixture or a single prior, and a spike-and-slab
+masks the excluded draws in every coefficient column. The density and
+autocorrelation diagnostics skip columns the prior declares constant and the
+draws confirm (fixed weight bins); a parameter with nothing else to show behaves
+as a spike prior.
+
 Ordered plots omit only persisted zero-design reference levels by default.
 Retain every non-reference prior curve and genuine zero or point level. An
 exact infinite density point is not an atom: omit only nonfinite plotting

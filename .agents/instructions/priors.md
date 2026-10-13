@@ -167,6 +167,15 @@ does nothing or aborts JAGS with a dimension mismatch. Any check that mocks the
 model, the sampler, or the backend cannot establish that the two sides still
 agree - keep at least one test that compiles the real model.
 
+Numeric constants of emitted prior syntax are round-trip literals
+(`.JAGS_prior_number()`: the `as.character()` text where it parses back to the
+same double, otherwise the shortest of 16 and 17 significant digits), so that
+the draws of an atom equal its declared location exactly; the ordered paths
+write 17-digit literals. JAGS cannot bound `dunif`: a truncated uniform prior is
+emitted as the uniform on the intersection of its range and truncation, without
+`T()`. `phack_backend_constants()` refuses cut points whose null moments double
+precision cannot resolve (an a priori relative rounding error above 1e-4).
+
 ## Structural Prior-Density Ordinates
 
 A posterior-only atom probability owner certifies that posterior measure's
