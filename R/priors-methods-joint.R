@@ -273,11 +273,17 @@ rng.prior   <- function(x, n, ...){
       prior_type <- .get_prior_factor_list_type(prior)
 
       bound_design <- attr(prior, "factor_design", exact = TRUE)
-      if(any(vapply(prior, is.prior.ordered, logical(1)))) bound_design <- NULL
+      ordered_components <- which(vapply(prior, is.prior.ordered, logical(1)))
+      if(length(ordered_components) > 0L) bound_design <- NULL
       if(is.matrix(bound_design)){
         .get_prior_factor_levels(prior)
         x <- matrix(NA_real_, nrow = n,
           ncol = if(transform_factor_samples) nrow(bound_design) else ncol(bound_design))
+      }else if(transform_factor_samples && length(ordered_components) > 0L){
+        # ordered components transform to their level count (K + 1 for
+        # 'cumulative', K for 'cumulative_levels'), which their design declares
+        x <- matrix(NA, nrow = n,
+          ncol = nrow(.factor_term_design_from_metadata(prior[[ordered_components[1L]]])$design))
       }else if(transform_factor_samples){
         x <- matrix(NA, nrow = n, ncol = prior_type[["K"]] + 1)
       }else{

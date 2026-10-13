@@ -2180,6 +2180,48 @@ test_that("prior sample generation uses stored ordered-mixture dimensions", {
   expect_true(all(row_values[mixed[, "mu_f_indicator"] == 2] == "4,6,10"))
 })
 
+test_that("rng of a bound ordered-prior mixture transforms to the level count", {
+  bind_levels <- function(total, allocation, contrast){
+    prior_factor_levels(prior_ordered(total, allocation = allocation, contrast = contrast), c("lo", "mid", "hi"))
+  }
+  cases <- list(
+    cumulative = list(allocation = c(.4, .6),
+      coefficients = rbind(c(1.6, 2.4), c(.8, 1.2), c(.8, 1.2), c(1.6, 2.4)),
+      levels = rbind(c(0, 1.6, 4), c(0, .8, 2), c(0, .8, 2), c(0, 1.6, 4))),
+    cumulative_levels = list(allocation = c(.2, .3, .5),
+      coefficients = rbind(c(.8, 1.2, 2), c(.4, .6, 1), c(.4, .6, 1), c(.8, 1.2, 2)),
+      levels = rbind(c(.8, 2, 4), c(.4, 1, 2), c(.4, 1, 2), c(.8, 2, 4)))
+  )
+  for(contrast in names(cases)){
+    case <- cases[[contrast]]
+    mixture <- prior_mixture(lapply(c(2, 4), function(total) bind_levels(prior("point", list(total)), case$allocation, contrast)))
+    set.seed(2)
+    levels <- rng(mixture, 4)
+    set.seed(2)
+    coefficients <- rng(mixture, 4, transform_factor_samples = FALSE)
+    expect_identical(dim(levels), c(4L, 3L))
+    expect_identical(attr(levels, "components"), c(2L, 1L, 1L, 2L))
+    expect_equal(unname(unclass(levels)), case$levels, ignore_attr = TRUE)
+    expect_equal(unname(unclass(coefficients)), case$coefficients, ignore_attr = TRUE)
+    # the rows are the component draws through the component's declared design
+    design <- BayesTools:::.factor_term_design_from_metadata(mixture[[1L]])$design
+    expect_equal(unname(unclass(levels)), unname(unclass(coefficients)) %*% t(design), ignore_attr = TRUE)
+  }
+  # continuous totals draw the same way and keep the level count
+  for(contrast in names(cases)){
+    case <- cases[[contrast]]
+    mixture <- prior_mixture(list(bind_levels(prior("normal", list(3, 1)), case$allocation, contrast),
+                                  bind_levels(prior("gamma", list(3, 1)), case$allocation, contrast)))
+    set.seed(3)
+    levels <- rng(mixture, 5)
+    set.seed(3)
+    coefficients <- rng(mixture, 5, transform_factor_samples = FALSE)
+    design <- BayesTools:::.factor_term_design_from_metadata(mixture[[1L]])$design
+    expect_identical(dim(levels), c(5L, 3L))
+    expect_equal(unname(unclass(levels)), unname(unclass(coefficients)) %*% t(design), ignore_attr = TRUE)
+  }
+})
+
 test_that("fixed ordered allocations canonicalize only roundoff drift", {
 
   allocation <- c(.2, .3, .5 + .Machine$double.eps)
