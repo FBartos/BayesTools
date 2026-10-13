@@ -301,7 +301,10 @@
 # interaction `f:x` of a factor with a scaled slope whose margin `x` is not in
 # the block, centering induces terms the pairing drops (see
 # .check_unscale_term_closure(), which stops for a fixed-effect map only when
-# some lower-order partner is present).
+# some lower-order partner is present). Two scaled columns that share one term
+# name (the indicator columns of a logical predictor's interaction with a
+# scaled slope) have different partners that one name cannot tell apart, so
+# such a block is not exact either.
 .random_sd_name_map_is_exact <- function(column_terms, formula_scale, prefix){
 
   scaled_vars <- .formula_scale_strip_prefix(names(formula_scale), prefix)
@@ -313,6 +316,10 @@
   )
   term_scaled <- lapply(structure, `[[`, "scaled")
   term_unscaled <- vapply(structure, `[[`, character(1), "unscaled_id")
+
+  if(anyDuplicated(column_terms[lengths(term_scaled) > 0L]) > 0L){
+    return(FALSE)
+  }
 
   for(source_i in seq_along(structure)){
     source_scaled <- unique(term_scaled[[source_i]])

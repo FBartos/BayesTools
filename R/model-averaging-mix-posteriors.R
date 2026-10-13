@@ -285,12 +285,24 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
 
   class(out) <- c(class(out), "mixed_posteriors")
   formula_owners <- parameters[vapply(out, function(x) !is.null(.bt_meta_get(x, "formula_parameter")), logical(1))]
-  declared_owners <- unique(unlist(lapply(fits, function(fit){
-    unlist(lapply(attr(fit, "formula_design", exact = TRUE), function(design){
-      intersect(names(design$prior_list), paste0(design$parameter, "_", design$model_terms))
-    }), use.names = FALSE)
-  }), use.names = FALSE))
-  formula_owners <- intersect(formula_owners, declared_owners)
+  # The formula state records the requested parameters of a declared formula:
+  # its fixed coefficients and its other prior-list owners (the random-effect
+  # SDs, whose original-scale values need the fitted block design). A fixed
+  # coefficient, when requested, comes first: it defines the model rows and
+  # probabilities of the state.
+  declared_owners <- function(owners){
+    unique(unlist(lapply(fits, function(fit){
+      unlist(lapply(attr(fit, "formula_design", exact = TRUE), owners), use.names = FALSE)
+    }), use.names = FALSE))
+  }
+  fixed_owners <- declared_owners(function(design){
+    intersect(names(design$prior_list), paste0(design$parameter, "_", design$model_terms))
+  })
+  formula_owners <- intersect(formula_owners, declared_owners(function(design) names(design$prior_list)))
+  formula_owners <- c(intersect(formula_owners, fixed_owners), setdiff(formula_owners, fixed_owners))
+  # Without a requested fixed coefficient, a model that cannot supply a state
+  # (it has no fitted formula design) leaves the mixture without one.
+  state_required <- any(formula_owners %in% fixed_owners)
   if(length(formula_owners)){
     reference <- out[[formula_owners[[1L]]]]
     model_index <- .bt_draws_model_component(reference)
@@ -323,8 +335,14 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
       fitted_state <- .bt_formula_state_new(fits[[model]], original[original_rows, , drop = FALSE],
         formula_owners, original_rows, condition_event = if(!is.null(condition))
           .condition_event(attr(fits[[model]], "prior_list", exact = TRUE), formula_owners[[1L]], "AND"))
-      if(is.null(fitted_state)) .bt_formula_transform_stop(
-        "A model in the formula mixture has no retained declaration owner.", reason = "missing_multiplier_state", model = model)
+      if(is.null(fitted_state)){
+        if(!state_required){
+          records <- NULL
+          break
+        }
+        .bt_formula_transform_stop(
+          "A model in the formula mixture has no retained declaration owner.", reason = "missing_multiplier_state", model = model)
+      }
       records[[model]] <- fitted_state$models[[1L]]
       missing_owners <- setdiff(formula_owners, names(attr(fits[[model]], "prior_list", exact = TRUE)))
       if(length(missing_owners)){
@@ -345,15 +363,17 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
       if(anyNA(block_rows)) stop("Formula mixture draw rows do not belong to their eligible model population.", call. = FALSE)
       blocks[[model]] <- fitted_state$values[block_rows, , drop = FALSE]
     }
-    columns <- unique(unlist(lapply(blocks, colnames), use.names = FALSE))
-    values <- matrix(NA_real_, length(model_index), length(columns), dimnames = list(NULL, columns))
-    for(model in seq_along(blocks)) values[model_index == model, colnames(blocks[[model]])] <- blocks[[model]]
-    state <- list(schema_version = 2L, models = records, model = as.integer(model_index),
-      draw_index = as.integer(row_index), values = values,
-      posterior_model_probabilities = as.numeric(inference[[formula_owners[[1L]]]]$post_probs),
-      posterior_log_model_probabilities = attr(inference[[formula_owners[[1L]]]], "log_post_probs", exact = TRUE))
-    attr(state, "model_probability_declaration") <- attr(inference[[formula_owners[[1L]]]], "model_probability_declaration", exact = TRUE)
-    out <- .bt_formula_state_attach(out, state)
+    if(!is.null(records)){
+      columns <- unique(unlist(lapply(blocks, colnames), use.names = FALSE))
+      values <- matrix(NA_real_, length(model_index), length(columns), dimnames = list(NULL, columns))
+      for(model in seq_along(blocks)) values[model_index == model, colnames(blocks[[model]])] <- blocks[[model]]
+      state <- list(schema_version = 2L, models = records, model = as.integer(model_index),
+        draw_index = as.integer(row_index), values = values,
+        posterior_model_probabilities = as.numeric(inference[[formula_owners[[1L]]]]$post_probs),
+        posterior_log_model_probabilities = attr(inference[[formula_owners[[1L]]]], "log_post_probs", exact = TRUE))
+      attr(state, "model_probability_declaration") <- attr(inference[[formula_owners[[1L]]]], "model_probability_declaration", exact = TRUE)
+      out <- .bt_formula_state_attach(out, state)
+    }
   }
   if(length(parameters)==1L && isTRUE(ordered_conditions[[parameters[[1L]]]]$has_nested_event)){
     out <- .bt_meta_set(out,"prior_context",.bt_meta_get(out[[parameters[[1L]]]],"prior_context"))

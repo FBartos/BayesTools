@@ -75,10 +75,11 @@
 #' original-scale SDs differ from the fitted ones). The SDs of a block are
 #' transformed through the fitted block design that the formula state of the
 #' samples carries ([as_mixed_posteriors()], and [mix_posteriors()] when fixed
-#' formula coefficients are among its parameters); samples without it can pair
-#' coefficient names only, and the SDs of a block that this does not map
-#' exactly (e.g., a factor in an interaction with a standardized slope whose
-#' margin is not in the block) are refused. The SD columns of a block
+#' formula coefficients or random-effect SDs are among its parameters); samples
+#' without it can pair coefficient names only, and the SDs of a block that this
+#' does not map exactly (e.g., a factor in an interaction with a standardized
+#' slope whose margin is not in the block, or the indicator columns of a
+#' logical predictor in such an interaction) are refused. The SD columns of a block
 #' with a standardized random slope are labelled by their fitted coordinates
 #' (\code{(mu) g: sd(x)}) until they are transformed to the catalog's
 #' original-scale SDs. Estimated marginal means of [marginal_estimates_table()] are

@@ -1748,31 +1748,77 @@ test_that("ensemble and marginal tables unscale random-effect SDs through the bl
     transform_scaled = TRUE, formula_scale = formula_scale
   )
   expect_equal(unname(marginal[1L, "Mean"]), expected[1L], tolerance = 1e-10)
+})
 
-  # a mixture transforms each draw with the design of its own model
-  later <- random_block_scale_fit(
-    ~ 1 + x + diag(1 + f + f:x | id), df,
-    prior_random(id = random_block(
-      sd = prior("gamma", list(2, 2)), monitor = random_block_scale_monitor()
-    )),
-    tau = setup$tau * 1.5
+test_that("a mixture unscales the random-effect SDs of each model with the design of its own block", {
+
+  skip_if_not_installed("runjags")
+
+  # the models share the formula and the SD parameters but not the design of
+  # the block: `flag` is logical (two indicator columns of `flag:x` that share
+  # one SD) in the first model and numeric in the second
+  df <- random_block_scale_data()
+  df$flag <- rep(c(TRUE, FALSE), 18)
+  df_numeric <- df
+  df_numeric$flag <- as.numeric(df$flag)
+  m <- mean(df$x)
+  s <- stats::sd(df$x)
+  block <- prior_random(id = random_block(
+    sd = prior("gamma", list(2, 2)), monitor = random_block_scale_monitor()
+  ))
+  first <- random_block_scale_fit(~ 1 + x + diag(1 + flag + flag:x | id), df, block)
+  second <- random_block_scale_fit(
+    ~ 1 + x + diag(1 + flag + flag:x | id), df_numeric, block, tau = first$tau * 1.5
   )
-  mixture_parameters <- c("mu_intercept", "mu_x", parameters)
-  mixed <- mix_posteriors(
-    list(
-      list(fit = setup$fit, marglik = bridgesampling_object(0), prior_weights = 0.5),
-      list(fit = later$fit, marglik = bridgesampling_object(0), prior_weights = 0.5)
-    ),
-    mixture_parameters,
-    stats::setNames(rep(list(c(FALSE, FALSE)), length(mixture_parameters)), mixture_parameters),
-    seed = 1, n_samples = 40
+  A_first <- random_block_unscale_reference(
+    ~ flag + flag:x, expand.grid(flag = c(FALSE, TRUE), x = c(-1, 0, 1, 2)), m, s
   )
-  model <- .bt_formula_state_get(mixed)$model
-  expect_setequal(model, 1:2)
-  transformed <- .transform_scale_samples_list(mixed, formula_scale)
+  A_second <- random_block_unscale_reference(
+    ~ flag + flag:x, expand.grid(flag = c(0, 1), x = c(-1, 0, 1, 2)), m, s
+  )
+  expected_first <- unname(sqrt(diag(
+    A_first %*% diag(first$tau[c(1L, 2L, 3L, 3L)]^2) %*% t(A_first)
+  )))[1:3]
+  expected_second <- unname(sqrt(diag(A_second %*% diag(second$tau^2) %*% t(A_second))))
+  # the first model's design would give the second model's draws other SDs
+  expect_gt(max(abs(expected_second - expected_first * 1.5)), 1)
+  expect_identical(first$sd_names, second$sd_names)
+  parameters <- first$sd_names
+  formula_scale <- attr(first$fit, "formula_scale")
+
+  models <- list(
+    list(fit = first$fit, marglik = bridgesampling_object(0), prior_weights = 0.5),
+    list(fit = second$fit, marglik = bridgesampling_object(0), prior_weights = 0.5)
+  )
+  # with and without fixed coefficients among the mixed parameters
+  for(mixture_parameters in list(c("mu_intercept", "mu_x", parameters), parameters)){
+    mixed <- mix_posteriors(
+      models, mixture_parameters,
+      stats::setNames(rep(list(c(FALSE, FALSE)), length(mixture_parameters)), mixture_parameters),
+      seed = 1, n_samples = 40
+    )
+    state <- .bt_formula_state_get(mixed)
+    expect_false(is.null(state))
+    model <- state$model
+    expect_setequal(model, 1:2)
+    expect_false(is.null(state$models[[1L]]$formula_design$mu))
+    expect_false(is.null(state$models[[2L]]$formula_design$mu))
+    transformed <- .transform_scale_samples_list(mixed, formula_scale)
+    got <- vapply(parameters, function(parameter) as.numeric(transformed[[parameter]]), numeric(length(model)))
+    expect_equal(
+      unname(got), unname(rbind(expected_first, expected_second)[model, ]), tolerance = 1e-10,
+      info = paste(mixture_parameters, collapse = ",")
+    )
+  }
+
+  # the model's own design is also what the tables use
+  table <- ensemble_estimates_table(
+    mixed, parameters, transform_scaled = TRUE, formula_scale = formula_scale
+  )
+  weights <- tabulate(model, 2L) / length(model)
   expect_equal(
-    as.numeric(transformed$mu__xREx__id_intercept),
-    c(expected[1L], expected[1L] * 1.5)[model], tolerance = 1e-10
+    unname(table[, "Mean"]),
+    as.numeric(weights %*% rbind(expected_first, expected_second)), tolerance = 1e-10
   )
 })
 
@@ -1812,9 +1858,9 @@ test_that("tables without the fitted block design refuse random-effect SDs that 
         "Cannot transform 'mu__xREx__id_intercept', 'mu__xREx__id_f[1]', 'mu__xREx__id_f[2]', ",
         "'mu__xREx__id_f__xXx__x[1]', 'mu__xREx__id_f__xXx__x[2]', 'mu__xREx__id_f__xXx__x[3]' ",
         "to the original predictor scale: the samples carry no fitted design of the ",
-        "random-effect block 'id' of formula parameter 'mu', and pairing coefficient names ",
-        "does not give its original-scale map. Create the samples with as_mixed_posteriors(), ",
-        "or with mix_posteriors() together with the fixed coefficients of the formula."
+        "random-effect block 'id' of formula parameter 'mu', which is needed to map its ",
+        "SDs to the original predictor scale. Create the samples with as_mixed_posteriors() ",
+        "or mix_posteriors()."
       )
     )
     expect_error(
@@ -1852,4 +1898,256 @@ test_that("tables without the fitted block design refuse random-effect SDs that 
       )
     }
   }
+})
+
+test_that("a logical predictor in a block with a scaled slope is refused without the block design and mapped with it", {
+
+  skip_if_not_installed("runjags")
+
+  # `flagFALSE:x` and `flagTRUE:x` share one term name: pairing names finds the
+  # partner `flag` of both, but their induced terms are different
+  df <- random_block_scale_data()
+  df$flag <- rep(c(TRUE, FALSE), 18)
+  grid <- expand.grid(flag = c(FALSE, TRUE), x = c(-1, 0, 1, 2))
+  block <- prior_random(id = random_block(
+    sd = prior("gamma", list(2, 2)), monitor = random_block_scale_monitor()
+  ))
+  setup <- random_block_scale_fit(~ 1 + x + diag(1 + flag + flag:x | id), df, block)
+  A <- random_block_unscale_reference(~ flag + flag:x, grid, mean(df$x), stats::sd(df$x))
+  expected <- unname(sqrt(diag(A %*% diag(setup$tau[c(1L, 2L, 3L, 3L)]^2) %*% t(A))))[1:3]
+  expect_gt(abs(expected[1L] - setup$tau[1L]), 5)
+  parameters <- setup$sd_names
+  expect_identical(length(parameters), 3L)
+  formula_scale <- attr(setup$fit, "formula_scale")
+  tables <- function(samples){
+    ensemble_estimates_table(
+      samples, parameters, transform_scaled = TRUE, formula_scale = formula_scale
+    )
+  }
+
+  # without the design the pairing of names would report 0.5 / 10.7 / 1.02
+  for(design in c("none", "state")){
+    samples <- random_block_table_samples(setup$fit, parameters, design)
+    refusal <- expect_error(tables(samples), class = "BayesTools_formula_transform_unavailable")
+    expect_identical(refusal$reason, "random_effect_design_unavailable")
+    expect_identical(
+      conditionMessage(refusal),
+      paste0(
+        "Cannot transform 'mu__xREx__id_intercept', 'mu__xREx__id_flag', ",
+        "'mu__xREx__id_flag__xXx__x' to the original predictor scale: the samples carry ",
+        "no fitted design of the random-effect block 'id' of formula parameter 'mu', ",
+        "which is needed to map its SDs to the original predictor scale. Create the ",
+        "samples with as_mixed_posteriors() or mix_posteriors()."
+      )
+    )
+    expect_error(
+      marginal_estimates_table(
+        samples, random_block_table_stub(parameters), parameters[1L],
+        transform_scaled = TRUE, formula_scale = formula_scale
+      ),
+      class = "BayesTools_formula_transform_unavailable"
+    )
+  }
+
+  # with the design: mixed posteriors, and a mixture of the SDs alone
+  expect_equal(
+    unname(tables(random_block_table_samples(setup$fit, parameters, "block"))[, "Mean"]),
+    expected, tolerance = 1e-10
+  )
+  original <- as_mixed_posteriors(setup$fit, parameters, transform_scaled = TRUE)
+  expect_equal(
+    unname(vapply(original, function(x) mean(as.matrix(x)[, 1L]), numeric(1))),
+    expected, tolerance = 1e-10
+  )
+  mixed <- mix_posteriors(
+    list(list(fit = setup$fit, marglik = bridgesampling_object(0), prior_weights = 1)),
+    parameters, stats::setNames(rep(list(FALSE), length(parameters)), parameters),
+    seed = 1, n_samples = 3
+  )
+  expect_false(is.null(.bt_formula_state_get(mixed)))
+  expect_equal(unname(tables(mixed)[, "Mean"]), expected, tolerance = 1e-10)
+
+  # `(0 + x | g)` documents its drop of the implied intercept: the design path
+  # and a mixture of its SDs alone report tau / sd(x); without the design the
+  # block is refused, since pairing names is not its documented map either
+  s <- stats::sd(df$x)
+  setup <- random_block_scale_fit(~ 1 + x + diag(0 + x | id), df, block)
+  expect_equal(
+    unname(transform_scale_samples(setup$fit)[1L, setup$sd_names]),
+    setup$tau / s, tolerance = 1e-12
+  )
+  mixed <- mix_posteriors(
+    list(list(fit = setup$fit, marglik = bridgesampling_object(0), prior_weights = 1)),
+    setup$sd_names, stats::setNames(rep(list(FALSE), 1L), setup$sd_names),
+    seed = 1, n_samples = 3
+  )
+  formula_scale <- attr(setup$fit, "formula_scale")
+  expect_equal(
+    unname(ensemble_estimates_table(
+      mixed, setup$sd_names, transform_scaled = TRUE, formula_scale = formula_scale
+    )[, "Mean"]),
+    setup$tau / s, tolerance = 1e-12
+  )
+  refusal <- expect_error(
+    ensemble_estimates_table(
+      random_block_table_samples(setup$fit, setup$sd_names, "none"), setup$sd_names,
+      transform_scaled = TRUE, formula_scale = formula_scale
+    ),
+    class = "BayesTools_formula_transform_unavailable"
+  )
+  expect_identical(refusal$reason, "random_effect_design_unavailable")
+  expect_match(conditionMessage(refusal), "which is needed to map its SDs to the original predictor scale", fixed = TRUE)
+})
+
+test_that("a mixture of random-effect SDs with a model that has no formula design attaches no state", {
+
+  skip_if_not_installed("runjags")
+
+  df <- random_block_scale_data()
+  setup <- random_block_scale_fit(
+    ~ 1 + x + diag(1 + x | id), df,
+    prior_random(id = random_block(
+      sd = prior("gamma", list(2, 2)), monitor = random_block_scale_monitor()
+    ))
+  )
+  plain <- structure(
+    list(
+      mcmc = coda::mcmc.list(coda::mcmc(cbind(theta = seq(-1, 1, length.out = 20)))),
+      sample = 20L, summary.pars = list(mutate = NULL), monitor = "theta"
+    ),
+    class = c("runjags", "BayesTools_fit", "list")
+  )
+  attr(plain, "prior_list") <- list(theta = prior("normal", list(0, 1)))
+  plain <- attach_test_parameter_map(plain)
+
+  mixed <- mix_posteriors(
+    list(
+      list(fit = setup$fit, marglik = bridgesampling_object(0), prior_weights = 0.5),
+      list(fit = plain, marglik = bridgesampling_object(0), prior_weights = 0.5)
+    ),
+    setup$sd_names, stats::setNames(rep(list(c(FALSE, FALSE)), 2L), setup$sd_names),
+    seed = 1, n_samples = 20
+  )
+  expect_s3_class(mixed, "mixed_posteriors")
+  expect_null(.bt_formula_state_get(mixed))
+  # the SDs of an exactly paired block are still unscaled by pairing names
+  table <- ensemble_estimates_table(
+    mixed, setup$sd_names, transform_scaled = TRUE,
+    formula_scale = attr(setup$fit, "formula_scale")
+  )
+  expect_identical(nrow(table), 2L)
+})
+
+test_that("the no-design gate admits a block only when pairing names gives its design-derived map", {
+
+  skip_if_not_installed("runjags")
+
+  set.seed(7)
+  df <- data.frame(
+    x  = rnorm(60, 10, 2),
+    z  = rnorm(60, -3, 1.5),
+    f  = factor(rep(c("a", "b", "c"), 20)),
+    id = factor(rep(paste0("g", 1:10), each = 6)),
+    flag = rep(c(TRUE, FALSE), 30)
+  )
+  df$xc <- df$x - mean(df$x)
+  df$xs <- rep(c(-3, -2, -1, 0, 1, 2, 3, -3.5, 3.5, 0), 6)
+
+  # shapes: random-effect block, the fixed predictors, the scaled predictors,
+  # and the contrasts of the block
+  shape <- function(block, fixed, scaled = fixed, contrasts = NULL){
+    list(block = block, fixed = fixed, scaled = scaled, contrasts = contrasts)
+  }
+  shapes <- list(
+    shape("diag(1 + x | id)", "x"),
+    shape("diag(1 + f * x | id)", "x"),
+    shape("diag(1 + f + f:x | id)", "x"),
+    shape("diag(1 + f:x | id)", "x"),
+    shape("diag(0 + x | id)", "x"),
+    shape("diag(0 + f + f:x | id)", "x"),
+    shape("diag(0 + f + x + f:x | id)", "x"),
+    shape("diag(1 + flag * x | id)", "x"),
+    shape("diag(1 + flag + flag:x | id)", "x"),
+    shape("diag(0 + flag + flag:x | id)", "x"),
+    shape("diag(0 + flag:x | id)", "x"),
+    shape("diag(1 + x * z | id)", c("x", "z")),
+    shape("diag(1 + x:z | id)", c("x", "z")),
+    shape("diag(1 + x + x:z | id)", c("x", "z")),
+    shape("diag(1 + x + z + x:z | id)", c("x", "z"), "x"),
+    shape("diag(1 + x:z | id)", c("x", "z"), "x"),
+    shape("diag(1 + f * x * z | id)", c("x", "z")),
+    shape("diag(1 + f + x + z + f:z + x:z + f:x:z | id)", c("x", "z")),
+    shape("diag(1 + flag + z + flag:z + flag:x + x:z + flag:x:z | id)", c("x", "z")),
+    shape("(1 + f + f:x | id)", "x"),
+    shape("(1 + f * x | id)", "x"),
+    shape("diag(1 + xc | id)", "xc"),
+    shape("diag(1 + f + f:xc | id)", "xc"),
+    shape("diag(1 + xs | id)", "xs"),
+    shape("diag(1 + flag * x | id)", c("x", "flag")),
+    shape("diag(1 + flag + flag:x | id)", c("x", "flag")),
+    shape("diag(1 + f * x | id)", "x", contrasts = c(f = "orthonormal")),
+    shape("diag(1 + f + f:x | id)", "x", contrasts = c(f = "orthonormal")),
+    shape("diag(1 + f * x | id)", "x", contrasts = c(f = "meandif")),
+    shape("diag(1 + f + f:x | id)", "x", contrasts = c(f = "meandif")),
+    shape("diag(1 + f * x | id)", "x", contrasts = c(f = "independent")),
+    shape("diag(0 + f + f:x | id)", "x", contrasts = c(f = "independent"))
+  )
+
+  problems <- character()
+  admitted <- character()
+  refused <- character()
+  checked <- 0L
+  for(case in shapes){
+    label <- paste0(
+      case$block, " [", paste(case$fixed, collapse = ","), "; scaled ",
+      paste(case$scaled, collapse = ","), "]",
+      if(!is.null(case$contrasts)) paste0(" ", unname(case$contrasts))
+    )
+    formula <- stats::as.formula(paste("~ 1 +", paste(case$fixed, collapse = " + "), "+", case$block))
+    prior_list <- c(
+      list(intercept = prior("normal", list(0, 1))),
+      stats::setNames(lapply(case$fixed, function(variable) prior("normal", list(0, 1))), case$fixed)
+    )
+    formula_result <- JAGS_formula(
+      formula, "mu", df, prior_list = prior_list,
+      formula_scale = stats::setNames(rep(list(TRUE), length(case$scaled)), case$scaled),
+      prior_random = prior_random(id = random_block(
+        sd = prior("gamma", list(2, 2)), monitor = random_block_scale_monitor(),
+        contrasts = case$contrasts
+      ))
+    )
+    design <- formula_result$formula_design
+    parameter_scale <- formula_result$formula_scale
+    sd_names <- unique(unlist(lapply(design$random_effects, function(term) term$sd_parameter_names)))
+    groups <- .random_sd_column_unscale_groups(sd_names, parameter_scale, "mu")
+    for(group in groups){
+      checked <- checked + 1L
+      gate <- .random_sd_name_map_is_exact(group$column_terms, parameter_scale, "mu")
+      by_name <- .random_sd_unscale_matrix(group$column_terms, parameter_scale, "mu")
+      by_design <- .random_sd_unscale_matrix(
+        group$column_terms, parameter_scale, "mu",
+        random_term = .random_sd_design_block(design, group$group_key, group$leaf_names),
+        source_data = design$source_data
+      )
+      if(gate){
+        admitted <- c(admitted, label)
+        if(!isTRUE(all.equal(unname(by_name), unname(by_design), tolerance = 1e-10))){
+          problems <- c(problems, label)
+        }
+      }else{
+        refused <- c(refused, label)
+      }
+    }
+  }
+
+  # the gate never admits a block whose pairing of names differs from its design map
+  expect_identical(problems, character())
+  expect_gt(checked, 30L)
+  expect_gt(length(admitted), 10L)
+  expect_true("diag(1 + x | id) [x; scaled x]" %in% admitted)
+  expect_true("diag(1 + f * x | id) [x; scaled x]" %in% admitted)
+  # blocks whose induced terms the pairing of names misses or cannot tell apart
+  expect_true("diag(1 + f + f:x | id) [x; scaled x]" %in% refused)
+  expect_true("diag(1 + flag + flag:x | id) [x; scaled x]" %in% refused)
+  expect_true("diag(1 + flag + z + flag:z + flag:x + x:z + flag:x:z | id) [x,z; scaled x,z]" %in% refused)
 })

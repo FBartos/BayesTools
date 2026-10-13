@@ -667,9 +667,8 @@
           "Cannot transform ", paste0("'", group$leaf_names, "'", collapse = ", "),
           " to the original predictor scale: the samples carry no fitted design of the ",
           "random-effect block '", group$group_key, "' of formula parameter '",
-          parameter, "', and pairing coefficient names does not give its ",
-          "original-scale map. Create the samples with as_mixed_posteriors(), or with ",
-          "mix_posteriors() together with the fixed coefficients of the formula."
+          parameter, "', which is needed to map its SDs to the original predictor scale. ",
+          "Create the samples with as_mixed_posteriors() or mix_posteriors()."
         ),
         parameter   = parameter,
         reason      = "random_effect_design_unavailable",

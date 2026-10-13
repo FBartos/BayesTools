@@ -268,10 +268,13 @@ name-paired map that drops it, and only the
 propagates. Hand-built SD-leaf metadata without the fitted design pair names.
 The ensemble and marginal tables with `transform_scaled = TRUE` take the block
 design from the formula state of the mixed posteriors (`as_mixed_posteriors()`;
-`mix_posteriors()` attaches a state only when fixed formula coefficients are
-among its parameters), one design per model of a mixture. Samples without it
-unscale a block exactly name-paired as before, and refuse the SDs of any other
-block (a scaled column without its lower-order partners) with
+`mix_posteriors()` attaches a state whenever a requested parameter is a fixed
+coefficient or a random-effect SD of a fitted formula, and none for a mixture
+of SDs alone that includes a model without a fitted formula design), one design
+per model of a mixture. Samples without it unscale a block exactly name-paired
+as before, and refuse the SDs of any other block (a scaled column without its
+lower-order partners, or two scaled columns that share one term name, as the
+indicator columns of a logical predictor's interaction with a scaled slope) with
 `BayesTools_formula_transform_unavailable`, reason
 `random_effect_design_unavailable`, not with the values of the pairing.
 
