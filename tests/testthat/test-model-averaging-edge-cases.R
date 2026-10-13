@@ -1708,3 +1708,60 @@ test_that("mix_posteriors reads the fitted values of expression-valued point pri
   expect_identical(as.numeric(mixed),
                    as.numeric(as_mixed_posteriors(formula_fit, "mu_x")[["mu_x"]])[index])
 })
+
+test_that("mix_posteriors warns once and attaches the marginal-likelihood failure audit", {
+
+  models <- list(
+    .mock_mixing_model(offset = 100, logml = 0),
+    .mock_mixing_model(offset = 200, logml = 0),
+    .mock_mixing_model(offset = 300, logml = 0)
+  )
+  models[[1]]$marglik <- bridgesampling_object(NA)
+  parameters   <- c("theta", "beta")
+  is_null_list <- list(theta = c(TRUE, FALSE, FALSE), beta = c(FALSE, FALSE, TRUE))
+  with_warnings <- function(expr){
+    messages <- character()
+    value <- withCallingHandlers(expr, warning = function(w){
+      messages <<- c(messages, conditionMessage(w))
+      invokeRestart("muffleWarning")
+    })
+    list(value = value, messages = messages)
+  }
+
+  for(policy in c("drop", "zero")){
+    mixed <- with_warnings(mix_posteriors(
+      models, parameters, is_null_list, seed = 1, n_samples = 50, on_failure = policy))
+    inference <- with_warnings(ensemble_inference(
+      models, parameters, is_null_list, on_failure = policy))
+
+    # one warning for the model list; ensemble_inference() keeps its warning
+    # per parameter
+    expect_length(mixed$messages, 1L)
+    expect_match(mixed$messages, "marginal-likelihood failure", fixed = TRUE)
+    expect_length(inference$messages, length(parameters))
+    expect_identical(mixed$messages, inference$messages[[1L]])
+
+    for(parameter in parameters){
+      audit <- attr(mixed$value[[parameter]], "marglik_failure")
+      expect_s3_class(audit, "data.frame")
+      expect_identical(audit$model, 1L)
+      expect_identical(audit$policy, policy)
+      expect_identical(audit, attr(inference$value[[parameter]], "marglik_failure"))
+    }
+    # the failed model is not mixed
+    expect_false(any(.bt_meta_get(mixed$value$theta, "component") == 1L))
+  }
+
+  # without a failure there is no audit and no warning
+  clean <- with_warnings(mix_posteriors(
+    models[2:3], parameters, lapply(is_null_list, `[`, 2:3), seed = 1, n_samples = 50, on_failure = "drop"))
+  expect_length(clean$messages, 0L)
+  expect_null(attr(clean$value$theta, "marglik_failure"))
+  expect_null(attr(clean$value$beta, "marglik_failure"))
+
+  # the default policy still stops on the failure
+  expect_error(
+    mix_posteriors(models, parameters, is_null_list, seed = 1, n_samples = 50),
+    class = "BayesTools_marglik_failure"
+  )
+})

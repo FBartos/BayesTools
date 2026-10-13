@@ -86,6 +86,11 @@ produces different \code{post_probs} and therefore different mixture
 allocations; \code{mix_posteriors()} hard-errors in that case. Mix each
 conditional parameter in a separate call instead.
 
+With \code{on_failure = "drop"} or \code{"zero"}, one warning is emitted
+for the model list, and every mixed parameter carries the
+\code{marglik_failure} attribute that \code{\link[=ensemble_inference]{ensemble_inference()}} returns for
+that parameter.
+
 For an ordered total with a declared inclusion event, conditional averaging
 also conditions within each model. Posterior model probabilities are
 multiplied by the event's fraction of fitted draws; prior probabilities are

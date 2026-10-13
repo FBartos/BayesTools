@@ -75,6 +75,18 @@ compute_inference <- function(prior_weights, margliks, is_null = NULL,
                               conditional = FALSE,
                               on_failure = c("error", "drop", "zero")){
 
+  .compute_inference(prior_weights, margliks, is_null, conditional,
+                     on_failure = match.arg(on_failure))
+}
+
+# 'warn' = FALSE leaves the warning of a non-default failure policy to the
+# caller, which resolves the policy once for several inferences
+# (.ensemble_inference() for mix_posteriors()).
+.compute_inference <- function(prior_weights, margliks, is_null = NULL,
+                               conditional = FALSE,
+                               on_failure = c("error", "drop", "zero"),
+                               warn = TRUE){
+
   check_real(prior_weights, "prior_weights", lower = 0, check_length = 0)
   check_real(margliks,   "margliks", check_length = length(prior_weights))
   check_bool(conditional, "conditional", allow_NA = FALSE)
@@ -87,7 +99,8 @@ compute_inference <- function(prior_weights, margliks, is_null = NULL,
     prior$probabilities,
     log_prior_probs = prior$logs,
     prior_declaration = prior$declaration,
-    on_failure = on_failure
+    on_failure = on_failure,
+    warn = warn
   )
   margliks    <- prepared$margliks
   prior <- prepared$prior
@@ -142,9 +155,26 @@ compute_inference <- function(prior_weights, margliks, is_null = NULL,
   .model_probability_prior(prior_weights)$probabilities
 }
 
+# The warning of a non-default failure policy for the failed models.
+.model_averaging_failure_message <- function(failed_models, on_failure){
+
+  models <- paste(failed_models, collapse = ", ")
+  if(identical(on_failure, "drop")){
+    paste0(
+      "Dropped model(s) ", models,
+      " after marginal-likelihood failure and renormalized the prior model space."
+    )
+  }else{
+    paste0(
+      "Assigned zero evidence to model(s) ", models,
+      " after marginal-likelihood failure by explicit request."
+    )
+  }
+}
+
 .model_averaging_prepare_margliks <- function(
     margliks, prior_probs, on_failure = c("error", "drop", "zero"),
-    log_prior_probs = log(prior_probs), prior_declaration = NULL){
+    log_prior_probs = log(prior_probs), prior_declaration = NULL, warn = TRUE){
 
   on_failure <- match.arg(on_failure)
 
@@ -194,19 +224,11 @@ compute_inference <- function(prior_weights, margliks, is_null = NULL,
       prior_probs <- pair$probabilities
       log_prior_probs <- pair$logs
       prior_declaration <- pair$declaration
-      warning_message <- paste0(
-        "Dropped model(s) ",
-        paste(failed_models, collapse = ", "),
-        " after marginal-likelihood failure and renormalized the prior model space."
-      )
-    }else{
-      warning_message <- paste0(
-        "Assigned zero evidence to model(s) ",
-        paste(failed_models, collapse = ", "),
-        " after marginal-likelihood failure by explicit request."
-      )
     }
-    warning(warning_message, call. = FALSE, immediate. = TRUE)
+    if(warn){
+      warning(.model_averaging_failure_message(failed_models, on_failure),
+              call. = FALSE, immediate. = TRUE)
+    }
   }
 
   # Missing values from zero-prior-probability models cannot affect inference.
@@ -281,6 +303,17 @@ ensemble_inference <- function(model_list, parameters, is_null_list,
                                conditional = FALSE,
                                on_failure = c("error", "drop", "zero")){
 
+  .ensemble_inference(model_list, parameters, is_null_list, conditional,
+                      on_failure = match.arg(on_failure))
+}
+
+# 'warn' = FALSE leaves the warning of a non-default failure policy to the
+# caller (mix_posteriors() warns once for all of its parameters).
+.ensemble_inference <- function(model_list, parameters, is_null_list,
+                                conditional = FALSE,
+                                on_failure = c("error", "drop", "zero"),
+                                warn = TRUE){
+
   # check input
   check_list(model_list, "model_list")
   check_char(parameters, "parameters", check_length = FALSE)
@@ -302,12 +335,13 @@ ensemble_inference <- function(model_list, parameters, is_null_list,
   for(p in seq_along(parameters)){
 
     # prepare parameter specific values
-    out[[parameters[p]]] <- compute_inference(
+    out[[parameters[p]]] <- .compute_inference(
       prior_weights = prior_weights,
       margliks       = margliks,
       is_null        = is_null_list[[p]],
       conditional    = conditional,
-      on_failure     = on_failure
+      on_failure     = on_failure,
+      warn           = warn
     )
 
     # add parameter names (formula terms rendered from their prior)

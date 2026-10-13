@@ -20,6 +20,11 @@
 #' allocations; \code{mix_posteriors()} hard-errors in that case. Mix each
 #' conditional parameter in a separate call instead.
 #'
+#' With \code{on_failure = "drop"} or \code{"zero"}, one warning is emitted
+#' for the model list, and every mixed parameter carries the
+#' \code{marglik_failure} attribute that [ensemble_inference()] returns for
+#' that parameter.
+#'
 #' For an ordered total with a declared inclusion event, conditional averaging
 #' also conditions within each model. Posterior model probabilities are
 #' multiplied by the event's fraction of fitted draws; prior probabilities are
@@ -93,13 +98,21 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
   fits           <- lapply(model_list, function(m) m[["fit"]])
   priors         <- lapply(model_list, function(m) attr(m[["fit"]], "prior_list"))
 
-  inference <- ensemble_inference(
+  # The failure policy is resolved for the model list, not per parameter: one
+  # warning, and every mixed parameter carries the audit of its inference.
+  inference <- .ensemble_inference(
     model_list,
     parameters,
     is_null_list,
     conditional,
-    on_failure = on_failure
+    on_failure = on_failure,
+    warn = FALSE
   )
+  failure_audit <- if(length(inference)) attr(inference[[1L]], "marglik_failure", exact = TRUE)
+  if(!is.null(failure_audit)){
+    warning(.model_averaging_failure_message(failure_audit$model, on_failure),
+            call. = FALSE, immediate. = TRUE)
+  }
 
   # Use one shared sampling seed so formula terms are drawn from aligned
   # posterior rows across parameters.
@@ -244,6 +257,9 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
     }
     out[[temp_parameter]] <- .model_probability_mixed_measures(out[[temp_parameter]],
       prior_pair, posterior_pair, temp_priors, temp_parameter)
+    if(!is.null(failure_audit)){
+      attr(out[[temp_parameter]], "marglik_failure") <- attr(temp_inference, "marglik_failure", exact = TRUE)
+    }
 
     # the fitted coordinate and label parts of every column
     if(is.null(.bt_meta_get(out[[temp_parameter]], "quantities"))){
