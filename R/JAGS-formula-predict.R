@@ -359,7 +359,9 @@ JAGS_evaluate_formula <- function(fit, formula = NULL, parameter,
     stop("Formula predictors contain missing values.", call. = FALSE)
   }
   attr(model_frame, "terms") <- formula_terms
-  model_matrix <- .bt_model_matrix(model_frame, formula = formula_terms, data = data)
+  # The frame carries the fitted terms' variable order; handing model.matrix()
+  # the raw data would rebuild it from the selected expression instead.
+  model_matrix <- .bt_model_matrix(model_frame, formula = formula_terms, data = model_frame)
   .bt_validate_model_matrix_finite(model_matrix, "Formula")
   expected_columns <- selected_terms$raw_column_names
   if(anyDuplicated(colnames(model_matrix)) || anyDuplicated(expected_columns) ||

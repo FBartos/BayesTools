@@ -56,3 +56,37 @@ test_that("reordered main effects and orthonormal factor subsets retain fitted r
     list(intercept = prior("normal", list(0, 1))))
   expect_equal(unname(JAGS_evaluate_formula(scalar, parameter = "mu")), matrix(rep(c(3, 5), each = 4), 4, 2))
 })
+
+test_that("replay and selected terms follow the fitted variable order, not the order of the selected expression", {
+  data <- data.frame(
+    a = factor(c("no", "yes", "no", "yes", "yes", "no", "no", "yes"), levels = c("no", "yes")),
+    b = factor(c("no", "no", "yes", "yes", "no", "no", "yes", "yes"), levels = c("no", "yes"))
+  )
+  normal <- prior("normal", list(0, 1))
+  treatment <- prior_factor("normal", list(0, 1), contrast = "treatment")
+
+  # `a:b + b` lists `b` before `a:b`, so the expression's first appearance of
+  # variables (a, b) differs from the fitted variable order.
+  draws <- cbind(mu_intercept = 1, mu_b = 3, "mu_a__xXx__b[1]" = 7, "mu_a__xXx__b[2]" = 11)
+  carrier <- JAGS_formula_draws(draws, ~ a:b + b, "mu", data,
+    list(intercept = normal, b = treatment, "a:b" = treatment))
+  design <- attr(carrier, "formula_design")$mu
+  fitted <- drop(design$model_matrix %*% c(1, 3, 7, 11))
+  expect_equal(drop(JAGS_evaluate_formula(carrier, parameter = "mu")), fitted)
+  rows <- c(8L, 1L, 6L, 3L)
+  expect_equal(
+    drop(JAGS_evaluate_formula(carrier, parameter = "mu", data = data[rows, ])),
+    fitted[rows]
+  )
+
+  # A selection of a full-factorial fit keeps the fitted coding of each column.
+  draws_full <- cbind(mu_intercept = 1, mu_a = 2, mu_b = 3, mu_a__xXx__b = 7)
+  carrier_full <- JAGS_formula_draws(draws_full, ~ a * b, "mu", data,
+    list(intercept = normal, a = treatment, b = treatment, "a:b" = treatment))
+  design_full <- attr(carrier_full, "formula_design")$mu
+  columns <- which(design_full$assign %in% c(2L, 3L))
+  expect_equal(
+    drop(JAGS_evaluate_formula(carrier_full, ~ 0 + b + a:b, "mu")),
+    drop(design_full$model_matrix[, columns, drop = FALSE] %*% c(3, 7))
+  )
+})
