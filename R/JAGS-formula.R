@@ -450,16 +450,17 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
       if(!.bt_should_scale_predictor(formula_scale, continuous)){
         next
       }
+      # Columns are read as vectors: `data[, name]` stays a one-column tibble.
       scale_info[[continuous]] <- list(
-        mean = mean(data[, continuous], na.rm = TRUE),
-        sd   = stats::sd(data[, continuous], na.rm = TRUE)
+        mean = mean(data[[continuous]], na.rm = TRUE),
+        sd   = stats::sd(data[[continuous]], na.rm = TRUE)
       )
       if(is.na(scale_info[[continuous]]$sd) || !is.finite(scale_info[[continuous]]$sd) || scale_info[[continuous]]$sd <= 0){
         stop(paste0("Cannot standardize predictor '", continuous, "' because its standard deviation must be positive and finite."), call. = FALSE)
       }
-      data[, continuous] <- (data[, continuous] - scale_info[[continuous]]$mean) / scale_info[[continuous]]$sd
-      random_effect_scaled_data[, continuous] <- (
-        random_effect_scaled_data[, continuous] -
+      data[[continuous]] <- (data[[continuous]] - scale_info[[continuous]]$mean) / scale_info[[continuous]]$sd
+      random_effect_scaled_data[[continuous]] <- (
+        random_effect_scaled_data[[continuous]] -
           scale_info[[continuous]]$mean
       ) / scale_info[[continuous]]$sd
     }

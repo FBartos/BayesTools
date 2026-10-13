@@ -23,7 +23,7 @@
     scaled_name <- paste0(parameter, "_", continuous)
     if(scaled_name %in% names(param_scale)){
       scale_info <- param_scale[[scaled_name]]
-      data[, continuous] <- (data[, continuous] - scale_info$mean) / scale_info$sd
+      data[[continuous]] <- (data[[continuous]] - scale_info$mean) / scale_info$sd
     }
   }
 

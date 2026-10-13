@@ -932,13 +932,13 @@
 
   if(is_interaction){
     level_names <- lapply(factor_components, function(factor_component){
-      levels(data[, factor_component])
+      levels(data[[factor_component]])
     })
     names(level_names) <- factor_components
     return(level_names)
   }
 
-  levels(data[, factor_components[1L]])
+  levels(data[[factor_components[1L]]])
 }
 
 # Component labels of the level cells of a random factor term: each factor

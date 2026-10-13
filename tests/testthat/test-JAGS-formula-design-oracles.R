@@ -11413,6 +11413,39 @@ test_that("factor random slopes compile identically from data frames and tibbles
   expect_length(tibble_result$formula_scale, 0L)
 })
 
+test_that("random-effect factor level names read tibble columns as vectors", {
+
+  skip_if_not_installed("tibble")
+
+  df <- data.frame(
+    study = factor(rep(paste0("s", 1:6), each = 12)),
+    t     = factor(rep(c("t1", "t2", "t3", "t4"), 18)),
+    f     = factor(rep(c("x", "y", "z"), 24)),
+    g     = factor(rep(c("p", "q"), each = 36))
+  )
+  tbl <- tibble::as_tibble(df)
+  leaf_terms <- function(formula, data){
+    compiled <- JAGS_formula(
+      formula, "mu", data,
+      prior_list = list(intercept = prior("normal", list(0, 1))),
+      prior_random = prior_random(sd = prior("gamma", list(2, 2)))
+    )
+    unname(compiled$formula_design$random_effects[[1L]]$sd_leaves$leaf_terms)
+  }
+
+  expect_identical(
+    leaf_terms(~ 1 + hcs(t | study), df),
+    c("t[t1]", "t[t2]", "t[t3]", "t[t4]")
+  )
+  expect_identical(leaf_terms(~ 1 + us(1 + f | study), df), c("intercept", "f[y]", "f[z]"))
+  for(formula in list(
+    ~ 1 + hcs(t | study), ~ 1 + har(t | study), ~ 1 + us(1 + f | study),
+    ~ 1 + us(1 + f * g | study)
+  )){
+    expect_identical(leaf_terms(formula, tbl), leaf_terms(formula, df), info = deparse(formula))
+  }
+})
+
 test_that("prior_random maps to explicitly named random-effect blocks", {
 
   df <- data.frame(

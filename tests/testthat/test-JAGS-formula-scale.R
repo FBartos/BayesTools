@@ -160,6 +160,61 @@ test_that("JAGS_formula standardization preserves data correctly", {
   expect_equal(unname(result$data$beta_data_x2), as.numeric(scale(df$x2)))
 })
 
+test_that("JAGS_formula standardizes tibble predictors exactly as data frame predictors", {
+
+  skip_if_not_installed("tibble")
+
+  set.seed(194)
+  df <- data.frame(
+    x  = rnorm(12, mean = 3, sd = 2),
+    z  = rnorm(12),
+    id = factor(rep(c("a", "b", "c"), 4))
+  )
+  tbl <- tibble::as_tibble(df)
+  priors <- list(
+    intercept = prior("normal", list(0, 1)),
+    x         = prior("normal", list(0, 1)),
+    z         = prior("normal", list(0, 1))
+  )
+
+  # fixed-effect scaling
+  compile_fixed <- function(data){
+    JAGS_formula(~ x + z, "mu", data, priors, formula_scale = list(x = TRUE))
+  }
+  fixed_df  <- compile_fixed(df)
+  fixed_tbl <- compile_fixed(tbl)
+  expect_equal(fixed_tbl$formula_scale$mu_x$mean, mean(df$x))
+  expect_equal(fixed_tbl$formula_scale$mu_x$sd, stats::sd(df$x))
+  expect_equal(fixed_tbl$formula_scale, fixed_df$formula_scale)
+  expect_equal(fixed_tbl$data, fixed_df$data)
+  expect_identical(fixed_tbl$formula_syntax, fixed_df$formula_syntax)
+
+  # a predictor that only a random-effect term uses is standardized as well
+  compile_random <- function(data){
+    JAGS_formula(
+      ~ 1 + us(1 + x | id), "mu", data,
+      prior_list = list(intercept = prior("normal", list(0, 1))),
+      formula_scale = list(x = TRUE),
+      prior_random = prior_random(id = random_block(
+        sd = prior("gamma", list(2, 2)), cor = prior_lkj(eta = 1)
+      ))
+    )
+  }
+  random_df  <- compile_random(df)
+  random_tbl <- compile_random(tbl)
+  expect_equal(random_tbl$formula_scale, random_df$formula_scale)
+  expect_equal(random_tbl$data, random_df$data)
+  expect_equal(random_tbl$formula_scale$mu_x$mean, mean(df$x))
+
+  # replaying scaled data supplied as a tibble
+  draws <- cbind(mu_intercept = 1, mu_x = 2, mu_z = 0.5)
+  carrier <- JAGS_formula_draws(draws, ~ x + z, "mu", tbl, priors, formula_scale = list(x = TRUE))
+  rows <- c(3L, 1L, 7L)
+  expected <- 1 + 2 * (df$x[rows] - mean(df$x)) / stats::sd(df$x) + 0.5 * df$z[rows]
+  expect_equal(unname(drop(JAGS_evaluate_formula(carrier, parameter = "mu", data = tbl[rows, ]))), expected)
+  expect_equal(unname(drop(JAGS_evaluate_formula(carrier, parameter = "mu", data = df[rows, ]))), expected)
+})
+
 test_that("JAGS_formula rejects standardizing constant predictors", {
 
   df <- data.frame(x_const = rep(3, 20))
