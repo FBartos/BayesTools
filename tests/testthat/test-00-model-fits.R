@@ -4460,6 +4460,48 @@ test_that("native JAGS LKJ transforms reject invalid geometry before evaluation"
   }
 })
 
+test_that("native JAGS LKJ primitive sampling refuses a draw rounded to the boundary of (0, 1)", {
+
+  skip_if_not_installed("rjags")
+  skip_if_not(
+    isTRUE(BayesTools_load_JAGS_module(quiet = TRUE, warn = FALSE)),
+    "BayesTools JAGS module is unavailable."
+  )
+
+  # Beta(eta, eta) puts about 1% of its mass within 1e-16 of 1 at eta = 0.1:
+  # a prior draw there rounds to u = 1 (log density -Inf, Cholesky diagonal 0).
+  # Such a draw is refused, not clamped or redrawn.
+  sample_prior <- function(eta, seed, n_iter){
+    con <- textConnection(paste0(
+      "model{ u[1:1] ~ dbt_lkj_cpc(alpha[1:1]); ",
+      "L[1:4] <- bt_lkj_cholesky(u[1:1], 2); dummy ~ dnorm(0, 1) }"
+    ))
+    on.exit(close(con), add = TRUE)
+    model <- rjags::jags.model(
+      file = con, data = list(alpha = eta),
+      inits = list(u = .5, dummy = 0, .RNG.name = "base::Wichmann-Hill", .RNG.seed = seed),
+      n.chains = 1L, n.adapt = 0L, quiet = TRUE
+    )
+    as.matrix(rjags::coda.samples(
+      model = model, variable.names = c("u", "L"), n.iter = n_iter,
+      quiet = TRUE, progress.bar = "none"
+    ))
+  }
+
+  expect_error(
+    sample_prior(.1, 301L, 2000L),
+    "rounded to the boundary of (0, 1)", fixed = TRUE
+  )
+  expect_error(
+    sample_prior(.1, 301L, 2000L),
+    "Supply initial values or use a larger 'eta'.", fixed = TRUE
+  )
+
+  draws <- sample_prior(2, 301L, 2000L)
+  expect_true(all(draws[, "u"] > 0 & draws[, "u"] < 1))
+  expect_true(all(draws[, "L[4]"] > 0))
+})
+
 .eval_jags_lkj_cholesky_transform <- function(u, K) {
   skip_if_not(
     isTRUE(BayesTools_load_JAGS_module(quiet = TRUE, warn = FALSE)),

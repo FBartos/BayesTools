@@ -3,6 +3,7 @@
 
 #include <cmath>
 #include <JRmath.h>
+#include <module/ModuleError.h>
 #include <rng/RNG.h>
 #include <util/nainf.h>
 
@@ -53,7 +54,22 @@ namespace jags {
                                  RNG *rng) const
     {
       for(unsigned int i = 0; i < length; ++i){
-        x[i] = qbeta(rng->uniform(), par[0][i], par[0][i], true, false);
+        double value = qbeta(rng->uniform(), par[0][i], par[0][i], true, false);
+        // Representability limit: for small alpha (eta) the Beta(alpha, alpha)
+        // law puts probability closer to 1 than a double can resolve (about 1%
+        // of the draws lie within 1e-16 of 1 at alpha = 0.1), so a quantile
+        // can round onto the endpoint. There the log density is -Inf and a
+        // Cholesky diagonal is 0, so the draw is not a point of the support.
+        // It is refused with a clear error; it is not clamped, redrawn, or
+        // moved to another coordinate, which would change the sampled law.
+        if(!bayestools::lkj::valid_u(&value, 1)){
+          throwDistError(this,
+            "An LKJ partial-correlation draw rounded to the boundary of (0, 1): "
+            "for small 'eta' the LKJ prior puts probability closer to a "
+            "correlation of +-1 than double precision can represent. "
+            "Supply initial values or use a larger 'eta'.");
+        }
+        x[i] = value;
       }
     }
 
