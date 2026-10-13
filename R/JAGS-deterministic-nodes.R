@@ -56,6 +56,15 @@
 #'   factor priors. Only the components that are active in some draw need to
 #'   be available; literal point components are constants. Multi-slice ordered
 #'   spike totals use indexed slab sources and one shared inclusion state.}
+#'   \item{\code{"prior_dirichlet"}}{the coordinates of an ordinary Dirichlet
+#'   prior, \code{theta[i] = eta[i] / sum(eta)}, from its gamma auxiliaries
+#'   \code{eta}. The Dirichlet weights of a variance allocation belong to the
+#'   allocation family.}
+#'   \item{\code{"prior_mt"}}{the coordinates of a multivariate-t prior (also
+#'   of an orthonormal or meandif multivariate-t factor, or of a component of a
+#'   mixture), \code{theta[i] = z[i] / sqrt(s) + location}, from the normal
+#'   coordinates \code{z} and the scale coordinate \code{s}. A location that
+#'   is an expression leaves the node unavailable to the evaluator.}
 #'   \item{\code{"ordered_allocation"}}{normalized Gamma coordinates of an
 #'   ordered allocation. Gamma values take precedence over supplied normalized
 #'   weights. Replay accepts nonnegative Gamma values with a positive row sum;
@@ -241,6 +250,8 @@ JAGS_deterministic_evaluator <- function(fit, nodes = NULL){
   "lkj",
   "omega",
   "prior_mixture",
+  "prior_dirichlet",
+  "prior_mt",
   "ordered_allocation",
   "ordered_coefficient",
   "linear_predictor",
@@ -287,6 +298,8 @@ JAGS_deterministic_evaluator <- function(fit, nodes = NULL){
     lkj = .bt_dnode_lkj_emit(node),
     omega = .bt_dnode_omega_emit(node),
     prior_mixture = .bt_dnode_prior_mixture_emit(node),
+    prior_dirichlet = .bt_dnode_prior_dirichlet_emit(node),
+    prior_mt = .bt_dnode_prior_mt_emit(node),
     ordered_allocation = .bt_dnode_ordered_allocation_emit(node),
     ordered_coefficient = .bt_dnode_ordered_coefficient_emit(node),
     linear_predictor = .bt_dnode_linear_predictor_emit(node),
@@ -306,6 +319,8 @@ JAGS_deterministic_evaluator <- function(fit, nodes = NULL){
     lkj = .bt_dnode_lkj_evaluate(node, lookup),
     omega = .bt_dnode_omega_evaluate(node, lookup),
     prior_mixture = .bt_dnode_prior_mixture_evaluate(node, lookup),
+    prior_dirichlet = .bt_dnode_prior_dirichlet_evaluate(node, lookup),
+    prior_mt = .bt_dnode_prior_mt_evaluate(node, lookup),
     ordered_allocation = .bt_dnode_ordered_allocation_evaluate(node, lookup),
     ordered_coefficient = .bt_dnode_ordered_coefficient_evaluate(node, lookup),
     linear_predictor = .bt_dnode_linear_predictor_evaluate(node, lookup),
@@ -431,9 +446,13 @@ JAGS_deterministic_evaluator <- function(fit, nodes = NULL){
         .bt_dnode_prior_mixture_bias_term(prior_names[[i]], prior, "PEESE")
       )
     }else if(is.prior.mixture(prior)){
-      list(.bt_dnode_prior_mixture(prior_names[[i]], prior))
+      # the nodes of the component priors precede the node of the mixture
+      c(
+        .bt_dnode_prior_vector_nodes(prior_names[[i]], prior),
+        list(.bt_dnode_prior_mixture(prior_names[[i]], prior))
+      )
     }else{
-      list()
+      .bt_dnode_prior_vector_nodes(prior_names[[i]], prior)
     }
     for(node in prior_nodes){
       if(!is.null(node)){

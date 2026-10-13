@@ -252,3 +252,152 @@
 
   as.vector(values)
 }
+
+
+# Ordinary vector priors ("prior_dirichlet", "prior_mt") ------------------------
+#
+# The Dirichlet and multivariate-t priors define their coordinates
+# deterministically from sampled primitives (see .JAGS_prior.vector()):
+#   Dirichlet:        theta[i] <- eta[i] / sum(eta[1:K]),  eta[i] ~ dgamma(alpha[i], 1)
+#   multivariate t:   theta[i] <- z[i] / sqrt(s) + location,
+#                     z ~ dmnorm(0, precision), s ~ dgamma(df / 2, df / 2)
+# Orthonormal and meandif multivariate-t factors, and the components of
+# mixtures and the slabs of spike-and-slabs that are such priors, share the
+# syntax and therefore the nodes. The dependencies are the primitive
+# coordinates 'eta', 'z' and 's'; the location is a constant of the prior. The
+# Dirichlet weights of a variance allocation are coordinates of the allocation
+# family (the SDs read their weights or gamma auxiliaries) and no node of this
+# family. A multivariate-t location that is an expression is part of the
+# syntax; its values are unavailable to the R evaluator.
+
+.bt_dnode_prior_dirichlet <- function(name, prior, parameter = name){
+
+  K   <- prior$parameters[["K"]]
+  eta <- .JAGS_prior_dirichlet_eta_name(name)
+
+  .bt_deterministic_node(
+    family = "prior_dirichlet",
+    node = name,
+    coordinates = paste0(name, "[", seq_len(K), "]"),
+    dependencies = paste0(eta, "[", seq_len(K), "]"),
+    parameter = parameter,
+    spec = list(K = K, eta = eta)
+  )
+}
+
+.bt_dnode_prior_mt <- function(name, prior, parameter = name){
+
+  if(.is_prior_expression(prior)){
+    prior <- .prior_expression_to_character(prior)
+  }
+  K <- if(is.prior.factor(prior)) .get_prior_factor_levels(prior) else prior$parameters[["K"]]
+  z <- paste0("prior_par_z_", name)
+  s <- paste0("prior_par_s_", name)
+
+  .bt_deterministic_node(
+    family = "prior_mt",
+    node = name,
+    coordinates = paste0(name, "[", seq_len(K), "]"),
+    dependencies = c(paste0(z, "[", seq_len(K), "]"), s),
+    parameter = parameter,
+    spec = list(K = K, z = z, s = s, location = prior$parameters[["location"]])
+  )
+}
+
+# The nodes of the ordinary vector priors of a (component of a) prior: the
+# prior itself, the components of a mixture and the slab of a spike-and-slab
+# (named as in .JAGS_prior.mixture() and .JAGS_prior.spike_and_slab()).
+.bt_dnode_prior_vector_nodes <- function(name, prior, parameter = name){
+
+  if(is.prior.spike_and_slab(prior)){
+    return(.bt_dnode_prior_vector_nodes(
+      paste0(name, "_variable"), .get_spike_and_slab_variable(prior), parameter
+    ))
+  }
+  if(inherits(prior, "prior.bias_mixture")){
+    return(list())
+  }
+  if(is.prior.mixture(prior)){
+    return(unlist(lapply(seq_along(prior), function(k){
+      .bt_dnode_prior_vector_nodes(paste0(name, "_component_", k), prior[[k]], parameter)
+    }), recursive = FALSE))
+  }
+  if(is.prior.ordered(prior) || !is.prior.vector(prior)){
+    return(list())
+  }
+
+  if(identical(prior[["distribution"]], "dirichlet") &&
+     is.null(attr(prior, "random_allocation", exact = TRUE))){
+    return(list(.bt_dnode_prior_dirichlet(name, prior, parameter)))
+  }
+  if(identical(prior[["distribution"]], "mt")){
+    return(list(.bt_dnode_prior_mt(name, prior, parameter)))
+  }
+
+  list()
+}
+
+.bt_dnode_prior_dirichlet_emit <- function(node){
+
+  paste0(node$coordinates, " <- ", node$spec$eta, "[", seq_len(node$spec$K), "] / sum(",
+         node$spec$eta, "[1:", node$spec$K, "])")
+}
+
+.bt_dnode_prior_mt_emit <- function(node){
+
+  spec <- node$spec
+  c(
+    paste0("for(i in 1:", spec$K, "){"),
+    paste0("  ", node$node, "[i] <- ", spec$z, "[i]/sqrt(", spec$s, ") + ",
+           .JAGS_prior_number(spec$location), " "),
+    "}"
+  )
+}
+
+# The Dirichlet weights are the gamma auxiliaries over their sum, accumulated
+# in the order of the JAGS 'sum()'.
+.bt_dnode_prior_dirichlet_evaluate <- function(node, lookup){
+
+  eta <- .bt_deterministic_lookup_values(lookup, node$dependencies)
+  if(is.null(eta)){
+    return(NULL)
+  }
+
+  total <- eta[, 1L]
+  for(j in seq_len(node$spec$K)[-1L]){
+    total <- total + eta[, j]
+  }
+  if(any(!is.finite(eta)) || any(eta < 0) || any(!is.finite(total)) || any(total <= 0)){
+    stop(
+      "Dirichlet gamma draws of '", node$node,
+      "' must be finite and nonnegative with finite positive row sums.",
+      call. = FALSE
+    )
+  }
+
+  eta / total
+}
+
+# The coordinates are the normal primitives over the square root of the scale
+# primitive plus the location.
+.bt_dnode_prior_mt_evaluate <- function(node, lookup){
+
+  spec <- node$spec
+  if(!is.numeric(spec$location)){
+    return(NULL)
+  }
+  z <- .bt_deterministic_lookup_values(lookup, paste0(spec$z, "[", seq_len(spec$K), "]"))
+  s <- .bt_deterministic_lookup_value(lookup, spec$s)
+  if(is.null(z) || is.null(s)){
+    return(NULL)
+  }
+  if(any(!is.finite(z)) || any(!is.finite(s)) || any(s <= 0)){
+    stop(
+      "Multivariate-t primitive draws of '", node$node,
+      "' must be finite, with positive scale draws '", spec$s, "'.",
+      call. = FALSE
+    )
+  }
+
+  z / sqrt(s) + spec$location
+}

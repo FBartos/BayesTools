@@ -765,3 +765,155 @@ test_that("cumulative omega replay refuses overflowing positive Gamma totals", {
   expect_equal(unname(JAGS_evaluate_deterministic(binary_fit, binary_draws, nodes = "omega")),
     matrix(c(1, .4), 1L), tolerance = 0)
 })
+
+test_that("ordinary Dirichlet priors are registered nodes that replay from their gamma primitives", {
+
+  prior_list <- list(theta = prior("dirichlet", list(alpha = c(2, 3, 1.5))))
+  set.seed(215)
+  eta <- cbind(
+    "prior_par_eta_theta[1]" = stats::rgamma(40, 2),
+    "prior_par_eta_theta[2]" = stats::rgamma(40, 3),
+    "prior_par_eta_theta[3]" = stats::rgamma(40, 1.5)
+  )
+  # the weights as JAGS computes them: the gamma auxiliaries over their sum
+  weights <- eta / (eta[, 1] + eta[, 2] + eta[, 3])
+  colnames(weights) <- paste0("theta[", 1:3, "]")
+  draws <- cbind(weights, eta)
+  fit <- .parameter_catalog_test_fit(coda::mcmc.list(coda::mcmc(draws)), prior_list)
+
+  # the registry lists the node with its coordinates and primitives
+  nodes <- JAGS_deterministic_nodes(fit)
+  expect_identical(nodes$node, "theta")
+  expect_identical(nodes$family, "prior_dirichlet")
+  expect_identical(nodes$parameter, "theta")
+  expect_identical(nodes$coordinates[[1]], paste0("theta[", 1:3, "]"))
+  expect_identical(nodes$dependencies[[1]], paste0("prior_par_eta_theta[", 1:3, "]"))
+  expect_true(nodes$monitored)
+
+  # replay from the primitives alone gives the monitored weights exactly
+  replayed <- JAGS_evaluate_deterministic(fit, draws = eta)
+  expect_identical(colnames(replayed), colnames(weights))
+  expect_identical(unname(replayed), unname(weights))
+  expect_equal(unname(rowSums(replayed)), rep(1, 40), tolerance = 1e-15)
+  expect_identical(JAGS_evaluate_deterministic(fit, draws = eta, nodes = "theta"), replayed)
+
+  # stale weights are replaced by the node output, as for every family
+  stale <- draws
+  stale[, 1:3] <- 1 / 3
+  expect_identical(unname(JAGS_evaluate_deterministic(fit, draws = stale, nodes = "theta")), unname(weights))
+
+  # the node emits the syntax of the model
+  model <- JAGS_add_priors("model{}", prior_list)
+  node  <- BayesTools:::.bt_deterministic_nodes_fit(fit)$theta
+  expect_identical(
+    BayesTools:::.bt_deterministic_node_emit(node),
+    paste0("theta[", 1:3, "] <- prior_par_eta_theta[", 1:3, "] / sum(prior_par_eta_theta[1:3])")
+  )
+  for(piece in BayesTools:::.bt_deterministic_node_emit(node)){
+    expect_true(grepl(piece, model, fixed = TRUE))
+  }
+
+  # unavailable primitives leave the node unavailable; invalid ones are refused
+  expect_identical(ncol(JAGS_evaluate_deterministic(fit, draws = weights)), 0L)
+  expect_error(
+    JAGS_evaluate_deterministic(fit, draws = weights, nodes = "theta"),
+    "Deterministic node 'theta' is unavailable from 'draws'", fixed = TRUE
+  )
+  invalid <- eta
+  invalid[2, 1] <- -1
+  expect_error(
+    JAGS_evaluate_deterministic(fit, draws = invalid),
+    "Dirichlet gamma draws of 'theta' must be finite and nonnegative with finite positive row sums.",
+    fixed = TRUE
+  )
+
+  # the weights of a variance allocation belong to the allocation family
+  allocation_fit <- .dnode_gated_fit()
+  expect_false(any(c("prior_dirichlet", "prior_mt") %in% JAGS_deterministic_nodes(allocation_fit)$family))
+})
+
+test_that("multivariate-t priors are registered nodes that replay from their primitives", {
+
+  set.seed(216)
+  n <- 30
+  # theta[i] <- z[i] / sqrt(s) + location, as in the JAGS syntax
+  replay_check <- function(prior_list, name, location, K){
+
+    z <- matrix(stats::rnorm(n * K), n, K, dimnames = list(NULL, paste0("prior_par_z_", name, "[", seq_len(K), "]")))
+    s <- cbind(stats::rgamma(n, 1.5, 1.5))
+    colnames(s) <- paste0("prior_par_s_", name)
+    coefficients <- z / sqrt(s[, 1]) + location
+    colnames(coefficients) <- paste0(name, "[", seq_len(K), "]")
+    primitives <- cbind(z, s)
+    fit <- .parameter_catalog_test_fit(coda::mcmc.list(coda::mcmc(cbind(coefficients, primitives))), prior_list)
+
+    nodes <- JAGS_deterministic_nodes(fit)
+    expect_identical(nodes$node, name)
+    expect_identical(nodes$family, "prior_mt")
+    expect_identical(nodes$coordinates[[1]], colnames(coefficients))
+    expect_identical(nodes$dependencies[[1]], c(colnames(z), colnames(s)))
+    replayed <- JAGS_evaluate_deterministic(fit, draws = primitives)
+    expect_identical(unname(replayed), unname(coefficients))
+    expect_identical(colnames(replayed), colnames(coefficients))
+
+    # the node emits the syntax of the model
+    node  <- BayesTools:::.bt_deterministic_nodes_fit(fit)[[name]]
+    model <- JAGS_add_priors("model{}", prior_list)
+    emitted <- BayesTools:::.bt_deterministic_node_emit(node)
+    expect_identical(emitted[c(1, 3)], c(paste0("for(i in 1:", K, "){"), "}"))
+    expect_match(emitted[2], paste0("^  ", name, "\\[i\\] <- prior_par_z_", name, "\\[i\\]/sqrt\\(prior_par_s_", name, "\\) \\+ "))
+    expect_true(grepl(paste0(emitted, "\n", collapse = ""), model, fixed = TRUE))
+
+    # an invalid scale primitive is refused, a missing one leaves the node unavailable
+    invalid <- primitives
+    invalid[3, ncol(invalid)] <- 0
+    expect_error(
+      JAGS_evaluate_deterministic(fit, draws = invalid),
+      paste0("Multivariate-t primitive draws of '", name, "' must be finite, with positive scale draws 'prior_par_s_", name, "'."),
+      fixed = TRUE
+    )
+    expect_identical(ncol(JAGS_evaluate_deterministic(fit, draws = primitives[, -ncol(primitives), drop = FALSE])), 0L)
+    invisible(fit)
+  }
+
+  replay_check(list(theta = prior("mt", list(location = 1/3, scale = 2, df = 3, K = 2))), "theta", 1/3, 2L)
+  replay_check(list(theta = prior("mt", list(location = 0, scale = 1, df = 3.3, K = 3))), "theta", 0, 3L)
+
+  # an orthonormal or meandif factor shares the syntax and the node
+  for(contrast in c("orthonormal", "meandif")){
+    info <- JAGS_formula(
+      ~ f, "mu", data.frame(f = factor(c("a", "b", "c"))),
+      list(intercept = prior("normal", list(0, 1)), f = prior_factor("mt", list(0, 1, 3), contrast = contrast))
+    )
+    replay_check(info$prior_list["mu_f"], "mu_f", 0, 2L)
+  }
+
+  # the components of a mixture are nodes, ahead of the node of the mixture
+  info <- JAGS_formula(
+    ~ f, "mu", data.frame(f = factor(c("a", "b", "c"))),
+    list(
+      intercept = prior("normal", list(0, 1)),
+      f = prior_mixture(list(
+        prior("point", list(0)),
+        prior_factor("mt", list(0, 1, 3), contrast = "meandif")
+      ))
+    )
+  )
+  prior_list <- info$prior_list["mu_f"]
+  registry   <- BayesTools:::.bt_deterministic_nodes(prior_list)
+  expect_identical(names(registry), c("mu_f_component_2", "mu_f"))
+  expect_identical(vapply(registry, `[[`, character(1), "family"), c(mu_f_component_2 = "prior_mt", mu_f = "prior_mixture"))
+  expect_identical(registry$mu_f_component_2$parameter, "mu_f")
+
+  z <- cbind("prior_par_z_mu_f_component_2[1]" = c(.5, -1, 2, .3), "prior_par_z_mu_f_component_2[2]" = c(.1, .2, -.3, 1))
+  s <- c(.7, 1.5, 2, .9)
+  component <- z / sqrt(s)
+  indicator <- c(2, 1, 2, 2)
+  draws <- cbind(mu_f_indicator = indicator, z, prior_par_s_mu_f_component_2 = s)
+  fit <- .parameter_catalog_test_fit(
+    coda::mcmc.list(coda::mcmc(cbind(draws, "mu_f[1]" = 0, "mu_f[2]" = 0))),
+    prior_list, formula_design = list(mu = info$formula_design)
+  )
+  replayed <- JAGS_evaluate_deterministic(fit, draws = draws, nodes = "mu_f")
+  expect_identical(unname(replayed), unname(component * (indicator == 2)))
+})

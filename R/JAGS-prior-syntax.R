@@ -183,12 +183,9 @@ JAGS_add_priors           <- function(syntax, prior_list){
     syntax <- paste0(vapply(seq_len(prior$parameters[["K"]]), function(i){
       paste0(eta_name, "[", i, "] ~ dgamma(", .JAGS_prior_number(prior$parameters[["alpha"]][i]), ", 1)\n")
     }, character(1)), collapse = "")
-    for(i in seq_len(prior$parameters[["K"]])){
-      syntax <- paste0(
-        syntax,
-        parameter_name, "[", i, "] <- ", eta_name, "[", i, "] / sum(", eta_name, "[1:", prior$parameters[["K"]], "])\n"
-      )
-    }
+    syntax <- paste0(
+      syntax,
+      paste0(.bt_deterministic_node_emit(.bt_dnode_prior_dirichlet(parameter_name, prior)), "\n", collapse = ""))
 
   }else if(prior[["distribution"]] %in% c("mnormal", "mt")){
     # create the location/means vector the sigma matrix
@@ -224,10 +221,10 @@ JAGS_add_priors           <- function(syntax, prior_list){
         "    prior_par2_", parameter_name, "[i,j] <- 0\n",
         "  }\n",
         "}\n",
-        "prior_par_z_", parameter_name, " ~ dmnorm(prior_par1_", parameter_name, ",prior_par2_", parameter_name, ")\n",
-        "for(i in 1:", prior$parameters[["K"]], "){\n",
-        "  ", parameter_name, "[i] <- prior_par_z_", parameter_name, "[i]/sqrt(prior_par_s_", parameter_name, ") + ", par1, " \n",
-        "}\n")
+        "prior_par_z_", parameter_name, " ~ dmnorm(prior_par1_", parameter_name, ",prior_par2_", parameter_name, ")\n")
+      syntax <- paste0(
+        syntax,
+        paste0(.bt_deterministic_node_emit(.bt_dnode_prior_mt(parameter_name, prior)), "\n", collapse = ""))
     }else if(prior[["distribution"]] == "mnormal"){
       syntax <- paste0("prior_par1_", parameter_name, " = rep(", par1, ",", prior$parameter[["K"]], ")\n")
       syntax <- paste0(

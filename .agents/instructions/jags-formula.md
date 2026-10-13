@@ -54,7 +54,8 @@ general nonlinear dependence detector.
 
 Every deterministic node BayesTools generates (allocation-derived SDs, scalar
 and LKJ correlations, publication weights, spike-and-slab and mixture
-parameters, formula linear predictors) belongs to one registered family whose
+parameters, the coordinates of ordinary Dirichlet and multivariate-t priors,
+formula linear predictors) belongs to one registered family whose
 node specification emits its JAGS syntax and carries the R evaluator and the
 declared dependencies: `JAGS_formula()` writes the linear predictor from the
 node of the fitted design, and `selection_backend_spec()` writes the weights

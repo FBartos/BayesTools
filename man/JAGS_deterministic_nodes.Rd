@@ -92,6 +92,15 @@ PEESE terms of publication-bias mixtures
 factor priors. Only the components that are active in some draw need to
 be available; literal point components are constants. Multi-slice ordered
 spike totals use indexed slab sources and one shared inclusion state.}
+\item{\code{"prior_dirichlet"}}{the coordinates of an ordinary Dirichlet
+prior, \code{theta[i] = eta[i] / sum(eta)}, from its gamma auxiliaries
+\code{eta}. The Dirichlet weights of a variance allocation belong to the
+allocation family.}
+\item{\code{"prior_mt"}}{the coordinates of a multivariate-t prior (also
+of an orthonormal or meandif multivariate-t factor, or of a component of a
+mixture), \code{theta[i] = z[i] / sqrt(s) + location}, from the normal
+coordinates \code{z} and the scale coordinate \code{s}. A location that
+is an expression leaves the node unavailable to the evaluator.}
 \item{\code{"ordered_allocation"}}{normalized Gamma coordinates of an
 ordered allocation. Gamma values take precedence over supplied normalized
 weights. Replay accepts nonnegative Gamma values with a positive row sum;
