@@ -3651,7 +3651,7 @@ parameter_transform_jacobian <- function(values, transform){
       raw_name <- .bt_random_effect_summary_name(
         parameter = parameter,
         type = allocation_type$name,
-        parts = c(allocation$label, components[i])
+        parts = c(allocation$label, components[i], i)
       )
       add_definition(
         raw_name = raw_name,
@@ -3700,7 +3700,7 @@ parameter_transform_jacobian <- function(values, transform){
         multiplier_name <- .bt_random_effect_summary_name(
           parameter = parameter,
           type = "sd_mult",
-          parts = c(allocation$label, components[i])
+          parts = c(allocation$label, components[i], i)
         )
         add_definition(
           raw_name = multiplier_name,
@@ -3740,7 +3740,7 @@ parameter_transform_jacobian <- function(values, transform){
         raw_name <- .bt_random_effect_summary_name(
           parameter = parameter,
           type = "inclusion",
-          parts = c(allocation$label, component_label)
+          parts = c(allocation$label, component_label, inclusion_i)
         )
         inclusion_dependencies <- .bt_parameter_catalog_coordinates(
           coordinates,
@@ -5302,12 +5302,15 @@ parameter_transform_jacobian <- function(values, transform){
       prior_list = prior_list,
       include_multipliers = TRUE
     )
-    match <- match(key$summary_name, summary$names)
-    if(is.na(match)){
+    # the component is identified by its persisted index, never by the
+    # sanitized summary name
+    index <- key$index
+    if(!is.numeric(index) || length(index) != 1L || is.na(index) ||
+       index < 1L || index > ncol(summary$values)){
       stop("Selected random allocation summary is unavailable from its declared dependencies.",
            call. = FALSE)
     }
-    return(summary$values[, match])
+    return(summary$values[, index])
   }
 
   stop("Unsupported BayesTools parameter-catalog extraction key.", call. = FALSE)

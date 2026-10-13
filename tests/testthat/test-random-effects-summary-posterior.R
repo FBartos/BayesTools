@@ -1955,3 +1955,65 @@ test_that("totals with an ungated component cannot be conditioned on inclusion",
     )
   )
 })
+
+test_that("allocation components with equal sanitized labels keep their own draws", {
+
+  # distinct public labels 'a-b' and 'a b' share one sanitized summary key
+  allocation_fit <- function(public_names){
+    compiled <- JAGS_formula(
+      ~ 1 + random(1 | study, name = "study", covariance = "diag") +
+        random(1 | drug, name = "drug", covariance = "diag"),
+      "mu",
+      data.frame(
+        study = factor(c("s1", "s1", "s2", "s2")),
+        drug = factor(c("a", "b", "a", "b"))
+      ),
+      prior_list = list(intercept = prior("normal", list(0, 1))),
+      prior_random = prior_random(allocation = random_variance_allocation(
+        name = "allocation",
+        terms = c(study = "study", drug = "drug"),
+        component_names = public_names,
+        sd = prior("gamma", list(2, 2)),
+        weights = prior("dirichlet", list(alpha = c(2, 3)))
+      ))
+    )
+    allocation <- compiled$formula_design$random_allocations[[1L]]
+    samples <- rbind(c(2, 0.25, 0.75), c(2, 0.40, 0.60))
+    colnames(samples) <- c(
+      allocation$source_node,
+      paste0(allocation$weight_name, "[", 1:2, "]")
+    )
+    fit <- structure(
+      list(mcmc = coda::mcmc.list(coda::mcmc(samples)), sample = nrow(samples)),
+      class = c("runjags", "BayesTools_fit", "list")
+    )
+    attr(fit, "prior_list") <- compiled$prior_list
+    attr(fit, "formula_design") <- list(mu = compiled$formula_design)
+    attach_test_parameter_map(fit)
+  }
+  proportions <- function(fit){
+    samples <- JAGS_estimates_table(
+      fit, random_effects_summary = "standard", return_samples = TRUE
+    )
+    as.matrix(samples)[, grepl("var_prop", colnames(samples), fixed = TRUE)]
+  }
+
+  for(public_names in list(c("study", "drug"), c("a-b", "a b"))){
+    fit <- allocation_fit(public_names)
+    quantities <- parameter_catalog(fit)$quantities
+    quantities <- quantities[quantities$quantity == "var_prop", ]
+    summary_keys <- vapply(quantities$extraction_key, `[[`, character(1L), "summary_name")
+    expect_false(anyDuplicated(summary_keys) > 0L, info = paste(public_names, collapse = " "))
+
+    expected <- cbind(c(0.25, 0.40), c(0.75, 0.60))
+    colnames(expected) <- paste0("(mu) allocation: var_prop(", public_names, ")")
+    table_samples <- proportions(fit)
+    expect_identical(colnames(table_samples), colnames(expected))
+    expect_equal(unname(table_samples), unname(expected))
+
+    posterior <- random_effects_summary_posterior(fit, "var_prop", n_prior_points = 64)
+    expect_identical(names(posterior), colnames(expected))
+    expect_equal(as.numeric(posterior[[1L]]), expected[, 1L])
+    expect_equal(as.numeric(posterior[[2L]]), expected[, 2L])
+  }
+})

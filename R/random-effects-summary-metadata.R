@@ -303,7 +303,7 @@
     names <- c(names, .bt_random_effect_summary_name(
       parameter = .bt_random_effect_allocation_formula_parameter(allocation),
       type = allocation_type$name,
-      parts = c(allocation$label, components[i])
+      parts = c(allocation$label, components[i], i)
     ))
     labels <- c(labels, .bt_random_effect_semantic_name(
       parameter = "",
@@ -337,7 +337,7 @@
       names <- c(names, .bt_random_effect_summary_name(
         parameter = .bt_random_effect_allocation_formula_parameter(allocation),
         type = "sd_mult",
-        parts = c(allocation$label, components[i])
+        parts = c(allocation$label, components[i], i)
       ))
       labels <- c(labels, .bt_random_effect_semantic_name(
         parameter = "",
