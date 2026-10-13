@@ -155,6 +155,43 @@ test_that("no-intercept row evaluation keeps the bound ordinary contrast basis",
   }
 })
 
+test_that("selected-term rows keep the fitted coding of dropped lower-order terms", {
+  data <- data.frame(g = factor(rep(c("a", "b", "c"), 2L)), x = c(1, 2, 3, 1, 2, 3))
+  priors <- list(intercept = prior("point", list(0)), x = prior("point", list(0)),
+    g = prior_factor("normal", list(0, 1), contrast = "treatment"),
+    `g:x` = prior_factor("normal", list(0, 1), contrast = "treatment"))
+  compiled <- JAGS_formula(~ g * x, "mu", data, priors)
+  draws <- cbind(mu_intercept = c(0, 0), "mu_g[1]" = c(0, 0), "mu_g[2]" = c(0, 0),
+    mu_x = c(0, 0), "mu_g__xXx__x[1]" = c(1, 1), "mu_g__xXx__x[2]" = c(3, 3))
+  fit <- .parameter_catalog_test_fit(coda::mcmc.list(coda::mcmc(draws)), compiled$prior_list,
+    formula_design = list(mu = compiled$formula_design), formula_scale = list(mu = compiled$formula_scale))
+  samples <- as_mixed_posteriors(fit, names(compiled$prior_list))
+  record <- .bt_formula_state_get(samples)$models[[1L]]
+  at <- data.frame(g = factor(c("a", "b", "c"), levels = c("a", "b", "c")), x = 1)
+
+  # The interaction columns keep the treatment coding of the fitted g * x:
+  # level a is the reference, b and c have their own indicator columns.
+  interaction <- c("mu_g__xXx__x[1]", "mu_g__xXx__x[2]")
+  expected <- matrix(0, 3L, ncol(.bt_formula_fitted_rows(~ g * x, at, record, "mu")),
+    dimnames = list(NULL, colnames(.bt_formula_fitted_rows(~ g * x, at, record, "mu"))))
+  expected[, interaction] <- cbind(c(0, 1, 0), c(0, 0, 1))
+  for(selection in list(~ 0 + g:x, ~ 0 + x:g)){
+    expect_equal(.bt_formula_fitted_rows(selection, at, record, "mu"), expected, tolerance = 0)
+  }
+  with_intercept <- expected
+  with_intercept[, "mu_intercept"] <- 1
+  expect_equal(.bt_formula_fitted_rows(~ g:x, at, record, "mu"), with_intercept, tolerance = 0)
+
+  # The public evaluator and the marginal posterior agree: 0, 1 and 3 per draw.
+  carrier <- JAGS_formula_draws(draws, ~ g * x, "mu", data, priors)
+  expect_equal(unname(JAGS_evaluate_formula(carrier, ~ 0 + g:x, "mu", data = at)),
+    matrix(c(0, 1, 3), 3L, 2L))
+  marginal <- marginal_posterior(samples, "mu_g", formula = ~ 0 + g:x, at = list(x = 1),
+    prior_samples = FALSE)
+  expect_length(marginal, 3L)
+  for(i in 1:3) expect_equal(as.numeric(marginal[[i]]), rep(c(0, 1, 3)[i], 2L), tolerance = 0)
+})
+
 test_that("original continuous labels report their unchanged original-unit grid", {
   fit <- .formula_state_test_fit(multiplier = 1)
   fitted <- as_mixed_posteriors(fit, c("mu_intercept", "mu_x"))

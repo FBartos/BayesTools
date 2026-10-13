@@ -1602,17 +1602,38 @@ JAGS_formula_prior_density <- function(
     fitted_data[[variable]] <- stats::`contrasts<-`(fitted_data[[variable]],
       how.many = ncol(spec$contrast_matrices[[variable]]), value = spec$contrast_matrices[[variable]])
   }
-  evaluation_formula <- if(attr(stats::terms(formula), "intercept") == 0L) formula_add_intercept(formula) else formula
-  frame <- stats::model.frame(evaluation_formula, data = fitted_data, na.action = NULL)
-  matrix <- .bt_model_matrix(frame, data = frame, formula = evaluation_formula)
+  # The selected terms keep the fitted terms' coding, variable order and raw
+  # columns, as in JAGS_evaluate_formula(); the requested intercept is kept
+  # apart because a selection always carries the fitted intercept column.
+  requested_terms <- stats::terms(formula)
+  requested_intercept <- attr(requested_terms, "intercept")
+  # Terms of a mixture member that omits their coefficient owner contribute
+  # zero and have no fitted column.
+  requested_labels <- attr(requested_terms, "term.labels")
+  omitted <- requested_labels[vapply(requested_labels, function(label){
+    JAGS_parameter_names(label, formula_parameter = prefix) %in% record$zero_owners
+  }, logical(1))]
+  if(length(omitted)){
+    kept <- setdiff(requested_labels, omitted)
+    formula <- if(length(kept)) stats::reformulate(kept, env = baseenv()) else stats::as.formula("~ 1", env = baseenv())
+  }
+  selected <- .bt_formula_selected_terms(formula, list(
+    terms = stats::terms(spec$formula), assign = spec$assign,
+    raw_column_names = spec$raw_column_names))
+  frame <- stats::model.frame(selected$terms, data = fitted_data, na.action = NULL)
+  matrix <- .bt_model_matrix(frame, data = frame, formula = selected$terms)
+  if(anyDuplicated(colnames(matrix)) || length(selected$raw_column_names) != ncol(matrix) ||
+     !setequal(colnames(matrix), selected$raw_column_names)){
+    .bt_stop_refit_required("Selected formula columns disagree with their fitted design. Refit the model with this version of BayesTools.")
+  }
+  assign <- attr(matrix, "assign")[match(selected$raw_column_names, colnames(matrix))]
+  matrix <- matrix[, selected$raw_column_names, drop = FALSE]
   matrix[is.na(matrix)] <- 0
-  terms <- stats::terms(formula)
-  labels <- attr(terms, "term.labels")
-  assign <- attr(matrix, "assign")
+  labels <- attr(selected$terms, "term.labels")
   columns <- names(spec$multipliers)
   out <- matrix(0, nrow(data), length(columns), dimnames = list(NULL, columns))
   intercept <- paste0(prefix, "_intercept")
-  if(attr(terms, "intercept") == 1L && intercept %in% columns) out[, intercept] <- 1
+  if(requested_intercept == 1L && intercept %in% columns) out[, intercept] <- 1
   for(i in seq_along(labels)){
     owner <- JAGS_parameter_names(labels[[i]], formula_parameter = prefix)
     if(owner %in% record$zero_owners) next
