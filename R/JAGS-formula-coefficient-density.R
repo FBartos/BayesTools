@@ -1522,7 +1522,9 @@ JAGS_formula_prior_density <- function(
     .posterior_atoms_formula_plan(raw, record_priors)
   }else NULL
   if(!is.null(gate_plan)) gate_plan$draw_index <- as.integer(draw_index)
+  # the random-effect blocks the original-scale SDs of the samples are derived from
   record <- list(prior_list = record_priors, declaration_priors = priors[declaration_owners], formula_scale = scales,
+    formula_design = lapply(selected, .bt_formula_design_random_unscale_view),
     required = required, gate_plan = gate_plan, eligible_n = nrow(values), prior_probability = 1,
     prior_log_probability = 0,
     condition_event = condition_event)

@@ -265,6 +265,14 @@ A block with no such matrix in its own columns (`(0 + x | g)`, `diag(1 + f:x | g
 name-paired map that drops it, and only the
 `original_scale_not_representable` refusal selects it; any other failure
 propagates. Hand-built SD-leaf metadata without the fitted design pair names.
+The ensemble and marginal tables with `transform_scaled = TRUE` take the block
+design from the formula state of the mixed posteriors (`as_mixed_posteriors()`;
+`mix_posteriors()` attaches a state only when fixed formula coefficients are
+among its parameters), one design per model of a mixture. Samples without it
+unscale a block exactly name-paired as before, and refuse the SDs of any other
+block (a scaled column without its lower-order partners) with
+`BayesTools_formula_transform_unavailable`, reason
+`random_effect_design_unavailable`, not with the values of the pairing.
 
 Independence is also specified on the centered scale. `(1 + x || g)` or
 `diag()` with scaled `x` has independent `u0`, `u1` (SDs `t0`, `t1`); the

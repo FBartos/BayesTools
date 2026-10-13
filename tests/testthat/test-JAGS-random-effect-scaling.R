@@ -1609,3 +1609,176 @@ test_that("a logical predictor in a block with a scaled slope gets design-derive
     expected[1:3], tolerance = 1e-10
   )
 })
+
+# Mixed posteriors of the fixed and SD coordinates of a fitted block, on the
+# fitted scale, and the same without the fitted block design in their formula
+# state or without any formula state.
+random_block_table_samples <- function(fit, parameters, design = c("block", "none", "state")){
+
+  design <- match.arg(design)
+  samples <- as_mixed_posteriors(fit, parameters, transform_scaled = FALSE)
+  state <- .bt_formula_state_get(samples)
+  if(identical(design, "none")){
+    state$models[[1L]]$formula_design <- NULL
+    samples <- .bt_formula_state_attach(samples, state)
+  }else if(identical(design, "state")){
+    samples <- .bt_meta_set(samples, "formula_state", NULL)
+    for(parameter in names(samples)){
+      samples[[parameter]] <- .bt_meta_set(samples[[parameter]], "formula_state", NULL)
+    }
+  }
+
+  samples
+}
+
+random_block_table_stub <- function(parameters){
+
+  stats::setNames(lapply(parameters, function(parameter){
+    structure(
+      list(BF = 2, prior_probs = c(0.5, 0.5), post_probs = c(0.4, 0.6)),
+      class = c("list", "marginal_inference")
+    )
+  }), parameters)
+}
+
+test_that("ensemble and marginal tables unscale random-effect SDs through the block design", {
+
+  skip_if_not_installed("runjags")
+
+  df <- random_block_scale_data()
+  grid <- expand.grid(f = factor(c("a", "b", "c")), x = c(-1, 0, 1, 2))
+  setup <- random_block_scale_fit(
+    ~ 1 + x + diag(1 + f + f:x | id), df,
+    prior_random(id = random_block(
+      sd = prior("gamma", list(2, 2)), monitor = random_block_scale_monitor()
+    ))
+  )
+  A <- random_block_unscale_reference(~ f + f:x, grid, mean(df$x), stats::sd(df$x))
+  expected <- unname(sqrt(diag(A %*% diag(setup$tau^2) %*% t(A))))
+  expect_gt(abs(expected[1L] - setup$tau[1L]), 5)
+  parameters <- c("mu__xREx__id_intercept", "mu__xREx__id_f", "mu__xREx__id_f__xXx__x")
+  formula_scale <- attr(setup$fit, "formula_scale")
+
+  # the mixed posteriors that transform the SDs at their creation
+  original <- as_mixed_posteriors(setup$fit, parameters, transform_scaled = TRUE)
+  expect_equal(
+    unname(c(mean(original[[1L]]), colMeans(original[[2L]]), colMeans(original[[3L]]))),
+    expected, tolerance = 1e-10
+  )
+
+  # the tables transform the fitted-scale samples with the design their state carries
+  samples <- random_block_table_samples(setup$fit, parameters)
+  ensemble <- ensemble_estimates_table(
+    samples, parameters, transform_scaled = TRUE, formula_scale = formula_scale
+  )
+  expect_equal(unname(ensemble[, "Mean"]), expected, tolerance = 1e-10)
+  marginal <- marginal_estimates_table(
+    samples, random_block_table_stub(parameters), parameters[1L],
+    transform_scaled = TRUE, formula_scale = formula_scale
+  )
+  expect_equal(unname(marginal[1L, "Mean"]), expected[1L], tolerance = 1e-10)
+
+  # a mixture transforms each draw with the design of its own model
+  later <- random_block_scale_fit(
+    ~ 1 + x + diag(1 + f + f:x | id), df,
+    prior_random(id = random_block(
+      sd = prior("gamma", list(2, 2)), monitor = random_block_scale_monitor()
+    )),
+    tau = setup$tau * 1.5
+  )
+  mixture_parameters <- c("mu_intercept", "mu_x", parameters)
+  mixed <- mix_posteriors(
+    list(
+      list(fit = setup$fit, marglik = bridgesampling_object(0), prior_weights = 0.5),
+      list(fit = later$fit, marglik = bridgesampling_object(0), prior_weights = 0.5)
+    ),
+    mixture_parameters,
+    stats::setNames(rep(list(c(FALSE, FALSE)), length(mixture_parameters)), mixture_parameters),
+    seed = 1, n_samples = 40
+  )
+  model <- .bt_formula_state_get(mixed)$model
+  expect_setequal(model, 1:2)
+  transformed <- .transform_scale_samples_list(mixed, formula_scale)
+  expect_equal(
+    as.numeric(transformed$mu__xREx__id_intercept),
+    c(expected[1L], expected[1L] * 1.5)[model], tolerance = 1e-10
+  )
+})
+
+test_that("tables without the fitted block design refuse random-effect SDs that pairing names cannot map", {
+
+  skip_if_not_installed("runjags")
+
+  df <- random_block_scale_data()
+  grid <- expand.grid(f = factor(c("a", "b", "c")), x = c(-1, 0, 1, 2))
+  m <- mean(df$x)
+  s <- stats::sd(df$x)
+  block <- prior_random(id = random_block(
+    sd = prior("gamma", list(2, 2)), monitor = random_block_scale_monitor()
+  ))
+  parameters <- list(
+    c("mu__xREx__id_intercept", "mu__xREx__id_f", "mu__xREx__id_f__xXx__x"),
+    c("mu__xREx__id_intercept", "mu__xREx__id_f", "mu__xREx__id_x", "mu__xREx__id_f__xXx__x"),
+    c("mu__xREx__id_intercept", "mu__xREx__id_x")
+  )
+
+  # `f` and `f:x` without `x`: the induced shifts of the intercept and of the
+  # factor levels are not carried by coefficient names
+  setup <- random_block_scale_fit(~ 1 + x + diag(1 + f + f:x | id), df, block)
+  formula_scale <- attr(setup$fit, "formula_scale")
+  for(design in c("none", "state")){
+    samples <- random_block_table_samples(setup$fit, parameters[[1L]], design)
+    refusal <- expect_error(
+      ensemble_estimates_table(
+        samples, parameters[[1L]], transform_scaled = TRUE, formula_scale = formula_scale
+      ),
+      class = "BayesTools_formula_transform_unavailable"
+    )
+    expect_identical(refusal$reason, "random_effect_design_unavailable")
+    expect_identical(
+      conditionMessage(refusal),
+      paste0(
+        "Cannot transform 'mu__xREx__id_intercept', 'mu__xREx__id_f[1]', 'mu__xREx__id_f[2]', ",
+        "'mu__xREx__id_f__xXx__x[1]', 'mu__xREx__id_f__xXx__x[2]', 'mu__xREx__id_f__xXx__x[3]' ",
+        "to the original predictor scale: the samples carry no fitted design of the ",
+        "random-effect block 'id' of formula parameter 'mu', and pairing coefficient names ",
+        "does not give its original-scale map. Create the samples with as_mixed_posteriors(), ",
+        "or with mix_posteriors() together with the fixed coefficients of the formula."
+      )
+    )
+    expect_error(
+      marginal_estimates_table(
+        samples, random_block_table_stub(parameters[[1L]]), parameters[[1L]][1L],
+        transform_scaled = TRUE, formula_scale = formula_scale
+      ),
+      class = "BayesTools_formula_transform_unavailable"
+    )
+  }
+  # fixed coefficients do not depend on the design of the random blocks
+  expect_no_error(ensemble_estimates_table(
+    random_block_table_samples(setup$fit, "mu_x", "none"), "mu_x",
+    transform_scaled = TRUE, formula_scale = formula_scale
+  ))
+
+  # blocks that pairing coefficient names maps exactly keep their values
+  cases <- list(
+    list(~ 1 + x + diag(1 + f * x | id), ~ f * x, parameters[[2L]]),
+    list(~ 1 + x + diag(1 + x | id), ~ x, parameters[[3L]])
+  )
+  for(case in cases){
+    setup <- random_block_scale_fit(case[[1L]], df, block)
+    A <- random_block_unscale_reference(case[[2L]], grid, m, s)
+    expected <- unname(sqrt(diag(A %*% diag(setup$tau^2, nrow = length(setup$tau)) %*% t(A))))
+    for(design in c("none", "state")){
+      samples <- random_block_table_samples(setup$fit, case[[3L]], design)
+      table <- ensemble_estimates_table(
+        samples, case[[3L]], transform_scaled = TRUE,
+        formula_scale = attr(setup$fit, "formula_scale")
+      )
+      expect_equal(
+        unname(table[, "Mean"]), expected, tolerance = 1e-10,
+        info = paste(deparse(case[[1L]]), design)
+      )
+    }
+  }
+})

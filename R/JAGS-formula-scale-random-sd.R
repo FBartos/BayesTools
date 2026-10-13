@@ -257,6 +257,94 @@
   blocks[[which(owner)]]
 }
 
+# The part of a fitted formula design that the original-scale random-effect SDs
+# need (.random_sd_design_block(), .bt_random_effect_unscale_design_spec()):
+# per block its name, SD coordinates and the design to rebuild (formula without
+# its environment, factor levels, contrasts, column layout), and the zero-row
+# typed fitted data that identify logical predictors. Formula states keep it
+# with the samples instead of the full design (design matrices, group maps).
+# NULL when the design has no random-effect block.
+.bt_formula_design_random_unscale_view <- function(design){
+
+  blocks <- .bt_formula_design_random_effects(design)
+  if(length(blocks) == 0L){
+    return(NULL)
+  }
+
+  fields <- c("block_name", "sd_parameter_names", "term_formula", "xlevels",
+              "contrast_matrices", "model_terms", "assign", "raw_column_names")
+  blocks <- lapply(blocks, function(block){
+    view <- block[intersect(fields, names(block))]
+    if(inherits(view$term_formula, "formula")){
+      environment(view$term_formula) <- emptyenv()
+    }
+    view
+  })
+  source_data <- design$source_data
+  if(is.data.frame(source_data)){
+    variables <- unique(unlist(lapply(blocks, function(block){
+      if(inherits(block$term_formula, "formula")) all.vars(block$term_formula)
+    }), use.names = FALSE))
+    source_data <- source_data[0L, intersect(variables, colnames(source_data)), drop = FALSE]
+  }else{
+    source_data <- NULL
+  }
+
+  structure(list(random_effects = blocks, source_data = source_data), class = class(design))
+}
+
+# Whether pairing coefficient names gives the exact original-scale map of a
+# block that is known by its column terms only (no fitted design): every column
+# with scaled components needs, for each subset of them whose means do not
+# multiply to zero, a column with the same unscaled part and that subset (the
+# intercept for the empty subset). Without such a partner, as for an
+# interaction `f:x` of a factor with a scaled slope whose margin `x` is not in
+# the block, centering induces terms the pairing drops (see
+# .check_unscale_term_closure(), which stops for a fixed-effect map only when
+# some lower-order partner is present).
+.random_sd_name_map_is_exact <- function(column_terms, formula_scale, prefix){
+
+  scaled_vars <- .formula_scale_strip_prefix(names(formula_scale), prefix)
+  structure <- lapply(
+    paste0(prefix, "_", column_terms),
+    .parse_unscale_term_structure,
+    prefix = prefix,
+    scaled_vars = scaled_vars
+  )
+  term_scaled <- lapply(structure, `[[`, "scaled")
+  term_unscaled <- vapply(structure, `[[`, character(1), "unscaled_id")
+
+  for(source_i in seq_along(structure)){
+    source_scaled <- unique(term_scaled[[source_i]])
+    for(subset_size in seq_len(length(source_scaled)) - 1L){
+      target_sets <- if(subset_size == 0L){
+        list(character())
+      }else{
+        utils::combn(source_scaled, subset_size, simplify = FALSE)
+      }
+      for(target_scaled in target_sets){
+        extra_scaled <- setdiff(source_scaled, target_scaled)
+        mean_product <- prod(vapply(paste0(prefix, "_", extra_scaled), function(parameter){
+          formula_scale[[parameter]][["mean"]]
+        }, numeric(1)))
+        if(mean_product == 0){
+          next
+        }
+        target_exists <- any(vapply(seq_along(structure), function(target_i){
+          .unscale_ids_match(term_unscaled[[target_i]], term_unscaled[[source_i]]) &&
+            length(term_scaled[[target_i]]) == length(target_scaled) &&
+            all(term_scaled[[target_i]] %in% target_scaled)
+        }, logical(1)))
+        if(!target_exists){
+          return(FALSE)
+        }
+      }
+    }
+  }
+
+  TRUE
+}
+
 # The map A from the fitted-scale coefficients of a scaled random-effect block
 # to its original-scale coefficients (rows and columns in block column order);
 # the covariance of the block transforms as A Sigma A'. With the fitted block

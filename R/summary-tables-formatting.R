@@ -415,6 +415,7 @@
   )
   state <- .bt_formula_state_get(samples)
   if(is.null(state)){
+    .transform_scale_check_random_designs(colnames(coordinate_values), formula_scale)
     transformed <- .apply_unscale_transform(coordinate_values, formula_scale,
       targets = colnames(coordinate_values))
   }else{
@@ -432,6 +433,8 @@
           owned_scales[[prefix]] <- override
         }
       }
+      owned_design <- state$models[[model]]$formula_design
+      .transform_scale_check_random_designs(colnames(coordinate_values), owned_scales, owned_design)
       original <- state$values[rows, , drop = FALSE]
       zero <- state$models[[model]]$zero_coordinates
       for(column in zero){
@@ -442,7 +445,8 @@
       }
       additional <- setdiff(colnames(coordinate_values), colnames(original))
       if(length(additional)) original <- cbind(original, coordinate_values[rows, additional, drop = FALSE])
-      output <- .apply_unscale_transform(original, owned_scales, targets = setdiff(colnames(coordinate_values), zero))
+      output <- .apply_unscale_transform(original, owned_scales, targets = setdiff(colnames(coordinate_values), zero),
+        formula_design = owned_design)
       transformed[rows, ] <- output[, colnames(coordinate_values), drop = FALSE]
       state$models[[model]]$formula_scale <- owned_scales
     }
@@ -616,6 +620,60 @@
         parameter   = parameter,
         reason      = "random_effect_structure_differs",
         coordinates = unchanged
+      )
+    }
+  }
+
+  invisible(TRUE)
+}
+
+# The random-effect SDs of a block with a standardized slope are transformed
+# through the fitted design of the block, which the formula state of the
+# samples carries ('formula_design': designs keyed by formula parameter, as
+# as_mixed_posteriors() and mix_posteriors() record them). Without the design
+# only the pairing of coefficient names is available, which is the
+# original-scale map of a block whose scaled columns all have their lower-order
+# partners (.random_sd_name_map_is_exact()); the SDs of any other block are
+# refused, not reported with the values of the pairing.
+.transform_scale_check_random_designs <- function(coordinates, formula_scale,
+                                                  formula_design = NULL){
+
+  for(parameter in names(formula_scale)){
+    parameter_scale <- formula_scale[[parameter]]
+    random <- coordinates[
+      .formula_scale_matches_prefix(coordinates, parameter, "__xREx__")
+    ]
+    if(length(random) == 0L ||
+       is.null(attr(parameter_scale, "random_effect_sd_leaves", exact = TRUE))){
+      next
+    }
+    design <- formula_design[[parameter]]
+    groups <- .random_sd_column_unscale_groups(
+      random_sd_cols = random,
+      formula_scale  = parameter_scale,
+      prefix         = parameter
+    )
+    for(group in groups){
+      block <- .random_sd_design_block(design, group$group_key, group$leaf_names)
+      if(!is.null(block) &&
+         !is.null(.bt_random_effect_unscale_design_spec(block, design$source_data))){
+        next
+      }
+      if(.random_sd_name_map_is_exact(group$column_terms, parameter_scale, parameter)){
+        next
+      }
+      .bt_formula_transform_stop(
+        paste0(
+          "Cannot transform ", paste0("'", group$leaf_names, "'", collapse = ", "),
+          " to the original predictor scale: the samples carry no fitted design of the ",
+          "random-effect block '", group$group_key, "' of formula parameter '",
+          parameter, "', and pairing coefficient names does not give its ",
+          "original-scale map. Create the samples with as_mixed_posteriors(), or with ",
+          "mix_posteriors() together with the fixed coefficients of the formula."
+        ),
+        parameter   = parameter,
+        reason      = "random_effect_design_unavailable",
+        coordinates = group$leaf_names
       )
     }
   }
