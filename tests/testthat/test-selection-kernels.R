@@ -1525,3 +1525,75 @@ test_that("p-hacking null masses stay accurate for far-tail cut points", {
     fixed = TRUE
   )
 })
+
+test_that("p-hacking null masses of intervals too narrow for double precision are refused", {
+
+  # The closed form subtracts nearly equal moments; the reference integrates
+  # the depletion power on the shifted and scaled interval,
+  # width * int_0^1 t^q (or (1 - t)^q) dnorm(lower + width * t) dt.
+  reference <- function(form, source, destination, target){
+    z <- stats::qnorm(c(source, target, destination), lower.tail = FALSE)
+    q <- if(form == "linear") 1 else 2
+    integral <- function(from, to, power) {
+      (to - from) * stats::integrate(
+        function(t) power(t) * stats::dnorm(from + (to - from) * t),
+        0, 1, rel.tol = 1e-13, abs.tol = 0)$value
+    }
+    c(
+      source      = integral(z[1], z[2], function(t) t^q),
+      destination = integral(z[2], z[3], function(t) (1 - t)^q)
+    )
+  }
+  too_narrow <- "The p-hacking source or destination interval is too narrow to be resolved in double precision. Use cut points that are further apart."
+
+  # an interval of 1e-6 in p: the quadratic mass was 48% too large and accepted
+  expect_error(
+    phack_backend_constants("quadratic", source = .25, destination = .024999, target = .025),
+    too_narrow, fixed = TRUE
+  )
+  expect_error(
+    phack_backend_constants("quadratic", source = .25, destination = .02499, target = .025),
+    too_narrow, fixed = TRUE
+  )
+  expect_error(
+    phack_pi_null(.5, "quadratic", source = .25, destination = .024999, target = .025),
+    too_narrow, fixed = TRUE
+  )
+  expect_error(
+    prior_phacking(form = "quadratic", source = .25, destination = .024999, target = .025),
+    too_narrow, fixed = TRUE
+  )
+
+  # the linear form resolves narrower intervals, to the same limit
+  expect_error(
+    phack_backend_constants("linear", source = .25, destination = .0249999, target = .025),
+    too_narrow, fixed = TRUE
+  )
+  constants <- phack_backend_constants("linear", source = .25, destination = .024999, target = .025)
+  expected  <- reference("linear", .25, .024999, .025)
+  expect_equal(constants$source_null_mass, expected[["source"]], tolerance = 1e-4)
+  expect_equal(constants$destination_null_mass, expected[["destination"]], tolerance = 1e-4)
+
+  # an interval of 1e-4 in p is returned, and accurate
+  for(form in c("linear", "quadratic")){
+    constants <- phack_backend_constants(form, source = .25, destination = .0249, target = .025)
+    expected  <- reference(form, .25, .0249, .025)
+    expect_equal(constants$source_null_mass, expected[["source"]], tolerance = 1e-6)
+    expect_equal(constants$destination_null_mass, expected[["destination"]], tolerance = 1e-6)
+  }
+
+  # the existing guard keeps its message: a subnormal mass is refused first
+  expect_error(
+    phack_backend_constants("linear", source = .5, target = 1e-310, destination = 1e-312),
+    "null masses of the source and destination regions must be positive",
+    fixed = TRUE
+  )
+
+  # ordinary geometries and far-tail ones are unchanged
+  for(form in c("linear", "quadratic")){
+    for(geometry in list(c(.25, .025, .005), c(.5, .05, .01), c(.6, .05, .025), c(.5, .3, .1), c(.5, 1e-20, 1e-22), c(1e-8, 1e-10, 1e-12))){
+      constants <- phack_backend_constants(form, source = geometry[1], target = geometry[2], destination = geometry[3])
+      expect_true(constants$source_null_mass > 0 && constants$destination_null_mass > 0)
+    }
+  }
+})

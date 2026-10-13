@@ -257,13 +257,34 @@ phack_backend_constants <- function(form, source, destination, target = .025){
 
   source_mass <- .phack_power_null_moment(z_source_lower, z_target, q, anchor = z_source_lower, reverse = FALSE)
   dest_mass   <- .phack_power_null_moment(z_target, z_dest_upper, q, anchor = z_dest_upper, reverse = TRUE)
-  # A mass that is not a positive normal double (cut points so far in the tail
-  # that the region probability is subnormal or cancels) carries no precision.
+  # A mass that is not a finite normal double (cut points so far in the tail
+  # that the region probability underflows to a subnormal value or zero) cannot
+  # be used. A positive mass can still be wrong by cancellation: this guard does
+  # not detect it, the limit below does.
   masses <- c(source_mass, dest_mass)
   if(any(!is.finite(masses) | masses < .Machine$double.xmin)){
     stop(
       "The p-hacking null masses of the source and destination regions must be positive; ",
       "the cut points are too extreme to be represented in double precision.",
+      call. = FALSE
+    )
+  }
+
+  # The limit of double precision: a null moment is a difference of nearly
+  # equal terms when its interval is narrow (the numerator is of the order of
+  # width^(q + 1) times the density, the terms of the order of the density), so
+  # a mass whose estimated relative rounding error exceeds 1e-4 is refused
+  # instead of being returned wrong. The estimate is a priori and conservative
+  # (source = .25, target = .025, destination = .0249: the quadratic form is
+  # estimated at 2e-6 and accurate to 3e-7).
+  relative_error <- c(
+    source      = .phack_null_moment_relative_error(z_source_lower, z_target, q, anchor = z_source_lower, moment = source_mass),
+    destination = .phack_null_moment_relative_error(z_target, z_dest_upper, q, anchor = z_dest_upper, moment = dest_mass)
+  )
+  if(any(!is.finite(relative_error) | relative_error > 1e-4)){
+    stop(
+      "The p-hacking source or destination interval is too narrow to be resolved in double precision. ",
+      "Use cut points that are further apart.",
       call. = FALSE
     )
   }

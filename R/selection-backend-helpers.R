@@ -78,6 +78,35 @@
   return((m2 - 2 * anchor * m1 + anchor^2 * m0) / width^2)
 }
 
+# The relative rounding error of the numerator of a null moment (the value of
+# .phack_power_null_moment() times width^q), bounded a priori. m0, m1 and m2
+# are differences of O(1) normal tail or density quantities (and of the
+# products of a cut point with them), so each carries an absolute error of
+# about .Machine$double.eps times the magnitudes of its summed terms; the
+# anchor terms add anchor * m1 and anchor^2 * m0. The numerator of a narrow
+# interval is a difference of such terms that is small against them (about
+# width^(q + 1) times the density), so the bound exceeds the numerator once
+# the interval is too narrow for double precision.
+.phack_null_moment_relative_error <- function(lower, upper, q, anchor, moment){
+
+  tails <- if(lower >= 0){
+    stats::pnorm(c(lower, upper), lower.tail = FALSE)
+  }else if(upper <= 0){
+    stats::pnorm(c(upper, lower))
+  }else{
+    c(1, stats::pnorm(lower), stats::pnorm(upper, lower.tail = FALSE))
+  }
+  densities <- stats::dnorm(c(lower, upper))
+
+  magnitude <- if(q == 1L){
+    sum(densities) + abs(anchor) * sum(tails)
+  }else{
+    (1 + anchor^2) * sum(tails) + sum(abs(c(lower, upper)) * densities) + 2 * abs(anchor) * sum(densities)
+  }
+
+  .Machine$double.eps * magnitude / abs(moment * (upper - lower)^q)
+}
+
 .selection_backend_names <- function(names){
 
   backend_names <- names
