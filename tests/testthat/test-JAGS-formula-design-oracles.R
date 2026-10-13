@@ -3198,6 +3198,69 @@ test_that("nested grouping expands consistently across covariance specials and w
   }
 })
 
+test_that("a plain double-bar term with nested grouping expands like random()", {
+
+  block_labels <- function(formula){
+    terms <- BayesTools:::.bt_parse_random_effects(formula)$terms
+    list(
+      labels     = vapply(terms, function(t) t$group_label, character(1)),
+      structures = vapply(terms, function(t) t$structure, character(1)),
+      blocks     = vapply(terms, function(t) t$block_name, character(1)),
+      nesting    = lapply(terms, function(t) t$group_nesting_components)
+    )
+  }
+
+  for(term in c("1 + x", "1", "0 + x")){
+    plain <- block_labels(stats::as.formula(paste0("~ 1 + x + (", term, " || g1 / g2)")))
+    wrapped <- block_labels(stats::as.formula(paste0("~ 1 + x + random(", term, " || g1 / g2)")))
+    expect_identical(plain$blocks, c("g2_g1", "g1"), info = term)
+    expect_identical(plain$labels, c("g2:g1", "g1"), info = term)
+    expect_identical(plain$structures, c("diag", "diag"), info = term)
+    expect_identical(plain$nesting, list(c("g1", "g2"), "g1"), info = term)
+    expect_identical(plain, wrapped, info = term)
+  }
+
+  expected_formula <- "diag(1 + x | g2:g1, name = \"g2_g1\") + diag(1 + x | g1, name = \"g1\")"
+  expect_identical(
+    deparse(random_effects_formula(~ (1 + x || g1 / g2))$formula[[2L]]),
+    expected_formula
+  )
+  expect_identical(
+    deparse(random_effects_formula(~ random(1 + x || g1 / g2))$formula[[2L]]),
+    expected_formula
+  )
+
+  set.seed(1)
+  df <- data.frame(
+    x = rnorm(16),
+    g1 = factor(rep(1:2, each = 8)),
+    g2 = factor(rep(1:4, each = 4))
+  )
+  sd_prior <- prior("normal", list(0, 1), truncation = list(lower = 0, upper = Inf))
+  compile <- function(formula){
+    JAGS_formula(formula, "mu", df, list(intercept = prior("normal", list(0, 1))),
+                 prior_random = prior_random(sd = sd_prior))
+  }
+  plain <- compile(~ 1 + (1 + x || g1 / g2))
+  wrapped <- compile(~ 1 + random(1 + x || g1 / g2))
+  blocks <- plain$formula_design$random_effects
+  expect_identical(
+    vapply(blocks, function(block) block$block_name, character(1)),
+    c("g2_g1", "g1")
+  )
+  expect_identical(
+    vapply(blocks, function(block) block$structure, character(1)),
+    c("diag", "diag")
+  )
+  expect_identical(plain$formula_syntax, wrapped$formula_syntax)
+  expect_identical(names(plain$prior_list), names(wrapped$prior_list))
+  expect_identical(
+    vapply(compile(~ 1 + (1 || g1 / g2))$formula_design$random_effects,
+           function(block) block$block_name, character(1)),
+    c("g2_g1", "g1")
+  )
+})
+
 test_that("covariance specials preserve parenthesized bar terms", {
 
   diag_parsed <- BayesTools:::.bt_parse_random_effects(~ diag((1 | g)))

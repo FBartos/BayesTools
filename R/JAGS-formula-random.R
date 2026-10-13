@@ -135,7 +135,9 @@
     group_expr <- .bt_random_effect_strip_group_parens(x[[3L]])
     if(is.call(group_expr) && identical(group_expr[[1L]], as.name("/"))){
       expanded <- lapply(expanded, function(bar){
-        .bt_random_effect_annotate_nested_group(bar, bar[[3L]])
+        # a double bar expands to diag(<bar>), the grouping is that of the bar
+        bar_group <- if(.bt_random_effect_is_bar_call(bar)) bar[[3L]] else bar[[2L]][[3L]]
+        .bt_random_effect_annotate_nested_group(bar, bar_group)
       })
     }
     return(expanded)
