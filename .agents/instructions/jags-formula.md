@@ -265,7 +265,11 @@ A block with no such matrix in its own columns (`(0 + x | g)`, `diag(1 + f:x | g
 `us(0 + f + x:f | g)`: a term would have to be induced) keeps the documented
 name-paired map that drops it, and only the
 `original_scale_not_representable` refusal selects it; any other failure
-propagates. Hand-built SD-leaf metadata without the fitted design pair names.
+propagates. The name-paired map takes each column as its own coordinate by
+position: the indicator columns of a logical predictor's interaction with a
+scaled slope share one SD leaf and put no weight on each other, and the leaf's
+SD is their common per-column value. Hand-built SD-leaf metadata without the
+fitted design pair names.
 The ensemble and marginal tables with `transform_scaled = TRUE` take the block
 design from the formula state of the mixed posteriors (`as_mixed_posteriors()`;
 `mix_posteriors()` attaches a state whenever a requested parameter is a fixed

@@ -2151,3 +2151,96 @@ test_that("the no-design gate admits a block only when pairing names gives its d
   expect_true("diag(1 + flag + flag:x | id) [x; scaled x]" %in% refused)
   expect_true("diag(1 + flag + z + flag:z + flag:x + x:z + flag:x:z | id) [x,z; scaled x,z]" %in% refused)
 })
+
+test_that("shared random-effect SD leaves keep one coordinate per design column in the name-paired map", {
+
+  skip_if_not_installed("runjags")
+
+  # the columns of one shared leaf have one term name; each is its own coordinate
+  # and puts no weight on the others
+  scale_list <- list(mu_x = list(mean = 10, sd = 2))
+  M <- .build_unscale_matrix_by_names(
+    c("mu_intercept", "mu_flag", "mu_flag__xXx__x", "mu_flag__xXx__x"),
+    scale_list, "mu", require_closure = FALSE
+  )
+  expect_equal(
+    unname(M),
+    rbind(
+      c(1, 0, 0, 0),
+      c(0, 1, -5, -5),
+      c(0, 0, 0.5, 0),
+      c(0, 0, 0, 0.5)
+    ),
+    tolerance = 1e-14
+  )
+  # without a duplicate the map is the same
+  expect_equal(
+    unname(.build_unscale_matrix_by_names(
+      c("mu_intercept", "mu_flag", "mu_flag__xXx__x"), scale_list, "mu", require_closure = FALSE
+    )),
+    rbind(c(1, 0, 0), c(0, 1, -5), c(0, 0, 0.5)),
+    tolerance = 1e-14
+  )
+
+  # blocks with a shared leaf that keep the documented drop: the SD of the
+  # leaf is the common per-column value tau / sd(x)
+  df <- random_block_scale_data()
+  df$flag <- rep(c(TRUE, FALSE), 18)
+  s <- stats::sd(df$x)
+  block <- prior_random(id = random_block(
+    sd = prior("gamma", list(2, 2)), monitor = random_block_scale_monitor()
+  ))
+  setup <- random_block_scale_fit(~ 1 + x + diag(0 + flag:x | id), df, block, tau = 0.8)
+  expect_identical(length(setup$sd_names), 1L)
+  expect_equal(
+    unname(transform_scale_samples(setup$fit)[1L, setup$sd_names]), 0.8 / s, tolerance = 1e-12
+  )
+
+  # `0 + flag + flag:x` codes `flag` by `flagTRUE` only (a block without an
+  # intercept keeps the contrast coding of its factors), so the induced term of
+  # the `flagFALSE:x` column on `1 - flag` has no column: the block has no
+  # original-scale representation and keeps the documented drop as well
+  setup <- random_block_scale_fit(~ 1 + x + diag(0 + flag + flag:x | id), df, block, tau = c(0.5, 0.8))
+  term <- setup$formula_result$formula_design$random_effects[[1L]]
+  expect_identical(term$raw_column_names, c("flagTRUE", "flagFALSE:x", "flagTRUE:x"))
+  refusal <- expect_error(
+    .bt_formula_unscale_design_transform(
+      .bt_random_effect_unscale_design_spec(term, setup$formula_result$formula_design$source_data),
+      setup$formula_result$formula_scale, "mu"
+    ),
+    class = "BayesTools_formula_transform_unavailable"
+  )
+  expect_identical(refusal$reason, "original_scale_not_representable")
+  expect_identical(refusal$terms, "flag:x")
+  transformed <- transform_scale_samples(setup$fit)[1L, setup$sd_names]
+  expect_equal(unname(transformed[2L]), 0.8 / s, tolerance = 1e-12)
+
+  # a block without an intercept is mapped by its design when its scaled design
+  # lies in the column space of its original one (full indicator coding of `f`)
+  grid <- expand.grid(f = factor(c("a", "b", "c")), x = c(-1, 0, 1, 2))
+  setup <- random_block_scale_fit(
+    ~ 1 + x + diag(0 + f + f:x | id), df,
+    prior_random(id = random_block(
+      sd = prior("gamma", list(2, 2)), monitor = random_block_scale_monitor(),
+      contrasts = c(f = "independent")
+    ))
+  )
+  A <- random_block_unscale_reference(~ 0 + f + f:x, grid, mean(df$x), s, list(f = diag(3)))
+  expect_identical(nrow(A), 6L)
+  expect_equal(
+    unname(transform_scale_samples(setup$fit)[1L, setup$sd_names]),
+    unname(sqrt(diag(A %*% diag(setup$tau^2) %*% t(A)))), tolerance = 1e-10
+  )
+
+  # unchanged: `(0 + x | g)` and the block of a logical predictor with a representable design
+  setup <- random_block_scale_fit(~ 1 + x + diag(0 + x | id), df, block, tau = 0.5)
+  expect_equal(unname(transform_scale_samples(setup$fit)[1L, setup$sd_names]), 0.5 / s, tolerance = 1e-12)
+  grid <- expand.grid(flag = c(FALSE, TRUE), x = c(-1, 0, 1, 2))
+  setup <- random_block_scale_fit(~ 1 + x + diag(1 + flag + flag:x | id), df, block)
+  A <- random_block_unscale_reference(~ flag + flag:x, grid, mean(df$x), s)
+  expect_equal(
+    unname(transform_scale_samples(setup$fit)[1L, setup$sd_names]),
+    unname(sqrt(diag(A %*% diag(setup$tau[c(1L, 2L, 3L, 3L)]^2) %*% t(A))))[1:3],
+    tolerance = 1e-10
+  )
+})

@@ -634,6 +634,11 @@
       S_scaled <- term_scaled[[S_name]]
       S_unscaled <- term_unscaled[[S_name]]
 
+      # Columns map to coordinates by position: another column of the same term
+      # name (the columns of one shared SD leaf) is its own coordinate and puts
+      # no weight on this one
+      if (s_idx != t_idx && identical(S_name, T_name)) next
+
       # Check contribution conditions
       # 1. Unscaled parts must match exactly
       if (!.unscale_ids_match(T_unscaled, S_unscaled)) next
