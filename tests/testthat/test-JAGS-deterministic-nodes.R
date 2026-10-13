@@ -839,11 +839,13 @@ test_that("multivariate-t priors are registered nodes that replay from their pri
   # theta[i] <- z[i] / sqrt(s) + location, as in the JAGS syntax
   replay_check <- function(prior_list, name, location, K){
 
-    z <- matrix(stats::rnorm(n * K), n, K, dimnames = list(NULL, paste0("prior_par_z_", name, "[", seq_len(K), "]")))
+    # JAGS names a vector of length one by its scalar name
+    indexed <- function(base) if(K == 1L) base else paste0(base, "[", seq_len(K), "]")
+    z <- matrix(stats::rnorm(n * K), n, K, dimnames = list(NULL, indexed(paste0("prior_par_z_", name))))
     s <- cbind(stats::rgamma(n, 1.5, 1.5))
     colnames(s) <- paste0("prior_par_s_", name)
     coefficients <- z / sqrt(s[, 1]) + location
-    colnames(coefficients) <- paste0(name, "[", seq_len(K), "]")
+    colnames(coefficients) <- indexed(name)
     primitives <- cbind(z, s)
     fit <- .parameter_catalog_test_fit(coda::mcmc.list(coda::mcmc(cbind(coefficients, primitives))), prior_list)
 
@@ -887,6 +889,12 @@ test_that("multivariate-t priors are registered nodes that replay from their pri
     )
     replay_check(info$prior_list["mu_f"], "mu_f", 0, 2L)
   }
+  # a factor with one coefficient: the scalar names
+  info <- JAGS_formula(
+    ~ f, "mu", data.frame(f = factor(c("a", "b"))),
+    list(intercept = prior("normal", list(0, 1)), f = prior_factor("mt", list(0, 1, 3), contrast = "orthonormal"))
+  )
+  replay_check(info$prior_list["mu_f"], "mu_f", 0, 1L)
 
   # the components of a mixture are nodes, ahead of the node of the mixture
   info <- JAGS_formula(

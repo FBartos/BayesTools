@@ -270,6 +270,12 @@
 # family. A multivariate-t location that is an expression is part of the
 # syntax; its values are unavailable to the R evaluator.
 
+# JAGS names a vector of length one by its scalar name.
+.bt_dnode_prior_vector_names <- function(name, K){
+
+  if(K == 1L) name else paste0(name, "[", seq_len(K), "]")
+}
+
 .bt_dnode_prior_dirichlet <- function(name, prior, parameter = name){
 
   K   <- prior$parameters[["K"]]
@@ -278,8 +284,8 @@
   .bt_deterministic_node(
     family = "prior_dirichlet",
     node = name,
-    coordinates = paste0(name, "[", seq_len(K), "]"),
-    dependencies = paste0(eta, "[", seq_len(K), "]"),
+    coordinates = .bt_dnode_prior_vector_names(name, K),
+    dependencies = .bt_dnode_prior_vector_names(eta, K),
     parameter = parameter,
     spec = list(K = K, eta = eta)
   )
@@ -297,8 +303,8 @@
   .bt_deterministic_node(
     family = "prior_mt",
     node = name,
-    coordinates = paste0(name, "[", seq_len(K), "]"),
-    dependencies = c(paste0(z, "[", seq_len(K), "]"), s),
+    coordinates = .bt_dnode_prior_vector_names(name, K),
+    dependencies = c(.bt_dnode_prior_vector_names(z, K), s),
     parameter = parameter,
     spec = list(K = K, z = z, s = s, location = prior$parameters[["location"]])
   )
@@ -339,7 +345,7 @@
 
 .bt_dnode_prior_dirichlet_emit <- function(node){
 
-  paste0(node$coordinates, " <- ", node$spec$eta, "[", seq_len(node$spec$K), "] / sum(",
+  paste0(node$node, "[", seq_len(node$spec$K), "] <- ", node$spec$eta, "[", seq_len(node$spec$K), "] / sum(",
          node$spec$eta, "[1:", node$spec$K, "])")
 }
 
@@ -386,7 +392,7 @@
   if(!is.numeric(spec$location)){
     return(NULL)
   }
-  z <- .bt_deterministic_lookup_values(lookup, paste0(spec$z, "[", seq_len(spec$K), "]"))
+  z <- .bt_deterministic_lookup_values(lookup, .bt_dnode_prior_vector_names(spec$z, spec$K))
   s <- .bt_deterministic_lookup_value(lookup, spec$s)
   if(is.null(z) || is.null(s)){
     return(NULL)
