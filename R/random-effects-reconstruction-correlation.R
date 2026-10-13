@@ -93,11 +93,10 @@
         return(out)
       }
       if(length(cholesky_names) > 0L && !anyNA(cholesky_indices)){
+        # the column slice is the only full copy: reshaped in place
         values <- posterior[, cholesky_indices, drop = FALSE]
-        return(array(
-          unname(values),
-          dim = c(nrow(posterior), n_columns, n_columns)
-        ))
+        dim(values) <- c(nrow(posterior), n_columns, n_columns)
+        return(values)
       }
       NULL
     })

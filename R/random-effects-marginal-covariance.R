@@ -1512,7 +1512,8 @@ random_effects_marginal_variance_factors <- function(
     )
   }
 
-  # The row covariance below is a dense rows x rows matrix.
+  # The row covariance below is a dense rows x rows matrix, built and checked
+  # column by column; no other matrix of its size is formed.
   .bt_random_effect_check_memory(
     estimate = .bt_random_effect_output_memory_estimate(
       operation = "random_effects_marginal_variance_factors()",
@@ -1623,25 +1624,44 @@ random_effects_marginal_variance_factors <- function(
         call. = FALSE
       )
     }
-    return(
-      group_covariance$kernel[group_map, group_map, drop = FALSE] *
-        tcrossprod(model_matrix[, 1L])
-    )
+    kernel <- group_covariance$kernel
+  }else{
+    kernel <- NULL
   }
 
-  same_group <- outer(as.integer(group_map), as.integer(group_map), "==")
-  storage.mode(same_group) <- "double"
-  same_group * tcrossprod(model_matrix[, 1L])
+  # The rows x rows covariance (kernel of the groups times the products of
+  # the row multipliers) is filled column by column: the kernel expansion and
+  # the product matrix are never formed as full copies.
+  multiplier <- model_matrix[, 1L]
+  group_map <- as.integer(group_map)
+  n_rows <- length(multiplier)
+  row_covariance <- matrix(0, nrow = n_rows, ncol = n_rows)
+  for(column in seq_len(n_rows)){
+    same_group <- if(is.null(kernel)){
+      as.numeric(group_map == group_map[column])
+    }else{
+      kernel[group_map, group_map[column]]
+    }
+    row_covariance[, column] <- same_group * (multiplier * multiplier[column])
+  }
+
+  row_covariance
 }
 
 .bt_random_effect_row_covariance_diagonal_status <- function(row_covariance){
 
-  off_diagonal <- row_covariance
-  diag(off_diagonal) <- 0
-  max_off_diagonal <- max(abs(off_diagonal))
+  # column by column: the off-diagonal copy of the rows x rows matrix is not formed
+  max_off_diagonal <- -Inf
+  is_diagonal <- TRUE
+  for(column in seq_len(nrow(row_covariance))){
+    off_diagonal <- row_covariance[, column]
+    off_diagonal[column] <- 0
+    max_off_diagonal <- max(max_off_diagonal, abs(off_diagonal))
+    is_diagonal <- is_diagonal && isTRUE(all(off_diagonal == 0))
+  }
 
   list(
-    is_diagonal = isTRUE(all(off_diagonal == 0)),
+    is_diagonal = is_diagonal,
     max_off_diagonal = max_off_diagonal,
     tolerance = 0
   )
@@ -3128,15 +3148,16 @@ random_effects_marginal_variance_factors <- function(
 
   out <- array(NA_real_, dim = dim(cholesky))
   for(draw in seq_len(nrow(posterior))){
-    out[draw, , ] <- tcrossprod(cholesky[draw, , ])
-  }
-  if(any(!is.finite(out))){
-    stop(
-      "Random-effect marginal covariance correlation draws for block '",
-      random_term$block_name,
-      "' must define finite correlation matrices.",
-      call. = FALSE
-    )
+    correlation <- tcrossprod(cholesky[draw, , ])
+    if(!all(is.finite(correlation))){
+      stop(
+        "Random-effect marginal covariance correlation draws for block '",
+        random_term$block_name,
+        "' must define finite correlation matrices.",
+        call. = FALSE
+      )
+    }
+    out[draw, , ] <- correlation
   }
 
   out
@@ -3157,24 +3178,23 @@ random_effects_marginal_variance_factors <- function(
       call. = FALSE
     )
   }
-  if(any(!is.finite(cholesky))){
-    stop(
-      "Random-effect marginal covariance correlation draws for block '",
-      random_term$block_name,
-      "' must be finite.",
-      call. = FALSE
-    )
-  }
 
-  diagonal <- matrix(
-    rowSums(matrix(
-      cholesky^2,
-      nrow = nrow(posterior) * n_columns,
-      ncol = n_columns
-    )),
-    nrow = nrow(posterior),
-    ncol = n_columns
-  )
+  # Finiteness and the row sums of squares (draws x rows) are read column by
+  # column: neither a squared copy nor a logical copy of the
+  # draws x columns x columns array is formed.
+  diagonal <- matrix(0, nrow = nrow(posterior), ncol = n_columns)
+  for(column in seq_len(n_columns)){
+    values <- cholesky[, , column]
+    if(!all(is.finite(values))){
+      stop(
+        "Random-effect marginal covariance correlation draws for block '",
+        random_term$block_name,
+        "' must be finite.",
+        call. = FALSE
+      )
+    }
+    diagonal <- diagonal + values^2
+  }
   if(any(!is.finite(diagonal))){
     stop(
       "Random-effect marginal covariance correlation draws for block '",

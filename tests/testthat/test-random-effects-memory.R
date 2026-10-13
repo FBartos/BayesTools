@@ -400,8 +400,12 @@ test_that("alternate marginal covariance builders pass the shared memory ceiling
 })
 
 # Runs `call` with the memory guard recording the peak estimate it admitted and,
-# where R can profile memory, the largest vector the call allocated.
-.random_memory_measure <- function(call){
+# where R can profile memory, the largest vector the call allocated and the
+# total of its allocations of at least `threshold` bytes. Allocations are
+# profiled rather than read from gc()'s max-used column, which is the heap
+# size at the time of a collection: it follows the collector's trigger and the
+# garbage of small allocations, not the arrays the call keeps alive.
+.random_memory_measure <- function(call, threshold = 1000){
 
   admitted <- numeric()
   original <- BayesTools:::.bt_random_effect_check_memory
@@ -411,7 +415,7 @@ test_that("alternate marginal covariance builders pass the shared memory ceiling
   value <- testthat::with_mocked_bindings(
     {
       if(profile){
-        utils::Rprofmem(log, threshold = 1000)
+        utils::Rprofmem(log, threshold = threshold)
       }
       tryCatch(call(), finally = if(profile) utils::Rprofmem(NULL))
     },
@@ -421,14 +425,18 @@ test_that("alternate marginal covariance builders pass the shared memory ceiling
     },
     .package = "BayesTools"
   )
-  largest <- if(profile){
-    sizes <- suppressWarnings(as.numeric(sub(" .*", "", readLines(log))))
-    max(0, sizes, na.rm = TRUE)
+  sizes <- if(profile){
+    suppressWarnings(as.numeric(sub(" .*", "", readLines(log))))
   }else{
     NA_real_
   }
+  largest <- if(profile) max(0, sizes, na.rm = TRUE) else NA_real_
+  allocated <- if(profile) sum(sizes, na.rm = TRUE) else NA_real_
 
-  list(value = value, admitted = admitted, largest = largest, profile = profile)
+  list(
+    value = value, admitted = admitted, largest = largest, allocated = allocated,
+    profile = profile
+  )
 }
 
 .random_memory_covariance <- function(result, posterior, diagonal_only){
@@ -504,6 +512,153 @@ test_that("known-group diagonal output is linear in the rows and covered by its 
     "exceeds option 'BayesTools.random_effects_memory_limit_bytes'",
     fixed = TRUE
   )
+})
+
+test_that("the output estimate bounds the large arrays a dense factor path allocates", {
+
+  old_limit <- getOption(.random_memory_option)
+  on.exit(.random_memory_restore_option(old_limit), add = TRUE)
+  .random_memory_restore_option(Inf)
+
+  # A US block of 30 coefficient columns and 2,000 draws on 2 rows: the
+  # Cholesky draws and the correlation draws (draws x 30 x 30) are the only
+  # arrays of their size. Reading the Cholesky draws, validating them and
+  # forming the correlation draws allocate no further full copy.
+  n_columns <- 30L
+  n_draws <- 2000L
+  data <- data.frame(
+    id = factor(c("a", "a")),
+    f = factor(c("level1", "level2"), levels = paste0("level", seq_len(n_columns)))
+  )
+  result <- JAGS_formula(
+    ~ 1 + us(0 + f | id),
+    parameter = "mu",
+    data = data,
+    prior_list = list(intercept = prior("normal", list(0, 1))),
+    prior_random = prior_random(
+      id = random_block(
+        sd = prior("normal", list(0, 1), list(0, Inf)),
+        contrasts = c(f = "independent")
+      )
+    )
+  )
+  term <- result$formula_design$random_effects[[1L]]
+  values <- c(
+    stats::setNames(rep(1, n_columns), unique(term$sd_parameter_names)),
+    stats::setNames(
+      as.vector(diag(n_columns)),
+      as.vector(.bt_random_effect_cholesky_names(term, n_columns))
+    )
+  )
+  posterior <- matrix(rep(values, each = n_draws), n_draws, dimnames = list(NULL, names(values)))
+  array_bytes <- 8 * n_draws * n_columns^2
+  measured <- .random_memory_measure(
+    function() .random_memory_covariance(result, posterior, diagonal_only = FALSE),
+    threshold = array_bytes / 4
+  )
+  expect_identical(dim(measured$value$samples), c(n_draws, 2L, 2L))
+  expect_equal(unname(measured$value$samples[n_draws, , ]), diag(2L), tolerance = 1e-14)
+  expect_length(measured$admitted, 1L)
+  expect_gte(measured$admitted, 2 * array_bytes)
+  if(measured$profile){
+    # every allocation of a quarter of a draws x 30 x 30 array or more, together,
+    # stays within what the call was admitted with
+    expect_lte(measured$allocated, measured$admitted)
+  }
+
+  # A marginalized random intercept with 2,000 rows: the rows x rows
+  # covariance is the only array of its size; its kernel and product, and the
+  # copies of its diagonal check, are not formed.
+  n_rows <- 2000L
+  variance_result <- JAGS_formula(
+    ~ 1 + (1 | id),
+    parameter = "mu",
+    data = data.frame(id = factor(seq_len(n_rows))),
+    prior_list = list(intercept = prior("normal", list(0, 1))),
+    prior_random = prior_random(
+      id = random_block(sd = prior("normal", list(0, 1), list(0, Inf)))
+    ),
+    random_effects_compile = random_effects_compile(marginalized = "id")
+  )
+  measured <- .random_memory_measure(
+    function() random_effects_marginal_variance_factors(variance_result$formula_design),
+    threshold = 8 * n_rows^2 / 4
+  )
+  expect_length(measured$admitted, 1L)
+  expect_true(measured$value$blocks$id$row_covariance_diagonal)
+  expect_identical(measured$value$blocks$id$max_off_diagonal, 0)
+  expect_equal(unname(measured$value$blocks$id$row_multiplier), rep(1, n_rows))
+  if(measured$profile){
+    expect_lte(measured$allocated, measured$admitted)
+  }
+})
+
+test_that("marginal variance factors build the row covariance of groups and kernels column by column", {
+
+  old_limit <- getOption(.random_memory_option)
+  on.exit(.random_memory_restore_option(old_limit), add = TRUE)
+  .random_memory_restore_option(Inf)
+  base_covariance <- BayesTools:::.bt_random_effect_marginal_variance_base_covariance
+  diagonal_status <- BayesTools:::.bt_random_effect_row_covariance_diagonal_status
+
+  # groups of repeated rows: the same-group indicator times the products of
+  # the row multipliers
+  multiplier <- c(1, -2, 3, 4, -5)
+  group_map <- c(1L, 1L, 2L, 3L, 3L)
+  reference <- outer(group_map, group_map, "==") * tcrossprod(multiplier)
+  data <- data.frame(id = factor(c("a", "a", "b", "c", "c")), x = multiplier)
+  repeated <- JAGS_formula(
+    ~ 1 + (0 + x | id),
+    parameter = "mu",
+    data = data,
+    prior_list = list(intercept = prior("normal", list(0, 1))),
+    prior_random = prior_random(
+      id = random_block(sd = prior("normal", list(0, 1), list(0, Inf)))
+    ),
+    random_effects_compile = random_effects_compile(marginalized = "id")
+  )
+  factors <- random_effects_marginal_variance_factors(
+    repeated$formula_design, require_diagonal = FALSE
+  )
+  block <- repeated$formula_design$random_effects[[1L]]
+  covariance <- base_covariance(block, matrix(multiplier, ncol = 1L), group_map)
+  expect_identical(unname(covariance), unname(reference))
+  expect_false(factors$blocks$id$row_covariance_diagonal)
+  expect_identical(factors$blocks$id$max_off_diagonal, 20)
+  expect_equal(unname(factors$blocks$id$row_multiplier), multiplier^2)
+
+  # a known group kernel replaces the same-group indicator
+  kernel <- matrix(
+    c(4, 1, .5, 1, 9, 2, .5, 2, 16), 3L,
+    dimnames = list(c("a", "b", "c"), c("a", "b", "c"))
+  )
+  known <- JAGS_formula(
+    random_effects_formula(
+      ~ 0 + x | id, group_covariance = random_group_covariance(kernel, scale = "none")
+    ),
+    parameter = "mu",
+    data = data,
+    prior_list = list(intercept = prior("normal", list(0, 1))),
+    prior_random = prior_random(
+      id = random_block(sd = prior("normal", list(0, 1), list(0, Inf)))
+    ),
+    random_effects_compile = random_effects_compile(marginalized = "id")
+  )
+  known_block <- known$formula_design$random_effects[[1L]]
+  expect_identical(
+    unname(base_covariance(known_block, matrix(multiplier, ncol = 1L), group_map)),
+    unname(kernel[group_map, group_map] * tcrossprod(multiplier))
+  )
+
+  # the diagonal status reads the off-diagonal entries without a copy of the matrix
+  status <- diagonal_status(reference)
+  expect_false(status$is_diagonal)
+  expect_identical(status$max_off_diagonal, 20)
+  expect_identical(status$tolerance, 0)
+  status <- diagonal_status(diag(c(3, -1, 7)))
+  expect_true(status$is_diagonal)
+  expect_identical(status$max_off_diagonal, 0)
+  expect_false(diagonal_status(matrix(c(1, NA, 0, 1), 2L))$is_diagonal)
 })
 
 test_that("the output estimate budgets the SD draws and coefficient factors of every structure", {

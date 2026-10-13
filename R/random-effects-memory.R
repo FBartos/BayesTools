@@ -144,7 +144,9 @@
 # - coefficient_factor_working / coefficient_contraction_working:
 #   `factor_structure` blocks (a correlation structure other than ID, DIAG and
 #   CAR) hold the Cholesky and correlation draws (2 x draws x columns^2) and a
-#   rows x columns design contraction (4 copies), as `car_columns` does for CAR;
+#   rows x columns design contraction (4 copies), as `car_columns` does for CAR.
+#   The Cholesky reader reshapes its column slice in place and the validation
+#   reads one column at a time, so no further full copy of either exists;
 # - known_group_working: a known group kernel forms, for the full output, the
 #   rows x rows kernel expansion (K[group_map, group_map]), its lower-triangle
 #   mask and three rows x rows covariance copies per draw (44 bytes per
