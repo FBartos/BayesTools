@@ -674,3 +674,70 @@ test_that("ordered overlay warnings retain source coordinates and available meas
   refusal_mode <- "single"
   expect_no_warning(plot_posterior(ordinary$samples, "mu_f", prior = TRUE, plot_type = "ggplot"))
 })
+
+test_that("ordered direct displays of a total away from zero follow the structural route", {
+  # density of total * share, share ~ Beta(a1, a2): int f_T(x / c) dbeta(c) / c dc over the band of c
+  # where the total is supported, in 200 pieces
+  reference <- function(total_pdf, lower, upper, a1, a2, x){
+    lo <- max(0, x / upper)
+    hi <- min(1, x / lower)
+    if(hi <= lo) return(0)
+    knots <- seq(lo, hi, length.out = 201L)
+    sum(vapply(seq_len(200L), function(i){
+      stats::integrate(function(c) total_pdf(x / c) * stats::dbeta(c, a1, a2) / c,
+        knots[i], knots[i + 1L], rel.tol = 1e-10, abs.tol = 0)$value
+    }, numeric(1)))
+  }
+  truncated_normal <- prior("normal", list(2, .1), list(1.5, 2.5))
+  cases <- list(
+    list(total = prior("uniform", list(1, 2)), pdf = function(t) stats::dunif(t, 1, 2), lower = 1, upper = 2),
+    list(total = prior("normal", list(1, .01)), pdf = function(t) stats::dnorm(t, 1, .01), lower = .88, upper = 1.12),
+    list(total = truncated_normal,
+         pdf = function(t) stats::dnorm(t, 2, .1) / diff(stats::pnorm(c(1.5, 2.5), 2, .1)), lower = 1.5, upper = 2.5)
+  )
+  x <- c(.005, .05, .15, .5, .9)
+  for(case in cases){
+    p <- ordered_plot_test_fixture(case$total, levels = c("a", "b", "c", "d"))$prior
+    metadata <- .prior_ordered_metadata(.prior_ordered_default_bound(p))
+    design <- .factor_term_design_from_metadata(p)$design
+    colnames(design) <- .JAGS_prior_factor_names(metadata$parameter_name, p)
+    displayed <- density(p, x_seq = x)
+    expect_identical(attr(displayed, "method"), "direct")
+    for(level in 2:3){
+      # cumulative shares of three equal Dirichlet increments: Beta(level - 1, 4 - level)
+      expected <- vapply(x, function(value){
+        reference(case$pdf, case$lower, case$upper, level - 1, 4 - level, value)
+      }, numeric(1))
+      structural <- .prior_linear_combination_density(
+        stats::setNames(list(p), metadata$parameter_name), design[level, design[level, ] != 0], n_grid = 512L)
+      ordinates <- vapply(x, function(value) exp(prior_density_ordinate(structural, value)$log_density), numeric(1))
+      expect_identical(displayed[[level]]$x, x)
+      expect_equal(displayed[[level]]$y, expected, tolerance = 1e-6)
+      expect_equal(displayed[[level]]$y, ordinates, tolerance = 1e-6)
+    }
+  }
+
+  # closed forms for the uniform(1, 2) total: 2 (log 2 - x / 2) and x on (0, 1)
+  p <- ordered_plot_test_fixture(cases[[1L]]$total, levels = c("a", "b", "c", "d"))$prior
+  displayed <- density(p, x_seq = x)
+  expect_equal(displayed[[2L]]$y, 2 * (log(2) - x / 2), tolerance = 1e-8)
+  expect_equal(displayed[[3L]]$y, x, tolerance = 1e-8)
+  # the default grid has no zero height inside the support and each level keeps its unit mass
+  default <- density(p)
+  for(level in 2:3){
+    inside <- default[[level]]$x > 0 & default[[level]]$x < 2
+    expect_true(all(default[[level]]$y[inside] > 0))
+    grid <- default[[level]]$x
+    height <- default[[level]]$y
+    expect_equal(sum(diff(grid) * (head(height, -1L) + tail(height, -1L)) / 2), 1, tolerance = 1e-4)
+  }
+
+  # a Gamma(2, 1) total with a Dirichlet(1, 1) share: the intermediate level is Exponential(1);
+  # at 0 the height is the one-sided limit 1
+  gamma <- ordered_plot_test_fixture(prior("gamma", list(2, 1)), prior("dirichlet", list(c(1, 1))),
+    levels = c("a", "b", "c"))$prior
+  at <- c(0, .001, .1, 1)
+  intermediate <- density(gamma, x_seq = at, truncate_end = FALSE)[[2L]]
+  expect_identical(intermediate$x, at)
+  expect_equal(intermediate$y, stats::dexp(at), tolerance = 1e-6)
+})

@@ -89,8 +89,10 @@
 #' Direct ordered Dirichlet-product densities use stable log-share arithmetic
 #' for literal, untruncated Normal totals with mean zero and finite positive SD,
 #' retaining the existing quadrature budget and tolerances. This guarded route
-#' does not certify other total families or tiny or nonrepresentable ranges;
-#' small second Beta shapes remain a numerical risk for other totals.
+#' does not certify tiny or nonrepresentable ranges. Every other total takes the
+#' structural route of each fractional level at the display values; the
+#' quadrature remains the fallback for a level whose route resolves no finite
+#' height, where small second Beta shapes remain a numerical risk.
 #'
 #' @importFrom stats density
 #' @seealso [prior()]
@@ -579,7 +581,8 @@ density.prior <- function(x,
 .density.prior.ordered_route_mixed <- function(ordered_prior, parameter, weights,
                                               x_seq, n_points,
                                               transformation = NULL,
-                                              transformation_arguments = NULL){
+                                              transformation_arguments = NULL,
+                                              keep_infinite = FALSE){
 
   weights <- weights[weights != 0]
   if(length(weights) == 0L){
@@ -613,7 +616,8 @@ density.prior <- function(x,
       )
     }
   }
-  keep <- is.finite(x) & is.finite(y)
+  # a genuine infinite height (a singular support boundary) is kept on request
+  keep <- is.finite(x) & (is.finite(y) | (keep_infinite & !is.na(y) & y == Inf))
   x <- x[keep]
   y <- y[keep]
   display_order <- order(x)
@@ -623,8 +627,9 @@ density.prior <- function(x,
   dist$density$x <- x
   dist$density$y <- y
   dist$n_grid <- length(x)
+  finite <- is.finite(y)
   attr(dist, "ordered_grid_diagnostics") <- list(
-    captured_continuous_shape_integral = .density.prior.ordered_curve_integral(x, y),
+    captured_continuous_shape_integral = .density.prior.ordered_curve_integral(x[finite], y[finite]),
     route = route$type
   )
   dist
@@ -815,6 +820,14 @@ density.prior <- function(x,
   }else{
     alpha <- record$spec$alpha
     D <- length(alpha)
+    # a total other than the certified centered Normal takes the structural
+    # route of each fractional level: the logit quadrature of the share
+    # product misses a total concentrated away from zero
+    route_levels <- !.density.prior.ordered_centered_normal_total(x$total)
+    if(route_levels){
+      design <- .factor_term_design_from_metadata(x)$design
+      colnames(design) <- .JAGS_prior_factor_names(metadata$parameter_name, x)
+    }
     for(i in seq_along(densities)){
       m <- if(identical(x$contrast, "cumulative")) i - 1L else i
       if(m == 0L){
@@ -822,16 +835,22 @@ density.prior <- function(x,
       }else if(m == D){
         densities[[i]] <- .density.prior.simple(x$total, x_seq, range(x_seq), n_points, n_samples = 1L, force_samples = FALSE, transformation = NULL, transformation_arguments = NULL, truncate_end = truncate_end)
       }else{
-        densities[[i]] <- .density.prior.ordered_dirichlet_product(
-          total = x$total,
-          alpha1 = sum(alpha[seq_len(m)]),
-          alpha2 = sum(alpha[(m + 1L):D]),
-          x_seq = x_seq,
-          n_points = n_points
-        )
-        if(is.null(densities[[i]])){
+        level <- if(route_levels){
+          .density.prior.ordered_route_level(x, metadata$parameter_name, design[i, ], x_seq, n_points)
+        }
+        if(is.null(level)){
+          level <- .density.prior.ordered_dirichlet_product(
+            total = x$total,
+            alpha1 = sum(alpha[seq_len(m)]),
+            alpha2 = sum(alpha[(m + 1L):D]),
+            x_seq = x_seq,
+            n_points = n_points
+          )
+        }
+        if(is.null(level)){
           return(NULL)
         }
+        densities[[i]] <- level
       }
     }
   }
@@ -884,18 +903,66 @@ density.prior <- function(x,
   out
 }
 
-.density.prior.ordered_dirichlet_product <- function(total, alpha1, alpha2, x_seq, n_points){
+# The untruncated centered Normal total, the one family whose logit quadrature
+# of the Dirichlet-share product is certified (its integrand is concentrated
+# around the shares where the total is supported).
+.density.prior.ordered_centered_normal_total <- function(total){
 
-  rel_tol <- 1e-7
-  abs_tol <- 1e-10
-  quadrature <- vector("list", length(x_seq))
-  centered_normal <- is.prior.simple(total) &&
+  is.prior.simple(total) &&
     identical(total$distribution, "normal") &&
     .prior_density_ordinate_parameters_numeric(total) &&
     identical(unname(c(total$truncation$lower, total$truncation$upper)), c(-Inf, Inf)) &&
     length(total$parameters$mean) == 1L && total$parameters$mean == 0 &&
     length(total$parameters$sd) == 1L &&
     is.finite(total$parameters$sd) && total$parameters$sd > 0
+}
+
+# A continuous level of an ordered prior (its total times a Dirichlet share) on
+# the structural route, evaluated at the display values 'x_seq' as
+# .density.prior.ordered_route_mixed() does for levels with atoms. NULL when
+# the level has no structural route or is not a purely continuous measure.
+.density.prior.ordered_route_level <- function(ordered_prior, parameter, weights, x_seq, n_points){
+
+  dist <- .density.prior.ordered_route_mixed(
+    ordered_prior = ordered_prior,
+    parameter     = parameter,
+    weights       = weights,
+    x_seq         = x_seq,
+    n_points      = n_points,
+    keep_infinite = TRUE
+  )
+  if(is.null(dist) || nrow(dist$points) > 0L ||
+     abs(dist$density$mass - 1) > 128 * .Machine$double.eps){
+    return(NULL)
+  }
+  x <- dist$density$x
+  y <- dist$density$y * dist$density$mass
+  # a route that resolves no finite height (only a singular boundary) leaves
+  # the level to its quadrature
+  if(!any(is.finite(y))){
+    return(NULL)
+  }
+  out <- list(
+    call    = call("density", print(ordered_prior$total, silent = TRUE)),
+    bw      = NULL,
+    n       = n_points,
+    x       = x,
+    y       = y,
+    samples = NULL
+  )
+  class(out) <- c("density", "density.prior", "density.prior.simple")
+  attr(out, "x_range") <- range(x_seq)
+  attr(out, "y_range") <- c(0, max(y, na.rm = TRUE))
+  attr(out, "route") <- attr(dist, "ordered_grid_diagnostics", exact = TRUE)$route
+  out
+}
+
+.density.prior.ordered_dirichlet_product <- function(total, alpha1, alpha2, x_seq, n_points){
+
+  rel_tol <- 1e-7
+  abs_tol <- 1e-10
+  quadrature <- vector("list", length(x_seq))
+  centered_normal <- .density.prior.ordered_centered_normal_total(total)
   y <- vapply(seq_along(x_seq), function(i){
     x_value <- x_seq[i]
     density_at_zero <- if(x_value == 0) pdf(total, 0) else NA_real_
