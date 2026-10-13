@@ -65,6 +65,45 @@ test_that("tiny Gamma shapes use available log tails and declare the remaining l
   expect_identical(.dinvgamma_prior(1, -1, 1, log = TRUE), -Inf)
 })
 
+test_that("truncated quantile refusals name the representability cause", {
+
+  # The true quantile lies closer to the truncation bound than a double can
+  # represent: the value is unavailable (quantile NaN with a warning; sampling
+  # and initial values stop) and the messages say why.
+  cause <- paste0(
+    "For a truncated prior this can happen when its quantiles lie closer to ",
+    "the truncation bound than double precision can represent"
+  )
+  tiny <- prior("gamma", list(.001, .001), truncation = list(0, 100))
+  expect_warning(
+    value <- quant(tiny, .3),
+    cause, class = "BayesTools_numerical_unavailable", fixed = TRUE
+  )
+  expect_true(is.nan(value))
+
+  # an available truncated quantile does not warn
+  moderate <- prior("gamma", list(.01, 1), truncation = list(0, 10))
+  expect_warning(available <- quant(moderate, .3), NA)
+  expect_true(is.finite(available) && available > 0)
+
+  refusal <- paste0(
+    "The gamma prior sampling is numerically unavailable. This consumer ",
+    "requires finite representable values. ", cause,
+    "; supply initial values or use a less extreme prior."
+  )
+  set.seed(1)
+  expect_error(rng(moderate, 1e4), refusal, class = "BayesTools_prior_rng_unavailable", fixed = TRUE)
+  expect_error(JAGS_get_inits(list(theta = tiny), chains = 1, seed = 1),
+               refusal, class = "BayesTools_prior_rng_unavailable", fixed = TRUE)
+
+  # untruncated priors keep their messages
+  expect_error(.prior_numerical_finite(Inf, "normal"),
+    "The normal prior sampling is numerically unavailable. This consumer requires finite representable values.",
+    class = "BayesTools_prior_rng_unavailable", fixed = TRUE)
+  expect_error(.prior_numerical_finite(Inf, "normal", truncated = TRUE), cause,
+               class = "BayesTools_prior_rng_unavailable", fixed = TRUE)
+})
+
 test_that("nonlocal scale coordinates and high-order quantiles remain finite", {
 
   expect_warning(expect_identical(.qmoment_prior(.5, 0, .125, 1), 0), NA)

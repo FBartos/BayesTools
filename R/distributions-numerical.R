@@ -33,15 +33,17 @@
 
 .prior_numerical_result <- function(output, input, domain, operation, family,
                                     requested_scale, interior = rep(TRUE, length(output)),
-                                    rng = FALSE, bounded = FALSE, warn_range = TRUE){
+                                    rng = FALSE, bounded = FALSE, warn_range = TRUE,
+                                    unavailable_cause = NULL){
 
   if(!isTRUE(domain)) return(output)
   known <- !is.na(input) & interior
   unavailable <- which(known & is.nan(output))
   if(length(unavailable)){
+    reason <- "The declared interior calculation could not be resolved at supported precision"
+    if(!is.null(unavailable_cause)) reason <- paste0(reason, ". ", unavailable_cause)
     .prior_numerical_signal(operation, family, requested_scale, unavailable,
-      "The declared interior calculation could not be resolved at supported precision",
-      error = rng || bounded, rng = rng)
+      reason, error = rng || bounded, rng = rng)
   }
   if(!warn_range) return(output)
   range <- which(known & (is.infinite(output) |
@@ -70,14 +72,31 @@
   is.finite(x) & x >= prior$truncation$lower & x <= prior$truncation$upper & support
 }
 
-.prior_numerical_finite <- function(values, family, operation = "sampling"){
+# Representability limit of a truncated quantile (accepted, not repaired): a
+# quantile whose true value lies closer to the truncation bound than a double
+# can represent (e.g. a small-shape Gamma truncated to [0, 100]) rounds onto the
+# bound, so it is unavailable. Sampling and initial values refuse it: no
+# clipping to the bound, no redraw. The same NaN also results from a non-finite
+# base quantile, hence "can happen".
+.prior_numerical_truncation_cause <- function(){
+
+  paste0("For a truncated prior this can happen when its quantiles lie closer ",
+         "to the truncation bound than double precision can represent")
+}
+
+.prior_numerical_finite <- function(values, family, operation = "sampling",
+                                    truncated = FALSE){
 
   if(!is.character(family) || length(family) != 1L) family <- "declared"
   failed <- which(!is.finite(values) | (family == "invgamma" & values <= 0))
   if(length(failed)){
+    reason <- "This consumer requires finite representable values"
+    if(truncated){
+      reason <- paste0(reason, ". ", .prior_numerical_truncation_cause(),
+                       "; supply initial values or use a less extreme prior")
+    }
     .prior_numerical_signal(operation, family, "finite", failed,
-      "This consumer requires finite representable values",
-      error = TRUE, rng = identical(operation, "sampling"))
+      reason, error = TRUE, rng = identical(operation, "sampling"))
   }
   values
 }
@@ -240,7 +259,8 @@
     values[!is.finite(values) | values <= lower | values >= upper] <- NaN
     out[interior] <- values
   }
-  .prior_numerical_result(out, p, TRUE, "quantile", prior$distribution, "natural", interior)
+  .prior_numerical_result(out, p, TRUE, "quantile", prior$distribution, "natural", interior,
+    unavailable_cause = .prior_numerical_truncation_cause())
 }
 
 .prior_numerical_ordinate <- function(expression, value, method, provenance){

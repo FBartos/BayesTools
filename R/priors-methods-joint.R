@@ -1248,7 +1248,9 @@ quant.prior <- function(x, p, ...){
                                    "error", "condition"))
       stop(condition)
     })
-  .prior_numerical_finite(out, prior$distribution)
+  # Every prior reaching this point is truncated (default ranges, discrete and
+  # point priors returned above).
+  .prior_numerical_finite(out, prior$distribution, truncated = TRUE)
 }
 
 .prior_C1 <- function(prior){
