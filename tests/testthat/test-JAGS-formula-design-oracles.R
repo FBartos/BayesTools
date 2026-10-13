@@ -13554,3 +13554,122 @@ test_that("JAGS_formula independent random-effect design matches lme4 lFormula o
   expect_equal(ar1_result$formula_design$random_effects[[1]]$structure, "ar1")
   expect_true(ar1_result$formula_design$random_effects[[1]]$homogeneous_sd)
 })
+
+test_that("random slopes of a two-level factor name the scalar SD node of their prior", {
+
+  testthat::skip_if_not_installed("runjags")
+
+  # one contrast column is a scalar node of the SD prior, not an indexed element
+  df <- data.frame(
+    x = c(-1, 0, 1, 2, -1, 0, 1, 2, -1, 0, 1, 2),
+    f2 = factor(rep(c("a", "b"), 6), levels = c("a", "b")),
+    f3 = factor(rep(c("a", "b", "c"), 4), levels = c("a", "b", "c")),
+    id = factor(rep(paste0("s", 1:4), each = 3))
+  )
+  orthonormal_df <- df
+  stats::contrasts(orthonormal_df$f2) <- "contr.orthonormal"
+  priors <- list(intercept = prior("normal", list(0, 1)))
+  sd_prior <- prior("gamma", list(2, 2))
+  monitor <- random_monitor(latent = FALSE, coefficients = FALSE, correlation = TRUE)
+
+  sd_prior_nodes <- function(result){
+    term <- result$formula_design$random_effects[[1L]]
+    owners <- unique(sub("\\[[0-9]+\\]$", "", term$sd_parameter_names))
+    unlist(lapply(owners, function(owner){
+      owner_prior <- result$prior_list[[owner]]
+      if(is.prior.factor(owner_prior)){
+        BayesTools:::.JAGS_prior_factor_names(owner, owner_prior)
+      }else{
+        owner
+      }
+    }), use.names = FALSE)
+  }
+  sd_prior_random <- function(correlated){
+    prior_random(id = random_block(
+      sd = sd_prior,
+      cor = if(correlated) prior_lkj(eta = 1) else NULL,
+      monitor = monitor
+    ))
+  }
+  carrier_fit <- function(result, correlated){
+    term <- result$formula_design$random_effects[[1L]]
+    sd_names <- unique(term$sd_parameter_names)
+    values <- c(mu_intercept = 0, stats::setNames(seq_along(sd_names) / 2, sd_names))
+    if(correlated){
+      n <- length(sd_names)
+      cor_matrix <- diag(n)
+      cor_matrix[1, 2] <- cor_matrix[2, 1] <- 0.4
+      R_names <- outer(seq_len(n), seq_len(n), function(row, column){
+        paste0(term$parameter_stem, "_xRE_CORx_R[", row, ",", column, "]")
+      })
+      L_names <- BayesTools:::.bt_random_effect_cholesky_names(term, n)
+      values <- c(
+        values,
+        stats::setNames(as.vector(cor_matrix), as.vector(R_names)),
+        stats::setNames(as.vector(t(chol(cor_matrix))), as.vector(L_names))
+      )
+    }
+    posterior <- matrix(rep(values, 2L), nrow = 2L, byrow = TRUE,
+                        dimnames = list(NULL, names(values)))
+    fit <- list(mcmc = coda::mcmc.list(coda::mcmc(posterior)),
+                summary.pars = list(mutate = NULL),
+                monitor = colnames(posterior), sample = nrow(posterior))
+    class(fit) <- c("runjags", "BayesTools_fit")
+    attr(fit, "prior_list") <- result$prior_list
+    attr(fit, "formula_design") <- list(mu = result$formula_design)
+    attr(fit, "formula_scale") <- list(mu = result$formula_scale)
+    attach_test_parameter_map(fit)
+  }
+
+  cases <- list(
+    list(formula = ~ 1 + diag(1 + f2 | id), data = df, correlated = FALSE,
+         names = c("mu__xREx__id_intercept", "mu__xREx__id_f2"),
+         rows = c("(mu) sd(intercept)", "(mu) sd(f2[b])")),
+    list(formula = ~ 1 + diag(0 + f2 | id), data = df, correlated = FALSE,
+         names = "mu__xREx__id_f2", rows = "(mu) sd(f2[b])"),
+    list(formula = ~ 1 + us(1 + f2 | id), data = df, correlated = TRUE,
+         names = c("mu__xREx__id_intercept", "mu__xREx__id_f2"),
+         rows = c("(mu) sd(intercept)", "(mu) sd(f2[b])", "(mu) cor(intercept,f2[b])")),
+    list(formula = ~ 1 + diag(1 + f2 * x | id, hom = FALSE), data = df, correlated = FALSE,
+         names = c("mu__xREx__id_intercept", "mu__xREx__id_f2", "mu__xREx__id_x",
+                   "mu__xREx__id_f2__xXx__x"),
+         rows = c("(mu) sd(intercept)", "(mu) sd(f2[b])", "(mu) sd(x)", "(mu) sd(f2[b]:x)")),
+    list(formula = ~ 1 + diag(1 + f2 | id), data = orthonormal_df, correlated = FALSE,
+         names = c("mu__xREx__id_intercept", "mu__xREx__id_f2"),
+         rows = c("(mu) sd(intercept)", "(mu) sd(f2{1})"))
+  )
+  for(case in cases){
+    label <- paste(deparse(case$formula), "(", case$names[length(case$names)], ")")
+    result <- JAGS_formula(case$formula, "mu", case$data, priors,
+                           prior_random = sd_prior_random(case$correlated))
+    term <- result$formula_design$random_effects[[1L]]
+    expect_identical(unique(term$sd_parameter_names), case$names, label = label)
+    expect_identical(unname(term$sd_leaves$leaf_names_by_column), unname(term$sd_parameter_names),
+                     label = label)
+    expect_identical(unique(term$sd_parameter_names), sd_prior_nodes(result), label = label)
+    syntax_lines <- trimws(unlist(strsplit(result$formula_syntax, "\n", fixed = TRUE)))
+    for(column in seq_along(case$names)){
+      expect_true(
+        paste0(term$parameter_stem, "_xRE_STDx[", column, "] = ", case$names[column]) %in% syntax_lines,
+        label = paste(label, "column", column)
+      )
+    }
+    expect_false(grepl("f2[1]", result$formula_syntax, fixed = TRUE), label = label)
+
+    fit <- carrier_fit(result, case$correlated)
+    table <- JAGS_estimates_table(fit, remove_diagnostics = TRUE)
+    expect_true(all(case$rows %in% rownames(table)), label = label)
+  }
+
+  # factors with three levels keep their indexed nodes
+  three <- JAGS_formula(~ 1 + diag(1 + f3 | id), "mu", df, priors,
+                        prior_random = sd_prior_random(FALSE))
+  expect_identical(
+    three$formula_design$random_effects[[1L]]$sd_parameter_names,
+    c("mu__xREx__id_intercept", "mu__xREx__id_f3[1]", "mu__xREx__id_f3[2]")
+  )
+  expect_identical(
+    unique(three$formula_design$random_effects[[1L]]$sd_parameter_names),
+    c("mu__xREx__id_intercept", sd_prior_nodes(three)[-1L])
+  )
+})

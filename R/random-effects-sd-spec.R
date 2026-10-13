@@ -166,7 +166,8 @@
     random_structure = random_structure,
     has_intercept = has_intercept,
     homogeneous_sd = homogeneous_sd,
-    prior_list = prior_list
+    prior_list = prior_list,
+    prior_nodes = TRUE
   )
   if(!identical(unname(sd_leaves$leaf_names_by_column), unname(sd_parameter_names))){
     stop("Random-effect SD leaf metadata are inconsistent with generated SD parameters.", call. = FALSE)
@@ -326,7 +327,7 @@
       predictors_type = predictors_type,
       data = data
     )
-    sd_parameter_names <- paste0(parameter, "_", model_term, "[", seq_along(columns), "]")
+    sd_parameter_names <- .bt_random_effect_sd_node_names(parameter, model_term, length(columns))
     prior <- .bt_random_effect_set_factor_prior_class(prior, prior_type)
     # the covariance structure owns the basis: one column per level cell
     prior <- .bt_random_effect_bind_identity_sd_design(
@@ -355,7 +356,7 @@
       data = data
     )
 
-    sd_parameter_names <- paste0(parameter, "_", model_term, "[", seq_along(columns), "]")
+    sd_parameter_names <- .bt_random_effect_sd_node_names(parameter, model_term, length(columns))
     prior <- .bt_random_effect_set_factor_prior_class(prior, prior_type)
     prior <- .bt_random_effect_bind_factor_sd_design(
       prior = prior,
@@ -373,9 +374,7 @@
       data = data,
       factor_term_design = factor_term_design
     )
-    sd_parameter_names <- paste0(
-      parameter, "_", model_term, "[", seq_along(columns), "]"
-    )
+    sd_parameter_names <- .bt_random_effect_sd_node_names(parameter, model_term, length(columns))
   }else if(.prior_ordered_is_contrast_name(contrast)){
     if(is.prior.ordered(prior)){
       prior <- .bt_random_effect_bind_ordered_sd_prior(
@@ -386,11 +385,7 @@
         predictors_type = predictors_type,
         data = data
       )
-      sd_parameter_names <- if(length(columns) == 1L){
-        paste0(parameter, "_", model_term)
-      }else{
-        paste0(parameter, "_", model_term, "[", seq_along(columns), "]")
-      }
+      sd_parameter_names <- .bt_random_effect_sd_node_names(parameter, model_term, length(columns))
     }else{
       prior <- .bt_random_effect_factor_sd_prior_by_column(
         prior = prior,
@@ -400,15 +395,26 @@
         data = data,
         factor_term_design = factor_term_design
       )
-      sd_parameter_names <- paste0(
-        parameter, "_", model_term, "[", seq_along(columns), "]"
-      )
+      sd_parameter_names <- .bt_random_effect_sd_node_names(parameter, model_term, length(columns))
     }
   }else{
     stop("Unsupported factor contrasts for the random effects.", call. = FALSE)
   }
 
   list(prior = prior, sd_parameter_names = sd_parameter_names)
+}
+
+# JAGS node names of the SD prior of a random factor term: a sole design column
+# is the scalar node of the prior, several columns are its indexed elements
+# (.JAGS_prior_factor_names()).
+.bt_random_effect_sd_node_names <- function(parameter, model_term, n_columns){
+
+  node <- paste0(parameter, "_", model_term)
+  if(n_columns == 1L){
+    node
+  }else{
+    paste0(node, "[", seq_len(n_columns), "]")
+  }
 }
 
 .bt_random_effect_factor_sd_prior_by_column <- function(
@@ -803,12 +809,23 @@
                                                  random_structure,
                                                  has_intercept,
                                                  homogeneous_sd,
-                                                 prior_list = NULL){
+                                                 prior_list = NULL,
+                                                 prior_nodes = FALSE){
 
   n_columns <- ncol(model_matrix)
   terms_indexes <- .bt_random_effect_term_indexes(model_matrix, has_intercept)
   leaf_terms <- rep(NA_character_, n_columns)
   leaf_names <- rep(NA_character_, n_columns)
+  # The leaves of the SD priors of a block are the nodes of those priors, so a
+  # sole design column is a scalar node; the leaves of an allocation or of an
+  # external SD source are indexed by their column.
+  sd_node_names <- function(model_term, n_columns){
+    if(isTRUE(prior_nodes)){
+      .bt_random_effect_sd_node_names(parameter, model_term, n_columns)
+    }else{
+      paste0(parameter, "_", model_term, "[", seq_len(n_columns), "]")
+    }
+  }
 
   if(isTRUE(homogeneous_sd)){
     leaf_terms[] <- "sd"
@@ -843,10 +860,8 @@
             contrast = contrast,
             random_structure = random_structure
           )
-          for(j in seq_along(columns)){
-            leaf_terms[columns[j]] <- leaf_term_labels[j]
-            leaf_names[columns[j]] <- paste0(parameter, "_", model_term, "[", j, "]")
-          }
+          leaf_terms[columns] <- leaf_term_labels
+          leaf_names[columns] <- sd_node_names(model_term, length(columns))
         }else if(.prior_ordered_is_contrast_name(contrast) && isTRUE(ordered_sd_prior)){
           # A sole generated coefficient uses the unindexed node emitted by
           # one-dimensional ordered-prior JAGS syntax; multiple coefficients
@@ -875,11 +890,7 @@
             data = data,
             contrast = contrast
           )
-          for(j in seq_along(columns)){
-            leaf_names[columns[j]] <- paste0(
-              parameter, "_", model_term, "[", j, "]"
-            )
-          }
+          leaf_names[columns] <- sd_node_names(model_term, length(columns))
         }else{
           stop("Unsupported factor contrasts for the random effects.", call. = FALSE)
         }
