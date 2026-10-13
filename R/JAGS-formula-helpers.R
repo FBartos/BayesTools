@@ -1242,8 +1242,10 @@ formula_add_intercept <- function(formula){
     attr(out, attribute) <- formula_attrs[[attribute]]
   }
 
+  # A removal such as `0 + g * x - x` keeps its inner `0`, so the intercept is
+  # appended: terms() applies the later `+ 1` to the whole expression.
   if(attr(stats::terms(out), "intercept") == 0L){
-    out[[rhs_index]] <- call("+", 1, out[[rhs_index]])
+    out[[rhs_index]] <- call("+", out[[rhs_index]], 1)
     environment(out) <- formula_env
   }
 

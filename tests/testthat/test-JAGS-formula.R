@@ -80,6 +80,36 @@ test_that("formula_add_intercept repairs only top-level no-intercept terms", {
   expect_error(formula_add_intercept("~ x - 1"), "'formula' must be a formula.", fixed = TRUE)
 })
 
+test_that("formula_add_intercept restores the intercept after a term removal that follows 0 or - 1", {
+
+  for(formula in list(~ 0 + g * x - x, ~ x - 1 - z, ~ 0 + a - b, ~ 0 - x, y ~ 0 + a - b)){
+    out <- formula_add_intercept(formula)
+    expect_equal(attr(stats::terms(out), "intercept"), 1, info = deparse(formula))
+    expect_equal(
+      attr(stats::terms(out), "term.labels"),
+      attr(stats::terms(formula), "term.labels"),
+      info = deparse(formula)
+    )
+  }
+
+  data <- data.frame(
+    g = factor(rep(c("a", "b", "c"), 4), levels = c("a", "b", "c")),
+    x = seq(-1, 1, length.out = 12)
+  )
+  priors <- list(
+    g = prior_factor("normal", list(0, 1), contrast = "independent"),
+    "g:x" = prior_factor("normal", list(0, 1), contrast = "independent")
+  )
+  removal <- JAGS_formula(~ 0 + g * x - x, "mu", data, priors)
+  explicit <- JAGS_formula(~ 0 + g + g:x, "mu", data, priors)
+  expect_identical(removal$formula_syntax, explicit$formula_syntax)
+  expect_identical(removal$prior_list, explicit$prior_list)
+  expect_identical(removal$data, explicit$data)
+  for(field in c("model_matrix", "assign", "raw_column_names")){
+    expect_identical(removal$formula_design[[field]], explicit$formula_design[[field]], info = field)
+  }
+})
+
 test_that("JAGS_formula rejects scaled intercept priors", {
 
   data <- data.frame(x = c(-1, 0.5, 2))
