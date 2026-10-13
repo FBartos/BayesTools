@@ -232,6 +232,11 @@ JAGS_diagnostics                 <- function(fit, parameter, type, plot_type = "
     prior_list[[parameter]] <- .get_spike_and_slab_variable(prior_list[[parameter]])
   }
 
+  # the prior giving the support of the diagnostics: the whole mixture of a
+  # mixture prior (below, a factor mixture is reduced to a factor component,
+  # which only resolves the dimensions and the coding of the columns)
+  prior_support <- prior_list[[parameter]]
+
   if(is.prior.factor(prior_list[[parameter]]) || (is.prior.mixture(prior_list[[parameter]]) && any(sapply(prior_list[[parameter]], is.prior.factor)))){
 
     if(is.prior.mixture(prior_list[[parameter]])){
@@ -286,7 +291,6 @@ JAGS_diagnostics                 <- function(fit, parameter, type, plot_type = "
     parameter_names <- parameter
   }else{
     prior_list      <- prior_list[parameter]
-    prior_support   <- prior_list[[parameter]]
     parameter_names <- parameter
   }
 
@@ -491,17 +495,27 @@ JAGS_diagnostics                 <- function(fit, parameter, type, plot_type = "
   }
 
   if(is.prior.mixture(prior)){
-    simple_priors <- prior[vapply(prior, function(x) is.prior.simple(x) || is.prior.point(x), logical(1))]
-    if(length(simple_priors) == 0L){
+    # the support of a mixture is the union of the continuous supports of its
+    # components: a point (or a none) is an atom and no part of the support, a
+    # simple component brings its truncation, and a factor component that is
+    # not simple (orthonormal, meandif, ordered) the real line; components of
+    # other kinds (the publication bias components) are no support of the
+    # parameter
+    is_atom   <- vapply(prior, function(x) is.prior.point(x) || is.prior.none(x), logical(1))
+    is_simple <- vapply(prior, is.prior.simple, logical(1)) & !is_atom
+    is_line   <- vapply(prior, is.prior.factor, logical(1)) & !is_atom & !is_simple
+    prior_lower <- c(vapply(prior[is_simple], function(x) x$truncation[["lower"]], numeric(1)), rep(-Inf, sum(is_line)))
+    prior_upper <- c(vapply(prior[is_simple], function(x) x$truncation[["upper"]], numeric(1)), rep(Inf, sum(is_line)))
+    if(length(prior_lower) > 0L){
+      return(list(lower = min(prior_lower), upper = max(prior_upper)))
+    }
+
+    # without a continuous component the atoms are all there is
+    locations <- vapply(prior[vapply(prior, is.prior.point, logical(1))], function(x) x$parameters[["location"]], numeric(1))
+    if(length(locations) == 0L){
       return(list(lower = -Inf, upper = Inf))
     }
-    prior_lower <- min(vapply(simple_priors, function(x){
-      if(is.prior.point(x)) x$parameters[["location"]] else x$truncation[["lower"]]
-    }, numeric(1)))
-    prior_upper <- max(vapply(simple_priors, function(x){
-      if(is.prior.point(x)) x$parameters[["location"]] else x$truncation[["upper"]]
-    }, numeric(1)))
-    return(list(lower = prior_lower, upper = prior_upper))
+    return(list(lower = min(locations), upper = max(locations)))
   }
 
   if(is.prior.point(prior)){

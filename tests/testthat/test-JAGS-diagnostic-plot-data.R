@@ -790,3 +790,118 @@ test_that("diagnostic plot data masks the spike rows of every coefficient of a f
   trace_data <- .diagnostics_plot_data_trace(plot_data, n_points = 64, ylim = NULL)
   expect_identical(which(is.na(trace_data[["mu_f[b]"]][[1]]$y)), excluded)
 })
+
+# A fit of the three-level factor `f` of the formula parameter `mu` with the
+# prior `f_prior`; `coefficients` holds the draws of the two coefficient
+# columns.
+.diagnostics_factor_fit_for_test <- function(f_prior, coefficients){
+
+  info <- JAGS_formula(
+    ~ f, "mu", data.frame(f = factor(c("a", "b", "c"))),
+    list(intercept = prior("point", list(0)), f = f_prior)
+  )
+  draws <- cbind(
+    mu_f_indicator = rep(1:2, length.out = nrow(coefficients)),
+    "mu_f[1]"      = coefficients[, 1],
+    "mu_f[2]"      = coefficients[, 2]
+  )
+  fit <- structure(list(
+    mcmc = coda::mcmc.list(coda::mcmc(draws)),
+    summary.pars = list(mutate = NULL)
+  ), class = c("BayesTools_fit", "runjags"))
+  attr(fit, "prior_list")     <- info$prior_list
+  attr(fit, "formula_design") <- list(mu = info$formula_design)
+  attach_test_parameter_map(fit)
+}
+
+test_that("density diagnostics of a factor mixture use the support of the whole mixture", {
+
+  # the atom of the first component and the draws of the second one
+  positive <- cbind(rep(c(0, .1, 0, .3, 0, .5, 0, .7, 0, .9), 2), rep(c(0, .2, 0, .4, 0, .6, 0, .8, 0, 1), 2))
+  mixed    <- cbind(rep(c(0, .1, 0, -.3, 0, .5, 0, -.7, 0, .9), 2), rep(c(0, -.2, 0, .4, 0, -.6, 0, .8, 0, -1), 2))
+  maxima   <- function(density) vapply(density, function(coefficient) max(coefficient[[1]]$y), numeric(1))
+
+  # a point at 0 first and a normal second: the support is the one of the normal
+  mixture <- prior_mixture(list(
+    prior("point", list(0)),
+    prior_factor("normal", list(0, 1), contrast = "treatment")
+  ))
+  fit       <- .diagnostics_factor_fit_for_test(mixture, positive)
+  prior_list <- attr(fit, "prior_list")
+  plot_data <- .diagnostics_plot_data(fit, "mu_f", prior_list, NULL, FALSE)
+  expect_identical(colnames(plot_data), c("mu_f[b]", "mu_f[c]"))
+  expect_identical(attr(plot_data, "prior"), prior_list$mu_f)
+  expect_equal(.diagnostics_prior_bounds(attr(plot_data, "prior"), "mu_f"), list(lower = -Inf, upper = Inf))
+  density <- .diagnostics_plot_data_density(plot_data, n_points = 64, xlim = c(.05, 1.1))
+  expect_true(all(maxima(density) > 0))
+  for(coefficient in density){
+    expect_false(isTRUE(attr(coefficient[[1]], "boundary_reflection")))
+  }
+
+  # through the public function, as a ggplot per coefficient
+  plots <- JAGS_diagnostics(fit, "mu_f", "density", plot_type = "ggplot", xlim = c(.05, 1.1), n_points = 64)
+  expect_length(plots, 2L)
+  for(plot in plots){
+    expect_gt(max(ggplot2::ggplot_build(plot)$data[[1]]$y), 0)
+  }
+
+  # a point outside of the truncation of the second component is no support
+  mixture <- prior_mixture(list(
+    prior("point", list(5)),
+    prior_factor("normal", list(.5, 1), list(0, 1), contrast = "treatment")
+  ))
+  expect_equal(.diagnostics_prior_bounds(mixture, "mu_f"), list(lower = 0, upper = 1))
+
+  # two continuous components: the union of their supports
+  mixture <- prior_mixture(list(
+    prior_factor("normal", list(0, 1), list(0, Inf), contrast = "treatment"),
+    prior_factor("normal", list(0, 1), list(-Inf, 0), contrast = "treatment")
+  ))
+  expect_equal(.diagnostics_prior_bounds(mixture, "mu_f"), list(lower = -Inf, upper = Inf))
+  fit        <- .diagnostics_factor_fit_for_test(mixture, mixed)
+  plot_data  <- .diagnostics_plot_data(fit, "mu_f", attr(fit, "prior_list"), NULL, FALSE)
+  density    <- .diagnostics_plot_data_density(plot_data, n_points = 64, xlim = c(-1.2, 1.2))
+  expect_true(all(maxima(density) > 0))
+  for(coefficient in density){
+    negative <- coefficient[[1]]$x < 0
+    expect_true(any(negative))
+    expect_gt(max(coefficient[[1]]$y[negative]), 0)
+  }
+
+  # a point and an orthonormal (or meandif) component: the real line
+  for(contrast in c("orthonormal", "meandif")){
+    mixture <- prior_mixture(list(
+      prior("point", list(0)),
+      prior_factor("mnormal", list(0, 1), contrast = contrast)
+    ))
+    fit       <- .diagnostics_factor_fit_for_test(mixture, positive)
+    plot_data <- .diagnostics_plot_data(fit, "mu_f", attr(fit, "prior_list"), NULL, FALSE)
+    expect_equal(.diagnostics_prior_bounds(attr(plot_data, "prior"), "mu_f"), list(lower = -Inf, upper = Inf))
+    density   <- .diagnostics_plot_data_density(plot_data, n_points = 64, xlim = c(.05, 1.1))
+    expect_true(all(maxima(density) > 0))
+  }
+
+  # a mixture of atoms keeps the range of the atoms
+  expect_equal(
+    .diagnostics_prior_bounds(prior_mixture(list(prior("point", list(0)), prior("point", list(2)))), "theta"),
+    list(lower = 0, upper = 2)
+  )
+  # a null component of a publication bias mixture is an atom as well
+  expect_equal(
+    .diagnostics_prior_bounds(prior_mixture(list(prior_none(), prior_PET("normal", list(0, 1), truncation = list(1, Inf)))), "PET"),
+    list(lower = 1, upper = Inf)
+  )
+
+  # a single factor prior is its own support
+  single <- prior_factor("normal", list(0, 1), list(0, Inf), contrast = "treatment")
+  fit        <- .diagnostics_factor_fit_for_test(single, positive)
+  prior_list <- attr(fit, "prior_list")
+  plot_data  <- .diagnostics_plot_data(fit, "mu_f", prior_list, NULL, FALSE)
+  expect_identical(attr(plot_data, "prior"), prior_list$mu_f)
+  expect_equal(.diagnostics_prior_bounds(attr(plot_data, "prior"), "mu_f"), list(lower = 0, upper = Inf))
+  density <- .diagnostics_plot_data_density(plot_data, n_points = 64, xlim = c(0, 1.1))
+  for(coefficient in density){
+    expect_true(isTRUE(attr(coefficient[[1]], "boundary_reflection")))
+    expect_gt(max(coefficient[[1]]$y), 0)
+  }
+})
