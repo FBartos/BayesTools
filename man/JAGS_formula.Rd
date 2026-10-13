@@ -109,7 +109,7 @@ Leave a predictor unscaled when a line or group slope through the origin of
 
 Independence of random-effect coefficients is likewise specified on the
 centered scale. An independent block such as \code{(1 + x || g)} (or a
-\code{diag()} or \code{id()} block) with a scaled \code{x} has independent
+\code{diag()} block) with a scaled \code{x} has independent
 group coefficients \eqn{u_0} and \eqn{u_1} with SDs \eqn{\tau_0} and
 \eqn{\tau_1}. On the original scale, the group intercept
 \eqn{u_0 - u_1 m / s} and slope \eqn{u_1 / s} are correlated with
@@ -121,6 +121,14 @@ and \eqn{\tau_1 / s}, but no
 correlation, because the block has no correlation parameter. Use a
 correlated block, such as \code{(1 + x | g)}, to estimate the correlation,
 or leave \code{x} unscaled for independence on the original scale.
+
+A homogeneous-SD block (\code{id()}, \code{random(covariance = "id")}, or
+\code{diag(..., hom = TRUE)}) shares one SD among its columns, which cannot
+carry the different original-scale SDs of the columns. A homogeneous block
+with more than one column that contains a column of a scaled predictor is
+therefore refused by \code{JAGS_formula()}: use a heterogeneous block, or
+leave the predictor unscaled. Single-column homogeneous blocks, such as
+\code{id(0 + x | g)}, are not affected.
 
 Factor contrasts are owned by \code{\link[=prior_factor]{prior_factor()}} and stored formula metadata,
 not inferred from whether an intercept is present. Thus \code{~ 0 + group} with

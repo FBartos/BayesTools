@@ -81,7 +81,7 @@
 #'
 #' Independence of random-effect coefficients is likewise specified on the
 #' centered scale. An independent block such as \code{(1 + x || g)} (or a
-#' \code{diag()} or \code{id()} block) with a scaled \code{x} has independent
+#' \code{diag()} block) with a scaled \code{x} has independent
 #' group coefficients \eqn{u_0} and \eqn{u_1} with SDs \eqn{\tau_0} and
 #' \eqn{\tau_1}. On the original scale, the group intercept
 #' \eqn{u_0 - u_1 m / s} and slope \eqn{u_1 / s} are correlated with
@@ -93,6 +93,14 @@
 #' correlation, because the block has no correlation parameter. Use a
 #' correlated block, such as \code{(1 + x | g)}, to estimate the correlation,
 #' or leave \code{x} unscaled for independence on the original scale.
+#'
+#' A homogeneous-SD block (\code{id()}, \code{random(covariance = "id")}, or
+#' \code{diag(..., hom = TRUE)}) shares one SD among its columns, which cannot
+#' carry the different original-scale SDs of the columns. A homogeneous block
+#' with more than one column that contains a column of a scaled predictor is
+#' therefore refused by \code{JAGS_formula()}: use a heterogeneous block, or
+#' leave the predictor unscaled. Single-column homogeneous blocks, such as
+#' \code{id(0 + x | g)}, are not affected.
 #'
 #' Factor contrasts are owned by [prior_factor()] and stored formula metadata,
 #' not inferred from whether an intercept is present. Thus `~ 0 + group` with
@@ -752,6 +760,14 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
 
   # add scale information if standardization was applied
   if(exists("scale_info") && length(scale_info) > 0){
+    # a homogeneous-SD random block with a scaled column has no original-scale
+    # SDs and would only fail after sampling: refuse it before any fitting
+    for(random_term in compiled_random_effects){
+      if(length(.bt_parameter_coordinates_random_sd_names(random_term)) > 0L &&
+         .random_sd_homogeneous_scaled_block(random_term$sd_leaves, names(scale_info))){
+        .random_sd_homogeneous_scaled_stop(random_term$sd_leaves$leaf_names)
+      }
+    }
     # add parameter prefix to scale_info names for consistency
     names(scale_info) <- paste0(parameter, "_", names(scale_info))
     # store the parameter, the log_intercept flag (for the unscaling

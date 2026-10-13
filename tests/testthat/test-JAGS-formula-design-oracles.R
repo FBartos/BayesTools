@@ -11168,6 +11168,43 @@ test_that("transform_scale_samples unscales random-factor correlations in column
   expect_false(isTRUE(all.equal(source_cor[1, 4], expected_cor[1, 4])))
 })
 
+test_that("JAGS_formula refuses homogeneous random-effect SD blocks with a scaled slope", {
+
+  df <- data.frame(
+    x = c(1, 2, 3, 4),
+    id = factor(c("a", "a", "b", "b"))
+  )
+  compile <- function(formula, random = prior_random(id = random_block(sd = prior("gamma", list(2, 2)))),
+                      formula_scale = list(x = TRUE),
+                      priors = list(intercept = prior("normal", list(0, 1)))){
+    JAGS_formula(
+      formula = formula, parameter = "mu", data = df,
+      prior_list = priors,
+      formula_scale = formula_scale, prior_random = random
+    )
+  }
+  fixed_slope_priors <- list(intercept = prior("normal", list(0, 1)), x = prior("normal", list(0, 1)))
+  refusal <- "Cannot unscale homogeneous random-effect SD 'mu__xREx__id_sd'"
+
+  # one shared SD for several columns, one of them a scaled slope
+  for(formula in list(
+    ~ 1 + id(1 + x | id),
+    ~ 1 + random(1 + x | id, covariance = "id"),
+    ~ 1 + diag(1 + x | id, hom = TRUE)
+  )){
+    expect_error(compile(formula), refusal, fixed = TRUE)
+  }
+  # nothing is refused when x is not scaled, for a single column, for
+  # heterogeneous blocks, and for an SD that comes from an external source
+  expect_s3_class(compile(~ 1 + id(1 + x | id), formula_scale = NULL)$formula_design, "BayesTools_formula_design")
+  expect_s3_class(compile(~ 1 + id(0 + x | id))$formula_design, "BayesTools_formula_design")
+  for(formula in list(~ 1 + x + id(1 | id), ~ 1 + x + diag(1 + x | id))){
+    expect_s3_class(compile(formula, priors = fixed_slope_priors)$formula_design, "BayesTools_formula_design")
+  }
+  expect_s3_class(compile(~ 1 + id(1 + x | id),
+    prior_random(id = random_block(sd_source = random_sd_source("tau"))))$formula_design, "BayesTools_formula_design")
+})
+
 test_that("transform_scale_samples guards homogeneous random-effect SD scaling", {
 
   df <- data.frame(
@@ -11197,18 +11234,24 @@ test_that("transform_scale_samples guards homogeneous random-effect SD scaling",
     tolerance = 1e-12
   )
 
+  # JAGS_formula() no longer builds an `id(1 + x | id)` block with a scaled x,
+  # so the transform-time guard is checked on hand-built leaves: the leaves of
+  # the unscaled block beside the scale of the scaled single-column block
   intercept_slope_result <- JAGS_formula(
     formula = ~ 1 + id(1 + x | id),
     parameter = "mu",
     data = df,
     prior_list = list(intercept = prior("normal", list(0, 1))),
-    formula_scale = list(x = TRUE),
     prior_random = prior_random(id = random_block(sd = prior("gamma", list(2, 2))))
+  )
+  hand_built_scale <- slope_result$formula_scale
+  attr(hand_built_scale, "random_effect_sd_leaves") <- list(
+    "__xREx__id" = intercept_slope_result$formula_design$random_effects[[1L]]$sd_leaves
   )
   expect_error(
     BayesTools:::.bt_transform_scale_posterior(
       slope_posterior,
-      list(mu = intercept_slope_result$formula_scale)
+      list(mu = hand_built_scale)
     ),
     "Cannot unscale homogeneous random-effect SD",
     fixed = TRUE

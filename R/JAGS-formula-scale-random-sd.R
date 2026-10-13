@@ -500,6 +500,9 @@
 
   homogeneous <- !is.null(leaves$leaf_terms) &&
     identical(unique(unname(as.character(leaves$leaf_terms))), "sd")
+  if(.random_sd_homogeneous_scaled_block(leaves, scaled_vars)){
+    .random_sd_homogeneous_scaled_stop(available_leaf_names)
+  }
   if(isTRUE(homogeneous) && !is.null(leaves$column_names)){
     column_terms <- vapply(
       leaves$column_names,
@@ -519,17 +522,7 @@
   }
 
   if(isTRUE(homogeneous)){
-    if(length(column_terms) == 1L){
-      column_terms <- .random_sd_term_from_column_name(leaves$column_names[[1L]])
-    }else{
-      stop(
-        "Cannot unscale homogeneous random-effect SD '",
-        paste(available_leaf_names, collapse = "', '"),
-        "' because its block contains scaled random-slope columns. ",
-        "Use a heterogeneous random-effect SD structure or leave samples on the fitted scale.",
-        call. = FALSE
-      )
-    }
+    column_terms <- .random_sd_term_from_column_name(leaves$column_names[[1L]])
   }
 
   missing_leaf_names <- setdiff(leaf_names, random_sd_cols)
@@ -610,6 +603,10 @@
     return(out)
   }
 
+  if(.random_sd_homogeneous_scaled_block(leaves, scaled_vars)){
+    .random_sd_homogeneous_scaled_stop(leaf_names)
+  }
+
   column_terms <- vapply(
     leaves$column_names,
     .random_sd_term_from_column_name,
@@ -622,23 +619,47 @@
     scaled_vars = scaled_vars
   )
 
-  if(length(column_terms) == 1L){
-    if(isTRUE(scaled_columns)){
-      out[[leaf_names]] <- column_terms
-    }
-    return(out)
-  }
-
-  if(any(scaled_columns)){
-    stop(
-      "Cannot unscale homogeneous random-effect SD '", leaf_names,
-      "' because its block contains scaled random-slope columns. ",
-      "Use a heterogeneous random-effect SD structure or leave samples on the fitted scale.",
-      call. = FALSE
-    )
+  if(length(column_terms) == 1L && isTRUE(scaled_columns)){
+    out[[leaf_names]] <- column_terms
   }
 
   out
+}
+
+# A homogeneous block shares one SD leaf among all its columns. With a column
+# of a scaled predictor the columns transform to different original-scale SDs,
+# which the shared leaf cannot carry, so the block has no original-scale SD.
+# Structured blocks (which use unscaled data) and blocks whose SD is an
+# external or row source (their leaves are not the homogeneous 'sd' leaf) are
+# not covered; neither is a single-column block.
+.random_sd_homogeneous_scaled_block <- function(leaves, scaled_vars){
+
+  if(.random_sd_structured_leaves(leaves) || is.null(leaves$leaf_terms) ||
+     !identical(unique(unname(as.character(leaves$leaf_terms))), "sd")){
+    return(FALSE)
+  }
+  column_terms <- if(!is.null(leaves$column_names)){
+    vapply(leaves$column_names, .random_sd_term_from_column_name, character(1))
+  }else{
+    as.character(leaves$leaf_terms_by_column)
+  }
+  length(column_terms) > 1L && any(vapply(
+    column_terms,
+    .random_sd_term_uses_scaled_var,
+    logical(1),
+    scaled_vars = scaled_vars
+  ))
+}
+
+.random_sd_homogeneous_scaled_stop <- function(leaf_names){
+
+  stop(
+    "Cannot unscale homogeneous random-effect SD '",
+    paste(unique(leaf_names), collapse = "', '"),
+    "' because its block contains scaled random-slope columns. ",
+    "Use a heterogeneous random-effect SD structure or leave samples on the fitted scale.",
+    call. = FALSE
+  )
 }
 
 .random_sd_term_from_column_name <- function(column_name){
