@@ -96,3 +96,22 @@ test_that("standalone and initialization contracts remain separate from bound co
   for(i in seq_along(legacy)) legacy[[i]]$parameters$K <- 2
   expect_identical(dim(rng(legacy, 5)), c(5L, 3L))
 })
+
+test_that("lpdf and pdf of a bound factor prior resolve the coefficient dimension from the levels", {
+  for(contrast in c("orthonormal", "meandif")){
+    bound <- prior_factor_levels(prior_factor("mnormal", list(mean = 0, sd = 1.5), contrast = contrast), c("lo", "mid", "hi"))
+    expect_identical(ncol(rng(bound, 4, transform_factor_samples = FALSE)), 2L)
+    y <- c(.3, -1.2)
+    expect_equal(lpdf(bound, c(0, 0)), 2 * stats::dnorm(0, 0, 1.5, log = TRUE))
+    expect_equal(lpdf(bound, y), sum(stats::dnorm(y, 0, 1.5, log = TRUE)))
+    expect_equal(pdf(bound, y), prod(stats::dnorm(y, 0, 1.5)))
+    expect_equal(lpdf(bound, rbind(y, 2 * y)), c(sum(stats::dnorm(y, 0, 1.5, log = TRUE)), sum(stats::dnorm(2 * y, 0, 1.5, log = TRUE))),
+      ignore_attr = TRUE)
+  }
+  bound_t <- prior_factor_levels(prior_factor("mt", list(0, 1.5, 5), contrast = "orthonormal"), c("lo", "mid", "hi"))
+  expect_equal(lpdf(bound_t, c(.3, -1.2)),
+    mvtnorm::dmvt(c(.3, -1.2), delta = c(0, 0), sigma = diag(1.5^2, 2L), df = 5, type = "shifted", log = TRUE))
+  # an explicitly sized prior is unchanged
+  explicit <- prior("mnormal", list(mean = 0, sd = 1.5, K = 2))
+  expect_equal(lpdf(explicit, c(0, 0)), 2 * stats::dnorm(0, 0, 1.5, log = TRUE))
+})

@@ -157,6 +157,15 @@ NULL
   )
 }
 
+# Raw factor coefficients take their dimension from the bound factor levels when
+# the prior itself leaves it unresolved ('K' is NA).
+.prior_factor_resolve_dimension <- function(prior){
+  if(is.prior.factor(prior) && isTRUE(is.na(prior$parameters[["K"]])) && !is.null(attr(prior, "levels"))){
+    prior$parameters[["K"]] <- .get_prior_factor_levels(prior)
+  }
+  prior
+}
+
 #### joint distribution functions ####
 #' @rdname prior_functions
 rng.prior   <- function(x, n, ...){
@@ -371,9 +380,7 @@ rng.prior   <- function(x, n, ...){
 
     # Raw factor coefficients (transform_factor_samples = FALSE) take their
     # dimension from the bound factor levels, as the transformed draws do.
-    if(is.prior.factor(prior) && is.na(prior$parameters[["K"]]) && !is.null(attr(prior, "levels"))){
-      prior$parameters[["K"]] <- .get_prior_factor_levels(prior)
-    }
+    prior <- .prior_factor_resolve_dimension(prior)
 
     par1 <- switch(
       prior[["distribution"]],
@@ -545,6 +552,10 @@ lpdf.prior  <- function(x, y, ...){
     if(prior[["distribution"]] == "dirichlet"){
       return(.prior_dirichlet_lpdf(prior, x))
     }
+
+    # The density is over the raw coefficients, whose dimension comes from the
+    # bound factor levels as in rng().
+    prior <- .prior_factor_resolve_dimension(prior)
 
     par1 <- switch(
       prior[["distribution"]],
