@@ -94,6 +94,11 @@ Computed x/y objects retain full-length \code{pair_count} and
 \code{unavailability_reason} attributes; both renderers display finite bars
 only. No iteration compression, replacement estimate or confidence band is
 introduced.
+
+Weight bins that the prior fixes (for example by \code{\link[=wf_fixed]{wf_fixed()}}) are constants
+of the prior. The density and autocorrelation diagnostics omit them, and
+when nothing else remains the call returns \code{NULL} with a message, as for
+a spike prior; the trace is produced as for any other parameter.
 }
 \seealso{
 \code{\link[=JAGS_fit]{JAGS_fit()}} \code{\link[=JAGS_check_convergence]{JAGS_check_convergence()}}

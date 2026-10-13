@@ -923,3 +923,23 @@ test_that("fitted bias mixtures declare the points of their none and fixed weigh
   }
   expect_equal(as.numeric(.posterior_atoms_for_column(atoms, "omega[0.025,0.05]")$locations), c(.4, 1))
 })
+
+test_that("diagnostics of a fitted weightfunction with fixed weights behave as for a spike prior", {
+
+  skip_if_not_test_profile("fixture")
+  skip_if_not_installed("rjags")
+  skip_if_missing_fits("fit_weightfunction_fixed")
+
+  fit <- readRDS(file.path(temp_fits_dir, "fit_weightfunction_fixed.RDS"))
+
+  # every omega bin is a constant of the prior: nothing to show but the trace
+  for(type in c("density", "autocorrelation")){
+    expect_message(
+      result <- JAGS_diagnostics(fit, "omega", type, plot_type = "ggplot"),
+      "No diagnostic plots are produced for a spike prior distribution",
+      fixed = TRUE
+    )
+    expect_null(result)
+  }
+  expect_s3_class(JAGS_diagnostics(fit, "omega", "trace", plot_type = "ggplot"), "ggplot")
+})

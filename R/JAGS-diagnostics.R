@@ -24,6 +24,11 @@
 #' \code{unavailability_reason} attributes; both renderers display finite bars
 #' only. No iteration compression, replacement estimate or confidence band is
 #' introduced.
+#'
+#' Weight bins that the prior fixes (for example by [wf_fixed()]) are constants
+#' of the prior. The density and autocorrelation diagnostics omit them, and
+#' when nothing else remains the call returns \code{NULL} with a message, as for
+#' a spike prior; the trace is produced as for any other parameter.
 #' @param ... additional arguments
 #' @inheritParams density.prior
 #' @inheritParams plot.prior
@@ -87,6 +92,15 @@ JAGS_diagnostics                 <- function(fit, parameter, type, plot_type = "
 
   # prepare the plot data
   plot_data <- .diagnostics_plot_data(fit = fit, parameter = parameter, prior_list = prior_list, transformations = transformations, transform_factors = transform_factors)
+
+  # columns declared constant by the prior (fixed weightfunction bins) have no
+  # density or autocorrelation: with nothing else to show, behave as for a spike
+  structural <- attr(plot_data, "structural", exact = TRUE)
+  if(type != "trace" && length(structural) > 0L && all(structural)){
+    message("No diagnostic plots are produced for a spike prior distribution")
+    return(NULL)
+  }
+
   plot_data <- switch(
     type,
     "density"         = .diagnostics_plot_data_density(plot_data, n_points, xlim),
@@ -308,6 +322,10 @@ JAGS_diagnostics                 <- function(fit, parameter, type, plot_type = "
   # extract parameter names from column names after transformations
   parameter_names <- colnames(model_samples)
 
+  # the columns the prior declares constant (the bins of fixed weights) and the
+  # draws agree: the density and autocorrelation diagnostics skip them
+  is_structural <- .diagnostics_structural_columns(model_samples, prior_support)
+
   # rename weightfunctions factor levels (special case that overrides)
   if(any(sapply(prior_list, is.prior.weightfunction)) && !is.prior.mixture(prior_list)){
     for(par in names(prior_list)[sapply(prior_list, is.prior.weightfunction)]){
@@ -348,6 +366,7 @@ JAGS_diagnostics                 <- function(fit, parameter, type, plot_type = "
   attr(model_samples, "iter")      <- do.call(c, samples_iter)
   attr(model_samples, "parameter") <- parameter
   attr(model_samples, "prior")     <- prior_support
+  attr(model_samples, "structural") <- is_structural
   # Diagnostic transformations are validated against the selected parameter;
   # reflected KDE bounds are therefore no longer on the same support scale.
   attr(model_samples, "density_support_transformed") <- !is.null(transformations)
@@ -356,6 +375,7 @@ JAGS_diagnostics                 <- function(fit, parameter, type, plot_type = "
 }
 .diagnostics_plot_data_density         <- function(plot_data, n_points, xlim){
 
+  plot_data <- .diagnostics_drop_structural_columns(plot_data)
   chain <- attr(plot_data, "chain", exact = TRUE)
   prior <- attr(plot_data, "prior", exact = TRUE)
   .bt_diagnostics_validate_plot_data(
@@ -592,6 +612,7 @@ JAGS_diagnostics                 <- function(fit, parameter, type, plot_type = "
 }
 .diagnostics_plot_data_autocorrelation <- function(plot_data, n_points, lags){
 
+  plot_data <- .diagnostics_drop_structural_columns(plot_data)
   chain <- attr(plot_data, "chain", exact = TRUE)
   .bt_diagnostics_validate_plot_data(
     plot_data,
@@ -667,6 +688,44 @@ JAGS_diagnostics                 <- function(fit, parameter, type, plot_type = "
   attr(out, "label_parts")    <- attr(plot_data, "label_parts", exact = TRUE)
 
   return(out)
+}
+
+# The columns of the diagnostic samples that the prior declares constant (the
+# bins of fixed weights, see .bt_convergence_role_constant_bins()) and that are
+# constant in the draws. A declared constant that varies is a sample to
+# diagnose, not a structural constant.
+.diagnostics_structural_columns <- function(model_samples, prior){
+
+  structural <- rep(FALSE, ncol(model_samples))
+  if(!.diagnostics_is_selection_prior(prior)){
+    return(structural)
+  }
+
+  declared <- which(colnames(model_samples) %in% .bt_convergence_role_constant_bins(prior))
+  structural[declared] <- vapply(declared, function(i){
+    all(is.finite(model_samples[, i])) && length(unique(model_samples[, i])) == 1L
+  }, logical(1))
+
+  structural
+}
+
+# The diagnostic samples without their structural columns, with the attributes
+# of the samples; a sample without the flag is returned as is.
+.diagnostics_drop_structural_columns <- function(plot_data){
+
+  structural <- attr(plot_data, "structural", exact = TRUE)
+  if(!any(structural)){
+    return(plot_data)
+  }
+
+  out <- plot_data[, !structural, drop = FALSE]
+  for(name in setdiff(names(attributes(plot_data)), c("dim", "dimnames", "label_parts", "structural"))){
+    attr(out, name) <- attr(plot_data, name, exact = TRUE)
+  }
+  attr(out, "label_parts") <- attr(plot_data, "label_parts", exact = TRUE)[!structural]
+  attr(out, "structural")  <- structural[!structural]
+
+  out
 }
 
 .bt_diagnostics_validate_plot_data <- function(

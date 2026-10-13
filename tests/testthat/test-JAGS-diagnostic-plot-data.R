@@ -905,3 +905,137 @@ test_that("density diagnostics of a factor mixture use the support of the whole 
     expect_gt(max(coefficient[[1]]$y), 0)
   }
 })
+
+# A fit of the bias prior `bias` with the monitored columns of its omega bins,
+# alpha, kind and null mass (and `mu`, as in a model fit).
+.diagnostics_bias_fit_for_test <- function(bias, draws){
+
+  fit <- structure(list(
+    mcmc = coda::mcmc.list(coda::mcmc(draws), coda::mcmc(draws[rev(seq_len(nrow(draws))), , drop = FALSE])),
+    summary.pars = list(mutate = NULL)
+  ), class = c("BayesTools_fit", "runjags"))
+  attr(fit, "prior_list") <- list(mu = prior("normal", list(0, 1)), bias = bias)
+  attach_test_parameter_map(fit)
+}
+
+test_that("density and autocorrelation diagnostics skip the weight bins a prior fixes", {
+
+  selection <- prior_weightfunction("one-sided", c(.025), wf_fixed(c(1, .5)))
+  bias      <- prior_bias(selection, prior_phacking(form = "linear"))
+  upper     <- .diagnostics_prior_bounds(bias, "pi_null")$upper
+  grid      <- seq(.005, .995, length.out = 120)
+  draws     <- cbind(
+    mu         = seq(-1, 1, length.out = 120),
+    "omega[1]" = 1,
+    "omega[2]" = .5,
+    alpha      = grid,
+    phack_kind = 1,
+    pi_null    = upper * grid
+  )
+  fit <- .diagnostics_bias_fit_for_test(bias, draws)
+
+  # the composite parameter has a declared constant (omega[0.025,1]) and the null mass
+  plot_data <- .diagnostics_plot_data(fit, "bias", attr(fit, "prior_list"), NULL, FALSE)
+  expect_identical(colnames(plot_data), c("omega[0.025,1]", "pi_null"))
+  expect_identical(attr(plot_data, "structural"), c(TRUE, FALSE))
+
+  # density and autocorrelation return the null mass only; the trace both
+  density_data <- .diagnostics_plot_data_density(plot_data, n_points = 64, xlim = NULL)
+  expect_identical(names(density_data), "pi_null")
+  expect_identical(attr(density_data, "parameter_name"), "pi_null")
+  expect_length(attr(density_data, "label_parts"), 1L)
+  expect_identical(.bt_label(attr(density_data, "label_parts"), style = "selector"), "pi_null")
+
+  autocorrelation_data <- .diagnostics_plot_data_autocorrelation(plot_data, n_points = 64, lags = 5)
+  expect_identical(names(autocorrelation_data), "pi_null")
+  expect_identical(autocorrelation_data$pi_null[[1]]$x, 0:5)
+
+  trace_data <- .diagnostics_plot_data_trace(plot_data, n_points = 64, ylim = NULL)
+  expect_identical(names(trace_data), c("omega[0.025,1]", "pi_null"))
+
+  # the same through the public function: one plot of the null mass, two traces
+  for(type in c("density", "autocorrelation")){
+    plot <- JAGS_diagnostics(fit, "bias", type, plot_type = "ggplot", n_points = 64)
+    expect_s3_class(plot, "ggplot")
+    expect_true(all(is.finite(ggplot2::ggplot_build(plot)$data[[1]]$y)))
+  }
+  plots <- JAGS_diagnostics(fit, "bias", "trace", plot_type = "ggplot")
+  expect_length(plots, 2L)
+
+  # the omega bin on its own has nothing to show, as for a spike prior
+  for(type in c("density", "autocorrelation")){
+    expect_message(
+      result <- JAGS_diagnostics(fit, "omega", type, plot_type = "ggplot"),
+      "No diagnostic plots are produced for a spike prior distribution",
+      fixed = TRUE
+    )
+    expect_null(result)
+  }
+  expect_s3_class(JAGS_diagnostics(fit, "omega", "trace", plot_type = "ggplot"), "ggplot")
+  expect_s3_class(JAGS_diagnostics(fit, "alpha", "density", plot_type = "ggplot"), "ggplot")
+})
+
+test_that("diagnostics refuse constant draws that no prior declares constant", {
+
+  # the bins of cumulative weights are sampled: constant draws are no structure
+  selection <- prior_weightfunction("one-sided", c(.025), wf_cumulative(c(1, 1)))
+  bias      <- prior_bias(selection, prior_phacking(form = "linear"))
+  upper     <- .diagnostics_prior_bounds(bias, "pi_null")$upper
+  grid      <- seq(.005, .995, length.out = 120)
+  draws     <- cbind(
+    mu         = seq(-1, 1, length.out = 120),
+    "omega[1]" = 1,
+    "omega[2]" = .5,
+    alpha      = grid,
+    phack_kind = 1,
+    pi_null    = upper * grid
+  )
+  fit       <- .diagnostics_bias_fit_for_test(bias, draws)
+  plot_data <- .diagnostics_plot_data(fit, "bias", attr(fit, "prior_list"), NULL, FALSE)
+  expect_identical(attr(plot_data, "structural"), c(FALSE, FALSE))
+  expect_error(
+    .diagnostics_plot_data_density(plot_data, n_points = 64, xlim = NULL),
+    "Density diagnostics for 'omega\\[0.025,1\\]'.*not assessable.*constant"
+  )
+  expect_error(
+    .diagnostics_plot_data_autocorrelation(plot_data, n_points = 64, lags = 5),
+    "Autocorrelation diagnostics for 'omega\\[0.025,1\\]'.*not assessable.*constant"
+  )
+
+  # a bin the prior fixes is diagnosed when its draws vary (a corrupted sample)
+  fixed_bias <- prior_bias(
+    prior_weightfunction("one-sided", c(.025), wf_fixed(c(1, .5))),
+    prior_phacking(form = "linear")
+  )
+  draws[, "omega[2]"] <- seq(.1, .9, length.out = 120)
+  fit       <- .diagnostics_bias_fit_for_test(fixed_bias, draws)
+  plot_data <- .diagnostics_plot_data(fit, "bias", attr(fit, "prior_list"), NULL, FALSE)
+  expect_identical(attr(plot_data, "structural"), c(FALSE, FALSE))
+  expect_identical(
+    names(.diagnostics_plot_data_density(plot_data, n_points = 64, xlim = NULL)),
+    c("omega[0.025,1]", "pi_null")
+  )
+})
+
+test_that("a weightfunction with fixed weights is diagnosed like a spike prior", {
+
+  fit <- structure(list(
+    mcmc = coda::mcmc.list(
+      coda::mcmc(cbind("omega[1]" = rep(1, 40), "omega[2]" = rep(.5, 40))),
+      coda::mcmc(cbind("omega[1]" = rep(1, 40), "omega[2]" = rep(.5, 40)))
+    ),
+    summary.pars = list(mutate = NULL)
+  ), class = c("BayesTools_fit", "runjags"))
+  attr(fit, "prior_list") <- list(omega = prior_weightfunction("one-sided", c(.05), wf_fixed(c(1, .5))))
+  fit <- attach_test_parameter_map(fit)
+
+  for(type in c("density", "autocorrelation")){
+    expect_message(
+      result <- JAGS_diagnostics(fit, "omega", type, plot_type = "ggplot"),
+      "No diagnostic plots are produced for a spike prior distribution",
+      fixed = TRUE
+    )
+    expect_null(result)
+  }
+  expect_s3_class(JAGS_diagnostics(fit, "omega", "trace", plot_type = "ggplot"), "ggplot")
+})
