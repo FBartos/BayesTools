@@ -15,7 +15,11 @@
 #' In that case, the intercept prior must have strictly positive support.
 #' @param parameter valid unindexed JAGS node name of the parameter to be
 #' created with the formula
-#' @param data data.frame containing predictors included in the formula
+#' @param data data.frame containing predictors included in the formula. A
+#' logical predictor is coded as a two-level indicator; an interaction of a
+#' logical predictor with a factor in which \code{model.matrix()} would code it
+#' by indicators (e.g., \code{flag:g} without \code{flag}) is unavailable.
+#' Convert the predictor to a factor or to numeric 0/1.
 #' @param prior_list named list of prior distribution of parameters specified within
 #' the \code{formula}. When suppressing the intercept in the formula, an
 #' "intercept" prior can be explicitly specified; otherwise,
@@ -323,6 +327,7 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
   if(length(predictors) == 0L){
     predictors_type <- stats::setNames(character(), character())
   }
+  .bt_validate_logical_factor_interactions(formula_terms, data, predictors_type)
   model_terms      <- c(if(has_intercept) "intercept", attr(formula_terms, "term.labels"))
   model_terms_type <- sapply(model_terms, function(model_term){
     model_term <- strsplit(model_term, ":")[[1]]

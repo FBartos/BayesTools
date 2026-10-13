@@ -28,7 +28,11 @@ In that case, the intercept prior must have strictly positive support.}
 \item{parameter}{valid unindexed JAGS node name of the parameter to be
 created with the formula}
 
-\item{data}{data.frame containing predictors included in the formula}
+\item{data}{data.frame containing predictors included in the formula. A
+logical predictor is coded as a two-level indicator; an interaction of a
+logical predictor with a factor in which \code{model.matrix()} would code it
+by indicators (e.g., \code{flag:g} without \code{flag}) is unavailable.
+Convert the predictor to a factor or to numeric 0/1.}
 
 \item{prior_list}{named list of prior distribution of parameters specified within
 the \code{formula}. When suppressing the intercept in the formula, an

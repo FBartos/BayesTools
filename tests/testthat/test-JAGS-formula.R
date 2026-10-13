@@ -110,6 +110,83 @@ test_that("formula_add_intercept restores the intercept after a term removal tha
   }
 })
 
+test_that("JAGS_formula refuses a logical predictor that a factor interaction codes by indicators", {
+
+  data <- data.frame(
+    g     = factor(rep(c("a", "b", "c"), 4), levels = c("a", "b", "c")),
+    h     = factor(rep(c("u", "v"), each = 6), levels = c("u", "v")),
+    flag  = rep(c(TRUE, FALSE), 6),
+    flag2 = rep(c(TRUE, TRUE, FALSE), 4),
+    x     = seq(-1, 1, length.out = 12)
+  )
+  priors_for <- function(formula){
+    labels <- attr(stats::terms(formula), "term.labels")
+    priors <- lapply(labels, function(label){
+      if(any(strsplit(label, ":", fixed = TRUE)[[1L]] %in% c("g", "h"))){
+        prior_factor("normal", list(0, 1), contrast = "treatment")
+      }else{
+        prior("normal", list(0, 1))
+      }
+    })
+    names(priors) <- labels
+    if(attr(stats::terms(formula), "intercept") == 1L){
+      priors <- c(list(intercept = prior("normal", list(0, 1))), priors)
+    }
+    priors
+  }
+  remedy <- ", where model.matrix() would code it as a two-level factor. Convert it to a factor, or to numeric 0/1, in the data."
+
+  # model.matrix() codes the logical by indicators: one column per FALSE/TRUE
+  # cell, which the declared factor design (one column per factor cell) lacks.
+  refused <- list(
+    list(~ flag:g, "flag:g"), list(~ g:flag, "g:flag"), list(~ flag + flag:g, "flag:g"),
+    list(~ 0 + flag:g, "flag:g"), list(~ flag:h, "flag:h"), list(~ flag:x:g, "flag:x:g"),
+    list(~ flag:g:h, "flag:g:h")
+  )
+  for(case in refused){
+    expect_error(
+      JAGS_formula(case[[1L]], "mu", data, priors_for(case[[1L]])),
+      paste0("The logical predictor 'flag' is unavailable in the interaction term '", case[[2L]], "'", remedy),
+      fixed = TRUE,
+      info = deparse(case[[1L]])
+    )
+  }
+  expect_error(
+    JAGS_formula(~ flag:g + flag2:h, "mu", data, priors_for(~ flag:g + flag2:h)),
+    paste0(
+      "The logical predictors 'flag', 'flag2' are unavailable in the interaction terms 'flag:g', 'flag2:h', ",
+      "where model.matrix() would code them as a two-level factor. Convert them to factors, or to numeric 0/1, in the data."
+    ),
+    fixed = TRUE
+  )
+  # the refusal precedes the prior checks
+  expect_error(
+    JAGS_formula(~ flag:g, "mu", data, list(intercept = prior("normal", list(0, 1)))),
+    "logical predictor 'flag' is unavailable",
+    fixed = TRUE
+  )
+
+  # main effects, hierarchical interactions and numeric interactions keep the
+  # contrast coding of the logical (one 'flagTRUE' column)
+  accepted <- list(
+    ~ flag, ~ flag * g, ~ flag * h, ~ flag * x, ~ g + g:flag, ~ g:h + flag:g:h,
+    ~ flag * g * x, ~ flag * flag2
+  )
+  for(formula in accepted){
+    compiled <- JAGS_formula(formula, "mu", data, priors_for(formula))
+    columns <- colnames(compiled$formula_design$model_matrix)
+    expect_true(any(grepl("flagTRUE", columns, fixed = TRUE)), info = deparse(formula))
+    expect_false(any(grepl("flagFALSE", columns, fixed = TRUE)), info = deparse(formula))
+  }
+  # the same interaction is available once the predictor is a factor or numeric 0/1
+  for(converted in list(factor(data$flag), as.numeric(data$flag))){
+    converted_data <- data
+    converted_data$flag <- converted
+    compiled <- JAGS_formula(~ flag:g, "mu", converted_data, priors_for(~ flag:g))
+    expect_true(is.matrix(compiled$formula_design$model_matrix))
+  }
+})
+
 test_that("JAGS_formula rejects scaled intercept priors", {
 
   data <- data.frame(x = c(-1, 0.5, 2))

@@ -250,6 +250,52 @@
   }, character(1))
 }
 
+# model.matrix() treats a logical as a two-level factor. In a main effect or in
+# a hierarchical interaction it is coded by contrasts (one column, 'flagTRUE')
+# and JAGS_formula() binds it as a numeric predictor. When an interaction with
+# a factor omits the term without the logical, model.matrix() codes it by
+# indicators (one column per FALSE/TRUE cell), which the declared design of
+# the interaction does not describe: the coefficient vector and the design
+# would disagree only when the model is fitted.
+.bt_validate_logical_factor_interactions <- function(formula_terms, data, predictors_type){
+
+  coding <- attr(formula_terms, "factors")
+  if(!is.matrix(coding) || length(coding) == 0L){
+    return(invisible(TRUE))
+  }
+
+  logical_predictors <- rownames(coding)[vapply(rownames(coding), function(predictor){
+    is.logical(data[[predictor]])
+  }, logical(1))]
+  if(length(logical_predictors) == 0L){
+    return(invisible(TRUE))
+  }
+
+  factor_rows <- rownames(coding) %in% names(predictors_type)[predictors_type == "factor"]
+  with_factor <- colSums(coding[factor_rows, , drop = FALSE] != 0L) > 0L
+  indicator_coded <- coding[logical_predictors, , drop = FALSE] == 2L
+  indicator_coded[, !with_factor] <- FALSE
+  if(!any(indicator_coded)){
+    return(invisible(TRUE))
+  }
+
+  position <- which(indicator_coded, arr.ind = TRUE)
+  predictors <- unique(rownames(indicator_coded)[position[, "row"]])
+  terms <- unique(colnames(indicator_coded)[position[, "col"]])
+  plural <- length(predictors) > 1L
+  stop(
+    "The logical predictor", if(plural) "s " else " ",
+    paste0("'", predictors, "'", collapse = ", "),
+    if(plural) " are" else " is",
+    " unavailable in the interaction term", if(length(terms) > 1L) "s " else " ",
+    paste0("'", terms, "'", collapse = ", "),
+    ", where model.matrix() would code ", if(plural) "them" else "it",
+    " as a two-level factor. Convert ", if(plural) "them" else "it",
+    " to ", if(plural) "factors" else "a factor", ", or to numeric 0/1, in the data.",
+    call. = FALSE
+  )
+}
+
 .bt_merge_predictor_types <- function(...){
 
   predictor_types <- list(...)
