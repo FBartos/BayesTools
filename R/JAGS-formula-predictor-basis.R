@@ -135,8 +135,9 @@ JAGS_formula_coordinate_dependencies <- function(fit, coordinates){
 #'   posterior-row update directions.
 #' @param posterior_samples optional posterior sample matrix aligned with the
 #'   rows of `directions`. It is required when a selected formula term has a
-#'   parameter-valued `multiply_by` attribute; when omitted, draws are obtained
-#'   from `fit`.
+#'   parameter-valued `multiply_by` attribute that is not a scalar constant
+#'   declared by the fitted design; when omitted, draws are obtained from `fit`.
+#'   A declared constant is used in preference to a column of the draws.
 #'
 #' @return A `BayesTools_formula_predictor_basis` list with `status`, `reason`,
 #' formula `parameter`, selected `coordinates`, the `coordinate` the update is
@@ -243,6 +244,10 @@ JAGS_formula_predictor_basis <- function(fit, directions,
   multiplier_names <- unique(coordinate_map$multiplier[
     !is.na(coordinate_map$multiplier) & nzchar(coordinate_map$multiplier)
   ])
+  # A multiplier the fitted design declares as a scalar state constant is that
+  # constant, as in JAGS_evaluate_formula(); only the others come from draws.
+  constants <- .bt_formula_state_constants(design$formula_scale)
+  multiplier_names <- setdiff(multiplier_names, names(constants))
   if(length(multiplier_names) > 0L && is.null(posterior_samples)){
     posterior_samples <- as.matrix(.fit_to_posterior(fit))
   }else if(!is.null(posterior_samples)){
@@ -286,7 +291,11 @@ JAGS_formula_predictor_basis <- function(fit, directions,
     design_column <- design$model_matrix[, coordinate_map$model_column[i]]
     multiplier <- coordinate_map$multiplier_value[i]
     if(!is.na(coordinate_map$multiplier[i])){
-      multiplier <- posterior_samples[, coordinate_map$multiplier[i]]
+      multiplier <- if(coordinate_map$multiplier[i] %in% names(constants)){
+        constants[[coordinate_map$multiplier[i]]]
+      }else{
+        posterior_samples[, coordinate_map$multiplier[i]]
+      }
     }
     if(any(!is.finite(multiplier))){
       return(.bt_formula_predictor_basis_result(

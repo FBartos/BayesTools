@@ -15,8 +15,9 @@ posterior-row update directions.}
 
 \item{posterior_samples}{optional posterior sample matrix aligned with the
 rows of \code{directions}. It is required when a selected formula term has a
-parameter-valued \code{multiply_by} attribute; when omitted, draws are obtained
-from \code{fit}.}
+parameter-valued \code{multiply_by} attribute that is not a scalar constant
+declared by the fitted design; when omitted, draws are obtained from \code{fit}.
+A declared constant is used in preference to a column of the draws.}
 }
 \value{
 A \code{BayesTools_formula_predictor_basis} list with \code{status}, \code{reason},

@@ -151,6 +151,80 @@ test_that("formula predictor bases apply persisted scaling and multipliers", {
 })
 
 
+test_that("formula predictor bases take declared scalar constants as multipliers", {
+
+  slope <- prior("point", list(2))
+  attr(slope, "multiply_by") <- "sigma"
+  result <- JAGS_formula(
+    formula = ~ 1 + x,
+    parameter = "mu",
+    data = data.frame(x = c(2, 4, 6)),
+    prior_list = list(intercept = prior("point", list(5)), x = slope),
+    formula_scale = TRUE
+  )
+  # JAGS_fit() finalizes the scale with the model data, so the fitted design
+  # declares sigma = 3 although the draws carry no sigma column.
+  scale <- .bt_formula_scale_finalize(
+    result$formula_scale, result$formula_design,
+    prior_list = result$prior_list, model_data = list(sigma = 3),
+    owner_scope = "fit"
+  )
+  design <- result$formula_design
+  design$formula_scale <- scale
+  constant_fit <- function(draws, extra_priors = list()) {
+    fit <- coda::mcmc(draws)
+    class(fit) <- c("BayesTools_fit", class(fit))
+    priors <- c(result$prior_list, extra_priors)
+    attr(fit, "prior_list") <- priors
+    attr(fit, "formula_design") <- list(mu = design)
+    attr(fit, "formula_scale") <- list(mu = scale)
+    attr(fit, "parameter_map") <- .bt_build_parameter_map(
+      columns = colnames(draws), prior_list = priors,
+      formula_design = list(mu = design), formula_scale = list(mu = scale)
+    )
+    fit <- .bt_attach_draw_geometry(fit)
+    .bt_attach_fit_contract(fit)
+  }
+  x_column <- as.numeric(design$model_matrix[, "x"])
+
+  draws <- cbind(mu_intercept = c(5, 5), mu_x = c(2, 2))
+  fit <- constant_fit(draws)
+  expect_equal(
+    unname(JAGS_evaluate_formula(fit, parameter = "mu")[, 1L]),
+    5 + 3 * 2 * x_column
+  )
+  basis <- JAGS_formula_predictor_basis(fit, directions = c(mu_x = 1))
+  expect_identical(basis$status, "affine")
+  expect_equal(unname(basis$basis), matrix(3 * x_column, nrow = 1L))
+  # a matrix of directions without draws: one basis row per direction
+  basis <- JAGS_formula_predictor_basis(
+    fit, directions = matrix(c(1, -2), ncol = 1L, dimnames = list(NULL, "mu_x"))
+  )
+  expect_identical(basis$status, "affine")
+  expect_equal(unname(basis$basis), outer(c(1, -2), 3 * x_column))
+
+  # the declared constant takes precedence over a column of the draws, as in
+  # JAGS_evaluate_formula()
+  with_column <- constant_fit(
+    cbind(draws, sigma = c(7, 7)),
+    extra_priors = list(sigma = prior("normal", list(0, 1)))
+  )
+  expect_equal(
+    unname(JAGS_evaluate_formula(with_column, parameter = "mu")[, 1L]),
+    5 + 3 * 2 * x_column
+  )
+  basis <- JAGS_formula_predictor_basis(with_column, directions = c(mu_x = 1))
+  expect_identical(basis$status, "affine")
+  expect_equal(unname(basis$basis), matrix(3 * x_column, nrow = 1L))
+  # supplied draws still align the rows of the directions
+  basis <- JAGS_formula_predictor_basis(
+    with_column, directions = c(mu_x = 1),
+    posterior_samples = as.matrix(with_column)
+  )
+  expect_equal(unname(basis$basis), matrix(3 * x_column, nrow = 2L, ncol = 3L, byrow = TRUE))
+})
+
+
 test_that("formula predictor bases expose metadata-declared fallbacks", {
 
   log_formula <- ~ 1 + x
