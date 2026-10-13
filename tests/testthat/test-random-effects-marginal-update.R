@@ -434,6 +434,108 @@ test_that("source-coordinate factor and Markov plans declare their input", {
 })
 
 
+test_that("a source-coordinate plan lists every block that uses the source", {
+
+  df <- data.frame(
+    id = factor(c("a", "a", "b", "b")),
+    other = factor(c("a", "b", "a", "b")),
+    third = factor(c("u", "v", "v", "u")),
+    x = c(0, 1, 0, 1)
+  )
+  tau <- random_sd_source("tau")
+  allocation <- function(name, term){
+    random_variance_allocation(
+      name = name,
+      terms = term,
+      target = "sd_component",
+      sd_source = tau,
+      weights = prior("dirichlet", list(alpha = c(1, 1)))
+    )
+  }
+  plan_for <- function(fit, quantity){
+    catalog <- parameter_catalog(fit)
+    random_effects_marginal_update_plan(
+      fit,
+      parameter_catalog_resolve(catalog, quantity)
+    )
+  }
+  change <- function(fit, blocks, tau_value){
+    posterior <- as.matrix(fit)
+    reference <- random_effects_marginal_vcov(
+      fit, parameter = "mu", blocks = blocks, posterior_samples = posterior
+    )$samples[1L, , ]
+    posterior[, "tau"] <- tau_value
+    updated <- random_effects_marginal_vcov(
+      fit, parameter = "mu", blocks = blocks, posterior_samples = posterior
+    )$samples[1L, , ]
+    unname(updated - reference)
+  }
+
+  # two diagonal random-slope blocks whose SD-component allocations share
+  # random_sd_source("tau")
+  fit <- .random_update_test_generic_fit(
+    ~ 1 + random(1 + x | id, name = "first", covariance = "diag") +
+      random(1 + x | other, name = "second", covariance = "diag"),
+    df,
+    prior_random(allocation = list(
+      allocation("alloc1", "first"),
+      allocation("alloc2", "second")
+    )),
+    list(intercept = prior("normal", list(0, 1))),
+    extra_columns = "tau"
+  )
+  total <- plan_for(fit, "(mu) alloc1: sd_total")
+  expect_identical(total$family, "affine")
+  expect_identical(total$coefficient_input, "source")
+  expect_identical(total$source_parameter, "tau")
+  expect_identical(total$blocks, c("first", "second"))
+  expect_identical(plan_for(fit, "(mu) alloc1: var_total")$blocks, c("first", "second"))
+  expect_identical(plan_for(fit, "(mu) alloc2: sd_total")$blocks, c("second", "first"))
+
+  # the plan's blocks reproduce the full change of the covariance
+  expected <- 0.375 * (1 + outer(df$x, df$x)) * (
+    outer(as.integer(df$id), as.integer(df$id), "==") +
+      outer(as.integer(df$other), as.integer(df$other), "==")
+  )
+  full <- change(fit, blocks = NULL, tau_value = 1)
+  expect_equal(full, unname(expected), tolerance = 1e-12)
+  expect_equal(change(fit, total$blocks, tau_value = 1), full, tolerance = 1e-12)
+
+  # a weight coordinate belongs to its own allocation, and a quantity-scale
+  # component SD does not move other blocks
+  proportion <- plan_for(fit, "(mu) alloc1: var_prop(x)")
+  expect_identical(proportion$source_parameter, "mu__xRE_ALLOCx_alloc1__weight")
+  expect_identical(proportion$blocks, "first")
+  component <- plan_for(fit, "(mu) first: sd(x)")
+  expect_identical(component$coefficient_input, "quantity")
+  expect_identical(component$blocks, "first")
+
+  # a third block bound directly to the same source is listed as well
+  direct <- .random_update_test_generic_fit(
+    ~ 1 + random(1 + x | id, name = "first", covariance = "diag") +
+      random(1 + x | other, name = "second", covariance = "diag") +
+      random(1 | third, name = "third", covariance = "diag"),
+    df,
+    prior_random(
+      third = random_block(sd_source = tau),
+      allocation = list(allocation("alloc1", "first"), allocation("alloc2", "second"))
+    ),
+    list(intercept = prior("normal", list(0, 1))),
+    extra_columns = "tau"
+  )
+  direct_total <- plan_for(direct, "(mu) alloc1: sd_total")
+  expect_identical(direct_total$blocks, c("first", "second", "third"))
+  expect_equal(
+    change(direct, direct_total$blocks, tau_value = 1),
+    change(direct, NULL, tau_value = 1),
+    tolerance = 1e-12
+  )
+  expect_gt(
+    max(abs(change(direct, "first", tau_value = 1) - change(direct, NULL, tau_value = 1))),
+    0.1
+  )
+})
+
 test_that("random covariance updates are classified from formula metadata", {
 
   data <- data.frame(

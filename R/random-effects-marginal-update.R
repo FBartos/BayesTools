@@ -19,7 +19,9 @@
 #'   `BayesTools_random_effects_marginal_update_plan`. Field `family` is one of
 #'   `"affine"`, `"factor"`, `"markov"`, or `"unsupported"`. An affine plan
 #'   additionally records the scalar covariance coefficient transform and the
-#'   affected random-effect blocks.
+#'   affected random-effect blocks. For a plan in a source coordinate
+#'   (`coefficient_input = "source"`), the blocks include every block whose SD
+#'   binding uses that source, also through another variance allocation.
 #'
 #' @details
 #' `family = "affine"` means that, conditional on every non-selected posterior
@@ -86,6 +88,20 @@ random_effects_marginal_update_plan <- function(fit, selection){
         plan <- block_allocation$plan
       }
     }
+  }
+  if(identical(plan$family, "affine") &&
+     identical(plan$coefficient_input, "source")){
+    plan$blocks <- .bt_random_effect_marginal_update_source_blocks(
+      fit = fit,
+      design = design,
+      key = key,
+      blocks = plan$blocks,
+      source = if(is.null(plan$source_parameter)){
+        key$source_parameter
+      }else{
+        plan$source_parameter
+      }
+    )
   }
   plan$invariant_covariance <-
     .bt_random_effect_marginal_update_invariant_covariance(
@@ -1020,6 +1036,44 @@ random_effects_marginal_update_grid <- function(
     )
   }
   blocks
+}
+
+
+# Changing a source coordinate changes every block whose SD binding uses it: the
+# blocks of each allocation record and of each direct block binding with that
+# source, not only those of the selected allocation.
+.bt_random_effect_marginal_update_source_blocks <- function(
+    fit, design, key, blocks, source){
+
+  if(!is.character(source) || length(source) != 1L || is.na(source) ||
+     !nzchar(source)){
+    return(blocks)
+  }
+  uses_source <- function(candidate){
+    is.list(candidate) &&
+      identical(.bt_random_sd_binding_source_name(candidate), source)
+  }
+  random_terms <- .bt_formula_design_random_effects(design)
+  block_names <- vapply(random_terms, `[[`, character(1), "block_name")
+  used <- character()
+  for(allocation in design$random_allocations){
+    if(uses_source(allocation$source)){
+      used <- c(used, .bt_random_effect_marginal_update_allocation_blocks(
+        fit,
+        key,
+        allocation
+      ))
+    }
+  }
+  for(random_term in random_terms){
+    binding <- random_term$sd_binding
+    if(is.list(binding) && !isTRUE(binding$true_allocation) &&
+       uses_source(binding$source)){
+      used <- c(used, random_term$block_name)
+    }
+  }
+
+  unique(c(blocks, block_names[block_names %in% used]))
 }
 
 

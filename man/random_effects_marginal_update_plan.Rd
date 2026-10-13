@@ -18,7 +18,9 @@ A list of class
 \code{BayesTools_random_effects_marginal_update_plan}. Field \code{family} is one of
 \code{"affine"}, \code{"factor"}, \code{"markov"}, or \code{"unsupported"}. An affine plan
 additionally records the scalar covariance coefficient transform and the
-affected random-effect blocks.
+affected random-effect blocks. For a plan in a source coordinate
+(\code{coefficient_input = "source"}), the blocks include every block whose SD
+binding uses that source, also through another variance allocation.
 }
 \description{
 Resolves a selected public random-effect quantity to the exact scalar
