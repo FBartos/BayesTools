@@ -256,16 +256,19 @@
 # a factor omits the term without the logical, model.matrix() codes it by
 # indicators (one column per FALSE/TRUE cell), which the declared design of
 # the interaction does not describe: the coefficient vector and the design
-# would disagree only when the model is fitted.
-.bt_validate_logical_factor_interactions <- function(formula_terms, data, predictors_type){
+# would disagree only when the model is fitted. A logical predictor that
+# 'formula_scale' standardizes is numeric in the design and is not refused.
+.bt_validate_logical_factor_interactions <- function(formula_terms, data, predictors_type,
+                                                     formula_scale = NULL){
 
   coding <- attr(formula_terms, "factors")
   if(!is.matrix(coding) || length(coding) == 0L){
     return(invisible(TRUE))
   }
 
+  # a logical predictor that 'formula_scale' standardizes is numeric in the design
   logical_predictors <- rownames(coding)[vapply(rownames(coding), function(predictor){
-    is.logical(data[[predictor]])
+    is.logical(data[[predictor]]) && !.bt_should_scale_predictor(formula_scale, predictor)
   }, logical(1))]
   if(length(logical_predictors) == 0L){
     return(invisible(TRUE))

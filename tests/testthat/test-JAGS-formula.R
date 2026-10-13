@@ -187,6 +187,58 @@ test_that("JAGS_formula refuses a logical predictor that a factor interaction co
   }
 })
 
+test_that("JAGS_formula standardizes a logical predictor in a factor interaction instead of refusing it", {
+
+  data <- data.frame(
+    g    = factor(rep(c("a", "b", "c"), 4), levels = c("a", "b", "c")),
+    flag = rep(c(TRUE, FALSE), 6),
+    x    = seq(-1, 1, length.out = 12)
+  )
+  priors <- list(
+    intercept = prior("normal", list(0, 1)),
+    x         = prior("normal", list(0, 1)),
+    "flag:g"  = prior_factor("normal", list(0, 1), contrast = "treatment")
+  )
+  coefficient_names <- c("mu_intercept", "mu_x", paste0("mu_flag__xXx__g[", 1:3, "]"))
+  beta <- c(0.5, -1, 2, 3, -4)
+
+  # a standardized logical is numeric in the design: the interaction multiplies
+  # the standardized flag with the level indicators of `g`
+  standardized_flag <- (data$flag - mean(data$flag)) / stats::sd(data$flag)
+  standardized_x <- (data$x - mean(data$x)) / stats::sd(data$x)
+  cases <- list(
+    list(scale = TRUE, x = standardized_x),
+    list(scale = list(flag = TRUE), x = data$x),
+    list(scale = list(flag = TRUE, x = TRUE), x = standardized_x)
+  )
+  for(case in cases){
+    info <- paste(deparse(case$scale), collapse = "")
+    compiled <- JAGS_formula(~ x + flag:g, "mu", data, priors, formula_scale = case$scale)
+    design <- compiled$formula_design$model_matrix
+    expect_identical(ncol(design), 5L, info = info)
+
+    indicators <- cbind(data$g == "a", data$g == "b", data$g == "c") * 1
+    independent <- 0.5 - 1 * case$x + drop(standardized_flag * (indicators %*% c(2, 3, -4)))
+    expect_equal(unname(drop(design %*% beta)), independent, info = info)
+
+    carrier <- JAGS_formula_draws(
+      matrix(beta, 1L, dimnames = list(NULL, coefficient_names)),
+      ~ x + flag:g, "mu", data, priors, formula_scale = case$scale
+    )
+    expect_equal(unname(drop(JAGS_evaluate_formula(carrier, parameter = "mu"))), independent, info = info)
+  }
+
+  # a logical that stays logical in the design is still refused
+  for(scale in list(NULL, FALSE, list(x = TRUE), list(flag = FALSE, x = TRUE))){
+    expect_error(
+      JAGS_formula(~ x + flag:g, "mu", data, priors, formula_scale = scale),
+      "The logical predictor 'flag' is unavailable in the interaction term 'flag:g'",
+      fixed = TRUE,
+      info = paste(deparse(scale), collapse = "")
+    )
+  }
+})
+
 test_that("JAGS_formula rejects scaled intercept priors", {
 
   data <- data.frame(x = c(-1, 0.5, 2))
