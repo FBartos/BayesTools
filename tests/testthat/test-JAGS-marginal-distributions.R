@@ -5659,6 +5659,42 @@ test_that("use_formula = FALSE builds the prior law when only the atoms are unav
                class = "BayesTools_formula_measure_unavailable")
 })
 
+test_that("a finite support bound mapping to an infinite limit takes the infinite bound", {
+
+  set.seed(1)
+  draws <- stats::rgamma(200, 2, 1)
+  make_marginal <- function(bounds, draws){
+    marginal <- structure(draws, class = c("marginal_posterior.simple", "marginal_posterior"))
+    posterior_metadata(marginal, "support") <- posterior_support_attribute(bounds, exact = TRUE)
+    posterior_metadata(marginal, "atoms") <- posterior_atom_attribute()
+    marginal
+  }
+
+  # a decreasing exp_lin maps the exact bound 0 to the limit Inf and the bound Inf to 0
+  transformed <- posterior_transform(make_marginal(c(0, Inf), draws), "exp_lin", list(a = 1, b = -2))
+  support <- posterior_metadata(transformed, "support")
+  expect_identical(support$bounds, c(0, Inf))
+  expect_true(support$exact)
+  expect_equal(as.numeric(transformed), exp(1 - 2 * log(draws)), tolerance = 1e-12)
+  # the increasing map and the finite bounds are unchanged
+  increasing <- posterior_transform(make_marginal(c(0, Inf), draws), "exp_lin", list(a = 1, b = 2))
+  expect_identical(posterior_metadata(increasing, "support")$bounds, c(0, Inf))
+  finite <- posterior_transform(make_marginal(c(0, 20), draws), "exp_lin", list(a = 0, b = 2))
+  expect_equal(posterior_metadata(finite, "support")$bounds, c(0, 400))
+  decreasing <- posterior_transform(make_marginal(c(1, 20), draws + 1), "exp_lin", list(a = 0, b = -1))
+  expect_equal(posterior_metadata(decreasing, "support")$bounds, c(1 / 20, 1))
+
+  # finite source values with non-representable images stay refused
+  expect_error(
+    posterior_transform(make_marginal(c(0, 800), draws), "exp"),
+    class = "BayesTools_transformation_image_unavailable"
+  )
+  expect_error(
+    posterior_transform(make_marginal(c(1e-200, 10), draws), "exp_lin", list(a = 0, b = -2)),
+    class = "BayesTools_transformation_image_unavailable"
+  )
+})
+
 # File-level skips: All remaining tests in this file require pre-fitted models
 skip_if_not_visual_fixture_tests()
 skip_if_no_fits()

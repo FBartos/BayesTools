@@ -492,11 +492,29 @@ posterior_support_attribute <- function(bounds, points = NULL, type = NULL,
     return(NULL)
   }
 
-  transformed_bounds <- suppressWarnings(.density.prior_transformation_checked_x(
-    support$bounds,
-    transformation,
-    transformation_arguments
-  ))
+  # A finite exact bound whose image is an infinite mathematical limit takes the
+  # infinite bound (the source zero of a decreasing 'exp_lin' maps to Inf, as for
+  # the prior density); other finite bounds with non-representable images are
+  # refused by the check.
+  transformed_bounds <- rep(NA_real_, 2L)
+  limit_bounds <- rep(FALSE, 2L)
+  if(identical(transformation, "exp_lin")){
+    arguments <- .density.prior_transformation_named_arguments(
+      transformation, transformation_arguments
+    )
+    if(length(arguments$a) == 1L && length(arguments$b) == 1L &&
+       is.finite(arguments$a) && is.finite(arguments$b) && arguments$b < 0){
+      limit_bounds <- support$bounds == 0
+      transformed_bounds[limit_bounds] <- Inf
+    }
+  }
+  if(any(!limit_bounds)){
+    transformed_bounds[!limit_bounds] <- suppressWarnings(.density.prior_transformation_checked_x(
+      support$bounds[!limit_bounds],
+      transformation,
+      transformation_arguments
+    ))
+  }
   if(length(transformed_bounds) != 2L || anyNA(transformed_bounds)){
     return(NULL)
   }
