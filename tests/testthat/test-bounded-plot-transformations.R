@@ -176,3 +176,38 @@ test_that("transformation output support metadata is validated", {
                  "output_support", fixed = TRUE)
   }
 })
+
+test_that("exp_lin keeps the curve of a root map when the source density is infinite at zero", {
+
+  roots <- list(
+    gamma = list(prior = prior("gamma", list(.5, 1)), upper = Inf,
+                 density = function(y) 2 * y * stats::dgamma(y^2, .5, 1)),
+    beta  = list(prior = prior("beta", list(.5, .5)), upper = 1,
+                 density = function(y) 2 * y * stats::dbeta(y^2, .5, .5)))
+  for(root in roots){
+    curves <- lapply(c(TRUE, FALSE), function(truncate_end){
+      density(root$prior, transformation = "exp_lin",
+              transformation_arguments = list(a = 0, b = .5), truncate_end = truncate_end)
+    })
+    for(curve in curves){
+      # finite below the source's own upper boundary, where a Beta density stays infinite as untransformed
+      below <- curve$x < root$upper
+      expect_true(all(is.finite(curve$y[below])))
+      inside <- curve$x > 0 & below
+      expect_equal(curve$y[inside], root$density(curve$x[inside]), tolerance = 1e-8)
+    }
+    # the default closes the curve at the source zero with a zero height, as for finite boundaries
+    expect_true(all(curves[[1L]]$y[curves[[1L]]$x == 0] == 0))
+    expect_false(any(curves[[2L]]$x == 0))
+    expect_identical(curves[[1L]]$x[curves[[1L]]$x > 0 & curves[[1L]]$x < root$upper],
+                     curves[[2L]]$x[curves[[2L]]$x > 0 & curves[[2L]]$x < root$upper])
+    expect_identical(curves[[1L]]$y[curves[[1L]]$x > 0 & curves[[1L]]$x < root$upper],
+                     curves[[2L]]$y[curves[[2L]]$x > 0 & curves[[2L]]$x < root$upper])
+  }
+  gamma_curve <- density(roots$gamma$prior, transformation = "exp_lin",
+                         transformation_arguments = list(a = 0, b = .5))
+  expect_true(all(is.finite(gamma_curve$y)))
+  expect_true(all(is.finite(attr(gamma_curve, "y_range"))))
+  heights <- stats::approx(gamma_curve$x, gamma_curve$y, xout = c(.1, .5, 1))$y
+  expect_equal(heights, roots$gamma$density(c(.1, .5, 1)), tolerance = 5e-3)
+})

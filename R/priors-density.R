@@ -1877,7 +1877,10 @@ range.prior  <- function(x, quantiles = NULL, ..., na.rm = FALSE){
       if(b == 1){
         y_new[at_zero] <- y[at_zero] / exp(a)
       }else if(b > 0 && b < 1){
+        # a finite source ordinate maps to 0; an infinite one has no
+        # representable transformed ordinate (its Jacobian is infinite too)
         y_new[at_zero & is.finite(y)] <- 0
+        drop[at_zero & !is.finite(y)] <- TRUE
       }else if(b > 1 || b < 0){
         drop[at_zero] <- TRUE
       }
