@@ -12159,6 +12159,55 @@ test_that("random-block contrast specifications validate their design scope", {
     "level basis is defined by the covariance structure",
     fixed = TRUE
   )
+
+  # A random-only factor carrying a contrasts matrix or an unsupported contrast
+  # name is refused naming the factor, instead of failing inside vapply().
+  compile_with_attribute <- function(contrasts_attribute, formula, block){
+    d <- data
+    if(!is.null(contrasts_attribute)){
+      stats::contrasts(d$f) <- contrasts_attribute
+    }
+    JAGS_formula(
+      formula,
+      parameter = "mu",
+      data = d,
+      prior_list = list(intercept = prior("normal", list(0, 1))),
+      prior_random = prior_random(id = block)
+    )
+  }
+  gamma_block <- random_block(sd = prior("gamma", list(2, 2)))
+  for(formula in list(~ 1 + diag(0 + f | id), ~ 1 + us(1 + f | id), ~ 1 + (1 + f | id))){
+    for(matrix_contrasts in list(stats::contr.treatment(3), stats::contr.sum(3))){
+      expect_error(
+        compile_with_attribute(matrix_contrasts, formula, gamma_block),
+        "Random-effect factor 'f' uses a contrasts matrix, which random effects do not support.",
+        fixed = TRUE
+      )
+    }
+    expect_error(
+      compile_with_attribute("contr.sum", formula, gamma_block),
+      "Random-effect factor 'f' uses the contrasts 'contr.sum', which random effects do not support.",
+      fixed = TRUE
+    )
+    expect_error(
+      compile_with_attribute(stats::contr.sum(3), formula, gamma_block),
+      "random_block(contrasts = c(f = \"treatment\"))",
+      fixed = TRUE
+    )
+    # Without the attribute, with a supported name or with a block override the
+    # same design compiles.
+    expect_no_error(compile_with_attribute(NULL, formula, gamma_block))
+    expect_no_error(compile_with_attribute("contr.treatment", formula, gamma_block))
+    expect_no_error(compile_with_attribute(
+      stats::contr.sum(3), formula,
+      random_block(sd = prior("gamma", list(2, 2)), contrasts = c(f = "treatment"))
+    ))
+  }
+  # Structures that own the level basis never read the factor's contrasts.
+  cs_block <- random_block(sd = prior("gamma", list(2, 2)), cor = prior("normal", list(0, 0.5)))
+  for(contrasts_attribute in list(stats::contr.sum(3), "contr.sum")){
+    expect_no_error(compile_with_attribute(contrasts_attribute, ~ 1 + cs(f | id), cs_block))
+  }
 })
 
 test_that("structured random-effect terms use level-indexed factor columns and scalar rho priors", {

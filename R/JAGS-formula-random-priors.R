@@ -138,6 +138,39 @@
   unlist(strsplit(term, "__xXx__|:", perl = TRUE), use.names = FALSE)
 }
 
+# The contrasts a random-effect factor term can use. A factor carrying a
+# contrasts matrix or another contrast function name is refused here, naming
+# the factor, because the SD specification cannot map its coefficients.
+.bt_random_effect_check_factor_contrast_name <- function(contrast_name, factor_name){
+
+  supported <- c(
+    "contr.treatment", "contr.independent", "contr.mixed",
+    "contr.orthonormal", "contr.meandif"
+  )
+  if(is.character(contrast_name) && length(contrast_name) == 1L &&
+     !is.na(contrast_name) &&
+     (contrast_name %in% supported || .prior_ordered_is_contrast_name(contrast_name))){
+    return(invisible(TRUE))
+  }
+
+  found <- if(is.character(contrast_name) && length(contrast_name) == 1L){
+    paste0("the contrasts '", contrast_name, "'")
+  }else if(is.matrix(contrast_name)){
+    "a contrasts matrix"
+  }else{
+    "unsupported contrasts"
+  }
+  stop(
+    "Random-effect factor '", factor_name, "' uses ", found,
+    ", which random effects do not support. Remove the 'contrasts' attribute of '",
+    factor_name, "' or choose a supported coding with random_block(contrasts = c(",
+    factor_name, " = \"treatment\")); ",
+    "the supported codings are \"treatment\", \"independent\", \"orthonormal\", ",
+    "\"meandif\", \"cumulative\" and \"cumulative_levels\".",
+    call. = FALSE
+  )
+}
+
 .bt_random_effect_factor_term_contrast <- function(model_term, predictors_type, data){
 
   components <- .bt_random_effect_term_components(model_term)
@@ -151,7 +184,11 @@
 
   contrasts <- vapply(factor_components, function(factor_name){
     contrast_name <- attr(data[[factor_name]], "contrasts")
-    if(is.null(contrast_name)) "contr.treatment" else contrast_name
+    if(is.null(contrast_name)){
+      return("contr.treatment")
+    }
+    .bt_random_effect_check_factor_contrast_name(contrast_name, factor_name)
+    contrast_name
   }, character(1))
   contrasts <- unique(contrasts)
 
