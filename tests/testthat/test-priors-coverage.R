@@ -283,14 +283,56 @@ test_that("uniform prior honors truncation", {
   samples <- rng(p, 100)
   expect_true(all(samples >= 2 & samples <= 5))
 
+  # JAGS cannot bound dunif: the syntax is the uniform distribution on the
+  # intersection of the range and the truncation
   syntax <- JAGS_add_priors("model{}", list(theta = p))
-  expect_match(syntax, "theta ~ dunif\\(0,10\\)T\\(2,5\\)")
+  expect_match(syntax, "theta ~ dunif(2,5)\n", fixed = TRUE)
+  expect_false(grepl("T(", syntax, fixed = TRUE))
 
   posterior <- matrix(c(2.5, 3.5), ncol = 1)
   colnames(posterior) <- "theta"
   prepared <- JAGS_bridgesampling_posterior(posterior, list(theta = p))
   expect_equal(attr(prepared, "lb"), c(theta = 2))
   expect_equal(attr(prepared, "ub"), c(theta = 5))
+})
+
+
+test_that("a truncated uniform prior emits dunif on the intersection without T()", {
+
+  emitted <- function(prior_list) JAGS_add_priors("model{}", prior_list)
+
+  # the truncation narrows the range on one or both sides
+  expect_match(emitted(list(x = prior("uniform", list(-1, 2), truncation = list(0, 1)))), "x ~ dunif(0,1)\n", fixed = TRUE)
+  expect_match(emitted(list(x = prior("uniform", list(-1, 2), truncation = list(-1, 1)))), "x ~ dunif(-1,1)\n", fixed = TRUE)
+  expect_match(emitted(list(x = prior("uniform", list(-1, 2), truncation = list(.5, 2)))), "x ~ dunif(0.5,2)\n", fixed = TRUE)
+  expect_match(emitted(list(x = prior("uniform", list(-1, 2), truncation = list(-Inf, 1)))), "x ~ dunif(-1,1)\n", fixed = TRUE)
+  expect_match(emitted(list(x = prior("uniform", list(-1, 2), truncation = list(0, Inf)))), "x ~ dunif(0,2)\n", fixed = TRUE)
+
+  # an untruncated uniform prior is unchanged
+  expect_identical(emitted(list(x = prior("uniform", list(-1, 2)))), "model{\n x ~ dunif(-1,2)\n\n}")
+  expect_identical(emitted(list(x = prior("uniform", list(0, 1)))), "model{\n x ~ dunif(0,1)\n\n}")
+
+  # other distributions keep T()
+  expect_match(emitted(list(x = prior("normal", list(0, 1), truncation = list(0, 1)))), "x ~ dnorm(0,1)T(0,1)\n", fixed = TRUE)
+
+  # the distribution of the emitted syntax is the one of the prior
+  p <- prior("uniform", list(-1, 2), truncation = list(0, 1))
+  x <- c(-.5, 0, .25, .75, 1, 1.5)
+  expect_equal(stats::dunif(x, 0, 1), pdf(p, x))
+
+  # also inside spike-and-slab, mixture and factor priors
+  slab <- emitted(list(x = prior_spike_and_slab(p)))
+  expect_match(slab, "x_variable ~ dunif(0,1)\n", fixed = TRUE)
+  expect_false(grepl("T(", slab, fixed = TRUE))
+  mixture <- emitted(list(x = prior_mixture(list(p, prior("normal", list(0, 1))))))
+  expect_match(mixture, "x_component_1 ~ dunif(0,1)\n", fixed = TRUE)
+  expect_false(grepl("T(", mixture, fixed = TRUE))
+  factor_syntax <- emitted(list(x = structure(
+    prior_factor("uniform", list(-1, 2), truncation = list(0, 1), contrast = "treatment"),
+    levels = 2L
+  )))
+  expect_match(factor_syntax, "x[i] ~ dunif(0,1)\n", fixed = TRUE)
+  expect_false(grepl("T(", factor_syntax, fixed = TRUE))
 })
 
 

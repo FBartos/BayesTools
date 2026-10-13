@@ -119,6 +119,16 @@ JAGS_add_priors           <- function(syntax, prior_list){
     if(numeric_literals && is.numeric(value) && all(is.finite(value))) .prior_ordered_format_number(value) else value
   }
 
+  # JAGS cannot bound a uniform distribution with T(): a truncated uniform
+  # prior is the uniform distribution on the intersection of its range and its
+  # truncation
+  if(prior[["distribution"]] == "uniform"){
+    uniform_range <- c(
+      max(prior$parameter[["a"]], prior$truncation[["lower"]]),
+      min(prior$parameter[["b"]], prior$truncation[["upper"]])
+    )
+  }
+
   # distribution
   syntax <- switch(
     prior[["distribution"]],
@@ -131,13 +141,13 @@ JAGS_add_priors           <- function(syntax, prior_list){
     "exp"       = paste0(parameter_name," ~ dexp(",number(prior$parameter[["rate"]]),")"),
     "beta"      = paste0(parameter_name," ~ dbeta(",number(prior$parameter[["alpha"]]),",",number(prior$parameter[["beta"]]),")"),
     "bernoulli" = paste0(parameter_name," ~ dbern(",number(prior$parameter[["probability"]]),")"),
-    "uniform"   = paste0(parameter_name," ~ dunif(",number(prior$parameter[["a"]]),",",number(prior$parameter[["b"]]),")"),
+    "uniform"   = paste0(parameter_name," ~ dunif(",number(uniform_range[1]),",",number(uniform_range[2]),")"),
     "moment"    = paste0(parameter_name," ~ dbt_moment(",number(prior$parameter[["location"]]),",",number(prior$parameter[["tau"]]),",",number(prior$parameter[["order"]]),")"),
     "invmoment" = paste0(parameter_name," ~ dbt_invmoment(",number(prior$parameter[["location"]]),",",number(prior$parameter[["tau"]]),",",number(prior$parameter[["order"]]),",",number(prior$parameter[["df"]]),")")
   )
 
   # add truncation
-  if(!.is_prior_default_range(prior)){
+  if(prior[["distribution"]] != "uniform" && !.is_prior_default_range(prior)){
     syntax <- paste0(syntax, "T(",
                      ifelse(is.infinite(prior$truncation[["lower"]]),"",number(prior$truncation[["lower"]])),
                      ",",
