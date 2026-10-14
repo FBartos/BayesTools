@@ -717,3 +717,47 @@ test_that("the failed blocks are read from the recorder of the testthat run", {
   )
   expect_null(failed_blocks)
 })
+
+test_that("the model-fit cache key follows the code, the registry, and the fitting file", {
+  # a temporary cache (no JAGS fit); the key hashes the loaded namespace
+  cache <- redirected_cache(package_hashes = TRUE)
+  cache$save_artifacts()
+  expect_true(cache$mark(failed_blocks = character()))
+  expect_true(cache$current())
+
+  # The hashes of the loaded namespace are kept for the session (see
+  # .test_cache_package_function_hashes()), so a function edit counts once they
+  # are computed again, as for a reloaded namespace. The edit keeps what the
+  # function calls, so it changes the hash and nothing else about the key.
+  stale_after_editing <- function(name) {
+    edited <- get(name, envir = asNamespace("BayesTools"))
+    body(edited) <- call("{", quote(invisible(0.1234567890123456)), body(edited))
+    withr::local_options(bayestools_test_cache_memo = NULL)
+    do.call(
+      testthat::local_mocked_bindings,
+      c(stats::setNames(list(edited), name), list(.package = "BayesTools", .env = environment()))
+    )
+    !cache$current()
+  }
+
+  # a post-fit function that no fit generator reaches leaves the cache current
+  expect_false(stale_after_editing("plot_prior_list"))
+  # a function that the generators reach makes it stale
+  expect_true(stale_after_editing("JAGS_fit"))
+  expect_true(cache$current())
+
+  # the registry: the same models with another content
+  registry <- readRDS(cache$registry_file)
+  saveRDS(cbind(registry, note = "changed"), cache$registry_file)
+  expect_false(cache$current())
+  expect_true(cache$mark(failed_blocks = character()))
+  expect_true(cache$current())
+
+  # the fitting file: the hash it was marked with
+  marker <- readLines(cache$indicator)
+  fit_file_line <- grep("^source_md5_test_00_model_fits:", marker)
+  expect_length(fit_file_line, 1L)
+  marker[fit_file_line] <- "source_md5_test_00_model_fits: 0123456789abcdef0123456789abcdef"
+  writeLines(marker, cache$indicator)
+  expect_false(cache$current())
+})
