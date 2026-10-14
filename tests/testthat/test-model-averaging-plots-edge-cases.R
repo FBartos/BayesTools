@@ -923,9 +923,23 @@ test_that("plot_models conditional view rejects empty model sets", {
       transformation = NULL,
       transformation_arguments = NULL,
       transformation_settings = FALSE
-    )
+    ),
+    "The conditional view of 'theta' has no models: all models are null models for it. Use 'conditional = FALSE'.",
+    fixed = TRUE
   )
 
+})
+
+test_that("plot_models rejects a parameter that the samples and the inference do not contain", {
+
+  fixture <- .test_plot_models_fixture()
+  expected <- "must be a parameter of both 'samples' and 'inference'."
+  expect_error(plot_models(fixture$models, fixture$samples, fixture$inference, "missing", plot_type = "ggplot"),
+               expected, fixed = TRUE)
+  expect_error(plot_models(fixture$models, fixture$samples, list(other = fixture$total_inference), "theta",
+                           plot_type = "ggplot"), expected, fixed = TRUE)
+  expect_s3_class(plot_models(fixture$models, fixture$samples, fixture$inference, "theta", plot_type = "ggplot"),
+                  "ggplot")
 })
 
 test_that("plot_models rejects bad transformations and invalid style switches", {
