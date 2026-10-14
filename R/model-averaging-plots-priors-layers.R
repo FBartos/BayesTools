@@ -123,7 +123,9 @@ lines_prior_list <- function(prior_list, xlim = NULL, x_seq = NULL, x_range_quan
 #' @inheritParams density.prior
 #' @inheritParams plot_prior_list
 #'
-#' @return \code{geom_prior_list} returns an object of class 'ggplot'.
+#' @return \code{geom_prior_list} returns an overlay of class
+#' \code{BayesTools_prior_overlay}, which is added to a prior plot with
+#' \code{+} and takes the scaling of the probability axis of that plot.
 #'
 #' @seealso [plot_prior_list()] [lines_prior_list()]
 #' @rdname geom_prior_list

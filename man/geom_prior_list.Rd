@@ -112,7 +112,9 @@ regression. Use \code{"positive"} (default) for
 \item{...}{additional arguments}
 }
 \value{
-\code{geom_prior_list} returns an object of class 'ggplot'.
+\code{geom_prior_list} returns an overlay of class
+\code{BayesTools_prior_overlay}, which is added to a prior plot with
+\code{+} and takes the scaling of the probability axis of that plot.
 }
 \description{
 Add list of prior objects to a plot
