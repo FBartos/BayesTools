@@ -2465,6 +2465,64 @@ test_that("allocation quantities with inclusion gates or point scales declare th
   expect_points_are_density_atoms(nested, "nested")
 })
 
+test_that("a public external SD source stays a catalog quantity of its model", {
+
+  # `tau` is a model-level parameter (as in RoBMA) that a variance allocation
+  # reads through random_sd_source(): it is not an implementation row of the
+  # allocation, so it stays a catalog quantity that selectors and hypotheses
+  # resolve, and sd_total remains its identity view in the formula namespace.
+  data <- data.frame(study = factor(c("s1", "s1", "s2", "s2")),
+                     drug = factor(c("a", "b", "a", "b")))
+  tau_prior <- prior("normal", list(0, 1), list(0, Inf))
+  result <- JAGS_formula(
+    formula = ~ 1 + random(1 | study, name = "study", covariance = "diag") +
+      random(1 | drug, name = "drug", covariance = "diag"),
+    parameter = "mu", data = data,
+    prior_list = list(intercept = prior("normal", list(0, 1))),
+    prior_random = prior_random(allocation = random_variance_allocation(
+      name = "total_re", terms = c(study = "study", drug = "drug"),
+      sd_source = random_sd_source("tau"),
+      weights = prior("dirichlet", list(alpha = c(2, 2)))
+    ))
+  )
+  allocation <- result$formula_design$random_allocations[[1L]]
+  prior_list <- c(result$prior_list, list(tau = tau_prior))
+  columns <- c("mu_intercept", "tau", paste0(allocation$weight_name, "[", 1:2, "]"))
+  values <- matrix(c(0, 0, 0.5, 0.9, 0.4, 0.3, 0.6, 0.7), nrow = 2L,
+                   dimnames = list(NULL, columns))
+  fit <- .parameter_catalog_test_fit(
+    coda::mcmc.list(coda::mcmc(values)), prior_list,
+    formula_design = list(mu = result$formula_design)
+  )
+  catalog <- parameter_catalog(fit)
+
+  tau <- parameter_catalog_resolve(catalog, "tau")
+  expect_identical(tau$quantities$canonical_name, "tau")
+  expect_identical(tau$quantities$role, "parameter")
+  expect_false(tau$quantities$internal)
+  resolved <- hypothesis_resolve(hypothesis_parse("tau > 0.2"), catalog)
+  expect_identical(unique(resolved$occurrences$canonical_name), "tau")
+  expect_equal(as.numeric(as.matrix(parameter_draws(fit, tau))), unname(values[, "tau"]))
+
+  # the allocation quantities are unchanged: the total is the identity view of
+  # tau in the formula namespace, the weights and the scale node stay internal
+  total <- parameter_catalog_resolve(catalog, "(mu) total_re: sd_total", "mu")
+  expect_identical(total$quantities$source_type, "identity")
+  expect_identical(total$quantities$extraction_key[[1L]]$source_parameter, "tau")
+  expect_false(any(grepl("ALLOCx", catalog$quantities$canonical_name)))
+  expect_setequal(
+    catalog$quantities$canonical_name[catalog$quantities$role == "random_var_prop"],
+    c("(mu) total_re: var_prop(study)", "(mu) total_re: var_prop(drug)")
+  )
+
+  # the coordinate is the same quantity with and without the allocation
+  plain <- .parameter_catalog_test_fit(
+    coda::mcmc.list(coda::mcmc(values[, c("mu_intercept", "tau")])),
+    list(mu_intercept = prior("normal", list(0, 1)), tau = tau_prior)
+  )
+  expect_true("tau" %in% parameter_catalog(plain)$quantities$canonical_name)
+})
+
 test_that("posterior plots draw the exact LKJ prior of us() correlations", {
 
   block <- .lkj_block_fit(3L, 2)

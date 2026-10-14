@@ -168,7 +168,10 @@ Identity random-effect summaries reuse their sampled or structural
 coordinate. Summaries requiring a scale or covariance transformation expose
 only the transformed quantity; their fitted-scale inputs and all other
 private implementation coordinates remain dependencies rather than public
-catalog rows. Raw estimates tables
+catalog rows. A public coordinate that a variance allocation reads through
+\code{random_sd_source()} (a model parameter such as \code{tau}) is not a private
+coordinate of the allocation: it stays its own catalog quantity. Raw
+estimates tables
 (\code{JAGS_estimates_table(random_effects_summary = "raw")}) show these backend
 coordinates for inspection; their row labels are not catalog aliases.
 Each random extraction key records whether its source mapping

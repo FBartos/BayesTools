@@ -70,7 +70,10 @@
 #' coordinate. Summaries requiring a scale or covariance transformation expose
 #' only the transformed quantity; their fitted-scale inputs and all other
 #' private implementation coordinates remain dependencies rather than public
-#' catalog rows. Raw estimates tables
+#' catalog rows. A public coordinate that a variance allocation reads through
+#' `random_sd_source()` (a model parameter such as `tau`) is not a private
+#' coordinate of the allocation: it stays its own catalog quantity. Raw
+#' estimates tables
 #' (`JAGS_estimates_table(random_effects_summary = "raw")`) show these backend
 #' coordinates for inspection; their row labels are not catalog aliases.
 #' Each random extraction key records whether its source mapping
@@ -3746,7 +3749,12 @@ parameter_transform_jacobian <- function(values, transform){
         source_transform = "square"
       )
     }
-    out$suppress <<- unique(c(out$suppress, scale_dependencies))
+    # The coordinates the allocation owns (its scale node, weights and gates)
+    # are implementation rows. A public source coordinate, a model parameter
+    # used through random_sd_source() such as a model-level 'tau', stays its
+    # own catalog quantity.
+    owned <- coordinates$internal[match(scale_dependencies, coordinates$coordinate_name)]
+    out$suppress <<- unique(c(out$suppress, scale_dependencies[owned %in% TRUE]))
     dependencies <- .bt_parameter_catalog_coordinates(
       coordinates,
       c(allocation$weight_name, allocation_gate_names)
