@@ -1503,3 +1503,30 @@ test_that("estimates tables show an expression-point coefficient like any point 
   # the spike at zero of the intercept is still omitted from the fitted table
   expect_false("(mu) intercept" %in% rownames(JAGS_estimates_table(fit)))
 })
+
+test_that("requested transformations apply to the levels of factor mixtures and to vector priors", {
+
+  skip_if_not_installed("rjags")
+  skip_if_missing_fits(c("fit_formula_factor_mixture", "fit_vector_mnormal"))
+
+  cases <- list(
+    list(fit = "fit_formula_factor_mixture", parameter = "mu_x_fac3t", pattern = "x_fac3t\\["),
+    list(fit = "fit_vector_mnormal",         parameter = "p1",         pattern = "^p1\\[")
+  )
+  for(case in cases){
+    fit   <- readRDS(file.path(temp_fits_dir, paste0(case$fit, ".RDS")))
+    plain <- unclass(runjags_estimates_table(fit, return_samples = TRUE))
+    transformed <- unclass(runjags_estimates_table(fit,
+      transformations = stats::setNames(list(list(fun = exp)), case$parameter), return_samples = TRUE))
+    levels <- grep(case$pattern, colnames(plain), value = TRUE)
+    expect_gte(length(levels), 2L)
+    expect_equal(transformed[, levels], exp(plain[, levels]), tolerance = 1e-12)
+    others <- setdiff(colnames(plain), levels)
+    expect_identical(transformed[, others], plain[, others])
+
+    # the table summarizes the transformed draws
+    table <- runjags_estimates_table(fit, transformations = stats::setNames(list(list(fun = exp)), case$parameter))
+    expect_equal(unname(as.numeric(table[levels, "Mean"])), unname(colMeans(exp(plain[, levels]))), tolerance = 1e-8)
+    expect_false(isTRUE(all.equal(unname(as.numeric(table[levels, "Mean"])), unname(colMeans(plain[, levels])))))
+  }
+})

@@ -1610,3 +1610,56 @@ test_that(".filter_parameters removes bias-related parameters when bias is not i
 })
 
 
+
+test_that("requested transformations map to the coordinate columns of factor-family and vector priors", {
+
+  columns_of <- function(prior_list, transform_factors = FALSE){
+    transformations <- stats::setNames(lapply(names(prior_list), function(x) list(fun = exp)), names(prior_list))
+    .parameter_transformation_columns(transformations, prior_list, transform_factors)
+  }
+  # factor priors with the three levels that a model matrix would declare
+  factor_prior <- function(contrast, distribution = "normal"){
+    prior <- prior_factor(distribution, list(0, 1), contrast = contrast)
+    attr(prior, "levels") <- 3L
+    prior
+  }
+  mixture <- prior_mixture(list(factor_prior("treatment"), factor_prior("treatment")))
+  attr(mixture, "K") <- 2L
+  spike_and_slab <- prior_spike_and_slab(factor_prior("treatment"))
+  attr(spike_and_slab, "K") <- 2L
+  priors <- list(
+    scalar  = prior("normal", list(0, 1)),
+    mixture = mixture,
+    ss      = spike_and_slab,
+    vector  = prior("mnormal", list(mean = 0, sd = 1, K = 3)),
+    simplex = prior("dirichlet", list(alpha = c(1, 2, 3)))
+  )
+  columns <- columns_of(priors)
+  expect_identical(columns$scalar, "scalar")
+  for(parameter in c("mixture", "ss")){
+    expect_identical(columns[[parameter]], paste0(parameter, "[", 1:2, "]"))
+  }
+  expect_identical(columns$vector, paste0("vector[", 1:3, "]"))
+  expect_identical(columns$simplex, paste0("simplex[", 1:3, "]"))
+
+  # the coordinates of a factor and the cases without transformed columns are
+  # unchanged: orthonormal and mean-difference factors are transformed later,
+  # as levels, when their contrasts are
+  coordinates <- paste0("f[", 1:2, "]")
+  expect_identical(columns_of(list(f = factor_prior("treatment")))$f, coordinates)
+  for(contrast in c("orthonormal", "meandif")){
+    factor <- factor_prior(contrast, "mnormal")
+    expect_identical(columns_of(list(f = factor), transform_factors = FALSE)$f, coordinates)
+    expect_null(columns_of(list(f = factor), transform_factors = TRUE)$f)
+  }
+  expect_identical(columns_of(list(g = prior("normal", list(0, 1))))$g, "g")
+
+  # a transformation is applied to the coordinates and to nothing else
+  samples <- cbind("mixture[1]" = c(0, 1), "mixture[2]" = c(1, 2), "mixture_indicator" = c(1, 2),
+    "vector[1]" = c(0, 1), "vector[2]" = c(1, 2), "vector[3]" = c(2, 3), scalar = c(0, 1))
+  result <- .apply_parameter_transformations(samples,
+    list(mixture = list(fun = exp), vector = list(fun = function(x) x + 1)), priors[c("mixture", "vector")])
+  expect_equal(result[, c("mixture[1]", "mixture[2]")], exp(samples[, c("mixture[1]", "mixture[2]")]))
+  expect_equal(result[, paste0("vector[", 1:3, "]")], samples[, paste0("vector[", 1:3, "]")] + 1)
+  expect_identical(result[, c("mixture_indicator", "scalar")], samples[, c("mixture_indicator", "scalar")])
+})

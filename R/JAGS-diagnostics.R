@@ -229,6 +229,11 @@ JAGS_diagnostics                 <- function(fit, parameter, type, plot_type = "
   })
   model_samples <- do.call(rbind, model_samples_list)
 
+  # the transformation of the requested parameter applies to the columns the
+  # call dispatches it to when the requested name is none of them (the omega
+  # bins of a weightfunction, the PET or PEESE column of a bias prior)
+  requested_parameter  <- parameter
+  dispatched_to_columns <- FALSE
 
   # extract the relevant parameters
   if(is.prior.spike_and_slab(prior_list[[parameter]])){
@@ -265,9 +270,11 @@ JAGS_diagnostics                 <- function(fit, parameter, type, plot_type = "
   }else if(is.prior.weightfunction(prior_list[[parameter]])){
     omega_cuts <- weightfunctions_mapping(list(prior_list[[parameter]]), cuts_only = TRUE)
     model_samples <- model_samples[,paste0("omega", "[", 2:(length(omega_cuts) - 1), "]"),drop = FALSE]
+    dispatched_to_columns <- TRUE
   }else if(parameter == "omega" && !is.null(prior_list[["bias"]])){
     selection_priors <- .selection_prior_selection_priors(prior_list[["bias"]])
     model_samples <- model_samples[,paste0("omega", "[", 2:(length(weightfunctions_mapping(selection_priors, cuts_only = TRUE, one_sided = TRUE)) - 1), "]"),drop = FALSE]
+    dispatched_to_columns <- TRUE
   }else if(is_prior_phacking(prior_list[[parameter]])){
     model_samples <- model_samples[,intersect(.phacking_report_parameter(prior_list[[parameter]]), colnames(model_samples)),drop = FALSE]
   }else if(is_prior_bias(prior_list[[parameter]])){
@@ -292,6 +299,7 @@ JAGS_diagnostics                 <- function(fit, parameter, type, plot_type = "
     }else if(is.prior.PEESE(prior_list[[parameter]])){
       parameter <- "PEESE"
     }
+    dispatched_to_columns <- !identical(parameter, requested_parameter)
     model_samples <- model_samples[,parameter,drop = FALSE]
   }
 
@@ -311,6 +319,12 @@ JAGS_diagnostics                 <- function(fit, parameter, type, plot_type = "
 
   # mostly adapted from runjags_estimates_table
   # apply transformations
+  if(dispatched_to_columns && !is.null(transformations[[requested_parameter]])){
+    transformations <- stats::setNames(
+      rep(list(transformations[[requested_parameter]]), ncol(model_samples)),
+      colnames(model_samples)
+    )
+  }
   model_samples <- .apply_parameter_transformations(model_samples, transformations, prior_list, transform_factors)
 
   # transform meandif and orthonormal factors to differences

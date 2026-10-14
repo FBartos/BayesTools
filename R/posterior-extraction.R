@@ -606,16 +606,21 @@ NULL
 }
 
 # The columns .apply_parameter_transformations() transforms, per transformed
-# parameter: the column of a non-factor prior, and the coefficient columns of
-# treatment and independent priors or of orthonormal/meandif/ordered priors
-# that won't be transformed to levels (with the total effects of ordered
-# priors, which untransformed estimates tables show in place of the
-# coefficients); NULL for the latter when they are (.transform_factor_contrasts()
-# transforms their levels). Columns absent from the samples are skipped.
+# parameter: the column of a scalar prior, the coordinate columns of vector
+# priors and of factor mixtures and factor spike-and-slab priors, and the
+# coefficient columns of treatment and independent priors or of
+# orthonormal/meandif/ordered priors that won't be transformed to levels (with
+# the total effects of ordered priors, which untransformed estimates tables
+# show in place of the coefficients); NULL for the latter when they are
+# (.transform_factor_contrasts() transforms their levels). Columns absent from
+# the samples are skipped.
 .parameter_transformation_columns <- function(transformations, prior_list, transform_factors = FALSE) {
 
   columns <- lapply(names(transformations), function(par) {
-    if (!is.prior.factor(prior_list[[par]])) {
+    if (!is.prior.factor(prior_list[[par]]) &&
+        (is.prior.vector(prior_list[[par]]) || .bt_prior_is_factor_family(prior_list[[par]]))) {
+      .prior_linear_prior_columns(par, prior_list[[par]])
+    } else if (!is.prior.factor(prior_list[[par]])) {
       par
     } else if (!transform_factors && is.prior.ordered(prior_list[[par]])) {
       c(

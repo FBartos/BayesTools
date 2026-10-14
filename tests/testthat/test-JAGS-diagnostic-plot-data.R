@@ -1039,3 +1039,62 @@ test_that("a weightfunction with fixed weights is diagnosed like a spike prior",
   }
   expect_s3_class(JAGS_diagnostics(fit, "omega", "trace", plot_type = "ggplot"), "ggplot")
 })
+
+test_that("a diagnostic transformation applies to the PET and PEESE column and the omega bins it plots", {
+
+  inc <- function(x) x + 10
+  raw_values <- function(fit, parameter, prior_list){
+    as.numeric(.diagnostics_plot_data(fit, parameter, prior_list, NULL, FALSE))
+  }
+
+  # a bias prior plotted as PET or PEESE: the column, as under its column name
+  grid <- seq(.005, 2.995, length.out = 120)
+  for(bias in list(prior_PET("normal", list(0, 1), truncation = list(0, Inf)),
+                   prior_PEESE("normal", list(0, 1), truncation = list(0, Inf)))){
+    column <- if(is.prior.PET(bias)) "PET" else "PEESE"
+    fit    <- .diagnostics_two_chain_fit_for_test(matrix(grid, ncol = 1L, dimnames = list(NULL, column)))
+    raw    <- raw_values(fit, "bias", list(bias = bias))
+    for(parameter in c(column, "bias")){
+      plot_data <- .diagnostics_plot_data(fit, parameter, list(bias = bias),
+        stats::setNames(list(list(fun = inc)), parameter), FALSE)
+      expect_identical(as.numeric(plot_data), raw + 10)
+      expect_true(isTRUE(attr(plot_data, "density_support_transformed")))
+    }
+  }
+
+  # a weightfunction: every omega bin it plots
+  weightfunction <- prior_weightfunction("one-sided", c(.025, .05), wf_cumulative(c(1, 1, 1)))
+  draws <- cbind("omega[1]" = 1, "omega[2]" = seq(.2, .7, length.out = 100), "omega[3]" = seq(.8, .3, length.out = 100))
+  fit   <- .diagnostics_two_chain_fit_for_test(draws)
+  raw   <- .diagnostics_plot_data(fit, "omega", list(omega = weightfunction), NULL, FALSE)
+  expect_identical(ncol(raw), 2L)
+  for(case in list(list("omega", list(omega = weightfunction)), list("bias", list(bias = weightfunction)))){
+    plot_data <- .diagnostics_plot_data(fit, case[[1L]], case[[2L]],
+      stats::setNames(list(list(fun = inc)), case[[1L]]), FALSE)
+    expect_identical(as.numeric(plot_data), as.numeric(raw) + 10)
+  }
+
+  # the omega bins of a bias prior with a selection component; a requested
+  # name that is a column keeps its column
+  selection <- prior_weightfunction("one-sided", c(.025), wf_cumulative(c(1, 1)))
+  bias      <- prior_bias(selection, prior_phacking(form = "linear"))
+  upper     <- .diagnostics_prior_bounds(bias, "pi_null")$upper
+  g         <- seq(.005, .995, length.out = 100)
+  fit       <- .diagnostics_two_chain_fit_for_test(cbind("omega[1]" = 1, "omega[2]" = g, alpha = g, pi_null = upper * g))
+  for(parameter in c("omega", "alpha")){
+    transformed <- .diagnostics_plot_data(fit, parameter, list(bias = bias),
+      stats::setNames(list(list(fun = inc)), parameter), FALSE)
+    expect_identical(as.numeric(transformed), raw_values(fit, parameter, list(bias = bias)) + 10)
+  }
+
+  # through JAGS_diagnostics(): the plotted values follow the transformation
+  draws <- cbind(mu = seq(-1, 1, length.out = 120), PET = seq(.005, 2.995, length.out = 120))
+  bias  <- prior_PET("normal", list(0, 1), truncation = list(0, Inf))
+  fit <- structure(list(mcmc = coda::mcmc.list(coda::mcmc(draws)), summary.pars = list(mutate = NULL)),
+    class = c("BayesTools_fit", "runjags"))
+  attr(fit, "prior_list") <- list(mu = prior("normal", list(0, 1)), bias = bias)
+  fit <- attach_test_parameter_map(fit)
+  plain   <- JAGS_diagnostics(fit, "bias", "trace", plot_type = "ggplot")
+  shifted <- JAGS_diagnostics(fit, "bias", "trace", transformations = list(bias = list(fun = inc)), plot_type = "ggplot")
+  expect_equal(ggplot2::ggplot_build(shifted)$data[[1]]$y, ggplot2::ggplot_build(plain)$data[[1]]$y + 10)
+})
