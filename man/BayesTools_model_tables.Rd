@@ -256,8 +256,11 @@ mixed objects without retained sources must be recreated from source fits.}
 
 \item{remove_inclusion}{whether estimates of the inclusion probabilities
 should be excluded from the summary table. Defaults to \code{FALSE}.
-Every inclusion row is removed, including the indicators of spike-and-slab
-totals of ordered-factor priors and the raw variance-allocation gates.
+The indicator rows of spike-and-slab and mixture priors, of spike-and-slab
+totals of ordered-factor priors, and the raw variance-allocation gates are
+removed. The backend \code{_variable} and \code{_inclusion} rows of an
+ordered prior with a spike-and-slab total are not recognized as inclusion
+rows and remain in the table.
 Retained inclusion rows (spike-and-slab and mixture indicators, random-effect
 and variance-allocation inclusion gates) report the posterior inclusion
 probability as \code{Mean} together with the MCMC diagnostics; their SD and
