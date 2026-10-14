@@ -840,9 +840,11 @@ test_that("spike-at-zero coefficients non-zero on the original scale are reporte
 
 # Synthetic fit whose inclusion indicators hold 0/1 draws (spike-and-slab and
 # allocation gates) or component indices (two-component mixtures); `simplex`
-# columns are normalised to sum to one.
+# columns are normalised to sum to one. `adjust` optionally changes the draws
+# (a function of the draw matrix) before the fit is built.
 .inclusion_rows_fit_for_test <- function(columns, prior_list, formula_design = NULL,
-                                         simplex = character(), n = 60L){
+                                         simplex = character(), n = 60L,
+                                         adjust = NULL){
 
   draws <- vapply(columns, function(column){
     values <- stats::runif(n)
@@ -858,6 +860,9 @@ test_that("spike-at-zero coefficients non-zero on the original scale are reporte
   colnames(draws) <- columns
   if(length(simplex) > 0L){
     draws[, simplex] <- draws[, simplex] / rowSums(draws[, simplex])
+  }
+  if(!is.null(adjust)){
+    draws <- adjust(draws)
   }
   fit <- structure(
     list(mcmc = coda::mcmc.list(coda::mcmc(draws)), sample = n),
@@ -1096,6 +1101,165 @@ test_that("estimates tables blank inclusion rows identified from metadata", {
     as.numeric(ordered_table[ordered_inclusion, "Mean"]),
     mean(as.matrix(ordered_fit$mcmc[[1L]])[, "mu_f_ordered_total_indicator"])
   )
+})
+
+test_that("conditional random-effect SD summaries use the inclusion event of the SD prior", {
+
+  skip_if_not_installed("runjags")
+  set.seed(260)
+  sd_name <- "mu__xREx__id_x"
+  indicator_name <- paste0(sd_name, "_indicator")
+  data <- data.frame(
+    x = c(-1.2, -0.4, 0.3, 1.1, -0.7, 0.9, 0.2, -1.5, 1.4, 0.6, -0.1, 0.8),
+    id = factor(rep(c("a", "b", "c", "d"), 3L))
+  )
+  # the SD is 0 unless the alternative component (indicator value) is active
+  sd_fit <- function(sd_prior, alternative){
+    result <- JAGS_formula(
+      ~ 1 + x + (x - 1 || id),
+      "mu",
+      data = data,
+      prior_list = list(
+        intercept = prior("normal", list(0, 1)),
+        x = prior("normal", list(0, 1))
+      ),
+      prior_random = prior_random(id = random_block(sd = sd_prior))
+    )
+    .inclusion_rows_fit_for_test(
+      JAGS_to_monitor(result$prior_list),
+      result$prior_list,
+      list(mu = result$formula_design),
+      adjust = function(draws){
+        draws[, sd_name] <- draws[, sd_name] * (draws[, indicator_name] %in% alternative)
+        draws
+      }
+    )
+  }
+  estimates <- function(fit, ...){
+    runjags_estimates_table(fit, remove_diagnostics = TRUE, ...)
+  }
+  statistics <- c("Mean", "SD", "0.025", "0.5", "0.975")
+  reference <- function(x){
+    c(mean(x), stats::sd(x), stats::quantile(x, c(0.025, 0.5, 0.975), names = FALSE))
+  }
+  row_values <- function(table, row){
+    as.numeric(table[row, statistics])
+  }
+
+  # spike-and-slab and null/alternative mixture SDs: the rows of the SD, its
+  # variance, and the raw summary of the same prior summarize the included draws
+  cases <- list(
+    spike_and_slab = list(
+      fit = sd_fit(prior_spike_and_slab(prior("normal", list(0, 1), list(0, Inf))), 1),
+      alternative = 1,
+      inclusion = "(mu) inclusion(sd(x))"
+    ),
+    mixture = list(
+      fit = sd_fit(
+        prior_mixture(
+          list(prior("spike", list(0)), prior("normal", list(0, 1), list(0, Inf))),
+          is_null = c(TRUE, FALSE)
+        ),
+        2
+      ),
+      alternative = 2,
+      inclusion = "(mu) inclusion(sd(x)[alternative])"
+    )
+  )
+  for(case in cases){
+    draws <- as.matrix(case$fit$mcmc[[1L]])
+    included <- draws[, indicator_name] %in% case$alternative
+    expect_gt(abs(mean(draws[included, sd_name]) - mean(draws[, sd_name])), 0.05)
+
+    standard <- estimates(case$fit, conditional = TRUE)
+    expect_equal(
+      row_values(standard, "(mu) sd(x)"),
+      reference(draws[included, sd_name]),
+      tolerance = 1e-12
+    )
+    expect_equal(
+      row_values(standard, "(mu) intercept"),
+      reference(draws[, "mu_intercept"]),
+      tolerance = 1e-12
+    )
+    expect_equal(
+      as.numeric(standard[case$inclusion, "Mean"]),
+      mean(included)
+    )
+    expect_true(any(grepl(
+      paste0("Conditional summary for (mu) sd(x) is based on ", sum(included), " samples."),
+      attr(standard, "warnings"),
+      fixed = TRUE
+    )))
+
+    # the raw summary conditions the same prior on the same draws
+    raw <- estimates(case$fit, conditional = TRUE, random_effects_summary = "raw")
+    expect_equal(
+      row_values(raw, "(mu) id: sd(x)"),
+      row_values(standard, "(mu) sd(x)"),
+      tolerance = 1e-12
+    )
+
+    # the variance row of the full summary has the same event
+    full <- estimates(case$fit, conditional = TRUE, random_effects_summary = "full")
+    expect_equal(
+      row_values(full, "(mu) var(x)"),
+      reference(draws[included, sd_name]^2),
+      tolerance = 1e-12
+    )
+    expect_equal(
+      row_values(full, "(mu) sd(x)"),
+      row_values(standard, "(mu) sd(x)"),
+      tolerance = 1e-12
+    )
+
+    # unconditional summaries use all draws and carry no conditional warning
+    averaged <- estimates(case$fit, random_effects_summary = "full")
+    expect_equal(
+      row_values(averaged, "(mu) sd(x)"),
+      reference(draws[, sd_name]),
+      tolerance = 1e-12
+    )
+    expect_equal(
+      row_values(averaged, "(mu) var(x)"),
+      reference(draws[, sd_name]^2),
+      tolerance = 1e-12
+    )
+    expect_null(attr(averaged, "warnings"))
+  }
+
+  # a mixture without a null/alternative structure has no single inclusion event
+  # (the raw summary reports its components as rows of their own): the semantic
+  # rows stay unconditional and say so
+  components <- sd_fit(
+    prior_mixture(
+      list(prior("spike", list(0)), prior("normal", list(0, 1), list(0, Inf))),
+      components = c("a", "b")
+    ),
+    2
+  )
+  draws <- as.matrix(components$mcmc[[1L]])
+  standard <- estimates(components, conditional = TRUE, random_effects_summary = "full")
+  expect_equal(
+    row_values(standard, "(mu) sd(x)"),
+    reference(draws[, sd_name]),
+    tolerance = 1e-12
+  )
+  expect_equal(
+    row_values(standard, "(mu) var(x)"),
+    reference(draws[, sd_name]^2),
+    tolerance = 1e-12
+  )
+  expect_identical(
+    unname(attr(standard, "footnotes")),
+    c(
+      "(mu) sd(x): summarized over all draws; its SD prior's inclusion event could not be conditioned on.",
+      "(mu) var(x): summarized over all draws; its SD prior's inclusion event could not be conditioned on."
+    )
+  )
+  expect_identical(names(attr(standard, "footnotes")), c("(mu) sd(x)", "(mu) var(x)"))
+  expect_false(any(grepl("is based on", attr(standard, "warnings"), fixed = TRUE)))
+  expect_null(attr(estimates(components, random_effects_summary = "full"), "footnotes"))
 })
 
 test_that("indexed random-effect columns recover their declared prior", {

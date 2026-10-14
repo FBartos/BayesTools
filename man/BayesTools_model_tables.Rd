@@ -228,7 +228,12 @@ the actual retained chain geometry.}
 to specific parameters}
 
 \item{conditional}{summarizes estimates conditional on being included
-in the model for spike and slab priors. Defaults to \code{FALSE}.}
+in the model for spike and slab priors. Defaults to \code{FALSE}.
+The standard and full random-effect summaries condition the SD, variance
+and multiplier rows of a random SD with a spike-and-slab or
+null/alternative mixture prior on that prior's own inclusion event, as the
+raw summary does. A mixture with other components has no single inclusion
+event: its rows are summarized over all draws and a footnote says so.}
 
 \item{probs}{quantiles for parameter estimates}
 

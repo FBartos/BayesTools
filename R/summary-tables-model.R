@@ -14,6 +14,11 @@
 #' the actual retained chain geometry.
 #' @param conditional summarizes estimates conditional on being included
 #' in the model for spike and slab priors. Defaults to \code{FALSE}.
+#' The standard and full random-effect summaries condition the SD, variance
+#' and multiplier rows of a random SD with a spike-and-slab or
+#' null/alternative mixture prior on that prior's own inclusion event, as the
+#' raw summary does. A mixture with other components has no single inclusion
+#' event: its rows are summarized over all draws and a footnote says so.
 #' @param transformations named list of transformations to be applied
 #' to specific parameters
 #' @param model_description named list with additional description
@@ -358,6 +363,7 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
   model_samples <- random_summary$model_samples
   prior_list <- random_summary$prior_list
   random_included <- list()
+  random_unconditioned <- logical()
   if(conditional){
     conditioned <- .bt_random_effect_summary_condition_on_inclusion(
       fit = fit,
@@ -369,6 +375,7 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
     model_samples <- conditioned$model_samples
     warnings <- conditioned$warnings
     random_included <- conditioned$included
+    random_unconditioned <- conditioned$unconditioned
   }
 
   # Transform scaled coefficients after deriving random-effect summaries. This
@@ -906,6 +913,11 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
       cholesky_names  = .bt_random_effect_summary_cholesky_coordinate_names(
         attr(fit, "formula_design", exact = TRUE)
       )
+    ))
+    footnotes <- c(footnotes, .bt_random_effect_summary_unconditioned_footnotes(
+      unconditioned   = random_unconditioned,
+      parameter_names = parameter_names,
+      row_labels      = colnames(model_samples)
     ))
   }
 
@@ -1507,7 +1519,9 @@ runjags_inference_table  <- function(fit, title = NULL, footnotes = NULL, warnin
     fit, model_samples, raw_model_samples, prior_list, warnings){
 
   designs <- attr(fit, "formula_design", exact = TRUE)
+  quantities <- NULL
   included_draws <- list()
+  unconditioned <- logical()
   for(parameter_name in intersect(colnames(model_samples), names(prior_list))){
     prior <- prior_list[[parameter_name]]
     summary_type <- attr(prior, "random_summary", exact = TRUE)
@@ -1547,33 +1561,145 @@ runjags_inference_table  <- function(fit, title = NULL, footnotes = NULL, warnin
     gate_names <- unique(gate_names[
       !is.na(gate_names) & nzchar(gate_names)
     ])
-    if(length(gate_names) == 0L){
-      next
-    }
-    missing <- setdiff(gate_names, colnames(raw_model_samples))
-    if(length(missing) > 0L){
-      stop(
-        "Conditional random-effect summaries are missing Bernoulli indicator '",
-        missing[1L],
-        "'.",
-        call. = FALSE
+
+    # an SD, its variance and its multiplier are conditioned on the inclusion
+    # event of the SD's own prior, as the raw summary conditions that prior
+    sd_event <- list(included = NULL, unconditioned = FALSE)
+    if(summary_type %in% c("sd", "var", "sd_mult")){
+      if(is.null(quantities)){
+        quantities <- parameter_catalog(fit)$quantities
+      }
+      sd_event <- .bt_random_effect_summary_sd_event(
+        parameter_name    = parameter_name,
+        quantities        = quantities,
+        fit_priors        = attr(fit, "prior_list", exact = TRUE),
+        raw_model_samples = raw_model_samples
       )
     }
-    included <- rowSums(
-      raw_model_samples[, gate_names, drop = FALSE] != 1
-    ) == 0L
+    if(length(gate_names) == 0L && is.null(sd_event$included)){
+      if(sd_event$unconditioned){
+        unconditioned[[parameter_name]] <- FALSE
+      }
+      next
+    }
+
+    included <- rep(TRUE, nrow(raw_model_samples))
+    if(length(gate_names) > 0L){
+      missing <- setdiff(gate_names, colnames(raw_model_samples))
+      if(length(missing) > 0L){
+        stop(
+          "Conditional random-effect summaries are missing Bernoulli indicator '",
+          missing[1L],
+          "'.",
+          call. = FALSE
+        )
+      }
+      included <- rowSums(
+        raw_model_samples[, gate_names, drop = FALSE] != 1
+      ) == 0L
+    }
+    if(!is.null(sd_event$included)){
+      included <- included & sd_event$included
+    }
     model_samples[!included, parameter_name] <- NA_real_
     included_draws[[parameter_name]] <- included
     warnings <- c(
       warnings,
       .runjags_conditional_warning(parameter_name, sum(included))
     )
+    if(sd_event$unconditioned){
+      unconditioned[[parameter_name]] <- TRUE
+    }
   }
 
   list(
     model_samples = model_samples,
     warnings = warnings,
-    included = included_draws
+    included = included_draws,
+    unconditioned = unconditioned
+  )
+}
+
+# The inclusion event of the SD prior behind a semantic random-effect row: the
+# indicator of a spike-and-slab SD, the alternative component of a
+# null/alternative mixture SD (the events the "raw" summary conditions these
+# priors on). A mixture with other components has no single event (the "raw"
+# summary reports its components as rows of their own): the row is then flagged
+# as not conditionable. Rows of an allocation, rows whose SD has no such prior,
+# and rows of other quantities have no event.
+.bt_random_effect_summary_sd_event <- function(parameter_name, quantities,
+                                               fit_priors, raw_model_samples){
+
+  none <- list(included = NULL, unconditioned = FALSE)
+  row <- match(parameter_name, quantities$canonical_name)
+  if(is.na(row) || !identical(quantities$owner_type[[row]], "random_block")){
+    return(none)
+  }
+  key <- quantities$extraction_key[[row]]
+  source_prior <- key$source_prior
+  if(isTRUE(key$allocation_derived) || !is.character(source_prior) ||
+     length(source_prior) != 1L || is.na(source_prior) ||
+     !source_prior %in% names(fit_priors)){
+    return(none)
+  }
+
+  prior <- fit_priors[[source_prior]]
+  if(is.prior.spike_and_slab(prior)){
+    alternative <- 1
+  }else if(is.prior.mixture(prior)){
+    components <- attr(prior, "components", exact = TRUE)
+    if(!all(components %in% c("null", "alternative"))){
+      return(list(included = NULL, unconditioned = TRUE))
+    }
+    alternative <- which(components == "alternative")
+  }else{
+    return(none)
+  }
+
+  indicator_name <- paste0(source_prior, "_indicator")
+  if(!indicator_name %in% colnames(raw_model_samples)){
+    stop(
+      "Conditional random-effect summaries are missing inclusion indicator '",
+      indicator_name,
+      "'.",
+      call. = FALSE
+    )
+  }
+
+  list(
+    included = raw_model_samples[, indicator_name] %in% alternative,
+    unconditioned = FALSE
+  )
+}
+
+# Remarks of the semantic random-effect rows whose SD prior has an inclusion
+# event that conditioning could not use (see .bt_random_effect_summary_sd_event()).
+# `unconditioned` is named by the rows' parameter names: TRUE where gating
+# indicators conditioned the row nevertheless.
+.bt_random_effect_summary_unconditioned_footnotes <- function(unconditioned,
+                                                              parameter_names,
+                                                              row_labels){
+
+  rows <- match(names(unconditioned), parameter_names)
+  keep <- !is.na(rows)
+  if(!any(keep)){
+    return(NULL)
+  }
+  rows <- rows[keep]
+  gated <- unname(unconditioned[keep])
+  labels <- row_labels[rows]
+
+  stats::setNames(
+    paste0(
+      labels,
+      ifelse(
+        gated,
+        ": summarized over the draws its gating indicators retain",
+        ": summarized over all draws"
+      ),
+      "; its SD prior's inclusion event could not be conditioned on."
+    ),
+    labels
   )
 }
 
