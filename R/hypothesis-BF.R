@@ -78,7 +78,9 @@
 #' and transitive point-vs-region tests report \code{NA}. The default
 #' \code{BF_error} column is printed as \code{error\%(BF)}. Individual columns
 #' are selected by these column names; other spellings are rejected.
-#' @param ... unused.
+#' @param ... for the \code{cbind()} method, the tables to bind; unused by the
+#' \code{as.data.frame()} method. \code{hypothesis_BF()} takes no further
+#' arguments and stops on unknown ones.
 #'
 #' @details Level combinations require the same complete declared joint prior
 #' context. Fixed reference levels use the shared typed ordinate refusals;
@@ -257,7 +259,7 @@
 hypothesis_BF <- function(posterior, prior = NULL, hypothesis, parameter = NULL,
                           logBF = FALSE, BF01 = FALSE, seed = NULL,
                           density_method = c("KDE", "normal", "precomputed"),
-                          columns = "default", ...) {
+                          columns = "default") {
 
   hypothesis_ast <- if(inherits(hypothesis, "BayesTools_hypothesis_ast")){
     .bt_validate_hypothesis_ast(hypothesis)

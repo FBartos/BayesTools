@@ -14,8 +14,7 @@ hypothesis_BF(
   BF01 = FALSE,
   seed = NULL,
   density_method = c("KDE", "normal", "precomputed"),
-  columns = "default",
-  ...
+  columns = "default"
 )
 
 \method{as.data.frame}{BayesTools_hypothesis_BF}(x, row.names = NULL, optional = FALSE, ...)
@@ -81,13 +80,15 @@ and transitive point-vs-region tests report \code{NA}. The default
 \code{BF_error} column is printed as \code{error\%(BF)}. Individual columns
 are selected by these column names; other spellings are rejected.}
 
-\item{...}{unused.}
-
 \item{x}{a hypothesis Bayes factor table.}
 
 \item{row.names}{optional row names for the complete exported frame.}
 
 \item{optional}{logical; exported column names are always syntactic and unique.}
+
+\item{...}{for the \code{cbind()} method, the tables to bind; unused by the
+\code{as.data.frame()} method. \code{hypothesis_BF()} takes no further
+arguments and stops on unknown ones.}
 }
 \value{
 A BayesTools table of class \code{BayesTools_hypothesis_BF}. The

@@ -119,6 +119,22 @@ test_that("level targets require the same complete declared joint context", {
   expect_s3_class(hypothesis_BF(first, hypothesis = "mu_fac[A] - mu_fac[B] > 0", parameter = "mu_fac", seed = 19), "BayesTools_hypothesis_BF")
 })
 
+test_that("hypothesis_BF stops on unknown arguments", {
+
+  set.seed(1)
+  posterior <- stats::rnorm(200, mean = 0.3, sd = 0.5)
+  theta_prior <- prior("normal", list(mean = 0, sd = 1))
+  expect_s3_class(
+    hypothesis_BF(posterior, theta_prior, "theta > 0", parameter = "theta", seed = 1),
+    "BayesTools_hypothesis_BF")
+  expect_error(
+    hypothesis_BF(posterior, theta_prior, "theta > 0", parameter = "theta", seeed = 1),
+    "unused argument (seeed = 1)", fixed = TRUE)
+  expect_error(
+    hypothesis_BF(posterior, theta_prior, "theta > 0", "theta", FALSE, FALSE, 1, "KDE", "default", "extra"),
+    "unused argument", fixed = TRUE)
+})
+
 test_that("explicit-level and whole-parameter hypotheses are refused in one call", {
 
   levels <- .hypothesis_factor_marginal_for_test(independent = TRUE)
