@@ -985,8 +985,11 @@ posterior_measure_check <- function(x, measure, column = NULL){
 #'   quantity whose prior has parameters given as \code{expression()}s (an
 #'   expression point or an expression container, including the components of
 #'   a mixture or spike-and-slab prior): such priors are evaluated only by JAGS
-#'   and have no R-side prior law; the draws and the other metadata of the
-#'   quantity are not affected.
+#'   and have no R-side prior law. The draws are not affected, and the atoms
+#'   and the support of a quantity keep their declarations, except on the
+#'   routes that build them from the contributing priors (formula marginals,
+#'   \code{transform_scaled}), where the atoms and the support carry their own
+#'   \code{unsupported_contribution_measure} marks.
 #'   Invalid metadata requires recomputation/refitting.
 #'   Human reason text alone does not classify a measure refusal. Tables use
 #'   unique column/measure pairs. The measures are \code{prior_density}, \code{atoms}, or \code{support}.

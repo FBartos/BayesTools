@@ -14,6 +14,7 @@ skip_if_not_test_profile("fixture")
 #
 # MODELS/FIXTURES:
 #   - fit_dnode_point_expression (expression point coefficient, formula mu = ~ x)
+#   - fit_dnode_point_expression_scaled (the same point on a scaled formula)
 #   - fit_expression_simple, fit_expression_mixture, fit_expression_spike_slab
 #     (simple expression priors) from test-00-model-fits.R
 #

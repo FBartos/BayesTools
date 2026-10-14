@@ -52,17 +52,20 @@
   NULL
 }
 
-.prior_linear_active_parameters <- function(prior_list, weights){
+# The parameters of a prior list with a column of a nonzero finite weight, as a
+# list named by parameter: the representative prior, its columns, and the
+# columns with a weight (with the nonzero finite weights).
+.prior_linear_active_entries <- function(prior_list, weights){
 
-  active <- character()
+  entries <- list()
   if(is.null(names(weights))){
-    return(active)
+    return(entries)
   }
 
   weights <- weights[is.finite(weights)]
   weights <- weights[weights != 0]
   if(length(weights) == 0){
-    return(active)
+    return(entries)
   }
 
   for(parameter in names(prior_list)){
@@ -73,11 +76,18 @@
     columns <- .prior_linear_prior_columns(parameter, prior)
     present <- intersect(columns, names(weights))
     if(length(present) > 0){
-      active <- c(active, parameter)
+      entries[[parameter]] <- list(prior = prior, columns = columns,
+                                   present = present, weights = weights)
     }
   }
 
-  active
+  entries
+}
+
+.prior_linear_active_parameters <- function(prior_list, weights){
+
+  active <- names(.prior_linear_active_entries(prior_list, weights))
+  if(is.null(active)) character() else active
 }
 
 # The sources of a linear combination (a source with a nonzero weight, and the
@@ -91,25 +101,17 @@
      !any(vapply(prior_list, .bt_prior_has_expression, logical(1)))){
     return(character())
   }
-  weights <- weights[is.finite(weights) & weights != 0]
-  if(length(weights) == 0){
-    return(character())
-  }
 
   active <- character()
-  for(parameter in names(prior_list)){
-    prior <- .prior_linear_representative_prior(prior_list[[parameter]])
-    if(is.null(prior)){
-      next
-    }
-    columns <- .prior_linear_prior_columns(parameter, prior)
-    present <- intersect(columns, names(weights))
-    if(length(present) == 0){
-      next
-    }
+  entries <- .prior_linear_active_entries(prior_list, weights)
+  for(parameter in names(entries)){
+    entry <- entries[[parameter]]
+    prior <- entry$prior
+    columns <- entry$columns
+    present <- entry$present
     if(is.prior.ordered(prior)){
       share <- tryCatch(
-        .prior_ordered_linear_share(prior, weights[present], match(present, columns)),
+        .prior_ordered_linear_share(prior, entry$weights[present], match(present, columns)),
         error = function(e) NULL
       )
       if(!is.null(share) && identical(share$type, "point") && share$scale == 0){

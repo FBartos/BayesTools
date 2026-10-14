@@ -993,7 +993,10 @@ the density unavailable with the measure cause `expression_prior_law_unavailable
 `BayesTools_formula_measure_unavailable` condition; `.prior_density_route_linear()`
 returns an unknown route). An ordered prior whose share of the combination is
 structurally zero stays the point 0. Only the prior density is unavailable: draws,
-support and atoms keep their declarations. `parameter_prior_density()` returns
+support and atoms keep their declarations, except on the routes that build them
+from the contributing priors (formula marginals, `transform_scaled`), where the
+atoms and the support carry their own `unsupported_contribution_measure` marks.
+`parameter_prior_density()` returns
 `NULL` and `parameter_mixed_posterior()` its draws and atoms without a density,
 `marginal_posterior()` and `posterior_transform()` mark the `prior_density` of
 the draws with the cause, and `plot_posterior(prior = TRUE)` draws the posterior

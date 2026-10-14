@@ -2398,8 +2398,7 @@ test_that("summary tables list an expression point prior instead of reading it a
     expect_identical(table$beta, "Spike(2 * theta)")
     expect_identical(table$gamma, "")
   }
-  model_text <- paste(utils::capture.output(print(model_summary_table(models[[1L]]))), collapse = "
-")
+  model_text <- paste(utils::capture.output(print(model_summary_table(models[[1L]]))), collapse = "\n")
   expect_match(model_text, "beta ~ Spike(2 * theta)", fixed = TRUE)
   expect_false(grepl("gamma", model_text, fixed = TRUE))
 
@@ -2409,8 +2408,7 @@ test_that("summary tables list an expression point prior instead of reading it a
     expect_identical(table$beta, "Spike(2 * theta)")
     expect_identical(table$gamma, "Spike(0)")
   }
-  model_text <- paste(utils::capture.output(print(model_summary_table(models[[1L]], remove_spike_0 = FALSE))), collapse = "
-")
+  model_text <- paste(utils::capture.output(print(model_summary_table(models[[1L]], remove_spike_0 = FALSE))), collapse = "\n")
   expect_match(model_text, "beta ~ Spike(2 * theta)", fixed = TRUE)
   expect_match(model_text, "gamma ~ Spike(0)", fixed = TRUE)
 })
