@@ -122,7 +122,10 @@
 #' it is not derivable). A quantity with point masses in its prior density
 #' (an SD, variance, total, or variance share of an allocation with inclusion
 #' gates, or whose scale prior has a point component) lists exactly the
-#' locations of those atoms as the `points` of a `"mixed"` support. The
+#' locations of those atoms as the `points` of a `"mixed"` support; where the
+#' atoms cannot be derived (an external SD source without a BayesTools prior, a
+#' composite SD outside its allocation component), its hull is declared inexact
+#' (`exact = FALSE`). The
 #' `mcmc.list` returned by `parameter_draws()`
 #' carries these as draw metadata ([posterior_metadata()]): `support`, keyed by
 #' canonical name, and `undefined_draws`, a character vector named by the
@@ -4690,6 +4693,12 @@ parameter_transform_jacobian <- function(values, transform){
 # inclusion gates, or whose scale prior has a point component, has point
 # masses: the support lists the atoms of the quantity's own prior density
 # (.bt_parameter_prior_density_random_summary()) as points of a mixed support.
+# Where the atom route derives none (an external SD source without a
+# BayesTools prior, a composite SD outside its allocation component, a total or
+# allocation without a structural density) but the chain has an inclusion gate
+# or a point component in a scale prior, the quantity has point masses that the
+# catalog cannot place: its support is the hull declared inexact, never an
+# exact atomless interval.
 .bt_parameter_catalog_random_support <- function(object, quantity, key){
 
   support <- .bt_parameter_catalog_random_hull(object, quantity, key)
@@ -4704,6 +4713,15 @@ parameter_transform_jacobian <- function(values, transform){
     tail_prob   = NA_real_,
     atoms_only  = TRUE
   )
+  if(is.null(atoms) &&
+     .bt_parameter_catalog_random_chain_has_atoms(object, quantity, key)){
+    return(.posterior_support_new(
+      bounds = support$bounds,
+      exact  = FALSE,
+      source = "catalog",
+      type   = "interval"
+    ))
+  }
   if(length(atoms) == 0L){
     return(support)
   }
@@ -4779,6 +4797,75 @@ parameter_transform_jacobian <- function(values, transform){
   1
 }
 
+# Whether a random-effect quantity can have point masses: an inclusion gate
+# among its dependencies (the gates of its allocation chain, except a gate that
+# is always on), or a point component in a scale prior that owns them. Only the
+# SDs, variances, totals and variance shares are asked; the correlations,
+# multipliers and indicators have none.
+.bt_parameter_catalog_random_chain_has_atoms <- function(object, quantity, key){
+
+  if(!quantity$quantity %in% c("sd", "var", "sd_total", "var_total",
+                               "sd_common", "var_common", "var_prop")){
+    return(FALSE)
+  }
+  prior_list <- attr(object, "prior_list", exact = TRUE)
+  gated <- vapply(prior_list, function(prior){
+    indicator <- attr(prior, "random_allocation_indicator", exact = TRUE)
+    is.character(indicator) && length(indicator) == 1L &&
+      indicator %in% key$dependencies &&
+      !isTRUE(.bt_parameter_prior_density_inclusion_probability(prior) >= 1)
+  }, logical(1))
+  if(any(gated)){
+    return(TRUE)
+  }
+  context <- .bt_parameter_catalog_object_linear_support(object)
+  owners <- unique(unname(context$owner[
+    .bt_parameter_catalog_scale_dependencies(object, key)
+  ]))
+  any(vapply(context$prior_list[owners], .bt_parameter_catalog_prior_has_point,
+             logical(1)))
+}
+
+# Whether a prior has a point (spike) component of positive probability.
+.bt_parameter_catalog_prior_has_point <- function(prior){
+
+  if(!is.prior(prior)){
+    return(FALSE)
+  }
+  if(is.prior.point(prior)){
+    return(TRUE)
+  }
+  if(!is.prior.mixture(prior) && !is.prior.spike_and_slab(prior)){
+    return(FALSE)
+  }
+  components <- seq_along(prior)
+  weights <- .prior_density_ordinate_mixture_weights(prior)
+  if(!is.null(weights)){
+    components <- which(weights > 0)
+  }
+  any(vapply(components, function(i){
+    .bt_parameter_catalog_prior_has_point(prior[[i]])
+  }, logical(1)))
+}
+
+# The dependencies of a random-effect quantity that are coordinates of scale
+# priors: those owned by a prior that is neither a simplex (allocation weights)
+# nor discrete.
+.bt_parameter_catalog_scale_dependencies <- function(object, key){
+
+  context <- .bt_parameter_catalog_object_linear_support(object)
+  # each dependency is a coordinate of its owning prior (the SD of a factor
+  # level is one coordinate of the prior of the term); only scale priors count
+  owners <- unname(context$owner[key$dependencies])
+  scale <- !is.na(owners) & vapply(owners, function(owner){
+    !is.na(owner) && {
+      prior <- context$prior_list[[owner]]
+      !is.prior.simplex(prior) && !is.prior.discrete(prior)
+    }
+  }, logical(1))
+  key$dependencies[scale]
+}
+
 # Whether the scale priors of a composite random-effect SD or variance are all
 # supported on [0, Inf): a composite SD is positively homogeneous in the
 # scales, so it then reaches every value in (0, Inf). A scale bounded away
@@ -4790,16 +4877,7 @@ parameter_transform_jacobian <- function(values, transform){
 
   prior_list <- attr(object, "prior_list", exact = TRUE)
   context <- .bt_parameter_catalog_object_linear_support(object)
-  # each dependency is a coordinate of its owning prior (the SD of a factor
-  # level is one coordinate of the prior of the term); only scale priors count
-  owners <- unname(context$owner[key$dependencies])
-  scale <- !is.na(owners) & vapply(owners, function(owner){
-    !is.na(owner) && {
-      prior <- context$prior_list[[owner]]
-      !is.prior.simplex(prior) && !is.prior.discrete(prior)
-    }
-  }, logical(1))
-  coordinates <- key$dependencies[scale]
+  coordinates <- .bt_parameter_catalog_scale_dependencies(object, key)
   if(length(coordinates) == 0L){
     return(FALSE)
   }

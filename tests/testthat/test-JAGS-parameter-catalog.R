@@ -2681,6 +2681,153 @@ test_that("allocation quantities with inclusion gates or point scales declare th
   expect_points_are_density_atoms(nested, "nested")
 })
 
+test_that("quantities with structural atoms that the catalog cannot derive declare an inexact support", {
+
+  # An inclusion gate or a point component in a scale prior puts point masses
+  # on the SDs, variances, totals and variance shares. Where the catalog cannot
+  # derive them (an external SD source has no BayesTools prior, and a composite
+  # original-scale SD lies outside its allocation component) the hull is
+  # declared inexact, not an exact atomless interval; derived atoms and chains
+  # without gates or point components keep their supports.
+  gate <- function(probability) prior("spike", list(location = probability))
+  weights <- prior("dirichlet", list(alpha = c(2, 3)))
+  data <- data.frame(study = factor(c("a", "a", "b", "b")), esid = factor(1:4))
+  chain_fit <- function(external, inclusion){
+    arguments <- list(
+      name = "split", terms = c(study = "study", esid = "esid"),
+      weights = weights, inclusion = inclusion
+    )
+    if(external){
+      arguments$sd_source <- random_sd_source("tau")
+    }else{
+      arguments$sd <- prior("gamma", list(2, 2))
+    }
+    result <- JAGS_formula(
+      ~ 1 + random(1 | study, name = "study", covariance = "diag") +
+        random(1 | esid, name = "esid", covariance = "diag"),
+      "mu", data, list(intercept = prior("normal", list(0, 1))),
+      prior_random = prior_random(
+        allocation = do.call(random_variance_allocation, arguments)
+      )
+    )
+    design <- result$formula_design
+    prior_list <- result$prior_list
+    if(external){
+      prior_list$tau <- prior("normal", list(0, 1), list(0, Inf))
+    }
+    columns <- unique(c(
+      "mu_intercept", JAGS_to_monitor(prior_list),
+      unlist(lapply(design$random_allocations,
+                    .bt_random_effect_summary_allocation_gate_names))
+    ))
+    columns <- columns[!columns %in% unlist(lapply(design$random_effects,
+                                                   `[[`, "sd_parameter_names"))]
+    .parameter_catalog_test_fit(
+      coda::mcmc.list(coda::mcmc(matrix(0.5, 2L, length(columns),
+                                        dimnames = list(NULL, columns)))),
+      prior_list,
+      formula_design = list(mu = design)
+    )
+  }
+  support_of <- function(fit, label){
+    quantities <- parameter_catalog(fit)$quantities
+    quantities$support[[match(label, quantities$canonical_name)]]
+  }
+  gated <- list(study = gate(.5), esid = gate(.5))
+  shares <- c("(mu) split: var_prop(study)", "(mu) split: var_prop(esid)")
+  scales <- c("(mu) split: sd_total", "(mu) split: var_total",
+              "(mu) study: sd(intercept)", "(mu) esid: var(intercept)")
+
+  # gated chain rooted in an external scalar source: inexact hulls
+  external <- chain_fit(TRUE, gated)
+  for(label in c(shares, scales)){
+    support <- support_of(external, label)
+    expect_false(support$exact, info = label)
+    expect_identical(support$type, "interval", info = label)
+    expect_identical(support$points, numeric(), info = label)
+    expect_equal(support$bounds, if(label %in% shares) c(0, 1) else c(0, Inf),
+                 info = label)
+  }
+  # the indicators keep their points; an always-on gate has no atom to place
+  expect_true(support_of(external, "(mu) split: inclusion(study)")$exact)
+  always_on <- chain_fit(TRUE, list(study = gate(1), esid = gate(1)))
+  expect_true(support_of(always_on, "(mu) split: sd_total")$exact)
+  expect_true(support_of(always_on, shares[1L])$exact)
+
+  # the internal-source twin keeps its derived atoms, and an external source
+  # without gates keeps its exact intervals
+  internal <- chain_fit(FALSE, gated)
+  for(label in shares){
+    support <- support_of(internal, label)
+    expect_identical(support$type, "mixed", info = label)
+    expect_identical(support$points, c(0, 1), info = label)
+    expect_true(support$exact, info = label)
+  }
+  expect_identical(support_of(internal, "(mu) split: sd_total")$points, 0)
+  ungated <- chain_fit(TRUE, NULL)
+  for(label in c(shares, scales)){
+    support <- support_of(ungated, label)
+    expect_true(support$exact, info = label)
+    expect_identical(support$type, "interval", info = label)
+  }
+
+  # the composite original-scale SD and variance of a scaled block with
+  # point components in its scale priors
+  scaled_data <- data.frame(x = c(1, 2, 4, 7, 3, 5), id = factor(rep(c("a", "b", "c"), each = 2L)))
+  scaled_fit <- function(sd){
+    result <- JAGS_formula(
+      ~ 1 + us(1 + x | id), "mu", scaled_data,
+      list(intercept = prior("normal", list(0, 1))),
+      formula_scale = list(x = TRUE),
+      prior_random = prior_random(id = random_block(sd = sd, cor = prior_lkj()))
+    )
+    term <- result$formula_design$random_effects[[1L]]
+    .prior_monitor_test_fit(result, unique(c(
+      JAGS_to_monitor(result$prior_list), term$correlation$primitive_names
+    )))
+  }
+  spike_and_slab <- function(probability){
+    prior_spike_and_slab(prior("gamma", list(2, 2)),
+                         prior_inclusion = gate(probability))
+  }
+  mixture <- prior_mixture(
+    list(prior("spike", list(0)), prior("gamma", list(2, 2))), is_null = c(TRUE, FALSE)
+  )
+  composite <- c("(mu) sd(intercept)", "(mu) var(intercept)")
+  for(sd in list(spike_and_slab(.5), mixture)){
+    fit <- scaled_fit(sd)
+    for(label in composite){
+      support <- support_of(fit, label)
+      expect_false(support$exact, info = label)
+      expect_identical(support$type, "interval", info = label)
+      expect_equal(support$bounds, c(0, Inf), info = label)
+    }
+    # the rescaled slope SD is one-to-one: its atom is derived
+    expect_identical(support_of(fit, "(mu) sd(x)")$points, 0)
+    expect_true(support_of(fit, "(mu) sd(x)")$exact)
+  }
+  plain <- scaled_fit(prior("gamma", list(2, 2)))
+  # a spike component that is never taken places no atom
+  never <- scaled_fit(spike_and_slab(1))
+  for(fit in list(plain, never)){
+    for(label in composite){
+      expect_true(support_of(fit, label)$exact, info = label)
+      expect_identical(support_of(fit, label)$type, "interval", info = label)
+      expect_equal(support_of(fit, label)$bounds, c(0, Inf), info = label)
+    }
+  }
+
+  # an inexact support is not read as a continuous interval
+  inexact <- support_of(external, "(mu) split: sd_total")
+  exact <- support_of(plain, "(mu) sd(intercept)")
+  expect_false(.hypothesis_linear_support_usable(inexact))
+  expect_true(.hypothesis_linear_support_usable(exact))
+  draws <- c(0, 0.5, 1.5, 3)
+  expect_identical(.posterior_support_for_kde(draws, inexact),
+                   list(bounds = NULL, warning = NULL))
+  expect_equal(.posterior_support_for_kde(draws, exact)$bounds, c(0, Inf))
+})
+
 test_that("a public external SD source stays a catalog quantity of its model", {
 
   # `tau` is a model-level parameter (as in RoBMA) that a variance allocation

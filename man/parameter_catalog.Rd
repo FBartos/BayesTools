@@ -220,7 +220,10 @@ the variance shares of gated total-variance allocations) and its exact
 it is not derivable). A quantity with point masses in its prior density
 (an SD, variance, total, or variance share of an allocation with inclusion
 gates, or whose scale prior has a point component) lists exactly the
-locations of those atoms as the \code{points} of a \code{"mixed"} support. The
+locations of those atoms as the \code{points} of a \code{"mixed"} support; where the
+atoms cannot be derived (an external SD source without a BayesTools prior, a
+composite SD outside its allocation component), its hull is declared inexact
+(\code{exact = FALSE}). The
 \code{mcmc.list} returned by \code{parameter_draws()}
 carries these as draw metadata (\code{\link[=posterior_metadata]{posterior_metadata()}}): \code{support}, keyed by
 canonical name, and \code{undefined_draws}, a character vector named by the

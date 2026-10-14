@@ -439,8 +439,11 @@ names.
   supported on `[0, Inf)`; the SDs, variances, totals, and variance shares of
   allocations with inclusion gates or a scale prior with a point component list
   the atoms of their own prior density as `points` of a `"mixed"` support,
-  derived from the same measure as the density) and `definedness` when the map
-  is built;
+  derived from the same measure as the density; where such a chain has no
+  derivable atoms (an external SD source without a BayesTools prior, a
+  composite SD outside its allocation component), the hull is declared inexact
+  instead of an exact atomless interval) and `definedness` when the map is
+  built;
   downstream packages read
   them instead of deriving supports.
 - Draws that can be undefined are declared, never inferred from names or
