@@ -751,6 +751,13 @@ test_that("ordered scalar measures use declared contractions and exact primitive
   expect_length(.plot_data_factor_column_atoms(expression_levels),4L)
   expression_varying <- make(prior("normal",list(0,expression(tau))),theta=seq_len(40)/10)
   expect_length(.plot_data_samples.factor(as_mixed_posteriors(expression_varying$fit,"mu_f"),"mu_f",128,NULL,NULL,NULL),3L)
+  # a prior law that only JAGS evaluates is omitted from the plot of the posterior
+  expression_varying_raw <- as_mixed_posteriors(expression_varying$fit,"mu_f")
+  expression_plot <- NULL
+  expect_warning(expression_plot <- plot_posterior(expression_varying_raw,"mu_f",prior=TRUE,plot_type="ggplot"),
+    class="BayesTools_prior_curve_unavailable")
+  expect_identical(ggplot2::ggplot_build(expression_plot)$data,
+    ggplot2::ggplot_build(plot_posterior(expression_varying_raw,"mu_f",prior=FALSE,plot_type="ggplot"))$data)
   expression_marginal <- marginal_posterior(expression_raw,"mu_f",use_formula=FALSE,prior_samples=FALSE)
   expect_true(posterior_atoms_free(expression_marginal[[4L]]))
   expression_spike <- make(prior_spike_and_slab(prior("normal",list(0,expression(tau))),prior("point",list(.5))),
@@ -828,6 +835,20 @@ test_that("ordered scalar measures use declared contractions and exact primitive
     expect_identical(.prior_linear_expression_sources(random_priors,weights),"mu_f")
     expect_identical(tryCatch(.prior_linear_combination_density(random_priors,weights),error=identity)$reason,
       "expression_prior_law_unavailable")
+  }
+  # a prior with an expression total has a prior density only for a level whose share is structurally zero
+  zero_catalog <- parameter_catalog(zero_expression_point$fit)
+  zero_mid_density <- parameter_prior_density(zero_expression_point$fit,zero_selection)
+  expect_s3_class(zero_mid_density,"prior_linear_density")
+  expect_identical(zero_mid_density$points,data.frame(x=0,p=1))
+  expect_s3_class(posterior_metadata(parameter_mixed_posterior(zero_expression_point$fit,zero_selection),"prior_density"),
+    "prior_linear_density")
+  for(level in c("f[hi]","f[top]")){
+    expect_null(parameter_prior_density(zero_expression_point$fit,parameter_catalog_resolve(zero_catalog,level,namespace="mu")))
+  }
+  random_catalog <- parameter_catalog(expression_point$fit)
+  for(level in c("f[mid]","f[hi]","f[top]")){
+    expect_null(parameter_prior_density(expression_point$fit,parameter_catalog_resolve(random_catalog,level,namespace="mu")))
   }
   numeric_ordered <- make(prior("point",list(2.5)),c(0,.5,.5))
   expect_identical(.prior_linear_expression_sources(list(mu_f=numeric_ordered$spec$prior),c("mu_f[2]"=1)),character())

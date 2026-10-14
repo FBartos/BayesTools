@@ -1153,27 +1153,44 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
         weights[[parameter]] <- 1
         target <- .marginal_posterior_simple_target(prior_density_context, parameter)
 
-        prior_density <- .prior_density_from_context(
+        prior_density <- tryCatch(.prior_density_from_context(
           prior_density_context,
           weights,
           source_transforms     = target$source_transforms,
           output_transformation = target$output_transformation
-        )
-        marginal_posterior_samples <- .bt_meta_update(
-          marginal_posterior_samples,
-          linear_weights = weights,
-          prior_density  = prior_density,
-          prior_context  = prior_density_context,
-          components     = .marginal_posterior_components(
-            context               = prior_density_context,
-            weights               = weights,
-            model_component       = .bt_draws_model_component(samples[[parameter]]),
-            n_values              = length(marginal_posterior_samples),
-            samples               = samples,
-            source_transforms     = target$source_transforms,
-            output_transformation = target$output_transformation
+        ), BayesTools_formula_measure_unavailable = function(e){
+          # only a prior with expression() parameters (JAGS-only support) has no
+          # law to attach; every other refusal of the density stays a refusal
+          if(!identical(e$reason, "expression_prior_law_unavailable")) stop(e)
+          e
+        })
+        if(inherits(prior_density, "BayesTools_formula_measure_unavailable")){
+          marginal_posterior_samples <- .bt_meta_update(
+            marginal_posterior_samples,
+            linear_weights = weights,
+            prior_context  = prior_density_context
           )
-        )
+          marginal_posterior_samples <- .bt_formula_measure_mark(
+            marginal_posterior_samples, parameter, "prior_density",
+            if(is.null(prior_density$detail)) conditionMessage(prior_density) else prior_density$detail,
+            cause = prior_density$reason, diagnostics = prior_density$diagnostics)
+        }else{
+          marginal_posterior_samples <- .bt_meta_update(
+            marginal_posterior_samples,
+            linear_weights = weights,
+            prior_density  = prior_density,
+            prior_context  = prior_density_context,
+            components     = .marginal_posterior_components(
+              context               = prior_density_context,
+              weights               = weights,
+              model_component       = .bt_draws_model_component(samples[[parameter]]),
+              n_values              = length(marginal_posterior_samples),
+              samples               = samples,
+              source_transforms     = target$source_transforms,
+              output_transformation = target$output_transformation
+            )
+          )
+        }
       }
 
       if(inherits(samples[[parameter]], "mixed_posteriors.factor")){

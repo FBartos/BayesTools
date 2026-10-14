@@ -2006,3 +2006,16 @@ test_that("expression-valued priors are found in mixtures, factor priors, and or
   expect_false(.bt_prior_has_expression(prior_ordered(numeric_normal)))
   expect_false(.bt_prior_has_expression(prior_ordered(numeric_point, allocation = c(.25, .25, .5))))
 })
+
+test_that("only a numeric zero point is a spike at zero", {
+
+  expect_true(.is_prior_point_zero(prior("point", list(location = 0))))
+  expect_true(.is_prior_point_zero(prior("spike", list(location = 0))))
+  expect_false(.is_prior_point_zero(prior("point", list(location = 0.25))))
+  expect_false(.is_prior_point_zero(prior("point", list(location = expression(2 * theta)))))
+  expect_false(.is_prior_point_zero(prior("point", list(location = expression(0)))))
+  expect_false(.is_prior_point_zero(prior("normal", list(0, 1))))
+  expect_false(.is_prior_point_zero(prior_none()))
+  expect_true(.is_prior_point_zero(prior("mpoint", list(0, 2))))
+  expect_false(.is_prior_point_zero(prior("mpoint", list(1, 2))))
+})

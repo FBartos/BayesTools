@@ -87,7 +87,8 @@
 # point 0 and does not read its total.
 .prior_linear_expression_sources <- function(prior_list, weights){
 
-  if(is.null(names(weights))){
+  if(is.null(names(weights)) ||
+     !any(vapply(prior_list, .bt_prior_has_expression, logical(1)))){
     return(character())
   }
   weights <- weights[is.finite(weights) & weights != 0]

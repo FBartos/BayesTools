@@ -2557,6 +2557,18 @@ test_that("Deterministic-node parity models fit correctly", {
     expression_priors = TRUE, add_parameters = TRUE, assertion_only = TRUE,
     note = "Scalar expression point coefficient with an ordinary stochastic and literal point parent for registered-node monitor parity."
   )$registry_entry
+  # The same expression point under a scaled predictor: its original-scale
+  # estimates and prior laws need the expression-point parent of the slope.
+  model_registry[["fit_dnode_point_expression_scaled"]] <<- save_fit(
+    dnode_fit(~ x,
+      prior_list = list(intercept = prior("normal", list(0, 1)),
+        x = prior("point", list(location = expression(2 * theta)))),
+      extra_prior = list(theta = prior("normal", list(0, 1))),
+      formula_scale = list(x = TRUE), add_parameters = "mu", seed = 17L),
+    "fit_dnode_point_expression_scaled", simple_priors = TRUE, formulas = TRUE,
+    expression_priors = TRUE, add_parameters = TRUE, assertion_only = TRUE,
+    note = "Scalar expression point coefficient of a scaled predictor for original-scale estimates and prior laws."
+  )$registry_entry
   attr(x_prior, "multiply_by") <- "b_scale"
   model_registry[["fit_dnode_linear_predictor"]] <<- save_fit(
     dnode_fit(

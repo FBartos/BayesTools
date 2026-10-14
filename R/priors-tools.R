@@ -305,6 +305,16 @@
 
   return(FALSE)
 }
+# Whether a prior is a point prior at the numeric location 0; an expression
+# location is not a numeric zero.
+.is_prior_point_zero <- function(prior){
+
+  if(!is.prior.point(prior)){
+    return(FALSE)
+  }
+  location <- prior[["parameters"]][["location"]]
+  is.numeric(location) && isTRUE(all(location == 0))
+}
 # Whether a prior, a model list of priors, or a mixture, spike-and-slab, or
 # factor-mixture prior has a parameter given as an expression (JAGS-only
 # support, no R-side prior law): any component of a mixture, and the total of

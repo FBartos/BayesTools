@@ -5421,3 +5421,70 @@ test_that("the original-scale prior laws of a scaled expression point are unavai
     expect_identical(mark(marginal[[1L]], "support")$reason, "unsupported_contribution_measure")
   }
 })
+
+test_that("a quantity of a prior with expression parameters keeps its draws and omits its prior law", {
+
+  fit <- .expression_point_scaled_fit()
+  catalog <- parameter_catalog(fit)
+  posterior <- as.matrix(fit)
+  select <- function(name) parameter_catalog_resolve(catalog, name)
+
+  # the catalog density is NULL (no R-side law), and the mixed posterior is the draws without it
+  expect_null(parameter_prior_density(fit, select("mu_x")))
+  mixed <- parameter_mixed_posterior(fit, select("mu_x"))
+  expect_equal(as.numeric(mixed), unname(posterior[, "mu_x"]), tolerance = 0)
+  expect_null(posterior_metadata(mixed, "prior_density"))
+  expect_null(posterior_metadata(mixed, "measure_unavailable"))
+  # the quantities of numeric priors keep their densities
+  for(name in c("mu_intercept", "theta")){
+    expect_s3_class(parameter_prior_density(fit, select(name)), "prior_linear_density")
+    expect_s3_class(posterior_metadata(parameter_mixed_posterior(fit, select(name)), "prior_density"),
+      "prior_linear_density")
+  }
+
+  # the simple branch of marginal_posterior() records the unavailable law with its cause
+  samples <- as_mixed_posteriors(fit, c("mu_intercept", "mu_x", "theta"))
+  marginal <- marginal_posterior(samples, "mu_x", prior_samples = TRUE, use_formula = FALSE)
+  expect_equal(as.numeric(marginal), as.numeric(samples$mu_x), tolerance = 0)
+  expect_null(posterior_metadata(marginal, "prior_density"))
+  table <- posterior_metadata(marginal, "measure_unavailable")
+  expect_identical(table$column, "mu_x")
+  expect_identical(table$measure, "prior_density")
+  expect_identical(table$cause, "expression_prior_law_unavailable")
+  expect_identical(unname(posterior_metadata(marginal, "linear_weights")["mu_x"]), 1)
+  refusal <- tryCatch(posterior_measure_check(marginal, "prior_density"), error = identity)
+  expect_s3_class(refusal, "BayesTools_formula_measure_unavailable")
+  expect_identical(refusal$reason, "expression_prior_law_unavailable")
+  control <- marginal_posterior(samples, "theta", prior_samples = TRUE)
+  expect_s3_class(posterior_metadata(control, "prior_density"), "prior_linear_density")
+  expect_null(posterior_metadata(control, "measure_unavailable"))
+
+  # the transformed draws keep the unavailable law and its cause
+  transformed <- marginal_posterior(samples, "mu_x", use_formula = FALSE, transformation = "lin",
+    transformation_arguments = list(a = 1, b = 2))
+  expect_equal(as.numeric(transformed), 1 + 2 * as.numeric(samples$mu_x), tolerance = 1e-12)
+  expect_identical(posterior_metadata(transformed, "measure_unavailable")$cause, "expression_prior_law_unavailable")
+  shifted <- posterior_transform(samples$mu_x, "lin", list(a = 1, b = 2))
+  expect_equal(as.numeric(shifted), 1 + 2 * as.numeric(samples$mu_x), tolerance = 1e-12)
+  expect_identical(posterior_metadata(shifted, "measure_unavailable")$cause, "expression_prior_law_unavailable")
+
+  # plot_posterior() draws the posterior and omits the prior curve with the existing warning
+  plot <- NULL
+  expect_warning(plot <- plot_posterior(samples, "mu_x", prior = TRUE, plot_type = "ggplot"),
+    class = "BayesTools_prior_curve_unavailable")
+  posterior_only <- plot_posterior(samples, "mu_x", prior = FALSE, plot_type = "ggplot")
+  expect_identical(ggplot2::ggplot_build(plot)$data, ggplot2::ggplot_build(posterior_only)$data)
+  # ... also for draws whose only refusal is the unavailable prior law
+  shifted_samples <- samples
+  shifted_samples$mu_x <- shifted
+  expect_warning(plot_posterior(shifted_samples, "mu_x", prior = TRUE, plot_type = "ggplot"),
+    class = "BayesTools_prior_curve_unavailable")
+  expect_no_warning(plot_posterior(samples, "theta", prior = TRUE, plot_type = "ggplot"))
+
+  # an element with unavailable atoms or support keeps the typed refusal of plot_posterior()
+  scaled <- as_mixed_posteriors(fit, c("mu_intercept", "mu_x", "theta"), transform_scaled = TRUE)
+  expect_error(plot_posterior(scaled, "mu_x", prior = TRUE, plot_type = "ggplot"),
+    class = "BayesTools_formula_atoms_unavailable")
+  expect_error(plot_posterior(scaled, "mu_x", prior = FALSE, plot_type = "ggplot"),
+    class = "BayesTools_formula_atoms_unavailable")
+})

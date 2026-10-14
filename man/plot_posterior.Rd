@@ -184,7 +184,10 @@ Posterior draws that declare no prior (a \code{prior_list} of
 \code{\link[=prior_none]{prior_none()}}, as \code{\link[=parameter_mixed_posterior]{parameter_mixed_posterior()}} draws of a quantity
 without a prior density) and carry no prior density have no prior curve:
 with \code{prior = TRUE}, the posterior is drawn alone with a warning of
-the same class.
+the same class. The same holds for a prior with parameters given as
+\code{expression()}s, which only JAGS evaluates and which has no R-side
+prior law (unless the atoms or the support of the draws are unavailable,
+which \code{\link[=posterior_measure_check]{posterior_measure_check()}} reports).
 Raw numerical plotting evaluations that remain unresolved warn once per
 continuous route with the same classes. The warning distinguishes a partly
 available curve from a wholly unavailable one; every available curve point

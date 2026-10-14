@@ -66,7 +66,10 @@
 #' [prior_none()], as [parameter_mixed_posterior()] draws of a quantity
 #' without a prior density) and carry no prior density have no prior curve:
 #' with \code{prior = TRUE}, the posterior is drawn alone with a warning of
-#' the same class.
+#' the same class. The same holds for a prior with parameters given as
+#' \code{expression()}s, which only JAGS evaluates and which has no R-side
+#' prior law (unless the atoms or the support of the draws are unavailable,
+#' which [posterior_measure_check()] reports).
 #' Raw numerical plotting evaluations that remain unresolved warn once per
 #' continuous route with the same classes. The warning distinguishes a partly
 #' available curve from a wholly unavailable one; every available curve point
@@ -160,7 +163,10 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
   if(parameter %in% names(samples)){
     .bt_formula_measure_check(samples[[parameter]], "atoms")
     .bt_linear_weight_space(samples[[parameter]])
-    if(prior) .bt_formula_measure_check(samples[[parameter]], "prior_density")
+    # a prior law that only JAGS evaluates (expression() parameters) is not a
+    # refusal of the plot: the posterior is drawn without the prior curve
+    if(prior) .bt_formula_measure_check(samples[[parameter]], "prior_density",
+                                        except = "expression_prior_law_unavailable")
   }
 
   # handle transform_scaled: check for pre-computed prior densities
@@ -524,7 +530,8 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
       )
       if(is.null(plot_data_prior) && !bias_parameter &&
         .plot_data_prior_should_use_context(samples, parameter, transform_scaled, prior_list)){
-        plot_data_prior <- .plot_data_prior_density_context(
+        # a prior law that only JAGS evaluates is no curve (omitted below)
+        plot_data_prior <- tryCatch(.plot_data_prior_density_context(
           prior_density_context      = prior_density_context,
           samples                   = samples,
           parameter                 = parameter,
@@ -534,7 +541,10 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
           transformation            = transformation,
           transformation_arguments  = transformation_arguments,
           transformation_settings   = transformation_settings
-        )
+        ), BayesTools_formula_measure_unavailable = function(condition){
+          if(!identical(condition$reason, "expression_prior_law_unavailable")) stop(condition)
+          NULL
+        })
       }
       if(is.null(plot_data_prior) && transform_scaled && !is.null(prior_densities_transformed) && parameter %in% names(prior_densities_transformed)){
         plot_data_prior <- .prior_linear_density_to_plot_data(
@@ -560,9 +570,10 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
       }
 
       if(is.null(plot_data_prior) &&
-         .plot_data_samples_without_prior(samples[[parameter]])){
-        # the draws declare no prior (prior_none()) and carry no prior
-        # density: the posterior is drawn alone
+         (.plot_data_samples_without_prior(samples[[parameter]]) || .bt_prior_has_expression(prior_list))){
+        # the draws declare no prior (prior_none()) or a prior with expression()
+        # parameters (no R-side law), and carry no prior density: the posterior
+        # is drawn alone
         .plot_data_warn_prior_curve_unavailable(parameter)
         prior <- FALSE
       }else if(is.null(plot_data_prior)){

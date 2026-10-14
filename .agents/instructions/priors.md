@@ -980,6 +980,24 @@ with the existing formula-measure condition and ordered-expression diagnostics.
 Exact zero allocation projections remain point masses. Factor marginal weights
 and their prior context remain available independently of scalar-law availability.
 
+Priors with `expression()` parameters (expression points and containers, the
+components of mixtures and spike-and-slab priors, and the totals of ordered
+priors) have no R-side prior law. The linear-combination builders never read
+their numeric parameters: a source with a nonzero weight, or the `multiply_by`
+owner of one, whose prior `.bt_prior_has_expression()` finds an expression makes
+the density unavailable with the measure cause `expression_prior_law_unavailable`
+(`.prior_linear_combination_density()` raises the typed
+`BayesTools_formula_measure_unavailable` condition; `.prior_density_route_linear()`
+returns an unknown route). An ordered prior whose share of the combination is
+structurally zero stays the point 0. Only the prior density is unavailable: draws,
+support and atoms keep their declarations. `parameter_prior_density()` returns
+`NULL` and `parameter_mixed_posterior()` its draws and atoms without a density,
+`marginal_posterior()` and `posterior_transform()` mark the `prior_density` of
+the draws with the cause, and `plot_posterior(prior = TRUE)` draws the posterior
+without the prior curve and warns with `BayesTools_prior_curve_unavailable`
+unless the atoms or support of the element are unavailable. The spike-at-zero
+detectors of the summary tables compare numeric locations only.
+
 Scalar deterministic region producers retain authoritative backend log masses
 only for already accepted positive natural masses, including subnormals.
 Scalar affine structural routes carry the same truncation-aware backend logs

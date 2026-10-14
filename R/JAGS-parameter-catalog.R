@@ -134,7 +134,10 @@
 #' not declare a supported deterministic prior composition; for fitted
 #' coordinates and factor levels, only when no fitted prior owns their
 #' coordinates (an owning prior-list entry that is not a BayesTools prior
-#' stops). The density records
+#' stops) or when an owning prior has parameters given as `expression()`s
+#' (JAGS-only support: the prior has no R-side law, and
+#' [parameter_mixed_posterior()] returns the draws and atoms without a prior
+#' density). The density records
 #' the source prior and transform it was built from, so its heights and region
 #' probabilities are evaluated on that prior's structural route (bounded-logit
 #' correlations on the refined numerical grid). Allocated SDs are the scale
@@ -671,6 +674,29 @@ parameter_prior_density.BayesTools_fit <- function(
 .bt_parameter_prior_density_quantity <- function(object, selection, n_grid,
                                                  tail_prob,
                                                  conditional = FALSE){
+
+  # a prior with expression() parameters has no R-side law (JAGS-only support):
+  # NULL, the documented result of a quantity without a prior density
+  tryCatch(
+    .bt_parameter_prior_density_quantity_law(
+      object      = object,
+      selection   = selection,
+      n_grid      = n_grid,
+      tail_prob   = tail_prob,
+      conditional = conditional
+    ),
+    BayesTools_formula_measure_unavailable = function(condition){
+      if(!identical(condition$reason, "expression_prior_law_unavailable")){
+        stop(condition)
+      }
+      NULL
+    }
+  )
+}
+
+.bt_parameter_prior_density_quantity_law <- function(object, selection, n_grid,
+                                                     tail_prob,
+                                                     conditional = FALSE){
 
   quantity <- selection$quantities[1L, , drop = FALSE]
   if(!identical(quantity$provider, "BayesTools")){

@@ -2334,6 +2334,49 @@ test_that("ensemble inference tables refuse conditional inference of a parameter
   )
 })
 
+test_that("summary tables list an expression point prior instead of reading it as a numeric spike", {
+
+  models <- list(.mock_ensemble_table_model(
+    model_number = 1L,
+    prior_list = list(theta = prior("normal", list(0, 1)),
+                      beta = prior("point", list(expression(2 * theta))),
+                      gamma = prior("point", list(0))),
+    prior_prob = 0.50,
+    post_prob = 0.50,
+    marglik = log(2),
+    inclusion_BF = 1,
+    fit_summary = .mock_ensemble_fit_summary(
+      MCMC_error = c(0.01, 0.02, 0.03),
+      MCMC_SD_error = c(0.10, 0.20, 0.30),
+      ESS = c(500, 400, 300),
+      R_hat = c(1.01, 1.02, 1.03)
+    )
+  ))
+  parameters <- c(theta = "theta", beta = "beta", gamma = "gamma")
+
+  # the spike at the numeric zero is omitted, the expression point is listed
+  for(table in list(ensemble_summary_table(models, parameters), ensemble_diagnostics_table(models, parameters))){
+    expect_identical(table$theta, "Normal(0, 1)")
+    expect_identical(table$beta, "Spike(2 * theta)")
+    expect_identical(table$gamma, "")
+  }
+  model_text <- paste(utils::capture.output(print(model_summary_table(models[[1L]]))), collapse = "
+")
+  expect_match(model_text, "beta ~ Spike(2 * theta)", fixed = TRUE)
+  expect_false(grepl("gamma", model_text, fixed = TRUE))
+
+  # all spikes are listed without the omission
+  for(table in list(ensemble_summary_table(models, parameters, remove_spike_0 = FALSE),
+                    ensemble_diagnostics_table(models, parameters, remove_spike_0 = FALSE))){
+    expect_identical(table$beta, "Spike(2 * theta)")
+    expect_identical(table$gamma, "Spike(0)")
+  }
+  model_text <- paste(utils::capture.output(print(model_summary_table(models[[1L]], remove_spike_0 = FALSE))), collapse = "
+")
+  expect_match(model_text, "beta ~ Spike(2 * theta)", fixed = TRUE)
+  expect_match(model_text, "gamma ~ Spike(0)", fixed = TRUE)
+})
+
 test_that("ensemble summary and diagnostics tables preserve model alignment", {
 
   models <- list(

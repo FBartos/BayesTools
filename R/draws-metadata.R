@@ -766,7 +766,7 @@
     !is.na(value$stage) && value$stage %in% c("prior", "posterior", "conditional_prior", "conditional_posterior", "event", "component")
 }
 
-.bt_formula_measure_check <- function(x, measure, column = NULL){
+.bt_formula_measure_check <- function(x, measure, column = NULL, except = NULL){
 
   unavailable <- .bt_meta_get(x, "measure_unavailable")
   if(is.null(unavailable)) return(invisible(TRUE))
@@ -780,6 +780,8 @@
     }
   }
   selected <- unavailable$measure == measure & unavailable$column %in% column
+  # the entries of the causes in 'except' pass (the caller handles them itself)
+  if(!is.null(except) && "cause" %in% names(unavailable)) selected <- selected & !unavailable$cause %in% except
   if(!any(selected)) return(invisible(TRUE))
   entry <- unavailable[which(selected)[1L], , drop = FALSE]
   cause <- if("cause" %in% names(entry) && !is.na(entry$cause)) entry$cause else entry$reason

@@ -933,7 +933,7 @@ marginal_estimates_table <- function(samples, inference, parameters, probs = c(0
           temp_prior <- prior_none()
         }
       }
-      if(remove_spike_0 && is.prior.point(temp_prior) && temp_prior[["parameters"]][["location"]] == 0){
+      if(remove_spike_0 && .is_prior_point_zero(temp_prior)){
         model_row[[names(parameters)[p]]] <- ""
       }else if(is.prior.none(temp_prior)){
         model_row[[names(parameters)[p]]] <- ""

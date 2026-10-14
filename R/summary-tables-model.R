@@ -233,7 +233,7 @@ model_summary_table <- function(model, model_description = NULL, title = NULL, f
     # get the prior name
     if(is.prior.none(prior_list[[i]])){
       next
-    }else if(remove_spike_0 && is.prior.point(prior_list[[i]]) && prior_list[[i]][["parameters"]][["location"]] == 0 || (names(prior_list)[[i]] %in% remove_parameters)){
+    }else if(remove_spike_0 && .is_prior_point_zero(prior_list[[i]]) || (names(prior_list)[[i]] %in% remove_parameters)){
       next
     }else if(is.prior.weightfunction(prior_list[[i]]) | is.prior.PET(prior_list[[i]]) | is.prior.PEESE(prior_list[[i]]) |
              is_prior_phacking(prior_list[[i]]) | is_prior_bias(prior_list[[i]])){
@@ -975,12 +975,7 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
 .bt_JAGS_estimates_spike_0_parameters <- function(prior_list, model_samples,
                                                   transformed = FALSE, formula_scale = NULL){
 
-  # an expression location is not a numeric zero
-  spike_0 <- names(prior_list)[vapply(prior_list, function(prior){
-    is.prior.point(prior) &&
-      is.numeric(prior[["parameters"]][["location"]]) &&
-      isTRUE(all(prior[["parameters"]][["location"]] == 0))
-  }, logical(1))]
+  spike_0 <- names(prior_list)[vapply(prior_list, .is_prior_point_zero, logical(1))]
   if(!transformed || length(spike_0) == 0L){
     return(spike_0)
   }

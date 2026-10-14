@@ -232,7 +232,10 @@ nonempty sets of other active components. It returns
 not declare a supported deterministic prior composition; for fitted
 coordinates and factor levels, only when no fitted prior owns their
 coordinates (an owning prior-list entry that is not a BayesTools prior
-stops). The density records
+stops) or when an owning prior has parameters given as \code{expression()}s
+(JAGS-only support: the prior has no R-side law, and
+\code{\link[=parameter_mixed_posterior]{parameter_mixed_posterior()}} returns the draws and atoms without a prior
+density). The density records
 the source prior and transform it was built from, so its heights and region
 probabilities are evaluated on that prior's structural route (bounded-logit
 correlations on the refined numerical grid). Allocated SDs are the scale
