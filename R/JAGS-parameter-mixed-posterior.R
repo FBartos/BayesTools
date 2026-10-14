@@ -252,6 +252,23 @@ parameter_gate_states <- function(fit, selection, draws = NULL){
   if(!is.null(states$reason)) stop(states$reason)
 
   keep <- !is.na(values)
+  if(identical(quantity$definedness, "always") && !all(keep)){
+    # a quantity defined at every draw has no undefined draws: its missing
+    # values are not dropped by value (the declaration comes from the catalog)
+    missing <- which(!keep)
+    stop(
+      .bt_missing_draws_message(
+        name,
+        paste0(
+          ", and '", name, "' is defined at every draw: ", length(missing),
+          " of ", length(values), " draws are missing (the first is draw ",
+          missing[1L], "). Supply complete draws of '", name,
+          "' (see the 'draws' argument of 'JAGS_with_draws()')."
+        )
+      ),
+      call. = FALSE
+    )
+  }
   if(isTRUE(conditional)){
     if(is.null(plan) || length(plan$event_gates) == 0L){
       stop(

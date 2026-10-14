@@ -1530,3 +1530,41 @@ test_that("requested transformations apply to the levels of factor mixtures and 
     expect_false(isTRUE(all.equal(unname(as.numeric(table[levels, "Mean"])), unname(colMeans(plain[, levels])))))
   }
 })
+
+test_that("parameter_mixed_posterior() refuses missing draws of an always-defined quantity", {
+
+  skip_if_not_installed("rjags")
+  skip_if_missing_fits("fit_simple_normal")
+
+  fit   <- readRDS(file.path(temp_fits_dir, "fit_simple_normal.RDS"))
+  draws <- fit[["mcmc"]]
+  n_draws <- sum(vapply(draws, nrow, integer(1)))
+  draws[[1L]][1:5, "m"] <- NA
+
+  # a derived-draw view whose draws of the always-defined mean have five missing values
+  view <- JAGS_with_draws(fit, draws)
+  catalog <- parameter_catalog(view)
+  expect_identical(catalog$quantities$definedness[catalog$quantities$canonical_name == "m"], "always")
+  selection <- parameter_catalog_resolve(catalog, "m")
+  message <- paste0(
+    "The posterior draws of 'm' contain missing values. Missing draws are accepted only for ",
+    "quantities declared as possibly undefined, and 'm' is defined at every draw: 5 of ", n_draws,
+    " draws are missing (the first is draw 1). Supply complete draws of 'm' (see the 'draws' ",
+    "argument of 'JAGS_with_draws()')."
+  )
+  condition <- expect_error(parameter_mixed_posterior(view, selection), message, fixed = TRUE)
+  expect_null(conditionCall(condition))
+  expect_error(parameter_mixed_posterior(view, selection, conditional = FALSE), message, fixed = TRUE)
+
+  # the ensemble table of the mixed posteriors of the same view refuses them
+  # with the same first sentences
+  expect_error(ensemble_estimates_table(as_mixed_posteriors(view, parameters = "m"), "m"),
+    "The posterior draws of 'm' contain missing values. Missing draws are accepted only for quantities declared as possibly undefined",
+    fixed = TRUE)
+
+  # complete draws keep every draw and declare no undefined draws
+  complete <- parameter_mixed_posterior(JAGS_with_draws(fit, fit[["mcmc"]]), selection)
+  expect_length(complete, n_draws)
+  expect_false(anyNA(complete))
+  expect_null(posterior_metadata(complete, "undefined_draws"))
+})

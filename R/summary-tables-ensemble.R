@@ -357,15 +357,29 @@ ensemble_estimates_table <- function(samples, parameters, probs = c(0.025, 0.975
 # Missing draws are accepted only for a quantity declared as possibly
 # undefined; the summary then uses its defined draws. Any other missing draw
 # signals an error upstream.
+# The refusal of missing draws of a quantity that is not declared as possibly
+# undefined: 'detail' completes the second sentence for the caller.
+.bt_missing_draws_message <- function(label, detail){
+
+  paste0(
+    "The posterior draws of '", label, "' contain missing values. Missing ",
+    "draws are accepted only for quantities declared as possibly undefined",
+    detail
+  )
+}
+
 .bt_ensemble_defined_draws <- function(values, label, reason = NULL){
 
   missing <- is.na(values)
   if(any(missing) && is.null(reason)){
     stop(
-      "The posterior draws of '", label, "' contain missing values. Missing ",
-      "draws are accepted only for quantities declared as possibly undefined ",
-      "(draw metadata 'undefined_draws', set by parameter_draws() or with ",
-      "posterior_metadata()).",
+      .bt_missing_draws_message(
+        label,
+        paste0(
+          " (draw metadata 'undefined_draws', set by parameter_draws() or with ",
+          "posterior_metadata())."
+        )
+      ),
       call. = FALSE
     )
   }
