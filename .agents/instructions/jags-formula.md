@@ -383,6 +383,13 @@ names.
   distinction from posterior draws.
   Record dependencies in extraction keys instead of adding private inputs as
   public catalog rows.
+  The mapping of a random-effect SD or variance comes from its own persisted
+  covariance transformation, not from the coordinates its block evaluator
+  reads: in a scaled block an SD whose row of the original-scale map
+  (`.random_sd_original_scale_laws()`) has one nonzero entry, on its own
+  coordinate, is a one-to-one transform of that coordinate with the entry as
+  its scale (also when the block has other SDs), and any other SD is a
+  composite.
 - Square brackets after a factor term always hold a level label, or a cell of
   level labels, never a coordinate position. Every level or cell of a fixed
   factor term (all contrasts, and ordinary factor priors, whose levels are

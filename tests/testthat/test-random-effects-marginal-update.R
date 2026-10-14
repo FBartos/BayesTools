@@ -218,7 +218,11 @@ test_that("composite random SD sources have no single-coordinate update", {
   )
 
   # With a scaled slope, the public intercept SD mixes the fitted SDs (and
-  # the correlation), so no single source coordinate carries the update.
+  # the correlation), so no single source coordinate carries the update. The
+  # public slope SD is the fitted slope SD over sd(x): a one-to-one rescaling
+  # of its own coordinate, so its update is in that coordinate and the plan
+  # carries the transform from the coordinate to the public quantity.
+  scale <- 1 / stats::sd(data$x)
   for(structure in names(formulas)){
     fit <- .random_update_test_generic_fit(
       formulas[[structure]], data, sd_prior, fixed,
@@ -230,8 +234,17 @@ test_that("composite random SD sources have no single-coordinate update", {
       drop = FALSE
     ]
     expect_identical(nrow(quantities), 4L, info = structure)
-    expect_true(all(quantities$source_type == "composite"), info = structure)
-    for(name in quantities$canonical_name){
+    expect_identical(
+      quantities$source_type[quantities$component == "intercept"],
+      c("composite", "composite"),
+      info = structure
+    )
+    expect_identical(
+      quantities$source_type[quantities$component == "x"],
+      c("one_to_one_transform", "one_to_one_transform"),
+      info = structure
+    )
+    for(name in quantities$canonical_name[quantities$component == "intercept"]){
       plan <- random_effects_marginal_update_plan(
         fit,
         parameter_catalog_resolve(catalog, name, "mu")
@@ -239,7 +252,34 @@ test_that("composite random SD sources have no single-coordinate update", {
       expect_identical(plan$family, "unsupported", info = name)
       expect_identical(plan$reason, "composite_sd_source", info = name)
     }
+    for(role in c("random_sd", "random_var")){
+      plan <- .random_update_test_plan(fit, role, "x")
+      expect_identical(plan$family, if(structure == "diag") "affine" else "factor",
+                       info = paste(structure, role))
+      expect_identical(plan$update, "column_scale", info = paste(structure, role))
+      expect_identical(plan$source_parameter, "mu__xREx__id_x",
+                       info = paste(structure, role))
+      expect_identical(
+        plan$source_transform_spec,
+        if(role == "random_sd") {
+          list(type = "affine", offset = 0, scale = scale)
+        }else{
+          list(type = "square", scale = scale)
+        },
+        info = paste(structure, role)
+      )
+    }
   }
+  # the factor update of the correlated block replaces the slope SD
+  # coordinate: the candidate scales are the fitted values
+  us_fit <- .random_update_test_generic_fit(
+    formulas$us, data, sd_prior, fixed, formula_scale = list(x = TRUE)
+  )
+  us_plan <- .random_update_test_plan(us_fit, "random_sd", "x")
+  us_grid <- random_effects_marginal_update_grid(
+    us_fit, us_plan, values = c(0.3, 0.6)
+  )
+  expect_equal(us_grid$candidate_scale[, 1L], c(0.3, 0.6))
 
   unscaled <- .random_update_test_generic_fit(
     formulas$us, data, sd_prior, fixed

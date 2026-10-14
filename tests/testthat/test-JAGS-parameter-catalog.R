@@ -2121,6 +2121,115 @@ test_that("LKJ correlations are undefined where an SD of the pair is zero, scale
   expect_identical(is.na(scaled_draws), !(scaled_sd[, 2L] > 0 & scaled_sd[, 3L] > 0))
 })
 
+test_that("a random SD that rescales its own coordinate is one-to-one in a multi-SD scaled block", {
+
+  # The SD of the scaled slope is the fitted SD divided by the SD of the
+  # predictor: a one-to-one rescaling of its own coordinate. The intercept SD
+  # of the same block mixes the fitted intercept and slope SDs (the predictor
+  # is not centred), so it stays a composite.
+  x <- c(1, 2, 4, 7)
+  sd_x <- stats::sd(x)
+  data <- data.frame(x = x, id = factor(c("a", "a", "b", "b")))
+  scaled_fit <- function(formula, sd_x_prior = NULL, draws = NULL){
+    terms <- if(!is.null(sd_x_prior)) list(x = sd_x_prior)
+    result <- JAGS_formula(
+      formula, "mu", data, list(intercept = prior("normal", list(0, 1))),
+      formula_scale = list(x = TRUE),
+      prior_random = prior_random(id = random_block(
+        sd = prior("gamma", list(2, 2)), terms = terms
+      ))
+    )
+    term <- result$formula_design$random_effects[[1L]]
+    values <- cbind(mu_intercept = c(0, 0), c(1, 3), c(2, 4))
+    colnames(values)[2:3] <- term$sd_parameter_names
+    if(!is.null(sd_x_prior) && is.prior.point(sd_x_prior)){
+      values <- values[, -3L, drop = FALSE]
+    }
+    if(!is.null(term$correlation)){
+      values <- cbind(values, matrix(0.5, 2L, length(term$correlation$primitive_names),
+                                     dimnames = list(NULL, term$correlation$primitive_names)))
+    }
+    list(
+      result = result, term = term,
+      fit = .parameter_catalog_test_fit(
+        coda::mcmc.list(coda::mcmc(values)), result$prior_list,
+        formula_design = list(mu = result$formula_design),
+        formula_scale = list(mu = result$formula_scale)
+      )
+    )
+  }
+  quantity <- function(fit, name){
+    parameter_catalog_resolve(parameter_catalog(fit), name, "mu")
+  }
+
+  for(formula in list(~ 1 + diag(1 + x | id), ~ 1 + us(1 + x | id))){
+    case <- scaled_fit(formula)
+    fit <- case$fit
+    slope_name <- case$term$sd_parameter_names[2L]
+    selection <- quantity(fit, "sd(x)")
+    key <- selection$quantities$extraction_key[[1L]]
+    expect_identical(key$source_type, "one_to_one_transform")
+    expect_identical(key$source_parameter, slope_name)
+    expect_identical(key$source_transform, "random_sd")
+    expect_equal(key$source_scale, 1 / sd_x, tolerance = 1e-12)
+    # the block evaluator still reads every SD coordinate of the block
+    expect_true(all(case$term$sd_parameter_names %in% key$dependencies))
+    expect_identical(parameter_transform(fit, selection),
+                     list(type = "affine", offset = 0, scale = key$source_scale))
+    # the prior law of the original-scale SD is the fitted gamma(2, 2) law
+    # rescaled by 1 / sd(x): f(y) = dgamma(y * sd(x), 2, 2) * sd(x)
+    density <- parameter_prior_density(fit, selection)
+    expect_false(is.null(density))
+    values <- c(0.2, 0.5, 1, 2)
+    ordinates <- vapply(values, function(value){
+      prior_density_ordinate(density, value)$log_density
+    }, numeric(1))
+    expect_equal(exp(ordinates), stats::dgamma(values * sd_x, 2, 2) * sd_x,
+                 tolerance = 1e-8)
+    support <- quantity(fit, "sd(x)")$quantities$support[[1L]]
+    expect_true(support$exact)
+    expect_equal(support$bounds, c(0, Inf))
+    # draws: the fitted slope SDs divided by sd(x)
+    expect_equal(as.numeric(parameter_draws(fit, selection)[[1L]][, 1L]),
+                 c(2, 4) / sd_x, tolerance = 1e-12)
+
+    # the variance is the square of the same rescaling
+    variance <- quantity(fit, "var(x)")
+    variance_key <- variance$quantities$extraction_key[[1L]]
+    expect_identical(variance_key$source_type, "one_to_one_transform")
+    expect_identical(variance_key$source_parameter, slope_name)
+    expect_identical(variance_key$source_transform, "random_var")
+    expect_equal(variance_key$source_scale, 1 / sd_x, tolerance = 1e-12)
+    expect_identical(variance_key$dependencies, key$dependencies)
+    expect_identical(parameter_transform(fit, variance),
+                     list(type = "square", scale = variance_key$source_scale))
+    expect_false(is.null(parameter_prior_density(fit, variance)))
+
+    # the intercept SD mixes coordinates: composite, without transform or law
+    for(name in c("sd(intercept)", "var(intercept)")){
+      composite <- quantity(fit, name)
+      expect_identical(composite$quantities$source_type, "composite", info = name)
+      expect_identical(composite$quantities$extraction_key[[1L]]$dependencies,
+                       key$dependencies, info = name)
+      expect_null(parameter_transform(fit, composite), info = name)
+      expect_null(parameter_prior_density(fit, composite), info = name)
+    }
+  }
+
+  # a point-valued slope SD is structural with a point support on the
+  # original scale, whatever the intercept SD is
+  point <- scaled_fit(~ 1 + diag(1 + x | id), prior("point", list(2)))
+  slope <- quantity(point$fit, "sd(x)")$quantities
+  expect_identical(slope$status, "structural")
+  expect_equal(slope$fixed_value, 2 / sd_x, tolerance = 1e-12)
+  expect_equal(slope$support[[1L]]$points, 2 / sd_x, tolerance = 1e-12)
+  expect_identical(slope$support[[1L]]$type, "points")
+  slope_variance <- quantity(point$fit, "var(x)")$quantities
+  expect_identical(slope_variance$status, "structural")
+  expect_equal(slope_variance$fixed_value, (2 / sd_x)^2, tolerance = 1e-12)
+  expect_identical(quantity(point$fit, "sd(intercept)")$quantities$status, "sampled")
+})
+
 test_that("posterior plots draw the exact LKJ prior of us() correlations", {
 
   block <- .lkj_block_fit(3L, 2)
@@ -2991,8 +3100,13 @@ test_that("transformed random summaries hide fitted-scale implementation rows", 
     c(2, 4) / stats::sd(data$x)
   )
 
+  # the original-scale map of the block comes from its persisted design; an
+  # invalid one stops the build (the content memo would recognise the laws of
+  # the catalog built above)
+  .BayesTools_private$content_memo <- NULL
+  withr::defer(.BayesTools_private$content_memo <- NULL)
   testthat::local_mocked_bindings(
-    .bt_random_effect_summary_sd_samples = function(...){
+    .random_sd_unscale_matrix = function(...){
       stop("Invalid random-SD scaling metadata.", call. = FALSE)
     },
     .package = "BayesTools"

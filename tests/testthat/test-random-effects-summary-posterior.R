@@ -821,9 +821,10 @@ test_that("catalog quantities declare their exact support and definedness", {
 
   # original-scale SDs of a scaled random slope: with SD priors on [0.5, Inf)
   # the intercept SD sqrt(sd_0^2 + (m / s)^2 sd_1^2) is at least
-  # 0.5 sqrt(1 + (m / s)^2) and the slope SD sd_1 / s at least 0.5 / s, so the
-  # hull [0, Inf) is not their exact support; half-normal SDs reach every
-  # value in (0, Inf)
+  # 0.5 sqrt(1 + (m / s)^2), so the hull [0, Inf) is not its exact support;
+  # the slope SD sd_1 / s is a one-to-one rescaling of its own coordinate and
+  # has the exact support [0.5 / s, Inf); half-normal SDs reach every value in
+  # (0, Inf)
   scaled_slope_fit <- function(sd){
     data <- data.frame(x = c(2, 4, 6, 8, 3, 7), g = factor(rep(c("a", "b", "c"), 2)))
     formula_result <- JAGS_formula(
@@ -845,9 +846,16 @@ test_that("catalog quantities declare their exact support and definedness", {
   }
   bounded_below <- scaled_slope_fit(prior("normal", list(0, 1), list(.5, Inf)))
   half_normal   <- scaled_slope_fit(prior("normal", list(0, 1), list(0, Inf)))
-  for(name in c("(mu) sd(intercept)", "(mu) sd(x)", "(mu) var(intercept)")){
+  for(name in c("(mu) sd(intercept)", "(mu) var(intercept)")){
     expect_equal(support_of(bounded_below, name)$bounds, c(0, Inf))
     expect_false(support_of(bounded_below, name)$exact)
+  }
+  sd_x <- stats::sd(c(2, 4, 6, 8, 3, 7))
+  expect_equal(support_of(bounded_below, "(mu) sd(x)")$bounds, c(0.5 / sd_x, Inf))
+  expect_true(support_of(bounded_below, "(mu) sd(x)")$exact)
+  expect_equal(support_of(bounded_below, "(mu) var(x)")$bounds, c((0.5 / sd_x)^2, Inf))
+  expect_true(support_of(bounded_below, "(mu) var(x)")$exact)
+  for(name in c("(mu) sd(intercept)", "(mu) sd(x)", "(mu) var(intercept)")){
     expect_true(support_of(half_normal, name)$exact)
   }
 

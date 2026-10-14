@@ -3317,15 +3317,20 @@ parameter_transform_jacobian <- function(values, transform){
   list(status = "structural", fixed_value = as.numeric(fixed_value))
 }
 
-# A one-to-one random summary (identity or square of one source coordinate) is
-# structural exactly when that coordinate is structural, whatever the status
-# of the other coordinates its block evaluator reads.
+# A one-to-one random summary (identity, square, or the rescaling of one source
+# coordinate by its original-scale factor) is structural exactly when that
+# coordinate is structural, whatever the status of the other coordinates its
+# block evaluator reads.
 .bt_parameter_catalog_random_source_status <- function(source, coordinates,
-                                                       source_transform){
+                                                       source_transform,
+                                                       source_scale = NA_real_){
 
   row <- match(source, coordinates$coordinate_name)
+  rescaled <- source_transform %in% c("random_sd", "random_var")
   if(length(source) != 1L || is.na(row) ||
-     !source_transform %in% c("identity", "square")){
+     !source_transform %in% c("identity", "square", "random_sd", "random_var") ||
+     (rescaled && (!is.numeric(source_scale) || length(source_scale) != 1L ||
+                     !is.finite(source_scale) || source_scale <= 0))){
     .bt_stop_refit_required(
       "Parameter catalog one-to-one random-summary source metadata are malformed. Refit the model with this version of BayesTools."
     )
@@ -3335,9 +3340,13 @@ parameter_transform_jacobian <- function(values, transform){
     return(list(status = status, fixed_value = NA_real_))
   }
   value <- coordinates$fixed_value[row]
-  if(identical(source_transform, "square")){
-    value <- value^2
-  }
+  value <- switch(
+    source_transform,
+    identity   = value,
+    square     = value^2,
+    random_sd  = source_scale * value,
+    random_var = (source_scale * value)^2
+  )
 
   list(status = "structural", fixed_value = as.numeric(value))
 }
@@ -3365,40 +3374,6 @@ parameter_transform_jacobian <- function(values, transform){
   }
   (is.null(column_groups) || length(column_groups) == 0L) &&
     length(term_map) == 0L
-}
-
-.bt_parameter_catalog_random_sd_source_scale <- function(
-    random_term, index, source_parameter, prior_list, parameter,
-    formula_scale, formula_design = NULL){
-
-  # The caller has already proved a one-coordinate homogeneous SD transform
-  # from the parameter map. Evaluate its unit response through the same
-  # unscaling engine used for posterior draws.
-  model_samples <- matrix(
-    1,
-    ncol = 1L,
-    dimnames = list(NULL, source_parameter)
-  )
-  summary <- .bt_random_effect_summary_sd_samples(
-    random_term = random_term,
-    model_samples = model_samples,
-    prior_list = prior_list,
-    parameter = parameter,
-    formula_scale = formula_scale,
-    formula_design = formula_design
-  )
-  if(is.null(summary) || ncol(summary$values) < index){
-    .bt_stop_refit_required(
-      "Parameter catalog could not resolve a one-coordinate random-SD transform. Refit the model with this version of BayesTools."
-    )
-  }
-  scale <- as.numeric(summary$values[, index])
-  if(length(scale) != 1L || !is.finite(scale) || scale <= 0){
-    .bt_stop_refit_required(
-      "Parameter catalog random-SD transform must have one finite positive source scale. Refit the model with this version of BayesTools."
-    )
-  }
-  unname(scale)
 }
 
 .bt_parameter_catalog_random_definitions <- function(coordinates, prior_list,
@@ -3507,7 +3482,8 @@ parameter_transform_jacobian <- function(values, transform){
       state <- .bt_parameter_catalog_random_source_status(
         source = status_source,
         coordinates = coordinates,
-        source_transform = source_transform
+        source_transform = source_transform,
+        source_scale = source_scale
       )
     }
     rows[[length(rows) + 1L]] <<- .bt_parameter_catalog_quantity(
@@ -3860,6 +3836,20 @@ parameter_transform_jacobian <- function(values, transform){
             coordinates,
             random_term
           )
+        # An SD of a scaled block is classified from its own persisted
+        # covariance transformation, not from the coordinates the block
+        # evaluator reads: it is a one-to-one transform of its coordinate when
+        # it is a pure rescaling of it (see .random_sd_original_scale_laws()),
+        # and a composite otherwise.
+        rescaling <- if(!direct_sd && !allocation_sd){
+          .random_sd_original_scale_laws(
+            parameter_scale = formula_scale[[parameter]],
+            prefix = parameter,
+            design = .bt_formula_design_random_unscale_view(design)
+          )$scale
+        }else{
+          stats::setNames(numeric(), character())
+        }
         sd_dependencies <- if(allocation_sd){
           unique(c(
             allocation_dependencies,
@@ -3903,10 +3893,12 @@ parameter_transform_jacobian <- function(values, transform){
             coordinates,
             sd_names[i]
           )
+          rescaled <- length(source_coordinate) == 1L &&
+            sd_names[i] %in% names(rescaling)
           source_type <- if(direct_source){
             "identity"
-          }else if(length(dependencies) == 1L){
-            if(allocation_sd) "composite" else "one_to_one_transform"
+          }else if(rescaled){
+            "one_to_one_transform"
           }else{
             "composite"
           }
@@ -3914,32 +3906,21 @@ parameter_transform_jacobian <- function(values, transform){
           if(!source_prior %in% names(prior_list)){
             source_prior <- ""
           }
-          source_parameter <- if(direct_source &&
+          source_parameter <- if((direct_source || rescaled) &&
                                  length(source_coordinate) == 1L){
             source_coordinate
-          }else if(!allocation_sd && length(dependencies) == 1L){
-            dependencies
           }else{
             ""
           }
           source_transform <- if(direct_source) "identity" else "random_sd"
-          status_source <- if(direct_source &&
+          status_source <- if((direct_source || rescaled) &&
                               length(source_coordinate) == 1L){
             source_coordinate
           }else{
             NULL
           }
-          source_scale <- if(identical(source_type, "one_to_one_transform") &&
-                             nzchar(source_parameter)){
-            .bt_parameter_catalog_random_sd_source_scale(
-              random_term = random_term,
-              index = i,
-              source_parameter = source_parameter,
-              prior_list = prior_list,
-              parameter = parameter,
-              formula_scale = formula_scale,
-              formula_design = design
-            )
+          source_scale <- if(rescaled){
+            unname(rescaling[[sd_names[i]]])
           }else{
             NA_real_
           }
