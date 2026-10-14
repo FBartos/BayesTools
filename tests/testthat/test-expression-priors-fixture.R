@@ -182,6 +182,27 @@ test_that("a hypothesis on the prior of an expression prior refuses with its typ
   }
 })
 
+test_that("hypotheses on a marginal posterior without a prior law refuse with the recorded cause", {
+
+  fit <- .expression_fit("fit_dnode_point_expression")
+  samples <- as_mixed_posteriors(fit, c("mu_intercept", "mu_x", "theta"))
+  levels <- marginal_posterior(samples, "mu_intercept", formula = ~ x, at = list(x = 1), prior_samples = TRUE)
+  expect_null(posterior_metadata(levels[[1L]], "prior_density"))
+  for(hypothesis in c("mu_intercept = 0.1", "mu_intercept > 0", "mu_intercept > 0 vs mu_intercept < 0")){
+    refusal <- tryCatch(hypothesis_BF(levels, hypothesis = hypothesis, parameter = "mu_intercept"), error = identity)
+    expect_s3_class(refusal, "BayesTools_formula_measure_unavailable")
+    expect_identical(refusal$reason, "expression_prior_law_unavailable", info = hypothesis)
+    expect_false(grepl("is required", conditionMessage(refusal), fixed = TRUE))
+  }
+  # a marginal without any record of its prior keeps the plain message
+  plain <- levels
+  plain[[1L]] <- .bt_meta_set(plain[[1L]], "measure_unavailable", NULL)
+  expect_error(hypothesis_BF(plain, hypothesis = "mu_intercept = 0.1", parameter = "mu_intercept"),
+               "Prior density is required for point hypotheses.", fixed = TRUE)
+  expect_error(hypothesis_BF(plain, hypothesis = "mu_intercept > 0", parameter = "mu_intercept"),
+               "Prior information is required for region hypotheses.", fixed = TRUE)
+})
+
 test_that("summary tables list the expression point of a fitted model", {
 
   fit <- .expression_fit("fit_dnode_point_expression")

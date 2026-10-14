@@ -96,7 +96,9 @@
     if(!is.null(deterministic)) return(deterministic)
   }
   if(prior && is.null(quantity$prior_draws)){
-    if(is.null(quantity$prior_density)) stop("Prior information is required for region hypotheses.", call. = FALSE)
+    if(is.null(quantity$prior_density)){
+      .hypothesis_stop_no_prior_density(quantity$posterior_marginal, "Prior information is required for region hypotheses.")
+    }
     mass <- .hypothesis_prior_density_prob(quantity$prior_density, side, quantity$parameter,
       with_diagnostics = TRUE)
   }else{
@@ -1031,6 +1033,16 @@ prior_ordinate_status <- function(prior_density, values, labels = NULL){
   }
 
   NULL
+}
+
+# A hypothesis needs the prior density of its marginal posterior. A marginal
+# that records its prior law as unavailable (for example an expression prior)
+# refuses with the typed condition of that cause; one without a record keeps
+# the plain message.
+.hypothesis_stop_no_prior_density <- function(posterior, message) {
+
+  if(!is.null(posterior)) .bt_formula_measure_check(posterior, "prior_density")
+  stop(message, call. = FALSE)
 }
 
 # The one exactness rule of point hypotheses, shared by hypothesis_BF() and

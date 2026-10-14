@@ -144,6 +144,9 @@
   if(!is.null(marginal)){
     if(!is.null(marginal$evaluation_value)) evaluation_value <- marginal$evaluation_value
     if(!is.null(marginal$log_jacobian)) log_jacobian <- marginal$log_jacobian
+    if(is.null(marginal$prior_density)){
+      .hypothesis_stop_no_prior_density(marginal$posterior, "Prior density is required for point hypotheses.")
+    }
     prior_ordinate <- .hypothesis_check_prior_ordinate(marginal$prior_density,
       evaluation_value, side$label)
     normal_approximation <- identical(density_method, "normal")
