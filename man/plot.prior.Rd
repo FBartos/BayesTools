@@ -141,6 +141,11 @@ probability mass. This display rule also applies to \code{\link[=lines.prior]{li
 \code{\link[=geom_prior]{geom_prior()}} and leaves \code{\link[=density.prior]{density.prior()}} and \code{\link[=prior_density_ordinate]{prior_density_ordinate()}}
 unchanged. Unknown or unsupported density routes keep their existing
 limitations.
+Simple priors, the marginals of simplex priors and individual omegas follow
+the same rule: nonfinite ordinates (such as the infinite density of a
+Gamma(0.5, 1) prior at zero) are not drawn, and the density axis ends at the
+largest finite ordinate. A curve without any finite ordinate stops with class
+\code{BayesTools_prior_curve_unavailable}; choose another \code{xlim}.
 Direct ordered plots and layers omit persisted zero-design reference levels
 from the default selection. Explicit selectors retain the original level
 numbering and can select a reference level. Genuine non-reference zero and

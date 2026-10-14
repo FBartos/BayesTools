@@ -784,3 +784,121 @@ test_that("geom_prior spike-and-slab xlim includes the spike at zero", {
   expect_true(any(layers[[2]]$x == 0))
   expect_lte(min(layers[[1]]$x), 0)
 })
+
+# F251: infinite density ordinates (the pdf of Gamma(.5, 1) at 0, of
+# Beta(.5, .5) at 0 and 1) are not drawn and do not set the display y range.
+test_that("direct prior plots omit infinite density ordinates and keep finite limits", {
+
+  grDevices::pdf(NULL)
+  on.exit(grDevices::dev.off(), add = TRUE)
+
+  check_figure <- function(figure, density_fun, info){
+    layer <- ggplot2::ggplot_build(figure)$data[[1]]
+    limits <- figure$scales$get_scales("y")$limits
+    inside <- layer$x > 0 & layer$x < 1
+    expect_true(all(is.finite(layer$x) & is.finite(layer$y)), info = info)
+    expect_true(all(is.finite(limits)) && limits[1] <= 0 && limits[2] >= max(layer$y), info = info)
+    expect_gt(max(layer$y), 1)
+    expect_equal(layer$y[inside], density_fun(layer$x[inside]), tolerance = 1e-12, info = info)
+    invisible(layer)
+  }
+  check_base <- function(fun, info){
+    expect_no_error(fun())
+    usr <- graphics::par("usr")
+    expect_true(all(is.finite(usr)), info = info)
+    expect_gt(usr[4], 1)
+  }
+
+  gamma <- prior("gamma", list(.5, 1))
+  beta  <- prior("beta", list(.5, .5))
+  omega <- prior_weightfunction("one-sided", .05, wf_cumulative(c(.5, .5)))
+  simplex_2 <- prior("dirichlet", list(alpha = c(.5, .5)))
+  simplex_3 <- prior("dirichlet", list(alpha = c(2, 2, .5)))
+
+  # the density itself still reports the infinite ordinate
+  expect_true(any(is.infinite(density(gamma, n_points = 64)$y)))
+  expect_true(is.infinite(attr(density(gamma, n_points = 64), "y_range")[2]))
+
+  # simple priors
+  check_figure(plot(gamma, plot_type = "ggplot", n_points = 64), function(x) stats::dgamma(x, .5, 1), "gamma")
+  check_figure(plot(beta, plot_type = "ggplot", n_points = 64), function(x) stats::dbeta(x, .5, .5), "beta")
+  check_base(function() plot(gamma, n_points = 64), "gamma base")
+  check_base(function() plot(beta, n_points = 64), "beta base")
+
+  # simplex marginals
+  check_figure(plot(simplex_2, show_figures = 1, plot_type = "ggplot", n_points = 64),
+               function(x) stats::dbeta(x, .5, .5), "dirichlet(.5, .5)")
+  check_base(function() plot(simplex_2, show_figures = 1, n_points = 64), "dirichlet(.5, .5) base")
+  figures <- plot(simplex_3, plot_type = "ggplot", n_points = 64)
+  expect_length(figures, 3L)
+  layer <- check_figure(figures[[3]], function(x) stats::dbeta(x, .5, 4), "dirichlet(2, 2, .5)")
+  finite_figure <- ggplot2::ggplot_build(figures[[1]])$data[[1]]
+  expect_equal(finite_figure$y, density(simplex_3, n_points = 64, x_range = range(finite_figure$x))[[1]]$y)
+  check_base(function() plot(simplex_3, n_points = 64), "dirichlet(2, 2, .5) base")
+
+  # an individual cumulative omega
+  check_figure(plot(omega, individual = TRUE, show_figures = 2, plot_type = "ggplot", n_points = 64),
+               function(x) stats::dbeta(x, .5, .5), "omega")
+  check_base(function() plot(omega, individual = TRUE, show_figures = 2, n_points = 64), "omega base")
+
+  # finite heights are unchanged
+  finite <- prior("beta", list(2, 3))
+  x_seq  <- seq(0, 1, length.out = 21)
+  layer  <- ggplot2::ggplot_build(plot(finite, plot_type = "ggplot", x_seq = x_seq))$data[[1]]
+  expect_equal(layer$y, density(finite, x_seq = x_seq)$y, tolerance = 0)
+
+  # the lines and geom overlays omit the same ordinates
+  drawn <- list()
+  testthat::local_mocked_bindings(
+    .lines.prior.simple = function(plot_data, ...) drawn[[length(drawn) + 1L]] <<- plot_data,
+    .package = "BayesTools"
+  )
+  plot(prior("normal", list(0, 1)), xlim = c(0, 4))
+  lines(gamma, n_points = 64)
+  lines(omega, individual = TRUE, show_parameter = 2, n_points = 64)
+  lines(simplex_3, show_parameter = 3, n_points = 64)
+  expect_length(drawn, 4L)
+  for(plot_data in drawn[-1L]){
+    expect_true(all(is.finite(plot_data$x) & is.finite(plot_data$y)))
+    expect_gt(max(plot_data$y), 1)
+  }
+  geoms <- list(
+    geom_prior(gamma, n_points = 64),
+    geom_prior(omega, individual = TRUE, show_parameter = 2, n_points = 64),
+    geom_prior(simplex_3, show_parameter = 3, n_points = 64)[[1]]
+  )
+  for(geom in geoms){
+    expect_true(all(is.finite(geom$data$x) & is.finite(geom$data$y)))
+    expect_gt(max(geom$data$y), 1)
+  }
+})
+
+test_that("a direct prior curve without a finite ordinate stops with a classed error", {
+
+  curve <- structure(list(x = c(0, 1), y = c(Inf, Inf)), class = c("density", "density.prior", "density.prior.simple"))
+  error <- expect_error(BayesTools:::.plot_data_curve_display(curve), class = "BayesTools_prior_curve_unavailable")
+  expect_s3_class(error, "BayesTools_plot_condition")
+  expect_identical(
+    conditionMessage(error),
+    "The prior density curve is unavailable: the plotting range contains no finite density ordinate. Choose a plotting range with 'xlim' where the density is finite."
+  )
+  expect_false(grepl("ordered|x_seq", conditionMessage(error)))
+})
+
+test_that("prior linear density plots omit infinite density ordinates", {
+
+  grDevices::pdf(NULL)
+  on.exit(grDevices::dev.off(), add = TRUE)
+
+  for(prior_density in list(
+    BayesTools:::.prior_linear_combination_density(list(theta = prior("gamma", list(.5, 1))), c(theta = 1), n_grid = 512),
+    BayesTools:::.prior_linear_combination_density(list(theta = prior("beta", list(.5, .5))), c(theta = 1), n_grid = 512)
+  )){
+    figure <- plot(prior_density, plot_type = "ggplot", n_points = 64)
+    layer  <- ggplot2::ggplot_build(figure)$data[[1]]
+    limits <- figure$scales$get_scales("y")$limits
+    expect_true(all(is.finite(layer$y)) && all(is.finite(limits)) && limits[2] >= max(layer$y))
+    expect_no_error(plot(prior_density, n_points = 64))
+    expect_true(all(is.finite(graphics::par("usr"))))
+  }
+})

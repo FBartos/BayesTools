@@ -91,8 +91,11 @@ source scale, before any plotting transformation. Exact infinities, exact
 zero/support-zero densities and intentional transformation limits do not
 trigger that warning. Direct `plot.prior()`, `lines.prior()` and `geom_prior()`
 filter nonfinite plotting ordinates without that numerical-unavailability
-warning. A direct ordered curve without any finite ordinate gives a classed
-error with the remedy `x_seq`.
+warning; this covers ordered levels, simple priors, simplex marginals and
+individual omegas, and the display y range is `c(0, max(finite y))`
+(`density()` and its `y_range` are unchanged). A direct ordered curve without
+any finite ordinate gives a classed error with the remedy `x_seq`; any other
+direct continuous curve gives the same class with the remedy `xlim`.
 Direct prior selectors retain original level numbering; explicit selectors
 can select the reference. Multiple ordered ggplot selections return positional
 lists with NULL holes for unselected figures, including the default reference,

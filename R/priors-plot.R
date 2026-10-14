@@ -74,6 +74,11 @@
 #' [geom_prior()] and leaves [density.prior()] and [prior_density_ordinate()]
 #' unchanged. Unknown or unsupported density routes keep their existing
 #' limitations.
+#' Simple priors, the marginals of simplex priors and individual omegas follow
+#' the same rule: nonfinite ordinates (such as the infinite density of a
+#' Gamma(0.5, 1) prior at zero) are not drawn, and the density axis ends at the
+#' largest finite ordinate. A curve without any finite ordinate stops with class
+#' \code{BayesTools_prior_curve_unavailable}; choose another \code{xlim}.
 #' Direct ordered plots and layers omit persisted zero-design reference levels
 #' from the default selection. Explicit selectors retain the original level
 #' numbering and can select a reference level. Genuine non-reference zero and
@@ -433,28 +438,51 @@ plot.prior_linear_density <- function(x, plot_type = "base", n_points = 1000, xl
 .plot_data_ordered_prior_display <- function(plot_data, selected = seq_along(plot_data)){
 
   for(i in selected){
-    component <- plot_data[[i]]
-    if(inherits(component, "density.prior.simple") &&
-       !inherits(component, "density.prior.mixed_measure")){
-      keep <- is.finite(component$x) & is.finite(component$y)
-      if(!any(keep)){
-        stop(structure(
-          list(message = paste0(
-            "The ordered prior density curve is unavailable: the requested 'x_seq' ",
-            "contains no finite plotting ordinate. Supply 'x_seq' with finite density ordinates."
-          ), call = NULL),
-          class = c("BayesTools_prior_curve_unavailable", "BayesTools_plot_condition", "error", "condition")
-        ))
-      }
-      if(all(keep)) next
-      component$x <- component$x[keep]
-      component$y <- component$y[keep]
-      attr(component, "x_range") <- range(component$x)
-      attr(component, "y_range") <- c(0, max(component$y))
-      plot_data[[i]] <- component
-    }
+    plot_data[[i]] <- .plot_data_curve_display(plot_data[[i]], ordered = TRUE)
   }
   plot_data
+}
+
+# The display rule of one directly rendered continuous curve (an ordered
+# level, a simple prior, a simplex marginal or an individual omega): omit the
+# nonfinite ordinates from the drawn curve and take the display y range from
+# the finite ones. The density object returned by density() is not changed.
+.plot_data_curve_display <- function(component, ordered = FALSE){
+
+  if(!inherits(component, "density.prior.simple") ||
+     inherits(component, "density.prior.mixed_measure")){
+    return(component)
+  }
+
+  keep <- is.finite(component$x) & is.finite(component$y)
+  if(!any(keep)){
+    stop(structure(
+      list(message = if(ordered){
+        paste0(
+          "The ordered prior density curve is unavailable: the requested 'x_seq' ",
+          "contains no finite plotting ordinate. Supply 'x_seq' with finite density ordinates."
+        )
+      }else{
+        paste0(
+          "The prior density curve is unavailable: the plotting range contains no ",
+          "finite density ordinate. Choose a plotting range with 'xlim' where the density is finite."
+        )
+      }, call = NULL),
+      class = c("BayesTools_prior_curve_unavailable", "BayesTools_plot_condition", "error", "condition")
+    ))
+  }
+  if(all(keep)){
+    return(component)
+  }
+
+  component$x <- component$x[keep]
+  component$y <- component$y[keep]
+  if(ordered){
+    attr(component, "x_range") <- range(component$x)
+  }
+  attr(component, "y_range") <- c(0, max(component$y))
+
+  component
 }
 
 .plot_prior_mixed_measure  <- function(x, plot_type, plot_data,
@@ -542,6 +570,9 @@ plot.prior_linear_density <- function(x, plot_type = "base", n_points = 1000, xl
   }
 }
 .plot.prior.simple         <- function(x, plot_type, plot_data, par_name = NULL, ...){
+
+  # nonfinite ordinates are not drawn and do not set the y range
+  plot_data <- .plot_data_curve_display(plot_data)
 
   # get default plot settings
   dots      <- list(...)

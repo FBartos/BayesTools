@@ -76,7 +76,7 @@ lines.prior <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
     .weightfunction_check_individual_index(show_parameter, length(plot_data), "show_parameter", select_one = TRUE)
     selected <- plot_data[[show_parameter]]
     if(inherits(selected, "density.prior.simple")){
-      .lines.prior.simple(selected, ...)
+      .lines.prior.simple(.plot_data_curve_display(selected), ...)
     }else if(inherits(selected, "density.prior.point")){
       .lines.prior.point(selected, scale_y2 = scale_y2, ...)
     }
@@ -88,7 +88,7 @@ lines.prior <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
     if(!individual){
       .lines.prior.PETPEESE(plot_data, ...)
     }else if(inherits(plot_data, "density.prior.simple")){
-      .lines.prior.simple(plot_data, ...)
+      .lines.prior.simple(.plot_data_curve_display(plot_data), ...)
     }else if(inherits(plot_data, "density.prior.point")){
       .lines.prior.point(plot_data, scale_y2 = scale_y2, ...)
     }
@@ -118,7 +118,7 @@ lines.prior <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
       }else if(inherits(plot_data[[i]], "density.prior.point")){
         .lines.prior.point(plot_data[[i]], scale_y2 = scale_y2, ...)
       }else{
-        .lines.prior.simple(plot_data[[i]], ...)
+        .lines.prior.simple(.plot_data_curve_display(plot_data[[i]]), ...)
       }
     }
     return(invisible())
@@ -138,7 +138,7 @@ lines.prior <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
 
   # default prior plots
   if(is.prior.simple(x)){
-    .lines.prior.simple(plot_data, ...)
+    .lines.prior.simple(.plot_data_curve_display(plot_data), ...)
     return(invisible())
   }
 
@@ -210,7 +210,7 @@ geom_prior  <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
     if(!individual){
       geom <- .geom_prior.weightfunction(plot_data = plot_data, rescale_x = rescale_x, ...)
     }else if(inherits(plot_data[[show_parameter]], "density.prior.simple")){
-      geom <- .geom_prior.simple(plot_data[[show_parameter]], ...)
+      geom <- .geom_prior.simple(.plot_data_curve_display(plot_data[[show_parameter]]), ...)
     }else if(inherits(plot_data[[show_parameter]], "density.prior.point")){
       geom <- .bt_geom_prior_point_overlay(plot_data[[show_parameter]], scale_y2 = scale_y2, ...)
     }
@@ -223,7 +223,7 @@ geom_prior  <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
     if(!individual){
       geom <- .geom_prior.PETPEESE(plot_data, ...)
     }else if(inherits(plot_data, "density.prior.simple")){
-      geom <- .geom_prior.simple(plot_data, ...)
+      geom <- .geom_prior.simple(.plot_data_curve_display(plot_data), ...)
     }else if(inherits(plot_data, "density.prior.point")){
       geom <- .bt_geom_prior_point_overlay(plot_data, scale_y2 = scale_y2, ...)
     }
@@ -273,7 +273,7 @@ geom_prior  <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
           ...
         ))
       }else{
-        list(.geom_prior.simple(plot_data[[i]], ...))
+        list(.geom_prior.simple(.plot_data_curve_display(plot_data[[i]]), ...))
       }
       geom <- c(geom, component_geom)
       if(is.prior.ordered(x)){
@@ -318,7 +318,7 @@ geom_prior  <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
 
   # default prior plots
   if(is.prior.simple(x)){
-    geom <- .geom_prior.simple(plot_data, ...)
+    geom <- .geom_prior.simple(.plot_data_curve_display(plot_data), ...)
     return(geom)
   }
 
