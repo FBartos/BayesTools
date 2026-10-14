@@ -515,7 +515,7 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
     warnings <- c(warnings, .Savage_Dickey_BF_extrapolation_warning)
   }
 
-  kde_height <- function(support = NULL){
+  kde_height <- function(){
     if(continuous_mass <= 0 || length(continuous_samples) == 0L){
       height <- 0
       attr(height, "continuous_mass") <- continuous_mass
@@ -524,7 +524,6 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
     height <- .Savage_Dickey_BF.kd(
       samples         = continuous_samples,
       null_hypothesis = null_hypothesis,
-      support         = support,
       warn_extrapolation = FALSE
     )
     height <- height * continuous_mass
@@ -613,7 +612,7 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
     }
     posterior_density_components <- attr(posterior_height, "components", exact = TRUE)
   }else{
-    posterior_height <- kde_height(stored_posterior_density_support)
+    posterior_height <- kde_height()
   }
   if(identical(posterior_density_source, "exact_support_exclusion")){
     # an exact zero posterior density is not a kernel-tail extrapolation
@@ -851,13 +850,6 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
   )
 
   height
-}
-
-.Savage_Dickey_BF.normal <- function(samples, null_hypothesis){
-
-  height <- stats::dnorm(null_hypothesis, mean = mean(samples), sd = stats::sd(samples))
-
-  return(height)
 }
 
 .Savage_Dickey_BF.support_exclusion <- function(samples, null_hypothesis,

@@ -230,7 +230,7 @@ as_marginal_inference <- function(model, marginal_parameters, parameters, condit
       conditional_list[[marginal_parameters[i]]],
       sprintf("conditional_list[[%1$s]]", marginal_parameters[i]),
       check_length = FALSE,
-      allow_values = c(parameters, "PET", "PEESE", "PETPEESE", "omega", "phacking", "alpha", "pi_null"),
+      allow_values = c(parameters, .condition_special_labels()),
       allow_NULL = TRUE
     )
 

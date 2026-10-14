@@ -319,7 +319,6 @@
   if(!is.null(source_names)){
     matched_names <- aliases[aliases %in% source_names]
     if(length(matched_names) > 0L){
-      matched_count <- length(out)
       for(alias in matched_names){
         out <- c(out, .posterior_ordinate_collect_from_source(
           source             = source[[alias]],
@@ -333,7 +332,7 @@
         ))
       }
 
-      if(length(out) > matched_count){
+      if(length(out) > 0L){
         return(out)
       }
     }
