@@ -157,7 +157,11 @@ lines.prior <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
 #' @inheritParams lines.prior
 #' @inheritParams density.prior
 #'
-#' @return \code{geom_prior_list} returns an object of class 'ggplot'.
+#' @return \code{geom_prior} returns a ggplot2 layer for a continuous density
+#' (a list of layers for a weight function), and an overlay of class
+#' \code{BayesTools_prior_overlay} for a point mass, a mixture, or a spike
+#' and slab prior. Both are added to a prior plot with \code{+}; the overlay
+#' takes the scaling of the probability axis of the plot it is added to.
 #'
 #' @seealso [plot.prior()] [lines.prior()]
 #' @rdname geom_prior

@@ -99,7 +99,11 @@ plot when one is available.}
 \item{...}{additional arguments}
 }
 \value{
-\code{geom_prior_list} returns an object of class 'ggplot'.
+\code{geom_prior} returns a ggplot2 layer for a continuous density
+(a list of layers for a weight function), and an overlay of class
+\code{BayesTools_prior_overlay} for a point mass, a mixture, or a spike
+and slab prior. Both are added to a prior plot with \code{+}; the overlay
+takes the scaling of the probability axis of the plot it is added to.
 }
 \description{
 Add prior object to a ggplot
