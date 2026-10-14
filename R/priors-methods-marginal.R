@@ -1,6 +1,35 @@
 #### marginal distribution functions ####
 # weightfunctions require just marginals for plotting and etc
 # (also, the joint are not implemented in general, since they differ between JAGS/Stan implementations)
+
+# Scale of the marginal distribution of a factor level under a centered
+# orthonormal/meandif 'mnormal' or 'mt' prior (the marginal methods and var()
+# share it). A prior that carries its declared factor design (attr "factor_design",
+# as the bound factor terms and their interactions do) draws each level as the
+# design row times the coefficients, so the marginal scale of the level is the
+# prior scale times the norm of its design row. The marginal is defined when the
+# rows share one norm. Priors without a stored design use the single-factor
+# contrast of K + 1 levels.
+.prior_factor_marginal_scale <- function(prior){
+
+  scale <- switch(
+    prior[["distribution"]],
+    "mnormal" = prior$parameters[["sd"]],
+    "mt"      = prior$parameters[["scale"]])
+
+  design <- attr(prior, "factor_design", exact = TRUE)
+  if(is.matrix(design)){
+    row_norm <- sqrt(rowSums(design^2))
+    if(max(row_norm) - min(row_norm) > 1e-8 * max(row_norm)){
+      stop("The marginal distribution of the factor prior is unavailable: the levels of the declared factor design have different marginal scales. Use 'rng()' to obtain the level samples.", call. = FALSE)
+    }
+    return(scale * mean(row_norm))
+  }
+
+  contrast <- if(is.prior.orthonormal(prior)) contr.orthonormal else contr.meandif
+  return(sqrt(sum((contrast(1:(prior$parameters[["K"]] + 1))[1, ] * scale)^2)))
+}
+
 #' @rdname prior_functions
 mcdf.prior   <- function(x, q, ...){
 
@@ -55,17 +84,7 @@ mcdf.prior   <- function(x, q, ...){
     }
 
     if(prior[["distribution"]] %in% c("mnormal", "mt")){
-      if(is.prior.orthonormal(prior)){
-        par2 <- sqrt(sum( (contr.orthonormal(1:(prior$parameters[["K"]] + 1))[1,] * switch(
-          prior[["distribution"]],
-          "mnormal" = prior$parameters[["sd"]],
-          "mt"      = prior$parameters[["scale"]]) )^2 ))
-      }else if(is.prior.meandif(prior)){
-        par2 <- sqrt(sum( (contr.meandif(1:(prior$parameters[["K"]] + 1))[1,] * switch(
-          prior[["distribution"]],
-          "mnormal" = prior$parameters[["sd"]],
-          "mt"      = prior$parameters[["scale"]]) )^2 ))
-      }
+      par2 <- .prior_factor_marginal_scale(prior)
     }
 
     p <- switch(
@@ -137,17 +156,7 @@ mccdf.prior  <- function(x, q, ...){
     }
 
     if(prior[["distribution"]] %in% c("mnormal", "mt")){
-      if(is.prior.orthonormal(prior)){
-        par2 <- sqrt(sum( (contr.orthonormal(1:(prior$parameters[["K"]] + 1))[1,] * switch(
-          prior[["distribution"]],
-          "mnormal" = prior$parameters[["sd"]],
-          "mt"      = prior$parameters[["scale"]]) )^2 ))
-      }else if(is.prior.meandif(prior)){
-        par2 <- sqrt(sum( (contr.meandif(1:(prior$parameters[["K"]] + 1))[1,] * switch(
-          prior[["distribution"]],
-          "mnormal" = prior$parameters[["sd"]],
-          "mt"      = prior$parameters[["scale"]]) )^2 ))
-      }
+      par2 <- .prior_factor_marginal_scale(prior)
     }
 
     p <- switch(
@@ -220,17 +229,7 @@ mlpdf.prior  <- function(x, y, ...){
     }
 
     if(prior[["distribution"]] %in% c("mnormal", "mt")){
-      if(is.prior.orthonormal(prior)){
-        par2 <- sqrt(sum( (contr.orthonormal(1:(prior$parameters[["K"]] + 1))[1,] * switch(
-          prior[["distribution"]],
-          "mnormal" = prior$parameters[["sd"]],
-          "mt"      = prior$parameters[["scale"]]) )^2 ))
-      }else if(is.prior.meandif(prior)){
-        par2 <- sqrt(sum( (contr.meandif(1:(prior$parameters[["K"]] + 1))[1,] * switch(
-          prior[["distribution"]],
-          "mnormal" = prior$parameters[["sd"]],
-          "mt"      = prior$parameters[["scale"]]) )^2 ))
-      }
+      par2 <- .prior_factor_marginal_scale(prior)
     }
 
     log_lik <- switch(
@@ -320,17 +319,7 @@ mquant.prior <- function(x, p, ...){
     }
 
     if(prior[["distribution"]] %in% c("mnormal", "mt")){
-      if(is.prior.orthonormal(prior)){
-        par2 <- sqrt(sum( (contr.orthonormal(1:(prior$parameters[["K"]] + 1))[1,] * switch(
-          prior[["distribution"]],
-          "mnormal" = prior$parameters[["sd"]],
-          "mt"      = prior$parameters[["scale"]]) )^2 ))
-      }else if(is.prior.meandif(prior)){
-        par2 <- sqrt(sum( (contr.meandif(1:(prior$parameters[["K"]] + 1))[1,] * switch(
-          prior[["distribution"]],
-          "mnormal" = prior$parameters[["sd"]],
-          "mt"      = prior$parameters[["scale"]]) )^2 ))
-      }
+      par2 <- .prior_factor_marginal_scale(prior)
     }
 
     q <- switch(

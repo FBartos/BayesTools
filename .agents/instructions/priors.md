@@ -16,7 +16,13 @@ their separate policy. Mixture coercion turns only scalar point and none
 components into factor spikes of the mixture's contrast: an explicit point
 factor prior keeps its declared contrast, components with different contrasts
 refuse, and a point factor without declared dimensions inherits K from its
-sibling factor components.
+sibling factor components. The marginal methods (`mcdf()`, `mccdf()`,
+`mlpdf()`/`mpdf()`, `mquant()`) and `var()`/`sd()` of a bound orthonormal or
+meandif `mnormal`/`mt` factor prior take the scale of each level from the
+declared factor design (the prior scale times the norm of the level's design
+row, as the bound sampler draws it), so interaction terms are covered; levels
+whose rows differ in norm have no common marginal and refuse. Priors without a
+stored design keep the single-factor contrast of K + 1 levels.
 
 `prior()` creates the core `prior` S3 family. Distribution aliases and routing
 live in `R/priors.R`; constructors and parameter normalization live in

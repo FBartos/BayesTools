@@ -363,17 +363,7 @@ var.prior   <- function(x, ...){
       }
 
 
-      if(is.prior.orthonormal(x)){
-        par2 <- sqrt(sum( (contr.orthonormal(1:(x$parameters[["K"]] + 1))[1,] * switch(
-          x[["distribution"]],
-          "mnormal" = x$parameters[["sd"]],
-          "mt"      = x$parameters[["scale"]]) )^2 ))
-      }else if(is.prior.meandif(x)){
-        par2 <- sqrt(sum( (contr.meandif(1:(x$parameters[["K"]] + 1))[1,] * switch(
-          x[["distribution"]],
-          "mnormal" = x$parameters[["sd"]],
-          "mt"      = x$parameters[["scale"]]) )^2 ))
-      }
+      par2 <- .prior_factor_marginal_scale(x)
 
       # use the univariate functions
       var <- switch(

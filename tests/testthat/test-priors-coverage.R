@@ -1482,6 +1482,88 @@ test_that("var() works for orthonormal and meandif priors", {
 })
 
 
+test_that("marginal methods and var() of bound factor priors use the declared factor design", {
+  design_prior <- function(contrast, formula, data, prior_factor_args = NULL, term){
+    p <- do.call(prior_factor, c(list(contrast = contrast), prior_factor_args))
+    terms <- attr(stats::terms(formula), "term.labels")
+    priors <- stats::setNames(rep(list(p), length(terms)), terms)
+    compiled <- JAGS_formula(formula, "mu", data, c(list(intercept = prior("normal", list(0, 1))), priors))
+    compiled$prior_list[[term]]
+  }
+  data_2x3 <- expand.grid(a = factor(c("a1", "a2")), b = factor(c("b1", "b2", "b3")))
+  data_3x3 <- expand.grid(g = factor(c("a", "b", "c")), h = factor(c("u", "v", "w")))
+
+  for(contrast in c("orthonormal", "meandif")){
+    # the interaction of a 2 x 3 design: every level has the marginal scale of its design row
+    bound  <- design_prior(contrast, ~ a * b, data_2x3,
+                           list(distribution = "mnormal", parameters = list(mean = 0, sd = 1.5)), "mu_a__xXx__b")
+    design <- attr(bound, "factor_design")
+    expect_identical(dim(design), c(6L, 2L))
+    expect_equal(max(abs(rowSums(design^2) - rowSums(design^2)[1L])), 0, tolerance = 1e-12)
+    scale <- 1.5 * sqrt(sum(design[1L, ]^2))
+    expect_equal(var(bound),  scale^2)
+    expect_equal(sd(bound),   scale)
+    expect_equal(mcdf(bound,  c(-.5, .5)), stats::pnorm(c(-.5, .5), 0, scale))
+    expect_equal(mccdf(bound, c(-.5, .5)), stats::pnorm(c(-.5, .5), 0, scale, lower.tail = FALSE))
+    expect_equal(mlpdf(bound, c(-.5, .5)), stats::dnorm(c(-.5, .5), 0, scale, log = TRUE))
+    expect_equal(mpdf(bound,  c(-.5, .5)), stats::dnorm(c(-.5, .5), 0, scale))
+    expect_equal(mquant(bound, c(.025, .975)), stats::qnorm(c(.025, .975), 0, scale))
+
+    # multivariate t levels keep their degrees of freedom
+    bound_t <- design_prior(contrast, ~ a * b, data_2x3,
+                            list(distribution = "mt", parameters = list(location = 0, scale = 1.5, df = 5)), "mu_a__xXx__b")
+    design_t <- attr(bound_t, "factor_design")
+    scale_t  <- 1.5 * sqrt(sum(design_t[1L, ]^2))
+    expect_equal(var(bound_t), scale_t^2 * 5 / 3)
+    expect_equal(mcdf(bound_t, .5), extraDistr::plst(.5, df = 5, mu = 0, sigma = scale_t))
+    expect_equal(mquant(bound_t, .975), extraDistr::qlst(.975, df = 5, mu = 0, sigma = scale_t))
+    expect_equal(mlpdf(bound_t, .5), extraDistr::dlst(.5, df = 5, mu = 0, sigma = scale_t, log = TRUE))
+  }
+
+  # the orthonormal 2 x 3 interaction: 1/3 (the single-factor contrast of the coefficient count gave 2/3)
+  orthonormal <- design_prior("orthonormal", ~ a * b, data_2x3,
+                              list(distribution = "mnormal", parameters = list(mean = 0, sd = 1)), "mu_a__xXx__b")
+  expect_equal(var(orthonormal), 1 / 3)
+  expect_equal(mcdf(orthonormal, .5), stats::pnorm(.5, 0, sqrt(1 / 3)))
+
+  # the 3 x 3 interaction: 4/9
+  orthonormal <- design_prior("orthonormal", ~ g * h, data_3x3,
+                              list(distribution = "mnormal", parameters = list(mean = 0, sd = 1)), "mu_g__xXx__h")
+  expect_equal(var(orthonormal), 4 / 9)
+  expect_equal(mquant(orthonormal, .975), stats::qnorm(.975, 0, 2 / 3))
+
+  # single-factor priors, bound or sized by K, keep the single-factor contrast
+  for(contrast in c("orthonormal", "meandif")){
+    contrast_row <- if(contrast == "orthonormal") contr.orthonormal(1:4)[1L, ] else contr.meandif(1:4)[1L, ]
+    scale <- 2 * sqrt(sum(contrast_row^2))
+    sized <- prior_factor("mnormal", list(0, 2), contrast = contrast)
+    sized$parameters[["K"]] <- 3
+    bound <- prior_factor_levels(prior_factor("mnormal", list(0, 2), contrast = contrast), c("a", "b", "c", "d"))
+    for(single in list(sized, bound)){
+      expect_equal(var(single), scale^2)
+      expect_equal(mcdf(single, .5), stats::pnorm(.5, 0, scale))
+      expect_equal(mccdf(single, .5), stats::pnorm(.5, 0, scale, lower.tail = FALSE))
+      expect_equal(mlpdf(single, .5), stats::dnorm(.5, 0, scale, log = TRUE))
+      expect_equal(mquant(single, .975), stats::qnorm(.975, 0, scale))
+    }
+  }
+
+  # levels with different marginal scales have no common marginal
+  uneven <- prior_factor_levels(prior_factor("mnormal", list(0, 1), contrast = "orthonormal"), c("a", "b", "c"))
+  design <- attr(uneven, "factor_design")
+  design[1L, ] <- 2 * design[1L, ]
+  attr(uneven, "factor_design") <- design
+  message <- "The marginal distribution of the factor prior is unavailable: the levels of the declared factor design have different marginal scales. Use 'rng()' to obtain the level samples."
+  expect_error(var(uneven),         message, fixed = TRUE)
+  expect_error(sd(uneven),          message, fixed = TRUE)
+  expect_error(mcdf(uneven, .5),    message, fixed = TRUE)
+  expect_error(mccdf(uneven, .5),   message, fixed = TRUE)
+  expect_error(mlpdf(uneven, .5),   message, fixed = TRUE)
+  expect_error(mpdf(uneven, .5),    message, fixed = TRUE)
+  expect_error(mquant(uneven, .5),  message, fixed = TRUE)
+})
+
+
 test_that("var() not implemented for mixture priors", {
   p_mix <- prior_mixture(
     list(prior("normal", list(0, 1)), prior("normal", list(3, 1))),
