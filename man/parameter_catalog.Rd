@@ -185,7 +185,11 @@ quantities. \code{parameter_catalog_resolve()} applies optional namespace
 and component filters and returns a versioned selection only when the match
 is unique. Otherwise it stops with an error of class
 \code{BayesTools_parameter_not_found} or \code{BayesTools_parameter_ambiguous} (both
-also \code{BayesTools_parameter_resolution_error}). A contrast-coefficient
+also \code{BayesTools_parameter_resolution_error}; the condition names the
+matching quantities). A rendered label that is also the label of another
+quantity (e.g. the transformed label \code{g[dif: b]} of level \code{b} and the label of
+a level named \code{dif: b}) is ambiguous, while a rendered label never replaces
+the canonical name of another quantity. A contrast-coefficient
 selector \verb{term\{j\}} whose coordinate is a level (the coordinates of treatment
 and independent contrasts and the first ordered coordinate have no
 coefficient quantity) stops with class \code{BayesTools_selector_unavailable}

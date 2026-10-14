@@ -609,6 +609,51 @@ test_that("factor catalog quantities reconstruct fitted term-level cells", {
   )
 }
 
+test_that("a transformed-level label that is another level's label is ambiguous, not resolved to it", {
+
+  # The transformed label `(mu) g[dif: lo]` of the level `lo` of a
+  # mean-difference factor is also the label of the level literally named
+  # `dif: lo`: resolving it must not select one of the two silently.
+  fit <- .label_contract_fit(c("lo", "dif: lo"), "meandif")
+  catalog <- parameter_catalog(fit)
+
+  # the canonical selectors keep their precedence
+  for(level in c("lo", "dif: lo")){
+    selection <- parameter_catalog_resolve(catalog, paste0("mu_g[", level, "]"))
+    expect_identical(selection$quantities$component, level)
+  }
+  error <- expect_error(
+    parameter_catalog_resolve(catalog, "(mu) g[dif: lo]"),
+    class = "BayesTools_parameter_ambiguous"
+  )
+  expect_setequal(error$candidates$canonical_name, c("mu_g[lo]", "mu_g[dif: lo]"))
+  expect_match(conditionMessage(error), "'mu_g[lo]'", fixed = TRUE)
+  expect_match(conditionMessage(error), "'mu_g[dif: lo]'", fixed = TRUE)
+  # a component selects one of them
+  for(level in c("lo", "dif: lo")){
+    expect_identical(
+      parameter_catalog_resolve(catalog, "(mu) g[dif: lo]", component = level)$quantities$component,
+      level
+    )
+  }
+  # the labels of the other rendering are unaffected
+  expect_identical(
+    parameter_catalog_resolve(catalog, "(mu) g[lo]")$quantities$component,
+    "lo"
+  )
+
+  # ordinary level sets keep every selector of every level
+  ordinary <- parameter_catalog(.label_contract_fit(c("lo", "hi"), "meandif"))
+  for(level in c("lo", "hi")){
+    ids <- vapply(
+      paste0(c("", "mu_", "(mu) "), "g[", rep(c("", "dif: "), each = 3L), level, "]"),
+      function(selector) parameter_catalog_resolve(ordinary, selector)$quantity_id,
+      character(1)
+    )
+    expect_length(unique(unname(ids)), 1L)
+  }
+})
+
 test_that("factor selectors name level labels, never coordinate positions", {
 
   contrasts <- c("treatment", "independent", "meandif", "orthonormal",

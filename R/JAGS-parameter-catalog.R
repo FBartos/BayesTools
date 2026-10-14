@@ -87,7 +87,11 @@
 #' and component filters and returns a versioned selection only when the match
 #' is unique. Otherwise it stops with an error of class
 #' `BayesTools_parameter_not_found` or `BayesTools_parameter_ambiguous` (both
-#' also `BayesTools_parameter_resolution_error`). A contrast-coefficient
+#' also `BayesTools_parameter_resolution_error`; the condition names the
+#' matching quantities). A rendered label that is also the label of another
+#' quantity (e.g. the transformed label `g[dif: b]` of level `b` and the label of
+#' a level named `dif: b`) is ambiguous, while a rendered label never replaces
+#' the canonical name of another quantity. A contrast-coefficient
 #' selector `term{j}` whose coordinate is a level (the coordinates of treatment
 #' and independent contrasts and the first ordered coordinate have no
 #' coefficient quantity) stops with class `BayesTools_selector_unavailable`
@@ -458,11 +462,16 @@ parameter_catalog_resolve <- function(catalog, alias, namespace = NULL,
   }
   if(nrow(candidates) > 1L){
     candidates <- candidates[order(candidates$quantity_id), , drop = FALSE]
+    named <- utils::head(candidates$canonical_name, 5L)
     .bt_parameter_catalog_stop(
       class = "BayesTools_parameter_ambiguous",
       message = paste0(
-        "Parameter alias '", alias, "' is ambiguous; use 'namespace' or ",
-        "'component' to select one quantity."
+        "Parameter alias '", alias, "' is ambiguous: it names ",
+        paste0("'", named, "'", collapse = ", "),
+        if(nrow(candidates) > length(named)){
+          paste0(" and ", nrow(candidates) - length(named), " more")
+        },
+        "; use 'namespace' or 'component' to select one quantity."
       ),
       alias = alias,
       candidates = candidates
@@ -3082,8 +3091,12 @@ parameter_transform_jacobian <- function(values, transform){
 
 # Adds the rendered labels of the quantities (secondary label-to-quantity
 # rows, with their label parts) as aliases unless a label is rendered for
-# several quantities or already names a different quantity in the same
-# namespace.
+# several quantities or is the canonical name of a different quantity in the
+# same namespace, which keeps its precedence. A label that equals another
+# selector of a different quantity (for example the untransformed label of a
+# level literally named 'dif: b' and the transformed label 'dif: b' of level
+# 'b') stays an alias of both, so that resolving it raises the ambiguity
+# instead of silently selecting one of them.
 .bt_parameter_catalog_secondary_aliases <- function(aliases, public,
                                                     secondary = NULL){
 
@@ -3121,22 +3134,15 @@ parameter_transform_jacobian <- function(values, transform){
   })
   added <- added[added_owners[added_key] == 1L, , drop = FALSE]
 
-  # Existing selectors of another quantity in the namespace take precedence.
-  existing <- unique(data.frame(
-    key = c(
-      label_key(aliases$alias, aliases$namespace),
-      label_key(public$canonical_name, public$namespace)
-    ),
-    quantity_id = c(aliases$quantity_id, public$quantity_id),
-    stringsAsFactors = FALSE
-  ))
+  # The canonical name of another quantity in the namespace takes precedence.
   added_key <- label_key(added$alias, added$namespace)
-  existing_owners <- table(existing$key)
-  first_owner <- existing$quantity_id[match(added_key, existing$key)]
-  free <- is.na(first_owner) |
-    (as.integer(existing_owners[added_key]) == 1L &
-       first_owner == added$quantity_id)
-  added <- added[free, , drop = FALSE]
+  canonical_owner <- public$quantity_id[
+    match(added_key, label_key(public$canonical_name, public$namespace))
+  ]
+  added <- added[
+    is.na(canonical_owner) | canonical_owner == added$quantity_id, ,
+    drop = FALSE
+  ]
   if(nrow(added) == 0L){
     return(aliases)
   }
