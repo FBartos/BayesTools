@@ -820,9 +820,12 @@ the same inexact class (draw-only inputs have no structural prior density).
 `Savage_Dickey_BF()` applies the same rule and classes to its prior ordinate
 through the same check: a zero or infinite prior ordinate makes the density
 ratio a 0/0 or singular limit that a posterior kernel estimate cannot
-estimate, so a scalar call stops, and a level of a list posterior (marginal
-inference and its tables) gets an NA Bayes factor with the reason, as a level
-fixed at the null.
+estimate, so a scalar call stops. A level of a list posterior and the
+marginals of marginal inference (and its tables) instead get an NA Bayes
+factor with the reason, as a level fixed at the null, for each of the five
+known conditions, not only the zero and infinite ordinates; the zero and
+infinite ordinates keep their Savage-Dickey reason text and the others the
+message of their condition.
 
 Precomputed ordinate matching validates original single attributes before
 filtering by each leaf's own parameter aliases and condition event. Aggregate

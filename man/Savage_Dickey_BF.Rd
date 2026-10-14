@@ -18,8 +18,10 @@ Savage_Dickey_BF(
 
 \item{null_hypothesis}{point null hypothesis to test. Defaults to \code{0}}
 
-\item{normal_approximation}{whether the height of prior and posterior density should be
-approximated via a normal distribution (rather than kernel density). Defaults to \code{FALSE}.}
+\item{normal_approximation}{whether the height of the posterior density at
+the null should be approximated via a normal distribution (rather than
+kernel density). The prior height is always the structural prior-density
+ordinate. Defaults to \code{FALSE}.}
 
 \item{silent}{whether warnings should be returned silently. Defaults to \code{FALSE}}
 
@@ -59,17 +61,19 @@ its diagnostics, or a density grid without recorded provenance) with
 \code{BayesTools_hypothesis_ordinate}. A declared posterior point mass at the
 null value of a scalar marginal posterior stops with an error of class
 \code{BayesTools_posterior_point_mass_at_null} (also
-\code{BayesTools_hypothesis_ordinate}). For a list of marginal posteriors
-(and in marginal inference), a zero or infinite prior ordinate or a
-posterior point mass at the null gives the level an \code{NA} Bayes factor
-with its reason instead (see Details).
-In a list or opted-in marginal table, all five known prior-ordinate errors
-return \code{NA} with the original reason (zero and infinite ordinates keep
-their existing reason text). Direct scalar calls still signal these errors.
+\code{BayesTools_hypothesis_ordinate}). These conditions are errors of a
+direct scalar call only. For a list of marginal posteriors, and for the
+marginal posteriors of \code{marginal_inference()} and
+\code{as_marginal_inference()} (scalar marginals included), the Bayes
+factor of the affected parameter or level is \code{NA} instead, with the
+reason in its \code{"warnings"} attribute: for a posterior point mass at the
+null and for each of the five prior-ordinate conditions above (zero and
+infinite ordinates keep the reason text given in Details; the others, the
+message of their condition).
 }
 \description{
 Computes Savage-Dickey (density ratio) inclusion Bayes factors
-based the change of height from prior to posterior distribution at the test value.
+based on the change of height from prior to posterior distribution at the test value.
 }
 \details{
 Marginal posterior vectors may carry \code{posterior_ordinate}

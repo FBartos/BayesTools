@@ -46,8 +46,10 @@ Either "AND" or "OR". Defaults to "AND".}
 
 \item{null_hypothesis}{point null hypothesis to test. Defaults to \code{0}}
 
-\item{normal_approximation}{whether the height of prior and posterior density should be
-approximated via a normal distribution (rather than kernel density). Defaults to \code{FALSE}.}
+\item{normal_approximation}{whether the height of the posterior density at
+the null should be approximated via a normal distribution (rather than
+kernel density). The prior height is always the structural prior-density
+ordinate. Defaults to \code{FALSE}.}
 
 \item{n_samples}{controls the numerical grid used for model-averaged
 prior densities. For a simple parameter, an explicitly attached
