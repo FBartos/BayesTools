@@ -772,3 +772,136 @@ test_that("N73 explicit integer reference orders retain their representation", {
   expect_identical(records$kind, c("estimate", "note", "evidence"))
   expect_identical(records$order, c(1L, 3L, 5L))
 })
+
+.interpret_log_BF_table <- function(){
+
+  log_BF <- .format_BF_from_log(c(overflow = 800, tiny = -800, ordinary = 2), logBF = TRUE)
+  tests <- data.frame(prior_prob = rep(0.5, 3), post_prob = c(1, 0, 0.88), check.names = FALSE)
+  tests[["inclusion_BF"]] <- log_BF
+  rownames(tests) <- names(log_BF)
+  class(tests) <- c("BayesTools_table", "data.frame")
+  attr(tests, "type") <- c("prior_prob", "post_prob", "inclusion_BF")
+
+  tests
+}
+
+.interpret_log_BF_record <- function(BF_value, orientation, bound = NULL, scale = "log", output = "text"){
+
+  data <- list(kind = "evidence", label = "effect", BF_value = BF_value,
+               BF_scale = scale, BF_orientation = orientation)
+  if(!is.null(bound)){
+    data[["BF_bound_operator"]] <- bound
+  }
+  out <- interpret_records(list(bf = list(type = "record", data = data)),
+                           list(list(kind = "evidence", source = "bf")), output = output)
+
+  if(output == "text") as.character(out) else out
+}
+
+test_that("interpret_records keeps the evidence of log-scale Bayes factors beyond the double range", {
+
+  tests <- .interpret_log_BF_table()
+  table_evidence <- function(row, output = "text"){
+    interpret_records(
+      list(tests = tests),
+      list(list(kind = "evidence", source = "tests", row = row, label = row)),
+      output = output
+    )
+  }
+
+  expect_identical(
+    as.character(table_evidence("overflow")),
+    "strong evidence in favor of the overflow, Inclusion BF = exp(800)"
+  )
+  overflow <- table_evidence("overflow", "records")
+  expect_equal(overflow$BF_value, 800)
+  expect_identical(overflow$BF_scale, "log")
+
+  expect_identical(
+    as.character(table_evidence("tiny")),
+    "strong evidence against the tiny, Inclusion BF = exp(-800)"
+  )
+  expect_identical(
+    as.character(table_evidence("ordinary")),
+    "moderate evidence in favor of the ordinary, Inclusion BF = 7.39"
+  )
+  expect_equal(table_evidence("ordinary", "records")$BF_canonical_value, exp(2), tolerance = 1e-12)
+
+})
+
+test_that("interpret_records applies the orientation of a log-scale Bayes factor to its logarithm", {
+
+  # the reciprocal of exp(710) stays representable
+  reverse <- .interpret_log_BF_record(710, "null_over_alternative", output = "records")
+  expect_identical(reverse$BF_canonical_value, exp(-710))
+  expect_identical(
+    .interpret_log_BF_record(710, "null_over_alternative"),
+    "strong evidence against the effect, BF = exp(-710)"
+  )
+  expect_identical(
+    .interpret_log_BF_record(-710, "null_over_alternative", output = "records")$BF_canonical_value,
+    Inf
+  )
+  expect_identical(
+    .interpret_log_BF_record(-710, "null_over_alternative"),
+    "strong evidence in favor of the effect, BF = exp(710)"
+  )
+  expect_identical(
+    .interpret_log_BF_record(-800, "exclusion_over_inclusion"),
+    "strong evidence in favor of the effect, Inclusion BF = exp(800)"
+  )
+  expect_identical(
+    .interpret_log_BF_record(800, "alternative_over_null", ">"),
+    "at least strong evidence in favor of the effect, BF > exp(800)"
+  )
+  expect_identical(
+    .interpret_log_BF_record(800, "alternative_over_null", "<"),
+    "a finite-sample bound for the evidence concerning the effect, BF < exp(800)"
+  )
+  expect_identical(
+    .interpret_log_BF_record(0, "alternative_over_null"),
+    "no evidence for or against the effect, BF = 1.00"
+  )
+
+})
+
+test_that("interpret text prints an unbounded Bayes factor that rounds to zero as its reciprocal", {
+
+  expect_identical(
+    .interpret_log_BF_record(log(1e-4), "alternative_over_null"),
+    "strong evidence against the effect, BF = 1/10000"
+  )
+  expect_identical(
+    BayesTools:::.interpret.BF(1e-4, "effect", NULL),
+    "strong evidence against the effect, BF = 1/10000"
+  )
+  expect_identical(
+    BayesTools:::.interpret.BF(0.002, "effect", NULL),
+    "strong evidence against the effect, BF = 0.002"
+  )
+
+})
+
+test_that("interpret_records text of natural-scale and in-range log-scale Bayes factors is unchanged", {
+
+  expect_identical(
+    .interpret_log_BF_record(Inf, "alternative_over_null", scale = "linear"),
+    "evidence for effect unavailable"
+  )
+  expect_error(.interpret_log_BF_record(0, "alternative_over_null", scale = "linear"), "inference_BF")
+  for(log_value in seq(-4, 4, by = 0.25)){
+    expect_identical(
+      .interpret_log_BF_record(log_value, "alternative_over_null"),
+      BayesTools:::.interpret.BF(exp(log_value), "effect", "BF")
+    )
+    expect_identical(
+      .interpret_log_BF_record(log_value, "null_over_alternative"),
+      BayesTools:::.interpret.BF(exp(-log_value), "effect", "BF")
+    )
+  }
+
+  # the internal logarithm must be a finite number
+  expect_error(BayesTools:::.interpret.BF(1, "effect", NULL, log_BF = Inf), "inference_BF")
+  expect_error(BayesTools:::.interpret.BF(1, "effect", NULL, log_BF = NA_real_), "inference_BF")
+
+})

@@ -792,6 +792,19 @@ invert_BF_bound_operator <- function(operator){
 }
 
 
+# A positive Bayes factor that rounds to zero at the printed digits is shown as
+# its reciprocal (1/10000), mirroring large values; a reciprocal that overflows
+# is shown as exp(<log>) with the natural logarithm of the value.
+.format_BF_small_value <- function(BF, log_BF){
+
+  reciprocal <- 1 / BF
+  if(is.finite(reciprocal)){
+    paste0("1/", format(round(reciprocal), trim = TRUE))
+  }else{
+    paste0("exp(", format(log_BF, trim = TRUE), ")")
+  }
+}
+
 .format_BF_column <- function(x){
 
   out <- format(round(x, digits = 3), nsmall = 3)
@@ -810,9 +823,7 @@ invert_BF_bound_operator <- function(operator){
       log(x[small_bound])
     }
     out[small_bound] <- vapply(seq_len(sum(small_bound)), function(i){
-      reciprocal <- 1 / x[small_bound][i]
-      if(is.finite(reciprocal)) paste0("1/", format(round(reciprocal), trim = TRUE)) else
-        paste0("exp(", format(small_logs[i], trim = TRUE), ")")
+      .format_BF_small_value(x[small_bound][i], small_logs[i])
     }, character(1))
   }
   if(!is.null(logs) && !isTRUE(attr(x, "logBF"))){

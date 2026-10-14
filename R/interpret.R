@@ -83,37 +83,47 @@ interpret <- function(inference, samples, specification, method){
 
   return(paste0(method, " found ", text_BF, ", ", text_par, "."))
 }
-.interpret.BF             <- function(BF, name, BF_name, BF_bound_operator = NULL){
+# 'log_BF' (internal) is the natural logarithm of a log-scale BF: it classifies
+# the evidence instead of 'BF', which may be 0 or Inf beyond the double range.
+.interpret.BF             <- function(BF, name, BF_name, BF_bound_operator = NULL, log_BF = NULL){
 
   if(!is.numeric(BF))
     stop("The 'inference_BF' argument must be a numeric vector.", call. = FALSE)
   bound_operator <- if(is.null(BF_bound_operator)) attr(BF, "bound_operator") else BF_bound_operator
   bound_operator <- .standardize_BF_bound_operator(bound_operator, length(BF))
   BF <- as.numeric(BF)
-  check_real(BF, "inference_BF", lower = 0, allow_bound = FALSE, allow_NA = FALSE)
-  if(!is.finite(BF))
-    stop("The 'inference_BF' argument must be finite.", call. = FALSE)
+  if(is.null(log_BF)){
+    check_real(BF, "inference_BF", lower = 0, allow_bound = FALSE, allow_NA = FALSE)
+    if(!is.finite(BF))
+      stop("The 'inference_BF' argument must be finite.", call. = FALSE)
+    log_BF <- log(BF)
+  }else{
+    check_real(log_BF, "inference_BF", allow_NA = FALSE)
+    if(!is.finite(log_BF))
+      stop("The 'inference_BF' argument must be finite.", call. = FALSE)
+    BF <- exp(log_BF)
+  }
 
   bound_operator <- bound_operator[1]
   has_bound <- !is.na(bound_operator)
   bound_identifies_side <- !has_bound ||
-    (bound_operator == ">" && BF >= 1) ||
-    (bound_operator == "<" && BF <= 1)
+    (bound_operator == ">" && log_BF >= 0) ||
+    (bound_operator == "<" && log_BF <= 0)
 
   if(!bound_identifies_side){
     text <- paste0("a finite-sample bound for the evidence concerning the ", name)
   }else if(isTRUE(all.equal(BF, 1)) && !has_bound){
     text <- paste0("no evidence for or against the ", name)
-  }else if(abs(log(BF)) > log(10)){
+  }else if(abs(log_BF) > log(10)){
     text <- "strong evidence"
-  }else if(abs(log(BF)) > log(3)){
+  }else if(abs(log_BF) > log(3)){
     text <- "moderate evidence"
   }else{
     text <- "weak evidence"
   }
 
   if(bound_identifies_side && !(isTRUE(all.equal(BF, 1)) && !has_bound)){
-    if(BF > 1 || (has_bound && isTRUE(all.equal(BF, 1)) && bound_operator == ">")){
+    if(log_BF > 0 || (has_bound && isTRUE(all.equal(BF, 1)) && bound_operator == ">")){
       text <- paste0(text, " in favor of the ", name)
     }else{
       text <- paste0(text, " against the ", name)
@@ -123,7 +133,7 @@ interpret <- function(inference, samples, specification, method){
     }
   }
 
-  BF <- format(round(BF, if(BF < 1) 3 else 2), nsmall = if(BF < 1) 3 else 2)
+  BF <- .interpret_BF_value_text(BF, log_BF)
 
   if(is.null(BF_name)){
     text <- paste0(text, if(has_bound) ", BF " else ", BF = ", if(has_bound) paste(bound_operator, BF) else BF)
@@ -132,6 +142,18 @@ interpret <- function(inference, samples, specification, method){
   }
 
   return(text)
+}
+# The BF value as printed in the text: two (BF >= 1) or three decimals; a value
+# that rounds to zero is shown as its reciprocal and a value beyond the double
+# range as exp(<log>), as the Bayes-factor tables show them.
+.interpret_BF_value_text <- function(BF, log_BF){
+
+  digits <- if(BF < 1) 3 else 2
+  if(is.finite(BF) && round(BF, digits) != 0){
+    return(format(round(BF, digits), nsmall = digits))
+  }
+
+  if(BF < 1) .format_BF_small_value(BF, log_BF) else paste0("exp(", format(log_BF, trim = TRUE), ")")
 }
 .interpret.par            <- function(samples, name, unit, conditional){
 
@@ -202,7 +224,13 @@ interpret <- function(inference, samples, specification, method){
 #'
 #' @return \code{interpret_records} returns a data frame with class
 #' \code{"BayesTools_interpret_records"} when \code{output = "records"}, or a
-#' character vector when \code{output = "text"}.
+#' character vector when \code{output = "text"}. Evidence records keep the
+#' supplied \code{BF_value} and \code{BF_scale}; \code{BF_canonical_value} is
+#' the Bayes factor on the natural scale in the canonical orientation (\code{0}
+#' or \code{Inf} for a log-scale value beyond the double range). The text
+#' rendering classifies and prints a log-scale value from its logarithm, so
+#' such values keep their evidence strength and are printed as
+#' \code{exp(<log>)}.
 #'
 #' @export
 interpret_records <- function(sources, plan, output = c("records", "text"),
@@ -1063,11 +1091,18 @@ interpret_records <- function(sources, plan, output = c("records", "text"),
     "target_over_complement", "complement_over_target"
   ))
 
-  BF_linear <- if(BF_scale == "log") exp(BF_value) else BF_value
-  canonical_bound <- BF_bound_operator
-  if(BF_orientation %in% c("exclusion_over_inclusion", "null_over_alternative", "complement_over_target")){
-    BF_linear <- 1 / BF_linear
-    canonical_bound <- .invert_BF_bound_operator(canonical_bound)
+  inverted <- BF_orientation %in% .interpret_inverted_BF_orientations()
+  canonical_bound <- if(inverted) .invert_BF_bound_operator(BF_bound_operator) else BF_bound_operator
+  canonical_log <- .interpret_canonical_log_BF(BF_value, BF_scale, BF_orientation)
+  if(!is.na(canonical_log)){
+    # The orientation is applied to the logarithm: a finite log BF beyond the
+    # double range keeps its (representable) reciprocal.
+    BF_linear <- exp(canonical_log)
+  }else{
+    BF_linear <- if(BF_scale == "log") exp(BF_value) else BF_value
+    if(inverted){
+      BF_linear <- 1 / BF_linear
+    }
   }
 
   record[["BF_value"]] <- BF_value
@@ -1079,6 +1114,22 @@ interpret_records <- function(sources, plan, output = c("records", "text"),
   record[["BF_canonical_orientation"]] <- "target_over_complement"
 
   record
+}
+
+.interpret_inverted_BF_orientations <- function(){
+
+  c("exclusion_over_inclusion", "null_over_alternative", "complement_over_target")
+}
+
+# The natural logarithm of a finite log-scale BF in the canonical orientation
+# (NA for a natural-scale or non-finite value).
+.interpret_canonical_log_BF <- function(BF_value, BF_scale, BF_orientation){
+
+  if(!identical(BF_scale, "log") || !is.finite(BF_value)){
+    return(NA_real_)
+  }
+
+  if(BF_orientation %in% .interpret_inverted_BF_orientations()) -BF_value else BF_value
 }
 
 .interpret_complete_record <- function(record, item, source_name = NULL, row = NULL){
@@ -1210,8 +1261,12 @@ interpret_records <- function(sources, plan, output = c("records", "text"),
 .interpret_record_evidence_text <- function(record){
 
   BF <- record[["BF_canonical_value"]]
-  if(!is.finite(BF)){
-    return(paste0("evidence for ", record[["label"]], " unavailable"))
+  log_BF <- .interpret_canonical_log_BF(record[["BF_value"]], record[["BF_scale"]], record[["BF_orientation"]])
+  if(is.na(log_BF)){
+    log_BF <- NULL
+    if(!is.finite(BF)){
+      return(paste0("evidence for ", record[["label"]], " unavailable"))
+    }
   }
   BF_name <- .interpret_canonical_BF_name(record)
   bound <- record[["BF_canonical_bound_operator"]]
@@ -1219,7 +1274,7 @@ interpret_records <- function(sources, plan, output = c("records", "text"),
     bound <- NULL
   }
 
-  .interpret.BF(BF, record[["label"]], BF_name, bound)
+  .interpret.BF(BF, record[["label"]], BF_name, bound, log_BF = log_BF)
 }
 
 .interpret_canonical_BF_name <- function(record){

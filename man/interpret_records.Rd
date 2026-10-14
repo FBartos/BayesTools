@@ -47,7 +47,13 @@ generic \code{"text"} rendering. Downstream packages should usually request
 \value{
 \code{interpret_records} returns a data frame with class
 \code{"BayesTools_interpret_records"} when \code{output = "records"}, or a
-character vector when \code{output = "text"}.
+character vector when \code{output = "text"}. Evidence records keep the
+supplied \code{BF_value} and \code{BF_scale}; \code{BF_canonical_value} is
+the Bayes factor on the natural scale in the canonical orientation (\code{0}
+or \code{Inf} for a log-scale value beyond the double range). The text
+rendering classifies and prints a log-scale value from its logarithm, so
+such values keep their evidence strength and are printed as
+\code{exp(<log>)}.
 }
 \description{
 \code{interpret_records} normalizes interpretation inputs from
