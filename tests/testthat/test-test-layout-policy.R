@@ -875,6 +875,11 @@ test_that("explicit Unix selected files also reach the linked version probe", {
   skip_on_cran()
   sh <- unname(Sys.which("sh"))
   skip_if(!nzchar(sh), "A POSIX shell is required to run configure.")
+  skip_if_not(
+    file.exists(.layout_repository_file("configure")) &&
+      file.exists(.layout_repository_file("src", "Makevars.in")),
+    "Repository configure sources unavailable."
+  )
   work <- normalizePath(withr::local_tempdir(), winslash = "/")
   pkg <- file.path(work, "pkg")
   dir.create(file.path(pkg, "src"), recursive = TRUE)
