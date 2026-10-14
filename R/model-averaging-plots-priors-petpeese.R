@@ -755,9 +755,13 @@
       }else{
         bias_range <- .petpeese_prior_component_range(bias_component, tail_prob)
         scaled_bias_range <- sort(.petpeese_prior_sum_checked(0, scale, bias_range))
+        # The endpoints seed the quantile solves and are not reported values:
+        # a scaled bias endpoint at or below half an ulp of the location endpoint
+        # leaves the correctly rounded sum at the location endpoint, so the
+        # plain sum is kept (a nonfinite endpoint is refused by the caller).
         ranges[[length(ranges) + 1L]] <- c(
-          .petpeese_prior_sum_checked(mu_range[1], 1, scaled_bias_range[1]),
-          .petpeese_prior_sum_checked(mu_range[2], 1, scaled_bias_range[2])
+          mu_range[1] + scaled_bias_range[1],
+          mu_range[2] + scaled_bias_range[2]
         )
       }
     }

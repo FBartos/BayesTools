@@ -2470,6 +2470,69 @@ test_that("PET-PEESE public prior plots order ribbons after decreasing transform
   }
 })
 
+# CDF of mu + scale * bias for the bias with quantile function 'quant', with a
+# standard normal mu: the band values satisfy it at .025, .5 and .975
+.petpeese_band_cdf <- function(q, scale, quant){
+  stats::integrate(function(u) stats::pnorm(q - scale * quant(u)), 0, 1,
+                   rel.tol = 1e-12, subdivisions = 1000L)$value
+}
+.petpeese_band_data <- function(bias, x_seq){
+  .plot_data_prior_list.PETPEESE(
+    list(bias), x_seq = x_seq, x_range = range(x_seq), x_range_quant = NULL,
+    n_points = length(x_seq), n_samples = 1000, transformation = NULL,
+    transformation_arguments = NULL, transformation_settings = FALSE,
+    prior_list_mu = list(prior("normal", list(0, 1))), force_samples = FALSE)
+}
+.expect_petpeese_band <- function(bias, x_seq, scale, quant){
+  data <- .petpeese_band_data(bias, x_seq)
+  cdf  <- function(y) vapply(seq_along(data$x), function(i) .petpeese_band_cdf(y[i], scale(data$x[i]), quant), numeric(1))
+  expect_equal(cdf(data$y_lCI), rep(.025, length(data$x)), tolerance = 1e-6)
+  expect_equal(cdf(data$y), rep(.5, length(data$x)), tolerance = 1e-6)
+  expect_equal(cdf(data$y_uCI), rep(.975, length(data$x)), tolerance = 1e-6)
+}
+
+test_that("PET-PEESE prior bands of a coefficient with tiny quantiles plot at default settings", {
+
+  grDevices::pdf(NULL)
+  on.exit(grDevices::dev.off(), add = TRUE)
+  mu <- list(prior("normal", list(0, 1)))
+
+  # a gamma(.1) coefficient has a 1e-4 quantile of 6e-41, below half an ulp of
+  # the location quantiles: the bracket endpoints keep the rounded sum
+  for(bias in list(prior_PET("gamma", list(.1, 1)), prior_PEESE("gamma", list(.1, 1)))){
+    for(plot_type in c("base", "ggplot")){
+      expect_no_error(plot_prior_list(list(bias), prior_list_mu = mu, plot_type = plot_type))
+    }
+  }
+
+  # the band values keep their meaning: the CDF of mu + scale * gamma(.1)
+  x_seq <- c(0, 1e-3, .1, .5, 1)
+  gamma_quant <- function(u) stats::qgamma(u, .1, 1)
+  .expect_petpeese_band(prior_PET("gamma", list(.1, 1)), x_seq, function(se) se, gamma_quant)
+  .expect_petpeese_band(prior_PEESE("gamma", list(.1, 1)), x_seq, function(se) se^2, gamma_quant)
+})
+
+test_that("PET-PEESE prior bands plot for tiny standard errors", {
+
+  grDevices::pdf(NULL)
+  on.exit(grDevices::dev.off(), add = TRUE)
+  mu <- list(prior("normal", list(0, 1)))
+  bias <- prior_PEESE("normal", list(0, 1))
+
+  # the scaled half-normal bias is below half an ulp of the location
+  for(plot_type in c("base", "ggplot")){
+    expect_no_error(plot_prior_list(list(bias), prior_list_mu = mu, plot_type = plot_type, xlim = c(0, 1e-5)))
+  }
+  .expect_petpeese_band(bias, c(0, 1e-7, 1e-6, 1e-5), function(se) se^2,
+                        function(u) stats::qnorm((1 + u) / 2))
+})
+
+test_that("PET-PEESE prior bands of a coefficient with moderate quantiles are unchanged", {
+
+  .expect_petpeese_band(prior_PET("gamma", list(.3, 1)), c(0, .05, .1, .5, 1), function(se) se,
+                        function(u) stats::qgamma(u, .3, 1))
+})
+
 test_that("plot_prior_list keeps retained components paired with their weights", {
 
   point_priors <- list(

@@ -156,6 +156,10 @@ over the location-probability window where the bias CDF varies, on panels
 anchored per row at the images of fixed bias quantiles, with the same 1e-7 CDF
 criterion; cells not resolved within it, and contexts without a continuous
 pair, use the scalar quantile above with its diagnostics and refusals.
+The bracket endpoints of that solve (`.petpeese_prior_model_range()`) are seeds,
+not reported values: they keep the plain sum of the location and scaled bias
+endpoints, also when the bias is below half an ulp of the location, while the
+band values keep the strict representability check (`.petpeese_prior_sum_checked()`).
 Keep requested display limits separate from transformation support. Custom
 transformations can declare `output_support = c(lower, upper)`; inverse-grid
 evaluation must exclude coordinates outside that interval, without clamping
