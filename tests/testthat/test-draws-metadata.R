@@ -784,12 +784,58 @@ test_that("posterior_transform() maps spike-and-slab draws with their metadata",
   expect_null(posterior_metadata(tr, "linear_weights"))
   expect_identical(BayesTools:::.bt_meta_get(tr, "joint_prior_transformation"), "exp")
 
-  # marginal_posterior(transformation = ) is this transformation
+  # marginal_posterior(transformation = ) applies the transformation to the draws and
+  # their metadata; compared with the analytic values, not with posterior_transform()
   via_marginal <- marginal_posterior(mixed, "mu", prior_samples = TRUE,
                                      transformation = "exp")
-  expect_identical(unclass(via_marginal), unclass(posterior_transform(
-    marginal_posterior(mixed, "mu", prior_samples = TRUE), "exp"
-  )))
+  expect_equal(as.numeric(via_marginal), exp(as.numeric(marginal_posterior(mixed, "mu"))), tolerance = 0)
+  expect_identical(posterior_metadata(via_marginal, "support")$bounds, c(0, Inf))
+  expect_identical(posterior_metadata(via_marginal, "output_transformations"), "exp")
+  expect_identical(posterior_metadata(via_marginal, "atoms")$locations[, 1L], 1)
+  via_density <- posterior_metadata(via_marginal, "prior_density")
+  for(value in c(.2, .5, 1.5, 3)){
+    expect_equal(exp(prior_density_ordinate(via_density, value)$log_density), .5 * stats::dlnorm(value),
+                 tolerance = 1e-12, info = value)
+  }
+  expect_identical(prior_density_ordinate(via_density, 1)$behavior, "point_mass")
+})
+
+test_that("a linear transformation keeps the declared weight space of the linear weights", {
+
+  mixed <- .draws_metadata_mixed_for_test()
+  mp <- marginal_posterior(mixed, "sigma", prior_samples = TRUE)
+  expect_false(is.null(posterior_metadata(mp, "linear_weights")))
+  for(space in c("coefficient", "formula_contribution")){
+    posterior_metadata(mp, "linear_weight_space") <- space
+    tr <- posterior_transform(mp, "lin", list(a = 1, b = 2))
+    expect_identical(posterior_metadata(tr, "linear_weight_space"), space)
+    expect_equal(posterior_metadata(tr, "linear_weights"), 2 * posterior_metadata(mp, "linear_weights"))
+    expect_equal(BayesTools:::.bt_meta_get(tr, "linear_offset"), 1)
+  }
+})
+
+test_that("exp_lin keeps stored posterior densities and ordinates at the source zero for b = 1", {
+
+  mixed <- .draws_metadata_mixed_for_test()
+  sigma <- marginal_posterior(mixed, "sigma", prior_samples = TRUE)
+  posterior_metadata(sigma, "posterior_density") <- posterior_density_attribute(
+    x = c(0, .5, 1, 2), y = c(.1, .2, .6, .1), method = "test", density_method = "precomputed",
+    support = posterior_support_attribute(c(0, Inf)))
+  posterior_metadata(sigma, "posterior_ordinate") <- posterior_ordinate_attribute(
+    value = c(0, 1), ordinate = c(.8, .4), method = "test", density_method = "precomputed")
+  # exp(a) x: the density at the source zero maps with the Jacobian exp(a)
+  tr <- posterior_transform(sigma, "exp_lin", list(a = log(2), b = 1))
+  density <- posterior_metadata(tr, "posterior_density")
+  expect_false(is.null(density))
+  expect_equal(density$x, 2 * c(0, .5, 1, 2), tolerance = 1e-12)
+  expect_equal(density$y, c(.1, .2, .6, .1) / 2, tolerance = 1e-12)
+  ordinate <- posterior_metadata(tr, "posterior_ordinate")
+  expect_false(is.null(ordinate))
+  expect_equal(ordinate$value, 2 * c(0, 1), tolerance = 1e-12)
+  expect_equal(ordinate$ordinate, c(.8, .4) / 2, tolerance = 1e-12)
+  # other slopes have no finite Jacobian at the source zero and drop the stored density
+  tr_half <- posterior_transform(sigma, "exp_lin", list(a = 0, b = .5))
+  expect_null(posterior_metadata(tr_half, "posterior_density"))
 })
 
 test_that("posterior_transform() swaps supports and reverses densities of decreasing maps", {

@@ -169,8 +169,13 @@ posterior_transform <- function(x, transformation, transformation_arguments = NU
     },
     jac            = function(x){
       arguments <- c(list(x = x), transformation_arguments)
-      out <- do.call(functions$jac, arguments)
-      rep_len(as.numeric(out), length(x))
+      out <- rep_len(as.numeric(do.call(functions$jac, arguments)), length(x))
+      # exp(a) x^b has the Jacobian exp(a) at the source zero when b = 1 (the
+      # analytic limit the prior density route uses; 0 / 0 otherwise)
+      if(identical(name, "exp_lin") && isTRUE(b == 1)){
+        out[!is.na(x) & x == 0] <- exp(a)
+      }
+      out
     }
   )
 }
@@ -557,6 +562,8 @@ posterior_transform <- function(x, transformation, transformation_arguments = NU
       offset <- if(is.null(fields$linear_offset)) 0 else fields$linear_offset
       set("linear_weights", b * fields$linear_weights)
       set("linear_offset", a + b * offset)
+      # the weights stay in the coordinate space they were declared in
+      set("linear_weight_space", fields$linear_weight_space)
     }else{
       set("linear_weights", NULL)
       set("linear_offset", NULL)

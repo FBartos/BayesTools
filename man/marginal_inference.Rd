@@ -53,9 +53,10 @@ kernel density). The prior height is always the structural prior-density
 ordinate. Defaults to \code{FALSE}.}
 
 \item{n_samples}{controls the numerical grid used for model-averaged
-prior densities. For a simple parameter, an explicitly attached
-\code{prior_density} is authoritative and is propagated instead of being
-reconstructed from \code{prior_list}.}
+prior densities (a grid has at least 16 points). It is not used when the
+samples carry a stored prior-density context. For a simple parameter, an
+explicitly attached \code{prior_density} is authoritative and is propagated
+instead of being reconstructed from \code{prior_list}.}
 
 \item{seed}{seed for random number generation. The caller's random-number
 state (\code{.Random.seed} and \code{RNGkind()}) is restored afterwards.

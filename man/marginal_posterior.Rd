@@ -49,18 +49,18 @@ interaction terms that contain it.}
 
 \item{transformation, transformation_arguments}{optional transformation of
 the marginal posterior, applied with \code{\link[=posterior_transform]{posterior_transform()}} to the
-untransformed marginal posterior and its metadata.}
+untransformed marginal posterior and its metadata. The transformation is
+validated before the marginal posterior is built.}
 
-\item{transformation_settings}{boolean indicating whether the
-settings the \code{x_seq} or \code{x_range} was specified on
-the transformed support}
+\item{transformation_settings, ...}{not used by \code{marginal_posterior()},
+which evaluates no plotting grid; \code{transformation_settings} is
+validated as a logical value and \code{...} is ignored.}
 
 \item{n_samples}{controls the numerical grid used for model-averaged
-prior densities. For a simple parameter, an explicitly attached
-\code{prior_density} is authoritative and is propagated instead of being
-reconstructed from \code{prior_list}.}
-
-\item{...}{additional arguments}
+prior densities (a grid has at least 16 points). It is not used when the
+samples carry a stored prior-density context. For a simple parameter, an
+explicitly attached \code{prior_density} is authoritative and is propagated
+instead of being reconstructed from \code{prior_list}.}
 }
 \value{
 \code{marginal_posterior} returns a named list of mixed marginal posterior
