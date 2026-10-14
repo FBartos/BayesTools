@@ -1103,6 +1103,117 @@ test_that("estimates tables blank inclusion rows identified from metadata", {
   )
 })
 
+# Ordered factor whose total has the given prior, as a fit of seeded draws.
+.ordered_total_fit_for_test <- function(total, adjust = NULL){
+
+  data <- data.frame(
+    f = factor(rep(c("lo", "mid", "hi"), 4L), levels = c("lo", "mid", "hi"))
+  )
+  result <- JAGS_formula(
+    ~ 1 + f,
+    "mu",
+    data = data,
+    prior_list = list(
+      intercept = prior("normal", list(0, 1)),
+      f = prior_ordered(total)
+    )
+  )
+  eta_name <- .JAGS_prior_dirichlet_eta_name(
+    .prior_ordered_dirichlet_records(result$prior_list$mu_f)[[1L]]$node
+  )
+  .inclusion_rows_fit_for_test(
+    c(
+      "mu_intercept", "mu_f[1]", "mu_f[2]",
+      paste0("mu_f_ordered_total", c("_indicator", "_inclusion", "", "_variable")),
+      paste0(eta_name, "[", 1:2, "]")
+    ),
+    result$prior_list,
+    list(mu = result$formula_design),
+    adjust = adjust
+  )
+}
+
+test_that("remove_inclusion removes every row flagged as an inclusion row", {
+
+  skip_if_not_installed("runjags")
+  set.seed(261)
+  removed_rows <- function(fit, ...){
+    kept <- runjags_estimates_table(fit, remove_diagnostics = TRUE, remove_inclusion = TRUE, ...)
+    all <- runjags_estimates_table(fit, remove_diagnostics = TRUE, ...)
+    expect_true(all(rownames(kept) %in% rownames(all)))
+    expect_equal(
+      as.matrix(kept),
+      as.matrix(all)[rownames(kept), , drop = FALSE],
+      tolerance = 1e-12
+    )
+    setdiff(rownames(all), rownames(kept))
+  }
+
+  # the indicator of a spike-and-slab total of an ordered factor
+  ordered_fit <- .ordered_total_fit_for_test(
+    prior_spike_and_slab(prior("normal", list(0, 1), list(0, Inf)))
+  )
+  expect_identical(removed_rows(ordered_fit), "(mu) f_ordered_total_indicator")
+  expect_identical(removed_rows(ordered_fit, transform_factors = TRUE), "(mu) f_ordered_total_indicator")
+  samples <- runjags_estimates_table(
+    ordered_fit, remove_inclusion = TRUE, return_samples = TRUE
+  )
+  expect_false("(mu) f_ordered_total_indicator" %in% colnames(samples))
+  expect_true("(mu) f_ordered_total" %in% colnames(samples))
+  # the inclusion row is kept by default
+  default <- runjags_estimates_table(ordered_fit, remove_diagnostics = TRUE)
+  expect_equal(
+    as.numeric(default["(mu) f_ordered_total_indicator", "Mean"]),
+    mean(as.matrix(ordered_fit$mcmc[[1L]])[, "mu_f_ordered_total_indicator"])
+  )
+
+  # the raw gates of a variance allocation (the standard summary reports them
+  # as semantic inclusion quantities, which were removed already)
+  data <- data.frame(
+    id = factor(rep(c("a", "b", "c", "d"), 3L)),
+    grp = factor(rep(c("g1", "g2", "g3"), each = 4L))
+  )
+  result <- JAGS_formula(
+    ~ 1 +
+      random(1 | id, name = "study", covariance = "diag") +
+      random(1 | grp, name = "drug", covariance = "diag"),
+    "mu",
+    data = data,
+    prior_list = list(intercept = prior("normal", list(0, 1))),
+    prior_random = prior_random(allocation = random_variance_allocation(
+      name = "total",
+      terms = c(study = "study", drug = "drug"),
+      sd = prior("gamma", list(2, 2)),
+      weights = prior("dirichlet", list(alpha = c(1, 1))),
+      inclusion = list(
+        study = prior("spike", list(location = 0.3)),
+        drug  = prior("spike", list(location = 0.7))
+      )
+    ))
+  )
+  allocation <- result$formula_design$random_effects[[1L]]$sd_binding$allocations[[1L]]
+  weights <- paste0(allocation$weight_name, "[", 1:2, "]")
+  allocation_fit <- .inclusion_rows_fit_for_test(
+    c(
+      "mu_intercept",
+      allocation$source_node,
+      weights,
+      vapply(allocation$inclusion, `[[`, character(1), "prob_name"),
+      vapply(allocation$inclusion, `[[`, character(1), "indicator_name")
+    ),
+    result$prior_list,
+    list(mu = result$formula_design),
+    simplex = weights
+  )
+  raw <- removed_rows(allocation_fit, random_effects_summary = "raw")
+  expect_length(raw, 2L)
+  expect_true(all(grepl("include_(study|drug)_indicator$", raw)))
+  expect_setequal(
+    removed_rows(allocation_fit),
+    c("(mu) total: inclusion(study)", "(mu) total: inclusion(drug)")
+  )
+})
+
 test_that("conditional random-effect SD summaries use the inclusion event of the SD prior", {
 
   skip_if_not_installed("runjags")

@@ -25,6 +25,8 @@
 #' to be added to the table
 #' @param remove_inclusion whether estimates of the inclusion probabilities
 #' should be excluded from the summary table. Defaults to \code{FALSE}.
+#' Every inclusion row is removed, including the indicators of spike-and-slab
+#' totals of ordered-factor priors and the raw variance-allocation gates.
 #' Retained inclusion rows (spike-and-slab and mixture indicators, random-effect
 #' and variance-allocation inclusion gates) report the posterior inclusion
 #' probability as \code{Mean} together with the MCMC diagnostics; their SD and
@@ -839,6 +841,21 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
     .bt_label_parts_add_output_transformation(part, "custom")[[1L]]
   })
   parameter_names <- .bt_label(column_parts, style = "selector")
+  # every row the summary identifies as an inclusion row is removed together
+  # with the indicators and inclusion priors dealt with above
+  if(remove_inclusion){
+    inclusion_rows <- .runjags_summary_inclusion_rows(
+      parameter_names   = parameter_names,
+      prior_list        = prior_list,
+      formula_design    = attr(fit, "formula_design"),
+      inclusion_columns = inclusion_columns
+    )
+    if(any(inclusion_rows)){
+      model_samples   <- model_samples[, !inclusion_rows, drop = FALSE]
+      column_parts    <- column_parts[!inclusion_rows]
+      parameter_names <- parameter_names[!inclusion_rows]
+    }
+  }
   if(transform_scaled){
     column_parts <- .bt_label_parts_log_intercept(column_parts, formula_scale)
   }
