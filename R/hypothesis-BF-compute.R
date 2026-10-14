@@ -492,12 +492,6 @@
   .hypothesis_affine_read(expr, symbols)
 }
 
-.hypothesis_expression_linear_form <- function(expr) {
-
-  !is.null(.hypothesis_affine_read(expr, .hypothesis_expression_symbols(expr)))
-}
-
-
 .hypothesis_add_linear_weights <- function(total, weights, checked = TRUE) {
 
   if(is.null(total)){
@@ -661,7 +655,6 @@
   .hypothesis_check_prior_mass(region_prior, region_side[["label"]],
                                allow_one = explicit)
 
-  region_BF       <- region_posterior / region_prior
   region_BF_error <- .hypothesis_region_BF_error_percent(quantity, region_side, region_prior)
   undefined <- isTRUE(point_BF$log_BF == -Inf) && region_posterior == 0
   region_prior_log <- attr(region_prior, "log_mass", exact = TRUE)

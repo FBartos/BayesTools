@@ -460,8 +460,7 @@
 .hypothesis_prior_region <- function(condition, parameter) {
 
   expr <- .hypothesis_parse_expression(condition)
-  template <- stats::setNames(data.frame(0), parameter)
-  intervals <- .hypothesis_region_intervals(expr, parameter, template)
+  intervals <- .hypothesis_region_intervals(expr, parameter)
   if(is.null(intervals)){
     return(NULL)
   }
@@ -475,22 +474,22 @@
 }
 
 
-.hypothesis_region_intervals <- function(expr, parameter, template) {
+.hypothesis_region_intervals <- function(expr, parameter) {
 
   fun <- .hypothesis_call_name(expr)
   if(is.null(fun)){
     return(NULL)
   }
   if(fun == "("){
-    return(.hypothesis_region_intervals(expr[[2L]], parameter, template))
+    return(.hypothesis_region_intervals(expr[[2L]], parameter))
   }
   if(fun == "!"){
-    inner <- .hypothesis_region_intervals(expr[[2L]], parameter, template)
+    inner <- .hypothesis_region_intervals(expr[[2L]], parameter)
     return(if(is.null(inner)) NULL else .prior_region_intervals_complement(inner))
   }
   if(fun %in% c("&", "|")){
-    left  <- .hypothesis_region_intervals(expr[[2L]], parameter, template)
-    right <- .hypothesis_region_intervals(expr[[3L]], parameter, template)
+    left  <- .hypothesis_region_intervals(expr[[2L]], parameter)
+    right <- .hypothesis_region_intervals(expr[[3L]], parameter)
     if(is.null(left) || is.null(right)){
       return(NULL)
     }
@@ -816,23 +815,6 @@
   }
 
   return(height)
-}
-
-
-.hypothesis_prior_density_height <- function(prior_density, value) {
-
-  if(is.null(prior_density)){
-    stop("Prior density is required for point hypotheses.", call. = FALSE)
-  }
-
-  if(.prior_linear_density_point_mass(prior_density, value) > 0){
-    .hypothesis_stop_ordinate(
-      "BayesTools_point_mass_at_null",
-      .hypothesis_point_mass_message()
-    )
-  }
-
-  .prior_linear_density_height(prior_density, value)
 }
 
 

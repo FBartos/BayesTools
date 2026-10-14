@@ -185,15 +185,6 @@ inclusion_BF <- function(prior_probs, post_probs, margliks, is_null,
   return()
 }
 
-.inclusion_BF_log_marginal <- function(margliks, prior_probs, prior_total){
-
-  log_terms <- margliks + log(prior_probs) - log(prior_total)
-  max_log_term <- max(log_terms)
-
-  return(max_log_term + log(sum(exp(log_terms - max_log_term))))
-}
-
-
 #' @title Create coefficient mapping between multiple weightfunctions
 #'
 #' @description Creates coefficients mapping between multiple weightfunctions.

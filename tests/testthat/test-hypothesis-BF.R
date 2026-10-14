@@ -764,9 +764,13 @@ test_that("hypothesis_BF rejects prior point mass metadata for point nulls", {
     n_grid = 1024
   )
 
+  set.seed(21)
+  posterior <- .hypothesis_marginal_posterior_for_test(stats::rnorm(500), prior_density)
+
   expect_error(
-    BayesTools:::.hypothesis_prior_density_height(prior_density, 0),
-    "point mass in the prior"
+    hypothesis_BF(posterior = posterior, hypothesis = "theta = 0", parameter = "theta"),
+    "point mass in the prior",
+    class = "BayesTools_point_mass_at_null"
   )
 })
 

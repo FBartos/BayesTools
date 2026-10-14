@@ -2035,9 +2035,9 @@ test_that("original-scale intercepts with mixture sources are classified per com
   expect_equal(atom$point_mass, .25 * .7, tolerance = 1e-15)
   expect_identical(atom$provenance$continuous_behavior, "regular")
   expect_equal(exp(atom$log_density), continuous(.2), tolerance = 1e-12)
-  expect_error(.hypothesis_prior_density_height(density, .2),
+  expect_error(.hypothesis_check_prior_ordinate(density, .2, "theta = 0.2"),
                "There is a point mass in the prior at the exact null hypothesis value.",
-               fixed = TRUE)
+               fixed = TRUE, class = "BayesTools_point_mass_at_null")
   support <- .posterior_support_from_prior_context_weights(context, c(mu_intercept = 1))
   expect_identical(support$points, .2)
   expect_identical(support$type, "mixed")
