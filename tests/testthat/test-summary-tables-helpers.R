@@ -1859,6 +1859,94 @@ test_that("runjags summary helper keeps only requested diagnostics", {
   expect_equal(colnames(no_diagnostics), c("Mean", "SD", "0.5"))
 })
 
+# Fit of `mu ~ 1 + x` with a standardized slope: seeded draws, the parameter
+# map and the fitted scale (predictor SD sd(c(1, 3, 5, 7))) of a real fit.
+.scaled_slope_fit_for_test <- function(){
+
+  result <- JAGS_formula(
+    ~ x,
+    "mu",
+    data.frame(x = c(1, 3, 5, 7)),
+    list(
+      intercept = prior("normal", list(0, 1)),
+      x = prior("normal", list(0, 1))
+    ),
+    formula_scale = list(x = TRUE)
+  )
+  draws <- cbind(mu_intercept = c(1, 2, 3, 4), mu_x = c(0.1, 0.2, 0.3, 0.4))
+  fit <- structure(
+    list(
+      mcmc = coda::mcmc.list(coda::mcmc(draws)),
+      sample = nrow(draws),
+      summary.pars = list(mutate = NULL)
+    ),
+    class = c("runjags", "BayesTools_fit", "list")
+  )
+  attr(fit, "prior_list") <- result$prior_list
+  attr(fit, "formula_design") <- list(mu = result$formula_design)
+  attach_test_parameter_map(fit)
+}
+
+test_that("unscaling refuses columns that are nonlinear transformations of coefficients", {
+
+  fit <- .scaled_slope_fit_for_test()
+  scale <- attr(fit, "formula_scale")
+  slope <- c(0.1, 0.2, 0.3, 0.4) / stats::sd(c(1, 3, 5, 7))
+  parameters <- c("mu_intercept", "mu_x")
+  marginal_inference <- list(mu_x = 2)
+
+  # the slope itself is unscaled
+  mixed <- as_mixed_posteriors(fit, parameters, n_prior_samples = 64L)
+  table <- ensemble_estimates_table(
+    mixed, parameters, transform_scaled = TRUE, formula_scale = scale
+  )
+  expect_equal(table["(mu) x", "Mean"], mean(slope), tolerance = 1e-12)
+  expect_equal(
+    marginal_estimates_table(
+      list(mu_x = mixed$mu_x), marginal_inference, "mu_x",
+      transform_scaled = TRUE, formula_scale = scale
+    )["(mu) x", "Mean"],
+    mean(slope),
+    tolerance = 1e-12
+  )
+
+  # its exponential has no fitted coordinates: the tables stop (they reported 0)
+  mixed$mu_x <- posterior_transform(mixed$mu_x, "exp")
+  expect_equal(as.numeric(mixed$mu_x), exp(c(0.1, 0.2, 0.3, 0.4)))
+  for(refused in list(
+    function() ensemble_estimates_table(
+      mixed, parameters, transform_scaled = TRUE, formula_scale = scale
+    ),
+    function() marginal_estimates_table(
+      list(mu_x = mixed$mu_x), marginal_inference, "mu_x",
+      transform_scaled = TRUE, formula_scale = scale
+    )
+  )){
+    error <- expect_error(refused(), class = "BayesTools_formula_transform_unavailable")
+    expect_identical(error$reason, "transformed_column_not_fitted")
+    expect_identical(error$parameter, "mu")
+    expect_identical(
+      conditionMessage(error),
+      paste0(
+        "Cannot transform '(mu) x' to the original predictor scale: it is not a ",
+        "combination of fitted coefficients (a nonlinear transformation of ",
+        "coefficients). Unscale the samples first, for example with ",
+        "'transform_scaled = TRUE' in as_mixed_posteriors(), and apply the ",
+        "nonlinear transformation afterwards."
+      )
+    )
+  }
+
+  # unscaling first and transforming afterwards is supported
+  unscaled <- as_mixed_posteriors(fit, parameters, n_prior_samples = 64L, transform_scaled = TRUE)
+  unscaled$mu_x <- posterior_transform(unscaled$mu_x, "exp")
+  expect_equal(
+    ensemble_estimates_table(unscaled, parameters)["(mu) x", "Mean"],
+    mean(exp(slope)),
+    tolerance = 1e-12
+  )
+})
+
 test_that("ensemble_estimates_table preserves parameter and matrix row semantics", {
 
   samples <- list(

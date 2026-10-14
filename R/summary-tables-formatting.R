@@ -750,6 +750,32 @@
       call. = FALSE
     )
   }
+  # a column without fitted coordinates (a nonlinear transformation of
+  # coefficients, e.g. from posterior_transform()) is no combination of them
+  unfitted <- scaled & lengths(quantities$dependencies) == 0L
+  if(any(unfitted)){
+    labels <- vapply(
+      quantities$label_parts[unfitted],
+      .bt_label,
+      character(1),
+      style = "table"
+    )
+    .bt_formula_transform_stop(
+      paste0(
+        "Cannot transform ", paste0("'", labels, "'", collapse = ", "),
+        " to the original predictor scale: ",
+        if(length(labels) > 1L) "they are" else "it is",
+        " not ",
+        if(length(labels) > 1L) "combinations" else "a combination",
+        " of fitted coefficients (a nonlinear transformation of coefficients). ",
+        "Unscale the samples first, for example with 'transform_scaled = TRUE' in ",
+        "as_mixed_posteriors(), and apply the nonlinear transformation afterwards."
+      ),
+      parameter = unique(formula_parameters[unfitted]),
+      reason    = "transformed_column_not_fitted",
+      columns   = quantities$column[unfitted]
+    )
+  }
   coordinates <- unique(unlist(quantities$dependencies[scaled], use.names = FALSE))
   weights <- matrix(
     0,

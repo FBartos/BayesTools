@@ -69,7 +69,9 @@
 #' transformed through the fitted design of \code{formula_scale}: every column
 #' is mapped to its fitted coefficient by its \code{quantities} draw metadata
 #' (see [posterior_metadata()]), and columns that are not fitted coefficients
-#' are refused, as are random-effect SDs that the random-effect structure of
+#' are refused (a nonlinear [posterior_transform()] result stops with
+#' reason \code{"transformed_column_not_fitted"}: unscale first, then
+#' transform), as are random-effect SDs that the random-effect structure of
 #' \code{formula_scale} does not cover (SDs it does not contain, blocks it
 #' contains only in part, or blocks it leaves unchanged while the samples'
 #' original-scale SDs differ from the fitted ones). The SDs of a block are
