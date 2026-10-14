@@ -2249,7 +2249,9 @@ test_that("shared random-effect SD leaves keep one coordinate per design column 
 # gamma(2, 2) priors (fitted scale), so that on the original scale they follow the
 # prior law of the original-scale SDs: a hypothesis on such an SD has a Bayes factor
 # near 1 exactly when the prior law is the law of the original-scale SD.
-random_block_prior_draw_fit <- function(formula, data, variable = "x", n = 4000L, seed = 21){
+random_block_prior_draw_fit <- function(formula, data, variable = "x", n = 4000L, seed = 21,
+                                        sd_prior = prior("gamma", list(2, 2)),
+                                        rsd = function(n) stats::rgamma(n, 2, 2)){
 
   formula_result <- JAGS_formula(
     formula, "mu", data,
@@ -2259,7 +2261,7 @@ random_block_prior_draw_fit <- function(formula, data, variable = "x", n = 4000L
     ),
     formula_scale = stats::setNames(list(TRUE), variable),
     prior_random = prior_random(id = random_block(
-      sd = prior("gamma", list(2, 2)), monitor = random_block_scale_monitor()
+      sd = sd_prior, monitor = random_block_scale_monitor()
     ))
   )
   sd_names <- unlist(lapply(formula_result$formula_design$random_effects, function(term){
@@ -2272,7 +2274,7 @@ random_block_prior_draw_fit <- function(formula, data, variable = "x", n = 4000L
       dimnames = list(NULL, c("mu_intercept", paste0("mu_", variable)))
     ),
     matrix(
-      stats::rgamma(n * length(sd_names), 2, 2), n, length(sd_names),
+      rsd(n * length(sd_names)), n, length(sd_names),
       dimnames = list(NULL, sd_names)
     )
   )
@@ -2680,4 +2682,111 @@ test_that("the formula design is an input of the memo of the transformed prior d
     formula_design = .bt_formula_designs_random_unscale_view(attr(setup$fit, "formula_design"))
   )
   expect_identical(again[["mu__xREx__id_x"]], with_design[["mu__xREx__id_x"]])
+})
+
+test_that("the density plot of a random-effect SD on the original scale takes no bounds from the fitted prior", {
+
+  skip_if_not_installed("runjags")
+
+  df <- random_block_scale_data()
+  setup <- random_block_prior_draw_fit(
+    ~ 1 + x + diag(1 + x | id), df,
+    sd_prior = prior("uniform", list(0, 5)), rsd = function(n) stats::runif(n, 0, 5)
+  )
+  composite <- "mu__xREx__id_intercept"
+  pure <- "mu__xREx__id_x"
+  mixed  <- as_mixed_posteriors(setup$fit, setup$sd_names, transform_scaled = TRUE)
+  fitted <- as_mixed_posteriors(setup$fit, setup$sd_names, transform_scaled = FALSE)
+  area <- function(density) sum(diff(density$x) * (utils::head(density$y, -1L) + utils::tail(density$y, -1L)) / 2)
+  curve <- function(samples, parameter) .plot_data_samples.simple(samples, parameter, 256, NULL, NULL, FALSE)$density
+
+  # the composite SD has no exact support: its original-scale draws exceed the
+  # fitted bound 5 (they are tau_0 + tau_1 mean(x) combinations), and the density
+  # covers them with unit area
+  draws <- as.numeric(mixed[[composite]])
+  expect_gt(mean(draws > 5), .5)
+  expect_null(.posterior_support_bounds(mixed[[composite]], interval_only = TRUE))
+  density <- curve(mixed, composite)
+  expect_equal(min(density$x), 0)
+  expect_gte(max(density$x), max(draws))
+  expect_equal(area(density), 1, tolerance = .03)
+
+  # both backends of the public plot
+  figure <- plot_posterior(mixed, composite, prior = FALSE, plot_type = "ggplot")
+  layer <- ggplot2::ggplot_build(figure)$data[[1L]]
+  expect_gte(max(layer$x), max(draws))
+  expect_equal(area(layer), 1, tolerance = .03)
+  grDevices::pdf(NULL)
+  on.exit(grDevices::dev.off(), add = TRUE)
+  expect_no_error(plot_posterior(mixed, composite, prior = FALSE))
+  expect_gte(graphics::par("usr")[2L], max(draws))
+
+  # the pure rescaling keeps its rescaled support, and the fitted-scale element
+  # of the same model keeps the bounds of its prior
+  pure_density <- curve(mixed, pure)
+  expect_equal(range(pure_density$x), c(0, 5 / stats::sd(df$x)))
+  expect_equal(area(pure_density), 1, tolerance = .03)
+  fitted_density <- curve(fitted, composite)
+  expect_equal(range(fitted_density$x), c(0, 5))
+  expect_equal(area(fitted_density), 1, tolerance = .03)
+})
+
+test_that("the posterior plot of a prior with multiply_by keeps the block design of the prior context", {
+
+  skip_if_not_installed("runjags")
+
+  df <- random_block_scale_data()
+  df$z <- stats::rnorm(nrow(df))
+  s <- stats::sd(df$x)
+  z_prior <- prior("normal", list(0, 1))
+  attr(z_prior, "multiply_by") <- .5
+  curves <- list()
+  for(multiplied in c(FALSE, TRUE)){
+    prior_list <- list(
+      intercept = prior("normal", list(0, 1)),
+      x = prior_spike_and_slab(prior("normal", list(0, 1)), prior_inclusion = prior("spike", list(.5))),
+      z = if(multiplied) z_prior else prior("normal", list(0, 1))
+    )
+    formula_result <- JAGS_formula(
+      ~ 1 + x + z + diag(1 + x | id), "mu", df, prior_list = prior_list,
+      formula_scale = list(x = TRUE),
+      prior_random = prior_random(id = random_block(
+        sd = prior("gamma", list(2, 2)), monitor = random_block_scale_monitor()
+      ))
+    )
+    sd_names <- unlist(lapply(formula_result$formula_design$random_effects, function(term){
+      unique(term$sd_parameter_names)
+    }))
+    set.seed(2)
+    n <- 2000L
+    inclusion <- stats::rbinom(n, 1, .5)
+    posterior <- cbind(
+      mu_intercept = stats::rnorm(n), mu_x = inclusion * stats::rnorm(n), mu_x_indicator = inclusion,
+      mu_z = stats::rnorm(n),
+      matrix(stats::rgamma(n * length(sd_names), 2, 2), n, length(sd_names), dimnames = list(NULL, sd_names))
+    )
+    fit <- make_random_scale_table_fit(formula_result, posterior)
+    mixed <- as_mixed_posteriors(fit, c("mu_x", sd_names), conditional = "mu_x", transform_scaled = TRUE)
+
+    # the context rebuilt without the multiplier has the design of the stored context
+    context <- .plot_data_prior_context_for_plot(
+      posterior_metadata(mixed, "prior_context"), mixed, "mu__xREx__id_x", 64L
+    )
+    expect_false(is.null(context$formula_design$mu))
+    expect_identical(.plot_data_prior_list_without_multiply_by(attr(mixed, "prior_list"))$changed, multiplied)
+
+    # the prior curve of the pure SD is exact (the fitted gamma(2, 2) rescaled)
+    figure <- plot_posterior(mixed, "mu__xREx__id_x", prior = TRUE, plot_type = "ggplot")
+    prior_layer <- ggplot2::ggplot_build(figure)$data[[1L]]
+    inside <- prior_layer$x > .05 & prior_layer$x < 1.2
+    expect_gt(sum(inside), 10L)
+    expect_equal(prior_layer$y[inside], stats::dgamma(prior_layer$x[inside] * s, 2, 2) * s, tolerance = 1e-8)
+    curves[[as.character(multiplied)]] <- prior_layer[, c("x", "y")]
+    marginal <- marginal_posterior(mixed, "mu__xREx__id_x", use_formula = FALSE, prior_samples = TRUE)
+    expect_equal(
+      exp(prior_density_ordinate(posterior_metadata(marginal, "prior_density"), .3)$log_density),
+      stats::dgamma(.3 * s, 2, 2) * s, tolerance = 1e-8
+    )
+  }
+  expect_equal(curves[["TRUE"]], curves[["FALSE"]])
 })

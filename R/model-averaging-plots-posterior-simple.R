@@ -158,7 +158,8 @@
     n_grid           = n_grid,
     conditional      = condition_metadata[["conditional"]],
     conditional_rule = condition_metadata[["conditional_rule"]],
-    condition_event  = condition_metadata[["condition_event"]]
+    condition_event  = condition_metadata[["condition_event"]],
+    formula_design   = prior_density_context[["formula_design"]]
   )
 }
 
@@ -313,6 +314,24 @@
   ))
 }
 
+# Whether 'parameter' is a random-effect SD whose draws were moved to the
+# original predictor scale (as_mixed_posteriors(transform_scaled = TRUE)): the
+# fitted SD coordinates of the scaled blocks (see
+# .as_mixed_posteriors_mark_random_sd_densities()).
+.plot_data_samples_is_transformed_random_sd <- function(samples, parameter){
+
+  if(!isTRUE(.bt_meta_get(samples, "transform_scaled"))){
+    return(FALSE)
+  }
+  sd_columns <- unlist(lapply(.bt_meta_get(samples, "formula_scale"), function(parameter_scale){
+    lapply(attr(parameter_scale, "random_effect_sd_leaves", exact = TRUE), function(block){
+      as.character(block$leaf_names)
+    })
+  }), use.names = FALSE)
+
+  parameter %in% sd_columns
+}
+
 .plot_data_samples_prior_bounds <- function(prior_list, factor_contrasts = FALSE){
 
   prior_list_simple <- prior_list[!vapply(prior_list, function(prior){
@@ -394,6 +413,7 @@
   boundary_reflection <- FALSE
 
   # extract the relevant data
+  transformed_random_sd <- .plot_data_samples_is_transformed_random_sd(samples, parameter)
   posterior_density <- if(identical(density_method, "precomputed")){
     .plot_data_selected_posterior_density(samples, samples[[parameter]], parameter)
   }else NULL
@@ -457,7 +477,10 @@
       # reflect at the support while avoiding transformation singularities.
       density_bounds <- .posterior_support_bounds(samples, interval_only = TRUE)
       if(is.null(density_bounds)){
-        density_bounds <- .plot_data_samples_prior_bounds(prior_list)
+        # The draws of a random-effect SD on the original predictor scale are not
+        # the fitted coordinate that its raw prior describes: they keep the
+        # domain of an SD, [0, Inf), instead of the bounds of the fitted prior.
+        density_bounds <- if(transformed_random_sd) c(0, Inf) else .plot_data_samples_prior_bounds(prior_list)
       }
       density_range  <- .plot_data_samples_density_range(density_bounds, transformation)
 

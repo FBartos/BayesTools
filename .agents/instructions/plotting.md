@@ -165,6 +165,11 @@ The KDE curves of `plot_marginal()` and of simple and factor `plot_posterior()`
 use the same checked transformation grid as precomputed densities: knots
 without a representable image or ordinate (out-of-support tails, saturation) are
 dropped and the plot limits come from the retained curve.
+A posterior KDE that has no exact support takes its reflection bounds from the
+prior of the plotted coordinate only on the fitted scale; a random-effect SD of
+`as_mixed_posteriors(transform_scaled = TRUE)` takes the domain of an SD, `[0, Inf)`,
+not the bounds of its fitted-scale prior. The prior context rebuilt for a prior with
+`multiply_by` keeps the fitted block designs.
 The automatic y range of PET-PEESE posterior plots with priors collapses by its
 width (below .01): it is then widened around its values (a collapsed range of
 small non-negative values keeps the unit interval), and any wider range, also
