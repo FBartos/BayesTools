@@ -798,3 +798,44 @@ test_that("ordered mixed-measure plots honour ylim2 and ylab2 and store the prob
   expect_no_warning(lines(mixed, show_parameter = 2L, n_points = 32L))
   expect_equal(captured[[1L]]$y, .5 * scale_y2)
 })
+
+test_that("a constant transformation turns every ordered level into one atom", {
+
+  data <- data.frame(f = ordered(c("a", "b", "c"), levels = c("a", "b", "c")))
+  build <- function(total, allocation = prior("dirichlet", list(c(1, 1)))){
+    JAGS_formula(~f, "mu", data, list(intercept = prior("point", list(0)),
+      f = prior_ordered(total, allocation = allocation)))$prior_list$mu_f
+  }
+  # a 50% Normal slab and a 50% spike at zero: the non-reference levels carry
+  # atoms and continuous mass on the structural route
+  mixed <- build(prior_spike_and_slab(prior("normal", list(0, 1)), prior("point", list(.5))))
+
+  cases <- list(
+    list(transformation = "lin",     arguments = list(a = 3, b = 0), x_seq = c(-1, 0, 1),  location = 3),
+    list(transformation = "exp_lin", arguments = list(a = 1, b = 0), x_seq = c(.5, 1, 2), location = exp(1))
+  )
+  for(case in cases){
+    constant <- density(mixed, x_seq = case$x_seq, n_points = 16, transformation = case$transformation,
+                        transformation_arguments = case$arguments)
+    expect_length(constant, 3L)
+    for(level in constant){
+      expect_identical(level$atoms$location, case$location)
+      expect_equal(level$atoms$mass, 1)
+      expect_null(level$continuous)
+      expect_equal(level$x, case$location)
+      expect_equal(level$y, 1)
+      expect_equal(level$diagnostics$atom_mass, 1)
+      expect_equal(level$diagnostics$continuous_mass, 0)
+    }
+  }
+
+  # a non-constant map keeps the atom and the continuous part of the levels
+  shifted <- density(mixed, x_seq = c(-1, 0, 1), n_points = 16, transformation = "lin",
+                     transformation_arguments = list(a = 3, b = 1))
+  for(level in shifted[-1L]){
+    expect_equal(level$atoms$location, 3)
+    expect_equal(level$atoms$mass, .5)
+    expect_false(is.null(level$continuous))
+    expect_equal(level$diagnostics$continuous_mass, .5)
+  }
+})

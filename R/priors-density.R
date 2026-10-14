@@ -613,6 +613,13 @@ density.prior <- function(x,
     return(NULL)
   }
 
+  # a constant map turns the whole measure of the level, atoms and continuous
+  # part, into one atom (as the numerical grid route does)
+  location <- .prior_linear_density_constant_location(transformation, transformation_arguments)
+  if(!is.null(location)){
+    return(.prior_linear_density_point(location))
+  }
+
   x <- x_seq
   y <- .prior_density_route_density(route, x)
   if(!is.null(transformation)){

@@ -773,13 +773,10 @@
   out
 }
 
-.prior_linear_density_transform <- function(dist, transformation, transformation_arguments = NULL, n_grid = NULL){
-
-  if(is.null(transformation)){
-    return(dist)
-  }
-  # the grid and its attributes (a deferred row-mixture grid is built)
-  dist <- .prior_linear_density_materialize(dist)
+# The value of a constant map (a 'lin' or 'exp_lin' transformation with b = 0),
+# NULL for every other transformation: a measure under such a map is one atom
+# at this value.
+.prior_linear_density_constant_location <- function(transformation, transformation_arguments = NULL){
 
   if(is.character(transformation) && length(transformation) == 1L &&
      transformation %in% c("lin", "exp_lin") &&
@@ -804,8 +801,24 @@
           call. = FALSE
         )
       }
-      return(.prior_linear_density_point(location))
+      return(location)
     }
+  }
+
+  NULL
+}
+
+.prior_linear_density_transform <- function(dist, transformation, transformation_arguments = NULL, n_grid = NULL){
+
+  if(is.null(transformation)){
+    return(dist)
+  }
+  # the grid and its attributes (a deferred row-mixture grid is built)
+  dist <- .prior_linear_density_materialize(dist)
+
+  location <- .prior_linear_density_constant_location(transformation, transformation_arguments)
+  if(!is.null(location)){
+    return(.prior_linear_density_point(location))
   }
 
   densities <- list()
