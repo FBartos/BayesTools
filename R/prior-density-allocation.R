@@ -97,6 +97,53 @@
   list(list(weight = weight, prior = prior, point = NULL))
 }
 
+# The location of the atom of the product T_l * m of one leaf and one
+# multiplier (before the output transformation), or NULL when the product has
+# none: a point leaf times a point multiplier, a point leaf at zero times a
+# share, or a continuous leaf times the point multiplier zero.
+.prior_allocation_leaf_atom <- function(leaf, multiplier){
+
+  if(!is.null(leaf$point)){
+    if(identical(multiplier$type, "point") || leaf$point == 0){
+      return(leaf$point * if(identical(multiplier$type, "point")) multiplier$location else 0)
+    }
+    return(NULL)
+  }
+  if(identical(multiplier$type, "point") && multiplier$location == 0){
+    return(0)
+  }
+
+  NULL
+}
+
+# The locations of the atoms of the product T M (the 'allocation_product' atoms
+# of .prior_allocation_product_density()), without building the density: sorted
+# and unique, the square of each for a variance. NULL when the scale prior has a
+# leaf without a structural density.
+.prior_allocation_product_atoms <- function(source_prior, multipliers,
+                                            square = FALSE){
+
+  multipliers <- .prior_allocation_validate_multipliers(multipliers)
+  leaves <- .prior_allocation_source_leaves(source_prior)
+  if(is.null(leaves)){
+    return(NULL)
+  }
+  locations <- numeric()
+  for(multiplier in multipliers){
+    for(leaf in leaves){
+      if(multiplier$weight * leaf$weight <= 0){
+        next
+      }
+      location <- .prior_allocation_leaf_atom(leaf, multiplier)
+      if(!is.null(location)){
+        locations <- c(locations, if(isTRUE(square)) location^2 else location)
+      }
+    }
+  }
+
+  sort(unique(locations))
+}
+
 # The (continuous or atomic) route of one leaf T_l * m of the product and its
 # source-scale support hull. 'output' is NULL or the 'exp_lin' arguments of
 # the output transformation (the square of a variance), composed into a
@@ -121,10 +168,11 @@
     .prior_density_route_transform(route, "exp_lin", output, function() hull)
   }
 
+  location <- .prior_allocation_leaf_atom(leaf, multiplier)
+  if(!is.null(location)){
+    return(atom(location))
+  }
   if(!is.null(leaf$point)){
-    if(identical(multiplier$type, "point") || leaf$point == 0){
-      return(atom(leaf$point * if(identical(multiplier$type, "point")) multiplier$location else 0))
-    }
     # c sqrt(k S) = exp(log(c^2 k) / 2 + log(S) / 2), composed with the output
     share <- prior("beta", list(alpha = multiplier$alpha, beta = multiplier$beta))
     map <- list(a = log(leaf$point^2 * multiplier$scale) / 2, b = 1 / 2)
@@ -138,9 +186,6 @@
   }
 
   if(identical(multiplier$type, "point")){
-    if(multiplier$location == 0){
-      return(atom(0))
-    }
     weights <- c(source = multiplier$location)
     return(transformed(
       .prior_density_route_linear(list(source = leaf$prior), weights, NULL, n_grid),

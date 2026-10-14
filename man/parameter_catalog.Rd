@@ -208,7 +208,11 @@ Each catalog quantity declares its \code{definedness} (\code{"always"}, or the r
 of possibly undefined draws: \code{"correlation"}, or \code{"allocation_active"} for
 the variance shares of gated total-variance allocations) and its exact
 \code{support} from the prior provenance of its source coordinates (\code{NULL} when
-it is not derivable). The \code{mcmc.list} returned by \code{parameter_draws()}
+it is not derivable). A quantity with point masses in its prior density
+(an SD, variance, total, or variance share of an allocation with inclusion
+gates, or whose scale prior has a point component) lists exactly the
+locations of those atoms as the \code{points} of a \code{"mixed"} support. The
+\code{mcmc.list} returned by \code{parameter_draws()}
 carries these as draw metadata (\code{\link[=posterior_metadata]{posterior_metadata()}}): \code{support}, keyed by
 canonical name, and \code{undefined_draws}, a character vector named by the
 canonical names of the possibly undefined quantities with their reasons.

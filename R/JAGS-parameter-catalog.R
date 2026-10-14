@@ -110,7 +110,11 @@
 #' of possibly undefined draws: `"correlation"`, or `"allocation_active"` for
 #' the variance shares of gated total-variance allocations) and its exact
 #' `support` from the prior provenance of its source coordinates (`NULL` when
-#' it is not derivable). The `mcmc.list` returned by `parameter_draws()`
+#' it is not derivable). A quantity with point masses in its prior density
+#' (an SD, variance, total, or variance share of an allocation with inclusion
+#' gates, or whose scale prior has a point component) lists exactly the
+#' locations of those atoms as the `points` of a `"mixed"` support. The
+#' `mcmc.list` returned by `parameter_draws()`
 #' carries these as draw metadata ([posterior_metadata()]): `support`, keyed by
 #' canonical name, and `undefined_draws`, a character vector named by the
 #' canonical names of the possibly undefined quantities with their reasons.
@@ -725,16 +729,56 @@ parameter_prior_density.BayesTools_fit <- function(
     return(NULL)
   }
 
-  out <- if(key$evaluator %in% c("sd", "sd_variance") &&
-             (isTRUE(key$allocation_derived) ||
-                .bt_parameter_prior_density_gate_only_sd(object, key))){
+  out <- .bt_parameter_prior_density_random_summary(
+    object      = object,
+    quantity    = quantity,
+    key         = key,
+    n_grid      = n_grid,
+    tail_prob   = tail_prob,
+    conditional = conditional
+  )
+  if(!is.null(out)){
+    attr(out, "parameter_prior_density") <- c(
+      list(
+        quantity_id = quantity$quantity_id,
+        source = "fitted_parameter_map"
+      ),
+      if(isTRUE(conditional)) list(conditional = "inclusion")
+    )
+  }
+  out
+}
+
+# The prior density of a random-summary quantity by its evaluator. With
+# 'atoms_only', the locations of the point masses of that density instead
+# (sorted and unique; NULL without a structural density route and for the
+# quantities whose density has no allocation product: the SDs and variances
+# scaled by inclusion gates, the totals, and the gated variance shares have
+# one). The supports of the catalog declare exactly these points, built from
+# the same measure as the density.
+.bt_parameter_prior_density_random_summary <- function(
+    object, quantity, key, n_grid, tail_prob, conditional = FALSE,
+    atoms_only = FALSE){
+
+  component_sd <- key$evaluator %in% c("sd", "sd_variance") &&
+    (isTRUE(key$allocation_derived) ||
+       .bt_parameter_prior_density_gate_only_sd(object, key))
+  allocation_total <- key$evaluator %in% c("allocation_sd", "allocation_var") &&
+    identical(key$source_type, "composite")
+  if(isTRUE(atoms_only) && !component_sd && !allocation_total &&
+     !identical(key$evaluator, "allocation")){
+    return(NULL)
+  }
+
+  if(component_sd){
     .bt_parameter_prior_density_random_component_sd(
       object = object,
       key = key,
       n_grid = n_grid,
       tail_prob = tail_prob,
       conditional = conditional,
-      square = identical(key$evaluator, "sd_variance")
+      square = identical(key$evaluator, "sd_variance"),
+      atoms_only = atoms_only
     )
   }else if(identical(key$evaluator, "allocation_inclusion")){
     .bt_parameter_prior_density_inclusion(
@@ -754,20 +798,21 @@ parameter_prior_density.BayesTools_fit <- function(
   }else if(identical(key$evaluator, "allocation")){
     .bt_parameter_prior_density_allocation_quantity(
       object = object,
-      selection = selection,
+      quantity = quantity,
       key = key,
       n_grid = n_grid,
       tail_prob = tail_prob,
-      conditional = conditional
+      conditional = conditional,
+      atoms_only = atoms_only
     )
-  }else if(key$evaluator %in% c("allocation_sd", "allocation_var") &&
-           identical(key$source_type, "composite")){
+  }else if(allocation_total){
     .bt_parameter_prior_density_allocation_total(
       object = object,
       key = key,
       n_grid = n_grid,
       tail_prob = tail_prob,
-      conditional = conditional
+      conditional = conditional,
+      atoms_only = atoms_only
     )
   }else if(identical(key$evaluator, "correlation")){
     .bt_parameter_prior_density_lkj_correlation(
@@ -779,22 +824,12 @@ parameter_prior_density.BayesTools_fit <- function(
   }else{
     .bt_parameter_prior_density_direct_quantity(
       object = object,
-      selection = selection,
+      quantity = quantity,
       key = key,
       n_grid = n_grid,
       tail_prob = tail_prob
     )
   }
-  if(!is.null(out)){
-    attr(out, "parameter_prior_density") <- c(
-      list(
-        quantity_id = quantity$quantity_id,
-        source = "fitted_parameter_map"
-      ),
-      if(isTRUE(conditional)) list(conditional = "inclusion")
-    )
-  }
-  out
 }
 
 # Prior density of a fitted coordinate or a factor level, the weighted sum
@@ -876,7 +911,7 @@ parameter_prior_density.BayesTools_fit <- function(
 }
 
 .bt_parameter_prior_density_direct_quantity <- function(
-    object, selection, key, n_grid, tail_prob){
+    object, quantity, key, n_grid, tail_prob){
 
   if(!key$source_type %in% c("identity", "one_to_one_transform")){
     return(NULL)
@@ -892,10 +927,7 @@ parameter_prior_density.BayesTools_fit <- function(
      .prior_linear_prior_dimension(source_prior) != 1L){
     return(NULL)
   }
-  transform <- .bt_parameter_transform_from_quantity(
-    object,
-    selection$quantities[1L, , drop = FALSE]
-  )
+  transform <- .bt_parameter_transform_from_quantity(object, quantity)
   .bt_parameter_prior_density_transformed(
     source_prior,
     transform,
@@ -1001,7 +1033,8 @@ parameter_prior_density.BayesTools_fit <- function(
 }
 
 .bt_parameter_prior_density_allocation_quantity <- function(
-    object, selection, key, n_grid, tail_prob, conditional = FALSE){
+    object, quantity, key, n_grid, tail_prob, conditional = FALSE,
+    atoms_only = FALSE){
 
   random_term <- if(nzchar(key$random_block)){
     .bt_parameter_catalog_find_random_term(object, key)
@@ -1015,12 +1048,9 @@ parameter_prior_density.BayesTools_fit <- function(
   )
   prior_list <- attr(object, "prior_list", exact = TRUE)
   source_prior <- prior_list[[allocation$weight_name]]
-  transform <- .bt_parameter_transform_from_quantity(
-    object,
-    selection$quantities[1L, , drop = FALSE]
-  )
+  transform <- .bt_parameter_transform_from_quantity(object, quantity)
   if(is.null(transform)){
-    if(!identical(selection$quantities$quantity, "var_prop") ||
+    if(!identical(quantity$quantity, "var_prop") ||
        !identical(allocation$scale, "total_variance")){
       return(NULL)
     }
@@ -1031,11 +1061,16 @@ parameter_prior_density.BayesTools_fit <- function(
       index = key$index,
       n_grid = n_grid,
       tail_prob = tail_prob,
-      conditional = conditional
+      conditional = conditional,
+      atoms_only = atoms_only
     ))
   }
+  if(isTRUE(atoms_only)){
+    # a mapped Dirichlet share has a density without atoms
+    return(NULL)
+  }
   index <- key$index
-  if(identical(selection$quantities$quantity, "sd_mult") &&
+  if(identical(quantity$quantity, "sd_mult") &&
      index > allocation$n_targets){
     index <- index - allocation$n_targets
   }
@@ -1172,7 +1207,7 @@ parameter_prior_density.BayesTools_fit <- function(
 
 .bt_parameter_prior_density_gated_var_prop <- function(
     allocation, source_prior, prior_list, index, n_grid, tail_prob,
-    conditional = FALSE){
+    conditional = FALSE, atoms_only = FALSE){
 
   positive_scale <- .bt_parameter_prior_density_positive_probability(
     allocation$source$prior
@@ -1222,12 +1257,13 @@ parameter_prior_density.BayesTools_fit <- function(
     index = index,
     probability = probability,
     n_grid = n_grid,
-    tail_prob = tail_prob
+    tail_prob = tail_prob,
+    atoms_only = atoms_only
   )
 }
 
 .bt_parameter_prior_density_gated_var_prop_mixture <- function(
-    alpha, index, probability, n_grid, tail_prob){
+    alpha, index, probability, n_grid, tail_prob, atoms_only = FALSE){
 
   K <- length(alpha)
   p_i <- probability[[index]]
@@ -1250,6 +1286,9 @@ parameter_prior_density.BayesTools_fit <- function(
   free_p <- p_others[free]
   n_free <- length(free_p)
   if(n_free > .bt_parameter_prior_density_gated_var_prop_free_gate_limit()){
+    if(isTRUE(atoms_only)){
+      return(NULL)
+    }
     stop(
       "Independently gated variance-proportion prior density is unavailable for more than 20 free inclusion gates.",
       call. = FALSE
@@ -1259,6 +1298,9 @@ parameter_prior_density.BayesTools_fit <- function(
   p_others_all_off <- prod(1 - p_others)
   p_atom0 <- (1 - p_i) * (1 - p_others_all_off) / p_positive
   p_atom1 <- p_i * p_others_all_off / p_positive
+  if(isTRUE(atoms_only)){
+    return(c(if(p_atom0 > 0) 0, if(p_atom1 > 0) 1))
+  }
 
   mix_weight <- 1
   mix_beta <- fixed_beta
@@ -1385,7 +1427,8 @@ parameter_prior_density.BayesTools_fit <- function(
 # shares, has no structural route: its product grid is a plotting density,
 # refused for heights and point hypotheses with the reason recorded.
 .bt_parameter_prior_density_random_component_sd <- function(
-    object, key, n_grid, tail_prob, conditional = FALSE, square = FALSE){
+    object, key, n_grid, tail_prob, conditional = FALSE, square = FALSE,
+    atoms_only = FALSE){
 
   chain <- .bt_parameter_prior_density_component_chain(object, key)
   if(is.null(chain)){
@@ -1416,7 +1459,8 @@ parameter_prior_density.BayesTools_fit <- function(
   weighted <- Filter(function(factor) !is.null(factor$weight_name), chain$factors)
   if(length(weighted) > 1L){
     return(.bt_parameter_prior_density_nested_component_sd(
-      chain, prior_list, 1 - active_probability, n_grid, tail_prob, square
+      chain, prior_list, 1 - active_probability, n_grid, tail_prob, square,
+      atoms_only = atoms_only
     ))
   }
 
@@ -1430,6 +1474,13 @@ parameter_prior_density.BayesTools_fit <- function(
     }
     share$weight <- active_probability
     multipliers[[2L]] <- share
+  }
+  if(isTRUE(atoms_only)){
+    return(.prior_allocation_product_atoms(
+      source_prior = chain$source_prior,
+      multipliers  = multipliers,
+      square       = square
+    ))
   }
   .prior_allocation_product_density(
     source_prior = chain$source_prior,
@@ -1597,6 +1648,34 @@ parameter_prior_density.BayesTools_fit <- function(
   dist
 }
 
+# The locations of the atoms of the product grid below: the atom at zero with
+# probability 'zero', the atoms of the scale prior for a term without shares,
+# and for a term with shares only the atom at zero of the scale prior (a share
+# is continuous and positive). The square of each for a variance. NULL when a
+# leaf of the scale prior has no structural density.
+.bt_parameter_prior_density_share_product_atoms <- function(source_prior, terms,
+                                                            zero, square){
+
+  leaves <- .prior_allocation_source_leaves(source_prior)
+  if(is.null(leaves)){
+    return(NULL)
+  }
+  points <- unlist(lapply(leaves, `[[`, "point"), use.names = FALSE)
+  locations <- if(zero > 0) 0
+  for(term in terms){
+    if(term$weight <= 0){
+      next
+    }
+    locations <- c(locations, if(length(term$shares) == 0L) points else
+      points[points == 0])
+  }
+  if(isTRUE(square)){
+    locations <- locations^2
+  }
+
+  sort(unique(locations))
+}
+
 # The plotting density of the scale prior times a mixture of share products:
 # 'terms' are lists with a probability 'weight' and the 'shares' of the term
 # (the scale prior alone without shares), and 'zero' is the probability of the
@@ -1607,10 +1686,16 @@ parameter_prior_density.BayesTools_fit <- function(
 .bt_parameter_prior_density_share_product_grid <- function(source_prior, terms,
                                                            zero, n_grid,
                                                            tail_prob, square,
-                                                           what){
+                                                           what,
+                                                           atoms_only = FALSE){
 
   positive <- Filter(function(term) term$weight > 0, terms)
   terms <- if(length(positive) > 0L) positive else terms[1L]
+  if(isTRUE(atoms_only)){
+    return(.bt_parameter_prior_density_share_product_atoms(
+      source_prior, terms, zero, square
+    ))
+  }
   dists <- lapply(terms, function(term){
     .bt_parameter_prior_density_share_product_dist(
       source_prior, term$shares, n_grid, tail_prob
@@ -1647,7 +1732,8 @@ parameter_prior_density.BayesTools_fit <- function(
 # density grids (with the exact gate atom at zero) is a plotting density.
 .bt_parameter_prior_density_nested_component_sd <- function(chain, prior_list,
                                                             zero, n_grid,
-                                                            tail_prob, square){
+                                                            tail_prob, square,
+                                                            atoms_only = FALSE){
 
   shares <- list()
   for(factor in chain$factors){
@@ -1667,7 +1753,8 @@ parameter_prior_density.BayesTools_fit <- function(
     n_grid       = n_grid,
     tail_prob    = tail_prob,
     square       = square,
-    what         = "an SD component"
+    what         = "an SD component",
+    atoms_only   = atoms_only
   )
 }
 
@@ -1683,7 +1770,7 @@ parameter_prior_density.BayesTools_fit <- function(
 # the empty set drops out (renormalized over the nonempty sets). NULL when the
 # multiplier is not available from the declared priors.
 .bt_parameter_prior_density_allocation_own_multiplier <- function(
-    allocation, prior_list, conditional = FALSE){
+    allocation, prior_list, conditional = FALSE, atoms_only = FALSE){
 
   if(isTRUE(allocation$gate_only)){
     probability <- 1
@@ -1722,6 +1809,9 @@ parameter_prior_density.BayesTools_fit <- function(
 
   free <- which(probability > 0 & probability < 1)
   if(length(free) > .bt_parameter_prior_density_gated_var_prop_free_gate_limit()){
+    if(isTRUE(atoms_only)){
+      return(NULL)
+    }
     stop(
       "Independently gated allocation-total prior density is unavailable for more than 20 free inclusion gates.",
       call. = FALSE
@@ -1785,7 +1875,8 @@ parameter_prior_density.BayesTools_fit <- function(
 # (renormalized over the nonempty sets): the event that the total is positive.
 .bt_parameter_prior_density_allocation_total <- function(object, key,
                                                          n_grid, tail_prob,
-                                                         conditional = FALSE){
+                                                         conditional = FALSE,
+                                                         atoms_only = FALSE){
 
   random_term <- if(nzchar(key$random_block)){
     .bt_parameter_catalog_find_random_term(object, key)
@@ -1803,7 +1894,8 @@ parameter_prior_density.BayesTools_fit <- function(
   square <- identical(key$evaluator, "allocation_var")
 
   own <- .bt_parameter_prior_density_allocation_own_multiplier(
-    allocation, prior_list, conditional = conditional
+    allocation, prior_list, conditional = conditional,
+    atoms_only = atoms_only
   )
   if(is.null(own)){
     return(NULL)
@@ -1849,7 +1941,8 @@ parameter_prior_density.BayesTools_fit <- function(
       n_grid       = n_grid,
       tail_prob    = tail_prob,
       square       = square,
-      what         = "the total"
+      what         = "the total",
+      atoms_only   = atoms_only
     ))
   }
 
@@ -1869,6 +1962,13 @@ parameter_prior_density.BayesTools_fit <- function(
     share <- members[[1L]]$shares[[1L]]
     share$weight <- sum(vapply(members, `[[`, numeric(1), "weight"))
     multipliers[[length(multipliers) + 1L]] <- share
+  }
+  if(isTRUE(atoms_only)){
+    return(.prior_allocation_product_atoms(
+      source_prior = source$prior,
+      multipliers  = multipliers,
+      square       = square
+    ))
   }
   .prior_allocation_product_density(
     source_prior = source$prior,
@@ -4570,8 +4670,38 @@ parameter_transform_jacobian <- function(values, transform){
 # [-1, 1], variance shares in [0, 1], multipliers between zero and the
 # allocation scale, and inclusion indicators at 0 and 1. Composite SDs and
 # variances are nonnegative; their hull [0, Inf) is exact only when every
-# scale prior is supported on [0, Inf).
+# scale prior is supported on [0, Inf). A quantity whose allocation chain has
+# inclusion gates, or whose scale prior has a point component, has point
+# masses: the support lists the atoms of the quantity's own prior density
+# (.bt_parameter_prior_density_random_summary()) as points of a mixed support.
 .bt_parameter_catalog_random_support <- function(object, quantity, key){
+
+  support <- .bt_parameter_catalog_random_hull(object, quantity, key)
+  if(is.null(support) || identical(quantity$quantity, "inclusion")){
+    return(support)
+  }
+  atoms <- .bt_parameter_prior_density_random_summary(
+    object      = object,
+    quantity    = quantity,
+    key         = key,
+    n_grid      = NA_integer_,
+    tail_prob   = NA_real_,
+    atoms_only  = TRUE
+  )
+  if(length(atoms) == 0L){
+    return(support)
+  }
+
+  .posterior_support_new(
+    bounds = support$bounds,
+    points = atoms,
+    exact  = support$exact,
+    source = "catalog",
+    type   = "mixed"
+  )
+}
+
+.bt_parameter_catalog_random_hull <- function(object, quantity, key){
 
   interval <- function(lower, upper, exact = TRUE){
     .posterior_support_new(c(lower, upper), exact = exact, source = "catalog",

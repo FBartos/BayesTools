@@ -2311,6 +2311,160 @@ test_that("the support of an identity random SD is the support of its own coordi
   expect_false(support_of(bounded_scaled, "(mu) sd(intercept)")$exact)
 })
 
+test_that("allocation quantities with inclusion gates or point scales declare the atoms of their prior density", {
+
+  # A gated chain, or a scale prior with a point component, puts point masses on
+  # the SD, variance, total and variance-share quantities of an allocation: the
+  # catalog support lists exactly the atoms of the quantity's own prior density
+  # as points of a mixed support, and an ungated chain keeps its interval.
+  gate <- function(probability) prior("spike", list(location = probability))
+  weights <- prior("dirichlet", list(alpha = c(2, 3)))
+  gamma_scale <- prior("gamma", list(2, 2))
+  two_terms <- ~ 1 + random(1 | study, name = "study", covariance = "diag") +
+    random(1 | esid, name = "esid", covariance = "diag")
+  data <- data.frame(x = c(1, 4, 6, 2, 8, 5, 3, 7),
+                     study = factor(rep(c("a", "b", "c", "d"), each = 2L)),
+                     esid = factor(rep(c("u", "v"), 4L)))
+  allocation_fit <- function(allocations, formula = two_terms){
+    prior_list <- list(intercept = prior("normal", list(0, 1)))
+    if("x" %in% all.vars(formula)){
+      prior_list$x <- prior("normal", list(0, 1))
+    }
+    result <- JAGS_formula(
+      formula, "mu", data, prior_list,
+      prior_random = prior_random(allocation = allocations)
+    )
+    design <- result$formula_design
+    sd_names <- unlist(lapply(design$random_effects, `[[`, "sd_parameter_names"))
+    gates <- unlist(lapply(design$random_allocations,
+                           .bt_random_effect_summary_allocation_gate_names))
+    columns <- unique(c("mu_intercept", JAGS_to_monitor(result$prior_list), gates))
+    .prior_monitor_test_fit(result, columns[!columns %in% sd_names])
+  }
+  split <- function(inclusion = NULL, sd = gamma_scale, ...){
+    random_variance_allocation(
+      name = "split", terms = c(study = "study", esid = "esid"),
+      sd = sd, weights = weights, inclusion = inclusion, ...
+    )
+  }
+  quantity_rows <- function(fit){
+    quantities <- parameter_catalog(fit)$quantities
+    quantities[quantities$owner_type %in% c("variance_allocation", "random_block") &
+                 quantities$status == "sampled" &
+                 quantities$role != "random_correlation", , drop = FALSE]
+  }
+  support_of <- function(fit, label){
+    quantities <- parameter_catalog(fit)$quantities
+    quantities$support[[match(label, quantities$canonical_name)]]
+  }
+  # the points of every sampled allocation and block quantity are the atoms of
+  # its prior density (equal up to the rounding of the variance map)
+  expect_points_are_density_atoms <- function(fit, info){
+    catalog <- parameter_catalog(fit)
+    rows <- quantity_rows(fit)
+    for(i in seq_len(nrow(rows))){
+      density <- parameter_prior_density(
+        fit, parameter_catalog_resolve(catalog, rows$canonical_name[[i]], "mu"),
+        n_grid = 16L
+      )
+      if(is.null(density)){
+        next
+      }
+      atoms <- if(is.null(density$points)) numeric() else sort(density$points$x)
+      expect_equal(sort(rows$support[[i]]$points), atoms, tolerance = 1e-12,
+                   info = paste(info, rows$canonical_name[[i]]))
+    }
+  }
+
+  # both terms gated (the review probe): 0 for the SDs, variances and totals,
+  # 0 and 1 for the variance shares
+  both <- allocation_fit(split(list(study = gate(.5), esid = gate(.5))))
+  for(label in c("(mu) split: sd_total", "(mu) split: var_total",
+                 "(mu) study: sd(intercept)", "(mu) study: var(intercept)",
+                 "(mu) esid: sd(intercept)")){
+    support <- support_of(both, label)
+    expect_identical(support$points, 0, info = label)
+    expect_identical(support$type, "mixed", info = label)
+    expect_equal(support$bounds, c(0, Inf), info = label)
+  }
+  for(label in c("(mu) split: var_prop(study)", "(mu) split: var_prop(esid)")){
+    support <- support_of(both, label)
+    expect_identical(support$points, c(0, 1), info = label)
+    expect_identical(support$type, "mixed", info = label)
+    expect_equal(support$bounds, c(0, 1), info = label)
+  }
+  expect_points_are_density_atoms(both, "both gated")
+
+  # one gated term: the atoms follow the probabilities of the chain, so the gated
+  # share has the atom 0, the ungated share the atom 1, and the total (one
+  # component always on) none
+  one <- allocation_fit(split(list(study = gate(.5))))
+  expect_identical(support_of(one, "(mu) split: var_prop(study)")$points, 0)
+  expect_identical(support_of(one, "(mu) split: var_prop(esid)")$points, 1)
+  expect_identical(support_of(one, "(mu) study: sd(intercept)")$points, 0)
+  for(label in c("(mu) split: sd_total", "(mu) esid: sd(intercept)")){
+    expect_identical(support_of(one, label)$type, "interval", info = label)
+    expect_identical(support_of(one, label)$points, numeric(), info = label)
+  }
+  expect_points_are_density_atoms(one, "one gated")
+
+  # ungated chain: intervals
+  ungated <- allocation_fit(split())
+  for(label in c("(mu) study: sd(intercept)", "(mu) split: var_prop(study)")){
+    expect_identical(support_of(ungated, label)$type, "interval", info = label)
+  }
+  expect_points_are_density_atoms(ungated, "ungated")
+
+  # a scale prior with a point component (a spike-and-slab scale at 0)
+  point_scale <- allocation_fit(split(
+    list(study = gate(.5), esid = gate(.5)),
+    sd = prior_spike_and_slab(gamma_scale, prior_inclusion = gate(.8))
+  ))
+  expect_identical(support_of(point_scale, "(mu) study: sd(intercept)")$points, 0)
+  expect_identical(support_of(point_scale, "(mu) split: sd_total")$points, 0)
+  expect_points_are_density_atoms(point_scale, "spike-and-slab scale")
+
+  # a gate shared with a parent allocation, and a gate-only allocation
+  shared <- allocation_fit(list(
+    random_variance_allocation(name = "root", terms = c(component = "both"),
+                               sd = gamma_scale, inclusion = list(component = gate(.5))),
+    random_variance_allocation(name = "split", terms = c(study = "study", esid = "esid"),
+                               parent = allocation_ref("root", "component"),
+                               weights = weights)
+  ))
+  expect_identical(support_of(shared, "(mu) study: sd(intercept)")$points, 0)
+  expect_points_are_density_atoms(shared, "shared gate")
+  gate_only <- allocation_fit(
+    random_variance_allocation(name = "g", terms = c(component = "study"),
+                               sd = gamma_scale, inclusion = list(component = gate(.5))),
+    ~ 1 + random(1 | study, name = "study", covariance = "diag")
+  )
+  expect_identical(support_of(gate_only, "(mu) sd(intercept)")$points, 0)
+  expect_points_are_density_atoms(gate_only, "gate only")
+
+  # a nested allocation (two Dirichlet shares) has a plotting density with the
+  # atom at zero of its gate
+  nested <- allocation_fit(
+    list(
+      random_variance_allocation(
+        name = "total_re", terms = c(study = "study", esid = "esid"),
+        sd = gamma_scale, weights = weights,
+        inclusion = list(study = gate(.5), esid = gate(.5))
+      ),
+      random_variance_allocation(
+        name = "s_components", parent = allocation_ref("total_re", "study"),
+        terms = "study", target = "sd_component", scale = "mean_variance",
+        weights = prior("dirichlet", list(alpha = c(1, 1)))
+      )
+    ),
+    ~ 1 + x + random(1 + x | study, name = "study", covariance = "diag") +
+      random(1 | esid, name = "esid", covariance = "diag")
+  )
+  expect_identical(support_of(nested, "(mu) study: sd(x)")$points, 0)
+  expect_identical(support_of(nested, "(mu) study: var(x)")$points, 0)
+  expect_points_are_density_atoms(nested, "nested")
+})
+
 test_that("posterior plots draw the exact LKJ prior of us() correlations", {
 
   block <- .lkj_block_fit(3L, 2)
