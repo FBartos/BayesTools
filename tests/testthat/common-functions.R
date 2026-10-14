@@ -1785,12 +1785,21 @@ save_fit <- function(fit, name, marglik = NULL, simple_priors = FALSE, vector_pr
   hashes
 }
 
-.test_cache_source_hashes <- function(name) {
+# The part of the key that is read from disk: DESCRIPTION and the source files
+# (the fitting test file, the native sources in src/). A run can edit them while
+# it fits, unlike the loaded functions of the key.
+.test_cache_file_source_hashes <- function(name) {
   source_files <- .test_cache_source_files(name)
   file_hashes <- vapply(source_files, .test_cache_file_md5, character(1))
   c(
     .test_cache_description_hashes(name),
-    file_hashes,
+    file_hashes
+  )
+}
+
+.test_cache_source_hashes <- function(name) {
+  c(
+    .test_cache_file_source_hashes(name),
     .test_cache_function_hashes(name),
     .test_cache_package_function_hashes(name)
   )
@@ -1917,6 +1926,57 @@ save_fit <- function(fit, name, marglik = NULL, simple_priors = FALSE, vector_pr
   invisible(TRUE)
 }
 
+# The on-disk inputs of the key as they were when a run started refitting, by
+# marker name (skip_refit_if_cached()); mark_refit_cache_complete() compares them
+# with the inputs at the end of the run. The store is kept when this file is
+# sourced again.
+if (!exists(".test_cache_run_snapshots", inherits = FALSE)) {
+  .test_cache_run_snapshots <- new.env(parent = emptyenv())
+}
+
+# The snapshot of a marker name, which is forgotten once taken (NULL without one).
+.test_cache_take_snapshot <- function(name) {
+  snapshot <- get0(name, envir = .test_cache_run_snapshots, inherits = FALSE)
+  if (!is.null(snapshot)) {
+    rm(list = name, envir = .test_cache_run_snapshots)
+  }
+  snapshot
+}
+
+# The names of the inputs whose hash differs between two hash vectors, one that
+# is missing from either side included.
+.test_cache_changed_inputs <- function(before, after) {
+  inputs <- unique(c(names(before), names(after)))
+  unchanged <- vapply(
+    inputs,
+    function(input) identical(unname(before[input]), unname(after[input])),
+    logical(1)
+  )
+  inputs[!unchanged]
+}
+
+# The test blocks of the fitting file that recorded a failed or errored
+# expectation in the testthat run in progress. They are read from the
+# ListReporter that test_files() keeps beside the reporter in use, which records
+# a block when the block ends: the blocks before the running one, not the
+# running block. NULL when no ListReporter is active (a bare with_reporter()),
+# since a passing run cannot be established then.
+.test_cache_failed_blocks <- function(file = "test-00-model-fits.R") {
+  reporter <- testthat::get_reporter()
+  reporters <- if (inherits(reporter, "MultiReporter")) reporter$reporters else list(reporter)
+  recorders <- Filter(function(candidate) inherits(candidate, "ListReporter"), reporters)
+  if (length(recorders) == 0L) {
+    return(NULL)
+  }
+
+  blocks <- recorders[[1L]]$get_results()
+  failed <- vapply(blocks, function(block) {
+    identical(block$file, file) &&
+      any(vapply(block$results, inherits, logical(1), what = c("expectation_failure", "expectation_error")))
+  }, logical(1))
+  vapply(blocks[failed], function(block) block$test, character(1))
+}
+
 # Skip model fitting if a validated cache exists and BAYESTOOLS_TEST_SKIP_REFIT is TRUE.
 skip_refit_if_cached <- function(name, required_fits = NULL, required_margliks = NULL,
                                  required_files = NULL, registry_file = NULL) {
@@ -1939,18 +1999,57 @@ skip_refit_if_cached <- function(name, required_fits = NULL, required_margliks =
     )
 
   if (skip_refit && cache_complete) {
+    .test_cache_take_snapshot(name)
     skip("Skipping model refitting: validated cache exists and BAYESTOOLS_TEST_SKIP_REFIT=TRUE.")
   }
 
   if (file.exists(indicator_file)) {
     unlink(indicator_file)
   }
+  assign(name, .test_cache_file_source_hashes(name), envir = .test_cache_run_snapshots)
 
   invisible(FALSE)
 }
 
+# Mark the cache of a fitting run as validated. The marker certifies a passing
+# run of the hashed inputs: it is written only when no test block of the fitting
+# file recorded a failed expectation ('failed_blocks', by default read from the
+# running testthat reporter) and the on-disk inputs are the ones the run
+# snapshotted when it started refitting (skip_refit_if_cached()). Otherwise an
+# existing marker is removed and the call fails, so the next run refits. Without
+# a snapshot (a direct call) the inputs are hashed when the marker is written.
+# Call it from the last test block of the fitting file: a block records its
+# results when it ends, and no block after it is covered.
 mark_refit_cache_complete <- function(name, required_fits = NULL, required_margliks = NULL,
-                                      required_files = NULL, registry_file = NULL) {
+                                      required_files = NULL, registry_file = NULL,
+                                      failed_blocks = .test_cache_failed_blocks()) {
+  indicator_file <- .test_cache_indicator_file(name)
+  snapshot <- .test_cache_take_snapshot(name)
+
+  unvalidated <- function(reason) {
+    unlink(indicator_file)
+    testthat::fail(paste0("The fit cache '", name, "' stays unvalidated: ", reason))
+    invisible(FALSE)
+  }
+  if (is.null(failed_blocks)) {
+    return(unvalidated("the results recorded by the testthat run are not available."))
+  }
+  if (length(failed_blocks) > 0L) {
+    return(unvalidated(paste0(
+      "test block(s) with a failed expectation: ",
+      paste0("'", failed_blocks, "'", collapse = ", "), "."
+    )))
+  }
+  if (!is.null(snapshot)) {
+    changed <- .test_cache_changed_inputs(snapshot, .test_cache_file_source_hashes(name))
+    if (length(changed) > 0L) {
+      return(unvalidated(paste0(
+        "input(s) changed after the run started refitting: ",
+        paste(changed, collapse = ", "), "."
+      )))
+    }
+  }
+
   cache_complete <- .test_cache_requirements_complete(
     required_fits = required_fits,
     required_margliks = required_margliks,
@@ -1959,6 +2058,7 @@ mark_refit_cache_complete <- function(name, required_fits = NULL, required_margl
   )
 
   if (!cache_complete) {
+    unlink(indicator_file)
     stop("Cannot mark cache complete because required cache artifacts are missing.", call. = FALSE)
   }
 
@@ -1988,7 +2088,7 @@ mark_refit_cache_complete <- function(name, required_fits = NULL, required_margl
       registry_hash_line,
       source_hash_lines
     ),
-    .test_cache_indicator_file(name)
+    indicator_file
   )
 
   invisible(TRUE)

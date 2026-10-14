@@ -8123,20 +8123,19 @@ test_that("Model registry is created and saved", {
   marglik_names <- model_registry_df$model_name[model_registry_df$has_marglik]
   expected_marglik_files <- file.path(temp_marglik_dir, paste0(marglik_names, ".RDS"))
   expect_true(all(file.exists(expected_marglik_files)))
-
-  mark_refit_cache_complete(
-    "model-fit",
-    required_fits = model_registry_df$model_name,
-    required_margliks = marglik_names,
-    registry_file = registry_file
-  )
 })
 
 test_that("JAGS_extend works correctly", {
 
   skip_if_not_installed("rjags")
   skip_on_cran()
-  skip_if_no_fits()
+  # the fit saved by this run: the cache marker is written by the last block
+  # of the file, so skip_if_no_fits() cannot be satisfied here
+  skip_if_not(
+    "fit_simple_normal" %in% names(model_registry) &&
+      file.exists(file.path(temp_fits_dir, "fit_simple_normal.RDS")),
+    "The fit_simple_normal artifact of this run is missing."
+  )
 
   fit_simple <- readRDS(file.path(temp_fits_dir, "fit_simple_normal.RDS"))
   formula_design <- attr(fit_simple, "formula_design", exact = TRUE)
@@ -8190,5 +8189,25 @@ test_that("JAGS_extend works correctly", {
   expect_true(extended_samples  >= original_samples)
   expect_true(extended_samples2 >= original_samples)
 
+})
+
+# ============================================================================ #
+# MARK THE FIT CACHE
+# ============================================================================ #
+# Keep this the last test block of the file. The marker certifies a passing run
+# of the hashed inputs: mark_refit_cache_complete() refuses it when a block above
+# recorded a failed expectation, or when the fitting file, src/ or DESCRIPTION
+# changed after refitting started. A block records its results when it ends, so
+# this block makes no expectation of its own and no block may follow it.
+test_that("The model-fit cache is marked complete after a passing run", {
+
+  model_registry_df <- do.call(rbind, model_registry)
+
+  mark_refit_cache_complete(
+    "model-fit",
+    required_fits = model_registry_df$model_name,
+    required_margliks = model_registry_df$model_name[model_registry_df$has_marglik],
+    registry_file = file.path(test_files_dir, "model_registry.RDS")
+  )
 })
 

@@ -495,3 +495,225 @@ test_that("downstream cache consumer source scopes are separate from model fitti
   expect_false(anyNA(.test_cache_source_hashes("fixture-consumer")))
   expect_false(anyNA(.test_cache_source_hashes("visual-fixture-consumer")))
 })
+
+# ============================================================================ #
+# The completion marker of the fit cache
+# ============================================================================ #
+# The helpers bind their cache directories when they are sourced, and marking
+# prunes every artifact that the requirements do not list. The tests that mark,
+# refuse, or remove a marker therefore run a second copy of the helpers bound to
+# a temporary cache and never touch the cache of the run. The copy hashes no
+# package code unless asked to (the key of the loaded namespace is pinned
+# further below).
+redirected_cache <- function(frame = parent.frame(), package_hashes = FALSE) {
+  cache_dir <- withr::local_tempdir(.local_envir = frame)
+  withr::local_envvar(BAYESTOOLS_TEST_FILES_DIR = cache_dir, .local_envir = frame)
+  helpers <- new.env(parent = frame)
+  source(testthat::test_path("common-functions.R"), local = helpers)
+  if (!package_hashes) {
+    helpers$.test_cache_package_function_hashes <- function(name, namespace = NULL) {
+      stats::setNames(character(), character())
+    }
+  }
+
+  fits <- c("fit_a", "fit_b")
+  margliks <- "fit_a"
+  registry_file <- file.path(helpers$test_files_dir, "model_registry.RDS")
+  list(
+    helpers = helpers,
+    fits = fits,
+    margliks = margliks,
+    registry_file = registry_file,
+    indicator = helpers$.test_cache_indicator_file("model-fit"),
+    save_artifacts = function() {
+      for (fit in fits) {
+        saveRDS(list(fit = fit), file.path(helpers$temp_fits_dir, paste0(fit, ".RDS")))
+      }
+      for (fit in margliks) {
+        saveRDS(list(fit = fit), file.path(helpers$temp_marglik_dir, paste0(fit, ".RDS")))
+      }
+      saveRDS(data.frame(model_name = fits, has_marglik = fits %in% margliks), registry_file)
+    },
+    mark = function(...) {
+      helpers$mark_refit_cache_complete(
+        "model-fit", required_fits = fits, required_margliks = margliks,
+        registry_file = registry_file, ...
+      )
+    },
+    current = function() {
+      helpers$.test_cache_metadata_current(
+        "model-fit", required_fits = fits, required_margliks = margliks,
+        registry_file = registry_file
+      )
+    }
+  )
+}
+
+# Run a synthetic fitting file, as the fit lane does, in a temporary repository
+# layout (DESCRIPTION, src/, tests/testthat/test-00-model-fits.R) with the
+# helpers of 'cache': skip_refit_if_cached() at the top, a generation block that
+# calls generation(layout), and the finalization block last. Returns the layout,
+# whether each block recorded a failed or errored expectation, and their
+# messages.
+run_synthetic_fit_file <- function(cache, generation, frame = parent.frame()) {
+  layout <- withr::local_tempdir(.local_envir = frame)
+  fit_dir <- file.path(layout, "tests", "testthat")
+  dir.create(file.path(layout, "src"))
+  dir.create(fit_dir, recursive = TRUE)
+  writeLines(c("Package: Toy", "Version: 0.0.1", "Title: A toy"), file.path(layout, "DESCRIPTION"))
+  writeLines("int toy;", file.path(layout, "src", "toy.cc"))
+  # every key builds the source scopes of the consumer markers as well, which
+  # need one of their test files to exist
+  file.create(file.path(fit_dir, c("test-fixture-integrity.R", "test-JAGS-diagnostic-plots.R")))
+  fit_file <- file.path(fit_dir, "test-00-model-fits.R")
+  writeLines(c(
+    "skip_refit_if_cached(\"model-fit\", required_fits = synthetic_fits,",
+    "  required_margliks = synthetic_margliks, registry_file = synthetic_registry)",
+    "test_that(\"generation\", {",
+    "  synthetic_generation()",
+    "})",
+    "test_that(\"finalization\", {",
+    "  mark_refit_cache_complete(\"model-fit\", required_fits = synthetic_fits,",
+    "    required_margliks = synthetic_margliks, registry_file = synthetic_registry)",
+    "})"
+  ), fit_file)
+  helpers <- cache$helpers
+  helpers$synthetic_fits <- cache$fits
+  helpers$synthetic_margliks <- cache$margliks
+  helpers$synthetic_registry <- cache$registry_file
+  helpers$synthetic_generation <- function() generation(layout)
+
+  withr::local_envvar(BAYESTOOLS_TEST_SKIP_REFIT = "false")
+  results <- testthat::test_file(
+    fit_file, reporter = "silent", env = helpers, stop_on_failure = FALSE
+  )
+  broken <- c("expectation_failure", "expectation_error")
+  messages <- lapply(results, function(block) {
+    vapply(
+      Filter(function(result) inherits(result, broken), block$results),
+      conditionMessage, character(1)
+    )
+  })
+  names(messages) <- vapply(results, function(block) block$test, character(1))
+  list(
+    layout = layout,
+    fit_file = fit_file,
+    broken = vapply(messages, length, integer(1)) > 0L,
+    messages = messages,
+    current = function() withr::with_dir(fit_dir, cache$current())
+  )
+}
+
+test_that("a fit run with a failed expectation or an error leaves no current marker", {
+  cache <- redirected_cache()
+  failures <- list(
+    expectation = function() testthat::expect_equal(1, 2),
+    error = function() stop("the fit failed")
+  )
+
+  for (failure in failures) {
+    run <- run_synthetic_fit_file(cache, function(layout) {
+      cache$save_artifacts()
+      # the marker of an earlier run
+      writeLines("name: model-fit", cache$indicator)
+      failure()
+    })
+    # the generation block fails, and so does the finalization that refuses the marker
+    expect_identical(run$broken, c(generation = TRUE, finalization = TRUE))
+    expect_length(run$messages$finalization, 1L)
+    expect_match(run$messages$finalization, "stays unvalidated", fixed = TRUE)
+    expect_match(run$messages$finalization, "'generation'", fixed = TRUE)
+    expect_false(file.exists(cache$indicator))
+    expect_false(run$current())
+  }
+
+  # the next run refits instead of skipping the fitting file
+  expect_false(cache$helpers$skip_refit_if_cached(
+    "model-fit", required_fits = cache$fits, required_margliks = cache$margliks,
+    registry_file = cache$registry_file
+  ))
+})
+
+test_that("a fit run with all expectations passing writes the marker", {
+  cache <- redirected_cache()
+  run <- run_synthetic_fit_file(cache, function(layout) {
+    cache$save_artifacts()
+    testthat::expect_equal(1, 1)
+  })
+  expect_identical(run$broken, c(generation = FALSE, finalization = FALSE))
+  expect_true(file.exists(cache$indicator))
+  expect_true(run$current())
+})
+
+test_that("a fit run whose inputs change after refitting started leaves no current marker", {
+  cache <- redirected_cache()
+  edits <- list(
+    package_src_toy_cc = function(layout) {
+      cat("int edited;\n", file = file.path(layout, "src", "toy.cc"), append = TRUE)
+    },
+    description = function(layout) {
+      writeLines(
+        c("Package: Toy", "Version: 0.0.1", "Title: An edited toy"),
+        file.path(layout, "DESCRIPTION")
+      )
+    },
+    test_00_model_fits = function(layout) {
+      cat("# edited while fitting\n", file = file.path(layout, "tests", "testthat", "test-00-model-fits.R"), append = TRUE)
+    }
+  )
+
+  for (input in names(edits)) {
+    run <- run_synthetic_fit_file(cache, function(layout) {
+      cache$save_artifacts()
+      edits[[input]](layout)
+    })
+    # every expectation of the generation block passes; the finalization refuses
+    expect_identical(run$broken, c(generation = FALSE, finalization = TRUE), info = input)
+    expect_length(run$messages$finalization, 1L)
+    expect_match(run$messages$finalization, "changed after the run started refitting", fixed = TRUE)
+    expect_match(run$messages$finalization, input, fixed = TRUE)
+    expect_false(file.exists(cache$indicator), info = input)
+    expect_false(run$current(), info = input)
+  }
+})
+
+test_that("marking without a run snapshot hashes the inputs when it marks", {
+  cache <- redirected_cache()
+  cache$save_artifacts()
+
+  expect_true(cache$mark(failed_blocks = character()))
+  expect_true(file.exists(cache$indicator))
+  expect_true(cache$current())
+
+  # a refusal removes the marker and fails, whatever the reason
+  expect_failure(
+    refused <- cache$mark(failed_blocks = "a block"),
+    "test block(s) with a failed expectation: 'a block'", fixed = TRUE
+  )
+  expect_false(refused)
+  expect_false(file.exists(cache$indicator))
+
+  expect_true(cache$mark(failed_blocks = character()))
+  expect_failure(
+    refused <- cache$mark(failed_blocks = NULL),
+    "results recorded by the testthat run are not available"
+  )
+  expect_false(refused)
+  expect_false(file.exists(cache$indicator))
+
+  # missing artifacts still stop the marking, and no marker is left
+  expect_true(cache$mark(failed_blocks = character()))
+  unlink(file.path(cache$helpers$temp_fits_dir, "fit_b.RDS"))
+  expect_error(cache$mark(failed_blocks = character()), "required cache artifacts are missing")
+  expect_false(file.exists(cache$indicator))
+})
+
+test_that("the failed blocks are read from the recorder of the testthat run", {
+  # a bare reporter keeps no results, so a passing run cannot be established
+  failed_blocks <- "unset"
+  testthat::with_reporter(
+    testthat::SilentReporter$new(),
+    failed_blocks <- .test_cache_failed_blocks()
+  )
+  expect_null(failed_blocks)
+})

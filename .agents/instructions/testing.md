@@ -78,7 +78,11 @@ setup code of `test-00-model-fits.R`, by the hashed helpers, and by `.onLoad()`.
 Editing code that no generator reaches (inference, plotting, summaries,
 prior-density ordinates), a comment, or the package version leaves the marker
 current; editing a reached function, a native source, or the fitting test file
-makes the cache stale until `fit` runs. The assertion blocks of the fitting file
+makes the cache stale until `fit` runs. The marker certifies a passing run of
+those inputs: the last block of the fitting file writes it only when no earlier
+block of the file recorded a failed expectation and the fitting file, `src/`,
+and `DESCRIPTION` are unchanged since refitting started, and otherwise removes
+any existing marker and fails. The assertion blocks of the fitting file
 test the post-fit interface of live fits; they run with the file, which a
 current cache skips and the `fit` profile reruns by default.
 
