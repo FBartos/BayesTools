@@ -7132,3 +7132,56 @@ test_that("scaling a predictor leaves the support and the Bayes factor of a non-
       tolerance = 1e-12)
   }
 })
+
+test_that("a union with a point support is exact only when the points lie in the interval support", {
+
+  union_of <- function(...) .posterior_support_union(list(...))
+  interval <- posterior_support_attribute(c(0, 2))
+  points_support <- function(points) posterior_support_attribute(range(points), points = points, type = "points")
+
+  # points outside the interval: the hull [0, 5] is not the support
+  outside <- union_of(interval, points_support(c(1, 5)))
+  expect_identical(outside$type, "mixed")
+  expect_identical(outside$bounds, c(0, 5))
+  expect_false(outside$exact)
+  expect_false(isTRUE(.posterior_support_contains_value(outside, 3)))
+  expect_false(.posterior_support_excludes_value(outside, 3))
+  expect_true(is.na(.posterior_support_contains_value(outside, 3)))
+
+  # points inside, at the ends or touching the interval keep the exact support
+  for(points in list(c(0, 2), 1, c(0.5, 1.5), 0)){
+    inside <- union_of(interval, points_support(points))
+    expect_true(inside$exact)
+    expect_identical(inside$bounds, c(0, 2))
+    expect_true(.posterior_support_contains_value(inside, 1.7))
+    expect_false(.posterior_support_excludes_value(inside, 1.7))
+  }
+  expect_true(union_of(interval, points_support(2))$exact)
+  expect_false(union_of(interval, points_support(2 + 1e-9))$exact)
+  expect_true(union_of(posterior_support_attribute(c(0, 1)), posterior_support_attribute(c(1, 2)),
+    points_support(1.5))$exact)
+  expect_false(union_of(posterior_support_attribute(c(0, 1)), posterior_support_attribute(c(2, 3)),
+    points_support(1.5))$exact)
+
+  # points alone, and a mixed support with exact contents
+  expect_true(union_of(points_support(c(0, 1)), points_support(5))$exact)
+  mixed <- posterior_support_attribute(c(0, 1), points = 0.5, type = "mixed")
+  expect_true(union_of(interval, mixed)$exact)
+
+  # prior supports: the Bernoulli and truncated normal mixture does not claim
+  # 0.25, and a spike outside the slab or two spikes around the slab leave the
+  # support inexact; a spike inside the slab keeps it exact
+  mixture <- prior_mixture(list(prior("bernoulli", list(.5)), prior("normal", list(1.25, .5), list(.5, 2))))
+  support <- .posterior_support_from_prior(mixture)
+  expect_false(support$exact)
+  expect_identical(support$bounds, c(0, 2))
+  expect_true(is.na(.posterior_support_contains_value(support, 0.25)))
+  expect_false(.posterior_support_excludes_value(support, 0.25))
+  spikes <- prior_mixture(list(prior("point", list(0)), prior("point", list(5)),
+    prior("normal", list(2.5, 1), list(1, 4))))
+  expect_false(.posterior_support_from_prior(spikes)$exact)
+  inside <- prior_spike_and_slab(prior("normal", list(0, 1), list(-1, 1)))
+  expect_true(.posterior_support_from_prior(inside)$exact)
+  outside_spike <- prior_spike_and_slab(prior("normal", list(1.5, 1), list(1, 2)))
+  expect_false(.posterior_support_from_prior(outside_spike)$exact)
+})

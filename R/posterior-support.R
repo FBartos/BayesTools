@@ -396,7 +396,13 @@ posterior_support_attribute <- function(bounds, points = NULL, type = NULL,
   }
   exact <- all(vapply(supports, function(support) isTRUE(support$exact), logical(1)))
   if(has_interval){
-    exact <- exact && .posterior_support_bounds_connected(bounds)
+    # a support without an interval covers only its points, not their hull: its
+    # points enter individually, so a point outside the interval union (or a
+    # gap between points and intervals) leaves the union inexact
+    interval_bounds <- do.call(rbind, lapply(supports, function(support){
+      if(.posterior_support_has_interval(support)) support$bounds else cbind(support$points, support$points)
+    }))
+    exact <- exact && .posterior_support_bounds_connected(interval_bounds)
   }
 
   .posterior_support_new(
