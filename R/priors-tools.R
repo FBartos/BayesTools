@@ -222,36 +222,50 @@
 }
 .get_prior_factor_list_type    <- function(prior_list){
 
+  # Scalar point and none priors carry no factor type. An explicit factor prior
+  # (including a point factor prior) keeps its declared contrast; the K of a
+  # point factor is declared only once its levels are bound.
   priors_type <- do.call(rbind, lapply(prior_list, function(p) {
-    if(is.prior.point(p) | is.prior.none(p)){
+    if(is.prior.none(p) || (is.prior.point(p) && !is.prior.factor(p))){
       return(data.frame(
         "treatment"         = NA,
         "independent"       = NA,
         "orthonormal"       = NA,
         "meandif"           = NA,
         "ordered"           = NA,
-        "K"                 = NA
+        "K"                 = NA,
+        "K_declared"        = NA
       ))
     }else{
+      K <- if(is.prior.ordered(p)) {
+        .get_prior_factor_levels(p)
+      }else if(is.matrix(attr(p, "factor_design", exact = TRUE))) {
+        .get_prior_factor_levels(p)
+      }else if(!is.null(p[["parameters"]][["K"]])) {
+        p[["parameters"]][["K"]]
+      }else{
+        NA
+      }
       return(data.frame(
         "treatment"         = is.prior.treatment(p),
         "independent"       = is.prior.independent(p),
         "orthonormal"       = is.prior.orthonormal(p),
         "meandif"           = is.prior.meandif(p),
         "ordered"           = is.prior.ordered(p),
-        "K"                 = if(is.prior.ordered(p)) {
-          .get_prior_factor_levels(p)
-        }else if(is.matrix(attr(p, "factor_design", exact = TRUE))) {
-          .get_prior_factor_levels(p)
-        }else if(!is.null(p[["parameters"]][["K"]])) {
-          p[["parameters"]][["K"]]
-        }else{
-          NA
-        }
+        "K"                 = K,
+        "K_declared"        = !(is.prior.point(p) && is.na(K))
       ))
     }
   }))
   priors_type <- priors_type[!apply(priors_type, 1, function(x) all(is.na(x))),]
+
+  # an undeclared K takes the K of the sibling factor priors; a K conflict
+  # needs two declarations
+  K_declared  <- priors_type[["K_declared"]]
+  priors_type <- priors_type[, colnames(priors_type) != "K_declared", drop = FALSE]
+  if(any(K_declared) && !all(K_declared)){
+    priors_type[["K"]][!K_declared] <- priors_type[["K"]][K_declared][1]
+  }
   priors_type <- unique(priors_type)
 
   if(nrow(priors_type) > 1)

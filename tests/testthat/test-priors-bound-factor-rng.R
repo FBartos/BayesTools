@@ -115,3 +115,66 @@ test_that("lpdf and pdf of a bound factor prior resolve the coefficient dimensio
   explicit <- prior("mnormal", list(mean = 0, sd = 1.5, K = 2))
   expect_equal(lpdf(explicit, c(0, 0)), 2 * stats::dnorm(0, 0, 1.5, log = TRUE))
 })
+
+test_that("spike-and-slab and mixtures of explicit point factor priors keep their contrast", {
+  point <- prior_factor("point", list(2), contrast = "treatment")
+
+  spike <- prior_spike_and_slab(point)
+  expect_true(is.prior.spike_and_slab(spike))
+  expect_true(all(vapply(spike, is.prior.treatment, logical(1))))
+  expect_identical(spike[[1L]][["parameters"]][["location"]], 2)
+  expect_identical(spike[[2L]][["parameters"]][["location"]], 0)
+
+  mixture <- prior_mixture(list(point, prior_factor("point", list(0), contrast = "treatment")))
+  expect_true(is.prior.treatment(mixture))
+  expect_true(all(vapply(mixture, is.prior.treatment, logical(1))))
+
+  for(contrast in c("orthonormal", "meandif")){
+    joint_spike <- prior_spike_and_slab(prior_factor("point", list(0), contrast = contrast))
+    expect_true(all(vapply(joint_spike, inherits, logical(1), what = paste0("prior.", contrast))))
+  }
+})
+
+test_that("a point factor prior of another contrast than its sibling refuses instead of being recoded", {
+  point <- prior_factor("point", list(2), contrast = "treatment")
+  expect_error(
+    prior_mixture(list(point, prior_factor("normal", list(0, 1), contrast = "independent"))),
+    "only one type of factor priors")
+  expect_error(
+    prior_mixture(list(prior_factor("point", list(0), contrast = "orthonormal"),
+                       prior_factor("mnormal", list(0, 1), contrast = "meandif"))),
+    "only one type of factor priors")
+})
+
+test_that("the declared image of a treatment point factor survives binding and sampling in a mixture", {
+  point <- prior_factor("point", list(2), contrast = "treatment")
+  bound <- prior_factor_levels(
+    prior_mixture(list(point, prior_factor("normal", list(0, 1), contrast = "treatment"))),
+    c("a", "b", "c"))
+  expect_equal(as.vector(attr(bound[[1L]], "factor_design") %*% rep(2, 2L)), c(0, 2, 2))
+  set.seed(19)
+  draws <- rng(bound, 20)
+  point_rows <- draws[attr(draws, "components") == 1, , drop = FALSE]
+  expect_gt(nrow(point_rows), 0L)
+  expect_equal(unname(unique(point_rows)), matrix(c(0, 2, 2), nrow = 1L))
+})
+
+test_that("scalar point components of factor mixtures are coerced to the mixture's contrast", {
+  for(contrast in c("treatment", "independent")){
+    coerced <- prior_mixture(list(
+      prior_factor("normal", list(0, 1), contrast = contrast), prior("point", list(1))))
+    expect_true(inherits(coerced[[2L]], paste0("prior.", contrast)))
+    expect_true(is.prior.factor(coerced[[2L]]))
+    expect_identical(coerced[[2L]][["parameters"]][["location"]], 1)
+  }
+})
+
+test_that("a point factor prior without declared dimensions inherits K and two declarations must agree", {
+  levels   <- c("a", "b", "c")
+  point    <- prior_factor("point", list(2), contrast = "treatment")
+  declared <- prior_factor_levels(prior_factor("normal", list(0, 1), contrast = "treatment"), levels)
+  expect_equal(attr(prior_mixture(list(point, declared)), "K"), 2)
+  expect_error(
+    prior_mixture(list(prior_factor_levels(point, c(levels, "d")), declared)),
+    "only one type of factor priors")
+})

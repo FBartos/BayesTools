@@ -640,9 +640,10 @@ prior_mixture <- function(prior_list, is_null = rep(FALSE, length(prior_list)), 
     # obtain and store the contrast type
     priors_type <- .get_prior_factor_list_type(prior_list)
 
-    # change prior none/spikes into factor prior spikes
+    # change prior none/scalar spikes into factor prior spikes (an explicit
+    # point factor prior keeps its declared contrast)
     for(i in seq_along(prior_list)){
-      if(is.prior.point(prior_list[[i]])){
+      if(is.prior.point(prior_list[[i]]) && !is.prior.factor(prior_list[[i]])){
         # Save mixture metadata before recreating the factor-compatible prior.
         component_attr <- attr(prior_list[[i]], "component", exact = TRUE)
         prior_weight   <- .prior_model_weight(prior_list[[i]])

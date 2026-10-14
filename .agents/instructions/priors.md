@@ -12,7 +12,11 @@ joint mnormal/mt/mpoint retain their joint calls and mt's common scale.
 One component/inclusion gate per row is shared across all coordinates.
 Explicit conflicting K declarations refuse; standalone RNG/defaults and
 initialization keep their existing contracts. Ordered containers retain
-their separate policy.
+their separate policy. Mixture coercion turns only scalar point and none
+components into factor spikes of the mixture's contrast: an explicit point
+factor prior keeps its declared contrast, components with different contrasts
+refuse, and a point factor without declared dimensions inherits K from its
+sibling factor components.
 
 `prior()` creates the core `prior` S3 family. Distribution aliases and routing
 live in `R/priors.R`; constructors and parameter normalization live in
