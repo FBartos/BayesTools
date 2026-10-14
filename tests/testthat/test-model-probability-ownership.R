@@ -311,6 +311,18 @@ test_that("raw model odds survive four hundred decades", {
   expect_equal(attr(inference, "log_post_probs"), reference$posterior, tolerance = 1e-12)
 })
 
+test_that("prior model probabilities keep the names of the prior weights on every route", {
+  routes <- c("ordinary", "stabilized", "stabilized")
+  weights <- list(c(null = 1, alt = 1), c(null = 1e-300, alt = 1e100), c(null = 1, alt = 1e-320))
+  for(i in seq_along(weights)){
+    inference <- compute_inference(weights[[i]], c(0, 0), c(TRUE, FALSE))
+    expect_identical(attr(inference, "model_probability_declaration")$prior$route, routes[[i]])
+    expect_identical(names(inference$prior_probs), c("null", "alt"))
+    expect_null(names(inference$post_probs))
+  }
+  expect_null(names(compute_inference(c(1e-300, 1e100), c(0, 0))$prior_probs))
+})
+
 test_that("common huge evidence preserves ordinary model odds", {
   inference <- compute_inference(c(9, 1), rep(1e300, 2), c(FALSE, TRUE))
   expected_prior <- c(1, 1 / 9) / sum(c(1, 1 / 9))

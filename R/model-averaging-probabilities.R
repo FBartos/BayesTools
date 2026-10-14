@@ -99,7 +99,9 @@
   }else scaled <- ordinary
   safe <- .model_probability_safe(ordinary, canonical, eta, scaled) &&
     all(scaled[is.finite(logs)] >= .Machine$double.xmin)
-  .model_probability_pair(if(safe) ordinary else exp(canonical), canonical, stage,
+  probabilities <- if(safe) ordinary else exp(canonical)
+  names(probabilities) <- names(weights)
+  .model_probability_pair(probabilities, canonical, stage,
     if(safe) "ordinary" else "stabilized", eta)
 }
 
