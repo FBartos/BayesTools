@@ -50,9 +50,12 @@
 #'   `BayesTools_linear_target_unavailable` (also
 #'   `BayesTools_hypothesis_target`) whose field `reason` is
 #'   `"posterior_atoms"` (the target's prior is not structurally atom-free),
-#'   `"atom_declarations"` (a level lacks its posterior-atom declaration), or
+#'   `"atom_declarations"` (a level lacks its posterior-atom declaration),
 #'   `"prior_context"` (no valid joint prior context, including level weights
-#'   on columns the joint prior context does not contain). A reference to a
+#'   on columns the joint prior context does not contain), `"weight_space"`
+#'   (the levels' linear weights are in different weight spaces), or
+#'   `"component_alignment"` (the repeated mixture component keys of the
+#'   levels do not match the original posterior rows). A reference to a
 #'   level that `posterior` does not contain stops with an error of class
 #'   `BayesTools_parameter_not_found` (also
 #'   `BayesTools_parameter_resolution_error`), as in [hypothesis_BF()].
@@ -70,6 +73,7 @@ hypothesis_linear_target <- function(posterior, hypothesis, parameter){
     stop("'posterior' must be a factor-like marginal posterior.", call. = FALSE)
   }
   check_char(parameter, "parameter", check_length = 1L, allow_NA = FALSE)
+  .hypothesis_validate_quantity_names(posterior, "posterior")
   ast <- if(inherits(hypothesis, "BayesTools_hypothesis_ast")){
     .bt_validate_hypothesis_ast(hypothesis)
     hypothesis
@@ -82,6 +86,16 @@ hypothesis_linear_target <- function(posterior, hypothesis, parameter){
     list(statement$left, statement$right)
   }), recursive = FALSE)
   forms <- lapply(sides, .hypothesis_linear_target_side, parameter = parameter)
+  # every referenced level must exist, including the ones that cancel or have a
+  # zero coefficient in the combination
+  occurrences <- hypothesis_symbols(ast, occurrences = TRUE)
+  referenced <- unique(occurrences$level[!is.na(occurrences$level) &
+                                           occurrences$parameter == parameter])
+  .hypothesis_match_level_names(
+    levels    = referenced,
+    available = names(posterior),
+    parameter = parameter
+  )
   coefficients <- forms[[1L]]$coefficients
   same_target <- vapply(forms, function(form){
     identical(form$coefficients, coefficients)
@@ -217,7 +231,7 @@ hypothesis_linear_target <- function(posterior, hypothesis, parameter){
   numerator_weights <- .hypothesis_linear_target_combine_weights(level_weights, numerator_coefficients)
   values <- values / forms[[1L]]$divisor
   if(any(!is.finite(values)) || any(numerator_values != 0 & values == 0)){
-    .hypothesis_numerical_stop("coefficient_range", "public linear target values")
+    .hypothesis_numerical_stop("coefficient_range", "public linear target values", structural = TRUE)
   }
   class(values) <- c(
     "numeric", "marginal_posterior.linear_target", "marginal_posterior"
@@ -321,8 +335,11 @@ hypothesis_linear_target <- function(posterior, hypothesis, parameter){
 # with the condition field 'reason': "posterior_atoms" (the target's prior is
 # not structurally atom-free, so its posterior may have atoms),
 # "atom_declarations" (a referenced level lacks its posterior-atom
-# declaration), or "prior_context" (no valid joint prior context). Callers
-# match the class and reason, never the message.
+# declaration), "prior_context" (no valid joint prior context),
+# "weight_space" (the levels' linear weights are in different weight spaces),
+# or "component_alignment" (the repeated mixture component keys of the levels
+# do not match the original posterior rows). Callers match the class and
+# reason, never the message.
 .hypothesis_linear_target_stop <- function(message, reason){
 
   stop(structure(
@@ -362,7 +379,7 @@ hypothesis_linear_target <- function(posterior, hypothesis, parameter){
 
   left  <- .hypothesis_linear_target_form(comparison$left, parameter)
   right <- .hypothesis_linear_target_form(comparison$right, parameter)
-  form  <- .hypothesis_linear_target_add(left, right, -1)
+  form  <- .hypothesis_affine_add(left, right, -1)
   list(
     operator     = comparison$operator,
     coefficients = .hypothesis_linear_target_scaled_coefficients(form),
@@ -465,17 +482,6 @@ hypothesis_linear_target_side <- function(side, parameter){
   form
 }
 
-.hypothesis_linear_target_add <- function(left, right, sign){
-
-  .hypothesis_affine_add(left, right, sign)
-}
-
-.hypothesis_linear_target_scale <- function(form, factor){
-
-  .hypothesis_affine_scale(form, .hypothesis_affine_new(factor))
-}
-
-
 .hypothesis_linear_target_combine_weights <- function(level_weights,
                                                       coefficients){
 
@@ -551,7 +557,7 @@ hypothesis_linear_target_side <- function(side, parameter){
 
   coefficients <- form$coefficients / form$divisor
   if(any(!is.finite(coefficients)) || any(form$coefficients != 0 & coefficients == 0)){
-    .hypothesis_numerical_stop("coefficient_range", "public linear target units")
+    .hypothesis_numerical_stop("coefficient_range", "public linear target units", structural = TRUE)
   }
   coefficients
 }
@@ -560,7 +566,7 @@ hypothesis_linear_target_side <- function(side, parameter){
 
   out <- value / divisor
   if(!is.finite(out) || (value != 0 && out == 0) || out * divisor != value){
-    .hypothesis_numerical_stop("boundary_range", "compiled target threshold")
+    .hypothesis_numerical_stop("boundary_range", "compiled target threshold", structural = TRUE)
   }
   out
 }

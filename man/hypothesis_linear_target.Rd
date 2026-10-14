@@ -32,9 +32,12 @@ A target that cannot be certified stops with an error of class
 \code{BayesTools_linear_target_unavailable} (also
 \code{BayesTools_hypothesis_target}) whose field \code{reason} is
 \code{"posterior_atoms"} (the target's prior is not structurally atom-free),
-\code{"atom_declarations"} (a level lacks its posterior-atom declaration), or
+\code{"atom_declarations"} (a level lacks its posterior-atom declaration),
 \code{"prior_context"} (no valid joint prior context, including level weights
-on columns the joint prior context does not contain). A reference to a
+on columns the joint prior context does not contain), \code{"weight_space"}
+(the levels' linear weights are in different weight spaces), or
+\code{"component_alignment"} (the repeated mixture component keys of the
+levels do not match the original posterior rows). A reference to a
 level that \code{posterior} does not contain stops with an error of class
 \code{BayesTools_parameter_not_found} (also
 \code{BayesTools_parameter_resolution_error}), as in \code{\link[=hypothesis_BF]{hypothesis_BF()}}.

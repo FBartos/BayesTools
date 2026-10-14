@@ -135,6 +135,61 @@ test_that("hypothesis_BF stops on unknown arguments", {
     "unused argument", fixed = TRUE)
 })
 
+test_that("non-finite prior draws are refused as such", {
+
+  set.seed(2)
+  posterior <- stats::rnorm(200, .3, .5)
+  prior_draws <- stats::rnorm(200)
+  for(bad in c(Inf, -Inf, NaN, NA)){
+    draws <- replace(prior_draws, 7L, bad)
+    for(hypothesis in c("theta > 0", "theta = 0", "2 * theta > 0")){
+      expect_error(hypothesis_BF(posterior, draws, hypothesis, parameter = "theta"),
+                   "Prior draws must contain only finite values.", fixed = TRUE)
+      expect_error(hypothesis_BF(data.frame(theta = posterior), data.frame(theta = draws), hypothesis),
+                   "Prior draws must contain only finite values.", fixed = TRUE)
+    }
+  }
+  expect_error(hypothesis_BF(cbind(theta = replace(posterior, 3L, Inf)), cbind(theta = prior_draws), "theta > 0"),
+               "Posterior draws must contain only finite values.", fixed = TRUE)
+  expect_s3_class(hypothesis_BF(posterior, prior_draws, "theta > 0", parameter = "theta"), "BayesTools_hypothesis_BF")
+})
+
+test_that("a region expression that is undefined for some draws is unavailable", {
+
+  set.seed(3)
+  posterior <- stats::rnorm(200, .5, .5)
+  theta_prior <- prior("normal", list(0, 1))
+  condition <- expect_error(
+    suppressWarnings(hypothesis_BF(posterior, theta_prior, "log(theta) > 1", parameter = "theta")),
+    class = "BayesTools_hypothesis_region_numerical_unavailable")
+  expect_identical(condition$reason, "undefined_expression")
+  expect_gt(condition$inputs$undefined, 0)
+  expect_gte(condition$inputs$draws, condition$inputs$undefined)
+  expect_identical(conditionMessage(condition), paste0(
+    "The hypothesis is unavailable: undefined expression in region 'log(theta) > 1'. ",
+    "Restrict the hypothesis to values where its expression is defined."))
+  expect_s3_class(condition, "BayesTools_numerical_condition")
+  # draws on which the expression is defined are unchanged
+  expect_s3_class(hypothesis_BF(abs(posterior) + .1, prior("gamma", list(2, 1)), "log(theta) > -1",
+                                parameter = "theta"), "BayesTools_hypothesis_BF")
+})
+
+test_that("unrepresentable linear target units are unavailable without a numerical remedy", {
+
+  levels <- .hypothesis_factor_marginal_for_test(independent = TRUE)
+  expected <- paste0("The hypothesis is unavailable: coefficient range in public linear target units. ",
+                     "Use coefficients, divisors and thresholds that are representable at full precision.")
+  side <- hypothesis_parse("1e300 * f[A] / 1e-300 > 0")$statements[[1L]]$left
+  condition <- expect_error(hypothesis_linear_target_side(side, "f"),
+                            class = "BayesTools_hypothesis_numerical_unavailable")
+  expect_identical(conditionMessage(condition), expected)
+  expect_identical(condition$reason, "coefficient_range")
+  expect_s3_class(condition, "BayesTools_numerical_condition")
+  expect_false(grepl("rejected by diagnostics", conditionMessage(condition), fixed = TRUE))
+  expect_error(hypothesis_linear_target(levels, "1e300 * mu_fac[A] / 1e-300 > 0", "mu_fac"),
+               expected, fixed = TRUE)
+})
+
 test_that("explicit-level and whole-parameter hypotheses are refused in one call", {
 
   levels <- .hypothesis_factor_marginal_for_test(independent = TRUE)
@@ -205,6 +260,75 @@ test_that("a grand mean of sum-to-zero level effects is a structural point measu
     expect_equal(sum(abs(target$weights)) > 0, TRUE)
     expect_s3_class(hypothesis_BF(levels, hypothesis = "mu_fac[A] - mu_fac[B] = 0",
                                   parameter = "mu_fac"), "BayesTools_hypothesis_BF")
+  }
+})
+
+test_that("a linear target validates every referenced level and the level names", {
+
+  levels <- .hypothesis_factor_marginal_for_test(independent = TRUE)
+  # an unknown level is refused even where it cancels or has a zero coefficient
+  for(text in c("mu_fac[A] + 0 * mu_fac[missing] > 0.5",
+                "mu_fac[A] + mu_fac[missing] - mu_fac[missing] > 0.5",
+                "mu_fac[missing] - mu_fac[missing] + mu_fac[A] > 0.5")){
+    condition <- expect_error(hypothesis_linear_target(levels, text, "mu_fac"),
+                              class = "BayesTools_parameter_not_found", info = text)
+    if(inherits(condition, "condition")){
+      expect_identical(condition$alias, "mu_fac[missing]")
+    }
+  }
+  expect_s3_class(hypothesis_linear_target(levels, "mu_fac[A] + 0 * mu_fac[B] > 0.5", "mu_fac")$posterior,
+                  "marginal_posterior.linear_target")
+  # duplicated level names are refused as in hypothesis_BF(), not resolved to the first entry
+  duplicated <- levels
+  names(duplicated) <- c("A", "A", "C")
+  expect_error(hypothesis_linear_target(duplicated, "mu_fac[A] - mu_fac[C] > 0", "mu_fac"),
+               "The 'posterior' input must not contain duplicate quantity names ('A').", fixed = TRUE)
+  expect_error(hypothesis_BF(duplicated, hypothesis = "mu_fac[A] > 0", parameter = "mu_fac"),
+               "The 'posterior' input must not contain duplicate quantity names ('A').", fixed = TRUE)
+})
+
+test_that("linear targets and sides keep divisors, constants and sum-to-zero weights", {
+
+  side <- function(text) hypothesis_linear_target_side(hypothesis_parse(text)$statements[[1L]]$left, "f")
+  # (A - B + 1) / 4 > 0.5  is  (A - B) / 4 > 0.25
+  region <- side("(f[A] - f[B] + 1) / 4 > 0.5")
+  expect_identical(region$operator, ">")
+  expect_identical(region$coefficients, c(A = .25, B = -.25))
+  expect_identical(region$numerator_coefficients, c(A = 1, B = -1))
+  expect_identical(region$divisor, 4)
+  expect_equal(region$value, .25, tolerance = 1e-15)
+  # (A + B - 1) / 2 = 0.25  is  (A + B) / 2 = 0.75
+  point <- side("(f[A] + f[B] - 1) / 2 = 0.25")
+  expect_identical(point$operator, "=")
+  expect_identical(point$coefficients, c(A = .5, B = .5))
+  expect_equal(point$value, .75, tolerance = 1e-15)
+  # constants on both sides of a comparison move to the value:
+  # (A + 3) / 2 < (B - 1) / 2 + 3  is  (A - B) / 2 < 1
+  both <- side("(f[A] + 3) / 2 < (f[B] - 1) / 2 + 3")
+  expect_identical(both$operator, "<")
+  expect_identical(both$coefficients, c(A = .5, B = -.5))
+  expect_identical(both$divisor, 2)
+  expect_equal(both$value, 1, tolerance = 1e-15)
+
+  # the compiled target of a divided combination scales the weights and the draws
+  for(contrast in c("independent", "orthonormal", "meandif")){
+    levels <- if(identical(contrast, "independent")) .hypothesis_factor_marginal_for_test(independent = TRUE) else
+      .hypothesis_contrast_marginal_for_test(contrast)
+    plain  <- hypothesis_linear_target(levels, "mu_fac[A] - mu_fac[B] > 0.2", "mu_fac")
+    scaled <- hypothesis_linear_target(levels, "(mu_fac[A] - mu_fac[B]) / 2 > 0.1", "mu_fac")
+    expect_equal(scaled$weights, plain$weights / 2, tolerance = 1e-14, info = contrast)
+    expect_equal(as.numeric(scaled$posterior), as.numeric(plain$posterior) / 2, tolerance = 1e-14, info = contrast)
+    expect_identical(hypothesis_render(plain$hypothesis), ".BayesTools_linear_target > 0.2")
+    expect_identical(hypothesis_render(scaled$hypothesis), ".BayesTools_linear_target > 0.1")
+    offset <- hypothesis_linear_target(levels, "(mu_fac[A] - mu_fac[B] + 1) / 4 > 0.5", "mu_fac")
+    expect_equal(offset$weights, plain$weights / 4, tolerance = 1e-14, info = contrast)
+    expect_identical(hypothesis_render(offset$hypothesis), ".BayesTools_linear_target > 0.25")
+    # the weights of a difference of level effects are the difference of the level rows
+    row <- function(level) BayesTools:::.hypothesis_prepare_level_weights(
+      BayesTools:::.hypothesis_level_linear_weights(levels[[level]]))[1L, ]
+    expected <- row("A") - row("B")
+    expect_equal(plain$weights[names(expected)], expected, tolerance = 1e-14, info = contrast)
+    expect_true(all(plain$weights[setdiff(names(plain$weights), names(expected))] == 0), info = contrast)
   }
 })
 

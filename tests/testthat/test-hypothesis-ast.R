@@ -742,3 +742,79 @@ test_that("bracket whitespace is canonical throughout level-reference trees", {
     attr(run("`mu_f[b]` > 0"), "raw_log_BF"))
   expect_identical(hypothesis_symbols(hypothesis_parse("ordinary_name > 0")), "ordinary_name")
 })
+
+test_that("a leading-dot root is a level-reference root", {
+
+  for(text in c(".mu[A] > 0", ".mu [A] > 0", "`.mu[A]` > 0")){
+    ast <- hypothesis_parse(text)
+    occurrences <- hypothesis_symbols(ast, occurrences = TRUE)
+    expect_identical(unique(occurrences$parameter), ".mu", info = text)
+    expect_identical(unique(occurrences$level), "A", info = text)
+    expect_identical(hypothesis_render(ast), "`.mu[A]` > 0", info = text)
+  }
+  ast <- hypothesis_parse(".mu[A] = .mu[B]")
+  expect_identical(hypothesis_symbols(ast), ".mu")
+  expect_identical(hypothesis_symbols(ast, occurrences = TRUE)$level[1:2], c("A", "B"))
+  rewritten <- hypothesis_rewrite(ast, c(.mu = "location"))
+  expect_identical(hypothesis_symbols(rewritten), "location")
+  expect_identical(hypothesis_normalize_level_references(".mu[A] + x.y[B] > a.mu[C]"),
+                   "`.mu[A]` + `x.y[B]` > `a.mu[C]`")
+  # a bare dotted name is unchanged
+  expect_identical(hypothesis_render(hypothesis_parse(".mu = 0")), ".mu = 0")
+})
+
+test_that("white space before the bracket is dropped inside backticks as outside", {
+
+  plain <- hypothesis_parse("mu[A] > 0")
+  for(text in c("mu [A] > 0", "`mu [A]` > 0", "`mu  [A]` > 0", "`mu [ A ]` > 0")){
+    ast <- hypothesis_parse(text)
+    expect_identical(hypothesis_render(ast), hypothesis_render(plain), info = text)
+    occurrences <- hypothesis_symbols(ast, occurrences = TRUE)
+    expect_identical(unique(occurrences$parameter), "mu", info = text)
+  }
+  reference <- hypothesis_parse_level_reference(c("mu [A]", "`mu [A]`", "`mu[A]`"))
+  expect_identical(reference$parameter, rep("mu", 3L))
+  expect_identical(reference$symbol, rep("mu[A]", 3L))
+  # a space inside a root stays
+  expect_identical(hypothesis_parse_level_reference("`my parameter [A]`")$parameter, "my parameter")
+})
+
+test_that("rewrite targets must keep their identity as the root of a level reference", {
+
+  levels <- hypothesis_parse("f[A] > f[B]")
+  bare <- hypothesis_parse("f > 0")
+  for(root in c("g[h", "mu_f[dif: a]__xXx__g", "g ")){
+    expect_error(hypothesis_rewrite(levels, c(f = root)),
+                 "preserve their exact identity through rendering and parsing", fixed = TRUE)
+  }
+  # a bare symbol keeps accepting roots that only round trip as symbols
+  expect_identical(hypothesis_symbols(hypothesis_rewrite(bare, c(f = "mu_f[dif: a]__xXx__g"))),
+                   "mu_f[dif: a]__xXx__g")
+  expect_identical(hypothesis_symbols(hypothesis_rewrite(bare, c(f = "g[h"))), "g[h")
+  # ordinary roots are rewritten in both forms
+  expect_identical(hypothesis_symbols(hypothesis_rewrite(levels, c(f = "my root"))), "my root")
+  expect_identical(hypothesis_render(hypothesis_rewrite(levels, c(f = "g.h"))), "`g.h[A]` > `g.h[B]`")
+})
+
+test_that("the AST schema lists the payload fields of every node type", {
+
+  schema <- hypothesis_ast_schema()
+  expect_identical(anyDuplicated(schema[c("object", "field")]), 0L)
+  node_fields <- schema$field[schema$object == "node"]
+  expect_true(all(c("type", "source", "operator", "name", "parameter", "level", "value",
+                    "expression", "left", "right", "arguments") %in% node_fields))
+  ast <- hypothesis_parse(c("theta + 2 * abs(phi) > 1 & !(mu[a] <= .5)", "mu[a] - theta^2 = 0 vs (theta) > 3"))
+  nodes <- list()
+  collect <- function(node){
+    nodes[[length(nodes) + 1L]] <<- node
+    for(field in c("expression", "left", "right")) if(is.list(node[[field]])) collect(node[[field]])
+    for(argument in node$arguments) collect(argument)
+  }
+  for(statement in ast$statements) for(side in c("left", "right")) collect(statement[[side]]$expression)
+  types <- unique(vapply(nodes, `[[`, "", "type"))
+  expect_true(all(c("literal", "symbol", "level_reference", "parentheses", "arithmetic", "function",
+                    "comparison", "boolean", "negation") %in% types))
+  expect_true(all(unlist(lapply(nodes, names)) %in% node_fields))
+  expect_length(schema$field, length(schema$type))
+  expect_length(schema$field, length(schema$description))
+})

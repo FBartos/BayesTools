@@ -8,6 +8,7 @@
        is.numeric(posterior))
   if(uses_prior_input){
     .hypothesis_validate_quantity_names(prior, "prior")
+    .hypothesis_validate_finite_posterior_draws(prior, "Prior")
   }
 
   invisible(TRUE)
@@ -64,13 +65,13 @@
 }
 
 
-.hypothesis_validate_finite_posterior_draws <- function(posterior) {
+.hypothesis_validate_finite_posterior_draws <- function(posterior, label = "Posterior") {
 
   if(inherits(posterior, "marginal_inference")){
     conditional <- posterior[["conditional"]]
     if(is.list(conditional)){
       for(i in seq_along(conditional)){
-        .hypothesis_validate_finite_posterior_draws(conditional[[i]])
+        .hypothesis_validate_finite_posterior_draws(conditional[[i]], label)
       }
     }
     return(invisible(TRUE))
@@ -83,14 +84,14 @@
       logical(1)
     )
     if(any(has_nonfinite)){
-      stop("Posterior draws must contain only finite values.", call. = FALSE)
+      stop(label, " draws must contain only finite values.", call. = FALSE)
     }
     return(invisible(TRUE))
   }
 
   if(is.matrix(posterior)){
     if(is.numeric(posterior) && any(!is.finite(posterior))){
-      stop("Posterior draws must contain only finite values.", call. = FALSE)
+      stop(label, " draws must contain only finite values.", call. = FALSE)
     }
     return(invisible(TRUE))
   }
@@ -98,13 +99,13 @@
   if(.hypothesis_inherits_marginal_posterior(posterior) &&
      is.list(posterior)){
     for(i in seq_along(posterior)){
-      .hypothesis_validate_finite_posterior_draws(posterior[[i]])
+      .hypothesis_validate_finite_posterior_draws(posterior[[i]], label)
     }
     return(invisible(TRUE))
   }
 
   if(is.numeric(posterior) && any(!is.finite(posterior))){
-    stop("Posterior draws must contain only finite values.", call. = FALSE)
+    stop(label, " draws must contain only finite values.", call. = FALSE)
   }
 
   invisible(TRUE)

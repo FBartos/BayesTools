@@ -1,7 +1,8 @@
 # A bounded binary64 affine numerator and constant divisor. Keeping the
 # divisor avoids rounding a reciprocal before certifying a comparison.
 .hypothesis_numerical_stop <- function(reason, operation, inputs = NULL,
-                                        diagnostics = NULL, region = FALSE){
+                                        diagnostics = NULL, region = FALSE,
+                                        structural = FALSE){
 
   leaf <- if(region) "BayesTools_hypothesis_region_numerical_unavailable" else
     "BayesTools_hypothesis_numerical_unavailable"
@@ -14,9 +15,22 @@
   }else{
     paste0("", gsub("_", " ", reason), " in ", operation)
   }
-  stop(errorCondition(
+  # A structural limit (unrepresentable target units, an expression that is
+  # undefined for the draws) is unavailable, not rejected by diagnostics, and
+  # has no numerical remedy.
+  message <- if(isTRUE(structural)){
+    paste0("The hypothesis is unavailable: ", observed, ". ",
+           if(identical(reason, "undefined_expression")){
+             "Restrict the hypothesis to values where its expression is defined."
+           }else{
+             "Use coefficients, divisors and thresholds that are representable at full precision."
+           })
+  }else{
     paste0("Hypothesis inference was rejected by diagnostics: ", observed,
-           ". Inspect the numerical diagnostics or use a supported region hypothesis."),
+           ". Inspect the numerical diagnostics or use a supported region hypothesis.")
+  }
+  stop(errorCondition(
+    message,
     class = c(leaf, parent, "BayesTools_numerical_unavailable",
               "BayesTools_numerical_condition"), call = NULL,
     operation = operation, family = "hypothesis", requested_scale = if(region) "probability" else "log",

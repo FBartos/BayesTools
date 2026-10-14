@@ -168,8 +168,9 @@ hypothesis_normalize_level_references <- function(text){
     return(empty)
   }
 
+  # white space before the bracket is not part of the root, backticked or not
   return(list(
-    parameter = match[[2L]],
+    parameter = trimws(match[[2L]], which = "right"),
     level     = trimws(match[[3L]]),
     direct    = TRUE
   ))
@@ -231,7 +232,7 @@ hypothesis_normalize_level_references <- function(text){
     piece <- paste0(chars[seq.int(starts[[i]], ends[[i]])], collapse = "")
     if(!runs$values[[i]]){
       piece <- gsub(
-        "\\b([A-Za-z.][A-Za-z0-9._]*(?::[A-Za-z.][A-Za-z0-9._]*)*)\\s*\\[\\s*([^\\]\\[]+)\\s*\\]",
+        "(?<![A-Za-z0-9._])([A-Za-z.][A-Za-z0-9._]*(?::[A-Za-z.][A-Za-z0-9._]*)*)\\s*\\[\\s*([^\\]\\[]+)\\s*\\]",
         "`\\1[\\2]`",
         piece,
         perl = TRUE

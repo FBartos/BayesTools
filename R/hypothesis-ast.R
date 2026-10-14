@@ -266,20 +266,22 @@ hypothesis_ast_schema <- function(){
   data.frame(
     object = c(
       rep("ast", 2L), rep("statement", 4L), rep("side", 5L),
-      rep("node", 4L), rep("resolution", 4L)
+      rep("node", 11L), rep("resolution", 4L)
     ),
     field = c(
       "schema_version", "statements",
       "source", "explicit", "left", "right",
       "type", "source", "label", "expression", "value",
-      "type", "source", "operator/name", "children/value",
+      "type", "source", "operator", "name", "parameter", "level", "value",
+      "expression", "left", "right", "arguments",
       "schema_version", "ast_schema_version", "parameter_map_version",
       "occurrences"
     ),
     type = c(
       "integer", "list", "character", "logical", "side", "side",
       "character", "character", "character", "node", "numeric/NULL",
-      "character", "character", "character/NULL", "node/list/scalar",
+      "character", "character", "character", "character", "character",
+      "character", "numeric", "node", "node", "node", "list",
       "integer", "integer", "integer", "data.frame"
     ),
     description = c(
@@ -296,8 +298,15 @@ hypothesis_ast_schema <- function(){
       "Finite point value; NULL for regions.",
       "Literal, symbol, level_reference, parentheses, arithmetic, function, comparison, boolean, or negation.",
       "Stable node source label.",
-      "Operator or whitelisted function name when applicable.",
-      "Typed node payload.",
+      "Operator of an arithmetic, comparison, or boolean node.",
+      "Symbol name, or whitelisted function name of a function node.",
+      "Parameter root of a level_reference node.",
+      "Level of a level_reference node.",
+      "Finite value of a literal node.",
+      "Wrapped node of a parentheses or negation node.",
+      "Left node of a comparison or boolean node.",
+      "Right node of a comparison or boolean node.",
+      "List of operand nodes of an arithmetic or function node.",
       "Resolution schema version.",
       "AST schema version used for resolution.",
       "Parameter-map schema version used for resolution.",
@@ -389,6 +398,19 @@ hypothesis_rewrite <- function(ast, mapping){
     .bt_hypothesis_root_round_trips,
     logical(1)
   )
+  # a root that is used with levels must also keep its identity as the root of
+  # a level reference (`[` and trailing white space do not)
+  occurrences <- hypothesis_symbols(ast, occurrences = TRUE)
+  with_level <- unique(occurrences[
+    !is.na(occurrences$level) & occurrences$parameter %in% names(mapping),
+    c("parameter", "level"), drop = FALSE
+  ])
+  for(i in seq_len(nrow(with_level))){
+    target <- unname(mapping[[with_level$parameter[i]]])
+    if(!.bt_hypothesis_root_round_trips(target, with_level$level[i])){
+      round_trips[names(mapping) == with_level$parameter[i]] <- FALSE
+    }
+  }
   if(any(!round_trips)){
     stop(
       "Rewrite targets must be parameter roots that preserve their exact identity through rendering and parsing: ",
@@ -408,7 +430,6 @@ hypothesis_rewrite <- function(ast, mapping){
       call. = FALSE
     )
   }
-  occurrences <- hypothesis_symbols(ast, occurrences = TRUE)
   symbols <- unique(occurrences[, c("parameter", "level"), drop = FALSE])
   rewritten_symbols <- symbols
   matches <- match(symbols$parameter, names(mapping))
@@ -526,9 +547,15 @@ hypothesis_resolve <- function(ast, catalog, namespace = NULL,
   out
 }
 
-.bt_hypothesis_root_round_trips <- function(root){
+# Whether a root keeps its identity through rendering and parsing, as a bare
+# symbol or, with a 'level', as the root of a level reference.
+.bt_hypothesis_root_round_trips <- function(root, level = NA_character_){
 
-  node <- list(type = "symbol", source = root, name = root)
+  node <- if(is.na(level)){
+    list(type = "symbol", source = root, name = root)
+  }else{
+    list(type = "level_reference", source = root, parameter = root, level = level)
+  }
   reparsed <- tryCatch({
     # inside a full statement, where the statement separator is also read
     rendered <- .bt_hypothesis_render_node(node)
@@ -541,8 +568,13 @@ hypothesis_resolve <- function(ast, catalog, namespace = NULL,
   }, error = function(e){
     NULL
   })
-  !is.null(reparsed) && identical(reparsed$type, "symbol") &&
-    identical(reparsed$name, root)
+  if(is.na(level)){
+    !is.null(reparsed) && identical(reparsed$type, "symbol") &&
+      identical(reparsed$name, root)
+  }else{
+    !is.null(reparsed) && identical(reparsed$type, "level_reference") &&
+      identical(reparsed$parameter, root) && identical(reparsed$level, level)
+  }
 }
 
 .bt_hypothesis_ast_statement_from_spec <- function(spec){

@@ -700,7 +700,10 @@
     stop("Region hypothesis must evaluate to logical values.", call. = FALSE)
   }
   if(anyNA(values)){
-    stop("Region hypothesis produced missing values.", call. = FALSE)
+    .hypothesis_numerical_stop("undefined_expression",
+      paste0("region '", .hypothesis_expression_text(expr), "'"),
+      inputs = list(undefined = sum(is.na(values)), draws = length(values)),
+      region = TRUE, structural = TRUE)
   }
 
   return(values)
