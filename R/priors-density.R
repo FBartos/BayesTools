@@ -266,10 +266,18 @@ density.prior <- function(x,
   # transform the output, if requested
   source_indices <- seq_along(x_seq)
   if(!is.null(transformation)){
-    transformed <- .density.prior_transformation_grid(x_seq, x_den, transformation, transformation_arguments)
-    x_seq   <- transformed$x[!transformed$drop]
-    x_den   <- transformed$y[!transformed$drop]
-    source_indices <- source_indices[!transformed$drop]
+    if(is.prior.discrete(x)){
+      # probability masses, not densities: the support points move, the masses stay
+      transformed <- .density.prior_transformation_masses(x_seq, x_den, transformation, transformation_arguments)
+      x_seq   <- transformed$x
+      x_den   <- transformed$y
+      source_indices <- source_indices[transformed$source_indices]
+    }else{
+      transformed <- .density.prior_transformation_grid(x_seq, x_den, transformation, transformation_arguments)
+      x_seq   <- transformed$x[!transformed$drop]
+      x_den   <- transformed$y[!transformed$drop]
+      source_indices <- source_indices[!transformed$drop]
+    }
     x_range <- .density.prior_transformation_x(x_range, transformation, transformation_arguments)
     if(!is.null(x_sam)){
       x_sam <- .density.prior_transformation_x(x_sam,   transformation, transformation_arguments)
@@ -1925,6 +1933,24 @@ range.prior  <- function(x, quantiles = NULL, ..., na.rm = FALSE){
   }
 
   list(x = x_new, y = y_new, drop = drop)
+}
+# The transformation of the display masses of a discrete prior. A probability
+# mass is not a density, so there is no Jacobian: every support point moves to
+# its checked image and keeps its mass. The points are listed in ascending
+# order of their images (a decreasing map reverses the points with their
+# masses, the zero-height end knots stay at the ends), and a constant map turns
+# all masses into one atom.
+.density.prior_transformation_masses     <- function(x, y, transformation, transformation_arguments = NULL){
+
+  x_new <- .density.prior_transformation_checked_x(x, transformation, transformation_arguments)
+  if(length(unique(x_new)) == 1L){
+    return(list(x = x_new[1L], y = sum(y), source_indices = 1L))
+  }
+
+  index <- seq_along(x_new)
+  index <- order(x_new, if(x_new[1L] > x_new[length(x_new)]) -index else index)
+
+  list(x = x_new[index], y = y[index], source_indices = index)
 }
 .density.prior_transformation_y         <- function(x, y, transformation, transformation_arguments = NULL){
 

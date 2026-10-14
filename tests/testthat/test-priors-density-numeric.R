@@ -303,3 +303,59 @@ test_that("transformed spike-and-slab density reports transformed top-level rang
   expect_equal(attr(d, "x_range"), component_range)
   expect_true(attr(d, "x_range")[1] > 0)
 })
+
+test_that("a transformed discrete prior density moves its support points and keeps their masses", {
+
+  bernoulli <- prior("bernoulli", list(.3))
+  mass_density <- function(transformation, arguments, ...){
+    density(bernoulli, transformation = transformation, transformation_arguments = arguments,
+            truncate_end = FALSE, ...)
+  }
+
+  # an increasing map: the points move, the masses do not
+  doubled <- mass_density("lin", list(a = 0, b = 2))
+  expect_equal(doubled$x, c(0, 2))
+  expect_equal(doubled$y, c(.7, .3))
+  shifted <- mass_density("lin", list(a = 5, b = 3))
+  expect_equal(shifted$x, c(5, 8))
+  expect_equal(shifted$y, c(.7, .3))
+  exponential <- mass_density("exp", NULL)
+  expect_equal(exponential$x, c(1, exp(1)))
+  expect_equal(exponential$y, c(.7, .3))
+  expect_equal(attr(doubled, "y_range"), c(0, .7))
+
+  # a decreasing map lists the points in ascending order, each with its mass
+  flipped <- mass_density("lin", list(a = 0, b = -1))
+  expect_equal(flipped$x, c(-1, 0))
+  expect_equal(flipped$y, c(.3, .7))
+
+  # every point maps to its image: the source zero of exp_lin with b = 2 stays
+  power <- mass_density("exp_lin", list(a = 0, b = 2))
+  expect_equal(power$x, c(0, 1))
+  expect_equal(power$y, c(.7, .3))
+
+  # a constant map turns the whole mass into one atom
+  constant <- mass_density("lin", list(a = 3, b = 0))
+  expect_equal(constant$x, 3)
+  expect_equal(constant$y, 1)
+
+  # the zero-height end knots stay at the ends
+  padded <- density(bernoulli, transformation = "lin", transformation_arguments = list(a = 0, b = 2))
+  expect_equal(padded$x, c(0, 0, 2, 2))
+  expect_equal(padded$y, c(0, .7, .3, 0))
+  padded <- density(bernoulli, transformation = "lin", transformation_arguments = list(a = 0, b = -1))
+  expect_equal(padded$x, c(-1, -1, 0, 0))
+  expect_equal(padded$y, c(0, .3, .7, 0))
+
+  # sampled masses are the proportions of the transformed samples
+  set.seed(1)
+  sampled <- mass_density("lin", list(a = 1, b = -2), force_samples = TRUE, n_samples = 500)
+  expect_equal(sampled$x, c(-1, 1))
+  expect_equal(sampled$y, vapply(sampled$x, function(location) mean(sampled$samples == location), numeric(1)))
+  expect_equal(sum(sampled$y), 1)
+
+  # a continuous prior keeps the Jacobian of its density
+  normal <- density(prior("normal", list(0, 1)), transformation = "lin", transformation_arguments = list(a = 0, b = 2),
+                    truncate_end = FALSE)
+  expect_equal(normal$y, stats::dnorm(normal$x / 2) / 2)
+})
