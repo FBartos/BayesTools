@@ -4918,3 +4918,60 @@ test_that("individual omega plots honour density_method and transformations", {
       density_method = density_method, transformation = "lin", transformation_arguments = list(a = 10, b = 1)))
   }
 })
+
+test_that("the y range of PET-PEESE posterior plots with priors collapses only by width", {
+
+  petpeese_samples <- function(mu_mean, mu_sd, pet_scale){
+    draws <- 300L
+    z <- stats::qnorm((seq_len(draws) - .5) / draws)
+    posterior <- cbind(mu = mu_mean + mu_sd * z, PET = abs(pet_scale * rev(z)))
+    fit <- coda::mcmc(posterior)
+    class(fit) <- c("mcmc", "BayesTools_fit")
+    attr(fit, "prior_list") <- list(
+      mu  = prior("normal", list(mu_mean, mu_sd)),
+      PET = prior_PET("normal", list(0, pet_scale))
+    )
+    fit <- BayesTools:::.bt_attach_parameter_map(fit)
+    fit <- BayesTools:::.bt_attach_draw_geometry(fit)
+    fit <- BayesTools:::.bt_attach_fit_contract(fit)
+    as_mixed_posteriors(fit, c("mu", "PET"))
+  }
+  grDevices::pdf(NULL)
+  on.exit(grDevices::dev.off(), add = TRUE)
+  curves_and_scale <- function(samples, ...){
+    figure <- plot_posterior(samples, "PETPEESE", plot_type = "ggplot", prior = TRUE, n_points = 21, ...)
+    built  <- ggplot2::ggplot_build(figure)
+    values <- unlist(lapply(built$data, function(layer) c(layer$y, layer$ymin, layer$ymax)))
+    list(values = range(values, na.rm = TRUE), limits = built$layout$panel_scales_y[[1L]]$limits)
+  }
+
+  # all-negative effects: the curves and bands are not replaced by [0, 1]
+  samples <- petpeese_samples(-3, .1, 1)
+  result <- curves_and_scale(samples)
+  expect_lt(result$values[2L], 0)
+  expect_lte(result$limits[1L], result$values[1L])
+  expect_gte(result$limits[2L], result$values[2L])
+  expect_lt(diff(result$limits), 4)
+  plot_posterior(samples, "PETPEESE", prior = TRUE, n_points = 21)
+  usr <- graphics::par("usr")
+  expect_lte(usr[3L], result$values[1L])
+  expect_gte(usr[4L], result$values[2L])
+
+  # an explicit ylim is unchanged
+  expect_equal(curves_and_scale(samples, ylim = c(-4, 0))$limits, c(-4, 0))
+
+  # a range that collapses by its width is widened around its values
+  collapsed <- curves_and_scale(petpeese_samples(-3, 1e-4, 1e-4))
+  expect_lt(diff(collapsed$values), .01)
+  expect_lte(collapsed$limits[1L], -2.6)
+  expect_gte(collapsed$limits[2L], -3.4)
+  expect_lte(collapsed$limits[1L], collapsed$values[1L])
+  expect_gte(collapsed$limits[2L], collapsed$values[2L])
+  expect_lte(diff(collapsed$limits), 1.5)
+  expect_lt(abs(mean(collapsed$limits) - (-3)), .3)
+
+  # a collapsed range of small non-negative values keeps the unit interval
+  small <- curves_and_scale(petpeese_samples(.002, 1e-4, 1e-4))
+  expect_lt(diff(small$values), .01)
+  expect_equal(small$limits, c(0, 1))
+})

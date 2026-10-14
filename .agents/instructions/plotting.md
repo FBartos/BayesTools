@@ -159,6 +159,10 @@ The KDE curves of `plot_marginal()` and of simple and factor `plot_posterior()`
 use the same checked transformation grid as precomputed densities: knots
 without a representable image or ordinate (out-of-support tails, saturation) are
 dropped and the plot limits come from the retained curve.
+The automatic y range of PET-PEESE posterior plots with priors collapses by its
+width (below .01): it is then widened around its values (a collapsed range of
+small non-negative values keeps the unit interval), and any wider range, also
+an all-negative one, is kept.
 Posterior PET/PEESE bands use pointwise HD quantiles; sampled-prior bands retain
 empirical quantiles and deterministic prior bands retain their CDF inversion.
 PET/PEESE continuous-pair CDFs integrate over location probability, retain raw

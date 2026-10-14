@@ -454,9 +454,11 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
 
       xlim <- range(as.vector(sapply(plot_data_joined, attr, which = "x_range")))
       ylim <- range(as.vector(sapply(plot_data_joined, attr, which = "y_range", exact = TRUE)))
-      # make sure y-range does not collapse
-      if(all(ylim < .01)){
-        ylim <- c(0, 1)
+      # make sure y-range does not collapse: a collapsed range (by its width) is
+      # widened around its values, a collapsed range of small non-negative
+      # values keeps the unit interval, and a wider range is kept
+      if(diff(ylim) < .01){
+        ylim <- if(all(ylim >= 0 & ylim < .01)) c(0, 1) else mean(ylim) + c(-.5, .5)
       }
       attr(plot_data_prior, "x_range") <- xlim
       attr(plot_data_prior, "y_range") <- ylim
