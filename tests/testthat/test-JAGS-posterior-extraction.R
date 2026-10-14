@@ -1663,3 +1663,59 @@ test_that("requested transformations map to the coordinate columns of factor-fam
   expect_equal(result[, paste0("vector[", 1:3, "]")], samples[, paste0("vector[", 1:3, "]")] + 1)
   expect_identical(result[, c("mixture_indicator", "scalar")], samples[, c("mixture_indicator", "scalar")])
 })
+
+test_that(".remove_auxiliary_parameters names publication-weight columns by their own backend index", {
+
+  selection <- prior_weightfunction("one-sided", c(.025), wf_fixed(c(1, .5)))
+  phacking  <- prior_phacking(form = "linear", report_scale = "alpha")
+  priors <- list(
+    weightfunction = list(pub_bias = selection),
+    bias           = list(pub_bias = prior_bias(selection, phacking))
+  )
+  columns <- list(
+    weightfunction = c("omega[1]", "omega[2]"),
+    bias           = c("omega[1]", "omega[2]", "alpha", "pi_null", "phack_kind")
+  )
+  for(case in names(priors)){
+    # distinct values per column identify where each one goes
+    samples <- matrix(seq_len(10 * length(columns[[case]])), nrow = 10, dimnames = list(NULL, columns[[case]]))
+    ordered <- BayesTools:::.remove_auxiliary_parameters(samples, priors[[case]])$model_samples
+    expect_identical(colnames(ordered)[1:2], c("omega[0,0.025]", "omega[0.025,1]"))
+    expect_identical(unname(ordered[, "omega[0,0.025]"]), unname(samples[, "omega[1]"]))
+    expect_identical(unname(ordered[, "omega[0.025,1]"]), unname(samples[, "omega[2]"]))
+
+    # the same draws in another column order keep every bin with its values
+    permuted <- samples[, c("omega[2]", setdiff(colnames(samples), "omega[2]"))]
+    result   <- BayesTools:::.remove_auxiliary_parameters(permuted, priors[[case]])$model_samples
+    expect_identical(unname(result[, "omega[0,0.025]"]), unname(samples[, "omega[1]"]))
+    expect_identical(unname(result[, "omega[0.025,1]"]), unname(samples[, "omega[2]"]))
+    expect_identical(colnames(result)[1], "omega[0.025,1]")
+  }
+})
+
+test_that("estimates tables report publication weights whatever the draw column order", {
+
+  make_fit <- function(draws, prior_list){
+    fit <- structure(list(mcmc = coda::mcmc.list(coda::mcmc(draws)), sample = nrow(draws),
+      summary.pars = list(mutate = NULL), monitor = colnames(draws)),
+      class = c("runjags", "BayesTools_fit", "list"))
+    attr(fit, "prior_list") <- prior_list
+    attach_test_parameter_map(fit)
+  }
+  rows_by_name <- function(table){
+    labels <- rownames(table)
+    table  <- unclass(table)
+    expect_gt(length(labels), 1L)
+    cbind(Mean = stats::setNames(table$Mean, labels), SD = stats::setNames(table$SD, labels))[sort(labels), ]
+  }
+
+  # fixed publication weights c(1, .5): the reference bin is 1 and the other .5
+  draws <- cbind("omega[1]" = rep(1, 20), "omega[2]" = rep(.5, 20))
+  fit   <- make_fit(draws, list(bias = prior_weightfunction("one-sided", .025, wf_fixed(c(1, .5)))))
+  tables <- lapply(list(1:2, 2:1), function(order){
+    view <- JAGS_with_draws(fit, coda::mcmc.list(coda::mcmc(draws[, order, drop = FALSE])))
+    JAGS_estimates_table(view, remove_diagnostics = TRUE)
+  })
+  expect_identical(rows_by_name(tables[[1L]]), rows_by_name(tables[[2L]]))
+  expect_identical(unname(rows_by_name(tables[[2L]])[, "Mean"]), c(1, .5))
+})

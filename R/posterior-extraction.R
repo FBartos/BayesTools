@@ -75,7 +75,9 @@ NULL
       omega_names     <- sapply(1:(length(omega_cuts) - 1), function(j) paste0("omega[", omega_cuts[j], ",", omega_cuts[j + 1], "]"))
       omega_raw_names <- grep("^omega\\[[0-9]+\\]$", colnames(model_samples), value = TRUE)
 
-      colnames(model_samples)[which(colnames(model_samples) %in% omega_names_old)] <- omega_names
+      # each backend coordinate omega[k] takes the label of bin k, whatever the column order
+      omega_columns <- which(colnames(model_samples) %in% omega_names_old)
+      colnames(model_samples)[omega_columns] <- omega_names[match(colnames(model_samples)[omega_columns], omega_names_old)]
       structural <- c(structural, .structural_weight_columns(
         par_name, prior_list[[i]], omega_names_old, omega_names
       ))
@@ -116,7 +118,8 @@ NULL
         omega_cuts      <- weightfunctions_mapping(.selection_prior_selection_priors(prior_list[[i]]), cuts_only = TRUE, one_sided = TRUE)
         omega_names_old <- paste0("omega[", 1:(length(omega_cuts) - 1), "]")
         omega_names     <- sapply(1:(length(omega_cuts) - 1), function(j) paste0("omega[", omega_cuts[j], ",", omega_cuts[j + 1], "]"))
-        colnames(model_samples)[which(colnames(model_samples) %in% omega_names_old)] <- omega_names
+        omega_columns <- which(colnames(model_samples) %in% omega_names_old)
+        colnames(model_samples)[omega_columns] <- omega_names[match(colnames(model_samples)[omega_columns], omega_names_old)]
         structural <- c(structural, .structural_weight_columns(
           par_name, prior_list[[i]], omega_names_old, omega_names
         ))
