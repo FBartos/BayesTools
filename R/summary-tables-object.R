@@ -365,8 +365,18 @@ Math.BayesTools_BF <- function(x, ...){
     return(out)
   }
 
-  out_names <- names(out)
-  source_cols <- .match_table_columns(out_names, original_names)
+  # the source column of every selected column, resolved from the selector
+  # (before the data frame makes repeated names unique): a column selected
+  # twice keeps its own carrier and metadata
+  column_positions <- stats::setNames(seq_along(original_names), original_names)
+  select_columns   <- if((nargs() - !missing(drop)) < 3L) !missing(i) else !missing(j)
+  source_cols <- if(!select_columns){
+    unname(column_positions)
+  }else if((nargs() - !missing(drop)) < 3L){
+    unname(column_positions[i])
+  }else{
+    unname(column_positions[j])
+  }
   valid_cols  <- !is.na(source_cols)
 
   if(length(source_cols) > 0 && any(valid_cols)){
@@ -612,23 +622,6 @@ invert_BF_bound_operator <- function(operator){
   }
 
   invisible(TRUE)
-}
-
-.match_table_columns <- function(output_names, input_names){
-
-  if(length(output_names) == 0){
-    return(integer())
-  }
-
-  used <- rep(FALSE, length(input_names))
-  vapply(output_names, function(output_name){
-    matches <- which(input_names == output_name & !used)
-    if(length(matches) == 0){
-      return(NA_integer_)
-    }
-    used[matches[1]] <<- TRUE
-    matches[1]
-  }, integer(1))
 }
 
 .restore_table_column_attributes <- function(column, source_attributes){

@@ -479,6 +479,77 @@ test_that("BayesTools table row and column subsets retain print metadata", {
   expect_true(any(grepl("Posterior summaries.", output, fixed = TRUE)))
 })
 
+test_that("BayesTools table column subsets keep the sources of repeated selections", {
+
+  # two Bayes factor columns, the second named as a repeated selection of the
+  # first would be (`inclusion_BF.1`)
+  original  <- marginal_estimates_table(list(theta = 1:3), list(theta = 2), "theta")
+  alternate <- marginal_estimates_table(list(theta = 1:3), list(theta = 100), "theta")
+  combined  <- add_column(
+    original, "inclusion_BF.1", alternate$inclusion_BF, column_type = "BF"
+  )
+  expect_identical(
+    names(combined),
+    c("Mean", "SD", "0.025", "0.5", "0.975", "inclusion_BF", "inclusion_BF.1")
+  )
+  column_values <- function(table){
+    vapply(table, function(column) as.numeric(column), numeric(1), USE.NAMES = FALSE)
+  }
+  base_values <- column_values(combined)
+  expect_equal(base_values[6:7], c(2, 100))
+  plain <- as.data.frame(combined)
+  # the positions base data-frame selection gives every selected column
+  positions <- data.frame(t(seq_along(plain)))
+  names(positions) <- names(plain)
+
+  # the selected columns equal those of a base data-frame subset in every
+  # selector kind, with their own type
+  selectors <- list(
+    character = c("inclusion_BF", "inclusion_BF"),
+    character_mixed = c("inclusion_BF.1", "inclusion_BF", "inclusion_BF.1"),
+    numeric = c(6L, 6L),
+    numeric_mixed = c(7L, 6L, 6L, 1L),
+    negative = -c(1L, 2L, 3L, 4L, 5L, 6L),
+    logical = c(rep(FALSE, 5L), TRUE, TRUE),
+    repeated_other_type = c("Mean", "Mean", "inclusion_BF")
+  )
+  for(selector in selectors){
+    subset <- combined[, selector, drop = FALSE]
+    reference <- plain[, selector, drop = FALSE]
+    expect_equal(column_values(subset), column_values(reference), tolerance = 1e-12)
+    expect_identical(
+      attr(subset, "type"),
+      attr(combined, "type")[unlist(positions[, selector, drop = FALSE], use.names = FALSE)]
+    )
+    expect_true(all(vapply(subset, inherits, logical(1), "BayesTools_BF") ==
+                      (attr(subset, "type") %in% c("inclusion_BF", "BF"))))
+  }
+  repeated <- combined[, c("inclusion_BF", "inclusion_BF"), drop = FALSE]
+  expect_equal(column_values(repeated), c(2, 2))
+  expect_identical(attr(repeated, "type"), c("inclusion_BF", "inclusion_BF"))
+  expect_equal(column_values(combined[, c(7L, 6L, 6L)]), c(100, 2, 2))
+  expect_identical(
+    attr(combined[, c(7L, 6L, 6L)], "type"),
+    c("BF", "inclusion_BF", "inclusion_BF")
+  )
+
+  # the list-style selector resolves the same way
+  listed <- combined[c("inclusion_BF", "inclusion_BF")]
+  expect_equal(column_values(listed), c(2, 2))
+  expect_identical(attr(listed, "type"), c("inclusion_BF", "inclusion_BF"))
+
+  # a repeated selection prints with its Bayes factor formatting, also without
+  # a name collision with an existing suffix
+  single  <- combined[, "inclusion_BF", drop = FALSE]
+  doubled <- single[, c("inclusion_BF", "inclusion_BF"), drop = FALSE]
+  expect_identical(attr(doubled, "type"), c("inclusion_BF", "inclusion_BF"))
+  for(table in list(repeated, doubled)){
+    printed <- capture_output_lines(table, print = TRUE, width = 80)
+    expect_true(any(grepl("Inclusion BF\\s+Inclusion BF", printed)))
+    expect_true(any(grepl("2.000\\s+2.000", printed)))
+  }
+})
+
 test_that("BayesTools table row subsets drop footnotes named after removed rows", {
 
   table <- data.frame(Mean = c(1, 2), row.names = c("theta", "beta"))
