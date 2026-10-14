@@ -18,7 +18,10 @@ as a name to use in the text and \code{inference_BF_name} as a
 symbol to be used instead of the default \code{"BF"}. Finite-sample
 BF bounds can be supplied either as a \code{bound_operator} attribute
 on the numeric BF or as \code{inference_BF_bound_operator} /
-\code{BF_bound_operator} with value \code{"<"} or \code{">"}. (2) \code{samples}
+\code{BF_bound_operator} with value \code{"<"} or \code{">"}. A BF or bound
+that rounds to zero at the printed three decimals is printed as its
+reciprocal (for example \code{BF < 1/10000}), or as \code{exp(<log>)} when
+the reciprocal is beyond the double range. (2) \code{samples}
 specifying the name of in the \code{samples} entry and optionally
 \code{samples_name} as a name to use in the text, \code{samples_units} as
 a unit text to be appended after the estimate, and \code{samples_conditional}

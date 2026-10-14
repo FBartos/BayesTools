@@ -124,6 +124,52 @@ test_that(".interpret.BF reports finite-sample BF bounds", {
 })
 
 
+test_that(".interpret.BF never prints a bound that rounds to zero as 0.000", {
+
+  # a small positive bound is printed as its reciprocal, as in the BF tables
+  small <- interpret(
+    list(effect = list(BF = 1e-4, BF_bound_operator = "<")),
+    list(dummy = 1),
+    list(list(inference = "effect")),
+    "Method"
+  )
+  expect_identical(small, "Method found at least strong evidence against the effect, BF < 1/10000.")
+  expect_false(grepl("0.000", small, fixed = TRUE))
+
+  bounded <- structure(1e-4, bound_operator = "<")
+  expect_identical(
+    BayesTools:::.interpret.BF(bounded, "effect", "Inclusion BF"),
+    "at least strong evidence against the effect, Inclusion BF < 1/10000"
+  )
+  expect_identical(
+    BayesTools:::.interpret.BF(4e-4, "effect", NULL, "<"),
+    "at least strong evidence against the effect, BF < 1/2500"
+  )
+  expect_identical(
+    BayesTools:::.interpret.BF(1e-4, "effect", NULL, ">"),
+    "a finite-sample bound for the evidence concerning the effect, BF > 1/10000"
+  )
+
+  # a reciprocal beyond the double range is printed as exp(<log>)
+  tiny <- 1e-320
+  expect_identical(
+    BayesTools:::.interpret.BF(tiny, "effect", NULL, "<"),
+    paste0("at least strong evidence against the effect, BF < exp(", format(log(tiny), trim = TRUE), ")")
+  )
+
+  # bounds that do not round to zero keep their decimals
+  expect_identical(
+    BayesTools:::.interpret.BF(0.002, "effect", NULL, "<"),
+    "at least strong evidence against the effect, BF < 0.002"
+  )
+  expect_identical(
+    BayesTools:::.interpret.BF(0.5, "effect", NULL, "<"),
+    "at least weak evidence against the effect, BF < 0.500"
+  )
+
+})
+
+
 test_that(".interpret.BF rejects invalid Bayes factors before formatting", {
 
   invalid_BFs <- list(0, Inf, NA_real_, NaN, -1)
