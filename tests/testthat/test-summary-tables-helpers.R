@@ -1469,6 +1469,77 @@ test_that("raw correlation labels distinguish backend transforms", {
   expect_identical(BayesTools:::.BF_error_column_name(FALSE), "error%(Inclusion BF)")
 })
 
+test_that("estimates tables keep their row labels when display labels collide", {
+
+  skip_if_not_installed("runjags")
+
+  # the same coefficients of two formulas, without formula prefixes
+  priors <- list(
+    intercept = prior("normal", list(0, 1)),
+    x = prior("normal", list(0, 1))
+  )
+  data <- data.frame(x = c(1, 3, 5, 7))
+  mu <- JAGS_formula(~ x, "mu", data, priors)
+  sigma <- JAGS_formula(~ x, "sigma", data, priors)
+  fit <- structure(
+    list(
+      mcmc = coda::mcmc.list(coda::mcmc(cbind(
+        mu_intercept = 1:4, mu_x = 2:5, sigma_intercept = 3:6, sigma_x = 4:7
+      ))),
+      sample = 4L
+    ),
+    class = c("runjags", "BayesTools_fit", "list")
+  )
+  attr(fit, "prior_list") <- c(mu$prior_list, sigma$prior_list)
+  attr(fit, "formula_design") <- list(mu = mu$formula_design, sigma = sigma$formula_design)
+  fit <- attach_test_parameter_map(fit)
+
+  labels <- c("intercept", "x", "intercept.1", "x.1")
+  means <- c(2.5, 3.5, 4.5, 5.5)
+  for(settings in list(
+    list(),
+    list(remove_diagnostics = TRUE),
+    list(conditional = TRUE),
+    list(remove_diagnostics = TRUE, conditional = TRUE)
+  )){
+    table <- do.call(
+      runjags_estimates_table,
+      c(list(fit, formula_prefix = FALSE), settings)
+    )
+    expect_identical(rownames(table), labels)
+    expect_equal(as.numeric(table[, "Mean"]), means)
+    expect_identical(attr(table, "quantities")$row, labels)
+    expect_identical(
+      attr(table, "parameters"),
+      c("mu_intercept", "mu_x", "sigma_intercept", "sigma_x")
+    )
+    expect_equal(as.numeric(table["x.1", "Mean"]), 5.5)
+  }
+
+  # the labels of the returned samples are the display labels
+  expect_identical(
+    colnames(runjags_estimates_table(
+      fit, formula_prefix = FALSE, return_samples = TRUE
+    )),
+    c("intercept", "x", "intercept", "x")
+  )
+
+  # the default prefixes are unchanged and the ensemble table makes the same
+  # labels unique
+  expect_identical(
+    rownames(runjags_estimates_table(fit, remove_diagnostics = TRUE)),
+    c("(mu) intercept", "(mu) x", "(sigma) intercept", "(sigma) x")
+  )
+  mixed <- as_mixed_posteriors(fit, names(fit$mcmc[[1L]][1L, ]), n_prior_samples = 32L)
+  ensemble <- ensemble_estimates_table(
+    mixed,
+    c("mu_intercept", "mu_x", "sigma_intercept", "sigma_x"),
+    formula_prefix = FALSE
+  )
+  expect_identical(rownames(ensemble), labels)
+  expect_equal(as.numeric(ensemble[, "Mean"]), means)
+})
+
 test_that("runjags_estimates_table reports exact sample summaries without snapshots", {
 
   skip_if_not_installed("runjags")

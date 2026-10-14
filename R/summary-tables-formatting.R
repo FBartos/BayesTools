@@ -237,6 +237,11 @@
     "SD"     = apply(model_samples, 2, stats::sd,    na.rm = TRUE),
     as.data.frame(quantile_cols, check.names = FALSE)
   )
+  # the rows keep their labels in every mode: display labels that collide
+  # (e.g., the same coefficient of two formulas without formula prefixes) are
+  # made unique, never replaced by row numbers
+  row_labels <- make.unique(colnames(model_samples))
+  rownames(runjags_summary) <- row_labels
 
   # inclusion rows keep only the Mean (and the MCMC diagnostics)
   quantile_col_names <- as.character(probs)
@@ -256,7 +261,7 @@
     nrow = ncol(model_samples),
     ncol = 4L,
     dimnames = list(
-      colnames(model_samples),
+      row_labels,
       c("MCMC_error", "MCMC_SD_error", "ESS", "R_hat")
     )
   ))
