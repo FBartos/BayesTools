@@ -683,7 +683,8 @@ NULL
     par_names <- .JAGS_prior_factor_names(par, prior_list[[par]])
 
     temp_position <- min(which(colnames(model_samples) %in% par_names))
-    temp_samples  <- model_samples[, colnames(model_samples) %in% par_names, drop = FALSE]
+    # the coefficients in the declared order of the contrast design, whatever the column order of the draws
+    temp_samples  <- model_samples[, par_names[par_names %in% colnames(model_samples)], drop = FALSE]
     if(is.prior.ordered(prior_list[[par]]) && !is.null(raw_model_samples)){
       spec <- .bt_ordered_spec(par,prior_list[[par]])
       source <- .bt_ordered_source_new(par,list(spec),

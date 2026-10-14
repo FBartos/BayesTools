@@ -1719,3 +1719,56 @@ test_that("estimates tables report publication weights whatever the draw column 
   expect_identical(rows_by_name(tables[[1L]]), rows_by_name(tables[[2L]]))
   expect_identical(unname(rows_by_name(tables[[2L]])[, "Mean"]), c(1, .5))
 })
+
+test_that(".transform_factor_contrasts reads the coefficient columns in their declared order", {
+
+  for(contrast in c("meandif", "orthonormal")){
+    factor_prior <- prior_factor_levels(prior_factor("mnormal", list(0, 1), contrast = contrast), c("A", "B", "C"))
+    prior_list   <- list(g = factor_prior)
+    samples <- cbind("g[1]" = rep(1, 6), "g[2]" = rep(2, 6), other = seq_len(6))
+
+    result   <- BayesTools:::.transform_factor_contrasts(samples, prior_list, transform_factors = TRUE)
+    reversed <- BayesTools:::.transform_factor_contrasts(samples[, c("g[2]", "g[1]", "other")], prior_list,
+      transform_factors = TRUE)
+    expect_identical(colnames(result), c(paste0("g[dif: ", c("A", "B", "C"), "]"), "other"))
+    expect_identical(colnames(reversed), colnames(result))
+    expect_identical(unname(unclass(reversed)[, 1:3]), unname(unclass(result)[, 1:3]))
+    expect_identical(unclass(reversed)[, "other"], unclass(result)[, "other"])
+
+    # the coefficient columns are not the first columns of the draws
+    shifted <- BayesTools:::.transform_factor_contrasts(cbind(other = seq_len(6), samples[, c("g[2]", "g[1]")]),
+      prior_list, transform_factors = TRUE)
+    expect_identical(unname(unclass(shifted)[, 2:4]), unname(unclass(result)[, 1:3]))
+
+    # a missing coefficient keeps the existing refusal
+    expect_error(BayesTools:::.transform_factor_contrasts(samples[, c("g[2]", "other")], prior_list, transform_factors = TRUE))
+  }
+})
+
+test_that("estimates tables report transformed factor levels whatever the draw column order", {
+
+  make_fit <- function(draws, prior_list){
+    fit <- structure(list(mcmc = coda::mcmc.list(coda::mcmc(draws)), sample = nrow(draws),
+      summary.pars = list(mutate = NULL), monitor = colnames(draws)),
+      class = c("runjags", "BayesTools_fit", "list"))
+    attr(fit, "prior_list") <- prior_list
+    attach_test_parameter_map(fit)
+  }
+  rows_by_name <- function(table){
+    labels <- rownames(table)
+    table  <- unclass(table)
+    expect_gt(length(labels), 1L)
+    cbind(Mean = stats::setNames(table$Mean, labels), SD = stats::setNames(table$SD, labels))[sort(labels), ]
+  }
+
+  # a mean-difference factor: the levels follow the declared coordinates
+  factor_prior <- prior_factor_levels(prior_factor("mnormal", list(0, 1), contrast = "meandif"), c("A", "B", "C"))
+  draws <- cbind("g[1]" = rep(1, 20), "g[2]" = rep(2, 20))
+  fit   <- make_fit(draws, list(g = factor_prior))
+  tables <- lapply(list(1:2, 2:1), function(order){
+    view <- JAGS_with_draws(fit, coda::mcmc.list(coda::mcmc(draws[, order, drop = FALSE])))
+    JAGS_estimates_table(view, transform_factors = TRUE, remove_diagnostics = TRUE)
+  })
+  expect_identical(rows_by_name(tables[[1L]]), rows_by_name(tables[[2L]]))
+  expect_equal(sum(rows_by_name(tables[[2L]])[, "Mean"]), 0, tolerance = 1e-12)
+})
