@@ -131,7 +131,11 @@ for every selected continuous leaf, resolved before discarding parent parameter
 and condition metadata. Pure atoms need no curve; KDE ignores stored curves.
 Individual omega plots consume producer-owned scalar atom/support declarations,
 including empty and unknown marginals, and never recover atom masses from prior
-shares or allocated draw counts. Transformed unsupported scalar prior overlays
+shares or allocated draw counts. They follow `density_method` (a precomputed
+request resolves the stored curve of the omega with its parent samples and
+condition; a pure atom needs none) and apply `transformation` to the posterior
+and prior data alike: checked atom maps keep the masses, continuous curves use
+the checked grid with the Jacobian. Transformed unsupported scalar prior overlays
 raise the existing prior-density limitation.
 Analytic prior-list plots (`force_samples = FALSE`) keep every positive-weight
 component and atom and do not use `n_samples`; only sampled components that

@@ -39,7 +39,8 @@
 
   return(out)
 }
-.plot_data_prior_list.weightparameter<- function(prior_list, parameter, n_points, n_samples){
+.plot_data_prior_list.weightparameter<- function(prior_list, parameter, n_points, n_samples,
+                                                 transformation = NULL, transformation_arguments = NULL){
 
   context       <- .weightfunction_prior_list_context(prior_list)
   parameter_ind <- match(parameter, context$omega_names)
@@ -49,7 +50,8 @@
   }
 
   components <- .weightfunction_prior_marginal_components(context, parameter_ind)
-  out        <- .plot_data_prior_weightparameter_components(components, parameter, n_points)
+  out        <- .plot_data_prior_weightparameter_components(components, parameter, n_points,
+                                                            transformation, transformation_arguments)
 
   return(out)
 }
@@ -445,7 +447,8 @@
 
   upper
 }
-.plot_data_prior_weightparameter_components <- function(components, parameter, n_points){
+.plot_data_prior_weightparameter_components <- function(components, parameter, n_points,
+                                                        transformation = NULL, transformation_arguments = NULL){
 
   x_range <- .weightfunction_components_range(components)
   x_den <- seq(x_range[1], x_range[2], length.out = n_points)
@@ -481,7 +484,21 @@
 
   out <- list()
 
-  if(any(y_den > 0)){
+  # transformations map the checked grid, the atoms and the plotting range
+  has_density <- any(y_den > 0)
+  if(!is.null(transformation)){
+    if(has_density){
+      transformed <- .density.prior_transformation_grid(x_den, y_den, transformation, transformation_arguments)
+      x_den       <- transformed$x[!transformed$drop]
+      y_den       <- transformed$y[!transformed$drop]
+    }
+    if(!is.null(x_points)){
+      x_points <- .density.prior_transformation_checked_x(x_points, transformation, transformation_arguments)
+    }
+    x_range <- range(.density.prior_transformation_x(x_range, transformation, transformation_arguments))
+  }
+
+  if(has_density){
     out_den <- list(
       call    = call("density", "weightfunction prior"),
       bw      = NULL,

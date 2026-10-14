@@ -4831,3 +4831,90 @@ test_that("plot_models orders the endpoints of intervals mapped by a decreasing 
   expect_equal(c(bars[[1L]]$xmin, bars[[1L]]$xmax), c(1, 5))
   expect_equal(c(bars[[2L]]$xmin, bars[[2L]]$xmax), 1 + 2 * prior_interval)
 })
+
+test_that("individual omega plots honour density_method and transformations", {
+
+  make_fit <- function(values, priors){
+    fit <- coda::mcmc(values)
+    class(fit) <- c("mcmc", "BayesTools_fit")
+    attr(fit, "prior_list") <- priors
+    fit <- BayesTools:::.bt_attach_parameter_map(fit)
+    fit <- BayesTools:::.bt_attach_draw_geometry(fit)
+    BayesTools:::.bt_attach_fit_contract(fit)
+  }
+  grDevices::pdf(NULL)
+  on.exit(grDevices::dev.off(), add = TRUE)
+  layers <- function(figure) ggplot2::ggplot_build(figure)$data
+
+  # a continuous omega ~ Beta(1, 1) in the interval [0.05, 1]
+  selection <- prior_weightfunction("one-sided", c(.05), wf_independent(prior("beta", list(1, 1))))
+  omega <- as_mixed_posteriors(make_fit(
+    cbind("omega[1]" = rep(1, 200), "omega[2]" = seq(.005, .995, length.out = 200)),
+    list(omega = selection)), "omega")
+  column <- colnames(omega$omega)[[2L]]
+
+  # density_method = "precomputed": no stored curve is an error, a stored curve is drawn
+  expect_error(
+    plot_posterior(omega, "omega", individual = TRUE, show_figures = 2L, plot_type = "ggplot",
+                   n_points = 64, density_method = "precomputed"),
+    "Precomputed posterior density is unavailable for the selected parameter and condition.", fixed = TRUE)
+  expect_error(
+    plot_posterior(omega, "omega", individual = TRUE, show_figures = 2L, n_points = 64,
+                   density_method = "precomputed"),
+    "Precomputed posterior density is unavailable", fixed = TRUE)
+  stored <- posterior_density_attribute(c(.2, .4, .6, .8), rep(5/3, 4), method = "review-grid",
+    density_method = "precomputed", parameter = column)
+  stored_samples <- omega
+  posterior_metadata(stored_samples$omega, "posterior_density") <- stats::setNames(list(stored), column)
+  figure <- plot_posterior(stored_samples, "omega", individual = TRUE, show_figures = 2L,
+    plot_type = "ggplot", n_points = 64, density_method = "precomputed")
+  expect_equal(layers(figure[[1L]])[[1L]]$x, c(.2, .4, .6, .8))
+  expect_equal(layers(figure[[1L]])[[1L]]$y, rep(5/3, 4))
+  expect_no_error(plot_posterior(stored_samples, "omega", individual = TRUE, show_figures = 2L,
+    n_points = 64, density_method = "precomputed"))
+  # KDE ignores the stored curve
+  figure <- plot_posterior(stored_samples, "omega", individual = TRUE, show_figures = 2L,
+    plot_type = "ggplot", n_points = 64)
+  expect_gt(nrow(layers(figure[[1L]])[[1L]]), 4L)
+
+  # a linear transformation maps the grid with its Jacobian (prior and posterior)
+  transformation_arguments <- list(a = 10, b = 2)
+  figure <- plot_posterior(omega, "omega", individual = TRUE, show_figures = 2L, plot_type = "ggplot",
+    n_points = 64, prior = TRUE, transformation = "lin", transformation_arguments = transformation_arguments)
+  built <- layers(figure[[1L]])
+  prior_curve <- built[[1L]]
+  posterior_curve <- built[[2L]]
+  expect_equal(range(prior_curve$x), c(10, 12))
+  expect_equal(prior_curve$y, rep(1/2, nrow(prior_curve)))
+  expect_equal(range(posterior_curve$x), c(10, 12))
+  trapezoid <- sum(diff(posterior_curve$x) * (head(posterior_curve$y, -1L) + tail(posterior_curve$y, -1L)) / 2)
+  expect_equal(trapezoid, 1, tolerance = .03)
+  expect_no_error(plot_posterior(omega, "omega", individual = TRUE, show_figures = 2L, n_points = 64,
+    prior = TRUE, transformation = "lin", transformation_arguments = transformation_arguments))
+  # the stored curve is mapped as well
+  figure <- plot_posterior(stored_samples, "omega", individual = TRUE, show_figures = 2L,
+    plot_type = "ggplot", n_points = 64, density_method = "precomputed",
+    transformation = "lin", transformation_arguments = transformation_arguments)
+  expect_equal(layers(figure[[1L]])[[1L]]$x, 10 + 2 * c(.2, .4, .6, .8))
+  expect_equal(layers(figure[[1L]])[[1L]]$y, rep(5/6, 4))
+
+  # fixed weights are atoms: the transformation moves them and keeps their masses,
+  # also with a precomputed request (a pure atom needs no stored curve)
+  fixed <- prior_weightfunction("one-sided", c(.05), wf_fixed(c(1, .5)))
+  fixed_samples <- as_mixed_posteriors(make_fit(
+    cbind("omega[1]" = rep(1, 100), "omega[2]" = rep(.5, 100)), list(omega = fixed)), "omega")
+  for(density_method in c("KDE", "precomputed")){
+    figure <- plot_posterior(fixed_samples, "omega", individual = TRUE, show_figures = 2L, plot_type = "ggplot",
+      prior = TRUE, density_method = density_method, transformation = "lin",
+      transformation_arguments = list(a = 10, b = 1))
+    built <- layers(figure[[1L]])
+    expect_length(built, 2L)
+    for(atom in built){
+      expect_equal(atom$x, 10.5)
+      expect_equal(atom$xend, 10.5)
+      expect_equal(atom$yend, 1)
+    }
+    expect_no_error(plot_posterior(fixed_samples, "omega", individual = TRUE, show_figures = 2L, prior = TRUE,
+      density_method = density_method, transformation = "lin", transformation_arguments = list(a = 10, b = 1)))
+  }
+})

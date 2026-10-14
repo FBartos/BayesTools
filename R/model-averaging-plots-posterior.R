@@ -216,12 +216,15 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
 
       for (par in par_names) {
 
-        plot_data <- .plot_data_samples.weightparameter(samples, parameter = par, n_points = n_points)
+        plot_data <- .plot_data_samples.weightparameter(samples, parameter = par, n_points = n_points,
+                                                        transformation = transformation, transformation_arguments = transformation_arguments,
+                                                        density_method = density_method)
 
         # add priors, if requested
         if(prior){
 
-          plot_data_prior <- .plot_data_prior_list.weightparameter(prior_list, parameter = par, n_points = n_points, n_samples = n_samples)
+          plot_data_prior <- .plot_data_prior_list.weightparameter(prior_list, parameter = par, n_points = n_points, n_samples = n_samples,
+                                                                   transformation = transformation, transformation_arguments = transformation_arguments)
 
           # transplant common xlim and ylim
           plot_data_joined <- c(plot_data_prior, plot_data)

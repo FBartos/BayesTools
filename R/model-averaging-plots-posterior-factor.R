@@ -1,6 +1,10 @@
-.plot_data_samples.weightparameter<- function(samples, parameter, n_points){
+.plot_data_samples.weightparameter<- function(samples, parameter, n_points,
+                                              transformation = NULL, transformation_arguments = NULL,
+                                              density_method = c("KDE", "precomputed")){
 
   check_list(samples, "samples", check_names = "omega", allow_other = TRUE)
+  density_method <- .posterior_density_method(density_method)
+  parent <- samples
   if(!is.null(samples[["omega"]])){
     samples <- samples[["omega"]]
   }else if(!is.null(samples[["bias"]])){
@@ -28,25 +32,49 @@
     .plot_data_stop_unknown_atoms()
   }
   density_bounds <- .posterior_support_bounds(samples, name = parameter, interval_only = TRUE)
+  # an explicit precomputed request resolves the stored curve of this omega
+  # while the parent samples and their condition are available
+  posterior_density <- if(identical(density_method, "precomputed")){
+    .plot_data_selected_posterior_density(parent, samples,
+      if(is.character(parameter)) parameter else colnames(samples)[parameter])
+  }else NULL
   samples <- samples[, parameter]
   continuous <- .Savage_Dickey_BF.continuous_posterior(samples, atoms)
   samples_density <- as.numeric(continuous$samples)
   continuous_component_mass <- continuous$continuous_mass
+  .plot_data_require_precomputed_density(posterior_density, density_method, continuous_component_mass)
   if(nrow(atoms$locations) > 0L){
     x_points <- as.numeric(atoms$locations[, 1L])
     y_points <- atoms$mass
   }
+  if(!is.null(x_points) && !is.null(transformation)){
+    x_points <- .density.prior_transformation_checked_x(x_points, transformation, transformation_arguments)
+  }
 
   # deal with the densities
-  if(continuous_component_mass > 0){
+  if(!is.null(posterior_density) || continuous_component_mass > 0){
 
-    if(length(samples_density) < 2L || diff(range(samples_density)) == 0){
+    if(!is.null(posterior_density)){
+
+      # the stored density is the continuous part; the point masses are the
+      # declared posterior atoms
+      x_den <- posterior_density[["x"]]
+      y_den <- posterior_density[["y"]]
+
+      if(!is.null(transformation)){
+        transformed     <- .density.prior_transformation_grid(x_den, y_den, transformation, transformation_arguments)
+        x_den           <- transformed$x[!transformed$drop]
+        y_den           <- transformed$y[!transformed$drop]
+        samples_density <- .density.prior_transformation_x(samples_density, transformation, transformation_arguments)
+      }
+
+    }else if(length(samples_density) < 2L || diff(range(samples_density)) == 0){
       stop("Weightfunction posterior density is unavailable for declared continuous samples with fewer than two distinct values.", call. = FALSE)
     }else{
 
       # Use component support for reflection and a display range for evaluation.
       if(is.null(density_bounds)) density_bounds <- c(-Inf, Inf)
-      density_range <- .plot_data_samples_density_range(density_bounds)
+      density_range <- .plot_data_samples_density_range(density_bounds, transformation)
 
       # get the density estimate
       density_continuous <- .density_kde_boundary(
@@ -60,8 +88,20 @@
       y_den <- density_continuous$y * continuous_component_mass
       boundary_reflection <- isTRUE(attr(density_continuous, "boundary_reflection"))
 
+      # apply transformations on the checked grid
+      if(!is.null(transformation)){
+        transformed     <- .density.prior_transformation_grid(x_den, y_den, transformation, transformation_arguments)
+        x_den           <- transformed$x[!transformed$drop]
+        y_den           <- transformed$y[!transformed$drop]
+        samples_density <- .density.prior_transformation_x(samples_density, transformation, transformation_arguments)
+      }
+
       if(boundary_reflection){
-        density_plot <- .plot_data_density_add_boundary_zeros(x_den, y_den, density_bounds)
+        plot_bounds <- density_bounds
+        if(!is.null(transformation)){
+          plot_bounds <- .density.prior_transformation_x(plot_bounds, transformation, transformation_arguments)
+        }
+        density_plot <- .plot_data_density_add_boundary_zeros(x_den, y_den, plot_bounds)
         x_den <- density_plot$x
         y_den <- density_plot$y
       }
@@ -87,6 +127,10 @@
     attr(out_den, "x_range") <- range(x_den)
     attr(out_den, "y_range") <- c(0, max(y_den))
     attr(out_den, "parameter") <- parameter
+    if(!is.null(posterior_density)){
+      attr(out_den, "posterior_density_method") <- posterior_density[["method"]]
+      attr(out_den, "posterior_density_diagnostics") <- posterior_density[["diagnostics"]]
+    }
     if(boundary_reflection){
       attr(out_den, "boundary_reflection") <- TRUE
     }
@@ -96,6 +140,11 @@
 
   # add spikes
   if(!is.null(y_points)){
+    # without a continuous part, the display range is the unit interval of omega
+    point_range <- c(0, 1)
+    if(is.null(x_den) && !is.null(transformation)){
+      point_range <- range(.density.prior_transformation_x(point_range, transformation, transformation_arguments))
+    }
     for(i in seq_along(y_points)){
       temp_points <- list(
         call    = call("density", paste0("point", i)),
@@ -107,7 +156,7 @@
       )
 
       class(temp_points) <- c("density", "density.prior", "density.prior.point")
-      attr(temp_points, "x_range") <- if(!is.null(x_den)) range(x_den) else range(c(0, 1, x_points[i]))
+      attr(temp_points, "x_range") <- if(!is.null(x_den)) range(x_den) else range(c(point_range[is.finite(point_range)], x_points[i]))
       attr(temp_points, "y_range") <- c(0, max(y_points[i]))
       attr(temp_points, "parameter") <- parameter
 
