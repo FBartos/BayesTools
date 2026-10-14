@@ -1707,16 +1707,19 @@ test_that("random summaries are cataloged and extracted from declared dependenci
     )$quantity_id,
     correlation$quantity_id
   )
+  # The recipe reads the primitives and the block's SDs, which establish
+  # where the correlation is defined (an SD of the pair is zero), also in a
+  # block without scaled columns.
   expect_setequal(
     correlation$extraction_key[[1L]]$dependencies,
     c(
       paste0(cholesky, "[1,1]"),
       paste0(cholesky, "[2,1]"),
-      paste0(cholesky, "[2,2]")
+      paste0(cholesky, "[2,2]"),
+      random_term$sd_parameter_names
     )
   )
-  expect_false(any(c("mu_intercept", random_term$sd_parameter_names) %in%
-                     correlation$extraction_key[[1L]]$dependencies))
+  expect_false("mu_intercept" %in% correlation$extraction_key[[1L]]$dependencies)
 
   sd_label <- "(mu) sd(intercept)"
   expect_identical(
@@ -2020,6 +2023,102 @@ test_that("LKJ correlation priors are exact where the correlation is an LKJ entr
           sqrt(expected * (1 - expected) / sum(defined))),
     4
   )
+})
+
+test_that("LKJ correlations are undefined where an SD of the pair is zero, scaled or not", {
+
+  # Gated SDs (spike-and-slab priors with a point at zero): the correlation of
+  # a pair is 0 / 0 on the draws where an SD of the pair is zero. The fitted
+  # correlation of a block without scaled columns is the original-scale one,
+  # so its draws are missing exactly there, as the original-scale correlations
+  # of a scaled block are.
+  gated_sd <- prior_spike_and_slab(
+    prior("gamma", list(2, 2)),
+    prior_inclusion = prior("spike", list(0.5))
+  )
+  pairs <- list("(mu) cor(intercept,x1)" = c(1L, 2L),
+                "(mu) cor(intercept,x2)" = c(1L, 3L),
+                "(mu) cor(x1,x2)" = c(2L, 3L))
+  n <- 400L
+
+  unscaled <- .lkj_block_fit(3L, 1, sd = gated_sd)
+  raw <- transform_prior_samples(unscaled$fit, n_samples = n, seed = 73L)
+  sd_names <- unscaled$random_term$sd_parameter_names
+  sd_values <- raw[, sd_names, drop = FALSE]
+  catalog <- parameter_catalog(unscaled$fit)
+  fitted <- .bt_random_effect_summary_correlation_samples(
+    unscaled$random_term, raw
+  )$values
+  missing_rows <- list()
+  for(name in names(pairs)){
+    selection <- parameter_catalog_resolve(catalog, name)
+    key <- selection$quantities$extraction_key[[1L]]
+    defined <- sd_values[, pairs[[name]][1L]] > 0 & sd_values[, pairs[[name]][2L]] > 0
+    expect_true(any(!defined) && any(defined), info = name)
+    # the SD coordinates are declared dependencies of the correlation recipe
+    expect_true(all(sd_names %in% key$dependencies), info = name)
+    expect_identical(key$source_type, "composite", info = name)
+    draws <- parameter_draws(unscaled$fit, selection, model_samples = raw)
+    values <- as.numeric(as.matrix(draws))
+    expect_identical(is.na(values), !defined, info = name)
+    expect_identical(unname(posterior_metadata(draws, "undefined_draws")),
+                     "correlation", info = name)
+    # the defined draws are the fitted LKJ entry
+    expect_identical(values[defined], fitted[defined, key$index], info = name)
+    # summaries read the defined draws only
+    expect_identical(mean(values, na.rm = TRUE), mean(fitted[defined, key$index]),
+                     info = name)
+    missing_rows[[name]] <- which(is.na(values))
+  }
+  # definedness is per pair: an SD of another coordinate does not undefine it
+  expect_false(identical(missing_rows[[1L]], missing_rows[[3L]]))
+
+  # the SD and variance rows of the block keep identical declared dependencies
+  # and do not read the primitives
+  sd_rows <- catalog$quantities[catalog$quantities$role %in% c("random_sd", "random_var"), ]
+  dependencies <- lapply(sd_rows$extraction_key, `[[`, "dependencies")
+  expect_true(all(vapply(dependencies, identical, logical(1), dependencies[[1L]])))
+  expect_false(any(unscaled$random_term$correlation$primitive_names %in% dependencies[[1L]]))
+
+  # K = 2 keeps its one-to-one classification: the recipe reads the SDs for
+  # definedness only
+  two <- .lkj_block_fit(2L, 1, sd = gated_sd)
+  two_key <- parameter_catalog(two$fit)$quantities
+  two_key <- two_key[two_key$role == "random_correlation", ]$extraction_key[[1L]]
+  expect_identical(two_key$source_type, "one_to_one_transform")
+  expect_identical(two_key$source_parameter, two$random_term$correlation$primitive_names)
+  expect_true(all(two$random_term$sd_parameter_names %in% two_key$dependencies))
+  two_plan <- random_effects_marginal_update_plan(
+    two$fit,
+    parameter_catalog_resolve(parameter_catalog(two$fit), "(mu) cor(intercept,x1)")
+  )
+  expect_identical(two_plan$family, "affine")
+  expect_identical(two_plan$update, "correlation")
+  expect_identical(two_plan$source_parameter,
+                   two$random_term$correlation$primitive_names)
+  two_raw <- transform_prior_samples(two$fit, n_samples = n, seed = 74L)
+  two_draws <- as.numeric(as.matrix(parameter_draws(
+    two$fit,
+    parameter_catalog_resolve(parameter_catalog(two$fit), "(mu) cor(intercept,x1)"),
+    model_samples = two_raw
+  )))
+  two_sd <- two_raw[, two$random_term$sd_parameter_names, drop = FALSE]
+  expect_identical(is.na(two_draws), !(two_sd[, 1L] > 0 & two_sd[, 2L] > 0))
+  expect_true(any(is.na(two_draws)))
+
+  # the scaled block is unchanged: NA exactly where an SD of the original-scale
+  # pair is zero
+  scaled <- .lkj_block_fit(3L, 1, sd = gated_sd,
+                           formula_scale = list(x1 = TRUE, x2 = TRUE))
+  scaled_raw <- transform_prior_samples(scaled$fit, n_samples = n, seed = 71L,
+                                        formula_scale = list())
+  scaled_sd <- scaled_raw[, scaled$random_term$sd_parameter_names, drop = FALSE]
+  scaled_draws <- as.numeric(as.matrix(parameter_draws(
+    scaled$fit,
+    parameter_catalog_resolve(parameter_catalog(scaled$fit), "(mu) cor(x1,x2)"),
+    model_samples = scaled_raw
+  )))
+  expect_identical(is.na(scaled_draws), !(scaled_sd[, 2L] > 0 & scaled_sd[, 3L] > 0))
 })
 
 test_that("posterior plots draw the exact LKJ prior of us() correlations", {

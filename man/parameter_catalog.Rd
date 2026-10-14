@@ -200,9 +200,10 @@ Downstream packages can provide methods for package-owned
 derived quantities. For gated total-variance allocations, realized
 \code{sd_total} and \code{var_total} draws include the all-off zero branch.
 \code{var_prop(...)} draws are normalized over active components and are \code{NA} on
-draws where the realized allocation total is zero. Original-scale
-random-effect correlations (\code{cor(...)} of LKJ blocks) are \code{NA} on draws
-where the correlation is undefined, i.e. where one of its SDs is zero.
+draws where the realized allocation total is zero. Random-effect
+correlations (\code{cor(...)} of LKJ blocks; original-scale correlations in a
+block with scaled columns) are \code{NA} on draws where the correlation is
+undefined, i.e. where one of the SDs of its pair is zero.
 Each catalog quantity declares its \code{definedness} (\code{"always"}, or the reason
 of possibly undefined draws: \code{"correlation"}, or \code{"allocation_active"} for
 the variance shares of gated total-variance allocations) and its exact

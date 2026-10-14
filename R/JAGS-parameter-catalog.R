@@ -102,9 +102,10 @@
 #' derived quantities. For gated total-variance allocations, realized
 #' `sd_total` and `var_total` draws include the all-off zero branch.
 #' `var_prop(...)` draws are normalized over active components and are `NA` on
-#' draws where the realized allocation total is zero. Original-scale
-#' random-effect correlations (`cor(...)` of LKJ blocks) are `NA` on draws
-#' where the correlation is undefined, i.e. where one of its SDs is zero.
+#' draws where the realized allocation total is zero. Random-effect
+#' correlations (`cor(...)` of LKJ blocks; original-scale correlations in a
+#' block with scaled columns) are `NA` on draws where the correlation is
+#' undefined, i.e. where one of the SDs of its pair is zero.
 #' Each catalog quantity declares its `definedness` (`"always"`, or the reason
 #' of possibly undefined draws: `"correlation"`, or `"allocation_active"` for
 #' the variance shares of gated total-variance allocations) and its exact
@@ -4175,24 +4176,23 @@ parameter_transform_jacobian <- function(values, transform){
           random_block = block,
           roles = c("random_sd", "random_correlation")
         )
-        correlation_dependencies <-
+        # A correlation is undefined on draws where an SD of its pair is zero,
+        # scaled block or not, so its recipe reads the SD (and allocation)
+        # coordinates that establish the definedness next to the primitives.
+        correlation_dependencies <- unique(c(
           .bt_parameter_catalog_random_correlation_sources(
             coordinates,
             random_term
+          ),
+          .bt_parameter_catalog_coordinates(coordinates, sd_names),
+          .bt_parameter_catalog_coordinates(
+            coordinates,
+            unlist(lapply(
+              random_term$sd_binding$allocations,
+              .bt_parameter_catalog_allocation_names
+            ), use.names = FALSE)
           )
-        if(scaled_correlation){
-          correlation_dependencies <- unique(c(
-            correlation_dependencies,
-            .bt_parameter_catalog_coordinates(coordinates, sd_names),
-            .bt_parameter_catalog_coordinates(
-              coordinates,
-              unlist(lapply(
-                random_term$sd_binding$allocations,
-                .bt_parameter_catalog_allocation_names
-              ), use.names = FALSE)
-            )
-          ))
-        }
+        ))
         out$suppress <- unique(c(out$suppress, correlation_suppress))
         one_to_one <- random_term$n_columns == 2L && !scaled_correlation &&
           length(correlation$primitive_names) == 1L
@@ -5302,7 +5302,20 @@ parameter_transform_jacobian <- function(values, transform){
       random_term,
       complete
     )
-    return(summary$values[, key$index])
+    values <- summary$values[, key$index]
+    if(!isTRUE(attr(complete, "original_scale_correlation", exact = TRUE))){
+      # The fitted correlation is the original-scale one (no scaled column
+      # mixes the coordinates): it is undefined where an SD of its pair is
+      # zero, as the original-scale correlations of a scaled block are.
+      values <- .bt_random_effect_summary_mask_undefined_correlation(
+        random_term = random_term,
+        values = values,
+        index = key$index,
+        model_samples = model_samples,
+        prior_list = prior_list
+      )
+    }
+    return(values)
   }
   if(identical(evaluator, "allocation_inclusion")){
     values <- .bt_random_effect_allocation_gate_draws(

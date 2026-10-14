@@ -234,6 +234,33 @@
   list(labels = labels, parts = parts, values = values)
 }
 
+# A pairwise correlation of an LKJ block is defined where both SDs of its pair
+# are positive (the covariance over the product of the SDs is 0 / 0 at a zero
+# SD). The fitted-scale correlation draws of 'index' (the pair's position in
+# the block's pairs) are missing on the other draws, as in
+# .random_sd_transformed_correlation() for the original-scale correlations of
+# a scaled block.
+.bt_random_effect_summary_mask_undefined_correlation <- function(
+    random_term, values, index, model_samples, prior_list){
+
+  sd_draws <- .bt_random_effect_sd_draws(
+    random_term = random_term,
+    n_columns = random_term$n_columns,
+    posterior = model_samples,
+    prior_list = prior_list
+  )
+  if(is.null(sd_draws)){
+    .bt_random_effect_summary_missing_sd_stop(random_term)
+  }
+
+  pair <- utils::combn(seq_len(random_term$n_columns), 2L)[, index]
+  positive <- is.finite(sd_draws[, pair, drop = FALSE]) &
+    sd_draws[, pair, drop = FALSE] > 0
+  values[rowSums(positive) < 2L] <- NA_real_
+
+  values
+}
+
 .bt_random_effect_summary_column_components <- function(random_term){
 
   index <- random_term$structured_index
