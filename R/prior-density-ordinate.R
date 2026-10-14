@@ -1813,6 +1813,64 @@ prior_density_has_provenance <- function(x){
   NULL
 }
 
+# Whether a provenance has a continuous component: a law that is not purely
+# atomic. A point, a spike and a Bernoulli primitive and a constant map are
+# atomic; a mixture is continuous when a component with positive weight is, a
+# transformation or an affine map when its source is, a convolution when a
+# term with a nonzero weight is. Other kinds (a normal-linear route, a product
+# of continuous scales) and a provenance of unknown kind are continuous.
+.prior_density_ordinate_provenance_continuous <- function(provenance){
+
+  if(!is.list(provenance)){
+    return(TRUE)
+  }
+  if(!is.null(.prior_density_ordinate_provenance_constant(provenance))){
+    return(FALSE)
+  }
+  kind <- provenance$kind
+  if(identical(kind, "primitive")){
+    return(!provenance$family %in% c("none", "point", "bernoulli"))
+  }
+  if(identical(kind, "finite_mixture")){
+    components <- provenance$components[vapply(
+      provenance$components,
+      function(component){
+        is.null(component$weight) ||
+          (is.numeric(component$weight) && length(component$weight) == 1L &&
+             is.finite(component$weight) && component$weight > 0)
+      },
+      logical(1)
+    )]
+    return(any(vapply(
+      components,
+      function(component) .prior_density_ordinate_provenance_continuous(component$provenance),
+      logical(1)
+    )))
+  }
+  if(identical(kind, "scalar_affine") && is.list(provenance$source)){
+    return(.prior_density_ordinate_provenance_continuous(provenance$source))
+  }
+  if(identical(kind, "convolution") && is.list(provenance$terms) &&
+     is.numeric(provenance$weights) && length(provenance$terms) == length(provenance$weights)){
+    active <- which(provenance$weights != 0)
+    return(any(vapply(provenance$terms[active],
+      .prior_density_ordinate_provenance_continuous, logical(1))))
+  }
+  if(identical(kind, "named_transform") && is.list(provenance$source)){
+    transformation <- provenance$transformation
+    arguments <- if(is.character(transformation) && length(transformation) == 1L &&
+                    transformation %in% c("lin", "exp", "exp_lin", "tanh")){
+      .prior_density_ordinate_transform_arguments(transformation, provenance$arguments)
+    }
+    if(!is.null(arguments) && transformation %in% c("lin", "exp_lin") && arguments$b == 0){
+      return(FALSE)
+    }
+    return(.prior_density_ordinate_provenance_continuous(provenance$source))
+  }
+
+  TRUE
+}
+
 .prior_density_ordinate_tail_behavior <- function(provenance, direction,
                                                   transformation){
 

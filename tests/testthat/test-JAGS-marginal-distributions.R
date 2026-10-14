@@ -7058,3 +7058,77 @@ test_that("a recoverable curve warning keeps the transformed prior law of a form
   }
   expect_null(posterior_metadata(transformed[["0SD"]], "measure_unavailable"))
 })
+
+test_that("a route support declares its type from the continuous component of the law", {
+
+  point <- function(location) prior("point", list(location))
+  route_support <- function(priors, weights){
+    .bt_formula_route_support(.prior_density_route_linear(priors, weights, NULL, 4096L))
+  }
+
+  # atoms on both finite bounds of a law with a continuous part: mixed, not
+  # purely atomic, so interior values are not excluded
+  mixture <- prior_mixture(list(point(0), prior("uniform", list(0, 1)), point(1)))
+  support <- route_support(list(z = mixture), c(z = 1))
+  expect_identical(support$type, "mixed")
+  expect_identical(support$bounds, c(0, 1))
+  expect_identical(sort(support$points), c(0, 1))
+  expect_true(support$exact)
+  expect_false(.posterior_support_excludes_value(support, .5))
+  expect_true(.posterior_support_contains_value(support, .5))
+  for(weight in c(2, -1)){
+    scaled <- route_support(list(z = mixture), c(z = weight))
+    expect_identical(scaled$type, "mixed")
+    expect_identical(sort(scaled$points), sort(c(0, weight)))
+    expect_false(.posterior_support_excludes_value(scaled, weight / 2))
+  }
+  spike_and_slab <- route_support(list(z = prior_spike_and_slab(prior("normal", list(0, 1)))), c(z = 1))
+  expect_identical(spike_and_slab$type, "mixed")
+
+  # purely atomic laws stay points and exclude interior values; a law without
+  # atoms stays an interval
+  for(atomic in list(prior_mixture(list(point(0), point(1))), prior("bernoulli", list(.5)))){
+    support <- route_support(list(z = atomic), c(z = 1))
+    expect_identical(support$type, "points")
+    expect_identical(sort(support$points), c(0, 1))
+    expect_true(.posterior_support_excludes_value(support, .5))
+  }
+  continuous <- route_support(list(z = prior("uniform", list(0, 1))), c(z = 1))
+  expect_identical(continuous$type, "interval")
+  expect_length(continuous$points, 0L)
+})
+
+test_that("scaling a predictor leaves the support and the Bayes factor of a non-formula mixed parameter", {
+
+  point <- function(location) prior("point", list(location))
+  mixture <- prior_mixture(list(point(0), prior("uniform", list(0, 1)), point(1)))
+  set.seed(7)
+  data <- data.frame(x = stats::rnorm(50, 4, 2))
+  compiled <- JAGS_formula(~ 1 + x, "mu", data,
+    list(intercept = prior("normal", list(0, 1)), x = prior("normal", list(0, 1))),
+    formula_scale = list(x = TRUE))
+  priors <- c(compiled$prior_list, list(p = mixture))
+  draws <- cbind(mu_intercept = stats::rnorm(400), mu_x = stats::rnorm(400),
+    .generate_prior_sample_matrix(list(p = mixture), 400, seed = 5))
+  fit <- .parameter_catalog_test_fit(coda::mcmc.list(coda::mcmc(draws)), priors,
+    list(mu = compiled$formula_design), list(mu = compiled$formula_scale))
+
+  raw    <- as_mixed_posteriors(fit, c("mu_x", "p"), transform_scaled = FALSE)
+  scaled <- as_mixed_posteriors(fit, c("mu_x", "p"), transform_scaled = TRUE)
+  expect_identical(as.numeric(scaled$p), as.numeric(raw$p))
+  support_fields <- function(x) unclass(posterior_metadata(x, "support"))[c("bounds", "points", "exact", "type")]
+  scaled_support <- posterior_metadata(scaled$p, "support")
+  expect_identical(support_fields(scaled$p), support_fields(raw$p))
+  expect_identical(scaled_support$type, "mixed")
+  expect_false(.posterior_support_excludes_value(scaled_support, .5))
+
+  raw_marginal    <- suppressWarnings(marginal_posterior(raw, "p", prior_samples = TRUE))
+  scaled_marginal <- suppressWarnings(marginal_posterior(scaled, "p", prior_samples = TRUE))
+  expect_identical(support_fields(scaled_marginal), support_fields(raw_marginal))
+  for(null_value in c(.5, .02)){
+    expect_equal(
+      suppressWarnings(Savage_Dickey_BF(scaled_marginal, null_value)),
+      suppressWarnings(Savage_Dickey_BF(raw_marginal, null_value)),
+      tolerance = 1e-12)
+  }
+})

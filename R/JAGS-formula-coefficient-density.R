@@ -1798,8 +1798,19 @@ JAGS_formula_prior_density <- function(
   support <- .prior_density_ordinate_provenance_support(provenance)
   if(is.null(support)) return(NULL)
   points <- .prior_density_ordinate_provenance_atoms(provenance)
-  .posterior_support_new(support, points = if(is.null(points)) numeric() else points,
-    source = "formula_contribution")
+  points <- if(is.null(points)) numeric() else points[is.finite(points)]
+  # the type is declared, not inferred from the bounds: atoms on both finite
+  # bounds of a law with a continuous component (a point at 0, a uniform on
+  # (0, 1) and a point at 1) are a mixed support, not a purely atomic one
+  type <- if(length(points) == 0L){
+    "interval"
+  }else if(.prior_density_ordinate_provenance_continuous(provenance)){
+    "mixed"
+  }else{
+    "points"
+  }
+  .posterior_support_new(support, points = points, source = "formula_contribution",
+    type = type)
 }
 
 .bt_formula_contribution_metadata <- function(marginal, state, formula, data, prefix,
