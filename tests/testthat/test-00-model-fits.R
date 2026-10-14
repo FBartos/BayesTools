@@ -4459,9 +4459,25 @@ test_that("known-sigma Gaussian JAGS formula fit matches closed-form posterior",
   names(oracle$mean) <- parameters
   names(oracle$sd) <- parameters
 
-  expect_equal(colMeans(posterior), oracle$mean, tolerance = 0.07)
-  expect_equal(apply(posterior, 2, stats::sd), oracle$sd, tolerance = 0.04)
-  expect_equal(unname(stats::cov(posterior)), unname(oracle$cov), tolerance = 0.02)
+  # Each quantity is compared at its own scale. The variances of the
+  # coefficients are of order 0.01, below any absolute tolerance that suits
+  # the means, so the covariance is compared as correlations and variances.
+  # The Monte Carlo error follows from the effective sample size of each
+  # coefficient. A comparison with a NaN fails (e.g. the correlations of a
+  # zero covariance matrix).
+  ess <- coda::effectiveSize(suppressWarnings(coda::as.mcmc.list(fit))[, parameters])
+  posterior_sd <- apply(posterior, 2, stats::sd)
+  # means: within three Monte Carlo standard errors of the closed-form means
+  mean_error <- abs(colMeans(posterior) - oracle$mean) / (posterior_sd / sqrt(ess))
+  expect_true(all(mean_error < 3), info = paste(round(mean_error, 2), collapse = " "))
+  expect_equal(posterior_sd, oracle$sd, tolerance = 0.04)
+  # variances: within 10% of the closed-form variances
+  variance_ratio <- diag(stats::cov(posterior)) / diag(oracle$cov)
+  expect_true(all(abs(variance_ratio - 1) < 0.1), info = paste(round(variance_ratio, 3), collapse = " "))
+  # correlations: within three Monte Carlo standard errors of a sample
+  # correlation at the smallest effective sample size
+  correlation_error <- abs(stats::cov2cor(stats::cov(posterior)) - stats::cov2cor(oracle$cov))
+  expect_true(all(correlation_error < 3 / sqrt(min(ess))), info = paste(round(max(correlation_error), 3)))
 
   posterior_intervals <- apply(posterior, 2, stats::quantile, probs = c(0.01, 0.99))
   expect_true(all(oracle$mean >= posterior_intervals[1, ] & oracle$mean <= posterior_intervals[2, ]))
