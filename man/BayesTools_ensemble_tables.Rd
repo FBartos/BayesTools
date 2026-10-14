@@ -169,8 +169,11 @@ standardization, and are not changed. Defaults to \code{FALSE}.}
 (mean and sd) for each standardized predictor, together with the fitted
 design of each formula: the \code{formula_scale} attribute of the fitted
 model. Required when \code{transform_scaled = TRUE} for ensemble/marginal
-tables; standardization information without the fitted design stops with a
-\code{BayesTools_formula_transform_unavailable} error. For
+tables (unless the samples were unscaled by \code{\link[=as_mixed_posteriors]{as_mixed_posteriors()}}; an empty
+list means that no predictor is scaled): without it the tables stop with
+\code{BayesTools_formula_transform_unavailable} (reason
+\code{"formula_scale_missing"}), as standardization information without the
+fitted design does. For
 \code{runjags_estimates_table}, this is automatically extracted from
 the fit object's \code{formula_scale} attribute.}
 

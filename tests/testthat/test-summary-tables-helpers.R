@@ -2089,6 +2089,73 @@ test_that("unscaling refuses columns that are nonlinear transformations of coeff
   )
 })
 
+test_that("transform_scaled = TRUE without formula_scale refuses in ensemble and marginal tables", {
+
+  fit <- .scaled_slope_fit_for_test()
+  scale <- attr(fit, "formula_scale")
+  slope <- c(0.1, 0.2, 0.3, 0.4)
+  original_slope <- slope / stats::sd(c(1, 3, 5, 7))
+  mixed <- as_mixed_posteriors(fit, c("mu_intercept", "mu_x"), n_prior_samples = 64L)
+  marginal_samples <- list(mu_x = mixed$mu_x)
+  marginal_inference <- list(mu_x = 2)
+
+  estimates <- function(...){
+    ensemble_estimates_table(mixed, "mu_x", ...)["(mu) x", "Mean"]
+  }
+  marginal <- function(...){
+    marginal_estimates_table(
+      marginal_samples, marginal_inference, "mu_x", ...
+    )["(mu) x", "Mean"]
+  }
+
+  # the scale is required (the tables reported the standardized means)
+  for(refused in list(
+    function() estimates(transform_scaled = TRUE),
+    function() marginal(transform_scaled = TRUE)
+  )){
+    error <- expect_error(refused(), class = "BayesTools_formula_transform_unavailable")
+    expect_identical(error$reason, "formula_scale_missing")
+    expect_identical(
+      conditionMessage(error),
+      paste0(
+        "Cannot transform the samples to the original predictor scale: the ",
+        "'formula_scale' argument is required when 'transform_scaled = TRUE'. ",
+        "Pass the 'formula_scale' attribute of the fitted model, or create the ",
+        "samples with 'transform_scaled = TRUE' in as_mixed_posteriors()."
+      )
+    )
+  }
+
+  # with the fitted scale the means are those of the original scale
+  expect_equal(
+    estimates(transform_scaled = TRUE, formula_scale = scale),
+    mean(original_slope),
+    tolerance = 1e-12
+  )
+  expect_equal(
+    marginal(transform_scaled = TRUE, formula_scale = scale),
+    mean(original_slope),
+    tolerance = 1e-12
+  )
+
+  # an empty list declares no scaled predictor, the defaults are unchanged
+  expect_equal(estimates(transform_scaled = TRUE, formula_scale = list()), mean(slope))
+  expect_equal(marginal(transform_scaled = TRUE, formula_scale = list()), mean(slope))
+  expect_equal(estimates(), mean(slope))
+  expect_equal(estimates(transform_scaled = FALSE), mean(slope))
+  expect_equal(marginal(), mean(slope))
+
+  # samples that were unscaled at creation need no scale
+  unscaled <- as_mixed_posteriors(
+    fit, c("mu_intercept", "mu_x"), n_prior_samples = 64L, transform_scaled = TRUE
+  )
+  expect_equal(
+    ensemble_estimates_table(unscaled, "mu_x", transform_scaled = TRUE)["(mu) x", "Mean"],
+    mean(original_slope),
+    tolerance = 1e-12
+  )
+})
+
 test_that("ensemble_estimates_table preserves parameter and matrix row semantics", {
 
   samples <- list(

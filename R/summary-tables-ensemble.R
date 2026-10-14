@@ -91,8 +91,11 @@
 #' (mean and sd) for each standardized predictor, together with the fitted
 #' design of each formula: the \code{formula_scale} attribute of the fitted
 #' model. Required when \code{transform_scaled = TRUE} for ensemble/marginal
-#' tables; standardization information without the fitted design stops with a
-#' \code{BayesTools_formula_transform_unavailable} error. For
+#' tables (unless the samples were unscaled by [as_mixed_posteriors()]; an empty
+#' list means that no predictor is scaled): without it the tables stop with
+#' \code{BayesTools_formula_transform_unavailable} (reason
+#' \code{"formula_scale_missing"}), as standardization information without the
+#' fitted design does. For
 #' \code{runjags_estimates_table}, this is automatically extracted from
 #' the fit object's \code{formula_scale} attribute.
 #' @param title title to be added to the table
@@ -134,6 +137,28 @@
 #' @seealso [ensemble_inference] [mix_posteriors] [BayesTools_model_tables]
 NULL
 
+# 'transform_scaled = TRUE' needs the fitted scale of the samples' formulas
+# ('formula_scale'), unless the samples are on the original scale already
+# (as_mixed_posteriors(transform_scaled = TRUE)). An empty list declares that
+# no predictor is scaled.
+.bt_check_transform_scaled_request <- function(samples, transform_scaled, formula_scale){
+
+  if(transform_scaled && is.null(formula_scale) &&
+     !isTRUE(.bt_meta_get(samples, "transform_scaled"))){
+    .bt_formula_transform_stop(
+      paste0(
+        "Cannot transform the samples to the original predictor scale: the ",
+        "'formula_scale' argument is required when 'transform_scaled = TRUE'. ",
+        "Pass the 'formula_scale' attribute of the fitted model, or create the ",
+        "samples with 'transform_scaled = TRUE' in as_mixed_posteriors()."
+      ),
+      reason = "formula_scale_missing"
+    )
+  }
+
+  invisible(TRUE)
+}
+
 #' @rdname BayesTools_ensemble_tables
 ensemble_estimates_table <- function(samples, parameters, probs = c(0.025, 0.975), title = NULL, footnotes = NULL, warnings = NULL, transform_factors = FALSE, formula_prefix = TRUE, transform_scaled = FALSE, formula_scale = NULL){
 
@@ -148,6 +173,7 @@ ensemble_estimates_table <- function(samples, parameters, probs = c(0.025, 0.975
   check_bool(formula_prefix, "formula_prefix")
   check_bool(transform_scaled, "transform_scaled")
   check_list(formula_scale, "formula_scale", allow_NULL = TRUE)
+  .bt_check_transform_scaled_request(samples, transform_scaled, formula_scale)
 
   # declared possibly undefined draws ('undefined_draws' metadata), captured
   # before transformations that may rebuild the sample objects
@@ -674,6 +700,7 @@ marginal_estimates_table <- function(samples, inference, parameters, probs = c(0
   check_bool(formula_prefix, "formula_prefix")
   check_bool(transform_scaled, "transform_scaled")
   check_list(formula_scale, "formula_scale", allow_NULL = TRUE)
+  .bt_check_transform_scaled_request(samples, transform_scaled, formula_scale)
 
   # transform scaled coefficients back to original scale
   if(transform_scaled && !is.null(formula_scale) && length(formula_scale) > 0){
