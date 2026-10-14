@@ -1362,3 +1362,39 @@ test_that("the unknown-atoms refusal of Savage-Dickey asks for a refit by class"
     fixed = TRUE)
   expect_match(conditionMessage(condition), "(refitting models fitted with 0.3.0).", fixed = TRUE)
 })
+
+test_that("a linear atom transform declares the point mass at zero of identically zero design rows", {
+
+  design <- rbind(zero = c(0, 0), first = c(1, 0), both = c(1, 1))
+
+  # scalar marginals of the source are not declared (an atom-free joint law)
+  free <- .posterior_atoms_new(column_names = c("a", "b"))
+  transformed <- .posterior_atoms_linear_transform(free, design)
+  expect_identical(names(transformed$marginals), rownames(design))
+  expect_identical(as.numeric(transformed$marginals$zero$locations), 0)
+  expect_identical(transformed$marginals$zero$mass, 1)
+  expect_null(transformed$marginals$first)
+  expect_null(transformed$marginals$both)
+  expect_identical(nrow(transformed$locations), 0L)
+
+  # joint atoms without scalar marginals: the zero row is still {0, mass 1},
+  # whatever the mass of the joint atoms
+  joint <- .posterior_atoms_new(matrix(c(1, 2), 1L, 2L), .2, column_names = c("a", "b"))
+  transformed <- .posterior_atoms_linear_transform(joint, design)
+  expect_identical(as.numeric(transformed$marginals$zero$locations), 0)
+  expect_identical(transformed$marginals$zero$mass, 1)
+  expect_identical(as.numeric(transformed$locations), c(0, 1, 3))
+  expect_identical(transformed$mass, .2)
+  expect_false(posterior_atoms_free(.posterior_atoms_set(
+    structure(matrix(0, 2L, 3L, dimnames = list(NULL, rownames(design))), class = c("mixed_posteriors", "matrix", "array")),
+    transformed)))
+
+  # without a zero row no scalar marginal is declared
+  expect_null(.posterior_atoms_linear_transform(free, design[-1L, , drop = FALSE])$marginals)
+  expect_null(.posterior_atoms_linear_transform(joint, design[-1L, , drop = FALSE])$marginals)
+
+  # an unnamed design names the rows
+  unnamed <- .posterior_atoms_linear_transform(free, unname(design))
+  expect_identical(names(unnamed$marginals), paste0("value", 1:3))
+  expect_identical(unnamed$marginals$value1$mass, 1)
+})

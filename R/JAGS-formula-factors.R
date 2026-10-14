@@ -496,6 +496,17 @@
       design,
       column_names = colnames(transformed_samples)
     )
+    # Coefficient atoms that declare only their joint law are the complete
+    # declaration of the factor term: every level cell that is not identically
+    # zero takes the scalar law that the transformed joint law implies.
+    if(!inherits(transformed_atoms, "condition") && is.null(posterior_atoms$marginals) &&
+       !is.null(transformed_atoms$marginals)){
+      joint <- transformed_atoms
+      joint$marginals <- NULL
+      for(i in which(vapply(transformed_atoms$marginals, is.null, logical(1)))){
+        transformed_atoms$marginals[i] <- list(.posterior_atoms_for_column(joint, i))
+      }
+    }
     if(!is.null(sample_context) && !inherits(transformed_atoms, "condition") &&
        !is.null(transformed_atoms$marginals) && any(vapply(transformed_atoms$marginals, is.null, logical(1)))){
       prior_list <- attr(sample_context, "prior_list", exact = TRUE)

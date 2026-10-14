@@ -108,3 +108,65 @@ test_that("actual publication-weight producers own fixed and reference scalar ma
   expect_identical(vapply(attr(simplified$omega, "prior_list", exact = TRUE), .prior_model_weight, numeric(1)),
     vapply(.bias_samples_prior_list(bias), .prior_model_weight, numeric(1)))
 })
+
+test_that("actual interaction producers plot the zero-design cells of a treatment by orthonormal interaction", {
+
+  skip_if_missing_fits("fit_formula_interaction_fac")
+  fit <- readRDS(file.path(temp_fits_dir, "fit_formula_interaction_fac.RDS"))
+  parameter <- "mu_x_fac2t__xXx__x_fac3o"
+  samples <- suppressWarnings(as_mixed_posteriors(fit, parameters = parameter))
+
+  # the cells whose persisted design row vanishes (the reference level of the
+  # treatment factor) declare {0, mass 1}; the other cells declare no atom
+  cells <- transform_factor_samples(samples)[[parameter]]
+  design <- as.matrix(.factor_term_design_from_metadata(cells)$design)
+  zero <- rowSums(design != 0) == 0
+  expect_identical(sum(zero), 3L)
+  atoms <- .posterior_atoms_get(cells)
+  for(i in seq_len(ncol(cells))){
+    law <- .posterior_atoms_for_column(atoms, i)
+    expect_false(is.null(law))
+    if(zero[i]){
+      expect_identical(as.numeric(law$locations), 0)
+      expect_identical(law$mass, 1)
+      expect_true(all(cells[, i] == 0))
+    }else{
+      expect_length(law$mass, 0L)
+    }
+  }
+
+  # base graphics
+  grDevices::pdf(NULL)
+  on.exit(grDevices::dev.off(), add = TRUE)
+  expect_no_error(plot_posterior(samples, parameter))
+
+  # the plot data: spikes at zero of mass 1 and the continuous cells
+  data <- .plot_data_samples.factor(samples, parameter, 256, NULL, NULL, FALSE)
+  points <- vapply(data, inherits, logical(1), "density.prior.point")
+  expect_identical(sum(points), 3L)
+  for(spike in data[points]){
+    expect_identical(as.numeric(spike$x), 0)
+    expect_identical(as.numeric(spike$y), 1)
+  }
+  for(density in data[!points]){
+    mass <- sum(diff(density$x) * (utils::head(density$y, -1L) + utils::tail(density$y, -1L)) / 2)
+    expect_equal(mass, 1, tolerance = 2e-2)
+  }
+
+  # ggplot
+  figure <- plot_posterior(samples, parameter, plot_type = "ggplot")
+  expect_s3_class(figure, "ggplot")
+  layers <- ggplot2::ggplot_build(figure)$data
+  segments <- layers[vapply(layers, function(layer) "xend" %in% names(layer), logical(1))]
+  expect_length(segments, 3L)
+  for(layer in segments){
+    expect_identical(layer$x, 0)
+    expect_identical(layer$xend, 0)
+    expect_equal(layer$y, 0)
+    expect_gt(layer$yend, 0)
+  }
+  expect_equal(unique(vapply(segments, function(layer) layer$yend, numeric(1))), segments[[1L]]$yend)
+  curves <- layers[!vapply(layers, function(layer) "xend" %in% names(layer), logical(1))]
+  expect_length(curves, 1L)
+  expect_length(unique(curves[[1L]]$group), 3L)
+})

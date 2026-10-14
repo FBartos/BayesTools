@@ -1068,3 +1068,25 @@ test_that("an empty conditioning event makes only its own levels unavailable", {
   expect_false("theta" %in% names(result$inference$conditional))
   expect_false("theta" %in% names(result$inference$inference))
 })
+
+test_that("a formula row that is identically zero is certified at zero without certifying the other rows", {
+  priors <- list(a = prior("point", list(0)), b = prior("normal", list(0, 1)))
+  plan <- list(components = matrix(1L, 1L, 2L, dimnames = list(NULL, c("a", "b"))), probabilities = 1, model_mixture = FALSE)
+  design <- rbind(zero = c(0, 0), a = c(1, 0), b = c(0, 1))
+  colnames(design) <- c("a", "b")
+  joint <- .posterior_atoms_joint_linear(priors, plan, design)
+  # the joint law of (a, b) has no atom, but the scalar law of 'a' does
+  expect_identical(nrow(joint$locations), 0L)
+  expect_identical(as.numeric(joint$marginals$zero$locations), 0)
+  expect_identical(joint$marginals$zero$mass, 1)
+  expect_null(joint$marginals$a)
+  expect_null(joint$marginals$b)
+  scalar <- list(zero = NULL,
+    a = .posterior_atoms_new(matrix(0, 1L, 1L), 1, column_names = "a"),
+    b = .posterior_atoms_new(column_names = "b"))
+  assembled <- .posterior_atoms_unscale_joint(joint, scalar, c("zero", "a", "b"))
+  expect_identical(assembled$certified_columns, "zero")
+  expect_identical(.posterior_atoms_for_column(assembled$atoms, "zero")$mass, 1)
+  expect_identical(.posterior_atoms_for_column(assembled$atoms, "a")$mass, 1)
+  expect_length(.posterior_atoms_for_column(assembled$atoms, "b")$mass, 0L)
+})

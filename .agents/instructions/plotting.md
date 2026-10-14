@@ -29,7 +29,11 @@ posterior density supplies the continuous curve; samples without an atom
 declaration stop with the atom-status message. Never infer point masses
 from prior lists, component indices, or draws matching prior spikes.
 Marginal level extraction checks the original typed atom refusal before
-discarding draw metadata when no certified scalar law is available. A usable
+discarding draw metadata when no certified scalar law is available.
+A linear transformation of declared atoms (factor level cells, formula rows)
+declares `{0, mass 1}` for every row of its persisted design that is
+identically zero, also when the source declares no scalar marginals, so such
+level cells are drawn as spikes at zero; the design decides, never the draws. A usable
 independently certified scalar law takes precedence over a joint-law refusal.
 Point layers check transformation images before emitting locations and masses.
 Finite-source saturation or nonfinite images stop with

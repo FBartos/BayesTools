@@ -829,14 +829,18 @@ posterior_atoms_free <- function(x){
     stop("The atom transformation design does not match the joint atom locations.",
          call. = FALSE)
   }
+  # A design row that vanishes identically fixes its image at zero whatever the
+  # source law is. The rows come from the persisted design, never from draws.
+  zero_rows <- rowSums(design != 0) == 0L
   if(is.null(column_names)) column_names <- rownames(design)
-  if(is.null(column_names) && !is.null(atoms$marginals)) column_names <- paste0("value",seq_len(nrow(design)))
+  if(is.null(column_names) && (!is.null(atoms$marginals) || any(zero_rows))) column_names <- paste0("value",seq_len(nrow(design)))
 
-  marginals <- if(!is.null(atoms$marginals)){
+  marginals <- if(!is.null(atoms$marginals) || any(zero_rows)){
     stats::setNames(lapply(seq_len(nrow(design)), function(i){
       active <- which(design[i, ] != 0)
       if(length(active) == 0L) return(.posterior_atoms_new(matrix(0, 1L, 1L), 1, column_names = column_names[[i]]))
-      if(length(active) != 1L) return(NULL)
+      # a source without scalar marginals declares none for the other rows
+      if(length(active) != 1L || is.null(atoms$marginals)) return(NULL)
       marginal <- atoms$marginals[[active]]
       if(is.null(marginal)) return(NULL)
       .posterior_atoms_new(marginal$locations * design[i, active], marginal$mass,
