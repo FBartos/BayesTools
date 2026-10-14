@@ -80,6 +80,64 @@
   active
 }
 
+# The sources of a linear combination (a source with a nonzero weight, and the
+# 'multiply_by' owner of one) whose prior has parameters given as expressions:
+# they are evaluated only by JAGS, so the combination has no R-side prior law.
+# An ordered prior whose share of the combination is structurally zero is the
+# point 0 and does not read its total.
+.prior_linear_expression_sources <- function(prior_list, weights){
+
+  if(is.null(names(weights))){
+    return(character())
+  }
+  weights <- weights[is.finite(weights) & weights != 0]
+  if(length(weights) == 0){
+    return(character())
+  }
+
+  active <- character()
+  for(parameter in names(prior_list)){
+    prior <- .prior_linear_representative_prior(prior_list[[parameter]])
+    if(is.null(prior)){
+      next
+    }
+    columns <- .prior_linear_prior_columns(parameter, prior)
+    present <- intersect(columns, names(weights))
+    if(length(present) == 0){
+      next
+    }
+    if(is.prior.ordered(prior)){
+      share <- tryCatch(
+        .prior_ordered_linear_share(prior, weights[present], match(present, columns)),
+        error = function(e) NULL
+      )
+      if(!is.null(share) && identical(share$type, "point") && share$scale == 0){
+        next
+      }
+    }
+    active <- c(active, parameter)
+    multiply_by <- attr(prior, "multiply_by", exact = TRUE)
+    if(is.character(multiply_by) && length(multiply_by) == 1L){
+      active <- c(active, multiply_by)
+    }
+  }
+
+  active <- intersect(unique(active), names(prior_list))
+  active[vapply(prior_list[active], .bt_prior_has_expression, logical(1))]
+}
+
+# The reason (without a final period) that the prior law of a combination is
+# unavailable because of the expression-valued priors of its 'sources'.
+.prior_linear_expression_reason <- function(sources){
+
+  paste0(
+    if(length(sources) == 1L) "The prior of " else "The priors of ",
+    paste0("'", sources, "'", collapse = ", "),
+    if(length(sources) == 1L) " has" else " have",
+    " parameters given as expressions, which only JAGS evaluates"
+  )
+}
+
 .prior_linear_active_conditionals <- function(prior_list, weights, conditional){
 
   .condition_event_active_labels(
@@ -1158,6 +1216,17 @@
   if(length(weights) == 0){
     dist <- .prior_linear_density_point(0)
     return(.prior_linear_density_transform(dist, output_transformation, output_transformation_arguments, n_grid))
+  }
+
+  expression_sources <- .prior_linear_expression_sources(prior_list, weights)
+  if(length(expression_sources) > 0){
+    reason <- .prior_linear_expression_reason(expression_sources)
+    .bt_formula_density_stop(
+      paste0(reason, ", so the prior density is unavailable."),
+      sources = expression_sources,
+      reason  = "expression_prior_law_unavailable",
+      detail  = reason
+    )
   }
 
   if(is.null(source_transforms)){

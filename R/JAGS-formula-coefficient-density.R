@@ -1752,11 +1752,18 @@ JAGS_formula_prior_density <- function(
 
 .bt_formula_route_numerical_scale_reason <- function(route){
 
+  .bt_formula_route_unknown_reason(route, "numerical_scale_unavailable")
+}
+
+# The reason of the first unknown leaf of the given provenance kind in a route
+# (NULL without one).
+.bt_formula_route_unknown_reason <- function(route, kind){
+
   if(identical(route$type, "unknown") &&
-     identical(route$provenance$kind, "numerical_scale_unavailable")) return(route$reason)
-  if(identical(route$type, "transform")) return(.bt_formula_route_numerical_scale_reason(route$source))
+     identical(route$provenance$kind, kind)) return(route$reason)
+  if(identical(route$type, "transform")) return(.bt_formula_route_unknown_reason(route$source, kind))
   if(identical(route$type, "mixture")){
-    reasons <- lapply(route$components[route$weights > 0], .bt_formula_route_numerical_scale_reason)
+    reasons <- lapply(route$components[route$weights > 0], .bt_formula_route_unknown_reason, kind = kind)
     reasons <- Filter(Negate(is.null), reasons)
     if(length(reasons)) return(reasons[[1L]])
   }
@@ -1918,6 +1925,12 @@ JAGS_formula_prior_density <- function(
       prior_cause <- "numerical_scale_unavailable"
     }else if(is.finite(record$prior_log_probability) && any(vapply(routes, .bt_formula_route_law_unavailable, logical(1)))){
       prior_available <- FALSE
+      expression_reasons <- Filter(Negate(is.null), lapply(routes,
+        .bt_formula_route_unknown_reason, kind = "expression_prior_law_unavailable"))
+      if(length(expression_reasons)){
+        prior_reason <- expression_reasons[[1L]]
+        prior_cause <- "expression_prior_law_unavailable"
+      }
     }else if(prior_samples && prior_available && is.finite(record$prior_log_probability) &&
              (model_prior_available || point_model)){
       laws[[model]] <- if(length(state$models) == 1L && !is.null(prior_density)) prior_density else

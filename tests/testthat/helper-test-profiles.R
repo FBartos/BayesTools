@@ -138,6 +138,7 @@ bayestools_test_profile_contexts <- list(
   ),
   fixture = c(
     "density-display-producers",
+    "expression-priors-fixture",
     "formula-contribution-fixture",
     "fixture-integrity",
     "hypothesis-BF-bridge",

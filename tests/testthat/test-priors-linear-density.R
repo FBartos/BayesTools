@@ -4414,3 +4414,72 @@ test_that("convolution breakpoints keep the images of support bounds beside a si
     }
   }
 })
+
+test_that("a linear combination with an expression-valued source has no prior law", {
+
+  expression_normal <- prior("normal", list(0, expression(tau)))
+  expression_point  <- prior("point", list(location = expression(2 * theta)))
+  numeric_normal    <- prior("normal", list(0, 1))
+  expect_unavailable <- function(condition, sources){
+    expect_s3_class(condition, "BayesTools_formula_prior_density_unavailable")
+    expect_s3_class(condition, "BayesTools_formula_measure_unavailable")
+    expect_identical(condition$reason, "expression_prior_law_unavailable")
+    expect_identical(condition$sources, sources)
+    expect_match(condition$detail, "^The priors? of .* parameters given as expressions, which only JAGS evaluates$")
+    expect_match(conditionMessage(condition), "so the prior density is unavailable.", fixed = TRUE)
+  }
+  combine <- function(prior_list, weights){
+    tryCatch(.prior_linear_combination_density(prior_list, weights), error = identity)
+  }
+  route <- function(prior_list, weights) .prior_density_route_linear(prior_list, weights, NULL)
+
+  # simple priors, a sum with a numeric source, and mixture components
+  for(source in list(expression_normal, expression_point)){
+    expect_unavailable(combine(list(x = source), c(x = 1)), "x")
+    expect_unavailable(combine(list(a = numeric_normal, x = source), c(a = 1, x = 2)), "x")
+  }
+  expect_unavailable(combine(list(x = prior_mixture(list(numeric_normal, expression_point),
+    is_null = c(FALSE, FALSE))), c(x = 1)), "x")
+  expect_unavailable(combine(list(x = prior_spike_and_slab(expression_normal, prior("spike", list(0.5)))),
+    c(x = 1)), "x")
+  expect_unavailable(combine(list(a = expression_normal, b = expression_point), c(a = 1, b = 1)), c("a", "b"))
+
+  # the 'multiply_by' owner of a source is a source of the combination
+  scaled <- numeric_normal
+  attr(scaled, "multiply_by") <- "s"
+  expect_unavailable(combine(list(x = scaled, s = expression_point), c(x = 1)), "s")
+
+  # factor priors: the nonzero level weights decide
+  factor_prior <- prior_factor("mnormal", list(0, expression(tau)), contrast = "meandif")
+  columns <- .prior_linear_prior_columns("f", factor_prior)
+  expect_unavailable(combine(list(f = factor_prior), stats::setNames(c(1, rep(0, length(columns) - 1L)), columns)), "f")
+
+  # a source with a zero weight is not read
+  reference <- .prior_linear_combination_density(list(a = numeric_normal), c(a = 1))
+  free <- combine(list(a = numeric_normal, x = expression_point), c(a = 1, x = 0))
+  expect_s3_class(free, "prior_linear_density")
+  expect_identical(free$density, reference$density)
+  expect_identical(free$points, reference$points)
+  expect_identical(.prior_linear_expression_sources(list(a = numeric_normal, x = expression_point), c(a = 1, x = 0)),
+    character())
+  expect_identical(.prior_linear_expression_sources(list(a = numeric_normal, x = expression_point), c(a = 1, x = 2)), "x")
+
+  # numeric priors keep their law
+  scaled_normal <- .prior_linear_combination_density(list(x = numeric_normal), c(x = 2))
+  expect_lt(max(abs(scaled_normal$density$y - stats::dnorm(scaled_normal$density$x, 0, 2))), 1e-4)
+
+  # the structural routes make the same difference
+  for(source in list(expression_normal, expression_point)){
+    unknown <- route(list(x = source), c(x = 1))
+    expect_identical(unknown$type, "unknown")
+    expect_identical(unknown$provenance$kind, "expression_prior_law_unavailable")
+    expect_identical(unknown$provenance$sources, "x")
+    expect_match(unknown$reason, "^The prior of 'x' has parameters given as expressions, which only JAGS evaluates$")
+    expect_true(.bt_formula_route_law_unavailable(unknown))
+    expect_identical(.bt_formula_route_unknown_reason(unknown, "expression_prior_law_unavailable"), unknown$reason)
+    expect_null(.bt_formula_route_numerical_scale_reason(unknown))
+  }
+  expect_identical(route(list(a = numeric_normal, x = expression_point), c(a = 1, x = 0))$type, "scalar")
+  expect_false(identical(route(list(x = numeric_normal), c(x = 1))$type, "unknown"))
+  expect_identical(route(list(x = scaled, s = expression_point), c(x = 1))$provenance$sources, "s")
+})

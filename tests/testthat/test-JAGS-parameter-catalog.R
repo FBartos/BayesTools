@@ -5351,3 +5351,73 @@ test_that("the variance of an SD prior with a wrapper has a prior density", {
   fixed <- sd_densities(prior("point", list(location = 2)))
   expect_equal(.prior_linear_density_point_mass(fixed[["var(intercept)"]], 4), 1, tolerance = 1e-12)
 })
+
+# A JAGS-free fit whose formula slope is an expression point (2 * theta) under
+# a scaled predictor (mean 3, SD 1.37): the draws are consistent with the point.
+.expression_point_scaled_fit <- function(){
+
+  set.seed(11)
+  data <- data.frame(x = c(-2, -1, 1, 2, 0.5, -0.5) + 3)
+  compiled <- JAGS_formula(~ x, "mu", data, list(intercept = prior("normal", list(0, 1)),
+    x = prior("point", list(location = expression(2 * theta)))), formula_scale = TRUE)
+  compiled$prior_list$theta <- prior("normal", list(0, 1))
+  theta <- stats::rnorm(60)
+  draws <- cbind(mu_intercept = stats::rnorm(60, 0.3, 0.1), mu_x = 2 * theta, theta = theta)
+  .parameter_catalog_test_fit(coda::mcmc.list(coda::mcmc(draws)), compiled$prior_list,
+    formula_design = list(mu = compiled$formula_design),
+    formula_scale = list(mu = compiled$formula_scale))
+}
+
+test_that("the original-scale prior laws of a scaled expression point are unavailable with their cause", {
+
+  fit <- .expression_point_scaled_fit()
+  expect_true(.bt_formula_scale_has_scaled(attr(fit, "formula_scale")))
+  parameters <- c("mu_intercept", "mu_x", "theta")
+  mark <- function(x, measure){
+    table <- posterior_metadata(x, "measure_unavailable")
+    table[table$measure == measure, , drop = FALSE]
+  }
+
+  # the transformed densities: the intercept and the slope combine the expression point
+  scaled <- as_mixed_posteriors(fit, parameters, transform_scaled = TRUE)
+  for(parameter in c("mu_intercept", "mu_x")){
+    row <- mark(scaled[[parameter]], "prior_density")
+    expect_identical(row$column, parameter)
+    expect_identical(row$cause, "expression_prior_law_unavailable")
+    expect_identical(row$reason, "The prior of 'mu_x' has parameters given as expressions, which only JAGS evaluates")
+    refusal <- tryCatch(posterior_measure_check(scaled[[parameter]], "prior_density"), error = identity)
+    expect_s3_class(refusal, "BayesTools_formula_measure_unavailable")
+    expect_identical(refusal$reason, "expression_prior_law_unavailable")
+    # the atoms and the support keep their refusals (they are not the prior law)
+    for(measure in c("atoms", "support")){
+      expect_identical(mark(scaled[[parameter]], measure)$reason, "unsupported_contribution_measure")
+    }
+  }
+  expect_null(posterior_metadata(scaled$theta, "measure_unavailable"))
+  densities <- posterior_metadata(scaled, "prior_densities")
+  expect_null(densities$mu_x)
+  expect_null(densities$mu_intercept)
+  expect_s3_class(densities$theta, "prior_linear_density")
+
+  # the same law through the formula prior-density interface
+  for(target in c("mu_x", "mu_intercept")){
+    refusal <- tryCatch(JAGS_formula_prior_density(fit, "mu", target), error = identity)
+    expect_s3_class(refusal, "BayesTools_formula_prior_density_unavailable")
+    expect_s3_class(refusal, "BayesTools_formula_measure_unavailable")
+    expect_identical(refusal$reason, "expression_prior_law_unavailable")
+  }
+  weights <- stats::setNames(c(1, 1), c("mu_intercept", "mu_x"))
+  expect_identical(tryCatch(JAGS_formula_prior_density(fit, "mu", weights = weights), error = identity)$reason,
+    "expression_prior_law_unavailable")
+
+  # a formula marginal that includes the slope records the same cause on the route path;
+  # a marginal at which the slope has no weight keeps its law
+  unscaled <- as_mixed_posteriors(fit, parameters)
+  for(prior_samples in c(FALSE, TRUE)){
+    marginal <- marginal_posterior(unscaled, "mu_intercept", formula = ~ x, at = list(x = 1), prior_samples = prior_samples)
+    row <- mark(marginal[[1L]], "prior_density")
+    expect_identical(row$cause, "expression_prior_law_unavailable")
+    expect_identical(mark(marginal[[1L]], "atoms")$reason, "unsupported_contribution_measure")
+    expect_identical(mark(marginal[[1L]], "support")$reason, "unsupported_contribution_measure")
+  }
+})

@@ -809,6 +809,30 @@ test_that("ordered scalar measures use declared contractions and exact primitive
   expect_identical(zero_distribution$points,data.frame(x=0,p=1))
   expect_identical(attr(zero_distribution,"ordered_measure",exact=TRUE)$allocation,
     zero_expression_point$spec$allocations[[1L]]$spec)
+  # an expression total has no R-side prior law, except in a level whose share is structurally zero
+  zero_priors <- list(mu_f=zero_expression_point$spec$prior)
+  expect_identical(.prior_linear_expression_sources(zero_priors,c("mu_f[1]"=1)),character())
+  expect_identical(.prior_linear_combination_density(zero_priors,c("mu_f[1]"=1))$points,data.frame(x=0,p=1))
+  expect_identical(.prior_density_route_linear(zero_priors,c("mu_f[1]"=1),NULL)$type,"atom")
+  for(weights in list(c("mu_f[2]"=1),c("mu_f[1]"=1,"mu_f[3]"=1))){
+    expect_identical(.prior_linear_expression_sources(zero_priors,weights),"mu_f")
+    zero_refusal <- tryCatch(.prior_linear_combination_density(zero_priors,weights),error=identity)
+    expect_s3_class(zero_refusal,"BayesTools_formula_measure_unavailable")
+    expect_identical(zero_refusal$reason,"expression_prior_law_unavailable")
+    zero_route <- .prior_density_route_linear(zero_priors,weights,NULL)
+    expect_identical(zero_route$type,"unknown")
+    expect_identical(zero_route$provenance$kind,"expression_prior_law_unavailable")
+  }
+  random_priors <- list(mu_f=expression_point$spec$prior)
+  for(weights in list(c("mu_f[1]"=1),c("mu_f[1]"=1,"mu_f[2]"=1,"mu_f[3]"=1))){
+    expect_identical(.prior_linear_expression_sources(random_priors,weights),"mu_f")
+    expect_identical(tryCatch(.prior_linear_combination_density(random_priors,weights),error=identity)$reason,
+      "expression_prior_law_unavailable")
+  }
+  numeric_ordered <- make(prior("point",list(2.5)),c(0,.5,.5))
+  expect_identical(.prior_linear_expression_sources(list(mu_f=numeric_ordered$spec$prior),c("mu_f[2]"=1)),character())
+  expect_identical(.prior_linear_combination_density(list(mu_f=numeric_ordered$spec$prior),c("mu_f[2]"=1))$points,
+    data.frame(x=1.25,p=1))
   point_formula_marginal <- marginal_posterior(expression_point_raw,"mu_f",formula=~0+f,prior_samples=FALSE)
   expect_equal(.posterior_atoms_get(point_formula_marginal[[1L]])$mass, 1, tolerance = 0)
   for(level in point_formula_marginal[-1L]){

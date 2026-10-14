@@ -786,6 +786,15 @@
     ))
   }
 
+  # priors with expression parameters have no R-side law (JAGS-only support)
+  expression_sources <- .prior_linear_expression_sources(prior_list, weights)
+  if(length(expression_sources) > 0L){
+    return(.prior_density_route_unknown(
+      reason     = .prior_linear_expression_reason(expression_sources),
+      provenance = list(kind = "expression_prior_law_unavailable", sources = expression_sources)
+    ))
+  }
+
   vector_t <- .prior_density_route_vector_t_terms(prior_list, weights, source_transforms)
   if(!is.null(vector_t)){
     route <- .prior_density_route_linear(
