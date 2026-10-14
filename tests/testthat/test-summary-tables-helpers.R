@@ -2878,35 +2878,6 @@ test_that("small Bayes factor reciprocals are written out without scientific not
   expect_match(.interpret.BF(format_BF(bound), "theta inclusion", "Inclusion BF"), "Inclusion BF < 1/100000", fixed = TRUE)
 })
 
-test_that("replacing a Bayes factor resets the bound operator of the replaced element", {
-
-  BF <- format_BF_from_log(c(a = log(3), b = log(1e-5), c = log(2)), bound_operator = c("<", ">", NA))
-  replaced <- BF
-  replaced[2] <- 5
-  expect_identical(attr(replaced, "bound_operator"), c("<", NA, NA))
-  expect_equal(as.numeric(replaced), c(3, 5, 2), tolerance = 1e-12)
-  by_name <- BF
-  by_name[["a"]] <- 7
-  expect_identical(attr(by_name, "bound_operator"), c(NA, ">", NA))
-  by_logical <- BF
-  by_logical[c(TRUE, FALSE, TRUE)] <- c(1, 4)
-  expect_identical(attr(by_logical, "bound_operator"), c(NA, ">", NA))
-  all_replaced <- BF
-  all_replaced[] <- 1
-  expect_true(all(is.na(attr(all_replaced, "bound_operator"))))
-  expect_false(inherits(all_replaced, "BayesTools_BF"))
-  extended <- BF
-  extended[5] <- 9
-  expect_identical(attr(extended, "bound_operator"), c("<", ">", NA, NA, NA))
-  # the formatted column no longer shows the stale operator
-  expect_false(grepl("^[<>]", .format_BF_column(replaced)[2L]))
-  expect_true(grepl("^<", .format_BF_column(replaced)[1L]))
-  # values that stay are untouched
-  untouched <- BF
-  untouched[3] <- 2
-  expect_identical(attr(untouched, "bound_operator"), c("<", ">", NA))
-})
-
 test_that("Bayes factor formatting and table updates accept tables without rows", {
 
   empty <- format_BF(numeric(0))

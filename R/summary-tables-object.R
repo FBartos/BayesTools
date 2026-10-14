@@ -139,8 +139,7 @@ format_BF <- function(BF, logBF = FALSE, BF01 = FALSE, inclusion = FALSE){
   BF <- if(is.null(BF)) exp(log_BF) else as.numeric(BF)
   names(BF) <- BF_names
   attr(BF, "bound_operator") <- bound_operator
-  # (plain replacement: the bound operators belong to the carrier, not to the replaced values)
-  out <- unclass(format_BF(BF, logBF = logBF, BF01 = BF01, inclusion = inclusion))
+  out <- format_BF(BF, logBF = logBF, BF01 = BF01, inclusion = inclusion)
   if(logBF){
     out[] <- if(BF01) -log_BF else log_BF
   }else if(BF01){
@@ -324,34 +323,16 @@ BF_carrier_drop <- function(x){
   out
 }
 
-# A replaced element is an exact value: its bound operator is reset (new
-# elements have none).
-.BF_bound_after_replace <- function(out, bound, x, i){
-
-  if(is.null(bound)){
-    return(out)
-  }
-  replaced <- if(missing(i)) seq_along(x) else unname(stats::setNames(seq_along(x), names(x))[i])
-  bound <- c(bound, rep(NA_character_, max(0L, length(out) - length(bound))))
-  bound[replaced[!is.na(replaced)]] <- NA_character_
-  attr(out, "bound_operator") <- bound
-  out
-}
-
 #' @export
 `[<-.BayesTools_BF` <- function(x, i, ..., value){
 
-  bound <- attr(x, "bound_operator", exact = TRUE)
-  out <- NextMethod("[<-")
-  .BF_carrier_drop(.BF_bound_after_replace(out, bound, x, i))
+  .BF_carrier_drop(NextMethod("[<-"))
 }
 
 #' @export
 `[[<-.BayesTools_BF` <- function(x, i, ..., value){
 
-  bound <- attr(x, "bound_operator", exact = TRUE)
-  out <- NextMethod("[[<-")
-  .BF_carrier_drop(.BF_bound_after_replace(out, bound, x, i))
+  .BF_carrier_drop(NextMethod("[[<-"))
 }
 
 #' @export
