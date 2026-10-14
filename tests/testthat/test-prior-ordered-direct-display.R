@@ -839,3 +839,40 @@ test_that("a constant transformation turns every ordered level into one atom", {
     expect_equal(level$diagnostics$continuous_mass, .5)
   }
 })
+
+test_that("the atoms of an ordered total follow from its structure", {
+
+  point <- prior("point", list(1))
+  normal <- prior("normal", list(0, 1))
+  expect_true(.density.prior_ordered_total_has_atoms(point))
+  expect_true(.density.prior_ordered_total_has_atoms(prior_none()))
+  expect_true(.density.prior_ordered_total_has_atoms(prior("bernoulli", list(.5))))
+  expect_true(.density.prior_ordered_total_has_atoms(prior_spike_and_slab(normal)))
+  expect_true(.density.prior_ordered_total_has_atoms(prior_mixture(list(normal, point))))
+  expect_false(.density.prior_ordered_total_has_atoms(normal))
+  expect_false(.density.prior_ordered_total_has_atoms(prior("gamma", list(2, 1))))
+  expect_false(.density.prior_ordered_total_has_atoms(prior_mixture(list(normal, prior("gamma", list(2, 1))))))
+})
+
+test_that("an ordered prior with a continuous total is displayed on a narrow range without building its total grid", {
+
+  data <- data.frame(f = ordered(rep(c("a", "b", "c", "d"), 3L), levels = c("a", "b", "c", "d")))
+  p <- JAGS_formula(~f, "mu", data, list(intercept = prior("normal", list(0, 1)),
+    f = prior_ordered(prior("normal", list(0, 1)), allocation = prior("dirichlet", list(c(5, 5, 5))))))$prior_list$mu_f
+
+  # the heights at points shared with a wide display range (the display
+  # points -2e-6, 0, 2e-6 are points 500 to 502 of the wide grid)
+  wide   <- density(p, x_range = c(-1e-3, 1e-3), n_points = 1001L)
+  narrow <- density(p, x_range = c(-2e-6, 2e-6), n_points = 3L)
+  expect_identical(names(narrow), names(wide))
+  for(level in 2:4){
+    expect_equal(narrow[[level]]$y, wide[[level]]$y[500:502], tolerance = 1e-10)
+  }
+
+  # a range far narrower than the display spacing of the total returns the
+  # level heights, finite and positive
+  extreme <- density(p, x_range = c(-1e-6, 1e-6))
+  for(level in 2:4){
+    expect_true(all(is.finite(extreme[[level]]$y)) && all(extreme[[level]]$y > 0))
+  }
+})

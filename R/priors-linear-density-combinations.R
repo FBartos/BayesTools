@@ -508,6 +508,9 @@
   dist
 }
 
+# The numerical distribution of an ordered total at the spacing 'dx'; a
+# missing 'dx' is the total's own resolution (the default grid of its range,
+# as for any linear combination).
 .prior_ordered_total_linear_distribution <- function(total, dx, n_grid,
                                                       tail_prob){
 
@@ -517,11 +520,25 @@
     weights = c(.ordered_total = 1),
     indices = 1L
   )
+  source_transforms <- c(.ordered_total = NA_character_)
+  if(!is.finite(dx)){
+    total_range <- .prior_linear_group_range(total_group, tail_prob, source_transforms)
+    resolution <- .prior_linear_density_resolution(
+      width  = diff(total_range),
+      n_grid = n_grid,
+      scale  = .prior_linear_group_robust_scale(total_group, source_transforms)
+    )
+    n_grid <- resolution$n_grid
+    dx     <- resolution$dx
+    if(!is.finite(dx) || dx <= 0){
+      dx <- 1
+    }
+  }
   .prior_linear_group_distribution(
     group = total_group,
     dx = dx,
     tail_prob = tail_prob,
-    source_transforms = c(.ordered_total = NA_character_),
+    source_transforms = source_transforms,
     n_grid = n_grid
   )
 }

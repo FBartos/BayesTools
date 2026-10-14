@@ -437,19 +437,41 @@ density.prior <- function(x,
   bounds
 }
 
+# Whether an ordered total has atoms by its structure: a point (or none)
+# prior, a discrete prior, a spike-and-slab prior (its spike), or a mixture
+# with such a component, recursively. A continuous total has none, whatever
+# its parameters.
+.density.prior_ordered_total_has_atoms <- function(total){
+
+  if(is.prior.point(total) || is.prior.none(total) || is.prior.discrete(total) ||
+     is.prior.spike_and_slab(total)){
+    return(TRUE)
+  }
+
+  is.prior.mixture(total) &&
+    any(vapply(total, .density.prior_ordered_total_has_atoms, logical(1)))
+}
+
 .density.prior.ordered_mixed <- function(x, x_seq, x_range, n_points,
                                          n_samples, force_samples,
                                          transformation,
                                          transformation_arguments){
 
   x <- .prior_ordered_default_bound(x)
+  # whether the total has atoms follows from its structure: a continuous total
+  # has no mixed measure, and no numerical distribution of it is built to find out
+  if(!.density.prior_ordered_total_has_atoms(x$total)){
+    return(NULL)
+  }
   target_dx <- diff(range(x_seq)) / max(1, length(x_seq) - 1L)
   if(!is.finite(target_dx) || target_dx <= 0){
     target_dx <- NA_real_
   }
+  # the total at its own resolution (its default grid), not at the display
+  # spacing: the cost of the display spacing grows like 1 / dx
   total <- .prior_ordered_total_linear_distribution(
     total = x$total,
-    dx = target_dx,
+    dx = NA_real_,
     n_grid = n_points,
     tail_prob = .prior_linear_density_tail_prob()
   )
