@@ -18,7 +18,9 @@
 #' is summarized over its defined draws and a table footnote reports their
 #' share, e.g., "summarized over k of n draws where the correlation is
 #' defined, i.e. both SDs are positive". Any other missing draw is an error.
-#' @param inference model inference created by [ensemble_inference]
+#' @param inference model inference created by [ensemble_inference].
+#' \code{ensemble_inference_table()} refuses conditional inference, of the
+#' whole object or of any of its parameters.
 #' @param parameters character vector of parameters (or a
 #' named list with of character vectors for summary and
 #' diagnostics tables) specifying the parameters
@@ -396,7 +398,7 @@ ensemble_inference_table <- function(inference, parameters, logBF = FALSE, BF01 
     check_bool(conditional, "attr(inference, \"conditional\")", allow_NA = FALSE)
   }
   if(isTRUE(conditional))
-    stop("The inference object cannot be 'conditional'.")
+    stop("The inference object cannot be 'conditional'.", call. = FALSE)
 
   # extract values
   inference_table <- NULL
@@ -404,6 +406,10 @@ ensemble_inference_table <- function(inference, parameters, logBF = FALSE, BF01 
   log_BF          <- NULL
   for(parameter in parameters){
     parameter_inference <- inference[[parameter]]
+    # the inference of a parameter keeps its own 'conditional' attribute (a
+    # subset of an ensemble_inference() result has lost the outer one)
+    if(isTRUE(attr(parameter_inference, "conditional", exact = TRUE)))
+      stop("The inference object cannot be 'conditional'.", call. = FALSE)
     if(inherits(parameter_inference, "inference") ||
        !is.null(attr(parameter_inference, "model_probability_declaration", exact = TRUE))){
       .model_probability_inference_get(parameter_inference, "prior")

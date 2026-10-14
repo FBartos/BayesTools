@@ -177,7 +177,9 @@ fitted design does. For
 \code{runjags_estimates_table}, this is automatically extracted from
 the fit object's \code{formula_scale} attribute.}
 
-\item{inference}{model inference created by \link{ensemble_inference}}
+\item{inference}{model inference created by \link{ensemble_inference}.
+\code{ensemble_inference_table()} refuses conditional inference, of the
+whole object or of any of its parameters.}
 
 \item{logBF}{whether the Bayes factor should be on log scale. When model
 inference objects store log-space inclusion Bayes factors, log-scale

@@ -2279,6 +2279,61 @@ test_that("ensemble inference table reports exact inclusion probability algebra"
   )
 })
 
+test_that("ensemble inference tables refuse conditional inference of a parameter", {
+
+  message <- "The inference object cannot be 'conditional'."
+  models <- lapply(0:1, function(value){
+    list(marglik = .bt_marglik_manual_result(value), prior_weights = 1)
+  })
+  conditional <- compute_inference(
+    prior_weights = c(1, 1), margliks = c(0, 1),
+    is_null = c(TRUE, FALSE), conditional = TRUE
+  )
+  unconditional <- compute_inference(
+    prior_weights = c(1, 1), margliks = c(0, 1),
+    is_null = c(TRUE, FALSE), conditional = FALSE
+  )
+  expect_true(attr(conditional, "conditional"))
+
+  # a hand-built list without the outer attribute
+  expect_error(
+    ensemble_inference_table(list(theta = conditional), "theta"),
+    message,
+    fixed = TRUE
+  )
+  # a conditional ensemble_inference() result, whole and subset (`[` drops the
+  # outer attribute of a list)
+  inference <- ensemble_inference(
+    models, c("theta", "beta"),
+    list(theta = c(TRUE, FALSE), beta = c(FALSE, TRUE)),
+    conditional = TRUE
+  )
+  expect_true(attr(inference, "conditional"))
+  expect_error(ensemble_inference_table(inference, "theta"), message, fixed = TRUE)
+  expect_null(attr(inference["theta"], "conditional"))
+  expect_error(ensemble_inference_table(inference["theta"], "theta"), message, fixed = TRUE)
+  expect_error(
+    ensemble_inference_table(list(theta = unconditional, beta = conditional), c("theta", "beta")),
+    message,
+    fixed = TRUE
+  )
+
+  # unconditional inference is reported as before: prior .5, posterior
+  # exp(1) / (1 + exp(1)), Bayes factor exp(1)
+  table <- ensemble_inference_table(list(theta = unconditional), "theta")
+  expect_equal(table$prior_prob, 0.5)
+  expect_equal(table$post_prob, exp(1) / (1 + exp(1)), tolerance = 1e-12)
+  expect_equal(as.numeric(table$inclusion_BF), exp(1), tolerance = 1e-12)
+  unconditional_ensemble <- ensemble_inference(
+    models, "theta", list(theta = c(TRUE, FALSE)), conditional = FALSE
+  )
+  expect_equal(
+    as.numeric(ensemble_inference_table(unconditional_ensemble, "theta")$inclusion_BF),
+    exp(1),
+    tolerance = 1e-12
+  )
+})
+
 test_that("ensemble summary and diagnostics tables preserve model alignment", {
 
   models <- list(
