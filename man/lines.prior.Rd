@@ -104,6 +104,11 @@ plot when one is available.}
 \description{
 Add prior object to a plot
 }
+\details{
+For ordered and Dirichlet simplex priors, \code{show_parameter} is
+a single figure between 1 and the number of figures; other values stop with
+an error. The default draws the default selection of \code{\link[=plot.prior]{plot.prior()}}.
+}
 \seealso{
 \code{\link[=plot.prior]{plot.prior()}} \code{\link[=geom_prior]{geom_prior()}}
 }

@@ -101,7 +101,10 @@ individual omegas, and the display y range is `c(0, max(finite y))`
 any finite ordinate gives a classed error with the remedy `x_seq`; any other
 direct continuous curve gives the same class with the remedy `xlim`.
 Direct prior selectors retain original level numbering; explicit selectors
-can select the reference. Multiple ordered ggplot selections return positional
+can select the reference. `show_figures` of ordered and simplex plots holds
+non-zero indices of one sign within the number of figures (validated before any
+indexing); `show_parameter` of the `lines()` and `geom_prior()` overlays one
+positive index. Multiple ordered ggplot selections return positional
 lists with NULL holes for unselected figures, including the default reference,
 and one explicit selection returns a ggplot. Factor overlays omit persisted
 zero-design references and carry `factor_level_universe`, so styles and labels

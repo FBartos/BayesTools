@@ -19,6 +19,10 @@
 #'
 #' @return \code{lines.prior} returns \code{NULL}.
 #'
+#' @details For ordered and Dirichlet simplex priors, \code{show_parameter} is
+#' a single figure between 1 and the number of figures; other values stop with
+#' an error. The default draws the default selection of [plot.prior()].
+#'
 #' @seealso [plot.prior()] [geom_prior()]
 #' @rdname lines.prior
 #' @export
@@ -59,6 +63,9 @@ lines.prior <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
                        n_points = n_points, n_samples = n_samples, force_samples = force_samples,
                        transformation = transformation, transformation_arguments = transformation_arguments,
                        transformation_settings = transformation_settings, individual = individual)
+  if(is.prior.ordered(x) || is.prior.simplex(x)){
+    .prior_check_figure_index(show_parameter, length(plot_data), "show_parameter", select_one = TRUE)
+  }
   selected <- if(is.prior.ordered(x) || is.prior.simplex(x)){
     if(is.null(show_parameter)){
       if(is.prior.ordered(x)) .plot_ordered_prior_default_figures(x) else seq_along(plot_data)
@@ -246,6 +253,7 @@ geom_prior  <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
   }
 
   if(is.prior.ordered(x) || is.prior.simplex(x)){
+    .prior_check_figure_index(show_parameter, length(plot_data), "show_parameter", select_one = TRUE)
     selected <- if(is.null(show_parameter)){
       if(is.prior.ordered(x)) .plot_ordered_prior_default_figures(x) else seq_along(plot_data)
     }else{

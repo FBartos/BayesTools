@@ -121,7 +121,10 @@ ggplot is returned only when exactly one figure is selected; a selection of
 several figures always returns a positional list, even if one figure is visible. For an
 ordered level with mixed probability measure, the continuous density and
 exact probability-mass arrows are drawn together without rescaling either
-component.
+component. For ordered and Dirichlet simplex priors, \code{show_figures}
+holds non-zero integers within the number of figures that are all positive
+(select) or all negative (omit); other values stop with an error before any
+figure is drawn. Individual weight functions take a single figure.
 }
 \description{
 Plots a prior object

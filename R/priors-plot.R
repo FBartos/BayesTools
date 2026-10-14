@@ -64,7 +64,10 @@
 #' several figures always returns a positional list, even if one figure is visible. For an
 #' ordered level with mixed probability measure, the continuous density and
 #' exact probability-mass arrows are drawn together without rescaling either
-#' component.
+#' component. For ordered and Dirichlet simplex priors, \code{show_figures}
+#' holds non-zero integers within the number of figures that are all positive
+#' (select) or all negative (omit); other values stop with an error before any
+#' figure is drawn. Individual weight functions take a single figure.
 #'
 #' @details Ordered prior plots retain the continuous density of every
 #' non-reference level, including priors with an infinite density at an exact
@@ -104,7 +107,8 @@ plot.prior <- function(x, plot_type = "base",
   check_char(plot_type, "plot_type", allow_values = c("base", "ggplot"))
   check_bool(individual, "individual")
   check_bool(rescale_x, "rescale_x")
-  check_int(show_figures, "show_figures", allow_NULL = TRUE)
+  # ordered and simplex priors select several figures, others a single one
+  check_int(show_figures, "show_figures", check_length = if(is.prior.ordered(x) || is.prior.simplex(x)) 0 else 1, allow_NULL = TRUE)
 
   # spike-and-slab priors are mixtures whose components carry unit weights;
   # plot them with the inclusion probability
@@ -220,6 +224,7 @@ plot.prior <- function(x, plot_type = "base",
 
   # ordered factor prior plots
   if(is.prior.ordered(x)){
+    .prior_check_figure_index(show_figures, length(plot_data), "show_figures")
     selected <- if(is.null(show_figures)) .plot_ordered_prior_default_figures(x) else seq_along(plot_data)[show_figures]
     plot_data <- .plot_data_ordered_prior_display(plot_data, selected)
     plots <- .plot.prior.simplex(x = x, plot_type = plot_type, plot_data = plot_data, show_figures = show_figures, par_name = par_name, ...)
@@ -242,6 +247,7 @@ plot.prior <- function(x, plot_type = "base",
 
   # simplex prior plots
   if(is.prior.simplex(x)){
+    .prior_check_figure_index(show_figures, length(plot_data), "show_figures")
     plots <- .plot.prior.simplex(x = x, plot_type = plot_type, plot_data = plot_data, show_figures = show_figures, par_name = par_name, ...)
     if(plot_type == "ggplot"){
       return(plots)
@@ -364,6 +370,37 @@ plot.prior_linear_density <- function(x, plot_type = "base", n_points = 1000, xl
       "'", name, "' must be ",
       if(select_one) paste0("between 1 and ", n_weights) else paste0("between -", n_weights, " and ", n_weights, ", excluding 0,"),
       " for a weight function with ", n_weights, " publication weights.",
+      call. = FALSE
+    )
+  }
+
+  invisible(TRUE)
+}
+
+# The figure selections of ordered and simplex prior plots are validated against
+# the number of figures before any indexing: 'show_figures' holds non-zero
+# indices of one sign (negative indices omit figures) within the number of
+# figures, the overlays of lines() and geom_prior() one positive index.
+.prior_check_figure_index <- function(index, n_figures, name, select_one = FALSE){
+
+  if(is.null(index)){
+    return(invisible(TRUE))
+  }
+  valid <- if(select_one){
+    length(index) == 1L && !is.na(index) && index >= 1 && index <= n_figures
+  }else{
+    length(index) >= 1L && !anyNA(index) && all(index != 0) &&
+      (all(index > 0) || all(index < 0)) && all(abs(index) <= n_figures)
+  }
+  if(!valid){
+    stop(
+      "'", name, "' must be ",
+      if(select_one){
+        paste0("a single index between 1 and ", n_figures)
+      }else{
+        paste0("between -", n_figures, " and ", n_figures, ", excluding 0, with all indices of one sign,")
+      },
+      " for a prior with ", n_figures, " figures.",
       call. = FALSE
     )
   }

@@ -1012,3 +1012,65 @@ test_that("orthonormal and mean-difference prior plots accept a par_name", {
     }
   }
 })
+
+test_that("ordered and simplex prior plots accept and validate multiple figure selections", {
+
+  grDevices::pdf(NULL)
+  on.exit(grDevices::dev.off(), add = TRUE)
+  ordered <- prior_ordered(prior("normal", list(0, .5)), allocation = c(.2, .3, .5))
+  attr(ordered, "levels") <- 4L
+  attr(ordered, "level_names") <- c("early", "middle", "late", "last")
+  ordered <- BayesTools:::.prior_ordered_default_bound(ordered, "mu_f")
+  simplex <- prior("dirichlet", list(alpha = c(2, 2, .5)))
+  holes <- function(figures) vapply(figures, is.null, logical(1))
+  message_for <- function(name, n) paste0("'", name, "' must be between -", n, " and ", n,
+    ", excluding 0, with all indices of one sign, for a prior with ", n, " figures.")
+
+  for(case in list(list(prior = ordered, n = 4L, default = 2:4), list(prior = simplex, n = 3L, default = 1:3))){
+    prior_i <- case$prior
+    n <- case$n
+
+    # scalar selections are unchanged
+    expect_s3_class(plot(prior_i, show_figures = 2L, plot_type = "ggplot", n_points = 33L), "ggplot")
+
+    # several figures return the documented positional list
+    figures <- plot(prior_i, show_figures = c(2L, 3L), plot_type = "ggplot", n_points = 33L)
+    expect_length(figures, 3L)
+    expect_identical(holes(figures), c(TRUE, FALSE, FALSE))
+    expect_s3_class(figures[[2L]], "ggplot")
+    expect_s3_class(figures[[3L]], "ggplot")
+    expect_no_error(plot(prior_i, show_figures = c(2L, 3L), n_points = 33L))
+
+    # negative selections omit figures
+    figures <- plot(prior_i, show_figures = -2L, plot_type = "ggplot", n_points = 33L)
+    expect_length(figures, n)
+    expect_identical(holes(figures), seq_len(n) == 2L)
+
+    # invalid selections are refused before any indexing
+    for(selection in list(n + 2L, 0L, c(1L, n + 2L), c(-1L, 2L), NA_integer_)){
+      expect_error(plot(prior_i, show_figures = selection, plot_type = "ggplot", n_points = 33L),
+        message_for("show_figures", n), fixed = TRUE)
+      expect_error(plot(prior_i, show_figures = selection, n_points = 33L),
+        message_for("show_figures", n), fixed = TRUE)
+    }
+
+    # the overlays take a single positive index within the number of figures
+    plot(prior_i, show_figures = 2L, n_points = 33L)
+    base_plot <- plot(prior_i, show_figures = 2L, plot_type = "ggplot", n_points = 33L)
+    expect_no_error(lines(prior_i, show_parameter = 2L, n_points = 33L))
+    expect_no_error(base_plot + geom_prior(prior_i, show_parameter = 2L, n_points = 33L))
+    for(selection in list(n + 2L, 0L, -1L)){
+      expect_error(lines(prior_i, show_parameter = selection, n_points = 33L),
+        paste0("'show_parameter' must be a single index between 1 and ", n, " for a prior with ", n, " figures."), fixed = TRUE)
+      expect_error(geom_prior(prior_i, show_parameter = selection, n_points = 33L),
+        paste0("'show_parameter' must be a single index between 1 and ", n, " for a prior with ", n, " figures."), fixed = TRUE)
+    }
+    expect_error(lines(prior_i, show_parameter = c(2L, 3L), n_points = 33L), "must have length '1'", fixed = TRUE)
+    expect_error(geom_prior(prior_i, show_parameter = c(2L, 3L), n_points = 33L), "must have length '1'", fixed = TRUE)
+  }
+
+  # individual weight-function selections keep their scalar check
+  weights <- prior_weightfunction("one-sided", .05, wf_cumulative(c(1, 1)))
+  expect_error(plot(weights, individual = TRUE, show_figures = c(1L, 2L)), "must have length '1'", fixed = TRUE)
+  expect_no_error(plot(weights, individual = TRUE, show_figures = 2L))
+})
