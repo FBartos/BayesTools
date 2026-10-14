@@ -2481,10 +2481,10 @@ test_that("plot_prior_list keeps retained components paired with their weights",
     plot_type = "ggplot",
     n_samples = 10000
   )
-  point_data <- point_plot$layers[[1]]$data
+  atoms <- do.call(rbind, lapply(point_plot$layers, function(layer) layer$data))
 
-  expect_equal(point_data$x, 0)
-  expect_equal(point_data$yend, .9999)
+  expect_equal(atoms$x[order(atoms$x)], c(0, 100))
+  expect_equal(atoms$yend[order(atoms$x)], c(.9999, 1e-4))
 
   continuous_priors <- list(
     prior("normal", list(100, 1), prior_weights = 1),
@@ -2501,7 +2501,86 @@ test_that("plot_prior_list keeps retained components paired with their weights",
 
   expect_equal(density_data$x[which.max(density_data$y)], 0)
   expect_equal(max(density_data$y), stats::dnorm(0) * .9999, tolerance = 1e-10)
-  expect_equal(.model_plot_density_mass(density_data), .9999, tolerance = 1e-5)
+  expect_equal(density_data$y[density_data$x == 100], stats::dnorm(0) * 1e-4, tolerance = 1e-10)
+  expect_equal(.model_plot_density_mass(density_data), 1, tolerance = 1e-5)
+
+  # sampled components keep the draw floor, so only the retained component is
+  # drawn and it stays paired with its own weight
+  sampled_plot <- suppressWarnings(plot_prior_list(
+    point_priors,
+    plot_type = "ggplot",
+    force_samples = TRUE,
+    n_samples = 10000
+  ))
+  sampled_data <- sampled_plot$layers[[1]]$data
+
+  expect_length(sampled_plot$layers, 1)
+  expect_equal(sampled_data$x, 0)
+  expect_equal(sampled_data$yend, .9999)
+})
+
+test_that("analytic prior-list plots keep every positive-weight component and atom", {
+
+  grid <- seq(-4, 4, length.out = 101)
+
+  # a 90% Normal and a 10% point mass with a sampling budget of ten draws
+  mixture <- list(
+    prior("normal", list(0, 1), prior_weights = 9),
+    prior("point", list(2), prior_weights = 1)
+  )
+  data <- .plot_data_prior_list.simple(mixture, grid, c(-4, 4), NULL, 101, 10, FALSE, FALSE, NULL, NULL, FALSE)
+  expect_named(data, c("density", "points1"))
+  expect_equal(data$points1$x, 2)
+  expect_equal(data$points1$y, .1)
+  expect_equal(data$density$y, .9 * stats::dnorm(data$density$x))
+  expect_equal(.model_plot_density_mass(data$density) + data$points1$y, 1, tolerance = 1e-4)
+
+  # a spike of mass 1e-4 next to a Normal is drawn at the default budget
+  spike <- list(
+    prior("normal", list(0, 1), prior_weights = 9999),
+    prior("spike", list(1), prior_weights = 1)
+  )
+  data <- .plot_data_prior_list.simple(spike, grid, c(-4, 4), NULL, 101, 10000, FALSE, FALSE, NULL, NULL, FALSE)
+  expect_named(data, c("density", "points1"))
+  expect_equal(data$points1$x, 1)
+  expect_equal(data$points1$y, 1e-4)
+  plot <- plot_prior_list(spike, plot_type = "ggplot", xlim = c(-4, 4))
+  segments <- plot$layers[vapply(plot$layers, function(layer) inherits(layer$geom, "GeomSegment"), logical(1))]
+  expect_length(segments, 1)
+  expect_equal(segments[[1]]$data$x, 1)
+
+  # the sampling budget does not matter for an analytic density
+  normal <- list(prior("normal", list(0, 1)))
+  grDevices::pdf(NULL)
+  on.exit(grDevices::dev.off(), add = TRUE)
+  for(plot_type in c("base", "ggplot")){
+    expect_no_error(plot_prior_list(normal, plot_type = plot_type, n_samples = 1))
+  }
+  data <- .plot_data_prior_list.simple(normal, grid, c(-4, 4), NULL, 101, 1, FALSE, FALSE, NULL, NULL, FALSE)
+  expect_equal(data$density$y, stats::dnorm(data$density$x))
+  plot(0, xlim = c(-3, 3), ylim = c(0, 1))
+  expect_no_error(lines_prior_list(normal, n_samples = 1))
+  overlay <- ggplot2::ggplot() + geom_prior_list(normal, n_samples = 1)
+  expect_equal(overlay$layers[[1]]$data$y, stats::dnorm(overlay$layers[[1]]$data$x))
+})
+
+test_that("sampled prior-list plots need a draw budget and stop clearly without one", {
+
+  normal <- list(prior("normal", list(0, 1)))
+
+  expect_error(
+    plot_prior_list(normal, n_samples = 1, force_samples = TRUE),
+    "No prior in 'prior_list' receives more than one draw",
+    fixed = TRUE
+  )
+  expect_error(
+    plot_prior_list(normal, n_samples = 1, force_samples = TRUE),
+    "force_samples = FALSE",
+    fixed = TRUE
+  )
+  data <- .plot_data_prior_list.simple(normal, NULL, c(-4, 4), NULL, 101, 2, TRUE, FALSE, NULL, NULL, FALSE)
+  expect_s3_class(data$density, "density.prior.simple")
+  expect_equal(length(data$density$samples), 2)
 })
 
 test_that("factor ggplot prior point layers use point plot data", {

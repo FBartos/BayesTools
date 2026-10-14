@@ -118,6 +118,9 @@ Individual omega plots consume producer-owned scalar atom/support declarations,
 including empty and unknown marginals, and never recover atom masses from prior
 shares or allocated draw counts. Transformed unsupported scalar prior overlays
 raise the existing prior-density limitation.
+Analytic prior-list plots (`force_samples = FALSE`) keep every positive-weight
+component and atom and do not use `n_samples`; only sampled components that
+receive fewer than two draws are dropped.
 Prior mixtures bind the common original source knots after component drops,
 with exact x/y/Jacobian correspondence and unchanged component weights and atoms.
 Approximate named tanh display grids retain tied finite rounded image knots with

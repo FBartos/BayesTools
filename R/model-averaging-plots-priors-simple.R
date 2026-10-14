@@ -43,14 +43,28 @@
   prior_weights  <- sapply(prior_list, .prior_model_weight)
   mixing_prop    <- prior_weights / sum(prior_weights)
 
-  keep_components <- round(n_samples * mixing_prop) > 1
+  # The analytic route keeps every positive-weight component and atom and does
+  # not use the sampling budget. Only sampled components need draws of their
+  # own: a component below two draws is not drawn.
+  keep_components <- is.finite(mixing_prop) & mixing_prop > 0
+  if(force_samples){
+    keep_components <- keep_components & round(n_samples * mixing_prop) > 1
+  }
+  if(!any(keep_components)){
+    stop(if(force_samples){
+      "No prior in 'prior_list' receives more than one draw: increase 'n_samples' or plot the analytic densities with 'force_samples = FALSE'."
+    }else{
+      "No prior in 'prior_list' has a positive prior weight."
+    }, call. = FALSE)
+  }
   prior_list       <- prior_list[keep_components]
   mixing_prop      <- mixing_prop[keep_components]
 
   plot_data <- list()
   for(i in seq_along(prior_list)){
     plot_data[[i]] <- density(prior_list[[i]], x_seq = x_seq, x_range = x_range, x_range_quant = x_range_quant,
-                              n_points = n_points, n_samples = round(n_samples * mixing_prop[i]), force_samples = force_samples,
+                              n_points = n_points, n_samples = if(force_samples) round(n_samples * mixing_prop[i]) else n_samples,
+                              force_samples = force_samples,
                               transformation = transformation, transformation_arguments = transformation_arguments,
                               transformation_settings = transformation_settings, individual = individual, truncate_end = FALSE)
   }
