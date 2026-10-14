@@ -19,6 +19,26 @@ test_that("empty public measure refusal tables clear metadata after validation",
   expect_identical(serialize(x, NULL), original)
 })
 
+test_that("the cause of an expression prior is a declared measure cause", {
+  expect_true("expression_prior_law_unavailable" %in% .bt_formula_measure_causes)
+  x <- c(1, 2); attr(x, "parameter") <- "theta"
+  table <- data.frame(column = "theta", measure = "prior_density",
+    reason = "its prior has parameter expressions", cause = "expression_prior_law_unavailable")
+  posterior_metadata(x, "measure_unavailable") <- table
+  expect_identical(posterior_metadata(x, "measure_unavailable"), table)
+  refusal <- tryCatch(posterior_measure_check(x, "prior_density"), error = identity)
+  expect_s3_class(refusal, "BayesTools_formula_prior_density_unavailable")
+  expect_s3_class(refusal, "BayesTools_formula_measure_unavailable")
+  expect_identical(refusal$reason, "expression_prior_law_unavailable")
+  # the other measures of the column are not affected
+  expect_true(posterior_measure_check(x, "atoms"))
+  expect_true(posterior_measure_check(x, "support"))
+  # an undeclared cause is still refused
+  invalid <- table
+  invalid$cause <- "expression_prior_law"
+  expect_error(posterior_metadata(x, "measure_unavailable") <- invalid, "is invalid", fixed = TRUE)
+})
+
 test_that("affine hypothesis row recipes follow every selected draw", {
   x <- .bt_meta_set(c(1, 2, 3), "hypothesis_evaluation", list(numerator = c(1, 2, 3), divisor = 1, weights = c(theta = 1), offset = 0))
   original <- .bt_meta_get(x, "hypothesis_evaluation")

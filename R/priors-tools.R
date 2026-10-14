@@ -305,6 +305,21 @@
 
   return(FALSE)
 }
+# Whether a prior, a model list of priors, or a mixture, spike-and-slab, or
+# factor-mixture prior has a parameter given as an expression (JAGS-only
+# support, no R-side prior law): any component of a mixture, and the total of
+# an ordered prior when the total has one (an ordered prior has no other
+# expression-valued parameter).
+.bt_prior_has_expression <- function(prior){
+
+  if(is.prior.ordered(prior)){
+    return(.bt_prior_has_expression(prior[["total"]]))
+  }
+  if(is.prior.mixture(prior) || (is.list(prior) && !is.prior(prior))){
+    return(any(vapply(prior, .bt_prior_has_expression, logical(1))))
+  }
+  is.prior(prior) && .is_prior_expression(prior)
+}
 .prior_expression_to_character <- function(prior){
   prior[["parameters"]] <- lapply(prior[["parameters"]], function(x){
     if(is.expression(x)){

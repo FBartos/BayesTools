@@ -1957,3 +1957,52 @@ test_that("numeric constants of the emitted JAGS syntax parse back to the declar
     c(beta$alpha, beta$beta)
   )
 })
+
+test_that("expression-valued priors are found in mixtures, factor priors, and ordered totals", {
+
+  expression_normal <- prior("normal", list(0, expression(tau)))
+  expression_point  <- prior("point", list(location = expression(2 * theta)))
+  numeric_normal    <- prior("normal", list(0, 1))
+  numeric_point     <- prior("point", list(location = 0.25))
+
+  # simple priors read their own parameters
+  expect_true(.bt_prior_has_expression(expression_normal))
+  expect_true(.bt_prior_has_expression(expression_point))
+  expect_false(.bt_prior_has_expression(numeric_normal))
+  expect_false(.bt_prior_has_expression(numeric_point))
+  expect_false(.bt_prior_has_expression(prior_none()))
+  expect_false(.bt_prior_has_expression(NULL))
+  expect_false(.bt_prior_has_expression(1))
+
+  # mixture, spike-and-slab, and model lists look at every component
+  expect_true(.bt_prior_has_expression(prior_mixture(
+    list(numeric_normal, expression_point), is_null = c(FALSE, FALSE))))
+  expect_false(.bt_prior_has_expression(prior_mixture(
+    list(numeric_normal, numeric_point), is_null = c(FALSE, FALSE))))
+  expect_true(.bt_prior_has_expression(prior_spike_and_slab(
+    expression_normal, prior("spike", list(0.5)))))
+  expect_false(.bt_prior_has_expression(prior_spike_and_slab(
+    numeric_normal, prior("spike", list(0.5)))))
+  expect_true(.bt_prior_has_expression(list(numeric_normal, expression_normal)))
+  expect_false(.bt_prior_has_expression(list(numeric_normal, numeric_point)))
+
+  # factor priors, factor mixtures, and factor spike-and-slab priors
+  factor_expression <- prior_factor("mnormal", list(0, expression(tau)), contrast = "meandif")
+  factor_numeric    <- prior_factor("mnormal", list(0, 1), contrast = "meandif")
+  expect_true(.bt_prior_has_expression(factor_expression))
+  expect_false(.bt_prior_has_expression(factor_numeric))
+  expect_true(.bt_prior_has_expression(prior_mixture(
+    list(factor_expression, factor_numeric), is_null = c(FALSE, FALSE))))
+  expect_true(.bt_prior_has_expression(prior_spike_and_slab(
+    factor_expression, prior("spike", list(0.5)))))
+  expect_false(.bt_prior_has_expression(prior_mixture(
+    list(factor_numeric, factor_numeric), is_null = c(FALSE, FALSE))))
+
+  # an ordered prior has an expression exactly when its total has one
+  expect_true(.bt_prior_has_expression(prior_ordered(expression_point)))
+  expect_true(.bt_prior_has_expression(prior_ordered(expression_normal)))
+  expect_true(.bt_prior_has_expression(prior_ordered(prior_spike_and_slab(
+    expression_normal, prior("spike", list(0.5))))))
+  expect_false(.bt_prior_has_expression(prior_ordered(numeric_normal)))
+  expect_false(.bt_prior_has_expression(prior_ordered(numeric_point, allocation = c(.25, .25, .5))))
+})
