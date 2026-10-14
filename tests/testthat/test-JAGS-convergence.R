@@ -1307,6 +1307,68 @@ test_that("the JAGS syntax graph reads whole statements", {
     ),
     c(FALSE, FALSE, TRUE, TRUE, TRUE, FALSE, TRUE)
   )
+
+  # The two-character operators are single tokens: a comparison is part of
+  # the right-hand side of its '<-' statement, never a relation of its own.
+  expect_identical(
+    BayesTools:::.bt_jags_syntax_tokens("a <- b <= c >= d == e != f && g || h < -1"),
+    c("a", "<-", "b", "<=", "c", ">=", "d", "==", "e", "!=", "f", "&&", "g",
+      "||", "h", "<", "-", "1")
+  )
+  comparison_graph <- function(statement, extra = ""){
+    BayesTools:::.bt_jags_syntax_graph(paste0(
+      "model{\n  theta ~ dnorm(0, 1)\n  ", statement, "\n", extra, "}"
+    ))
+  }
+  for(statement in c(
+    "flag <- theta == 0.25", "flag <- 0.25 == theta", "flag <- theta != 0",
+    "flag <- 0 != theta", "flag <- theta >= 0", "flag <- 0 >= theta",
+    "flag <- theta <= 0", "flag <- 0 <= theta",
+    "flag <- (theta >= 0) && (theta <= 1)", "flag <- (theta > 0) || (theta == -1)"
+  )){
+    graph <- comparison_graph(statement)
+    expect_identical(graph$stochastic, "theta")
+    expect_identical(names(graph$deterministic), "flag")
+    expect_setequal(graph$deterministic$flag, "theta")
+  }
+  # A lone '=' on the left of a comparison stays a relation, and an indexed
+  # data operand of a comparison does not become a node of its own.
+  graph <- comparison_graph("flag <- x[1] == theta", "  xm <- 2 * x[1]\n  r = theta\n")
+  expect_setequal(names(graph$deterministic), c("flag", "xm", "r"))
+  expect_setequal(graph$deterministic$flag, c("x", "theta"))
+  expect_identical(graph$deterministic$xm, "x")
+  expect_identical(graph$deterministic$r, "theta")
+
+  # Convergence roles: a monitored comparison of a sampled node varies with
+  # it, and data compared with data stays structural.
+  roles <- function(statement, data_names = character(), extra = ""){
+    syntax <- paste0(
+      "model{\n  theta ~ dnorm(0, 1)\n  ", statement, "\n", extra, "}"
+    )
+    monitored <- c("flag", if(nzchar(extra)) "xm")
+    coordinates <- BayesTools:::.bt_build_parameter_coordinates(
+      columns = c("theta", monitored),
+      prior_list = list(theta = prior("normal", list(0, 1))),
+      add_parameters = monitored,
+      model_syntax = syntax,
+      data_names = data_names
+    )
+    stats::setNames(coordinates$convergence_role, coordinates$coordinate_name)
+  }
+  for(statement in c(
+    "flag <- theta == 0.25", "flag <- 0 <= theta", "flag <- theta != 0",
+    "flag <- 0 >= theta"
+  )){
+    expect_identical(roles(statement), c(theta = "sampled", flag = "sampled"))
+  }
+  expect_identical(
+    roles("flag <- x[1] == 2", data_names = "x"),
+    c(theta = "sampled", flag = "structural")
+  )
+  expect_identical(
+    roles("flag <- x[1] == theta", data_names = "x", extra = "  xm <- 2 * x[1]\n"),
+    c(theta = "sampled", flag = "sampled", xm = "structural")
+  )
 })
 
 test_that("formula monitors are sampled when stochastic and derived otherwise", {

@@ -1689,10 +1689,12 @@
   }
   text <- paste(model_syntax, collapse = "\n")
   text <- gsub("#[^\n]*", "", text)
+  # The two-character operators are single tokens, so only '<-', '~', and a
+  # lone '=' are relations ('<=', '>=', '==', and '!=' are comparisons).
   pattern <- paste0(
     "[A-Za-z][A-Za-z0-9._]*|",
     "[0-9]*[.]?[0-9]+(?:[eE][-+]?[0-9]+)?|",
-    "<-|[^[:space:]]"
+    "<-|<=|>=|==|!=|&&|[|][|]|[^[:space:]]"
   )
   tokens <- regmatches(text, gregexpr(pattern, text, perl = TRUE))[[1L]]
   tokens[nzchar(tokens)]
