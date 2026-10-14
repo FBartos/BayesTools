@@ -8132,13 +8132,18 @@ test_that("JAGS_extend works correctly", {
   # the fit saved by this run: the cache marker is written by the last block
   # of the file, so skip_if_no_fits() cannot be satisfied here
   skip_if_not(
-    "fit_simple_normal" %in% names(model_registry) &&
-      file.exists(file.path(temp_fits_dir, "fit_simple_normal.RDS")),
-    "The fit_simple_normal artifact of this run is missing."
+    "fit_formula_simple" %in% names(model_registry) &&
+      file.exists(file.path(temp_fits_dir, "fit_formula_simple.RDS")),
+    "The fit_formula_simple artifact of this run is missing."
   )
 
-  fit_simple <- readRDS(file.path(temp_fits_dir, "fit_simple_normal.RDS"))
-  formula_design <- attr(fit_simple, "formula_design", exact = TRUE)
+  # A formula fit: its design and parameter map are what an extension has to
+  # keep, and the draws it adds are counted over its chains.
+  fit_formula <- readRDS(file.path(temp_fits_dir, "fit_formula_simple.RDS"))
+  formula_design <- attr(fit_formula, "formula_design", exact = TRUE)
+  parameter_map  <- attr(fit_formula, "parameter_map", exact = TRUE)
+  expect_false(is.null(formula_design))
+  expect_false(is.null(parameter_map))
 
   # Test the extension mechanics without waiting on convergence precision targets.
   extend_control <- list(
@@ -8154,40 +8159,43 @@ test_that("JAGS_extend works correctly", {
 
   # Test extending a fitted model
   fit_extended <- JAGS_extend(
-    fit_simple,
+    fit_formula,
     autofit_control = extend_control,
     silent = TRUE
   )
 
   # Test extending a fitted model with parallel
   fit_extended2 <- JAGS_extend(
-    fit_simple,
+    fit_formula,
     autofit_control = extend_control,
     parallel = TRUE,
     cores = 2,
     silent = TRUE
   )
+  extended <- list(serial = fit_extended, parallel = fit_extended2)
 
-  # Check that the extended fit is still a BayesTools_fit
-  expect_true(inherits(fit_extended, "BayesTools_fit"))
-  expect_true(inherits(fit_extended, "runjags"))
-  expect_true(inherits(fit_extended2, "BayesTools_fit"))
-  expect_true(inherits(fit_extended2, "runjags"))
+  # Check that the extended fits are still BayesTools_fit runjags objects
+  expect_true(all(vapply(extended, inherits, logical(1), what = "BayesTools_fit")))
+  expect_true(all(vapply(extended, inherits, logical(1), what = "runjags")))
 
-  # Check that attributes are preserved
-  expect_true(!is.null(attr(fit_extended, "prior_list")))
-  expect_true(!is.null(attr(fit_extended, "model_syntax")))
-  expect_true(!is.null(attr(fit_extended2, "prior_list")))
-  expect_true(!is.null(attr(fit_extended2, "model_syntax")))
-  expect_identical(attr(fit_extended, "formula_design"), formula_design)
-  expect_identical(attr(fit_extended2, "formula_design"), formula_design)
+  # Check that attributes are preserved: the design and the parameter map
+  # identical to the fit's
+  expect_true(all(vapply(extended, function(fit) !is.null(attr(fit, "prior_list")), logical(1))))
+  expect_true(all(vapply(extended, function(fit) !is.null(attr(fit, "model_syntax")), logical(1))))
+  expect_identical(attr(fit_extended, "formula_design", exact = TRUE), formula_design)
+  expect_identical(attr(fit_extended2, "formula_design", exact = TRUE), formula_design)
+  expect_identical(attr(fit_extended, "parameter_map", exact = TRUE), parameter_map)
+  expect_identical(attr(fit_extended2, "parameter_map", exact = TRUE), parameter_map)
 
-  # Check that the extended fit has more samples
-  original_samples  <- nrow(suppressWarnings(coda::as.mcmc(fit_simple)))
-  extended_samples  <- nrow(suppressWarnings(coda::as.mcmc(fit_extended)))
-  extended_samples2 <- nrow(suppressWarnings(coda::as.mcmc(fit_extended2)))
-  expect_true(extended_samples  >= original_samples)
-  expect_true(extended_samples2 >= original_samples)
+  # Check the draws: one extension of sample_extend draws per chain, serially
+  # and in parallel
+  n_draws <- function(fit) nrow(suppressWarnings(coda::as.mcmc(fit)))
+  n_chains <- length(suppressWarnings(coda::as.mcmc.list(fit_formula)))
+  expected_draws <- n_draws(fit_formula) + n_chains * as.integer(extend_control$sample_extend)
+  expect_identical(
+    vapply(extended, n_draws, integer(1)),
+    c(serial = expected_draws, parallel = expected_draws)
+  )
 
 })
 
