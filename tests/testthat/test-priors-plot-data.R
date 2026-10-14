@@ -986,3 +986,29 @@ test_that("the point declaration of factor components uses the dimension of its 
   attr(other, "levels") <- 4L
   expect_false(.model_probability_point_declarations(list(list(point), list(sibling), list(other))))
 })
+
+test_that("orthonormal and mean-difference prior plots accept a par_name", {
+
+  grDevices::pdf(NULL)
+  on.exit(grDevices::dev.off(), add = TRUE)
+  x_label <- function(figure) paste(deparse(figure$scales$get_scales("x")$name), collapse = "")
+
+  for(contrast in c("orthonormal", "meandif")){
+    factor_prior <- prior_factor("mnormal", list(0, 1), contrast = contrast)
+    factor_prior$parameters$K <- 3
+
+    # the default label is unchanged
+    default <- plot(factor_prior, plot_type = "ggplot", n_points = 32L)
+    expect_match(x_label(default), "^\"dif\" \\* NULL ~ ", info = contrast)
+
+    # a character and a plotmath par_name give valid labels on both backends
+    for(par_name in list("theta", quote(mu), quote(beta[1]))){
+      figure <- plot(factor_prior, par_name = par_name, plot_type = "ggplot", n_points = 32L)
+      expect_s3_class(figure, "ggplot")
+      expect_true(startsWith(x_label(figure), paste0("\"dif\" * (\" \" * ", deparse(par_name), " ~ \"~\") ~ ")),
+        info = paste(contrast, deparse(par_name)))
+      expect_no_error(print(figure))
+      expect_no_error(plot(factor_prior, par_name = par_name, n_points = 32L))
+    }
+  }
+})

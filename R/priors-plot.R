@@ -788,7 +788,7 @@ plot.prior_linear_density <- function(x, plot_type = "base", n_points = 1000, xl
   prior_label     <- .plot.prior_label(x, plot_data, short_name, parameter_names)
 
   main      <- if(!is.null(attr(plot_data, "steps"))) prior_label else ""
-  xlab      <- if(!is.null(attr(plot_data, "steps"))) bquote(omega["["*.(attr(plot_data, "steps")[1])*","~.(attr(plot_data, "steps")[2])*"]"])  else bquote("dif"*.(if(!is.null(par_name)){" "*bquote(.(par_name)~"~")})~.(prior_label))
+  xlab      <- if(!is.null(attr(plot_data, "steps"))) bquote(omega["["*.(attr(plot_data, "steps")[1])*","~.(attr(plot_data, "steps")[2])*"]"])  else bquote("dif"*.(if(!is.null(par_name)){bquote(" "*.(par_name)~"~")})~.(prior_label))
   ylab      <- "Density"
 
   # add it to the user input if desired
