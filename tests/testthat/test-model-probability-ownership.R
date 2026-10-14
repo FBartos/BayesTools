@@ -323,6 +323,20 @@ test_that("prior model probabilities keep the names of the prior weights on ever
   expect_null(names(compute_inference(c(1e-300, 1e100), c(0, 0))$prior_probs))
 })
 
+test_that("mix_posteriors validates n_samples and models_inference refuses an empty model list", {
+
+  models <- list(.model_probability_test_model(prior("normal", list(0, 1)), 0),
+    .model_probability_test_model(prior("normal", list(0, 2)), -1))
+  for(bad in list(0, -3, 2.5, NA_real_, c(10, 20))){
+    expect_error(mix_posteriors(models, "theta", list(c(FALSE, FALSE)), seed = 1, n_samples = bad),
+                 "'n_samples'", fixed = TRUE)
+  }
+  expect_true(all(is.finite(mix_posteriors(models, "theta", list(c(FALSE, FALSE)), seed = 1, n_samples = 5)$theta)))
+  expect_error(models_inference(list()), "The 'model_list' argument cannot be NULL.", fixed = TRUE)
+  expect_error(models_inference(NULL), "The 'model_list' argument cannot be NULL.", fixed = TRUE)
+  expect_length(models_inference(models[1L]), 1L)
+})
+
 test_that("common huge evidence preserves ordinary model odds", {
   inference <- compute_inference(c(9, 1), rep(1e300, 2), c(FALSE, TRUE))
   expected_prior <- c(1, 1 / 9) / sum(c(1, 1 / 9))

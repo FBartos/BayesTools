@@ -79,7 +79,7 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
   check_char(parameters, "parameters", check_length = FALSE)
   check_list(is_null_list, "is_null_list", check_length = length(parameters))
   check_real(seed, "seed", allow_NULL = TRUE)
-  check_int(n_samples, "n_samples")
+  check_int(n_samples, "n_samples", lower = 1, allow_NA = FALSE)
   on_failure <- match.arg(on_failure)
   sapply(model_list, function(m)check_list(m, "model_list:model", check_names = c("fit", "marglik", "prior_weights"), all_objects = TRUE, allow_other = TRUE))
   if(!all(sapply(model_list, function(m) inherits(m[["fit"]], what = "runjags")) | sapply(model_list, function(m)inherits(m[["fit"]], what = "stanfit")) | sapply(model_list, function(m)inherits(m[["fit"]], what = "null_model"))))

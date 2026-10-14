@@ -396,6 +396,7 @@ models_inference <- function(model_list,
                              on_failure = c("error", "drop", "zero")){
 
   on_failure <- match.arg(on_failure)
+  check_list(model_list, "model_list")
   sapply(model_list, function(m)check_list(m, "model_list:model", check_names = c("marglik", "prior_weights"), all_objects = TRUE, allow_other = TRUE))
   sapply(model_list, function(m)check_real(m[["prior_weights"]], "model_list:prior_weights", lower = 0))
 
