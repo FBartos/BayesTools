@@ -120,12 +120,24 @@
 
 .hypothesis_number_label <- function(x) {
 
-  # Keep familiar short labels when they preserve the exact parsed value.
+  # Keep familiar short labels when they preserve the exact parsed value; a
+  # value whose fixed notation is long (1e-300, 1e22) uses the shortest
+  # scientific notation that preserves it.
   for(digits in 7:17){
     label <- format(x, digits = digits, trim = TRUE, scientific = FALSE,
                     decimal.mark = ".")
     if(identical(as.numeric(label), as.numeric(x))){
-      return(label)
+      break
+    }
+  }
+  if(nchar(label) <= 20L){
+    return(label)
+  }
+  for(digits in 1:17){
+    scientific <- format(x, digits = digits, trim = TRUE, scientific = TRUE,
+                         decimal.mark = ".")
+    if(identical(as.numeric(scientific), as.numeric(x))){
+      return(scientific)
     }
   }
   label

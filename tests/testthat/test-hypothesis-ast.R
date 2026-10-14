@@ -181,6 +181,31 @@ test_that("hypothesis rendering preserves numeric values exactly", {
   expect_identical(hypothesis_parse(hypothesis_render(ast)), ast)
 })
 
+test_that("hypothesis labels use scientific notation where fixed notation is long", {
+
+  label <- BayesTools:::.hypothesis_number_label
+  for(value in c(1e-300, -1e-300, 1e300, 1e22, 1.7976931348623157e308, 2.5e-100)){
+    expect_lt(nchar(label(value)), 25L)
+    expect_identical(as.numeric(label(value)), value)
+  }
+  expect_identical(label(1e-300), "1e-300")
+  expect_identical(label(1e300), "1e+300")
+
+  # short and moderately long values keep their fixed labels
+  expected <- c(`0.25` = "0.25", `-0.3` = "-0.3", `1e-10` = "0.0000000001", `1e5` = "100000",
+                `1e15` = "1000000000000000", `0.1+0.2` = "0.30000000000000004")
+  expect_identical(vapply(c(0.25, -0.3, 1e-10, 1e5, 1e15, 0.1 + 0.2), label, ""),
+                   unname(expected))
+
+  # rendered hypotheses and the complement labels of point statements stay short
+  for(hypothesis in c("theta = 1e-300", "theta = 1e+300")){
+    ast <- hypothesis_parse(hypothesis)
+    expect_identical(hypothesis_render(ast), hypothesis)
+    expect_lt(nchar(ast$statements[[1L]]$right$label), 25L)
+    expect_identical(hypothesis_parse(hypothesis_render(ast)), ast)
+  }
+})
+
 test_that("hypothesis labels render literals with shortest round-trip text", {
 
   hypothesis <- c(
