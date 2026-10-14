@@ -193,7 +193,7 @@
   ordered_total_indicators <- character()
   for(parameter in names(prior_list)){
     prior <- prior_list[[parameter]]
-    if(is.prior.ordered(prior) && is.prior.spike_and_slab(prior$total)){
+    if(.bt_is_ordered_spike_and_slab_total(prior)){
       ordered_total_indicators <- c(
         ordered_total_indicators,
         paste0(.prior_ordered_total_name(parameter), "_indicator")

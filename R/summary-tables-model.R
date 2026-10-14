@@ -153,6 +153,10 @@
 #' inclusion Bayes factor is undefined and reported as \code{NA}, because
 #' the corresponding inclusion/exclusion comparison was not tested.
 #'
+#' The inference table has a row for every spike-and-slab and mixture prior,
+#' for the spike-and-slab total of an ordered-factor prior (reported under the
+#' term label), and for every random-effect inclusion gate.
+#'
 #' An original-scale random-effect correlation is defined in a posterior draw
 #' whenever both of its SDs are positive, including draws with a singular
 #' covariance (for example, a zero scaled intercept SD with a nonzero scaled
@@ -1283,7 +1287,8 @@ runjags_inference_table  <- function(fit, title = NULL, footnotes = NULL, warnin
   # return empty table if none of the priors defines a model component
   if(!any(sapply(prior_list, function(p){
     is.prior.spike_and_slab(p) | is.prior.mixture(p) |
-      .bt_is_random_allocation_inclusion_prior(p)
+      .bt_is_random_allocation_inclusion_prior(p) |
+      .bt_is_ordered_spike_and_slab_total(p)
   }))){
     runjags_summary <- runjags_inference_empty_table(
       title          = title,
@@ -1315,10 +1320,21 @@ runjags_inference_table  <- function(fit, title = NULL, footnotes = NULL, warnin
     term_parts <- .bt_label_parts_term(par, prior_list[[par]])
     term_label <- .bt_label(term_parts, style = "table", formula_prefix = formula_prefix)
     term_warning_label <- .bt_label(term_parts, style = "warning", formula_prefix = formula_prefix)
-    if(is.prior.spike_and_slab(prior_list[[par]])){
 
-      temp_prior_prob <- mean(.get_spike_and_slab_inclusion(prior_list[[par]]))
-      temp_post_prob  <- mean(model_samples[,paste0(par, "_indicator")])
+    # spike-and-slab priors and spike-and-slab totals of ordered priors: the
+    # prior whose inclusion is tested and the column of its indicator
+    inclusion_prior <- NULL
+    if(is.prior.spike_and_slab(prior_list[[par]])){
+      inclusion_prior <- prior_list[[par]]
+      indicator_name  <- paste0(par, "_indicator")
+    }else if(.bt_is_ordered_spike_and_slab_total(prior_list[[par]])){
+      inclusion_prior <- prior_list[[par]]$total
+      indicator_name  <- paste0(.prior_ordered_total_name(par), "_indicator")
+    }
+    if(!is.null(inclusion_prior)){
+
+      temp_prior_prob <- mean(.get_spike_and_slab_inclusion(inclusion_prior))
+      temp_post_prob  <- mean(model_samples[,indicator_name])
       temp_BF         <- inclusion_BF(
         prior_probs = c(null = 1 - temp_prior_prob, alternative = temp_prior_prob),
         post_probs  = c(null = 1 - temp_post_prob,  alternative = temp_post_prob),
@@ -1332,7 +1348,7 @@ runjags_inference_table  <- function(fit, title = NULL, footnotes = NULL, warnin
         inclusion_BF = temp_BF_reporting$value
       )
       if(BF_diagnostics){
-        temp_indicator_list <- .runjags_indicator_list(model_samples_list, paste0(par, "_indicator"), 1)
+        temp_indicator_list <- .runjags_indicator_list(model_samples_list, indicator_name, 1)
         temp_diagnostics    <- .indicator_BF_diagnostics(temp_indicator_list, temp_prior_prob, temp_BF)
         temp_row            <- cbind(temp_row, .indicator_BF_diagnostic_row(temp_diagnostics)[, BF_diagnostic_columns, drop = FALSE])
         if(BF_error_diagnostics){
@@ -1809,6 +1825,13 @@ runjags_inference_table  <- function(fit, title = NULL, footnotes = NULL, warnin
   })
 
   unique(unlist(names, use.names = FALSE))
+}
+
+# An ordered prior whose total is spike-and-slab: the indicator of that total
+# is an inclusion event (a mixture total has none).
+.bt_is_ordered_spike_and_slab_total <- function(prior){
+
+  is.prior.ordered(prior) && is.prior.spike_and_slab(prior$total)
 }
 
 .bt_is_random_allocation_inclusion_prior <- function(prior){

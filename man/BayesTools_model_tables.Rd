@@ -426,6 +426,10 @@ estimate. If the prior inclusion probability is exactly 0 or 1, the
 inclusion Bayes factor is undefined and reported as \code{NA}, because
 the corresponding inclusion/exclusion comparison was not tested.
 
+The inference table has a row for every spike-and-slab and mixture prior,
+for the spike-and-slab total of an ordered-factor prior (reported under the
+term label), and for every random-effect inclusion gate.
+
 An original-scale random-effect correlation is defined in a posterior draw
 whenever both of its SDs are positive, including draws with a singular
 covariance (for example, a zero scaled intercept SD with a nonzero scaled

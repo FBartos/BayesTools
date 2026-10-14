@@ -1104,7 +1104,7 @@ test_that("estimates tables blank inclusion rows identified from metadata", {
 })
 
 # Ordered factor whose total has the given prior, as a fit of seeded draws.
-.ordered_total_fit_for_test <- function(total, adjust = NULL){
+.ordered_total_fit_for_test <- function(total, n = 60L, adjust = NULL){
 
   data <- data.frame(
     f = factor(rep(c("lo", "mid", "hi"), 4L), levels = c("lo", "mid", "hi"))
@@ -1129,6 +1129,7 @@ test_that("estimates tables blank inclusion rows identified from metadata", {
     ),
     result$prior_list,
     list(mu = result$formula_design),
+    n = n,
     adjust = adjust
   )
 }
@@ -1212,6 +1213,76 @@ test_that("remove_inclusion removes every row flagged as an inclusion row", {
     removed_rows(allocation_fit),
     c("(mu) total: inclusion(study)", "(mu) total: inclusion(drug)")
   )
+})
+
+test_that("inference tables report the inclusion event of an ordered spike-and-slab total", {
+
+  skip_if_not_installed("runjags")
+  set.seed(262)
+
+  # 86 of 100 draws include the total
+  indicator <- c(rep(1, 86), rep(0, 14))
+  ordered_fit <- .ordered_total_fit_for_test(
+    prior_spike_and_slab(prior("normal", list(0, 1), list(0, Inf))),
+    n = 100L,
+    adjust = function(draws){
+      draws[, "mu_f_ordered_total_indicator"] <- indicator
+      draws
+    }
+  )
+  expected_BF <- (0.86 / 0.14) / (0.5 / 0.5)
+
+  table <- runjags_inference_table(ordered_fit)
+  expect_identical(rownames(table), "(mu) f")
+  expect_equal(unname(unlist(table[, c("prior_prob", "post_prob")])), c(0.5, 0.86))
+  expect_equal(as.numeric(table[["inclusion_BF"]]), expected_BF, tolerance = 1e-12)
+  expect_identical(attr(table, "parameters"), "mu_f")
+  expect_identical(attr(table, "parameter_roles"), "model_inclusion")
+  expect_equal(
+    as.numeric(runjags_inference_table(ordered_fit, logBF = TRUE)[["inclusion_BF"]]),
+    log(expected_BF),
+    tolerance = 1e-12
+  )
+  expect_equal(
+    as.numeric(runjags_inference_table(ordered_fit, BF01 = TRUE)[["inclusion_BF"]]),
+    1 / expected_BF,
+    tolerance = 1e-12
+  )
+  expect_identical(
+    rownames(runjags_inference_table(ordered_fit, formula_prefix = FALSE)),
+    "f"
+  )
+  diagnostics <- runjags_inference_table(ordered_fit, BF_diagnostics = TRUE)
+  expect_identical(rownames(diagnostics), "(mu) f")
+  expect_true(all(c("MCMC_error", "BF_error_percent") %in% colnames(diagnostics)))
+
+  # the same event of a plain spike-and-slab factor gives the same row
+  result <- JAGS_formula(
+    ~ 1 + f,
+    "mu",
+    data = data.frame(f = factor(rep(c("lo", "mid", "hi"), 4L), levels = c("lo", "mid", "hi"))),
+    prior_list = list(
+      intercept = prior("normal", list(0, 1)),
+      f = prior_spike_and_slab(prior_factor("normal", list(0, 1), contrast = "treatment"))
+    )
+  )
+  plain_fit <- .inclusion_rows_fit_for_test(
+    c(
+      "mu_intercept", "mu_f[1]", "mu_f[2]", "mu_f_indicator", "mu_f_inclusion",
+      "mu_f_variable[1]", "mu_f_variable[2]"
+    ),
+    result$prior_list,
+    list(mu = result$formula_design),
+    n = 100L,
+    adjust = function(draws){
+      draws[, "mu_f_indicator"] <- indicator
+      draws
+    }
+  )
+  plain <- runjags_inference_table(plain_fit)
+  expect_identical(rownames(plain), "(mu) f")
+  expect_equal(unname(unlist(plain[, c("prior_prob", "post_prob")])), c(0.5, 0.86))
+  expect_equal(as.numeric(plain[["inclusion_BF"]]), expected_BF, tolerance = 1e-12)
 })
 
 test_that("conditional random-effect SD summaries use the inclusion event of the SD prior", {
