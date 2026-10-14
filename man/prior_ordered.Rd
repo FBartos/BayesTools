@@ -54,8 +54,9 @@ preserve point masses and continuous probability separately for each level;
 point masses are not included in a kernel density estimate. Bridge sampling
 is available only when \code{total} is a nonexpression, nondiscrete simple scalar prior and
 \code{allocation} is fixed or a simple Dirichlet allocation.
-Mixtures of ordered prior containers can be constructed and sampled, but
-their binding in \code{JAGS_formula()} is unavailable. Put the mixture on
+Mixtures of bound ordered prior containers (see \code{\link[=prior_factor_levels]{prior_factor_levels()}}) can
+be constructed and sampled, but their binding in \code{JAGS_formula()} is
+unavailable. Put the mixture on
 \code{total} instead. General mixture totals require a single slice;
 multi-slice interactions support simple scalar, point, and spike-and-slab
 totals. Unsupported binding raises \code{BayesTools_ordered_unavailable}.

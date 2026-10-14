@@ -389,8 +389,9 @@ prior_factor <- function(distribution, parameters, truncation = list(lower = -In
 #' point masses are not included in a kernel density estimate. Bridge sampling
 #' is available only when \code{total} is a nonexpression, nondiscrete simple scalar prior and
 #' \code{allocation} is fixed or a simple Dirichlet allocation.
-#' Mixtures of ordered prior containers can be constructed and sampled, but
-#' their binding in \code{JAGS_formula()} is unavailable. Put the mixture on
+#' Mixtures of bound ordered prior containers (see [prior_factor_levels()]) can
+#' be constructed and sampled, but their binding in \code{JAGS_formula()} is
+#' unavailable. Put the mixture on
 #' \code{total} instead. General mixture totals require a single slice;
 #' multi-slice interactions support simple scalar, point, and spike-and-slab
 #' totals. Unsupported binding raises \code{BayesTools_ordered_unavailable}.
@@ -636,6 +637,12 @@ prior_mixture <- function(prior_list, is_null = rep(FALSE, length(prior_list)), 
     # test that the prior is either a factor prior or a spike prior
     if(!all(sapply(prior_list, is.prior.factor) | sapply(prior_list, is.prior.point) | sapply(prior_list, is.prior.none)))
       stop("Factor prior mixture requires that all priors are either factor priors or spike prior distributions")
+
+    # ordered containers have no point or none components of their own
+    if(any(vapply(prior_list, is.prior.ordered, logical(1))) &&
+       any(vapply(prior_list, function(p) is.prior.point(p) || is.prior.none(p), logical(1)))){
+      stop("Ordered prior containers can be mixed only with other ordered prior containers. Put point or spike behavior on the 'total' prior inside prior_ordered().", call. = FALSE)
+    }
 
     # obtain and store the contrast type
     priors_type <- .get_prior_factor_list_type(prior_list)

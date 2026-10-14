@@ -3599,3 +3599,57 @@ test_that("fixed ordered point-total components retain complete joint and scalar
     expect_equal(atoms$mass[order], expected, tolerance = 0)
   }
 })
+
+ordered_mixture_levels_message <- "Mixtures of ordered prior containers require bound containers: set the factor levels of every ordered component with 'prior_factor_levels()' first."
+ordered_mixture_only_message   <- "Ordered prior containers can be mixed only with other ordered prior containers. Put point or spike behavior on the 'total' prior inside prior_ordered()."
+
+test_that("mixtures of unbound ordered prior containers are refused with a clear message", {
+  unbound <- prior_ordered(prior("normal", list(0, 1)))
+  other   <- prior_ordered(prior("normal", list(0, 2)))
+  expect_error(prior_mixture(list(unbound, other)), ordered_mixture_levels_message, fixed = TRUE)
+})
+
+test_that("an unbound ordered container cannot be mixed with a bound one", {
+  levels  <- c("lo", "mid", "hi")
+  unbound <- prior_ordered(prior("normal", list(0, 1)))
+  other   <- prior_factor_levels(prior_ordered(prior("normal", list(0, 2))), levels)
+  expect_error(prior_mixture(list(unbound, other)), ordered_mixture_levels_message, fixed = TRUE)
+  expect_error(prior_mixture(list(other, unbound)), ordered_mixture_levels_message, fixed = TRUE)
+})
+
+test_that("mixtures of bound ordered prior containers construct and sample", {
+  levels  <- c("lo", "mid", "hi")
+  mixture <- prior_mixture(list(
+    prior_factor_levels(prior_ordered(prior("normal", list(0, 1))), levels),
+    prior_factor_levels(prior_ordered(prior("normal", list(0, 2))), levels)))
+  expect_true(is.prior.mixture(mixture))
+  expect_true(is.prior.ordered(mixture))
+  set.seed(1)
+  expect_identical(dim(rng(mixture, 4L)), c(4L, 3L))
+})
+
+test_that("a bound ordered container refuses point components with a clear message", {
+  bound <- prior_factor_levels(prior_ordered(prior("normal", list(0, 1))), c("lo", "mid", "hi"))
+  expect_error(prior_mixture(list(bound, prior("point", list(0)))), ordered_mixture_only_message, fixed = TRUE)
+  expect_error(prior_mixture(list(prior("point", list(0)), bound)), ordered_mixture_only_message, fixed = TRUE)
+})
+
+test_that("a bound ordered container refuses none and point factor components with a clear message", {
+  bound <- prior_factor_levels(prior_ordered(prior("normal", list(0, 1))), c("lo", "mid", "hi"))
+  expect_error(prior_mixture(list(bound, prior_none())), ordered_mixture_only_message, fixed = TRUE)
+  expect_error(prior_mixture(list(bound, prior_factor("point", list(0), contrast = "treatment"))),
+               ordered_mixture_only_message, fixed = TRUE)
+})
+
+test_that("other refusals of ordered mixtures are unchanged and point behavior belongs on the total", {
+  bound <- prior_factor_levels(prior_ordered(prior("normal", list(0, 1))), c("lo", "mid", "hi"))
+  expect_error(
+    prior_mixture(list(bound, prior_factor("normal", list(0, 1), contrast = "treatment"))),
+    "The prior_list must contain only one type of factor priors.", fixed = TRUE)
+  expect_error(
+    prior_spike_and_slab(bound),
+    "For ordered factor priors, put spike-and-slab behavior on the 'total' prior inside prior_ordered().",
+    fixed = TRUE)
+  expect_true(is.prior.ordered(
+    prior_ordered(prior_mixture(list(prior("normal", list(0, 1)), prior("point", list(0)))))))
+})

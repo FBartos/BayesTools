@@ -238,6 +238,10 @@
       ))
     }else{
       K <- if(is.prior.ordered(p)) {
+        # the sample matrix of a mixture needs the level count
+        if(is.null(.get_prior_factor_levels(p))){
+          stop("Mixtures of ordered prior containers require bound containers: set the factor levels of every ordered component with 'prior_factor_levels()' first.", call. = FALSE)
+        }
         .get_prior_factor_levels(p)
       }else if(is.matrix(attr(p, "factor_design", exact = TRUE))) {
         .get_prior_factor_levels(p)

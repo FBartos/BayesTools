@@ -12,7 +12,10 @@ joint mnormal/mt/mpoint retain their joint calls and mt's common scale.
 One component/inclusion gate per row is shared across all coordinates.
 Explicit conflicting K declarations refuse; standalone RNG/defaults and
 initialization keep their existing contracts. Ordered containers retain
-their separate policy. Mixture coercion turns only scalar point and none
+their separate policy: a mixture of ordered containers needs bound containers
+(its sample matrix needs the level count) and mixes only with ordered
+containers, so unbound containers and point or none components refuse.
+Mixture coercion turns only scalar point and none
 components into factor spikes of the mixture's contrast: an explicit point
 factor prior keeps its declared contrast, components with different contrasts
 refuse, and a point factor without declared dimensions inherits K from its
