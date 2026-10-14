@@ -19,9 +19,9 @@ posterior_density_method_match <- function(method,
                                            allowed = c("KDE", "precomputed"),
                                            name = "method"){
 
-  check_char(method, "method", check_length = 0, allow_NA = FALSE)
-  check_char(allowed, "allowed", check_length = 0, allow_NA = FALSE)
   check_char(name, "name", check_length = 1, allow_NA = FALSE)
+  check_char(method, name, check_length = 0, allow_NA = FALSE)
+  check_char(allowed, "allowed", check_length = 0, allow_NA = FALSE)
 
   method <- tryCatch(match.arg(method, allowed), error = function(e) NULL)
   if(is.null(method)){
@@ -49,7 +49,8 @@ posterior_density_method_uses_precomputed <- function(method){
 
   return(posterior_density_method_match(
     density_method,
-    allowed = c("KDE", "precomputed")
+    allowed = c("KDE", "precomputed"),
+    name    = "density_method"
   ))
 }
 
@@ -91,7 +92,8 @@ posterior_density_method_uses_precomputed <- function(method){
 #' declared only in their \code{atoms} metadata with
 #' [posterior_atom_attribute()]; densities do not carry point masses.
 #'
-#' @param x numeric density grid locations.
+#' @param x numeric density grid locations. Heights at repeated locations are
+#' averaged when the attribute is read.
 #' @param y numeric density grid heights.
 #' @param method estimator label stored in the attribute.
 #' @param density_method public density method label stored in the attribute.

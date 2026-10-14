@@ -51,6 +51,8 @@ marginal_inference <- function(model_list, marginal_parameters, parameters, is_n
   }
 
   # check input (majority of the checks performed within mix_posteriors)
+  .Savage_Dickey_BF.check_settings(null_hypothesis, normal_approximation, silent)
+  check_int(n_samples, "n_samples")
   check_list(model_list, "model_list")
   check_char(parameters, "parameters", check_length = FALSE)
   check_char(marginal_parameters, "marginal_parameters", check_length = FALSE)
@@ -198,9 +200,10 @@ as_marginal_inference <- function(model, marginal_parameters, parameters, condit
                                   density_method = "KDE", compute_BF = TRUE){
 
   # check input (majority of the checks performed within mix_posteriors)
-  # check input
   if(!inherits(model, "BayesTools_fit"))
     stop("'model' must be a 'BayesTools_fit'")
+  .Savage_Dickey_BF.check_settings(null_hypothesis, normal_approximation, silent)
+  check_int(n_samples, "n_samples")
   check_char(parameters, "parameters", check_length = FALSE)
   check_char(marginal_parameters, "marginal_parameters", check_length = FALSE)
   check_list(conditional_list, "conditional_list", check_length = length(marginal_parameters))

@@ -278,12 +278,20 @@
   logs <- if(inherits(posterior_ordinate, "BayesTools_posterior_log_ordinate")) posterior_ordinate$log_ordinate else NULL
   valid_log <- !is.null(logs) && is.numeric(logs) && length(logs) == length(value) &&
     all(is.finite(logs)) && identical(as.numeric(ordinate), exp(as.numeric(logs)))
-  if(!identical(posterior_ordinate[["status"]], "ok") ||
-     !is.numeric(value) || !is.numeric(ordinate) ||
-     length(value) == 0L || length(value) != length(ordinate) ||
-     any(!is.finite(value)) ||
-     (!valid_log && (any(!is.finite(ordinate)) || any(ordinate <= 0))) ||
-     (!is.null(logs) && !valid_log) || anyDuplicated(value)){
+  valid_values <- identical(posterior_ordinate[["status"]], "ok") &&
+    is.numeric(value) && is.numeric(ordinate) &&
+    length(value) > 0L && length(value) == length(ordinate) &&
+    all(is.finite(value)) && !anyDuplicated(value)
+  if(valid_values && !is.null(logs) && !valid_log){
+    stop(
+      "Posterior ordinate metadata is invalid: its 'log_ordinate' must be ",
+      "finite, have one value per 'value' entry, and give the 'ordinate' ",
+      "heights exactly as exp(log_ordinate). Create it with ",
+      "'posterior_log_ordinate_attribute()'.",
+      call. = FALSE
+    )
+  }
+  if(!valid_values || (!valid_log && (any(!is.finite(ordinate)) || any(ordinate <= 0)))){
     stop(
       "Posterior ordinate metadata is invalid: it needs status 'ok' and unique, ",
       "finite 'value' entries with finite, positive 'ordinate' heights.",

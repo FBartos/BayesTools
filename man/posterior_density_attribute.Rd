@@ -34,7 +34,8 @@ posterior_ordinate_supports_bf(ordinate, validator = NULL)
 posterior_ordinate_has_value(ordinate, value)
 }
 \arguments{
-\item{x}{numeric density grid locations.}
+\item{x}{numeric density grid locations. Heights at repeated locations are
+averaged when the attribute is read.}
 
 \item{y}{numeric density grid heights.}
 

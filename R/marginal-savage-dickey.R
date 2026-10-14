@@ -136,6 +136,20 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
   )
 }
 
+# The settings shared by Savage_Dickey_BF() and the marginal inference
+# functions, which validate them before any model averaging.
+.Savage_Dickey_BF.check_settings <- function(null_hypothesis, normal_approximation, silent){
+
+  check_real(null_hypothesis, "null_hypothesis", allow_NA = FALSE)
+  if(!is.finite(null_hypothesis)){
+    stop("The 'null_hypothesis' argument must be finite.", call. = FALSE)
+  }
+  check_bool(normal_approximation, "normal_approximation", allow_NA = FALSE)
+  check_bool(silent, "silent", allow_NA = FALSE)
+
+  invisible(TRUE)
+}
+
 # 'null_mass_NA': a level with a declared posterior point mass at the null, or
 # with a zero or infinite prior ordinate there, gets an NA Bayes factor with
 # its reason instead of stopping the whole evaluation (list posteriors and
@@ -151,12 +165,7 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
     }
     stop("'Savage_Dickey_BF' requires an object of class 'marginal_posterior'.")
   }
-  check_real(null_hypothesis, "null_hypothesis", allow_NA = FALSE)
-  if(!is.finite(null_hypothesis)){
-    stop("The 'null_hypothesis' argument must be finite.", call. = FALSE)
-  }
-  check_bool(normal_approximation, "normal_approximation", allow_NA = FALSE)
-  check_bool(silent, "silent", allow_NA = FALSE)
+  .Savage_Dickey_BF.check_settings(null_hypothesis, normal_approximation, silent)
   density_method <- .posterior_density_method(density_method)
 
   .Savage_Dickey_BF.marginal(
@@ -260,6 +269,14 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
   "Posterior samples do not span both sides of the null hypothesis. ",
   "The posterior density at the null hypothesis is an extrapolation from ",
   "Gaussian kernel tails; the Bayes factor is not reliable evidence."
+)
+
+# The normal approximation evaluates the fitted normal law at the null, not a
+# kernel estimate.
+.Savage_Dickey_BF_normal_extrapolation_warning <- paste0(
+  "Posterior samples do not span both sides of the null hypothesis. ",
+  "The posterior density at the null hypothesis is an extrapolation from ",
+  "the normal approximation; the Bayes factor is not reliable evidence."
 )
 
 .Savage_Dickey_BF.fun    <- function(posterior, null_hypothesis, normal_approximation, silent, density_method,
@@ -438,6 +455,7 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
   posterior_density_components <- NULL
   if(!isTRUE(normal_approximation) && is.null(stored_posterior_ordinate) &&
      is.null(stored_posterior_density) && continuous_mass > 0){
+    warnings <- c(warnings, continuous_posterior[["component_warning"]])
     component_plan <- .Savage_Dickey_BF.component_plan(
       samples    = continuous_samples,
       index      = continuous_posterior$component_index,
@@ -512,7 +530,11 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
      !isTRUE(support_exclusion[["excluded"]]) &&
      (null_hypothesis < posterior_range[1] || null_hypothesis > posterior_range[2]) &&
      !isTRUE(null_at_support_boundary)){
-    warnings <- c(warnings, .Savage_Dickey_BF_extrapolation_warning)
+    warnings <- c(warnings, if(isTRUE(normal_approximation)){
+      .Savage_Dickey_BF_normal_extrapolation_warning
+    }else{
+      .Savage_Dickey_BF_extrapolation_warning
+    })
   }
 
   kde_height <- function(){
@@ -679,8 +701,17 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
   finite <- is.finite(sample_values)
   components <- .posterior_components_get(posterior)
   component_index <- NULL
-  if(!is.null(components) && length(components$index) == length(sample_values)){
-    component_index <- components$index[finite]
+  component_warning <- NULL
+  if(!is.null(components)){
+    if(length(components$index) == length(sample_values)){
+      component_index <- components$index[finite]
+    }else{
+      component_warning <- paste0(
+        "The component index of the posterior has ", length(components$index),
+        " values for ", length(sample_values), " draws. Falling back to the ",
+        "pooled kernel density estimate."
+      )
+    }
   }
   sample_values <- sample_values[finite]
   # Preserve support and density metadata used by KDE / boundary reflection.
@@ -712,7 +743,8 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
     continuous_mass = continuous_mass,
     atom_mass       = atom_mass,
     component_index = if(!is.null(component_index)) component_index[keep],
-    components      = components
+    components      = components,
+    component_warning = component_warning
   )
 }
 

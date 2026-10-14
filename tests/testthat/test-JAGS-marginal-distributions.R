@@ -3386,6 +3386,134 @@ test_that("marginal_estimates_table keeps Bayes factor warnings of scalar parame
   list(value = value, warnings = messages)
 }
 
+.scalar_marginal_for_test <- function(draws, ...){
+
+  prior_density <- BayesTools:::.prior_linear_combination_density(
+    list(theta = prior("normal", list(0, 1))), c(theta = 1))
+  class(draws) <- c("marginal_posterior.simple", "marginal_posterior", class(draws))
+  draws <- .bt_meta_set(draws, "prior_density", prior_density)
+  draws <- .bt_meta_set(draws, "atoms", posterior_atom_attribute())
+  for(field in names(list(...))) draws <- .bt_meta_set(draws, field, list(...)[[field]])
+  draws
+}
+
+test_that("Savage-Dickey and marginal inference name the public density_method argument", {
+
+  set.seed(31)
+  marginal <- .scalar_marginal_for_test(stats::rnorm(200, .3, 1))
+  for(bad in list("bad", 1, c("KDE", "precomputed", "extra"))){
+    expect_error(Savage_Dickey_BF(marginal, density_method = bad),
+                 "'density_method'", fixed = TRUE)
+  }
+  expect_error(Savage_Dickey_BF(marginal, density_method = "bad"),
+               "The 'density_method' argument must be one of 'KDE', 'precomputed'.", fixed = TRUE)
+  models <- lapply(1:2, function(i) list(
+    fit = .mock_mixing_fit_for_marginal(cbind(mu = stats::rnorm(100)), list(mu = prior("normal", list(0, 1)))),
+    marglik = bridgesampling_object(0), prior_weights = 1
+  ))
+  expect_error(marginal_inference(models, "mu", "mu", list(mu = c(FALSE, FALSE)), NULL, density_method = "bad"),
+               "The 'density_method' argument must be one of 'KDE', 'precomputed'.", fixed = TRUE)
+  # the exported helper keeps its own default argument name
+  expect_error(posterior_density_method_match("bad"), "The 'method' argument", fixed = TRUE)
+  expect_error(posterior_density_method_match(1), "'method'", fixed = TRUE)
+  expect_error(posterior_density_method_match(1, name = "density_method"), "'density_method'", fixed = TRUE)
+})
+
+test_that("the extrapolation warning of the normal route does not describe kernel tails", {
+
+  set.seed(32)
+  marginal <- .scalar_marginal_for_test(stats::rnorm(200, .3, 1))
+  spans <- "Posterior samples do not span both sides of the null hypothesis. "
+  expect_warning(kernel <- Savage_Dickey_BF(marginal, null_hypothesis = 15),
+                 paste0(spans, "The posterior density at the null hypothesis is an extrapolation from ",
+                        "Gaussian kernel tails; the Bayes factor is not reliable evidence."), fixed = TRUE)
+  expected <- paste0(spans, "The posterior density at the null hypothesis is an extrapolation from ",
+                     "the normal approximation; the Bayes factor is not reliable evidence.")
+  expect_warning(normal <- Savage_Dickey_BF(marginal, null_hypothesis = 15, normal_approximation = TRUE),
+                 expected, fixed = TRUE)
+  expect_identical(attr(normal, "warnings"), expected)
+  expect_true(is.finite(normal))
+  expect_no_warning(Savage_Dickey_BF(marginal, null_hypothesis = .3, normal_approximation = TRUE))
+})
+
+test_that("a component index of the wrong length is reported, not silently pooled", {
+
+  set.seed(33)
+  draws <- stats::rnorm(200, .3, 1)
+  supports <- list(posterior_support_attribute(bounds = c(-Inf, Inf), exact = TRUE),
+                   posterior_support_attribute(bounds = c(-Inf, Inf), exact = TRUE))
+  matching <- .scalar_marginal_for_test(draws,
+    components = BayesTools:::.posterior_components_new(rep(1:2, 100), supports))
+  short <- .scalar_marginal_for_test(draws,
+    components = BayesTools:::.posterior_components_new(rep(1:2, 50), supports))
+  expected <- paste0("The component index of the posterior has 100 values for 200 draws. ",
+                     "Falling back to the pooled kernel density estimate.")
+  expect_warning(pooled <- Savage_Dickey_BF(short, null_hypothesis = 0), expected, fixed = TRUE)
+  expect_identical(attr(pooled, "warnings"), expected)
+  expect_no_warning(reference <- Savage_Dickey_BF(matching, null_hypothesis = 0))
+  expect_equal(as.numeric(pooled), as.numeric(reference), tolerance = 1e-12)
+  expect_no_warning(Savage_Dickey_BF(short, null_hypothesis = 0, normal_approximation = TRUE))
+})
+
+test_that("marginal inference validates its Savage-Dickey settings before model averaging", {
+
+  set.seed(34)
+  draws <- cbind(mu = stats::rnorm(100))
+  models <- lapply(1:2, function(i) list(
+    fit = .mock_mixing_fit_for_marginal(draws, list(mu = prior("normal", list(0, 1)))),
+    marglik = bridgesampling_object(0), prior_weights = 1
+  ))
+  call_inference <- function(...) marginal_inference(
+    models, marginal_parameters = "absent", parameters = "mu",
+    is_null_list = list(mu = c(FALSE, FALSE)), formula = NULL, n_samples = 100, seed = 1, ...)
+  expect_warning(call_inference(), "is unavailable because it is not included in 'parameters'")
+  expect_error(call_inference(null_hypothesis = NA_real_), "'null_hypothesis'", fixed = TRUE)
+  expect_error(call_inference(null_hypothesis = Inf), "'null_hypothesis' argument must be finite", fixed = TRUE)
+  expect_error(call_inference(normal_approximation = NA), "'normal_approximation'", fixed = TRUE)
+  expect_error(call_inference(silent = "yes"), "'silent'", fixed = TRUE)
+  expect_error(marginal_inference(models, "absent", "mu", list(mu = c(FALSE, FALSE)), NULL,
+                                  n_samples = "many"), "'n_samples'", fixed = TRUE)
+
+  fit <- coda::mcmc(cbind(theta = stats::rnorm(100)))
+  class(fit) <- c("mcmc", "BayesTools_fit")
+  attr(fit, "prior_list") <- list(theta = prior("normal", list(0, 1)))
+  fit <- attach_test_parameter_map(fit)
+  call_as <- function(...) as_marginal_inference(
+    fit, "theta", "theta", list(theta = NULL), "AND", NULL, n_samples = 100,
+    compute_BF = FALSE, ...)
+  expect_s3_class(call_as(), "marginal_inference")
+  expect_error(call_as(null_hypothesis = NA_real_), "'null_hypothesis'", fixed = TRUE)
+  expect_error(call_as(normal_approximation = NA), "'normal_approximation'", fixed = TRUE)
+  expect_error(call_as(silent = NA), "'silent'", fixed = TRUE)
+  expect_error(as_marginal_inference(fit, "theta", "theta", list(theta = NULL), "AND", NULL,
+                                     n_samples = 0.5, compute_BF = FALSE), "'n_samples'", fixed = TRUE)
+})
+
+test_that("a log ordinate that is not the exponential of its logs is described", {
+
+  attribute <- posterior_log_ordinate_attribute(c(0, 1), c(-2, -3), "example", "precomputed")
+  expect_equal(BayesTools:::.posterior_ordinate_values(attribute)$ordinate, exp(c(-2, -3)))
+  expected <- "its 'log_ordinate' must be finite, have one value per 'value' entry"
+  tampered <- attribute
+  tampered$ordinate <- tampered$ordinate * (1 + 1e-10)
+  expect_error(BayesTools:::.posterior_ordinate_values(tampered), expected, fixed = TRUE)
+  short <- attribute
+  short$log_ordinate <- short$log_ordinate[1L]
+  expect_error(BayesTools:::.posterior_ordinate_values(short), expected, fixed = TRUE)
+  infinite <- attribute
+  infinite$log_ordinate[2L] <- -Inf
+  expect_error(BayesTools:::.posterior_ordinate_values(infinite), expected, fixed = TRUE)
+  # structural problems keep the general message
+  duplicated <- attribute
+  duplicated$value <- c(0, 0)
+  expect_error(BayesTools:::.posterior_ordinate_values(duplicated),
+               "it needs status 'ok' and unique, finite 'value' entries", fixed = TRUE)
+  natural <- posterior_ordinate_attribute(0, .25, "example", "precomputed")
+  natural$ordinate <- -1
+  expect_error(BayesTools:::.posterior_ordinate_values(natural),
+               "it needs status 'ok' and unique, finite 'value' entries", fixed = TRUE)
+})
+
 test_that("Savage-Dickey BFs with the null outside the posterior draws warn once per parameter and level", {
 
   extrapolation <- paste0(
