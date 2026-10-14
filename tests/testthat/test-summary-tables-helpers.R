@@ -2811,3 +2811,55 @@ test_that("R116 N69 bounded positive Bayes factors never print a rounded zero bo
   expect_identical(as.numeric(as.data.frame(table)$BF), as.numeric(original))
   expect_identical(as.numeric(data.frame(table)$BF), as.numeric(original))
 })
+
+test_that("bounded log-scale Bayes factor cells keep small endpoints of either sign", {
+
+  for(case in list(
+    list(log_value = -1e-5, operator = ">", expected = ">-1e-05"),
+    list(log_value = -1e-5, operator = "<", expected = "<-1e-05"),
+    list(log_value = 1e-5,  operator = ">", expected = ">1e-05"),
+    list(log_value = -3e-4, operator = ">", expected = ">-3e-04"),
+    list(log_value = 0,     operator = ">", expected = ">0.000")
+  )){
+    bound <- exp(case$log_value)
+    attr(bound, "bound_operator") <- case$operator
+    expect_identical(.format_BF_column(format_BF(bound, logBF = TRUE)), case$expected)
+  }
+
+  # endpoints that do not round to zero, and the natural scale, are unchanged
+  mixed <- c(exp(-1e-5), exp(0.5), exp(-2))
+  attr(mixed, "bound_operator") <- c(">", ">", "<")
+  expect_identical(.format_BF_column(format_BF(mixed, logBF = TRUE)), c(">-1e-05", ">0.500", "<-2.000"))
+  natural <- exp(-1e-5)
+  attr(natural, "bound_operator") <- ">"
+  expect_identical(.format_BF_column(format_BF(natural)), ">1.000")
+  expect_identical(.format_BF_column(format_BF(natural, logBF = TRUE, BF01 = TRUE)), "<1e-05")
+
+})
+
+test_that("bounded Bayes factor cells print an endpoint beyond the double range as exp of its logarithm", {
+
+  # the oriented natural value is Inf or 0 while its logarithm is finite
+  expect_identical(.format_BF_column(.format_BF_from_log(-750, BF01 = TRUE, bound_operator = ">")), "<exp(750)")
+  expect_identical(.format_BF_column(.format_BF_from_log(750, bound_operator = ">")), ">exp(750)")
+  expect_identical(.format_BF_column(.format_BF_from_log(750, bound_operator = "<")), "<exp(750)")
+  expect_identical(.format_BF_column(.format_BF_from_log(c(-750, 2, 750), bound_operator = c(">", NA, "<"))),
+                   c(">exp(-750)", "7.389", "<exp(750)"))
+
+  # the documented underflow endpoints and unbounded cells are unchanged
+  expect_identical(.format_BF_column(.format_BF_from_log(-750, bound_operator = ">")), ">exp(-750)")
+  expect_identical(.format_BF_column(.format_BF_from_log(750, BF01 = TRUE, bound_operator = ">")), "<exp(-750)")
+  expect_identical(.format_BF_column(.format_BF_from_log(710, BF01 = TRUE, bound_operator = ">")), "<exp(-710)")
+  expect_identical(.format_BF_column(.format_BF_from_log(-750, BF01 = TRUE)), "Inf")
+  expect_identical(.format_BF_column(format_BF(Inf)), "Inf")
+  expect_identical(.format_BF_column(format_BF(0)), "0.000")
+
+  # the table print shows the same endpoint after a change of the orientation
+  table <- data.frame(parameter = 1, check.names = FALSE)
+  table$BF <- .format_BF_from_log(-750, bound_operator = ">")
+  class(table) <- c("BayesTools_table", "data.frame")
+  attr(table, "type") <- c("integer", "inclusion_BF")
+  expect_output(print(update(table, BF01 = TRUE)), "<exp(750)", fixed = TRUE)
+  expect_output(print(update(table)), ">exp(-750)", fixed = TRUE)
+
+})

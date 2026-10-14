@@ -4,11 +4,14 @@
 #' @param ... additional arguments.
 #' @details Finite positive Bayes-factor bounds that would round to zero at
 #' three decimals are printed as reciprocals (for example \code{<1/10000}),
-#' or as \code{exp()} of their logarithm when the reciprocal overflows. This
+#' or as \code{exp()} of their logarithm when the reciprocal overflows.
+#' Log-scale bounds that would round to zero keep three significant digits,
+#' whichever sign they have (for example \code{>-1e-05}). This
 #' changes only their presentation; numeric values, BF direction and bound
 #' operators are retained.
-#' A validated finite-log positive endpoint whose natural value underflows is
-#' printed as \code{exp(log_endpoint)}.
+#' A validated finite-log endpoint whose natural value in the displayed
+#' orientation is not representable (\code{0} or \code{Inf}) is printed as
+#' \code{exp(log_endpoint)}.
 #'
 #' @return \code{print.BayesTools_table} returns \code{NULL}.
 #'
@@ -809,10 +812,13 @@ invert_BF_bound_operator <- function(operator){
 
   out <- format(round(x, digits = 3), nsmall = 3)
   bound_operator <- .standardize_BF_bound_operator(attr(x, "bound_operator"), length(x))
-  small_bound <- !is.na(bound_operator) & is.finite(x) & x > 0 & round(x, 3) == 0
+  log_scale <- isTRUE(attr(x, "logBF"))
+  # A bound that would print as 0.000: a log-BF bound of either sign, and a
+  # positive natural-scale bound.
+  small_bound <- !is.na(bound_operator) & is.finite(x) & round(x, 3) == 0 & (x > 0 | (log_scale & x < 0))
   logs <- .BF_carrier_log(x)
-  if(any(small_bound) && isTRUE(attr(x, "logBF"))){
-    # A small positive log-BF bound keeps significant digits.
+  if(any(small_bound) && log_scale){
+    # A small log-BF bound keeps significant digits.
     out[small_bound] <- format(x[small_bound], digits = 3, scientific = TRUE, trim = TRUE)
   }else if(any(small_bound)){
     # Shown as reciprocals (1/10000), mirroring large bounds (>10000.000);
@@ -826,9 +832,11 @@ invert_BF_bound_operator <- function(operator){
       .format_BF_small_value(x[small_bound][i], small_logs[i])
     }, character(1))
   }
-  if(!is.null(logs) && !isTRUE(attr(x, "logBF"))){
+  if(!is.null(logs) && !log_scale){
+    # A bound whose oriented natural value is 0 or Inf, while its logarithm is
+    # finite, is shown as exp(<log>).
     oriented_logs <- if(isTRUE(attr(x, "BF01"))) -logs else logs
-    hidden_bound <- !is.na(bound_operator) & is.finite(oriented_logs) & x == 0
+    hidden_bound <- !is.na(bound_operator) & is.finite(oriented_logs) & !is.na(x) & (x == 0 | is.infinite(x))
     if(any(hidden_bound, na.rm = TRUE)){
       out[hidden_bound] <- paste0("exp(", format(oriented_logs[hidden_bound], trim = TRUE), ")")
     }

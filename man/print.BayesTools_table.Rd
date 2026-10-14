@@ -20,9 +20,12 @@ Print a BayesTools table
 \details{
 Finite positive Bayes-factor bounds that would round to zero at
 three decimals are printed as reciprocals (for example \code{<1/10000}),
-or as \code{exp()} of their logarithm when the reciprocal overflows. This
+or as \code{exp()} of their logarithm when the reciprocal overflows.
+Log-scale bounds that would round to zero keep three significant digits,
+whichever sign they have (for example \code{>-1e-05}). This
 changes only their presentation; numeric values, BF direction and bound
 operators are retained.
-A validated finite-log positive endpoint whose natural value underflows is
-printed as \code{exp(log_endpoint)}.
+A validated finite-log endpoint whose natural value in the displayed
+orientation is not representable (\code{0} or \code{Inf}) is printed as
+\code{exp(log_endpoint)}.
 }
