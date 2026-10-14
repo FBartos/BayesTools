@@ -2230,6 +2230,87 @@ test_that("a random SD that rescales its own coordinate is one-to-one in a multi
   expect_identical(quantity(point$fit, "sd(intercept)")$quantities$status, "sampled")
 })
 
+test_that("the support of an identity random SD is the support of its own coordinate under its prior", {
+
+  # The SDs of the levels of a factor term are the coordinates of one prior with
+  # several coordinates: the support of `sd(f[v])` is that of its own
+  # coordinate, not decided by the priors of the other SDs of the block.
+  data <- data.frame(
+    f  = factor(rep(c("u", "v", "w"), 4L)),
+    id = factor(rep(c("a", "b", "c", "d"), each = 3L))
+  )
+  half_normal <- prior("normal", list(0, 1), list(0, Inf))
+  block_fit <- function(formula, terms = NULL){
+    result <- JAGS_formula(
+      formula, "mu", data, list(intercept = prior("normal", list(0, 1))),
+      prior_random = prior_random(id = random_block(sd = half_normal, terms = terms))
+    )
+    term <- result$formula_design$random_effects[[1L]]
+    columns <- c("mu_intercept", JAGS_to_monitor(result$prior_list))
+    columns <- unique(c(columns[columns != "mu__xREx__id_f"], term$sd_parameter_names))
+    list(result = result, fit = .prior_monitor_test_fit(result, columns))
+  }
+  support_of <- function(case, label){
+    quantities <- parameter_catalog(case$fit)$quantities
+    quantities$support[[match(label, quantities$canonical_name)]]
+  }
+  reference <- function(case){
+    .bt_parameter_catalog_linear_support(
+      prior_list = case$result$prior_list,
+      weights = c("mu__xREx__id_f[1]" = 1)
+    )
+  }
+
+  # spike-and-slab SD of the factor: [0, Inf) with the point 0, as its own
+  # coordinate; the intercept SD, whose prior is half-normal, is exact
+  spike <- block_fit(~ 1 + (1 + f || id), list(f = prior_spike_and_slab(
+    half_normal, prior_inclusion = prior("beta", list(1, 1))
+  )))
+  expected <- reference(spike)
+  expect_identical(expected$points, 0)
+  expect_identical(support_of(spike, "(mu) sd(f[v])"), expected)
+  expect_identical(support_of(spike, "(mu) sd(f[w])")$points, 0)
+  expect_identical(support_of(spike, "(mu) sd(intercept)")$points, numeric())
+
+  # a bounded prior of the factor SD
+  bounded <- block_fit(~ 1 + (1 + f || id), list(f = prior("uniform", list(0.5, 2))))
+  expect_equal(support_of(bounded, "(mu) sd(f[v])")$bounds, c(0.5, 2))
+  expect_true(support_of(bounded, "(mu) sd(f[v])")$exact)
+  expect_equal(support_of(bounded, "(mu) sd(intercept)")$bounds, c(0, Inf))
+
+  # a half-normal prior of the factor SDs alone: exact
+  alone <- block_fit(~ 1 + diag(0 + f | id))
+  expect_equal(support_of(alone, "(mu) sd(f[v])")$bounds, c(0, Inf))
+  expect_true(support_of(alone, "(mu) sd(f[v])")$exact)
+
+  # a point SD is its own point
+  point <- block_fit(~ 1 + (1 + f || id), list(f = prior("point", list(0.7))))
+  expect_identical(support_of(point, "(mu) sd(f[v])")$points, 0.7)
+  expect_identical(support_of(point, "(mu) sd(f[v])"), reference(point))
+
+  # the hull [0, Inf) of a composite SD is exact only when every SD it reads is
+  # supported on [0, Inf), also the SDs of the levels of a factor term
+  data$x <- rep(c(1, 2, 4, 7), 3L)
+  scaled_fit <- function(terms){
+    result <- JAGS_formula(
+      ~ 1 + x + (1 + x + f || id), "mu", data,
+      list(intercept = prior("normal", list(0, 1)), x = prior("normal", list(0, 1))),
+      formula_scale = list(x = TRUE),
+      prior_random = prior_random(id = random_block(sd = half_normal, terms = terms))
+    )
+    term <- result$formula_design$random_effects[[1L]]
+    columns <- c("mu_intercept", "mu_x", JAGS_to_monitor(result$prior_list))
+    columns <- unique(c(columns[columns != "mu__xREx__id_f"], term$sd_parameter_names))
+    list(result = result, fit = .prior_monitor_test_fit(result, columns))
+  }
+  unbounded <- scaled_fit(NULL)
+  expect_identical(support_of(unbounded, "(mu) sd(intercept)")$type, "interval")
+  expect_true(support_of(unbounded, "(mu) sd(intercept)")$exact)
+  bounded_scaled <- scaled_fit(list(f = prior("uniform", list(0.5, 2))))
+  expect_equal(support_of(bounded_scaled, "(mu) sd(intercept)")$bounds, c(0, Inf))
+  expect_false(support_of(bounded_scaled, "(mu) sd(intercept)")$exact)
+})
+
 test_that("posterior plots draw the exact LKJ prior of us() correlations", {
 
   block <- .lkj_block_fit(3L, 2)

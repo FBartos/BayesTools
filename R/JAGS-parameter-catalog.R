@@ -4463,6 +4463,20 @@ parameter_transform_jacobian <- function(values, transform){
   .posterior_support_from_prior_list_weights(context$prior_list, weights, source = "catalog")
 }
 
+# The linear-support context of the prior list of 'object': the one the catalog
+# builder shares among its quantities, or computed for the object alone.
+.bt_parameter_catalog_object_linear_support <- function(object){
+
+  context <- attr(object, "linear_support", exact = TRUE)
+  if(is.null(context)){
+    context <- .bt_parameter_catalog_linear_support_context(
+      attr(object, "prior_list", exact = TRUE)
+    )
+  }
+
+  context
+}
+
 # The prior list of the linear supports without 'multiply_by', and the columns
 # its single priors own.
 .bt_parameter_catalog_linear_support_context <- function(prior_list){
@@ -4471,14 +4485,20 @@ parameter_transform_jacobian <- function(values, transform){
     return(NULL)
   }
   prior_list <- .marginal_posterior_strip_multiply_by(prior_list)
-  owned <- unlist(lapply(names(prior_list), function(parameter){
+  columns <- lapply(names(prior_list), function(parameter){
     if(!is.prior(prior_list[[parameter]])){
       return(NULL)
     }
     .prior_linear_prior_columns(parameter, prior_list[[parameter]])
-  }), use.names = FALSE)
+  })
+  owned <- unlist(columns, use.names = FALSE)
 
-  list(prior_list = prior_list, owned = owned)
+  list(
+    prior_list = prior_list,
+    owned      = owned,
+    # the prior that owns each of the columns
+    owner      = stats::setNames(rep(names(prior_list), lengths(columns)), owned)
+  )
 }
 
 # Support of the source prior of a one-to-one random-effect quantity: the
@@ -4492,7 +4512,21 @@ parameter_transform_jacobian <- function(values, transform){
       # a Dirichlet weight lies in (0, 1)
       return(.posterior_support_new(c(0, 1), source = "catalog", type = "interval"))
     }
-    if(!is.prior(source_prior) || .prior_linear_prior_dimension(source_prior) != 1L){
+    if(!is.prior(source_prior)){
+      return(NULL)
+    }
+    # the source coordinate under its prior, also when the prior has several
+    # coordinates (the SDs of the levels of a factor term): the route of the
+    # coordinate quantities
+    context <- .bt_parameter_catalog_object_linear_support(object)
+    if(nzchar(key$source_parameter) && key$source_parameter %in% context$owned){
+      return(.bt_parameter_catalog_linear_support(
+        prior_list = prior_list,
+        weights    = stats::setNames(1, key$source_parameter),
+        context    = context
+      ))
+    }
+    if(.prior_linear_prior_dimension(source_prior) != 1L){
       return(NULL)
     }
     return(.posterior_support_from_prior(source_prior, source = "catalog"))
@@ -4609,16 +4643,26 @@ parameter_transform_jacobian <- function(values, transform){
 .bt_parameter_catalog_unbounded_scale <- function(object, key){
 
   prior_list <- attr(object, "prior_list", exact = TRUE)
-  scale_priors <- prior_list[intersect(key$dependencies, names(prior_list))]
-  scale_priors <- Filter(function(prior){
-    is.prior(prior) && !is.prior.simplex(prior) && !is.prior.discrete(prior) &&
-      .prior_linear_prior_dimension(prior) == 1L
-  }, scale_priors)
-  if(length(scale_priors) == 0L){
+  context <- .bt_parameter_catalog_object_linear_support(object)
+  # each dependency is a coordinate of its owning prior (the SD of a factor
+  # level is one coordinate of the prior of the term); only scale priors count
+  owners <- unname(context$owner[key$dependencies])
+  scale <- !is.na(owners) & vapply(owners, function(owner){
+    !is.na(owner) && {
+      prior <- context$prior_list[[owner]]
+      !is.prior.simplex(prior) && !is.prior.discrete(prior)
+    }
+  }, logical(1))
+  coordinates <- key$dependencies[scale]
+  if(length(coordinates) == 0L){
     return(FALSE)
   }
-  all(vapply(scale_priors, function(prior){
-    support <- .posterior_support_from_prior(prior, source = "catalog")
+  all(vapply(coordinates, function(coordinate){
+    support <- .bt_parameter_catalog_linear_support(
+      prior_list = prior_list,
+      weights    = stats::setNames(1, coordinate),
+      context    = context
+    )
     !is.null(support) && isTRUE(support$exact) && support$bounds[1L] == 0 &&
       is.infinite(support$bounds[2L])
   }, logical(1)))
