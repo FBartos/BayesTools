@@ -607,6 +607,68 @@ test_that("individual PET-PEESE lists with prior_none() models draw the coeffici
   expect_s3_class(bands, "ggplot")
 })
 
+test_that("Bernoulli prior-list components are atoms at zero and one", {
+
+  grDevices::pdf(NULL)
+  on.exit(grDevices::dev.off(), add = TRUE)
+  bernoulli <- prior("bernoulli", list(.3))
+
+  # an atom-only list renders as probability masses, as plot() of the prior does
+  plot <- plot_prior_list(list(bernoulli), plot_type = "ggplot")
+  geoms <- unname(vapply(plot$layers, function(layer) class(layer$geom)[1], character(1)))
+  segments <- do.call(rbind, lapply(plot$layers, function(layer) layer$data))
+  segments <- segments[order(segments$x), ]
+  expect_equal(geoms, c("GeomSegment", "GeomSegment"))
+  expect_equal(segments$x, c(0, 1))
+  expect_equal(segments$yend, c(.7, .3))
+  expect_equal(plot$scales$get_scales("y")$name, "Probability")
+  direct <- plot(bernoulli, plot_type = "ggplot")
+  expect_equal(direct$scales$get_scales("y")$name, "Probability")
+
+  # the weighted masses of several Bernoulli components sum by location
+  data <- .plot_data_prior_list.simple(
+    list(bernoulli, prior("bernoulli", list(.5), prior_weights = 3)),
+    NULL, NULL, NULL, 101, 10000, FALSE, FALSE, NULL, NULL, FALSE)
+  expect_named(data, c("points1", "points2"))
+  masses <- stats::setNames(c(data$points1$y, data$points2$y), c(data$points1$x, data$points2$x))
+  expect_equal(masses[["0"]], (.7 + 3 * .5) / 4)
+  expect_equal(masses[["1"]], (.3 + 3 * .5) / 4)
+
+  # the masses are the normalized pmf of a truncated Bernoulli
+  truncated <- prior("bernoulli", list(.3), truncation = list(.5, 1))
+  data <- .plot_data_prior_list.simple(list(truncated), NULL, NULL, NULL, 101, 10000, FALSE, FALSE, NULL, NULL, FALSE)
+  expect_named(data, "points1")
+  expect_equal(data$points1$x, 1)
+  expect_equal(data$points1$y, 1)
+  data <- .plot_data_prior_list.simple(list(truncated, bernoulli), NULL, NULL, NULL, 101, 10000, FALSE, FALSE, NULL, NULL, FALSE)
+  masses <- stats::setNames(c(data$points1$y, data$points2$y), c(data$points1$x, data$points2$x))
+  expect_equal(masses[["0"]], .7 / 2)
+  expect_equal(masses[["1"]], (1 + .3) / 2)
+
+  # a Bernoulli and a continuous prior follow the mixed-measure rule
+  mixed <- .plot_data_prior_list.simple(
+    list(bernoulli, prior("normal", list(0, 1)), prior("spike", list(1))),
+    NULL, NULL, NULL, 101, 10000, FALSE, FALSE, NULL, NULL, FALSE)
+  expect_named(mixed, c("density", "points1", "points2"))
+  masses <- stats::setNames(c(mixed$points1$y, mixed$points2$y), c(mixed$points1$x, mixed$points2$x))
+  expect_equal(masses[["0"]], .7 / 3)
+  expect_equal(masses[["1"]], (.3 + 1) / 3)
+  expect_equal(mixed$density$y, stats::dnorm(mixed$density$x) / 3)
+
+  # the overlays draw the same atoms
+  captured <- list()
+  testthat::local_mocked_bindings(
+    .lines.prior.point = function(plot_data, ...) captured$lines <<- c(captured$lines, list(plot_data))
+  )
+  plot(0, xlim = c(0, 1), ylim = c(0, 1))
+  lines_prior_list(list(bernoulli))
+  expect_equal(vapply(captured$lines, function(point) point$x, numeric(1)), c(0, 1))
+  expect_equal(vapply(captured$lines, function(point) point$y, numeric(1)), c(.7, .3))
+  overlay <- ggplot2::ggplot() + geom_prior_list(list(bernoulli))
+  overlay_geoms <- unname(vapply(overlay$layers, function(layer) class(layer$geom)[1], character(1)))
+  expect_equal(overlay_geoms, c("GeomSegment", "GeomSegment"))
+})
+
 test_that("plot_prior_list rejects individual weightfunction lists", {
 
   weight <- prior_weightfunction("one-sided", c(.05), wf_fixed(c(1, .25)))

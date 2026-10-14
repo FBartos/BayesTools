@@ -28,6 +28,9 @@
     }
   }
 
+  # a Bernoulli component is two atoms
+  prior_list <- .plot_prior_list_bernoulli_atoms(prior_list)
+
   # join the same priors
   prior_list <- .simplify_prior_list(prior_list)
 
@@ -200,6 +203,38 @@
   return(out)
 }
 
+# A Bernoulli prior is the discrete measure on {0, 1}: its list weight is split
+# between the atoms at 0 and 1 by the prior's own (truncation-normalized) pmf,
+# and equal locations of different components merge in .simplify_prior_list().
+.plot_prior_list_bernoulli_atoms <- function(prior_list){
+
+  if(is.prior.mixture(prior_list)){
+    class(prior_list) <- NULL
+  }else if(is.prior(prior_list)){
+    prior_list <- list(prior_list)
+  }
+
+  is_bernoulli <- vapply(prior_list, function(p){
+    is.prior.simple(p) && identical(p[["distribution"]], "bernoulli")
+  }, logical(1))
+  if(!any(is_bernoulli)){
+    return(prior_list)
+  }
+
+  do.call(c, lapply(seq_along(prior_list), function(i){
+    parent <- prior_list[[i]]
+    if(!is_bernoulli[i]){
+      return(list(parent))
+    }
+    mass  <- pdf(parent, c(0, 1))
+    atoms <- list()
+    for(location in c(0, 1)[mass > 0]){
+      atoms[[length(atoms) + 1L]] <- .model_probability_split_prior(
+        parent, prior("point", list(location)), mass[location + 1L])
+    }
+    atoms
+  }))
+}
 .simplify_prior_list <- function(prior_list){
 
   # as_mixed_priors stores non-listed priors
