@@ -577,3 +577,41 @@ test_that("a single bound ordered prior container keeps its layout", {
   single <- prior_factor_levels(prior_ordered(prior("normal", list(0, 1))), c("lo", "mid", "hi"))
   expect_equal(utils::capture.output(print(single)), ordered_line_for_print(1))
 })
+
+test_that("point priors with an expression location print the expression as is", {
+
+  # the expression location is stored as the truncation of the point prior
+  point <- prior("point", list(expression(sigma)))
+  expect_true(is.expression(point$truncation[["lower"]]))
+  expect_equal(print(point, silent = TRUE), "Spike(sigma)")
+  expect_equal(utils::capture.output(print(point)), "Spike(sigma)")
+  expect_equal(print(point, short_name = TRUE, silent = TRUE), "S(sigma)")
+  expect_equal(print(point, parameter_names = TRUE, silent = TRUE), "Spike(location = sigma)")
+})
+
+test_that("multivariate point priors with an expression location print the expression as is", {
+
+  expect_equal(print(prior("mpoint", list(expression(sigma), 2)), silent = TRUE), "mSpike(sigma)")
+})
+
+test_that("an ordered prior container with an expression point total prints", {
+
+  ordered <- prior_ordered(prior("point", list(expression(sigma))), allocation = c(.25, .75))
+  expect_equal(
+    print(ordered, silent = TRUE),
+    "ordered cumulative: total ~ Spike(sigma), allocation ~ fixed(0.25, 0.75)"
+  )
+})
+
+test_that("numeric truncations still round when printed", {
+
+  expect_equal(
+    print(prior("normal", list(0, 1), truncation = list(0.123456, 2.98765)), silent = TRUE),
+    "Normal(0, 1)[0.12, 2.99]"
+  )
+  expect_equal(
+    print(prior("normal", list(0, expression(x)), truncation = list(0.123456, 2.98765)), silent = TRUE),
+    "Normal(0, x)[0.12, 2.99]"
+  )
+  expect_equal(print(prior("point", list(1.23456)), silent = TRUE), "Spike(1.23)")
+})

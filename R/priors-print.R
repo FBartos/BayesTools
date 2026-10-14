@@ -300,7 +300,10 @@ print.selection_model <- function(x, ...){
     }
   }
   for(i in seq_along(x[["truncation"]])){
-    x[["truncation"]][[i]] <- round(x[["truncation"]][[i]], digits_estimates)
+    # a point prior with an expression location stores the expression as its truncation
+    if(is.numeric(x[["truncation"]][[i]])){
+      x[["truncation"]][[i]] <- round(x[["truncation"]][[i]], digits_estimates)
+    }
   }
 
   if(parameter_names){
