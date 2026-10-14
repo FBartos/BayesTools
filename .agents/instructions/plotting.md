@@ -48,6 +48,12 @@ summary tables (and RoBMA's) print them: ascending p-value intervals,
 reference weight first. Every individual-omega selector (`show_figures`,
 `show_parameter`) follows that order.
 
+Individual PET-PEESE prior-list plots (`individual = TRUE` in `plot_prior_list()`,
+`lines_prior_list()` and `geom_prior_list()`) draw the density of one
+coefficient, with the `prior_none()` models as an atom at zero, and need no
+`prior_list_mu`. A list with both PET and PEESE priors is refused: its two
+priors belong to different coefficients.
+
 Prior plot dispatch and layers live in `R/priors-plot.R` and
 `R/priors-plot-layers.R`; `plot.prior_linear_density()` in `R/priors-plot.R`
 draws a prior linear density from `.prior_linear_density_to_plot_data()` through

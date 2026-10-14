@@ -40,13 +40,18 @@ lines_prior_list <- function(prior_list, xlim = NULL, x_seq = NULL, x_range_quan
     prior_type <- "simple"
   }
 
-  if(prior_type == "PETPEESE"){
+  if(prior_type == "PETPEESE" && !individual){
     check_list(prior_list_mu, "prior_list_mu", check_length = length(prior_list))
     if(is.prior(prior_list_mu) | !all(sapply(prior_list_mu, is.prior)))
       stop("'prior_list_mu' must be a list of priors (priors for the mu parameter are required for plotting PET-PEESE).")
   }else{
     if(!is.null(prior_list_mu))
       stop("'prior_list_mu' is required only for PET-PEESE plots.")
+  }
+
+  # an individual PET-PEESE overlay shows the density of one coefficient
+  if(prior_type == "PETPEESE" && individual){
+    prior_list <- .plot_prior_list_individual_bias(prior_list)
   }
 
 
@@ -69,7 +74,7 @@ lines_prior_list <- function(prior_list, xlim = NULL, x_seq = NULL, x_range_quan
                                                       n_points = n_points, n_samples = n_samples)
     .lines.prior.weightfunction(plot_data = plot_data, rescale_x = rescale_x, ...)
 
-  }else if(prior_type == "PETPEESE"){
+  }else if(prior_type == "PETPEESE" && !individual){
 
     # use deterministic linear-combination summaries when supported, with a sampling fallback
     plot_data <- .plot_data_prior_list.PETPEESE(prior_list, x_seq = x_seq, x_range = xlim, x_range_quant = x_range_quant,
@@ -79,7 +84,7 @@ lines_prior_list <- function(prior_list, xlim = NULL, x_seq = NULL, x_range_quan
                                                 effect_direction = effect_direction, force_samples = force_samples)
     .lines.prior.PETPEESE(plot_data = plot_data, ...)
 
-  }else if(prior_type == "simple"){
+  }else if(prior_type == "simple" || prior_type == "PETPEESE"){
 
     # solve analytically
     plot_data <- .plot_data_prior_list.simple(prior_list, x_seq = x_seq, x_range = xlim, x_range_quant = x_range_quant,
@@ -149,13 +154,18 @@ geom_prior_list  <- function(prior_list, xlim = NULL, x_seq = NULL, x_range_quan
     prior_type <- "simple"
   }
 
-  if(prior_type == "PETPEESE"){
+  if(prior_type == "PETPEESE" && !individual){
     check_list(prior_list_mu, "prior_list_mu", check_length = length(prior_list))
     if(is.prior(prior_list_mu) | !all(sapply(prior_list_mu, is.prior)))
       stop("'prior_list_mu' must be a list of priors (priors for the mu parameter are required for plotting PET-PEESE).")
   }else{
     if(!is.null(prior_list_mu))
       stop("'prior_list_mu' is required only for PET-PEESE plots.")
+  }
+
+  # an individual PET-PEESE overlay shows the density of one coefficient
+  if(prior_type == "PETPEESE" && individual){
+    prior_list <- .plot_prior_list_individual_bias(prior_list)
   }
 
   # get the plotting range
@@ -177,7 +187,7 @@ geom_prior_list  <- function(prior_list, xlim = NULL, x_seq = NULL, x_range_quan
                                                       n_points = n_points, n_samples = n_samples)
     geom <- .geom_prior.weightfunction(plot_data = plot_data, rescale_x = rescale_x, ...)
 
-  }else if(prior_type == "PETPEESE"){
+  }else if(prior_type == "PETPEESE" && !individual){
 
     # use deterministic linear-combination summaries when supported, with a sampling fallback
     plot_data <- .plot_data_prior_list.PETPEESE(prior_list, x_seq = x_seq, x_range = xlim, x_range_quant = x_range_quant,
@@ -187,7 +197,7 @@ geom_prior_list  <- function(prior_list, xlim = NULL, x_seq = NULL, x_range_quan
                                                 effect_direction = effect_direction, force_samples = force_samples)
     geom <- .geom_prior.PETPEESE(plot_data = plot_data, ...)
 
-  }else if(prior_type == "simple"){
+  }else if(prior_type == "simple" || prior_type == "PETPEESE"){
 
     # solve analytically
     plot_data <- .plot_data_prior_list.simple(prior_list, x_seq = x_seq, x_range = xlim, x_range_quant = x_range_quant,

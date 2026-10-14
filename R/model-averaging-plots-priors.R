@@ -68,6 +68,11 @@ plot_prior_list <- function(prior_list, plot_type = "base",
       stop("'prior_list_mu' is required only for PET-PEESE plots.")
   }
 
+  # an individual PET-PEESE plot shows the density of one coefficient
+  if(prior_type == "PETPEESE" && individual){
+    prior_list <- .plot_prior_list_individual_bias(prior_list)
+  }
+
 
   # get the plotting range
   if(is.null(xlim) & is.null(x_seq)){
@@ -135,6 +140,32 @@ plot_prior_list <- function(prior_list, plot_type = "base",
   }
 }
 
+# The individual density of a PET-PEESE prior list is the density of one
+# coefficient: a list with both PET and PEESE priors has no such law, and the
+# models without the coefficient (prior_none()) fix it at zero.
+.plot_prior_list_individual_bias <- function(prior_list){
+
+  if(any(vapply(prior_list, is.prior.PET, logical(1))) &&
+     any(vapply(prior_list, is.prior.PEESE, logical(1)))){
+    stop("'individual = TRUE' is unavailable for prior lists that contain both PET and PEESE priors: ",
+         "the two priors belong to different coefficients. ",
+         "Plot the PET priors and the PEESE priors (each with its 'prior_none()' models) in separate lists, ",
+         "or use 'individual = FALSE' with 'prior_list_mu' for the combined regression.", call. = FALSE)
+  }
+
+  for(i in seq_along(prior_list)){
+    if(is.prior.none(prior_list[[i]])){
+      parent <- prior_list[[i]]
+      spike  <- .prior_density_copy_parent_attributes(prior("point", parameters = list(location = 0)), parent)
+      if(is.null(attr(spike, "model_probability_declaration", exact = TRUE))){
+        spike <- .set_prior_model_weight(spike, .prior_model_weight(parent))
+      }
+      prior_list[[i]] <- spike
+    }
+  }
+
+  prior_list
+}
 .plot_prior_list.both             <- function(plot_data, plot_type, par_name = NULL, scale_y2 = NULL, add = FALSE, ...){
 
   # get default plot settings

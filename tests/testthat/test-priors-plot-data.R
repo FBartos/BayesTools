@@ -496,6 +496,117 @@ test_that("plot_prior_list individual PET-PEESE uses the parameter density", {
   expect_equal(layer$y, pet_data$y, tolerance = 1e-12)
 })
 
+test_that("individual PET-PEESE prior lists refuse PET and PEESE together", {
+
+  pet   <- prior_PET("normal", list(0, 1))
+  peese <- prior_PEESE("normal", list(0, 1))
+  none  <- prior_none()
+  message <- "'individual = TRUE' is unavailable for prior lists that contain both PET and PEESE priors"
+
+  grDevices::pdf(NULL)
+  on.exit(grDevices::dev.off(), add = TRUE)
+  for(priors in list(list(pet, peese), list(pet, peese, none))){
+    expect_error(plot_prior_list(priors, individual = TRUE), message, fixed = TRUE)
+    expect_error(plot_prior_list(priors, individual = TRUE, plot_type = "ggplot"), message, fixed = TRUE)
+    expect_error(lines_prior_list(priors, individual = TRUE), message, fixed = TRUE)
+    expect_error(geom_prior_list(priors, individual = TRUE), message, fixed = TRUE)
+  }
+})
+
+test_that("individual PET and PEESE prior lists agree across the plot, lines and geom functions", {
+
+  grDevices::pdf(NULL)
+  on.exit(grDevices::dev.off(), add = TRUE)
+  mu <- prior("normal", list(0, 1))
+  x  <- seq(0, 2, length.out = 5)
+
+  for(coefficient in c("PET", "PEESE")){
+    bias <- if(coefficient == "PET") prior_PET("normal", list(0, 1)) else prior_PEESE("normal", list(0, 1))
+    expected <- density(bias, individual = TRUE, x_seq = x)
+
+    plot_layer <- ggplot2::ggplot_build(
+      plot_prior_list(list(bias), individual = TRUE, plot_type = "ggplot", x_seq = x)
+    )$data[[1]]
+    geom_layer <- ggplot2::ggplot_build(
+      ggplot2::ggplot() + geom_prior_list(list(bias), individual = TRUE, x_seq = x)
+    )$data[[1]]
+    drawn <- NULL
+    testthat::local_mocked_bindings(
+      .lines.prior.simple = function(plot_data, ...) drawn <<- plot_data
+    )
+    plot(0, xlim = c(0, 2), ylim = c(0, 1))
+    lines_prior_list(list(bias), individual = TRUE, x_seq = x)
+
+    expect_equal(plot_layer$x, expected$x)
+    expect_equal(plot_layer$y, expected$y, tolerance = 1e-12)
+    expect_equal(geom_layer$x, plot_layer$x)
+    expect_equal(geom_layer$y, plot_layer$y)
+    expect_equal(drawn$x, expected$x)
+    expect_equal(drawn$y, expected$y, tolerance = 1e-12)
+
+    # the mu priors are used only by the full regression bands
+    for(call in list(
+      function() plot_prior_list(list(bias), individual = TRUE, prior_list_mu = list(mu)),
+      function() lines_prior_list(list(bias), individual = TRUE, prior_list_mu = list(mu)),
+      function() geom_prior_list(list(bias), individual = TRUE, prior_list_mu = list(mu))
+    )){
+      expect_error(call(), "'prior_list_mu' is required only for PET-PEESE plots.", fixed = TRUE)
+    }
+    expect_error(lines_prior_list(list(bias)), "prior_list_mu")
+    expect_error(geom_prior_list(list(bias)), "prior_list_mu")
+  }
+})
+
+test_that("individual PET-PEESE lists with prior_none() models draw the coefficient density and a spike at zero", {
+
+  grDevices::pdf(NULL)
+  on.exit(grDevices::dev.off(), add = TRUE)
+  mu   <- prior("normal", list(0, 1))
+  none <- prior_none(prior_weights = 2)
+
+  # the plot data each function draws
+  captured <- list()
+  testthat::local_mocked_bindings(
+    .plot_prior_list.both = function(plot_data, ...) captured$plot <<- plot_data,
+    .lines.prior.simple   = function(plot_data, ...) captured$lines_density <<- plot_data,
+    .lines.prior.point    = function(plot_data, ...) captured$lines_point <<- plot_data
+  )
+
+  for(bias in list(prior_PET("normal", list(0, 1), prior_weights = 1),
+                   prior_PEESE("normal", list(0, 1), prior_weights = 1))){
+    priors <- list(bias, none)
+
+    # the coefficient density with its model probability and an atom at zero
+    # with the probability of the models without the coefficient
+    plot_prior_list(priors, individual = TRUE, xlim = c(0, 2), n_points = 21)
+    expect_named(captured$plot, c("density", "points1"))
+    expect_s3_class(captured$plot$points1, "density.prior.point")
+    expect_equal(captured$plot$points1$x, 0)
+    expect_equal(captured$plot$points1$y, 2 / 3)
+    single <- density(bias, individual = TRUE, x_seq = captured$plot$density$x[-1], truncate_end = FALSE)
+    expect_equal(captured$plot$density$y[-1], single$y / 3, tolerance = 1e-12)
+
+    lines_prior_list(priors, individual = TRUE, xlim = c(0, 2), n_points = 21)
+    expect_equal(captured$lines_density$x, captured$plot$density$x)
+    expect_equal(captured$lines_density$y, captured$plot$density$y)
+    expect_equal(captured$lines_point$x, 0)
+    expect_equal(captured$lines_point$y, 2 / 3)
+
+    geom_gg <- ggplot2::ggplot() + geom_prior_list(priors, individual = TRUE, xlim = c(0, 2))
+    expect_s3_class(geom_gg, "ggplot")
+    geom_layers <- unname(vapply(geom_gg$layers, function(layer) class(layer$geom)[1], character(1)))
+    expect_equal(sort(geom_layers), c("GeomLine", "GeomSegment"))
+    expect_equal(geom_gg$layers[[which(geom_layers == "GeomSegment")]]$data$x, 0)
+  }
+
+  # the full regression bands keep requiring and using the mu priors
+  expect_error(plot_prior_list(list(prior_PET("normal", list(0, 1)), none)), "prior_list_mu")
+  expect_error(lines_prior_list(list(prior_PET("normal", list(0, 1)), none)), "prior_list_mu")
+  expect_error(geom_prior_list(list(prior_PET("normal", list(0, 1)), none)), "prior_list_mu")
+  bands <- plot_prior_list(list(prior_PET("normal", list(0, 1)), none), prior_list_mu = list(mu, mu), plot_type = "ggplot")
+  expect_s3_class(bands, "ggplot")
+})
+
 test_that("plot_prior_list rejects individual weightfunction lists", {
 
   weight <- prior_weightfunction("one-sided", c(.05), wf_fixed(c(1, .25)))
