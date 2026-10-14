@@ -51,6 +51,11 @@ Moment, inverse-moment and inverse-gamma scalar density, CDF and quantile
 adapters preserve evaluation NA and NaN distinctly, including marginal methods.
 Generic truncated scalar CDF/CCDF paths preserve both missing values as well;
 this does not certify the unchanged truncated Normal quantile path.
+Closed-form truncated Normal moments are returned only within a rounding-error
+gate: `var()` refuses above a relative error of 1e-6, and `mean()` of a finite
+interval above an absolute error of 1e-6 times the interval width (an interval
+with an infinite bound has no cancellation and is not gated); both refuse
+rather than return a value that can leave the support.
 
 Gamma coordinates in inverse-gamma and nonlocal kernels retain original-input
 logs when intermediate ratios, squares, or roots lose precision. The bounded

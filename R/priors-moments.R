@@ -422,7 +422,38 @@ sd.prior     <- function(x, ...){
   mu    <- prior$parameters[["mean"]]
   sigma <- prior$parameters[["sd"]]
   if(identical(moment, "mean")){
-    return(mu + sigma * .prior_normal_truncated_terms(prior)$shift)
+    terms <- .prior_normal_truncated_terms(prior)
+    # The mean subtracts two ratios of about 1 / w for a standardized interval
+    # width w, so a narrow interval leaves an absolute rounding error of about
+    # eps / w and the rounded mean can leave the support. A mean whose estimated
+    # error exceeds 1e-6 of the interval width is not returned; intervals with
+    # an infinite bound have a single ratio and no cancellation.
+    if(all(is.finite(terms$bounds))){
+      width <- terms$bounds[2] - terms$bounds[1]
+      error <- .prior_normal_truncated_mean_error(prior, terms)
+      if(!isTRUE(error <= 1e-6 * width)){
+        reported <- if(is.finite(error / width)){
+          paste0(
+            "its estimated rounding error is ",
+            format(signif(error / width, 2), trim = TRUE),
+            " times the width of the truncation interval"
+          )
+        }else{
+          "its estimated rounding error is not finite"
+        }
+        stop(
+          "The mean of the truncated normal prior is unavailable in double-precision ",
+          "arithmetic: ", reported, " for an interval of width ",
+          format(signif(width, 2), trim = TRUE), " prior standard deviations starting ",
+          format(signif(terms$bounds[1], 4), trim = TRUE),
+          " prior standard deviations from the mean. Estimate the mean from ",
+          "rng() draws of the prior, which sample the truncated distribution exactly, ",
+          "or use a wider truncation interval.",
+          call. = FALSE
+        )
+      }
+    }
+    return(mu + sigma * terms$shift)
   }
 
   # The variance is returned only when its estimated relative rounding error
@@ -477,6 +508,66 @@ sd.prior     <- function(x, ...){
   )
 }
 
+# Rounding errors of the log ratios log r_k = log phi(k) - log Z of the closed
+# form, derived in the error model of .prior_normal_truncated_variance() below:
+# the error of each bound's own log density term (own), the error of log Z
+# shared by both ratios (log_Z), and the resulting log error of each ratio
+# (ratio; zero for an infinite bound).
+.prior_normal_truncated_log_ratio_error <- function(prior, terms){
+
+  eps    <- .Machine$double.eps
+  finite <- is.finite(terms$bounds)
+
+  # log tail masses combined by .prior_normal_log_interval_mass()
+  mu    <- prior$parameters[["mean"]]
+  sigma <- prior$parameters[["sd"]]
+  lower <- prior$truncation[["lower"]]
+  upper <- prior$truncation[["upper"]]
+  if(lower >= mu){
+    log_masses <- stats::pnorm(c(lower, upper), mu, sigma, lower.tail = FALSE, log.p = TRUE)
+  }else{
+    log_masses <- stats::pnorm(c(upper, lower), mu, sigma, lower.tail = TRUE, log.p = TRUE)
+  }
+  log_mass_error <- ifelse(is.finite(log_masses), eps * (4 * abs(log_masses) + 4), 0)
+  q <- exp(log_masses[2] - terms$log_Z)
+  log_Z_error <- log_mass_error[1] * (1 + q) + log_mass_error[2] * q +
+    eps * (abs(terms$log_Z) + 2 * (1 + q))
+
+  own_error <- ifelse(
+    finite,
+    eps * (2 * abs(terms$log_density) + 2) +
+      eps * (abs(terms$log_density - terms$log_Z) + 2),
+    0
+  )
+
+  list(
+    own   = own_error,
+    log_Z = log_Z_error,
+    ratio = ifelse(finite, own_error + log_Z_error, 0)
+  )
+}
+
+# Absolute rounding error of the standardized mean m = r_a - r_b, with r_k
+# the ratios of .prior_normal_truncated_terms(). The shared error of log Z
+# scales both ratios and so enters through |m| only, while the own errors of
+# the two bounds enter through the ratios themselves (about 1 / w each for a
+# standardized interval width w, which is the cancellation of a narrow
+# interval). The sum adds the second-order terms of the ratios, the rounding of
+# their exponentials and difference, and the rounding of the product and sum
+# that place the mean on the prior's scale, at most eps per term (in units of
+# the prior's standard deviation).
+.prior_normal_truncated_mean_error <- function(prior, terms){
+
+  errors <- .prior_normal_truncated_log_ratio_error(prior, terms)
+  ratio  <- terms$ratio
+  shift  <- terms$shift
+  center <- prior$parameters[["mean"]] / prior$parameters[["sd"]]
+
+  sum(errors$own * ratio) + errors$log_Z * abs(shift) +
+    sum(ratio * (expm1(errors$ratio) - errors$ratio)) +
+    .Machine$double.eps * (sum(ratio) + 2 * abs(shift) + abs(center + shift))
+}
+
 # Standardized variance V = 1 + a r_a - b r_b - m^2 of a truncated normal, with
 # r_a = phi(a) / Z (zero for an infinite bound) and m = r_a - r_b, and a
 # conservative bound on its relative rounding error. Far in a tail the terms
@@ -513,28 +604,10 @@ sd.prior     <- function(x, ...){
   shift  <- terms$shift
   value  <- 1 + terms$scaled_ratio[1] - terms$scaled_ratio[2] - shift^2
 
-  # log tail masses combined by .prior_normal_log_interval_mass()
-  mu    <- prior$parameters[["mean"]]
-  sigma <- prior$parameters[["sd"]]
-  lower <- prior$truncation[["lower"]]
-  upper <- prior$truncation[["upper"]]
-  if(lower >= mu){
-    log_masses <- stats::pnorm(c(lower, upper), mu, sigma, lower.tail = FALSE, log.p = TRUE)
-  }else{
-    log_masses <- stats::pnorm(c(upper, lower), mu, sigma, lower.tail = TRUE, log.p = TRUE)
-  }
-  log_mass_error <- ifelse(is.finite(log_masses), eps * (4 * abs(log_masses) + 4), 0)
-  q <- exp(log_masses[2] - terms$log_Z)
-  log_Z_error <- log_mass_error[1] * (1 + q) + log_mass_error[2] * q +
-    eps * (abs(terms$log_Z) + 2 * (1 + q))
-
-  own_error <- ifelse(
-    finite,
-    eps * (2 * abs(terms$log_density) + 2) +
-      eps * (abs(terms$log_density - terms$log_Z) + 2),
-    0
-  )
-  log_ratio_error <- ifelse(finite, own_error + log_Z_error, 0)
+  errors          <- .prior_normal_truncated_log_ratio_error(prior, terms)
+  own_error       <- errors$own
+  log_Z_error     <- errors$log_Z
+  log_ratio_error <- errors$ratio
   gradient <- c(
     terms$scaled_ratio[1] - 2 * shift * ratio[1],
     2 * shift * ratio[2] - terms$scaled_ratio[2]

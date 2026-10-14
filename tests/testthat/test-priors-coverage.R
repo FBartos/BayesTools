@@ -1248,6 +1248,80 @@ test_that("truncated normal moments are analytic for narrow, offset, and far-tai
   )
 })
 
+test_that("truncated normal means stop when their rounding error may exceed 1e-6 of the interval width", {
+
+  # References: the closed form evaluated in 80-digit mpmath arithmetic from the
+  # exact double bounds (erfc normaliser). A narrow interval cancels two ratios
+  # of about 1 / width, so the double-precision mean left its support: N(0, 100)
+  # on [1, 1 + 1e-6] gave 1.0000184 and N(0, 1) on [-3, -3 + 1e-12] gave -3.0023.
+  accepted <- list(
+    list(mu = 0, sigma = 1,   lower = 1,  upper = 1.01, mean = 1.004991625042014735311553),
+    list(mu = 0, sigma = 1,   lower = 1,  upper = 1.001, mean = 1.000499916625004115091039),
+    list(mu = 0, sigma = 1,   lower = 5,  upper = 5.1,  mean = 5.045810831656684276787259),
+    list(mu = 0, sigma = 1,   lower = 0,  upper = 0.1,  mean = 0.04995834723791308296934359),
+    list(mu = 0, sigma = 1,   lower = -3, upper = -2.9, mean = -2.947546040865694359270231),
+    list(mu = 2, sigma = 0.5, lower = 2.5, upper = 2.6, mean = 2.548170581517787731710686),
+    list(mu = 0, sigma = 100, lower = 1,  upper = 1.5,  mean = 1.249997395835503641118044),
+    list(mu = 0, sigma = 1,   lower = 39, upper = 40,   mean = 39.02560741993010844958296)
+  )
+  for(case in accepted){
+    p <- prior("normal", list(case$mu, case$sigma), truncation = list(case$lower, case$upper))
+    m <- mean(p)
+    expect_gte(m, case$lower)
+    expect_lte(m, case$upper)
+    expect_lte(abs(m - case$mean), 1e-6 * (case$upper - case$lower))
+    expect_equal(m, case$mean, tolerance = 1e-9)
+  }
+
+  # intervals with an infinite bound have a single ratio and are not gated
+  expect_equal(mean(prior("normal", list(0, 1), list(8, Inf))), 8.12136811223611268065352, tolerance = 1e-12)
+  expect_equal(mean(prior("normal", list(0, 1), list(-Inf, -39))), -39.02560741993010846, tolerance = 1e-12)
+
+  # narrow intervals refuse like the variance of the same prior
+  refused <- list(
+    prior("normal", list(0, 100), truncation = list(1, 1 + 1e-6)),
+    prior("normal", list(0, 1),   truncation = list(1, 1 + 1e-8)),
+    prior("normal", list(0, 1),   truncation = list(-3, -3 + 1e-12))
+  )
+  for(p in refused){
+    expect_error(
+      mean(p),
+      "The mean of the truncated normal prior is unavailable in double-precision arithmetic",
+      fixed = TRUE)
+    expect_error(
+      var(p),
+      "The variance of the truncated normal prior is unavailable in double-precision arithmetic",
+      fixed = TRUE)
+  }
+  expect_error(
+    mean(prior("normal", list(0, 1), truncation = list(1, 1 + 1e-8))),
+    paste0(
+      "The mean of the truncated normal prior is unavailable in double-precision ",
+      "arithmetic: its estimated rounding error is [0-9.e+]+ times the width of the ",
+      "truncation interval for an interval of width 1e-08 prior standard deviations ",
+      "starting 1 prior standard deviations from the mean[.] Estimate the mean from ",
+      "rng[(][)] draws of the prior, which sample the truncated distribution exactly, ",
+      "or use a wider truncation interval[.]"
+    )
+  )
+  expect_error(
+    mean(prior_spike_and_slab(prior("normal", list(0, 1), truncation = list(1, 1 + 1e-8)))),
+    "The mean of the truncated normal prior is unavailable in double-precision arithmetic",
+    fixed = TRUE)
+
+  # a returned mean never leaves the support
+  for(lower in c(-3, 0, 1, 5, 20)){
+    for(width in 10^(-12:1)){
+      p <- prior("normal", list(0, 1), truncation = list(lower, lower + width))
+      m <- tryCatch(mean(p), error = function(e) NA_real_)
+      if(!is.na(m)){
+        expect_gte(m, p$truncation[["lower"]])
+        expect_lte(m, p$truncation[["upper"]])
+      }
+    }
+  }
+})
+
 test_that("truncated normal variances stop when their rounding error may exceed 1e-6", {
 
   # References: the closed form evaluated in 50-digit mpmath arithmetic from
