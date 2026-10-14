@@ -875,6 +875,36 @@ test_that("interpret_records keeps the evidence of log-scale Bayes factors beyon
 
 })
 
+test_that("interpret_records reads the logarithm of a natural-scale Bayes factor beyond the double range", {
+
+  for(BF01 in c(FALSE, TRUE)){
+    BF <- .format_BF_from_log(c(overflow = 800, tiny = -800, ordinary = 2), logBF = FALSE, BF01 = BF01, inclusion = TRUE)
+    # the displayed natural values are 0 or Inf, the carrier keeps the logarithms
+    expect_true(all(is.infinite(as.numeric(BF)[1:2]) | as.numeric(BF)[1:2] == 0))
+    tests <- data.frame(prior_prob = rep(0.5, 3), post_prob = c(1, 0, 0.88), check.names = FALSE)
+    tests[["inclusion_BF"]] <- BF
+    rownames(tests) <- names(BF)
+    class(tests) <- c("BayesTools_table", "data.frame")
+    attr(tests, "type") <- c("prior_prob", "post_prob", "inclusion_BF")
+    table_evidence <- function(row, output = "text"){
+      interpret_records(list(tests = tests),
+        list(list(kind = "evidence", source = "tests", row = row, label = row)), output = output)
+    }
+    expect_identical(as.character(table_evidence("overflow")),
+                     "strong evidence in favor of the overflow, Inclusion BF = exp(800)", info = BF01)
+    expect_identical(as.character(table_evidence("tiny")),
+                     "strong evidence against the tiny, Inclusion BF = exp(-800)", info = BF01)
+    expect_identical(as.character(table_evidence("ordinary")),
+                     "moderate evidence in favor of the ordinary, Inclusion BF = 7.39", info = BF01)
+    overflow <- table_evidence("overflow", "records")
+    expect_identical(overflow$BF_scale, "log")
+    expect_equal(overflow$BF_value, if(BF01) -800 else 800)
+    expect_equal(overflow$BF_canonical_value, exp(800))
+    # an ordinary natural-scale value keeps the linear reading
+    expect_identical(table_evidence("ordinary", "records")$BF_scale, "linear")
+  }
+})
+
 test_that("interpret_records applies the orientation of a log-scale Bayes factor to its logarithm", {
 
   # the reciprocal of exp(710) stays representable

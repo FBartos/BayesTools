@@ -773,6 +773,19 @@ interpret_records <- function(sources, plan, output = c("records", "text"),
   BF_scale <- .interpret_table_scalar("BF_scale", data, row_index, schema, ref)
   if(is.null(BF_scale)){
     BF_scale <- if(isTRUE(attr(BF_vector, "logBF"))) "log" else "linear"
+    # A natural-scale value beyond the double range displays as 0 or Inf, while
+    # the Bayes-factor carrier keeps its logarithm: read that, in the displayed
+    # orientation.
+    carrier_logs <- .BF_carrier_log(BF_vector)
+    if(identical(BF_scale, "linear") && !is.null(carrier_logs) &&
+       (!is.finite(BF_value) || BF_value == 0)){
+      oriented_log <- carrier_logs[row_index]
+      if(isTRUE(attr(BF_vector, "BF01"))) oriented_log <- -oriented_log
+      if(is.finite(oriented_log)){
+        BF_value <- oriented_log
+        BF_scale <- "log"
+      }
+    }
   }
 
   BF_orientation <- .interpret_table_scalar("BF_orientation", data, row_index, schema, ref)

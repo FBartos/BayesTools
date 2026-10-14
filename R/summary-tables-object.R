@@ -870,7 +870,7 @@ invert_BF_bound_operator <- function(operator){
   }else if(any(small_bound)){
     # Shown as reciprocals (1/10000), mirroring large bounds (>10000.000);
     # an overflowing reciprocal shows the (canonical) logarithm instead.
-    small_logs <- if(!is.null(logs) && !isTRUE(attr(x, "logBF"))){
+    small_logs <- if(!is.null(logs)){
       (if(isTRUE(attr(x, "BF01"))) -logs else logs)[small_bound]
     }else{
       log(x[small_bound])
