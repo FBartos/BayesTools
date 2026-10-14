@@ -1909,9 +1909,11 @@ parameter_prior_density.BayesTools_fit <- function(
       output_transformation_arguments = arguments
     )
   }
+  # the declared support of the source (as the catalog's support producer
+  # reads it): the components of a mixture or spike-and-slab wrapper included
   nonnegative <- function(){
-    lower <- prior_object$truncation$lower
-    is.numeric(lower) && length(lower) == 1L && !is.na(lower) && lower >= 0
+    support <- .posterior_support_from_prior(prior_object)
+    !is.null(support) && isTRUE(support$bounds[1L] >= 0)
   }
   switch(
     transform$type,

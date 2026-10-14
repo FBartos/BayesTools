@@ -5313,3 +5313,41 @@ test_that("supplied single MCMC timing survives ordinary and derived extraction"
     expect_identical(attr(matrix_output[[1L]], "mcpar"), c(1, 3, 1))
   }
 })
+
+test_that("the variance of an SD prior with a wrapper has a prior density", {
+
+  data <- data.frame(id = factor(c("a", "b")))
+  sd_densities <- function(sd_prior, quantities = c("sd(intercept)", "var(intercept)")){
+    result <- JAGS_formula(~ 1 + (1 | id), "mu", data, list(intercept = prior("normal", list(0, 1))),
+      prior_random = prior_random(id = random_block(sd = sd_prior)))
+    columns <- unique(c("mu_intercept", JAGS_to_monitor(result$prior_list)))
+    fit <- .prior_monitor_test_fit(result, columns)
+    catalog <- parameter_catalog(fit)
+    stats::setNames(lapply(quantities, function(quantity){
+      parameter_prior_density(fit, parameter_catalog_resolve(catalog, quantity, "mu"), n_grid = 64L)
+    }), quantities)
+  }
+  # the density of the prior of the SD and of its square at the value 4 (the SD 2)
+  gamma_2 <- function(x) stats::dgamma(x, 2, 2)
+  ordinate <- function(density, value) exp(prior_density_ordinate(density, value)$log_density)
+
+  # a spike-and-slab SD prior: the inclusion weight .5 times the Gamma ordinate,
+  # and the point mass at zero
+  spike_and_slab <- sd_densities(prior_spike_and_slab(prior("gamma", list(2, 2))))
+  expect_false(is.null(spike_and_slab[["var(intercept)"]]))
+  expect_equal(ordinate(spike_and_slab[["var(intercept)"]], 4), .5 * gamma_2(2) / 4, tolerance = 1e-6)
+  expect_equal(.prior_linear_density_point_mass(spike_and_slab[["var(intercept)"]], 0), .5, tolerance = 1e-12)
+  expect_equal(.prior_linear_density_point_mass(spike_and_slab[["sd(intercept)"]], 0), .5, tolerance = 1e-12)
+
+  # an equal mixture of two Gamma SD priors: the mixture of the transformed ordinates
+  mixture <- sd_densities(prior_mixture(list(prior("gamma", list(2, 2)), prior("gamma", list(3, 2)))))
+  expect_false(is.null(mixture[["var(intercept)"]]))
+  expect_equal(ordinate(mixture[["var(intercept)"]], 4),
+    (stats::dgamma(2, 2, 2) + stats::dgamma(2, 3, 2)) / 2 / 4, tolerance = 1e-6)
+
+  # a plain Gamma SD prior keeps its density, and a point SD prior is a point
+  plain <- sd_densities(prior("gamma", list(2, 2)))
+  expect_equal(ordinate(plain[["var(intercept)"]], 4), gamma_2(2) / 4, tolerance = 1e-6)
+  fixed <- sd_densities(prior("point", list(location = 2)))
+  expect_equal(.prior_linear_density_point_mass(fixed[["var(intercept)"]], 4), 1, tolerance = 1e-12)
+})
