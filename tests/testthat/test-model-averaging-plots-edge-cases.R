@@ -4780,3 +4780,54 @@ test_that("the unknown-atoms refusal of posterior plots asks for a refit by clas
     fixed = TRUE)
   expect_match(conditionMessage(condition), "(refitting models fitted with 0.3.0).", fixed = TRUE)
 })
+
+test_that("plot_models orders the endpoints of intervals mapped by a decreasing transformation", {
+
+  make_summary <- function(mean, lo, hi){
+    out <- data.frame(Mean = mean, "0.025" = lo, "0.975" = hi, check.names = FALSE)
+    class(out) <- c("BayesTools_table", "BayesTools_runjags_summary", "data.frame")
+    attr(out, "parameters") <- "theta"
+    out
+  }
+  total <- structure(seq(0, 2, length.out = 100), class = "mixed_posteriors",
+    prior_list = list(prior("normal", list(0, 1))))
+  models <- list(list(
+    fit = structure(list(), prior_list = list(theta = attr(total, "prior_list")[[1L]])),
+    fit_summary = make_summary(1, 0, 2),
+    inference = list(prior_prob = 1, post_prob = 1, inclusion_BF = NA_real_)
+  ))
+  inference <- list(theta = structure(list(), is_null = FALSE))
+  draw <- function(plot_type, ...){
+    plot_models(models, list(theta = total), inference, "theta", plot_type = plot_type, prior = TRUE, ...)
+  }
+  layers_with <- function(figure, column){
+    layers <- ggplot2::ggplot_build(figure)$data
+    layers[vapply(layers, function(layer) column %in% names(layer), logical(1))]
+  }
+  prior_interval <- stats::qnorm(c(.025, .975))
+  overall <- unname(stats::quantile(total, c(.025, .975)))
+
+  # a decreasing map shows the mapped interval [-2, 0] (and the mapped prior and overall intervals)
+  grDevices::pdf(NULL)
+  on.exit(grDevices::dev.off(), add = TRUE)
+  expect_no_error(draw("base", transformation = "lin", transformation_arguments = list(a = 0, b = -1)))
+  figure <- draw("ggplot", transformation = "lin", transformation_arguments = list(a = 0, b = -1))
+  bars <- layers_with(figure, "xmin")
+  expect_length(bars, 2L)
+  expect_equal(c(bars[[1L]]$xmin, bars[[1L]]$xmax), c(-2, 0))
+  expect_equal(c(bars[[2L]]$xmin, bars[[2L]]$xmax), prior_interval)
+  polygon <- layers_with(figure, "y")[[length(layers_with(figure, "y")) - 1L]]
+  expect_equal(range(polygon$x), -rev(overall))
+  expect_equal(
+    figure$scales$get_scales("y")$secondary.axis$labels[2:3],
+    c("-1.00 [-2.00, 0.00]", "BF = NA [1.00 -> 1.00]")
+  )
+  expect_equal(figure$scales$get_scales("y")$secondary.axis$labels[1L],
+    sprintf("%.2f [%.2f, %.2f]", -mean(total), -overall[2L], -overall[1L]))
+
+  # an increasing map is unchanged
+  figure <- draw("ggplot", transformation = "lin", transformation_arguments = list(a = 1, b = 2))
+  bars <- layers_with(figure, "xmin")
+  expect_equal(c(bars[[1L]]$xmin, bars[[1L]]$xmax), c(1, 5))
+  expect_equal(c(bars[[2L]]$xmin, bars[[2L]]$xmax), 1 + 2 * prior_interval)
+})

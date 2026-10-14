@@ -352,6 +352,13 @@ plot_models <- function(model_list, samples, inference, parameter, plot_type = "
     BF         = sapply(models_inference, function(m) m[["inclusion_BF"]])
   ))
 }
+# The endpoints of mapped intervals in increasing order (a decreasing
+# transformation reverses them).
+.plot_models_order_interval <- function(lower, upper){
+
+  cbind(y_lCI = pmin(lower, upper), y_uCI = pmax(lower, upper))
+}
+
 .plot_models.simple         <- function(models_summary, models_inference, total_inference, total_samples,
                                         prior_list, parameter, par_name,
                                         plot_type, prior, conditional, order,
@@ -413,6 +420,15 @@ plot_models <- function(model_list, samples, inference, parameter, plot_type = "
     overal_lCI  <- .density.prior_transformation_x(overal_lCI,  transformation, transformation_arguments)
     overal_uCI  <- .density.prior_transformation_x(overal_uCI , transformation, transformation_arguments)
     vertical_0  <- .density.prior_transformation_x(vertical_0 , transformation, transformation_arguments)
+
+    # a decreasing transformation reverses the endpoints of the mapped intervals
+    if(prior){
+      prior_data[,c("y_lCI","y_uCI")]   <- .plot_models_order_interval(prior_data[["y_lCI"]], prior_data[["y_uCI"]])
+    }
+    posterior_data[,c("y_lCI","y_uCI")] <- .plot_models_order_interval(posterior_data[["y_lCI"]], posterior_data[["y_uCI"]])
+    overal_interval <- .plot_models_order_interval(overal_lCI, overal_uCI)
+    overal_lCI      <- unname(overal_interval[, "y_lCI"])
+    overal_uCI      <- unname(overal_interval[, "y_uCI"])
   }
 
   # add names and locations

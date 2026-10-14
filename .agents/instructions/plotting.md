@@ -116,7 +116,9 @@ an omitted reference cannot create a clipping warning. Explicit reference and
 genuine non-reference atom selections still use the active mapping and warn
 when their probabilities exceed it.
 
-`plot_models()` uses semantic ordered levels and transformed model summaries.
+`plot_models()` uses semantic ordered levels and transformed model summaries;
+a decreasing transformation orders the endpoints of every mapped interval (model,
+prior and overall) before labels and rendering.
 Posterior-only plots skip prior summaries and transforms of unused prior fields.
 Ordered prior means use declared
 allocation expectations; intervals use structural CDF diagnostics, exact atom
