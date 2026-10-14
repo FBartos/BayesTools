@@ -243,6 +243,13 @@
 .bt_random_effect_summary_mask_undefined_correlation <- function(
     random_term, values, index, model_samples, prior_list){
 
+  # A row-indexed external SD source has no SD draws of the block: nothing
+  # establishes where the correlation is undefined, and it keeps its fitted
+  # value.
+  if(anyNA(random_term$sd_parameter_names) &&
+     .bt_random_sd_binding_has_external_source(random_term$sd_binding)){
+    return(values)
+  }
   sd_draws <- .bt_random_effect_sd_draws(
     random_term = random_term,
     n_columns = random_term$n_columns,

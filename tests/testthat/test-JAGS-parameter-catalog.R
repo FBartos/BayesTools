@@ -2166,6 +2166,42 @@ test_that("LKJ correlations are undefined where an SD of the pair is zero, scale
   expect_identical(is.na(scaled_draws), !(scaled_sd[, 2L] > 0 & scaled_sd[, 3L] > 0))
 })
 
+test_that("the correlation of a block with an external SD source is undefined where the source is zero", {
+
+  # A scalar external source (`tau`) is the SD of every column, so the
+  # correlation is undefined where it is zero; a row-indexed source has no SD
+  # draws of the block, and the correlation keeps its fitted value.
+  data <- data.frame(x = c(-3, -1, 1, 3, 2, 0), id = factor(rep(c("a", "b", "c"), each = 2L)))
+  external_fit <- function(shape, tau){
+    result <- JAGS_formula(
+      ~ 1 + us(1 + x | id), "mu", data,
+      list(intercept = prior("normal", list(0, 1))),
+      prior_random = prior_random(id = random_block(
+        sd_source = random_sd_source("tau", shape = shape), cor = prior_lkj()
+      ))
+    )
+    primitive <- result$formula_design$random_effects[[1L]]$correlation$primitive_names
+    values <- cbind(mu_intercept = 0, tau = tau, c(0.3, 0.8))
+    colnames(values)[3L] <- primitive
+    .parameter_catalog_test_fit(
+      coda::mcmc.list(coda::mcmc(values)),
+      c(result$prior_list, list(tau = prior("normal", list(0, 1), list(0, Inf)))),
+      formula_design = list(mu = result$formula_design)
+    )
+  }
+  draws_of <- function(fit){
+    selection <- parameter_catalog_resolve(parameter_catalog(fit), "(mu) cor(intercept,x)")
+    as.numeric(as.matrix(parameter_draws(fit, selection)))
+  }
+  scalar <- external_fit("scalar", c(0, 1))
+  expect_equal(draws_of(scalar), c(NA, 0.6))
+  expect_true("tau" %in% parameter_catalog_resolve(
+    parameter_catalog(scalar), "(mu) cor(intercept,x)"
+  )$quantities$extraction_key[[1L]]$dependencies)
+  expect_equal(draws_of(external_fit("scalar", c(1, 2))), c(-0.4, 0.6))
+  expect_equal(draws_of(external_fit("row", c(0, 1))), c(-0.4, 0.6))
+})
+
 test_that("a random SD that rescales its own coordinate is one-to-one in a multi-SD scaled block", {
 
   # The SD of the scaled slope is the fitted SD divided by the SD of the
