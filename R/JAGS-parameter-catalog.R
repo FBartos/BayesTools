@@ -112,7 +112,9 @@
 #' draws where the realized allocation total is zero. Random-effect
 #' correlations (`cor(...)` of LKJ blocks; original-scale correlations in a
 #' block with scaled columns) are `NA` on draws where the correlation is
-#' undefined, i.e. where one of the SDs of its pair is zero.
+#' undefined, i.e. where one of the SDs of its pair is zero; a correlation
+#' whose SD draws are not available (a row-indexed or unmonitored external SD
+#' source) cannot be masked and keeps its fitted draws.
 #' Each catalog quantity declares its `definedness` (`"always"`, or the reason
 #' of possibly undefined draws: `"correlation"`, or `"allocation_active"` for
 #' the variance shares of gated total-variance allocations) and its exact

@@ -243,13 +243,7 @@
 .bt_random_effect_summary_mask_undefined_correlation <- function(
     random_term, values, index, model_samples, prior_list){
 
-  # A row-indexed external SD source has no SD draws of the block: nothing
-  # establishes where the correlation is undefined, and it keeps its fitted
-  # value.
-  if(anyNA(random_term$sd_parameter_names) &&
-     .bt_random_sd_binding_has_external_source(random_term$sd_binding)){
-    return(values)
-  }
+  pair <- utils::combn(seq_len(random_term$n_columns), 2L)[, index]
   sd_draws <- .bt_random_effect_sd_draws(
     random_term = random_term,
     n_columns = random_term$n_columns,
@@ -257,10 +251,32 @@
     prior_list = prior_list
   )
   if(is.null(sd_draws)){
-    .bt_random_effect_summary_missing_sd_stop(random_term)
+    if(!.bt_random_sd_binding_has_external_source(random_term$sd_binding)){
+      .bt_random_effect_summary_missing_sd_stop(random_term)
+    }
+    # An external SD source need not have SD draws of the block (a
+    # row-indexed source has none, and a scalar source may be unmonitored):
+    # nothing establishes where the correlation of a pair without SD draws is
+    # undefined, and it keeps its fitted value. The pairs whose SDs are
+    # available are masked as above.
+    sd_names <- random_term$sd_parameter_names
+    if(length(sd_names) != random_term$n_columns){
+      return(values)
+    }
+    sd_draws <- matrix(NA_real_, nrow = nrow(model_samples),
+                       ncol = random_term$n_columns)
+    for(column in pair){
+      sd_name <- sd_names[column]
+      column_draws <- if(!is.na(sd_name)){
+        .bt_random_effect_parameter_draws(sd_name, model_samples, prior_list)
+      }
+      if(is.null(column_draws)){
+        return(values)
+      }
+      sd_draws[, column] <- column_draws
+    }
   }
 
-  pair <- utils::combn(seq_len(random_term$n_columns), 2L)[, index]
   positive <- is.finite(sd_draws[, pair, drop = FALSE]) &
     sd_draws[, pair, drop = FALSE] > 0
   values[rowSums(positive) < 2L] <- NA_real_

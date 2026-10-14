@@ -2202,6 +2202,141 @@ test_that("the correlation of a block with an external SD source is undefined wh
   expect_equal(draws_of(external_fit("row", c(0, 1))), c(-0.4, 0.6))
 })
 
+test_that("the correlation of a block keeps its fitted draws when its external SD source has no SD draws", {
+
+  # An unmonitored scalar source (a node of the model syntax without a
+  # BayesTools prior, absent from the parameter map) gives no SD draws that
+  # establish where the correlation is undefined, as a row-indexed source
+  # gives none: the correlation keeps its fitted draws in every draw and table
+  # route. A monitored source still masks it where it is zero.
+  data <- data.frame(x = c(-3, -1, 1, 3, 2, 0), id = factor(rep(c("a", "b", "c"), each = 2L)))
+  build_fit <- function(case, monitor_tau){
+    random <- switch(
+      case,
+      scalar = prior_random(id = random_block(
+        sd_source = random_sd_source("tau"), cor = prior_lkj()
+      )),
+      row = prior_random(id = random_block(
+        sd_source = random_sd_source("tau", shape = "row"), cor = prior_lkj()
+      )),
+      # the SDs of the block are allocated from the external source
+      allocated = prior_random(
+        random_variance_allocation(
+          name = "split", terms = "id", target = "sd_component",
+          scale = "mean_variance", sd_source = random_sd_source("tau"),
+          weights = prior("dirichlet", list(alpha = c(1, 1)))
+        ),
+        id = random_block(cor = prior_lkj())
+      )
+    )
+    result <- JAGS_formula(
+      ~ 1 + us(1 + x | id), "mu", data,
+      list(intercept = prior("normal", list(0, 1))),
+      prior_random = random
+    )
+    term <- result$formula_design$random_effects[[1L]]
+    samples <- cbind(mu_intercept = 0:3, tau = c(0, 1, 2, 3), c(0.3, 0.8, 0.5, 0.1))
+    colnames(samples)[3L] <- term$correlation$primitive_names
+    if(identical(case, "allocated")){
+      weights <- paste0(term$sd_binding$allocations[[1L]]$weight_name, "[", 1:2, "]")
+      samples <- cbind(samples, matrix(c(0.4, 0.6), 4L, 2L, byrow = TRUE,
+                                       dimnames = list(NULL, weights)))
+    }
+    prior_list <- result$prior_list
+    if(monitor_tau){
+      prior_list$tau <- prior("normal", list(0, 1), list(0, Inf))
+    }else{
+      samples <- samples[, colnames(samples) != "tau", drop = FALSE]
+    }
+    fit <- structure(
+      list(mcmc = coda::mcmc.list(coda::mcmc(samples)), sample = nrow(samples)),
+      class = c("runjags", "BayesTools_fit", "list")
+    )
+    attr(fit, "prior_list") <- prior_list
+    attr(fit, "formula_design") <- list(mu = result$formula_design)
+    attach_test_parameter_map(fit)
+  }
+  label <- "(mu) cor(intercept,x)"
+  fitted <- c(-0.4, 0.6, 0, -0.8)
+  selection_of <- function(fit) parameter_catalog_resolve(parameter_catalog(fit), label)
+
+  for(case in c("scalar", "row", "allocated")){
+    fit <- build_fit(case, FALSE)
+    selection <- selection_of(fit)
+    draws <- parameter_draws(fit, selection)
+    expect_equal(as.numeric(as.matrix(draws)), fitted, info = case)
+    # the declaration and the dependencies are those of the row source
+    expect_identical(unname(posterior_metadata(draws, "undefined_draws")),
+                     "correlation", info = case)
+    expect_false("tau" %in% selection$quantities$extraction_key[[1L]]$dependencies,
+                 info = case)
+    for(reader in list(runjags_estimates_table, JAGS_estimates_table)){
+      table <- reader(fit)
+      expect_true(label %in% rownames(table), info = case)
+      expect_equal(table[label, "Mean"], mean(fitted), info = case)
+      expect_null(attr(table, "footnotes", exact = TRUE), info = case)
+    }
+  }
+
+  for(case in c("scalar", "allocated")){
+    fit <- build_fit(case, TRUE)
+    expect_equal(as.numeric(as.matrix(parameter_draws(fit, selection_of(fit)))),
+                 c(NA, 0.6, 0, -0.8), info = case)
+    for(reader in list(runjags_estimates_table, JAGS_estimates_table)){
+      table <- reader(fit)
+      expect_equal(table[label, "Mean"], mean(fitted[-1L]), info = case)
+      expect_match(attr(table, "footnotes", exact = TRUE)[[label]], "3 of 4 draws",
+                   fixed = TRUE, info = case)
+    }
+  }
+})
+
+test_that("a block of per-column SD sources masks the correlations of the pairs whose SD draws are available", {
+
+  # The SD draws of the second column cannot be read: the pairs with it keep
+  # their fitted draws, and the pair of the other two columns is undefined
+  # where one of its SDs is zero.
+  data <- data.frame(
+    x1 = c(-3, -1, 1, 3, 2, 0), x2 = c(1, -2, 0, 2, -1, 1),
+    id = factor(rep(c("a", "b", "c"), each = 2L))
+  )
+  result <- JAGS_formula(
+    ~ 1 + us(1 + x1 + x2 | id), "mu", data,
+    list(intercept = prior("normal", list(0, 1))),
+    prior_random = prior_random(id = random_block(
+      sd_source = random_sd_source("tau"), cor = prior_lkj()
+    ))
+  )
+  random_term <- result$formula_design$random_effects[[1L]]
+  random_term$sd_parameter_names <- c("tau1", NA, "tau3")
+  samples <- cbind(tau1 = c(0, 1, 2, 3), tau3 = c(1, 0, 2, 3))
+  fitted <- rep(0.5, 4L)
+  mask <- function(index){
+    .bt_random_effect_summary_mask_undefined_correlation(
+      random_term = random_term, values = fitted, index = index,
+      model_samples = samples, prior_list = list()
+    )
+  }
+  expect_identical(mask(1L), fitted)
+  expect_identical(mask(2L), c(NA, NA, 0.5, 0.5))
+  expect_identical(mask(3L), fitted)
+
+  # a block of internal SDs still stops without its SD draws
+  internal <- JAGS_formula(
+    ~ 1 + us(1 + x1 + x2 | id), "mu", data,
+    list(intercept = prior("normal", list(0, 1))),
+    prior_random = prior_random(id = random_block(
+      sd = prior("gamma", list(2, 2)), cor = prior_lkj()
+    ))
+  )
+  random_term <- internal$formula_design$random_effects[[1L]]
+  expect_error(
+    mask(2L),
+    "Random-effect summary samples are missing canonical SD coordinates",
+    fixed = TRUE
+  )
+})
+
 test_that("a random SD that rescales its own coordinate is one-to-one in a multi-SD scaled block", {
 
   # The SD of the scaled slope is the fitted SD divided by the SD of the
