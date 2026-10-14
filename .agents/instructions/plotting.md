@@ -138,6 +138,10 @@ their exact source indices and ordinates, warning with the affected source value
 They require two distinct images and consistent nonzero orientation; whole
 collapse, custom/affine collapse and invalid interior knots remain unavailable.
 This display convention does not relax atom, draw or inverse-region checks.
+The KDE curves of `plot_marginal()` and of simple and factor `plot_posterior()`
+use the same checked transformation grid as precomputed densities: knots
+without a representable image or ordinate (out-of-support tails, saturation) are
+dropped and the plot limits come from the retained curve.
 Posterior PET/PEESE bands use pointwise HD quantiles; sampled-prior bands retain
 empirical quantiles and deterministic prior bands retain their CDF inversion.
 PET/PEESE continuous-pair CDFs integrate over location probability, retain raw

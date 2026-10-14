@@ -473,10 +473,11 @@
       y_den <- density_continuous$y * continuous_mass
       boundary_reflection <- isTRUE(attr(density_continuous, "boundary_reflection"))
 
-      # apply transformations
+      # apply transformations on the checked grid
       if(!is.null(transformation)){
-        x_den   <- .density.prior_transformation_x(x_den,   transformation, transformation_arguments)
-        y_den   <- .density.prior_transformation_y(x_den, y_den, transformation, transformation_arguments)
+        transformed     <- .density.prior_transformation_grid(x_den, y_den, transformation, transformation_arguments)
+        x_den           <- transformed$x[!transformed$drop]
+        y_den           <- transformed$y[!transformed$drop]
         samples_density <- .density.prior_transformation_x(samples_density,   transformation, transformation_arguments)
       }
 

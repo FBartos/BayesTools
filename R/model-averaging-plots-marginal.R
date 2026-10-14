@@ -365,10 +365,12 @@ plot_marginal <- function(samples, parameter, plot_type = "base", prior = FALSE,
     x_den    <- density_continuous$x
     y_den    <- density_continuous$y * continuous_mass
 
-    # apply transformations
+    # apply transformations on the checked grid: knots without a representable
+    # image or ordinate (saturation, out-of-support tails) are dropped
     if(!is.null(transformation)){
-      x_den           <- .density.prior_transformation_x(x_den, transformation, transformation_arguments)
-      y_den           <- .density.prior_transformation_y(x_den, y_den, transformation, transformation_arguments)
+      transformed     <- .density.prior_transformation_grid(x_den, y_den, transformation, transformation_arguments)
+      x_den           <- transformed$x[!transformed$drop]
+      y_den           <- transformed$y[!transformed$drop]
       samples_density <- .density.prior_transformation_x(samples_density, transformation, transformation_arguments)
     }
 

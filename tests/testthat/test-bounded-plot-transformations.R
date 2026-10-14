@@ -211,3 +211,186 @@ test_that("exp_lin keeps the curve of a root map when the source density is infi
   heights <- stats::approx(gamma_curve$x, gamma_curve$y, xout = c(.1, .5, 1))$y
   expect_equal(heights, roots$gamma$density(c(.1, .5, 1)), tolerance = 5e-3)
 })
+
+# ---------------------------------------------------------------------------- #
+# KDE routes of the marginal and posterior plots use the checked transformation grid
+# ---------------------------------------------------------------------------- #
+
+.kde_marginal_samples <- function(x, parameter){
+
+  class(x) <- c("marginal_posterior.simple", "marginal_posterior", class(x))
+  out <- list(BayesTools:::.bt_meta_set(x, "atoms", posterior_atom_attribute()))
+  names(out) <- parameter
+  out
+}
+.kde_mixed_posteriors <- function(columns, prior_list){
+
+  fit <- structure(coda::mcmc(columns), class = c("mcmc", "BayesTools_fit"))
+  attr(fit, "prior_list") <- prior_list
+  fit <- BayesTools:::.bt_attach_parameter_map(fit, monitor_names = NULL)
+  fit <- BayesTools:::.bt_attach_draw_geometry(fit)
+  BayesTools:::.bt_attach_fit_contract(fit)
+}
+# evaluates 'expr', returning its value and the warnings it signalled
+.kde_collect_warnings <- function(expr){
+
+  warnings <- list()
+  value <- withCallingHandlers(expr, warning = function(condition){
+    warnings[[length(warnings) + 1L]] <<- condition
+    invokeRestart("muffleWarning")
+  })
+  list(value = value, warnings = warnings)
+}
+.kde_has_warning <- function(collected, pattern = NULL, class = NULL){
+
+  any(vapply(collected$warnings, function(condition){
+    (is.null(pattern) || grepl(pattern, conditionMessage(condition), fixed = TRUE)) &&
+      (is.null(class) || inherits(condition, class))
+  }, logical(1)))
+}
+# renders both backends; the limits are taken from the retained, finite curve
+.kde_expect_finite_plots <- function(draw, warning_pattern = NULL, warning_class = NULL){
+
+  grDevices::pdf(NULL)
+  on.exit(grDevices::dev.off(), add = TRUE)
+
+  base <- .kde_collect_warnings(draw("base"))
+  expect_true(all(is.finite(graphics::par("usr"))))
+  if(!is.null(warning_pattern) || !is.null(warning_class)){
+    expect_true(.kde_has_warning(base, warning_pattern, warning_class))
+  }
+
+  gg <- .kde_collect_warnings(draw("ggplot"))
+  if(!is.null(warning_pattern) || !is.null(warning_class)){
+    expect_true(.kde_has_warning(gg, warning_pattern, warning_class))
+  }
+  built <- ggplot2::ggplot_build(gg$value)
+  expect_true(all(is.finite(unlist(lapply(built$data, function(layer) c(layer$x, layer$y))))))
+  expect_true(all(is.finite(built$layout$panel_params[[1]]$x.range)))
+  expect_true(all(is.finite(built$layout$panel_params[[1]]$y.range)))
+  invisible(NULL)
+}
+
+test_that("marginal KDE plots keep the finite part of the transformed curve", {
+
+  skip_if_not_installed("ggplot2")
+  set.seed(1)
+  samples <- .kde_marginal_samples(stats::rgamma(400, 3, 3), "tau")
+  log_map  <- list(fun = log, inv = exp, jac = function(x) 1 / x, output_support = c(-Inf, Inf))
+  sqrt_map <- list(fun = sqrt, inv = function(x) x^2, jac = function(x) 1 / (2 * sqrt(x)), output_support = c(0, Inf))
+  cases <- list(
+    exp_lin_identity = list("exp_lin", NULL),
+    exp_lin_power    = list("exp_lin", list(a = 0, b = 2)),
+    log              = list(log_map, NULL),
+    sqrt             = list(sqrt_map, NULL)
+  )
+
+  for(case in cases){
+    # the KDE tail below zero has no image: the out-of-support points are dropped
+    data <- .kde_collect_warnings(
+      .plot_data_marginal_samples(samples, "tau", FALSE, 200, case[[1]], case[[2]], FALSE))
+    density <- data$value$density1
+    expect_true(.kde_has_warning(data, "NaNs produced"))
+    expect_true(all(is.finite(density$x)) && all(is.finite(density$y)))
+    expect_identical(attr(density, "x_range"), range(density$x))
+    expect_identical(attr(density, "y_range"), c(0, max(density$y)))
+    expect_lt(length(density$x), 200)
+
+    .kde_expect_finite_plots(function(type){
+      plot_marginal(samples, "tau", plot_type = type, transformation = case[[1]],
+                    transformation_arguments = case[[2]])
+    }, warning_pattern = "NaNs produced")
+  }
+})
+
+test_that("marginal KDE plots keep the curve of the exp and lin transformations", {
+
+  set.seed(1)
+  tau <- stats::rgamma(400, 3, 3)
+  samples <- .kde_marginal_samples(tau, "tau")
+  kde <- stats::density(tau, n = 200)
+
+  exp_data <- .plot_data_marginal_samples(samples, "tau", FALSE, 200, "exp", NULL, FALSE)$density1
+  expect_equal(exp_data$x, exp(kde$x))
+  expect_equal(exp_data$y, kde$y / exp(kde$x))
+
+  lin_data <- .plot_data_marginal_samples(samples, "tau", FALSE, 200, "lin", list(a = 1, b = 2), FALSE)$density1
+  expect_equal(lin_data$x, 1 + 2 * kde$x)
+  expect_equal(lin_data$y, kde$y / 2)
+})
+
+test_that("marginal KDE plots of saturated tanh images drop the knots without an ordinate", {
+
+  skip_if_not_installed("ggplot2")
+  samples <- .kde_marginal_samples(seq(-30, 30, length.out = 201), "theta")
+
+  collected <- .kde_collect_warnings(.plot_data_marginal_samples(samples, "theta", FALSE, 512, "tanh", NULL, FALSE))
+  expect_true(.kde_has_warning(collected, class = "BayesTools_prior_curve_unavailable"))
+  data <- collected$value$density1
+  expect_true(all(is.finite(data$x)) && all(is.finite(data$y)))
+  expect_true(all(abs(data$x) < 1))
+  expect_identical(attr(data, "x_range"), range(data$x))
+  expect_identical(attr(data, "y_range"), c(0, max(data$y)))
+  kde <- stats::density(seq(-30, 30, length.out = 201), n = 512)
+  index <- match(data$x, tanh(kde$x))
+  expect_false(anyNA(index))
+  interior <- abs(data$x) < .9
+  expect_equal(data$y[interior], kde$y[index[interior]] / (1 - data$x[interior]^2), tolerance = 1e-10)
+
+  .kde_expect_finite_plots(function(type){
+    plot_marginal(samples, "theta", plot_type = type, transformation = "tanh")
+  }, warning_class = "BayesTools_prior_curve_unavailable")
+})
+
+test_that("posterior KDE plots of saturated tanh images drop the knots without an ordinate", {
+
+  skip_if_not_installed("ggplot2")
+  theta <- as_mixed_posteriors(
+    .kde_mixed_posteriors(cbind(theta = seq(0, 25, length.out = 100)),
+                          list(theta = prior("normal", list(0, 10)))),
+    "theta")
+
+  data <- .kde_collect_warnings(.plot_data_samples.simple(theta, "theta", 256, "tanh", NULL, FALSE))
+  expect_true(.kde_has_warning(data, class = "BayesTools_prior_curve_unavailable"))
+  density <- data$value$density
+  expect_true(all(is.finite(density$x)) && all(is.finite(density$y)))
+  expect_lt(length(density$x), 256)
+  expect_identical(attr(density, "x_range"), range(density$x))
+  expect_identical(attr(density, "y_range"), c(0, max(density$y)))
+
+  .kde_expect_finite_plots(function(type){
+    plot_posterior(theta, "theta", plot_type = type, transformation = "tanh", n_points = 256)
+  }, warning_class = "BayesTools_prior_curve_unavailable")
+
+  # a transformation without saturation keeps every knot
+  lin <- .plot_data_samples.simple(theta, "theta", 256, "lin", list(a = 1, b = 2), FALSE)$density
+  raw <- .plot_data_samples.simple(theta, "theta", 256, NULL, NULL, FALSE)$density
+  expect_equal(lin$x, 1 + 2 * raw$x)
+  expect_equal(lin$y, raw$y / 2)
+})
+
+test_that("independent factor posterior KDE plots of saturated tanh images drop the knots without an ordinate", {
+
+  skip_if_not_installed("ggplot2")
+  formula <- JAGS_formula(~ 0 + fac, "mu", data.frame(fac = factor(c("A", "B", "C"))),
+    prior_list = list(fac = prior_factor("normal", list(0, 1), contrast = "independent")))
+  columns <- BayesTools:::.JAGS_prior_factor_names("mu_fac", formula$prior_list$mu_fac)
+  draws <- matrix(rep(seq(0, 25, length.out = 100), 3), 100, dimnames = list(NULL, columns))
+  draws[, 2] <- draws[, 2] * .9
+  draws[, 3] <- draws[, 3] * 1.1
+  factor_samples <- as_mixed_posteriors(.kde_mixed_posteriors(draws, formula$prior_list), "mu_fac")
+
+  data <- .kde_collect_warnings(.plot_data_samples.factor(factor_samples, "mu_fac", 256, "tanh", NULL, FALSE))
+  expect_true(.kde_has_warning(data, class = "BayesTools_prior_curve_unavailable"))
+  curves <- data$value[grepl("^density", names(data$value))]
+  expect_length(curves, 3)
+  for(curve in curves){
+    expect_true(all(is.finite(curve$x)) && all(is.finite(curve$y)))
+    expect_lt(length(curve$x), 256)
+    expect_identical(attr(curve, "x_range"), range(curve$x))
+  }
+
+  .kde_expect_finite_plots(function(type){
+    plot_posterior(factor_samples, "mu_fac", plot_type = type, transformation = "tanh", n_points = 256)
+  }, warning_class = "BayesTools_prior_curve_unavailable")
+})
