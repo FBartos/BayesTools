@@ -293,6 +293,19 @@
   structure(list(random_effects = blocks, source_data = source_data), class = class(design))
 }
 
+# The views of the formula designs of a fit, by formula parameter, for those
+# with a random-effect block; NULL when none has one.
+.bt_formula_designs_random_unscale_view <- function(designs){
+
+  views <- lapply(designs, .bt_formula_design_random_unscale_view)
+  views <- views[!vapply(views, is.null, logical(1))]
+  if(length(views) == 0L){
+    return(NULL)
+  }
+
+  views
+}
+
 # Whether pairing coefficient names gives the exact original-scale map of a
 # block that is known by its column terms only (no fitted design): every column
 # with scaled components needs, for each subset of them whose means do not
@@ -447,6 +460,94 @@
     owner_scope        = "compiler",
     complete           = FALSE
   )
+}
+
+# The relation of the original-scale random-effect SDs of the scaled blocks of
+# one formula parameter to their fitted SDs, for the prior law of an SD (see
+# .prior_density_context_random_sd_scale()). The original-scale SD of a design
+# column is a pure rescaling of its fitted SD when its row of the block's
+# original-scale map (.random_sd_unscale_matrix(), the matrix the draws use)
+# has exactly one nonzero entry, on its own coordinate; that entry c is the
+# scale, and the original-scale law is the fitted SD's law rescaled by |c|.
+# An entry counts as zero when it is at most 1e-12 times the largest entry of
+# its row (the relative rule of .random_sd_shared_leaf_is_invariant()): data
+# centered by subtraction have a mean of rounding size, whose induced entry
+# would otherwise make every intercept SD a composite. A shared leaf is a pure
+# rescaling only when every column of the leaf is, with the same |c|. Any other
+# SD (e.g. an intercept SD combined with the SD of a non-centered scaled slope)
+# is a composite of several fitted SDs.
+#
+# Returns the SD coordinates of the blocks with a scaled column: 'scale', the
+# |c| of the pure ones (a named numeric), 'refused', the cause of the others (a
+# named character): "random_effect_design_unavailable" for a block without a
+# fitted design in 'design' (the part of the formula design of the parameter
+# that .bt_formula_design_random_unscale_view() keeps), and
+# "random_sd_prior_law_unavailable" for a composite, and 'blocks', the block
+# name of every one of these coordinates. The SDs of blocks without a scaled
+# column, and of structured blocks, are in none of them: their fitted law is
+# the original-scale law.
+.random_sd_original_scale_laws <- function(parameter_scale, prefix, design = NULL){
+
+  # every SD of a block asks for the laws of its block: the session memo keeps
+  # the laws of the inputs it recognises as identical()
+  .bt_content_memo(
+    "random_sd_original_scale_laws",
+    list(parameter_scale, prefix, design),
+    function() .random_sd_original_scale_laws_build(parameter_scale, prefix, design)
+  )
+}
+
+.random_sd_original_scale_laws_build <- function(parameter_scale, prefix, design){
+
+  scale <- stats::setNames(numeric(), character())
+  refused <- blocks <- stats::setNames(character(), character())
+  leaves <- attr(parameter_scale, "random_effect_sd_leaves", exact = TRUE)
+  if(is.null(leaves) || length(leaves) == 0L){
+    return(list(scale = scale, refused = refused, blocks = blocks))
+  }
+
+  leaf_names <- unique(unlist(lapply(leaves, function(block){
+    as.character(block$leaf_names)
+  }), use.names = FALSE))
+  groups <- .random_sd_column_unscale_groups(leaf_names, parameter_scale, prefix)
+  for(group in groups){
+    blocks[group$leaf_names] <- group$group_key
+    block <- .random_sd_design_block(design, group$group_key, group$leaf_names)
+    if(is.null(block) ||
+       is.null(.bt_random_effect_unscale_design_spec(block, design$source_data))){
+      refused[group$leaf_names] <- "random_effect_design_unavailable"
+      next
+    }
+
+    A <- .random_sd_unscale_matrix(
+      column_terms = group$column_terms,
+      formula_scale = parameter_scale,
+      prefix = prefix,
+      random_term = block,
+      source_data = design$source_data
+    )
+    column_scale <- vapply(seq_len(nrow(A)), function(row){
+      magnitude <- abs(A[row, ])
+      if(magnitude[row] > 0 && all(magnitude[-row] <= 1e-12 * max(magnitude))){
+        magnitude[row]
+      }else{
+        NA_real_
+      }
+    }, numeric(1))
+    for(leaf in unique(group$leaf_names_by_column)){
+      leaf_scale <- column_scale[group$leaf_names_by_column == leaf]
+      if(anyNA(leaf_scale) || !isTRUE(all.equal(
+        leaf_scale, rep(leaf_scale[1L], length(leaf_scale)),
+        tolerance = 1e-12, scale = max(leaf_scale)
+      ))){
+        refused[leaf] <- "random_sd_prior_law_unavailable"
+      }else{
+        scale[leaf] <- leaf_scale[1L]
+      }
+    }
+  }
+
+  list(scale = scale, refused = refused, blocks = blocks)
 }
 
 .random_sd_shared_leaf_is_invariant <- function(

@@ -1072,11 +1072,12 @@ posterior_support_attribute <- function(bounds, points = NULL, type = NULL,
       prior_list <- context$prior_lists[[model_i]]
       if(!is.null(context$formula_scale) && length(context$formula_scale) > 0L){
         component_context <- .prior_density_context(
-          prior_list    = prior_list,
-          column_names  = context$column_names,
-          formula_scale = context$formula_scale,
-          n_grid        = context$n_grid,
-          tail_prob     = context$tail_prob
+          prior_list     = prior_list,
+          column_names   = context$column_names,
+          formula_scale  = context$formula_scale,
+          n_grid         = context$n_grid,
+          tail_prob      = context$tail_prob,
+          formula_design = context$formula_design
         )
         return(.posterior_support_from_prior_context_weights(
           component_context, weights, source_transforms = source_transforms
@@ -1195,11 +1196,12 @@ posterior_support_attribute <- function(bounds, points = NULL, type = NULL,
   if(inherits(context, "prior_density_conditional_context") &&
      !is.null(context$formula_scale) && length(context$formula_scale) > 0L){
     scaled_context <- .prior_density_context(
-      prior_list    = context$prior_list,
-      column_names  = context$column_names,
-      formula_scale = context$formula_scale,
-      n_grid        = context$n_grid,
-      tail_prob     = context$tail_prob
+      prior_list     = context$prior_list,
+      column_names   = context$column_names,
+      formula_scale  = context$formula_scale,
+      n_grid         = context$n_grid,
+      tail_prob      = context$tail_prob,
+      formula_design = context$formula_design
     )
     return(.prior_density_context_standardized_weights(scaled_context, weights,
                                                        source_transforms))

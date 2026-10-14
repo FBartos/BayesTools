@@ -2244,3 +2244,440 @@ test_that("shared random-effect SD leaves keep one coordinate per design column 
     tolerance = 1e-10
   )
 })
+
+# A synthetic fit whose posterior draws of the random-effect SDs are draws of their
+# gamma(2, 2) priors (fitted scale), so that on the original scale they follow the
+# prior law of the original-scale SDs: a hypothesis on such an SD has a Bayes factor
+# near 1 exactly when the prior law is the law of the original-scale SD.
+random_block_prior_draw_fit <- function(formula, data, variable = "x", n = 4000L, seed = 21){
+
+  formula_result <- JAGS_formula(
+    formula, "mu", data,
+    prior_list = stats::setNames(
+      list(prior("normal", list(0, 1)), prior("normal", list(0, 1))),
+      c("intercept", variable)
+    ),
+    formula_scale = stats::setNames(list(TRUE), variable),
+    prior_random = prior_random(id = random_block(
+      sd = prior("gamma", list(2, 2)), monitor = random_block_scale_monitor()
+    ))
+  )
+  sd_names <- unlist(lapply(formula_result$formula_design$random_effects, function(term){
+    unique(term$sd_parameter_names)
+  }))
+  set.seed(seed)
+  posterior <- cbind(
+    matrix(
+      stats::rnorm(n * 2L, 0, 0.3), n, 2L,
+      dimnames = list(NULL, c("mu_intercept", paste0("mu_", variable)))
+    ),
+    matrix(
+      stats::rgamma(n * length(sd_names), 2, 2), n, length(sd_names),
+      dimnames = list(NULL, sd_names)
+    )
+  )
+
+  list(
+    formula_result = formula_result,
+    fit = make_random_scale_table_fit(formula_result, posterior),
+    sd_names = sd_names,
+    n = n
+  )
+}
+
+random_block_density_ordinate <- function(density, values){
+
+  vapply(values, function(value){
+    exp(prior_density_ordinate(density, value)$log_density)
+  }, numeric(1))
+}
+
+# Monte Carlo bound of the log Bayes factor of an event with probability p
+# under draws that follow the prior: four standard errors of the log odds.
+random_block_bf_bound <- function(p, n){
+
+  4 * sqrt(1 / (n * p * (1 - p)))
+}
+
+test_that("the prior law of a pure-rescaling random-effect SD is the fitted law rescaled and the composite SD is refused", {
+
+  skip_if_not_installed("runjags")
+
+  df <- random_block_scale_data()
+  s <- stats::sd(df$x)
+  setup <- random_block_prior_draw_fit(~ 1 + x + diag(1 + x | id), df)
+  sd_intercept <- "mu__xREx__id_intercept"
+  sd_slope <- "mu__xREx__id_x"
+  mixed <- as_mixed_posteriors(setup$fit, setup$sd_names, transform_scaled = TRUE)
+
+  # the stored density of the slope SD is the fitted gamma(2, 2) rescaled: the
+  # original-scale SD is tau / sd(x), a pure rescaling (exact ordinates)
+  grid <- seq(0.02, 3, length.out = 60)
+  densities <- posterior_metadata(mixed, "prior_densities")
+  expect_equal(
+    random_block_density_ordinate(densities[[sd_slope]], grid),
+    stats::dgamma(grid * s, 2, 2) * s, tolerance = 1e-8
+  )
+  context <- posterior_metadata(mixed, "prior_context")
+  expect_false(is.null(context$formula_design$mu))
+  marginal <- marginal_posterior(mixed, sd_slope, use_formula = FALSE, prior_samples = TRUE)
+  marginal_density <- posterior_metadata(marginal, "prior_density")
+  expect_equal(
+    random_block_density_ordinate(marginal_density, grid),
+    stats::dgamma(grid * s, 2, 2) * s, tolerance = 1e-8
+  )
+  # prior mass of `sd(x) > 0.5`, and the Bayes factor of posterior = prior draws
+  mass <- stats::integrate(
+    function(values) random_block_density_ordinate(marginal_density, values), 0.5, Inf
+  )$value
+  p <- stats::pgamma(0.5 * s, 2, 2, lower.tail = FALSE)
+  expect_equal(mass, p, tolerance = 1e-6)
+  hypothesis <- as.data.frame(hypothesis_BF(
+    marginal, hypothesis = paste0(sd_slope, " > 0.5"), parameter = sd_slope
+  ))
+  expect_lt(abs(log(hypothesis$BF10)), random_block_bf_bound(p, setup$n))
+
+  # the intercept SD combines the fitted SDs of the intercept and of the slope
+  # (mean(x) differs from 0): its law is not the one of a fitted SD
+  expect_gt(abs(mean(df$x)), 1)
+  expect_null(densities[[sd_intercept]])
+  entry <- posterior_metadata(densities, "measure_unavailable")
+  expect_identical(entry$column, sd_intercept)
+  expect_identical(entry$cause, "random_sd_prior_law_unavailable")
+  element <- mixed[[sd_intercept]]
+  refusal <- expect_error(
+    posterior_measure_check(element, "prior_density"),
+    class = "BayesTools_formula_measure_unavailable"
+  )
+  expect_identical(refusal$reason, "random_sd_prior_law_unavailable")
+  refusals <- list(
+    marginal = function() marginal_posterior(mixed, sd_intercept, use_formula = FALSE, prior_samples = TRUE),
+    plot = function() plot_posterior(mixed, sd_intercept, plot_type = "ggplot", prior = TRUE)
+  )
+  for(label in names(refusals)){
+    refusal <- expect_error(refusals[[label]](), class = "BayesTools_formula_measure_unavailable", info = label)
+    expect_identical(refusal$reason, "random_sd_prior_law_unavailable", info = label)
+  }
+  # what does not read the prior law of the SD keeps working
+  expect_no_error(marginal_posterior(mixed, sd_intercept, use_formula = FALSE, prior_samples = FALSE))
+  expect_no_error(plot_posterior(mixed, sd_intercept, plot_type = "ggplot", prior = FALSE))
+  table <- ensemble_estimates_table(mixed, c(sd_intercept, sd_slope))
+  expect_identical(nrow(table), 2L)
+  expect_true(all(is.finite(table[, "Mean"])))
+
+  # the fitted-scale control is unchanged: the fitted gamma(2, 2) and a Bayes factor near 1
+  control <- as_mixed_posteriors(setup$fit, setup$sd_names, transform_scaled = FALSE)
+  control_marginal <- marginal_posterior(control, sd_slope, use_formula = FALSE, prior_samples = TRUE)
+  expect_equal(
+    random_block_density_ordinate(posterior_metadata(control_marginal, "prior_density"), grid),
+    stats::dgamma(grid, 2, 2), tolerance = 1e-8
+  )
+  p_control <- stats::pgamma(1, 2, 2, lower.tail = FALSE)
+  control_bf <- as.data.frame(hypothesis_BF(
+    control_marginal, hypothesis = paste0(sd_slope, " > 1"), parameter = sd_slope
+  ))$BF10
+  expect_lt(abs(log(control_bf)), random_block_bf_bound(p_control, setup$n))
+})
+
+test_that("a random-effect SD with a mean-zero predictor is a pure rescaling, whatever the rounding of the centering", {
+
+  skip_if_not_installed("runjags")
+
+  # mean(x) is exactly zero: no term is induced in the intercept SD (c = 1)
+  df <- data.frame(
+    x  = rep(c(-3, -2, -1, 0, 1, 2, 3, -3.5, 3.5, 0), 4),
+    id = factor(rep(paste0("g", 1:8), each = 5))
+  )
+  expect_true(mean(df$x) == 0)
+  s <- stats::sd(df$x)
+  setup <- random_block_prior_draw_fit(~ 1 + x + diag(1 + x | id), df)
+  mixed <- as_mixed_posteriors(setup$fit, setup$sd_names, transform_scaled = TRUE)
+  densities <- posterior_metadata(mixed, "prior_densities")
+  grid <- seq(0.02, 3, length.out = 40)
+  expect_equal(
+    random_block_density_ordinate(densities[["mu__xREx__id_intercept"]], grid),
+    stats::dgamma(grid, 2, 2), tolerance = 1e-8
+  )
+  expect_equal(
+    random_block_density_ordinate(densities[["mu__xREx__id_x"]], grid),
+    stats::dgamma(grid * s, 2, 2) * s, tolerance = 1e-8
+  )
+  marginal <- marginal_posterior(mixed, "mu__xREx__id_intercept", use_formula = FALSE, prior_samples = TRUE)
+  p <- stats::pgamma(1, 2, 2, lower.tail = FALSE)
+  hypothesis <- as.data.frame(hypothesis_BF(
+    marginal, hypothesis = "mu__xREx__id_intercept > 1", parameter = "mu__xREx__id_intercept"
+  ))
+  expect_lt(abs(log(hypothesis$BF10)), random_block_bf_bound(p, setup$n))
+
+  # centered by subtraction, the mean is of the size of rounding, not zero: the
+  # entry it induces in the intercept SD does not make the SD a composite
+  df_centered <- random_block_scale_data()
+  df_centered$xc <- df_centered$x - mean(df_centered$x)
+  expect_true(mean(df_centered$xc) != 0 && abs(mean(df_centered$xc)) < 1e-12)
+  setup <- random_block_prior_draw_fit(~ 1 + xc + diag(1 + xc | id), df_centered, variable = "xc")
+  mixed <- as_mixed_posteriors(setup$fit, setup$sd_names, transform_scaled = TRUE)
+  densities <- posterior_metadata(mixed, "prior_densities")
+  expect_equal(
+    random_block_density_ordinate(densities[["mu__xREx__id_intercept"]], grid),
+    stats::dgamma(grid, 2, 2), tolerance = 1e-8
+  )
+})
+
+test_that("the SDs of a block with a factor-by-slope term are rescalings or composites by their design row", {
+
+  skip_if_not_installed("runjags")
+
+  df <- random_block_scale_data()
+  s <- stats::sd(df$x)
+  setup <- random_block_prior_draw_fit(~ 1 + x + diag(1 + f + f:x | id), df)
+  parameters <- c("mu__xREx__id_intercept", "mu__xREx__id_f", "mu__xREx__id_f__xXx__x")
+  mixed <- as_mixed_posteriors(setup$fit, parameters, transform_scaled = TRUE)
+  densities <- posterior_metadata(mixed, "prior_densities")
+  slopes <- grep("__xXx__x", setup$sd_names, value = TRUE)
+  composites <- setdiff(setup$sd_names, slopes)
+  expect_identical(length(slopes), 3L)
+  expect_identical(length(composites), 3L)
+
+  # the per-level slopes are exact rescalings; the intercept SD and the level SDs
+  # absorb the induced shifts and are composites
+  grid <- seq(0.02, 3, length.out = 30)
+  for(slope in slopes){
+    expect_equal(
+      random_block_density_ordinate(densities[[slope]], grid),
+      stats::dgamma(grid * s, 2, 2) * s, tolerance = 1e-8, info = slope
+    )
+  }
+  for(composite in composites){
+    expect_null(densities[[composite]])
+  }
+  unavailable <- posterior_metadata(densities, "measure_unavailable")
+  expect_setequal(unavailable$column, composites)
+  expect_true(all(unavailable$cause == "random_sd_prior_law_unavailable"))
+  # the elements carry the refusal of their columns
+  for(parameter in parameters[1:2]){
+    expect_error(
+      posterior_measure_check(mixed[[parameter]], "prior_density"),
+      class = "BayesTools_formula_measure_unavailable"
+    )
+  }
+  expect_no_error(posterior_measure_check(mixed[[parameters[3L]]], "prior_density"))
+  # and the mixed posteriors of the composite SDs alone are still created
+  expect_no_error(as_mixed_posteriors(setup$fit, parameters[2L], transform_scaled = TRUE))
+})
+
+test_that("a context without the fitted block design refuses the SDs of a scaled block and keeps the others", {
+
+  skip_if_not_installed("runjags")
+
+  df <- random_block_scale_data()
+  setup <- random_block_prior_draw_fit(~ 1 + x + diag(1 + x | id), df)
+  mixed <- as_mixed_posteriors(setup$fit, setup$sd_names, transform_scaled = TRUE)
+  context <- posterior_metadata(mixed, "prior_context")
+  weights <- function(context, column){
+    stats::setNames(as.numeric(context$column_names == column), context$column_names)
+  }
+
+  # the design is gone (a context stored by an older version carries none)
+  context$formula_design <- NULL
+  for(column in setup$sd_names){
+    refusal <- expect_error(
+      .prior_density_from_context(context, weights(context, column)),
+      class = "BayesTools_formula_measure_unavailable", info = column
+    )
+    expect_identical(refusal$reason, "random_effect_design_unavailable", info = column)
+  }
+  # the context is not refused where no SD is requested (fixed coefficients)
+  expect_no_error(.prior_density_from_context(context, weights(context, "mu_x")))
+
+  # the exported plot of a transformed prior has no design either
+  prior_list <- attr(setup$fit, "prior_list")
+  formula_scale <- attr(setup$fit, "formula_scale")
+  columns <- c("mu_intercept", "mu_x", setup$sd_names)
+  refusal <- expect_error(
+    plot_transformed_prior(prior_list, columns, formula_scale, parameter = "mu__xREx__id_x"),
+    class = "BayesTools_formula_measure_unavailable"
+  )
+  expect_identical(refusal$reason, "random_effect_design_unavailable")
+
+  # a block without a scaled column keeps its fitted law, which is the law on the original scale
+  setup <- random_block_prior_draw_fit(~ 1 + x + (1 | id), df)
+  expect_identical(setup$sd_names, "mu__xREx__id_intercept")
+  mixed <- as_mixed_posteriors(setup$fit, setup$sd_names, transform_scaled = TRUE)
+  context <- posterior_metadata(mixed, "prior_context")
+  context$formula_design <- NULL
+  grid <- seq(0.02, 3, length.out = 30)
+  density <- .prior_density_from_context(context, weights(context, setup$sd_names))
+  expect_equal(random_block_density_ordinate(density, grid), stats::dgamma(grid, 2, 2), tolerance = 1e-8)
+  expect_null(plot_transformed_prior(
+    attr(setup$fit, "prior_list"), c("mu_intercept", "mu_x", setup$sd_names),
+    attr(setup$fit, "formula_scale"), parameter = setup$sd_names
+  ))
+})
+
+test_that("the law of a rescaled SD keeps spike-and-slab and mixture priors, truncation and its support", {
+
+  skip_if_not_installed("runjags")
+
+  df <- random_block_scale_data()
+  s <- stats::sd(df$x)
+  grid <- c(0.1, 0.5, 1, 2)
+  sd_density <- function(sd_prior){
+    formula_result <- JAGS_formula(
+      ~ 1 + x + diag(1 + x | id), "mu", df,
+      prior_list = list(intercept = prior("normal", list(0, 1)), x = prior("normal", list(0, 1))),
+      formula_scale = list(x = TRUE),
+      prior_random = prior_random(id = random_block(sd = sd_prior, monitor = random_block_scale_monitor()))
+    )
+    columns <- unique(unlist(lapply(names(formula_result$prior_list), function(parameter){
+      .prior_linear_prior_columns(parameter, formula_result$prior_list[[parameter]])
+    })))
+    context <- .prior_density_context(
+      formula_result$prior_list, columns, list(mu = formula_result$formula_scale),
+      formula_design = list(mu = .bt_formula_design_random_unscale_view(formula_result$formula_design))
+    )
+    weights <- stats::setNames(as.numeric(columns == "mu__xREx__id_x"), columns)
+    list(
+      density = .prior_density_from_context(context, weights),
+      support = .posterior_support_from_prior_context_weights(context, weights),
+      intercept = tryCatch(
+        .prior_density_from_context(context, stats::setNames(as.numeric(columns == "mu__xREx__id_intercept"), columns)),
+        BayesTools_formula_measure_unavailable = function(e) e
+      )
+    )
+  }
+
+  # a spike at zero stays an atom of the same mass; the continuous part is rescaled
+  slab <- sd_density(prior_spike_and_slab(
+    prior("gamma", list(2, 2)), prior_inclusion = prior("spike", list(0.5))
+  ))
+  expect_equal(prior_density_ordinate(slab$density, 0)$point_mass, 0.5, tolerance = 1e-12)
+  expect_equal(
+    random_block_density_ordinate(slab$density, grid),
+    0.5 * stats::dgamma(grid * s, 2, 2) * s, tolerance = 1e-8
+  )
+  expect_s3_class(slab$intercept, "BayesTools_formula_measure_unavailable")
+
+  mixture <- sd_density(prior_mixture(
+    list(prior("gamma", list(2, 2)), prior("gamma", list(5, 3))), is_null = c(FALSE, FALSE)
+  ))
+  expect_equal(
+    random_block_density_ordinate(mixture$density, grid),
+    0.5 * stats::dgamma(grid * s, 2, 2) * s + 0.5 * stats::dgamma(grid * s, 5, 3) * s,
+    tolerance = 1e-8
+  )
+
+  # a truncated SD prior keeps its normalization, and its support is rescaled
+  truncated <- sd_density(prior("gamma", list(2, 2), list(0, 3)))
+  normalizer <- stats::pgamma(3, 2, 2)
+  expect_equal(
+    random_block_density_ordinate(truncated$density, grid[grid * s < 3]),
+    stats::dgamma(grid[grid * s < 3] * s, 2, 2) * s / normalizer, tolerance = 1e-8
+  )
+  expect_equal(random_block_density_ordinate(truncated$density, 3 / s + 0.1), 0)
+  expect_equal(unname(truncated$support$bounds), c(0, 3 / s), tolerance = 1e-12)
+})
+
+test_that("a structured block and a block without a scaled column keep the fitted law of their SDs", {
+
+  skip_if_not_installed("runjags")
+
+  set.seed(5)
+  df <- data.frame(
+    x     = stats::rnorm(36, mean = 10, sd = 2),
+    index = factor(rep(c("i1", "i2", "i3"), 12)),
+    id    = factor(rep(paste0("g", 1:6), each = 6))
+  )
+  grid <- c(0.1, 0.5, 1, 2)
+  cases <- list(
+    list(~ 1 + x + cs(index | id), prior("normal", list(0, 0.5))),
+    list(~ 1 + x + ar1(index | id), prior("normal", list(0, 0.5))),
+    list(~ 1 + x + (1 | id), NULL)
+  )
+  for(case in cases){
+    formula <- case[[1L]]
+    formula_result <- JAGS_formula(
+      formula, "mu", df,
+      prior_list = list(intercept = prior("normal", list(0, 1)), x = prior("normal", list(0, 1))),
+      formula_scale = list(x = TRUE),
+      prior_random = prior_random(id = random_block(
+        sd = prior("gamma", list(2, 2)), cor = case[[2L]],
+        monitor = random_block_scale_monitor()
+      ))
+    )
+    sd_name <- grep("__xREx__id_(sd|intercept)$", names(formula_result$prior_list), value = TRUE)
+    expect_identical(length(sd_name), 1L)
+    columns <- unique(unlist(lapply(names(formula_result$prior_list), function(parameter){
+      .prior_linear_prior_columns(parameter, formula_result$prior_list[[parameter]])
+    })))
+    context <- .prior_density_context(
+      formula_result$prior_list, columns, list(mu = formula_result$formula_scale),
+      formula_design = list(mu = .bt_formula_design_random_unscale_view(formula_result$formula_design))
+    )
+    density <- .prior_density_from_context(context, stats::setNames(as.numeric(columns == sd_name), columns))
+    expect_equal(
+      random_block_density_ordinate(density, grid), stats::dgamma(grid, 2, 2), tolerance = 1e-8,
+      info = deparse(formula)
+    )
+  }
+})
+
+test_that("the prior draws of the level comparisons unscale the random-effect SDs with the block design", {
+
+  skip_if_not_installed("runjags")
+
+  df <- random_block_scale_data()
+  setup <- random_block_prior_draw_fit(~ 1 + x + diag(1 + f + f:x | id), df)
+  mixed <- as_mixed_posteriors(
+    setup$fit, c("mu__xREx__id_intercept", "mu__xREx__id_f", "mu__xREx__id_f__xXx__x"),
+    transform_scaled = TRUE
+  )
+  context <- posterior_metadata(mixed, "prior_context")
+  design <- attr(setup$fit, "formula_design")
+
+  set.seed(3)
+  drawn <- .hypothesis_prior_samples_from_context(context, 40L)
+  set.seed(3)
+  by_design <- .generate_transformed_prior_samples(
+    context$prior_list, context$column_names, 40L,
+    formula_scale = context$formula_scale, formula_design = design
+  )
+  set.seed(3)
+  by_names <- .generate_transformed_prior_samples(
+    context$prior_list, context$column_names, 40L, formula_scale = context$formula_scale
+  )
+  expect_equal(drawn[, setup$sd_names], by_design[, setup$sd_names], tolerance = 1e-12)
+  # pairing names would leave the intercept SD at its fitted value
+  expect_gt(max(abs(by_names[, setup$sd_names[1L]] - by_design[, setup$sd_names[1L]])), 1)
+  expect_gt(min(drawn[, setup$sd_names[1L]] - by_names[, setup$sd_names[1L]]), 0)
+})
+
+test_that("the formula design is an input of the memo of the transformed prior densities", {
+
+  skip_if_not_installed("runjags")
+
+  df <- random_block_scale_data()
+  setup <- random_block_prior_draw_fit(~ 1 + x + diag(1 + x | id), df)
+  prior_list <- attr(setup$fit, "prior_list")
+  formula_scale <- attr(setup$fit, "formula_scale")
+  columns <- c("mu_intercept", "mu_x", setup$sd_names)
+  memo <- .bt_prior_density_memo(setup$fit)
+  with_design <- .generate_transformed_prior_densities(
+    prior_list, columns, formula_scale, memo = memo,
+    formula_design = .bt_formula_designs_random_unscale_view(attr(setup$fit, "formula_design"))
+  )
+  without_design <- .generate_transformed_prior_densities(
+    prior_list, columns, formula_scale, memo = memo
+  )
+  # the memo does not hand the densities of one design to a call with another
+  expect_false(is.null(with_design[["mu__xREx__id_x"]]))
+  expect_null(without_design[["mu__xREx__id_x"]])
+  expect_identical(
+    posterior_metadata(without_design, "measure_unavailable")$cause,
+    rep("random_effect_design_unavailable", 2L)
+  )
+  again <- .generate_transformed_prior_densities(
+    prior_list, columns, formula_scale, memo = memo,
+    formula_design = .bt_formula_designs_random_unscale_view(attr(setup$fit, "formula_design"))
+  )
+  expect_identical(again[["mu__xREx__id_x"]], with_design[["mu__xREx__id_x"]])
+})

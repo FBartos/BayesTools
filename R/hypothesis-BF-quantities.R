@@ -738,11 +738,12 @@
       if(!is.null(context[["formula_scale"]]) &&
          length(context[["formula_scale"]]) > 0L){
         component_context <- .prior_density_context(
-          prior_list    = prior_list,
-          column_names  = context[["column_names"]],
-          formula_scale = context[["formula_scale"]],
-          n_grid        = context[["n_grid"]],
-          tail_prob     = context[["tail_prob"]]
+          prior_list     = prior_list,
+          column_names   = context[["column_names"]],
+          formula_scale  = context[["formula_scale"]],
+          n_grid         = context[["n_grid"]],
+          tail_prob      = context[["tail_prob"]],
+          formula_design = context[["formula_design"]]
         )
         standardized_weights <- .prior_density_context_standardized_weights(
           context = component_context,
@@ -799,6 +800,7 @@
       column_names  = context[["column_names"]],
       n_samples     = n,
       formula_scale = context[["formula_scale"]],
+      formula_design = context[["formula_design"]],
       retain_state = identical(context$linear_weight_space, "formula_contribution")
     )
     samples <- .bt_formula_sample_contributions(context, samples)
@@ -868,6 +870,7 @@
       column_names  = context[["column_names"]],
       n_samples     = length(rows),
       formula_scale = context[["formula_scale"]],
+      formula_design = context[["formula_design"]],
       retain_state = identical(context$linear_weight_space, "formula_contribution")
     )
     leaf_context <- context

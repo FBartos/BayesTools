@@ -23,6 +23,13 @@
 #' The transformed prior densities are computed for the requested
 #' \code{parameters} only and are kept for the fitted object, so repeated calls
 #' with the same fit, priors, conditioning, and \code{n_prior_samples} reuse them.
+#' The prior density of a random-effect SD is that of the SD on the original
+#' scale: the fitted law rescaled when the original-scale SD is a rescaling of
+#' one fitted SD, and otherwise (an SD that combines several fitted SDs, such as
+#' the intercept SD of a block with a non-centered scaled slope) unavailable,
+#' which [hypothesis_BF()], [marginal_posterior()] with \code{prior_samples = TRUE}
+#' and [plot_posterior()] with \code{prior = TRUE} report with an error of class
+#' \code{BayesTools_formula_measure_unavailable} (see [posterior_measure_check()]).
 #' @param n_prior_samples controls the numerical grid used for transformed
 #' prior densities when \code{transform_scaled = TRUE}. Defaults to 10000.
 #' @inheritParams ensemble_inference
@@ -260,6 +267,11 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
 
   # generate and store transformed prior densities if requested
   if(scaled){
+    # The prior law of a random-effect SD on the original scale needs the fitted
+    # design of its block: the context stores the part of it that the SDs need.
+    random_designs <- .bt_formula_designs_random_unscale_view(
+      attr(model, "formula_design", exact = TRUE)
+    )
     # The stored densities describe the unscaled monitored coefficients, which
     # are raw JAGS nodes: a formula prior's 'multiply_by' scales only the linear
     # predictor. The stored context keeps it for linear-predictor targets.
@@ -272,9 +284,11 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
       conditional_rule = conditional_rule,
       condition_event  = condition_event,
       parameters       = parameters,
-      memo             = .bt_prior_density_memo(model)
+      memo             = .bt_prior_density_memo(model),
+      formula_design   = random_designs
     )
     out <- .bt_meta_set(out, "prior_densities", prior_densities)
+    out <- .as_mixed_posteriors_mark_random_sd_densities(out, prior_densities, formula_scale)
     out <- .bt_meta_set(out, "prior_context", .prior_density_build_context(
       prior_list       = prior_density_priors,
       column_names     = colnames(model_samples),
@@ -282,7 +296,8 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
       n_grid           = n_prior_samples,
       conditional      = condition_event[["conditional"]],
       conditional_rule = conditional_rule,
-      condition_event  = condition_event
+      condition_event  = condition_event,
+      formula_design   = random_designs
     ))
     out <- .bt_meta_set(out, "transform_scaled", TRUE)
   }else{
@@ -314,6 +329,46 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
     )
   }
   return(out)
+}
+
+# The prior density of a random-effect SD whose law on the original predictor
+# scale is unavailable (see .prior_density_context_random_sd_scale()) is
+# marked unavailable on the element of the SD itself: the consumers of the
+# stored densities (plots) and of the stored context (marginal posteriors,
+# hypotheses) refuse it with the declared typed condition, as they do for a
+# fixed coefficient. The draws and the other measures of the element remain.
+.as_mixed_posteriors_mark_random_sd_densities <- function(out, prior_densities, formula_scale){
+
+  unavailable <- .bt_meta_get(prior_densities, "measure_unavailable")
+  if(is.null(unavailable)){
+    return(out)
+  }
+  sd_columns <- unique(unlist(lapply(formula_scale, function(parameter_scale){
+    lapply(attr(parameter_scale, "random_effect_sd_leaves", exact = TRUE), function(block){
+      as.character(block$leaf_names)
+    })
+  }), use.names = FALSE))
+  unavailable <- unavailable[
+    unavailable$measure == "prior_density" & unavailable$column %in% sd_columns, , drop = FALSE
+  ]
+
+  for(i in seq_len(nrow(unavailable))){
+    for(owner in names(out)){
+      coordinates <- .posterior_atoms_coefficient_columns(out[[owner]], owner)
+      position <- match(unavailable$column[[i]], coordinates)
+      if(is.na(position)){
+        next
+      }
+      labels <- if(is.matrix(out[[owner]])) colnames(out[[owner]]) else owner
+      out[[owner]] <- .bt_formula_measure_mark(
+        out[[owner]], labels[[position]], "prior_density", unavailable$reason[[i]],
+        cause = if("cause" %in% names(unavailable)) unavailable$cause[[i]],
+        diagnostics = if("diagnostics" %in% names(unavailable)) unavailable$diagnostics[[i]]
+      )
+    }
+  }
+
+  out
 }
 
 .as_mixed_posteriors.simple         <- function(model_samples, prior, parameter){

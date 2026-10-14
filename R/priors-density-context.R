@@ -47,13 +47,20 @@
   invisible(TRUE)
 }
 
+# 'formula_design' holds, per formula parameter, the part of its fitted design
+# that the original-scale random-effect SDs need (the random-effect blocks and
+# the typed fitted data, see .bt_formula_design_random_unscale_view()). With
+# 'formula_scale' it defines the prior law of those SDs on the original scale
+# (see .prior_density_context_random_sd_scale()); the context stores it.
 .prior_density_context <- function(prior_list, column_names, formula_scale = NULL,
                                    n_grid = .prior_linear_density_default_grid(),
-                                   tail_prob = .prior_linear_density_tail_prob()){
+                                   tail_prob = .prior_linear_density_tail_prob(),
+                                   formula_design = NULL){
 
   check_list(prior_list, "prior_list")
   check_char(column_names, "column_names", check_length = FALSE)
   check_list(formula_scale, "formula_scale", allow_NULL = TRUE)
+  check_list(formula_design, "formula_design", allow_NULL = TRUE)
   check_int(n_grid, "n_grid", lower = 16)
   check_real(tail_prob, "tail_prob", lower = 0, upper = 0.5, allow_bound = FALSE)
 
@@ -102,8 +109,82 @@
     n_grid        = n_grid,
     tail_prob     = tail_prob
   )
+  if(!is.null(formula_design)){
+    out$formula_design <- formula_design
+  }
   class(out) <- "prior_density_context"
   return(out)
+}
+
+# The scales of the random-effect SDs among the requested 'columns' (those
+# with a nonzero weight) of a context with formula scaling: for each SD that is
+# a pure rescaling of its fitted SD on the original predictor scale, its |c|
+# (a named numeric; the law of the original-scale SD is the fitted law
+# rescaled by it, see .random_sd_original_scale_laws()). The SDs of blocks
+# without a scaled column keep their fitted law and are not returned. An SD that
+# is a composite of several fitted SDs, or whose block has no fitted design in
+# the context, has no prior law here: the typed refusal is raised when its
+# weight is requested, never when the context is built (contexts over fixed
+# columns carry no SD).
+.prior_density_context_random_sd_scale <- function(context, columns){
+
+  out <- stats::setNames(numeric(), character())
+  if(length(columns) == 0L || length(context$formula_scale) == 0L){
+    return(out)
+  }
+
+  for(prefix in names(context$formula_scale)){
+    parameter_scale <- context$formula_scale[[prefix]]
+    leaves <- attr(parameter_scale, "random_effect_sd_leaves", exact = TRUE)
+    if(is.null(leaves)){
+      next
+    }
+    requested <- intersect(columns, unlist(lapply(leaves, function(block){
+      as.character(block$leaf_names)
+    }), use.names = FALSE))
+    if(length(requested) == 0L){
+      next
+    }
+
+    laws <- .random_sd_original_scale_laws(parameter_scale, prefix, context$formula_design[[prefix]])
+    refused <- intersect(requested, names(laws$refused))
+    if(length(refused) > 0L){
+      column <- refused[[1L]]
+      cause <- laws$refused[[column]]
+      block <- laws$blocks[[column]]
+      if(identical(cause, "random_effect_design_unavailable")){
+        detail <- "the prior context carries no fitted design of its random-effect block"
+        remedy <- "Create the samples with as_mixed_posteriors()."
+        reason <- paste0(
+          "the context carries no fitted design of the random-effect block '", block,
+          "' of formula parameter '", prefix, "', which is needed to map its SD to the ",
+          "original predictor scale"
+        )
+      }else{
+        detail <- "its original-scale law combines several fitted SDs of its random-effect block"
+        remedy <- paste0(
+          "Use the SD on the fitted scale (transform_scaled = FALSE), or an SD that ",
+          "is a rescaling of one fitted SD."
+        )
+        reason <- paste0(
+          "the SD of '", column, "' on the original predictor scale combines several ",
+          "fitted SDs of the random-effect block '", block, "' of formula parameter '",
+          prefix, "', so its law is not that of one fitted SD"
+        )
+      }
+      .bt_formula_density_stop(
+        paste0(
+          "The prior law of the random-effect SD '", column,
+          "' on the original predictor scale is unavailable: ", reason, ". ", remedy
+        ),
+        parameter = prefix, target = column, reason = cause, detail = detail
+      )
+    }
+    pure <- intersect(requested, names(laws$scale))
+    out[pure] <- laws$scale[pure]
+  }
+
+  out
 }
 
 # Weights on the fitted coefficients of the combination 'weights' of the
@@ -150,7 +231,16 @@
     used[cols] <- TRUE
   }
   remaining <- names(weights)[!used]
-  if(length(remaining)) out[remaining] <- out[remaining] + weights[remaining]
+  if(length(remaining)){
+    # a random-effect SD of a scaled block is the SD on the original scale: a
+    # rescaling of its fitted SD, or refused
+    sd_scale <- .prior_density_context_random_sd_scale(
+      context, remaining[is.finite(weights[remaining]) & weights[remaining] != 0]
+    )
+    out[names(sd_scale)] <- out[names(sd_scale)] + weights[names(sd_scale)] * sd_scale
+    unscaled <- setdiff(remaining, names(sd_scale))
+    out[unscaled] <- out[unscaled] + weights[unscaled]
+  }
   out <- out[out != 0]
   if(length(contribution_transforms)) attr(out, "formula_contribution_transforms") <- contribution_transforms
   if(offset != 0) attr(out, "formula_recipe_offset") <- offset
@@ -324,7 +414,8 @@
                                                conditional_rule = "AND", formula_scale = NULL,
                                                n_grid = .prior_linear_density_default_grid(),
                                                tail_prob = .prior_linear_density_tail_prob(),
-                                               condition_event = NULL){
+                                               condition_event = NULL,
+                                               formula_design = NULL){
 
   if(is.null(condition_event)){
     condition_event <- .condition_event(
@@ -340,7 +431,8 @@
     condition_event   = condition_event
   )
   if(is.null(condition_models)){
-    return(.prior_density_context(prior_list, column_names, formula_scale, n_grid, tail_prob))
+    return(.prior_density_context(prior_list, column_names, formula_scale, n_grid, tail_prob,
+                                  formula_design = formula_design))
   }
   if(length(condition_models$prior_lists) == 0L) stop("No prior models remain after applying the conditional event.", call. = FALSE)
 
@@ -370,6 +462,9 @@
     n_grid          = n_grid,
     tail_prob       = tail_prob
   )
+  if(!is.null(formula_design)){
+    out$formula_design <- formula_design
+  }
   class(out) <- "prior_density_conditional_context"
   return(out)
 }
@@ -434,11 +529,12 @@
   dists <- lapply(context$prior_lists, function(prior_list){
     if(!is.null(context$formula_scale) && length(context$formula_scale) > 0){
       component_context <- .prior_density_context(
-        prior_list    = prior_list,
-        column_names  = context$column_names,
-        formula_scale = context$formula_scale,
-        n_grid        = context$n_grid,
-        tail_prob     = context$tail_prob
+        prior_list     = prior_list,
+        column_names   = context$column_names,
+        formula_scale  = context$formula_scale,
+        n_grid         = context$n_grid,
+        tail_prob      = context$tail_prob,
+        formula_design = context$formula_design
       )
       component_context$grid_spacing <- context$grid_spacing
       return(.prior_density_context_density(
@@ -486,7 +582,8 @@
                                          tail_prob = .prior_linear_density_tail_prob(),
                                          conditional = NULL,
                                          conditional_rule = "AND",
-                                         condition_event = NULL){
+                                         condition_event = NULL,
+                                         formula_design = NULL){
 
   if(is.null(condition_event)){
     condition_event <- .condition_event(
@@ -505,12 +602,14 @@
       formula_scale    = formula_scale,
       n_grid           = n_grid,
       tail_prob        = tail_prob,
-      condition_event  = condition_event
+      condition_event  = condition_event,
+      formula_design   = formula_design
     ))
   }
 
   if(all(vapply(prior_list, is.prior, logical(1)))){
-    return(.prior_density_context(prior_list, column_names, formula_scale, n_grid, tail_prob))
+    return(.prior_density_context(prior_list, column_names, formula_scale, n_grid, tail_prob,
+                                  formula_design = formula_design))
   }
 
   if(!is.null(formula_scale) && length(formula_scale) > 0){

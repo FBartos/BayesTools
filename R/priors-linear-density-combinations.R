@@ -3403,7 +3403,8 @@
         if(!is.null(density_context$formula_scale) && length(density_context$formula_scale) > 0L){
           return(context_range(
             .prior_density_context(prior_list, density_context$column_names,
-                                   density_context$formula_scale),
+                                   density_context$formula_scale,
+                                   formula_design = density_context$formula_design),
             weights, source_transforms
           ))
         }
@@ -4181,11 +4182,12 @@
       prior_list <- context$prior_lists[[model_i]]
       if(!is.null(context$formula_scale) && length(context$formula_scale) > 0L){
         component_context <- .prior_density_context(
-          prior_list    = prior_list,
-          column_names  = context$column_names,
-          formula_scale = context$formula_scale,
-          n_grid        = context$n_grid,
-          tail_prob     = context$tail_prob
+          prior_list     = prior_list,
+          column_names   = context$column_names,
+          formula_scale  = context$formula_scale,
+          n_grid         = context$n_grid,
+          tail_prob      = context$tail_prob,
+          formula_design = context$formula_design
         )
         return(.prior_linear_context_support_hull(component_context, weights, source_transforms))
       }
@@ -4409,7 +4411,8 @@
       if(!is.null(context$formula_scale) && length(context$formula_scale) > 0L){
         component_context <- .prior_density_context(
           prior_list, context$column_names, context$formula_scale,
-          context$n_grid, context$tail_prob
+          context$n_grid, context$tail_prob,
+          formula_design = context$formula_design
         )
         component_context$grid_spacing <- context$grid_spacing
         return(context_terms(component_context, single))

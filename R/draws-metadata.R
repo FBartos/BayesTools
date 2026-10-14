@@ -972,7 +972,13 @@ posterior_measure_check <- function(x, measure, column = NULL){
 #'   full precision. The cause \code{missing_source_context} identifies a prior
 #'   density that a transformation could not rebuild because the source has
 #'   neither a declared prior context nor priors (formula marginals of several
-#'   models keep none); the transformed values and other metadata remain.
+#'   models keep none); the transformed values and other metadata remain. The
+#'   cause \code{random_sd_prior_law_unavailable} identifies the prior density
+#'   of a random-effect SD on the original predictor scale that combines several
+#'   fitted SDs of its block (e.g., an intercept SD with a non-centered scaled
+#'   slope), and \code{random_effect_design_unavailable} one whose block has no
+#'   fitted design in the prior context; the SD of a block that rescales one
+#'   fitted SD has the fitted law rescaled.
 #'   Invalid metadata requires recomputation/refitting.
 #'   Human reason text alone does not classify a measure refusal. Tables use
 #'   unique column/measure pairs. The measures are \code{prior_density}, \code{atoms}, or \code{support}.

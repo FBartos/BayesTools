@@ -1089,7 +1089,8 @@
             context$column_names,
             context$formula_scale,
             context$n_grid,
-            context$tail_prob
+            context$tail_prob,
+            formula_design = context$formula_design
           )
           return(.prior_density_route_context(
             component_context, weights, source_transforms, NULL, NULL

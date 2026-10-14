@@ -39,7 +39,14 @@ automatically detect the transformation and use transformed deterministic prior 
 Requires a model fitted with \code{formula_scale_list}. Defaults to \code{FALSE}.
 The transformed prior densities are computed for the requested
 \code{parameters} only and are kept for the fitted object, so repeated calls
-with the same fit, priors, conditioning, and \code{n_prior_samples} reuse them.}
+with the same fit, priors, conditioning, and \code{n_prior_samples} reuse them.
+The prior density of a random-effect SD is that of the SD on the original
+scale: the fitted law rescaled when the original-scale SD is a rescaling of
+one fitted SD, and otherwise (an SD that combines several fitted SDs, such as
+the intercept SD of a block with a non-centered scaled slope) unavailable,
+which \code{\link[=hypothesis_BF]{hypothesis_BF()}}, \code{\link[=marginal_posterior]{marginal_posterior()}} with \code{prior_samples = TRUE}
+and \code{\link[=plot_posterior]{plot_posterior()}} with \code{prior = TRUE} report with an error of class
+\code{BayesTools_formula_measure_unavailable} (see \code{\link[=posterior_measure_check]{posterior_measure_check()}}).}
 
 \item{n_prior_samples}{controls the numerical grid used for transformed
 prior densities when \code{transform_scaled = TRUE}. Defaults to 10000.}

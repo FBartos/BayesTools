@@ -2058,4 +2058,5 @@ JAGS_formula_prior_density <- function(
 .bt_formula_measure_causes <- c("state_dependent_map", "nonlinear_map",
   "incompatible_prior_recipes", "missing_multiplier_law", "numerical_scale_unavailable",
   "structural_target_law_unavailable", "unsupported_contribution_measure",
-  "numerical_model_probability_unavailable", "missing_source_context")
+  "numerical_model_probability_unavailable", "missing_source_context",
+  "random_sd_prior_law_unavailable", "random_effect_design_unavailable")

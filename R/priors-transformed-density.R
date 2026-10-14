@@ -3,13 +3,16 @@
 # parameters (all parameters by default). 'memo' is the per-fit memo of
 # .bt_prior_density_memo(): the context and each column density are computed
 # once per distinct set of inputs and reused by later calls, which return the
-# very objects the first call built.
+# very objects the first call built. 'formula_design' is the part of the fitted
+# design that the original-scale random-effect SDs need (see
+# .prior_density_context()); it is one of the inputs of the memo.
 .generate_transformed_prior_densities <- function(prior_list, column_names, formula_scale = NULL,
                                                   conditional = NULL, conditional_rule = "AND",
                                                   condition_event = NULL,
                                                   n_grid = .prior_linear_density_default_grid(),
                                                   tail_prob = .prior_linear_density_tail_prob(),
-                                                  parameters = NULL, memo = NULL){
+                                                  parameters = NULL, memo = NULL,
+                                                  formula_design = NULL){
 
   # The densities describe monitored coefficient columns, which are the raw
   # JAGS nodes: a formula prior's 'multiply_by' scales only the linear
@@ -18,7 +21,7 @@
 
   entry <- .bt_prior_density_memo_entry(memo, list(
     prior_list, column_names, formula_scale, conditional, conditional_rule,
-    condition_event, n_grid, tail_prob
+    condition_event, n_grid, tail_prob, formula_design
   ))
   context <- entry$context
   if(is.null(context)){
@@ -30,7 +33,8 @@
       tail_prob        = tail_prob,
       conditional      = conditional,
       conditional_rule = conditional_rule,
-      condition_event  = condition_event
+      condition_event  = condition_event,
+      formula_design   = formula_design
     )
     entry$context <- context
   }
@@ -271,6 +275,12 @@ plot_transformed_prior <- function(prior_list, column_names, formula_scale = NUL
   )
 
   if(!inherits(context, "prior_density_context")){
+    return(FALSE)
+  }
+
+  # This route has no fitted design: the SD of a random-effect block with a
+  # scaled column is refused (no fitted design) and never an identity.
+  if(length(.prior_density_context_random_sd_scale(context, parameter)) > 0L){
     return(FALSE)
   }
 
