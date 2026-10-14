@@ -161,6 +161,18 @@ source(testthat::test_path("common-functions.R"))
   samples
 }
 
+# Independent reference of the Savage-Dickey posterior ordinate: the Gaussian
+# kernel sum of the draws at the null with bandwidth bw.nrd0(), reflected once
+# at each finite support bound (not .Savage_Dickey_BF.kd()).
+.kernel_height_for_test <- function(draws, null, lower = -Inf, upper = Inf) {
+  draws  <- draws[is.finite(draws)]
+  bw     <- stats::bw.nrd0(draws)
+  height <- mean(stats::dnorm(null, mean = draws, sd = bw))
+  if(is.finite(lower)) height <- height + mean(stats::dnorm(null, mean = 2 * lower - draws, sd = bw))
+  if(is.finite(upper)) height <- height + mean(stats::dnorm(null, mean = 2 * upper - draws, sd = bw))
+  height
+}
+
 .marginal_semantic_fixture_for_test <- function(){
 
   df <- expand.grid(
@@ -863,7 +875,7 @@ test_that("Savage_Dickey_BF ignores stored posterior density by default", {
   ))
 
   expected <- BayesTools:::.prior_linear_density_height(prior_density, 0) /
-    BayesTools:::.Savage_Dickey_BF.kd(posterior, 0)
+    .kernel_height_for_test(as.numeric(posterior), 0)
 
   out <- Savage_Dickey_BF(
     posterior,
@@ -889,7 +901,7 @@ test_that("Savage_Dickey_BF does not infer exact support from bounded prior grid
 
   # the null 0 lies below the draws: an unreflected kernel-tail ordinate
   expected <- BayesTools:::.prior_linear_density_height(prior_density, 0) /
-    as.numeric(BayesTools:::.Savage_Dickey_BF.kd(posterior, 0, warn_extrapolation = FALSE))
+    .kernel_height_for_test(as.numeric(posterior), 0)
 
   out <- Savage_Dickey_BF(
     posterior,
@@ -916,9 +928,9 @@ test_that("Savage_Dickey_BF uses exact posterior support for KDE fallback", {
   )
   posterior <- .bt_meta_set(posterior, "support", posterior_support_attribute(c(0, 1)))
 
-  posterior_height <- BayesTools:::.Savage_Dickey_BF.kd(posterior, 0)
+  # the null lies on the lower support bound: the reflected kernel sums both sides
   expected <- BayesTools:::.prior_linear_density_height(prior_density, 0) /
-    as.numeric(posterior_height)
+    .kernel_height_for_test(as.numeric(posterior), 0, lower = 0, upper = 1)
 
   out <- Savage_Dickey_BF(
     posterior,
@@ -927,7 +939,6 @@ test_that("Savage_Dickey_BF uses exact posterior support for KDE fallback", {
     silent               = TRUE
   )
 
-  expect_true(attr(posterior_height, "boundary_reflection"))
   expect_equal(as.numeric(out), expected, tolerance = 1e-12)
   expect_equal(attr(out, "posterior_density_source"), "KDE")
   expect_true(attr(out, "posterior_density_boundary_reflection"))
@@ -1091,7 +1102,7 @@ test_that("Savage_Dickey_BF ignores non-exact or incompatible support metadata",
 
   posterior <- .bt_meta_set(posterior, "support", BayesTools:::.posterior_support_new(c(0, 1), exact = FALSE, source = "test"))
   expected <- BayesTools:::.prior_linear_density_height(prior_density, .5) /
-    BayesTools:::.Savage_Dickey_BF.kd(posterior, .5)
+    .kernel_height_for_test(as.numeric(posterior), .5)
   out <- Savage_Dickey_BF(
     posterior,
     null_hypothesis      = .5,
@@ -3514,6 +3525,74 @@ test_that("a log ordinate that is not the exponential of its logs is described",
                "it needs status 'ok' and unique, finite 'value' entries", fixed = TRUE)
 })
 
+test_that("a list level gets an NA Bayes factor for every known prior-ordinate condition", {
+
+  density_of <- function(prior_list, weights) BayesTools:::.prior_linear_combination_density(prior_list, weights)
+  adaptive_undefined <- density_of(list(theta = prior("normal", list(0, 1))), c(theta = 1))
+  adaptive <- attr(adaptive_undefined, "adaptive_evaluation", exact = TRUE)
+  adaptive$arguments$output_transformation <- "exp_lin"
+  adaptive$arguments$output_transformation_arguments <- list(a = 0, b = 1)
+  attr(adaptive_undefined, "adaptive_evaluation") <- adaptive
+  t3 <- prior("t", list(0, 1, 3))
+  cases <- list(
+    point_mass = list(density_of(list(theta = prior_spike_and_slab(prior("normal", list(0, 1)),
+      prior_inclusion = prior("spike", list(.5)))), c(theta = 1)), 0, "BayesTools_point_mass_at_null"),
+    infinite = list(density_of(list(theta = prior("gamma", list(.5, 1))), c(theta = 1)), 0, "BayesTools_infinite_ordinate"),
+    zero = list(density_of(list(theta = prior("gamma", list(.5, 1))), c(theta = 1)), -1, "BayesTools_zero_ordinate"),
+    undefined = list(adaptive_undefined, 0, "BayesTools_undefined_ordinate"),
+    inexact = list(density_of(list(a = t3, b = t3, c = t3), c(a = 1, b = 1, c = 1)), 0, "BayesTools_inexact_ordinate")
+  )
+  set.seed(41)
+  healthy_density <- density_of(list(theta = prior("normal", list(0, 1))), c(theta = 1))
+  for(behavior in names(cases)){
+    case <- cases[[behavior]]
+    levels <- list(healthy = .marginal_posterior_with_prior_density_for_test(stats::rnorm(200, .3, 1), healthy_density),
+                   bad = .marginal_posterior_with_prior_density_for_test(stats::rnorm(200, .3, 1), case[[1L]]))
+    class(levels) <- c("marginal_posterior", "list")
+    bf <- Savage_Dickey_BF(levels, null_hypothesis = case[[2L]], silent = TRUE)
+    expect_true(is.finite(bf$healthy), info = behavior)
+    expect_true(is.na(bf$bad), info = behavior)
+    expect_identical(attr(bf$bad, "posterior_density_source"), paste0(behavior, "_prior_ordinate"))
+    reason <- attr(bf$bad, "warnings")
+    if(behavior %in% c("zero", "infinite")){
+      expect_identical(reason, paste0("The prior density at the null hypothesis value is ", behavior,
+                                      ". The Savage-Dickey Bayes factor is undefined."))
+    }else{
+      status <- prior_ordinate_status(case[[1L]], case[[2L]], labels = paste0("bad: theta = ", case[[2L]]))
+      expect_identical(status$condition, case[[3L]])
+      expect_match(reason, if(behavior == "point_mass") "point mass in the prior" else "Prior density at point hypothesis", info = behavior)
+    }
+    # the warning is emitted with the level label unless silent
+    expect_warning(Savage_Dickey_BF(levels, null_hypothesis = case[[2L]]), paste0("bad: ", substr(reason, 1, 20)), fixed = TRUE)
+    # a direct scalar call stops with the class; the opted-in table route gives NA
+    scalar <- levels$bad
+    expect_error(Savage_Dickey_BF(scalar, null_hypothesis = case[[2L]], silent = TRUE), class = case[[3L]])
+    table_bf <- BayesTools:::.Savage_Dickey_BF.checked(scalar, case[[2L]], FALSE, TRUE, "KDE", null_mass_NA = TRUE)
+    expect_true(is.na(table_bf), info = behavior)
+    expect_identical(attr(table_bf, "posterior_density_source"), paste0(behavior, "_prior_ordinate"))
+  }
+})
+
+test_that("marginal inference skips a parameter without alternative models with a warning", {
+
+  set.seed(42)
+  draws <- cbind(mu = stats::rnorm(100), tau = stats::rnorm(100))
+  prior_list <- list(mu = prior("normal", list(0, 1)), tau = prior("normal", list(0, 1)))
+  models <- lapply(1:2, function(i) list(
+    fit = .mock_mixing_fit_for_marginal(draws, prior_list),
+    marglik = bridgesampling_object(0), prior_weights = 1
+  ))
+  expect_warning(
+    inference <- marginal_inference(
+      models, marginal_parameters = c("mu", "tau"), parameters = c("mu", "tau"),
+      is_null_list = list(mu = c(TRUE, TRUE), tau = c(FALSE, FALSE)),
+      formula = NULL, n_samples = 100, seed = 1, silent = TRUE),
+    "parameter 'mu' does not contain any alternative hypothesis models.", fixed = TRUE)
+  expect_identical(names(inference$conditional), "tau")
+  expect_identical(names(inference$inference), "tau")
+  expect_identical(names(inference$averaged), "tau")
+})
+
 test_that("Savage-Dickey BFs with the null outside the posterior draws warn once per parameter and level", {
 
   extrapolation <- paste0(
@@ -4108,8 +4187,8 @@ test_that("linear level hypotheses mix per-component ordinates of mixture terms"
   expect_identical(out$method, "Savage-Dickey")
   values <- 2 * posterior[, "mu_intercept"] + posterior[, "mu_f[1]"]
   heights <- c(
-    BayesTools:::.Savage_Dickey_BF.kd(values[indicator == 1L], .2, support = c(-Inf, Inf)),
-    BayesTools:::.Savage_Dickey_BF.kd(values[indicator == 2L], .2, support = c(0, Inf))
+    .kernel_height_for_test(values[indicator == 1L], .2),
+    .kernel_height_for_test(values[indicator == 2L], .2, lower = 0)
   )
   expect_equal(as.numeric(out$posterior), sum(tabulate(indicator, 2) / n * heights), tolerance = 1e-12)
 })
