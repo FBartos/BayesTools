@@ -782,6 +782,35 @@ posterior_atoms_free <- function(x){
   )
 }
 
+# The continuous remainder of the measure of one column: the probability that
+# the declared atoms leave. It is exactly 0 when the atoms exhaust the measure
+# up to the rounding that the constructor accepts (masses summing to 1 within
+# 'eps * max(8, n)', which merging the atoms of several models leaves on either
+# side of 1) and when the declared support is purely atomic (type "points")
+# and the column declares atoms. A Bernoulli parameter has the support type
+# "points" but declares no atoms: its remainder is not changed here (the
+# atoms of discrete priors are a separate decision). Larger deviations keep
+# their refusal.
+.posterior_atoms_continuous_mass <- function(atoms, support = NULL){
+
+  n_atoms   <- length(atoms$mass)
+  atom_mass <- sum(atoms$mass)
+  mass_bound <- .Machine$double.eps * max(8, n_atoms)
+  if(!is.finite(atom_mass) || atom_mass < 0 || atom_mass > 1 + mass_bound){
+    stop("Posterior atom masses must form a finite probability in [0, 1].",
+         call. = FALSE)
+  }
+  support <- .posterior_support_from_attribute(support)
+  if(n_atoms > 0L && identical(support$type, "points")){
+    return(0)
+  }
+  if(abs(1 - atom_mass) <= mass_bound){
+    return(0)
+  }
+
+  1 - atom_mass
+}
+
 .posterior_atoms_transform <- function(atoms, transformation,
                                        transformation_arguments = NULL){
 

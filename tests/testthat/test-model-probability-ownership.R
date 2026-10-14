@@ -805,3 +805,78 @@ test_that("combined PETPEESE names clearly refuse individual densities", {
   expect_s3_class(plot_posterior(samples, "PETPEESE", individual = FALSE,
     prior = FALSE, plot_type = "ggplot"), "ggplot")
 })
+
+test_that("atom masses that rounding leaves beside one leave no continuous part", {
+
+  eps <- .Machine$double.eps
+  declared_draws <- function(mass){
+    draws <- structure(rep(0, 20), class = c("marginal_posterior.simple", "marginal_posterior"))
+    posterior_metadata(draws, "atoms") <- posterior_atom_attribute(list(x = 0, mass = mass))
+    draws
+  }
+  # the constructor accepts masses within eps * max(8, n) of one on either side
+  for(mass in c(1, 1 + eps, 1 - eps / 2, 1 - 4 * eps)){
+    draws <- declared_draws(mass)
+    continuous <- .Savage_Dickey_BF.continuous_posterior(draws, .posterior_atoms_get(draws))
+    expect_identical(continuous$continuous_mass, 0)
+    expect_length(continuous$samples, 0L)
+  }
+
+  # larger deviations keep their remainder and their refusals
+  draws <- declared_draws(1 - 1e-6)
+  continuous <- .Savage_Dickey_BF.continuous_posterior(draws, .posterior_atoms_get(draws))
+  expect_equal(continuous$continuous_mass, 1e-6, tolerance = 1e-8)
+  draws <- declared_draws(.4)
+  continuous <- .Savage_Dickey_BF.continuous_posterior(draws, .posterior_atoms_get(draws))
+  expect_equal(continuous$continuous_mass, .6, tolerance = 1e-12)
+})
+
+test_that("the continuous remainder of a column follows its atoms and its declared support", {
+
+  eps <- .Machine$double.eps
+  atoms <- .posterior_atoms_new(matrix(c(0, 1), ncol = 1L), c(.3, .6))
+  points <- posterior_support_attribute(c(0, 1), points = c(0, 1), type = "points")
+  interval <- posterior_support_attribute(c(0, 1))
+
+  # rounding to one, an interval support, a purely atomic support
+  expect_equal(.posterior_atoms_continuous_mass(atoms, interval), .1, tolerance = 1e-12)
+  expect_identical(.posterior_atoms_continuous_mass(atoms, points), 0)
+  expect_identical(.posterior_atoms_continuous_mass(atoms), .posterior_atoms_continuous_mass(atoms, NULL))
+  full <- .posterior_atoms_new(matrix(c(0, 1), ncol = 1L), c(.5, .5 + 4 * eps))
+  expect_identical(.posterior_atoms_continuous_mass(full, interval), 0)
+
+  # a discrete column without declared atoms (a Bernoulli parameter) keeps its
+  # remainder: its atoms are not declared
+  empty <- .posterior_atoms_new()
+  expect_identical(.posterior_atoms_continuous_mass(empty, points), 1)
+  expect_identical(.posterior_atoms_continuous_mass(empty, interval), 1)
+
+  # deviations beyond the constructor's tolerance keep their refusal
+  expect_error(.posterior_atoms_continuous_mass(list(mass = 1 + 1e-9)),
+    "Posterior atom masses must form a finite probability in [0, 1].", fixed = TRUE)
+})
+
+test_that("an all-spike ensemble whose merged atom mass rounds below one plots its atom", {
+
+  evidence <- c(-0.41, -1.09, -2.96)
+  models <- lapply(evidence, function(e) .model_probability_test_model(prior("point", list(0)), e))
+  mixed <- mix_posteriors(models, "theta", list(c(TRUE, TRUE, TRUE)), seed = 1, n_samples = 50)
+  atoms <- .posterior_atoms_for_column(posterior_metadata(mixed$theta, "atoms"), 1L)
+  expect_true(abs(sum(atoms$mass) - 1) <= .Machine$double.eps * 8)
+  continuous <- .Savage_Dickey_BF.continuous_posterior(mixed$theta, atoms)
+  expect_identical(continuous$continuous_mass, 0)
+  plot <- plot_posterior(mixed, "theta", plot_type = "ggplot", n_points = 32)
+  expect_s3_class(plot, "ggplot")
+})
+
+test_that("a cumulative weightfunction ensemble plots the rounded reference atom", {
+
+  wf <- prior_weightfunction("one-sided", .05, wf_cumulative(c(1, 1)))
+  evidence <- c(-0.41, -1.09, -2.96)
+  mixed <- mix_posteriors(lapply(evidence, function(e) .model_probability_weightfunction_model(wf, e)),
+    "bias", list(c(FALSE, FALSE, FALSE)), seed = 47, n_samples = 50)
+  reference <- .posterior_atoms_for_column(posterior_metadata(mixed$bias, "atoms"), 1L)
+  expect_true(abs(sum(reference$mass) - 1) <= .Machine$double.eps * 8)
+  plots <- plot_posterior(mixed, "omega", individual = TRUE, show_figures = 1L, plot_type = "ggplot")
+  expect_s3_class(plots[[1L]], "ggplot")
+})

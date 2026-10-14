@@ -696,3 +696,39 @@ test_that("as_mixed_posteriors works correctly with BayesTools_fit objects", {
   expect_null(.bt_meta_get(mixed$s, "component"))
   expect_identical(attr(mixed, "prior_list"), attr(fit_simple_normal, "prior_list"))
 })
+
+test_that("random all-spike ensembles of a cached fit plot their atom", {
+
+  skip_on_cran()
+  skip_if_not_installed("rjags")
+  skip_if_no_fits()
+
+  fit_simple_spike <- readRDS(file.path(temp_fits_dir, "fit_simple_spike.RDS"))
+  marglik_simple_spike <- readRDS(file.path(temp_marglik_dir, "fit_simple_spike.RDS"))
+
+  # copies of one spike model with perturbed evidence: merging their atoms at
+  # one location leaves the atom mass beside one in some of the ensembles
+  # (rounded above one in some, below one in others)
+  set.seed(11)
+  outcomes <- character()
+  sides <- numeric()
+  for(replicate in 1:60){
+    k <- sample(3:7, 1)
+    models <- lapply(seq_len(k), function(i){
+      marglik <- marglik_simple_spike
+      marglik$logml <- marglik$logml + stats::rnorm(1, 0, 1.5)
+      list(fit = fit_simple_spike, marglik = marglik, prior_weights = stats::runif(1, .2, 3))
+    })
+    mixed <- mix_posteriors(models, parameters = "m", is_null_list = list(m = rep(TRUE, k)),
+      seed = 1, n_samples = 200)
+    atoms <- .posterior_atoms_for_column(posterior_metadata(mixed$m, "atoms"), 1L)
+    sides <- c(sides, sum(atoms$mass) - 1)
+    outcome <- tryCatch({
+      plot_posterior(mixed, "m", plot_type = "ggplot")
+      "ok"
+    }, error = function(e) conditionMessage(e))
+    outcomes <- c(outcomes, outcome)
+  }
+  expect_true(any(sides > 0) && any(sides < 0))
+  expect_identical(unique(outcomes), "ok")
+})

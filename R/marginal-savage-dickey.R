@@ -684,12 +684,13 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
     component_index <- components$index[finite]
   }
   sample_values <- sample_values[finite]
+  # Preserve support and density metadata used by KDE / boundary reflection.
+  kept_metadata <- .bt_meta_get_fields(
+    posterior,
+    c("support", "posterior_density", "posterior_ordinate", "prior_density", "measure_unavailable")
+  )
   atom_mass <- sum(posterior_atoms$mass)
-  if(!is.finite(atom_mass) || atom_mass < 0 || atom_mass > 1){
-    stop("Posterior atom masses must form a finite probability in [0, 1].",
-         call. = FALSE)
-  }
-  continuous_mass <- 1 - atom_mass
+  continuous_mass <- .posterior_atoms_continuous_mass(posterior_atoms, kept_metadata[["support"]])
   atom_locations <- posterior_atoms$locations[, 1L]
   keep <- rep(TRUE, length(sample_values))
   if(length(atom_locations) > 0L && atom_mass > 0){
@@ -698,11 +699,6 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
     }
   }
   continuous_samples <- sample_values[keep]
-  # Preserve support and density metadata used by KDE / boundary reflection.
-  kept_metadata <- .bt_meta_get_fields(
-    posterior,
-    c("support", "posterior_density", "posterior_ordinate", "prior_density", "measure_unavailable")
-  )
   kept_metadata <- kept_metadata[!vapply(kept_metadata, is.null, logical(1))]
   if(length(kept_metadata) > 0L){
     continuous_samples <- .bt_meta_assign(continuous_samples, kept_metadata)
