@@ -19,7 +19,8 @@ frame with a \code{label_parts} column (e.g. the \code{quantities} attribute of 
 estimates table), or a list of label parts.}
 
 \item{style}{one of \code{"selector"} (the exact selector, i.e., the canonical
-name of a catalog quantity), \code{"table"} (the summary-table row label),
+name of a catalog quantity; also for the quantities of an extension
+provider that have no label parts), \code{"table"} (the summary-table row label),
 \code{"plot"} (the plot-legend label: the level text of a level cell), or
 \code{"warning"} (the row label used in warnings and footnotes).}
 

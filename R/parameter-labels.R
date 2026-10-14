@@ -200,7 +200,8 @@
 #' frame with a `label_parts` column (e.g. the `quantities` attribute of an
 #' estimates table), or a list of label parts.
 #' @param style one of `"selector"` (the exact selector, i.e., the canonical
-#' name of a catalog quantity), `"table"` (the summary-table row label),
+#' name of a catalog quantity; also for the quantities of an extension
+#' provider that have no label parts), `"table"` (the summary-table row label),
 #' `"plot"` (the plot-legend label: the level text of a level cell), or
 #' `"warning"` (the row label used in warnings and footnotes).
 #' @param formula_prefix whether table and warning labels show the formula
@@ -264,8 +265,15 @@ parameter_labels <- function(x, style = c("selector", "table", "plot", "warning"
     missing <- vapply(x$label_parts, is.null, logical(1))
     out <- character(nrow(x))
     if(any(missing) && "display_label" %in% names(x)){
-      # extension providers may describe their quantities by a label only
-      out[missing] <- x$display_label[missing]
+      # extension providers may describe their quantities by a label only: the
+      # selector is the canonical name, which resolves back to the quantity,
+      # and the presentation styles show the display label
+      out[missing] <- if(identical(style, "selector") &&
+                         "canonical_name" %in% names(x)){
+        x$canonical_name[missing]
+      }else{
+        x$display_label[missing]
+      }
     }else if(any(missing) && "alias" %in% names(x)){
       # and their aliases by the alias text
       out[missing] <- x$alias[missing]

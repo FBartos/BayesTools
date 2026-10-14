@@ -216,6 +216,54 @@ test_that("the label renderer renders every style from structured parts", {
   )
 })
 
+test_that("the selector label of a quantity without label parts is its canonical name", {
+
+  # A quantity of an extension provider can have no label parts: its selector
+  # is the canonical name, which resolves back to the quantity, while the
+  # presentation styles show its display label.
+  coordinates <- .bt_build_parameter_coordinates(columns = "theta")
+  catalog <- .bt_build_parameter_catalog(coordinates)
+  quantity <- .bt_parameter_catalog_quantity(
+    canonical_name = "effect_location", namespace = "location",
+    role = "coefficient",
+    extraction_key = list(type = "external", dependencies = character())
+  )
+  quantity$provider <- "TestPkg"
+  quantity$quantity_id <- "TestPkg::location"
+  quantity$display_label <- "Effect location"
+  extended <- parameter_catalog_extend(
+    catalog, quantities = quantity,
+    aliases = .bt_parameter_catalog_empty_aliases(), provider = "TestPkg"
+  )
+  selection <- parameter_catalog_resolve(extended, "effect_location")
+
+  expect_identical(parameter_labels(selection, "selector"), "effect_location")
+  for(style in c("table", "plot", "warning")){
+    expect_identical(parameter_labels(selection, style), "Effect location",
+                     info = style)
+  }
+  # the selector label resolves back to the quantity; neither the formula
+  # prefix nor simplification changes a canonical name
+  for(arguments in list(list(), list(formula_prefix = FALSE), list(simplify = TRUE))){
+    label <- do.call(parameter_labels, c(list(selection, "selector"), arguments))
+    expect_identical(label, "effect_location")
+    expect_identical(parameter_catalog_resolve(extended, label)$quantity_id,
+                     "TestPkg::location")
+  }
+  # a table with quantities of both kinds: label parts render the selector,
+  # the other rows are named by their canonical names
+  rows <- extended$quantities
+  expect_identical(parameter_labels(rows, "selector"), rows$canonical_name)
+  expect_identical(
+    parameter_labels(rows, "table")[rows$quantity_id == "TestPkg::location"],
+    "Effect location"
+  )
+  # rows described by a display label only (no canonical name) keep it
+  display_only <- data.frame(display_label = "Effect location")
+  display_only$label_parts <- I(list(NULL))
+  expect_identical(parameter_labels(display_only, "selector"), "Effect location")
+})
+
 test_that("catalog level tokens round trip through the one codec", {
 
   levels <- c(
