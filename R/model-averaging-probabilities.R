@@ -423,10 +423,23 @@
 .model_probability_point_declarations <- function(prior_lists){
 
   if(!length(prior_lists)) return(FALSE)
+  # A point factor component built by a constructor carries no levels (its
+  # dimension is empty): it takes the dimension of its sibling factor
+  # components, and declares no point when none is known.
+  sibling_dimension <- unique(unlist(lapply(prior_lists, function(priors){
+    lapply(priors, function(prior){
+      dimension <- if(.prior_linear_is_factor_prior(prior)) .prior_linear_prior_dimension(prior)
+      if(length(dimension) == 1L && !is.na(dimension)) dimension
+    })
+  })))
+  sibling_dimension <- if(length(sibling_dimension) == 1L) sibling_dimension else NA_integer_
   points <- lapply(prior_lists, function(priors){
     lapply(priors, function(prior){
       if(!is.null(attr(prior, "multiply_by", exact = TRUE))) return(NULL)
-      .posterior_atoms_point_location(prior, .prior_linear_prior_dimension(prior))
+      dimension <- .prior_linear_prior_dimension(prior)
+      if(.prior_linear_is_factor_prior(prior) && (length(dimension) != 1L || is.na(dimension))) dimension <- sibling_dimension
+      if(length(dimension) != 1L || is.na(dimension)) return(NULL)
+      .posterior_atoms_point_location(prior, dimension)
     })
   })
   if(any(vapply(points, function(model) any(vapply(model, is.null, logical(1))), logical(1)))) return(FALSE)

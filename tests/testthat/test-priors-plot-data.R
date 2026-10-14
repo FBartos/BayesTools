@@ -902,3 +902,87 @@ test_that("prior linear density plots omit infinite density ordinates", {
     expect_true(all(is.finite(graphics::par("usr"))))
   }
 })
+
+# F248: the null component of a constructor-built factor spike-and-slab or
+# mixture is a point factor without levels; its dimension was NA.
+test_that("constructor-built factor spike-and-slab and mixture priors plot like formula-attached priors", {
+
+  grDevices::pdf(NULL)
+  on.exit(grDevices::dev.off(), add = TRUE)
+
+  layer_summary <- function(figure){
+    lapply(ggplot2::ggplot_build(figure)$data, function(layer){
+      list(n = nrow(layer), x = layer$x, y = layer$y, yend = layer[["yend"]])
+    })
+  }
+  check_layers <- function(layers, info){
+    expect_length(layers, 2L)
+    curve <- layers[[1L]]
+    atom  <- layers[[2L]]
+    expect_true(curve$n > 2L && all(is.finite(curve$x)) && all(is.finite(curve$y)), info = info)
+    expect_identical(atom$n, 1L, info = info)
+    expect_identical(atom$x, 0, info = info)
+    expect_gt(atom$yend, 0)
+  }
+
+  for(contrast in c("meandif", "orthonormal", "treatment", "independent")){
+    slab <- if(contrast %in% c("meandif", "orthonormal")){
+      prior_factor("mnormal", list(0, 1), contrast = contrast)
+    }else{
+      prior_factor("normal", list(0, 1), contrast = contrast)
+    }
+    spike_and_slab <- prior_spike_and_slab(slab)
+
+    expect_no_error(suppressWarnings(plot(spike_and_slab, n_points = 64)))
+    figure <- suppressWarnings(plot(spike_and_slab, plot_type = "ggplot", n_points = 64))
+    check_layers(layer_summary(figure), paste(contrast, "plot"))
+    overlay <- suppressWarnings(ggplot2::ggplot() + geom_prior(spike_and_slab, n_points = 64, xlim = c(-4, 4)))
+    check_layers(layer_summary(overlay), paste(contrast, "geom_prior"))
+    expect_no_error(suppressWarnings({
+      plot(prior("normal", list(0, 1)), xlim = c(-4, 4))
+      lines(spike_and_slab, n_points = 64, xlim = c(-4, 4))
+    }))
+
+    # the same prior attached through JAGS_formula() plots the same
+    if(contrast %in% c("treatment", "independent")){
+      data <- data.frame(f = factor(rep(c("a", "b", "c"), 4)))
+      formula <- JAGS_formula(~ f, "mu", data,
+        list(intercept = prior("point", list(0)), f = spike_and_slab))
+      attached <- plot(formula$prior_list$mu_f, plot_type = "ggplot", n_points = 64)
+      expect_equal(layer_summary(figure), layer_summary(attached), info = contrast)
+    }
+  }
+
+  # a mixture of a treatment normal factor and a treatment spike factor
+  mixture <- prior_mixture(list(
+    prior_factor("normal", list(0, 1), contrast = "treatment"),
+    prior_factor("spike", list(0), contrast = "treatment")
+  ), is_null = c(FALSE, TRUE))
+  expect_no_error(plot(mixture, n_points = 64))
+  check_layers(layer_summary(plot(mixture, plot_type = "ggplot", n_points = 64)), "mixture plot")
+  check_layers(layer_summary(ggplot2::ggplot() + geom_prior(mixture, n_points = 64, xlim = c(-4, 4))), "mixture geom_prior")
+})
+
+test_that("the point declaration of factor components uses the dimension of its siblings and none when unknown", {
+
+  point  <- prior_factor("spike", list(0), contrast = "treatment")
+  normal <- prior_factor("normal", list(0, 1), contrast = "treatment")
+  expect_length(BayesTools:::.prior_linear_prior_dimension(point), 0L)
+
+  # no dimension is known: no point declaration (and no error)
+  expect_false(.model_probability_point_declarations(list(list(point))))
+  expect_false(.model_probability_point_declarations(list(list(point), list(normal))))
+  expect_false(.model_probability_point_declarations(list(list(point), list(point))))
+
+  # the point takes the dimension of its sibling factor components
+  sibling <- prior_factor("spike", list(0), contrast = "treatment")
+  attr(sibling, "levels") <- 3L
+  expect_true(.model_probability_point_declarations(list(list(point), list(sibling))))
+  # a sibling normal factor with levels is not a point
+  attr(normal, "levels") <- 3L
+  expect_false(.model_probability_point_declarations(list(list(point), list(normal))))
+  # siblings of different dimensions do not determine it
+  other <- prior_factor("spike", list(0), contrast = "treatment")
+  attr(other, "levels") <- 4L
+  expect_false(.model_probability_point_declarations(list(list(point), list(sibling), list(other))))
+})
