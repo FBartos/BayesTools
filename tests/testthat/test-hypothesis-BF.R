@@ -1189,8 +1189,9 @@ test_that("hypothesis_BF accepts mixture and spike-and-slab prior objects", {
     "point mass in the prior"
   )
 
-  # Region masses of non-simple prior objects come from 20000 prior draws;
-  # compare the prior odds with the analytic value within 5 Monte Carlo SEs.
+  # Region masses of mixture and spike-and-slab priors are exact (the
+  # component distribution functions summed with their probabilities), so
+  # the prior odds equal the analytic value to rounding error.
   region_cases <- list(
     list(prior = mixture,
          mass  = .25 * stats::pnorm(0.2, lower.tail = FALSE) +
@@ -1202,8 +1203,7 @@ test_that("hypothesis_BF accepts mixture and spike-and-slab prior objects", {
     region <- hypothesis_BF(posterior, case$prior, hypothesis = "theta > 0.2",
                             parameter = "theta", columns = "all", seed = 1)
     odds    <- case$mass / (1 - case$mass)
-    odds_se <- sqrt(case$mass * (1 - case$mass) / 20000) / (1 - case$mass)^2
-    expect_lt(abs(region[["prior"]] - odds), 5 * odds_se)
+    expect_equal(region[["prior"]], odds, tolerance = 1e-12)
     expect_true(is.finite(attr(region, "raw_BF")))
   }
 })

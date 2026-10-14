@@ -1254,14 +1254,15 @@ test_that("inclusion_BF works with marginal likelihoods only", {
   expect_equal(BF, 1)
 
   # Unequal margliks - alternative has higher marglik
+  # (equal prior probabilities: BF = exp(marglik difference))
   margliks <- c(-10, -8)  # Alternative model is better
   BF <- inclusion_BF(prior_probs = prior_probs, margliks = margliks, is_null = is_null)
-  expect_true(BF > 1)
+  expect_equal(BF, exp(2), tolerance = 1e-12)
 
   # Unequal margliks - null has higher marglik
   margliks <- c(-8, -10)  # Null model is better
   BF <- inclusion_BF(prior_probs = prior_probs, margliks = margliks, is_null = is_null)
-  expect_true(BF < 1)
+  expect_equal(BF, exp(-2), tolerance = 1e-12)
 
 })
 
