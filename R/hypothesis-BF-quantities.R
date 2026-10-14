@@ -254,6 +254,7 @@
   if(is.list(posterior)){
     level_refs <- .hypothesis_level_references(statements, parameter)
     if(nrow(level_refs) > 0L){
+      .hypothesis_check_levels_without_whole_reference(statements, parameter, level_refs)
       return(list(.hypothesis_quantity_from_marginal_posterior_levels(
         posterior  = posterior,
         parameter  = parameter,
@@ -294,13 +295,20 @@
 }
 
 
-.hypothesis_level_references <- function(statements, parameter = NULL) {
+.hypothesis_symbol_occurrences <- function(statements) {
 
   ast <- structure(
     list(schema_version = .bt_hypothesis_ast_version, statements = statements),
     class = c("BayesTools_hypothesis_ast", "list")
   )
-  occurrences <- hypothesis_symbols(ast, occurrences = TRUE)
+
+  return(hypothesis_symbols(ast, occurrences = TRUE))
+}
+
+
+.hypothesis_level_references <- function(statements, parameter = NULL) {
+
+  occurrences <- .hypothesis_symbol_occurrences(statements)
   out <- occurrences[!is.na(occurrences$level),
                      c("symbol", "parameter", "level"), drop = FALSE]
 
@@ -309,6 +317,25 @@
   }
 
   return(unique(out))
+}
+
+
+# Explicit-level statements are evaluated over the levels the call names, a
+# whole-parameter statement over every level of the parameter; one call
+# cannot hold both.
+.hypothesis_check_levels_without_whole_reference <- function(statements, parameter,
+                                                              level_refs) {
+
+  occurrences <- .hypothesis_symbol_occurrences(statements)
+  if(any(is.na(occurrences$level) & occurrences$symbol == parameter)){
+    stop("Hypotheses that reference levels of '", parameter, "' (e.g. '",
+         level_refs[["symbol"]][[1L]], "') cannot also reference the whole ",
+         "parameter '", parameter, "' in one call. Evaluate the explicit-level ",
+         "and the whole-parameter hypotheses in separate calls of ",
+         "'hypothesis_BF()'.", call. = FALSE)
+  }
+
+  return(invisible(TRUE))
 }
 
 

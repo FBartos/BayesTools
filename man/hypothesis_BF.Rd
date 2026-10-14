@@ -142,7 +142,10 @@ comparisons such as
 \code{"theta > 0.5 vs theta > 0"} accept an encompassing region with prior
 mass one. Rows are labelled by quantity; when several statements refer to
 the same quantity, the statement number is appended, e.g.
-\code{theta (2)}.
+\code{theta (2)}. A call cannot combine statements that reference explicit
+levels of a factor (\code{mu_fac[A] > 0}) with statements that reference
+the whole factor (\code{mu_fac = 0}); it stops with an error naming the
+restriction, and the two kinds are evaluated in separate calls.
 A symbolic comparison on both sides uses its centered scalar expression:
 \code{"theta = phi vs theta > phi"} and
 \code{"theta - phi = 0 vs theta - phi > 0"} are supported. Reversed spelling

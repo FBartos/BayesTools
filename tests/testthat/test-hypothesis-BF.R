@@ -119,6 +119,27 @@ test_that("level targets require the same complete declared joint context", {
   expect_s3_class(hypothesis_BF(first, hypothesis = "mu_fac[A] - mu_fac[B] > 0", parameter = "mu_fac", seed = 19), "BayesTools_hypothesis_BF")
 })
 
+test_that("explicit-level and whole-parameter hypotheses are refused in one call", {
+
+  levels <- .hypothesis_factor_marginal_for_test(independent = TRUE)
+  for(hypothesis in list(c("mu_fac[A] > 0", "mu_fac = 0"), c("mu_fac = 0", "mu_fac[A] > 0"),
+                         "mu_fac[A] > mu_fac")){
+    condition <- expect_error(
+      hypothesis_BF(levels, hypothesis = hypothesis, parameter = "mu_fac", seed = 1),
+      "cannot also reference the whole parameter 'mu_fac' in one call", fixed = TRUE)
+    expect_false(inherits(condition, "BayesTools_parameter_not_found"))
+    expect_match(conditionMessage(condition), "levels of 'mu_fac' (e.g. 'mu_fac[A]')", fixed = TRUE)
+  }
+
+  # each kind works alone, and an unknown quantity keeps its own refusal
+  expect_s3_class(hypothesis_BF(levels, hypothesis = "mu_fac[A] > 0", parameter = "mu_fac", seed = 1),
+                  "BayesTools_hypothesis_BF")
+  expect_s3_class(hypothesis_BF(levels, hypothesis = "mu_fac = 0", parameter = "mu_fac", seed = 1),
+                  "BayesTools_hypothesis_BF")
+  expect_error(hypothesis_BF(levels, hypothesis = "mu_fac[A] > other", parameter = "mu_fac", seed = 1),
+               class = "BayesTools_parameter_not_found")
+})
+
 .hypothesis_contrast_marginal_for_test <- function(contrast, n_levels = 5L, seed = 1){
   levels <- LETTERS[seq_len(n_levels)]
   formula <- JAGS_formula(~ fac, "mu", data.frame(fac = factor(levels)),
