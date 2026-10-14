@@ -204,7 +204,11 @@
 #' @return For \code{plot_type = "base"}, invisibly returns base-plot metadata.
 #' For \code{plot_type = "ggplot"}, returns a \code{ggplot} object. Returns
 #' \code{NULL} when the requested parameter is an identity transform and no
-#' output transformation was requested.
+#' output transformation was requested. A prior density that is unavailable
+#' stops with an error of class \code{BayesTools_formula_measure_unavailable};
+#' in particular, the standard deviation of a random-effect block with a scaled
+#' column has no density on this route (it needs the fitted design of the
+#' block) and is refused rather than returned as an identity.
 #'
 #' @seealso [plot_prior_list()] [transform_scale_samples()]
 #' @export
@@ -273,10 +277,6 @@ plot_transformed_prior <- function(prior_list, column_names, formula_scale = NUL
     column_names  = column_names,
     formula_scale = formula_scale
   )
-
-  if(!inherits(context, "prior_density_context")){
-    return(FALSE)
-  }
 
   # This route has no fitted design: the SD of a random-effect block with a
   # scaled column is refused (no fitted design) and never an identity.

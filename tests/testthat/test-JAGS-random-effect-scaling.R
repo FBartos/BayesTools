@@ -1860,7 +1860,8 @@ test_that("tables without the fitted block design refuse random-effect SDs that 
         "to the original predictor scale: the samples carry no fitted design of the ",
         "random-effect block 'id' of formula parameter 'mu', which is needed to map its ",
         "SDs to the original predictor scale. Create the samples with as_mixed_posteriors() ",
-        "or mix_posteriors()."
+        "or mix_posteriors() from fits that carry their formula design; mixed posteriors of a ",
+        "model without a fitted design cannot be mapped to the original predictor scale."
       )
     )
     expect_error(
@@ -1937,7 +1938,9 @@ test_that("a logical predictor in a block with a scaled slope is refused without
         "'mu__xREx__id_flag__xXx__x' to the original predictor scale: the samples carry ",
         "no fitted design of the random-effect block 'id' of formula parameter 'mu', ",
         "which is needed to map its SDs to the original predictor scale. Create the ",
-        "samples with as_mixed_posteriors() or mix_posteriors()."
+        "samples with as_mixed_posteriors() or mix_posteriors() from fits that carry their ",
+        "formula design; mixed posteriors of a model without a fitted design cannot be mapped ",
+        "to the original predictor scale."
       )
     )
     expect_error(
@@ -2163,6 +2166,10 @@ test_that("shared random-effect SD leaves keep one coordinate per design column 
     c("mu_intercept", "mu_flag", "mu_flag__xXx__x", "mu_flag__xXx__x"),
     scale_list, "mu", require_closure = FALSE
   )
+  # Row mu_flag: 1 on its own column and, on each of the two interaction columns
+  # of the shared leaf, -mean / sd = -10 / 2 = -5. Both columns carry the
+  # constant, which is the only part the exact map drops, so the weight is the
+  # same on both and neither column puts weight on the other.
   expect_equal(
     unname(M),
     rbind(

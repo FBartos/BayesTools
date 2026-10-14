@@ -290,10 +290,11 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
   # SDs, whose original-scale values need the fitted block design). A fixed
   # coefficient, when requested, comes first: it defines the model rows and
   # probabilities of the state.
+  formula_designs <- unlist(lapply(fits, function(fit){
+    unname(attr(fit, "formula_design", exact = TRUE))
+  }), recursive = FALSE)
   declared_owners <- function(owners){
-    unique(unlist(lapply(fits, function(fit){
-      unlist(lapply(attr(fit, "formula_design", exact = TRUE), owners), use.names = FALSE)
-    }), use.names = FALSE))
+    unique(unlist(lapply(formula_designs, owners), use.names = FALSE))
   }
   fixed_owners <- declared_owners(function(design){
     intersect(names(design$prior_list), paste0(design$parameter, "_", design$model_terms))

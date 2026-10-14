@@ -673,7 +673,9 @@
           " to the original predictor scale: the samples carry no fitted design of the ",
           "random-effect block '", group$group_key, "' of formula parameter '",
           parameter, "', which is needed to map its SDs to the original predictor scale. ",
-          "Create the samples with as_mixed_posteriors() or mix_posteriors()."
+          "Create the samples with as_mixed_posteriors() or mix_posteriors() from fits ",
+          "that carry their formula design; mixed posteriors of a model without a fitted ",
+          "design cannot be mapped to the original predictor scale."
         ),
         parameter   = parameter,
         reason      = "random_effect_design_unavailable",
