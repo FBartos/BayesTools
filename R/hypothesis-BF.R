@@ -357,17 +357,6 @@ hypothesis_BF <- function(posterior, prior = NULL, hypothesis, parameter = NULL,
 }
 
 
-#' @export
-print.BayesTools_hypothesis_BF <- function(x, ...) {
-
-  if(!inherits(x, "BayesTools_table")){
-    class(x) <- c("BayesTools_table", class(x))
-  }
-  print(x, ...)
-
-  return(invisible(x))
-}
-
 #' @rdname hypothesis_BF
 #' @param x a hypothesis Bayes factor table.
 #' @param row.names optional row names for the complete exported frame.
