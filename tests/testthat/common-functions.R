@@ -2019,7 +2019,8 @@ skip_refit_if_cached <- function(name, required_fits = NULL, required_margliks =
 # existing marker is removed and the call fails, so the next run refits. Without
 # a snapshot (a direct call) the inputs are hashed when the marker is written.
 # Call it from the last test block of the fitting file: a block records its
-# results when it ends, and no block after it is covered.
+# results when it ends, and no block after it is covered. A written marker is
+# the passing expectation of that block (it makes no other).
 mark_refit_cache_complete <- function(name, required_fits = NULL, required_margliks = NULL,
                                       required_files = NULL, registry_file = NULL,
                                       failed_blocks = .test_cache_failed_blocks()) {
@@ -2091,6 +2092,8 @@ mark_refit_cache_complete <- function(name, required_fits = NULL, required_margl
     indicator_file
   )
 
+  # the marking is the expectation of a finalization block that makes no other
+  testthat::succeed(paste0("The fit cache '", name, "' is marked as validated."))
   invisible(TRUE)
 }
 

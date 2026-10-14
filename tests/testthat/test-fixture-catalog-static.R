@@ -595,11 +595,16 @@ run_synthetic_fit_file <- function(cache, generation, frame = parent.frame()) {
     )
   })
   names(messages) <- vapply(results, function(block) block$test, character(1))
+  outcomes <- lapply(results, function(block) {
+    vapply(block$results, function(result) class(result)[[1L]], character(1))
+  })
+  names(outcomes) <- names(messages)
   list(
     layout = layout,
     fit_file = fit_file,
     broken = vapply(messages, length, integer(1)) > 0L,
     messages = messages,
+    outcomes = outcomes,
     current = function() withr::with_dir(fit_dir, cache$current())
   )
 }
@@ -641,6 +646,8 @@ test_that("a fit run with all expectations passing writes the marker", {
     testthat::expect_equal(1, 1)
   })
   expect_identical(run$broken, c(generation = FALSE, finalization = FALSE))
+  # the finalization block is not an empty test
+  expect_identical(run$outcomes$finalization, "expectation_success")
   expect_true(file.exists(cache$indicator))
   expect_true(run$current())
 })
