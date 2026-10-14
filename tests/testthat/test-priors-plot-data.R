@@ -1074,3 +1074,38 @@ test_that("ordered and simplex prior plots accept and validate multiple figure s
   expect_error(plot(weights, individual = TRUE, show_figures = c(1L, 2L)), "must have length '1'", fixed = TRUE)
   expect_no_error(plot(weights, individual = TRUE, show_figures = 2L))
 })
+
+test_that("prior-list plots refuse simplex priors clearly", {
+
+  grDevices::pdf(NULL)
+  on.exit(grDevices::dev.off(), add = TRUE)
+  refusal <- "Prior-list plots do not support vector priors (Dirichlet/simplex); plot a single vector prior with plot()."
+  simplex <- prior("dirichlet", list(c(1, 2, 3)))
+  normal  <- prior("normal", list(0, 1))
+
+  # the list plots and both overlays refuse a Dirichlet component, alone or beside others
+  for(priors in list(list(simplex), list(normal, simplex), list(simplex, normal))){
+    expect_error(plot_prior_list(priors), refusal, fixed = TRUE)
+    expect_error(plot_prior_list(priors, plot_type = "ggplot"), refusal, fixed = TRUE)
+    plot(normal, xlim = c(-3, 3))
+    expect_error(lines_prior_list(priors, xlim = c(-3, 3)), refusal, fixed = TRUE)
+    expect_error(geom_prior_list(priors, xlim = c(-3, 3)), refusal, fixed = TRUE)
+  }
+  # the simplex prior itself is plotted by plot(), one marginal per coordinate
+  expect_length(plot(simplex, plot_type = "ggplot"), 3L)
+
+  # list plots of the other vector priors are unchanged: the factor-coded
+  # orthonormal and mean-difference priors plot, the raw vector priors keep the
+  # existing refusal of their density
+  for(contrast in c("orthonormal", "meandif")){
+    factor_prior <- prior_factor("mnormal", list(0, 1), contrast = contrast)
+    factor_prior$parameters$K <- 3
+    expect_no_error(plot_prior_list(list(factor_prior), n_points = 32L))
+    expect_s3_class(plot_prior_list(list(factor_prior), plot_type = "ggplot", n_points = 32L), "ggplot")
+  }
+  for(vector_prior in list(prior("mnormal", list(mean = 0, sd = 1, K = 3)),
+                           prior("mt", list(location = 0, scale = 1, df = 3, K = 3)))){
+    expect_error(plot_prior_list(list(vector_prior)), "No density is implemented for this prior distribution.", fixed = TRUE)
+  }
+  expect_no_error(plot_prior_list(list(normal, prior("normal", list(1, 1))), plot_type = "ggplot"))
+})

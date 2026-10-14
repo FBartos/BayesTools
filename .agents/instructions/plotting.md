@@ -149,7 +149,10 @@ receive fewer than two draws are dropped. A Bernoulli component of a prior list
 enters as two atoms at 0 and 1 (its truncation-normalized pmf times its weight),
 which merge with equal atoms of other components. Prior-list plots (including
 `plot()` of a prior mixture) refuse ordered priors and their mixtures; a single
-bound ordered prior is plotted with `plot()`.
+bound ordered prior is plotted with `plot()`. They also refuse Dirichlet simplex
+priors (one marginal density per coordinate, no list density), and the overlays
+`lines_prior_list()` and `geom_prior_list()` refuse them alike instead of drawing
+nothing; the factor-coded multivariate priors keep plotting.
 Factor spike-and-slab and mixture priors built by the constructors plot like
 those attached through `JAGS_formula()`: a point factor component without
 levels takes the dimension of its sibling factor components for the
