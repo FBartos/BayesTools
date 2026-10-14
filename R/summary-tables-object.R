@@ -482,13 +482,13 @@ Math.BayesTools_BF <- function(x, ...){
   ))
 }
 
-.indicator_BF_diagnostics <- function(indicator_list, prior_prob, BF){
+.indicator_BF_diagnostics <- function(indicator_list, prior_prob, BF, log_BF = log(BF)){
 
   diagnostics <- .indicator_MCMC_summary(indicator_list)
 
   if(diagnostics$post_prob <= 0 || diagnostics$post_prob >= 1 ||
      prior_prob <= 0 || prior_prob >= 1 ||
-     !is.finite(BF) || !is.finite(diagnostics$MCMC_error)){
+     !is.finite(log_BF) || !is.finite(diagnostics$MCMC_error)){
     BF_error_percent <- NA_real_
   }else{
     log_BF_error <- diagnostics$MCMC_error / (diagnostics$post_prob * (1 - diagnostics$post_prob))
@@ -509,9 +509,12 @@ Math.BayesTools_BF <- function(x, ...){
   )
 }
 
-.indicator_BF_reporting_value <- function(BF, post_prob, prior_prob, n_samples){
+# The reported Bayes factor of an indicator: the value, its natural logarithm
+# (computed in log space, so a factor beyond the double range keeps a finite
+# logarithm), and the bound operator when the indicator never leaves a state.
+.indicator_BF_reporting_value <- function(BF, post_prob, prior_prob, n_samples, log_BF = log(BF)){
 
-  out <- list(value = BF, operator = NA_character_)
+  out <- list(value = BF, operator = NA_character_, log_value = log_BF)
   if(length(post_prob) != 1L || length(prior_prob) != 1L || length(n_samples) != 1L){
     return(out)
   }
@@ -520,13 +523,16 @@ Math.BayesTools_BF <- function(x, ...){
     return(out)
   }
 
-  prior_odds <- prior_prob / (1 - prior_prob)
+  prior_odds     <- prior_prob / (1 - prior_prob)
+  log_prior_odds <- log(prior_prob) - log1p(-prior_prob)
   if(post_prob >= 1){
-    out$value    <- (n_samples - 1) / prior_odds
-    out$operator <- ">"
+    out$value     <- (n_samples - 1) / prior_odds
+    out$log_value <- log(n_samples - 1) - log_prior_odds
+    out$operator  <- ">"
   }else if(post_prob <= 0){
-    out$value    <- 1 / ((n_samples - 1) * prior_odds)
-    out$operator <- "<"
+    out$value     <- 1 / ((n_samples - 1) * prior_odds)
+    out$log_value <- -log(n_samples - 1) - log_prior_odds
+    out$operator  <- "<"
   }
 
   return(out)

@@ -389,6 +389,44 @@ test_that("runjags_inference_table reports BEAST/BSSVS-style bounds at indicator
 })
 
 
+test_that("runjags_inference_table keeps inclusion Bayes factors beyond the double range in log space", {
+
+  skip_if_not_installed("runjags")
+
+  # prior inclusion 1e-320 and posterior inclusion .5: BF = 1 / (1e-320 / (1 - 1e-320)) overflows
+  prior_prob <- 1e-320
+  log_prior_odds <- log(prior_prob) - log1p(-prior_prob)
+  fit <- .runjags_inference_fit_for_test(rep(c(0, 1), 5), prior_prob = prior_prob)
+  log_table <- runjags_inference_table(fit, logBF = TRUE)
+  expect_equal(as.numeric(log_table$inclusion_BF), -log_prior_odds, tolerance = 1e-12)
+  expect_equal(as.numeric(runjags_inference_table(fit, logBF = TRUE, BF01 = TRUE)$inclusion_BF),
+               log_prior_odds, tolerance = 1e-12)
+  natural <- runjags_inference_table(fit)
+  expect_identical(as.numeric(natural$inclusion_BF), Inf)
+  expect_equal(attr(natural$inclusion_BF, "canonical_log_BF"), -log_prior_odds, tolerance = 1e-12)
+  expect_equal(as.numeric(format_BF(natural$inclusion_BF, logBF = TRUE)), -log_prior_odds, tolerance = 1e-12)
+  diagnostics <- runjags_inference_table(fit, BF_diagnostics = TRUE, logBF = TRUE)
+  expect_true(is.finite(diagnostics$BF_error_percent))
+  expect_equal(as.numeric(diagnostics$BF_error_percent), 100 * as.numeric(diagnostics$MCMC_error) / (.5 * .5),
+               tolerance = 1e-12)
+
+  # the finite-sample bound of a boundary indicator keeps its logarithm too
+  boundary <- runjags_inference_table(.runjags_inference_fit_for_test(rep(1, 10), prior_prob = prior_prob), logBF = TRUE)
+  expect_equal(as.numeric(boundary$inclusion_BF), log(9) - log_prior_odds, tolerance = 1e-12)
+  expect_identical(attr(boundary$inclusion_BF, "bound_operator"), ">")
+  lower <- runjags_inference_table(.runjags_inference_fit_for_test(rep(0, 10), prior_prob = prior_prob), logBF = TRUE)
+  expect_equal(as.numeric(lower$inclusion_BF), -log(9) - log_prior_odds, tolerance = 1e-12)
+  expect_identical(attr(lower$inclusion_BF, "bound_operator"), "<")
+
+  # ordinary tables are unchanged on every scale
+  ordinary <- .runjags_inference_fit_for_test(rep(c(0, 0, 1), length.out = 12), prior_prob = .3)
+  post <- 4 / 12
+  reference <- (post / (1 - post)) / (.3 / .7)
+  expect_equal(as.numeric(runjags_inference_table(ordinary)$inclusion_BF), reference, tolerance = 1e-12)
+  expect_equal(as.numeric(runjags_inference_table(ordinary, logBF = TRUE, BF01 = TRUE)$inclusion_BF),
+               -log(reference), tolerance = 1e-12)
+})
+
 test_that("runjags_inference_table reports undefined BF at prior probability boundaries", {
 
   skip_if_not_installed("runjags")

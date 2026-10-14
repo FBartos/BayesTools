@@ -1307,6 +1307,7 @@ runjags_inference_table  <- function(fit, title = NULL, footnotes = NULL, warnin
   runjags_summary <- data.frame(matrix(nrow = 0, ncol = 4 + length(BF_diagnostic_columns)))
   colnames(runjags_summary) <- c("Parameter", "prior_prob", "post_prob", "inclusion_BF", BF_diagnostic_columns)
   BF_bound_operators <- character()
+  BF_log_values <- numeric()
   parameter_roles <- character()
   row_labels <- character()
 
@@ -1330,12 +1331,13 @@ runjags_inference_table  <- function(fit, title = NULL, footnotes = NULL, warnin
 
       temp_prior_prob <- mean(.get_spike_and_slab_inclusion(inclusion_prior))
       temp_post_prob  <- mean(model_samples[,indicator_name])
-      temp_BF         <- inclusion_BF(
+      temp_log_BF     <- .inclusion_log_BF.probs(
         prior_probs = c(null = 1 - temp_prior_prob, alternative = temp_prior_prob),
         post_probs  = c(null = 1 - temp_post_prob,  alternative = temp_post_prob),
         is_null     = c(TRUE, FALSE)
       )
-      temp_BF_reporting <- .indicator_BF_reporting_value(temp_BF, temp_post_prob, temp_prior_prob, nrow(model_samples))
+      temp_BF         <- exp(temp_log_BF)
+      temp_BF_reporting <- .indicator_BF_reporting_value(temp_BF, temp_post_prob, temp_prior_prob, nrow(model_samples), log_BF = temp_log_BF)
       temp_row        <- data.frame(
         Parameter    = par,
         prior_prob   = temp_prior_prob,
@@ -1344,7 +1346,7 @@ runjags_inference_table  <- function(fit, title = NULL, footnotes = NULL, warnin
       )
       if(BF_diagnostics){
         temp_indicator_list <- .runjags_indicator_list(model_samples_list, indicator_name, 1)
-        temp_diagnostics    <- .indicator_BF_diagnostics(temp_indicator_list, temp_prior_prob, temp_BF)
+        temp_diagnostics    <- .indicator_BF_diagnostics(temp_indicator_list, temp_prior_prob, temp_BF, log_BF = temp_log_BF)
         temp_row            <- cbind(temp_row, .indicator_BF_diagnostic_row(temp_diagnostics)[, BF_diagnostic_columns, drop = FALSE])
         if(BF_error_diagnostics){
           warnings <- c(warnings, .indicator_BF_warnings(term_warning_label, temp_diagnostics))
@@ -1353,6 +1355,7 @@ runjags_inference_table  <- function(fit, title = NULL, footnotes = NULL, warnin
 
       runjags_summary <- rbind(runjags_summary, temp_row)
       BF_bound_operators <- c(BF_bound_operators, temp_BF_reporting$operator)
+      BF_log_values <- c(BF_log_values, temp_BF_reporting$log_value)
       parameter_roles <- c(parameter_roles, "model_inclusion")
       row_labels <- c(row_labels, term_label)
     }else if(is.prior.mixture(prior_list[[par]])){
@@ -1382,8 +1385,9 @@ runjags_inference_table  <- function(fit, title = NULL, footnotes = NULL, warnin
           temp_post_prob  <- c("null" = 0,  temp_post_prob)
         }
 
-        temp_BF  <- inclusion_BF(prior_probs = temp_prior_prob, post_probs = temp_post_prob, is_null = names(temp_post_prob) != "alternative")
-        temp_BF_reporting <- .indicator_BF_reporting_value(temp_BF, temp_post_prob[["alternative"]], temp_prior_prob[["alternative"]], nrow(model_samples))
+        temp_log_BF <- .inclusion_log_BF.probs(prior_probs = temp_prior_prob, post_probs = temp_post_prob, is_null = names(temp_post_prob) != "alternative")
+        temp_BF  <- exp(temp_log_BF)
+        temp_BF_reporting <- .indicator_BF_reporting_value(temp_BF, temp_post_prob[["alternative"]], temp_prior_prob[["alternative"]], nrow(model_samples), log_BF = temp_log_BF)
         temp_row <- data.frame(
           Parameter    = par,
           prior_prob   = temp_prior_prob[["alternative"]],
@@ -1392,7 +1396,7 @@ runjags_inference_table  <- function(fit, title = NULL, footnotes = NULL, warnin
         )
         if(BF_diagnostics){
           temp_indicator_list <- .runjags_indicator_list(model_samples_list, paste0(par, "_indicator"), which(components == "alternative"))
-          temp_diagnostics    <- .indicator_BF_diagnostics(temp_indicator_list, temp_prior_prob[["alternative"]], temp_BF)
+          temp_diagnostics    <- .indicator_BF_diagnostics(temp_indicator_list, temp_prior_prob[["alternative"]], temp_BF, log_BF = temp_log_BF)
           temp_row            <- cbind(temp_row, .indicator_BF_diagnostic_row(temp_diagnostics)[, BF_diagnostic_columns, drop = FALSE])
           if(BF_error_diagnostics){
             warnings <- c(warnings, .indicator_BF_warnings(term_warning_label, temp_diagnostics))
@@ -1401,6 +1405,7 @@ runjags_inference_table  <- function(fit, title = NULL, footnotes = NULL, warnin
 
         runjags_summary <- rbind(runjags_summary, temp_row)
         BF_bound_operators <- c(BF_bound_operators, temp_BF_reporting$operator)
+        BF_log_values <- c(BF_log_values, temp_BF_reporting$log_value)
         parameter_roles <- c(parameter_roles, mixture_role)
         row_labels <- c(row_labels, term_label)
 
@@ -1411,8 +1416,9 @@ runjags_inference_table  <- function(fit, title = NULL, footnotes = NULL, warnin
         for(component in unique(components)){
           component_parts <- .bt_label_parts_update(term_parts, component = component)
           temp_parameter <- paste0(par, " [", component, "]")
-          temp_BF        <- inclusion_BF(prior_probs = temp_prior_prob, post_probs = temp_post_prob, is_null = names(temp_post_prob) != component)
-          temp_BF_reporting <- .indicator_BF_reporting_value(temp_BF, temp_post_prob[[component]], temp_prior_prob[[component]], nrow(model_samples))
+          temp_log_BF    <- .inclusion_log_BF.probs(prior_probs = temp_prior_prob, post_probs = temp_post_prob, is_null = names(temp_post_prob) != component)
+          temp_BF        <- exp(temp_log_BF)
+          temp_BF_reporting <- .indicator_BF_reporting_value(temp_BF, temp_post_prob[[component]], temp_prior_prob[[component]], nrow(model_samples), log_BF = temp_log_BF)
           temp_row       <- data.frame(
             Parameter    = paste0(par, " [", component, "]"),
             prior_prob   = temp_prior_prob[[component]],
@@ -1421,7 +1427,7 @@ runjags_inference_table  <- function(fit, title = NULL, footnotes = NULL, warnin
           )
           if(BF_diagnostics){
             temp_indicator_list <- .runjags_indicator_list(model_samples_list, paste0(par, "_indicator"), which(components == component))
-            temp_diagnostics    <- .indicator_BF_diagnostics(temp_indicator_list, temp_prior_prob[[component]], temp_BF)
+            temp_diagnostics    <- .indicator_BF_diagnostics(temp_indicator_list, temp_prior_prob[[component]], temp_BF, log_BF = temp_log_BF)
             temp_row            <- cbind(temp_row, .indicator_BF_diagnostic_row(temp_diagnostics)[, BF_diagnostic_columns, drop = FALSE])
             if(BF_error_diagnostics){
               warnings <- c(warnings, .indicator_BF_warnings(
@@ -1433,6 +1439,7 @@ runjags_inference_table  <- function(fit, title = NULL, footnotes = NULL, warnin
 
           runjags_summary <- rbind(runjags_summary, temp_row)
           BF_bound_operators <- c(BF_bound_operators, temp_BF_reporting$operator)
+          BF_log_values <- c(BF_log_values, temp_BF_reporting$log_value)
           parameter_roles <- c(parameter_roles, mixture_role)
           row_labels <- c(row_labels, .bt_label(
             component_parts,
@@ -1451,16 +1458,18 @@ runjags_inference_table  <- function(fit, title = NULL, footnotes = NULL, warnin
       )
       temp_prior_prob <- mean(prior_list[[par]])
       temp_post_prob <- mean(model_samples[, indicator_name])
-      temp_BF <- inclusion_BF(
+      temp_log_BF <- .inclusion_log_BF.probs(
         prior_probs = c(null = 1 - temp_prior_prob, alternative = temp_prior_prob),
         post_probs = c(null = 1 - temp_post_prob, alternative = temp_post_prob),
         is_null = c(TRUE, FALSE)
       )
+      temp_BF <- exp(temp_log_BF)
       temp_BF_reporting <- .indicator_BF_reporting_value(
         temp_BF,
         temp_post_prob,
         temp_prior_prob,
-        nrow(model_samples)
+        nrow(model_samples),
+        log_BF = temp_log_BF
       )
       allocation_parts <- .bt_random_allocation_inference_parts(
         fit = fit,
@@ -1483,7 +1492,8 @@ runjags_inference_table  <- function(fit, title = NULL, footnotes = NULL, warnin
         temp_diagnostics <- .indicator_BF_diagnostics(
           temp_indicator_list,
           temp_prior_prob,
-          temp_BF
+          temp_BF,
+          log_BF = temp_log_BF
         )
         temp_row <- cbind(
           temp_row,
@@ -1507,6 +1517,7 @@ runjags_inference_table  <- function(fit, title = NULL, footnotes = NULL, warnin
         BF_bound_operators,
         temp_BF_reporting$operator
       )
+      BF_log_values <- c(BF_log_values, temp_BF_reporting$log_value)
       parameter_roles <- c(parameter_roles, "random_inclusion")
       row_labels <- c(row_labels, temp_parameter)
     }
@@ -1518,9 +1529,16 @@ runjags_inference_table  <- function(fit, title = NULL, footnotes = NULL, warnin
   runjags_summary           <- runjags_summary[,-1]
 
   # format BF and BF MC error on the requested scale
-  temp_inclusion_BF <- runjags_summary[,"inclusion_BF"]
-  attr(temp_inclusion_BF, "bound_operator") <- BF_bound_operators
-  runjags_summary[["inclusion_BF"]] <- format_BF(temp_inclusion_BF, logBF = logBF, BF01 = BF01, inclusion = TRUE)
+  # (from the natural logarithms: a factor beyond the double range keeps its
+  # logarithm and its bound)
+  runjags_summary[["inclusion_BF"]] <- if(length(BF_log_values) > 0L){
+    format_BF_from_log(BF_log_values, logBF = logBF, BF01 = BF01, inclusion = TRUE,
+                       bound_operator = BF_bound_operators)
+  }else{
+    temp_inclusion_BF <- runjags_summary[,"inclusion_BF"]
+    attr(temp_inclusion_BF, "bound_operator") <- BF_bound_operators
+    format_BF(temp_inclusion_BF, logBF = logBF, BF01 = BF01, inclusion = TRUE)
+  }
   if("MCMC_error" %in% BF_diagnostic_columns){
     attr(runjags_summary[["MCMC_error"]], "name") <- "error(Post. prob.)"
   }
