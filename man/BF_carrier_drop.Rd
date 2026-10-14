@@ -8,7 +8,8 @@ BF_carrier_drop(x)
 }
 \arguments{
 \item{x}{a numeric vector, typically a Bayes factor created by
-\code{\link[=format_BF_from_log]{format_BF_from_log()}} or \code{\link[=format_BF]{format_BF()}}.}
+\code{\link[=format_BF_from_log]{format_BF_from_log()}} or \code{\link[=format_BF]{format_BF()}}. A numeric matrix or array is also
+accepted and keeps its dimensions.}
 }
 \value{
 \code{BF_carrier_drop()} returns \code{x} without its carrier

@@ -29,8 +29,9 @@ naming purposes).}
 \item{bound_operator}{\code{NULL} (all values exact), or a character vector
 with one element per value of \code{log_BF}: \code{NA} for an exact value,
 \code{"<"} or \code{">"} when the value is an upper or lower bound of the
-Bayes factor. The operators refer to the BF10 values in \code{log_BF} and
-are stored in the orientation of the output (inverted when
+Bayes factor. A logical vector of \code{NA} with one element per value (all
+values exact) is accepted as well. The operators refer to the BF10 values in
+\code{log_BF} and are stored in the orientation of the output (inverted when
 \code{BF01 = TRUE}, see \code{\link[=invert_BF_bound_operator]{invert_BF_bound_operator()}}).}
 
 \item{diagnostics}{\code{NULL}, or a list with one element per value of

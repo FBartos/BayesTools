@@ -345,8 +345,8 @@
 #' mixture (for example a spike and slab), its inclusion indicator is named by
 #' appending \code{_indicator} to this name.
 #'
-#' @param parameter_name a character vector of parameter names: non-missing and
-#' not empty.
+#' @param parameter_name a character vector of parameter names with at least
+#' one element: non-missing and not empty.
 #'
 #' @return \code{prior_ordered_total_name()} returns a character vector with
 #' \code{<parameter_name>_ordered_total} for each element of

@@ -7,8 +7,8 @@
 prior_ordered_total_name(parameter_name)
 }
 \arguments{
-\item{parameter_name}{a character vector of parameter names: non-missing and
-not empty.}
+\item{parameter_name}{a character vector of parameter names with at least
+one element: non-missing and not empty.}
 }
 \value{
 \code{prior_ordered_total_name()} returns a character vector with
