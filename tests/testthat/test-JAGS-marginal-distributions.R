@@ -1954,8 +1954,13 @@ test_that("stored posterior density selection validates names and conditionals",
     conditional_rule = "AND",
     condition_key    = BayesTools:::.condition_event_key(c("a", "b"), "AND")
   ))
+  # alpha and phacking name one event through a bias prior: the event key
+  # carries the alias
+  bias_priors <- list(bias = prior_bias(prior_weightfunction("one-sided", .025, wf_fixed(c(1, .5))),
+    prior_phacking(form = "linear")))
+  alias_key <- BayesTools:::.condition_event(bias_priors, "alpha")$condition_key
   alias_density <- density
-  alias_density[["condition_key"]] <- NULL
+  alias_density[["condition_key"]] <- alias_key
   alias_density[["conditional"]] <- "phacking"
   alias_density[["conditional_rule"]] <- "AND"
   expect_equal(
@@ -1963,6 +1968,25 @@ test_that("stored posterior density selection validates names and conditionals",
       sources          = list(list(theta = alias_density)),
       aliases          = "theta",
       conditional      = "alpha",
+      conditional_rule = "AND",
+      condition_key    = alias_key
+    )$method,
+    "iwmde"
+  )
+  # without a prior list a raw request meets a key-less density only under the
+  # same label: the labels of two ordinary parameters are never merged
+  alias_density[["condition_key"]] <- NULL
+  expect_null(BayesTools:::.posterior_density_from_sources(
+    sources          = list(list(theta = alias_density)),
+    aliases          = "theta",
+    conditional      = "alpha",
+    conditional_rule = "AND"
+  ))
+  expect_equal(
+    BayesTools:::.posterior_density_from_sources(
+      sources          = list(list(theta = alias_density)),
+      aliases          = "theta",
+      conditional      = "phacking",
       conditional_rule = "AND"
     )$method,
     "iwmde"

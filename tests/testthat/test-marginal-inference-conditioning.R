@@ -1090,3 +1090,54 @@ test_that("a formula row that is identically zero is certified at zero without c
   expect_identical(.posterior_atoms_for_column(assembled$atoms, "a")$mass, 1)
   expect_length(.posterior_atoms_for_column(assembled$atoms, "b")$mass, 0L)
 })
+
+test_that("ordinary alpha and pi_null parameters keep separate conditioning events", {
+
+  spike <- prior_spike_and_slab(prior("normal", list(0, 1)), prior_inclusion = prior("point", list(0.5)))
+  priors <- list(theta = prior("normal", list(0, 1)), alpha = spike, pi_null = spike)
+  posterior <- cbind(theta = c(1, 2, 100, 101), alpha = c(1, 2, 0, 0), pi_null = c(0, 0, 1, 2),
+    alpha_indicator = c(1, 1, 0, 0), pi_null_indicator = c(0, 0, 1, 1))
+  x <- seq(-1, 4, length.out = 21)
+  stored <- .posterior_density_for_test(x = x, y = stats::dnorm(x, 1.5, .5), parameter = "theta",
+    conditional = "alpha", conditional_rule = "AND", method = "stored-alpha")
+  fit <- .bt_meta_set(.mock_marginal_fit(posterior, priors), "posterior_density", list(theta = stored))
+
+  # the density stored for theta given alpha is not carried by theta given pi_null
+  given_alpha   <- as_mixed_posteriors(fit, "theta", conditional = "alpha")
+  given_pi_null <- as_mixed_posteriors(fit, "theta", conditional = "pi_null")
+  expect_equal(as.numeric(given_alpha$theta), c(1, 2))
+  expect_equal(as.numeric(given_pi_null$theta), c(100, 101))
+  expect_identical(.bt_meta_get(given_alpha$theta, "posterior_density")$method, "stored-alpha")
+  expect_null(.bt_meta_get(given_pi_null$theta, "posterior_density"))
+
+  # distinct raw labels never share a key
+  expect_false(identical(.condition_event_key("alpha"), .condition_event_key("pi_null")))
+  expect_false(identical(.condition_labels_key("alpha"), .condition_labels_key("pi_null")))
+  expect_false(identical(.condition_event_key("alpha"), .condition_event_key("phacking")))
+  expect_false(identical(.condition_event(priors, "alpha")$condition_key,
+    .condition_event(priors, "pi_null")$condition_key))
+  expect_identical(.condition_event_key(c("pi_null", "alpha", "alpha"), "OR"),
+    paste0(c("OR", 2, "alpha", "pi_null"), collapse = "\r"))
+})
+
+test_that("alpha, pi_null and phacking name one condition event only with a bias prior", {
+
+  bias <- prior_bias(prior_weightfunction("one-sided", .025, wf_fixed(c(1, .5))), prior_phacking(form = "linear"))
+  priors <- list(theta = prior("normal", list(0, 1)), bias = bias)
+  keys <- vapply(c("alpha", "pi_null", "phacking"), function(label){
+    .condition_event(priors, label)$condition_key
+  }, character(1))
+  expect_length(unique(keys), 1L)
+  expect_identical(.condition_event(priors, c("alpha", "pi_null"))$condition_key, unname(keys[1L]))
+  expect_identical(.condition_event(priors, "alpha")$conditional, "alpha")
+  expect_identical(names(.condition_event(priors, c("alpha", "pi_null"))$families), "bias")
+
+  # other labels keep their own keys
+  for(label in c("omega", "theta")){
+    expect_false(identical(.condition_event(priors, label)$condition_key, unname(keys[1L])))
+  }
+  expect_false(identical(.condition_event(priors, c("alpha", "theta"))$condition_key,
+    .condition_event(priors, c("pi_null", "omega"))$condition_key))
+  expect_identical(.condition_event(priors, c("alpha", "theta"))$condition_key,
+    .condition_event(priors, c("phacking", "theta"))$condition_key)
+})

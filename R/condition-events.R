@@ -12,9 +12,15 @@
   unique(conditional)
 }
 
+# A label-only key is the sorted unique labels of the request: two requests
+# share a key only when they name the same labels. The aliases of the bias
+# family (alpha and pi_null are the p-hacking component 'phacking' only when
+# the model has a bias prior) are resolved by .condition_event(), which has the
+# prior list; a comparison without one (a stored density without a key against
+# raw requested labels) can miss such an alias but never merges two parameters.
 .condition_labels_key <- function(conditional){
 
-  conditional <- sort(unique(.condition_key_labels(conditional)))
+  conditional <- sort(unique(.condition_normalize_labels(conditional)))
   paste0(c(length(conditional), conditional), collapse = "\r")
 }
 
@@ -32,7 +38,7 @@
   if(is.null(conditional_rule)){
     conditional_rule <- "AND"
   }
-  conditional <- sort(unique(.condition_key_labels(conditional)))
+  conditional <- sort(unique(.condition_normalize_labels(conditional)))
   if(length(conditional) == 0L){
     return("<averaged>")
   }
@@ -40,31 +46,37 @@
   paste0(c(conditional_rule, length(conditional), conditional), collapse = "\r")
 }
 
-.condition_key_labels <- function(conditional){
+# The labels of the condition key of an event: 'alpha' and 'pi_null' denote
+# the p-hacking component 'phacking' only when their family is the bias family
+# (the model has a bias prior); in a model without one they are ordinary
+# parameters and keep their own keys.
+.condition_event_key_labels <- function(conditional, families){
 
-  conditional <- .condition_normalize_labels(conditional)
-  vapply(conditional, .condition_key_label, character(1), USE.NAMES = FALSE)
-}
-
-.condition_key_label <- function(label){
-
-  if(label %in% c("alpha", "pi_null")){
-    return("phacking")
-  }
-
-  label
+  vapply(conditional, function(label){
+    in_bias_family <- any(vapply(families, function(family){
+      identical(family[["type"]], "bias") && label %in% family[["labels"]]
+    }, logical(1)))
+    if(label %in% c("alpha", "pi_null") && in_bias_family){
+      return("phacking")
+    }
+    label
+  }, character(1), USE.NAMES = FALSE)
 }
 
 .condition_event <- function(prior_list, conditional = NULL,
                              conditional_rule = "AND"){
 
   conditional <- .condition_normalize_labels(conditional)
+  families    <- .condition_event_families(prior_list, conditional)
 
   out <- list(
     conditional      = conditional,
     conditional_rule = conditional_rule,
-    families         = .condition_event_families(prior_list, conditional),
-    condition_key    = .condition_event_key(conditional, conditional_rule)
+    families         = families,
+    condition_key    = .condition_event_key(
+      .condition_event_key_labels(conditional, families),
+      conditional_rule
+    )
   )
   class(out) <- "BayesTools_condition_event"
 
