@@ -741,3 +741,60 @@ test_that("ordered direct displays of a total away from zero follow the structur
   expect_identical(intermediate$x, at)
   expect_equal(intermediate$y, stats::dexp(at), tolerance = 1e-6)
 })
+
+test_that("ordered mixed-measure plots honour ylim2 and ylab2 and store the probability mapping", {
+
+  allocation <- prior("dirichlet", list(c(2, 2)))
+  mixed <- ordered_plot_test_fixture(prior_spike_and_slab(prior("point", list(2)), prior("point", list(.5))),
+    allocation, levels = c("a", "b", "c"))$prior
+  grDevices::pdf(NULL)
+  on.exit(grDevices::dev.off(), add = TRUE)
+  scale_y2 <- .plot.prior_settings()[["scale_y2"]] * .1 / 1
+
+  # without ylim2 the masses keep their unit scale and no mapping is stored
+  default <- plot(mixed, show_figures = 2L, plot_type = "ggplot", n_points = 32L)
+  default_layers <- ggplot2::ggplot_build(default)$data
+  expect_null(default$bt_scale_y2_state)
+  expect_identical(default$scales$get_scales("y")$name, "Density / probability mass")
+  expect_equal(default_layers[[2L]]$yend, .5)
+
+  # ggplot: the secondary axis spans the requested limits and carries the label
+  figure <- plot(mixed, show_figures = 2L, plot_type = "ggplot", n_points = 32L,
+    ylim = c(0, .1), ylim2 = c(0, 1), ylab2 = "P")
+  layers <- ggplot2::ggplot_build(figure)$data
+  y_scale <- figure$scales$get_scales("y")
+  expect_identical(y_scale$secondary.axis$name, "P")
+  expect_equal(range(y_scale$secondary.axis$labels), c(0, 1))
+  expect_equal(y_scale$limits, c(0, scale_y2))
+  expect_equal(figure$bt_scale_y2_state$scale_y2, scale_y2)
+  expect_equal(figure$bt_scale_y2_state$ylim2, c(0, 1))
+  expect_identical(y_scale$name, "Density")
+  # the atom of mass .5 is not clipped; the density heights and masses are unchanged
+  expect_equal(layers[[2L]]$yend, .5 * scale_y2)
+  expect_lt(layers[[2L]]$yend, y_scale$limits[2L])
+  expect_equal(layers[[1L]]$y, default_layers[[1L]]$y)
+  expect_equal(layers[[1L]]$x, default_layers[[1L]]$x)
+  # the default label of the secondary axis
+  expect_identical(plot(mixed, show_figures = 2L, plot_type = "ggplot", n_points = 32L,
+    ylim = c(0, .1), ylim2 = c(0, 1))$scales$get_scales("y")$secondary.axis$name, "Probability")
+
+  # the stored mapping is used by an overlay (the atom is scaled like the plot)
+  overlay <- figure + geom_prior(mixed, show_parameter = 2L, n_points = 32L)
+  expect_equal(tail(ggplot2::ggplot_build(overlay)$data, 1L)[[1L]]$yend, .5 * scale_y2)
+
+  # base graphics: the probability mapping is remembered for overlays
+  expect_no_error(plot(mixed, show_figures = 2L, n_points = 32L, ylim = c(0, .1), ylim2 = c(0, 1), ylab2 = "P"))
+  state <- .plot_scale_y2_state_current()
+  expect_false(is.null(state))
+  expect_equal(state$scale_y2, scale_y2)
+  expect_equal(state$ylim2, c(0, 1))
+  expect_gte(graphics::par("usr")[4L], .5 * scale_y2)
+  captured <- list()
+  original_arrows <- graphics::arrows
+  testthat::local_mocked_bindings(arrows = function(x0, y0, x1 = x0, y1 = y0, ...){
+    captured[[length(captured) + 1L]] <<- list(x = x1, y = y1)
+    original_arrows(x0, y0, x1, y1, ...)
+  }, .package = "graphics")
+  expect_no_warning(lines(mixed, show_parameter = 2L, n_points = 32L))
+  expect_equal(captured[[1L]]$y, .5 * scale_y2)
+})

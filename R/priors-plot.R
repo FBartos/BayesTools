@@ -502,24 +502,42 @@ plot.prior_linear_density <- function(x, plot_type = "base", n_points = 1000, xl
   )
   has_atoms <- !is.null(plot_data$atoms) && nrow(plot_data$atoms) > 0L
   has_continuous <- !is.null(plot_data$continuous) && nrow(plot_data$continuous) > 0L
-  ylab <- if(has_atoms && has_continuous) "Density / probability mass" else if(has_atoms) "Probability" else "Density"
+  # 'ylim2' maps the probability masses on a secondary axis, as in the mixed
+  # plots of density and point priors; the default draws masses at unit scale
+  mapped <- has_atoms && has_continuous && !is.null(dots[["ylim2"]])
+  ylab <- if(mapped) "Density" else if(has_atoms && has_continuous) "Density / probability mass" else if(has_atoms) "Probability" else "Density"
 
   if(is.null(dots[["main"]])) dots$main <- main
   if(is.null(dots[["xlab"]])) dots$xlab <- xlab
   if(is.null(dots[["ylab"]])) dots$ylab <- ylab
   if(is.null(dots[["xlim"]])) dots$xlim <- xlim
   if(is.null(dots[["ylim"]])) dots$ylim <- ylim
+  scale_y2 <- 1
+  if(mapped){
+    if(is.null(dots[["ylab2"]])) dots$ylab2 <- "Probability"
+    scale_y2 <- if(!is.null(dots[["scale_y2"]])) dots[["scale_y2"]] else .plot_scale_y2_from_limits(dots[["ylim"]], dots[["ylim2"]])
+    dots$.scale_y2_resolved <- scale_y2
+  }
+  dots_layers <- list(...)
+  if(mapped) dots_layers$scale_y2 <- scale_y2
 
   if(plot_type == "base"){
-    .plot.prior_empty("simple", dots)
-    .lines_prior_mixed_measure(plot_data, ...)
+    .plot.prior_empty(if(mapped) "both" else "simple", dots)
+    if(mapped){
+      .plot_scale_y2_remember(scale_y2, dots[["ylim2"]])
+    }
+    do.call(.lines_prior_mixed_measure, c(list(plot_data), dots_layers))
     return(invisible())
   }
 
-  plot <- .ggplot.prior_empty("simple", dots)
-  geoms <- .geom_prior_mixed_measure(plot_data, ...)
+  plot <- .ggplot.prior_empty(if(mapped) "both" else "simple", dots)
+  state <- plot$bt_scale_y2_state
+  geoms <- do.call(.geom_prior_mixed_measure, c(list(plot_data), dots_layers))
   if(length(geoms) > 0L){
     plot <- plot + geoms
+  }
+  if(mapped){
+    plot$bt_scale_y2_state <- state
   }
   plot
 }

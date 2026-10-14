@@ -109,6 +109,9 @@ cannot shift. Ordered overlays match posterior colors with dashed defaults and
 one posterior-owned legend; mapped ordered posterior layers use automatic glyph
 participation when the legend is enabled. Mixed-measure displays retain exact
 atoms with unchanged probability masses and the active probability-axis mapping.
+An ordered mixed-measure level honours `ylim2` and `ylab2` through the same
+mapping as the mixed plots of density and point priors and stores it for
+overlays; without `ylim2` the masses keep their unit scale.
 Whole-factor overlays select attached current-scale per-level prior laws before
 reconstructing a law from the original factor sources.
 Direct overlay mapping and clipping checks inspect selected components only;
