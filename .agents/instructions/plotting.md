@@ -128,7 +128,9 @@ Analytic prior-list plots (`force_samples = FALSE`) keep every positive-weight
 component and atom and do not use `n_samples`; only sampled components that
 receive fewer than two draws are dropped. A Bernoulli component of a prior list
 enters as two atoms at 0 and 1 (its truncation-normalized pmf times its weight),
-which merge with equal atoms of other components.
+which merge with equal atoms of other components. Prior-list plots (including
+`plot()` of a prior mixture) refuse ordered priors and their mixtures; a single
+bound ordered prior is plotted with `plot()`.
 Prior mixtures bind the common original source knots after component drops,
 with exact x/y/Jacobian correspondence and unchanged component weights and atoms.
 Approximate named tanh display grids retain tied finite rounded image knots with

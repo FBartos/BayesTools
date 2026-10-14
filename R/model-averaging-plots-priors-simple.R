@@ -1,6 +1,7 @@
 .plot_data_prior_list.simple         <- function(prior_list, x_seq, x_range, x_range_quant, n_points, n_samples, force_samples, individual,
                                                  transformation, transformation_arguments, transformation_settings){
 
+  .plot_prior_list_check_ordered(prior_list)
   .model_probability_plot_check(prior_list)
   if(!is.prior(prior_list)) prior_list <- .model_probability_plot_priors(prior_list)
   if(is.prior.spike_and_slab(prior_list))
@@ -203,6 +204,19 @@
   return(out)
 }
 
+# Ordered priors have one density per level and no list density: the list
+# helpers draw neither the levels nor their mixtures.
+.plot_prior_list_check_ordered <- function(prior_list){
+
+  priors <- if(is.prior(prior_list)) list(prior_list) else prior_list
+  if(!any(vapply(priors, is.prior.ordered, logical(1)))){
+    return(invisible(NULL))
+  }
+
+  stop("Prior-list plots do not support ordered priors (or mixtures of ordered priors)",
+       if(length(priors) == 1L && !is.prior.mixture(priors[[1L]])) "; plot a single bound ordered prior with plot()",
+       ".", call. = FALSE)
+}
 # A Bernoulli prior is the discrete measure on {0, 1}: its list weight is split
 # between the atoms at 0 and 1 by the prior's own (truncation-normalized) pmf,
 # and equal locations of different components merge in .simplify_prior_list().

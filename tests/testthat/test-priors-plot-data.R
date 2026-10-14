@@ -669,6 +669,38 @@ test_that("Bernoulli prior-list components are atoms at zero and one", {
   expect_equal(overlay_geoms, c("GeomSegment", "GeomSegment"))
 })
 
+test_that("prior-list plots refuse ordered priors and their mixtures clearly", {
+
+  grDevices::pdf(NULL)
+  on.exit(grDevices::dev.off(), add = TRUE)
+  general <- "Prior-list plots do not support ordered priors (or mixtures of ordered priors)"
+  single  <- paste0(general, "; plot a single bound ordered prior with plot().")
+  levels  <- c("lo", "mid", "hi")
+  bound   <- prior_factor_levels(prior_ordered(prior("normal", list(0, 1))), levels)
+  other   <- prior_factor_levels(prior_ordered(prior("normal", list(0, 2))), levels)
+  unbound <- prior_ordered(prior("normal", list(0, 1)))
+
+  # a single ordered prior points to plot()
+  for(ordered in list(bound, unbound)){
+    expect_error(plot_prior_list(list(ordered)), single, fixed = TRUE)
+    expect_error(plot_prior_list(list(ordered), plot_type = "ggplot"), single, fixed = TRUE)
+    expect_error(lines_prior_list(list(ordered)), single, fixed = TRUE)
+    expect_error(geom_prior_list(list(ordered)), single, fixed = TRUE)
+  }
+
+  # plot() of a mixture of ordered priors goes through the list plot: no pointer back to it
+  mixture <- prior_mixture(list(bound, other))
+  expect_error(plot(mixture), paste0(general, "."), fixed = TRUE)
+  expect_error(plot(mixture, plot_type = "ggplot"), paste0(general, "."), fixed = TRUE)
+
+  # an ordered prior beside other priors
+  expect_error(plot_prior_list(list(prior("normal", list(0, 1)), bound)), paste0(general, "."), fixed = TRUE)
+  expect_error(plot_prior_list(list(bound, other)), paste0(general, "."), fixed = TRUE)
+
+  # a plain list of ordinary priors is unaffected
+  expect_no_error(plot_prior_list(list(prior("normal", list(0, 1)), prior("normal", list(1, 1))), plot_type = "ggplot"))
+})
+
 test_that("plot_prior_list rejects individual weightfunction lists", {
 
   weight <- prior_weightfunction("one-sided", c(.05), wf_fixed(c(1, .25)))
