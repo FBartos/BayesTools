@@ -290,6 +290,32 @@ test_that("only prior-supported one-state indicators are structural", {
     unname(.convergence_roles(fixed)[c("mu_indicator", "mu_inclusion")]),
     c("structural", "structural")
   )
+  # At inclusion 1 the effective coordinate is the slab and stays sampled.
+  expect_identical(unname(.convergence_roles(fixed)["mu"]), "sampled")
+
+  # At inclusion 0 the effective coordinate is the spike, a constant zero:
+  # structural like the indicator and the inclusion probability, while the
+  # slab coordinate keeps its own role.
+  zero_inclusion <- list(theta = prior_spike_and_slab(
+    prior("normal", list(0, 1)),
+    prior_inclusion = prior("point", list(0))
+  ))
+  zero_draws <- function(){
+    cbind(theta = 0, theta_indicator = 0, theta_inclusion = 0,
+          theta_variable = stats::rnorm(200))
+  }
+  zero <- .mock_convergence_fit(zero_draws(), zero_draws(), zero_inclusion)
+  expect_identical(
+    .convergence_roles(zero),
+    c(theta = "structural", theta_indicator = "structural",
+      theta_inclusion = "structural", theta_variable = "sampled")
+  )
+  zero_result <- JAGS_check_convergence(
+    zero, max_Rhat = NULL, min_ESS = 1, max_error = NULL, max_SD_error = NULL
+  )
+  expect_true(zero_result)
+  expect_identical(.convergence_states(zero_result)[["theta"]], "structural_constant")
+  expect_identical(.convergence_states(zero_result)[["theta_variable"]], "assessable")
 })
 
 test_that("sampled constants are not assessable but point priors are structural", {

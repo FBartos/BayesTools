@@ -1310,9 +1310,15 @@
   }
 
   if(is.prior.spike_and_slab(prior)){
+    # A point inclusion fixes the indicator at 0 or 1. At 0 the effective
+    # coordinate is the spike, a constant zero; at 1 it is the slab. The slab
+    # coordinate keeps its own role.
     inclusion <- .bt_convergence_point_value(.get_spike_and_slab_inclusion(prior))
     return(rbind(
-      declare(parameter, "sampled"),
+      declare(
+        parameter,
+        if(!is.null(inclusion) && inclusion == 0) "structural" else "sampled"
+      ),
       declare(
         paste0(parameter, "_indicator"),
         if(!is.null(inclusion) && inclusion %in% c(0, 1)) "structural" else "indicator"
