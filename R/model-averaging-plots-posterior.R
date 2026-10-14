@@ -213,11 +213,8 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
       par_names <- colnames(samples[["omega"]])
 
       if (!is.null(show_figures)) {
-        if (show_figures > length(par_names)) {
-          stop("'show_figures' corresponds to a number larger than the number of weight function parameters.")
-        } else {
-          par_names <- par_names[show_figures]
-        }
+        .weightfunction_check_individual_index(show_figures, length(par_names), "show_figures", select_one = TRUE)
+        par_names <- par_names[show_figures]
       }
 
       for (par in par_names) {

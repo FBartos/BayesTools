@@ -942,6 +942,33 @@ test_that("plot_models rejects a parameter that the samples and the inference do
                   "ggplot")
 })
 
+test_that("individual omega plots validate the figure selector", {
+
+  make_fit <- function(values, priors){
+    fit <- coda::mcmc(values)
+    class(fit) <- c("mcmc", "BayesTools_fit")
+    attr(fit, "prior_list") <- priors
+    fit <- BayesTools:::.bt_attach_parameter_map(fit)
+    fit <- BayesTools:::.bt_attach_draw_geometry(fit)
+    BayesTools:::.bt_attach_fit_contract(fit)
+  }
+  grDevices::pdf(NULL)
+  on.exit(grDevices::dev.off(), add = TRUE)
+  selection <- prior_weightfunction("one-sided", c(.05), wf_independent(prior("beta", list(1, 1))))
+  omega <- as_mixed_posteriors(make_fit(
+    cbind("omega[1]" = rep(1, 200), "omega[2]" = seq(.005, .995, length.out = 200)),
+    list(omega = selection)), "omega")
+  expected <- "'show_figures' must be between 1 and 2 for a weight function with 2 publication weights."
+  for(index in c(0L, 3L, 99L)){
+    expect_error(plot_posterior(omega, "omega", individual = TRUE, show_figures = index, plot_type = "ggplot",
+                                n_points = 64), expected, fixed = TRUE, info = index)
+  }
+  expect_error(plot_posterior(omega, "omega", individual = TRUE, show_figures = -1L, plot_type = "ggplot", n_points = 64),
+               "show_figures", fixed = TRUE)
+  figure <- plot_posterior(omega, "omega", individual = TRUE, show_figures = 2L, plot_type = "ggplot", n_points = 64)
+  expect_length(figure, 1L)
+})
+
 test_that("plot_models rejects bad transformations and invalid style switches", {
 
   fixture <- .test_plot_models_fixture()
