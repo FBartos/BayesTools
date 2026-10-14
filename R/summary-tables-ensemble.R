@@ -730,6 +730,7 @@ marginal_estimates_table <- function(samples, inference, parameters, probs = c(0
 
   # extract values
   estimates_table <- NULL
+  warning_rows <- character()
   row_parts <- list()
   row_quantity_ids <- character()
   row_log_BF <- numeric()
@@ -773,6 +774,9 @@ marginal_estimates_table <- function(samples, inference, parameters, probs = c(0
           paste0(level_warning_labels[[lvl]], ": ", attr(parameter_inference[[lvl]], "warnings"))
         }
       }))
+      temp_warning_rows <- do.call(c, lapply(seq_along(parameter_inference), function(lvl) {
+        rep(level_labels[[lvl]], length(attr(parameter_inference[[lvl]], "warnings")))
+      }))
     }else{
       temp_samples  <- .marginal_posterior_parameter_samples(samples, parameter)
       # a scalar Savage-Dickey BF keeps its attributes only when not subset
@@ -780,8 +784,10 @@ marginal_estimates_table <- function(samples, inference, parameters, probs = c(0
       temp_BF_error <- .marginal_inference_BF_error_percent(parameter_inference, temp_BF)
       if(is.null(attr(temp_BF, "warnings"))){
         temp_warnings <- NULL
+        temp_warning_rows <- NULL
       }else{
         temp_warnings <- paste0(level_warning_labels[[1L]], ": ", attr(temp_BF, "warnings"))
+        temp_warning_rows <- rep(level_labels[[1L]], length(temp_warnings))
       }
     }
 
@@ -814,11 +820,13 @@ marginal_estimates_table <- function(samples, inference, parameters, probs = c(0
     rownames(par_summary) <- level_labels
     estimates_table       <- rbind(estimates_table, par_summary)
 
-    # add warnings
+    # add warnings (and the rows they describe)
     if(!is.null(temp_warnings)){
+      warning_rows <- c(warning_rows, rep("", length(warnings) - length(warning_rows)), temp_warning_rows)
       warnings <- c(warnings, temp_warnings)
     }
   }
+  warning_rows <- c(warning_rows, rep("", length(warnings) - length(warning_rows)))
 
   # prepare output
   estimates_table                    <- data.frame(estimates_table, check.names = FALSE)
@@ -848,6 +856,8 @@ marginal_estimates_table <- function(samples, inference, parameters, probs = c(0
   attr(estimates_table, "title")     <- title
   attr(estimates_table, "footnotes") <- footnotes
   attr(estimates_table, "warnings")  <- warnings
+  # the table row each warning describes ("" for the warnings of the whole table)
+  attr(estimates_table, "warning_rows") <- if(length(warnings) > 0L) warning_rows
 
   return(estimates_table)
 }

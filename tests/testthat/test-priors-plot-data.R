@@ -265,7 +265,7 @@ test_that("prior plot data rejects invalid plotting options before rendering", {
   expect_error(plot(p, plot_type = "ggplot", show_figures = 1.5), "'show_figures'")
   expect_error(
     plot(p, plot_type = "ggplot", transformation = "not-a-transformation"),
-    "function or character string"
+    "Unknown transformation 'not-a-transformation'", fixed = TRUE
   )
   expect_error(ggplot2::ggplot() + geom_prior(p, scale_y2 = -1), "'scale_y2'")
 })

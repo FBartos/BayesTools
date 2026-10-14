@@ -2860,6 +2860,87 @@ test_that("log-scale inclusion BF tables stay in log space beyond the double ran
   )
 })
 
+test_that("small Bayes factor reciprocals are written out without scientific notation", {
+
+  small <- BayesTools:::.format_BF_small_value
+  expect_identical(small(1e-3, log(1e-3)), "1/1000")
+  expect_identical(small(1e-5, log(1e-5)), "1/100000")
+  expect_identical(small(2.5e-7, log(2.5e-7)), "1/4000000")
+  expect_identical(small(1e-14, log(1e-14)), "1/100000000000000")
+  expect_identical(small(1e-20, log(1e-20)), "1/1e+20")
+  expect_identical(small(1.234e-30, log(1.234e-30)), "1/8.1e+29")
+  expect_identical(small(1e-320, log(1e-320)), paste0("exp(", format(log(1e-320), trim = TRUE), ")"))
+
+  bound <- 1e-5
+  attr(bound, "bound_operator") <- "<"
+  expect_identical(.format_BF_column(format_BF(bound)), "<1/100000")
+  expect_identical(.interpret_BF_value_text(1e-5, log(1e-5)), "1/100000")
+  expect_match(.interpret.BF(format_BF(bound), "theta inclusion", "Inclusion BF"), "Inclusion BF < 1/100000", fixed = TRUE)
+})
+
+test_that("replacing a Bayes factor resets the bound operator of the replaced element", {
+
+  BF <- format_BF_from_log(c(a = log(3), b = log(1e-5), c = log(2)), bound_operator = c("<", ">", NA))
+  replaced <- BF
+  replaced[2] <- 5
+  expect_identical(attr(replaced, "bound_operator"), c("<", NA, NA))
+  expect_equal(as.numeric(replaced), c(3, 5, 2), tolerance = 1e-12)
+  by_name <- BF
+  by_name[["a"]] <- 7
+  expect_identical(attr(by_name, "bound_operator"), c(NA, ">", NA))
+  by_logical <- BF
+  by_logical[c(TRUE, FALSE, TRUE)] <- c(1, 4)
+  expect_identical(attr(by_logical, "bound_operator"), c(NA, ">", NA))
+  all_replaced <- BF
+  all_replaced[] <- 1
+  expect_true(all(is.na(attr(all_replaced, "bound_operator"))))
+  expect_false(inherits(all_replaced, "BayesTools_BF"))
+  extended <- BF
+  extended[5] <- 9
+  expect_identical(attr(extended, "bound_operator"), c("<", ">", NA, NA, NA))
+  # the formatted column no longer shows the stale operator
+  expect_false(grepl("^[<>]", .format_BF_column(replaced)[2L]))
+  expect_true(grepl("^<", .format_BF_column(replaced)[1L]))
+  # values that stay are untouched
+  untouched <- BF
+  untouched[3] <- 2
+  expect_identical(attr(untouched, "bound_operator"), c("<", ">", NA))
+})
+
+test_that("Bayes factor formatting and table updates accept tables without rows", {
+
+  empty <- format_BF(numeric(0))
+  expect_length(empty, 0L)
+  expect_identical(attr(empty, "name"), "BF")
+  expect_identical(attr(format_BF(numeric(0), logBF = TRUE, BF01 = TRUE, inclusion = TRUE), "name"),
+                   "log(Exclusion BF)")
+  expect_error(format_BF(NULL), "cannot be NULL", fixed = TRUE)
+  table <- data.frame(prior_prob = numeric(0), post_prob = numeric(0), inclusion_BF = format_BF(numeric(0), inclusion = TRUE))
+  class(table) <- c("BayesTools_table", "data.frame")
+  attr(table, "type") <- c("prior_prob", "post_prob", "inclusion_BF")
+  for(args in list(list(logBF = TRUE), list(BF01 = TRUE), list(logBF = TRUE, BF01 = TRUE))){
+    updated <- do.call(update, c(list(table), args))
+    expect_identical(nrow(updated), 0L)
+    expect_identical(attr(updated, "logBF"), isTRUE(args$logBF))
+    expect_identical(attr(updated$inclusion_BF, "name"), BayesTools:::.BF_column_name(
+      logBF = isTRUE(args$logBF), BF01 = isTRUE(args$BF01), inclusion = TRUE))
+  }
+})
+
+test_that("a named transformation is validated against the known transformations", {
+
+  check <- BayesTools:::.check_transformation_input
+  for(name in c("lin", "exp_lin", "tanh", "exp")){
+    expect_null(check(name, NULL, FALSE))
+  }
+  expect_error(check("bogus", NULL, FALSE),
+               "Unknown transformation 'bogus'. Use 'lin', 'exp_lin', 'tanh', 'exp', or a list of functions 'fun', 'inv', and 'jac'.",
+               fixed = TRUE)
+  expect_error(check(c("exp", "lin"), NULL, FALSE), "'transformation'", fixed = TRUE)
+  expect_null(check(list(fun = exp, inv = log, jac = exp), NULL, FALSE))
+  expect_error(density(prior("normal", list(0, 1)), transformation = "bogus"), "Unknown transformation 'bogus'", fixed = TRUE)
+})
+
 test_that("R116 N69 bounded positive Bayes factors never print a rounded zero bound", {
 
   values <- c(1e-4, 1e-4, .Machine$double.xmin * .Machine$double.eps, .01, 100, 0, NA, Inf, 1e-4)

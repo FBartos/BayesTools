@@ -3172,7 +3172,7 @@ test_that("marginal posterior plot data separates densities, point masses, label
 
   expect_error(
     plot_marginal(samples, parameter = "mu_x_fac2t", prior = TRUE, transformation = "not-a-transformation"),
-    "not recognized|must be"
+    "Unknown transformation 'not-a-transformation'", fixed = TRUE
   )
   expect_error(
     plot_marginal(list(mu_x_fac2t = marginal_posterior(fixture$samples, "mu_x_fac2t", use_formula = FALSE)),
@@ -3623,6 +3623,44 @@ test_that("marginal inference skips a parameter without alternative models with 
   expect_identical(names(inference$conditional), "tau")
   expect_identical(names(inference$inference), "tau")
   expect_identical(names(inference$averaged), "tau")
+})
+
+test_that("the warnings of a marginal estimates table are subset with its rows", {
+
+  set.seed(43)
+  n <- 500
+  draws <- cbind(mu = 1.5 + .25 * stats::rnorm(n), tau = stats::rnorm(n), nu = 2 + .25 * stats::rnorm(n))
+  prior_list <- list(mu = prior("normal", list(0, 1)), tau = prior("normal", list(0, 1)),
+                     nu = prior("normal", list(0, 1)))
+  models <- lapply(1:2, function(i) list(
+    fit = .mock_mixing_fit_for_marginal(draws, prior_list),
+    marglik = bridgesampling_object(0), prior_weights = 1
+  ))
+  inference <- suppressWarnings(marginal_inference(
+    models, marginal_parameters = c("mu", "tau", "nu"), parameters = c("mu", "tau", "nu"),
+    is_null_list = list(mu = c(FALSE, FALSE), tau = c(FALSE, FALSE), nu = c(FALSE, FALSE)),
+    formula = NULL, n_samples = n, seed = 1
+  ))
+  table <- marginal_estimates_table(inference$conditional, inference$inference, c("mu", "tau", "nu"))
+  warnings <- attr(table, "warnings")
+  expect_length(warnings, 2L)
+  expect_match(warnings[[1L]], "^mu: Posterior samples do not span")
+  expect_match(warnings[[2L]], "^nu: Posterior samples do not span")
+  expect_identical(attr(table, "warning_rows"), c("mu", "nu"))
+  expect_length(attr(table[2, ], "warnings"), 0L)
+  expect_identical(attr(table[1, ], "warnings"), warnings[1L])
+  expect_identical(attr(table[c(1, 3), ], "warnings"), warnings)
+  expect_identical(attr(table[3, ], "warnings"), warnings[2L])
+  expect_length(attr(table["tau", ], "warnings"), 0L)
+  expect_identical(attr(table[3, ], "warning_rows"), "nu")
+  # a warning given by the caller has no row and is kept
+  extra <- marginal_estimates_table(inference$conditional, inference$inference, c("mu", "tau", "nu"),
+                                    warnings = "A general warning.")
+  expect_identical(attr(extra[2, ], "warnings"), "A general warning.")
+  expect_identical(attr(extra, "warning_rows"), c("", "mu", "nu"))
+  expect_identical(attr(extra[1, ], "warnings"), c("A general warning.", warnings[1L]))
+  # printing is unchanged
+  expect_output(print(table), "mu: Posterior samples do not span", fixed = TRUE)
 })
 
 test_that("Savage-Dickey BFs with the null outside the posterior draws warn once per parameter and level", {

@@ -96,7 +96,10 @@ format_BF <- function(BF, logBF = FALSE, BF01 = FALSE, inclusion = FALSE){
   bound_operator <- .standardize_BF_bound_operator(attr(BF, "bound_operator"), length(BF))
   BF <- as.numeric(BF)
   names(BF) <- BF_names
-  check_real(BF, "BF", lower = 0, check_length = FALSE, allow_NA = TRUE)
+  # (the table columns of a table without rows are empty)
+  if(length(BF) > 0L){
+    check_real(BF, "BF", lower = 0, check_length = FALSE, allow_NA = TRUE)
+  }
   check_bool(logBF, "logBF", allow_NA = FALSE)
   check_bool(BF01,  "BF01",  allow_NA = FALSE)
 
@@ -136,7 +139,8 @@ format_BF <- function(BF, logBF = FALSE, BF01 = FALSE, inclusion = FALSE){
   BF <- if(is.null(BF)) exp(log_BF) else as.numeric(BF)
   names(BF) <- BF_names
   attr(BF, "bound_operator") <- bound_operator
-  out <- format_BF(BF, logBF = logBF, BF01 = BF01, inclusion = inclusion)
+  # (plain replacement: the bound operators belong to the carrier, not to the replaced values)
+  out <- unclass(format_BF(BF, logBF = logBF, BF01 = BF01, inclusion = inclusion))
   if(logBF){
     out[] <- if(BF01) -log_BF else log_BF
   }else if(BF01){
@@ -320,16 +324,34 @@ BF_carrier_drop <- function(x){
   out
 }
 
+# A replaced element is an exact value: its bound operator is reset (new
+# elements have none).
+.BF_bound_after_replace <- function(out, bound, x, i){
+
+  if(is.null(bound)){
+    return(out)
+  }
+  replaced <- if(missing(i)) seq_along(x) else unname(stats::setNames(seq_along(x), names(x))[i])
+  bound <- c(bound, rep(NA_character_, max(0L, length(out) - length(bound))))
+  bound[replaced[!is.na(replaced)]] <- NA_character_
+  attr(out, "bound_operator") <- bound
+  out
+}
+
 #' @export
 `[<-.BayesTools_BF` <- function(x, i, ..., value){
 
-  .BF_carrier_drop(NextMethod("[<-"))
+  bound <- attr(x, "bound_operator", exact = TRUE)
+  out <- NextMethod("[<-")
+  .BF_carrier_drop(.BF_bound_after_replace(out, bound, x, i))
 }
 
 #' @export
 `[[<-.BayesTools_BF` <- function(x, i, ..., value){
 
-  .BF_carrier_drop(NextMethod("[[<-"))
+  bound <- attr(x, "bound_operator", exact = TRUE)
+  out <- NextMethod("[[<-")
+  .BF_carrier_drop(.BF_bound_after_replace(out, bound, x, i))
 }
 
 #' @export
@@ -421,7 +443,11 @@ Math.BayesTools_BF <- function(x, ...){
     attr(out, "parameters") <- selected_parameters
   }
   attr(out, "quantities") <- .subset_table_quantities(x, out, row_indices)
-  attr(out, "warnings") <- .subset_table_warnings(attr(x, "warnings"), selected_parameters, rownames(out))
+  warning_rows <- attr(x, "warning_rows", exact = TRUE)
+  attr(out, "warnings") <- .subset_table_warnings(attr(x, "warnings"), selected_parameters, rownames(out), warning_rows)
+  if(length(warning_rows) == length(attr(x, "warnings")) && any(nzchar(warning_rows))){
+    attr(out, "warning_rows") <- warning_rows[!nzchar(warning_rows) | warning_rows %in% rownames(out)]
+  }
   out <- .subset_table_hypothesis_attributes(x, out, row_indices)
 
   out
@@ -736,10 +762,16 @@ invert_BF_bound_operator <- function(operator){
   out
 }
 
-.subset_table_warnings <- function(warnings, selected_parameters = NULL, selected_rows = NULL){
+.subset_table_warnings <- function(warnings, selected_parameters = NULL, selected_rows = NULL,
+                                   warning_rows = NULL){
 
   if(is.null(warnings) || length(warnings) == 0){
     return(warnings)
+  }
+
+  # warnings that declare the table row they describe stay with their rows
+  if(length(warning_rows) == length(warnings) && any(nzchar(warning_rows))){
+    return(warnings[!nzchar(warning_rows) | warning_rows %in% selected_rows])
   }
 
   warning_names <- names(warnings)
@@ -810,7 +842,14 @@ invert_BF_bound_operator <- function(operator){
 
   reciprocal <- 1 / BF
   if(is.finite(reciprocal)){
-    paste0("1/", format(round(reciprocal), trim = TRUE))
+    reciprocal <- round(reciprocal)
+    # whole numbers up to 1e15 are written out (1/100000), larger ones keep
+    # three significant digits (1/1.23e+20)
+    paste0("1/", if(reciprocal < 1e15){
+      format(reciprocal, trim = TRUE, scientific = FALSE)
+    }else{
+      format(reciprocal, trim = TRUE, digits = 3, scientific = TRUE)
+    })
   }else{
     paste0("exp(", format(log_BF, trim = TRUE), ")")
   }

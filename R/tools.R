@@ -308,6 +308,11 @@ check_list   <- function(x, name = deparse(substitute(x)), check_length = 0, che
   if(!is.null(transformation)){
     if(is.character(transformation)){
       check_char(transformation, "transformation")
+      if(is.null(.density.prior_transformation_functions(transformation))){
+        stop("Unknown transformation '", transformation, "'. Use 'lin', 'exp_lin', ",
+             "'tanh', 'exp', or a list of functions 'fun', 'inv', and 'jac'.",
+             call. = FALSE)
+      }
     }else if(is.list(transformation)){
       check_list(transformation, "transformation", check_names = c("fun", "inv", "jac"), all_objects = TRUE, allow_other = TRUE)
       check_list(transformation, "transformation", check_names = c("fun", "inv", "jac", "output_support"))
