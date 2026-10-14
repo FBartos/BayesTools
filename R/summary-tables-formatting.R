@@ -755,9 +755,16 @@
       call. = FALSE
     )
   }
-  # a column without fitted coordinates (a nonlinear transformation of
-  # coefficients, e.g. from posterior_transform()) is no combination of them
-  unfitted <- scaled & lengths(quantities$dependencies) == 0L
+  # a column without fitted coordinates that records an output transformation
+  # (a nonlinear transformation of coefficients, e.g. from posterior_transform())
+  # is no combination of them; an untransformed column without coordinates is a
+  # structural zero (e.g. the reference level of a treatment factor)
+  transformed <- vapply(
+    quantities$label_parts,
+    function(part) length(.bt_label_output_transformation(part)) > 0L,
+    logical(1)
+  )
+  unfitted <- scaled & transformed & lengths(quantities$dependencies) == 0L
   if(any(unfitted)){
     labels <- vapply(
       quantities$label_parts[unfitted],
