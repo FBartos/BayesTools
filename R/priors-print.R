@@ -63,7 +63,8 @@ print.prior <- function(x, short_name = FALSE, parameter_names = FALSE, plot = F
 
   if(is.prior.none(x)){
     output <- .print.prior.none(x, short_name, parameter_names, plot, digits_estimates, silent)
-  }else if(is.prior.ordered(x)){
+  }else if(is.prior.ordered(x) && !is.prior.mixture(x)){
+    # a mixture of bound ordered containers also carries the ordered class
     output <- .print.prior.ordered(x, short_name, parameter_names, plot, digits_estimates, silent)
   }else if(is.prior.simple(x) || is.prior.vector(x)){
     output <- .print.prior.simple(x, short_name, parameter_names, plot, digits_estimates, silent)

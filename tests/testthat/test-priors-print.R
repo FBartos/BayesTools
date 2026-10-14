@@ -528,3 +528,52 @@ test_that("Prior print digits_estimates parameter", {
 
 })
 
+
+ordered_mixture_for_print <- function(){
+  levels <- c("lo", "mid", "hi")
+  prior_mixture(list(
+    prior_factor_levels(prior_ordered(prior("normal", list(0, 1))), levels),
+    prior_factor_levels(prior_ordered(prior("normal", list(0, 2))), levels)
+  ), components = c("alternative", "null"))
+}
+ordered_line_for_print <- function(sd, total = "Normal"){
+  paste0("ordered cumulative: total ~ ", total, "(0, ", sd, "), allocation ~ Dirichlet(1, ...)")
+}
+
+test_that("a mixture of bound ordered prior containers prints with the mixture layout", {
+
+  mixture <- ordered_mixture_for_print()
+
+  # the mixture carries the ordered class as well, which used to select the ordered layout
+  expect_true(is.prior.ordered(mixture))
+  expect_true(is.prior.mixture(mixture))
+
+  expect_equal(utils::capture.output(print(mixture)), c(
+    "alternative:", paste0("  (1/2) * ", ordered_line_for_print(1)),
+    "null:",        paste0("  (1/2) * ", ordered_line_for_print(2))
+  ))
+})
+
+test_that("a mixture of bound ordered prior containers prints with short names", {
+
+  expect_equal(utils::capture.output(print(ordered_mixture_for_print(), short_name = TRUE)), c(
+    "alternative:", paste0("  (1/2) * ", ordered_line_for_print(1, "N")),
+    "null:",        paste0("  (1/2) * ", ordered_line_for_print(2, "N"))
+  ))
+})
+
+test_that("a mixture of bound ordered prior containers prints silently and inline", {
+
+  mixture <- ordered_mixture_for_print()
+  expect_equal(
+    print(mixture, silent = TRUE, inline = TRUE),
+    paste0("(1/2) * ", ordered_line_for_print(1), " + (1/2) * ", ordered_line_for_print(2))
+  )
+  expect_equal(utils::capture.output(print(mixture, silent = TRUE)), character())
+})
+
+test_that("a single bound ordered prior container keeps its layout", {
+
+  single <- prior_factor_levels(prior_ordered(prior("normal", list(0, 1))), c("lo", "mid", "hi"))
+  expect_equal(utils::capture.output(print(single)), ordered_line_for_print(1))
+})
