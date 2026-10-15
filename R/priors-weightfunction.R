@@ -764,8 +764,16 @@ wf_independent <- function(prior, scale = "omega"){
   upper      <- prior$truncation[["upper"]]
 
   if(family == "normal"){
+    # sd^2 leaves the double range for sd above about 1.34e154 (then the
+    # moment of the weight is far beyond the largest double)
+    shift <- k * parameters[["sd"]]^2
+    if(!is.finite(shift) || !is.finite(parameters[["mean"]] + shift)){
+      .prior_numerical_signal("weight moment", family, "natural", integer(),
+        "The moment of the weight exceeds the largest representable double",
+        range = TRUE, error = TRUE)
+    }
     shifted <- prior
-    shifted$parameters[["mean"]] <- parameters[["mean"]] + k * parameters[["sd"]]^2
+    shifted$parameters[["mean"]] <- parameters[["mean"]] + shift
     return(
       k * parameters[["mean"]] + k^2 * parameters[["sd"]]^2 / 2 +
         .prior_normal_log_interval_mass(shifted, lower, upper) -

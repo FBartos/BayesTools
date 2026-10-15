@@ -475,6 +475,29 @@ test_that("nonlocal finite starts retain range and unresolved normalized-density
   }
 })
 
+test_that("log-omega weight moments of a huge normal SD are range limits, not base errors", {
+
+  # sd^2 leaves the double range above about 1.34e154: the moment of the
+  # weight exp(X) is far beyond the largest double (it stopped with "missing
+  # value where TRUE/FALSE needed" and NaN warnings)
+  for(sd in c(1.5e154, 1e200)){
+    weights <- prior_weightfunction("one-sided", c(.05), wf_independent(prior("normal", list(0, sd)), scale = "log_omega"))
+    for(moment in list(function() mean(weights), function() var(weights))){
+      warned <- FALSE
+      condition <- withCallingHandlers(
+        tryCatch(moment(), error = identity),
+        warning = function(w){ warned <<- TRUE; invokeRestart("muffleWarning") })
+      expect_s3_class(condition, "BayesTools_numerical_range_limit")
+      expect_match(conditionMessage(condition), "The moment of the weight exceeds the largest representable double",
+                   fixed = TRUE)
+      expect_false(warned)
+    }
+  }
+  # a representable normal SD keeps its closed form
+  moderate <- prior_weightfunction("one-sided", c(.05), wf_independent(prior("normal", list(.25, .5)), scale = "log_omega"))
+  expect_equal(mean(moderate)[2L], exp(.25 + .5^2 / 2), tolerance = 1e-12)
+})
+
 test_that("closed-form variances and degenerate spike-and-slab moments are stable", {
 
   # small sdlog: expm1() instead of exp() - 1 (the variance was 0)
