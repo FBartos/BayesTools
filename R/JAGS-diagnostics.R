@@ -304,6 +304,7 @@ JAGS_diagnostics                 <- function(fit, parameter, type, plot_type = "
     dispatched_to_columns <- TRUE
   }else if(is_prior_phacking(prior_list[[parameter]])){
     model_samples <- model_samples[,intersect(.phacking_report_parameter(prior_list[[parameter]]), colnames(model_samples)),drop = FALSE]
+    dispatched_to_columns <- TRUE
   }else if(is_prior_bias(prior_list[[parameter]]) || inherits(prior_list[[parameter]], "prior.bias_mixture")){
     bias_parameters <- .selection_bias_parameter_names(prior_list[[parameter]], include_kind = FALSE)
     bias_parameters <- bias_parameters[bias_parameters != "omega"]
@@ -312,6 +313,7 @@ JAGS_diagnostics                 <- function(fit, parameter, type, plot_type = "
       bias_parameters <- c(paste0("omega", "[", 2:(length(omega_cuts) - 1), "]"), bias_parameters)
     }
     model_samples <- model_samples[,intersect(bias_parameters, colnames(model_samples)),drop = FALSE]
+    dispatched_to_columns <- TRUE
   }else if(parameter %in% c("alpha", "pi_null") && !is.null(prior_list[["bias"]])){
     model_samples <- model_samples[,parameter,drop = FALSE]
   }else if(is.prior.vector(prior_list[[parameter]])){

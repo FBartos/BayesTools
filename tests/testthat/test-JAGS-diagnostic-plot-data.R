@@ -1217,3 +1217,44 @@ test_that("an ordered component of a factor mixture is treated as the real line 
   )
   expect_identical(.diagnostics_prior_bounds(bounded, "p"), list(lower = -Inf, upper = Inf))
 })
+
+test_that("a transformation keyed by a bias or p-hacking prior applies to every column the diagnostics show (F299)", {
+
+  inc <- function(x) x + 10
+  grid <- seq(.005, .995, length.out = 100)
+  selection <- prior_weightfunction("one-sided", c(.025), wf_cumulative(c(1, 1)))
+  combined  <- prior_bias(selection, prior_phacking(form = "linear"))
+  phacking  <- prior_phacking(form = "linear")
+  upper     <- .diagnostics_prior_bounds(combined, "pi_null")$upper
+
+  cases <- list(
+    combined = list(
+      bias  = combined,
+      draws = cbind("omega[1]" = 1, "omega[2]" = grid, alpha = rev(grid), phack_kind = 1, pi_null = upper * grid),
+      shown = c("omega[2]", "pi_null")
+    ),
+    phacking = list(
+      bias  = phacking,
+      draws = cbind(alpha = grid, phack_kind = 1, pi_null = upper * grid),
+      shown = "pi_null"
+    )
+  )
+  for(case in names(cases)){
+    bias <- cases[[case]]$bias
+    fit  <- .diagnostics_bias_fit_for_test(bias, cbind(mu = seq(-1, 1, length.out = 100), cases[[case]]$draws))
+    prior_list <- attr(fit, "prior_list")
+    plain <- .diagnostics_plot_data(fit, "bias", prior_list, NULL, FALSE)
+    expect_gt(ncol(plain), 0L, label = case)
+
+    keyed <- .diagnostics_plot_data(fit, "bias", prior_list, list(bias = list(fun = inc)), FALSE)
+    expect_identical(ncol(plain), length(cases[[case]]$shown), info = case)
+    by_column <- .diagnostics_plot_data(
+      fit, "bias", prior_list,
+      stats::setNames(rep(list(list(fun = inc)), ncol(plain)), cases[[case]]$shown),
+      FALSE
+    )
+    expect_identical(as.numeric(keyed), as.numeric(plain) + 10, info = case)
+    expect_identical(as.numeric(keyed), as.numeric(by_column), info = case)
+    expect_true(isTRUE(attr(keyed, "density_support_transformed")), info = case)
+  }
+})
