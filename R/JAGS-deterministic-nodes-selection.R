@@ -255,7 +255,7 @@
     global_cuts <- .selection_validate_global_breaks(global_breaks)
     if(length(selections) > 0L){
       required_cuts <- weightfunctions_mapping(selections, cuts_only = TRUE, one_sided = TRUE)
-      if(!all(vapply(required_cuts, function(x) any(abs(x - global_cuts) < sqrt(.Machine$double.eps)), logical(1)))){
+      if(!all(vapply(required_cuts, function(x) any(x == global_cuts), logical(1)))){
         stop("'global_breaks' must contain all step-selection p-value breaks.", call. = FALSE)
       }
     }

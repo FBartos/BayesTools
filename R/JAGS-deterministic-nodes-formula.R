@@ -394,9 +394,6 @@
     log_intercept = isTRUE(log_intercept) || isTRUE(design$log_intercept),
     require_priors = FALSE
   )
-  for(i in seq_along(terms)){
-    terms[[i]]$index <- i
-  }
   value_evaluators <- lapply(terms, function(term){
     names <- .bt_dnode_linear_predictor_coefficient_names(term)
     if(is.prior.point(term$prior)){

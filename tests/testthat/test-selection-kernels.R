@@ -1597,3 +1597,64 @@ test_that("p-hacking null masses of intervals too narrow for double precision ar
     }
   }
 })
+
+test_that("fractional or missing declared integers are refused, not truncated onto another branch (F225)", {
+
+  route <- function(spec, kernel_mode = NULL, S = 4L){
+    BayesTools:::.selection_row_kernel_mode(spec, kernel_mode, S)
+  }
+  ambiguous <- list(kernel_mode = 3L, branch_kernel_mode = c(1L, 2L))
+
+  for(indicator in list(c(1.5, 2, 2, 1), c(1, NA, 2, 1), c(1L, NA, 2L, 1L))){
+    expect_error(
+      route(c(ambiguous, list(bias_indicator = indicator)), kernel_mode = 3L),
+      "Invalid selection context 'bias_indicator'.",
+      fixed = TRUE
+    )
+  }
+  # whole-number doubles remain valid
+  expect_identical(
+    route(c(ambiguous, list(bias_indicator = c(1, 2, 2, 1))), kernel_mode = 3L),
+    c(1L, 2L, 2L, 1L)
+  )
+
+  # declared branch modes, signs, p-hacking orders and segment labels
+  expect_error(route(list(kernel_mode = 3L, branch_kernel_mode = c(1.5, 2))),
+    "Invalid selection specification 'branch_kernel_mode'.", fixed = TRUE)
+  spec <- selection_backend_spec(
+    prior_weightfunction("one-sided", c(.025), wf_fixed(c(1, .5))),
+    include_init = FALSE
+  )
+  expect_silent(selection_native_static_args(spec))
+  for(field in c("sign", "phack_q")){
+    broken <- spec
+    broken$has_phack <- TRUE
+    broken[[field]] <- 1.5
+    expect_error(
+      selection_native_static_args(broken),
+      paste0("Invalid selection specification '", field, "'."),
+      fixed = TRUE
+    )
+  }
+  broken <- spec
+  broken$segments <- list(bounds = c(0, 1), step_bin = 1.5, phack_region = 0L)
+  expect_error(
+    selection_native_static_args(broken),
+    "Invalid selection specification 'segments$step_bin'.",
+    fixed = TRUE
+  )
+})
+
+test_that("global breaks must contain the step-selection breaks exactly, as the bin mapping does (F225)", {
+
+  selection <- prior_weightfunction("one-sided", c(.025), wf_fixed(c(1, .5)))
+  expect_error(
+    selection_backend_spec(selection, global_breaks = c(0, .025 + 1e-9, 1)),
+    "'global_breaks' must contain all step-selection p-value breaks.",
+    fixed = TRUE
+  )
+  expect_identical(
+    selection_backend_spec(selection, global_breaks = c(0, .025, .5, 1))$step$breaks,
+    c(0, .025, .5, 1)
+  )
+})

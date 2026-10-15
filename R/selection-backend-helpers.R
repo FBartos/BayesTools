@@ -70,10 +70,8 @@
     }
   }
 
+  # the second moment about the anchor has the same form in both directions
   m2 <- m0 + lower * stats::dnorm(lower) - upper * stats::dnorm(upper)
-  if(reverse){
-    return((m2 - 2 * anchor * m1 + anchor^2 * m0) / width^2)
-  }
 
   return((m2 - 2 * anchor * m1 + anchor^2 * m0) / width^2)
 }

@@ -55,8 +55,12 @@ selection_row_arg(x, n, name)
 \item{name}{argument name used in errors.}
 }
 \value{
-Validated or subset context lists, or lists of prepared native
-arguments.
+\code{selection_context_validate()},
+\code{selection_context_subset_rows()} and
+\code{selection_context_subset_observations()} return the context list with
+every field validated (integer codes as integer vectors, scalars expanded to
+one value per row) and its native cache reset by the subsetting functions;
+the native argument helpers return lists of prepared native arguments.
 }
 \description{
 Validate and subset row-wise selection-kernel contexts and
@@ -81,6 +85,17 @@ share one kernel routes on that kernel. When two or more \emph{different}
 active kernels coexist, their bitwise union names a third kernel rather
 than a route, and passing it is an error unless \code{bias_indicator} can
 map each row to a branch.
+The built-in row fields, each of length one or one per posterior row, are
+\code{omega} (a numeric matrix of non-negative weights with one row per
+posterior row and one column per selection bin), \code{alpha} (the
+p-hacking severity, in [0, 1)), the integer codes \code{phack_kind} (0 to 2),
+\code{kernel_mode} (0 to 3), \code{vector_rule} (0 to 2), and
+\code{bias_indicator} (the index of the branch of each row, from 1 to the
+number of branches), and the logical \code{use_normal}. The observation
+fields share one length: \code{obs_bin} (the integer selection bin of each
+observation, from 1 to the number of bins), \code{yi} (finite effect sizes)
+and \code{sei} (positive standard errors). A fractional or missing integer
+code is an error, never rounded or truncated onto another code.
 Native caches are reused only when effective static geometry and complete
 row-routing inputs are unchanged. Explicit segments take precedence over
 p-value cuts; cuts are validated only when segments must be derived.

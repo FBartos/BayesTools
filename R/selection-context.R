@@ -21,6 +21,17 @@
 #' active kernels coexist, their bitwise union names a third kernel rather
 #' than a route, and passing it is an error unless \code{bias_indicator} can
 #' map each row to a branch.
+#' The built-in row fields, each of length one or one per posterior row, are
+#' \code{omega} (a numeric matrix of non-negative weights with one row per
+#' posterior row and one column per selection bin), \code{alpha} (the
+#' p-hacking severity, in [0, 1)), the integer codes \code{phack_kind} (0 to 2),
+#' \code{kernel_mode} (0 to 3), \code{vector_rule} (0 to 2), and
+#' \code{bias_indicator} (the index of the branch of each row, from 1 to the
+#' number of branches), and the logical \code{use_normal}. The observation
+#' fields share one length: \code{obs_bin} (the integer selection bin of each
+#' observation, from 1 to the number of bins), \code{yi} (finite effect sizes)
+#' and \code{sei} (positive standard errors). A fractional or missing integer
+#' code is an error, never rounded or truncated onto another code.
 #' Native caches are reused only when effective static geometry and complete
 #' row-routing inputs are unchanged. Explicit segments take precedence over
 #' p-value cuts; cuts are validated only when segments must be derived.
@@ -39,8 +50,12 @@
 #' @param n required row count.
 #' @param name argument name used in errors.
 #'
-#' @return Validated or subset context lists, or lists of prepared native
-#' arguments.
+#' @return \code{selection_context_validate()},
+#' \code{selection_context_subset_rows()} and
+#' \code{selection_context_subset_observations()} return the context list with
+#' every field validated (integer codes as integer vectors, scalars expanded to
+#' one value per row) and its native cache reset by the subsetting functions;
+#' the native argument helpers return lists of prepared native arguments.
 #'
 #' @export
 selection_context_validate <- function(context, n_samples = NULL,
@@ -278,6 +293,29 @@ selection_native_static_args <- function(selection_spec){
   )
 }
 
+# A declared integer of a selection specification (a sign, a p-hacking order,
+# a segment label or a branch kernel mode). A fractional value is refused, never
+# truncated onto another label; missing values are left to the checks of their
+# consumers.
+.selection_declared_integer <- function(x, name){
+
+  if(is.integer(x)){
+    return(x)
+  }
+  if(length(x) == 0L){
+    return(integer())
+  }
+  if(!is.numeric(x) && !is.logical(x)){
+    stop("Invalid selection specification '", name, "'.", call. = FALSE)
+  }
+  known <- x[!is.na(x)]
+  if(any(!is.finite(known)) || any(abs(known - round(known)) > sqrt(.Machine$double.eps))){
+    stop("Invalid selection specification '", name, "'.", call. = FALSE)
+  }
+
+  as.integer(round(x))
+}
+
 .selection_native_static_inputs <- function(selection_spec){
 
   mode <- .selection_spec_kernel_mode(selection_spec)
@@ -285,16 +323,20 @@ selection_native_static_args <- function(selection_spec){
   if(!is.null(segments)){
     segments <- list(
       bounds = as.numeric(.selection_null_default(segments[["bounds"]], numeric())),
-      step_bin = as.integer(.selection_null_default(segments[["step_bin"]], integer())),
-      phack_region = as.integer(.selection_null_default(segments[["phack_region"]], integer()))
+      step_bin = .selection_declared_integer(
+        .selection_null_default(segments[["step_bin"]], integer()), "segments$step_bin"
+      ),
+      phack_region = .selection_declared_integer(
+        .selection_null_default(segments[["phack_region"]], integer()), "segments$phack_region"
+      )
     )
   }
   list(
     args = list(
       z_lower = as.numeric(.selection_spec_z_lower(selection_spec)),
       z_upper = as.numeric(.selection_spec_z_upper(selection_spec)),
-      sign = as.integer(.selection_spec_sign(selection_spec)),
-      phack_q = as.integer(.selection_spec_phack_q(selection_spec)),
+      sign = .selection_declared_integer(.selection_spec_sign(selection_spec), "sign"),
+      phack_q = .selection_declared_integer(.selection_spec_phack_q(selection_spec), "phack_q"),
       phack_z_source = as.numeric(.selection_spec_phack_z_source(selection_spec)),
       phack_z_dest = as.numeric(.selection_spec_phack_z_dest(selection_spec)),
       telescope_probabilities = isTRUE(selection_spec[["telescope_probabilities"]])
@@ -820,7 +862,7 @@ selection_row_arg <- function(x, n, name){
 
   branch_modes <- selection_spec[["branch_kernel_mode"]]
   if(!is.null(branch_modes)){
-    branch_modes <- as.integer(branch_modes)
+    branch_modes <- .selection_declared_integer(branch_modes, "branch_kernel_mode")
   }
   unique_branches <- unique(branch_modes)
   # Mode 0 is the absence of a selection kernel, not a competing route: a
@@ -857,7 +899,6 @@ selection_row_arg <- function(x, n, name){
     if(ambiguous){
       kernel_mode <- .selection_map_union_kernel_mode(
         selection_spec,
-        union_mode,
         branch_modes,
         S
       )
@@ -882,7 +923,6 @@ selection_row_arg <- function(x, n, name){
      identical(kernel_mode, as.integer(union_mode))){
     mapped <- .selection_map_union_kernel_mode(
       selection_spec,
-      union_mode,
       branch_modes,
       S
     )
@@ -899,8 +939,7 @@ selection_row_arg <- function(x, n, name){
   kernel_mode
 }
 
-.selection_map_union_kernel_mode <- function(selection_spec, union_mode,
-                                             branch_modes, S){
+.selection_map_union_kernel_mode <- function(selection_spec, branch_modes, S){
 
   if(is.null(branch_modes) ||
      length(unique(branch_modes[branch_modes != 0L])) <= 1L){
@@ -910,7 +949,10 @@ selection_row_arg <- function(x, n, name){
   if(is.null(indicator)){
     return(NULL)
   }
-  indicator <- selection_row_arg(indicator, S, "bias_indicator")
+  indicator <- .selection_context_integer_field(
+    selection_row_arg(indicator, S, "bias_indicator"),
+    "bias_indicator"
+  )
   if(any(indicator < 1L | indicator > length(branch_modes))){
     stop("Invalid selection context 'bias_indicator'.", call. = FALSE)
   }
