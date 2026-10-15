@@ -173,9 +173,11 @@
     return(atom(location))
   }
   if(!is.null(leaf$point)){
-    # c sqrt(k S) = exp(log(c^2 k) / 2 + log(S) / 2), composed with the output
+    # c sqrt(k S) = exp(log(c) + log(k) / 2 + log(S) / 2), composed with the
+    # output; the logarithms are added because c^2 k leaves the double range
+    # for c below 1e-154 or above 1e154
     share <- prior("beta", list(alpha = multiplier$alpha, beta = multiplier$beta))
-    map <- list(a = log(leaf$point^2 * multiplier$scale) / 2, b = 1 / 2)
+    map <- list(a = log(abs(leaf$point)) + log(multiplier$scale) / 2, b = 1 / 2)
     if(!is.null(output)){
       map <- list(a = output$a + output$b * map$a, b = output$b * map$b)
     }

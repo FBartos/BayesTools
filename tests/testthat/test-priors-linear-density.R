@@ -3085,6 +3085,74 @@ test_that("allocated variance prior plots retain regular densities without singu
   expect_identical(reflected$points1$y, .25)
 })
 
+test_that("allocation products of a point scale and a Beta share match the analytic density", {
+
+  # Y = c sqrt(k S), S ~ Beta(a, b): with u = y / c,
+  # log f(y) = log Beta(u^2 / k; a, b) + log(2 u) - log(c k). The logarithms
+  # avoid c^2 k, which leaves the double range for c below 1e-154 or above
+  # 1e154 (the density at 2e-162 was 19% low, and 1e-200 and 1e200 failed).
+  product <- function(location, a, b, k, square = FALSE){
+    .prior_allocation_product_density(
+      prior("point", list(location)),
+      multipliers = list(.prior_allocation_share(a, b, k, 1)),
+      n_grid = 64, square = square
+    )
+  }
+  for(location in c(2e-162, 1e-200, 1e200, .7)){
+    density <- product(location, 2, 3, 2)
+    u <- sqrt(2) * c(.3, .6, .9)
+    observed <- vapply(u * location, function(y) prior_density_ordinate(density, y)$log_density, numeric(1))
+    reference <- stats::dbeta(u^2 / 2, 2, 3, log = TRUE) + log(2 * u) - log(location) - log(2)
+    expect_equal(observed, reference, tolerance = 1e-10)
+  }
+
+  # Z = c^2 k S is a scaled Beta; c^2 k is representable here.
+  density <- product(.7, 2, 3, 2, square = TRUE)
+  scale <- .7^2 * 2
+  z <- scale * c(.3, .6, .9)
+  observed <- vapply(z, function(value) prior_density_ordinate(density, value)$log_density, numeric(1))
+  expect_equal(observed, stats::dbeta(c(.3, .6, .9), 2, 3, log = TRUE) - log(scale), tolerance = 1e-10)
+
+  # The support hull of the product on the SD scale: a point leaf and a share
+  # give [0, c sqrt(k)]; a half-normal leaf has an infinite upper end, and the
+  # zero lower end of the leaf times a finite multiplier stays zero.
+  expect_equal(.prior_allocation_product_hull(attr(density, "adaptive_evaluation")$arguments),
+               c(0, .7 * sqrt(2)), tolerance = 1e-14)
+  hull <- function(source, multipliers){
+    .prior_allocation_product_hull(list(
+      source_prior = source, multipliers = .prior_allocation_validate_multipliers(multipliers)))
+  }
+  expect_identical(hull(prior("normal", list(0, .86), list(0, Inf)),
+                        list(.prior_allocation_share(1, 1, 2, 1))), c(0, Inf))
+  expect_equal(hull(prior("uniform", list(1, 3)),
+                    list(.prior_allocation_point(.5, .4), .prior_allocation_share(1, 1, 4, .6))),
+               c(0, 6), tolerance = 1e-14)
+  expect_equal(hull(prior("uniform", list(1, 3)), list(.prior_allocation_point(.5, 1))),
+               c(.5, 1.5), tolerance = 1e-14)
+})
+
+test_that("allocation multipliers are validated", {
+
+  leaf <- prior("point", list(1))
+  expect_error(.prior_allocation_product_density(leaf, list(.prior_allocation_share(1, 1, 2, .6))),
+               "Allocation multiplier probabilities must sum to one.", fixed = TRUE)
+  expect_error(.prior_allocation_product_density(leaf, list(.prior_allocation_point(1, .5),
+                                                            .prior_allocation_share(1, 1, 2, .6))),
+               "Allocation multiplier probabilities must sum to one.", fixed = TRUE)
+  expect_error(.prior_allocation_product_density(leaf, list(.prior_allocation_share(-1, 1, 2, 1))),
+               "Allocation multipliers must be point or Beta-share components", fixed = TRUE)
+  expect_error(.prior_allocation_product_density(leaf, list(.prior_allocation_point(-1, 1))),
+               "Allocation multipliers must be point or Beta-share components", fixed = TRUE)
+  expect_error(.prior_allocation_product_density(leaf, list(.prior_allocation_point(1, NA_real_))),
+               "Allocation multipliers must be point or Beta-share components", fixed = TRUE)
+  expect_error(.prior_allocation_product_density(leaf, list()),
+               "Allocation multipliers must be point or Beta-share components", fixed = TRUE)
+  # weights are renormalized by their total within the tolerance
+  density <- .prior_allocation_product_density(
+    leaf, list(.prior_allocation_point(1, .5 + 1e-10), .prior_allocation_share(1, 1, 2, .5)))
+  expect_identical(density$points$x, 1)
+})
+
 # Plotted curves of the prior densities of the support-edge tests.
 .edge_curve <- function(density, ...){
   .prior_linear_density_to_plot_data(density, n_points = 101, ...)$density
