@@ -1131,15 +1131,16 @@ density.prior <- function(x,
   }
 
   alpha  <- x$parameters[["alpha"]]
-  alpha0 <- sum(alpha)
 
   out <- vector("list", length(alpha))
   names(out) <- paste0("V", seq_along(alpha))
 
   for(i in seq_along(alpha)){
+    # the complementary concentration is the sum of the others (sum(alpha) -
+    # alpha[i] cancels for concentrations of 1e12 and above)
     component_prior <- prior(
       "beta",
-      list(alpha = alpha[i], beta = alpha0 - alpha[i])
+      list(alpha = alpha[i], beta = sum(alpha[-i]))
     )
     out[[i]] <- .density.prior.simple(
       component_prior,
@@ -1514,12 +1515,33 @@ density.prior <- function(x,
   )
 
 
-  class(out) <- c("density", "density.prior.spike_and_slab")
+  # the specific class first, so that its print method precedes print.density
+  class(out) <- c("density.prior.spike_and_slab", "density")
   attr(out, "x_range") <- range(c(attr(density_variable, "x_range"), attr(density_inclusion, "x_range")))
   attr(out, "y_range_variable")  <- attr(density_variable,  "y_range", exact = TRUE)
   attr(out, "y_range_inclusion") <- attr(density_inclusion, "y_range", exact = TRUE)
 
   return(out)
+}
+
+# The density of a spike-and-slab prior is a list of the densities of the
+# variable (slab) and of the inclusion probability; print.density() would
+# print an empty density.
+#' @exportS3Method print density.prior.spike_and_slab
+print.density.prior.spike_and_slab <- function(x, ...){
+
+  cat("Spike-and-slab prior density: ", as.character(x[["call"]][[2L]]), "
+", sep = "")
+  cat("
+Variable (slab):
+")
+  print(x[["variable"]], ...)
+  cat("
+Inclusion:
+")
+  print(x[["inclusion"]], ...)
+
+  invisible(x)
 }
 
 
@@ -1650,9 +1672,16 @@ range.prior  <- function(x, quantiles = NULL, ..., na.rm = FALSE){
     stop("The lower boundary must be lower than or equal to the upper boundary.", call. = FALSE)
   }
 
+  # the automatic bandwidth needs two finite samples (an 'n_samples' of 1
+  # failed with the raw stats::density() error)
+  dots <- list(...)
+  if(is.null(dots[["bw"]]) && sum(is.finite(x)) < 2L){
+    stop("A kernel density estimate needs at least two finite samples (e.g., 'n_samples' of at least 2).",
+         call. = FALSE)
+  }
+
   # Estimate the bandwidth on the original sample. The reflected sample is only
   # used to correct leakage at the true support boundaries.
-  dots <- list(...)
   density_args <- c(list(x = x, n = n, na.rm = na.rm), dots)
   if(!is.null(from)){
     density_args$from <- from
@@ -1743,11 +1772,6 @@ range.prior  <- function(x, quantiles = NULL, ..., na.rm = FALSE){
     },
     "one_minus_product_beta" = c(0, 1)
   )
-}
-.density.prior_weightfunction_components_bounds <- function(components){
-
-  bounds <- do.call(rbind, lapply(components, .density.prior_weightfunction_component_bounds))
-  c(min(bounds[,1], na.rm = TRUE), max(bounds[,2], na.rm = TRUE))
 }
 .density.prior_type           <- function(prior){
   if(is.prior.point(prior)){

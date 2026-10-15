@@ -8,6 +8,23 @@ skip_if_not_test_profile("unit")
   sum(diff(density$x) * (head(density$y, -1) + tail(density$y, -1)) / 2)
 }
 
+test_that("density estimation from samples needs two samples, and a Dirichlet display keeps tiny complements", {
+
+  # one sample cannot select a bandwidth (the raw stats::density error)
+  for(p in list(prior("normal", list(0, 1)), prior("exp", list(1)), prior("beta", list(2, 2)))){
+    expect_error(density(p, force_samples = TRUE, n_samples = 1),
+                 "A kernel density estimate needs at least two finite samples", fixed = TRUE)
+  }
+  expect_s3_class(density(prior("normal", list(0, 1)), force_samples = TRUE, n_samples = 2), "density.prior")
+
+  # Dirichlet(1e16, 1): the complement of the first component is 1, while
+  # sum(alpha) - alpha[1] is 0 ("The 'beta' must be positive")
+  # (base R's qbeta() reports its own inaccuracy for these shapes)
+  displayed <- suppressWarnings(density(prior("dirichlet", list(alpha = c(1e16, 1)))))
+  expect_s3_class(displayed, "density.prior.simplex")
+  expect_identical(names(displayed), c("V1", "V2"))
+})
+
 test_that("diagonal multivariate Normal log densities retain checked and independent identities", {
 
   for(k in c(1L, 2L, 5L)) for(spec in list(c(.3, .7), c(-4, .02), c(3e6, 2e6))){
@@ -195,6 +212,13 @@ test_that("spike-and-slab density scales slab density and spike mass", {
   )
 
   expect_s3_class(d, "density.prior.spike_and_slab")
+  # it prints both component densities (print.density() printed an empty one)
+  printed <- utils::capture.output(returned <- print(d))
+  expect_identical(returned, d)
+  expect_match(printed[1L], "Spike-and-slab prior density: Normal(1, 2) * Spike(0.25)", fixed = TRUE)
+  expect_true(all(c("Variable (slab):", "Inclusion:") %in% printed))
+  expect_false(any(grepl("table of extent 0", printed, fixed = TRUE)))
+  expect_length(grep("Call:", printed, fixed = TRUE), 2L)
   expect_equal(d$variable$x, x_seq)
   expect_equal(d$variable$y, .25 * stats::dnorm(x_seq, mean = 1, sd = 2))
   expect_equal(d$inclusion$x, 0)
