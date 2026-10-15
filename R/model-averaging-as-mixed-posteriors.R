@@ -394,13 +394,22 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
   samples <- .posterior_support_set_from_prior_list(samples, prior)
   samples <- .posterior_atoms_set(
     samples,
-    .posterior_atoms_from_priors(
-      prior,
-      1,
-      n_columns = 1L,
-      column_names = parameter,
-      source = "single_model_structure"
-    )
+    if(.posterior_atoms_is_bernoulli(prior)){
+      # a Bernoulli parameter takes only its declared states: atoms with the
+      # draw frequencies as masses
+      .posterior_atoms_bernoulli_from_draws(
+        prior, samples, column_names = parameter,
+        source = "posterior_draws"
+      )
+    }else{
+      .posterior_atoms_from_priors(
+        prior,
+        1,
+        n_columns = 1L,
+        column_names = parameter,
+        source = "single_model_structure"
+      )
+    }
   )
   class(samples) <- c("mixed_posteriors", "mixed_posteriors.simple")
 
@@ -797,7 +806,8 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
       prior        = prior,
       component    = .bt_meta_get(samples, "component"),
       n_columns    = if(is.null(dim(samples))) 1L else ncol(samples),
-      column_names = if(is.null(dim(samples))) parameter else colnames(samples)
+      column_names = if(is.null(dim(samples))) parameter else colnames(samples),
+      draws        = if(is.null(dim(samples))) as.numeric(samples)
     )
   )
 
@@ -972,7 +982,8 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
       column_names = if(is.null(dim(samples))) parameter else colnames(samples),
       point_locations = if(inherits(prior, "prior.bias_mixture")){
         .as_mixed_posteriors_bias_points(prior, colnames(samples), if(any(has_selection)) omega_info)
-      }
+      },
+      draws        = if(is.null(dim(samples))) as.numeric(samples)
     )
   )
 

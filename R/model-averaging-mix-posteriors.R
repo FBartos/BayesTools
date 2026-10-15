@@ -675,7 +675,11 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
       post_probs,
       posterior_pair = posterior_pair,
       n_columns = 1L,
-      column_names = parameter
+      column_names = parameter,
+      component_atoms = .posterior_atoms_bernoulli_components(
+        priors, as.numeric(samples), model_component, parameter,
+        source = "posterior_draws"
+      )
     )
   )
   class(samples) <- c("mixed_posteriors", "mixed_posteriors.simple")

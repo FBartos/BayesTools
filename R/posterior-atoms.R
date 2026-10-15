@@ -787,10 +787,9 @@ posterior_atoms_free <- function(x){
 # up to the rounding that the constructor accepts (masses summing to 1 within
 # 'eps * max(8, n)', which merging the atoms of several models leaves on either
 # side of 1) and when the declared support is purely atomic (type "points")
-# and the column declares atoms. A Bernoulli parameter has the support type
-# "points" but declares no atoms: its remainder is not changed here (the
-# atoms of discrete priors are a separate decision). Larger deviations keep
-# their refusal.
+# and the column declares atoms. A Bernoulli parameter whose draws are not
+# available declares no atoms: its remainder is not changed here. Larger
+# deviations keep their refusal.
 .posterior_atoms_continuous_mass <- function(atoms, support = NULL){
 
   n_atoms   <- length(atoms$mass)
@@ -898,14 +897,84 @@ posterior_atoms_free <- function(x){
   )
 }
 
+# Whether a prior is a Bernoulli prior: a discrete prior whose draws take only
+# its declared states.
+.posterior_atoms_is_bernoulli <- function(prior){
+
+  is.prior(prior) && is.prior.discrete(prior) &&
+    identical(prior[["distribution"]], "bernoulli")
+}
+
+# Posterior atoms of a Bernoulli parameter from its draws: the parameter takes
+# only the states its prior declares (.posterior_support_from_prior(): both,
+# or the one a degenerate probability leaves), so those are the atoms, and
+# their masses are the draw frequencies, as the masses of an indicator are
+# estimated. A state that no draw takes is no atom. A draw outside the
+# declared states stops.
+.posterior_atoms_bernoulli_from_draws <- function(prior, draws,
+                                                  column_names = NULL,
+                                                  source = "posterior_draws"){
+
+  states <- .posterior_support_from_prior(prior)$points
+  draws <- as.numeric(draws)
+  if(length(draws) == 0L){
+    return(NULL)
+  }
+  if(anyNA(draws) || !all(draws %in% states)){
+    stop(
+      "The draws of the Bernoulli parameter",
+      if(length(column_names) == 1L) paste0(" '", column_names, "'") else "",
+      " must take only its declared states (",
+      paste(states, collapse = ", "), ").",
+      call. = FALSE
+    )
+  }
+  mass <- vapply(states, function(state) mean(draws == state), numeric(1))
+  keep <- mass > 0
+
+  .posterior_atoms_new(
+    locations = matrix(states[keep], ncol = 1L),
+    mass = mass[keep],
+    column_names = column_names,
+    source = source
+  )
+}
+
+# The within-component atoms of the Bernoulli components of a scalar parameter
+# (NULL for the others), from the draws of each component: 'component' is the
+# component index of every draw. NULL when no component is Bernoulli.
+.posterior_atoms_bernoulli_components <- function(priors, draws, component,
+                                                  column_names = NULL,
+                                                  source = "posterior_indicator"){
+
+  priors <- as.list(priors)
+  bernoulli <- vapply(priors, .posterior_atoms_is_bernoulli, logical(1))
+  if(!any(bernoulli) || is.null(draws) || !is.null(dim(draws)) ||
+     length(draws) != length(component)){
+    return(NULL)
+  }
+
+  lapply(seq_along(priors), function(i){
+    if(!bernoulli[[i]]){
+      return(NULL)
+    }
+    .posterior_atoms_bernoulli_from_draws(
+      priors[[i]], draws[component == i], column_names, source
+    )
+  })
+}
+
 # Posterior atoms of a mixture or spike-and-slab parameter of a single fit
 # from the posterior component index of its draws (an index into the prior's
 # component list). 'point_locations' and 'null_location' declare the points of
-# components that are not point priors (see .posterior_atoms_from_priors()).
+# components that are not point priors (see .posterior_atoms_from_priors());
+# the 'draws' of a scalar parameter declare the atoms of its Bernoulli
+# components.
 .posterior_atoms_from_components <- function(prior, component, n_columns,
                                              column_names = NULL,
                                              point_locations = NULL,
-                                             null_location = NULL){
+                                             null_location = NULL,
+                                             draws = NULL){
 
   component <- .posterior_atoms_check_components(prior, component)
 
@@ -928,7 +997,11 @@ posterior_atoms_free <- function(x){
     column_names = column_names,
     source = "posterior_indicator",
     null_location = null_location,
-    point_locations = point_locations
+    point_locations = point_locations,
+    component_atoms = if(n_columns == 1L){
+      .posterior_atoms_bernoulli_components(components, draws, component,
+                                            column_names)
+    }
   )
 }
 

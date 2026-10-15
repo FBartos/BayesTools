@@ -859,7 +859,15 @@ from declared metadata: posterior atoms, exact support, and for mixtures each
 draw's component with the components' exact supports (`components`:
 the model of a `mix_posteriors()` ensemble, or the indicator tuple of the
 mixture terms entering the quantity for `as_mixed_posteriors()`). Never infer
-atoms, supports, or components from the draws.
+atoms, supports, or components from the draws. A Bernoulli parameter declares
+its atoms at the states its prior declares (both, or the one a degenerate
+probability leaves; `.posterior_support_from_prior()`), and only their masses
+are estimated, as the draw frequencies of those states (as the probabilities of
+a mixture are the frequencies of its indicator): `posterior_atoms_free()` is
+`FALSE` and `plot_posterior()` draws point masses, also for a Bernoulli
+mixture component (within the draws of the component) and a Bernoulli model of
+`mix_posteriors()` (within the draws of the model). A draw outside the declared
+states stops.
 
 Draw metadata (supports, atoms, components, undefined draws, prior densities
 and their context, precomputed posterior densities and ordinates, formula

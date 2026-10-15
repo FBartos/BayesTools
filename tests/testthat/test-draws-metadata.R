@@ -1539,3 +1539,80 @@ test_that("a degenerate Bernoulli prior declares only its possible state", {
   expect_true(BayesTools:::.posterior_support_contains_value(
     BayesTools:::.posterior_support_from_prior(prior("bernoulli", list(1))), 1))
 })
+
+test_that("a Bernoulli parameter declares atoms at its states with the draw frequencies as masses", {
+
+  skip_if_not_installed("runjags")
+
+  # prior-only draws of b ~ Bernoulli(0.3), as JAGS_fit() returns them
+  set.seed(3)
+  draws <- stats::rbinom(1000L, 1L, 0.3)
+  carrier <- function(prior_list, posterior){
+    fit <- structure(
+      list(
+        mcmc = coda::mcmc.list(coda::mcmc(posterior)),
+        sample = nrow(posterior),
+        summary.pars = list(mutate = NULL),
+        monitor = colnames(posterior)
+      ),
+      class = c("runjags", "BayesTools_fit", "list")
+    )
+    attr(fit, "prior_list") <- prior_list
+    attach_test_parameter_map(fit)
+  }
+  fit <- carrier(list(b = prior("bernoulli", list(0.3))), cbind(b = draws))
+  mixed <- as_mixed_posteriors(fit, "b")
+
+  expect_false(posterior_atoms_free(mixed$b))
+  atoms <- posterior_metadata(mixed$b, "atoms")
+  expect_identical(unname(atoms$locations[, 1L]), c(0, 1))
+  expect_equal(atoms$mass, c(mean(draws == 0), mean(draws == 1)), tolerance = 1e-12)
+  expect_identical(BayesTools:::.posterior_atoms_continuous_mass(atoms, posterior_metadata(mixed$b, "support")), 0)
+
+  # the plot draws the two point masses and no continuous curve
+  plot <- plot_posterior(mixed, "b", plot_type = "ggplot")
+  expect_identical(
+    unname(vapply(plot$layers, function(layer) class(layer$geom)[1L], character(1))),
+    c("GeomSegment", "GeomSegment")
+  )
+  expect_equal(
+    sort(c(ggplot2::layer_data(plot, 1L)$x, ggplot2::layer_data(plot, 2L)$x)), c(0, 1)
+  )
+  expect_no_error(plot_posterior(mixed, "b"))
+
+  # a state that no draw takes is no atom
+  one_state <- as_mixed_posteriors(carrier(list(b = prior("bernoulli", list(0.3))), cbind(b = rep(1, 20L))), "b")
+  atoms_one <- posterior_metadata(one_state$b, "atoms")
+  expect_identical(unname(atoms_one$locations[, 1L]), 1)
+  expect_equal(atoms_one$mass, 1)
+  # a degenerate probability declares only the possible state
+  degenerate <- as_mixed_posteriors(carrier(list(b = prior("bernoulli", list(0))), cbind(b = rep(0, 20L))), "b")
+  expect_identical(posterior_metadata(degenerate$b, "support")$points, 0)
+  expect_identical(unname(posterior_metadata(degenerate$b, "atoms")$locations[, 1L]), 0)
+  # a draw outside the declared states stops
+  expect_error(
+    as_mixed_posteriors(carrier(list(b = prior("bernoulli", list(0))), cbind(b = c(0, 1, 0))), "b"),
+    "must take only its declared states (0)", fixed = TRUE
+  )
+
+  # a Bernoulli mixture component: the atoms of the component, weighted by its
+  # posterior probability (the indicator frequency), next to the continuous one
+  mixture <- prior_mixture(
+    list(prior("bernoulli", list(0.3)), prior("normal", list(0, 1))),
+    components = c("bernoulli", "normal")
+  )
+  indicator <- rep(c(1L, 2L, 1L, 1L), 100L)
+  values <- ifelse(indicator == 1L, stats::rbinom(400L, 1L, 0.3), stats::rnorm(400L))
+  mixed_mixture <- as_mixed_posteriors(
+    carrier(list(b = mixture), cbind(b = values, b_indicator = indicator)), "b"
+  )
+  mixture_atoms <- posterior_metadata(mixed_mixture$b, "atoms")
+  expect_false(posterior_atoms_free(mixed_mixture$b))
+  bernoulli_draws <- values[indicator == 1L]
+  expect_equal(
+    mixture_atoms$mass[order(mixture_atoms$locations[, 1L])],
+    0.75 * c(mean(bernoulli_draws == 0), mean(bernoulli_draws == 1)),
+    tolerance = 1e-12
+  )
+  expect_identical(sort(unname(mixture_atoms$locations[, 1L])), c(0, 1))
+})
