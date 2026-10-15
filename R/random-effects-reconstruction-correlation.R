@@ -317,6 +317,8 @@
         return(NULL)
       }
     }
+    # A saturated back-transform (|rho| exactly 1 in double precision) fails
+    # this check; the refusal names the cause.
     invalid <- .bt_random_effect_rho_outside_support(rho, bounds, structure)
     if(any(invalid)){
       if(identical(out_of_support, "error")){
@@ -326,7 +328,9 @@
           invalid = invalid,
           bounds = bounds,
           structure = structure,
-          context = context
+          context = context,
+          sample = if(rho_source %in% c("sample", "fixed_sample")) sample_value,
+          rho_scale = rho_scale
         )
       }
       return(NULL)
@@ -475,7 +479,9 @@
 .bt_random_effect_rho_out_of_support_draw_stop <- function(random_term, rho,
                                                            invalid, bounds,
                                                            structure,
-                                                           context){
+                                                           context,
+                                                           sample = NULL,
+                                                           rho_scale = "rho"){
 
   draw <- which(invalid)[1L]
   interval <- paste0(
@@ -485,6 +491,25 @@
     bounds[["upper"]],
     ")"
   )
+  # Representability edge: a Fisher-z coordinate beyond |z| of about 19.06 (a
+  # logit coordinate beyond about 36.7) back-transforms to a correlation that is
+  # exactly +-1 in double precision, which lies outside every structure's open
+  # support. The draw is refused, as before, and the message names the cause
+  # and the remedy; the compiler keeps accepting such priors (a compile-time
+  # cutoff or truncation would change the requested prior).
+  saturated <- !is.null(sample) && !identical(rho_scale, "rho") &&
+    is.finite(sample[draw]) && abs(rho[draw]) == 1
+  cause <- if(isTRUE(saturated)){
+    paste0(
+      " The correlation draw is unavailable because the transformed ",
+      "coordinate (", format(sample[draw], digits = 6), ") saturated beyond ",
+      "the double-precision range, where the back-transform is exactly ",
+      "+-1. Use a correlation prior with less mass beyond |z| of about ",
+      if(identical(rho_scale, "logit")) "36.7 (logit scale)." else "19 (Fisher-z scale)."
+    )
+  }else{
+    ""
+  }
 
   stop(
     context,
@@ -497,6 +522,7 @@
     "). Expected rho in ",
     interval,
     ".",
+    cause,
     call. = FALSE
   )
 }

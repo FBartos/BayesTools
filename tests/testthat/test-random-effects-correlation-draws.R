@@ -471,6 +471,37 @@ test_that("transformed rho coordinates are exact and saturated boundaries fail",
     }
   }
 
+  # A saturated coordinate names its cause and remedy; an ordinary
+  # out-of-support correlation does not.
+  ar1_term <- .correlation_draws_term("ar1")
+  saturated <- tryCatch(
+    BayesTools:::.bt_random_effect_rho_draws(
+      random_term = ar1_term,
+      posterior = matrix(-25, dimnames = list(NULL, ar1_term$correlation$sample_name)),
+      out_of_support = "error"
+    ),
+    error = identity
+  )
+  expect_match(
+    conditionMessage(saturated),
+    paste0("(rho = -1). Expected rho in (-1, 1). The correlation draw is ",
+           "unavailable because the transformed coordinate (-25) saturated ",
+           "beyond the double-precision range, where the back-transform is ",
+           "exactly +-1. Use a correlation prior with less mass beyond |z| ",
+           "of about 19 (Fisher-z scale)."),
+    fixed = TRUE
+  )
+  cs_term <- .correlation_draws_term("cs")
+  ordinary <- tryCatch(
+    random_effects_correlation_draws(
+      cs_term,
+      matrix(-0.75, dimnames = list(NULL, cs_term$correlation$rho_name))
+    ),
+    error = identity
+  )
+  expect_match(conditionMessage(ordinary), "out-of-support draw", fixed = TRUE)
+  expect_false(grepl("saturated", conditionMessage(ordinary), fixed = TRUE))
+
   near_zero <- BayesTools:::.bt_random_effect_representable_rho_bounds(
     c(lower = -1e-20, upper = 1),
     "cs"
