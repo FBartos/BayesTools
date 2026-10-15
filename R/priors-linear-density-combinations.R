@@ -3754,8 +3754,11 @@
                                                transformation_settings = FALSE,
                                                factor = FALSE,
                                                level = NULL,
-                                               level_name = NULL){
+                                               level_name = NULL,
+                                               posterior_plot = FALSE){
 
+  # 'posterior_plot': the prior curve is drawn beside a posterior, so that a
+  # warning about its omission can name 'prior = FALSE' as the remedy
   if(!inherits(x, "prior_linear_density")){
     stop("'x' must be a prior linear density object.", call. = FALSE)
   }
@@ -3924,7 +3927,8 @@
       .prior_linear_density_warn_curve_unavailable(
         unresolved_values = if(length(unresolved_values) > 0L) unresolved_values,
         partial           = length(x_den) > 0L,
-        structural_values = if(length(structural_values) > 0L) structural_values
+        structural_values = if(length(structural_values) > 0L) structural_values,
+        posterior_plot    = posterior_plot
       )
     }
 
@@ -3987,9 +3991,11 @@
   return(out)
 }
 
-# Warning of a partly or wholly unavailable prior curve.
+# Warning of a partly or wholly unavailable prior curve; beside a posterior
+# ('posterior_plot') it names 'prior = FALSE' as the remedy.
 .prior_linear_density_warn_curve_unavailable <- function(unresolved_values = NULL, partial = FALSE,
-                                                         structural_values = NULL){
+                                                         structural_values = NULL,
+                                                         posterior_plot = FALSE){
 
   warning(structure(
     class = c("BayesTools_prior_curve_unavailable", "BayesTools_plot_condition",
@@ -4008,9 +4014,9 @@
             " coordinates (support ends) ",
           "on the source scale has no structural classification and is not drawn. "
         ),
-        if(partial) "Available curve points and declared atoms are retained; " else
-          "No continuous curve points are available; declared atoms are retained; ",
-        "use 'prior = FALSE' to draw the posterior alone."
+        if(partial) "Available curve points and declared atoms are retained" else
+          "No continuous curve points are available; declared atoms are retained",
+        if(posterior_plot) "; use 'prior = FALSE' to draw the posterior alone." else "."
       ) else paste0(
         "The prior density curve is unavailable: this prior-density ",
         "combination has no exact route, and its numerical grid cannot ",

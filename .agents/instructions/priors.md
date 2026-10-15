@@ -755,8 +755,10 @@ same warning class reports unresolved raw numerical plotting evaluations once
 per continuous route, distinguishing a partially available curve from one
 with no available continuous points. Its `unresolved_values` field contains
 evaluation coordinates on the source scale, before any plotting transformation.
-Available points and declared atoms remain; `prior = FALSE` draws the posterior
-alone. Mathematical infinite ordinates,
+Available points and declared atoms remain; the warning of a posterior plot
+(`plot_posterior()`, `plot_marginal()`) names `prior = FALSE`, which draws the
+posterior alone, as the remedy, and the warning of a prior-only plot names none.
+Mathematical infinite ordinates,
 exact zero/support-zero densities and intentional transformation limits are
 not unresolved evaluations. Finite displayed heights depend on the grid.
 The mixed-measure `density()` of an ordered

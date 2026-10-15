@@ -559,7 +559,8 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
           x_range                   = xlim,
           transformation            = transformation,
           transformation_arguments  = transformation_arguments,
-          transformation_settings   = transformation_settings
+          transformation_settings   = transformation_settings,
+          posterior_plot            = TRUE
         )
       }
 

@@ -59,7 +59,8 @@
       transformation_settings   = transformation_settings,
       factor                    = TRUE,
       level                     = level_i,
-      level_name                = rownames(factor_weights)[level_i]
+      level_name                = rownames(factor_weights)[level_i],
+      posterior_plot            = TRUE
     )
 
     for(data_i in seq_along(level_plot_data)){
@@ -238,7 +239,8 @@
     x_range                   = x_range,
     transformation            = transformation,
     transformation_arguments  = transformation_arguments,
-    transformation_settings   = transformation_settings
+    transformation_settings   = transformation_settings,
+    posterior_plot            = TRUE
   )
 }
 
@@ -272,7 +274,8 @@
     x_range                   = x_range,
     transformation            = transformation,
     transformation_arguments  = transformation_arguments,
-    transformation_settings   = transformation_settings
+    transformation_settings   = transformation_settings,
+    posterior_plot            = TRUE
   )
 
   if(length(plot_data) == 0L){

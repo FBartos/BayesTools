@@ -3230,6 +3230,26 @@ test_that("a log-transformed source needs a declared positive support", {
   expect_s3_class(gamma_source, "prior_linear_density")
 })
 
+test_that("the warning of an unavailable prior curve names 'prior = FALSE' only beside a posterior", {
+
+  # gamma(.5) + gamma(.5): the limit at the support end 0 has no structural classification
+  density <- .prior_linear_combination_density(
+    list(a = prior("gamma", list(shape = .5, rate = 1)), b = prior("gamma", list(shape = .5, rate = 1))),
+    c(a = 1, b = 1), n_grid = 256
+  )
+  grDevices::pdf(NULL)
+  on.exit(grDevices::dev.off(), add = TRUE)
+  conditions <- list()
+  withCallingHandlers(
+    plot(density, n_points = 100),
+    warning = function(w){ conditions[[length(conditions) + 1L]] <<- w; invokeRestart("muffleWarning") })
+  expect_length(conditions, 1L)
+  expect_s3_class(conditions[[1L]], "BayesTools_prior_curve_unavailable")
+  expect_false(grepl("prior = FALSE", conditionMessage(conditions[[1L]]), fixed = TRUE))
+  expect_match(conditionMessage(conditions[[1L]]), "Available curve points and declared atoms are retained.",
+               fixed = TRUE)
+})
+
 test_that("plotted curves name structurally unclassified support ends instead of unresolved evaluations", {
 
   # gamma(.5) + gamma(.5): the limit at the support end 0 has no structural
@@ -3246,13 +3266,27 @@ test_that("plotted curves name structurally unclassified support ends instead of
   expect_s3_class(conditions[[1L]], "BayesTools_prior_curve_unavailable")
   expect_null(conditions[[1L]]$unresolved_values)
   expect_identical(conditions[[1L]]$structural_values, 0)
+  # a prior-only plot has no 'prior' argument to name as a remedy
+  expect_identical(
+    conditionMessage(conditions[[1L]]),
+    paste0("The prior density curve is partially unavailable: the density limit at 1 coordinate ",
+           "(a support end) on the source scale has no structural classification and is not drawn. ",
+           "Available curve points and declared atoms are retained.")
+  )
+  expect_true(length(data$density$x) > 50L)
+
+  # beside a posterior, 'prior = FALSE' draws the posterior alone
+  conditions <- list()
+  data <- withCallingHandlers(
+    .prior_linear_density_to_plot_data(density, n_points = 100, posterior_plot = TRUE),
+    warning = function(w){ conditions[[length(conditions) + 1L]] <<- w; invokeRestart("muffleWarning") })
+  expect_length(conditions, 1L)
   expect_identical(
     conditionMessage(conditions[[1L]]),
     paste0("The prior density curve is partially unavailable: the density limit at 1 coordinate ",
            "(a support end) on the source scale has no structural classification and is not drawn. ",
            "Available curve points and declared atoms are retained; use 'prior = FALSE' to draw the posterior alone.")
   )
-  expect_true(length(data$density$x) > 50L)
 
   # a rejected numerical evaluation keeps its unresolved coordinate and message
   share <- prior("beta", list(.5, .5))

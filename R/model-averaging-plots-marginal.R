@@ -238,7 +238,8 @@ plot_marginal <- function(samples, parameter, plot_type = "base", prior = FALSE,
         transformation_settings   = transformation_settings,
         factor                    = TRUE,
         level                     = i,
-        level_name                = names(posterior_samples)[i]
+        level_name                = names(posterior_samples)[i],
+        posterior_plot            = TRUE
       )
 
       attr(out_level[[1]], "prior") <- out_den.prior
