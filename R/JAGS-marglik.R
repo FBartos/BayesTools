@@ -201,7 +201,15 @@
 #' `prior_parameters`, `formula_prior_parameters`, `formula_parameters`,
 #' `add_parameters`, `random`, `marginalized_random`, `node_info`, and
 #' `metadata`. The `state` field
-#' contains the independent bridge coordinates. The `nodes` field is a flat
+#' contains the independent bridge coordinates and the completed fixed-zero
+#' random-effect latents (latent coordinates of fixed-zero blocks, which are not
+#' bridge dimensions). The `add_parameters` field contains only the
+#' `add_parameters` supplied by the caller: the coordinates BayesTools adds for
+#' formula random effects (standardized latent effects and correlation
+#' primitives) are not additional parameters, so a callback that adds densities
+#' for additional parameters does not count them twice. They are part of `state`
+#' and `nodes`, and `node_info` labels them `source = "random_latent"`,
+#' `owner = "formula"`, `role = "random_latent"`. The `nodes` field is a flat
 #' named numeric vector that also includes deterministic BayesTools-resolved
 #' nodes such as normalized Dirichlet allocation weights reconstructed from
 #' `prior_par_eta_*` coordinates. The `node_info` field records the owner and
@@ -495,7 +503,8 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
     formula_prior_list = formula_prior_list,
     model_data = data,
     marginal_random_evaluator = marginal_random_evaluator,
-    node_names = bridge_context_node_names
+    node_names = bridge_context_node_names,
+    latent_parameters = random_bridge_parameters$parameters
   )
 
 

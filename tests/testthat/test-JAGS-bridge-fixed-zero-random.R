@@ -145,6 +145,80 @@ test_that("fixed-zero random blocks leave the bridge target and dimension invari
   )
 })
 
+test_that("the bridge context labels BayesTools-owned latent coordinates, not as additional parameters (F076)", {
+
+  data <- data.frame(
+    id_zero = factor(c("a", "b", "c", "d")),
+    id_active = factor(c("u", "u", "v", "v"))
+  )
+  result <- JAGS_formula(
+    formula = ~ 1 + diag(1 | id_zero) + diag(1 | id_active),
+    parameter = "mu",
+    data = data,
+    prior_list = list(intercept = prior("point", list(location = 0))),
+    prior_random = prior_random(
+      id_zero = random_block(sd = prior("point", list(location = 0))),
+      id_active = random_block(sd = prior("point", list(location = 0.4)))
+    )
+  )
+  zero_term <- result$formula_design$random_effects[[1L]]
+  active_term <- result$formula_design$random_effects[[2L]]
+  zero_names <- as.vector(.bt_random_effect_latent_names(
+    zero_term, zero_term$n_groups, zero_term$n_columns
+  ))
+  active_names <- as.vector(.bt_random_effect_latent_names(
+    active_term, active_term$n_groups, active_term$n_columns
+  ))
+  fit <- .fixed_zero_bridge_fit(
+    result,
+    stats::setNames(c(rep(3, length(zero_names)), -0.25, 0.5), c(zero_names, active_names))
+  )
+
+  seen <- new.env(parent = emptyenv())
+  testthat::local_mocked_bindings(
+    bridge_sampler = function(...){
+      arguments <- list(...)
+      callback_names <- c(
+        "data", "bridge_prior_evaluator", "bridge_formula_prior_evaluator",
+        "bridge_formula_random_prior_evaluator", "bridge_formula_parameter_evaluator",
+        "add_parameters", "fixed_random_latent", "bridge_context", "bridge_context_evaluator"
+      )
+      logml <- do.call(
+        arguments$log_posterior,
+        c(list(samples.row = arguments$samples[1L, ]), arguments[callback_names])
+      )
+      structure(
+        list(logml = logml, niter = 1L, mcse_logml = 0, method = "normal"),
+        class = "bridge"
+      )
+    },
+    .package = "bridgesampling"
+  )
+  log_posterior <- function(parameters, data, bridge_context){
+    seen$context <- bridge_context
+    0
+  }
+  JAGS_bridgesampling(
+    fit = fit,
+    log_posterior = log_posterior,
+    data = list(),
+    bridge_context = TRUE
+  )
+
+  context <- seen$context
+  # no additional parameter was requested: the latent coordinates are not listed
+  expect_length(context$add_parameters, 0L)
+  # the state holds the bridge coordinates and the completed fixed-zero latents
+  expect_true(all(c(active_names, zero_names) %in% names(context$state)))
+  expect_true(all(c(active_names, zero_names) %in% names(context$nodes)))
+  # the node information labels the coordinates as formula-owned
+  active_info <- context$node_info[context$node_info$name %in% active_names, , drop = FALSE]
+  expect_identical(nrow(active_info), length(active_names))
+  expect_true(all(active_info$source == "random_latent"))
+  expect_true(all(active_info$role == "random_latent"))
+  expect_true(all(active_info$owner == "formula"))
+})
+
 test_that("independent fixed-zero components prune only their latent columns", {
 
   data <- data.frame(

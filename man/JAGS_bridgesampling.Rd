@@ -287,7 +287,15 @@ When \code{bridge_context = TRUE}, the callback receives an object of class
 \code{prior_parameters}, \code{formula_prior_parameters}, \code{formula_parameters},
 \code{add_parameters}, \code{random}, \code{marginalized_random}, \code{node_info}, and
 \code{metadata}. The \code{state} field
-contains the independent bridge coordinates. The \code{nodes} field is a flat
+contains the independent bridge coordinates and the completed fixed-zero
+random-effect latents (latent coordinates of fixed-zero blocks, which are not
+bridge dimensions). The \code{add_parameters} field contains only the
+\code{add_parameters} supplied by the caller: the coordinates BayesTools adds for
+formula random effects (standardized latent effects and correlation
+primitives) are not additional parameters, so a callback that adds densities
+for additional parameters does not count them twice. They are part of \code{state}
+and \code{nodes}, and \code{node_info} labels them \code{source = "random_latent"},
+\code{owner = "formula"}, \code{role = "random_latent"}. The \code{nodes} field is a flat
 named numeric vector that also includes deterministic BayesTools-resolved
 nodes such as normalized Dirichlet allocation weights reconstructed from
 \verb{prior_par_eta_*} coordinates. The \code{node_info} field records the owner and

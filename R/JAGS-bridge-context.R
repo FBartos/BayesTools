@@ -40,8 +40,16 @@
                                                        formula_prior_list,
                                                        model_data,
                                                        marginal_random_evaluator = NULL,
-                                                       node_names = NULL){
+                                                       node_names = NULL,
+                                                       latent_parameters = character()){
 
+  # The bridge coordinates BayesTools adds for formula random effects (latent
+  # effects, correlation primitives) are not additional parameters of the
+  # caller: they stay in `state` and `nodes` and are labelled in `node_info`.
+  latent_parameters <- intersect(latent_parameters, add_parameters)
+  if(length(latent_parameters) > 0L){
+    add_parameters <- setdiff(add_parameters, latent_parameters)
+  }
   mode <- .bt_JAGS_bridge_context_mode(mode)
   if(identical(mode, "none")){
     return(list(
@@ -96,7 +104,8 @@
           model_data = model_data,
           random_context_evaluator = random_evaluator,
           marginal_random_evaluator = marginal_random_evaluator,
-          node_cache = node_cache
+          node_cache = node_cache,
+          latent_parameters = latent_parameters
         )
       }
     ))
@@ -167,13 +176,18 @@
                                      model_data,
                                      random_context_evaluator = NULL,
                                      marginal_random_evaluator = NULL,
-                                     node_cache = NULL){
+                                     node_cache = NULL,
+                                     latent_parameters = character()){
 
   state <- .bt_JAGS_bridge_context_state(samples)
   state_matrix <- .bt_JAGS_bridge_context_state_matrix(samples)
   add_parameter_values <- .bt_JAGS_bridge_context_add_parameters(
     samples = samples,
     add_parameters = add_parameters
+  )
+  latent_parameter_values <- .bt_JAGS_bridge_context_add_parameters(
+    samples = samples,
+    add_parameters = latent_parameters
   )
   if(is.null(random_context_evaluator)){
     random <- .bt_JAGS_bridge_context_random(
@@ -222,7 +236,8 @@
     formula_parameters = formula_parameters,
     add_parameter_values = add_parameter_values,
     random = random,
-    node_cache = node_cache
+    node_cache = node_cache,
+    latent_parameter_values = latent_parameter_values
   )
 
   out <- list(
@@ -597,25 +612,26 @@
                                               formula_parameters,
                                               add_parameter_values,
                                               random,
-                                              node_cache = NULL){
+                                              node_cache = NULL,
+                                              latent_parameter_values = list()){
 
   if(!is.environment(node_cache)){
     return(.bt_JAGS_bridge_build_node_info(
       state, prior_parameters, formula_prior_parameters, formula_parameters,
-      add_parameter_values, random
+      add_parameter_values, random, latent_parameter_values
     ))
   }
 
   shape <- .bt_JAGS_bridge_node_info_shape(
     state, prior_parameters, formula_prior_parameters, formula_parameters,
-    add_parameter_values, random
+    add_parameter_values, random, latent_parameter_values
   )
   if(identical(shape, node_cache$node_info_shape)){
     return(node_cache$node_info)
   }
   node_info <- .bt_JAGS_bridge_build_node_info(
     state, prior_parameters, formula_prior_parameters, formula_parameters,
-    add_parameter_values, random
+    add_parameter_values, random, latent_parameter_values
   )
   node_cache$node_info_shape <- shape
   node_cache$node_info <- node_info
@@ -630,7 +646,8 @@
 .bt_JAGS_bridge_node_info_shape <- function(state, prior_parameters,
                                             formula_prior_parameters,
                                             formula_parameters,
-                                            add_parameter_values, random){
+                                            add_parameter_values, random,
+                                            latent_parameter_values = list()){
 
   piece_shape <- function(parameters){
     entries <- .bt_JAGS_bridge_node_entries(parameters)
@@ -642,6 +659,7 @@
     piece_shape(formula_prior_parameters),
     piece_shape(formula_parameters),
     piece_shape(add_parameter_values),
+    piece_shape(latent_parameter_values),
     lapply(random, function(blocks){
       lapply(blocks, function(block){
         list(names(block$nodes), lapply(block$allocation$weights, names))
@@ -653,7 +671,8 @@
 .bt_JAGS_bridge_build_node_info <- function(state, prior_parameters,
                                             formula_prior_parameters,
                                             formula_parameters,
-                                            add_parameter_values, random){
+                                            add_parameter_values, random,
+                                            latent_parameter_values = list()){
 
   .bt_JAGS_bridge_merge_node_info(
     .bt_JAGS_bridge_node_info(
@@ -685,6 +704,12 @@
       source = "add_parameters",
       owner = "model",
       role = "additional_parameter"
+    ),
+    .bt_JAGS_bridge_node_info(
+      nodes = .bt_JAGS_bridge_flatten_parameter_nodes(latent_parameter_values),
+      source = "random_latent",
+      owner = "formula",
+      role = "random_latent"
     ),
     .bt_JAGS_bridge_context_random_node_info(random)
   )
