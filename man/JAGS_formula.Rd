@@ -133,8 +133,9 @@ A homogeneous-SD block (\code{id()}, \code{random(covariance = "id")}, or
 \code{diag(..., hom = TRUE)}) shares one SD among its columns, which cannot
 carry the different original-scale SDs of the columns. A homogeneous block
 with more than one column that contains a column of a scaled predictor is
-therefore refused by \code{JAGS_formula()}: use a heterogeneous block, or
-leave the predictor unscaled. Single-column homogeneous blocks, such as
+therefore refused by \code{JAGS_formula()}, whether its shared SD is sampled
+or fixed by a point prior: use a heterogeneous block, or leave the predictor
+unscaled. Single-column homogeneous blocks, such as
 \code{id(0 + x | g)}, are not affected.
 
 Factor contrasts are owned by \code{\link[=prior_factor]{prior_factor()}} and stored formula metadata,

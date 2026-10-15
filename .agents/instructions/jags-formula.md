@@ -315,8 +315,9 @@ correlation `-(t1 m / s) / sqrt(t0^2 + (t1 m / s)^2)` (about -0.93 for equal
 SDs and `m / s = 2.5`), which such blocks do not report. A homogeneous-SD block
 (`id()`, `covariance = "id"`, `diag(hom = TRUE)`) with more than one column and
 a scaled-predictor column has no original-scale SDs (one shared SD, different
-column SDs) and is refused by `JAGS_formula()`; single-column homogeneous
-blocks are unaffected.
+column SDs) and is refused by `JAGS_formula()`, whether its shared SD is
+sampled or fixed by a point prior; single-column homogeneous blocks are
+unaffected.
 
 Unscaled correlations are `cov / (sd_i * sd_j)` of the transformed
 covariance: defined whenever both SDs are positive, including singular draws

@@ -816,10 +816,6 @@
     return(NULL)
   }
 
-  if(isTRUE(homogeneous)){
-    column_terms <- .random_sd_term_from_column_name(leaves$column_names[[1L]])
-  }
-
   missing_leaf_names <- setdiff(leaf_names, random_sd_cols)
   group_key <- .random_sd_group_key_from_leaf_key(
     leaf_key = leaf_key,

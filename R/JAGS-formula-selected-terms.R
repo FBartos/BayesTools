@@ -23,8 +23,11 @@
       identical(identity(requested_factors, column), identity(fitted_factors, fitted_column))
     }, logical(1)))
     if(length(candidates) != 1L){
-      stop("The selected formula term '", requested_labels[[column]],
-           "' is unavailable in the fitted formula.", call. = FALSE)
+      .bt_formula_transform_stop(
+        paste0("The selected formula term '", requested_labels[[column]],
+               "' is unavailable in the fitted formula."),
+        reason = "selected_term_unavailable", term = requested_labels[[column]]
+      )
     }
     candidates[[1L]]
   }, integer(1))

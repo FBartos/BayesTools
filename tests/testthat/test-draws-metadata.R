@@ -371,6 +371,20 @@ test_that("selected fitted terms use the exact order attribute", {
   expect_null(attr(selected, "order", exact = TRUE))
 })
 
+test_that("a selected term absent from the fitted formula is a typed refusal", {
+
+  design <- list(terms = stats::terms(~ x + y), assign = 0:2,
+                 raw_column_names = c("intercept", "x", "y"))
+  refusal <- tryCatch(.bt_formula_selected_terms(~ x + z, design), error = identity)
+  expect_s3_class(refusal, "BayesTools_formula_transform_unavailable")
+  expect_identical(refusal$reason, "selected_term_unavailable")
+  expect_identical(refusal$term, "z")
+  expect_identical(
+    conditionMessage(refusal),
+    "The selected formula term 'z' is unavailable in the fitted formula."
+  )
+})
+
 test_that("draw-metadata accessors are exact and validate the field", {
 
   x <- 1:3
