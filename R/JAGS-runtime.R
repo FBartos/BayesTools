@@ -227,14 +227,10 @@ JAGS_runtime_cluster_stop <- function(cl){
   # Match the connection/socket class rather than a closed list of phrases:
   # unknown wording in that class is fail-closed (no retry), not treated as a
   # restartable JAGS sampler error.
-  transport_failure <- grepl(paste0(
-    "error (reading from|writing to) connection|",
-    "invalid connection|connection is not open|",
-    "cannot open the connection|connection timed out|",
-    "broken pipe|connection reset by peer|",
-    "error (reading from|writing to) socket|",
-    "\\bsocket\\b"
-  ), conditionMessage(result), ignore.case = TRUE)
+  transport_failure <- grepl(
+    "\\bconnection\\b|\\bsocket\\b|broken pipe",
+    conditionMessage(result), ignore.case = TRUE
+  )
   if(!transport_failure) return(result)
   errorCondition(
     paste0("Parallel JAGS worker communication failed. Automatic retries were stopped. ",
