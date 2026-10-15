@@ -26,9 +26,11 @@ loop.}
 sources. When supplied with \code{shape = "row"}, it must accept named
 arguments \code{parameters}, \code{data}, and \code{n_rows}, or include \code{...}, and return
 a numeric vector of length \code{n_rows}. Prediction and bridge-sampling
-reconstruction use posterior columns named \code{name[1]}, ..., \code{name[N]} when
-present; supply \code{values} when those columns are absent or when prediction
-needs source values for arbitrary new rows (missing \code{values} then errors).
+reconstruction evaluate a supplied \code{values} function first; without one
+they use the posterior columns named \code{name[1]}, ..., \code{name[N]} when
+present. Supply \code{values} when those columns are absent or when prediction
+needs source values for arbitrary new rows (missing \code{values} then
+errors).
 For formula bridge reconstruction, \code{data} contains raw row-aligned
 formula/model data rather than standardized design matrices. Scalar sources
 do not accept \code{values}.}

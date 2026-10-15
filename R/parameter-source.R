@@ -13,9 +13,11 @@
 #'   sources. When supplied with `shape = "row"`, it must accept named
 #'   arguments `parameters`, `data`, and `n_rows`, or include `...`, and return
 #'   a numeric vector of length `n_rows`. Prediction and bridge-sampling
-#'   reconstruction use posterior columns named `name[1]`, ..., `name[N]` when
-#'   present; supply `values` when those columns are absent or when prediction
-#'   needs source values for arbitrary new rows (missing `values` then errors).
+#'   reconstruction evaluate a supplied `values` function first; without one
+#'   they use the posterior columns named `name[1]`, ..., `name[N]` when
+#'   present. Supply `values` when those columns are absent or when prediction
+#'   needs source values for arbitrary new rows (missing `values` then
+#'   errors).
 #'   For formula bridge reconstruction, `data` contains raw row-aligned
 #'   formula/model data rather than standardized design matrices. Scalar sources
 #'   do not accept `values`.
@@ -45,7 +47,7 @@ parameter_source <- function(name, shape = c("scalar", "row"),
 
   check_char(name, "name", allow_NA = FALSE)
   .bt_check_external_parameter_source_name(name)
-  .bt_check_jags_node_name(name, "name")
+  .bt_check_jags_node_name(name, "name", extended = TRUE)
   shape <- match.arg(shape)
   if(!is.null(values) && !is.function(values)){
     stop("'values' must be NULL or a function.", call. = FALSE)
@@ -123,7 +125,7 @@ parameter_source <- function(name, shape = c("scalar", "row"),
   }
   check_char(x$name, "source$name", allow_NA = FALSE)
   .bt_check_external_parameter_source_name(x$name)
-  .bt_check_jags_node_name(x$name, "source$name")
+  .bt_check_jags_node_name(x$name, "source$name", extended = TRUE)
   if(!is.character(x$shape) || length(x$shape) != 1L ||
      is.na(x$shape) || !x$shape %in% c("scalar", "row")){
     stop("'source' metadata are inconsistent.", call. = FALSE)
@@ -157,15 +159,29 @@ parameter_source <- function(name, shape = c("scalar", "row"),
     )
   }
   formal_names <- names(value_formals)
-  if("..." %in% formal_names){
-    return(invisible(TRUE))
-  }
+  # The function is called with the three named arguments only: another
+  # argument without a default could never be supplied.
+  without_default <- vapply(value_formals, function(formal){
+    identical(formal, quote(expr = ))
+  }, logical(1))
+  extra_required <- setdiff(
+    formal_names[without_default],
+    c("parameters", "data", "n_rows", "...")
+  )
   required_names <- c("parameters", "data", "n_rows")
   missing_names <- setdiff(required_names, formal_names)
-  if(length(missing_names) > 0L){
+  if(!"..." %in% formal_names && length(missing_names) > 0L){
     stop(
       "'", name,
       "' must accept named arguments 'parameters', 'data', and 'n_rows', or include '...'.",
+      call. = FALSE
+    )
+  }
+  if(length(extra_required) > 0L){
+    stop(
+      "'", name, "' has additional required argument(s) ",
+      paste0("'", extra_required, "'", collapse = ", "),
+      " that cannot be supplied; give them defaults.",
       call. = FALSE
     )
   }
@@ -233,7 +249,21 @@ parameter_source <- function(name, shape = c("scalar", "row"),
   paste0(source$name, "[", seq_len(n_rows), "]")
 }
 
-.bt_check_jags_node_name <- function(x, name){
+# Words a JAGS model cannot use as a node or index name. A parameter source
+# also refuses the control-flow words, the truncation function `T` and the
+# constants of the model language, which JAGS rejects at compile time.
+.bt_jags_reserved_words <- function(extended = FALSE){
+
+  words <- c("data", "in", "model", "var")
+  if(isTRUE(extended)){
+    words <- c(words, "for", "if", "else", "T", "F", "TRUE", "FALSE", "NA",
+               "Inf", "NaN")
+  }
+
+  words
+}
+
+.bt_check_jags_node_name <- function(x, name, extended = FALSE){
 
   if(length(x) != 1L || is.na(x) ||
      !grepl("^[A-Za-z][A-Za-z0-9_.]*$", x)){
@@ -242,7 +272,7 @@ parameter_source <- function(name, shape = c("scalar", "row"),
       call. = FALSE
     )
   }
-  if(x %in% c("data", "in", "model", "var")){
+  if(x %in% .bt_jags_reserved_words(extended)){
     stop(
       "'", name, "' cannot use the reserved JAGS keyword '", x, "'.",
       call. = FALSE
@@ -267,6 +297,12 @@ parameter_source <- function(name, shape = c("scalar", "row"),
   if(!grepl("^([A-Za-z][A-Za-z0-9_]*|[1-9][0-9]*)$", x)){
     stop(
       "'", name, "' must be a simple JAGS index name or positive integer.",
+      call. = FALSE
+    )
+  }
+  if(x %in% .bt_jags_reserved_words(extended = TRUE)){
+    stop(
+      "'", name, "' cannot use the reserved JAGS keyword '", x, "'.",
       call. = FALSE
     )
   }

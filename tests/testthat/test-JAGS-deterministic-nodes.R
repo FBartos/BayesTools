@@ -328,6 +328,40 @@ test_that("selection_backend_spec() emits the weights from the omega node", {
   ))
 })
 
+test_that("parameter_source() refuses JAGS model-language words and uncallable values functions", {
+
+  for(word in c("data", "in", "model", "var", "for", "if", "else", "T", "F",
+                "TRUE", "FALSE", "NA", "Inf", "NaN")){
+    expect_error(parameter_source(word), paste0("reserved JAGS keyword '", word, "'"),
+                 fixed = TRUE, info = word)
+  }
+  expect_no_error(parameter_source("tau_if"))
+  source <- parameter_source("tau", shape = "row")
+  expect_identical(BayesTools:::.bt_parameter_source_jags_expression(source, "i"), "tau[i]")
+  expect_error(
+    BayesTools:::.bt_parameter_source_jags_expression(source, "for"),
+    "'row_index' cannot use the reserved JAGS keyword 'for'",
+    fixed = TRUE
+  )
+  # arguments other than parameters, data and n_rows need defaults
+  expect_error(
+    parameter_source("tau", shape = "row", inputs = character(),
+                     values = function(parameters, data, n_rows, extra) numeric(n_rows)),
+    "'values' has additional required argument(s) 'extra' that cannot be supplied; give them defaults.",
+    fixed = TRUE
+  )
+  expect_error(
+    parameter_source("tau", shape = "row", inputs = character(),
+                     values = function(parameters, data, n_rows, extra, ...) numeric(n_rows)),
+    "additional required argument(s) 'extra'",
+    fixed = TRUE
+  )
+  expect_no_error(parameter_source("tau", shape = "row", inputs = character(),
+    values = function(parameters, data, n_rows, extra = 1) numeric(n_rows)))
+  expect_no_error(parameter_source("tau", shape = "row", inputs = character(),
+    values = function(...) numeric(1)))
+})
+
 test_that("parameter_source() values functions declare and receive their inputs", {
 
   values <- function(parameters, data, n_rows) rep(parameters[["a"]], n_rows)
