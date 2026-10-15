@@ -73,7 +73,9 @@
 #'   `update = "scale"` plan of the summed contribution of `blocks`. If `tau`
 #'   drives only some columns of the selected block, which is the only block it
 #'   reaches, the plan is the factor `"column_scale"` plan with
-#'   `driven_columns` and the grid factor `column_factor` for them; a scale
+#'   `driven_columns` and the grid factor `column_factor` for them, when the
+#'   selected column is among the driven ones (otherwise the plan is
+#'   `unsupported` with the reason `"selected_column_not_driven"`); a scale
 #'   that reaches several blocks and only part of their columns, or an
 #'   aggregate whose scale drives only part of a block, has no exact scalar
 #'   update and is `unsupported` with the reason `"partial_scale_reach"`. An
@@ -838,7 +840,8 @@ random_effects_marginal_update_grid <- function(
         held_fixed = "allocation_weights"
       ))
     }
-    # the scale drives only part of the columns of the one block it reaches
+    # the scale drives only part of the columns of the one block it reaches,
+    # among them the selected one
     return(list(
       family = "factor",
       update = "column_scale",
@@ -938,8 +941,9 @@ random_effects_marginal_update_grid <- function(
 # moved with every weight fixed, so every column it drives is multiplied by the
 # same factor: when it drives all columns of all reached blocks, each block's
 # D R D scales by c^2 (affine). The scale drives only part of the columns of one
-# reached block (factor), or of several blocks (unsupported). 'first' are the
-# blocks of the selected quantity, listed first.
+# reached block (factor, which needs the selected 'column' to be among the driven
+# ones), or of several blocks (unsupported). 'first' are the blocks of the
+# selected quantity, listed first.
 .bt_random_effect_marginal_update_scale_reach <- function(design, source, first,
                                                           column = NA_integer_){
 
@@ -961,10 +965,16 @@ random_effects_marginal_update_grid <- function(
     return(list(family = "affine", blocks = blocks))
   }
   if(length(blocks) == 1L && !is.na(column)){
-    return(list(
-      family = "factor",
-      blocks = blocks,
-      driven_columns = which(reach$driven[[blocks]])
+    driven <- which(reach$driven[[blocks]])
+    if(column %in% driven){
+      return(list(family = "factor", blocks = blocks, driven_columns = driven))
+    }
+    return(unsupported(
+      "selected_column_not_driven",
+      paste0(
+        "The allocation scale of the selected allocation-derived SD does not ",
+        "drive the selected column, so it has no exact covariance update."
+      )
     ))
   }
 

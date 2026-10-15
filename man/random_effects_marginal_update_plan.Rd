@@ -72,7 +72,9 @@ by \code{c^2} on every covariance structure: the plan is then the affine
 \code{update = "scale"} plan of the summed contribution of \code{blocks}. If \code{tau}
 drives only some columns of the selected block, which is the only block it
 reaches, the plan is the factor \code{"column_scale"} plan with
-\code{driven_columns} and the grid factor \code{column_factor} for them; a scale
+\code{driven_columns} and the grid factor \code{column_factor} for them, when the
+selected column is among the driven ones (otherwise the plan is
+\code{unsupported} with the reason \code{"selected_column_not_driven"}); a scale
 that reaches several blocks and only part of their columns, or an
 aggregate whose scale drives only part of a block, has no exact scalar
 update and is \code{unsupported} with the reason \code{"partial_scale_reach"}. An

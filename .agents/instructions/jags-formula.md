@@ -762,7 +762,9 @@ plan (`A + h(v) B`) of the summed contribution of `blocks` whenever the scale
 drives every column of every reached block, when the public SD is on the fitted
 coefficient scale. If it drives only part of the columns of the one block it
 reaches, the plan of a component SD is the factor `column_scale` plan with
-`driven_columns`, and the grid carries `column_factor` for them; a scale that
+`driven_columns`, and the grid carries `column_factor` for them, provided the
+selected column is among the driven ones (a column the scale does not drive
+would not move: `unsupported`, reason `selected_column_not_driven`); a scale that
 reaches several blocks and only part of their columns, or part of the columns of
 a block for an aggregate (which has no selected column), has no exact scalar
 update (`unsupported`, reason `partial_scale_reach`). Downstream priors for the

@@ -1855,13 +1855,23 @@ test_that("a scale that reaches several blocks only in part has no allocation-de
       binding
     }
   )
-  factor_plan <- plan_for(alone, "(mu) first: sd(x)")
+  factor_plan <- plan_for(alone, "(mu) first: sd(intercept)")
   expect_identical(factor_plan$family, "factor")
   expect_identical(factor_plan$update, "column_scale")
   expect_identical(factor_plan$blocks, "first")
   expect_identical(factor_plan$held_fixed, "allocation_weights")
   expect_identical(factor_plan$driven_columns, 1L)
+  expect_identical(factor_plan$component_index, 1L)
   expect_identical(factor_plan$coefficient_input, "quantity")
+
+  # a selected column that the scale does not drive has no factor update: the
+  # scale would not move it
+  undriven <- plan_for(alone, "(mu) first: sd(x)")
+  expect_identical(undriven$family, "unsupported")
+  expect_identical(undriven$reason, "selected_column_not_driven")
+  expect_identical(undriven$blocks, character())
+  expect_match(undriven$message, "does not drive", fixed = TRUE)
+  expect_identical(plan_for(alone, "(mu) first: var(x)")$reason, "selected_column_not_driven")
 
   # an aggregate has no selected column: a partly driven block refuses it
   aggregate <- plan_for(partial, "(mu) alloc1: sd_total")
