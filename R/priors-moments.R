@@ -27,7 +27,10 @@ mean.prior   <- function(x, ...){
 
   if(is.prior.spike_and_slab(x)){
 
-    m <- mean(.get_spike_and_slab_variable(x)) * mean(.get_spike_and_slab_inclusion(x))
+    inclusion_mean <- mean(.get_spike_and_slab_inclusion(x))
+    # inclusion 0 (the spike alone) has the mean 0 whatever the slab (a Cauchy
+    # slab has no mean: NaN * 0)
+    m <- if(isTRUE(inclusion_mean == 0)) 0 else mean(.get_spike_and_slab_variable(x)) * inclusion_mean
 
   }else if(is.prior.mixture(x)){
 
@@ -230,10 +233,18 @@ var.prior   <- function(x, ...){
   if(is.prior.spike_and_slab(x)){
 
     inclusion_mean <- mean(.get_spike_and_slab_inclusion(x))
-    variable_mean  <- mean(.get_spike_and_slab_variable(x))
-    variable_E2    <- var(.get_spike_and_slab_variable(x)) + variable_mean^2
+    if(isTRUE(inclusion_mean == 0)){
+      # the spike alone, whatever the slab
+      var <- 0
+    }else if(isTRUE(inclusion_mean == 1)){
+      # the slab alone (the second-moment identity cancels for a distant slab)
+      var <- var(.get_spike_and_slab_variable(x))
+    }else{
+      variable_mean  <- mean(.get_spike_and_slab_variable(x))
+      variable_E2    <- var(.get_spike_and_slab_variable(x)) + variable_mean^2
 
-    var <- inclusion_mean * variable_E2 - (inclusion_mean * variable_mean)^2
+      var <- inclusion_mean * variable_E2 - (inclusion_mean * variable_mean)^2
+    }
 
   }else if(is.prior.mixture(x)){
 
@@ -246,10 +257,10 @@ var.prior   <- function(x, ...){
       var <- switch(
         x[["distribution"]],
         "normal"    = x$parameters[["sd"]]^2,
-        "lognormal" = (exp(x$parameters[["sdlog"]]^2) - 1) * exp(2 * x$parameters[["meanlog"]] + x$parameters[["sdlog"]]^2),
+        "lognormal" = expm1(x$parameters[["sdlog"]]^2) * exp(2 * x$parameters[["meanlog"]] + x$parameters[["sdlog"]]^2),
         "t"         = ifelse(x$parameters[["df"]] > 2, x$parameters[["scale"]]^2 * x$parameters[["df"]] / (x$parameters[["df"]] - 2), NaN),
-        "gamma"     = x$parameters[["shape"]] / x$parameters[["rate"]]^2,
-        "invgamma"  = ifelse(x$parameters[["shape"]] > 2, x$parameters[["scale"]]^2 / ((x$parameters[["shape"]] - 1)^2 * (x$parameters[["shape"]] - 2)), NaN),
+        "gamma"     = (x$parameters[["shape"]] / x$parameters[["rate"]]) / x$parameters[["rate"]],
+        "invgamma"  = ifelse(x$parameters[["shape"]] > 2, (x$parameters[["scale"]] / (x$parameters[["shape"]] - 1))^2 / (x$parameters[["shape"]] - 2), NaN),
         "moment"    = x$parameters[["tau"]] * (2 * x$parameters[["order"]] + 1),
         "invmoment" = ifelse(
           x$parameters[["df"]] > 2,
@@ -257,7 +268,10 @@ var.prior   <- function(x, ...){
             lgamma(x$parameters[["df"]] / (2 * x$parameters[["order"]]))),
           NaN
         ),
-        "beta"      = (x$parameters[["alpha"]] * x$parameters[["beta"]]) / ((x$parameters[["alpha"]] + x$parameters[["beta"]])^2 * (x$parameters[["alpha"]] + x$parameters[["beta"]] + 1)),
+        "beta"      = {
+          mean_beta <- x$parameters[["alpha"]] / (x$parameters[["alpha"]] + x$parameters[["beta"]])
+          mean_beta * (1 - mean_beta) / (x$parameters[["alpha"]] + x$parameters[["beta"]] + 1)
+        },
         "bernoulli" = (x$parameters[["probability"]] * (1 - x$parameters[["probability"]]) ),
         "exp"       = 1 / x$parameters[["rate"]]^2,
         "uniform"   = (x$parameters[["b"]] - x$parameters[["a"]])^2 / 12,

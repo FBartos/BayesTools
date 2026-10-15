@@ -475,6 +475,30 @@ test_that("nonlocal finite starts retain range and unresolved normalized-density
   }
 })
 
+test_that("closed-form variances and degenerate spike-and-slab moments are stable", {
+
+  # small sdlog: expm1() instead of exp() - 1 (the variance was 0)
+  expect_equal(var(prior("lognormal", list(0, 1e-9))), 1e-18, tolerance = 1e-9)
+  expect_equal(var(prior("lognormal", list(0, 1))), (exp(1) - 1) * exp(1), tolerance = 1e-14)
+  # rate^2 and (a + b)^2 leave the double range, the ratios do not
+  expect_equal(var(prior("gamma", list(shape = 1e100, rate = 1e160))), 1e-220, tolerance = 1e-12)
+  expect_equal(var(prior("gamma", list(shape = 3, rate = 2))), 3 / 4, tolerance = 1e-14)
+  expect_equal(var(prior("beta", list(1e160, 1e160))), 1.25e-161, tolerance = 1e-12)
+  expect_equal(var(prior("beta", list(2, 3))), 2 * 3 / (25 * 6), tolerance = 1e-14)
+  expect_equal(var(prior("invgamma", list(shape = 1e10, scale = 1e160))), 1e290, tolerance = 1e-9)
+  expect_equal(var(prior("invgamma", list(shape = 4, scale = 3))), 9 / (9 * 2), tolerance = 1e-14)
+
+  # a spike-and-slab prior with inclusion 0 or 1: the spike or the slab alone
+  never <- prior_spike_and_slab(prior("cauchy", list(0, 1)), prior_inclusion = prior("spike", list(0)))
+  expect_identical(mean(never), 0)
+  expect_identical(var(never), 0)
+  always <- prior_spike_and_slab(prior("normal", list(1e8, 1)), prior_inclusion = prior("spike", list(1)))
+  expect_equal(mean(always), 1e8)
+  expect_equal(var(always), 1, tolerance = 1e-12)
+  partial <- prior_spike_and_slab(prior("normal", list(2, 3)), prior_inclusion = prior("spike", list(.5)))
+  expect_equal(var(partial), .5 * (9 + 4) - 1, tolerance = 1e-14)
+})
+
 test_that("joint prior methods keep plain-formula values or refuse at double-precision range edges", {
 
   # mnormal: the covariance diag(sd^2) must be representable; it was 0 or Inf

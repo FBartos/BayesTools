@@ -24,8 +24,8 @@ test_that("Prior handling works", {
   expect_error(BayesTools:::.check_parameter_positive(0, "par"), "The 'par' must be positive.")
   expect_null(BayesTools:::.check_parameter_positive(0, "par", TRUE))
   expect_error(BayesTools:::.check_parameter_positive(-.01, "par", TRUE), "The 'par' must be non-negative.")
-  expect_error(BayesTools:::.check_parameter_range(-.01, "par", lower = 0, upper = 1, include_bounds = TRUE), "The 'par' must be higher than 0 and lower than 1.")
-  expect_error(BayesTools:::.check_parameter_range(3, "par", lower = 1, upper = 3, include_bounds = FALSE), "The 'par' must be higher or equal to than 1 and lower or equal to than 3.")
+  expect_error(BayesTools:::.check_parameter_range(-.01, "par", lower = 0, upper = 1, include_bounds = TRUE), "The 'par' must be higher than or equal to 0 and lower than or equal to 1.", fixed = TRUE)
+  expect_error(BayesTools:::.check_parameter_range(3, "par", lower = 1, upper = 3, include_bounds = FALSE), "The 'par' must be higher than 1 and lower than 3.", fixed = TRUE)
 
 
   # check different ordering of names withing lists
@@ -465,8 +465,10 @@ test_that(".check_parameter_dimensions works correctly", {
 
   # Note: The function has some implementation quirks with vector input,
   # so we just test that invalid inputs throw some error
-  expect_error(BayesTools:::.check_parameter_dimensions(c(1, 2), "K"))
-  expect_error(BayesTools:::.check_parameter_dimensions(1.5, "K"))
+  expect_error(BayesTools:::.check_parameter_dimensions(c(1, 2), "K"),
+               "The 'K' must be a numeric vector of length 1.", fixed = TRUE)
+  expect_error(BayesTools:::.check_parameter_dimensions(1.5, "K"),
+               "The 'K' must be an integer", fixed = TRUE)
 
 })
 

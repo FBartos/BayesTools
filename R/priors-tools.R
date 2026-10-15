@@ -150,10 +150,10 @@
 
   if(include_bounds){
     if(any(parameter < lower, na.rm = TRUE) | any(parameter > upper, na.rm = TRUE))
-      stop(paste0("The '", name, "' must be higher than ", lower, " and lower than ", upper, "."), call. = FALSE)
+      stop(paste0("The '", name, "' must be higher than or equal to ", lower, " and lower than or equal to ", upper, "."), call. = FALSE)
   }else{
     if(any(parameter <= lower, na.rm = TRUE) | any(parameter >= upper, na.rm = TRUE))
-      stop(paste0("The '", name, "' must be higher or equal to than ", lower, " and lower or equal to than ", upper, "."), call. = FALSE)
+      stop(paste0("The '", name, "' must be higher than ", lower, " and lower than ", upper, "."), call. = FALSE)
   }
 }
 

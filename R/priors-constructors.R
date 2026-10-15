@@ -415,9 +415,6 @@
 
   .check_parameter(parameters$alpha, "alpha", length = 0)
   .check_parameter_positive(parameters$alpha, "alpha")
-  if(is.numeric(parameters$alpha) && any(!is.finite(parameters$alpha))){
-    stop("The 'alpha' concentration parameters must be finite.", call. = FALSE)
-  }
   if(length(parameters$alpha) < 2L){
     stop("The Dirichlet 'alpha' concentration vector must contain at least two values.", call. = FALSE)
   }

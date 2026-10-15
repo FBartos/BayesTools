@@ -318,7 +318,7 @@ prior_factor <- function(distribution, parameters, truncation = list(lower = -In
                             "multivariatet", "multivariatestudent", "mt", "mstudent",
                             "multivariatecauchy", "mcauchy",
                             "mpoint"))
-      stop(paste0("'", contrast,"' contrasts require multivariate prior disribution."))
+      stop(paste0("'", contrast,"' contrasts require multivariate prior distribution."))
 
     # generate the prior object
     output <- prior(distribution = distribution, parameters = parameters, truncation = truncation, prior_weights = prior_weights)
@@ -339,8 +339,6 @@ prior_factor <- function(distribution, parameters, truncation = list(lower = -In
     if(!is.prior.simple(output))
       stop("'treatment' contrasts require univariate prior distribution.")
 
-    output <- prior(distribution = distribution, parameters = parameters, truncation = truncation, prior_weights = prior_weights)
-
     class(output) <- c(class(output), "prior.factor", "prior.treatment")
 
   }else if(contrast  == "independent"){
@@ -350,8 +348,6 @@ prior_factor <- function(distribution, parameters, truncation = list(lower = -In
 
     if(!is.prior.simple(output))
       stop("'independent' contrasts require univariate prior distribution.")
-
-    output <- prior(distribution = distribution, parameters = parameters, truncation = truncation, prior_weights = prior_weights)
 
     class(output) <- c(class(output), "prior.factor", "prior.independent")
   }
@@ -611,6 +607,10 @@ prior_spike_and_slab <- function(prior_parameter,
 #' @param components a character vector indicating which of the prior distributions
 #' belong to the same mixture component (this is an alternative specification to the \code{is_null} argument).
 #' Defaults to \code{NULL} (i.e., \code{is_null} is used.
+#'
+#' @return A prior object of class \code{prior.mixture} (with the classes of a
+#' factor, ordered or simple mixture where the components have them) that
+#' holds the component priors with their \code{prior_weights} and \code{components}.
 #'
 #' @seealso [prior()]
 #' @export
