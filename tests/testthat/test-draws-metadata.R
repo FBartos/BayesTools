@@ -1569,6 +1569,15 @@ test_that("a Bernoulli parameter declares atoms at its states with the draw freq
   expect_equal(atoms$mass, c(mean(draws == 0), mean(draws == 1)), tolerance = 1e-12)
   expect_identical(BayesTools:::.posterior_atoms_continuous_mass(atoms, posterior_metadata(mixed$b, "support")), 0)
 
+  # the catalog route declares the same atoms: the support {0, 1} of the prior
+  # and the draw frequencies as masses
+  catalog_draws <- parameter_mixed_posterior(fit, parameter_catalog_resolve(parameter_catalog(fit), "b"))
+  expect_false(posterior_atoms_free(catalog_draws))
+  catalog_atoms <- posterior_metadata(catalog_draws, "atoms")
+  expect_identical(unname(catalog_atoms$locations[, 1L]), c(0, 1))
+  expect_equal(catalog_atoms$mass, atoms$mass, tolerance = 1e-12)
+  expect_identical(posterior_metadata(catalog_draws, "support")$points, c(0, 1))
+
   # the plot draws the two point masses and no continuous curve
   plot <- plot_posterior(mixed, "b", plot_type = "ggplot")
   expect_identical(

@@ -323,7 +323,8 @@ parameter_gate_states <- function(fit, selection, draws = NULL){
     prior_density = prior_density,
     plan          = plan,
     states        = states,
-    keep          = keep
+    keep          = keep,
+    draws         = values[keep]
   )
   components <- .bt_parameter_mixed_posterior_components(fit, quantity, original_sources, keep)
 
@@ -463,7 +464,8 @@ parameter_gate_states <- function(fit, selection, draws = NULL){
 #   block whose SDs have their own inclusion gates) the atom status is
 #   undeclared (NULL).
 .bt_parameter_mixed_posterior_atoms <- function(fit, quantity, prior_density,
-                                                plan, states, keep){
+                                                plan, states, keep,
+                                                draws = NULL){
 
   name <- quantity$canonical_name
   if(identical(quantity$status, "structural") &&
@@ -474,6 +476,20 @@ parameter_gate_states <- function(fit, selection, draws = NULL){
       mass      = 1,
       source    = "parameter_structure"
     ))
+  }
+  # a Bernoulli coordinate takes only the states its prior declares: those are
+  # its atoms, with the draw frequencies as masses (as for as_mixed_posteriors())
+  key <- quantity$extraction_key[[1L]]
+  if(identical(key$type, "coordinate") && length(key$dependencies) == 1L &&
+     key$dependencies %in% names(attr(fit, "prior_list", exact = TRUE))){
+    coordinate_prior <- .bt_prior_without_multiply_by(
+      attr(fit, "prior_list", exact = TRUE)[[key$dependencies]]
+    )
+    if(.posterior_atoms_is_bernoulli(coordinate_prior) && !is.null(draws)){
+      return(.posterior_atoms_bernoulli_from_draws(
+        coordinate_prior, draws, column_names = name, source = "posterior_draws"
+      ))
+    }
   }
   prior_atoms <- NULL
   if(!is.null(prior_density)){

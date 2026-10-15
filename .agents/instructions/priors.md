@@ -865,9 +865,9 @@ probability leaves; `.posterior_support_from_prior()`), and only their masses
 are estimated, as the draw frequencies of those states (as the probabilities of
 a mixture are the frequencies of its indicator): `posterior_atoms_free()` is
 `FALSE` and `plot_posterior()` draws point masses, also for a Bernoulli
-mixture component (within the draws of the component) and a Bernoulli model of
-`mix_posteriors()` (within the draws of the model). A draw outside the declared
-states stops.
+mixture component (within the draws of the component), a Bernoulli model of
+`mix_posteriors()` (within the draws of the model) and a Bernoulli coordinate of
+`parameter_mixed_posterior()`. A draw outside the declared states stops.
 
 Draw metadata (supports, atoms, components, undefined draws, prior densities
 and their context, precomputed posterior densities and ordinates, formula
