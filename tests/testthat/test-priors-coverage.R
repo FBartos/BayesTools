@@ -2062,3 +2062,91 @@ test_that("only a numeric zero point is a spike at zero", {
   expect_true(.is_prior_point_zero(prior("mpoint", list(0, 2))))
   expect_false(.is_prior_point_zero(prior("mpoint", list(1, 2))))
 })
+
+test_that("syntax, initial values and monitored nodes agree for ordinary priors (F223)", {
+
+  priors <- list(
+    normal    = prior("normal", list(0, 1)),
+    lognormal = prior("lognormal", list(0, 1)),
+    t         = prior("t", list(0, 1, 3)),
+    gamma     = prior("gamma", list(2, 1)),
+    invgamma  = prior("invgamma", list(2, 1)),
+    beta      = prior("beta", list(2, 2)),
+    uniform   = prior("uniform", list(0, 1)),
+    cauchy    = prior("cauchy", list(0, 1)),
+    exp       = prior("exp", list(1)),
+    point     = prior("point", list(1)),
+    mnormal   = prior("mnormal", list(0, 1, 3)),
+    mt        = prior("mt", list(0, 1, 3, 3)),
+    dirichlet = prior("dirichlet", list(c(1, 1, 1)))
+  )
+  base_name <- function(x) sub("\\[.*$", "", x)
+
+  for(name in names(priors)){
+    prior_list <- list(x = priors[[name]])
+    syntax  <- JAGS_add_priors("model{}", prior_list)
+    monitor <- JAGS_to_monitor(prior_list)
+    inits   <- JAGS_get_inits(prior_list, chains = 1, seed = 1)[[1L]]
+    inits   <- names(inits)[!names(inits) %in% c(".RNG.seed", ".RNG.name")]
+
+    # stochastic nodes of the syntax are initialized, and only those
+    stochastic <- regmatches(syntax, gregexpr("[A-Za-z][A-Za-z0-9_.]*(\\[[^]]*\\])? *~", syntax))[[1L]]
+    stochastic <- unique(base_name(sub(" *~$", "", stochastic)))
+    expect_setequal(inits, stochastic)
+
+    # every monitored node is defined by the syntax
+    defined <- regmatches(syntax, gregexpr("[A-Za-z][A-Za-z0-9_.]*(\\[[^]]*\\])? *(~|<-|=)", syntax))[[1L]]
+    defined <- unique(base_name(sub(" *(~|<-|=)$", "", defined)))
+    expect_true(all(base_name(monitor) %in% defined), info = name)
+    expect_true(all(stochastic %in% defined), info = name)
+  }
+})
+
+test_that("declared roots of factor spike-and-slab and factor mixture priors carry the factor shape (F223)", {
+
+  factor_prior <- function(sd){
+    prior <- prior_factor("normal", list(0, sd), contrast = "treatment")
+    attr(prior, "levels") <- 3
+    prior
+  }
+  spike_and_slab <- prior_spike_and_slab(factor_prior(1))
+  roots <- .bt_prior_emitted_roots(spike_and_slab, "p")
+  expect_identical(roots[["p_variable"]], 2L)
+  expect_identical(roots[["p"]], 2L)
+  expect_identical(roots[["p_indicator"]], integer())
+
+  mixture <- prior_mixture(list(factor_prior(1), factor_prior(.5)), is_null = c(FALSE, FALSE))
+  for(k in 1:2) attr(mixture[[k]], "levels") <- 3
+  roots <- .bt_prior_emitted_roots(mixture, "p")
+  expect_identical(roots[["p_component_1"]], 2L)
+  expect_identical(roots[["p"]], 2L)
+
+  # ordinary priors keep scalar roots
+  roots <- .bt_prior_emitted_roots(prior_spike_and_slab(prior("normal", list(0, 1))), "q")
+  expect_identical(roots[["q"]], integer())
+})
+
+test_that("generated priors are inserted into the model block, not a preceding data block (F223)", {
+
+  syntax <- "data{ y <- 1 }\nmodel{ z ~ dnorm(0, 1) }"
+  with_prior <- JAGS_add_priors(syntax, list(x = prior("normal", list(0, 1))))
+  expect_true(regexpr("x ~ dnorm", with_prior, fixed = TRUE) > regexpr("model{", with_prior, fixed = TRUE))
+  expect_identical(
+    substr(with_prior, 1L, nchar("data{ y <- 1 }\nmodel{")),
+    "data{ y <- 1 }\nmodel{"
+  )
+
+  expect_error(
+    .JAGS_model_block_opening("data{ y <- 1 }"),
+    "The JAGS model syntax has no 'model' block with an opening brace.",
+    fixed = TRUE
+  )
+  expect_identical(.JAGS_model_block_opening("model {}"), 7L)
+  expect_identical(.JAGS_model_block_opening("data{ }\nmodel\n{ }"), 15L)
+
+  anchored <- .bt_add_backend_anchor(
+    model_syntax = syntax, data = list(), prior_list = list(), add_parameters = character(),
+    monitor = character()
+  )
+  expect_true(regexpr(.bt_backend_anchor_name, anchored$model_syntax, fixed = TRUE) > regexpr("model{", anchored$model_syntax, fixed = TRUE))
+})

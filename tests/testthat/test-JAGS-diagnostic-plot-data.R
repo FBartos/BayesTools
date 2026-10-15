@@ -731,6 +731,26 @@ test_that("a bias mixture is drawn as the components of its branches (F221)", {
   }
 })
 
+test_that("the trace axis shows the retained MCMC iteration of thinned chains (F223)", {
+
+  chain_1 <- coda::mcmc(cbind(theta = seq(-1, 1, length.out = 6)), start = 11, thin = 2)
+  chain_2 <- coda::mcmc(cbind(theta = seq(1, -1, length.out = 6)), start = 11, thin = 2)
+  fit <- coda::mcmc.list(chain_1, chain_2)
+  class(fit) <- c("BayesTools_fit", class(fit))
+  plot_data <- .diagnostics_plot_data(
+    fit = fit,
+    parameter = "theta",
+    prior_list = list(theta = prior("normal", list(0, 1))),
+    transformations = NULL,
+    transform_factors = FALSE
+  )
+  expect_identical(attr(plot_data, "iter"), rep(seq(11, by = 2, length.out = 6), 2L))
+
+  trace_data <- .diagnostics_plot_data_trace(plot_data, n_points = 10, ylim = NULL)
+  expect_identical(trace_data$theta[[1L]]$x, seq(11, by = 2, length.out = 6))
+  expect_identical(attr(trace_data$theta, "x_range"), c(11, 21))
+})
+
 test_that("PET and PEESE diagnostics of a bias prior without that branch are refused clearly (F216)", {
 
   selection <- prior_weightfunction("one-sided", c(.025), wf_cumulative(c(1, 1)))
@@ -830,7 +850,7 @@ test_that("diagnostic plot data masks the spike rows of every coefficient of a f
   expect_identical(which(is.na(plot_data[, "mu_f[c]"])), excluded)
   expect_identical(as.numeric(plot_data[-excluded, "mu_f[b]"]), draws[-excluded, "mu_f[1]"])
   expect_identical(as.numeric(plot_data[-excluded, "mu_f[c]"]), draws[-excluded, "mu_f[2]"])
-  expect_identical(attr(plot_data, "iter"), seq_len(18L))
+  expect_equal(attr(plot_data, "iter"), seq_len(18L))
 
   # the diagnostics describe the draws under the slab only
   density_data <- .diagnostics_plot_data_density(plot_data, n_points = 64, xlim = NULL)

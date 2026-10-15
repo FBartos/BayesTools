@@ -1253,3 +1253,29 @@ test_that("post-fit cleanup errors identify the actual parallel operation", {
     paste0("Parallel zplot density computation worker cleanup failed: socket is unavailable. ",
       "The runtime finish callback was not run."), fixed = TRUE)
 })
+
+test_that("seeds outside the integer range or missing are refused instead of coerced to NA (F223)", {
+
+  limit <- .Machine$integer.max
+  settings <- function(seed) JAGS_check_and_list_fit_settings(
+    chains = 4, adapt = 50, burnin = 50, sample = 100, thin = 1, autofit = FALSE,
+    parallel = FALSE, cores = 1, silent = TRUE, seed = seed
+  )
+  expect_silent(settings(limit))
+  expect_silent(settings(-limit))
+  for(seed in list(limit + 1, -limit - 1, 2^40)){
+    expect_error(settings(seed), "must be equal or lower than|must be equal or higher than", info = seed)
+    expect_error(
+      JAGS_get_inits(list(mu = prior("normal", list(0, 1))), chains = 1, seed = seed),
+      "must be equal or lower than|must be equal or higher than", info = seed
+    )
+  }
+  for(seed in list(NA_real_, Inf, -Inf)){
+    expect_error(
+      JAGS_get_inits(list(mu = prior("normal", list(0, 1))), chains = 1, seed = seed),
+      "The 'seed' ", fixed = TRUE, info = seed
+    )
+  }
+  expect_length(JAGS_get_inits(list(mu = prior("normal", list(0, 1))), chains = 2, seed = limit), 2L)
+})
+

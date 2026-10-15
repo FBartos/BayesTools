@@ -39,7 +39,7 @@ JAGS_check_and_list_fit_settings     <- function(chains, adapt, burnin, sample, 
   check_int(cores,     "cores", lower = 1,        allow_NA = FALSE, call = call)
   check_bool(autofit,  "autofit",                 allow_NA = FALSE, call = call)
   check_bool(silent,   "silent",                  allow_NA = FALSE, call = call)
-  check_int(seed,      "seed", allow_NULL = TRUE, allow_NA = FALSE, call = call)
+  check_int(seed,      "seed", lower = -.Machine$integer.max, upper = .Machine$integer.max, allow_NULL = TRUE, allow_NA = FALSE, call = call)
 
   return(invisible(list(
     chains   = chains,

@@ -370,7 +370,8 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
   check_bool(silent, "silent")
   check_int(maxiter, "maxiter", lower = 1)
   check_int(cores, "cores", lower = 1)
-  check_int(seed, "seed", allow_NULL = TRUE, allow_NA = FALSE)
+  check_int(seed, "seed", lower = -.Machine$integer.max, upper = .Machine$integer.max,
+            allow_NULL = TRUE, allow_NA = FALSE)
   nonfinite <- match.arg(nonfinite)
   if(!is.function(log_posterior)){
     stop("'log_posterior' must be a function.", call. = FALSE)

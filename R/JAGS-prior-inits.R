@@ -4,7 +4,8 @@
 #' a 'JAGS' model.
 #'
 #' @param chains number of chains
-#' @param seed seed for random number generation. The initial values are drawn
+#' @param seed seed for random number generation: a number between
+#'   \code{-.Machine$integer.max} and \code{.Machine$integer.max}. The initial values are drawn
 #'   after \code{set.seed(seed)}; each chain's \code{.RNG.seed} is drawn from the
 #'   same seed with \code{sample.int(.Machine$integer.max, chains)}, so the seed
 #'   of a chain does not depend on the number of chains. The caller's
@@ -41,7 +42,8 @@ JAGS_get_inits            <- function(prior_list, chains, seed){
 .JAGS_check_inits_input    <- function(prior_list, chains, seed){
 
   check_int(chains, "chains", lower = 1)
-  check_real(seed, "seed", allow_NULL = TRUE)
+  check_real(seed, "seed", lower = -.Machine$integer.max, upper = .Machine$integer.max,
+             allow_NULL = TRUE, allow_NA = FALSE)
 
   # without priors, only the random-number generator is initialized
   if(length(prior_list) > 0){

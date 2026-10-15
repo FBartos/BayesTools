@@ -89,7 +89,8 @@
 #' @param cores number of cores used for multithreading if \code{parallel = TRUE},
 #'  defaults to \code{chains}
 #' @param silent whether the function should proceed silently, defaults to \code{TRUE}
-#' @param seed seed for random number generation by \code{JAGS_fit()}.
+#' @param seed seed for random number generation by \code{JAGS_fit()}: an
+#'   integer between \code{-.Machine$integer.max} and \code{.Machine$integer.max}.
 #'   Draws are reproducible for the same \code{seed}, \code{chains}, and R
 #'   random-number generator settings (\code{RNGkind()}), and, with
 #'   \code{parallel = TRUE}, the same \code{cores}. Parallel draws need not equal
@@ -397,7 +398,7 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
     formula_required_packages <- unique(unlist(lapply(formula_output, function(output) output[["required_packages"]])), use.names = FALSE)
 
     # add the formula syntax to the model syntax
-    opening_bracket <- regexpr("{", model_syntax, fixed = TRUE)[1]
+    opening_bracket <- .JAGS_model_block_opening(model_syntax)
     syntax_start    <- substr(model_syntax, 1, opening_bracket)
     syntax_end      <- substr(model_syntax, opening_bracket + 1, nchar(model_syntax))
     model_syntax    <- paste0(syntax_start, "\n", formula_syntax, "\n", syntax_end)

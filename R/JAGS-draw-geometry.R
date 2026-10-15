@@ -391,10 +391,7 @@ print.BayesTools_draws_view <- function(x, ...){
       call. = FALSE
     )
   }
-  opening_bracket <- regexpr("{", model_syntax, fixed = TRUE)[1L]
-  if(opening_bracket < 1L){
-    stop("The JAGS model syntax has no opening model brace.", call. = FALSE)
-  }
+  opening_bracket <- .JAGS_model_block_opening(model_syntax)
   syntax_start <- substr(model_syntax, 1L, opening_bracket)
   syntax_end <- substr(model_syntax, opening_bracket + 1L, nchar(model_syntax))
   model_syntax <- paste0(

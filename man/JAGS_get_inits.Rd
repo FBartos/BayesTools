@@ -12,7 +12,8 @@ JAGS_get_inits(prior_list, chains, seed)
 
 \item{chains}{number of chains}
 
-\item{seed}{seed for random number generation. The initial values are drawn
+\item{seed}{seed for random number generation: a number between
+\code{-.Machine$integer.max} and \code{.Machine$integer.max}. The initial values are drawn
 after \code{set.seed(seed)}; each chain's \code{.RNG.seed} is drawn from the
 same seed with \code{sample.int(.Machine$integer.max, chains)}, so the seed
 of a chain does not depend on the number of chains. The caller's

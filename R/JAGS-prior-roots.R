@@ -76,13 +76,14 @@
     append(.get_spike_and_slab_variable(prior), paste0(parameter, "_variable"))
     append(.get_spike_and_slab_inclusion(prior), paste0(parameter, "_inclusion"))
     add(paste0(parameter, "_indicator"))
-    shape <- if(is.prior.factor(prior)) .get_prior_factor_levels(prior) else if(is.prior.vector(prior)) prior$parameters$K else integer()
-    add(parameter, shape)
+    # the parameter has the shape of its variable (a factor or vector prior)
+    add(parameter, roots[[paste0(parameter, "_variable")]])
   }else if(is.prior.mixture(prior)){
     add(paste0(parameter, "_indicator"))
     for(k in seq_along(prior)) append(prior[[k]], paste0(parameter, "_component_", k))
-    shape <- if(is.prior.factor(prior)) .get_prior_factor_levels(prior) else if(is.prior.vector(prior)) prior[[1L]]$parameters$K else integer()
-    add(parameter, shape)
+    # the parameter has the shape of the largest of its components
+    component_shapes <- lapply(seq_along(prior), function(k) roots[[paste0(parameter, "_component_", k)]])
+    add(parameter, component_shapes[[which.max(lengths(component_shapes))]])
   }else if(is.prior.factor(prior) || is.prior.vector(prior)){
     K <- if(is.prior.factor(prior)) .get_prior_factor_levels(prior) else prior$parameters$K
     add(parameter, K)

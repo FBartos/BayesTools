@@ -14,7 +14,9 @@
 #' @param ylim y plotting range
 #' @param lags number of lags to be shown for the autocorrelation plot.
 #' Defaults to \code{30}.
-#' @details Autocorrelation uses the retained original iteration positions.
+#' @details The trace shows the retained MCMC iteration of every draw on its
+#' x axis (thinned chains keep their original positions).
+#' Autocorrelation uses the retained original iteration positions.
 #' Requested lags without finite observation pairs, beyond the retained chain,
 #' or with nonfinite autocorrelation are retained as \code{NA}. One warning per
 #' parameter and chain has classes \code{BayesTools_autocorrelation_unavailable}
@@ -230,8 +232,15 @@ JAGS_diagnostics                 <- function(fit, parameter, type, plot_type = "
   samples_chain <- lapply(seq_along(model_samples_list), function(i) {
     return(rep(i, nrow(model_samples_list[[i]])))
   })
+  # the retained MCMC iteration of every draw (thinned and started chains
+  # keep their original positions)
   samples_iter  <- lapply(seq_along(model_samples_list), function(i) {
-    return(1:nrow(model_samples_list[[i]]))
+    mcpar <- attr(model_samples_list[[i]], "mcpar", exact = TRUE)
+    n     <- nrow(model_samples_list[[i]])
+    if(is.numeric(mcpar) && length(mcpar) == 3L && all(is.finite(mcpar))){
+      return(seq(from = mcpar[1L], by = mcpar[3L], length.out = n))
+    }
+    return(seq_len(n))
   })
   model_samples <- do.call(rbind, model_samples_list)
 

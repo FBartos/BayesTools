@@ -217,8 +217,10 @@ test_that("JAGS_get_inits handles various prior types", {
   )
 
   inits_point <- JAGS_get_inits(priors_point, chains = 2, seed = 1)
-  # Point priors should not generate inits (they're fixed)
-  expect_true(!("mu" %in% names(inits_point[[1]])) || all(sapply(inits_point, function(i) i$mu == 5)))
+  # Point priors generate no inits (they're fixed): only the RNG entries remain
+  for(init in inits_point){
+    expect_setequal(names(init), c(".RNG.seed", ".RNG.name"))
+  }
 
   # Test with factor priors
   priors_factor <- list(

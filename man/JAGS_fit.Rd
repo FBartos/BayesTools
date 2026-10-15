@@ -157,7 +157,8 @@ defaults to \code{chains}}
 
 \item{silent}{whether the function should proceed silently, defaults to \code{TRUE}}
 
-\item{seed}{seed for random number generation by \code{JAGS_fit()}.
+\item{seed}{seed for random number generation by \code{JAGS_fit()}: an
+integer between \code{-.Machine$integer.max} and \code{.Machine$integer.max}.
 Draws are reproducible for the same \code{seed}, \code{chains}, and R
 random-number generator settings (\code{RNGkind()}), and, with
 \code{parallel = TRUE}, the same \code{cores}. Parallel draws need not equal

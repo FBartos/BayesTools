@@ -84,6 +84,8 @@ Creates density plots, trace plots, and autocorrelation plots
 for a given parameter of a JAGS model.
 }
 \details{
+The trace shows the retained MCMC iteration of every draw on its
+x axis (thinned chains keep their original positions).
 Autocorrelation uses the retained original iteration positions.
 Requested lags without finite observation pairs, beyond the retained chain,
 or with nonfinite autocorrelation are retained as \code{NA}. One warning per

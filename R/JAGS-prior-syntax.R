@@ -31,7 +31,7 @@ JAGS_add_priors           <- function(syntax, prior_list){
   .bt_validate_ordered_shared_allocations(prior_list)
 
   # identify parts of the syntax
-  opening_bracket <- regexpr("{", syntax, fixed = TRUE)[1]
+  opening_bracket <- .JAGS_model_block_opening(syntax)
   syntax_start    <- substr(syntax, 1, opening_bracket)
   syntax_end      <- substr(syntax, opening_bracket + 1, nchar(syntax))
 
@@ -573,6 +573,18 @@ JAGS_add_priors           <- function(syntax, prior_list){
   return(syntax)
 }
 
+
+# The position of the opening brace of the model block: generated syntax is
+# inserted there, never into a data block that precedes the model block.
+.JAGS_model_block_opening <- function(syntax){
+
+  opening <- regexpr("(^|[^A-Za-z0-9_.])model[[:space:]]*\\{", syntax, perl = TRUE)
+  if(opening < 1L){
+    stop("The JAGS model syntax has no 'model' block with an opening brace.", call. = FALSE)
+  }
+
+  as.integer(opening) + attr(opening, "match.length") - 1L
+}
 
 .check_JAGS_syntax <- function(syntax){
 
