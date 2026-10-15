@@ -381,7 +381,9 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
   )
   model_samples <- random_summary$model_samples
   prior_list <- random_summary$prior_list
-  warnings <- c(warnings, random_summary$warnings)
+  if(length(random_summary$warnings) > 0L){
+    warnings <- c(warnings, random_summary$warnings)
+  }
   random_included <- list()
   random_unconditioned <- logical()
   if(conditional){
