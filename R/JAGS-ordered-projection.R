@@ -11,6 +11,22 @@
     constant <- all(coefficients == matrix(rep(coefficients[1L,], each=dims[[axis]]), nrow=dims[[axis]]))
     record <- tensor$records[[key]]
     if(!constant && !identical(record$spec$type, "fixed")) next
+    if(!constant){
+      # Double-precision range edge: a weight times a fixed share that
+      # underflows to an exact zero would be declared a zero atom. The
+      # contraction is refused instead; no rescaling is attempted.
+      products <- coefficients * record$spec$weights
+      if(any(products == 0 & coefficients != 0 & record$spec$weights != 0)){
+        .bt_ordered_stop(
+          paste0(
+            "The ordered scalar measure is numerically unavailable: a product of a ",
+            "projection weight and a fixed allocation share underflows to zero. ",
+            "Inspect fitted snapshot values with 'parameter_draws()'."
+          ),
+          class = "BayesTools_numerical_unavailable"
+        )
+      }
+    }
     reduced <- if(constant) coefficients[1L,] else as.vector(crossprod(record$spec$weights, coefficients))
     tensor$records[[key]] <- NULL
     tensor$coefficients <- reduced

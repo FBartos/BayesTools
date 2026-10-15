@@ -112,7 +112,16 @@
      any(value$model > length(value$models)) || !is.matrix(value$primitives) || !is.numeric(value$primitives) ||
      (ncol(value$primitives) > 0L && (is.null(colnames(value$primitives)) || anyDuplicated(colnames(value$primitives)))) ||
      length(value$model) != nrow(value$primitives) || length(value$draw_index) != nrow(value$primitives)){
-    return("it must contain validated row-aligned ordered primitive sources and model provenance")
+    parameter <- if(is.list(value) && is.character(value$parameter) &&
+                    length(value$parameter) == 1L && !is.na(value$parameter)){
+      paste0(" for parameter '", value$parameter, "'")
+    }else{
+      ""
+    }
+    return(paste0(
+      "it must contain validated row-aligned ordered primitive sources and model provenance",
+      parameter, "; recreate the draws from the fitted models"
+    ))
   }
   .model_probability_validate(value$model_probabilities, value$model_log_probabilities, value$model_probability_declaration, normalized = TRUE)
   if(!is.null(value$conditioning)){

@@ -3748,3 +3748,43 @@ test_that("other refusals of ordered mixtures are unchanged and point behavior b
   expect_true(is.prior.ordered(
     prior_ordered(prior_mixture(list(prior("normal", list(0, 1)), prior("point", list(0)))))))
 })
+
+test_that("an underflowing weight times fixed share is refused, not declared a zero atom", {
+
+  reduce <- function(weights, coefficients){
+    BayesTools:::.bt_ordered_tensor_reduce(list(
+      records = list(a = list(dim = 2L, spec = list(type = "fixed", weights = weights))),
+      coefficients = coefficients
+    ))
+  }
+  # representable products reduce exactly
+  ok <- reduce(c(0.25, 0.75), c(1e-100, 2e-100))
+  expect_length(ok$records, 0L)
+  expect_equal(ok$coefficients, 1.75e-100, tolerance = 1e-14)
+  # 1e-200 * 1e-200 underflows; the share 0 or a zero weight is no underflow
+  expect_error(
+    reduce(c(1e-200, 0.5), c(1e-200, 0)),
+    "a product of a projection weight and a fixed allocation share underflows to zero",
+    fixed = TRUE,
+    class = "BayesTools_numerical_unavailable"
+  )
+  expect_error(
+    reduce(c(1e-200, 0.5), c(1e-200, 0)),
+    class = "BayesTools_ordered_unavailable"
+  )
+  expect_equal(reduce(c(0, 1), c(1e-200, 5))$coefficients, 5)
+
+  # malformed retained ordered sources name the parameter and a remedy
+  expect_identical(
+    BayesTools:::.bt_ordered_source_validate(structure(
+      list(version = 2L, parameter = "mu_g"), class = c("BayesTools_ordered_source", "list")
+    )),
+    paste0("it must contain validated row-aligned ordered primitive sources and ",
+           "model provenance for parameter 'mu_g'; recreate the draws from the fitted models")
+  )
+  expect_identical(
+    BayesTools:::.bt_ordered_source_validate(list()),
+    paste0("it must contain validated row-aligned ordered primitive sources and ",
+           "model provenance; recreate the draws from the fitted models")
+  )
+})
