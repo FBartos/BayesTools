@@ -409,9 +409,9 @@ prior_random <- function(..., sd = NULL, covariance = NULL, cor = NULL,
 #'   unallocated random-effect blocks at resolution time.
 #' @param contrasts for `random_block()`, an optional named character vector
 #'   mapping factor predictors in that block to contrast families. Accepted
-#'   values are `"treatment"`, `"independent"`, `"orthonormal"`,
-#'   `"meandif"`, `"cumulative"`, and `"cumulative_levels"` (with or without
-#'   the `contr.` prefix). Random-block contrasts are resolved independently of
+#'   values are `"treatment"` (also spelled `"dummy"`), `"independent"`,
+#'   `"orthonormal"`, `"meandif"`, `"cumulative"`, and `"cumulative_levels"`
+#'   (with or without the `contr.` prefix). Random-block contrasts are resolved independently of
 #'   the fixed-effect design. Correlation structures with a structure-defined
 #'   level basis do not accept this argument.
 #' @export
@@ -439,6 +439,12 @@ random_block <- function(sd = NULL, covariance = NULL, cor = NULL,
     }
   }
   covariance_sd <- if(!is.null(covariance)) covariance$sd else NULL
+  if(!is.null(sd) && !is.null(covariance_sd)){
+    stop(
+      "Random-effect SD prior was supplied both as 'sd' and 'covariance = random_covariance(sd = ...)'. Supply it in only one place.",
+      call. = FALSE
+    )
+  }
   if(!is.null(sd_source)){
     if(!is.null(sd)){
       stop("'sd_source' cannot be supplied together with block-local 'sd'.", call. = FALSE)
@@ -560,6 +566,7 @@ random_variance_allocation <- function(name, terms = NULL, sd = NULL,
   gate_only <- identical(target, "block") && !is.null(terms) &&
     length(terms) == 1L && is.null(weights) && !is.null(inclusion)
   if(gate_only){
+    .bt_check_random_allocation_inclusion(inclusion)
     component_labels <- .bt_random_variance_allocation_component_labels(terms)
     if(!identical(sort(names(inclusion)), sort(unname(component_labels)))){
       stop(
@@ -956,9 +963,12 @@ is.prior_random <- function(x){
     cumulative = "contr.ordered_cumulative",
     cumulative_levels = "contr.ordered_cumulative_levels",
     "contr.treatment" = "contr.treatment",
+    "contr.dummy" = "contr.treatment",
     "contr.independent" = "contr.independent",
     "contr.orthonormal" = "contr.orthonormal",
     "contr.meandif" = "contr.meandif",
+    "contr.cumulative" = "contr.ordered_cumulative",
+    "contr.cumulative_levels" = "contr.ordered_cumulative_levels",
     "contr.ordered_cumulative" = "contr.ordered_cumulative",
     "contr.ordered_cumulative_levels" = "contr.ordered_cumulative_levels"
   )
@@ -1014,6 +1024,13 @@ is.prior_random <- function(x){
 
   if(is.prior.point(x)){
     location <- x$parameters[["location"]]
+    if(is.expression(location)){
+      stop(
+        "The 'sd' prior cannot be an expression point: a point SD must be a ",
+        "nonnegative number. Use a numeric point or a prior distribution.",
+        call. = FALSE
+      )
+    }
     if(length(location) == 0L || anyNA(location) || any(location < 0)){
       stop("The 'sd' prior must have nonnegative support.", call. = FALSE)
     }
@@ -1185,19 +1202,21 @@ is.prior_random <- function(x){
   invisible(TRUE)
 }
 
+# The allocation's own `name` is the identifier everything else uses; the name
+# of the list entry is only a fallback for an object without one.
 .bt_random_allocation_display_label <- function(allocations, i){
-
-  allocation_names <- names(allocations)
-  if(!is.null(allocation_names) && length(allocation_names) >= i &&
-     !is.na(allocation_names[[i]]) && nzchar(allocation_names[[i]])){
-    return(paste0("'", allocation_names[[i]], "'"))
-  }
 
   allocation <- allocations[[i]]
   if(inherits(allocation, "random_variance_allocation") &&
      !is.null(allocation$name) && length(allocation$name) == 1L &&
      !is.na(allocation$name) && nzchar(allocation$name)){
     return(paste0("'", allocation$name, "'"))
+  }
+
+  allocation_names <- names(allocations)
+  if(!is.null(allocation_names) && length(allocation_names) >= i &&
+     !is.na(allocation_names[[i]]) && nzchar(allocation_names[[i]])){
+    return(paste0("'", allocation_names[[i]], "'"))
   }
 
   paste0("#", i)

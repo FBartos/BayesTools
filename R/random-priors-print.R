@@ -13,7 +13,11 @@
 .bt_format_random_print_number <- function(x, digits_estimates){
 
   if(is.numeric(x)){
-    return(paste(round(x, digits_estimates), collapse = ", "))
+    rounded <- round(x, digits_estimates)
+    # A small positive value is not printed as 0.
+    small <- is.finite(x) & x != 0 & rounded == 0
+    rounded[small] <- signif(x[small], max(digits_estimates, 1L))
+    return(paste(rounded, collapse = ", "))
   }
 
   paste(as.character(x), collapse = ", ")
@@ -38,17 +42,17 @@
 
 .bt_format_random_allocation_label <- function(allocations, i){
 
-  allocation_names <- names(allocations)
-  if(!is.null(allocation_names) && length(allocation_names) >= i &&
-     !is.na(allocation_names[[i]]) && nzchar(allocation_names[[i]])){
-    return(allocation_names[[i]])
-  }
-
   allocation <- allocations[[i]]
   if(inherits(allocation, "random_variance_allocation") &&
      !is.null(allocation$name) && length(allocation$name) == 1L &&
      !is.na(allocation$name) && nzchar(allocation$name)){
     return(allocation$name)
+  }
+
+  allocation_names <- names(allocations)
+  if(!is.null(allocation_names) && length(allocation_names) >= i &&
+     !is.na(allocation_names[[i]]) && nzchar(allocation_names[[i]])){
+    return(allocation_names[[i]])
   }
 
   paste0("#", i)

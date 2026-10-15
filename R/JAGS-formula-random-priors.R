@@ -983,11 +983,13 @@
   if(new_lower >= new_upper){
     stop(label, " has no support inside (", lower, ", ", upper, ").", call. = FALSE)
   }
-  if(isTRUE(warn) &&
-     (!identical(new_lower, x$truncation[["lower"]]) || !identical(new_upper, x$truncation[["upper"]]))){
+  # Compared by value: an integer bound equal to the double one is no change.
+  truncated <- new_lower != x$truncation[["lower"]] ||
+    new_upper != x$truncation[["upper"]]
+  if(isTRUE(warn) && truncated){
     warning(label, " was truncated to the valid correlation range.", immediate. = TRUE, call. = FALSE)
   }
-  if(!identical(new_lower, x$truncation[["lower"]]) || !identical(new_upper, x$truncation[["upper"]])){
+  if(truncated){
     x$truncation[["lower"]] <- new_lower
     x$truncation[["upper"]] <- new_upper
   }
@@ -1034,6 +1036,15 @@
       stop("Random-effect term override names must be unique.", call. = FALSE)
     }
     unknown_terms <- setdiff(names(term_overrides), names(out))
+    if(length(unknown_terms) > 0L && isTRUE(homogeneous_sd)){
+      stop(
+        "Term-specific SD overrides in 'terms' (",
+        paste(unknown_terms, collapse = ", "),
+        ") are not available for a covariance structure with one shared SD. ",
+        "Supply a single 'sd'.",
+        call. = FALSE
+      )
+    }
     if(length(unknown_terms) > 0L){
       stop("Unknown random-effect term override(s): ", paste(unknown_terms, collapse = ", "), ".", call. = FALSE)
     }
@@ -1113,13 +1124,13 @@
     return(prior)
   }
 
+  # Construction rejects negative SD support (.bt_check_random_sd_prior_support()),
+  # so no prior reaches the compiler to be corrected silently.
   if(range(prior)[1] < 0){
-    warning(
-      paste0("The lower bound of the ", label, " prior distribution is below 0. Correcting to 0."),
-      immediate. = TRUE,
+    stop(
+      "Random-effect SD prior ", label, " has support below 0.",
       call. = FALSE
     )
-    prior$truncation$lower <- 0
   }
 
   prior

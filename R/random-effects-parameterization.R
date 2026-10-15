@@ -173,8 +173,14 @@
     return(list(ok = FALSE, reason = "one or more grouping levels are unobserved"))
   }
 
+  # The rows of every group, found once (a scan of all rows per group is
+  # quadratic in the number of groups).
+  rows_by_group <- split(
+    seq_len(nrow(model_matrix)),
+    factor(group_map, levels = observed_groups)
+  )
   for(group in observed_groups){
-    X <- model_matrix[group_map == group, , drop = FALSE]
+    X <- model_matrix[rows_by_group[[group]], , drop = FALSE]
     column_scale <- apply(abs(X), 2L, max)
     X_scaled <- sweep(X, 2L, ifelse(column_scale > 0, column_scale, 1), "/")
     squared <- colSums(X_scaled^2)

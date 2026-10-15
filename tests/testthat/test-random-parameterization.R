@@ -248,7 +248,15 @@ test_that("supplied block covariance replaces the shared object with constructor
     g = random_block(cor = local_cor))
   expect_identical(.bt_random_prior_for_block(doubled, "g")$sd, sd)
   expect_null(.bt_random_prior_for_block(doubled, "g")$covariance$sd)
-  expect_type(compile(doubled), "list")
+  # the block's own SD is compiled; the shared covariance SD it replaces is not
+  compiled <- compile(doubled)
+  sd_priors <- Filter(function(p) identical(p$distribution, "gamma"),
+                      compiled$prior_list)
+  expect_length(sd_priors, 1L)
+  expect_identical(sd_priors[[1L]]$parameters, sd$parameters)
+  expect_false(any(vapply(compiled$prior_list, function(p){
+    is.prior.point(p) && identical(p$parameters[["location"]], 2)
+  }, logical(1))))
   expect_error(compile(prior_random(sd = sd, covariance = random_covariance(sd = sd))),
     "SD prior was supplied both", fixed = TRUE)
   expect_error(compile(prior_random(covariance = random_covariance(sd = sd),
@@ -1066,4 +1074,80 @@ test_that("compiled auto parameterization falls back for structure contracts", {
     covariance_reason,
     fixed = TRUE
   )
+})
+
+test_that("random-effect specifications name allocations, contrasts and SDs consistently", {
+
+  # An allocation is printed and reported under its own name, not the name of
+  # the list entry that holds it.
+  allocation <- random_variance_allocation(
+    "bar", terms = c("g1", "g2"), sd = prior("gamma", list(2, 2)),
+    weights = prior("dirichlet", list(alpha = c(1, 1)))
+  )
+  printed <- print(prior_random(allocation = list(foo = allocation)), silent = TRUE)
+  expect_true("allocation: bar" %in% printed)
+  expect_false(any(grepl("foo", printed, fixed = TRUE)))
+  expect_identical(
+    BayesTools:::.bt_random_allocation_display_label(list(foo = allocation), 1L),
+    "'bar'"
+  )
+
+  # The documented `contr.` spellings of every contrast family are accepted.
+  expect_identical(
+    random_block(contrasts = c(a = "contr.cumulative", b = "contr.cumulative_levels",
+                               c = "contr.dummy", d = "dummy"))$contrasts,
+    c(a = "contr.ordered_cumulative", b = "contr.ordered_cumulative_levels",
+      c = "contr.treatment", d = "contr.treatment")
+  )
+
+  # SDs: an expression point, a doubled specification, a gate-only inclusion
+  # that is not a list.
+  expect_error(
+    random_block(sd = prior("point", list(location = expression(tau)))),
+    "The 'sd' prior cannot be an expression point",
+    fixed = TRUE
+  )
+  expect_error(
+    random_block(sd = prior("gamma", list(2, 2)),
+                 covariance = random_covariance(sd = prior("gamma", list(3, 3)))),
+    "Random-effect SD prior was supplied both as 'sd' and 'covariance = random_covariance(sd = ...)'.",
+    fixed = TRUE
+  )
+  expect_error(
+    random_variance_allocation("a", terms = "g", sd = prior("gamma", list(2, 2)),
+                               inclusion = prior("beta", list(1, 1))),
+    "'inclusion' must be a named list of scalar probability priors.",
+    fixed = TRUE
+  )
+
+  # One shared SD cannot take term-specific overrides.
+  data <- data.frame(g = factor(rep(c("a", "b"), each = 3)), index = factor(rep(1:3, 2)))
+  expect_error(
+    JAGS_formula(~ cs(index | g), "mu", data,
+      list(intercept = prior("point", list(0))),
+      prior_random = prior_random(g = random_block(
+        sd = prior("gamma", list(2, 2)),
+        terms = list(x = prior("gamma", list(2, 2)))))),
+    "Term-specific SD overrides in 'terms' (x) are not available for a covariance structure with one shared SD. Supply a single 'sd'.",
+    fixed = TRUE
+  )
+
+  # Small LKJ concentrations are not printed as 0.
+  expect_identical(print(prior_lkj(eta = 0.001), silent = TRUE), "R ~ LKJ(eta = 0.001)")
+
+  # A negative SD support is rejected at construction; the compiler never
+  # corrects it silently.
+  expect_error(
+    BayesTools:::.bt_random_effect_force_nonnegative_prior_component(
+      prior("normal", list(0, 1)), "'sd'"
+    ),
+    "Random-effect SD prior 'sd' has support below 0.",
+    fixed = TRUE
+  )
+
+  # An integer truncation equal to the valid range is no truncation.
+  expect_no_warning(BayesTools:::.bt_random_effect_bound_scalar_prior(
+    prior("normal", list(0, 1), truncation = list(lower = -1L, upper = 1L)),
+    lower = -1, upper = 1, label = "AR1 raw correlation prior"
+  ))
 })

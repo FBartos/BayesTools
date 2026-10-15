@@ -105,9 +105,9 @@ unallocated random-effect blocks at resolution time.}
 
 \item{contrasts}{for \code{random_block()}, an optional named character vector
 mapping factor predictors in that block to contrast families. Accepted
-values are \code{"treatment"}, \code{"independent"}, \code{"orthonormal"},
-\code{"meandif"}, \code{"cumulative"}, and \code{"cumulative_levels"} (with or without
-the \code{contr.} prefix). Random-block contrasts are resolved independently of
+values are \code{"treatment"} (also spelled \code{"dummy"}), \code{"independent"},
+\code{"orthonormal"}, \code{"meandif"}, \code{"cumulative"}, and \code{"cumulative_levels"}
+(with or without the \code{contr.} prefix). Random-block contrasts are resolved independently of
 the fixed-effect design. Correlation structures with a structure-defined
 level basis do not accept this argument.}
 
