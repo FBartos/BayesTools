@@ -684,7 +684,7 @@ NULL
 
   for (par in factor_parameters) {
 
-    prior_list[[par]] <- .add_factor_metadata_from_named_objects(prior_list[[par]], par, prior_list)
+    prior_list[[par]] <- .add_factor_metadata_from_named_objects(prior_list[[par]])
     par_names <- .JAGS_prior_factor_names(par, prior_list[[par]])
 
     temp_position <- min(which(colnames(model_samples) %in% par_names))

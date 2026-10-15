@@ -41,7 +41,9 @@ created with the formula}
 levels and the standardization of the design.}
 
 \item{prior_list}{named list of prior distribution of parameters specified within
-the \code{formula}. When suppressing the intercept in the formula, an
+the \code{formula}. The name \code{"intercept"} is reserved for the intercept:
+no other predictor or prior name may contain the substring \code{"intercept"}.
+When suppressing the intercept in the formula, an
 "intercept" prior can be explicitly specified; otherwise,
 \code{prior("spike", list(0))} is
 automatically added, or \code{prior("spike", list(1))} when the formula uses
@@ -82,13 +84,13 @@ specifying which resolved random-effect blocks should be compiled as sampled
 random effects and which should be compiled as structural marginalized
 blocks.}
 
-\item{model_data}{optional named list of the JAGS model data of the fit,
-also retained for expression-point coefficient dependencies and scalar
-multiplier/SD sources. Owned point-expression arrays retain their original
-dimensions independently of prediction-row counts.
-as the \code{data} argument of \code{\link[=JAGS_fit]{JAGS_fit()}}. \code{expression()} terms of
+\item{model_data}{optional named list of the JAGS model data of the fit, as
+the \code{data} argument of \code{\link[=JAGS_fit]{JAGS_fit()}}. \code{expression()} terms of
 \code{formula} may read these data besides \code{data}; the design keeps
-the data they read, as the fitted design does.}
+the data they read, as the fitted design does. The data are also retained
+for expression-point coefficient dependencies and scalar multiplier/SD
+sources. Owned point-expression arrays retain their original dimensions
+independently of prediction-row counts.}
 }
 \value{
 An \code{mcmc} object of the draws carrying the formula design of

@@ -22,7 +22,9 @@
 #' unless \code{formula_scale} standardizes the predictor, which makes it
 #' numeric. Otherwise convert the predictor to a factor or to numeric 0/1.
 #' @param prior_list named list of prior distribution of parameters specified within
-#' the \code{formula}. When suppressing the intercept in the formula, an
+#' the \code{formula}. The name \code{"intercept"} is reserved for the intercept:
+#' no other predictor or prior name may contain the substring \code{"intercept"}.
+#' When suppressing the intercept in the formula, an
 #' "intercept" prior can be explicitly specified; otherwise,
 #' \code{prior("spike", list(0))} is
 #' automatically added, or \code{prior("spike", list(1))} when the formula uses

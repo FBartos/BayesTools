@@ -14122,3 +14122,21 @@ test_that("SD components of mixed-contrast random interactions are level cells o
     c("intercept", paste0("f[", c("x", "y", "z"), "]__xXx__g[", rep(c("p", "q"), each = 3L), "]"))
   )
 })
+
+test_that("dot expansion is refused in the package's words and an empty formula_scale scales nothing", {
+
+  data <- data.frame(x = c(-1, 0, 1, 2), g = factor(c("a", "b", "a", "b")))
+  priors <- list(intercept = prior("normal", list(0, 1)),
+                 x = prior("normal", list(0, 1)))
+  for(formula in list(~ ., ~ x + .)){
+    expect_error(
+      JAGS_formula(formula, "mu", data, priors),
+      "Unsupported fixed-formula term '.'. Dot expansion is not supported; list each data-frame column explicitly.",
+      fixed = TRUE
+    )
+  }
+  scaled_none <- JAGS_formula(~ x, "mu", data, priors, formula_scale = list())
+  unscaled <- JAGS_formula(~ x, "mu", data, priors)
+  expect_identical(scaled_none$data, unscaled$data)
+  expect_length(scaled_none$formula_scale, 0L)
+})

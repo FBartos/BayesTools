@@ -11,14 +11,15 @@ transform_factor_samples(samples)
 \code{mix_posteriors} function}
 }
 \value{
-\code{transform_meandif_samples} returns a named list of mixed posterior
-distributions (either a vector of matrix).
+\code{transform_factor_samples} returns a named list of mixed
+posterior distributions (either a vector or a matrix).
 }
 \description{
 Transforms posterior samples from model-averaged posterior
-distributions based on meandif/orthonormal prior distributions into differences from
-the mean.
+distributions of factor priors: meandif and orthonormal samples into
+differences from the mean, and the samples of ordered factor priors from
+their contrast coefficients to the level scale.
 }
 \seealso{
-\link{mix_posteriors} \link{transform_meandif_samples} \link{transform_meandif_samples} \link{transform_orthonormal_samples}
+\link{mix_posteriors} \link{transform_meandif_samples} \link{transform_orthonormal_samples}
 }

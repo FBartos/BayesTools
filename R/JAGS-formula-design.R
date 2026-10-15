@@ -356,6 +356,10 @@
   if(!is.list(formula_scale)){
     stop("'formula_scale' must be NULL, a single TRUE or FALSE, or a named list.", call. = FALSE)
   }
+  if(length(formula_scale) == 0L){
+    # an empty list scales nothing, as it did before named lists were checked
+    return(invisible(NULL))
+  }
 
   if(is.null(names(formula_scale)) || anyNA(names(formula_scale)) || any(names(formula_scale) == "")){
     stop("'formula_scale' must be a named list.", call. = FALSE)
@@ -458,13 +462,13 @@ JAGS_formula_design <- function(fit, parameter = NULL){
 #' several formula parameters can be attached one after another.
 #' @param data data.frame the formula is fitted to: it determines the factor
 #' levels and the standardization of the design.
-#' @param model_data optional named list of the JAGS model data of the fit,
-#' also retained for expression-point coefficient dependencies and scalar
-#' multiplier/SD sources. Owned point-expression arrays retain their original
-#' dimensions independently of prediction-row counts.
-#' as the \code{data} argument of [JAGS_fit()]. \code{expression()} terms of
+#' @param model_data optional named list of the JAGS model data of the fit, as
+#' the \code{data} argument of [JAGS_fit()]. \code{expression()} terms of
 #' \code{formula} may read these data besides \code{data}; the design keeps
-#' the data they read, as the fitted design does.
+#' the data they read, as the fitted design does. The data are also retained
+#' for expression-point coefficient dependencies and scalar multiplier/SD
+#' sources. Owned point-expression arrays retain their original dimensions
+#' independently of prediction-row counts.
 #' @inheritParams JAGS_formula
 #'
 #' @return An \code{mcmc} object of the draws carrying the formula design of

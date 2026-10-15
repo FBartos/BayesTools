@@ -1,7 +1,20 @@
 # formula helper functions
+# `terms()` cannot expand `.` without data and would fail with its own message;
+# refuse dot expansion in the package's words before any formula is analysed.
+.bt_check_formula_dot <- function(formula){
+  if("." %in% all.names(formula)){
+    stop(
+      "Unsupported fixed-formula term '.'. Dot expansion is not supported; ",
+      "list each data-frame column explicitly.",
+      call. = FALSE
+    )
+  }
+  invisible(TRUE)
+}
 .remove_response        <- function(formula){
   # removes response from the expression
   # (prevents crash on formula evaluations)
+  .bt_check_formula_dot(formula)
   if(attr(stats::terms(formula), "response")  == 1){
     formula[2] <- NULL
   }
@@ -39,13 +52,7 @@
 
   validate_expression <- function(expression){
     if(is.symbol(expression)){
-      if(identical(as.character(expression), ".")){
-        stop(
-          "Unsupported fixed-formula term '.'. Dot expansion is not supported; ",
-          "list each data-frame column explicitly.",
-          call. = FALSE
-        )
-      }
+      # (a `.` never reaches this check: .remove_response() refuses it first)
       return(invisible(TRUE))
     }
     if(is.numeric(expression) && length(expression) == 1L &&

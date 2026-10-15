@@ -299,7 +299,7 @@ plot_transformed_prior <- function(prior_list, column_names, formula_scale = NUL
 
   metadata <- sample_metadata
   if(!is.null(samples)){
-    metadata <- .add_factor_metadata_from_named_objects(metadata, parameter, samples)
+    metadata <- .add_factor_metadata_from_named_objects(metadata)
   }
 
   if(isTRUE(attr(metadata, "orthonormal")) ||

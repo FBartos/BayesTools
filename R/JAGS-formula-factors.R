@@ -294,7 +294,7 @@
   return(x)
 }
 
-.add_factor_metadata_from_named_objects <- function(x, parameter, objects){
+.add_factor_metadata_from_named_objects <- function(x){
 
   level_names <- .factor_level_list(x)
   if(is.null(level_names)){
@@ -694,15 +694,16 @@
 #' @title Transform factor posterior samples into differences from the mean
 #'
 #' @description Transforms posterior samples from model-averaged posterior
-#' distributions based on meandif/orthonormal prior distributions into differences from
-#' the mean.
+#' distributions of factor priors: meandif and orthonormal samples into
+#' differences from the mean, and the samples of ordered factor priors from
+#' their contrast coefficients to the level scale.
 #'
 #' @param samples (a list) of mixed posterior distributions created with
 #' \code{mix_posteriors} function
-#' @return \code{transform_meandif_samples} returns a named list of mixed posterior
-#' distributions (either a vector of matrix).
+#' @return \code{transform_factor_samples} returns a named list of mixed
+#' posterior distributions (either a vector or a matrix).
 #'
-#' @seealso [mix_posteriors] [transform_meandif_samples] [transform_meandif_samples] [transform_orthonormal_samples]
+#' @seealso [mix_posteriors] [transform_meandif_samples] [transform_orthonormal_samples]
 #'
 #' @export
 transform_factor_samples <- function(samples){
@@ -737,7 +738,7 @@ transform_meandif_samples <- function(samples){
   for(i in seq_along(samples)){
     if(!inherits(samples[[i]],"mixed_posteriors.meandif_transformed") && inherits(samples[[i]], "mixed_posteriors.factor") && isTRUE(attr(samples[[i]], "meandif"))){
 
-      meandif_samples <- .add_factor_metadata_from_named_objects(samples[[i]], names(samples)[i], samples)
+      meandif_samples <- .add_factor_metadata_from_named_objects(samples[[i]])
       samples[[i]] <- .transform_factor_contrast_samples(
         coefficient_samples = meandif_samples,
         metadata            = meandif_samples,
@@ -772,7 +773,7 @@ transform_orthonormal_samples <- function(samples){
   for(i in seq_along(samples)){
     if(!inherits(samples[[i]],"mixed_posteriors.orthonormal_transformed") && inherits(samples[[i]], "mixed_posteriors.factor") && isTRUE(attr(samples[[i]], "orthonormal"))){
 
-      orthonormal_samples <- .add_factor_metadata_from_named_objects(samples[[i]], names(samples)[i], samples)
+      orthonormal_samples <- .add_factor_metadata_from_named_objects(samples[[i]])
       samples[[i]] <- .transform_factor_contrast_samples(
         coefficient_samples = orthonormal_samples,
         metadata            = orthonormal_samples,
@@ -794,7 +795,7 @@ transform_treatment_samples <- function(samples){
   for(i in seq_along(samples)){
     if(!inherits(samples[[i]],"mixed_posteriors.treatment_transformed") && inherits(samples[[i]], "mixed_posteriors.factor") && isTRUE(attr(samples[[i]], "treatment"))){
 
-      treatment_samples <- .add_factor_metadata_from_named_objects(samples[[i]], names(samples)[i], samples)
+      treatment_samples <- .add_factor_metadata_from_named_objects(samples[[i]])
       samples[[i]] <- .transform_factor_contrast_samples(
         coefficient_samples = treatment_samples,
         metadata            = treatment_samples,
@@ -817,7 +818,7 @@ transform_ordered_samples <- function(samples){
        inherits(samples[[i]], "mixed_posteriors.factor") &&
        isTRUE(attr(samples[[i]], "ordered", exact = TRUE))){
 
-      ordered_samples <- .add_factor_metadata_from_named_objects(samples[[i]], names(samples)[i], samples)
+      ordered_samples <- .add_factor_metadata_from_named_objects(samples[[i]])
       samples[[i]] <- .transform_factor_contrast_samples(
         coefficient_samples = ordered_samples,
         metadata            = ordered_samples,
