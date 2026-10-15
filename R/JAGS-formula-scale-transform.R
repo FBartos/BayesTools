@@ -31,7 +31,9 @@
 #' The contribution to a target term T from a source term S (where T is a subset
 #' of S's scaled components) is:
 #' \deqn{(-1)^{|extra|} \cdot \prod_{i \in extra} \mu_i / \prod_{i \in S_{scaled}} \sigma_i}
-#' where \eqn{extra = S_{scaled} \setminus T_{scaled}}.
+#' where \eqn{extra = S_{scaled} \setminus T_{scaled}}. Terms with a
+#' \code{multiply_by} multiplier (see [JAGS_formula()]) additionally carry the
+#' ratio of the source to the target multiplier, \eqn{m_S / m_T}.
 #' The posterior must contain every lower-order coefficient with a nonzero
 #' contribution from this expansion. If it does not, the function stops rather
 #' than returning an incomplete transformation.
@@ -328,36 +330,34 @@ transform_prior_samples <- function(fit, n_samples = 10000, seed = NULL, formula
     column_names   = NULL,
     seed           = seed
   ) else matrix(numeric(), n_samples, 0L, dimnames = list(NULL, character()))
+  # Each generator keeps the requested columns only; the columns it drops
+  # (primitives that a later generator or the transform still reads) are
+  # carried along.
+  keep_dropped <- function(generated, before){
+    dropped <- setdiff(colnames(before), colnames(generated))
+    if(length(dropped)) cbind(generated, before[, dropped, drop = FALSE]) else generated
+  }
   retained_primitives <- prior_samples
-  prior_samples <- .bt_add_lkj_prior_samples(
+  prior_samples <- keep_dropped(.bt_add_lkj_prior_samples(
     samples        = prior_samples,
     formula_design = formula_design,
     column_names   = column_names,
     n_samples      = n_samples
-  )
-  retained_columns <- setdiff(colnames(retained_primitives), colnames(prior_samples))
-  if(length(retained_columns)) prior_samples <- cbind(prior_samples,
-    retained_primitives[, retained_columns, drop = FALSE])
+  ), retained_primitives)
   retained_primitives <- prior_samples
-  prior_samples <- .bt_add_random_allocation_indicator_prior_samples(
+  prior_samples <- keep_dropped(.bt_add_random_allocation_indicator_prior_samples(
     samples      = prior_samples,
     prior_list   = prior_list,
     column_names = column_names,
     n_samples    = n_samples
-  )
-  retained_columns <- setdiff(colnames(retained_primitives), colnames(prior_samples))
-  if(length(retained_columns)) prior_samples <- cbind(prior_samples,
-    retained_primitives[, retained_columns, drop = FALSE])
+  ), retained_primitives)
   retained_primitives <- prior_samples
-  prior_samples <- .bt_add_random_deterministic_prior_samples(
+  prior_samples <- keep_dropped(.bt_add_random_deterministic_prior_samples(
     samples        = prior_samples,
     prior_list     = prior_list,
     formula_design = formula_design,
     column_names   = column_names
-  )
-  retained_columns <- setdiff(colnames(retained_primitives), colnames(prior_samples))
-  if(length(retained_columns)) prior_samples <- cbind(prior_samples,
-    retained_primitives[, retained_columns, drop = FALSE])
+  ), retained_primitives)
 
   if(!is.null(formula_scale) && length(formula_scale) > 0){
     prior_samples <- .apply_unscale_transform(prior_samples, formula_scale, targets = column_names,

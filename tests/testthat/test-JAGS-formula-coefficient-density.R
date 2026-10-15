@@ -232,6 +232,56 @@ test_that("D5 an empty scale overrides fitted scaling for a single chain", {
   expect_identical(serialize(fit, NULL), unscaled_fit)
 })
 
+test_that("scale overrides and prediction data are refused with the cause", {
+
+  formula_result <- JAGS_formula(
+    ~ 1 + x, "mu", data.frame(x = c(2, 4, 6)),
+    prior_list = list(intercept = prior("normal", list(0, 1)),
+                      x = prior("normal", list(0, 1))),
+    formula_scale = list(x = TRUE)
+  )
+  samples <- matrix(c(2, 3, 4, 5), nrow = 2L, byrow = TRUE,
+                    dimnames = list(NULL, c("mu_intercept", "mu_x")))
+  fit <- .formula_coefficient_sample_fit(formula_result, samples)
+
+  # A formula parameter that the fit does not have is an argument error.
+  unknown <- tryCatch(
+    transform_scale_samples(
+      fit, formula_scale = list(sigma = list(sigma_x = list(mean = 0, sd = 1)))
+    ),
+    error = identity
+  )
+  expect_false(inherits(unknown, "BayesTools_refit_required"))
+  expect_identical(
+    conditionMessage(unknown),
+    paste0("The 'formula_scale' argument names unknown formula parameter ",
+           "'sigma'. The fitted model has the formula parameter 'mu'.")
+  )
+  # A fit whose declaration carriers disagree still asks for a refit.
+  stripped <- fit
+  attr(stripped, "formula_design") <- NULL
+  expect_error(
+    transform_scale_samples(
+      stripped, formula_scale = list(mu = list(mu_x = list(mean = 4, sd = 2)))
+    ),
+    "Formula declaration carriers disagree.",
+    fixed = TRUE,
+    class = "BayesTools_refit_required"
+  )
+
+  # A standardized predictor must be numeric in prediction data.
+  expect_identical(
+    dim(JAGS_evaluate_formula(fit, parameter = "mu",
+                              data = data.frame(x = c(2, 4)))),
+    c(2L, 2L)
+  )
+  expect_error(
+    JAGS_evaluate_formula(fit, parameter = "mu", data = data.frame(x = c("a", "b"))),
+    "The predictor 'x' was standardized in the fitted model and must be numeric in 'data'.",
+    fixed = TRUE
+  )
+})
+
 .formula_coefficient_design_matrix <- function(formula_result){
 
   data_names <- names(formula_result$data)[
@@ -408,7 +458,7 @@ test_that("design-derived unscaling keeps the coding of logical predictors", {
     expect_equal(
       transform$matrix,
       .build_unscale_matrix_by_names(
-        source_names, scaled$formula_scale, "mu", require_closure = FALSE
+        source_names, scaled$formula_scale, "mu"
       ),
       tolerance = 1e-14
     )
@@ -497,8 +547,7 @@ test_that("design-derived unscaling accepts exact maps under extreme centering",
   expect_identical(
     transform$matrix,
     .build_unscale_matrix_by_names(
-      source_names, formula_result$formula_scale, "mu",
-      require_closure = FALSE
+      source_names, formula_result$formula_scale, "mu"
     )
   )
   original <- JAGS_formula(~ year * x * z, "mu", data, full_priors)

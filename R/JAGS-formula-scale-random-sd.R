@@ -60,88 +60,9 @@
     ))
   }
 
-  term_map <- .random_sd_term_map(random_sd_cols, formula_scale, prefix)
-  if(length(term_map) == 0){
-    return(posterior)
-  }
-
-  random_sd_cols <- names(term_map)
-  group_keys <- vapply(random_sd_cols, .random_sd_group_key,
-                       character(1), term_map = term_map, prefix = prefix)
-  required_groups <- .random_sd_correlation_required_groups(
-    formula_scale = formula_scale,
-    prefix = prefix,
-    correlation_required_groups = correlation_required_groups
-  )
-
-  for(group_key in unique(group_keys)){
-    group_cols <- random_sd_cols[group_keys == group_key]
-    group_terms <- unname(term_map[group_cols])
-
-    if(any(duplicated(group_terms))){
-      duplicated_terms <- unique(group_terms[duplicated(group_terms)])
-      stop(
-        "Random-effect SD columns for group '", group_key,
-        "' cannot be unscaled because multiple columns map to the same term: ",
-        paste0("'", duplicated_terms, "'", collapse = ", "),
-        ".",
-        call. = FALSE
-      )
-    }
-
-    M <- .random_sd_unscale_matrix(
-      column_terms = group_terms,
-      formula_scale = formula_scale,
-      prefix = prefix,
-      random_term = .random_sd_design_block(formula_design, group_key, group_cols),
-      source_data = formula_design$source_data
-    )
-
-    source_sd <- posterior[, group_cols, drop = FALSE]
-    source_cor <- .random_sd_correlation_draws(
-      posterior = posterior,
-      prefix = prefix,
-      group_key = group_key,
-      n_terms = length(group_cols),
-      required = group_key %in% required_groups
-    )
-    transformed_sd <- matrix(NA_real_, nrow = nrow(source_sd), ncol = ncol(source_sd))
-    colnames(transformed_sd) <- group_cols
-
-    if(is.null(source_cor)){
-      for(target_i in seq_along(group_cols)){
-        transformed_var <- rowSums(t(t(source_sd^2) * (M[target_i, ]^2)))
-        transformed_sd[, target_i] <- sqrt(transformed_var)
-      }
-      .random_sd_check_range(source_sd, M, transformed_sd, group_key)
-    }else{
-      transformed_cor <- array(NA_real_, dim = dim(source_cor))
-      for(draw_i in seq_len(nrow(source_sd))){
-        source_cov <- diag(source_sd[draw_i, ], nrow = ncol(source_sd)) %*%
-          source_cor[draw_i, , ] %*%
-          diag(source_sd[draw_i, ], nrow = ncol(source_sd))
-        transformed_cov <- M %*% source_cov %*% t(M)
-        transformed_sd[draw_i, ] <- sqrt(diag(transformed_cov))
-        transformed_cor[draw_i, , ] <- .random_sd_transformed_correlation(
-          covariance = transformed_cov,
-          sd = transformed_sd[draw_i, ],
-          group_key = group_key
-        )
-      }
-      .random_sd_check_range(source_sd, M, transformed_sd, group_key,
-                             check_zero = FALSE)
-      posterior <- .random_sd_assign_transformed_correlation(
-        posterior = posterior,
-        prefix = prefix,
-        group_key = group_key,
-        correlation = transformed_cor,
-        nonzero_source_sd = .random_sd_nonzero_source_sd(source_sd)
-      )
-    }
-
-    posterior[, group_cols] <- transformed_sd
-  }
-
+  # Without the SD-leaf structure that the fitted formula scale carries there is
+  # no random-effect SD to unscale: the name-based term map needs the same
+  # structure, so it has no further route.
   posterior
 }
 
@@ -318,9 +239,8 @@
 # multiply to zero, a column with the same unscaled part and that subset (the
 # intercept for the empty subset). Without such a partner, as for an
 # interaction `f:x` of a factor with a scaled slope whose margin `x` is not in
-# the block, centering induces terms the pairing drops (see
-# .check_unscale_term_closure(), which stops for a fixed-effect map only when
-# some lower-order partner is present). Two scaled columns that share one term
+# the block, centering induces terms the pairing drops (a fixed-effect map is
+# derived from the fitted design instead). Two scaled columns that share one term
 # name (the indicator columns of a logical predictor's interaction with a
 # scaled slope) have different partners that one name cannot tell apart, so
 # such a block is not exact either.
@@ -412,8 +332,7 @@
   .build_unscale_matrix_by_names(
     paste0(prefix, "_", column_terms),
     formula_scale,
-    prefix,
-    require_closure = FALSE
+    prefix
   )
 }
 

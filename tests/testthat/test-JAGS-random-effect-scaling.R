@@ -2233,7 +2233,7 @@ test_that("shared random-effect SD leaves keep one coordinate per design column 
   scale_list <- list(mu_x = list(mean = 10, sd = 2))
   M <- .build_unscale_matrix_by_names(
     c("mu_intercept", "mu_flag", "mu_flag__xXx__x", "mu_flag__xXx__x"),
-    scale_list, "mu", require_closure = FALSE
+    scale_list, "mu"
   )
   # Row mu_flag: 1 on its own column and, on each of the two interaction columns
   # of the shared leaf, -mean / sd = -10 / 2 = -5. Both columns carry the
@@ -2252,7 +2252,7 @@ test_that("shared random-effect SD leaves keep one coordinate per design column 
   # without a duplicate the map is the same
   expect_equal(
     unname(.build_unscale_matrix_by_names(
-      c("mu_intercept", "mu_flag", "mu_flag__xXx__x"), scale_list, "mu", require_closure = FALSE
+      c("mu_intercept", "mu_flag", "mu_flag__xXx__x"), scale_list, "mu"
     )),
     rbind(c(1, 0, 0), c(0, 1, -5), c(0, 0, 0.5)),
     tolerance = 1e-14

@@ -101,94 +101,6 @@
 }
 
 
-# Helper: Refuse incomplete coefficient transformations. Centered interactions
-# induce lower-order terms, which cannot be represented by a square transform
-# when the corresponding posterior columns are absent.
-.check_unscale_term_closure <- function(term_names, term_scaled, term_unscaled,
-                                        formula_scale, prefix) {
-
-  for(source_name in term_names){
-    source_scaled <- unique(term_scaled[[source_name]])
-    if(length(source_scaled) == 0L){
-      next
-    }
-
-    source_unscaled <- term_unscaled[[source_name]]
-    has_returned_lower_order <- any(vapply(
-      setdiff(term_names, source_name),
-      function(target_name){
-        target_scaled <- term_scaled[[target_name]]
-        .unscale_ids_match(term_unscaled[[target_name]], source_unscaled) &&
-          length(target_scaled) < length(source_scaled) &&
-          .is_subset(target_scaled, source_scaled)
-      },
-      logical(1)
-    ))
-    if(!has_returned_lower_order){
-      # Transforming an interaction coefficient by itself is complete: the
-      # omitted lower-order coefficients are outside the requested output.
-      next
-    }
-
-    missing_targets <- character()
-    for(subset_size in 0:(length(source_scaled) - 1L)){
-      target_sets <- if(subset_size == 0L){
-        list(character())
-      }else{
-        utils::combn(source_scaled, subset_size, simplify = FALSE)
-      }
-
-      for(target_scaled in target_sets){
-        extra_scaled <- setdiff(source_scaled, target_scaled)
-        extra_params <- paste0(prefix, "_", extra_scaled)
-        mean_product <- prod(vapply(
-          extra_params,
-          function(parameter) formula_scale[[parameter]][["mean"]],
-          numeric(1)
-        ))
-        if(mean_product == 0){
-          next
-        }
-
-        target_exists <- any(vapply(
-          term_names,
-          function(target_name){
-            target_components <- term_scaled[[target_name]]
-            .unscale_ids_match(term_unscaled[[target_name]], source_unscaled) &&
-              length(target_components) == length(target_scaled) &&
-              all(target_components %in% target_scaled)
-          },
-          logical(1)
-        ))
-        if(!target_exists){
-          missing_targets <- c(
-            missing_targets,
-            if(length(target_scaled) == 0L){
-              "<no scaled components>"
-            }else{
-              paste(target_scaled, collapse = ":")
-            }
-          )
-        }
-      }
-    }
-
-    if(length(missing_targets) > 0L){
-      stop(
-        "Cannot unscale posterior term '", source_name,
-        "' because centering induces missing lower-order coefficient(s) for ",
-        "scaled component set(s): ",
-        paste0(unique(missing_targets), collapse = ", "),
-        ". Include the corresponding lower-order posterior columns.",
-        call. = FALSE
-      )
-    }
-  }
-
-  invisible(NULL)
-}
-
-
 # Helper: Validate the nested formula_scale structure used for unscaling.
 .check_formula_scale_info <- function(formula_scale, name = "formula_scale") {
 
@@ -468,6 +380,23 @@
   .check_formula_scale_info(formula_scale)
 
   fitted_scale <- attr(fit, "formula_scale", exact = TRUE)
+  # A formula parameter that the fitted model does not have is an argument
+  # error, not a missing declaration of the fit.
+  fitted_parameters <- unique(c(
+    names(attr(fit, "formula_design", exact = TRUE)),
+    names(fitted_scale)
+  ))
+  unknown <- setdiff(names(formula_scale), fitted_parameters)
+  if(length(fitted_parameters) > 0L && length(unknown) > 0L){
+    stop(
+      "The 'formula_scale' argument names unknown formula parameter",
+      if(length(unknown) > 1L) "s", " ", paste0("'", unknown, "'", collapse = ", "),
+      ". The fitted model has the formula parameter",
+      if(length(fitted_parameters) > 1L) "s", " ",
+      paste0("'", fitted_parameters, "'", collapse = ", "), ".",
+      call. = FALSE
+    )
+  }
   if(is.list(fitted_scale)){
     for(parameter in intersect(names(formula_scale), names(fitted_scale))){
       # The override replaces the fitted scale: a predictor it omits would be
@@ -579,11 +508,7 @@
 # derived from the fitted design (.build_unscale_matrix()); this name-based map
 # is used only for covariance-space random-effect SD transforms and as the
 # first candidate that the design verification accepts or rejects.
-#
-# @param require_closure Whether missing induced coefficient terms should fail.
-#   Random-effect SD transforms operate in covariance space and set this to FALSE.
-.build_unscale_matrix_by_names <- function(term_names, formula_scale, prefix,
-                                           require_closure = TRUE) {
+.build_unscale_matrix_by_names <- function(term_names, formula_scale, prefix) {
 
   n_terms <- length(term_names)
   M <- diag(n_terms)  # Start with identity matrix
@@ -604,16 +529,6 @@
   term_components <- lapply(term_structure, `[[`, "components")
   term_scaled <- lapply(term_structure, `[[`, "scaled")
   term_unscaled <- vapply(term_structure, `[[`, character(1), "unscaled_id")
-
-  if(isTRUE(require_closure)){
-    .check_unscale_term_closure(
-      term_names = term_names,
-      term_scaled = term_scaled,
-      term_unscaled = term_unscaled,
-      formula_scale = formula_scale,
-      prefix = prefix
-    )
-  }
 
   # Warn about high-order interactions
   max_order <- max(sapply(term_components, length))
@@ -1232,8 +1147,7 @@ JAGS_formula_scale_finalize <- function(formula_scale, design = NULL,
   name_paired <- .build_unscale_matrix_by_names(
     term_names = coefficient_names,
     formula_scale = formula_scale,
-    prefix = prefix,
-    require_closure = FALSE
+    prefix = prefix
   )
   if(!any(violation(name_paired))){
     return(list(
@@ -1396,7 +1310,9 @@ JAGS_formula_scale_finalize <- function(formula_scale, design = NULL,
 
 # Helper: Apply unscaling for a single parameter's predictors
 # @param posterior Matrix of posterior samples
-# @param formula_scale Flat list of scaling info: list(mu_x1 = list(mean, sd), mu_x2 = list(mean, sd))
+# @param formula_scale Scaling info of one formula parameter, keyed by its
+#   prefixed predictors: list(mu_x1 = list(mean, sd), mu_x2 = list(mean, sd)),
+#   with the structure attributes of the fitted formula scale
 # @param prefix Parameter prefix (e.g., "mu")
 # @return Transformed posterior matrix
 .apply_unscale_transform_single <- function(posterior, formula_scale, prefix,

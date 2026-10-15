@@ -852,8 +852,7 @@ test_that("design-derived unscaling equals the name-paired map on scaled fixture
         spec, parameter
       )
       name_paired <- BayesTools:::.build_unscale_matrix_by_names(
-        coefficient_names, formula_scale[[parameter]], parameter,
-        require_closure = FALSE
+        coefficient_names, formula_scale[[parameter]], parameter
       )
       least_squares <- qr.solve(X_o, X_s)
       expect_equal(unname(least_squares), unname(name_paired), tolerance = 1e-10,

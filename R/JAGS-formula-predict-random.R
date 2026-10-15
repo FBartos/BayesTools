@@ -23,6 +23,13 @@
     scaled_name <- paste0(parameter, "_", continuous)
     if(scaled_name %in% names(param_scale)){
       scale_info <- param_scale[[scaled_name]]
+      if(!is.numeric(data[[continuous]]) && !is.logical(data[[continuous]])){
+        stop(
+          "The predictor '", continuous, "' was standardized in the fitted model ",
+          "and must be numeric in 'data'.",
+          call. = FALSE
+        )
+      }
       data[[continuous]] <- (data[[continuous]] - scale_info$mean) / scale_info$sd
     }
   }
