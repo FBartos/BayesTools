@@ -758,7 +758,8 @@
     )
   }
   # a column without fitted coordinates that records an output transformation
-  # (a nonlinear transformation of coefficients, e.g. from posterior_transform())
+  # (a transformation of coefficients that keeps no combination of them, e.g.
+  # from posterior_transform(): a nonlinear one or an affine one with an offset)
   # is no combination of them; an untransformed column without coordinates is a
   # structural zero (e.g. the reference level of a treatment factor)
   transformed <- vapply(
@@ -774,6 +775,9 @@
       character(1),
       style = "table"
     )
+    transformations <- unique(unlist(lapply(
+      quantities$label_parts[unfitted], .bt_label_output_transformation
+    )))
     .bt_formula_transform_stop(
       paste0(
         "Cannot transform ", paste0("'", labels, "'", collapse = ", "),
@@ -781,9 +785,15 @@
         if(length(labels) > 1L) "they are" else "it is",
         " not ",
         if(length(labels) > 1L) "combinations" else "a combination",
-        " of fitted coefficients (a nonlinear transformation of coefficients). ",
+        " of fitted coefficients (",
+        if(length(labels) > 1L) "they record" else "it records",
+        " the output transformation",
+        if(length(transformations) > 1L) "s ",
+        if(length(transformations) <= 1L) " ",
+        paste0("'", transformations, "'", collapse = ", "),
+        " of coefficients). ",
         "Unscale the samples first, for example with 'transform_scaled = TRUE' in ",
-        "as_mixed_posteriors(), and apply the nonlinear transformation afterwards."
+        "as_mixed_posteriors(), and apply the transformation afterwards."
       ),
       parameter = unique(formula_parameters[unfitted]),
       reason    = "transformed_column_not_fitted",

@@ -2067,7 +2067,7 @@ test_that("runjags summary helper keeps only requested diagnostics", {
   attach_test_parameter_map(fit)
 }
 
-test_that("unscaling refuses columns that are nonlinear transformations of coefficients", {
+test_that("unscaling refuses columns that are transformations of coefficients", {
 
   fit <- .scaled_slope_fit_for_test()
   scale <- attr(fit, "formula_scale")
@@ -2109,13 +2109,35 @@ test_that("unscaling refuses columns that are nonlinear transformations of coeff
       conditionMessage(error),
       paste0(
         "Cannot transform '(mu) x' to the original predictor scale: it is not a ",
-        "combination of fitted coefficients (a nonlinear transformation of ",
-        "coefficients). Unscale the samples first, for example with ",
+        "combination of fitted coefficients (it records the output transformation ",
+        "'exp' of coefficients). Unscale the samples first, for example with ",
         "'transform_scaled = TRUE' in as_mixed_posteriors(), and apply the ",
-        "nonlinear transformation afterwards."
+        "transformation afterwards."
       )
     )
   }
+
+  # an affine transformation with an offset is no combination of the coefficients
+  # either, and is not called nonlinear
+  affine <- as_mixed_posteriors(fit, parameters, n_prior_samples = 64L)
+  affine$mu_x <- posterior_transform(affine$mu_x, "lin", list(a = 1, b = 2))
+  expect_equal(as.numeric(affine$mu_x), 1 + 2 * c(0.1, 0.2, 0.3, 0.4))
+  error <- expect_error(
+    ensemble_estimates_table(affine, parameters, transform_scaled = TRUE, formula_scale = scale),
+    class = "BayesTools_formula_transform_unavailable"
+  )
+  expect_identical(error$reason, "transformed_column_not_fitted")
+  expect_identical(
+    conditionMessage(error),
+    paste0(
+      "Cannot transform '(mu) x' to the original predictor scale: it is not a ",
+      "combination of fitted coefficients (it records the output transformation ",
+      "'lin' of coefficients). Unscale the samples first, for example with ",
+      "'transform_scaled = TRUE' in as_mixed_posteriors(), and apply the ",
+      "transformation afterwards."
+    )
+  )
+  expect_false(grepl("nonlinear", conditionMessage(error), fixed = TRUE))
 
   # unscaling first and transforming afterwards is supported
   unscaled <- as_mixed_posteriors(fit, parameters, n_prior_samples = 64L, transform_scaled = TRUE)
