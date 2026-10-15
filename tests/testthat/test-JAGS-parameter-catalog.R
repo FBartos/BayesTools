@@ -4976,6 +4976,47 @@ test_that("shared-gate proportions use their declared conditional Dirichlet prio
   }
 })
 
+test_that("gate atoms are matched to the prior atoms exactly before by tolerance", {
+
+  atoms <- function(prior_points, atom_states){
+    BayesTools:::.bt_parameter_mixed_posterior_atoms(
+      fit = NULL,
+      quantity = list(canonical_name = "x", status = "estimated"),
+      prior_density = list(points = data.frame(x = prior_points, p = 1 / length(prior_points))),
+      plan = list(kind = "point"),
+      states = list(known = TRUE, atom = atom_states),
+      keep = rep(TRUE, length(atom_states))
+    )
+  }
+  # point components at 0 and 1e-13 are different atoms
+  separate <- atoms(c(0, 1e-13), c(0, 1e-13, 0, 1e-13, 0))
+  expect_identical(as.numeric(separate$locations), c(0, 1e-13))
+  expect_equal(separate$mass, c(3, 2) / 5)
+  # a draw within the tolerance of exactly one atom still snaps to it
+  snapped <- atoms(c(0, 0.5), c(0, 0.5 + 1e-14, 0.5))
+  expect_identical(as.numeric(snapped$locations), c(0, 0.5))
+  # a draw within the tolerance of two atoms but equal to neither is ambiguous
+  expect_error(
+    atoms(c(0, 1e-13), c(5e-14, 0)),
+    "do not match the point masses of its prior density",
+    fixed = TRUE
+  )
+})
+
+test_that("component probabilities of a mixture use the stabilized normalization", {
+
+  mixture <- prior_mixture(
+    list(prior("normal", list(0, 1)), prior("normal", list(1, 1))),
+    is_null = c(TRUE, FALSE)
+  )
+  attr(mixture, "prior_weights") <- c(1e308, 1e308)
+  expect_identical(BayesTools:::.bt_prior_component_probabilities(mixture), c(0.5, 0.5))
+  attr(mixture, "prior_weights") <- c(3, 1)
+  expect_equal(BayesTools:::.bt_prior_component_probabilities(mixture), c(0.75, 0.25))
+  attr(mixture, "prior_weights") <- c(0, 0)
+  expect_identical(BayesTools:::.bt_prior_component_probabilities(mixture), c(NA_real_, NA_real_))
+})
+
 test_that("catalog numerics stay accurate at the range edges", {
 
   # Inclusion probabilities near 1e-16: P(w_1 = 0) = (1 - p1) p2 / (p1 + p2 - p1 p2).

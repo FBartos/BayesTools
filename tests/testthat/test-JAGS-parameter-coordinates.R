@@ -897,3 +897,32 @@ test_that("parameter_map_cache recomputes when its key or the map changes", {
   attr(malformed_fit, "parameter_map") <- unclass(direct_map)
   expect_error(parameter_map(malformed_fit), "metadata are missing, malformed, or unsupported")
 })
+
+test_that("the parameter-map registry is bounded and evicts the oldest map first", {
+
+  withr::defer({
+    .BayesTools_private$parameter_map_cache <- NULL
+    .BayesTools_private$parameter_map_cache_order <- NULL
+  })
+  .BayesTools_private$parameter_map_cache <- NULL
+  .BayesTools_private$parameter_map_cache_order <- NULL
+  limit <- BayesTools:::.bt_parameter_map_cache_limit()
+  ids <- paste0("evict-", seq_len(limit + 3L))
+  for(id in ids){
+    BayesTools:::.bt_parameter_map_cache(structure(list(), runtime_cache_id = id))
+  }
+  held <- ls(BayesTools:::.bt_parameter_map_cache_registry())
+  expect_length(held, limit)
+  expect_false(any(ids[1:3] %in% held))
+  expect_true(all(ids[-(1:3)] %in% held))
+  expect_identical(.BayesTools_private$parameter_map_cache_order, ids[-(1:3)])
+
+  # A hit does no bookkeeping: looking an old entry up again does not protect
+  # it from eviction (insertion order, not recency).
+  BayesTools:::.bt_parameter_map_cache(structure(list(), runtime_cache_id = ids[[4L]]))
+  BayesTools:::.bt_parameter_map_cache(structure(list(), runtime_cache_id = "evict-new"))
+  held <- ls(BayesTools:::.bt_parameter_map_cache_registry())
+  expect_length(held, limit)
+  expect_false(ids[[4L]] %in% held)
+  expect_true("evict-new" %in% held)
+})

@@ -92,7 +92,9 @@ multipliers. Contribution weights never pass through coefficient C/A again.
 Old ambiguous stored contexts must be recreated.}
 \item{\code{"linear_weights"}}{the weights of the fitted coordinates
 that form a level of a \code{\link[=marginal_posterior]{marginal_posterior()}} (a named finite numeric vector,
-or a finite matrix with one row per draw). Removing weights also removes
+or a finite matrix: one row per draw for coefficient weights, one row per
+fitted design row for the formula contributions of a formula marginal,
+where the rows are not draws). Removing weights also removes
 their companion weight-space declaration. Unavailable dynamic recipes
 remain in the producer's separate transformation/refusal metadata.}
 \item{\code{"ordered_source"}}{internal retained fitted totals, normalized

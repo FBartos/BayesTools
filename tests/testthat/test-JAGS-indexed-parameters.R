@@ -191,3 +191,15 @@ test_that("JAGS indexed parameter matrix supports coda objects", {
     c("omega[1]", "omega[2]", "omega[10]")
   )
 })
+
+test_that("an indexed vector without selected values is a zero-length named vector", {
+
+  empty <- stats::setNames(numeric(0), character(0))
+  expect_identical(JAGS_indexed_parameter_vector(c(a = 1), "omega"), empty)
+  expect_identical(JAGS_indexed_parameter_vector(list(a = 1), "omega"), empty)
+  expect_identical(JAGS_indexed_parameter_vector(data.frame(a = 1), "omega"), empty)
+  expect_identical(
+    JAGS_indexed_parameter_vector(list(a = 1, "omega[2]" = 3, "omega[1]" = 2), "omega"),
+    c("omega[1]" = 2, "omega[2]" = 3)
+  )
+})

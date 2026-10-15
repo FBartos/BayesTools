@@ -497,7 +497,10 @@
   if(!is.null(meta$components) && length(meta$components$index)==NROW(x)){
     meta$components <- .posterior_components_new(meta$components$index[rows],meta$components$supports,meta$components$keys)
   }
-  if(is.matrix(meta$linear_weights) && nrow(meta$linear_weights)==NROW(x)){
+  # Only per-draw weights follow the draws; the rows of formula-contribution
+  # weights are design rows, even when their number equals the number of draws.
+  if(is.matrix(meta$linear_weights) && nrow(meta$linear_weights)==NROW(x) &&
+     !identical(meta$linear_weight_space, "formula_contribution")){
     meta$linear_weights <- meta$linear_weights[rows,,drop=FALSE]
   }
   out <- .bt_meta_write(out, meta, if(.bt_meta_is_draws(out)) .bt_meta_fingerprint(out))
@@ -1004,7 +1007,9 @@ posterior_measure_check <- function(x, measure, column = NULL){
 #'   Old ambiguous stored contexts must be recreated.}
 #'   \item{\code{"linear_weights"}}{the weights of the fitted coordinates
 #'   that form a level of a [marginal_posterior()] (a named finite numeric vector,
-#'   or a finite matrix with one row per draw). Removing weights also removes
+#'   or a finite matrix: one row per draw for coefficient weights, one row per
+#'   fitted design row for the formula contributions of a formula marginal,
+#'   where the rows are not draws). Removing weights also removes
 #'   their companion weight-space declaration. Unavailable dynamic recipes
 #'   remain in the producer's separate transformation/refusal metadata.}
 #'   \item{\code{"ordered_source"}}{internal retained fitted totals, normalized

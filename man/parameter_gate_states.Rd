@@ -21,10 +21,11 @@ posterior draws of \code{fit}.}
 }
 \value{
 \code{NULL} for a quantity without inclusion gates or point components.
-Otherwise a list with one element per draw in each of
+Otherwise a list with the per-draw elements
 \describe{
 \item{\code{atom}}{the atom of the quantity in the draw, \code{NA} where the
-quantity is on its continuous part or undefined.}
+quantity is on its continuous part or undefined. When \code{known} is
+\code{FALSE}, it holds only the gate atoms.}
 \item{\code{continuous}}{whether the quantity is on its continuous part
 (defined and not on an atom; \code{NA} where that is not determined).}
 \item{\code{defined}}{whether the quantity is defined in the draw (a
@@ -33,15 +34,19 @@ variance proportion is undefined without an active component).}
 quantity (see \code{\link[=parameter_mixed_posterior]{parameter_mixed_posterior()}}), or \code{NULL} when the
 quantity has no such event.}
 }
-the scalar \code{known}: \code{FALSE} when the atom states are not determined
-by the draws (the component indicator of a prior with point components
-is not monitored); \code{atom} then holds only the gate atoms, and
-\code{prior_atoms}: for quantities whose atoms are the point components of a
-mixture, spike-and-slab, or selection prior, a data frame with the atom
-locations \code{x} and their prior masses \code{mass} from the prior's component
-weights (inclusion probabilities of spike-and-slab priors); \code{NULL} for
-the inclusion gates of variance allocations, whose prior masses are the
-point masses of \code{\link[=parameter_prior_density]{parameter_prior_density()}}.
+and the elements
+\describe{
+\item{\code{known}}{a scalar: \code{FALSE} when the atom states are not
+determined by the draws (the component indicator of a prior with point
+components is not monitored).}
+\item{\code{prior_atoms}}{for quantities whose atoms are the point
+components of a mixture, spike-and-slab, or selection prior, a data
+frame with the atom locations \code{x} and their prior masses \code{mass} from
+the prior's component weights (inclusion probabilities of
+spike-and-slab priors); \code{NULL} for the inclusion gates of variance
+allocations, whose prior masses are the point masses of
+\code{\link[=parameter_prior_density]{parameter_prior_density()}}.}
+}
 }
 \description{
 \code{parameter_gate_states()} returns, for each draw, the state

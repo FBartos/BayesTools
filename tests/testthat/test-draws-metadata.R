@@ -39,6 +39,22 @@ test_that("the cause of an expression prior is a declared measure cause", {
   expect_error(posterior_metadata(x, "measure_unavailable") <- invalid, "is invalid", fixed = TRUE)
 })
 
+test_that("per-draw linear weights follow the draws, design-row weights do not", {
+
+  weights <- matrix(c(1, 2, 3, 4, 5, 6), nrow = 3L, dimnames = list(NULL, c("a", "b")))
+  per_draw <- .bt_meta_assign(c(10, 20, 30), list(linear_weights = weights,
+                                                  linear_weight_space = "coefficient"))
+  subset <- .bt_draws_subset_rows(per_draw, c(3L, 1L))
+  expect_identical(.bt_meta_get(subset, "linear_weights"), weights[c(3L, 1L), , drop = FALSE])
+
+  # the rows of formula-contribution weights are fitted design rows, even when
+  # their number equals the number of draws
+  contribution <- .bt_meta_assign(c(10, 20, 30), list(linear_weights = weights,
+    linear_weight_space = "formula_contribution"))
+  subset <- .bt_draws_subset_rows(contribution, c(3L, 1L))
+  expect_identical(.bt_meta_get(subset, "linear_weights"), weights)
+})
+
 test_that("affine hypothesis row recipes follow every selected draw", {
   x <- .bt_meta_set(c(1, 2, 3), "hypothesis_evaluation", list(numerator = c(1, 2, 3), divisor = 1, weights = c(theta = 1), offset = 0))
   original <- .bt_meta_get(x, "hypothesis_evaluation")

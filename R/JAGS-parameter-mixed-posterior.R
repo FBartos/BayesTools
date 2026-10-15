@@ -137,10 +137,11 @@ parameter_mixed_posterior <- function(fit, selection, conditional = FALSE){
 #'   posterior draws of `fit`.
 #'
 #' @return `NULL` for a quantity without inclusion gates or point components.
-#'   Otherwise a list with one element per draw in each of
+#'   Otherwise a list with the per-draw elements
 #'   \describe{
 #'     \item{`atom`}{the atom of the quantity in the draw, `NA` where the
-#'     quantity is on its continuous part or undefined.}
+#'     quantity is on its continuous part or undefined. When `known` is
+#'     `FALSE`, it holds only the gate atoms.}
 #'     \item{`continuous`}{whether the quantity is on its continuous part
 #'     (defined and not on an atom; `NA` where that is not determined).}
 #'     \item{`defined`}{whether the quantity is defined in the draw (a
@@ -149,15 +150,19 @@ parameter_mixed_posterior <- function(fit, selection, conditional = FALSE){
 #'     quantity (see [parameter_mixed_posterior()]), or `NULL` when the
 #'     quantity has no such event.}
 #'   }
-#'   the scalar `known`: `FALSE` when the atom states are not determined
-#'   by the draws (the component indicator of a prior with point components
-#'   is not monitored); `atom` then holds only the gate atoms, and
-#'   `prior_atoms`: for quantities whose atoms are the point components of a
-#'   mixture, spike-and-slab, or selection prior, a data frame with the atom
-#'   locations `x` and their prior masses `mass` from the prior's component
-#'   weights (inclusion probabilities of spike-and-slab priors); `NULL` for
-#'   the inclusion gates of variance allocations, whose prior masses are the
-#'   point masses of [parameter_prior_density()].
+#'   and the elements
+#'   \describe{
+#'     \item{`known`}{a scalar: `FALSE` when the atom states are not
+#'     determined by the draws (the component indicator of a prior with point
+#'     components is not monitored).}
+#'     \item{`prior_atoms`}{for quantities whose atoms are the point
+#'     components of a mixture, spike-and-slab, or selection prior, a data
+#'     frame with the atom locations `x` and their prior masses `mass` from
+#'     the prior's component weights (inclusion probabilities of
+#'     spike-and-slab priors); `NULL` for the inclusion gates of variance
+#'     allocations, whose prior masses are the point masses of
+#'     [parameter_prior_density()].}
+#'   }
 #'
 #' @seealso [parameter_mixed_posterior()], [parameter_catalog()]
 #' @export
@@ -231,10 +236,12 @@ parameter_gate_states <- function(fit, selection, draws = NULL){
   }
   weights <- attr(prior, "prior_weights", exact = TRUE)
   if(!is.numeric(weights) || length(weights) != length(prior) ||
-     any(!is.finite(weights)) || any(weights < 0) || sum(weights) <= 0){
+     any(!is.finite(weights)) || any(weights < 0) || !any(weights > 0)){
     return(rep(NA_real_, length(prior)))
   }
-  weights / sum(weights)
+  # the stabilized normalization of the model probabilities: weights near the
+  # double maximum overflow an unscaled sum
+  .model_probability_prior(weights, stage = "component")$probabilities
 }
 
 .bt_parameter_mixed_posterior <- function(fit, selection, conditional = FALSE,
@@ -315,9 +322,8 @@ parameter_gate_states <- function(fit, selection, draws = NULL){
 
   if(!is.null(plan) && identical(plan$kind,"ordered_projection") && length(plan$specs)==1L){
     spec <- plan$specs[[1L]]
-    all_sources <- as.matrix(.fit_to_posterior(fit))
     retained <- .bt_ordered_source_new(spec$parameter,list(spec),
-      list(.bt_ordered_source_rows(spec,all_sources,seq_len(nrow(all_sources)))),
+      list(.bt_ordered_source_rows(spec,original_sources,seq_len(nrow(original_sources)))),
       rep(1L,length(values)),seq_along(values))
     retained$projection_design <- matrix(plan$weights,nrow=1L,
       dimnames=list(name,names(plan$weights)))
@@ -487,10 +493,14 @@ parameter_gate_states <- function(fit, selection, draws = NULL){
   locations <- states$atom[keep]
   on_atom <- !is.na(locations)
   if(!is.null(prior_atoms)){
+    # An exact match wins; the tolerance applies only when it identifies one
+    # atom (point components at 0 and 1e-13 are different atoms).
     matched <- vapply(locations[on_atom], function(location){
+      exact <- which(prior_atoms == location)
+      if(length(exact) > 0L) return(prior_atoms[[exact[[1L]]]])
       distance <- abs(prior_atoms - location)
       index <- which(distance <= 1e-12 * pmax(1, abs(prior_atoms)))
-      if(length(index) == 0L) NA_real_ else prior_atoms[[index[[1L]]]]
+      if(length(index) == 1L) prior_atoms[[index]] else NA_real_
     }, numeric(1))
     if(anyNA(matched)){
       stop(

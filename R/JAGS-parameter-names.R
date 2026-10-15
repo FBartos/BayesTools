@@ -206,11 +206,15 @@ JAGS_indexed_parameter_vector <- function(row, parameter){
   }
 
   selected <- .JAGS_indexed_parameter_sorted_columns(row_names, parameter)
+  # No selected column is a zero-length named vector for every kind of row.
+  empty <- stats::setNames(numeric(0), character(0))
   if(is.data.frame(row)){
-    return(unlist(row[1L, selected, drop = FALSE], use.names = TRUE))
+    out <- unlist(row[1L, selected, drop = FALSE], use.names = TRUE)
+    return(if(is.null(out)) empty else out)
   }
   if(is.list(row) && !is.atomic(row)){
-    return(unlist(row[selected], use.names = TRUE))
+    out <- unlist(row[selected], use.names = TRUE)
+    return(if(is.null(out)) empty else out)
   }
   if(length(selected) == 0L){
     return(row[integer(0)])
