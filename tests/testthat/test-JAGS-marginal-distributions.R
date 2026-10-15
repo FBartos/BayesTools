@@ -3674,21 +3674,65 @@ test_that("the warnings of a marginal estimates table are subset with its rows",
   expect_length(warnings, 2L)
   expect_match(warnings[[1L]], "^mu: Posterior samples do not span")
   expect_match(warnings[[2L]], "^nu: Posterior samples do not span")
-  expect_identical(attr(table, "warning_rows"), c("mu", "nu"))
+  # the positions of the rows the warnings describe
+  expect_identical(attr(table, "warning_rows"), c(1L, 3L))
   expect_length(attr(table[2, ], "warnings"), 0L)
   expect_identical(attr(table[1, ], "warnings"), warnings[1L])
   expect_identical(attr(table[c(1, 3), ], "warnings"), warnings)
   expect_identical(attr(table[3, ], "warnings"), warnings[2L])
   expect_length(attr(table["tau", ], "warnings"), 0L)
-  expect_identical(attr(table[3, ], "warning_rows"), "nu")
+  expect_identical(attr(table[3, ], "warning_rows"), 1L)
+  expect_identical(attr(table[c(3, 1), ], "warnings"), warnings)
+  expect_identical(attr(table[c(3, 1), ], "warning_rows"), c(2L, 1L))
   # a warning given by the caller has no row and is kept
   extra <- marginal_estimates_table(inference$conditional, inference$inference, c("mu", "tau", "nu"),
                                     warnings = "A general warning.")
   expect_identical(attr(extra[2, ], "warnings"), "A general warning.")
-  expect_identical(attr(extra, "warning_rows"), c("", "mu", "nu"))
+  expect_identical(attr(extra, "warning_rows"), c(0L, 1L, 3L))
   expect_identical(attr(extra[1, ], "warnings"), c("A general warning.", warnings[1L]))
   # printing is unchanged
   expect_output(print(table), "mu: Posterior samples do not span", fixed = TRUE)
+})
+
+test_that("the row warnings of a marginal estimates table survive colliding row labels", {
+
+  # the same level of two formula parameters has one label without the formula prefix
+  set.seed(44)
+  data <- data.frame(x = c(1, 2, 3))
+  mu <- JAGS_formula(~ x, "mu", data, list(intercept = prior("normal", list(0, 1)), x = prior("normal", list(0, 1))))
+  nu <- JAGS_formula(~ x, "nu", data, list(intercept = prior("normal", list(0, 1)), x = prior("normal", list(0, 1))))
+  fit <- .mock_mixing_fit_for_marginal(
+    cbind(mu_intercept = stats::rnorm(100), mu_x = stats::rnorm(100),
+          nu_intercept = stats::rnorm(100), nu_x = stats::rnorm(100)),
+    c(mu$prior_list, nu$prior_list))
+  mixed <- as_mixed_posteriors(fit, c("mu_intercept", "nu_intercept"))
+  samples <- list(
+    mu_intercept = marginal_posterior(mixed, "mu_intercept", use_formula = FALSE, prior_samples = TRUE),
+    nu_intercept = marginal_posterior(mixed, "nu_intercept", use_formula = FALSE, prior_samples = TRUE))
+  inference <- list(mu_intercept = structure(2, warnings = "warning for mu"),
+                    nu_intercept = structure(3, warnings = "warning for nu"))
+  parameters <- c("mu_intercept", "nu_intercept")
+
+  table <- marginal_estimates_table(samples, inference, parameters, formula_prefix = FALSE)
+  expect_identical(rownames(table), c("intercept", "intercept.1"))
+  expect_identical(attr(table, "quantities")$row, rownames(table))
+  expect_identical(attr(table, "warnings"), c("intercept: warning for mu", "intercept: warning for nu"))
+  expect_identical(attr(table, "warning_rows"), c(1L, 2L))
+
+  # every warning stays with its row, however the rows are selected
+  expect_identical(attr(table[1, ], "warnings"), "intercept: warning for mu")
+  expect_identical(attr(table[2, ], "warnings"), "intercept: warning for nu")
+  expect_identical(attr(table["intercept.1", ], "warnings"), "intercept: warning for nu")
+  expect_identical(attr(table[2, ], "warning_rows"), 1L)
+  expect_identical(attr(table[2:1, ], "warnings"), attr(table, "warnings"))
+  expect_identical(attr(table[2:1, ], "warning_rows"), c(2L, 1L))
+  expect_identical(attr(table[, 1:2], "warnings"), attr(table, "warnings"))
+
+  # with a caller warning and the prefix kept, nothing else changes
+  with_prefix <- marginal_estimates_table(samples, inference, parameters, warnings = "A general warning.")
+  expect_identical(rownames(with_prefix), c("(mu) intercept", "(nu) intercept"))
+  expect_identical(attr(with_prefix, "warning_rows"), c(0L, 1L, 2L))
+  expect_identical(attr(with_prefix[2, ], "warnings"), c("A general warning.", "(nu) intercept: warning for nu"))
 })
 
 test_that("Savage-Dickey BFs with the null outside the posterior draws warn once per parameter and level", {

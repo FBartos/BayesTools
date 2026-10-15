@@ -737,7 +737,7 @@ marginal_estimates_table <- function(samples, inference, parameters, probs = c(0
 
   # extract values
   estimates_table <- NULL
-  warning_rows <- character()
+  warning_rows <- integer()
   row_parts <- list()
   row_quantity_ids <- character()
   row_log_BF <- numeric()
@@ -781,8 +781,9 @@ marginal_estimates_table <- function(samples, inference, parameters, probs = c(0
           paste0(level_warning_labels[[lvl]], ": ", attr(parameter_inference[[lvl]], "warnings"))
         }
       }))
+      # (the position of the row in the table)
       temp_warning_rows <- do.call(c, lapply(seq_along(parameter_inference), function(lvl) {
-        rep(level_labels[[lvl]], length(attr(parameter_inference[[lvl]], "warnings")))
+        rep(NROW(estimates_table) + lvl, length(attr(parameter_inference[[lvl]], "warnings")))
       }))
     }else{
       temp_samples  <- .marginal_posterior_parameter_samples(samples, parameter)
@@ -794,7 +795,7 @@ marginal_estimates_table <- function(samples, inference, parameters, probs = c(0
         temp_warning_rows <- NULL
       }else{
         temp_warnings <- paste0(level_warning_labels[[1L]], ": ", attr(temp_BF, "warnings"))
-        temp_warning_rows <- rep(level_labels[[1L]], length(temp_warnings))
+        temp_warning_rows <- rep(NROW(estimates_table) + 1L, length(temp_warnings))
       }
     }
 
@@ -829,11 +830,17 @@ marginal_estimates_table <- function(samples, inference, parameters, probs = c(0
 
     # add warnings (and the rows they describe)
     if(!is.null(temp_warnings)){
-      warning_rows <- c(warning_rows, rep("", length(warnings) - length(warning_rows)), temp_warning_rows)
+      warning_rows <- c(warning_rows, rep(0L, length(warnings) - length(warning_rows)), as.integer(temp_warning_rows))
       warnings <- c(warnings, temp_warnings)
     }
   }
-  warning_rows <- c(warning_rows, rep("", length(warnings) - length(warning_rows)))
+  warning_rows <- c(warning_rows, rep(0L, length(warnings) - length(warning_rows)))
+
+  # the labels of rows from different parameters may collide (e.g., the same level
+  # of several formula parameters without the formula prefix)
+  if(!is.null(estimates_table)){
+    rownames(estimates_table) <- make.unique(rownames(estimates_table))
+  }
 
   # prepare output
   estimates_table                    <- data.frame(estimates_table, check.names = FALSE)
@@ -863,7 +870,7 @@ marginal_estimates_table <- function(samples, inference, parameters, probs = c(0
   attr(estimates_table, "title")     <- title
   attr(estimates_table, "footnotes") <- footnotes
   attr(estimates_table, "warnings")  <- warnings
-  # the table row each warning describes ("" for the warnings of the whole table)
+  # the position of the table row each warning describes (0 for the warnings of the whole table)
   attr(estimates_table, "warning_rows") <- if(length(warnings) > 0L) warning_rows
 
   return(estimates_table)

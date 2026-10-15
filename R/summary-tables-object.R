@@ -425,9 +425,11 @@ Math.BayesTools_BF <- function(x, ...){
   }
   attr(out, "quantities") <- .subset_table_quantities(x, out, row_indices)
   warning_rows <- attr(x, "warning_rows", exact = TRUE)
-  attr(out, "warnings") <- .subset_table_warnings(attr(x, "warnings"), selected_parameters, rownames(out), warning_rows)
-  if(length(warning_rows) == length(attr(x, "warnings")) && any(nzchar(warning_rows))){
-    attr(out, "warning_rows") <- warning_rows[!nzchar(warning_rows) | warning_rows %in% rownames(out)]
+  attr(out, "warnings") <- .subset_table_warnings(attr(x, "warnings"), selected_parameters, rownames(out),
+                                                  warning_rows, row_indices)
+  if(length(warning_rows) == length(attr(x, "warnings")) && any(warning_rows > 0L)){
+    kept <- warning_rows == 0L | warning_rows %in% row_indices
+    attr(out, "warning_rows") <- match(warning_rows[kept], row_indices, nomatch = 0L)
   }
   out <- .subset_table_hypothesis_attributes(x, out, row_indices)
 
@@ -743,16 +745,19 @@ invert_BF_bound_operator <- function(operator){
   out
 }
 
+# 'warning_rows' are the positions of the table rows the warnings describe (0
+# for the warnings of the whole table), 'row_indices' the positions of the
+# selected rows.
 .subset_table_warnings <- function(warnings, selected_parameters = NULL, selected_rows = NULL,
-                                   warning_rows = NULL){
+                                   warning_rows = NULL, row_indices = NULL){
 
   if(is.null(warnings) || length(warnings) == 0){
     return(warnings)
   }
 
   # warnings that declare the table row they describe stay with their rows
-  if(length(warning_rows) == length(warnings) && any(nzchar(warning_rows))){
-    return(warnings[!nzchar(warning_rows) | warning_rows %in% selected_rows])
+  if(length(warning_rows) == length(warnings) && any(warning_rows > 0L)){
+    return(warnings[warning_rows == 0L | warning_rows %in% row_indices])
   }
 
   warning_names <- names(warnings)
