@@ -233,6 +233,11 @@
   }
 
   if(identical(source_transform, "log")){
+    # the declared support decides first: a prior that reaches below zero has
+    # no positive support (its quantiles would give NaNs under log())
+    if(isTRUE(prior$truncation[["lower"]] < 0)){
+      stop("A log-transformed prior source must have positive support.", call. = FALSE)
+    }
     prior_range <- quant(prior, c(tail_prob, 1 - tail_prob))
     if(any(!is.finite(prior_range)) || any(prior_range <= 0)){
       prior_range <- range(prior, quantiles = tail_prob)
@@ -979,7 +984,7 @@
 
   out <- list(
     density = densities[[1]],
-    points  = .prior_linear_density_aggregate_points(points, NA_real_),
+    points  = .prior_linear_density_aggregate_points(points),
     n_grid  = if(is.null(n_grid)) dist$n_grid else n_grid
   )
   class(out) <- c("prior_linear_density", "prior_density")
@@ -1315,6 +1320,8 @@
 
       if(is.prior.none(multiplier_prior) || is.prior.point(multiplier_prior)){
         k <- if(is.prior.none(multiplier_prior)) 0 else multiplier_prior$parameters$location
+        # the folded weights are not used here: the call refuses a scale that
+        # leaves the double range before the numerical product fallback
         .prior_linear_fold_scale(product_group$weights, k)
       }
 
@@ -3739,13 +3746,21 @@
       list(raw = seq(limits[1], limits[2], length.out = size), den = NULL)
     }
 
-    unresolved_values <- numeric()
+    unresolved_values <- structural_values <- numeric()
     evaluate <- function(raw){
       finite_raw <- is.finite(raw)
       y <- rep(NA_real_, length(raw))
       if(any(finite_raw) && structural){
         y[finite_raw] <- .prior_density_route_density(route, raw[finite_raw])
-        unresolved_values <<- unique(c(unresolved_values, raw[finite_raw & is.na(y)]))
+        missing_values <- unique(raw[finite_raw & is.na(y)])
+        # a value whose ordinate is structurally unclassified (e.g. the limit
+        # at a support end) is not an unresolved numerical evaluation
+        refused <- vapply(missing_values, function(value){
+          identical(tryCatch(.prior_density_route_ordinate(route, value)$behavior,
+                             error = function(e) NA_character_), "unknown")
+        }, logical(1))
+        unresolved_values <<- unique(c(unresolved_values, missing_values[!refused]))
+        structural_values <<- unique(c(structural_values, missing_values[refused]))
       }else if(any(finite_raw)){
         y[finite_raw] <- stats::approx(
           dist$density$x,
@@ -3826,9 +3841,11 @@
     finite <- is.finite(x_den) & is.finite(y_den)
     x_den  <- x_den[finite]
     y_den  <- y_den[finite]
-    if(length(unresolved_values) > 0L){
+    if(length(unresolved_values) > 0L || length(structural_values) > 0L){
       .prior_linear_density_warn_curve_unavailable(
-        unresolved_values = unresolved_values, partial = length(x_den) > 0L
+        unresolved_values = if(length(unresolved_values) > 0L) unresolved_values,
+        partial           = length(x_den) > 0L,
+        structural_values = if(length(structural_values) > 0L) structural_values
       )
     }
 
@@ -3892,17 +3909,26 @@
 }
 
 # Warning of a partly or wholly unavailable prior curve.
-.prior_linear_density_warn_curve_unavailable <- function(unresolved_values = NULL, partial = FALSE){
+.prior_linear_density_warn_curve_unavailable <- function(unresolved_values = NULL, partial = FALSE,
+                                                         structural_values = NULL){
 
   warning(structure(
     class = c("BayesTools_prior_curve_unavailable", "BayesTools_plot_condition",
               "warning", "condition"),
     list(
-      message = if(!is.null(unresolved_values)) paste0(
-        "The prior density curve is ", if(partial) "partially unavailable" else "unavailable",
-        ": numerical evaluations were unresolved at ", length(unresolved_values),
-        if(length(unresolved_values) == 1L) " evaluation coordinate on the source scale. " else
-          " evaluation coordinates on the source scale. ",
+      message = if(!is.null(unresolved_values) || !is.null(structural_values)) paste0(
+        "The prior density curve is ", if(partial) "partially unavailable" else "unavailable", ": ",
+        if(!is.null(unresolved_values)) paste0(
+          "numerical evaluations were unresolved at ", length(unresolved_values),
+          if(length(unresolved_values) == 1L) " evaluation coordinate on the source scale. " else
+            " evaluation coordinates on the source scale. "
+        ),
+        if(!is.null(structural_values)) paste0(
+          "the density limit at ", length(structural_values),
+          if(length(structural_values) == 1L) " coordinate (a support end) " else
+            " coordinates (support ends) ",
+          "on the source scale has no structural classification and is not drawn. "
+        ),
         if(partial) "Available curve points and declared atoms are retained; " else
           "No continuous curve points are available; declared atoms are retained; ",
         "use 'prior = FALSE' to draw the posterior alone."
@@ -3914,7 +3940,8 @@
         "from the plot; plot the terms separately."
       ),
       call = NULL,
-      unresolved_values = unresolved_values
+      unresolved_values = unresolved_values,
+      structural_values = structural_values
     )
   ))
 }

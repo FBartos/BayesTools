@@ -3144,6 +3144,68 @@ test_that("allocation products of a point scale and a Beta share match the analy
                c(.5, 1.5), tolerance = 1e-14)
 })
 
+test_that("a log-transformed source needs a declared positive support", {
+
+  # the declared support decides before any quantile is logged (the base-R
+  # "NaNs produced" warning and a misleading collapsed-range error)
+  for(source in list(prior("normal", list(0, 1)), prior("normal", list(0, 1), list(-1, 3)),
+                     prior("t", list(0, 1, 3)), prior("point", list(-1)))){
+    warned <- FALSE
+    condition <- withCallingHandlers(
+      tryCatch(.prior_linear_combination_density(list(a = source), c(a = 1), source_transforms = c(a = "log"),
+                                                 n_grid = 128), error = identity),
+      warning = function(w){ warned <<- TRUE; invokeRestart("muffleWarning") })
+    expect_identical(conditionMessage(condition), "A log-transformed prior source must have positive support.")
+    expect_false(warned)
+  }
+  positive <- .prior_linear_combination_density(list(a = prior("lognormal", list(0, 1))), c(a = 1),
+                                                source_transforms = c(a = "log"), n_grid = 128)
+  expect_equal(prior_density_ordinate(positive, 0)$log_density, stats::dnorm(0, log = TRUE), tolerance = 1e-10)
+  gamma_source <- .prior_linear_combination_density(list(a = prior("gamma", list(shape = 2, rate = 1))), c(a = 1),
+                                                    source_transforms = c(a = "log"), n_grid = 128)
+  expect_s3_class(gamma_source, "prior_linear_density")
+})
+
+test_that("plotted curves name structurally unclassified support ends instead of unresolved evaluations", {
+
+  # gamma(.5) + gamma(.5): the limit at the support end 0 has no structural
+  # classification; it is not a numerical evaluation that failed
+  density <- .prior_linear_combination_density(
+    list(a = prior("gamma", list(shape = .5, rate = 1)), b = prior("gamma", list(shape = .5, rate = 1))),
+    c(a = 1, b = 1), n_grid = 256
+  )
+  conditions <- list()
+  data <- withCallingHandlers(
+    .prior_linear_density_to_plot_data(density, n_points = 100),
+    warning = function(w){ conditions[[length(conditions) + 1L]] <<- w; invokeRestart("muffleWarning") })
+  expect_length(conditions, 1L)
+  expect_s3_class(conditions[[1L]], "BayesTools_prior_curve_unavailable")
+  expect_null(conditions[[1L]]$unresolved_values)
+  expect_identical(conditions[[1L]]$structural_values, 0)
+  expect_identical(
+    conditionMessage(conditions[[1L]]),
+    paste0("The prior density curve is partially unavailable: the density limit at 1 coordinate ",
+           "(a support end) on the source scale has no structural classification and is not drawn. ",
+           "Available curve points and declared atoms are retained; use 'prior = FALSE' to draw the posterior alone.")
+  )
+  expect_true(length(data$density$x) > 50L)
+
+  # a rejected numerical evaluation keeps its unresolved coordinate and message
+  share <- prior("beta", list(.5, .5))
+  scaled <- prior("beta", list(.5, .5))
+  attr(scaled, "multiply_by") <- "s"
+  product <- .prior_linear_combination_density(list(b = scaled, s = share), c(b = 1), n_grid = 256)
+  conditions <- list()
+  withCallingHandlers(
+    .prior_linear_density_to_plot_data(product, n_points = 100),
+    warning = function(w){ conditions[[length(conditions) + 1L]] <<- w; invokeRestart("muffleWarning") })
+  expect_length(conditions, 1L)
+  expect_length(conditions[[1L]]$unresolved_values, 1L)
+  expect_null(conditions[[1L]]$structural_values)
+  expect_match(conditionMessage(conditions[[1L]]), "numerical evaluations were unresolved at 1 evaluation coordinate",
+               fixed = TRUE)
+})
+
 test_that("deterministic point locations are added once, and lost declarations are refused", {
 
   # 1e16 + 1 - 1e16 is 1 in one extended-precision sum and 0 or 1 pairwise

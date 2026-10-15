@@ -161,7 +161,7 @@
   out
 }
 
-.prior_linear_density_aggregate_points <- function(points, dx){
+.prior_linear_density_aggregate_points <- function(points){
 
   if(is.null(points) || nrow(points) == 0){
     return(.prior_linear_density_empty_points())
@@ -189,7 +189,7 @@
 
 .prior_linear_density_coalesce <- function(densities = list(), points = NULL, dx, n_grid = NULL){
 
-  points <- .prior_linear_density_aggregate_points(points, dx)
+  points <- .prior_linear_density_aggregate_points(points)
 
   densities <- densities[!vapply(densities, is.null, logical(1))]
   densities <- densities[vapply(densities, function(d){
