@@ -505,12 +505,17 @@ JAGS_diagnostics                 <- function(fit, parameter, type, plot_type = "
 
 .diagnostics_density_bounds <- function(prior, parameter, parameter_name){
 
-  if(is_prior_bias(prior) && identical(parameter, "bias")){
+  # the 'bias' diagnostics of a selection prior (a bias mixture or a single
+  # composed, weightfunction or p-hacking prior) show one column per component
+  # parameter, and every column takes the bounds of its own component
+  if(.diagnostics_is_selection_prior(prior) && identical(parameter, "bias")){
     component <- sub("\\[.*$", "", parameter_name)
-    if(component %in% c("omega", "alpha", "pi_null")){
+    if(component %in% c("omega", "alpha", "pi_null", "PET", "PEESE")){
       return(.diagnostics_prior_bounds(prior, component))
     }
-    return(list(lower = -Inf, upper = Inf))
+    if(is_prior_bias(prior)){
+      return(list(lower = -Inf, upper = Inf))
+    }
   }
 
   return(.diagnostics_prior_bounds(prior, parameter))
@@ -537,6 +542,19 @@ JAGS_diagnostics                 <- function(fit, parameter, type, plot_type = "
 
   if(is_selection_prior && parameter == "alpha"){
     return(list(lower = 0, upper = 1))
+  }
+
+  # the PET (PEESE) column of a mixture lives on the union of the truncations
+  # of its PET (PEESE) components
+  if(is_selection_prior && is.prior.mixture(prior) && parameter %in% c("PET", "PEESE")){
+    is_branch     <- if(parameter == "PET") is.prior.PET else is.prior.PEESE
+    branch_priors <- prior[vapply(prior, is_branch, logical(1))]
+    if(length(branch_priors) > 0L){
+      return(list(
+        lower = min(vapply(branch_priors, function(x) x$truncation[["lower"]], numeric(1))),
+        upper = max(vapply(branch_priors, function(x) x$truncation[["upper"]], numeric(1)))
+      ))
+    }
   }
 
   if(is_prior_phacking(prior) && !parameter %in% c("alpha", "pi_null")){

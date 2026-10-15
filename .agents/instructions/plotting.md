@@ -69,9 +69,11 @@ source files.
 The density diagnostics reflect at the support of the whole prior: a mixture
 takes the union of the continuous supports of its components (points are
 atoms, orthonormal and meandif components the real line; a factor component
-only resolves the columns), the components of a bias prior take the support of
-the whole bias prior, whether a mixture or a single prior, and a spike-and-slab
-masks the excluded draws in every coefficient column. The density and
+only resolves the columns), every column of a bias prior (a mixture or a single
+prior) takes the bounds of its own component (the omega weights, alpha, pi_null,
+and the union of the truncations of the PET or PEESE components), never those of
+another component, and a spike-and-slab masks the excluded draws in every
+coefficient column. The density and
 autocorrelation diagnostics skip columns the prior declares constant and the
 draws confirm (fixed weight bins); a parameter with nothing else to show behaves
 as a spike prior.

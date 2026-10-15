@@ -1258,3 +1258,66 @@ test_that("a transformation keyed by a bias or p-hacking prior applies to every 
     expect_true(isTRUE(attr(keyed, "density_support_transformed")), info = case)
   }
 })
+
+test_that("the density bounds of a bias mixture follow the dispatched column (F321)", {
+
+  selection <- prior_weightfunction("one-sided", c(.025), wf_cumulative(c(1, 1)))
+
+  # the omega draws are the weights of the selection component and 1 elsewhere,
+  # the PET draws the slab of the PET component and 0 elsewhere
+  n         <- 120L
+  indicator <- rep(1:2, each = n / 2L)
+  draws     <- cbind(
+    mu             = seq(-1, 1, length.out = n),
+    bias_indicator = indicator,
+    "omega[1]"     = 1,
+    "omega[2]"     = ifelse(indicator == 1L, rep(seq(.1, .9, length.out = n / 2L), 2L), 1),
+    PET            = ifelse(indicator == 2L, rep(seq(2.05, 2.95, length.out = n / 2L), 2L), 0)
+  )
+
+  for(truncation in list(list(2, Inf), list(0, Inf))){
+
+    bias       <- prior_mixture(list(selection, prior_PET("normal", list(0, 1), truncation = truncation)))
+    fit        <- .diagnostics_bias_fit_for_test(bias, draws)
+    prior_list <- attr(fit, "prior_list")
+    plot_data  <- .diagnostics_plot_data(fit, "bias", prior_list, NULL, FALSE)
+    expect_identical(colnames(plot_data), c("omega[2]", "PET"))
+
+    # the omega column has the bounds of the weights, the PET column its truncation
+    bounds <- function(column) unlist(.diagnostics_density_bounds(attr(plot_data, "prior"), "bias", column))
+    expect_equal(bounds("omega[2]"), c(lower = 0, upper = 1))
+    expect_equal(bounds("PET"), c(lower = truncation[[1]], upper = Inf))
+
+    # the density of the omega column is the one of the 'omega' diagnostics and
+    # stays on [0, 1] when the plot range reaches past the upper weight
+    xlim          <- c(0, 1.5)
+    bias_density  <- .diagnostics_plot_data_density(plot_data, n_points = 64, xlim = xlim)
+    omega_data    <- .diagnostics_plot_data(fit, "omega", prior_list, NULL, FALSE)
+    omega_density <- .diagnostics_plot_data_density(omega_data, n_points = 64, xlim = xlim)
+    expect_identical(names(omega_density), "omega[0.025,1]")
+    for(chain in seq_along(omega_density[[1L]])){
+      combined  <- bias_density[["omega[2]"]][[chain]]
+      reference <- omega_density[[1L]][[chain]]
+      expect_equal(combined$x, reference$x)
+      expect_equal(combined$y, reference$y)
+      expect_gt(max(combined$y), 0)
+      check <- .diagnostic_density_support_check(combined, c(0, 1))
+      expect_identical(check$outside, 0)
+      expect_true(isTRUE(attr(combined, "boundary_reflection")))
+    }
+  }
+
+  # every selection component, the PET and PEESE columns take their own
+  # components' bounds, and a mixture without a PET column has none
+  mixture <- prior_mixture(list(
+    prior_PET("normal", list(0, 1), truncation = list(0, Inf)),
+    prior_PEESE("normal", list(0, 1), truncation = list(1, Inf)),
+    selection
+  ))
+  bounds <- function(prior, column) unlist(.diagnostics_density_bounds(prior, "bias", column))
+  expect_equal(bounds(mixture, "PET"),   c(lower = 0, upper = Inf))
+  expect_equal(bounds(mixture, "PEESE"), c(lower = 1, upper = Inf))
+  expect_equal(bounds(mixture, "omega[2]"), c(lower = 0, upper = 1))
+  only_selection <- prior_mixture(list(selection, prior_weightfunction("one-sided", c(.05), wf_cumulative(c(1, 1)))))
+  expect_equal(bounds(only_selection, "omega[2]"), c(lower = 0, upper = 1))
+})
