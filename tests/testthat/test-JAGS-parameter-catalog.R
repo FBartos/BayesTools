@@ -5898,6 +5898,63 @@ test_that("the validation memo is bounded and keeps selections separate from cat
   )
 })
 
+test_that("invalid, stale and foreign parameter selections stop with the parameter resolution class", {
+
+  # F186: a selection that cannot be used is a resolution error whose remedy is
+  # to resolve the parameter again; a refit cannot help
+  build_catalog <- function(names){
+    prior_list <- stats::setNames(
+      replicate(length(names), prior("normal", list(0, 1)), simplify = FALSE),
+      names
+    )
+    .bt_build_parameter_catalog(
+      .bt_build_parameter_coordinates(columns = names, prior_list = prior_list),
+      prior_list = prior_list
+    )
+  }
+  catalog   <- build_catalog(c("a", "b"))
+  other     <- build_catalog(c("c", "d"))
+  selection <- parameter_catalog_resolve(catalog, "a")
+  expect_silent(.bt_validate_parameter_selection(selection, catalog = catalog))
+
+  unsupported <- selection
+  unsupported$schema_version <- -1L
+  disagree <- selection
+  disagree$quantity_id <- "BayesTools::elsewhere"
+  stale <- selection
+  stale$quantities$display_label[[1L]] <- "tampered"
+  foreign <- parameter_catalog_resolve(other, "c")
+
+  cases <- list(
+    unsupported = list(selection = unsupported, message = "missing or unsupported"),
+    disagree    = list(selection = disagree,    message = "disagree"),
+    stale       = list(selection = stale,       message = "stale or does not belong"),
+    foreign     = list(selection = foreign,     message = "does not belong")
+  )
+  for(case in names(cases)){
+    condition <- tryCatch(
+      .bt_validate_parameter_selection(cases[[case]]$selection, catalog = catalog),
+      error = identity
+    )
+    info <- case
+    expect_s3_class(condition, "BayesTools_parameter_resolution_error")
+    expect_false(inherits(condition, "BayesTools_refit_required"), info = info)
+    expect_match(conditionMessage(condition), cases[[case]]$message, info = info)
+    expect_match(conditionMessage(condition), "Resolve the parameter again", info = info)
+  }
+
+  # the public entry points report the same class
+  prior_list <- list(a = prior("normal", list(0, 1)), b = prior("normal", list(0, 1)))
+  chains <- coda::mcmc.list(coda::mcmc(matrix(
+    0.5, nrow = 2L, ncol = 2L, dimnames = list(NULL, c("a", "b"))
+  )))
+  fit <- .parameter_catalog_test_fit(chains = chains, prior_list = prior_list)
+  expect_error(parameter_draws(fit, foreign),
+               class = "BayesTools_parameter_resolution_error")
+  expect_error(parameter_prior_density(fit, stale),
+               class = "BayesTools_parameter_resolution_error")
+})
+
 # The catalog builders assemble their tables without the data frame operations
 # they used to apply row by row (one-row tables, `[<-`, `rbind()`, row
 # subsetting). Every replaced step is compared with the step it replaces.

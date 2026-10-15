@@ -98,7 +98,11 @@
 #' (also `BayesTools_hypothesis_target` and
 #' `BayesTools_parameter_resolution_error`), whose message and field `level`
 #' name the level in the same form, e.g. `g[10]` for `g{1}` of a treatment
-#' factor with levels 5, 10, and 20.
+#' factor with levels 5, 10, and 20. A `selection` that is malformed, stale, or
+#' does not belong to the catalog it is used with (for example one resolved
+#' from another fit) stops with an error of class
+#' `BayesTools_parameter_resolution_error`; resolve the parameter again from
+#' the fit's catalog.
 #'
 #' `parameter_draws()` is the deferred extraction boundary. The BayesTools fit
 #' method reads only the coordinates declared by the selected
@@ -5250,6 +5254,14 @@ parameter_transform_jacobian <- function(values, transform){
   stop(condition)
 }
 
+# A selection that is malformed, stale, or from another catalog: the remedy is
+# to resolve the parameter again, not to refit. Class
+# BayesTools_parameter_resolution_error, the parent of the resolution errors.
+.bt_parameter_selection_stop <- function(message){
+
+  .bt_parameter_catalog_stop(class = character(), message = message)
+}
+
 # Contrast-coefficient selectors `<term>{j}` of the fitted factor coordinates
 # that are structurally a level cell (the coordinates of treatment and
 # independent contrasts, and the first ordered coordinate). The catalog has a
@@ -5400,8 +5412,7 @@ parameter_transform_jacobian <- function(values, transform){
     is.character(selection$quantity_id) &&
     length(selection$quantity_id) == nrow(selection$quantities)
   if(!valid){
-    stop("Parameter selection metadata are missing or unsupported. Resolve the parameter again with this version of BayesTools.",
-         call. = FALSE)
+    .bt_parameter_selection_stop("Parameter selection metadata are missing or unsupported. Resolve the parameter again with this version of BayesTools.")
   }
   .bt_validate_parameter_catalog_tables(
     selection$quantities,
@@ -5415,19 +5426,16 @@ parameter_transform_jacobian <- function(values, transform){
     memo = "selection"
   )
   if(!identical(selection$quantity_id, selection$quantities$quantity_id)){
-    stop("Parameter selection IDs and quantity metadata disagree. Resolve the parameter again.",
-         call. = FALSE)
+    .bt_parameter_selection_stop("Parameter selection IDs and quantity metadata disagree. Resolve the parameter again.")
   }
   if(!is.null(catalog)){
     expected <- match(selection$quantity_id, catalog$quantities$quantity_id)
     if(anyNA(expected)){
-      stop("The parameter selection does not belong to this fitted catalog.",
-           call. = FALSE)
+      .bt_parameter_selection_stop("The parameter selection does not belong to this fitted catalog. Resolve the parameter again from this catalog.")
     }
     catalog_rows <- catalog$quantities[expected, , drop = FALSE]
     if(!identical(selection$quantities, catalog_rows)){
-      stop("The parameter selection is stale or does not belong to this fitted catalog.",
-           call. = FALSE)
+      .bt_parameter_selection_stop("The parameter selection is stale or does not belong to this fitted catalog. Resolve the parameter again from this catalog.")
     }
   }
   invisible(TRUE)

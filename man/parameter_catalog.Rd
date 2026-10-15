@@ -196,7 +196,11 @@ coefficient quantity) stops with class \code{BayesTools_selector_unavailable}
 (also \code{BayesTools_hypothesis_target} and
 \code{BayesTools_parameter_resolution_error}), whose message and field \code{level}
 name the level in the same form, e.g. \code{g[10]} for \verb{g\{1\}} of a treatment
-factor with levels 5, 10, and 20.
+factor with levels 5, 10, and 20. A \code{selection} that is malformed, stale, or
+does not belong to the catalog it is used with (for example one resolved
+from another fit) stops with an error of class
+\code{BayesTools_parameter_resolution_error}; resolve the parameter again from
+the fit's catalog.
 
 \code{parameter_draws()} is the deferred extraction boundary. The BayesTools fit
 method reads only the coordinates declared by the selected
