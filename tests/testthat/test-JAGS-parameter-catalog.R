@@ -4976,6 +4976,56 @@ test_that("shared-gate proportions use their declared conditional Dirichlet prio
   }
 })
 
+test_that("catalog numerics stay accurate at the range edges", {
+
+  # Inclusion probabilities near 1e-16: P(w_1 = 0) = (1 - p1) p2 / (p1 + p2 - p1 p2).
+  p <- c(1e-16, 2e-16)
+  density <- BayesTools:::.bt_parameter_prior_density_gated_var_prop_mixture(
+    alpha = c(2, 3), index = 1L, probability = p, n_grid = 256L, tail_prob = 1e-4
+  )
+  expect_equal(.prior_linear_density_point_mass(density, 0), 2 / 3, tolerance = 1e-9)
+  expect_equal(.prior_linear_density_point_mass(density, 1), 1 / 3, tolerance = 1e-9)
+  # at 1e-20 both atoms exist (the complement 1 - prod(1 - p) rounds to 0)
+  expect_identical(
+    BayesTools:::.bt_parameter_prior_density_gated_var_prop_mixture(
+      alpha = c(2, 3), index = 1L, probability = c(1e-20, 1e-20),
+      n_grid = 256L, tail_prob = 1e-4, atoms_only = TRUE
+    ),
+    c(0, 1)
+  )
+
+  # Mixture weights near the double maximum keep their relative size.
+  mixture <- prior_mixture(
+    list(prior("normal", list(0, 1)), prior("normal", list(1, 1))),
+    is_null = c(TRUE, FALSE)
+  )
+  attr(mixture, "prior_weights") <- c(1e308, 1e308)
+  expect_identical(BayesTools:::.bt_prior_component_probability(mixture, "null"), 0.5)
+  attr(mixture, "prior_weights") <- c(3e307, 1e307)
+  expect_equal(BayesTools:::.bt_prior_component_probability(mixture, "alternative"),
+               0.25, tolerance = 1e-14)
+
+  # Correlation Jacobians: sech^2 and p (1 - p) from the exponent, no
+  # subtraction of rounded probabilities from one.
+  # (relative errors: the values beyond |x| of 19 are far below any absolute tolerance)
+  relative_error <- function(actual, expected) abs(actual / expected - 1)
+  expect_lt(max(relative_error(
+    parameter_transform_jacobian(c(0, 3, 30, -30), list(type = "tanh")),
+    c(1, 4 * exp(-6) / (1 + exp(-6))^2, 4 * exp(-60), 4 * exp(-60))
+  )), 1e-13)
+  expect_identical(parameter_transform_jacobian(Inf, list(type = "tanh")), 0)
+  expect_lt(max(relative_error(
+    parameter_transform_jacobian(
+      c(0, 40, -40), list(type = "bounded_logit", lower = 0, upper = 2)),
+    c(0.5, 2 * exp(-40), 2 * exp(-40))
+  )), 1e-13)
+  # the square Jacobian 2 scale^2 |x| is representable for scale 1e160, x = 1e-20
+  expect_equal(
+    parameter_transform_jacobian(1e-20, list(type = "square", scale = 1e160)),
+    2e300, tolerance = 1e-14
+  )
+})
+
 test_that("independently gated proportion mixtures fold fixed inclusion gates", {
 
   # One free gate, one always-on component, one always-off component:

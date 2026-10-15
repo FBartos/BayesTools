@@ -1289,8 +1289,10 @@ parameter_prior_density.BayesTools_fit <- function(
   alpha_i <- alpha[[index]]
   alpha_others <- alpha[others]
 
-  p_all_off <- prod(1 - probability)
-  p_positive <- 1 - p_all_off
+  # The probability that at least one gate is on, from the log complements:
+  # `1 - prod(1 - p)` loses every digit for probabilities near 1e-16.
+  log_all_off <- sum(log1p(-probability))
+  p_positive <- -expm1(log_all_off)
   if(!is.finite(p_positive) || p_positive <= 0){
     return(NULL)
   }
@@ -1312,8 +1314,9 @@ parameter_prior_density.BayesTools_fit <- function(
     )
   }
 
-  p_others_all_off <- prod(1 - p_others)
-  p_atom0 <- (1 - p_i) * (1 - p_others_all_off) / p_positive
+  log_others_off <- sum(log1p(-p_others))
+  p_others_all_off <- exp(log_others_off)
+  p_atom0 <- (1 - p_i) * -expm1(log_others_off) / p_positive
   p_atom1 <- p_i * p_others_all_off / p_positive
   if(isTRUE(atoms_only)){
     return(c(if(p_atom0 > 0) 0, if(p_atom1 > 0) 1))
@@ -1583,6 +1586,9 @@ parameter_prior_density.BayesTools_fit <- function(
      !component %in% components){
     return(NA_real_)
   }
+  # Relative to the largest weight: the sum of weights near the double maximum
+  # would overflow and erase the prior atoms.
+  weights <- weights / max(weights)
   sum(weights[components == component]) / sum(weights)
 }
 
@@ -2274,13 +2280,16 @@ parameter_transform_jacobian <- function(values, transform){
   if(identical(transform$type, "affine")){
     return(rep(abs(transform$scale), length(values)))
   }
+  # The complements are formed without subtracting rounded probabilities from
+  # one: sech(x)^2 = 4 e / (1 + e)^2 and p (1 - p) = e / (1 + e)^2 with
+  # e = exp(-|x|) stay accurate for large |x|, where the differences are 0.
   if(identical(transform$type, "tanh")){
-    return(1 - tanh(values)^2)
+    e <- exp(-2 * abs(values))
+    return(4 * e / (1 + e)^2)
   }
   if(identical(transform$type, "bounded_logit")){
-    probability <- stats::plogis(values)
-    return((transform$upper - transform$lower) *
-      probability * (1 - probability))
+    e <- exp(-abs(values))
+    return((transform$upper - transform$lower) * e / (1 + e)^2)
   }
   if(identical(transform$type, "sqrt_scale")){
     scaled <- transform$scale * values
@@ -2290,7 +2299,10 @@ parameter_transform_jacobian <- function(values, transform){
     return(out)
   }
   if(identical(transform$type, "square")){
-    return(2 * .bt_parameter_transform_square_scale(transform)^2 * abs(values))
+    # (scale * |value|) first: scale^2 alone overflows for scales beyond 1e154
+    # although the Jacobian is representable.
+    scale <- .bt_parameter_transform_square_scale(transform)
+    return(2 * scale * (scale * abs(values)))
   }
 
   stop("Unsupported semantic parameter transform.", call. = FALSE)
