@@ -1567,6 +1567,21 @@ prior_density_has_provenance <- function(x){
   mapped
 }
 
+# The components of a recorded finite mixture that can have mass: those
+# without a recorded weight and those with a finite positive weight.
+.prior_density_ordinate_positive_components <- function(provenance){
+
+  provenance$components[vapply(
+    provenance$components,
+    function(component){
+      is.null(component$weight) ||
+        (is.numeric(component$weight) && length(component$weight) == 1L &&
+           is.finite(component$weight) && component$weight > 0)
+    },
+    logical(1)
+  )]
+}
+
 .prior_density_ordinate_provenance_support <- function(provenance){
 
   if(!is.list(provenance)){
@@ -1657,15 +1672,7 @@ prior_density_has_provenance <- function(x){
     return(c(lower = min(mapped), upper = max(mapped)))
   }
   if(identical(kind, "finite_mixture") && length(provenance$components) > 0L){
-    components <- provenance$components[vapply(
-      provenance$components,
-      function(component){
-        is.null(component$weight) ||
-          (is.numeric(component$weight) && length(component$weight) == 1L &&
-             is.finite(component$weight) && component$weight > 0)
-      },
-      logical(1)
-    )]
+    components <- .prior_density_ordinate_positive_components(provenance)
     if(length(components) == 0L){
       return(NULL)
     }
@@ -1692,15 +1699,7 @@ prior_density_has_provenance <- function(x){
     return(identical(provenance$family, family))
   }
   if(identical(provenance$kind, "finite_mixture")){
-    components <- provenance$components[vapply(
-      provenance$components,
-      function(component){
-        is.null(component$weight) ||
-          (is.numeric(component$weight) && length(component$weight) == 1L &&
-             is.finite(component$weight) && component$weight > 0)
-      },
-      logical(1)
-    )]
+    components <- .prior_density_ordinate_positive_components(provenance)
     return(length(components) > 0L && all(vapply(
       components,
       function(component){
@@ -1757,15 +1756,7 @@ prior_density_has_provenance <- function(x){
     return(numeric())
   }
   if(identical(kind, "finite_mixture")){
-    components <- provenance$components[vapply(
-      provenance$components,
-      function(component){
-        is.null(component$weight) ||
-          (is.numeric(component$weight) && length(component$weight) == 1L &&
-             is.finite(component$weight) && component$weight > 0)
-      },
-      logical(1)
-    )]
+    components <- .prior_density_ordinate_positive_components(provenance)
     atoms <- lapply(components, function(component){
       .prior_density_ordinate_provenance_atoms(component$provenance)
     })
@@ -1843,15 +1834,7 @@ prior_density_has_provenance <- function(x){
     return(!provenance$family %in% c("none", "point", "bernoulli"))
   }
   if(identical(kind, "finite_mixture")){
-    components <- provenance$components[vapply(
-      provenance$components,
-      function(component){
-        is.null(component$weight) ||
-          (is.numeric(component$weight) && length(component$weight) == 1L &&
-             is.finite(component$weight) && component$weight > 0)
-      },
-      logical(1)
-    )]
+    components <- .prior_density_ordinate_positive_components(provenance)
     return(any(vapply(
       components,
       function(component) .prior_density_ordinate_provenance_continuous(component$provenance),
@@ -1922,15 +1905,7 @@ prior_density_has_provenance <- function(x){
     ))
   }
   if(identical(kind, "finite_mixture")){
-    components <- provenance$components[vapply(
-      provenance$components,
-      function(component){
-        is.null(component$weight) ||
-          (is.numeric(component$weight) && length(component$weight) == 1L &&
-             is.finite(component$weight) && component$weight > 0)
-      },
-      logical(1)
-    )]
+    components <- .prior_density_ordinate_positive_components(provenance)
     if(length(components) == 0L) return("unknown")
     behavior <- vapply(components, function(component){
       .prior_density_ordinate_tail_behavior(
@@ -2082,15 +2057,7 @@ prior_density_has_provenance <- function(x){
     }
   }
   if(identical(provenance$kind, "finite_mixture")){
-    components <- provenance$components[vapply(
-      provenance$components,
-      function(component){
-        is.null(component$weight) ||
-          (is.numeric(component$weight) && length(component$weight) == 1L &&
-             is.finite(component$weight) && component$weight > 0)
-      },
-      logical(1)
-    )]
+    components <- .prior_density_ordinate_positive_components(provenance)
     if(length(components) == 0L) return("unknown")
     behavior <- vapply(components, function(component){
       .prior_density_ordinate_exp_lin_boundary(component$provenance, b)

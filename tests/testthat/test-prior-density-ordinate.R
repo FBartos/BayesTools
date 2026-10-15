@@ -21,10 +21,7 @@ test_that("prior density ordinate validates input and has a stable schema", {
   expect_true(out$exact)
   expect_identical(out$method, "primitive")
   expect_null(out$reason)
-  expect_true(out$method %in% c(
-    "primitive", "point", "finite_mixture", "scalar_affine",
-    "linear_normal", "named_transform", "unsupported_provenance"
-  ))
+  expect_true(out$method %in% BayesTools:::.prior_density_ordinate_methods())
 
   expect_error(
     prior_density_ordinate(normal_prior, NA_real_),
@@ -2600,6 +2597,37 @@ test_that("R116 N06 constants and finite images have conservative provenance", {
       expect_null(.prior_density_ordinate_provenance_atoms(mapped))
     }
   }
+})
+
+test_that("the tanh log Jacobian and the max-shifted mixture log sum hold away from zero", {
+
+  # Y = tanh(X): log f_Y(y) = log f_X(atanh(y)) - log(1 - y^2); at y = 0 the
+  # Jacobian is 1, which a sign error in the Jacobian would not show.
+  normal_prior <- prior("normal", list(mean = 0, sd = 1))
+  hyperbolic <- .prior_linear_combination_density(
+    list(beta = normal_prior), c(beta = 1), n_grid = 128, output_transformation = "tanh"
+  )
+  for(y in c(-.9, -.5, .3, .5, .95)){
+    expected <- stats::dnorm(atanh(y), log = TRUE) - log1p(-y^2)
+    expect_equal(prior_density_ordinate(hyperbolic, y)$log_density, expected, tolerance = 1e-12)
+  }
+
+  # The log of a probability-weighted sum is max-shifted: components whose
+  # densities underflow individually still give the finite log sum.
+  log_sum <- .prior_density_ordinate_log_sum
+  expect_equal(log_sum(c(-1000, -1001), c(.5, .5)), log(.5) - 1000 + log1p(exp(-1)), tolerance = 1e-14)
+  expect_equal(log_sum(c(-1000, -Inf, -1002), c(.2, .3, .5)),
+               log(.2) - 1000 + log1p(.5 / .2 * exp(-2)), tolerance = 1e-14)
+  expect_identical(log_sum(c(-5, -6), c(1, 0)), -5)
+  expect_identical(log_sum(c(-Inf, -Inf), c(.5, .5)), -Inf)
+  expect_identical(log_sum(c(NA_real_, -1), c(.5, .5)), NA_real_)
+  mixture <- prior_mixture(list(prior("normal", list(0, 1), prior_weights = 1),
+                                prior("normal", list(.5, 1), prior_weights = 3)), is_null = c(FALSE, FALSE))
+  far <- prior_density_ordinate(mixture, 40)
+  expect_true(is.finite(far$log_density))
+  expect_equal(far$log_density,
+               log(.25) + stats::dnorm(40, log = TRUE) + log1p(3 * exp(stats::dnorm(40, .5, log = TRUE) - stats::dnorm(40, log = TRUE))),
+               tolerance = 1e-12)
 })
 
 test_that("the exp_lin zero limit of a narrow truncated gamma or beta uses the log truncation mass", {
