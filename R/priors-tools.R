@@ -157,6 +157,16 @@
   }
 }
 
+# Whether a declared dimension 'K' of a bound factor prior (NULL: undeclared; NA:
+# declared unresolved) conflicts with the number of coefficients of its coding:
+# anything but a scalar number equal to it, or NA.
+.bt_factor_K_declaration_conflicts <- function(declared, coefficient_dim){
+
+  !is.null(declared) && (length(declared) != 1L ||
+    !(is.numeric(declared) || (is.logical(declared) && is.na(declared))) ||
+    (!is.na(declared) && (!is.finite(declared) || declared != coefficient_dim)))
+}
+
 .get_prior_factor_levels       <- function(prior){
   bound_design <- attr(prior, "factor_design", exact = TRUE)
   if(is.matrix(bound_design)){
@@ -171,9 +181,7 @@
           component$parameters[["K"]]
         }))
       for(dimension in dimensions){
-        if(!is.null(dimension) && (length(dimension) != 1L ||
-           !(is.numeric(dimension) || (is.logical(dimension) && is.na(dimension))) ||
-           (!is.na(dimension) && (!is.finite(dimension) || dimension != ncol(bound_design))))){
+        if(.bt_factor_K_declaration_conflicts(dimension, ncol(bound_design))){
           stop("Bound factor dimensions disagree with an explicit 'K' declaration.", call. = FALSE)
         }
       }

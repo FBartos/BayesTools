@@ -473,6 +473,31 @@ test_that(".check_parameter_dimensions works correctly", {
 })
 
 
+test_that("a declared K conflicts with the coefficients of the coding unless it is absent, NA or equal", {
+
+  conflicts <- BayesTools:::.bt_factor_K_declaration_conflicts
+  # undeclared, declared unresolved, or equal
+  expect_false(conflicts(NULL, 2))
+  expect_false(conflicts(NA, 2))
+  expect_false(conflicts(NA_real_, 2))
+  expect_false(conflicts(2, 2))
+  expect_false(conflicts(2L, 2))
+  # a different number, a non-scalar, a non-number or a non-finite number
+  expect_true(conflicts(3, 2))
+  expect_true(conflicts(c(2, 2), 2))
+  expect_true(conflicts(numeric(), 2))
+  expect_true(conflicts("2", 2))
+  expect_true(conflicts(TRUE, 2))
+  expect_true(conflicts(Inf, 2))
+
+  # and a bound factor mixture refuses a conflicting declaration of a component
+  joint <- prior_factor("mnormal", list(0, 1), contrast = "orthonormal")
+  mixture <- prior_factor_levels(prior_mixture(list(joint, prior("point", list(0)))), 3)
+  expect_identical(BayesTools:::.get_prior_factor_levels(mixture), 2L)
+  mixture[[1L]]$parameters$K <- 3
+  expect_error(BayesTools:::.get_prior_factor_levels(mixture), "disagree with an explicit 'K'", fixed = TRUE)
+})
+
 test_that(".get_prior_factor_levels works correctly", {
 
   # Treatment contrast - levels - 1

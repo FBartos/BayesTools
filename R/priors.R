@@ -542,7 +542,6 @@ prior_spike_and_slab <- function(prior_parameter,
     # obtain and store the contrast type
     priors_type <- .get_prior_factor_list_type(list(prior_parameter))
 
-    attr(prior_parameter, "K") <- priors_type[["K"]]
     class(mixture_output) <- c("prior", "prior.spike_and_slab", "prior.factor_spike_and_slab",
                               class(mixture_output)[-1], priors_type[["class"]])
   }else if(is.prior.simple(prior_parameter)){

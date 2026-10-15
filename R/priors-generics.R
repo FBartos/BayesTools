@@ -3,12 +3,14 @@
 #'
 #' @description Density (pdf / lpdf), distribution
 #' function (cdf / ccdf), quantile function (quant),
-#' random generation (rng), mean, standard deviation (sd),
-#' and marginal variants of the functions (mpdf, mlpf, mcdf,
+#' random generation (rng),
+#' and marginal variants of the functions (mpdf, mlpdf, mcdf,
 #' mccdf, mquant).
 #'
 #' @param x main argument
-#' @param ... unused arguments
+#' @param ... further arguments passed to the method; the methods for
+#' prior objects and their arguments are documented in
+#' \code{\link{prior_functions}}
 #'
 #' @return \code{pdf} (\code{mpdf}) and \code{lpdf} (\code{mlpdf}) give
 #' the (marginal) density and the log of (marginal) density,

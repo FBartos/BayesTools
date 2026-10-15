@@ -15,9 +15,7 @@
   declared_K <- component$parameters[["K"]]
   container_K <- attr(container, "K", exact = TRUE)
   for(value in list(declared_K, container_K)){
-    if(!is.null(value) && (length(value) != 1L ||
-       !(is.numeric(value) || (is.logical(value) && is.na(value))) ||
-       (!is.na(value) && (!is.finite(value) || value != coefficient_dim)))){
+    if(.bt_factor_K_declaration_conflicts(value, coefficient_dim)){
       stop("Bound factor dimensions disagree with an explicit 'K' declaration.", call. = FALSE)
     }
   }

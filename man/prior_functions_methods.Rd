@@ -40,7 +40,9 @@ mpdf(x, ...)
 \arguments{
 \item{x}{main argument}
 
-\item{...}{unused arguments}
+\item{...}{further arguments passed to the method; the methods for
+prior objects and their arguments are documented in
+\code{\link{prior_functions}}}
 }
 \value{
 \code{pdf} (\code{mpdf}) and \code{lpdf} (\code{mlpdf}) give
@@ -55,7 +57,7 @@ The \code{pdf} function proceeds to PDF graphics device if \code{x} is a charact
 \description{
 Density (pdf / lpdf), distribution
 function (cdf / ccdf), quantile function (quant),
-random generation (rng), mean, standard deviation (sd),
-and marginal variants of the functions (mpdf, mlpf, mcdf,
+random generation (rng),
+and marginal variants of the functions (mpdf, mlpdf, mcdf,
 mccdf, mquant).
 }
