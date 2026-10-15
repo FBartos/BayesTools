@@ -2,7 +2,8 @@
 # divisor avoids rounding a reciprocal before certifying a comparison.
 .hypothesis_numerical_stop <- function(reason, operation, inputs = NULL,
                                         diagnostics = NULL, region = FALSE,
-                                        structural = FALSE){
+                                        structural = FALSE, subject = "The hypothesis",
+                                        remedy = NULL){
 
   leaf <- if(region) "BayesTools_hypothesis_region_numerical_unavailable" else
     "BayesTools_hypothesis_numerical_unavailable"
@@ -16,11 +17,14 @@
     paste0("", gsub("_", " ", reason), " in ", operation)
   }
   # A structural limit (unrepresentable target units, an expression that is
-  # undefined for the draws) is unavailable, not rejected by diagnostics, and
-  # has no numerical remedy.
+  # undefined for the draws, draws that cannot support a kernel estimate) is
+  # unavailable, not rejected by diagnostics, and has no numerical remedy; a
+  # caller may name its own 'remedy'.
   message <- if(isTRUE(structural)){
-    paste0("The hypothesis is unavailable: ", observed, ". ",
-           if(identical(reason, "undefined_expression")){
+    paste0(subject, " is unavailable: ", observed, ". ",
+           if(!is.null(remedy)){
+             remedy
+           }else if(identical(reason, "undefined_expression")){
              "Restrict the hypothesis to values where its expression is defined."
            }else{
              "Use coefficients, divisors and thresholds that are representable at full precision."

@@ -5752,12 +5752,22 @@ test_that("the kernel posterior ordinate refuses degenerate continuous draws", {
     .bt_meta_set(draws, "atoms", atoms)
   }
   unavailable <- "BayesTools_hypothesis_numerical_unavailable"
+  # (a result the draws cannot support is unavailable, not rejected by diagnostics, and the
+  # remedy is more posterior draws: the normal approximation needs spread as well)
+  messages <- c(
+    fewer_than_two_finite_continuous_draws = paste0(
+      "The Savage-Dickey Bayes factor is unavailable: fewer than two finite continuous draws in ",
+      "posterior kernel density ordinate. Use more posterior draws from the fitted model."),
+    zero_spread_continuous_draws = paste0(
+      "The Savage-Dickey Bayes factor is unavailable: zero spread continuous draws in ",
+      "posterior kernel density ordinate. Use more posterior draws from the fitted model, or check ",
+      "whether the parameter is fixed (identical draws have no kernel density ordinate)."))
   expect_unavailable <- function(object, reason){
     condition <- tryCatch(object, error = function(e) e)
     expect_s3_class(condition, unavailable)
     if(inherits(condition, unavailable)){
       expect_identical(condition$reason, reason)
-      expect_match(conditionMessage(condition), "rejected by diagnostics", fixed = TRUE)
+      expect_identical(conditionMessage(condition), messages[[reason]])
     }
   }
 
@@ -5782,9 +5792,12 @@ test_that("the kernel posterior ordinate refuses degenerate continuous draws", {
   expect_true(is.finite(bf$healthy) && bf$healthy > 0)
   for(level in c("single", "constant")){
     expect_true(is.na(bf[[level]]))
-    expect_match(attr(bf[[level]], "warnings"), "rejected by diagnostics", fixed = TRUE)
+    expect_identical(attr(bf[[level]], "warnings"),
+                     messages[[attr(bf[[level]], "numerical_diagnostics")$reason]])
     expect_identical(attr(bf[[level]], "posterior_density_source"), "numerical_unavailable")
   }
+  expect_identical(attr(bf$single, "numerical_diagnostics")$reason, few)
+  expect_identical(attr(bf$constant, "numerical_diagnostics")$reason, "zero_spread_continuous_draws")
   expect_equal(as.numeric(bf$healthy),
                as.numeric(Savage_Dickey_BF(levels$healthy, silent = TRUE)), tolerance = 1e-12)
 

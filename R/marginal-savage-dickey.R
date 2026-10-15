@@ -792,13 +792,18 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
   if(length(sample_values) < 2L){
     .hypothesis_numerical_stop(
       "fewer_than_two_finite_continuous_draws", "posterior kernel density ordinate",
-      inputs = list(finite_draws = length(sample_values))
+      inputs = list(finite_draws = length(sample_values)), structural = TRUE,
+      subject = "The Savage-Dickey Bayes factor",
+      remedy = "Use more posterior draws from the fitted model."
     )
   }
   if(all(sample_values == sample_values[[1L]])){
     .hypothesis_numerical_stop(
       "zero_spread_continuous_draws", "posterior kernel density ordinate",
-      inputs = list(finite_draws = length(sample_values), value = sample_values[[1L]])
+      inputs = list(finite_draws = length(sample_values), value = sample_values[[1L]]),
+      structural = TRUE, subject = "The Savage-Dickey Bayes factor",
+      remedy = paste0("Use more posterior draws from the fitted model, or check whether the parameter is ",
+                      "fixed (identical draws have no kernel density ordinate).")
     )
   }
 
