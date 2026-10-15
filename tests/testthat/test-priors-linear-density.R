@@ -5018,6 +5018,12 @@ test_that("only a simple component whose demanded spacing is below the coordinat
   expect_identical(unname(locations(unequal, c(a = 1))), NA_real_)
   # the resolution is that of the coordinates of the combination: a lone tiny component resolves itself
   expect_identical(unname(locations(unequal["b"], c(b = 2.55e-16))), NA_real_)
+  # source transformations that carry no name of the weights (the additive builder passes the
+  # transformations of the whole combination to its multiplier term) are none
+  groups <- .prior_linear_weight_groups(unequal, c(a = 1, b = 2.55e-16))
+  expect_identical(
+    .prior_linear_residue_locations(groups, c(5 / 1.349, 2.55e-16 / 1.349), c(other = NA_character_), c(-18.6, 18.6)),
+    c(NA_real_, 0))
   # a nonzero mean is carried by the point: weight times the prior mean
   shifted <- list(a = prior("normal", list(0, 5)), b = prior("normal", list(3, 1)))
   expect_equal(unname(locations(shifted, c(a = 1, b = 1e-17))), c(NA_real_, 3e-17), tolerance = 1e-12)

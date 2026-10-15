@@ -1172,7 +1172,7 @@
   for(i in which(finite & demanded < resolution)){
     group <- groups[[i]]
     if(!is.prior.simple(group$prior) || length(group$weights) != 1L ||
-       !is.na(source_transforms[[names(group$weights)]])){
+       !all(is.na(source_transforms[names(group$weights)]))){
       next
     }
     mean_value <- tryCatch(suppressWarnings(mean(group$prior)), error = function(e) NA_real_)
