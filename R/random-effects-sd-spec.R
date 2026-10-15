@@ -578,6 +578,23 @@
     contrast <- attr(data[[factor_term]], "contrasts")
     if(is.null(contrast)) "contr.treatment" else contrast
   }, character(1))
+  # R codes a factor of an interaction whose margin is absent from the block
+  # (`f:g` without `f` or `g`) by level indicators, whatever its declared
+  # contrast: the stored coding of the term (the 2 of its `factors` matrix)
+  # makes those columns level cells, so the declared contrast does not bar them
+  # from the cell labels of a mixed-contrast term.
+  if(identical(.bt_random_effect_factor_term_contrast(model_term, predictors_type, data),
+               "contr.mixed")){
+    coding <- attr(stats::terms(formula), "factors", exact = TRUE)
+    term_label <- gsub("__xXx__", ":", model_term, fixed = TRUE)
+    if(is.matrix(coding) && term_label %in% colnames(coding)){
+      indicators <- vapply(factor_terms, function(factor_term){
+        factor_term %in% rownames(coding) &&
+          identical(as.integer(coding[factor_term, term_label]), 2L)
+      }, logical(1))
+      factor_contrasts[indicators] <- "contr.independent"
+    }
+  }
 
   list(
     design = unname(grid_matrix[, terms_indexes == term_index, drop = FALSE]),

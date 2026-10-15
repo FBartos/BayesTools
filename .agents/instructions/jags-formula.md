@@ -430,7 +430,12 @@ names.
   treatment and ordered levels are labelled by the cell itself). A
   coordinate is a direct level cell only where the contrast makes
   it so structurally (treatment, independent, first ordered coordinate),
-  never by floating-point equality of design rows. Every other coordinate is
+  never by floating-point equality of design rows. In a random interaction of
+  mixed contrasts, a factor that R codes by level indicators (the stored coding
+  of the term: its margin is absent from the block, as in `f:g` without `f` or
+  `g`) counts as independent whatever its declared contrast, so the columns of
+  an interaction-only term are level cells, while a factor coded by its
+  eigendecomposition contrast keeps the tag gate. Every other coordinate is
   contrast coefficient `<parameter>{j}`, labelled so in tables, diagnostics,
   mixed-posterior columns, and random-slope components (`sd(g{j})`). A
   `{j}` selector of a direct level coordinate is refused (in catalog

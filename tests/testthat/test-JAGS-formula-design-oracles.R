@@ -14157,6 +14157,44 @@ test_that("SD components of mixed-contrast random interactions are level cells o
     leaf_terms(only_interaction),
     c("intercept", paste0("f[", c("x", "y", "z"), "]__xXx__g[", rep(c("p", "q"), each = 3L), "]"))
   )
+
+  # R codes the f:g-only term by level indicators whatever the declared
+  # contrasts, so its columns are cells also for a mixed-contrast term; the
+  # tag gate stays for terms whose margins are present
+  cells <- c("intercept", paste0("f[", c("x", "y", "z"), "]__xXx__g[", rep(c("p", "q"), each = 3L), "]"))
+  interaction_only <- ~ 1 + diag(1 + f:g | study, hom = FALSE)
+  for(contrasts in list(c("contr.treatment", "contr.orthonormal"),
+                        c("contr.orthonormal", "contr.treatment"),
+                        c("contr.meandif", "contr.treatment"))){
+    mixed_only <- compile(interaction_only, contrasts[1L], contrasts[2L])
+    expect_identical(leaf_terms(mixed_only), cells, info = paste(contrasts, collapse = " x "))
+    expect_identical(
+      rownames(.oracle_independent_sd_table(mixed_only)),
+      c("(mu) intercept", "(mu) sd(intercept)",
+        paste0("(mu) sd(f[", c("x", "y", "z"), "]:g[", rep(c("p", "q"), each = 3L), "])")),
+      info = paste(contrasts, collapse = " x ")
+    )
+  }
+  # the factor of the interaction that is coded by its contrast keeps the tag
+  # gate: orthonormal g with its margin f in the block, orthonormal f with g
+  expect_identical(
+    leaf_terms(compile(~ 1 + diag(1 + f + f:g | study, hom = FALSE), "contr.treatment", "contr.orthonormal")),
+    c("intercept", "f[y]", "f[z]", paste0("f__xXx__g{", 1:3, "}"))
+  )
+  expect_identical(
+    leaf_terms(compile(~ 1 + diag(1 + g + f:g | study, hom = FALSE), "contr.orthonormal", "contr.treatment")),
+    c("intercept", "g[q]", paste0("g__xXx__f{", 1:4, "}"))
+  )
+  # while f, coded by indicators next to a treatment-coded g, gives cells
+  expect_identical(
+    leaf_terms(compile(~ 1 + diag(1 + f + f:g | study, hom = FALSE), "contr.orthonormal", "contr.treatment")),
+    c("intercept", "f{1}", "f{2}", paste0("f[", c("x", "y", "z"), "]__xXx__g[q]"))
+  )
+  # an orthonormal main-effect design keeps its coordinate labels
+  expect_identical(
+    leaf_terms(compile(~ 1 + diag(1 + g | study, hom = FALSE), "contr.treatment", "contr.orthonormal")),
+    c("intercept", "g{1}")
+  )
 })
 
 test_that("dot expansion is refused in the package's words and an empty formula_scale scales nothing", {
