@@ -18,17 +18,15 @@
   </clipPath>
 </defs>
 <g clip-path='url(#cpMC4wMHw3MjAuMDB8MC4wMHw1NzYuMDA=)'>
-<line x1='82.11' y1='502.56' x2='666.40' y2='502.56' style='stroke-width: 0.75;' />
-<line x1='82.11' y1='502.56' x2='82.11' y2='509.76' style='stroke-width: 0.75;' />
-<line x1='228.18' y1='502.56' x2='228.18' y2='509.76' style='stroke-width: 0.75;' />
-<line x1='374.25' y1='502.56' x2='374.25' y2='509.76' style='stroke-width: 0.75;' />
-<line x1='520.33' y1='502.56' x2='520.33' y2='509.76' style='stroke-width: 0.75;' />
-<line x1='666.40' y1='502.56' x2='666.40' y2='509.76' style='stroke-width: 0.75;' />
-<text x='82.11' y='528.48' text-anchor='middle' style='font-size: 12.00px; font-family: sans;' textLength='6.67px' lengthAdjust='spacingAndGlyphs'>0</text>
-<text x='228.18' y='528.48' text-anchor='middle' style='font-size: 12.00px; font-family: sans;' textLength='20.02px' lengthAdjust='spacingAndGlyphs'>500</text>
-<text x='374.25' y='528.48' text-anchor='middle' style='font-size: 12.00px; font-family: sans;' textLength='26.70px' lengthAdjust='spacingAndGlyphs'>1000</text>
-<text x='520.33' y='528.48' text-anchor='middle' style='font-size: 12.00px; font-family: sans;' textLength='26.70px' lengthAdjust='spacingAndGlyphs'>1500</text>
-<text x='666.40' y='528.48' text-anchor='middle' style='font-size: 12.00px; font-family: sans;' textLength='26.70px' lengthAdjust='spacingAndGlyphs'>2000</text>
+<line x1='155.14' y1='502.56' x2='593.36' y2='502.56' style='stroke-width: 0.75;' />
+<line x1='155.14' y1='502.56' x2='155.14' y2='509.76' style='stroke-width: 0.75;' />
+<line x1='301.22' y1='502.56' x2='301.22' y2='509.76' style='stroke-width: 0.75;' />
+<line x1='447.29' y1='502.56' x2='447.29' y2='509.76' style='stroke-width: 0.75;' />
+<line x1='593.36' y1='502.56' x2='593.36' y2='509.76' style='stroke-width: 0.75;' />
+<text x='155.14' y='528.48' text-anchor='middle' style='font-size: 12.00px; font-family: sans;' textLength='20.02px' lengthAdjust='spacingAndGlyphs'>500</text>
+<text x='301.22' y='528.48' text-anchor='middle' style='font-size: 12.00px; font-family: sans;' textLength='26.70px' lengthAdjust='spacingAndGlyphs'>1000</text>
+<text x='447.29' y='528.48' text-anchor='middle' style='font-size: 12.00px; font-family: sans;' textLength='26.70px' lengthAdjust='spacingAndGlyphs'>1500</text>
+<text x='593.36' y='528.48' text-anchor='middle' style='font-size: 12.00px; font-family: sans;' textLength='26.70px' lengthAdjust='spacingAndGlyphs'>2000</text>
 <line x1='59.04' y1='486.17' x2='59.04' y2='148.08' style='stroke-width: 0.75;' />
 <line x1='59.04' y1='486.17' x2='51.84' y2='486.17' style='stroke-width: 0.75;' />
 <line x1='59.04' y1='373.47' x2='51.84' y2='373.47' style='stroke-width: 0.75;' />
