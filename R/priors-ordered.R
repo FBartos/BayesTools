@@ -701,11 +701,30 @@ prior_ordered_total_name <- function(parameter_name){
   range(c(0, .prior_ordered_total_range(prior$total, quantiles)), na.rm = TRUE)
 }
 
+# An ordered prior used outside a formula term has no named factors: its
+# 'allocation' list, named by the factors of a term, cannot be matched to the
+# placeholder factor that standalone binding uses.
+.prior_ordered_check_standalone_allocation <- function(prior){
+
+  if(identical(prior$allocation$type, "by_factor")){
+    .bt_ordered_stop(paste0(
+      "A standalone prior_ordered() prior with an 'allocation' list named by factor (",
+      paste0("'", names(prior$allocation$allocations), "'", collapse = ", "),
+      ") is unavailable: the entries belong to the factors of a 'JAGS_formula()' term, ",
+      "and a prior outside a formula has no named factor. Use a single Dirichlet prior ",
+      "or a fixed allocation vector, or bind the prior in 'JAGS_formula()'."
+    ), "BayesTools_ordered_unavailable")
+  }
+
+  invisible(TRUE)
+}
+
 .prior_ordered_default_bound <- function(prior, parameter_name = ".ordered"){
 
   if(!is.null(attr(prior, "ordered_metadata", exact = TRUE))){
     return(prior)
   }
+  .prior_ordered_check_standalone_allocation(prior)
 
   n_levels <- attr(prior, "levels", exact = TRUE)
   if(is.null(n_levels) || is.na(n_levels)){

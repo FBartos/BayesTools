@@ -119,6 +119,7 @@ prior_factor_levels <- function(prior, levels){
   attr(prior, "factor_design")     <- design_info[["design"]]
   attr(prior, "factor_cell_names") <- design_info[["cell_names"]]
   if(is.prior.ordered(prior)){
+    .prior_ordered_check_standalone_allocation(prior)
     prior <- .bt_bind_ordered_prior_metadata(prior, ".ordered")
   }
 

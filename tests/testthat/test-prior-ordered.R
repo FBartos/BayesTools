@@ -1618,6 +1618,36 @@ test_that("rng() of an ordered prior returns the requested quantity", {
                "The 'bogus' values are not recognized by the 'quantity' argument.", fixed = TRUE)
 })
 
+test_that("a standalone ordered prior with an allocation list named by factor is unavailable (F124)", {
+
+  # the list entries name the factors of a formula term; outside a formula the
+  # prior has no named factor (it was refused as a missing entry for '.factor')
+  by_factor <- prior_ordered(prior("normal", list(0, 1)), allocation = list(f = c(.4, .6)))
+  levels <- c("lo", "mid", "hi")
+  for(call in list(
+    function() rng(by_factor, 3L),
+    function() rng(by_factor, 3L, quantity = "allocation"),
+    function() prior_factor_levels(by_factor, levels),
+    function() density(by_factor)
+  )){
+    condition <- tryCatch(call(), error = identity)
+    expect_s3_class(condition, "BayesTools_ordered_unavailable")
+    expect_match(conditionMessage(condition),
+                 "A standalone prior_ordered() prior with an 'allocation' list named by factor ('f') is unavailable",
+                 fixed = TRUE)
+    expect_match(conditionMessage(condition), "Use a single Dirichlet prior or a fixed allocation vector",
+                 fixed = TRUE)
+    expect_false(grepl("missing an entry", conditionMessage(condition), fixed = TRUE))
+  }
+
+  # a single allocation draws, and the same list binds in a formula term
+  fixed <- prior_factor_levels(prior_ordered(prior("normal", list(0, 1)), allocation = c(.4, .6)), levels)
+  expect_identical(dim(rng(fixed, 3L)), c(3L, 3L))
+  data <- data.frame(y = 1:6, f = factor(rep(c("lo", "mid", "hi"), 2), levels = levels))
+  bound <- JAGS_formula(~ f, "mu", data, list(intercept = prior("point", list(0)), f = by_factor))
+  expect_s3_class(bound$prior_list$mu_f, "prior.ordered")
+})
+
 test_that("an ordered allocation with expression concentrations is refused at construction", {
 
   expression_allocation <- prior("dirichlet", list(alpha = expression(alpha1, alpha2)))

@@ -369,7 +369,10 @@ prior_factor <- function(distribution, parameters, truncation = list(lower = -In
 #' term. Numeric vectors specify fixed splits of finite nonnegative weights
 #' with a finite total and roundoff bound, summing to one within that bound.
 #' Dirichlet priors specify random
-#' allocations. For terms with multiple ordered factors, use a named list.
+#' allocations. For terms with multiple ordered factors, use a named list. A
+#' list is available in a \code{JAGS_formula()} term only: sampling or plotting
+#' a standalone prior, or setting its levels with [prior_factor_levels()],
+#' raises \code{BayesTools_ordered_unavailable}.
 #' @param contrast ordered contrast. \code{"cumulative"} uses
 #' \code{nlevels(f) - 1} increments and sets the first level effect to zero.
 #' \code{"cumulative_levels"} uses \code{nlevels(f)} increments and gives the
