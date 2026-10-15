@@ -1895,3 +1895,25 @@ test_that("the SD columns of random interactions with transformed contrasts are 
     expect_true(all(case[[4L]]$labels %in% rownames(JAGS_estimates_table(fit, remove_diagnostics = TRUE))), info = label)
   }
 })
+
+test_that("level tokens round trip exactly whatever the characters and the locale", {
+
+  levels <- c(
+    "caf\u00e9, no", "\u65e5\u672c,\u8a9e", "a=\u00e9", " \u00e9 ", "\u00e9=\"\\",
+    "\U0001F600", "x\U0001F600,y", "\U0001F600 ", "\U0001F4A9=\U0001F600",
+    "a\"b,c\\d %5B\n,=", "%5B%5D", "%255B", "\\n", "\"", "\"\"", "\"a\"", "\\\"",
+    "\t, \"quoted\" \\ [x]{y}`z` %7B%7D = 100%", "%", "%%25%"
+  )
+  tokens <- .bt_label_token(levels)
+  expect_identical(.bt_label_token_decode(tokens), levels)
+  expect_identical(anyDuplicated(tokens), 0L)
+  # the quoted tokens are plain delimiters around the escaped text
+  quoted <- startsWith(tokens, "\"")
+  expect_true(all(quoted[grepl(",|=|^ | $", levels) | !nzchar(levels)]))
+  expect_false(any(grepl("\\", tokens, fixed = TRUE)))
+  expect_false(any(grepl("\"", substr(tokens[quoted], 2L, nchar(tokens[quoted]) - 1L), fixed = TRUE)))
+  # a level keeps its text and its encoding mark
+  expect_identical(.bt_label_token("\U0001F600"), "\U0001F600")
+  expect_identical(.bt_label_token("x\U0001F600,y"), "\"x\U0001F600,y\"")
+  expect_identical(Encoding(.bt_label_token_decode(.bt_label_token("\u00e9,\u00e9"))), "UTF-8")
+})

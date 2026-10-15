@@ -507,7 +507,11 @@ parameter_labels <- function(x, style = c("selector", "table", "plot", "warning"
 # (square and curly brackets, backticks, quotes, backslashes, the escape
 # character itself, and control characters) are percent-escaped. Tokens with
 # ',' or '=' or edge whitespace are additionally quoted so that interaction
-# tokens split unambiguously. .bt_label_token_decode() inverts the encoding.
+# tokens split unambiguously. The escaped text contains no quote or backslash,
+# so the quotes are plain delimiters: neither step depends on the locale or on
+# the encoding of the level (astral and non-ASCII characters are kept as they
+# are). .bt_label_token_decode() is the exact inverse: it removes the
+# delimiters and undoes the escapes, '%25' last.
 
 .bt_label_token_escapes <- c(
   "%"  = "%25",
@@ -535,11 +539,11 @@ parameter_labels <- function(x, style = c("selector", "table", "plot", "warning"
                   fixed = TRUE)
     }
     needs_quotes <- !nzchar(x_i) ||
-      grepl("^[[:space:]]|[[:space:]]$", x_i) ||
+      grepl("^[[:space:]]|[[:space:]]$", x_i, useBytes = TRUE) ||
       grepl(",", x_i, fixed = TRUE) ||
       grepl("=", x_i, fixed = TRUE)
     if(needs_quotes){
-      encodeString(x_i, quote = "\"")
+      paste0("\"", x_i, "\"")
     }else{
       x_i
     }
@@ -548,26 +552,21 @@ parameter_labels <- function(x, style = c("selector", "table", "plot", "warning"
 
 .bt_label_token_decode <- function(x){
 
+  # '%25' is undone last: no other escape contains a '%' that could be
+  # produced by it
+  decoded <- c(
+    names(.bt_label_token_escapes)[-1L],
+    names(.bt_label_token_escapes)[1L]
+  )
   vapply(as.character(x), function(token){
-    if(nchar(token) >= 2L && startsWith(token, "\"") && endsWith(token, "\"")){
-      parsed <- tryCatch(
-        parse(text = token, keep.source = FALSE),
-        error = function(e) NULL
-      )
-      if(length(parsed) == 1L && is.character(parsed[[1L]]) &&
-         length(parsed[[1L]]) == 1L){
-        token <- parsed[[1L]]
-      }
+    if(nchar(token, type = "bytes") >= 2L && startsWith(token, "\"") &&
+       endsWith(token, "\"")){
+      token <- substr(token, 2L, nchar(token) - 1L)
     }
-    escapes <- stats::setNames(
-      names(.bt_label_token_escapes),
-      unname(.bt_label_token_escapes)
-    )
-    matches <- gregexpr(paste(names(escapes), collapse = "|"), token)
-    regmatches(token, matches) <- lapply(
-      regmatches(token, matches),
-      function(escaped) unname(escapes[escaped])
-    )
+    for(character_i in decoded){
+      token <- gsub(.bt_label_token_escapes[[character_i]], character_i, token,
+                    fixed = TRUE)
+    }
     token
   }, character(1), USE.NAMES = FALSE)
 }
