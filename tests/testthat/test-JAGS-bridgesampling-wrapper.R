@@ -159,7 +159,7 @@ test_that("JAGS_bridgesampling aggregates repeated bridge estimates explicitly",
   expect_s3_class(result[["diagnostics"]][["upstream"]], "bridge_list")
 })
 
-test_that("JAGS_bridgesampling forwards bridge controls and fitted-chain neff", {
+test_that("JAGS_bridgesampling forwards bridge controls and the use_neff default", {
 
   seen <- new.env(parent = emptyenv())
   bridge_sampler <- function(...){
@@ -273,14 +273,83 @@ test_that("JAGS_bridgesampling drives the real upstream sampler on multiple chai
   )
   result <- do.call(JAGS_bridgesampling, arguments)
 
+  # The target (two standard-normal priors, zero likelihood) is normalized, so
+  # its log marginal likelihood is exactly 0: the estimate has to agree with 0
+  # within its reported Monte Carlo error.
   expect_s3_class(result, "BayesTools_marglik")
   expect_true(is.finite(result[["logml"]]))
+  expect_true(is.finite(result[["repetitions"]][["mcse"]]))
+  expect_lt(abs(result[["logml"]]), 4 * result[["repetitions"]][["mcse"]])
   expect_identical(result[["diagnostics"]][["chains"]][["count"]], 3L)
 
   explicit <- do.call(JAGS_bridgesampling, c(arguments, list(use_neff = FALSE)))
   expect_s3_class(explicit, "BayesTools_marglik")
   expect_true(is.finite(explicit[["logml"]]))
+  expect_true(is.finite(explicit[["repetitions"]][["mcse"]]))
+  expect_lt(abs(explicit[["logml"]]), 4 * explicit[["repetitions"]][["mcse"]])
   expect_identical(explicit[["diagnostics"]][["chains"]][["count"]], 3L)
+})
+
+test_that("JAGS_bridgesampling restores the caller's random-number state on the sampler route", {
+
+  # The sampler is mocked to consume the stream; the seed argument must make
+  # its draws reproducible and leave .Random.seed and RNGkind() untouched.
+  seen <- new.env(parent = emptyenv())
+  seen$draws <- numeric()
+  bridge_sampler <- function(...){
+    seen$draws <- c(seen$draws, stats::runif(1))
+    .mock_bridge_sampler(...)
+  }
+  testthat::local_mocked_bindings(
+    bridge_sampler = bridge_sampler,
+    .package = "bridgesampling"
+  )
+  posterior <- coda::as.mcmc(matrix(
+    seq_len(20),
+    ncol = 1,
+    dimnames = list(NULL, "mu")
+  ))
+  call_bridge <- function(seed){
+    JAGS_bridgesampling(
+      fit = posterior,
+      log_posterior = function(parameters, data) 0,
+      data = list(),
+      prior_list = list(mu = prior("normal", list(0, 1))),
+      seed = seed
+    )
+  }
+
+  set.seed(77)
+  seed_before <- .Random.seed
+  kind_before <- RNGkind()
+  call_bridge(5)
+  expect_identical(.Random.seed, seed_before)
+  expect_identical(RNGkind(), kind_before)
+  call_bridge(5)
+  expect_identical(.Random.seed, seed_before)
+  expect_identical(seen$draws[[1L]], seen$draws[[2L]])
+})
+
+test_that("print.BayesTools_marglik reports a successful sampler result", {
+
+  testthat::local_mocked_bindings(
+    bridge_sampler = .mock_bridge_sampler,
+    .package = "bridgesampling"
+  )
+  output <- capture.output(
+    result <- print(JAGS_bridgesampling(
+      fit = coda::as.mcmc(matrix(seq_len(20), ncol = 1, dimnames = list(NULL, "mu"))),
+      log_posterior = function(parameters, data) 0,
+      data = list(),
+      prior_list = list(mu = prior("normal", list(0, 1))),
+      repetitions = 2L
+    ))
+  )
+  expect_identical(output[[1L]], "BayesTools marginal-likelihood result")
+  expect_identical(output[[2L]], paste0("  logml (natural log): ", format(result[["logml"]])))
+  expect_identical(output[[3L]], "  aggregation: median_finite_logml")
+  expect_identical(output[[4L]], "  repetitions: 2 included, 0 failed")
+  expect_length(output, 4L)
 })
 
 test_that("JAGS_bridgesampling seeds bridge proposal draws explicitly", {
