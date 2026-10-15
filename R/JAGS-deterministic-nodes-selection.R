@@ -220,7 +220,12 @@
             paste(free_names, collapse = ", "), "' is not finite and positive"), error = TRUE)
       }
       std_eta <- eta / total
-      omega[draw, ] <- rev(cumsum(rev(std_eta)))
+      # as the generated syntax: the reference weight is the literal 1 and the
+      # others are the sums of the standardized auxiliaries from their bin on
+      omega[draw, 1L] <- 1
+      for(bin in 2:J){
+        omega[draw, bin] <- sum(std_eta[bin:J])
+      }
     }
     return(omega)
   }

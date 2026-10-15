@@ -528,8 +528,10 @@
   )
 }
 
+# A constant of the generated syntax with the round-trip rule of the prior
+# emitters (.JAGS_prior_number()): JAGS reads back the double the evaluators use.
 .selection_format_number <- function(x){
-  format(x, scientific = FALSE, digits = 16, trim = TRUE)
+  .JAGS_prior_number(x)
 }
 
 .JAGS_phacking_component_syntax <- function(prior, component_id = NULL, names = NULL){

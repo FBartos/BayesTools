@@ -429,14 +429,19 @@ selection_native_kernel_args <- function(selection_spec, S, alpha = NULL,
     alpha <- .selection_null_default(selection_spec[["alpha"]], 0)
   }
   if(is.null(phack_kind)){
-    if(.selection_spec_mixed_phack_q(selection_spec)){
+    if(!is.null(selection_spec[["phack_kind"]])){
+      # the p-hacking forms of a context's rows take precedence over the
+      # branch metadata of the specification
+      phack_kind <- selection_spec[["phack_kind"]]
+    }else if(.selection_spec_mixed_phack_q(selection_spec)){
       stop(
         "'phack_kind' is required for mixed linear/quadratic p-hacking forms.",
         call. = FALSE
       )
+    }else{
+      phack_kind <-
+        if(.selection_spec_has_phack(selection_spec)) .selection_spec_phack_q(selection_spec) else 0L
     }
-    phack_kind <-
-      if(.selection_spec_has_phack(selection_spec)) .selection_spec_phack_q(selection_spec) else 0L
   }
 
   .selection_native_row_length(alpha, S, "alpha")

@@ -1658,3 +1658,60 @@ test_that("global breaks must contain the step-selection breaks exactly, as the 
     c(0, .025, .5, 1)
   )
 })
+
+test_that("the cumulative-weight evaluator returns the literal 1 for the reference bin (F226)", {
+
+  wf <- prior_weightfunction("one-sided", c(.025, .5), wf_cumulative(c(1, 1, 1)))
+  eta <- c(0.096, 2.027, 2.881)
+  standardized <- eta / sum(eta)
+  # the sum of the standardized auxiliaries is one plus one rounding error here
+  expect_false(sum(standardized) == 1)
+
+  omega <- JAGS_marglik_parameters(
+    stats::setNames(eta, paste0("eta[", 1:3, "]")),
+    list(omega = wf)
+  )$omega
+  expect_identical(omega[[1L]], 1)
+  expect_identical(omega[-1L], c(sum(standardized[2:3]), standardized[3]))
+})
+
+test_that("a context's per-row p-hacking forms take precedence over the branch metadata (F226)", {
+
+  spec <- selection_backend_spec(
+    prior_phacking(form = "linear"),
+    include_init = FALSE
+  )
+  fallback <- selection_native_kernel_args(spec, S = 2L)
+  expect_identical(fallback$phack_kind, c(1L, 1L))
+
+  context <- c(spec, list(phack_kind = c(2L, 1L)))
+  expect_identical(selection_native_kernel_args(context, S = 2L)$phack_kind, c(2L, 1L))
+  # an explicit argument still takes precedence over the context rows
+  expect_identical(selection_native_kernel_args(context, S = 2L, phack_kind = 1L)$phack_kind, c(1L, 1L))
+  expect_error(
+    selection_native_kernel_args(c(spec, list(phack_kind = c(3L, 1L))), S = 2L),
+    "Invalid selection native argument 'phack_kind'.",
+    fixed = TRUE
+  )
+})
+
+test_that("generated p-hacking constants read back as the doubles the evaluators use (F226)", {
+
+  for(prior in list(
+    prior_phacking(form = "linear"),
+    prior_phacking(form = "quadratic"),
+    prior_phacking(target = .01, form = "linear")
+  )){
+    constants <- phack_backend_constants(prior$form, prior$source, prior$destination, target = prior$target)
+    lines <- strsplit(.JAGS_phacking_component_syntax(prior), "\n", fixed = TRUE)[[1L]]
+    lines <- lines[nzchar(lines)]
+    numbers <- as.numeric(vapply(tail(lines, 6L), function(line){
+      tail(strsplit(line, " ", fixed = TRUE)[[1L]], 1L)
+    }, character(1)))
+    expect_identical(
+      numbers,
+      c(constants$pi_null_per_alpha, constants$beta_null_per_alpha,
+        constants$z_source, constants$z_destination)
+    )
+  }
+})
