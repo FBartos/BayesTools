@@ -186,7 +186,6 @@ test_that("every test file is registered in a profile and declares a skip", {
     "skip_if_not_test_profile\\(",
     "skip_if_not_visual_tests\\(",
     "skip_if_not_visual_fixture_tests\\(",
-    "skip_if_not_heavy_tests\\(",
     sep = "|"
   )
   missing_skip <- vapply(test_files, function(path){
@@ -204,7 +203,7 @@ test_that("every test file's profile gate matches its registry lanes", {
   # registration never selects the file.
   gate_names <- c(
     "skip_if_not_test_profile", "skip_if_not_visual_tests",
-    "skip_if_not_visual_fixture_tests", "skip_if_not_heavy_tests"
+    "skip_if_not_visual_fixture_tests"
   )
   gate_lanes <- function(call){
 
@@ -212,8 +211,7 @@ test_that("every test file's profile gate matches its registry lanes", {
       as.character(call[[1L]]),
       skip_if_not_test_profile         = bayestools_normalize_test_profiles(eval(call[[2L]], baseenv())),
       skip_if_not_visual_tests         = "visual",
-      skip_if_not_visual_fixture_tests = "visual-fixture",
-      skip_if_not_heavy_tests          = "fit"
+      skip_if_not_visual_fixture_tests = "visual-fixture"
     )
   }
   is_gate <- function(expression){
@@ -415,6 +413,11 @@ test_that("configure accepts only JAGS 4.x from every version source", {
   expect_rejected(run_configure(args = paste0("--with-jags-prefix=", prefix5)), "JAGS prefix reported 5.0.0")
   expect_accepted(run_configure(args = paste0("--with-jags-prefix=", prefix43)), "4.3.2 with JAGS prefix")
   expect_rejected(run_configure(stub = stub_jags5), "pkg-config reported 5.0.0")
+  # Explicitly selected directories decide the build: a pkg-config that reports
+  # JAGS 5 is not consulted (the version is then probed from the selected JAGS).
+  selected <- run_configure(env = jags4_dirs, stub = stub_jags5)
+  expect_false(grepl("pkg-config reported", selected$output, fixed = TRUE), info = selected$output)
+  expect_false(grepl("detected JAGS 5", selected$output, fixed = TRUE), info = selected$output)
   # Headers declaring JAGS 5 stop configure before the jags_version() probe.
   expect_rejected(run_configure(args = paste0("--with-jags-prefix=", jags5)), "the JAGS headers in")
 })

@@ -275,13 +275,3 @@ skip_if_not_visual_fixture_tests <- function() {
   testthat::skip_if_not_installed("vdiffr")
   invisible(TRUE)
 }
-
-skip_if_not_heavy_tests <- function() {
-  skip_if_not_test_profile("fit")
-  invisible(TRUE)
-}
-
-skip_if_no_jags_runtime <- function() {
-  testthat::skip_if_not_installed("rjags")
-  invisible(TRUE)
-}

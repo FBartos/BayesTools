@@ -226,12 +226,18 @@ if [ -z "$JAGS_PREFIX" ] && [ -n "$JAGS_ROOT" ]; then
   JAGS_PREFIX="$JAGS_ROOT"
 fi
 
-if [ -z "$JAGS_PREFIX" ] && [ -z "$JAGS_VERSION" ] && command -v pkg-config >/dev/null 2>&1; then
+# pkg-config only discovers a JAGS installation: explicitly selected headers or
+# libraries (a prefix, an include or a library directory, or a version) decide
+# the build, so a pkg-config that reports another JAGS must not stop it.
+JAGS_FROM_PKG_CONFIG=""
+if [ -z "$JAGS_PREFIX" ] && [ -z "$JAGS_VERSION" ] && [ -z "$JAGS_INCLUDE_DIR" ] &&
+   [ -z "$JAGS_LIB_DIR" ] && command -v pkg-config >/dev/null 2>&1; then
   if pkg-config --exists jags; then
     JAGS_CFLAGS=`pkg-config --cflags jags`
     JAGS_LIBS=`pkg-config --libs jags`
     JAGS_VERSION=`pkg-config --modversion jags 2>/dev/null`
     JAGS_VERSION_SOURCE="pkg-config"
+    JAGS_FROM_PKG_CONFIG="yes"
   fi
 fi
 
@@ -306,7 +312,7 @@ if [ -n "$JAGS_PREFIX" ] && [ -z "$JAGS_LIB_DIR" ]; then
   fi
 fi
 
-if [ -z "$JAGS_LIB_DIR" ] && [ -z "$JAGS_VERSION" ]; then
+if [ -z "$JAGS_LIB_DIR" ] && [ -z "$JAGS_FROM_PKG_CONFIG" ]; then
   case "$JAGS_INCLUDE_DIR" in
     /usr/local/*)
       if [ -d "/usr/local/lib" ]; then

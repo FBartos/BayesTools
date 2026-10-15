@@ -87,6 +87,11 @@ expect_equal_each <- function(object, expected,
 # as testthat labels the original call, so a failure reads and is located as
 # before. They mask the testthat functions of the same names for the test files
 # only.
+#
+# One difference from testthat: 'object' is a plain promise here. testthat labels
+# and evaluates it as a quasi-label, so a '!!' (or '!!!') inside 'object' is
+# unquoted by testthat; in the masked versions it is not. Bind such a value to a
+# local variable and pass that instead.
 .expectation_label <- utils::getFromNamespace("expr_label", "testthat")
 
 # Whether testthat's comparison of identical values passes for certain: no

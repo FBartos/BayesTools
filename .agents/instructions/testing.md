@@ -20,6 +20,21 @@ For ad hoc `devtools::test()` calls, set `AGENT=1` and pass
 `testthat::LlmReporter$new()`. Run the narrowest relevant profile first; do not
 use repeated full-suite runs as an iteration loop.
 
+The runner also has a `filter` mode that runs the test files matching a
+testthat filter, with the profile set to `all`:
+
+```powershell
+Rscript tools/test-profile.R filter "native|lkj"
+```
+
+Further controls, read from the environment: `BAYESTOOLS_TEST_REPORTER`
+(`llm`, the default, or another testthat reporter), `BAYESTOOLS_TEST_STOP_ON_FAILURE`
+(default `TRUE`: the run stops with an error after a failed expectation) and
+`BAYESTOOLS_TEST_QUIET_SKIPS` (`TRUE` counts skips with the `llm` reporter
+without printing their details). The runner reports its elapsed time at the end, also after a
+failure. `tools/test.R` runs all lanes with the fit cache in
+`BAYESTOOLS_TEST_FILES_DIR`, or in the session's temporary directory.
+
 ## Test Profiles
 
 - `unit`: fast package-critical tests without live JAGS fitting or visual

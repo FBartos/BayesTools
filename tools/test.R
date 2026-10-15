@@ -1,8 +1,10 @@
-cache_dir <- file.path(
-  "C:/R-Packages/temp",
-  paste0("BayesTools_test_files-", format(Sys.time(), "%Y%m%d-%H%M%S"))
-)
-dir.create(cache_dir, recursive = TRUE)
+# The fit cache is the configured BAYESTOOLS_TEST_FILES_DIR, or a directory of
+# the session's temporary directory (removed with the session).
+cache_dir <- Sys.getenv("BAYESTOOLS_TEST_FILES_DIR")
+if (!nzchar(cache_dir)) {
+  cache_dir <- file.path(tempdir(), "BayesTools_test_files")
+}
+dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
 
 # The test helpers read the fit cache location from BAYESTOOLS_TEST_FILES_DIR;
 # without it they fall back to tempdir() and this directory stays unused.
