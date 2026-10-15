@@ -429,6 +429,12 @@ names.
   coordinate names such as `mu_g[2]` remain backend column names, used by
   coordinate-based functions such as `JAGS_materialize_draws()`, but are not
   factor selectors.
+  The SD columns of a random interaction whose factors are all contrast-coded
+  (meandif, orthonormal: `diag(1 + f * x | id)`, `diag(1 + f * g | id)`) are
+  contrast coefficients of the term, `<term>{j}` (`sd(f:x{1})`, `sd(f:g{2})`),
+  in the mixed-posterior columns (`mu__xREx__id_f__xXx__x{1}`) as in the
+  catalog; an interaction with an independent or treatment factor keeps its
+  level cells.
   The indicator columns of a logical predictor's interaction with a continuous
   one whose margin is absent from the block (`flagFALSE:x`, `flagTRUE:x` of
   `(1 + flag + flag:x | id)`) share one SD, labelled by the term (`sd(flag:x)`),

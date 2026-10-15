@@ -762,8 +762,11 @@ parameter_labels <- function(x, style = c("selector", "table", "plot", "warning"
 # named after the prior-list entry: a coordinate that is structurally one
 # level cell of the prior's factor design is `<parameter>[<level>]` (inside an
 # interaction, each level is placed on its factor component), any other
-# coordinate is contrast coefficient `<parameter>{j}`. NULL when the prior
-# carries no factor design.
+# coordinate is contrast coefficient `<parameter>{j}`. The SD prior of an
+# interaction of contrast-coded factors (meandif, orthonormal) is a factor set
+# bound to its own name, without the factor terms of the interaction: it has no
+# level cells, and every coordinate is contrast coefficient `j`. NULL when the
+# prior carries no factor design.
 .bt_label_parts_random_factor <- function(parameter, prior){
 
   prior <- .complete_factor_metadata(prior, parameter)
@@ -776,6 +779,15 @@ parameter_labels <- function(x, style = c("selector", "table", "plot", "warning"
   coordinates <- .JAGS_prior_factor_names(parameter, prior)
   if(length(level_names) == 0L || length(coordinates) != ncol(design)){
     return(NULL)
+  }
+  if(identical(names(level_names), parameter) &&
+     grepl("__xXx__", parameter, fixed = TRUE)){
+    return(list(
+      coordinates = coordinates,
+      parts       = lapply(seq_along(coordinates), function(coordinate){
+        .bt_label_parts(parameter, coefficient = coordinate)
+      })
+    ))
   }
   grid <- .factor_cell_grid(level_names)
   if(nrow(grid) != nrow(design)){

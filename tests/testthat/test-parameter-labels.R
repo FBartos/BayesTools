@@ -1822,3 +1822,76 @@ test_that("label parts are validated once per content and modifications are rech
   .bt_label(parts)
   expect_identical(calls, before)
 })
+
+test_that("the SD columns of random interactions with transformed contrasts are labelled by contrast coordinate", {
+
+  skip_if_not_installed("runjags")
+
+  set.seed(5)
+  data <- data.frame(
+    x  = stats::rnorm(48, 10, 2),
+    f  = factor(rep(c("a", "b", "c"), length.out = 48)),
+    g  = factor(rep(c("p", "q"), each = 3, length.out = 48)),
+    id = factor(rep(paste0("s", 1:8), each = 6))
+  )
+  random_fit <- function(formula, contrasts){
+    .label_test_fit(
+      formula, data, list(intercept = prior("normal", list(0, 1))),
+      prior_random = prior_random(id = random_block(
+        sd = prior("gamma", list(2, 2)), contrasts = contrasts,
+        monitor = random_monitor(latent = FALSE, coefficients = FALSE, correlation = FALSE)
+      ))
+    )
+  }
+  # contrast coefficient j of the term, like the fixed coefficient `x:g{j}`
+  coordinates <- function(term, label, n){
+    list(
+      columns = paste0(term, "{", seq_len(n), "}"),
+      labels = paste0("(mu) sd(", label, "{", seq_len(n), "})")
+    )
+  }
+  cases <- list(
+    list(~ 1 + diag(1 + f:x | id), c(f = "meandif"), "mu__xREx__id_f__xXx__x",
+         coordinates("mu__xREx__id_f__xXx__x", "f:x", 3L)),
+    list(~ 1 + diag(1 + f:x | id), c(f = "orthonormal"), "mu__xREx__id_f__xXx__x",
+         coordinates("mu__xREx__id_f__xXx__x", "f:x", 3L)),
+    list(~ 1 + diag(1 + f * x | id), c(f = "meandif"), "mu__xREx__id_f__xXx__x",
+         coordinates("mu__xREx__id_f__xXx__x", "f:x", 2L)),
+    list(~ 1 + diag(1 + f * x | id), c(f = "orthonormal"), "mu__xREx__id_f__xXx__x",
+         coordinates("mu__xREx__id_f__xXx__x", "f:x", 2L)),
+    list(~ 1 + diag(1 + f * g | id), c(f = "meandif", g = "meandif"), "mu__xREx__id_f__xXx__g",
+         coordinates("mu__xREx__id_f__xXx__g", "f:g", 2L)),
+    list(~ 1 + diag(1 + f * g | id), c(f = "orthonormal", g = "orthonormal"), "mu__xREx__id_f__xXx__g",
+         coordinates("mu__xREx__id_f__xXx__g", "f:g", 2L)),
+    # independent and treatment contrasts keep their level labels
+    list(~ 1 + diag(1 + f:x | id), c(f = "independent"), "mu__xREx__id_f__xXx__x",
+         list(columns = paste0("mu__xREx__id_f[", c("a", "b", "c"), "]__xXx__x"),
+              labels = paste0("(mu) sd(f[", c("a", "b", "c"), "]:x)"))),
+    list(~ 1 + diag(1 + f:x | id), c(f = "treatment"), "mu__xREx__id_f__xXx__x",
+         list(columns = paste0("mu__xREx__id_f[", c("a", "b", "c"), "]__xXx__x"),
+              labels = paste0("(mu) sd(f[", c("a", "b", "c"), "]:x)"))),
+    list(~ 1 + diag(1 + f * g | id), c(f = "treatment", g = "treatment"), "mu__xREx__id_f__xXx__g",
+         list(columns = paste0("mu__xREx__id_f[", c("b", "c"), "]__xXx__g[q]"),
+              labels = paste0("(mu) sd(f[", c("b", "c"), "]:g[q])")))
+  )
+  for(case in cases){
+    label <- paste(paste(deparse(case[[1L]]), collapse = ""), paste(names(case[[2L]]), case[[2L]], sep = "=", collapse = ","))
+    fit <- random_fit(case[[1L]], case[[2L]])
+    mixed <- as_mixed_posteriors(fit, case[[3L]])
+    element <- mixed[[case[[3L]]]]
+    expect_identical(colnames(element), case[[4L]]$columns, info = label)
+    expect_identical(
+      parameter_labels(posterior_metadata(element, "quantities"), "table"),
+      case[[4L]]$labels, info = label
+    )
+    # the columns are the fitted SD draws of the term, in coordinate order
+    sd_columns <- grep(case[[3L]], colnames(as.matrix(fit$mcmc[[1L]])), fixed = TRUE, value = TRUE)
+    expect_equal(
+      as.vector(as.matrix(element)),
+      as.vector(as.matrix(fit$mcmc[[1L]])[, sd_columns, drop = FALSE]),
+      tolerance = 1e-12, info = label
+    )
+    # the estimates table names the same quantities
+    expect_true(all(case[[4L]]$labels %in% rownames(JAGS_estimates_table(fit, remove_diagnostics = TRUE))), info = label)
+  }
+})
