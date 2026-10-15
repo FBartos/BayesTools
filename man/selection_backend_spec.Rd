@@ -24,9 +24,18 @@ selection_backend_spec(
 entries keep their default names. The names are used in the generated JAGS
 code, monitors, and initial values of single-branch and mixture
 specifications alike, so they must be distinct valid JAGS node names that
-do not coincide with internal selection nodes.}
+do not coincide with internal selection nodes. Custom \code{names} (and
+\code{global_breaks}) change only the syntax, monitors, and initial values
+that this function emits: the evaluators of the marginal-likelihood tools
+(\code{JAGS_marglik_parameters()}, \code{JAGS_marglik_priors()} and bridge
+sampling) read the default names and the grid that \code{JAGS_fit()} emits,
+so they do not evaluate the draws of a model emitted with customized names
+correctly (without a warning).}
 
-\item{global_breaks}{optional global p-value break grid.}
+\item{global_breaks}{optional global p-value break grid. Like \code{names},
+it changes only the emitted syntax; the evaluators of the
+marginal-likelihood tools read the default grid, so they do not evaluate the
+draws of a model emitted with a customized grid correctly.}
 
 \item{include_init}{whether to generate JAGS initial values. Defaults to
 \code{TRUE}; when \code{FALSE}, the returned \code{init} field is \code{NULL}

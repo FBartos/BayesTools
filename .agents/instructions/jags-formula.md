@@ -80,8 +80,12 @@ compositions and `sel_vector_rule` from the `phacking` node specifications (one
 evaluator, `.bt_dnode_phacking_quantity()`, serves the registry, bridge sampling
 and the marginal-likelihood parameters; a prior without a p-hacking branch
 registers no such node, and `selection_backend_spec()` writes its constant
-`sel_vector_rule` with the same helper). `JAGS_deterministic_nodes()` lists the
-nodes; `JAGS_deterministic_evaluator()` resolves them once into an evaluator
+`sel_vector_rule` with the same helper). The `names` and `global_breaks` of
+`selection_backend_spec()` change only the syntax it emits: the evaluators
+(`JAGS_marglik_parameters()`, `JAGS_marglik_priors()`, bridge sampling) read the
+default names and the grid that `JAGS_fit()` emits.
+`JAGS_deterministic_nodes()` lists the nodes;
+`JAGS_deterministic_evaluator()` resolves them once into an evaluator
 of draws (repeated or one-draw evaluation), and `JAGS_evaluate_deterministic()`
 is that evaluator applied once. A prepared evaluator may locate a family's
 columns once per set of draw column names, but shares the family's lookup
