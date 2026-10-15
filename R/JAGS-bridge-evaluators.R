@@ -10,9 +10,9 @@
   }
 
   if(!is.list(prior_list))
-    stop("'prior_list' must be a list.")
+    stop("'prior_list' must be a list.", call. = FALSE)
   if(is.prior(prior_list) | !all(sapply(prior_list, is.prior)))
-    stop("'prior_list' must be a list of priors.")
+    stop("'prior_list' must be a list of priors.", call. = FALSE)
   .check_prior_list_unique_names(prior_list)
 
   evaluators <- vector("list", length(prior_list))
@@ -76,8 +76,6 @@
     .JAGS_marglik_stop_unsupported_mixture(prior_object)
   }else if(is.prior.PET(prior_object) | is.prior.PEESE(prior_object)){
     return(.bt_JAGS_bridge_compile_PP_evaluator(prior_object))
-  }else if(is.prior.ordered(prior_object)){
-    return(.bt_JAGS_bridge_compile_ordered_evaluator(prior_object, parameter_name)[["evaluator"]])
   }else if(is.prior.factor(prior_object)){
     return(.bt_JAGS_bridge_compile_factor_evaluator(prior_object, parameter_name))
   }else if(is.prior.vector(prior_object)){
@@ -193,6 +191,9 @@
   list(
     log_prior = log_prior,
     parameters = function(samples){
+      if(!parameter_name %in% names(samples)){
+        .bt_JAGS_marglik_missing_columns("'samples' does not contain all monitored scalar prior parameters.")
+      }
       parameter <- list()
       parameter[[parameter_name]] <- samples[[parameter_name]]
       parameter

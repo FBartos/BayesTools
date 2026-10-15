@@ -2370,7 +2370,7 @@ test_that("formula design reconstruction includes expression offsets for marglik
   )
   expect_equal(unname(reconstructed), c(1 + 2 * 1 + 10, 1 + 2 * 2 + 20))
 
-  bridge_plan <- BayesTools:::.bt_JAGS_bridge_compile_formula_design_plan(
+  bridge_plan <- BayesTools:::.bt_dnode_linear_predictor_fixed_plan(
     design = formula_result$formula_design,
     formula_prior_list = formula_result$prior_list,
     log_intercept = FALSE
@@ -2507,7 +2507,7 @@ test_that("formula expressions replay sampled indexed parameters", {
   )
   expect_equal(unname(reconstructed), c(13, 25, 17))
 
-  bridge_plan <- BayesTools:::.bt_JAGS_bridge_compile_formula_design_plan(
+  bridge_plan <- BayesTools:::.bt_dnode_linear_predictor_fixed_plan(
     design = formula_result$formula_design,
     formula_prior_list = formula_result$prior_list,
     log_intercept = FALSE

@@ -241,3 +241,28 @@ bayestools_marglik_parameters_formula_design <- function(samples, design,
     prior_list_parameters = prior_list_parameters
   )
 }
+
+# The complete bridge context of one state with evaluators compiled from the
+# formula designs (the compiled context evaluator of JAGS_bridgesampling()
+# builds the same pieces once per bridge).
+bayestools_bridge_context <- function(samples, prior_parameters,
+                                      formula_prior_parameters,
+                                      formula_parameters, add_parameters = NULL,
+                                      formula_design_list, formula_data_list,
+                                      formula_prior_list, model_data){
+
+  BayesTools:::.bt_JAGS_bridge_context(
+    samples = samples,
+    prior_parameters = prior_parameters,
+    formula_prior_parameters = formula_prior_parameters,
+    formula_parameters = formula_parameters,
+    add_parameters = add_parameters,
+    random_context_evaluator = BayesTools:::.bt_JAGS_bridge_compile_random_context_evaluator(
+      formula_design_list = formula_design_list,
+      formula_data_list = formula_data_list,
+      formula_prior_list = formula_prior_list,
+      model_data = model_data
+    ),
+    marginal_random_evaluator = BayesTools:::.bt_JAGS_bridge_inactive_marginal_random_evaluator()
+  )
+}

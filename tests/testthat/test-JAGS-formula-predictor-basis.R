@@ -407,7 +407,7 @@ test_that("formula evaluators ignore intercept multipliers stored by older fits"
         expected
       )
       expect_identical(
-        BayesTools:::.bt_JAGS_bridge_compile_formula_design_plan(
+        BayesTools:::.bt_dnode_linear_predictor_fixed_plan(
           designs$mu, legacy_priors, FALSE
         )$value(samples[i, ], list()),
         expected

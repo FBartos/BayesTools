@@ -198,29 +198,13 @@
     formula_output[[parameter]]$formula_scale <- completed_scale
     formula_output[[parameter]]$formula_design$formula_scale <- completed_scale
   }
-  formula_data_output <- lapply(names(formula_output), function(parameter){
-    .bt_JAGS_bridge_formula_data_with_raw(
-      generated_data = formula_output[[parameter]][["data"]],
-      raw_data = formula_data_list[[parameter]]
-    )
-  })
-  names(formula_data_output) <- names(formula_output)
 
+  # Only the rebuilt designs are compared with the fitted ones; the rebuilt
+  # formula, data, and prior lists are not used, and merging the supplied raw
+  # data with the generated data could only misreport a conflict.
   list(
-    formula_design_list = lapply(formula_output, function(output) output[["formula_design"]]),
-    formula_list        = lapply(formula_output, function(output) output[["formula"]]),
-    formula_data_list   = formula_data_output,
-    formula_prior_list  = lapply(formula_output, function(output) output[["prior_list"]])
+    formula_design_list = lapply(formula_output, function(output) output[["formula_design"]])
   )
-}
-
-.bt_JAGS_bridge_formula_data_with_raw <- function(generated_data, raw_data){
-
-  out <- list()
-  out <- .bt_JAGS_marglik_merge_source_data(out, raw_data)
-  out <- .bt_JAGS_marglik_merge_source_data(out, generated_data)
-
-  out
 }
 
 .bt_JAGS_bridge_empty_formula_context <- function(){
@@ -233,8 +217,7 @@
   )
 }
 
-.bt_JAGS_bridge_formula_context_from_design <- function(formula_design_list,
-                                                       formula_data_list = NULL){
+.bt_JAGS_bridge_formula_context_from_design <- function(formula_design_list){
 
   for(design in formula_design_list){
     .bt_validate_formula_design_replay_schema(
@@ -247,7 +230,7 @@
   list(
     formula_design_list = formula_design_list,
     formula_list        = .bt_JAGS_bridge_formula_list_from_design(formula_design_list),
-    formula_data_list   = formula_data_list,
+    formula_data_list   = NULL,
     formula_prior_list  = .bt_JAGS_bridge_formula_prior_list_from_design(formula_design_list)
   )
 }

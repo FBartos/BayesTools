@@ -480,6 +480,48 @@ test_that("the cached bridge node layout reproduces the by-name merge", {
 })
 
 
+test_that("the node selection takes unnamed nodes alike with and without the cache (F077)", {
+
+  nodes <- c(a = 1, 2, c = 3)
+  expect_identical(
+    .bt_JAGS_bridge_select_nodes(nodes, c("", "c")),
+    .bt_JAGS_bridge_select_nodes(nodes, c("", "c"), new.env(parent = emptyenv()))
+  )
+  expect_identical(
+    unname(.bt_JAGS_bridge_select_nodes(nodes, c("", "c"))),
+    c(2, 3)
+  )
+})
+
+test_that("the rebuilt formula context neither merges nor reports the supplied data (F077)", {
+
+  data <- data.frame(x = c(0.5, 1, 2, 3))
+  formula_prior <- list(
+    intercept = prior("normal", list(0, 1)),
+    x = prior("normal", list(0, 1))
+  )
+  fitted <- JAGS_formula(~ 1 + x, "mu", data, formula_prior)
+  fit <- coda::mcmc(matrix(0, 20L, 2L, dimnames = list(NULL, c("mu_intercept", "mu_x"))))
+  attr(fit, "prior_list") <- fitted$prior_list
+  attr(fit, "formula_design") <- list(mu = fitted$formula_design)
+  fit <- attach_test_parameter_map(fit)
+
+  # a data column named like a generated JAGS data entry used to be reported as
+  # "conflicting data" although the rebuilt data lists are never used
+  conflicting <- data
+  conflicting[["N_mu"]] <- c(9, 9, 9, 9)
+  rebuilt <- .bt_JAGS_bridge_rebuild_formula_context(
+    fit = fit,
+    formula_list = list(mu = fitted$formula),
+    formula_data_list = list(mu = conflicting),
+    formula_prior_list = list(mu = formula_prior),
+    formula_scale_list = NULL,
+    formula_random_prior_list = NULL
+  )
+  expect_identical(names(rebuilt), "formula_design_list")
+  expect_identical(names(rebuilt$formula_design_list), "mu")
+})
+
 test_that("the cached node selection keeps the availability check", {
 
   nodes <- c(a = 1, b = 2, c = 3)
@@ -502,12 +544,12 @@ test_that("the cached node selection keeps the availability check", {
   )
   expect_error(
     .bt_JAGS_bridge_select_nodes(nodes, c("a", "d"), node_cache),
-    "Requested bridge context node(s) are unavailable: d",
+    "Requested bridge context node(s) are unavailable: 'd'.",
     fixed = TRUE
   )
   expect_error(
     .bt_JAGS_bridge_select_nodes(c(a = 1), c("a", "d"), node_cache),
-    "Requested bridge context node(s) are unavailable: d",
+    "Requested bridge context node(s) are unavailable: 'd'.",
     fixed = TRUE
   )
 })

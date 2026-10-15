@@ -385,7 +385,7 @@ test_that("expression-only design reconstruction retains its expression value", 
     ),
     expected
   )
-  compiled <- BayesTools:::.bt_JAGS_bridge_compile_formula_design_plan(
+  compiled <- BayesTools:::.bt_dnode_linear_predictor_fixed_plan(
     output$formula_design, list(), FALSE
   )
   expect_equal(compiled$value(samples, parameters), expected)
@@ -451,7 +451,7 @@ test_that("single-draw formula plans keep the arithmetic of the linear-predictor
   attr(formula_prior$mu_x, "multiply_by") <- "x_scale"
   attr(formula_prior$mu_g, "multiply_by") <- 2
   design <- formula_output$formula_design
-  plan <- BayesTools:::.bt_JAGS_bridge_compile_formula_design_plan(design, formula_prior, TRUE)
+  plan <- BayesTools:::.bt_dnode_linear_predictor_fixed_plan(design, formula_prior, TRUE)
   names <- unlist(lapply(plan$terms, function(term){
     if(!is.prior.point(term$prior)) BayesTools:::.bt_dnode_linear_predictor_coefficient_names(term)
   }))
@@ -507,7 +507,7 @@ test_that("formula reconstruction treats parameter prefixes literally", {
     expected, fixed = TRUE
   )
   expect_error(
-    BayesTools:::.bt_JAGS_bridge_compile_formula_design_plan(
+    BayesTools:::.bt_dnode_linear_predictor_fixed_plan(
       output$formula_design, prior_list, FALSE
     ),
     expected, fixed = TRUE
@@ -854,6 +854,20 @@ test_that("the ordered-prior bridge reader is compiled once, not per draw (F075)
   }
   expect_identical(readers, 1L)
   expect_length(first$mu_f, 3L)
+})
+
+test_that("compiled scalar prior readers refuse missing monitored coordinates (F077)", {
+
+  evaluator <- BayesTools:::.bt_JAGS_bridge_compile_prior_evaluator(
+    prior("normal", list(0, 1)), "mu"
+  )
+  expect_identical(evaluator$parameters(c(mu = 0.5)), list(mu = 0.5))
+  error <- tryCatch(evaluator$parameters(c(other = 0.5)), error = function(e) e)
+  expect_s3_class(error, "BayesTools_missing_monitored_columns")
+  expect_identical(
+    conditionMessage(error),
+    "'samples' does not contain all monitored scalar prior parameters."
+  )
 })
 
 test_that("shared ordered allocations contribute one prior density across scopes", {
@@ -2297,7 +2311,7 @@ test_that("bridge context exposes resolved formula allocation nodes", {
     prior_parameters
   )
 
-  context <- BayesTools:::.bt_JAGS_bridge_context(
+  context <- bayestools_bridge_context(
     samples = samples,
     prior_parameters = prior_parameters,
     formula_prior_parameters = formula_prior_parameters,
@@ -2451,7 +2465,7 @@ test_that("bridge context exposes resolved formula allocation nodes", {
   )
   expect_error(
     do.call(missing_evaluator$context, context_arguments),
-    "Requested bridge context node(s) are unavailable: absent_node",
+    "Requested bridge context node(s) are unavailable: 'absent_node'.",
     fixed = TRUE
   )
 })
@@ -2555,7 +2569,7 @@ test_that("bridge context exposes marginalized random blocks without latent draw
     prior_parameters
   )
 
-  context <- BayesTools:::.bt_JAGS_bridge_context(
+  context <- bayestools_bridge_context(
     samples = samples,
     prior_parameters = prior_parameters,
     formula_prior_parameters = formula_prior_parameters,
@@ -2722,7 +2736,7 @@ test_that("bridge context exposes row-indexed external SD source nodes", {
     prior_parameters
   )
 
-  context <- BayesTools:::.bt_JAGS_bridge_context(
+  context <- bayestools_bridge_context(
     samples = samples,
     prior_parameters = prior_parameters,
     formula_prior_parameters = formula_prior_parameters,

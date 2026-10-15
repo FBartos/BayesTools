@@ -75,14 +75,7 @@
     node_names = if(selected_random_only) node_names else NULL
   )
   if(is.null(marginal_random_evaluator)){
-    marginal_random_evaluator <- list(
-      active = FALSE,
-      covariance = function(samples, prior_parameters,
-                            formula_prior_parameters, formula_parameters,
-                            factor_covariance = TRUE,
-                            factor_state = FALSE,
-                            sd_cache = NULL) list()
-    )
+    marginal_random_evaluator <- .bt_JAGS_bridge_inactive_marginal_random_evaluator()
   }
   # The node layout and the requested-node selection belong to this compiled
   # evaluator, i.e. to one bridge. A worker receives its own copy with the
@@ -98,10 +91,6 @@
           formula_prior_parameters = formula_prior_parameters,
           formula_parameters = formula_parameters,
           add_parameters = add_parameters,
-          formula_design_list = formula_design_list,
-          formula_data_list = formula_data_list,
-          formula_prior_list = formula_prior_list,
-          model_data = model_data,
           random_context_evaluator = random_evaluator,
           marginal_random_evaluator = marginal_random_evaluator,
           node_cache = node_cache,
@@ -149,6 +138,19 @@
   )
 }
 
+# The marginal-random evaluator of a bridge without marginalized blocks.
+.bt_JAGS_bridge_inactive_marginal_random_evaluator <- function(){
+
+  list(
+    active = FALSE,
+    covariance = function(samples, prior_parameters,
+                          formula_prior_parameters, formula_parameters,
+                          factor_covariance = TRUE,
+                          factor_state = FALSE,
+                          sd_cache = NULL) list()
+  )
+}
+
 .bt_JAGS_bridge_call_log_posterior <- function(log_posterior, parameters,
                                                data, context,
                                                bridge_context, ...){
@@ -170,14 +172,10 @@
                                     formula_prior_parameters,
                                     formula_parameters,
                                     add_parameters,
-                                    formula_design_list,
-                                     formula_data_list,
-                                     formula_prior_list,
-                                     model_data,
-                                     random_context_evaluator = NULL,
-                                     marginal_random_evaluator = NULL,
-                                     node_cache = NULL,
-                                     latent_parameters = character()){
+                                    random_context_evaluator,
+                                    marginal_random_evaluator,
+                                    node_cache = NULL,
+                                    latent_parameters = character()){
 
   state <- .bt_JAGS_bridge_context_state(samples)
   state_matrix <- .bt_JAGS_bridge_context_state_matrix(samples)
@@ -189,36 +187,19 @@
     samples = samples,
     add_parameters = latent_parameters
   )
-  if(is.null(random_context_evaluator)){
-    random <- .bt_JAGS_bridge_context_random(
-      samples = samples,
-      prior_parameters = prior_parameters,
-      formula_prior_parameters = formula_prior_parameters,
-      formula_parameters = formula_parameters,
-      formula_design_list = formula_design_list,
-      formula_data_list = formula_data_list,
-      formula_prior_list = formula_prior_list,
-      model_data = model_data
-    )
-  }else{
-    random <- random_context_evaluator$random(
-      samples = samples,
-      prior_parameters = prior_parameters,
-      formula_prior_parameters = formula_prior_parameters,
-      formula_parameters = formula_parameters
-    )
-  }
+  random <- random_context_evaluator$random(
+    samples = samples,
+    prior_parameters = prior_parameters,
+    formula_prior_parameters = formula_prior_parameters,
+    formula_parameters = formula_parameters
+  )
   random_nodes <- .bt_JAGS_bridge_context_random_nodes(random)
-  marginalized_random <- if(is.null(marginal_random_evaluator)){
-    list()
-  }else{
-    marginal_random_evaluator$covariance(
-      samples = samples,
-      prior_parameters = prior_parameters,
-      formula_prior_parameters = formula_prior_parameters,
-      formula_parameters = formula_parameters
-    )
-  }
+  marginalized_random <- marginal_random_evaluator$covariance(
+    samples = samples,
+    prior_parameters = prior_parameters,
+    formula_prior_parameters = formula_prior_parameters,
+    formula_parameters = formula_parameters
+  )
 
   nodes <- .bt_JAGS_bridge_context_nodes(
     state = state,
@@ -392,7 +373,7 @@
     return(nodes[node_cache$select_index])
   }
   .bt_JAGS_bridge_check_selected_nodes(names(nodes), node_names)
-  nodes[node_names]
+  nodes[match(node_names, names(nodes))]
 }
 
 .bt_JAGS_bridge_check_selected_nodes <- function(available, node_names){
@@ -401,7 +382,7 @@
   if(length(missing) > 0L){
     stop(
       "Requested bridge context node(s) are unavailable: ",
-      paste(missing, collapse = ", "),
+      paste0("'", missing, "'", collapse = ", "), ".",
       call. = FALSE
     )
   }
@@ -902,28 +883,6 @@
   }
 
   out
-}
-
-.bt_JAGS_bridge_context_random <- function(samples, prior_parameters,
-                                           formula_prior_parameters,
-                                           formula_parameters,
-                                           formula_design_list,
-                                           formula_data_list,
-                                           formula_prior_list,
-                                           model_data){
-
-  evaluator <- .bt_JAGS_bridge_compile_random_context_evaluator(
-    formula_design_list = formula_design_list,
-    formula_data_list = formula_data_list,
-    formula_prior_list = formula_prior_list,
-    model_data = model_data
-  )
-  evaluator$random(
-    samples = samples,
-    prior_parameters = prior_parameters,
-    formula_prior_parameters = formula_prior_parameters,
-    formula_parameters = formula_parameters
-  )
 }
 
 .bt_JAGS_bridge_compile_random_context_evaluator <- function(

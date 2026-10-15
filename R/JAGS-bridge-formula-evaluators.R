@@ -19,11 +19,6 @@
       .bt_validate_formula_replay_grammar(formula_parameter)
     }
     formula_data <- if(!is.null(formula_data_list)) formula_data_list[[parameter]] else NULL
-    log_intercept <- if(!is.null(formula_parameter)){
-      isTRUE(attr(formula_parameter, "log(intercept)"))
-    }else{
-      FALSE
-    }
     parameter_prior_list <- formula_prior_list[[parameter]]
     design <- if(!is.null(formula_design_list)) formula_design_list[[parameter]] else NULL
     if(length(design$expression_specs) > 0L ||
@@ -34,7 +29,8 @@
         design = design
       )
     }
-    log_intercept <- isTRUE(log_intercept) || isTRUE(design$log_intercept)
+    log_intercept <- isTRUE(attr(formula_parameter, "log(intercept)")) ||
+      isTRUE(design$log_intercept)
     if(log_intercept){
       .bt_validate_formula_log_intercept_prior(
         parameter_prior_list,
@@ -232,19 +228,8 @@
     )
   }
 
-  .bt_JAGS_bridge_compile_formula_design_plan(
-    design = design,
-    formula_prior_list = formula_prior_list,
-    log_intercept = log_intercept
-  )
-}
-
-# The fixed linear predictor of a fitted design is the registered
-# 'linear_predictor' node's fixed part.
-.bt_JAGS_bridge_compile_formula_design_plan <- function(design,
-                                                        formula_prior_list,
-                                                        log_intercept){
-
+  # The fixed linear predictor of a fitted design is the registered
+  # 'linear_predictor' node's fixed part.
   .bt_dnode_linear_predictor_fixed_plan(
     design = design,
     formula_prior_list = formula_prior_list,
