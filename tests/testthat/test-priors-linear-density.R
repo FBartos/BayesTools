@@ -3736,6 +3736,109 @@ test_that("batched densities compute the single-value breakpoints and integrals 
   }
 })
 
+test_that("quadrature coordinates and source maps cover every transport kind", {
+
+  coordinate <- function(lower, upper, logarithmic = TRUE){
+    .prior_density_quadrature_coordinate(lower, upper, logarithmic)
+  }
+  # finite pieces: the logarithmic transport needs one sign and nonzero ends
+  expect_equal(coordinate(-1, 1)$kind, 0)
+  expect_equal(coordinate(0, 5)$kind, 0)
+  expect_equal(coordinate(1, 100, FALSE)$kind, 0)
+  positive <- coordinate(1, 100)
+  expect_equal(positive$kind, 2)
+  expect_equal(c(positive$lower, positive$upper), c(0, log(100)))
+  negative <- coordinate(-100, -1)
+  expect_equal(negative$kind, -2)
+  expect_equal(c(negative$lower, negative$upper), c(0, log(100)))
+  # a narrow piece whose rounded logarithms cannot place the nodes takes the
+  # affine power-of-two transport (scale 2^floor(log2(5)) = 4)
+  narrow <- coordinate(5, 5 + 5e-13)
+  expect_equal(narrow$kind, 3)
+  expect_equal(narrow$log_scale, log(4))
+  expect_equal(c(narrow$lower, narrow$upper), c(5, 5 + 5e-13) / 4)
+  # infinite pieces: the anchor and a power-of-two scale (zero without logarithms)
+  expect_equal(coordinate(3, Inf)$kind, 1)
+  expect_equal(coordinate(-Inf, -3)$kind, -1)
+  expect_equal(coordinate(3, Inf)$log_scale, log(2))
+  expect_identical(coordinate(3, Inf, FALSE)$log_scale, 0)
+  # no representable transport at all
+  expect_error(coordinate(5, 5 + 8.9e-16), "no representable affine interior correspondence",
+               class = "BayesTools_numerical_unavailable")
+
+  nodes <- c(.25, .5)
+  expect_equal(.prior_density_quadrature_source(nodes, 2L, 0, 0)$source, exp(nodes))
+  expect_equal(.prior_density_quadrature_source(nodes, -2L, 0, 0)$source, -exp(nodes))
+  expect_equal(.prior_density_quadrature_source(nodes, 2L, 0, 0)$log_jacobian, nodes)
+  # x = anchor +- 2^k (1 - t) / t
+  infinite <- .prior_density_quadrature_source(nodes, 1L, 3, log(2))
+  expect_equal(infinite$source, 3 + 2 * (1 - nodes) / nodes)
+  expect_equal(infinite$log_jacobian, log(2) - 2 * log(nodes))
+  expect_equal(.prior_density_quadrature_source(nodes, -1L, -3, log(2))$source, -3 - 2 * (1 - nodes) / nodes)
+  affine <- .prior_density_quadrature_source(c(1, 1.5), 3L, 0, log(4))
+  expect_equal(affine$source, c(4, 6))
+  expect_equal(affine$log_jacobian, rep(log(4), 2L))
+})
+
+test_that("the batched quadrature integrates every piece kind and isolates failing values", {
+
+  integrand <- list(shared = function(source) list(x = source),
+                    value = function(shared, index) 1 / abs(shared$x),
+                    log_value = function(shared, index) -log(abs(shared$x)))
+  decay <- list(shared = function(source) list(x = source),
+                value = function(shared, index) 1 / shared$x^2,
+                log_value = function(shared, index) -2 * log(abs(shared$x)))
+  # 1 / |x| over (2, 8) and (-8, -2) is log(4); the narrow piece (5, 5 + 5e-13)
+  # is log(narrow[2] / narrow[1]); x^-2 over (1, Inf) and (-Inf, -1) is 1
+  narrow <- c(5, 5 + 5e-13)
+  expect_equal(.prior_density_quadrature_batch(integrand, list(c(2, 8), c(-8, -2), narrow)),
+               c(log(4), log(4), log(narrow[2L] / narrow[1L])), tolerance = 1e-8)
+  expect_equal(.prior_density_quadrature_batch(decay, list(c(1, Inf), c(-Inf, -1), c(1, 2, Inf))),
+               c(1, 1, 1), tolerance = 1e-8)
+  # a piece across zero is a finite piece without the logarithmic transport
+  square <- list(shared = function(source) list(x = source),
+                 value = function(shared, index) shared$x^2,
+                 log_value = function(shared, index) 2 * log(abs(shared$x)))
+  expect_equal(.prior_density_quadrature_batch(square, list(c(-1, 3))), 28 / 3, tolerance = 1e-8)
+
+  # a piece without a representable transport (5, 5 + 8.9e-16) discards its own
+  # value only; the other values equal their integrals alone
+  pieces <- list(c(2, 8), c(5, 5 + 8.9e-16), c(-8, -2), c(1, 3))
+  out <- .prior_density_quadrature_batch(integrand, pieces)
+  expect_identical(is.na(out), c(FALSE, TRUE, FALSE, FALSE))
+  expect_equal(out[c(1L, 3L, 4L)], c(log(4), log(4), log(3)), tolerance = 1e-8)
+  expect_identical(out[1L], .prior_density_quadrature_batch(integrand, pieces[1L]))
+  expect_identical(.prior_density_quadrature_batch(integrand, list(c(5, 5 + 8.9e-16))), NA_real_)
+  expect_identical(.prior_density_quadrature_batch(integrand, list()), numeric())
+
+  # the refinement of a value ends (NA) beyond the interval cap; the cap is
+  # not reached by a smooth integrand
+  oscillation <- function(x, index) sin(50 * x)^2
+  tolerance <- .prior_density_quadrature_tolerance()
+  expect_equal(.prior_density_quadrature_batch(oscillation, list(c(0, 10)), tolerance),
+               5 - sin(1000) / 200, tolerance = 1e-7)
+  tolerance$max_intervals <- 3L
+  capped <- .prior_density_quadrature_batch(oscillation, list(c(0, 10), c(0, .1)), tolerance)
+  expect_identical(is.na(capped), c(TRUE, FALSE))
+  expect_equal(capped[2L], .05 - sin(10) / 200, tolerance = 1e-8)
+})
+
+test_that("the quadrature density of a truncated-normal convolution is its closed form", {
+
+  density <- .prior_linear_combination_density(
+    list(a = prior("normal", list(0, 1)), b = prior("normal", list(1, 2), list(0, Inf))),
+    c(a = 1, b = 1), n_grid = 256
+  )
+  route <- .prior_density_route_from_adaptive(attr(density, "adaptive_evaluation"))
+  expect_identical(route$type, "truncated_normal_convolution")
+  testthat::local_mocked_bindings(
+    .prior_density_route_ordinate = function(...) stop("The closed form needs no ordinate.")
+  )
+  x <- c(-1, 0, 2.5)
+  expect_identical(.prior_density_route_quadrature_density(route, x),
+                   .prior_truncated_normal_convolution_density(route$spec, x))
+})
+
 test_that("route-product display grids batch the values of leaves with a singular integrand", {
 
   # X = A + B * S with A, B ~ N(0, 1) and a share S ~ Beta(1.5, .5), whose

@@ -1629,6 +1629,10 @@
 # (.prior_linear_density_route_product()).
 .prior_density_route_quadrature_density <- function(route, x, batch_singular = FALSE){
 
+  if(identical(route$type, "truncated_normal_convolution")){
+    # the closed form needs no quadrature
+    return(.prior_truncated_normal_convolution_density(route$spec, x))
+  }
   plan <- switch(
     route$type,
     "conditional_normal" = .prior_conditional_normal_density_plan(route$spec, x, batch_singular),
@@ -1643,11 +1647,9 @@
     if(!isTRUE(plan$batch)){
       tolerance$relative <- .prior_linear_density_refinement_tolerance()$relative
     }
-    out[!zero & !plan$special] <- tryCatch(.prior_density_quadrature_batch(
+    out[!zero & !plan$special] <- .prior_density_quadrature_batch(
       plan$integrand, plan$breakpoints, tolerance
-    ), BayesTools_numerical_condition = function(condition){
-      rep(NA_real_, sum(!zero & !plan$special))
-    })
+    )
   }
   ordinate <- which(!zero & (plan$special | is.na(out)))
   out[ordinate] <- vapply(x[ordinate], function(value){

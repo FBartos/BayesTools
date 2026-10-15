@@ -1068,6 +1068,62 @@ test_that("an offset that absorbs the product term makes scale-product regions u
   expect_identical(as.numeric(.prior_linear_density_region_probability(density, region)), 1)
 })
 
+test_that("region probabilities of Cauchy-like and integer-df convolutions, transformed continuous sources and Bernoulli atoms", {
+
+  probability <- function(density, lower, upper, inclusive = FALSE){
+    region <- list(
+      intervals = .prior_region_intervals(lower, upper),
+      indicator = function(x) if(inclusive) x >= lower & x <= upper else x > lower & x < upper
+    )
+    as.numeric(.prior_linear_density_region_probability(density, region))
+  }
+  gamma_prior <- prior("gamma", list(shape = 2, rate = 1))
+
+  # a t term (a Cauchy for one degree of freedom, with a heavy tail) plus a
+  # gamma term is a two-term convolution: P(T + G > 3) = E[P(T > 3 - G)]
+  for(df in c(1, 2, 3)){
+    source <- if(df == 1) prior("cauchy", list(0, 1)) else prior("t", list(0, 1, df))
+    density <- .prior_linear_combination_density(list(a = source, b = gamma_prior), c(a = 1, b = 1),
+                                                 n_grid = .prior_linear_density_default_grid())
+    expect_identical(.prior_density_route_from_adaptive(attr(density, "adaptive_evaluation"))$type, "convolution")
+    expect_equal(probability(density, 3, Inf), stats::integrate(function(u){
+      stats::dgamma(u, 2, 1) * stats::pt(3 - u, df, lower.tail = FALSE)
+    }, 0, Inf, rel.tol = 1e-12)$value, tolerance = 1e-8)
+    expect_equal(probability(density, -Inf, -1), stats::integrate(function(u){
+      stats::dgamma(u, 2, 1) * stats::pt(-1 - u, df)
+    }, 0, Inf, rel.tol = 1e-12)$value, tolerance = 1e-8)
+  }
+
+  # continuous sources through the named output transformations
+  hyperbolic <- .prior_linear_combination_density(
+    list(x = prior("normal", list(0, 1)), y = prior("normal", list(1, 2))), c(x = 1, y = 1),
+    n_grid = 256, output_transformation = "tanh"
+  )
+  expect_equal(probability(hyperbolic, -Inf, .5), stats::pnorm(atanh(.5), 1, sqrt(5)), tolerance = 1e-12)
+  square <- .prior_linear_combination_density(
+    list(x = gamma_prior), c(x = 1), n_grid = 256,
+    output_transformation = "exp_lin", output_transformation_arguments = list(a = 0, b = 2)
+  )
+  expect_equal(probability(square, -Inf, 4), stats::pgamma(2, 2, 1), tolerance = 1e-12)
+  expect_equal(probability(square, 1, 9), stats::pgamma(3, 2, 1) - stats::pgamma(1, 2, 1), tolerance = 1e-12)
+  square_sum <- .prior_linear_combination_density(
+    list(x = gamma_prior, y = prior("exp", list(1))), c(x = 1, y = 1),
+    n_grid = .prior_linear_density_default_grid(),
+    output_transformation = "exp_lin", output_transformation_arguments = list(a = 0, b = 2)
+  )
+  expect_equal(probability(square_sum, -Inf, 16), stats::pgamma(4, 3, 1), tolerance = 1e-8)
+
+  # a Bernoulli term is a discrete atom pair: 2 + 3 B has the atoms 2 (.7) and 5 (.3)
+  atoms <- .prior_linear_combination_density(
+    list(a = prior("point", list(2)), b = prior("bernoulli", list(probability = .3))), c(a = 1, b = 3),
+    n_grid = 256
+  )
+  expect_equal(probability(atoms, 3, Inf), .3, tolerance = 1e-14)
+  expect_equal(probability(atoms, -Inf, 2, inclusive = TRUE), .7, tolerance = 1e-14)
+  expect_identical(probability(atoms, -Inf, 2), 0)
+  expect_equal(probability(atoms, 2, 5, inclusive = TRUE), 1, tolerance = 1e-14)
+})
+
 test_that("rejected region quadratures stop instead of using the grid", {
 
   priors <- scale_mixture_priors()

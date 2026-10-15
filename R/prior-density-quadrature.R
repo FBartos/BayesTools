@@ -25,7 +25,7 @@
 
 .prior_density_quadrature_tolerance <- function(){
 
-  list(relative = 1e-8, max_rounds = 60L)
+  list(relative = 1e-8, max_rounds = 60L, max_intervals = 4096L)
 }
 
 # Whether the declared density of a simple continuous prior is infinite at each
@@ -327,9 +327,36 @@
 # infinite ends allowed) of integrand(nodes, index) (or its split form, see
 # .prior_density_quadrature_evaluate()) for each value j, refined
 # in one batched loop. Returns the integrals, NA where the acceptance
-# criterion is not met (including zero and non-finite integrals).
+# criterion is not met (including zero and non-finite integrals). A numerical
+# condition (e.g. a piece without a representable node transport) discards
+# only the values it concerns: a failing batch is halved until the failing
+# values are isolated, and those are NA.
 .prior_density_quadrature_batch <- function(integrand, breakpoints,
                                             tolerance = .prior_density_quadrature_tolerance()){
+
+  n_values <- length(breakpoints)
+  attempt <- function(selected){
+    kept <- rep(list(numeric()), n_values)
+    kept[selected] <- breakpoints[selected]
+    tryCatch(
+      .prior_density_quadrature_batch_values(integrand, kept, tolerance)[selected],
+      BayesTools_numerical_condition = function(condition){
+        if(length(selected) == 1L){
+          return(NA_real_)
+        }
+        first <- seq_len(length(selected) %/% 2L)
+        c(attempt(selected[first]), attempt(selected[-first]))
+      }
+    )
+  }
+  out <- rep(NA_real_, n_values)
+  if(n_values > 0L){
+    out[] <- attempt(seq_len(n_values))
+  }
+  out
+}
+
+.prior_density_quadrature_batch_values <- function(integrand, breakpoints, tolerance){
 
   n_values <- length(breakpoints)
   out <- rep(NA_real_, n_values)
@@ -396,6 +423,8 @@
       total_error <= bound
     out[accepted] <- total[accepted]
     active <- active & !accepted
+    # a value whose refinement has produced too many intervals ends (NA)
+    active[tabulate(index, nbins = n_values) > tolerance$max_intervals] <- FALSE
     if(!any(active) || round > tolerance$max_rounds){
       break
     }
