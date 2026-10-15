@@ -78,7 +78,14 @@
 #' A context contains
 #' the current independent bridge state and BayesTools-resolved deterministic
 #' formula/random-effect nodes; it is not necessarily an original MCMC
-#' posterior row.
+#' posterior row. For a formula block fitted with
+#' \code{random_effects_compile(marginalized = ...)}, the SD coordinates and
+#' priors stay in the bridge target, but without a context
+#' (\code{FALSE}, the default) the callback receives neither the SD values nor
+#' the covariance: it must reconstruct them from primitive coordinates
+#' (\code{add_parameters} or its own evaluator) or request \code{"marginal"}
+#' or \code{"full"} (\code{TRUE}); the evidence of a callback that ignores the
+#' fitted random-effect covariance is the evidence of a model without it.
 #' @param bridge_context_node_names optional character vector selecting an exact
 #' subset of the complete context's named `nodes` vector for
 #' `bridge_context = "nodes"` or `"marginal"`. The default, `NULL`, retains

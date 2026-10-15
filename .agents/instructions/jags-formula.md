@@ -44,6 +44,13 @@ of the same name (`BayesTools_refit_required` otherwise, as for formula priors);
 supplied names the fit does not store, and stored names omitted from
 `prior_list`, stay allowed because callers may integrate omitted parameters in
 their callback.
+For a block fitted with `random_effects_compile(marginalized = ...)`, the SD
+coordinates and priors stay in the bridge target, but under `bridge_context =
+FALSE`/`"none"` (the default) the likelihood callback receives neither the SD
+values nor the covariance. It reconstructs them from primitive coordinates
+(`add_parameters` or its own evaluator), or requests `"marginal"` or `"full"`
+(`TRUE`); the bridge does not refuse the default, because callers (RoBMA) supply
+their own reconstruction. A refusal with an opt-out is a maintainer decision.
 Bridge sampling checks affine rank of varying finite supplied coordinates before
 bound transformations, then checks the transformed coordinates separately with
 the existing QR tolerance and diagnostics. Constant columns retain the existing
