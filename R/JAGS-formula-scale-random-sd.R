@@ -428,6 +428,20 @@
   )
 }
 
+# The one zero rule of the original-scale map of a random-effect block (the
+# unscale matrix): an entry of a row counts as zero when it is at most 1e-12
+# times the largest entry of the row, so data centered by subtraction, whose
+# mean is of rounding size, do not induce an entry. The rows of the matrix
+# decide which fitted SDs an original-scale SD reads (the catalog support and
+# its exactness, the prior law of a correlation) and whether it is a pure
+# rescaling (.random_sd_original_scale_laws()). Returns a logical vector, all
+# FALSE for an all-zero row.
+.random_sd_unscale_row_nonzero <- function(row){
+
+  magnitude <- abs(row)
+  magnitude > 1e-12 * max(magnitude)
+}
+
 # The relation of the original-scale random-effect SDs of the scaled blocks of
 # one formula parameter to their fitted SDs, for the prior law of an SD (see
 # .prior_density_context_random_sd_scale()). The original-scale SD of a design
@@ -435,9 +449,8 @@
 # original-scale map (.random_sd_unscale_matrix(), the matrix the draws use)
 # has exactly one nonzero entry, on its own coordinate; that entry c is the
 # scale, and the original-scale law is the fitted SD's law rescaled by |c|.
-# An entry counts as zero when it is at most 1e-12 times the largest entry of
-# its row (the relative rule of .random_sd_shared_leaf_is_invariant()): data
-# centered by subtraction have a mean of rounding size, whose induced entry
+# An entry counts as zero by the one rule of .random_sd_unscale_row_nonzero():
+# data centered by subtraction have a mean of rounding size, whose induced entry
 # would otherwise make every intercept SD a composite. A shared leaf is a pure
 # rescaling only when every column of the leaf is, with the same |c|. Any other
 # SD (e.g. an intercept SD combined with the SD of a non-centered scaled slope)
@@ -502,9 +515,8 @@
       next
     }
     column_scale <- vapply(seq_len(nrow(A)), function(row){
-      magnitude <- abs(A[row, ])
-      if(magnitude[row] > 0 && all(magnitude[-row] <= 1e-12 * max(magnitude))){
-        magnitude[row]
+      if(identical(which(.random_sd_unscale_row_nonzero(A[row, ])), row)){
+        abs(A[row, row])
       }else{
         NA_real_
       }

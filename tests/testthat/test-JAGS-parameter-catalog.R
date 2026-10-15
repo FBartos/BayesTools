@@ -2557,6 +2557,75 @@ test_that("the support of an identity random SD is the support of its own coordi
   }
 })
 
+test_that("a rounding-size entry of the unscale matrix is zero for the catalog support and the LKJ law", {
+
+  # F318 (5): the catalog read the unscale matrix with `!= 0` where the prior law
+  # of an SD uses the relative 1e-12 rule, so data centered by subtraction (a mean
+  # of rounding size) made an SD that reads a centered predictor read its SD, and
+  # made every intercept correlation of such a block a composite
+  x <- c(0.1, 0.7, 0.3, 1.9, 2.3, 0.4, 5.1, 0.2)
+  z <- c(0.2, 1.1, 0.8, 2.6, 0.4, 1.9, 3.7, 0.5)
+  z_centered <- z - mean(z)
+  expect_true(mean(z_centered) != 0 && abs(mean(z_centered)) < 1e-12)
+  id <- factor(rep(c("a", "b", "c", "d"), each = 2L))
+  half_normal <- prior("normal", list(0, 1), list(0, Inf))
+  build <- function(formula, data, block, scale){
+    result <- JAGS_formula(
+      formula, "mu", cbind(data, id = id),
+      stats::setNames(
+        rep(list(prior("normal", list(0, 1))), ncol(data) + 1L),
+        c("intercept", names(data))
+      ),
+      formula_scale = scale,
+      prior_random = prior_random(id = block)
+    )
+    term <- result$formula_design$random_effects[[1L]]
+    columns <- unique(c(
+      "mu_intercept", paste0("mu_", names(data)), JAGS_to_monitor(result$prior_list),
+      term$sd_parameter_names, term$correlation$primitive_names
+    ))
+    .prior_monitor_test_fit(result, columns)
+  }
+
+  # The intercept SD of a block with scaled x and z reads their SDs through its
+  # row of the unscale matrix. The bounded SD of z makes its hull inexact when
+  # z has a mean, and not when z is centered by subtraction.
+  bounded_z <- random_block(
+    sd = half_normal, terms = list(z = prior("uniform", list(0.5, 2)))
+  )
+  hull_exact <- function(z_values){
+    fit <- build(~ 1 + x + z + (1 + x + z || id), data.frame(x = x, z = z_values),
+                 bounded_z, list(x = TRUE, z = TRUE))
+    quantities <- parameter_catalog(fit)$quantities
+    quantities$support[[match("(mu) sd(intercept)", quantities$canonical_name)]]$exact
+  }
+  expect_false(hull_exact(z))
+  expect_true(hull_exact(z_centered))
+
+  # The intercept correlation of a block with one centered scaled slope is the
+  # LKJ entry of its pair; with a mean it combines the SDs
+  eta <- 1.5
+  lkj_block <- random_block(sd = half_normal, cor = prior_lkj(eta = eta))
+  correlation_density <- function(values){
+    fit <- build(~ 1 + x + us(1 + x | id), data.frame(x = values), lkj_block, list(x = TRUE))
+    parameter_prior_density(
+      fit, parameter_catalog_resolve(parameter_catalog(fit), "(mu) cor(intercept,x)")
+    )
+  }
+  expect_null(correlation_density(x))
+  .expect_lkj_marginal_density(correlation_density(x - mean(x)), eta - 1 + 2 / 2,
+                               info = "centered")
+
+  # one zero rule: the relative rule of the prior law
+  zero <- BayesTools:::.random_sd_unscale_row_nonzero
+  expect_identical(zero(c(1, 1e-13)), c(TRUE, FALSE))
+  # relative to the largest entry of the row, whatever its size
+  expect_identical(zero(c(1e-13, 1e-14)), c(TRUE, TRUE))
+  expect_identical(zero(c(1e200, 1e180)), c(TRUE, FALSE))
+  expect_identical(zero(c(2, 0, -3)), c(TRUE, FALSE, TRUE))
+  expect_identical(zero(c(0, 0)), c(FALSE, FALSE))
+})
+
 test_that("allocation quantities with inclusion gates or point scales declare the atoms of their prior density", {
 
   # A gated chain, or a scale prior with a point component, puts point masses on

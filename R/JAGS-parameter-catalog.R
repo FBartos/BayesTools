@@ -996,7 +996,9 @@ parameter_prior_density.BayesTools_fit <- function(
   if(is.null(unscale)){
     return(NULL)
   }
-  sources <- lapply(pair, function(row) which(unscale[row, ] != 0))
+  sources <- lapply(pair, function(row){
+    which(.random_sd_unscale_row_nonzero(unscale[row, ]))
+  })
   if(any(lengths(sources) != 1L) || sources[[1L]] == sources[[2L]]){
     return(NULL)
   }
@@ -4906,7 +4908,7 @@ parameter_transform_jacobian <- function(values, transform){
   if(!is.matrix(unscale) || !identical(dim(unscale), c(K, K))){
     return(dependencies)
   }
-  own <- sd_names[unscale[key$index, ] != 0]
+  own <- sd_names[.random_sd_unscale_row_nonzero(unscale[key$index, ])]
   dependencies[!dependencies %in% sd_names | dependencies %in% own]
 }
 

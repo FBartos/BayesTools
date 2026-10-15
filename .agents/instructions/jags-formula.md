@@ -362,8 +362,11 @@ give the same entry), is a pure rescaling: its law is the fitted SD's law
 rescaled by `|c|` (exact for every prior kind, applied as the SD's weight in
 `.prior_density_context_standardized_weights()`). Any other SD of a block with a
 scaled column (the intercept SD with a non-centered scaled slope, factor-level
-SDs that absorb induced shifts) combines several fitted SDs: its prior density
-is unavailable with cause `random_sd_prior_law_unavailable`, and with cause
+SDs that absorb induced shifts) combines several fitted SDs. The 1e-12 rule is
+the one zero rule of the original-scale map (`.random_sd_unscale_row_nonzero()`):
+the catalog support of such a composite SD (which SDs it reads) and the prior law
+of a correlation read the same rows by the same rule. The prior density of a
+composite is unavailable with cause `random_sd_prior_law_unavailable`, and with cause
 `random_effect_design_unavailable` when the context holds no design of its block
 (an older object, or `plot_transformed_prior()`, which has no fit). SDs of blocks
 without a scaled column and of structured blocks keep their fitted law. The
