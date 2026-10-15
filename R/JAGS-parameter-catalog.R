@@ -2310,9 +2310,10 @@ parameter_transform_jacobian <- function(values, transform){
   }
   if(identical(transform$type, "square")){
     # (scale * |value|) first: scale^2 alone overflows for scales beyond 1e154
-    # although the Jacobian is representable.
+    # although the Jacobian is representable. The factor 2 comes last: 2 * scale
+    # overflows beyond 9e307 and gives NaN at a zero value.
     scale <- .bt_parameter_transform_square_scale(transform)
-    return(2 * scale * (scale * abs(values)))
+    return(2 * (scale * (scale * abs(values))))
   }
 
   stop("Unsupported semantic parameter transform.", call. = FALSE)

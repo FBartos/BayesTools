@@ -5105,6 +5105,23 @@ test_that("catalog numerics stay accurate at the range edges", {
   )
 })
 
+test_that("the square Jacobian forms its factor 2 last", {
+
+  # F314 (1): 2 * scale overflowed for scale beyond 9e307 although
+  # 2 scale^2 |x| is representable, and gave NaN at x = 0
+  jacobian <- function(values, scale){
+    parameter_transform_jacobian(values, list(type = "square", scale = scale))
+  }
+  # (1e-310 is subnormal: it carries about 14 significant digits)
+  expect_equal(jacobian(1e-310, 1e308), 2e306, tolerance = 1e-12)
+  expect_identical(jacobian(c(0, 0), 1e308), c(0, 0))
+  expect_identical(jacobian(c(-0, 0), 1.5e308), c(0, 0))
+  expect_equal(jacobian(c(-2, 0, 1.5), 3), c(2 * 9 * 2, 0, 2 * 9 * 1.5))
+  expect_identical(jacobian(c(1, 2), NULL), c(2, 4))
+  # a Jacobian beyond the double range is infinite, never NaN
+  expect_identical(jacobian(1e10, 1e308), Inf)
+})
+
 test_that("independently gated proportion mixtures fold fixed inclusion gates", {
 
   # One free gate, one always-on component, one always-off component:
