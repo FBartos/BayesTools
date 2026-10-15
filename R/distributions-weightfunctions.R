@@ -18,12 +18,23 @@
   )
 }
 # Plotted mean of a weight that has none (a heavy right tail on the log scale
-# makes E[omega] infinite): the mean line is omitted for that bin, so NA breaks
-# the line, and the y range comes from the finite values.
+# makes E[omega] infinite) or none in double precision (it exceeds the largest
+# double, .weightfunction_plot_component_mean()): the mean line is omitted for
+# that bin, so NA breaks the line, and the y range comes from the finite values.
 .weightfunction_plot_mean <- function(x_mean){
 
   x_mean[!is.finite(x_mean)] <- NA_real_
   x_mean
+}
+# The mean of a weight component for plotting, from 'mean_function': a mean
+# beyond the largest double (the range limit of the moment calculation, which
+# mean() reports) is plotted like an infinite one.
+.weightfunction_plot_component_mean <- function(mean_function, component){
+
+  tryCatch(
+    mean_function(component),
+    BayesTools_numerical_range_limit = function(condition) Inf
+  )
 }
 .weightfunction_plot_y_range <- function(x_mean, x_lCI, x_uCI){
 

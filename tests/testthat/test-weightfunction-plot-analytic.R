@@ -785,3 +785,43 @@ test_that("weightfunction prior plots omit the mean of a heavy-tailed log-weight
     expect_true(all(is.finite(built$layout$panel_params[[1L]]$y.range)))
   }
 })
+
+test_that("weightfunction prior plots omit the mean of a log-weight prior beyond the largest double (F332)", {
+
+  # E[omega] = exp(sd^2 / 2) leaves the double range for sd above 37.7: mean()
+  # reports that range limit, the plots omit the mean like an infinite one
+  huge <- prior_weightfunction("one-sided", c(.05, .5), wf_independent(prior("normal", list(0, 40)), "log_omega"))
+  light <- prior_weightfunction("one-sided", c(.05, .5), wf_independent(prior("normal", list(log(1.5), .15)), "log_omega"))
+  expect_error(mean(huge), "The mean of the weight exceeds the largest representable double",
+               class = "BayesTools_numerical_range_limit", fixed = TRUE)
+
+  for(prior_list in list(list(huge), list(huge, light))){
+    data <- .plot_data_prior_list.weightfunction(prior_list, x_seq = NULL, x_range = c(0, 1),
+                                                 x_range_quant = NULL, n_points = 100, n_samples = 1)
+    expect_identical(data$y, c(1, 1, Inf, Inf, Inf, Inf))
+    expect_true(all(is.finite(attr(data, "y_range"))))
+    expect_true(all(is.finite(c(data$y_lCI, data$y_uCI))))
+  }
+  density_data <- density(huge)
+  expect_identical(density_data$y, c(1, 1, Inf, Inf, Inf, Inf))
+  expect_true(all(is.finite(attr(density_data, "y_range"))))
+
+  # the remaining weights are drawn, in base and ggplot alike
+  grDevices::pdf(NULL)
+  on.exit(grDevices::dev.off(), add = TRUE)
+  expect_no_warning(expect_no_error(plot_prior_list(list(huge), plot_type = "base")))
+  expect_no_warning(expect_no_error(plot_prior_list(list(huge, light), plot_type = "base")))
+  expect_no_warning(expect_no_error(plot(huge)))
+  for(plotted in list(
+    plot_prior_list(list(huge), plot_type = "ggplot"),
+    plot_prior_list(list(huge, light), plot_type = "ggplot"),
+    plot(huge, plot_type = "ggplot")
+  )){
+    built <- expect_no_warning(ggplot2::ggplot_build(plotted))
+    mean_line <- built$data[[2L]]
+    expect_identical(is.na(mean_line$y), c(FALSE, FALSE, TRUE, TRUE, TRUE, TRUE))
+    expect_identical(mean_line$y[1:2], c(1, 1))
+    expect_true(all(is.finite(built$data[[1L]]$y)))
+    expect_true(all(is.finite(built$layout$panel_params[[1L]]$y.range)))
+  }
+})

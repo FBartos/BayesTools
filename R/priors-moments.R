@@ -708,10 +708,18 @@ sd.prior     <- function(x, ...){
   )
 }
 
-.mean.weightfunction <- function(prior){
+# 'plot' gives a mean beyond the largest double as Inf, which the plots omit
+# (.weightfunction_plot_mean()); mean() stops with its range limit.
+.mean.weightfunction <- function(prior, plot = FALSE){
 
   components <- .weightfunction_marginal_components(prior)
-  m <- vapply(components, .prior_weightfunction_component_mean, numeric(1))
+  m <- if(plot){
+    vapply(components, function(component){
+      .weightfunction_plot_component_mean(.prior_weightfunction_component_mean, component)
+    }, numeric(1))
+  }else{
+    vapply(components, .prior_weightfunction_component_mean, numeric(1))
+  }
 
   return(m)
 }

@@ -1440,7 +1440,7 @@ density.prior <- function(x,
       x_sam  <- NULL
       x_lCI  <- mquant(x, .025)
       x_uCI  <- mquant(x, .975)
-      x_mean <- mean(x)
+      x_mean <- .mean.weightfunction(x, plot = TRUE)
     }
 
     out <- list(

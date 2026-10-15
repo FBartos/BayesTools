@@ -406,7 +406,7 @@
   # a component without weight contributes nothing, also when its mean is Inf
   sum(vapply(components, function(component){
     if(component$weight == 0) return(0)
-    component$weight * .weightfunction_component_mean(component)
+    component$weight * .weightfunction_plot_component_mean(.weightfunction_component_mean, component)
   }, numeric(1)))
 }
 .weightfunction_mixture_cdf <- function(components, q){
