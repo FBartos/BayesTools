@@ -33,7 +33,7 @@
 
 .prior_numerical_result <- function(output, input, domain, operation, family,
                                     requested_scale, interior = rep(TRUE, length(output)),
-                                    rng = FALSE, bounded = FALSE, warn_range = TRUE,
+                                    rng = FALSE, warn_range = TRUE,
                                     unavailable_cause = NULL){
 
   if(!isTRUE(domain)) return(output)
@@ -43,7 +43,7 @@
     reason <- "The declared interior calculation could not be resolved at supported precision"
     if(!is.null(unavailable_cause)) reason <- paste0(reason, ". ", unavailable_cause)
     .prior_numerical_signal(operation, family, requested_scale, unavailable,
-      reason, error = rng || bounded, rng = rng)
+      reason, error = rng, rng = rng)
   }
   if(!warn_range) return(output)
   range <- which(known & (is.infinite(output) |
@@ -54,7 +54,7 @@
     .prior_numerical_signal(operation, family, requested_scale, range,
       if(identical(requested_scale, "natural") && operation %in% c("density", "distribution")) "Use an available logarithmic result or inspect the declared numerical limit" else
         "Inspect the declared numerical limit and the numerical condition",
-      range = TRUE, error = bounded, rng = rng && bounded)
+      range = TRUE, error = FALSE, rng = FALSE)
   }
   output
 }

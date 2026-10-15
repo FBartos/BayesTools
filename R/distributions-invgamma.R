@@ -1,17 +1,3 @@
-.BayesTools_require_native_invgamma <- function(){
-
-  if(isTRUE(.BayesTools_native_routines_loaded(pkgname = "BayesTools"))){
-    return(invisible(TRUE))
-  }
-
-  .BayesTools_load_native_routines(pkgname = "BayesTools", warn = TRUE)
-  if(!isTRUE(.BayesTools_native_routines_loaded(pkgname = "BayesTools"))){
-    stop("BayesTools native inverse-gamma routines are not loaded.", call. = FALSE)
-  }
-
-  invisible(TRUE)
-}
-
 .dinvgamma_prior <- function(x, shape, scale, log = FALSE){
 
   .check_log(log)

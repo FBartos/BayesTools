@@ -22,7 +22,7 @@
     tryCatch(
       {
         if("BayesTools" %in% rjags::list.modules()){
-          rjags::unload.module("BayesTools")
+          rjags::unload.module("BayesTools", quiet = TRUE)
         }
       },
       error = function(e) NULL
@@ -190,7 +190,6 @@ BayesTools_load_JAGS_module <- function(quiet = TRUE, warn = TRUE){
   c(
     "BayesTools_lkj_cholesky_from_u",
     "BayesTools_lkj_log_prior_u",
-    "BayesTools_lkj_alpha",
     "BayesTools_moment_d",
     "BayesTools_moment_p",
     "BayesTools_moment_q",
@@ -287,7 +286,9 @@ BayesTools_load_JAGS_module <- function(quiet = TRUE, warn = TRUE){
   invisible(loaded)
 }
 
-.BayesTools_require_native_lkj <- function(){
+# Stops with a clear error when the compiled routines of the package are not
+# available; `label` names the routine family in the message.
+.BayesTools_require_native <- function(label){
 
   if(isTRUE(.BayesTools_native_routines_loaded(pkgname = "BayesTools"))){
     return(invisible(TRUE))
@@ -295,21 +296,14 @@ BayesTools_load_JAGS_module <- function(quiet = TRUE, warn = TRUE){
 
   .BayesTools_load_native_routines(pkgname = "BayesTools", warn = TRUE)
   if(!isTRUE(.BayesTools_native_routines_loaded(pkgname = "BayesTools"))){
-    stop("BayesTools native LKJ routines are not loaded.", call. = FALSE)
+    stop("BayesTools native ", label, " routines are not loaded.", call. = FALSE)
   }
 
   invisible(TRUE)
 }
-.BayesTools_require_native_nonlocal <- function(){
 
-  if(isTRUE(.BayesTools_native_routines_loaded(pkgname = "BayesTools"))){
-    return(invisible(TRUE))
-  }
+.BayesTools_require_native_lkj <- function() .BayesTools_require_native("LKJ")
 
-  .BayesTools_load_native_routines(pkgname = "BayesTools", warn = TRUE)
-  if(!isTRUE(.BayesTools_native_routines_loaded(pkgname = "BayesTools"))){
-    stop("BayesTools native nonlocal-prior routines are not loaded.", call. = FALSE)
-  }
+.BayesTools_require_native_nonlocal <- function() .BayesTools_require_native("nonlocal-prior")
 
-  invisible(TRUE)
-}
+.BayesTools_require_native_invgamma <- function() .BayesTools_require_native("inverse-gamma")

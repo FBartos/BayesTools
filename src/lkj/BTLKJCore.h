@@ -13,9 +13,7 @@ bool valid_u_strided(double const *u, unsigned int length, unsigned int stride);
 bool valid_alpha(double const *alpha, unsigned int length);
 
 double cpc_from_u(double u);
-double pair_alpha(unsigned int i, unsigned int K, double eta);
 
-void fill_alpha(double *alpha, unsigned int K, double eta);
 void fill_cholesky_from_u(double *value, double const *u, unsigned int K);
 void fill_cholesky_from_u_strided(double *value, double const *u, unsigned int K, unsigned int stride);
 void fill_corr_from_cholesky(double *value, double const *L, unsigned int K);

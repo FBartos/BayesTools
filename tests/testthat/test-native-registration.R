@@ -63,3 +63,48 @@ test_that("native loader inventory matches registered call routines", {
     PACKAGE = "BayesTools"
   )))
 })
+
+test_that("native routine guards name their routine family", {
+
+  testthat::local_mocked_bindings(
+    .BayesTools_native_routines_loaded = function(pkgname = "BayesTools") FALSE,
+    .BayesTools_load_native_routines = function(...) invisible(FALSE),
+    .package = "BayesTools"
+  )
+  expect_error(.BayesTools_require_native_lkj(),
+    "BayesTools native LKJ routines are not loaded.", fixed = TRUE)
+  expect_error(.BayesTools_require_native_nonlocal(),
+    "BayesTools native nonlocal-prior routines are not loaded.", fixed = TRUE)
+  expect_error(.BayesTools_require_native_invgamma(),
+    "BayesTools native inverse-gamma routines are not loaded.", fixed = TRUE)
+  expect_error(
+    .bt_random_effect_native_structured_cholesky("cs", rho = 0.5, coordinates = c(1, 1)),
+    "BayesTools native structured-Cholesky routines are not loaded.", fixed = TRUE)
+})
+
+test_that("unloading the package unloads its JAGS module without a message", {
+
+  seen <- new.env(parent = emptyenv())
+  seen$quiet <- NULL
+  testthat::local_mocked_bindings(
+    list.modules = function() "BayesTools",
+    unload.module = function(name, quiet = FALSE){
+      seen$name <- name
+      seen$quiet <- quiet
+      if(!quiet) cat("Module", name, "unloaded\n")
+      invisible()
+    },
+    .package = "rjags"
+  )
+  isolated <- new.env(parent = asNamespace("BayesTools"))
+  isolated$.BayesTools_private <- list2env(list(
+    native_routines_loaded = TRUE, native_dll_path = NULL, native_dll_loaded_manually = FALSE
+  ), parent = emptyenv())
+  isolated$library.dynam.unload <- function(...) invisible(NULL)
+  unload <- getFromNamespace(".onUnload", "BayesTools")
+  environment(unload) <- isolated
+  output <- capture.output(unload(tempdir()))
+  expect_identical(seen$name, "BayesTools")
+  expect_true(isTRUE(seen$quiet))
+  expect_identical(output, character())
+})

@@ -132,7 +132,8 @@ test_that("finite range requests preserve the condition while recommending inspe
   expect_identical(result$conditions[[1L]]$indices, 1L)
   expect_identical(result$conditions[[1L]]$requested_scale, "finite")
   expect_null(conditionCall(result$conditions[[1L]]))
-  condition <- expect_error(.prior_numerical_result(Inf, 1, TRUE, "density", "moment", "finite", bounded = TRUE),
+  condition <- expect_error(.prior_numerical_signal("density", "moment", "finite", 1L,
+      "Inspect the declared numerical limit and the numerical condition", range = TRUE, error = TRUE),
     class = "BayesTools_numerical_range_limit")
   expect_identical(class(condition), c("BayesTools_numerical_range_limit", "BayesTools_numerical_condition", "error", "condition"))
   expect_identical(condition$indices, 1L)

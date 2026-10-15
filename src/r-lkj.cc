@@ -36,23 +36,6 @@ unsigned int checked_n_pairs(unsigned int K)
   return static_cast<unsigned int>(n_pairs);
 }
 
-double scalar_eta(SEXP eta)
-{
-  if(Rf_length(eta) != 1){
-    Rf_error("'eta' must be a numeric scalar.");
-  }
-
-  SEXP eta_real = PROTECT(Rf_coerceVector(eta, REALSXP));
-  double value = REAL(eta_real)[0];
-  UNPROTECT(1);
-
-  if(!std::isfinite(value) || value <= 0.0){
-    Rf_error("'eta' must be positive and finite.");
-  }
-
-  return value;
-}
-
 bool is_matrix(SEXP x)
 {
   SEXP dim = Rf_getAttrib(x, R_DimSymbol);
@@ -217,18 +200,5 @@ extern "C" SEXP BayesTools_lkj_log_prior_u(SEXP u, SEXP alpha)
   }
 
   UNPROTECT(3);
-  return out;
-}
-
-extern "C" SEXP BayesTools_lkj_alpha(SEXP K, SEXP eta)
-{
-  const unsigned int K_value = scalar_K(K);
-  const double eta_value = scalar_eta(eta);
-  const unsigned int n_pairs = checked_n_pairs(K_value);
-
-  SEXP out = PROTECT(Rf_allocVector(REALSXP, n_pairs));
-  bayestools::lkj::fill_alpha(n_pairs == 0 ? 0 : REAL(out), K_value, eta_value);
-  UNPROTECT(1);
-
   return out;
 }

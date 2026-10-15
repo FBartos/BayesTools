@@ -51,11 +51,6 @@ bool valid_parameters(double shape, double scale)
   return std::isfinite(shape) && shape > 0.0 && std::isfinite(scale) && scale > 0.0;
 }
 
-bool valid_value(double x)
-{
-  return std::isfinite(x) && x > 0.0;
-}
-
 double mode(double shape, double scale)
 {
   return valid_parameters(shape, scale) ? scale / (shape + 1.0) : quiet_nan();

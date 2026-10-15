@@ -79,22 +79,6 @@ double cpc_from_u(double u)
   return 2.0 * clamp_u(u) - 1.0;
 }
 
-double pair_alpha(unsigned int i, unsigned int K, double eta)
-{
-  return eta + (static_cast<double>(K - i - 1)) / 2.0;
-}
-
-void fill_alpha(double *alpha, unsigned int K, double eta)
-{
-  unsigned int p = 0;
-  for(unsigned int j = 2; j <= K; ++j){
-    for(unsigned int i = 1; i < j; ++i){
-      alpha[p] = pair_alpha(i, K, eta);
-      ++p;
-    }
-  }
-}
-
 void fill_cholesky_from_u(double *value, double const *u, unsigned int K)
 {
   fill_cholesky_from_u_strided(value, u, K, 1);

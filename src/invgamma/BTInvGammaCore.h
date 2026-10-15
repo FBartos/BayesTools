@@ -5,7 +5,6 @@ namespace bayestools {
 namespace invgamma {
 
 bool valid_parameters(double shape, double scale);
-bool valid_value(double x);
 
 double mode(double shape, double scale);
 double log_density(double x, double shape, double scale);
