@@ -1037,6 +1037,99 @@ test_that("callback condition classes survive the bridge-sampling context (F020)
   expect_identical(error$upstream_warnings, character())
 })
 
+test_that("an NA of the callback at a posterior draw is refused (F018)", {
+
+  # No mocking: the counts come from the warnings of the real upstream sampler.
+  # The exact posterior of mu | y under mu ~ N(0, 1) and unit-variance data.
+  withr::local_seed(9)
+  y <- c(0.3, 1.2, -0.4, 0.8, 0.5)
+  draws <- stats::rnorm(4000, sum(y) / 6, sqrt(1 / 6))
+  fit   <- coda::mcmc(matrix(draws, ncol = 1L, dimnames = list(NULL, "mu")))
+  priors <- list(mu = prior("normal", list(0, 1)))
+  loglik <- function(parameters, data) sum(stats::dnorm(data$y, parameters$mu, 1, log = TRUE))
+  bridge <- function(callback){
+    JAGS_bridgesampling(fit, callback, data = list(y = y), prior_list = priors, seed = 1)
+  }
+
+  # the valid callback is the reference: no NA, no condition
+  expect_no_warning(reference <- bridge(loglik))
+  expect_true(reference$success)
+
+  # NA above mu = 0.7 hits the posterior draws the sampler evaluates (the
+  # second half of the supplied draws)
+  evaluated <- draws[2001:4000]
+  error <- tryCatch(
+    bridge(function(parameters, data) if(parameters$mu > 0.7) NA_real_ else loglik(parameters, data)),
+    error = function(e) e
+  )
+  expect_s3_class(error, "error")
+  expect_s3_class(error, "BayesTools_marglik_callback_na")
+  expect_s3_class(error, "BayesTools_marglik_input")
+  expect_identical(error$n_posterior_na, as.numeric(sum(evaluated > 0.7)))
+  expect_match(
+    conditionMessage(error),
+    paste0("returned NA at ", sum(evaluated > 0.7), " of 2000 posterior draws"),
+    fixed = TRUE
+  )
+  expect_match(conditionMessage(error), "-Inf for a state of zero density", fixed = TRUE)
+  expect_gt(length(error$upstream_warnings), 0L)
+})
+
+test_that("an NA of the callback at a proposal draw is evaluated as zero density and reported (F018)", {
+
+  # NA only beyond the range of the posterior draws is met by proposal draws
+  # alone (uniform draws have lighter tails than the normal proposal): the
+  # estimate is finite, the NA is evaluated as zero density and its share is
+  # reported
+  withr::local_seed(9)
+  bounded <- coda::mcmc(matrix(stats::runif(4000, -1, 1), ncol = 1L, dimnames = list(NULL, "mu")))
+  tails   <- function(parameters, data) if(abs(parameters$mu) > 1.5) NA_real_ else 0
+  warned  <- NULL
+  result  <- withCallingHandlers(
+    JAGS_bridgesampling(bounded, tails, data = list(), prior_list = list(mu = prior("normal", list(0, 1))),
+                        seed = 1, repetitions = 2L),
+    warning = function(w){
+      warned <<- w
+      invokeRestart("muffleWarning")
+    }
+  )
+  expect_s3_class(warned, "BayesTools_marglik_callback_na")
+  expect_s3_class(warned, "BayesTools_marglik_input")
+  expect_s3_class(warned, "warning")
+  expect_gt(warned$n_proposal_na, 0)
+  expect_identical(warned$n_proposal, 4000)
+  expect_match(
+    conditionMessage(warned),
+    paste0("returned NA at ", warned$n_proposal_na, " of 4000 bridge-sampling proposal draws (",
+           format(100 * warned$n_proposal_na / 4000, digits = 2), "%)"),
+    fixed = TRUE
+  )
+  expect_true(result$success)
+  expect_true(is.finite(result$logml))
+  expect_true(any(grepl("on the proposal draws produced NA", result$diagnostics$upstream_warnings, fixed = TRUE)))
+})
+
+test_that("the NA counts of the callback are summed over the repetitions of the sampler (F018)", {
+
+  signal <- BayesTools:::.bt_JAGS_bridge_signal_callback_na
+  proposal <- "5 evaluation(s) of log_prob() on the proposal draws produced NA and have been replaced by -Inf."
+  other    <- c("3 of the 2000 log_prob() evaluations on the proposal draws produced -Inf/Inf.", "upstream diagnostic")
+
+  expect_true(signal(other, 2000, 3))
+  expect_warning(
+    signal(c(other, proposal, proposal, proposal), n_posterior = 2000, repetitions = 3),
+    "returned NA at 15 of 6000 bridge-sampling proposal draws (0.25%)",
+    fixed = TRUE,
+    class = "BayesTools_marglik_callback_na"
+  )
+  expect_error(
+    signal(c(proposal, "12 evaluation(s) of log_prob() on the posterior draws produced NA and have been replaced by -Inf."), 2000, 1),
+    "returned NA at 12 of 2000 posterior draws",
+    fixed = TRUE,
+    class = "BayesTools_marglik_input"
+  )
+})
+
 test_that("the inclusion-gate refusal of bridge sampling lists at most three indicators", {
 
   indicator_design <- function(...){

@@ -244,6 +244,18 @@ the bridge target treats it as zero density, and the direct reconstruction
 functions (such as \code{\link[=JAGS_marglik_parameters_formula]{JAGS_marglik_parameters_formula()}}) let it escape. The
 two classes belong to no shared parent class; callers match the class, not
 the message.
+
+A \code{NA} returned by \code{log_posterior} on the sampler route is no density. At a
+posterior draw the model cannot be evaluated where it was sampled: the call
+stops with an error of class \code{BayesTools_marglik_callback_na} (parent class
+\code{BayesTools_marglik_input}; field \code{n_posterior_na}, the number of affected
+posterior draws, and \code{upstream_warnings}). At a proposal draw the \code{NA} is
+evaluated as \code{-Inf} (zero density) and the call signals a warning of the same
+classes that reports the share of proposal draws (fields \code{n_proposal_na} and
+\code{n_proposal}); the estimate and its \code{success} are not otherwise affected. The
+counts are those that \pkg{bridgesampling} reports for the replaced
+evaluations. The exact zero-dimensional evaluation and \code{NA} priors keep their
+own errors.
 }
 \description{
 A wrapper around

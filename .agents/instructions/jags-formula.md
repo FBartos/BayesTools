@@ -58,6 +58,14 @@ sampler policy. Before each check, finite nonzero columns are rescaled by their
 maximum absolute value in a local diagnostic copy to avoid variance overflow
 or underflow; actual draws and sampler bounds remain unchanged. This is not a
 general nonlinear dependence detector.
+A `NA` from the bridge likelihood callback is no density: at a posterior draw
+the sampler route stops (`BayesTools_marglik_callback_na`, parent
+`BayesTools_marglik_input`, with the number of draws), and at proposal draws
+it is evaluated as `-Inf` with a warning of the same class that reports the
+share of proposal draws. The counts are read from the warnings of
+`bridgesampling` (it replaces the `NA` itself), which a regression test pins
+against the installed version; the exact route and `NA` priors keep their
+refusals.
 
 Every deterministic node BayesTools generates (allocation-derived SDs, scalar
 and LKJ correlations, publication weights, spike-and-slab and mixture

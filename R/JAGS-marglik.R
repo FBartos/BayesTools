@@ -320,6 +320,18 @@
 #' two classes belong to no shared parent class; callers match the class, not
 #' the message.
 #'
+#' A `NA` returned by `log_posterior` on the sampler route is no density. At a
+#' posterior draw the model cannot be evaluated where it was sampled: the call
+#' stops with an error of class `BayesTools_marglik_callback_na` (parent class
+#' `BayesTools_marglik_input`; field `n_posterior_na`, the number of affected
+#' posterior draws, and `upstream_warnings`). At a proposal draw the `NA` is
+#' evaluated as `-Inf` (zero density) and the call signals a warning of the same
+#' classes that reports the share of proposal draws (fields `n_proposal_na` and
+#' `n_proposal`); the estimate and its `success` are not otherwise affected. The
+#' counts are those that \pkg{bridgesampling} reports for the replaced
+#' evaluations. The exact zero-dimensional evaluation and `NA` priors keep their
+#' own errors.
+#'
 #' @export
 JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NULL, formula_list = NULL, formula_data_list = NULL, formula_prior_list = NULL, formula_scale_list = NULL,
                                 add_parameters = NULL, add_bounds = NULL,
@@ -715,6 +727,12 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
     do.call(bridgesampling::bridge_sampler, bridge_arguments)
   })
 
+  .bt_JAGS_bridge_signal_callback_na(
+    upstream_warnings = upstream_warnings,
+    n_posterior = nrow(bridgesampling_posterior) - round(nrow(bridgesampling_posterior) / 2),
+    repetitions = repetitions
+  )
+
   result <- .bt_marglik_from_upstream(
     upstream = marglik,
     maxiter = maxiter,
@@ -736,6 +754,59 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
   }
 
   return(result)
+}
+
+# bridgesampling replaces an NA of the callback by -Inf (zero density) and only
+# warns of the number of replaced evaluations on the posterior draws it
+# evaluates (the second half of the supplied draws) and, per repetition, on
+# its proposal draws. An NA at a posterior draw means that the model cannot be
+# evaluated where it was sampled and no estimate is returned; an NA at a
+# proposal draw is a state of zero density and is reported with its share. The
+# conditions are of class BayesTools_marglik_callback_na (parent
+# BayesTools_marglik_input); callers match the class, never the message.
+.bt_JAGS_bridge_signal_callback_na <- function(upstream_warnings, n_posterior, repetitions){
+
+  pattern <- "^([0-9]+) evaluation\\(s\\) of log_prob\\(\\) on the (posterior|proposal) draws produced NA"
+  matched <- regmatches(upstream_warnings, regexec(pattern, upstream_warnings))
+  matched <- matched[lengths(matched) == 3L]
+  draws   <- vapply(matched, function(x) x[[3L]], character(1))
+  counts  <- vapply(matched, function(x) as.numeric(x[[2L]]), numeric(1))
+
+  posterior_na <- sum(counts[draws == "posterior"])
+  proposal_na  <- sum(counts[draws == "proposal"])
+  classes      <- c("BayesTools_marglik_callback_na", "BayesTools_marglik_input")
+
+  if(posterior_na > 0){
+    stop(errorCondition(
+      message = paste0(
+        "The bridge-sampling target was rejected by diagnostics: the 'log_posterior' ",
+        "callback returned NA at ", posterior_na, " of ", n_posterior, " posterior draws. ",
+        "The model cannot be evaluated where it was sampled; make the callback return ",
+        "a finite log density, or -Inf for a state of zero density, at every posterior draw."
+      ),
+      call = NULL,
+      class = classes,
+      n_posterior_na = posterior_na,
+      upstream_warnings = unique(upstream_warnings)
+    ))
+  }
+  if(proposal_na > 0){
+    n_proposal <- n_posterior * repetitions
+    warning(warningCondition(
+      message = paste0(
+        "The 'log_posterior' callback returned NA at ", proposal_na, " of ", n_proposal,
+        " bridge-sampling proposal draws (", format(100 * proposal_na / n_proposal, digits = 2),
+        "%); they were evaluated as -Inf (zero density). Return -Inf instead of NA for ",
+        "states outside the support of the model."
+      ),
+      call = NULL,
+      class = classes,
+      n_proposal_na = proposal_na,
+      n_proposal = n_proposal
+    ))
+  }
+
+  invisible(TRUE)
 }
 
 # Bridge sampling places a proposal on the unconstrained bridge coordinates
