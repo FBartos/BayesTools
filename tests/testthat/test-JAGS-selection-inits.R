@@ -106,6 +106,63 @@ test_that("Gamma initialization fallback preserves representable median proporti
   )
 })
 
+test_that("a two-bin cumulative initialization falls back to the median of the weight (F222)", {
+
+  weights  <- function(alpha) prior_weightfunction("one-sided", .05, wf_cumulative(alpha))
+  fallback <- "deterministic, order-one rescaling"
+  inits    <- function(alpha, seed){
+    JAGS_get_inits(list(omega = weights(alpha)), chains = 1, seed = seed)[[1L]]$omega_ratio
+  }
+
+  # the seeds at which the drawn Gamma pair rounds the ratio to 0 or 1 refused
+  # their initial value (147 of 400 at the constructor minimum): the interior
+  # median of Beta(a, a) with the existing warning instead
+  for(seed in c(1, 2, 3, 5, 8, 11, 12, 14)){
+    expect_warning(value <- inits(c(.01, .01), seed), fallback, info = seed)
+    expect_equal(value, .5, tolerance = 1e-12, info = seed)
+  }
+  # a seed with an interior ratio keeps the drawn value and warns of nothing
+  expect_no_warning(value <- inits(c(.01, .01), 4))
+  expect_gt(abs(value - .5), 1e-6)
+
+  # every seed returns an interior value and warns exactly where it fell back
+  for(alpha in list(c(.01, .01), c(.02, .02), c(.05, .05), c(.1, .1))){
+    fallbacks <- 0L
+    values <- vapply(1:200, function(seed){
+      withCallingHandlers(
+        inits(alpha, seed),
+        warning = function(w){
+          expect_match(conditionMessage(w), fallback, fixed = TRUE)
+          fallbacks <<- fallbacks + 1L
+          invokeRestart("muffleWarning")
+        }
+      )
+    }, numeric(1))
+    expect_true(all(values > 0 & values < 1), info = paste(alpha, collapse = ", "))
+    expect_identical(fallbacks, sum(abs(values - .5) < 1e-12), info = paste(alpha, collapse = ", "))
+  }
+
+  # the component of a mixture takes the same fallback
+  mixture <- prior_mixture(list(prior_none(), weights(c(.01, .01))))
+  for(seed in 1:20){
+    value <- suppressWarnings(
+      JAGS_get_inits(list(bias = mixture), chains = 1, seed = seed)[[1L]]$omega_ratio_component_2
+    )
+    expect_true(value > 0 && value < 1)
+  }
+
+  # unequal shapes start at the median of Beta(alpha[2], alpha[1]) ...
+  expect_warning(value <- inits(c(.01, .02), 1), fallback)
+  expect_equal(value, stats::qbeta(.5, .02, .01), tolerance = 1e-12)
+  # ... and only a median that is not an interior value keeps the refusal
+  for(alpha in list(c(.01, 1), c(.01, 100))){
+    expect_warning(
+      expect_error(inits(alpha, 1), "is not representable as a finite interior cumulative weight", fixed = TRUE),
+      fallback
+    )
+  }
+})
+
 test_that("equal Gamma shapes retain the all-underflow median fallback", {
 
   set.seed(1)

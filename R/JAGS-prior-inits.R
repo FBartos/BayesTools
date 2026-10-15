@@ -296,12 +296,7 @@ JAGS_get_inits            <- function(prior_list, chains, seed){
     return(values)
   }
 
-  warning(
-    "RNG initialization failed for ", label,
-    "; attempting a deterministic, order-one rescaling of the distribution medians.",
-    call. = FALSE,
-    immediate. = TRUE
-  )
+  .JAGS_initialization_median_warning(label)
   medians <- stats::qgamma(0.5, shape = shape, rate = 1)
   if(all(medians == 0) && length(unique(shape)) == 1L){
     # Equal shapes have equal medians. Their common magnitude is immaterial to
@@ -330,12 +325,34 @@ JAGS_get_inits            <- function(prior_list, chains, seed){
 }
 .JAGS_binary_cumulative_initialization <- function(alpha, label){
 
-  eta <- .JAGS_positive_gamma_initialization(
-    shape = alpha,
-    label = label
+  alpha <- as.numeric(alpha)
+  if(length(alpha) != 2L || any(!is.finite(alpha)) || any(alpha <= 0)){
+    stop("Gamma initialization shapes must be finite and positive.",
+         call. = FALSE)
+  }
+
+  # the ratio of the two Gamma draws is the Beta(alpha[2], alpha[1]) weight of
+  # the 'omega_ratio' node
+  eta <- stats::rgamma(2L, shape = alpha, rate = 1)
+  omega_ratio <- NA_real_
+  if(all(is.finite(eta)) && all(eta > 0)){
+    eta <- eta / max(eta)
+    omega_ratio <- eta[2L] / sum(eta)
+  }
+  if(is.finite(omega_ratio) && omega_ratio > 0 && omega_ratio < 1){
+    return(omega_ratio)
+  }
+
+  # The pair underflowed or rounds the ratio to the boundary, which JAGS does
+  # not need to be refused: start at the median of the weight, as the
+  # initialization of more than two bins starts at the medians. Only a median
+  # that is not an interior value at the precision qbeta() reaches (a warning
+  # of qbeta() is that limit) is a representability limit and stops.
+  .JAGS_initialization_median_warning(label)
+  omega_ratio <- tryCatch(
+    stats::qbeta(0.5, alpha[2L], alpha[1L]),
+    warning = function(w) NA_real_
   )
-  eta <- eta / max(eta)
-  omega_ratio <- eta[2L] / sum(eta)
   if(!is.finite(omega_ratio) || omega_ratio <= 0 || omega_ratio >= 1){
     stop(
       "The initialization for ", label,
@@ -347,6 +364,15 @@ JAGS_get_inits            <- function(prior_list, chains, seed){
   omega_ratio
 }
 
+.JAGS_initialization_median_warning <- function(label){
+
+  warning(
+    "RNG initialization failed for ", label,
+    "; attempting a deterministic, order-one rescaling of the distribution medians.",
+    call. = FALSE,
+    immediate. = TRUE
+  )
+}
 .JAGS_init.vector          <- function(prior, parameter_name){
 
   .check_prior(prior, allow_expressions = TRUE)

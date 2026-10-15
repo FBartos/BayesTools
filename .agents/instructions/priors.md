@@ -134,9 +134,12 @@ non-finite/out-of-range entries or zero-total rows with
 preserves this sampling family and its message. Individual rounded zero/one
 entries are retained, not repaired or interpreted as new prior atoms. No retry,
 clamping or sampler replacement is allowed. Two-bin cumulative JAGS
-initialization near the minimum can repeatedly refuse a ratio no longer
-representable strictly inside `(0, 1)`; preserve its explicit refusal and all
-requested settings rather than promise universal fitting success.
+initialization whose drawn Gamma pair underflows or rounds the ratio to 0 or 1
+starts at the median of the `Beta(alpha[2], alpha[1])` weight with the
+median-fallback warning, as the initialization of more than two bins starts at
+the medians; only a median that is not representable strictly inside `(0, 1)`
+keeps the explicit refusal. No requested setting changes, and fitting success
+is not promised universally.
 
 LKJ prior sampling validates each unchanged Beta RNG call before storing its
 primitive draws or deterministic replay. Nonfinite or endpoint draws outside
