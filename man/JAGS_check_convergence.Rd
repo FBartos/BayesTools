@@ -33,7 +33,11 @@ convergence roles of the fit's coordinates (see Details), not from this
 argument.}
 
 \item{max_Rhat}{maximum R-hat error for the autofit function.
-Defaults to \code{1.05}. With one chain, this criterion is skipped with
+Defaults to \code{1.05}. R-hat is the larger of the point estimate and
+the upper confidence limit of the potential scale reduction factor
+(\code{coda::gelman.diag()}), whereas the summary tables show the point
+estimate; the \code{Rhat} column of the \code{diagnostics} attribute
+holds the same value. With one chain, this criterion is skipped with
 a warning; the remaining enabled criteria are still assessed.}
 
 \item{min_ESS}{minimum effective sample size. Defaults to \code{500}.}
@@ -58,7 +62,12 @@ observed state. When \code{monitor} is supplied, eligible indicators are
 added to that selection. Defaults to \code{FALSE}.}
 
 \item{monitor}{optional character vector selecting parameters for convergence
-checks. A base name selects all of its indexed elements. Requests are
+checks. A base name selects all of its indexed elements. A name that is not
+available stops with an error of class \code{BayesTools_parameter_not_found}.
+During automatic fitting, base names are checked against the monitored nodes
+before sampling, whereas an indexed request such as \code{"mu[2]"} is
+resolved against the fitted columns after the first run and fails then when
+the element does not exist. Requests are
 resolved against the monitored parameters that the summary tables show,
 including derived and auxiliary ones that the default selection leaves out.
 Private implementation nodes that the summary tables hide cannot be
@@ -87,7 +96,9 @@ treated as vacuously satisfied. The \code{diagnostics} attribute contains
 one row per available parameter and classifies it as
 \code{"assessable"}, \code{"structural_constant"}, \code{"not_assessable"},
 \code{"not_requested"}, or \code{"not_checked"} when \code{fail_fast = TRUE}
-stops before reaching that parameter. The \code{errors} attribute carries
+stops before reaching that parameter. Its \code{Rhat} column is the larger
+of the point estimate and the upper confidence limit of the potential scale
+reduction factor (see \code{max_Rhat}). The \code{errors} attribute carries
 failed checks.
 }
 \description{

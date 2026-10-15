@@ -21,7 +21,6 @@
 #' @return \code{JAGS_check_and_list_fit_settings} invisibly returns a
 #' list of checked fit settings. \code{JAGS_check_and_list_autofit_settings}
 #' invisibly returns a list of checked autofit settings.
-#' parameter names.
 #'
 #' @export JAGS_check_and_list_fit_settings
 #' @export JAGS_check_and_list_autofit_settings

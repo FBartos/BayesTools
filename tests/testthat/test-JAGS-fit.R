@@ -245,11 +245,17 @@ test_that("JAGS_check_convergence works with fitted models", {
 
   # Test convergence check with prior_list
   convergence <- JAGS_check_convergence(fit_simple, prior_list = prior_list)
-  expect_true(is.logical(convergence) || is.list(convergence))
+  expect_type(convergence, "logical")
+  expect_length(convergence, 1L)
+  expect_false(is.na(convergence))
+  diagnostics <- attr(convergence, "diagnostics")
+  expect_identical(diagnostics$parameter, c("m", "s"))
+  expect_true(all(diagnostics$Rhat >= 1))
+  expect_true(all(diagnostics$ESS > 0))
 
-  # Test with NULL prior_list
+  # The classification comes from the fit, not from the supplied prior list
   convergence_null <- JAGS_check_convergence(fit_simple, prior_list = NULL)
-  expect_true(is.logical(convergence_null) || is.list(convergence_null))
+  expect_identical(convergence_null, convergence)
 
 })
 
@@ -386,11 +392,14 @@ test_that("JAGS_fit preserves attributes", {
 
   # Check that prior_list attribute is preserved
   prior_list <- attr(fit_simple, "prior_list")
-  expect_true(!is.null(prior_list))
   expect_true(is.list(prior_list))
+  expect_identical(names(prior_list), c("m", "s"))
+  expect_true(all(vapply(prior_list, is.prior, logical(1))))
 
-  # Check class
-  expect_true(inherits(fit_simple, "BayesTools_fit") || inherits(fit_simple, "runjags"))
+  # Check class: a BayesTools fit that is also a runjags fit
+  expect_s3_class(fit_simple, "BayesTools_fit")
+  expect_s3_class(fit_simple, "runjags")
+  expect_identical(parameter_coordinates(fit_simple)$coordinate_name, c("m", "s"))
 
 })
 

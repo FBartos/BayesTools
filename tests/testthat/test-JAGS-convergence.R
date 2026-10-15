@@ -1186,6 +1186,37 @@ test_that("explicit convergence monitors reach additional monitored parameters",
   )
 })
 
+test_that("unavailable monitors carry the parameter-not-found class and add_parameters refuses NA (F212)", {
+
+  before_sampling <- tryCatch(
+    BayesTools:::.bt_convergence_validate_monitor_names("thetaa", c("mu", "theta")),
+    error = function(e) e
+  )
+  expect_s3_class(before_sampling, "BayesTools_parameter_not_found")
+  expect_identical(before_sampling$alias, "thetaa")
+  expect_identical(before_sampling$available, c("mu", "theta"))
+
+  after_sampling <- tryCatch(
+    BayesTools:::.bt_convergence_resolve_monitor("theta[3]", c("theta[1]", "theta[2]", "mu")),
+    error = function(e) e
+  )
+  expect_s3_class(after_sampling, "BayesTools_parameter_not_found")
+  expect_identical(after_sampling$alias, "theta[3]")
+  expect_identical(after_sampling$available, c("mu", "theta[1]", "theta[2]"))
+
+  # a missing parameter name is an argument error, not an internal failure
+  expect_error(
+    JAGS_check_convergence(structure(list(), class = "runjags"), add_parameters = NA),
+    "add_parameters",
+    fixed = TRUE
+  )
+  expect_error(
+    JAGS_check_convergence(structure(list(), class = "runjags"), add_parameters = c("mu", NA)),
+    "add_parameters",
+    fixed = TRUE
+  )
+})
+
 test_that("monitored deterministic nodes are structural only without stochastic ancestors", {
 
   set.seed(36)

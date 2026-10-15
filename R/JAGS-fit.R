@@ -42,7 +42,10 @@
 #' Possible options are:
 #' \describe{
 #'   \item{max_Rhat}{maximum R-hat error for the autofit function.
-#'   Defaults to \code{1.05}.}
+#'   Defaults to \code{1.05}. R-hat is the larger of the point estimate and
+#'   the upper confidence limit of the potential scale reduction factor,
+#'   whereas the summary tables show the point estimate (see
+#'   [JAGS_check_convergence()]).}
 #'   \item{min_ESS}{minimum effective sample size. Defaults to \code{500}.}
 #'   \item{max_error}{maximum MCMC error. Defaults to \code{0.01}.}
 #'   \item{max_SD_error}{maximum MCMC error as the proportion of standard
@@ -53,8 +56,11 @@
 #'   \item{max_extend}{number of times after which the automatic fitting function is stopped.}
 #'   \item{sample_extend}{number of samples between each convergence check. Defaults to
 #'   \code{1000}.}
-#'   \item{restarts}{number of times new initial values should be generated in case the model
-#'   fails to initialize. Defaults to \code{10}.}
+#'   \item{restarts}{maximum number of fitting attempts when the model fails
+#'   to initialize; every failed attempt but the last is retried with new
+#'   initial values (\code{restarts = 1} fits once, without a retry). A
+#'   failed attempt that is retried is reported as a warning of the fit.
+#'   Defaults to \code{10}.}
 #'   \item{check_indicators}{whether model indicator variables should be included
 #'   in convergence checks, including when \code{monitor} selects a narrower
 #'   parameter set. Auxiliary inclusion-probability coordinates remain excluded
@@ -63,8 +69,11 @@
 #'   convergence checks. Base names select all indexed elements. Requests are
 #'   resolved against the monitored nodes that the summary tables show,
 #'   including the derived and auxiliary ones that the default selection
-#'   excludes. Names that are not
-#'   monitored are rejected before sampling. Defaults to \code{NULL}, which
+#'   excludes. Base names that are not
+#'   monitored are rejected before sampling (error class
+#'   \code{BayesTools_parameter_not_found}); an indexed element such as
+#'   \code{"mu[2]"} is resolved against the fitted columns after the first
+#'   run and fails then when it does not exist. Defaults to \code{NULL}, which
 #'   checks the default selection of [JAGS_check_convergence()]: the sampled
 #'   parameters of the priors, \code{add_parameters} that depend on a
 #'   stochastic node, and the stochastic nodes that formulas monitor (such as
@@ -535,7 +544,7 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
           break
         }else if(inherits(fit, "BayesTools_JAGS_worker_connection_error")){
           break
-        }else{
+        }else if(i < autofit_control[["restarts"]]){
           restart_warnings <- c(
             restart_warnings,
             paste0(

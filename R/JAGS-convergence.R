@@ -17,7 +17,11 @@
 #' convergence roles of the fit's coordinates (see Details), not from this
 #' argument.
 #' @param max_Rhat maximum R-hat error for the autofit function.
-#'   Defaults to \code{1.05}. With one chain, this criterion is skipped with
+#'   Defaults to \code{1.05}. R-hat is the larger of the point estimate and
+#'   the upper confidence limit of the potential scale reduction factor
+#'   (\code{coda::gelman.diag()}), whereas the summary tables show the point
+#'   estimate; the \code{Rhat} column of the \code{diagnostics} attribute
+#'   holds the same value. With one chain, this criterion is skipped with
 #'   a warning; the remaining enabled criteria are still assessed.
 #' @param min_ESS minimum effective sample size. Defaults to \code{500}.
 #' @param max_error maximum MCMC error. Defaults to \code{0.01}.
@@ -35,7 +39,12 @@
 #' observed state. When \code{monitor} is supplied, eligible indicators are
 #' added to that selection. Defaults to \code{FALSE}.
 #' @param monitor optional character vector selecting parameters for convergence
-#' checks. A base name selects all of its indexed elements. Requests are
+#' checks. A base name selects all of its indexed elements. A name that is not
+#' available stops with an error of class \code{BayesTools_parameter_not_found}.
+#' During automatic fitting, base names are checked against the monitored nodes
+#' before sampling, whereas an indexed request such as \code{"mu[2]"} is
+#' resolved against the fitted columns after the first run and fails then when
+#' the element does not exist. Requests are
 #' resolved against the monitored parameters that the summary tables show,
 #' including derived and auxiliary ones that the default selection leaves out.
 #' Private implementation nodes that the summary tables hide cannot be
@@ -120,7 +129,9 @@
 #' one row per available parameter and classifies it as
 #' \code{"assessable"}, \code{"structural_constant"}, \code{"not_assessable"},
 #' \code{"not_requested"}, or \code{"not_checked"} when \code{fail_fast = TRUE}
-#' stops before reaching that parameter. The \code{errors} attribute carries
+#' stops before reaching that parameter. Its \code{Rhat} column is the larger
+#' of the point estimate and the upper confidence limit of the potential scale
+#' reduction factor (see \code{max_Rhat}). The \code{errors} attribute carries
 #' failed checks.
 #'
 #' @seealso [JAGS_fit()] [parameter_coordinates()]
@@ -155,7 +166,8 @@ JAGS_check_convergence <- function(
   check_real(min_ESS,      "min_ESS",      lower = 0, allow_NULL = TRUE)
   check_real(max_error,    "max_error",    lower = 0, allow_NULL = TRUE)
   check_real(max_SD_error, "max_SD_error", lower = 0, upper = 1, allow_NULL = TRUE)
-  check_char(add_parameters, "add_parameters", check_length = 0, allow_NULL = TRUE)
+  check_char(add_parameters, "add_parameters", check_length = 0, allow_NULL = TRUE,
+             allow_NA = FALSE)
   check_bool(fail_fast, "fail_fast", allow_NA = FALSE)
   check_bool(check_indicators, "check_indicators", allow_NA = FALSE)
   check_char(monitor, "monitor", check_length = 0, allow_NULL = TRUE,
@@ -472,10 +484,14 @@ JAGS_check_convergence <- function(
   available <- unique(.bt_convergence_monitor_base(monitored_names))
   for(parameter in unique(monitor)){
     if(!.bt_convergence_monitor_base(parameter) %in% available){
-      stop(
-        "The requested convergence monitor '", parameter,
-        "' is not monitored by the model.",
-        call. = FALSE
+      .bt_parameter_catalog_stop(
+        class = "BayesTools_parameter_not_found",
+        message = paste0(
+          "The requested convergence monitor '", parameter,
+          "' is not monitored by the model."
+        ),
+        alias = parameter,
+        available = sort(available)
       )
     }
   }
@@ -496,10 +512,14 @@ JAGS_check_convergence <- function(
         available_parameters == parameter
     }
     if(!any(matches)){
-      stop(
-        "The requested convergence monitor '", parameter,
-        "' is not available in the fitted model.",
-        call. = FALSE
+      .bt_parameter_catalog_stop(
+        class = "BayesTools_parameter_not_found",
+        message = paste0(
+          "The requested convergence monitor '", parameter,
+          "' is not available in the fitted model."
+        ),
+        alias = parameter,
+        available = sort(unique(available_parameters))
       )
     }
     selected <- c(selected, available_parameters[matches])

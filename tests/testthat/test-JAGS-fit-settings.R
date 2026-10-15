@@ -700,6 +700,62 @@ test_that("JAGS_fit reports and records backend errors recovered by a restart", 
   }
 })
 
+test_that("the final failed fitting attempt is not announced as a restart (F212)", {
+
+  skip_if_not_installed("runjags")
+  backend_calls <- 0L
+  testthat::local_mocked_bindings(
+    run.jags = function(...){
+      backend_calls <<- backend_calls + 1L
+      stop("backend exploded")
+    },
+    .package = "runjags"
+  )
+  inits_drawn <- 0L
+  drawn_inits <- BayesTools:::.JAGS_fit_inits
+  testthat::local_mocked_bindings(
+    .JAGS_require_packages = function(...) invisible(NULL),
+    .JAGS_load_modules = function(...) invisible(NULL),
+    .JAGS_fit_inits = function(...){
+      inits_drawn <<- inits_drawn + 1L
+      drawn_inits(...)
+    },
+    .package = "BayesTools"
+  )
+  emitted <- character()
+  result <- withCallingHandlers(
+    JAGS_fit(
+      model_syntax = "model{ mu ~ dnorm(0, 1) }",
+      prior_list = list(mu = prior("normal", list(0, 1))),
+      chains = 1,
+      adapt = 50,
+      burnin = 50,
+      sample = 100,
+      autofit_control = list(
+        max_Rhat = NULL, min_ESS = NULL, max_error = NULL, max_SD_error = NULL,
+        max_time = list(time = 60, unit = "secs"), sample_extend = 1,
+        restarts = 3, max_extend = 1, check_indicators = FALSE
+      ),
+      silent = FALSE,
+      seed = 1
+    ),
+    warning = function(w){
+      emitted <<- c(emitted, conditionMessage(w))
+      invokeRestart("muffleWarning")
+    }
+  )
+
+  expect_s3_class(result, "error")
+  expect_identical(backend_calls, 3L)
+  expect_identical(emitted, c(
+    "JAGS fitting attempt 1 failed and was restarted: backend exploded.",
+    "JAGS fitting attempt 2 failed and was restarted: backend exploded.",
+    "The model estimation failed with the following error: backend exploded"
+  ))
+  # the initial values of the first attempt and of the two restarts only
+  expect_identical(inits_drawn, 3L)
+})
+
 test_that("JAGS_extend resets its time budget for every call", {
 
   skip_if_not_installed("runjags")

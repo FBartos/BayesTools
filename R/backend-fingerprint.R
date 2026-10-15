@@ -3,18 +3,18 @@
 
 
 # Resolve the package tree that owns the loaded BayesTools namespace.
-.fit_backend_root <- function() {
+.fit_backend_root <- function(){
 
   root <- tryCatch(
     getNamespaceInfo(asNamespace("BayesTools"), "path"),
     error = function(e) ""
   )
-  if (!is.character(root) || length(root) != 1L || is.na(root) ||
-      !nzchar(root) || !file.exists(file.path(root, "DESCRIPTION"))) {
+  if(!is.character(root) || length(root) != 1L || is.na(root) ||
+      !nzchar(root) || !file.exists(file.path(root, "DESCRIPTION"))){
     root <- system.file(package = "BayesTools")
   }
-  if (!is.character(root) || length(root) != 1L || is.na(root) ||
-      !nzchar(root)) {
+  if(!is.character(root) || length(root) != 1L || is.na(root) ||
+      !nzchar(root)){
     return(NA_character_)
   }
 
@@ -23,15 +23,15 @@
 
 
 # Find the native library used by the loaded BayesTools namespace.
-.fit_backend_dll <- function() {
+.fit_backend_dll <- function(){
 
   dlls <- getLoadedDLLs()
-  if (!"BayesTools" %in% names(dlls)) {
+  if(!"BayesTools" %in% names(dlls)){
     return(character())
   }
   path <- dlls[["BayesTools"]][["path"]]
-  if (!is.character(path) || length(path) != 1L || is.na(path) ||
-      !nzchar(path) || !file.exists(path)) {
+  if(!is.character(path) || length(path) != 1L || is.na(path) ||
+      !nzchar(path) || !file.exists(path)){
     return(character())
   }
 
@@ -41,30 +41,30 @@
 
 # Enumerate the executable surface of a source or installed package tree.
 .fit_backend_files <- function(package_root = .fit_backend_root(),
-                               loaded_dll = .fit_backend_dll()) {
+                               loaded_dll = .fit_backend_dll()){
 
-  if (!is.character(package_root) || length(package_root) != 1L ||
-      is.na(package_root) || !nzchar(package_root)) {
+  if(!is.character(package_root) || length(package_root) != 1L ||
+      is.na(package_root) || !nzchar(package_root)){
     return(character())
   }
   package_root <- normalizePath(package_root, winslash = "/", mustWork = TRUE)
 
   r_root    <- file.path(package_root, "R")
-  r_sources <- if (dir.exists(r_root)) {
+  r_sources <- if(dir.exists(r_root)){
     list.files(
       r_root,
       pattern    = "\\.[Rr]$",
       recursive  = TRUE,
       full.names = TRUE
     )
-  } else {
+  }else{
     character()
   }
-  if (length(r_sources) > 0L) {
+  if(length(r_sources) > 0L){
     src_root  <- file.path(package_root, "src")
-    src_files <- if (dir.exists(src_root)) {
+    src_files <- if(dir.exists(src_root)){
       list.files(src_root, recursive = TRUE, full.names = TRUE)
-    } else {
+    }else{
       character()
     }
     src_extensions <- c(
@@ -83,10 +83,10 @@
       )
     )
     files <- c(r_sources, src_files, root_files[file.exists(root_files)])
-  } else {
+  }else{
     installed_roots <- file.path(package_root, c("R", "libs"))
-    files <- unlist(lapply(installed_roots, function(path) {
-      if (!dir.exists(path)) {
+    files <- unlist(lapply(installed_roots, function(path){
+      if(!dir.exists(path)){
         return(character())
       }
       list.files(path, recursive = TRUE, full.names = TRUE)
@@ -111,15 +111,15 @@
 # Compute a stable fingerprint from an explicit package implementation.
 .compute_fit_backend_fingerprint <- function(
     package_root = .fit_backend_root(),
-    loaded_dll   = .fit_backend_dll()) {
+    loaded_dll   = .fit_backend_dll()){
 
-  if (!is.character(package_root) || length(package_root) != 1L ||
-      is.na(package_root) || !nzchar(package_root)) {
+  if(!is.character(package_root) || length(package_root) != 1L ||
+      is.na(package_root) || !nzchar(package_root)){
     return(NA_character_)
   }
   package_root <- normalizePath(package_root, winslash = "/", mustWork = TRUE)
   files        <- .fit_backend_files(package_root, loaded_dll)
-  if (length(files) == 0L) {
+  if(length(files) == 0L){
     return(NA_character_)
   }
   hashes <- unname(tools::md5sum(files))
@@ -138,13 +138,13 @@
 
 # Freeze the implementation fingerprint that belongs to the loaded namespace.
 .freeze_fit_backend_fingerprint <- function(
-    value = .compute_fit_backend_fingerprint()) {
+    value = .compute_fit_backend_fingerprint()){
 
-  if (!exists(
+  if(!exists(
     "value",
     envir    = .fit_backend_fingerprint_cache,
     inherits = FALSE
-  )) {
+  )){
     assign(
       "value",
       value,
@@ -185,7 +185,7 @@
 #' loaded implementation cannot be resolved.
 #'
 #' @export
-fit_backend_fingerprint <- function() {
+fit_backend_fingerprint <- function(){
 
   .freeze_fit_backend_fingerprint()
 
