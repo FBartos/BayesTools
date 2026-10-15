@@ -553,20 +553,22 @@ hypothesis_linear_target_side <- function(side, parameter){
   out
 }
 
-.hypothesis_linear_target_scaled_coefficients <- function(form){
+.hypothesis_linear_target_scaled_coefficients <- function(form, region = FALSE){
 
   coefficients <- form$coefficients / form$divisor
   if(any(!is.finite(coefficients)) || any(form$coefficients != 0 & coefficients == 0)){
-    .hypothesis_numerical_stop("coefficient_range", "public linear target units", structural = TRUE)
+    .hypothesis_numerical_stop("coefficient_range", "public linear target units",
+      structural = TRUE, region = region)
   }
   coefficients
 }
 
-.hypothesis_linear_target_divide <- function(value, divisor){
+.hypothesis_linear_target_divide <- function(value, divisor, region = FALSE){
 
   out <- value / divisor
   if(!is.finite(out) || (value != 0 && out == 0) || out * divisor != value){
-    .hypothesis_numerical_stop("boundary_range", "compiled target threshold", structural = TRUE)
+    .hypothesis_numerical_stop("boundary_range", "compiled target threshold",
+      structural = TRUE, region = region)
   }
   out
 }

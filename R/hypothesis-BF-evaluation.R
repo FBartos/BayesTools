@@ -115,8 +115,10 @@
 # density of that combination, the density the point route uses, instead of
 # sampled joint-context draws. NULL (the sampled route) for nonlinear
 # expressions, comparisons of different combinations, and levels without a
-# certifiable joint prior; levels in incompatible weight spaces also keep the
-# sampled route, any other refusal propagates.
+# certifiable joint prior; levels in incompatible weight spaces, and a
+# threshold or scaled coefficient the exact route cannot represent
+# ('boundary_range', 'coefficient_range'), also keep the sampled route, any
+# other refusal propagates.
 .hypothesis_level_region_mass <- function(quantity, side) {
 
   if(is.null(quantity[["posterior_marginals"]])){
@@ -128,7 +130,12 @@
     return(NULL)
   }
   target <- .bt_hypothesis_linear_target_name
-  rewritten <- .hypothesis_level_region_rewrite(expression, target)
+  rewritten <- tryCatch(
+    .hypothesis_level_region_rewrite(expression, target),
+    BayesTools_hypothesis_region_numerical_unavailable = function(condition){
+      if(condition[["reason"]] %in% c("boundary_range", "coefficient_range")) NULL else stop(condition)
+    }
+  )
   if(is.null(rewritten)){
     return(NULL)
   }
@@ -182,14 +189,14 @@
     if(is.null(comparison) || length(comparison$form$coefficients) == 0L){
       return(NULL)
     }
-    scaled <- .hypothesis_linear_target_scaled_coefficients(comparison$form)
+    scaled <- .hypothesis_linear_target_scaled_coefficients(comparison$form, region = TRUE)
     if(is.null(coefficients)){
       coefficients <<- scaled
     }else if(!identical(coefficients, scaled)){
       return(NULL)
     }
     call(fun, as.name(target),
-         .hypothesis_linear_target_divide(comparison$value, comparison$form$divisor))
+         .hypothesis_linear_target_divide(comparison$value, comparison$form$divisor, region = TRUE))
   }
   condition <- rewrite(expression)
   if(is.null(condition)) NULL else list(condition = condition, coefficients = coefficients)

@@ -411,6 +411,53 @@ test_that("explicit-level regions over one linear combination use the exact prio
   expect_identical(attr(region_mass("abs(mu_fac[A]) > 1"), "route"), "sampled")
 })
 
+test_that("explicit-level regions the exact route cannot represent keep the sampled prior mass", {
+
+  independent <- .hypothesis_factor_marginal_for_test(independent = TRUE)
+  odds <- function(p) p / (1 - p)
+  region_mass <- function(hypothesis){
+    statement <- hypothesis_parse(hypothesis)$statements[[1L]]
+    quantity <- .as_hypothesis_quantities(independent, NULL, list(statement), "mu_fac")[[1L]]
+    .hypothesis_region_mass(quantity, statement$left, prior = TRUE)
+  }
+  shifted <- function(threshold) paste0("(mu_fac[A] + mu_fac[B]) / 3 + 0.25 > ", threshold)
+  scaled <- "1e300 * mu_fac[A] / 1e-300 > 0"
+
+  # a threshold that does not round-trip through the division (-0.42 / 3), or
+  # level coefficients outside the representable range, never make the region
+  # unavailable: the sampled joint-context draws give its prior mass
+  expect_identical(attr(region_mass(shifted(0.12)), "route"), "deterministic")
+  expect_identical(attr(region_mass(shifted(0.11)), "route"), "sampled")
+  expect_identical(attr(region_mass(scaled), "route"), "sampled")
+
+  # reference: A + B > -0.42 (prior N(0, 2) for the sum) and A > 0 (prior 1/2)
+  a <- as.numeric(independent$A)
+  b <- as.numeric(independent$B)
+  reference <- c(
+    odds(mean(a + b > -0.39)) / odds(stats::pnorm(0.39 / sqrt(2))),
+    odds(mean(a + b > -0.42)) / odds(stats::pnorm(0.42 / sqrt(2))),
+    odds(mean(a > 0)) / odds(0.5))
+  hypotheses <- c(shifted(0.12), shifted(0.11), scaled)
+  for(i in seq_along(hypotheses)){
+    result <- hypothesis_BF(independent, hypothesis = hypotheses[[i]], parameter = "mu_fac",
+                            columns = "all", seed = 1)
+    expect_s3_class(result, "BayesTools_hypothesis_BF")
+    expect_equal(as.numeric(attr(result, "raw_BF")), reference[[i]], tolerance = 0.1, info = hypotheses[[i]])
+  }
+
+  # the exact route's own refusals carry the region class, not the ordinate class
+  rewrite <- function(hypothesis){
+    side <- hypothesis_parse(hypothesis)$statements[[1L]]$left
+    .hypothesis_level_region_rewrite(.hypothesis_side_expression(side), .bt_hypothesis_linear_target_name)
+  }
+  condition <- expect_error(rewrite(scaled), class = "BayesTools_hypothesis_region_numerical_unavailable")
+  expect_identical(condition$reason, "coefficient_range")
+  expect_identical(condition$requested_scale, "probability")
+  condition <- expect_error(rewrite(shifted(0.11)), class = "BayesTools_hypothesis_region_numerical_unavailable")
+  expect_identical(condition$reason, "boundary_range")
+  expect_false(inherits(condition, "BayesTools_hypothesis_ordinate"))
+})
+
 test_that("region BF uses its canonical log before natural representation", {
   reference <- 1.104835212292940058e-312
   reference_log <- -718.30685281944005469
