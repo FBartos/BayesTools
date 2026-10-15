@@ -740,7 +740,10 @@
 }
 
 
-.hypothesis_sample_density_height <- function(samples, value, label) {
+# The Gaussian kernel height of raw draws at the value, reflected at the finite
+# 'bounds' (the support a prior object declares; none by default). A value on a
+# finite bound is not a kernel-tail extrapolation.
+.hypothesis_sample_density_height <- function(samples, value, label, bounds = c(-Inf, Inf)) {
 
   sample_sd <- stats::sd(samples)
   if(length(samples) < 2L || !is.finite(sample_sd) || sample_sd <= 0){
@@ -749,7 +752,8 @@
   }
   .hypothesis_warn_point_draw_cluster(samples, value, label)
 
-  if(value < min(samples) || value > max(samples)){
+  if((value < min(samples) || value > max(samples)) &&
+     !any(is.finite(bounds) & value == bounds)){
     warning(
       "The ", label, " samples do not span the point hypothesis. The Gaussian ",
       "KDE height is estimated from kernel tails.",
@@ -761,9 +765,10 @@
   # the exact Gaussian kernel sum at the value (bandwidth bw.nrd0 of the
   # draws); no evaluation grid, interpolation or binning
   height <- .density_kde_gaussian_height(
-    x     = samples,
-    value = value,
-    bw    = stats::bw.nrd0(samples)
+    x      = samples,
+    value  = value,
+    bw     = stats::bw.nrd0(samples),
+    bounds = bounds
   )
 
   if(!is.finite(height) || height < 0){
@@ -796,7 +801,7 @@
 
 
 .hypothesis_draw_density_height <- function(samples, value, label,
-                                            density_method) {
+                                            density_method, bounds = c(-Inf, Inf)) {
 
   if(identical(density_method, "precomputed")){
     stop(
@@ -810,7 +815,7 @@
     return(.hypothesis_normal_density_height(samples, value, label))
   }
 
-  return(.hypothesis_sample_density_height(samples, value, label))
+  return(.hypothesis_sample_density_height(samples, value, label, bounds))
 }
 
 
@@ -1189,10 +1194,11 @@ prior_ordinate_status <- function(prior_density, values, labels = NULL){
   return(invisible(TRUE))
 }
 
-.hypothesis_draw_density_log_height <- function(samples, value, label, density_method){
+.hypothesis_draw_density_log_height <- function(samples, value, label, density_method,
+                                               bounds = c(-Inf, Inf)){
 
   if(!identical(density_method, "normal")){
-    return(log(.hypothesis_draw_density_height(samples, value, label, density_method)))
+    return(log(.hypothesis_draw_density_height(samples, value, label, density_method, bounds)))
   }
   .hypothesis_normal_density_height(samples, value, label, log = TRUE)
 }
@@ -1224,14 +1230,42 @@ prior_ordinate_status <- function(prior_density, values, labels = NULL){
 # share of the draws times the kernel (or normal) height of the continuous
 # draws only. Without continuous draws the height is zero.
 .hypothesis_continuous_draw_log_height <- function(samples, continuous, value, label,
-                                                   density_method){
+                                                   density_method, bounds = c(-Inf, Inf)){
 
   if(is.null(continuous) || all(continuous) || length(continuous) != length(samples)){
-    return(.hypothesis_draw_density_log_height(samples, value, label, density_method))
+    return(.hypothesis_draw_density_log_height(samples, value, label, density_method, bounds))
   }
   if(!any(continuous)){
     return(-Inf)
   }
   log(mean(continuous)) +
-    .hypothesis_draw_density_log_height(samples[continuous], value, label, density_method)
+    .hypothesis_draw_density_log_height(samples[continuous], value, label, density_method, bounds)
+}
+
+# The bounds at which the kernel estimate of the raw posterior draws of a point
+# hypothesis is reflected: the exact support the supplied prior object declares
+# for the parameter (its truncation, or the support of its family; the support
+# the marginal-posterior route reflects at), carried to the evaluated form
+# `coefficient * parameter` (numerator units, those of the draws' ordinate).
+# Unbounded without a prior object, for an expression of another form, for a
+# support without an interval, and when the draws leave the declared support.
+.hypothesis_draw_reflection_bounds <- function(quantity, linear){
+
+  unbounded <- c(-Inf, Inf)
+  prior_object <- quantity[["prior_object"]]
+  parameter <- quantity[["parameter"]]
+  if(is.null(prior_object) || is.null(parameter) || is.null(linear) ||
+     !identical(names(linear[["coefficients"]]), parameter) ||
+     !parameter %in% names(quantity[["posterior_draws"]])){
+    return(unbounded)
+  }
+  bounds <- .posterior_support_for_kde(
+    quantity[["posterior_draws"]][[parameter]],
+    support = .posterior_support_from_prior(prior_object)
+  )[["bounds"]]
+  if(is.null(bounds)){
+    return(unbounded)
+  }
+  coefficient <- linear[["coefficients"]][[parameter]]
+  if(coefficient > 0) coefficient * bounds else rev(coefficient * bounds)
 }

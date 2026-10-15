@@ -862,7 +862,13 @@ pooled and, on the component route, for every component containing the null
 stop with `BayesTools_hypothesis_numerical_unavailable`
 (`fewer_than_two_finite_continuous_draws`, `zero_spread_continuous_draws`)
 unless the exact support excludes the null. The raw-draw ordinates of
-`hypothesis_BF()` use the same kernel sum without reflection; for numeric draws with a prior object that
+`hypothesis_BF()` use the same kernel sum; for numeric draws with a prior
+object they are reflected, with the same reflection helper, at the bounds the
+prior object declares (its truncation, or the support of its family, carried
+to the evaluated affine expression) when the draws lie within them, and are
+unreflected without a prior object (user-supplied prior draws, data frames),
+for an unbounded prior, for the normal approximation and for draws outside
+the declared support. For numeric draws with a prior object that
 declares point masses, the kernel runs over the draws not exactly at a
 declared atom location (matched on the parameter draws before any expression
 is evaluated) and is scaled by their share, and without such draws the

@@ -52,9 +52,11 @@
 #' source is available. KDE
 #' point-null tests use boundary reflection when exact support metadata is
 #' attached to the marginal posterior or to matched \code{posterior_density}
-#' metadata; numeric and data-frame expression tests use standard Gaussian
-#' sample KDE. For numeric draws with a prior object that declares point
-#' masses, the posterior ordinate is that of the absolutely continuous part:
+#' metadata, and, for numeric draws with a prior object, at the bounds that
+#' prior object declares (its truncation, or the support of its family) when
+#' the draws lie within them; other numeric and data-frame expression tests
+#' use standard Gaussian sample KDE. For numeric draws with a prior object that
+#' declares point masses, the posterior ordinate is that of the absolutely continuous part:
 #' the share of the draws not at a declared point-mass location times the KDE
 #' of those draws. A point hypothesis on a linear expression of marginal-posterior
 #' parameters or levels (sums, differences, and constant multiples, e.g.,

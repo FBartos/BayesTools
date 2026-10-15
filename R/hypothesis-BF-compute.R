@@ -190,7 +190,8 @@
       inexact_prior <- side$label
     }
     log_posterior <- .hypothesis_continuous_draw_log_height(posterior, continuous,
-      evaluation_value, "posterior", density_method)
+      evaluation_value, "posterior", density_method,
+      bounds = .hypothesis_draw_reflection_bounds(quantity, linear))
     ratio <- .hypothesis_log_ratio(log_prior, log_posterior, normal = identical(density_method, "normal"))
     log_BF <- -ratio$log_BF
     numerical_diagnostics <- ratio$diagnostics

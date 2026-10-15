@@ -930,6 +930,69 @@ test_that("raw-draw point nulls use the continuous draws of a prior with declare
 })
 
 
+test_that("raw-draw point nulls reflect the kernel at the bounds the prior object declares", {
+
+  # 20000 draws of N(0.1, 0.2) truncated at 0 and a half-normal prior: the exact
+  # ordinates are dnorm(v, .1, .2) / P(N(.1, .2) > 0) and 2 * dnorm(v)
+  half <- prior("normal", list(0, 1), list(0, Inf))
+  set.seed(7)
+  posterior <- stats::qnorm(stats::runif(20000, stats::pnorm(0, .1, .2), 1), .1, .2)
+  BF <- function(prior, hypothesis, draws = posterior){
+    attr(hypothesis_BF(draws, prior, hypothesis, parameter = "tau", columns = "all", seed = 1), "raw_BF")
+  }
+  exact_BF <- function(value){
+    2 * stats::dnorm(value) /
+      (stats::dnorm(value, .1, .2) / stats::pnorm(0, .1, .2, lower.tail = FALSE))
+  }
+  bw <- stats::bw.nrd0(posterior)
+  kernel <- function(value, x = posterior, bw = stats::bw.nrd0(x)) mean(stats::dnorm(value, x, bw))
+
+  # at the bound and near it: the unreflected kernel halves the ordinate at the
+  # bound (BF 0.606 instead of 0.313), and the null is not a kernel-tail
+  # extrapolation. The reference is the reflected kernel sum, and the exact
+  # ordinate within the Monte Carlo and bandwidth error of the kernel estimate.
+  expect_warning(at_bound <- BF(half, "tau = 0"), NA)
+  expect_equal(at_bound, 2 * stats::dnorm(0) / (kernel(0) + kernel(0, -posterior, bw)), tolerance = 1e-10)
+  expect_equal(at_bound, exact_BF(0), tolerance = 0.05)
+  expect_gt(abs(2 * stats::dnorm(0) / kernel(0) - exact_BF(0)), 0.25)
+  near <- BF(half, "tau = 0.02")
+  expect_equal(near, 2 * stats::dnorm(.02) / (kernel(.02) + kernel(.02, -posterior, bw)), tolerance = 1e-10)
+  expect_equal(near, exact_BF(.02), tolerance = 0.05)
+
+  # affine expressions carry the bounds with their coefficient
+  expect_equal(BF(half, "-tau = 0"), at_bound, tolerance = 1e-10)
+  expect_equal(BF(half, "2 * tau = 0.04"), near, tolerance = 1e-10)
+  expect_equal(BF(half, "3 - tau = 2.98"), near, tolerance = 1e-10)
+
+  # the support of the family bounds a prior without truncation; a prior
+  # that is unbounded at the null keeps the unreflected kernel
+  expect_identical(unlist(prior("exp", list(1))$truncation), c(lower = 0, upper = Inf))
+  expect_equal(BF(prior("exp", list(1)), "tau = 0"), 1 / (kernel(0) + kernel(0, -posterior, bw)), tolerance = 1e-10)
+  expect_equal(BF(prior("normal", list(0, 1)), "tau = 0.02"), stats::dnorm(.02) / kernel(.02), tolerance = 1e-10)
+  expect_equal(suppressWarnings(BF(prior("normal", list(0, 1)), "tau = 0")), stats::dnorm(0) / kernel(0), tolerance = 1e-10)
+
+  # both bounds of a Uniform(0, 1) prior
+  set.seed(3)
+  bounded <- stats::rbeta(5000, 4, 1)
+  bounded_bw <- stats::bw.nrd0(bounded)
+  expect_equal(
+    BF(prior("uniform", list(0, 1)), "tau = 1", bounded),
+    1 / (kernel(1, bounded, bounded_bw) + kernel(1, 2 - bounded, bounded_bw) + kernel(1, -bounded, bounded_bw)),
+    tolerance = 1e-10)
+
+  # draws that leave the declared support, a normal approximation and
+  # user-supplied prior draws are not reflected
+  outside <- c(-.5, posterior)
+  expect_equal(BF(half, "tau = 0.02", outside), 2 * stats::dnorm(.02) / kernel(.02, outside), tolerance = 1e-10)
+  expect_equal(
+    attr(hypothesis_BF(posterior, half, "tau = 0", parameter = "tau", density_method = "normal",
+                       columns = "all", seed = 1), "raw_BF"),
+    2 * stats::dnorm(0) / stats::dnorm(0, mean(posterior), stats::sd(posterior)), tolerance = 1e-10)
+  prior_draws <- abs(stats::rnorm(20000))
+  expect_equal(suppressWarnings(BF(prior_draws, "tau = 0.02")), kernel(.02, prior_draws) / kernel(.02),
+               tolerance = 1e-10)
+})
+
 test_that("hypothesis_BF KDEs retain Gaussian tails beyond sample grids", {
 
   posterior <- seq(-1, 1, length.out = 101)
