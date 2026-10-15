@@ -153,9 +153,9 @@
     factor_cell_names <- attr(samples, "factor_cell_names", exact = TRUE)
     level_names <- .posterior_density_aliases(level_names, factor_cell_names)
     for(level_name in level_names){
-      density_aliases[[level_name]] <- .posterior_density_aliases(
-        level_name,
-        paste0(parameter, "[", level_name, "]")
+      # the level's own labels (not the other cells of the factor)
+      density_aliases[[level_name]] <- .posterior_density_level_aliases(
+        parameter, level_name = level_name
       )
     }
 
@@ -504,9 +504,9 @@
     factor_cell_names <- attr(samples, "factor_cell_names", exact = TRUE)
     level_names <- .posterior_density_aliases(level_names, factor_cell_names)
     for(level_name in level_names){
-      ordinate_aliases[[level_name]] <- .posterior_density_aliases(
-        level_name,
-        paste0(parameter, "[", level_name, "]")
+      # the level's own labels (not the other cells of the factor)
+      ordinate_aliases[[level_name]] <- .posterior_density_level_aliases(
+        parameter, level_name = level_name
       )
     }
 
