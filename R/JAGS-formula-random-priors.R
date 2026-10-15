@@ -105,9 +105,27 @@
       data[[factor_name]] <- ordered(data[[factor_name]], levels = levels(data[[factor_name]]))
     }
 
-    if(isTRUE(allow_single_level) && nlevels(data[[factor_name]]) < 2L){
-      # a single level has no contrasts to set
-      next
+    if(nlevels(data[[factor_name]]) < 2L){
+      if(isTRUE(allow_single_level)){
+        # a single level has no contrasts to set
+        next
+      }
+      # base R's contrasts<- would stop here without naming the factor, also
+      # for an independent prior, whose coding contr.independent(1) is defined
+      .bt_formula_transform_stop(
+        paste0(
+          context, " '", factor_name, "' has ",
+          if(nlevels(data[[factor_name]]) == 1L){
+            paste0("a single level ('", levels(data[[factor_name]]), "')")
+          }else{
+            "no levels"
+          },
+          " in the data, so it has no contrasts to code. Remove '",
+          factor_name, "' from the formula, or supply data in which it has at ",
+          "least two levels."
+        ),
+        reason = "single_level_factor", predictor = factor_name
+      )
     }
     if(!is.null(contrast_name)){
       stats::contrasts(data[[factor_name]]) <- contrast_name

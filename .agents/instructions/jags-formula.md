@@ -209,7 +209,11 @@ Every factor prior carries complete factor metadata (levels, level names,
 contrasts, design, and cell names): formula terms and random-effect SD factor
 priors from their design, ordinary factor priors from
 `prior_factor_levels()`. Levels and coordinate names are never inferred from
-a coefficient count; fitting stops on incomplete factor metadata. Formula
+a coefficient count; fitting stops on incomplete factor metadata. A factor with a single level
+in the data has no contrasts to code and stops `JAGS_formula()` with
+`BayesTools_formula_transform_unavailable`, reason `single_level_factor`, before
+base R's contrasts error (structured `cs`/`hcs`/`ar1`/`har` indexes may have one
+level). Formula
 evaluation and prediction (`JAGS_evaluate_formula()`,
 `JAGS_predict_formula()`) go only through the stored design: draws without a
 fit get it from `JAGS_formula_draws()`, which builds it as `JAGS_fit()` does;

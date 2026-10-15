@@ -239,6 +239,70 @@ test_that("JAGS_formula standardizes a logical predictor in a factor interaction
   }
 })
 
+test_that("JAGS_formula refuses a one-level factor in the package's words", {
+
+  # F189: base R's contrasts<- stopped with "contrasts can be applied only to
+  # factors with 2 or more levels", naming neither the factor nor the remedy,
+  # also for an independent prior (contr.independent(1) is defined)
+  data <- data.frame(
+    g  = factor(rep("a", 6)),
+    h  = rep(c("u", "v"), 3),
+    id = factor(rep(c("s1", "s2", "s3"), each = 2)),
+    x  = seq(-1, 1, length.out = 6)
+  )
+  priors <- list(
+    independent = prior_factor("normal", list(0, 1), contrast = "independent"),
+    treatment   = prior_factor("normal", list(0, 1), contrast = "treatment"),
+    orthonormal = prior_factor("mnormal", list(0, 1), contrast = "orthonormal"),
+    meandif     = prior_factor("mnormal", list(0, 1), contrast = "meandif")
+  )
+  expect_refused <- function(call, predictor, message, info){
+    condition <- tryCatch(call, error = identity)
+    expect_s3_class(condition, "BayesTools_formula_transform_unavailable")
+    expect_identical(condition$reason, "single_level_factor", info = info)
+    expect_identical(condition$predictor, predictor, info = info)
+    expect_match(conditionMessage(condition), message, fixed = TRUE, info = info)
+    expect_no_match(conditionMessage(condition), "contrasts can be applied", fixed = TRUE)
+  }
+  for(contrast in names(priors)){
+    expect_refused(
+      JAGS_formula(~ 0 + g + x, "mu", data,
+                   list(g = priors[[contrast]], x = prior("normal", list(0, 1)))),
+      "g",
+      paste0("Factor predictor 'g' has a single level ('a') in the data, so it has no contrasts ",
+             "to code. Remove 'g' from the formula, or supply data in which it has at least two levels."),
+      info = contrast
+    )
+  }
+  # a character predictor with one value is a one-level factor as well
+  data$g_chr <- "a"
+  expect_refused(
+    JAGS_formula(~ 1 + g_chr, "mu", data,
+                 list(intercept = prior("normal", list(0, 1)), g_chr = priors$independent)),
+    "g_chr", "Factor predictor 'g_chr' has a single level ('a')", info = "character"
+  )
+  # a random-effect factor of an ID/DIAG/US block
+  data$f <- factor(rep("a", 6))
+  gamma_block <- random_block(sd = prior("gamma", list(2, 2)))
+  for(formula in list(~ 1 + diag(0 + f | id), ~ 1 + us(1 + f | id))){
+    expect_refused(
+      JAGS_formula(formula, "mu", data, list(intercept = prior("normal", list(0, 1))),
+                   prior_random = prior_random(id = gamma_block)),
+      "f", "Random-effect factor predictor 'f' has a single level ('a')",
+      info = paste(deparse(formula), collapse = "")
+    )
+  }
+  # a factor with two levels, and a one-level index of a structured block, compile
+  expect_no_error(JAGS_formula(
+    ~ 1 + h, "mu", data,
+    list(intercept = prior("normal", list(0, 1)), h = priors$independent)
+  ))
+  expect_no_error(JAGS_formula(
+    ~ 1 + cs(f | id), "mu", data, list(intercept = prior("normal", list(0, 1))),
+    prior_random = prior_random(id = gamma_block)
+  ))
+})
+
 test_that("JAGS_formula rejects scaled intercept priors", {
 
   data <- data.frame(x = c(-1, 0.5, 2))

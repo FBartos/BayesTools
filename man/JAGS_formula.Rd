@@ -202,6 +202,20 @@ Categorical predictor and grouping levels must not contain BayesTools'
 reserved internal tokens, such as \code{__xXx__}.
 The predictor name \code{intercept} is reserved for the formula intercept.
 }
+\section{Conditions}{
+
+Refusals that callers may need to tell apart are errors of class
+\code{BayesTools_formula_transform_unavailable} (parents \code{error} and
+\code{condition}); their \code{reason} field names the cause:
+\itemize{
+\item \code{"single_level_factor"}: a factor with a single level in the data
+has no contrasts to code (the field \code{predictor} names it). The index
+of a \code{cs()}, \code{hcs()}, \code{ar1()}, or \code{har()} block is coded
+by one indicator per level and may have a single level.
+}
+Other invalid inputs stop with ordinary errors.
+}
+
 \examples{
 # simulate data
 set.seed(1)
