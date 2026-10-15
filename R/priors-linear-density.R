@@ -253,6 +253,11 @@
     n_grid  = if(is.null(n_grid)) length(if(!is.null(density)) density$x else points$x) else n_grid
   )
   class(out) <- c("prior_linear_density", "prior_density")
+  # The numerical diagnostics describe the steps since the last regrid:
+  # 'grid_normalization' is that of the step that built this object, and the
+  # 'fft_clipping' records accumulate through convolutions; a regrid, a mix,
+  # a sum of independent densities and an output transformation do not carry
+  # those of their inputs.
   if(!is.null(grid_normalization)){
     attr(out, "grid_normalization") <- grid_normalization
   }

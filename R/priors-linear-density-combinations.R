@@ -2489,24 +2489,16 @@
 # bounds; upper-tail probabilities are used above the median.
 .prior_scalar_interval_probability <- function(prior, lower, upper){
 
-  if(is.prior.simple(prior) && prior$distribution != "point" && !is.prior.discrete(prior)){
-    log_normalizer <- if(.is_prior_default_range(prior)) 0 else .prior_simple_log_C(prior)
-    lower <- pmax(lower, prior$truncation$lower)
-    upper <- pmin(upper, prior$truncation$upper)
-    log_mass <- .prior_simple_log_interval_mass(prior, lower, upper)
-    out <- exp(log_mass - log_normalizer)
-    out[!is.na(lower) & !is.na(upper) & lower >= upper] <- 0
-    return(.prior_numerical_result(out, rep(0, length(out)), TRUE,
-      "interval probability", prior$distribution, "natural", lower < upper))
-  }
-
-  lower_cdf <- cdf(prior, lower)
-  out <- cdf(prior, upper) - lower_cdf
-  upper_tail <- !is.na(lower_cdf) & lower_cdf > .5
-  if(any(upper_tail)){
-    out[upper_tail] <- ccdf(prior, lower[upper_tail]) - ccdf(prior, upper[upper_tail])
-  }
-  pmax(out, 0)
+  # the factor of a scale product and the second term of a convolution are
+  # simple continuous priors (.prior_density_simple_continuous())
+  log_normalizer <- if(.is_prior_default_range(prior)) 0 else .prior_simple_log_C(prior)
+  lower <- pmax(lower, prior$truncation$lower)
+  upper <- pmin(upper, prior$truncation$upper)
+  log_mass <- .prior_simple_log_interval_mass(prior, lower, upper)
+  out <- exp(log_mass - log_normalizer)
+  out[!is.na(lower) & !is.na(upper) & lower >= upper] <- 0
+  .prior_numerical_result(out, rep(0, length(out)), TRUE,
+    "interval probability", prior$distribution, "natural", lower < upper)
 }
 
 # Region probability of c + w * L * m(s): the 1-D integral over s of its
