@@ -18,6 +18,12 @@
   2097152L
 }
 
+# Knots per robust scale of the narrowest continuous component of a combination
+# (.prior_linear_density_resolution()).
+.prior_linear_density_points_per_scale <- function(){
+  64
+}
+
 .prior_linear_density_nextpow2 <- function(x){
 
   2^ceiling(log2(max(1, x)))
@@ -51,7 +57,7 @@
   limit <- .prior_linear_density_max_grid()
   size  <- n_grid
   if(is.finite(scale) && scale > 0){
-    size <- max(size, min(.prior_linear_density_nextpow2(width / (scale / 64) + 1), limit))
+    size <- max(size, min(.prior_linear_density_nextpow2(width / (scale / .prior_linear_density_points_per_scale()) + 1), limit))
   }
   if(!is.null(grid_spacing)){
     required <- .prior_linear_density_nextpow2(width / grid_spacing + 1)

@@ -1147,25 +1147,29 @@
   if(length(scales) == 0L) Inf else min(scales)
 }
 
-# Locations of the groups of a linear combination whose scale (.prior_linear_group_robust_scale(),
-# the absolute weight times the robust scale of the prior) is below double
-# resolution of the dominant group: .Machine$double.eps times the largest
-# scale, below which the group cannot change the sum of the dominant group in
-# double precision (the weight of a centered predictor at its mean is such a
-# rounding residue). A simple scalar component of that scale is a point at its
-# mean (the weight times the prior mean) and does not set the grid spacing;
-# NA for every group that does (a zero weight is dropped before, and a group
-# with an untransformed simple source and a finite mean is the only one that
-# qualifies).
-.prior_linear_residue_locations <- function(groups, scales, source_transforms){
+# Locations of the groups of a linear combination whose demanded grid spacing
+# is below double resolution of the grid coordinates. A group demands the
+# spacing of its scale (.prior_linear_group_robust_scale(), the absolute weight
+# times the robust scale of the prior) divided by the points per scale of the
+# grid (.prior_linear_density_points_per_scale()); the coordinates of the grid
+# are the range 'target_range' of the combination, whose double resolution is
+# .Machine$double.eps times its largest absolute coordinate. A smaller spacing
+# cannot be represented on that range (the weight of a centered predictor at
+# its mean is such a rounding residue), so a simple scalar component that
+# demands it is a point at its mean (the weight times the prior mean) and does
+# not set the grid spacing; NA for every group that does (a zero weight is
+# dropped before, and a group with an untransformed simple source and a finite
+# mean is the only one that qualifies).
+.prior_linear_residue_locations <- function(groups, scales, source_transforms, target_range){
 
   locations <- rep(NA_real_, length(groups))
   finite <- is.finite(scales)
-  if(!any(finite)){
+  if(!any(finite) || !all(is.finite(target_range))){
     return(locations)
   }
-  threshold <- .Machine$double.eps * max(scales[finite])
-  for(i in which(finite & scales < threshold)){
+  resolution <- .Machine$double.eps * max(abs(target_range))
+  demanded <- scales / .prior_linear_density_points_per_scale()
+  for(i in which(finite & demanded < resolution)){
     group <- groups[[i]]
     if(!is.prior.simple(group$prior) || length(group$weights) != 1L ||
        !is.na(source_transforms[[names(group$weights)]])){
@@ -1212,11 +1216,11 @@
   target_range <- c(sum(group_ranges[, 1]), sum(group_ranges[, 2]))
   target_width <- diff(target_range)
   # Resolve the narrowest continuous source even when a heavy-tailed source
-  # sets the range, except for a component below double resolution of the
-  # dominant one, which is a point.
+  # sets the range, except for a component whose spacing the grid coordinates
+  # cannot represent, which is a point.
   group_scales <- vapply(groups, .prior_linear_group_robust_scale,
                          numeric(1), source_transforms = source_transforms)
-  residue_locations <- .prior_linear_residue_locations(groups, group_scales, source_transforms)
+  residue_locations <- .prior_linear_residue_locations(groups, group_scales, source_transforms, target_range)
   robust_scale <- min(c(Inf, group_scales[is.na(residue_locations)]))
   resolution <- .prior_linear_density_resolution(
     width        = target_width,

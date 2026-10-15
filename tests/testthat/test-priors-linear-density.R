@@ -4946,55 +4946,83 @@ test_that("a linear combination with an expression-valued source has no prior la
 
 test_that("a rounding-residue weight does not set the grid spacing of a linear prior density", {
 
-  priors <- list(a = prior("normal", list(0, 5)), b = prior("normal", list(0, 1)))
-
   # the weight of a centered predictor equal to its mean is a rounding residue: it asks for the
   # 2,097,153 knots of its own scale, while the density of the sum is that of the intercept alone
   residue <- as.numeric(scale(c(1.1, 2.2, 3.3, 4.4, 5.5)))[3L]
   expect_lt(abs(residue), 1e-15)
-  reference <- .prior_linear_combination_density(priors, c(a = 1))
-  expect_length(reference$density$x, .prior_linear_density_default_grid())
-  density <- .prior_linear_combination_density(priors, c(a = 1, b = residue))
-  expect_length(density$density$x, .prior_linear_density_default_grid())
-  expect_equal(density$density$x, reference$density$x, tolerance = 1e-12)
-  expect_equal(density$density$y, reference$density$y, tolerance = 1e-9)
-  expect_equal(density$density$mass, reference$density$mass, tolerance = 1e-12)
-  expect_equal(prior_density_ordinate(density, 1)$log_density, stats::dnorm(1, 0, 5, log = TRUE), tolerance = 1e-9)
+  for(priors in list(
+    list(a = prior("normal", list(0, 5)), b = prior("normal", list(0, 1))),
+    list(a = prior("normal", list(0, 1)), b = prior("normal", list(0, 1))))){
+    reference <- .prior_linear_combination_density(priors, c(a = 1))
+    expect_length(reference$density$x, .prior_linear_density_default_grid())
+    density <- .prior_linear_combination_density(priors, c(a = 1, b = residue))
+    expect_length(density$density$x, .prior_linear_density_default_grid())
+    expect_equal(density$density$x, reference$density$x, tolerance = 1e-12)
+    expect_equal(density$density$y, reference$density$y, tolerance = 1e-9)
+    expect_equal(density$density$mass, reference$density$mass, tolerance = 1e-12)
+    sd <- priors$a$parameters[["sd"]]
+    expect_equal(prior_density_ordinate(density, 1)$log_density, stats::dnorm(1, 0, sd, log = TRUE), tolerance = 1e-9)
+  }
 
-  # the five rows of an intercept and a centered predictor mix without the grid limit
-  x <- as.numeric(scale(c(1.1, 2.2, 3.3, 4.4, 5.5)))
-  context <- .prior_density_build_context(priors, c("a", "b"))
-  mixed <- .prior_density_from_context_rows(context, cbind(a = 1, b = x))
-  expect_lt(length(mixed$density$x), .prior_linear_density_max_grid())
-  expect_equal(mixed$density$mass, 1, tolerance = 1e-8)
-
-  # a component above double resolution keeps setting the spacing
-  refined <- .prior_linear_combination_density(priors, c(a = 1, b = 1e-2))
+  # a component whose spacing the grid can represent keeps setting it
+  refined <- .prior_linear_combination_density(
+    list(a = prior("normal", list(0, 5)), b = prior("normal", list(0, 1))), c(a = 1, b = 1e-2))
   expect_gt(length(refined$density$x), 10 * .prior_linear_density_default_grid())
 })
 
-test_that("only a simple component below double resolution of the dominant one is a point at its mean", {
+test_that("the five rows of an intercept and a centered predictor with equal-scale priors mix like the exact-zero rows", {
 
-  groups <- function(priors, weights) .prior_linear_weight_groups(priors, weights)
+  # rows of cbind(1, scale(c(1.1, 2.2, 3.3, 4.4, 5.5))), both priors Normal(0, 1): the residue weight
+  # -2.55e-16 of the third row asked for the spacing that stopped the mix with BayesTools_prior_grid_limit
+  x <- as.numeric(scale(c(1.1, 2.2, 3.3, 4.4, 5.5)))
+  exact <- x
+  exact[3L] <- 0
+  context <- .prior_density_build_context(
+    list(a = prior("normal", list(0, 1)), b = prior("normal", list(0, 1))), c("a", "b"))
+  reference <- .prior_density_from_context_rows(context, cbind(a = 1, b = exact))
+  mixed <- .prior_density_from_context_rows(context, cbind(a = 1, b = x))
+  expect_lt(length(mixed$density$x), .prior_linear_density_max_grid())
+  expect_length(mixed$density$x, length(reference$density$x))
+  expect_equal(mixed$density$x, reference$density$x, tolerance = 1e-12)
+  expect_equal(mixed$density$y, reference$density$y, tolerance = 1e-9)
+  expect_equal(mixed$density$mass, reference$density$mass, tolerance = 1e-12)
+})
+
+test_that("only a simple component whose demanded spacing is below the coordinate resolution is a point at its mean", {
+
   locations <- function(priors, weights, source_transforms = NULL){
-    groups <- groups(priors, weights)
+    groups <- .prior_linear_weight_groups(priors, weights)
     if(is.null(source_transforms)) source_transforms <- stats::setNames(rep(NA_character_, length(weights)), names(weights))
-    .prior_linear_residue_locations(groups, vapply(groups, .prior_linear_group_robust_scale, numeric(1),
-      source_transforms = source_transforms), source_transforms)
+    # the range of the sum is that of the untransformed sources (a log source of a Normal prior has none)
+    group_ranges <- do.call(rbind, lapply(groups, .prior_linear_group_range,
+      tail_prob = .prior_linear_density_tail_prob(),
+      source_transforms = stats::setNames(rep(NA_character_, length(weights)), names(weights))))
+    .prior_linear_residue_locations(groups,
+      vapply(groups, .prior_linear_group_robust_scale, numeric(1), source_transforms = source_transforms),
+      source_transforms, c(sum(group_ranges[, 1L]), sum(group_ranges[, 2L])))
   }
-  priors <- list(a = prior("normal", list(0, 5)), b = prior("normal", list(0, 1)))
+  unequal <- list(a = prior("normal", list(0, 5)), b = prior("normal", list(0, 1)))
+  equal   <- list(a = prior("normal", list(0, 1)), b = prior("normal", list(0, 1)))
 
-  # the threshold is .Machine$double.eps times the dominant scale
-  expect_identical(unname(locations(priors, c(a = 1, b = 2.55e-16))), c(NA_real_, 0))
-  expect_identical(unname(locations(priors, c(a = 1, b = 1e-16))), c(NA_real_, 0))
-  expect_identical(unname(locations(priors, c(a = 1, b = 1e-10))), c(NA_real_, NA_real_))
-  expect_identical(unname(locations(priors, c(a = 1, b = 1e-3))), c(NA_real_, NA_real_))
-  expect_identical(unname(locations(priors, c(a = 1))), NA_real_)
+  # the spacing a component demands is its scale / 64 knots per scale; the coordinates of the sum
+  # of two Normal(0, 1) terms reach 3.7 (the 1e-4 tails), whose double resolution is 8.3e-16
+  expect_identical(.prior_linear_density_points_per_scale(), 64)
+  expect_identical(unname(locations(equal, c(a = 1, b = 2.55e-16))), c(NA_real_, 0))
+  expect_identical(unname(locations(unequal, c(a = 1, b = 2.55e-16))), c(NA_real_, 0))
+  expect_identical(unname(locations(equal, c(a = 1, b = 1e-14))), c(NA_real_, 0))
+  # a representable demanded spacing keeps setting the grid
+  expect_identical(unname(locations(equal, c(a = 1, b = 1e-12))), c(NA_real_, NA_real_))
+  expect_identical(unname(locations(equal, c(a = 1, b = 1e-10))), c(NA_real_, NA_real_))
+  expect_identical(unname(locations(unequal, c(a = 1, b = 1e-10))), c(NA_real_, NA_real_))
+  expect_identical(unname(locations(unequal, c(a = 1, b = 1e-3))), c(NA_real_, NA_real_))
+  expect_identical(unname(locations(unequal, c(a = 1))), NA_real_)
+  # the resolution is that of the coordinates of the combination: a lone tiny component resolves itself
+  expect_identical(unname(locations(unequal["b"], c(b = 2.55e-16))), NA_real_)
   # a nonzero mean is carried by the point: weight times the prior mean
   shifted <- list(a = prior("normal", list(0, 5)), b = prior("normal", list(3, 1)))
   expect_equal(unname(locations(shifted, c(a = 1, b = 1e-17))), c(NA_real_, 3e-17), tolerance = 1e-12)
   # a component with a source transformation, a mixture or an undefined mean keeps its own spacing
-  expect_identical(unname(suppressWarnings(locations(priors, c(a = 1, b = 1e-17), c(a = NA_character_, b = "log")))),
+  expect_identical(unname(suppressWarnings(locations(unequal, c(a = 1, b = 1e-17), c(a = NA_character_, b = "log")))),
     c(NA_real_, NA_real_))
   mixture <- list(a = prior("normal", list(0, 5)),
     b = prior_mixture(list(prior("normal", list(0, 1)), prior("normal", list(1, 1))), is_null = c(FALSE, FALSE)))

@@ -92,11 +92,13 @@ Identical canonical multipliers cancel before division, including zero;
 declared zero contributions require no irrelevant state. A different needed
 zero denominator refuses the requested numeric vector, without row repair.
 The numerical grid of a weighted combination resolves its narrowest
-continuous component, except that a simple component whose scale (the
-absolute weight times the robust scale of its prior) is below
-\code{.Machine$double.eps} times the dominant component's scale, such as
-the weight of a centered predictor equal to its mean, is a point at its mean
-and does not set the grid spacing; a component above that resolution does.
+continuous component (64 knots per robust scale of its prior times its
+absolute weight), except that a simple component whose demanded spacing is
+below \code{.Machine$double.eps} times the largest absolute coordinate of the
+combination's range cannot be represented on that grid. Such a component,
+e.g. the weight of a centered predictor equal to its mean, is a point at its
+mean and does not set the grid spacing; a component whose spacing the grid
+can resolve does.
 
 Finite \code{matrix} rows are static raw maps. Dynamic rows are entirely \code{NA} and
 retain finite \code{basis_matrix}, canonical multipliers, true state dependencies,
