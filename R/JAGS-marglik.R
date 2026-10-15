@@ -332,6 +332,14 @@
 #' evaluations. The exact zero-dimensional evaluation and `NA` priors keep their
 #' own errors.
 #'
+#' This policy is defined for `method = "normal"`; `method = "warp3"` is
+#' outside it. `bridgesampling` evaluates the callback at warped draws and
+#' takes their exponentials in extended-range arithmetic, which stops on an `NA`
+#' with the unclassed upstream error "Bridge sampling failed: NAs are not
+#' allowed in subscripted assignments" (no `BayesTools_marglik_callback_na`),
+#' and the warnings that it words for `warp3` evaluations are not classified
+#' either. A callback used with `warp3` must not return `NA`.
+#'
 #' @export
 JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NULL, formula_list = NULL, formula_data_list = NULL, formula_prior_list = NULL, formula_scale_list = NULL,
                                 add_parameters = NULL, add_bounds = NULL,

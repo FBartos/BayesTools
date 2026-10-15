@@ -65,7 +65,9 @@ it is evaluated as `-Inf` with a warning of the same class that reports the
 share of proposal draws. The counts are read from the warnings of
 `bridgesampling` (it replaces the `NA` itself), which a regression test pins
 against the installed version; the exact route and `NA` priors keep their
-refusals.
+refusals. The policy covers `method = "normal"`: `bridgesampling` stops on an
+`NA` with `method = "warp3"` with an unclassed upstream error (documented, and
+pinned by a test), so a `warp3` callback must not return `NA`.
 
 Every deterministic node BayesTools generates (allocation-derived SDs, scalar
 and LKJ correlations, publication weights, the experimental p-hacking nodes,

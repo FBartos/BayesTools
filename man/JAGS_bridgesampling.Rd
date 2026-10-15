@@ -256,6 +256,14 @@ classes that reports the share of proposal draws (fields \code{n_proposal_na} an
 counts are those that \pkg{bridgesampling} reports for the replaced
 evaluations. The exact zero-dimensional evaluation and \code{NA} priors keep their
 own errors.
+
+This policy is defined for \code{method = "normal"}; \code{method = "warp3"} is
+outside it. \code{bridgesampling} evaluates the callback at warped draws and
+takes their exponentials in extended-range arithmetic, which stops on an \code{NA}
+with the unclassed upstream error "Bridge sampling failed: NAs are not
+allowed in subscripted assignments" (no \code{BayesTools_marglik_callback_na}),
+and the warnings that it words for \code{warp3} evaluations are not classified
+either. A callback used with \code{warp3} must not return \code{NA}.
 }
 \description{
 A wrapper around

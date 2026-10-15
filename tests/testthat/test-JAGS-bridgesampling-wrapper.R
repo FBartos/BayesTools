@@ -1130,6 +1130,39 @@ test_that("the NA counts of the callback are summed over the repetitions of the 
   )
 })
 
+test_that("an NA of the callback with method = 'warp3' is outside the NA policy (F018)", {
+
+  # The roxygen states the scope of the policy: bridgesampling stops on an NA
+  # of the warp3 route with an upstream error, before it words any warning.
+  withr::local_seed(9)
+  y <- c(0.3, 1.2, -0.4, 0.8, 0.5)
+  draws <- stats::rnorm(4000, sum(y) / 6, sqrt(1 / 6))
+  fit   <- coda::mcmc(matrix(draws, ncol = 1L, dimnames = list(NULL, "mu")))
+  priors <- list(mu = prior("normal", list(0, 1)))
+  loglik <- function(parameters, data) sum(stats::dnorm(data$y, parameters$mu, 1, log = TRUE))
+  bridge <- function(callback, method){
+    JAGS_bridgesampling(fit, callback, data = list(y = y), prior_list = priors, seed = 1, method = method)
+  }
+  with_na <- function(parameters, data) if(parameters$mu > 0.7) NA_real_ else loglik(parameters, data)
+
+  expect_no_warning(valid <- bridge(loglik, "warp3"))
+  expect_true(valid$success)
+  expect_s3_class(tryCatch(bridge(with_na, "normal"), error = function(e) e), "BayesTools_marglik_callback_na")
+
+  error <- tryCatch(bridge(with_na, "warp3"), error = function(e) e)
+  expect_s3_class(error, "error")
+  expect_false(inherits(error, "BayesTools_marglik_callback_na"))
+  expect_match(conditionMessage(error), "Bridge sampling failed: ", fixed = TRUE)
+  expect_match(conditionMessage(error), "NAs are not allowed in subscripted assignments", fixed = TRUE)
+
+  # the warnings that bridgesampling words for the warp3 route are not counted
+  signal <- BayesTools:::.bt_JAGS_bridge_signal_callback_na
+  expect_true(signal(
+    "12 evaluation(s) of log_prob() on the warp-transformed posterior draws produced NA and have been replaced by -Inf.",
+    2000, 1
+  ))
+})
+
 test_that("the inclusion-gate refusal of bridge sampling lists at most three indicators", {
 
   indicator_design <- function(...){
