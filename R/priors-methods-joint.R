@@ -1401,9 +1401,10 @@ quant.prior <- function(x, p, ...){
 
   matrix(rep(x, times = K), ncol = K)
 }
-.prior_dirichlet_rng <- function(prior, n){
+# Dirichlet draws with the check that they are usable simplex rows (shared by
+# the Dirichlet prior and the cumulative weightfunction).
+.prior_dirichlet_draws <- function(alpha, n){
 
-  alpha <- prior$parameters[["alpha"]]
   out <- extraDistr::rdirichlet(n, alpha = alpha)
   if(any(!is.finite(out)) || any(out < 0 | out > 1) || any(rowSums(out) == 0)){
     stop(structure(
@@ -1414,6 +1415,12 @@ quant.prior <- function(x, p, ...){
       class = c("BayesTools_dirichlet_rng_unavailable", "BayesTools_prior_rng_unavailable", "error", "condition")
     ))
   }
+  out
+}
+.prior_dirichlet_rng <- function(prior, n){
+
+  alpha <- prior$parameters[["alpha"]]
+  out <- .prior_dirichlet_draws(alpha, n)
   colnames(out) <- paste0("V", seq_along(alpha))
   out
 }

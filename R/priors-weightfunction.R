@@ -339,7 +339,8 @@ wf_fixed <- function(omega){
 #' prior directly on the non-negative publication weight. \code{"log_omega"}
 #' places the prior on \code{log(omega)} and transforms with
 #' \code{omega = exp(log_omega)}, allowing weights above one whenever the log
-#' prior assigns mass above zero.
+#' prior assigns mass above zero. \code{"log"} is accepted as an alias of
+#' \code{"log_omega"}.
 #' @export
 wf_independent <- function(prior, scale = "omega"){
 
@@ -504,16 +505,7 @@ wf_independent <- function(prior, scale = "omega"){
     out <- matrix(rep(prior$weights$omega, each = n), nrow = n)
 
   }else if(prior$weights$type == "cumulative"){
-    theta <- extraDistr::rdirichlet(n, alpha = prior$weights$alpha)
-    if(any(!is.finite(theta)) || any(theta < 0 | theta > 1) || any(rowSums(theta) == 0)){
-      stop(structure(
-        list(
-          message = "Dirichlet draws are unavailable because sampling produced non-finite or degenerate simplex draws. Use a less extreme 'alpha' specification.",
-          call = NULL
-        ),
-        class = c("BayesTools_dirichlet_rng_unavailable", "BayesTools_prior_rng_unavailable", "error", "condition")
-      ))
-    }
+    theta <- .prior_dirichlet_draws(prior$weights$alpha, n)
     out   <- t(apply(theta[,J:1, drop = FALSE], 1, cumsum))[,J:1, drop = FALSE]
     # Keep the reference bin exact; row-wise cumulative sums can leave 1 +/- eps.
     out[,1L] <- 1

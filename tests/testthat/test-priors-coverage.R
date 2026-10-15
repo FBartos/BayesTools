@@ -1665,6 +1665,14 @@ test_that("var() not implemented for mixture priors", {
 # SECTION: weightfunction log-omega marginal semantics
 # ============================================================================ #
 
+test_that("wf_independent() accepts 'log' as an alias of 'log_omega'", {
+
+  log_prior <- prior("normal", list(0, 1))
+  expect_identical(wf_independent(log_prior, scale = "log"), wf_independent(log_prior, scale = "log_omega"))
+  expect_identical(wf_independent(log_prior, scale = "log")$scale, "log_omega")
+  expect_error(wf_independent(log_prior, scale = "ln"), "scale")
+})
+
 test_that("weightfunction marginal functions accept the matrix that mquant() returns", {
 
   # mquant() returns a 1 x J matrix; the other marginal functions took only

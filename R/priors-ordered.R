@@ -27,7 +27,7 @@
     !is_prior_phacking(total) &&
     !is_prior_bias(total)
 
-  total_is_mixture <- is.prior.mixture(total) || is.prior.spike_and_slab(total)
+  total_is_mixture <- is.prior.mixture(total)
   if(total_is_mixture){
     components <- vapply(total, is.prior, logical(1))
     total_is_scalar <- all(vapply(total[components], function(component){
@@ -69,6 +69,10 @@
     if(!is.prior.simplex(allocation) || !identical(allocation[["distribution"]], "dirichlet")){
       stop(paste0("The '", name, "' prior must be a Dirichlet prior."), call. = FALSE)
     }
+    if(is.expression(allocation$parameters[["alpha"]])){
+      stop(paste0("The '", name, "' Dirichlet prior must have numeric concentrations; ",
+                  "expressions cannot be bound to ordered allocations."), call. = FALSE)
+    }
     return(list(
       type  = "dirichlet",
       alpha = allocation$parameters[["alpha"]],
@@ -97,7 +101,7 @@
   }
   canonical <- .canonicalize_simplex(
     allocation,
-    name = paste0(name, " fixed allocation"),
+    name = name,
     diagnostics = TRUE
   )
 
@@ -623,7 +627,7 @@ prior_ordered_total_name <- function(parameter_name){
       call. = FALSE
     )
   }
-  if(is.prior.mixture(prior$total) || is.prior.spike_and_slab(prior$total)){
+  if(is.prior.mixture(prior$total)){
     stop(
       "Bridge sampling for prior_ordered() is only available when 'total' is a simple scalar prior.",
       call. = FALSE

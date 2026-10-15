@@ -1585,6 +1585,51 @@ test_that("prior_ordered() validates constructor inputs", {
   )
 })
 
+test_that("rng() of an ordered prior returns the requested quantity", {
+
+  levels <- c("lo", "mid", "hi")
+  bound <- prior_factor_levels(
+    prior_ordered(prior("point", list(2)), allocation = prior("dirichlet", list(c(2, 3)))), levels)
+  draw <- function(quantity = NULL, ...){
+    set.seed(1)
+    if(is.null(quantity)) unclass(rng(bound, 4L, ...)) else unclass(rng(bound, 4L, quantity = quantity, ...))
+  }
+  level <- draw()
+  coefficient <- draw("coefficient")
+  increment <- draw("increment")
+  total <- draw("total")
+  allocation <- draw("allocation")
+
+  # the totals, the allocation shares, the raw coefficients (total times
+  # share; "increment" is the same draws) and the level cumulative sums
+  expect_identical(dim(total), c(4L, 1L))
+  expect_identical(colnames(total), "total")
+  expect_identical(dim(allocation), c(4L, 2L))
+  expect_equal(unname(rowSums(allocation)), rep(1, 4L), tolerance = 1e-14)
+  expect_identical(dim(coefficient), c(4L, 2L))
+  expect_identical(coefficient, increment)
+  expect_equal(as.numeric(coefficient), as.numeric(total[, 1L] * allocation), tolerance = 1e-14)
+  expect_identical(draw(transform_factor_samples = FALSE), coefficient)
+  expect_identical(dim(level), c(4L, 3L))
+  expect_equal(unname(level[, 2L]), unname(coefficient[, 1L]), tolerance = 1e-14)
+  expect_equal(unname(level[, 3L]), unname(coefficient[, 1L] + coefficient[, 2L]), tolerance = 1e-14)
+
+  expect_error(rng(bound, 4L, quantity = "bogus"),
+               "The 'bogus' values are not recognized by the 'quantity' argument.", fixed = TRUE)
+})
+
+test_that("an ordered allocation with expression concentrations is refused at construction", {
+
+  expression_allocation <- prior("dirichlet", list(alpha = expression(alpha1, alpha2)))
+  total <- prior("normal", list(0, 1), list(0, Inf))
+  message <- "Dirichlet prior must have numeric concentrations; expressions cannot be bound to ordered allocations."
+  expect_error(prior_ordered(total, allocation = expression_allocation),
+               paste0("The 'allocation' ", message), fixed = TRUE)
+  expect_error(prior_ordered(total, allocation = list(f = expression_allocation)),
+               paste0("The 'allocation$f' ", message), fixed = TRUE)
+  expect_s3_class(prior_ordered(total, allocation = prior("dirichlet", list(c(1, 2)))), "prior.ordered")
+})
+
 test_that("ordered cumulative contrasts encode level effects", {
   expect_equal(
     contr.ordered_cumulative(c("low", "mid", "high")),

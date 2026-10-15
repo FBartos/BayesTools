@@ -59,7 +59,8 @@ refused without normalization.}
 prior directly on the non-negative publication weight. \code{"log_omega"}
 places the prior on \code{log(omega)} and transforms with
 \code{omega = exp(log_omega)}, allowing weights above one whenever the log
-prior assigns mass above zero.}
+prior assigns mass above zero. \code{"log"} is accepted as an alias of
+\code{"log_omega"}.}
 }
 \value{
 \code{prior_weightfunction} returns an object of class 'prior'.
