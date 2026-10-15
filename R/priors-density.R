@@ -1653,15 +1653,10 @@ density.prior <- function(x,
 #' @exportS3Method print density.prior.spike_and_slab
 print.density.prior.spike_and_slab <- function(x, ...){
 
-  cat("Spike-and-slab prior density: ", as.character(x[["call"]][[2L]]), "
-", sep = "")
-  cat("
-Variable (slab):
-")
+  cat("Spike-and-slab prior density: ", as.character(x[["call"]][[2L]]), "\n", sep = "")
+  cat("\nVariable (slab):\n")
   print(x[["variable"]], ...)
-  cat("
-Inclusion:
-")
+  cat("\nInclusion:\n")
   print(x[["inclusion"]], ...)
 
   invisible(x)
