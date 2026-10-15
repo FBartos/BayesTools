@@ -59,7 +59,8 @@
 #' original-scale design is not spanned by its own columns (a term that would
 #' have to be induced, such as the implied intercept of \code{(0 + x | g)}) has
 #' no such matrix and keeps the pairing of coefficient names, which drops the
-#' induced term.
+#' induced term. A block that the fitted design does not hold (hand-built
+#' random-effect SD metadata) is transformed by the same pairing of names.
 #'
 #' @return A numeric matrix of posterior samples transformed back to the
 #' original predictor scale, with chains merged in their existing order.

@@ -18,7 +18,7 @@
 #' @param data data.frame containing predictors included in the formula. A
 #' logical predictor is coded as a two-level indicator; an interaction of a
 #' logical predictor with a factor in which \code{model.matrix()} would code it
-#' by indicators (e.g., \code{flag:g} without \code{flag}) is unavailable
+#' by indicators (e.g., \code{flag:g} without \code{g}) is unavailable
 #' unless \code{formula_scale} standardizes the predictor, which makes it
 #' numeric. Otherwise convert the predictor to a factor or to numeric 0/1.
 #' @param prior_list named list of prior distribution of parameters specified within
