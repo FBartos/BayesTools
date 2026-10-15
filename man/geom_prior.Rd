@@ -32,7 +32,8 @@ geom_prior(
 \item{x_range_quant}{quantile used for
 automatically obtaining \code{x_range}
 if both \code{x_range} and \code{x_seq}
-are unspecified. Defaults to \code{0.005}
+are unspecified. A number in the open interval \code{(0, 0.5)};
+other values are refused. Defaults to \code{0.005}
 for all but Cauchy, Student-t, Gamma, inverse-gamma,
 moment, and inverse-moment distributions that use
 \code{0.010}.}
