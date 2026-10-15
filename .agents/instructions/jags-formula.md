@@ -665,6 +665,12 @@ level (`sd(g{j})`). Use public `cor`, while any compact backend `rho`
 coordinate remains internal. Total-variance allocations expose `sd_total`,
 `var_total`, and `var_prop(...)`; mean-variance allocations expose `sd_common`,
 `var_common`, `var_mult(...)`, and `sd_mult(...)`.
+Inclusion quantities follow the same labels: `inclusion(sd)` for the SD shared
+by all columns, `inclusion(sd(f3:h3))` for the SD prior of a term (the term of
+the prior's own name, never a backend `__xXx__` name or a list of cells),
+`inclusion(sd(x)[component])` for a mixture component, and, for an allocation
+component, `inclusion(<component>)` with the allocation's public
+`component_names`, as `var_prop(<component>)` has them.
 Gate-only roots are slab-plus-inclusion containers and do not publish a root
 `sd_total`; the child-split total is the public realized total.
 Conditioning a gated total on presence ANDs the binding-factor (parent) gates

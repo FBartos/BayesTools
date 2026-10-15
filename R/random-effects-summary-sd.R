@@ -413,8 +413,24 @@
   )
 }
 
+# The term an SD prior with an inclusion event scales, as the label of the SD
+# quantities names it: the term of the prior's own name with its interaction
+# separator displayed as ':' (`sd(f3:h3)`, `sd(x)`), and the owner of the block
+# for the SD shared by all the columns (`sd`). The backend names of the
+# component terms and their cell lists never reach a label.
 .bt_random_effect_summary_inclusion_effect_label <- function(random_term,
                                                             prior_name){
+
+  stem <- paste0(random_term$parameter_stem, "_")
+  if(is.character(random_term$parameter_stem) &&
+     length(random_term$parameter_stem) == 1L &&
+     startsWith(prior_name, stem) && nchar(prior_name) > nchar(stem)){
+    term <- substring(prior_name, nchar(stem) + 1L)
+    if(identical(term, "sd")){
+      return(.bt_random_effect_public_name(random_term))
+    }
+    return(.bt_random_effect_summary_normalize_components(term))
+  }
 
   sd_names <- unique(random_term$sd_parameter_names)
   sd_names <- sd_names[!is.na(sd_names)]

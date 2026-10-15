@@ -2209,3 +2209,116 @@ test_that("conditioning a nested total uses its parent gates and refuses both ga
   )
   expect_length(parameter_mixed_posterior(gated, resolve(gated)), 4L)
 })
+
+test_that("inclusion quantities follow the SD and allocation label conventions", {
+
+  skip_if_not_installed("runjags")
+
+  data <- data.frame(
+    id = factor(rep(paste0("s", 1:4), each = 6L)),
+    x = rep(c(-1, 0, 1), 8L),
+    f3 = factor(rep(c("a", "b", "c"), 8L)),
+    h3 = factor(rep(c("u", "v"), each = 3L, length.out = 24L)),
+    study = factor(rep(c("s1", "s2"), each = 12L)),
+    drug = factor(rep(c("a", "b"), 12L)),
+    site = factor(rep(c("x", "y", "z"), 8L))
+  )
+  carrier <- function(formula, prior_random){
+    result <- JAGS_formula(
+      formula, "mu", data,
+      prior_list = list(intercept = prior("normal", list(0, 1))),
+      prior_random = prior_random
+    )
+    posterior <- BayesTools:::.generate_prior_sample_matrix(result$prior_list, 4L, seed = 1)
+    fit <- structure(
+      list(
+        mcmc = coda::mcmc.list(coda::mcmc(posterior)),
+        sample = nrow(posterior),
+        summary.pars = list(mutate = NULL),
+        monitor = colnames(posterior)
+      ),
+      class = c("runjags", "BayesTools_fit", "list")
+    )
+    attr(fit, "prior_list") <- result$prior_list
+    attr(fit, "formula_design") <- list(mu = result$formula_design)
+    attr(fit, "formula_scale") <- list(mu = result$formula_scale)
+    attach_test_parameter_map(fit)
+  }
+  inclusion_names <- function(fit){
+    quantities <- parameter_catalog(fit)$quantities
+    quantities$canonical_name[quantities$quantity == "inclusion"]
+  }
+  slab <- prior_spike_and_slab(
+    prior("normal", list(0, 1), list(0, Inf)),
+    prior_inclusion = prior("beta", list(1, 1))
+  )
+  monitor <- random_monitor(latent = FALSE, coefficients = FALSE, correlation = FALSE)
+
+  # an SD shared by all the columns of the block
+  shared <- carrier(
+    ~ 1 + id(1 + x | id), prior_random(id = random_block(sd = slab, monitor = monitor))
+  )
+  expect_identical(inclusion_names(shared), "(mu) inclusion(sd)")
+
+  # the SD of a term, and of an interaction (no backend names or cell lists)
+  terms <- carrier(
+    ~ 1 + diag(1 + x + f3 * h3 | id),
+    prior_random(id = random_block(sd = slab, monitor = monitor))
+  )
+  expect_setequal(
+    inclusion_names(terms),
+    paste0("(mu) inclusion(sd(", c("intercept", "x", "f3", "h3", "f3:h3"), "))")
+  )
+  expect_false(any(grepl("__xXx__|, ", inclusion_names(terms))))
+  # a mixture prior names its components
+  mixture <- carrier(
+    ~ 1 + diag(1 + f3:h3 | id),
+    prior_random(id = random_block(
+      sd = prior_mixture(list(prior("spike", list(0)), prior("gamma", list(2, 2))),
+                         is_null = c(TRUE, FALSE), components = c("null", "alt")),
+      monitor = monitor
+    ))
+  )
+  expect_true("(mu) inclusion(sd(f3:h3)[alt])" %in% inclusion_names(mixture))
+  expect_false(any(grepl("__xXx__", inclusion_names(mixture), fixed = TRUE)))
+
+  # the inclusion of an allocation component with an unnamed term takes its
+  # public component name, as the variance proportion does
+  result <- JAGS_formula(
+    ~ 1 + random(1 | study, name = "study", covariance = "diag") +
+      random(1 | drug, name = "drug", covariance = "diag") +
+      random(1 | site, name = "site", covariance = "diag"),
+    "mu", data,
+    prior_list = list(intercept = prior("normal", list(0, 1))),
+    prior_random = prior_random(allocation = random_variance_allocation(
+      name = "allocation", terms = c("study", "drug", "site"),
+      component_names = c("Study", "Drug", "Site"),
+      sd = prior("gamma", list(2, 2)),
+      weights = prior("dirichlet", list(alpha = c(1, 2, 3))),
+      inclusion = list(study = prior("spike", list(0.5)), drug = prior("spike", list(0.4)))
+    ))
+  )
+  design <- result$formula_design$random_allocations[[1L]]
+  gates <- vapply(design$inclusion, `[[`, character(1), "indicator_name")
+  columns <- c(
+    design$source_node,
+    paste0(design$weight_name, "[", 1:3, "]"),
+    gates
+  )
+  samples <- matrix(1 / 3, nrow = 4L, ncol = length(columns), dimnames = list(NULL, columns))
+  samples[, design$source_node] <- 1
+  samples[, gates] <- 1
+  allocation <- structure(
+    list(mcmc = coda::mcmc.list(coda::mcmc(samples)), sample = nrow(samples)),
+    class = c("runjags", "BayesTools_fit", "list")
+  )
+  attr(allocation, "prior_list") <- result$prior_list
+  attr(allocation, "formula_design") <- list(mu = result$formula_design)
+  allocation <- attach_test_parameter_map(allocation)
+  names <- parameter_catalog(allocation)$quantities$canonical_name
+  expect_true(all(c(
+    "(mu) allocation: var_prop(Study)", "(mu) allocation: inclusion(Study)",
+    "(mu) allocation: var_prop(Drug)", "(mu) allocation: inclusion(Drug)"
+  ) %in% names))
+  expect_false("(mu) allocation: inclusion(study)" %in% names)
+})

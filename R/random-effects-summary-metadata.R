@@ -839,11 +839,22 @@
   components
 }
 
+# The public name of an allocation component, from its internal label. Terms
+# without names are identified by their component labels (the terms
+# themselves when the allocation stores none), in the order of the public
+# names, as the shares of the allocation are.
 .bt_random_effect_allocation_component_name <- function(allocation,
                                                         component_label){
 
   terms <- allocation$terms
   internal <- names(terms)
+  if(!is.character(internal) || !all(nzchar(internal))){
+    internal <- if(is.null(allocation$component_labels)){
+      unname(terms)
+    }else{
+      unname(allocation$component_labels)
+    }
+  }
   public <- allocation$component_names
   if(is.character(internal) && is.character(public) &&
      length(internal) == length(public)){
