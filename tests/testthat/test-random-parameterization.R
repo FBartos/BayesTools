@@ -1151,3 +1151,16 @@ test_that("random-effect specifications name allocations, contrasts and SDs cons
     lower = -1, upper = 1, label = "AR1 raw correlation prior"
   ))
 })
+
+test_that("an expression point cannot exclude a zero atom", {
+
+  has_zero_atom <- BayesTools:::.bt_random_effect_prior_has_zero_atom
+  expression_point <- prior("point", list(location = expression(a * 2)))
+  expect_true(has_zero_atom(expression_point))
+  expect_true(has_zero_atom(prior_mixture(
+    list(expression_point, prior("gamma", list(2, 2))), is_null = c(TRUE, FALSE)
+  )))
+  expect_true(has_zero_atom(prior("point", list(0))))
+  expect_false(has_zero_atom(prior("point", list(2))))
+  expect_false(has_zero_atom(prior("gamma", list(2, 2))))
+})

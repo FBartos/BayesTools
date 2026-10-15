@@ -32,6 +32,11 @@
   }
   if(is.prior.point(prior)){
     location <- prior$parameters[["location"]]
+    # An expression location is evaluated from other parameters: its value is
+    # unknown here, so a zero atom cannot be excluded.
+    if(is.expression(location)){
+      return(TRUE)
+    }
     return(length(location) == 1L && !is.na(location) && location == 0)
   }
   if(is.prior.spike_and_slab(prior) || is.prior.mixture(prior)){
