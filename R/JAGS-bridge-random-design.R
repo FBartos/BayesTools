@@ -275,7 +275,12 @@
   )){
     .bt_JAGS_bridge_random_design_mismatch(
       parameter,
-      "random-effect scale/allocation metadata differ",
+      paste0(
+        "random-effect scale/allocation metadata differ (parameter_source(values = ) ",
+        "callbacks are compared by identity, including their environment, so inputs ",
+        "built again by the same helper differ; omit the formula inputs to use the ",
+        "stored design)"
+      ),
       block = block
     )
   }

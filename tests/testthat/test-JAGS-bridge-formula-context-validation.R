@@ -340,6 +340,18 @@ test_that("bridge formula context treats fitted source semantics as authoritativ
     "scale/allocation metadata differ",
     fixed = TRUE
   )
+  expect_error(
+    do.call(
+      BayesTools:::.bt_JAGS_bridge_formula_context,
+      callback_args
+    ),
+    paste0(
+      "callbacks are compared by identity, including their environment, so inputs ",
+      "built again by the same helper differ; omit the formula inputs to use the ",
+      "stored design)."
+    ),
+    fixed = TRUE
+  )
 
   source_data_args <- context_args
   source_data_args$formula_data_list$mu$tau_factor <- c(3, 2, 1)
