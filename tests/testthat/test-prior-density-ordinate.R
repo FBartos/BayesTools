@@ -2651,6 +2651,15 @@ test_that("R116 N89 point-only densities are exact off their stored atom", {
   unavailable <- prior_density_ordinate(deferred, .3)
   expect_identical(unavailable$behavior, "unknown")
   expect_false(unavailable$exact)
+  # a missing or undefined continuous mass is not a declared zero mass
+  expect_false(prior_density_has_provenance(deferred))
+  deferred$density <- list(mass = NA_real_)
+  expect_false(prior_density_has_provenance(deferred))
+  expect_true(prior_density_has_provenance(point))
+  empty <- point
+  empty$density <- list(x = numeric(), y = numeric(), mass = 0)
+  expect_true(prior_density_has_provenance(empty))
+  expect_false(prior_density_has_provenance(grid))
 })
 
 test_that("R116 D2 positive powers retain zero atoms and weighted continuous ordinates", {

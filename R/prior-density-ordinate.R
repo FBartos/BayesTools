@@ -244,8 +244,9 @@ prior_density_has_provenance <- function(x){
   }
   adaptive <- attr(x, "adaptive_evaluation", exact = TRUE)
   if(is.null(adaptive)){
-    # point masses alone are exact
-    return(is.null(x$density) || !isTRUE(x$density$mass > 0))
+    # point masses alone are exact: a declared zero continuous mass (a density
+    # whose mass is missing is a deferred measure without provenance)
+    return(isTRUE(.prior_linear_density_continuous_mass(x) == 0))
   }
   if(!is.list(adaptive) || !is.character(adaptive$kind) ||
      length(adaptive$kind) != 1L || !is.list(adaptive$arguments)){
