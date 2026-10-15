@@ -146,6 +146,10 @@ row indices/count. Accepted values, call order and RNG stream are unchanged.
 No retry, clamping, endpoint replacement or concentration change is allowed;
 valid concentrations do not guarantee numerical representability. Scalar
 correlation transforms keep their clear compiler refusal at saturated bounds.
+The JAGS module distribution `dbt_lkj_cpc` refuses the same unrepresentable
+draw during its own random generation (an initial value of the primitive whose
+Beta quantile rounds onto `0` or `1`) with a JAGS error that names the cause and
+suggests initial values or a larger `eta`; it never clamps or redraws.
 
 An assembled fixed weight function requires reference-bin weight exactly
 numeric `1`, including named and integer values. Nearby values are refused;

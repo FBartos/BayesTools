@@ -1651,3 +1651,33 @@ test_that("fail_fast stops computing after a failed parameter", {
   expect_equal(attr(complete, "diagnostics")$state,
                c("assessable", "assessable"))
 })
+
+test_that("computed failures are reported when another diagnostic of the row is not assessable (F277)", {
+
+  diagnostics <- data.frame(
+    parameter = c("a", "b"),
+    state = c("not_assessable", "assessable"),
+    Rhat = c(Inf, 1.01),
+    ESS = c(NA_real_, 900),
+    MCMC_error = c(NA_real_, 0.001),
+    MCMC_SD_error = c(NA_real_, 0.01),
+    stringsAsFactors = FALSE
+  )
+  failures <- function(allow_not_assessable){
+    BayesTools:::.bt_convergence_failures(
+      diagnostics, max_Rhat = 1.05, min_ESS = 500, max_error = 0.01,
+      max_SD_error = 0.05, allow_not_assessable = allow_not_assessable
+    )
+  }
+
+  # the computed R-hat of 'a' fails whatever allow_not_assessable says
+  expect_identical(failures(TRUE), "R-hat Inf for 'a' is larger than the set target (1.05).")
+  strict <- failures(FALSE)
+  expect_length(strict, 2L)
+  expect_match(strict[[1L]], "ESS, MCMC error, MCMC SD error diagnostics are not assessable for 'a'.", fixed = TRUE)
+  expect_identical(strict[[2L]], failures(TRUE))
+
+  # a row whose computed diagnostics pass reports nothing when undefined ones are allowed
+  diagnostics$Rhat[1L] <- 1.01
+  expect_identical(failures(TRUE), character())
+})

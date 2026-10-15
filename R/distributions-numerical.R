@@ -135,7 +135,8 @@
       "The positive truncation mass could not be resolved at supported precision", error = TRUE)
   }
   .prior_numerical_result(out, p, TRUE, "quantile", prior$distribution, "natural",
-                          interior = p > 0 & p < 1)
+                          interior = p > 0 & p < 1,
+                          unavailable_cause = .prior_numerical_truncation_cause())
 }
 
 .prior_log1mexp <- function(x){

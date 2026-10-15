@@ -81,6 +81,14 @@ test_that("truncated quantile refusals name the representability cause", {
   )
   expect_true(is.nan(value))
 
+  # the truncated moment priors name the same cause
+  far_tail <- prior("moment", list(location = 0, tau = 1, order = 2), truncation = list(1e8, Inf))
+  expect_warning(
+    value <- quant(far_tail, .3),
+    cause, class = "BayesTools_numerical_unavailable", fixed = TRUE
+  )
+  expect_true(is.nan(value))
+
   # an available truncated quantile does not warn
   moderate <- prior("gamma", list(.01, 1), truncation = list(0, 10))
   expect_warning(available <- quant(moderate, .3), NA)

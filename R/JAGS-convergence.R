@@ -693,7 +693,10 @@ JAGS_check_convergence <- function(
       )
     }
   }
-  assessable <- diagnostics[["state"]] == "assessable"
+  # A diagnostic that was computed is a value that fails its criterion or not,
+  # also in a row where another diagnostic could not be computed: only the
+  # diagnostics that failed to compute are not assessable.
+  assessable <- diagnostics[["state"]] %in% c("assessable", "not_assessable")
   checks <- list(
     list(
       column = "Rhat",
@@ -744,10 +747,9 @@ JAGS_check_convergence <- function(
     if(is.null(check[["threshold"]])){
       next
     }
-    failed <- assessable & check[["fails"]](
-      diagnostics[[check[["column"]]]],
-      check[["threshold"]]
-    )
+    failed <- assessable & !is.na(diagnostics[[check[["column"]]]]) &
+      check[["fails"]](diagnostics[[check[["column"]]]], check[["threshold"]])
+    failed[is.na(failed)] <- FALSE
     if(any(failed)){
       fails <- c(
         fails,
