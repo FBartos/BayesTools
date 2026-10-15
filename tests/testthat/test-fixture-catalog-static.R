@@ -461,39 +461,39 @@ test_that("a cache marker is stale when a source left the key", {
   expect_false(.test_cache_metadata_current(marker_name))
 })
 
-test_that("downstream cache consumer source scopes are separate from model fitting", {
+test_that("an empty requirement set names no cache artifact, and the catalog is parsed once (F272)", {
+
+  expect_identical(.test_cache_artifact_paths("directory", character()), character())
+  expect_identical(
+    .test_cache_artifact_paths("directory", c("a", "b")),
+    c("directory/a.RDS", "directory/b.RDS")
+  )
+  # nothing required is complete; it used to check the path ".RDS"
+  expect_true(.test_cache_requirements_complete(
+    required_fits = character(), required_margliks = character()
+  ))
+
+  first <- .bayestools_save_fit_catalog_rows()
+  expect_identical(.bayestools_save_fit_catalog_rows(), first)
+  expect_length(ls(.bayestools_catalog_rows_memo), 1L)
+  expect_identical(bayestools_expected_fit_catalog(), bayestools_expected_fit_catalog())
+})
+
+test_that("only the model-fit scope has a source key", {
   skip_if_not(.test_cache_package_sources_available(), "Repository R source files are not available in this installed-package test context.")
 
   model_fit_sources <- .test_cache_source_files("model-fit")
-  fixture_sources <- .test_cache_source_files("fixture-consumer")
-  visual_fixture_sources <- .test_cache_source_files("visual-fixture-consumer")
-
-  expect_true("common_functions" %in% names(fixture_sources))
-  expect_true("expected_fit_catalog" %in% names(fixture_sources))
-  expect_true("package_R_JAGS-formula-random" %in% names(fixture_sources))
-  expect_true("package_R_random-effects-metadata" %in% names(fixture_sources))
-  expect_true("package_R_random-effects-reconstruction" %in% names(fixture_sources))
-  expect_true("package_R_random-effects-summary" %in% names(fixture_sources))
-  expect_true("package_R_random-priors" %in% names(fixture_sources))
-  expect_true("package_R_summary-tables-model" %in% names(fixture_sources))
-  expect_true("package_R_model-averaging" %in% names(fixture_sources))
-  expect_false("test_00_model_fits" %in% names(fixture_sources))
-
-  expect_true("common_functions" %in% names(visual_fixture_sources))
-  expect_true("expected_fit_catalog" %in% names(visual_fixture_sources))
-  expect_true("package_R_JAGS-formula-random" %in% names(visual_fixture_sources))
-  expect_true("package_R_random-effects-summary" %in% names(visual_fixture_sources))
-  expect_true("package_R_model-averaging-plots-posterior" %in% names(visual_fixture_sources))
-  expect_true("test_test_JAGS_diagnostic_plots" %in% names(visual_fixture_sources))
-  expect_false("test_00_model_fits" %in% names(visual_fixture_sources))
-
+  expect_true("test_00_model_fits" %in% names(model_fit_sources))
   expect_false("common_functions" %in% names(model_fit_sources))
   expect_false("expected_fit_catalog" %in% names(model_fit_sources))
   expect_false("package_R_summary-tables-model" %in% names(model_fit_sources))
   expect_false("package_R_model-averaging-plots-posterior" %in% names(model_fit_sources))
 
-  expect_false(anyNA(.test_cache_source_hashes("fixture-consumer")))
-  expect_false(anyNA(.test_cache_source_hashes("visual-fixture-consumer")))
+  # a scope without a key (the downstream consumers of the cache have none)
+  # builds no sources
+  expect_length(.test_cache_source_files("fixture-consumer"), 0L)
+  expect_length(.test_cache_source_hashes("fixture-consumer"), 0L)
+  expect_false(anyNA(.test_cache_source_hashes("model-fit")))
 })
 
 # ============================================================================ #

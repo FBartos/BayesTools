@@ -117,9 +117,18 @@ bayestools_optional_fit_requirements <- function() {
   default
 }
 
+# The save_fit() rows of the fitting test file, parsed once per content of the
+# file: every cache check of a run asks for the catalog, and parsing the file
+# costs about half a second.
+.bayestools_catalog_rows_memo <- new.env(parent = emptyenv())
+
 .bayestools_save_fit_catalog_rows <- function(source_file = bayestools_model_fit_source_file()) {
   if (!file.exists(source_file)) {
     stop("Model fit source file not found: ", source_file, call. = FALSE)
+  }
+  memo_key <- paste(unname(tools::md5sum(source_file)), "rows", sep = ":")
+  if (!is.null(.bayestools_catalog_rows_memo[[memo_key]])) {
+    return(.bayestools_catalog_rows_memo[[memo_key]])
   }
 
   flag_cols <- bayestools_registry_flag_columns()
@@ -195,6 +204,7 @@ bayestools_optional_fit_requirements <- function() {
   catalog$expected_formula_parameters <- I(rep(list(character()), nrow(catalog)))
   catalog$expected_formula_scale <- I(rep(list(character()), nrow(catalog)))
   rownames(catalog) <- NULL
+  .bayestools_catalog_rows_memo[[memo_key]] <- catalog
   catalog
 }
 

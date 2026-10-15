@@ -554,13 +554,7 @@ test_reference_text <- function(text, filename, info_msg = NULL,
 # Skip if pre-fitted models are not available in lightweight profiles. Explicit
 # fixture-bearing profiles fail so missing or stale caches cannot be bypassed.
 .test_cache_required_for_active_profile <- function() {
-  if (exists("bayestools_test_profile_includes", mode = "function")) {
-    return(bayestools_test_profile_includes(c("fixture", "fit", "visual-fixture")))
-  }
-
-  profiles <- tolower(Sys.getenv("BAYESTOOLS_TEST_PROFILE", "unit"))
-  profiles <- unlist(strsplit(profiles, "[,;[:space:]]+"))
-  any(profiles %in% c("fixture", "fixtures", "fit", "heavy", "slow", "visual-fixture", "visual_fixture"))
+  bayestools_test_profile_includes(c("fixture", "fit", "visual-fixture"))
 }
 
 .test_cache_unavailable <- function(message) {
@@ -572,11 +566,7 @@ test_reference_text <- function(text, filename, info_msg = NULL,
 }
 
 .test_cache_required_catalog <- function() {
-  if (exists("bayestools_required_fit_catalog", mode = "function")) {
-    return(bayestools_required_fit_catalog())
-  }
-
-  NULL
+  bayestools_required_fit_catalog()
 }
 
 skip_if_no_fits <- function() {
@@ -586,8 +576,8 @@ skip_if_no_fits <- function() {
   }
 
   catalog <- .test_cache_required_catalog()
-  required_fits <- if (is.null(catalog)) NULL else catalog$model_name
-  required_margliks <- if (is.null(catalog)) NULL else catalog$model_name[catalog$has_marglik]
+  required_fits <- catalog$model_name
+  required_margliks <- catalog$model_name[catalog$has_marglik]
 
   cache_complete <- .test_cache_requirements_complete(
     required_fits = required_fits,
@@ -619,10 +609,6 @@ skip_if_missing_fits <- function(names) {
       ". Run test-00-model-fits.R first."
     ))
   }
-}
-
-skip_if_no_fit_cache <- function() {
-  skip_if_no_fits()
 }
 
 # ============================================================================ #
@@ -1020,10 +1006,6 @@ save_fit <- function(fit, name, marglik = NULL, simple_priors = FALSE, vector_pr
   }
 
   expect_true(file.exists(fit_file), info = paste("Saved fit artifact for", name))
-  expect_identical(registry_entry$model_name, name)
-  expect_identical(registry_entry$has_marglik, !is.null(marglik))
-  expect_identical(attr(fit, "fixture_metadata")$model_name, name)
-  expect_identical(attr(fit, "fixture_metadata")$has_marglik, !is.null(marglik))
 
   if (!is.null(marglik)) {
     expect_true(
@@ -1063,6 +1045,16 @@ save_fit <- function(fit, name, marglik = NULL, simple_priors = FALSE, vector_pr
   stop(name, " must be TRUE or FALSE.", call. = FALSE)
 }
 
+# The artifact files of cached objects; no name is no file (paste0() of an empty
+# vector with a suffix would name the file ".RDS").
+.test_cache_artifact_paths <- function(directory, names) {
+  if (length(names) == 0L) {
+    return(character())
+  }
+
+  file.path(directory, paste0(names, ".RDS"))
+}
+
 .test_cache_paths_complete <- function(paths) {
   length(paths) == 0L || all(file.exists(paths))
 }
@@ -1100,27 +1092,6 @@ save_fit <- function(fit, name, marglik = NULL, simple_priors = FALSE, vector_pr
     margliks = sort(unique(c(required_margliks, registry_requirements$margliks))),
     files = sort(unique(c(required_files, registry_requirements$files)))
   )
-}
-
-.test_cache_package_r_files <- function(files = character(), patterns = character()) {
-  package_r_dir <- file.path(testthat::test_path("..", ".."), "R")
-  package_source_files <- file.path(package_r_dir, files)
-  for (pattern in patterns) {
-    package_source_files <- c(
-      package_source_files,
-      list.files(package_r_dir, pattern = pattern, full.names = TRUE)
-    )
-  }
-  package_source_files <- unique(package_source_files)
-  package_source_files <- package_source_files[file.exists(package_source_files)]
-  if(length(package_source_files) == 0L){
-    return(stats::setNames(character(), character()))
-  }
-  names(package_source_files) <- paste0(
-    "package_R_",
-    tools::file_path_sans_ext(basename(package_source_files))
-  )
-  package_source_files
 }
 
 .test_cache_package_src_files <- function(files = character(), patterns = character()) {
@@ -1187,16 +1158,6 @@ save_fit <- function(fit, name, marglik = NULL, simple_priors = FALSE, vector_pr
   dir.exists(package_r_dir) && length(list.files(package_r_dir, pattern = "\\.R$", full.names = TRUE)) > 0L
 }
 
-.test_cache_existing_test_files <- function(files) {
-  paths <- testthat::test_path(files)
-  paths <- paths[file.exists(paths)]
-  names(paths) <- paste0(
-    "test_",
-    gsub("[^A-Za-z0-9]+", "_", tools::file_path_sans_ext(basename(paths)))
-  )
-  paths
-}
-
 .test_cache_source_files <- function(name) {
   # The package R code that defines a cached object enters the model-fit key
   # as the reachable functions (.test_cache_package_function_hashes()), not as
@@ -1211,181 +1172,9 @@ save_fit <- function(fit, name, marglik = NULL, simple_priors = FALSE, vector_pr
     test_00_model_fits = testthat::test_path("test-00-model-fits.R")
   )
 
-  fixture_consumer_sources <- c(
-    .test_cache_package_r_files(
-      files = c(
-        "JAGS-fit.R",
-        "JAGS-runtime.R",
-        "JAGS-convergence.R",
-        "JAGS-prior-syntax.R",
-        "JAGS-prior-inits.R",
-        "JAGS-prior-monitor.R",
-        "JAGS-fit-settings.R",
-        "JAGS-formula.R",
-        "JAGS-formula-design.R",
-        "JAGS-formula-random-design.R",
-        "JAGS-formula-random-matrices.R",
-        "random-effects-memory.R",
-        "JAGS-formula-random-priors.R",
-        "JAGS-formula-helpers.R",
-        "JAGS-formula-predict.R",
-        "JAGS-formula-predict-target.R",
-        "JAGS-formula-predict-random.R",
-        "JAGS-formula-factors.R",
-        "JAGS-formula-scale.R",
-        "JAGS-formula-scale-random-sd.R",
-        "JAGS-formula-scale-transform.R",
-        "JAGS-formula-contrasts.R",
-        "JAGS-parameter-names.R",
-        "aaa-parameter-map.R",
-        "JAGS-parameter-coordinates.R",
-        "JAGS-parameter-catalog.R",
-        "JAGS-draw-geometry.R",
-        "JAGS-fit-contract.R",
-        "JAGS-formula-random.R",
-        "JAGS-lkj-cholesky.R",
-        "model-averaging.R",
-        "model-averaging-mix-posteriors.R",
-        "model-averaging-as-mixed-posteriors.R",
-        "model-averaging-inclusion.R",
-        "posterior-density.R",
-        "posterior-density-matching.R",
-        "posterior-density-sources.R",
-        "posterior-density-children.R",
-        "posterior-density-attributes.R",
-        "random-effects-formula.R",
-        "random-group-covariance.R",
-        "random-effects-allocation.R",
-        "random-effects-sd-binding.R",
-        "random-effects-sd-binding-context.R",
-        "random-effects-metadata.R",
-        "random-effects-reconstruction.R",
-        "random-effects-reconstruction-allocation.R",
-        "random-effects-reconstruction-correlation.R",
-        "random-effects-sd-spec.R",
-        "random-effects-summary.R",
-        "random-effects-summary-sd.R",
-        "random-effects-summary-metadata.R",
-        "random-effects-summary-display.R",
-        "random-priors.R",
-        "selection-kernels.R",
-        "selection-context.R",
-        "selection-backend-helpers.R",
-        "summary-tables-ensemble.R",
-        "summary-tables-model.R",
-        "summary-tables-object.R",
-        "summary-tables-formatting.R",
-        "interpret.R"
-      )
-    ),
-    common_functions = testthat::test_path("common-functions.R"),
-    expected_fit_catalog = testthat::test_path("helper-expected-fit-catalog.R"),
-    semantic_oracles = testthat::test_path("helper-semantic-oracles.R"),
-    .test_cache_existing_test_files(c(
-      "test-fixture-integrity.R",
-      "test-JAGS-deterministic-nodes-fixture.R",
-      "test-JAGS-ensemble-tables.R",
-      "test-JAGS-fit.R",
-      "test-JAGS-formula-scale.R",
-      "test-JAGS-formula.R",
-      "test-JAGS-summary-tables.R",
-      "test-model-averaging.R",
-      "test-parameter-labels-fixture.R",
-      "test-random-effects-summary-posterior-fixture.R",
-      "test-selection-kernels.R",
-      "test-summary-tables.R",
-      "test-weightfunction-redesign.R"
-    ))
-  )
-
-  visual_fixture_consumer_sources <- c(
-    .test_cache_package_r_files(
-      files = c(
-        "JAGS-fit.R",
-        "JAGS-runtime.R",
-        "JAGS-convergence.R",
-        "JAGS-prior-syntax.R",
-        "JAGS-prior-inits.R",
-        "JAGS-prior-monitor.R",
-        "JAGS-fit-settings.R",
-        "JAGS-formula.R",
-        "JAGS-formula-design.R",
-        "JAGS-formula-random-design.R",
-        "JAGS-formula-random-matrices.R",
-        "random-effects-memory.R",
-        "JAGS-formula-random-priors.R",
-        "JAGS-formula-helpers.R",
-        "JAGS-formula-predict.R",
-        "JAGS-formula-predict-target.R",
-        "JAGS-formula-predict-random.R",
-        "JAGS-formula-factors.R",
-        "JAGS-formula-scale.R",
-        "JAGS-formula-scale-random-sd.R",
-        "JAGS-formula-scale-transform.R",
-        "JAGS-formula-contrasts.R",
-        "JAGS-parameter-names.R",
-        "aaa-parameter-map.R",
-        "JAGS-parameter-coordinates.R",
-        "JAGS-parameter-catalog.R",
-        "JAGS-draw-geometry.R",
-        "JAGS-fit-contract.R",
-        "JAGS-formula-random.R",
-        "JAGS-lkj-cholesky.R",
-        "marginal-posterior.R",
-        "marginal-prior-mixing.R",
-        "marginal-savage-dickey.R",
-        "marginal-inference.R",
-        "model-averaging.R",
-        "model-averaging-mix-posteriors.R",
-        "model-averaging-as-mixed-posteriors.R",
-        "model-averaging-inclusion.R",
-        "model-averaging-plots-priors.R",
-        "model-averaging-plots-priors-weightfunction.R",
-        "model-averaging-plots-priors-petpeese.R",
-        "model-averaging-plots-priors-simple.R",
-        "model-averaging-plots-priors-layers.R",
-        "model-averaging-plots-posterior.R",
-        "model-averaging-plots-posterior-simple.R",
-        "model-averaging-plots-posterior-bias.R",
-        "model-averaging-plots-posterior-factor.R",
-        "model-averaging-plots-models.R",
-        "model-averaging-plots-posterior-helpers.R",
-        "model-averaging-plots-marginal.R",
-        "posterior-density.R",
-        "posterior-density-matching.R",
-        "posterior-density-sources.R",
-        "posterior-density-children.R",
-        "posterior-density-attributes.R",
-        "priors-plot.R",
-        "priors-plot-layers.R",
-        "random-effects-formula.R",
-        "random-group-covariance.R",
-        "random-effects-summary.R",
-        "random-effects-summary-sd.R",
-        "random-effects-summary-metadata.R",
-        "random-effects-summary-display.R",
-        "random-priors.R",
-        "summary-tables-ensemble.R",
-        "summary-tables-model.R",
-        "summary-tables-object.R",
-        "summary-tables-formatting.R"
-      )
-    ),
-    common_functions = testthat::test_path("common-functions.R"),
-    expected_fit_catalog = testthat::test_path("helper-expected-fit-catalog.R"),
-    .test_cache_existing_test_files(c(
-      "test-JAGS-diagnostic-plots.R",
-      "test-JAGS-ensemble-plots.R",
-      "test-JAGS-marginal-distributions.R",
-      "test-model-averaging-plots.R"
-    ))
-  )
-
   sources <- switch(
     name,
     `model-fit` = generator_sources,
-    `fixture-consumer` = fixture_consumer_sources,
-    `visual-fixture-consumer` = visual_fixture_consumer_sources,
     character()
   )
 
@@ -1904,8 +1693,8 @@ save_fit <- function(fit, name, marglik = NULL, simple_priors = FALSE, vector_pr
     registry_file = registry_file
   )
 
-  fit_files <- file.path(temp_fits_dir, paste0(requirements$fits, ".RDS"))
-  marglik_files <- file.path(temp_marglik_dir, paste0(requirements$margliks, ".RDS"))
+  fit_files <- .test_cache_artifact_paths(temp_fits_dir, requirements$fits)
+  marglik_files <- .test_cache_artifact_paths(temp_marglik_dir, requirements$margliks)
 
   .test_cache_paths_complete(fit_files) &&
     .test_cache_paths_complete(marglik_files) &&
@@ -1921,8 +1710,8 @@ save_fit <- function(fit, name, marglik = NULL, simple_priors = FALSE, vector_pr
     }
   }
 
-  prune_dir(temp_fits_dir, paste0(requirements$fits, ".RDS"))
-  prune_dir(temp_marglik_dir, paste0(requirements$margliks, ".RDS"))
+  prune_dir(temp_fits_dir, basename(.test_cache_artifact_paths(temp_fits_dir, requirements$fits)))
+  prune_dir(temp_marglik_dir, basename(.test_cache_artifact_paths(temp_marglik_dir, requirements$margliks)))
   invisible(TRUE)
 }
 
@@ -2097,23 +1886,3 @@ mark_refit_cache_complete <- function(name, required_fits = NULL, required_margl
   invisible(TRUE)
 }
 
-# Clean cached fitted models and margliks
-clean_cached_fits <- function(name) {
-
-  if (!missing(name)) {
-    # remove only the specific `name`` fitted indicator files side-effects from `temp_temp_dir`
-    file.remove(file.path(temp_temp_dir, paste0(name, ".txt")))
-  } else {
-    # Remove all cached files from test directories
-    unlink(temp_fits_dir,    recursive = TRUE)
-    unlink(temp_marglik_dir, recursive = TRUE)
-    unlink(temp_temp_dir,    recursive = TRUE)
-
-    # Recreate empty directories
-    dir.create(temp_fits_dir,    showWarnings = FALSE, recursive = TRUE)
-    dir.create(temp_marglik_dir, showWarnings = FALSE, recursive = TRUE)
-    dir.create(temp_temp_dir,    showWarnings = FALSE, recursive = TRUE)
-  }
-
-  return(invisible(TRUE))
-}

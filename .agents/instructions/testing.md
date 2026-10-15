@@ -90,10 +90,13 @@ package functions that the fit generators reach. Reachability is a static,
 over-including closure (`.test_cache_reached_package_objects()` states the
 rules) from the package functions named by the `save_fit()` blocks and the
 setup code of `test-00-model-fits.R`, by the hashed helpers, and by `.onLoad()`.
-Editing code that no generator reaches (inference, plotting, summaries,
-prior-density ordinates), a comment, or the package version leaves the marker
-current; editing a reached function, a native source, or the fitting test file
-makes the cache stale until `fit` runs. The marker certifies a passing run of
+Editing code that no generator reaches (inference, plotting, summaries), a
+comment, or the package version leaves the marker current; editing a reached
+function, a native source, or the fitting test file makes the cache stale until
+`fit` runs. The prior-density ordinate code is reached (the generators draw and
+plot priors), so a prior-density fix re-keys the cache; check the reach of a
+function with `.test_cache_reached_package_objects()` rather than by its
+subsystem. The marker certifies a passing run of
 those inputs: the last block of the fitting file writes it only when no earlier
 block of the file recorded a failed expectation and the fitting file, `src/`,
 and `DESCRIPTION` are unchanged since refitting started, and otherwise removes
