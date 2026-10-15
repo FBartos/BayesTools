@@ -832,6 +832,61 @@ test_that("a quadrature that does not converge is not repeated along the level o
   expect_identical(calls, 2L)
 })
 
+test_that("unresolved ordered display values are reported, not dropped silently", {
+  levels <- c("a", "b", "c", "d")
+  # a lognormal total with a Dirichlet(1, 1, .05) allocation: the quadrature of the third level does not
+  # converge and its structural route resolves 1 of 200 display values (0.3.1.185 stopped with the
+  # quadrature failure); the other levels are complete
+  p <- ordered_plot_test_fixture(prior("lognormal", list(0, 1)), prior("dirichlet", list(c(1, 1, .05))),
+    levels = levels)$prior
+  condition <- NULL
+  displayed <- withCallingHandlers(density(p, n_points = 200L),
+    warning = function(w){ condition <<- w; invokeRestart("muffleWarning") })
+  expect_s3_class(condition, "BayesTools_prior_curve_unavailable")
+  expect_s3_class(condition, "BayesTools_plot_condition")
+  unresolved <- condition$unresolved_values
+  expect_gt(length(unresolved), 100L)
+  expect_identical(condition$levels, names(displayed)[3L])
+  expect_match(conditionMessage(condition), "partially unavailable", fixed = TRUE)
+  expect_match(conditionMessage(condition), "'x_seq'", fixed = TRUE)
+  expect_length(displayed[[2L]]$x, 200L)
+  expect_false(any(unresolved %in% displayed[[3L]]$x))
+  expect_identical(sort(c(displayed[[3L]]$x, unresolved)), displayed[[2L]]$x)
+  expect_true(all(is.finite(displayed[[3L]]$y)))
+  expect_warning(plot(p, n_points = 200L, plot_type = "ggplot"), class = "BayesTools_prior_curve_unavailable")
+  # the default display of 1000 values resolves every value of the level and does not warn
+  default <- NULL
+  expect_no_warning(default <- density(p))
+  expect_length(default[[3L]]$x, 1000L)
+
+  # a display with every value resolved does not warn
+  resolved <- ordered_plot_test_fixture(prior("lognormal", list(0, .5)), prior("dirichlet", list(c(2, 1, .5))),
+    levels = levels)$prior
+  expect_no_warning(density(resolved, n_points = 200L))
+})
+
+test_that("unresolved values of a mixed-measure ordered level are reported", {
+  route_density <- .prior_density_route_density
+  # a spike-and-slab total has atoms, so its levels take the mixed-measure display
+  p <- ordered_plot_test_fixture(prior_spike_and_slab(prior("gamma", list(2, 1)), prior("point", list(.5))),
+    prior("dirichlet", list(c(2, 2, .5))))$prior
+  x <- seq(.2, 4, length.out = 20)
+  testthat::local_mocked_bindings(
+    .prior_density_route_density = function(route, x, ...){
+      out <- route_density(route, x, ...)
+      out[x > 3] <- NA_real_
+      out
+    })
+  condition <- NULL
+  displayed <- withCallingHandlers(density(p, x_seq = x, n_points = 20L),
+    warning = function(w){ condition <<- w; invokeRestart("muffleWarning") })
+  expect_s3_class(condition, "BayesTools_prior_curve_unavailable")
+  # the total (last level) is the one with a structural route here
+  expect_identical(condition$levels, names(displayed)[4L])
+  expect_identical(condition$unresolved_values, x[x > 3])
+  expect_identical(displayed[[4L]]$continuous$x, x[x <= 3])
+})
+
 test_that("ordered mixed-measure plots honour ylim2 and ylab2 and store the probability mapping", {
 
   allocation <- prior("dirichlet", list(c(2, 2)))

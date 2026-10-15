@@ -107,9 +107,14 @@ trigger that warning. Direct `plot.prior()`, `lines.prior()` and `geom_prior()`
 filter nonfinite plotting ordinates without that numerical-unavailability
 warning; this covers ordered levels, simple priors, simplex marginals and
 individual omegas, and the display y range is `c(0, max(finite y))`
-(`density()` and its `y_range` are unchanged). A direct ordered curve without
-any finite ordinate gives a classed error with the remedy `x_seq`; any other
-direct continuous curve gives the same class with the remedy `xlim`.
+(`density()` and its `y_range` are unchanged). A display value of an ordered
+level whose structural height is unresolved (NA inside the support) is not such
+an ordinate: `density()` leaves it out of the level and warns once with
+`BayesTools_prior_curve_unavailable` (fields `unresolved_values`,
+`structural_values`, `levels`), and `plot()` passes the warning on. A direct
+ordered curve without any finite ordinate gives a classed error with the remedy
+`x_seq`; any other direct continuous curve gives the same class with the remedy
+`xlim`.
 Direct prior selectors retain original level numbering; explicit selectors
 can select the reference. `show_figures` of ordered and simplex plots holds
 non-zero indices of one sign within the number of figures (validated before any

@@ -133,7 +133,13 @@ positive and give zero); the display values it does not accept take the
 structural route of the level (its total times a Beta share), built without
 a numerical grid. A quadrature that does not converge is not repeated for the
 rest of the level. Small second Beta shapes remain a numerical risk of the
-quadrature.
+quadrature. A display value whose density neither the quadrature nor the route
+resolves (an \code{NA} height inside the support) is left out of the level and
+reported by a warning of class
+\code{BayesTools_prior_curve_unavailable} with the fields
+\code{unresolved_values}, \code{structural_values} (the limits at support
+ends without a structural classification, which are not warned about) and
+\code{levels}.
 }
 \seealso{
 \code{\link[=prior]{prior()}}

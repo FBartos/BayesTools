@@ -97,7 +97,13 @@
 #' structural route of the level (its total times a Beta share), built without
 #' a numerical grid. A quadrature that does not converge is not repeated for the
 #' rest of the level. Small second Beta shapes remain a numerical risk of the
-#' quadrature.
+#' quadrature. A display value whose density neither the quadrature nor the route
+#' resolves (an \code{NA} height inside the support) is left out of the level and
+#' reported by a warning of class
+#' \code{BayesTools_prior_curve_unavailable} with the fields
+#' \code{unresolved_values}, \code{structural_values} (the limits at support
+#' ends without a structural classification, which are not warned about) and
+#' \code{levels}.
 #'
 #' @importFrom stats density
 #' @seealso [prior()]
@@ -530,6 +536,8 @@ density.prior <- function(x,
 
   densities <- vector("list", nrow(weights))
   names(densities) <- component_names
+  unresolved <- list()
+  retained <- logical()
   for(i in seq_len(nrow(weights))){
     # A level with a structural route (e.g. a spike-and-slab total times a
     # Beta allocation share) is evaluated on that route at the display
@@ -580,6 +588,8 @@ density.prior <- function(x,
       }
       values
     }
+    unresolved[[component_names[[i]]]] <- attr(dist, "ordered_unresolved", exact = TRUE)
+    retained[[component_names[[i]]]] <- !is.null(dist$density) && length(dist$density$x) > 0L
     densities[[i]] <- .density.prior.ordered_mixed_component(
       dist = dist,
       prior = x,
@@ -592,6 +602,7 @@ density.prior <- function(x,
       transformation_arguments = transformation_arguments
     )
   }
+  .density.prior.ordered_warn_unresolved(unresolved, retained)
 
   attr(densities, "x_range") <- range(unlist(lapply(
     densities,
@@ -652,6 +663,7 @@ density.prior <- function(x,
 
   x <- x_seq
   y <- .prior_density_route_density(route, x)
+  unresolved <- is.na(y)
   if(!is.null(transformation)){
     x <- .density.prior_transformation_x(x_seq, transformation, transformation_arguments)
     y <- .density.prior_transformation_y(x, y, transformation, transformation_arguments)
@@ -663,6 +675,9 @@ density.prior <- function(x,
   }
   # a genuine infinite height (a singular support boundary) is kept on request
   keep <- is.finite(x) & (is.finite(y) | (keep_infinite & !is.na(y) & y == Inf))
+  # a display value whose height the route does not resolve (NA) leaves the
+  # curve and is reported by the caller, never dropped silently
+  unresolved <- .density.prior.ordered_unresolved_values(route, x_seq[unresolved & is.finite(x)])
   x <- x[keep]
   y <- y[keep]
   display_order <- order(x)
@@ -677,7 +692,69 @@ density.prior <- function(x,
     captured_continuous_shape_integral = .density.prior.ordered_curve_integral(x[finite], y[finite]),
     route = route$type
   )
+  attr(dist, "ordered_unresolved") <- unresolved
   dist
+}
+
+# The display values 'values' (on the source scale) at which the structural
+# height of a level is unresolved (NA). A value whose ordinate has no
+# structural classification (the density limit at a support end) is kept apart
+# from the numerical evaluations that were unresolved, as
+# .prior_linear_density_to_plot_data() does; only the latter are warned about.
+# Without a route no value can be classified.
+.density.prior.ordered_unresolved_values <- function(route, values){
+
+  values <- unique(values[is.finite(values)])
+  structural <- if(length(values) == 0L || is.null(route)){
+    logical(length(values))
+  }else{
+    vapply(values, function(value){
+      identical(
+        tryCatch(.prior_density_route_ordinate(route, value)$behavior,
+                 error = function(e) NA_character_),
+        "unknown"
+      )
+    }, logical(1))
+  }
+  list(unresolved = values[!structural], structural = values[structural])
+}
+
+# Warning of the display values that the structural route of an ordered level
+# could not resolve ('unresolved': the lists of
+# .density.prior.ordered_unresolved_values() of the levels, named by level;
+# 'retained': whether each level keeps any continuous value). The values are
+# not returned.
+.density.prior.ordered_warn_unresolved <- function(unresolved, retained){
+
+  unresolved <- Filter(function(level) length(level$unresolved) > 0L, unresolved)
+  if(length(unresolved) == 0L){
+    return(invisible(NULL))
+  }
+  values <- unique(unlist(lapply(unresolved, function(level) level$unresolved), use.names = FALSE))
+  structural <- unique(unlist(lapply(unresolved, function(level) level$structural), use.names = FALSE))
+  levels <- names(unresolved)
+  partial <- any(retained[levels])
+  warning(structure(
+    class = c("BayesTools_prior_curve_unavailable", "BayesTools_plot_condition",
+              "warning", "condition"),
+    list(
+      message = paste0(
+        "The ordered prior density curve is ",
+        if(partial) "partially unavailable" else "unavailable",
+        ": the density of ", paste0("'", levels, "'", collapse = ", "),
+        " is unresolved at ", length(values), " display value",
+        if(length(values) == 1L) "" else "s", " on the source scale (",
+        paste(format(utils::head(values, 3L), digits = 4), collapse = ", "),
+        if(length(values) > 3L) ", ..." else "", ") and ",
+        if(length(values) == 1L) "this value is" else "these values are",
+        " not returned. Supply an 'x_seq' of values at which the density is resolved."
+      ),
+      call = NULL,
+      unresolved_values = values,
+      structural_values = if(length(structural) > 0L) structural,
+      levels = levels
+    )
+  ))
 }
 
 .density.prior.ordered_regrid_mixed <- function(dist, x_seq){
@@ -899,6 +976,11 @@ density.prior <- function(x,
     }
   }
 
+  .density.prior.ordered_warn_unresolved(
+    Filter(Negate(is.null), lapply(densities, attr, which = "unresolved", exact = TRUE)),
+    vapply(densities, function(level) length(level$x) > 0L, logical(1))
+  )
+
   for(i in seq_along(densities)){
     if(inherits(densities[[i]], "density.prior.point")){
       attr(densities[[i]], "x_range") <- range(c(attr(densities[[i]], "x_range"), densities[[i]]$x), na.rm = TRUE)
@@ -972,6 +1054,7 @@ density.prior <- function(x,
 .density.prior.ordered_route_level <- function(level, ordered_prior, parameter, weights, x_seq, n_points){
 
   open <- which(is.na(level$y))
+  route <- NULL
   if(length(open) > 0L){
     route <- .prior_density_route_linear(
       stats::setNames(list(ordered_prior), parameter),
@@ -982,11 +1065,16 @@ density.prior <- function(x,
     if(!identical(route$type, "unknown") && !.prior_density_route_has_leaf(route, "unknown")){
       level$y[open] <- .prior_density_route_density(route, x_seq[open])
       attr(level, "route") <- route$type
+    }else{
+      route <- NULL
     }
   }
-  keep <- !is.na(level$y)
-  level$x <- level$x[keep]
-  level$y <- level$y[keep]
+  missing_values <- is.na(level$y)
+  if(any(missing_values)){
+    attr(level, "unresolved") <- .density.prior.ordered_unresolved_values(route, level$x[missing_values])
+  }
+  level$x <- level$x[!missing_values]
+  level$y <- level$y[!missing_values]
   attr(level, "y_range") <- c(0, max(c(0, level$y)))
   level
 }

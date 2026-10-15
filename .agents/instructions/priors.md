@@ -177,7 +177,12 @@ the mixed-measure display builds it. A quadrature that does not converge is not
 repeated for the rest of the level, since each failure spends the whole
 subdivision budget. Small second Beta shapes can still lose rounded-share tails
 of the quadrature. The guarded repair does not certify tiny or nonrepresentable
-ranges.
+ranges. A display value that neither the quadrature nor the route resolves (an
+NA height inside the support) is left out of its level and reported by one
+`BayesTools_prior_curve_unavailable` warning of `density()` (fields
+`unresolved_values` and `levels`); the limit at a support end without structural
+classification goes to `structural_values` and does not warn. The mixed-measure
+display reports its unresolved values the same way.
 
 `selection_model()` captures fixed source choices and a deferred publication
 column reference. Keep `group = NULL` immediately after `weight_rule`; consumers
