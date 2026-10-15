@@ -5640,6 +5640,64 @@ test_that("a later ordinate source keeps its other null values with their class 
   expect_identical(BayesTools:::.posterior_ordinate_from_sources(list(later), "theta"), later)
 })
 
+test_that("marginal_posterior keeps the density of a parameter over that of the list and merges ordinates by null value", {
+
+  grid <- seq(-6, 6, length.out = 401)
+  make_density <- function(mean, method) posterior_density_attribute(
+    grid, dnorm(grid, mean, 1), method = method, density_method = "precomputed")
+  make_ordinate <- function(value, ordinate, method) posterior_ordinate_attribute(
+    value, ordinate, method, "precomputed")
+  entries <- function(ordinate) vapply(BayesTools:::.posterior_ordinate_entries(ordinate),
+    function(entry) paste0(entry$method, ":", paste(entry$value, collapse = ",")), character(1))
+
+  # a simple parameter: the metadata of the parameter itself, then those of the list
+  set.seed(56)
+  fit <- .mock_mixing_fit_for_marginal(cbind(theta = rnorm(200, .3, 1)),
+                                       list(theta = prior("normal", list(0, 1))))
+  mixed <- as_mixed_posteriors(fit, "theta")
+  posterior_metadata(mixed$theta, "posterior_density") <- make_density(0, "element")
+  posterior_metadata(mixed$theta, "posterior_ordinate") <- make_ordinate(0, .5, "element")
+  posterior_metadata(mixed, "posterior_density") <- list(theta = make_density(1, "list"))
+  posterior_metadata(mixed, "posterior_ordinate") <- list(theta = make_ordinate(c(0, 1), c(.7, .8), "list"))
+  marginal <- marginal_posterior(mixed, "theta", prior_samples = TRUE)
+  expect_identical(posterior_metadata(marginal, "posterior_density")$method, "element")
+  # the element's ordinate keeps its null value; the list adds the other one
+  expect_identical(entries(posterior_metadata(marginal, "posterior_ordinate")), c("element:0", "list:1"))
+  expect_equal(as.numeric(Savage_Dickey_BF(marginal, 0, silent = TRUE, density_method = "precomputed")),
+               dnorm(0) / .5, tolerance = 1e-8)
+  expect_equal(as.numeric(Savage_Dickey_BF(marginal, 1, silent = TRUE, density_method = "precomputed")),
+               dnorm(1) / .8, tolerance = 1e-8)
+
+  # the list supplies what the parameter does not carry
+  only_list <- as_mixed_posteriors(fit, "theta")
+  posterior_metadata(only_list$theta, "posterior_density") <- NULL
+  posterior_metadata(only_list$theta, "posterior_ordinate") <- NULL
+  posterior_metadata(only_list, "posterior_density") <- list(theta = make_density(1, "list"))
+  posterior_metadata(only_list, "posterior_ordinate") <- list(theta = make_ordinate(c(0, 1), c(.7, .8), "list"))
+  marginal <- marginal_posterior(only_list, "theta", prior_samples = TRUE)
+  expect_identical(posterior_metadata(marginal, "posterior_density")$method, "list")
+  expect_identical(entries(posterior_metadata(marginal, "posterior_ordinate")), "list:0,1")
+
+  # a factor level, without a formula
+  compiled <- JAGS_formula(~ fac, "mu", data.frame(fac = factor(c("A", "B", "C"))),
+    list(intercept = prior("normal", list(0, 1)),
+         fac = prior_factor("normal", list(0, 1), contrast = "treatment")))
+  fit <- .mock_mixing_fit_for_marginal(
+    cbind(mu_intercept = seq(-1, 1, length.out = 101),
+          "mu_fac[1]" = seq(-2, 2, length.out = 101),
+          "mu_fac[2]" = seq(-1.5, 1.5, length.out = 101)),
+    compiled$prior_list)
+  mixed <- as_mixed_posteriors(fit, c("mu_intercept", "mu_fac"))
+  posterior_metadata(mixed$mu_fac, "posterior_density") <- list(B = make_density(0, "element"))
+  posterior_metadata(mixed$mu_fac, "posterior_ordinate") <- list(B = make_ordinate(0, .5, "element"))
+  posterior_metadata(mixed, "posterior_density") <- list(mu_fac = list(B = make_density(1, "list")))
+  posterior_metadata(mixed, "posterior_ordinate") <- list(mu_fac = list(B = make_ordinate(c(0, 1), c(.7, .8), "list")))
+  levels <- marginal_posterior(mixed, "mu_fac", use_formula = FALSE, prior_samples = TRUE)
+  expect_identical(posterior_metadata(levels[["B"]], "posterior_density")$method, "element")
+  expect_identical(entries(posterior_metadata(levels[["B"]], "posterior_ordinate")), c("element:0", "list:1"))
+  expect_null(posterior_metadata(levels[["C"]], "posterior_density"))
+})
+
 test_that("the kernel posterior ordinate refuses degenerate continuous draws", {
 
   prior_density <- BayesTools:::.prior_linear_combination_density(

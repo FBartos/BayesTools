@@ -800,8 +800,9 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
     if(inherits(samples[[parameter]], "mixed_posteriors.factor")){
 
       parameter_samples <- samples[[parameter]]
-      posterior_density_sources <- .posterior_density_sources(samples, parameter_samples)
-      posterior_ordinate_sources <- .posterior_ordinate_sources(samples, parameter_samples)
+      # the parameter's own metadata take precedence over those of the list
+      posterior_density_sources <- .posterior_density_sources(parameter_samples, samples)
+      posterior_ordinate_sources <- .posterior_ordinate_sources(parameter_samples, samples)
       posterior_density_conditional <- .bt_meta_condition(parameter_samples, "conditional")
       posterior_density_conditional_rule <- .bt_meta_condition(parameter_samples, "conditional_rule")
       posterior_density_condition_key <- .bt_meta_condition(parameter_samples, "condition_key")
@@ -1057,6 +1058,8 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
         condition_key    = .bt_meta_condition(samples[[parameter]], "condition_key"),
         allow_unlabeled  = TRUE
       )
+      # the metadata of the list only add what the parameter's own metadata do not
+      # carry: an own density is kept, ordinates are added at the other null values
       marginal_posterior_samples <- .posterior_density_attach(
         samples          = marginal_posterior_samples,
         sources          = .posterior_density_sources(samples),
@@ -1064,7 +1067,8 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
         conditional      = .bt_meta_condition(samples[[parameter]], "conditional"),
         conditional_rule = .bt_meta_condition(samples[[parameter]], "conditional_rule"),
         condition_key    = .bt_meta_condition(samples[[parameter]], "condition_key"),
-        allow_unlabeled  = FALSE
+        allow_unlabeled  = FALSE,
+        keep_existing    = TRUE
       )
       marginal_posterior_samples <- .posterior_ordinate_attach(
         samples          = marginal_posterior_samples,
@@ -1073,7 +1077,8 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
         conditional      = .bt_meta_condition(samples[[parameter]], "conditional"),
         conditional_rule = .bt_meta_condition(samples[[parameter]], "conditional_rule"),
         condition_key    = .bt_meta_condition(samples[[parameter]], "condition_key"),
-        allow_unlabeled  = FALSE
+        allow_unlabeled  = FALSE,
+        keep_existing    = TRUE
       )
 
       marginal_posterior_samples <- .posterior_support_set(

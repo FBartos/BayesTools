@@ -887,6 +887,10 @@ unlabeled leaves through the existing named-selection rule. Filter before
 exact-null parsing, keep compatible other-null leaves relevant, and preserve
 the missing-null refusal and existing source precedence. Return only filtered
 leaves through direct, child and source-collection paths, including NULL lookup.
+`marginal_posterior()` gives the metadata of the parameter itself precedence
+over those of the list of mixed posteriors: an own density is never replaced,
+and the list adds only the ordinates at null values the parameter does not
+supply.
 
 The posterior ordinate of a Savage-Dickey ratio (`R/marginal-savage-dickey.R`)
 is a kernel estimate from the continuous draws: the exact Gaussian kernel sum

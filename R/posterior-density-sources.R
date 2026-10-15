@@ -125,8 +125,11 @@
   return(sources)
 }
 
+# 'keep_existing': a density that 'samples' already carries is kept (sources of
+# a lower precedence only fill what the samples do not carry).
 .posterior_density_attach <- function(samples, sources, parameter, conditional = NULL, conditional_rule = "AND",
-                                      condition_key = NULL, allow_unlabeled = FALSE){
+                                      condition_key = NULL, allow_unlabeled = FALSE,
+                                      keep_existing = FALSE){
 
   if(length(sources) == 0L){
     return(samples)
@@ -172,7 +175,7 @@
         condition_key      = condition_key,
         allow_unlabeled    = allow_unlabeled && length(density_aliases) == 1L
       )
-      if(!is.null(density)){
+      if(!is.null(density) && !(keep_existing && !is.null(density_list[[density_name]]))){
         density_list[[density_name]] <- density
       }
     }
@@ -184,6 +187,9 @@
     return(samples)
   }
 
+  if(keep_existing && !is.null(.bt_meta_get(samples, "posterior_density"))){
+    return(samples)
+  }
   density <- .posterior_density_from_sources(
     sources            = sources,
     aliases            = .posterior_density_aliases(parameter, attr(samples, "parameter", exact = TRUE)),
@@ -250,27 +256,7 @@
       ), use.names = FALSE))
       matches <- c(matches, source_matches)
     }
-    matches <- .posterior_ordinate_unique_sources(matches)
-    if(length(matches) == 0L){
-      return(NULL)
-    }
-    if(length(matches) == 1L){
-      return(matches[[1]])
-    }
-
-    # several matched attributes form one multi-ordinate attribute; a matched
-    # multi-ordinate attribute and its matched entries hold the same entries
-    entries <- .posterior_ordinate_unique_sources(unlist(
-      lapply(matches, .posterior_ordinate_entries),
-      recursive = FALSE
-    ))
-    if(length(entries) == 1L){
-      return(entries[[1L]])
-    }
-    return(structure(
-      list(status = "ok", ordinates = entries),
-      class = c("BayesTools_posterior_ordinates", "list")
-    ))
+    return(.posterior_ordinate_combine(matches))
   }
 
   for(source in sources){
@@ -291,6 +277,33 @@
   }
 
   return(NULL)
+}
+
+# The matched ordinate attributes as one attribute: NULL for none, the attribute
+# itself for one, otherwise one multi-ordinate attribute (a matched
+# multi-ordinate attribute and its matched entries hold the same entries).
+.posterior_ordinate_combine <- function(matches){
+
+  matches <- .posterior_ordinate_unique_sources(matches)
+  if(length(matches) == 0L){
+    return(NULL)
+  }
+  if(length(matches) == 1L){
+    return(matches[[1]])
+  }
+
+  entries <- .posterior_ordinate_unique_sources(unlist(
+    lapply(matches, .posterior_ordinate_entries),
+    recursive = FALSE
+  ))
+  if(length(entries) == 1L){
+    return(entries[[1L]])
+  }
+
+  structure(
+    list(status = "ok", ordinates = entries),
+    class = c("BayesTools_posterior_ordinates", "list")
+  )
 }
 
 .posterior_ordinate_collect_from_source <- function(source, aliases, conditional, conditional_rule,
@@ -476,8 +489,11 @@
   return(NULL)
 }
 
+# 'keep_existing': the ordinates that 'samples' already carry take precedence at
+# their null values; the sources only add the other null values.
 .posterior_ordinate_attach <- function(samples, sources, parameter, conditional = NULL, conditional_rule = "AND",
-                                       condition_key = NULL, allow_unlabeled = FALSE){
+                                       condition_key = NULL, allow_unlabeled = FALSE,
+                                       keep_existing = FALSE){
 
   if(length(sources) == 0L){
     return(samples)
@@ -524,7 +540,11 @@
         allow_unlabeled    = allow_unlabeled && length(ordinate_aliases) == 1L
       )
       if(!is.null(ordinate)){
-        ordinate_list[[ordinate_name]] <- ordinate
+        ordinate_list[[ordinate_name]] <- if(keep_existing){
+          .posterior_ordinate_merge(ordinate_list[[ordinate_name]], ordinate)
+        }else{
+          ordinate
+        }
       }
     }
 
@@ -544,8 +564,30 @@
     allow_unlabeled    = allow_unlabeled
   )
   if(!is.null(ordinate)){
+    if(keep_existing){
+      ordinate <- .posterior_ordinate_merge(.bt_meta_get(samples, "posterior_ordinate"), ordinate)
+    }
     samples <- .bt_meta_set(samples, "posterior_ordinate", ordinate)
   }
 
   return(samples)
+}
+
+# The ordinates of 'first' with the ordinates of 'second' at the null values
+# that 'first' does not supply (the source precedence of
+# .posterior_ordinate_from_sources(), applied per null value).
+.posterior_ordinate_merge <- function(first, second){
+
+  if(is.null(first)){
+    return(second)
+  }
+  if(is.null(second) || !.posterior_ordinate_is_attribute(first)){
+    return(first)
+  }
+  supplied <- .posterior_ordinate_value_candidates(first)
+
+  .posterior_ordinate_combine(c(
+    list(first),
+    .posterior_ordinate_without_values(list(second), supplied)
+  ))
 }
