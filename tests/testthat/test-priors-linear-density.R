@@ -3358,6 +3358,29 @@ test_that("deterministic point locations are added once, and lost declarations a
   expect_equal(prior_density_ordinate(doubled, 1)$log_density, stats::dnorm(1, 0, 2, log = TRUE), tolerance = 1e-10)
 })
 
+test_that("the convolution route adds the deterministic point locations once (F320)", {
+
+  # 1e16 + 1 - 1e16 is 1 in one extended-precision sum and 0 or 1 pairwise
+  # (by the order of the terms), here on the convolution route of two gamma terms
+  skip_if(sum(c(1e16, 1, -1e16)) != 1, "sum() has no extended precision on this platform")
+  points <- list(a = prior("point", list(1e16)), b = prior("point", list(1)), c = prior("point", list(-1e16)))
+  gammas <- list(g = prior("gamma", list(2, 1)), h = prior("gamma", list(3, 1)))
+  orders <- list(c("a", "b", "c"), c("a", "c", "b"), c("b", "a", "c"), c("b", "c", "a"), c("c", "a", "b"), c("c", "b", "a"))
+  for(order in orders){
+    priors <- c(points[order], gammas)
+    weights <- stats::setNames(rep(1, 5L), names(priors))
+    transforms <- stats::setNames(rep(NA_character_, 5L), names(priors))
+    route <- .prior_density_route_linear(priors, weights, transforms, 128)
+    expect_identical(route$type, "convolution")
+    expect_identical(route$spec$offset, 1)
+    # the sum Gamma(2) + Gamma(3) + 1 at 2 is the Gamma(5) density at 1; the
+    # ordinate is accepted at a relative error of 1e-4
+    ordinate <- prior_density_ordinate(.prior_linear_combination_density(priors, weights, n_grid = 128), 2)
+    expect_true(ordinate$exact)
+    expect_equal(exp(ordinate$log_density), stats::dgamma(1, 5, 1), tolerance = 1e-4)
+  }
+})
+
 test_that("the Cauchy merge does not overwrite a source named like the merged term", {
 
   # C(0, 1) + C(0, 2) + N(5, 1) with the normal source named ".cauchy_sum": the

@@ -739,7 +739,7 @@
   if(is.null(groups)){
     return(NULL)
   }
-  offset <- 0
+  locations <- numeric()
   terms <- list()
   for(group in groups){
     point <- .prior_density_ordinate_point_group_location(group, source_transforms)
@@ -747,7 +747,7 @@
       if(is.na(point)){
         return(NULL)
       }
-      offset <- offset + point
+      locations <- c(locations, point)
       next
     }
     if(!.prior_density_simple_continuous(group$prior) ||
@@ -778,7 +778,10 @@
   }
   list(
     type   = "convolution",
-    spec   = .prior_convolution_spec(offset, terms, sources = names(groups)),
+    # the point locations are added in one sum() (extended precision where R
+    # has it), as on the other routes: the sum of 1e16, 1 and -1e16 does not
+    # depend on their order
+    spec   = .prior_convolution_spec(sum(locations), terms, sources = names(groups)),
     n_grid = n_grid
   )
 }
