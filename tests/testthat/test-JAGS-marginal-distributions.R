@@ -286,6 +286,29 @@ test_that("posterior density method helpers validate density sources", {
     "The 'method' argument must have length '1'.", fixed = TRUE)
 })
 
+test_that("posterior density method helpers match method names exactly", {
+
+  # the match is case-sensitive and needs the whole name, in both helpers
+  # (a partial or differently cased name is neither a method nor "precomputed")
+  for(method in c("K", "KD", "pre", "precomp", "kde", "Precomputed", "PRECOMPUTED", "KDE ", " KDE")){
+    expect_error(posterior_density_method_match(method, name = "density_method"),
+                 "The 'density_method' argument must be one of 'KDE', 'precomputed'.", fixed = TRUE)
+    expect_error(posterior_density_method_match(method, allowed = c("KDE", "normal", "precomputed")),
+                 "The 'method' argument must be one of 'KDE', 'normal', 'precomputed'.", fixed = TRUE)
+  }
+  expect_false(posterior_density_method_uses_precomputed("Precomputed"))
+  expect_false(posterior_density_method_uses_precomputed("PRECOMPUTED"))
+  expect_false(posterior_density_method_uses_precomputed("pre"))
+  expect_true(posterior_density_method_uses_precomputed("precomputed"))
+
+  # the full vector of allowed methods (an unspecified argument) selects the first
+  expect_identical(posterior_density_method_match(c("KDE", "precomputed")), "KDE")
+  expect_identical(posterior_density_method_match(c("KDE", "normal", "precomputed"),
+                                                   allowed = c("KDE", "normal", "precomputed")), "KDE")
+  expect_error(posterior_density_method_match(c("precomputed", "KDE")), "must be one of", fixed = TRUE)
+  expect_identical(posterior_density_method_match("normal", allowed = c("KDE", "normal", "precomputed")), "normal")
+})
+
 test_that("Savage_Dickey_BF uses prior density over normal posterior height", {
 
   prior_density <- BayesTools:::.prior_linear_combination_density(
@@ -3415,6 +3438,11 @@ test_that("Savage-Dickey and marginal inference name the public density_method a
   for(bad in list("bad", 1, c("KDE", "precomputed", "extra"))){
     expect_error(Savage_Dickey_BF(marginal, density_method = bad),
                  "'density_method'", fixed = TRUE)
+  }
+  # the method names match exactly: a partial or differently cased name is refused
+  for(bad in c("pre", "K", "kde", "Precomputed")){
+    expect_error(Savage_Dickey_BF(marginal, density_method = bad),
+                 "The 'density_method' argument must be one of 'KDE', 'precomputed'.", fixed = TRUE)
   }
   expect_error(Savage_Dickey_BF(marginal, density_method = "bad"),
                "The 'density_method' argument must be one of 'KDE', 'precomputed'.", fixed = TRUE)

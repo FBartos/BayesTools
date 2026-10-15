@@ -6,12 +6,14 @@
 #' with their own estimators (e.g., qCMDE or IWMDE) map their method names to
 #' \code{"precomputed"} themselves.
 #'
-#' @param method density method.
+#' @param method density method. Method names match exactly: the match is
+#' case-sensitive and the whole name is required (no partial matching).
 #' @param allowed character vector of allowed density methods.
 #' @param name argument name used in error messages.
 #'
 #' @return \code{posterior_density_method_match()} returns a scalar character
-#' value. \code{posterior_density_method_uses_precomputed()} returns a scalar
+#' value; the full default vector \code{allowed} selects its first method.
+#' \code{posterior_density_method_uses_precomputed()} returns a scalar
 #' logical value.
 #'
 #' @export
@@ -23,8 +25,11 @@ posterior_density_method_match <- function(method,
   check_char(method, name, check_length = 0, allow_NA = FALSE)
   check_char(allowed, "allowed", check_length = 0, allow_NA = FALSE)
 
-  method <- tryCatch(match.arg(method, allowed), error = function(e) NULL)
-  if(is.null(method)){
+  # the unspecified argument (the full vector of allowed methods) selects the first
+  if(identical(method, allowed)){
+    method <- allowed[1L]
+  }
+  if(length(method) != 1L || !method %in% allowed){
     stop(
       "The '", name, "' argument must be one of '",
       paste(allowed, collapse = "', '"),
@@ -42,7 +47,7 @@ posterior_density_method_uses_precomputed <- function(method){
 
   check_char(method, "method", check_length = 1, allow_NA = FALSE)
 
-  return(identical(tolower(method), "precomputed"))
+  return(identical(method, "precomputed"))
 }
 
 .posterior_density_method <- function(density_method){

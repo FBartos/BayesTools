@@ -14,7 +14,8 @@ posterior_density_method_match(
 posterior_density_method_uses_precomputed(method)
 }
 \arguments{
-\item{method}{density method.}
+\item{method}{density method. Method names match exactly: the match is
+case-sensitive and the whole name is required (no partial matching).}
 
 \item{allowed}{character vector of allowed density methods.}
 
@@ -22,7 +23,8 @@ posterior_density_method_uses_precomputed(method)
 }
 \value{
 \code{posterior_density_method_match()} returns a scalar character
-value. \code{posterior_density_method_uses_precomputed()} returns a scalar
+value; the full default vector \code{allowed} selects its first method.
+\code{posterior_density_method_uses_precomputed()} returns a scalar
 logical value.
 }
 \description{
