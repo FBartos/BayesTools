@@ -6,6 +6,13 @@
 #' for factors, the mean of for the deviations from intercept
 #' is returned.)
 #'
+#' @details The mean of a truncated non-normal prior is the integral of its
+#' truncated quantile function over the probability interval (0, 1). It is
+#' refused with \code{BayesTools_numerical_unavailable} when the quantile
+#' function is unavailable or the integral's estimated error exceeds 1e-6 of the
+#' interquartile range. Untruncated priors use closed forms and truncated
+#' normal priors their closed form.
+#'
 #' @param x a prior
 #' @param ... unused
 #'
@@ -86,24 +93,7 @@ mean.prior   <- function(x, ...){
         return(.prior_normal_truncated_moments(x, "mean"))
       }
 
-      prior_lpdf <- if(x$distribution %in% c("moment", "invmoment")) .prior_simple_lpdf_evaluator(x, purpose = "natural_integral") else NULL
-      integrand <- if(is.null(prior_lpdf)){
-        function(x, prior) x * pdf(prior, x)
-      }else{
-        function(x, prior){
-          if(any(!is.finite(x))){
-            .prior_numerical_signal("mean integration kernel", prior$distribution, "finite",
-              which(!is.finite(x)), "The required kernel lost representable range", error = TRUE)
-          }
-          x * exp(prior_lpdf(x))
-        }
-      }
-      m <- stats::integrate(
-        f       = integrand,
-        lower   = x$truncation[["lower"]],
-        upper   = x$truncation[["upper"]],
-        prior   = x
-      )$value
+      m <- .prior_truncated_quantile_moments(x, "mean")
 
     }
 
@@ -208,7 +198,12 @@ var.default <- function(x, ...){
 #' prior standard deviations from the mean. The same applies to \code{sd()}
 #' and to spike-and-slab priors with such a slab. The variance can then be
 #' estimated from \code{rng()} draws of the prior, which sample the truncated
-#' distribution exactly, subject to Monte Carlo error.
+#' distribution exactly, subject to Monte Carlo error. The variance of any
+#' other truncated prior is the integral of the squared deviation of its
+#' truncated quantile function from the mean over the probability interval
+#' (0, 1), non-negative by construction; it is refused with
+#' \code{BayesTools_numerical_unavailable} when the quantile function is
+#' unavailable or the integral's estimated error exceeds 1e-6 of the variance.
 #'
 #' @param x a prior
 #' @param ... unused arguments
@@ -309,27 +304,7 @@ var.prior   <- function(x, ...){
         return(.prior_normal_truncated_moments(x, "var"))
       }
 
-      prior_lpdf <- if(x$distribution %in% c("moment", "invmoment")) .prior_simple_lpdf_evaluator(x, purpose = "natural_integral") else NULL
-      integrand <- if(is.null(prior_lpdf)){
-        function(x, prior) x^2 * pdf(prior, x)
-      }else{
-        function(x, prior){
-          kernel <- x^2
-          if(any(!is.finite(kernel))){
-            .prior_numerical_signal("variance integration kernel", prior$distribution, "finite",
-              which(!is.finite(kernel)), "The required kernel lost representable range", error = TRUE)
-          }
-          kernel * exp(prior_lpdf(x))
-        }
-      }
-      E2 <- stats::integrate(
-        f       = integrand,
-        lower   = x$truncation[["lower"]],
-        upper   = x$truncation[["upper"]],
-        prior   = x
-      )$value
-
-      var <- E2 - mean(x)^2
+      var <- .prior_truncated_quantile_moments(x, "var")
     }
 
 
@@ -427,6 +402,85 @@ sd.prior     <- function(x, ...){
   sd <- sqrt(var(x))
 
   return(sd)
+}
+
+# Mean and variance of a truncated non-normal simple prior as integrals of its
+# truncated quantile function q over the probability u in (0, 1):
+# mean = int q(u) du and var = int (q(u) - mean)^2 du. Both integrands are of the
+# scale of the prior whatever its location and however small its mass sits in the
+# truncation interval (an integral over the density can miss a density that is
+# concentrated in a small part of a long interval, and the second moment minus
+# the squared mean cancels), and the variance is non-negative by construction.
+# The mean integrates q - q(1/2) (the median), which equals the integral of q
+# and keeps the rounding floor of the integrator at the spread of q rather than
+# at its location. A moment is returned only when the integrator's error
+# estimate is at most 1e-6 of the interquartile range of q (mean) or of the
+# variance (as for the truncated normal); a quantile function that is
+# unavailable at a node, or an integral that does not meet that bound, is
+# refused as numerically unavailable.
+.prior_truncated_quantile_moments <- function(prior, moment = c("mean", "var")){
+
+  moment    <- match.arg(moment)
+  family    <- prior[["distribution"]]
+  operation <- if(identical(moment, "mean")) "truncated mean" else "truncated variance"
+  advice    <- "Estimate the moment from rng() draws of the prior, which sample the truncated distribution exactly"
+  refuse    <- function(reason){
+    .prior_numerical_signal(operation, family, "natural", integer(),
+      paste0(reason, ". ", advice), error = TRUE)
+  }
+  quantile_values <- function(u){
+    q <- withCallingHandlers(
+      quant(prior, u),
+      BayesTools_numerical_condition = function(condition){
+        if(inherits(condition, "warning")) invokeRestart("muffleWarning")
+      }
+    )
+    if(any(!is.finite(q))){
+      refuse("The quantile function is unavailable at supported precision")
+    }
+    q
+  }
+  integrate_quantile <- function(f){
+    result <- tryCatch(
+      stats::integrate(function(u) f(quantile_values(u)), 0, 1,
+        rel.tol = 1e-10, abs.tol = 0, subdivisions = 1000L, stop.on.error = FALSE),
+      error = function(e) e
+    )
+    if(inherits(result, "BayesTools_numerical_condition")){
+      stop(result)
+    }
+    if(inherits(result, "error")){
+      refuse(paste0("The integral of the quantile function failed (", conditionMessage(result), ")"))
+    }
+    if(!is.finite(result$value) || !is.finite(result$abs.error)){
+      refuse("The integral of the quantile function is not finite")
+    }
+    result
+  }
+
+  anchor   <- quantile_values(.5)
+  spread   <- diff(quantile_values(c(.25, .75)))
+  if(!is.finite(spread) || spread <= 0){
+    refuse("The interquartile range of the truncated prior is not resolved in double precision")
+  }
+  centered <- integrate_quantile(function(q) q - anchor)
+  if(centered$abs.error > 1e-6 * spread){
+    refuse(paste0("The integral of the quantile function has an estimated error of ",
+      format(signif(centered$abs.error / spread, 2), trim = TRUE),
+      " times its interquartile range (", centered$message, ")"))
+  }
+  mean_value <- anchor + centered$value
+  if(identical(moment, "mean")){
+    return(mean_value)
+  }
+
+  squared <- integrate_quantile(function(q) (q - mean_value)^2)
+  if(squared$value <= 0 || squared$abs.error > 1e-6 * squared$value){
+    refuse(paste0("The integral of the squared deviation of the quantile function has an estimated error of ",
+      format(signif(squared$abs.error / abs(squared$value), 2), trim = TRUE),
+      " times its value (", squared$message, ")"))
+  }
+  squared$value
 }
 
 .prior_normal_truncated_moments <- function(prior, moment = c("mean", "var")){

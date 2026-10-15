@@ -97,8 +97,8 @@ support point. This differs from uncertified magnitude/location rounding, which
 remains unavailable. JAGS sampling states and deterministic initialization
 additionally require a finite usable normalized log density and refuse that location;
 general finite-required R collectors do not impose this state requirement.
-Truncated nonlocal mean and variance quadrature and natural density-integral
-leaves construct one cached log-density evaluator in natural-integral mode.
+Truncated nonlocal natural density-integral leaves construct one cached
+log-density evaluator in natural-integral mode.
 Only native-family interior range warnings whose recorded results are -Inf
 can supply certified natural tail zero after finite normalization, kernel and
 Jacobian checks; unknown range causes, NaN/+Inf and unavailable arithmetic
@@ -106,8 +106,16 @@ remain strict. The default finite-required mode promotes interior range and
 unavailable warnings to classed errors with original fields and parent payload.
 Public direct/truncated density methods retain both independent vector warning
 subsets and original indices, excluding structural support/truncation zeros.
-Primitive FAR density ordinates remain regular but inexact. The existing
-moment definitions, integral limits and quadrature settings remain in force.
+Primitive FAR density ordinates remain regular but inexact. The mean and
+variance of a truncated non-normal prior integrate its truncated quantile
+function q over u in (0, 1), mean = int q(u) du (anchored at the median, which
+keeps the integrator's rounding floor at the spread of q) and
+var = int (q(u) - mean)^2 du, so they are scale-free, need no subtraction of raw
+moments and give a non-negative variance. They are refused with
+`BayesTools_numerical_unavailable` when the quantile function is unavailable at
+a node or the integrator's error estimate exceeds 1e-6 of the interquartile
+range (mean) or of the variance (as for the truncated normal). Untruncated
+families keep their closed forms and truncated normals their closed-form route.
 Ordinary Gamma priors retain constructor acceptance for every existing shape.
 For a numeric subnormal shape, normalization of a truncation that cuts positive
 support is unavailable: base R's finite log tails can be wrong in this backend

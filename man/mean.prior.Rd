@@ -20,6 +20,14 @@ distribution. (In case of orthonormal prior distributions
 for factors, the mean of for the deviations from intercept
 is returned.)
 }
+\details{
+The mean of a truncated non-normal prior is the integral of its
+truncated quantile function over the probability interval (0, 1). It is
+refused with \code{BayesTools_numerical_unavailable} when the quantile
+function is unavailable or the integral's estimated error exceeds 1e-6 of the
+interquartile range. Untruncated priors use closed forms and truncated
+normal priors their closed form.
+}
 \examples{
 # create a standard normal prior distribution
 p1 <- prior(distribution = "normal", parameters = list(mean = 1, sd = 1))

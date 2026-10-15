@@ -366,12 +366,19 @@ test_that("nonlocal moment integrals retain values without raw PDF tail warnings
   priors <- list(
     prior("moment", list(mode = .5), list(lower = -Inf, upper = 0)),
     prior("invmoment", list(mode = .5, df = 6), list(lower = -Inf, upper = 0)))
-  # Genuine installed pre-correction values, with the same integration settings.
-  expected <- list(c(-.564189583547719, .238096858059049),
-                   c(-.621742035370958, .225691917118892))
+  # Closed forms of the half-line moment (order 1) and inverse-moment priors truncated
+  # at their location 0 from above (the quantile-space integrals agree to about 1e-12;
+  # the density quadrature that gave the earlier pinned values was accurate to 1e-11).
+  moment_tau <- .5^2 / 2
+  moment_mean <- sqrt(2 * moment_tau) * gamma(2) / gamma(1.5)
+  inverse_tau <- .5^2 * 7 / 2
+  inverse_mean <- sqrt(inverse_tau) * gamma(5 / 2) / gamma(3)
+  expected <- list(
+    c(-moment_mean, sqrt(moment_tau * 3 - moment_mean^2)),
+    c(-inverse_mean, sqrt(inverse_tau * gamma(2) / gamma(3) - inverse_mean^2)))
   for(i in seq_along(priors)){
     expect_warning(values <- c(mean(priors[[i]]), sd(priors[[i]])), NA)
-    expect_equal(values, expected[[i]], tolerance = 1e-12)
+    expect_equal(values, expected[[i]], tolerance = 1e-11)
   }
   unresolved <- prior("invmoment", list(tau = 1, order = 1000,
     df = .Machine$double.xmin * .Machine$double.eps), list(lower = -1, upper = 1))
@@ -528,6 +535,82 @@ test_that("closed-form variances and degenerate spike-and-slab moments are stabl
   expect_equal(var(always), 1, tolerance = 1e-12)
   partial <- prior_spike_and_slab(prior("normal", list(2, 3)), prior_inclusion = prior("spike", list(.5)))
   expect_equal(var(partial), .5 * (9 + 4) - 1, tolerance = 1e-14)
+})
+
+test_that("truncated non-normal moments integrate in quantile space", {
+
+  relative <- function(value, reference, tolerance = 1e-6){
+    expect_gt(value, 0)
+    expect_lt(abs(value / reference - 1), tolerance)
+  }
+  # half-line moment and inverse-moment closed forms (truncation at the location 0), r = order
+  moment_reference <- function(mode, r = 1){
+    tau <- mode^2 / (2 * r)
+    m1 <- sqrt(2 * tau) * gamma(r + 1) / gamma(r + .5)
+    c(m1, tau * (2 * r + 1) - m1^2)
+  }
+  inverse_reference <- function(mode, df, r = 1){
+    tau <- mode^2 * ((df + 1) / (2 * r))^(1 / r)
+    m1 <- sqrt(tau) * gamma((df - 1) / (2 * r)) / gamma(df / (2 * r))
+    c(m1, tau * gamma((df - 2) / (2 * r)) / gamma(df / (2 * r)) - m1^2)
+  }
+  cases <- list(
+    list(prior("lognormal", list(10, .5), truncation = list(lower = 1)),
+         c(exp(10 + .125), (exp(.25) - 1) * exp(20 + .25))),
+    list(prior("moment", list(mode = 1e-4), truncation = list(lower = 0)), moment_reference(1e-4)),
+    list(prior("moment", list(mode = 3e-3), truncation = list(lower = 0)), moment_reference(3e-3)),
+    list(prior("invmoment", list(mode = 1e5, df = 3), truncation = list(lower = 0)), inverse_reference(1e5, 3)))
+  for(case in cases){
+    relative(mean(case[[1L]]), case[[2L]][1L])
+    relative(var(case[[1L]]), case[[2L]][2L])
+    relative(sd(case[[1L]]), sqrt(case[[2L]][2L]))
+  }
+  # a location far from the interval's scale: the variance of Cauchy(1e8, 1) on [1e8 - 2, 1e8 + 2] is
+  # shift invariant, 2 / atan(2) - 1 (it was -4.9e6)
+  shifted <- prior("cauchy", list(1e8, 1), truncation = list(lower = 1e8 - 2, upper = 1e8 + 2))
+  expect_equal(mean(shifted), 1e8, tolerance = 1e-12)
+  relative(var(shifted), 2 / atan(2) - 1)
+  expect_equal(sd(shifted), sqrt(2 / atan(2) - 1), tolerance = 1e-6)
+
+  # ordinary truncated priors agree with the integrals of their density to 1e-8 relative
+  ordinary <- list(
+    prior("gamma", list(2, 1), truncation = list(lower = .5, upper = 6)),
+    prior("lognormal", list(0, .5), truncation = list(lower = .3, upper = 4)),
+    prior("beta", list(2, 3), truncation = list(lower = .1, upper = .8)),
+    prior("t", list(0, 1, 5), truncation = list(lower = -1, upper = 3)),
+    prior("exp", list(2), truncation = list(upper = 1)),
+    prior("uniform", list(0, 4), truncation = list(lower = 1, upper = 3)),
+    prior("invgamma", list(4, 3), truncation = list(lower = .4, upper = 3)))
+  for(p in ordinary){
+    lower <- p$truncation[["lower"]]
+    upper <- p$truncation[["upper"]]
+    if(is.infinite(lower)) lower <- 0
+    m <- stats::integrate(function(x) x * pdf(p, x), lower, upper, rel.tol = 1e-12)$value
+    v <- stats::integrate(function(x) (x - m)^2 * pdf(p, x), lower, upper, rel.tol = 1e-12)$value
+    relative(mean(p), m, 1e-8)
+    relative(var(p), v, 1e-8)
+  }
+
+  # an integral that does not meet its error bound, or a quantile function that is unavailable, is refused
+  p <- prior("lognormal", list(0, .5), truncation = list(lower = .3, upper = 4))
+  testthat::local_mocked_bindings(integrate = function(f, lower, upper, ...){
+    list(value = 1, abs.error = 1, message = "maximum number of subdivisions reached")
+  }, .package = "stats")
+  for(moment in list(function() mean(p), function() var(p), function() sd(p))){
+    expect_error(moment(), "numerically unavailable", class = "BayesTools_numerical_unavailable")
+  }
+})
+
+test_that("truncated moments refuse an unavailable quantile function", {
+
+  p <- prior("gamma", list(2, 1), truncation = list(lower = .5, upper = 6))
+  testthat::local_mocked_bindings(quant = function(x, p, ...){
+    rep(NaN, length(p))
+  })
+  for(moment in list(function() mean(p), function() var(p))){
+    expect_error(moment(), "The quantile function is unavailable at supported precision",
+      class = "BayesTools_numerical_unavailable")
+  }
 })
 
 test_that("joint prior methods keep plain-formula values or refuse at double-precision range edges", {

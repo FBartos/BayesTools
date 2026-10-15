@@ -27,7 +27,12 @@ error. For a one-sided truncation, the error is raised beyond about 33
 prior standard deviations from the mean. The same applies to \code{sd()}
 and to spike-and-slab priors with such a slab. The variance can then be
 estimated from \code{rng()} draws of the prior, which sample the truncated
-distribution exactly, subject to Monte Carlo error.
+distribution exactly, subject to Monte Carlo error. The variance of any
+other truncated prior is the integral of the squared deviation of its
+truncated quantile function from the mean over the probability interval
+(0, 1), non-negative by construction; it is refused with
+\code{BayesTools_numerical_unavailable} when the quantile function is
+unavailable or the integral's estimated error exceeds 1e-6 of the variance.
 }
 \examples{
 # create a standard normal prior distribution
