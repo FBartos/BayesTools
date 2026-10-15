@@ -984,3 +984,75 @@ test_that("fixed coordinates are on the standardized scale only when their desig
     sort(c("mu_z", names(scaled)[factor_term]))
   )
 })
+
+test_that("the auxiliary coordinates of a coefficient take the fitted scale of the coefficient", {
+
+  data <- data.frame(
+    x = c(1, 2, 3, 4, 5, 6),
+    z = c(2, 1, 4, 3, 6, 5),
+    g = factor(rep(c("a", "b"), 3L))
+  )
+  coordinates <- function(formula_scale){
+    spike_and_slab <- function() prior_spike_and_slab(
+      prior("normal", list(0, 1)), prior_inclusion = prior("beta", list(1, 1))
+    )
+    spike_and_slab_factor <- function() prior_spike_and_slab(
+      prior_factor("normal", list(0, 1), contrast = "treatment"),
+      prior_inclusion = prior("beta", list(1, 1))
+    )
+    result <- JAGS_formula(
+      ~ 1 + x + z + g + x:g, "mu", data,
+      prior_list = list(
+        intercept = prior("normal", list(0, 1)),
+        x = spike_and_slab(),
+        z = spike_and_slab(),
+        g = spike_and_slab_factor(),
+        "x:g" = spike_and_slab_factor()
+      ),
+      formula_scale = formula_scale
+    )
+    # the value, indicator, inclusion probability and slab node of every
+    # spike-and-slab coefficient
+    columns <- unlist(lapply(names(result$prior_list), function(name){
+      prior <- result$prior_list[[name]]
+      if(!is.prior.spike_and_slab(prior)){
+        return(name)
+      }
+      variable <- .get_spike_and_slab_variable(prior)
+      names_of <- function(node){
+        if(.bt_prior_is_factor_family(variable)) .JAGS_prior_factor_names(node, variable) else node
+      }
+      c(paste0(name, c("_indicator", "_inclusion")), names_of(name),
+        names_of(paste0(name, "_variable")))
+    }), use.names = FALSE)
+    table <- build_test_parameter_coordinates(
+      columns = columns,
+      prior_list = result$prior_list,
+      formula_design = list(mu = result$formula_design),
+      formula_scale = list(mu = result$formula_scale)
+    )
+    stats::setNames(table$fitted_scale, table$coordinate_name)
+  }
+
+  # no standardized predictor: the plain fitted scale for every node
+  expect_true(all(coordinates(NULL) == "fitted_original"))
+
+  # a standardized x: every node of x, of x:g and of the intercept; none of z, g
+  scaled <- coordinates(list(x = TRUE))
+  expect_identical(
+    sort(names(scaled)[scaled == "fitted_standardized"]),
+    sort(c(
+      "mu_intercept",
+      grep("^mu_x(_|$|__xXx__g)", names(scaled), value = TRUE)
+    ))
+  )
+  expect_true(all(c(
+    "mu_x", "mu_x_indicator", "mu_x_inclusion", "mu_x_variable"
+  ) %in% names(scaled)[scaled == "fitted_standardized"]))
+  interaction <- grep("^mu_x__xXx__g", names(scaled), value = TRUE)
+  expect_true(any(grepl("_variable", interaction, fixed = TRUE)))
+  expect_true(all(scaled[interaction] == "fitted_standardized"))
+  unscaled <- grep("^mu_(z|g)", names(scaled), value = TRUE)
+  expect_true(any(grepl("_variable", unscaled, fixed = TRUE)))
+  expect_true(all(scaled[unscaled] == "fitted_original"))
+})

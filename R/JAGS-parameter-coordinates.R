@@ -543,6 +543,30 @@
   out
 }
 
+# The nodes a fixed coefficient prior declares besides the coefficient itself
+# (the indicator, inclusion probability and slab of a spike-and-slab prior, the
+# indicator of a mixture) mapped to the coefficient: they take its fitted scale.
+# The owner comes from the prior's declared nodes, never from the node's name.
+.bt_parameter_coordinates_coefficient_auxiliaries <- function(prior_list){
+
+  owners <- stats::setNames(character(), character())
+  for(parameter in names(prior_list)){
+    if(!identical(
+      .bt_parameter_coordinates_prior_role(prior_list[[parameter]]),
+      "fixed_coefficient"
+    )){
+      next
+    }
+    declared <- setdiff(
+      .bt_convergence_role_prior(parameter, prior_list[[parameter]])$name,
+      parameter
+    )
+    owners[declared] <- parameter
+  }
+
+  owners
+}
+
 # A fixed coordinate is on the standardized scale only when its design involves
 # a standardized predictor: the intercept of a formula with a standardized
 # predictor (the model is centered) and a term with a standardized component.
@@ -922,6 +946,8 @@
     .bt_parameter_coordinates_random_prior_auxiliary_owners(prior_list)
   )
   weight_bins <- .bt_weight_bin_interval_labels(prior_list)
+  coefficient_auxiliaries <-
+    .bt_parameter_coordinates_coefficient_auxiliaries(prior_list)
   dirichlet_auxiliaries <- c(
     vapply(
       names(prior_list)[vapply(prior_list, is.prior.simplex, logical(1))],
@@ -1042,8 +1068,14 @@
       coordinate$column,
       .bt_parameter_coordinates_index(coordinate_name),
       dimensions[i],
+      # an auxiliary node of a coefficient is on the scale of the coefficient
       .bt_parameter_coordinates_scale(
-        role, formula_parameter, formula_scale, coordinate_name
+        role, formula_parameter, formula_scale,
+        if(base_name %in% names(coefficient_auxiliaries)){
+          coefficient_auxiliaries[[base_name]]
+        }else{
+          coordinate_name
+        }
       ),
       monitor_status,
       fixed_value,

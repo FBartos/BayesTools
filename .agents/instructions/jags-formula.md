@@ -599,7 +599,11 @@ names.
   design involves a standardized predictor (the intercept of a formula with a
   standardized predictor, and terms with a standardized component); every other
   coefficient keeps `fitted_original`, also in a formula that standardizes
-  other predictors or has formula-scale metadata for another reason.
+  other predictors or has formula-scale metadata for another reason. The nodes
+  that a coefficient prior declares besides the coefficient (the indicator,
+  inclusion probability and slab of a spike-and-slab prior, the indicator of a
+  mixture) take the fitted scale of their coefficient, found from the prior's
+  declared nodes and never from their names.
 - Validate coordinate uniqueness, quantity uniqueness, aliases, extraction
   recipes, and coordinate dependencies atomically at map construction. Public
   accessors reuse that result through the map runtime cache rather than
