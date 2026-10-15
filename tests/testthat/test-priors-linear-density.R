@@ -4301,6 +4301,30 @@ test_that("N93 rejected real quadrature keeps its diagnostic remedy", {
                fixed = TRUE)
 })
 
+test_that("a multivariate t projection whose norm overflows before scaling keeps its structural route", {
+
+  # scale 1e-308 and weights 1.3e308: the projected scale 1.3 sqrt(2) is
+  # representable although the norm of the weights is not
+  vector_t <- prior("mt", list(location = 0, scale = 1e-308, df = 5, K = 2))
+  weights <- c("p[1]" = 1.3e308, "p[2]" = 1.3e308)
+  transforms <- stats::setNames(rep(NA_character_, 2L), names(weights))
+  terms <- .prior_density_route_vector_t_terms(list(p = vector_t), weights, transforms)
+  expect_false(is.null(terms))
+  expect_equal(terms$prior_list$p$parameters$scale, 1.3 * sqrt(2), tolerance = 1e-14)
+  expect_identical(terms$prior_list$p$parameters$location, 0)
+  expect_identical(.prior_density_route_linear(list(p = vector_t), weights, transforms, 128)$type, "scalar")
+  density <- .prior_linear_combination_density(list(p = vector_t), weights, n_grid = 128)
+  ordinate <- prior_density_ordinate(density, 1)
+  expect_identical(ordinate$behavior, "regular")
+  expect_true(ordinate$exact)
+  expect_equal(ordinate$log_density, extraDistr::dlst(1, df = 5, mu = 0, sigma = 1.3 * sqrt(2), log = TRUE),
+               tolerance = 1e-12)
+  # a zero combination is still the point at 0, not a scalar t
+  zero <- prior_density_ordinate(.prior_linear_combination_density(
+    list(p = prior("mt", list(location = 2, scale = .5, df = 5, K = 2))), c("p[1]" = 0)), 0)
+  expect_identical(zero$behavior, "point_mass")
+})
+
 for(location in c(0, 1e-200)){
   test_that(paste("N03 location identity for overflowing positive normal weights at", location), {
 

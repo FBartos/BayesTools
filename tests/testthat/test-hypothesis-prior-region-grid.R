@@ -1040,6 +1040,34 @@ test_that("the log mass of a near-whole scalar region may round to a few ulps ab
                "has no valid backend log probability", fixed = TRUE, class = "BayesTools_numerical_unavailable")
 })
 
+test_that("an offset that absorbs the product term makes scale-product regions unavailable", {
+
+  # 1 + U(1e-20, 2e-20) U(1, 2): the support (1, 1 + 4e-20) is the point 1 in
+  # double precision, so neither a region nor its complement may be certified
+  multiplied <- prior("uniform", list(1e-20, 2e-20))
+  attr(multiplied, "multiply_by") <- "s"
+  priors <- list(a = prior("point", list(1)), b = multiplied, s = prior("uniform", list(1, 2)))
+  density <- .prior_linear_combination_density(priors, c(a = 1, b = 1), n_grid = 128)
+  for(bounds in list(c(-Inf, 1), c(1, Inf), c(-Inf, 1 + 1e-15))){
+    region <- list(intervals = .prior_region_intervals(bounds[1L], bounds[2L]),
+                   indicator = function(x) x > bounds[1L] & x < bounds[2L])
+    expect_error(.prior_linear_density_region_probability(density, region),
+                 "The scale product prior region hull is numerically unavailable. The offset absorbs the support of the product term.",
+                 fixed = TRUE, class = "BayesTools_numerical_unavailable")
+  }
+
+  # a representable support keeps its hull probabilities
+  representable <- prior("uniform", list(1e-3, 2e-3))
+  attr(representable, "multiply_by") <- "s"
+  density <- .prior_linear_combination_density(
+    list(a = prior("point", list(1)), b = representable, s = prior("uniform", list(1, 2))), c(a = 1, b = 1), n_grid = 128
+  )
+  region <- list(intervals = .prior_region_intervals(-Inf, 1), indicator = function(x) x < 1)
+  expect_identical(as.numeric(.prior_linear_density_region_probability(density, region)), 0)
+  region <- list(intervals = .prior_region_intervals(1, Inf), indicator = function(x) x > 1)
+  expect_identical(as.numeric(.prior_linear_density_region_probability(density, region)), 1)
+})
+
 test_that("rejected region quadratures stop instead of using the grid", {
 
   priors <- scale_mixture_priors()

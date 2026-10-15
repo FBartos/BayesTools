@@ -464,12 +464,20 @@
        any(!is.na(source_transforms[names(group$weights)]))){
       return(NULL)
     }
-    location <- sum(group$weights) * parameters$location
-    scale <- .prior_density_ordinate_stable_norm(group$weights) * parameters$scale
+    # the projection scales by the largest weight first, so a scale and
+    # weights whose product is representable never overflow in the norm
+    scalar <- tryCatch(
+      .prior_linear_vector_scalar_prior(group$prior, group$weights),
+      error = function(e) NULL
+    )
+    if(is.null(scalar) || !identical(scalar$distribution, "t")){
+      return(NULL)
+    }
+    location <- scalar$parameters$location
+    scale <- scalar$parameters$scale
     if(!is.finite(location) || !is.finite(scale) || scale <= 0){
       return(NULL)
     }
-    scalar <- prior("t", list(location = location, scale = scale, df = parameters$df))
     attr(scalar, "multiply_by") <- attr(group$prior, "multiply_by", exact = TRUE)
     prior_list[[parameter]] <- scalar
     weights <- weights[setdiff(names(weights), names(group$weights))]

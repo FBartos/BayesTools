@@ -2176,14 +2176,20 @@
   )
 }
 
-# Closed interval containing the support of c + w * L * m(s).
-.prior_scale_product_hull <- function(spec){
+# Closed interval containing the support of the product term w * L * m(s).
+.prior_scale_product_term_range <- function(spec){
 
   factor_bounds <- unlist(spec$factor$truncation[c("lower", "upper")], use.names = FALSE)
   products <- as.vector(outer(factor_bounds, .prior_scale_product_map(spec, spec$bounds), function(a, b){
     ifelse(a == 0 | b == 0, 0, a * b)
   }))
-  spec$offset + sort(spec$scale * range(products))
+  sort(spec$scale * range(products))
+}
+
+# Closed interval containing the support of c + w * L * m(s).
+.prior_scale_product_hull <- function(spec){
+
+  spec$offset + .prior_scale_product_term_range(spec)
 }
 
 .prior_scale_product_provenance <- function(spec){

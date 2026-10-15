@@ -373,7 +373,16 @@
   if(.prior_region_whole(region)){
     return(.prior_region_result(1))
   }
-  outside <- .prior_region_hull_probability(region, .prior_scale_product_hull(spec))
+  term <- .prior_scale_product_term_range(spec)
+  hull <- spec$offset + term
+  if(all(is.finite(term)) && term[1L] < term[2L] && hull[1L] == hull[2L]){
+    # the offset absorbs the whole support of the product term (e.g. 1 +
+    # U(1e-20, 2e-20) U(1, 2)): the hull is a point, so a region and its
+    # complement would both be certified to have probability 0
+    .prior_numerical_signal("region hull", "scale product", "full precision", 1L,
+      "The offset absorbs the support of the product term", error = TRUE)
+  }
+  outside <- .prior_region_hull_probability(region, hull)
   if(!is.null(outside)){
     return(.prior_region_result(outside))
   }
