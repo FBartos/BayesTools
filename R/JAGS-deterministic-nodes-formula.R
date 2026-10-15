@@ -337,7 +337,9 @@
       if(isTRUE(term$log)){
         value <- log(value)
       }
-      contribution <- matrix(value, nrow = n_rows, ncol = n_draws, byrow = TRUE)
+      # One value per draw in every row (also for zero rows, where byrow
+      # filling would warn about non-empty data for a zero-extent matrix).
+      contribution <- matrix(rep(value, each = n_rows), nrow = n_rows, ncol = n_draws)
     }else if(identical(term$type, "continuous")){
       # (multiplier * coefficient) * data, one exact product per cell.
       multiplier <- multiplier_of(term)

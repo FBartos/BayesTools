@@ -29,7 +29,9 @@ fixed-effect design, a log intercept, and the random-effect SD structure.}
 }
 \value{
 A matrix of prior samples on the original (unscaled) scale, with
-columns matching the structure of posterior samples.
+columns matching the structure of posterior samples. Columns that are not
+mapped by the scale transformation, such as the totals and allocation nodes
+of ordered priors, keep their fitted-scale values.
 }
 \description{
 Generate prior samples and transform them using the same
@@ -83,6 +85,17 @@ clamping, endpoint substitution or prior change is performed. Explicit scalar
 correlation transforms that numerically saturate a boundary retain their
 compiler refusal rather than changing the requested prior or scale.
 }
+\section{Conditions}{
+
+The conditions of \code{\link[=transform_scale_samples]{transform_scale_samples()}} apply
+(\code{BayesTools_formula_transform_unavailable} and
+\code{BayesTools_refit_required}). Expression-point priors without a
+certified persisted recipe stop with
+\code{BayesTools_formula_transform_unavailable} and reason
+\code{"uncertified_point_replay"}; non-representable LKJ primitive draws
+signal \code{BayesTools_lkj_rng_unavailable}.
+}
+
 \examples{
 # With a fitted model that used formula_scale:
 # prior_samples <- transform_prior_samples(fit, n_samples = 10000)

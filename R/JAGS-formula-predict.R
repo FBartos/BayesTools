@@ -165,7 +165,7 @@ JAGS_evaluate_formula <- function(fit, formula = NULL, parameter,
   )
   formula <- .remove_expressions(formula)
   if(!is.data.frame(data))
-    stop("'data' must be a data.frame")
+    stop("'data' must be a data.frame", call. = FALSE)
   expression_source_data <- data
   if(!is.null(fitted_rows)){
     check_int(
@@ -178,7 +178,7 @@ JAGS_evaluate_formula <- function(fit, formula = NULL, parameter,
   }
   check_list(prior_list, "prior_list")
   if(any(!sapply(prior_list, is.prior)))
-    stop("'prior_list' must be a list of priors.")
+    stop("'prior_list' must be a list of priors.", call. = FALSE)
 
   # extract the posterior distribution (or evaluate supplied draws)
   if(is.null(posterior)){
@@ -245,7 +245,7 @@ JAGS_evaluate_formula <- function(fit, formula = NULL, parameter,
   # select priors corresponding to the prior distribution
   prior_parameter <- sapply(prior_list, function(p) if(is.null(attr(p, "parameter", exact = TRUE))) "__none" else attr(p, "parameter", exact = TRUE))
   if(!any(parameter %in% unique(prior_parameter)))
-    stop("The specified parameter '", parameter, "' was not used in any of the prior distributions.")
+    stop("The specified parameter '", parameter, "' was not used in any of the prior distributions.", call. = FALSE)
   prior_list_formula <- prior_list[prior_parameter == parameter]
   names(prior_list_formula) <- vapply(names(prior_list_formula), function(prior_name){
     .bt_label(
@@ -268,10 +268,10 @@ JAGS_evaluate_formula <- function(fit, formula = NULL, parameter,
 
   # check that all predictors have data and prior distribution
   if(!all(predictors %in% colnames(data)))
-    stop(paste0("The ", paste0("'", predictors[!predictors %in% colnames(data)], "'", collapse = ", ")," predictor variable is missing in the data."))
+    stop(paste0("The ", paste0("'", predictors[!predictors %in% colnames(data)], "'", collapse = ", ")," predictor variable is missing in the data."), call. = FALSE)
   missing_terms <- model_terms[!model_terms %in% names(prior_list_formula)]
   if(length(missing_terms) > 0L)
-    stop(paste0("The prior distribution for the ", paste0("'", missing_terms, "'", collapse = ", ")," term is missing in the prior_list."))
+    stop(paste0("The prior distribution for the ", paste0("'", missing_terms, "'", collapse = ", ")," term is missing in the prior_list."), call. = FALSE)
   if(log_intercept){
     .bt_validate_formula_log_intercept_prior(prior_list_formula)
   }
@@ -286,7 +286,7 @@ JAGS_evaluate_formula <- function(fit, formula = NULL, parameter,
     }else if(is.prior.simple(prior_list_formula[[model_term]]) || inherits(prior_list_formula[[model_term]], "prior.simple_mixture") || inherits(prior_list_formula[[model_term]], "prior.simple_spike_and_slab")){
       return("continuous")
     } else {
-      stop(paste0("Unrecognized prior distribution for the '", model_term, "' term."))
+      stop(paste0("Unrecognized prior distribution for the '", model_term, "' term."), call. = FALSE)
     }
   })
   predictors_type <- .bt_JAGS_evaluate_predictor_types(
@@ -317,7 +317,7 @@ JAGS_evaluate_formula <- function(fit, formula = NULL, parameter,
       observed_levels <- unique(as.character(data[[factor]]))
       observed_levels <- observed_levels[!is.na(observed_levels)]
       if(any(!observed_levels %in% factor_metadata$levels)){
-        stop(paste0("Levels specified in the '", factor, "' factor variable do not match the levels used for model specification."))
+        stop(paste0("Levels specified in the '", factor, "' factor variable do not match the levels used for model specification."), call. = FALSE)
       }
 
       data[[factor]] <- if(factor_metadata$ordered){
@@ -337,7 +337,7 @@ JAGS_evaluate_formula <- function(fit, formula = NULL, parameter,
       this_prior <- prior_list_formula[[continuous]]
 
       if(is.prior.factor(this_prior)|| is.prior.discrete(this_prior) || is.prior.PET(this_prior) || is.prior.PEESE(this_prior) || is.prior.weightfunction(this_prior)){
-        stop(paste0("Unsupported prior distribution defined for '", continuous, "' continuous variable. See '?prior' for details."))
+        stop(paste0("Unsupported prior distribution defined for '", continuous, "' continuous variable. See '?prior' for details."), call. = FALSE)
       }
     }
 

@@ -282,6 +282,80 @@ test_that("scale overrides and prediction data are refused with the cause", {
   )
 })
 
+test_that("formula_scale validation names its entries and the evaluation tolerates no rows", {
+
+  # The entry labels are quoted consistently.
+  check <- BayesTools:::.check_formula_scale_info
+  expect_error(
+    check(list(mu = list(mu_x = list(mean = Inf, sd = 1)))),
+    "The 'formula_scale[['mu']][['mu_x']][['mean']]' entry must be finite.",
+    fixed = TRUE
+  )
+  expect_error(
+    check(list(mu = list(mu_x = list(mean = 1, sd = -1)))),
+    "The 'formula_scale[['mu']][['mu_x']][['sd']]' must be higher than 0.",
+    fixed = TRUE
+  )
+  expect_error(
+    check(list(mu = list(mu_x = 1))),
+    "The 'formula_scale[['mu']][['mu_x']]' argument must be a list.",
+    fixed = TRUE
+  )
+
+  formula_result <- JAGS_formula(
+    ~ 1 + x, "mu", data.frame(x = c(2, 4, 6)),
+    prior_list = list(intercept = prior("normal", list(0, 1)),
+                      x = prior("normal", list(0, 1))),
+    formula_scale = list(x = TRUE)
+  )
+  samples <- matrix(c(2, 3, 4, 5), nrow = 2L, byrow = TRUE,
+                    dimnames = list(NULL, c("mu_intercept", "mu_x")))
+  fit <- .formula_coefficient_sample_fit(formula_result, samples)
+
+  # Zero rows of prediction data give an empty matrix without a warning.
+  expect_silent(empty <- JAGS_evaluate_formula(
+    fit, parameter = "mu", data = data.frame(x = numeric())
+  ))
+  expect_identical(dim(empty), c(0L, 2L))
+
+  # A refusal of a scale without a design names the scale's formula parameter.
+  scale <- formula_result$formula_scale
+  spec <- attr(scale, "unscale_design", exact = TRUE)
+  spec$schema_version <- 0L
+  attr(scale, "unscale_design") <- spec
+  expect_error(
+    JAGS_formula_scale_finalize(scale),
+    "Formula-scale design metadata for parameter 'mu' are malformed.",
+    fixed = TRUE
+  )
+})
+
+test_that("the original-scale check refuses designs with too many factor-level combinations", {
+
+  set.seed(1)
+  n <- 60L
+  data <- data.frame(x = stats::rnorm(n))
+  priors <- list(intercept = prior("normal", list(0, 1)),
+                 x = prior("normal", list(0, 1)))
+  for(i in 1:4){
+    data[[paste0("f", i)]] <- factor(sample(n))
+    priors[[paste0("f", i)]] <- prior_factor("normal", list(0, 1),
+                                             contrast = "treatment")
+  }
+  formula_result <- JAGS_formula(~ x + f1 + f2 + f3 + f4, "mu", data, priors,
+                                 formula_scale = list(x = TRUE))
+  fit <- .formula_coefficient_density_fit(
+    formula_result, .formula_coefficient_source_names(formula_result)
+  )
+  expect_error(
+    JAGS_formula_coefficient_transform(fit, "mu"),
+    paste0("Cannot verify the original-scale coefficient transformation for ",
+           "formula parameter 'mu' because its design has too many ",
+           "factor-level combinations."),
+    fixed = TRUE
+  )
+})
+
 .formula_coefficient_design_matrix <- function(formula_result){
 
   data_names <- names(formula_result$data)[

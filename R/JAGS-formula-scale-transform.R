@@ -16,8 +16,12 @@
 #' fixed-effect design, a log intercept, and the random-effect SD structure.
 #'
 #' @details The function transforms regression coefficients and intercepts
-#' to account for predictor standardization using a combinatorial approach that
-#' correctly handles interactions of any order.
+#' to account for predictor standardization, including interactions of any
+#' order.
+#'
+#' Columns that are not coefficients of the fitted design or random-effect SDs
+#' and correlations of a scaled block, such as the totals and allocation nodes
+#' of ordered priors, keep their fitted-scale values.
 #'
 #' Internal standardized random-effect coordinates (latent \code{xRE_Zx}
 #' columns and realized \code{xRE_COEFx} columns) are omitted from the returned
@@ -61,6 +65,20 @@
 #' original predictor scale, with chains merged in their existing order.
 #' When no scaling information is supplied, the function returns the sample
 #' matrix without changing its values, rather than returning the fitted object.
+#'
+#' @section Conditions:
+#' Invalid arguments, including a \code{formula_scale} entry for a formula
+#' parameter the model does not have, a standardized predictor that
+#' is missing from the posterior, or an incomplete \code{formula_scale} entry,
+#' stop with an ordinary error. A condition of class
+#' \code{BayesTools_formula_transform_unavailable} (parents
+#' \code{error} and \code{condition}; the \code{reason} field names the
+#' cause, for example \code{"missing_fitted_design"},
+#' \code{"original_scale_not_representable"},
+#' \code{"original_scale_not_identified"}, or \code{"nonfinite_transform"})
+#' reports a transformation that is structurally or numerically unavailable.
+#' A condition of class \code{BayesTools_refit_required} reports a fit whose
+#' stored formula declarations are missing or disagree.
 #'
 #' @seealso [JAGS_formula()] [JAGS_fit()]
 #'
@@ -218,7 +236,18 @@ transform_scale_samples <- function(fit, formula_scale = NULL){
 #' compiler refusal rather than changing the requested prior or scale.
 #'
 #' @return A matrix of prior samples on the original (unscaled) scale, with
-#' columns matching the structure of posterior samples.
+#' columns matching the structure of posterior samples. Columns that are not
+#' mapped by the scale transformation, such as the totals and allocation nodes
+#' of ordered priors, keep their fitted-scale values.
+#'
+#' @section Conditions:
+#' The conditions of [transform_scale_samples()] apply
+#' (\code{BayesTools_formula_transform_unavailable} and
+#' \code{BayesTools_refit_required}). Expression-point priors without a
+#' certified persisted recipe stop with
+#' \code{BayesTools_formula_transform_unavailable} and reason
+#' \code{"uncertified_point_replay"}; non-representable LKJ primitive draws
+#' signal \code{BayesTools_lkj_rng_unavailable}.
 #'
 #' @seealso [transform_scale_samples()] [plot_posterior()]
 #'
@@ -250,7 +279,7 @@ transform_prior_samples <- function(fit, n_samples = 10000, seed = NULL, formula
   prior_list <- attr(fit, "prior_list")
 
   if(is.null(prior_list)){
-    stop("'fit' must have 'prior_list' attribute.")
+    stop("'fit' must have 'prior_list' attribute.", call. = FALSE)
   }
   .bt_validate_ordered_shared_allocations(prior_list)
 
@@ -265,7 +294,7 @@ transform_prior_samples <- function(fit, n_samples = 10000, seed = NULL, formula
   if(inherits(fit, "runjags") || inherits(fit, "BayesTools_fit")){
     posterior <- as.matrix(.fit_to_posterior(fit))
   }else{
-    stop("'fit' must be a fitted model object.")
+    stop("'fit' must be a fitted model object.", call. = FALSE)
   }
 
   prior_samples <- .generate_transformed_prior_samples(
@@ -650,7 +679,7 @@ transform_prior_samples <- function(fit, n_samples = 10000, seed = NULL, formula
   param_names <- names(prior_list)
 
   if(is.null(param_names) || length(param_names) == 0){
-    stop("'prior_list' must be a named list of priors.")
+    stop("'prior_list' must be a named list of priors.", call. = FALSE)
   }
 
   # Initialize list to collect samples (handles varying column counts per prior)

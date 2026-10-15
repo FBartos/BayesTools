@@ -118,49 +118,49 @@
       if(!is.null(spec)) .bt_formula_unscale_design_spec_check(spec, param_name)
       next
     }
-    check_list(param_scale, paste0(name, "[['", param_name, "]]"))
+    entry <- paste0(name, "[['", param_name, "']]")
+    check_list(param_scale, entry)
 
     if(length(param_scale) == 0)
       next
 
     if(is.null(names(param_scale)) || anyNA(names(param_scale)) || any(names(param_scale) == ""))
-      stop(paste0("The '", name, "[['", param_name, "]]" ,"' entry must be a named list keyed by parameter term."), call. = FALSE)
+      stop(paste0("The '", entry, "' entry must be a named list keyed by parameter term."), call. = FALSE)
     if(anyDuplicated(names(param_scale)))
-      stop(paste0("The '", name, "[['", param_name, "']]' entry must not contain duplicate term names."), call. = FALSE)
+      stop(paste0("The '", entry, "' entry must not contain duplicate term names."), call. = FALSE)
 
     for(term_name in names(param_scale)){
       term_scale <- param_scale[[term_name]]
+      term_entry <- paste0(entry, "[['", term_name, "']]")
 
       check_list(
         term_scale,
-        paste0(name, "[['", param_name, "]][['", term_name, "]]"),
+        term_entry,
         check_names = c("mean", "sd"),
         all_objects = TRUE,
         allow_other = TRUE
       )
       check_real(
         term_scale[["mean"]],
-        paste0(name, "[['", param_name, "]][['", term_name, "]][['mean'] ]"),
+        paste0(term_entry, "[['mean']]"),
         allow_NA = FALSE
       )
       if(!is.finite(term_scale[["mean"]])){
         stop(
-          "The '", name, "[['", param_name, "]][['", term_name,
-          "]][['mean']]' entry must be finite.",
+          "The '", term_entry, "[['mean']]' entry must be finite.",
           call. = FALSE
         )
       }
       check_real(
         term_scale[["sd"]],
-        paste0(name, "[['", param_name, "]][['", term_name, "]][['sd'] ]"),
+        paste0(term_entry, "[['sd']]"),
         lower = 0,
         allow_bound = FALSE,
         allow_NA = FALSE
       )
       if(!is.finite(term_scale[["sd"]])){
         stop(
-          "The '", name, "[['", param_name, "]][['", term_name,
-          "]][['sd']]' entry must be finite.",
+          "The '", term_entry, "[['sd']]' entry must be finite.",
           call. = FALSE
         )
       }
@@ -195,7 +195,7 @@
   if(length(unused_terms) == length(scaled_terms)){
     warning(
       paste0(
-        "Ignoring all formula_scale[['", prefix, "]] entries because none match posterior terms: '",
+        "Ignoring all formula_scale[['", prefix, "']] entries because none match posterior terms: '",
         paste0(unused_terms, collapse = "', '"),
         "'. Samples for this parameter prefix are returned unchanged."
       ),
@@ -205,7 +205,7 @@
   }else{
     warning(
       paste0(
-        "Ignoring unused formula_scale[['", prefix, "]] entries: '",
+        "Ignoring unused formula_scale[['", prefix, "']] entries: '",
         paste0(unused_terms, collapse = "', '"),
         "'. Matched entries are still applied."
       ),
@@ -217,16 +217,7 @@
   invisible(NULL)
 }
 
-.formula_scale_random_scaled_vars <- function(formula_scale, scaled_vars = NULL){
-
-  if(is.null(scaled_vars)){
-    prefix <- attr(formula_scale, "parameter", exact = TRUE)
-    if(!is.null(prefix) && length(prefix) == 1L && !is.na(prefix) && nzchar(prefix)){
-      scaled_vars <- .formula_scale_strip_prefix(names(formula_scale), prefix)
-    }else{
-      scaled_vars <- names(formula_scale)
-    }
-  }
+.formula_scale_random_scaled_vars <- function(formula_scale, scaled_vars){
 
   random_terms <- character()
 
@@ -530,14 +521,6 @@
   term_scaled <- lapply(term_structure, `[[`, "scaled")
   term_unscaled <- vapply(term_structure, `[[`, character(1), "unscaled_id")
 
-  # Warn about high-order interactions
-  max_order <- max(sapply(term_components, length))
-  if (max_order >= 5) {
-    warning("Model contains ", max_order, "-way or higher interactions. ",
-            "Unscaling transformation may be computationally intensive.",
-            immediate. = TRUE)
-  }
-
   # Build the transformation matrix
   for (t_idx in seq_along(term_names)) {
     T_name <- term_names[t_idx]
@@ -644,7 +627,19 @@
     if(length(formula_scale) == 0L) return(formula_scale)
     .bt_stop_refit_required("Formula declarations are missing. Refit the model with this version of BayesTools.")
   }
-  prefix <- if(!is.null(design)) design$parameter else "prior"
+  # The formula parameter named in refusals: the design's, else the one the
+  # scale was built for.
+  prefix <- if(!is.null(design)){
+    design$parameter
+  }else{
+    scale_parameter <- attr(formula_scale, "parameter", exact = TRUE)
+    if(is.character(scale_parameter) && length(scale_parameter) == 1L &&
+       !is.na(scale_parameter) && nzchar(scale_parameter)){
+      scale_parameter
+    }else{
+      "(unnamed)"
+    }
+  }
   .bt_formula_unscale_design_spec_check(spec, prefix)
   if(!owner_scope %in% c("fit", "prior_only")) stop("Unsupported formula declaration owner.", call. = FALSE)
   constants <- spec$state_constants
@@ -952,16 +947,9 @@ JAGS_formula_scale_finalize <- function(formula_scale, design = NULL,
   )
   product_sets <- product_sets[!duplicated(set_keys)]
 
-  if(length(spec$factor_levels) > 0L){
-    cells <- expand.grid(
-      spec$factor_levels,
-      KEEP.OUT.ATTRS = FALSE,
-      stringsAsFactors = FALSE
-    )
-  }else{
-    cells <- data.frame(row.names = 1L)
-  }
-  n_cells <- nrow(cells)
+  # The guard comes before expand.grid(), which would allocate every
+  # combination of the factor levels.
+  n_cells <- prod(as.numeric(lengths(spec$factor_levels)))
   n_rows <- n_cells * length(product_sets)
   n_columns <- length(spec$assign)
   if(n_rows * n_columns > 5e7){
@@ -970,6 +958,15 @@ JAGS_formula_scale_finalize <- function(formula_scale, design = NULL,
       prefix, "' because its design has too many factor-level combinations.",
       call. = FALSE
     )
+  }
+  if(length(spec$factor_levels) > 0L){
+    cells <- expand.grid(
+      spec$factor_levels,
+      KEEP.OUT.ATTRS = FALSE,
+      stringsAsFactors = FALSE
+    )
+  }else{
+    cells <- data.frame(row.names = 1L)
   }
   cell_index <- rep(seq_len(n_cells), times = length(product_sets))
   set_index <- rep(seq_along(product_sets), each = n_cells)

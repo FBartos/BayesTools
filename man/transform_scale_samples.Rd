@@ -32,8 +32,12 @@ were standardized during model fitting via the \code{formula_scale} parameter.
 }
 \details{
 The function transforms regression coefficients and intercepts
-to account for predictor standardization using a combinatorial approach that
-correctly handles interactions of any order.
+to account for predictor standardization, including interactions of any
+order.
+
+Columns that are not coefficients of the fitted design or random-effect SDs
+and correlations of a scaled block, such as the totals and allocation nodes
+of ordered priors, keep their fitted-scale values.
 
 Internal standardized random-effect coordinates (latent \code{xRE_Zx}
 columns and realized \code{xRE_COEFx} columns) are omitted from the returned
@@ -73,6 +77,22 @@ have to be induced, such as the implied intercept of \code{(0 + x | g)}) has
 no such matrix and keeps the pairing of coefficient names, which drops the
 induced term.
 }
+\section{Conditions}{
+
+Invalid arguments, including a \code{formula_scale} entry for a formula
+parameter the model does not have, a standardized predictor that
+is missing from the posterior, or an incomplete \code{formula_scale} entry,
+stop with an ordinary error. A condition of class
+\code{BayesTools_formula_transform_unavailable} (parents
+\code{error} and \code{condition}; the \code{reason} field names the
+cause, for example \code{"missing_fitted_design"},
+\code{"original_scale_not_representable"},
+\code{"original_scale_not_identified"}, or \code{"nonfinite_transform"})
+reports a transformation that is structurally or numerically unavailable.
+A condition of class \code{BayesTools_refit_required} reports a fit whose
+stored formula declarations are missing or disagree.
+}
+
 \seealso{
 \code{\link[=JAGS_formula]{JAGS_formula()}} \code{\link[=JAGS_fit]{JAGS_fit()}}
 }

@@ -114,10 +114,10 @@ test_that("JAGS_formula standardization preserves data correctly", {
   expect_true("beta_x2" %in% names(result$formula_scale))
 
   # Verify scale parameters
-  expect_equal(result$formula_scale$beta_x1$mean, 10, tolerance = 0.5)
-  expect_equal(result$formula_scale$beta_x1$sd,    3, tolerance = 0.5)
-  expect_equal(result$formula_scale$beta_x2$mean, -5, tolerance = 0.5)
-  expect_equal(result$formula_scale$beta_x2$sd,    2, tolerance = 0.5)
+  expect_equal(result$formula_scale$beta_x1$mean, mean(df$x1), tolerance = 1e-12)
+  expect_equal(result$formula_scale$beta_x1$sd, stats::sd(df$x1), tolerance = 1e-12)
+  expect_equal(result$formula_scale$beta_x2$mean, mean(df$x2), tolerance = 1e-12)
+  expect_equal(result$formula_scale$beta_x2$sd, stats::sd(df$x2), tolerance = 1e-12)
 
   ### Standardize both predictors (lazily)
   result <- JAGS_formula(
@@ -134,10 +134,10 @@ test_that("JAGS_formula standardization preserves data correctly", {
   expect_true("beta_x2" %in% names(result$formula_scale))
 
   # Verify scale parameters
-  expect_equal(result$formula_scale$beta_x1$mean, 10, tolerance = 0.5)
-  expect_equal(result$formula_scale$beta_x1$sd,    3, tolerance = 0.5)
-  expect_equal(result$formula_scale$beta_x2$mean, -5, tolerance = 0.5)
-  expect_equal(result$formula_scale$beta_x2$sd,    2, tolerance = 0.5)
+  expect_equal(result$formula_scale$beta_x1$mean, mean(df$x1), tolerance = 1e-12)
+  expect_equal(result$formula_scale$beta_x1$sd, stats::sd(df$x1), tolerance = 1e-12)
+  expect_equal(result$formula_scale$beta_x2$mean, mean(df$x2), tolerance = 1e-12)
+  expect_equal(result$formula_scale$beta_x2$sd, stats::sd(df$x2), tolerance = 1e-12)
 
   ### Standardize one predictors
   result <- JAGS_formula(
@@ -154,8 +154,8 @@ test_that("JAGS_formula standardization preserves data correctly", {
   expect_true("beta_x2" %in% names(result$formula_scale))
 
   # Verify scale parameters
-  expect_equal(result$formula_scale$beta_x2$mean, -5, tolerance = 0.5)
-  expect_equal(result$formula_scale$beta_x2$sd, 2, tolerance = 0.5)
+  expect_equal(result$formula_scale$beta_x2$mean, mean(df$x2), tolerance = 1e-12)
+  expect_equal(result$formula_scale$beta_x2$sd, stats::sd(df$x2), tolerance = 1e-12)
   expect_equal(unname(result$data$beta_data_x1), as.numeric(df$x1))
   expect_equal(unname(result$data$beta_data_x2), as.numeric(scale(df$x2)))
 })
@@ -1964,7 +1964,7 @@ test_that("lm validation: four-way interaction", {
 })
 
 
-test_that("lm validation: five-way interaction (warning test)", {
+test_that("lm validation: five-way interaction", {
 
   set.seed(49)
   df <- data.frame(
@@ -1988,16 +1988,15 @@ test_that("lm validation: five-way interaction (warning test)", {
   fit_unscaled <- lm(y ~ x1 * x2 * x3 * x4 * x5, data = df)
   coef_unscaled <- coef(fit_unscaled)
 
-  # Transform - expect warning about 5+ way interaction
+  # Transform - the name-paired map has no order-dependent cost: no warning
   formula_scale <- .make_formula_scale(df, c("x1", "x2", "x3", "x4", "x5"), ~ x1 * x2 * x3 * x4 * x5)
   posterior_scaled <- .lm_coefs_to_posterior(coef_scaled, formula_scale)
 
-  expect_warning(
-    posterior_transformed <- BayesTools:::.bt_transform_scale_posterior(posterior_scaled, formula_scale),
-    "5-way or higher interactions"
+  expect_no_warning(
+    posterior_transformed <- BayesTools:::.bt_transform_scale_posterior(posterior_scaled, formula_scale)
   )
 
-  # Should still produce correct results despite warning
+  # The transformation reproduces the ground-truth coefficients
   expect_equal(
     unname(posterior_transformed[1, ]),
     unname(.reorder_lm_coefs(coef_unscaled, posterior_transformed)),
