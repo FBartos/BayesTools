@@ -117,6 +117,32 @@ test_that("formula designs persist a validated semantic name map", {
   )
 })
 
+test_that("a malformed name-map entry is a refit error, not a plain error (F209)", {
+
+  map <- JAGS_formula(
+    formula = ~ x,
+    parameter = "mu",
+    data = data.frame(x = c(-1, 0, 1, 2)),
+    prior_list = list(
+      intercept = prior("normal", list(0, 1)),
+      x = prior("normal", list(0, 1))
+    )
+  )$formula_design$name_map
+  expect_true(.bt_validate_formula_name_map(map))
+
+  bad_jags_name <- map
+  bad_jags_name$jags_name[1L] <- "1 not a node"
+  other_encoding <- map
+  other_encoding$encoded_name[1L] <- sub("^BT1_", "BT2_", map$encoded_name[1L])
+  for(corrupted in list(bad_jags_name, other_encoding)){
+    expect_error(
+      .bt_validate_formula_name_map(corrupted),
+      "Formula name-map metadata contain an invalid name",
+      class = "BayesTools_refit_required"
+    )
+  }
+})
+
 test_that("refit errors have the class BayesTools_refit_required", {
 
   refit_class <- c("BayesTools_refit_required", "error", "condition")

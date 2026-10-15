@@ -303,8 +303,17 @@ JAGS_fit_contract_schema <- function(){
   }
   if(nrow(map) > 0L){
     for(i in seq_len(nrow(map))){
-      .bt_check_jags_node_name(map$jags_name[i], "name_map$jags_name")
-      decoded <- .bt_parameter_decode(map$encoded_name[i])
+      # a malformed JAGS name or an encoded name of another encoding version is
+      # stale metadata of the fit: refit, not a plain error
+      decoded <- tryCatch({
+        .bt_check_jags_node_name(map$jags_name[i], "name_map$jags_name")
+        .bt_parameter_decode(map$encoded_name[i])
+      }, error = function(e){
+        .bt_stop_refit_required(
+          "Formula name-map metadata contain an invalid name (",
+          conditionMessage(e), "). Refit the model with this version of BayesTools."
+        )
+      })
       expected <- as.list(map[i, c("kind", "formula_parameter", "term", "role")])
       if(!identical(unname(decoded[names(expected)]), unname(expected))){
         .bt_stop_refit_required("Formula name-map encoded and semantic fields disagree. Refit the model with this version of BayesTools.")
