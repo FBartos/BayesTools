@@ -31,8 +31,8 @@ JAGS_bridgesampling(
 )
 }
 \arguments{
-\item{fit}{model fitted with either \link[runjags]{runjags} posterior
-samples obtained with \link[rjags]{rjags-package}
+\item{fit}{model fitted with \link[runjags]{runjags}, or posterior
+samples obtained with \link[rjags]{rjags-package}.
 Derived-draw views are refused with
 \code{BayesTools_draws_view_inference_unavailable} (also
 \code{BayesTools_draws_view_unavailable}); use \code{fit$original_fit}.}
@@ -166,12 +166,18 @@ are errors.}
 \item{maxiter}{maximum number of iterations for the
 \link[bridgesampling]{bridge_sampler}}
 
-\item{silent}{whether the progress should be printed, defaults to \code{TRUE}}
+\item{silent}{whether the bridge-sampling progress output and the warning
+about repetitions that reached \code{maxiter} are suppressed, defaults to
+\code{TRUE}. \code{FALSE} prints the iterations of the sampler and warns
+when a repetition exceeded \code{maxiter}.}
 
 \item{nonfinite}{handling of non-finite repetition-level log marginal
-likelihoods. The default, \code{"error"}, aborts. \code{"drop"} aggregates only the
-remaining finite repetitions, emits a warning, and records every excluded
-repetition in the returned diagnostics.}
+likelihoods. The default, \code{"error"}, aborts with an error of class
+\code{BayesTools_marglik_repetition_failure} that names the cause of every failed
+repetition. \code{"drop"} aggregates only the remaining finite repetitions, emits
+a warning, and records every excluded repetition in the returned
+diagnostics; it stops with the same error class when no repetition is
+finite.}
 
 \item{cores}{number of cores used by \link[bridgesampling]{bridge_sampler}.
 Defaults to one. Parallel workers must be able to load every package used by
@@ -201,6 +207,31 @@ marginal likelihood, aggregated as the median of finite repetition-level
 log marginal likelihoods. \code{repetitions} contains one diagnostic row per
 bridge repetition, \code{aggregation} records the aggregation and failure policy,
 and \code{diagnostics$upstream} retains the original \code{bridgesampling} result.
+
+The columns of \code{repetitions} are \code{repetition}, \code{logml}, \code{niter} (iterations
+used), \code{mcse} (Monte Carlo standard error of \code{logml}), \code{finite} (whether
+\code{logml} is finite), \code{within_maxiter} (whether \code{niter} did not exceed
+\code{maxiter}; \code{TRUE} when the iteration count is unknown), \code{success} (\code{finite}
+and \code{within_maxiter}), \code{warning} and \code{error} (the description of an
+exceeded iteration limit or of a non-finite estimate, \code{NA} otherwise),
+\code{method}, \code{n_chains}, and \code{n_draws}. Only non-finite repetitions are
+excluded from the aggregate, so \code{aggregation$n_included} counts the finite
+repetitions: a finite repetition that exceeded \code{maxiter} has
+\code{success = FALSE} and is still aggregated.
+
+Condition classes: a non-finite repetition under \code{nonfinite = "error"}, and
+the absence of any finite repetition under \code{"drop"}, stop with an error of
+class \code{BayesTools_marglik_repetition_failure} (fields \code{repetitions}, the
+failed rows, and \code{upstream_warnings}). Errors of the likelihood callback
+keep their own classes and fields, with the \verb{Bridge sampling failed:}
+context in the message and the muffled warnings in \code{upstream_warnings}.
+A state outside the support of the model (for example an out-of-support
+row-indexed random-effect SD source value) signals an error of class
+\code{BayesTools_marglik_out_of_support} while the parameters are reconstructed;
+the bridge target treats it as zero density, and the direct reconstruction
+functions (such as \code{\link[=JAGS_marglik_parameters_formula]{JAGS_marglik_parameters_formula()}}) let it escape. The
+two classes belong to no shared parent class; callers match the class, not
+the message.
 }
 \description{
 A wrapper around

@@ -32,7 +32,7 @@ within the \code{formula}}
 }
 \value{
 \code{JAGS_marglik_priors} returns a numeric value
-of likelihood evaluated at the current posterior sample.
+of the log prior density evaluated at the current posterior sample.
 \code{JAGS_marglik_priors_rows} returns one numeric value for every row of
 posterior samples. \code{JAGS_marglik_priors_rows_evaluator} returns a
 function that applies the same row-wise evaluation without recompiling the

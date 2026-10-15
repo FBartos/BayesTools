@@ -6,8 +6,10 @@
 #'
 #' @param samples samples provided by bridgesampling
 #' function
-#' @param prior_list_parameters named list of prior distributions on model parameters
-#' (not specified within the formula but that might scale the formula parameters)
+#' @param prior_list_parameters named list of the posterior values of the model
+#' parameters that are not specified within the formula but that might scale the
+#' formula parameters (the value returned by \code{JAGS_marglik_parameters()}
+#' for the same samples)
 #' @param formula_design_list named list of the formula-design metadata
 #' (the \code{formula_design} element returned by \code{JAGS_formula()}) of
 #' each formula parameter. \code{JAGS_marglik_parameters_formula()} reconstructs
@@ -30,6 +32,10 @@
 #' owners refuse instead of falling back to a sample column. Expression-point
 #' replay is available through a fitted formula owner; generic prior readers
 #' without that owner report \code{BayesTools_formula_point_unavailable}.
+#' A state outside the support of the model (for example a negative row-indexed
+#' external random-effect SD value) stops \code{JAGS_marglik_parameters_formula()}
+#' with an error of class \code{BayesTools_marglik_out_of_support}, which
+#' \code{JAGS_bridgesampling()} treats as zero density.
 #'
 #' @inheritParams JAGS_bridgesampling
 #' @export JAGS_marglik_parameters

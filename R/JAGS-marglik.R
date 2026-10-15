@@ -7,8 +7,8 @@
 #' specify a function that takes a named parameter list, the data, and any
 #' additional arguments, and returns the log likelihood of the model part.
 #'
-#' @param fit model fitted with either \link[runjags]{runjags} posterior
-#' samples obtained with \link[rjags]{rjags-package}
+#' @param fit model fitted with \link[runjags]{runjags}, or posterior
+#' samples obtained with \link[rjags]{rjags-package}.
 #' Derived-draw views are refused with
 #' \code{BayesTools_draws_view_inference_unavailable} (also
 #' \code{BayesTools_draws_view_unavailable}); use \code{fit$original_fit}.
@@ -132,11 +132,17 @@
 #' draws. The caller's random-number state (`.Random.seed` and `RNGkind()`) is
 #' restored afterwards. The default, `NULL`, draws from the caller's
 #' random-number stream, so the estimate depends on that stream.
-#' @param silent whether the progress should be printed, defaults to \code{TRUE}
+#' @param silent whether the bridge-sampling progress output and the warning
+#' about repetitions that reached \code{maxiter} are suppressed, defaults to
+#' \code{TRUE}. \code{FALSE} prints the iterations of the sampler and warns
+#' when a repetition exceeded \code{maxiter}.
 #' @param nonfinite handling of non-finite repetition-level log marginal
-#' likelihoods. The default, `"error"`, aborts. `"drop"` aggregates only the
-#' remaining finite repetitions, emits a warning, and records every excluded
-#' repetition in the returned diagnostics.
+#' likelihoods. The default, `"error"`, aborts with an error of class
+#' `BayesTools_marglik_repetition_failure` that names the cause of every failed
+#' repetition. `"drop"` aggregates only the remaining finite repetitions, emits
+#' a warning, and records every excluded repetition in the returned
+#' diagnostics; it stops with the same error class when no repetition is
+#' finite.
 #' @param ... additional argument to the \link[bridgesampling]{bridge_sampler}
 #' and \code{log_posterior} function. The upstream-only `use_neff` logical
 #' control defaults to `TRUE`; an explicitly supplied value is passed to the
@@ -268,6 +274,31 @@
 #' log marginal likelihoods. `repetitions` contains one diagnostic row per
 #' bridge repetition, `aggregation` records the aggregation and failure policy,
 #' and `diagnostics$upstream` retains the original `bridgesampling` result.
+#'
+#' The columns of `repetitions` are `repetition`, `logml`, `niter` (iterations
+#' used), `mcse` (Monte Carlo standard error of `logml`), `finite` (whether
+#' `logml` is finite), `within_maxiter` (whether `niter` did not exceed
+#' `maxiter`; `TRUE` when the iteration count is unknown), `success` (`finite`
+#' and `within_maxiter`), `warning` and `error` (the description of an
+#' exceeded iteration limit or of a non-finite estimate, `NA` otherwise),
+#' `method`, `n_chains`, and `n_draws`. Only non-finite repetitions are
+#' excluded from the aggregate, so `aggregation$n_included` counts the finite
+#' repetitions: a finite repetition that exceeded `maxiter` has
+#' `success = FALSE` and is still aggregated.
+#'
+#' Condition classes: a non-finite repetition under `nonfinite = "error"`, and
+#' the absence of any finite repetition under `"drop"`, stop with an error of
+#' class `BayesTools_marglik_repetition_failure` (fields `repetitions`, the
+#' failed rows, and `upstream_warnings`). Errors of the likelihood callback
+#' keep their own classes and fields, with the `Bridge sampling failed:`
+#' context in the message and the muffled warnings in `upstream_warnings`.
+#' A state outside the support of the model (for example an out-of-support
+#' row-indexed random-effect SD source value) signals an error of class
+#' `BayesTools_marglik_out_of_support` while the parameters are reconstructed;
+#' the bridge target treats it as zero density, and the direct reconstruction
+#' functions (such as [JAGS_marglik_parameters_formula()]) let it escape. The
+#' two classes belong to no shared parent class; callers match the class, not
+#' the message.
 #'
 #' @export
 JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NULL, formula_list = NULL, formula_data_list = NULL, formula_prior_list = NULL, formula_scale_list = NULL,

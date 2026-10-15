@@ -41,8 +41,10 @@ the fitted original-scale formula source snapshot.}
 the names of the prior distribution correspond to the parameter names) of parameters specified
 within the \code{formula}}
 
-\item{prior_list_parameters}{named list of prior distributions on model parameters
-(not specified within the formula but that might scale the formula parameters)}
+\item{prior_list_parameters}{named list of the posterior values of the model
+parameters that are not specified within the formula but that might scale the
+formula parameters (the value returned by \code{JAGS_marglik_parameters()}
+for the same samples)}
 
 \item{formula_design_list}{named list of the formula-design metadata
 (the \code{formula_design} element returned by \code{JAGS_formula()}) of
@@ -82,6 +84,10 @@ owned state takes precedence over transformed aliases; malformed supplied
 owners refuse instead of falling back to a sample column. Expression-point
 replay is available through a fitted formula owner; generic prior readers
 without that owner report \code{BayesTools_formula_point_unavailable}.
+A state outside the support of the model (for example a negative row-indexed
+external random-effect SD value) stops \code{JAGS_marglik_parameters_formula()}
+with an error of class \code{BayesTools_marglik_out_of_support}, which
+\code{JAGS_bridgesampling()} treats as zero density.
 }
 \description{
 Extracts transformed parameters from the

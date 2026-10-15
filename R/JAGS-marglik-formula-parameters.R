@@ -1192,6 +1192,11 @@ JAGS_marglik_parameters_formula      <- function(samples, formula_list, formula_
   any(sample_names %in% names(samples))
 }
 
+# A bridge state outside the support of the model (a value that has no density
+# under the reconstructed target). Within JAGS_bridgesampling() the state has
+# zero density; direct callers of the reconstruction functions see the error.
+# Callers match the class BayesTools_marglik_out_of_support, never the message;
+# it has no shared parent class with BayesTools_marglik_repetition_failure.
 .bt_JAGS_marglik_out_of_support <- function(...){
 
   stop(structure(
