@@ -5147,6 +5147,27 @@ test_that("parameter and random SD sources validate simple external references",
   )
 })
 
+test_that("source data conflicts name the variable and the remedy, not a refit (F017)", {
+
+  design <- structure(
+    list(source_data = data.frame(raw_x = c(1, 2))),
+    class = "BayesTools_formula_design"
+  )
+  error <- tryCatch(
+    BayesTools:::.bt_JAGS_marglik_parameter_source_data(
+      model_data = list(raw_x = c(9, 9)),
+      formula_data = NULL,
+      design = design
+    ),
+    error = function(e) e
+  )
+  expect_s3_class(error, "BayesTools_refit_required")
+  expect_match(conditionMessage(error), "variable 'raw_x'", fixed = TRUE)
+  expect_match(conditionMessage(error), "must equal the fitted source data", fixed = TRUE)
+  expect_match(conditionMessage(error), "Rename the likelihood variable or pass the fitted values.", fixed = TRUE)
+  expect_false(grepl("Refit the model", conditionMessage(error), fixed = TRUE))
+})
+
 test_that("variance allocation priors generate shared total SD and Dirichlet allocation syntax", {
 
   df <- data.frame(

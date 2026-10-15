@@ -180,7 +180,9 @@ JAGS_marglik_parameters_formula      <- function(samples, formula_list, formula_
       .bt_stop_refit_required(
         "JAGS_bridgesampling() row-indexed source reconstruction received ",
         "data for variable '", name, "' that conflict with the fitted source ",
-        "snapshot. Refit the model if the source data have changed."
+        "snapshot. Supplied data that share a name with a variable of the ",
+        "fitted formula must equal the fitted source data of that variable. ",
+        "Rename the likelihood variable or pass the fitted values."
       )
     }
   }
