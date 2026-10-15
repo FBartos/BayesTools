@@ -109,18 +109,14 @@ test_that("unloading the package unloads its JAGS module without a message", {
   expect_identical(output, character())
 })
 
-test_that("the JAGS module loads and registers its six distribution and function names (F065)", {
+test_that("the BayesTools JAGS module loads (F065)", {
 
   skip_on_cran()
   skip_if_not_installed("rjags")
   expect_true(isTRUE(BayesTools_load_JAGS_module(quiet = TRUE, warn = FALSE)))
   expect_true("BayesTools" %in% rjags::list.modules())
-
-  # the generated syntax names the four distributions and the two functions;
-  # JAGS compiles (and initializes, without sampling) the model only if the
-  # module registered every one of them
-  registered <- c("dbt_lkj_cpc", "dbt_invgamma", "dbt_moment", "dbt_invmoment",
-                  "bt_lkj_cholesky", "bt_lkj_corr")
+  # the generated syntax names the four distributions and the two functions of
+  # the module; their registration is compiled in test-00-model-fits.R
   syntax <- JAGS_add_priors(
     paste0("model{
 ", JAGS_lkj_corr_cholesky("Sigma", K = 3, eta = 1)$syntax, "
@@ -131,9 +127,7 @@ test_that("the JAGS module loads and registers its six distribution and function
       c = prior("invgamma", list(2, 1))
     )
   )
-  for(name in registered){
-    expect_true(grepl(name, syntax, fixed = TRUE), info = name)
-  }
-  model <- rjags::jags.model(textConnection(syntax), n.chains = 1, n.adapt = 0, quiet = TRUE)
-  expect_s3_class(model, "jags")
+  used <- unique(regmatches(syntax, gregexpr("(dbt|bt)_[a-z_]+", syntax))[[1L]])
+  expect_setequal(used, c("dbt_lkj_cpc", "dbt_invgamma", "dbt_moment", "dbt_invmoment",
+                          "bt_lkj_cholesky", "bt_lkj_corr"))
 })

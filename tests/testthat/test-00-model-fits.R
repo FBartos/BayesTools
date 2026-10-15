@@ -8227,6 +8227,29 @@ test_that("JAGS_extend works correctly", {
 
 })
 
+test_that("the JAGS module registers its four distributions and two functions", {
+
+  skip_if_not(isTRUE(BayesTools_load_JAGS_module(quiet = TRUE, warn = FALSE)))
+  # JAGS compiles (and initializes, without sampling) syntax that uses each of
+  # the names only if the module registered all of them
+  syntax <- JAGS_add_priors(
+    paste0("model{
+", JAGS_lkj_corr_cholesky("Sigma", K = 3, eta = 1)$syntax, "
+}"),
+    list(
+      a = prior("moment", list(location = 0, tau = 1, order = 2)),
+      b = prior("invmoment", list(location = 0, tau = 1, order = 2, df = 3)),
+      c = prior("invgamma", list(2, 1))
+    )
+  )
+  for(name in c("dbt_lkj_cpc", "dbt_invgamma", "dbt_moment", "dbt_invmoment",
+                "bt_lkj_cholesky", "bt_lkj_corr")){
+    expect_true(grepl(name, syntax, fixed = TRUE), info = name)
+  }
+  model <- rjags::jags.model(textConnection(syntax), n.chains = 1, n.adapt = 0, quiet = TRUE)
+  expect_s3_class(model, "jags")
+})
+
 # ============================================================================ #
 # MARK THE FIT CACHE
 # ============================================================================ #
