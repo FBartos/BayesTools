@@ -170,3 +170,31 @@ test_that("actual interaction producers plot the zero-design cells of a treatmen
   expect_length(curves, 1L)
   expect_length(unique(curves[[1L]]$group), 3L)
 })
+
+test_that("prior displays of a treatment by orthonormal interaction describe its non-reference cells", {
+
+  skip_if_missing_fits("fit_formula_interaction_fac")
+  fit <- readRDS(file.path(temp_fits_dir, "fit_formula_interaction_fac.RDS"))
+  parameter <- "mu_x_fac2t__xXx__x_fac3o"
+  interaction <- attr(fit, "prior_list")[[parameter]]
+
+  # the reference level of the treatment factor has identically zero design rows
+  # (the atoms at zero); the continuous cells share one marginal scale
+  design   <- attr(interaction, "factor_design", exact = TRUE)
+  row_norm <- sqrt(rowSums(design^2))
+  expect_identical(sum(row_norm == 0), 3L)
+  scale <- interaction$parameters[["sd"]] * unique(round(row_norm[row_norm > 0], 10))
+  expect_length(scale, 1L)
+  expect_equal(var(interaction), scale^2)
+  expect_equal(mquant(interaction, .975), stats::qnorm(.975, 0, scale))
+  expect_equal(range(interaction, quantiles = .01), stats::qnorm(c(.01, .99), 0, scale))
+
+  grDevices::pdf(NULL)
+  on.exit(grDevices::dev.off(), add = TRUE)
+  expect_no_error(plot(interaction))
+
+  samples <- suppressWarnings(as_mixed_posteriors(fit, parameters = parameter))
+  expect_no_error(plot_posterior(samples, parameter, prior = TRUE))
+  figure <- plot_posterior(samples, parameter, prior = TRUE, plot_type = "ggplot")
+  expect_s3_class(figure, "ggplot")
+})

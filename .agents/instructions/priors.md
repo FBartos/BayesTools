@@ -23,9 +23,12 @@ sibling factor components. The marginal methods (`mcdf()`, `mccdf()`,
 `mlpdf()`/`mpdf()`, `mquant()`) and `var()`/`sd()` of a bound orthonormal or
 meandif `mnormal`/`mt` factor prior take the scale of each level from the
 declared factor design (the prior scale times the norm of the level's design
-row, as the bound sampler draws it), so interaction terms are covered; levels
-whose rows differ in norm have no common marginal and refuse. Priors without a
-stored design keep the single-factor contrast of K + 1 levels.
+row, as the bound sampler draws it), so interaction terms are covered. A row
+that vanishes identically (the reference level of a treatment factor inside an
+interaction, the atom at zero the cell declares) is not a continuous level: the
+common norm is taken over the non-zero rows, and levels whose non-zero rows
+differ in norm have no common marginal and refuse. Priors without a stored
+design keep the single-factor contrast of K + 1 levels.
 
 `prior()` creates the core `prior` S3 family. Distribution aliases and routing
 live in `R/priors.R`; constructors and parameter normalization live in

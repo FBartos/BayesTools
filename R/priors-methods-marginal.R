@@ -7,8 +7,11 @@
 # share it). A prior that carries its declared factor design (attr "factor_design",
 # as the bound factor terms and their interactions do) draws each level as the
 # design row times the coefficients, so the marginal scale of the level is the
-# prior scale times the norm of its design row. The marginal is defined when the
-# rows share one norm. Priors without a stored design use the single-factor
+# prior scale times the norm of its design row. A row that vanishes identically
+# (the reference level of a treatment factor inside an interaction) is the
+# atom at zero that the cell declares, not a continuous level, so the common
+# norm is taken over the non-zero rows and the marginal is defined when those
+# share one norm. Priors without a stored design use the single-factor
 # contrast of K + 1 levels.
 .prior_factor_marginal_scale <- function(prior){
 
@@ -20,6 +23,7 @@
   design <- attr(prior, "factor_design", exact = TRUE)
   if(is.matrix(design)){
     row_norm <- sqrt(rowSums(design^2))
+    if(any(row_norm > 0)) row_norm <- row_norm[row_norm > 0]
     if(max(row_norm) - min(row_norm) > 1e-8 * max(row_norm)){
       stop("The marginal distribution of the factor prior is unavailable: the levels of the declared factor design have different marginal scales. Use 'rng()' to obtain the level samples.", call. = FALSE)
     }

@@ -1652,6 +1652,45 @@ test_that("marginal methods and var() of bound factor priors use the declared fa
 })
 
 
+test_that("marginal methods of a treatment by orthonormal interaction take the common norm over the non-zero design rows", {
+  # the reference level of the treatment factor has identically zero design rows
+  # (the cell declares an atom at zero); the other cells share one marginal
+  data <- expand.grid(a = factor(c("a1", "a2")), b = factor(c("b1", "b2", "b3")))
+  priors <- list(
+    intercept = prior("normal", list(0, 1)),
+    a         = prior_factor("normal", list(0, 1), contrast = "treatment"),
+    b         = prior_factor("mnormal", list(0, 1.5), contrast = "orthonormal"),
+    "a:b"     = prior_factor("mnormal", list(0, 1.5), contrast = "orthonormal"))
+  interaction <- JAGS_formula(~ a * b, "mu", data, priors)$prior_list[["mu_a__xXx__b"]]
+  design    <- attr(interaction, "factor_design")
+  row_norm  <- sqrt(rowSums(design^2))
+  expect_identical(sum(row_norm == 0), 3L)
+  expect_length(unique(round(row_norm[row_norm > 0], 10)), 1L)
+  scale <- 1.5 * unique(round(row_norm[row_norm > 0], 10))
+
+  expect_equal(var(interaction), scale^2)
+  expect_equal(sd(interaction),  scale)
+  expect_equal(mcdf(interaction,  c(-.5, .5)), stats::pnorm(c(-.5, .5), 0, scale))
+  expect_equal(mccdf(interaction, c(-.5, .5)), stats::pnorm(c(-.5, .5), 0, scale, lower.tail = FALSE))
+  expect_equal(mlpdf(interaction, c(-.5, .5)), stats::dnorm(c(-.5, .5), 0, scale, log = TRUE))
+  expect_equal(mpdf(interaction,  c(-.5, .5)), stats::dnorm(c(-.5, .5), 0, scale))
+  expect_equal(mquant(interaction, c(.025, .975)), stats::qnorm(c(.025, .975), 0, scale))
+  expect_equal(range(interaction, quantiles = .01), stats::qnorm(c(.01, .99), 0, scale))
+  expect_no_error({
+    grDevices::pdf(NULL)
+    on.exit(grDevices::dev.off(), add = TRUE)
+    plot(interaction)
+  })
+
+  # non-zero rows that differ in norm still have no common marginal
+  uneven <- interaction
+  design <- attr(uneven, "factor_design")
+  design[which(row_norm > 0)[1L], ] <- 2 * design[which(row_norm > 0)[1L], ]
+  attr(uneven, "factor_design") <- design
+  expect_error(var(uneven), "different marginal scales", fixed = TRUE)
+})
+
+
 test_that("var() not implemented for mixture priors", {
   p_mix <- prior_mixture(
     list(prior("normal", list(0, 1)), prior("normal", list(3, 1))),

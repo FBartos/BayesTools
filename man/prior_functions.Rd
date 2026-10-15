@@ -78,6 +78,13 @@ and marginal variants of the functions (mpdf, mlpf, mcdf,
 mccdf, mquant) for prior distributions.
 Joint quantiles are unavailable for vector factor priors; use
 \code{mquant()} for their marginal quantiles.
+The marginal methods and \code{var()}/\code{sd()} of a bound orthonormal or
+mean-difference \code{mnormal}/\code{mt} factor prior describe its
+continuous levels: they take the scale of each level from the declared
+factor design, a level whose design row vanishes identically (the reference
+level of a treatment factor inside an interaction) is the atom at zero that
+the cell declares and does not enter the common scale, and levels whose
+non-zero rows differ in norm have no common marginal and refuse.
 Missing evaluation values \code{NA_real_} and \code{NaN} propagate distinctly
 through density, distribution and quantile methods for moment, inverse-moment
 and inverse-gamma scalar priors, including their marginal methods. Generic
