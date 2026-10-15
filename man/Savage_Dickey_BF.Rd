@@ -67,9 +67,11 @@ marginal posteriors of \code{marginal_inference()} and
 \code{as_marginal_inference()} (scalar marginals included), the Bayes
 factor of the affected parameter or level is \code{NA} instead, with the
 reason in its \code{"warnings"} attribute: for a posterior point mass at the
-null and for each of the five prior-ordinate conditions above (zero and
+null, for each of the five prior-ordinate conditions above (zero and
 infinite ordinates keep the reason text given in Details; the others, the
-message of their condition).
+message of their condition), and for a numerically unavailable posterior
+ordinate (\code{BayesTools_hypothesis_numerical_unavailable}, which the
+\code{"numerical_diagnostics"} attribute retains).
 }
 \description{
 Computes Savage-Dickey (density ratio) inclusion Bayes factors
@@ -130,8 +132,9 @@ or level, prefixed with its label (for example \code{mu[A]}).
 The KDE posterior ordinate needs at least two finite continuous draws with
 positive spread (unless exact support excludes the null). With fewer, or with
 identical draws, a scalar call stops with
-\code{BayesTools_hypothesis_numerical_unavailable}, and a level of a list (or
-of marginal inference) gets an \code{NA} Bayes factor with the reason. The
+\code{BayesTools_hypothesis_numerical_unavailable}, and a level of a list, and
+a parameter or level of marginal inference (a scalar marginal included), gets
+an \code{NA} Bayes factor with the reason. The
 same holds on the per-component route, for the pooled continuous draws and
 for each component whose support contains the null and that has several
 identical draws (a component with a single draw uses the pooled bandwidth).

@@ -95,9 +95,10 @@ As in \code{marginal_inference()}, a parameter or level whose conditional
 posterior has a declared point mass at the null hypothesis gets an
 \code{NA} inclusion Bayes factor with the reason in its \code{"warnings"}
 attribute.
-Known prior-ordinate refusals also produce \code{NA} plus the original
-reason, including scalar marginal table results; direct scalar
-\code{Savage_Dickey_BF()} remains strict.
+Known prior-ordinate refusals and a numerically unavailable posterior
+ordinate also produce \code{NA} plus the original reason, including scalar
+marginal table results; direct scalar \code{Savage_Dickey_BF()} remains
+strict.
 A level whose effective conditional subset is non-empty and leaves no
 draws is unavailable: it gets the warning \code{"No samples left after
 conditioning."} (once per distinct conditioning event) and is absent from the

@@ -86,7 +86,10 @@ A parameter or level whose conditional marginal posterior has a
 declared point mass at the null hypothesis (e.g., the reference level of a
 treatment-coded factor, fixed at zero) gets an \code{NA} inclusion Bayes
 factor with the reason in its \code{"warnings"} attribute, which summary
-tables report; the other parameters and levels are computed.
+tables report; the other parameters and levels are computed. A parameter
+(scalar marginal) or level whose posterior ordinate is numerically
+unavailable (for example, a kernel estimate from identical draws) gets an
+\code{NA} inclusion Bayes factor with the reason in the same way.
 }
 \seealso{
 \link{ensemble_inference} \link{mix_posteriors} \link{BayesTools_ensemble_tables}

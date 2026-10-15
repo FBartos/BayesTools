@@ -87,8 +87,9 @@
 #' The KDE posterior ordinate needs at least two finite continuous draws with
 #' positive spread (unless exact support excludes the null). With fewer, or with
 #' identical draws, a scalar call stops with
-#' \code{BayesTools_hypothesis_numerical_unavailable}, and a level of a list (or
-#' of marginal inference) gets an \code{NA} Bayes factor with the reason. The
+#' \code{BayesTools_hypothesis_numerical_unavailable}, and a level of a list, and
+#' a parameter or level of marginal inference (a scalar marginal included), gets
+#' an \code{NA} Bayes factor with the reason. The
 #' same holds on the per-component route, for the pooled continuous draws and
 #' for each component whose support contains the null and that has several
 #' identical draws (a component with a single draw uses the pooled bandwidth).
@@ -125,9 +126,11 @@
 #' \code{as_marginal_inference()} (scalar marginals included), the Bayes
 #' factor of the affected parameter or level is \code{NA} instead, with the
 #' reason in its \code{"warnings"} attribute: for a posterior point mass at the
-#' null and for each of the five prior-ordinate conditions above (zero and
+#' null, for each of the five prior-ordinate conditions above (zero and
 #' infinite ordinates keep the reason text given in Details; the others, the
-#' message of their condition).
+#' message of their condition), and for a numerically unavailable posterior
+#' ordinate (\code{BayesTools_hypothesis_numerical_unavailable}, which the
+#' \code{"numerical_diagnostics"} attribute retains).
 #'
 #' @export
 Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximation = FALSE, silent = FALSE,
@@ -213,24 +216,37 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
         out
       }, BayesTools_hypothesis_numerical_unavailable = function(condition){
         if(!isTRUE(null_mass_NA)) stop(condition)
-        if(!silent) .Savage_Dickey_BF.emit_warnings(conditionMessage(condition), .Savage_Dickey_BF.level_label(posterior, i))
-        out <- NA_real_
-        attr(out, "warnings") <- conditionMessage(condition)
-        attr(out, "posterior_density_source") <- "numerical_unavailable"
-        attr(out, "numerical_diagnostics") <- condition
-        out
+        .Savage_Dickey_BF.numerical_NA(condition, silent, .Savage_Dickey_BF.level_label(posterior, i))
       })
     }
     names(bf) <- names(posterior)
   }else{
-    bf <- .Savage_Dickey_BF.fun(
+    # a scalar marginal of the marginal inference functions gets an NA Bayes factor
+    # with the reason, as a level of a list does
+    bf <- tryCatch(.Savage_Dickey_BF.fun(
       posterior, null_hypothesis, normal_approximation, silent, density_method,
       label        = .Savage_Dickey_BF.parameter_label(posterior),
       null_mass_NA = null_mass_NA
-    )
+    ), BayesTools_hypothesis_numerical_unavailable = function(condition){
+      if(!isTRUE(null_mass_NA)) stop(condition)
+      .Savage_Dickey_BF.numerical_NA(condition, silent, .Savage_Dickey_BF.parameter_label(posterior))
+    })
   }
 
   return(bf)
+}
+
+# The NA Bayes factor of a parameter or level whose posterior ordinate is
+# numerically unavailable, with the reason and the classed condition.
+.Savage_Dickey_BF.numerical_NA <- function(condition, silent, label){
+
+  if(!silent) .Savage_Dickey_BF.emit_warnings(conditionMessage(condition), label)
+  out <- NA_real_
+  attr(out, "warnings") <- conditionMessage(condition)
+  attr(out, "posterior_density_source") <- "numerical_unavailable"
+  attr(out, "numerical_diagnostics") <- condition
+
+  out
 }
 
 # Labels of emitted Savage-Dickey diagnostics follow the marginal summary

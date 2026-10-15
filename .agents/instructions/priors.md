@@ -898,7 +898,9 @@ pooled and, on the component route, for every component containing the null
 (a component of one draw uses the pooled bandwidth): fewer, or identical, draws
 stop with `BayesTools_hypothesis_numerical_unavailable`
 (`fewer_than_two_finite_continuous_draws`, `zero_spread_continuous_draws`)
-unless the exact support excludes the null. The raw-draw ordinates of
+unless the exact support excludes the null; a level of a list posterior, and a
+parameter or level of marginal inference (scalar marginals included), instead
+get an NA Bayes factor with the reason. The raw-draw ordinates of
 `hypothesis_BF()` use the same kernel sum; for numeric draws with a prior
 object they are reflected, with the same reflection helper, at the bounds the
 prior object declares (its truncation, or the support of its family, carried

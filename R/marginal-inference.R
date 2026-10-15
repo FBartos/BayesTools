@@ -32,7 +32,10 @@
 #' declared point mass at the null hypothesis (e.g., the reference level of a
 #' treatment-coded factor, fixed at zero) gets an \code{NA} inclusion Bayes
 #' factor with the reason in its \code{"warnings"} attribute, which summary
-#' tables report; the other parameters and levels are computed.
+#' tables report; the other parameters and levels are computed. A parameter
+#' (scalar marginal) or level whose posterior ordinate is numerically
+#' unavailable (for example, a kernel estimate from identical draws) gets an
+#' \code{NA} inclusion Bayes factor with the reason in the same way.
 #'
 #' @return \code{marginal_inference} returns an object of class 'marginal_inference'.
 #'
@@ -179,9 +182,10 @@ marginal_inference <- function(model_list, marginal_parameters, parameters, is_n
 #' posterior has a declared point mass at the null hypothesis gets an
 #' \code{NA} inclusion Bayes factor with the reason in its \code{"warnings"}
 #' attribute.
-#' Known prior-ordinate refusals also produce \code{NA} plus the original
-#' reason, including scalar marginal table results; direct scalar
-#' \code{Savage_Dickey_BF()} remains strict.
+#' Known prior-ordinate refusals and a numerically unavailable posterior
+#' ordinate also produce \code{NA} plus the original reason, including scalar
+#' marginal table results; direct scalar \code{Savage_Dickey_BF()} remains
+#' strict.
 #' A level whose effective conditional subset is non-empty and leaves no
 #' draws is unavailable: it gets the warning \code{"No samples left after
 #' conditioning."} (once per distinct conditioning event) and is absent from the

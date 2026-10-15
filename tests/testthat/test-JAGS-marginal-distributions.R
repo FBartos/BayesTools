@@ -5699,17 +5699,58 @@ test_that("the kernel posterior ordinate refuses degenerate continuous draws", {
     posterior_support_attribute(bounds = c(1, Inf), exact = TRUE))
   expect_false(inherits(tryCatch(Savage_Dickey_BF(excluded, silent = TRUE), error = function(e) e), unavailable))
 
-  # a scalar marginal of as_marginal_inference() stops with the classed condition
+  # a direct scalar call stops with the classed condition; a scalar marginal of
+  # as_marginal_inference() gets an NA Bayes factor with the reason, as a level does
   fit <- coda::mcmc(cbind(theta = c(.5, rep(0, 99)), theta_indicator = c(1L, rep(0L, 99))))
   class(fit) <- c("mcmc", "BayesTools_fit")
   attr(fit, "prior_list") <- list(theta = prior_spike_and_slab(
     prior("normal", list(0, 1)), prior_inclusion = prior("point", list(.5))))
   fit <- attach_test_parameter_map(fit)
-  expect_error(
-    as_marginal_inference(fit, "theta", "theta", list(theta = "theta"), "AND", NULL,
-                          n_samples = 128, silent = TRUE),
-    class = unavailable
-  )
+  inference <- as_marginal_inference(fit, "theta", "theta", list(theta = "theta"), "AND", NULL,
+                                     n_samples = 128, silent = TRUE)
+  expect_error(Savage_Dickey_BF(inference$conditional$theta, silent = TRUE), class = unavailable)
+  expect_true(is.na(inference$inference$theta))
+  expect_s3_class(attr(inference$inference$theta, "numerical_diagnostics"), unavailable)
+  expect_identical(attr(inference$inference$theta, "posterior_density_source"), "numerical_unavailable")
+  expect_identical(attr(inference$inference$theta, "numerical_diagnostics")$reason,
+                   "fewer_than_two_finite_continuous_draws")
+})
+
+test_that("marginal inference gives a scalar marginal with an unavailable posterior ordinate an NA row", {
+
+  set.seed(51)
+  prior_list <- list(mu = prior("normal", list(0, 1)), tau = prior("normal", list(0, 1)))
+  models <- lapply(1:2, function(i) list(
+    fit = .mock_mixing_fit_for_marginal(cbind(mu = rep(.3, 100), tau = stats::rnorm(100)), prior_list),
+    marglik = bridgesampling_object(0), prior_weights = 1))
+  null_models <- list(mu = c(FALSE, FALSE), tau = c(FALSE, FALSE))
+  call_marginal <- function(silent){
+    marginal_inference(models, c("mu", "tau"), c("mu", "tau"), null_models, NULL,
+                       n_samples = 100, seed = 1, silent = silent)
+  }
+
+  # the constant parameter gets an NA Bayes factor with the reason; the other parameter is computed
+  inference <- call_marginal(silent = TRUE)
+  expect_named(inference$inference, c("mu", "tau"))
+  expect_true(is.na(inference$inference$mu))
+  expect_true(is.finite(inference$inference$tau) && inference$inference$tau > 0)
+  expect_s3_class(attr(inference$inference$mu, "numerical_diagnostics"),
+                  "BayesTools_hypothesis_numerical_unavailable")
+  expect_identical(attr(inference$inference$mu, "numerical_diagnostics")$reason, "zero_spread_continuous_draws")
+  expect_identical(attr(inference$inference$mu, "posterior_density_source"), "numerical_unavailable")
+
+  # the table reports the row with its reason
+  table <- marginal_estimates_table(inference$conditional, inference$inference, c("mu", "tau"))
+  expect_true(is.na(table[["inclusion_BF"]][[1L]]))
+  expect_true(is.finite(table[["inclusion_BF"]][[2L]]))
+  expect_length(attr(table, "warnings"), 1L)
+  expect_match(attr(table, "warnings"), "^mu: ")
+  expect_match(attr(table, "warnings"), "zero spread continuous draws", fixed = TRUE)
+
+  # the reason is warned once, prefixed with the parameter, unless silent
+  warnings <- .collect_warnings_for_test(call_marginal(silent = FALSE))$warnings
+  expect_length(warnings, 1L)
+  expect_match(warnings, "^mu: ")
 })
 
 test_that("the kernel posterior ordinate refuses constant continuous draws on the component route", {
