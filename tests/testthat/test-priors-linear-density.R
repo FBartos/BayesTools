@@ -3157,6 +3157,50 @@ test_that("the Cauchy merge does not overwrite a source named like the merged te
                                 -Inf, Inf, rel.tol = 1e-10)$value, tolerance = 1e-6)
 })
 
+test_that("a mixture expansion beyond the leaf cap is named by its route reason and refusal", {
+
+  # four leaves exceed the cap of floor(42 / 15) = 2 initial quadrature rules
+  student <- function(shift, df){
+    prior_mixture(lapply(1:4, function(i) prior("t", list(shift * i, 1, df), prior_weights = 1)),
+                  is_null = rep(FALSE, 4))
+  }
+  capped_reason <- "The mixture expansion of this combination exceeds the leaf cap."
+  priors <- list(a = student(1, 4), b = student(-1, 5), c = prior("t", list(0, 1, 6)))
+  weights <- c(a = 1, b = 1, c = 1)
+  route <- .prior_density_route_linear(priors, weights, NULL, 42)
+  expect_identical(route$type, "unknown")
+  expect_identical(route$reason, capped_reason)
+  expect_identical(route$provenance$kind, "general_convolution")
+  expect_identical(prior_density_ordinate(
+    .prior_linear_combination_density(priors, weights, n_grid = 42), 0)$reason, capped_reason)
+  # a larger budget expands the leaves; three terms without a mixture are a
+  # general convolution
+  expect_identical(.prior_density_route_linear(priors, weights, NULL, 4000)$type, "mixture")
+  general <- .prior_density_route_linear(list(a = prior("t", list(0, 1, 4)), b = prior("t", list(0, 1, 5)),
+                                              c = prior("t", list(0, 1, 6))), weights, NULL, 42)
+  expect_identical(general$reason, "General numerical convolutions are not structurally classified.")
+
+  # the product of a capped mixture is refused with its own message
+  multiplied <- student(1, 4)
+  attr(multiplied, "multiply_by") <- "s"
+  product_priors <- list(a = prior("normal", list(0, 1)), b = multiplied,
+                         s = prior("cauchy", list(0, 1), list(0, 5)))
+  product <- .prior_density_route_linear(product_priors, c(a = 1, b = 1), NULL, 42)
+  expect_identical(product$reason, "The mixture expansion of this product exceeds the leaf cap.")
+  expect_identical(product$provenance$cause, "leaf_cap")
+  expect_error(.prior_linear_density_check_grid(product),
+               "the mixture expansion of its 'multiply_by' product exceeds the leaf cap", fixed = TRUE)
+  expect_error(.prior_linear_density_check_grid(product, quantity = "probability"),
+               "the mixture expansion of its 'multiply_by' product exceeds the leaf cap",
+               fixed = TRUE, class = "BayesTools_prior_region_route_unavailable")
+  other <- .prior_density_route_linear(list(a = prior("normal", list(0, 1)),
+    b = structure(prior("normal", list(0, 1)), multiply_by = "s"),
+    c = structure(prior("normal", list(0, 1)), multiply_by = "s"),
+    s = prior("cauchy", list(0, 1), list(0, 5)), t = prior("cauchy", list(0, 1), list(0, 5))),
+    c(a = 1, b = 1, c = 1), NULL, 42)
+  expect_null(other$provenance$cause)
+})
+
 test_that("allocation multipliers are validated", {
 
   leaf <- prior("point", list(1))

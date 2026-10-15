@@ -32,8 +32,6 @@
     converged      = if(is.null(integration)) TRUE else isTRUE(integration$converged),
     messages       = if(is.null(integration) || isTRUE(integration$converged)){
       character()
-    }else if(identical(integration$message, "OK")){
-      "an absolute error above its error bound"
     }else{
       integration$message
     },
@@ -152,7 +150,14 @@
       upper_cdf <- if(is.finite(upper)) cdf(prior, upper) else if(upper > 0) 1 else 0
       mass <- upper_cdf - lower_cdf
     }
-    probability <- probability + max(0, as.numeric(mass))
+    mass <- as.numeric(mass)
+    # a difference of distribution functions at ordered bounds is negative only
+    # by rounding; a larger negative value is not clamped
+    if(isTRUE(mass < -sqrt(.Machine$double.eps))){
+      .prior_numerical_signal("region probability", prior$distribution, "natural", i,
+        "The distribution function decreases between the region bounds", error = TRUE)
+    }
+    probability <- probability + max(0, mass)
   }
   if(probability > 0){
     lower <- pmax(intervals[, 1L], prior$truncation$lower)
@@ -512,8 +517,8 @@
 
 # Prior probability of 'region' from the deterministic provenance of a
 # prior_linear_density; NULL when the density has no such representation
-# (the caller then uses its grid). A conditional-normal quadrature that fails
-# its acceptance criterion stops.
+# (the caller then uses its grid). A quadrature (conditional-normal, scale
+# product or convolution) that fails its acceptance criterion stops.
 .prior_linear_density_region_probability <- function(x, region){
 
   result <- .prior_region_from_adaptive(
@@ -529,7 +534,7 @@
       messages <- "a non-finite probability"
     }
     stop(errorCondition(paste0(
-      "Conditional-normal prior probability was rejected by diagnostics: ",
+      "Prior probability was rejected by diagnostics: ",
       "integration reported '", paste(messages, collapse = "; "),
       "' with absolute error ", format(result$absolute_error),
       ". Inspect the prior specification and the region bounds."),
@@ -541,7 +546,7 @@
   probability <- result$probability
   if(probability > 0 && !is.null(result$log_mass)) attr(probability, "log_mass") <- result$log_mass
   attr(probability, "numerical_diagnostics") <- list(
-    method         = if(result$quadratures > 0) "conditional_normal_quadrature" else "exact",
+    method         = if(result$quadratures > 0) "quadrature" else "exact",
     quadratures    = result$quadratures,
     absolute_error = result$absolute_error,
     convergence    = isTRUE(result$converged),

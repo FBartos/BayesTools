@@ -991,6 +991,35 @@ test_that("far-tail Gaussian-convolution regions meet the relative criterion", {
   expect_true(all(integration$exact_pieces[pieces[, 1L] >= 1e4 + 10]))
 })
 
+test_that("region probabilities report their quadrature method and refuse a decreasing distribution function", {
+
+  # a two-term convolution is a quadrature (not only the conditional-normal
+  # route), a normal sum the exact distribution function
+  region <- list(intervals = .prior_region_intervals(-Inf, 2), indicator = function(x) x <= 2)
+  convolution <- .prior_linear_combination_density(
+    list(x = prior("gamma", list(2, 1)), y = prior("gamma", list(3, 2))), c(x = 1, y = 1), n_grid = 256
+  )
+  probability <- .prior_linear_density_region_probability(convolution, region)
+  expect_identical(attr(probability, "numerical_diagnostics")$method, "quadrature")
+  expect_equal(as.numeric(probability), stats::integrate(function(u){
+    stats::dgamma(u, 2, 1) * stats::pgamma(2 - u, 3, 2)
+  }, 0, 2, rel.tol = 1e-12)$value, tolerance = 1e-6)
+  normal_sum <- .prior_linear_combination_density(list(x = prior("normal", list(0, 1))), c(x = 1), n_grid = 256)
+  expect_identical(attr(.prior_linear_density_region_probability(normal_sum, region),
+                        "numerical_diagnostics")$method, "exact")
+
+  # the distribution function of a simple prior never decreases: a rounding
+  # level negative difference is clamped, a larger one is a signal
+  standard <- prior("normal", list(0, 1))
+  intervals <- .prior_region_intervals(0, 1)
+  testthat::local_mocked_bindings(cdf = function(object, q, ...) c(`0` = .4, `1` = .4 - 1e-16)[[as.character(q)]])
+  expect_identical(as.numeric(.prior_region_prior_mass(standard, intervals)), 0)
+  testthat::local_mocked_bindings(cdf = function(object, q, ...) c(`0` = .4, `1` = .3)[[as.character(q)]])
+  expect_error(.prior_region_prior_mass(standard, intervals),
+               "The normal prior region probability is numerically unavailable. The distribution function decreases between the region bounds.",
+               fixed = TRUE, class = "BayesTools_numerical_unavailable")
+})
+
 test_that("rejected region quadratures stop instead of using the grid", {
 
   priors <- scale_mixture_priors()
@@ -1011,7 +1040,7 @@ test_that("rejected region quadratures stop instead of using the grid", {
   expect_error(
     .hypothesis_prior_density_prob(density, side, "theta"),
     paste0(
-      "Conditional-normal prior probability was rejected by diagnostics: ",
+      "Prior probability was rejected by diagnostics: ",
       "integration reported 'roundoff error was detected' with absolute error ",
       format(n_pieces * 1e-3), ". Inspect the prior specification and the region bounds."
     ),

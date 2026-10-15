@@ -75,7 +75,7 @@ test_that("D3 known region diagnostic refusals form complete unavailable tables"
   expect_true(all(is.na(as.numeric(result$BF))))
   expect_identical(result$method, rep("unavailable", 3L))
   expect_match(attr(result, "warnings")[["mu_fac[B]"]],
-               "Conditional-normal prior probability was rejected by diagnostics:", fixed = TRUE)
+               "Prior probability was rejected by diagnostics:", fixed = TRUE)
   exported <- as.data.frame(result)
   expect_true(all(nzchar(exported$warning)))
   expect_true(any(grepl("known integration failure", capture.output(print(result)), fixed = TRUE)))

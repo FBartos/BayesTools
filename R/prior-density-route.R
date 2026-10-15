@@ -159,12 +159,10 @@
   count
 }
 
-# Expansion of the first mixture or spike-and-slab prior among 'parameters'
-# into its positive-probability components (each a prior list with that
-# component in place of the mixture); the other mixtures are expanded when the
-# components are routed in turn. NULL when there is no expandable mixture or
-# the expansion exceeds the leaf cap.
-.prior_density_route_mixture_expansion <- function(prior_list, parameters, n_grid){
+# The mixture and spike-and-slab priors among 'parameters' and the number of
+# leaves their expansion would have (the product of their leaf counts); NULL
+# without an expandable mixture or when a mixture has no resolved leaves.
+.prior_density_route_expansion_leaves <- function(prior_list, parameters){
 
   parameters <- unique(parameters[parameters %in% names(prior_list)])
   mixtures <- parameters[vapply(prior_list[parameters], function(prior){
@@ -174,11 +172,33 @@
     return(NULL)
   }
   leaves <- lapply(prior_list[mixtures], .prior_density_route_prior_leaves)
-  if(any(vapply(leaves, is.null, logical(1))) ||
-     prod(unlist(leaves)) > .prior_density_route_leaf_cap(n_grid)){
+  if(any(vapply(leaves, is.null, logical(1)))){
     return(NULL)
   }
 
+  list(mixtures = mixtures, count = prod(unlist(leaves)))
+}
+
+# Whether the expansion of the mixtures among 'parameters' exceeds the leaf cap.
+.prior_density_route_expansion_capped <- function(prior_list, parameters, n_grid){
+
+  leaves <- .prior_density_route_expansion_leaves(prior_list, parameters)
+  !is.null(leaves) && leaves$count > .prior_density_route_leaf_cap(n_grid)
+}
+
+# Expansion of the first mixture or spike-and-slab prior among 'parameters'
+# into its positive-probability components (each a prior list with that
+# component in place of the mixture); the other mixtures are expanded when the
+# components are routed in turn. NULL when there is no expandable mixture or
+# the expansion exceeds the leaf cap.
+.prior_density_route_mixture_expansion <- function(prior_list, parameters, n_grid){
+
+  leaves <- .prior_density_route_expansion_leaves(prior_list, parameters)
+  if(is.null(leaves) || leaves$count > .prior_density_route_leaf_cap(n_grid)){
+    return(NULL)
+  }
+
+  mixtures <- leaves$mixtures
   parameter <- mixtures[[1L]]
   parent <- prior_list[[parameter]]
   probabilities <- .prior_density_ordinate_mixture_weights(parent)
@@ -503,14 +523,19 @@
 .prior_density_route_product <- function(prior_list, weights, split,
                                          source_transforms, n_grid){
 
-  general <- function(reason = "General products are not structurally classified."){
+  general <- function(reason = "General products are not structurally classified.",
+                      cause = NULL){
+    provenance <- list(
+      kind        = "general_product",
+      weights     = .prior_density_ordinate_compact(weights),
+      multipliers = names(split$product_groups)
+    )
+    if(!is.null(cause)){
+      provenance$cause <- cause
+    }
     .prior_density_route_unknown(
       reason     = reason,
-      provenance = list(
-        kind        = "general_product",
-        weights     = .prior_density_ordinate_compact(weights),
-        multipliers = names(split$product_groups)
-      ),
+      provenance = provenance,
       recipe     = .prior_density_route_recipe(prior_list, weights, source_transforms, n_grid)
     )
   }
@@ -538,7 +563,8 @@
   if(length(mixtures) > 0L){
     expansion <- .prior_density_route_mixture_expansion(prior_list, active, n_grid)
     if(is.null(expansion)){
-      return(general("The mixture expansion of this product exceeds the leaf cap."))
+      return(general("The mixture expansion of this product exceeds the leaf cap.",
+                     cause = "leaf_cap"))
     }
     return(.prior_density_route_expand(expansion, weights, source_transforms, n_grid))
   }
@@ -866,8 +892,18 @@
   }
 
   recipe <- .prior_density_route_recipe(prior_list, weights, source_transforms, n_grid)
+  groups <- tryCatch(
+    .prior_linear_weight_groups(prior_list, weights),
+    error = function(e) NULL
+  )
+  capped <- !is.null(groups) &&
+    .prior_density_route_expansion_capped(prior_list, names(groups), n_grid)
   route <- .prior_density_route_unknown(
-    reason     = "General numerical convolutions are not structurally classified.",
+    reason     = if(capped){
+      "The mixture expansion of this combination exceeds the leaf cap."
+    }else{
+      "General numerical convolutions are not structurally classified."
+    },
     provenance = list(
       kind              = "general_convolution",
       weights           = .prior_density_ordinate_compact(weights),
@@ -1912,19 +1948,32 @@
 
 # ---- numerical grids ---------------------------------------------------------
 
-# Whether a route contains a product without a structural route.
-.prior_density_route_has_general_product <- function(route){
+# The first product without a structural route that a route contains (its
+# unknown route), NULL without one.
+.prior_density_route_general_product <- function(route){
 
   if(is.null(route)){
-    return(FALSE)
+    return(NULL)
   }
   switch(
     route$type,
-    "unknown"   = identical(route$provenance$kind, "general_product"),
-    "mixture"   = any(vapply(route$components, .prior_density_route_has_general_product, logical(1))),
-    "transform" = .prior_density_route_has_general_product(route$source),
-    FALSE
+    "unknown"   = if(identical(route$provenance$kind, "general_product")) route,
+    "mixture"   = {
+      for(component in route$components){
+        found <- .prior_density_route_general_product(component)
+        if(!is.null(found)) return(found)
+      }
+      NULL
+    },
+    "transform" = .prior_density_route_general_product(route$source),
+    NULL
   )
+}
+
+# Whether a route contains a product without a structural route.
+.prior_density_route_has_general_product <- function(route){
+
+  !is.null(.prior_density_route_general_product(route))
 }
 
 # Numerical grids stand in only for combinations of simple terms without a
@@ -1933,14 +1982,24 @@
 # inference.
 .prior_linear_density_check_grid <- function(route, quantity = NULL){
 
-  if(.prior_density_route_has_general_product(route)){
-    message <- paste0(
-      "The prior density of this linear combination is unavailable: its ",
-      "'multiply_by' product has no structural density route (a non-normal ",
-      "additive term, several products, or several non-normal multiplied ",
-      "terms), and numerical product grids are not used for inference. ",
-      "Evaluate the terms separately."
-    )
+  product <- .prior_density_route_general_product(route)
+  if(!is.null(product)){
+    message <- if(identical(product$provenance$cause, "leaf_cap")){
+      paste0(
+        "The prior density of this linear combination is unavailable: the ",
+        "mixture expansion of its 'multiply_by' product exceeds the leaf cap, ",
+        "and numerical product grids are not used for inference. ",
+        "Evaluate the terms separately."
+      )
+    }else{
+      paste0(
+        "The prior density of this linear combination is unavailable: its ",
+        "'multiply_by' product has no structural density route (a non-normal ",
+        "additive term, several products, or several non-normal multiplied ",
+        "terms), and numerical product grids are not used for inference. ",
+        "Evaluate the terms separately."
+      )
+    }
     if(identical(quantity, "probability")){
       stop(errorCondition(message, call = NULL,
         class = c("BayesTools_prior_region_route_unavailable",
