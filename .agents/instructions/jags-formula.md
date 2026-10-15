@@ -429,6 +429,12 @@ names.
   coordinate names such as `mu_g[2]` remain backend column names, used by
   coordinate-based functions such as `JAGS_materialize_draws()`, but are not
   factor selectors.
+  The indicator columns of a logical predictor's interaction with a continuous
+  one whose margin is absent from the block (`flagFALSE:x`, `flagTRUE:x` of
+  `(1 + flag + flag:x | id)`) share one SD, labelled by the term (`sd(flag:x)`),
+  and are labelled by their level cells (`flag[FALSE]:x`, `flag[TRUE]:x`) in
+  the correlations, so that every correlation name identifies one pair of
+  columns.
   A continuous coefficient's backend name is not a level label: aliases such
   as `x[mu_x]` and `intercept[mu_intercept]` are unavailable. Parameter-map
   schema 10 requires refitting older maps rather than retaining their aliases.

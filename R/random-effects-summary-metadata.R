@@ -307,7 +307,46 @@
     components <- leaves$leaf_terms_by_column
   }
 
-  .bt_random_effect_summary_display_components(random_term, components)
+  components <- .bt_random_effect_summary_display_components(random_term, components)
+  .bt_random_effect_summary_cell_components(random_term, components)
+}
+
+# Columns that share one SD leaf term are the indicator columns of a logical
+# predictor's interaction with a continuous one (`flagFALSE:x` and
+# `flagTRUE:x` of `flag:x`). Each takes the label of its level cell
+# (`flag[FALSE]:x`), as the cells of a factor term do, so that the names of
+# the correlations of a correlated block identify one column each. The SD
+# itself is shared and keeps the label of the term. A column keeps its label
+# when its coding cannot be matched to the components of its term.
+.bt_random_effect_summary_cell_components <- function(random_term, components){
+
+  shared <- duplicated(components) | duplicated(components, fromLast = TRUE)
+  raw_names <- random_term$raw_column_names
+  assign <- random_term$assign
+  model_terms <- random_term$model_terms
+  if(!any(shared) || length(raw_names) != length(components) ||
+     length(assign) != length(components) || length(model_terms) == 0L){
+    return(components)
+  }
+
+  offset <- if(any(assign == 0L)) 1L else 0L
+  for(i in which(shared)){
+    model_term <- model_terms[assign[i] + offset]
+    term_parts <- .bt_random_effect_term_components(model_term)
+    raw_parts <- strsplit(raw_names[i], ":", fixed = TRUE)[[1L]]
+    if(is.na(model_term) || length(term_parts) != length(raw_parts) ||
+       !all(startsWith(raw_parts, term_parts))){
+      next
+    }
+    levels <- substring(raw_parts, nchar(term_parts) + 1L)
+    components[i] <- paste0(
+      term_parts,
+      ifelse(nzchar(levels), paste0("[", levels, "]"), ""),
+      collapse = ":"
+    )
+  }
+
+  components
 }
 
 .bt_random_effect_summary_allocation_samples <- function(allocation,

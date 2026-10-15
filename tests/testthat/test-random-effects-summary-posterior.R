@@ -2025,3 +2025,135 @@ test_that("allocation components with equal sanitized labels keep their own draw
     expect_equal(as.numeric(posterior[[2L]]), expected[, 2L])
   }
 })
+
+test_that("the indicator columns of a logical-by-continuous term are labelled by level", {
+
+  skip_if_not_installed("runjags")
+
+  # `flag:x` without the margin `x` in the block is coded by two indicator
+  # columns (flagFALSE:x, flagTRUE:x) that share the SD of the term; the
+  # correlations of a correlated block name each of them by its level cell
+  df <- data.frame(
+    x = rep(c(-1, 0, 1, 2), 12),
+    flag = rep(c(TRUE, FALSE, FALSE), 16),
+    id = factor(rep(paste0("s", 1:8), each = 6))
+  )
+  result <- JAGS_formula(
+    ~ 1 + x + flag + (1 + flag + flag:x | id), "mu", df,
+    prior_list = list(
+      intercept = prior("normal", list(0, 1)),
+      x = prior("normal", list(0, 1)),
+      flag = prior("normal", list(0, 1))
+    ),
+    prior_random = prior_random(id = random_block(
+      sd = prior("gamma", list(2, 2)),
+      cor = prior_lkj(eta = 2),
+      monitor = random_monitor(latent = FALSE, coefficients = FALSE, correlation = TRUE)
+    ))
+  )
+  term <- result$formula_design$random_effects[[1L]]
+  expect_identical(term$raw_column_names, c("(Intercept)", "flagTRUE", "flagFALSE:x", "flagTRUE:x"))
+  expect_identical(
+    BayesTools:::.bt_random_effect_summary_column_components(term),
+    c("intercept", "flag", "flag[FALSE]:x", "flag[TRUE]:x")
+  )
+
+  # the carrier monitors the correlation matrix and its Cholesky factor of the
+  # four columns, with distinct correlations
+  correlation <- matrix(c(
+    1.0, 0.4, 0.2, -0.3,
+    0.4, 1.0, 0.1, 0.5,
+    0.2, 0.1, 1.0, 0.6,
+    -0.3, 0.5, 0.6, 1.0
+  ), 4L, 4L)
+  matrix_names <- outer(1:4, 1:4, function(row, column){
+    paste0(term$parameter_stem, "_xRE_CORx_R[", row, ",", column, "]")
+  })
+  values <- c(
+    mu_intercept = 0, mu_x = 0, mu_flag = 0,
+    stats::setNames(c(0.5, 1, 1.5), unique(term$sd_parameter_names)),
+    stats::setNames(as.vector(correlation), as.vector(matrix_names)),
+    stats::setNames(
+      as.vector(t(chol(correlation))),
+      as.vector(BayesTools:::.bt_random_effect_cholesky_names(term, 4L))
+    )
+  )
+  posterior <- matrix(rep(values, 6L), nrow = 6L, byrow = TRUE, dimnames = list(NULL, names(values)))
+  fit <- structure(
+    list(
+      mcmc = coda::mcmc.list(coda::mcmc(posterior)),
+      sample = nrow(posterior),
+      summary.pars = list(mutate = NULL),
+      monitor = colnames(posterior)
+    ),
+    class = c("runjags", "BayesTools_fit", "list")
+  )
+  attr(fit, "prior_list") <- result$prior_list
+  attr(fit, "formula_design") <- list(mu = result$formula_design)
+  attr(fit, "formula_scale") <- list(mu = result$formula_scale)
+  fit <- attach_test_parameter_map(fit)
+
+  # the map builds with unique names; the shared SD keeps the label of its term
+  catalog <- parameter_catalog(fit)
+  names <- catalog$quantities$canonical_name
+  expect_false(anyDuplicated(names) > 0L)
+  expected <- c(
+    "(mu) sd(intercept)", "(mu) sd(flag)", "(mu) sd(flag:x)",
+    "(mu) cor(intercept,flag)", "(mu) cor(intercept,flag[FALSE]:x)",
+    "(mu) cor(intercept,flag[TRUE]:x)", "(mu) cor(flag,flag[FALSE]:x)",
+    "(mu) cor(flag,flag[TRUE]:x)", "(mu) cor(flag[FALSE]:x,flag[TRUE]:x)"
+  )
+  expect_true(all(expected %in% names))
+  expect_identical(sum(startsWith(names, "(mu) sd(")), 3L)
+  expect_identical(sum(startsWith(names, "(mu) cor(")), 6L)
+
+  # tables, draws and correlations work
+  table <- JAGS_estimates_table(fit, remove_diagnostics = TRUE)
+  expect_true(all(expected %in% rownames(table)))
+  columns <- c(intercept = 1L, flag = 2L, "flag[FALSE]:x" = 3L, "flag[TRUE]:x" = 4L)
+  for(pair in utils::combn(names(columns), 2L, simplify = FALSE)){
+    draws <- parameter_draws(
+      fit, parameter_catalog_resolve(catalog, paste0("(mu) cor(", pair[1L], ",", pair[2L], ")"))
+    )
+    expect_equal(
+      as.numeric(as.matrix(draws)),
+      rep(correlation[columns[[pair[1L]]], columns[[pair[2L]]]], nrow(posterior)),
+      tolerance = 1e-12, info = paste(pair, collapse = ",")
+    )
+    expect_equal(
+      unname(table[paste0("(mu) cor(", pair[1L], ",", pair[2L], ")"), "Mean"]),
+      correlation[columns[[pair[1L]]], columns[[pair[2L]]]], tolerance = 1e-12
+    )
+  }
+  expect_equal(unname(table["(mu) sd(flag:x)", "Mean"]), 1.5, tolerance = 1e-12)
+
+  # a diagonal block keeps the label of the shared SD
+  diagonal <- JAGS_formula(
+    ~ 1 + x + flag + diag(1 + flag + flag:x | id), "mu", df,
+    prior_list = list(
+      intercept = prior("normal", list(0, 1)),
+      x = prior("normal", list(0, 1)),
+      flag = prior("normal", list(0, 1))
+    ),
+    prior_random = prior_random(id = random_block(
+      sd = prior("gamma", list(2, 2)),
+      monitor = random_monitor(latent = FALSE, coefficients = FALSE, correlation = FALSE)
+    ))
+  )
+  diagonal_posterior <- BayesTools:::.generate_prior_sample_matrix(diagonal$prior_list, 6L, seed = 1)
+  diagonal_fit <- structure(
+    list(
+      mcmc = coda::mcmc.list(coda::mcmc(diagonal_posterior)),
+      sample = nrow(diagonal_posterior),
+      summary.pars = list(mutate = NULL),
+      monitor = colnames(diagonal_posterior)
+    ),
+    class = c("runjags", "BayesTools_fit", "list")
+  )
+  attr(diagonal_fit, "prior_list") <- diagonal$prior_list
+  attr(diagonal_fit, "formula_design") <- list(mu = diagonal$formula_design)
+  attr(diagonal_fit, "formula_scale") <- list(mu = diagonal$formula_scale)
+  diagonal_names <- parameter_catalog(attach_test_parameter_map(diagonal_fit))$quantities$canonical_name
+  expect_true(all(c("(mu) sd(intercept)", "(mu) sd(flag)", "(mu) sd(flag:x)") %in% diagonal_names))
+  expect_false(any(grepl("cor(", diagonal_names, fixed = TRUE)))
+})
