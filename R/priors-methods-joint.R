@@ -61,7 +61,18 @@
 #' @param q vector or matrix of quantiles
 #' @param p vector of probabilities
 #' @param n number of observations
-#' @param ... unused arguments
+#' @param ... additional arguments of \code{rng()}; the other functions
+#'   ignore them. \code{transform_factor_samples} (default \code{TRUE}):
+#'   whether the samples of orthonormal, mean-difference and ordered factor
+#'   priors are transformed to the level scale (\code{FALSE}: the raw
+#'   coefficients); \code{sample_components} (default \code{FALSE}): whether
+#'   mixture and spike-and-slab priors return the sampled component (or
+#'   inclusion indicator) instead of the values;
+#'   \code{quantity} (ordered priors only, default \code{"level"}): the
+#'   draws returned, one of \code{"level"} (the transformed level samples),
+#'   \code{"coefficient"} and \code{"increment"} (the raw coefficients),
+#'   \code{"total"} (the totals of the ordered sums) or \code{"allocation"}
+#'   (the allocation shares).
 #'
 #' @examples
 #' # create a standard normal prior distribution
@@ -981,17 +992,14 @@ quant.prior <- function(x, p, ...){
       return(p)
     }
 
+    # only point and discrete priors reach this line: the continuous families
+    # returned above, and the survival-function form of the truncation is
+    # not used for discrete priors
     p[q_inside] <- .prior_simple_base_p(prior, q[q_inside], lower.tail = TRUE)
 
     if(prior[["distribution"]] != "point"){
-      if(.prior_simple_use_survival_truncation(prior)){
-        S1          <- .prior_simple_base_p(prior, prior$truncation[["lower"]], lower.tail = FALSE)
-        S_q         <- .prior_simple_base_p(prior, q[q_inside], lower.tail = FALSE)
-        p[q_inside] <- (S1 - S_q) / .prior_C(prior)
-      }else{
-        C1          <- .prior_C1(prior)
-        p[q_inside] <- (p[q_inside] - C1) / .prior_C(prior)
-      }
+      C1          <- .prior_C1(prior)
+      p[q_inside] <- (p[q_inside] - C1) / .prior_C(prior)
     }
   }
 
@@ -1032,16 +1040,12 @@ quant.prior <- function(x, p, ...){
       return(p)
     }
 
+    # only point and discrete priors reach this line (see .prior_simple_cdf())
     p[q_inside] <- .prior_simple_base_p(prior, q[q_inside], lower.tail = FALSE)
 
     if(prior[["distribution"]] != "point"){
-      if(.prior_simple_use_survival_truncation(prior)){
-        S2          <- .prior_simple_base_p(prior, prior$truncation[["upper"]], lower.tail = FALSE)
-        p[q_inside] <- (p[q_inside] - S2) / .prior_C(prior)
-      }else{
-        C2          <- .prior_C2(prior)
-        p[q_inside] <- (p[q_inside] - (1 - C2)) / .prior_C(prior)
-      }
+      C2          <- .prior_C2(prior)
+      p[q_inside] <- (p[q_inside] - (1 - C2)) / .prior_C(prior)
     }
   }
 

@@ -1651,6 +1651,27 @@ test_that("var() not implemented for mixture priors", {
 # SECTION: weightfunction log-omega marginal semantics
 # ============================================================================ #
 
+test_that("weightfunction marginal functions accept the matrix that mquant() returns", {
+
+  # mquant() returns a 1 x J matrix; the other marginal functions took only
+  # vectors ("The 'q' argument must be a numeric vector")
+  wfs <- list(
+    cumulative  = prior_weightfunction("one-sided", c(.05), wf_cumulative(c(5, .5))),
+    fixed       = prior_weightfunction("one-sided", c(.05), wf_fixed(c(1, .5))),
+    independent = prior_weightfunction("one-sided", c(.05, .6), wf_independent(prior("beta", list(1, 1)))),
+    log_omega   = prior_weightfunction("one-sided", c(.05), wf_independent(prior("normal", list(0, 1)), scale = "log_omega"))
+  )
+  for(wf in wfs){
+    q <- mquant(wf, .5)
+    expect_identical(dim(q), c(1L, length(wf$steps) + 1L))
+    expect_identical(mcdf(wf, q), mcdf(wf, as.vector(q)))
+    expect_identical(mccdf(wf, q), mccdf(wf, as.vector(q)))
+    expect_identical(mlpdf(wf, q), mlpdf(wf, as.vector(q)))
+    expect_identical(mpdf(wf, q), mpdf(wf, as.vector(q)))
+    expect_identical(dim(mcdf(wf, q)), c(length(q), length(q)))
+  }
+})
+
 test_that("log_omega weightfunction priors expose exact transformed marginals", {
   log_prior <- prior("normal", list(mean = 0.25, sd = 0.5))
   p_wf <- prior_weightfunction(

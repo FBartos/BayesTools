@@ -43,7 +43,18 @@
 
 \item{n}{number of observations}
 
-\item{...}{unused arguments}
+\item{...}{additional arguments of \code{rng()}; the other functions
+ignore them. \code{transform_factor_samples} (default \code{TRUE}):
+whether the samples of orthonormal, mean-difference and ordered factor
+priors are transformed to the level scale (\code{FALSE}: the raw
+coefficients); \code{sample_components} (default \code{FALSE}): whether
+mixture and spike-and-slab priors return the sampled component (or
+inclusion indicator) instead of the values;
+\code{quantity} (ordered priors only, default \code{"level"}): the
+draws returned, one of \code{"level"} (the transformed level samples),
+\code{"coefficient"} and \code{"increment"} (the raw coefficients),
+\code{"total"} (the totals of the ordered sums) or \code{"allocation"}
+(the allocation shares).}
 
 \item{q}{vector or matrix of quantiles}
 

@@ -53,7 +53,7 @@ mcdf.prior   <- function(x, q, ...){
   }else if(is.prior.weightfunction(prior)){
 
     components <- .weightfunction_marginal_components(prior)
-    p <- do.call(cbind, lapply(components, .prior_weightfunction_component_cdf, q = q))
+    p <- do.call(cbind, lapply(components, .prior_weightfunction_component_cdf, q = as.vector(q)))
 
   }else if(is.prior.vector(prior) && !is.prior.factor(prior)){
 
@@ -125,7 +125,7 @@ mccdf.prior  <- function(x, q, ...){
   }else if(is.prior.weightfunction(prior)){
 
     components <- .weightfunction_marginal_components(prior)
-    p <- do.call(cbind, lapply(components, .prior_weightfunction_component_ccdf, q = q))
+    p <- do.call(cbind, lapply(components, .prior_weightfunction_component_ccdf, q = as.vector(q)))
 
   }else if(is.prior.vector(prior) && !is.prior.factor(prior)){
 
@@ -198,7 +198,7 @@ mlpdf.prior  <- function(x, y, ...){
   }else if(is.prior.weightfunction(prior)){
 
     components <- .weightfunction_marginal_components(prior)
-    log_lik <- do.call(cbind, lapply(components, .prior_weightfunction_component_lpdf, x = x))
+    log_lik <- do.call(cbind, lapply(components, .prior_weightfunction_component_lpdf, x = as.vector(x)))
 
   }else if(is.prior.vector(prior) && !is.prior.factor(prior)){
 
