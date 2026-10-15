@@ -544,11 +544,25 @@ test_that("individual PET and PEESE prior lists agree across the plot, lines and
     expect_equal(drawn$x, expected$x)
     expect_equal(drawn$y, expected$y, tolerance = 1e-12)
 
-    # the mu priors are used only by the full regression bands
+    # the mu priors are used only by the full regression bands: an individual
+    # PET-PEESE plot says so (it is a PET-PEESE plot) instead of calling them
+    # unnecessary for PET-PEESE plots
     for(call in list(
       function() plot_prior_list(list(bias), individual = TRUE, prior_list_mu = list(mu)),
       function() lines_prior_list(list(bias), individual = TRUE, prior_list_mu = list(mu)),
       function() geom_prior_list(list(bias), individual = TRUE, prior_list_mu = list(mu))
+    )){
+      expect_error(call(), "'prior_list_mu' is used only by the PET-PEESE regression bands ('individual = FALSE')",
+                   fixed = TRUE)
+      expect_error(call(), "an individual plot ('individual = TRUE') shows the density of one coefficient",
+                   fixed = TRUE)
+    }
+    # the other plots keep the message of a prior list without the PET-PEESE regression
+    normal <- prior("normal", list(0, 1))
+    for(call in list(
+      function() plot_prior_list(list(normal), prior_list_mu = list(mu)),
+      function() lines_prior_list(list(normal), prior_list_mu = list(mu)),
+      function() geom_prior_list(list(normal), prior_list_mu = list(mu))
     )){
       expect_error(call(), "'prior_list_mu' is required only for PET-PEESE plots.", fixed = TRUE)
     }

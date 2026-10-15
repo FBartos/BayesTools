@@ -40,14 +40,7 @@ lines_prior_list <- function(prior_list, xlim = NULL, x_seq = NULL, x_range_quan
     prior_type <- "simple"
   }
 
-  if(prior_type == "PETPEESE" && !individual){
-    check_list(prior_list_mu, "prior_list_mu", check_length = length(prior_list))
-    if(is.prior(prior_list_mu) | !all(sapply(prior_list_mu, is.prior)))
-      stop("'prior_list_mu' must be a list of priors (priors for the mu parameter are required for plotting PET-PEESE).")
-  }else{
-    if(!is.null(prior_list_mu))
-      stop("'prior_list_mu' is required only for PET-PEESE plots.")
-  }
+  .plot_prior_list_check_mu(prior_type, individual, prior_list, prior_list_mu)
 
   # an individual PET-PEESE overlay shows the density of one coefficient
   if(prior_type == "PETPEESE" && individual){
@@ -156,14 +149,7 @@ geom_prior_list  <- function(prior_list, xlim = NULL, x_seq = NULL, x_range_quan
     prior_type <- "simple"
   }
 
-  if(prior_type == "PETPEESE" && !individual){
-    check_list(prior_list_mu, "prior_list_mu", check_length = length(prior_list))
-    if(is.prior(prior_list_mu) | !all(sapply(prior_list_mu, is.prior)))
-      stop("'prior_list_mu' must be a list of priors (priors for the mu parameter are required for plotting PET-PEESE).")
-  }else{
-    if(!is.null(prior_list_mu))
-      stop("'prior_list_mu' is required only for PET-PEESE plots.")
-  }
+  .plot_prior_list_check_mu(prior_type, individual, prior_list, prior_list_mu)
 
   # an individual PET-PEESE overlay shows the density of one coefficient
   if(prior_type == "PETPEESE" && individual){

@@ -111,8 +111,9 @@ weightfunction is plotted.}
 specified. Only relevant if the prior corresponds to a mu
 parameter that needs to be transformed.}
 
-\item{prior_list_mu}{list of priors for the mu parameter
-required when plotting PET-PEESE}
+\item{prior_list_mu}{list of priors for the mu parameter, required for the
+PET-PEESE regression bands (\code{individual = FALSE}) and refused otherwise:
+an individual plot shows the density of one coefficient and does not use it}
 
 \item{effect_direction}{direction of the effect for PET-PEESE
 regression. Use \code{"positive"} (default) for

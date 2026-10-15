@@ -1,8 +1,9 @@
 #' @title Plot a list of prior distributions
 #'
 #' @param prior_list list of prior distributions
-#' @param prior_list_mu list of priors for the mu parameter
-#' required when plotting PET-PEESE
+#' @param prior_list_mu list of priors for the mu parameter, required for the
+#' PET-PEESE regression bands (\code{individual = FALSE}) and refused otherwise:
+#' an individual plot shows the density of one coefficient and does not use it
 #' @param effect_direction direction of the effect for PET-PEESE
 #' regression. Use \code{"positive"} (default) for
 #' \code{mu + PET*se + PEESE*se^2} or \code{"negative"} for
@@ -59,14 +60,7 @@ plot_prior_list <- function(prior_list, plot_type = "base",
 
   }
 
-  if(prior_type == "PETPEESE" && !individual){
-    check_list(prior_list_mu, "prior_list_mu", check_length = length(prior_list))
-    if(is.prior(prior_list_mu) | !all(sapply(prior_list_mu, is.prior)))
-      stop("'prior_list_mu' must be a list of priors (priors for the mu parameter are required for plotting PET-PEESE).")
-  }else{
-    if(!is.null(prior_list_mu))
-      stop("'prior_list_mu' is required only for PET-PEESE plots.")
-  }
+  .plot_prior_list_check_mu(prior_type, individual, prior_list, prior_list_mu)
 
   # an individual PET-PEESE plot shows the density of one coefficient
   if(prior_type == "PETPEESE" && individual){
@@ -138,6 +132,26 @@ plot_prior_list <- function(prior_list, plot_type = "base",
   }else{
     return(invisible())
   }
+}
+
+# The mu priors of the prior-list plots: the PET-PEESE regression bands need
+# them, every other plot does not use them.
+.plot_prior_list_check_mu <- function(prior_type, individual, prior_list, prior_list_mu){
+
+  if(prior_type == "PETPEESE" && !individual){
+    check_list(prior_list_mu, "prior_list_mu", check_length = length(prior_list))
+    if(is.prior(prior_list_mu) | !all(sapply(prior_list_mu, is.prior)))
+      stop("'prior_list_mu' must be a list of priors (priors for the mu parameter are required for plotting PET-PEESE).")
+  }else if(!is.null(prior_list_mu)){
+    if(prior_type == "PETPEESE"){
+      stop("'prior_list_mu' is used only by the PET-PEESE regression bands ('individual = FALSE'): ",
+           "an individual plot ('individual = TRUE') shows the density of one coefficient and does not use it.",
+           call. = FALSE)
+    }
+    stop("'prior_list_mu' is required only for PET-PEESE plots.")
+  }
+
+  invisible(NULL)
 }
 
 # The individual density of a PET-PEESE prior list is the density of one
