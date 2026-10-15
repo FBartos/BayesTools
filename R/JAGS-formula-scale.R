@@ -372,19 +372,26 @@
 
   fitted_scale <- attr(fit, "formula_scale", exact = TRUE)
   # A formula parameter that the fitted model does not have is an argument
-  # error, not a missing declaration of the fit.
+  # error, not a missing declaration of the fit: also for a fit without any
+  # formula parameter, for which a refit cannot help.
   fitted_parameters <- unique(c(
     names(attr(fit, "formula_design", exact = TRUE)),
     names(fitted_scale)
   ))
   unknown <- setdiff(names(formula_scale), fitted_parameters)
-  if(length(fitted_parameters) > 0L && length(unknown) > 0L){
+  if(length(unknown) > 0L){
     stop(
       "The 'formula_scale' argument names unknown formula parameter",
       if(length(unknown) > 1L) "s", " ", paste0("'", unknown, "'", collapse = ", "),
-      ". The fitted model has the formula parameter",
-      if(length(fitted_parameters) > 1L) "s", " ",
-      paste0("'", fitted_parameters, "'", collapse = ", "), ".",
+      if(length(fitted_parameters) > 0L){
+        paste0(
+          ". The fitted model has the formula parameter",
+          if(length(fitted_parameters) > 1L) "s", " ",
+          paste0("'", fitted_parameters, "'", collapse = ", "), "."
+        )
+      }else{
+        ". The fitted model has no formula parameters."
+      },
       call. = FALSE
     )
   }

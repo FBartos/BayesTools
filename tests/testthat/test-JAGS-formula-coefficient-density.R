@@ -282,6 +282,54 @@ test_that("scale overrides and prediction data are refused with the cause", {
   )
 })
 
+test_that("a formula_scale name on a fit without formula parameters is an argument error", {
+
+  # F314 (3): the unknown-parameter check was skipped when the fit had no
+  # formula parameter, and the request reported a missing declaration that a
+  # refit cannot supply
+  formula_result <- JAGS_formula(
+    ~ 1 + x, "mu", data.frame(x = c(2, 4, 6)),
+    prior_list = list(intercept = prior("normal", list(0, 1)),
+                      x = prior("normal", list(0, 1))),
+    formula_scale = list(x = TRUE)
+  )
+  samples <- matrix(c(2, 3, 4, 5), nrow = 2L, byrow = TRUE,
+                    dimnames = list(NULL, c("mu_intercept", "mu_x")))
+  fit <- .formula_coefficient_sample_fit(formula_result, samples)
+  bare <- fit
+  attr(bare, "formula_design") <- NULL
+  attr(bare, "formula_scale") <- NULL
+
+  scale <- list(mu = list(mu_x = list(mean = 4, sd = 2)))
+  unknown <- tryCatch(transform_scale_samples(bare, formula_scale = scale), error = identity)
+  expect_s3_class(unknown, "error")
+  expect_false(inherits(unknown, "BayesTools_refit_required"))
+  expect_identical(
+    conditionMessage(unknown),
+    paste0("The 'formula_scale' argument names unknown formula parameter 'mu'. ",
+           "The fitted model has no formula parameters.")
+  )
+  two <- tryCatch(
+    transform_scale_samples(bare, formula_scale = c(scale, list(sigma = scale$mu))),
+    error = identity
+  )
+  expect_identical(
+    conditionMessage(two),
+    paste0("The 'formula_scale' argument names unknown formula parameters 'mu', 'sigma'. ",
+           "The fitted model has no formula parameters.")
+  )
+  # a fit with formula parameters keeps its message, and a fit without a
+  # supplied formula_scale is unchanged
+  expect_identical(
+    conditionMessage(tryCatch(
+      transform_scale_samples(fit, formula_scale = list(sigma = scale$mu)), error = identity
+    )),
+    paste0("The 'formula_scale' argument names unknown formula parameter 'sigma'. ",
+           "The fitted model has the formula parameter 'mu'.")
+  )
+  expect_identical(transform_scale_samples(bare), samples)
+})
+
 test_that("formula_scale validation names its entries and the evaluation tolerates no rows", {
 
   # The entry labels are quoted consistently.

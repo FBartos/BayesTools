@@ -81,7 +81,8 @@ random-effect SD metadata) is transformed by the same pairing of names.
 \section{Conditions}{
 
 Invalid arguments, including a \code{formula_scale} entry for a formula
-parameter the model does not have, a standardized predictor that
+parameter the model does not have (also for a model without formula
+parameters), a standardized predictor that
 is missing from the posterior, or an incomplete \code{formula_scale} entry,
 stop with an ordinary error. A condition of class
 \code{BayesTools_formula_transform_unavailable} (parents
