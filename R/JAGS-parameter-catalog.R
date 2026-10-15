@@ -1106,6 +1106,11 @@ parameter_prior_density.BayesTools_fit <- function(
   )
 }
 
+# The most free inclusion gates whose 2^k states an enumeration expands. Above
+# it the routes decline alike: a density stops with a message naming the limit,
+# and the atoms-only route returns NULL (not derivable), which
+# .bt_parameter_catalog_random_support() turns into an inexact hull when the
+# chain has atoms.
 .bt_parameter_prior_density_gated_var_prop_free_gate_limit <- function(){
   20L
 }
@@ -4855,18 +4860,52 @@ parameter_transform_jacobian <- function(values, transform){
   key$dependencies[scale]
 }
 
-# Whether the scale priors of a composite random-effect SD or variance are all
-# supported on [0, Inf): a composite SD is positively homogeneous in the
-# scales, so it then reaches every value in (0, Inf). A scale bounded away
-# from zero can bound the composite away from zero as well (e.g. the
-# original-scale intercept SD sqrt(sd_0^2 + c^2 sd_1^2) of a scaled
-# predictor), and a scale bounded above bounds it above, so the hull is then
-# not exact.
+# The scale dependencies that one SD (or variance) of a random-effect block
+# actually reads. The dependencies of a composite SD list every SD coordinate of
+# the block evaluator, but the SD of a reported coefficient is a combination of
+# the SDs of the fitted coefficients in its row of the unscale matrix only (the
+# intercept SD of a block with a scaled predictor reads the intercept and slope
+# SDs, not the SDs of an unrelated factor term). Other dependencies (the
+# coordinates of correlation or allocation priors) are kept, as are all of them
+# where the row cannot be identified from the persisted block.
+.bt_parameter_catalog_own_scale_dependencies <- function(object, key){
+
+  dependencies <- .bt_parameter_catalog_scale_dependencies(object, key)
+  if(!key$evaluator %in% c("sd", "sd_variance") || !nzchar(key$random_block) ||
+     length(dependencies) == 0L){
+    return(dependencies)
+  }
+  random_term <- .bt_parameter_catalog_find_random_term(object, key)
+  sd_names <- random_term$sd_parameter_names
+  K <- random_term$n_columns
+  if(length(sd_names) != K || anyNA(sd_names) || anyDuplicated(sd_names) ||
+     length(key$index) != 1L || !key$index %in% seq_len(K)){
+    return(dependencies)
+  }
+  unscale <- .bt_parameter_prior_density_random_unscale_matrix(
+    object      = object,
+    random_term = random_term,
+    parameter   = key$formula_parameter
+  )
+  if(!is.matrix(unscale) || !identical(dim(unscale), c(K, K))){
+    return(dependencies)
+  }
+  own <- sd_names[unscale[key$index, ] != 0]
+  dependencies[!dependencies %in% sd_names | dependencies %in% own]
+}
+
+# Whether the scale priors a composite random-effect SD or variance reads
+# (.bt_parameter_catalog_own_scale_dependencies()) are all supported on
+# [0, Inf): a composite SD is positively homogeneous in the scales, so it then
+# reaches every value in (0, Inf). A scale bounded away from zero can bound the
+# composite away from zero as well (e.g. the original-scale intercept SD
+# sqrt(sd_0^2 + c^2 sd_1^2) of a scaled predictor), and a scale bounded above
+# bounds it above, so the hull is then not exact.
 .bt_parameter_catalog_unbounded_scale <- function(object, key){
 
   prior_list <- attr(object, "prior_list", exact = TRUE)
   context <- .bt_parameter_catalog_object_linear_support(object)
-  coordinates <- .bt_parameter_catalog_scale_dependencies(object, key)
+  coordinates <- .bt_parameter_catalog_own_scale_dependencies(object, key)
   if(length(coordinates) == 0L){
     return(FALSE)
   }

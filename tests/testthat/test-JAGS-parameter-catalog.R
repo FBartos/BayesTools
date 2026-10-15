@@ -2505,7 +2505,8 @@ test_that("the support of an identity random SD is the support of its own coordi
   expect_identical(support_of(point, "(mu) sd(f[v])"), reference(point))
 
   # the hull [0, Inf) of a composite SD is exact only when every SD it reads is
-  # supported on [0, Inf), also the SDs of the levels of a factor term
+  # supported on [0, Inf); it reads the SDs of its own row of the unscale
+  # matrix, so a bounded SD of an unrelated factor term leaves it exact
   data$x <- rep(c(1, 2, 4, 7), 3L)
   scaled_fit <- function(terms){
     result <- JAGS_formula(
@@ -2523,8 +2524,37 @@ test_that("the support of an identity random SD is the support of its own coordi
   expect_identical(support_of(unbounded, "(mu) sd(intercept)")$type, "interval")
   expect_true(support_of(unbounded, "(mu) sd(intercept)")$exact)
   bounded_scaled <- scaled_fit(list(f = prior("uniform", list(0.5, 2))))
-  expect_equal(support_of(bounded_scaled, "(mu) sd(intercept)")$bounds, c(0, Inf))
-  expect_false(support_of(bounded_scaled, "(mu) sd(intercept)")$exact)
+  for(label in c("(mu) sd(intercept)", "(mu) var(intercept)")){
+    support <- support_of(bounded_scaled, label)
+    expect_equal(support$bounds, c(0, Inf), info = label)
+    expect_true(support$exact, info = label)
+  }
+  # the factor SDs themselves are bounded, and the slope SD is a rescaling of its
+  # own coordinate
+  expect_equal(support_of(bounded_scaled, "(mu) sd(f[v])")$bounds, c(0.5, 2))
+  expect_true(support_of(bounded_scaled, "(mu) sd(x)")$exact)
+
+  # a bounded SD that the intercept SD does read (the slope SD of the scaled
+  # predictor) still makes its hull inexact
+  bounded_slope <- JAGS_formula(
+    ~ 1 + x + (1 + x || id), "mu", data,
+    list(intercept = prior("normal", list(0, 1)), x = prior("normal", list(0, 1))),
+    formula_scale = list(x = TRUE),
+    prior_random = prior_random(id = random_block(
+      sd = half_normal, terms = list(x = prior("uniform", list(0.5, 2)))
+    ))
+  )
+  slope_term <- bounded_slope$formula_design$random_effects[[1L]]
+  slope_fit <- .prior_monitor_test_fit(
+    bounded_slope,
+    c("mu_intercept", "mu_x", slope_term$sd_parameter_names)
+  )
+  for(label in c("(mu) sd(intercept)", "(mu) var(intercept)")){
+    support <- parameter_catalog(slope_fit)$quantities
+    support <- support$support[[match(label, support$canonical_name)]]
+    expect_equal(support$bounds, c(0, Inf), info = label)
+    expect_false(support$exact, info = label)
+  }
 })
 
 test_that("allocation quantities with inclusion gates or point scales declare the atoms of their prior density", {
@@ -5106,6 +5136,51 @@ test_that("independently gated proportion mixtures fold fixed inclusion gates", 
   )
 })
 
+
+test_that("the gate-state enumerations decline above 20 free gates: an error for a density, NULL for the atoms", {
+
+  # Both routes decline at the same limit. A density cannot be returned, so it
+  # stops with a message naming the limit; the atoms route returns NULL (not
+  # derivable), which the catalog support turns into an inexact hull when the
+  # chain has atoms (test "quantities with structural atoms that the catalog
+  # cannot derive declare an inexact support").
+  gate <- function(probability) prior("spike", list(location = probability))
+  limit <- BayesTools:::.bt_parameter_prior_density_gated_var_prop_free_gate_limit()
+  expect_identical(limit, 20L)
+
+  # the gated variance-proportion mixture: the other components' free gates
+  mixture <- function(n_others, atoms_only){
+    BayesTools:::.bt_parameter_prior_density_gated_var_prop_mixture(
+      alpha = rep(1, n_others + 1L), index = 1L, probability = rep(0.5, n_others + 1L),
+      n_grid = 32L, tail_prob = 1e-4, atoms_only = atoms_only
+    )
+  }
+  expect_identical(mixture(limit, atoms_only = TRUE), c(0, 1))
+  expect_null(mixture(limit + 1L, atoms_only = TRUE))
+  expect_error(
+    mixture(limit + 1L, atoms_only = FALSE),
+    "Independently gated variance-proportion prior density is unavailable for more than 20 free inclusion gates.",
+    fixed = TRUE
+  )
+
+  # the allocation-total multiplier: the free gates of all components
+  K <- limit + 2L
+  allocation <- list(
+    n_targets   = K,
+    scale       = "total_variance",
+    weight_name = "w",
+    gate_only   = FALSE,
+    inclusion   = lapply(seq_len(K), function(index) list(index = index, prior = gate(0.5)))
+  )
+  prior_list <- list(w = prior("dirichlet", list(alpha = rep(1, K))))
+  multiplier <- BayesTools:::.bt_parameter_prior_density_allocation_own_multiplier
+  expect_error(
+    multiplier(allocation, prior_list),
+    "Independently gated allocation-total prior density is unavailable for more than 20 free inclusion gates.",
+    fixed = TRUE
+  )
+  expect_null(multiplier(allocation, prior_list, atoms_only = TRUE))
+})
 
 test_that("unnamed local allocations retain owners with multiple blocks", {
 

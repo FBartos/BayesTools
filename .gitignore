@@ -31,3 +31,6 @@ CLAUDE.md
 # Snapshot and reference-table candidates awaiting review.
 *.new.svg
 *.new.txt
+
+# Written by failing test runs under TESTTHAT_MAX_FAILS.
+tests/testthat/testthat-problems.rds
