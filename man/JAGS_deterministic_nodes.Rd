@@ -84,6 +84,18 @@ coordinates of the weights (\code{eta}, the monitored \code{omega[2]} of
 a binary cumulative weight function, or the independent \code{omega} or
 \code{log_omega}); mixture branches are read from their own component
 nodes and the \code{bias_indicator}.}
+\item{\code{"phacking"}}{the nodes of the p-hacking branches of a
+\code{\link[=prior_phacking]{prior_phacking()}}, \code{\link[=prior_bias]{prior_bias()}}, or publication-bias mixture prior
+(experimental): the form code \code{phack_kind}, the null masses
+\code{pi_null = alpha * a} and \code{beta_null = alpha * b} with the
+constants of the form, the z geometry \code{phack_z_source} and
+\code{phack_z_dest}, and the \code{sel_vector_rule} of the selection
+kernel. A publication-bias mixture composes them from its branches
+(zeros for a branch without p-hacking) and the \code{bias_indicator}, and
+adds the severity \code{alpha} composed from the component severities
+\code{alpha_component_k}. \code{pi_null} and \code{beta_null} are
+computed from the coordinate \code{alpha}, so a fit that monitors it
+needs no component severities.}
 \item{\code{"prior_mixture"}}{parameters with spike-and-slab
 (\code{p = p_variable * p_indicator}) or mixture priors
 (\code{p = sum_k p_component_k * (p_indicator == k)}), and the PET and

@@ -1207,8 +1207,8 @@ parameter_gate_states <- function(fit, selection, draws = NULL){
 # The point plan of a coordinate of the selection prior of the fit (a
 # weight-function, publication-bias, or publication-bias mixture prior): the
 # value each branch of the prior gives the coordinate, NA where it is
-# continuous (JAGS-deterministic-nodes-selection.R; the p-hacking nodes of
-# .JAGS_phacking_component_syntax()), and the monitored branch indicator of a
+# continuous (JAGS-deterministic-nodes-selection.R and
+# JAGS-deterministic-nodes-phacking.R), and the monitored branch indicator of a
 # mixture. NULL for other quantities and when a branch value is not
 # classified (e.g. a weight or p-hacking prior with its own point mass).
 .bt_parameter_selection_plan <- function(fit, quantity){

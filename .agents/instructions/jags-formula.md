@@ -68,13 +68,19 @@ against the installed version; the exact route and `NA` priors keep their
 refusals.
 
 Every deterministic node BayesTools generates (allocation-derived SDs, scalar
-and LKJ correlations, publication weights, spike-and-slab and mixture
+and LKJ correlations, publication weights, the experimental p-hacking nodes,
+spike-and-slab and mixture
 parameters, the coordinates of ordinary Dirichlet and multivariate-t priors,
 formula linear predictors) belongs to one registered family whose
 node specification emits its JAGS syntax and carries the R evaluator and the
 declared dependencies: `JAGS_formula()` writes the linear predictor from the
 node of the fitted design, and `selection_backend_spec()` writes the weights
-from the `omega` node specification. `JAGS_deterministic_nodes()` lists the
+from the `omega` node specification and the p-hacking constants, null masses,
+compositions and `sel_vector_rule` from the `phacking` node specifications (one
+evaluator, `.bt_dnode_phacking_quantity()`, serves the registry, bridge sampling
+and the marginal-likelihood parameters; a prior without a p-hacking branch
+registers no such node, and `selection_backend_spec()` writes its constant
+`sel_vector_rule` with the same helper). `JAGS_deterministic_nodes()` lists the
 nodes; `JAGS_deterministic_evaluator()` resolves them once into an evaluator
 of draws (repeated or one-draw evaluation), and `JAGS_evaluate_deterministic()`
 is that evaluator applied once. A prepared evaluator may locate a family's

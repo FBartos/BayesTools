@@ -1703,7 +1703,8 @@ test_that("generated p-hacking constants read back as the doubles the evaluators
     prior_phacking(target = .01, form = "linear")
   )){
     constants <- phack_backend_constants(prior$form, prior$source, prior$destination, target = prior$target)
-    lines <- strsplit(.JAGS_phacking_component_syntax(prior), "\n", fixed = TRUE)[[1L]]
+    spec <- .bt_dnode_phacking_spec(list(.selection_branch_info(prior)))
+    lines <- strsplit(.bt_dnode_phacking_emit_branch(spec, 1L), "\n", fixed = TRUE)[[1L]]
     lines <- lines[nzchar(lines)]
     numbers <- as.numeric(vapply(tail(lines, 6L), function(line){
       tail(strsplit(line, " ", fixed = TRUE)[[1L]], 1L)

@@ -959,3 +959,107 @@ test_that("multivariate-t priors are registered nodes that replay from their pri
   replayed <- JAGS_evaluate_deterministic(fit, draws = draws, nodes = "mu_f")
   expect_identical(unname(replayed), unname(component * (indicator == 2)))
 })
+
+test_that("the p-hacking nodes are a registered family with one evaluator (F224)", {
+
+  expect_true("phacking" %in% BayesTools:::.bt_deterministic_node_families)
+  selection <- prior_weightfunction("one-sided", c(.025), wf_cumulative(c(1, 1)))
+  phacking  <- prior_phacking(form = "linear")
+  constants <- phack_backend_constants(phacking$form, phacking$source, phacking$destination, target = phacking$target)
+  # the values of the nodes for the severities `alpha` of the draws; `active`
+  # marks the draws of a p-hacking branch (the other branches give zeros)
+  expected <- function(alpha, active = rep(TRUE, length(alpha)), rule = 0){
+    cbind(
+      alpha = alpha, phack_kind = active * constants$phack_kind,
+      pi_null = alpha * constants$pi_null_per_alpha, beta_null = alpha * constants$beta_null_per_alpha,
+      "phack_z_source[1]" = active * constants$z_source[1], "phack_z_source[2]" = active * constants$z_source[2],
+      "phack_z_dest[1]" = active * constants$z_destination[1], "phack_z_dest[2]" = active * constants$z_destination[2],
+      sel_vector_rule = rule
+    )
+  }
+  nodes_of <- function(prior, draws){
+    fit <- .parameter_catalog_test_fit(coda::mcmc.list(coda::mcmc(draws)), list(bias = prior))
+    list(fit = fit, table = JAGS_deterministic_nodes(fit), registry = BayesTools:::.bt_deterministic_nodes_fit(fit))
+  }
+  # the statements of every node of the family are those of the model syntax
+  expect_emitted <- function(prior, registry){
+    model <- JAGS_add_priors("model{}", list(bias = prior))
+    for(node in registry[vapply(registry, function(node) identical(node$family, "phacking"), logical(1))]){
+      for(piece in BayesTools:::.bt_deterministic_node_emit(node)){
+        expect_true(grepl(piece, model, fixed = TRUE), info = paste(node$node, piece))
+      }
+    }
+  }
+  families <- function(table) table[table$family == "phacking", , drop = FALSE]
+  dependencies <- function(table, node) unlist(table$dependencies[table$node == node])
+
+  # a p-hacking prior: the form constants and the null masses of the sampled severity
+  alpha <- c(.1, .25, .6)
+  single <- nodes_of(phacking, cbind(alpha = alpha, phack_kind = constants$phack_kind, pi_null = alpha * constants$pi_null_per_alpha))
+  listed <- families(single$table)
+  expect_identical(listed$node, c("phack_kind", "pi_null", "beta_null", "phack_z_source", "phack_z_dest", "sel_vector_rule"))
+  expect_identical(listed$monitored, c(TRUE, TRUE, FALSE, FALSE, FALSE, FALSE))
+  expect_identical(dependencies(listed, "pi_null"), "alpha")
+  expect_length(dependencies(listed, "phack_kind"), 0L)
+  expect_length(dependencies(listed, "phack_z_dest"), 0L)
+  expect_identical(unlist(listed$coordinates[listed$node == "phack_z_dest"]), c("phack_z_dest[1]", "phack_z_dest[2]"))
+  rebuilt <- JAGS_evaluate_deterministic(single$fit, draws = cbind(alpha = alpha), nodes = listed$node)
+  expect_identical(unname(rebuilt), unname(expected(alpha)[, colnames(rebuilt)]))
+  expect_emitted(phacking, single$registry)
+
+  # a point severity is a constant of the node and needs no column
+  point <- prior_phacking(form = "linear", alpha = prior("point", list(.3)))
+  point_nodes <- nodes_of(point, cbind(phack_kind = 1))
+  expect_length(dependencies(families(point_nodes$table), "pi_null"), 0L)
+  expect_identical(
+    unname(JAGS_evaluate_deterministic(point_nodes$fit, draws = cbind(phack_kind = 1), nodes = "pi_null")),
+    unname(cbind(.3 * constants$pi_null_per_alpha))
+  )
+
+  # a composed bias prior has the weights and the p-hacking nodes
+  bias <- prior_bias(selection, phacking)
+  composed <- nodes_of(bias, cbind(alpha = alpha, "omega[2]" = .5))
+  expect_identical(composed$table$node[composed$table$family == "omega"], "omega")
+  expect_identical(families(composed$table)$node, listed$node)
+  expect_emitted(bias, composed$registry)
+
+  # a weight function alone has no p-hacking node
+  expect_identical(nrow(families(nodes_of(selection, cbind("omega[2]" = .5))$table)), 0L)
+
+  # a mixture takes the active branch: the severity from the component
+  # severities, the null masses from the composed severity
+  mixture <- prior_mixture(list(prior_none(), phacking, prior_bias(selection, phacking)))
+  draws <- cbind(bias_indicator = c(2, 1, 3, 2), alpha_component_2 = c(.1, .9, .8, .4),
+                 alpha_component_3 = c(.5, .5, .2, .7), omega_ratio_component_3 = .5)
+  composed_mixture <- nodes_of(mixture, draws)
+  listed <- families(composed_mixture$table)
+  expect_identical(listed$node, c("alpha", "phack_kind", "pi_null", "beta_null", "phack_z_source", "phack_z_dest", "sel_vector_rule"))
+  expect_identical(dependencies(listed, "alpha"), c("bias_indicator", "alpha_component_2", "alpha_component_3"))
+  expect_identical(dependencies(listed, "pi_null"), c("bias_indicator", "alpha"))
+  expect_identical(dependencies(listed, "phack_kind"), "bias_indicator")
+  severity <- c(.1, 0, .2, .4)
+  active   <- c(TRUE, FALSE, TRUE, TRUE)
+  rule     <- selection_backend_spec(mixture, include_init = FALSE)$branch_vector_rule[draws[, "bias_indicator"]]
+  rebuilt  <- JAGS_evaluate_deterministic(composed_mixture$fit, draws = draws, nodes = listed$node)
+  expect_identical(unname(rebuilt), unname(expected(severity, active, rule)[, colnames(rebuilt)]))
+  expect_emitted(mixture, composed_mixture$registry)
+
+  # a fit that monitors the composed severity but not the components rebuilds
+  # the null masses from it
+  monitored <- cbind(bias_indicator = draws[, "bias_indicator"], alpha = severity)
+  node_names <- c("phack_kind", "pi_null")
+  expect_identical(
+    unname(JAGS_evaluate_deterministic(composed_mixture$fit, draws = monitored, nodes = node_names)),
+    unname(expected(severity, active)[, node_names])
+  )
+
+  # the marginal-likelihood parameters and the bridge evaluator of a draw are
+  # the values of the nodes
+  parameter_names <- c("alpha", "pi_null", "beta_null")
+  parameters <- JAGS_marglik_parameters(draws[3L, ], list(bias = mixture))
+  node_values <- JAGS_evaluate_deterministic(composed_mixture$fit, draws = draws[3L, ], nodes = parameter_names)
+  expect_identical(unlist(parameters[parameter_names]), stats::setNames(unname(node_values[1L, parameter_names]), parameter_names))
+  bridge <- BayesTools:::.bt_JAGS_bridge_compile_phacking_evaluator(phacking)$parameters(c(alpha = .25))
+  expect_identical(bridge, list(alpha = .25, pi_null = .25 * constants$pi_null_per_alpha, beta_null = .25 * constants$beta_null_per_alpha))
+  expect_identical(JAGS_marglik_parameters(c(alpha = .25), list(bias = phacking)), bridge)
+})

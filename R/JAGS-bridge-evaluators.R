@@ -480,22 +480,13 @@
   force(prior_object)
 
   alpha_evaluator <- .bt_JAGS_bridge_compile_simple_evaluator(prior_object$alpha, "alpha")
-  constants <- phack_backend_constants(
-    prior_object$form,
-    prior_object$source,
-    prior_object$destination,
-    target = prior_object$target
-  )
+  # the registered 'phacking' evaluator computes the severity and the null masses
+  spec <- .bt_dnode_phacking_spec(list(.selection_branch_info(prior_object)))
 
   list(
     log_prior = alpha_evaluator$log_prior,
     parameters = function(samples){
-      alpha <- alpha_evaluator$parameters(samples)[["alpha"]]
-      list(
-        alpha     = alpha,
-        pi_null   = alpha * constants$pi_null_per_alpha,
-        beta_null = alpha * constants$beta_null_per_alpha
-      )
+      .bt_dnode_phacking_parameters(spec, samples)
     }
   )
 }

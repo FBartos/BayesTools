@@ -48,6 +48,18 @@
 #'   a binary cumulative weight function, or the independent \code{omega} or
 #'   \code{log_omega}); mixture branches are read from their own component
 #'   nodes and the \code{bias_indicator}.}
+#'   \item{\code{"phacking"}}{the nodes of the p-hacking branches of a
+#'   [prior_phacking()], [prior_bias()], or publication-bias mixture prior
+#'   (experimental): the form code \code{phack_kind}, the null masses
+#'   \code{pi_null = alpha * a} and \code{beta_null = alpha * b} with the
+#'   constants of the form, the z geometry \code{phack_z_source} and
+#'   \code{phack_z_dest}, and the \code{sel_vector_rule} of the selection
+#'   kernel. A publication-bias mixture composes them from its branches
+#'   (zeros for a branch without p-hacking) and the \code{bias_indicator}, and
+#'   adds the severity \code{alpha} composed from the component severities
+#'   \code{alpha_component_k}. \code{pi_null} and \code{beta_null} are
+#'   computed from the coordinate \code{alpha}, so a fit that monitors it
+#'   needs no component severities.}
 #'   \item{\code{"prior_mixture"}}{parameters with spike-and-slab
 #'   (\code{p = p_variable * p_indicator}) or mixture priors
 #'   (\code{p = sum_k p_component_k * (p_indicator == k)}), and the PET and
@@ -249,6 +261,7 @@ JAGS_deterministic_evaluator <- function(fit, nodes = NULL){
   "random_rho",
   "lkj",
   "omega",
+  "phacking",
   "prior_mixture",
   "prior_dirichlet",
   "prior_mt",
@@ -297,6 +310,7 @@ JAGS_deterministic_evaluator <- function(fit, nodes = NULL){
     random_rho = .bt_dnode_rho_emit(node),
     lkj = .bt_dnode_lkj_emit(node),
     omega = .bt_dnode_omega_emit(node),
+    phacking = .bt_dnode_phacking_emit(node),
     prior_mixture = .bt_dnode_prior_mixture_emit(node),
     prior_dirichlet = .bt_dnode_prior_dirichlet_emit(node),
     prior_mt = .bt_dnode_prior_mt_emit(node),
@@ -318,6 +332,7 @@ JAGS_deterministic_evaluator <- function(fit, nodes = NULL){
     random_rho = .bt_dnode_rho_evaluate(node, lookup),
     lkj = .bt_dnode_lkj_evaluate(node, lookup),
     omega = .bt_dnode_omega_evaluate(node, lookup),
+    phacking = .bt_dnode_phacking_evaluate(node, lookup),
     prior_mixture = .bt_dnode_prior_mixture_evaluate(node, lookup),
     prior_dirichlet = .bt_dnode_prior_dirichlet_evaluate(node, lookup),
     prior_mt = .bt_dnode_prior_mt_evaluate(node, lookup),
@@ -438,12 +453,20 @@ JAGS_deterministic_evaluator <- function(fit, nodes = NULL){
         .bt_dnode_ordered_allocation(spec$parameter, record)
       }), list(.bt_dnode_ordered_coefficients(spec)))
     }else if(is.prior.weightfunction(prior) || is_prior_bias(prior)){
-      list(.bt_dnode_omega(prior_names[[i]], prior))
+      c(
+        list(.bt_dnode_omega(prior_names[[i]], prior)),
+        .bt_dnode_phacking_nodes(prior_names[[i]], prior)
+      )
+    }else if(is_prior_phacking(prior)){
+      .bt_dnode_phacking_nodes(prior_names[[i]], prior)
     }else if(inherits(prior, "prior.bias_mixture")){
-      list(
-        .bt_dnode_omega(prior_names[[i]], prior),
-        .bt_dnode_prior_mixture_bias_term(prior_names[[i]], prior, "PET"),
-        .bt_dnode_prior_mixture_bias_term(prior_names[[i]], prior, "PEESE")
+      c(
+        list(
+          .bt_dnode_omega(prior_names[[i]], prior),
+          .bt_dnode_prior_mixture_bias_term(prior_names[[i]], prior, "PET"),
+          .bt_dnode_prior_mixture_bias_term(prior_names[[i]], prior, "PEESE")
+        ),
+        .bt_dnode_phacking_nodes(prior_names[[i]], prior)
       )
     }else if(is.prior.mixture(prior)){
       # the nodes of the component priors precede the node of the mixture

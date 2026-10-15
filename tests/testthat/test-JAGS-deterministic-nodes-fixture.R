@@ -295,6 +295,47 @@ test_that("publication-weight nodes reproduce the JAGS monitors of every weight 
   }
 })
 
+test_that("p-hacking nodes reproduce the JAGS monitors of a p-hacking mixture (F224)", {
+
+  # none | p-hacking | weights and p-hacking, with a mixture parameter next to it
+  fit <- .dnode_cached_fit("fit_selection_kernel_summary")
+  posterior <- as.matrix(BayesTools:::.fit_to_posterior(fit))
+  nodes <- JAGS_deterministic_nodes(fit)
+  phacking <- nodes[nodes$family == "phacking", , drop = FALSE]
+  expect_identical(phacking$node, c("alpha", "phack_kind", "pi_null", "beta_null", "phack_z_source", "phack_z_dest", "sel_vector_rule"))
+  expect_identical(phacking$monitored, c(TRUE, TRUE, TRUE, FALSE, FALSE, FALSE, FALSE))
+  expect_identical(unname(unlist(phacking$dependencies[phacking$node == "pi_null"])), c("bias_indicator", "alpha"))
+
+  # the form code and the null mass are rebuilt from the branch indicator and the
+  # composed severity; the draws cover the three branches
+  expect_setequal(unique(posterior[, "bias_indicator"]), 1:3)
+  monitored <- c("phack_kind", "pi_null")
+  reduced <- posterior[, setdiff(colnames(posterior), monitored), drop = FALSE]
+  rebuilt <- JAGS_evaluate_deterministic(fit, draws = reduced, nodes = monitored)
+  expect_identical(colnames(rebuilt), monitored)
+  expect_equal(unname(rebuilt), unname(posterior[, monitored]), tolerance = 1e-14)
+  expect_identical(unname(rebuilt), unname(posterior[, monitored]))
+  expect_gt(sum(rebuilt[, "pi_null"] > 0), 0L)
+  expect_true(all(rebuilt[posterior[, "bias_indicator"] == 1L, ] == 0))
+
+  # every node is emitted into the model syntax from its specification
+  model <- JAGS_add_priors(attr(fit, "model_syntax"), attr(fit, "prior_list"))
+  registry <- BayesTools:::.bt_deterministic_nodes_fit(fit)
+  for(node in registry[phacking$node]){
+    for(piece in BayesTools:::.bt_deterministic_node_emit(node)){
+      expect_true(grepl(piece, model, fixed = TRUE), info = paste(node$node, piece))
+    }
+  }
+
+  # the marginal-likelihood parameters of a draw are the values of the nodes
+  prior_list <- attr(fit, "prior_list")
+  row <- which(posterior[, "bias_indicator"] == 3)[1L]
+  draw <- posterior[row, c("bias_indicator", "alpha")]
+  parameters <- JAGS_marglik_parameters(c(draw, alpha_component_3 = unname(draw[["alpha"]])), prior_list["bias"])
+  expect_identical(parameters$alpha, unname(draw[["alpha"]]))
+  expect_identical(parameters$pi_null, unname(posterior[row, "pi_null"]))
+})
+
 test_that("fixed publication weights of a fit are their declared atoms exactly", {
 
   fit <- .dnode_cached_fit("fit_dnode_omega_fixed")

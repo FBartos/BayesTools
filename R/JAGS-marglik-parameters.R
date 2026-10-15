@@ -392,13 +392,8 @@ JAGS_marglik_parameters                <- function(samples, prior_list){
   if(!is_prior_phacking(prior))
     stop("improper prior provided")
 
-  alpha <- .JAGS_marglik_parameters.simple(samples, prior$alpha, "alpha")[["alpha"]]
-  constants <- phack_backend_constants(prior$form, prior$source, prior$destination, target = prior$target)
-  list(
-    alpha     = alpha,
-    pi_null   = alpha * constants$pi_null_per_alpha,
-    beta_null = alpha * constants$beta_null_per_alpha
-  )
+  # the registered 'phacking' evaluator computes the severity and the null masses
+  .bt_dnode_phacking_parameters(.bt_dnode_phacking_cached(prior), samples)
 }
 # The monitored parameters of a publication-bias mixture in one draw: the
 # weights ('omega' node), the PET and PEESE terms ('prior_mixture' nodes), and
@@ -431,33 +426,18 @@ JAGS_marglik_parameters                <- function(samples, prior_list){
     parameters[[node$node]] <- as.vector(values)
   }
 
-  branches <- lapply(prior, .selection_branch_info)
-  has_phacking <- vapply(branches, function(branch) !is.null(branch$phacking), logical(1))
-  if(any(has_phacking)){
-    indicator <- .bt_deterministic_lookup_value(lookup, "bias_indicator")
-    if(is.null(indicator)){
-      missing_stop()
-    }
-    .bt_dnode_bias_indicator_check(indicator, length(branches), parameter_name)
-    branch <- indicator[[1L]]
-    if(has_phacking[[branch]]){
-      alpha_name <- paste0("alpha_component_", branch)
-      alpha_prior <- branches[[branch]]$phacking$alpha
-      if(!is.prior.point(alpha_prior) && !alpha_name %in% colnames(lookup$draws)){
-        missing_stop()
-      }
-      alpha_samples <- if(alpha_name %in% colnames(lookup$draws)){
-        c(alpha = unname(lookup$draws[1L, alpha_name]))
-      }else{
-        numeric()
-      }
-      parameters <- c(parameters, .JAGS_marglik_parameters.phacking(
-        alpha_samples,
-        branches[[branch]]$phacking
-      ))
-    }else{
-      parameters <- c(parameters, list(alpha = 0, pi_null = 0, beta_null = 0))
-    }
+  # the p-hacking parameters of the active branch are the registered 'phacking'
+  # nodes of the mixture (zeros for a branch without p-hacking)
+  phacking_spec <- .bt_dnode_phacking_cached(prior)
+  if(any(phacking_spec$has_phacking)){
+    parameters <- c(parameters, .bt_dnode_phacking_parameters(
+      phacking_spec, samples,
+      label = parameter_name,
+      missing = paste0(
+        "'samples' does not contain all monitored bias-mixture parameters of '",
+        parameter_name, "'."
+      )
+    ))
   }
 
   parameters

@@ -370,10 +370,11 @@ selection_backend_spec <- function(priors,
     if(is.null(x$selection)) NULL else selection_model_spec(x$selection)
   })
   branch_vector_rule <- vapply(seq_along(branch_info), function(i){
-    model <- branch_model[[i]]
-    if(is.null(model) || identical(model[["weight_rule"]], "product")) return(0L)
-    if(identical(branch_info[[i]]$selection[["side"]], "two-sided")) 2L else 1L
+    .bt_dnode_phacking_vector_rule(branch_info[[i]], branch_model[[i]])
   }, integer(1))
+  # The p-hacking nodes and the vector rule are the registered 'phacking' nodes:
+  # their specification defines the syntax written below.
+  phacking_spec <- .bt_dnode_phacking_spec(branch_info, names, vector_rule = branch_vector_rule)
 
   mode <- .selection_backend_mode(any(has_selection), any(has_phacking))
   kernel_mode <- .selection_mode_code(mode)
@@ -393,33 +394,20 @@ selection_backend_spec <- function(priors,
 
   prior_weights <- vapply(branches, function(x) x$prior_weights, numeric(1))
   uses_indicator <- length(branches) > 1L
-  indicator_terms <- if(uses_indicator){
-    paste0("equals(bias_indicator, ", seq_along(branches), ")")
-  }else{
-    rep("1", length(branches))
-  }
 
   prior_code <- character()
   transform_code <- character()
-  transform_code <- paste0(
-    "sel_vector_rule <- ",
-    paste0(branch_vector_rule, " * ", indicator_terms, collapse = " + ")
-  )
+  transform_code <- .bt_dnode_phacking_emit_vector_rule(phacking_spec)
 
   if(uses_indicator){
     prior_code <- c(prior_code, paste0("bias_indicator ~ dcat(c(", paste0(.JAGS_prior_number(prior_weights), collapse = ", "), "))"))
   }
 
   for(i in seq_along(branches)){
-    component_id <- if(uses_indicator) i else NULL
     # A single branch writes the public omega node directly; mixtures map
     # their component nodes onto `names` in the transform code below.
     step_code <- .bt_dnode_omega_emit_branch(omega_spec, i)
-    phacking_code <- if(uses_indicator || !is.null(branch_info[[i]]$phacking)){
-      .JAGS_phacking_component_syntax(branch_info[[i]]$phacking, component_id = component_id, names = names)
-    }else{
-      character()
-    }
+    phacking_code <- .bt_dnode_phacking_emit_branch(phacking_spec, i)
     prior_code <- c(
       prior_code,
       step_code,
@@ -435,21 +423,8 @@ selection_backend_spec <- function(priors,
 
     transform_code <- c(
       transform_code,
-      .selection_jags_active_scalar("alpha_component_", names$alpha, indicator_terms, seq_along(branches)),
-      .selection_jags_active_scalar("phack_kind_component_", names$phack_kind, indicator_terms, seq_along(branches)),
-      .selection_jags_active_scalar("pi_null_component_", names$pi_null, indicator_terms, seq_along(branches)),
-      .selection_jags_active_scalar("beta_null_component_", names$beta_null, indicator_terms, seq_along(branches))
+      .bt_dnode_phacking_emit_composition(phacking_spec)
     )
-
-    if(any(has_phacking)){
-      for(k in 1:2){
-        transform_code <- c(
-          transform_code,
-          .selection_jags_active_vector("phack_z_source_component_", names$phack_z_source, k, indicator_terms, seq_along(branches)),
-          .selection_jags_active_vector("phack_z_dest_component_", names$phack_z_dest, k, indicator_terms, seq_along(branches))
-        )
-      }
-    }
   }
 
   monitor <- character()
