@@ -450,10 +450,12 @@ names.
 - Draws that can be undefined are declared, never inferred from names or
   values: `parameter_draws()` sets the `undefined_draws` draw metadata of its
   `mcmc.list` from the catalog's `definedness` (canonical name to reason:
-  `"correlation"` for random-effect correlations (original-scale in a block
-  with scaled columns; a correlation whose block has no readable SD draws,
-  because its external SD source is row-indexed or not monitored, keeps its
-  fitted draws, since nothing establishes where it is undefined),
+  `"correlation"` for random-effect correlations (every LKJ correlation,
+  fitted- or original-scale, and the original-scale correlations of a block
+  with scaled columns, are undefined where an SD is zero; a correlation whose
+  block has no readable SD draws, because its external SD source is
+  row-indexed or not monitored, keeps its fitted draws, since nothing
+  establishes where it is undefined),
   `"allocation_active"` for variance shares of gated total-variance
   allocations). Summaries such as `ensemble_estimates_table()` accept missing
   draws only for declared columns, summarize the defined draws, and footnote

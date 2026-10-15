@@ -304,7 +304,7 @@ parameter_catalog_schema <- function(){
       "Exact structural value; otherwise NA.",
       "Whether the quantity is private implementation metadata.",
       "Relationship to concrete source coordinates: identity, one_to_one_transform, composite, or none.",
-      "Exact support of the quantity from the prior provenance of its source coordinates (a posterior_support_attribute() object), or NULL when it is not derivable.",
+      "Exact support of the quantity from the prior provenance of its source coordinates (a posterior_support_attribute() object; a quantity with point masses lists them as the points of a support of type \"mixed\"), or NULL when it is not derivable.",
       "Draws where the quantity is defined: 'always', or the reason of possibly undefined (NA) draws ('correlation': an SD is zero; 'allocation_active': no allocation component is active).",
       "Structured label parts from which parameter_labels() renders the selector, table, plot, and warning labels of the quantity (NULL for extension quantities described by their display label only).",
       "Serializable plain-data extraction recipe."
