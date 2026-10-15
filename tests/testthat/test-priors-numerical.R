@@ -515,13 +515,16 @@ test_that("log-omega weight moments of a huge normal SD are range limits, not ba
 
 test_that("closed-form variances and degenerate spike-and-slab moments are stable", {
 
+  # the ratios to the expected values are compared: an absolute tolerance
+  # larger than the variance would pass a variance of 0
+
   # small sdlog: expm1() instead of exp() - 1 (the variance was 0)
-  expect_equal(var(prior("lognormal", list(0, 1e-9))), 1e-18, tolerance = 1e-9)
+  expect_equal(var(prior("lognormal", list(0, 1e-9))) / 1e-18, 1, tolerance = 1e-9)
   expect_equal(var(prior("lognormal", list(0, 1))), (exp(1) - 1) * exp(1), tolerance = 1e-14)
   # rate^2 and (a + b)^2 leave the double range, the ratios do not
-  expect_equal(var(prior("gamma", list(shape = 1e100, rate = 1e160))), 1e-220, tolerance = 1e-12)
+  expect_equal(var(prior("gamma", list(shape = 1e100, rate = 1e160))) / 1e-220, 1, tolerance = 1e-12)
   expect_equal(var(prior("gamma", list(shape = 3, rate = 2))), 3 / 4, tolerance = 1e-14)
-  expect_equal(var(prior("beta", list(1e160, 1e160))), 1.25e-161, tolerance = 1e-12)
+  expect_equal(var(prior("beta", list(1e160, 1e160))) / 1.25e-161, 1, tolerance = 1e-12)
   # the complement of the mean is beta / (alpha + beta), not 1 - mean (0 when the
   # mean rounds to 1): Beta(1e16, 1) has the variance of Beta(1, 1e16)
   expect_equal(var(prior("beta", list(1e16, 1))) / 1e-32, 1, tolerance = 1e-12)
