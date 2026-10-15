@@ -243,6 +243,43 @@
   )
 }
 
+# The rows x rows covariances of the multi-column marginal update plan
+# (.bt_random_effect_marginal_update_invariant_covariance()). One dense matrix
+# per block is kept until the blocks are summed (8 bytes per entry). Assembling
+# a block forms the group indicator (4 bytes), its double copy, the design
+# cross-product and their product (8 bytes each) before the temporaries are
+# collected, and the summed basis comes with a zero base matrix of the same
+# size: 36 bytes per entry of working copies. (The expanded known-group kernel
+# of a block with a known group covariance replaces the indicator and its
+# copy, which is smaller.) The estimate is conservative against the garbage
+# collector's high-water mark measured for n = 600 and 1200 rows.
+.bt_random_effect_update_plan_memory_estimate <- function(n_rows, n_blocks){
+
+  entries <- .bt_random_effect_memory_product(n_rows, n_rows)
+  payload <- .bt_random_effect_memory_product(8, entries)
+  components <- c(
+    block_covariances = .bt_random_effect_memory_product(8, n_blocks, entries),
+    assembly_working = .bt_random_effect_memory_product(36, entries)
+  )
+  peak <- sum(components)
+  if(!is.finite(peak)){
+    peak <- Inf
+  }
+
+  list(
+    operation = "random-effect marginal update plan",
+    dimensions = paste0(
+      format(n_rows, scientific = FALSE, trim = TRUE), " rows x ",
+      format(n_rows, scientific = FALSE, trim = TRUE), " rows; ",
+      format(n_blocks, scientific = FALSE, trim = TRUE),
+      if(n_blocks == 1L) " block" else " blocks"
+    ),
+    payload_bytes = payload,
+    peak_bytes = peak,
+    components = components
+  )
+}
+
 .bt_random_effect_check_memory <- function(estimate, block_name = NULL,
                                            alternative){
 
@@ -256,20 +293,27 @@
   }else{
     paste0(" for block '", block_name, "'")
   }
-  stop(
-    "Estimated peak memory for ", estimate$operation, block_detail,
-    " exceeds option 'BayesTools.random_effects_memory_limit_bytes'. ",
-    "Dimensions: ", estimate$dimensions,
-    "; primary payload: ",
-    .bt_random_effect_format_bytes(estimate$payload_bytes),
-    "; conservative peak estimate: ",
-    .bt_random_effect_format_bytes(estimate$peak_bytes),
-    "; configured ceiling: ",
-    .bt_random_effect_format_bytes(limit),
-    ". This guard cannot promise that smaller allocations will succeed. ",
-    alternative,
-    call. = FALSE
-  )
+  stop(errorCondition(
+    message = paste0(
+      "Estimated peak memory for ", estimate$operation, block_detail,
+      " exceeds option 'BayesTools.random_effects_memory_limit_bytes'. ",
+      "Dimensions: ", estimate$dimensions,
+      "; primary payload: ",
+      .bt_random_effect_format_bytes(estimate$payload_bytes),
+      "; conservative peak estimate: ",
+      .bt_random_effect_format_bytes(estimate$peak_bytes),
+      "; configured ceiling: ",
+      .bt_random_effect_format_bytes(limit),
+      ". This guard cannot promise that smaller allocations will succeed. ",
+      alternative
+    ),
+    class = c("BayesTools_random_effects_memory_limit",
+              "BayesTools_random_effects_error"),
+    call = NULL,
+    operation = estimate$operation,
+    peak_bytes = estimate$peak_bytes,
+    limit_bytes = limit
+  ))
 }
 
 .bt_random_effect_format_bytes <- function(bytes){

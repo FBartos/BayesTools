@@ -16,7 +16,10 @@
 ##' Experts may explicitly use \code{Inf} to disable the guard after verifying
 ##' the operation's memory budget. Passing the guard does not promise that an
 ##' allocation will succeed because R, JAGS, and the operating system have
-##' additional memory requirements.
+##' additional memory requirements. An operation above the ceiling stops with
+##' an error of class \code{BayesTools_random_effects_memory_limit} (also
+##' \code{BayesTools_random_effects_error}) whose fields \code{operation},
+##' \code{peak_bytes}, and \code{limit_bytes} report the estimate.
 ##'
 ##'
 ##' @name BayesTools

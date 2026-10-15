@@ -107,6 +107,13 @@
 #' Unsupported plans carry a structural reason. The accessor
 #' never estimates affineness from evaluated covariance matrices.
 #'
+#' The invariant covariance of a block with several coefficient columns is a
+#' dense rows x rows matrix of the fitted data. Its estimated peak memory is
+#' checked against the `BayesTools.random_effects_memory_limit_bytes` option
+#' (see [BayesTools]) before it is formed; above the ceiling the accessor stops
+#' with an error of class `BayesTools_random_effects_memory_limit` (also
+#' `BayesTools_random_effects_error`).
+#'
 #' The `conditional` entry of an unsupported plan is compiled only for a
 #' variance allocation with exactly two single-column block targets, a scalar
 #' total-variance source and inclusion gates on the blocks; an allocation with
@@ -529,6 +536,19 @@ random_effects_marginal_update_grid <- function(
         group_map = block_data$group_map
       )
     }else{
+      # the rows x rows group kernel, design cross-product and their product
+      .bt_random_effect_check_memory(
+        estimate = .bt_random_effect_update_plan_memory_estimate(
+          n_rows = nrow(block_data$model_matrix),
+          n_blocks = length(random_terms)
+        ),
+        block_name = random_term$block_name,
+        alternative = paste0(
+          "The plan holds the dense rows x rows covariance of each block of the ",
+          "fitted data: fit the model to fewer rows. Raise the option (or set ",
+          "it to Inf) only after verifying the operation's memory budget."
+        )
+      )
       group_kernel <- if(.bt_random_effect_has_known_group_covariance(
         random_term
       )){

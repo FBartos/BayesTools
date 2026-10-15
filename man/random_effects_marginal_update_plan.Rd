@@ -116,6 +116,13 @@ scale; after formula scaling that changes it, the plan is unsupported.
 Unsupported plans carry a structural reason. The accessor
 never estimates affineness from evaluated covariance matrices.
 
+The invariant covariance of a block with several coefficient columns is a
+dense rows x rows matrix of the fitted data. Its estimated peak memory is
+checked against the \code{BayesTools.random_effects_memory_limit_bytes} option
+(see \link{BayesTools}) before it is formed; above the ceiling the accessor stops
+with an error of class \code{BayesTools_random_effects_memory_limit} (also
+\code{BayesTools_random_effects_error}).
+
 The \code{conditional} entry of an unsupported plan is compiled only for a
 variance allocation with exactly two single-column block targets, a scalar
 total-variance source and inclusion gates on the blocks; an allocation with

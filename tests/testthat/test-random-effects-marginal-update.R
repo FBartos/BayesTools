@@ -1166,6 +1166,69 @@ test_that("shared independent-coefficient scale exposes an exact dense basis", {
 })
 
 
+test_that("the multi-column update plan checks its dense covariance against the memory ceiling", {
+
+  # F286: the multi-column branch forms rows x rows copies (group kernel,
+  # design cross-product, product) that nothing bounded
+  option <- "BayesTools.random_effects_memory_limit_bytes"
+  old_limit <- getOption(option)
+  on.exit(do.call(options, stats::setNames(list(old_limit), option)), add = TRUE)
+  options(stats::setNames(list(Inf), option))
+
+  data <- data.frame(
+    id = factor(c("a", "a", "b", "b")),
+    x = c(-1, 0, 0.5, 2)
+  )
+  fit <- .random_update_test_fit(~ 1 + id(1 + x | id), data)
+  reference <- .random_update_test_plan(fit, "random_sd")
+  expect_identical(reference$family, "affine")
+
+  # 4 rows, one block: the kept block matrix (8 * 16) and the working copies (36 * 16)
+  peak <- 8 * 16 + 36 * 16
+  options(stats::setNames(list(peak - 1), option))
+  condition <- tryCatch(.random_update_test_plan(fit, "random_sd"), error = identity)
+  expect_s3_class(condition, "BayesTools_random_effects_memory_limit")
+  expect_s3_class(condition, "BayesTools_random_effects_error")
+  expect_identical(condition$operation, "random-effect marginal update plan")
+  expect_identical(condition$peak_bytes, peak)
+  expect_identical(condition$limit_bytes, peak - 1)
+  expect_match(
+    conditionMessage(condition),
+    paste0("Estimated peak memory for random-effect marginal update plan for block 'id' ",
+           "exceeds option 'BayesTools.random_effects_memory_limit_bytes'. ",
+           "Dimensions: 4 rows x 4 rows; 1 block;"),
+    fixed = TRUE
+  )
+  expect_match(conditionMessage(condition), "fit the model to fewer rows", fixed = TRUE)
+
+  # at the estimate the plan is unchanged
+  options(stats::setNames(list(peak), option))
+  expect_identical(.random_update_test_plan(fit, "random_sd"), reference)
+
+  estimate <- BayesTools:::.bt_random_effect_update_plan_memory_estimate(4L, 1L)
+  expect_identical(
+    estimate$components,
+    c(block_covariances = 8 * 16, assembly_working = 36 * 16)
+  )
+  expect_identical(estimate$peak_bytes, peak)
+  # every block keeps its own matrix until the blocks are summed
+  three <- BayesTools:::.bt_random_effect_update_plan_memory_estimate(4L, 3L)
+  expect_identical(three$components[["block_covariances"]], 3 * 8 * 16)
+  expect_match(three$dimensions, "3 blocks", fixed = TRUE)
+  expect_identical(
+    BayesTools:::.bt_random_effect_update_plan_memory_estimate(1e200, 2L)$peak_bytes,
+    Inf
+  )
+
+  # the guard is the shared one: its other sites carry the class as well
+  options(stats::setNames(list(100), option))
+  expect_error(
+    BayesTools:::.bt_random_effect_check_memory(estimate, alternative = "Use fewer rows."),
+    class = "BayesTools_random_effects_memory_limit"
+  )
+})
+
+
 test_that("known group covariance remains an exact affine scale basis", {
 
   data <- data.frame(id = factor(c("b", "a", "c", "b")))
