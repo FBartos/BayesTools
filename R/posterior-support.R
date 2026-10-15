@@ -68,7 +68,7 @@
   if(is.null(type)){
     if(length(points) > 0L &&
        all(is.finite(bounds)) &&
-       isTRUE(all.equal(range(points), bounds))){
+       all(range(points) == bounds)){
       return("points")
     }
     return("interval")
@@ -115,8 +115,8 @@
 #' @param points optional finite numeric vector of point-support locations.
 #' @param type support type: \code{"interval"}, \code{"points"}, or
 #' \code{"mixed"}. If \code{NULL}, \code{"points"} is used when the finite
-#' \code{bounds} equal the range of \code{points} and \code{"interval"}
-#' otherwise.
+#' \code{bounds} are exactly (not up to a tolerance) the range of
+#' \code{points} and \code{"interval"} otherwise.
 #' @param exact whether \code{bounds} and \code{points} describe the true
 #' support. Set \code{exact = FALSE} for plotting or integration limits;
 #' non-exact support is not used to exclude a null hypothesis value or to
@@ -623,6 +623,24 @@ posterior_support_attribute <- function(bounds, points = NULL, type = NULL,
   which(is.finite(weights) & weights > 0)
 }
 
+# The states a Bernoulli prior can take: a probability of exactly 0 or 1 makes
+# the other state impossible, so it is not declared as support; an expression
+# probability keeps both.
+.posterior_support_bernoulli_states <- function(prior){
+
+  probability <- prior$parameters[["probability"]]
+  if(is.numeric(probability) && length(probability) == 1L){
+    if(isTRUE(probability == 0)){
+      return(0)
+    }
+    if(isTRUE(probability == 1)){
+      return(1)
+    }
+  }
+
+  c(0, 1)
+}
+
 .posterior_support_from_prior <- function(prior, source = "prior"){
 
   if(is.null(prior)){
@@ -677,7 +695,7 @@ posterior_support_attribute <- function(bounds, points = NULL, type = NULL,
   if(is.prior.discrete(prior)){
     support <- switch(
       prior[["distribution"]],
-      "bernoulli" = c(0, 1),
+      "bernoulli" = .posterior_support_bernoulli_states(prior),
       numeric()
     )
     support <- support[

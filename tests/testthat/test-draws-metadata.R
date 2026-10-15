@@ -1501,6 +1501,10 @@ test_that("posterior support points lie within the bounds", {
   expect_identical(posterior_support_attribute(c(0, 1), points = c(0, 1))$type, "points")
   expect_identical(posterior_support_attribute(c(0, Inf), points = 0)$type, "interval")
   expect_identical(posterior_support_attribute(c(0, 1))$type, "interval")
+  # the type is inferred from bounds and points exactly, not up to a tolerance
+  expect_identical(posterior_support_attribute(c(1, 1 + 1e-9), points = 1)$type, "interval")
+  expect_identical(posterior_support_attribute(c(0, 1 - 1e-12), points = c(0, 1 - 1e-12))$type, "points")
+  expect_identical(posterior_support_attribute(c(0, 1), points = c(1e-9, 1))$type, "interval")
 
   # points outside the bounds describe no support
   for(type in list(NULL, "interval", "mixed")){
@@ -1510,4 +1514,28 @@ test_that("posterior support points lie within the bounds", {
                  "'points' must lie within 'bounds'.", fixed = TRUE)
   }
   expect_identical(posterior_support_attribute(c(0, Inf), points = c(0, 2), type = "mixed")$type, "mixed")
+})
+
+test_that("a degenerate Bernoulli prior declares only its possible state", {
+
+  states <- function(probability){
+    support <- BayesTools:::.posterior_support_from_prior(prior("bernoulli", list(probability)))
+    list(points = support$points, bounds = support$bounds, type = support$type, exact = support$exact)
+  }
+  expect_identical(states(0), list(points = 0, bounds = c(0, 0), type = "points", exact = TRUE))
+  expect_identical(states(1), list(points = 1, bounds = c(1, 1), type = "points", exact = TRUE))
+  expect_identical(states(0.3), list(points = c(0, 1), bounds = c(0, 1), type = "points", exact = TRUE))
+  expect_identical(states(1e-300)$points, c(0, 1))
+
+  # the truncation still applies to the possible states
+  truncated <- BayesTools:::.posterior_support_from_prior(
+    prior("bernoulli", list(0.3), truncation = list(0, 0.5))
+  )
+  expect_identical(truncated$points, 0)
+
+  # the impossible state is outside the declared support
+  expect_false(BayesTools:::.posterior_support_contains_value(
+    BayesTools:::.posterior_support_from_prior(prior("bernoulli", list(1))), 0))
+  expect_true(BayesTools:::.posterior_support_contains_value(
+    BayesTools:::.posterior_support_from_prior(prior("bernoulli", list(1))), 1))
 })

@@ -20,8 +20,8 @@ posterior_support_attribute(
 
 \item{type}{support type: \code{"interval"}, \code{"points"}, or
 \code{"mixed"}. If \code{NULL}, \code{"points"} is used when the finite
-\code{bounds} equal the range of \code{points} and \code{"interval"}
-otherwise.}
+\code{bounds} are exactly (not up to a tolerance) the range of
+\code{points} and \code{"interval"} otherwise.}
 
 \item{exact}{whether \code{bounds} and \code{points} describe the true
 support. Set \code{exact = FALSE} for plotting or integration limits;
