@@ -2009,7 +2009,6 @@ prior_density_has_provenance <- function(x){
   }
   family <- provenance$family
   parameters <- provenance$parameters
-  upper <- provenance$truncation$upper
   exponent <- switch(
     family,
     "beta"    = parameters$alpha,
@@ -2028,14 +2027,22 @@ prior_density_has_provenance <- function(x){
   if(exponent < p){
     return(NA_real_)
   }
-  if(identical(family, "beta")){
-    mass <- stats::pbeta(upper, parameters$alpha, parameters$beta)
-    return(-lbeta(parameters$alpha, parameters$beta) - log(mass))
-  }
-  if(identical(family, "gamma")){
-    mass <- stats::pgamma(upper, shape = parameters$shape, rate = parameters$rate)
+  if(family %in% c("beta", "gamma")){
+    # the log truncation normalizer of the prior (the natural-scale mass
+    # underflows for a narrow truncation interval); NA when it cannot be
+    # resolved
+    log_mass <- tryCatch(
+      .prior_simple_log_C(prior(family, parameters, provenance$truncation)),
+      BayesTools_numerical_unavailable = function(e) NA_real_
+    )
+    if(is.na(log_mass)){
+      return(NA_real_)
+    }
+    if(identical(family, "beta")){
+      return(-lbeta(parameters$alpha, parameters$beta) - log_mass)
+    }
     return(parameters$shape * log(parameters$rate) - lgamma(parameters$shape) -
-             log(mass))
+             log_mass)
   }
   bound <- tryCatch(
     .prior_density_ordinate_primitive(

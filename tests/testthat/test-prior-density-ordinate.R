@@ -2587,6 +2587,44 @@ test_that("R116 N06 constants and finite images have conservative provenance", {
   }
 })
 
+test_that("the exp_lin zero limit of a narrow truncated gamma or beta uses the log truncation mass", {
+
+  # X on [0, u] with f_X(x) ~ C x near 0 and Z = X^2 give f_Z(0) = C / 2. For a
+  # Gamma(2, r) with r u small the truncation mass is (r u)^2 / 2 and for a
+  # Beta(2, 3) it is u^2 / (2 B(2, 3)), so f_Z(0) = 1 / u^2 for both. The
+  # natural-scale mass underflows to 0 for u = 1e-100 and 1e-200, which gave an
+  # exact infinite ordinate at 0.
+  square <- function(source){
+    .prior_linear_combination_density(list(x = source), c(x = 1), n_grid = 128,
+      output_transformation = "exp_lin", output_transformation_arguments = list(a = 0, b = 2))
+  }
+  for(upper in c(1e-5, 1e-100)){
+    limit <- prior_density_ordinate(
+      square(prior("gamma", list(shape = 2, rate = 1e-100), list(0, upper))), 0)
+    expect_identical(limit$behavior, "regular")
+    expect_true(limit$exact)
+    expect_equal(limit$log_density, -2 * log(upper), tolerance = 1e-12)
+  }
+
+  # the Beta source cannot be gridded at u = 1e-200: the coefficient of its
+  # declared provenance, log C = log(2) - 2 log(u)
+  beta_provenance <- function(upper){
+    list(kind = "primitive", family = "beta", parameters = list(alpha = 2, beta = 3),
+         truncation = list(lower = 0, upper = upper))
+  }
+  for(upper in c(.4, 1e-10, 1e-200)){
+    coefficient <- .prior_density_ordinate_lower_log_coefficient(beta_provenance(upper), 2)
+    reference <- if(upper == .4) -lbeta(2, 3) - log(stats::pbeta(.4, 2, 3)) else log(2) - 2 * log(upper)
+    expect_equal(coefficient, reference, tolerance = 1e-10)
+  }
+
+  # an unresolved truncation mass gives no structural value, not an infinite one
+  local_mocked_bindings(.prior_simple_log_C = function(...){
+    .prior_numerical_signal("normalization", "beta", "log", 1L, "mocked", error = TRUE)
+  })
+  expect_identical(.prior_density_ordinate_lower_log_coefficient(beta_provenance(.4), 2), NA_real_)
+})
+
 test_that("R116 N89 point-only densities are exact off their stored atom", {
 
   point <- .prior_linear_density_point(.5)
