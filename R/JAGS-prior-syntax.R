@@ -626,8 +626,15 @@ JAGS_add_priors           <- function(syntax, prior_list){
     return(value)
   }
 
+  # as.character() writes the decimal mark of options(OutDec), which
+  # as.numeric() does not read back: the constant is always written with '.'
+  decimal_mark <- getOption("OutDec", ".")
   vapply(as.double(value), function(x){
     text <- as.character(x)
+    if(is.character(decimal_mark) && length(decimal_mark) == 1L &&
+       nzchar(decimal_mark) && !identical(decimal_mark, ".")){
+      text <- gsub(decimal_mark, ".", text, fixed = TRUE)
+    }
     if(!is.finite(x) || identical(as.numeric(text), x)){
       return(text)
     }

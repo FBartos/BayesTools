@@ -1974,6 +1974,28 @@ test_that("the literal of a numeric constant is the shortest text that parses ba
   expect_identical(as.numeric(.JAGS_prior_number(hard)), as.numeric(hard))
 })
 
+test_that("numeric constants are written with a decimal point under options(OutDec) (F322)", {
+
+  numbers <- c(0.5, 1/3, 0.1, 1e5, 1e-5, 100, 0.1 + 0.2, 123456.789)
+  reference <- .JAGS_prior_number(numbers)
+  withr::local_options(OutDec = ",")
+  # as.character() writes "0,5" here, which as.numeric() reads as NA with a warning
+  expect_no_warning(written <- .JAGS_prior_number(numbers))
+  expect_identical(written, reference)
+  expect_identical(as.numeric(written), numbers)
+
+  syntax_comma <- NULL
+  expect_no_warning(syntax_comma <- JAGS_add_priors("model{}", list(
+    mu = prior("normal", list(0.5, 2.25)),
+    tau = prior("gamma", list(1.5, 0.25))
+  )))
+  withr::local_options(OutDec = ".")
+  expect_identical(syntax_comma, JAGS_add_priors("model{}", list(
+    mu = prior("normal", list(0.5, 2.25)),
+    tau = prior("gamma", list(1.5, 0.25))
+  )))
+})
+
 test_that("numeric constants of the emitted JAGS syntax parse back to the declared doubles", {
 
   # `number` is the first capture of `pattern` in the syntax of `prior_list`
