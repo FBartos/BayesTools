@@ -32,6 +32,7 @@
     .plot_data_stop_unknown_atoms()
   }
   density_bounds <- .posterior_support_bounds(samples, name = parameter, interval_only = TRUE)
+  parameter_label <- if(is.character(parameter)) parameter else colnames(samples)[parameter]
   # an explicit precomputed request resolves the stored curve of this omega
   # while the parent samples and their condition are available
   posterior_density <- if(identical(density_method, "precomputed")){
@@ -69,7 +70,11 @@
       }
 
     }else if(length(samples_density) < 2L || diff(range(samples_density)) == 0){
-      stop("Weightfunction posterior density is unavailable for declared continuous samples with fewer than two distinct values.", call. = FALSE)
+      # no kernel density: the declared point masses are drawn, the curve is omitted
+      if(is.null(y_points)){
+        stop("Weightfunction posterior density is unavailable for declared continuous samples with fewer than two distinct values.", call. = FALSE)
+      }
+      .plot_data_warn_posterior_curve_unavailable(parameter_label, continuous_component_mass, samples_density)
     }else{
 
       # Use component support for reflection and a display range for evaluation.
@@ -277,11 +282,12 @@
         }
 
       }else if(length(level_samples) < 2L || diff(range(level_samples)) == 0){
-        stop(
-          "Posterior density is unavailable for declared continuous samples with fewer than two distinct values. ",
-          "Provide valid 'posterior_density' metadata (posterior_metadata()) and set 'density_method' to 'precomputed'.",
-          call. = FALSE
-        )
+        # no kernel density: the declared point masses of the level are drawn,
+        # the curve of the level is omitted
+        if(length(column_atoms[[i]]$mass) == 0L) .plot_data_stop_posterior_curve_unavailable()
+        .plot_data_warn_posterior_curve_unavailable(
+          colnames(samples_density)[i], level_mass, level_samples)
+        next
       }else{
 
         # Factor contrasts may be transformed before plotting; in that case

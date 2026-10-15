@@ -28,6 +28,14 @@ producers' metadata or `posterior_atom_attribute()`), also when a precomputed
 posterior density supplies the continuous curve; samples without an atom
 declaration stop with the atom-status message. Never infer point masses
 from prior lists, component indices, or draws matching prior spikes.
+A declared continuous component (or factor level) with fewer than two
+distinct continuous draws has no kernel density: `plot_posterior()` (simple,
+factor and omega, base and ggplot) and `plot_marginal()` draw its declared atoms,
+omit its curve and warn with `BayesTools_posterior_curve_unavailable` (parent
+`BayesTools_plot_condition`; fields `parameter`, `continuous_mass`, `n_draws`,
+`n_distinct`; the remedy is a larger `n_samples` in `mix_posteriors()`). Prior
+overlays are unaffected. Without declared atoms to draw, the plot still stops with
+the posterior-density-unavailable message.
 Marginal level extraction checks the original typed atom refusal before
 discarding draw metadata when no certified scalar law is available.
 A linear transformation of declared atoms (factor level cells, formula rows)

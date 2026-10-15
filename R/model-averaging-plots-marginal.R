@@ -22,7 +22,11 @@
 #' exact posterior-support metadata is available. A stored density describes
 #' the continuous part of the posterior; point masses are drawn from the
 #' declared posterior atoms (the \code{atoms} metadata, see
-#' [posterior_atom_attribute()]) with either density method. A prior curve without an exact route whose numerical grid cannot
+#' [posterior_atom_attribute()]) with either density method. A declared
+#' continuous component that received fewer than two distinct continuous draws
+#' has its curve omitted and its point masses drawn, with a warning of class
+#' \code{BayesTools_posterior_curve_unavailable} (also
+#' \code{BayesTools_plot_condition}), as in [plot_posterior()]. A prior curve without an exact route whose numerical grid cannot
 #' resolve a heavy-tailed product term is omitted with a warning of class
 #' \code{BayesTools_prior_curve_unavailable}, as in [plot_posterior()], and so
 #' is the prior curve of draws that declare no prior (a \code{prior_list} of
@@ -215,7 +219,8 @@ plot_marginal <- function(samples, parameter, plot_type = "base", prior = FALSE,
       transformation_arguments,
       transformation_settings,
       posterior_density = posterior_densities[[i]],
-      density_method    = density_method
+      density_method    = density_method,
+      label             = names(posterior_samples)[i]
     )
 
     for(j in seq_along(out_level)){
@@ -295,7 +300,8 @@ plot_marginal <- function(samples, parameter, plot_type = "base", prior = FALSE,
 }
 .plot_data_marginal_samples.den <- function(x, n_points, transformation, transformation_arguments, transformation_settings,
                                             posterior_density = NULL,
-                                            density_method = c("KDE", "precomputed")){
+                                            density_method = c("KDE", "precomputed"),
+                                            label = "marginal posterior"){
 
   .bt_ordered_source_require_measure(x)
   x_points        <- NULL
@@ -390,11 +396,9 @@ plot_marginal <- function(samples, parameter, plot_type = "base", prior = FALSE,
     out[["density"]] <- out_den
 
   }else if(continuous_mass > 0){
-    stop(
-      "Posterior density is unavailable for declared continuous samples with fewer than two distinct values. ",
-      "Provide valid 'posterior_density' metadata (posterior_metadata()) and set 'density_method' to 'precomputed'.",
-      call. = FALSE
-    )
+    # no kernel density: the declared point masses are drawn, the curve is omitted
+    if(is.null(y_points)) .plot_data_stop_posterior_curve_unavailable()
+    .plot_data_warn_posterior_curve_unavailable(label, continuous_mass, samples_density)
   }
 
   if(!is.null(y_points)){

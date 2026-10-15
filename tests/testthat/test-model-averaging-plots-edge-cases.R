@@ -747,6 +747,149 @@ test_that("declared continuous constant draws cannot become plotting atoms", {
   )
 })
 
+test_that("a continuous component without a kernel density draws the declared atoms and omits the curve", {
+
+  curve_unavailable <- "BayesTools_posterior_curve_unavailable"
+  warnings_of <- function(expr){
+    caught <- list()
+    value <- withCallingHandlers(expr, warning = function(w){
+      caught[[length(caught) + 1L]] <<- w
+      invokeRestart("muffleWarning")
+    })
+    list(value = value, warnings = caught)
+  }
+  expect_curve_warning <- function(caught, n, mass, n_draws, label){
+    expect_length(caught, n)
+    for(condition in caught){
+      expect_s3_class(condition, curve_unavailable)
+      expect_s3_class(condition, "BayesTools_plot_condition")
+      expect_s3_class(condition, "warning")
+      expect_equal(condition$continuous_mass, mass)
+      expect_identical(condition$n_draws, as.integer(n_draws))
+      expect_match(conditionMessage(condition), paste0("curve of '", label), fixed = TRUE)
+      expect_match(conditionMessage(condition), paste0("received ", n_draws, " continuous draw"), fixed = TRUE)
+      expect_match(conditionMessage(condition), "'n_samples' in 'mix_posteriors()'", fixed = TRUE)
+      expect_match(conditionMessage(condition), "declared point masses are drawn", fixed = TRUE)
+    }
+  }
+  mass <- 8.75e-06
+  n <- 10000L
+  file <- tempfile(fileext = ".png")
+  grDevices::png(file)
+  on.exit({
+    grDevices::dev.off()
+    unlink(file)
+  }, add = TRUE)
+
+  # simple: a spike at 0 and a N(0, 1) alternative of posterior probability
+  # 8.75e-06, which received no (or one) of 10000 draws
+  simple_samples <- function(n_continuous, continuous_mass = mass){
+    theta <- c(rep(0, n - n_continuous), if(n_continuous > 0L) seq(-1, 1, length.out = n_continuous))
+    theta <- attach_test_model_probabilities(theta, c(1 - continuous_mass, continuous_mass))
+    theta <- .bt_draws_set_component(theta, source = "model",
+      component = c(rep(1L, n - n_continuous), rep(2L, n_continuous)))
+    attr(theta, "prior_list") <- list(prior("point", list(location = 0)), prior("normal", list(mean = 0, sd = 1)))
+    theta <- .bt_meta_set(theta, "atoms", posterior_atom_attribute(data.frame(x = 0, mass = 1 - continuous_mass)))
+    class(theta) <- c("mixed_posteriors.simple", "mixed_posteriors")
+    list(theta = theta)
+  }
+  for(n_continuous in 0:1){
+    samples <- simple_samples(n_continuous)
+    plot_data <- warnings_of(BayesTools:::.plot_data_samples.simple(samples, "theta", 64, NULL, NULL, FALSE))
+    expect_curve_warning(plot_data$warnings, 1L, mass, n_continuous, "theta")
+    expect_identical(names(plot_data$value), "points1")
+    expect_equal(plot_data$value$points1$x, 0)
+    expect_equal(plot_data$value$points1$y, 1 - mass)
+    for(plot_type in c("base", "ggplot")) for(prior in c(FALSE, TRUE)){
+      plotted <- warnings_of(plot_posterior(samples, "theta", plot_type = plot_type, prior = prior))
+      expect_curve_warning(plotted$warnings, 1L, mass, n_continuous, "theta")
+      if(identical(plot_type, "ggplot")) expect_s3_class(ggplot2::ggplot_build(plotted$value)$plot, "ggplot")
+    }
+  }
+  # a component with many continuous draws is unchanged: no warning, a curve
+  many <- warnings_of(BayesTools:::.plot_data_samples.simple(simple_samples(500L, .05), "theta", 64, NULL, NULL, FALSE))
+  expect_length(many$warnings, 0L)
+  expect_equal(names(many$value), c("density", "points1"))
+
+  # factor: each level without continuous draws loses its own curve
+  factor_prior <- prior_factor("normal", list(0, 1), contrast = "treatment")
+  point_prior <- prior_factor("point", list(location = 0), contrast = "treatment")
+  attr(factor_prior, "levels") <- 3
+  attr(factor_prior, "level_names") <- c("a", "b", "c")
+  attr(point_prior, "levels") <- 3
+  attr(point_prior, "level_names") <- c("a", "b", "c")
+  factor_samples <- function(values, continuous_mass, component){
+    colnames(values) <- c("theta[b]", "theta[c]")
+    attr(values, "prior_list") <- list(point_prior, factor_prior)
+    values <- attach_test_model_probabilities(values, c(1 - continuous_mass, continuous_mass))
+    values <- .bt_draws_set_component(values, source = "model", component = component)
+    values <- .bt_meta_set(values, "atoms", BayesTools:::.posterior_atoms_from_priors(
+      list(point_prior, factor_prior), c(1 - continuous_mass, continuous_mass),
+      n_columns = 2L, column_names = c("theta[b]", "theta[c]")))
+    class(values) <- c("mixed_posteriors", "mixed_posteriors.factor", "mixed_posteriors.vector")
+    list(theta = values)
+  }
+  samples <- factor_samples(matrix(0, 100, 2), 1e-5, rep(1L, 100))
+  plot_data <- warnings_of(BayesTools:::.plot_data_samples.factor(samples, "theta", 64, NULL, NULL, FALSE))
+  expect_curve_warning(plot_data$warnings[1L], 1L, 1e-5, 0, "theta[b]")
+  expect_curve_warning(plot_data$warnings[2L], 1L, 1e-5, 0, "theta[c]")
+  expect_identical(names(plot_data$value), "points1")
+  for(plot_type in c("base", "ggplot")) for(prior in c(FALSE, TRUE)){
+    plotted <- warnings_of(plot_posterior(samples, "theta", plot_type = plot_type, prior = prior))
+    expect_curve_warning(plotted$warnings, 2L, 1e-5, 0, "theta[")
+    if(identical(plot_type, "ggplot")) expect_s3_class(ggplot2::ggplot_build(plotted$value)$plot, "ggplot")
+  }
+  # a level with continuous draws keeps its curve
+  partial <- factor_samples(cbind(c(rep(0, 98), -1, 1), rep(0, 100)), .1, c(rep(1L, 98), 2L, 2L))
+  plot_data <- warnings_of(BayesTools:::.plot_data_samples.factor(partial, "theta", 64, NULL, NULL, FALSE))
+  expect_curve_warning(plot_data$warnings, 1L, .1, 0, "theta[c]")
+  expect_true(all(c("points1", "density1") %in% names(plot_data$value)))
+  expect_false("density2" %in% names(plot_data$value))
+
+  # marginal posterior
+  prior_density <- BayesTools:::.prior_linear_combination_density(
+    prior_list = list(theta = prior_mixture(list(
+      prior("spike", list(0), prior_weights = 1), prior("normal", list(0, 1), prior_weights = 4)),
+      is_null = c(TRUE, FALSE))),
+    weights = c(theta = 1), n_grid = 512)
+  marginal <- rep(0, 100)
+  class(marginal) <- c("marginal_posterior.simple", "marginal_posterior", class(marginal))
+  marginal <- .bt_meta_set(marginal, "prior_density", prior_density)
+  marginal <- .bt_meta_set(marginal, "atoms", posterior_atom_attribute(list(x = 0, mass = 1 - 1e-5)))
+  for(plot_type in c("base", "ggplot")) for(prior in c(FALSE, TRUE)){
+    plotted <- warnings_of(plot_marginal(list(theta = marginal), "theta", plot_type = plot_type, prior = prior))
+    expect_curve_warning(plotted$warnings, 1L, 1e-5, 0, "theta")
+    if(identical(plot_type, "ggplot")) expect_s3_class(ggplot2::ggplot_build(plotted$value)$plot, "ggplot")
+  }
+
+  # weightfunction omega: the reference-bin atom of the null model is drawn
+  prior_list <- list(bias = prior_mixture(
+    list(
+      prior_none(prior_weights = 1),
+      prior_weightfunction("two-sided", c(.05), wf_cumulative(c(1, 1)), prior_weights = 1 / 3),
+      prior_weightfunction("one-sided", c(.025, .05), wf_cumulative(c(1, 1, 1)), prior_weights = 1 / 3),
+      prior_PET("normal", list(0, 1), prior_weights = 1 / 3)
+    ),
+    is_null = c(TRUE, FALSE, FALSE, FALSE)
+  ))
+  omega_samples <- matrix(1, nrow = 100, ncol = 4, dimnames = list(NULL, c(
+    "omega[0,0.025]", "omega[0.025,0.05]", "omega[0.05,0.975]", "omega[0.975,1]")))
+  attr(omega_samples, "prior_list") <- prior_list$bias
+  omega_samples <- attach_test_model_probabilities(omega_samples, c(1 - 3e-5, 1e-5, 1e-5, 1e-5),
+    prior_weights = c(1, 1/3, 1/3, 1/3))
+  omega_samples <- .bt_draws_set_component(omega_samples, source = "model", component = rep(1L, 100))
+  pair <- .bt_meta_get(omega_samples, "model_probabilities")$posterior
+  omega_samples <- .posterior_weightfunction_declarations(omega_samples,
+    prior_list$bias, pair$probabilities, source = "test_model_probabilities", posterior_pair = pair)
+  omega_data <- warnings_of(BayesTools:::.plot_data_samples.weightparameter(
+    list(bias = omega_samples), "omega[0.05,0.975]", 64))
+  expect_length(omega_data$warnings, 1L)
+  expect_s3_class(omega_data$warnings[[1L]], curve_unavailable)
+  expect_match(conditionMessage(omega_data$warnings[[1L]]), "curve of 'omega[0.05,0.975]'", fixed = TRUE)
+  expect_false("density" %in% names(omega_data$value))
+  expect_equal(omega_data$value$points1$x, 1)
+})
+
 # ============================================================================ #
 # TEST FILE: Model Averaging Plots Edge Cases
 # ============================================================================ #

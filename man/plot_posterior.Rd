@@ -171,7 +171,16 @@ Posterior sample vectors may carry \code{posterior_density} metadata
 \code{density_method = "precomputed"}. A stored density describes the
 continuous part of the posterior; point masses are drawn from the declared
 posterior atoms (the \code{atoms} metadata, see \code{\link[=posterior_atom_attribute]{posterior_atom_attribute()}})
-with either density method.
+with either density method. A declared continuous component (or the
+continuous part of a factor level) that received fewer than two distinct
+continuous draws has no kernel density, as for a model of posterior
+probability near or below one over \code{n_samples} in \code{\link[=mix_posteriors]{mix_posteriors()}}:
+its curve is omitted and the declared point masses are drawn, with a
+warning of class \code{BayesTools_posterior_curve_unavailable} (also
+\code{BayesTools_plot_condition}) that reports the declared continuous mass
+and the number of continuous draws; use a larger \code{n_samples} in
+\code{\link[=mix_posteriors]{mix_posteriors()}}. Without declared point masses to draw, the plot stops.
+\code{\link[=plot_marginal]{plot_marginal()}} does likewise.
 
 Prior-density curves are evaluated on their exact routes where they exist.
 A combination without an exact route is drawn from its numerical grid;

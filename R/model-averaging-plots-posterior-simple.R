@@ -314,6 +314,44 @@
   ))
 }
 
+# Warning of an omitted posterior curve: a declared continuous component that
+# received fewer than two distinct continuous draws has no kernel density
+# (mix_posteriors() allocates draws by rmultinom(), so a component with a
+# posterior probability near or below 1 / n_samples often gets none). The
+# declared point masses are still drawn.
+.plot_data_warn_posterior_curve_unavailable <- function(parameter, continuous_mass, draws){
+
+  n_draws <- length(draws)
+  n_distinct <- length(unique(draws))
+  warning(structure(
+    class = c("BayesTools_posterior_curve_unavailable", "BayesTools_plot_condition",
+              "warning", "condition"),
+    list(
+      message = paste0(
+        "The posterior density curve of '", parameter, "' is unavailable: its declared ",
+        "continuous mass is ", format(continuous_mass, digits = 3), ", but it received ", n_draws,
+        " continuous draw", if(n_draws != 1L) "s", " with ", n_distinct, " distinct value",
+        if(n_distinct != 1L) "s", ". The curve is omitted and the declared ",
+        "point masses are drawn. Use a larger 'n_samples' in 'mix_posteriors()'."
+      ),
+      call = NULL,
+      parameter = parameter, continuous_mass = continuous_mass,
+      n_draws = n_draws, n_distinct = n_distinct
+    )
+  ))
+}
+
+# The refusal of a declared continuous component that has no kernel density and
+# no declared point mass to draw instead.
+.plot_data_stop_posterior_curve_unavailable <- function(){
+
+  stop(
+    "Posterior density is unavailable for declared continuous samples with fewer than two distinct values. ",
+    "Provide valid 'posterior_density' metadata (posterior_metadata()) and set 'density_method' to 'precomputed'.",
+    call. = FALSE
+  )
+}
+
 # Whether 'parameter' is a random-effect SD whose draws were moved to the
 # original predictor scale (as_mixed_posteriors(transform_scaled = TRUE)): the
 # fitted SD coordinates of the scaled blocks (see
@@ -466,11 +504,9 @@
       }
 
     }else if(length(samples_density) < 2L || diff(range(samples_density)) == 0){
-      stop(
-        "Posterior density is unavailable for declared continuous samples with fewer than two distinct values. ",
-        "Provide valid 'posterior_density' metadata (posterior_metadata()) and set 'density_method' to 'precomputed'.",
-        call. = FALSE
-      )
+      # no kernel density: the declared point masses are drawn, the curve is omitted
+      if(is.null(y_points)) .plot_data_stop_posterior_curve_unavailable()
+      .plot_data_warn_posterior_curve_unavailable(parameter, continuous_mass, samples_density)
     }else{
 
       # Keep evaluation range separate from true support so bounded KDEs can

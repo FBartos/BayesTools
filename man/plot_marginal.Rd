@@ -111,7 +111,11 @@ the support-reflected ordinate used by \code{\link{Savage_Dickey_BF}} when
 exact posterior-support metadata is available. A stored density describes
 the continuous part of the posterior; point masses are drawn from the
 declared posterior atoms (the \code{atoms} metadata, see
-\code{\link[=posterior_atom_attribute]{posterior_atom_attribute()}}) with either density method. A prior curve without an exact route whose numerical grid cannot
+\code{\link[=posterior_atom_attribute]{posterior_atom_attribute()}}) with either density method. A declared
+continuous component that received fewer than two distinct continuous draws
+has its curve omitted and its point masses drawn, with a warning of class
+\code{BayesTools_posterior_curve_unavailable} (also
+\code{BayesTools_plot_condition}), as in \code{\link[=plot_posterior]{plot_posterior()}}. A prior curve without an exact route whose numerical grid cannot
 resolve a heavy-tailed product term is omitted with a warning of class
 \code{BayesTools_prior_curve_unavailable}, as in \code{\link[=plot_posterior]{plot_posterior()}}, and so
 is the prior curve of draws that declare no prior (a \code{prior_list} of
