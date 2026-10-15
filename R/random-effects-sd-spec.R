@@ -320,7 +320,10 @@
                                                   random_structure,
                                                   factor_term_design = NULL){
 
-  contrast <- .bt_random_effect_factor_term_contrast(model_term, predictors_type, data)
+  contrast <- .bt_random_effect_factor_term_contrast(
+    model_term, predictors_type, data,
+    indicator_factors = .bt_random_effect_factor_term_indicators(factor_term_design, model_term)
+  )
   if(random_structure %in% c("cs", "hcs", "ar1", "car", "har")){
     .bt_random_effect_check_scalar_sd_prior(prior, model_term)
     prior_type <- "prior.independent"
@@ -579,28 +582,62 @@
     if(is.null(contrast)) "contr.treatment" else contrast
   }, character(1))
   # R codes a factor of an interaction whose margin is absent from the block
-  # (`f:g` without `f` or `g`) by level indicators, whatever its declared
-  # contrast: the stored coding of the term (the 2 of its `factors` matrix)
-  # makes those columns level cells, so the declared contrast does not bar them
-  # from the cell labels of a mixed-contrast term.
-  if(identical(.bt_random_effect_factor_term_contrast(model_term, predictors_type, data),
-               "contr.mixed")){
-    coding <- attr(stats::terms(formula), "factors", exact = TRUE)
-    term_label <- gsub("__xXx__", ":", model_term, fixed = TRUE)
-    if(is.matrix(coding) && term_label %in% colnames(coding)){
-      indicators <- vapply(factor_terms, function(factor_term){
-        factor_term %in% rownames(coding) &&
-          identical(as.integer(coding[factor_term, term_label]), 2L)
-      }, logical(1))
-      factor_contrasts[indicators] <- "contr.independent"
-    }
-  }
+  # (`f:g` without `f` or `g`, `f:x` without `x`) by level indicators, whatever
+  # its declared contrast: the stored coding of the term makes those columns
+  # level cells, so the declared contrast does not bar them from the cell
+  # labels.
+  indicators <- .bt_random_effect_term_indicator_factors(
+    formula, model_term, predictors_type, data
+  )
+  factor_contrasts[names(factor_contrasts) %in% indicators] <- "contr.independent"
 
   list(
     design = unname(grid_matrix[, terms_indexes == term_index, drop = FALSE]),
     level_names = level_names,
     factor_contrasts = factor_contrasts
   )
+}
+
+# The factors of a random-effect term that R codes by level indicators in the
+# design of the block formula: the 2 of the `factors` matrix of its terms, which
+# marks a factor whose margin (the term without it) is absent from the block.
+# Ordered contrasts are not touched: their terms keep their own coding.
+.bt_random_effect_term_indicator_factors <- function(formula, model_term,
+                                                     predictors_type, data){
+
+  components <- .bt_random_effect_term_components(model_term)
+  factor_terms <- components[
+    components %in% names(predictors_type) &
+      predictors_type[components] == "factor"
+  ]
+  coding <- tryCatch(
+    attr(stats::terms(formula), "factors", exact = TRUE),
+    error = function(error) NULL
+  )
+  term_label <- gsub("__xXx__", ":", model_term, fixed = TRUE)
+  if(length(factor_terms) == 0L || !is.matrix(coding) ||
+     !term_label %in% colnames(coding)){
+    return(character())
+  }
+
+  factor_terms[vapply(factor_terms, function(factor_term){
+    contrast <- attr(data[[factor_term]], "contrasts")
+    factor_term %in% rownames(coding) &&
+      identical(as.integer(coding[factor_term, term_label]), 2L) &&
+      !(is.character(contrast) && .prior_ordered_is_contrast_name(contrast))
+  }, logical(1))]
+}
+
+# The indicator-coded factors of a term, from the term design closure of the
+# block (character() without it).
+.bt_random_effect_factor_term_indicators <- function(factor_term_design, model_term){
+
+  indicators <- attr(factor_term_design, "indicator_factors", exact = TRUE)
+  if(is.function(indicators)){
+    indicators(model_term)
+  }else{
+    character()
+  }
 }
 
 .bt_random_effect_bind_ordered_sd_prior <- function(prior, parameter,
@@ -866,7 +903,10 @@
         leaf_terms[columns] <- model_term
         leaf_names[columns] <- paste0(parameter, "_", model_term)
       }else if(identical(model_terms_type[[i]], "factor")){
-        contrast <- .bt_random_effect_factor_term_contrast(model_term, predictors_type, data)
+        contrast <- .bt_random_effect_factor_term_contrast(
+          model_term, predictors_type, data,
+          indicator_factors = .bt_random_effect_factor_term_indicators(factor_term_design, model_term)
+        )
         ordered_sd_prior <- !is.null(prior_list) &&
           model_term %in% names(prior_list) &&
           is.prior.ordered(prior_list[[model_term]])

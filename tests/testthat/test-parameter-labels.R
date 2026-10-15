@@ -1850,11 +1850,16 @@ test_that("the SD columns of random interactions with transformed contrasts are 
       labels = paste0("(mu) sd(", label, "{", seq_len(n), "})")
     )
   }
+  # the level cells of a factor whose margin is absent from the block
+  cells <- list(
+    columns = paste0("mu__xREx__id_f[", c("a", "b", "c"), "]__xXx__x"),
+    labels = paste0("(mu) sd(f[", c("a", "b", "c"), "]:x)")
+  )
   cases <- list(
-    list(~ 1 + diag(1 + f:x | id), c(f = "meandif"), "mu__xREx__id_f__xXx__x",
-         coordinates("mu__xREx__id_f__xXx__x", "f:x", 3L)),
-    list(~ 1 + diag(1 + f:x | id), c(f = "orthonormal"), "mu__xREx__id_f__xXx__x",
-         coordinates("mu__xREx__id_f__xXx__x", "f:x", 3L)),
+    # `f:x` without `x` is coded by level indicators whatever the contrast: cells
+    list(~ 1 + diag(1 + f:x | id), c(f = "meandif"), "mu__xREx__id_f__xXx__x", cells),
+    list(~ 1 + diag(1 + f:x | id), c(f = "orthonormal"), "mu__xREx__id_f__xXx__x", cells),
+    # with the margin `x` in the block the columns are contrast coordinates
     list(~ 1 + diag(1 + f * x | id), c(f = "meandif"), "mu__xREx__id_f__xXx__x",
          coordinates("mu__xREx__id_f__xXx__x", "f:x", 2L)),
     list(~ 1 + diag(1 + f * x | id), c(f = "orthonormal"), "mu__xREx__id_f__xXx__x",
@@ -1864,12 +1869,8 @@ test_that("the SD columns of random interactions with transformed contrasts are 
     list(~ 1 + diag(1 + f * g | id), c(f = "orthonormal", g = "orthonormal"), "mu__xREx__id_f__xXx__g",
          coordinates("mu__xREx__id_f__xXx__g", "f:g", 2L)),
     # independent and treatment contrasts keep their level labels
-    list(~ 1 + diag(1 + f:x | id), c(f = "independent"), "mu__xREx__id_f__xXx__x",
-         list(columns = paste0("mu__xREx__id_f[", c("a", "b", "c"), "]__xXx__x"),
-              labels = paste0("(mu) sd(f[", c("a", "b", "c"), "]:x)"))),
-    list(~ 1 + diag(1 + f:x | id), c(f = "treatment"), "mu__xREx__id_f__xXx__x",
-         list(columns = paste0("mu__xREx__id_f[", c("a", "b", "c"), "]__xXx__x"),
-              labels = paste0("(mu) sd(f[", c("a", "b", "c"), "]:x)"))),
+    list(~ 1 + diag(1 + f:x | id), c(f = "independent"), "mu__xREx__id_f__xXx__x", cells),
+    list(~ 1 + diag(1 + f:x | id), c(f = "treatment"), "mu__xREx__id_f__xXx__x", cells),
     list(~ 1 + diag(1 + f * g | id), c(f = "treatment", g = "treatment"), "mu__xREx__id_f__xXx__g",
          list(columns = paste0("mu__xREx__id_f[", c("b", "c"), "]__xXx__g[q]"),
               labels = paste0("(mu) sd(f[", c("b", "c"), "]:g[q])")))

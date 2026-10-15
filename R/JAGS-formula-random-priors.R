@@ -180,7 +180,13 @@
   )
 }
 
-.bt_random_effect_factor_term_contrast <- function(model_term, predictors_type, data){
+# The contrast class of a random-effect factor term. A factor that R codes by
+# level indicators in the block design ('indicator_factors': its margin is
+# absent from the block, see .bt_random_effect_term_indicator_factors()) has
+# no contrast in the term whatever its declared contrast: its columns are level
+# cells, as those of an independent factor.
+.bt_random_effect_factor_term_contrast <- function(model_term, predictors_type, data,
+                                                   indicator_factors = character()){
 
   components <- .bt_random_effect_term_components(model_term)
   factor_components <- components[
@@ -197,6 +203,9 @@
       return("contr.treatment")
     }
     .bt_random_effect_check_factor_contrast_name(contrast_name, factor_name)
+    if(factor_name %in% indicator_factors){
+      return("contr.independent")
+    }
     contrast_name
   }, character(1))
   contrasts <- unique(contrasts)

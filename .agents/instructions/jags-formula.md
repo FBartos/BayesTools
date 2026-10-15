@@ -438,12 +438,13 @@ names.
   treatment and ordered levels are labelled by the cell itself). A
   coordinate is a direct level cell only where the contrast makes
   it so structurally (treatment, independent, first ordered coordinate),
-  never by floating-point equality of design rows. In a random interaction of
-  mixed contrasts, a factor that R codes by level indicators (the stored coding
-  of the term: its margin is absent from the block, as in `f:g` without `f` or
-  `g`) counts as independent whatever its declared contrast, so the columns of
-  an interaction-only term are level cells, while a factor coded by its
-  eigendecomposition contrast keeps the tag gate. Every other coordinate is
+  never by floating-point equality of design rows. In a random interaction, a
+  factor that R codes by level indicators (the stored coding of the term: its
+  margin is absent from the block, as in `f:g` without `f` or `g`, or `f:x`
+  without `x`) counts as independent whatever its declared contrast, so the
+  columns of an interaction-only term are level cells (`f[a]:x`), while a
+  factor coded by its eigendecomposition contrast keeps the tag gate (labels
+  follow the coding, not the declared contrast tag). Every other coordinate is
   contrast coefficient `<parameter>{j}`, labelled so in tables, diagnostics,
   mixed-posterior columns, and random-slope components (`sd(g{j})`). A
   `{j}` selector of a direct level coordinate is refused (in catalog
@@ -453,11 +454,12 @@ names.
   coordinate-based functions such as `JAGS_materialize_draws()`, but are not
   factor selectors.
   The SD columns of a random interaction whose factors are all contrast-coded
-  (meandif, orthonormal: `diag(1 + f * x | id)`, `diag(1 + f * g | id)`) are
-  contrast coefficients of the term, `<term>{j}` (`sd(f:x{1})`, `sd(f:g{2})`),
-  in the mixed-posterior columns (`mu__xREx__id_f__xXx__x{1}`) as in the
-  catalog; an interaction with an independent or treatment factor keeps its
-  level cells.
+  (meandif, orthonormal) and whose margins are present in the block
+  (`diag(1 + f * x | id)`, `diag(1 + f * g | id)`) are contrast coefficients of
+  the term, `<term>{j}` (`sd(f:x{1})`, `sd(f:g{2})`), in the mixed-posterior
+  columns (`mu__xREx__id_f__xXx__x{1}`) as in the catalog; an interaction with
+  an independent or treatment factor, or with a factor whose margin is absent
+  (`diag(1 + f:x | id)`), keeps its level cells.
   The indicator columns of a logical predictor's interaction with a continuous
   one whose margin is absent from the block (`flagFALSE:x`, `flagTRUE:x` of
   `(1 + flag + flag:x | id)`) share one SD, labelled by the term (`sd(flag:x)`),

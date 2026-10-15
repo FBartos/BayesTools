@@ -563,6 +563,12 @@
 
     factor_term_designs[[model_term]]
   }
+  # the factors of a term that the block design codes by level indicators
+  attr(factor_term_design, "indicator_factors") <- function(model_term){
+    .bt_random_effect_term_indicator_factors(
+      formula, model_term, predictors_type, data
+    )
+  }
 
   # Resolve the canonical SD leaves and bindings before choosing a sampled
   # parameterization. Centered eligibility depends on their zero/external
