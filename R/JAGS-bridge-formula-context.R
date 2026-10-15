@@ -35,7 +35,17 @@
   has_fitted_formula_design <- length(fitted_formula_design) > 0L
 
   if(!has_fitted_formula_design){
-    if(formula_input_supplied){
+    # Empty lists name no formula parameter: they are no formula input for a fit
+    # without formulas (a refit cannot satisfy them).
+    nonempty <- function(x) if(length(x) > 0L) x else NULL
+    if(.bt_JAGS_bridge_formula_input_supplied(
+      formula_list = nonempty(formula_list),
+      formula_data_list = nonempty(formula_data_list),
+      formula_prior_list = nonempty(formula_prior_list),
+      formula_scale_list = nonempty(formula_scale_list),
+      formula_random_prior_list = nonempty(formula_random_prior_list),
+      formula_random_effects_compile_list = nonempty(formula_random_effects_compile_list)
+    )){
       .bt_stop_refit_required(
         "JAGS_bridgesampling() cannot reconstruct formula parameters because ",
         "the fitted formula-design metadata are missing. Refit the model with ",

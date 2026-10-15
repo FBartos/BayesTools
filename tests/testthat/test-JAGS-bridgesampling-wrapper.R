@@ -1065,6 +1065,44 @@ test_that("the inclusion-gate refusal of bridge sampling lists at most three ind
   )
 })
 
+test_that("empty formula inputs are no formula input for a fit without formulas (F074)", {
+
+  testthat::local_mocked_bindings(
+    bridge_sampler = .mock_bridge_sampler,
+    .package = "bridgesampling"
+  )
+  posterior <- coda::as.mcmc(matrix(
+    seq_len(20),
+    ncol = 1,
+    dimnames = list(NULL, "mu")
+  ))
+  bridge <- function(...){
+    JAGS_bridgesampling(
+      fit = posterior,
+      log_posterior = function(parameters, data) 0,
+      data = list(),
+      prior_list = list(mu = prior("normal", list(0, 1))),
+      seed = 1,
+      ...
+    )
+  }
+  reference <- bridge()
+  for(argument in c("formula_list", "formula_data_list", "formula_prior_list",
+                    "formula_scale_list", "formula_random_prior_list",
+                    "formula_random_effects_compile_list")){
+    result <- do.call(bridge, structure(list(list()), names = argument))
+    expect_identical(result[["logml"]], reference[["logml"]])
+  }
+
+  # a supplied formula input still cannot replace missing fitted metadata
+  error <- tryCatch(
+    bridge(formula_prior_list = list(mu = list(intercept = prior("normal", list(0, 1))))),
+    error = function(e) e
+  )
+  expect_s3_class(error, "BayesTools_refit_required")
+  expect_match(conditionMessage(error), "fitted formula-design metadata are missing", fixed = TRUE)
+})
+
 test_that("manual marginal-likelihood objects declare their scale", {
 
   result <- bridgesampling_object(-Inf)
