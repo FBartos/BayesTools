@@ -2290,3 +2290,77 @@ test_that("missing SD samples fail with block and structure context", {
     fixed = TRUE
   )
 })
+
+test_that("one-column structured blocks need no correlation in the one-hot covariance", {
+
+  # an index with one level is one indicator column and has no correlation
+  # parameter: rows of a group share the one effect, so the covariance is the
+  # squared SD inside a group, as the one-level car() block returns
+  one_level <- data.frame(
+    g = factor(c("a", "a", "b", "b"), levels = c("a", "b")),
+    time = 0
+  )
+  sd_values <- c(0.5, 2)
+  expected_blocks <- matrix(0, 4L, 4L)
+  expected_blocks[1:2, 1:2] <- 1
+  expected_blocks[3:4, 3:4] <- 1
+
+  for(structure in c("cs", "hcs", "ar1", "har", "car")){
+    result <- .re_cov_formula(
+      formula = stats::as.formula(paste0("~ 1 + ", structure, "(time | g)")),
+      data = one_level,
+      prior_random = prior_random(
+        sd = .re_cov_sd_prior(), cor = prior("normal", list(0, 0.5))
+      )
+    )
+    random_term <- .re_cov_term(result, "g")
+    sd_names <- unique(random_term$sd_parameter_names)
+    posterior <- matrix(
+      sd_values, nrow = 2L, ncol = length(sd_names),
+      dimnames = list(NULL, sd_names)
+    )
+
+    expect_identical(random_term$n_columns, 1L, label = structure)
+    expect_null(random_term$correlation, label = structure)
+
+    dense <- .re_cov_output(result, posterior)
+    diagonal <- .re_cov_output(result, posterior, diagonal_only = TRUE)
+    for(draw in seq_along(sd_values)){
+      expect_equal(
+        unname(dense$samples[draw, , ]), expected_blocks * sd_values[draw]^2,
+        tolerance = 1e-12, label = paste(structure, "draw", draw)
+      )
+    }
+    expect_equal(
+      unname(diagonal$samples), .re_cov_dense_diagonal(dense),
+      tolerance = 1e-12, label = structure
+    )
+
+    # the same one-hot helper serves the row-weighted marginal prediction route
+    fit <- coda::mcmc(cbind(mu_intercept = c(0, 0), posterior))
+    attr(fit, "formula_design") <- list(mu = result$formula_design)
+    predicted <- JAGS_predict_formula(
+      fit, "mu", prior_list = result$prior_list, formula_target = "marginal",
+      marginal_method = "covariance"
+    )
+    expect_equal(
+      unname(predicted$vcov$samples[2L, , ]), expected_blocks * sd_values[2L]^2,
+      tolerance = 1e-12, label = structure
+    )
+  }
+
+  # a block with several columns keeps its correlation
+  expect_error(
+    .re_cov_output(
+      .re_cov_formula(
+        formula = ~ 1 + cs(f | id),
+        data = .re_cov_structured_data(),
+        prior_random = prior_random(id = random_block(
+          sd = .re_cov_sd_prior(), cor = prior("normal", list(0, 0.5))
+        ))
+      ),
+      .re_cov_posterior(c(mu__xREx__id_sd = 2))
+    ),
+    "correlation"
+  )
+})

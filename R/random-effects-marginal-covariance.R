@@ -3006,13 +3006,18 @@ random_effects_marginal_variance_factors <- function(
     random_term,
     context = "Random-effect marginal covariance metadata"
   )
-  rho <- .bt_random_effect_rho_draws(
-    random_term = random_term,
-    posterior = posterior,
-    missing = "error",
-    out_of_support = "error",
-    context = "Random-effect marginal covariance metadata"
-  )
+  # A one-column block (a single index level) has no correlation parameter:
+  # every pair of rows of a group shares the one effect.
+  one_column <- ncol(model_matrix) == 1L
+  rho <- if(!one_column){
+    .bt_random_effect_rho_draws(
+      random_term = random_term,
+      posterior = posterior,
+      missing = "error",
+      out_of_support = "error",
+      context = "Random-effect marginal covariance metadata"
+    )
+  }
   n_draws <- nrow(posterior)
   n_rows  <- nrow(model_matrix)
   if(!is.matrix(row_sd) || !identical(dim(row_sd), c(n_draws, n_rows)) ||
@@ -3038,7 +3043,9 @@ random_effects_marginal_variance_factors <- function(
     ))
   }
 
-  exponent <- if(structure %in% c("cs", "hcs")){
+  exponent <- if(one_column){
+    NULL
+  }else if(structure %in% c("cs", "hcs")){
     outer(row_column, row_column, "!=") * 1
   }else if(identical(structure, "car")){
     correlation <- .bt_random_effect_correlation_metadata(
@@ -3063,7 +3070,8 @@ random_effects_marginal_variance_factors <- function(
     dimnames = list(draw = NULL, row = row_names, column = row_names)
   )
   for(draw in seq_len(n_draws)){
-    out[draw, , ] <- same_group * rho[draw]^exponent *
+    out[draw, , ] <- same_group *
+      (if(one_column) 1 else rho[draw]^exponent) *
       tcrossprod(row_sd[draw, ])
   }
 
