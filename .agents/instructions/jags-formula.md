@@ -750,18 +750,25 @@ for an SD value and `1 / m_k(w)^2` on the variance parameterization of the scale
 for a variance value. The scale reaches every block whose SD binding uses it,
 through nested allocations (a split root with one `<block>_components`
 allocation per block) or a shared `random_sd_source()`; the plan's `blocks`
-lists all of them, the selected block first. A reached block whose columns are
-all driven by `tau` has its covariance multiplied by `c^2`, `c = v / SD_k`, on
-every covariance structure, so the plan is the affine `scale` plan (`A + h(v) B`)
-of the summed contribution of `blocks` whenever the scale drives every column of
-every reached block, when the public SD is on the fitted coefficient scale. If
-it drives only part of the columns of the one block it reaches, the plan is the
-factor `column_scale` plan with `driven_columns`, and the grid carries
-`column_factor` for them; a scale that reaches several blocks and only part of
-their columns has no exact scalar update (`unsupported`, reason
-`partial_scale_reach`). Downstream priors for the update (RoBMA's IWMDE prior
-side) use the same conditional and move all reached columns. A direct per-column
-SD keeps `column_scale` with its siblings fixed and has no `held_fixed`.
+lists all of them, the selected block first. One reach computation serves every
+quantity that is the allocation scale times weights: the component `sd`/`var`
+and the aggregates `sd_common`/`var_common`/`sd_total`/`var_total` of a nested
+allocation (or of one with a shared source) move the root scale of their
+allocation chain (`allocation$source`) with every weight fixed, so their plans
+list the blocks of the sibling allocations as well. A reached block whose
+columns are all driven by `tau` has its covariance multiplied by `c^2`,
+`c = v / SD_k`, on every covariance structure, so the plan is the affine `scale`
+plan (`A + h(v) B`) of the summed contribution of `blocks` whenever the scale
+drives every column of every reached block, when the public SD is on the fitted
+coefficient scale. If it drives only part of the columns of the one block it
+reaches, the plan of a component SD is the factor `column_scale` plan with
+`driven_columns`, and the grid carries `column_factor` for them; a scale that
+reaches several blocks and only part of their columns, or part of the columns of
+a block for an aggregate (which has no selected column), has no exact scalar
+update (`unsupported`, reason `partial_scale_reach`). Downstream priors for the
+update (RoBMA's IWMDE prior side) use the same conditional and move all reached
+columns. A direct per-column SD keeps `column_scale` with its siblings fixed and
+has no `held_fixed`.
 Formula-scaled allocation-derived SDs, and SDs that depend on several fitted
 coordinates, have no exact single-coordinate update and are `unsupported`.
 Do not make a downstream package reconstruct these quantities from raw JAGS

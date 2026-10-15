@@ -47,7 +47,9 @@
 #'   for a correlation coordinate. A direct per-column SD with unequal column
 #'   SDs reports `"column_scale"`.
 #'
-#'   The plan of an allocation-derived component SD or variance has the field
+#'   The plan of an allocation-derived component SD or variance, and of an
+#'   aggregate allocation SD or variance (`sd_common`, `var_common`, `sd_total`,
+#'   `var_total`) that is a quantity-scale plan, has the field
 #'   `held_fixed = "allocation_weights"`: whatever the covariance structure,
 #'   setting the selected SD to `v` holds the allocation weights and every
 #'   non-allocation coordinate (correlations included) fixed and moves the
@@ -72,8 +74,12 @@
 #'   drives only some columns of the selected block, which is the only block it
 #'   reaches, the plan is the factor `"column_scale"` plan with
 #'   `driven_columns` and the grid factor `column_factor` for them; a scale
-#'   that reaches several blocks and only part of their columns has no exact
-#'   scalar update and is `unsupported` with the reason `"partial_scale_reach"`.
+#'   that reaches several blocks and only part of their columns, or an
+#'   aggregate whose scale drives only part of a block, has no exact scalar
+#'   update and is `unsupported` with the reason `"partial_scale_reach"`. An
+#'   aggregate of a nested allocation moves the root scale of its allocation
+#'   chain as well, so its `blocks` are those of every sibling allocation of
+#'   the root, not only its own.
 #'   Plans of direct per-column SDs have no `held_fixed` field.
 #'
 #' @details
@@ -601,15 +607,34 @@ random_effects_marginal_update_grid <- function(
     }else{
       list(type = "identity")
     }
-    return(.bt_random_effect_marginal_update_affine(
-      update = "scale",
-      blocks = .bt_random_effect_marginal_update_allocation_blocks(
+    # The aggregate is the allocation scale times weights: the update moves the
+    # root scale of the allocation chain with every weight fixed, which reaches
+    # every block whose SD binding uses it, also those of sibling allocations.
+    reach <- .bt_random_effect_marginal_update_scale_reach(
+      design = .bt_random_effect_marginal_covariance_design(
+        fit = fit,
+        parameter = key$formula_parameter
+      ),
+      source = .bt_random_sd_binding_source_name(allocation$source),
+      first = .bt_random_effect_marginal_update_allocation_blocks(
         fit,
         key,
         allocation
-      ),
+      )
+    )
+    if(identical(reach$family, "unsupported")){
+      return(.bt_random_effect_marginal_update_unavailable(
+        quantity = quantity,
+        reason = reach$reason,
+        message = reach$message
+      ))
+    }
+    return(.bt_random_effect_marginal_update_affine(
+      update = "scale",
+      blocks = reach$blocks,
       coefficient_transform = coefficient_transform,
-      coefficient_input = coefficient_input
+      coefficient_input = coefficient_input,
+      held_fixed = if(!direct_source) "allocation_weights"
     ))
   }
 
@@ -780,30 +805,28 @@ random_effects_marginal_update_grid <- function(
     # The update moves the allocation scale the SD derives from, with the
     # weights fixed: every block whose SD binding uses that scale moves with it.
     block <- random_term$block_name
-    reach <- .bt_random_effect_marginal_update_reach(
+    reach <- .bt_random_effect_marginal_update_scale_reach(
       design = .bt_random_effect_marginal_covariance_design(
         fit = fit,
         parameter = key$formula_parameter
       ),
-      source = .bt_random_sd_binding_source_name(random_term$sd_binding$source)
+      source = .bt_random_sd_binding_source_name(random_term$sd_binding$source),
+      first = block,
+      column = key$index
     )
-    if(!block %in% reach$blocks){
+    if(identical(reach$family, "unsupported")){
       return(.bt_random_effect_marginal_update_unavailable(
         quantity = quantity,
-        reason = "ambiguous_allocation_scale",
-        message = paste0(
-          "The selected allocation-derived SD does not identify the ",
-          "allocation scale it derives from."
-        )
+        reason = reach$reason,
+        message = reach$message
       ))
     }
-    blocks <- c(block, setdiff(reach$blocks, block))
-    if(all(vapply(reach$driven, all, logical(1)))){
+    if(identical(reach$family, "affine")){
       # the scale drives every column of every reached block: each block's
       # D R D scales by c^2, whatever the covariance structure
       return(.bt_random_effect_marginal_update_affine(
         update = "scale",
-        blocks = blocks,
+        blocks = reach$blocks,
         coefficient_transform = if(identical(key$evaluator, "sd_variance")){
           list(type = "identity")
         }else{
@@ -815,31 +838,21 @@ random_effects_marginal_update_grid <- function(
         held_fixed = "allocation_weights"
       ))
     }
-    if(length(blocks) == 1L){
-      return(list(
-        family = "factor",
-        update = "column_scale",
-        blocks = block,
-        component_index = key$index,
-        structure = structure,
-        coefficient_input = "quantity",
-        coefficient_scale_transform = if(identical(key$evaluator, "sd_variance")){
-          list(type = "sqrt")
-        }else{
-          list(type = "identity")
-        },
-        held_fixed = "allocation_weights",
-        driven_columns = which(reach$driven[[block]])
-      ))
-    }
-    return(.bt_random_effect_marginal_update_unavailable(
-      quantity = quantity,
-      reason = "partial_scale_reach",
-      message = paste0(
-        "The allocation scale of the selected allocation-derived SD reaches ",
-        "several random-effect blocks and drives only part of the columns of ",
-        "some of them, so it has no exact scalar covariance update."
-      )
+    # the scale drives only part of the columns of the one block it reaches
+    return(list(
+      family = "factor",
+      update = "column_scale",
+      blocks = block,
+      component_index = key$index,
+      structure = structure,
+      coefficient_input = "quantity",
+      coefficient_scale_transform = if(identical(key$evaluator, "sd_variance")){
+        list(type = "sqrt")
+      }else{
+        list(type = "identity")
+      },
+      held_fixed = "allocation_weights",
+      driven_columns = reach$driven_columns
     ))
   }
 
@@ -918,6 +931,51 @@ random_effects_marginal_update_grid <- function(
   }
 
   list(blocks = blocks, driven = driven)
+}
+
+
+# What moving an allocation scale does to the blocks it reaches. The scale is
+# moved with every weight fixed, so every column it drives is multiplied by the
+# same factor: when it drives all columns of all reached blocks, each block's
+# D R D scales by c^2 (affine). The scale drives only part of the columns of one
+# reached block (factor), or of several blocks (unsupported). 'first' are the
+# blocks of the selected quantity, listed first.
+.bt_random_effect_marginal_update_scale_reach <- function(design, source, first,
+                                                          column = NA_integer_){
+
+  unsupported <- function(reason, message){
+    list(family = "unsupported", reason = reason, message = message)
+  }
+  reach <- .bt_random_effect_marginal_update_reach(design, source)
+  if(!all(first %in% reach$blocks)){
+    return(unsupported(
+      "ambiguous_allocation_scale",
+      paste0(
+        "The selected allocation quantity does not identify the allocation ",
+        "scale it derives from."
+      )
+    ))
+  }
+  blocks <- c(first, setdiff(reach$blocks, first))
+  if(all(vapply(reach$driven, all, logical(1)))){
+    return(list(family = "affine", blocks = blocks))
+  }
+  if(length(blocks) == 1L && !is.na(column)){
+    return(list(
+      family = "factor",
+      blocks = blocks,
+      driven_columns = which(reach$driven[[blocks]])
+    ))
+  }
+
+  unsupported(
+    "partial_scale_reach",
+    paste0(
+      "The allocation scale of the selected allocation quantity drives only ",
+      "part of the columns of a reached random-effect block, in several blocks ",
+      "or without a selected column, so it has no exact scalar covariance update."
+    )
+  )
 }
 
 
@@ -1171,9 +1229,8 @@ random_effects_marginal_update_grid <- function(
 }
 
 
-# Changing a source coordinate changes every block whose SD binding uses it: the
-# blocks of each allocation record and of each direct block binding with that
-# source, not only those of the selected allocation.
+# Changing a source coordinate changes every block whose SD binding uses it,
+# also through variance allocations: the reach of the source.
 .bt_random_effect_marginal_update_source_blocks <- function(
     fit, design, key, blocks, source){
 
@@ -1181,31 +1238,11 @@ random_effects_marginal_update_grid <- function(
      !nzchar(source)){
     return(blocks)
   }
-  uses_source <- function(candidate){
-    is.list(candidate) &&
-      identical(.bt_random_sd_binding_source_name(candidate), source)
-  }
-  random_terms <- .bt_formula_design_random_effects(design)
-  block_names <- vapply(random_terms, `[[`, character(1), "block_name")
-  used <- character()
-  for(allocation in design$random_allocations){
-    if(uses_source(allocation$source)){
-      used <- c(used, .bt_random_effect_marginal_update_allocation_blocks(
-        fit,
-        key,
-        allocation
-      ))
-    }
-  }
-  for(random_term in random_terms){
-    binding <- random_term$sd_binding
-    if(is.list(binding) && !isTRUE(binding$true_allocation) &&
-       uses_source(binding$source)){
-      used <- c(used, random_term$block_name)
-    }
-  }
 
-  unique(c(blocks, block_names[block_names %in% used]))
+  unique(c(
+    blocks,
+    .bt_random_effect_marginal_update_reach(design, source)$blocks
+  ))
 }
 
 

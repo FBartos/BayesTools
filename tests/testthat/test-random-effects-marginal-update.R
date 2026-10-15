@@ -1138,8 +1138,11 @@ test_that("nested aggregate allocations use their public covariance scale", {
   )
 
   expect_identical(outer_sd$blocks, c("study", "paper", "drug"))
-  expect_identical(nested_sd$blocks, c("study", "paper"))
+  # the nested aggregate moves the root scale with the weights fixed, which
+  # reaches the other component of the root as well
+  expect_identical(nested_sd$blocks, c("study", "paper", "drug"))
   expect_identical(nested_sd$coefficient_input, "quantity")
+  expect_identical(nested_sd$held_fixed, "allocation_weights")
   expect_identical(nested_sd$coefficient_transform, list(type = "square"))
   expect_identical(nested_var$coefficient_input, "quantity")
   expect_identical(nested_var$coefficient_transform, list(type = "identity"))
@@ -1557,24 +1560,28 @@ test_that("an allocation-derived SD update holds the weights fixed and moves the
 
 
 # Split-root layout of RoBMA: a root allocation over two blocks and one
-# `<block>_components` SD-component allocation per block. The values give every
+# `<block>_components` SD-component allocation per block, plus a block `site`
+# with its own SD that the root scale does not reach. The values give every
 # component a distinct SD, SD_k = tau * sqrt(w_block) * sqrt(K u_k).
 .random_update_test_split_root_fit <- function(study_structure){
 
   data <- data.frame(
     id = factor(rep(c("a", "b", "c"), each = 3L)),
     other = factor(rep(c("u", "v", "w"), 3L)),
+    site = factor(rep(c("k", "l", "m"), 3L)),
     x = rep(c(-1, 0.5, 2), 3L)
   )
   formula <- if(identical(study_structure, "us")){
     ~ 1 + random(1 + x | id, name = "study", covariance = "us") +
-      random(1 + x | other, name = "paper", covariance = "diag")
+      random(1 + x | other, name = "paper", covariance = "diag") +
+      random(1 | site, name = "site", covariance = "diag")
   }else{
     ~ 1 + random(1 + x | id, name = "study", covariance = "diag") +
-      random(1 + x | other, name = "paper", covariance = "diag")
+      random(1 + x | other, name = "paper", covariance = "diag") +
+      random(1 | site, name = "site", covariance = "diag")
   }
   dirichlet <- prior("dirichlet", list(alpha = c(1, 1)))
-  prior_random <- prior_random(allocation = list(
+  prior_random <- prior_random(site = random_block(sd = prior("gamma", list(2, 2))), allocation = list(
     random_variance_allocation(
       name = "root", terms = c(s = "study", p = "paper"),
       sd = prior("gamma", list(2, 2)), weights = dirichlet
@@ -1678,15 +1685,20 @@ test_that("an allocation-derived SD update lists every block that the moved scal
       candidate <- posterior
       candidate[, case$source] <- case$tau * v / current_sd
       moved <- vcov_of(candidate)
-      expect_equal(moved, current * (v / current_sd)^2, tolerance = 1e-12, info = info)
+      c2 <- (v / current_sd)^2
+      expect_equal(moved, current + (c2 - 1) * vcov_of(posterior, plan$blocks),
+                   tolerance = 1e-12, info = info)
       for(reached in plan$blocks){
         expect_equal(
-          vcov_of(candidate, reached), vcov_of(posterior, reached) * (v / current_sd)^2,
+          vcov_of(candidate, reached), vcov_of(posterior, reached) * c2,
           tolerance = 1e-12, info = paste(info, reached)
         )
       }
+      # the block that does not use the scale stays
+      expect_equal(vcov_of(candidate, "site"), vcov_of(posterior, "site"),
+                   tolerance = 1e-12, info = info)
       # the selected block alone does not reproduce the update
-      only_block <- current + (vcov_of(posterior, block)) * ((v / current_sd)^2 - 1)
+      only_block <- current + (vcov_of(posterior, block)) * (c2 - 1)
       expect_gt(max(abs(only_block - moved)), 1e-3)
     }
   }
@@ -1850,4 +1862,145 @@ test_that("a scale that reaches several blocks only in part has no allocation-de
   expect_identical(factor_plan$held_fixed, "allocation_weights")
   expect_identical(factor_plan$driven_columns, 1L)
   expect_identical(factor_plan$coefficient_input, "quantity")
+
+  # an aggregate has no selected column: a partly driven block refuses it
+  aggregate <- plan_for(partial, "(mu) alloc1: sd_total")
+  expect_identical(aggregate$family, "unsupported")
+  expect_identical(aggregate$reason, "partial_scale_reach")
+})
+
+
+# The plan of a quantity that is the allocation scale times weights, against the
+# covariance recomputed from the moved scale with every weight fixed: the blocks
+# of the plan scale by the squared factor of the quantity, the others stay.
+.random_update_test_scale_reach <- function(fit, name, source, factor, unreached,
+                                            info = name){
+
+  posterior <- as.matrix(fit)
+  selection <- parameter_catalog_resolve(parameter_catalog(fit), name)
+  plan <- random_effects_marginal_update_plan(fit, selection)
+  vcov_of <- function(samples, blocks = NULL){
+    random_effects_marginal_vcov(
+      fit, parameter = "mu", blocks = blocks, posterior_samples = samples
+    )$samples[1L, , ]
+  }
+  all_blocks <- vapply(
+    attr(fit, "formula_design")$mu$random_effects,
+    function(term) term$block_name, character(1)
+  )
+  candidate <- posterior
+  candidate[, source] <- posterior[, source] * factor
+
+  # the selected quantity is proportional to the scale (an SD) or to its square
+  variance <- grepl(": var", name, fixed = TRUE)
+  current <- as.numeric(as.matrix(parameter_draws(fit, selection)))[1L]
+  moved_value <- as.numeric(as.matrix(
+    parameter_draws(fit, selection, model_samples = candidate)
+  ))[1L]
+  expect_equal(moved_value, current * if(variance) factor^2 else factor,
+               tolerance = 1e-12, info = info)
+
+  expect_identical(plan$family, "affine", info = info)
+  expect_identical(plan$update, "scale", info = info)
+  expect_identical(sort(setdiff(all_blocks, plan$blocks)), sort(unreached), info = info)
+  expect_equal(
+    vcov_of(candidate),
+    vcov_of(posterior) + (factor^2 - 1) * vcov_of(posterior, plan$blocks),
+    tolerance = 1e-12, info = info
+  )
+  for(reached in plan$blocks){
+    expect_equal(
+      vcov_of(candidate, reached), vcov_of(posterior, reached) * factor^2,
+      tolerance = 1e-12, info = paste(info, reached)
+    )
+  }
+  if(length(unreached) > 0L){
+    expect_equal(vcov_of(candidate, unreached), vcov_of(posterior, unreached),
+                 tolerance = 1e-12, info = info)
+  }
+
+  plan
+}
+
+
+test_that("the aggregates of nested allocations move the root scale and list every block that uses it", {
+
+  # F092: sd_common/var_common of RoBMA's `<block>_components` allocations and
+  # the totals of a nested block split are the root scale times weights; moving
+  # them with the weights fixed moves the root scale, which reaches the sibling
+  # block, and not the block `site` that has its own SD
+  for(study_structure in c("diag", "us")){
+    case <- .random_update_test_split_root_fit(study_structure)
+    for(allocation in c("study_components", "paper_components")){
+      for(quantity in c("sd_common", "var_common")){
+        name <- paste0("(mu) ", allocation, ": ", quantity)
+        info <- paste(study_structure, name)
+        plan <- .random_update_test_scale_reach(
+          case$fit, name, case$source, factor = 0.5, unreached = "site", info = info
+        )
+        block <- sub("_components$", "", allocation)
+        expect_identical(plan$blocks, c(block, setdiff(c("study", "paper"), block)), info = info)
+        expect_identical(plan$coefficient_input, "quantity", info = info)
+        expect_identical(plan$held_fixed, "allocation_weights", info = info)
+        expect_identical(
+          plan$coefficient_transform,
+          if(identical(quantity, "var_common")) list(type = "identity") else list(type = "square"),
+          info = info
+        )
+      }
+    }
+  }
+
+  # a block split nested in a root allocation, and the root itself
+  data <- data.frame(
+    id = factor(rep(c("a", "b", "c"), each = 4L)),
+    other = factor(rep(c("u", "v", "w", "z"), 3L)),
+    drug = factor(rep(c("p", "q"), 6L)),
+    site = factor(rep(c("k", "l", "m"), 4L))
+  )
+  dirichlet <- function(alpha) prior("dirichlet", list(alpha = alpha))
+  fit <- .random_update_test_generic_fit(
+    ~ 1 + random(1 | id, name = "study", covariance = "diag") +
+      random(1 | other, name = "paper", covariance = "diag") +
+      random(1 | drug, name = "drug", covariance = "diag") +
+      random(1 | site, name = "site", covariance = "diag"),
+    data,
+    prior_random(
+      site = random_block(sd = prior("gamma", list(2, 2))),
+      allocation = list(
+        random_variance_allocation(
+          name = "total_re", terms = c(nested = "nested", drug = "drug"),
+          sd = prior("gamma", list(2, 2)), weights = dirichlet(c(1, 1))
+        ),
+        random_variance_allocation(
+          name = "nested_split", parent = allocation_ref("total_re", "nested"),
+          terms = c(study = "study", paper = "paper"), weights = dirichlet(c(3, 2))
+        )
+      )
+    ),
+    list(intercept = prior("normal", list(0, 1))),
+    values = c(
+      "mu__xRE_ALLOCx_total_re__allocation_sd" = 0.8,
+      "mu__xRE_ALLOCx_total_re__weight[1]" = 0.35,
+      "mu__xRE_ALLOCx_total_re__weight[2]" = 0.65,
+      "mu__xRE_ALLOCx_nested_split__weight[1]" = 0.3,
+      "mu__xRE_ALLOCx_nested_split__weight[2]" = 0.7
+    )
+  )
+  source <- "mu__xRE_ALLOCx_total_re__allocation_sd"
+  for(quantity in c("sd_total", "var_total")){
+    nested <- .random_update_test_scale_reach(
+      fit, paste0("(mu) nested_split: ", quantity), source, factor = 1.6,
+      unreached = "site"
+    )
+    expect_identical(nested$blocks, c("study", "paper", "drug"))
+    expect_identical(nested$coefficient_input, "quantity")
+    expect_identical(nested$held_fixed, "allocation_weights")
+    root <- .random_update_test_scale_reach(
+      fit, paste0("(mu) total_re: ", quantity), source, factor = 1.6,
+      unreached = "site"
+    )
+    expect_identical(root$blocks, c("study", "paper", "drug"))
+    expect_identical(root$coefficient_input, "source")
+  }
 })

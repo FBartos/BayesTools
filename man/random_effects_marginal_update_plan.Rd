@@ -46,7 +46,9 @@ a Dirichlet weight of a variance allocation changes, and \code{"correlation"}
 for a correlation coordinate. A direct per-column SD with unequal column
 SDs reports \code{"column_scale"}.
 
-The plan of an allocation-derived component SD or variance has the field
+The plan of an allocation-derived component SD or variance, and of an
+aggregate allocation SD or variance (\code{sd_common}, \code{var_common}, \code{sd_total},
+\code{var_total}) that is a quantity-scale plan, has the field
 \code{held_fixed = "allocation_weights"}: whatever the covariance structure,
 setting the selected SD to \code{v} holds the allocation weights and every
 non-allocation coordinate (correlations included) fixed and moves the
@@ -71,8 +73,12 @@ by \code{c^2} on every covariance structure: the plan is then the affine
 drives only some columns of the selected block, which is the only block it
 reaches, the plan is the factor \code{"column_scale"} plan with
 \code{driven_columns} and the grid factor \code{column_factor} for them; a scale
-that reaches several blocks and only part of their columns has no exact
-scalar update and is \code{unsupported} with the reason \code{"partial_scale_reach"}.
+that reaches several blocks and only part of their columns, or an
+aggregate whose scale drives only part of a block, has no exact scalar
+update and is \code{unsupported} with the reason \code{"partial_scale_reach"}. An
+aggregate of a nested allocation moves the root scale of its allocation
+chain as well, so its \code{blocks} are those of every sibling allocation of
+the root, not only its own.
 Plans of direct per-column SDs have no \code{held_fixed} field.
 }
 \description{
