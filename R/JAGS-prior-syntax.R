@@ -634,8 +634,12 @@ JAGS_add_priors           <- function(syntax, prior_list){
   if(is.character(parameter)){
     parameter <- paste0("1/pow(", parameter, ", 2)")
   }else{
-    # the square of a huge scale overflows, the square of its inverse does not
-    precision <- (1/parameter)^2
+    # the square of a huge scale overflows (and that of a tiny one underflows):
+    # the precision is then the square of the inverse scale, which keeps the
+    # value 1 / scale^2 of every other scale exactly
+    precision <- 1/parameter^2
+    inverse   <- which(is.finite(parameter) & (!is.finite(precision) | precision == 0))
+    precision[inverse] <- (1/parameter[inverse])^2
     unrepresentable <- which(is.finite(parameter) & (!is.finite(precision) | precision == 0))
     if(length(unrepresentable) > 0L){
       .prior_numerical_signal("JAGS syntax", family, "finite", unrepresentable,
