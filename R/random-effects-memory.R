@@ -161,7 +161,8 @@
     n_columns = NULL,
     factor_structure = FALSE,
     known_group = FALSE,
-    column_contributions = FALSE){
+    column_contributions = FALSE,
+    group_blocks = NULL){
 
   entries <- if(isTRUE(covariance) && !isTRUE(diagonal_only)){
     .bt_random_effect_memory_product(n_draws, n_rows, n_rows)
@@ -170,6 +171,11 @@
   }
   payload <- .bt_random_effect_memory_product(8, entries)
   components <- c(output_working = 3 * payload)
+  if(!is.null(group_blocks) && isTRUE(covariance) && !isTRUE(diagonal_only)){
+    # one rows x rows group matrix per block is formed before the draws loop
+    components <- c(components,
+      group_covariance_working = .bt_random_effect_memory_product(8, group_blocks, n_rows, n_rows))
+  }
   if(!is.null(car_columns)){
     components <- c(components,
       car_factor_working = .bt_random_effect_memory_product(2, 8, n_draws, car_columns, car_columns),

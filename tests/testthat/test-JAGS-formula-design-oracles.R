@@ -12290,6 +12290,21 @@ test_that("random-block contrast specifications validate their design scope", {
       "random_block(contrasts = c(f = \"treatment\"))",
       fixed = TRUE
     )
+    # the message lists the accepted aliases, which compile
+    expect_error(
+      compile_with_attribute(stats::contr.sum(3), formula, gamma_block),
+      paste0("\"treatment\" (also \"dummy\")", ", \"independent\", ",
+             "\"orthonormal\", \"meandif\", \"cumulative\" and \"cumulative_levels\", ",
+             "each also with the 'contr.' prefix; a factor already carrying the ",
+             "'contr.mixed' coding is kept as it is."),
+      fixed = TRUE
+    )
+    for(alias in c("dummy", "contr.treatment", "contr.orthonormal")){
+      expect_no_error(compile_with_attribute(
+        stats::contr.sum(3), formula,
+        random_block(sd = prior("gamma", list(2, 2)), contrasts = c(f = alias))
+      ))
+    }
     # Without the attribute, with a supported name or with a block override the
     # same design compiles.
     expect_no_error(compile_with_attribute(NULL, formula, gamma_block))

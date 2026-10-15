@@ -172,8 +172,10 @@
     ", which random effects do not support. Remove the 'contrasts' attribute of '",
     factor_name, "' or choose a supported coding with random_block(contrasts = c(",
     factor_name, " = \"treatment\")); ",
-    "the supported codings are \"treatment\", \"independent\", \"orthonormal\", ",
-    "\"meandif\", \"cumulative\" and \"cumulative_levels\".",
+    "the supported codings are \"treatment\" (also \"dummy\"), \"independent\", ",
+    "\"orthonormal\", \"meandif\", \"cumulative\" and \"cumulative_levels\", ",
+    "each also with the 'contr.' prefix; a factor already carrying the ",
+    "'contr.mixed' coding is kept as it is.",
     call. = FALSE
   )
 }

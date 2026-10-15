@@ -388,13 +388,22 @@ test_that("alternate marginal covariance builders pass the shared memory ceiling
   expect_error(dense(), "Raise the option", fixed = TRUE)
   expect_error(variance(), "Raise the option", fixed = TRUE)
 
-  # the alternate builders sit on the threshold of the shared estimate
+  # the alternate builders sit on the threshold of the shared estimate; the
+  # dense factor product adds the one 'id' group matrix it forms per block
+  dense_estimate <- BayesTools:::.bt_random_effect_output_memory_estimate(
+    "test", n_rows = 20L, n_draws = 1L, covariance = TRUE, group_blocks = 1L
+  )
+  expect_equal(dense_estimate$peak_bytes, estimate$peak_bytes + 8 * 20^2)
   .random_memory_restore_option(estimate$peak_bytes - 1)
   expect_error(dense(), "exceeds option", fixed = TRUE)
   expect_error(variance(), "exceeds option", fixed = TRUE)
   .random_memory_restore_option(estimate$peak_bytes)
-  expect_identical(dense(), reference_dense)
   expect_identical(variance()$blocks, reference_variance$blocks)
+  expect_error(dense(), "exceeds option", fixed = TRUE)
+  .random_memory_restore_option(dense_estimate$peak_bytes - 1)
+  expect_error(dense(), "exceeds option", fixed = TRUE)
+  .random_memory_restore_option(dense_estimate$peak_bytes)
+  expect_identical(dense(), reference_dense)
   .random_memory_restore_option(1e6)
   expect_no_error(primary())
 })
@@ -768,4 +777,22 @@ test_that("the conditional prediction estimate charges the per-column contributi
   expect_identical(charged$components[["column_contribution_working"]],
                    8 * 100 * 1000 * 5)
   expect_gt(charged$peak_bytes, base$peak_bytes)
+})
+
+test_that("the dense factor estimate charges one group matrix per block", {
+
+  estimate <- function(...){
+    BayesTools:::.bt_random_effect_output_memory_estimate(
+      "test", n_rows = 20L, n_draws = 1L, covariance = TRUE, ...
+    )
+  }
+  base <- estimate()
+  expect_false("group_covariance_working" %in% names(base$components))
+  three <- estimate(group_blocks = 3L)
+  expect_identical(three$components[["group_covariance_working"]], 8 * 3 * 20^2)
+  expect_equal(three$peak_bytes, base$peak_bytes + 8 * 3 * 20^2)
+  # a diagonal result forms no such matrix
+  expect_false("group_covariance_working" %in% names(
+    estimate(group_blocks = 3L, diagonal_only = TRUE)$components
+  ))
 })

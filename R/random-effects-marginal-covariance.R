@@ -650,7 +650,8 @@ random_effects_marginal_factor_vcov <- function(factors){
       operation = "random_effects_marginal_factor_vcov()",
       n_rows = n_rows,
       n_draws = components$n_draws,
-      covariance = TRUE
+      covariance = TRUE,
+      group_blocks = length(plans)
     ),
     alternative = paste0(
       "Reduce the number of rows or posterior draws, or use ",
