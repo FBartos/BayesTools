@@ -50,7 +50,9 @@ The expressions are linear in the level references of \code{parameter} (for
 example \code{f[A]}) and numbers: sums and differences, level references
 multiplied or divided by numbers, and parentheses. Levels of other
 parameters, other terms, and other kinds of sides stop with an error.
-Numerical loss in the coefficients or the value stops with an error of class
+The value is the correctly rounded quotient of the statement's constant and
+divisor. Numerical loss in the coefficients, or a value that is not finite,
+underflows or is subnormal, stops with an error of class
 \code{BayesTools_hypothesis_numerical_unavailable}, as in
 \code{\link[=hypothesis_linear_target]{hypothesis_linear_target()}}.
 }

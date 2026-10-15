@@ -797,10 +797,12 @@ density of that combination, the density its point null uses
 Nonlinear expressions, comparisons of different combinations
 (`mu_fac[A] > 0 & mu_fac[B] > 0`) and levels without their own prior
 context keep the sampled joint-context draws; levels in incompatible weight
-spaces, a threshold the division cannot represent and scaled coefficients
-outside the representable range (`boundary_range`, `coefficient_range`) keep
-them as well, while the point route refuses those cases. A region is never
-unavailable only because the exact route cannot represent it.
+spaces, a threshold quotient that is not finite or is subnormal and scaled
+coefficients outside the representable range (`boundary_range`,
+`coefficient_range`) keep them as well, while the point route refuses those
+cases. A compiled threshold is the correctly rounded quotient of the
+statement's value and divisor (no exact round-trip is required); a region is
+never unavailable only because the exact route cannot represent it.
 
 For the other prior-region probabilities, integrate the continuous grid's
 piecewise-linear interpolant up to the exact region boundaries (the comparison

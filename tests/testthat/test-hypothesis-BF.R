@@ -332,6 +332,55 @@ test_that("linear targets and sides keep divisors, constants and sum-to-zero wei
   }
 })
 
+test_that("a divided linear statement compiles to the correctly rounded threshold", {
+
+  levels <- .hypothesis_factor_marginal_for_test(independent = TRUE)
+  threshold_side <- function(text){
+    tryCatch(hypothesis_linear_target_side(hypothesis_parse(text)$statements[[1L]]$left, "mu_fac"),
+             error = identity)
+  }
+  shifted <- function(threshold) paste0("(mu_fac[A] + mu_fac[B]) / 3 + 0.25 > ", threshold)
+
+  # -0.42 / 3 does not multiply back to -0.42, yet it is the correctly rounded
+  # quotient, as in any floating-point division
+  expect_false(-0.42 / 3 * 3 == -0.42)
+  side <- threshold_side(shifted(0.11))
+  expect_false(inherits(side, "error"))
+  if(!inherits(side, "error")) expect_identical(side$value, -0.42 / 3)
+  target <- tryCatch(hypothesis_linear_target(levels, shifted(0.11), "mu_fac"), error = identity)
+  expect_false(inherits(target, "error"))
+  if(!inherits(target, "error")){
+    expect_identical(hypothesis_render(target$hypothesis),
+      paste(".BayesTools_linear_target >", .hypothesis_number_label(-0.42 / 3)))
+  }
+
+  # every two-decimal threshold of the statement compiles (the round-trip check
+  # refused 13 of these 201 ordinary statements)
+  thresholds <- round(seq(-1, 1, by = 0.01), 2)
+  refused <- vapply(thresholds, function(threshold){
+    inherits(tryCatch(hypothesis_linear_target(levels, shifted(threshold), "mu_fac"), error = identity), "error")
+  }, logical(1))
+  expect_identical(thresholds[refused], numeric())
+
+  # a quotient that is not finite, underflows or is subnormal, and coefficients
+  # outside the representable range, keep their refusals
+  divide <- function(value, divisor) .hypothesis_linear_target_divide(value, divisor)
+  expect_identical(divide(0, 3), 0)
+  expect_identical(divide(-0.42, 3), -0.42 / 3)
+  expect_identical(divide(1e-300, 1e7), 1e-300 / 1e7)
+  for(arguments in list(c(1e308, 1e-10), c(1, 0), c(0, 0), c(1e-300, 1e10), c(1e-10, 1e300), c(1, 1e308))){
+    condition <- expect_error(divide(arguments[[1L]], arguments[[2L]]),
+      class = "BayesTools_hypothesis_numerical_unavailable", info = paste(arguments, collapse = " / "))
+    expect_identical(condition$reason, "boundary_range")
+  }
+  condition <- threshold_side("mu_fac[A] / 1e300 > 1e-310")
+  expect_s3_class(condition, "BayesTools_hypothesis_numerical_unavailable")
+  expect_identical(condition$reason, "boundary_range")
+  condition <- expect_error(hypothesis_linear_target(levels, "1e300 * mu_fac[A] / 1e-300 > 0", "mu_fac"),
+                            class = "BayesTools_hypothesis_numerical_unavailable")
+  expect_identical(condition$reason, "coefficient_range")
+})
+
 test_that("a parenthesized simple region compiles as a linear target", {
 
   levels <- .hypothesis_factor_marginal_for_test()
@@ -422,27 +471,33 @@ test_that("explicit-level regions the exact route cannot represent keep the samp
   }
   shifted <- function(threshold) paste0("(mu_fac[A] + mu_fac[B]) / 3 + 0.25 > ", threshold)
   scaled <- "1e300 * mu_fac[A] / 1e-300 > 0"
+  subnormal <- "mu_fac[A] / 1e300 > 1e-310"
 
-  # a threshold that does not round-trip through the division (-0.42 / 3), or
-  # level coefficients outside the representable range, never make the region
-  # unavailable: the sampled joint-context draws give its prior mass
+  # a threshold quotient that is subnormal, or level coefficients outside the
+  # representable range, never make the region unavailable: the sampled
+  # joint-context draws give its prior mass. A threshold that does not
+  # multiply back (-0.42 / 3) is an ordinary quotient and takes the exact route.
   expect_identical(attr(region_mass(shifted(0.12)), "route"), "deterministic")
-  expect_identical(attr(region_mass(shifted(0.11)), "route"), "sampled")
+  expect_identical(attr(region_mass(shifted(0.11)), "route"), "deterministic")
   expect_identical(attr(region_mass(scaled), "route"), "sampled")
+  expect_identical(attr(region_mass(subnormal), "route"), "sampled")
 
-  # reference: A + B > -0.42 (prior N(0, 2) for the sum) and A > 0 (prior 1/2)
+  # reference: A + B > t (prior N(0, 2) for the sum) and A > 0 (prior 1/2)
   a <- as.numeric(independent$A)
   b <- as.numeric(independent$B)
   reference <- c(
     odds(mean(a + b > -0.39)) / odds(stats::pnorm(0.39 / sqrt(2))),
     odds(mean(a + b > -0.42)) / odds(stats::pnorm(0.42 / sqrt(2))),
-    odds(mean(a > 0)) / odds(0.5))
-  hypotheses <- c(shifted(0.12), shifted(0.11), scaled)
+    odds(mean(a > 0)) / odds(0.5),
+    odds(mean(a > 1e-10)) / odds(0.5))
+  hypotheses <- c(shifted(0.12), shifted(0.11), scaled, subnormal)
+  # the exact route has no Monte Carlo error; the sampled prior mass has
+  tolerance <- c(1e-8, 1e-8, 0.1, 0.1)
   for(i in seq_along(hypotheses)){
     result <- hypothesis_BF(independent, hypothesis = hypotheses[[i]], parameter = "mu_fac",
                             columns = "all", seed = 1)
     expect_s3_class(result, "BayesTools_hypothesis_BF")
-    expect_equal(as.numeric(attr(result, "raw_BF")), reference[[i]], tolerance = 0.1, info = hypotheses[[i]])
+    expect_equal(as.numeric(attr(result, "raw_BF")), reference[[i]], tolerance = tolerance[[i]], info = hypotheses[[i]])
   }
 
   # the exact route's own refusals carry the region class, not the ordinate class
@@ -453,7 +508,7 @@ test_that("explicit-level regions the exact route cannot represent keep the samp
   condition <- expect_error(rewrite(scaled), class = "BayesTools_hypothesis_region_numerical_unavailable")
   expect_identical(condition$reason, "coefficient_range")
   expect_identical(condition$requested_scale, "probability")
-  condition <- expect_error(rewrite(shifted(0.11)), class = "BayesTools_hypothesis_region_numerical_unavailable")
+  condition <- expect_error(rewrite(subnormal), class = "BayesTools_hypothesis_region_numerical_unavailable")
   expect_identical(condition$reason, "boundary_range")
   expect_false(inherits(condition, "BayesTools_hypothesis_ordinate"))
 })

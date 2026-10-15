@@ -59,7 +59,9 @@
 #'   level that `posterior` does not contain stops with an error of class
 #'   `BayesTools_parameter_not_found` (also
 #'   `BayesTools_parameter_resolution_error`), as in [hypothesis_BF()].
-#'   Numerical loss in coefficients or translated thresholds stops with
+#'   A translated threshold is the correctly rounded quotient of the statement's
+#'   value and divisor. Numerical loss in coefficients, or a threshold quotient
+#'   that is not finite, underflows or is subnormal, stops with
 #'   `BayesTools_hypothesis_numerical_unavailable` (also
 #'   `BayesTools_hypothesis_ordinate`, `BayesTools_numerical_unavailable`, and
 #'   `BayesTools_numerical_condition`). Unrepresentable target units are
@@ -409,7 +411,9 @@ hypothesis_linear_target <- function(posterior, hypothesis, parameter){
 #' example \code{f[A]}) and numbers: sums and differences, level references
 #' multiplied or divided by numbers, and parentheses. Levels of other
 #' parameters, other terms, and other kinds of sides stop with an error.
-#' Numerical loss in the coefficients or the value stops with an error of class
+#' The value is the correctly rounded quotient of the statement's constant and
+#' divisor. Numerical loss in the coefficients, or a value that is not finite,
+#' underflows or is subnormal, stops with an error of class
 #' \code{BayesTools_hypothesis_numerical_unavailable}, as in
 #' [hypothesis_linear_target()].
 #'
@@ -563,10 +567,13 @@ hypothesis_linear_target_side <- function(side, parameter){
   coefficients
 }
 
+# The compiled threshold is the correctly rounded quotient `value / divisor`
+# (as in any floating-point arithmetic); the compiler refuses only a quotient
+# that is not finite, underflows to zero or is subnormal.
 .hypothesis_linear_target_divide <- function(value, divisor, region = FALSE){
 
   out <- value / divisor
-  if(!is.finite(out) || (value != 0 && out == 0) || out * divisor != value){
+  if(!is.finite(out) || (value != 0 && abs(out) < .Machine$double.xmin)){
     .hypothesis_numerical_stop("boundary_range", "compiled target threshold",
       structural = TRUE, region = region)
   }
