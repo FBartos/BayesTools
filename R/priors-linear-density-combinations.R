@@ -2872,9 +2872,93 @@
   .prior_density_quadrature_ordinate(value, integral, "convolution", provenance)
 }
 
+# A piece of the region integral over the first term with an infinite end
+# (beyond its last or before its first finite breakpoint) is checked against
+# the exact mass of the term there. QUADPACK maps such a piece by
+# x = anchor + (1 - t) / t, whose nodes start 0.004 from the anchor, so an
+# integrand concentrated nearer to it (a first term of scale 1e-4 or less) is
+# missed together with the mass beyond the breakpoint, with the error estimate
+# of the nodes it saw (Exp(rate) + Exp(rate), P(X > 4 / rate): 1e-6 short for
+# rates from 1e4, with an error estimate of 1e-15). The mass M of the first
+# term in the piece is exact (its distribution function), and the conditional
+# probability g(x) = P(c + w_A x + w_B B in region) is the sum over the region
+# intervals of differences of the second term's distribution function F at the
+# images of the interval ends, each monotone in x, so that over the piece it
+# lies between its values at the two ends (the limits at an infinite end): g
+# is between sum_i max(0, min F(hi_i) - max F(lo_i)) and sum_i min(1, max F(hi_i)
+# - min F(lo_i)), and the mass of the piece, M g, in a bracket. A quadrature
+# value inside the bracket, within its error estimate, is kept (NULL: the piece
+# is integrated like every other). A value outside it is wrong whatever its
+# error estimate, and the piece is the midpoint of the bracket with half its
+# width as the absolute error (a zero width, exact up to rounding, where g is
+# constant beyond the breakpoint: a region beyond the images of the second
+# term's support). A quadrature that stops, or is refused, stays as it is.
+.prior_convolution_region_end_piece <- function(spec, lower, upper, integrand, n_grid, n_pieces){
+
+  tolerance <- .prior_linear_density_refinement_tolerance()
+  # the images of the region endpoints for the first term at x, in the order
+  # of the second term's interval (the image of the upper region endpoint is
+  # its upper end for a positive weight); an infinite endpoint has a fixed image
+  positive <- spec$other > 0
+  end_high <- if(positive) upper else lower
+  end_low  <- if(positive) lower else upper
+  image <- function(endpoint, x){
+    ifelse(is.finite(endpoint),
+           (endpoint - spec$offset - spec$weight * x) / spec$other,
+           sign(endpoint) * sign(spec$other) * Inf)
+  }
+  bracket <- function(a, b){
+    # one distribution function call at the images of every interval end at
+    # both ends of the piece (columns: high at a, high at b, low at a, low at b)
+    cdf <- matrix(
+      as.numeric(.prior_scalar_interval_probability(spec$second, -Inf,
+        c(image(end_high, a), image(end_high, b), image(end_low, a), image(end_low, b)))),
+      nrow = length(lower)
+    )
+    g_lower <- sum(pmax(0, pmin(cdf[, 1L], cdf[, 2L]) - pmax(cdf[, 3L], cdf[, 4L])))
+    g_upper <- sum(pmin(1, pmax(cdf[, 1L], cdf[, 2L]) - pmin(cdf[, 3L], cdf[, 4L])))
+    g_upper <- min(g_upper, 1)
+    g_lower <- min(g_lower, g_upper)
+    mass <- as.numeric(.prior_region_prior_mass(spec$first, matrix(c(a, b), 1L)))
+    c(lower = mass * g_lower, upper = mass * g_upper)
+  }
+  function(a, b){
+    if(is.finite(a) && is.finite(b)){
+      return(NULL)
+    }
+    checked <- tryCatch({
+      quadrature <- .prior_conditional_normal_piece(
+        integrand, a, b, n_grid,
+        relative = tolerance$relative, absolute = tolerance$quadrature_floor / n_pieces
+      )
+      list(quadrature = quadrature, bracket = bracket(a, b))
+    }, error = function(e) NULL)
+    if(is.null(checked)){
+      return(NULL)
+    }
+    quadrature <- checked$quadrature
+    limits <- checked$bracket
+    if(!identical(quadrature$message, "OK") || !all(is.finite(c(quadrature$value, quadrature$abs.error, limits)))){
+      return(NULL)
+    }
+    slack <- quadrature$abs.error + 8 * .Machine$double.eps * max(limits[["upper"]], quadrature$value)
+    if(quadrature$value >= limits[["lower"]] - slack && quadrature$value <= limits[["upper"]] + slack){
+      return(NULL)
+    }
+    value <- (limits[["lower"]] + limits[["upper"]]) / 2
+    list(
+      value       = value,
+      abs.error   = (limits[["upper"]] - limits[["lower"]]) / 2 + 4 * .Machine$double.eps * value,
+      message     = "OK",
+      evaluations = quadrature$evaluations
+    )
+  }
+}
+
 # Region probability of c + w_A A + w_B B: the 1-D integral over A of its
 # density times P(c + w_A a + w_B B in region), with the ordinate's
-# breakpoints at the images of every finite region endpoint.
+# breakpoints at the images of every finite region endpoint; the pieces with an
+# infinite end are checked by .prior_convolution_region_end_piece().
 .prior_convolution_region <- function(spec, intervals, n_grid){
 
   lower <- intervals[, 1L]
@@ -2902,12 +2986,15 @@
   }
   endpoints <- c(lower, upper)
   endpoints <- unique(endpoints[is.finite(endpoints)])
+  points <- .prior_convolution_breakpoints(spec, endpoints - spec$offset)
   .prior_conditional_normal_quadrature(
     integrand,
-    .prior_convolution_breakpoints(spec, endpoints - spec$offset),
+    points,
     n_grid,
     zero_message = "zero probability for a structurally positive region",
-    kind = "convolution"
+    kind = "convolution",
+    exact_piece = .prior_convolution_region_end_piece(spec, lower, upper, integrand, n_grid,
+                                                      length(points) - 1L)
   )
 }
 

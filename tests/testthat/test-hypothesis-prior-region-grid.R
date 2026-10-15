@@ -1124,6 +1124,82 @@ test_that("region probabilities of Cauchy-like and integer-df convolutions, tran
   expect_equal(probability(atoms, 2, 5, inclusive = TRUE), 1, tolerance = 1e-14)
 })
 
+test_that("convolution region probabilities keep the first term's mass beyond its last finite breakpoint (F332)", {
+
+  probability <- function(density, lower, upper){
+    region <- list(
+      intervals = .prior_region_intervals(lower, upper),
+      indicator = function(x) x > lower & x < upper
+    )
+    .prior_linear_density_region_probability(density, region)
+  }
+  convolution <- function(a, b, weights = c(a = 1, b = 1)){
+    .prior_linear_combination_density(list(a = a, b = b), weights, n_grid = .prior_linear_density_default_grid())
+  }
+  # the value against its reference; for the region whose end piece was lost
+  # ('honest'), also the reported error covering the actual one (the
+  # quadrature of the other regions is off by 1e-13 of the value with a smaller
+  # estimate, as it was)
+  expect_probability <- function(result, reference, honest = FALSE){
+    expect_equal(as.numeric(result) / reference, 1, tolerance = 1e-10)
+    diagnostics <- attr(result, "numerical_diagnostics")
+    expect_true(diagnostics$convergence)
+    if(honest){
+      expect_lte(abs(as.numeric(result) - reference), diagnostics$absolute_error + 8 * .Machine$double.eps * reference)
+    }
+  }
+
+  # Exp(rate) + Exp(rate) is Gamma(2, rate): the mass of the first term beyond
+  # its last breakpoint (its 1e-6 tail) was lost for rates from 1e4, with an
+  # error estimate of 1e-15
+  for(rate in c(1, 1e2, 1e3, 1e4, 1e6, 1e9)){
+    source <- prior("exp", list(rate = rate))
+    density <- convolution(source, source)
+    expect_identical(.prior_density_route_from_adaptive(attr(density, "adaptive_evaluation"))$type, "convolution")
+    for(multiple in c(2, 4, 8)){
+      expect_probability(probability(density, multiple / rate, Inf),
+                         stats::pgamma(multiple / rate, 2, rate, lower.tail = FALSE), honest = TRUE)
+    }
+    expect_probability(probability(density, -Inf, 4 / rate), stats::pgamma(4 / rate, 2, rate))
+    expect_probability(probability(density, 1 / rate, 3 / rate),
+                       stats::pgamma(3 / rate, 2, rate) - stats::pgamma(1 / rate, 2, rate))
+  }
+
+  # the difference of two exponentials is a Laplace law: both tails, with
+  # negative weights on either term
+  for(rate in c(1e3, 1e8)){
+    source <- prior("exp", list(rate = rate))
+    for(weights in list(c(a = 1, b = -1), c(a = -1, b = 1))){
+      density <- convolution(source, source, weights)
+      # the tail beyond the first term's breakpoint is the upper one for A - B
+      # and the lower one for B - A
+      upper_first <- weights[["a"]] > 0
+      expect_probability(probability(density, 3 / rate, Inf), .5 * exp(-3), honest = upper_first)
+      expect_probability(probability(density, -Inf, -3 / rate), .5 * exp(-3), honest = !upper_first)
+      expect_probability(probability(density, 1 / rate, 3 / rate), .5 * (exp(-1) - exp(-3)))
+    }
+  }
+
+  # a first term with both tails: the head and the tail of the integral
+  scale <- 1e-6
+  density <- convolution(prior("t", list(location = 0, scale = scale, df = 30)),
+                         prior("gamma", list(shape = 2, rate = 1 / scale)))
+  below <- stats::integrate(function(u) stats::dt(u, 30) * stats::pgamma(1.5 - u, 2, 1), -Inf, 1.5,
+                            rel.tol = 1e-13, subdivisions = 1000L)$value
+  expect_probability(probability(density, -Inf, 1.5 * scale), below, honest = TRUE)
+  expect_probability(probability(density, 1.5 * scale, Inf), 1 - below, honest = TRUE)
+
+  # a heavy-tailed pair at unit scale keeps its quadrature of the end pieces
+  student <- convolution(prior("t", list(0, 1, 3)), prior("t", list(0, 1, 3)))
+  expect_probability(probability(student, 100, Inf), stats::integrate(function(t){
+    stats::dt(t, 3) * stats::pt(100 - t, 3, lower.tail = FALSE)
+  }, -Inf, -10, rel.tol = 1e-12)$value + stats::integrate(function(t){
+    stats::dt(t, 3) * stats::pt(100 - t, 3, lower.tail = FALSE)
+  }, -10, 100, rel.tol = 1e-12, subdivisions = 1000L)$value + stats::integrate(function(t){
+    stats::dt(t, 3) * stats::pt(100 - t, 3, lower.tail = FALSE)
+  }, 100, Inf, rel.tol = 1e-12)$value)
+})
+
 test_that("rejected region quadratures stop instead of using the grid", {
 
   priors <- scale_mixture_priors()

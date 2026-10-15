@@ -827,7 +827,16 @@ entirely outside every window t* +- 10 s / |w| of the finite region bounds is
 evaluated exactly as 0 or 1 times its mass under T's declared distribution
 function (the Gaussian region probability is constant there to within
 2 * Phi(-10) ~= 1.5e-23), so heavy tails and region bounds far beyond T's
-quantiles need no quadrature. Known limitation: conditional-normal scale
+quantiles need no quadrature. In a two-term convolution, a piece of the integral
+over the first term with an infinite end is checked against the exact mass of
+the term there and the bracket that the monotone distribution function of the
+second term gives for the conditional probability of the region: QUADPACK's
+map of an infinite piece starts 0.004 from its anchor and missed the mass
+beyond the last breakpoint of a first term of scale 1e-4 or less (the
+probability was short by the term's 1e-6 tail, with an error estimate of 1e-15),
+and a value outside the bracket is replaced by its midpoint with the
+half-width as the absolute error (zero where the conditional probability is
+constant beyond the breakpoint). Known limitation: conditional-normal scale
 mixtures integrate every piece, and with a heavy-tailed multiplier (e.g.
 half-Cauchy or inverse-gamma(1)) QUADPACK flags the infinite end piece of a
 region with an infinite bound ("roundoff error", "probably divergent"), so
