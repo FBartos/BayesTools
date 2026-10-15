@@ -419,6 +419,68 @@ test_that("batched factor reduction preserves row scales and zero draws", {
 })
 
 
+test_that("batched factor reduction holds each draw to the per-draw factor rules", {
+
+  factors <- .rank_one_factor_fixture()
+  expect_no_error(random_effects_marginal_diagonal_factor(factors))
+  invalid <- paste0(
+    "Random-effect marginal factor metadata for block 'study' are invalid.")
+
+  # A 1 x 4 matrix has the length of a 2 x 2 factor but not its shape.
+  reshaped <- factors
+  reshaped$factor_states[[2L]]$study$coefficient_factor <-
+    matrix(c(0.8, 0, -0.25, 0.5), 1L, 4L)
+  expect_error(random_effects_marginal_diagonal_factor(reshaped), invalid,
+               fixed = TRUE)
+
+  # The reduction reads only the entries of the declared structure.
+  upper <- factors
+  upper$factor_states[[1L]]$study$coefficient_factor[1L, 2L] <- 0.3
+  expect_error(random_effects_marginal_diagonal_factor(upper), paste0(
+    "Random-effect marginal factor for block 'study' has nonzero entries ",
+    "outside its declared 'dense' coefficient structure."), fixed = TRUE)
+  diagonal <- factors
+  diagonal$factor_plans$study$coefficient_structure <- "diagonal"
+  expect_error(random_effects_marginal_diagonal_factor(diagonal), paste0(
+    "Random-effect marginal factor for block 'study' has nonzero entries ",
+    "outside its declared 'diagonal' coefficient structure."), fixed = TRUE)
+  diagonal$factor_states <- lapply(diagonal$factor_states, function(state){
+    state$study$coefficient_factor <- diag(diag(state$study$coefficient_factor))
+    state
+  })
+  expect_no_error(random_effects_marginal_diagonal_factor(diagonal))
+})
+
+
+test_that("a known group kernel factor is reused only for a block touching every group", {
+
+  kernel <- matrix(c(2, .5, .5, 1), 2L)
+  plans <- list(known = list(
+    type = "known_group", model_matrix = matrix(1, 4L, 1L),
+    group_map = c(1L, 1L, 2L, 2L), group_covariance = kernel,
+    coefficient_structure = "diagonal"
+  ))
+  states <- list(list(known = list(coefficient_factor = matrix(1.5, 1L, 1L))))
+  factors <- list(
+    factor_plans = plans, factor_states = states,
+    row_blocks = list(1:4),
+    metadata = list(n_draws = 1L, n_rows = 4L, included_blocks = "known")
+  )
+  class(factors) <- c("BayesTools_random_effects_marginal_factor_states", "list")
+  check <- function(factors){
+    dense <- random_effects_marginal_factor_vcov(factors)[1L, , ]
+    reduced <- random_effects_marginal_diagonal_factor(factors)
+    loading <- matrix(reduced$loadings[[1L]][1L, , ], ncol = reduced$ranks[[1L]])
+    expect_equal(diag(reduced$diagonal[1L, ]) + tcrossprod(loading), dense,
+                 tolerance = 1e-14)
+  }
+  check(factors)
+  # Groups appearing in reverse order use their own factored sub-kernel.
+  factors$factor_plans$known$group_map <- c(2L, 2L, 1L, 1L)
+  check(factors)
+})
+
+
 test_that("the diagonal-factor plan of a three-level design is the hand-checked one", {
 
   n_rows <- 6L

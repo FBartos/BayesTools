@@ -68,21 +68,7 @@ random_effects_marginal_vcov <- function(
     prior_list = NULL, blocks = NULL, new_levels = NULL,
     diagonal_only = FALSE, fitted_rows = NULL, ...){
 
-  dots <- list(...)
-  if(length(dots) > 0L){
-    dot_names <- names(dots)
-    if(is.null(dot_names)){
-      dot_names <- rep("", length(dots))
-    }
-    unnamed <- !nzchar(dot_names)
-    dot_names[unnamed] <- paste0("argument ", which(unnamed))
-    stop(
-      "Unused argument(s): ",
-      paste(dot_names, collapse = ", "),
-      ".",
-      call. = FALSE
-    )
-  }
+  .bt_random_effect_marginal_reject_dots(list(...))
   check_char(parameter, "parameter", allow_NULL = TRUE, allow_NA = FALSE)
   check_char(blocks, "blocks", check_length = 0, allow_NULL = TRUE, allow_NA = FALSE)
   check_bool(diagonal_only, "diagonal_only", allow_NA = FALSE)
@@ -163,21 +149,7 @@ random_effects_marginal_factor_states <- function(
     fit, parameter = NULL, posterior_samples = NULL, prior_list = NULL,
     blocks = NULL, row_blocks, cache = NULL, ...){
 
-  dots <- list(...)
-  if(length(dots) > 0L){
-    dot_names <- names(dots)
-    if(is.null(dot_names)){
-      dot_names <- rep("", length(dots))
-    }
-    unnamed <- !nzchar(dot_names)
-    dot_names[unnamed] <- paste0("argument ", which(unnamed))
-    stop(
-      "Unused argument(s): ",
-      paste(dot_names, collapse = ", "),
-      ".",
-      call. = FALSE
-    )
-  }
+  .bt_random_effect_marginal_reject_dots(list(...))
   check_char(parameter, "parameter", allow_NULL = TRUE, allow_NA = FALSE)
   check_char(blocks, "blocks", check_length = 0, allow_NULL = TRUE, allow_NA = FALSE)
   if(!is.null(cache) && !is.environment(cache)){
@@ -217,6 +189,9 @@ random_effects_marginal_factor_states <- function(
       blocks = blocks
     )
     random_effects <- selected$terms
+    if(length(random_effects) == 0L){
+      stop("No random-effect blocks were selected.", call. = FALSE)
+    }
     block_names <- vapply(random_effects, `[[`, character(1), "block_name")
     parameter_name <- design$parameter
     if(!is.character(parameter_name) || length(parameter_name) != 1L ||
@@ -454,7 +429,11 @@ random_effects_marginal_factor_diagonal <- function(
 #' @param cache Optional environment used to retain the invariant reduction
 #'   plan across repeated evaluations of one bridge-likelihood factor-state
 #'   contract. Changing numerical factor states are still validated on every
-#'   call.
+#'   call. The reduction is keyed on the identity of the compiled contract, so
+#'   the cache serves factor states that share it: calls of
+#'   [random_effects_marginal_factor_states()] that pass one common `cache`, or
+#'   the states of one bridge likelihood. States of a separately compiled
+#'   contract signal a changed contract.
 #'
 #' @return A list with a numeric `diagonal` matrix, one loading array and
 #'   structural rank per row block, and `row_blocks`. The `loading_supports`
@@ -710,6 +689,28 @@ random_effects_marginal_factor_vcov <- function(factors){
 }
 
 
+# `...` is reserved: any supplied argument is refused, named in quotes (an
+# unnamed one by position).
+.bt_random_effect_marginal_reject_dots <- function(dots){
+
+  if(length(dots) == 0L){
+    return(invisible(NULL))
+  }
+  dot_names <- names(dots)
+  if(is.null(dot_names)){
+    dot_names <- rep("", length(dots))
+  }
+  unnamed <- !nzchar(dot_names)
+  dot_names[unnamed] <- paste0("argument ", which(unnamed))
+  stop(
+    "Unused argument(s): ",
+    paste0("'", dot_names, "'", collapse = ", "),
+    ".",
+    call. = FALSE
+  )
+}
+
+
 # Normalize the two supported public and bridge factor-state containers.
 .bt_random_effect_marginal_factor_input <- function(factors){
 
@@ -814,6 +815,7 @@ random_effects_marginal_factor_vcov <- function(factors){
       return(unavailable("unsupported factor structure"))
     }
     group_factor <- NULL
+    kernel_factor <- NULL
     if(identical(factor$type, "known_group")){
       kernel <- factor$group_covariance
       if(!is.numeric(kernel) || !is.matrix(kernel) ||
@@ -826,6 +828,9 @@ random_effects_marginal_factor_vcov <- function(factors){
       if(is.null(group_factor)){
         return(unavailable("known group covariance is not positive definite"))
       }
+      # A row block that touches every group in order uses this factor as is;
+      # the others factor their own sub-kernel.
+      kernel_factor <- group_factor
     }
     group_map <- as.integer(factor$group_map)
     n_columns <- ncol(factor$model_matrix)
@@ -862,6 +867,7 @@ random_effects_marginal_factor_vcov <- function(factors){
       model_matrix          = factor$model_matrix,
       group_map             = group_map,
       group_covariance      = if(is.null(group_factor)) NULL else kernel,
+      group_factor          = kernel_factor,
       coefficient_structure = factor$coefficient_structure,
       structural            = structural
     )
@@ -883,6 +889,8 @@ random_effects_marginal_factor_vcov <- function(factors){
       group_levels <- unique(group_map[rows])
       group_factor <- if(is.null(factor$group_covariance)){
         NULL
+      }else if(identical(group_levels, seq_len(nrow(factor$group_covariance)))){
+        factor$group_factor
       }else{
         t(chol(factor$group_covariance[group_levels, group_levels, drop = FALSE]))
       }
@@ -1001,11 +1009,18 @@ random_effects_marginal_factor_product <- function(
       dimnames = dimnames(vectors)
     )
   }), blocks)
+  # The design, grouping and known group covariance are shared by every draw:
+  # validate them once, as the diagonal and dense helpers do.
+  designs <- lapply(seq_along(blocks), function(block){
+    .bt_random_effect_marginal_factor_block_design(
+      plan = plans[[block]], n_rows = n_rows, block = blocks[[block]]
+    )
+  })
   for(draw in seq_len(n_draws)){
     draw_states <- states[[draw]]
     for(block in seq_along(blocks)){
       out[[block]][draw, ] <- .bt_random_effect_marginal_factor_product_block(
-        plan   = plans[[block]],
+        design = designs[[block]],
         state  = draw_states[[block]],
         vector = vectors[draw, ],
         block  = blocks[[block]]
@@ -1104,17 +1119,16 @@ random_effects_marginal_factor_product <- function(
 
 
 .bt_random_effect_marginal_factor_product_block <- function(
-    plan, state, vector, block){
+    design, state, vector, block){
 
-  geometry <- .bt_random_effect_marginal_factor_block_geometry(
-    plan   = plan,
+  basis <- .bt_random_effect_marginal_factor_block_basis(
+    design = design,
     state  = state,
     n_rows = length(vector),
     block  = block
   )
-  basis            <- geometry$basis
-  group_map        <- geometry$group_map
-  group_covariance <- geometry$group_covariance
+  group_map        <- design$group_map
+  group_covariance <- design$group_covariance
 
   grouped <- rowsum(
     basis * vector,
@@ -1122,7 +1136,7 @@ random_effects_marginal_factor_product <- function(
     reorder = FALSE
   )
   group_ids <- as.integer(rownames(grouped))
-  if(identical(geometry$type, "known_group")){
+  if(identical(design$type, "known_group")){
     ordered <- matrix(
       0,
       nrow = nrow(group_covariance),
@@ -1188,11 +1202,12 @@ random_effects_marginal_factor_product <- function(
   }
 
   list(
-    type             = type,
-    model_matrix     = model_matrix,
-    columns          = ncol(model_matrix),
-    group_map        = as.integer(group_map),
-    group_covariance = group_covariance
+    type                  = type,
+    model_matrix          = model_matrix,
+    columns               = ncol(model_matrix),
+    group_map             = as.integer(group_map),
+    group_covariance      = group_covariance,
+    coefficient_structure = plan$coefficient_structure
   )
 }
 
@@ -1241,25 +1256,44 @@ random_effects_marginal_factor_product <- function(
 
   columns <- design$columns
   n_draws <- length(states)
-  # vapply enforces the numeric type and the factor length on every draw; the
-  # finiteness of the whole batch is one pass rather than one per draw.
-  factors <- vapply(states, function(draw_states){
-    value <- draw_states[[factor_index]]$coefficient_factor
-    if(!is.matrix(value)){
-      stop(
-        "Random-effect marginal factor metadata for block '", block,
-        "' are invalid.",
-        call. = FALSE
-      )
-    }
-    value
-  }, numeric(columns * columns))
-  if(!all(is.finite(factors))){
+  invalid <- function(){
     stop(
       "Random-effect marginal factor metadata for block '", block,
       "' are invalid.",
       call. = FALSE
     )
+  }
+  # Every draw is held to the per-draw rule (a columns x columns numeric
+  # matrix); vapply enforces the numeric type and the length, and the
+  # finiteness of the whole batch is one pass rather than one per draw.
+  factors <- vapply(states, function(draw_states){
+    value <- draw_states[[factor_index]]$coefficient_factor
+    if(!is.matrix(value) || nrow(value) != columns || ncol(value) != columns){
+      invalid()
+    }
+    value
+  }, numeric(columns * columns))
+  if(!all(is.finite(factors))){
+    invalid()
+  }
+  # The reduction plan reads only the entries the declared coefficient
+  # structure allows (the diagonal, or the lower triangle); a factor with other
+  # nonzero entries would silently lose them, so it is refused as invalid.
+  if(!is.null(design$coefficient_structure)){
+    positions <- matrix(0, columns, columns)
+    outside <- if(identical(design$coefficient_structure, "diagonal")){
+      which(row(positions) != col(positions))
+    }else{
+      which(upper.tri(positions))
+    }
+    if(length(outside) > 0L && any(factors[outside, , drop = FALSE] != 0)){
+      stop(
+        "Random-effect marginal factor for block '", block,
+        "' has nonzero entries outside its declared '",
+        design$coefficient_structure, "' coefficient structure.",
+        call. = FALSE
+      )
+    }
   }
   dim(factors) <- c(columns, columns * n_draws)
   basis <- design$model_matrix %*% factors
@@ -1295,22 +1329,6 @@ random_effects_marginal_factor_product <- function(
   basis
 }
 
-
-.bt_random_effect_marginal_factor_block_geometry <- function(
-    plan, state, n_rows, block){
-
-  design <- .bt_random_effect_marginal_factor_block_design(
-    plan = plan, n_rows = n_rows, block = block
-  )
-  list(
-    type             = design$type,
-    basis            = .bt_random_effect_marginal_factor_block_basis(
-      design = design, state = state, n_rows = n_rows, block = block
-    ),
-    group_map        = design$group_map,
-    group_covariance = design$group_covariance
-  )
-}
 
 #' Random-effect marginal variance factors
 #'
@@ -1433,53 +1451,11 @@ random_effects_marginal_variance_factors <- function(
 .bt_random_effect_marginal_variance_factor_terms <- function(design,
                                                              blocks = NULL){
 
-  random_effects <- .bt_formula_design_random_effects(design)
-  if(length(random_effects) == 0L){
-    stop(
-      "Formula design for parameter '", design$parameter,
-      "' has no random-effect blocks.",
-      call. = FALSE
-    )
-  }
-
-  block_names <- vapply(random_effects, `[[`, character(1), "block_name")
-  if(anyDuplicated(block_names)){
-    stop("Formula random-effect block names must be unique.", call. = FALSE)
-  }
-
-  if(is.null(blocks)){
-    modes <- .bt_random_effects_compile_modes_from_terms(random_effects)
-    selected <- modes == "marginalized"
-    skipped <- data.frame(
-      block_name = block_names[!selected],
-      reason = rep("not marginalized", sum(!selected)),
-      stringsAsFactors = FALSE
-    )
-    return(list(terms = random_effects[selected], skipped = skipped))
-  }
-  if(anyDuplicated(blocks)){
-    stop("'blocks' must be unique.", call. = FALSE)
-  }
-
-  unknown <- setdiff(blocks, block_names)
-  if(length(unknown) > 0L){
-    stop(
-      "Unknown random-effect block(s): ",
-      paste(unknown, collapse = ", "),
-      ".",
-      call. = FALSE
-    )
-  }
-
-  selected <- random_effects[match(blocks, block_names)]
-  skipped_names <- setdiff(block_names, blocks)
-  skipped <- data.frame(
-    block_name = skipped_names,
-    reason = rep("not requested", length(skipped_names)),
-    stringsAsFactors = FALSE
+  .bt_random_effect_marginal_covariance_terms(
+    design = design,
+    blocks = blocks,
+    default = "marginalized"
   )
-
-  list(terms = selected, skipped = skipped)
 }
 
 .bt_random_effect_marginal_variance_factor_block <- function(random_term,
@@ -1673,8 +1649,7 @@ random_effects_marginal_variance_factors <- function(
                                                           blocks = NULL,
                                                           new_levels = NULL,
                                                           fitted_rows = NULL,
-                                                          diagonal_only = FALSE,
-                                                          parameters = NULL){
+                                                          diagonal_only = FALSE){
 
   selected <- .bt_random_effect_marginal_covariance_terms(
     design = design,
@@ -1768,7 +1743,6 @@ random_effects_marginal_variance_factors <- function(
       prediction_rows = prediction_rows,
       posterior = posterior,
       prior_list = prior_list,
-      parameters = parameters,
       diagonal_only = diagonal_only
     )
     if(any(new_level_info$row_mask) &&
@@ -2048,8 +2022,13 @@ random_effects_marginal_variance_factors <- function(
   list()
 }
 
+# `default` selects the blocks used when `blocks` is NULL: every block, or only
+# those compiled as marginalized.
 .bt_random_effect_marginal_covariance_terms <- function(design,
-                                                        blocks = NULL){
+                                                        blocks = NULL,
+                                                        default = c("all", "marginalized")){
+
+  default <- match.arg(default)
 
   random_effects <- .bt_formula_design_random_effects(design)
   if(length(random_effects) == 0L){
@@ -2066,12 +2045,17 @@ random_effects_marginal_variance_factors <- function(
   }
 
   if(is.null(blocks)){
+    selected <- if(identical(default, "marginalized")){
+      .bt_random_effects_compile_modes_from_terms(random_effects) == "marginalized"
+    }else{
+      rep(TRUE, length(random_effects))
+    }
     skipped <- data.frame(
-      block_name = character(),
-      reason = character(),
+      block_name = block_names[!selected],
+      reason = rep("not marginalized", sum(!selected)),
       stringsAsFactors = FALSE
     )
-    return(list(terms = random_effects, skipped = skipped))
+    return(list(terms = random_effects[selected], skipped = skipped))
   }
   if(anyDuplicated(blocks)){
     stop("'blocks' must be unique.", call. = FALSE)
@@ -2320,7 +2304,6 @@ random_effects_marginal_variance_factors <- function(
     prediction_rows,
     posterior,
     prior_list,
-    parameters = NULL,
     diagonal_only = FALSE){
 
   if(.bt_random_effect_has_row_indexed_external_sd(random_term)){
@@ -2332,7 +2315,6 @@ random_effects_marginal_variance_factors <- function(
       prediction_rows = prediction_rows,
       posterior = posterior,
       prior_list = prior_list,
-      parameters = parameters,
       diagonal_only = diagonal_only
     ))
   }
@@ -2571,7 +2553,6 @@ random_effects_marginal_variance_factors <- function(
     prediction_rows,
     posterior,
     prior_list,
-    parameters = NULL,
     diagonal_only = FALSE){
 
   n_draws <- nrow(posterior)
@@ -2583,7 +2564,6 @@ random_effects_marginal_variance_factors <- function(
     n_rows = n_rows,
     posterior = posterior,
     data = source_data,
-    parameters = parameters,
     prediction_rows = prediction_rows,
     context = "Random-effect marginal covariance"
   )
@@ -2875,8 +2855,7 @@ random_effects_marginal_variance_factors <- function(
   valid_cholesky <- is.array(cholesky) &&
     length(cholesky_dim) == 3L &&
     cholesky_dim[2L] == n_columns &&
-    cholesky_dim[3L] == n_columns &&
-    all(is.finite(cholesky))
+    cholesky_dim[3L] == n_columns
   if(!isTRUE(valid_cholesky)){
     stop(
       "Random-effect marginal covariance Cholesky draws for block '",
@@ -2885,29 +2864,41 @@ random_effects_marginal_variance_factors <- function(
       call. = FALSE
     )
   }
+  if(!all(is.finite(cholesky))){
+    stop(
+      "Random-effect marginal covariance Cholesky draws for block '",
+      random_term$block_name,
+      "' must be finite.",
+      call. = FALSE
+    )
+  }
   n_draws <- cholesky_dim[1L]
-  if(!is.null(row_weights) &&
-     (!is.matrix(row_weights) || !is.numeric(row_weights) ||
-      !identical(dim(row_weights), c(n_draws, n_rows)) ||
-      any(!is.finite(row_weights)))){
-    stop(
-      "Random-effect marginal covariance row weights for block '",
-      random_term$block_name,
-      "' do not match the expected dimensions.",
-      call. = FALSE
-    )
+  # Dimension and finiteness are reported apart: a non-finite weight is not a
+  # dimension mismatch.
+  check_weights <- function(weights, label, n_columns){
+    if(is.null(weights)){
+      return(invisible(NULL))
+    }
+    if(!is.matrix(weights) || !is.numeric(weights) ||
+       !identical(dim(weights), c(n_draws, n_columns))){
+      stop(
+        "Random-effect marginal covariance ", label, " weights for block '",
+        random_term$block_name,
+        "' do not match the expected dimensions.",
+        call. = FALSE
+      )
+    }
+    if(any(!is.finite(weights))){
+      stop(
+        "Random-effect marginal covariance ", label, " weights for block '",
+        random_term$block_name,
+        "' must be finite.",
+        call. = FALSE
+      )
+    }
   }
-  if(!is.null(column_weights) &&
-     (!is.matrix(column_weights) || !is.numeric(column_weights) ||
-      !identical(dim(column_weights), c(n_draws, n_columns)) ||
-      any(!is.finite(column_weights)))){
-    stop(
-      "Random-effect marginal covariance column weights for block '",
-      random_term$block_name,
-      "' do not match the expected dimensions.",
-      call. = FALSE
-    )
-  }
+  check_weights(row_weights, "row", n_rows)
+  check_weights(column_weights, "column", n_columns)
   if(!isTRUE(diagonal_only) &&
      (!is.numeric(group_map) || length(group_map) != n_rows ||
       anyNA(group_map) || any(!is.finite(group_map)) ||
@@ -3439,11 +3430,6 @@ random_effects_marginal_variance_factors <- function(
       )
     }
   )
-  intercept_only <- n_columns == 1L &&
-    is.null(row_weights) &&
-    is.null(column_weights) &&
-    isTRUE(all(model_matrix[, 1L] == 1))
-
   for(draw in seq_len(n_draws)){
     G <- matrix(
       block_covariance[draw, , ],
@@ -3465,9 +3451,7 @@ random_effects_marginal_variance_factors <- function(
         )
       }
       index <- draw + group$array_offset
-      if(intercept_only){
-        out[index] <- out[index] + G[1L, 1L]
-      }else if(n_columns == 1L){
+      if(n_columns == 1L){
         out[index] <- out[index] + G[1L, 1L] * as.vector(tcrossprod(Z[, 1L]))
       }else{
         contribution <- Z %*% G %*% t(Z)

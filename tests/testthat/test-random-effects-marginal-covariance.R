@@ -1493,7 +1493,31 @@ test_that("crossed independent random intercept blocks are summed", {
       prior_list = result$prior_list,
       unused = TRUE
     ),
-    "Unused argument(s): unused.",
+    "Unused argument(s): 'unused'.",
+    fixed = TRUE
+  )
+  expect_error(
+    random_effects_marginal_factor_states(
+      result$formula_design, row_blocks = list(1L), unused = TRUE, other = 2
+    ),
+    "Unused argument(s): 'unused', 'other'.",
+    fixed = TRUE
+  )
+  expect_error(
+    BayesTools:::.bt_random_effect_marginal_reject_dots(list(1, a = 2)),
+    "Unused argument(s): 'argument 1', 'a'.",
+    fixed = TRUE
+  )
+  # An empty selection is a clear refusal, not a subscript error.
+  expect_error(
+    random_effects_marginal_factor_states(
+      result$formula_design,
+      posterior_samples = posterior,
+      prior_list        = result$prior_list,
+      blocks            = character(),
+      row_blocks        = list(seq_len(nrow(df)))
+    ),
+    "No random-effect blocks were selected.",
     fixed = TRUE
   )
 
@@ -1859,6 +1883,102 @@ test_that("row-varying SD sources with values functions support supplied data", 
   )
 
   expect_equal(.re_cov_first(out), expected, tolerance = 1e-12)
+})
+
+test_that("factor states of a callback SD source take the per-draw route", {
+
+  df <- data.frame(
+    id = factor(c("a", "a", "b", "b"), levels = c("a", "b")),
+    tau_scale = c(1, 2, 3, 4)
+  )
+  tau_source <- parameter_source(
+    "tau",
+    shape = "row",
+    values = function(parameters, data, n_rows){
+      parameters$tau_total * data$tau_scale[seq_len(n_rows)]
+    },
+    inputs = "tau_total"
+  )
+  result <- .re_cov_formula(
+    formula = ~ 1 + random(1 | id, name = "id", covariance = "diag"),
+    data = df,
+    prior_random = prior_random(
+      id = random_block(sd_source = random_sd_source(tau_source))
+    )
+  )
+  posterior <- .re_cov_posterior_draws(c(tau_total = 2), c(tau_total = 3))
+
+  # The batched compiled route has no callback source; record that it declines.
+  batch_declined <- NA
+  batch <- BayesTools:::.bt_JAGS_bridge_marginal_random_factor_states_batch
+  testthat::local_mocked_bindings(
+    .bt_JAGS_bridge_marginal_random_factor_states_batch = function(...){
+      out <- batch(...)
+      batch_declined <<- is.null(out)
+      out
+    },
+    .package = "BayesTools"
+  )
+  factors <- random_effects_marginal_factor_states(
+    result$formula_design,
+    posterior_samples = posterior,
+    prior_list        = result$prior_list,
+    blocks            = "id",
+    row_blocks        = list(seq_len(nrow(df)))
+  )
+  expect_true(batch_declined)
+  expect_s3_class(factors, "BayesTools_random_effects_marginal_factor_states")
+  expect_identical(factors$metadata$n_draws, 2L)
+
+  dense <- .re_cov_output(result, posterior)
+  plan <- factors$factor_plans[[1L]]
+  for(draw in 1:2){
+    state <- factors$factor_states[[draw]][[1L]]
+    Z <- plan$model_matrix * state$row_scale
+    reconstructed <- outer(plan$group_map, plan$group_map, "==") *
+      tcrossprod(Z %*% tcrossprod(state$coefficient_factor), Z)
+    expect_equal(unname(reconstructed), unname(dense$samples[draw, , ]),
+                 tolerance = 1e-12)
+  }
+  # The same fallback states feed the diagonal and product helpers.
+  expect_equal(unname(random_effects_marginal_factor_diagonal(factors)),
+               .re_cov_dense_diagonal(dense), tolerance = 1e-12)
+  vectors <- matrix(c(1, -2, 3, .5, 2, 1, -1, 4), nrow = 2L, byrow = TRUE)
+  expected <- t(vapply(1:2, function(draw){
+    as.numeric(dense$samples[draw, , ] %*% vectors[draw, ])
+  }, numeric(4L)))
+  expect_equal(unname(random_effects_marginal_factor_product(factors, vectors)),
+               expected, tolerance = 1e-12)
+})
+
+test_that("non-finite Cholesky draws and weights are not dimension mismatches", {
+
+  random_term <- list(block_name = "study")
+  cholesky <- array(0, dim = c(2L, 2L, 2L))
+  cholesky[, 1L, 1L] <- 1
+  cholesky[, 2L, 2L] <- 1
+  call <- function(cholesky, row_weights = NULL, column_weights = NULL){
+    BayesTools:::.bt_random_effect_marginal_covariance_cholesky(
+      random_term = random_term, model_matrix = diag(2L),
+      group_map = 1:2, cholesky = cholesky, row_weights = row_weights,
+      column_weights = column_weights, diagonal_only = TRUE
+    )
+  }
+  expect_no_error(call(cholesky))
+  broken <- cholesky
+  broken[1L, 1L, 1L] <- NaN
+  expect_error(call(broken), paste0(
+    "Random-effect marginal covariance Cholesky draws for block 'study' ",
+    "must be finite."), fixed = TRUE)
+  expect_error(call(cholesky[, , 1L, drop = FALSE]), paste0(
+    "Random-effect marginal covariance Cholesky draws for block 'study' ",
+    "do not match the expected dimensions."), fixed = TRUE)
+  expect_error(call(cholesky, row_weights = matrix(c(1, Inf, 1, 1), 2L)), paste0(
+    "Random-effect marginal covariance row weights for block 'study' ",
+    "must be finite."), fixed = TRUE)
+  expect_error(call(cholesky, column_weights = matrix(1, 2L, 3L)), paste0(
+    "Random-effect marginal covariance column weights for block 'study' ",
+    "do not match the expected dimensions."), fixed = TRUE)
 })
 
 test_that("row-varying SD-component allocation weights columns and rows", {

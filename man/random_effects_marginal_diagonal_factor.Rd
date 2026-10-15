@@ -15,7 +15,11 @@ bridge-likelihood \code{factor_state} value carrying \code{factor_plans},
 \item{cache}{Optional environment used to retain the invariant reduction
 plan across repeated evaluations of one bridge-likelihood factor-state
 contract. Changing numerical factor states are still validated on every
-call.}
+call. The reduction is keyed on the identity of the compiled contract, so
+the cache serves factor states that share it: calls of
+\code{\link[=random_effects_marginal_factor_states]{random_effects_marginal_factor_states()}} that pass one common \code{cache}, or
+the states of one bridge likelihood. States of a separately compiled
+contract signal a changed contract.}
 }
 \value{
 A list with a numeric \code{diagonal} matrix, one loading array and
