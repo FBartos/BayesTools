@@ -397,11 +397,11 @@ test_that("formula evaluators ignore intercept multipliers stored by older fits"
       JAGS_evaluate_formula(fit, parameter = "mu")
     )
     for(i in seq_len(nrow(samples))){
-      expected <- BayesTools:::.bt_JAGS_marglik_parameters_formula_design(
+      expected <- bayestools_marglik_parameters_formula_design(
         samples[i, ], fit_design, fit_priors, list()
       )
       expect_identical(
-        BayesTools:::.bt_JAGS_marglik_parameters_formula_design(
+        bayestools_marglik_parameters_formula_design(
           samples[i, ], designs$mu, legacy_priors, list()
         ),
         expected

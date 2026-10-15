@@ -2361,7 +2361,7 @@ test_that("formula design reconstruction includes expression offsets for marglik
     mu_intercept = 1,
     mu_x = 2
   )
-  reconstructed <- BayesTools:::.bt_JAGS_marglik_parameters_formula_design(
+  reconstructed <- bayestools_marglik_parameters_formula_design(
     samples = samples,
     design = formula_result$formula_design,
     formula_prior_list = formula_result$prior_list,
@@ -2493,7 +2493,7 @@ test_that("formula expressions replay sampled indexed parameters", {
     fixed = TRUE
   )
 
-  reconstructed <- BayesTools:::.bt_JAGS_marglik_parameters_formula_design(
+  reconstructed <- bayestools_marglik_parameters_formula_design(
     samples = list(
       mu_intercept = 1,
       mu_x = 2,

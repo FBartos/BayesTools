@@ -352,7 +352,6 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
   check_int(cores, "cores", lower = 1)
   check_int(seed, "seed", allow_NULL = TRUE, allow_NA = FALSE)
   nonfinite <- match.arg(nonfinite)
-  log_posterior <- force(log_posterior)
   if(!is.function(log_posterior)){
     stop("'log_posterior' must be a function.", call. = FALSE)
   }
@@ -421,7 +420,7 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
   }
 
   if(length(all_prior_list) > 0L && any(sapply(all_prior_list, is.prior.discrete)))
-    stop("Discrete or spike and slab priors are not supported with bridgesampling.")
+    stop("Discrete or spike and slab priors are not supported with bridgesampling.", call. = FALSE)
 
   ### extract relevant variables and upper and lower bound
   random_bridge_parameters <- .bt_JAGS_formula_random_bridge_parameters(
@@ -656,7 +655,7 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
       )
     })
     result <- .bt_marglik_exact_result(logml, chain_metadata)
-    result[["diagnostics"]][["upstream_warnings"]] <- upstream_warnings
+    result[["diagnostics"]][["upstream_warnings"]] <- unique(upstream_warnings)
     return(result)
   }
 

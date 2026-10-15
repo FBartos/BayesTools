@@ -380,7 +380,7 @@ test_that("expression-only design reconstruction retains its expression value", 
   samples <- c(theta = 2.5)
   parameters <- list(theta = 2.5)
   expect_equal(
-    BayesTools:::.bt_JAGS_marglik_parameters_formula_design(
+    bayestools_marglik_parameters_formula_design(
       samples, output$formula_design, list(), parameters
     ),
     expected
@@ -501,7 +501,7 @@ test_that("formula reconstruction treats parameter prefixes literally", {
   names(prior_list)[names(prior_list) == "mu.a_x"] <- "muXa_x"
   expected <- "Stored formula design for parameter 'mu.a' is missing model term 'muXa_x'."
   expect_error(
-    BayesTools:::.bt_JAGS_marglik_parameters_formula_design(
+    bayestools_marglik_parameters_formula_design(
       c(muXa_x = 1), output$formula_design, prior_list, list()
     ),
     expected, fixed = TRUE

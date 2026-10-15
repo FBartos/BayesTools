@@ -223,3 +223,21 @@ bayestools_reference_random_effect_latent_log_density <- function(random_term,
   }
   marglik
 }
+
+# The fixed part of a formula design's linear predictor at bridge states: the
+# registered 'linear_predictor' node's fixed plan evaluated at the samples.
+bayestools_marglik_parameters_formula_design <- function(samples, design,
+                                                         formula_prior_list,
+                                                         prior_list_parameters,
+                                                         log_intercept = FALSE){
+
+  BayesTools:::.bt_dnode_linear_predictor_fixed_plan(
+    design = design,
+    formula_prior_list = formula_prior_list,
+    log_intercept = log_intercept,
+    context = "Bridge/marginal-likelihood reconstruction"
+  )$value(
+    samples = samples,
+    prior_list_parameters = prior_list_parameters
+  )
+}

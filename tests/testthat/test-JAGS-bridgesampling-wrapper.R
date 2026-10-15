@@ -1037,6 +1037,34 @@ test_that("callback condition classes survive the bridge-sampling context (F020)
   expect_identical(error$upstream_warnings, character())
 })
 
+test_that("the inclusion-gate refusal of bridge sampling lists at most three indicators", {
+
+  indicator_design <- function(...){
+    structure(
+      list(
+        parameter = "mu",
+        random_allocations = list(list(
+          inclusion = lapply(c(...), function(name) list(indicator_name = name))
+        ))
+      ),
+      class = "BayesTools_formula_design"
+    )
+  }
+  expect_true(BayesTools:::.bt_JAGS_bridge_check_no_allocation_inclusion(list(mu = indicator_design())))
+  expect_error(
+    BayesTools:::.bt_JAGS_bridge_check_no_allocation_inclusion(list(mu = indicator_design("inclusion_g"))),
+    "Affected indicator node(s): 'inclusion_g'.",
+    fixed = TRUE
+  )
+  expect_error(
+    BayesTools:::.bt_JAGS_bridge_check_no_allocation_inclusion(
+      list(mu = indicator_design("g1", "g2", "g3", "g4"))
+    ),
+    "Affected indicator node(s): 'g1', 'g2', 'g3', ....",
+    fixed = TRUE
+  )
+})
+
 test_that("manual marginal-likelihood objects declare their scale", {
 
   result <- bridgesampling_object(-Inf)
@@ -1200,7 +1228,7 @@ test_that("P-F8 exact point callback warnings are recorded without escape", {
     warning("55 exact body warning")
     foo
   }, foo = -3))
-  expect_identical(body$diagnostics$upstream_warnings, rep("55 exact body warning", 2L))
+  expect_identical(body$diagnostics$upstream_warnings, "55 exact body warning")
   for(result in list(deferred, body)){
     expect_identical(result$logml, -3)
     expect_identical(result$aggregation, default$aggregation)

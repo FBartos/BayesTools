@@ -237,23 +237,6 @@ JAGS_marglik_parameters_formula      <- function(samples, formula_list, formula_
     !is.null(design$model_terms)
 }
 
-.bt_JAGS_marglik_parameters_formula_design <- function(samples, design,
-                                                       formula_prior_list,
-                                                       prior_list_parameters,
-                                                       log_intercept = FALSE){
-
-  # The registered 'linear_predictor' node's fixed part and expressions.
-  .bt_dnode_linear_predictor_fixed_plan(
-    design = design,
-    formula_prior_list = formula_prior_list,
-    log_intercept = log_intercept,
-    context = "Bridge/marginal-likelihood reconstruction"
-  )$value(
-    samples = samples,
-    prior_list_parameters = prior_list_parameters
-  )
-}
-
 .bt_JAGS_formula_design_term_columns <- function(design, model_term){
 
   term_index <- match(model_term, design$model_terms)
