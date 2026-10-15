@@ -303,11 +303,13 @@ prior_factor <- function(distribution, parameters, truncation = list(lower = -In
   # check its compatibility with the contrasts
   if(contrast %in% c("meandif", "orthonormal")){
 
-    # add the (yet unspecified) dimensions parameter
+    # add the (yet unspecified) dimensions parameter: a placeholder for the
+    # constructor, which refuses an undetermined dimension of a prior created
+    # outside of prior_factor(), replaced by NA below
     if(is.null(names(parameters))){
-      parameters <- c(parameters, NA)
+      parameters <- c(parameters, 1)
     }else{
-      parameters[["K"]] <- NA
+      parameters[["K"]] <- 1
     }
 
     # change spike/point into mpoint dispatch
@@ -325,6 +327,7 @@ prior_factor <- function(distribution, parameters, truncation = list(lower = -In
 
     if(!is.prior.vector(output))
       stop(paste0("'", contrast,"' contrasts require vector prior distribution."))
+    output$parameters[["K"]] <- NA
     if(output[["distribution"]] != "mpoint" && !all(sapply(output[["truncation"]], is.infinite)))
       stop(paste0("'", contrast,"' contrasts do not support truncation."))
 

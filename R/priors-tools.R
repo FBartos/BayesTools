@@ -111,6 +111,14 @@
       stop(paste0("The '", name, "' must be positive."), call. = FALSE)
   }
 }
+# The 'scale' of the gamma and exponential priors is converted to the rate
+# 1 / scale, which cannot be done for an expression.
+.check_parameter_scale_numeric <- function(parameter, distribution){
+
+  if(is.expression(parameter))
+    stop(paste0("The 'scale' of a ", distribution, " prior must be numeric: only the 'rate' ",
+                "parametrization accepts an expression."), call. = FALSE)
+}
 .check_parameter_dimensions<- function(parameter, name, allow_NA = FALSE){
 
   # allow expressions to be forwarded through the construction functions
@@ -132,7 +140,9 @@
   if(!is.finite(parameter))
     stop(paste0("The '", name, "' must be finite."), call. = FALSE)
 
-  if(!.is.wholenumber(parameter))
+  # exactly an integer: a tolerance would let seq_len() and as.integer()
+  # truncate a value such as 3 - 1e-10 to 2
+  if(parameter != round(parameter))
     stop(paste0("The '", name ,"' must be an integer"), call. = FALSE)
 
   if(parameter < 1)

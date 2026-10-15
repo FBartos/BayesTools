@@ -99,6 +99,7 @@
   if(!is.null(names(parameters))){
     if("scale" %in% names(parameters)){
       parameters <- .check_and_name_parameters(parameters, c("shape", "scale"), "gamma")
+      .check_parameter_scale_numeric(parameters$scale, "gamma")
       parameters$rate  <- 1/parameters$scale
       parameters$scale <- NULL
     }
@@ -154,6 +155,7 @@
   if(!is.null(names(parameters))){
     if("scale" %in% names(parameters)){
       parameters <- .check_and_name_parameters(parameters, c("scale"), "exp")
+      .check_parameter_scale_numeric(parameters$scale, "exp")
       parameters$rate  <- 1/parameters$scale
       parameters$scale <- NULL
     }
@@ -240,6 +242,9 @@
   .check_parameter(parameters$a, "a")
   .check_parameter(parameters$b, "b")
 
+  if(is.expression(parameters$a) || is.expression(parameters$b))
+    stop("The bounds 'a' and 'b' of a uniform prior must be numeric: expressions are not supported.", call. = FALSE)
+
   if(parameters$a >= parameters$b)
     stop("Parameter 'a' must be lower than the parameter 'b'.")
 
@@ -317,7 +322,7 @@
   .check_parameter(parameters$mean, "mean")
   .check_parameter(parameters$sd,   "sd")
   .check_parameter_positive(parameters$sd, "sd")
-  .check_parameter_dimensions(parameters$K, "K", allow_NA = TRUE)   # allow undetermined dimensions if called by prior_factor
+  .check_parameter_dimensions(parameters$K, "K")
 
   # add the values to the output
   output$distribution <- "mnormal"
@@ -341,7 +346,7 @@
   .check_parameter(parameters$location, "location")
   .check_parameter(parameters$scale,    "scale")
   .check_parameter_positive(parameters$scale, "scale")
-  .check_parameter_dimensions(parameters$K,   "K", allow_NA = TRUE)   # allow undetermined dimensions if called by prior_factor
+  .check_parameter_dimensions(parameters$K, "K")
 
   # deal with as with a t-distribution
   parameters$df <- 1
@@ -369,7 +374,7 @@
   .check_parameter(parameters$df,       "df")
   .check_parameter_positive(parameters$scale, "scale")
   .check_parameter_positive(parameters$df,    "df")
-  .check_parameter_dimensions(parameters$K,   "K", allow_NA = TRUE)   # allow undetermined dimensions if called by prior_factor
+  .check_parameter_dimensions(parameters$K, "K")
 
 
   # add the values to the output
@@ -390,7 +395,7 @@
 
   # check individual parameters
   .check_parameter(parameters$location, "location")
-  .check_parameter_dimensions(parameters$K, "K", allow_NA = TRUE)   # allow undetermined dimensions if called by prior_factor
+  .check_parameter_dimensions(parameters$K, "K")
   .check_point_truncation(truncation, parameters$location, "multivariate point")
 
   # add the values to the output
@@ -434,10 +439,6 @@
 }
 .check_point_truncation <- function(truncation, location, distribution){
 
-  if(is.expression(location)){
-    return(invisible(NULL))
-  }
-
   if(length(truncation) > 2)
     stop("More than two truncation points were supplied.", call. = FALSE)
 
@@ -469,8 +470,18 @@
     stop("Truncation points must be numeric values.", call. = FALSE)
   }
 
+  if(is.na(truncation[["lower"]]) || is.na(truncation[["upper"]])){
+    stop("Truncation points must be defined (not NA or NaN).", call. = FALSE)
+  }
+
   if(truncation[["lower"]] > truncation[["upper"]]){
     stop("The lower truncation point must be lower or equal to the upper truncation point.", call. = FALSE)
+  }
+
+  # an expression location is unknown in R: the truncation, which the point
+  # replaces by its location, is validated but cannot be compared with it
+  if(is.expression(location)){
+    return(invisible(NULL))
   }
 
   if(truncation[["lower"]] > location || truncation[["upper"]] < location){

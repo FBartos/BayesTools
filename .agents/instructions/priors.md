@@ -63,6 +63,14 @@ interval above an absolute error of 1e-6 times the interval width (an interval
 with an infinite bound has no cancellation and is not gated); both refuse
 rather than return a value that can leave the support.
 
+Constructors report invalid input with a package message, never a base R error.
+The truncation of a point prior, including an expression point, must be numeric,
+defined and ordered (an expression location is unknown in R and is not compared
+with it); the `scale` of a gamma or exponential prior and the bounds of a
+uniform prior must be numeric (only `rate` accepts an expression); the
+dimension `K` of a vector prior is exactly a whole number and is `NA` only for
+the priors created by `prior_factor()`.
+
 Gamma coordinates in inverse-gamma and nonlocal kernels retain original-input
 logs when intermediate ratios, squares, or roots lose precision. The bounded
 small-shape Gamma series and certified leading log-root branch supplement the

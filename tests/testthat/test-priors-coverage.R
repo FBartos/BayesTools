@@ -108,6 +108,79 @@ test_that("prior() rejects unknown distribution names", {
                "The specified distribution name")
 })
 
+test_that("constructors refuse invalid expression points, NA bounds, expression scales and undetermined or fractional K (F233)", {
+
+  # the complete message: a base R error (a comparison of an expression, an
+  # NA in a condition, a coercion) would not match it
+  refused <- function(call, message){
+    condition <- tryCatch({call; NULL}, error = identity)
+    expect_identical(if(is.null(condition)) "no error" else conditionMessage(condition), message)
+  }
+
+  # the truncation of an expression point cannot be compared with its location
+  # but is validated (reversed bounds were accepted and discarded)
+  reversed <- "The lower truncation point must be lower or equal to the upper truncation point."
+  refused(prior("point", list(expression(x)), list(lower = 1, upper = 0)), reversed)
+  refused(prior("point", list(expression(x)), list(5, 0)), reversed)
+  refused(prior("point", list(expression(x)), list(lower = "a")), "Truncation points must be numeric values.")
+  refused(prior("point", list(1), list(lower = 2, upper = 3)), "The point prior truncation must contain the point location.")
+  expect_s3_class(prior("point", list(expression(x))), "prior.point")
+  expect_s3_class(prior("point", list(expression(x)), list(lower = -1, upper = 1)), "prior.point")
+  expect_s3_class(prior("point", list(0), list(lower = -1)), "prior.point")
+
+  # NA bounds of point priors
+  na_message <- "Truncation points must be defined (not NA or NaN)."
+  refused(prior("point", list(0), list(lower = NA_real_)), na_message)
+  refused(prior("point", list(0), list(lower = -1, upper = NaN)), na_message)
+  refused(prior("point", list(expression(x)), list(upper = NA_real_)), na_message)
+  refused(prior("mpoint", list(0, 2), list(lower = NA_real_)), na_message)
+
+  # the scale parametrization of gamma and exponential priors becomes the rate
+  scale_message <- function(distribution){
+    paste0("The 'scale' of a ", distribution, " prior must be numeric: only the 'rate' parametrization accepts an expression.")
+  }
+  refused(prior("gamma", list(shape = 1, scale = expression(s))), scale_message("gamma"))
+  refused(prior("exp", list(scale = expression(s))), scale_message("exp"))
+  expect_identical(prior("gamma", list(shape = 1, rate = expression(r)))$parameters$rate, expression(r))
+  expect_identical(prior("exp", list(rate = expression(r)))$parameters$rate, expression(r))
+  expect_equal(prior("gamma", list(shape = 2, scale = 4))$parameters$rate, .25)
+  expect_equal(prior("exp", list(scale = 4))$parameters$rate, .25)
+
+  # uniform bounds are numeric
+  bounds_message <- "The bounds 'a' and 'b' of a uniform prior must be numeric: expressions are not supported."
+  refused(prior("uniform", list(expression(a), 1)), bounds_message)
+  refused(prior("uniform", list(0, expression(b))), bounds_message)
+  expect_s3_class(prior("uniform", list(0, 1)), "prior.simple")
+
+  # the dimension K of a vector prior is a whole number, exactly, and is
+  # undetermined only for the priors of prior_factor()
+  for(K in list(2 + 1e-10, 3 - 1e-10, 2.5)){
+    refused(prior("mnormal", list(0, 1, K)), "The 'K' must be an integer")
+    refused(prior("mt", list(0, 1, 3, K)), "The 'K' must be an integer")
+    refused(prior("mcauchy", list(0, 1, K)), "The 'K' must be an integer")
+    refused(prior("mpoint", list(0, K)), "The 'K' must be an integer")
+  }
+  refused(prior("mnormal", list(0, 1, NA)), "The 'K' must be defined.")
+  refused(prior("mnormal", list(0, 1, NA_real_)), "The 'K' must be defined.")
+  refused(prior("mt", list(0, 1, 3, NA)), "The 'K' must be defined.")
+  refused(prior("mcauchy", list(0, 1, NA)), "The 'K' must be defined.")
+  refused(prior("mpoint", list(0, NA)), "The 'K' must be defined.")
+  expect_identical(prior("mnormal", list(0, 1, 2))$parameters$K, 2)
+  expect_identical(prior("mnormal", list(0, 1, 2L))$parameters$K, 2L)
+  for(contrast in c("meandif", "orthonormal")){
+    for(unbound in list(
+      prior_factor("mnormal", list(mean = 0, sd = 1), contrast = contrast),
+      prior_factor("mnormal", list(0, 1), contrast = contrast),
+      prior_factor("mt", list(location = 0, scale = 1, df = 3), contrast = contrast),
+      prior_factor("mcauchy", list(location = 0, scale = 1), contrast = contrast),
+      prior_factor("point", list(location = 0), contrast = contrast)
+    )){
+      expect_true(is.na(unbound$parameters$K))
+      expect_s3_class(unbound, "prior.factor")
+    }
+  }
+})
+
 
 # ============================================================================ #
 # SECTION: prior_factor() contrast validation
