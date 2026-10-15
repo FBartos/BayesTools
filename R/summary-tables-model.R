@@ -956,6 +956,12 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
       parameter_names = parameter_names,
       row_labels      = colnames(model_samples)
     ))
+    if(random_effects_summary %in% c("standard", "full")){
+      footnotes <- c(footnotes, .bt_random_effect_summary_induced_term_footnotes(
+        fit        = fit,
+        row_labels = colnames(model_samples)
+      ))
+    }
   }
 
   # prepare output
@@ -1763,6 +1769,75 @@ runjags_inference_table  <- function(fit, title = NULL, footnotes = NULL, warnin
     ),
     labels
   )
+}
+
+# The original-scale SD of the intercept of a scaled block whose design induces
+# lower-order terms that no column of the block carries (the level intercepts
+# of `diag(1 + f:x | g)`): the block keeps the documented name-paired map, so
+# the row is the SD of the group effect at the predictor mean, not the SD of
+# the intercept of a level. The slope SDs are exact. Named by the rows.
+.bt_random_effect_summary_induced_term_footnotes <- function(fit, row_labels){
+
+  formula_scale <- attr(fit, "formula_scale", exact = TRUE)
+  designs <- attr(fit, "formula_design", exact = TRUE)
+  if(length(formula_scale) == 0L || !is.list(designs)){
+    return(NULL)
+  }
+
+  quantities <- NULL
+  footnotes <- character()
+  for(parameter in names(formula_scale)){
+    parameter_scale <- formula_scale[[parameter]]
+    design <- designs[[parameter]]
+    if(is.null(attr(parameter_scale, "random_effect_sd_leaves", exact = TRUE)) ||
+       is.null(design)){
+      next
+    }
+    for(random_term in .bt_formula_design_random_effects(design)){
+      if(!any(random_term$assign == 0L) ||
+         .bt_parameter_catalog_random_sd_is_direct(
+           random_term   = random_term,
+           parameter     = parameter,
+           formula_scale = formula_scale
+         ) ||
+         !.random_sd_block_drops_induced_terms(
+           formula_scale = parameter_scale,
+           prefix        = parameter,
+           random_term   = random_term,
+           source_data   = design$source_data
+         )){
+        next
+      }
+      if(is.null(quantities)){
+        quantities <- parameter_catalog(fit)$quantities
+      }
+      row <- which(
+        quantities$formula_parameter == parameter &
+          quantities$quantity == "sd" &
+          vapply(quantities$arguments, function(argument) {
+            length(argument) > 0L && identical(argument[[1L]], "intercept")
+          }, logical(1)) &
+          vapply(quantities$extraction_key, function(key) {
+            identical(key$random_block, random_term$block_name)
+          }, logical(1))
+      )
+      labels <- intersect(quantities$canonical_name[row], row_labels)
+      footnotes <- c(footnotes, stats::setNames(
+        paste0(
+          labels,
+          ": the SD of the group effect at the predictor mean; the intercept shifts ",
+          "that the scaled slope induces by level are not columns of the block."
+        ),
+        labels
+      ))
+    }
+  }
+
+  if(length(footnotes) == 0L){
+    return(NULL)
+  }
+
+  footnotes
 }
 
 # An original-scale random-effect correlation is defined when both SDs are

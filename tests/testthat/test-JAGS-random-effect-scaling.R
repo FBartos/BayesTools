@@ -2979,3 +2979,39 @@ test_that("a scaled random block with a linearly dependent design keeps the fit 
   expect_identical(sum(grepl("sd(", rownames(table), fixed = TRUE)), 4L)
   expect_length(attr(table, "warnings"), 0L)
 })
+
+test_that("the table of a block that drops induced terms says what its intercept SD is", {
+
+  skip_if_not_installed("runjags")
+
+  df <- random_block_scale_data()
+  block <- prior_random(id = random_block(
+    sd = prior("gamma", list(2, 2)), monitor = random_block_scale_monitor()
+  ))
+  note <- paste0(
+    "(mu) sd(intercept): the SD of the group effect at the predictor mean; ",
+    "the intercept shifts that the scaled slope induces by level are not ",
+    "columns of the block."
+  )
+
+  # `f:x` induces the level intercepts, which no column of the block carries
+  setup <- random_block_scale_fit(~ 1 + x + diag(1 + f:x | id), df, block)
+  table <- JAGS_estimates_table(setup$fit, remove_diagnostics = TRUE)
+  expect_identical(attr(table, "footnotes"), stats::setNames(note, "(mu) sd(intercept)"))
+  expect_identical(
+    attr(table[c("(mu) intercept", "(mu) sd(f[a]:x)"), ], "footnotes"), NULL
+  )
+  expect_identical(
+    attr(table["(mu) sd(intercept)", ], "footnotes"), stats::setNames(note, "(mu) sd(intercept)")
+  )
+  # the fitted-scale rows of the raw summary need no remark
+  raw <- JAGS_estimates_table(setup$fit, remove_diagnostics = TRUE, random_effects_summary = "raw")
+  expect_length(attr(raw, "footnotes"), 0L)
+
+  # blocks whose design is representable report the intercept of a level
+  for(formula in list(~ 1 + x + diag(1 + x | id), ~ 1 + x + diag(1 + f + f:x | id))){
+    setup <- random_block_scale_fit(formula, df, block)
+    table <- JAGS_estimates_table(setup$fit, remove_diagnostics = TRUE)
+    expect_length(attr(table, "footnotes"), 0L)
+  }
+})

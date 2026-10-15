@@ -349,6 +349,30 @@
   )
 }
 
+# Whether a scaled block keeps the documented name-paired map that drops the
+# lower-order terms of the scaled slope (see .random_sd_unscale_matrix()): its
+# design is refused as `original_scale_not_representable`, e.g. the level
+# intercepts that `x` induces in `diag(1 + f:x | g)`, which no column of the
+# block carries.
+.random_sd_block_drops_induced_terms <- function(formula_scale, prefix,
+                                                 random_term, source_data = NULL){
+
+  spec <- .bt_random_effect_unscale_design_spec(random_term, source_data)
+  if(is.null(spec)){
+    return(FALSE)
+  }
+
+  tryCatch(
+    {
+      .bt_formula_unscale_design_transform(spec, formula_scale, prefix)
+      FALSE
+    },
+    BayesTools_formula_transform_unavailable = function(condition){
+      identical(condition$reason, "original_scale_not_representable")
+    }
+  )
+}
+
 # The unscale-design specification of a fitted random-effect block, in the
 # format of .bt_formula_unscale_design_spec(): the block's formula (with its
 # own intercept control), factor levels and concrete contrasts, and its fitted

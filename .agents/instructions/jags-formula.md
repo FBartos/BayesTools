@@ -276,7 +276,13 @@ A block with no such matrix in its own columns (`(0 + x | g)`, `diag(1 + f:x | g
 `us(0 + f + x:f | g)`: a term would have to be induced) keeps the documented
 name-paired map that drops it, and only the
 `original_scale_not_representable` refusal selects it; any other failure
-propagates. The name-paired map takes each column as its own coordinate by
+propagates. For a scaled slope that interacts with a factor whose level
+intercepts are not columns of the block (`diag(1 + f:x | g)`), the induced
+level-specific intercept shifts are not block columns: the original-scale SD
+of the intercept is the SD of the group effect at the predictor mean, not the
+SD of the intercept of a level, while the slope SDs are exact.
+`JAGS_estimates_table()` states this in a footnote of the intercept SD row, and
+the `transform_scaled` roxygen of the summary functions documents it. The name-paired map takes each column as its own coordinate by
 position: the indicator columns of a logical predictor's interaction with a
 scaled slope share one SD leaf and put no weight on each other, and the leaf's
 SD is their common per-column value. Hand-built SD-leaf metadata without the
