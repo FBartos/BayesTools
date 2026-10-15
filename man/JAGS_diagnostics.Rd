@@ -77,7 +77,7 @@ be printed. Defaults to \code{TRUE}.}
 \value{
 \code{diagnostics} returns either \code{NULL} if \code{plot_type = "base"}
 or an object/list of objects (depending on the number of parameters to be plotted)
-of class 'ggplot2' if \code{plot_type = "ggplot2"}.
+of class 'ggplot' if \code{plot_type = "ggplot"}.
 }
 \description{
 Creates density plots, trace plots, and autocorrelation plots

@@ -6,8 +6,9 @@
 #' @param prior_list named list of prior distribution
 #' (names correspond to the parameter names)
 #'
-#' @details Syntax containing moment or inverse-moment priors uses the
-#' BayesTools JAGS module. \code{JAGS_fit()} loads this module automatically;
+#' @details Syntax containing moment, inverse-moment, or inverse-gamma priors
+#' (\code{dbt_invgamma}) uses the BayesTools JAGS module. \code{JAGS_fit()}
+#' loads this module automatically;
 #' users running syntax returned by \code{JAGS_add_priors()} directly in JAGS
 #' need to load the module first.
 #'
@@ -496,12 +497,13 @@ JAGS_add_priors           <- function(syntax, prior_list){
   if(inherits(prior_list, "prior.bias_mixture")){
 
     # dispatch between publication bias prior mixture and a standard prior mixture
-    is_PET            <- sapply(prior_list, is.prior.PET)
-    is_PEESE          <- sapply(prior_list, is.prior.PEESE)
-    is_weightfunction <- sapply(prior_list, is.prior.weightfunction)
-    is_phacking       <- sapply(prior_list, is_prior_phacking)
-    is_bias           <- sapply(prior_list, is_prior_bias)
-    is_none           <- sapply(prior_list, is.prior.none)
+    components        <- .JAGS_bias_mixture_components(prior_list)
+    is_PET            <- components$PET
+    is_PEESE          <- components$PEESE
+    is_weightfunction <- components$weightfunction
+    is_phacking       <- components$phacking
+    is_bias           <- components$bias
+    is_none           <- components$none
     branch_info       <- lapply(prior_list, .selection_branch_info)
     has_selection     <- vapply(branch_info, function(x) !is.null(x$selection), logical(1))
     has_phacking      <- vapply(branch_info, function(x) !is.null(x$phacking),  logical(1))
@@ -613,6 +615,20 @@ JAGS_add_priors           <- function(syntax, prior_list){
     text
   }, character(1), USE.NAMES = FALSE)
 }
+# The publication-bias role of every component of a bias mixture, shared by the
+# syntax, initial-value, and monitor emitters.
+.JAGS_bias_mixture_components <- function(prior_list){
+
+  list(
+    PET            = sapply(prior_list, is.prior.PET),
+    PEESE          = sapply(prior_list, is.prior.PEESE),
+    weightfunction = sapply(prior_list, is.prior.weightfunction),
+    phacking       = sapply(prior_list, is_prior_phacking),
+    bias           = sapply(prior_list, is_prior_bias),
+    none           = sapply(prior_list, is.prior.none)
+  )
+}
+
 .JAGS_parameter_to_precision <- function(parameter, family = "declared"){
 
   if(is.character(parameter)){

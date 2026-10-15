@@ -81,6 +81,35 @@ test_that("coordinate materialization adds fixed values and removes internals", 
   )
 })
 
+test_that("an internal coordinate request names the coordinate (F221)", {
+
+  chains <- coda::mcmc.list(coda::mcmc(
+    matrix(c(1, 0, 2, 0, 3, 0), ncol = 2, byrow = TRUE,
+           dimnames = list(NULL, c("theta", .bt_backend_anchor_name)))
+  ))
+  fit <- chains
+  class(fit) <- c("BayesTools_fit", class(fit))
+  attr(fit, "prior_list") <- list(theta = prior("normal", list(0, 1)))
+  attr(fit, "backend_anchor") <- .bt_backend_anchor_name
+  attr(fit, "parameter_map") <- .bt_build_parameter_map(
+    columns = colnames(chains[[1L]]),
+    prior_list = attr(fit, "prior_list"),
+    backend_anchor = .bt_backend_anchor_name
+  )
+  attr(fit, "draw_geometry") <- .bt_draw_geometry_from_chains(chains)
+  fit <- .bt_attach_fit_contract(fit)
+
+  expect_error(
+    JAGS_materialize_draws(fit, .bt_backend_anchor_name),
+    paste0("Requested parameter coordinate '", .bt_backend_anchor_name, "' is unavailable or internal."),
+    fixed = TRUE
+  )
+  expect_identical(
+    colnames(JAGS_materialize_draws(fit, .bt_backend_anchor_name, include_internal = TRUE)[[1L]]),
+    .bt_backend_anchor_name
+  )
+})
+
 test_that("replacement draws refresh fitted draw geometry", {
 
   original <- coda::mcmc.list(coda::mcmc(

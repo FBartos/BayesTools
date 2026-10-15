@@ -24,7 +24,9 @@ advances that stream by this one draw.}
 \value{
 \code{JAGS_get_inits} returns a list with one element per chain,
 containing the chain's JAGS initial values and its \code{.RNG.name} and
-\code{.RNG.seed}. With an empty \code{prior_list}, each element contains
+\code{.RNG.seed}. The generator is \code{"base::Super-Duper"} for up to
+four chains and \code{"lecuyer::RngStream"} for more chains, so the streams
+of a fit change when it is run with more than four chains. With an empty \code{prior_list}, each element contains
 only \code{.RNG.name} and \code{.RNG.seed}, so that fits of models whose
 priors are specified only in the model syntax remain reproducible.
 }

@@ -19,8 +19,9 @@ JAGS_add_priors(syntax, prior_list)
 Adds priors to a 'JAGS' syntax.
 }
 \details{
-Syntax containing moment or inverse-moment priors uses the
-BayesTools JAGS module. \code{JAGS_fit()} loads this module automatically;
+Syntax containing moment, inverse-moment, or inverse-gamma priors
+(\code{dbt_invgamma}) uses the BayesTools JAGS module. \code{JAGS_fit()}
+loads this module automatically;
 users running syntax returned by \code{JAGS_add_priors()} directly in JAGS
 need to load the module first.
 }

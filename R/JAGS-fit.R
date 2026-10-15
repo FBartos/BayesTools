@@ -99,7 +99,10 @@
 #'   random-number seed is drawn from the same seed with
 #'   \code{sample.int(.Machine$integer.max, chains)} (see
 #'   \code{\link{JAGS_get_inits}}). A chain's JAGS seed therefore does not
-#'   depend on the number of chains, and the chains of adjacent seeds (e.g.,
+#'   depend on the number of chains, but the JAGS generator does: with more
+#'   than four chains it changes from \code{"base::Super-Duper"} to
+#'   \code{"lecuyer::RngStream"}, so the draws of a chain differ between fits
+#'   with up to four and with more chains. The chains of adjacent seeds (e.g.,
 #'   \code{seed} and \code{seed + 1}) do not share random-number streams.
 #'   Automatic restarts after a failed initialization (see \code{restarts} in
 #'   \code{autofit_control}) draw their seeds from a separate stream of the

@@ -222,12 +222,13 @@ JAGS_to_monitor             <- function(prior_list){
   if(inherits(prior_list, "prior.bias_mixture")){
 
     # dispatch between publication bias prior mixture and a standard prior mixture
-    is_PET            <- sapply(prior_list, is.prior.PET)
-    is_PEESE          <- sapply(prior_list, is.prior.PEESE)
-    is_weightfunction <- sapply(prior_list, is.prior.weightfunction)
-    is_phacking       <- sapply(prior_list, is_prior_phacking)
-    is_bias           <- sapply(prior_list, is_prior_bias)
-    is_none           <- sapply(prior_list, is.prior.none)
+    components        <- .JAGS_bias_mixture_components(prior_list)
+    is_PET            <- components$PET
+    is_PEESE          <- components$PEESE
+    is_weightfunction <- components$weightfunction
+    is_phacking       <- components$phacking
+    is_bias           <- components$bias
+    is_none           <- components$none
     branch_info       <- lapply(prior_list, .selection_branch_info)
     has_selection     <- vapply(branch_info, function(x) !is.null(x$selection), logical(1))
     has_phacking      <- vapply(branch_info, function(x) !is.null(x$phacking),  logical(1))

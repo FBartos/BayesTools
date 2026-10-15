@@ -131,7 +131,11 @@ JAGS_materialize_draws <- function(fit, parameters = NULL,
     }
     if(any(!available[matches])){
       stop(
-        "Requested parameter is unavailable or internal. Set 'include_internal = TRUE' only for explicit backend diagnostics.",
+        "Requested parameter coordinate",
+        if(sum(!available[matches]) > 1L) "s " else " ",
+        paste0("'", parameters[!available[matches]], "'", collapse = ", "),
+        if(sum(!available[matches]) > 1L) " are" else " is",
+        " unavailable or internal. Set 'include_internal = TRUE' only for explicit backend diagnostics.",
         call. = FALSE
       )
     }
@@ -268,9 +272,12 @@ as.mcmc.BayesTools_draws_view <- function(x, ...){
 print.BayesTools_draws_view <- function(x, ...){
 
   geometry <- JAGS_draw_geometry(x)
-  cat("Derived-draw view:", nrow(geometry$chains), "chains,",
-      geometry$total_draws, "draws.\n",
-      "The complete original sampling fit is available as 'fit$original_fit'.\n")
+  cat(
+    "Derived-draw view: ", nrow(geometry$chains), " chains, ",
+    geometry$total_draws, " draws.\n",
+    "The complete original sampling fit is available as 'fit$original_fit'.\n",
+    sep = ""
+  )
   invisible(x)
 }
 

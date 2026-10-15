@@ -366,8 +366,6 @@ test_that("spike-and-slab and mixture nodes reproduce the JAGS monitors and give
 
   # Factor spike-and-slab and mixture formula priors, per coefficient; the
   # point component of the mixture is a constant.
-  # Factor spike-and-slab and mixture formula priors, per coefficient; the
-  # point component of the mixture is a constant.
   factor_fit <- .dnode_cached_fit("fit_dnode_mixture_factor")
   factor_nodes <- JAGS_deterministic_nodes(factor_fit)
   expect_identical(

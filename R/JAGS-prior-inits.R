@@ -17,7 +17,9 @@
 #'
 #' @return \code{JAGS_get_inits} returns a list with one element per chain,
 #' containing the chain's JAGS initial values and its \code{.RNG.name} and
-#' \code{.RNG.seed}. With an empty \code{prior_list}, each element contains
+#' \code{.RNG.seed}. The generator is \code{"base::Super-Duper"} for up to
+#' four chains and \code{"lecuyer::RngStream"} for more chains, so the streams
+#' of a fit change when it is run with more than four chains. With an empty \code{prior_list}, each element contains
 #' only \code{.RNG.name} and \code{.RNG.seed}, so that fits of models whose
 #' priors are specified only in the model syntax remain reproducible.
 #'
@@ -515,20 +517,13 @@ JAGS_get_inits            <- function(prior_list, chains, seed){
 
   .selection_JAGS_init_weightfunction_component(prior, component_id)
 }
-.JAGS_init.phacking       <- function(prior, component_id = NULL){
+.JAGS_init.phacking       <- function(prior){
 
   .check_prior(prior)
   if(!is_prior_phacking(prior))
     stop("improper prior provided")
 
-  if(is.null(component_id)){
-    return(selection_backend_spec(prior)$init)
-  }
-
-  alpha_name <- paste0("alpha_component_", component_id)
-  init <- .JAGS_init.simple(prior$alpha, alpha_name)
-
-  return(init)
+  return(selection_backend_spec(prior)$init)
 }
 .JAGS_init.bias           <- function(prior){
 
@@ -565,12 +560,13 @@ JAGS_get_inits            <- function(prior_list, chains, seed){
   if(inherits(prior_list, "prior.bias_mixture")){
 
     # dispatch between publication bias prior mixture and a standard prior mixture
-    is_PET            <- sapply(prior_list, is.prior.PET)
-    is_PEESE          <- sapply(prior_list, is.prior.PEESE)
-    is_weightfunction <- sapply(prior_list, is.prior.weightfunction)
-    is_phacking       <- sapply(prior_list, is_prior_phacking)
-    is_bias           <- sapply(prior_list, is_prior_bias)
-    is_none           <- sapply(prior_list, is.prior.none)
+    components        <- .JAGS_bias_mixture_components(prior_list)
+    is_PET            <- components$PET
+    is_PEESE          <- components$PEESE
+    is_weightfunction <- components$weightfunction
+    is_phacking       <- components$phacking
+    is_bias           <- components$bias
+    is_none           <- components$none
     branch_info       <- lapply(prior_list, .selection_branch_info)
     has_selection     <- vapply(branch_info, function(x) !is.null(x$selection), logical(1))
     has_phacking      <- vapply(branch_info, function(x) !is.null(x$phacking),  logical(1))

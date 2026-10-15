@@ -106,7 +106,9 @@ test_that("sampled diagnostic plots reject degenerate inputs clearly", {
       n_points = 32,
       xlim = NULL
     ),
-    "Density diagnostics.*not assessable.*constant"
+    "Density diagnostics for 'theta' in chain 1 are unavailable because the posterior samples are constant. Use type = \"trace\" to inspect the chain.",
+    fixed = TRUE,
+    class = "BayesTools_plot_condition"
   )
   expect_error(
     .diagnostics_plot_data_autocorrelation(
@@ -114,7 +116,9 @@ test_that("sampled diagnostic plots reject degenerate inputs clearly", {
       n_points = 10,
       lags = 1
     ),
-    "Autocorrelation diagnostics.*not assessable.*constant"
+    "Autocorrelation diagnostics for 'theta' in chain 1 are unavailable because the posterior samples are constant. Use type = \"trace\" to inspect the chain.",
+    fixed = TRUE,
+    class = "BayesTools_plot_condition"
   )
 
   too_short <- constant[1:2, , drop = FALSE]
@@ -701,6 +705,32 @@ test_that("diagnostics of a single PET, PEESE, weightfunction or p-hacking bias 
   expect_bounds(fit, "pi_null", "pi_null", phacking, c(0, upper), upper * c(-.25, 1.25))
 })
 
+test_that("a bias mixture is drawn as the components of its branches (F221)", {
+
+  bias <- prior_mixture(list(
+    prior_none(),
+    prior_weightfunction("one-sided", c(.025), wf_cumulative(c(1, 1))),
+    prior_PET("normal", list(0, 1), list(0, Inf))
+  ), is_null = c(TRUE, FALSE, FALSE))
+  grid <- seq(.01, .99, length.out = 120)
+  draws <- cbind(mu = seq(-1, 1, length.out = 120), bias_indicator = rep(1:3, 40L),
+                 "omega[1]" = 1, "omega[2]" = grid, PET = grid)
+  fit <- structure(list(
+    mcmc = coda::mcmc.list(coda::mcmc(draws[1:60, ]), coda::mcmc(draws[61:120, ])),
+    summary.pars = list(mutate = NULL)
+  ), class = c("BayesTools_fit", "runjags"))
+  attr(fit, "prior_list") <- list(mu = prior("normal", list(0, 1)), bias = bias)
+  fit <- attach_test_parameter_map(fit)
+
+  for(type in c("density", "trace", "autocorrelation")){
+    plots <- JAGS_diagnostics(fit, "bias", type, plot_type = "ggplot", n_points = 32)
+    expect_length(plots, 2L)
+    for(plot in plots){
+      expect_s3_class(plot, "ggplot")
+    }
+  }
+})
+
 test_that("PET and PEESE diagnostics of a bias prior without that branch are refused clearly (F216)", {
 
   selection <- prior_weightfunction("one-sided", c(.025), wf_cumulative(c(1, 1)))
@@ -1017,11 +1047,11 @@ test_that("diagnostics refuse constant draws that no prior declares constant", {
   expect_identical(attr(plot_data, "structural"), c(FALSE, FALSE))
   expect_error(
     .diagnostics_plot_data_density(plot_data, n_points = 64, xlim = NULL),
-    "Density diagnostics for 'omega\\[0.025,1\\]'.*not assessable.*constant"
+    "Density diagnostics for 'omega\\[0.025,1\\]'.*unavailable.*constant"
   )
   expect_error(
     .diagnostics_plot_data_autocorrelation(plot_data, n_points = 64, lags = 5),
-    "Autocorrelation diagnostics for 'omega\\[0.025,1\\]'.*not assessable.*constant"
+    "Autocorrelation diagnostics for 'omega\\[0.025,1\\]'.*unavailable.*constant"
   )
 
   # a bin the prior fixes is diagnosed when its draws vary (a corrupted sample)

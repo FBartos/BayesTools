@@ -25,6 +25,16 @@ skip_if_not_test_profile("unit")
   }))
 }
 
+test_that("a derived-draw view prints without a leading space on its second line (F221)", {
+
+  view <- JAGS_with_draws(.draws_view_fit_for_test(), .draws_view_replacement())
+  output <- capture.output(print(view))
+  expect_identical(output, c(
+    "Derived-draw view: 2 chains, 60 draws.",
+    "The complete original sampling fit is available as 'fit$original_fit'."
+  ))
+})
+
 test_that("D9 derived views preserve original state and local metadata without sampler slots", {
 
   fit <- .draws_view_fit_for_test()

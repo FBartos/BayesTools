@@ -39,7 +39,7 @@
 #'
 #' @return \code{diagnostics} returns either \code{NULL} if \code{plot_type = "base"}
 #' or an object/list of objects (depending on the number of parameters to be plotted)
-#' of class 'ggplot2' if \code{plot_type = "ggplot2"}.
+#' of class 'ggplot' if \code{plot_type = "ggplot"}.
 #'
 #' @name JAGS_diagnostics
 #' @export JAGS_diagnostics
@@ -57,9 +57,9 @@ JAGS_diagnostics                 <- function(fit, parameter, type, plot_type = "
 
   # check fits
   if(!.bt_is_jags_analysis_fit(fit))
-    stop("'fit' must be a runjags fit")
+    stop("'fit' must be a runjags fit or a derived-draw view.", call. = FALSE)
   if(!inherits(fit, "BayesTools_fit"))
-    stop("'fit' must be a BayesTools fit")
+    stop("'fit' must be a BayesTools fit.", call. = FALSE)
 
   check_char(type, "type", allow_values = c("density", "trace", "autocorrelation"))
   check_char(plot_type, "plot_type", allow_values = c("base", "ggplot"))
@@ -283,7 +283,7 @@ JAGS_diagnostics                 <- function(fit, parameter, type, plot_type = "
     dispatched_to_columns <- TRUE
   }else if(is_prior_phacking(prior_list[[parameter]])){
     model_samples <- model_samples[,intersect(.phacking_report_parameter(prior_list[[parameter]]), colnames(model_samples)),drop = FALSE]
-  }else if(is_prior_bias(prior_list[[parameter]])){
+  }else if(is_prior_bias(prior_list[[parameter]]) || inherits(prior_list[[parameter]], "prior.bias_mixture")){
     bias_parameters <- .selection_bias_parameter_names(prior_list[[parameter]], include_kind = FALSE)
     bias_parameters <- bias_parameters[bias_parameters != "omega"]
     if("omega" %in% .selection_bias_parameter_names(prior_list[[parameter]], include_kind = FALSE)){
@@ -748,16 +748,26 @@ JAGS_diagnostics                 <- function(fit, parameter, type, plot_type = "
   out
 }
 
+# Diagnostics that cannot be drawn from the posterior samples: class
+# BayesTools_plot_condition (the family of plot conditions).
+.bt_diagnostics_unavailable <- function(...){
+
+  stop(structure(
+    list(message = paste0(...), call = NULL),
+    class = c("BayesTools_plot_condition", "error", "condition")
+  ))
+}
+
 .bt_diagnostics_validate_plot_data <- function(
     plot_data,
     chain,
     diagnostic){
 
   if(ncol(plot_data) == 0L || nrow(plot_data) == 0L){
-    stop(
+    .bt_diagnostics_unavailable(
       diagnostic,
-      " diagnostics require at least one parameter with posterior samples.",
-      call. = FALSE
+      " diagnostics require at least one parameter with posterior samples. ",
+      "Check that 'parameter' names a monitored parameter of the fit."
     )
   }
   if(length(chain) != nrow(plot_data)){
@@ -771,19 +781,19 @@ JAGS_diagnostics                 <- function(fit, parameter, type, plot_type = "
       values <- plot_data[chain == chain_id, parameter]
       finite_values <- values[is.finite(values)]
       if(length(finite_values) < 2L){
-        stop(
+        .bt_diagnostics_unavailable(
           diagnostic,
           " diagnostics for '", parameter, "' in chain ", chain_id,
-          " require at least two finite posterior samples.",
-          call. = FALSE
+          " require at least two finite posterior samples. ",
+          "Use type = \"trace\" to inspect the chain."
         )
       }
       if(length(unique(finite_values)) < 2L){
-        stop(
+        .bt_diagnostics_unavailable(
           diagnostic,
           " diagnostics for '", parameter, "' in chain ", chain_id,
-          " are not assessable because the posterior samples are constant.",
-          call. = FALSE
+          " are unavailable because the posterior samples are constant. ",
+          "Use type = \"trace\" to inspect the chain."
         )
       }
     }
