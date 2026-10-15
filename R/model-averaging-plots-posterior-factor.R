@@ -55,61 +55,29 @@
   # deal with the densities
   if(!is.null(posterior_density) || continuous_component_mass > 0){
 
-    if(!is.null(posterior_density)){
-
-      # the stored density is the continuous part; the point masses are the
-      # declared posterior atoms
-      x_den <- posterior_density[["x"]]
-      y_den <- posterior_density[["y"]]
-
-      if(!is.null(transformation)){
-        transformed     <- .density.prior_transformation_grid(x_den, y_den, transformation, transformation_arguments)
-        x_den           <- transformed$x[!transformed$drop]
-        y_den           <- transformed$y[!transformed$drop]
-        samples_density <- .density.prior_transformation_x(samples_density, transformation, transformation_arguments)
-      }
-
-    }else if(length(samples_density) < 2L || diff(range(samples_density)) == 0){
+    curve <- .plot_data_posterior_curve(
+      posterior_density        = posterior_density,
+      draws                    = samples_density,
+      mass                     = continuous_component_mass,
+      n_points                 = n_points,
+      bounds                   = function(){
+        # Use component support for reflection and a display range for evaluation.
+        if(is.null(density_bounds)) c(-Inf, Inf) else density_bounds
+      },
+      transformation           = transformation,
+      transformation_arguments = transformation_arguments
+    )
+    if(is.null(curve)){
       # no kernel density: the declared point masses are drawn, the curve is omitted
       if(is.null(y_points)){
         stop("Weightfunction posterior density is unavailable for declared continuous samples with fewer than two distinct values.", call. = FALSE)
       }
       .plot_data_warn_posterior_curve_unavailable(parameter_label, continuous_component_mass, samples_density)
     }else{
-
-      # Use component support for reflection and a display range for evaluation.
-      if(is.null(density_bounds)) density_bounds <- c(-Inf, Inf)
-      density_range <- .plot_data_samples_density_range(density_bounds, transformation)
-
-      # get the density estimate
-      density_continuous <- .density_kde_boundary(
-        x      = samples_density,
-        n      = n_points,
-        from   = density_range$from,
-        to     = density_range$to,
-        bounds = density_bounds
-      )
-      x_den <- density_continuous$x
-      y_den <- density_continuous$y * continuous_component_mass
-      boundary_reflection <- isTRUE(attr(density_continuous, "boundary_reflection"))
-
-      # apply transformations on the checked grid
-      if(!is.null(transformation)){
-        transformed     <- .density.prior_transformation_grid(x_den, y_den, transformation, transformation_arguments)
-        x_den           <- transformed$x[!transformed$drop]
-        y_den           <- transformed$y[!transformed$drop]
-        samples_density <- .density.prior_transformation_x(samples_density, transformation, transformation_arguments)
-      }
-
-      if(boundary_reflection){
-        plot_bounds <- density_bounds
-        if(!is.null(transformation)){
-          plot_bounds <- .density.prior_transformation_x(plot_bounds, transformation, transformation_arguments)
-        }
-        density_plot <- .plot_data_density_add_boundary_zeros(x_den, y_den, plot_bounds)
-        x_den <- density_plot$x
-        y_den <- density_plot$y
-      }
+      x_den               <- curve$x
+      y_den               <- curve$y
+      samples_density     <- curve$samples
+      boundary_reflection <- curve$boundary_reflection
     }
   }
 
@@ -270,68 +238,39 @@
       )
       .plot_data_require_precomputed_density(posterior_density, density_method, level_mass)
 
-      if(!is.null(posterior_density)){
-
-        x_den <- posterior_density[["x"]]
-        y_den <- posterior_density[["y"]]
-        if(!is.null(transformation)){
-          transformed <- .density.prior_transformation_grid(x_den, y_den, transformation, transformation_arguments)
-          x_den <- transformed$x[!transformed$drop]
-          y_den <- transformed$y[!transformed$drop]
-          level_samples <- .density.prior_transformation_x(level_samples, transformation, transformation_arguments)
-        }
-
-      }else if(length(level_samples) < 2L || diff(range(level_samples)) == 0){
+      curve <- .plot_data_posterior_curve(
+        posterior_density        = posterior_density,
+        draws                    = level_samples,
+        mass                     = level_mass,
+        n_points                 = n_points,
+        bounds                   = function(){
+          # Factor contrasts may be transformed before plotting; in that case
+          # the marginal differences no longer have the original bounded support.
+          density_bounds <- .posterior_support_bounds(
+            samples,
+            name = colnames(samples_density)[i],
+            interval_only = TRUE
+          )
+          if(is.null(density_bounds)){
+            density_bounds <- .plot_data_samples_prior_bounds(prior_list, factor_contrasts = TRUE)
+          }
+          density_bounds
+        },
+        transformation           = transformation,
+        transformation_arguments = transformation_arguments
+      )
+      if(is.null(curve)){
         # no kernel density: the declared point masses of the level are drawn,
         # the curve of the level is omitted
         if(length(column_atoms[[i]]$mass) == 0L) .plot_data_stop_posterior_curve_unavailable()
         .plot_data_warn_posterior_curve_unavailable(
           colnames(samples_density)[i], level_mass, level_samples)
         next
-      }else{
-
-        # Factor contrasts may be transformed before plotting; in that case
-        # the marginal differences no longer have the original bounded support.
-        density_bounds <- .posterior_support_bounds(
-          samples,
-          name = colnames(samples_density)[i],
-          interval_only = TRUE
-        )
-        if(is.null(density_bounds)){
-          density_bounds <- .plot_data_samples_prior_bounds(prior_list, factor_contrasts = TRUE)
-        }
-        density_range  <- .plot_data_samples_density_range(density_bounds, transformation)
-
-        # get the density estimate
-        density_continuous <- .density_kde_boundary(
-          x      = level_samples,
-          n      = n_points,
-          from   = density_range[["from"]],
-          to     = density_range[["to"]],
-          bounds = density_bounds
-        )
-        x_den <- density_continuous$x
-        y_den <- density_continuous$y * level_mass
-        boundary_reflection <- isTRUE(attr(density_continuous, "boundary_reflection"))
-
-        # apply transformations on the checked grid
-        if(!is.null(transformation)){
-          transformed   <- .density.prior_transformation_grid(x_den, y_den, transformation, transformation_arguments)
-          x_den         <- transformed$x[!transformed$drop]
-          y_den         <- transformed$y[!transformed$drop]
-          level_samples <- .density.prior_transformation_x(level_samples, transformation, transformation_arguments)
-        }
-
-        if(boundary_reflection){
-          plot_bounds <- density_bounds
-          if(!is.null(transformation)){
-            plot_bounds <- .density.prior_transformation_x(plot_bounds, transformation, transformation_arguments)
-          }
-          density_plot <- .plot_data_density_add_boundary_zeros(x_den, y_den, plot_bounds)
-          x_den <- density_plot$x
-          y_den <- density_plot$y
-        }
       }
+      x_den               <- curve$x
+      y_den               <- curve$y
+      level_samples       <- curve$samples
+      boundary_reflection <- curve$boundary_reflection
 
       out_den    <- list(
         call    = call("density", "mixed samples"),
