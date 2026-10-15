@@ -655,9 +655,15 @@
     location <- location + sum(group$weights) * group$prior$parameters$location
     scale <- scale + sum(abs(group$weights)) * group$prior$parameters$scale
   }
-  prior_list[[".cauchy_sum"]] <- prior("cauchy", list(location = location, scale = scale))
+  # a name that no source of the combination uses (a source named like the
+  # merged term would be overwritten)
+  merged <- ".cauchy_sum"
+  while(merged %in% c(names(prior_list), names(weights))){
+    merged <- paste0(merged, "_")
+  }
+  prior_list[[merged]] <- prior("cauchy", list(location = location, scale = scale))
   weights <- weights[setdiff(names(weights), columns)]
-  weights[[".cauchy_sum"]] <- 1
+  weights[[merged]] <- 1
   source_transforms <- source_transforms[names(weights)]
   names(source_transforms) <- names(weights)
   list(prior_list = prior_list, weights = weights, source_transforms = source_transforms)

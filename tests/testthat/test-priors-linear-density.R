@@ -3131,6 +3131,32 @@ test_that("allocation products of a point scale and a Beta share match the analy
                c(.5, 1.5), tolerance = 1e-14)
 })
 
+test_that("the Cauchy merge does not overwrite a source named like the merged term", {
+
+  # C(0, 1) + C(0, 2) + N(5, 1) with the normal source named ".cauchy_sum": the
+  # merged Cauchy term C(0, 3) takes another name, so the normal term is kept.
+  priors <- list(a = prior("cauchy", list(0, 1)), b = prior("cauchy", list(0, 2)),
+                 .cauchy_sum = prior("normal", list(5, 1)))
+  weights <- c(a = 1, b = 1, .cauchy_sum = 1)
+  merged <- .prior_density_route_cauchy_terms(priors, weights, stats::setNames(rep(NA_character_, 3L), names(weights)))
+  expect_identical(names(merged$weights), c(".cauchy_sum", ".cauchy_sum_"))
+  expect_identical(merged$prior_list$.cauchy_sum, priors$.cauchy_sum)
+  expect_equal(merged$prior_list$.cauchy_sum_$parameters$scale, 3)
+
+  density <- .prior_linear_combination_density(priors, weights, n_grid = 256)
+  for(value in c(0, 5, 8)){
+    reference <- stats::integrate(function(y) stats::dcauchy(value - y, 0, 3) * stats::dnorm(y, 5, 1),
+                                  -Inf, Inf, rel.tol = 1e-12)$value
+    ordinate <- prior_density_ordinate(density, value)
+    expect_identical(ordinate$behavior, "regular")
+    expect_equal(exp(ordinate$log_density), reference, tolerance = 1e-6)
+  }
+  region <- list(intervals = .prior_region_intervals(-Inf, 0), indicator = function(x) x <= 0)
+  expect_equal(as.numeric(.prior_linear_density_region_probability(density, region)),
+               stats::integrate(function(y) stats::pcauchy(-y, 0, 3) * stats::dnorm(y, 5, 1),
+                                -Inf, Inf, rel.tol = 1e-10)$value, tolerance = 1e-6)
+})
+
 test_that("allocation multipliers are validated", {
 
   leaf <- prior("point", list(1))
