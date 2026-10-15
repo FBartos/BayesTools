@@ -27,8 +27,11 @@
 #' only. No iteration compression, replacement estimate or confidence band is
 #' introduced.
 #'
-#' Weight bins that the prior fixes (for example by [wf_fixed()]) are constants
-#' of the prior. The density and autocorrelation diagnostics omit them, and
+#' Coordinates whose convergence role is \code{"structural"} (see
+#' [JAGS_check_convergence()]) are constants of the prior: the weight bins that
+#' the prior fixes (for example by [wf_fixed()]) or the coefficients of an
+#' ordered prior with a point total and fixed allocation. The density and
+#' autocorrelation diagnostics omit them when their draws are constant, and
 #' when nothing else remains the call returns \code{NULL} with a message, as for
 #' a spike prior; the trace is produced as for any other parameter.
 #' @param ... additional arguments
@@ -365,9 +368,10 @@ JAGS_diagnostics                 <- function(fit, parameter, type, plot_type = "
   # extract parameter names from column names after transformations
   parameter_names <- colnames(model_samples)
 
-  # the columns the prior declares constant (the bins of fixed weights) and the
-  # draws agree: the density and autocorrelation diagnostics skip them
-  is_structural <- .diagnostics_structural_columns(model_samples, prior_support)
+  # the columns that the convergence roles of the fit declare structural (the
+  # bins of fixed weights, the coefficients fixed by an ordered prior, ...) and
+  # the draws agree: the density and autocorrelation diagnostics skip them
+  is_structural <- .diagnostics_structural_columns(model_samples, .diagnostics_fit_coordinates(fit))
 
   # rename weightfunctions factor levels (special case that overrides)
   if(any(sapply(prior_list, is.prior.weightfunction)) && !is.prior.mixture(prior_list)){
@@ -756,18 +760,32 @@ JAGS_diagnostics                 <- function(fit, parameter, type, plot_type = "
   return(out)
 }
 
-# The columns of the diagnostic samples that the prior declares constant (the
-# bins of fixed weights, see .bt_convergence_role_constant_bins()) and that are
-# constant in the draws. A declared constant that varies is a sample to
-# diagnose, not a structural constant.
-.diagnostics_structural_columns <- function(model_samples, prior){
+# The parameter coordinates of a fit, which carry the convergence role of every
+# coordinate; NULL for a fit without a parameter map (only an internal caller
+# can supply one, JAGS_diagnostics() requires the fit contract).
+.diagnostics_fit_coordinates <- function(fit){
+
+  if(!inherits(fit, "BayesTools_fit") || is.null(attr(fit, "parameter_map", exact = TRUE))){
+    return(NULL)
+  }
+
+  parameter_coordinates(fit)
+}
+
+# The columns of the diagnostic samples that the convergence roles of the fit
+# declare structural (constants of the prior, see
+# .bt_parameter_coordinates_convergence_roles()) and that are constant in the
+# draws. A declared constant that varies is a sample to diagnose, not a
+# structural constant.
+.diagnostics_structural_columns <- function(model_samples, coordinates){
 
   structural <- rep(FALSE, ncol(model_samples))
-  if(!.diagnostics_is_selection_prior(prior)){
+  if(is.null(coordinates)){
     return(structural)
   }
 
-  declared <- which(colnames(model_samples) %in% .bt_convergence_role_constant_bins(prior))
+  roles <- coordinates$convergence_role[match(colnames(model_samples), coordinates$coordinate_name)]
+  declared <- which(roles %in% "structural")
   structural[declared] <- vapply(declared, function(i){
     all(is.finite(model_samples[, i])) && length(unique(model_samples[, i])) == 1L
   }, logical(1))

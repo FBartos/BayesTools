@@ -1047,6 +1047,65 @@ test_that("density and autocorrelation diagnostics skip the weight bins a prior 
   expect_s3_class(JAGS_diagnostics(fit, "alpha", "density", plot_type = "ggplot"), "ggplot")
 })
 
+test_that("the structural columns of the diagnostics are the coordinates with the structural convergence role (F322)", {
+
+  # an ordered prior whose total and allocation shares are fixed: both
+  # coefficients are constants of the prior, as in a spike prior
+  ordered_fit <- function(f_prior, draws){
+    info <- JAGS_formula(
+      ~ 1 + f, "mu", data.frame(f = ordered(c("low", "mid", "high"), levels = c("low", "mid", "high"))),
+      list(intercept = prior("point", list(0)), f = f_prior)
+    )
+    fit <- structure(list(
+      mcmc = coda::mcmc.list(coda::mcmc(draws), coda::mcmc(draws[rev(seq_len(nrow(draws))), , drop = FALSE])),
+      summary.pars = list(mutate = NULL)
+    ), class = c("BayesTools_fit", "runjags"))
+    attr(fit, "prior_list")     <- info$prior_list
+    attr(fit, "formula_design") <- list(mu = info$formula_design)
+    attach_test_parameter_map(fit)
+  }
+  fixed_prior <- prior_ordered(prior("point", list(.5)), allocation = c(.3, .7))
+  fixed_fit   <- ordered_fit(fixed_prior, cbind(
+    "mu_f[1]" = rep(.15, 40), "mu_f[2]" = rep(.35, 40), mu_f_ordered_total = rep(.5, 40)
+  ))
+  coordinates <- parameter_coordinates(fixed_fit)
+  expect_identical(coordinates$convergence_role[match(c("mu_f[1]", "mu_f[2]"), coordinates$coordinate_name)], rep("structural", 2L))
+
+  plot_data <- .diagnostics_plot_data(fixed_fit, "mu_f", attr(fixed_fit, "prior_list"), NULL, FALSE)
+  expect_identical(attr(plot_data, "structural"), c(TRUE, TRUE))
+  for(type in c("density", "autocorrelation")){
+    expect_message(
+      result <- JAGS_diagnostics(fixed_fit, "mu_f", type, plot_type = "ggplot"),
+      "No diagnostic plots are produced for a spike prior distribution",
+      fixed = TRUE
+    )
+    expect_null(result)
+  }
+  expect_length(JAGS_diagnostics(fixed_fit, "mu_f", "trace", plot_type = "ggplot"), 2L)
+
+  # a coordinate the prior fixes but whose draws vary is a sample to diagnose
+  varying <- ordered_fit(fixed_prior, cbind(
+    "mu_f[1]" = seq(.1, .2, length.out = 40), "mu_f[2]" = rep(.35, 40), mu_f_ordered_total = rep(.5, 40)
+  ))
+  plot_data <- .diagnostics_plot_data(varying, "mu_f", attr(varying, "prior_list"), NULL, FALSE)
+  expect_identical(attr(plot_data, "structural"), c(FALSE, TRUE))
+  expect_identical(
+    names(.diagnostics_plot_data_density(.diagnostics_drop_structural_columns(plot_data), n_points = 32, xlim = NULL)),
+    "mu_f[mid]"
+  )
+
+  # sampled coefficients are never structural: constant draws are refused
+  sampled <- ordered_fit(prior_ordered(prior("normal", list(0, 1))), cbind(
+    "mu_f[1]" = rep(.15, 40), "mu_f[2]" = rep(.35, 40), mu_f_ordered_total = seq(.1, .9, length.out = 40)
+  ))
+  plot_data <- .diagnostics_plot_data(sampled, "mu_f", attr(sampled, "prior_list"), NULL, FALSE)
+  expect_identical(attr(plot_data, "structural"), c(FALSE, FALSE))
+  expect_error(
+    JAGS_diagnostics(sampled, "mu_f", "density", plot_type = "ggplot"),
+    "unavailable because the posterior samples are constant"
+  )
+})
+
 test_that("diagnostics refuse constant draws that no prior declares constant", {
 
   # the bins of cumulative weights are sampled: constant draws are no structure

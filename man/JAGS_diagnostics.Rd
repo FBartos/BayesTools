@@ -97,8 +97,11 @@ Computed x/y objects retain full-length \code{pair_count} and
 only. No iteration compression, replacement estimate or confidence band is
 introduced.
 
-Weight bins that the prior fixes (for example by \code{\link[=wf_fixed]{wf_fixed()}}) are constants
-of the prior. The density and autocorrelation diagnostics omit them, and
+Coordinates whose convergence role is \code{"structural"} (see
+\code{\link[=JAGS_check_convergence]{JAGS_check_convergence()}}) are constants of the prior: the weight bins that
+the prior fixes (for example by \code{\link[=wf_fixed]{wf_fixed()}}) or the coefficients of an
+ordered prior with a point total and fixed allocation. The density and
+autocorrelation diagnostics omit them when their draws are constant, and
 when nothing else remains the call returns \code{NULL} with a message, as for
 a spike prior; the trace is produced as for any other parameter.
 }
