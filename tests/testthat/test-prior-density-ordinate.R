@@ -2662,6 +2662,58 @@ test_that("R116 N89 point-only densities are exact off their stored atom", {
   expect_false(prior_density_has_provenance(grid))
 })
 
+test_that("a route point mass that is not a stored atom gives the continuous result in the stable schema", {
+
+  # The route declares the atom at 1; the stored location is one ulp away, so
+  # the stored mass at 1 is 0 and the result is the continuous part's.
+  mixture <- prior_mixture(list(prior("point", list(1), prior_weights = 1),
+                                prior("normal", list(0, 1), prior_weights = 1)), is_null = c(FALSE, FALSE))
+  density <- .prior_linear_combination_density(list(x = mixture), c(x = 1), n_grid = 128)
+  atom <- prior_density_ordinate(density, 1)
+  expect_identical(atom$behavior, "point_mass")
+  shifted <- density
+  shifted$points$x <- shifted$points$x + 2.3e-16
+  demoted <- prior_density_ordinate(shifted, 1)
+  expect_identical(names(demoted), names(prior_density_ordinate(density, .3)))
+  expect_identical(demoted$behavior, "regular")
+  expect_true(demoted$exact)
+  expect_null(demoted$reason)
+  expect_null(demoted$provenance$continuous_behavior)
+  expect_identical(demoted$point_mass, 0)
+  expect_equal(demoted$log_density, log(.5) + stats::dnorm(1, log = TRUE), tolerance = 1e-12)
+  expect_identical(atom$provenance$continuous_behavior, "regular")
+
+  point <- .prior_linear_combination_density(list(x = prior("point", list(1))), c(x = 1), n_grid = 128)
+  point$points$x <- point$points$x + 2.3e-16
+  off <- prior_density_ordinate(point, 1)
+  expect_identical(off$behavior, "zero")
+  expect_true(off$exact)
+  expect_identical(off$reason, "The continuous prior density is zero at the requested value.")
+  expect_null(off$provenance$continuous_behavior)
+
+  # a continuous part without a structural value is not exact
+  route <- function(continuous_behavior, log_density){
+    function(adaptive, value){
+      .prior_density_ordinate_result(value, "point_mass", log_density, point_mass = .5, exact = TRUE,
+                                     method = "scalar_affine", continuous_behavior = continuous_behavior)
+    }
+  }
+  local_mocked_bindings(.prior_density_ordinate_from_adaptive = route("regular", NA_real_))
+  missing <- prior_density_ordinate(shifted, 1)
+  expect_identical(missing$behavior, "regular")
+  expect_false(missing$exact)
+  expect_true(is.na(missing$log_density))
+  expect_identical(missing$reason,
+                   "The regular prior-density ordinate has no structural value at the requested value.")
+  expect_identical(names(missing), names(demoted))
+  local_mocked_bindings(.prior_density_ordinate_from_adaptive = route("unknown", NA_real_))
+  unknown <- prior_density_ordinate(shifted, 1)
+  expect_identical(unknown$behavior, "unknown")
+  expect_false(unknown$exact)
+  expect_match(unknown$reason, "not available from supported deterministic provenance")
+  expect_identical(names(unknown), names(demoted))
+})
+
 test_that("R116 D2 positive powers retain zero atoms and weighted continuous ordinates", {
 
   spike <- prior_spike_and_slab(prior("normal", list(0, 1), list(0, Inf)), prior_inclusion = prior("spike", list(.5)))

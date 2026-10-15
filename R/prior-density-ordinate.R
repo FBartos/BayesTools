@@ -2662,8 +2662,21 @@ prior_density_has_provenance <- function(x){
       numeric()
     }
   }else if(identical(result$behavior, "point_mass")){
+    # the route's point mass is not a stored atom (e.g. a location one ulp
+    # away): the result describes the continuous part, in the stable schema
+    # (a regular ordinate has a NULL reason, assigned as an element, and only
+    # a point mass carries 'continuous_behavior')
     result$behavior <- continuous_behavior
-    result$reason <- .prior_density_ordinate_reason(continuous_behavior)
+    result$provenance$continuous_behavior <- NULL
+    result$exact <- !identical(continuous_behavior, "unknown") &&
+      !(identical(continuous_behavior, "regular") && is.na(result$log_density))
+    result["reason"] <- list(
+      if(identical(continuous_behavior, "regular") && !result$exact){
+        .prior_density_ordinate_unavailable_reason(result$provenance)
+      }else{
+        .prior_density_ordinate_reason(continuous_behavior)
+      }
+    )
   }
 
   # the display grid supplies a log density only where the structural answer is
