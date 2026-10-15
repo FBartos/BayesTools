@@ -167,11 +167,17 @@ as part of that exact value identity.
 The direct ordered Dirichlet-product density uses stable log-share arithmetic
 for a literal, untruncated Normal total with mean exactly zero and finite positive
 SD. Its original quadrature budget, tolerances and zero-boundary identities
-remain in force. Every other total evaluates each fractional level on its
-structural route at the display values (as the mixed-measure display does); the
-quadrature stays the fallback for a level whose route resolves no finite height,
-where small second Beta shapes can still lose rounded-share tails. The guarded
-repair does not certify tiny or nonrepresentable ranges.
+remain in force. Every other total takes the same quadrature at each display
+value and accepts it when it converges within its tolerances and exceeds the
+absolute tolerance, because the integral of a total concentrated away from zero
+can miss the band where the integrand is positive and give zero with an accepted
+error estimate. The display values it does not accept take the structural route
+of the level (the total times a Beta share), built without a numerical grid as
+the mixed-measure display builds it. A quadrature that does not converge is not
+repeated for the rest of the level, since each failure spends the whole
+subdivision budget. Small second Beta shapes can still lose rounded-share tails
+of the quadrature. The guarded repair does not certify tiny or nonrepresentable
+ranges.
 
 `selection_model()` captures fixed source choices and a deferred publication
 column reference. Keep `group = NULL` immediately after `weight_rule`; consumers

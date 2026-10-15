@@ -89,10 +89,15 @@
 #' Direct ordered Dirichlet-product densities use stable log-share arithmetic
 #' for literal, untruncated Normal totals with mean zero and finite positive SD,
 #' retaining the existing quadrature budget and tolerances. This guarded route
-#' does not certify tiny or nonrepresentable ranges. Every other total takes the
-#' structural route of each fractional level at the display values; the
-#' quadrature remains the fallback for a level whose route resolves no finite
-#' height, where small second Beta shapes remain a numerical risk.
+#' does not certify tiny or nonrepresentable ranges. Every other total takes
+#' the same quadrature at each display value and accepts it when it converges
+#' within its tolerances and exceeds the absolute tolerance (the integral of a
+#' total concentrated away from zero can miss the band where the integrand is
+#' positive and give zero); the display values it does not accept take the
+#' structural route of the level (its total times a Beta share), built without
+#' a numerical grid. A quadrature that does not converge is not repeated for the
+#' rest of the level. Small second Beta shapes remain a numerical risk of the
+#' quadrature.
 #'
 #' @importFrom stats density
 #' @seealso [prior()]
@@ -860,9 +865,11 @@ density.prior <- function(x,
   }else{
     alpha <- record$spec$alpha
     D <- length(alpha)
-    # a total other than the certified centered Normal takes the structural
-    # route of each fractional level: the logit quadrature of the share
-    # product misses a total concentrated away from zero
+    # the logit quadrature of the share product is the display route of every
+    # fractional level; a total other than the certified centered Normal can
+    # leave display values open (the quadrature does not resolve them, or
+    # misses a total concentrated away from zero), which take the structural
+    # route of the level
     route_levels <- !.density.prior.ordered_centered_normal_total(x$total)
     if(route_levels){
       design <- .factor_term_design_from_metadata(x)$design
@@ -875,20 +882,17 @@ density.prior <- function(x,
       }else if(m == D){
         densities[[i]] <- .density.prior.simple(x$total, x_seq, range(x_seq), n_points, n_samples = 1L, force_samples = FALSE, transformation = NULL, transformation_arguments = NULL, truncate_end = truncate_end)
       }else{
-        level <- if(route_levels){
-          .density.prior.ordered_route_level(x, metadata$parameter_name, design[i, ], x_seq, n_points)
-        }
-        if(is.null(level)){
-          level <- .density.prior.ordered_dirichlet_product(
-            total = x$total,
-            alpha1 = sum(alpha[seq_len(m)]),
-            alpha2 = sum(alpha[(m + 1L):D]),
-            x_seq = x_seq,
-            n_points = n_points
+        level <- .density.prior.ordered_dirichlet_product(
+          total = x$total,
+          alpha1 = sum(alpha[seq_len(m)]),
+          alpha2 = sum(alpha[(m + 1L):D]),
+          x_seq = x_seq,
+          n_points = n_points
+        )
+        if(route_levels){
+          level <- .density.prior.ordered_route_level(
+            level, x, metadata$parameter_name, design[i, ], x_seq, n_points
           )
-        }
-        if(is.null(level)){
-          return(NULL)
         }
         densities[[i]] <- level
       }
@@ -957,52 +961,54 @@ density.prior <- function(x,
     is.finite(total$parameters$sd) && total$parameters$sd > 0
 }
 
-# A continuous level of an ordered prior (its total times a Dirichlet share) on
-# the structural route, evaluated at the display values 'x_seq' as
-# .density.prior.ordered_route_mixed() does for levels with atoms. NULL when
-# the level has no structural route or is not a purely continuous measure.
-.density.prior.ordered_route_level <- function(ordered_prior, parameter, weights, x_seq, n_points){
+# The display values of a continuous level of an ordered prior (its total times
+# a Dirichlet share) that its quadrature left open (NA heights), evaluated on
+# the structural route of the level as .density.prior.ordered_route_mixed()
+# does for levels with atoms. The route is built from the share's terms
+# (.prior_density_route_ordered_terms()) without a numerical grid. A level
+# without a structural route keeps its open values unresolved. The unresolved
+# values leave the curve; a genuine infinite height at a singular boundary
+# stays.
+.density.prior.ordered_route_level <- function(level, ordered_prior, parameter, weights, x_seq, n_points){
 
-  dist <- .density.prior.ordered_route_mixed(
-    ordered_prior = ordered_prior,
-    parameter     = parameter,
-    weights       = weights,
-    x_seq         = x_seq,
-    n_points      = n_points,
-    keep_infinite = TRUE
-  )
-  if(is.null(dist) || nrow(dist$points) > 0L ||
-     abs(dist$density$mass - 1) > 128 * .Machine$double.eps){
-    return(NULL)
+  open <- which(is.na(level$y))
+  if(length(open) > 0L){
+    route <- .prior_density_route_linear(
+      stats::setNames(list(ordered_prior), parameter),
+      weights[weights != 0],
+      NULL,
+      n_points
+    )
+    if(!identical(route$type, "unknown") && !.prior_density_route_has_leaf(route, "unknown")){
+      level$y[open] <- .prior_density_route_density(route, x_seq[open])
+      attr(level, "route") <- route$type
+    }
   }
-  x <- dist$density$x
-  y <- dist$density$y * dist$density$mass
-  # a route that resolves no finite height (only a singular boundary) leaves
-  # the level to its quadrature
-  if(!any(is.finite(y))){
-    return(NULL)
-  }
-  out <- list(
-    call    = call("density", print(ordered_prior$total, silent = TRUE)),
-    bw      = NULL,
-    n       = n_points,
-    x       = x,
-    y       = y,
-    samples = NULL
-  )
-  class(out) <- c("density", "density.prior", "density.prior.simple")
-  attr(out, "x_range") <- range(x_seq)
-  attr(out, "y_range") <- c(0, max(y, na.rm = TRUE))
-  attr(out, "route") <- attr(dist, "ordered_grid_diagnostics", exact = TRUE)$route
-  out
+  keep <- !is.na(level$y)
+  level$x <- level$x[keep]
+  level$y <- level$y[keep]
+  attr(level, "y_range") <- c(0, max(c(0, level$y)))
+  level
 }
 
+# The logit quadrature of the Dirichlet-share product at the display values. The
+# certified centered Normal total stops at a value the quadrature does not
+# resolve (no partial curve). Every other total returns NA at such a value,
+# which the caller evaluates on the structural route: a value is resolved when
+# the quadrature converges within its tolerances and exceeds the absolute
+# tolerance, because the integral over logit(c) of a total concentrated away
+# from zero can miss the band where the integrand is positive and report zero
+# (or a value below the tolerance) with an accepted error estimate. A
+# quadrature that fails to converge at a display value is not tried again for
+# the rest of the level (each failure spends the whole subdivision budget, and
+# a share and total pair that exhausts it at one value does so along the curve).
 .density.prior.ordered_dirichlet_product <- function(total, alpha1, alpha2, x_seq, n_points){
 
   rel_tol <- 1e-7
   abs_tol <- 1e-10
   quadrature <- vector("list", length(x_seq))
   centered_normal <- .density.prior.ordered_centered_normal_total(total)
+  abandoned <- FALSE
   y <- vapply(seq_along(x_seq), function(i){
     x_value <- x_seq[i]
     density_at_zero <- if(x_value == 0) pdf(total, 0) else NA_real_
@@ -1032,6 +1038,15 @@ density.prior <- function(x,
         message = "analytic boundary"
       )
       return(value)
+    }
+
+    if(abandoned){
+      quadrature[[i]] <<- list(
+        value = NA_real_,
+        abs.error = NA_real_,
+        message = "not attempted after a quadrature that did not converge"
+      )
+      return(NA_real_)
     }
 
     integration <- tryCatch(
@@ -1089,11 +1104,28 @@ density.prior <- function(x,
           format(integration$abs.error, digits = 6)
         )
       }
-      stop(
-        "Ordered-prior product density quadrature failed at x = ",
-        format(x_value, digits = 17), ": ", detail, ".",
-        call. = FALSE
+      if(centered_normal){
+        stop(
+          "Ordered-prior product density quadrature failed at x = ",
+          format(x_value, digits = 17), ": ", detail, ".",
+          call. = FALSE
+        )
+      }
+      abandoned <<- TRUE
+      quadrature[[i]] <<- list(
+        value = NA_real_,
+        abs.error = NA_real_,
+        message = detail
       )
+      return(NA_real_)
+    }
+    if(!centered_normal && !(integration$value > abs_tol)){
+      quadrature[[i]] <<- list(
+        value = integration$value,
+        abs.error = integration$abs.error,
+        message = "value not above the absolute tolerance"
+      )
+      return(NA_real_)
     }
     quadrature[[i]] <<- list(
       value = integration$value,
@@ -1103,7 +1135,7 @@ density.prior <- function(x,
     integration$value
   }, numeric(1))
 
-  if(anyNA(y)){
+  if(centered_normal && anyNA(y)){
     stop("Ordered-prior product density quadrature returned missing values.",
          call. = FALSE)
   }
@@ -1118,7 +1150,7 @@ density.prior <- function(x,
   )
   class(out) <- c("density", "density.prior", "density.prior.simple")
   attr(out, "x_range") <- range(x_seq)
-  attr(out, "y_range") <- c(0, max(y, na.rm = TRUE))
+  attr(out, "y_range") <- c(0, max(c(0, y), na.rm = TRUE))
   attr(out, "quadrature") <- quadrature
   attr(out, "quadrature_tolerance") <- c(
     relative = rel_tol,

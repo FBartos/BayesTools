@@ -125,10 +125,15 @@ retain their existing handling.
 Direct ordered Dirichlet-product densities use stable log-share arithmetic
 for literal, untruncated Normal totals with mean zero and finite positive SD,
 retaining the existing quadrature budget and tolerances. This guarded route
-does not certify tiny or nonrepresentable ranges. Every other total takes the
-structural route of each fractional level at the display values; the
-quadrature remains the fallback for a level whose route resolves no finite
-height, where small second Beta shapes remain a numerical risk.
+does not certify tiny or nonrepresentable ranges. Every other total takes
+the same quadrature at each display value and accepts it when it converges
+within its tolerances and exceeds the absolute tolerance (the integral of a
+total concentrated away from zero can miss the band where the integrand is
+positive and give zero); the display values it does not accept take the
+structural route of the level (its total times a Beta share), built without
+a numerical grid. A quadrature that does not converge is not repeated for the
+rest of the level. Small second Beta shapes remain a numerical risk of the
+quadrature.
 }
 \seealso{
 \code{\link[=prior]{prior()}}

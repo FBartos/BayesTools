@@ -742,6 +742,96 @@ test_that("ordered direct displays of a total away from zero follow the structur
   expect_equal(intermediate$y, stats::dexp(at), tolerance = 1e-6)
 })
 
+test_that("ordered direct displays keep the Dirichlet-product quadrature and route only the values it leaves open", {
+  route_density <- .prior_density_route_density
+  levels <- c("a", "b", "c", "d")
+  # independent reference: the density of total * share, share ~ Beta(a1, a2)
+  reference <- function(total_pdf, a1, a2, x){
+    stats::integrate(function(c) total_pdf(x / c) * stats::dbeta(c, a1, a2) / c,
+      0, 1, rel.tol = 1e-10, abs.tol = 0, subdivisions = 1000L)$value
+  }
+
+  # a lognormal total: the quadrature resolves every positive display value, so the structural route
+  # is only asked for the support end 0 (a height below the absolute tolerance), and no numerical
+  # grid of a level is built
+  p <- ordered_plot_test_fixture(prior("lognormal", list(0, .5)), prior("dirichlet", list(c(2, 1, .5))),
+    levels = levels)$prior
+  evaluated <- numeric()
+  testthat::local_mocked_bindings(
+    .prior_linear_combination_density = function(...) stop("the numerical grid of a level was built", call. = FALSE),
+    .prior_density_route_density = function(route, x, ...){
+      evaluated <<- c(evaluated, x)
+      route_density(route, x, ...)
+    })
+  x <- c(0, .3, 1, 2)
+  displayed <- density(p, x_seq = x)
+  expect_identical(attr(displayed, "method"), "direct")
+  expect_true(length(evaluated) > 0L)
+  expect_true(all(evaluated == 0))
+  for(level in 2:3){
+    # cumulative shares of the Dirichlet(2, 1, .5) increments: Beta(sum(first m), sum(rest))
+    a <- c(2, 3)[level - 1L]
+    expect_identical(displayed[[level]]$x, x)
+    expect_equal(displayed[[level]]$y[-1L],
+      vapply(x[-1L], function(value) reference(function(t) stats::dlnorm(t, 0, .5), a, 3.5 - a, value), numeric(1)),
+      tolerance = 1e-6)
+    expect_equal(displayed[[level]]$y[1L], 0)
+  }
+  # the default display is the same quadrature: no value of the level is left to the route but 0
+  evaluated <- numeric()
+  default <- density(p)
+  expect_true(all(evaluated == 0))
+  for(level in 2:3){
+    expect_true(all(is.finite(default[[level]]$y)))
+    expect_length(default[[level]]$x, 1000L)
+  }
+})
+
+test_that("the structural route takes the display values that the quadrature misses", {
+  route_density <- .prior_density_route_density
+  # uniform(1, 2) total: the integrand over logit(c) is zero outside a band that the quadrature
+  # may not visit; its height is then 0 (below the absolute tolerance), not a resolved value
+  p <- ordered_plot_test_fixture(prior("uniform", list(1, 2)), levels = c("a", "b", "c", "d"))$prior
+  x <- c(.005, .05, .15, .5, .9)
+  evaluated <- numeric()
+  testthat::local_mocked_bindings(
+    .prior_density_route_density = function(route, x, ...){
+      evaluated <<- c(evaluated, x)
+      route_density(route, x, ...)
+    })
+  displayed <- density(p, x_seq = x)
+  expect_true(length(evaluated) > 0L)
+  expect_true(all(evaluated %in% c(.005, .05)))
+  expect_equal(displayed[[2L]]$y, 2 * (log(2) - x / 2), tolerance = 1e-8)
+  expect_equal(displayed[[3L]]$y, x, tolerance = 1e-8)
+
+  # the quadrature on its own leaves a missed value open (NA) for a total other than the
+  # certified centered Normal
+  product <- .density.prior.ordered_dirichlet_product(prior("uniform", list(1, 2)), 1, 2, x, 5L)
+  expect_true(is.na(product$y[1L]))
+  expect_identical(attr(product, "quadrature")[[1L]]$message, "value not above the absolute tolerance")
+  expect_equal(product$y[4L], 2 * (log(2) - x[4L] / 2), tolerance = 1e-6)
+})
+
+test_that("a quadrature that does not converge is not repeated along the level of an uncertified total", {
+  calls <- 0L
+  testthat::local_mocked_bindings(integrate = function(...){
+    calls <<- calls + 1L
+    list(value = 1, abs.error = 0, message = "maximum number of subdivisions reached")
+  }, .package = "stats")
+  level <- .density.prior.ordered_dirichlet_product(prior("lognormal", list(0, 1)), 1, 2, c(.1, .2, .3, .4), 4L)
+  expect_identical(calls, 1L)
+  expect_true(all(is.na(level$y)))
+  messages <- vapply(attr(level, "quadrature"), `[[`, character(1), "message")
+  expect_identical(messages[1L], "maximum number of subdivisions reached; absolute error 0")
+  expect_true(all(startsWith(messages[-1L], "not attempted")))
+  # the certified centered Normal total keeps its refusal of an unresolved value
+  expect_error(.density.prior.ordered_dirichlet_product(prior("normal", list(0, 1)), 1, 2, c(.1, .2), 2L),
+    "Ordered-prior product density quadrature failed at x = 0.10000000000000001: maximum number of subdivisions reached; absolute error 0.",
+    fixed = TRUE)
+  expect_identical(calls, 2L)
+})
+
 test_that("ordered mixed-measure plots honour ylim2 and ylab2 and store the probability mapping", {
 
   allocation <- prior("dirichlet", list(c(2, 2)))
