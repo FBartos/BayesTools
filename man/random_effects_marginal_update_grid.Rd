@@ -34,7 +34,14 @@ bindings. By default it is obtained from \code{fit}.}
 A list of class
 \code{BayesTools_random_effects_marginal_update_grid}. Factor updates contain
 posterior coefficient scales, correlation Cholesky factors, and the
-selected candidate scales. Markov updates contain posterior coefficient
+selected candidate scales. The candidate scale replaces the scale of
+column \code{component_index} only for a plan that holds the sibling SDs fixed
+(a direct per-column SD). For a plan with \code{held_fixed = "allocation_weights"} (an allocation-derived component SD) the grid also
+contains \code{column_factor} (values by posterior draws), the factor
+\code{candidate_scale / coefficient_scale[, component_index]} by which every
+column scale is multiplied; it is \code{NA} for the draws where the current
+selected SD is zero, which no allocation scale maps to a non-zero (or an
+unchanged zero) candidate. Markov updates contain posterior coefficient
 scales plus candidate correlation Cholesky factors, transitions, and
 innovation variances.
 }

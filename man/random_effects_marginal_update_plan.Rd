@@ -41,10 +41,21 @@ plan carries \code{reason} and \code{message} instead.
 scaled by one coefficient, \code{"column_scale"} when one column SD of a block
 changes (\code{component_index}), \code{"allocation"} when a Dirichlet weight of a
 variance allocation changes, and \code{"correlation"} for a correlation
-coordinate. An allocation-derived component SD of a block with several
-independent columns reports \code{"scale"} although only column
-\code{component_index} changes, while a direct per-column SD with unequal
-column SDs reports \code{"column_scale"}; the plan is exact in both cases.
+coordinate. A direct per-column SD with unequal column SDs reports
+\code{"column_scale"}: the other column SDs are held fixed.
+
+The plan of an allocation-derived component SD or variance has the field
+\code{held_fixed = "allocation_weights"}: whatever the covariance structure,
+setting the selected SD to \code{v} holds the allocation weights and every
+non-allocation coordinate (correlations included) fixed and moves the
+allocation scale \code{tau} of the SD \code{SD_k = tau * m_k(w)} to \code{v / m_k(w)}
+(\code{m_k = sqrt(w_k)} for a total-variance allocation, \verb{sqrt(K w_k)} for a
+mean-variance one). This is the conditional of the variance prior declared
+on \verb{(tau, w)}, which are independent a priori: the prior of the moved
+coordinate is the \code{tau} prior with the Jacobian \code{1 / m_k(w)}. Every column
+SD that derives from \code{tau} is multiplied by the same factor
+\code{c = v / SD_k}, and the covariance contribution of the block by \code{c^2}.
+Plans of direct per-column SDs have no \code{held_fixed} field.
 }
 \description{
 Resolves a selected public random-effect quantity to the exact scalar
@@ -66,8 +77,12 @@ factor, while \code{family = "markov"} identifies a compiled structured Markov
 state. Allocation-derived component SDs stay affine on \code{id}/\code{diag} and
 single-column blocks. On correlated multi-column structures they are
 factor \code{column_scale} updates of the selected quantity, not
-\verb{A + h(sigma) B}. Their \code{coefficient_scale_transform} converts a selected
-variance to its square root and leaves a selected SD unchanged. These
+\verb{A + h(sigma) B}; all of them hold the allocation weights fixed and scale
+every column SD of the block by the same factor (\code{held_fixed}, above), so
+the factor \code{column_scale} plan of an allocation-derived SD differs from that
+of a direct SD, which replaces one column scale only. Their
+\code{coefficient_scale_transform} converts a selected variance to its square
+root and leaves a selected SD unchanged. These
 quantity-scale plans require the public SD to be on the fitted coefficient
 scale; after formula scaling that changes it, the plan is unsupported.
 Unsupported plans carry a structural reason. The accessor

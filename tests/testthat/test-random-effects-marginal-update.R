@@ -985,19 +985,27 @@ test_that("correlated component allocations retain nonlinear covariances", {
   expect_identical(component_var$coefficient_scale_transform, list(type = "sqrt"))
   expect_equal(variance_grid$candidate_scale, grid$candidate_scale)
 
+  # setting the SD of the first component to v moves the allocation scale
+  # (tau = v / sqrt(w_1)) with the weights fixed, so both column SDs are
+  # multiplied by v / SD_1 (here 0.5 sqrt(1/2) each)
+  expect_identical(component_sd$held_fixed, "allocation_weights")
+  expect_identical(component_var$held_fixed, "allocation_weights")
+  current_sd <- 0.5 / sqrt(2)
+  expect_equal(unname(grid$coefficient_scale[1L, ]), rep(current_sd, 2L))
+  expect_equal(variance_grid$column_factor, grid$column_factor)
   for(i in seq_len(nrow(grid$candidate_scale))){
-    scales <- c(grid$candidate_scale[i, 1L], 0.5 / sqrt(2))
+    factor <- grid$candidate_scale[i, 1L] / current_sd
+    expect_equal(grid$column_factor[i, ], rep(factor, 2L), tolerance = 1e-14)
+    scales <- current_sd * factor * c(1, 1)
     expected <- kronecker(diag(2), tcrossprod(scales) *
       matrix(c(1, 0.5, 0.5, 1), nrow = 2L))
-    coefficient_factor <- diag(scales) %*%
+    coefficient_factor <- diag(current_sd * grid$column_factor[i, ]) %*%
       variance_grid$coefficient_cholesky[1L, , ]
     expect_equal(kronecker(diag(2), tcrossprod(coefficient_factor)),
                  expected, tolerance = 1e-14)
 
     candidate <- as.matrix(fit)
-    candidate[, "tau"] <- sqrt(sum(scales^2))
-    candidate[, paste0(weight, "[1]")] <- scales[1L]^2 / sum(scales^2)
-    candidate[, paste0(weight, "[2]")] <- scales[2L]^2 / sum(scales^2)
+    candidate[, "tau"] <- grid$candidate_scale[i, 1L] / sqrt(0.5)
     direct <- random_effects_marginal_vcov(
       fit, parameter = "mu", posterior_samples = candidate
     )$samples
@@ -1337,4 +1345,166 @@ test_that("block component scales resolve uniquely without enabling independent 
     expect_identical(plan$family, "unsupported")
     expect_null(plan$conditional)
   }
+})
+
+# Allocation fit of one random block with distinct weights and a non-zero
+# correlation, for the covariance structures that resolve several SD components.
+.random_update_test_structure_fit <- function(structure){
+
+  data <- data.frame(
+    id = factor(rep(c("a", "b", "c"), each = 3L)),
+    f = factor(rep(c("x", "y", "z"), 3L)),
+    x = rep(c(-1, 0.5, 2), 3L)
+  )
+  formula <- switch(
+    structure,
+    diag = ~ 1 + random(1 + x | id, name = "study", covariance = "diag"),
+    us = ~ 1 + random(1 + x | id, name = "study", covariance = "us"),
+    hcs = ~ 1 + hcs(f | id, name = "study"),
+    har = ~ 1 + har(f | id, name = "study")
+  )
+  weights <- if(structure %in% c("diag", "us")) c(0.36, 0.64) else c(0.2, 0.3, 0.5)
+  K <- length(weights)
+  result <- JAGS_formula(
+    formula = formula,
+    parameter = "mu",
+    data = data,
+    prior_list = list(intercept = prior("normal", list(0, 1))),
+    prior_random = prior_random(
+      allocation = random_variance_allocation(
+        name = "allocation",
+        terms = "study",
+        target = "sd_component",
+        scale = "total_variance",
+        sd_source = random_sd_source("tau"),
+        weights = prior("dirichlet", list(alpha = rep(1, K)))
+      )
+    )
+  )
+  term <- result$formula_design$random_effects[[1L]]
+  weight <- "mu__xRE_ALLOCx_allocation__weight"
+  correlation <- term$correlation
+  correlation_values <- if(is.null(correlation)){
+    numeric()
+  }else if(identical(correlation$type, "lkj")){
+    stats::setNames(rep(0.8, length(correlation$primitive_names)), correlation$primitive_names)
+  }else{
+    stats::setNames(atanh(0.6), correlation$sample_name)
+  }
+  values <- c(
+    mu_intercept = 0,
+    tau = 0.5,
+    stats::setNames(0.5 * sqrt(weights), unique(term$sd_parameter_names)),
+    stats::setNames(weights, paste0(weight, "[", seq_len(K), "]")),
+    stats::setNames(rep(1, K), paste0("prior_par_eta_", weight, "[", seq_len(K), "]")),
+    correlation_values
+  )
+  draws <- matrix(rep(values, 2L), nrow = 2L, byrow = TRUE,
+                  dimnames = list(NULL, names(values)))
+  fit <- coda::mcmc.list(coda::mcmc(draws))
+  class(fit) <- c("BayesTools_fit", class(fit))
+  attr(fit, "prior_list") <- result$prior_list
+  attr(fit, "formula_design") <- list(mu = result$formula_design)
+  attr(fit, "parameter_map") <- .bt_build_parameter_map(
+    columns = colnames(draws),
+    prior_list = result$prior_list,
+    formula_design = list(mu = result$formula_design)
+  )
+  fit <- .bt_attach_draw_geometry(fit)
+
+  list(fit = .bt_attach_fit_contract(fit), weights = weights, tau = 0.5)
+}
+
+test_that("an allocation-derived SD update holds the weights fixed and moves the allocation scale", {
+
+  # F092: the same candidate SD implies the same covariance on every
+  # structure: tau' = v / sqrt(w_k) with the weights and the correlation fixed
+  v <- 0.25
+  for(structure in c("diag", "us", "hcs", "har")){
+    case <- .random_update_test_structure_fit(structure)
+    fit <- case$fit
+    weights <- case$weights
+    current_sd <- case$tau * sqrt(weights[1L])
+    posterior <- as.matrix(fit)
+    catalog <- parameter_catalog(fit)
+    sd_rows <- catalog$quantities[catalog$quantities$role == "random_sd", , drop = FALSE]
+    plan <- random_effects_marginal_update_plan(
+      fit, parameter_catalog_resolve(catalog, sd_rows$canonical_name[[1L]], "mu")
+    )
+    variance_plan <- random_effects_marginal_update_plan(
+      fit, parameter_catalog_resolve(
+        catalog, catalog$quantities$canonical_name[
+          catalog$quantities$role == "random_var"][[1L]], "mu")
+    )
+    expect_identical(plan$held_fixed, "allocation_weights", info = structure)
+    expect_identical(variance_plan$held_fixed, "allocation_weights", info = structure)
+    expect_identical(plan$coefficient_input, "quantity", info = structure)
+    expect_identical(plan$family, if(structure == "diag") "affine" else "factor", info = structure)
+
+    # the covariance recomputed from (tau' = v / sqrt(w_1), w)
+    candidate <- posterior
+    candidate[, "tau"] <- v / sqrt(weights[1L])
+    expected <- random_effects_marginal_vcov(
+      fit, parameter = "mu", posterior_samples = candidate
+    )$samples[1L, , ]
+    current <- random_effects_marginal_vcov(
+      fit, parameter = "mu", posterior_samples = posterior
+    )$samples[1L, , ]
+    # the sibling SDs move with the selected one
+    expect_equal(unname(expected), unname(current) * (v / current_sd)^2,
+                 tolerance = 1e-12, info = structure)
+
+    if(identical(plan$family, "affine")){
+      # A + h(v) B with h the square: the block contribution scales by c^2
+      expect_identical(plan$coefficient_transform, list(type = "square"), info = structure)
+      next
+    }
+    grid <- random_effects_marginal_update_grid(
+      fit, plan, values = c(v, 0), posterior_samples = posterior
+    )
+    expect_identical(grid$held_fixed, "allocation_weights", info = structure)
+    expect_equal(grid$candidate_scale[, 1L], c(v, 0), info = structure)
+    expect_equal(unname(grid$coefficient_scale[1L, ]), case$tau * sqrt(weights),
+                 tolerance = 1e-12, info = structure)
+    expect_equal(grid$column_factor[, 1L], c(v, 0) / current_sd,
+                 tolerance = 1e-12, info = structure)
+    term <- attr(fit, "formula_design")$mu$random_effects[[1L]]
+    for(value_i in 1:2){
+      scale <- grid$coefficient_scale[1L, ] * grid$column_factor[value_i, 1L]
+      factor <- matrix(grid$coefficient_cholesky[1L, , ], length(scale)) * scale
+      covariance <- outer(term$group_map, term$group_map, "==") *
+        (term$model_matrix %*% tcrossprod(factor) %*% t(term$model_matrix))
+      reference <- if(value_i == 1L) expected else {
+        candidate[, "tau"] <- 0
+        random_effects_marginal_vcov(
+          fit, parameter = "mu", posterior_samples = candidate
+        )$samples[1L, , ]
+      }
+      expect_equal(unname(covariance), unname(reference), tolerance = 1e-12,
+                   info = paste(structure, "value", value_i))
+    }
+
+    # a draw whose selected SD is zero has no finite factor
+    zero <- posterior
+    zero[, paste0("mu__xRE_ALLOCx_allocation__weight[1]")] <- 0
+    zero[, "mu__xRE_ALLOCx_allocation__weight[2]"] <-
+      zero[, "mu__xRE_ALLOCx_allocation__weight[2]"] + weights[1L]
+    zero[, unique(term$sd_parameter_names)[1L]] <- 0
+    zero_grid <- random_effects_marginal_update_grid(
+      fit, plan, values = c(v, 0), posterior_samples = zero
+    )
+    expect_true(all(is.na(zero_grid$column_factor)), info = structure)
+    expect_equal(zero_grid$candidate_scale[, 1L], c(v, 0), info = structure)
+  }
+
+  # a direct per-column SD holds its siblings fixed and has no held_fixed field
+  direct <- .random_update_test_fit(
+    ~ 1 + hcs(f | id), data.frame(id = factor(rep(c("a", "b"), each = 3L)),
+                                  f = factor(rep(c("x", "y", "z"), 2L)))
+  )
+  direct_plan <- .random_update_test_plan(direct, "random_sd", "f[x]")
+  expect_null(direct_plan$held_fixed)
+  expect_null(random_effects_marginal_update_grid(
+    direct, direct_plan, values = 0.3, posterior_samples = as.matrix(direct)
+  )$column_factor)
 })

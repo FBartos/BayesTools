@@ -42,10 +42,21 @@
 #'   scaled by one coefficient, `"column_scale"` when one column SD of a block
 #'   changes (`component_index`), `"allocation"` when a Dirichlet weight of a
 #'   variance allocation changes, and `"correlation"` for a correlation
-#'   coordinate. An allocation-derived component SD of a block with several
-#'   independent columns reports `"scale"` although only column
-#'   `component_index` changes, while a direct per-column SD with unequal
-#'   column SDs reports `"column_scale"`; the plan is exact in both cases.
+#'   coordinate. A direct per-column SD with unequal column SDs reports
+#'   `"column_scale"`: the other column SDs are held fixed.
+#'
+#'   The plan of an allocation-derived component SD or variance has the field
+#'   `held_fixed = "allocation_weights"`: whatever the covariance structure,
+#'   setting the selected SD to `v` holds the allocation weights and every
+#'   non-allocation coordinate (correlations included) fixed and moves the
+#'   allocation scale `tau` of the SD `SD_k = tau * m_k(w)` to `v / m_k(w)`
+#'   (`m_k = sqrt(w_k)` for a total-variance allocation, `sqrt(K w_k)` for a
+#'   mean-variance one). This is the conditional of the variance prior declared
+#'   on `(tau, w)`, which are independent a priori: the prior of the moved
+#'   coordinate is the `tau` prior with the Jacobian `1 / m_k(w)`. Every column
+#'   SD that derives from `tau` is multiplied by the same factor
+#'   `c = v / SD_k`, and the covariance contribution of the block by `c^2`.
+#'   Plans of direct per-column SDs have no `held_fixed` field.
 #'
 #' @details
 #' `family = "affine"` means that, conditional on every non-selected posterior
@@ -57,8 +68,12 @@
 #' state. Allocation-derived component SDs stay affine on `id`/`diag` and
 #' single-column blocks. On correlated multi-column structures they are
 #' factor `column_scale` updates of the selected quantity, not
-#' `A + h(sigma) B`. Their `coefficient_scale_transform` converts a selected
-#' variance to its square root and leaves a selected SD unchanged. These
+#' `A + h(sigma) B`; all of them hold the allocation weights fixed and scale
+#' every column SD of the block by the same factor (`held_fixed`, above), so
+#' the factor `column_scale` plan of an allocation-derived SD differs from that
+#' of a direct SD, which replaces one column scale only. Their
+#' `coefficient_scale_transform` converts a selected variance to its square
+#' root and leaves a selected SD unchanged. These
 #' quantity-scale plans require the public SD to be on the fitted coefficient
 #' scale; after formula scaling that changes it, the plan is unsupported.
 #' Unsupported plans carry a structural reason. The accessor
@@ -194,7 +209,15 @@ random_effects_marginal_update_plan <- function(fit, selection){
 #' @return A list of class
 #'   `BayesTools_random_effects_marginal_update_grid`. Factor updates contain
 #'   posterior coefficient scales, correlation Cholesky factors, and the
-#'   selected candidate scales. Markov updates contain posterior coefficient
+#'   selected candidate scales. The candidate scale replaces the scale of
+#'   column `component_index` only for a plan that holds the sibling SDs fixed
+#'   (a direct per-column SD). For a plan with `held_fixed =
+#'   "allocation_weights"` (an allocation-derived component SD) the grid also
+#'   contains `column_factor` (values by posterior draws), the factor
+#'   `candidate_scale / coefficient_scale[, component_index]` by which every
+#'   column scale is multiplied; it is `NA` for the draws where the current
+#'   selected SD is zero, which no allocation scale maps to a non-zero (or an
+#'   unchanged zero) candidate. Markov updates contain posterior coefficient
 #'   scales plus candidate correlation Cholesky factors, transitions, and
 #'   innovation variances.
 #'
@@ -327,6 +350,14 @@ random_effects_marginal_update_grid <- function(
       coefficient_cholesky = unname(cholesky),
       candidate_scale = unname(candidate_scale)
     )
+    if(identical(update$held_fixed, "allocation_weights")){
+      # the allocation scale moves with the weights fixed: every column scale
+      # is multiplied by the factor of the selected one
+      column_factor <- sweep(candidate_scale, 2L, scale[, component], "/")
+      column_factor[!is.finite(column_factor)] <- NA_real_
+      out$held_fixed <- update$held_fixed
+      out$column_factor <- unname(column_factor)
+    }
   }else{
     candidate <- posterior[rep(1L, length(values)), , drop = FALSE]
     candidate[, source] <- values
@@ -741,7 +772,8 @@ random_effects_marginal_update_grid <- function(
         },
         coefficient_input = "quantity",
         component_index = key$index,
-        structure = structure
+        structure = structure,
+        held_fixed = "allocation_weights"
       ))
     }
     if(structure %in% c("us", "hcs", "har") ||
@@ -757,7 +789,8 @@ random_effects_marginal_update_grid <- function(
           list(type = "sqrt")
         }else{
           list(type = "identity")
-        }
+        },
+        held_fixed = "allocation_weights"
       ))
     }
     return(.bt_random_effect_marginal_update_unavailable(
@@ -830,9 +863,10 @@ random_effects_marginal_update_grid <- function(
 
 .bt_random_effect_marginal_update_affine <- function(
     update, blocks, coefficient_transform, coefficient_input,
-    component_index = NA_integer_, structure = "", allocation = NULL){
+    component_index = NA_integer_, structure = "", allocation = NULL,
+    held_fixed = NULL){
 
-  list(
+  out <- list(
     family = "affine",
     update = update,
     blocks = unname(blocks),
@@ -842,6 +876,11 @@ random_effects_marginal_update_grid <- function(
     structure = structure,
     allocation = allocation
   )
+  if(!is.null(held_fixed)){
+    out$held_fixed <- held_fixed
+  }
+
+  out
 }
 
 
@@ -977,7 +1016,8 @@ random_effects_marginal_update_grid <- function(
       index = as.integer(index),
       n_targets = 2L,
       scale = allocation$scale
-    )
+    ),
+    held_fixed = if(component) "allocation_weights"
   )
   plan$source_parameter <- if(proportion) weight else source
   plan$source_transform <- key$source_transform

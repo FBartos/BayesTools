@@ -696,6 +696,17 @@ Allocation-derived component SDs remain affine on `id`/`diag` and
 single-column blocks when their public SD is on the fitted coefficient scale.
 On correlated multi-column structures they are factor
 `column_scale` updates of the selected quantity, not `A + h(sigma) B`.
+One conditioning rule holds for every structure (plan field
+`held_fixed = "allocation_weights"`): setting an allocation-derived SD to `v`
+holds the allocation weights and every non-allocation coordinate fixed and moves
+the allocation scale `tau` (`SD_k = tau * m_k(w)`, so `tau' = v / m_k(w)`), the
+conditional of the variance prior declared on the independent `(tau, w)`, whose
+moved coordinate has the `tau` prior with Jacobian `1 / m_k(w)`. Every column SD
+derived from `tau` is multiplied by `c = v / SD_k` and the block covariance by
+`c^2`: the grid of a factor plan carries `column_factor` for it. Downstream
+priors for the update (RoBMA's IWMDE prior side of the factor family) use the
+same conditional. A direct per-column SD keeps `column_scale` with its siblings
+fixed and has no `held_fixed`.
 Formula-scaled allocation-derived SDs, and SDs that depend on several fitted
 coordinates, have no exact single-coordinate update and are `unsupported`.
 Do not make a downstream package reconstruct these quantities from raw JAGS
