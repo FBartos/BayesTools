@@ -582,9 +582,14 @@ JAGS_deterministic_evaluator <- function(fit, nodes = NULL){
 }
 
 # A lookup of one draw of bridge sampling or the marginal-likelihood
-# parameters: a named numeric vector or list of coordinates.
+# parameters: a named numeric vector or list of coordinates. Absent samples
+# (NULL) have no coordinate, as an empty vector: the evaluators then report
+# the monitored coordinates they miss.
 .bt_deterministic_row_lookup <- function(samples, prior_list = list()){
 
+  if(is.null(samples)){
+    samples <- numeric()
+  }
   if(is.list(samples)){
     samples <- unlist(samples)
   }

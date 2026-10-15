@@ -33,3 +33,31 @@ test_that("R133 ordinary scalar and vector bridge inputs distinguish missing nam
   expect_identical(JAGS_marglik_parameters(numeric(), list(mu = prior("point", list(2)))), list(mu = 2))
   expect_identical(JAGS_marglik_parameters(numeric(), list(o = prior("mpoint", list(location = 2, K = 2)))), list(o = c(2, 2)))
 })
+
+test_that("absent samples of the deterministic-node parameter paths are missing monitored columns (F224)", {
+
+  selection <- prior_weightfunction("one-sided", .025, wf_independent(prior("gamma", list(2, 1))))
+  phacking  <- prior_phacking(form = "linear")
+  prior_lists <- list(
+    phacking       = list(bias = phacking),
+    bias           = list(bias = prior_bias(selection, phacking)),
+    bias_mixture   = list(bias = prior_mixture(list(prior_none(), selection, phacking, prior_bias(selection, phacking)))),
+    weightfunction = list(omega = selection)
+  )
+  for(name in names(prior_lists)){
+    for(samples in list(NULL, numeric(), c(other = 1))){
+      condition <- tryCatch(JAGS_marglik_parameters(samples, prior_lists[[name]]), error = identity)
+      expect_s3_class(condition, "BayesTools_missing_monitored_columns")
+      expect_s3_class(condition, "BayesTools_marglik_input")
+    }
+  }
+
+  # the compiled bridge evaluators read the same samples
+  compiled <- BayesTools:::.bt_JAGS_bridge_compile_phacking_evaluator(phacking)
+  expect_s3_class(tryCatch(compiled$parameters(NULL), error = identity), "BayesTools_missing_monitored_columns")
+  expect_s3_class(tryCatch(compiled$parameters(numeric()), error = identity), "BayesTools_missing_monitored_columns")
+
+  # a prior without monitored coordinates still needs none
+  fixed <- list(omega = prior_weightfunction("one-sided", .025, wf_fixed(c(1, .5))))
+  expect_identical(JAGS_marglik_parameters(NULL, fixed), JAGS_marglik_parameters(numeric(), fixed))
+})
