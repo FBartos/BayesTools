@@ -105,7 +105,8 @@ the corresponding parameters (PET, PEESE, omega) are also added to the keep list
 
 \item{transformations}{list of transformations to apply}
 
-\item{transform_factors}{whether to transform orthonormal/meandif to differences}
+\item{transform_factors}{whether to transform the orthonormal,
+mean-difference and ordered factor coefficients to the level scale}
 
 \item{components}{mixture components summarized as parameters of their
 own: a list keyed by those parameters with the mixture's \code{parameter}
@@ -127,7 +128,8 @@ weights), with the bins named by their p-value intervals
 
 updated model_samples matrix
 
-list with filtered model_samples and prior_list
+character vector of the names of the parameters to remove from
+\code{prior_list} and the samples
 
 list with updated model_samples, prior_list, and warnings
 

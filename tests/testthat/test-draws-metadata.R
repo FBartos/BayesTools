@@ -1464,3 +1464,30 @@ test_that("a linear atom transform declares the point mass at zero of identicall
   expect_identical(names(unnamed$marginals), paste0("value", 1:3))
   expect_identical(unnamed$marginals$value1$mass, 1)
 })
+
+test_that("posterior support types are inferred exactly and points lie within the bounds", {
+
+  # the support is the points only when the bounds equal their range exactly
+  expect_identical(posterior_support_attribute(c(1, 1), points = 1)$type, "points")
+  expect_identical(posterior_support_attribute(c(0, 1), points = c(0, 1))$type, "points")
+  expect_identical(posterior_support_attribute(c(1, 1 + 1e-9), points = 1)$type, "interval")
+  expect_identical(posterior_support_attribute(c(0, Inf), points = 0)$type, "interval")
+  expect_identical(posterior_support_attribute(c(0, 1))$type, "interval")
+
+  # points outside the bounds describe no support
+  for(type in list(NULL, "interval", "mixed")){
+    expect_error(posterior_support_attribute(c(0, 1), points = c(0, 2), type = type),
+                 "'points' must lie within 'bounds'.", fixed = TRUE)
+    expect_error(posterior_support_attribute(c(0, 1), points = -.5, type = type),
+                 "'points' must lie within 'bounds'.", fixed = TRUE)
+  }
+  expect_identical(posterior_support_attribute(c(0, Inf), points = c(0, 2), type = "mixed")$type, "mixed")
+
+  # a degenerate Bernoulli prior excludes its impossible state
+  support <- function(probability) .posterior_support_from_prior(prior("bernoulli", list(probability)))
+  expect_identical(support(0)$points, 0)
+  expect_identical(support(0)$bounds, c(0, 0))
+  expect_identical(support(1)$points, 1)
+  expect_identical(support(1)$bounds, c(1, 1))
+  expect_identical(support(.3)$points, c(0, 1))
+})

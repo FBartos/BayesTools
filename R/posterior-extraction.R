@@ -380,7 +380,8 @@ NULL
 #' @param remove_random_structures character vector of random-effect covariance structures to remove.
 #' @param keep_random_structures character vector of random-effect covariance structures to keep while leaving non-random parameters unaffected.
 #' @param remove_spike_0 whether to remove spike at 0 priors
-#' @return list with filtered model_samples and prior_list
+#' @return character vector of the names of the parameters to remove from
+#'   \code{prior_list} and the samples
 .filter_parameters <- function(prior_list, remove_parameters = NULL, remove_formulas = NULL,
                                keep_parameters = NULL, keep_formulas = NULL,
                                remove_random_effects = NULL, keep_random_effects = NULL,
@@ -590,7 +591,10 @@ NULL
 
 #' @rdname posterior_extraction_helpers
 #' @param transformations list of transformations to apply
-#' @param transform_factors whether orthonormal/meandif will be transformed later
+#' @param transform_factors whether the orthonormal, mean-difference and ordered
+#'   factor coefficients will be transformed to the level scale later: then
+#'   their raw coefficient columns are not transformed here (the transformation
+#'   applies to their level columns)
 #' @return updated model_samples matrix
 .apply_parameter_transformations <- function(model_samples, transformations, prior_list, transform_factors = FALSE) {
 
@@ -644,7 +648,8 @@ NULL
 
 
 #' @rdname posterior_extraction_helpers
-#' @param transform_factors whether to transform orthonormal/meandif to differences
+#' @param transform_factors whether to transform the orthonormal,
+#'   mean-difference and ordered factor coefficients to the level scale
 #' @param components mixture components summarized as parameters of their
 #'   own: a list keyed by those parameters with the mixture's \code{parameter}
 #'   and the \code{component}
