@@ -776,11 +776,19 @@ test_that("JAGS_evaluate_formula takes the log(intercept) flag of an explicit fo
     JAGS_evaluate_formula(fit, log_formula, parameter = "log_sigma", data = new_data),
     replay
   )
-  # a subset of the terms evaluates with the same flag
+  # a subset of the terms evaluates with the same flag: the replay is the log
+  # intercept plus the slope part, which a formula without the intercept gives
+  intercept_part <- JAGS_evaluate_formula(fit, ~ 1, parameter = "log_sigma", data = new_data)
+  slope_part <- JAGS_evaluate_formula(fit, ~ 0 + x_sigma, parameter = "log_sigma", data = new_data)
+  # (rows of the new data by posterior draws)
+  expect_equal(intercept_part[2L, ], intercept_part[1L, ])
   expect_equal(
-    JAGS_evaluate_formula(fit, ~ 0 + x_sigma, parameter = "log_sigma", data = new_data),
-    JAGS_evaluate_formula(fit, ~ 0 + x_sigma, parameter = "log_sigma", data = new_data)
+    unname(intercept_part[1L, ]),
+    unname(log(as.matrix(fit$mcmc)[, "log_sigma_intercept"])),
+    tolerance = 1e-12
   )
+  expect_false(isTRUE(all.equal(unname(slope_part), unname(replay))))
+  expect_equal(slope_part + intercept_part, replay, tolerance = 1e-12)
 
   # an explicit attribute that disagrees with the fitted design is refused,
   # naming both values
