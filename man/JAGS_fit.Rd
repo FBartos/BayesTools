@@ -190,7 +190,11 @@ data and a node that the model syntax defines deterministically (\code{<-} or
 block convergence. A
 node that is stochastic (\code{~}) or depends on a stochastic node is
 checked, and its constant draws are not assessable (see
-\code{autofit_control$allow_not_assessable}).}
+\code{autofit_control$allow_not_assessable}). A name that repeats a parameter
+of \code{prior_list} is refused. A parameter that a formula needs monitored,
+such as the scalar SD source of a random-effect block
+(\code{random_sd_source("tau")}), is added automatically and, when
+\code{prior_list} already holds its prior, is monitored through that prior.}
 
 \item{required_packages}{character vector specifying list of packages containing
 JAGS models required for sampling (in case that the function is run in parallel or in

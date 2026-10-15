@@ -903,6 +903,74 @@ test_that("JAGS_extend resolves explicit convergence monitors before extending",
   expect_s3_class(extended, "BayesTools_fit")
 })
 
+test_that("a random-block SD source that prior_list samples is monitored once", {
+
+  # F318 (4): the block-level random_sd_source("tau") made the formula monitor
+  # 'tau' through add_parameters, which JAGS_fit() refused as a repetition of
+  # the 'tau' prior of prior_list
+  skip_if_not_installed("runjags")
+  captured <- NULL
+  testthat::local_mocked_bindings(
+    run.jags = function(...){
+      captured <<- list(...)
+      stop("mocked backend", call. = FALSE)
+    },
+    .package = "runjags"
+  )
+  testthat::local_mocked_bindings(
+    .JAGS_require_packages = function(...) invisible(NULL),
+    .JAGS_load_modules = function(...) invisible(NULL),
+    .package = "BayesTools"
+  )
+  data <- data.frame(g = factor(rep(letters[1:4], each = 3L)))
+  fit_with <- function(syntax, prior_list, add_parameters = NULL){
+    captured <<- NULL
+    JAGS_fit(
+      model_syntax = syntax,
+      data = list(y = rep(0, 12L)),
+      prior_list = prior_list,
+      formula_list = list(mu = ~ 1 + random(1 | g, name = "g", covariance = "diag")),
+      formula_data_list = list(mu = data),
+      formula_prior_list = list(mu = list(intercept = prior("normal", list(0, 1)))),
+      formula_random_prior_list = list(mu = prior_random(
+        g = random_block(sd_source = random_sd_source("tau"))
+      )),
+      add_parameters = add_parameters,
+      chains = 1, adapt = 50, burnin = 50, sample = 100, seed = 1, silent = TRUE
+    )
+  }
+  syntax <- "model{
+  for(i in 1:N_mu){
+    y[i] ~ dnorm(mu[i], 1)
+  }
+}"
+  tau_prior <- list(tau = prior("normal", list(0, 1), list(0, Inf)))
+
+  # the source sampled through prior_list is one parameter, monitored through its prior
+  expect_no_error(fit_with(syntax, tau_prior))
+  expect_identical(sum(captured$monitor == "tau"), 1L)
+  expect_true(all(c("mu_intercept", "tau", "mu__xREx__g_xRE_Zx") %in% captured$monitor))
+
+  # a source that the model syntax defines is monitored by the formula
+  expect_no_error(fit_with(
+    "model{
+  tau ~ dnorm(0, 1) T(0, )
+  for(i in 1:N_mu){
+    y[i] ~ dnorm(mu[i], 1)
+  }
+}",
+    NULL
+  ))
+  expect_identical(sum(captured$monitor == "tau"), 1L)
+
+  # the user's own repetition of a prior is still refused
+  expect_error(
+    fit_with(syntax, tau_prior, add_parameters = "tau"),
+    "The 'add_parameters' argument must not include parameters already monitored through 'prior_list': tau.",
+    fixed = TRUE
+  )
+})
+
 test_that("JAGS_fit rejects unknown convergence monitors before sampling", {
 
   skip_if_not_installed("runjags")

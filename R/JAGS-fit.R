@@ -127,7 +127,11 @@
 #' block convergence. A
 #' node that is stochastic (\code{~}) or depends on a stochastic node is
 #' checked, and its constant draws are not assessable (see
-#' \code{autofit_control$allow_not_assessable}).
+#' \code{autofit_control$allow_not_assessable}). A name that repeats a parameter
+#' of \code{prior_list} is refused. A parameter that a formula needs monitored,
+#' such as the scalar SD source of a random-effect block
+#' (\code{random_sd_source("tau")}), is added automatically and, when
+#' \code{prior_list} already holds its prior, is monitored through that prior.
 #' @param required_packages character vector specifying list of packages containing
 #' JAGS models required for sampling (in case that the function is run in parallel or in
 #' detached R session). Defaults to \code{NULL}. Parallel workers must load
@@ -410,6 +414,16 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
     formula_required_packages <- character()
   }
 
+  # A parameter that a formula monitors for its own needs (the scalar SD source
+  # of a random-effect block) and that 'prior_list' already samples is one
+  # parameter: it is monitored through its prior. A user's 'add_parameters'
+  # entry that repeats a prior is still refused below.
+  if(length(formula_add_parameters) > 0L){
+    formula_add_parameters <- formula_add_parameters[
+      !.bt_jags_parameter_base(formula_add_parameters) %in%
+        .bt_jags_parameter_base(c(names(prior_list), JAGS_to_monitor(prior_list)))
+    ]
+  }
   add_parameters <- unique(c(add_parameters, formula_add_parameters))
   jags_modules <- unique(c(jags_modules, formula_jags_modules))
   required_packages <- unique(c(required_packages, formula_required_packages))
@@ -864,6 +878,12 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
   )
 }
 
+# The parameter name without its index: "tau[1]" is a coordinate of "tau".
+.bt_jags_parameter_base <- function(x){
+
+  sub("\\[.*$", "", x)
+}
+
 .bt_validate_jags_add_parameters <- function(add_parameters, prior_list){
 
   if(length(add_parameters) == 0L){
@@ -880,11 +900,9 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
   }
 
   prior_parameters <- unique(c(names(prior_list), JAGS_to_monitor(prior_list)))
-  parameter_base <- function(x){
-    sub("\\[.*$", "", x)
-  }
   overlap <- add_parameters[
-    parameter_base(add_parameters) %in% parameter_base(prior_parameters)
+    .bt_jags_parameter_base(add_parameters) %in%
+      .bt_jags_parameter_base(prior_parameters)
   ]
   if(length(overlap) > 0L){
     stop(
