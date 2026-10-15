@@ -1695,6 +1695,48 @@ test_that("a context's per-row p-hacking forms take precedence over the branch m
   )
 })
 
+test_that("a context's per-row kernel modes take precedence over the branch metadata (F226)", {
+
+  selection <- prior_weightfunction("one-sided", .025, wf_fixed(c(1, .5)))
+  phacking  <- prior_phacking(form = "linear")
+
+  # one step + p-hacking branch (kernel 3): the rows of a context name the
+  # kernel of each posterior row
+  spec <- selection_backend_spec(prior_bias(selection, phacking), include_init = FALSE)
+  expect_identical(spec$branch_kernel_mode, 3L)
+  expect_identical(selection_native_kernel_args(spec, S = 2L)$kernel_mode, c(3L, 3L))
+
+  context <- spec
+  context$kernel_mode <- c(1L, 3L)
+  expect_identical(selection_native_kernel_args(context, S = 2L)$kernel_mode, c(1L, 3L))
+  # one mode shared by every row, and the validated context of the same rows
+  single <- spec
+  single$kernel_mode <- 1L
+  expect_identical(selection_native_kernel_args(single, S = 2L)$kernel_mode, c(1L, 1L))
+  validated <- selection_context_validate(context, n_samples = 2L)
+  expect_identical(selection_native_kernel_args(validated, S = 2L)$kernel_mode, c(1L, 3L))
+  # an explicit argument takes precedence over the context rows, as before
+  expect_identical(selection_native_kernel_args(context, S = 2L, kernel_mode = 3L)$kernel_mode, c(3L, 3L))
+  # rows of the wrong length or outside the kernels are refused, not repaired
+  expect_error(selection_native_kernel_args(context, S = 3L), "kernel_mode")
+  invalid <- spec
+  invalid$kernel_mode <- c(1L, 4L)
+  expect_error(selection_native_kernel_args(invalid, S = 2L), "kernel_mode")
+
+  # different kernels per branch: the bare specification names no route, the
+  # rows of a context do
+  mixture <- selection_backend_spec(prior_mixture(list(selection, phacking)), include_init = FALSE)
+  expect_identical(mixture$branch_kernel_mode, c(1L, 2L))
+  expect_error(selection_native_kernel_args(mixture, S = 2L), "union capability flag", fixed = TRUE)
+  rows <- mixture
+  rows$kernel_mode <- c(1L, 2L)
+  expect_identical(selection_native_kernel_args(rows, S = 2L)$kernel_mode, c(1L, 2L))
+  # the rows win over a branch indicator that maps the same rows elsewhere
+  rows$bias_indicator <- c(2L, 1L)
+  expect_identical(selection_native_kernel_args(rows, S = 2L)$kernel_mode, c(1L, 2L))
+  expect_identical(selection_native_kernel_args(mixture, S = 2L, kernel_mode = c(2L, 1L))$kernel_mode, c(2L, 1L))
+})
+
 test_that("generated p-hacking constants read back as the doubles the evaluators use (F226)", {
 
   for(prior in list(

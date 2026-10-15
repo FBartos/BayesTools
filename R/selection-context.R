@@ -15,7 +15,9 @@
 #' \code{phacking}, and \code{data} fallbacks where available.
 #' Spec-level \code{kernel_mode} is the union of branch kernels (a capability
 #' flag). Row routing uses \code{branch_kernel_mode} or an explicit per-row
-#' vector. Branches with kernel mode \code{0} carry no selection kernel and
+#' vector; the per-row \code{kernel_mode} (and \code{phack_kind}) of a context
+#' take precedence over the branch metadata, and an explicit argument over
+#' both. Branches with kernel mode \code{0} carry no selection kernel and
 #' never compete for a route, so a specification whose active branches all
 #' share one kernel routes on that kernel. When two or more \emph{different}
 #' active kernels coexist, their bitwise union names a third kernel rather
@@ -898,6 +900,12 @@ selection_row_arg <- function(x, n, name){
   }
 
   if(is.null(kernel_mode)){
+    # the kernel modes of a context's rows take precedence over the branch
+    # metadata, as its p-hacking forms do
+    context_rows <- .selection_context_row_kernel_modes(selection_spec, unique_branches)
+    if(!is.null(context_rows)){
+      return(context_rows)
+    }
     if(length(route_mode) == 1L){
       return(route_mode)
     }
@@ -942,6 +950,26 @@ selection_row_arg <- function(x, n, name){
   }
 
   kernel_mode
+}
+
+# The 'kernel_mode' field of a bare specification is the union of its branch
+# kernels (a capability flag); a context replaces it with the kernel of each
+# posterior row, and validating a context expands the flag to one value per row.
+# Rows that all equal the union of the branch kernels name no route beyond the
+# flag; any other rows are the context's own. NULL for a bare specification and
+# for one without branch metadata, which has no other route than the field itself.
+.selection_context_row_kernel_modes <- function(selection_spec, unique_branches){
+
+  if(length(unique_branches) == 0L){
+    return(NULL)
+  }
+  rows <- .selection_spec_kernel_mode(selection_spec)
+  branch_union <- Reduce(function(a, b) bitwOr(as.integer(a), as.integer(b)), unique_branches)
+  if(all(rows == as.integer(branch_union))){
+    return(NULL)
+  }
+
+  rows
 }
 
 .selection_map_union_kernel_mode <- function(selection_spec, branch_modes, S){

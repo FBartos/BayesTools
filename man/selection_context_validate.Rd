@@ -79,7 +79,9 @@ Native argument helpers accept either an augmented context or a bare
 \code{phacking}, and \code{data} fallbacks where available.
 Spec-level \code{kernel_mode} is the union of branch kernels (a capability
 flag). Row routing uses \code{branch_kernel_mode} or an explicit per-row
-vector. Branches with kernel mode \code{0} carry no selection kernel and
+vector; the per-row \code{kernel_mode} (and \code{phack_kind}) of a context
+take precedence over the branch metadata, and an explicit argument over
+both. Branches with kernel mode \code{0} carry no selection kernel and
 never compete for a route, so a specification whose active branches all
 share one kernel routes on that kernel. When two or more \emph{different}
 active kernels coexist, their bitwise union names a third kernel rather
