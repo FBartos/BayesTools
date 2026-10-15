@@ -544,6 +544,17 @@ certifies the additive support. These certificates do not make an unknown
 point ordinate exact. Products, vector dependence, expression points, and
 unknown source transforms do not qualify for this additive certificate.
 
+The numerical grid of a linear combination resolves its narrowest continuous
+component (64 knots per robust scale, capped at the grid limit); a zero weight
+is dropped. A simple untransformed component whose scale (the absolute weight
+times the robust scale of its prior) is below `.Machine$double.eps` times the
+dominant component's scale does not set the spacing: its contribution to the sum
+is below double resolution of the dominant component (a rounding-residue weight
+such as that of a centered predictor equal to its mean), so it is a point at its
+mean (the weight times the prior mean). Components above that resolution keep
+setting the spacing, and a component with a source transformation, a mixture
+or an undefined mean is never replaced.
+
 Plotted linear-combination prior densities (`.prior_linear_density_to_plot_data()`)
 evaluate the same route at every plotted value: closed forms vectorized over
 the plotting grid, and quadrature leaves by one batched quadrature over all

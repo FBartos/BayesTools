@@ -198,3 +198,19 @@ test_that("prior displays of a treatment by orthonormal interaction describe its
   figure <- plot_posterior(samples, parameter, prior = TRUE, plot_type = "ggplot")
   expect_s3_class(figure, "ggplot")
 })
+
+test_that("a rounding-residue predictor weight does not refine the prior density grid of a formula fit", {
+
+  skip_if_missing_fits("fit_formula_simple")
+  fit <- readRDS(file.path(temp_fits_dir, "fit_formula_simple.RDS"))
+  # the weight of a centered predictor equal to its mean (scale(c(1.1, 2.2, 3.3, 4.4, 5.5))[3])
+  residue <- as.numeric(scale(c(1.1, 2.2, 3.3, 4.4, 5.5)))[3L]
+  expect_lt(abs(residue), 1e-15)
+  zero <- JAGS_formula_prior_density(fit, "mu", weights = c(mu_intercept = 1, mu_x_cont1 = 0))
+  density <- JAGS_formula_prior_density(fit, "mu", weights = c(mu_intercept = 1, mu_x_cont1 = residue))
+  expect_length(zero$density$x, 4096L)
+  expect_length(density$density$x, 4096L)
+  expect_equal(density$density$y, zero$density$y, tolerance = 1e-9)
+  expect_equal(prior_density_ordinate(density, 1)$log_density, prior_density_ordinate(zero, 1)$log_density,
+    tolerance = 1e-9)
+})

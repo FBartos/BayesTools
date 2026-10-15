@@ -20,6 +20,12 @@
 #' Identical canonical multipliers cancel before division, including zero;
 #' declared zero contributions require no irrelevant state. A different needed
 #' zero denominator refuses the requested numeric vector, without row repair.
+#' The numerical grid of a weighted combination resolves its narrowest
+#' continuous component, except that a simple component whose scale (the
+#' absolute weight times the robust scale of its prior) is below
+#' \code{.Machine$double.eps} times the dominant component's scale, such as
+#' the weight of a centered predictor equal to its mean, is a point at its mean
+#' and does not set the grid spacing; a component above that resolution does.
 #'
 #' Finite `matrix` rows are static raw maps. Dynamic rows are entirely `NA` and
 #' retain finite `basis_matrix`, canonical multipliers, true state dependencies,
