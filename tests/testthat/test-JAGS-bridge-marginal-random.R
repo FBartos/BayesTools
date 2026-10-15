@@ -207,6 +207,35 @@ test_that("marginalized random formulas compile block covariance nodes", {
     ),
     "partition every fitted row"
   )
+  expect_error(
+    JAGS_formula_random_marginal_covariance(
+      formula_design = formula_result$formula_design,
+      row_blocks     = list(1:3, integer()),
+      prefix         = "target_cov"
+    ),
+    "Each element of 'row_blocks' must contain at least one fitted-row index.",
+    fixed = TRUE
+  )
+  expect_error(
+    JAGS_formula_random_marginal_covariance(
+      formula_design = formula_result$formula_design,
+      row_blocks     = list(c(1L, 1L), 3L),
+      prefix         = "target_cov"
+    ),
+    "must contain unique fitted-row indices",
+    fixed = TRUE
+  )
+
+  # The lower triangle runs column by column over the block rows.
+  expect_identical(
+    BayesTools:::.bt_lower_triangle_pairs(c(5L, 2L, 9L)),
+    data.frame(row_1 = c(5L, 2L, 9L, 2L, 9L, 9L),
+               row_2 = c(5L, 5L, 5L, 2L, 2L, 9L))
+  )
+  expect_identical(
+    BayesTools:::.bt_lower_triangle_pairs(4L),
+    data.frame(row_1 = 4L, row_2 = 4L)
+  )
 })
 
 test_that("marginalized random formulas compile certified factor nodes", {

@@ -16,10 +16,18 @@
 #'   structurally certified diagonal-plus-factor representation when available
 #'   and otherwise uses the dense representation.
 #'
-#' @return A list with `syntax`, `data`, `row_blocks`, and `representation`.
-#'   Dense results contain one lower-triangle covariance node name per row block
-#'   in `lower_names`. Diagonal-plus-factor results instead contain
-#'   `diagonal_names`, `loading_names`, and structural `loading_ranks`.
+#' @return A list of class `BayesTools_JAGS_random_marginal_covariance` with
+#'   `syntax` (the JAGS model syntax as one string), `data` (the named list of
+#'   data the syntax reads), `row_blocks` (the validated integer row vectors),
+#'   `representation` (`"dense"`, or the diagonal-plus-factor representation
+#'   that `"auto"` returns when it is structurally certified), `term_names`
+#'   (the compiled random-effect block names), and the node names per row
+#'   block. Dense results contain one lower-triangle covariance node name per
+#'   row block in `lower_names` and `NA` in `diagonal_names` and
+#'   `loading_names`. Diagonal-plus-factor results instead contain
+#'   `diagonal_names`, `loading_names` (`NA` for a block without loading
+#'   columns), and structural `loading_ranks`. A formula design without
+#'   random effects returns empty syntax and data.
 #'
 #' @export
 JAGS_formula_random_marginal_covariance <- function(
@@ -73,18 +81,6 @@ JAGS_formula_random_marginal_covariance <- function(
     ), class = c("BayesTools_JAGS_random_marginal_covariance", "list")))
   }
 
-  compile_modes <- vapply(
-    random_effects,
-    .bt_random_effect_term_compile_mode,
-    character(1)
-  )
-  if(any(!compile_modes %in% c("sampled", "marginalized"))){
-    stop(
-      "Every formula random-effect block must be compiled as 'sampled' or ",
-      "'marginalized' before constructing JAGS covariance nodes.",
-      call. = FALSE
-    )
-  }
   .bt_JAGS_bridge_validate_marginal_random_row_blocks(
     random_effects = random_effects,
     row_blocks = row_blocks,
@@ -200,16 +196,16 @@ JAGS_formula_random_marginal_covariance <- function(
 }
 
 
+# The lower triangle (diagonal included) in column-major order: column `c`
+# pairs rows[c:n] with rows[c].
 .bt_lower_triangle_pairs <- function(rows){
 
-  row_1 <- integer()
-  row_2 <- integer()
-  for(column in seq_along(rows)){
-    local_rows <- column:length(rows)
-    row_1 <- c(row_1, rows[local_rows])
-    row_2 <- c(row_2, rep.int(rows[[column]], length(local_rows)))
-  }
-  data.frame(row_1 = row_1, row_2 = row_2)
+  n_rows <- length(rows)
+  columns <- seq_len(n_rows)
+  data.frame(
+    row_1 = rows[sequence(n_rows - columns + 1L, from = columns)],
+    row_2 = rows[rep.int(columns, n_rows - columns + 1L)]
+  )
 }
 
 
@@ -467,7 +463,11 @@ JAGS_formula_random_marginal_covariance <- function(
     stop("'row_blocks' must be a non-empty list of row indices.", call. = FALSE)
   }
   normalized <- lapply(row_blocks, function(rows){
-    if(!is.numeric(rows) || length(rows) == 0L || anyNA(rows) ||
+    if(is.numeric(rows) && length(rows) == 0L){
+      stop("Each element of 'row_blocks' must contain at least one fitted-row index.",
+           call. = FALSE)
+    }
+    if(!is.numeric(rows) || anyNA(rows) ||
        any(!is.finite(rows)) || any(rows != as.integer(rows)) ||
        any(rows < 1L) || any(rows > n_rows) || anyDuplicated(rows)){
       stop("Each element of 'row_blocks' must contain unique fitted-row indices.",

@@ -604,7 +604,7 @@
     compile_mode = compile_mode,
     block_name = random_term$block_name,
     structure = random_structure,
-    group_covariance = .bt_random_effect_group_covariance_input(random_term)
+    group_covariance = random_term$group_covariance
   )
   dense_status <- .bt_random_effect_dense_complexity_status(
     structure = random_structure,
@@ -669,7 +669,6 @@
     n_columns = n_par,
     model_matrix = model_matrix,
     random_structure = random_structure,
-    compile_mode = compile_mode,
     row_indexed_external_sd = row_indexed_external_sd,
     parameterization = parameterization$resolved
   )

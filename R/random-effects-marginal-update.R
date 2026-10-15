@@ -23,6 +23,30 @@
 #'   (`coefficient_input = "source"`), the blocks include every block whose SD
 #'   binding uses that source, also through another variance allocation.
 #'
+#'   Fields shared by the supported families are `update` (the kind of
+#'   update, below), `blocks`, `structure` and `component_index` (the
+#'   covariance structure and the column of a per-column quantity),
+#'   `coefficient_input`, `source_parameter`, `source_transform` and
+#'   `source_transform_spec` (the fitted coordinate and its transform to the
+#'   public quantity), `quantity_id`, `canonical_name`, `formula_parameter` and
+#'   `dependencies`. Affine plans add `coefficient_transform` and, for the
+#'   Dirichlet-weight updates of an allocation, `allocation` (`weight_name`,
+#'   `index`, `n_targets`, and the allocation `scale` when the plan comes from
+#'   the conditional route). `invariant_covariance` holds the
+#'   covariance that does not depend on the selected coordinate when it is
+#'   structurally available, and `NULL` otherwise. Factor plans of
+#'   allocation-derived SDs add `coefficient_scale_transform`. An unsupported
+#'   plan carries `reason` and `message` instead.
+#'
+#'   `update` is `"scale"` when the contribution of the affected blocks is
+#'   scaled by one coefficient, `"column_scale"` when one column SD of a block
+#'   changes (`component_index`), `"allocation"` when a Dirichlet weight of a
+#'   variance allocation changes, and `"correlation"` for a correlation
+#'   coordinate. An allocation-derived component SD of a block with several
+#'   independent columns reports `"scale"` although only column
+#'   `component_index` changes, while a direct per-column SD with unequal
+#'   column SDs reports `"column_scale"`; the plan is exact in both cases.
+#'
 #' @details
 #' `family = "affine"` means that, conditional on every non-selected posterior
 #' coordinate, the row covariance has the exact form `A + h(value) * B`, where
@@ -39,6 +63,11 @@
 #' scale; after formula scaling that changes it, the plan is unsupported.
 #' Unsupported plans carry a structural reason. The accessor
 #' never estimates affineness from evaluated covariance matrices.
+#'
+#' The `conditional` entry of an unsupported plan is compiled only for a
+#' variance allocation with exactly two single-column block targets, a scalar
+#' total-variance source and inclusion gates on the blocks; an allocation with
+#' more than two targets has no conditional plan and stays unsupported.
 #'
 #' @seealso [parameter_catalog()] [random_effects_marginal_factor_states()]
 #' @export
@@ -609,10 +638,7 @@ random_effects_marginal_update_grid <- function(
       return(.bt_random_effect_marginal_update_affine(
         update = "correlation",
         blocks = random_term$block_name,
-        coefficient_transform = .bt_random_effect_marginal_update_transform(
-          fit,
-          selection
-        ),
+        coefficient_transform = parameter_transform(fit, selection),
         coefficient_input = "source",
         component_index = NA_integer_,
         structure = structure
@@ -636,10 +662,7 @@ random_effects_marginal_update_grid <- function(
       return(.bt_random_effect_marginal_update_affine(
         update = "correlation",
         blocks = random_term$block_name,
-        coefficient_transform = .bt_random_effect_marginal_update_transform(
-          fit,
-          selection
-        ),
+        coefficient_transform = parameter_transform(fit, selection),
         coefficient_input = "source",
         component_index = key$index,
         structure = "us"
@@ -1074,12 +1097,6 @@ random_effects_marginal_update_grid <- function(
   }
 
   unique(c(blocks, block_names[block_names %in% used]))
-}
-
-
-.bt_random_effect_marginal_update_transform <- function(fit, selection){
-
-  parameter_transform(fit, selection)
 }
 
 

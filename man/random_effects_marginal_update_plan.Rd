@@ -21,6 +21,30 @@ additionally records the scalar covariance coefficient transform and the
 affected random-effect blocks. For a plan in a source coordinate
 (\code{coefficient_input = "source"}), the blocks include every block whose SD
 binding uses that source, also through another variance allocation.
+
+Fields shared by the supported families are \code{update} (the kind of
+update, below), \code{blocks}, \code{structure} and \code{component_index} (the
+covariance structure and the column of a per-column quantity),
+\code{coefficient_input}, \code{source_parameter}, \code{source_transform} and
+\code{source_transform_spec} (the fitted coordinate and its transform to the
+public quantity), \code{quantity_id}, \code{canonical_name}, \code{formula_parameter} and
+\code{dependencies}. Affine plans add \code{coefficient_transform} and, for the
+Dirichlet-weight updates of an allocation, \code{allocation} (\code{weight_name},
+\code{index}, \code{n_targets}, and the allocation \code{scale} when the plan comes from
+the conditional route). \code{invariant_covariance} holds the
+covariance that does not depend on the selected coordinate when it is
+structurally available, and \code{NULL} otherwise. Factor plans of
+allocation-derived SDs add \code{coefficient_scale_transform}. An unsupported
+plan carries \code{reason} and \code{message} instead.
+
+\code{update} is \code{"scale"} when the contribution of the affected blocks is
+scaled by one coefficient, \code{"column_scale"} when one column SD of a block
+changes (\code{component_index}), \code{"allocation"} when a Dirichlet weight of a
+variance allocation changes, and \code{"correlation"} for a correlation
+coordinate. An allocation-derived component SD of a block with several
+independent columns reports \code{"scale"} although only column
+\code{component_index} changes, while a direct per-column SD with unequal
+column SDs reports \code{"column_scale"}; the plan is exact in both cases.
 }
 \description{
 Resolves a selected public random-effect quantity to the exact scalar
@@ -48,6 +72,11 @@ quantity-scale plans require the public SD to be on the fitted coefficient
 scale; after formula scaling that changes it, the plan is unsupported.
 Unsupported plans carry a structural reason. The accessor
 never estimates affineness from evaluated covariance matrices.
+
+The \code{conditional} entry of an unsupported plan is compiled only for a
+variance allocation with exactly two single-column block targets, a scalar
+total-variance source and inclusion gates on the blocks; an allocation with
+more than two targets has no conditional plan and stays unsupported.
 }
 \seealso{
 \code{\link[=parameter_catalog]{parameter_catalog()}} \code{\link[=random_effects_marginal_factor_states]{random_effects_marginal_factor_states()}}

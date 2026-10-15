@@ -243,7 +243,12 @@ test_that("LKJ CPC construction returns valid lower Cholesky factors", {
   expect_equal(rowSums(L^2), rep(1, 3), tolerance = 1e-12)
 
   R <- L %*% t(L)
-  expect_equal(R, L %*% t(L), tolerance = 1e-12)
+  # The first column of a CPC factor holds the first partial correlations; the
+  # remaining entry follows from the factor rows.
+  expect_equal(R[2, 1], 0.2, tolerance = 1e-12)
+  expect_equal(R[3, 1], -0.4, tolerance = 1e-12)
+  expect_equal(R[3, 2], -0.4 * 0.2 + 0.5 * sqrt(1 - 0.4^2) * sqrt(1 - 0.2^2),
+               tolerance = 1e-12)
   expect_equal(diag(R), rep(1, 3), tolerance = 1e-12)
   expect_equal(R, t(R), tolerance = 1e-12)
   expect_true(all(eigen(R, symmetric = TRUE, only.values = TRUE)$values > 0))
@@ -312,7 +317,12 @@ test_that("LKJ CPC construction remains stable near primitive boundaries", {
     expect_equal(L[upper.tri(L)], rep(0, setting$K * (setting$K - 1L) / 2L), tolerance = 1e-12)
     expect_true(all(diag(L) > 0))
     expect_equal(rowSums(L^2), rep(1, setting$K), tolerance = 1e-10)
-    expect_equal(R, L %*% t(L), tolerance = 1e-10)
+    # The correlations of the first column are the first partial correlations,
+    # the entry (i, 1) being the CPC 2 u - 1 at position (i - 1)(i - 2) / 2 + 1.
+    first_column <- vapply(2:setting$K, function(i){
+      2 * setting$u[(i - 1L) * (i - 2L) / 2L + 1L] - 1
+    }, numeric(1))
+    expect_equal(R[-1L, 1L], first_column, tolerance = 1e-10)
     expect_equal(R, t(R), tolerance = 1e-10)
     expect_equal(diag(R), rep(1, setting$K), tolerance = 1e-10)
     expect_true(all(eigen(R, symmetric = TRUE, only.values = TRUE)$values > -1e-10))

@@ -21,7 +21,7 @@
          call. = FALSE)
   }
   if(!is.numeric(group_map) || length(group_map) != nrow(model_matrix) ||
-     any(is.na(group_map)) || any(!is.finite(group_map)) ||
+     any(!is.finite(group_map)) ||
      any(group_map != as.integer(group_map)) || any(group_map < 1L)){
     stop(
       "Structured random-effect group map must contain one positive integer per model-matrix row.",
@@ -54,13 +54,6 @@
     )
   }
   row_column <- max.col(nonzero, ties.method = "first")
-  selected   <- model_matrix[cbind(seq_len(nrow(model_matrix)), row_column)]
-  if(any(selected != 1)){
-    stop(
-      "Group-local structured compilation requires the non-zero design value in every row to equal one.",
-      call. = FALSE
-    )
-  }
 
   n_columns <- ncol(model_matrix)
   coordinates <- .bt_random_effect_structured_local_coordinates(
@@ -82,7 +75,6 @@
 
   local_group  <- rep(groups, lengths(group_columns))
   local_column <- unlist(group_columns, use.names = FALSE)
-  local_index  <- unlist(lapply(lengths(group_columns), seq_len), use.names = FALSE)
   node_names   <- if(is.null(parameter_stem)){
     character()
   }else{
@@ -106,7 +98,6 @@
     row_local = row_local,
     local_group = local_group,
     local_column = local_column,
-    local_index = local_index,
     column_coordinates = coordinates,
     node_names = node_names
   )
@@ -147,7 +138,7 @@
     return(seq_len(n_columns))
   }
   if(!is.numeric(column_coordinates) || length(column_coordinates) != n_columns ||
-     any(is.na(column_coordinates)) || any(!is.finite(column_coordinates)) ||
+     any(!is.finite(column_coordinates)) ||
      anyDuplicated(column_coordinates)){
     stop(
       "Structured random-effect column coordinates must be finite, unique, and match the global column count.",

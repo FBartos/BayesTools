@@ -576,6 +576,46 @@ test_that("a source-coordinate plan lists every block that uses the source", {
   )
 })
 
+test_that("affine update plans are affine in their declared coefficient", {
+
+  # A plan that claims `A + h(value) B` is checked against the covariance, not
+  # only against its labels: the divided differences of C(value) in h(value)
+  # agree, and the declared blocks change.
+  data <- data.frame(
+    id = factor(rep(c("a", "b"), each = 3L)),
+    f = factor(rep(c("x", "y", "z"), 2L))
+  )
+  h <- function(transform, value){
+    switch(
+      transform$type,
+      identity = value,
+      square = value^2,
+      stop("unexpected coefficient transform")
+    )
+  }
+  check_affine <- function(fit, plan){
+    posterior <- as.matrix(BayesTools:::.fit_to_posterior(fit))[1L, , drop = FALSE]
+    expect_identical(plan$family, "affine")
+    covariance <- function(value){
+      draw <- posterior
+      draw[, plan$source_parameter] <- value
+      random_effects_marginal_vcov(fit, posterior_samples = draw)$samples[1L, , ]
+    }
+    values <- c(0.15, 0.4, 0.8)
+    C <- lapply(values, covariance)
+    coefficient <- h(plan$coefficient_transform, values)
+    first <- (C[[2L]] - C[[1L]]) / (coefficient[[2L]] - coefficient[[1L]])
+    second <- (C[[3L]] - C[[1L]]) / (coefficient[[3L]] - coefficient[[1L]])
+    expect_equal(first, second, tolerance = 1e-12)
+    expect_gt(max(abs(first)), 0)
+  }
+  diagonal <- .random_update_test_fit(~ 1 + diag(1 + f | id), data)
+  check_affine(diagonal, .random_update_test_plan(diagonal, "random_sd", "intercept"))
+  hcs_fit <- .random_update_test_fit(~ 1 + hcs(f | id), data)
+  check_affine(hcs_fit, .random_update_test_plan(hcs_fit, "random_correlation"))
+})
+
+
 test_that("random covariance updates are classified from formula metadata", {
 
   data <- data.frame(

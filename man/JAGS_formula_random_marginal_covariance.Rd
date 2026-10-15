@@ -25,10 +25,18 @@ structurally certified diagonal-plus-factor representation when available
 and otherwise uses the dense representation.}
 }
 \value{
-A list with \code{syntax}, \code{data}, \code{row_blocks}, and \code{representation}.
-Dense results contain one lower-triangle covariance node name per row block
-in \code{lower_names}. Diagonal-plus-factor results instead contain
-\code{diagonal_names}, \code{loading_names}, and structural \code{loading_ranks}.
+A list of class \code{BayesTools_JAGS_random_marginal_covariance} with
+\code{syntax} (the JAGS model syntax as one string), \code{data} (the named list of
+data the syntax reads), \code{row_blocks} (the validated integer row vectors),
+\code{representation} (\code{"dense"}, or the diagonal-plus-factor representation
+that \code{"auto"} returns when it is structurally certified), \code{term_names}
+(the compiled random-effect block names), and the node names per row
+block. Dense results contain one lower-triangle covariance node name per
+row block in \code{lower_names} and \code{NA} in \code{diagonal_names} and
+\code{loading_names}. Diagonal-plus-factor results instead contain
+\code{diagonal_names}, \code{loading_names} (\code{NA} for a block without loading
+columns), and structural \code{loading_ranks}. A formula design without
+random effects returns empty syntax and data.
 }
 \description{
 Compiles sampled or marginalized formula random-effect metadata into deterministic JAGS

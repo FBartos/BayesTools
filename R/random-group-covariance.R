@@ -591,14 +591,9 @@ print.random_group_covariance <- function(x, ...){
   kernel
 }
 
-.bt_random_effect_group_covariance_input <- function(random_term){
-
-  random_term$group_covariance
-}
-
 .bt_random_effect_has_known_group_covariance <- function(random_term){
 
-  group_covariance <- .bt_random_effect_group_covariance_input(random_term)
+  group_covariance <- random_term$group_covariance
   is.list(group_covariance) && identical(group_covariance$type, "known")
 }
 
@@ -639,11 +634,10 @@ print.random_group_covariance <- function(x, ...){
                                                             n_columns,
                                                             model_matrix,
                                                             random_structure,
-                                                            compile_mode,
                                                             row_indexed_external_sd,
                                                             parameterization){
 
-  group_covariance <- .bt_random_effect_group_covariance_input(random_term)
+  group_covariance <- random_term$group_covariance
   if(is.null(group_covariance)){
     return(NULL)
   }
@@ -653,7 +647,6 @@ print.random_group_covariance <- function(x, ...){
     n_columns = n_columns,
     model_matrix = model_matrix,
     random_structure = random_structure,
-    compile_mode = compile_mode,
     row_indexed_external_sd = row_indexed_external_sd,
     parameterization = parameterization
   )
@@ -670,23 +663,15 @@ print.random_group_covariance <- function(x, ...){
     n_columns,
     model_matrix,
     random_structure,
-    compile_mode,
     row_indexed_external_sd,
     parameterization){
 
-  if(!compile_mode %in% c("sampled", "marginalized")){
-    stop(
-      "Known group covariance for random-effect block '",
-      random_term$block_name,
-      "' received an unknown random-effect compile mode.",
-      call. = FALSE
-    )
-  }
   if(!random_structure %in% c("id", "diag", "us")){
     stop(
       "Known group covariance for random-effect block '",
       random_term$block_name,
-      "' only supports unstructured, diagonal, or identity random-intercept blocks.",
+      "' only supports the 'us' (unstructured), 'diag' (diagonal), and 'id' ",
+      "(identity) covariance structures.",
       call. = FALSE
     )
   }
