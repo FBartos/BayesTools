@@ -599,7 +599,12 @@ is closed while evaluation treats the CS singular bound `-1/(K-1)` as open;
 AR1/HAR uses raw `Uniform(-1, 1)`; CAR uses raw `Uniform(0, 1)` and includes
 `rho = 0`. Do not treat Uniform as an open-interval family. Explicit scalar
 priors retain
-their Fisher-z default scale. SD magnitude belongs to the outcome model:
+their Fisher-z default scale. In double precision a Fisher-z coordinate beyond
+about 19 (a logit coordinate beyond about 36.7) in absolute value maps to
+`|rho| = 1`: centered fits stop in JAGS ("Invalid parent values"), noncentered
+draws are refused when the correlation is reconstructed, and a CAR prior whose
+whole transformed support saturates is refused at compile time; narrower
+correlation priors avoid it. The compiler applies no cutoff or truncation. SD magnitude belongs to the outcome model:
 BayesTools must not supply a generic scale, and direct `JAGS_formula()` use
 requires an SD prior, SD source, or variance allocation.
 

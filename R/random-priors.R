@@ -104,6 +104,15 @@
 #' * `"cor"` places the prior directly on the raw correlation; the prior is truncated to
 #'   the structure-specific valid interval.
 #'
+#' In double precision, Fisher-z coordinates beyond about 19 in absolute value
+#' (logit coordinates beyond about 36.7) map to a correlation of exactly
+#' \eqn{\pm 1}. A scalar correlation prior with mass there gives draws on the
+#' boundary of the support: centered fits stop in JAGS with "Invalid parent
+#' values" and noncentered draws are refused when the correlation is
+#' reconstructed. A `"CAR"` correlation prior whose whole support lies there
+#' is refused when the model is built. A prior with less mass beyond these
+#' coordinates avoids the problem.
+#'
 #' @section Variance allocation:
 #' `random_variance_allocation()` expresses one aggregate SD source plus a Dirichlet
 #' prior over variance proportions. A one-component block allocation is also
@@ -666,6 +675,9 @@ allocation_ref <- function(allocation_name, component){
 #' @param cor_scale scale for an explicitly supplied scalar correlation prior.
 #'   `"fisher_z"` is the default, `"logit"` uses a logit transform of the valid
 #'   raw-correlation interval, and `"cor"` uses the raw correlation parameter.
+#'   Coordinates beyond about 19 (Fisher-z) or 36.7 (logit) in absolute value
+#'   map to a correlation of exactly +-1 in double precision (see
+#'   [prior_random()]).
 #'   For multi-column scalar-correlation structures, omitted `cor` resolves to
 #'   a uniform prior on the raw correlation scale; explicitly requesting another
 #'   scale without supplying `cor` is an error. US/UN structures use an LKJ prior

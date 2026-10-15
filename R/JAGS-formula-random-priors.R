@@ -553,11 +553,41 @@
     )
   }
 
+  sample_lower <- support$bounds[[1L]]
   sample_upper <- support$bounds[[2L]]
   interior <- .bt_random_effect_representable_rho_bounds(
     bounds,
     structure = "car"
   )
+  # Representability edge: the emitted back-transform is evaluated without
+  # clamping to the interior. A Fisher-z coordinate beyond |z| of about 19.06
+  # (a logit coordinate beyond about 36.7) maps to a correlation that is
+  # exactly 1 in double precision, where the CAR innovation variance is zero.
+  # A prior whose whole support saturates would compile and sample rho = 1 in
+  # JAGS, so it is refused; a support that only partly saturates keeps the
+  # clamped upper bound below (such draws fail where they are drawn).
+  if(rho_scale %in% c("fisher_z", "logit")){
+    emitted_lower <- if(identical(rho_scale, "fisher_z")){
+      tanh(sample_lower)
+    }else{
+      bounds[["lower"]] + (bounds[["upper"]] - bounds[["lower"]]) *
+        stats::plogis(sample_lower)
+    }
+    if(is.finite(emitted_lower) && emitted_lower >= bounds[["upper"]]){
+      .bt_formula_transform_stop(
+        paste0(
+          context, " is unavailable: its whole support (coordinates ",
+          format(sample_lower, digits = 6), " to ",
+          format(sample_upper, digits = 6), ") maps to a correlation of ",
+          "exactly ", format(bounds[["upper"]], digits = 6), " in double ",
+          "precision, where the CAR innovation variance is zero. Use a ",
+          "correlation prior with support below |z| of about ",
+          if(identical(rho_scale, "logit")) "36.7 (logit scale)." else "19 (Fisher-z scale)."
+        ),
+        reason = "saturated_correlation_support", rho_scale = rho_scale
+      )
+    }
+  }
   if(identical(rho_scale, "fisher_z")){
     rho_upper <- tanh(sample_upper)
     rho_upper <- max(

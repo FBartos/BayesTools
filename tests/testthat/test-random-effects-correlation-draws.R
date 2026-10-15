@@ -760,3 +760,24 @@ test_that("CS Cholesky reconstruction is stable near its global lower bound", {
                tolerance = 0)
   expect_equal(tcrossprod(actual), expected, tolerance = 1e-12)
 })
+
+test_that("a CAR correlation prior that saturates on its whole support is refused", {
+
+  expect_error(
+    .correlation_draws_term("car", cor = prior("uniform", list(a = 20, b = 21))),
+    paste0("its whole support (coordinates 20 to 21) maps to a correlation of ",
+           "exactly 1 in double precision"),
+    fixed = TRUE,
+    class = "BayesTools_formula_transform_unavailable"
+  )
+  expect_error(
+    .correlation_draws_term("car", cor = prior("uniform", list(a = 50, b = 51)),
+                            cor_scale = "logit"),
+    "its whole support (coordinates 50 to 51) maps to a correlation of exactly 1",
+    fixed = TRUE,
+    class = "BayesTools_formula_transform_unavailable"
+  )
+  # A support that only partly saturates, or a representable one, still compiles.
+  expect_no_error(.correlation_draws_term("car", cor = prior("normal", list(0, 10))))
+  expect_no_error(.correlation_draws_term("car", cor = prior("uniform", list(a = 0, b = 5))))
+})

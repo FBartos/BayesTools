@@ -178,6 +178,9 @@ zero; \code{eta = 1} is uniform over correlation matrices.}
 \item{cor_scale}{scale for an explicitly supplied scalar correlation prior.
 \code{"fisher_z"} is the default, \code{"logit"} uses a logit transform of the valid
 raw-correlation interval, and \code{"cor"} uses the raw correlation parameter.
+Coordinates beyond about 19 (Fisher-z) or 36.7 (logit) in absolute value
+map to a correlation of exactly +-1 in double precision (see
+\code{\link[=prior_random]{prior_random()}}).
 For multi-column scalar-correlation structures, omitted \code{cor} resolves to
 a uniform prior on the raw correlation scale; explicitly requesting another
 scale without supplying \code{cor} is an error. US/UN structures use an LKJ prior
@@ -327,6 +330,15 @@ interval.
 \item \code{"cor"} places the prior directly on the raw correlation; the prior is truncated to
 the structure-specific valid interval.
 }
+
+In double precision, Fisher-z coordinates beyond about 19 in absolute value
+(logit coordinates beyond about 36.7) map to a correlation of exactly
+\eqn{\pm 1}. A scalar correlation prior with mass there gives draws on the
+boundary of the support: centered fits stop in JAGS with "Invalid parent
+values" and noncentered draws are refused when the correlation is
+reconstructed. A \code{"CAR"} correlation prior whose whole support lies there
+is refused when the model is built. A prior with less mass beyond these
+coordinates avoids the problem.
 }
 
 \section{Variance allocation}{
