@@ -123,7 +123,8 @@
 # rescaled by it, see .random_sd_original_scale_laws()). The SDs of blocks
 # without a scaled column keep their fitted law and are not returned. An SD that
 # is a composite of several fitted SDs, or whose block has no fitted design in
-# the context, has no prior law here: the typed refusal is raised when its
+# the context or a linearly dependent one, has no prior law here: the typed
+# refusal is raised when its
 # weight is requested, never when the context is built (contexts over fixed
 # columns carry no SD).
 .prior_density_context_random_sd_scale <- function(context, columns){
@@ -159,6 +160,17 @@
           "the context carries no fitted design of the random-effect block '", block,
           "' of formula parameter '", prefix, "', which is needed to map its SD to the ",
           "original predictor scale"
+        )
+      }else if(identical(cause, "original_scale_not_identified")){
+        detail <- "its random-effect block has a linearly dependent design"
+        remedy <- paste0(
+          "Use the SD on the fitted scale (transform_scaled = FALSE), or a block whose ",
+          "fitted terms are linearly independent."
+        )
+        reason <- paste0(
+          "the fitted terms of the random-effect block '", block, "' of formula parameter '",
+          prefix, "' are linearly dependent, so its original-scale coefficients are not ",
+          "uniquely determined"
         )
       }else{
         detail <- "its original-scale law combines several fitted SDs of its random-effect block"

@@ -300,23 +300,36 @@
 # block whose scaled design has no original-scale representation in its own
 # columns (a term that would have to be induced, e.g. the implied intercept of
 # `(0 + x | g)`) keeps the documented name-paired map, which drops the induced
-# terms; any other failure propagates. Without the fitted block the map pairs
-# coefficient names.
+# terms; any other failure propagates. A block whose design is linearly
+# dependent has no unique original-scale map (`original_scale_not_identified`):
+# a request for original-scale values stops with that condition
+# (unidentified = "stop"), while a caller that classifies the block without
+# transforming draws (the parameter map) asks for NULL (unidentified =
+# "unavailable"). Without the fitted block the map pairs coefficient names.
 .random_sd_unscale_matrix <- function(column_terms, formula_scale, prefix,
-                                      random_term = NULL, source_data = NULL){
+                                      random_term = NULL, source_data = NULL,
+                                      unidentified = c("stop", "unavailable")){
 
+  unidentified <- match.arg(unidentified)
   if(!is.null(random_term)){
     spec <- .bt_random_effect_unscale_design_spec(random_term, source_data)
     if(!is.null(spec)){
       transform <- tryCatch(
         .bt_formula_unscale_design_transform(spec, formula_scale, prefix),
         BayesTools_formula_transform_unavailable = function(condition){
+          if(identical(condition$reason, "original_scale_not_identified") &&
+             identical(unidentified, "unavailable")){
+            return("unidentified")
+          }
           if(!identical(condition$reason, "original_scale_not_representable")){
             stop(condition)
           }
           NULL
         }
       )
+      if(identical(transform, "unidentified")){
+        return(NULL)
+      }
       if(!is.null(transform)){
         if(nrow(transform$matrix) != length(column_terms)){
           .bt_stop_refit_required(
@@ -407,7 +420,9 @@
 # named character): "random_effect_design_unavailable" for a block without a
 # fitted design in 'design' (the part of the formula design of the parameter
 # that .bt_formula_design_random_unscale_view() keeps), and
-# "random_sd_prior_law_unavailable" for a composite, and 'blocks', the block
+# "random_sd_prior_law_unavailable" for a composite, and
+# "original_scale_not_identified" for a block whose linearly dependent design
+# has no unique original-scale map, and 'blocks', the block
 # name of every one of these coordinates. The SDs of blocks without a scaled
 # column, and of structured blocks, are in none of them: their fitted law is
 # the original-scale law.
@@ -449,8 +464,15 @@
       formula_scale = parameter_scale,
       prefix = prefix,
       random_term = block,
-      source_data = design$source_data
+      source_data = design$source_data,
+      unidentified = "unavailable"
     )
+    if(is.null(A)){
+      # a linearly dependent block design: the SDs are composites without an
+      # original-scale law, refused when original-scale values are requested
+      refused[group$leaf_names] <- "original_scale_not_identified"
+      next
+    }
     column_scale <- vapply(seq_len(nrow(A)), function(row){
       magnitude <- abs(A[row, ])
       if(magnitude[row] > 0 && all(magnitude[-row] <= 1e-12 * max(magnitude))){

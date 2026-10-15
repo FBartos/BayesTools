@@ -1012,7 +1012,7 @@ parameter_prior_density.BayesTools_fit <- function(
 # the identity on the fitted scale, and the unscale matrix that
 # .apply_random_sd_column_unscale() applies to the covariance of a scaled
 # block. NULL when a scaled block has no column-wise map (fits without SD-leaf
-# metadata).
+# metadata, or a linearly dependent block design that has no unique map).
 .bt_parameter_prior_density_random_unscale_matrix <- function(object,
                                                                random_term,
                                                                parameter){
@@ -1045,7 +1045,8 @@ parameter_prior_density.BayesTools_fit <- function(
     formula_scale = parameter_scale,
     prefix        = parameter,
     random_term   = random_term,
-    source_data   = design$source_data
+    source_data   = design$source_data,
+    unidentified  = "unavailable"
   )
 }
 

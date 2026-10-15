@@ -2901,3 +2901,81 @@ test_that("the parameter map builds the unscale matrix of a scaled block once", 
     expect_identical(unname(support$bounds), c(0, Inf))
   }
 })
+
+test_that("a scaled random block with a linearly dependent design keeps the fit and refuses original-scale SDs", {
+
+  skip_if_not_installed("runjags")
+
+  # `x:f:f2` without its margins makes the block design linearly dependent: the
+  # original-scale coefficients of the block are not identified. The map build
+  # does not stop (the fit would be lost), the SDs of the block are composites
+  # without an original-scale law, and only original-scale requests refuse.
+  df <- random_block_scale_data()
+  df$f2 <- factor(rep(c("u", "v"), each = 18))
+  block <- prior_random(id = random_block(
+    sd = prior("gamma", list(2, 2)), monitor = random_block_scale_monitor()
+  ))
+  expect_not_identified <- function(expr, label){
+    refusal <- expect_error(
+      expr, class = "BayesTools_formula_transform_unavailable", info = label
+    )
+    expect_identical(refusal$reason, "original_scale_not_identified", info = label)
+  }
+
+  for(formula in list(
+    ~ 1 + x + diag(1 + x + f + x:f:f2 | id),
+    ~ 1 + x + diag(1 + x + x:f:f2 | id)
+  )){
+    label <- paste(deparse(formula), collapse = "")
+    setup <- random_block_scale_fit(formula, df, block)
+    fit <- setup$fit
+    expect_gt(length(setup$sd_names), 6L)
+
+    catalog <- parameter_catalog(fit)
+    sd_rows <- which(catalog$quantities$quantity == "sd")
+    expect_identical(length(sd_rows), length(setup$sd_names), info = label)
+    expect_true(all(vapply(
+      catalog$quantities$extraction_key[sd_rows],
+      function(key) identical(key$source_type, "composite"), logical(1)
+    )), info = label)
+
+    # the fitted-scale tables work: the fixed effects and, in the raw summary,
+    # the fitted SDs; the standard summary leaves the original-scale SDs out
+    # and says so
+    table <- JAGS_estimates_table(fit, remove_diagnostics = TRUE)
+    expect_identical(rownames(table), c("(mu) intercept", "(mu) x"), info = label)
+    expect_match(attr(table, "warnings"), "linearly dependent", fixed = TRUE, info = label)
+    expect_match(attr(table, "warnings"), "random_effects_summary", fixed = TRUE, info = label)
+    raw <- JAGS_estimates_table(fit, remove_diagnostics = TRUE, random_effects_summary = "raw")
+    expect_equal(
+      unname(as.data.frame(raw)[grep("sd(", rownames(raw), fixed = TRUE), "Mean"]),
+      setup$tau, tolerance = 1e-12, info = label
+    )
+
+    # original-scale requests refuse with the class and the reason
+    expect_not_identified(JAGS_estimates_table(fit, transform_scaled = TRUE), label)
+    expect_not_identified(transform_scale_samples(fit), label)
+    expect_not_identified(
+      parameter_draws(fit, parameter_catalog_resolve(catalog, "(mu) sd(intercept)")), label
+    )
+    expect_not_identified(as_mixed_posteriors(fit, setup$sd_names, transform_scaled = TRUE), label)
+    # and so does the prior law of an SD on the original scale
+    context <- .prior_density_context(
+      attr(fit, "prior_list"), c("mu_intercept", "mu_x", setup$sd_names),
+      formula_scale = attr(fit, "formula_scale"),
+      formula_design = list(mu = .bt_formula_design_random_unscale_view(attr(fit, "formula_design")$mu))
+    )
+    expect_not_identified(
+      .prior_density_from_context(
+        context, stats::setNames(as.numeric(context$column_names == setup$sd_names[2L]), context$column_names)
+      ),
+      label
+    )
+  }
+
+  # a block with an independent design keeps its original-scale SDs
+  setup <- random_block_scale_fit(~ 1 + x + diag(1 + x + f | id), df, block)
+  table <- JAGS_estimates_table(setup$fit, remove_diagnostics = TRUE)
+  expect_identical(sum(grepl("sd(", rownames(table), fixed = TRUE)), 4L)
+  expect_length(attr(table, "warnings"), 0L)
+})

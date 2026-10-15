@@ -277,6 +277,18 @@ position: the indicator columns of a logical predictor's interaction with a
 scaled slope share one SD leaf and put no weight on each other, and the leaf's
 SD is their common per-column value. Hand-built SD-leaf metadata without the
 fitted design pair names.
+A block whose design is linearly dependent (`diag(1 + x + x:f:f2 | g)`: a
+three-way term without its margins) has no unique original-scale map
+(`original_scale_not_identified`). The fit and its parameter map are never lost
+to it: the block's SDs are composite catalog quantities without an
+original-scale law, and every request for original-scale values stops with
+`BayesTools_formula_transform_unavailable`, reason
+`original_scale_not_identified` (`transform_scaled = TRUE` tables,
+`transform_scale_samples()`, `parameter_draws()` and the mixed posteriors of
+those SDs, the prior law of an SD on the original scale). The estimates table
+without `transform_scaled` leaves the block's original-scale random-effect rows
+out and says so in its warnings; `random_effects_summary = "raw"` shows the
+fitted SDs.
 The ensemble and marginal tables with `transform_scaled = TRUE` take the block
 design from the formula state of the mixed posteriors (`as_mixed_posteriors()`;
 `mix_posteriors()` attaches a state whenever a requested parameter is a fixed

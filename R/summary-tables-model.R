@@ -68,7 +68,12 @@
 #' \code{"standard"} and \code{"full"} modes always obtain public semantic
 #' quantities from the fitted parameter map on their declared display scale,
 #' and omit the internal (unnormalized gamma) allocation nodes of
-#' ordered-factor priors.
+#' ordered-factor priors. A scaled random-effect block whose design is
+#' linearly dependent has no identified original-scale quantities: these modes
+#' leave its rows out and report it in the table warnings (\code{"raw"} shows
+#' its fitted SDs), while \code{transform_scaled = TRUE} stops with
+#' \code{BayesTools_formula_transform_unavailable}, reason
+#' \code{"original_scale_not_identified"}.
 #' The \code{"raw"} rows of random-effect and allocation implementation
 #' coordinates (fitted-scale SDs, Cholesky factors and correlation matrices,
 #' LKJ primitives, standardized group effects, and allocation nodes) are
@@ -371,10 +376,12 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
     prior_list = prior_list,
     coordinates = coordinates,
     mode = random_effects_summary,
-    simplify_names = simplify_names
+    simplify_names = simplify_names,
+    omit_unidentified = !transform_scaled
   )
   model_samples <- random_summary$model_samples
   prior_list <- random_summary$prior_list
+  warnings <- c(warnings, random_summary$warnings)
   random_included <- list()
   random_unconditioned <- logical()
   if(conditional){

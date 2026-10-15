@@ -298,10 +298,11 @@
 .bt_parameter_catalog_random_summary_samples <- function(
     fit, model_samples, prior_list, coordinates,
     mode = c("standard", "full", "raw", "none"),
-    simplify_names = FALSE){
+    simplify_names = FALSE, omit_unidentified = TRUE){
 
   mode <- match.arg(mode)
   check_bool(simplify_names, "simplify_names", allow_NA = FALSE)
+  check_bool(omit_unidentified, "omit_unidentified", allow_NA = FALSE)
   if(identical(mode, "raw")){
     return(list(model_samples = model_samples, prior_list = prior_list))
   }
@@ -332,13 +333,30 @@
 
   summary_columns <- vector("list", nrow(quantities))
   summary_priors <- vector("list", nrow(quantities))
+  # a quantity of a block with a linearly dependent design has no original-scale
+  # draws (original_scale_not_identified): the fitted-scale table leaves it out
+  # and reports it, an original-scale request (omit_unidentified = FALSE) stops
+  unidentified <- rep(FALSE, nrow(quantities))
   for(i in seq_len(nrow(quantities))){
     quantity <- quantities[i, , drop = FALSE]
-    values <- as.matrix(.bt_parameter_draws_from_quantities(
-      object        = fit,
-      quantities    = quantity,
-      model_samples = model_samples
-    ))
+    values <- tryCatch(
+      as.matrix(.bt_parameter_draws_from_quantities(
+        object        = fit,
+        quantities    = quantity,
+        model_samples = model_samples
+      )),
+      BayesTools_formula_transform_unavailable = function(condition){
+        if(!isTRUE(omit_unidentified) ||
+           !identical(condition$reason, "original_scale_not_identified")){
+          stop(condition)
+        }
+        NULL
+      }
+    )
+    if(is.null(values)){
+      unidentified[i] <- TRUE
+      next
+    }
     if(ncol(values) != 1L || nrow(values) != nrow(model_samples)){
       stop(
         "A semantic random-effect summary could not be aligned with the fitted posterior draws.",
@@ -352,6 +370,27 @@
       simplify_names = simplify_names
     )
   }
+  warnings <- character()
+  if(any(unidentified)){
+    omitted <- quantities[unidentified, , drop = FALSE]
+    blocks <- unique(data.frame(
+      parameter = omitted$formula_parameter,
+      block = vapply(omitted$extraction_key, function(key) key$random_block, character(1)),
+      stringsAsFactors = FALSE
+    ))
+    warnings <- paste0(
+      "The original-scale random-effect quantities of block '", blocks$block,
+      "' of formula parameter '", blocks$parameter, "' are not shown: its fitted design ",
+      "is linearly dependent, so they are not identified. Use ",
+      "'random_effects_summary = \"raw\"' for its fitted-scale SDs."
+    )
+    quantities <- quantities[!unidentified, , drop = FALSE]
+    summary_columns <- summary_columns[!unidentified]
+    summary_priors <- summary_priors[!unidentified]
+  }
+  if(nrow(quantities) == 0L){
+    return(c(cleaned, list(warnings = warnings)))
+  }
   names(summary_columns) <- quantities$canonical_name
   names(summary_priors) <- quantities$canonical_name
   summary_matrix <- do.call(cbind, summary_columns)
@@ -359,7 +398,8 @@
 
   list(
     model_samples = cbind(cleaned$model_samples, summary_matrix),
-    prior_list = c(cleaned$prior_list, summary_priors)
+    prior_list = c(cleaned$prior_list, summary_priors),
+    warnings = warnings
   )
 }
 
