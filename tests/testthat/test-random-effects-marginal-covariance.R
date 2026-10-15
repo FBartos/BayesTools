@@ -1433,6 +1433,29 @@ test_that("scalar rho posterior columns use canonical sample precedence", {
   expect_equal(.re_cov_first(out), expected, tolerance = 1e-12)
 })
 
+test_that("random_effects_formula() returns the random terms only; a known covariance refuses a row SD source", {
+
+  # offset() and the `0 +` intercept control of the fixed part are dropped
+  out <- random_effects_formula(~ 0 + (1 | g))
+  expect_identical(deparse(out$formula), "~us(1 | g, name = \"g\")")
+  expect_named(out, c("formula", "terms", "components", "group_covariance"),
+               ignore.order = TRUE)
+
+  df <- data.frame(id = factor(c("a", "a", "b", "b")))
+  K <- matrix(c(1, .2, .2, 1), 2L, dimnames = list(c("a", "b"), c("a", "b")))
+  expect_error(
+    JAGS_formula(
+      random_effects_formula(~ 1 | id,
+        group_covariance = random_group_covariance(K, scale = "none")),
+      "mu", df, list(intercept = prior("normal", list(0, 1))),
+      prior_random = prior_random(id = random_block(
+        sd_source = random_sd_source("tau", shape = "row")))
+    ),
+    "Known group covariance for random-effect block 'id' does not support row-indexed external SD sources.",
+    fixed = TRUE
+  )
+})
+
 test_that("crossed independent random intercept blocks are summed", {
 
   df <- data.frame(

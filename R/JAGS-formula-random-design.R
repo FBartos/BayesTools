@@ -709,14 +709,8 @@
   }
 
   # step 2 was resolved before step 1 so parameterization sees canonical scales.
-  if(!is.null(group_covariance) && isTRUE(row_indexed_external_sd)){
-    stop(
-      "Known group covariance for random-effect block '",
-      random_term$block_name,
-      "' does not support row-indexed external SD sources.",
-      call. = FALSE
-    )
-  }
+  # (A known group covariance with a row-indexed external SD source was refused
+  # when the covariance was prepared above.)
 
   # step 3
   if(random_structure == "us" && n_par == 1L){

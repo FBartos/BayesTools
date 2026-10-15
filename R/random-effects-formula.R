@@ -67,7 +67,14 @@
 #' interactions follow base-R/lme4 lexicographic tuple order, and the fitted
 #' tuple-to-index map is stored for replay.
 #' Categorical predictor and grouping levels must not contain BayesTools'
-#' reserved internal tokens, such as `__xXx__`.
+#' reserved internal tokens, such as `__xXx__`. Predictor names must not
+#' contain the substring `intercept`, which is reserved for the intercept.
+#'
+#' Only the random-effect terms of the input are returned. Other parts of the
+#' right-hand side, such as `offset()` or the `0 +` / `- 1` intercept controls
+#' of the fixed part (`~ 0 + (1 | g)` returns the term `us(1 | g)`), are
+#' dropped; the fixed part belongs to the model formula passed to
+#' [JAGS_formula()].
 #'
 #' @param random a formula or non-empty list of formulas.
 #' @param envir environment used for the returned formula.
@@ -77,8 +84,8 @@
 #'   Names should match resolved random-effect block names, or grouping labels
 #'   when the grouping label is unambiguous.
 #'
-#' @return A `BayesTools_random_effects` object with `formula`, `terms`, and
-#'   `components` fields.
+#' @return A `BayesTools_random_effects` object with `formula`, `terms`,
+#'   `components`, and `group_covariance` fields.
 #'
 #' @export
 random_effects_formula <- function(random, envir = parent.frame(),

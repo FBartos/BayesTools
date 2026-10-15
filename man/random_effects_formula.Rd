@@ -18,8 +18,8 @@ Names should match resolved random-effect block names, or grouping labels
 when the grouping label is unambiguous.}
 }
 \value{
-A \code{BayesTools_random_effects} object with \code{formula}, \code{terms}, and
-\code{components} fields.
+A \code{BayesTools_random_effects} object with \code{formula}, \code{terms},
+\code{components}, and \code{group_covariance} fields.
 }
 \description{
 Normalizes a formula or a list of formulas containing random-effect terms
@@ -87,5 +87,12 @@ terms support variables, \code{:} interactions, and \code{/} nesting. Grouping
 interactions follow base-R/lme4 lexicographic tuple order, and the fitted
 tuple-to-index map is stored for replay.
 Categorical predictor and grouping levels must not contain BayesTools'
-reserved internal tokens, such as \verb{__xXx__}.
+reserved internal tokens, such as \verb{__xXx__}. Predictor names must not
+contain the substring \code{intercept}, which is reserved for the intercept.
+
+Only the random-effect terms of the input are returned. Other parts of the
+right-hand side, such as \code{offset()} or the \verb{0 +} / \code{- 1} intercept controls
+of the fixed part (\code{~ 0 + (1 | g)} returns the term \code{us(1 | g)}), are
+dropped; the fixed part belongs to the model formula passed to
+\code{\link[=JAGS_formula]{JAGS_formula()}}.
 }
