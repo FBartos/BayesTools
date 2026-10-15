@@ -3525,7 +3525,7 @@ parameter_transform_jacobian <- function(values, transform){
 
   rows <- list()
   used_names <- character()
-  add_definition <- function(raw_name, role, parameter, label,
+  add_definition <- function(raw_name, role, parameter,
                              evaluator, dependencies, metadata = NULL,
                              block = "",
                              term = "", component = "",
@@ -3724,7 +3724,6 @@ parameter_transform_jacobian <- function(values, transform){
         ),
         role = paste0("random_", sd_quantity),
         parameter = parameter,
-        label = allocation$label,
         evaluator = "allocation_sd",
         dependencies = scale_dependencies,
         metadata = metadata,
@@ -3750,7 +3749,6 @@ parameter_transform_jacobian <- function(values, transform){
         ),
         role = paste0("random_", var_quantity),
         parameter = parameter,
-        label = allocation$label,
         evaluator = "allocation_var",
         dependencies = scale_dependencies,
         metadata = metadata,
@@ -3793,8 +3791,6 @@ parameter_transform_jacobian <- function(values, transform){
         raw_name = raw_name,
         role = paste0("random_", allocation_type$summary),
         parameter = parameter,
-        label = paste0(allocation_type$label, "(", allocation$label,
-                       ": ", components[i], ")"),
         evaluator = "allocation",
         dependencies = dependencies,
         metadata = c(metadata, list(index = i)),
@@ -3842,7 +3838,6 @@ parameter_transform_jacobian <- function(values, transform){
           raw_name = multiplier_name,
           role = "random_sd_mult",
           parameter = parameter,
-          label = allocation$label,
           evaluator = "allocation",
           dependencies = dependencies,
           metadata = c(metadata, list(index = K + i)),
@@ -3886,8 +3881,6 @@ parameter_transform_jacobian <- function(values, transform){
           raw_name = raw_name,
           role = "random_inclusion",
           parameter = parameter,
-          label = paste0("inclusion(", allocation$label, ": ",
-                         component_name, ")"),
           evaluator = "allocation_inclusion",
           dependencies = inclusion_dependencies,
           metadata = c(metadata, list(index = inclusion_i)),
@@ -4007,10 +4000,6 @@ parameter_transform_jacobian <- function(values, transform){
             type = "sd",
             parts = c(block, components[i])
           )
-          label <- .bt_random_effect_sd_summary_label(
-            component = components[i],
-            random_term = random_term
-          )
           out$suppress <- unique(c(
             out$suppress,
             intersect(sd_names[i], coordinates$coordinate_name)
@@ -4059,7 +4048,6 @@ parameter_transform_jacobian <- function(values, transform){
             raw_name = raw_name,
             role = "random_sd",
             parameter = parameter,
-            label = label,
             evaluator = "sd",
             dependencies = dependencies,
             metadata = c(term_metadata, list(index = i)),
@@ -4090,7 +4078,6 @@ parameter_transform_jacobian <- function(values, transform){
             raw_name = var_name,
             role = "random_var",
             parameter = parameter,
-            label = label,
             evaluator = "sd_variance",
             dependencies = dependencies,
             metadata = c(term_metadata, list(index = i)),
@@ -4175,17 +4162,10 @@ parameter_transform_jacobian <- function(values, transform){
           }else{
             paste0(effect_parameter, "[", summary_component, "]")
           }
-          label <- if(is.prior.spike_and_slab(prior)){
-            paste0(effect, " | ", group, " (inclusion)")
-          }else{
-            paste0(effect, " | ", group, " (inclusion: ",
-                   summary_component, ")")
-          }
           add_definition(
             raw_name = raw_name,
             role = "random_inclusion",
             parameter = parameter,
-            label = label,
             evaluator = "inclusion",
             dependencies = .bt_parameter_catalog_coordinates(
               coordinates,
@@ -4247,7 +4227,6 @@ parameter_transform_jacobian <- function(values, transform){
           raw_name = raw_name,
           role = "random_correlation",
           parameter = parameter,
-          label = owner,
           evaluator = "rho",
           dependencies = dependencies,
           metadata = term_metadata,
@@ -4319,8 +4298,6 @@ parameter_transform_jacobian <- function(values, transform){
             raw_name = raw_name,
             role = "random_correlation",
             parameter = parameter,
-            label = paste0("cor(", pair[1L], ",", pair[2L],
-                           " | ", group, ")"),
             evaluator = "correlation",
             dependencies = correlation_dependencies,
             metadata = c(term_metadata, list(index = i)),
