@@ -219,6 +219,46 @@ test_that("the bridge context labels BayesTools-owned latent coordinates, not as
   expect_true(all(active_info$owner == "formula"))
 })
 
+test_that("the real sampler bridges random-effect latent coordinates of a normalized target", {
+
+  # Standard-normal latent effects with a zero likelihood: the target is
+  # normalized, so its log marginal likelihood is exactly 0. The upstream
+  # sampler is not mocked.
+  data <- data.frame(id = factor(c("a", "b", "c", "d")))
+  result <- JAGS_formula(
+    formula = ~ 1 + diag(1 | id),
+    parameter = "mu",
+    data = data,
+    prior_list = list(intercept = prior("point", list(location = 0))),
+    prior_random = prior_random(id = random_block(sd = prior("point", list(location = 0.4))))
+  )
+  random_term <- result$formula_design$random_effects[[1L]]
+  latent_names <- as.vector(.bt_random_effect_latent_names(
+    random_term, random_term$n_groups, random_term$n_columns
+  ))
+  set.seed(20261015)
+  posterior <- matrix(
+    stats::rnorm(2000L * length(latent_names)),
+    ncol = length(latent_names),
+    dimnames = list(NULL, latent_names)
+  )
+  fit <- coda::mcmc(posterior)
+  attr(fit, "prior_list") <- result$prior_list
+  attr(fit, "formula_design") <- list(mu = result$formula_design)
+  fit <- attach_test_parameter_map(fit)
+
+  marglik <- JAGS_bridgesampling(
+    fit = fit,
+    log_posterior = function(parameters, data) 0,
+    data = list(),
+    seed = 1
+  )
+  expect_s3_class(marglik, "BayesTools_marglik")
+  expect_identical(marglik$aggregation$rule, "median_finite_logml")
+  expect_true(is.finite(marglik$repetitions$mcse))
+  expect_lt(abs(marglik$logml), 4 * marglik$repetitions$mcse)
+})
+
 test_that("independent fixed-zero components prune only their latent columns", {
 
   data <- data.frame(

@@ -2195,3 +2195,44 @@ test_that("shared random SD bindings refuse ambiguous and overridden sources", {
     posterior
   ))
 })
+
+test_that("marginalization requests cover several formula parameters and refuse an empty list (F100)", {
+
+  data <- data.frame(id = factor(c("a", "a", "b", "b")))
+  make <- function(parameter){
+    JAGS_formula(
+      ~ 1 + diag(1 | id), parameter, data,
+      list(intercept = prior("normal", list(0, 1))),
+      prior_random = prior_random(id = random_block(sd = prior("gamma", list(2, 2))))
+    )$formula_design
+  }
+  designs <- list(mu = make("mu"), sigma = make("sigma"))
+
+  spec <- .bt_JAGS_bridge_marginal_random_spec(
+    designs,
+    list(mu = "id", sigma = list(blocks = "id", row_blocks = list(1:2, 3:4))),
+    "marginal"
+  )
+  expect_named(spec, c("mu", "sigma"))
+  expect_identical(spec$mu$blocks, "id")
+  expect_null(spec$mu$row_blocks)
+  expect_identical(spec$sigma$row_blocks, list(1:2, 3:4))
+
+  bridge <- .bt_JAGS_formula_random_bridge_parameters(designs, spec)
+  expect_setequal(bridge$omitted_latent, c(
+    "mu__xREx__id_xRE_Zx[1,1]", "mu__xREx__id_xRE_Zx[2,1]",
+    "sigma__xREx__id_xRE_Zx[1,1]", "sigma__xREx__id_xRE_Zx[2,1]"
+  ))
+
+  expect_error(
+    .bt_JAGS_bridge_marginal_random_spec(designs, list(), "marginal"),
+    "must be NULL or a list uniquely named by formula parameter; use NULL for no marginalization.",
+    fixed = TRUE
+  )
+  expect_error(
+    .bt_JAGS_bridge_marginal_random_spec(designs, list("id"), "marginal"),
+    "must be NULL or a list uniquely named by formula parameter; use NULL for no marginalization.",
+    fixed = TRUE
+  )
+  expect_identical(.bt_JAGS_bridge_marginal_random_spec(designs, NULL, "marginal"), list())
+})

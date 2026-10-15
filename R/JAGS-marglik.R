@@ -66,8 +66,13 @@
 #' the normalized simplex coordinates owned by the prior.
 #' @param add_bounds list with two named numeric vectors, \code{"lb"} and
 #' \code{"ub"}, containing lower and upper bounds for every
-#' \code{add_parameters} entry. Must be supplied whenever
-#' \code{add_parameters} is non-empty.
+#' \code{add_parameters} entry. The vectors are named by the
+#' \code{add_parameters} entries (every entry, no others), contain no
+#' \code{NA}, and satisfy \code{lb < ub}; \code{-Inf} and \code{Inf} are
+#' allowed. Must be supplied whenever \code{add_parameters} is non-empty.
+#' Bounds of the coordinates BayesTools adds for formula random effects are
+#' inferred; a supplied bound for such a coordinate must agree with the
+#' inferred one.
 #' @param bridge_context whether the \code{log_posterior} callback receives a
 #' read-only \code{bridge_context} argument. Defaults to \code{FALSE}, preserving
 #' the historical \code{log_posterior(parameters, data, ...)} call. \code{TRUE}

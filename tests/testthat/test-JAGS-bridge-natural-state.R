@@ -161,10 +161,16 @@ test_that("marginal batch and compact SD routes respect their explicit natural s
     list(mu = case$data), list(mu = case$formula_priors), list(), posterior_names = names(case$row))
   posterior <- matrix(rep(case$row, 2), nrow = 2, byrow = TRUE, dimnames = list(NULL, names(case$row)))
   expect_equal(evaluator$coefficient_scales(posterior, "mu", block, parameters = list(tau2 = .4)), matrix(.4, 2, 1))
-  components <- evaluator$factor_components(posterior, parameters = list(tau2 = .4))
-  expect_equal(components$mu[[block]]$coefficient_scale, matrix(.4, 2, 1))
-  expect_false(is.null(evaluator$factor_states(posterior, parameters = list(tau2 = .4))))
+  states <- evaluator$factor_states(posterior, parameters = list(tau2 = .4))
+  expect_false(is.null(states))
+  expect_equal(states$mu$factor_states[[1L]][[block]]$coefficient_factor, matrix(.4, 1, 1))
+  expect_equal(states$mu$factor_states[[2L]][[block]]$coefficient_factor, matrix(.4, 1, 1))
   for(value in list(NA_real_, "0.4", c(.4, .5, .6))){
     expect_error(evaluator$coefficient_scales(posterior, "mu", block, parameters = list(tau2 = value)), class = "BayesTools_formula_transform_unavailable")
   }
+  # factor-state samples without column names are a marginal-likelihood input error
+  expect_error(
+    evaluator$factor_states(unname(posterior), parameters = list(tau2 = .4)),
+    class = "BayesTools_marglik_input"
+  )
 })

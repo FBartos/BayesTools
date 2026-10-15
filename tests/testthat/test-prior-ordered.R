@@ -2665,6 +2665,53 @@ test_that("ordered densities are direct when supported and bridge sampling stops
   )
 })
 
+test_that("the bridge posterior information of an ordered prior lists its total and allocation coordinates with bounds (F100)", {
+
+  df <- data.frame(
+    y = seq_len(6),
+    f = ordered(rep(c("low", "mid", "high"), 2), levels = c("low", "mid", "high"))
+  )
+  formula_info <- JAGS_formula(
+    y ~ f,
+    "mu",
+    data = df,
+    prior_list = list(
+      intercept = prior("normal", list(0, 1)),
+      f = prior_ordered(
+        prior("normal", list(0, 1), list(-3, 3)),
+        allocation = prior("dirichlet", list(alpha = c(1, 1)))
+      )
+    )
+  )
+  eta_names <- c(
+    "prior_par_eta_mu_f_ordered_alloc_f_1[1]",
+    "prior_par_eta_mu_f_ordered_alloc_f_1[2]"
+  )
+  samples <- matrix(
+    1,
+    nrow = 2,
+    ncol = 6,
+    dimnames = list(NULL, c("mu_intercept", "mu_f[1]", "mu_f[2]", "mu_f_ordered_total", eta_names))
+  )
+  info <- .JAGS_bridgesampling_posterior_info.ordered(formula_info$prior_list$mu_f, "mu_f")
+  expect_identical(as.vector(info$parameter), c("mu_f_ordered_total", eta_names))
+  expect_identical(unname(attr(info$parameter, "lb")), c(-3, 0, 0))
+  expect_identical(unname(attr(info$parameter, "ub")), c(3, Inf, Inf))
+  expect_length(info$allocation_keys, 1L)
+
+  bridge_samples <- JAGS_bridgesampling_posterior(samples, formula_info$prior_list)
+  expect_identical(colnames(bridge_samples), c("mu_intercept", "mu_f_ordered_total", eta_names))
+  expect_identical(unname(attr(bridge_samples, "lb")), c(-Inf, -3, 0, 0))
+  expect_identical(unname(attr(bridge_samples, "ub")), c(Inf, 3, Inf, Inf))
+
+  # an allocation emitted by another prior is not listed again
+  shared <- .JAGS_bridgesampling_posterior_info.ordered(
+    formula_info$prior_list$mu_f, "mu_f", emitted_allocations = info$allocation_keys
+  )
+  expect_identical(as.vector(shared$parameter), "mu_f_ordered_total")
+  expect_length(shared$allocation_keys, 0L)
+})
+
 test_that("ordered totals with boundary-infinite densities keep direct densities", {
 
   p <- prior_ordered(prior("gamma", list(shape = .5, rate = 1)))

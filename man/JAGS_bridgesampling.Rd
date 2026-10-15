@@ -99,8 +99,13 @@ the normalized simplex coordinates owned by the prior.}
 
 \item{add_bounds}{list with two named numeric vectors, \code{"lb"} and
 \code{"ub"}, containing lower and upper bounds for every
-\code{add_parameters} entry. Must be supplied whenever
-\code{add_parameters} is non-empty.}
+\code{add_parameters} entry. The vectors are named by the
+\code{add_parameters} entries (every entry, no others), contain no
+\code{NA}, and satisfy \code{lb < ub}; \code{-Inf} and \code{Inf} are
+allowed. Must be supplied whenever \code{add_parameters} is non-empty.
+Bounds of the coordinates BayesTools adds for formula random effects are
+inferred; a supplied bound for such a coordinate must agree with the
+inferred one.}
 
 \item{formula_random_prior_list}{optional named list of \code{prior_random()}
 objects for random effects in \code{formula_list}. Bridge sampling for formula

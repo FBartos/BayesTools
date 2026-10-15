@@ -25,7 +25,10 @@ by downstream likelihood code.}
 
 \item{add_bounds}{list with two named numeric vectors, \code{"lb"} and
 \code{"ub"}, containing lower and upper bounds for every
-\code{add_parameters} entry.}
+\code{add_parameters} entry. The vectors are named by the
+\code{add_parameters} entries (every entry, no others), contain no
+\code{NA}, and satisfy \code{lb < ub}; \code{-Inf} and \code{Inf} are
+allowed. Must be supplied whenever \code{add_parameters} is non-empty.}
 }
 \value{
 \code{JAGS_bridgesampling_posterior} returns a matrix of

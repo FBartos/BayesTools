@@ -6,6 +6,14 @@
   if(is.null(formula_random_effects_marginalize_list)){
     return(list())
   }
+  marginalize_list_message <- paste0(
+    "'formula_random_effects_marginalize_list' must be NULL or a list uniquely ",
+    "named by formula parameter; use NULL for no marginalization."
+  )
+  if(is.list(formula_random_effects_marginalize_list) &&
+     length(formula_random_effects_marginalize_list) == 0L){
+    stop(marginalize_list_message, call. = FALSE)
+  }
   check_list(
     formula_random_effects_marginalize_list,
     "formula_random_effects_marginalize_list",
@@ -14,10 +22,7 @@
   spec_names <- names(formula_random_effects_marginalize_list)
   if(is.null(spec_names) || anyNA(spec_names) || any(!nzchar(spec_names)) ||
      anyDuplicated(spec_names)){
-    stop(
-      "'formula_random_effects_marginalize_list' must be a uniquely named list.",
-      call. = FALSE
-    )
+    stop(marginalize_list_message, call. = FALSE)
   }
   unknown_parameters <- setdiff(spec_names, names(formula_design_list))
   if(length(unknown_parameters) > 0L){
@@ -542,36 +547,12 @@
       posterior <- as.matrix(posterior)
       if(nrow(posterior) < 1L ||
          (ncol(posterior) > 0L && is.null(colnames(posterior)))){
-        stop(
-          "Random-effect factor-state samples must be a non-empty matrix with column names when coordinates are present.",
-          call. = FALSE
+        .bt_JAGS_marglik_input_error(
+          "Random-effect factor-state samples must be a non-empty matrix with column names when coordinates are present."
         )
       }
       out <- lapply(plans, function(plan){
         .bt_JAGS_bridge_marginal_random_factor_states_batch(
-          plan = plan,
-          posterior = posterior,
-          parameters = parameters
-        )
-      })
-      if(any(vapply(out, is.null, logical(1)))){
-        return(NULL)
-      }
-      out
-    },
-    factor_components = function(posterior, parameters = NULL){
-      parameters <- .bt_JAGS_bridge_formula_source_base_parameters(NULL,
-        parameters, state_constants = .bt_formula_bridge_state_constants(formula_design_list))
-      posterior <- as.matrix(posterior)
-      if(nrow(posterior) < 1L ||
-         (ncol(posterior) > 0L && is.null(colnames(posterior)))){
-        stop(
-          "Random-effect factor-component samples must be a non-empty matrix with column names when coordinates are present.",
-          call. = FALSE
-        )
-      }
-      out <- lapply(plans, function(plan){
-        .bt_JAGS_bridge_marginal_random_factor_components_batch(
           plan = plan,
           posterior = posterior,
           parameters = parameters
@@ -805,27 +786,6 @@
   }
 }
 
-.bt_JAGS_bridge_marginal_random_factor_components_batch <- function(
-    plan, posterior, parameters = NULL){
-
-  attr(
-    posterior,
-    "BayesTools_random_effect_dirichlet_draw_cache"
-  ) <- new.env(parent = emptyenv())
-  out <- lapply(
-    plan$blocks,
-    .bt_JAGS_bridge_marginal_random_block_factor_components_batch,
-    posterior = posterior,
-    prior_list = plan$prior_list,
-    parameters = parameters
-  )
-  if(any(vapply(out, is.null, logical(1)))){
-    return(NULL)
-  }
-  names(out) <- names(plan$blocks)
-  out
-}
-
 .bt_JAGS_bridge_marginal_random_factor_states_batch <- function(plan,
                                                                  posterior, parameters = NULL){
 
@@ -1029,14 +989,6 @@
     )
   }else{
     block_plan$sd_evaluator$posterior_draws(posterior, parameters = parameters)
-  }
-  if(is.null(sd_draws) && !is.null(block_plan$sd_evaluator)){
-    sd_draws <- .bt_random_effect_sd_draws(
-      random_term = random_term,
-      n_columns = n_columns,
-      posterior = posterior,
-      prior_list = prior_list
-    )
   }
   if(is.null(sd_draws)){
     return(NULL)
@@ -1419,10 +1371,6 @@
 
 .bt_JAGS_bridge_marginal_random_geometry_covariance <- function(geometry,
                                                                  index){
-
-  if(identical(geometry$type, "dense")){
-    return(geometry$covariance[index, index, drop = FALSE])
-  }
 
   Z <- geometry$model_matrix[index, , drop = FALSE]
   group_map <- geometry$group_map[index]
