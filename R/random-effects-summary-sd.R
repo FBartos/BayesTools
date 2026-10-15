@@ -18,13 +18,7 @@
     formula_scale = parameter_scale,
     prefix = parameter
   )
-  term_map <- if(is.null(column_groups)){
-    .random_sd_term_map(sd_names, parameter_scale, parameter)
-  }else{
-    character()
-  }
-  if((is.null(column_groups) || length(column_groups) == 0L) &&
-     length(term_map) == 0L){
+  if(is.null(column_groups) || length(column_groups) == 0L){
     return(model_samples)
   }
 

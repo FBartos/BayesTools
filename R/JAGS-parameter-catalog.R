@@ -3504,13 +3504,7 @@ parameter_transform_jacobian <- function(values, transform){
     formula_scale = parameter_scale,
     prefix = parameter
   )
-  term_map <- if(is.null(column_groups)){
-    .random_sd_term_map(sd_names, parameter_scale, parameter)
-  }else{
-    character()
-  }
-  (is.null(column_groups) || length(column_groups) == 0L) &&
-    length(term_map) == 0L
+  is.null(column_groups) || length(column_groups) == 0L
 }
 
 .bt_parameter_catalog_random_definitions <- function(coordinates, prior_list,

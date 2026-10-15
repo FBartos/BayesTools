@@ -765,26 +765,6 @@
   )
 }
 
-.random_sd_term_map <- function(random_sd_cols, formula_scale, prefix){
-
-  scaled_vars <- .formula_scale_strip_prefix(names(formula_scale), prefix)
-  sd_leaves <- attr(formula_scale, "random_effect_sd_leaves", exact = TRUE)
-  if(!is.null(sd_leaves) && length(sd_leaves) > 0){
-    descriptor_terms <- do.call(
-      c,
-      unname(lapply(sd_leaves, .random_sd_leaf_term_map, scaled_vars = scaled_vars))
-    )
-    term_map <- descriptor_terms[random_sd_cols]
-    names(term_map) <- random_sd_cols
-    term_map <- term_map[!is.na(term_map)]
-    if(length(term_map) > 0){
-      return(term_map)
-    }
-  }
-
-  stats::setNames(character(), character())
-}
-
 .random_sd_column_unscale_groups <- function(random_sd_cols, formula_scale,
                                              prefix){
 
@@ -919,54 +899,6 @@
   )
 }
 
-.random_sd_leaf_term_map <- function(leaves, scaled_vars){
-
-  if(is.null(leaves$leaf_terms)){
-    return(stats::setNames(character(), character()))
-  }
-
-  if(.random_sd_structured_leaves(leaves)){
-    return(stats::setNames(character(), character()))
-  }
-
-  out <- leaves$leaf_terms
-  homogeneous <- identical(unique(unname(leaves$leaf_terms)), "sd")
-  if(!isTRUE(homogeneous)){
-    return(out)
-  }
-
-  if(is.null(leaves$leaf_names_by_column) || is.null(leaves$column_names)){
-    return(out)
-  }
-
-  leaf_names <- unique(leaves$leaf_names_by_column)
-  if(length(leaf_names) != 1L){
-    return(out)
-  }
-
-  if(.random_sd_homogeneous_scaled_block(leaves, scaled_vars)){
-    .random_sd_homogeneous_scaled_stop(leaf_names)
-  }
-
-  column_terms <- vapply(
-    leaves$column_names,
-    .random_sd_term_from_column_name,
-    character(1)
-  )
-  scaled_columns <- vapply(
-    column_terms,
-    .random_sd_term_uses_scaled_var,
-    logical(1),
-    scaled_vars = scaled_vars
-  )
-
-  if(length(column_terms) == 1L && isTRUE(scaled_columns)){
-    out[[leaf_names]] <- column_terms
-  }
-
-  out
-}
-
 # A homogeneous block shares one SD leaf among all its columns. With a column
 # of a scaled predictor the columns transform to different original-scale SDs,
 # which the shared leaf cannot carry, so the block has no original-scale SD.
@@ -996,7 +928,7 @@
 # BayesTools_formula_transform_unavailable, reason "homogeneous_scaled_block",
 # coordinates the shared SD leaves. The remedy holds in both: a structure with
 # one SD per column, or a slope that is not standardized.
-.random_sd_homogeneous_scaled_stop <- function(leaf_names, parameter = NULL){
+.random_sd_homogeneous_scaled_stop <- function(leaf_names, parameter){
 
   leaf_names <- unique(leaf_names)
   .bt_formula_transform_stop(
