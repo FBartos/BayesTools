@@ -133,9 +133,9 @@ JAGS_add_priors           <- function(syntax, prior_list){
   syntax <- switch(
     prior[["distribution"]],
     "point"     = paste0(parameter_name," = ",number(prior$parameter[["location"]])),
-    "normal"    = paste0(parameter_name," ~ dnorm(",number(prior$parameter[["mean"]]),",", number(.JAGS_parameter_to_precision(prior$parameter[["sd"]])),")"),
-    "lognormal" = paste0(parameter_name," ~ dlnorm(",number(prior$parameter[["meanlog"]]),",", number(.JAGS_parameter_to_precision(prior$parameter[["sdlog"]])),")"),
-    "t"         = paste0(parameter_name," ~ dt(",number(prior$parameter[["location"]]),",", number(.JAGS_parameter_to_precision(prior$parameter[["scale"]])),",", number(prior$parameter[["df"]]),")"),
+    "normal"    = paste0(parameter_name," ~ dnorm(",number(prior$parameter[["mean"]]),",", number(.JAGS_parameter_to_precision(prior$parameter[["sd"]], "normal")),")"),
+    "lognormal" = paste0(parameter_name," ~ dlnorm(",number(prior$parameter[["meanlog"]]),",", number(.JAGS_parameter_to_precision(prior$parameter[["sdlog"]], "lognormal")),")"),
+    "t"         = paste0(parameter_name," ~ dt(",number(prior$parameter[["location"]]),",", number(.JAGS_parameter_to_precision(prior$parameter[["scale"]], "t")),",", number(prior$parameter[["df"]]),")"),
     "gamma"     = paste0(parameter_name," ~ dgamma(",number(prior$parameter[["shape"]]),",",number(prior$parameter[["rate"]]),")"),
     "invgamma"  = paste0(parameter_name," ~ dbt_invgamma(",number(prior$parameter[["shape"]]),",",number(prior$parameter[["scale"]]),")"),
     "exp"       = paste0(parameter_name," ~ dexp(",number(prior$parameter[["rate"]]),")"),
@@ -202,7 +202,7 @@ JAGS_add_priors           <- function(syntax, prior_list){
     )
 
     par1 <- .JAGS_prior_number(par1)
-    par2 <- .JAGS_prior_number(.JAGS_parameter_to_precision(par2))
+    par2 <- .JAGS_prior_number(.JAGS_parameter_to_precision(par2, prior[["distribution"]]))
 
     # TODO: beautify this code by specific JAGS distributions?
     if(prior[["distribution"]] == "mt"){
@@ -613,12 +613,22 @@ JAGS_add_priors           <- function(syntax, prior_list){
     text
   }, character(1), USE.NAMES = FALSE)
 }
-.JAGS_parameter_to_precision <- function(parameter){
+.JAGS_parameter_to_precision <- function(parameter, family = "declared"){
 
   if(is.character(parameter)){
     parameter <- paste0("1/pow(", parameter, ", 2)")
   }else{
-    parameter <- 1/parameter^2
+    # the square of a huge scale overflows, the square of its inverse does not
+    precision <- (1/parameter)^2
+    unrepresentable <- which(is.finite(parameter) & (!is.finite(precision) | precision == 0))
+    if(length(unrepresentable) > 0L){
+      .prior_numerical_signal("JAGS syntax", family, "finite", unrepresentable,
+        paste0("The precision 1 / scale^2 of a scale of ",
+               paste(format(parameter[unrepresentable], digits = 3), collapse = ", "),
+               " is not representable in double precision; use a scale between 1e-150 and 1e150"),
+        error = TRUE)
+    }
+    parameter <- precision
   }
 
   return(parameter)

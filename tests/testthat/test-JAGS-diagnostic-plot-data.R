@@ -701,6 +701,28 @@ test_that("diagnostics of a single PET, PEESE, weightfunction or p-hacking bias 
   expect_bounds(fit, "pi_null", "pi_null", phacking, c(0, upper), upper * c(-.25, 1.25))
 })
 
+test_that("PET and PEESE diagnostics of a bias prior without that branch are refused clearly (F216)", {
+
+  selection <- prior_weightfunction("one-sided", c(.025), wf_cumulative(c(1, 1)))
+  bias      <- prior_bias(selection, prior_phacking(form = "linear"))
+  draws <- cbind(mu = seq(-1, 1, length.out = 60), "omega[1]" = 1,
+                 "omega[2]" = seq(.01, .99, length.out = 60))
+  fit <- structure(list(
+    mcmc = coda::mcmc.list(coda::mcmc(draws)),
+    summary.pars = list(mutate = NULL)
+  ), class = c("BayesTools_fit", "runjags"))
+  attr(fit, "prior_list") <- list(mu = prior("normal", list(0, 1)), bias = bias)
+  fit <- attach_test_parameter_map(fit)
+
+  for(parameter in c("PET", "PEESE")){
+    expect_error(
+      JAGS_diagnostics(fit, parameter, "density", plot_type = "ggplot"),
+      paste0("'", parameter, "' diagnostics require at least one ", parameter, " component in the 'bias' prior."),
+      fixed = TRUE
+    )
+  }
+})
+
 test_that("JAGS_diagnostics() draws the components of a single bias prior", {
 
   selection <- prior_weightfunction("one-sided", c(.025), wf_cumulative(c(1, 1)))

@@ -80,6 +80,12 @@ JAGS_diagnostics                 <- function(fit, parameter, type, plot_type = "
     check_char(names(transformations), "names(transformations)", allow_values = parameter)
   if(parameter == "omega" && !is.null(prior_list[["bias"]]) && !.selection_prior_has_selection(prior_list[["bias"]]))
     stop("'omega' diagnostics require at least one weightfunction component in the 'bias' prior.", call. = FALSE)
+  if(parameter %in% c("PET", "PEESE") && is.null(prior_list[[parameter]]) && !is.null(prior_list[["bias"]])){
+    bias_components <- if(is.prior.mixture(prior_list[["bias"]])) unclass(prior_list[["bias"]]) else list(prior_list[["bias"]])
+    has_branch <- if(parameter == "PET") is.prior.PET else is.prior.PEESE
+    if(!any(vapply(bias_components, has_branch, logical(1))))
+      stop("'", parameter, "' diagnostics require at least one ", parameter, " component in the 'bias' prior.", call. = FALSE)
+  }
   if(parameter %in% c("alpha", "pi_null") && !is.null(prior_list[["bias"]]) && !.selection_prior_has_phacking(prior_list[["bias"]]))
     stop("'alpha' and 'pi_null' diagnostics require at least one p-hacking component in the 'bias' prior.", call. = FALSE)
   .bt_require_fit_contract(fit)

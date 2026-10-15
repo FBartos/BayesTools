@@ -572,3 +572,49 @@ test_that("joint prior methods keep plain-formula values or refuse at double-pre
   expect_equal(unname(mcdf(vector_t, -1e6)[1L, ]), rep(cdf(scalar_t, -1e6), 2L), tolerance = 1e-14)
   expect_equal(unname(mcdf(vector_t, .3)[1L, ]), rep(stats::pt(.3, 3), 2L), tolerance = 1e-14)
 })
+
+test_that("JAGS precision syntax of a huge scale stays positive and unrepresentable ones are refused (F216)", {
+
+  # the square of the scale overflows at 1e155, the square of its inverse does not
+  syntax <- JAGS_add_priors("model{}", list(mu = prior("normal", list(0, 1e155))))
+  precision <- as.numeric(strsplit(strsplit(syntax, "dnorm(0,", fixed = TRUE)[[1L]][2L], ")", fixed = TRUE)[[1L]][1L])
+  expect_gt(precision, 0)
+  expect_equal(precision, (1 / 1e155)^2, tolerance = 1e-10)
+
+  for(prior_object in list(
+    prior("normal", list(0, 1e170)),
+    prior("normal", list(0, 1e-200)),
+    prior("lognormal", list(0, 1e170)),
+    prior("t", list(0, 1e170, 3)),
+    prior("mnormal", list(0, 1e170, 2))
+  )){
+    error <- tryCatch(
+      JAGS_add_priors("model{}", list(mu = prior_object)),
+      error = function(e) e
+    )
+    expect_s3_class(error, "BayesTools_numerical_unavailable")
+    expect_match(conditionMessage(error), "JAGS syntax is numerically unavailable", fixed = TRUE)
+    expect_match(conditionMessage(error), "is not representable in double precision", fixed = TRUE)
+  }
+})
+
+test_that("a multivariate-t initial scale mixture that underflows to zero is refused (F216)", {
+
+  error <- tryCatch(
+    JAGS_get_inits(
+      list(p = prior("mt", list(location = 0, scale = 1, df = 0.001, K = 2))),
+      chains = 2, seed = 1
+    ),
+    error = function(e) e
+  )
+  expect_s3_class(error, "BayesTools_numerical_unavailable")
+  expect_match(conditionMessage(error), "mt prior initialization is numerically unavailable", fixed = TRUE)
+  expect_match(conditionMessage(error), "use a larger 'df'", fixed = TRUE)
+
+  inits <- JAGS_get_inits(
+    list(p = prior("mt", list(location = 0, scale = 1, df = 3, K = 2))),
+    chains = 2, seed = 1
+  )
+  expect_true(all(vapply(inits, function(init) init[["prior_par_s_p"]] > 0, logical(1))))
+})
+

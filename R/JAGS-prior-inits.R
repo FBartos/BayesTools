@@ -374,7 +374,15 @@ JAGS_get_inits            <- function(prior_list, chains, seed){
       )
       init[[.JAGS_prior_dirichlet_eta_name(parameter_name)]] <- eta_init
     }else if(prior[["distribution"]] == "mt"){
-      init[[paste0("prior_par_s_", parameter_name)]] <- rng(prior("gamma", list(shape = prior$parameters[["df"]]/2, rate = prior$parameters[["df"]]/2)), 1)
+      scale_mixture <- rng(prior("gamma", list(shape = prior$parameters[["df"]]/2, rate = prior$parameters[["df"]]/2)), 1)
+      if(!is.finite(scale_mixture) || scale_mixture <= 0){
+        .prior_numerical_signal("initialization", "mt", "finite", 1L,
+          paste0("The scale-mixture draw Gamma(df / 2, df / 2) of the prior '", parameter_name,
+                 "' is not a finite positive value for df = ", format(prior$parameters[["df"]], digits = 3),
+                 "; use a larger 'df'"),
+          error = TRUE)
+      }
+      init[[paste0("prior_par_s_", parameter_name)]] <- scale_mixture
       init[[paste0("prior_par_z_", parameter_name)]] <- rng(prior("mnormal", list(mean = 0, sd = prior$parameters[["scale"]], K = prior$parameters[["K"]])), 1)[1,]
     }else{
       init[[parameter_name]] <- rng(prior, 1)[1,]
