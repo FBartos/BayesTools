@@ -2000,7 +2000,9 @@ test_that("linear prior density matches analytic normal sums", {
   expect_equal(
     sum(abs(y - expected)) * (x[2] - x[1]),
     0,
-    tolerance = 0.03
+    # the L1 distance of the 1024-point grid to the normalized density is
+    # 5.4e-4
+    tolerance = 2e-3
   )
   expect_equal(density$density$mass, 1, tolerance = 1e-8)
 })
@@ -2403,8 +2405,9 @@ test_that("row-wise prior densities mix row predictions, not averaged weights", 
     sum(x^2 * y) * dx + sum(d$points$x^2 * d$points$p)
   }
 
-  expect_equal(density_second_moment(row_density), mean(c(1^2, 2^2)), tolerance = .08)
-  expect_equal(density_second_moment(averaged_density), 1.5^2, tolerance = .08)
+  # the 1024-point grid truncated at the tails misses 0.3% of the second moment
+  expect_equal(density_second_moment(row_density), mean(c(1^2, 2^2)), tolerance = .01)
+  expect_equal(density_second_moment(averaged_density), 1.5^2, tolerance = .01)
 })
 
 test_that("row-wise prior densities transform the row mixture once", {
@@ -3142,6 +3145,35 @@ test_that("allocation products of a point scale and a Beta share match the analy
                c(0, 6), tolerance = 1e-14)
   expect_equal(hull(prior("uniform", list(1, 3)), list(.prior_allocation_point(.5, 1))),
                c(.5, 1.5), tolerance = 1e-14)
+})
+
+test_that("valid constructions are silent and unrepresentable inputs are refused clearly", {
+
+  # the natural density of an inverse-moment prior reaches its range limit at
+  # the support bound 0 of the grid: no BayesTools_numerical_range_limit
+  # warning for a valid construction
+  invmoment <- prior("invmoment", list(location = 0, tau = 1, df = 3, order = 1))
+  expect_silent(.prior_linear_combination_density(list(a = invmoment), c(a = 1), n_grid = 256))
+  expect_silent(.prior_linear_density_to_plot_data(
+    .prior_linear_combination_density(list(a = invmoment), c(a = 1), n_grid = 256), n_points = 100))
+
+  # an infinite numerical range
+  for(weight in c(1e308, -1e308)){
+    expect_error(.prior_linear_combination_density(list(a = prior("normal", list(0, 1))), c(a = weight), n_grid = 256),
+                 "its numerical range is not finite. Rescale the modeled quantity", fixed = TRUE)
+  }
+  expect_error(.prior_linear_combination_density(list(a = prior("normal", list(0, 1e308))), c(a = 10), n_grid = 256),
+               "its numerical range is not finite.", fixed = TRUE)
+
+  # atoms with a non-finite location or probability are no longer dropped
+  expect_error(.prior_linear_density_aggregate_points(data.frame(x = c(1, Inf), p = c(.5, .5))),
+               "non-finite location or probability", fixed = TRUE)
+  expect_error(.prior_linear_density_aggregate_points(data.frame(x = c(1, 2), p = c(.5, NA_real_))),
+               "non-finite location or probability", fixed = TRUE)
+  expect_identical(.prior_linear_density_aggregate_points(data.frame(x = c(2, 1, 1), p = c(.25, .5, .25))),
+                   data.frame(x = c(1, 2), p = c(.75, .25)))
+  expect_identical(nrow(.prior_linear_density_aggregate_points(data.frame(x = numeric(), p = numeric()))), 0L)
+  expect_identical(nrow(.prior_linear_density_aggregate_points(data.frame(x = 1, p = 0))), 0L)
 })
 
 test_that("the conditional-normal peak width keeps SDs above the square root of the double range", {
@@ -4639,7 +4671,8 @@ test_that("N03 invalid point-factor weights cannot become a structural zero", {
     prior_factor("point", list(location = 0), contrast = "independent"), c("a", "b")
   )
   expect_error(BayesTools:::.prior_linear_vector_scalar_prior(point_factor, c(Inf, 1)), "location")
-  expect_error(BayesTools:::.prior_linear_vector_scalar_prior(point_factor, c(NA_real_, 1)))
+  expect_error(BayesTools:::.prior_linear_vector_scalar_prior(point_factor, c(NA_real_, 1)),
+               "The 'weights' must be defined.", fixed = TRUE)
 })
 
 test_that("N03 subnormal base product retains the independent normal scale", {
@@ -4679,7 +4712,8 @@ test_that("N03 unrepresentable normal scales and invalid weights remain refused"
                "must be finite", fixed = TRUE)
   expect_error(BayesTools:::.prior_linear_vector_scalar_prior(vector_prior, c(Inf, 1)),
                "The 'mean' must be defined.", fixed = TRUE)
-  expect_error(BayesTools:::.prior_linear_vector_scalar_prior(vector_prior, c(NA_real_, 1)))
+  expect_error(BayesTools:::.prior_linear_vector_scalar_prior(vector_prior, c(NA_real_, 1)),
+               "The 'weights' must be defined.", fixed = TRUE)
 })
 
 

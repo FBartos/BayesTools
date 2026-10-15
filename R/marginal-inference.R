@@ -315,7 +315,7 @@ as_marginal_inference <- function(model, marginal_parameters, parameters, condit
     }
     if(!is.null(dim(weights))){
       row_conditionals <- lapply(seq_len(nrow(weights)), function(row_i){
-        .prior_linear_active_conditionals(
+        .condition_event_active_labels(
           prior_list  = prior_list,
           weights     = weights[row_i, ],
           conditional = conditional
@@ -330,7 +330,7 @@ as_marginal_inference <- function(model, marginal_parameters, parameters, condit
       }
       return(row_conditionals[[1]])
     }
-    .prior_linear_active_conditionals(
+    .condition_event_active_labels(
       prior_list   = prior_list,
       weights      = weights,
       conditional  = conditional

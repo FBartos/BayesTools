@@ -167,7 +167,11 @@
     return(.prior_linear_density_empty_points())
   }
 
-  points <- points[is.finite(points$x) & is.finite(points$p) & points$p > 0, , drop = FALSE]
+  if(any(!is.finite(points$x) | !is.finite(points$p))){
+    stop("A prior density atom has a non-finite location or probability, which the numerical density ",
+         "cannot represent.", call. = FALSE)
+  }
+  points <- points[points$p > 0, , drop = FALSE]
   if(nrow(points) == 0){
     return(.prior_linear_density_empty_points())
   }

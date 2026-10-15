@@ -141,15 +141,6 @@
   )
 }
 
-.prior_linear_active_conditionals <- function(prior_list, weights, conditional){
-
-  .condition_event_active_labels(
-    prior_list  = prior_list,
-    weights     = weights,
-    conditional = conditional
-  )
-}
-
 .prior_linear_weight_groups <- function(prior_list, weights){
 
   if(is.null(names(weights))){
@@ -257,6 +248,9 @@
 .prior_linear_vector_scalar_prior <- function(prior, weights){
 
   weights <- as.numeric(weights)
+  if(anyNA(weights)){
+    stop("The 'weights' must be defined.", call. = FALSE)
+  }
   max_weight <- max(0, abs(weights))
 
   if(max_weight == 0){
@@ -419,6 +413,14 @@
   }
 
   x_range <- .prior_linear_scalar_range(prior, weight, tail_prob, source_transform)
+  if(any(!is.finite(x_range))){
+    stop(
+      "Continuous prior density is unavailable because its numerical range is ",
+      "not finite. Rescale the modeled quantity and its prior parameters ",
+      "before evaluating this density.",
+      call. = FALSE
+    )
+  }
   if(x_range[1] == x_range[2]){
     stop(
       "Continuous prior density is unavailable because its numerical range ",
@@ -433,13 +435,23 @@
     x <- seq(x_range[1], x_range[2], length.out = 3)
   }
 
+  # The natural-scale density of a moment, inverse-moment or inverse-gamma
+  # prior can reach its range limit (0 or Inf) at a support bound of the
+  # grid: a valid value there, not a failure of the construction.
+  natural_density <- function(values){
+    withCallingHandlers(
+      mpdf(prior, values),
+      BayesTools_numerical_range_limit = function(condition){
+        if(inherits(condition, "warning")) invokeRestart("muffleWarning")
+      })
+  }
   source_density <- function(x){
     source_x <- x / weight
     if(identical(source_transform, "log")){
       original_x <- exp(source_x)
-      mpdf(prior, original_x) * original_x / abs(weight)
+      natural_density(original_x) * original_x / abs(weight)
     }else{
-      mpdf(prior, source_x) / abs(weight)
+      natural_density(source_x) / abs(weight)
     }
   }
 
