@@ -77,10 +77,7 @@
   if(is.expression(parameter))
     return()
 
-  if(length == -1){
-    if(!is.numeric(parameter) | !is.vector(parameter) | length(parameter) > 1)
-      stop(paste0("The '", name, "' must be a numeric vector of length at least 2."), call. = FALSE)
-  }else if(length == 0){
+  if(length == 0){
     if(!is.numeric(parameter) | !is.vector(parameter))
       stop(paste0("The '", name, "' must be a numeric vector."), call. = FALSE)
   }else{
