@@ -108,3 +108,38 @@ test_that("unloading the package unloads its JAGS module without a message", {
   expect_true(isTRUE(seen$quiet))
   expect_identical(output, character())
 })
+
+test_that("the JAGS module loads and carries its six distribution and function names (F065)", {
+
+  skip_if_not_installed("rjags")
+  expect_true(isTRUE(BayesTools_load_JAGS_module(quiet = TRUE, warn = FALSE)))
+  expect_true("BayesTools" %in% rjags::list.modules())
+
+  # the module constructor registers the names as string constants of the library
+  dll <- getLoadedDLLs()[["BayesTools"]][["path"]]
+  library_text <- rawToChar(local({
+    bytes <- readBin(dll, "raw", file.size(dll))
+    bytes[bytes != as.raw(0L)]
+  }))
+  registered <- c(
+    distributions = "dbt_lkj_cpc", distributions = "dbt_invgamma",
+    distributions = "dbt_moment", distributions = "dbt_invmoment",
+    functions = "bt_lkj_cholesky", functions = "bt_lkj_corr"
+  )
+  for(name in registered){
+    expect_true(grepl(name, library_text, fixed = TRUE, useBytes = TRUE), info = name)
+  }
+
+  # the names that generated syntax uses are registered ones
+  syntax <- paste(
+    JAGS_add_priors("model{}", list(
+      a = prior("moment", list(location = 0, tau = 1, order = 2)),
+      b = prior("invmoment", list(location = 0, tau = 1, order = 2, df = 3)),
+      c = prior("invgamma", list(2, 1))
+    )),
+    JAGS_lkj_corr_cholesky("Sigma", K = 3, eta = 1)$syntax
+  )
+  used <- regmatches(syntax, gregexpr("(dbt|bt)_[a-z_]+", syntax))[[1L]]
+  expect_true(length(used) > 0L)
+  expect_true(all(unique(used) %in% registered))
+})
