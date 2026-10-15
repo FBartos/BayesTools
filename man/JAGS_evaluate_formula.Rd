@@ -44,7 +44,9 @@ default) evaluates the fixed formula of fits without random effects and
 stops for fits with random effects, which need an explicit target.}
 
 \item{blocks}{optional random-effect block names used with
-\code{formula_target = "conditional"}.}
+\code{formula_target = "conditional"}. When \code{formula} has random-effect terms,
+the default is the blocks of those terms and supplied \code{blocks} must be among
+them.}
 
 \item{new_levels}{optional new-level policy used only with
 \code{formula_target = "conditional"}. Use a \code{random_new_levels()} object or one

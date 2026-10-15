@@ -170,6 +170,9 @@
   }
 
   requested_names <- vapply(requested_terms, `[[`, character(1), "block_name")
+  if(!is.null(blocks) && length(requested_names) > 0L){
+    .bt_formula_prediction_check_blocks(blocks, requested_names)
+  }
   selected_names <- if(!is.null(blocks)){
     blocks
   }else if(length(requested_names) > 0L){

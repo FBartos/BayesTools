@@ -24,9 +24,9 @@
 #' @param formula_target prediction target: `"conditional"`, `"fixed"`, or
 #' `"marginal"`. The default includes fitted random-effect contributions.
 #' @param blocks optional random-effect block names. For
-#' `formula_target = "marginal"` with random-effect terms in `formula`, the
-#' default is the blocks of those terms, and supplied `blocks` must be among
-#' those blocks.
+#' `formula_target = "conditional"` or `"marginal"` with random-effect terms in
+#' `formula`, the default is the blocks of those terms, and supplied `blocks`
+#' must be among those blocks.
 #' @param new_levels new-level policy for conditional or marginal random-effect
 #' prediction. Use a `random_new_levels()` object or one of `"error"`, `"zero"`,
 #' or `"sample"`. Grouping levels declared in the fitted grouping factor but
@@ -275,6 +275,15 @@ JAGS_predict_formula <- function(fit, parameter, formula = NULL, data = NULL,
   if(is.null(blocks)){
     return(requested_blocks)
   }
+  .bt_formula_prediction_check_blocks(blocks, requested_blocks)
+
+  blocks
+}
+
+# Supplied 'blocks' select among the random-effect terms of 'formula', for the
+# conditional and the marginal target alike.
+.bt_formula_prediction_check_blocks <- function(blocks, requested_blocks){
+
   if(!all(blocks %in% requested_blocks)){
     stop(
       "'blocks' (", paste(blocks, collapse = ", "),
@@ -286,7 +295,7 @@ JAGS_predict_formula <- function(fit, parameter, formula = NULL, data = NULL,
     )
   }
 
-  blocks
+  invisible(TRUE)
 }
 
 .bt_formula_prediction_object <- function(value, mean, random, vcov,

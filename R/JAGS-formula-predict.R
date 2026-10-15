@@ -81,7 +81,9 @@
 #' default) evaluates the fixed formula of fits without random effects and
 #' stops for fits with random effects, which need an explicit target.
 #' @param blocks optional random-effect block names used with
-#' `formula_target = "conditional"`.
+#' `formula_target = "conditional"`. When `formula` has random-effect terms,
+#' the default is the blocks of those terms and supplied `blocks` must be among
+#' them.
 #' @param new_levels optional new-level policy used only with
 #' `formula_target = "conditional"`. Use a `random_new_levels()` object or one
 #' of `"error"`, `"zero"`, or `"sample"`. Grouping levels declared in the

@@ -40,9 +40,9 @@ used.}
 \code{"marginal"}. The default includes fitted random-effect contributions.}
 
 \item{blocks}{optional random-effect block names. For
-\code{formula_target = "marginal"} with random-effect terms in \code{formula}, the
-default is the blocks of those terms, and supplied \code{blocks} must be among
-those blocks.}
+\code{formula_target = "conditional"} or \code{"marginal"} with random-effect terms in
+\code{formula}, the default is the blocks of those terms, and supplied \code{blocks}
+must be among those blocks.}
 
 \item{new_levels}{new-level policy for conditional or marginal random-effect
 prediction. Use a \code{random_new_levels()} object or one of \code{"error"}, \code{"zero"},

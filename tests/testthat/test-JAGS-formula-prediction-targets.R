@@ -1910,6 +1910,24 @@ test_that("marginal target honours and validates random terms in the formula", {
     "do not match the random-effect terms in 'formula'",
     fixed = TRUE
   )
+
+  # The conditional target holds 'blocks' to the formula's terms as well; it
+  # no longer replaces the formula's random terms silently.
+  for(call in list(
+    function() JAGS_predict_formula(
+      fit, "mu", formula = g_formula, formula_target = "conditional", blocks = "h"),
+    function() JAGS_evaluate_formula(
+      fit, "mu", formula = g_formula, formula_target = "conditional", blocks = "h")
+  )){
+    expect_error(
+      call(),
+      "'blocks' (h) do not match the random-effect terms in 'formula' (g).",
+      fixed = TRUE
+    )
+  }
+  expect_no_error(JAGS_evaluate_formula(
+    fit, "mu", formula = full_formula, formula_target = "conditional", blocks = "g"
+  ))
 })
 
 test_that("marginal sampling draws fitted levels jointly under known covariance", {
