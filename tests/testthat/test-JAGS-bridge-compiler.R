@@ -826,6 +826,36 @@ test_that("compiled formula prior evaluator matches public formula density helpe
   )
 })
 
+test_that("the ordered-prior bridge reader is compiled once, not per draw (F075)", {
+
+  data <- data.frame(f = ordered(c("lo", "mid", "hi", "top")))
+  priors <- JAGS_formula(~f, "mu", data,
+    list(intercept = prior("point", list(0)), f = prior_ordered(
+      prior("normal", list(0, 2)), allocation = prior("dirichlet", list(c(1, 1, 1))))))$prior_list
+  readers <- 0L
+  compile_reader <- BayesTools:::.bt_JAGS_bridge_compile_parameter_values
+  testthat::local_mocked_bindings(
+    .bt_JAGS_bridge_compile_parameter_values = function(...){
+      readers <<- readers + 1L
+      compile_reader(...)
+    },
+    .package = "BayesTools"
+  )
+  evaluator <- BayesTools:::.bt_JAGS_bridge_compile_ordered_evaluator(priors$mu_f, "mu_f")$evaluator
+  expect_identical(readers, 1L)
+
+  spec <- BayesTools:::.bt_ordered_spec("mu_f", priors$mu_f)
+  gamma <- spec$allocations[[1L]]$gamma_coordinates
+  samples <- stats::setNames(c(0.3, 1.1, 0.7, 1.9)[seq_len(1L + length(gamma))],
+    c("mu_f_ordered_total", gamma))
+  first <- evaluator$parameters(samples)
+  for(draw in 1:3){
+    expect_identical(evaluator$parameters(samples), first)
+  }
+  expect_identical(readers, 1L)
+  expect_length(first$mu_f, 3L)
+})
+
 test_that("shared ordered allocations contribute one prior density across scopes", {
 
   formula_data <- data.frame(

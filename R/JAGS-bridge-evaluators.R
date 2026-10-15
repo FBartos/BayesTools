@@ -99,6 +99,12 @@
   total_names <- .prior_ordered_total_monitor_names(prior_object, parameter_name)
   total_prior <- prior_object$total
 
+  # The coefficient names and the ordered node are compiled once per call.
+  parameter_values <- .bt_JAGS_bridge_compile_parameter_values(
+    prior_object,
+    .JAGS_prior_factor_names(parameter_name, prior_object)
+  )
+
   emitted_now <- character()
   dirichlet_records <- .prior_ordered_dirichlet_records(prior_object)
   dirichlet_records <- dirichlet_records[
@@ -136,12 +142,8 @@
       marglik
     },
     parameters = function(samples){
-      parameter_names <- .JAGS_prior_factor_names(parameter_name, prior_object)
       parameter <- list()
-      parameter[[parameter_name]] <- .bt_JAGS_bridge_compile_parameter_values(
-        prior_object,
-        parameter_names
-      )(samples)
+      parameter[[parameter_name]] <- parameter_values(samples)
       parameter
     }
   )
