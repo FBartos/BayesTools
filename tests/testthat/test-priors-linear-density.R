@@ -4050,6 +4050,40 @@ test_that("the batched quadrature integrates every piece kind and isolates faili
   expect_equal(capped[2L], .05 - sin(10) / 200, tolerance = 1e-8)
 })
 
+test_that("a piece narrow against its magnitude takes the affine transport (F046)", {
+
+  coordinate <- function(lower, upper) .prior_density_quadrature_coordinate(lower, upper, TRUE)
+  # the relative width (b - a) / max(|a|, |b|) decides: below 1e-3 the affine
+  # power-of-two transport, above it the logarithmic one
+  for(piece in list(c(5, 5 * (1 + 1e-9)), c(5, 5 * (1 + 5e-4)), c(-5 * (1 + 5e-4), -5))){
+    expect_equal(coordinate(piece[1L], piece[2L])$kind, 3)
+  }
+  expect_equal(coordinate(5, 5 * (1 + 2e-3))$kind, 2)
+  expect_equal(coordinate(-5 * (1 + 2e-3), -5)$kind, -2)
+
+  # the logarithms of the ends of a narrow piece differ by about its relative
+  # width, so the logarithmic transport moved the nodes and the integral by
+  # relative errors of 1e-13 to 1e-9; the affine one is exact to rounding
+  inverse <- list(shared = function(source) list(x = source),
+                  value = function(shared, index) 1 / abs(shared$x),
+                  log_value = function(shared, index) -log(abs(shared$x)))
+  root <- list(shared = function(source) list(x = source),
+               value = function(shared, index) abs(shared$x)^-0.5,
+               log_value = function(shared, index) -0.5 * log(abs(shared$x)))
+  for(relative_width in c(1e-12, 1e-9, 1e-7, 1e-5, 5e-4)){
+    piece <- c(5, 5 * (1 + relative_width))
+    width <- piece[2L] - piece[1L]
+    # the integrals of 1 / x and x^-1/2 from their widths (no cancellation);
+    # the ratios are compared, an absolute tolerance would hide a narrow piece
+    inverse_reference <- log1p(width / piece[1L])
+    root_reference <- 2 * width / (sqrt(piece[2L]) + sqrt(piece[1L]))
+    expect_equal(.prior_density_quadrature_batch(inverse, list(piece, -rev(piece))) / inverse_reference,
+                 c(1, 1), tolerance = 1e-13)
+    expect_equal(.prior_density_quadrature_batch(root, list(piece, -rev(piece))) / root_reference,
+                 c(1, 1), tolerance = 1e-13)
+  }
+})
+
 test_that("the quadrature density of a truncated-normal convolution is its closed form", {
 
   density <- .prior_linear_combination_density(

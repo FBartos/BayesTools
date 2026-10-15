@@ -161,7 +161,13 @@
     nodes <- bounds[1L] / 2 + bounds[2L] / 2 +
       (bounds[2L] - bounds[1L]) / 2 * finite_nodes
     mapped <- sign(lower) * exp(nodes)
-    if(bounds[1L] < bounds[2L] && all(is.finite(mapped)) && all(mapped != 0) &&
+    # The logarithms of the ends of a piece whose relative width r is small
+    # differ by about r, while each is rounded at about 1e-16: the transported
+    # nodes move by a fraction of about 1e-16 / r of the piece (1e-4 at
+    # r = 1e-12), and the integral with them. Such a piece takes the affine
+    # transport, which has no such error.
+    narrow <- (upper - lower) / max(abs(c(lower, upper))) < 1e-3
+    if(!narrow && bounds[1L] < bounds[2L] && all(is.finite(mapped)) && all(mapped != 0) &&
        all(mapped > lower & mapped < upper) && !anyDuplicated(mapped)){
       out$lower <- bounds[1L]
       out$upper <- bounds[2L]
