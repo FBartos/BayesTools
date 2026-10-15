@@ -694,6 +694,23 @@ test_that("JAGS precision syntax of a huge scale stays positive and unrepresenta
     expect_s3_class(error, "BayesTools_numerical_unavailable")
     expect_match(conditionMessage(error), "JAGS syntax is numerically unavailable", fixed = TRUE)
     expect_match(conditionMessage(error), "is not representable in double precision", fixed = TRUE)
+    expect_match(conditionMessage(error), "use a scale between 7.5e-155 and 6.3e161", fixed = TRUE)
+  }
+
+  # the message states the accepted range: the scales inside it are accepted
+  # (with a subnormal precision above 6.7e153), the nearest scales outside it
+  # are refused (the former message named 1e-150 to 1e150, although 1e-154 and
+  # 1e160 are accepted too)
+  for(scale in c(7.5e-155, 1e-154, 1e154, 1e160, 6.3e161)){
+    syntax <- JAGS_add_priors("model{}", list(mu = prior("normal", list(0, scale))))
+    precision <- as.numeric(strsplit(strsplit(syntax, "dnorm(0,", fixed = TRUE)[[1L]][2L], ")", fixed = TRUE)[[1L]][1L])
+    expect_gt(precision, 0)
+    expect_true(is.finite(precision))
+  }
+  for(scale in c(7.4e-155, 1e-155, 6.4e161)){
+    error <- tryCatch(JAGS_add_priors("model{}", list(mu = prior("normal", list(0, scale)))), error = function(e) e)
+    expect_s3_class(error, "BayesTools_numerical_unavailable")
+    expect_match(conditionMessage(error), "use a scale between 7.5e-155 and 6.3e161", fixed = TRUE)
   }
 })
 

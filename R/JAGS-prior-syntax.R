@@ -674,10 +674,14 @@ JAGS_add_priors           <- function(syntax, prior_list){
     precision[inverse] <- (1/parameter[inverse])^2
     unrepresentable <- which(is.finite(parameter) & (!is.finite(precision) | precision == 0))
     if(length(unrepresentable) > 0L){
+      # the precision must be a finite nonzero double: scales from 1 / sqrt(xmax)
+      # = 7.46e-155 to about 2^537.5 = 6.36e161 are accepted (above 6.7e153 the
+      # precision is subnormal), the message gives the range rounded inwards
       .prior_numerical_signal("JAGS syntax", family, "finite", unrepresentable,
         paste0("The precision 1 / scale^2 of a scale of ",
                paste(format(parameter[unrepresentable], digits = 3), collapse = ", "),
-               " is not representable in double precision; use a scale between 1e-150 and 1e150"),
+               " is not representable in double precision; use a scale between 7.5e-155 and 6.3e161",
+               " (above 6.7e153 the precision is subnormal and keeps fewer significant digits)"),
         error = TRUE)
     }
     parameter <- precision
