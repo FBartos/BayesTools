@@ -120,6 +120,9 @@
       posterior = model_samples
     )
     if(is.null(cholesky)){
+      # Called for its refusals: a scalar-correlation block with a missing or
+      # unsupported rho draw names that coordinate; otherwise the generic
+      # message follows.
       .bt_random_effect_summary_rho_samples(random_term, model_samples)
       .bt_random_effect_summary_missing_correlation_stop(random_term)
     }

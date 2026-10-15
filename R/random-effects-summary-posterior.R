@@ -23,9 +23,14 @@
 #' [JAGS_with_draws()]. Summaries use its supplied draws and local analysis metadata.
 #' @param summary semantic quantity to extract: `"var_mult"`, `"var_prop"`,
 #'   `"sd_mult"`, `"sd_total"`, `"var_total"`, `"sd_common"`, or
-#'   `"var_common"`.
-#' @param allocation optional allocation label filter.
-#' @param component optional allocation component label filter.
+#'   `"var_common"`. The default `"var_mult"` exists only for mean-variance
+#'   SD-component allocations: for a fit with total-variance allocations it
+#'   stops (request `"var_prop"` or a total instead).
+#' @param allocation optional allocation filter. It matches the stable
+#'   allocation `name` given to `random_variance_allocation()` (the
+#'   identifier the backend uses), not the public `display_name`.
+#' @param component optional allocation component label filter, matched
+#'   against the component labels shown in the quantity names.
 #' @param formula_parameter optional formula parameter filter.
 #' @param simplify_names whether returned quantities should use centrally
 #'   generated simplified display labels. Defaults to `FALSE`.
@@ -53,7 +58,7 @@ random_effects_summary_posterior <- function(
   if(!.bt_is_jags_analysis_fit(fit) || !inherits(fit, "BayesTools_fit")){
     stop("'fit' must be a BayesTools JAGS fit.", call. = FALSE)
   }
-  summary <- .bt_random_effect_summary_posterior_type(summary)
+  summary <- match.arg(summary)
   check_char(allocation, "allocation", check_length = 0, allow_NULL = TRUE, allow_NA = FALSE)
   check_char(component, "component", check_length = 0, allow_NULL = TRUE, allow_NA = FALSE)
   check_char(formula_parameter, "formula_parameter", check_length = 0, allow_NULL = TRUE, allow_NA = FALSE)
@@ -70,7 +75,7 @@ random_effects_summary_posterior <- function(
   quantities <- catalog$quantities
   keep <- startsWith(quantities$role, "random_") &
     !quantities$internal & quantities$status != "unavailable" &
-    quantities$quantity == summary$summary
+    quantities$quantity == summary
   keys <- quantities$extraction_key
   if(!is.null(allocation)){
     keep <- keep & vapply(keys, function(key){
@@ -130,7 +135,7 @@ random_effects_summary_posterior <- function(
     )
     attr(values, "parameter") <- display_names[i]
     attr(values, "summary_name") <- key$summary_name
-    attr(values, "random_summary") <- summary$summary
+    attr(values, "random_summary") <- summary
     attr(values, "random_summary_label") <- display_names[i]
     attr(values, "random_allocation") <- key$allocation_label
     attr(values, "random_component") <- quantity$component
@@ -150,29 +155,25 @@ random_effects_summary_posterior <- function(
   out
 }
 
-.bt_random_effect_summary_posterior_type <- function(summary){
-
-  summary <- match.arg(
-    summary,
-    c(
-      "var_mult", "var_prop", "sd_mult",
-      "sd_total", "var_total", "sd_common", "var_common"
-    )
-  )
-  list(input = summary, summary = summary)
-}
-
 .bt_random_effect_summary_posterior_no_match_stop <- function(summary,
                                                               allocation,
                                                               component,
                                                               formula_parameter){
 
-  has_filters <- !is.null(allocation) || !is.null(component) ||
-    !is.null(formula_parameter)
-  filter_text <- if(has_filters) " matched the requested filters" else " are available"
+  quoted <- function(x) paste0("'", x, "'", collapse = ", ")
+  filters <- c(
+    if(!is.null(allocation)) paste0("allocation = ", quoted(allocation)),
+    if(!is.null(component)) paste0("component = ", quoted(component)),
+    if(!is.null(formula_parameter)) paste0("formula_parameter = ", quoted(formula_parameter))
+  )
+  filter_text <- if(length(filters) > 0L){
+    paste0(" matched the requested filters (", paste(filters, collapse = "; "), ")")
+  }else{
+    " are available"
+  }
 
   detail <- switch(
-    summary$summary,
+    summary,
     "var_mult" = paste0(
       "Variance-multiplier summaries are created only for ",
       "random_variance_allocation(..., target = \"sd_component\", ",
@@ -193,7 +194,7 @@ random_effects_summary_posterior <- function(
 
   stop(
     "No random-effect ",
-    summary$input,
+    summary,
     " summaries",
     filter_text,
     ". ",

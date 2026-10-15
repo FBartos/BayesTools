@@ -21,11 +21,16 @@ random_effects_summary_posterior(
 
 \item{summary}{semantic quantity to extract: \code{"var_mult"}, \code{"var_prop"},
 \code{"sd_mult"}, \code{"sd_total"}, \code{"var_total"}, \code{"sd_common"}, or
-\code{"var_common"}.}
+\code{"var_common"}. The default \code{"var_mult"} exists only for mean-variance
+SD-component allocations: for a fit with total-variance allocations it
+stops (request \code{"var_prop"} or a total instead).}
 
-\item{allocation}{optional allocation label filter.}
+\item{allocation}{optional allocation filter. It matches the stable
+allocation \code{name} given to \code{random_variance_allocation()} (the
+identifier the backend uses), not the public \code{display_name}.}
 
-\item{component}{optional allocation component label filter.}
+\item{component}{optional allocation component label filter, matched
+against the component labels shown in the quantity names.}
 
 \item{formula_parameter}{optional formula parameter filter.}
 

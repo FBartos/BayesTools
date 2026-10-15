@@ -5424,6 +5424,14 @@ test_that("gated totals without a source coordinate are unavailable", {
       fixed = TRUE,
       info = case
     )
+    # a filter that matches no allocation is named in the message
+    expect_error(
+      random_effects_summary_posterior(fit, "var_prop", allocation = "no_such",
+                                       component = "none"),
+      "No random-effect var_prop summaries matched the requested filters (allocation = 'no_such'; component = 'none').",
+      fixed = TRUE,
+      info = case
+    )
   }
 
   # A monitored scalar source keeps the realized total with its gate and
