@@ -131,7 +131,10 @@ The KDE posterior ordinate needs at least two finite continuous draws with
 positive spread (unless exact support excludes the null). With fewer, or with
 identical draws, a scalar call stops with
 \code{BayesTools_hypothesis_numerical_unavailable}, and a level of a list (or
-of marginal inference) gets an \code{NA} Bayes factor with the reason.
+of marginal inference) gets an \code{NA} Bayes factor with the reason. The
+same holds on the per-component route, for the pooled continuous draws and
+for each component whose support contains the null and that has several
+identical draws (a component with a single draw uses the pooled bandwidth).
 
 Affine expressions retain an unshifted linear numerator and a checked
 constant divisor. Point inference evaluates that numerator at the translated

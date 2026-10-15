@@ -88,7 +88,10 @@
 #' positive spread (unless exact support excludes the null). With fewer, or with
 #' identical draws, a scalar call stops with
 #' \code{BayesTools_hypothesis_numerical_unavailable}, and a level of a list (or
-#' of marginal inference) gets an \code{NA} Bayes factor with the reason.
+#' of marginal inference) gets an \code{NA} Bayes factor with the reason. The
+#' same holds on the per-component route, for the pooled continuous draws and
+#' for each component whose support contains the null and that has several
+#' identical draws (a component with a single draw uses the pooled bandwidth).
 #'
 #' Affine expressions retain an unshifted linear numerator and a checked
 #' constant divisor. Point inference evaluates that numerator at the translated
@@ -453,12 +456,21 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
   continuous_samples <- continuous_posterior$samples
   continuous_mass <- continuous_posterior$continuous_mass
 
+  # The kernel route needs usable continuous draws, whether they are smoothed
+  # pooled or by component (before a route is selected and the draws are
+  # ranged); a component's own draws are checked where its bandwidth is
+  # estimated (.Savage_Dickey_BF.component_height()).
+  kernel_route <- !isTRUE(normal_approximation) && is.null(stored_posterior_ordinate) &&
+    is.null(stored_posterior_density) && continuous_mass > 0
+  if(kernel_route){
+    .Savage_Dickey_BF.kde_check_draws(continuous_samples, null_hypothesis)
+  }
+
   # A model mixture whose continuous components have different exact supports
   # mixes per-component KDE ordinates (KDE path only).
   component_plan <- NULL
   posterior_density_components <- NULL
-  if(!isTRUE(normal_approximation) && is.null(stored_posterior_ordinate) &&
-     is.null(stored_posterior_density) && continuous_mass > 0){
+  if(kernel_route){
     warnings <- c(warnings, continuous_posterior[["component_warning"]])
     component_plan <- .Savage_Dickey_BF.component_plan(
       samples    = continuous_samples,
@@ -469,13 +481,6 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
       warnings <- c(warnings, component_plan[["warning"]])
       component_plan <- NULL
     }
-  }
-
-  # the kernel route needs usable continuous draws (before they are ranged)
-  if(!isTRUE(normal_approximation) && is.null(stored_posterior_ordinate) &&
-     is.null(stored_posterior_density) && is.null(component_plan) &&
-     continuous_mass > 0){
-    .Savage_Dickey_BF.kde_check_draws(continuous_samples, null_hypothesis)
   }
 
   # (a null outside the exact support of the prior has a zero prior ordinate
@@ -841,7 +846,8 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
 # height = sum_m (n_m / n_c) f_m(null) over the continuous components, where
 # f_m is the boundary-reflected KDE of component m's draws with its exact
 # support (zero outside the support, the one-sided limit on its bound). A
-# component with a single draw uses the pooled bandwidth.
+# component with a single draw uses the pooled bandwidth, and a component with
+# several identical draws is refused (zero_spread_continuous_draws).
 .Savage_Dickey_BF.component_height <- function(plan, null_hypothesis, pooled_samples){
 
   contains <- .Savage_Dickey_BF.component_contains(plan, null_hypothesis)
@@ -851,6 +857,8 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
 
   for(i in which(contains)){
     if(plan$counts[i] >= 2L){
+      # the component's own bandwidth needs draws with spread
+      .Savage_Dickey_BF.kde_check_draws(plan$draws[[i]], null_hypothesis)
       height <- .Savage_Dickey_BF.kd(
         samples            = plan$draws[[i]],
         null_hypothesis    = null_hypothesis,

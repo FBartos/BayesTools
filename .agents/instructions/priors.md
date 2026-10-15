@@ -856,8 +856,13 @@ is a kernel estimate from the continuous draws: the exact Gaussian kernel sum
 at the null with bandwidth `bw.nrd0()` of the (per-component) continuous
 draws, reflected at finite exact support bounds, never an evaluation grid,
 interpolation or binning (a grid spanning a long-tailed draw range is coarser
-than the bandwidth). The raw-draw ordinates of `hypothesis_BF()` use the same
-kernel sum without reflection; for numeric draws with a prior object that
+than the bandwidth). The kernel needs at least two distinct continuous draws,
+pooled and, on the component route, for every component containing the null
+(a component of one draw uses the pooled bandwidth): fewer, or identical, draws
+stop with `BayesTools_hypothesis_numerical_unavailable`
+(`fewer_than_two_finite_continuous_draws`, `zero_spread_continuous_draws`)
+unless the exact support excludes the null. The raw-draw ordinates of
+`hypothesis_BF()` use the same kernel sum without reflection; for numeric draws with a prior object that
 declares point masses, the kernel runs over the draws not exactly at a
 declared atom location (matched on the parameter draws before any expression
 is evaluated) and is scaled by their share, and without such draws the

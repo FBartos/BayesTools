@@ -5684,6 +5684,67 @@ test_that("the kernel posterior ordinate refuses degenerate continuous draws", {
   )
 })
 
+test_that("the kernel posterior ordinate refuses constant continuous draws on the component route", {
+
+  unavailable <- "BayesTools_hypothesis_numerical_unavailable"
+  normal  <- prior("normal", list(0, 1))
+  uniform <- prior("uniform", list(0, 1))
+  marginal_of <- function(draws, priors){
+    models <- lapply(seq_along(priors), function(i) list(
+      fit = .mock_mixing_fit_for_marginal(cbind(theta = draws[[i]]), list(theta = priors[[i]])),
+      marglik = bridgesampling_object(0), prior_weights = 1))
+    mixed <- mix_posteriors(models, parameters = "theta", is_null_list = list(theta = rep(FALSE, length(priors))),
+                            seed = 1, n_samples = 200)
+    marginal_posterior(mixed, "theta", use_formula = FALSE, prior_samples = TRUE, n_samples = 128)
+  }
+  refusal <- function(marginal, null_hypothesis){
+    tryCatch(Savage_Dickey_BF(marginal, null_hypothesis = null_hypothesis, silent = TRUE), error = identity)
+  }
+  expect_zero_spread <- function(condition, info){
+    expect_s3_class(condition, unavailable)
+    if(inherits(condition, unavailable)) expect_identical(condition$reason, "zero_spread_continuous_draws", info = info)
+  }
+
+  # every continuous draw equals 0.3: one carrier, and two carriers with
+  # different exact supports (the component route)
+  constant <- rep(.3, 50)
+  for(priors in list(list(normal), list(normal, uniform))){
+    marginal <- marginal_of(rep(list(constant), length(priors)), priors)
+    expect_length(unique(as.numeric(marginal)), 1L)
+    for(null_hypothesis in c(.3, .5)){
+      expect_zero_spread(refusal(marginal, null_hypothesis), paste(length(priors), null_hypothesis))
+    }
+  }
+
+  # one component with constant draws beside a component with spread: the
+  # constant component's own bandwidth is arbitrary
+  set.seed(7)
+  mixed_marginal <- marginal_of(list(constant, stats::runif(50)), list(normal, uniform))
+  expect_gt(length(unique(as.numeric(mixed_marginal))), 2L)
+  expect_zero_spread(refusal(mixed_marginal, .5), "constant component")
+
+  # draws with spread keep the component route and its Bayes factor
+  set.seed(8)
+  spread <- marginal_of(list(stats::rnorm(50, .3, .2), stats::runif(50)), list(normal, uniform))
+  bf <- Savage_Dickey_BF(spread, null_hypothesis = .5, silent = TRUE)
+  expect_true(is.finite(bf) && bf > 0)
+  expect_s3_class(attr(bf, "posterior_density_components"), "data.frame")
+
+  # a component with a single draw uses the pooled bandwidth; several identical
+  # draws are refused
+  plan <- list(ids = 1:2, counts = c(1L, 5L), bounds = list(c(0, 1), c(0, 1)),
+               draws = list(.3, c(.1, .2, .4, .5, .6)))
+  pooled <- unlist(plan$draws)
+  height <- BayesTools:::.Savage_Dickey_BF.component_height(plan, .5, pooled)
+  expect_true(is.finite(height) && height > 0)
+  plan$draws[[2L]] <- rep(.4, 5)
+  expect_zero_spread(tryCatch(BayesTools:::.Savage_Dickey_BF.component_height(plan, .5, pooled), error = identity),
+                     "identical draws of one component")
+  plan$draws[[2L]] <- .4
+  plan$counts[[2L]] <- 1L
+  expect_true(is.finite(BayesTools:::.Savage_Dickey_BF.component_height(plan, .5, c(.3, .4, .5))))
+})
+
 .formula_level_samples_for_test <- function(formula, prior_list, posterior, parameter, data,
                                             design = c("none", "log", "full")){
   design <- match.arg(design)
