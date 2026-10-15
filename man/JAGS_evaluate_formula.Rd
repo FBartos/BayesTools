@@ -23,9 +23,14 @@ JAGS_evaluate_formula(
 
 \item{formula}{formula specifying the right hand side of the assignment (the
 left hand side is ignored). If \code{NULL}, the fitted formula stored in
-\code{formula_design} metadata is used. If the formula has a
-\code{"log(intercept)"} attribute set to \code{TRUE}, the intercept values
-will be log-transformed before computing the linear predictor.}
+\code{formula_design} metadata is used. Whether the intercept values are
+log-transformed before computing the linear predictor is a property of the
+fitted formula: the \code{"log(intercept)"} flag stored in \code{formula_design}
+applies to every formula, also to an explicit one without the
+\code{"log(intercept)"} attribute. An explicit \code{"log(intercept)"}
+attribute that disagrees with the stored flag (\code{TRUE} for a fitted
+formula without a log intercept, or \code{FALSE} for one with it) stops
+with a \code{BayesTools_refit_required} error naming both values.}
 
 \item{parameter}{name of the parameter created with the formula}
 

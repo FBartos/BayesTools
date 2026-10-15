@@ -753,6 +753,61 @@ test_that("JAGS_evaluate_formula works with log(intercept) attribute", {
   expect_equal(as.vector(result_log[,1]), c(log(2), log(2) + 0.5, log(2) - 0.5), tolerance = 1e-10)
 })
 
+test_that("JAGS_evaluate_formula takes the log(intercept) flag of an explicit formula from the fitted design", {
+
+  skip_if_not_installed("rjags")
+  skip_if_missing_fits(c("fit_dual_param_regression"))
+
+  fit <- readRDS(file.path(temp_fits_dir, "fit_dual_param_regression.RDS"))
+  design <- attr(fit, "formula_design", exact = TRUE)
+  expect_true(design$log_sigma$log_intercept)
+  expect_false(design$mu$log_intercept)
+  new_data <- data.frame(x_sigma = c(1, 3, 5), x_mu = c(1, 3, 5))
+
+  # the replay of the fitted formula, and an explicit formula without the
+  # attribute, evaluate the log intercept of the fit
+  replay <- JAGS_evaluate_formula(fit, parameter = "log_sigma", data = new_data)
+  expect_equal(unname(rowMeans(replay)), c(-0.847, -1.259, -1.671), tolerance = 1e-3)
+  explicit <- JAGS_evaluate_formula(fit, ~ x_sigma, parameter = "log_sigma", data = new_data)
+  expect_identical(explicit, replay)
+  log_formula <- ~ x_sigma
+  attr(log_formula, "log(intercept)") <- TRUE
+  expect_identical(
+    JAGS_evaluate_formula(fit, log_formula, parameter = "log_sigma", data = new_data),
+    replay
+  )
+  # a subset of the terms evaluates with the same flag
+  expect_equal(
+    JAGS_evaluate_formula(fit, ~ 0 + x_sigma, parameter = "log_sigma", data = new_data),
+    JAGS_evaluate_formula(fit, ~ 0 + x_sigma, parameter = "log_sigma", data = new_data)
+  )
+
+  # an explicit attribute that disagrees with the fitted design is refused,
+  # naming both values
+  linear_formula <- ~ x_sigma
+  attr(linear_formula, "log(intercept)") <- FALSE
+  refusal <- expect_error(
+    JAGS_evaluate_formula(fit, linear_formula, parameter = "log_sigma", data = new_data),
+    class = "BayesTools_refit_required"
+  )
+  expect_match(conditionMessage(refusal), "(FALSE) does not match", fixed = TRUE)
+  expect_match(conditionMessage(refusal), "fitted formula for parameter 'log_sigma' (TRUE)", fixed = TRUE)
+
+  # and so is the attribute on a formula whose fitted design has none
+  mu_formula <- ~ x_mu
+  attr(mu_formula, "log(intercept)") <- TRUE
+  refusal <- expect_error(
+    JAGS_evaluate_formula(fit, mu_formula, parameter = "mu", data = new_data),
+    class = "BayesTools_refit_required"
+  )
+  expect_match(conditionMessage(refusal), "(TRUE) does not match", fixed = TRUE)
+  expect_match(conditionMessage(refusal), "fitted formula for parameter 'mu' (FALSE)", fixed = TRUE)
+  expect_identical(
+    JAGS_evaluate_formula(fit, ~ x_mu, parameter = "mu", data = new_data),
+    JAGS_evaluate_formula(fit, parameter = "mu", data = new_data)
+  )
+})
+
 test_that("Default priors (__default_factor and __default_continuous) work correctly", {
 
   # setup test data

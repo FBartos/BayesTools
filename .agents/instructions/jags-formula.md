@@ -193,7 +193,11 @@ a coefficient count; fitting stops on incomplete factor metadata. Formula
 evaluation and prediction (`JAGS_evaluate_formula()`,
 `JAGS_predict_formula()`) go only through the stored design: draws without a
 fit get it from `JAGS_formula_draws()`, which builds it as `JAGS_fit()` does;
-never evaluate from prior-list factor metadata. Formulas stored in designs and
+never evaluate from prior-list factor metadata. The `log(intercept)` flag of an
+evaluation is the stored flag of the design, also for an explicit formula
+without the attribute; an explicit attribute that disagrees with it stops with
+`BayesTools_refit_required` (as `marginal_posterior()` requires them to agree).
+Formulas stored in designs and
 fits keep no caller environment (only the base or empty environment), or a
 saved fit serializes the caller's workspace; random-effect term formulas read
 their predictors only from data columns, and prediction stops when the data

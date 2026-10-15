@@ -48,11 +48,14 @@ test_that("explicit prediction subsets can suppress a fitted intercept", {
     unname(drop(JAGS_evaluate_formula(fit, formula = ~ 0, parameter = "mu"))),
     rep(0, nrow(df))
   )
+  # the log(intercept) flag is the one of the fitted design: an explicit
+  # attribute that disagrees with it is refused
   log_formula <- ~ 0 + x
   attr(log_formula, "log(intercept)") <- TRUE
-  expect_equal(
-    unname(drop(JAGS_evaluate_formula(fit, formula = log_formula, parameter = "mu"))),
-    2 * df$x
+  expect_error(
+    JAGS_evaluate_formula(fit, formula = log_formula, parameter = "mu"),
+    "does not match the fitted formula for parameter 'mu' (FALSE)",
+    fixed = TRUE, class = "BayesTools_refit_required"
   )
   expect_identical(attr(fit, "formula_design")$mu$prior_list, result$prior_list)
 

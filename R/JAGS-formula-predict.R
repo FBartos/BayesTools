@@ -60,9 +60,14 @@
 #' ([JAGS_formula_draws()]).
 #' @param formula formula specifying the right hand side of the assignment (the
 #' left hand side is ignored). If `NULL`, the fitted formula stored in
-#' `formula_design` metadata is used. If the formula has a
-#' \code{"log(intercept)"} attribute set to \code{TRUE}, the intercept values
-#' will be log-transformed before computing the linear predictor.
+#' `formula_design` metadata is used. Whether the intercept values are
+#' log-transformed before computing the linear predictor is a property of the
+#' fitted formula: the \code{"log(intercept)"} flag stored in `formula_design`
+#' applies to every formula, also to an explicit one without the
+#' \code{"log(intercept)"} attribute. An explicit \code{"log(intercept)"}
+#' attribute that disagrees with the stored flag (\code{TRUE} for a fitted
+#' formula without a log intercept, or \code{FALSE} for one with it) stops
+#' with a \code{BayesTools_refit_required} error naming both values.
 #' @param parameter name of the parameter created with the formula
 #' @param data data.frame containing predictors included in the formula. If
 #' `NULL`, versioned original-scale fitted source data from `formula_design`
@@ -613,6 +618,35 @@ JAGS_evaluate_formula <- function(fit, formula = NULL, parameter,
   fitted_design
 }
 
+# The log(intercept) flag of an explicit formula is the one of the fitted
+# design (it is a property of the fitted model, as in marginal_posterior()):
+# a formula without the attribute takes the stored flag, and an explicit
+# attribute that disagrees with it is refused. A design without a stored flag
+# keeps the attribute of the formula.
+.bt_JAGS_evaluate_formula_log_intercept <- function(formula, fitted_design,
+                                                    parameter){
+
+  stored <- fitted_design$log_intercept
+  if(!inherits(formula, "formula") || !is.logical(stored) ||
+     length(stored) != 1L || is.na(stored)){
+    return(formula)
+  }
+  explicit <- attr(formula, "log(intercept)", exact = TRUE)
+  if(!is.null(explicit) && !identical(isTRUE(explicit), stored)){
+    .bt_stop_refit_required(
+      "The 'log(intercept)' attribute of 'formula' (", isTRUE(explicit),
+      ") does not match the fitted formula for parameter '", parameter,
+      "' (", stored, "). Omit the attribute to evaluate the fitted formula, or ",
+      "refit the model with the 'log(intercept)' attribute of the formula."
+    )
+  }
+  if(isTRUE(stored)){
+    attr(formula, "log(intercept)") <- TRUE
+  }
+
+  formula
+}
+
 .bt_JAGS_evaluate_formula_resolve_inputs <- function(fit, formula,
                                                      parameter, data,
                                                      prior_list,
@@ -631,6 +665,10 @@ JAGS_evaluate_formula <- function(fit, formula = NULL, parameter,
     if(isTRUE(fitted_design$log_intercept)){
       attr(formula, "log(intercept)") <- TRUE
     }
+  }else{
+    formula <- .bt_JAGS_evaluate_formula_log_intercept(
+      formula, fitted_design, parameter
+    )
   }
   if(is.null(data)){
     data <- fitted_design$source_data
