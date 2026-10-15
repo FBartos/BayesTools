@@ -1843,6 +1843,40 @@ test_that("log_omega weight moments follow the log-weight prior's exponential mo
   expect_identical(.weightfunction_mixture_mean(list(modifyList(heavy, list(weight = 0)), list(type = "point", location = 1, weight = 1))), 1)
 })
 
+test_that("log_omega weight variances of concentrated and wide normal priors are formed in closed form", {
+  variance <- function(p){
+    var(prior_weightfunction("one-sided", .05, wf_independent(p, scale = "log_omega")))[[2L]]
+  }
+  # a relative comparison: the tolerance of expect_equal() is absolute for small quantities
+  expect_relative <- function(value, reference, tolerance = 1e-10){
+    expect_gt(value, 0)
+    expect_lt(abs(value / reference - 1), tolerance)
+  }
+  # exp(2 mu + s^2) expm1(s^2); the separately rounded log moments gave 0 for s = 1e-8
+  # (5.46e-15) and a relative error of 0.066 for s = 1e-7
+  expect_relative(variance(prior("normal", list(2, 1e-8))), exp(4) * 1e-16)
+  expect_relative(variance(prior("normal", list(2, 1e-7))), exp(2 * 2 + 1e-14) * expm1(1e-14))
+  # truncation bounds that cut no mass leave the closed form unchanged
+  expect_relative(variance(prior("normal", list(2, 1e-8), list(1, 3))), exp(4) * 1e-16)
+  # a representable variance whose expm1(gap) overflows: exp(2 mu + s^2) expm1(s^2) with
+  # mu = -800 and s = 30 is exp(-1600 + 900 + 900) = exp(200)
+  expect_relative(variance(prior("normal", list(-800, 30))), exp(200))
+  # beyond the double range it is still a range limit
+  expect_error(variance(prior("normal", list(0, 40))), class = "BayesTools_numerical_range_limit")
+  expect_error(variance(prior("normal", list(800, 1))), class = "BayesTools_numerical_range_limit")
+  # a truncated normal whose variance is lost to rounding is refused, not returned as 0 or noise
+  expect_error(variance(prior("normal", list(0, 1e-9), list(-1e-9, 1e-9))),
+    "The variance of the weight is not resolvable in double-precision arithmetic",
+    fixed = TRUE, class = "BayesTools_numerical_unavailable")
+  # a moderate truncated normal keeps its integrated variance
+  trunc <- function(x) stats::dnorm(x) / (stats::pnorm(2) - stats::pnorm(-1))
+  m <- vapply(1:2, function(k) stats::integrate(function(x) exp(k * x) * trunc(x), -1, 2, rel.tol = 1e-13)$value, numeric(1))
+  expect_equal(variance(prior("normal", list(0, 1), list(-1, 2))), m[2] - m[1]^2, tolerance = 1e-10)
+  # a gap of exactly zero (the two log moments round to the same value) is unresolved for every family
+  testthat::local_mocked_bindings(.prior_weightfunction_log_omega_log_moment = function(prior, k) k)
+  expect_error(variance(prior("uniform", list(1, 1 + 1e-13))), class = "BayesTools_numerical_unavailable")
+})
+
 test_that("cumulative weightfunction priors expose exact beta marginals", {
   alpha <- c(1, 2, 3)
   p_wf <- prior_weightfunction(

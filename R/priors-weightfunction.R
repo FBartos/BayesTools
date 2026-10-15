@@ -707,8 +707,16 @@ wf_independent <- function(prior, scale = "omega"){
 # Mean and variance of the weight omega = exp(X) of a prior X on the log scale,
 # from m_k = E[exp(k X)] on the truncation range (log m_k, possibly Inf, from
 # .prior_weightfunction_log_omega_log_moment()). The mean is Inf when m_1 is
-# Inf and the variance is Inf when m_2 is Inf. This helper serves the
-# distribution methods and the plotted mean of the weightfunction plots.
+# Inf and the variance is Inf when m_2 is Inf. The variance is
+# m_1^2 expm1(gap) with gap = log(m_2 / m_1^2) >= 0 (Jensen): its logarithm
+# 2 log m_1 + log(expm1(gap)) is formed without expm1(gap), which overflows
+# for gap above 709.78 although the variance may be representable, and the gap
+# of a normal prior is formed in closed form
+# (.prior_weightfunction_normal_log_moment_gap()) instead of as the difference
+# of two separately rounded log moments, which loses a concentrated prior's
+# variance. A gap that is not positive, or whose rounding error may exceed
+# 1e-6 of it, is refused. This helper serves the distribution methods and the
+# plotted mean of the weightfunction plots.
 .prior_weightfunction_log_omega_moments <- function(prior, moment = c("mean", "var")){
 
   moment <- match.arg(moment)
@@ -734,16 +742,42 @@ wf_independent <- function(prior, scale = "omega"){
   }
 
   # Var = m_1^2 (m_2 / m_1^2 - 1) with m_2 / m_1^2 >= 1 (Jensen)
-  gap <- log_m2 - 2 * log_m1
-  if(!is.finite(gap) || gap < 0){
+  gap <- if(identical(family, "normal")){
+    .prior_weightfunction_normal_log_moment_gap(prior)
+  }else{
+    log_m2 - 2 * log_m1
+  }
+  if(!is.finite(gap) || gap <= 0){
     .prior_numerical_signal("variance", family, "natural", integer(),
       "The variance of the weight is not resolvable in double-precision arithmetic",
       error = TRUE)
   }
-  log_var <- 2 * log_m1 + log(expm1(gap))
+  # log(expm1(gap)) = gap + log(1 - exp(-gap))
+  log_var <- 2 * log_m1 + gap + .prior_log1mexp(-gap)
   if(log_var > log(.Machine$double.xmax)) limit("variance")
 
   exp(log_var)
+}
+# gap = log(m_2 / m_1^2) of a (truncated) normal log-weight prior in closed form:
+# with R_k the ratio of the interval masses of the normal with mean
+# mu + k sd^2 and of the prior, m_k = exp(k mu + k^2 sd^2 / 2) R_k, so
+# gap = sd^2 + log R_2 - 2 log R_1. Every R_k of an untruncated prior is 1 and
+# its gap is sd^2 whatever its location, so a concentrated prior keeps its
+# variance. The correction of a truncated prior is the second difference of the
+# log interval masses; NA when their rounding error (8 ulps of the largest log
+# mass) may exceed 1e-6 of the gap.
+.prior_weightfunction_normal_log_moment_gap <- function(prior){
+
+  parameters <- prior[["parameters"]]
+  variance   <- parameters[["sd"]]^2
+  log_mass   <- vapply(0:2, function(k){
+    shifted <- prior
+    shifted$parameters[["mean"]] <- parameters[["mean"]] + k * variance
+    .prior_normal_log_interval_mass(shifted, prior$truncation[["lower"]], prior$truncation[["upper"]])
+  }, numeric(1))
+  gap      <- variance + (log_mass[[3L]] - 2 * log_mass[[2L]] + log_mass[[1L]])
+  rounding <- 8 * .Machine$double.eps * max(abs(log_mass))
+  if(!is.finite(gap) || !is.finite(rounding) || rounding > 1e-6 * gap) NA_real_ else gap
 }
 # log E[exp(k X)] of a prior X on its truncation range [a, b]; Inf when the
 # moment does not exist.
