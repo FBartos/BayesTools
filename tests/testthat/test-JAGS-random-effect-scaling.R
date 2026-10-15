@@ -2866,3 +2866,38 @@ test_that("the posterior plot of a prior with multiply_by keeps the block design
   }
   expect_equal(curves[["TRUE"]], curves[["FALSE"]])
 })
+
+test_that("the parameter map builds the unscale matrix of a scaled block once", {
+
+  skip_if_not_installed("runjags")
+
+  # the support of each composite SD reads one row of the block's unscale
+  # matrix, which the map build computes once per block and not once per SD
+  df <- random_block_scale_data()
+  df$g <- factor(rep(c("p", "q"), length.out = 36))
+  block <- prior_random(id = random_block(
+    sd = prior("gamma", list(2, 2)), monitor = random_block_scale_monitor()
+  ))
+  original <- BayesTools:::.bt_parameter_prior_density_random_unscale_matrix
+  calls <- 0L
+  setup <- testthat::with_mocked_bindings(
+    random_block_scale_fit(~ 1 + x + diag(1 + f * g * x | id), df, block),
+    .bt_parameter_prior_density_random_unscale_matrix = function(...){
+      calls <<- calls + 1L
+      original(...)
+    },
+    .package = "BayesTools"
+  )
+
+  expect_gt(length(setup$sd_names), 6L)
+  expect_identical(calls, 1L)
+
+  # every SD and variance of the block keeps its exact hull [0, Inf)
+  catalog <- parameter_catalog(setup$fit)
+  composite <- which(catalog$quantities$quantity %in% c("sd", "var"))
+  expect_gt(length(composite), 12L)
+  for(support in catalog$quantities$support[composite]){
+    expect_true(support$exact)
+    expect_identical(unname(support$bounds), c(0, Inf))
+  }
+})

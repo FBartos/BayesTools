@@ -4473,7 +4473,9 @@ parameter_transform_jacobian <- function(values, transform){
     prior_list     = prior_list,
     formula_design = formula_design,
     formula_scale  = formula_scale,
-    linear_support = .bt_parameter_catalog_linear_support_context(prior_list)
+    linear_support = .bt_parameter_catalog_linear_support_context(prior_list),
+    # the unscale matrix of each random-effect block, built once on first use
+    unscale_cache  = new.env(parent = emptyenv())
   )
   rows <- .bt_parameter_catalog_rows(quantities)
   quantities$support <- I(lapply(rows, function(row){
@@ -4882,7 +4884,7 @@ parameter_transform_jacobian <- function(values, transform){
      length(key$index) != 1L || !key$index %in% seq_len(K)){
     return(dependencies)
   }
-  unscale <- .bt_parameter_prior_density_random_unscale_matrix(
+  unscale <- .bt_parameter_catalog_block_unscale_matrix(
     object      = object,
     random_term = random_term,
     parameter   = key$formula_parameter
@@ -4892,6 +4894,35 @@ parameter_transform_jacobian <- function(values, transform){
   }
   own <- sd_names[unscale[key$index, ] != 0]
   dependencies[!dependencies %in% sd_names | dependencies %in% own]
+}
+
+# The unscale matrix of a random-effect block
+# (.bt_parameter_prior_density_random_unscale_matrix()). While the catalog
+# support is built, the object carries a cache so that the matrix is built once
+# per block and read row by row for each of its SDs and variances; elsewhere it
+# is built on every call.
+.bt_parameter_catalog_block_unscale_matrix <- function(object, random_term,
+                                                       parameter){
+
+  cache <- attr(object, "unscale_cache", exact = TRUE)
+  if(!is.environment(cache)){
+    return(.bt_parameter_prior_density_random_unscale_matrix(
+      object      = object,
+      random_term = random_term,
+      parameter   = parameter
+    ))
+  }
+  id <- paste(parameter, random_term$block_name, sep = "\r")
+  if(!exists(id, envir = cache, inherits = FALSE)){
+    # a block without a column-wise map (NULL) is stored as well
+    assign(id, list(.bt_parameter_prior_density_random_unscale_matrix(
+      object      = object,
+      random_term = random_term,
+      parameter   = parameter
+    )), envir = cache)
+  }
+
+  get(id, envir = cache, inherits = FALSE)[[1L]]
 }
 
 # Whether the scale priors a composite random-effect SD or variance reads
