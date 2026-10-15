@@ -576,6 +576,44 @@ test_that("a source-coordinate plan lists every block that uses the source", {
   )
 })
 
+test_that("interaction SD labels keep backslashes and levels that differ by a character", {
+
+  # The levels "a\b" and "ab" give two distinct cell labels with their
+  # characters intact (they were once spliced into a sub() replacement).
+  backslash <- intToUtf8(92L)
+  lev_f <- c(paste0("a", backslash, "b"), "ab")
+  data <- expand.grid(
+    f = factor(lev_f, levels = lev_f), h = factor(c("u", "v")),
+    id = factor(c("g1", "g2")), KEEP.OUT.ATTRS = FALSE
+  )
+  result <- JAGS_formula(
+    ~ 1 + diag(0 + f:h | id), "mu", data,
+    list(intercept = prior("normal", list(0, 1))),
+    prior_random = prior_random(
+      sd = prior("gamma", list(2, 2)),
+      id = random_block(contrasts = c(f = "independent", h = "independent"))
+    )
+  )
+  term <- result$formula_design$random_effects[[1L]]
+  columns <- unique(c("mu_intercept", term$sd_parameter_names))
+  draws <- matrix(0.5, 2L, length(columns), dimnames = list(NULL, columns))
+  fit <- coda::mcmc.list(coda::mcmc(draws))
+  class(fit) <- c("BayesTools_fit", class(fit))
+  attr(fit, "prior_list") <- result$prior_list
+  attr(fit, "formula_design") <- list(mu = result$formula_design)
+  attr(fit, "parameter_map") <- .bt_build_parameter_map(
+    columns = columns, prior_list = result$prior_list,
+    formula_design = list(mu = result$formula_design)
+  )
+  fit <- .bt_attach_fit_contract(.bt_attach_draw_geometry(fit))
+  names <- parameter_catalog(fit)$quantities$canonical_name
+  sd_names <- names[startsWith(names, "(mu) sd(")]
+  expect_length(sd_names, 4L)
+  expect_false(anyDuplicated(sd_names) > 0L)
+  expect_true(paste0("(mu) sd(f[a", backslash, "b]:h[u])") %in% sd_names)
+  expect_true("(mu) sd(f[ab]:h[u])" %in% sd_names)
+})
+
 test_that("affine update plans are affine in their declared coefficient", {
 
   # A plan that claims `A + h(value) B` is checked against the covariance, not

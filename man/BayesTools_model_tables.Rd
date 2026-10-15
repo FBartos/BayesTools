@@ -346,14 +346,18 @@ Defaults to \code{FALSE}.}
 \item{random_effects_metadata}{whether to add random-effect metadata columns
 to JAGS estimates tables. When \code{TRUE}, the table includes the
 user-facing random-effect name, grouping label, and covariance structure
-type for random-effect rows. Defaults to \code{FALSE}.}
+type for random-effect rows. The rows owned by a variance allocation (its
+totals, proportions, and inclusion indicators) belong to no single block and
+leave these columns empty. Defaults to \code{FALSE}.}
 
 \item{remove_random_effects, keep_random_effects}{character vectors of
 random-effect names/blocks used to remove or keep random-effect rows.
 These match explicit \code{name = } values, generated block names, and
-grouping labels. Non-random parameters are left unaffected; combine with
-\code{keep_parameters = "random"} to return only the selected random-effect
-rows.}
+grouping labels of blocks; they address blocks only, so they never match
+the rows owned by a variance allocation (\code{keep_random_effects} removes
+those rows, \code{remove_random_effects} keeps them). Non-random parameters
+are left unaffected; combine with \code{keep_parameters = "random"} to
+return only the selected random-effect rows.}
 
 \item{remove_random_structures, keep_random_structures}{character vectors of
 random-effect covariance structures (for example \code{"diag"}, \code{"us"},
