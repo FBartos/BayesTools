@@ -125,6 +125,56 @@
   current
 }
 
+# The failed repetitions of a bridge-sampling result: the message names the
+# cause of each failed repetition (the iteration limit or a non-finite
+# estimate) and a remedy that fits those causes; the condition carries the
+# failed rows and the muffled upstream warnings, which are otherwise lost when
+# the call stops.
+.bt_marglik_repetition_failure <- function(repetitions, maxiter,
+                                           upstream_warnings,
+                                           drop_possible, subject){
+
+  failed <- repetitions[!repetitions$finite, , drop = FALSE]
+  cause <- ifelse(
+    !failed$within_maxiter,
+    paste0("the iteration reached its limit 'maxiter' = ", maxiter),
+    ifelse(
+      is.na(failed$niter),
+      "the estimate was non-finite",
+      paste0("the estimate was non-finite after ", failed$niter, " iteration(s)")
+    )
+  )
+  action <- c(
+    if(any(!failed$within_maxiter)) "Increase 'maxiter'",
+    if(any(failed$within_maxiter)){
+      "inspect the 'log_posterior' callback and the priors for non-finite densities"
+    },
+    if(drop_possible){
+      paste0(
+        "set 'nonfinite = \"drop\"' only when excluding the failed repetitions ",
+        "is scientifically intended"
+      )
+    }
+  )
+  action[1L] <- paste0(toupper(substr(action[1L], 1L, 1L)), substring(action[1L], 2L))
+  warnings_text <- if(length(upstream_warnings) > 0L){
+    paste0(" Upstream warning(s): ", paste(unique(upstream_warnings), collapse = "; "), ".")
+  }else{
+    ""
+  }
+  errorCondition(
+    message = paste0(
+      subject, " for repetition(s) ",
+      paste0(failed$repetition, " (", cause, ")", collapse = ", "),
+      ".", warnings_text, " ", paste(action, collapse = ", or "), "."
+    ),
+    call = NULL,
+    class = "BayesTools_marglik_repetition_failure",
+    repetitions = failed,
+    upstream_warnings = unique(upstream_warnings)
+  )
+}
+
 .bt_marglik_from_upstream <- function(upstream, maxiter, nonfinite,
                                       chain_metadata,
                                       upstream_warnings = character()){
@@ -196,25 +246,18 @@
   )
 
   if(any(!finite) && identical(nonfinite, "error")){
-    failed <- repetitions[!finite, , drop = FALSE]
-    condition <- errorCondition(
-      message = paste0(
-        "Bridge sampling returned a non-finite natural-log marginal likelihood ",
-        "for repetition(s) ",
-        paste(failed$repetition, collapse = ", "),
-        ". Set 'nonfinite = \"drop\"' only when excluding failed repetitions is scientifically intended."
-      ),
-      call = NULL,
-      class = "BayesTools_marglik_repetition_failure",
-      repetitions = failed
-    )
-    stop(condition)
+    stop(.bt_marglik_repetition_failure(
+      repetitions, maxiter, upstream_warnings,
+      drop_possible = any(finite),
+      subject = "Bridge sampling returned a non-finite natural-log marginal likelihood"
+    ))
   }
   if(!any(finite)){
-    stop(
-      "Bridge sampling did not return any finite natural-log marginal likelihoods.",
-      call. = FALSE
-    )
+    stop(.bt_marglik_repetition_failure(
+      repetitions, maxiter, upstream_warnings,
+      drop_possible = FALSE,
+      subject = "Bridge sampling did not return any finite natural-log marginal likelihoods"
+    ))
   }
 
   if(any(!finite)){

@@ -863,6 +863,111 @@ test_that("explicit drop policy records non-finite repetitions", {
   )
 })
 
+test_that("non-finite repetitions name their cause and keep the muffled warnings (F020)", {
+
+  mock_upstream <- function(logml, niter){
+    force(logml)
+    force(niter)
+    function(...){
+      warning("upstream diagnostic")
+      structure(
+        list(
+          logml = logml,
+          niter = niter,
+          mcse_logml = rep(0.1, length(logml)),
+          method = "warp3"
+        ),
+        class = "bridge_list"
+      )
+    }
+  }
+  posterior <- coda::as.mcmc(matrix(
+    seq_len(20),
+    ncol = 1,
+    dimnames = list(NULL, "mu")
+  ))
+  bridge <- function(...){
+    JAGS_bridgesampling(
+      fit = posterior,
+      log_posterior = function(parameters, data) 0,
+      data = list(),
+      prior_list = list(mu = prior("normal", list(0, 1))),
+      ...
+    )
+  }
+  catch <- function(expr) tryCatch(expr, error = function(e) e)
+
+  # iteration limit exceeded in one of several repetitions
+  testthat::local_mocked_bindings(
+    bridge_sampler = mock_upstream(c(-10, NA_real_, -12), c(4L, 1001L, 5L)),
+    .package = "bridgesampling"
+  )
+  error <- catch(bridge(maxiter = 1000))
+  expect_s3_class(error, "BayesTools_marglik_repetition_failure")
+  expect_match(
+    conditionMessage(error),
+    "repetition(s) 2 (the iteration reached its limit 'maxiter' = 1000)",
+    fixed = TRUE
+  )
+  expect_match(conditionMessage(error), "Upstream warning(s): upstream diagnostic.", fixed = TRUE)
+  expect_match(conditionMessage(error), "Increase 'maxiter'", fixed = TRUE)
+  expect_match(conditionMessage(error), "set 'nonfinite = \"drop\"' only when", fixed = TRUE)
+  expect_identical(error$upstream_warnings, "upstream diagnostic")
+  expect_identical(error$repetitions$repetition, 2L)
+
+  # a single non-finite repetition: no iteration limit, and "drop" is no remedy
+  testthat::local_mocked_bindings(
+    bridge_sampler = mock_upstream(NA_real_, 5L),
+    .package = "bridgesampling"
+  )
+  error <- catch(bridge())
+  expect_s3_class(error, "BayesTools_marglik_repetition_failure")
+  expect_match(
+    conditionMessage(error),
+    "repetition(s) 1 (the estimate was non-finite after 5 iteration(s))",
+    fixed = TRUE
+  )
+  expect_match(conditionMessage(error), "Inspect the 'log_posterior' callback", fixed = TRUE)
+  expect_false(grepl("drop", conditionMessage(error), fixed = TRUE))
+  expect_false(grepl("Increase 'maxiter'", conditionMessage(error), fixed = TRUE))
+
+  # every repetition dropped: the same condition family
+  testthat::local_mocked_bindings(
+    bridge_sampler = mock_upstream(c(NA_real_, Inf), c(3L, 4L)),
+    .package = "bridgesampling"
+  )
+  error <- catch(bridge(nonfinite = "drop"))
+  expect_s3_class(error, "BayesTools_marglik_repetition_failure")
+  expect_match(conditionMessage(error), "did not return any finite", fixed = TRUE)
+  expect_identical(error$repetitions$repetition, 1:2)
+  expect_identical(error$upstream_warnings, "upstream diagnostic")
+  expect_false(grepl("drop", sub("^.*finite", "", conditionMessage(error)), fixed = TRUE))
+})
+
+test_that("callback condition classes survive the bridge-sampling context (F020)", {
+
+  posterior <- coda::mcmc(matrix(0, nrow = 100L, ncol = 1L,
+                                dimnames = list(NULL, "theta")))
+  callback_condition <- structure(
+    list(message = "callback refused", call = NULL, detail = "kept"),
+    class = c("custom_callback_error", "error", "condition")
+  )
+  error <- tryCatch(
+    JAGS_bridgesampling(
+      fit = posterior,
+      log_posterior = function(parameters, data) stop(callback_condition),
+      data = NULL,
+      prior_list = list(theta = prior("point", list(location = 0))),
+      seed = 1
+    ),
+    error = function(e) e
+  )
+  expect_s3_class(error, "custom_callback_error")
+  expect_identical(conditionMessage(error), "Bridge sampling failed: callback refused")
+  expect_identical(error$detail, "kept")
+  expect_identical(error$upstream_warnings, character())
+})
+
 test_that("manual marginal-likelihood objects declare their scale", {
 
   result <- bridgesampling_object(-Inf)

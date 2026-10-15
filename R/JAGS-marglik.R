@@ -590,7 +590,12 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
       invokeRestart("muffleWarning")
     }), error = function(e)e)
     if(inherits(value, "error")){
-      stop("Bridge sampling failed: ", conditionMessage(value), call. = FALSE)
+      # Keep the classes and fields of a classed callback condition; add the
+      # bridge context and the upstream warnings muffled before the error.
+      value[["message"]] <- paste0("Bridge sampling failed: ", conditionMessage(value))
+      value[["call"]] <- NULL
+      value[["upstream_warnings"]] <- unique(upstream_warnings)
+      stop(value)
     }
     value
   }
