@@ -103,7 +103,9 @@ the prior fixes (for example by \code{\link[=wf_fixed]{wf_fixed()}}) or the coef
 ordered prior with a point total and fixed allocation. The density and
 autocorrelation diagnostics omit them when their draws are constant, and
 when nothing else remains the call returns \code{NULL} with a message, as for
-a spike prior; the trace is produced as for any other parameter.
+a spike prior; the trace is produced as for any other parameter. A parameter
+with a \code{\link[=prior_none]{prior_none()}} prior is not sampled: the call returns \code{NULL} with
+a message for every type.
 }
 \seealso{
 \code{\link[=JAGS_fit]{JAGS_fit()}} \code{\link[=JAGS_check_convergence]{JAGS_check_convergence()}}

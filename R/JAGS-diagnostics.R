@@ -33,7 +33,9 @@
 #' ordered prior with a point total and fixed allocation. The density and
 #' autocorrelation diagnostics omit them when their draws are constant, and
 #' when nothing else remains the call returns \code{NULL} with a message, as for
-#' a spike prior; the trace is produced as for any other parameter.
+#' a spike prior; the trace is produced as for any other parameter. A parameter
+#' with a [prior_none()] prior is not sampled: the call returns \code{NULL} with
+#' a message for every type.
 #' @param ... additional arguments
 #' @inheritParams density.prior
 #' @inheritParams plot.prior
@@ -98,6 +100,12 @@ JAGS_diagnostics                 <- function(fit, parameter, type, plot_type = "
   # do not produce diagnostics for a spike prior
   if(is.prior.point(prior_list[[parameter]])){
     message("No diagnostic plots are produced for a spike prior distribution")
+    return(NULL)
+  }
+
+  # a parameter without a prior is not sampled: there are no draws to diagnose
+  if(is.prior.none(prior_list[[parameter]])){
+    message("No diagnostic plots are produced for a parameter without a prior distribution (prior_none())")
     return(NULL)
   }
 

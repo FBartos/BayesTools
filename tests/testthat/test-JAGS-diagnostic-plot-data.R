@@ -1171,6 +1171,33 @@ test_that("a weightfunction with fixed weights is diagnosed like a spike prior",
   expect_s3_class(JAGS_diagnostics(fit, "omega", "trace", plot_type = "ggplot"), "ggplot")
 })
 
+test_that("a parameter with a prior_none() prior has no diagnostics to draw (F322)", {
+
+  fit <- structure(list(
+    mcmc = coda::mcmc.list(
+      coda::mcmc(cbind(mu = seq(-1, 1, length.out = 40))),
+      coda::mcmc(cbind(mu = seq(1, -1, length.out = 40)))
+    ),
+    summary.pars = list(mutate = NULL)
+  ), class = c("BayesTools_fit", "runjags"))
+  attr(fit, "prior_list") <- list(mu = prior("normal", list(0, 1)), bias = prior_none())
+  fit <- attach_test_parameter_map(fit)
+
+  # the parameter has no draws: NULL with a message, as for a spike prior
+  for(type in c("density", "trace", "autocorrelation")){
+    for(plot_type in c("base", "ggplot")){
+      expect_message(
+        result <- JAGS_diagnostics(fit, "bias", type, plot_type = plot_type),
+        "No diagnostic plots are produced for a parameter without a prior distribution",
+        fixed = TRUE
+      )
+      expect_null(result)
+    }
+  }
+  # the sampled parameter of the same fit is unaffected
+  expect_s3_class(JAGS_diagnostics(fit, "mu", "density", plot_type = "ggplot"), "ggplot")
+})
+
 test_that("a diagnostic transformation applies to the PET and PEESE column and the omega bins it plots", {
 
   inc <- function(x) x + 10
