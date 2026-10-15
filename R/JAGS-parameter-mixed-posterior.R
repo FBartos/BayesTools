@@ -77,15 +77,22 @@
 #'   [parameter_catalog_resolve()].
 #' @param conditional whether to condition on the inclusion event of the
 #'   quantity: the gates of its allocation chain on for an allocation-derived
-#'   component SD or variance, its own inclusion gate on for a variance
-#'   proportion, and at least one component active for an allocation total
-#'   (`sd_total`, `var_total`) whose components all have inclusion gates.
-#'   Only the draws in the event are kept, and the prior density is
+#'   component SD or variance, and its own inclusion gate on for a variance
+#'   proportion. An allocation total (`sd_total`, `var_total`) is conditioned
+#'   on its parent-allocation (binding-factor) gates on when some component
+#'   has no inclusion gate (some component is then always active), and on at
+#'   least one component active when every component has an inclusion gate
+#'   and the total has no parent gates. A total whose components all have
+#'   inclusion gates and which also has parent gates combines the two kinds of
+#'   gates, which are not one conjunction or disjunction, and is refused
+#'   ("combines parent-allocation and component inclusion gates"). Only the
+#'   draws in the
+#'   event are kept, and the prior density is
 #'   restricted to the event and renormalized (point masses inside the event,
 #'   e.g. a variance proportion of one, keep their renormalized masses). The
 #'   declared `condition` names the gates of the event. Quantities without an
-#'   inclusion gate cannot be conditioned, nor can a total with an ungated
-#'   component, for which some component is always active.
+#'   inclusion gate cannot be conditioned, nor can a total of an allocation
+#'   without parent gates that has an ungated component.
 #'
 #' @return A numeric vector of class `mixed_posteriors`,
 #'   `mixed_posteriors.simple`, `marginal_posterior.simple`, and

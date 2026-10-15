@@ -657,7 +657,14 @@ coordinate remains internal. Total-variance allocations expose `sd_total`,
 Gate-only roots are slab-plus-inclusion containers and do not publish a root
 `sd_total`; the child-split total is the public realized total.
 Conditioning a gated total on presence ANDs the binding-factor (parent) gates
-that define a positive realized source, not every nested component gate.
+that define a positive realized source, not every nested component gate. A
+total of an allocation without parent gates whose components all have
+inclusion gates is conditioned on the OR of the component gates (at least one
+active); one whose components all have inclusion gates and which also has
+parent gates combines both kinds of gates and is refused
+(`parameter_mixed_posterior()` stops with "combines parent-allocation and
+component inclusion gates"); a total without parent gates and with an ungated
+component has no inclusion gate and is not conditionable.
 
 Downstream consumers may explicitly request centrally generated simplified
 names. Simplification removes only a sole `intercept` argument and permits

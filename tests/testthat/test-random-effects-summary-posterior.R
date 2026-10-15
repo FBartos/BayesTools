@@ -2157,3 +2157,55 @@ test_that("the indicator columns of a logical-by-continuous term are labelled by
   expect_true(all(c("(mu) sd(intercept)", "(mu) sd(flag)", "(mu) sd(flag:x)") %in% diagonal_names))
   expect_false(any(grepl("cor(", diagonal_names, fixed = TRUE)))
 })
+
+test_that("conditioning a nested total uses its parent gates and refuses both gate kinds", {
+
+  skip_if_not_installed("runjags")
+
+  # RoBMA's structure: a gated parent allocation split into study and paper
+  # SDs. A total is conditioned on its parent-allocation gates; a total whose
+  # components all have inclusion gates and which also has parent gates
+  # combines two kinds of gates and is refused.
+  columns <- colnames(.nested_allocation_gate_split_fit(n = 1L)$mcmc[[1L]])
+  parent_gate <- grep("heterogeneity.*indicator", columns, value = TRUE)
+  expect_length(parent_gate, 1L)
+  draws <- stats::setNames(list(c(1, 0, 1, 1)), parent_gate)
+  total_name <- "(mu) component_1_split: sd_total"
+  resolve <- function(fit){
+    parameter_catalog_resolve(parameter_catalog(fit), total_name)
+  }
+
+  # components without gates: some component is always active, the event is
+  # the parent gate
+  ungated <- .nested_allocation_gate_split_fit(draws = draws)
+  kept <- parameter_mixed_posterior(ungated, resolve(ungated), conditional = TRUE)
+  expect_length(kept, 3L)
+  expect_identical(
+    posterior_metadata(kept, "condition")[c("conditional", "conditional_rule", "averaged")],
+    list(conditional = parent_gate, conditional_rule = "AND", averaged = FALSE)
+  )
+  expect_length(parameter_mixed_posterior(ungated, resolve(ungated)), 4L)
+
+  # every component gated, and the parent gate: refused, the unconditional
+  # total is available
+  split_inclusion <- list(study = prior("spike", list(.3)), paper = prior("spike", list(.6)))
+  split_gates <- grep(
+    "component_1_split.*(study|paper).*indicator",
+    colnames(.nested_allocation_gate_split_fit(split_inclusion = split_inclusion, n = 1L)$mcmc[[1L]]),
+    value = TRUE
+  )
+  expect_length(split_gates, 2L)
+  gated <- .nested_allocation_gate_split_fit(
+    split_inclusion = split_inclusion,
+    draws = c(draws, stats::setNames(list(c(1, 1, 0, 1), c(0, 1, 1, 1)), split_gates))
+  )
+  expect_error(
+    parameter_mixed_posterior(gated, resolve(gated), conditional = TRUE),
+    paste0(
+      "The inclusion event of '", total_name, "' is unavailable: it combines ",
+      "parent-allocation and component inclusion gates. Use 'conditional = FALSE'."
+    ),
+    fixed = TRUE
+  )
+  expect_length(parameter_mixed_posterior(gated, resolve(gated)), 4L)
+})

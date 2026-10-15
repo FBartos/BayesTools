@@ -151,7 +151,9 @@ A block allocation with exactly one term is permitted only as a gate-only
 allocation: \code{weights} must be \code{NULL} and \code{inclusion} must name that term.
 Conditioning a gated total on presence uses the binding-factor (parent)
 gates that define a positive realized source, not every nested component
-gate. \code{inclusion} is not supported with \code{target = "sd_component"}.}
+gate; a total whose components all have inclusion gates and which also has
+parent gates cannot be conditioned (see \code{\link[=parameter_mixed_posterior]{parameter_mixed_posterior()}}).
+\code{inclusion} is not supported with \code{target = "sd_component"}.}
 
 \item{display_name}{public semantic owner used as the parameter-name prefix.
 It defaults to \code{name}; use \code{""} when a single model component needs no

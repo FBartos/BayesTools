@@ -514,7 +514,9 @@ random_block <- function(sd = NULL, covariance = NULL, cor = NULL,
 #'   allocation: `weights` must be `NULL` and `inclusion` must name that term.
 #'   Conditioning a gated total on presence uses the binding-factor (parent)
 #'   gates that define a positive realized source, not every nested component
-#'   gate. `inclusion` is not supported with `target = "sd_component"`.
+#'   gate; a total whose components all have inclusion gates and which also has
+#'   parent gates cannot be conditioned (see [parameter_mixed_posterior()]).
+#'   `inclusion` is not supported with `target = "sd_component"`.
 #' @export
 random_variance_allocation <- function(name, terms = NULL, sd = NULL,
                                        weights = NULL,
