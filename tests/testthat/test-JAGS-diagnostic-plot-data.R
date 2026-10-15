@@ -1170,3 +1170,50 @@ test_that("a diagnostic transformation applies to the PET and PEESE column and t
   shifted <- JAGS_diagnostics(fit, "bias", "trace", transformations = list(bias = list(fun = inc)), plot_type = "ggplot")
   expect_equal(ggplot2::ggplot_build(shifted)$data[[1]]$y, ggplot2::ggplot_build(plain)$data[[1]]$y + 10)
 })
+
+test_that("the atom draws of a point-plus-continuous mixture stay out of its density (F288)", {
+
+  slab <- prior("normal", list(7.5, 1), list(5, 10))
+  mixture <- prior_mixture(list(prior("point", list(0)), slab), is_null = c(TRUE, FALSE))
+  n <- 400L
+  indicator <- rep(1:2, each = n / 2L)
+  draws <- cbind(
+    mu = ifelse(indicator == 1L, 0, 5 + 5 * (seq_len(n) - .5) / n),
+    mu_indicator = indicator
+  )
+  fit <- structure(list(
+    mcmc = coda::mcmc.list(coda::mcmc(draws[c(1:100, 201:300), ]), coda::mcmc(draws[c(101:200, 301:400), ])),
+    summary.pars = list(mutate = NULL)
+  ), class = c("BayesTools_fit", "runjags"))
+  attr(fit, "prior_list") <- list(mu = mixture)
+  fit <- attach_test_parameter_map(fit)
+
+  plot_data <- .diagnostics_plot_data(fit, "mu", attr(fit, "prior_list"), NULL, FALSE)
+  density_data <- .diagnostics_plot_data_density(plot_data, n_points = 128, xlim = NULL)
+
+  for(chain_density in density_data$mu){
+    # the spike at zero is no part of the density, which lives on the slab support
+    expect_gte(min(chain_density$x), 5 - 1e-8)
+    expect_lte(max(chain_density$x), 10 + 1e-8)
+    expect_equal(.diagnostic_density_mass(chain_density), 1, tolerance = .05)
+  }
+  # the trace shows every draw, atoms included
+  trace_data <- .diagnostics_plot_data_trace(plot_data, n_points = 10, ylim = NULL)
+  expect_identical(sum(vapply(trace_data$mu, function(chain) sum(chain$y == 0), numeric(1))), 200)
+})
+
+test_that("an ordered component of a factor mixture is treated as the real line (F288)", {
+
+  ordered_component <- function(sd, truncation = NULL){
+    prior_factor_levels(prior_ordered(
+      if(is.null(truncation)) prior("normal", list(0, sd)) else prior("normal", list(0, sd), truncation)
+    ), 3)
+  }
+  mixture <- prior_mixture(list(ordered_component(1), ordered_component(2)), is_null = c(FALSE, FALSE))
+  expect_identical(.diagnostics_prior_bounds(mixture, "p"), list(lower = -Inf, upper = Inf))
+  bounded <- prior_mixture(
+    list(ordered_component(1), ordered_component(1, list(0, Inf))),
+    is_null = c(FALSE, FALSE)
+  )
+  expect_identical(.diagnostics_prior_bounds(bounded, "p"), list(lower = -Inf, upper = Inf))
+})

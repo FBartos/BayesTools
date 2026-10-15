@@ -1715,3 +1715,17 @@ test_that("generated p-hacking constants read back as the doubles the evaluators
     )
   }
 })
+
+test_that("unresolvable p-hacking null masses are numerically unavailable conditions (F288)", {
+
+  for(arguments in list(
+    list("quadratic", source = .25, destination = .024999, target = .025),
+    list("linear", source = .5, destination = 1e-312, target = 1e-310)
+  )){
+    condition <- tryCatch(do.call(phack_backend_constants, arguments), error = function(e) e)
+    expect_s3_class(condition, "BayesTools_numerical_unavailable")
+    expect_s3_class(condition, "BayesTools_numerical_condition")
+    expect_identical(condition$family, "p-hacking")
+    expect_identical(condition$reason, conditionMessage(condition))
+  }
+})

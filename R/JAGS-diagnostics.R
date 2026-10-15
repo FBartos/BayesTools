@@ -271,6 +271,18 @@ JAGS_diagnostics                 <- function(fit, parameter, type, plot_type = "
   # which only resolves the dimensions and the coding of the columns)
   prior_support <- prior_list[[parameter]]
 
+  # the draws of the point components of a mixture that also has a continuous
+  # component are atoms, not part of its density: the kernel estimate drops
+  # them like the spike of a spike-and-slab prior
+  atom_rows <- NULL
+  if(is.prior.mixture(prior_support) && !inherits(prior_support, "prior.bias_mixture")){
+    is_atom <- vapply(prior_support, is.prior.point, logical(1))
+    indicator_name <- paste0(parameter, "_indicator")
+    if(any(is_atom) && !all(is_atom) && indicator_name %in% colnames(model_samples)){
+      atom_rows <- model_samples[, indicator_name] %in% which(is_atom)
+    }
+  }
+
   if(is.prior.factor(prior_list[[parameter]]) || (is.prior.mixture(prior_list[[parameter]]) && any(sapply(prior_list[[parameter]], is.prior.factor)))){
 
     if(is.prior.mixture(prior_list[[parameter]])){
@@ -393,6 +405,7 @@ JAGS_diagnostics                 <- function(fit, parameter, type, plot_type = "
   attr(model_samples, "label_parts") <- column_parts
   attr(model_samples, "chain")     <- do.call(c, samples_chain)
   attr(model_samples, "iter")      <- do.call(c, samples_iter)
+  attr(model_samples, "atom_rows") <- atom_rows
   attr(model_samples, "parameter") <- parameter
   attr(model_samples, "prior")     <- prior_support
   attr(model_samples, "structural") <- is_structural
@@ -407,6 +420,10 @@ JAGS_diagnostics                 <- function(fit, parameter, type, plot_type = "
   plot_data <- .diagnostics_drop_structural_columns(plot_data)
   chain <- attr(plot_data, "chain", exact = TRUE)
   prior <- attr(plot_data, "prior", exact = TRUE)
+  atom_rows <- attr(plot_data, "atom_rows", exact = TRUE)
+  if(!is.null(atom_rows)){
+    plot_data[atom_rows, ] <- NA
+  }
   .bt_diagnostics_validate_plot_data(
     plot_data,
     chain,

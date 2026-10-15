@@ -232,6 +232,23 @@ phack_alpha_from_pi_null <- function(pi_null, form, source, destination, target 
   return(pi_null / constants$pi_null_per_alpha)
 }
 
+# The p-hacking null masses that double precision cannot resolve: class
+# BayesTools_numerical_unavailable (a BayesTools_numerical_condition error).
+.phack_numerical_unavailable <- function(...){
+
+  message <- paste0(...)
+  stop(errorCondition(
+    message,
+    call = NULL,
+    class = c("BayesTools_numerical_unavailable", "BayesTools_numerical_condition"),
+    operation = "null mass",
+    family = "p-hacking",
+    requested_scale = "natural",
+    indices = integer(),
+    reason = message
+  ))
+}
+
 #' @rdname phack_pi_null
 #' @export
 phack_backend_constants <- function(form, source, destination, target = .025){
@@ -263,10 +280,9 @@ phack_backend_constants <- function(form, source, destination, target = .025){
   # not detect it, the limit below does.
   masses <- c(source_mass, dest_mass)
   if(any(!is.finite(masses) | masses < .Machine$double.xmin)){
-    stop(
+    .phack_numerical_unavailable(
       "The p-hacking null masses of the source and destination regions must be positive; ",
-      "the cut points are too extreme to be represented in double precision.",
-      call. = FALSE
+      "the cut points are too extreme to be represented in double precision."
     )
   }
 
@@ -282,10 +298,9 @@ phack_backend_constants <- function(form, source, destination, target = .025){
     destination = .phack_null_moment_relative_error(z_target, z_dest_upper, q, anchor = z_dest_upper, moment = dest_mass)
   )
   if(any(!is.finite(relative_error) | relative_error > 1e-4)){
-    stop(
+    .phack_numerical_unavailable(
       "The p-hacking source or destination interval is too narrow to be resolved in double precision. ",
-      "Use cut points that are further apart.",
-      call. = FALSE
+      "Use cut points that are further apart."
     )
   }
 
