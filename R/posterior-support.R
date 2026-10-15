@@ -66,11 +66,9 @@
 .posterior_support_parse_type <- function(type, bounds, points){
 
   if(is.null(type)){
-    # exact comparison: points that differ from the bounds by 1e-9 are not
-    # the whole support
     if(length(points) > 0L &&
        all(is.finite(bounds)) &&
-       all(range(points) == bounds)){
+       isTRUE(all.equal(range(points), bounds))){
       return("points")
     }
     return("interval")
@@ -679,9 +677,7 @@ posterior_support_attribute <- function(bounds, points = NULL, type = NULL,
   if(is.prior.discrete(prior)){
     support <- switch(
       prior[["distribution"]],
-      # a degenerate probability excludes the impossible state
-      "bernoulli" = c(0, 1)[c(prior$parameters[["probability"]] < 1,
-                              prior$parameters[["probability"]] > 0)],
+      "bernoulli" = c(0, 1),
       numeric()
     )
     support <- support[
