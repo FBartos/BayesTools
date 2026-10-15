@@ -2875,8 +2875,8 @@
   larger * sqrt(1 + ratio^2) / abs(spec$product_mean)
 }
 
-# Mean and SD of the conditional normal N(a_m + b_m s, sqrt(a_s^2 + b_s^2 s^2))
-# at multiplier values s, with the SD computed without overflow.
+# The log kernel of a primitive prior at the quadrature nodes; an interior
+# value that lost logarithmic range stops the quadrature.
 .prior_quadrature_log_density <- function(prior, values, evaluator){
 
   out <- evaluator(values)
@@ -2904,6 +2904,8 @@
   out
 }
 
+# Mean and SD of the conditional normal N(a_m + b_m s, sqrt(a_s^2 + b_s^2 s^2))
+# at multiplier values s, with the SD computed without overflow.
 .prior_conditional_normal_moments <- function(spec, multiplier){
 
   product_sd <- abs(multiplier) * spec$product_sd
