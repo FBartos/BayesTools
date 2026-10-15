@@ -581,6 +581,15 @@ lpdf.prior  <- function(x, y, ...){
       ), ncol = prior$parameter[["K"]], nrow = prior$parameter[["K"]])
     }
 
+    if(identical(prior[["distribution"]], "mnormal") &&
+       !.prior_density_full_precision(prior$parameter[["sd"]]^2)){
+      # diag(sd^2) is 0 for sd below 1e-154 (the log density was Inf), Inf above
+      # 1e154 and rounded when subnormal: a representability limit, refused
+      .prior_numerical_signal("density", "mnormal", "log", 1L,
+        "The covariance sd^2 of the coordinates is not representable in double precision",
+        range = TRUE, error = TRUE)
+    }
+
     log_lik <- switch(
       prior[["distribution"]],
       # par2 is freshly constructed as diagonal above. Revisit this if general
@@ -910,6 +919,25 @@ quant.prior <- function(x, p, ...){
   log_mass
 }
 
+# Whether the truncation mass of a normal prior is unresolved: the two tail
+# probabilities it is the difference of (the survival function above the mean,
+# the distribution function otherwise) are within a few ulps of each other, so
+# their difference is rounding noise (an interval of width 1e-16 around the
+# mean has a mass of one ulp of 0.5). Callers refuse such a prior.
+.prior_normal_mass_unresolved <- function(prior){
+
+  ends <- stats::pnorm(
+    c(prior$truncation[["lower"]], prior$truncation[["upper"]]),
+    mean       = prior$parameters[["mean"]],
+    sd         = prior$parameters[["sd"]],
+    lower.tail = prior$truncation[["lower"]] < prior$parameters[["mean"]],
+    log.p      = TRUE
+  )
+  difference <- abs(ends[2L] - ends[1L])
+
+  is.finite(difference) && difference <= 4 * .Machine$double.eps * max(abs(ends))
+}
+
 .prior_normal_log_C <- function(prior){
 
   .prior_normal_log_interval_mass(
@@ -947,7 +975,7 @@ quant.prior <- function(x, p, ...){
           prior$truncation[["lower"]],
           q[q_inside]
         ) -
-          .prior_normal_log_C(prior)
+          .prior_simple_log_C(prior)
       )
       p[q_inside] <- pmin(1, pmax(0, p[q_inside]))
       return(p)
@@ -998,7 +1026,7 @@ quant.prior <- function(x, p, ...){
           q[q_inside],
           prior$truncation[["upper"]]
         ) -
-          .prior_normal_log_C(prior)
+          .prior_simple_log_C(prior)
       )
       p[q_inside] <- pmin(1, pmax(0, p[q_inside]))
       return(p)
@@ -1179,6 +1207,13 @@ quant.prior <- function(x, p, ...){
     q[p_upper] <- upper
 
     if(any(p_inside)){
+      # The tail is chosen once per prior (the survival side for a truncation
+      # above the mean). A quantile in the other tail loses accuracy next to
+      # the truncation bound where the target probability 1 - p is below the
+      # rounding of the opposite tail (upper-tail quantiles for p > 1 - 1e-9
+      # of a prior with lower < mean are accurate to about 0.014 at 1 - 2^-52,
+      # and a bound at infinity can give Inf): a documented, uncertified
+      # limit, not repaired here.
       if(lower >= prior$parameters[["mean"]]){
         log_S2 <- stats::pnorm(
           upper,
@@ -1401,6 +1436,10 @@ quant.prior <- function(x, p, ...){
   alpha <- prior$parameters[["alpha"]]
   K <- length(alpha)
   x_mat <- .prior_dirichlet_x_matrix(x, K, "x")
+  # lgamma(sum(alpha)) - sum(lgamma(alpha)) subtracts terms of size
+  # alpha log(alpha): for concentrations of about 1e12 and above the constant
+  # loses its absolute accuracy to cancellation (a documented limit of the
+  # joint log density, not repaired here)
   log_const <- lgamma(sum(alpha)) - sum(lgamma(alpha))
 
   apply(x_mat, 1L, function(row){
@@ -1432,9 +1471,10 @@ quant.prior <- function(x, p, ...){
 
   if(identical(prior$distribution, "dirichlet")){
     alpha <- prior$parameters[["alpha"]]
-    alpha0 <- sum(alpha)
+    # the complementary concentration is the sum of the others (sum(alpha) -
+    # alpha[i] cancels for concentrations of 1e12 and above)
     out <- vapply(seq_len(K), function(i){
-      stats::pbeta(q_mat[, i], shape1 = alpha[i], shape2 = alpha0 - alpha[i], lower.tail = lower.tail)
+      stats::pbeta(q_mat[, i], shape1 = alpha[i], shape2 = sum(alpha[-i]), lower.tail = lower.tail)
     }, numeric(nrow(q_mat)))
     return(matrix(out, nrow = nrow(q_mat), ncol = K))
   }
@@ -1444,7 +1484,11 @@ quant.prior <- function(x, p, ...){
   out <- switch(
     prior[["distribution"]],
     "mnormal" = apply(q_mat, 2, stats::pnorm, mean = loc, sd = prior$parameters[["sd"]], lower.tail = lower.tail),
-    "mt"      = apply(q_mat, 2, extraDistr::plst, df = prior$parameters[["df"]], mu = loc, sigma = prior$parameters[["scale"]], lower.tail = lower.tail),
+    # stats::pt keeps the requested tail exact (as the scalar adapter does);
+    # extraDistr's upper tail is 1 - p and is 0 beyond about 1e6 scales
+    "mt"      = apply(q_mat, 2, function(q_i){
+      stats::pt((q_i - loc) / prior$parameters[["scale"]], df = prior$parameters[["df"]], lower.tail = lower.tail)
+    }),
     "mpoint"  = apply(q_mat, 2, ppoint, location = loc, lower.tail = lower.tail)
   )
 
@@ -1457,9 +1501,8 @@ quant.prior <- function(x, p, ...){
 
   if(identical(prior$distribution, "dirichlet")){
     alpha <- prior$parameters[["alpha"]]
-    alpha0 <- sum(alpha)
     out <- vapply(seq_len(K), function(i){
-      stats::dbeta(x_mat[, i], shape1 = alpha[i], shape2 = alpha0 - alpha[i], log = TRUE)
+      stats::dbeta(x_mat[, i], shape1 = alpha[i], shape2 = sum(alpha[-i]), log = TRUE)
     }, numeric(nrow(x_mat)))
     return(matrix(out, nrow = nrow(x_mat), ncol = K))
   }
@@ -1481,9 +1524,8 @@ quant.prior <- function(x, p, ...){
 
   if(identical(prior$distribution, "dirichlet")){
     alpha <- prior$parameters[["alpha"]]
-    alpha0 <- sum(alpha)
     q <- vapply(seq_len(K), function(i){
-      stats::qbeta(p, shape1 = alpha[i], shape2 = alpha0 - alpha[i])
+      stats::qbeta(p, shape1 = alpha[i], shape2 = sum(alpha[-i]))
     }, numeric(length(p)))
     return(matrix(q, nrow = length(p), ncol = K))
   }

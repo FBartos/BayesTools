@@ -474,3 +474,54 @@ test_that("nonlocal finite starts retain range and unresolved normalized-density
     }, rng = function(...) values[i])
   }
 })
+
+test_that("joint prior methods keep plain-formula values or refuse at double-precision range edges", {
+
+  # mnormal: the covariance diag(sd^2) must be representable; it was 0 or Inf
+  # (log densities Inf and -Inf) for sd below 1e-154 or above 1e154
+  for(sd in c(1e-200, 1e-162, 1e200)){
+    expect_error(lpdf(prior("mnormal", list(mean = 0, sd = sd, K = 2)), c(0, 0)),
+                 "The covariance sd^2 of the coordinates is not representable in double precision",
+                 fixed = TRUE, class = "BayesTools_numerical_range_limit")
+  }
+  expect_equal(lpdf(prior("mnormal", list(mean = 0, sd = 1e-100, K = 2)), c(0, 0)),
+               200 * log(10) - log(2 * pi), tolerance = 1e-12)
+  expect_equal(lpdf(prior("mnormal", list(mean = 1, sd = 2, K = 3)), c(3, 1, -1)),
+               sum(stats::dnorm(c(3, 1, -1), 1, 2, log = TRUE)), tolerance = 1e-14)
+
+  # a truncated normal whose interval mass is a rounding ulp of 0.5 is
+  # unresolved: no cdf, ccdf, quantile or log density from rounding noise
+  narrow <- prior("normal", list(0, 1), list(0, 1e-16))
+  for(refused in list(function() cdf(narrow, 5e-17), function() ccdf(narrow, 5e-17),
+                      function() quant(narrow, .5), function() lpdf(narrow, 5e-17))){
+    expect_error(refused(), "The positive truncation mass could not be resolved at supported precision",
+                 fixed = TRUE, class = "BayesTools_numerical_unavailable")
+  }
+  resolved <- prior("normal", list(0, 1), list(0, 1e-10))
+  expect_equal(cdf(resolved, 5e-11) + ccdf(resolved, 5e-11), 1, tolerance = 1e-14)
+  expect_equal(cdf(resolved, 5e-11), .5, tolerance = 1e-5)
+  expect_equal(quant(resolved, .5), 5e-11, tolerance = 1e-5)
+  # far tails are resolved by their own log probabilities
+  tail <- prior("normal", list(0, 1), list(30, 30 + 1e-3))
+  expect_equal(cdf(tail, 30 + 5e-4) + ccdf(tail, 30 + 5e-4), 1, tolerance = 1e-14)
+  expect_true(is.finite(lpdf(tail, 30 + 5e-4)))
+
+  # Dirichlet marginals use the sum of the other concentrations: the
+  # complementary concentration of a component of Dirichlet(1e16, 1) is 1,
+  # while sum(alpha) - alpha[1] is 0
+  dirichlet <- prior("dirichlet", list(alpha = c(1e16, 1)))
+  x <- 1 - 1e-15
+  expect_equal(mlpdf(dirichlet, x),
+               matrix(c(stats::dbeta(x, 1e16, 1, log = TRUE), stats::dbeta(x, 1, 1e16, log = TRUE)), nrow = 1L),
+               tolerance = 1e-12)
+  expect_equal(mcdf(dirichlet, x),
+               matrix(c(stats::pbeta(x, 1e16, 1), stats::pbeta(x, 1, 1e16)), nrow = 1L), tolerance = 1e-12)
+
+  # the multivariate-t marginal tails are stats::pt, as for the scalar prior
+  vector_t <- prior("mt", list(location = 0, scale = 1, df = 3, K = 2))
+  scalar_t <- prior("t", list(location = 0, scale = 1, df = 3))
+  expect_equal(unname(mccdf(vector_t, 1e6)[1L, ]), rep(ccdf(scalar_t, 1e6), 2L), tolerance = 1e-14)
+  expect_gt(mccdf(vector_t, 1e6)[1L, 1L], 0)
+  expect_equal(unname(mcdf(vector_t, -1e6)[1L, ]), rep(cdf(scalar_t, -1e6), 2L), tolerance = 1e-14)
+  expect_equal(unname(mcdf(vector_t, .3)[1L, ]), rep(stats::pt(.3, 3), 2L), tolerance = 1e-14)
+})

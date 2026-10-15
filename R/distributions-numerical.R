@@ -208,7 +208,8 @@
       error = TRUE)
   }
   log_mass <- .prior_simple_log_interval_mass(prior, prior$truncation$lower, prior$truncation$upper)
-  if(length(log_mass) != 1L || !is.finite(log_mass)){
+  if(length(log_mass) != 1L || !is.finite(log_mass) ||
+     (identical(prior$distribution, "normal") && .prior_normal_mass_unresolved(prior))){
     .prior_numerical_signal("normalization", prior$distribution, "log", 1L,
       "The positive truncation mass could not be resolved at supported precision", error = TRUE)
   }
