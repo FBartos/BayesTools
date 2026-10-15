@@ -38,11 +38,14 @@ their defined meaning. Check the relevant contract before changing behavior.
 ## Source ownership
 
 - Priors and density algebra: `R/priors*.R`, `R/distributions-*.R`, and
-  `R/prior-density-ordinate.R`.
+  `R/prior-density-*.R` (ordinates, routes, regions, quadrature, allocation).
 - JAGS runtime, formulas, and bridge sampling: `R/JAGS-*.R`.
 - Random effects: `R/random-effects-*.R` and `R/random-group-covariance.R`.
 - Marginal inference and model averaging: `R/marginal-*.R` and
   `R/model-averaging*.R`.
+- Posterior densities, supports, atoms, and extraction: `R/posterior-*.R`.
+- Hypothesis Bayes factors: `R/hypothesis-*.R`.
+- Parameter labels and sources: `R/parameter-*.R`.
 - Summaries and validation: `R/summary-tables*.R`, `R/interpret.R`, and
   `R/tools.R`.
 

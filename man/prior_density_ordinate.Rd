@@ -25,13 +25,15 @@ A named list of class \code{prior_density_ordinate} with fields:
 \item \code{exact}: whether \code{behavior} follows from deterministic prior provenance
 and, for a \code{"regular"} ordinate, \code{log_density} is available (in closed
 form or from a quadrature accepted by its diagnostics). A regular ordinate
-without a value (a quadrature rejected by its diagnostics, a density
-whose evaluation point, or a value computed from \code{value} on the way to
-it, is not representable at full double precision, e.g. a subnormal
-value or distance from an offset, or a boundary limit without a
-structural value) has \code{exact = FALSE}, \code{log_density = NA}
-and the failure in \code{reason}; \code{exact = TRUE} never comes with a missing
-regular \code{log_density};
+without a value (a quadrature rejected by its diagnostics, or a boundary
+limit without a structural value) has \code{exact = FALSE}, \code{log_density = NA}
+and the failure in \code{reason}; so has an ordinate whose evaluation point, or
+a value computed from \code{value} on the way to it, is not representable at
+full double precision (e.g. a subnormal value or distance from an
+offset), with \code{behavior = "regular"} where the route has established it
+(inside the support) and \code{"unknown"} otherwise (e.g. an inverse affine
+value that is not representable). \code{exact = TRUE} never comes with a
+missing regular \code{log_density};
 \item \code{method}: a machine-readable classification method;
 \item \code{reason}: \code{NULL} for an ordinary regular ordinate and a concise diagnostic
 otherwise;
@@ -113,12 +115,16 @@ Mixture ordinates (model-averaged and conditional mixtures, and linear
 combinations of mixture or spike-and-slab priors) are the probability-
 weighted sums of their component ordinates, each classified by its own
 method; a component with a truncated prior at its support bound uses the
-one-sided limit inside the support. If any component remains \code{unknown}, the
-whole mixture is \code{unknown}. In any linear combination (inside or outside a
-mixture), a Gaussian term plus one other continuous scalar term is a
-Gaussian convolution evaluated by the same quadrature over that term's
-declared support. When that term is a truncated normal, the density is the
-closed form (method \code{"truncated_normal_convolution"})
+one-sided limit inside the support. The continuous behavior of the mixture
+follows the precedence \code{"undefined"} over \code{"infinite"} over \code{"unknown"}: one
+undefined component makes the mixture undefined, else one infinite component
+makes it infinite (even beside an \code{unknown} one); otherwise, if any component
+remains \code{unknown}, the whole mixture is \code{unknown}, and else it is \code{"regular"}
+(some component regular) or \code{"zero"} (all zero). In any linear combination
+(inside or outside a mixture), a Gaussian term plus one other continuous
+scalar term is a Gaussian convolution evaluated by the same quadrature over
+that term's declared support. When that term is a truncated normal, the
+density is the closed form (method \code{"truncated_normal_convolution"})
 \eqn{\phi(x; m, s) [\Phi(\beta(x)) - \Phi(\alpha(x))] / [\Phi(B) - \Phi(A)]}:
 \eqn{m} and \eqn{s^2} are the sums of the means and variances of the
 untruncated terms, \eqn{A} and \eqn{B} the standardized truncation bounds,

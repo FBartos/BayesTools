@@ -29,13 +29,15 @@
 #' * `exact`: whether `behavior` follows from deterministic prior provenance
 #'   and, for a `"regular"` ordinate, `log_density` is available (in closed
 #'   form or from a quadrature accepted by its diagnostics). A regular ordinate
-#'   without a value (a quadrature rejected by its diagnostics, a density
-#'   whose evaluation point, or a value computed from `value` on the way to
-#'   it, is not representable at full double precision, e.g. a subnormal
-#'   value or distance from an offset, or a boundary limit without a
-#'   structural value) has `exact = FALSE`, `log_density = NA`
-#'   and the failure in `reason`; `exact = TRUE` never comes with a missing
-#'   regular `log_density`;
+#'   without a value (a quadrature rejected by its diagnostics, or a boundary
+#'   limit without a structural value) has `exact = FALSE`, `log_density = NA`
+#'   and the failure in `reason`; so has an ordinate whose evaluation point, or
+#'   a value computed from `value` on the way to it, is not representable at
+#'   full double precision (e.g. a subnormal value or distance from an
+#'   offset), with `behavior = "regular"` where the route has established it
+#'   (inside the support) and `"unknown"` otherwise (e.g. an inverse affine
+#'   value that is not representable). `exact = TRUE` never comes with a
+#'   missing regular `log_density`;
 #' * `method`: a machine-readable classification method;
 #' * `reason`: `NULL` for an ordinary regular ordinate and a concise diagnostic
 #'   otherwise;
@@ -116,12 +118,16 @@
 #' combinations of mixture or spike-and-slab priors) are the probability-
 #' weighted sums of their component ordinates, each classified by its own
 #' method; a component with a truncated prior at its support bound uses the
-#' one-sided limit inside the support. If any component remains `unknown`, the
-#' whole mixture is `unknown`. In any linear combination (inside or outside a
-#' mixture), a Gaussian term plus one other continuous scalar term is a
-#' Gaussian convolution evaluated by the same quadrature over that term's
-#' declared support. When that term is a truncated normal, the density is the
-#' closed form (method `"truncated_normal_convolution"`)
+#' one-sided limit inside the support. The continuous behavior of the mixture
+#' follows the precedence `"undefined"` over `"infinite"` over `"unknown"`: one
+#' undefined component makes the mixture undefined, else one infinite component
+#' makes it infinite (even beside an `unknown` one); otherwise, if any component
+#' remains `unknown`, the whole mixture is `unknown`, and else it is `"regular"`
+#' (some component regular) or `"zero"` (all zero). In any linear combination
+#' (inside or outside a mixture), a Gaussian term plus one other continuous
+#' scalar term is a Gaussian convolution evaluated by the same quadrature over
+#' that term's declared support. When that term is a truncated normal, the
+#' density is the closed form (method `"truncated_normal_convolution"`)
 #' \eqn{\phi(x; m, s) [\Phi(\beta(x)) - \Phi(\alpha(x))] / [\Phi(B) - \Phi(A)]}:
 #' \eqn{m} and \eqn{s^2} are the sums of the means and variances of the
 #' untruncated terms, \eqn{A} and \eqn{B} the standardized truncation bounds,
