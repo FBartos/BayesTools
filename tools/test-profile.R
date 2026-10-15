@@ -71,10 +71,12 @@ message("VDIFFR_RUN_TESTS: ", Sys.getenv("VDIFFR_RUN_TESTS", unset = "<unset>"))
 message("AGENT: ", Sys.getenv("AGENT", unset = "<unset>"))
 
 started <- Sys.time()
-on.exit({
+# A top-level on.exit() of an Rscript registers nothing, so the elapsed time is
+# printed explicitly after the test call, also when it fails.
+report_elapsed <- function() {
   elapsed <- difftime(Sys.time(), started, units = "secs")
   message("Elapsed seconds: ", round(as.numeric(elapsed), 1))
-}, add = TRUE)
+}
 
 if (!requireNamespace("devtools", quietly = TRUE)) {
   stop("The devtools package is required to run tools/test-profile.R.", call. = FALSE)
@@ -131,8 +133,11 @@ reporter_object <- if (identical(reporter, "llm")) {
 }
 
 message("testthat reporter: ", reporter)
-devtools::test(
-  filter = test_filter,
-  stop_on_failure = stop_on_failure,
-  reporter = reporter_object
+tryCatch(
+  devtools::test(
+    filter = test_filter,
+    stop_on_failure = stop_on_failure,
+    reporter = reporter_object
+  ),
+  finally = report_elapsed()
 )
