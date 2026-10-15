@@ -118,7 +118,8 @@
 # certifiable joint prior; levels in incompatible weight spaces, and a
 # threshold or scaled coefficient the exact route cannot represent
 # ('boundary_range', 'coefficient_range'), also keep the sampled route, any
-# other refusal propagates.
+# other refusal propagates. A combination whose level weights all cancel is the
+# constant of its offset: its region mass is zero or one.
 .hypothesis_level_region_mass <- function(quantity, side) {
 
   if(is.null(quantity[["posterior_marginals"]])){
@@ -145,17 +146,26 @@
       if(identical(condition[["reason"]], "weight_space")) NULL else stop(condition)
     }
   )
-  if(is.null(combination) || is.null(combination[["context"]]) ||
-     length(combination[["weights"]]) == 0L || all(combination[["weights"]] == 0)){
+  if(is.null(combination) || is.null(combination[["context"]])){
     return(NULL)
+  }
+  condition <- list(expression = .bt_hypothesis_ast_node(rewritten[["condition"]]))
+  if(all(combination[["weights"]] == 0)){
+    # A combination that is structurally constant after cancellation (the grand
+    # mean of sum-to-zero level effects) is its constant offset, not sampled
+    # round-off: the region has prior mass zero or one, and the prior-mass check
+    # refuses it as it refuses an exactly cancelled A - A.
+    constant <- stats::setNames(data.frame(combination[["offset"]]), target)
+    mass <- .hypothesis_draw_region_mass(condition, constant)
+    attr(mass, "route") <- "deterministic"
+    return(mass)
   }
   prior_density <- .prior_density_from_context(
     combination[["context"]], combination[["weights"]],
     output_transformation           = "lin",
     output_transformation_arguments = list(a = combination[["offset"]], b = 1)
   )
-  .hypothesis_prior_density_prob(prior_density,
-    list(expression = .bt_hypothesis_ast_node(rewritten[["condition"]])), target,
+  .hypothesis_prior_density_prob(prior_density, condition, target,
     deterministic_only = TRUE, with_diagnostics = TRUE)
 }
 

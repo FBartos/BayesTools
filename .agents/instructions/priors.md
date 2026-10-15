@@ -802,7 +802,11 @@ coefficients outside the representable range (`boundary_range`,
 `coefficient_range`) keep them as well, while the point route refuses those
 cases. A compiled threshold is the correctly rounded quotient of the
 statement's value and divisor (no exact round-trip is required); a region is
-never unavailable only because the exact route cannot represent it.
+never unavailable only because the exact route cannot represent it. A
+combination whose level weights all cancel (the grand mean of orthonormal or
+meandif levels) is the constant of its offset: its region has prior mass zero
+or one and is refused by the prior-mass check like an exactly cancelled
+`A - A`, never decided by round-off residue in sampled draws.
 
 For the other prior-region probabilities, integrate the continuous grid's
 piecewise-linear interpolant up to the exact region boundaries (the comparison

@@ -263,6 +263,41 @@ test_that("a grand mean of sum-to-zero level effects is a structural point measu
   }
 })
 
+test_that("a region on a structurally constant level combination is refused by its prior mass", {
+
+  # the grand mean of sum-to-zero level effects is the constant 0: its region is
+  # not decided by the round-off residue of sampled draws, but refused like the
+  # exactly cancelled A - A
+  grand <- "mu_fac[A] + mu_fac[B] + mu_fac[C] + mu_fac[D] + mu_fac[E]"
+  statements <- c(
+    "> 0"      = "zero_or_nonfinite",
+    ">= 0"     = "zero_complement",
+    "> -1e-15" = "zero_complement")
+  refusal <- function(levels, text){
+    tryCatch(hypothesis_BF(levels, hypothesis = text, parameter = "mu_fac", seed = 1), error = identity)
+  }
+  for(contrast in c("orthonormal", "meandif")){
+    levels <- .hypothesis_contrast_marginal_for_test(contrast)
+    for(i in seq_along(statements)){
+      for(text in c(paste(grand, names(statements)[[i]]), paste0("(", grand, ") / 5 ", names(statements)[[i]]))){
+        condition <- refusal(levels, text)
+        expect_s3_class(condition, "BayesTools_prior_region_mass_unavailable")
+        expect_identical(condition$reason, statements[[i]], info = paste(contrast, text))
+      }
+    }
+    cancelled <- refusal(levels, "mu_fac[A] - mu_fac[A] > 0")
+    expect_s3_class(cancelled, "BayesTools_prior_region_mass_unavailable")
+    expect_identical(cancelled$reason, "zero_or_nonfinite")
+
+    # an ordinary contrast keeps its region Bayes factor and its exact prior mass
+    expect_s3_class(refusal(levels, "mu_fac[A] - mu_fac[B] > 0"), "BayesTools_hypothesis_BF")
+    statement <- hypothesis_parse("mu_fac[A] - mu_fac[B] > 0")$statements[[1L]]
+    quantity <- .as_hypothesis_quantities(levels, NULL, list(statement), "mu_fac")[[1L]]
+    expect_identical(attr(.hypothesis_region_mass(quantity, statement$left, prior = TRUE), "route"), "deterministic")
+    expect_equal(as.numeric(.hypothesis_region_mass(quantity, statement$left, prior = TRUE)), 0.5, tolerance = 1e-12)
+  }
+})
+
 test_that("a linear target validates every referenced level and the level names", {
 
   levels <- .hypothesis_factor_marginal_for_test(independent = TRUE)
