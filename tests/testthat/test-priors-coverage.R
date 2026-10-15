@@ -26,12 +26,12 @@ test_that("unsupported prior classes stop explicitly in every distribution metho
     "cdf"                        = function(p) cdf(p, .5),
     "ccdf"                       = function(p) ccdf(p, .5),
     "lpdf"                       = function(p) lpdf(p, .5),
-    "lpdf"                       = function(p) pdf(p, .5),
+    "pdf"                        = function(p) pdf(p, .5),
     "quantile function"          = function(p) quant(p, .5),
     "mcdf"                       = function(p) mcdf(p, .5),
     "mccdf"                      = function(p) mccdf(p, .5),
     "mlpdf"                      = function(p) mlpdf(p, .5),
-    "mlpdf"                      = function(p) mpdf(p, .5),
+    "mpdf"                       = function(p) mpdf(p, .5),
     "marginal quantile function" = function(p) mquant(p, .5),
     "mean"                       = function(p) mean(p),
     "variance"                   = function(p) var(p),
@@ -962,6 +962,20 @@ test_that("lpdf() not implemented for spike_and_slab or mixture", {
     components = c("a", "b")
   )
   expect_error(lpdf(p_mix, 0), "No lpdf are implemented for prior mixtures")
+
+  # pdf() and mpdf() refuse in their own names, not lpdf() and mlpdf()
+  expect_error(pdf(p_ss, 0), "No pdf are implemented for spike and slab", fixed = TRUE)
+  expect_error(pdf(p_mix, 0), "No pdf are implemented for prior mixtures", fixed = TRUE)
+  expect_error(mlpdf(p_ss, 0), "No mlpdf are implemented for spike and slab", fixed = TRUE)
+  expect_error(mpdf(p_ss, 0), "No mpdf are implemented for spike and slab", fixed = TRUE)
+  expect_error(mpdf(p_mix, 0), "No mpdf are implemented for prior mixtures", fixed = TRUE)
+  ordered <- prior_ordered(prior("normal", list(0, 1), list(0, Inf)))
+  expect_error(lpdf(ordered, 0), "No lpdf is implemented for ordered priors.", fixed = TRUE)
+  expect_error(pdf(ordered, 0), "No pdf is implemented for ordered priors.", fixed = TRUE)
+  expect_error(mpdf(ordered, 0), "No mpdf is implemented for ordered priors.", fixed = TRUE)
+  weightfunction <- prior_weightfunction("one-sided", c(.05), wf_cumulative(c(1, 1)))
+  expect_error(lpdf(weightfunction, 0), "Only marginal lpdf are implemented for prior weightfunctions.", fixed = TRUE)
+  expect_error(pdf(weightfunction, 0), "Only marginal pdf are implemented for prior weightfunctions.", fixed = TRUE)
 })
 
 

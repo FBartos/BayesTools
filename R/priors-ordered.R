@@ -85,6 +85,9 @@
     return(list(type = "by_factor", allocations = allocations))
   }
 
+  if(length(allocation) == 0L){
+    stop(paste0("The '", name, "' fixed allocation must not be empty."), call. = FALSE)
+  }
   check_real(allocation, name, check_length = 0, allow_NA = FALSE)
   if(any(!is.finite(allocation))){
     stop(paste0("The '", name, "' fixed allocation must be finite."), call. = FALSE)

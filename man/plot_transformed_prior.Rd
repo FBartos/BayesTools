@@ -58,7 +58,8 @@ transformed scale.}
 For \code{plot_type = "base"}, invisibly returns base-plot metadata.
 For \code{plot_type = "ggplot"}, returns a \code{ggplot} object. Returns
 \code{NULL} when the requested parameter is an identity transform and no
-output transformation was requested. A prior density that is unavailable
+output transformation was requested. A parameter without a prior in
+\code{prior_list} stops with an error. A prior density that is unavailable
 stops with an error of class \code{BayesTools_formula_measure_unavailable};
 in particular, the standard deviation of a random-effect block with a scaled
 column has no density on this route (it needs the fitted design of the

@@ -549,13 +549,19 @@ lpdf.prior  <- function(x, y, ...){
   .check_x(as.vector(x))
   .check_prior(prior)
 
+  .prior_joint_lpdf(prior, x, "lpdf")
+}
+# The joint log density; 'method' names the public function in the refusals
+# (pdf() evaluates the same density).
+.prior_joint_lpdf <- function(prior, x, method){
+
   if(is.prior.spike_and_slab(prior)){
 
-    stop("No lpdf are implemented for spike and slab priors.")
+    stop(sprintf("No %s are implemented for spike and slab priors.", method), call. = FALSE)
 
   }else if(is.prior.mixture(prior)){
 
-    stop("No lpdf are implemented for prior mixtures.")
+    stop(sprintf("No %s are implemented for prior mixtures.", method), call. = FALSE)
 
   }else if(is.prior.simple(prior)){
 
@@ -612,15 +618,15 @@ lpdf.prior  <- function(x, y, ...){
 
   }else if(is.prior.weightfunction(prior)){
 
-    stop("Only marginal lpdf are implemented for prior weightfunctions.")
+    stop(sprintf("Only marginal %s are implemented for prior weightfunctions.", method), call. = FALSE)
 
   }else if(is_prior_phacking(prior) || is_prior_bias(prior)){
 
-    .selection_prior_stop_unsupported_generic("lpdf", prior)
+    .selection_prior_stop_unsupported_generic(method, prior)
 
   }else{
 
-    .prior_stop_unsupported_method("lpdf", prior)
+    .prior_stop_unsupported_method(method, prior)
 
   }
 
@@ -638,7 +644,7 @@ pdf.prior   <- function(x, y, ...){
   if(is.prior.simple(prior)){
     lik <- .prior_simple_pdf(prior, x)
   }else{
-    log_lik <- lpdf.prior(prior, x)
+    log_lik <- .prior_joint_lpdf(prior, x, "pdf")
     lik     <- exp(log_lik)
   }
 

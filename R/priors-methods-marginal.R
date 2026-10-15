@@ -183,13 +183,19 @@ mlpdf.prior  <- function(x, y, ...){
   .check_x(as.vector(x))
   .check_prior(prior)
 
+  .prior_marginal_lpdf(prior, x, "mlpdf")
+}
+# The marginal log density; 'method' names the public function in the refusals
+# (mpdf() evaluates the same density).
+.prior_marginal_lpdf <- function(prior, x, method){
+
   if(is.prior.spike_and_slab(prior)){
 
-    stop("No mlpdf are implemented for spike and slab priors.")
+    stop(sprintf("No %s are implemented for spike and slab priors.", method), call. = FALSE)
 
   }else if(is.prior.mixture(prior)){
 
-    stop("No mlpdf are implemented for prior mixtures.")
+    stop(sprintf("No %s are implemented for prior mixtures.", method), call. = FALSE)
 
   }else if(is.prior.simple(prior)){
 
@@ -241,7 +247,7 @@ mlpdf.prior  <- function(x, y, ...){
 
   }else{
 
-    .prior_stop_unsupported_method("mlpdf", prior)
+    .prior_stop_unsupported_method(method, prior)
 
   }
 
@@ -259,7 +265,7 @@ mpdf.prior   <- function(x, y, ...){
   if(is.prior.simple(prior)){
     lik <- .prior_simple_pdf(prior, x)
   }else{
-    log_lik <- mlpdf.prior(prior, x)
+    log_lik <- .prior_marginal_lpdf(prior, x, "mpdf")
     lik     <- exp(log_lik)
   }
 

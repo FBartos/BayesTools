@@ -2794,6 +2794,19 @@ test_that("plot_transformed_prior returns NULL only for untransformed identity p
     "Parameter 'mu_z' was not found in 'column_names'.",
     fixed = TRUE
   )
+
+  # a coefficient of the fitted space without a prior is refused, not NULL
+  expect_error(
+    plot_transformed_prior(
+      prior_list     = prior_list,
+      column_names   = c("mu_intercept", "mu_x", "mu_z"),
+      parameter      = "mu_z",
+      transformation = "exp",
+      plot_type      = "ggplot"
+    ),
+    "The prior density of 'mu_z' is unavailable: 'prior_list' has no prior for it.",
+    fixed = TRUE
+  )
 })
 
 test_that("plot_transformed_prior draws raw coefficients without multiply_by", {

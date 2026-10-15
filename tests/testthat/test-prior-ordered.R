@@ -1562,6 +1562,11 @@ test_that("prior_ordered() validates constructor inputs", {
     prior_ordered(prior("normal", list(0, 1)), allocation = c(.2, .2)),
     "sum to one"
   )
+  # an empty fixed allocation is named as such (it was reported as NULL)
+  expect_error(
+    prior_ordered(prior("normal", list(0, 1)), allocation = numeric(0)),
+    "The 'allocation' fixed allocation must not be empty.", fixed = TRUE
+  )
   expect_error(
     prior_ordered(prior("normal", list(0, 1)), id = ""),
     "cannot contain empty strings"
