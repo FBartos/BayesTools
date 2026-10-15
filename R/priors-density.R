@@ -469,11 +469,14 @@ density.prior <- function(x,
   }
   # the total at its own resolution (its default grid), not at the display
   # spacing: the cost of the display spacing grows like 1 / dx
+  # (only its atoms and the presence of a continuous part are read: the
+  # unrefined grid of its range is enough)
   total <- .prior_ordered_total_linear_distribution(
     total = x$total,
     dx = NA_real_,
     n_grid = n_points,
-    tail_prob = .prior_linear_density_tail_prob()
+    tail_prob = .prior_linear_density_tail_prob(),
+    refine = FALSE
   )
   if(is.null(total) || is.null(total$points) || nrow(total$points) == 0L){
     return(NULL)

@@ -603,8 +603,13 @@
 # The numerical distribution of an ordered total at the spacing 'dx'; a
 # missing 'dx' is the total's own resolution (the default grid of its range,
 # as for any linear combination).
+# With 'refine = FALSE' the resolution of a missing 'dx' is the grid of the
+# total's range ('n_grid' knots) without the refinement to the robust scale of
+# its narrowest continuous source: enough for the atoms and the presence of a
+# continuous part (the atom gate of the mixed-measure ordered density), at a
+# fraction of the cost.
 .prior_ordered_total_linear_distribution <- function(total, dx, n_grid,
-                                                      tail_prob){
+                                                      tail_prob, refine = TRUE){
 
   .prior_ordered_total_linear_measure_check(total)
   total_group <- list(
@@ -618,7 +623,7 @@
     resolution <- .prior_linear_density_resolution(
       width  = diff(total_range),
       n_grid = n_grid,
-      scale  = .prior_linear_group_robust_scale(total_group, source_transforms)
+      scale  = if(refine) .prior_linear_group_robust_scale(total_group, source_transforms) else Inf
     )
     n_grid <- resolution$n_grid
     dx     <- resolution$dx

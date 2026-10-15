@@ -25,6 +25,36 @@ test_that("density estimation from samples needs two samples, and a Dirichlet di
   expect_identical(names(displayed), c("V1", "V2"))
 })
 
+test_that("the atom gate of the ordered mixed-measure density reads the unrefined total", {
+
+  # the gate reads the atoms and the presence of a continuous part only: the
+  # total on the grid of its range ('n_grid' knots) gives the same ones as the
+  # grid refined to the robust scale of its narrowest continuous source
+  totals <- list(
+    prior_spike_and_slab(prior("normal", list(0, 1)), prior_inclusion = prior("beta", list(2, 3))),
+    prior_spike_and_slab(prior("normal", list(10, .01)), prior_inclusion = prior("spike", list(.5))),
+    prior_mixture(list(prior("normal", list(0, 1), prior_weights = 1), prior("point", list(1), prior_weights = 1)),
+                  is_null = c(FALSE, FALSE)),
+    prior_mixture(list(prior("point", list(0), prior_weights = 1), prior("point", list(2), prior_weights = 1)),
+                  is_null = c(FALSE, FALSE)),
+    prior("point", list(1))
+  )
+  tail_prob <- .prior_linear_density_tail_prob()
+  for(total in totals){
+    refined <- .prior_ordered_total_linear_distribution(total, NA_real_, 1000L, tail_prob)
+    gate <- .prior_ordered_total_linear_distribution(total, NA_real_, 1000L, tail_prob, refine = FALSE)
+    expect_identical(gate$points, refined$points)
+    expect_identical(is.null(gate$density), is.null(refined$density))
+    if(!is.null(gate$density)){
+      expect_lte(length(gate$density$x), length(refined$density$x))
+    }
+  }
+  # the narrow slab is the case that is refined (64 knots per robust scale)
+  narrow <- .prior_ordered_total_linear_distribution(totals[[2L]], NA_real_, 1000L, tail_prob)
+  narrow_gate <- .prior_ordered_total_linear_distribution(totals[[2L]], NA_real_, 1000L, tail_prob, refine = FALSE)
+  expect_lt(length(narrow_gate$density$x), length(narrow$density$x))
+})
+
 test_that("range quantiles are validated and weights of unknown columns are refused", {
 
   # the tail probability of the plotting range is in (0, 0.5): 0 gave an
