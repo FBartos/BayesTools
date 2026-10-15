@@ -312,6 +312,72 @@ test_that("JAGS_formula refuses a one-level factor in the package's words", {
   ))
 })
 
+test_that("JAGS_formula refuses a logical predictor that a random-effect factor interaction codes by indicators", {
+
+  # F326 (1): `diag(1 + flag:f | id)` stopped at compile time with an
+  # internal-consistency message ("factor design ... has 3 column(s), but the
+  # random-effect design has 6"), where the fixed formula gets the actionable text
+  data <- data.frame(
+    f    = factor(rep(c("a", "b", "c"), 4), levels = c("a", "b", "c")),
+    flag = rep(c(TRUE, FALSE), 6),
+    id   = factor(rep(c("s1", "s2", "s3", "s4"), each = 3)),
+    x    = seq(-1, 1, length.out = 12)
+  )
+  compile <- function(formula, formula_scale = NULL){
+    JAGS_formula(
+      formula, "mu", data,
+      list(intercept = prior("normal", list(0, 1))),
+      formula_scale = formula_scale,
+      prior_random = prior_random(id = random_block(sd = prior("gamma", list(2, 2))))
+    )
+  }
+  remedy <- ", where model.matrix() would code it as a two-level factor. Convert it to a factor, or to numeric 0/1, in the data, or standardize it with 'formula_scale'."
+
+  for(formula in list(
+    ~ 1 + diag(1 + flag:f | id), ~ 1 + diag(0 + flag:f | id), ~ 1 + us(1 + flag:f | id),
+    ~ 1 + diag(1 + flag + flag:f | id), ~ 1 + diag(1 + f:flag | id), ~ 1 + (1 + flag:f | id)
+  )){
+    info <- paste(deparse(formula), collapse = "")
+    condition <- tryCatch(compile(formula), error = identity)
+    expect_s3_class(condition, "BayesTools_formula_transform_unavailable")
+    expect_identical(condition$reason, "logical_factor_interaction", info = info)
+    expect_identical(condition$predictors, "flag", info = info)
+    expect_match(
+      conditionMessage(condition),
+      paste0("The logical predictor 'flag' is unavailable in the interaction term '"),
+      fixed = TRUE, info = info
+    )
+    expect_match(conditionMessage(condition), remedy, fixed = TRUE, info = info)
+    expect_no_match(conditionMessage(condition), "random-effect design has", fixed = TRUE)
+  }
+
+  # a hierarchical interaction, a main effect, a numeric interaction and a
+  # standardized logical keep compiling
+  for(formula in list(
+    ~ 1 + diag(1 + flag * f | id), ~ 1 + diag(1 + flag | id), ~ 1 + diag(1 + flag:x | id),
+    ~ 1 + diag(1 + f + f:x | id)
+  )){
+    expect_s3_class(compile(formula)$formula_design, "BayesTools_formula_design")
+  }
+  for(scale in list(TRUE, list(flag = TRUE))){
+    expect_s3_class(
+      compile(~ 1 + diag(1 + flag:f | id), formula_scale = scale)$formula_design,
+      "BayesTools_formula_design"
+    )
+  }
+  # the same interaction is available once the predictor is a factor or numeric 0/1
+  converted <- data
+  converted$flag <- as.numeric(converted$flag)
+  expect_s3_class(
+    JAGS_formula(
+      ~ 1 + diag(1 + flag:f | id), "mu", converted,
+      list(intercept = prior("normal", list(0, 1))),
+      prior_random = prior_random(id = random_block(sd = prior("gamma", list(2, 2))))
+    )$formula_design,
+    "BayesTools_formula_design"
+  )
+})
+
 test_that("JAGS_formula rejects scaled intercept priors", {
 
   data <- data.frame(x = c(-1, 0.5, 2))

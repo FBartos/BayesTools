@@ -306,6 +306,8 @@
   if(length(predictors) == 0L){
     predictors_type <- stats::setNames(character(), character())
   }
+  # A logical predictor that 'formula_scale' standardizes is numeric in 'data'.
+  .bt_validate_logical_factor_interactions(formula_terms, data, predictors_type)
   model_terms      <- c(if(has_intercept) "intercept", attr(formula_terms, "term.labels"))
   model_terms_type <- sapply(model_terms, function(model_term){
     model_term <- strsplit(model_term, ":")[[1]]
