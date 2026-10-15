@@ -113,6 +113,7 @@
         transformed_var <- rowSums(t(t(source_sd^2) * (M[target_i, ]^2)))
         transformed_sd[, target_i] <- sqrt(transformed_var)
       }
+      .random_sd_check_range(source_sd, M, transformed_sd, group_key)
     }else{
       transformed_cor <- array(NA_real_, dim = dim(source_cor))
       for(draw_i in seq_len(nrow(source_sd))){
@@ -127,6 +128,8 @@
           group_key = group_key
         )
       }
+      .random_sd_check_range(source_sd, M, transformed_sd, group_key,
+                             check_zero = FALSE)
       posterior <- .random_sd_assign_transformed_correlation(
         posterior = posterior,
         prefix = prefix,
@@ -187,6 +190,7 @@
         transformed_var <- rowSums(t(t(source_sd^2) * (M[target_i, ]^2)))
         transformed_sd_by_column[, target_i] <- sqrt(transformed_var)
       }
+      .random_sd_check_range(source_sd, M, transformed_sd_by_column, group_key)
     }else{
       transformed_cor <- array(NA_real_, dim = dim(source_cor))
       for(draw_i in seq_len(nrow(source_sd))){
@@ -201,6 +205,8 @@
           group_key = group_key
         )
       }
+      .random_sd_check_range(source_sd, M, transformed_sd_by_column, group_key,
+                             check_zero = FALSE)
       posterior <- .random_sd_assign_transformed_correlation(
         posterior = posterior,
         prefix = prefix,
@@ -615,6 +621,43 @@
   correlation[rounded] <- sign(correlation[rounded])
 
   correlation
+}
+
+# Double-precision range edge. The original-scale SDs are formed from the
+# squares of the fitted-scale SDs, so finite positive SDs beyond about 1e154
+# overflow to Inf and SDs below about 1e-154 underflow to an exact zero. Such a
+# draw is refused instead of returning an infinite or zero SD; no rescaling is
+# attempted. A zero cannot be told from an exact cancellation under a
+# correlation, so only the uncorrelated transform checks for it
+# (`check_zero`).
+.random_sd_check_range <- function(source_sd, M, transformed_sd, group_key,
+                                   check_zero = TRUE){
+
+  finite_source <- rowSums(!is.finite(source_sd)) == 0L
+  lost <- rowSums(!is.finite(transformed_sd)) > 0L
+  if(isTRUE(check_zero)){
+    declared <- (source_sd > 0) %*% t(M != 0) > 0
+    declared[is.na(declared)] <- FALSE
+    lost <- lost | rowSums(declared & !is.na(transformed_sd) &
+                             transformed_sd == 0) > 0L
+  }
+  lost <- finite_source & lost
+  if(any(lost)){
+    .bt_formula_transform_stop(
+      paste0(
+        "Original-scale random-effect SDs of block '", group_key,
+        "' are unavailable: the transformed SD of ", sum(lost), " draw",
+        if(sum(lost) > 1L) "s" else "",
+        " is not representable in double precision although the fitted-scale ",
+        "SDs are finite. Rescale the response or predictors so that the ",
+        "random-effect SDs are well within 1e-150 to 1e150."
+      ),
+      reason = "nonfinite_transform", block = group_key,
+      draws = which(lost)
+    )
+  }
+
+  invisible(TRUE)
 }
 
 # A zero source SD makes the original-scale covariance M S M' singular. The

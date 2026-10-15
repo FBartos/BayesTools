@@ -853,6 +853,75 @@ test_that("original-scale correlations of singular draws with positive SDs are +
   expect_true(all(is.na(singular[, u_1])))
 })
 
+test_that("original-scale random-effect SDs beyond the double range are refused", {
+
+  skip_if_not_installed("runjags")
+
+  df <- data.frame(
+    x = c(1, 2, 3, 4),
+    id = factor(c("a", "a", "b", "b"))
+  )
+  formula_result <- JAGS_formula(
+    formula = ~ 1 + diag(1 + x | id),
+    parameter = "mu",
+    data = df,
+    prior_list = list(intercept = prior("normal", list(0, 1))),
+    formula_scale = list(x = TRUE),
+    prior_random = prior_random(
+      id = random_block(
+        sd = prior("gamma", list(2, 2)),
+        monitor = random_monitor(
+          latent = FALSE,
+          coefficients = FALSE,
+          correlation = FALSE
+        )
+      )
+    )
+  )
+  sd_names <- formula_result$formula_design$random_effects[[1L]]$sd_parameter_names
+  transformed <- function(sd_values){
+    posterior <- matrix(
+      c(0, sd_values), nrow = 1L,
+      dimnames = list(NULL, c("mu_intercept", sd_names))
+    )
+    transform_scale_samples(make_random_scale_table_fit(formula_result, posterior))
+  }
+
+  # The SDs are squared on the way: 1e100 stays representable, 1e200 and 1e-200
+  # do not, and a zero SD stays a zero SD.
+  large <- transformed(c(1e100, 1e100))
+  expect_true(all(is.finite(large[, sd_names])))
+  expect_true(all(large[, sd_names] > 0))
+  expect_equal(unname(transformed(c(0, 0))[, sd_names]), c(0, 0))
+  for(sd_value in c(1e200, 1e-200)){
+    refused <- tryCatch(transformed(c(sd_value, sd_value)), error = identity)
+    expect_s3_class(refused, "BayesTools_formula_transform_unavailable")
+    expect_identical(refused$reason, "nonfinite_transform")
+    expect_match(
+      conditionMessage(refused),
+      paste0("Original-scale random-effect SDs of block 'id' are unavailable: ",
+             "the transformed SD of 1 draw is not representable in double ",
+             "precision although the fitted-scale SDs are finite."),
+      fixed = TRUE
+    )
+  }
+
+  # With a correlation the same overflow is refused; a representable draw next
+  # to it is not.
+  expect_s3_class(
+    tryCatch(
+      transform_scale_samples(.undefined_correlation_table_fit(
+        source_sd = rbind(c(1, 1), c(1e200, 1e200)), source_rho = c(0.3, 0.3)
+      )),
+      error = identity
+    ),
+    "BayesTools_formula_transform_unavailable"
+  )
+  expect_no_error(transform_scale_samples(.undefined_correlation_table_fit(
+    source_sd = rbind(c(1, 1), c(1e100, 1e100)), source_rho = c(0.3, 0.3)
+  )))
+})
+
 test_that("larger blocks define correlations entrywise in singular draws", {
 
   skip_if_not_installed("runjags")
