@@ -143,6 +143,26 @@ test_that("fixed transformed rho and one-column blocks are reconstructed", {
   )
 })
 
+test_that("a compiled draw evaluator holds fixed posterior names to its compilation", {
+
+  random_term <- .correlation_draws_term("ar1")
+  rho_name <- random_term$correlation$rho_name
+  posterior <- matrix(0.3, nrow = 1L, dimnames = list(NULL, rho_name))
+  evaluator <- BayesTools:::.bt_random_effect_compile_rho_draw_evaluator(
+    random_term = random_term,
+    out_of_support = "error",
+    posterior_names = rho_name
+  )
+  expect_equal(unname(evaluator(posterior)), 0.3, tolerance = 1e-12)
+  shifted <- posterior
+  colnames(shifted) <- "other"
+  expect_error(
+    evaluator(shifted),
+    "received posterior samples whose columns differ from the 'posterior_names' this evaluator was compiled for.",
+    fixed = TRUE
+  )
+})
+
 test_that("correlation reconstruction validates support and compact CAR metadata", {
 
   cs_term <- .correlation_draws_term("cs")
@@ -156,6 +176,17 @@ test_that("correlation reconstruction validates support and compact CAR metadata
   expect_error(
     random_effects_correlation_draws(cs_term, cbind(mu = 1)),
     "missing canonical scalar correlation coordinates",
+    fixed = TRUE,
+    class = "BayesTools_refit_monitoring"
+  )
+
+  # The structure is checked before the posterior samples.
+  us_term <- cs_term
+  us_term$structure <- "us"
+  us_term$correlation <- NULL
+  expect_error(
+    random_effects_correlation_draws(us_term, "not a posterior"),
+    "supports only scalar CS, HCS, AR1, HAR, and CAR structures",
     fixed = TRUE
   )
 
@@ -403,6 +434,15 @@ test_that("transformed rho coordinates are exact and saturated boundaries fail",
       transformed,
       bounds = correlation$bounds,
       structure = random_term$structure
+    )
+    # tanh() and the logit map saturate at +-1e300: the lower end is outside
+    # the open AR1 support, the CAR support includes 0, and the upper end is
+    # outside every support.
+    expect_identical(
+      invalid,
+      list(ar1_fisher = c(TRUE, TRUE), car_fisher = c(FALSE, TRUE),
+           car_logit = c(FALSE, TRUE))[[name]],
+      info = name
     )
     for(i in seq_len(nrow(posterior))){
       if(invalid[[i]]){

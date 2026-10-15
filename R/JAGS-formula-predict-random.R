@@ -275,7 +275,9 @@
     estimate = .bt_random_effect_output_memory_estimate(
       operation = "conditional random-effect prediction",
       n_rows = n_rows,
-      n_draws = n_draws
+      n_draws = n_draws,
+      n_columns = ncol(model_matrix),
+      column_contributions = ncol(model_matrix) > 1L
     ),
     block_name = random_term$block_name,
     alternative = paste0(

@@ -752,3 +752,20 @@ test_that("the output estimate budgets the SD draws and coefficient factors of e
   expect_equal(estimate$peak_bytes, sum(estimate$components))
   expect_match(estimate$dimensions, "10 coefficient columns", fixed = TRUE)
 })
+
+
+test_that("the conditional prediction estimate charges the per-column contribution array", {
+
+  estimate <- function(...){
+    BayesTools:::.bt_random_effect_output_memory_estimate(
+      operation = "conditional random-effect prediction",
+      n_rows = 100, n_draws = 1000, n_columns = 5, ...
+    )
+  }
+  base <- estimate()
+  charged <- estimate(column_contributions = TRUE)
+  expect_false("column_contribution_working" %in% names(base$components))
+  expect_identical(charged$components[["column_contribution_working"]],
+                   8 * 100 * 1000 * 5)
+  expect_gt(charged$peak_bytes, base$peak_bytes)
+})

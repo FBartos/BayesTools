@@ -964,6 +964,93 @@ test_that("structured conditional wrapper preserves innovation and SD semantics"
   expect_equal(unname(actual), expected_unit * sd[missing_columns], tolerance = 0)
 })
 
+test_that("CS conditional reconstruction refuses a correlation at its singular bound", {
+
+  # A global correlation within rounding of -1 / (K - 1) makes the conditional
+  # covariance of the unobserved columns singular to double precision.
+  K <- 12L
+  lower <- -1 / (K - 1L)
+  draw <- function(rho){
+    BayesTools:::.bt_random_effect_cs_conditional_unit_draw(
+      observed_unit = c(0.3, -0.2), rho = rho, n_missing = K - 2L,
+      innovations = seq(-1, 1, length.out = K - 2L)
+    )
+  }
+  expect_error(
+    draw(lower * (1 - 1e-16)),
+    paste0("The conditional CS/HCS covariance of the unobserved columns is ",
+           "not resolved in double precision: the correlation (rho = "),
+    fixed = TRUE
+  )
+  # Away from the bound the conditional draw is the documented construction.
+  expect_length(draw(lower * (1 - 1e-12)), K - 2L)
+  expect_true(all(is.finite(draw(0.4))))
+})
+
+test_that("latent reconstruction refuses cleared Cholesky factors", {
+
+  cholesky <- array(0, dim = c(2L, 2L, 2L))
+  cholesky[, 1L, 1L] <- 1
+  cholesky[, 2L, 2L] <- 1
+  reconstruct <- function(cholesky){
+    BayesTools:::.bt_random_effect_column_contributions_from_latent_draws(
+      model_matrix = diag(2L), group_map = 1:2,
+      z_draws = list(matrix(0.1, 2L, 2L), matrix(0.2, 2L, 2L)),
+      sd_draws = matrix(1, 2L, 2L), cholesky = cholesky
+    )
+  }
+  expect_identical(dim(reconstruct(cholesky)), c(2L, 2L, 2L))
+  cholesky[2L, 1L, 1L] <- NA_real_
+  expect_error(
+    reconstruct(cholesky),
+    "Random-effect latent reconstruction needs finite Cholesky factors, but 1 posterior draw(s) have missing entries.",
+    fixed = TRUE
+  )
+})
+
+test_that("missing allocation coordinates of a row-indexed SD source ask for monitoring", {
+
+  testthat::local_mocked_bindings(
+    .bt_random_effect_allocation_factors_metadata = function(...) list(),
+    .bt_random_effect_apply_allocation_factors = function(...) NULL,
+    .bt_random_effect_external_sd_source_label = function(...) "tau",
+    .bt_random_effect_allocation_factor_chain_label = function(...) " (w[1])",
+    .package = "BayesTools"
+  )
+  term <- list(block_name = "b")
+  posterior <- matrix(0, 1L, 1L)
+  block <- tryCatch(
+    BayesTools:::.bt_random_effect_row_indexed_allocation_draws(
+      random_term = term, posterior = posterior, prior_list = list(),
+      binding = list(application = "block", allocations = list(list(label = "alloc")))
+    ),
+    error = identity
+  )
+  expect_s3_class(block, "BayesTools_refit_monitoring")
+  expect_identical(
+    conditionMessage(block),
+    paste0("The row-indexed external SD source 'tau' requires Dirichlet ",
+           "allocation coordinates for allocation 'alloc', which the ",
+           "posterior samples do not contain.")
+  )
+  column <- tryCatch(
+    BayesTools:::.bt_random_effect_row_indexed_column_allocation_draws(
+      random_term = term, posterior = posterior, prior_list = list(),
+      n_columns = 1L,
+      binding = list(application = "column", true_allocation = FALSE,
+                     factors_by_column = list(list(list())))
+    ),
+    error = identity
+  )
+  expect_s3_class(column, "BayesTools_refit_monitoring")
+  expect_identical(
+    conditionMessage(column),
+    paste0("The row-indexed external SD source 'tau' requires Dirichlet ",
+           "allocation coordinates for the factor chain of column 1 (w[1]), ",
+           "which the posterior samples do not contain.")
+  )
+})
+
 test_that("Markov conditional reconstruction scales with requested coordinates", {
 
   K <- 100000L

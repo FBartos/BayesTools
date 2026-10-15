@@ -234,6 +234,14 @@
   force(context)
 
   function(posterior){
+    if(fixed_posterior_names && !identical(colnames(posterior), cached_posterior_names)){
+      stop(
+        context,
+        " received posterior samples whose columns differ from the ",
+        "'posterior_names' this evaluator was compiled for.",
+        call. = FALSE
+      )
+    }
     if(!fixed_posterior_names){
       current_names <- colnames(posterior)
       if(!identical(current_names, cached_posterior_names)){
@@ -453,14 +461,14 @@
   sample_names <- unique(c(correlation$rho_name, correlation$sample_name))
   sample_names <- sample_names[!is.na(sample_names) & nzchar(sample_names)]
 
-  stop(
+  .bt_stop_refit_required(
     context,
     " samples are missing canonical scalar correlation coordinates for block '",
     random_term$block_name,
     "'. Expected posterior column(s): ",
     paste0("'", sample_names, "'", collapse = ", "),
     ", or fixed rho metadata.",
-    call. = FALSE
+    class = "BayesTools_refit_monitoring"
   )
 }
 

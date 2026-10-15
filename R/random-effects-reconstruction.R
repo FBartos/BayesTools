@@ -460,6 +460,22 @@
   }
 
   conditional_rho <- conditional_common / conditional_diagonal
+  # Representability edge: when the global correlation is within rounding of its
+  # singular lower bound -1 / (K - 1), the conditional covariance of the
+  # unobserved columns is singular to double precision and the rounded
+  # conditional correlation can land on the bound of the subset (or just inside
+  # it, where the draw is distorted). The refusal covers the former; no
+  # arithmetic is added.
+  if(n_missing > 1L && conditional_rho <= -1 / (n_missing - 1L)){
+    stop(
+      "The conditional CS/HCS covariance of the unobserved columns is not ",
+      "resolved in double precision: the correlation (rho = ",
+      format(rho, digits = 6), ") is within rounding of the singular lower ",
+      "bound -1 / (K - 1) of the K = ", n_observed + n_missing,
+      " columns. Use a correlation prior with less mass at the bound.",
+      call. = FALSE
+    )
+  }
   standardized <- .bt_random_effect_structured_subset_transform(
     structure = "cs",
     columns = seq_len(n_missing),
@@ -1154,13 +1170,13 @@
     }else{
       "<direct>"
     }
-    stop(
-      "Prediction with row-indexed external SD source '",
+    .bt_stop_refit_required(
+      "The row-indexed external SD source '",
       .bt_random_effect_external_sd_source_label(random_term),
       "' requires Dirichlet allocation coordinates for allocation '",
       allocation_label,
-      "'.",
-      call. = FALSE
+      "', which the posterior samples do not contain.",
+      class = "BayesTools_refit_monitoring"
     )
   }
 
@@ -1238,17 +1254,16 @@
       prior_list = prior_list
     )
     if(is.null(values)){
-      stop(
-        "Prediction with row-indexed external SD source '",
+      .bt_stop_refit_required(
+        "The row-indexed external SD source '",
         .bt_random_effect_external_sd_source_label(random_term),
-        "' requires Dirichlet allocation coordinates for column ",
+        "' requires Dirichlet allocation coordinates for the factor chain of column ",
         column,
-        " factor chain",
         .bt_random_effect_allocation_factor_chain_label(
           binding$factors_by_column[[column]]
         ),
-        "'.",
-        call. = FALSE
+        ", which the posterior samples do not contain.",
+        class = "BayesTools_refit_monitoring"
       )
     }
     out[, column] <- values
@@ -1286,6 +1301,16 @@
   n_groups <- ncol(z_draws[[1L]])
   output <- array(0, dim = c(n_rows, n_draws, n_columns))
 
+  # Draws of a cleared factor (missing entries, as the original-scale transform
+  # leaves them for a singular correlation) cannot be reconstructed.
+  if(anyNA(cholesky)){
+    stop(
+      "Random-effect latent reconstruction needs finite Cholesky factors, but ",
+      sum(rowSums(is.na(cholesky), dims = 1L) > 0L),
+      " posterior draw(s) have missing entries.",
+      call. = FALSE
+    )
+  }
   for(column in seq_len(n_columns)){
     coefficient_matrix <- matrix(0, nrow = n_draws, ncol = n_groups)
     for(latent_column in seq_len(n_columns)){

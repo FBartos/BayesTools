@@ -57,15 +57,6 @@ random_effects_correlation_draws <- function(random_term, posterior_samples){
     stop("'random_term' must be compiled random-effect term metadata.",
          call. = FALSE)
   }
-  one_column <- is.numeric(random_term$n_columns) &&
-    length(random_term$n_columns) == 1L &&
-    !is.na(random_term$n_columns) &&
-    is.finite(random_term$n_columns) &&
-    random_term$n_columns == 1L
-  posterior <- .bt_random_effect_correlation_draws_posterior(
-    posterior_samples,
-    allow_zero_columns = one_column
-  )
   context <- "Random-effect correlation reconstruction metadata"
   structure <- .bt_random_effect_structure(random_term, context = context)
   supported <- c("cs", "hcs", "ar1", "har", "car")
@@ -78,6 +69,15 @@ random_effects_correlation_draws <- function(random_term, posterior_samples){
       call. = FALSE
     )
   }
+  one_column <- is.numeric(random_term$n_columns) &&
+    length(random_term$n_columns) == 1L &&
+    !is.na(random_term$n_columns) &&
+    is.finite(random_term$n_columns) &&
+    random_term$n_columns == 1L
+  posterior <- .bt_random_effect_correlation_draws_posterior(
+    posterior_samples,
+    allow_zero_columns = one_column
+  )
 
   n_columns <- .bt_random_effect_correlation_draws_n_columns(
     random_term = random_term,
@@ -152,11 +152,8 @@ random_effects_correlation_draws <- function(random_term, posterior_samples){
   }
 
   distance <- .bt_random_effect_correlation_draws_distance(
-    random_term = random_term,
-    correlation = correlation,
     structure = structure,
-    n_columns = n_columns,
-    context = context
+    n_columns = n_columns
   )
   values <- vapply(
     as.vector(distance),
@@ -227,28 +224,15 @@ random_effects_correlation_draws <- function(random_term, posterior_samples){
 }
 
 
-# Build the structure-specific exponent matrix after canonical validation.
-.bt_random_effect_correlation_draws_distance <- function(
-    random_term, correlation, structure, n_columns, context){
+# Build the exponent matrix of the CS/HCS and AR1/HAR structures; CAR matrices
+# are built draw by draw from their time coordinates before this is reached.
+.bt_random_effect_correlation_draws_distance <- function(structure, n_columns){
 
   if(structure %in% c("cs", "hcs")){
     return(1 - diag(n_columns))
   }
-  if(structure %in% c("ar1", "har")){
-    return(abs(outer(seq_len(n_columns), seq_len(n_columns), "-")))
-  }
 
-  time_values <- .bt_random_effect_car_time_values(
-    random_term = random_term,
-    correlation = correlation,
-    n_columns = n_columns,
-    context = context
-  )
-
-  .bt_random_effect_validate_car_distance_matrix(
-    abs(outer(time_values, time_values, "-")),
-    n_columns
-  )
+  abs(outer(seq_len(n_columns), seq_len(n_columns), "-"))
 }
 
 

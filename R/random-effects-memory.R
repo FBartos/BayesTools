@@ -160,7 +160,8 @@
     car_columns = NULL,
     n_columns = NULL,
     factor_structure = FALSE,
-    known_group = FALSE){
+    known_group = FALSE,
+    column_contributions = FALSE){
 
   entries <- if(isTRUE(covariance) && !isTRUE(diagonal_only)){
     .bt_random_effect_memory_product(n_draws, n_rows, n_rows)
@@ -181,6 +182,11 @@
       components <- c(components,
         coefficient_factor_working = .bt_random_effect_memory_product(2, 8, n_draws, n_columns, n_columns),
         coefficient_contraction_working = .bt_random_effect_memory_product(4, 8, n_rows, n_columns))
+    }
+    if(isTRUE(column_contributions)){
+      # The rows x draws x columns array of the per-column contributions.
+      components <- c(components,
+        column_contribution_working = .bt_random_effect_memory_product(8, n_rows, n_draws, n_columns))
     }
     if(isTRUE(known_group)){
       components <- c(components,

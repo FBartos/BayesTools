@@ -80,6 +80,11 @@ the group-level coefficients were monitored via
 random-effect blocks compiled as marginalized, conditional evaluation stops
 with an error of class \code{BayesTools_refit_monitoring} (also
 \code{BayesTools_refit_required}).
+In a random-effect block of a scalar-correlation structure (CS, HCS, AR1,
+HAR, or CAR) compiled group by group, the coefficients of index levels that
+a group does not have in the fitted data are drawn from their exact Gaussian
+conditional law given the observed levels. This draw is stochastic and
+follows \code{set.seed()}.
 Row-indexed external random-effect SD sources, such as
 \code{random_sd_source("tau", shape = "row")}, are evaluated from latent
 random effects only. Model generation automatically monitors the required
