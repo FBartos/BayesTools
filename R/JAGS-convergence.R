@@ -59,10 +59,9 @@
 #' draws that vary is a value, not an undefined result, and is assessed even
 #' when it is infinite or zero: chains that are each constant but at different
 #' values give an R-hat of \code{Inf} and an ESS of 0, which fail
-#' \code{max_Rhat} and \code{min_ESS} whatever this argument is. Their
-#' time-series standard error is exactly 0, which measures no error: the MCMC
-#' error criteria (\code{max_error}, \code{max_SD_error}) are not assessable
-#' for such a parameter and fail unless this argument is \code{TRUE}.
+#' \code{max_Rhat} and \code{min_ESS} whatever this argument is. Their MCMC
+#' error (the standard error SD / sqrt(ESS) of an ESS of 0) is \code{Inf}, so
+#' \code{max_error} and \code{max_SD_error} fail as well.
 #'
 #' @details \code{JAGS_fit()} assigns every fitted coordinate one convergence
 #' role, stored in the \code{convergence_role} column of
@@ -634,10 +633,11 @@ JAGS_check_convergence <- function(
       time_series_se <- statistics[1L, "Time-series SE"]
       standard_deviation <- statistics[1L, "SD"]
       # The pooled draws vary here. A time-series SE of exactly 0 then belongs to
-      # chains that are each constant (at different values): it measures no
-      # error, so the error criteria are not assessable rather than met.
+      # chains that are each constant (at different values), for which the ESS
+      # is 0 and the standard error SD / sqrt(ESS) is infinite, not 0: the
+      # error criteria fail as values, as R-hat Inf and ESS 0 do.
       if(isTRUE(time_series_se == 0)){
-        time_series_se <- NA_real_
+        time_series_se <- Inf
       }
       if(assess_error){
         output[["MCMC_error"]] <- time_series_se

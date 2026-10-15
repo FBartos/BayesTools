@@ -83,10 +83,9 @@ as does a diagnostic whose computation failed. A diagnostic computed on
 draws that vary is a value, not an undefined result, and is assessed even
 when it is infinite or zero: chains that are each constant but at different
 values give an R-hat of \code{Inf} and an ESS of 0, which fail
-\code{max_Rhat} and \code{min_ESS} whatever this argument is. Their
-time-series standard error is exactly 0, which measures no error: the MCMC
-error criteria (\code{max_error}, \code{max_SD_error}) are not assessable
-for such a parameter and fail unless this argument is \code{TRUE}.}
+\code{max_Rhat} and \code{min_ESS} whatever this argument is. Their MCMC
+error (the standard error SD / sqrt(ESS) of an ESS of 0) is \code{Inf}, so
+\code{max_error} and \code{max_SD_error} fail as well.}
 }
 \value{
 \code{JAGS_check_convergence} returns a boolean indicating whether

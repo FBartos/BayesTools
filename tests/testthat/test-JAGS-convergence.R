@@ -660,19 +660,18 @@ test_that("chains stuck at different values fail the criteria and are not ignore
                  fixed = TRUE, all = FALSE)
     expect_match(errors, "ESS 0 for 'mu' is lower than the set target (500).",
                  fixed = TRUE, all = FALSE)
-    # the time-series SE of constant chains is 0, which measures no error: the
-    # MCMC error criteria are not assessable (F322) and only these are ignored
-    # on request; R-hat and ESS stay values
-    expect_identical(
-      any(grepl("MCMC error, MCMC SD error diagnostics are not assessable for 'mu'.", errors, fixed = TRUE)),
-      !allow
-    )
+    expect_false(any(grepl("not assessable", errors, fixed = TRUE)))
     diagnostics <- attr(result, "diagnostics")
-    expect_identical(diagnostics$state, "not_assessable")
+    expect_identical(diagnostics$state, "assessable")
     expect_identical(diagnostics$Rhat, Inf)
     expect_identical(diagnostics$ESS, 0)
-    expect_true(is.na(diagnostics$MCMC_error))
-    expect_true(is.na(diagnostics$MCMC_SD_error))
+    # the MCMC error of an ESS of 0 is infinite as well (F322)
+    expect_identical(diagnostics$MCMC_error, Inf)
+    expect_identical(diagnostics$MCMC_SD_error, Inf)
+    expect_match(errors, "MCMC error Inf for 'mu' is larger than the set target (0.01).",
+                 fixed = TRUE, all = FALSE)
+    expect_match(errors, "MCMC SD error Inf for 'mu' is larger than the set target (0.05).",
+                 fixed = TRUE, all = FALSE)
   }
 
   # one criterion at a time
@@ -720,10 +719,11 @@ test_that("chains stuck at different values fail the criteria and are not ignore
   expect_match(attr(refused, "errors"), "not assessable for 'mu'", fixed = TRUE, all = FALSE)
 })
 
-test_that("chains stuck at different values do not pass the MCMC error criteria (F322)", {
+test_that("an error-only check fails for chains stuck at different values (F322)", {
 
   # An error-only check used to accept them: the time-series SE of constant
-  # chains is exactly 0 although the pooled draws vary.
+  # chains is exactly 0 although the pooled draws vary. Their ESS is 0, so the
+  # MCMC error is infinite and fails whatever allow_not_assessable says.
   stuck_fit <- .mock_convergence_fit(
     matrix(rep(-5, 200), ncol = 1, dimnames = list(NULL, "mu")),
     matrix(rep(5, 200), ncol = 1, dimnames = list(NULL, "mu")),
@@ -734,31 +734,30 @@ test_that("chains stuck at different values do not pass the MCMC error criteria 
     SD_error = list(max_error = NULL, max_SD_error = 0.05),
     both     = list(max_error = 0.01, max_SD_error = 0.05)
   )
-  unavailable <- c(
-    error    = "MCMC error diagnostic is not assessable for 'mu'.",
-    SD_error = "MCMC SD error diagnostic is not assessable for 'mu'.",
-    both     = "MCMC error, MCMC SD error diagnostics are not assessable for 'mu'."
+  messages <- list(
+    error    = "MCMC error Inf for 'mu' is larger than the set target (0.01).",
+    SD_error = "MCMC SD error Inf for 'mu' is larger than the set target (0.05).",
+    both     = c("MCMC error Inf for 'mu' is larger than the set target (0.01).",
+                 "MCMC SD error Inf for 'mu' is larger than the set target (0.05).")
   )
   for(name in names(criteria)){
-    check <- function(...){
-      do.call(JAGS_check_convergence, c(
-        list(stuck_fit, max_Rhat = NULL, min_ESS = NULL), criteria[[name]], list(...)
+    for(allow in c(FALSE, TRUE)){
+      result <- do.call(JAGS_check_convergence, c(
+        list(stuck_fit, max_Rhat = NULL, min_ESS = NULL), criteria[[name]],
+        list(allow_not_assessable = allow)
       ))
+      info <- paste(name, "allow_not_assessable =", allow)
+      expect_false(result, info = info)
+      expect_identical(attr(result, "errors"), messages[[name]], info = info)
+      diagnostics <- attr(result, "diagnostics")
+      expect_identical(diagnostics$state, "assessable", info = info)
+      # the criteria that are not requested stay unassessed (NA)
+      expect_identical(diagnostics$MCMC_error, if(is.null(criteria[[name]]$max_error)) NA_real_ else Inf, info = info)
+      expect_identical(diagnostics$MCMC_SD_error, if(is.null(criteria[[name]]$max_SD_error)) NA_real_ else Inf, info = info)
     }
-    result <- check()
-    expect_false(result, info = name)
-    expect_identical(attr(result, "errors"), unavailable[[name]], info = name)
-    diagnostics <- attr(result, "diagnostics")
-    expect_identical(diagnostics$state, "not_assessable", info = name)
-    expect_true(is.na(diagnostics$MCMC_error) && is.na(diagnostics$MCMC_SD_error), info = name)
-
-    # a request to ignore the undefined results ignores them
-    ignored <- check(allow_not_assessable = TRUE)
-    expect_true(ignored, info = name)
-    expect_identical(attr(ignored, "diagnostics")$state, "not_assessable", info = name)
   }
 
-  # chains that vary have a positive time-series SE and are assessed as before
+  # chains that vary have a finite positive time-series SE and are assessed as before
   set.seed(7)
   mixed_fit <- .mock_convergence_fit(
     matrix(stats::rnorm(400), ncol = 1, dimnames = list(NULL, "mu")),
@@ -769,8 +768,8 @@ test_that("chains stuck at different values do not pass the MCMC error criteria 
   expect_true(result)
   diagnostics <- attr(result, "diagnostics")
   expect_identical(diagnostics$state, "assessable")
-  expect_gt(diagnostics$MCMC_error, 0)
-  expect_gt(diagnostics$MCMC_SD_error, 0)
+  expect_true(is.finite(diagnostics$MCMC_error) && diagnostics$MCMC_error > 0)
+  expect_true(is.finite(diagnostics$MCMC_SD_error) && diagnostics$MCMC_SD_error > 0)
 })
 
 test_that("weightfunction reference omega bins are structural constants", {
