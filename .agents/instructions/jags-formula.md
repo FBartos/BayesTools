@@ -299,7 +299,14 @@ original-scale law, and every request for original-scale values stops with
 those SDs, the prior law of an SD on the original scale). The estimates table
 without `transform_scaled` leaves the block's original-scale random-effect rows
 out and says so in its warnings; `random_effects_summary = "raw"` shows the
-fitted SDs.
+fitted SDs. An SD shared by several columns of a block (the indicator columns
+of a logical predictor's interaction with a scaled slope) has one original-scale
+value only when its columns transform to the same SD, which a correlated block
+never guarantees: otherwise original-scale requests stop with
+`BayesTools_formula_transform_unavailable`, reason
+`original_scale_not_representable`, and the estimates table without
+`transform_scaled` leaves the block's original-scale rows out with a warning
+in the same way.
 The ensemble and marginal tables with `transform_scaled = TRUE` take the block
 design from the formula state of the mixed posteriors (`as_mixed_posteriors()`;
 `mix_posteriors()` attaches a state whenever a requested parameter is a fixed

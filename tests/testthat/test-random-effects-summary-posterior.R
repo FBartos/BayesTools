@@ -2038,26 +2038,6 @@ test_that("the indicator columns of a logical-by-continuous term are labelled by
     flag = rep(c(TRUE, FALSE, FALSE), 16),
     id = factor(rep(paste0("s", 1:8), each = 6))
   )
-  result <- JAGS_formula(
-    ~ 1 + x + flag + (1 + flag + flag:x | id), "mu", df,
-    prior_list = list(
-      intercept = prior("normal", list(0, 1)),
-      x = prior("normal", list(0, 1)),
-      flag = prior("normal", list(0, 1))
-    ),
-    prior_random = prior_random(id = random_block(
-      sd = prior("gamma", list(2, 2)),
-      cor = prior_lkj(eta = 2),
-      monitor = random_monitor(latent = FALSE, coefficients = FALSE, correlation = TRUE)
-    ))
-  )
-  term <- result$formula_design$random_effects[[1L]]
-  expect_identical(term$raw_column_names, c("(Intercept)", "flagTRUE", "flagFALSE:x", "flagTRUE:x"))
-  expect_identical(
-    BayesTools:::.bt_random_effect_summary_column_components(term),
-    c("intercept", "flag", "flag[FALSE]:x", "flag[TRUE]:x")
-  )
-
   # the carrier monitors the correlation matrix and its Cholesky factor of the
   # four columns, with distinct correlations
   correlation <- matrix(c(
@@ -2066,32 +2046,58 @@ test_that("the indicator columns of a logical-by-continuous term are labelled by
     0.2, 0.1, 1.0, 0.6,
     -0.3, 0.5, 0.6, 1.0
   ), 4L, 4L)
-  matrix_names <- outer(1:4, 1:4, function(row, column){
-    paste0(term$parameter_stem, "_xRE_CORx_R[", row, ",", column, "]")
-  })
-  values <- c(
-    mu_intercept = 0, mu_x = 0, mu_flag = 0,
-    stats::setNames(c(0.5, 1, 1.5), unique(term$sd_parameter_names)),
-    stats::setNames(as.vector(correlation), as.vector(matrix_names)),
-    stats::setNames(
-      as.vector(t(chol(correlation))),
-      as.vector(BayesTools:::.bt_random_effect_cholesky_names(term, 4L))
+  flag_carrier <- function(formula_scale = NULL){
+    result <- JAGS_formula(
+      ~ 1 + x + flag + (1 + flag + flag:x | id), "mu", df,
+      prior_list = list(
+        intercept = prior("normal", list(0, 1)),
+        x = prior("normal", list(0, 1)),
+        flag = prior("normal", list(0, 1))
+      ),
+      formula_scale = formula_scale,
+      prior_random = prior_random(id = random_block(
+        sd = prior("gamma", list(2, 2)),
+        cor = prior_lkj(eta = 2),
+        monitor = random_monitor(latent = FALSE, coefficients = FALSE, correlation = TRUE)
+      ))
     )
+    term <- result$formula_design$random_effects[[1L]]
+    matrix_names <- outer(1:4, 1:4, function(row, column){
+      paste0(term$parameter_stem, "_xRE_CORx_R[", row, ",", column, "]")
+    })
+    values <- c(
+      mu_intercept = 0, mu_x = 0, mu_flag = 0,
+      stats::setNames(c(0.5, 1, 1.5), unique(term$sd_parameter_names)),
+      stats::setNames(as.vector(correlation), as.vector(matrix_names)),
+      stats::setNames(
+        as.vector(t(chol(correlation))),
+        as.vector(BayesTools:::.bt_random_effect_cholesky_names(term, 4L))
+      )
+    )
+    posterior <- matrix(rep(values, 6L), nrow = 6L, byrow = TRUE, dimnames = list(NULL, names(values)))
+    fit <- structure(
+      list(
+        mcmc = coda::mcmc.list(coda::mcmc(posterior)),
+        sample = nrow(posterior),
+        summary.pars = list(mutate = NULL),
+        monitor = colnames(posterior)
+      ),
+      class = c("runjags", "BayesTools_fit", "list")
+    )
+    attr(fit, "prior_list") <- result$prior_list
+    attr(fit, "formula_design") <- list(mu = result$formula_design)
+    attr(fit, "formula_scale") <- list(mu = result$formula_scale)
+    list(term = term, posterior = posterior, fit = attach_test_parameter_map(fit))
+  }
+  carrier <- flag_carrier()
+  term <- carrier$term
+  posterior <- carrier$posterior
+  fit <- carrier$fit
+  expect_identical(term$raw_column_names, c("(Intercept)", "flagTRUE", "flagFALSE:x", "flagTRUE:x"))
+  expect_identical(
+    BayesTools:::.bt_random_effect_summary_column_components(term),
+    c("intercept", "flag", "flag[FALSE]:x", "flag[TRUE]:x")
   )
-  posterior <- matrix(rep(values, 6L), nrow = 6L, byrow = TRUE, dimnames = list(NULL, names(values)))
-  fit <- structure(
-    list(
-      mcmc = coda::mcmc.list(coda::mcmc(posterior)),
-      sample = nrow(posterior),
-      summary.pars = list(mutate = NULL),
-      monitor = colnames(posterior)
-    ),
-    class = c("runjags", "BayesTools_fit", "list")
-  )
-  attr(fit, "prior_list") <- result$prior_list
-  attr(fit, "formula_design") <- list(mu = result$formula_design)
-  attr(fit, "formula_scale") <- list(mu = result$formula_scale)
-  fit <- attach_test_parameter_map(fit)
 
   # the map builds with unique names; the shared SD keeps the label of its term
   catalog <- parameter_catalog(fit)
@@ -2126,6 +2132,37 @@ test_that("the indicator columns of a logical-by-continuous term are labelled by
     )
   }
   expect_equal(unname(table["(mu) sd(flag:x)", "Mean"]), 1.5, tolerance = 1e-12)
+
+  # with a scaled x the shared SD of the correlated indicator columns has no
+  # single original-scale value (its columns transform to different SDs): the
+  # map and the fitted-scale tables work, original-scale requests refuse
+  scaled <- flag_carrier(list(x = TRUE))$fit
+  expect_true(all(expected %in% parameter_catalog(scaled)$quantities$canonical_name))
+  fitted_table <- JAGS_estimates_table(scaled, remove_diagnostics = TRUE)
+  expect_identical(rownames(fitted_table), c("(mu) intercept", "(mu) x", "(mu) flag"))
+  expect_match(attr(fitted_table, "warnings"), "not representable", fixed = TRUE)
+  expect_match(attr(fitted_table, "warnings"), "random_effects_summary", fixed = TRUE)
+  raw <- JAGS_estimates_table(scaled, remove_diagnostics = TRUE, random_effects_summary = "raw")
+  expect_equal(
+    unname(as.data.frame(raw)[grep("sd(", rownames(raw), fixed = TRUE), "Mean"]),
+    c(0.5, 1, 1.5), tolerance = 1e-12
+  )
+  refusals <- list(
+    table = function() JAGS_estimates_table(scaled, transform_scaled = TRUE),
+    samples = function() transform_scale_samples(scaled),
+    draws = function() parameter_draws(
+      scaled, parameter_catalog_resolve(parameter_catalog(scaled), "(mu) sd(flag:x)")
+    ),
+    correlation = function() parameter_draws(
+      scaled, parameter_catalog_resolve(parameter_catalog(scaled), "(mu) cor(intercept,flag[TRUE]:x)")
+    )
+  )
+  for(label in names(refusals)){
+    refusal <- expect_error(
+      refusals[[label]](), class = "BayesTools_formula_transform_unavailable", info = label
+    )
+    expect_identical(refusal$reason, "original_scale_not_representable", info = label)
+  }
 
   # a diagonal block keeps the label of the shared SD
   diagonal <- JAGS_formula(

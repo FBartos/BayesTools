@@ -149,10 +149,14 @@
         target_columns = column_index,
         correlated = !is.null(source_cor)
       )){
-        stop(
-          "Random-effect SD column '", sd_col,
-          "' cannot be unscaled because its shared design columns transform to different SDs.",
-          call. = FALSE
+        .bt_formula_transform_stop(
+          paste0(
+            "Random-effect SD column '", sd_col,
+            "' cannot be unscaled because its shared design columns transform to different SDs."
+          ),
+          parameter = prefix,
+          reason = "original_scale_not_representable",
+          coordinates = sd_col
         )
       }
       posterior[, sd_col] <- transformed_sd_by_column[, column_index[1L]]

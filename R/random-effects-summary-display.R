@@ -333,10 +333,13 @@
 
   summary_columns <- vector("list", nrow(quantities))
   summary_priors <- vector("list", nrow(quantities))
-  # a quantity of a block with a linearly dependent design has no original-scale
-  # draws (original_scale_not_identified): the fitted-scale table leaves it out
-  # and reports it, an original-scale request (omit_unidentified = FALSE) stops
-  unidentified <- rep(FALSE, nrow(quantities))
+  # a quantity of a block whose original-scale values do not exist has no
+  # original-scale draws: a linearly dependent design
+  # (original_scale_not_identified) or SDs shared by columns that transform to
+  # different SDs (original_scale_not_representable). The fitted-scale table
+  # leaves it out and reports it, an original-scale request
+  # (omit_unidentified = FALSE) stops
+  unidentified <- rep(NA_character_, nrow(quantities))
   for(i in seq_len(nrow(quantities))){
     quantity <- quantities[i, , drop = FALSE]
     values <- tryCatch(
@@ -346,15 +349,16 @@
         model_samples = model_samples
       )),
       BayesTools_formula_transform_unavailable = function(condition){
-        if(!isTRUE(omit_unidentified) ||
-           !identical(condition$reason, "original_scale_not_identified")){
+        if(!isTRUE(omit_unidentified) || !condition$reason %in% c(
+          "original_scale_not_identified", "original_scale_not_representable"
+        )){
           stop(condition)
         }
-        NULL
+        condition$reason
       }
     )
-    if(is.null(values)){
-      unidentified[i] <- TRUE
+    if(is.character(values)){
+      unidentified[i] <- values
       next
     }
     if(ncol(values) != 1L || nrow(values) != nrow(model_samples)){
@@ -371,22 +375,30 @@
     )
   }
   warnings <- character()
-  if(any(unidentified)){
-    omitted <- quantities[unidentified, , drop = FALSE]
+  if(any(!is.na(unidentified))){
+    omitted <- !is.na(unidentified)
     blocks <- unique(data.frame(
-      parameter = omitted$formula_parameter,
-      block = vapply(omitted$extraction_key, function(key) key$random_block, character(1)),
+      parameter = quantities$formula_parameter[omitted],
+      block = vapply(quantities$extraction_key[omitted], function(key) key$random_block, character(1)),
+      reason = unidentified[omitted],
       stringsAsFactors = FALSE
     ))
     warnings <- paste0(
       "The original-scale random-effect quantities of block '", blocks$block,
-      "' of formula parameter '", blocks$parameter, "' are not shown: its fitted design ",
-      "is linearly dependent, so they are not identified. Use ",
-      "'random_effects_summary = \"raw\"' for its fitted-scale SDs."
+      "' of formula parameter '", blocks$parameter, "' are not shown: ",
+      ifelse(
+        blocks$reason == "original_scale_not_identified",
+        "its fitted design is linearly dependent, so they are not identified",
+        paste0(
+          "its shared SDs cover design columns that transform to different ",
+          "original-scale SDs, so they are not representable"
+        )
+      ),
+      ". Use 'random_effects_summary = \"raw\"' for its fitted-scale SDs."
     )
-    quantities <- quantities[!unidentified, , drop = FALSE]
-    summary_columns <- summary_columns[!unidentified]
-    summary_priors <- summary_priors[!unidentified]
+    quantities <- quantities[!omitted, , drop = FALSE]
+    summary_columns <- summary_columns[!omitted]
+    summary_priors <- summary_priors[!omitted]
   }
   if(nrow(quantities) == 0L){
     return(c(cleaned, list(warnings = warnings)))
