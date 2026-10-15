@@ -562,9 +562,6 @@ run_synthetic_fit_file <- function(cache, generation, frame = parent.frame()) {
   dir.create(fit_dir, recursive = TRUE)
   writeLines(c("Package: Toy", "Version: 0.0.1", "Title: A toy"), file.path(layout, "DESCRIPTION"))
   writeLines("int toy;", file.path(layout, "src", "toy.cc"))
-  # every key builds the source scopes of the consumer markers as well, which
-  # need one of their test files to exist
-  file.create(file.path(fit_dir, c("test-fixture-integrity.R", "test-JAGS-diagnostic-plots.R")))
   fit_file <- file.path(fit_dir, "test-00-model-fits.R")
   writeLines(c(
     "skip_refit_if_cached(\"model-fit\", required_fits = synthetic_fits,",
@@ -725,6 +722,34 @@ test_that("the failed blocks are read from the recorder of the testthat run", {
   expect_null(failed_blocks)
 })
 
+test_that("the failed blocks are the blocks of the given file with a failed or errored expectation", {
+  # .test_cache_failed_blocks() reads the ListReporter that testthat keeps beside
+  # the reporter in use, with the 'file', 'test' and 'results' of every block:
+  # this runs a file with a passing, a failing and an erroring block and reads
+  # the record from a later block, so a change of those internals fails here
+  directory <- withr::local_tempdir()
+  recorder_file <- file.path(directory, "test-recorder.R")
+  writeLines(c(
+    "test_that('passing block', { testthat::expect_true(TRUE) })",
+    "test_that('failing block', { testthat::expect_equal(1, 2) })",
+    "test_that('erroring block', { stop('the block failed') })",
+    "test_that('reader', {",
+    "  observed$blocks <- .test_cache_failed_blocks('test-recorder.R')",
+    "  observed$other_file <- .test_cache_failed_blocks('another-file.R')",
+    "  testthat::succeed()",
+    "})"
+  ), recorder_file)
+  observed <- new.env(parent = emptyenv())
+  helpers <- new.env(parent = environment())
+  helpers$observed <- observed
+  helpers$.test_cache_failed_blocks <- .test_cache_failed_blocks
+
+  testthat::test_file(recorder_file, reporter = "silent", env = helpers, stop_on_failure = FALSE)
+
+  expect_identical(observed$blocks, c("failing block", "erroring block"))
+  expect_identical(observed$other_file, character())
+})
+
 test_that("the model-fit cache key follows the code, the registry, and the fitting file", {
   # a temporary cache (no JAGS fit); the key hashes the loaded namespace
   cache <- redirected_cache(package_hashes = TRUE)
@@ -748,7 +773,13 @@ test_that("the model-fit cache key follows the code, the registry, and the fitti
   }
 
   # a post-fit function that no fit generator reaches leaves the cache current
-  expect_false(stale_after_editing("plot_prior_list"))
+  # (the first of the candidates that the generators do not reach: which
+  # functions are reached is a property of the generators, not of this test)
+  candidates <- c("plot_prior_list", "hypothesis_BF", "inclusion_BF", "interpret", "mix_posteriors")
+  reached <- names(.test_cache_package_function_hashes("model-fit"))
+  unreached <- candidates[!paste0("package_fn_", candidates) %in% reached]
+  expect_gt(length(unreached), 0L)
+  expect_false(stale_after_editing(unreached[[1L]]))
   # a function that the generators reach makes it stale
   expect_true(stale_after_editing("JAGS_fit"))
   expect_true(cache$current())

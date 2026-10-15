@@ -138,41 +138,52 @@ test_that("fixture cache metadata rejects stale source declarations", {
   registry_file <- file.path(test_files_dir, "model_registry.RDS")
   expect_true(file.exists(registry_file), info = paste("Missing fixture registry:", registry_file))
 
-  marker_file <- .test_cache_indicator_file("model-fit")
-  original_marker <- if (file.exists(marker_file)) readLines(marker_file, warn = FALSE) else NULL
-  withr::defer({
-    if (is.null(original_marker)) {
-      unlink(marker_file)
-    } else {
-      writeLines(original_marker, marker_file)
-    }
-  })
+  # The marker is written to a temporary cache (a second copy of the helpers
+  # bound to it), never over the marker of the cache of the run. The registry
+  # and the catalog are the real ones, read only.
+  cache_dir <- withr::local_tempdir()
+  withr::local_envvar(BAYESTOOLS_TEST_FILES_DIR = cache_dir)
+  helpers <- new.env(parent = environment())
+  source(testthat::test_path("common-functions.R"), local = helpers)
+  marker_file <- helpers$.test_cache_indicator_file("model-fit")
+  expect_true(startsWith(
+    normalizePath(marker_file, winslash = "/", mustWork = FALSE),
+    normalizePath(cache_dir, winslash = "/", mustWork = TRUE)
+  ))
 
   catalog <- bayestools_required_fit_catalog()
-  source_hashes <- .test_cache_source_hashes("model-fit")
-  source_hashes[[1L]] <- "stale-source-hash"
-
-  writeLines(
-    c(
-      "name: model-fit",
-      "completed_at: 2026-05-04 00:00:00 CEST",
-      paste("test_files_dir:", test_files_dir),
-      paste("required_fits:", .test_cache_name_line(catalog$model_name)),
-      paste("required_margliks:", .test_cache_name_line(catalog$model_name[catalog$has_marglik])),
-      paste("registry_md5:", .test_cache_file_md5(registry_file)),
-      paste0("source_md5_", names(source_hashes), ": ", unname(source_hashes))
-    ),
-    marker_file
-  )
-
-  expect_false(
-    .test_cache_metadata_current(
+  source_hashes <- helpers$.test_cache_source_hashes("model-fit")
+  write_marker <- function(hashes) {
+    writeLines(
+      c(
+        "name: model-fit",
+        "completed_at: 2026-05-04 00:00:00 CEST",
+        paste("test_files_dir:", helpers$test_files_dir),
+        paste("required_fits:", helpers$.test_cache_name_line(catalog$model_name)),
+        paste("required_margliks:", helpers$.test_cache_name_line(catalog$model_name[catalog$has_marglik])),
+        paste("registry_md5:", helpers$.test_cache_file_md5(registry_file)),
+        paste0("source_md5_", names(hashes), ": ", unname(hashes))
+      ),
+      marker_file
+    )
+  }
+  marker_current <- function() {
+    helpers$.test_cache_metadata_current(
       "model-fit",
       required_fits = catalog$model_name,
       required_margliks = catalog$model_name[catalog$has_marglik],
       registry_file = registry_file
     )
-  )
+  }
+
+  # the marker with the current hashes is current
+  write_marker(source_hashes)
+  expect_true(marker_current())
+
+  # a stale source declaration is not
+  source_hashes[[1L]] <- "stale-source-hash"
+  write_marker(source_hashes)
+  expect_false(marker_current())
 })
 
 test_that("fixture artifact validators reject malformed temporary RDS payloads", {

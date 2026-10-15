@@ -8257,7 +8257,8 @@ test_that("the JAGS module registers its four distributions and two functions", 
 # of the hashed inputs: mark_refit_cache_complete() refuses it when a block above
 # recorded a failed expectation, or when the fitting file, src/ or DESCRIPTION
 # changed after refitting started. A block records its results when it ends, so
-# this block makes no expectation of its own and no block may follow it.
+# no block may follow it; its only expectation is the marking itself (a written
+# marker records a success, a refusal fails).
 test_that("The model-fit cache is marked complete after a passing run", {
 
   model_registry_df <- do.call(rbind, model_registry)
