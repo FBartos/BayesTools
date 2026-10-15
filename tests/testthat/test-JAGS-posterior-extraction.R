@@ -1654,6 +1654,22 @@ test_that("requested transformations map to the coordinate columns of factor-fam
   }
   expect_identical(columns_of(list(g = prior("normal", list(0, 1))))$g, "g")
 
+  # orthonormal and mean-difference mixtures and spike-and-slab priors follow
+  # the factors they mix: their levels are transformed instead of the
+  # coordinates, treatment mixtures keep the coordinates
+  for(contrast in c("orthonormal", "meandif")){
+    centered <- prior_mixture(list(factor_prior(contrast, "mnormal"), factor_prior(contrast, "mnormal")))
+    attr(centered, "K") <- 2L
+    centered_ss <- prior_spike_and_slab(factor_prior(contrast, "mnormal"))
+    attr(centered_ss, "K") <- 2L
+    for(prior in list(centered, centered_ss)){
+      expect_identical(columns_of(list(f = prior), transform_factors = FALSE)$f, coordinates)
+      expect_null(columns_of(list(f = prior), transform_factors = TRUE)$f)
+    }
+  }
+  expect_identical(columns_of(list(mixture = mixture), transform_factors = TRUE)$mixture, paste0("mixture[", 1:2, "]"))
+  expect_identical(columns_of(list(ss = spike_and_slab), transform_factors = TRUE)$ss, paste0("ss[", 1:2, "]"))
+
   # a transformation is applied to the coordinates and to nothing else
   samples <- cbind("mixture[1]" = c(0, 1), "mixture[2]" = c(1, 2), "mixture_indicator" = c(1, 2),
     "vector[1]" = c(0, 1), "vector[2]" = c(1, 2), "vector[3]" = c(2, 3), scalar = c(0, 1))
@@ -1662,6 +1678,64 @@ test_that("requested transformations map to the coordinate columns of factor-fam
   expect_equal(result[, c("mixture[1]", "mixture[2]")], exp(samples[, c("mixture[1]", "mixture[2]")]))
   expect_equal(result[, paste0("vector[", 1:3, "]")], samples[, paste0("vector[", 1:3, "]")] + 1)
   expect_identical(result[, c("mixture_indicator", "scalar")], samples[, c("mixture_indicator", "scalar")])
+})
+
+test_that("a requested transformation of orthonormal and meandif factors is applied once, to their levels", {
+
+  make_fit <- function(draws, prior_list){
+    fit <- structure(list(mcmc = coda::mcmc.list(coda::mcmc(draws)), sample = nrow(draws),
+      summary.pars = list(mutate = NULL), monitor = colnames(draws)),
+      class = c("runjags", "BayesTools_fit", "list"))
+    attr(fit, "prior_list") <- prior_list
+    attach_test_parameter_map(fit)
+  }
+  transformations <- list(mu_fac = list(fun = exp))
+  data <- data.frame(fac = factor(c("A", "B", "C")))
+  set.seed(9)
+  n_draws <- 60L
+
+  for(contrast in c("orthonormal", "meandif")){
+    factor_prior <- function(distribution, parameters) prior_factor(distribution, parameters, contrast = contrast)
+    priors <- list(
+      plain          = factor_prior("mnormal", list(0, 1)),
+      mixture        = prior_mixture(list(factor_prior("mnormal", list(0, 1)), factor_prior("spike", list(0))),
+                                     components = c("alternative", "null")),
+      spike_and_slab = prior_spike_and_slab(factor_prior("mnormal", list(0, 1))))
+    for(case in names(priors)){
+      info <- paste(contrast, case)
+      prior_list <- JAGS_formula(~ fac, "mu", data = data,
+        prior_list = list(intercept = prior("normal", list(0, 1)), fac = priors[[case]]))$prior_list
+      coordinates <- .JAGS_prior_factor_names("mu_fac", prior_list$mu_fac)
+      draws <- cbind(mu_intercept = stats::rnorm(n_draws, .1, .1),
+        matrix(stats::rnorm(n_draws * length(coordinates), c(.5, -.4), .3), n_draws, length(coordinates),
+               byrow = TRUE, dimnames = list(NULL, coordinates)))
+      if(identical(case, "mixture")) draws <- cbind(draws, mu_fac_indicator = 1)
+      if(identical(case, "spike_and_slab")) draws <- cbind(draws, mu_fac_inclusion = 1)
+      fit <- make_fit(draws, prior_list)
+
+      # on the level scale the transformation is applied to the levels, once
+      levels <- JAGS_estimates_table(fit, transform_factors = TRUE, return_samples = TRUE)
+      levels_exp <- suppressMessages(JAGS_estimates_table(fit, transform_factors = TRUE,
+        transformations = transformations, return_samples = TRUE))
+      level_columns <- grep("dif", colnames(levels), value = TRUE)
+      expect_length(level_columns, 3L)
+      expect_equal(levels_exp[, level_columns], exp(levels[, level_columns]), tolerance = 1e-12, info = info)
+      table <- suppressMessages(JAGS_estimates_table(fit, transform_factors = TRUE,
+        transformations = transformations, remove_diagnostics = TRUE))
+      expect_equal(unname(unclass(table)$Mean[match(level_columns, rownames(table))]),
+                   unname(colMeans(exp(levels[, level_columns]))), tolerance = 1e-12, info = info)
+
+      # on the coordinate scale it is applied to the coordinates, once
+      coefficients <- JAGS_estimates_table(fit, transform_factors = FALSE, return_samples = TRUE)
+      coefficients_exp <- JAGS_estimates_table(fit, transform_factors = FALSE,
+        transformations = transformations, return_samples = TRUE)
+      coordinate_columns <- grep("fac", setdiff(colnames(coefficients), grep("inclusion", colnames(coefficients), value = TRUE)),
+                                 fixed = TRUE, value = TRUE)
+      expect_length(coordinate_columns, 2L)
+      expect_equal(coefficients_exp[, coordinate_columns], exp(coefficients[, coordinate_columns]),
+                   tolerance = 1e-12, info = info)
+    }
+  }
 })
 
 test_that(".remove_auxiliary_parameters names publication-weight columns by their own backend index", {

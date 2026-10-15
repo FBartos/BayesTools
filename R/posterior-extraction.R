@@ -618,13 +618,19 @@ NULL
 # coefficient columns of treatment and independent priors or of
 # orthonormal/meandif/ordered priors that won't be transformed to levels (with
 # the total effects of ordered priors, which untransformed estimates tables
-# show in place of the coefficients); NULL for the latter when they are
-# (.transform_factor_contrasts() transforms their levels). Columns absent from
-# the samples are skipped.
+# show in place of the coefficients). NULL for orthonormal, meandif and
+# ordered priors (also their mixtures and spike-and-slab priors) when they
+# are transformed to levels: .transform_factor_contrasts() transforms their
+# levels, once, and the coordinates are not transformed as well. Columns
+# absent from the samples are skipped.
 .parameter_transformation_columns <- function(transformations, prior_list, transform_factors = FALSE) {
 
   columns <- lapply(names(transformations), function(par) {
-    if (!is.prior.factor(prior_list[[par]]) &&
+    if (transform_factors &&
+        (is.prior.orthonormal(prior_list[[par]]) || is.prior.meandif(prior_list[[par]]) ||
+         is.prior.ordered(prior_list[[par]]))) {
+      NULL
+    } else if (!is.prior.factor(prior_list[[par]]) &&
         (is.prior.vector(prior_list[[par]]) || .bt_prior_is_factor_family(prior_list[[par]]))) {
       .prior_linear_prior_columns(par, prior_list[[par]])
     } else if (!is.prior.factor(prior_list[[par]])) {
