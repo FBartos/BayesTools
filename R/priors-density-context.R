@@ -205,6 +205,16 @@
     stop("'weights' must be a named numeric vector.", call. = FALSE)
   }
 
+  # a weight of a column the context does not know would be dropped silently
+  # (c(a = 1, b_typo = 2) gave the density of 'a')
+  unknown <- setdiff(names(weights)[!is.na(weights) & weights != 0], context$column_names)
+  if(length(unknown) > 0L){
+    stop(
+      "No prior distribution was found for coefficient column(s): '",
+      paste0(unknown, collapse = "', '"), "'.",
+      call. = FALSE
+    )
+  }
   weights <- weights[intersect(names(weights), context$column_names)]
   out <- rep(0, length(context$column_names))
   names(out) <- context$column_names

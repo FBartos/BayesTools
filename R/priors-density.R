@@ -109,7 +109,7 @@ density.prior <- function(x,
   check_real(x_range, "x_range", check_length = 2, allow_NULL = TRUE)
   if(!is.null(x_range) && x_range[1] > x_range[2])
     stop("The lower range limit must be lower than the upper range limit.")
-  check_real(x_range_quant, "x_range_quant", lower = 0, upper = 1, allow_NULL = TRUE)
+  check_real(x_range_quant, "x_range_quant", lower = 0, upper = 0.5, allow_bound = FALSE, allow_NULL = TRUE)
   check_int(n_points, "n_points",  lower = 2)
   check_int(n_samples, "n_samples", lower = 1)
   check_bool(force_samples, "force_samples")
@@ -1571,7 +1571,7 @@ range.prior  <- function(x, quantiles = NULL, ..., na.rm = FALSE){
     .prior_stop_unsupported_method("range", x)
   }
   if(!is.null(quantiles)){
-    check_real(quantiles, "quantiles", upper = 0.5, allow_bound = FALSE)
+    check_real(quantiles, "quantiles", lower = 0, upper = 0.5, allow_bound = FALSE)
   }else{
     quantiles <- .range.prior_quantile_default(x)
   }

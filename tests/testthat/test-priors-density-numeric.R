@@ -25,6 +25,29 @@ test_that("density estimation from samples needs two samples, and a Dirichlet di
   expect_identical(names(displayed), c("V1", "V2"))
 })
 
+test_that("range quantiles are validated and weights of unknown columns are refused", {
+
+  # the tail probability of the plotting range is in (0, 0.5): 0 gave an
+  # infinite range, and x_range_quant = 0 the base-R "'from' must be a finite number"
+  normal <- prior("normal", list(0, 1))
+  for(value in c(0, -.1)){
+    expect_error(range(normal, quantiles = value), "The 'quantiles' must be higher than 0.", fixed = TRUE)
+    expect_error(density(normal, x_range_quant = value), "The 'x_range_quant' must be higher than 0.", fixed = TRUE)
+  }
+  for(value in c(.5, .7)){
+    expect_error(range(normal, quantiles = value), "The 'quantiles' must be lower than 0.5.", fixed = TRUE)
+    expect_error(density(normal, x_range_quant = value), "The 'x_range_quant' must be lower than 0.5.", fixed = TRUE)
+  }
+  expect_equal(range(normal, quantiles = .01), stats::qnorm(c(.01, .99)), tolerance = 1e-12)
+
+  # c(a = 1, b_typo = 2) gave the density of 'a'
+  context <- .prior_density_context(list(a = normal), "a", n_grid = 128)
+  expect_error(.prior_density_from_context(context, c(a = 1, b_typo = 2)),
+               "No prior distribution was found for coefficient column(s): 'b_typo'.", fixed = TRUE)
+  expect_s3_class(.prior_density_from_context(context, c(a = 1, b_typo = 0)), "prior_density")
+  expect_s3_class(.prior_density_from_context(context, c(a = 1)), "prior_density")
+})
+
 test_that("diagonal multivariate Normal log densities retain checked and independent identities", {
 
   for(k in c(1L, 2L, 5L)) for(spec in list(c(.3, .7), c(-4, .02), c(3e6, 2e6))){
