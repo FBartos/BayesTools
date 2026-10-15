@@ -581,7 +581,9 @@ ordinate's integrand and breakpoints, all pending intervals of all values are
 evaluated in one vectorized call with QUADPACK's qk21 / qk15i rules and error
 estimates, and each value is accepted at a relative error of 1e-8. Special
 values (offsets, support bounds, meeting points), values that do not converge
-within the round cap, and all values of a leaf whose integrand has an
+within the round cap (60 refinement rounds) or whose refinement exceeds the
+interval cap (4096 intervals per value; the value ends as unresolved instead of
+growing without bound), and all values of a leaf whose integrand has an
 integrable singularity (a term with an infinite density at a finite bound;
 bisection without extrapolation converges too slowly there) take their
 ordinate. A route with quadrature leaves is plotted on at most 200 equally
