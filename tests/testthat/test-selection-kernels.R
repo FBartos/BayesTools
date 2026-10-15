@@ -1464,6 +1464,103 @@ test_that("explicit kernel_mode routes are validated before any rounding", {
   )
 })
 
+test_that("declared integers are checked exactly, never rounded (F331)", {
+
+  spec <- selection_backend_spec(
+    prior_weightfunction("one-sided", .025, wf_fixed(c(1, .5))),
+    include_init = FALSE
+  )
+  almost <- 1 + 1e-9
+
+  # an integer-valued double is accepted, a fractional value is not
+  expect_identical(selection_native_kernel_args(spec, S = 2, kernel_mode = 1)$kernel_mode, c(1L, 1L))
+  expect_identical(selection_native_kernel_args(spec, S = 2, kernel_mode = c(1, 0))$kernel_mode, c(1L, 0L))
+  for(argument in c("kernel_mode", "phack_kind")){
+    expect_error(
+      do.call(selection_native_kernel_args, stats::setNames(list(spec, 2L, almost), c("selection_spec", "S", argument))),
+      paste0("Invalid selection native argument '", argument, "'."),
+      fixed = TRUE
+    )
+  }
+  expect_error(
+    selection_native_kernel_args(spec, S = 2, kernel_mode = 1 - 1e-9),
+    "Invalid selection native argument 'kernel_mode'.",
+    fixed = TRUE
+  )
+
+  # the integer fields of a context
+  context <- spec
+  context$omega <- matrix(c(1, .5), nrow = 2, ncol = 2, byrow = TRUE)
+  context$alpha <- 0
+  context$phack_kind <- 0L
+  context$kernel_mode <- c(1L, 1L)
+  context$bias_indicator <- c(1L, 1L)
+  context$use_normal <- c(FALSE, FALSE)
+  context$obs_bin <- c(1L, 2L)
+  context$yi <- c(.1, .2)
+  context$sei <- c(.2, .2)
+  expect_no_error(selection_context_validate(context, n_samples = 2L))
+  for(field in c("phack_kind", "kernel_mode", "bias_indicator")){
+    bad <- context
+    bad[[field]] <- c(if(field == "phack_kind") 0 else 1, almost)
+    expect_error(
+      selection_context_validate(bad, n_samples = 2L),
+      paste0("Invalid selection context '", field, "'."),
+      fixed = TRUE
+    )
+  }
+  bad <- context
+  bad$obs_bin <- c(1, 2 + 1e-9)
+  expect_error(selection_context_validate(bad, n_samples = 2L), "Invalid selection context 'obs_bin'.", fixed = TRUE)
+  bad <- context
+  bad$n_bins <- 2 + 1e-9
+  expect_error(selection_context_validate(bad, n_samples = 2L), "Invalid selection context bin count.", fixed = TRUE)
+  good <- context
+  good$obs_bin <- c(1, 2)
+  good$n_bins <- 2
+  expect_identical(selection_context_validate(good, n_samples = 2L)$obs_bin, c(1L, 2L))
+
+  # the integers a specification declares
+  declared <- spec
+  declared$sign <- 1L
+  declared$phack_q <- 1L
+  declared$segments <- list(bounds = c(-Inf, 0, Inf), step_bin = c(2L, 1L), phack_region = c(0L, 0L))
+  declared$z_lower <- c(1.96, -Inf)
+  declared$z_upper <- c(Inf, 1.96)
+  expect_no_error(selection_native_static_args(declared))
+  expect_no_error(selection_native_kernel_args(declared, S = 1L))
+  fractional <- list(
+    kernel_mode        = almost,
+    branch_kernel_mode = almost,
+    sign               = almost
+  )
+  for(field in names(fractional)){
+    bad <- declared
+    bad[[field]] <- fractional[[field]]
+    expect_error(
+      selection_native_kernel_args(bad, S = 1L),
+      paste0("Invalid selection specification '", field, "'."),
+      fixed = TRUE
+    )
+  }
+  phacking <- selection_backend_spec(prior_phacking(form = "linear"), include_init = FALSE)
+  phacking$phack_q <- almost
+  expect_error(
+    selection_native_kernel_args(phacking, S = 1L),
+    "Invalid selection specification 'phack_q'.",
+    fixed = TRUE
+  )
+  for(field in c("step_bin", "phack_region")){
+    bad <- declared
+    bad$segments[[field]] <- bad$segments[[field]] + c(almost - 1, 0)
+    expect_error(
+      selection_native_static_args(bad),
+      paste0("Invalid selection specification 'segments$", field, "'."),
+      fixed = TRUE
+    )
+  }
+})
+
 test_that("mixed p-hacking geometry is reported as unsupported, not fixable by segments", {
 
   spec <- selection_backend_spec(

@@ -311,11 +311,11 @@ selection_native_static_args <- function(selection_spec){
     stop("Invalid selection specification '", name, "'.", call. = FALSE)
   }
   known <- x[!is.na(x)]
-  if(any(!is.finite(known)) || any(abs(known - round(known)) > sqrt(.Machine$double.eps))){
+  if(any(!is.finite(known)) || any(known != round(known))){
     stop("Invalid selection specification '", name, "'.", call. = FALSE)
   }
 
-  as.integer(round(x))
+  as.integer(x)
 }
 
 .selection_native_static_inputs <- function(selection_spec){
@@ -548,11 +548,10 @@ selection_row_arg <- function(x, n, name){
     }
   }else{
     limits <- range(x)
-    if(!is.finite(limits[1L]) || !is.finite(limits[2L]) ||
-       any(abs(x - round(x)) > sqrt(.Machine$double.eps))){
+    if(!is.finite(limits[1L]) || !is.finite(limits[2L]) || any(x != round(x))){
       stop("Invalid selection native argument '", name, "'.", call. = FALSE)
     }
-    x <- as.integer(round(x))
+    x <- as.integer(x)
   }
   limits <- range(x)
   if(limits[1L] < 0L || limits[2L] > upper){
@@ -582,12 +581,11 @@ selection_row_arg <- function(x, n, name){
   }
 
   limits <- range(x)
-  if(!is.finite(limits[1L]) || !is.finite(limits[2L]) ||
-     any(abs(x - round(x)) > sqrt(.Machine$double.eps))){
+  if(!is.finite(limits[1L]) || !is.finite(limits[2L]) || any(x != round(x))){
     stop("Invalid selection context '", field, "'.", call. = FALSE)
   }
 
-  return(as.integer(round(x)))
+  return(as.integer(x))
 }
 
 .selection_context_known_fields <- function(){
@@ -711,10 +709,10 @@ selection_row_arg <- function(x, n, name){
     if(!is.numeric(value) && !is.integer(value)){
       return()
     }
-    if(!is.finite(value) || abs(value - round(value)) > sqrt(.Machine$double.eps) || value < 1){
+    if(!is.finite(value) || value != round(value) || value < 1){
       stop("Invalid selection context bin count.", call. = FALSE)
     }
-    bins <<- c(bins, as.integer(round(value)))
+    bins <<- c(bins, as.integer(value))
   }
 
   add_bin(context[["n_bins"]])
@@ -785,14 +783,14 @@ selection_row_arg <- function(x, n, name){
     if(field == "obs_bin"){
       if((!is.numeric(value) && !is.integer(value)) ||
          any(!is.finite(value)) ||
-         any(abs(value - round(value)) > sqrt(.Machine$double.eps)) ||
+         any(value != round(value)) ||
          any(value < 1)){
         stop("Invalid selection context 'obs_bin'.", call. = FALSE)
       }
       if(!is.null(n_bins) && any(value > n_bins)){
         stop("Invalid selection context 'obs_bin'.", call. = FALSE)
       }
-      context[["obs_bin"]] <- as.integer(round(value))
+      context[["obs_bin"]] <- as.integer(value)
     }else if(field == "yi"){
       if((!is.numeric(value) && !is.integer(value)) ||
          any(!is.finite(value))){
@@ -849,11 +847,10 @@ selection_row_arg <- function(x, n, name){
     }
   }else{
     limits <- range(mode)
-    if(!is.finite(limits[1L]) || !is.finite(limits[2L]) ||
-       any(abs(mode - round(mode)) > sqrt(.Machine$double.eps))){
+    if(!is.finite(limits[1L]) || !is.finite(limits[2L]) || any(mode != round(mode))){
       stop("Invalid selection specification 'kernel_mode'.", call. = FALSE)
     }
-    mode <- as.integer(round(mode))
+    mode <- as.integer(mode)
   }
   limits <- range(mode)
   if(limits[1L] < 0L || limits[2L] > 3L){
