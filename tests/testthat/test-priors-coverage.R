@@ -2223,3 +2223,38 @@ test_that("generated priors are inserted into the model block, not a preceding d
   )
   expect_true(regexpr(.bt_backend_anchor_name, anchored$model_syntax, fixed = TRUE) > regexpr("model{", anchored$model_syntax, fixed = TRUE))
 })
+
+test_that("the model-block locator ignores JAGS comments (F322)", {
+
+  # a comment between 'model' and the brace, as the old first-brace insertion accepted
+  expect_identical(.JAGS_model_block_opening("model # note\n{ }"), nchar("model # note\n") + 1L)
+  expect_identical(.JAGS_model_block_opening("model # note {\n{ }"), nchar("model # note {\n") + 1L)
+  expect_identical(.JAGS_model_block_opening("model /* note */ { }"), nchar("model /* note */ ") + 1L)
+  expect_identical(.JAGS_model_block_opening("model /* a\n { b */\n{ }"), nchar("model /* a\n { b */\n") + 1L)
+
+  # a commented 'model {' is no model block
+  expect_identical(.JAGS_model_block_opening("# model {\nmodel { }"), nchar("# model {\nmodel ") + 1L)
+  expect_identical(.JAGS_model_block_opening("/* model { */ model { }"), nchar("/* model { */ model ") + 1L)
+  expect_identical(
+    .JAGS_model_block_opening("data{ y <- 1 } # model {\nmodel # note\n{ }"),
+    nchar("data{ y <- 1 } # model {\nmodel # note\n") + 1L
+  )
+  expect_error(
+    .JAGS_model_block_opening("# model {\ndata{ y <- 1 }"),
+    "The JAGS model syntax has no 'model' block with an opening brace.",
+    fixed = TRUE
+  )
+
+  # the generated syntax is inserted after the opening brace of the model block
+  syntax <- "# model { not here\nmodel # note\n{ z ~ dnorm(0, 1) }"
+  inserted <- nchar("# model { not here\nmodel # note\n{")
+  with_prior <- JAGS_add_priors(syntax, list(x = prior("normal", list(0, 1))))
+  expect_identical(substr(with_prior, 1L, inserted), substr(syntax, 1L, inserted))
+  expect_true(regexpr("x ~ dnorm", with_prior, fixed = TRUE) > inserted)
+  anchored <- .bt_add_backend_anchor(
+    model_syntax = syntax, data = list(), prior_list = list(), add_parameters = character(),
+    monitor = character()
+  )
+  expect_identical(substr(anchored$model_syntax, 1L, inserted), substr(syntax, 1L, inserted))
+  expect_true(regexpr(.bt_backend_anchor_name, anchored$model_syntax, fixed = TRUE) > inserted)
+})

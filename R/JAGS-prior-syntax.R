@@ -574,11 +574,24 @@ JAGS_add_priors           <- function(syntax, prior_list){
 }
 
 
+# The syntax with its JAGS comments ('#' to the end of the line and '/* */')
+# replaced by spaces, so that positions are those of the syntax.
+.JAGS_mask_comments <- function(syntax){
+
+  comments <- gregexpr("(?s)/\\*.*?\\*/|#[^\n]*", syntax, perl = TRUE)
+  regmatches(syntax, comments) <- lapply(regmatches(syntax, comments), function(comment){
+    strrep(" ", nchar(comment))
+  })
+
+  syntax
+}
+
 # The position of the opening brace of the model block: generated syntax is
-# inserted there, never into a data block that precedes the model block.
+# inserted there, never into a data block that precedes the model block. A
+# comment before or inside the block header is no part of the header.
 .JAGS_model_block_opening <- function(syntax){
 
-  opening <- regexpr("(^|[^A-Za-z0-9_.])model[[:space:]]*\\{", syntax, perl = TRUE)
+  opening <- regexpr("(^|[^A-Za-z0-9_.])model[[:space:]]*\\{", .JAGS_mask_comments(syntax), perl = TRUE)
   if(opening < 1L){
     stop("The JAGS model syntax has no 'model' block with an opening brace.", call. = FALSE)
   }
