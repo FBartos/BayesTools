@@ -1223,6 +1223,58 @@ test_that("formula prior densities of weighted target combinations use the combi
   )
 })
 
+test_that("formula prior densities of a scaled multi-level factor follow the analytic map", {
+
+  # x * f with a three-level treatment factor and a scaled slope: the original
+  # f level k is b_fk - b_xfk m / s and the original slopes are b / s, so every
+  # density is a normal law with a known SD.
+  data <- data.frame(
+    x = c(1, 3, 7, 2, 6, 11, 4, 5, 9),
+    f = factor(rep(c("A", "B", "C"), each = 3L), levels = c("A", "B", "C"))
+  )
+  prior_list <- list(
+    intercept = prior("normal", list(0, 1)),
+    x = prior("normal", list(0, 1)),
+    f = prior_factor("normal", list(0, 1), contrast = "treatment"),
+    "x:f" = prior_factor("normal", list(0, 1), contrast = "treatment")
+  )
+  scaled <- JAGS_formula(~ x * f, "mu", data, prior_list,
+                         formula_scale = list(x = TRUE))
+  source_names <- .formula_coefficient_source_names(scaled)
+  expect_identical(
+    source_names,
+    c("mu_intercept", "mu_x", "mu_f[1]", "mu_f[2]",
+      "mu_x__xXx__f[1]", "mu_x__xXx__f[2]")
+  )
+  fit <- .formula_coefficient_density_fit(scaled, source_names)
+  m <- mean(data$x)
+  s <- stats::sd(data$x)
+  sd_level <- sqrt(1 + (m / s)^2)
+  expected_sd <- c(
+    mu_intercept = sd_level, mu_x = 1 / s,
+    "mu_f[1]" = sd_level, "mu_f[2]" = sd_level,
+    "mu_x__xXx__f[1]" = 1 / s, "mu_x__xXx__f[2]" = 1 / s
+  )
+  for(target in names(expected_sd)){
+    ordinate <- prior_density_ordinate(
+      JAGS_formula_prior_density(fit, "mu", target = target), .3
+    )
+    expect_true(ordinate$exact, info = target)
+    expect_equal(ordinate$log_density,
+                 stats::dnorm(.3, sd = expected_sd[[target]], log = TRUE),
+                 tolerance = 1e-12, info = target)
+  }
+  # The sources of two levels are independent: the sum has twice the variance.
+  combined <- JAGS_formula_prior_density(
+    fit, "mu", weights = c("mu_f[1]" = 1, "mu_f[2]" = 1)
+  )
+  expect_equal(
+    prior_density_ordinate(combined, .3)$log_density,
+    stats::dnorm(.3, sd = sqrt(2) * sd_level, log = TRUE),
+    tolerance = 1e-12
+  )
+})
+
 test_that("linear targets carry the rendered label of their level combination", {
 
   data <- data.frame(

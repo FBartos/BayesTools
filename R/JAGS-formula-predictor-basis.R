@@ -12,8 +12,9 @@
 #' deviations, group coefficients, correlations, and SD allocations and
 #' inclusions), and
 #' external random-effect SD sources (`"random_sd_source"`). A row-source
-#' callback is reported as opaque for every queried coordinate because its R
-#' code may inspect arbitrary posterior parameters.
+#' callback is reported as opaque for every queried coordinate: its declared
+#' `inputs` are not used to narrow the dependencies, so a callback source is
+#' conservatively treated as depending on every coordinate.
 #'
 #' @param fit fitted object created by [JAGS_fit()].
 #' @param coordinates unique fitted coordinate names.

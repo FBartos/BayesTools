@@ -674,3 +674,82 @@ test_that("coordinates read by expression points are predictor dependencies", {
     dependency_frame(c("theta", "mu_x"), c("point_expression", "coefficient"))
   )
 })
+
+
+test_that("expression and callback dependencies are reported by their types", {
+
+  data <- data.frame(x = c(-1, 0, 2))
+  dependency_frame <- function(coordinate_name, dependency_type){
+    data.frame(
+      coordinate_name = coordinate_name,
+      formula_parameter = "mu",
+      dependency_type = dependency_type,
+      stringsAsFactors = FALSE
+    )
+  }
+
+  # A fitted coefficient and an external parameter read by a formula expression.
+  draws <- cbind(mu_intercept = c(.1, .2), mu_x = c(.5, -.5), theta = c(2, 3))
+  attr(draws, "prior_list") <- list(theta = prior("normal", list(0, 1)))
+  priors <- list(
+    intercept = prior("normal", list(0, 1)),
+    x = prior("normal", list(0, 1))
+  )
+  carrier <- JAGS_formula_draws(
+    draws, ~ 1 + x + expression(theta * mu_x), "mu", data, priors
+  )
+  fit <- .formula_predictor_basis_carrier_fit(carrier)
+  expect_equal(
+    JAGS_formula_coordinate_dependencies(fit, c("mu_intercept", "mu_x", "theta")),
+    dependency_frame(
+      c("mu_intercept", "mu_x", "mu_x", "theta"),
+      c("coefficient", "coefficient", "expression", "expression")
+    )
+  )
+  basis <- JAGS_formula_predictor_basis(fit, directions = c(mu_x = 1))
+  expect_identical(basis$status, "unsupported")
+  expect_match(basis$reason, "formula expression")
+
+  # A random SD callback reads declared inputs; its dependencies are reported
+  # as opaque for every queried coordinate.
+  df <- data.frame(study = factor(c("a", "a", "b")), scale = c(1, 2, 3))
+  tau_source <- parameter_source(
+    "tau",
+    shape = "row",
+    values = function(parameters, data, n_rows){
+      parameters$tau_total * data$scale[seq_len(n_rows)]
+    },
+    inputs = "tau_total"
+  )
+  result <- JAGS_formula(
+    formula = ~ 1 + diag(1 | study),
+    parameter = "mu",
+    data = df,
+    prior_list = list(intercept = prior("normal", list(0, 1))),
+    prior_random = prior_random(
+      study = random_block(sd_source = random_sd_source(tau_source))
+    )
+  )
+  samples <- matrix(
+    c(0.1, 0.5, -0.2, 0.8),
+    nrow = 2L, byrow = TRUE,
+    dimnames = list(NULL, c("mu_intercept", "tau_total"))
+  )
+  fit <- .formula_predictor_basis_fit(
+    result, samples,
+    extra_priors = list(tau_total = prior("gamma", list(shape = 2, rate = 1)))
+  )
+  expect_equal(
+    JAGS_formula_coordinate_dependencies(fit, c("mu_intercept", "tau_total")),
+    dependency_frame(
+      c("mu_intercept", "mu_intercept", "tau_total"),
+      c("coefficient", "opaque_random_sd_callback", "opaque_random_sd_callback")
+    )
+  )
+  basis <- JAGS_formula_predictor_basis(
+    fit, directions = c(mu_intercept = 1),
+    posterior_samples = samples[1L, , drop = FALSE]
+  )
+  expect_identical(basis$status, "unsupported")
+  expect_match(basis$reason, "opaque posterior-coordinate dependencies")
+})

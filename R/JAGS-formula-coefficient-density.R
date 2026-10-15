@@ -1035,38 +1035,38 @@ JAGS_formula_prior_density <- function(
         target[, name] <- target[, name] + contribution
       }
     }else{
-    for(source in colnames(transform$basis_matrix)[transform$basis_matrix[name, ] != 0]){
-      term <- .bt_formula_coefficient_term(source, name, transform$basis_matrix[name, source],
-        transform$multipliers, transform$state_constants, transform$source_transforms)
-      if(isTRUE(term$zero)) next
-      value <- read_state(source, "coefficient")
-      if(identical(transform$source_transforms[[source]], "log")){
-        if(any(value <= 0)) .bt_formula_transform_stop(
-          "Log-transformed fitted coefficient samples must be positive.",
-          parameter = transform$parameter, reason = "nonfinite_transform", state = source)
-        value <- log(value)
+      for(source in colnames(transform$basis_matrix)[transform$basis_matrix[name, ] != 0]){
+        term <- .bt_formula_coefficient_term(source, name, transform$basis_matrix[name, source],
+          transform$multipliers, transform$state_constants, transform$source_transforms)
+        if(isTRUE(term$zero)) next
+        value <- read_state(source, "coefficient")
+        if(identical(transform$source_transforms[[source]], "log")){
+          if(any(value <= 0)) .bt_formula_transform_stop(
+            "Log-transformed fitted coefficient samples must be positive.",
+            parameter = transform$parameter, reason = "nonfinite_transform", state = source)
+          value <- log(value)
+        }
+        if(isTRUE(term$cancel)){
+          contribution <- term$basis * value
+          if(any(value != 0 & contribution == 0)) .bt_formula_transform_stop(
+            "Original coefficient arithmetic is numerically unavailable.",
+            parameter = transform$parameter, source = source, target = name,
+            reason = "nonfinite_transform", observed = list(basis = term$basis, value = value,
+              contribution = contribution))
+        }else{
+          numerator <- multiplier(transform$multipliers[[source]])
+          denominator <- multiplier(transform$multipliers[[name]])
+          if(any(denominator == 0)) .bt_formula_transform_stop(
+            paste0("Original coefficient '", name, "' has a zero multiplier denominator."),
+            parameter = transform$parameter, target = name, reason = "zero_multiplier_denominator")
+          contribution <- .bt_formula_coefficient_ratio(term$basis, numerator, denominator,
+            source, name, value = value)
+        }
+        if(any(!is.finite(contribution))) .bt_formula_transform_stop(
+          "Original coefficient arithmetic is nonfinite.", parameter = transform$parameter,
+          target = name, reason = "nonfinite_transform")
+        target[, name] <- target[, name] + contribution
       }
-      if(isTRUE(term$cancel)){
-        contribution <- term$basis * value
-        if(any(value != 0 & contribution == 0)) .bt_formula_transform_stop(
-          "Original coefficient arithmetic is numerically unavailable.",
-          parameter = transform$parameter, source = source, target = name,
-          reason = "nonfinite_transform", observed = list(basis = term$basis, value = value,
-            contribution = contribution))
-      }else{
-        numerator <- multiplier(transform$multipliers[[source]])
-        denominator <- multiplier(transform$multipliers[[name]])
-        if(any(denominator == 0)) .bt_formula_transform_stop(
-          paste0("Original coefficient '", name, "' has a zero multiplier denominator."),
-          parameter = transform$parameter, target = name, reason = "zero_multiplier_denominator")
-        contribution <- .bt_formula_coefficient_ratio(term$basis, numerator, denominator,
-          source, name, value = value)
-      }
-      if(any(!is.finite(contribution))) .bt_formula_transform_stop(
-        "Original coefficient arithmetic is nonfinite.", parameter = transform$parameter,
-        target = name, reason = "nonfinite_transform")
-      target[, name] <- target[, name] + contribution
-    }
     }
     if(identical(transform$output_transforms[[name]], "exp")){
       target[, name] <- exp(target[, name])
