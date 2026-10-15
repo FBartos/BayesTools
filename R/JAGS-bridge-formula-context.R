@@ -270,18 +270,12 @@
       fitted_priors <- do.call(c, unname(
         .bt_JAGS_bridge_formula_prior_list_from_design(formula_design_list)
       ))
-      different <- overlap[!vapply(overlap, function(name){
-        identical(
-          .bt_JAGS_bridge_prior_semantics(prior_list[[name]]),
-          .bt_JAGS_bridge_prior_semantics(fitted_priors[[name]])
-        )
-      }, logical(1))]
+      different <- .bt_JAGS_bridge_different_priors(prior_list, fitted_priors)
       if(length(different) > 0L){
         .bt_stop_refit_required(
           "JAGS_bridgesampling() received formula priors in 'prior_list' that ",
           "differ from the fitted formula priors: ",
-          paste(utils::head(different, 8L), collapse = ", "),
-          if(length(different) > 8L) ", ..." else "",
+          .bt_JAGS_bridge_name_list(different),
           ". Formula priors are taken from the fitted formula design; remove ",
           "them from 'prior_list' or refit the model with the intended priors."
         )
@@ -308,25 +302,41 @@
   if(!is.list(stored)){
     return(invisible(TRUE))
   }
-  overlap <- intersect(names(prior_list), names(stored))
-  different <- overlap[!vapply(overlap, function(name){
-    identical(
-      .bt_JAGS_bridge_prior_semantics(prior_list[[name]]),
-      .bt_JAGS_bridge_prior_semantics(stored[[name]])
-    )
-  }, logical(1))]
+  different <- .bt_JAGS_bridge_different_priors(prior_list, stored)
   if(length(different) > 0L){
     .bt_stop_refit_required(
       "JAGS_bridgesampling() received priors in 'prior_list' that differ from ",
       "the fitted priors: ",
-      paste(utils::head(different, 8L), collapse = ", "),
-      if(length(different) > 8L) ", ..." else "",
+      .bt_JAGS_bridge_name_list(different),
       ". Remove them from 'prior_list' to use the fitted priors, or refit the ",
       "model with the intended priors."
     )
   }
 
   invisible(TRUE)
+}
+
+# The names shared by the supplied and the fitted priors whose semantics differ
+# (see .bt_JAGS_bridge_prior_semantics()): the one comparator of the formula
+# prior refusal and of the supplied non-formula prior check.
+.bt_JAGS_bridge_different_priors <- function(supplied, fitted){
+
+  overlap <- intersect(names(supplied), names(fitted))
+  overlap[!vapply(overlap, function(name){
+    identical(
+      .bt_JAGS_bridge_prior_semantics(supplied[[name]]),
+      .bt_JAGS_bridge_prior_semantics(fitted[[name]])
+    )
+  }, logical(1))]
+}
+
+# At most eight names of a refusal message, with an ellipsis for more.
+.bt_JAGS_bridge_name_list <- function(names){
+
+  paste0(
+    paste(utils::head(names, 8L), collapse = ", "),
+    if(length(names) > 8L) ", ..." else ""
+  )
 }
 
 # The part of a prior that defines its distribution: the class (prior type and
