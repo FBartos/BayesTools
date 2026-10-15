@@ -11277,6 +11277,19 @@ test_that("JAGS_formula refuses homogeneous random-effect SD blocks with a scale
     ~ 1 + diag(1 + x | id, hom = TRUE)
   )){
     expect_error(compile(formula), refusal, fixed = TRUE)
+    # F314 (2), F318 (1): a classed refusal whose remedy fits JAGS_formula()
+    condition <- tryCatch(compile(formula), error = identity)
+    expect_s3_class(condition, "BayesTools_formula_transform_unavailable")
+    expect_identical(condition$reason, "homogeneous_scaled_block")
+    expect_identical(condition$parameter, "mu")
+    expect_identical(condition$coordinates, "mu__xREx__id_sd")
+    expect_match(
+      conditionMessage(condition),
+      paste0("Use a heterogeneous random-effect SD structure (for example diag() or us()), ",
+             "or do not standardize the slope with 'formula_scale'."),
+      fixed = TRUE
+    )
+    expect_no_match(conditionMessage(condition), "fitted scale", fixed = TRUE)
   }
   # nothing is refused when x is not scaled, for a single column, for
   # heterogeneous blocks, and for an SD that comes from an external source
@@ -11340,6 +11353,15 @@ test_that("transform_scale_samples guards homogeneous random-effect SD scaling",
     "Cannot unscale homogeneous random-effect SD",
     fixed = TRUE
   )
+  condition <- tryCatch(
+    BayesTools:::.bt_transform_scale_posterior(
+      slope_posterior,
+      list(mu = hand_built_scale)
+    ),
+    error = identity
+  )
+  expect_s3_class(condition, "BayesTools_formula_transform_unavailable")
+  expect_identical(condition$reason, "homogeneous_scaled_block")
 })
 
 test_that("JAGS_evaluate_formula sums multiple monitored random-effect blocks", {

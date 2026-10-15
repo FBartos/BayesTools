@@ -88,7 +88,10 @@ stop with an ordinary error. A condition of class
 \code{error} and \code{condition}; the \code{reason} field names the
 cause, for example \code{"missing_fitted_design"},
 \code{"original_scale_not_representable"},
-\code{"original_scale_not_identified"}, or \code{"nonfinite_transform"})
+\code{"original_scale_not_identified"},
+\code{"homogeneous_scaled_block"} (hand-built metadata of a homogeneous-SD
+block with a scaled slope, which \code{JAGS_formula()} refuses), or
+\code{"nonfinite_transform"})
 reports a transformation that is structurally or numerically unavailable.
 A condition of class \code{BayesTools_refit_required} reports a fit whose
 stored formula declarations are missing or disagree.

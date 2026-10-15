@@ -846,7 +846,7 @@
   homogeneous <- !is.null(leaves$leaf_terms) &&
     identical(unique(unname(as.character(leaves$leaf_terms))), "sd")
   if(.random_sd_homogeneous_scaled_block(leaves, scaled_vars)){
-    .random_sd_homogeneous_scaled_stop(available_leaf_names)
+    .random_sd_homogeneous_scaled_stop(available_leaf_names, parameter = prefix)
   }
   if(isTRUE(homogeneous) && !is.null(leaves$column_names)){
     column_terms <- vapply(
@@ -992,14 +992,25 @@
   ))
 }
 
-.random_sd_homogeneous_scaled_stop <- function(leaf_names){
+# The refusal of JAGS_formula() and of the unscaling of hand-built metadata:
+# BayesTools_formula_transform_unavailable, reason "homogeneous_scaled_block",
+# coordinates the shared SD leaves. The remedy holds in both: a structure with
+# one SD per column, or a slope that is not standardized.
+.random_sd_homogeneous_scaled_stop <- function(leaf_names, parameter = NULL){
 
-  stop(
-    "Cannot unscale homogeneous random-effect SD '",
-    paste(unique(leaf_names), collapse = "', '"),
-    "' because its block contains scaled random-slope columns. ",
-    "Use a heterogeneous random-effect SD structure or leave samples on the fitted scale.",
-    call. = FALSE
+  leaf_names <- unique(leaf_names)
+  .bt_formula_transform_stop(
+    paste0(
+      "Cannot unscale homogeneous random-effect SD '",
+      paste(leaf_names, collapse = "', '"),
+      "' because its block contains scaled random-slope columns, which one ",
+      "shared SD cannot represent. Use a heterogeneous random-effect SD ",
+      "structure (for example diag() or us()), or do not standardize the slope ",
+      "with 'formula_scale'."
+    ),
+    parameter   = parameter,
+    reason      = "homogeneous_scaled_block",
+    coordinates = leaf_names
   )
 }
 

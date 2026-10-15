@@ -377,7 +377,10 @@ SDs and `m / s = 2.5`), which such blocks do not report. A homogeneous-SD block
 (`id()`, `covariance = "id"`, `diag(hom = TRUE)`) with more than one column and
 a scaled-predictor column has no original-scale SDs (one shared SD, different
 column SDs) and is refused by `JAGS_formula()`, whether its shared SD is
-sampled or fixed by a point prior; single-column homogeneous blocks are
+sampled or fixed by a point prior, with `BayesTools_formula_transform_unavailable`
+(reason `homogeneous_scaled_block`; the remedy is a heterogeneous structure or
+an unscaled slope, so it holds inside `JAGS_formula()` as well as for the
+unscaling of hand-built metadata); single-column homogeneous blocks are
 unaffected.
 
 Unscaled correlations are `cov / (sd_i * sd_j)` of the transformed

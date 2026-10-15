@@ -183,6 +183,9 @@
 #'     has no contrasts to code (the field \code{predictor} names it). The index
 #'     of a \code{cs()}, \code{hcs()}, \code{ar1()}, or \code{har()} block is coded
 #'     by one indicator per level and may have a single level.
+#'   \item \code{"homogeneous_scaled_block"}: a homogeneous-SD random block with
+#'     a standardized slope (see Details; the fields \code{parameter} and
+#'     \code{coordinates} name the formula parameter and the shared SD).
 #' }
 #' Other invalid inputs stop with ordinary errors.
 #'
@@ -787,7 +790,9 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
     for(random_term in compiled_random_effects){
       if(length(.bt_parameter_coordinates_random_sd_names(random_term)) > 0L &&
          .random_sd_homogeneous_scaled_block(random_term$sd_leaves, names(scale_info))){
-        .random_sd_homogeneous_scaled_stop(random_term$sd_leaves$leaf_names)
+        .random_sd_homogeneous_scaled_stop(
+          random_term$sd_leaves$leaf_names, parameter = parameter
+        )
       }
     }
     # add parameter prefix to scale_info names for consistency
