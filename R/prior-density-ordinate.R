@@ -2015,6 +2015,7 @@ prior_density_has_provenance <- function(x){
     "beta"    = parameters$alpha,
     "gamma"   = parameters$shape,
     "normal"  = 1,
+    "t"       = 1,
     "exp"     = 1,
     "uniform" = 1,
     NA_real_
@@ -2130,7 +2131,7 @@ prior_density_has_provenance <- function(x){
     return("zero")
   }
   exponent <- if(b > 0){
-    if(identical(family, "normal")) 1 - b else
+    if(family %in% c("normal", "t")) 1 - b else
       if(identical(family, "gamma")) parameters$shape - b else
         if(identical(family, "exp")) 1 - b else
           if(identical(family, "beta")) parameters$alpha - b else

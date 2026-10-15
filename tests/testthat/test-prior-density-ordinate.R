@@ -873,9 +873,24 @@ test_that("composed named-transform boundary limits use source provenance", {
   dependent_adaptive$arguments$output_transformation_arguments <-
     list(a = 0, b = 1)
   attr(dependent_boundary, "adaptive_evaluation") <- dependent_adaptive
+  # a positive finite density at 0 is the exponent-one case: regular
   dependent_out <- prior_density_ordinate(dependent_boundary, 0)
-  expect_identical(dependent_out$behavior, "unknown")
-  expect_false(dependent_out$exact)
+  expect_identical(dependent_out$behavior, "regular")
+  expect_true(dependent_out$exact)
+  expect_equal(dependent_out$log_density, log(2) + stats::dt(0, 3, log = TRUE), tolerance = 1e-12)
+
+  # a family without a structural boundary exponent stays unknown
+  moment_boundary <- BayesTools:::.prior_linear_combination_density(
+    prior_list = list(x = prior("moment", list(location = 0, tau = 1, order = 2),
+                                truncation = list(lower = 0, upper = Inf))),
+    weights = c(x = 1),
+    n_grid = 128,
+    output_transformation = "exp_lin",
+    output_transformation_arguments = list(a = 0, b = 1)
+  )
+  moment_out <- prior_density_ordinate(moment_boundary, 0)
+  expect_identical(moment_out$behavior, "unknown")
+  expect_false(moment_out$exact)
 })
 
 test_that("unsupported transformations, convolutions, and products stay unknown", {
@@ -2660,6 +2675,39 @@ test_that("R116 N89 point-only densities are exact off their stored atom", {
   empty$density <- list(x = numeric(), y = numeric(), mass = 0)
   expect_true(prior_density_has_provenance(empty))
   expect_false(prior_density_has_provenance(grid))
+})
+
+test_that("the t family has the exp_lin zero limits of the other exponent-one families", {
+
+  # A positive finite density at the bound 0 behaves like C x^0, so Z = e^a X^b
+  # is infinite for b > 1, zero for b < 1, and f_X(0) e^-a at b = 1, as for
+  # the half-normal. A half-Cauchy is a t with one degree of freedom.
+  at_zero <- function(source, a, b){
+    density <- .prior_linear_combination_density(list(x = source), c(x = 1), n_grid = 128,
+      output_transformation = "exp_lin", output_transformation_arguments = list(a = a, b = b))
+    prior_density_ordinate(density, 0)
+  }
+  sources <- list(
+    list(prior = prior("cauchy", list(0, 1), list(0, Inf)), scale = 1, df = 1, upper = Inf),
+    list(prior = prior("t", list(0, 1, 3), list(0, Inf)), scale = 1, df = 3, upper = Inf),
+    list(prior = prior("t", list(0, 2, 3), list(0, 5)), scale = 2, df = 3, upper = 5)
+  )
+  for(source in sources){
+    variance <- at_zero(source$prior, 0, 2)
+    expect_identical(variance$behavior, "infinite")
+    expect_true(variance$exact)
+    root <- at_zero(source$prior, 0, .5)
+    expect_identical(root$behavior, "zero")
+    expect_true(root$exact)
+    mass <- 2 * (stats::pt(source$upper / source$scale, source$df) - .5)
+    reference <- log(2) + stats::dt(0, source$df, log = TRUE) - log(source$scale) - log(mass) - log(2)
+    linear <- at_zero(source$prior, log(2), 1)
+    expect_identical(linear$behavior, "regular")
+    expect_true(linear$exact)
+    expect_equal(linear$log_density, reference, tolerance = 1e-12)
+  }
+  normal <- prior("normal", list(0, 1), list(0, Inf))
+  expect_identical(at_zero(normal, 0, 2)$behavior, "infinite")
 })
 
 test_that("a route point mass that is not a stored atom gives the continuous result in the stable schema", {
