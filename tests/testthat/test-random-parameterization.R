@@ -1150,6 +1150,31 @@ test_that("random-effect specifications name allocations, contrasts and SDs cons
     prior("normal", list(0, 1), truncation = list(lower = -1L, upper = 1L)),
     lower = -1, upper = 1, label = "AR1 raw correlation prior"
   ))
+
+  # A prior without a truncation list (built by hand or deserialized) is
+  # unbounded: it is truncated to the valid range, not an error.
+  bare <- prior("normal", list(0, 1))
+  bare$truncation <- NULL
+  expect_warning(
+    bounded <- BayesTools:::.bt_random_effect_bound_scalar_prior(
+      bare, lower = -1, upper = 1, label = "AR1 raw correlation prior"
+    ),
+    "AR1 raw correlation prior was truncated to the valid correlation range.",
+    fixed = TRUE
+  )
+  expect_identical(bounded$truncation, list(lower = -1, upper = 1))
+  expect_no_warning(only_lower <- BayesTools:::.bt_random_effect_bound_scalar_prior(
+    bare, lower = -Inf, upper = Inf, label = "AR1 raw correlation prior"
+  ))
+  expect_null(only_lower$truncation)
+  half <- prior("normal", list(0, 1))
+  half$truncation <- list(lower = 0)
+  expect_identical(
+    BayesTools:::.bt_random_effect_bound_scalar_prior(
+      half, lower = -1, upper = 1, label = "AR1 raw correlation prior", warn = FALSE
+    )$truncation,
+    list(lower = 0, upper = 1)
+  )
 })
 
 test_that("an expression point cannot exclude a zero atom", {

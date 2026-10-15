@@ -980,18 +980,26 @@
     return(x)
   }
 
-  new_lower <- max(x$truncation[["lower"]], lower)
-  new_upper <- min(x$truncation[["upper"]], upper)
+  # A prior without a truncation list (built by hand or deserialized) or
+  # without a bound is unbounded on that side.
+  current_lower <- x$truncation[["lower"]]
+  current_upper <- x$truncation[["upper"]]
+  if(is.null(current_lower)) current_lower <- -Inf
+  if(is.null(current_upper)) current_upper <- Inf
+  new_lower <- max(current_lower, lower)
+  new_upper <- min(current_upper, upper)
   if(new_lower >= new_upper){
     stop(label, " has no support inside (", lower, ", ", upper, ").", call. = FALSE)
   }
   # Compared by value: an integer bound equal to the double one is no change.
-  truncated <- new_lower != x$truncation[["lower"]] ||
-    new_upper != x$truncation[["upper"]]
+  truncated <- new_lower != current_lower || new_upper != current_upper
   if(isTRUE(warn) && truncated){
     warning(label, " was truncated to the valid correlation range.", immediate. = TRUE, call. = FALSE)
   }
   if(truncated){
+    if(is.null(x$truncation)){
+      x$truncation <- list()
+    }
     x$truncation[["lower"]] <- new_lower
     x$truncation[["upper"]] <- new_upper
   }
