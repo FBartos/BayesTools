@@ -401,12 +401,15 @@
       # treated as unscaled, giving a result of mixed scales.
       omitted <- setdiff(names(fitted_scale[[parameter]]), names(formula_scale[[parameter]]))
       if(length(omitted) > 0L){
-        stop(
-          "The 'formula_scale' entry for parameter '", parameter, "' omits the standardized predictor",
-          if(length(omitted) > 1L) "s", " ", paste0("'", omitted, "'", collapse = ", "),
-          " of the fitted model. Supply the mean and SD of every standardized predictor, ",
-          "or leave 'formula_scale' unspecified to use the fitted values.",
-          call. = FALSE
+        .bt_formula_transform_stop(
+          paste0(
+            "The 'formula_scale' entry for parameter '", parameter, "' omits the standardized predictor",
+            if(length(omitted) > 1L) "s", " ", paste0("'", omitted, "'", collapse = ", "),
+            " of the fitted model. Supply the mean and SD of every standardized predictor, ",
+            "or leave 'formula_scale' unspecified to use the fitted values."
+          ),
+          parameter = parameter, reason = "incomplete_formula_scale",
+          predictors = omitted
         )
       }
       fitted_attributes <- attributes(fitted_scale[[parameter]])

@@ -2344,6 +2344,12 @@ test_that("a formula_scale override must name every standardized predictor of th
     "or leave 'formula_scale' unspecified to use the fitted values."
   )
   expect_error(transform_scale_samples(fit, formula_scale = list(mu = partial)), message, fixed = TRUE)
+  # F318 (2): a classed refusal naming the parameter and the omitted predictors
+  condition <- tryCatch(transform_scale_samples(fit, formula_scale = list(mu = partial)), error = identity)
+  expect_s3_class(condition, "BayesTools_formula_transform_unavailable")
+  expect_identical(condition$reason, "incomplete_formula_scale")
+  expect_identical(condition$parameter, "mu")
+  expect_identical(condition$predictors, "mu_x2")
   expect_error(transform_prior_samples(fit, n_samples = 10, seed = 1, formula_scale = list(mu = partial)),
     message, fixed = TRUE)
   none <- list()

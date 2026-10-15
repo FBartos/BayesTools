@@ -12333,6 +12333,16 @@ test_that("random-block contrast specifications validate their design scope", {
       "random_block(contrasts = c(f = \"treatment\"))",
       fixed = TRUE
     )
+    # F318 (2): a classed refusal naming the factor
+    for(contrasts_attribute in list(stats::contr.sum(3), "contr.sum")){
+      condition <- tryCatch(
+        compile_with_attribute(contrasts_attribute, formula, gamma_block),
+        error = identity
+      )
+      expect_s3_class(condition, "BayesTools_formula_transform_unavailable")
+      expect_identical(condition$reason, "unsupported_random_factor_contrast")
+      expect_identical(condition$predictor, "f")
+    }
     # the message lists the accepted aliases, which compile
     expect_error(
       compile_with_attribute(stats::contr.sum(3), formula, gamma_block),

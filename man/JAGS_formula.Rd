@@ -212,6 +212,15 @@ Refusals that callers may need to tell apart are errors of class
 has no contrasts to code (the field \code{predictor} names it). The index
 of a \code{cs()}, \code{hcs()}, \code{ar1()}, or \code{har()} block is coded
 by one indicator per level and may have a single level.
+\item \code{"logical_factor_interaction"}: a logical predictor in an
+interaction with a factor that \code{model.matrix()} would code by
+indicators, in a fixed formula or a random-effect term (see the
+\code{data} argument; the fields \code{predictors} and \code{terms} name
+them).
+\item \code{"unsupported_random_factor_contrast"}: a factor used only in a
+random-effect block that carries a contrasts matrix or an unsupported
+contrast name (the field \code{predictor} names it; set the coding with
+\code{random_block(contrasts = )}).
 \item \code{"homogeneous_scaled_block"}: a homogeneous-SD random block with
 a standardized slope (see Details; the fields \code{parameter} and
 \code{coordinates} name the formula parameter and the shared SD).

@@ -286,17 +286,19 @@
   predictors <- unique(rownames(indicator_coded)[position[, "row"]])
   terms <- unique(colnames(indicator_coded)[position[, "col"]])
   plural <- length(predictors) > 1L
-  stop(
-    "The logical predictor", if(plural) "s " else " ",
-    paste0("'", predictors, "'", collapse = ", "),
-    if(plural) " are" else " is",
-    " unavailable in the interaction term", if(length(terms) > 1L) "s " else " ",
-    paste0("'", terms, "'", collapse = ", "),
-    ", where model.matrix() would code ", if(plural) "them" else "it",
-    " as a two-level factor. Convert ", if(plural) "them" else "it",
-    " to ", if(plural) "factors" else "a factor", ", or to numeric 0/1, in the data, ",
-    "or standardize ", if(plural) "them" else "it", " with 'formula_scale'.",
-    call. = FALSE
+  .bt_formula_transform_stop(
+    paste0(
+      "The logical predictor", if(plural) "s " else " ",
+      paste0("'", predictors, "'", collapse = ", "),
+      if(plural) " are" else " is",
+      " unavailable in the interaction term", if(length(terms) > 1L) "s " else " ",
+      paste0("'", terms, "'", collapse = ", "),
+      ", where model.matrix() would code ", if(plural) "them" else "it",
+      " as a two-level factor. Convert ", if(plural) "them" else "it",
+      " to ", if(plural) "factors" else "a factor", ", or to numeric 0/1, in the data, ",
+      "or standardize ", if(plural) "them" else "it", " with 'formula_scale'."
+    ),
+    reason = "logical_factor_interaction", predictors = predictors, terms = terms
   )
 }
 

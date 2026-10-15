@@ -209,11 +209,18 @@ Every factor prior carries complete factor metadata (levels, level names,
 contrasts, design, and cell names): formula terms and random-effect SD factor
 priors from their design, ordinary factor priors from
 `prior_factor_levels()`. Levels and coordinate names are never inferred from
-a coefficient count; fitting stops on incomplete factor metadata. A factor with a single level
-in the data has no contrasts to code and stops `JAGS_formula()` with
-`BayesTools_formula_transform_unavailable`, reason `single_level_factor`, before
-base R's contrasts error (structured `cs`/`hcs`/`ar1`/`har` indexes may have one
-level). Formula
+a coefficient count; fitting stops on incomplete factor metadata. Refusals of
+`JAGS_formula()` inputs that callers may need to tell apart are
+`BayesTools_formula_transform_unavailable` errors with a `reason`: a factor with
+a single level in the data, which has no contrasts to code
+(`single_level_factor`, raised before base R's contrasts error; structured
+`cs`/`hcs`/`ar1`/`har` indexes may have one level), a logical predictor that
+`model.matrix()` would code by indicators in a factor interaction, fixed or
+random (`logical_factor_interaction`), a random-only factor with a contrasts
+matrix or an unsupported contrast name (`unsupported_random_factor_contrast`),
+and a homogeneous scaled block (`homogeneous_scaled_block`, below).
+`transform_scale_samples()` reports a `formula_scale` entry that omits a
+standardized predictor of the fit as `incomplete_formula_scale`. Formula
 evaluation and prediction (`JAGS_evaluate_formula()`,
 `JAGS_predict_formula()`) go only through the stored design: draws without a
 fit get it from `JAGS_formula_draws()`, which builds it as `JAGS_fit()` does;

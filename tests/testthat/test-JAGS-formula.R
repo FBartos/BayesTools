@@ -165,6 +165,15 @@ test_that("JAGS_formula refuses a logical predictor that a factor interaction co
     "logical predictor 'flag' is unavailable",
     fixed = TRUE
   )
+  # F318 (2): a classed refusal naming the predictors and the terms
+  condition <- tryCatch(
+    JAGS_formula(~ flag:g + flag2:h, "mu", data, priors_for(~ flag:g + flag2:h)),
+    error = identity
+  )
+  expect_s3_class(condition, "BayesTools_formula_transform_unavailable")
+  expect_identical(condition$reason, "logical_factor_interaction")
+  expect_identical(condition$predictors, c("flag", "flag2"))
+  expect_identical(condition$terms, c("flag:g", "flag2:h"))
 
   # main effects, hierarchical interactions and numeric interactions keep the
   # contrast coding of the logical (one 'flagTRUE' column)

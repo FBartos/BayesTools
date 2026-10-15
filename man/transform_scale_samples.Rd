@@ -82,12 +82,14 @@ random-effect SD metadata) is transformed by the same pairing of names.
 
 Invalid arguments, including a \code{formula_scale} entry for a formula
 parameter the model does not have (also for a model without formula
-parameters), a standardized predictor that
-is missing from the posterior, or an incomplete \code{formula_scale} entry,
-stop with an ordinary error. A condition of class
-\code{BayesTools_formula_transform_unavailable} (parents
+parameters) or a standardized predictor that
+is missing from the posterior, stop with an ordinary error. A condition of
+class \code{BayesTools_formula_transform_unavailable} (parents
 \code{error} and \code{condition}; the \code{reason} field names the
-cause, for example \code{"missing_fitted_design"},
+cause, for example \code{"incomplete_formula_scale"} (a
+\code{formula_scale} entry that omits a predictor standardized in the
+fitted model; the fields \code{parameter} and \code{predictors} name them),
+\code{"missing_fitted_design"},
 \code{"original_scale_not_representable"},
 \code{"original_scale_not_identified"},
 \code{"homogeneous_scaled_block"} (hand-built metadata of a homogeneous-SD

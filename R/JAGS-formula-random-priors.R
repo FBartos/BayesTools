@@ -185,16 +185,18 @@
   }else{
     "unsupported contrasts"
   }
-  stop(
-    "Random-effect factor '", factor_name, "' uses ", found,
-    ", which random effects do not support. Remove the 'contrasts' attribute of '",
-    factor_name, "' or choose a supported coding with random_block(contrasts = c(",
-    factor_name, " = \"treatment\")); ",
-    "the supported codings are \"treatment\" (also \"dummy\"), \"independent\", ",
-    "\"orthonormal\", \"meandif\", \"cumulative\" and \"cumulative_levels\", ",
-    "each also with the 'contr.' prefix; a factor already carrying the ",
-    "'contr.mixed' coding is kept as it is.",
-    call. = FALSE
+  .bt_formula_transform_stop(
+    paste0(
+      "Random-effect factor '", factor_name, "' uses ", found,
+      ", which random effects do not support. Remove the 'contrasts' attribute of '",
+      factor_name, "' or choose a supported coding with random_block(contrasts = c(",
+      factor_name, " = \"treatment\")); ",
+      "the supported codings are \"treatment\" (also \"dummy\"), \"independent\", ",
+      "\"orthonormal\", \"meandif\", \"cumulative\" and \"cumulative_levels\", ",
+      "each also with the 'contr.' prefix; a factor already carrying the ",
+      "'contr.mixed' coding is kept as it is."
+    ),
+    reason = "unsupported_random_factor_contrast", predictor = factor_name
   )
 }
 
