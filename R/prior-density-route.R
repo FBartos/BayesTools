@@ -236,7 +236,7 @@
     return(NULL)
   }
 
-  offset <- 0
+  locations <- numeric()
   random_group <- NULL
   for(group in groups){
     point_location <- .prior_density_ordinate_point_group_location(
@@ -247,7 +247,7 @@
       if(is.na(point_location)){
         return(NULL)
       }
-      offset <- offset + point_location
+      locations <- c(locations, point_location)
       next
     }
     if(length(group$weights) != 1L || !is.null(random_group) ||
@@ -257,7 +257,9 @@
     }
     random_group <- group
   }
-  list(offset = offset, group = random_group)
+  # the point locations are added in one sum() (extended precision where R has
+  # it): the sum of 1e16, 1 and -1e16 does not depend on their order
+  list(offset = sum(locations), group = random_group)
 }
 
 # Whether a mixture or spike-and-slab prior has a vector component (e.g. the

@@ -3144,6 +3144,60 @@ test_that("allocation products of a point scale and a Beta share match the analy
                c(.5, 1.5), tolerance = 1e-14)
 })
 
+test_that("deterministic point locations are added once, and lost declarations are refused", {
+
+  # 1e16 + 1 - 1e16 is 1 in one extended-precision sum and 0 or 1 pairwise
+  # (by the order of the terms)
+  skip_if(sum(c(1e16, 1, -1e16)) != 1, "sum() has no extended precision on this platform")
+  points <- list(a = prior("point", list(1e16)), b = prior("point", list(1)), c = prior("point", list(-1e16)))
+  orders <- list(c("a", "b", "c"), c("a", "c", "b"), c("b", "a", "c"), c("b", "c", "a"), c("c", "a", "b"), c("c", "b", "a"))
+  for(order in orders){
+    weights <- stats::setNames(rep(1, 3L), order)
+    expect_identical(.prior_linear_combination_density(points[order], weights, n_grid = 128)$points$x, 1)
+    transforms <- stats::setNames(rep(NA_character_, 3L), order)
+    route <- .prior_density_route_linear(points[order], weights, transforms, 128)
+    expect_identical(route$type, "atom")
+    expect_identical(route$locations, 1)
+    with_normal <- c(points[order], list(z = prior("normal", list(0, 1))))
+    scalar <- .prior_density_route_scalar_parts(with_normal, c(weights, z = 1), c(transforms, z = NA_character_))
+    expect_identical(scalar$offset, 1)
+  }
+
+  # a finite nonzero weight and location whose product leaves the double range
+  # is no atom at zero
+  lost <- list(a = prior("point", list(1e-200)))
+  expect_error(.prior_linear_combination_density(lost, c(a = 1e-200), n_grid = 128),
+               "Numerical scale folding of finite nonzero declarations lost representable range",
+               class = "BayesTools_numerical_unavailable")
+  route <- .prior_density_route_linear(lost, c(a = 1e-200), c(a = NA_character_), 128)
+  expect_identical(route$type, "unknown")
+  expect_identical(.prior_linear_combination_density(lost, c(a = 1e100), n_grid = 128)$points$x, 1e-100)
+
+  # a spike-and-slab prior with inclusion 0 never evaluates its slab, which
+  # may be unevaluable (normal(1, 1e-20) has a collapsed numerical range)
+  slab <- prior("normal", list(1, 1e-20))
+  absent <- .prior_linear_combination_density(
+    list(a = prior_spike_and_slab(slab, prior_inclusion = prior("spike", list(0)))), c(a = 1), n_grid = 128)
+  expect_null(absent$density)
+  expect_identical(absent$points$x, 0)
+  expect_identical(prior_density_ordinate(absent, 0)$point_mass, 1)
+  expect_error(.prior_linear_combination_density(
+    list(a = prior_spike_and_slab(slab, prior_inclusion = prior("spike", list(1)))), c(a = 1), n_grid = 128),
+    "numerical range collapses to one representable value", fixed = TRUE)
+
+  # a numeric 'multiply_by' scale must be one finite value
+  for(value in list(Inf, -Inf, NA_real_, NaN)){
+    scaled <- prior("normal", list(0, 1))
+    attr(scaled, "multiply_by") <- value
+    expect_error(.prior_linear_combination_density(list(a = scaled), c(a = 1), n_grid = 128),
+                 "Numeric 'multiply_by' values must be finite for deterministic prior densities.", fixed = TRUE)
+  }
+  scaled <- prior("normal", list(0, 1))
+  attr(scaled, "multiply_by") <- 2
+  doubled <- .prior_linear_combination_density(list(a = scaled), c(a = 1), n_grid = 128)
+  expect_equal(prior_density_ordinate(doubled, 1)$log_density, stats::dnorm(1, 0, 2, log = TRUE), tolerance = 1e-10)
+})
+
 test_that("the Cauchy merge does not overwrite a source named like the merged term", {
 
   # C(0, 1) + C(0, 2) + N(5, 1) with the normal source named ".cauchy_sum": the

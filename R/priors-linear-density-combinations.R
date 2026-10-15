@@ -338,6 +338,10 @@
   }
 
   if(is.prior.spike_and_slab(prior)){
+    # a slab of probability zero is never evaluated
+    if(min(max(mean(.get_spike_and_slab_inclusion(prior)), 0), 1) == 0){
+      return(c(0, 0))
+    }
     variable_prior <- .get_spike_and_slab_variable(prior)
     variable_group <- group
     variable_group$prior <- variable_prior
@@ -346,7 +350,9 @@
   }
 
   if(is.prior.mixture(prior)){
-    ranges <- do.call(rbind, lapply(prior, function(component){
+    probabilities <- .prior_density_ordinate_mixture_weights(prior)
+    components <- if(is.null(probabilities)) prior else prior[probabilities > 0]
+    ranges <- do.call(rbind, lapply(components, function(component){
       component_group <- group
       component_group$prior <- component
       .prior_linear_group_range(component_group, tail_prob, source_transforms)
@@ -385,7 +391,9 @@
       }
       location <- log(location)
     }
-    return(.prior_linear_density_point(weight * location))
+    # a finite nonzero weight and location whose product leaves the double
+    # range (1e-200 * 1e-200) is not an atom at zero
+    return(.prior_linear_density_point(.prior_linear_fold_scale(weight, location)))
   }
 
   if(is.prior.discrete(prior)){
@@ -519,6 +527,10 @@
     inclusion_prior <- .get_spike_and_slab_inclusion(prior)
     inclusion <- mean(inclusion_prior)
     inclusion <- min(max(inclusion, 0), 1)
+    if(inclusion == 0){
+      # a slab of probability zero is never evaluated (it may be unevaluable)
+      return(.prior_linear_density_point(0))
+    }
 
     variable_group <- group
     variable_group$prior <- variable_prior
@@ -537,12 +549,14 @@
   if(is.prior.mixture(prior)){
     prior_weights <- attr(prior, "prior_weights")
     prior_weights <- prior_weights / sum(prior_weights)
-    dists <- lapply(prior, function(component){
+    # components of probability zero are not evaluated
+    positive <- prior_weights > 0
+    dists <- lapply(prior[positive], function(component){
       component_group <- group
       component_group$prior <- component
       .prior_linear_group_distribution(component_group, dx, tail_prob, source_transforms, n_grid)
     })
-    return(.prior_linear_density_mix(dists, prior_weights, dx = dx, n_grid = n_grid))
+    return(.prior_linear_density_mix(dists, prior_weights[positive], dx = dx, n_grid = n_grid))
   }
 
   if(is.prior.vector(prior) && !is.prior.treatment(prior) && !is.prior.independent(prior)){
@@ -1022,6 +1036,9 @@
       if(length(multiply_by) != 1L){
         stop("Numeric 'multiply_by' values must be scalar for deterministic prior densities.", call. = FALSE)
       }
+      if(!is.finite(multiply_by)){
+        stop("Numeric 'multiply_by' values must be finite for deterministic prior densities.", call. = FALSE)
+      }
       additive_weights[present] <- .prior_linear_fold_scale(additive_weights[present], multiply_by)
       next
     }
@@ -1157,6 +1174,7 @@
 
   dist <- .prior_linear_density_point(0)
   group_dists <- list()
+  point_locations <- numeric()
   for(group in groups){
     group_dist <- .prior_linear_group_distribution(
       group             = group,
@@ -1166,10 +1184,25 @@
       n_grid            = n_grid
     )
     group_dists[[length(group_dists) + 1L]] <- group_dist
+    if(is.null(group_dist$density) && nrow(group_dist$points) == 1L &&
+       identical(group_dist$points$p, 1)){
+      point_locations <- c(point_locations, group_dist$points$x)
+      next
+    }
     dist <- .prior_linear_density_convolve(
       dist,
       .prior_linear_density_on_spacing(group_dist, dx, n_grid),
       dx
+    )
+  }
+  if(length(point_locations) > 0L){
+    # The deterministic locations are added in one sum() (extended precision
+    # where R has it), so that an atom such as 1e16 + 1 - 1e16 does not depend
+    # on the order of the terms. Locations that differ by more than the
+    # double-precision range of their sum (1e16 + 1 in two doubles) keep the
+    # rounding of that sum: a documented limit, not repaired.
+    dist <- .prior_linear_density_convolve(
+      dist, .prior_linear_density_point(sum(point_locations)), dx
     )
   }
 

@@ -1258,7 +1258,16 @@ prior_density_has_provenance <- function(x){
   if(any(use_log)){
     transformed[use_log] <- log(location)
   }
-  sum(group$weights * transformed)
+  contributions <- group$weights * transformed
+  # a finite nonzero weight and location whose product leaves the double range
+  # (1e-200 * 1e-200) is not an atom at zero: an unsupported term
+  lost <- is.finite(group$weights) & group$weights != 0 &
+    is.finite(transformed) & transformed != 0 &
+    (contributions == 0 | !is.finite(contributions))
+  if(any(lost)){
+    return(NA_real_)
+  }
+  sum(contributions)
 }
 
 .prior_density_ordinate_stable_norm <- function(x){
