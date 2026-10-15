@@ -489,8 +489,11 @@ names.
   derived from the same measure as the density; where such a chain has no
   derivable atoms (an external SD source without a BayesTools prior, a
   composite SD outside its allocation component), the hull is declared inexact
-  instead of an exact atomless interval) and `definedness` when the map is
-  built;
+  instead of an exact atomless interval; the original-scale correlation of a
+  scaled block whose chain has gates or point-mass SD components has atoms at
+  -1 and 1 that the catalog does not place, so its `[-1, 1]` is inexact too, while
+  a fitted-scale correlation, undefined where an SD is zero, keeps an exact
+  support) and `definedness` when the map is built;
   downstream packages read
   them instead of deriving supports.
 - Draws that can be undefined are declared, never inferred from names or

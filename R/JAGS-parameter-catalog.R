@@ -4796,13 +4796,27 @@ parameter_transform_jacobian <- function(values, transform){
 
 # Whether a random-effect quantity can have point masses: an inclusion gate
 # among its dependencies (the gates of its allocation chain, except a gate that
-# is always on), or a point component in a scale prior that owns them. Only the
-# SDs, variances, totals and variance shares are asked; the correlations,
-# multipliers and indicators have none.
+# is always on), or a point component in a scale prior that owns them. The SDs,
+# variances, totals and variance shares are asked, and the original-scale
+# correlations of a scaled block; the fitted-scale correlations, multipliers
+# and indicators have none.
 .bt_parameter_catalog_random_chain_has_atoms <- function(object, quantity, key){
 
-  if(!quantity$quantity %in% c("sd", "var", "sd_total", "var_total",
-                               "sd_common", "var_common", "var_prop")){
+  if(identical(quantity$quantity, "cor")){
+    # A correlation has atoms only on the original scale of a scaled block: where
+    # an SD is zero, the original-scale pair of coefficients that share the
+    # other fitted coefficient are perfectly correlated (the fitted-scale
+    # correlation is undefined there, not atomic).
+    random_term <- .bt_parameter_catalog_find_random_term(object, key)
+    if(.bt_parameter_catalog_random_sd_is_direct(
+      random_term   = random_term,
+      parameter     = key$formula_parameter,
+      formula_scale = attr(object, "formula_scale", exact = TRUE)
+    )){
+      return(FALSE)
+    }
+  }else if(!quantity$quantity %in% c("sd", "var", "sd_total", "var_total",
+                                     "sd_common", "var_common", "var_prop")){
     return(FALSE)
   }
   prior_list <- attr(object, "prior_list", exact = TRUE)

@@ -2835,11 +2835,19 @@ test_that("quantities with structural atoms that the catalog cannot derive decla
     # the rescaled slope SD is one-to-one: its atom is derived
     expect_identical(support_of(fit, "(mu) sd(x)")$points, 0)
     expect_true(support_of(fit, "(mu) sd(x)")$exact)
+    # and the original-scale correlation has an atom at -1 (zero intercept SD)
+    # that the catalog does not place: its [-1, 1] is declared inexact
+    correlation <- support_of(fit, "(mu) cor(intercept,x)")
+    expect_false(correlation$exact)
+    expect_identical(correlation$type, "interval")
+    expect_equal(correlation$bounds, c(-1, 1))
   }
   plain <- scaled_fit(prior("gamma", list(2, 2)))
   # a spike component that is never taken places no atom
   never <- scaled_fit(spike_and_slab(1))
   for(fit in list(plain, never)){
+    expect_true(support_of(fit, "(mu) cor(intercept,x)")$exact)
+    expect_equal(support_of(fit, "(mu) cor(intercept,x)")$bounds, c(-1, 1))
     for(label in composite){
       expect_true(support_of(fit, label)$exact, info = label)
       expect_identical(support_of(fit, label)$type, "interval", info = label)
@@ -6530,4 +6538,29 @@ test_that("a quantity of a prior with expression parameters keeps its draws and 
     class = "BayesTools_formula_atoms_unavailable")
   expect_error(plot_posterior(scaled, "mu_x", prior = FALSE, plot_type = "ggplot"),
     class = "BayesTools_formula_atoms_unavailable")
+})
+
+test_that("a fitted-scale correlation keeps its exact support whatever the SD priors", {
+
+  # the fitted-scale LKJ correlation is undefined where an SD is zero, it has
+  # no atom there: only the original-scale correlation of a scaled block does
+  data <- data.frame(x = c(1, 2, 4, 7, 3, 5), id = factor(rep(c("a", "b", "c"), each = 2L)))
+  spike_and_slab <- prior_spike_and_slab(
+    prior("gamma", list(2, 2)), prior_inclusion = prior("spike", list(location = .5))
+  )
+  for(formula_scale in list(NULL, list(x = FALSE))){
+    result <- JAGS_formula(
+      ~ 1 + us(1 + x | id), "mu", data, list(intercept = prior("normal", list(0, 1))),
+      formula_scale = formula_scale,
+      prior_random = prior_random(id = random_block(sd = spike_and_slab, cor = prior_lkj()))
+    )
+    term <- result$formula_design$random_effects[[1L]]
+    fit <- .prior_monitor_test_fit(result, unique(c(
+      JAGS_to_monitor(result$prior_list), term$correlation$primitive_names
+    )))
+    quantities <- parameter_catalog(fit)$quantities
+    support <- quantities$support[[match("(mu) cor(intercept,x)", quantities$canonical_name)]]
+    expect_true(support$exact)
+    expect_equal(support$bounds, c(-1, 1))
+  }
 })

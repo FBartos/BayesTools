@@ -161,6 +161,12 @@ test_that("correlations of allocated blocks are point-free up to common factors 
   mixed <- parameter_mixed_posterior(fit, resolve("p"))
   expect_true(any(abs(as.numeric(mixed)) > 1 - 1e-8))
   expect_null(posterior_metadata(mixed, "atoms"))
+  # the atom at -1 or 1 is not placed by the catalog, which declares the
+  # [-1, 1] hull inexact (a gate or a point-mass SD in the chain)
+  quantities <- parameter_catalog(fit)$quantities
+  support <- quantities$support[[match(name, quantities$canonical_name)]]
+  expect_false(support$exact)
+  expect_equal(support$bounds, c(-1, 1))
   expect_error(
     plot_posterior(stats::setNames(list(mixed), name), name, plot_type = "ggplot"),
     "Posterior atom status is unknown",
