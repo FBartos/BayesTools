@@ -1972,7 +1972,7 @@
      length(endpoints) > 0L){
     # the same arithmetic as the peak windows of the breakpoints
     centre <- (endpoints - spec$additive_mean) / spec$product_mean
-    width <- sqrt(spec$additive_sd^2 + (spec$product_sd * centre)^2) / abs(spec$product_mean)
+    width <- .prior_conditional_normal_peak_width(spec, centre)
     window_lower <- centre + (-10) * width
     window_upper <- centre + 10 * width
     exact_piece <- function(a, b){
@@ -2849,6 +2849,20 @@
   )
 }
 
+# Width of the location peak of the conditional normal density in the units of
+# the multiplier: sqrt(a_s^2 + (b_s centre)^2) / |b_m|. The root of the sum of
+# squares is scaled by its larger term, so SDs above sqrt(.Machine$double.xmax)
+# (1e154), whose squares overflow, keep their window.
+.prior_conditional_normal_peak_width <- function(spec, centre){
+
+  first <- abs(spec$additive_sd)
+  second <- abs(spec$product_sd * centre)
+  larger <- pmax(first, second)
+  smaller <- pmin(first, second)
+  ratio <- ifelse(larger == 0 | !is.finite(larger), 0, smaller / larger)
+  larger * sqrt(1 + ratio^2) / abs(spec$product_mean)
+}
+
 # Mean and SD of the conditional normal N(a_m + b_m s, sqrt(a_s^2 + b_s^2 s^2))
 # at multiplier values s, with the SD computed without overflow.
 .prior_quadrature_log_density <- function(prior, values, evaluator){
@@ -2883,13 +2897,22 @@
   product_sd <- abs(multiplier) * spec$product_sd
   product_mean <- multiplier * spec$product_mean
   mean <- spec$additive_mean + product_mean
+  absorbed <- product_mean != 0 & spec$additive_mean != 0 & mean == spec$additive_mean
   bad <- !is.finite(product_sd) | !is.finite(product_mean) | !is.finite(mean) |
     (multiplier != 0 & spec$product_sd != 0 & product_sd == 0) |
     (multiplier != 0 & spec$product_mean != 0 & product_mean == 0) |
-    (product_mean != 0 & spec$additive_mean != 0 & mean == spec$additive_mean)
+    absorbed
   if(any(bad)){
+    # a nonzero product mean at a quadrature node that the additive mean
+    # absorbs (N(1e6, 1) + gamma(.5, 1) near the multiplier 0): a double
+    # precision limit of the mean, named as such
     .prior_numerical_signal("conditional Normal moments", "declared", "full precision", which(bad),
-      "Required conditional moment arithmetic lost representable range", error = TRUE)
+      if(all(absorbed[bad])){
+        paste0("The conditional mean at a quadrature node, which the additive mean absorbs ",
+               "(a mean this large relative to the integrated term needs centering)")
+      }else{
+        "Required conditional moment arithmetic lost representable range"
+      }, error = TRUE)
   }
   if(spec$additive_sd == 0){
     # a pure scale mixture: the conditional SD is that of the multiplied term
@@ -3144,7 +3167,7 @@
      isTRUE(spec$product_sd <= abs(spec$product_mean) / 2)){
     for(peak_value in value){
       centre <- (peak_value - spec$additive_mean) / spec$product_mean
-      width <- sqrt(spec$additive_sd^2 + (spec$product_sd * centre)^2) / abs(spec$product_mean)
+      width <- .prior_conditional_normal_peak_width(spec, centre)
       inner <- c(inner, centre, centre + as.vector(outer(c(-1, 1), c(1, 3, 10))) * width)
       is_peak <- c(is_peak, rep(TRUE, 7L))
       widths <- c(widths, rep(if(is.finite(width)) width else Inf, 7L))
@@ -3273,7 +3296,7 @@
   if(isTRUE(spec$product_mean != 0) &&
      isTRUE(spec$product_sd <= abs(spec$product_mean) / 2)){
     centre <- (values - spec$additive_mean) / spec$product_mean
-    width <- sqrt(spec$additive_sd^2 + (spec$product_sd * centre)^2) / abs(spec$product_mean)
+    width <- .prior_conditional_normal_peak_width(spec, centre)
     offsets <- as.vector(outer(c(-1, 1), c(1, 3, 10)))
     columns <- c(list(centre), lapply(offsets, function(offset) centre + offset * width))
     peak <- rep(TRUE, 7L)

@@ -3144,6 +3144,38 @@ test_that("allocation products of a point scale and a Beta share match the analy
                c(.5, 1.5), tolerance = 1e-14)
 })
 
+test_that("the conditional-normal peak width keeps SDs above the square root of the double range", {
+
+  width <- function(additive_sd, product_sd, product_mean, centre){
+    .prior_conditional_normal_peak_width(
+      list(additive_sd = additive_sd, product_sd = product_sd, product_mean = product_mean), centre)
+  }
+  # identical to sqrt(a^2 + (b c)^2) / |m| where the squares are representable
+  expect_equal(width(3, 2, -4, c(0, 1, -5)), sqrt(9 + (2 * c(0, 1, -5))^2) / 4, tolerance = 1e-15)
+  expect_identical(width(0, 0, 1, 3), 0)
+  # 1e200 squared leaves the double range, the width does not
+  expect_equal(width(1e200, 0, 1, 2), 1e200, tolerance = 1e-15)
+  expect_equal(width(3e200, 4e200, 2, 1), 2.5e200, tolerance = 1e-15)
+  expect_equal(width(1, 1e200, 1, c(-1, 1)), rep(1e200, 2L), tolerance = 1e-15)
+  expect_identical(width(Inf, 1, 1, 1), Inf)
+})
+
+test_that("a Gaussian convolution whose mean absorbs the integrated term names the cause", {
+
+  # N(1e6, 1) + gamma(.5, 1): near the multiplier 0 the product mean vanishes
+  # in the additive mean 1e6 (it was reported as lost representable range)
+  priors <- list(a = prior("normal", list(1e6, 1)), b = prior("gamma", list(shape = .5, rate = 1)))
+  density <- .prior_linear_combination_density(priors, c(a = 1, b = 1), n_grid = 4096)
+  ordinate <- prior_density_ordinate(density, 1e6 + 1)
+  expect_false(ordinate$exact)
+  expect_true(is.na(ordinate$log_density))
+  expect_match(ordinate$reason, "The conditional mean at a quadrature node, which the additive mean absorbs",
+               fixed = TRUE)
+  centered <- .prior_linear_combination_density(
+    list(a = prior("normal", list(0, 1)), b = prior("gamma", list(shape = .5, rate = 1))), c(a = 1, b = 1), n_grid = 4096)
+  expect_true(prior_density_ordinate(centered, 1)$exact)
+})
+
 test_that("a log-transformed source needs a declared positive support", {
 
   # the declared support decides before any quantile is logged (the base-R
