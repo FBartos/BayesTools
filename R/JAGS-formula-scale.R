@@ -1211,6 +1211,15 @@ JAGS_formula_scale_finalize <- function(formula_scale, design = NULL,
   # (large centering products m / s make exact maps round to more than the
   # floor). Omitted induced effects leave residuals of the order of the
   # centering constants and fail both bounds.
+  #
+  # What the absolute floor accepts: the floor deliberately accepts round-off
+  # level residuals, such as the training means of manually centered data.
+  # It therefore also accepts an omitted induced lower-order effect that is
+  # itself below the floor (an interaction `x:z` whose training means are about
+  # 1e-9 induces main effects of that size). The design residual of such a
+  # fit is below 1e-8, but a coefficient of 1e9 multiplies the neglected effect
+  # into prediction errors of order 1. The floor is not tightened: that would
+  # change which fits are refused.
   absolute_tolerance <- 1e-8 * max(1, max(abs(X_s)))
   violation <- function(A){
     bound <- pmax(
