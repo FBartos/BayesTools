@@ -65,7 +65,7 @@ print.prior <- function(x, short_name = FALSE, parameter_names = FALSE, plot = F
     output <- .print.prior.none(x, short_name, parameter_names, plot, digits_estimates, silent)
   }else if(is.prior.ordered(x) && !is.prior.mixture(x)){
     # a mixture of bound ordered containers also carries the ordered class
-    output <- .print.prior.ordered(x, short_name, parameter_names, plot, digits_estimates, silent)
+    output <- .print.prior.ordered(x, short_name, parameter_names, plot, digits_estimates, silent, inline)
   }else if(is.prior.simple(x) || is.prior.vector(x)){
     output <- .print.prior.simple(x, short_name, parameter_names, plot, digits_estimates, silent)
   }else if(is.prior.weightfunction(x)){
@@ -146,9 +146,11 @@ print.selection_model <- function(x, ...){
   invisible(x)
 }
 
-.print.prior.ordered        <- function(x, short_name, parameter_names, plot, digits_estimates, silent){
+.print.prior.ordered        <- function(x, short_name, parameter_names, plot, digits_estimates, silent, inline = FALSE){
 
-  total <- print(x$total, short_name, parameter_names, plot = FALSE, digits_estimates, silent = TRUE)
+  # a mixture total prints on one line when the container does (table cells)
+  total <- print(x$total, short_name, parameter_names, plot = FALSE, digits_estimates, silent = TRUE,
+                 inline = inline)
   allocation <- switch(
     x$allocation$type,
     "default_dirichlet" = "Dirichlet(1, ...)",

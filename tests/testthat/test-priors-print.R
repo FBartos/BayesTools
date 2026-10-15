@@ -572,6 +572,21 @@ test_that("a mixture of bound ordered prior containers prints silently and inlin
   expect_equal(utils::capture.output(print(mixture, silent = TRUE)), character())
 })
 
+test_that("an ordered container with a mixture total prints that total inline", {
+
+  ordered <- prior_ordered(prior_mixture(list(prior("normal", list(0, 1)), prior("point", list(0)))))
+  inline <- print(ordered, silent = TRUE, inline = TRUE)
+  expect_false(grepl("
+", inline, fixed = TRUE))
+  expect_identical(
+    inline,
+    "ordered cumulative: total ~ (1/2) * Normal(0, 1) + (1/2) * Spike(0), allocation ~ Dirichlet(1, ...)"
+  )
+  # the container's own layout keeps the multi-line mixture total
+  expect_true(grepl("
+", print(ordered, silent = TRUE), fixed = TRUE))
+})
+
 test_that("a single bound ordered prior container keeps its layout", {
 
   single <- prior_factor_levels(prior_ordered(prior("normal", list(0, 1))), c("lo", "mid", "hi"))
