@@ -1020,6 +1020,26 @@ test_that("region probabilities report their quadrature method and refuse a decr
                fixed = TRUE, class = "BayesTools_numerical_unavailable")
 })
 
+test_that("the log mass of a near-whole scalar region may round to a few ulps above zero", {
+
+  # t(0, 1, 5) without the gaps (-3, -3 + 3e-16) and (-2, -2 + 2e-16): the sum
+  # of the log masses of the three intervals rounds to 1.1e-16 above zero
+  edges <- c(-Inf, -3, -2, Inf)
+  lower <- edges[-4L]
+  lower[-1L] <- lower[-1L] + abs(lower[-1L]) * 1e-16
+  mass <- .prior_region_prior_mass(prior("t", list(0, 1, 5)), .prior_region_intervals(lower, edges[-1L]))
+  expect_lte(attr(mass, "log_mass"), 0)
+  expect_gt(attr(mass, "log_mass"), -1e-14)
+  expect_equal(as.numeric(mass), 1, tolerance = 1e-14)
+
+  # a log mass clearly above zero is still refused
+  testthat::local_mocked_bindings(
+    .model_probability_log_sum = function(x) 1e-12
+  )
+  expect_error(.prior_region_prior_mass(prior("t", list(0, 1, 5)), .prior_region_intervals(lower, edges[-1L])),
+               "has no valid backend log probability", fixed = TRUE, class = "BayesTools_numerical_unavailable")
+})
+
 test_that("rejected region quadratures stop instead of using the grid", {
 
   priors <- scale_mixture_priors()

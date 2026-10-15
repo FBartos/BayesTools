@@ -165,11 +165,14 @@
     positive <- lower < upper
     log_mass <- .model_probability_log_sum(.prior_simple_log_interval_mass(prior,
       lower[positive], upper[positive]) - .prior_simple_log_C(prior))
-    if(length(log_mass) != 1L || !is.finite(log_mass) || log_mass > 0){
+    # the sum of the log masses of a near-whole union may round to a few ulps
+    # above zero
+    if(length(log_mass) != 1L || !is.finite(log_mass) ||
+       log_mass > 4 * .Machine$double.eps){
       .prior_numerical_signal("region log probability", prior$distribution, "log", 1L,
         "The accepted positive scalar region mass has no valid backend log probability", error = TRUE)
     }
-    attr(probability, "log_mass") <- log_mass
+    attr(probability, "log_mass") <- min(log_mass, 0)
   }
   probability
 }
