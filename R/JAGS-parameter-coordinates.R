@@ -543,8 +543,39 @@
   out
 }
 
+# A fixed coordinate is on the standardized scale only when its design involves
+# a standardized predictor: the intercept of a formula with a standardized
+# predictor (the model is centered) and a term with a standardized component.
+# The other coefficients of a formula keep the plain fitted scale.
+.bt_parameter_coordinates_standardized <- function(coordinate_name,
+                                                   formula_parameter,
+                                                   formula_scale){
+
+  scaled_names <- names(formula_scale[[formula_parameter]])
+  if(length(scaled_names) == 0L){
+    return(FALSE)
+  }
+  scaled_variables <- .formula_scale_strip_prefix(
+    scaled_names,
+    formula_parameter
+  )
+  term <- .formula_scale_strip_prefix(
+    .bt_parameter_coordinates_base(coordinate_name),
+    formula_parameter
+  )
+  if(identical(term, "intercept")){
+    return(TRUE)
+  }
+
+  length(.parse_unscale_term_structure(
+    coordinate_name,
+    formula_parameter,
+    scaled_variables
+  )$scaled) > 0L
+}
+
 .bt_parameter_coordinates_scale <- function(role, formula_parameter,
-                                         formula_scale){
+                                         formula_scale, coordinate_name = ""){
 
   if(identical(role, "random_latent")){
     return("unit_latent")
@@ -565,7 +596,10 @@
   }
   if(nzchar(formula_parameter) &&
      !is.null(formula_scale) &&
-     !is.null(formula_scale[[formula_parameter]])){
+     !is.null(formula_scale[[formula_parameter]]) &&
+     .bt_parameter_coordinates_standardized(
+       coordinate_name, formula_parameter, formula_scale
+     )){
     return("fitted_standardized")
   }
   "fitted_original"
@@ -1008,7 +1042,9 @@
       coordinate$column,
       .bt_parameter_coordinates_index(coordinate_name),
       dimensions[i],
-      .bt_parameter_coordinates_scale(role, formula_parameter, formula_scale),
+      .bt_parameter_coordinates_scale(
+        role, formula_parameter, formula_scale, coordinate_name
+      ),
       monitor_status,
       fixed_value,
       .bt_parameter_coordinates_display(

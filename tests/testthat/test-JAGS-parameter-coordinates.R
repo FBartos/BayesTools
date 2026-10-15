@@ -926,3 +926,61 @@ test_that("the parameter-map registry is bounded and evicts the oldest map first
   expect_false(ids[[4L]] %in% held)
   expect_true("evict-new" %in% held)
 })
+
+test_that("fixed coordinates are on the standardized scale only when their design involves a standardized predictor", {
+
+  data <- data.frame(
+    x = c(1, 2, 3, 4, 5, 6),
+    z = c(2, 1, 4, 3, 6, 5),
+    g = factor(rep(c("a", "b"), 3L))
+  )
+  scales <- function(formula_scale){
+    result <- JAGS_formula(
+      ~ 1 + x + z + g + x:g, "mu", data,
+      prior_list = list(
+        intercept = prior("normal", list(0, 1)),
+        x = prior("normal", list(0, 1)),
+        z = prior("normal", list(0, 1)),
+        g = prior_factor("normal", list(0, 1), contrast = "treatment"),
+        "x:g" = prior_factor("normal", list(0, 1), contrast = "treatment")
+      ),
+      formula_scale = formula_scale
+    )
+    columns <- unlist(lapply(names(result$prior_list), function(name){
+      if(.bt_prior_is_factor_family(result$prior_list[[name]])){
+        .JAGS_prior_factor_names(name, result$prior_list[[name]])
+      }else{
+        name
+      }
+    }), use.names = FALSE)
+    coordinates <- build_test_parameter_coordinates(
+      columns = columns,
+      prior_list = result$prior_list,
+      formula_design = list(mu = result$formula_design),
+      formula_scale = list(mu = result$formula_scale)
+    )
+    stats::setNames(coordinates$fitted_scale, coordinates$coordinate_name)
+  }
+
+  # nothing is standardized: the plain fitted scale
+  expect_true(all(scales(NULL) == "fitted_original"))
+  expect_true(all(scales(list(x = FALSE)) == "fitted_original"))
+
+  # a standardized x: the intercept and the terms with x are standardized
+  scaled <- scales(list(x = TRUE))
+  expect_identical(
+    scaled[["mu_intercept"]], "fitted_standardized"
+  )
+  expect_identical(scaled[["mu_x"]], "fitted_standardized")
+  interaction <- startsWith(names(scaled), "mu_x__xXx__g")
+  expect_true(any(interaction))
+  expect_true(all(scaled[interaction] == "fitted_standardized"))
+  expect_identical(scaled[["mu_z"]], "fitted_original")
+  factor_term <- startsWith(names(scaled), "mu_g")
+  expect_true(any(factor_term))
+  expect_true(all(scaled[factor_term] == "fitted_original"))
+  expect_identical(
+    sort(names(scaled)[scaled == "fitted_original"]),
+    sort(c("mu_z", names(scaled)[factor_term]))
+  )
+})

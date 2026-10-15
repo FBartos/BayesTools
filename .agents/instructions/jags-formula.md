@@ -563,6 +563,11 @@ names.
   Expression point locations provide fitted snapshot values only unless a
   certified ancestor recipe exists, and never acquire point atoms from their
   wrapper or observed constancy.
+- The `fitted_scale` of a fixed coordinate is `fitted_standardized` only when its
+  design involves a standardized predictor (the intercept of a formula with a
+  standardized predictor, and terms with a standardized component); every other
+  coefficient keeps `fitted_original`, also in a formula that standardizes
+  other predictors or has formula-scale metadata for another reason.
 - Validate coordinate uniqueness, quantity uniqueness, aliases, extraction
   recipes, and coordinate dependencies atomically at map construction. Public
   accessors reuse that result through the map runtime cache rather than
