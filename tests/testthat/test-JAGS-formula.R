@@ -134,7 +134,7 @@ test_that("JAGS_formula refuses a logical predictor that a factor interaction co
     }
     priors
   }
-  remedy <- ", where model.matrix() would code it as a two-level factor. Convert it to a factor, or to numeric 0/1, in the data."
+  remedy <- ", where model.matrix() would code it as a two-level factor. Convert it to a factor, or to numeric 0/1, in the data, or standardize it with 'formula_scale'."
 
   # model.matrix() codes the logical by indicators: one column per FALSE/TRUE
   # cell, which the declared factor design (one column per factor cell) lacks.
@@ -155,7 +155,7 @@ test_that("JAGS_formula refuses a logical predictor that a factor interaction co
     JAGS_formula(~ flag:g + flag2:h, "mu", data, priors_for(~ flag:g + flag2:h)),
     paste0(
       "The logical predictors 'flag', 'flag2' are unavailable in the interaction terms 'flag:g', 'flag2:h', ",
-      "where model.matrix() would code them as a two-level factor. Convert them to factors, or to numeric 0/1, in the data."
+      "where model.matrix() would code them as a two-level factor. Convert them to factors, or to numeric 0/1, in the data, or standardize them with 'formula_scale'."
     ),
     fixed = TRUE
   )

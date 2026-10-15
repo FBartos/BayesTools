@@ -294,7 +294,8 @@
     paste0("'", terms, "'", collapse = ", "),
     ", where model.matrix() would code ", if(plural) "them" else "it",
     " as a two-level factor. Convert ", if(plural) "them" else "it",
-    " to ", if(plural) "factors" else "a factor", ", or to numeric 0/1, in the data.",
+    " to ", if(plural) "factors" else "a factor", ", or to numeric 0/1, in the data, ",
+    "or standardize ", if(plural) "them" else "it", " with 'formula_scale'.",
     call. = FALSE
   )
 }
