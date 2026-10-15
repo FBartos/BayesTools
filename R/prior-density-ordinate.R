@@ -510,9 +510,10 @@ prior_density_has_provenance <- function(x){
   }
   if(is.prior.vector(prior) || is.prior.factor(prior) ||
      is.prior.weightfunction(prior) || is_prior_phacking(prior) ||
-     is_prior_bias(prior) || is.prior.PET(prior) || is.prior.PEESE(prior)){
+     is_prior_bias(prior)){
     return(.prior_density_ordinate_unknown_prior(prior, value))
   }
+  # a bare PET or PEESE prior is its underlying (truncated) simple prior
   if(is.prior.simple(prior)){
     return(.prior_density_ordinate_primitive(prior, value))
   }

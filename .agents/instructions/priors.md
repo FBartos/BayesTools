@@ -253,7 +253,9 @@ density of that continuous part (not renormalized). It is documented in the
 roxygen `@return`, and consumers (RoBMA's point-test eligibility) read it, so
 keep it on every point-mass path, including stored atoms of linear densities.
 Unsupported transformations or convolutions return `unknown` rather than a
-guessed structural class.
+guessed structural class. A bare `prior_PET()` or `prior_PEESE()` object is its
+underlying (truncated) simple prior: its ordinate is the primitive one, regular
+and exact, the same ordinate the density-context route returns.
 Named monotone compositions retain normalized arguments, declared signed
 support hulls and established atoms. Two-term convolutions retain their
 independent primitive terms, signed weights and offset; zero weights need no

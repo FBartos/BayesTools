@@ -2920,3 +2920,28 @@ test_that("R116 D2 posterior producer maps declared zero states without changing
   expect_equal(prior_density_ordinate(density, 0)$point_mass, .5)
   expect_equal(exp(prior_density_ordinate(density, 1)$log_density), stats::dnorm(1) / 2, tolerance = 1e-12)
 })
+
+test_that("a bare PET or PEESE prior is its underlying truncated simple prior", {
+
+  for(bare in list(prior_PET("normal", list(0, 1)), prior_PEESE("normal", list(0, 1)))){
+    ordinate <- prior_density_ordinate(bare, .5)
+    expect_identical(ordinate$behavior, "regular")
+    expect_true(ordinate$exact)
+    expect_equal(ordinate$log_density, log(2 * stats::dnorm(.5)), tolerance = 1e-14)
+    expect_identical(prior_density_ordinate(bare, -.5)$behavior, "zero")
+
+    # the density-context route of a fit returns the same ordinate
+    name <- if(is.prior.PET(bare)) "PET" else "PEESE"
+    set.seed(1)
+    fit <- structure(
+      coda::mcmc(matrix(abs(stats::rnorm(2000)), ncol = 1, dimnames = list(NULL, name))),
+      class = c("mcmc", "BayesTools_fit"))
+    attr(fit, "prior_list") <- stats::setNames(list(bare), name)
+    fit <- attach_test_parameter_map(fit)
+    density <- parameter_prior_density(fit, parameter_catalog_resolve(parameter_catalog(fit), name))
+    context <- prior_density_ordinate(density, .5)
+    expect_identical(context$behavior, ordinate$behavior)
+    expect_identical(context$exact, ordinate$exact)
+    expect_equal(context$log_density, ordinate$log_density, tolerance = 1e-14)
+  }
+})
