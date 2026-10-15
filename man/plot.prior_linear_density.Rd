@@ -32,7 +32,7 @@ scale (on the transformed scale when \code{transformation_settings = TRUE}).}
 
 \item{transformation}{optional transformation applied to the density: one of
 the prepared transformations of \code{\link[=density.prior]{density.prior()}} (\code{"lin"},
-\code{"tanh"}, \code{"exp"}), or a list with the functions \code{fun},
+\code{"tanh"}, \code{"exp"}, \code{"exp_lin"}), or a list with the functions \code{fun},
 \code{inv}, and \code{jac}.}
 
 \item{transformation_arguments}{optional list with named arguments for the
