@@ -43,6 +43,26 @@ skip_if_not_test_profile("unit")
 }
 
 
+# The factor form of an affine allocation-derived plan: the update of a block
+# that the allocation scale drives only in part, which the grid evaluates. The
+# plans of the fits below are affine because the scale drives every column.
+.random_update_test_factor_form <- function(fit, plan){
+
+  term <- Filter(
+    function(term) identical(term$block_name, plan$blocks[[1L]]),
+    attr(fit, "formula_design")$mu$random_effects
+  )[[1L]]
+  variance <- identical(plan$coefficient_transform, list(type = "identity"))
+  plan$family <- "factor"
+  plan$update <- "column_scale"
+  plan$coefficient_scale_transform <- if(variance) list(type = "sqrt") else list(type = "identity")
+  plan$coefficient_transform <- NULL
+  plan$driven_columns <- seq_len(term$n_columns)
+
+  plan
+}
+
+
 .random_update_test_plan <- function(fit, role, component = NULL){
 
   catalog <- parameter_catalog(fit)
@@ -136,7 +156,8 @@ test_that("marginal update plans propagate invalid transformation metadata", {
 
 .random_update_test_generic_fit <- function(formula, data, prior_random,
                                             prior_list, formula_scale = NULL,
-                                            extra_columns = character()){
+                                            extra_columns = character(),
+                                            values = NULL){
 
   result <- JAGS_formula(
     formula = formula,
@@ -180,6 +201,10 @@ test_that("marginal update plans propagate invalid transformation metadata", {
     ncol = length(columns),
     dimnames = list(NULL, columns)
   )
+  if(length(values) > 0L){
+    stopifnot(all(names(values) %in% columns))
+    draws[, names(values)] <- rep(values, each = nrow(draws))
+  }
   scale <- if(is.null(result$formula_scale)){
     NULL
   }else{
@@ -326,7 +351,7 @@ test_that("scaled allocation-derived SDs have no quantity-scale factor grid", {
   for(component in c("intercept", "x")){
     for(role in c("random_sd", "random_var")){
       plan <- .random_update_test_plan(unscaled, role, component)
-      expect_identical(plan$family, "factor")
+      expect_identical(plan$family, "affine")
       expect_identical(plan$coefficient_input, "quantity")
       plan <- .random_update_test_plan(scaled, role, component)
       expect_identical(plan$family, "unsupported")
@@ -336,7 +361,9 @@ test_that("scaled allocation-derived SDs have no quantity-scale factor grid", {
 
   # Without formula scaling the public SD is the fitted coefficient scale
   # that a quantity-scale grid replaces.
-  plan <- .random_update_test_plan(unscaled, "random_sd", "x")
+  plan <- .random_update_test_factor_form(
+    unscaled, .random_update_test_plan(unscaled, "random_sd", "x")
+  )
   grid <- random_effects_marginal_update_grid(unscaled, plan, values = 1)
   public <- parameter_draws(
     unscaled,
@@ -542,13 +569,13 @@ test_that("a source-coordinate plan lists every block that uses the source", {
   expect_equal(change(fit, total$blocks, tau_value = 1), full, tolerance = 1e-12)
 
   # a weight coordinate belongs to its own allocation, and a quantity-scale
-  # component SD does not move other blocks
+  # component SD moves the shared scale, which reaches every block that uses it
   proportion <- plan_for(fit, "(mu) alloc1: var_prop(x)")
   expect_identical(proportion$source_parameter, "mu__xRE_ALLOCx_alloc1__weight")
   expect_identical(proportion$blocks, "first")
   component <- plan_for(fit, "(mu) first: sd(x)")
   expect_identical(component$coefficient_input, "quantity")
-  expect_identical(component$blocks, "first")
+  expect_identical(component$blocks, c("first", "second"))
 
   # a third block bound directly to the same source is listed as well
   direct <- .random_update_test_generic_fit(
@@ -573,6 +600,10 @@ test_that("a source-coordinate plan lists every block that uses the source", {
   expect_gt(
     max(abs(change(direct, "first", tau_value = 1) - change(direct, NULL, tau_value = 1))),
     0.1
+  )
+  expect_identical(
+    plan_for(direct, "(mu) first: sd(x)")$blocks,
+    c("first", "second", "third")
   )
 })
 
@@ -960,11 +991,15 @@ test_that("correlated component allocations retain nonlinear covariances", {
   expect_gt(abs(covariance[2L, 1L, 2L] -
                   mean(covariance[c(1L, 3L), 1L, 2L])), .01)
 
+  # the allocation scale drives both columns of the block: the update is the
+  # affine scale update on this correlated structure; the grid evaluates its
+  # factor form
   component_sd <- .random_update_test_plan(fit, "random_sd", "index[1]")
-  expect_identical(component_sd$family, "factor")
-  expect_identical(component_sd$update, "column_scale")
+  expect_identical(component_sd$family, "affine")
+  expect_identical(component_sd$update, "scale")
   expect_identical(component_sd$coefficient_input, "quantity")
   expect_identical(component_sd$blocks, "study")
+  component_sd <- .random_update_test_factor_form(fit, component_sd)
   grid <- random_effects_marginal_update_grid(
     fit = fit,
     update = component_sd,
@@ -976,6 +1011,9 @@ test_that("correlated component allocations retain nonlinear covariances", {
   expect_equal(grid$candidate_scale[, 2L], c(0.25, 0.75))
 
   component_var <- .random_update_test_plan(fit, "random_var", "index[1]")
+  expect_identical(component_var$family, "affine")
+  expect_identical(component_var$coefficient_transform, list(type = "identity"))
+  component_var <- .random_update_test_factor_form(fit, component_var)
   variance_grid <- random_effects_marginal_update_grid(
     fit = fit,
     update = component_var,
@@ -1439,7 +1477,10 @@ test_that("an allocation-derived SD update holds the weights fixed and moves the
     expect_identical(plan$held_fixed, "allocation_weights", info = structure)
     expect_identical(variance_plan$held_fixed, "allocation_weights", info = structure)
     expect_identical(plan$coefficient_input, "quantity", info = structure)
-    expect_identical(plan$family, if(structure == "diag") "affine" else "factor", info = structure)
+    # the allocation scale drives every column of the single block: the update
+    # is affine in the selected SD on every structure
+    expect_identical(plan$family, "affine", info = structure)
+    expect_identical(plan$blocks, "study", info = structure)
 
     # the covariance recomputed from (tau' = v / sqrt(w_1), w)
     candidate <- posterior
@@ -1454,15 +1495,20 @@ test_that("an allocation-derived SD update holds the weights fixed and moves the
     expect_equal(unname(expected), unname(current) * (v / current_sd)^2,
                  tolerance = 1e-12, info = structure)
 
-    if(identical(plan$family, "affine")){
-      # A + h(v) B with h the square: the block contribution scales by c^2
-      expect_identical(plan$coefficient_transform, list(type = "square"), info = structure)
+    # A + h(v) B with h the square: the block contribution scales by c^2
+    expect_identical(plan$coefficient_transform, list(type = "square"), info = structure)
+    if(identical(structure, "diag")){
       next
     }
+
+    # the factor form of the same update (a block that the scale drives only in
+    # part), evaluated through the grid with every column driven
+    plan <- .random_update_test_factor_form(fit, plan)
     grid <- random_effects_marginal_update_grid(
       fit, plan, values = c(v, 0), posterior_samples = posterior
     )
     expect_identical(grid$held_fixed, "allocation_weights", info = structure)
+    expect_identical(grid$driven_columns, seq_len(length(weights)), info = structure)
     expect_equal(grid$candidate_scale[, 1L], c(v, 0), info = structure)
     expect_equal(unname(grid$coefficient_scale[1L, ]), case$tau * sqrt(weights),
                  tolerance = 1e-12, info = structure)
@@ -1507,4 +1553,301 @@ test_that("an allocation-derived SD update holds the weights fixed and moves the
   expect_null(random_effects_marginal_update_grid(
     direct, direct_plan, values = 0.3, posterior_samples = as.matrix(direct)
   )$column_factor)
+})
+
+
+# Split-root layout of RoBMA: a root allocation over two blocks and one
+# `<block>_components` SD-component allocation per block. The values give every
+# component a distinct SD, SD_k = tau * sqrt(w_block) * sqrt(K u_k).
+.random_update_test_split_root_fit <- function(study_structure){
+
+  data <- data.frame(
+    id = factor(rep(c("a", "b", "c"), each = 3L)),
+    other = factor(rep(c("u", "v", "w"), 3L)),
+    x = rep(c(-1, 0.5, 2), 3L)
+  )
+  formula <- if(identical(study_structure, "us")){
+    ~ 1 + random(1 + x | id, name = "study", covariance = "us") +
+      random(1 + x | other, name = "paper", covariance = "diag")
+  }else{
+    ~ 1 + random(1 + x | id, name = "study", covariance = "diag") +
+      random(1 + x | other, name = "paper", covariance = "diag")
+  }
+  dirichlet <- prior("dirichlet", list(alpha = c(1, 1)))
+  prior_random <- prior_random(allocation = list(
+    random_variance_allocation(
+      name = "root", terms = c(s = "study", p = "paper"),
+      sd = prior("gamma", list(2, 2)), weights = dirichlet
+    ),
+    random_variance_allocation(
+      name = "study_components", terms = "study",
+      parent = allocation_ref("root", "s"), weights = dirichlet,
+      target = "sd_component", scale = "mean_variance"
+    ),
+    random_variance_allocation(
+      name = "paper_components", terms = "paper",
+      parent = allocation_ref("root", "p"), weights = dirichlet,
+      target = "sd_component", scale = "mean_variance"
+    )
+  ))
+  tau <- 0.8
+  root <- c(0.35, 0.65)
+  study <- c(0.3, 0.7)
+  paper <- c(0.6, 0.4)
+  weights <- function(name, w){
+    stats::setNames(
+      c(w, rep(1, length(w))),
+      paste0(
+        rep(c("", "prior_par_eta_"), each = length(w)),
+        "mu__xRE_ALLOCx_", name, "__weight[", seq_along(w), "]"
+      )
+    )
+  }
+  values <- c(
+    stats::setNames(tau, "mu__xRE_ALLOCx_root__allocation_sd"),
+    weights("root", root),
+    weights("study_components", study),
+    weights("paper_components", paper)
+  )
+  fit <- .random_update_test_generic_fit(
+    formula, data, prior_random, list(intercept = prior("normal", list(0, 1))),
+    values = if(identical(study_structure, "us")){
+      c(values, "mu__xREx__study_xRE_CORx_lkj_u[1]" = 0.8)
+    }else{
+      values
+    }
+  )
+  list(
+    fit = fit,
+    source = "mu__xRE_ALLOCx_root__allocation_sd",
+    tau = tau,
+    sd = list(
+      study = tau * sqrt(root[[1L]]) * sqrt(2 * study),
+      paper = tau * sqrt(root[[2L]]) * sqrt(2 * paper)
+    )
+  )
+}
+
+
+test_that("an allocation-derived SD update lists every block that the moved scale reaches", {
+
+  # F092: the moved scale is the root allocation scale, which every block of the
+  # split-root layout derives from; with the weights fixed the covariance of all
+  # reached blocks scales by c^2 = (v / SD_k)^2, on any covariance structure
+  for(study_structure in c("diag", "us")){
+    case <- .random_update_test_split_root_fit(study_structure)
+    fit <- case$fit
+    posterior <- as.matrix(fit)
+    catalog <- parameter_catalog(fit)
+    vcov_of <- function(samples, blocks = NULL){
+      random_effects_marginal_vcov(
+        fit, parameter = "mu", blocks = blocks, posterior_samples = samples
+      )$samples[1L, , ]
+    }
+    current <- vcov_of(posterior)
+    cases <- list(
+      list("(mu) study: sd(intercept)", "study", 1L, FALSE),
+      list("(mu) study: sd(x)", "study", 2L, FALSE),
+      list("(mu) paper: sd(intercept)", "paper", 1L, FALSE),
+      list("(mu) paper: sd(x)", "paper", 2L, FALSE),
+      list("(mu) study: var(x)", "study", 2L, TRUE),
+      list("(mu) paper: var(intercept)", "paper", 1L, TRUE)
+    )
+    for(case_i in cases){
+      info <- paste(study_structure, case_i[[1L]])
+      block <- case_i[[2L]]
+      current_sd <- case$sd[[block]][[case_i[[3L]]]]
+      plan <- random_effects_marginal_update_plan(
+        fit, parameter_catalog_resolve(catalog, case_i[[1L]])
+      )
+      expect_identical(plan$family, "affine", info = info)
+      expect_identical(plan$update, "scale", info = info)
+      expect_identical(plan$held_fixed, "allocation_weights", info = info)
+      expect_identical(plan$coefficient_input, "quantity", info = info)
+      expect_identical(
+        plan$coefficient_transform,
+        if(case_i[[4L]]) list(type = "identity") else list(type = "square"),
+        info = info
+      )
+      # the selected block first, then every block that the scale reaches
+      expect_identical(plan$blocks, c(block, setdiff(c("study", "paper"), block)),
+                       info = info)
+
+      # candidate SD value v (variance v^2): the moved scale is tau' = tau v / SD_k
+      v <- 0.5 * current_sd
+      candidate <- posterior
+      candidate[, case$source] <- case$tau * v / current_sd
+      moved <- vcov_of(candidate)
+      expect_equal(moved, current * (v / current_sd)^2, tolerance = 1e-12, info = info)
+      for(reached in plan$blocks){
+        expect_equal(
+          vcov_of(candidate, reached), vcov_of(posterior, reached) * (v / current_sd)^2,
+          tolerance = 1e-12, info = paste(info, reached)
+        )
+      }
+      # the selected block alone does not reproduce the update
+      only_block <- current + (vcov_of(posterior, block)) * ((v / current_sd)^2 - 1)
+      expect_gt(max(abs(only_block - moved)), 1e-3)
+    }
+  }
+})
+
+
+test_that("a scale shared by several blocks reaches all of them in an allocation-derived SD update", {
+
+  df <- data.frame(
+    id = factor(c("a", "a", "b", "b")),
+    other = factor(c("a", "b", "a", "b")),
+    third = factor(c("u", "v", "v", "u")),
+    x = c(0, 1, 0, 1)
+  )
+  tau <- random_sd_source("tau")
+  allocation <- function(name, term){
+    random_variance_allocation(
+      name = name, terms = term, target = "sd_component", sd_source = tau,
+      weights = prior("dirichlet", list(alpha = c(1, 1)))
+    )
+  }
+  plan_for <- function(fit, quantity){
+    random_effects_marginal_update_plan(
+      fit, parameter_catalog_resolve(parameter_catalog(fit), quantity)
+    )
+  }
+  values <- c(
+    "tau" = 0.9,
+    "mu__xRE_ALLOCx_alloc1__weight[1]" = 0.25,
+    "mu__xRE_ALLOCx_alloc1__weight[2]" = 0.75,
+    "mu__xRE_ALLOCx_alloc2__weight[1]" = 0.6,
+    "mu__xRE_ALLOCx_alloc2__weight[2]" = 0.4
+  )
+  for(structure in c("diag", "us")){
+    # two blocks bound to random_sd_source("tau") through SD-component allocations
+    # and a third block bound to it directly
+    fit <- .random_update_test_generic_fit(
+      stats::as.formula(paste0(
+        "~ 1 + random(1 + x | id, name = 'first', covariance = '", structure, "') +",
+        "random(1 + x | other, name = 'second', covariance = 'diag') +",
+        "random(1 | third, name = 'third', covariance = 'diag')"
+      )),
+      df,
+      prior_random(
+        third = random_block(sd_source = tau),
+        allocation = list(allocation("alloc1", "first"), allocation("alloc2", "second"))
+      ),
+      list(intercept = prior("normal", list(0, 1))),
+      extra_columns = "tau",
+      values = values
+    )
+    posterior <- as.matrix(fit)
+    catalog <- parameter_catalog(fit)
+    vcov_of <- function(samples, blocks = NULL){
+      random_effects_marginal_vcov(
+        fit, parameter = "mu", blocks = blocks, posterior_samples = samples
+      )$samples[1L, , ]
+    }
+    current <- vcov_of(posterior)
+    for(quantity in c("(mu) first: sd(x)", "(mu) second: sd(intercept)", "(mu) first: var(intercept)")){
+      info <- paste(structure, quantity)
+      plan <- plan_for(fit, quantity)
+      expect_identical(plan$family, "affine", info = info)
+      expect_identical(plan$held_fixed, "allocation_weights", info = info)
+      expect_identical(plan$coefficient_input, "quantity", info = info)
+      expect_setequal(plan$blocks, c("first", "second", "third"))
+      expect_identical(plan$blocks[[1L]], sub("^\\(mu\\) (.*): .*$", "\\1", quantity), info = info)
+
+      # SD_k = tau sqrt(w_k) (total variance) of the selected component
+      block <- plan$blocks[[1L]]
+      column <- if(grepl("intercept", quantity, fixed = TRUE)) 1L else 2L
+      current_sd <- 0.9 * sqrt(values[[paste0(
+        "mu__xRE_ALLOCx_", if(identical(block, "first")) "alloc1" else "alloc2",
+        "__weight[", column, "]"
+      )]])
+      v <- 1.3 * current_sd
+      candidate <- posterior
+      candidate[, "tau"] <- 0.9 * v / current_sd
+      expect_equal(vcov_of(candidate), current * (v / current_sd)^2,
+                   tolerance = 1e-12, info = info)
+      expect_equal(
+        vcov_of(candidate, plan$blocks), vcov_of(posterior, plan$blocks) * (v / current_sd)^2,
+        tolerance = 1e-12, info = info
+      )
+    }
+  }
+})
+
+
+test_that("a scale that reaches several blocks only in part has no allocation-derived SD update", {
+
+  df <- data.frame(
+    id = factor(c("a", "a", "b", "b")),
+    other = factor(c("a", "b", "a", "b")),
+    x = c(0, 1, 0, 1)
+  )
+  tau <- random_sd_source("tau")
+  allocation <- function(name, term){
+    random_variance_allocation(
+      name = name, terms = term, target = "sd_component", sd_source = tau,
+      weights = prior("dirichlet", list(alpha = c(1, 1)))
+    )
+  }
+  fit <- .random_update_test_generic_fit(
+    ~ 1 + random(1 + x | id, name = "first", covariance = "diag") +
+      random(1 + x | other, name = "second", covariance = "diag"),
+    df,
+    prior_random(allocation = list(allocation("alloc1", "first"), allocation("alloc2", "second"))),
+    list(intercept = prior("normal", list(0, 1))),
+    extra_columns = "tau"
+  )
+  plan_for <- function(fit, quantity){
+    random_effects_marginal_update_plan(
+      fit, parameter_catalog_resolve(parameter_catalog(fit), quantity)
+    )
+  }
+  with_binding <- function(fit, block, binding){
+    design <- attr(fit, "formula_design")
+    terms <- design$mu$random_effects
+    index <- which(vapply(terms, function(term) identical(term$block_name, block), logical(1)))
+    design$mu$random_effects[[index]]$sd_binding <- binding
+    attr(fit, "formula_design") <- design
+    fit
+  }
+  owned <- function(name) BayesTools:::.bt_prior_owned_sd_source(name)
+  column_binding <- function(sources){
+    BayesTools:::.bt_random_sd_binding(
+      sources_by_column = sources, application = "column",
+      factors_by_column = rep(list(list()), length(sources))
+    )
+  }
+
+  # the second block uses the scale for its intercept only: the scale reaches
+  # two blocks and only part of the second
+  partial <- with_binding(
+    fit, "second", column_binding(list(tau, owned("second_other")))
+  )
+  refused <- plan_for(partial, "(mu) first: sd(x)")
+  expect_identical(refused$family, "unsupported")
+  expect_identical(refused$reason, "partial_scale_reach")
+  expect_identical(refused$blocks, character())
+  expect_match(refused$message, "only part", fixed = TRUE)
+
+  # the same layout without the partial block is a full reach of both blocks
+  expect_identical(plan_for(fit, "(mu) first: sd(x)")$family, "affine")
+
+  # the scale reaches only the selected block and drives only some of its
+  # columns: the factor family with the driven columns
+  alone <- with_binding(
+    with_binding(fit, "second", column_binding(list(owned("second_a"), owned("second_b")))),
+    "first", {
+      binding <- attr(fit, "formula_design")$mu$random_effects[[1L]]$sd_binding
+      binding$sources_by_column <- list(tau, owned("first_other"))
+      binding
+    }
+  )
+  factor_plan <- plan_for(alone, "(mu) first: sd(x)")
+  expect_identical(factor_plan$family, "factor")
+  expect_identical(factor_plan$update, "column_scale")
+  expect_identical(factor_plan$blocks, "first")
+  expect_identical(factor_plan$held_fixed, "allocation_weights")
+  expect_identical(factor_plan$driven_columns, 1L)
+  expect_identical(factor_plan$coefficient_input, "quantity")
 })

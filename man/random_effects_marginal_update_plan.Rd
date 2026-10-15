@@ -38,23 +38,41 @@ allocation-derived SDs add \code{coefficient_scale_transform}. An unsupported
 plan carries \code{reason} and \code{message} instead.
 
 \code{update} is \code{"scale"} when the contribution of the affected blocks is
-scaled by one coefficient, \code{"column_scale"} when one column SD of a block
-changes (\code{component_index}), \code{"allocation"} when a Dirichlet weight of a
-variance allocation changes, and \code{"correlation"} for a correlation
-coordinate. A direct per-column SD with unequal column SDs reports
-\code{"column_scale"}: the other column SDs are held fixed.
+scaled by one coefficient, \code{"column_scale"} when the SDs of some columns of
+a block change (\code{component_index}; the other column SDs of a direct
+per-column SD are held fixed, and the driven columns of an
+allocation-derived SD are listed in \code{driven_columns}), \code{"allocation"} when
+a Dirichlet weight of a variance allocation changes, and \code{"correlation"}
+for a correlation coordinate. A direct per-column SD with unequal column
+SDs reports \code{"column_scale"}.
 
 The plan of an allocation-derived component SD or variance has the field
 \code{held_fixed = "allocation_weights"}: whatever the covariance structure,
 setting the selected SD to \code{v} holds the allocation weights and every
 non-allocation coordinate (correlations included) fixed and moves the
-allocation scale \code{tau} of the SD \code{SD_k = tau * m_k(w)} to \code{v / m_k(w)}
-(\code{m_k = sqrt(w_k)} for a total-variance allocation, \verb{sqrt(K w_k)} for a
-mean-variance one). This is the conditional of the variance prior declared
-on \verb{(tau, w)}, which are independent a priori: the prior of the moved
-coordinate is the \code{tau} prior with the Jacobian \code{1 / m_k(w)}. Every column
-SD that derives from \code{tau} is multiplied by the same factor
-\code{c = v / SD_k}, and the covariance contribution of the block by \code{c^2}.
+allocation scale \code{tau} of the SD \code{SD_k = tau * m_k(w)} to \code{v / m_k(w)},
+where \code{m_k(w)} is the product of the square roots of the weights on the
+path from \code{tau} to the SD (\code{sqrt(w_j)} for a total-variance allocation,
+\verb{sqrt(K_j w_j)} for a mean-variance one, over the nested allocations).
+This is the conditional of the variance prior declared on \verb{(tau, w)},
+which are independent a priori. For an SD value \code{v} the prior of the moved
+coordinate is the \code{tau} prior evaluated at \code{v / m_k(w)} with the Jacobian
+\code{1 / m_k(w)}; for a variance value \code{u} the SD is \code{sqrt(u)} and the Jacobian
+is \code{1 / m_k(w)^2} on the variance parameterization of the scale
+(\code{tau^2}, equivalently \verb{1 / (2 m_k(w) sqrt(u))} from \code{tau}). The scale
+reaches every block whose SD binding uses it, also through nested
+allocations (a split root with one \verb{<block>_components} allocation per
+block) or a shared \code{\link[=random_sd_source]{random_sd_source()}}: \code{blocks} lists all of them, the
+selected block first. Every column SD that derives from \code{tau} is
+multiplied by the same factor \code{c = v / SD_k}, so a reached block whose
+columns are all driven by \code{tau} has its covariance contribution multiplied
+by \code{c^2} on every covariance structure: the plan is then the affine
+\code{update = "scale"} plan of the summed contribution of \code{blocks}. If \code{tau}
+drives only some columns of the selected block, which is the only block it
+reaches, the plan is the factor \code{"column_scale"} plan with
+\code{driven_columns} and the grid factor \code{column_factor} for them; a scale
+that reaches several blocks and only part of their columns has no exact
+scalar update and is \code{unsupported} with the reason \code{"partial_scale_reach"}.
 Plans of direct per-column SDs have no \code{held_fixed} field.
 }
 \description{
@@ -74,13 +92,15 @@ coordinate, the row covariance has the exact form \code{A + h(value) * B}, where
 \code{"quantity"}) and \code{h} is recorded in \code{coefficient_transform}.
 \code{family = "factor"} identifies an exact candidate-dependent covariance
 factor, while \code{family = "markov"} identifies a compiled structured Markov
-state. Allocation-derived component SDs stay affine on \code{id}/\code{diag} and
-single-column blocks. On correlated multi-column structures they are
-factor \code{column_scale} updates of the selected quantity, not
-\verb{A + h(sigma) B}; all of them hold the allocation weights fixed and scale
-every column SD of the block by the same factor (\code{held_fixed}, above), so
-the factor \code{column_scale} plan of an allocation-derived SD differs from that
-of a direct SD, which replaces one column scale only. Their
+state. Allocation-derived component SDs are affine on every covariance
+structure when the allocation scale drives all columns of every block it
+reaches (\verb{A + h(v) B} with \code{h} the square of the SD or the identity of the
+variance, \code{B} the summed covariance of \code{blocks} per unit of \code{h}); they are
+factor \code{column_scale} updates only when it drives part of the columns of the
+one block it reaches. All of them hold the allocation weights fixed and scale
+every driven column SD by the same factor (\code{held_fixed}, above), so the
+\code{column_scale} plan of an allocation-derived SD differs from that of a direct
+SD, which replaces one column scale only. Their
 \code{coefficient_scale_transform} converts a selected variance to its square
 root and leaves a selected SD unchanged. These
 quantity-scale plans require the public SD to be on the fitted coefficient

@@ -38,8 +38,9 @@ selected candidate scales. The candidate scale replaces the scale of
 column \code{component_index} only for a plan that holds the sibling SDs fixed
 (a direct per-column SD). For a plan with \code{held_fixed = "allocation_weights"} (an allocation-derived component SD) the grid also
 contains \code{column_factor} (values by posterior draws), the factor
-\code{candidate_scale / coefficient_scale[, component_index]} by which every
-column scale is multiplied; it is \code{NA} for the draws where the current
+\code{candidate_scale / coefficient_scale[, component_index]} by which the
+scale of every driven column (\code{driven_columns}, all columns when it is
+\code{NULL}) is multiplied; it is \code{NA} for the draws where the current
 selected SD is zero, which no allocation scale maps to a non-zero (or an
 unchanged zero) candidate. Markov updates contain posterior coefficient
 scales plus candidate correlation Cholesky factors, transitions, and

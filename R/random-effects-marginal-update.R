@@ -39,23 +39,41 @@
 #'   plan carries `reason` and `message` instead.
 #'
 #'   `update` is `"scale"` when the contribution of the affected blocks is
-#'   scaled by one coefficient, `"column_scale"` when one column SD of a block
-#'   changes (`component_index`), `"allocation"` when a Dirichlet weight of a
-#'   variance allocation changes, and `"correlation"` for a correlation
-#'   coordinate. A direct per-column SD with unequal column SDs reports
-#'   `"column_scale"`: the other column SDs are held fixed.
+#'   scaled by one coefficient, `"column_scale"` when the SDs of some columns of
+#'   a block change (`component_index`; the other column SDs of a direct
+#'   per-column SD are held fixed, and the driven columns of an
+#'   allocation-derived SD are listed in `driven_columns`), `"allocation"` when
+#'   a Dirichlet weight of a variance allocation changes, and `"correlation"`
+#'   for a correlation coordinate. A direct per-column SD with unequal column
+#'   SDs reports `"column_scale"`.
 #'
 #'   The plan of an allocation-derived component SD or variance has the field
 #'   `held_fixed = "allocation_weights"`: whatever the covariance structure,
 #'   setting the selected SD to `v` holds the allocation weights and every
 #'   non-allocation coordinate (correlations included) fixed and moves the
-#'   allocation scale `tau` of the SD `SD_k = tau * m_k(w)` to `v / m_k(w)`
-#'   (`m_k = sqrt(w_k)` for a total-variance allocation, `sqrt(K w_k)` for a
-#'   mean-variance one). This is the conditional of the variance prior declared
-#'   on `(tau, w)`, which are independent a priori: the prior of the moved
-#'   coordinate is the `tau` prior with the Jacobian `1 / m_k(w)`. Every column
-#'   SD that derives from `tau` is multiplied by the same factor
-#'   `c = v / SD_k`, and the covariance contribution of the block by `c^2`.
+#'   allocation scale `tau` of the SD `SD_k = tau * m_k(w)` to `v / m_k(w)`,
+#'   where `m_k(w)` is the product of the square roots of the weights on the
+#'   path from `tau` to the SD (`sqrt(w_j)` for a total-variance allocation,
+#'   `sqrt(K_j w_j)` for a mean-variance one, over the nested allocations).
+#'   This is the conditional of the variance prior declared on `(tau, w)`,
+#'   which are independent a priori. For an SD value `v` the prior of the moved
+#'   coordinate is the `tau` prior evaluated at `v / m_k(w)` with the Jacobian
+#'   `1 / m_k(w)`; for a variance value `u` the SD is `sqrt(u)` and the Jacobian
+#'   is `1 / m_k(w)^2` on the variance parameterization of the scale
+#'   (`tau^2`, equivalently `1 / (2 m_k(w) sqrt(u))` from `tau`). The scale
+#'   reaches every block whose SD binding uses it, also through nested
+#'   allocations (a split root with one `<block>_components` allocation per
+#'   block) or a shared [random_sd_source()]: `blocks` lists all of them, the
+#'   selected block first. Every column SD that derives from `tau` is
+#'   multiplied by the same factor `c = v / SD_k`, so a reached block whose
+#'   columns are all driven by `tau` has its covariance contribution multiplied
+#'   by `c^2` on every covariance structure: the plan is then the affine
+#'   `update = "scale"` plan of the summed contribution of `blocks`. If `tau`
+#'   drives only some columns of the selected block, which is the only block it
+#'   reaches, the plan is the factor `"column_scale"` plan with
+#'   `driven_columns` and the grid factor `column_factor` for them; a scale
+#'   that reaches several blocks and only part of their columns has no exact
+#'   scalar update and is `unsupported` with the reason `"partial_scale_reach"`.
 #'   Plans of direct per-column SDs have no `held_fixed` field.
 #'
 #' @details
@@ -65,13 +83,15 @@
 #' `"quantity"`) and `h` is recorded in `coefficient_transform`.
 #' `family = "factor"` identifies an exact candidate-dependent covariance
 #' factor, while `family = "markov"` identifies a compiled structured Markov
-#' state. Allocation-derived component SDs stay affine on `id`/`diag` and
-#' single-column blocks. On correlated multi-column structures they are
-#' factor `column_scale` updates of the selected quantity, not
-#' `A + h(sigma) B`; all of them hold the allocation weights fixed and scale
-#' every column SD of the block by the same factor (`held_fixed`, above), so
-#' the factor `column_scale` plan of an allocation-derived SD differs from that
-#' of a direct SD, which replaces one column scale only. Their
+#' state. Allocation-derived component SDs are affine on every covariance
+#' structure when the allocation scale drives all columns of every block it
+#' reaches (`A + h(v) B` with `h` the square of the SD or the identity of the
+#' variance, `B` the summed covariance of `blocks` per unit of `h`); they are
+#' factor `column_scale` updates only when it drives part of the columns of the
+#' one block it reaches. All of them hold the allocation weights fixed and scale
+#' every driven column SD by the same factor (`held_fixed`, above), so the
+#' `column_scale` plan of an allocation-derived SD differs from that of a direct
+#' SD, which replaces one column scale only. Their
 #' `coefficient_scale_transform` converts a selected variance to its square
 #' root and leaves a selected SD unchanged. These
 #' quantity-scale plans require the public SD to be on the fitted coefficient
@@ -214,8 +234,9 @@ random_effects_marginal_update_plan <- function(fit, selection){
 #'   (a direct per-column SD). For a plan with `held_fixed =
 #'   "allocation_weights"` (an allocation-derived component SD) the grid also
 #'   contains `column_factor` (values by posterior draws), the factor
-#'   `candidate_scale / coefficient_scale[, component_index]` by which every
-#'   column scale is multiplied; it is `NA` for the draws where the current
+#'   `candidate_scale / coefficient_scale[, component_index]` by which the
+#'   scale of every driven column (`driven_columns`, all columns when it is
+#'   `NULL`) is multiplied; it is `NA` for the draws where the current
 #'   selected SD is zero, which no allocation scale maps to a non-zero (or an
 #'   unchanged zero) candidate. Markov updates contain posterior coefficient
 #'   scales plus candidate correlation Cholesky factors, transitions, and
@@ -356,6 +377,7 @@ random_effects_marginal_update_grid <- function(
       column_factor <- sweep(candidate_scale, 2L, scale[, component], "/")
       column_factor[!is.finite(column_factor)] <- NA_real_
       out$held_fixed <- update$held_fixed
+      out$driven_columns <- update$driven_columns
       out$column_factor <- unname(column_factor)
     }
   }else{
@@ -755,16 +777,33 @@ random_effects_marginal_update_grid <- function(
         )
       ))
     }
-    n_columns <- random_term$n_columns
-    affine <- n_columns == 1L || structure %in% c("id", "diag")
-    if(isTRUE(affine)){
+    # The update moves the allocation scale the SD derives from, with the
+    # weights fixed: every block whose SD binding uses that scale moves with it.
+    block <- random_term$block_name
+    reach <- .bt_random_effect_marginal_update_reach(
+      design = .bt_random_effect_marginal_covariance_design(
+        fit = fit,
+        parameter = key$formula_parameter
+      ),
+      source = .bt_random_sd_binding_source_name(random_term$sd_binding$source)
+    )
+    if(!block %in% reach$blocks){
+      return(.bt_random_effect_marginal_update_unavailable(
+        quantity = quantity,
+        reason = "ambiguous_allocation_scale",
+        message = paste0(
+          "The selected allocation-derived SD does not identify the ",
+          "allocation scale it derives from."
+        )
+      ))
+    }
+    blocks <- c(block, setdiff(reach$blocks, block))
+    if(all(vapply(reach$driven, all, logical(1)))){
+      # the scale drives every column of every reached block: each block's
+      # D R D scales by c^2, whatever the covariance structure
       return(.bt_random_effect_marginal_update_affine(
         update = "scale",
-        blocks = .bt_random_effect_marginal_update_allocation_blocks(
-          fit,
-          key,
-          allocations[[1L]]
-        ),
+        blocks = blocks,
         coefficient_transform = if(identical(key$evaluator, "sd_variance")){
           list(type = "identity")
         }else{
@@ -776,12 +815,11 @@ random_effects_marginal_update_grid <- function(
         held_fixed = "allocation_weights"
       ))
     }
-    if(structure %in% c("us", "hcs", "har") ||
-       structure %in% c("cs", "ar1", "car")){
+    if(length(blocks) == 1L){
       return(list(
         family = "factor",
         update = "column_scale",
-        blocks = random_term$block_name,
+        blocks = block,
         component_index = key$index,
         structure = structure,
         coefficient_input = "quantity",
@@ -790,15 +828,17 @@ random_effects_marginal_update_grid <- function(
         }else{
           list(type = "identity")
         },
-        held_fixed = "allocation_weights"
+        held_fixed = "allocation_weights",
+        driven_columns = which(reach$driven[[block]])
       ))
     }
     return(.bt_random_effect_marginal_update_unavailable(
       quantity = quantity,
-      reason = "unsupported_sd_structure",
+      reason = "partial_scale_reach",
       message = paste0(
-        "The selected allocation-derived SD has no declared marginal ",
-        "covariance update path."
+        "The allocation scale of the selected allocation-derived SD reaches ",
+        "several random-effect blocks and drives only part of the columns of ",
+        "some of them, so it has no exact scalar covariance update."
       )
     ))
   }
@@ -849,6 +889,35 @@ random_effects_marginal_update_grid <- function(
       "update path."
     )
   )
+}
+
+
+# The blocks that an allocation scale reaches: those whose SD binding uses the
+# source (the root scale of nested allocations, a shared random_sd_source()),
+# with the columns of each block that it drives.
+.bt_random_effect_marginal_update_reach <- function(design, source){
+
+  blocks <- character()
+  driven <- list()
+  for(random_term in .bt_formula_design_random_effects(design)){
+    binding <- random_term$sd_binding
+    column_sources <- if(length(binding$sources_by_column) > 0L){
+      binding$sources_by_column
+    }else{
+      rep(list(binding$source), random_term$n_columns)
+    }
+    columns <- vapply(seq_len(random_term$n_columns), function(column){
+      candidate <- if(column <= length(column_sources)) column_sources[[column]]
+      !is.null(candidate) &&
+        identical(.bt_random_sd_binding_source_name(candidate), source)
+    }, logical(1))
+    if(any(columns)){
+      blocks <- c(blocks, random_term$block_name)
+      driven[[random_term$block_name]] <- columns
+    }
+  }
+
+  list(blocks = blocks, driven = driven)
 }
 
 

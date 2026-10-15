@@ -739,21 +739,29 @@ factors for downstream likelihoods that can marginalize only supported blocks.
 exact scalar covariance update from the parameter map and compiled random
 design; downstream optimizations must use this metadata rather than infer an
 update form from posterior samples or evaluated covariance matrices.
-Allocation-derived component SDs remain affine on `id`/`diag` and
-single-column blocks when their public SD is on the fitted coefficient scale.
-On correlated multi-column structures they are factor
-`column_scale` updates of the selected quantity, not `A + h(sigma) B`.
 One conditioning rule holds for every structure (plan field
 `held_fixed = "allocation_weights"`): setting an allocation-derived SD to `v`
 holds the allocation weights and every non-allocation coordinate fixed and moves
-the allocation scale `tau` (`SD_k = tau * m_k(w)`, so `tau' = v / m_k(w)`), the
-conditional of the variance prior declared on the independent `(tau, w)`, whose
-moved coordinate has the `tau` prior with Jacobian `1 / m_k(w)`. Every column SD
-derived from `tau` is multiplied by `c = v / SD_k` and the block covariance by
-`c^2`: the grid of a factor plan carries `column_factor` for it. Downstream
-priors for the update (RoBMA's IWMDE prior side of the factor family) use the
-same conditional. A direct per-column SD keeps `column_scale` with its siblings
-fixed and has no `held_fixed`.
+the allocation scale `tau` (`SD_k = tau * m_k(w)`, so `tau' = v / m_k(w)`, with
+`m_k(w)` the product of the square roots of the weights on the path from `tau`
+to the SD), the conditional of the variance prior declared on the independent
+`(tau, w)`: the moved coordinate has the `tau` prior with Jacobian `1 / m_k(w)`
+for an SD value and `1 / m_k(w)^2` on the variance parameterization of the scale
+for a variance value. The scale reaches every block whose SD binding uses it,
+through nested allocations (a split root with one `<block>_components`
+allocation per block) or a shared `random_sd_source()`; the plan's `blocks`
+lists all of them, the selected block first. A reached block whose columns are
+all driven by `tau` has its covariance multiplied by `c^2`, `c = v / SD_k`, on
+every covariance structure, so the plan is the affine `scale` plan (`A + h(v) B`)
+of the summed contribution of `blocks` whenever the scale drives every column of
+every reached block, when the public SD is on the fitted coefficient scale. If
+it drives only part of the columns of the one block it reaches, the plan is the
+factor `column_scale` plan with `driven_columns`, and the grid carries
+`column_factor` for them; a scale that reaches several blocks and only part of
+their columns has no exact scalar update (`unsupported`, reason
+`partial_scale_reach`). Downstream priors for the update (RoBMA's IWMDE prior
+side) use the same conditional and move all reached columns. A direct per-column
+SD keeps `column_scale` with its siblings fixed and has no `held_fixed`.
 Formula-scaled allocation-derived SDs, and SDs that depend on several fitted
 coordinates, have no exact single-coordinate update and are `unsupported`.
 Do not make a downstream package reconstruct these quantities from raw JAGS
