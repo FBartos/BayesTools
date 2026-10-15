@@ -30,8 +30,9 @@ component sources, and nuisance-only chart factors are omitted because they
 are constant along the conditional chart. This is a numerical conditional
 kernel, not a bridge density. Expression totals raise
 \code{BayesTools_ordered_expression_unavailable}, missing coordinates raise
-\code{BayesTools_ordered_coordinates_unavailable}, and invalid indicators
-raise \code{BayesTools_ordered_invalid_state}; all inherit
+\code{BayesTools_ordered_coordinates_unavailable}, and invalid indicators or
+missing (\code{NA}) total values of a sampled total raise
+\code{BayesTools_ordered_invalid_state}; all inherit
 \code{BayesTools_ordered_unavailable}. Ordinary values outside numeric support
 return \code{-Inf}. Refit when bound ordered metadata are unavailable.
 }

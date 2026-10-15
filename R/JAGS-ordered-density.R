@@ -15,8 +15,9 @@
 #' are constant along the conditional chart. This is a numerical conditional
 #' kernel, not a bridge density. Expression totals raise
 #' \code{BayesTools_ordered_expression_unavailable}, missing coordinates raise
-#' \code{BayesTools_ordered_coordinates_unavailable}, and invalid indicators
-#' raise \code{BayesTools_ordered_invalid_state}; all inherit
+#' \code{BayesTools_ordered_coordinates_unavailable}, and invalid indicators or
+#' missing (\code{NA}) total values of a sampled total raise
+#' \code{BayesTools_ordered_invalid_state}; all inherit
 #' \code{BayesTools_ordered_unavailable}. Ordinary values outside numeric support
 #' return \code{-Inf}. Refit when bound ordered metadata are unavailable.
 #' @export
@@ -135,7 +136,13 @@ JAGS_ordered_density_kernel <- function(prior_list, allocation_chart = NULL){
             "' are unavailable in 'samples'. Include the declared total source coordinates."))
         }
         for(slice in seq_along(spec$total_names)){
-          term <- lpdf(prior, total_values[rows, slice])
+          values <- total_values[rows, slice]
+          if(anyNA(values)){
+            .bt_ordered_stop(paste0("Ordered total '", spec$total_names[[slice]],
+              "' has missing values in 'samples'. Remove or recompute the draws with an undefined total."),
+              "BayesTools_ordered_invalid_state")
+          }
+          term <- lpdf(prior, values)
           excluded[rows] <- excluded[rows] | (!is.na(term) & term == -Inf)
           result[rows] <- result[rows] + term
         }

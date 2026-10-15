@@ -547,6 +547,36 @@ test_that("the ordered density kernel excludes rows outside any factor's support
 })
 
 
+test_that("the ordered density kernel refuses a missing total instead of propagating it (F193)", {
+  data <- data.frame(f = ordered(c("lo", "mid", "hi"), levels = c("lo", "mid", "hi")))
+  info <- JAGS_formula(~ f, "mu", data, list(intercept = prior("point", list(0)),
+    f = prior_ordered(prior("uniform", list(0, 1)), allocation = prior("dirichlet", list(c(.5, .5))))))
+  spec <- .bt_ordered_spec("mu_f", info$prior_list$mu_f)
+  # total, gamma1, gamma2 of three draws; the second draw has no total
+  samples <- rbind(c(.5, 1, 1), c(NA, 1, 1), c(.25, 2, 1))
+  colnames(samples) <- c(spec$total_names, spec$allocations[[1L]]$gamma_coordinates)
+  for(kernel in list(
+    JAGS_ordered_density_kernel(info$prior_list["mu_f"]),
+    JAGS_ordered_density_kernel(info$prior_list["mu_f"],
+      stats::setNames(list(list(kind = "group", J = 1L)), spec$allocations[[1L]]$key)),
+    .bt_ordered_compile_density(info$prior_list["mu_f"], strict_bridge = TRUE)$evaluate
+  )){
+    for(missing_total in c(NA_real_, NaN)){
+      samples[2L, 1L] <- missing_total
+      condition <- tryCatch(kernel(samples), error = identity)
+      expect_s3_class(condition, "BayesTools_ordered_invalid_state")
+      expect_s3_class(condition, "BayesTools_ordered_unavailable")
+      expect_identical(conditionMessage(condition),
+        "Ordered total 'mu_f_ordered_total' has missing values in 'samples'. Remove or recompute the draws with an undefined total.")
+    }
+  }
+  # the draws with a total evaluate as before
+  kernel <- JAGS_ordered_density_kernel(info$prior_list["mu_f"])
+  expect_equal(kernel(samples[-2L, , drop = FALSE]),
+    stats::dunif(c(.5, .25), 0, 1, log = TRUE) + stats::dgamma(c(1, 2), .5, 1, log = TRUE) + stats::dgamma(1, .5, 1, log = TRUE),
+    tolerance = 1e-14)
+})
+
 test_that("ordered active kernels localize each nested total event", {
   data <- data.frame(f = ordered(rep(c("lo", "mid", "hi"), 2)), g = factor(rep(c("a", "b"), 3)))
   total <- prior_spike_and_slab(prior("normal", list(0, 2)), prior("point", list(.5)))
