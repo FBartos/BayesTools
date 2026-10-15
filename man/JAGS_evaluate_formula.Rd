@@ -30,7 +30,9 @@ applies to every formula, also to an explicit one without the
 \code{"log(intercept)"} attribute. An explicit \code{"log(intercept)"}
 attribute that disagrees with the stored flag (\code{TRUE} for a fitted
 formula without a log intercept, or \code{FALSE} for one with it) stops
-with a \code{BayesTools_refit_required} error naming both values.}
+with a \code{BayesTools_formula_transform_unavailable} error (reason
+\code{"log_intercept_mismatch"}, fields \code{explicit} and \code{stored})
+naming both values: omit the attribute or set it to the stored value.}
 
 \item{parameter}{name of the parameter created with the formula}
 

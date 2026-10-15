@@ -67,7 +67,9 @@
 #' \code{"log(intercept)"} attribute. An explicit \code{"log(intercept)"}
 #' attribute that disagrees with the stored flag (\code{TRUE} for a fitted
 #' formula without a log intercept, or \code{FALSE} for one with it) stops
-#' with a \code{BayesTools_refit_required} error naming both values.
+#' with a \code{BayesTools_formula_transform_unavailable} error (reason
+#' \code{"log_intercept_mismatch"}, fields \code{explicit} and \code{stored})
+#' naming both values: omit the attribute or set it to the stored value.
 #' @param parameter name of the parameter created with the formula
 #' @param data data.frame containing predictors included in the formula. If
 #' `NULL`, versioned original-scale fitted source data from `formula_design`
@@ -633,11 +635,15 @@ JAGS_evaluate_formula <- function(fit, formula = NULL, parameter,
   }
   explicit <- attr(formula, "log(intercept)", exact = TRUE)
   if(!is.null(explicit) && !identical(isTRUE(explicit), stored)){
-    .bt_stop_refit_required(
-      "The 'log(intercept)' attribute of 'formula' (", isTRUE(explicit),
-      ") does not match the fitted formula for parameter '", parameter,
-      "' (", stored, "). Omit the attribute to evaluate the fitted formula, or ",
-      "refit the model with the 'log(intercept)' attribute of the formula."
+    .bt_formula_transform_stop(
+      paste0(
+        "The 'log(intercept)' attribute of 'formula' (", isTRUE(explicit),
+        ") does not match the fitted formula for parameter '", parameter,
+        "' (", stored, "). Omit the attribute to evaluate the fitted formula, ",
+        "or set it to ", stored, "."
+      ),
+      parameter = parameter, reason = "log_intercept_mismatch",
+      explicit = isTRUE(explicit), stored = stored
     )
   }
   if(isTRUE(stored)){

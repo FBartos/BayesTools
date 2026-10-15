@@ -55,7 +55,7 @@ test_that("explicit prediction subsets can suppress a fitted intercept", {
   expect_error(
     JAGS_evaluate_formula(fit, formula = log_formula, parameter = "mu"),
     "does not match the fitted formula for parameter 'mu' (FALSE)",
-    fixed = TRUE, class = "BayesTools_refit_required"
+    fixed = TRUE, class = "BayesTools_formula_transform_unavailable"
   )
   expect_identical(attr(fit, "formula_design")$mu$prior_list, result$prior_list)
 

@@ -788,18 +788,22 @@ test_that("JAGS_evaluate_formula takes the log(intercept) flag of an explicit fo
   attr(linear_formula, "log(intercept)") <- FALSE
   refusal <- expect_error(
     JAGS_evaluate_formula(fit, linear_formula, parameter = "log_sigma", data = new_data),
-    class = "BayesTools_refit_required"
+    class = "BayesTools_formula_transform_unavailable"
   )
+  expect_identical(refusal$reason, "log_intercept_mismatch")
+  expect_identical(c(refusal$explicit, refusal$stored), c(FALSE, TRUE))
   expect_match(conditionMessage(refusal), "(FALSE) does not match", fixed = TRUE)
   expect_match(conditionMessage(refusal), "fitted formula for parameter 'log_sigma' (TRUE)", fixed = TRUE)
+  expect_false(inherits(refusal, "BayesTools_refit_required"))
 
   # and so is the attribute on a formula whose fitted design has none
   mu_formula <- ~ x_mu
   attr(mu_formula, "log(intercept)") <- TRUE
   refusal <- expect_error(
     JAGS_evaluate_formula(fit, mu_formula, parameter = "mu", data = new_data),
-    class = "BayesTools_refit_required"
+    class = "BayesTools_formula_transform_unavailable"
   )
+  expect_identical(refusal$reason, "log_intercept_mismatch")
   expect_match(conditionMessage(refusal), "(TRUE) does not match", fixed = TRUE)
   expect_match(conditionMessage(refusal), "fitted formula for parameter 'mu' (FALSE)", fixed = TRUE)
   expect_identical(
