@@ -1236,6 +1236,10 @@ prior_density_has_provenance <- function(x){
     return(NULL)
   }
   location <- prior$parameters$location
+  if(!is.numeric(location) || length(location) != 1L){
+    # an expression location is evaluated only by JAGS: an unsupported term
+    return(NA_real_)
+  }
   transforms <- source_transforms[names(group$weights)]
   transformed <- rep(location, length(group$weights))
   use_log <- !is.na(transforms) & transforms == "log"

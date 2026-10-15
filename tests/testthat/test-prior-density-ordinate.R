@@ -2677,6 +2677,33 @@ test_that("R116 N89 point-only densities are exact off their stored atom", {
   expect_false(prior_density_has_provenance(grid))
 })
 
+test_that("a point prior with an expression location is an unsupported term of the ordinate helpers", {
+
+  # expression locations are evaluated only by JAGS; the helpers return NA
+  # (unsupported) or NULL instead of failing on the arithmetic
+  expression_point <- prior("point", list(location = expression(a + 1)))
+  normal <- prior("normal", list(0, 1))
+  group <- list(prior = expression_point, weights = c(x = 1))
+  expect_identical(.prior_density_ordinate_point_group_location(group, c(x = NA_character_)), NA_real_)
+  expect_identical(.prior_density_ordinate_point_group_location(
+    list(prior = prior("point", list(2)), weights = c(x = 3)), c(x = NA_character_)), 6)
+  priors <- list(x = expression_point, y = normal)
+  weights <- c(x = 1, y = 1)
+  expect_null(.prior_density_ordinate_linear_normal(priors, weights, NULL, 0))
+  expect_null(.prior_density_route_scalar_parts(priors, weights, NULL))
+  route <- .prior_density_route_linear(priors, weights, NULL, 128)
+  expect_identical(route$type, "unknown")
+  expect_match(route$reason, "parameters given as expressions", fixed = TRUE)
+  multiplied <- normal
+  attr(multiplied, "multiply_by") <- "sigma"
+  route <- .prior_density_route_linear(list(beta = multiplied, sigma = expression_point), c(beta = 1), NULL, 128)
+  expect_identical(route$type, "unknown")
+  expect_match(route$reason, "parameters given as expressions", fixed = TRUE)
+  ordinate <- prior_density_ordinate(expression_point, 1)
+  expect_identical(ordinate$behavior, "unknown")
+  expect_false(ordinate$exact)
+})
+
 test_that("the t family has the exp_lin zero limits of the other exponent-one families", {
 
   # A positive finite density at the bound 0 behaves like C x^0, so Z = e^a X^b
