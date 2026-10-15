@@ -264,8 +264,10 @@ var.prior   <- function(x, ...){
           NaN
         ),
         "beta"      = {
-          mean_beta <- x$parameters[["alpha"]] / (x$parameters[["alpha"]] + x$parameters[["beta"]])
-          mean_beta * (1 - mean_beta) / (x$parameters[["alpha"]] + x$parameters[["beta"]] + 1)
+          # the complement of the mean as beta / (alpha + beta): 1 - mean
+          # rounds to 0 when the mean rounds to 1 (alpha = 1e16, beta = 1)
+          total_beta <- x$parameters[["alpha"]] + x$parameters[["beta"]]
+          (x$parameters[["alpha"]] / total_beta) * (x$parameters[["beta"]] / total_beta) / (total_beta + 1)
         },
         "bernoulli" = (x$parameters[["probability"]] * (1 - x$parameters[["probability"]]) ),
         "exp"       = 1 / x$parameters[["rate"]]^2,

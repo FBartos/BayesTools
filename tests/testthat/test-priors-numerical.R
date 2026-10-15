@@ -522,6 +522,11 @@ test_that("closed-form variances and degenerate spike-and-slab moments are stabl
   expect_equal(var(prior("gamma", list(shape = 1e100, rate = 1e160))), 1e-220, tolerance = 1e-12)
   expect_equal(var(prior("gamma", list(shape = 3, rate = 2))), 3 / 4, tolerance = 1e-14)
   expect_equal(var(prior("beta", list(1e160, 1e160))), 1.25e-161, tolerance = 1e-12)
+  # the complement of the mean is beta / (alpha + beta), not 1 - mean (0 when the
+  # mean rounds to 1): Beta(1e16, 1) has the variance of Beta(1, 1e16)
+  expect_equal(var(prior("beta", list(1e16, 1))) / 1e-32, 1, tolerance = 1e-12)
+  expect_equal(var(prior("beta", list(1, 1e16))) / 1e-32, 1, tolerance = 1e-12)
+  expect_equal(var(prior("beta", list(1e16, 1))) / var(prior("beta", list(1, 1e16))), 1, tolerance = 1e-12)
   expect_equal(var(prior("beta", list(2, 3))), 2 * 3 / (25 * 6), tolerance = 1e-14)
   expect_equal(var(prior("invgamma", list(shape = 1e10, scale = 1e160))), 1e290, tolerance = 1e-9)
   expect_equal(var(prior("invgamma", list(shape = 4, scale = 3))), 9 / (9 * 2), tolerance = 1e-14)
