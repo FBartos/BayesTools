@@ -336,9 +336,10 @@ its target numeric group. The existing categorical solver checks omitted
 components when that group exists; exact-zero means induce no component.
 Mixed-coding or omitted representable contributions refuse the whole
 original-scale block with `original_scale_not_representable`, rather than
-returning a partial map. Only the
-`original_scale_not_representable` refusal selects it; any other failure
-propagates. For a scaled slope that interacts with a factor whose level
+returning a partial map. Only the design transform's
+`original_scale_not_representable` refusal selects the name-paired fallback;
+a refusal from its certificate is final, and all other failures propagate.
+For a scaled slope that interacts with a factor whose level
 intercepts are not columns of the block (`diag(1 + f:x | g)`), the induced
 level-specific intercept shifts are not block columns: the original-scale SD
 of the intercept is the SD of the group effect at the predictor mean, not the
