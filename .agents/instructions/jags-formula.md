@@ -370,7 +370,13 @@ threshold is safe. The exact zeros of the map that the draws use
 (off-diagonal entries within 1e-10 of the scale of their column, the rule of the
 least-squares map, so data centered by subtraction add no entry), and the prior
 law of an SD, the catalog support of a composite SD (which SDs it reads) and the
-prior law of a correlation read the same rows. The prior density of a
+prior law of a correlation read the same rows. The floor zeroes any entry within
+1e-10 of its column scale, not only rounding residues, so a genuinely small
+induced entry (a predictor centered to about 1e-10 relative) is dropped from the
+draws and the prior law alike; the original-scale SDs then change by at most
+that relative amount unless the SD-prior scales of the block differ by about 1e8
+or more, where the dropped term can matter. The floor is shared with the
+fixed-effect map and not tightened. The prior density of a
 composite is unavailable with cause `random_sd_prior_law_unavailable`, and with cause
 `random_effect_design_unavailable` when the context holds no design of its block
 (an older object, or `plot_transformed_prior()`, which has no fit). SDs of blocks

@@ -339,6 +339,14 @@
 # entry would otherwise make an SD that reads the centered predictor a composite.
 # The diagonal, the rescaling of a column, is never a residue. Every other entry
 # is kept, however small beside the largest of its row.
+#
+# The floor zeroes any entry within 1e-10 of its column scale, not only rounding
+# residues: a genuinely small induced entry (a predictor centered to about 1e-10
+# relative) is dropped from the draws and from the prior law alike. The
+# original-scale SDs then change by at most that relative amount, unless the SD
+# priors of the block differ in scale by about 1e8 or more, where the dropped
+# term can matter. The floor is shared with the fixed-effect map and not
+# tightened.
 .random_sd_unscale_zero_residues <- function(A){
 
   column_scale <- pmax(1, apply(abs(A), 2L, max))
