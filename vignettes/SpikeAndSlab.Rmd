@@ -227,7 +227,7 @@ ensemble_info <- ensemble_inference(models_list, parameters = "x", is_null_list 
 ensemble_inference_table(ensemble_info, parameters = "x")
 ```
 
-We find absence of evidence for either of the hypotheses, $\text{BF}_{10} = 1.181$, with posterior probability of $P(\mathcal{M}_{1} \mid \text{data}) = 0.542$ (asuming equal prior probability specified via `prior_weights` in the `models_inference` function previously).
+We find absence of evidence for either of the hypotheses, $\text{BF}_{10} = 1.180$, with posterior probability of $P(\mathcal{M}_{1} \mid \text{data}) = 0.541$ (asuming equal prior probability specified via `prior_weights` in the `models_inference` function previously).
 
 
 ## Spike and Slab Priors
@@ -277,7 +277,7 @@ The estimates are essentially identical to the estimates from the previous model
 JAGS_inference_table(MS, BF_diagnostics = TRUE)
 ```
 
-As before, we find absence of evidence for either of the hypotheses, $\text{BF}_{10} = 1.157$, with posterior probability of $P(\mathcal{M}_{1} \mid \text{data}) = 0.536$.
+As before, we find absence of evidence for either of the hypotheses, $\text{BF}_{10} = 1.199$, with posterior probability of $P(\mathcal{M}_{1} \mid \text{data}) = 0.545$.
 
 ```{r save-spike-and-slab-cache, include = FALSE, eval = FALSE, purl = TRUE}
 write_precomputed_vignette_cache(
