@@ -362,6 +362,11 @@ never guarantees: otherwise original-scale requests stop with
 `original_scale_not_representable`, and the estimates table without
 `transform_scaled` leaves the block's original-scale rows out with a warning
 in the same way.
+For a diagonal block, shared-column equality compares variance weights on
+each source SD leaf separately with the existing relative tolerance1e-12.
+Zero/nonzero weights differ exactly, however large another leaf's weight is;
+each leaf has its own independent SD scale. Common tiny weights and zero/zero
+pairs retain their equality, and correlated blocks retain their refusal.
 The ensemble and marginal tables with `transform_scaled = TRUE` take the block
 design from the formula state of the mixed posteriors (`as_mixed_posteriors()`;
 `mix_posteriors()` attaches a state whenever a requested parameter is a fixed

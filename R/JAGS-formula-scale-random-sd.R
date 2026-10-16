@@ -558,21 +558,20 @@
     nrow = nrow(M),
     dimnames = list(NULL, leaf_names)
   )
-  # The weights can use a numerically recoded categorical basis, so equality is up to
-  # rounding of a few ulps relative to their magnitude. The comparison is
-  # relative to the larger weight, whatever its size: all.equal() compares
-  # absolutely when the differing elements have a mean magnitude below the
-  # tolerance, which merges weights of order 1 / sd^2 of a predictor with a very
-  # large SD (all-zero vectors are equal before the scale is used).
+  # A variance is a sum of per-leaf weights times independent squared SDs.
+  # Compare each leaf on its own scale: a small unequal weight on one leaf
+  # cannot be hidden by a larger weight on a different leaf. Numerical
+  # categorical recoding can round equal nonzero weights by a few ulps.
   target_weights <- variance_weights[target_columns, , drop = FALSE]
   first_weights <- unname(target_weights[1L, , drop = TRUE])
   all(vapply(seq_len(nrow(target_weights)), function(i){
     weights <- unname(target_weights[i, , drop = TRUE])
-    isTRUE(all.equal(
-      weights, first_weights,
-      tolerance = 1e-12,
-      scale = max(abs(c(weights, first_weights)))
-    ))
+    all(vapply(seq_along(weights), function(j){
+      if(isTRUE((weights[j] == 0) != (first_weights[j] == 0))) return(FALSE)
+      if(isTRUE(weights[j] == 0 && first_weights[j] == 0)) return(TRUE)
+      isTRUE(all.equal(weights[j], first_weights[j], tolerance = 1e-12,
+        scale = max(abs(c(weights[j], first_weights[j])))))
+    }, logical(1)))
   }, logical(1)))
 }
 

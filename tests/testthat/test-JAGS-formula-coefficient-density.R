@@ -797,7 +797,7 @@ test_that("design-derived unscaling accepts exact maps under extreme centering",
     tolerance = 1e-6
   )
 
-  # The least-squares path (nested slopes, m / s ~ 7000) stays exact and keeps
+  # Categorical recoding (nested slopes, m / s ~ 7000) stays exact and keeps
   # its structural zeros.
   nested_data <- data.frame(
     x = 2010 + 0.5 * offsets[1:9],

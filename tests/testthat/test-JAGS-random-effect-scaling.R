@@ -1780,6 +1780,17 @@ test_that("the weights of a shared random-effect SD leaf are compared relative t
   expect_false(invariant(c(1, 2), c(1, 2) * (1 + 1e-9)))
   # all-zero weights are equal
   expect_true(invariant(c(0, 0), c(0, 0)))
+  # Each source leaf has an independent SD scale. A unit weight on one leaf
+  # cannot hide zero versus 1e-26 on a second leaf whose SD can be 1e13.
+  tiny <- 1e-13
+  M <- rbind(c(1, 0, 0), c(0, 1, tiny), c(0, 0, 1))
+  expect_false(.random_sd_shared_leaf_is_invariant(M, c("a", "a", "b"), 1:2, FALSE))
+  expect_equal(sqrt(diag(M %*% diag(c(1, 1, 1/tiny)^2) %*% t(M)))[1:2],
+    c(1, sqrt(2)), tolerance = 2e-15)
+  expect_false(invariant(c(1, 0), c(1, 1e-26)))
+  expect_true(invariant(c(1, 1e-26), c(1, 1e-26)*(1+1e-15)))
+  expect_true(invariant(c(1e-26, 0), c(1e-26, 0)))
+  expect_false(.random_sd_shared_leaf_is_invariant(diag(3), c("a", "a", "b"), 1:2, TRUE))
 
   # a shared leaf whose columns genuinely transform to different SDs is refused
   # also when the weights are of order 1 / sd(x)^2 for a predictor with a very
@@ -1821,6 +1832,71 @@ test_that("the weights of a shared random-effect SD leaf are compared relative t
       paste0("Random-effect SD column '", shared, "' cannot be unscaled because its shared design columns transform to different SDs."),
       fixed = TRUE, info = paste("sd(x) =", x_sd)
     )
+  }
+})
+
+test_that("unequal shared logical-column SDs refuse even when a different source leaf has a tiny weight", {
+
+  skip_if_not_installed("runjags")
+  data <- expand.grid(x = c(-1, 1), z = c(-1, 1), flag = c(FALSE, TRUE),
+    id = letters[1:4], repeat_row = 1:2, KEEP.OUT.ATTRS = FALSE)
+  data$z <- data$z + 1e-13
+  data$id <- factor(data$id)
+  ratio <- mean(data$z) / stats::sd(data$z)
+  expect_true(ratio != 0)
+  for(extra in c(TRUE, FALSE)){
+    formula <- if(extra) ~1+diag(1+x:flag+z:x+z:x:flag|id) else ~1+diag(1+x:flag+z:x|id)
+    compiled <- JAGS_formula(formula, "mu", data, list(intercept = prior("normal", list(0, 1))),
+      formula_scale = list(z = TRUE), prior_random = prior_random(id = random_block(
+        sd = prior("gamma", list(2, 2)), monitor = random_block_scale_monitor(),
+        terms = if(extra) list("x:flag:z" = prior("gamma", list(2, 2*abs(ratio)))) else NULL)))
+    term <- compiled$formula_design$random_effects[[1L]]
+    factors <- attr(stats::terms(term$term_formula), "factors")
+    find_term <- function(vars) which(vapply(seq_len(ncol(factors)), function(i)
+      setequal(rownames(factors)[factors[, i] > 0], vars), logical(1)))
+    own <- which(term$assign == find_term(c("x", "flag")))
+    false_column <- own[colSums(abs(term$model_matrix[!data$flag, own, drop = FALSE])) > 0]
+    true_column <- own[colSums(abs(term$model_matrix[data$flag, own, drop = FALSE])) > 0]
+    xz <- which(term$assign == find_term(c("x", "z")))
+    expect_length(false_column, 1L); expect_length(true_column, 1L); expect_length(xz, 1L)
+    ref <- diag(ncol(term$model_matrix))
+    ref[c(false_column, true_column), xz] <- -ratio
+    ref[xz, xz] <- 1/stats::sd(data$z)
+    leaves <- unique(term$sd_parameter_names)
+    posterior <- matrix(1, 3L, length(leaves)+1L, dimnames = list(NULL, c("mu_intercept", leaves)))
+    posterior[, "mu_intercept"] <- 0
+    if(extra){
+      three <- which(term$assign == find_term(c("x", "flag", "z")))
+      expect_length(three, 1L)
+      ref[true_column, three] <- -ratio
+      ref[three, three] <- 1/stats::sd(data$z)
+      posterior[, term$sd_parameter_names[three]] <- 1/abs(ratio)
+    }
+    spec <- .bt_random_effect_unscale_design_spec(term, data)
+    A <- .bt_formula_unscale_design_transform(spec, compiled$formula_scale, "mu")$matrix
+    expect_identical(A[ref == 0], ref[ref == 0])
+    expect_lt(max(abs(A[ref != 0]/ref[ref != 0]-1)), 2e-15)
+    tau <- posterior[1L, term$sd_parameter_names]
+    expected <- sqrt(diag(ref %*% diag(tau^2) %*% t(ref)))[c(false_column, true_column)]
+    expect_equal(unname(expected), if(extra) c(1, sqrt(2)) else rep(sqrt(1+ratio^2), 2L), tolerance = 2e-15)
+    fit <- make_random_scale_table_fit(compiled, posterior)
+    shared <- term$sd_parameter_names[false_column]
+    raw <- JAGS_estimates_table(fit, random_effects_summary = "raw", remove_diagnostics = TRUE)
+    expect_equal(as.data.frame(raw)["(mu) id: sd(x:flag)", "Mean"], 1, tolerance = 0)
+    fitted <- as_mixed_posteriors(fit, leaves, transform_scaled = FALSE)
+    expect_equal(as.numeric(fitted[[shared]]), rep(1, 3L), tolerance = 0)
+    if(extra){
+      for(request in list(
+        function() transform_scale_samples(fit),
+        function() JAGS_estimates_table(fit, transform_scaled = TRUE, remove_diagnostics = TRUE),
+        function() as_mixed_posteriors(fit, leaves, transform_scaled = TRUE)
+      )){
+        refusal <- expect_error(request(), class = "BayesTools_formula_transform_unavailable")
+        expect_identical(refusal$reason, "original_scale_not_representable")
+      }
+    }else{
+      expect_equal(unname(transform_scale_samples(fit)[, shared]), rep(expected[1L], 3L), tolerance = 2e-15)
+    }
   }
 })
 
