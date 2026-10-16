@@ -1,6 +1,6 @@
 # Versioned fixed-coefficient transforms and induced prior densities.
 
-.bt_formula_coefficient_transform_version <- 3L
+.bt_formula_coefficient_transform_version <- 4L
 
 #' Formula coefficient transformations and induced prior densities
 #'
@@ -83,7 +83,7 @@
 #' failures and numeric transformation failures retain their strict boundary.
 #' Numeric refusal reasons include `"zero_multiplier_denominator"`,
 #' `"missing_multiplier_state"`, and `"nonfinite_transform"`. Formula-design 6,
-#' unscale-design 2, and transform 3 require refitting older stored formats;
+#' unscale-design 2, and transform 4 require refitting older stored formats;
 #' readers never reconstruct missing fitted declaration ownership.
 #' A requested parameter without a persisted formula design stops with
 #' `BayesTools_formula_transform_unavailable` and reason

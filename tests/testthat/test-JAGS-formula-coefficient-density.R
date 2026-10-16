@@ -71,6 +71,121 @@ test_that("fixed exponential target underflow remains unavailable", {
   ), use.names = FALSE))
 }
 
+test_that("fixed transforms require every nonzero induced numeric and factor margin", {
+
+  normal <- prior("normal", list(0, 1))
+  data <- expand.grid(x = c(-1, 1), z = c(-2, 2), f = letters[1:3], KEEP.OUT.ATTRS = FALSE)
+  data$x <- data$x + 1e-9; data$z <- data$z + 1e-9
+  data$f <- factor(data$f)
+  for(case in list(
+    list(formula = ~x:z, priors = list(intercept = normal, "x:z" = normal)),
+    list(formula = ~f:x, priors = list(intercept = normal,
+      "f:x" = prior_factor("normal", list(0, 1), contrast = "treatment")))
+  )){
+    scaled <- intersect(c("x", "z"), all.vars(case$formula))
+    compiled <- JAGS_formula(case$formula, "mu", data, case$priors,
+      formula_scale = stats::setNames(rep(list(TRUE), length(scaled)), scaled))
+    refusal <- expect_error(.bt_formula_unscale_design_transform(
+      attr(compiled$formula_scale, "unscale_design"), compiled$formula_scale, "mu"),
+      class = "BayesTools_formula_transform_unavailable")
+    if(inherits(refusal, "condition")){
+      expect_identical(refusal$reason, "original_scale_not_representable")
+      expect_match(conditionMessage(refusal), "Include the corresponding lower-order terms", fixed = TRUE)
+    }
+  }
+  compiled <- JAGS_formula(~x*z, "mu", data,
+    list(intercept = normal, x = normal, z = normal, "x:z" = normal), formula_scale = TRUE)
+  fit <- .formula_coefficient_density_fit(compiled, .formula_coefficient_source_names(compiled))
+  transform <- JAGS_formula_coefficient_transform(fit, "mu")
+  mx <- mean(data$x); mz <- mean(data$z); sx <- stats::sd(data$x); sz <- stats::sd(data$z)
+  ref <- rbind(c(1, -mx/sx, -mz/sz, mx*mz/(sx*sz)),
+    c(0, 1/sx, 0, -mz/(sx*sz)), c(0, 0, 1/sz, -mx/(sx*sz)), c(0, 0, 0, 1/(sx*sz)))
+  expect_equal(unname(transform$matrix), ref, tolerance = 2e-15)
+  expect_true(all(transform$matrix[ref != 0] != 0))
+  expect_identical(transform$matrix[ref == 0], ref[ref == 0])
+  intercept_sources <- transform$dependencies$source[transform$dependencies$target == "mu_intercept"]
+  expect_true(all(transform$source_names %in% intercept_sources))
+  density <- JAGS_formula_prior_density(fit, "mu", target = "mu_intercept")
+  expect_equal(prior_density_ordinate(density, 0)$log_density,
+    stats::dnorm(0, 0, sqrt(sum(ref[1L, ]^2)), log = TRUE), tolerance = 2e-12)
+})
+
+test_that("categorical rank precedes missing subsets and positional redundant maps remain supported", {
+
+  normal <- prior("normal", list(0, 1))
+  data <- expand.grid(f = letters[1:3], f2 = c("u", "v"), x = c(2, 5), KEEP.OUT.ATTRS = FALSE)
+  data$f <- factor(data$f); data$f2 <- factor(data$f2)
+  compiled <- JAGS_formula(~x+x:f:f2, "mu", data,
+    list(intercept = normal, x = normal,
+      "x:f:f2" = prior_factor("normal", list(0, 1), contrast = "treatment")), formula_scale = list(x = TRUE))
+  refusal <- expect_error(.bt_formula_unscale_design_transform(
+    attr(compiled$formula_scale, "unscale_design"), compiled$formula_scale, "mu"),
+    class = "BayesTools_formula_transform_unavailable")
+  expect_identical(refusal$reason, "original_scale_not_identified")
+  redundant <- JAGS_formula(~f+f:x, "mu", data,
+    list(intercept = normal, f = prior_factor("normal", list(0, 1), contrast = "independent"),
+      "f:x" = prior_factor("normal", list(0, 1), contrast = "independent")), formula_scale = list(x = TRUE))
+  transform <- .bt_formula_unscale_design_transform(attr(redundant$formula_scale, "unscale_design"), redundant$formula_scale, "mu")
+  expect_identical(transform$method, "name_paired")
+  slopes <- grep("^mu_f__xXx__x", colnames(transform$matrix))
+  margins <- grep("^mu_f\\[", rownames(transform$matrix))
+  expect_equal(unname(transform$matrix[margins, slopes]),
+    diag(-mean(data$x)/stats::sd(data$x), 3L), tolerance = 0)
+})
+
+test_that("large mean to SD ratios do not destroy categorical identifiability", {
+
+  normal <- prior("normal", list(0, 1))
+  data <- expand.grid(f = letters[1:3], x = c(2, 5), KEEP.OUT.ATTRS = FALSE)
+  data$f <- factor(data$f); data$x <- data$x + 1e9
+  compiled <- JAGS_formula(~f+f:x, "mu", data,
+    list(intercept = normal, f = prior_factor("mnormal", list(0, 1), contrast = "meandif"),
+      "f:x" = prior_factor("normal", list(0, 1), contrast = "treatment")), formula_scale = list(x = TRUE))
+  spec <- attr(compiled$formula_scale, "unscale_design")
+  A <- .bt_formula_unscale_design_transform(spec, compiled$formula_scale, "mu")$matrix
+  slopes <- grep("^mu_f__xXx__x", colnames(A))
+  target <- c(1L, grep("^mu_f\\[", rownames(A)))
+  expected <- -mean(data$x)/stats::sd(data$x) * solve(cbind(1, spec$contrast_matrices$f))
+  expect_lt(max(abs(A[target, slopes] - expected)) / max(abs(expected)), 2e-14)
+  expect_equal(unname(diag(A)[slopes]), rep(1/stats::sd(data$x), 3L), tolerance = 0)
+})
+
+test_that("affine range checks cover early maps and direct random dropping maps", {
+
+  scale <- list(mu_x = list(mean = 0, sd = 1e308), mu_z = list(mean = 0, sd = 1e308))
+  for(request in list(
+    function() .build_unscale_matrix_by_names("mu_x__xXx__z", scale, "mu"),
+    function() .random_sd_unscale_matrix("x__xXx__z", scale, "mu")
+  )){
+    refusal <- expect_error(request(), class = "BayesTools_formula_transform_unavailable")
+    expect_identical(refusal$reason, "nonfinite_transform")
+  }
+  # Exact zero means stay exactly zero; a final subnormal reciprocal is valid.
+  A <- .build_unscale_matrix_by_names(c("mu_intercept", "mu_x"), scale, "mu")
+  expect_identical(A[1L, 2L], 0)
+  expect_identical(A[2L, 2L], 1/1e308)
+  compiled <- JAGS_formula(~x*z, "mu", expand.grid(x = c(-1, 1), z = c(-1, 1)),
+    list(intercept = prior("normal", list(0, 1)), x = prior("normal", list(0, 1)),
+      z = prior("normal", list(0, 1)), "x:z" = prior("normal", list(0, 1))), formula_scale = TRUE)
+  bad <- compiled$formula_scale
+  bad$mu_x <- scale$mu_x; bad$mu_z <- scale$mu_z
+  refusal <- expect_error(.bt_formula_unscale_design_transform(attr(bad, "unscale_design"), bad, "mu"),
+    class = "BayesTools_formula_transform_unavailable")
+  expect_identical(refusal$reason, "nonfinite_transform")
+  # Do not assume extended precision for base prod() on every R platform.
+  sds <- c(1e200, 1e200, 1e-200)
+  scale3 <- stats::setNames(lapply(sds, function(s) list(mean = 0, sd = s)), c("mu_x", "mu_z", "mu_w"))
+  expected <- 1/prod(sds)
+  A <- tryCatch(.build_unscale_matrix_by_names("mu_x__xXx__z__xXx__w", scale3, "mu"), error = identity)
+  if(is.finite(expected) && expected != 0){
+    expect_false(inherits(A, "error"))
+    expect_equal(unname(A[1L, 1L]), expected, tolerance = 2e-15)
+  }else{
+    expect_s3_class(A, "BayesTools_formula_transform_unavailable")
+    expect_identical(A$reason, "nonfinite_transform")
+  }
+})
+
 test_that("formula coefficient transforms expose the sample transformation", {
 
   formula_result <- JAGS_formula(
@@ -91,7 +206,7 @@ test_that("formula coefficient transforms expose the sample transformation", {
   transform <- JAGS_formula_coefficient_transform(fit, "mu")
 
   expect_s3_class(transform, "BayesTools_formula_coefficient_transform")
-  expect_identical(transform$schema_version, 3L)
+  expect_identical(transform$schema_version, 4L)
   expect_identical(transform$formula_design_version, 6L)
   expect_identical(transform$parameter_map_version, .bt_parameter_map_version)
   expect_identical(transform$source_names, source_names)
@@ -880,6 +995,10 @@ test_that("formula coefficient transforms require current linked schemas", {
     BayesTools:::.bt_validate_formula_coefficient_transform(stale_design),
     "missing or unsupported"
   )
+  stale_transform <- transform
+  stale_transform$schema_version <- 3L
+  expect_error(BayesTools:::.bt_validate_formula_coefficient_transform(stale_transform),
+    "missing or unsupported")
 
   unknown_map <- transform
   unknown_map$parameter_map_version <- unknown_map$parameter_map_version + 1L

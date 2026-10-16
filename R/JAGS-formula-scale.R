@@ -563,27 +563,48 @@
       # Compute the coefficient
       extra_scaled <- setdiff(S_scaled, T_scaled)
 
-      # Sign: (-1)^|extra|
-      sign <- (-1)^length(extra_scaled)
-
-      # Product of means for extra scaled components
-      if (length(extra_scaled) > 0) {
-        extra_params <- paste0(prefix, "_", extra_scaled)
-        mean_product <- prod(sapply(extra_params, function(p) formula_scale[[p]]$mean))
-      } else {
-        mean_product <- 1
-      }
-
-      # Product of SDs for all scaled components in S
-      S_scaled_params <- paste0(prefix, "_", S_scaled)
-      sd_product <- prod(sapply(S_scaled_params, function(p) formula_scale[[p]]$sd))
-
-      # Contribution coefficient
-      M[t_idx, s_idx] <- sign * mean_product / sd_product
+      M[t_idx, s_idx] <- .bt_formula_unscale_affine_coefficient(
+        S_scaled, extra_scaled, formula_scale, prefix, S_name, T_name
+      )
     }
   }
 
   return(M)
+}
+
+
+# Expand one numeric monomial without turning range loss into a structural zero.
+# Keep the ordinary grouping when its intermediate products are normal, then
+# try a whole product of ratios. Base prod() can preserve a representable whole
+# product even when a sequential double product would lose an intermediate.
+.bt_formula_unscale_affine_coefficient <- function(scaled, dropped,
+                                                   formula_scale, prefix,
+                                                   source, target){
+
+  means <- vapply(dropped, function(v) formula_scale[[paste0(prefix, "_", v)]]$mean, numeric(1))
+  if(any(means == 0)) return(0)
+  sds <- vapply(scaled, function(v) formula_scale[[paste0(prefix, "_", v)]]$sd, numeric(1))
+  normal <- function(x) is.finite(x) & abs(x) >= .Machine$double.xmin
+  final <- function(x) is.finite(x) & x != 0
+  numerator <- prod(-means)
+  denominator <- prod(sds)
+  direct <- numerator / denominator
+  if(normal(numerator) && normal(denominator) && final(direct)) return(direct)
+
+  ratios <- vapply(scaled, function(v){
+    info <- formula_scale[[paste0(prefix, "_", v)]]
+    if(v %in% dropped) -info$mean / info$sd else 1 / info$sd
+  }, numeric(1))
+  alternate <- prod(ratios)
+  ratios_valid <- if(length(ratios) == 1L) final(ratios) else all(normal(ratios))
+  if(ratios_valid && final(alternate)) return(alternate)
+  .bt_formula_transform_stop(
+    "Original coefficient affine arithmetic is numerically unavailable.",
+    parameter = prefix, source = source, target = target,
+    reason = "nonfinite_transform",
+    observed = list(numerator = numerator, denominator = denominator,
+      direct = direct, ratios = ratios, alternate = alternate)
+  )
 }
 
 
@@ -1109,109 +1130,281 @@ JAGS_formula_scale_finalize <- function(formula_scale, design = NULL,
   unique(gsub("__xXx__", ":", terms, fixed = TRUE))
 }
 
-# Helper: Exact fixed-effect unscaling matrix derived from the fitted design.
-#
-# The standardized design X_s (as fitted) and the original-scale design X_o
-# (same terms and contrasts, scaling disabled) are evaluated on the synthetic
-# rows of .bt_formula_unscale_design_data(). The linear predictor is preserved,
-# X_s b_s = X_o b_o, exactly when X_s = X_o A and b_o = A b_s. The name-paired
-# matrix is used when it satisfies this identity (it is then the unique
-# solution for full-rank designs and keeps its exact structural zeros);
-# otherwise the least-squares solution is used when it is exact. A formula whose
-# centered terms induce effects outside the fitted design has no exact
-# solution and is rejected.
+# Number of declared categorical cells, including both values of a logical.
+.bt_formula_unscale_cell_count <- function(data, variables){
+
+  prod(vapply(variables, function(v){
+    if(is.factor(data[[v]])) nlevels(data[[v]]) else 2L
+  }, integer(1)))
+}
+
+# Exact observed-cell identities use persisted factor levels/logical values.
+.bt_formula_unscale_cell_keys <- function(data, variables){
+
+  if(!length(variables)) return(rep("", nrow(data)))
+  codes <- lapply(data[variables], as.integer)
+  do.call(paste, c(codes, sep = "\r"))
+}
+
+# A certified 0/1 lift into functions of the source categorical variables.
+# Source cells must be complete. Outside cells need only be the observed cells,
+# with every source/outside pair present exactly once after deduplication.
+# Groups from one formula term may partition those outside cells; copying their
+# common nonzero column avoids cancellation and certifies all excluded zeros.
+.bt_formula_unscale_partition_basis <- function(data, C, columns, source_variables,
+                                                categorical_variables, assign){
+
+  source_count <- .bt_formula_unscale_cell_count(data, source_variables)
+  if(!is.finite(source_count) || source_count > length(columns)) return(NULL)
+  outside <- setdiff(categorical_variables, source_variables)
+  cell_keys <- .bt_formula_unscale_cell_keys(data, categorical_variables)
+  first <- which(!duplicated(cell_keys))
+  source_keys <- .bt_formula_unscale_cell_keys(data, source_variables)
+  outside_keys <- .bt_formula_unscale_cell_keys(data, outside)
+  source_levels <- unique(source_keys[first])
+  outside_levels <- unique(outside_keys[first])
+  ns <- length(source_levels)
+  no <- length(outside_levels)
+  if(ns != source_count || length(first) != ns * no) return(NULL)
+  sid <- match(source_keys[first], source_levels)
+  oid <- match(outside_keys[first], outside_levels)
+  if(anyDuplicated((oid - 1L) * ns + sid)) return(NULL)
+
+  values <- C[first, columns, drop = FALSE]
+  functions <- lapply(seq_along(columns), function(k){
+    out <- matrix(0, ns, no)
+    out[cbind(sid, oid)] <- values[, k]
+    out
+  })
+  lifts <- list()
+  basis <- list()
+  separable <- list()
+  for(k in seq_along(columns)){
+    F <- functions[[k]]
+    invariant <- all(vapply(seq_len(no), function(o) identical(F[, o], F[, 1L]), logical(1)))
+    if(invariant){
+      lift <- numeric(length(columns))
+      lift[k] <- 1
+      lifts[[length(lifts) + 1L]] <- lift
+      basis[[length(basis) + 1L]] <- F[, 1L]
+    }else{
+      first_nonzero <- which(colSums(F != 0) > 0L)[1L]
+      pattern <- F[, first_nonzero]
+      mask <- vapply(seq_len(no), function(o) identical(F[, o], pattern), logical(1))
+      zeros <- vapply(seq_len(no), function(o) all(F[, o] == 0), logical(1))
+      if(all(mask | zeros)){
+        separable[[length(separable) + 1L]] <- list(
+          column = k, pattern = pattern, mask = mask, term = assign[columns[k]]
+        )
+      }
+    }
+  }
+  pending <- seq_along(separable)
+  while(length(pending)){
+    candidate <- separable[[pending[1L]]]
+    group <- pending[vapply(pending, function(k){
+      identical(separable[[k]]$term, candidate$term) &&
+        identical(separable[[k]]$pattern, candidate$pattern)
+    }, logical(1))]
+    masks <- do.call(rbind, lapply(separable[group], `[[`, "mask"))
+    if(all(colSums(masks) == 1L)){
+      lift <- numeric(length(columns))
+      lift[vapply(separable[group], `[[`, integer(1), "column")] <- 1
+      lifts[[length(lifts) + 1L]] <- lift
+      basis[[length(basis) + 1L]] <- candidate$pattern
+    }
+    pending <- setdiff(pending, group)
+  }
+  if(length(lifts) != ns) return(NULL)
+  L <- do.call(cbind, lifts)
+  B <- do.call(cbind, basis)
+  magnitude <- apply(abs(B), 2L, max)
+  if(any(magnitude == 0) || qr(sweep(B, 2L, magnitude, `/`))$rank < ns) return(NULL)
+  list(matrix = B[match(source_keys, source_levels), , drop = FALSE], lift = L)
+}
+
+.bt_formula_unscale_missing_terms <- function(spec, prefix, columns){
+
+  terms <- .bt_formula_unscale_term_labels(spec, columns)
+  .bt_formula_transform_stop(
+    paste0(
+      "Cannot transform the coefficients of formula parameter '", prefix,
+      "' to the original predictor scale: centering the standardized predictors in term",
+      if(length(terms) > 1L) "s " else " ", paste0("'", terms, "'", collapse = ", "),
+      " induces lower-order effects that the formula does not contain. ",
+      "Include the corresponding lower-order terms or keep the coefficients on ",
+      "the fitted, standardized scale."
+    ),
+    parameter = prefix, reason = "original_scale_not_representable", terms = terms
+  )
+}
+
+# Solve only the categorical representation. Numeric affine coefficients are
+# applied afterwards, so their size cannot hide a missing lower-order effect.
+.bt_formula_unscale_categorical_coefficients <- function(C, columns, source,
+                                                         categorical_sets, data,
+                                                         categorical_variables,
+                                                         spec, prefix, names){
+
+  out <- numeric(length(columns))
+  identical_columns <- which(vapply(columns, function(k) identical(C[, k], C[, source]), logical(1)))
+  if(source %in% columns){
+    out[match(source, columns)] <- 1
+    return(out)
+  }
+  if(length(identical_columns) == 1L){
+    out[identical_columns] <- 1
+    return(out)
+  }
+
+  source_variables <- categorical_sets[[source]]
+  keep <- which(vapply(categorical_sets[columns], function(x) all(x %in% source_variables), logical(1)))
+  source_count <- .bt_formula_unscale_cell_count(data, source_variables)
+  target <- C[, columns, drop = FALSE]
+  lift <- NULL
+  if(length(keep) == source_count && source_count > 0L &&
+     length(unique(.bt_formula_unscale_cell_keys(data, source_variables))) == source_count){
+    restricted <- target[, keep, drop = FALSE]
+    magnitude <- apply(abs(restricted), 2L, max)
+    if(all(magnitude > 0) && qr(sweep(restricted, 2L, magnitude, `/`))$rank == length(keep)){
+      target <- restricted
+      lift <- diag(length(columns))[, keep, drop = FALSE]
+    }
+  }
+  if(is.null(lift)){
+    partition <- .bt_formula_unscale_partition_basis(
+      data, C, columns, source_variables, categorical_variables, spec$assign
+    )
+    if(!is.null(partition)){
+      target <- partition$matrix
+      lift <- partition$lift
+    }
+  }
+
+  source_max <- max(abs(C[, source]))
+  target_max <- apply(abs(target), 2L, max)
+  target_normalized <- sweep(target, 2L, target_max, `/`)
+  source_normalized <- C[, source] / source_max
+  rows <- qr(t(target_normalized))$pivot[seq_len(ncol(target))]
+  solved <- tryCatch(
+    as.numeric(solve(target_normalized[rows, , drop = FALSE], source_normalized[rows])),
+    error = function(e) .bt_formula_transform_stop(
+      "Original coefficient categorical arithmetic is numerically unavailable.",
+      parameter = prefix, source = names[source], reason = "nonfinite_transform"
+    )
+  )
+  residual <- as.numeric(target_normalized %*% solved - source_normalized)
+  bound <- as.numeric(1e3 * .Machine$double.eps *
+    (abs(target_normalized) %*% abs(solved) + max(abs(source_normalized))))
+  if(any(!is.finite(solved)) || any(!is.finite(residual))){
+    .bt_formula_transform_stop(
+      "Original coefficient categorical arithmetic is numerically unavailable.",
+      parameter = prefix, source = names[source], reason = "nonfinite_transform"
+    )
+  }
+  if(any(abs(residual) > bound)) .bt_formula_unscale_missing_terms(spec, prefix, source)
+  b <- numeric(length(solved))
+  nonzero <- which(solved != 0)
+  if(length(nonzero)) b[nonzero] <- .bt_formula_coefficient_ratio(
+    solved[nonzero], numerator = source_max, denominator = target_max[nonzero],
+    source = names[source], target = names[columns]
+  )
+  if(is.null(lift)) return(b)
+  # Each original column belongs to at most one virtual column. Copying avoids
+  # both cancellation and rounded reconstruction of its certified zeros.
+  for(k in seq_along(b)) out[lift[, k] == 1] <- b[k]
+  out
+}
+
+# X_s = X_o A and b_o = A b_s. Expand numeric monomials structurally and solve
+# their categorical functions with the actual persisted coding. No magnitude
+# threshold removes a coefficient or accepts a missing induced component.
 .bt_formula_unscale_design_transform <- function(spec, formula_scale, prefix){
 
   .bt_formula_unscale_design_spec_check(spec, prefix)
-  data <- .bt_formula_unscale_design_data(spec, formula_scale, prefix)
-  X_s <- .bt_formula_unscale_model_matrix(spec, data$standardized, prefix)
-  X_o <- .bt_formula_unscale_model_matrix(spec, data$original, prefix)
+  data <- .bt_formula_unscale_design_data(spec, formula_scale, prefix)$standardized
+  # Rebuilding before grouping retains the raw-column/assignment guard,
+  # including the existing boundary for matrix-valued predictors.
+  .bt_formula_unscale_model_matrix(spec, data, prefix)
   coefficient_names <- .bt_formula_unscale_coefficient_names(spec, prefix)
+  is_scaled <- stats::setNames(paste0(prefix, "_", spec$continuous) %in% names(formula_scale), spec$continuous)
+  is_logical <- vapply(spec$continuous, function(v) isTRUE(spec$continuous_logical[[v]]), logical(1))
+  numeric_names <- spec$continuous[!is_logical | is_scaled]
+  categorical_names <- setdiff(names(data), numeric_names)
+  factor_table <- attr(stats::terms(spec$formula), "factors")
+  variables <- lapply(spec$assign, function(a){
+    if(a == 0L) character() else rownames(factor_table)[factor_table[, a] > 0L]
+  })
+  subsets <- lapply(variables, function(v) sort(intersect(v, numeric_names), method = "radix"))
+  categorical_sets <- lapply(variables, function(v) setdiff(v, numeric_names))
+  key <- function(v) paste0("{", paste(v, collapse = "\r"), "}")
+  keys <- vapply(subsets, key, character(1))
+  groups <- split(seq_along(keys), keys)
+  for(v in numeric_names) data[[v]] <- rep(1, nrow(data))
+  C <- .bt_formula_unscale_model_matrix(spec, data, prefix)
+  if(any(!is.finite(C))) .bt_formula_transform_stop(
+    "Original coefficient categorical arithmetic is numerically unavailable.",
+    parameter = prefix, reason = "nonfinite_transform")
 
-  # Elementwise acceptance: an absolute floor relative to the standardized
-  # design, or a backward-error bound for evaluating X_o A in floating point
-  # (large centering products m / s make exact maps round to more than the
-  # floor). Omitted induced effects leave residuals of the order of the
-  # centering constants and fail both bounds.
-  #
-  # What the absolute floor accepts: the floor deliberately accepts round-off
-  # level residuals, such as the training means of manually centered data.
-  # It therefore also accepts an omitted induced lower-order effect that is
-  # itself below the floor (an interaction `x:z` whose training means are about
-  # 1e-9 induces main effects of that size). The design residual of such a
-  # fit is below 1e-8, but a coefficient of 1e9 multiplies the neglected effect
-  # into prediction errors of order 1. The floor is not tightened: that would
-  # change which fits are refused.
-  absolute_tolerance <- 1e-8 * max(1, max(abs(X_s)))
-  violation <- function(A){
-    bound <- pmax(
-      absolute_tolerance,
-      1e3 * .Machine$double.eps * (abs(X_o) %*% abs(A))
-    )
-    abs(X_o %*% A - X_s) > bound
+  # Required support is derived before evaluating any numeric coefficient.
+  components <- lapply(seq_along(subsets), function(j){
+    scaled <- subsets[[j]][is_scaled[subsets[[j]]]]
+    droppable <- scaled[vapply(scaled, function(v) formula_scale[[paste0(prefix, "_", v)]]$mean != 0, logical(1))]
+    drops <- list(character())
+    for(size in seq_along(droppable)) drops <- c(drops, utils::combn(droppable, size, simplify = FALSE))
+    lapply(drops, function(d) list(scaled = scaled, dropped = d, target = key(setdiff(subsets[[j]], d))))
+  })
+  parsed <- lapply(coefficient_names, .parse_unscale_term_structure,
+    prefix = prefix, scaled_vars = .formula_scale_strip_prefix(names(formula_scale), prefix))
+  partners <- lapply(seq_along(components), function(j){
+    lapply(components[[j]], function(component){
+      if(!length(component$dropped)) return(j)
+      possible <- groups[[component$target]]
+      possible[vapply(possible, function(k){
+        .unscale_ids_match(parsed[[k]]$unscaled_id, parsed[[j]]$unscaled_id) &&
+          identical(C[, k], C[, j])
+      }, logical(1))]
+    })
+  })
+  early <- all(vapply(partners, function(x) all(lengths(x) == 1L), logical(1)))
+  if(!early){
+    # Rank precedes every missing-subset/residual refusal, so a random block
+    # cannot route an unidentified design through its dropping convention.
+    for(columns in groups){
+      magnitude <- apply(abs(C[, columns, drop = FALSE]), 2L, max)
+      if(any(!is.finite(magnitude))) .bt_formula_transform_stop(
+        "Original coefficient categorical arithmetic is numerically unavailable.",
+        parameter = prefix, reason = "nonfinite_transform")
+      if(any(magnitude == 0) || qr(sweep(C[, columns, drop = FALSE], 2L, magnitude, `/`))$rank < length(columns)){
+        .bt_formula_transform_stop(
+          paste0("Cannot transform the coefficients of formula parameter '", prefix,
+            "' to the original predictor scale: the fitted formula terms are linearly ",
+            "dependent, so the original-scale coefficients are not uniquely determined."),
+          parameter = prefix, reason = "original_scale_not_identified"
+        )
+      }
+    }
   }
-
-  name_paired <- .build_unscale_matrix_by_names(
-    term_names = coefficient_names,
-    formula_scale = formula_scale,
-    prefix = prefix
-  )
-  if(!any(violation(name_paired))){
-    return(list(
-      matrix = name_paired,
-      method = "name_paired",
-      coefficient_names = coefficient_names
-    ))
+  A <- matrix(0, length(keys), length(keys), dimnames = list(coefficient_names, coefficient_names))
+  for(j in seq_along(components)){
+    for(i in seq_along(components[[j]])){
+      component <- components[[j]][[i]]
+      columns <- groups[[component$target]]
+      if(!length(columns)) .bt_formula_unscale_missing_terms(spec, prefix, j)
+      g <- .bt_formula_unscale_affine_coefficient(component$scaled, component$dropped,
+        formula_scale, prefix, coefficient_names[j], coefficient_names[columns])
+      if(early){
+        A[partners[[j]][[i]], j] <- g
+      }else{
+        b <- .bt_formula_unscale_categorical_coefficients(C, columns, j,
+          categorical_sets, data, categorical_names, spec, prefix, coefficient_names)
+        A[columns, j] <- .bt_formula_checked_product(g, b, parameter = prefix,
+          source = coefficient_names[j], target = coefficient_names[columns], transform = TRUE)
+      }
+    }
   }
-
-  # Equilibrate columns before the rank decision: raw products of centered
-  # predictors can differ in magnitude by many orders.
-  column_magnitude <- apply(abs(X_o), 2L, max)
-  column_magnitude[column_magnitude == 0] <- 1
-  qr_original <- qr(X_o / rep(column_magnitude, each = nrow(X_o)))
-  if(qr_original$rank < ncol(X_o)){
-    .bt_formula_transform_stop(
-      paste0(
-        "Cannot transform the coefficients of formula parameter '", prefix,
-        "' to the original predictor scale: the fitted formula terms are linearly ",
-        "dependent, so the original-scale coefficients are not uniquely determined."
-      ),
-      parameter = prefix,
-      reason = "original_scale_not_identified"
-    )
-  }
-  least_squares <- qr.coef(qr_original, X_s) / column_magnitude
-  column_scale <- pmax(1, apply(abs(least_squares), 2L, max))
-  zapped <- least_squares
-  zapped[abs(zapped) <= 1e-10 * rep(column_scale, each = nrow(zapped))] <- 0
-  if(!any(violation(zapped))){
-    least_squares <- zapped
-  }
-  violated_columns <- which(colSums(violation(least_squares)) > 0L)
-  if(length(violated_columns) > 0L){
-    terms <- .bt_formula_unscale_term_labels(spec, violated_columns)
-    .bt_formula_transform_stop(
-      paste0(
-        "Cannot transform the coefficients of formula parameter '", prefix,
-        "' to the original predictor scale: centering the standardized predictors in term",
-        if(length(terms) > 1L) "s " else " ",
-        paste0("'", terms, "'", collapse = ", "),
-        " induces lower-order effects that the formula does not contain. ",
-        "Include the corresponding lower-order terms or keep the coefficients on ",
-        "the fitted, standardized scale."
-      ),
-      parameter = prefix,
-      reason = "original_scale_not_representable",
-      terms = terms
-    )
-  }
-  dimnames(least_squares) <- list(coefficient_names, coefficient_names)
-
-  list(
-    matrix = least_squares,
-    method = "least_squares",
-    coefficient_names = coefficient_names
-  )
+  list(matrix = A, method = if(early) "name_paired" else "categorical_basis",
+    coefficient_names = coefficient_names)
 }
 
 # Helper: Restrict an exact design-level unscaling matrix to the requested

@@ -75,8 +75,8 @@ test_that("continuous coefficient aliases retain their fitted identities", {
 
   selection <- parameter_catalog_resolve(catalog, "mu_x")
   old <- fit
-  attr(old, "parameter_map")$schema_version <- 13L
-  attr(old, "fit_contract")$parameter_map_version <- 13L
+  attr(old, "parameter_map")$schema_version <- 14L
+  attr(old, "fit_contract")$parameter_map_version <- 14L
   expect_error(parameter_catalog(old), "Refit the model with this version of BayesTools",
                class = "BayesTools_refit_required")
   expect_error(parameter_draws(old, selection), "Refit the model with this version of BayesTools",

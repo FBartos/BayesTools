@@ -257,7 +257,7 @@ Never infer an unscaling map from sampled values or parameter-name
 coincidences; tests build `formula_scale` through `JAGS_formula()` (see
 `formula_scale_for_test()`).
 
-Formula-design 6, unscale-design 2 and coefficient-transform 3 require refitting
+Formula-design 6, unscale-design 2 and coefficient-transform 4 require refitting
 older formats. One private finalizer completes current compiler specs from
 actual full priors and owned scalar data for fit/draws-only producers, writing
 the same owner to both carriers; fit readers never complete missing ownership.
@@ -292,6 +292,30 @@ though the standardized intercept is `spike(0)`. A random block without a
 random intercept, such as `(0 + x | g)`, likewise implies an original-scale
 random intercept `-u m / s`, perfectly correlated with the slope `u / s`; its
 summaries report only the block's own coefficients.
+
+Fixed and random original-scale maps expand each numeric monomial into its
+declared lower-order subsets. Exactly zero means never drop a variable;
+every nonzero induced coefficient is retained, however small. Unscaled
+logicals remain categorical and scaled logicals are numeric. Categorical
+functions use the persisted coding on the existing synthetic grid. A complete
+positional/name map is accepted only when every induced component has one
+identically coded partner; this preserves redundant independent-factor maps.
+Otherwise all numeric-subset categorical groups must have full rank before
+any missing-term refusal. Solve first in a complete source-variable hierarchy
+basis, then a certified 0/1 indicator-partition lift when available, otherwise
+the full categorical group. The lift requires complete declared source cells
+crossed once with each observed outside cell, without requiring unneeded
+outside logical interactions. Excluded basis columns are structurally zero;
+computed within-basis nonzeros are never snapped. Normalized categorical
+square solves verify all grid rows with the floating backward-error bound;
+numeric affine coefficients are applied afterwards. Whole base `prod()` and
+safe ratio regrouping preserve representable nonzeros or raise
+`nonfinite_transform`, including on the direct random name-paired fallback.
+Fixed missing lower-order effects refuse even when their coefficients are tiny.
+Eigen-generated contrasts do not imply exact stored-double orthogonality;
+tiny within-basis coefficients can have poor relative accuracy in doubles.
+Parameter-map 15 and coefficient-transform 4 invalidate older classifications;
+refit and recreate detached derived objects. Design 6/unscale-design 2 remain.
 
 Random-effect SDs and correlations of a block with a scaled slope follow the
 block's own design, as the fixed coefficients do: when the standardized block
@@ -371,7 +395,7 @@ map that the draws use
 design transform or documented name-paired fallback unchanged. Draws, the prior
 law of an SD, the catalog support of a composite SD (which SDs it reads), and the
 prior law of a correlation read the same retained rows. The shared design
-helper retains its guarded least-squares representability policy; the random
+helper uses the structural affine/categorical representation above; the random
 wrapper adds no magnitude threshold. An exactly zero predictor mean keeps a
 pure intercept rescaling. Centering by subtraction can leave a numerically
 nonzero mean: if its induced entry is retained, the intercept SD is composite,

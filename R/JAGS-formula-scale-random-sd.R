@@ -558,7 +558,7 @@
     nrow = nrow(M),
     dimnames = list(NULL, leaf_names)
   )
-  # The weights come from a least-squares map, so equal weights agree only up to
+  # The weights can use a numerically recoded categorical basis, so equality is up to
   # rounding of a few ulps relative to their magnitude. The comparison is
   # relative to the larger weight, whatever its size: all.equal() compares
   # absolutely when the differing elements have a mean magnitude below the

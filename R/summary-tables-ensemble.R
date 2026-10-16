@@ -67,7 +67,11 @@
 #' scale. For \code{runjags_estimates_table()}, random-effect summaries are
 #' also derived on the transformed scale when the fit contains
 #' \code{formula_scale} metadata: random-effect SDs and correlations are
-#' computed from the transformed covariance draws. Mixed posterior samples are
+#' computed from the transformed covariance draws. Subtraction-centering can
+#' leave a numerically nonzero predictor mean; its induced effects are retained.
+#' Composite original-scale SDs have available draws but may have unavailable
+#' prior laws. Fitted-scale coefficients and raw random-effect SDs remain
+#' available without this transformation. Mixed posterior samples are
 #' transformed through the fitted design of \code{formula_scale}: every column
 #' is mapped to its fitted coefficient by its \code{quantities} draw metadata
 #' (see [posterior_metadata()]), and columns that are not fitted coefficients

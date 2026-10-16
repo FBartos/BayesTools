@@ -245,7 +245,7 @@ test_that("original coefficients read immutable fitted multiplier states", {
 
   fit <- .formula_state_test_fit()
   descriptor <- JAGS_formula_coefficient_transform(fit, "mu")
-  expect_identical(descriptor$schema_version, 3L)
+  expect_identical(descriptor$schema_version, 4L)
   expect_true(all(is.na(descriptor$matrix["mu_intercept", ])))
   expect_identical(descriptor$matrix["mu_x", ], c(mu_intercept = 0, mu_x = .1))
   expect_identical(descriptor$basis_matrix["mu_intercept", ], c(mu_intercept = 1, mu_x = -2))
