@@ -311,56 +311,12 @@
 # transforming draws (the parameter map) asks for NULL (unidentified =
 # "unavailable"). Without the fitted block the map pairs coefficient names. The
 # returned matrix is the one map of the block: the draws, the prior law of an SD
-# and the catalog read the same entries, and its rounding residues are exact
-# zeros (see .random_sd_unscale_zero_residues()).
+# and the catalog read the same retained entries.
 .random_sd_unscale_matrix <- function(column_terms, formula_scale, prefix,
                                       random_term = NULL, source_data = NULL,
                                       unidentified = c("stop", "unavailable")){
 
-  A <- .random_sd_unscale_matrix_build(
-    column_terms = column_terms,
-    formula_scale = formula_scale,
-    prefix = prefix,
-    random_term = random_term,
-    source_data = source_data,
-    unidentified = match.arg(unidentified)
-  )
-  if(is.null(A)){
-    return(NULL)
-  }
-
-  .random_sd_unscale_zero_residues(A)
-}
-
-# The rounding residues of a map are set to exact zero: the off-diagonal entries
-# within 1e-10 of the scale of their column (its largest entry, at least 1), the
-# rule that .bt_formula_unscale_design_transform() applies to its least-squares
-# map. Data centered by subtraction have a mean of rounding size, whose name-paired
-# entry would otherwise make an SD that reads the centered predictor a composite.
-# The diagonal, the rescaling of a column, is never a residue. Every other entry
-# is kept, however small beside the largest of its row.
-#
-# The floor zeroes any entry within 1e-10 of its column scale, not only rounding
-# residues: a genuinely small induced entry (a predictor centered to about 1e-10
-# relative) is dropped from the draws and from the prior law alike. The
-# original-scale SDs then change by at most that relative amount, unless the SD
-# priors of the block differ in scale by about 1e8 or more, where the dropped
-# term can matter. The floor is shared with the fixed-effect map and not
-# tightened.
-.random_sd_unscale_zero_residues <- function(A){
-
-  column_scale <- pmax(1, apply(abs(A), 2L, max))
-  residue <- abs(A) <= 1e-10 * rep(column_scale, each = nrow(A))
-  diag(residue) <- FALSE
-  A[residue] <- 0
-
-  A
-}
-
-# The map of .random_sd_unscale_matrix() before its rounding residues are zeroed.
-.random_sd_unscale_matrix_build <- function(column_terms, formula_scale, prefix,
-                                            random_term, source_data,
-                                            unidentified){
+  unidentified <- match.arg(unidentified)
 
   if(!is.null(random_term)){
     spec <- .bt_random_effect_unscale_design_spec(random_term, source_data)
@@ -478,10 +434,9 @@
 # The one zero rule of the original-scale map of a random-effect block (the
 # unscale matrix): an entry is zero exactly when the matrix that the draws use
 # (.random_sd_unscale_matrix()) holds an exact zero there, so the draws and
-# every classification of the map read the same zeros. The matrix sets its own
-# rounding residues (the mean of data centered by subtraction, a least-squares
-# remainder) to exact zero; any other entry, however small beside the largest of
-# its row, enters the draws and so counts here. The rows of the matrix decide
+# every classification of the map read the same zeros. Every retained nonzero
+# entry, however small beside the largest of its row, enters the draws and so
+# counts here. The rows of the matrix decide
 # which fitted SDs an original-scale SD reads (the catalog support and its
 # exactness, the prior law of a correlation) and whether it is a pure rescaling
 # (.random_sd_original_scale_laws()). Returns a logical vector, all FALSE for an
@@ -499,11 +454,10 @@
 # has exactly one nonzero entry, on its own coordinate; that entry c is the
 # scale, and the original-scale law is the fitted SD's law rescaled by |c|.
 # An entry counts as zero by the one rule of .random_sd_unscale_row_nonzero():
-# exactly the zeros of the matrix the draws use, in which the rounding residues
-# are already exact zeros (data centered by subtraction have a mean of rounding
-# size, whose induced entry would otherwise make every intercept SD a
-# composite). A nonzero entry of any size makes a composite: the SD priors can
-# differ in scale by orders of magnitude, so no relative threshold is safe. A
+# exactly the zeros of the matrix the draws use. A retained nonzero entry of
+# any size makes a composite, including one induced by a numerically nonzero
+# mean after centering by subtraction. Small predictor units alone can make
+# such an entry consequential, so no additional magnitude threshold is safe. A
 # shared leaf is a pure rescaling only when every column of the leaf is, with
 # the same |c|. Any other SD (e.g. an intercept SD combined with the SD of a
 # non-centered scaled slope) is a composite of several fitted SDs.

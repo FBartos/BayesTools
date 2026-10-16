@@ -1435,6 +1435,80 @@ random_block_scale_monitor <- function(correlation = FALSE){
   random_monitor(latent = FALSE, coefficients = FALSE, correlation = correlation)
 }
 
+test_that("tiny predictor units retain the original-scale SD map and unit conversion", {
+
+  skip_if_not_installed("runjags")
+
+  x <- as.numeric(scale(rep(c(-3, -2, -1, 1, 2, 3), 6L))) * 1e-12 + 5e-11
+  results <- lapply(c(1, 1e12), function(units){
+    data <- data.frame(x = x * units, id = factor(rep(1:6, each = 6L)))
+    m <- mean(data$x)
+    s <- stats::sd(data$x)
+    setup <- random_block_scale_fit(
+      ~ 1 + x + diag(1 + x | id), data,
+      prior_random(id = random_block(
+        sd = prior("gamma", list(2, 2)), monitor = random_block_scale_monitor()
+      )), tau = c(1, 1)
+    )
+    term <- setup$formula_result$formula_design$random_effects[[1L]]
+    A <- BayesTools:::.random_sd_unscale_matrix(
+      term$sd_parameter_names, setup$formula_result$formula_scale, "mu",
+      random_term = term, source_data = data
+    )
+    reference <- matrix(c(1, 0, -m / s, 1 / s), 2L)
+    expect_equal(A, reference, tolerance = 1e-14)
+    expect_equal(cbind(1, data$x) %*% A, cbind(1, (data$x - m) / s),
+                 tolerance = 1e-13, ignore_attr = TRUE)
+    expected <- c(sqrt(1 + (m / s)^2), 1 / s)
+    transformed <- transform_scale_samples(setup$fit)
+    mixed <- as_mixed_posteriors(setup$fit, setup$sd_names, transform_scaled = TRUE)
+    expect_equal(unname(transformed[1L, setup$sd_names]), expected, tolerance = 1e-13)
+    expect_equal(unname(vapply(mixed, `[`, numeric(1), 1L)), expected, tolerance = 1e-13)
+    unname(transformed[1L, setup$sd_names])
+  })
+  expect_equal(results[[1L]][1L], sqrt(2501), tolerance = 1e-13)
+  expect_equal(results[[1L]][1L], results[[2L]][1L], tolerance = 1e-13)
+  expect_equal(results[[1L]][2L] / 1e12, results[[2L]][2L], tolerance = 1e-13)
+})
+
+test_that("tiny-unit correlated blocks retain the covariance cross term", {
+
+  skip_if_not_installed("runjags")
+
+  data <- data.frame(
+    x = as.numeric(scale(rep(c(-3, -2, -1, 1, 2, 3), 6L))) * 1e-12 + 5e-11,
+    id = factor(rep(1:6, each = 6L))
+  )
+  rho <- 0.4
+  tau <- c(0.8, 1.3)
+  correlation_names <- outer(1:2, 1:2, Vectorize(function(row, column){
+    paste0("mu__xREx__id_xRE_CORx_R[", row, ",", column, "]")
+  }))
+  setup <- random_block_scale_fit(
+    ~ 1 + x + us(1 + x | id), data,
+    prior_random(id = random_block(
+      sd = prior("gamma", list(2, 2)), cor = prior_lkj(eta = 1),
+      monitor = random_block_scale_monitor(correlation = TRUE)
+    )),
+    extra = list(values = c(1, rho, rho, 1), names = as.vector(correlation_names)),
+    tau = tau
+  )
+  s <- stats::sd(data$x)
+  ratio <- mean(data$x) / s
+  # Direct entries of A Sigma A', independent of the implementation's map.
+  v00 <- tau[1L]^2 - 2 * ratio * rho * tau[1L] * tau[2L] + ratio^2 * tau[2L]^2
+  v11 <- tau[2L]^2 / s^2
+  v01 <- (rho * tau[1L] * tau[2L] - ratio * tau[2L]^2) / s
+  expected_sd <- sqrt(c(v00, v11))
+  expected_rho <- v01 / prod(expected_sd)
+  transformed <- transform_scale_samples(setup$fit)
+  expect_equal(unname(transformed[1L, setup$sd_names]), expected_sd, tolerance = 1e-13)
+  expect_equal(unname(transformed[1L, correlation_names[1L, 2L]]), expected_rho,
+               tolerance = 1e-13)
+  mixed <- as_mixed_posteriors(setup$fit, setup$sd_names, transform_scaled = TRUE)
+  expect_equal(unname(vapply(mixed, `[`, numeric(1), 1L)), expected_sd, tolerance = 1e-13)
+})
+
 test_that("random-effect SDs of a block with a factor-by-scaled-slope term follow the block design", {
 
   skip_if_not_installed("runjags")
@@ -2457,7 +2531,7 @@ test_that("the prior law of a pure-rescaling random-effect SD is the fitted law 
   expect_lt(abs(log(control_bf)), random_block_bf_bound(p_control, setup$n))
 })
 
-test_that("a random-effect SD with a mean-zero predictor is a pure rescaling, whatever the rounding of the centering", {
+test_that("exact-zero means retain pure SD rescaling and nonzero subtraction-centered means refuse it", {
 
   skip_if_not_installed("runjags")
 
@@ -2487,18 +2561,91 @@ test_that("a random-effect SD with a mean-zero predictor is a pure rescaling, wh
   ))
   expect_lt(abs(log(hypothesis$BF10)), random_block_bf_bound(p, setup$n))
 
-  # centered by subtraction, the mean is of the size of rounding, not zero: the
-  # entry it induces in the intercept SD does not make the SD a composite
+  # Centering by subtraction leaves a nonzero mean and a retained design entry.
+  # Its size does not establish a pure rescaling.
   df_centered <- random_block_scale_data()
   df_centered$xc <- df_centered$x - mean(df_centered$x)
   expect_true(mean(df_centered$xc) != 0 && abs(mean(df_centered$xc)) < 1e-12)
   setup <- random_block_prior_draw_fit(~ 1 + xc + diag(1 + xc | id), df_centered, variable = "xc")
   mixed <- as_mixed_posteriors(setup$fit, setup$sd_names, transform_scaled = TRUE)
-  densities <- posterior_metadata(mixed, "prior_densities")
-  expect_equal(
-    random_block_density_ordinate(densities[["mu__xREx__id_intercept"]], grid),
-    stats::dgamma(grid, 2, 2), tolerance = 1e-8
+  term <- setup$formula_result$formula_design$random_effects[[1L]]
+  A <- BayesTools:::.random_sd_unscale_matrix(
+    term$sd_parameter_names, setup$formula_result$formula_scale, "mu",
+    random_term = term, source_data = df_centered
   )
+  expect_identical(A[1L, 2L], -mean(df_centered$xc) / stats::sd(df_centered$xc))
+  expect_true(A[1L, 2L] != 0)
+  densities <- posterior_metadata(mixed, "prior_densities")
+  expect_null(densities[["mu__xREx__id_intercept"]])
+  refusal <- expect_error(
+    marginal_posterior(mixed, "mu__xREx__id_intercept", use_formula = FALSE, prior_samples = TRUE),
+    class = "BayesTools_formula_measure_unavailable"
+  )
+  expect_identical(refusal$reason, "random_sd_prior_law_unavailable")
+})
+
+test_that("a tiny nonzero predictor mean retains composite SD draws and prior-law refusal", {
+
+  skip_if_not_installed("runjags")
+
+  sd_names <- c("mu__xREx__id_intercept", "mu__xREx__id_x")
+  base <- rep(c(-3, -2, -1, 1, 2, 3), 6L)
+  tau0 <- c(0.25, 0.5, 1, 2)
+  tau1 <- c(1e13, 4e13, 1e14, 2e14)
+  for(shift in c(1e-13, 0)){
+    data <- data.frame(x = base + shift, id = factor(rep(1:6, each = 6L)))
+    setup <- random_block_scale_fit(
+      ~ 1 + x + diag(1 + x | id), data,
+      prior_random(id = random_block(
+        sd = prior("gamma", list(2, 2)),
+        terms = list(x = prior("gamma", list(2, 2e-14))),
+        monitor = random_block_scale_monitor()
+      ))
+    )
+    posterior <- cbind(mu_intercept = 0, mu_x = 0, tau0, tau1)
+    colnames(posterior)[3:4] <- sd_names
+    fit <- make_random_scale_table_fit(setup$formula_result, posterior)
+    mixed <- as_mixed_posteriors(fit, sd_names, transform_scaled = TRUE)
+    ratio <- mean(data$x) / stats::sd(data$x)
+    expected <- sqrt(tau0^2 + ratio^2 * tau1^2)
+    expect_equal(as.numeric(mixed[[sd_names[1L]]]), expected, tolerance = 1e-13)
+    expect_equal(unname(transform_scale_samples(fit)[, sd_names[1L]]), expected,
+                 tolerance = 1e-13)
+    densities <- posterior_metadata(mixed, "prior_densities")
+    if(shift != 0){
+      expect_true(ratio != 0)
+      expect_gt(max(expected - tau0), 5)
+      expect_null(densities[[sd_names[1L]]])
+      requests <- list(
+        density = function() marginal_posterior(mixed, sd_names[1L], use_formula = FALSE, prior_samples = TRUE),
+        region = function() hypothesis_BF(
+          marginal_posterior(mixed, sd_names[1L], use_formula = FALSE, prior_samples = TRUE),
+          hypothesis = paste(sd_names[1L], "> 1"), parameter = sd_names[1L]
+        )
+      )
+      for(request in requests){
+        refusal <- expect_error(request(), class = "BayesTools_formula_measure_unavailable")
+        expect_identical(refusal$reason, "random_sd_prior_law_unavailable")
+      }
+      quantities <- parameter_catalog(fit)$quantities
+      key <- quantities$extraction_key[[match("(mu) sd(intercept)", quantities$canonical_name)]]
+      expect_identical(key$source_type, "composite")
+      expect_identical(BayesTools:::.bt_parameter_catalog_own_scale_dependencies(fit, key), sd_names)
+      expect_true(all(sd_names %in% key$dependencies))
+    }else{
+      expect_identical(ratio, 0)
+      grid <- c(0.25, 0.5, 1, 2)
+      expect_equal(random_block_density_ordinate(densities[[sd_names[1L]]], grid),
+                   stats::dgamma(grid, 2, 2), tolerance = 1e-8)
+      s <- stats::sd(data$x)
+      slope_grid <- stats::qgamma(c(0.1, 0.5, 0.9), 2, 2e-14) / s
+      expect_equal(
+        random_block_density_ordinate(densities[[sd_names[2L]]], slope_grid) /
+          (stats::dgamma(slope_grid * s, 2, 2e-14) * s),
+        rep(1, length(slope_grid)), tolerance = 1e-8
+      )
+    }
+  }
 })
 
 # Data of a block with a nearly centered predictor `u` (mean / SD = `ratio`, SD
@@ -2576,7 +2723,7 @@ test_that("an entry of the original-scale map that the draws keep makes the SD a
 
   # The SD of `v` reads the SD of `u:v` through the entry -mean(u) / (sd(u) sd(v))
   # of its row, which is 4e-13 times its large diagonal entry 1 / sd(v) and still
-  # above the rounding residues that the map zeroes. With SD-prior scales 1e13
+  # retained by both design-transform paths. With SD-prior scales 1e13
   # apart the entry decides the law of the SD, so it is a composite whose prior
   # law is refused; a relative threshold on the row made it a rescaling of the
   # fitted SD, with the prior event probability 0.46 where it is above 0.9.
@@ -2646,8 +2793,8 @@ test_that("an entry of the original-scale map that the draws keep makes the SD a
     expect_true(all(c(sd_v, sd_uv) %in%
       BayesTools:::.bt_parameter_catalog_own_scale_dependencies(setup$fit, key)), info = method)
 
-    # centered by subtraction, the mean is of rounding size: the map zeroes the
-    # entry, and the SD of `v` is a rescaling with the exact law of the fitted SD
+    # The existing guarded least-squares design can retain an exact zero here.
+    # The name-paired design retains the nonzero subtraction-centered mean.
     centered <- random_block_nearly_centered_fit(
       design$rhs, design$scaled, random_block_nearly_centered_data(0)
     )
@@ -2656,9 +2803,26 @@ test_that("an entry of the original-scale map that the draws keep makes the SD a
       formula_scale = centered$formula_result$formula_scale,
       prefix = "mu", random_term = centered$term, source_data = centered$data
     )
-    expect_identical(A0[i_v, i_uv], 0, info = method)
     mixed0 <- as_mixed_posteriors(centered$fit, centered$leaves, transform_scaled = TRUE)
     densities0 <- posterior_metadata(mixed0, "prior_densities")
+    if(identical(method, "name_paired")){
+      expected_entry <- -mean(centered$data$u) / (stats::sd(centered$data$u) * stats::sd(centered$data$v))
+      expect_identical(A0[i_v, i_uv], expected_entry)
+      expect_true(expected_entry != 0)
+      expect_null(densities0[[sd_v]])
+      refusal <- expect_error(
+        marginal_posterior(mixed0, sd_v, use_formula = FALSE, prior_samples = TRUE),
+        class = "BayesTools_formula_measure_unavailable"
+      )
+      expect_identical(refusal$reason, "random_sd_prior_law_unavailable")
+      catalog0 <- parameter_catalog(centered$fit)$quantities
+      key0 <- catalog0$extraction_key[[match("(mu) sd(v)", catalog0$canonical_name)]]
+      expect_identical(key0$source_type, "composite")
+      expect_identical(BayesTools:::.bt_parameter_catalog_own_scale_dependencies(centered$fit, key0),
+                       c(sd_v, sd_uv))
+      next
+    }
+    expect_identical(A0[i_v, i_uv], 0, info = method)
     c_v <- abs(A0[i_v, i_v])
     grid <- c_v * seq(0.1, 3, length.out = 30L)
     expect_equal(

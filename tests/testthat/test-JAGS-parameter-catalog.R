@@ -73,10 +73,14 @@ test_that("continuous coefficient aliases retain their fitted identities", {
     "mu_intercept"
   )
 
+  selection <- parameter_catalog_resolve(catalog, "mu_x")
   old <- fit
-  attr(old, "parameter_map")$schema_version <- .bt_parameter_map_version - 1L
-  attr(old, "fit_contract")$parameter_map_version <- .bt_parameter_map_version - 1L
-  expect_error(parameter_catalog(old), class = "BayesTools_refit_required")
+  attr(old, "parameter_map")$schema_version <- 13L
+  attr(old, "fit_contract")$parameter_map_version <- 13L
+  expect_error(parameter_catalog(old), "Refit the model with this version of BayesTools",
+               class = "BayesTools_refit_required")
+  expect_error(parameter_draws(old, selection), "Refit the model with this version of BayesTools",
+               class = "BayesTools_refit_required")
 
   malformed <- fit
   attr(malformed, "parameter_map")$quantities$extraction_key[[1L]]$type <- "bogus"
@@ -2557,13 +2561,10 @@ test_that("the support of an identity random SD is the support of its own coordi
   }
 })
 
-test_that("a rounding-size entry of the unscale matrix is zero for the catalog support and the LKJ law", {
+test_that("retained nonzero unscale entries govern catalog support and the LKJ law", {
 
-  # F318 (5), F333: the catalog and the prior law of an SD read the same zeros of
-  # the unscale matrix, those of the matrix the draws use, in which the rounding
-  # residues are exact zeros. Data centered by subtraction (a mean of rounding
-  # size) therefore do not make an SD that reads a centered predictor read its
-  # SD, and do not make every intercept correlation of such a block a composite.
+  # The catalog and the prior law read the retained entries of the same map as
+  # the draws, including a nonzero entry from subtraction-centered predictors.
   x <- c(0.1, 0.7, 0.3, 1.9, 2.3, 0.4, 5.1, 0.2)
   z <- c(0.2, 1.1, 0.8, 2.6, 0.4, 1.9, 3.7, 0.5)
   z_centered <- z - mean(z)
@@ -2590,7 +2591,7 @@ test_that("a rounding-size entry of the unscale matrix is zero for the catalog s
 
   # The intercept SD of a block with scaled x and z reads their SDs through its
   # row of the unscale matrix. The bounded SD of z makes its hull inexact when
-  # z has a mean, and not when z is centered by subtraction.
+  # z has a nonzero mean, including after subtraction-centering.
   bounded_z <- random_block(
     sd = half_normal, terms = list(z = prior("uniform", list(0.5, 2)))
   )
@@ -2601,7 +2602,8 @@ test_that("a rounding-size entry of the unscale matrix is zero for the catalog s
     quantities$support[[match("(mu) sd(intercept)", quantities$canonical_name)]]$exact
   }
   expect_false(hull_exact(z))
-  expect_true(hull_exact(z_centered))
+  expect_false(hull_exact(z_centered))
+  expect_true(hull_exact(c(-3, -2, -1, 0, 0, 1, 2, 3)))
 
   # The intercept correlation of a block with one centered scaled slope is the
   # LKJ entry of its pair; with a mean it combines the SDs
@@ -2614,11 +2616,13 @@ test_that("a rounding-size entry of the unscale matrix is zero for the catalog s
     )
   }
   expect_null(correlation_density(x))
-  .expect_lkj_marginal_density(correlation_density(x - mean(x)), eta - 1 + 2 / 2,
-                               info = "centered")
+  expect_true(mean(x - mean(x)) != 0)
+  expect_null(correlation_density(x - mean(x)))
+  .expect_lkj_marginal_density(correlation_density(c(-3, -2, -1, 0, 0, 1, 2, 3)),
+                               eta - 1 + 2 / 2, info = "exact zero mean")
 
   # one zero rule: the exact zeros of the row, however small the other entries
-  # are beside its largest (the matrix zeroes its own rounding residues)
+  # are beside its largest
   zero <- BayesTools:::.random_sd_unscale_row_nonzero
   expect_identical(zero(c(1, 1e-13)), c(TRUE, TRUE))
   expect_identical(zero(c(1e-13, 1e-14)), c(TRUE, TRUE))
@@ -2626,17 +2630,6 @@ test_that("a rounding-size entry of the unscale matrix is zero for the catalog s
   expect_identical(zero(c(2, 0, -3)), c(TRUE, FALSE, TRUE))
   expect_identical(zero(c(0, 0)), c(FALSE, FALSE))
 
-  # the rounding residues of the matrix: off-diagonal entries within 1e-10 of the
-  # scale of their column (at least 1, else its largest entry), never the diagonal
-  residues <- BayesTools:::.random_sd_unscale_zero_residues
-  expect_identical(
-    residues(matrix(c(1, 0, 0, 3e-17, 2, 0, 5e-11, 4e-10, 1e-12), 3L, 3L)),
-    matrix(c(1, 0, 0, 0, 2, 0, 0, 4e-10, 1e-12), 3L, 3L)
-  )
-  expect_identical(
-    residues(matrix(c(1e4, 5e-7, 2e-6, 0, 1, 0, 0, 0, 1), 3L, 3L)),
-    matrix(c(1e4, 0, 2e-6, 0, 1, 0, 0, 0, 1), 3L, 3L)
-  )
 })
 
 test_that("allocation quantities with inclusion gates or point scales declare the atoms of their prior density", {

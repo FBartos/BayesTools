@@ -363,21 +363,20 @@ SD's weight in `.prior_density_context_standardized_weights()`). Any other SD of
 a block with a scaled column (the intercept SD with a non-centered scaled slope,
 factor-level SDs that absorb induced shifts) combines several fitted SDs, and so
 does an SD with any further nonzero entry, however small beside its diagonal:
-the SD priors can differ in scale by orders of magnitude, so no relative
-threshold is safe. The exact zeros of the map that the draws use
+small predictor units alone can make an induced entry consequential, and SD
+priors can also differ in scale by orders of magnitude. The exact zeros of the
+map that the draws use
 (`.random_sd_unscale_matrix()`) are the one zero rule
-(`.random_sd_unscale_row_nonzero()`): the map zeroes its own rounding residues
-(off-diagonal entries within 1e-10 of the scale of their column, the rule of the
-least-squares map, so data centered by subtraction add no entry), and the prior
-law of an SD, the catalog support of a composite SD (which SDs it reads) and the
-prior law of a correlation read the same rows. The floor zeroes any entry within
-1e-10 of its column scale, not only rounding residues, so a genuinely small
-induced entry (a predictor centered to about 1e-10 relative) is dropped from the
-draws and the prior law alike; the original-scale SDs then change by at most
-that relative amount unless the SD-prior scales of the block differ by about 1e8
-or more, where the dropped term can matter. The floor is shared with the
-fixed-effect map and not tightened. The prior density of a
-composite is unavailable with cause `random_sd_prior_law_unavailable`, and with cause
+(`.random_sd_unscale_row_nonzero()`): the random-effect wrapper returns the
+design transform or documented name-paired fallback unchanged. Draws, the prior
+law of an SD, the catalog support of a composite SD (which SDs it reads), and the
+prior law of a correlation read the same retained rows. The shared design
+helper retains its guarded least-squares representability policy; the random
+wrapper adds no magnitude threshold. An exactly zero predictor mean keeps a
+pure intercept rescaling. Centering by subtraction can leave a numerically
+nonzero mean: if its induced entry is retained, the intercept SD is composite,
+its transformed draws remain available, and its prior law is refused. The prior
+density of a composite is unavailable with cause `random_sd_prior_law_unavailable`, and with cause
 `random_effect_design_unavailable` when the context holds no design of its block
 (an older object, or `plot_transformed_prior()`, which has no fit). SDs of blocks
 without a scaled column and of structured blocks keep their fitted law. The
