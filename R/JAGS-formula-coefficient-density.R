@@ -60,7 +60,7 @@
 #'   of those targets. Supply exactly one of `target` and `weights`.
 #'
 #' @return `JAGS_formula_coefficient_transform()` returns a
-#' `BayesTools_formula_coefficient_transform` list (schema version 3). Its
+#' `BayesTools_formula_coefficient_transform` list (schema version 4). Its
 #' `targets` data frame has one row per original-scale target with the
 #' `structural_status`, `fixed_value` and `reason` of the target, its
 #' `map_type` (`"identity"`: the target is its own fitted source, including a

@@ -43,7 +43,7 @@ of those targets. Supply exactly one of \code{target} and \code{weights}.}
 }
 \value{
 \code{JAGS_formula_coefficient_transform()} returns a
-\code{BayesTools_formula_coefficient_transform} list (schema version 3). Its
+\code{BayesTools_formula_coefficient_transform} list (schema version 4). Its
 \code{targets} data frame has one row per original-scale target with the
 \code{structural_status}, \code{fixed_value} and \code{reason} of the target, its
 \code{map_type} (\code{"identity"}: the target is its own fitted source, including a

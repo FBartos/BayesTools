@@ -363,7 +363,7 @@ never guarantees: otherwise original-scale requests stop with
 `transform_scaled` leaves the block's original-scale rows out with a warning
 in the same way.
 For a diagonal block, shared-column equality compares variance weights on
-each source SD leaf separately with the existing relative tolerance1e-12.
+each source SD leaf separately with the existing relative tolerance 1e-12.
 Zero/nonzero weights differ exactly, however large another leaf's weight is;
 each leaf has its own independent SD scale. Common tiny weights and zero/zero
 pairs retain their equality, and correlated blocks retain their refusal.

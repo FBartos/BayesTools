@@ -558,8 +558,9 @@
     nrow = nrow(M),
     dimnames = list(NULL, leaf_names)
   )
-  # A variance is a sum of per-leaf weights times independent squared SDs.
-  # Compare each leaf on its own scale: a small unequal weight on one leaf
+  # For an uncorrelated source-coefficient block, a target variance sums each
+  # source SD leaf's weight times its squared SD. Compare each leaf on its own
+  # scale: a small unequal weight on one leaf
   # cannot be hidden by a larger weight on a different leaf. Numerical
   # categorical recoding can round equal nonzero weights by a few ulps.
   target_weights <- variance_weights[target_columns, , drop = FALSE]

@@ -1717,8 +1717,8 @@ test_that("a logical predictor in a block with a scaled slope gets design-derive
 
   # `flag` enters the block through its main effect and through `flag:x`; the
   # interaction is indicator coded (flagFALSE:x, flagTRUE:x) and shares one SD.
-  # The least-squares map gives the two columns equal weights only up to
-  # rounding.
+  # Categorical recoding gives the two columns equal variance weights, allowing
+  # for rounding in the numerical basis solve.
   df <- random_block_scale_data()
   df$flag <- rep(c(TRUE, FALSE), 18)
   grid <- expand.grid(flag = c(FALSE, TRUE), x = c(-1, 0, 1, 2))
