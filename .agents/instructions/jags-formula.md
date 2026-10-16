@@ -356,16 +356,21 @@ SD, never the fitted-scale law. The stored prior-density context carries the
 fitted block design (`formula_design`: the `.bt_formula_design_random_unscale_view()`
 of each parameter) next to `formula_scale`, and its conditional components
 inherit it. An SD whose row of the block's original-scale map has one nonzero
-entry, on its own coordinate (`.random_sd_original_scale_laws()`; entries up to
-1e-12 of the row's largest count as zero, and every column of a shared leaf must
-give the same entry), is a pure rescaling: its law is the fitted SD's law
-rescaled by `|c|` (exact for every prior kind, applied as the SD's weight in
-`.prior_density_context_standardized_weights()`). Any other SD of a block with a
-scaled column (the intercept SD with a non-centered scaled slope, factor-level
-SDs that absorb induced shifts) combines several fitted SDs. The 1e-12 rule is
-the one zero rule of the original-scale map (`.random_sd_unscale_row_nonzero()`):
-the catalog support of such a composite SD (which SDs it reads) and the prior law
-of a correlation read the same rows by the same rule. The prior density of a
+entry, on its own coordinate (`.random_sd_original_scale_laws()`; every column
+of a shared leaf must give the same entry), is a pure rescaling: its law is the
+fitted SD's law rescaled by `|c|` (exact for every prior kind, applied as the
+SD's weight in `.prior_density_context_standardized_weights()`). Any other SD of
+a block with a scaled column (the intercept SD with a non-centered scaled slope,
+factor-level SDs that absorb induced shifts) combines several fitted SDs, and so
+does an SD with any further nonzero entry, however small beside its diagonal:
+the SD priors can differ in scale by orders of magnitude, so no relative
+threshold is safe. The exact zeros of the map that the draws use
+(`.random_sd_unscale_matrix()`) are the one zero rule
+(`.random_sd_unscale_row_nonzero()`): the map zeroes its own rounding residues
+(off-diagonal entries within 1e-10 of the scale of their column, the rule of the
+least-squares map, so data centered by subtraction add no entry), and the prior
+law of an SD, the catalog support of a composite SD (which SDs it reads) and the
+prior law of a correlation read the same rows. The prior density of a
 composite is unavailable with cause `random_sd_prior_law_unavailable`, and with cause
 `random_effect_design_unavailable` when the context holds no design of its block
 (an older object, or `plot_transformed_prior()`, which has no fit). SDs of blocks
