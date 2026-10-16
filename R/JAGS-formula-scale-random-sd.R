@@ -304,7 +304,9 @@
 # block whose scaled design has no original-scale representation in its own
 # columns (a term that would have to be induced, e.g. the implied intercept of
 # `(0 + x | g)`) keeps the documented name-paired map, which drops the induced
-# terms; any other failure propagates. A block whose design is linearly
+# terms only when each retained contribution has identical categorical coding
+# and no representable contribution is omitted; otherwise it refuses with
+# `original_scale_not_representable`. Any other failure propagates. A block whose design is linearly
 # dependent has no unique original-scale map (`original_scale_not_identified`):
 # a request for original-scale values stops with that condition
 # (unidentified = "stop"), while a caller that classifies the block without
@@ -317,6 +319,7 @@
                                       unidentified = c("stop", "unavailable")){
 
   unidentified <- match.arg(unidentified)
+  spec <- NULL
 
   if(!is.null(random_term)){
     spec <- .bt_random_effect_unscale_design_spec(random_term, source_data)
@@ -349,16 +352,74 @@
     }
   }
 
-  .build_unscale_matrix_by_names(
+  M <- .build_unscale_matrix_by_names(
     paste0(prefix, "_", column_terms),
     formula_scale,
     prefix
   )
+  if(!is.null(spec) && !.random_sd_fallback_is_certified(M, spec, formula_scale, prefix)){
+    .bt_formula_transform_stop(
+      paste0(
+        "The original-scale random-effect quantities of block '", random_term$block_name,
+        "' of formula parameter '", prefix, "' are unavailable: the missing-term ",
+        "fallback mixes categorical coding or omits a representable contribution. ",
+        "Use the fitted scale ('transform_scaled = FALSE', 'random_effects_summary = \"raw\"'), ",
+        "or include the needed lower-order terms in the block."
+      ),
+      parameter = prefix, reason = "original_scale_not_representable"
+    )
+  }
+  M
+}
+
+# Certify the existing name-paired fallback, never construct a partial map.
+# Every structurally nonzero numeric-drop component must be retained once with
+# identical categorical coding, or have no representation in its target group.
+.random_sd_fallback_is_certified <- function(M, spec, formula_scale, prefix){
+
+  context <- .bt_formula_unscale_design_context(spec, formula_scale, prefix)
+  if(!is.matrix(M) || !identical(dim(M), rep(length(spec$assign), 2L)) ||
+     ncol(context$C) != nrow(M)){
+    .bt_stop_refit_required(
+      "Random-effect design metadata disagree with its SD columns. ",
+      "Refit the model with this version of BayesTools."
+    )
+  }
+  for(j in seq_along(context$components)){
+    for(component in context$components[[j]]){
+      columns <- context$groups[[component$target]]
+      retained <- columns[M[columns, j] != 0]
+      if(length(retained)){
+        if(length(retained) != 1L || !identical(context$C[, retained], context$C[, j])){
+          return(FALSE)
+        }
+      }else if(length(columns)){
+        represented <- tryCatch(
+          {
+            .bt_formula_unscale_categorical_coefficients(
+              context$C, columns, j, context$categorical_sets, context$data,
+              context$categorical_names, spec, prefix, context$coefficient_names
+            )
+            TRUE
+          },
+          BayesTools_formula_transform_unavailable = function(condition){
+            if(!identical(condition$reason, "original_scale_not_representable")){
+              stop(condition)
+            }
+            FALSE
+          }
+        )
+        if(represented) return(FALSE)
+      }
+    }
+  }
+  TRUE
 }
 
 # Whether a scaled block keeps the documented name-paired map that drops the
 # lower-order terms of the scaled slope (see .random_sd_unscale_matrix()): its
-# design is refused as `original_scale_not_representable`, e.g. the level
+# design is refused as `original_scale_not_representable` and its fallback is
+# certified, e.g. the level
 # intercepts that `x` induces in `diag(1 + f:x | g)`, which no column of the
 # block carries.
 .random_sd_block_drops_induced_terms <- function(formula_scale, prefix,
@@ -369,13 +430,29 @@
     return(FALSE)
   }
 
-  tryCatch(
+  missing_terms <- tryCatch(
     {
       .bt_formula_unscale_design_transform(spec, formula_scale, prefix)
       FALSE
     },
     BayesTools_formula_transform_unavailable = function(condition){
       identical(condition$reason, "original_scale_not_representable")
+    }
+  )
+  if(!missing_terms) return(FALSE)
+  groups <- .random_sd_column_unscale_groups(
+    unique(random_term$sd_parameter_names), formula_scale, prefix
+  )
+  if(length(groups) != 1L) return(FALSE)
+  tryCatch(
+    {
+      .random_sd_unscale_matrix(groups[[1L]]$column_terms, formula_scale, prefix,
+        random_term, source_data)
+      TRUE
+    },
+    BayesTools_formula_transform_unavailable = function(condition){
+      if(!identical(condition$reason, "original_scale_not_representable")) stop(condition)
+      FALSE
     }
   )
 }
@@ -469,7 +546,8 @@
 # that .bt_formula_design_random_unscale_view() keeps), and
 # "random_sd_prior_law_unavailable" for a composite, and
 # "original_scale_not_identified" for a block whose linearly dependent design
-# has no unique original-scale map, and 'blocks', the block
+# has no unique original-scale map, "original_scale_not_representable" for an
+# uncertified missing-term fallback, and 'blocks', the block
 # name of every one of these coordinates. The SDs of blocks without a scaled
 # column, and of structured blocks, are in none of them: their fitted law is
 # the original-scale law.
@@ -506,14 +584,21 @@
       next
     }
 
-    A <- .random_sd_unscale_matrix(
+    A <- tryCatch(.random_sd_unscale_matrix(
       column_terms = group$column_terms,
       formula_scale = parameter_scale,
       prefix = prefix,
       random_term = block,
       source_data = design$source_data,
       unidentified = "unavailable"
-    )
+    ), BayesTools_formula_transform_unavailable = function(condition){
+      if(!identical(condition$reason, "original_scale_not_representable")) stop(condition)
+      condition
+    })
+    if(inherits(A, "BayesTools_formula_transform_unavailable")){
+      refused[group$leaf_names] <- A$reason
+      next
+    }
     if(is.null(A)){
       # a linearly dependent block design: the SDs are composites without an
       # original-scale law, refused when original-scale values are requested

@@ -1046,14 +1046,17 @@ parameter_prior_density.BayesTools_fit <- function(
   }
 
   design <- attr(object, "formula_design", exact = TRUE)[[parameter]]
-  .random_sd_unscale_matrix(
+  tryCatch(.random_sd_unscale_matrix(
     column_terms  = groups[[1L]]$column_terms,
     formula_scale = parameter_scale,
     prefix        = parameter,
     random_term   = random_term,
     source_data   = design$source_data,
     unidentified  = "unavailable"
-  )
+  ), BayesTools_formula_transform_unavailable = function(condition){
+    if(!identical(condition$reason, "original_scale_not_representable")) stop(condition)
+    NULL
+  })
 }
 
 .bt_parameter_prior_density_allocation_quantity <- function(

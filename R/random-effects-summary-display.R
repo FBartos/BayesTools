@@ -336,7 +336,8 @@
   # a quantity of a block whose original-scale values do not exist has no
   # original-scale draws: a linearly dependent design
   # (original_scale_not_identified) or SDs shared by columns that transform to
-  # different SDs (original_scale_not_representable). The fitted-scale table
+  # different SDs or an uncertified missing-term map
+  # (original_scale_not_representable). The fitted-scale table
   # leaves it out and reports it, an original-scale request
   # (omit_unidentified = FALSE) stops
   unidentified <- rep(NA_character_, nrow(quantities))
@@ -390,8 +391,8 @@
         blocks$reason == "original_scale_not_identified",
         "its fitted design is linearly dependent, so they are not identified",
         paste0(
-          "its shared SDs cover design columns that transform to different ",
-          "original-scale SDs, so they are not representable"
+          "its fitted block has no certified representation of these ",
+          "original-scale quantities"
         )
       ),
       ". Use 'random_effects_summary = \"raw\"' for its fitted-scale SDs."

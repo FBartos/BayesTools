@@ -172,6 +172,17 @@
           prefix, "' are linearly dependent, so its original-scale coefficients are not ",
           "uniquely determined"
         )
+      }else if(identical(cause, "original_scale_not_representable")){
+        detail <- "its random-effect block has no certified original-scale representation"
+        remedy <- paste0(
+          "Use the SD on the fitted scale ('transform_scaled = FALSE'), or include ",
+          "the needed lower-order terms in the block."
+        )
+        reason <- paste0(
+          "the random-effect block '", block, "' of formula parameter '", prefix,
+          "' has no certified original-scale representation because its missing-term ",
+          "fallback mixes categorical coding or omits a representable contribution"
+        )
       }else{
         detail <- "its original-scale law combines several fitted SDs of its random-effect block"
         remedy <- paste0(

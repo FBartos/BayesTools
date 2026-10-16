@@ -2346,11 +2346,14 @@ test_that("the no-design gate admits a block only when pairing names gives its d
       checked <- checked + 1L
       gate <- .random_sd_name_map_is_exact(group$column_terms, parameter_scale, "mu")
       by_name <- .random_sd_unscale_matrix(group$column_terms, parameter_scale, "mu")
-      by_design <- .random_sd_unscale_matrix(
+      by_design <- tryCatch(.random_sd_unscale_matrix(
         group$column_terms, parameter_scale, "mu",
         random_term = .random_sd_design_block(design, group$group_key, group$leaf_names),
         source_data = design$source_data
-      )
+      ), BayesTools_formula_transform_unavailable = function(condition){
+        if(!identical(condition$reason, "original_scale_not_representable")) stop(condition)
+        condition
+      })
       if(gate){
         admitted <- c(admitted, label)
         if(!isTRUE(all.equal(unname(by_name), unname(by_design), tolerance = 1e-10))){
@@ -2425,7 +2428,8 @@ test_that("shared random-effect SD leaves keep one coordinate per design column 
   # `0 + flag + flag:x` codes `flag` by `flagTRUE` only (a block without an
   # intercept keeps the contrast coding of its factors), so the induced term of
   # the `flagFALSE:x` column on `1 - flag` has no column: the block has no
-  # original-scale representation and keeps the documented drop as well
+  # original-scale representation. Its fallback pairs the false indicator with
+  # the true indicator, so original-scale values are unavailable.
   setup <- random_block_scale_fit(~ 1 + x + diag(0 + flag + flag:x | id), df, block, tau = c(0.5, 0.8))
   term <- setup$formula_result$formula_design$random_effects[[1L]]
   expect_identical(term$raw_column_names, c("flagTRUE", "flagFALSE:x", "flagTRUE:x"))
@@ -2438,8 +2442,9 @@ test_that("shared random-effect SD leaves keep one coordinate per design column 
   )
   expect_identical(refusal$reason, "original_scale_not_representable")
   expect_identical(refusal$terms, "flag:x")
-  transformed <- transform_scale_samples(setup$fit)[1L, setup$sd_names]
-  expect_equal(unname(transformed[2L]), 0.8 / s, tolerance = 1e-12)
+  refusal <- expect_error(transform_scale_samples(setup$fit),
+    class = "BayesTools_formula_transform_unavailable")
+  expect_identical(refusal$reason, "original_scale_not_representable")
 
   # a block without an intercept is mapped by its design when its scaled design
   # lies in the column space of its original one (full indicator coding of `f`)
@@ -3532,6 +3537,196 @@ test_that("a scaled random block with a linearly dependent design keeps the fit 
   table <- JAGS_estimates_table(setup$fit, remove_diagnostics = TRUE)
   expect_identical(sum(grepl("sd(", rownames(table), fixed = TRUE)), 4L)
   expect_length(attr(table, "warnings"), 0L)
+})
+
+# Compiler-owned synthetic fixtures: no live fitting is needed to exercise the
+# persisted block map and all public original-scale consumers.
+random_block_fallback_fixture <- function(rhs, contrasts = c(f = "meandif", g = "meandif"),
+                                           data = NULL, scaled = c("x", "z")){
+
+  if(is.null(data)){
+    set.seed(5)
+    n <- 120L
+    data <- data.frame(
+      f = factor(sample(letters[1:3], n, TRUE)),
+      g = factor(sample(LETTERS[1:2], n, TRUE)),
+      h = factor(sample(c("p", "q"), n, TRUE)),
+      x = rnorm(n, 4, 1.5), z = rnorm(n, -2, 0.8),
+      flag = rep(c(FALSE, TRUE), n / 2L),
+      id = factor(rep(1:10, length.out = n))
+    )
+  }
+  formula <- stats::as.formula(paste0("~ 1 + diag(", rhs, " | id)"))
+  used <- all.vars(formula)
+  contrasts <- contrasts[names(contrasts) %in% used]
+  scaled <- intersect(scaled, used)
+  compiled <- JAGS_formula(
+    formula, "mu", data, list(intercept = prior("normal", list(0, 1))),
+    formula_scale = stats::setNames(rep(list(TRUE), length(scaled)), scaled),
+    prior_random = prior_random(id = random_block(
+      sd = prior("gamma", list(2, 2)),
+      contrasts = if(length(contrasts)) contrasts else NULL,
+      monitor = random_block_scale_monitor()
+    ))
+  )
+  term <- compiled$formula_design$random_effects[[1L]]
+  sd_names <- unique(term$sd_parameter_names)
+  posterior <- matrix(1, 4L, length(sd_names) + 1L,
+    dimnames = list(NULL, c("mu_intercept", sd_names)))
+  posterior[, "mu_intercept"] <- 0
+  list(compiled = compiled, term = term, data = data, sd_names = sd_names,
+    fit = make_random_scale_table_fit(compiled, posterior))
+}
+
+test_that("mixed-coding missing-term fallbacks refuse public original-scale output", {
+
+  skip_if_not_installed("runjags")
+  for(contrast in c("meandif", "orthonormal")){
+    setup <- random_block_fallback_fixture("1 + f + f:x + g:z", c(f = contrast, g = "meandif"))
+    fit <- setup$fit
+    scale <- setup$compiled$formula_scale
+    design <- setup$compiled$formula_design
+    names <- setup$sd_names
+    catalog <- parameter_catalog(fit)
+    sd_rows <- which(catalog$quantities$quantity == "sd")
+    expect_length(sd_rows, length(names))
+    expect_true(all(vapply(catalog$quantities$extraction_key[sd_rows],
+      function(key) identical(key$source_type, "composite"), logical(1))))
+    expect_null(.bt_parameter_prior_density_random_unscale_matrix(fit, setup$term, "mu"))
+    laws <- .random_sd_original_scale_laws(scale, "mu", design)
+    expect_length(laws$scale, 0L)
+    expect_identical(laws$refused, stats::setNames(
+      rep("original_scale_not_representable", length(names)), names))
+
+    # Elementary map of the representable f/f:x sub-block alone. It is not a
+    # representation of the full block, whose g-induced margins are absent.
+    B <- cbind(1, setup$term$contrast_matrices$f)
+    subblock <- diag(6L)
+    subblock[1:3, 4:6] <- -mean(setup$data$x) / stats::sd(setup$data$x) * solve(B)
+    subblock[4:6, 4:6] <- diag(1 / stats::sd(setup$data$x), 3L)
+    expected <- sqrt(rowSums(subblock^2))
+    if(contrast == "meandif"){
+      expect_equal(unname(expected[2:3]), rep(2.47579125691111, 2L), tolerance = 1e-13)
+    }else{
+      expect_equal(unname(expected[2:3]), rep(2.948612134835, 2L), tolerance = 1e-13)
+    }
+
+    default <- JAGS_estimates_table(fit, remove_diagnostics = TRUE)
+    expect_identical(rownames(default), "(mu) intercept")
+    expect_identical(attr(default, "warnings"), paste0(
+      "The original-scale random-effect quantities of block 'id' of formula parameter 'mu' ",
+      "are not shown: its fitted block has no certified representation of these original-scale ",
+      "quantities. Use 'random_effects_summary = \"raw\"' for its fitted-scale SDs."
+    ))
+    expect_length(attr(default, "footnotes"), 0L)
+    expect_false(.random_sd_block_drops_induced_terms(scale, "mu", setup$term, design$source_data))
+    raw <- JAGS_estimates_table(fit, random_effects_summary = "raw", remove_diagnostics = TRUE)
+    expect_equal(as.data.frame(raw)[grep("sd(", rownames(raw), fixed = TRUE), "Mean"], rep(1, length(names)))
+    owners <- unique(sub("\\[.*$", "", names))
+    fitted <- as_mixed_posteriors(fit, owners, transform_scaled = FALSE)
+    expect_true(all(vapply(fitted, function(x) all(as.numeric(x) == 1), logical(1))))
+
+    for(request in list(
+      function() transform_scale_samples(fit),
+      function() JAGS_estimates_table(fit, transform_scaled = TRUE, remove_diagnostics = TRUE),
+      function() as_mixed_posteriors(fit, owners, transform_scaled = TRUE),
+      function() parameter_draws(fit, parameter_catalog_resolve(catalog, "(mu) sd(f{1})"))
+    )){
+      refusal <- expect_error(request(), class = "BayesTools_formula_transform_unavailable")
+      expect_identical(refusal$reason, "original_scale_not_representable")
+      if(inherits(refusal, "condition")){
+        expect_identical(conditionMessage(refusal), paste0(
+          "The original-scale random-effect quantities of block 'id' of formula parameter 'mu' ",
+          "are unavailable: the missing-term fallback mixes categorical coding or omits a ",
+          "representable contribution. Use the fitted scale ('transform_scaled = FALSE', ",
+          "'random_effects_summary = \"raw\"'), or include the needed lower-order terms in the block."
+        ))
+      }
+    }
+    context <- .prior_density_context(attr(fit, "prior_list"), c("mu_intercept", names),
+      formula_scale = attr(fit, "formula_scale"),
+      formula_design = list(mu = .bt_formula_design_random_unscale_view(design)))
+    refusal <- expect_error(.prior_density_from_context(context,
+      stats::setNames(as.numeric(context$column_names == names[2L]), context$column_names)),
+      class = "BayesTools_formula_transform_unavailable")
+    expect_identical(refusal$reason, "original_scale_not_representable")
+    expect_match(conditionMessage(refusal), "has no certified original-scale representation", fixed = TRUE)
+  }
+})
+
+test_that("fallback certification preserves safe drops and exact design maps", {
+
+  skip_if_not_installed("runjags")
+  controls <- list(
+    list("0 + x", c(f = "meandif")),
+    list("1 + f:x", c(f = "meandif")),
+    list("0 + f + f:x + g:z", c(f = "independent", g = "meandif")),
+    list("0 + flag:x", NULL),
+    list("1 + flag:x", NULL)
+  )
+  for(control in controls){
+    setup <- random_block_fallback_fixture(control[[1L]], control[[2L]])
+    scale <- setup$compiled$formula_scale
+    group <- .random_sd_column_unscale_groups(setup$sd_names, scale, "mu")[[1L]]
+    spec <- .bt_random_effect_unscale_design_spec(setup$term, setup$data)
+    expected <- .build_unscale_matrix_by_names(paste0("mu_", group$column_terms), scale, "mu")
+    expect_true(.random_sd_fallback_is_certified(expected, spec, scale, "mu"))
+    expect_identical(.random_sd_unscale_matrix(group$column_terms, scale, "mu", setup$term, setup$data), expected)
+    actual <- transform_scale_samples(setup$fit)[1L, setup$sd_names]
+    by_column <- sqrt(rowSums(expected^2))
+    expect_equal(unname(actual), unname(by_column[match(setup$sd_names, setup$term$sd_parameter_names)]), tolerance = 1e-13)
+  }
+  for(contrast in c("meandif", "orthonormal", "independent")){
+    setup <- random_block_fallback_fixture(
+      if(contrast == "independent") "0 + f + f:x" else "1 + f + f:x", c(f = contrast))
+    scale <- setup$compiled$formula_scale
+    group <- .random_sd_column_unscale_groups(setup$sd_names, scale, "mu")[[1L]]
+    spec <- .bt_random_effect_unscale_design_spec(setup$term, setup$data)
+    exact <- .bt_formula_unscale_design_transform(spec, scale, "mu")$matrix
+    expect_identical(.random_sd_unscale_matrix(group$column_terms, scale, "mu", setup$term, setup$data), unname(exact))
+  }
+  setup <- random_block_fallback_fixture("0 + flag", scaled = "flag")
+  expect_equal(unname(transform_scale_samples(setup$fit)[1L, setup$sd_names]),
+    1 / stats::sd(setup$data$flag), tolerance = 1e-13)
+})
+
+test_that("fallback refusal respects exact zeros, tiny means, rank and range", {
+
+  skip_if_not_installed("runjags")
+  original <- random_block_fallback_fixture("1 + f + f:x + g:z")
+  zero <- original$data
+  zero$x <- rep(c(-1, 1), nrow(zero) / 2L)
+  for(rhs in c("1 + f + f:x + g:z", "0 + flag + flag:x + g:z")){
+    setup <- random_block_fallback_fixture(rhs, data = zero)
+    expect_true(all(is.finite(transform_scale_samples(setup$fit))))
+    tiny <- zero
+    tiny$x <- tiny$x + 1e-13
+    setup <- random_block_fallback_fixture(rhs, data = tiny)
+    expect_true(mean(tiny$x) != 0)
+    refusal <- expect_error(transform_scale_samples(setup$fit),
+      class = "BayesTools_formula_transform_unavailable")
+    expect_identical(refusal$reason, "original_scale_not_representable")
+  }
+  setup <- random_block_fallback_fixture("0 + flag + flag:x")
+  refusal <- expect_error(transform_scale_samples(setup$fit),
+    class = "BayesTools_formula_transform_unavailable")
+  expect_identical(refusal$reason, "original_scale_not_representable")
+
+  setup <- random_block_fallback_fixture("1 + f + f:x + h + h:z", c(f = "meandif", h = "independent"))
+  scale <- setup$compiled$formula_scale
+  group <- .random_sd_column_unscale_groups(setup$sd_names, scale, "mu")[[1L]]
+  refusal <- expect_error(.random_sd_unscale_matrix(group$column_terms, scale, "mu", setup$term, setup$data),
+    class = "BayesTools_formula_transform_unavailable")
+  expect_identical(refusal$reason, "original_scale_not_identified")
+  expect_null(.random_sd_unscale_matrix(group$column_terms, scale, "mu", setup$term, setup$data,
+    unidentified = "unavailable"))
+
+  scale <- original$compiled$formula_scale
+  scale$mu_x$sd <- 1e-320
+  group <- .random_sd_column_unscale_groups(original$sd_names, scale, "mu")[[1L]]
+  refusal <- expect_error(.random_sd_unscale_matrix(group$column_terms, scale, "mu", original$term, original$data),
+    class = "BayesTools_formula_transform_unavailable")
+  expect_identical(refusal$reason, "nonfinite_transform")
 })
 
 test_that("the table of a block that drops induced terms says what its intercept SD is", {

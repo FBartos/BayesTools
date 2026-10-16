@@ -71,7 +71,11 @@
 #' leave a numerically nonzero predictor mean; its induced effects are retained.
 #' Composite original-scale SDs have available draws but may have unavailable
 #' prior laws. Fitted-scale coefficients and raw random-effect SDs remain
-#' available without this transformation. Mixed posterior samples are
+#' available without this transformation. A block whose missing-term fallback
+#' mixes categorical coding or omits a representable contribution has no
+#' available original-scale output, with reason
+#' \code{"original_scale_not_representable"}. Use fitted-scale output or include
+#' the needed lower-order terms in the block. Mixed posterior samples are
 #' transformed through the fitted design of \code{formula_scale}: every column
 #' is mapped to its fitted coefficient by its \code{quantities} draw metadata
 #' (see [posterior_metadata()]), and columns that are not fitted coefficients

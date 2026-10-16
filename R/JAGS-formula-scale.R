@@ -1316,10 +1316,9 @@ JAGS_formula_scale_finalize <- function(formula_scale, design = NULL,
   out
 }
 
-# X_s = X_o A and b_o = A b_s. Expand numeric monomials structurally and solve
-# their categorical functions with the actual persisted coding. No magnitude
-# threshold removes a coefficient or accepts a missing induced component.
-.bt_formula_unscale_design_transform <- function(spec, formula_scale, prefix){
+# The persisted categorical functions and structurally present numeric affine
+# components shared by the exact map and the random missing-term certificate.
+.bt_formula_unscale_design_context <- function(spec, formula_scale, prefix){
 
   .bt_formula_unscale_design_spec_check(spec, prefix)
   data <- .bt_formula_unscale_design_data(spec, formula_scale, prefix)$standardized
@@ -1354,6 +1353,25 @@ JAGS_formula_scale_finalize <- function(formula_scale, design = NULL,
     for(size in seq_along(droppable)) drops <- c(drops, utils::combn(droppable, size, simplify = FALSE))
     lapply(drops, function(d) list(scaled = scaled, dropped = d, target = key(setdiff(subsets[[j]], d))))
   })
+
+  list(C = C, data = data, coefficient_names = coefficient_names,
+    categorical_names = categorical_names, categorical_sets = categorical_sets,
+    groups = groups, components = components)
+}
+
+# X_s = X_o A and b_o = A b_s. Expand numeric monomials structurally and solve
+# their categorical functions with the actual persisted coding. No magnitude
+# threshold removes a coefficient or accepts a missing induced component.
+.bt_formula_unscale_design_transform <- function(spec, formula_scale, prefix){
+
+  context <- .bt_formula_unscale_design_context(spec, formula_scale, prefix)
+  C <- context$C
+  data <- context$data
+  coefficient_names <- context$coefficient_names
+  categorical_names <- context$categorical_names
+  categorical_sets <- context$categorical_sets
+  groups <- context$groups
+  components <- context$components
   parsed <- lapply(coefficient_names, .parse_unscale_term_structure,
     prefix = prefix, scaled_vars = .formula_scale_strip_prefix(names(formula_scale), prefix))
   partners <- lapply(seq_along(components), function(j){
@@ -1385,7 +1403,8 @@ JAGS_formula_scale_finalize <- function(formula_scale, design = NULL,
       }
     }
   }
-  A <- matrix(0, length(keys), length(keys), dimnames = list(coefficient_names, coefficient_names))
+  A <- matrix(0, length(coefficient_names), length(coefficient_names),
+    dimnames = list(coefficient_names, coefficient_names))
   for(j in seq_along(components)){
     for(i in seq_along(components[[j]])){
       component <- components[[j]][[i]]

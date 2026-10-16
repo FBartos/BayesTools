@@ -74,6 +74,12 @@
 #' its fitted SDs), while \code{transform_scaled = TRUE} stops with
 #' \code{BayesTools_formula_transform_unavailable}, reason
 #' \code{"original_scale_not_identified"}.
+#' A block whose missing-term fallback mixes categorical coding or omits a
+#' representable contribution, or whose shared SD columns transform to different
+#' SDs, likewise omits its original-scale rows with a warning; explicit
+#' \code{transform_scaled = TRUE} stops with reason
+#' \code{"original_scale_not_representable"}. Use \code{"raw"} for fitted SDs,
+#' or include the needed lower-order terms for an uncertified fallback.
 #' The \code{"raw"} rows of random-effect and allocation implementation
 #' coordinates (fitted-scale SDs, Cholesky factors and correlation matrices,
 #' LKJ primitives, standardized group effects, and allocation nodes) are

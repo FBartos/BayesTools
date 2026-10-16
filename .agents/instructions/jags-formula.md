@@ -314,7 +314,7 @@ safe ratio regrouping preserve representable nonzeros or raise
 Fixed missing lower-order effects refuse even when their coefficients are tiny.
 Eigen-generated contrasts do not imply exact stored-double orthogonality;
 tiny within-basis coefficients can have poor relative accuracy in doubles.
-Parameter-map 15 and coefficient-transform 4 invalidate older classifications;
+Parameter-map 16 and coefficient-transform 4 invalidate older classifications;
 refit and recreate detached derived objects. Design 6/unscale-design 2 remain.
 
 Random-effect SDs and correlations of a block with a scaled slope follow the
@@ -330,7 +330,13 @@ passes its fitted formula design (`transform_scale_samples()`,
 random summaries); the block is found by its block name and SD coordinates.
 A block with no such matrix in its own columns (`(0 + x | g)`, `diag(1 + f:x | g)`,
 `us(0 + f + x:f | g)`: a term would have to be induced) keeps the documented
-name-paired map that drops it, and only the
+name-paired map that drops it only when every structurally nonzero component
+is retained once with identical categorical coding or is unrepresentable by
+its target numeric group. The existing categorical solver checks omitted
+components when that group exists; exact-zero means induce no component.
+Mixed-coding or omitted representable contributions refuse the whole
+original-scale block with `original_scale_not_representable`, rather than
+returning a partial map. Only the
 `original_scale_not_representable` refusal selects it; any other failure
 propagates. For a scaled slope that interacts with a factor whose level
 intercepts are not columns of the block (`diag(1 + f:x | g)`), the induced

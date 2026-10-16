@@ -291,7 +291,11 @@ computed from the transformed covariance draws. Subtraction-centering can
 leave a numerically nonzero predictor mean; its induced effects are retained.
 Composite original-scale SDs have available draws but may have unavailable
 prior laws. Fitted-scale coefficients and raw random-effect SDs remain
-available without this transformation. Mixed posterior samples are
+available without this transformation. A block whose missing-term fallback
+mixes categorical coding or omits a representable contribution has no
+available original-scale output, with reason
+\code{"original_scale_not_representable"}. Use fitted-scale output or include
+the needed lower-order terms in the block. Mixed posterior samples are
 transformed through the fitted design of \code{formula_scale}: every column
 is mapped to its fitted coefficient by its \code{quantities} draw metadata
 (see \code{\link[=posterior_metadata]{posterior_metadata()}}), and columns that are not fitted coefficients
@@ -343,6 +347,12 @@ leave its rows out and report it in the table warnings (\code{"raw"} shows
 its fitted SDs), while \code{transform_scaled = TRUE} stops with
 \code{BayesTools_formula_transform_unavailable}, reason
 \code{"original_scale_not_identified"}.
+A block whose missing-term fallback mixes categorical coding or omits a
+representable contribution, or whose shared SD columns transform to different
+SDs, likewise omits its original-scale rows with a warning; explicit
+\code{transform_scaled = TRUE} stops with reason
+\code{"original_scale_not_representable"}. Use \code{"raw"} for fitted SDs,
+or include the needed lower-order terms for an uncertified fallback.
 The \code{"raw"} rows of random-effect and allocation implementation
 coordinates (fitted-scale SDs, Cholesky factors and correlation matrices,
 LKJ primitives, standardized group effects, and allocation nodes) are
