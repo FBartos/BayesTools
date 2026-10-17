@@ -2138,3 +2138,100 @@ test_that("known-K sampling retains point-zero coordinates and strict correlatio
     formula_target = "marginal", marginal_method = "sample", new_levels = "sample"),
     "known group covariance", fixed = TRUE)
 })
+
+test_that("new-row source capability is typed across public prediction targets", {
+
+  df <- data.frame(id = factor(c("a", "a", "b", "b"), levels = c("a", "b")))
+  make_result <- function(source){
+    JAGS_formula(~ 1 + random(1 | id, name = "id", covariance = "diag"),
+      parameter = "mu", data = df,
+      prior_list = list(intercept = prior("normal", list(0, 1))),
+      prior_random = prior_random(id = random_block(sd_source =
+        if(is.character(source)) random_sd_source(source, shape = "row") else
+          random_sd_source(source))))
+  }
+  result <- make_result("tau")
+  term <- result$formula_design$random_effects[[1L]]
+  latent_names <- as.vector(BayesTools:::.bt_random_effect_latent_names(
+    term, term$n_groups, term$n_columns))
+  posterior <- matrix(c(0, 2, 4, 6, 8, 1, 3), nrow = 1L,
+    dimnames = list(NULL, c("mu_intercept", paste0("tau[", 1:4, "]"), latent_names)))
+  make_fit <- function(p = posterior, design = result$formula_design){
+    fit <- coda::mcmc(p)
+    attr(fit, "formula_design") <- list(mu = design)
+    fit
+  }
+  new_data <- data.frame(id = factor(c("a", "new", "new"),
+    levels = c("a", "b", "new")))
+  contexts <- c(conditional = "JAGS_evaluate_formula()",
+    covariance = "Random-effect marginal covariance",
+    sample = "Marginal random-effect prediction")
+  call_prediction <- function(mode, fit = make_fit(), data = new_data,
+                              fitted_rows = c(1L, 2L, 3L),
+                              priors = result$prior_list){
+    arguments <- list(fit = fit, parameter = "mu", data = data,
+      prior_list = priors, fitted_rows = fitted_rows, new_levels = "zero",
+      formula_target = if(mode == "conditional") "conditional" else "marginal")
+    if(mode != "conditional") arguments$marginal_method <- mode
+    do.call(JAGS_predict_formula, arguments)
+  }
+  for(mode in names(contexts)){
+    condition <- tryCatch(call_prediction(mode), error = identity)
+    expect_s3_class(condition, "BayesTools_prediction_new_rows_unavailable")
+    expect_s3_class(condition, "BayesTools_prediction_unavailable")
+    expect_identical(condition$reason, "posterior_indexed_row_source")
+    expect_identical(condition$block, "id")
+    expect_identical(condition$source, "tau[row]")
+    expect_identical(condition$rows, c(2L, 3L))
+    expect_identical(condition$context, unname(contexts[[mode]]))
+    expect_null(conditionCall(condition))
+    expect_identical(conditionMessage(condition), paste0(contexts[[mode]],
+      " with posterior-indexed row source 'tau[row]' for block 'id' cannot evaluate ",
+      "new observation rows. Supply a parameter_source(..., values = ..., inputs = ...) ",
+      "callback to compute the source for arbitrary prediction rows."))
+
+    # Mapping and source-data errors keep their previous precedence and class.
+    for(mapping in list(NULL, c(1L, 2L), c(1L, 2L, 5L), c(1, 2, 1.5))){
+      condition <- tryCatch(call_prediction(mode, fitted_rows = mapping), error = identity)
+      expect_s3_class(condition, "error")
+      expect_false(inherits(condition, "BayesTools_prediction_unavailable"))
+      expect_match(conditionMessage(condition), "fitted_rows", fixed = TRUE)
+    }
+    fitted_data <- df[c(4L, 2L, 2L), , drop = FALSE]
+    expect_no_error(call_prediction(mode, data = fitted_data,
+      fitted_rows = c(4L, 2L, 2L)))
+    for(value in c(-1, NA_real_)){
+      bad <- posterior
+      bad[, "tau[4]"] <- value
+      condition <- tryCatch(call_prediction(mode, fit = make_fit(bad),
+        data = fitted_data, fitted_rows = c(4L, 2L, 2L)), error = identity)
+      expect_s3_class(condition, "error")
+      expect_false(inherits(condition, "BayesTools_prediction_unavailable"))
+    }
+    missing <- posterior[, colnames(posterior) != "tau[4]", drop = FALSE]
+    condition <- tryCatch(call_prediction(mode, fit = make_fit(missing),
+      data = fitted_data, fitted_rows = c(4L, 2L, 2L)), error = identity)
+    expect_s3_class(condition, "simpleError")
+    expect_false(inherits(condition, "BayesTools_prediction_unavailable"))
+  }
+
+  missing_latent <- posterior[, !colnames(posterior) %in% latent_names, drop = FALSE]
+  condition <- tryCatch(call_prediction("conditional", fit = make_fit(missing_latent),
+    data = df[c(4L, 2L, 2L), , drop = FALSE], fitted_rows = c(4L, 2L, 2L)),
+    error = identity)
+  expect_s3_class(condition, "BayesTools_refit_monitoring")
+  expect_false(inherits(condition, "BayesTools_prediction_unavailable"))
+
+  source <- parameter_source("tau", shape = "row",
+    values = function(parameters, data, n_rows){
+      parameters$tau_total * data$tau_scale[seq_len(n_rows)]
+    }, inputs = "tau_total")
+  evaluable <- make_result(source)
+  p <- matrix(c(0, 2, 1, 3), nrow = 1L,
+    dimnames = list(NULL, c("mu_intercept", "tau_total", latent_names)))
+  new_data$tau_scale <- c(5, 7, 9)
+  for(mode in names(contexts)){
+    expect_no_error(call_prediction(mode, fit = make_fit(p, evaluable$formula_design),
+      data = new_data, fitted_rows = NULL, priors = evaluable$prior_list))
+  }
+})

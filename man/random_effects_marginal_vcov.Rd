@@ -90,6 +90,12 @@ Invalid supplied variance-allocation coordinates can signal
 and \code{call} fields. This is an input support error, distinct from structural
 factor unavailability. \code{\link[=JAGS_bridgesampling]{JAGS_bridgesampling()}} converts this support leaf
 to \code{BayesTools_marglik_out_of_support} during likelihood reconstruction.
+Unavailable new rows for a posterior-indexed row source raise
+\code{BayesTools_prediction_new_rows_unavailable} (parent
+\code{BayesTools_prediction_unavailable}), with
+\code{reason = "posterior_indexed_row_source"}, \code{block}, displayed \code{source}
+label, affected prediction \code{rows}, and caller \code{context}. Mapping, source
+value, and monitoring errors retain their existing conditions.
 }
 \seealso{
 \code{\link[=JAGS_formula_design]{JAGS_formula_design()}} \code{\link[=JAGS_fit]{JAGS_fit()}}

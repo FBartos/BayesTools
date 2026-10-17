@@ -77,6 +77,12 @@ Returns formula-scale predictions from fitted BayesTools formula metadata.
 Unlike \code{\link[=JAGS_evaluate_formula]{JAGS_evaluate_formula()}}, this helper can return structured
 prediction output for marginal random-effect targets, including marginal
 random-effect covariance or simulated random-effect draws.
+Unavailable new rows for a posterior-indexed row source raise
+\code{BayesTools_prediction_new_rows_unavailable} (parent
+\code{BayesTools_prediction_unavailable}), with \code{reason = "posterior_indexed_row_source"},
+\code{block}, displayed \code{source} label, affected prediction \code{rows}, and caller
+\code{context}. This applies to conditional and both marginal targets; mapping,
+source-value, and monitoring errors retain their existing conditions.
 }
 \seealso{
 \code{\link[=JAGS_evaluate_formula]{JAGS_evaluate_formula()}} \code{\link[=random_effects_marginal_vcov]{random_effects_marginal_vcov()}}

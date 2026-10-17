@@ -1083,15 +1083,21 @@
   fitted_rows <- as.integer(fitted_rows)
 
   if(!is.null(new_row) && any(new_row)){
-    stop(
-      context, " with posterior-indexed row source '",
+    stop(errorCondition(
+      message = paste0(context, " with posterior-indexed row source '",
       .bt_random_effect_external_sd_source_label(random_term),
       "' for block '", random_term$block_name,
       "' cannot evaluate new observation rows. Supply a ",
       "parameter_source(..., values = ..., inputs = ...) callback to compute the source ",
-      "for arbitrary prediction rows.",
-      call. = FALSE
-    )
+      "for arbitrary prediction rows."),
+      call = NULL,
+      class = c("BayesTools_prediction_new_rows_unavailable", "BayesTools_prediction_unavailable"),
+      reason = "posterior_indexed_row_source",
+      block = random_term$block_name,
+      source = .bt_random_effect_external_sd_source_label(random_term),
+      rows = which(new_row),
+      context = context
+    ))
   }
 
   fitted_rows

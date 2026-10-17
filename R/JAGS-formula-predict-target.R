@@ -5,6 +5,12 @@
 #' Unlike [JAGS_evaluate_formula()], this helper can return structured
 #' prediction output for marginal random-effect targets, including marginal
 #' random-effect covariance or simulated random-effect draws.
+#' Unavailable new rows for a posterior-indexed row source raise
+#' `BayesTools_prediction_new_rows_unavailable` (parent
+#' `BayesTools_prediction_unavailable`), with `reason = "posterior_indexed_row_source"`,
+#' `block`, displayed `source` label, affected prediction `rows`, and caller
+#' `context`. This applies to conditional and both marginal targets; mapping,
+#' source-value, and monitoring errors retain their existing conditions.
 #'
 #' @param fit model fitted with [JAGS_fit()], or posterior draws carrying the
 #' formula design of \code{parameter} ([JAGS_formula_draws()]).

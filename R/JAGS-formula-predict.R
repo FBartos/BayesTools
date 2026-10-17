@@ -31,6 +31,12 @@
 #' must provide a
 #' \code{parameter_source()} \code{values} function for reconstructing row-wise
 #' source values from the posterior samples and supplied prediction data.
+#' An unavailable new-row evaluation of a posterior-indexed row source raises
+#' `BayesTools_prediction_new_rows_unavailable` (parent
+#' `BayesTools_prediction_unavailable`), with `reason = "posterior_indexed_row_source"`,
+#' `block`, the displayed `source` label, affected prediction `rows`, and caller
+#' `context`. Missing or malformed mappings, invalid source values, and missing
+#' monitored columns retain their own errors.
 #' Literal \code{expression()} terms use the replayable subset documented by
 #' [JAGS_formula()] and are evaluated against prediction data using JAGS-style
 #' row indexing through \code{i}.

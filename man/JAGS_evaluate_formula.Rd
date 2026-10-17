@@ -104,6 +104,12 @@ prediction row to its fitted observation index. Alternatively, the source
 must provide a
 \code{parameter_source()} \code{values} function for reconstructing row-wise
 source values from the posterior samples and supplied prediction data.
+An unavailable new-row evaluation of a posterior-indexed row source raises
+\code{BayesTools_prediction_new_rows_unavailable} (parent
+\code{BayesTools_prediction_unavailable}), with \code{reason = "posterior_indexed_row_source"},
+\code{block}, the displayed \code{source} label, affected prediction \code{rows}, and caller
+\code{context}. Missing or malformed mappings, invalid source values, and missing
+monitored columns retain their own errors.
 Literal \code{expression()} terms use the replayable subset documented by
 \code{\link[=JAGS_formula]{JAGS_formula()}} and are evaluated against prediction data using JAGS-style
 row indexing through \code{i}.

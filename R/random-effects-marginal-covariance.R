@@ -62,6 +62,12 @@
 #'   and `call` fields. This is an input support error, distinct from structural
 #'   factor unavailability. [JAGS_bridgesampling()] converts this support leaf
 #'   to `BayesTools_marglik_out_of_support` during likelihood reconstruction.
+#'   Unavailable new rows for a posterior-indexed row source raise
+#'   `BayesTools_prediction_new_rows_unavailable` (parent
+#'   `BayesTools_prediction_unavailable`), with
+#'   `reason = "posterior_indexed_row_source"`, `block`, displayed `source`
+#'   label, affected prediction `rows`, and caller `context`. Mapping, source
+#'   value, and monitoring errors retain their existing conditions.
 #' @export
 random_effects_marginal_vcov <- function(
     fit, parameter = NULL, data = NULL, posterior_samples = NULL,

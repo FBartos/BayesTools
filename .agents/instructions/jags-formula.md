@@ -856,6 +856,15 @@ columns.
 Preserve explicit new-level policy and the distinction between full covariance
 and `diagonal_only` output. Structural unavailability is not permission to
 silently substitute zero covariance or a diagonal approximation.
+Posterior-indexed row SD sources require explicit `fitted_rows` for supplied
+prediction data. Only the unavailable new-row capability branch uses
+`BayesTools_prediction_new_rows_unavailable` (parent
+`BayesTools_prediction_unavailable`), with reason
+`posterior_indexed_row_source`, block, displayed source label, affected
+prediction-row indices and caller context. Evaluable source callbacks return
+before this branch. Preserve missing/malformed mapping validation precedence
+and existing invalid-source and missing-monitor conditions; those do not mean
+new-row capability is unavailable.
 Known-group covariance marginal sampling supports noncentered multi-column
 ID/DIAG/US blocks with the declared group kernel and each posterior draw's
 coefficient covariance; the one-column sampling stream remains unchanged.
