@@ -342,3 +342,121 @@ test_that("automatic decreasing spike bounds retain nested paired densities", {
   expect_equal(d$inclusion$x, 0)
   expect_equal(d$inclusion$y, .5)
 })
+
+for(settings in c(FALSE, TRUE)){
+  test_that(paste("individual weightfunction automatic ranges retain their source route", settings), {
+    weights <- list(wf_fixed(c(1, .6, .2)), wf_fixed(c(1, .6, 0)), wf_cumulative(c(1, 1, 1)))
+    for(weight in weights){
+      p <- prior_weightfunction("one-sided", steps = c(.05, .5), weights = weight)
+      original <- serialize(p, NULL)
+      source <- density(p, individual = TRUE, n_points = 8, n_samples = 32)
+      mapped <- tryCatch(density(p, individual = TRUE, transformation = automatic_log_map,
+        transformation_settings = settings, n_points = 8, n_samples = 32), error = identity)
+      expect_false(inherits(mapped, "error"))
+      if(inherits(mapped, "error")) next
+      expect_identical(lapply(mapped, function(d) list(x = d$x, y = d$y,
+        x_range = attr(d, "x_range"), y_range = attr(d, "y_range"))),
+        lapply(source, function(d) list(x = d$x, y = d$y,
+          x_range = attr(d, "x_range"), y_range = attr(d, "y_range"))))
+      expect_identical(attr(mapped[[2L]], "x_range"), c(0, 1))
+      expect_identical(serialize(p, NULL), original)
+    }
+  })
+
+  test_that(paste("individual weightfunction wrappers keep automatic source data", settings), {
+    coordinates <- function(g) lapply(ggplot2::ggplot_build(g)$data, function(d){
+      d[intersect(c("x", "y", "xend", "yend"), names(d))]
+    })
+    captured <- NULL
+    testthat::local_mocked_bindings(
+      .lines.prior.simple = function(plot_data, ...) captured <<- plot_data,
+      .lines.prior.point = function(plot_data, ...) captured <<- plot_data,
+      .package = "BayesTools"
+    )
+    for(weight in list(wf_fixed(c(1, .6, .2)), wf_fixed(c(1, .6, 0)), wf_cumulative(c(1, 1, 1)))){
+      p <- prior_weightfunction("one-sided", steps = c(.05, .5), weights = weight)
+      for(route in c("plot", "lines", "geom")){
+        draw <- function(transformation){
+          args <- list(individual = TRUE, transformation = transformation,
+                       transformation_settings = settings, n_points = 8, n_samples = 32)
+          if(route == "plot") return(coordinates(do.call(plot,
+            c(list(x = p, plot_type = "ggplot", show_figures = 3L), args))))
+          if(route == "geom") return(coordinates(ggplot2::ggplot() + do.call(geom_prior,
+            c(list(x = p, show_parameter = 3L), args))))
+          do.call(lines, c(list(x = p, show_parameter = 3L), args))
+          list(x = captured$x, y = captured$y, x_range = attr(captured, "x_range"))
+        }
+        source <- draw(NULL)
+        mapped <- tryCatch(draw(automatic_log_map), error = identity)
+        expect_identical(mapped, source)
+      }
+    }
+  })
+}
+
+test_that("individual weightfunction explicit grids retain their established interpretation", {
+  p <- prior_weightfunction("one-sided", steps = c(.05, .5), weights = wf_cumulative(c(1, 1, 1)))
+  for(settings in c(FALSE, TRUE)){
+    bounds <- if(settings) c(-2, -.1) else c(.1, .9)
+    supplied <- seq(bounds[1], bounds[2], length.out = 8)
+    source <- if(settings) exp(supplied) else supplied
+    for(mode in c("range", "seq", "both")){
+      args <- list(individual = TRUE, transformation = automatic_log_map,
+                   transformation_settings = settings, n_points = 8)
+      if(mode != "range") args$x_seq <- supplied
+      if(mode != "seq") args$x_range <- bounds
+      d <- do.call(density, c(list(x = p), args))
+      expect_equal(d[[2L]]$x, source, tolerance = 1e-14)
+      expect_equal(d[[2L]]$y, 2 * source, tolerance = 1e-14)
+      expect_equal(d[[3L]]$x, source, tolerance = 1e-14)
+      expect_equal(d[[3L]]$y, 2 * (1 - source), tolerance = 1e-14)
+      expect_identical(attr(d[[2L]], "x_range"), bounds)
+      expect_identical(c(d[[1L]]$x, d[[1L]]$y), c(1, 1))
+    }
+  }
+})
+
+test_that("automatic ordered ranges preserve the typed reference atom refusal", {
+  levels <- c("a", "b", "c")
+  data <- data.frame(f = ordered(rep(levels, 3L), levels = levels))
+  p <- JAGS_formula(~f, "mu", data, list(intercept = prior("normal", list(0, 1)),
+    f = prior_ordered(prior("gamma", list(2, 1)),
+      allocation = prior("dirichlet", list(c(1, 1))))))$prior_list$mu_f
+  original <- serialize(p, NULL)
+  expected_message <- paste0("The 'custom' transformation is numerically unavailable: finite source values ",
+    "do not have representable images under this transformation. Use a transformation ",
+    "whose images remain representable.")
+  for(settings in c(FALSE, TRUE)){
+    for(alpha in list(NULL, .005)){
+      for(route in c("density", "plot", "lines", "geom")){
+        args <- list(transformation = automatic_log_map, transformation_settings = settings,
+                     x_range_quant = alpha, n_points = 8, n_samples = 32)
+        set.seed(813)
+        error <- tryCatch(switch(route,
+          density = do.call(density, c(list(x = p), args)),
+          plot = do.call(plot, c(list(x = p, show_figures = 2L), args)),
+          lines = do.call(lines, c(list(x = p, show_parameter = 2L), args)),
+          geom = do.call(geom_prior, c(list(x = p, show_parameter = 2L), args))), error = identity)
+        expect_identical(class(error), c("BayesTools_transformation_image_unavailable",
+          "BayesTools_transformation", "error", "condition"))
+        expect_identical(list(message = conditionMessage(error), call = conditionCall(error),
+          transformation = error$transformation, source_values = error$source_values, images = error$images),
+          list(message = expected_message, call = NULL, transformation = "custom", source_values = 0, images = -Inf))
+      }
+    }
+    # Explicit windows retain the same established atom refusal; positive model
+    # weight cannot suppress an invalid scalar atom either.
+    for(object in list(p, prior("point", list(0), prior_weights = 2))){
+      set.seed(813)
+      error <- tryCatch(density(object, x_range = if(settings) log(c(.1, 2)) else c(.1, 2),
+        transformation = automatic_log_map, transformation_settings = settings,
+        n_points = 8, n_samples = 32), error = identity)
+      expect_identical(class(error), c("BayesTools_transformation_image_unavailable",
+        "BayesTools_transformation", "error", "condition"))
+      expect_identical(list(message = conditionMessage(error), call = conditionCall(error),
+        transformation = error$transformation, source_values = error$source_values, images = error$images),
+        list(message = expected_message, call = NULL, transformation = "custom", source_values = 0, images = -Inf))
+    }
+  }
+  expect_identical(serialize(p, NULL), original)
+})

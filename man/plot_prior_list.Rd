@@ -104,7 +104,8 @@ the \code{transformation}}
 \item{transformation_settings}{boolean indicating whether the
 explicitly supplied \code{x_seq} or \code{x_range} is on
 the transformed scale. Automatically selected prior-coordinate ranges
-are always obtained on the source scale and then transformed.}
+are always obtained on the source scale before the density family's
+existing transformation handling.}
 
 \item{rescale_x}{allows to rescale x-axis in case a
 weightfunction is plotted.}

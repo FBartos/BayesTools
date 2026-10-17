@@ -53,7 +53,8 @@
 #' @param transformation_settings boolean indicating whether the
 #' explicitly supplied \code{x_seq} or \code{x_range} is on
 #' the transformed scale. Automatically selected prior-coordinate ranges
-#' are always obtained on the source scale and then transformed.
+#' are always obtained on the source scale before the density family's
+#' existing transformation handling.
 #' @param truncate_end whether the density should be set to zero
 #' for endpoints of truncated distributions
 #' @param ... additional arguments
@@ -80,14 +81,17 @@
 #' controls the evaluation grid, while reflection is based on the prior's true
 #' truncation bounds.
 #' Automatic transformed prior-coordinate ranges keep the existing source
-#' range and equally spaced source grid. If a source display endpoint has an
-#' infinite transformed image, that endpoint uses the prior's existing marginal
+#' range and equally spaced source grid. Where the existing marginal and
+#' transformed density route supports it, a source display endpoint with an
+#' infinite transformed image uses the prior's existing marginal
 #' tail quantile, controlled by \code{x_range_quant}. Prior-list plots use the
 #' union of participating component marginal quantiles. This is a finite display window;
 #' the prior support, density, probability masses and mixture weights are unchanged.
 #' Invalid atom images and unavailable or still nonrepresentable endpoint
 #' quantiles remain unavailable. Explicit source or transformed coordinates keep
-#' their supplied interpretation. Nonindividual PET/PEESE standard-error axes
+#' their supplied interpretation. Individual weightfunction and ordered routes
+#' retain their existing transformation behavior and conditions.
+#' Nonindividual PET/PEESE standard-error axes
 #' and weightfunction p-value axes retain their specialized interpretation.
 #' Declared point locations and finite builtin support bounds must have
 #' representable images. Finite-source exponential underflow, tanh saturation,
@@ -262,6 +266,9 @@ density.prior <- function(x,
   }
   if(is.prior(priors)) priors <- list(priors)
   priors <- .plot_prior_list_bernoulli_atoms(.simplify_prior_list(priors))
+  if(any(vapply(priors, function(prior) is.prior.weightfunction(prior) || is.prior.ordered(prior), logical(1)))){
+    return(x_range)
+  }
 
   # An atom's original image is authoritative, even outside the display window.
   for(prior in priors){

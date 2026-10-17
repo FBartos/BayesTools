@@ -1,4 +1,5 @@
 # version 0.3.1
+- automatic prior endpoint adjustment preserves specialized individual weightfunction and ordered routes, including their existing source grids and typed atom-image refusals.
 - automatic transformed-prior plots and overlays retain source-coordinate ranges and use existing marginal tail quantiles when a display endpoint has an infinite image. Explicit coordinates, exact atoms, prior support, mixture weights and source-scale KDEs keep their meaning; decreasing automatic ranges have ordered display bounds.
 - marginal-likelihood results retain available finite estimates while reporting iteration-count excess separately, with a typed warning even under `silent = TRUE` and a visible printed diagnostic. The optional aggregate flag preserves historical schema-1 objects and distinguishes unknown counts; upstream retries do not imply final nonconvergence.
 - unavailable new-row evaluation for posterior-indexed random-effect SD sources has a distinct prediction capability condition, preserving mapping, source-value, and monitoring error precedence.
