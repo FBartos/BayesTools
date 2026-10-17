@@ -32,7 +32,17 @@ test_that("check_bool validates logical inputs", {
   expect_null(check_bool(FALSE, ""))
   expect_null(check_bool(as.logical(stats::rbinom(5, 1, .5)), "", check_length = 0))
   expect_null(check_bool(c(FALSE, FALSE), "", check_length = 2))
-  expect_null(check_bool(NA,  ""))
+  expect_null(check_bool(NA,  "", allow_NA = TRUE))
+
+  # A missing value cannot be used as a switch, so NA is rejected by default
+  expect_error(
+    check_bool(NA, "test object"),
+    "The 'test object' argument cannot contain NA/NaN values."
+  )
+  expect_error(
+    check_bool(c(TRUE, NA), "test object", check_length = 2),
+    "The 'test object' argument cannot contain NA/NaN values."
+  )
 
   # Invalid type: matrix
   expect_error(
@@ -273,6 +283,11 @@ test_that("check_int validates integer inputs", {
   # Non-integer values rejected
   expect_error(check_int(1.5, "test"), "must be an integer")
   expect_error(check_int(c(1, 2.5, 3), "test", check_length = 3), "must be an integer")
+  expect_error(check_int(Inf, "test"), "must contain only finite values")
+  expect_error(
+    check_int(c(1, -Inf), "test", check_length = 2),
+    "must contain only finite values"
+  )
 })
 
 

@@ -27,6 +27,7 @@ Currently, the package provides several tools:
 
   - prior distribution (with S3 methods for plot/print/pdf/cdf/rng/...)
   - JAGS models automation (generating JAGS model syntax and `bridgesampling` marginal likelihood functions for prior distributions, various wrappers, ...) 
+  - formula random effects for JAGS models (lme4-like syntax, random-effect priors, structured covariance, and LKJ helpers)
   - model-averaging (mixing posterior distributions, computing Bayes factors, generating summary tables, ...)
 
 ## Installation
@@ -137,14 +138,14 @@ fit1 <- JAGS_fit(model_syntax, data, priors_list1, seed = 1)
 fit2 <- JAGS_fit(model_syntax, data, priors_list2, seed = 2)
 ```
 
-The `runjags_estimates_table` function then provides a nicely formated summary for the fitted model.
+The `runjags_estimates_table` function then provides a nicely formated summary for the fitted model using its stored prior distributions.
 
 ```{r}
 # formatted summary tables
-runjags_estimates_table(fit1, priors_list1)
+runjags_estimates_table(fit1)
 ```
 
-We create a `log_posterior` function that defines the log likelihood of the data for marginal likelihood estimation via `bridgesampling` (while creating a dummy bridge sampling object for the model without any posterior samples).
+We create a `log_posterior` function that defines the log likelihood of the data for marginal likelihood estimation via `bridgesampling`. For the point-prior model, the marginal likelihood is the likelihood evaluated at its fixed mean, so we use `bridgesampling_object` to create a supported marginal-likelihood object from its analytic natural-log value.
 
 ```{r}
 # define log posterior for bridge sampling
@@ -153,12 +154,11 @@ log_posterior <- function(parameters, data){
 }
 
 # get marginal likelihoods
-marglik0 <- list(
+marglik0 <- bridgesampling_object(
   logml = sum(dnorm(data$x, mean(p0), 1, log = TRUE))
 )
-class(marglik0) <- "bridge"
-marglik1 <- JAGS_bridgesampling(fit1, data, priors_list1, log_posterior)
-marglik2 <- JAGS_bridgesampling(fit2, data, priors_list2, log_posterior)
+marglik1 <- JAGS_bridgesampling(fit = fit1, log_posterior = log_posterior, data = data, prior_list = priors_list1)
+marglik2 <- JAGS_bridgesampling(fit = fit2, log_posterior = log_posterior, data = data, prior_list = priors_list2)
 
 marglik1
 
@@ -173,9 +173,9 @@ First, we create a list of model objects, each containing the JAGS fit, marginal
 ```{r}
 ## create an object with the models
 models <- list(
-  list(fit = fit0, marglik = marglik0, priors = priors_list0, prior_weights = 1, fit_summary = runjags_estimates_table(fit0, priors_list0)),
-  list(fit = fit1, marglik = marglik1, priors = priors_list1, prior_weights = 1, fit_summary = runjags_estimates_table(fit1, priors_list1)),
-  list(fit = fit2, marglik = marglik2, priors = priors_list2, prior_weights = 1, fit_summary = runjags_estimates_table(fit2, priors_list2))
+  list(fit = fit0, marglik = marglik0, priors = priors_list0, prior_weights = 1, fit_summary = runjags_estimates_table(fit0)),
+  list(fit = fit1, marglik = marglik1, priors = priors_list1, prior_weights = 1, fit_summary = runjags_estimates_table(fit1)),
+  list(fit = fit2, marglik = marglik2, priors = priors_list2, prior_weights = 1, fit_summary = runjags_estimates_table(fit2))
 )
 # compare and summarize the models
 models <- models_inference(models)

@@ -1,0 +1,1325 @@
+# Internal random-effect SD specification helpers.
+
+.bt_random_effect_term_indexes <- function(model_matrix, has_intercept){
+
+  terms_indexes <- attr(model_matrix, "assign")
+  if(isTRUE(has_intercept)){
+    terms_indexes <- terms_indexes + 1
+    terms_indexes[1] <- 0
+  }
+
+  terms_indexes
+}
+
+.bt_random_effect_sd_spec <- function(parameter, parameter_suffix,
+                                      prior_list, random_term,
+                                      grouping_factor,
+                                      sd_binding, model_matrix,
+                                      model_terms, model_terms_type,
+                                      predictors_type, data,
+                                      random_structure, has_intercept,
+                                      homogeneous_sd,
+                                      factor_term_design = NULL){
+
+  if(!is.null(sd_binding) && isTRUE(sd_binding$true_allocation)){
+    return(.bt_random_effect_allocated_sd_spec(
+      parameter = parameter,
+      parameter_suffix = parameter_suffix,
+      sd_binding = sd_binding,
+      model_matrix = model_matrix,
+      model_terms = model_terms,
+      model_terms_type = model_terms_type,
+      predictors_type = predictors_type,
+      data = data,
+      random_structure = random_structure,
+      has_intercept = has_intercept,
+      homogeneous_sd = homogeneous_sd,
+      factor_term_design = factor_term_design
+    ))
+  }
+
+  n_columns <- ncol(model_matrix)
+  terms_indexes <- .bt_random_effect_term_indexes(model_matrix, has_intercept)
+  sd_parameter_names <- rep(NA_character_, n_columns)
+  syntax <- character()
+  new_prior_list <- list()
+  random_scale_terms <- character()
+
+  if(!is.null(sd_binding)){
+    if(!identical(sd_binding$application, "block")){
+      stop("Direct random-effect SD bindings must use block-level application.", call. = FALSE)
+    }
+    if(!.bt_random_sd_binding_has_external_source(sd_binding)){
+      stop("Direct random-effect SD bindings require an external SD source.", call. = FALSE)
+    }
+    sd_leaves <- .bt_random_effect_resolved_sd_leaves(
+      parameter = parameter,
+      model_matrix = model_matrix,
+      model_terms = model_terms,
+      model_terms_type = model_terms_type,
+      predictors_type = predictors_type,
+      data = data,
+      random_structure = random_structure,
+      has_intercept = has_intercept,
+      homogeneous_sd = homogeneous_sd,
+      factor_term_design = factor_term_design
+    )
+    sd_binding$sd_component_names <- sd_leaves$leaf_names
+    sd_binding$sd_component_terms <- sd_leaves$leaf_terms
+    sd_binding$sd_component_index_by_column <- sd_leaves$leaf_index_by_column
+    if(.bt_random_sd_binding_has_row_external_source(sd_binding)){
+      return(list(
+        terms_indexes = terms_indexes,
+        sd_parameter_names = rep(NA_character_, n_columns),
+        sd_leaves = sd_leaves,
+        random_scale_terms = character(),
+        add_parameters = character(),
+        syntax = character(),
+        prior_list = list(),
+        sd_binding = sd_binding
+      ))
+    }
+
+    sd_parameter_names <- rep(
+      .bt_random_sd_binding_shared_source_expression(sd_binding),
+      n_columns
+    )
+    syntax <- .bt_random_effect_sd_assignment_syntax(parameter, sd_parameter_names)
+    return(list(
+      terms_indexes = terms_indexes,
+      sd_parameter_names = sd_parameter_names,
+      sd_leaves = sd_leaves,
+      random_scale_terms = character(),
+      add_parameters = .bt_random_sd_binding_source_name(sd_binding$source),
+      syntax = syntax,
+      prior_list = list(),
+      sd_binding = sd_binding
+    ))
+  }
+
+  if(isTRUE(homogeneous_sd)){
+    prior_name <- paste0(parameter_suffix, "_sd")
+    .bt_random_effect_check_scalar_sd_prior(prior_list[["sd"]], "sd")
+    new_prior_list[[prior_name]] <- .bt_random_effect_set_prior_metadata(
+      prior_list[["sd"]],
+      block = random_term$block_name,
+      grouping = grouping_factor,
+      type = "sd",
+      structure = random_structure,
+      name = .bt_random_effect_public_name(random_term)
+    )
+    random_scale_terms[[prior_name]] <- "sd"
+    sd_parameter_names <- rep(paste0(parameter, "_sd"), n_columns)
+    syntax <- .bt_random_effect_sd_assignment_syntax(parameter, sd_parameter_names)
+  }else{
+    if(isTRUE(has_intercept)){
+      prior_name <- paste0(parameter_suffix, "_intercept")
+      .bt_random_effect_check_scalar_sd_prior(prior_list[["intercept"]], "intercept")
+      new_prior_list[[prior_name]] <- .bt_random_effect_set_prior_metadata(
+        prior_list[["intercept"]],
+        block = random_term$block_name,
+        grouping = grouping_factor,
+        type = "sd",
+        structure = random_structure,
+        name = .bt_random_effect_public_name(random_term)
+      )
+      random_scale_terms[[prior_name]] <- "intercept"
+      sd_parameter_names[1L] <- paste0(parameter, "_intercept")
+      syntax <- c(
+        syntax,
+        .bt_random_effect_sd_assignment_syntax(
+          parameter,
+          sd_parameter_names[1L],
+          column_index = 1L
+        )
+      )
+    }
+
+    for(term_index in unique(terms_indexes[terms_indexes > 0])){
+      term_spec <- .bt_random_effect_sd_term_spec(
+        term_index = term_index,
+        parameter = parameter,
+        parameter_suffix = parameter_suffix,
+        prior_list = prior_list,
+        random_term = random_term,
+        grouping_factor = grouping_factor,
+        model_terms = model_terms,
+        model_terms_type = model_terms_type,
+        terms_indexes = terms_indexes,
+        predictors_type = predictors_type,
+        data = data,
+        random_structure = random_structure,
+        factor_term_design = factor_term_design
+      )
+      sd_parameter_names[term_spec$columns] <- term_spec$sd_parameter_names
+      syntax <- c(syntax, term_spec$syntax)
+      new_prior_list[[term_spec$prior_name]] <- term_spec$prior
+      random_scale_terms[[term_spec$prior_name]] <- term_spec$scale_term
+    }
+  }
+
+  sd_leaves <- .bt_random_effect_resolved_sd_leaves(
+    parameter = parameter,
+    model_matrix = model_matrix,
+    model_terms = model_terms,
+    model_terms_type = model_terms_type,
+    predictors_type = predictors_type,
+    data = data,
+    random_structure = random_structure,
+    has_intercept = has_intercept,
+    homogeneous_sd = homogeneous_sd,
+    prior_list = prior_list,
+    prior_nodes = TRUE,
+    factor_term_design = factor_term_design
+  )
+  if(!identical(unname(sd_leaves$leaf_names_by_column), unname(sd_parameter_names))){
+    stop("Random-effect SD leaf metadata are inconsistent with generated SD parameters.", call. = FALSE)
+  }
+
+  if(isTRUE(homogeneous_sd)){
+    sd_binding <- .bt_random_sd_binding(
+      source = .bt_prior_owned_sd_source(sd_parameter_names[[1L]]),
+      application = "block",
+      factors = list(),
+      true_allocation = FALSE,
+      allocations = list(),
+      sd_component_names = sd_leaves$leaf_names,
+      sd_component_terms = sd_leaves$leaf_terms,
+      sd_component_index_by_column = sd_leaves$leaf_index_by_column
+    )
+  }else{
+    sd_binding <- .bt_random_sd_binding(
+      sources_by_column = lapply(sd_parameter_names, .bt_prior_owned_sd_source),
+      application = "column",
+      factors_by_column = rep(list(list()), length(sd_parameter_names)),
+      true_allocation = FALSE,
+      allocations = list(),
+      sd_component_names = sd_leaves$leaf_names,
+      sd_component_terms = sd_leaves$leaf_terms,
+      sd_component_index_by_column = sd_leaves$leaf_index_by_column
+    )
+  }
+
+  list(
+    terms_indexes = terms_indexes,
+    sd_parameter_names = sd_parameter_names,
+    sd_leaves = sd_leaves,
+    random_scale_terms = random_scale_terms,
+    add_parameters = character(),
+    syntax = syntax,
+    prior_list = new_prior_list,
+    sd_binding = sd_binding
+  )
+}
+
+.bt_random_effect_sd_term_spec <- function(term_index, parameter,
+                                           parameter_suffix, prior_list,
+                                           random_term, grouping_factor,
+                                           model_terms, model_terms_type,
+                                           terms_indexes, predictors_type,
+                                           data, random_structure,
+                                           factor_term_design = NULL){
+
+  model_term <- model_terms[term_index]
+  columns <- which(terms_indexes == term_index)
+  this_prior <- prior_list[[model_term]]
+
+  attr(this_prior, "interaction") <- grepl("__xXx__", model_term)
+  if(.is_prior_interaction(this_prior)){
+    attr(this_prior, "interaction_terms") <- strsplit(model_term, "__xXx__")[[1]]
+  }
+
+  if(!is.null(attr(this_prior, "multiply_by"))){
+    stop("'multiply_by' attribute is inadmissible for random effects", call. = FALSE)
+  }
+
+  if(identical(model_terms_type[[term_index]], "continuous")){
+    .bt_random_effect_check_scalar_sd_prior(this_prior, model_term)
+    sd_parameter_names <- rep(paste0(parameter, "_", model_term), length(columns))
+    syntax <- .bt_random_effect_sd_assignment_syntax(
+      parameter,
+      sd_parameter_names,
+      column_index = columns
+    )
+  }else if(identical(model_terms_type[[term_index]], "factor")){
+    factor_spec <- .bt_random_effect_factor_sd_term_spec(
+      prior = this_prior,
+      parameter = parameter,
+      model_term = model_term,
+      columns = columns,
+      predictors_type = predictors_type,
+      data = data,
+      random_structure = random_structure,
+      factor_term_design = factor_term_design
+    )
+    this_prior <- factor_spec$prior
+    sd_parameter_names <- factor_spec$sd_parameter_names
+    syntax <- .bt_random_effect_sd_assignment_syntax(
+      parameter,
+      sd_parameter_names,
+      column_index = columns
+    )
+  }else{
+    stop("Unrecognized model term.", call. = FALSE)
+  }
+
+  this_prior <- .bt_random_effect_set_prior_metadata(
+    this_prior,
+    block = random_term$block_name,
+    grouping = grouping_factor,
+    type = "sd",
+    structure = random_structure,
+    name = .bt_random_effect_public_name(random_term)
+  )
+  this_prior <- .bt_random_effect_forward_component_metadata(this_prior)
+
+  prior_name <- paste0(parameter_suffix, "_", model_term)
+  list(
+    columns = columns,
+    sd_parameter_names = sd_parameter_names,
+    syntax = syntax,
+    prior_name = prior_name,
+    prior = this_prior,
+    scale_term = model_term
+  )
+}
+
+.bt_random_effect_check_scalar_sd_prior <- function(prior, term){
+
+  if(.bt_random_prior_has_non_scalar_family(prior)){
+    stop(
+      "Random-effect SD prior for '", term,
+      "' must be an ordinary scalar prior.",
+      call. = FALSE
+    )
+  }
+
+  invisible(TRUE)
+}
+
+.bt_random_effect_check_structured_sd_priors <- function(prior_list,
+                                                        model_terms,
+                                                        random_structure,
+                                                        homogeneous_sd){
+
+  if(!random_structure %in% c("cs", "hcs", "ar1", "car", "har")){
+    return(invisible(TRUE))
+  }
+
+  terms <- if(isTRUE(homogeneous_sd)) "sd" else model_terms
+  for(term in terms){
+    .bt_random_effect_check_scalar_sd_prior(prior_list[[term]], term)
+  }
+
+  invisible(TRUE)
+}
+
+.bt_random_effect_factor_sd_term_spec <- function(prior, parameter,
+                                                  model_term, columns,
+                                                  predictors_type, data,
+                                                  random_structure,
+                                                  factor_term_design = NULL){
+
+  contrast <- .bt_random_effect_factor_term_contrast(
+    model_term, predictors_type, data,
+    indicator_factors = .bt_random_effect_factor_term_indicators(factor_term_design, model_term)
+  )
+  if(random_structure %in% c("cs", "hcs", "ar1", "car", "har")){
+    .bt_random_effect_check_scalar_sd_prior(prior, model_term)
+    prior_type <- "prior.independent"
+    attr(prior, "levels") <- length(columns)
+    attr(prior, "level_names") <- .bt_random_effect_factor_prior_level_names(
+      model_term = model_term,
+      predictors_type = predictors_type,
+      data = data
+    )
+    sd_parameter_names <- .bt_random_effect_sd_node_names(parameter, model_term, length(columns))
+    prior <- .bt_random_effect_set_factor_prior_class(prior, prior_type)
+    # the covariance structure owns the basis: one column per level cell
+    prior <- .bt_random_effect_bind_identity_sd_design(
+      prior = prior,
+      model_term = model_term,
+      columns = columns,
+      predictors_type = predictors_type
+    )
+
+  }else if(contrast %in% c(
+    "contr.treatment",
+    "contr.independent",
+    "contr.mixed"
+  )){
+    if(identical(contrast, "contr.treatment")){
+      prior_type <- "prior.treatment"
+      attr(prior, "levels") <- length(columns) + 1L
+    }else{
+      prior_type <- "prior.independent"
+      attr(prior, "levels") <- length(columns)
+    }
+
+    attr(prior, "level_names") <- .bt_random_effect_factor_prior_level_names(
+      model_term = model_term,
+      predictors_type = predictors_type,
+      data = data
+    )
+
+    sd_parameter_names <- .bt_random_effect_sd_node_names(parameter, model_term, length(columns))
+    prior <- .bt_random_effect_set_factor_prior_class(prior, prior_type)
+    prior <- .bt_random_effect_bind_factor_sd_design(
+      prior = prior,
+      model_term = model_term,
+      columns = columns,
+      factor_term_design = factor_term_design
+    )
+
+  }else if(contrast %in% c("contr.orthonormal", "contr.meandif")){
+    prior <- .bt_random_effect_factor_sd_prior_by_column(
+      prior = prior,
+      model_term = model_term,
+      columns = columns,
+      predictors_type = predictors_type,
+      data = data,
+      factor_term_design = factor_term_design
+    )
+    sd_parameter_names <- .bt_random_effect_sd_node_names(parameter, model_term, length(columns))
+  }else if(.prior_ordered_is_contrast_name(contrast)){
+    if(is.prior.ordered(prior)){
+      prior <- .bt_random_effect_bind_ordered_sd_prior(
+        prior = prior,
+        parameter = parameter,
+        model_term = model_term,
+        columns = columns,
+        predictors_type = predictors_type,
+        data = data
+      )
+      sd_parameter_names <- .bt_random_effect_sd_node_names(parameter, model_term, length(columns))
+    }else{
+      prior <- .bt_random_effect_factor_sd_prior_by_column(
+        prior = prior,
+        model_term = model_term,
+        columns = columns,
+        predictors_type = predictors_type,
+        data = data,
+        factor_term_design = factor_term_design
+      )
+      sd_parameter_names <- .bt_random_effect_sd_node_names(parameter, model_term, length(columns))
+    }
+  }else{
+    stop("Unsupported factor contrasts for the random effects.", call. = FALSE)
+  }
+
+  list(prior = prior, sd_parameter_names = sd_parameter_names)
+}
+
+# JAGS node names of the SD prior of a random factor term: a sole design column
+# is the scalar node of the prior, several columns are its indexed elements
+# (.JAGS_prior_factor_names()).
+.bt_random_effect_sd_node_names <- function(parameter, model_term, n_columns){
+
+  node <- paste0(parameter, "_", model_term)
+  if(n_columns == 1L){
+    node
+  }else{
+    paste0(node, "[", seq_len(n_columns), "]")
+  }
+}
+
+.bt_random_effect_factor_sd_prior_by_column <- function(
+    prior, model_term, columns, predictors_type, data,
+    factor_term_design = NULL){
+
+  if(is.prior.factor(prior)){
+    attr(prior, "levels") <- length(columns) + 1L
+    attr(prior, "level_names") <- .bt_random_effect_factor_prior_level_names(
+      model_term = model_term,
+      predictors_type = predictors_type,
+      data = data
+    )
+    return(.bt_random_effect_bind_factor_sd_design(
+      prior = prior,
+      model_term = model_term,
+      columns = columns,
+      factor_term_design = factor_term_design
+    ))
+  }
+
+  # one SD per contrast column, indexed by the column
+  attr(prior, "levels") <- length(columns)
+  attr(prior, "level_names") <- as.character(seq_along(columns))
+  prior <- .bt_random_effect_set_factor_prior_class(prior, "prior.independent")
+  .bt_factor_prior_set_design(
+    prior = prior,
+    level_names = as.character(seq_along(columns)),
+    factor_contrasts = stats::setNames("contr.independent", .bt_factor_placeholder_term),
+    design = diag(length(columns))
+  )
+}
+
+# The coefficient design of a random-effect SD factor prior: which level cell
+# of the term's factors each design column of the term codes, evaluated from
+# the random-effect design itself ('factor_term_design').
+.bt_random_effect_bind_factor_sd_design <- function(prior, model_term, columns,
+                                                    factor_term_design){
+
+  if(!is.function(factor_term_design)){
+    stop("Random-effect SD factor priors require the random-effect term design.", call. = FALSE)
+  }
+  term_design <- factor_term_design(model_term)
+  if(ncol(term_design$design) != length(columns)){
+    stop(
+      "The factor design of random-effect term '", model_term, "' has ",
+      ncol(term_design$design), " column(s), but the random-effect design has ",
+      length(columns), ".",
+      call. = FALSE
+    )
+  }
+  level_names <- attr(prior, "level_names", exact = TRUE)
+  if(!is.list(level_names)){
+    level_names <- term_design$level_names[[1L]]
+  }
+  .bt_factor_prior_set_design(
+    prior = prior,
+    level_names = level_names,
+    factor_contrasts = term_design$factor_contrasts,
+    design = term_design$design
+  )
+}
+
+# SD factor prior of a covariance structure that owns its basis: one design
+# column per level cell of the term's factors.
+.bt_random_effect_bind_identity_sd_design <- function(prior, model_term, columns,
+                                                      predictors_type){
+
+  level_names <- attr(prior, "level_names", exact = TRUE)
+  factor_terms <- if(is.list(level_names)){
+    names(level_names)
+  }else{
+    components <- .bt_random_effect_term_components(model_term)
+    components[
+      components %in% names(predictors_type) &
+        predictors_type[components] == "factor"
+    ][1L]
+  }
+  n_cells <- if(is.list(level_names)) prod(lengths(level_names)) else length(level_names)
+  if(n_cells != length(columns)){
+    stop(
+      "The levels of random-effect term '", model_term, "' do not match its ",
+      length(columns), " design column(s).",
+      call. = FALSE
+    )
+  }
+  .bt_factor_prior_set_design(
+    prior = prior,
+    level_names = level_names,
+    factor_contrasts = stats::setNames(rep("contr.independent", length(factor_terms)), factor_terms),
+    design = diag(n_cells)
+  )
+}
+
+# Evaluates the columns of random-effect term 'model_term' at every level cell
+# of the term's factors, as .factor_term_design_from_formula() does for fixed
+# terms: the other factors are held at their first level, the term's
+# continuous components at one, and other continuous predictors at zero.
+.bt_random_effect_factor_term_design <- function(model_term, model_terms, formula,
+                                                 data, predictors,
+                                                 predictors_type, has_intercept,
+                                                 preserve_no_intercept_contrasts,
+                                                 structure, block_name,
+                                                 n_block_columns){
+
+  term_components <- .bt_random_effect_term_components(model_term)
+  factor_terms <- term_components[
+    term_components %in% names(predictors_type) &
+      predictors_type[term_components] == "factor"
+  ]
+  level_names <- lapply(factor_terms, function(factor_term) levels(data[[factor_term]]))
+  names(level_names) <- factor_terms
+  # the block design is evaluated at every level cell, under the same memory
+  # guard as the block design of the data rows
+  .bt_random_effect_check_memory(
+    estimate = .bt_random_effect_factor_design_memory_estimate(
+      n_cells = .bt_random_effect_memory_product(lengths(level_names)),
+      n_columns = n_block_columns,
+      n_predictors = length(predictors)
+    ),
+    block_name = block_name,
+    alternative = paste0(
+      "Reduce the number of levels of the factors in the random-effect term ",
+      "or the number of random-effect columns, or simplify the random-effect ",
+      "design. Raise the option (or set it to Inf) only after verifying the ",
+      "operation's memory budget."
+    )
+  )
+  cell_grid <- .factor_cell_grid(level_names)
+
+  grid_data <- data[rep(1L, nrow(cell_grid)), predictors, drop = FALSE]
+  rownames(grid_data) <- NULL
+  for(predictor in predictors){
+    if(predictors_type[[predictor]] == "factor"){
+      values <- if(predictor %in% factor_terms){
+        cell_grid[[predictor]]
+      }else{
+        rep(levels(data[[predictor]])[1L], nrow(cell_grid))
+      }
+      grid_data[[predictor]] <- factor(values, levels = levels(data[[predictor]]))
+      attr(grid_data[[predictor]], "contrasts") <- attr(data[[predictor]], "contrasts")
+    }else{
+      grid_data[[predictor]] <- if(predictor %in% term_components) 1 else 0
+    }
+  }
+
+  grid_matrix <- .bt_random_effect_design_matrix(
+    formula,
+    grid_data,
+    preserve_no_intercept_contrasts = preserve_no_intercept_contrasts,
+    structure = structure,
+    block_name = block_name
+  )$model_matrix
+  terms_indexes <- .bt_random_effect_term_indexes(grid_matrix, has_intercept)
+  term_index <- match(model_term, model_terms)
+
+  factor_contrasts <- vapply(factor_terms, function(factor_term){
+    contrast <- attr(data[[factor_term]], "contrasts")
+    if(is.null(contrast)) "contr.treatment" else contrast
+  }, character(1))
+  # R codes a factor of an interaction whose margin is absent from the block
+  # (`f:g` without `f` or `g`, `f:x` without `x`) by level indicators, whatever
+  # its declared contrast: the stored coding of the term makes those columns
+  # level cells, so the declared contrast does not bar them from the cell
+  # labels.
+  indicators <- .bt_random_effect_term_indicator_factors(
+    formula, model_term, predictors_type, data
+  )
+  factor_contrasts[names(factor_contrasts) %in% indicators] <- "contr.independent"
+
+  list(
+    design = unname(grid_matrix[, terms_indexes == term_index, drop = FALSE]),
+    level_names = level_names,
+    factor_contrasts = factor_contrasts
+  )
+}
+
+# The factors of a random-effect term that R codes by level indicators in the
+# design of the block formula: the 2 of the `factors` matrix of its terms, which
+# marks a factor whose margin (the term without it) is absent from the block.
+# Ordered contrasts are not touched: their terms keep their own coding.
+.bt_random_effect_term_indicator_factors <- function(formula, model_term,
+                                                     predictors_type, data){
+
+  components <- .bt_random_effect_term_components(model_term)
+  factor_terms <- components[
+    components %in% names(predictors_type) &
+      predictors_type[components] == "factor"
+  ]
+  coding <- tryCatch(
+    attr(stats::terms(formula), "factors", exact = TRUE),
+    error = function(error) NULL
+  )
+  term_label <- gsub("__xXx__", ":", model_term, fixed = TRUE)
+  if(length(factor_terms) == 0L || !is.matrix(coding) ||
+     !term_label %in% colnames(coding)){
+    return(character())
+  }
+
+  factor_terms[vapply(factor_terms, function(factor_term){
+    contrast <- attr(data[[factor_term]], "contrasts")
+    factor_term %in% rownames(coding) &&
+      identical(as.integer(coding[factor_term, term_label]), 2L) &&
+      !(is.character(contrast) && .prior_ordered_is_contrast_name(contrast))
+  }, logical(1))]
+}
+
+# The indicator-coded factors of a term, from the term design closure of the
+# block (character() without it).
+.bt_random_effect_factor_term_indicators <- function(factor_term_design, model_term){
+
+  indicators <- attr(factor_term_design, "indicator_factors", exact = TRUE)
+  if(is.function(indicators)){
+    indicators(model_term)
+  }else{
+    character()
+  }
+}
+
+.bt_random_effect_bind_ordered_sd_prior <- function(prior, parameter,
+                                                    model_term, columns,
+                                                    predictors_type, data){
+
+  term_components <- .bt_random_effect_term_components(model_term)
+  factor_terms <- term_components[
+    term_components %in% names(predictors_type) &
+      predictors_type[term_components] == "factor"
+  ]
+  if(length(factor_terms) == 0L){
+    stop("Ordered random-effect SD priors require a factor term.", call. = FALSE)
+  }
+
+  level_names <- lapply(factor_terms, function(factor_term){
+    levels(data[[factor_term]])
+  })
+  names(level_names) <- factor_terms
+
+  attr(prior, "levels") <- if(length(factor_terms) == 1L){
+    length(level_names[[1L]])
+  }else{
+    NULL
+  }
+  attr(prior, "level_names") <- if(length(factor_terms) == 1L && identical(model_term, factor_terms[[1L]])){
+    level_names[[1L]]
+  }else{
+    level_names
+  }
+  attr(prior, "term_components") <- term_components
+  attr(prior, "factor_terms") <- factor_terms
+  attr(prior, "factor_contrasts") <- vapply(factor_terms, function(factor_term){
+    factor_contrast <- attr(data[[factor_term]], "contrasts")
+    if(is.null(factor_contrast)){
+      "contr.treatment"
+    }else if(is.character(factor_contrast)){
+      factor_contrast[1L]
+    }else{
+      stop("Unsupported matrix-valued factor contrast metadata.", call. = FALSE)
+    }
+  }, character(1))
+
+  design_info <- .factor_term_design_from_metadata(prior)
+  attr(prior, "factor_design") <- design_info$design
+  attr(prior, "factor_cell_names") <- design_info$cell_names
+  prior <- .bt_bind_ordered_prior_metadata(prior, paste0(parameter, "_", model_term))
+
+  coefficient_dim <- attr(prior, "coefficient_dim", exact = TRUE)
+  if(!identical(coefficient_dim, length(columns))){
+    stop(
+      "Ordered random-effect SD prior for '", model_term, "' implies ",
+      coefficient_dim, " coefficient(s), but the random-effect design has ",
+      length(columns), " column(s).",
+      call. = FALSE
+    )
+  }
+
+  prior
+}
+
+.bt_random_effect_set_factor_prior_class <- function(prior, prior_type){
+
+  if(is.prior.simple(prior)){
+    class(prior) <- c(class(prior), "prior.factor", prior_type)
+  }else if(is.prior.spike_and_slab(prior) || is.prior.mixture(prior)){
+    for(p in seq_along(prior)){
+      class(prior[[p]]) <- c(class(prior[[p]]), "prior.factor", prior_type)
+    }
+    if(is.prior.spike_and_slab(prior)){
+      class(prior) <- c(
+        class(prior)[!class(prior) %in% c("prior.simple_spike_and_slab")],
+        "prior.factor_spike_and_slab",
+        prior_type
+      )
+    }else{
+      class(prior) <- c(
+        class(prior)[!class(prior) %in% c("prior.simple_mixture")],
+        "prior.factor_mixture",
+        prior_type
+      )
+    }
+  }
+
+  prior
+}
+
+.bt_random_effect_forward_component_metadata <- function(prior){
+
+  if(is.prior.spike_and_slab(prior) || is.prior.mixture(prior)){
+    for(p in seq_along(prior)){
+      attr(prior[[p]], "levels") <- attr(prior, "levels")
+      attr(prior[[p]], "level_names") <- attr(prior, "level_names")
+      attr(prior[[p]], "interaction") <- attr(prior, "interaction", exact = TRUE)
+      attr(prior[[p]], "interaction_terms") <- attr(prior, "interaction_terms")
+    }
+  }
+
+  prior
+}
+
+.bt_random_effect_allocated_sd_spec <- function(parameter, parameter_suffix,
+                                                sd_binding, model_matrix,
+                                                model_terms, model_terms_type,
+                                                predictors_type, data,
+                                                random_structure,
+                                                has_intercept,
+                                                homogeneous_sd,
+                                                factor_term_design = NULL){
+
+  terms_indexes <- .bt_random_effect_term_indexes(model_matrix, has_intercept)
+  allocation_info <- sd_binding$allocations[[1L]]
+  if(identical(allocation_info$target, "sd_component")){
+    return(.bt_random_effect_allocated_sd_leaves_spec(
+      parameter = parameter,
+      parameter_suffix = parameter_suffix,
+      sd_binding = sd_binding,
+      model_matrix = model_matrix,
+      model_terms = model_terms,
+      model_terms_type = model_terms_type,
+      predictors_type = predictors_type,
+      data = data,
+      random_structure = random_structure,
+      has_intercept = has_intercept,
+      homogeneous_sd = homogeneous_sd,
+      factor_term_design = factor_term_design
+    ))
+  }
+
+  if(!(isTRUE(homogeneous_sd) || ncol(model_matrix) == 1L)){
+    stop(
+      "Block-level variance allocation supports random-effect blocks with one SD component. ",
+      "Use random intercepts, single-column random slopes, homogeneous SD structures, or target = \"sd_component\" for heterogeneous blocks.",
+      call. = FALSE
+    )
+  }
+
+  sd_leaves <- .bt_random_effect_resolved_sd_leaves(
+    parameter = parameter,
+    model_matrix = model_matrix,
+    model_terms = model_terms,
+    model_terms_type = model_terms_type,
+    predictors_type = predictors_type,
+    data = data,
+    random_structure = random_structure,
+    has_intercept = has_intercept,
+    homogeneous_sd = homogeneous_sd,
+    factor_term_design = factor_term_design
+  )
+
+  if(isTRUE(homogeneous_sd)){
+    sd_term <- "sd"
+  }else if(isTRUE(has_intercept)){
+    sd_term <- "intercept"
+  }else{
+    allocated_term_indexes <- unique(terms_indexes[terms_indexes > 0])
+    if(length(allocated_term_indexes) != 1L){
+      stop(
+        "Variance allocation for non-intercept random-effect blocks requires exactly one random-effect term.",
+        call. = FALSE
+      )
+    }
+    sd_term <- model_terms[allocated_term_indexes]
+  }
+
+  sd_parameter <- if(ncol(model_matrix) == 1L){
+    sd_leaves$leaf_names_by_column[[1L]]
+  }else{
+    paste0(parameter, "_", sd_term)
+  }
+  sd_suffix <- paste0(parameter_suffix, "_", sd_term)
+  n_columns <- ncol(model_matrix)
+  sd_parameter_names <- rep(sd_parameter, n_columns)
+
+  if(!identical(unname(sd_leaves$leaf_names_by_column), unname(sd_parameter_names))){
+    stop("Random-effect SD leaf metadata are inconsistent with generated SD parameters.", call. = FALSE)
+  }
+
+  if(.bt_random_sd_binding_has_row_external_source(sd_binding)){
+    sd_binding$sd_component_names <- sd_leaves$leaf_names
+    sd_binding$sd_component_terms <- sd_leaves$leaf_terms
+    sd_binding$sd_component_index_by_column <- sd_leaves$leaf_index_by_column
+    return(list(
+      terms_indexes = terms_indexes,
+      sd_parameter_names = rep(NA_character_, n_columns),
+      sd_leaves = sd_leaves,
+      random_scale_terms = character(),
+      add_parameters = character(),
+      syntax = character(),
+      prior_list = list(),
+      sd_binding = sd_binding
+    ))
+  }
+
+  # The allocated block SD is a registered allocation SD node.
+  syntax <- .bt_deterministic_node_emit(.bt_dnode_random_sd(
+    name = sd_parameter,
+    source_name = .bt_random_sd_binding_source_name(sd_binding$source),
+    factors = sd_binding$factors,
+    emit_source = .bt_random_sd_binding_shared_source_expression(sd_binding),
+    emit_factors = sd_binding$factors
+  ))
+  syntax <- c(
+    syntax,
+    .bt_random_effect_sd_assignment_syntax(parameter, sd_parameter_names)
+  )
+
+  random_scale_terms <- stats::setNames(sd_term, sd_suffix)
+  sd_binding$sd_component_names <- sd_leaves$leaf_names
+  sd_binding$sd_component_terms <- sd_leaves$leaf_terms
+  sd_binding$sd_component_index_by_column <- sd_leaves$leaf_index_by_column
+
+  list(
+    terms_indexes = terms_indexes,
+    sd_parameter_names = sd_parameter_names,
+    sd_leaves = sd_leaves,
+    random_scale_terms = random_scale_terms,
+    add_parameters = sd_parameter,
+    syntax = syntax,
+    prior_list = list(),
+    sd_binding = sd_binding
+  )
+}
+
+.bt_random_effect_resolved_sd_leaves <- function(parameter, model_matrix,
+                                                 model_terms,
+                                                 model_terms_type,
+                                                 predictors_type, data,
+                                                 random_structure,
+                                                 has_intercept,
+                                                 homogeneous_sd,
+                                                 prior_list = NULL,
+                                                 prior_nodes = FALSE,
+                                                 factor_term_design = NULL){
+
+  n_columns <- ncol(model_matrix)
+  terms_indexes <- .bt_random_effect_term_indexes(model_matrix, has_intercept)
+  leaf_terms <- rep(NA_character_, n_columns)
+  leaf_names <- rep(NA_character_, n_columns)
+  # The leaves of the SD priors of a block are the nodes of those priors, so a
+  # sole design column is a scalar node; the leaves of an allocation or of an
+  # external SD source are indexed by their column.
+  sd_node_names <- function(model_term, n_columns){
+    if(isTRUE(prior_nodes)){
+      .bt_random_effect_sd_node_names(parameter, model_term, n_columns)
+    }else{
+      paste0(parameter, "_", model_term, "[", seq_len(n_columns), "]")
+    }
+  }
+
+  if(isTRUE(homogeneous_sd)){
+    leaf_terms[] <- "sd"
+    leaf_names[] <- paste0(parameter, "_sd")
+  }else{
+    if(isTRUE(has_intercept)){
+      leaf_terms[1L] <- "intercept"
+      leaf_names[1L] <- paste0(parameter, "_intercept")
+    }
+    for(i in unique(terms_indexes[terms_indexes > 0])){
+      columns <- which(terms_indexes == i)
+      model_term <- model_terms[i]
+      if(identical(model_terms_type[[i]], "continuous")){
+        leaf_terms[columns] <- model_term
+        leaf_names[columns] <- paste0(parameter, "_", model_term)
+      }else if(identical(model_terms_type[[i]], "factor")){
+        contrast <- .bt_random_effect_factor_term_contrast(
+          model_term, predictors_type, data,
+          indicator_factors = .bt_random_effect_factor_term_indicators(factor_term_design, model_term)
+        )
+        ordered_sd_prior <- !is.null(prior_list) &&
+          model_term %in% names(prior_list) &&
+          is.prior.ordered(prior_list[[model_term]])
+        if(random_structure %in% c("cs", "hcs", "ar1", "car", "har") ||
+           contrast %in% c(
+             "contr.treatment",
+             "contr.independent",
+             "contr.mixed"
+           )){
+          leaf_term_labels <- .bt_random_effect_factor_sd_leaf_terms(
+            model_term = model_term,
+            columns = columns,
+            predictors_type = predictors_type,
+            data = data,
+            factor_term_design = factor_term_design
+          )
+          leaf_terms[columns] <- leaf_term_labels
+          leaf_names[columns] <- sd_node_names(model_term, length(columns))
+        }else if(.prior_ordered_is_contrast_name(contrast) && isTRUE(ordered_sd_prior)){
+          # A sole generated coefficient uses the unindexed node emitted by
+          # one-dimensional ordered-prior JAGS syntax; multiple coefficients
+          # keep [j] node indexes.
+          if(length(columns) == 1L){
+            leaf_terms[columns] <- model_term
+            leaf_names[columns] <- paste0(parameter, "_", model_term)
+          }else{
+            leaf_terms[columns] <- .bt_random_effect_factor_coefficient_terms(
+              model_term = model_term,
+              columns = columns,
+              predictors_type = predictors_type,
+              data = data,
+              contrast = contrast
+            )
+            for(j in seq_along(columns)){
+              leaf_names[columns[j]] <- paste0(parameter, "_", model_term, "[", j, "]")
+            }
+          }
+        }else if(contrast %in% c("contr.orthonormal", "contr.meandif") ||
+                 .prior_ordered_is_contrast_name(contrast)){
+          leaf_terms[columns] <- .bt_random_effect_factor_coefficient_terms(
+            model_term = model_term,
+            columns = columns,
+            predictors_type = predictors_type,
+            data = data,
+            contrast = contrast
+          )
+          leaf_names[columns] <- sd_node_names(model_term, length(columns))
+        }else{
+          stop("Unsupported factor contrasts for the random effects.", call. = FALSE)
+        }
+      }else{
+        stop("Unrecognized model term.", call. = FALSE)
+      }
+    }
+  }
+
+  if(any(is.na(leaf_names))){
+    stop("Random-effect SD leaf metadata could not be resolved.", call. = FALSE)
+  }
+  unique_leaf_names <- unique(leaf_names)
+  unique_leaf_terms <- vapply(unique_leaf_names, function(leaf_name){
+    leaf_terms[match(leaf_name, leaf_names)]
+  }, character(1))
+  leaf_index_by_column <- match(leaf_names, unique_leaf_names)
+
+  out <- list(
+    terms_indexes = terms_indexes,
+    random_structure = random_structure,
+    leaf_names_by_column = leaf_names,
+    leaf_terms_by_column = leaf_terms,
+    leaf_names = unique_leaf_names,
+    leaf_terms = unique_leaf_terms,
+    leaf_index_by_column = leaf_index_by_column,
+    column_names = colnames(model_matrix),
+    column_index = seq_len(n_columns),
+    n_leaves = length(unique_leaf_names)
+  )
+  class(out) <- c("BayesTools_random_effect_sd_leaves", "list")
+
+  out
+}
+
+.bt_random_effect_factor_prior_level_names <- function(model_term,
+                                                       predictors_type,
+                                                       data){
+
+  is_interaction <- grepl("__xXx__", model_term, fixed = TRUE)
+  components <- .bt_random_effect_term_components(model_term)
+  factor_components <- components[
+    components %in% names(predictors_type) &
+      predictors_type[components] == "factor"
+  ]
+
+  if(length(factor_components) == 0L){
+    return(NULL)
+  }
+
+  if(is_interaction){
+    level_names <- lapply(factor_components, function(factor_component){
+      levels(data[[factor_component]])
+    })
+    names(level_names) <- factor_components
+    return(level_names)
+  }
+
+  levels(data[[factor_components[1L]]])
+}
+
+# Component labels of the level cells of a random factor term: each factor
+# level is attached to its factor component inside an interaction term
+# (`f[a]__xXx__g[u]`), not appended to the full interaction string. The factors
+# are matched to the components by their exact names; 'prefix' is the
+# random-term prefix (`<parameter>__xREx__<block>_`) that a prior-list entry
+# name carries before the first component.
+.format_factor_level_parameter_names <- function(parameter, level_names, n_parameters = NULL,
+                                                 prefix = "") {
+
+  if (!is.list(level_names)) {
+    return(paste0(parameter, "[", level_names, "]"))
+  }
+
+  parameter_terms <- strsplit(parameter, "__xXx__", fixed = TRUE)[[1]]
+  term_names <- parameter_terms
+  if (nzchar(prefix) && startsWith(term_names[1L], prefix)) {
+    term_names[1L] <- substring(term_names[1L], nchar(prefix) + 1L)
+  }
+  factor_terms <- names(level_names)
+  factor_positions <- vapply(factor_terms, function(factor_term) {
+    factor_position <- which(
+      parameter_terms == factor_term | term_names == factor_term
+    )
+
+    if (length(factor_position) == 1) {
+      return(factor_position)
+    }
+
+    return(NA_integer_)
+  }, integer(1))
+
+  if (all(!is.na(factor_positions))) {
+    level_grid <- expand.grid(level_names, KEEP.OUT.ATTRS = FALSE, stringsAsFactors = FALSE)
+    formatted_names <- vapply(seq_len(nrow(level_grid)), function(i) {
+      formatted_terms <- parameter_terms
+
+      for (factor_term in factor_terms) {
+        formatted_terms[factor_positions[[factor_term]]] <- paste0(
+          formatted_terms[factor_positions[[factor_term]]],
+          "[", level_grid[[factor_term]][i], "]"
+        )
+      }
+
+      paste0(formatted_terms, collapse = "__xXx__")
+    }, character(1))
+
+    if (is.null(n_parameters) || length(formatted_names) == n_parameters) {
+      return(formatted_names)
+    }
+  }
+
+  stop(
+    "Factor level names cannot be formatted for parameter '", parameter,
+    "' because the factor metadata do not match the parameter terms.",
+    call. = FALSE
+  )
+}
+
+# SD component labels of a contrast-coded random factor term (mean-difference,
+# orthonormal, ordered): a column that is structurally one level cell (the
+# first ordered column) is labelled by that cell's levels, and every other
+# column is coefficient `j` of the contrast coding, `term{j}`. A square bracket
+# in a component label always holds a level label.
+.bt_random_effect_factor_coefficient_terms <- function(model_term, columns,
+                                                       predictors_type, data,
+                                                       contrast){
+
+  n_parameters <- length(columns)
+  out <- paste0(
+    model_term,
+    .bt_parameter_catalog_factor_coefficient_component(seq_len(n_parameters))
+  )
+  if(!.prior_ordered_is_contrast_name(contrast)){
+    return(out)
+  }
+  level_names <- .bt_random_effect_factor_prior_level_names(
+    model_term = model_term,
+    predictors_type = predictors_type,
+    data = data
+  )
+  if(is.null(level_names)){
+    return(out)
+  }
+  if(!is.list(level_names)){
+    components <- .bt_random_effect_term_components(model_term)
+    factor_name <- components[
+      components %in% names(predictors_type) &
+        predictors_type[components] == "factor"
+    ]
+    if(length(factor_name) != 1L){
+      return(out)
+    }
+    level_names <- stats::setNames(list(level_names), factor_name)
+  }
+  metadata <- structure(
+    list(),
+    level_names = level_names,
+    factor_terms = names(level_names),
+    factor_contrasts = stats::setNames(
+      rep(contrast, length(level_names)),
+      names(level_names)
+    )
+  )
+  design <- tryCatch(
+    .factor_term_design_from_metadata(metadata)$design,
+    error = function(error) NULL
+  )
+  if(is.null(design) || ncol(design) != n_parameters){
+    return(out)
+  }
+  direct <- .bt_factor_direct_cells_design(design, contrast)
+  if(all(is.na(direct))){
+    return(out)
+  }
+  cell_names <- tryCatch(
+    .format_factor_level_parameter_names(model_term, level_names, nrow(design)),
+    error = function(error) NULL
+  )
+  if(is.null(cell_names)){
+    return(out)
+  }
+  out[!is.na(direct)] <- cell_names[direct[!is.na(direct)]]
+  out
+}
+
+# SD component labels of a random factor term whose columns are level cells or
+# treatment-coded levels. In an interaction, a column is labelled by its level
+# cell (`f[a]__xXx__g[u]`) only when it is structurally that one cell, from the
+# term's stored per-factor-coded design ('factor_term_design'); any other
+# column is contrast coefficient `j`.
+.bt_random_effect_factor_sd_leaf_terms <- function(model_term, columns,
+                                                   predictors_type, data,
+                                                   factor_term_design = NULL){
+
+  n_parameters <- length(columns)
+  # Without identifiable level cells, a column is a contrast coefficient.
+  coefficient_terms <- paste0(
+    model_term,
+    .bt_parameter_catalog_factor_coefficient_component(seq_len(n_parameters))
+  )
+  level_names <- .bt_random_effect_factor_prior_level_names(
+    model_term = model_term,
+    predictors_type = predictors_type,
+    data = data
+  )
+
+  if(is.null(level_names)){
+    return(coefficient_terms)
+  }
+
+  if(is.list(level_names)){
+    if(!is.function(factor_term_design)){
+      stop("Random-effect SD leaves require the random-effect term design.", call. = FALSE)
+    }
+    term_design <- factor_term_design(model_term)
+    if(ncol(term_design$design) != n_parameters){
+      return(coefficient_terms)
+    }
+    direct <- .bt_factor_direct_cells_design(term_design$design, term_design$factor_contrasts)
+    if(all(is.na(direct))){
+      return(coefficient_terms)
+    }
+    cell_names <- .format_factor_level_parameter_names(
+      parameter = model_term,
+      level_names = level_names,
+      n_parameters = nrow(term_design$design)
+    )
+    coefficient_terms[!is.na(direct)] <- cell_names[direct[!is.na(direct)]]
+    return(coefficient_terms)
+  }
+
+  level_names <- as.character(level_names)
+  if(length(level_names) == n_parameters){
+    parameter_levels <- level_names
+  }else if(length(level_names) - 1L == n_parameters){
+    parameter_levels <- level_names[-1L]
+  }else{
+    return(coefficient_terms)
+  }
+
+  paste0(model_term, "[", parameter_levels, "]")
+}
+
+.bt_random_effect_sd_assignment_syntax <- function(parameter, sd_parameter_names,
+                                                  column_index = seq_along(sd_parameter_names)){
+
+  paste0(
+    parameter,
+    "_xRE_STDx[",
+    column_index,
+    "] = ",
+    sd_parameter_names
+  )
+}
+
+.bt_random_effect_allocated_sd_leaves_spec <- function(parameter,
+                                                       parameter_suffix,
+                                                       sd_binding,
+                                                       model_matrix,
+                                                       model_terms,
+                                                       model_terms_type,
+                                                       predictors_type,
+                                                       data,
+                                                       random_structure,
+                                                       has_intercept,
+                                                       homogeneous_sd,
+                                                       factor_term_design = NULL){
+
+  allocation_info <- sd_binding$allocations[[1L]]
+  leaves <- .bt_random_effect_resolved_sd_leaves(
+    parameter = parameter,
+    model_matrix = model_matrix,
+    model_terms = model_terms,
+    model_terms_type = model_terms_type,
+    predictors_type = predictors_type,
+    data = data,
+    random_structure = random_structure,
+    has_intercept = has_intercept,
+    homogeneous_sd = homogeneous_sd,
+    factor_term_design = factor_term_design
+  )
+  K <- length(leaves$leaf_names)
+  if(K < 2L){
+    stop(
+      "SD-component variance allocation requires at least two resolved SD components.",
+      call. = FALSE
+    )
+  }
+
+  allocation_prior <- .bt_random_variance_allocation_prior(allocation_info, K)
+  leaf_terms <- stats::setNames(leaves$leaf_terms, leaves$leaf_names)
+  allocation_prior <- .bt_random_effect_set_allocation_metadata(
+    allocation_prior,
+    allocation = allocation_info$label,
+    terms = leaf_terms,
+    parent = allocation_info$parent
+  )
+  prior_list <- list(allocation_prior)
+  names(prior_list) <- allocation_info$weight_suffix
+
+  factor <- .bt_random_variance_allocation_factor(
+    weight_name = allocation_info$weight_name,
+    index = NA_integer_,
+    scale = allocation_info$scale,
+    n_targets = K
+  )
+  allocation_info$n_targets <- K
+  allocation_info$leaf_names <- leaves$leaf_names
+  allocation_info$leaf_terms <- leaves$leaf_terms
+  allocation_info$leaf_index_by_column <- leaves$leaf_index_by_column
+  sd_binding$allocations[[1L]] <- allocation_info
+  sd_binding$sd_component_names <- leaves$leaf_names
+  sd_binding$sd_component_terms <- leaves$leaf_terms
+  sd_binding$sd_component_index_by_column <- leaves$leaf_index_by_column
+
+  if(.bt_random_sd_binding_has_row_external_source(sd_binding)){
+    sd_binding$factors <- allocation_info$parent_factors
+    sd_binding$factors_by_column <- lapply(leaves$leaf_index_by_column, function(leaf_i){
+      leaf_factor <- factor
+      leaf_factor$index <- leaf_i
+      c(allocation_info$parent_factors, list(leaf_factor))
+    })
+    return(list(
+      terms_indexes = leaves$terms_indexes,
+      sd_parameter_names = rep(NA_character_, ncol(model_matrix)),
+      sd_leaves = leaves,
+      random_scale_terms = character(),
+      add_parameters = character(),
+      syntax = character(),
+      prior_list = prior_list,
+      sd_binding = sd_binding
+    ))
+  }
+
+  # Every SD component is a registered allocation SD node.
+  syntax <- character()
+  for(leaf_i in seq_len(K)){
+    leaf_factor <- factor
+    leaf_factor$index <- leaf_i
+    syntax <- c(syntax, .bt_deterministic_node_emit(.bt_dnode_random_sd(
+      name = leaves$leaf_names[leaf_i],
+      source_name = .bt_random_sd_binding_source_name(allocation_info$source),
+      factors = c(allocation_info$parent_factors, list(leaf_factor)),
+      emit_source = allocation_info$source_node,
+      emit_factors = list(leaf_factor)
+    )))
+  }
+  syntax <- c(
+    syntax,
+    .bt_random_effect_sd_assignment_syntax(parameter, leaves$leaf_names_by_column)
+  )
+
+  random_scale_terms <- stats::setNames(
+    leaves$leaf_terms,
+    sub(paste0("^", parameter), parameter_suffix, leaves$leaf_names)
+  )
+
+  list(
+    terms_indexes = leaves$terms_indexes,
+    sd_parameter_names = leaves$leaf_names_by_column,
+    sd_leaves = leaves,
+    random_scale_terms = random_scale_terms,
+    add_parameters = leaves$leaf_names,
+    syntax = syntax,
+    prior_list = prior_list,
+    sd_binding = sd_binding
+  )
+}

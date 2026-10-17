@@ -31,12 +31,12 @@ converted into a generalized t-distribution with \code{df = 1}.}
 by a \code{location}, \code{scale}, and \code{df} parameters.}
 \item{\code{"gamma"}}{for a gamma distribution characterized
 by either \code{shape} and \code{rate}, or \code{shape} and
-\code{scale} parameters. The later is internally converted to
+\code{scale} parameters. The latter is internally converted to
 the \code{shape} and \code{rate} parametrization}
 \item{\code{"invgamma"}}{for an inverse-gamma distribution
 characterized by a \code{shape} and \code{scale} parameters. The
-JAGS part uses a 1/gamma distribution with a shape and rate
-parameter.}
+JAGS part uses the BayesTools module distribution
+\code{dbt_invgamma(shape, scale)} on the natural parameter.}
 \item{\code{"beta"}}{for a beta distribution
 characterized by an \code{alpha} and \code{beta} parameters.}
 \item{\code{"exp"}}{for an exponential distribution
@@ -45,6 +45,26 @@ parameter. The later is internally converted to
 \code{rate}.}
 \item{\code{"uniform"}}{for a uniform distribution defined on a
 range from \code{a} to \code{b}}
+\item{\code{"moment"}}{for a Johnson-Rossell moment prior characterized
+by exactly one of \code{mode} or \code{tau}, an optional \code{order}
+that defaults to 1, and an optional \code{location} that defaults to 0.}
+\item{\code{"invmoment"}}{for a Johnson-Rossell inverse-moment prior
+characterized by exactly one of \code{mode} or \code{tau}, a \code{df},
+an optional \code{order} that defaults to 1, and an optional
+\code{location} that defaults to 0.}
+\item{\code{"dirichlet"}}{for a Dirichlet distribution over a simplex,
+whose finite nonnegative coordinates must have a finite total and roundoff
+bound and sum to one within that bound,
+characterized by a concentration vector \code{alpha}. Numeric entries
+must be finite and at least \code{0.01}; this is a supported-input minimum,
+not a numerical guarantee. Positive expression-valued concentrations retain
+their existing JAGS-only support: expression containers, including literal
+elements, are not statically evaluated or validated, and R random generation
+refuses them. Cumulative weight functions and ordered allocations require
+numeric concentrations. Accepted sampling can still be unavailable; see
+\code{\link{prior_functions}}. Two-bin cumulative JAGS initialization near
+the minimum can repeatedly refuse unrepresentable interior ratios. Density
+and plot methods show one beta marginal per simplex coordinate.}
 }}
 
 \item{parameters}{list of appropriate parameters for a given
@@ -69,6 +89,40 @@ A named list containing the distribution name, parameters, and prior weights.
 \code{prior} creates a prior distribution.
 The prior can be visualized by the \code{plot} function.
 }
+\details{
+Moment and inverse-moment priors are symmetric nonlocal priors
+with zero density at \code{location}. The \code{mode} parameter is the
+positive distance from \code{location} to each symmetric mode; supplied
+negative values are converted to their absolute value. Positional parameters
+are interpreted as \code{mode} for \code{"moment"} and \code{mode, df}
+for \code{"invmoment"}. Use named parameters for \code{tau}, \code{order},
+\code{location}, or the inverse-moment \code{nu} alias. Positional input
+always treats the first parameter as \code{mode}. For moment priors,
+\code{tau = mode^2 / (2 * order)}. For inverse-moment priors,
+\code{tau = mode^2 * ((df + 1) / (2 * order))^(1 / order)}.
+Aliases \code{"pmom"}, \code{"pimom"}, and \code{"inversemoment"} are
+accepted, and inverse-moment \code{df} may also be supplied as \code{nu}.
+
+Native inverse-gamma, moment and inverse-moment calculations distinguish
+certified finite-input tails outside logarithmic range from unavailable
+arithmetic. Direct density and log-density evaluations signal
+\code{BayesTools_numerical_range_limit}; unresolved calculations signal
+\code{BayesTools_numerical_unavailable}. Both inherit
+\code{BayesTools_numerical_condition} and retain the original input indices,
+operation, family and requested scale. Truncated evaluations warn only for
+points inside the declared support and truncation. Numerical tail zeros do
+not declare zero probability mass or point atoms. Nonempty intervals whose
+two endpoints both lose tail-log range can have unavailable normalization.
+Finite-required fitting and bridge consumers refuse these range results;
+natural integration may consume certified negative-infinite log tails only
+after checking normalization and the required kernel and Jacobian.
+Certification requires the inspected MinGW-w64 11.x x86-64 log backend,
+documented Intel or AMD instruction contracts, checked floating-point modes
+and a checked extended logarithmic constant. Other backends, overflowing
+original nonlocal distances and uncertified coordinates remain unavailable
+in this FAR regime. Constructor parameter domains and ordinary arithmetic
+are unchanged.
+}
 \examples{
 # create a standard normal prior distribution
 p1 <- prior(distribution = "normal", parameters = list(mean = 1, sd = 1))
@@ -80,6 +134,14 @@ truncation = list(lower = 0, upper = Inf))
 # the prior distribution can be visualized using the plot function
 # (see ?plot.prior for all options)
 plot(p1)
+
+# create nonlocal priors centered on zero
+p3 <- prior("moment", list(mode = 0.5))
+p4 <- prior("invmoment", list(mode = 0.5, df = 3))
+
+# tau can be specified directly when named
+p5 <- prior("pmom", list(tau = 0.125))
+p6 <- prior("pimom", list(tau = 0.5, nu = 3))
 
 }
 \seealso{
