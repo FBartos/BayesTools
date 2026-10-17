@@ -144,10 +144,9 @@
 #' draws. The caller's random-number state (`.Random.seed` and `RNGkind()`) is
 #' restored afterwards. The default, `NULL`, draws from the caller's
 #' random-number stream, so the estimate depends on that stream.
-#' @param silent whether the bridge-sampling progress output and the warning
-#' about repetitions that reached \code{maxiter} are suppressed, defaults to
-#' \code{TRUE}. \code{FALSE} prints the iterations of the sampler and warns
-#' when a repetition exceeded \code{maxiter}.
+#' @param silent whether the bridge-sampling progress output is suppressed,
+#' defaults to \code{TRUE}. Known iteration counts exceeding \code{maxiter}
+#' always signal a diagnostic warning, independently of progress output.
 #' @param nonfinite handling of non-finite repetition-level log marginal
 #' likelihoods. The default, `"error"`, aborts with an error of class
 #' `BayesTools_marglik_repetition_failure` that names the cause of every failed
@@ -294,6 +293,14 @@
 #' log marginal likelihoods. `repetitions` contains one diagnostic row per
 #' bridge repetition, `aggregation` records the aggregation and failure policy,
 #' and `diagnostics$upstream` retains the original `bridgesampling` result.
+#' Top-level `success` records estimate availability. The separate logical
+#' `iteration_limit_exceeded` is `TRUE` when any known repetition count exceeds
+#' `maxiter`, `FALSE` when all counts are known and none exceeds it, and `NA`
+#' when counts are unavailable or partly unknown without a known excess.
+#' Manual/imported and exact zero-dimensional results have `NA`; historical
+#' schema-1 objects may omit the field, meaning unavailable telemetry.
+#' This flag does not assert convergence: counts can include upstream retries,
+#' including a successful retry whose total count exceeds `maxiter`.
 #'
 #' The columns of `repetitions` are `repetition`, `logml`, `niter` (iterations
 #' used), `mcse` (Monte Carlo standard error of `logml`), `finite` (whether
@@ -305,6 +312,12 @@
 #' excluded from the aggregate, so `aggregation$n_included` counts the finite
 #' repetitions: a finite repetition that exceeded `maxiter` has
 #' `success = FALSE` and is still aggregated.
+#' Known excess counts always warn with class `BayesTools_marglik_iteration_limit`
+#' (parent `BayesTools_marglik_diagnostic`; fields `repetitions`, the affected
+#' diagnostic rows, `maxiter`, and `upstream_warnings`). A flagged result also
+#' prints a visible iteration-count diagnostic. Finite aggregation and top-level
+#' success availability are unchanged; legacy repetition `success` and
+#' `within_maxiter` retain their unknown-count convention.
 #'
 #' Rank refusals have class `BayesTools_marglik_rank_deficiency` (parent
 #' `BayesTools_marglik_input`), with fields `reason`, `rank`, `n_coordinates`,
@@ -760,18 +773,6 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
     chain_metadata = chain_metadata,
     upstream_warnings = upstream_warnings
   )
-
-  maxiter_warning <- result[["repetitions"]][["within_maxiter"]]
-  if(!silent && any(!maxiter_warning)){
-    warning(
-      paste(
-        "Marginal likelihood could not be estimated within the maximum number",
-        "of iterations and might be more variable than usual."
-      ),
-      call. = FALSE,
-      immediate. = TRUE
-    )
-  }
 
   return(result)
 }

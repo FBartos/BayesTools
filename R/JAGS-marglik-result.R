@@ -45,6 +45,7 @@
     logml = if(failed) NA_real_ else as.numeric(logml),
     scale = "natural_log",
     success = !failed,
+    iteration_limit_exceeded = NA,
     repetitions = .bt_marglik_empty_repetitions(),
     aggregation = list(
       rule = if(failed) "supplied_failure" else "supplied_scalar",
@@ -214,9 +215,9 @@
   warning_details <- rep(NA_character_, n_repetitions)
   error_details <- rep(NA_character_, n_repetitions)
 
-  maxiter_message <- paste(
-    "Marginal likelihood could not be estimated within the maximum number",
-    "of iterations and might be more variable than usual."
+  maxiter_message <- paste0(
+    "The bridge-sampling iteration count exceeded 'maxiter' = ", maxiter,
+    ". Finite estimates are retained; counts may include upstream retries."
   )
   warning_details <- .bt_marglik_append_detail(
     warning_details,
@@ -244,6 +245,24 @@
     n_draws = rep(chain_metadata$draws, n_repetitions),
     stringsAsFactors = FALSE
   )
+
+  if(any(iteration_limit_exceeded)){
+    affected <- repetitions[iteration_limit_exceeded, , drop = FALSE]
+    warning(warningCondition(
+      message = paste0(
+        "Bridge-sampling iteration counts exceeded 'maxiter' = ", maxiter,
+        " for repetition(s) ",
+        paste0(affected$repetition, " (niter = ", affected$niter, ")", collapse = ", "),
+        ". Finite estimates are retained; counts may include upstream retries. ",
+        "Inspect 'repetitions' and 'diagnostics', or increase 'maxiter'."
+      ),
+      call = NULL,
+      class = c("BayesTools_marglik_iteration_limit", "BayesTools_marglik_diagnostic"),
+      repetitions = affected,
+      maxiter = maxiter,
+      upstream_warnings = unique(upstream_warnings)
+    ))
+  }
 
   if(any(!finite) && identical(nonfinite, "error")){
     stop(.bt_marglik_repetition_failure(
@@ -274,6 +293,8 @@
     logml = stats::median(logml[finite]),
     scale = "natural_log",
     success = TRUE,
+    iteration_limit_exceeded = if(any(iteration_limit_exceeded)) TRUE else
+      if(anyNA(niter)) NA else FALSE,
     repetitions = repetitions,
     aggregation = list(
       rule = "median_finite_logml",
@@ -319,6 +340,14 @@
      (!is.logical(success) || length(success) != 1L || is.na(success))){
     stop(
       "'", name, "$success' must be TRUE or FALSE.",
+      call. = FALSE
+    )
+  }
+  iteration_limit_exceeded <- x[["iteration_limit_exceeded"]]
+  if("iteration_limit_exceeded" %in% names(x) &&
+     (!is.logical(iteration_limit_exceeded) || length(iteration_limit_exceeded) != 1L)){
+    stop(
+      "'", name, "$iteration_limit_exceeded' must be TRUE, FALSE, or NA.",
       call. = FALSE
     )
   }
@@ -416,6 +445,9 @@ print.BayesTools_marglik <- function(x, ...){
       " failed\n",
       sep = ""
     )
+  }
+  if(isTRUE(x[["iteration_limit_exceeded"]])){
+    cat("  iteration counts exceeded 'maxiter'; inspect 'repetitions' and 'diagnostics' (counts may include upstream retries)\n")
   }
   invisible(x)
 }

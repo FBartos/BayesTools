@@ -66,6 +66,19 @@ filtering, `n_draws` including duplicate rows, and complete available
 `"dependent_coordinates"` records deficient numerical sample rank otherwise.
 These are nonexclusive observations, not certified structural causes or
 guaranteed remedies; pivot names are basis-dependent sampled redundancy.
+Marginal-likelihood `success` records finite-estimate availability; finite
+repetitions remain aggregated even when the known total iteration count
+exceeds `maxiter`. Optional schema-1 field `iteration_limit_exceeded` is TRUE
+for any known excess, FALSE when all counts are known without excess, and NA
+when counts are absent/partly unknown without known excess (also for manual
+and exact results). An absent historical field means unavailable telemetry.
+Legacy repetition `within_maxiter` remains TRUE for an unknown count, and its
+`success` remains finite AND within_maxiter. No field certifies convergence:
+upstream totals may include successful retries. Known excess always warns
+with `BayesTools_marglik_iteration_limit` (parent
+`BayesTools_marglik_diagnostic`; affected repetition rows, maxiter and upstream
+warnings) independently of `silent`, which controls progress. Flagged results
+print a visible diagnostic; scalar extraction/nonfinite policy stay unchanged.
 A `NA` from the bridge likelihood callback is no density: at a posterior draw
 the sampler route stops (`BayesTools_marglik_callback_na`, parent
 `BayesTools_marglik_input`, with the number of draws), and at proposal draws

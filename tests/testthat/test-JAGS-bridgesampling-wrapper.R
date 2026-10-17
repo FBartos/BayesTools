@@ -404,23 +404,23 @@ test_that("JAGS_bridgesampling checks repeated iteration limits collectively", {
   ))
   prior_list <- list(mu = prior("normal", list(0, 1)))
 
-  result <- JAGS_bridgesampling(
+  expect_warning(result <- JAGS_bridgesampling(
     fit = posterior,
     log_posterior = function(parameters, data) 0,
     data = list(),
     prior_list = prior_list,
     repetitions = 2,
     maxiter = 1
-  )
+  ), class = "BayesTools_marglik_iteration_limit")
 
   expect_s3_class(result, "BayesTools_marglik")
   expect_true(any(!result[["repetitions"]][["within_maxiter"]]))
   expect_false(result[["repetitions"]][["success"]][[1L]])
   expect_identical(
     result[["repetitions"]][["warning"]][[1L]],
-    paste(
-      "Marginal likelihood could not be estimated within the maximum number",
-      "of iterations and might be more variable than usual."
+    paste0(
+      "The bridge-sampling iteration count exceeded 'maxiter' = 1. ",
+      "Finite estimates are retained; counts may include upstream retries."
     )
   )
 })
@@ -971,7 +971,8 @@ test_that("non-finite repetitions name their cause and keep the muffled warnings
     bridge_sampler = mock_upstream(c(-10, NA_real_, -12), c(4L, 1001L, 5L)),
     .package = "bridgesampling"
   )
-  error <- catch(bridge(maxiter = 1000))
+  expect_warning(error <- catch(bridge(maxiter = 1000)),
+    class = "BayesTools_marglik_iteration_limit")
   expect_s3_class(error, "BayesTools_marglik_repetition_failure")
   expect_match(
     conditionMessage(error),
@@ -1450,4 +1451,166 @@ test_that("P-F8 exact point result validation retains its own error context", {
     "'logml' must be one numeric natural-log marginal likelihood (NA for a ",
     "failed computation) and may only be infinite when it is -Inf."
   ))
+})
+
+test_that("bridge iteration telemetry preserves availability and always warns on excess", {
+
+  posterior <- coda::as.mcmc(matrix(seq_len(20), ncol = 1L,
+    dimnames = list(NULL, "mu")))
+  upstream <- list(logml = c(-1, -3), niter = c(2, 3), method = "normal")
+  testthat::local_mocked_bindings(bridge_sampler = function(...){
+    warning("upstream retry diagnostic")
+    structure(upstream, class = "bridge_list")
+  }, .package = "bridgesampling")
+  bridge <- function(silent = TRUE, nonfinite = "error"){
+    warnings <- list()
+    output <- capture.output(value <- withCallingHandlers(JAGS_bridgesampling(
+      fit = posterior, log_posterior = function(parameters, data) 0,
+      data = list(), prior_list = list(mu = prior("normal", list(0, 1))),
+      repetitions = 2L, maxiter = 10L, silent = silent, nonfinite = nonfinite
+    ), warning = function(w){
+      warnings[[length(warnings) + 1L]] <<- w
+      invokeRestart("muffleWarning")
+    }))
+    list(value = value, warnings = warnings, output = output)
+  }
+  cases <- list(below = c(2, 3), equal = c(10, 10), above = c(11, 12),
+    missing = NULL, unknown = c(NA_real_, NA_real_),
+    mixed_unknown = c(3, NA_real_), mixed_excess = c(11, NA_real_))
+  flags <- list(below = FALSE, equal = FALSE, above = TRUE,
+    missing = NA, unknown = NA, mixed_unknown = NA, mixed_excess = TRUE)
+  for(name in names(cases)){
+    upstream$niter <- cases[[name]]
+    for(silent in c(TRUE, FALSE)){
+      out <- bridge(silent)
+      expect_identical(out$value$iteration_limit_exceeded, flags[[name]])
+      expect_true(out$value$success)
+      expect_identical(out$value$logml, -2)
+      expect_identical(BayesTools:::.bt_marglik_value(out$value), -2)
+      if(isTRUE(flags[[name]])){
+        expect_length(out$warnings, 1L)
+        if(length(out$warnings) == 1L){
+          warning <- out$warnings[[1L]]
+          expect_s3_class(warning, "BayesTools_marglik_iteration_limit")
+          expect_s3_class(warning, "BayesTools_marglik_diagnostic")
+          expect_null(conditionCall(warning))
+          expect_identical(warning$maxiter, 10L)
+          expect_identical(warning$upstream_warnings, "upstream retry diagnostic")
+          expect_identical(warning$repetitions,
+            out$value$repetitions[!is.na(out$value$repetitions$niter) &
+              out$value$repetitions$niter > 10, , drop = FALSE])
+          expect_match(conditionMessage(warning), "niter = 11", fixed = TRUE)
+          expect_match(conditionMessage(warning), "'maxiter' = 10", fixed = TRUE)
+          expect_match(conditionMessage(warning), "counts may include upstream retries", fixed = TRUE)
+          expect_match(conditionMessage(warning), "Finite estimates are retained", fixed = TRUE)
+        }
+        expect_match(paste(capture.output(print(out$value)), collapse = "\n"),
+          "iteration counts exceeded", fixed = TRUE)
+      }else{
+        expect_length(out$warnings, 0L)
+        expect_length(capture.output(print(out$value)), 4L)
+      }
+      if(silent) expect_length(out$output, 0L)
+    }
+  }
+
+  upstream$logml <- c(-1, NA_real_)
+  upstream$niter <- c(2, 11)
+  out <- bridge(nonfinite = "drop")
+  expect_identical(out$value$iteration_limit_exceeded, TRUE)
+  expect_identical(out$value$logml, -1)
+  expect_true(out$value$success)
+  expect_identical(out$value$aggregation$n_failed, 1L)
+  expect_true(any(vapply(out$warnings, inherits, logical(1),
+    what = "BayesTools_marglik_iteration_limit")))
+  expect_true(any(vapply(out$warnings, function(w){
+    grepl("Dropped non-finite", conditionMessage(w), fixed = TRUE)
+  }, logical(1))))
+})
+
+test_that("manual exact and historical marginal likelihoods preserve unavailable telemetry", {
+
+  for(logml in list(-1, -Inf, NA_real_)){
+    value <- bridgesampling_object(logml)
+    expect_identical(value$iteration_limit_exceeded, NA)
+    old <- value
+    old$iteration_limit_exceeded <- NULL
+    expect_no_error(BayesTools:::.bt_validate_marglik_result(old))
+    expect_identical(capture.output(print(old)), capture.output(print(value)))
+    expect_identical(BayesTools:::.bt_marglik_value(old),
+      BayesTools:::.bt_marglik_value(value))
+    for(flag in list(TRUE, FALSE, NA)){
+      value$iteration_limit_exceeded <- flag
+      expect_no_error(BayesTools:::.bt_validate_marglik_result(value))
+    }
+    for(flag in list(1, logical(), c(TRUE, FALSE), "TRUE")){
+      value$iteration_limit_exceeded <- flag
+      expect_error(BayesTools:::.bt_validate_marglik_result(value),
+        "iteration_limit_exceeded", fixed = TRUE)
+    }
+  }
+  exact <- JAGS_bridgesampling(
+    fit = coda::as.mcmc(matrix(rep(0, 20), ncol = 1L,
+      dimnames = list(NULL, "mu"))),
+    log_posterior = function(parameters, data) -2,
+    data = list(), prior_list = list(mu = prior("point", list(0))))
+  expect_identical(exact$iteration_limit_exceeded, NA)
+  expect_identical(exact$aggregation$rule, "exact_zero_dimensional")
+  expect_identical(exact$logml, -2)
+})
+
+test_that("successful upstream retry retains finite result and visible iteration diagnostic", {
+
+  mu_sd <- sqrt(1 / (1 + 1 / .8^2))
+  mu_mean <- (.5 / .8^2) * mu_sd^2
+  posterior <- coda::as.mcmc(matrix(qnorm((seq_len(400) - .5) / 400,
+    mu_mean, mu_sd), ncol = 1L, dimnames = list(NULL, "mu")))
+  for(silent in c(TRUE, FALSE)){
+    warnings <- list()
+    output <- capture.output(value <- withCallingHandlers(JAGS_bridgesampling(
+      fit = posterior,
+      log_posterior = function(parameters, data) dnorm(parameters$mu, .5, .8, log = TRUE),
+      data = list(), prior_list = list(mu = prior("normal", list(0, 1))),
+      repetitions = 2L, seed = 43L, use_neff = FALSE, maxiter = 10L, silent = silent
+    ), warning = function(w){
+      warnings[[length(warnings) + 1L]] <<- w
+      invokeRestart("muffleWarning")
+    }))
+    expect_identical(value$iteration_limit_exceeded, TRUE)
+    expect_true(value$success)
+    expect_identical(value$repetitions$niter, c(11, 11))
+    expect_equal(value$logml, -0.448163376077635, tolerance = 1e-13)
+    expect_identical(value$logml, median(value$repetitions$logml))
+    expect_length(warnings, 1L)
+    if(length(warnings) == 1L){
+      expect_s3_class(warnings[[1L]], "BayesTools_marglik_iteration_limit")
+      expect_identical(warnings[[1L]]$repetitions, value$repetitions)
+    }
+    if(silent) expect_length(output, 0L) else expect_gt(length(output), 0L)
+  }
+})
+
+test_that("iteration warning reports the complete observed retry context", {
+
+  warnings <- list()
+  result <- withCallingHandlers(BayesTools:::.bt_marglik_from_upstream(
+    upstream = list(logml = c(-1, -3), niter = c(11, 12), method = "normal"),
+    maxiter = 10L, nonfinite = "error",
+    chain_metadata = list(count = 1L, draws = 20L, draws_per_chain = 20L),
+    upstream_warnings = c("retry diagnostic", "retry diagnostic")
+  ), warning = function(w){
+    warnings[[length(warnings) + 1L]] <<- w
+    invokeRestart("muffleWarning")
+  })
+  expect_length(warnings, 1L)
+  expect_identical(conditionMessage(warnings[[1L]]), paste0(
+    "Bridge-sampling iteration counts exceeded 'maxiter' = 10 for repetition(s) ",
+    "1 (niter = 11), 2 (niter = 12). Finite estimates are retained; ",
+    "counts may include upstream retries. Inspect 'repetitions' and 'diagnostics', ",
+    "or increase 'maxiter'."))
+  expect_identical(warnings[[1L]]$upstream_warnings, "retry diagnostic")
+  expect_identical(result$iteration_limit_exceeded, TRUE)
+  result["iteration_limit_exceeded"] <- list(NULL)
+  expect_error(BayesTools:::.bt_validate_marglik_result(result),
+    "iteration_limit_exceeded", fixed = TRUE)
 })

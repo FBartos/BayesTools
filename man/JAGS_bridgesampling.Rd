@@ -178,10 +178,9 @@ are errors.}
 \item{maxiter}{maximum number of iterations for the
 \link[bridgesampling]{bridge_sampler}}
 
-\item{silent}{whether the bridge-sampling progress output and the warning
-about repetitions that reached \code{maxiter} are suppressed, defaults to
-\code{TRUE}. \code{FALSE} prints the iterations of the sampler and warns
-when a repetition exceeded \code{maxiter}.}
+\item{silent}{whether the bridge-sampling progress output is suppressed,
+defaults to \code{TRUE}. Known iteration counts exceeding \code{maxiter}
+always signal a diagnostic warning, independently of progress output.}
 
 \item{nonfinite}{handling of non-finite repetition-level log marginal
 likelihoods. The default, \code{"error"}, aborts with an error of class
@@ -219,6 +218,14 @@ marginal likelihood, aggregated as the median of finite repetition-level
 log marginal likelihoods. \code{repetitions} contains one diagnostic row per
 bridge repetition, \code{aggregation} records the aggregation and failure policy,
 and \code{diagnostics$upstream} retains the original \code{bridgesampling} result.
+Top-level \code{success} records estimate availability. The separate logical
+\code{iteration_limit_exceeded} is \code{TRUE} when any known repetition count exceeds
+\code{maxiter}, \code{FALSE} when all counts are known and none exceeds it, and \code{NA}
+when counts are unavailable or partly unknown without a known excess.
+Manual/imported and exact zero-dimensional results have \code{NA}; historical
+schema-1 objects may omit the field, meaning unavailable telemetry.
+This flag does not assert convergence: counts can include upstream retries,
+including a successful retry whose total count exceeds \code{maxiter}.
 
 The columns of \code{repetitions} are \code{repetition}, \code{logml}, \code{niter} (iterations
 used), \code{mcse} (Monte Carlo standard error of \code{logml}), \code{finite} (whether
@@ -230,6 +237,12 @@ exceeded iteration limit or of a non-finite estimate, \code{NA} otherwise),
 excluded from the aggregate, so \code{aggregation$n_included} counts the finite
 repetitions: a finite repetition that exceeded \code{maxiter} has
 \code{success = FALSE} and is still aggregated.
+Known excess counts always warn with class \code{BayesTools_marglik_iteration_limit}
+(parent \code{BayesTools_marglik_diagnostic}; fields \code{repetitions}, the affected
+diagnostic rows, \code{maxiter}, and \code{upstream_warnings}). A flagged result also
+prints a visible iteration-count diagnostic. Finite aggregation and top-level
+success availability are unchanged; legacy repetition \code{success} and
+\code{within_maxiter} retain their unknown-count convention.
 
 Rank refusals have class \code{BayesTools_marglik_rank_deficiency} (parent
 \code{BayesTools_marglik_input}), with fields \code{reason}, \code{rank}, \code{n_coordinates},
