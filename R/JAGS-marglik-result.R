@@ -217,7 +217,7 @@
 
   maxiter_message <- paste0(
     "The bridge-sampling iteration count exceeded 'maxiter' = ", maxiter,
-    ". Finite estimates are retained; counts may include upstream retries."
+    ". Iteration counts may include upstream retries."
   )
   warning_details <- .bt_marglik_append_detail(
     warning_details,
@@ -253,7 +253,7 @@
         "Bridge-sampling iteration counts exceeded 'maxiter' = ", maxiter,
         " for repetition(s) ",
         paste0(affected$repetition, " (niter = ", affected$niter, ")", collapse = ", "),
-        ". Finite estimates are retained; counts may include upstream retries. ",
+        ". Iteration counts may include upstream retries. ",
         "Inspect 'repetitions' and 'diagnostics', or increase 'maxiter'."
       ),
       call = NULL,
