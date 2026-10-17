@@ -306,6 +306,18 @@
 #' repetitions: a finite repetition that exceeded `maxiter` has
 #' `success = FALSE` and is still aggregated.
 #'
+#' Rank refusals have class `BayesTools_marglik_rank_deficiency` (parent
+#' `BayesTools_marglik_input`), with fields `reason`, `rank`, `n_coordinates`,
+#' `n_draws`, and `dependent_coordinates`. These describe the finite, varying
+#' diagnostic sample checked by the existing QR tolerance. The reason
+#' `"insufficient_draws"` means that `n_draws <= n_coordinates` prevents full
+#' centered rank; `"dependent_coordinates"` means observed numerical rank loss
+#' despite a sufficient raw row count. These observations are nonexclusive and
+#' neither certifies a structural cause or a guaranteed remedy. Duplicate rows
+#' remain counted. Coordinate names are the complete, basis-dependent QR-pivot
+#' tail when available, otherwise `character(0)`; they do not identify uniquely
+#' faulty or deterministic nodes.
+#'
 #' Condition classes: a non-finite repetition under `nonfinite = "error"`, and
 #' the absence of any finite repetition under `"drop"`, stop with an error of
 #' class `BayesTools_marglik_repetition_failure` (fields `repetitions`, the
@@ -881,25 +893,32 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
     return(invisible(TRUE))
   }
 
+  dependent <- as.character(colnames(standardized)[
+    decomposition$pivot[seq.int(decomposition$rank + 1L, ncol(standardized))]
+  ])
+
   # Centered draws span at most one dimension fewer than their number, so
   # too few draws are rank-deficient whether or not coordinates are dependent.
   if(nrow(standardized) <= ncol(standardized)){
-    stop(
-      "The bridge-sampling target was rejected by diagnostics: ",
+    stop(errorCondition(
+      message = paste0("The bridge-sampling target was rejected by diagnostics: ",
       nrow(standardized), " posterior draws span only rank ",
       decomposition$rank, " of ", ncol(standardized),
       " varying bridge coordinates. Increase the number of posterior ",
       "draws, for example with a larger 'sample' in JAGS_fit() or with ",
-      "JAGS_extend().",
-      call. = FALSE
-    )
+      "JAGS_extend()."),
+      call = NULL,
+      class = c("BayesTools_marglik_rank_deficiency", "BayesTools_marglik_input"),
+      reason = "insufficient_draws",
+      rank = decomposition$rank,
+      n_coordinates = ncol(standardized),
+      n_draws = nrow(standardized),
+      dependent_coordinates = dependent
+    ))
   }
 
-  dependent <- colnames(standardized)[
-    decomposition$pivot[seq.int(decomposition$rank + 1L, ncol(standardized))]
-  ]
-  stop(
-    "The bridge-sampling target was rejected by diagnostics: the posterior ",
+  stop(errorCondition(
+    message = paste0("The bridge-sampling target was rejected by diagnostics: the posterior ",
     "draws of the bridge coordinates are rank-deficient (rank ",
     decomposition$rank, " of ", ncol(standardized),
     " varying coordinates; linearly dependent coordinate(s): ",
@@ -908,7 +927,13 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
     "). Only free stochastic nodes whose prior density 'log_posterior' adds ",
     "can be supplied through 'add_parameters'; reconstruct deterministic ",
     "nodes, such as row-shaped SD sources computed from other parameters, ",
-    "with parameter_source(values = ..., inputs = ...) or inside 'log_posterior'.",
-    call. = FALSE
-  )
+    "with parameter_source(values = ..., inputs = ...) or inside 'log_posterior'."),
+    call = NULL,
+    class = c("BayesTools_marglik_rank_deficiency", "BayesTools_marglik_input"),
+    reason = "dependent_coordinates",
+    rank = decomposition$rank,
+    n_coordinates = ncol(standardized),
+    n_draws = nrow(standardized),
+    dependent_coordinates = dependent
+  ))
 }

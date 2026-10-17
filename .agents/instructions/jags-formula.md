@@ -58,6 +58,14 @@ sampler policy. Before each check, finite nonzero columns are rescaled by their
 maximum absolute value in a local diagnostic copy to avoid variance overflow
 or underflow; actual draws and sampler bounds remain unchanged. This is not a
 general nonlinear dependence detector.
+Both refusals use `BayesTools_marglik_rank_deficiency` (parent
+`BayesTools_marglik_input`), with `rank`, `n_coordinates` after finite/varying
+filtering, `n_draws` including duplicate rows, and complete available
+`dependent_coordinates` from the QR-pivot tail (otherwise `character(0)`).
+`reason = "insufficient_draws"` records `n_draws <= n_coordinates`;
+`"dependent_coordinates"` records deficient numerical sample rank otherwise.
+These are nonexclusive observations, not certified structural causes or
+guaranteed remedies; pivot names are basis-dependent sampled redundancy.
 A `NA` from the bridge likelihood callback is no density: at a posterior draw
 the sampler route stops (`BayesTools_marglik_callback_na`, parent
 `BayesTools_marglik_input`, with the number of draws), and at proposal draws

@@ -96,7 +96,7 @@ test_that("R143 independent bridge coordinates retain rank at large magnitudes",
       if(expected_rank == 1L){
         condition <- tryCatch(.bt_JAGS_bridge_check_matrix_rank(near_affine * coordinate_scale),
           error = identity)
-        expect_s3_class(condition, "simpleError")
+        expect_s3_class(condition, "BayesTools_marglik_rank_deficiency")
         if(inherits(condition, "error")){
           expect_match(conditionMessage(condition), "rank-deficient (rank 1 of 2", fixed = TRUE)
           expect_null(conditionCall(condition))
@@ -151,4 +151,88 @@ test_that("R143 tiny affine bridge coordinates refuse before bound transformatio
       expect_identical(coordinates, original)
     }
   }
+})
+
+test_that("bridge rank refusals expose diagnostic classes and exact context", {
+
+  sampler_calls <- 0L
+  testthat::local_mocked_bindings(bridge_sampler = function(...){
+    sampler_calls <<- sampler_calls + 1L
+    structure(list(logml = -1, niter = 1L, method = "normal"), class = "bridge")
+  }, .package = "bridgesampling")
+  public_rank <- function(coordinates){
+    tryCatch(JAGS_bridgesampling(
+      coda::as.mcmc(coordinates),
+      log_posterior = function(parameters, data) 0,
+      data = list(),
+      prior_list = setNames(rep(list(prior("normal", list(0, 1))),
+        ncol(coordinates)), colnames(coordinates))
+    ), error = identity)
+  }
+  t <- seq(-1, 1, length.out = 20L)
+  cases <- list(
+    list(coordinates = cbind(x1 = c(-1, 1), x2 = c(1, -1)),
+      reason = "insufficient_draws", n_draws = 2L,
+      message = paste0("The bridge-sampling target was rejected by diagnostics: ",
+        "2 posterior draws span only rank 1 of 2 varying bridge coordinates. ",
+        "Increase the number of posterior draws, for example with a larger ",
+        "'sample' in JAGS_fit() or with JAGS_extend().")),
+    list(coordinates = cbind(x1 = t, x2 = 2 * t),
+      reason = "dependent_coordinates", n_draws = 20L,
+      message = paste0("The bridge-sampling target was rejected by diagnostics: ",
+        "the posterior draws of the bridge coordinates are rank-deficient ",
+        "(rank 1 of 2 varying coordinates; linearly dependent coordinate(s): 'x2'). ",
+        "Only free stochastic nodes whose prior density 'log_posterior' adds ",
+        "can be supplied through 'add_parameters'; reconstruct deterministic ",
+        "nodes, such as row-shaped SD sources computed from other parameters, ",
+        "with parameter_source(values = ..., inputs = ...) or inside 'log_posterior'."))
+  )
+  for(case in cases){
+    condition <- public_rank(case$coordinates)
+    expect_s3_class(condition, "BayesTools_marglik_rank_deficiency")
+    expect_s3_class(condition, "BayesTools_marglik_input")
+    expect_identical(condition$reason, case$reason)
+    expect_identical(condition$rank, 1L)
+    expect_identical(condition$n_coordinates, 2L)
+    expect_identical(condition$n_draws, case$n_draws)
+    expect_identical(condition$dependent_coordinates, "x2")
+    expect_identical(conditionMessage(condition), case$message)
+    expect_null(conditionCall(condition))
+  }
+  expect_identical(sampler_calls, 0L)
+
+  # The fields use the filtered diagnostic matrix, not the supplied width.
+  coordinates <- cbind(x1 = t, x2 = 2 * t, x3 = 3 * t, x4 = 4 * t,
+    x5 = 5 * t, constant = 7, nonfinite = c(Inf, rep(1, 19)))
+  condition <- tryCatch(BayesTools:::.bt_JAGS_bridge_check_matrix_rank(coordinates),
+    error = identity)
+  expect_identical(condition$n_coordinates, 5L)
+  expect_identical(condition$dependent_coordinates, paste0("x", 2:5))
+  expect_match(conditionMessage(condition), "'x2', 'x3', 'x4', ...", fixed = TRUE)
+  colnames(coordinates) <- NULL
+  condition <- tryCatch(BayesTools:::.bt_JAGS_bridge_check_matrix_rank(coordinates),
+    error = identity)
+  expect_identical(condition$dependent_coordinates, character())
+
+  # Reasons describe the observed sample diagnostic, not an exclusive cause.
+  a <- c(0, 1, 0, 1)
+  b <- c(0, 0, 1, 1)
+  mixed <- cbind(a = a, b = b, c = a + b, d = 2 * a + b, e = a + 2 * b)
+  condition <- public_rank(mixed)
+  expect_s3_class(condition, "BayesTools_marglik_rank_deficiency")
+  expect_identical(condition$reason, "insufficient_draws")
+  expect_identical(condition$rank, 2L)
+  expect_identical(condition$n_coordinates, 5L)
+  expect_identical(condition$n_draws, 4L)
+  expect_identical(condition$dependent_coordinates, c("c", "d", "e"))
+  duplicated <- cbind(x1 = rep(c(0, 1), each = 3L),
+    x2 = rep(c(0, 2), each = 3L))
+  condition <- public_rank(duplicated)
+  expect_s3_class(condition, "BayesTools_marglik_rank_deficiency")
+  expect_identical(condition$reason, "dependent_coordinates")
+  expect_identical(condition$rank, 1L)
+  expect_identical(condition$n_coordinates, 2L)
+  expect_identical(condition$n_draws, 6L)
+  expect_identical(condition$dependent_coordinates, "x2")
+  expect_identical(sampler_calls, 0L)
 })

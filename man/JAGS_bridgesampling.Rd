@@ -231,6 +231,18 @@ excluded from the aggregate, so \code{aggregation$n_included} counts the finite
 repetitions: a finite repetition that exceeded \code{maxiter} has
 \code{success = FALSE} and is still aggregated.
 
+Rank refusals have class \code{BayesTools_marglik_rank_deficiency} (parent
+\code{BayesTools_marglik_input}), with fields \code{reason}, \code{rank}, \code{n_coordinates},
+\code{n_draws}, and \code{dependent_coordinates}. These describe the finite, varying
+diagnostic sample checked by the existing QR tolerance. The reason
+\code{"insufficient_draws"} means that \code{n_draws <= n_coordinates} prevents full
+centered rank; \code{"dependent_coordinates"} means observed numerical rank loss
+despite a sufficient raw row count. These observations are nonexclusive and
+neither certifies a structural cause or a guaranteed remedy. Duplicate rows
+remain counted. Coordinate names are the complete, basis-dependent QR-pivot
+tail when available, otherwise \code{character(0)}; they do not identify uniquely
+faulty or deterministic nodes.
+
 Condition classes: a non-finite repetition under \code{nonfinite = "error"}, and
 the absence of any finite repetition under \code{"drop"}, stop with an error of
 class \code{BayesTools_marglik_repetition_failure} (fields \code{repetitions}, the
