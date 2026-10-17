@@ -80,8 +80,9 @@ density grids. Point masses retain their transformed locations.}
 the \code{transformation}}
 
 \item{transformation_settings}{boolean indicating whether the
-settings the \code{x_seq} or \code{x_range} was specified on
-the transformed support}
+explicitly supplied \code{x_seq} or \code{x_range} is on
+the transformed scale. Automatically selected prior-coordinate ranges
+are always obtained on the source scale and then transformed.}
 
 \item{show_figures}{which figures should be returned in case of
 multiple plots are generated. Useful when priors for the omega
@@ -136,6 +137,11 @@ representable stop with \code{BayesTools_transformation_image_unavailable},
 parent \code{BayesTools_transformation}. Its \code{call} is \code{NULL} and
 its \code{transformation}, \code{source_values} and \code{images} fields
 identify the matched failing finite entries; see \code{\link[=posterior_transform]{posterior_transform()}}.
+Automatic prior-coordinate limits are selected on the source scale before
+transformation, regardless of \code{transformation_settings}. An endpoint
+with an infinite image uses the existing marginal tail convention described
+in \code{\link[=density.prior]{density.prior()}}. Explicit \code{xlim} and \code{x_seq} retain their
+supplied source or transformed interpretation.
 
 Ordered prior plots retain the continuous density of every
 non-reference level, including priors with an infinite density at an exact

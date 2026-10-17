@@ -1,6 +1,11 @@
 .plot_data_prior_list.simple         <- function(prior_list, x_seq, x_range, x_range_quant, n_points, n_samples, force_samples, individual,
-                                                 transformation, transformation_arguments, transformation_settings){
+                                                 transformation, transformation_arguments, transformation_settings,
+                                                 automatic_range = is.null(x_seq) && is.null(x_range)){
 
+  .check_transformation_input(transformation, transformation_arguments, transformation_settings)
+  if(automatic_range){
+    transformation_settings <- FALSE
+  }
   .plot_prior_list_check_ordered(prior_list)
   .plot_prior_list_check_simplex(prior_list)
   .model_probability_plot_check(prior_list)
@@ -64,6 +69,12 @@
   }
   prior_list       <- prior_list[keep_components]
   mixing_prop      <- mixing_prop[keep_components]
+
+  # Correct the common source window only for components this plot will draw.
+  if(automatic_range){
+    x_range <- .density.prior_automatic_source_range(prior_list, x_range, x_range_quant,
+                                                   transformation, transformation_arguments)
+  }
 
   plot_data <- list()
   for(i in seq_along(prior_list)){

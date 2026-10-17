@@ -148,6 +148,18 @@ jumps and checked generalized inversion, or a typed model/level limitation.
 
 Plotting density grids are approximations for display. They are not evidence
 for the structural classifications returned by `prior_density_ordinate()`.
+Automatic prior-coordinate ranges are source ranges, independent of
+`transformation_settings`; validate supplied settings before deriving that
+interpretation. Preserve the existing range and pretty expansion, replacing
+only an endpoint with an infinite transformed image by the existing marginal
+tail quantile (`x_range_quant`, or each prior's default). Prior lists use the
+union of participating component quantiles on one common source grid, after
+their existing weight and sampling-allocation filters. Do not pretty-expand
+the corrected endpoint, move atoms, or change support, weights, Jacobians or
+sampling budgets. Automatic transformed range metadata is ordered without
+separating knots from ordinates; explicit coordinates retain their meaning.
+Nonindividual PET/PEESE standard-error and weightfunction p-value axes keep
+their specialized dispatch.
 Explicit precomputed posterior plots require a matching valid continuous curve
 for every selected continuous leaf, resolved before discarding parent parameter
 and condition metadata. Pure atoms need no curve; KDE ignores stored curves.

@@ -6,7 +6,7 @@
 #' @param x a prior
 #' @param x_seq sequence of x coordinates
 #' @param x_range vector of length two with
-#' lower and upper range for the support
+#' lower and upper display limits
 #' (used if \code{x_seq} is unspecified)
 #' @param x_range_quant quantile used for
 #' automatically obtaining \code{x_range}
@@ -51,8 +51,9 @@
 #' @param transformation_arguments a list with named arguments for
 #' the \code{transformation}
 #' @param transformation_settings boolean indicating whether the
-#' settings the \code{x_seq} or \code{x_range} was specified on
-#' the transformed support
+#' explicitly supplied \code{x_seq} or \code{x_range} is on
+#' the transformed scale. Automatically selected prior-coordinate ranges
+#' are always obtained on the source scale and then transformed.
 #' @param truncate_end whether the density should be set to zero
 #' for endpoints of truncated distributions
 #' @param ... additional arguments
@@ -78,6 +79,16 @@
 #' support use boundary-reflected kernel density estimates. The plotting range
 #' controls the evaluation grid, while reflection is based on the prior's true
 #' truncation bounds.
+#' Automatic transformed prior-coordinate ranges keep the existing source
+#' range and equally spaced source grid. If a source display endpoint has an
+#' infinite transformed image, that endpoint uses the prior's existing marginal
+#' tail quantile, controlled by \code{x_range_quant}. Prior-list plots use the
+#' union of participating component marginal quantiles. This is a finite display window;
+#' the prior support, density, probability masses and mixture weights are unchanged.
+#' Invalid atom images and unavailable or still nonrepresentable endpoint
+#' quantiles remain unavailable. Explicit source or transformed coordinates keep
+#' their supplied interpretation. Nonindividual PET/PEESE standard-error axes
+#' and weightfunction p-value axes retain their specialized interpretation.
 #' Declared point locations and finite builtin support bounds must have
 #' representable images. Finite-source exponential underflow, tanh saturation,
 #' positive-power underflow and nonfinite point images stop with
@@ -132,6 +143,11 @@ density.prior <- function(x,
     .prior_stop_unsupported_method("density", x)
   }
 
+  automatic_range <- is.null(x_seq) && is.null(x_range) &&
+    !(!individual && (is.prior.PET(x) || is.prior.PEESE(x) || is.prior.weightfunction(x)))
+  if(automatic_range){
+    transformation_settings <- FALSE
+  }
 
   ### setting the range
   # get plotting range if not specified
@@ -155,6 +171,11 @@ density.prior <- function(x,
         x_range <- range(x, if(is.null(x_range_quant)) .range.prior_quantile_default(x) else x_range_quant)
       }
     }
+  }
+
+  if(automatic_range){
+    x_range <- .density.prior_automatic_source_range(x, x_range, x_range_quant,
+                                                   transformation, transformation_arguments)
   }
 
   # get the x_seq for plotting
@@ -224,8 +245,67 @@ density.prior <- function(x,
       }
     }
   }
+  if(automatic_range && !is.null(transformation)){
+    out <- .density.prior_automatic_bounds(out)
+  }
 
   return(out)
+}
+
+# Automatic display ranges retain their source grid. Only an infinite image
+# of a display endpoint calls for the existing marginal tail convention.
+.density.prior_automatic_source_range <- function(priors, x_range, x_range_quant,
+                                                  transformation, transformation_arguments){
+
+  if(is.null(transformation)){
+    return(x_range)
+  }
+  if(is.prior(priors)) priors <- list(priors)
+  priors <- .plot_prior_list_bernoulli_atoms(.simplify_prior_list(priors))
+
+  # An atom's original image is authoritative, even outside the display window.
+  for(prior in priors){
+    if(is.prior.point(prior)){
+      .density.prior_transformation_checked_x(prior$parameters[["location"]],
+                                               transformation, transformation_arguments)
+    }
+  }
+
+  images <- .density.prior_transformation_x(x_range, transformation, transformation_arguments)
+  if(anyNA(images) || !any(is.infinite(images))){
+    return(x_range)
+  }
+  for(side in which(is.infinite(images))){
+    endpoints <- vapply(priors, function(prior){
+      alpha <- if(is.null(x_range_quant)) .range.prior_quantile_default(prior) else x_range_quant
+      endpoint <- mquant(prior, if(side == 1L) alpha else 1 - alpha)
+      if(length(endpoint) == 0L || any(!is.finite(endpoint))){
+        .bt_posterior_transformation_stop("domain", "the automatic prior range has no finite marginal-quantile endpoint")
+      }
+      if(side == 1L) min(endpoint) else max(endpoint)
+    }, numeric(1))
+    x_range[side] <- if(side == 1L) min(endpoints) else max(endpoints)
+  }
+  images <- .density.prior_transformation_x(x_range, transformation, transformation_arguments)
+  if(any(!is.finite(x_range)) || x_range[1L] > x_range[2L] || any(!is.finite(images))){
+    .bt_posterior_transformation_stop("domain", "the automatic prior range has no finite transformed marginal-quantile endpoints")
+  }
+  x_range
+}
+
+# Sort display metadata only: decreasing curves keep their paired source order.
+.density.prior_automatic_bounds <- function(out){
+
+  bounds <- attr(out, "x_range", exact = TRUE)
+  if(!is.null(bounds)) attr(out, "x_range") <- sort(bounds)
+  if(!inherits(out, "density") || inherits(out, "density.prior.spike_and_slab")){
+    for(i in seq_along(out)){
+      if(inherits(out[[i]], "density") || is.list(out[[i]])){
+        out[[i]] <- .density.prior_automatic_bounds(out[[i]])
+      }
+    }
+  }
+  out
 }
 
 .density.prior.simple                 <- function(x, x_seq, x_range, n_points, n_samples, force_samples, transformation, transformation_arguments, truncate_end){

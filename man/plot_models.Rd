@@ -69,8 +69,9 @@ density grids. Point masses retain their transformed locations.}
 the \code{transformation}}
 
 \item{transformation_settings}{boolean indicating whether the
-settings the \code{x_seq} or \code{x_range} was specified on
-the transformed support}
+explicitly supplied \code{x_seq} or \code{x_range} is on
+the transformed scale. Automatically selected prior-coordinate ranges
+are always obtained on the source scale and then transformed.}
 
 \item{par_name}{a type of parameter for which the prior is
 specified. Only relevant if the prior corresponds to a mu

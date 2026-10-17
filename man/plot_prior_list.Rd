@@ -102,8 +102,9 @@ density grids. Point masses retain their transformed locations.}
 the \code{transformation}}
 
 \item{transformation_settings}{boolean indicating whether the
-settings the \code{x_seq} or \code{x_range} was specified on
-the transformed support}
+explicitly supplied \code{x_seq} or \code{x_range} is on
+the transformed scale. Automatically selected prior-coordinate ranges
+are always obtained on the source scale and then transformed.}
 
 \item{rescale_x}{allows to rescale x-axis in case a
 weightfunction is plotted.}
@@ -139,6 +140,15 @@ an object of class 'ggplot' if plot_type is \code{plot_type = "ggplot"}.
 }
 \description{
 Plot a list of prior distributions
+}
+\details{
+Automatic prior-coordinate ranges use a common source grid before
+transformation, regardless of \code{transformation_settings}. An endpoint
+with an infinite image uses the union of participating component marginal tail
+quantiles, as described in \code{\link[=density.prior]{density.prior()}}. This display convention keeps
+exact atoms, mixture weights and prior support; explicit coordinates retain
+their supplied interpretation. The nonindividual PET/PEESE and weightfunction
+axes keep their standard-error and p-value meanings.
 }
 \seealso{
 \code{\link[=prior]{prior()}} \code{\link[=lines_prior_list]{lines_prior_list()}}  \code{\link[=geom_prior_list]{geom_prior_list()}}

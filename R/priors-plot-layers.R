@@ -35,6 +35,7 @@ lines.prior <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
   .check_prior(x)
   check_bool(individual, "individual")
   check_bool(rescale_x, "rescale_x")
+  .check_transformation_input(transformation, transformation_arguments, transformation_settings)
   check_int(show_parameter, "show_parameter", allow_NULL = TRUE)
   check_real(scale_y2, "scale_y2", lower = 0, allow_NULL = TRUE)
 
@@ -47,6 +48,8 @@ lines.prior <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
 
 
 
+  automatic_range <- is.null(xlim) && is.null(x_seq) &&
+    !(!individual && (is.prior.PET(x) || is.prior.PEESE(x) || is.prior.weightfunction(x)))
   # get the plotting data
   if(is.null(xlim) & is.null(x_seq)){
     if((is.prior.PET(x) | is.prior.PEESE(x) | is.prior.weightfunction(x)) & !individual){
@@ -59,10 +62,18 @@ lines.prior <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
       xlim   <- range(pretty(xlim))
     }
   }
+  if(automatic_range){
+    transformation_settings <- FALSE
+    xlim <- .density.prior_automatic_source_range(x, xlim, x_range_quant,
+                                                 transformation, transformation_arguments)
+  }
   plot_data <- density(x = x, x_seq = x_seq, x_range = xlim, x_range_quant = x_range_quant,
                        n_points = n_points, n_samples = n_samples, force_samples = force_samples,
                        transformation = transformation, transformation_arguments = transformation_arguments,
                        transformation_settings = transformation_settings, individual = individual)
+  if(automatic_range && !is.null(transformation)){
+    plot_data <- .density.prior_automatic_bounds(plot_data)
+  }
   if(is.prior.ordered(x) || is.prior.simplex(x)){
     .prior_check_figure_index(show_parameter, length(plot_data), "show_parameter", select_one = TRUE)
   }
@@ -175,6 +186,7 @@ geom_prior  <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
   .check_prior(x)
   check_bool(individual, "individual")
   check_bool(rescale_x, "rescale_x")
+  .check_transformation_input(transformation, transformation_arguments, transformation_settings)
   check_int(show_parameter, "show_parameter", allow_NULL = TRUE)
   check_real(scale_y2, "scale_y2", lower = 0, allow_NULL = TRUE)
 
@@ -195,6 +207,8 @@ geom_prior  <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
                             rescale_x = rescale_x, scale_y2 = scale_y2, ...))
   }
 
+  automatic_range <- is.null(xlim) && is.null(x_seq) &&
+    !(!individual && (is.prior.PET(x) || is.prior.PEESE(x) || is.prior.weightfunction(x)))
   # get the plotting data
   if(is.null(xlim) & is.null(x_seq)){
     if((is.prior.PET(x) | is.prior.PEESE(x) | is.prior.weightfunction(x)) & !individual){
@@ -207,10 +221,18 @@ geom_prior  <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
       xlim   <- range(pretty(xlim))
     }
   }
+  if(automatic_range){
+    transformation_settings <- FALSE
+    xlim <- .density.prior_automatic_source_range(x, xlim, x_range_quant,
+                                                 transformation, transformation_arguments)
+  }
   plot_data <- density(x = x, x_seq = x_seq, x_range = xlim, x_range_quant = x_range_quant,
                        n_points = n_points, n_samples = n_samples, force_samples = force_samples,
                        transformation = transformation, transformation_arguments = transformation_arguments,
                        transformation_settings = transformation_settings, individual = individual)
+  if(automatic_range && !is.null(transformation)){
+    plot_data <- .density.prior_automatic_bounds(plot_data)
+  }
 
 
   # plot a weightfunction

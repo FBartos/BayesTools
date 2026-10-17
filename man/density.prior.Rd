@@ -26,7 +26,7 @@
 \item{x_seq}{sequence of x coordinates}
 
 \item{x_range}{vector of length two with
-lower and upper range for the support
+lower and upper display limits
 (used if \code{x_seq} is unspecified)}
 
 \item{x_range_quant}{quantile used for
@@ -79,8 +79,9 @@ density grids. Point masses retain their transformed locations.}
 the \code{transformation}}
 
 \item{transformation_settings}{boolean indicating whether the
-settings the \code{x_seq} or \code{x_range} was specified on
-the transformed support}
+explicitly supplied \code{x_seq} or \code{x_range} is on
+the transformed scale. Automatically selected prior-coordinate ranges
+are always obtained on the source scale and then transformed.}
 
 \item{truncate_end}{whether the density should be set to zero
 for endpoints of truncated distributions}
@@ -114,6 +115,16 @@ Sample-based density estimates for continuous priors with finite
 support use boundary-reflected kernel density estimates. The plotting range
 controls the evaluation grid, while reflection is based on the prior's true
 truncation bounds.
+Automatic transformed prior-coordinate ranges keep the existing source
+range and equally spaced source grid. If a source display endpoint has an
+infinite transformed image, that endpoint uses the prior's existing marginal
+tail quantile, controlled by \code{x_range_quant}. Prior-list plots use the
+union of participating component marginal quantiles. This is a finite display window;
+the prior support, density, probability masses and mixture weights are unchanged.
+Invalid atom images and unavailable or still nonrepresentable endpoint
+quantiles remain unavailable. Explicit source or transformed coordinates keep
+their supplied interpretation. Nonindividual PET/PEESE standard-error axes
+and weightfunction p-value axes retain their specialized interpretation.
 Declared point locations and finite builtin support bounds must have
 representable images. Finite-source exponential underflow, tanh saturation,
 positive-power underflow and nonfinite point images stop with

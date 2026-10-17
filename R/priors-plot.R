@@ -5,6 +5,11 @@
 #' parent \code{BayesTools_transformation}. Its \code{call} is \code{NULL} and
 #' its \code{transformation}, \code{source_values} and \code{images} fields
 #' identify the matched failing finite entries; see [posterior_transform()].
+#' Automatic prior-coordinate limits are selected on the source scale before
+#' transformation, regardless of \code{transformation_settings}. An endpoint
+#' with an infinite image uses the existing marginal tail convention described
+#' in [density.prior()]. Explicit \code{xlim} and \code{x_seq} retain their
+#' supplied source or transformed interpretation.
 #'
 #' @param x a prior
 #' @param plot_type whether to use a base plot \code{"base"}
@@ -107,6 +112,7 @@ plot.prior <- function(x, plot_type = "base",
   check_char(plot_type, "plot_type", allow_values = c("base", "ggplot"))
   check_bool(individual, "individual")
   check_bool(rescale_x, "rescale_x")
+  .check_transformation_input(transformation, transformation_arguments, transformation_settings)
   # ordered and simplex priors select several figures, others a single one
   check_int(show_figures, "show_figures", check_length = if(is.prior.ordered(x) || is.prior.simplex(x)) 0 else 1, allow_NULL = TRUE)
 
@@ -128,6 +134,9 @@ plot.prior <- function(x, plot_type = "base",
   }
 
 
+  # Automatic limits are source coordinates, regardless of explicit-setting flags.
+  automatic_range <- is.null(xlim) && is.null(x_seq) &&
+    !(!individual && (is.prior.PET(x) || is.prior.PEESE(x) || is.prior.weightfunction(x)))
   # get the plotting data
   if(is.null(xlim) & is.null(x_seq)){
     if((is.prior.PET(x) | is.prior.PEESE(x) | is.prior.weightfunction(x)) & !individual){
@@ -140,10 +149,18 @@ plot.prior <- function(x, plot_type = "base",
       xlim   <- range(pretty(xlim))
     }
   }
+  if(automatic_range){
+    transformation_settings <- FALSE
+    xlim <- .density.prior_automatic_source_range(x, xlim, x_range_quant,
+                                                 transformation, transformation_arguments)
+  }
   plot_data <- density(x = x, x_seq = x_seq, x_range = xlim, x_range_quant = x_range_quant,
                        n_points = n_points, n_samples = n_samples, force_samples = force_samples,
                        transformation = transformation, transformation_arguments = transformation_arguments,
                        transformation_settings = transformation_settings, individual = individual)
+  if(automatic_range && !is.null(transformation)){
+    plot_data <- .density.prior_automatic_bounds(plot_data)
+  }
 
 
   # plot a weightfunction

@@ -94,8 +94,9 @@ density grids. Point masses retain their transformed locations.}
 the \code{transformation}}
 
 \item{transformation_settings}{boolean indicating whether the
-settings the \code{x_seq} or \code{x_range} was specified on
-the transformed support}
+explicitly supplied \code{x_seq} or \code{x_range} is on
+the transformed scale. Automatically selected prior-coordinate ranges
+are always obtained on the source scale and then transformed.}
 
 \item{rescale_x}{allows to rescale x-axis in case a
 weightfunction is plotted.}

@@ -26,6 +26,7 @@ lines_prior_list <- function(prior_list, xlim = NULL, x_seq = NULL, x_range_quan
     stop("'prior_list' must be a list of priors.")
   check_bool(individual, "individual")
   check_bool(rescale_x, "rescale_x")
+  .check_transformation_input(transformation, transformation_arguments, transformation_settings)
   check_int(show_figures, "show_figures", allow_NULL = TRUE)
   check_real(scale_y2, "scale_y2", lower = 0, allow_NULL = TRUE)
   check_char(effect_direction, "effect_direction", allow_values = c("positive", "negative"))
@@ -48,6 +49,8 @@ lines_prior_list <- function(prior_list, xlim = NULL, x_seq = NULL, x_range_quan
   }
 
 
+  automatic_range <- is.null(xlim) && is.null(x_seq) &&
+    !(prior_type %in% c("weightfunction", "PETPEESE") && !individual)
   # get the plotting range
   if(is.null(xlim) & is.null(x_seq)){
     if(prior_type %in% c("weightfunction", "PETPEESE") & !individual){
@@ -56,6 +59,9 @@ lines_prior_list <- function(prior_list, xlim = NULL, x_seq = NULL, x_range_quan
       xlim   <- do.call(rbind, lapply(prior_list, range, quantiles = x_range_quant))
       xlim   <- range(pretty(range(as.vector(xlim))))
     }
+  }
+  if(automatic_range){
+    transformation_settings <- FALSE
   }
 
 
@@ -83,7 +89,7 @@ lines_prior_list <- function(prior_list, xlim = NULL, x_seq = NULL, x_range_quan
     plot_data <- .plot_data_prior_list.simple(prior_list, x_seq = x_seq, x_range = xlim, x_range_quant = x_range_quant,
                                               n_points = n_points, n_samples = n_samples, force_samples = force_samples, individual = individual,
                                               transformation = transformation, transformation_arguments = transformation_arguments,
-                                              transformation_settings = transformation_settings)
+                                              transformation_settings = transformation_settings, automatic_range = automatic_range)
 
     scale_y2_state <- NULL
     if(is.null(scale_y2)){
@@ -135,6 +141,7 @@ geom_prior_list  <- function(prior_list, xlim = NULL, x_seq = NULL, x_range_quan
     stop("'prior_list' must be a list of priors.")
   check_bool(individual, "individual")
   check_bool(rescale_x, "rescale_x")
+  .check_transformation_input(transformation, transformation_arguments, transformation_settings)
   check_int(show_figures, "show_figures", allow_NULL = TRUE)
   check_real(scale_y2, "scale_y2", lower = 0, allow_NULL = TRUE)
   check_char(effect_direction, "effect_direction", allow_values = c("positive", "negative"))
@@ -156,6 +163,8 @@ geom_prior_list  <- function(prior_list, xlim = NULL, x_seq = NULL, x_range_quan
     prior_list <- .plot_prior_list_individual_bias(prior_list)
   }
 
+  automatic_range <- is.null(xlim) && is.null(x_seq) &&
+    !(prior_type %in% c("weightfunction", "PETPEESE") && !individual)
   # get the plotting range
   if(is.null(xlim) & is.null(x_seq)){
     if(prior_type %in% c("weightfunction", "PETPEESE") & !individual){
@@ -164,6 +173,9 @@ geom_prior_list  <- function(prior_list, xlim = NULL, x_seq = NULL, x_range_quan
       xlim   <- do.call(rbind, lapply(prior_list, range, quantiles = x_range_quant))
       xlim   <- range(pretty(range(as.vector(xlim))))
     }
+  }
+  if(automatic_range){
+    transformation_settings <- FALSE
   }
 
 
@@ -191,7 +203,7 @@ geom_prior_list  <- function(prior_list, xlim = NULL, x_seq = NULL, x_range_quan
     plot_data <- .plot_data_prior_list.simple(prior_list, x_seq = x_seq, x_range = xlim, x_range_quant = x_range_quant,
                                               n_points = n_points, n_samples = n_samples, force_samples = force_samples, individual = individual,
                                               transformation = transformation, transformation_arguments = transformation_arguments,
-                                              transformation_settings = transformation_settings)
+                                              transformation_settings = transformation_settings, automatic_range = automatic_range)
     geom     <- NULL
     inherit_scale <- is.null(scale_y2)
     if(is.null(scale_y2)){

@@ -21,6 +21,14 @@
 #' @return \code{plot_prior_list} returns either \code{NULL} or
 #' an object of class 'ggplot' if plot_type is \code{plot_type = "ggplot"}.
 #'
+#' @details Automatic prior-coordinate ranges use a common source grid before
+#' transformation, regardless of \code{transformation_settings}. An endpoint
+#' with an infinite image uses the union of participating component marginal tail
+#' quantiles, as described in [density.prior()]. This display convention keeps
+#' exact atoms, mixture weights and prior support; explicit coordinates retain
+#' their supplied interpretation. The nonindividual PET/PEESE and weightfunction
+#' axes keep their standard-error and p-value meanings.
+#'
 #' @seealso [prior()] [lines_prior_list()]  [geom_prior_list()]
 #' @export
 plot_prior_list <- function(prior_list, plot_type = "base",
@@ -38,6 +46,7 @@ plot_prior_list <- function(prior_list, plot_type = "base",
   check_char(plot_type, "plot_type", allow_values = c("base", "ggplot"))
   check_bool(individual, "individual")
   check_bool(rescale_x, "rescale_x")
+  .check_transformation_input(transformation, transformation_arguments, transformation_settings)
   check_bool(legend, "legend", allow_NA = FALSE)
   check_int(show_figures, "show_figures", allow_NULL = TRUE)
   check_char(effect_direction, "effect_direction", allow_values = c("positive", "negative"))
@@ -68,6 +77,8 @@ plot_prior_list <- function(prior_list, plot_type = "base",
   }
 
 
+  automatic_range <- is.null(xlim) && is.null(x_seq) &&
+    !(prior_type %in% c("weightfunction", "PETPEESE") && !individual)
   # get the plotting range
   if(is.null(xlim) & is.null(x_seq)){
     if(prior_type %in% c("weightfunction", "PETPEESE") & !individual){
@@ -76,6 +87,9 @@ plot_prior_list <- function(prior_list, plot_type = "base",
       xlim   <- do.call(rbind, lapply(prior_list, range, quantiles = x_range_quant))
       xlim   <- range(pretty(range(as.vector(xlim))))
     }
+  }
+  if(automatic_range){
+    transformation_settings <- FALSE
   }
 
 
@@ -111,7 +125,7 @@ plot_prior_list <- function(prior_list, plot_type = "base",
     plot_data <- .plot_data_prior_list.simple(prior_list, x_seq = x_seq, x_range = xlim, x_range_quant = x_range_quant,
                                               n_points = n_points, n_samples = n_samples, force_samples = force_samples, individual = individual,
                                               transformation = transformation, transformation_arguments = transformation_arguments,
-                                              transformation_settings = transformation_settings)
+                                              transformation_settings = transformation_settings, automatic_range = automatic_range)
     if(any(sapply(plot_data, inherits, what = "density.prior.factor"))){
       plot <- .plot_prior_list.factor(
         plot_data = plot_data, plot_type = plot_type, par_name = par_name,
