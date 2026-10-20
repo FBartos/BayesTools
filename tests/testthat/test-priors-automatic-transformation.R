@@ -295,6 +295,34 @@ test_that("automatic endpoint quantiles do not repair invalid or unrepresentable
   unavailable$fun <- function(x) ifelse(x < .1, -Inf, log(x))
   expect_error(density(p, transformation = unavailable),
                class = "BayesTools_transformation_domain")
+  expect_error(density(p, transformation = unavailable),
+               class = "BayesTools_prior_range_unavailable")
+})
+
+test_that("an unavailable automatic transformed prior range is a classed refusal that names explicit limits", {
+  wide <- prior("normal", list(0, 1000))
+  # the 0.995 quantile, 2576, has no finite image under exp
+  expect_identical(exp(mquant(wide, .995)), Inf)
+  error <- tryCatch(density(wide, transformation = "exp"), error = identity)
+  expect_s3_class(error, "BayesTools_prior_range_unavailable")
+  expect_s3_class(error, "BayesTools_transformation_domain")
+  expect_s3_class(error, "BayesTools_transformation")
+  expect_null(error$call)
+  expect_match(conditionMessage(error), "x_range", fixed = TRUE)
+  expect_match(conditionMessage(error), "x_seq", fixed = TRUE)
+  expect_match(conditionMessage(error), "xlim", fixed = TRUE)
+  expect_false(grepl("posterior draws", conditionMessage(error), fixed = TRUE))
+  # the prior plots refuse in the same way
+  expect_error(plot_prior_list(list(wide), plot_type = "ggplot", transformation = "exp"),
+               class = "BayesTools_prior_range_unavailable")
+  expect_error(plot(wide, plot_type = "ggplot", transformation = "exp"),
+               class = "BayesTools_prior_range_unavailable")
+  # explicit limits avoid the refusal and keep their interpretation
+  explicit <- density(wide, transformation = "exp", x_range = c(-5, 5), n_points = 50)
+  expect_equal(explicit$x, exp(seq(-5, 5, length.out = 50)))
+  # a prior that stays within the representable images keeps its automatic range
+  moderate <- density(prior("normal", list(0, 100)), transformation = "exp", n_points = 50)
+  expect_true(all(is.finite(moderate$x)) && all(is.finite(moderate$y)))
 })
 
 test_that("automatic list endpoints use only existing participating components", {

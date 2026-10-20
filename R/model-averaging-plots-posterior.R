@@ -79,6 +79,11 @@
 #' \code{expression()}s, which only JAGS evaluates and which has no R-side
 #' prior law (unless the atoms or the support of the draws are unavailable,
 #' which [posterior_measure_check()] reports).
+#' Likewise, when the automatic display range of a transformed prior is
+#' unavailable (the marginal-quantile endpoints of a very wide prior have no
+#' finite image under \code{transformation = "exp"}, see [density.prior()]), the
+#' prior curve is omitted with the same warning, which names \code{xlim}, and the
+#' posterior is drawn alone; an explicit \code{xlim} avoids the omission.
 #' Raw numerical plotting evaluations that remain unresolved warn once per
 #' continuous route with the same classes. The warning distinguishes a partly
 #' available curve from a wholly unavailable one; every available curve point
@@ -584,10 +589,22 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
         .plot_data_warn_prior_curve_unavailable(parameter)
         prior <- FALSE
       }else if(is.null(plot_data_prior)){
-        plot_data_prior <- .plot_data_prior_list.simple(prior_list, x_seq = NULL, x_range = xlim, x_range_quant = NULL,
-                                                  n_points = n_points, n_samples = n_samples, force_samples = force_samples, individual = individual,
-                                                  transformation = transformation, transformation_arguments = transformation_arguments,
-                                                  transformation_settings = transformation_settings)
+        plot_data_prior <- tryCatch(
+          .plot_data_prior_list.simple(prior_list, x_seq = NULL, x_range = xlim, x_range_quant = NULL,
+                                       n_points = n_points, n_samples = n_samples, force_samples = force_samples, individual = individual,
+                                       transformation = transformation, transformation_arguments = transformation_arguments,
+                                       transformation_settings = transformation_settings),
+          BayesTools_prior_range_unavailable = function(condition){
+            # the automatic transformed prior range is unavailable (e.g., a very
+            # wide prior under exp): only the prior curve is omitted
+            .plot_data_warn_prior_curve_unavailable(
+              parameter,
+              reason = paste0("its automatic transformed prior display range is unavailable because the ",
+                              "marginal-quantile endpoint(s) of the prior have no finite transformed image"),
+              remedy = "supply 'xlim' to draw it")
+            NULL
+          })
+        if(is.null(plot_data_prior)) prior <- FALSE
       }
     }
 

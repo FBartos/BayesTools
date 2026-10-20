@@ -369,6 +369,44 @@ test_that("posterior KDE plots of saturated tanh images drop the knots without a
   expect_equal(lin$y, raw$y / 2)
 })
 
+test_that("posterior plots of a very wide prior under exp omit only the unavailable prior curve", {
+
+  skip_if_not_installed("ggplot2")
+  set.seed(1)
+  theta <- as_mixed_posteriors(
+    .kde_mixed_posteriors(cbind(theta = stats::rnorm(200, .5)),
+                          list(theta = prior("normal", list(0, 1000)))),
+    "theta")
+  draw <- function(type, prior, ...){
+    plot_posterior(theta, "theta", plot_type = type, prior = prior, n_points = 64,
+                   transformation = "exp", transformation_settings = TRUE, ...)
+  }
+  layer_data <- function(plot) ggplot2::ggplot_build(plot)$data
+
+  # the 0.995 prior quantile has no finite image under exp: the posterior is
+  # drawn alone, as with prior = FALSE
+  collected <- .kde_collect_warnings(draw("ggplot", TRUE))
+  curve_warnings <- Filter(function(condition) inherits(condition, "BayesTools_prior_curve_unavailable"),
+                           collected$warnings)
+  expect_length(curve_warnings, 1L)
+  expect_s3_class(curve_warnings[[1L]], "BayesTools_plot_condition")
+  expect_match(conditionMessage(curve_warnings[[1L]]), "'theta'", fixed = TRUE)
+  expect_match(conditionMessage(curve_warnings[[1L]]),
+               "automatic transformed prior display range is unavailable", fixed = TRUE)
+  expect_match(conditionMessage(curve_warnings[[1L]]), "'xlim'", fixed = TRUE)
+  expect_s3_class(collected$value, "ggplot")
+  posterior_alone <- layer_data(draw("ggplot", FALSE))
+  expect_length(posterior_alone, 1L)
+  expect_identical(layer_data(collected$value), posterior_alone)
+
+  .kde_expect_finite_plots(function(type) draw(type, TRUE), warning_class = "BayesTools_prior_curve_unavailable")
+
+  # explicit display limits keep the prior curve
+  with_limits <- .kde_collect_warnings(draw("ggplot", TRUE, xlim = c(.05, 20)))
+  expect_false(.kde_has_warning(with_limits, class = "BayesTools_prior_curve_unavailable"))
+  expect_length(layer_data(with_limits$value), 2L)
+})
+
 test_that("independent factor posterior KDE plots of saturated tanh images drop the knots without an ordinate", {
 
   skip_if_not_installed("ggplot2")

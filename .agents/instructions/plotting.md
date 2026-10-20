@@ -159,6 +159,15 @@ their existing weight and sampling-allocation filters. Do not pretty-expand
 the corrected endpoint, move atoms, or change support, weights, Jacobians or
 sampling budgets. Automatic transformed range metadata is ordered without
 separating knots from ordinates; explicit coordinates retain their meaning.
+When that quantile endpoint still has no finite image (a very wide prior under
+`exp`), the automatic range is unavailable: `density()` and the prior plots stop
+with `BayesTools_prior_range_unavailable` (parent
+`BayesTools_transformation_domain`, call NULL), whose message names the explicit
+display limits (`xlim`, `x_range`, `x_seq`) and no posterior draws, while
+`plot_posterior()` omits only the prior curve with a
+`BayesTools_prior_curve_unavailable` warning that names `xlim`, and draws the
+posterior alone. Overlays that take a prior density from the draws
+(`plot_marginal()`, attached or context prior densities) do not use this range.
 Individual weightfunction and ordered routes retain their existing
 transformation behavior and conditions instead of this endpoint adjustment.
 Nonindividual PET/PEESE standard-error and weightfunction p-value axes keep

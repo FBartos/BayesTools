@@ -199,6 +199,11 @@ the same class. The same holds for a prior with parameters given as
 \code{expression()}s, which only JAGS evaluates and which has no R-side
 prior law (unless the atoms or the support of the draws are unavailable,
 which \code{\link[=posterior_measure_check]{posterior_measure_check()}} reports).
+Likewise, when the automatic display range of a transformed prior is
+unavailable (the marginal-quantile endpoints of a very wide prior have no
+finite image under \code{transformation = "exp"}, see \code{\link[=density.prior]{density.prior()}}), the
+prior curve is omitted with the same warning, which names \code{xlim}, and the
+posterior is drawn alone; an explicit \code{xlim} avoids the omission.
 Raw numerical plotting evaluations that remain unresolved warn once per
 continuous route with the same classes. The warning distinguishes a partly
 available curve from a wholly unavailable one; every available curve point

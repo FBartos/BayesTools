@@ -87,8 +87,17 @@
 #' tail quantile, controlled by \code{x_range_quant}. Prior-list plots use the
 #' union of participating component marginal quantiles. This is a finite display window;
 #' the prior support, density, probability masses and mixture weights are unchanged.
-#' Invalid atom images and unavailable or still nonrepresentable endpoint
-#' quantiles remain unavailable. Explicit source or transformed coordinates keep
+#' Invalid atom images remain unavailable. When an endpoint quantile is
+#' unavailable or its transformed image is still not finite (for example the 0.995
+#' quantile of a very wide prior under \code{"exp"}), the automatic display range
+#' of the transformed prior is unavailable: \code{density()} stops with
+#' \code{BayesTools_prior_range_unavailable}, parent
+#' \code{BayesTools_transformation_domain} and \code{BayesTools_transformation},
+#' with \code{call = NULL}, and the message names the remedy of explicit display
+#' limits (\code{x_range} or \code{x_seq}; \code{xlim} in the plotting functions).
+#' In [plot_posterior()] only the prior curve is omitted, with a warning of
+#' class \code{BayesTools_prior_curve_unavailable} (see there), and the posterior
+#' is drawn alone. Explicit source or transformed coordinates keep
 #' their supplied interpretation. Individual weightfunction and ordered routes
 #' retain their existing transformation behavior and conditions.
 #' Nonindividual PET/PEESE standard-error axes
@@ -287,7 +296,7 @@ density.prior <- function(x,
       alpha <- if(is.null(x_range_quant)) .range.prior_quantile_default(prior) else x_range_quant
       endpoint <- mquant(prior, if(side == 1L) alpha else 1 - alpha)
       if(length(endpoint) == 0L || any(!is.finite(endpoint))){
-        .bt_posterior_transformation_stop("domain", "the automatic prior range has no finite marginal-quantile endpoint")
+        .density.prior_range_unavailable_stop()
       }
       if(side == 1L) min(endpoint) else max(endpoint)
     }, numeric(1))
@@ -295,9 +304,27 @@ density.prior <- function(x,
   }
   images <- .density.prior_transformation_x(x_range, transformation, transformation_arguments)
   if(any(!is.finite(x_range)) || x_range[1L] > x_range[2L] || any(!is.finite(images))){
-    .bt_posterior_transformation_stop("domain", "the automatic prior range has no finite transformed marginal-quantile endpoints")
+    .density.prior_range_unavailable_stop()
   }
   x_range
+}
+
+# The automatic display range of a transformed prior needs finite images of its
+# marginal-quantile endpoints. Callers that can draw without the prior
+# (plot_posterior()) branch on the subclass; explicit limits avoid the refusal.
+.density.prior_range_unavailable_stop <- function(){
+
+  stop(errorCondition(
+    paste0(
+      "The automatic display range of the transformed prior is unavailable because the ",
+      "marginal-quantile endpoint(s) of the prior have no finite transformed image. ",
+      "Supply explicit display limits: 'xlim' in the plotting functions, 'x_range' or ",
+      "'x_seq' in 'density()'."
+    ),
+    class = c("BayesTools_prior_range_unavailable", "BayesTools_transformation_domain",
+              "BayesTools_transformation"),
+    call  = NULL
+  ))
 }
 
 # Sort display metadata only: decreasing curves keep their paired source order.

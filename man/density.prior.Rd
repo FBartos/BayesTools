@@ -123,8 +123,17 @@ infinite transformed image uses the prior's existing marginal
 tail quantile, controlled by \code{x_range_quant}. Prior-list plots use the
 union of participating component marginal quantiles. This is a finite display window;
 the prior support, density, probability masses and mixture weights are unchanged.
-Invalid atom images and unavailable or still nonrepresentable endpoint
-quantiles remain unavailable. Explicit source or transformed coordinates keep
+Invalid atom images remain unavailable. When an endpoint quantile is
+unavailable or its transformed image is still not finite (for example the 0.995
+quantile of a very wide prior under \code{"exp"}), the automatic display range
+of the transformed prior is unavailable: \code{density()} stops with
+\code{BayesTools_prior_range_unavailable}, parent
+\code{BayesTools_transformation_domain} and \code{BayesTools_transformation},
+with \code{call = NULL}, and the message names the remedy of explicit display
+limits (\code{x_range} or \code{x_seq}; \code{xlim} in the plotting functions).
+In \code{\link[=plot_posterior]{plot_posterior()}} only the prior curve is omitted, with a warning of
+class \code{BayesTools_prior_curve_unavailable} (see there), and the posterior
+is drawn alone. Explicit source or transformed coordinates keep
 their supplied interpretation. Individual weightfunction and ordered routes
 retain their existing transformation behavior and conditions.
 Nonindividual PET/PEESE standard-error axes

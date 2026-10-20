@@ -298,19 +298,23 @@
     all(vapply(prior_list, is.prior.none, logical(1)))
 }
 
-# Warning of an omitted prior curve of draws without a prior density (the
-# family of .prior_linear_density_warn_curve_unavailable()).
-.plot_data_warn_prior_curve_unavailable <- function(parameter){
+# Warning of an omitted prior curve (the family of
+# .prior_linear_density_warn_curve_unavailable()): by default of draws without a
+# prior density, or with 'reason' and 'remedy' for another unavailable curve.
+.plot_data_warn_prior_curve_unavailable <- function(parameter,
+                                                    reason = paste0(
+                                                      "its posterior draws carry no prior density, as the ",
+                                                      "quantity has no deterministic prior-density route"),
+                                                    remedy = NULL){
 
   warning(structure(
     class = c("BayesTools_prior_curve_unavailable", "BayesTools_plot_condition",
               "warning", "condition"),
     list(
       message = paste0(
-        "The prior density curve of '", parameter, "' is unavailable: its ",
-        "posterior draws carry no prior density, as the quantity has no ",
-        "deterministic prior-density route. The prior curve is omitted from ",
-        "the plot."
+        "The prior density curve of '", parameter, "' is unavailable: ", reason,
+        ". The prior curve is omitted from the plot",
+        if(!is.null(remedy)) paste0("; ", remedy), "."
       ),
       call = NULL
     )
