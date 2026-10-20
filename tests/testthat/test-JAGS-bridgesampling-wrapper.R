@@ -1560,25 +1560,34 @@ test_that("manual exact and historical marginal likelihoods preserve unavailable
 
 test_that("successful upstream retry retains finite result and visible iteration diagnostic", {
 
+  # N(0, 1) prior times N(0.5, 0.8) likelihood: the posterior is normal and the
+  # log marginal likelihood is the log N(0.5 | 0, sqrt(1 + 0.8^2)) density
   mu_sd <- sqrt(1 / (1 + 1 / .8^2))
   mu_mean <- (.5 / .8^2) * mu_sd^2
-  posterior <- coda::as.mcmc(matrix(qnorm((seq_len(400) - .5) / 400,
-    mu_mean, mu_sd), ncol = 1L, dimnames = list(NULL, "mu")))
+  analytic <- dnorm(.5, 0, sqrt(1 + .8^2), log = TRUE)
+  # bridge sampling fits its proposal on the first half of the draws and iterates
+  # on the second: both halves must be exchangeable draws of the posterior, so the
+  # quantile grid is interleaved (odd, then even indices) instead of sorted
+  quantiles <- qnorm((seq_len(400) - .5) / 400, mu_mean, mu_sd)
+  posterior <- coda::as.mcmc(matrix(c(quantiles[c(TRUE, FALSE)], quantiles[c(FALSE, TRUE)]),
+    ncol = 1L, dimnames = list(NULL, "mu")))
+  maxiter <- 3L
   for(silent in c(TRUE, FALSE)){
     warnings <- list()
     output <- capture.output(value <- withCallingHandlers(JAGS_bridgesampling(
       fit = posterior,
       log_posterior = function(parameters, data) dnorm(parameters$mu, .5, .8, log = TRUE),
       data = list(), prior_list = list(mu = prior("normal", list(0, 1))),
-      repetitions = 2L, seed = 43L, use_neff = FALSE, maxiter = 10L, silent = silent
+      repetitions = 2L, seed = 43L, use_neff = FALSE, maxiter = maxiter, silent = silent
     ), warning = function(w){
       warnings[[length(warnings) + 1L]] <<- w
       invokeRestart("muffleWarning")
     }))
     expect_identical(value$iteration_limit_exceeded, TRUE)
     expect_true(value$success)
-    expect_identical(value$repetitions$niter, c(11, 11))
-    expect_equal(value$logml, -0.448163376077635, tolerance = 1e-13)
+    # the upstream retry is what exceeds the limit: its count is not a convergence failure
+    expect_true(all(value$repetitions$niter > maxiter))
+    expect_lt(abs(value$logml - analytic), .05)
     expect_identical(value$logml, median(value$repetitions$logml))
     expect_length(warnings, 1L)
     if(length(warnings) == 1L){
