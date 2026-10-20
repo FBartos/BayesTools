@@ -1643,7 +1643,7 @@ test_that("iteration warnings describe refused nonfinite aggregates truthfully",
         expect_identical(conditionMessage(warning), paste0(
           "Bridge-sampling iteration counts exceeded 'maxiter' = 10 for repetition(s) ",
           "2 (niter = 11). Iteration counts may include upstream retries. ",
-          "Inspect 'repetitions' and 'diagnostics', or increase 'maxiter'."))
+          "Inspect the 'repetitions' field of this warning, or increase 'maxiter'."))
         expect_false(grepl("Finite estimates are retained", conditionMessage(warning), fixed = TRUE))
         expect_false(any(grepl("Finite estimates are retained", warning$repetitions$warning, fixed = TRUE)))
       }
