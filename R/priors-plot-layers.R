@@ -48,32 +48,11 @@ lines.prior <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
 
 
 
-  automatic_range <- is.null(xlim) && is.null(x_seq) &&
-    !(!individual && (is.prior.PET(x) || is.prior.PEESE(x) || is.prior.weightfunction(x)))
   # get the plotting data
-  if(is.null(xlim) & is.null(x_seq)){
-    if((is.prior.PET(x) | is.prior.PEESE(x) | is.prior.weightfunction(x)) & !individual){
-      xlim   <- c(0, 1)
-    }else if(is.prior.spike_and_slab(x)){
-      xlim   <- range(c(0,range(.get_spike_and_slab_variable(x), quantiles = x_range_quant)))
-      xlim   <- range(pretty(xlim))
-    }else{
-      xlim   <- range(x, quantiles = x_range_quant)
-      xlim   <- range(pretty(xlim))
-    }
-  }
-  if(automatic_range){
-    transformation_settings <- FALSE
-    xlim <- .density.prior_automatic_source_range(x, xlim, x_range_quant,
-                                                 transformation, transformation_arguments)
-  }
-  plot_data <- density(x = x, x_seq = x_seq, x_range = xlim, x_range_quant = x_range_quant,
-                       n_points = n_points, n_samples = n_samples, force_samples = force_samples,
-                       transformation = transformation, transformation_arguments = transformation_arguments,
-                       transformation_settings = transformation_settings, individual = individual)
-  if(automatic_range && !is.null(transformation)){
-    plot_data <- .density.prior_automatic_bounds(plot_data)
-  }
+  plot_data <- .plot_data_prior.single(x, xlim = xlim, x_seq = x_seq, x_range_quant = x_range_quant,
+                                       n_points = n_points, n_samples = n_samples, force_samples = force_samples,
+                                       transformation = transformation, transformation_arguments = transformation_arguments,
+                                       transformation_settings = transformation_settings, individual = individual)
   if(is.prior.ordered(x) || is.prior.simplex(x)){
     .prior_check_figure_index(show_parameter, length(plot_data), "show_parameter", select_one = TRUE)
   }
@@ -110,12 +89,6 @@ lines.prior <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
     }else if(inherits(plot_data, "density.prior.point")){
       .lines.prior.point(plot_data, scale_y2 = scale_y2, ...)
     }
-    return(invisible())
-  }
-
-  # plot spike and slab prior
-  if(is.prior.spike_and_slab(x)){
-    .lines.prior.spike_and_slab(plot_data, scale_y2 = scale_y2, ...)
     return(invisible())
   }
 
@@ -207,32 +180,11 @@ geom_prior  <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
                             rescale_x = rescale_x, scale_y2 = scale_y2, ...))
   }
 
-  automatic_range <- is.null(xlim) && is.null(x_seq) &&
-    !(!individual && (is.prior.PET(x) || is.prior.PEESE(x) || is.prior.weightfunction(x)))
   # get the plotting data
-  if(is.null(xlim) & is.null(x_seq)){
-    if((is.prior.PET(x) | is.prior.PEESE(x) | is.prior.weightfunction(x)) & !individual){
-      xlim   <- c(0, 1)
-    }else if(is.prior.spike_and_slab(x)){
-      xlim   <- range(c(0, range(.get_spike_and_slab_variable(x), quantiles = x_range_quant)))
-      xlim   <- range(pretty(xlim))
-    }else{
-      xlim   <- range(x, quantiles = x_range_quant)
-      xlim   <- range(pretty(xlim))
-    }
-  }
-  if(automatic_range){
-    transformation_settings <- FALSE
-    xlim <- .density.prior_automatic_source_range(x, xlim, x_range_quant,
-                                                 transformation, transformation_arguments)
-  }
-  plot_data <- density(x = x, x_seq = x_seq, x_range = xlim, x_range_quant = x_range_quant,
-                       n_points = n_points, n_samples = n_samples, force_samples = force_samples,
-                       transformation = transformation, transformation_arguments = transformation_arguments,
-                       transformation_settings = transformation_settings, individual = individual)
-  if(automatic_range && !is.null(transformation)){
-    plot_data <- .density.prior_automatic_bounds(plot_data)
-  }
+  plot_data <- .plot_data_prior.single(x, xlim = xlim, x_seq = x_seq, x_range_quant = x_range_quant,
+                                       n_points = n_points, n_samples = n_samples, force_samples = force_samples,
+                                       transformation = transformation, transformation_arguments = transformation_arguments,
+                                       transformation_settings = transformation_settings, individual = individual)
 
 
   # plot a weightfunction
@@ -261,14 +213,6 @@ geom_prior  <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
       geom <- .bt_geom_prior_point_overlay(plot_data, scale_y2 = scale_y2, ...)
     }
     return(geom)
-  }
-
-
-  # plot spike and slab prior
-  if(is.prior.spike_and_slab(x)){
-    built_scale <- if(is.null(scale_y2)) 1 else scale_y2
-    geom <- .geom_prior.spike_and_slab(plot_data, scale_y2 = built_scale, ...)
-    return(.bt_ggplot_prior_overlay(geom, plot_data, scale_y2))
   }
 
 
@@ -479,13 +423,6 @@ geom_prior  <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
   lwd  <- if(!is.null(dots[["lwd"]]))                  dots[["lwd"]]                  else .plot.prior_settings()[["lwd"]]
 
   graphics::lines(x = plot_data$x, y = plot_data$y, type = "l", lwd = lwd, lty = lty, col = col)
-
-  return(invisible())
-}
-.lines.prior.spike_and_slab  <- function(plot_data, scale_y2 = 1, ...){
-
-  .lines.prior.simple(plot_data[["variable"]], ...)
-  .lines.prior.point(plot_data[["inclusion"]], scale_y2 = scale_y2, ...)
 
   return(invisible())
 }
@@ -711,15 +648,6 @@ geom_prior  <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
         drop = !isTRUE(dots$.factor_universe_ordered)))
   }
 
-
-  return(geom)
-}
-.geom_prior.spike_and_slab   <- function(plot_data, scale_y2 = 1, ...){
-
-  geom <- list(
-    .geom_prior.simple(plot_data[["variable"]], ...),
-    .geom_prior.point(plot_data[["inclusion"]], scale_y2 = scale_y2, ...)
-  )
 
   return(geom)
 }

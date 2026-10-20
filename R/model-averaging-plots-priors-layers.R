@@ -49,8 +49,8 @@ lines_prior_list <- function(prior_list, xlim = NULL, x_seq = NULL, x_range_quan
   }
 
 
-  automatic_range <- is.null(xlim) && is.null(x_seq) &&
-    !(prior_type %in% c("weightfunction", "PETPEESE") && !individual)
+  # automatic ranges are source coordinates: .plot_data_prior_list.simple() applies the convention
+  automatic_range <- .density.prior_automatic_range(prior_list, xlim, x_seq, individual)
   # get the plotting range
   if(is.null(xlim) & is.null(x_seq)){
     if(prior_type %in% c("weightfunction", "PETPEESE") & !individual){
@@ -59,9 +59,6 @@ lines_prior_list <- function(prior_list, xlim = NULL, x_seq = NULL, x_range_quan
       xlim   <- do.call(rbind, lapply(prior_list, range, quantiles = x_range_quant))
       xlim   <- range(pretty(range(as.vector(xlim))))
     }
-  }
-  if(automatic_range){
-    transformation_settings <- FALSE
   }
 
 
@@ -163,8 +160,8 @@ geom_prior_list  <- function(prior_list, xlim = NULL, x_seq = NULL, x_range_quan
     prior_list <- .plot_prior_list_individual_bias(prior_list)
   }
 
-  automatic_range <- is.null(xlim) && is.null(x_seq) &&
-    !(prior_type %in% c("weightfunction", "PETPEESE") && !individual)
+  # automatic ranges are source coordinates: .plot_data_prior_list.simple() applies the convention
+  automatic_range <- .density.prior_automatic_range(prior_list, xlim, x_seq, individual)
   # get the plotting range
   if(is.null(xlim) & is.null(x_seq)){
     if(prior_type %in% c("weightfunction", "PETPEESE") & !individual){
@@ -173,9 +170,6 @@ geom_prior_list  <- function(prior_list, xlim = NULL, x_seq = NULL, x_range_quan
       xlim   <- do.call(rbind, lapply(prior_list, range, quantiles = x_range_quant))
       xlim   <- range(pretty(range(as.vector(xlim))))
     }
-  }
-  if(automatic_range){
-    transformation_settings <- FALSE
   }
 
 

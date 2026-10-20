@@ -1,8 +1,13 @@
+# The public callers validate the transformation arguments and pass 'automatic_range'
+# (.density.prior_automatic_range(), decided from the supplied ranges). Only direct
+# internal calls use the default, which is therefore evaluated first: 'prior_list' and
+# 'x_range' are reassigned below.
 .plot_data_prior_list.simple         <- function(prior_list, x_seq, x_range, x_range_quant, n_points, n_samples, force_samples, individual,
                                                  transformation, transformation_arguments, transformation_settings,
-                                                 automatic_range = is.null(x_seq) && is.null(x_range)){
+                                                 automatic_range = .density.prior_automatic_range(prior_list, x_range, x_seq, individual)){
 
-  .check_transformation_input(transformation, transformation_arguments, transformation_settings)
+  force(automatic_range)
+  # automatic limits are source coordinates, regardless of the explicit-setting flag
   if(automatic_range){
     transformation_settings <- FALSE
   }

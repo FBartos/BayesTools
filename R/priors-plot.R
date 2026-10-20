@@ -134,33 +134,11 @@ plot.prior <- function(x, plot_type = "base",
   }
 
 
-  # Automatic limits are source coordinates, regardless of explicit-setting flags.
-  automatic_range <- is.null(xlim) && is.null(x_seq) &&
-    !(!individual && (is.prior.PET(x) || is.prior.PEESE(x) || is.prior.weightfunction(x)))
   # get the plotting data
-  if(is.null(xlim) & is.null(x_seq)){
-    if((is.prior.PET(x) | is.prior.PEESE(x) | is.prior.weightfunction(x)) & !individual){
-      xlim   <- c(0, 1)
-    }else if(is.prior.spike_and_slab(x)){
-      xlim   <- range(c(0,range(.get_spike_and_slab_variable(x), quantiles = x_range_quant)))
-      xlim   <- range(pretty(xlim))
-    }else{
-      xlim   <- range(x, quantiles = x_range_quant)
-      xlim   <- range(pretty(xlim))
-    }
-  }
-  if(automatic_range){
-    transformation_settings <- FALSE
-    xlim <- .density.prior_automatic_source_range(x, xlim, x_range_quant,
-                                                 transformation, transformation_arguments)
-  }
-  plot_data <- density(x = x, x_seq = x_seq, x_range = xlim, x_range_quant = x_range_quant,
-                       n_points = n_points, n_samples = n_samples, force_samples = force_samples,
-                       transformation = transformation, transformation_arguments = transformation_arguments,
-                       transformation_settings = transformation_settings, individual = individual)
-  if(automatic_range && !is.null(transformation)){
-    plot_data <- .density.prior_automatic_bounds(plot_data)
-  }
+  plot_data <- .plot_data_prior.single(x, xlim = xlim, x_seq = x_seq, x_range_quant = x_range_quant,
+                                       n_points = n_points, n_samples = n_samples, force_samples = force_samples,
+                                       transformation = transformation, transformation_arguments = transformation_arguments,
+                                       transformation_settings = transformation_settings, individual = individual)
 
 
   # plot a weightfunction
@@ -212,16 +190,6 @@ plot.prior <- function(x, plot_type = "base",
   # plot PET-PEESE
   if((is.prior.PET(x) | is.prior.PEESE(x)) & !individual){
     plots <- .plot.prior.PETPEESE(x = x, plot_type = plot_type, plot_data = plot_data, par_name = par_name, ...)
-    if(plot_type == "ggplot"){
-      return(plots)
-    }else{
-      return(invisible())
-    }
-  }
-
-  # spike and slab prior plots
-  if(is.prior.spike_and_slab(x)){
-    plots <- .plot.prior.spike_and_slab(x = x, plot_type = plot_type, plot_data = plot_data, par_name = par_name, ...)
     if(plot_type == "ggplot"){
       return(plots)
     }else{
@@ -371,6 +339,39 @@ plot.prior_linear_density <- function(x, plot_type = "base", n_points = 1000, xl
   }else{
     return(invisible())
   }
+}
+
+# Plot data of one prior for plot(), lines() and geom_prior(). Mixtures
+# (spike-and-slab priors among them) are dispatched to the prior-list functions
+# before this point. A display range that is neither supplied nor specialized is
+# automatic: it is a window of source coordinates, so 'transformation_settings'
+# does not apply to it (see .density.prior_automatic_range()).
+.plot_data_prior.single <- function(x, xlim, x_seq, x_range_quant, n_points, n_samples, force_samples,
+                                    transformation, transformation_arguments, transformation_settings, individual){
+
+  automatic_range <- .density.prior_automatic_range(list(x), xlim, x_seq, individual)
+  if(is.null(xlim) & is.null(x_seq)){
+    if((is.prior.PET(x) | is.prior.PEESE(x) | is.prior.weightfunction(x)) & !individual){
+      xlim   <- c(0, 1)
+    }else{
+      xlim   <- range(x, quantiles = x_range_quant)
+      xlim   <- range(pretty(xlim))
+    }
+  }
+  if(automatic_range){
+    transformation_settings <- FALSE
+    xlim <- .density.prior_automatic_source_range(x, xlim, x_range_quant,
+                                                 transformation, transformation_arguments)
+  }
+  plot_data <- density(x = x, x_seq = x_seq, x_range = xlim, x_range_quant = x_range_quant,
+                       n_points = n_points, n_samples = n_samples, force_samples = force_samples,
+                       transformation = transformation, transformation_arguments = transformation_arguments,
+                       transformation_settings = transformation_settings, individual = individual)
+  if(automatic_range && !is.null(transformation)){
+    plot_data <- .density.prior_automatic_bounds(plot_data)
+  }
+
+  plot_data
 }
 
 # Individual weight-function indices refer to the publication weights of the
@@ -865,42 +866,6 @@ plot.prior_linear_density <- function(x, plot_type = "base", n_points = 1000, xl
     plot <- plot + .geom_prior.orthonormal_or_meandif(plot_data, ...)
 
   }
-
-  # return the plots
-  if(plot_type == "base"){
-    return(invisible())
-  }else if(plot_type == "ggplot"){
-    return(plot)
-  }
-}
-.plot.prior.spike_and_slab <- function(x, plot_type, plot_data, par_name = NULL, ...){
-
-  # get default plot settings
-  dots      <- list(...)
-
-  xlim      <- attr(plot_data, "x_range")
-  ylim      <- attr(plot_data, "y_range", exact = TRUE)
-
-  short_name      <- if(is.null(dots[["short_name"]]))      FALSE else dots[["short_name"]]
-  parameter_names <- if(is.null(dots[["parameter_names"]])) FALSE else dots[["parameter_names"]]
-  prior_label     <- .plot.prior_label(x, plot_data, short_name, parameter_names)
-
-  main      <- if(!is.null(attr(plot_data, "steps"))) prior_label else ""
-  xlab      <- if(!is.null(attr(plot_data, "steps"))) bquote(omega["["*.(attr(plot_data, "steps")[1])*","~.(attr(plot_data, "steps")[2])*"]"])  else bquote(.(if(!is.null(par_name)){bquote(.(par_name)~"~")})~.(prior_label))
-  ylab      <- "Density"
-
-  # add it to the user input if desired
-  if(is.null(dots[["main"]])) dots$main <-  main
-  if(is.null(dots[["xlab"]])) dots$xlab <-  xlab
-  if(is.null(dots[["ylab"]])) dots$ylab <-  ylab
-  if(is.null(dots[["xlim"]])) dots$xlim <-  xlim
-  if(is.null(dots[["ylim"]])) dots$ylim <-  ylim
-
-  args_prior           <- dots
-  args_prior$plot_data <- plot_data
-  args_prior$plot_type <- plot_type
-
-  plot <- do.call(.plot_prior_list.both, args_prior)
 
   # return the plots
   if(plot_type == "base"){

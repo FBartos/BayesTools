@@ -156,11 +156,7 @@ density.prior <- function(x,
     .prior_stop_unsupported_method("density", x)
   }
 
-  automatic_range <- is.null(x_seq) && is.null(x_range) &&
-    !(!individual && (is.prior.PET(x) || is.prior.PEESE(x) || is.prior.weightfunction(x)))
-  if(automatic_range){
-    transformation_settings <- FALSE
-  }
+  automatic_range <- .density.prior_automatic_range(list(x), x_range, x_seq, individual)
 
   ### setting the range
   # get plotting range if not specified
@@ -187,6 +183,8 @@ density.prior <- function(x,
   }
 
   if(automatic_range){
+    # automatic limits are source coordinates, regardless of the explicit-setting flag
+    transformation_settings <- FALSE
     x_range <- .density.prior_automatic_source_range(x, x_range, x_range_quant,
                                                    transformation, transformation_arguments)
   }
@@ -263,6 +261,23 @@ density.prior <- function(x,
   }
 
   return(out)
+}
+
+# A display range is automatic when neither coordinates (x_range, x_seq) nor a
+# specialized axis fix it: the standard-error axis of a nonindividual PET/PEESE
+# and the p-value axis of a weightfunction keep their own meaning. 'priors' is the
+# list of priors the display range belongs to (list(x) for a single prior). The
+# prior plots and density() share this decision.
+.density.prior_automatic_range <- function(priors, x_range, x_seq, individual){
+
+  if(!is.null(x_range) || !is.null(x_seq)){
+    return(FALSE)
+  }
+  specialized <- !individual && any(vapply(priors, function(prior){
+    is.prior.PET(prior) || is.prior.PEESE(prior) || is.prior.weightfunction(prior)
+  }, logical(1)))
+
+  !specialized
 }
 
 # Automatic display ranges retain their source grid. Only an infinite image

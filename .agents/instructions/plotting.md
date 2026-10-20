@@ -68,9 +68,11 @@ used only by the regression bands (`individual = FALSE`). A list with both PET
 and PEESE priors is refused: its two priors belong to different coefficients.
 
 Prior plot dispatch and layers live in `R/priors-plot.R` and
-`R/priors-plot-layers.R`; `plot.prior_linear_density()` in `R/priors-plot.R`
-draws a prior linear density from `.prior_linear_density_to_plot_data()` through
-`.plot_prior_list.both()`. Model-averaging plot families live in
+`R/priors-plot-layers.R`; `plot()`, `lines()` and `geom_prior()` share the plot
+data of `.plot_data_prior.single()`, and `.density.prior_automatic_range()` is
+the single decision whether a display range is automatic (below).
+`plot.prior_linear_density()` in `R/priors-plot.R` draws a prior linear density
+from `.prior_linear_density_to_plot_data()` through `.plot_prior_list.both()`. Model-averaging plot families live in
 `R/model-averaging-plots*.R`. JAGS diagnostic data and rendering live in
 `R/JAGS-diagnostics.R`. Inspect the current family before adding helpers or
 source files.

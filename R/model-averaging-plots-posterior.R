@@ -593,7 +593,8 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
           .plot_data_prior_list.simple(prior_list, x_seq = NULL, x_range = xlim, x_range_quant = NULL,
                                        n_points = n_points, n_samples = n_samples, force_samples = force_samples, individual = individual,
                                        transformation = transformation, transformation_arguments = transformation_arguments,
-                                       transformation_settings = transformation_settings),
+                                       transformation_settings = transformation_settings,
+                                       automatic_range = .density.prior_automatic_range(prior_list, xlim, NULL, individual)),
           BayesTools_prior_range_unavailable = function(condition){
             # the automatic transformed prior range is unavailable (e.g., a very
             # wide prior under exp): only the prior curve is omitted
