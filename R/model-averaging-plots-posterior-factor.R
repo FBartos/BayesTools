@@ -32,6 +32,7 @@
     .plot_data_stop_unknown_atoms()
   }
   density_bounds <- .posterior_support_bounds(samples, name = parameter, interval_only = TRUE)
+  support_hull   <- .posterior_support_bounds(samples, name = parameter, exact_only = FALSE, interval_only = TRUE)
   parameter_label <- if(is.character(parameter)) parameter else colnames(samples)[parameter]
   # an explicit precomputed request resolves the stored curve of this omega
   # while the parent samples and their condition are available
@@ -65,7 +66,8 @@
         if(is.null(density_bounds)) c(-Inf, Inf) else density_bounds
       },
       transformation           = transformation,
-      transformation_arguments = transformation_arguments
+      transformation_arguments = transformation_arguments,
+      range_bounds             = support_hull
     )
     if(is.null(curve)){
       # no kernel density: the declared point masses are drawn, the curve is omitted
@@ -257,7 +259,13 @@
           density_bounds
         },
         transformation           = transformation,
-        transformation_arguments = transformation_arguments
+        transformation_arguments = transformation_arguments,
+        range_bounds             = .posterior_support_bounds(
+          samples,
+          name = colnames(samples_density)[i],
+          exact_only = FALSE,
+          interval_only = TRUE
+        )
       )
       if(is.null(curve)){
         # no kernel density: the declared point masses of the level are drawn,

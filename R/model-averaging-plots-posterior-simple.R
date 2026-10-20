@@ -452,8 +452,15 @@
 # there is no kernel density (fewer than two distinct draws). The curve and the
 # draws are transformed on the checked grid. Used by every posterior plot of
 # simple, factor and weightfunction-parameter draws.
+#
+# 'range_bounds' (NULL or c(lower, upper), the untransformed hull of the posterior
+# support, also when it is not exact) only limits the evaluation range of the
+# kernel density estimate, per side to the tighter of 'bounds' and the hull. It
+# never reflects the estimate and never closes the curve: reflection and closing
+# points stay tied to 'bounds'.
 .plot_data_posterior_curve <- function(posterior_density, draws, mass, n_points, bounds,
-                                       transformation, transformation_arguments){
+                                       transformation, transformation_arguments,
+                                       range_bounds = NULL){
 
   boundary_reflection <- FALSE
 
@@ -480,7 +487,11 @@
     # Keep evaluation range separate from true support so bounded KDEs can
     # reflect at the support while avoiding transformation singularities.
     density_bounds <- bounds()
-    density_range  <- .plot_data_samples_density_range(density_bounds, transformation)
+    evaluation_bounds <- density_bounds
+    if(!is.null(range_bounds)){
+      evaluation_bounds <- c(max(density_bounds[1], range_bounds[1]), min(density_bounds[2], range_bounds[2]))
+    }
+    density_range  <- .plot_data_samples_density_range(evaluation_bounds, transformation)
 
     # get the density estimate
     density_continuous <- .density_kde_boundary(
@@ -583,7 +594,9 @@
         density_bounds
       },
       transformation           = transformation,
-      transformation_arguments = transformation_arguments
+      transformation_arguments = transformation_arguments,
+      # a hull that is not exact limits the evaluation range, never the reflection
+      range_bounds             = .posterior_support_bounds(samples, exact_only = FALSE, interval_only = TRUE)
     )
     if(is.null(curve)){
       # no kernel density: the declared point masses are drawn, the curve is omitted

@@ -213,7 +213,11 @@ dropped and the plot limits come from the retained curve.
 A posterior KDE that has no exact support takes its reflection bounds from the
 prior of the plotted coordinate only on the fitted scale; a random-effect SD of
 `as_mixed_posteriors(transform_scaled = TRUE)` takes the domain of an SD, `[0, Inf)`,
-not the bounds of its fitted-scale prior. The prior context rebuilt for a prior with
+not the bounds of its fitted-scale prior. The hull of an inexact support
+(`exact = FALSE`, for example a variance share whose atoms the catalog cannot
+derive) only limits the evaluation range of that kernel density, per side to the
+tighter of the hull and the reflection bounds: it is never a reflection bound,
+and the curve gets no closing points from it. The prior context rebuilt for a prior with
 `multiply_by` keeps the fitted block designs.
 The automatic y range of PET-PEESE posterior plots with priors collapses by its
 width (below .01): it is then widened around its values (a collapsed range of

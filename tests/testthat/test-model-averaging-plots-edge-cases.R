@@ -5208,3 +5208,154 @@ test_that("the posterior curve helper of the simple, factor and omega plots keep
   expect_identical(reflected$x[1:2], c(0, 0))
   expect_identical(reflected$y[1], 0)
 })
+
+# The hull of a posterior support that is not exact (here the unit interval of a
+# variance share with undeclared atoms) only limits the evaluation range of the
+# posterior kernel density: it is never a reflection bound, and the curve is not
+# closed at it.
+hull_kde_plot_data <- function(draws, support, transformation = NULL, transformation_arguments = NULL){
+  draws <- attach_test_model_probabilities(draws, 1)
+  draws <- .bt_draws_set_component(draws, source = "model", component = rep(1L, length(draws)))
+  attr(draws, "prior_list") <- prior_none()
+  draws <- .bt_meta_set(draws, "atoms", posterior_atom_attribute())
+  if(!is.null(support)) draws <- .bt_meta_set(draws, "support", support)
+  class(draws) <- c("mixed_posteriors.simple", "mixed_posteriors")
+  BayesTools:::.plot_data_samples.simple(
+    list(theta = draws), "theta", 256, transformation, transformation_arguments, FALSE
+  )$density
+}
+# the Gaussian kernel estimate summed over the draws (and, reflected, over their
+# mirror images at 'reflect'), independent of the binning of stats::density()
+hull_kde_exact <- function(x, draws, bw, reflect = numeric()){
+  vapply(x, function(x_i){
+    mean(stats::dnorm(x_i, draws, bw)) +
+      sum(vapply(reflect, function(bound) mean(stats::dnorm(x_i, 2 * bound - draws, bw)), numeric(1)))
+  }, numeric(1))
+}
+# draws concentrated near both ends of [0, 1]
+hull_draws <- stats::qbeta(stats::ppoints(600), .6, .6)
+
+test_that("an inexact support hull limits the range of the posterior kernel density and does not reflect it", {
+
+  unbounded <- hull_kde_plot_data(hull_draws, NULL)
+  expect_lt(min(unbounded$x), -.2)
+  expect_gt(max(unbounded$x), 1.2)
+
+  inexact <- hull_kde_plot_data(hull_draws, posterior_support_attribute(c(0, 1), exact = FALSE))
+  expect_length(inexact$x, 256L)
+  expect_identical(range(inexact$x), c(0, 1))
+  expect_identical(attr(inexact, "x_range"), c(0, 1))
+  expect_false(isTRUE(attr(inexact, "boundary_reflection")))
+  expect_gt(inexact$y[1L], 0)
+  expect_gt(inexact$y[256L], 0)
+
+  # the unbounded kernel density estimate of the draws on the grid of the hull,
+  # with the bandwidth of the draws
+  reference <- stats::density(hull_draws, n = 256L, from = 0, to = 1)
+  expect_equal(inexact$x, reference$x)
+  expect_equal(inexact$y, reference$y)
+  expect_equal(inexact$y, hull_kde_exact(inexact$x, hull_draws, reference$bw), tolerance = 1e-3)
+  expect_equal(inexact$y, stats::approx(unbounded$x, unbounded$y, xout = inexact$x)$y, tolerance = 1e-2)
+
+  # the hull is on the untransformed coordinate; a transformation keeps its interior
+  transformed <- hull_kde_plot_data(hull_draws, posterior_support_attribute(c(0, 1), exact = FALSE),
+                                    "lin", list(a = 1, b = 2))
+  expect_length(transformed$x, 256L)
+  expect_equal(range(transformed$x), c(1, 3), tolerance = 1e-8)
+  expect_gte(min(transformed$x), 1)
+  expect_lte(max(transformed$x), 3)
+  expect_false(isTRUE(attr(transformed, "boundary_reflection")))
+  expect_equal(transformed$y, inexact$y / 2, tolerance = 1e-6)
+})
+
+test_that("an exact support still reflects and closes the posterior kernel density", {
+
+  inexact <- hull_kde_plot_data(hull_draws, posterior_support_attribute(c(0, 1), exact = FALSE))
+  exact <- hull_kde_plot_data(hull_draws, posterior_support_attribute(c(0, 1)))
+  expect_true(isTRUE(attr(exact, "boundary_reflection")))
+  expect_length(exact$x, 258L)
+  expect_identical(exact$x[1:2], c(0, 0))
+  expect_identical(tail(exact$x, 2L), c(1, 1))
+  expect_identical(exact$y[1L], 0)
+  expect_identical(exact$y[258L], 0)
+  reflected <- BayesTools:::.density_kde_boundary(hull_draws, 256L, from = 0, to = 1, bounds = c(0, 1))
+  expect_identical(exact$y[2:257], reflected$y)
+  expect_equal(
+    exact$y[2:257],
+    hull_kde_exact(exact$x[2:257], hull_draws, stats::bw.nrd0(hull_draws), reflect = c(0, 1)),
+    tolerance = 1e-3
+  )
+  expect_gt(max(exact$y), max(inexact$y))
+})
+
+test_that("an inexact half-bounded support hull limits only its finite end", {
+
+  positive <- stats::qexp(stats::ppoints(400))
+  unbounded <- hull_kde_plot_data(positive, NULL)
+  expect_lt(min(unbounded$x), 0)
+
+  half <- hull_kde_plot_data(positive, posterior_support_attribute(c(0, Inf), exact = FALSE))
+  expect_length(half$x, 256L)
+  expect_identical(min(half$x), 0)
+  expect_identical(max(half$x), max(unbounded$x))
+  expect_false(isTRUE(attr(half, "boundary_reflection")))
+  expect_gt(half$y[1L], 0)
+  reference <- stats::density(positive, n = 256L, from = 0)
+  expect_equal(half$x, reference$x)
+  expect_equal(half$y, reference$y)
+
+  # the same draws with an exact half-bounded support are reflected and closed
+  exact <- hull_kde_plot_data(positive, posterior_support_attribute(c(0, Inf)))
+  expect_true(isTRUE(attr(exact, "boundary_reflection")))
+  expect_identical(exact$x[1:2], c(0, 0))
+  expect_identical(exact$y[1L], 0)
+  expect_gt(exact$y[2L], half$y[1L])
+})
+
+test_that("an inexact support hull limits the factor and omega posterior kernel densities alike", {
+
+  inexact <- posterior_support_attribute(c(0, 1), exact = FALSE)
+
+  # factor: each level takes the hull of its own column
+  factor_samples <- cbind(`theta[A]` = hull_draws, `theta[B]` = rev(hull_draws)^2)
+  factor_prior <- prior_factor("normal", list(.5, .5), contrast = "independent")
+  attr(factor_prior, "levels") <- 2
+  attr(factor_prior, "level_names") <- c("A", "B")
+  attr(factor_samples, "prior_list") <- factor_prior
+  factor_samples <- attach_test_model_probabilities(factor_samples, 1)
+  factor_samples <- .bt_draws_set_component(factor_samples, source = "model", component = rep(1, nrow(factor_samples)))
+  factor_samples <- .bt_meta_set(factor_samples, "atoms", posterior_atom_attribute())
+  factor_samples <- .bt_meta_set(factor_samples, "support", list(`theta[A]` = inexact, `theta[B]` = inexact))
+  class(factor_samples) <- c("mixed_posteriors", "mixed_posteriors.factor", "mixed_posteriors.vector", "matrix")
+  factor_data <- BayesTools:::.plot_data_samples.factor(list(theta = factor_samples), "theta", 256, NULL, NULL, FALSE)
+  for(level in 1:2){
+    density <- factor_data[[paste0("density", level)]]
+    expect_length(density$x, 256L)
+    expect_identical(range(density$x), c(0, 1))
+    expect_false(isTRUE(attr(density, "boundary_reflection")))
+    reference <- stats::density(factor_samples[, level], n = 256L, from = 0, to = 1)
+    expect_equal(density$x, reference$x)
+    expect_equal(density$y, reference$y)
+  }
+
+  # omega: the column of the weight function
+  omega_samples <- cbind("omega[0,0.05]" = rep(1, length(hull_draws)), "omega[0.05,1]" = hull_draws)
+  attr(omega_samples, "prior_list") <- list(
+    prior_weightfunction("one-sided", c(.05), wf_independent(prior("beta", list(.6, .6))))
+  )
+  omega_samples <- attach_test_model_probabilities(omega_samples, 1)
+  omega_samples <- .bt_draws_set_component(omega_samples, source = "model", component = rep(1, nrow(omega_samples)))
+  pair <- .bt_meta_get(omega_samples, "model_probabilities")$posterior
+  omega_samples <- .posterior_weightfunction_declarations(omega_samples,
+    attr(omega_samples, "prior_list"), pair$probabilities, posterior_pair = pair)
+  omega_data <- BayesTools:::.plot_data_samples.weightparameter(list(omega = omega_samples), "omega[0.05,1]", 256)
+  expect_true(isTRUE(attr(omega_data$density, "boundary_reflection")))
+  omega_samples <- .bt_meta_set(omega_samples, "support", list(`omega[0.05,1]` = inexact))
+  omega_data <- BayesTools:::.plot_data_samples.weightparameter(list(omega = omega_samples), "omega[0.05,1]", 256)
+  expect_length(omega_data$density$x, 256L)
+  expect_identical(range(omega_data$density$x), c(0, 1))
+  expect_false(isTRUE(attr(omega_data$density, "boundary_reflection")))
+  omega_reference <- stats::density(hull_draws, n = 256L, from = 0, to = 1)
+  expect_equal(omega_data$density$x, omega_reference$x)
+  expect_equal(omega_data$density$y, omega_reference$y)
+})
