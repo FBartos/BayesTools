@@ -2168,7 +2168,9 @@ test_that("new-row source capability is typed across public prediction targets",
   term <- result$formula_design$random_effects[[1L]]
   latent_names <- as.vector(BayesTools:::.bt_random_effect_latent_names(
     term, term$n_groups, term$n_columns))
-  posterior <- matrix(c(0, 2, 4, 6, 8, 1, 3), nrow = 1L,
+  # a nonzero fixed part: new rows set to zero keep it, only their random effect is zero
+  intercept <- 10
+  posterior <- matrix(c(intercept, 2, 4, 6, 8, 1, 3), nrow = 1L,
     dimnames = list(NULL, c("mu_intercept", paste0("tau[", 1:4, "]"), latent_names)))
   make_fit <- function(p = posterior, design = result$formula_design){
     fit <- coda::mcmc(p)
@@ -2231,9 +2233,9 @@ test_that("new-row source capability is typed across public prediction targets",
     expect_false(inherits(condition, "BayesTools_prediction_unavailable"))
   }
 
-  # new_levels = "zero": the new rows contribute 0 and use no source, so no row source is
-  # needed for them; their entries of fitted_rows are ignored (but still validated) and the
-  # existing row keeps the value it has without the new rows
+  # new_levels = "zero": the random effect of the new rows is 0 (their fixed part stays) and
+  # uses no source, so no row source is needed for them; their entries of fitted_rows are
+  # ignored (but still validated) and the existing row keeps the value it has without them
   for(mode in names(contexts)){
     existing_only <- call_prediction(mode, data = new_data[1L, , drop = FALSE],
       fitted_rows = 1L, new_levels = "zero")
@@ -2242,7 +2244,7 @@ test_that("new-row source capability is typed across public prediction targets",
       expect_s3_class(zeroed, "BayesTools_formula_prediction")
       expect_identical(dim(zeroed$value), c(3L, 1L))
       expect_equal(zeroed$value[1L, ], existing_only$value[1L, ], tolerance = 1e-12)
-      expect_identical(unname(zeroed$value[2:3, ]), c(0, 0))
+      expect_identical(unname(zeroed$value[2:3, ]), c(intercept, intercept))
       if(identical(mode, "covariance")){
         expect_equal(zeroed$vcov$samples[1L, 1L, 1L], existing_only$vcov$samples[1L, 1L, 1L],
           tolerance = 1e-12)
@@ -2284,7 +2286,7 @@ test_that("new-row source capability is typed across public prediction targets",
         fitted_rows = c(1L, 4L, 4L), new_levels = "zero")
       expect_s3_class(zeroed, "BayesTools_formula_prediction")
       expect_equal(zeroed$value[1L, ], existing_only$value[1L, ], tolerance = 1e-12)
-      expect_identical(unname(zeroed$value[2:3, ]), c(0, 0))
+      expect_identical(unname(zeroed$value[2:3, ]), c(intercept, intercept))
       if(identical(mode, "covariance")){
         expect_equal(zeroed$vcov$samples[1L, 1L, 1L], existing_only$vcov$samples[1L, 1L, 1L],
           tolerance = 1e-12)
