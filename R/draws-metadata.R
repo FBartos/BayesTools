@@ -789,11 +789,13 @@
   entry <- unavailable[which(selected)[1L], , drop = FALSE]
   cause <- if("cause" %in% names(entry) && !is.na(entry$cause)) entry$cause else entry$reason
   diagnostics <- if("diagnostics" %in% names(entry)) entry$diagnostics[[1L]] else NULL
+  # the stored reasons are sentences; the message adds its own full stop and 'detail' keeps the raw reason
+  reason <- sub("[.]+$", "", entry$reason)
   if(identical(measure, "prior_density")) .bt_formula_density_stop(
-    paste0("Prior density for '", entry$column, "' is unavailable: ", entry$reason, "."),
+    paste0("Prior density for '", entry$column, "' is unavailable: ", reason, "."),
     target = entry$column, reason = cause, detail = entry$reason, diagnostics = diagnostics)
-  stop(errorCondition(paste0("Formula ", measure, " for '", entry$column,
-    "' are unavailable: ", entry$reason, "."), call = NULL,
+  stop(errorCondition(paste0("Formula ", measure, " for '", entry$column, "' ",
+    if(identical(measure, "support")) "is" else "are", " unavailable: ", reason, "."), call = NULL,
     class = c(paste0("BayesTools_formula_", measure, "_unavailable"),
       if(cause %in% .bt_formula_measure_causes) "BayesTools_formula_measure_unavailable"),
     target = entry$column, reason = cause, detail = entry$reason, diagnostics = diagnostics))

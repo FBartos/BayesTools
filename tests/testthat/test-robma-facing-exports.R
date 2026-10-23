@@ -289,6 +289,31 @@ test_that("posterior_measure_check() raises the declared typed refusals", {
   expect_true(posterior_measure_check(vector_draws, "atoms"))
 })
 
+test_that("posterior_measure_check() messages end in one full stop and agree in number", {
+
+  # a stored reason that is already a sentence adds no second full stop; 'detail' keeps the raw reason
+  draws <- c(.1, .2, .3)
+  attr(draws, "parameter") <- "a"
+  posterior_metadata(draws, "measure_unavailable") <- data.frame(
+    column  = "a",
+    measure = c("atoms", "support", "prior_density"),
+    reason  = c("atoms refused.", "support refused.", "density refused."),
+    stringsAsFactors = FALSE
+  )
+  refusal <- function(measure) tryCatch(posterior_measure_check(draws, measure), error = identity)
+
+  atoms <- refusal("atoms")
+  expect_identical(conditionMessage(atoms), "Formula atoms for 'a' are unavailable: atoms refused.")
+  expect_identical(atoms$detail, "atoms refused.")
+  support <- refusal("support")
+  expect_identical(conditionMessage(support), "Formula support for 'a' is unavailable: support refused.")
+  expect_identical(support$detail, "support refused.")
+  density <- refusal("prior_density")
+  expect_identical(conditionMessage(density), "Prior density for 'a' is unavailable: density refused.")
+  expect_identical(density$detail, "density refused.")
+  expect_identical(density$reason, "density refused.")
+})
+
 test_that("posterior_measure_check() validates its arguments", {
 
   draws <- c(.1, .2)
