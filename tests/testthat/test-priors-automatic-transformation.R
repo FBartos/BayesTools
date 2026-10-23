@@ -214,6 +214,27 @@ test_that("a spike-and-slab prior without inclusion mass maps its slab under a l
   }
 })
 
+test_that("a spike-and-slab prior without inclusion mass drops its inclusion layer under every transformation", {
+  slab <- automatic_halfnormal()
+  without_mass <- prior_spike_and_slab(slab, prior("bernoulli", list(1)))
+  half_mass <- prior_spike_and_slab(slab, prior("bernoulli", list(.5)))
+  for(transformation in c("exp", "tanh")){
+    reference <- density(slab, transformation = transformation, n_points = 30)
+    d <- density(without_mass, transformation = transformation, n_points = 30)
+    expect_s3_class(d, "density.prior.spike_and_slab")
+    expect_null(d$inclusion)
+    expect_equal(d$variable$x, reference$x, tolerance = 1e-13)
+    expect_equal(d$variable$y, reference$y, tolerance = 1e-13)
+    expect_equal(attr(d, "x_range"), attr(reference, "x_range"), tolerance = 1e-13)
+
+    # a spike with mass keeps its layer wherever the image of its location exists
+    d <- density(half_mass, transformation = transformation, n_points = 30)
+    expect_equal(d$inclusion$x, if(transformation == "exp") exp(0) else tanh(0))
+    expect_equal(d$inclusion$y, .5)
+    expect_equal(d$variable$y, .5 * reference$y, tolerance = 1e-13)
+  }
+})
+
 test_that("automatic derivation validates supplied transformation settings", {
   p <- automatic_halfnormal()
   for(bad in list(NA, 1, c(TRUE, FALSE))){

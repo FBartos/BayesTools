@@ -2299,6 +2299,48 @@ test_that("new-row source capability is typed across public prediction targets",
     }
   }
 
+  # a policy declared on the term acts as the override does, and the rows of new levels
+  # may stand anywhere among the existing rows: the existing rows keep their values,
+  # which are those of the existing-only call, and the new rows keep the fixed part
+  term_zero <- JAGS_formula(~ 1 + random(1 | id, name = "id", covariance = "diag"),
+    parameter = "mu", data = df,
+    prior_list = list(intercept = prior("normal", list(0, 1))),
+    prior_random = prior_random(id = random_block(
+      sd_source = random_sd_source("tau", shape = "row"),
+      new_levels = random_new_levels("zero"))))
+  mixed <- data.frame(id = factor(c("new", "a", "new", "b"), levels = c("a", "b", "new")))
+  mixed_rows <- c(4L, 1L, 4L, 3L)
+  for(mode in names(contexts)){
+    existing_only <- call_prediction(mode, data = mixed[c(2L, 4L), , drop = FALSE],
+      fitted_rows = mixed_rows[c(2L, 4L)], new_levels = "zero")
+    for(policy in c("override", "term")){
+      mixed_zero <- if(identical(policy, "override")){
+        call_prediction(mode, data = mixed, fitted_rows = mixed_rows, new_levels = "zero")
+      }else{
+        call_prediction(mode, fit = make_fit(posterior, term_zero$formula_design),
+          data = mixed, fitted_rows = mixed_rows, priors = term_zero$prior_list,
+          new_levels = NULL)
+      }
+      expect_identical(dim(mixed_zero$value), c(4L, 1L))
+      expect_equal(as.vector(mixed_zero$value[c(2L, 4L), , drop = FALSE]),
+        as.vector(existing_only$value), tolerance = 1e-12)
+      expect_identical(as.vector(mixed_zero$value[c(1L, 3L), , drop = FALSE]),
+        c(intercept, intercept))
+      if(identical(mode, "conditional")){
+        expect_equal(as.vector(mixed_zero$value), intercept + c(0, 1 * 2, 0, 3 * 6),
+          tolerance = 1e-12)
+      }
+      if(identical(mode, "covariance")){
+        expect_equal(unname(mixed_zero$vcov$samples[1L, , ]), diag(c(0, 2^2, 0, 6^2)),
+          tolerance = 1e-12)
+      }
+    }
+  }
+  # without a declared policy and without an override, the new rows are refused by the policy
+  condition <- tryCatch(call_prediction("covariance", data = mixed, fitted_rows = mixed_rows,
+    new_levels = NULL), error = identity)
+  expect_match(conditionMessage(condition), "New random-effect level(s) for block 'id'", fixed = TRUE)
+
   missing_latent <- posterior[, !colnames(posterior) %in% latent_names, drop = FALSE]
   condition <- tryCatch(call_prediction("conditional", fit = make_fit(missing_latent),
     data = df[c(4L, 2L, 2L), , drop = FALSE], fitted_rows = c(4L, 2L, 2L)),
