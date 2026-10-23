@@ -283,6 +283,24 @@ test_that("spike-and-slab density scales slab density and spike mass", {
 })
 
 
+test_that("spike-and-slab density without a transformation keeps a zero-height inclusion point", {
+  slab <- prior("normal", list(mean = 0, sd = 1), list(0, Inf))
+  p <- prior_spike_and_slab(slab, prior("bernoulli", list(1)))
+  x_seq <- c(0, .5, 1)
+
+  d <- density(p, x_seq = x_seq, force_samples = FALSE, truncate_end = FALSE)
+
+  expect_s3_class(d, "density.prior.spike_and_slab")
+  expect_equal(d$variable$y, 2 * stats::dnorm(x_seq))
+  expect_equal(d$inclusion$x, 0)
+  expect_equal(d$inclusion$y, 0)
+  expect_equal(attr(d$inclusion, "y_range"), c(0, 0))
+  expect_equal(attr(d, "y_range_inclusion"), c(0, 0))
+  printed <- utils::capture.output(print(d))
+  expect_false(any(grepl("zero prior mass", printed, fixed = TRUE)))
+})
+
+
 test_that("boundary KDE validates explicit support bounds", {
   expect_error(
     BayesTools:::.density_kde_boundary(1:5, n = 32, bounds = c(1, 0)),

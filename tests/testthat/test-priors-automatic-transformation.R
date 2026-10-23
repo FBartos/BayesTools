@@ -180,6 +180,40 @@ test_that("automatic endpoint selection never moves an invalid atom", {
                class = "BayesTools_transformation_image_unavailable")
 })
 
+test_that("a spike-and-slab prior without inclusion mass maps its slab under a log transformation", {
+  slab <- automatic_halfnormal()
+  reference <- density(slab, transformation = automatic_log_map, n_points = 30)
+  for(inclusion in list(prior("bernoulli", list(1)), prior("spike", list(1)))){
+    p <- prior_spike_and_slab(slab, inclusion)
+    for(settings in c(FALSE, TRUE)){
+      d <- density(p, transformation = automatic_log_map, transformation_settings = settings, n_points = 30)
+      expect_s3_class(d, "density.prior.spike_and_slab")
+      # the spike holds no mass: its layer is not built and needs no image of zero
+      expect_null(d$inclusion)
+      expect_null(attr(d, "y_range_inclusion", exact = TRUE))
+      expect_equal(d$variable$x, reference$x, tolerance = 1e-13)
+      expect_equal(d$variable$y, reference$y, tolerance = 1e-13)
+      expect_equal(d$variable$y, 2 * dnorm(exp(d$variable$x)) * exp(d$variable$x), tolerance = 1e-13)
+      expect_equal(attr(d, "x_range"), attr(reference, "x_range"), tolerance = 1e-13)
+      expect_equal(attr(d, "y_range_variable"), attr(reference, "y_range"), tolerance = 1e-13)
+    }
+    printed <- utils::capture.output(returned <- print(d))
+    expect_identical(returned, d)
+    expect_true(any(grepl("zero prior mass", printed, fixed = TRUE)))
+  }
+
+  # a spike with prior mass, also the pure spike, keeps the refusal of the image of zero
+  for(inclusion in c(.999, .5, 0)){
+    error <- tryCatch(
+      density(prior_spike_and_slab(slab, prior("bernoulli", list(inclusion))),
+              transformation = automatic_log_map, n_points = 30),
+      error = identity)
+    expect_s3_class(error, "BayesTools_transformation_image_unavailable")
+    expect_equal(error$source_values, 0)
+    expect_equal(error$images, -Inf)
+  }
+})
+
 test_that("automatic derivation validates supplied transformation settings", {
   p <- automatic_halfnormal()
   for(bad in list(NA, 1, c(TRUE, FALSE))){

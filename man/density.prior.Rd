@@ -106,6 +106,13 @@ A supported scalar point total times a random allocation share has a
 continuous scaled-Beta distribution at intermediate levels, with declared
 atoms retained for zero-total branches, reference levels, fixed shares,
 and the full-total level.
+A spike-and-slab prior returns a list of class
+\code{density.prior.spike_and_slab} with the slab density (\code{variable})
+and the density of the spike at zero (\code{inclusion}), each scaled by its
+prior mass. Under a \code{transformation}, a prior with inclusion probability
+1 has no prior mass in the spike, returns \code{inclusion = NULL}, and does
+not require a representable image of the spike location (for example
+\code{log(0)}); any other inclusion probability does.
 }
 \description{
 Computes density of a prior

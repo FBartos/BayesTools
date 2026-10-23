@@ -75,6 +75,13 @@
 #' continuous scaled-Beta distribution at intermediate levels, with declared
 #' atoms retained for zero-total branches, reference levels, fixed shares,
 #' and the full-total level.
+#' A spike-and-slab prior returns a list of class
+#' \code{density.prior.spike_and_slab} with the slab density (\code{variable})
+#' and the density of the spike at zero (\code{inclusion}), each scaled by its
+#' prior mass. Under a \code{transformation}, a prior with inclusion probability
+#' 1 has no prior mass in the spike, returns \code{inclusion = NULL}, and does
+#' not require a representable image of the spike location (for example
+#' \code{log(0)}); any other inclusion probability does.
 #'
 #' @details Sample-based density estimates for continuous priors with finite
 #' support use boundary-reflected kernel density estimates. The plotting range
@@ -1750,15 +1757,24 @@ density.prior <- function(x,
 }
 .density.prior.spike_and_slab         <- function(x, x_seq, x_range, n_points, n_samples, force_samples, transformation, transformation_arguments, truncate_end){
 
-  density_variable  <- .density.prior.simple(.get_spike_and_slab_variable(x), x_seq, x_range, n_points, n_samples, force_samples, transformation, transformation_arguments, truncate_end)
-  density_inclusion <- .density.prior.point(prior(distribution = "spike", parameters = list(location = 0)), x_seq, x_range, n_points, n_samples, force_samples, transformation, transformation_arguments)
-
   inclusion_prob <- mean(.get_spike_and_slab_inclusion(x))
-  density_variable$y  <- density_variable[["y"]]  * inclusion_prob
-  density_inclusion$y <- density_inclusion[["y"]] * (1 - inclusion_prob)
 
-  attr(density_variable,  "y_range") <- attr(density_variable, "y_range", exact = TRUE)  * inclusion_prob
-  attr(density_inclusion, "y_range") <- attr(density_inclusion, "y_range", exact = TRUE) * (1 - inclusion_prob)
+  # The inclusion layer is the spike at zero with the prior mass 1 - inclusion_prob.
+  # Under a transformation, a layer without mass (inclusion probability 1) is not
+  # built, so that the pure slab does not need a representable image of the spike
+  # location (e.g., log(0)); without a transformation, it stays a zero-height point.
+  zero_mass_inclusion <- !is.null(transformation) && inclusion_prob >= 1
+
+  density_variable  <- .density.prior.simple(.get_spike_and_slab_variable(x), x_seq, x_range, n_points, n_samples, force_samples, transformation, transformation_arguments, truncate_end)
+  density_inclusion <- if(zero_mass_inclusion) NULL else
+    .density.prior.point(prior(distribution = "spike", parameters = list(location = 0)), x_seq, x_range, n_points, n_samples, force_samples, transformation, transformation_arguments)
+
+  density_variable$y <- density_variable[["y"]] * inclusion_prob
+  attr(density_variable, "y_range") <- attr(density_variable, "y_range", exact = TRUE) * inclusion_prob
+  if(!is.null(density_inclusion)){
+    density_inclusion$y <- density_inclusion[["y"]] * (1 - inclusion_prob)
+    attr(density_inclusion, "y_range") <- attr(density_inclusion, "y_range", exact = TRUE) * (1 - inclusion_prob)
+  }
 
   # create the output object
   out <- list(
@@ -1769,6 +1785,7 @@ density.prior <- function(x,
 
 
   # the specific class first, so that its print method precedes print.density
+  # (a NULL inclusion layer has no attributes and drops out of the ranges)
   class(out) <- c("density.prior.spike_and_slab", "density")
   attr(out, "x_range") <- range(c(attr(density_variable, "x_range"), attr(density_inclusion, "x_range")))
   attr(out, "y_range_variable")  <- attr(density_variable,  "y_range", exact = TRUE)
@@ -1787,7 +1804,11 @@ print.density.prior.spike_and_slab <- function(x, ...){
   cat("\nVariable (slab):\n")
   print(x[["variable"]], ...)
   cat("\nInclusion:\n")
-  print(x[["inclusion"]], ...)
+  if(is.null(x[["inclusion"]])){
+    cat("zero prior mass (the inclusion probability is 1), not computed\n")
+  }else{
+    print(x[["inclusion"]], ...)
+  }
 
   invisible(x)
 }
