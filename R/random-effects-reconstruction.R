@@ -1103,6 +1103,18 @@
   fitted_rows
 }
 
+# The prediction data of the rows that contribute to a block. The rows of new
+# levels set to zero contribute nothing and are left out, so that their row
+# source is not evaluated; data that are not a data frame are not subset.
+.bt_random_effect_source_data_rows <- function(source_data, rows){
+
+  if(is.data.frame(source_data)){
+    return(source_data[rows, , drop = FALSE])
+  }
+
+  source_data
+}
+
 .bt_random_effect_row_indexed_source <- function(random_term){
 
   binding <- random_term$sd_binding

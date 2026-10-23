@@ -428,20 +428,36 @@ JAGS_predict_formula <- function(fit, parameter, formula = NULL, data = NULL,
         call. = FALSE
       )
     }
-    rows <- seq_len(nrow(block_data$model_matrix))
+    n_block_rows <- nrow(block_data$model_matrix)
     if(any(new_row) && identical(block_new_levels$method, "zero")){
-      rows <- rows[!new_row]
+      # the rows of new levels contribute 0: the block is drawn for the other rows
+      # only, so that no row source is evaluated for the new rows
+      rows <- which(!new_row)
+      contribution <- matrix(0, nrow = n_block_rows, ncol = nrow(posterior))
+      if(length(rows) > 0L){
+        contribution[rows, ] <- .bt_random_effect_group_contribution_sample(
+          random_term = random_term,
+          model_matrix = block_data$model_matrix[rows, , drop = FALSE],
+          group_map = block_data$group_map[rows],
+          rows = seq_along(rows),
+          posterior = posterior,
+          prior_list = prior_list,
+          source_data = .bt_random_effect_source_data_rows(block_data$source_data, rows),
+          prediction_rows = if(is.null(prediction_rows)) NULL else prediction_rows[rows]
+        )
+      }
+    }else{
+      contribution <- .bt_random_effect_group_contribution_sample(
+        random_term = random_term,
+        model_matrix = block_data$model_matrix,
+        group_map = block_data$group_map,
+        rows = seq_len(n_block_rows),
+        posterior = posterior,
+        prior_list = prior_list,
+        source_data = block_data$source_data,
+        prediction_rows = prediction_rows
+      )
     }
-    contribution <- .bt_random_effect_group_contribution_sample(
-      random_term = random_term,
-      model_matrix = block_data$model_matrix,
-      group_map = block_data$group_map,
-      rows = rows,
-      posterior = posterior,
-      prior_list = prior_list,
-      source_data = block_data$source_data,
-      prediction_rows = prediction_rows
-    )
     if(is.null(output)){
       output <- contribution
     }else{

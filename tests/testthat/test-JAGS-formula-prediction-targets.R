@@ -2265,6 +2265,38 @@ test_that("new-row source capability is typed across public prediction targets",
     expect_match(conditionMessage(condition), "New random-effect level(s) for block 'id'", fixed = TRUE)
   }
 
+  # the source is read only for the rows that contribute: a missing or an invalid source
+  # value at the placeholder row of the new rows (fitted row 4) is never touched under
+  # "zero", while "sample" needs it and keeps the typed refusal
+  negative <- posterior
+  negative[, "tau[4]"] <- -1
+  infinite <- posterior
+  infinite[, "tau[4]"] <- Inf
+  unreadable <- list(
+    absent   = posterior[, colnames(posterior) != "tau[4]", drop = FALSE],
+    negative = negative,
+    infinite = infinite)
+  for(mode in names(contexts)){
+    existing_only <- call_prediction(mode, data = new_data[1L, , drop = FALSE],
+      fitted_rows = 1L, new_levels = "zero")
+    for(bad in names(unreadable)){
+      zeroed <- call_prediction(mode, fit = make_fit(unreadable[[bad]]),
+        fitted_rows = c(1L, 4L, 4L), new_levels = "zero")
+      expect_s3_class(zeroed, "BayesTools_formula_prediction")
+      expect_equal(zeroed$value[1L, ], existing_only$value[1L, ], tolerance = 1e-12)
+      expect_identical(unname(zeroed$value[2:3, ]), c(0, 0))
+      if(identical(mode, "covariance")){
+        expect_equal(zeroed$vcov$samples[1L, 1L, 1L], existing_only$vcov$samples[1L, 1L, 1L],
+          tolerance = 1e-12)
+        expect_identical(sum(abs(zeroed$vcov$samples[, -1L, ])) +
+          sum(abs(zeroed$vcov$samples[, 1L, -1L])), 0)
+      }
+      condition <- tryCatch(call_prediction(mode, fit = make_fit(unreadable[[bad]]),
+        fitted_rows = c(1L, 4L, 4L), new_levels = "sample"), error = identity)
+      expect_s3_class(condition, "BayesTools_prediction_new_rows_unavailable")
+    }
+  }
+
   missing_latent <- posterior[, !colnames(posterior) %in% latent_names, drop = FALSE]
   condition <- tryCatch(call_prediction("conditional", fit = make_fit(missing_latent),
     data = df[c(4L, 2L, 2L), , drop = FALSE], fitted_rows = c(4L, 2L, 2L)),

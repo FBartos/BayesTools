@@ -1750,24 +1750,33 @@ random_effects_marginal_variance_factors <- function(
       block_data = block_data,
       new_levels = block_new_levels
     )
-    block_output <- .bt_random_effect_marginal_covariance_block_samples(
-      random_term = random_term,
-      model_matrix = block_data$model_matrix,
-      group_map = block_data$group_map,
-      source_data = block_data$source_data,
-      prediction_rows = prediction_rows,
-      posterior = posterior,
-      prior_list = prior_list,
-      diagonal_only = diagonal_only
-    )
-    if(any(new_level_info$row_mask) &&
-       identical(block_new_levels$method, "zero")){
-      if(isTRUE(diagonal_only)){
-        block_output$samples[, new_level_info$row_mask] <- 0
-      }else{
-        block_output$samples[, new_level_info$row_mask, ] <- 0
-        block_output$samples[, , new_level_info$row_mask] <- 0
-      }
+    block_output <- if(any(new_level_info$row_mask) &&
+                       identical(block_new_levels$method, "zero")){
+      # rows of new levels have zero covariance with every row: only the other
+      # rows are computed, so that no row source is evaluated for the new rows
+      .bt_random_effect_marginal_covariance_zeroed_block_samples(
+        random_term = random_term,
+        model_matrix = block_data$model_matrix,
+        group_map = block_data$group_map,
+        source_data = block_data$source_data,
+        prediction_rows = prediction_rows,
+        posterior = posterior,
+        prior_list = prior_list,
+        diagonal_only = diagonal_only,
+        contributing = which(!new_level_info$row_mask),
+        row_names = block_data$row_names
+      )
+    }else{
+      .bt_random_effect_marginal_covariance_block_samples(
+        random_term = random_term,
+        model_matrix = block_data$model_matrix,
+        group_map = block_data$group_map,
+        source_data = block_data$source_data,
+        prediction_rows = prediction_rows,
+        posterior = posterior,
+        prior_list = prior_list,
+        diagonal_only = diagonal_only
+      )
     }
     if(is.null(samples)){
       samples <- block_output$samples
@@ -2309,6 +2318,58 @@ random_effects_marginal_variance_factors <- function(
     "'.",
     call. = FALSE
   )
+}
+
+# Block samples of a prediction whose rows of new levels are set to zero: the
+# block is computed for the contributing rows and embedded in zeros, with the
+# dimensions and row names of the full block.
+.bt_random_effect_marginal_covariance_zeroed_block_samples <- function(
+    random_term,
+    model_matrix,
+    group_map,
+    source_data,
+    prediction_rows,
+    posterior,
+    prior_list,
+    diagonal_only,
+    contributing,
+    row_names){
+
+  n_draws <- nrow(posterior)
+  n_rows <- nrow(model_matrix)
+  samples <- if(isTRUE(diagonal_only)){
+    matrix(
+      0,
+      nrow = n_draws,
+      ncol = n_rows,
+      dimnames = list(draw = NULL, row = row_names)
+    )
+  }else{
+    array(
+      0,
+      dim = c(n_draws, n_rows, n_rows),
+      dimnames = list(draw = NULL, row = row_names, column = row_names)
+    )
+  }
+  if(length(contributing) > 0L){
+    block_output <- .bt_random_effect_marginal_covariance_block_samples(
+      random_term = random_term,
+      model_matrix = model_matrix[contributing, , drop = FALSE],
+      group_map = group_map[contributing],
+      source_data = .bt_random_effect_source_data_rows(source_data, contributing),
+      prediction_rows = if(is.null(prediction_rows)) NULL else prediction_rows[contributing],
+      posterior = posterior,
+      prior_list = prior_list,
+      diagonal_only = diagonal_only
+    )
+    if(isTRUE(diagonal_only)){
+      samples[, contributing] <- block_output$samples
+    }else{
+      samples[, contributing, contributing] <- block_output$samples
+    }
+  }
+
+  list(samples = samples, sample_dim = dim(samples))
 }
 
 .bt_random_effect_marginal_covariance_block_samples <- function(
