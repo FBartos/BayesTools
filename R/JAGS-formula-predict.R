@@ -35,8 +35,10 @@
 #' `BayesTools_prediction_new_rows_unavailable` (parent
 #' `BayesTools_prediction_unavailable`), with `reason = "posterior_indexed_row_source"`,
 #' `block`, the displayed `source` label, affected prediction `rows`, and caller
-#' `context`. Missing or malformed mappings, invalid source values, and missing
-#' monitored columns retain their own errors.
+#' `context`. It applies where the source of the new rows is needed, under
+#' `new_levels = "sample"`; with `new_levels = "zero"` the new rows contribute
+#' zero and need no source. Missing or malformed mappings, invalid source values,
+#' and missing monitored columns retain their own errors.
 #' Literal \code{expression()} terms use the replayable subset documented by
 #' [JAGS_formula()] and are evaluated against prediction data using JAGS-style
 #' row indexing through \code{i}.
@@ -84,7 +86,9 @@
 #' to fitted observation indices. It is required whenever `data` is supplied
 #' and a selected random-effect block uses a posterior-indexed row source.
 #' Reordering and duplicate indices are supported. Callback-computed row
-#' sources do not use this mapping.
+#' sources do not use this mapping. The entries of rows of new random-effect
+#' levels predicted with `new_levels = "zero"` are ignored, because those rows
+#' contribute zero; they must still be valid fitted observation indices.
 #' @param prior_list named list of prior distribution of parameters specified
 #' within the \code{formula}. If `NULL`, fitted priors from `formula_design`
 #' metadata are used.

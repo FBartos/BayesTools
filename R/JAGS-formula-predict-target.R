@@ -9,8 +9,11 @@
 #' `BayesTools_prediction_new_rows_unavailable` (parent
 #' `BayesTools_prediction_unavailable`), with `reason = "posterior_indexed_row_source"`,
 #' `block`, displayed `source` label, affected prediction `rows`, and caller
-#' `context`. This applies to conditional and both marginal targets; mapping,
-#' source-value, and monitoring errors retain their existing conditions.
+#' `context`. This applies to conditional and both marginal targets where the
+#' source of the new rows is needed, under `new_levels = "sample"`; with
+#' `new_levels = "zero"` the new rows contribute zero and need no source.
+#' Mapping, source-value, and monitoring errors retain their existing
+#' conditions.
 #'
 #' @param fit model fitted with [JAGS_fit()], or posterior draws carrying the
 #' formula design of \code{parameter} ([JAGS_formula_draws()]).
@@ -24,7 +27,10 @@
 #' @param fitted_rows optional integer vector mapping supplied prediction rows
 #' to fitted observation indices. It is required for selected
 #' posterior-indexed row sources. Reordering and duplicate indices are
-#' supported; callback-computed row sources do not use it.
+#' supported; callback-computed row sources do not use it. The entries of rows
+#' of new random-effect levels predicted with `new_levels = "zero"` are
+#' ignored, because those rows contribute zero; they must still be valid fitted
+#' observation indices.
 #' @param prior_list optional named prior list. If `NULL`, fitted priors are
 #' used.
 #' @param formula_target prediction target: `"conditional"`, `"fixed"`, or
@@ -399,12 +405,14 @@ JAGS_predict_formula <- function(fit, parameter, formula = NULL, data = NULL,
       )
     )
     prediction_rows <- if(.bt_random_effect_has_row_indexed_external_sd(random_term)){
+      # new rows need the row source only where the new-level policy samples them;
+      # under "zero" they contribute 0 and their 'fitted_rows' entries are ignored
       .bt_random_effect_prediction_fitted_rows(
         random_term = random_term,
         n_rows = nrow(block_data$model_matrix),
         data_supplied = block_data$data_supplied,
         fitted_rows = fitted_rows,
-        new_row = new_row,
+        new_row = new_row & identical(block_new_levels$method, "sample"),
         context = "Marginal random-effect prediction"
       )
     }else{

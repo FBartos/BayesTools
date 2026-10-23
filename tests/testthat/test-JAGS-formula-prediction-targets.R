@@ -1138,6 +1138,8 @@ test_that("posterior-indexed row sources require explicit fitted-row identity", 
   new_data <- data.frame(
     id = factor("new", levels = c("a", "b", "new"))
   )
+  # a new level that is sampled needs the SD of its row, which a posterior-indexed
+  # source does not have; a new level set to zero does not use the source
   expect_error(
     JAGS_evaluate_formula(
       fit = fit,
@@ -1145,11 +1147,23 @@ test_that("posterior-indexed row sources require explicit fitted-row identity", 
       data = new_data,
       prior_list = result$prior_list,
       formula_target = "conditional",
-      new_levels = "zero",
+      new_levels = "sample",
       fitted_rows = 1L
     ),
     "cannot evaluate new observation rows",
     fixed = TRUE
+  )
+  expect_equal(
+    unname(drop(JAGS_evaluate_formula(
+      fit = fit,
+      parameter = "mu",
+      data = new_data,
+      prior_list = result$prior_list,
+      formula_target = "conditional",
+      new_levels = "zero",
+      fitted_rows = 1L
+    ))),
+    0
   )
 })
 
@@ -2166,13 +2180,15 @@ test_that("new-row source capability is typed across public prediction targets",
   contexts <- c(conditional = "JAGS_evaluate_formula()",
     covariance = "Random-effect marginal covariance",
     sample = "Marginal random-effect prediction")
+  # the new rows need the source of their row only under "sample"
   call_prediction <- function(mode, fit = make_fit(), data = new_data,
                               fitted_rows = c(1L, 2L, 3L),
-                              priors = result$prior_list){
+                              priors = result$prior_list, new_levels = "sample"){
     arguments <- list(fit = fit, parameter = "mu", data = data,
-      prior_list = priors, fitted_rows = fitted_rows, new_levels = "zero",
+      prior_list = priors, fitted_rows = fitted_rows, new_levels = new_levels,
       formula_target = if(mode == "conditional") "conditional" else "marginal")
     if(mode != "conditional") arguments$marginal_method <- mode
+    if(identical(mode, "sample")) arguments$seed <- 11L
     do.call(JAGS_predict_formula, arguments)
   }
   for(mode in names(contexts)){
@@ -2215,6 +2231,40 @@ test_that("new-row source capability is typed across public prediction targets",
     expect_false(inherits(condition, "BayesTools_prediction_unavailable"))
   }
 
+  # new_levels = "zero": the new rows contribute 0 and use no source, so no row source is
+  # needed for them; their entries of fitted_rows are ignored (but still validated) and the
+  # existing row keeps the value it has without the new rows
+  for(mode in names(contexts)){
+    existing_only <- call_prediction(mode, data = new_data[1L, , drop = FALSE],
+      fitted_rows = 1L, new_levels = "zero")
+    for(mapping in list(c(1L, 2L, 3L), c(1L, 4L, 4L))){
+      zeroed <- call_prediction(mode, fitted_rows = mapping, new_levels = "zero")
+      expect_s3_class(zeroed, "BayesTools_formula_prediction")
+      expect_identical(dim(zeroed$value), c(3L, 1L))
+      expect_equal(zeroed$value[1L, ], existing_only$value[1L, ], tolerance = 1e-12)
+      expect_identical(unname(zeroed$value[2:3, ]), c(0, 0))
+      if(identical(mode, "covariance")){
+        expect_equal(zeroed$vcov$samples[1L, 1L, 1L], existing_only$vcov$samples[1L, 1L, 1L],
+          tolerance = 1e-12)
+        expect_identical(sum(abs(zeroed$vcov$samples[, -1L, ])) +
+          sum(abs(zeroed$vcov$samples[, 1L, -1L])), 0)
+      }
+    }
+    # the mapping of the new rows is still validated
+    for(mapping in list(NULL, c(1L, 2L), c(1L, 5L, 5L), c(1, 2, 1.5))){
+      condition <- tryCatch(call_prediction(mode, fitted_rows = mapping, new_levels = "zero"),
+        error = identity)
+      expect_s3_class(condition, "error")
+      expect_false(inherits(condition, "BayesTools_prediction_unavailable"))
+      expect_match(conditionMessage(condition), "fitted_rows", fixed = TRUE)
+    }
+    # without a policy, new rows give the policy message, not the row-source refusal
+    condition <- tryCatch(call_prediction(mode, new_levels = "error"), error = identity)
+    expect_s3_class(condition, "error")
+    expect_false(inherits(condition, "BayesTools_prediction_unavailable"))
+    expect_match(conditionMessage(condition), "New random-effect level(s) for block 'id'", fixed = TRUE)
+  }
+
   missing_latent <- posterior[, !colnames(posterior) %in% latent_names, drop = FALSE]
   condition <- tryCatch(call_prediction("conditional", fit = make_fit(missing_latent),
     data = df[c(4L, 2L, 2L), , drop = FALSE], fitted_rows = c(4L, 2L, 2L)),
@@ -2232,6 +2282,7 @@ test_that("new-row source capability is typed across public prediction targets",
   new_data$tau_scale <- c(5, 7, 9)
   for(mode in names(contexts)){
     expect_no_error(call_prediction(mode, fit = make_fit(p, evaluable$formula_design),
-      data = new_data, fitted_rows = NULL, priors = evaluable$prior_list))
+      data = new_data, fitted_rows = NULL, priors = evaluable$prior_list,
+      new_levels = "zero"))
   }
 })

@@ -66,7 +66,10 @@ unsupported.}
 \item{fitted_rows}{optional integer vector mapping supplied prediction rows
 to fitted observation indices. It is required for selected
 posterior-indexed row sources. Reordering and duplicate indices are
-supported; callback-computed row sources do not use it.}
+supported; callback-computed row sources do not use it. The entries of rows
+of new random-effect levels predicted with \code{new_levels = "zero"} are
+ignored, because those rows contribute zero; they must still be valid fitted
+observation indices.}
 }
 \value{
 A list of class \code{BayesTools_formula_prediction} with fields \code{value},
@@ -81,8 +84,11 @@ Unavailable new rows for a posterior-indexed row source raise
 \code{BayesTools_prediction_new_rows_unavailable} (parent
 \code{BayesTools_prediction_unavailable}), with \code{reason = "posterior_indexed_row_source"},
 \code{block}, displayed \code{source} label, affected prediction \code{rows}, and caller
-\code{context}. This applies to conditional and both marginal targets; mapping,
-source-value, and monitoring errors retain their existing conditions.
+\code{context}. This applies to conditional and both marginal targets where the
+source of the new rows is needed, under \code{new_levels = "sample"}; with
+\code{new_levels = "zero"} the new rows contribute zero and need no source.
+Mapping, source-value, and monitoring errors retain their existing
+conditions.
 }
 \seealso{
 \code{\link[=JAGS_evaluate_formula]{JAGS_evaluate_formula()}} \code{\link[=random_effects_marginal_vcov]{random_effects_marginal_vcov()}}

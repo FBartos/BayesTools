@@ -293,12 +293,14 @@
   fitted_n_groups <- length(random_term$group_levels)
   new_row <- group_map > fitted_n_groups
   prediction_rows <- if(.bt_random_effect_has_row_indexed_external_sd(random_term)){
+    # new rows need the row source only where the new-level policy samples them;
+    # under "zero" they contribute 0 and their 'fitted_rows' entries are ignored
     .bt_random_effect_prediction_fitted_rows(
       random_term = random_term,
       n_rows = n_rows,
       data_supplied = data_supplied,
       fitted_rows = fitted_rows,
-      new_row = new_row,
+      new_row = new_row & identical(new_levels$method, "sample"),
       context = "JAGS_evaluate_formula()"
     )
   }else{

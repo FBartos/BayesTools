@@ -17,7 +17,9 @@
 #'   to fitted observation indices. It is required whenever `data` is supplied
 #'   and a selected block uses a posterior-indexed row source. Reordering and
 #'   duplicate indices are supported. Callback-computed row sources do not use
-#'   this mapping.
+#'   this mapping. The entries of rows of new random-effect levels with
+#'   `new_levels = "zero"` are ignored, because those rows have zero
+#'   covariance; they must still be valid fitted observation indices.
 #' @param posterior_samples optional posterior sample matrix, data frame,
 #'   `mcmc`, or `mcmc.list`. When `NULL`, samples are extracted from `fit`.
 #' @param prior_list optional named prior list used to materialize fixed point
@@ -66,8 +68,11 @@
 #'   `BayesTools_prediction_new_rows_unavailable` (parent
 #'   `BayesTools_prediction_unavailable`), with
 #'   `reason = "posterior_indexed_row_source"`, `block`, displayed `source`
-#'   label, affected prediction `rows`, and caller `context`. Mapping, source
-#'   value, and monitoring errors retain their existing conditions.
+#'   label, affected prediction `rows`, and caller `context`. It applies where
+#'   the source of the new rows is needed, under `new_levels = "sample"`; with
+#'   `new_levels = "zero"` the new rows have zero covariance and need no source.
+#'   Mapping, source value, and monitoring errors retain their existing
+#'   conditions.
 #' @export
 random_effects_marginal_vcov <- function(
     fit, parameter = NULL, data = NULL, posterior_samples = NULL,
@@ -1726,12 +1731,15 @@ random_effects_marginal_variance_factors <- function(
       }
     )
     prediction_rows <- if(.bt_random_effect_has_row_indexed_external_sd(random_term)){
+      # new rows need the row source only where the new-level policy samples them;
+      # under "zero" their covariance is set to 0 and their 'fitted_rows' entries are ignored
       .bt_random_effect_prediction_fitted_rows(
         random_term = random_term,
         n_rows = nrow(block_data$model_matrix),
         data_supplied = block_data$data_supplied,
         fitted_rows = fitted_rows,
-        new_row = block_data$group_map > random_term$n_groups,
+        new_row = block_data$group_map > random_term$n_groups &
+          identical(block_new_levels$method, "sample"),
         context = "Random-effect marginal covariance"
       )
     }else{

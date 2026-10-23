@@ -59,7 +59,9 @@ garbage can require additional memory.}
 to fitted observation indices. It is required whenever \code{data} is supplied
 and a selected block uses a posterior-indexed row source. Reordering and
 duplicate indices are supported. Callback-computed row sources do not use
-this mapping.}
+this mapping. The entries of rows of new random-effect levels with
+\code{new_levels = "zero"} are ignored, because those rows have zero
+covariance; they must still be valid fitted observation indices.}
 
 \item{...}{reserved for future extensions. Unused arguments are rejected.}
 }
@@ -94,8 +96,11 @@ Unavailable new rows for a posterior-indexed row source raise
 \code{BayesTools_prediction_new_rows_unavailable} (parent
 \code{BayesTools_prediction_unavailable}), with
 \code{reason = "posterior_indexed_row_source"}, \code{block}, displayed \code{source}
-label, affected prediction \code{rows}, and caller \code{context}. Mapping, source
-value, and monitoring errors retain their existing conditions.
+label, affected prediction \code{rows}, and caller \code{context}. It applies where
+the source of the new rows is needed, under \code{new_levels = "sample"}; with
+\code{new_levels = "zero"} the new rows have zero covariance and need no source.
+Mapping, source value, and monitoring errors retain their existing
+conditions.
 }
 \seealso{
 \code{\link[=JAGS_formula_design]{JAGS_formula_design()}} \code{\link[=JAGS_fit]{JAGS_fit()}}

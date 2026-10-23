@@ -66,7 +66,9 @@ new levels, except in blocks with a known group covariance; see
 to fitted observation indices. It is required whenever \code{data} is supplied
 and a selected random-effect block uses a posterior-indexed row source.
 Reordering and duplicate indices are supported. Callback-computed row
-sources do not use this mapping.}
+sources do not use this mapping. The entries of rows of new random-effect
+levels predicted with \code{new_levels = "zero"} are ignored, because those rows
+contribute zero; they must still be valid fitted observation indices.}
 }
 \value{
 \code{JAGS_evaluate_formula} returns a matrix of the evaluated posterior samples on
@@ -108,8 +110,10 @@ An unavailable new-row evaluation of a posterior-indexed row source raises
 \code{BayesTools_prediction_new_rows_unavailable} (parent
 \code{BayesTools_prediction_unavailable}), with \code{reason = "posterior_indexed_row_source"},
 \code{block}, the displayed \code{source} label, affected prediction \code{rows}, and caller
-\code{context}. Missing or malformed mappings, invalid source values, and missing
-monitored columns retain their own errors.
+\code{context}. It applies where the source of the new rows is needed, under
+\code{new_levels = "sample"}; with \code{new_levels = "zero"} the new rows contribute
+zero and need no source. Missing or malformed mappings, invalid source values,
+and missing monitored columns retain their own errors.
 Literal \code{expression()} terms use the replayable subset documented by
 \code{\link[=JAGS_formula]{JAGS_formula()}} and are evaluated against prediction data using JAGS-style
 row indexing through \code{i}.
