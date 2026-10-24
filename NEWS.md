@@ -199,22 +199,14 @@ old behaviour.
     `ensemble_estimates_table()`, and `JAGS_diagnostics()`; use
     `transform_factors = TRUE`. `JAGS_diagnostics()` stops when it receives
     the argument, and the other functions report it as unused.
-  - new arguments and the removed ones change positional calls:
-    `JAGS_fit()` takes `formula_random_prior_list` and
-    `formula_random_effects_compile_list` before `chains`;
-    `JAGS_bridgesampling()` takes `formula_random_prior_list`,
-    `formula_random_effects_compile_list`,
-    `formula_random_effects_marginalize_list`, `bridge_context`,
-    `bridge_context_node_names`, `repetitions`, and `method` before `maxiter`;
-    `runjags_estimates_table()` / `JAGS_estimates_table()` take
-    `random_effects_summary`, `simplify_names`, `random_effects_metadata`,
-    `remove_random_effects`, `keep_random_effects`,
-    `remove_random_structures`, and `keep_random_structures` before
-    `remove_diagnostics`; `JAGS_extend()` takes `runtime_setup`,
-    `runtime_cache`, and `worker_output` after `seed`; and the arguments
-    after `transform_orthonormal` of `runjags_estimates_table()`,
-    `ensemble_estimates_table()`, and `JAGS_diagnostics()` move one position
-    forward. Pass these and later arguments by name.
+  - the removal of `transform_orthonormal` moves the arguments after it in
+    `runjags_estimates_table()` / `JAGS_estimates_table()`,
+    `ensemble_estimates_table()`, and `JAGS_diagnostics()` one position
+    forward; pass them by name. Arguments added since 0.3.0 follow the released
+    arguments (before `...`) in `JAGS_fit()`, `JAGS_extend()`,
+    `JAGS_bridgesampling()`, and `runjags_estimates_table()` /
+    `JAGS_estimates_table()`, so the other positional calls of 0.3.0 are
+    unchanged.
   - `check_bool()` rejects `NA` by default (`allow_NA = FALSE`, was `TRUE`),
     as a missing value cannot be used as a switch. Pass `allow_NA = TRUE` to
     keep the previous behaviour. The `allow_NA` defaults of the other

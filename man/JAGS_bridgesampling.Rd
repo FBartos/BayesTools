@@ -15,6 +15,8 @@ JAGS_bridgesampling(
   formula_scale_list = NULL,
   add_parameters = NULL,
   add_bounds = NULL,
+  maxiter = 10000,
+  silent = TRUE,
   formula_random_prior_list = NULL,
   formula_random_effects_compile_list = NULL,
   formula_random_effects_marginalize_list = NULL,
@@ -22,8 +24,6 @@ JAGS_bridgesampling(
   bridge_context_node_names = NULL,
   repetitions = 1L,
   method = c("normal", "warp3"),
-  maxiter = 10000,
-  silent = TRUE,
   nonfinite = c("error", "drop"),
   cores = 1,
   seed = NULL,
@@ -107,6 +107,13 @@ Bounds of the coordinates BayesTools adds for formula random effects are
 inferred; a supplied bound for such a coordinate must agree with the
 inferred one.}
 
+\item{maxiter}{maximum number of iterations for the
+\link[bridgesampling]{bridge_sampler}}
+
+\item{silent}{whether the bridge-sampling progress output is suppressed,
+defaults to \code{TRUE}. Known iteration counts exceeding \code{maxiter}
+always signal a diagnostic warning, independently of progress output.}
+
 \item{formula_random_prior_list}{optional named list of \code{prior_random()}
 objects for random effects in \code{formula_list}. Bridge sampling for formula
 random effects requires the \code{prior_random()} interface because the
@@ -174,13 +181,6 @@ are errors.}
 
 \item{method}{bridge transformation passed to
 \link[bridgesampling]{bridge_sampler}; either \code{"normal"} or \code{"warp3"}.}
-
-\item{maxiter}{maximum number of iterations for the
-\link[bridgesampling]{bridge_sampler}}
-
-\item{silent}{whether the bridge-sampling progress output is suppressed,
-defaults to \code{TRUE}. Known iteration counts exceeding \code{maxiter}
-always signal a diagnostic warning, independently of progress output.}
 
 \item{nonfinite}{handling of non-finite repetition-level log marginal
 likelihoods. The default, \code{"error"}, aborts with an error of class

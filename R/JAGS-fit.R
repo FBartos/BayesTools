@@ -260,11 +260,13 @@ NULL
 }
 
 #' @rdname JAGS_fit
-JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list = NULL, formula_data_list = NULL, formula_prior_list = NULL, formula_scale_list = NULL, formula_random_prior_list = NULL, formula_random_effects_compile_list = NULL,
+JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list = NULL, formula_data_list = NULL, formula_prior_list = NULL, formula_scale_list = NULL,
                      chains = 4, adapt = 500, burnin = 1000, sample = 4000, thin = 1,
                      autofit = FALSE, autofit_control = list(max_Rhat = 1.05, min_ESS = 500, max_error = 0.01, max_SD_error = 0.05, max_time = list(time = 60, unit = "mins"), sample_extend = 1000, restarts = 10, max_extend = 10, check_indicators = FALSE, monitor = NULL, allow_not_assessable = FALSE),
                      parallel = FALSE, cores = chains, silent = TRUE, seed = NULL,
-                     add_parameters = NULL, required_packages = NULL, jags_modules = NULL, runtime_setup = NULL, runtime_cache = NULL, worker_output = NULL, ...){
+                     add_parameters = NULL, required_packages = NULL,
+                     formula_random_prior_list = NULL, formula_random_effects_compile_list = NULL,
+                     jags_modules = NULL, runtime_setup = NULL, runtime_cache = NULL, worker_output = NULL, ...){
 
   .check_runjags()
   # A seeded fit leaves the caller's random-number state as it found it.

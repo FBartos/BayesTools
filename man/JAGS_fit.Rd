@@ -13,8 +13,6 @@ JAGS_fit(
   formula_data_list = NULL,
   formula_prior_list = NULL,
   formula_scale_list = NULL,
-  formula_random_prior_list = NULL,
-  formula_random_effects_compile_list = NULL,
   chains = 4,
   adapt = 500,
   burnin = 1000,
@@ -31,6 +29,8 @@ JAGS_fit(
   seed = NULL,
   add_parameters = NULL,
   required_packages = NULL,
+  formula_random_prior_list = NULL,
+  formula_random_effects_compile_list = NULL,
   jags_modules = NULL,
   runtime_setup = NULL,
   runtime_cache = NULL,
@@ -78,15 +78,6 @@ within the \code{formula}}
 (names of the lists correspond to the parameter name created by each of the formula).
 Each entry should be a named list where continuous predictors with \code{TRUE} values will
 be standardized. Defaults to \code{NULL} (no standardization).}
-
-\item{formula_random_prior_list}{optional named list of \code{prior_random()}
-objects for random effects in \code{formula_list}. Required for any formula that
-contains random effects.}
-
-\item{formula_random_effects_compile_list}{optional named list of
-\code{random_effects_compile()} objects controlling which formula random-effect
-blocks are sampled and which are compiled as marginalized structural blocks.
-Defaults to \code{NULL}, which preserves the current all-sampled behavior.}
 
 \item{chains}{number of chains to be run, defaults to \code{4}}
 
@@ -212,6 +203,15 @@ detached R session). Defaults to \code{NULL}. Parallel workers must load
 the same versions and native library builds as the parent session. When
 developing packages with \code{load_all()}, install matching builds into
 a library and set \code{R_LIBS_USER} before starting R and its workers.}
+
+\item{formula_random_prior_list}{optional named list of \code{prior_random()}
+objects for random effects in \code{formula_list}. Required for any formula that
+contains random effects.}
+
+\item{formula_random_effects_compile_list}{optional named list of
+\code{random_effects_compile()} objects controlling which formula random-effect
+blocks are sampled and which are compiled as marginalized structural blocks.
+Defaults to \code{NULL}, which preserves the current all-sampled behavior.}
 
 \item{jags_modules}{character vector specifying JAGS modules required by the
 generated model syntax. Defaults to \code{NULL}.}

@@ -46,16 +46,16 @@ runjags_estimates_table(
   keep_formulas = NULL,
   return_samples = FALSE,
   transform_scaled = FALSE,
+  remove_diagnostics = FALSE,
+  diagnostic_columns = getOption("BayesTools.JAGS_estimates_diagnostic_columns", if
+    (remove_diagnostics) "none" else "all"),
   random_effects_summary = c("standard", "full", "raw", "none"),
   simplify_names = FALSE,
   random_effects_metadata = FALSE,
   remove_random_effects = NULL,
   keep_random_effects = NULL,
   remove_random_structures = NULL,
-  keep_random_structures = NULL,
-  remove_diagnostics = FALSE,
-  diagnostic_columns = getOption("BayesTools.JAGS_estimates_diagnostic_columns", if
-    (remove_diagnostics) "none" else "all")
+  keep_random_structures = NULL
 )
 
 runjags_inference_table(
@@ -89,16 +89,16 @@ JAGS_estimates_table(
   keep_formulas = NULL,
   return_samples = FALSE,
   transform_scaled = FALSE,
+  remove_diagnostics = FALSE,
+  diagnostic_columns = getOption("BayesTools.JAGS_estimates_diagnostic_columns", if
+    (remove_diagnostics) "none" else "all"),
   random_effects_summary = c("standard", "full", "raw", "none"),
   simplify_names = FALSE,
   random_effects_metadata = FALSE,
   remove_random_effects = NULL,
   keep_random_effects = NULL,
   remove_random_structures = NULL,
-  keep_random_structures = NULL,
-  remove_diagnostics = FALSE,
-  diagnostic_columns = getOption("BayesTools.JAGS_estimates_diagnostic_columns", if
-    (remove_diagnostics) "none" else "all")
+  keep_random_structures = NULL
 )
 
 JAGS_inference_table(
@@ -325,6 +325,19 @@ footnote of the intercept SD row. Estimated marginal means of
 predictions at the stated predictor values, which do not depend on the
 standardization, and are not changed. Defaults to \code{FALSE}.}
 
+\item{remove_diagnostics}{whether to exclude MCMC diagnostics (MCMC error,
+ESS, R-hat) from the output table. Defaults to \code{FALSE}. Setting to
+\code{TRUE} will exclude diagnostics columns regardless of the
+\code{conditional} setting.}
+
+\item{diagnostic_columns}{MCMC diagnostic columns to display in JAGS
+estimates tables. Can be \code{"all"}, \code{"none"}, \code{TRUE},
+\code{FALSE}, or a character vector containing any subset of
+\code{"MCMC_error"}, \code{"MCMC_SD_error"}, \code{"ESS"}, and
+\code{"R_hat"}. Defaults to the
+\code{BayesTools.JAGS_estimates_diagnostic_columns} option, or all
+diagnostics unless \code{remove_diagnostics = TRUE}.}
+
 \item{random_effects_summary}{random-effect reporting mode for JAGS estimates
 tables. \code{"standard"} replaces raw implementation parameters with the
 semantic quantities corresponding to the fitted prior parameterization:
@@ -389,19 +402,6 @@ return only the selected random-effect rows.}
 random-effect covariance structures (for example \code{"diag"}, \code{"us"},
 \code{"ar1"}, or \code{"hcs"}) used to remove or keep random-effect rows.
 Non-random parameters are left unaffected.}
-
-\item{remove_diagnostics}{whether to exclude MCMC diagnostics (MCMC error,
-ESS, R-hat) from the output table. Defaults to \code{FALSE}. Setting to
-\code{TRUE} will exclude diagnostics columns regardless of the
-\code{conditional} setting.}
-
-\item{diagnostic_columns}{MCMC diagnostic columns to display in JAGS
-estimates tables. Can be \code{"all"}, \code{"none"}, \code{TRUE},
-\code{FALSE}, or a character vector containing any subset of
-\code{"MCMC_error"}, \code{"MCMC_SD_error"}, \code{"ESS"}, and
-\code{"R_hat"}. Defaults to the
-\code{BayesTools.JAGS_estimates_diagnostic_columns} option, or all
-diagnostics unless \code{remove_diagnostics = TRUE}.}
 
 \item{logBF}{whether the Bayes factor should be on log scale. When model
 inference objects store log-space inclusion Bayes factors, log-scale

@@ -313,13 +313,13 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
                                      probs = c(0.025, 0.5, 0.975), remove_spike_0 = TRUE, transform_factors = FALSE,
                                      formula_prefix = TRUE, remove_inclusion = FALSE, remove_parameters = NULL, remove_formulas = NULL,
                                      keep_parameters = NULL, keep_formulas = NULL, return_samples = FALSE, transform_scaled = FALSE,
+                                     remove_diagnostics = FALSE,
+                                     diagnostic_columns = getOption("BayesTools.JAGS_estimates_diagnostic_columns", if(remove_diagnostics) "none" else "all"),
                                      random_effects_summary = c("standard", "full", "raw", "none"),
                                      simplify_names = FALSE,
                                      random_effects_metadata = FALSE,
                                      remove_random_effects = NULL, keep_random_effects = NULL,
-                                     remove_random_structures = NULL, keep_random_structures = NULL,
-                                     remove_diagnostics = FALSE,
-                                     diagnostic_columns = getOption("BayesTools.JAGS_estimates_diagnostic_columns", if(remove_diagnostics) "none" else "all")){
+                                     remove_random_structures = NULL, keep_random_structures = NULL){
 
   if(inherits(fit, "runjags")) .check_runjags()
   # most of the code is shared with .diagnostics_plot_data function (keep them in sync on update)

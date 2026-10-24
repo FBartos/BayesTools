@@ -439,6 +439,41 @@ test_that("JAGS_extend rejects stale fitted metadata before backend work", {
   expect_identical(package_calls, 0L)
 })
 
+test_that("arguments added since 0.3.0 follow the released arguments", {
+
+  released <- list(
+    JAGS_fit = c(
+      "model_syntax", "data", "prior_list", "formula_list", "formula_data_list",
+      "formula_prior_list", "formula_scale_list", "chains", "adapt", "burnin",
+      "sample", "thin", "autofit", "autofit_control", "parallel", "cores",
+      "silent", "seed", "add_parameters", "required_packages"
+    ),
+    JAGS_extend = c("fit", "autofit_control", "parallel", "cores", "silent", "seed"),
+    JAGS_bridgesampling = c(
+      "fit", "log_posterior", "data", "prior_list", "formula_list",
+      "formula_data_list", "formula_prior_list", "formula_scale_list",
+      "add_parameters", "add_bounds", "maxiter", "silent"
+    ),
+    # 'transform_orthonormal' (after 'transform_factors') was removed
+    runjags_estimates_table = c(
+      "fit", "transformations", "title", "footnotes", "warnings", "conditional",
+      "probs", "remove_spike_0", "transform_factors", "formula_prefix",
+      "remove_inclusion", "remove_parameters", "remove_formulas",
+      "keep_parameters", "keep_formulas", "return_samples", "transform_scaled",
+      "remove_diagnostics", "diagnostic_columns"
+    )
+  )
+  released$JAGS_estimates_table <- released$runjags_estimates_table
+
+  for(name in names(released)){
+    formal_names <- names(formals(get(name, envir = asNamespace("BayesTools"))))
+    expect_identical(formal_names[seq_along(released[[name]])], released[[name]], info = name)
+  }
+  for(name in c("JAGS_fit", "JAGS_bridgesampling")){
+    expect_identical(utils::tail(names(formals(get(name, envir = asNamespace("BayesTools")))), 1L), "...", info = name)
+  }
+})
+
 .jags_extend_test_end_state <- function(){
   structure(c(
     "\".RNG.state\" <- c(18236142, -1797149935)\n\"mu\" <- 0.309265360267742\n\".RNG.name\" <- \"base::Super-Duper\"\n",

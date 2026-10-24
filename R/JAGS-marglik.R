@@ -367,17 +367,16 @@
 #'
 #' @export
 JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NULL, formula_list = NULL, formula_data_list = NULL, formula_prior_list = NULL, formula_scale_list = NULL,
-                                add_parameters = NULL, add_bounds = NULL,
-                                 formula_random_prior_list = NULL,
-                                 formula_random_effects_compile_list = NULL,
-                                 formula_random_effects_marginalize_list = NULL,
-                                 bridge_context = FALSE,
-                                 bridge_context_node_names = NULL,
-                                 repetitions = 1L,
-                                  method = c("normal", "warp3"),
-                                  maxiter = 10000, silent = TRUE,
-                                  nonfinite = c("error", "drop"), cores = 1,
-                                  seed = NULL, ...){
+                                add_parameters = NULL, add_bounds = NULL, maxiter = 10000, silent = TRUE,
+                                formula_random_prior_list = NULL,
+                                formula_random_effects_compile_list = NULL,
+                                formula_random_effects_marginalize_list = NULL,
+                                bridge_context = FALSE,
+                                bridge_context_node_names = NULL,
+                                repetitions = 1L,
+                                method = c("normal", "warp3"),
+                                nonfinite = c("error", "drop"), cores = 1,
+                                seed = NULL, ...){
 
   if(inherits(fit, "BayesTools_draws_view")){
     stop(.bt_draws_view_condition(
