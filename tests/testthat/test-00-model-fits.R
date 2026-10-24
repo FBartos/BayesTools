@@ -7864,20 +7864,6 @@ test_that("JAGS_extend draws depend only on the stored fit", {
   expect_identical(draws(other_caller), draws(first))
   expect_false(identical(draws(first), as.matrix(fit$mcmc)))
 
-  # A seed reseeds the chains of the extension from the stored parameter
-  # values: seeded extensions are reproducible, depend on the seed, differ from
-  # the continued generator states, and restore the caller's generator.
-  set.seed(4)
-  state_before_seeded <- .Random.seed
-  seeded_a <- JAGS_extend(fit, autofit_control = control, seed = 12)
-  expect_identical(.Random.seed, state_before_seeded)
-  seeded_b <- JAGS_extend(fit, autofit_control = control, seed = 12)
-  seeded_c <- JAGS_extend(fit, autofit_control = control, seed = 13)
-  expect_identical(draws(seeded_b), draws(seeded_a))
-  expect_false(identical(draws(seeded_c), draws(seeded_a)))
-  expect_false(identical(draws(seeded_a), draws(first)))
-  expect_identical(dim(draws(seeded_a)), dim(draws(first)))
-
   # Neither the fit nor its extension keeps runjags' compiled model. A fit
   # that still carries one (as JAGS_fit() returned it before; compiled here by
   # runjags from the fit) is larger by that model and extends to the same

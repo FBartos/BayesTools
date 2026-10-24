@@ -139,12 +139,9 @@ chain's seed does not depend on the number of chains), and automatic restarts
 take their seeds from the separate stream of `.JAGS_restart_seeds()`. Every
 path that seeds JAGS chains uses these helpers; never derive seeds as
 `seed + chain` or `seed + attempt`, which makes adjacent seeds share streams.
-Seeded functions restore the caller's `.Random.seed` and `RNGkind()`. A seeded
-`JAGS_extend()` replaces the stored generator state of each chain by its
-`.RNG.seed` from the same helper (`.JAGS_extend_reseed()`) for the first
-extension and keeps generator and parameter values otherwise; without a seed,
-and in the further extensions of the automatic fitting, the stored states
-continue.
+Seeded functions restore the caller's `.Random.seed` and `RNGkind()`.
+`JAGS_extend()` has no seed: it continues the stored generator state of every
+chain, and no extension replays the streams of the fit.
 
 Autofit, `JAGS_extend()` and the default `JAGS_check_convergence()` share one
 selection read from the fit's `convergence_role` column. The roles are set at
