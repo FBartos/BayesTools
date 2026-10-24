@@ -459,22 +459,25 @@
 }
 
 # The sampler result of bridgesampling that summary() and error_measures() read.
-# A failed, manual or exact result has none.
+# A failed, manual or exact result has none. The methods of the stored result
+# (summary.bridge, summary.bridge_list) are registered when bridgesampling is
+# loaded, which a result read from a file in a new session may not have caused
+# yet.
 .bt_marglik_sampler_result <- function(x){
 
   upstream <- x[["diagnostics"]][["upstream"]]
   if(!inherits(upstream, c("bridge", "bridge_list"))){
     stop(errorCondition(
       message = paste0(
-        "The bridge-sampling result is unavailable: a failed, manual or exact ",
-        "marginal-likelihood result stores no sampler result in 'diagnostics$upstream'. ",
-        "Compute the marginal likelihood of a model with sampled parameters with ",
-        "'JAGS_bridgesampling()' to obtain one."
+        "The bridge-sampling result is unavailable: summary() and error_measures() ",
+        "require a sampled marginal likelihood, and a failed, manual or exact ",
+        "marginal-likelihood result stores no sampler result in 'diagnostics$upstream'."
       ),
       call = NULL,
       class = c("BayesTools_marglik_sampler_result_unavailable", "BayesTools_marglik_unavailable")
     ))
   }
+  loadNamespace("bridgesampling")
 
   upstream
 }

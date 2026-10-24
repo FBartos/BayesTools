@@ -400,26 +400,21 @@ test_that("a result of one sampler repetition prints as the bridge result of 0.3
 
 })
 
-test_that("a stored single-repetition result prints as a bridge result in a new session", {
+test_that("stored marglik results use their bridge methods in a new session", {
 
   skip_on_cran()
+  skip_if_not_installed("bridgesampling")
   rscript <- file.path(R.home("bin"), if(.Platform$OS.type == "windows") "Rscript.exe" else "Rscript")
   skip_if_not(file.exists(rscript), "Rscript is unavailable.")
 
-  upstream <- structure(
-    list(logml = -27.228432, niter = 6L, method = "normal", repetitions = 1, mcse_logml = .01),
-    class = "bridge"
-  )
-  testthat::local_mocked_bindings(bridge_sampler = function(...) upstream, .package = "bridgesampling")
-  result <- JAGS_bridgesampling(
-    fit = coda::as.mcmc(matrix(seq_len(20), ncol = 1, dimnames = list(NULL, "mu"))),
-    log_posterior = function(parameters, data) 0, data = list(),
-    prior_list = list(mu = prior("normal", list(0, 1)))
-  )
-  result_file <- tempfile(fileext = ".rds")
-  script_file <- tempfile(fileext = ".R")
-  on.exit(unlink(c(result_file, script_file)), add = TRUE)
-  saveRDS(result, result_file)
+  set.seed(1)
+  make_chain <- function() coda::mcmc(matrix(
+    c(rnorm(400), rnorm(400)), ncol = 2, dimnames = list(NULL, c("mu", "sigma"))
+  ))
+  posterior  <- coda::mcmc.list(make_chain(), make_chain())
+  prior_list <- list(mu = prior("normal", list(0, 1)), sigma = prior("normal", list(0, 1)))
+  single   <- JAGS_bridgesampling(posterior, function(parameters, data) 0, list(), prior_list, seed = 1)
+  repeated <- JAGS_bridgesampling(posterior, function(parameters, data) 0, list(), prior_list, repetitions = 2L, seed = 1)
 
   # the new session loads BayesTools with library(), as a user's session does: load_all() loads bridgesampling
   # itself, so a load_all() host uses its installed copy when that is the same version
@@ -430,20 +425,44 @@ test_that("a stored single-repetition result prints as a bridge result in a new 
   library_version <- read.dcf(file.path(library_path, "DESCRIPTION"), fields = "Version")[[1L]]
   skip_if(!identical(library_version, as.character(getNamespaceVersion("BayesTools"))),
           "The installed BayesTools differs from the loaded source tree.")
+
+  script_file <- tempfile(fileext = ".R")
+  on.exit(unlink(script_file), add = TRUE)
   writeLines(c(
     paste0(".libPaths(", paste(deparse(.libPaths()), collapse = ""), ")"),
     paste0("suppressMessages(library(BayesTools, lib.loc = ", deparse(dirname(library_path)), "))"),
-    "x <- readRDS(commandArgs(trailingOnly = TRUE)[[1L]])",
+    "arguments <- commandArgs(trailingOnly = TRUE)",
+    "x <- readRDS(arguments[[1L]])",
     "cat('LOADED:', isNamespaceLoaded('bridgesampling'), '\\n')",
-    "print(x)"
+    "if(identical(arguments[[2L]], 'summary')) print(summary(x)) else print(x)"
   ), script_file)
-  output <- suppressWarnings(system2(rscript, c("--vanilla", shQuote(script_file), shQuote(result_file)), stdout = TRUE, stderr = TRUE))
-  skip_if(!is.null(attr(output, "status")), paste("The new session failed:", paste(utils::tail(output, 3L), collapse = " ")))
-  expect_identical(trimws(output[[1L]]), "LOADED: FALSE")
-  expect_identical(trimws(output[-1L]), c(
-    "Bridge sampling estimate of the log marginal likelihood: -27.22843",
-    "Estimate obtained in 6 iteration(s) via method \"normal\"."
-  ))
+
+  # the first call on a stored result in a new session: bridgesampling is not loaded yet
+  first_call_in_new_session <- function(result, call){
+    result_file <- tempfile(fileext = ".rds")
+    on.exit(unlink(result_file), add = TRUE)
+    saveRDS(result, result_file)
+    output <- suppressWarnings(system2(rscript, c("--vanilla", shQuote(script_file), shQuote(result_file), call), stdout = TRUE, stderr = TRUE))
+    skip_if(!is.null(attr(output, "status")), paste("The new session failed:", paste(utils::tail(output, 3L), collapse = " ")))
+    expect_identical(trimws(output[[1L]]), "LOADED: FALSE")
+    trimws(output[-1L])
+  }
+
+  # summary() reads the bridge summary of the stored sampler result
+  expect_identical(
+    first_call_in_new_session(single, "summary"),
+    trimws(capture.output(print(summary(single[["diagnostics"]][["upstream"]]))))
+  )
+  expect_identical(
+    first_call_in_new_session(repeated, "summary"),
+    trimws(capture.output(print(summary(repeated[["diagnostics"]][["upstream"]]))))
+  )
+
+  # print() of a single repetition is the print of the bridge result of 0.3.0
+  printed <- first_call_in_new_session(single, "print")
+  expect_identical(printed, trimws(capture.output(print(single[["diagnostics"]][["upstream"]]))))
+  expect_match(printed[[1L]], "^Bridge sampling estimate of the log marginal likelihood: ")
+  expect_match(printed[[2L]], "^Estimate obtained in [0-9]+ iteration\\(s\\) via method \"normal\"\\.$")
 })
 
 test_that("the print of a real single-repetition result is the print of its upstream bridge object", {

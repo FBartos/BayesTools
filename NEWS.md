@@ -213,8 +213,10 @@ old behaviour.
   - removes the `seed` argument of `JAGS_extend()`. At 0.3.0 it only set R's
     random seed and never changed the draws: the extended chains continue their
     stored backend random-number generator states, and they still do. Calls
-    that pass `seed` (including `update(fit, sample_extend = )` in RoBMA
-    4.0.0) stop with "unused argument"; drop the argument.
+    that pass `seed = ` (including `update(fit, sample_extend = )` in RoBMA
+    4.0.0) stop with "unused argument". A positional sixth argument now binds
+    `runtime_setup` and is refused by its validator ("must be NULL or a
+    function"). Drop the argument.
   - the removal of `transform_orthonormal` moves the arguments after it in
     `runjags_estimates_table()` / `JAGS_estimates_table()`,
     `ensemble_estimates_table()`, and `JAGS_diagnostics()` one position
