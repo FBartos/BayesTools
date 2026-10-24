@@ -66,6 +66,11 @@ filtering, `n_draws` including duplicate rows, and complete available
 `"dependent_coordinates"` records deficient numerical sample rank otherwise.
 These are nonexclusive observations, not certified structural causes or
 guaranteed remedies; pivot names are basis-dependent sampled redundancy.
+Every marginal-likelihood result has the class vector
+`c("BayesTools_marglik", "bridge", "list")`, so bridgesampling's `bf()`,
+`post_prob()` and `logml()` apply to it as to the `bridge` objects of 0.3.0; a
+single repetition also keeps `niter`, `method` and the sampler draws `q11`,
+`q12`, `q21`, `q22` at the top level for `error_measures()` and `summary()`.
 Marginal-likelihood `success` records finite-estimate availability; finite
 repetitions remain aggregated even when the known total iteration count
 exceeds `maxiter`. Optional schema-1 field `iteration_limit_exceeded` is TRUE
@@ -130,7 +135,12 @@ chain's seed does not depend on the number of chains), and automatic restarts
 take their seeds from the separate stream of `.JAGS_restart_seeds()`. Every
 path that seeds JAGS chains uses these helpers; never derive seeds as
 `seed + chain` or `seed + attempt`, which makes adjacent seeds share streams.
-Seeded functions restore the caller's `.Random.seed` and `RNGkind()`.
+Seeded functions restore the caller's `.Random.seed` and `RNGkind()`. A seeded
+`JAGS_extend()` replaces the stored generator state of each chain by its
+`.RNG.seed` from the same helper (`.JAGS_extend_reseed()`) for the first
+extension and keeps generator and parameter values otherwise; without a seed,
+and in the further extensions of the automatic fitting, the stored states
+continue.
 
 Autofit, `JAGS_extend()` and the default `JAGS_check_convergence()` share one
 selection read from the fit's `convergence_role` column. The roles are set at
@@ -141,7 +151,10 @@ correlation diagonals and Cholesky constants are structural. A user
 `add_parameters` node is structural only when it is fully observed data or its
 deterministic definition has no stochastic ancestor. Indicators and inclusion
 probabilities come from their priors, not their names. The backend anchor is
-auxiliary.
+auxiliary. `JAGS_check_convergence()` reports one message per failed
+criterion with the most extreme value, as 0.3.0 did, followed by the sentence
+that names the failing parameters (the first five and the number of the
+others); the `diagnostics` attribute holds the per-parameter values.
 
 Worker connection failures stop fitting retries; new initial values cannot
 repair the existing cluster. Preserve the original backend condition. Classify

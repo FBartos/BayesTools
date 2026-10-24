@@ -207,8 +207,10 @@ invariant to publication partitions and must not require or bind a group
 column. `group` is a deferred column reference rather than a modelling
 instruction, and callers parameterize `weight_rule` while forwarding one
 `group` for both rules, so a group supplied alongside the product rule is inert
-rather than contradictory: keep the combination constructible and let `print()`
-report the group as unused. Integration dependencies come from the integrated
+rather than contradictory: keep the combination constructible and let
+`print()` of the specification report the group as unused. `print()` of a
+weightfunction prior appends the specification only when it differs from the
+default `selection_model()`, so that a default prior prints as in 0.3.0. Integration dependencies come from the integrated
 sampling and random-effect covariances, independently of publication groups.
 Preserve typed reference capture, branch metadata, and source-conditioning
 choices.
@@ -1156,6 +1158,9 @@ and numerical families. Shared log-ratio screening uses the scalar relative
 1e-4 source as an absolute log budget; it is an operand-resolution heuristic.
 Live BayesTools_BF carriers bind canonical BF10 logs to values/direction/rows;
 plain replacement, Ops and Math invalidate them, and exports omit the carrier.
+Printing a carrier shows its values, warnings and bound operators, and printing
+an `ensemble_inference()` element hides only the logarithmic bookkeeping
+attributes, as 0.3.0 printed them.
 Deterministic scalar affine/Boolean region routes precede prior draws and carry
 one actual numerical result into MC variance and prior_numerical_diagnostics.
 BF_error stays MC-only. Formula measure refusals have an explicit declared-cause
