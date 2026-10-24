@@ -3458,16 +3458,14 @@ test_that("Savage-Dickey and marginal inference name the public density_method a
   expect_error(posterior_density_method_match(1, name = "density_method"), "'density_method'", fixed = TRUE)
 })
 
-test_that("the extrapolation warning of the normal route does not describe kernel tails", {
+test_that("the warning of a null outside the draws has the wording of 0.3.0 on both density routes", {
 
   set.seed(32)
   marginal <- .scalar_marginal_for_test(stats::rnorm(200, .3, 1))
-  spans <- "Posterior samples do not span both sides of the null hypothesis. "
-  expect_warning(kernel <- Savage_Dickey_BF(marginal, null_hypothesis = 15),
-                 paste0(spans, "The posterior density at the null hypothesis is an extrapolation from ",
-                        "Gaussian kernel tails; the Bayes factor is not reliable evidence."), fixed = TRUE)
-  expected <- paste0(spans, "The posterior density at the null hypothesis is an extrapolation from ",
-                     "the normal approximation; the Bayes factor is not reliable evidence.")
+  expected <- paste0("Posterior samples do not span both sides of the null hypothesis. ",
+                     "The Savage-Dickey density ratio is likely to be overestimated.")
+  expect_warning(kernel <- Savage_Dickey_BF(marginal, null_hypothesis = 15), expected, fixed = TRUE)
+  expect_identical(attr(kernel, "warnings"), expected)
   expect_warning(normal <- Savage_Dickey_BF(marginal, null_hypothesis = 15, normal_approximation = TRUE),
                  expected, fixed = TRUE)
   expect_identical(attr(normal, "warnings"), expected)
@@ -3716,13 +3714,14 @@ test_that("the row warnings of a marginal estimates table survive colliding row 
   table <- marginal_estimates_table(samples, inference, parameters, formula_prefix = FALSE)
   expect_identical(rownames(table), c("intercept", "intercept.1"))
   expect_identical(attr(table, "quantities")$row, rownames(table))
-  expect_identical(attr(table, "warnings"), c("intercept: warning for mu", "intercept: warning for nu"))
+  # the warnings name the parameter of the fit, as in 0.3.0
+  expect_identical(attr(table, "warnings"), c("mu_intercept: warning for mu", "nu_intercept: warning for nu"))
   expect_identical(attr(table, "warning_rows"), c(1L, 2L))
 
   # every warning stays with its row, however the rows are selected
-  expect_identical(attr(table[1, ], "warnings"), "intercept: warning for mu")
-  expect_identical(attr(table[2, ], "warnings"), "intercept: warning for nu")
-  expect_identical(attr(table["intercept.1", ], "warnings"), "intercept: warning for nu")
+  expect_identical(attr(table[1, ], "warnings"), "mu_intercept: warning for mu")
+  expect_identical(attr(table[2, ], "warnings"), "nu_intercept: warning for nu")
+  expect_identical(attr(table["intercept.1", ], "warnings"), "nu_intercept: warning for nu")
   expect_identical(attr(table[2, ], "warning_rows"), 1L)
   expect_identical(attr(table[2:1, ], "warnings"), attr(table, "warnings"))
   expect_identical(attr(table[2:1, ], "warning_rows"), c(2L, 1L))
@@ -3732,15 +3731,14 @@ test_that("the row warnings of a marginal estimates table survive colliding row 
   with_prefix <- marginal_estimates_table(samples, inference, parameters, warnings = "A general warning.")
   expect_identical(rownames(with_prefix), c("(mu) intercept", "(nu) intercept"))
   expect_identical(attr(with_prefix, "warning_rows"), c(0L, 1L, 2L))
-  expect_identical(attr(with_prefix[2, ], "warnings"), c("A general warning.", "(nu) intercept: warning for nu"))
+  expect_identical(attr(with_prefix[2, ], "warnings"), c("A general warning.", "nu_intercept: warning for nu"))
 })
 
 test_that("Savage-Dickey BFs with the null outside the posterior draws warn once per parameter and level", {
 
   extrapolation <- paste0(
     "Posterior samples do not span both sides of the null hypothesis. ",
-    "The posterior density at the null hypothesis is an extrapolation from ",
-    "Gaussian kernel tails; the Bayes factor is not reliable evidence."
+    "The Savage-Dickey density ratio is likely to be overestimated."
   )
 
   # model-averaged simple parameters: 'mu' lies above the null, 'tau' spans it
@@ -3758,7 +3756,8 @@ test_that("Savage-Dickey BFs with the null outside the posterior draws warn once
     formula = NULL, n_samples = n, seed = 1
   ))
   expect_gt(min(inference$value$conditional$mu), 0)
-  expect_identical(inference$warnings, paste0("mu: ", extrapolation))
+  # (emitted as in 0.3.0, without the label of the parameter)
+  expect_identical(inference$warnings, extrapolation)
   bf_mu <- inference$value$inference$mu
   expect_true(is.finite(bf_mu) && bf_mu > 1)
   expect_identical(attr(bf_mu, "warnings"), extrapolation)
@@ -3774,7 +3773,7 @@ test_that("Savage-Dickey BFs with the null outside the posterior draws warn once
   )
   expect_null(attr(bf_inside, "warnings"))
 
-  # formula levels: one warning per level, labelled as in the summary table
+  # formula levels: one warning per level
   formula_result <- JAGS_formula(
     ~ x, "mu", data = data.frame(x = c(-1, 0, 1)),
     prior_list = list(intercept = prior("normal", list(0, 1)), x = prior("normal", list(0, 1)))
@@ -3792,9 +3791,9 @@ test_that("Savage-Dickey BFs with the null outside the posterior draws warn once
     conditional_list = list(mu_x = NULL), conditional_rule = "AND",
     formula = ~ x, n_samples = n
   ))
-  # warnings name the rendered level labels of the marginal means
-  level_warnings <- paste0("(mu) x[", c("-1SD", "0SD", "1SD"), "]: ", extrapolation)
-  expect_identical(level_inference$warnings, level_warnings)
+  # the emitted warnings are those of 0.3.0, the table names the parameter of the fit and the level
+  expect_identical(level_inference$warnings, rep(extrapolation, 3L))
+  level_warnings <- paste0("mu_x[", c("-1SD", "0SD", "1SD"), "]: ", extrapolation)
   level_BFs <- unlist(level_inference$value$inference$mu_x)
   expect_true(all(is.finite(level_BFs) & level_BFs > 1))
   level_table <- marginal_estimates_table(
@@ -3806,7 +3805,7 @@ test_that("Savage-Dickey BFs with the null outside the posterior draws warn once
   direct <- .collect_warnings_for_test(
     Savage_Dickey_BF(level_inference$value$conditional$mu_x)
   )
-  expect_identical(direct$warnings, level_warnings)
+  expect_identical(direct$warnings, rep(extrapolation, 3L))
   expect_identical(unlist(direct$value), level_BFs)
 })
 
@@ -4005,7 +4004,7 @@ test_that("Savage-Dickey extrapolation warnings use the components supporting th
   # draws end below 4.5: the ordinate is model 1's kernel tail
   expect_lt(max(draws[models_ind == 1]), 4.5)
   warnings <- .collect_warnings_for_test(Savage_Dickey_BF(marginal, null_hypothesis = 4.5))
-  expect_match(warnings$warnings, "^mu: Posterior samples do not span both sides", all = TRUE)
+  expect_match(warnings$warnings, "^Posterior samples do not span both sides", all = TRUE)
   expect_length(warnings$warnings, 1L)
   expect_true(is.finite(warnings$value) && warnings$value > 0)
   expect_equal(attr(warnings$value, "posterior_density_components")$ordinate[2], 0)
@@ -6844,7 +6843,7 @@ test_that("Marginal distribution prior and posterior functions work", {
   expect_true(all(is.finite(BF.marg_post_x_fac3md_values)))
   expect_gt(min(BF.marg_post_x_fac3md_values), 1e50)
   expect_equal(attr(BF.marg_post_x_fac3md[["A"]], "warnings"),
-               "Posterior samples do not span both sides of the null hypothesis. The posterior density at the null hypothesis is an extrapolation from Gaussian kernel tails; the Bayes factor is not reliable evidence.")
+               "Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.")
 
   BF2.marg_post_x_fac3md <- suppressWarnings(Savage_Dickey_BF(marg_post_x_fac3md, null_hypothesis = 0.5))
   BF2.marg_post_x_fac3md_values <- unlist(BF2.marg_post_x_fac3md, use.names = FALSE)

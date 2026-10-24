@@ -78,11 +78,14 @@
 #' When the null hypothesis lies outside the continuous posterior draws (and is
 #' not an exact support bound), the KDE posterior density at the null is an
 #' extrapolation from Gaussian kernel tails. The finite Bayes factor is then
-#' returned with a warning that it is not reliable evidence; for a model
-#' mixture, only the draws of models whose support contains the null count.
+#' returned with the warning that the density ratio is likely to be
+#' overestimated; for a model mixture, only the draws of models whose support
+#' contains the null count.
 #' Diagnostic messages are stored in the \code{"warnings"} attribute of each
 #' Bayes factor and, unless \code{silent = TRUE}, emitted once per parameter
-#' or level, prefixed with its label (for example \code{mu[A]}).
+#' or level. The warnings of the conditions that are reported as \code{NA}
+#' (a posterior point mass at the null, a zero or infinite prior ordinate) are
+#' prefixed with the label of the level (for example \code{mu[A]}).
 #'
 #' The KDE posterior ordinate needs at least two finite continuous draws with
 #' positive spread (unless exact support excludes the null). With fewer, or with
@@ -288,19 +291,14 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
   paste0(parameter, "[", level, "]")
 }
 
+# The warning of a null hypothesis outside the posterior draws, in the words of
+# 0.3.0 (also for the normal approximation).
 .Savage_Dickey_BF_extrapolation_warning <- paste0(
   "Posterior samples do not span both sides of the null hypothesis. ",
-  "The posterior density at the null hypothesis is an extrapolation from ",
-  "Gaussian kernel tails; the Bayes factor is not reliable evidence."
+  "The Savage-Dickey density ratio is likely to be overestimated."
 )
 
-# The normal approximation evaluates the fitted normal law at the null, not a
-# kernel estimate.
-.Savage_Dickey_BF_normal_extrapolation_warning <- paste0(
-  "Posterior samples do not span both sides of the null hypothesis. ",
-  "The posterior density at the null hypothesis is an extrapolation from ",
-  "the normal approximation; the Bayes factor is not reliable evidence."
-)
+.Savage_Dickey_BF_normal_extrapolation_warning <- .Savage_Dickey_BF_extrapolation_warning
 
 .Savage_Dickey_BF.fun    <- function(posterior, null_hypothesis, normal_approximation, silent, density_method,
                                      label = NULL, null_mass_NA = FALSE){
@@ -708,10 +706,14 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
   return(BF)
 }
 
+# The warning of a null outside the draws is emitted as in 0.3.0, without the
+# label of its parameter or level; the diagnostics of the conditions added since
+# (a posterior point mass at the null, a zero or infinite prior ordinate, ...)
+# name the level they describe.
 .Savage_Dickey_BF.emit_warnings <- function(warnings, label = NULL){
 
   for(message in warnings){
-    if(!is.null(label)){
+    if(!is.null(label) && !identical(message, .Savage_Dickey_BF_extrapolation_warning)){
       message <- paste0(label, ": ", message)
     }
     warning(message, call. = FALSE)

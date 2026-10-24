@@ -1066,7 +1066,8 @@ with the prior densities of the kept elements.
   components' shares of the continuous draws. Shared or unavailable supports
   keep the pooled estimate.
 - A null outside the continuous draws gives the finite kernel-tail value with
-  a warning that it is not reliable evidence, once per parameter or level.
+  the warning of 0.3.0 that the density ratio is likely to be overestimated,
+  once per parameter or level, emitted without a label.
   A kernel sum below the representable range retains numerical zero and its
   boundary-valued Bayes factor; no floor is added.
 - A declared posterior point mass at the null leaves the ratio undefined:

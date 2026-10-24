@@ -288,10 +288,7 @@ JAGS_check_convergence <- function(
   if(length(sample_rows) > 0L){
     diagnostics[["state"]][sample_rows] <- "not_checked"
     if(length(mcmc_samples_list) == 1L && !is.null(max_Rhat)){
-      warning(
-        "Only one chain was run. R-hat cannot be computed; checking the remaining enabled convergence criteria.",
-        call. = FALSE
-      )
+      warning("Only one chain was run. R-hat cannot be computed.", call. = FALSE)
       max_Rhat <- NULL
     }
     chain_lengths <- vapply(mcmc_samples_list, nrow, integer(1))

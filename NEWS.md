@@ -340,11 +340,10 @@ old behaviour.
   - `Savage_Dickey_BF()`, `marginal_inference()`, `as_marginal_inference()`,
     and `marginal_estimates_table()` return a finite Bayes factor when the null
     hypothesis lies outside the posterior draws: the kernel density at the
-    null from the Gaussian kernel tails, with a warning that it is not
-    reliable evidence. 0.3.0 returned `Inf`. The warning is emitted once per
-    parameter or level, labelled by the row label of the summary tables
-    (`(mu) x[-1SD]`, `(mu) x:g[-1SD, a]`), and tables list it among their
-    warnings.
+    null from the Gaussian kernel tails, with the warning of 0.3.0 that the
+    density ratio is likely to be overestimated. 0.3.0 returned `Inf`. The
+    warning is emitted once per parameter or level, as in 0.3.0, and tables
+    list it among their warnings.
   - `marginal_inference()`, `as_marginal_inference()`, and
     `Savage_Dickey_BF()` on a list of marginal posteriors return `NA` with the
     reason for a level whose posterior has a declared point mass at the null
@@ -438,9 +437,7 @@ old behaviour.
       `(mu) mu_income` and `tau_mu_x` is unchanged; 0.3.0 gave
       `(mu) (mu) income` and `tau_(mu) x`);
     - marginal names and `marginal_estimates_table()` rows name the levels of
-      every factor (`(mu) x:g[-1SD, a]`), and the table's warnings start with
-      the row label (was the backend node, `mu_x__xXx__g[-1SD, a]:`); a
-      marginal of a parameter without levels is `mu` (was `mu[]`);
+      every factor (`(mu) x:g[-1SD, a]`);
     - factor plot legends show the level text of each level cell (both levels
       of an interaction cell, `b, v`; without the leading space of transformed
       contrasts; level names with brackets whole).

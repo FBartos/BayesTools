@@ -719,6 +719,23 @@ ensemble_diagnostics_empty_table <- function(title = NULL, footnotes = NULL, war
   return(empty_table)
 }
 
+# The prefix of a warning of a marginal level: the parameter of the fit and its
+# level in brackets (`mu_x_cont1[-1SD]`), the parameter alone for the intercept
+# of a single level.
+.bt_marginal_warning_labels <- function(parameter, samples, n_levels){
+
+  levels <- if(is.list(samples)) names(samples) else NULL
+  if(is.null(levels) || length(levels) != n_levels){
+    return(rep(parameter, n_levels))
+  }
+  labels <- paste0(parameter, "[", levels, "]")
+  if(n_levels == 1L && identical(levels, "intercept")){
+    labels <- parameter
+  }
+
+  labels
+}
+
 #' @rdname BayesTools_ensemble_tables
 marginal_estimates_table <- function(samples, inference, parameters, probs = c(0.025, 0.5, 0.975), logBF = FALSE, BF01 = FALSE, title = NULL, footnotes = NULL, warnings = NULL, formula_prefix = TRUE, transform_scaled = FALSE, formula_scale = NULL){
 
@@ -769,12 +786,19 @@ marginal_estimates_table <- function(samples, inference, parameters, probs = c(0
       }
     }
 
-    # the label parts of every level: rows and warnings are rendered from them
+    # the label parts of every level: the rows are rendered from them
     level_parts  <- .bt_marginal_level_parts(samples[[parameter]], parameter)
     level_labels <- .bt_label(level_parts, style = "table", formula_prefix = formula_prefix)
+    if(!inherits(samples[[parameter]], "marginal_posterior.formula") &&
+       !nzchar(.bt_label_formula_parameter(samples[[parameter]])) &&
+       is.null(names(samples[[parameter]]))){
+      # a marginal posterior without formula parameter and levels is `mu[]`, as in 0.3.0
+      level_labels <- paste0(parameter, "[]")
+    }
     row_parts <- c(row_parts, level_parts)
     row_quantity_ids <- c(row_quantity_ids, .bt_marginal_level_quantity_ids(samples[[parameter]]))
-    level_warning_labels <- .bt_label(level_parts, style = "warning", formula_prefix = formula_prefix)
+    # the warnings of the levels name the parameter of the fit and the level, as in 0.3.0
+    level_warning_labels <- .bt_marginal_warning_labels(parameter, samples[[parameter]], length(level_parts))
 
     # extract the relevant information
     if(is.list(samples[[parameter]]) && length(samples[[parameter]]) > 1){

@@ -123,11 +123,14 @@ KDE is used.
 When the null hypothesis lies outside the continuous posterior draws (and is
 not an exact support bound), the KDE posterior density at the null is an
 extrapolation from Gaussian kernel tails. The finite Bayes factor is then
-returned with a warning that it is not reliable evidence; for a model
-mixture, only the draws of models whose support contains the null count.
+returned with the warning that the density ratio is likely to be
+overestimated; for a model mixture, only the draws of models whose support
+contains the null count.
 Diagnostic messages are stored in the \code{"warnings"} attribute of each
 Bayes factor and, unless \code{silent = TRUE}, emitted once per parameter
-or level, prefixed with its label (for example \code{mu[A]}).
+or level. The warnings of the conditions that are reported as \code{NA}
+(a posterior point mass at the null, a zero or infinite prior ordinate) are
+prefixed with the label of the level (for example \code{mu[A]}).
 
 The KDE posterior ordinate needs at least two finite continuous draws with
 positive spread (unless exact support excludes the null). With fewer, or with

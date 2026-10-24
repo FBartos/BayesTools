@@ -1667,7 +1667,7 @@ test_that("one chain warns and retains its other convergence criteria", {
     min_ESS = 100,
     max_error = NULL,
     max_SD_error = NULL
-  ), "Only one chain was run. R-hat cannot be computed; checking the remaining enabled convergence criteria.", fixed = TRUE)
+  ), "Only one chain was run. R-hat cannot be computed.", fixed = TRUE)
 
   expect_true(result)
   expect_null(attr(result, "errors"))
