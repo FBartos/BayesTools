@@ -875,7 +875,11 @@ prediction data. Only the unavailable new-row capability branch uses
 `BayesTools_prediction_unavailable`), with reason
 `posterior_indexed_row_source`, block, displayed source label, affected
 prediction-row indices and caller context. Evaluable source callbacks return
-before this branch. Preserve missing/malformed mapping validation precedence
+before this branch. The refusal applies only to new rows whose source is read,
+under `new_levels = "sample"`: rows zeroed under `"zero"` read no source and
+their `fitted_rows` entries are validated but ignored, so callers pass
+`new_row & <policy is "sample">` to the fitted-rows check. Preserve
+missing/malformed mapping validation precedence
 and existing invalid-source and missing-monitor conditions; those do not mean
 new-row capability is unavailable.
 Known-group covariance marginal sampling supports noncentered multi-column
