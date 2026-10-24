@@ -496,6 +496,9 @@ print.BayesTools_marglik <- function(x, ...){
 
   .bt_validate_marglik_result(x)
   if(.bt_marglik_is_single_repetition(x)){
+    # the print method is registered when bridgesampling is loaded, which a
+    # result read from a file in a new session may not have caused yet
+    loadNamespace("bridgesampling")
     NextMethod()
     if(isTRUE(x[["iteration_limit_exceeded"]])){
       cat(.bt_marglik_iteration_limit_line())
