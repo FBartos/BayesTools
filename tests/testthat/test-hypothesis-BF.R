@@ -1073,7 +1073,7 @@ test_that("hypothesis_BF marginal KDEs retain tails beyond evaluation grids", {
 
   expect_warning(
     height <- BayesTools:::.Savage_Dickey_BF.kd(posterior, null),
-    "Gaussian kernel tails"
+    "The Savage-Dickey density ratio is likely to be overestimated"
   )
   expect_equal(height, expected_height, tolerance = 1e-12,
                ignore_attr = TRUE)
@@ -1090,7 +1090,7 @@ test_that("hypothesis_BF marginal KDEs retain tails beyond evaluation grids", {
       null,
       support = c(0, Inf)
     ),
-    "Gaussian kernel tails"
+    "The Savage-Dickey density ratio is likely to be overestimated"
   )
   expect_equal(
     as.numeric(supported_height),

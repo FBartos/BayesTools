@@ -1091,10 +1091,10 @@ test_that("marginal names, rows, and warnings are rendered labels of the margina
     rownames(table),
     paste0("(mu) x:g[", expected_names, "]")
   )
-  # the warnings name the rows they belong to
+  # the warnings name the parameter of the fit and the level, as in 0.3.0
   expect_identical(
     attr(table, "warnings"),
-    paste0(rownames(table), ": check this level")
+    paste0("mu_x__xXx__g[", expected_names, "]: check this level")
   )
   table <- marginal_estimates_table(
     list(mu_x__xXx__g = marginal),
@@ -1104,7 +1104,7 @@ test_that("marginal names, rows, and warnings are rendered labels of the margina
   )
   expect_identical(
     attr(table, "warnings"),
-    paste0("x:g[", expected_names, "]: check this level")
+    paste0("mu_x__xXx__g[", expected_names, "]: check this level")
   )
 
   # the intercept's marginal mean (its draws are a one-row matrix of
@@ -1121,7 +1121,7 @@ test_that("marginal names, rows, and warnings are rendered labels of the margina
   )
   expect_identical(rownames(table), "(mu) intercept")
   expect_equal(table[, "Mean"], mean(intercept$intercept), tolerance = 1e-12)
-  expect_identical(attr(table, "warnings"), "(mu) intercept: check the intercept")
+  expect_identical(attr(table, "warnings"), "mu_intercept: check the intercept")
 })
 
 # The labels of the discrete (legend) scales of a ggplot.

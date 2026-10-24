@@ -17,21 +17,21 @@
 (mu) x_cont1:x_fac3md[-1SD, C] 0.373 0.100 0.184 0.370 0.572  8.824000e+00
 (mu) x_cont1:x_fac3md[0SD, C]  0.554 0.078 0.413 0.551 0.708 2.940849e+104
 (mu) x_cont1:x_fac3md[1SD, C]  0.735 0.109 0.531 0.731 0.956 6.508535e+107
-[0;31m(mu) intercept: Posterior samples do not span both sides of the null hypothesis. The posterior density at the null hypothesis is an extrapolation from Gaussian kernel tails; the Bayes factor is not reliable evidence.[0m
-[0;31m(mu) x_cont1[-1SD]: Posterior samples do not span both sides of the null hypothesis. The posterior density at the null hypothesis is an extrapolation from Gaussian kernel tails; the Bayes factor is not reliable evidence.[0m
-[0;31m(mu) x_cont1[0SD]: Posterior samples do not span both sides of the null hypothesis. The posterior density at the null hypothesis is an extrapolation from Gaussian kernel tails; the Bayes factor is not reliable evidence.[0m
-[0;31m(mu) x_cont1[1SD]: Posterior samples do not span both sides of the null hypothesis. The posterior density at the null hypothesis is an extrapolation from Gaussian kernel tails; the Bayes factor is not reliable evidence.[0m
-[0;31m(mu) x_fac2t[A]: Posterior samples do not span both sides of the null hypothesis. The posterior density at the null hypothesis is an extrapolation from Gaussian kernel tails; the Bayes factor is not reliable evidence.[0m
-[0;31m(mu) x_fac2t[B]: Posterior samples do not span both sides of the null hypothesis. The posterior density at the null hypothesis is an extrapolation from Gaussian kernel tails; the Bayes factor is not reliable evidence.[0m
-[0;31m(mu) x_fac3md[A]: Posterior samples do not span both sides of the null hypothesis. The posterior density at the null hypothesis is an extrapolation from Gaussian kernel tails; the Bayes factor is not reliable evidence.[0m
-[0;31m(mu) x_fac3md[B]: Posterior samples do not span both sides of the null hypothesis. The posterior density at the null hypothesis is an extrapolation from Gaussian kernel tails; the Bayes factor is not reliable evidence.[0m
-[0;31m(mu) x_fac3md[C]: Posterior samples do not span both sides of the null hypothesis. The posterior density at the null hypothesis is an extrapolation from Gaussian kernel tails; the Bayes factor is not reliable evidence.[0m
-[0;31m(mu) x_cont1:x_fac3md[-1SD, A]: Posterior samples do not span both sides of the null hypothesis. The posterior density at the null hypothesis is an extrapolation from Gaussian kernel tails; the Bayes factor is not reliable evidence.[0m
-[0;31m(mu) x_cont1:x_fac3md[0SD, A]: Posterior samples do not span both sides of the null hypothesis. The posterior density at the null hypothesis is an extrapolation from Gaussian kernel tails; the Bayes factor is not reliable evidence.[0m
-[0;31m(mu) x_cont1:x_fac3md[1SD, A]: Posterior samples do not span both sides of the null hypothesis. The posterior density at the null hypothesis is an extrapolation from Gaussian kernel tails; the Bayes factor is not reliable evidence.[0m
-[0;31m(mu) x_cont1:x_fac3md[-1SD, B]: Posterior samples do not span both sides of the null hypothesis. The posterior density at the null hypothesis is an extrapolation from Gaussian kernel tails; the Bayes factor is not reliable evidence.[0m
-[0;31m(mu) x_cont1:x_fac3md[0SD, B]: Posterior samples do not span both sides of the null hypothesis. The posterior density at the null hypothesis is an extrapolation from Gaussian kernel tails; the Bayes factor is not reliable evidence.[0m
-[0;31m(mu) x_cont1:x_fac3md[1SD, B]: Posterior samples do not span both sides of the null hypothesis. The posterior density at the null hypothesis is an extrapolation from Gaussian kernel tails; the Bayes factor is not reliable evidence.[0m
-[0;31m(mu) x_cont1:x_fac3md[-1SD, C]: Posterior samples do not span both sides of the null hypothesis. The posterior density at the null hypothesis is an extrapolation from Gaussian kernel tails; the Bayes factor is not reliable evidence.[0m
-[0;31m(mu) x_cont1:x_fac3md[0SD, C]: Posterior samples do not span both sides of the null hypothesis. The posterior density at the null hypothesis is an extrapolation from Gaussian kernel tails; the Bayes factor is not reliable evidence.[0m
-[0;31m(mu) x_cont1:x_fac3md[1SD, C]: Posterior samples do not span both sides of the null hypothesis. The posterior density at the null hypothesis is an extrapolation from Gaussian kernel tails; the Bayes factor is not reliable evidence.[0m
+[0;31mmu_intercept: Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.[0m
+[0;31mmu_x_cont1[-1SD]: Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.[0m
+[0;31mmu_x_cont1[0SD]: Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.[0m
+[0;31mmu_x_cont1[1SD]: Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.[0m
+[0;31mmu_x_fac2t[A]: Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.[0m
+[0;31mmu_x_fac2t[B]: Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.[0m
+[0;31mmu_x_fac3md[A]: Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.[0m
+[0;31mmu_x_fac3md[B]: Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.[0m
+[0;31mmu_x_fac3md[C]: Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.[0m
+[0;31mmu_x_cont1__xXx__x_fac3md[-1SD, A]: Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.[0m
+[0;31mmu_x_cont1__xXx__x_fac3md[0SD, A]: Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.[0m
+[0;31mmu_x_cont1__xXx__x_fac3md[1SD, A]: Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.[0m
+[0;31mmu_x_cont1__xXx__x_fac3md[-1SD, B]: Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.[0m
+[0;31mmu_x_cont1__xXx__x_fac3md[0SD, B]: Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.[0m
+[0;31mmu_x_cont1__xXx__x_fac3md[1SD, B]: Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.[0m
+[0;31mmu_x_cont1__xXx__x_fac3md[-1SD, C]: Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.[0m
+[0;31mmu_x_cont1__xXx__x_fac3md[0SD, C]: Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.[0m
+[0;31mmu_x_cont1__xXx__x_fac3md[1SD, C]: Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.[0m
