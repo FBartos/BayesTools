@@ -2,6 +2,11 @@
 
 .bt_marglik_result_version <- 1L
 
+# The class vector of every result. The 'bridge' class of 0.3.0 results stays,
+# so that bridgesampling's bf(), post_prob(), logml(), error_measures() and
+# summary() apply as before; the BayesTools methods (print) come first.
+.bt_marglik_class <- c("BayesTools_marglik", "bridge", "list")
+
 .bt_marglik_empty_repetitions <- function(){
 
   data.frame(
@@ -64,7 +69,7 @@
       )
     )
   )
-  class(out) <- c("BayesTools_marglik", "list")
+  class(out) <- .bt_marglik_class
   out
 }
 
@@ -312,7 +317,17 @@
       chains = chain_metadata
     )
   )
-  class(out) <- c("BayesTools_marglik", "list")
+  # A single repetition keeps the fields of the upstream 'bridge' object that
+  # bridgesampling's error_measures() and summary() read (the full upstream
+  # result stays in 'diagnostics').
+  if(n_repetitions == 1L){
+    for(field in c("niter", "method", "q11", "q12", "q21", "q22")){
+      if(!is.null(upstream[[field]])){
+        out[[field]] <- upstream[[field]]
+      }
+    }
+  }
+  class(out) <- .bt_marglik_class
   out
 }
 

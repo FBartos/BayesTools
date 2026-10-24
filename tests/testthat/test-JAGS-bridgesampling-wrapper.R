@@ -1230,6 +1230,60 @@ test_that("empty formula inputs are no formula input for a fit without formulas 
   expect_match(conditionMessage(error), "fitted formula-design metadata are missing", fixed = TRUE)
 })
 
+test_that("marginal-likelihood results keep the bridge class of released results", {
+
+  # Real upstream sampler (as above): the targets are normalized priors times
+  # the constants exp(0) and exp(-1), so their log marginal likelihoods are 0
+  # and -1 up to Monte Carlo error.
+  skip_if_not_installed("bridgesampling")
+  set.seed(1)
+  make_chain <- function() coda::mcmc(matrix(
+    c(rnorm(400), rnorm(400)),
+    ncol = 2,
+    dimnames = list(NULL, c("mu", "sigma"))
+  ))
+  posterior  <- coda::mcmc.list(make_chain(), make_chain(), make_chain())
+  prior_list <- list(mu = prior("normal", list(0, 1)), sigma = prior("normal", list(0, 1)))
+  first  <- JAGS_bridgesampling(posterior, function(parameters, data) 0,  list(), prior_list, seed = 1)
+  second <- JAGS_bridgesampling(posterior, function(parameters, data) -1, list(), prior_list, seed = 1)
+
+  expect_identical(class(first), c("BayesTools_marglik", "bridge", "list"))
+  expect_identical(class(bridgesampling_object(-1)), c("BayesTools_marglik", "bridge", "list"))
+  expect_identical(bridgesampling::logml(first), first[["logml"]])
+
+  # bf() and post_prob() apply as to the released bridge objects
+  bayes_factor <- bridgesampling::bf(first, second)
+  expect_equal(bayes_factor$bf, exp(first[["logml"]] - second[["logml"]]))
+  expect_equal(bridgesampling::bf(first, second, log = TRUE)$bf, first[["logml"]] - second[["logml"]])
+  probabilities <- bridgesampling::post_prob(first, second)
+  expect_equal(unname(probabilities), unname(stats::setNames(
+    exp(c(first[["logml"]], second[["logml"]])) / sum(exp(c(first[["logml"]], second[["logml"]]))),
+    NULL
+  )))
+  expect_equal(
+    unname(bridgesampling::post_prob(bridgesampling_object(0), bridgesampling_object(-Inf))),
+    c(1, 0)
+  )
+  expect_equal(bridgesampling::bf(bridgesampling_object(0), bridgesampling_object(-1))$bf, exp(1))
+
+  # a single repetition keeps what error_measures() and summary() read
+  upstream <- first[["diagnostics"]][["upstream"]]
+  for(field in c("niter", "method", "q11", "q12", "q21", "q22")){
+    expect_identical(first[[field]], upstream[[field]], info = field)
+  }
+  expect_identical(bridgesampling::error_measures(first), bridgesampling::error_measures(upstream))
+  summary_table <- summary(first)
+  expect_identical(summary_table$Logml_Estimate, first[["logml"]])
+  expect_identical(summary_table$Method, "normal")
+
+  # repetitions: the aggregate is available to logml(), bf() and post_prob()
+  repeated <- JAGS_bridgesampling(posterior, function(parameters, data) 0, list(), prior_list, repetitions = 2L, seed = 1)
+  expect_identical(class(repeated), c("BayesTools_marglik", "bridge", "list"))
+  expect_identical(bridgesampling::logml(repeated), repeated[["logml"]])
+  expect_equal(bridgesampling::bf(repeated, second, log = TRUE)$bf, repeated[["logml"]] - second[["logml"]])
+  expect_null(repeated[["q11"]])
+})
+
 test_that("manual marginal-likelihood objects declare their scale", {
 
   result <- bridgesampling_object(-Inf)

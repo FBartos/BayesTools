@@ -288,7 +288,12 @@
 #'   fit, log_posterior, data, priors_list, seed = 1
 #' )
 #' }
-#' @return A `BayesTools_marglik` object. `logml` is one scalar natural-log
+#' @return A `BayesTools_marglik` object that also has the class `bridge` of
+#' released versions, so that `bridgesampling::bf()`, `post_prob()` and
+#' `logml()` apply to it. For a single repetition, `niter`, `method`, and the
+#' sampler draws `q11`, `q12`, `q21`, `q22` of the upstream result are kept at
+#' the top level, so that `bridgesampling::error_measures()` and `summary()`
+#' work as for a released `bridge` object. `logml` is one scalar natural-log
 #' marginal likelihood, aggregated as the median of finite repetition-level
 #' log marginal likelihoods. `repetitions` contains one diagnostic row per
 #' bridge repetition, `aggregation` records the aggregation and failure policy,

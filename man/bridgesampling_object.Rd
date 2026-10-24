@@ -17,7 +17,9 @@ applies to that model. Do not store failed bridge-sampling attempts as
 \code{-Inf} unless zero evidence is scientifically intended.}
 }
 \value{
-A \code{BayesTools_marglik} object with no repetition rows and the
+A \code{BayesTools_marglik} object (with the class \code{bridge} of released
+versions, so that \code{bridgesampling::bf()}, \code{post_prob()} and \code{logml()} apply)
+with no repetition rows and the
 \code{"supplied_scalar"} aggregation rule, or the \code{"supplied_failure"} rule for
 a failed computation (\code{logml = NA}).
 }

@@ -169,12 +169,15 @@ old behaviour.
     models stored by RoBMA 4.0.0.
   - marginal likelihoods are `BayesTools_marglik` objects.
     `JAGS_bridgesampling()` and `bridgesampling_object()` return them instead
-    of bridgesampling `"bridge"` objects, and `models_inference()`,
+    of plain bridgesampling `"bridge"` objects, and `models_inference()`,
     `ensemble_inference()`, and `mix_posteriors()` accept only them as
     `marglik`: saved 0.3.0 results and `bridgesampling::bridge_sampler()`
-    output are rejected, and bridgesampling methods such as `bf()` do not
-    apply to the new objects. Recompute marginal likelihoods with
-    `JAGS_bridgesampling()` or wrap a known natural-log value with
+    output are rejected. The new objects keep the class `"bridge"`
+    (`c("BayesTools_marglik", "bridge", "list")`), so that bridgesampling's
+    `bf()`, `post_prob()`, and `logml()` apply as before, and a single
+    repetition retains `niter`, `method`, and the sampler draws that
+    `error_measures()` and `summary()` read. Recompute marginal likelihoods
+    with `JAGS_bridgesampling()` or wrap a known natural-log value with
     `bridgesampling_object(logml)`.
   - weight-function priors saved from 0.3.0 (alone or inside prior lists,
     mixtures, and bias priors) lack the selection-model specification and are

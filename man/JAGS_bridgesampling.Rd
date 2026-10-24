@@ -213,7 +213,12 @@ processes are not relayed to this diagnostic field. Errors retain the
 \verb{Bridge sampling failed:} context.}
 }
 \value{
-A \code{BayesTools_marglik} object. \code{logml} is one scalar natural-log
+A \code{BayesTools_marglik} object that also has the class \code{bridge} of
+released versions, so that \code{bridgesampling::bf()}, \code{post_prob()} and
+\code{logml()} apply to it. For a single repetition, \code{niter}, \code{method}, and the
+sampler draws \code{q11}, \code{q12}, \code{q21}, \code{q22} of the upstream result are kept at
+the top level, so that \code{bridgesampling::error_measures()} and \code{summary()}
+work as for a released \code{bridge} object. \code{logml} is one scalar natural-log
 marginal likelihood, aggregated as the median of finite repetition-level
 log marginal likelihoods. \code{repetitions} contains one diagnostic row per
 bridge repetition, \code{aggregation} records the aggregation and failure policy,

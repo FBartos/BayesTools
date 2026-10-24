@@ -248,7 +248,9 @@
 #' \code{-Inf} unless zero evidence is scientifically intended.
 #'
 #'
-#' @return A `BayesTools_marglik` object with no repetition rows and the
+#' @return A `BayesTools_marglik` object (with the class `bridge` of released
+#' versions, so that `bridgesampling::bf()`, `post_prob()` and `logml()` apply)
+#' with no repetition rows and the
 #' `"supplied_scalar"` aggregation rule, or the `"supplied_failure"` rule for
 #' a failed computation (\code{logml = NA}).
 #'
