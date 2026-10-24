@@ -134,7 +134,12 @@
 #' stops before reaching that parameter. Its \code{Rhat} column is the larger
 #' of the point estimate and the upper confidence limit of the potential scale
 #' reduction factor (see \code{max_Rhat}). The \code{errors} attribute carries
-#' failed checks.
+#' the failed checks: one message per failed criterion, with the most extreme
+#' value, as in \code{BayesTools} 0.3.0 (for example \code{"R-hat 1.234 is
+#' larger than the set target (1.05)."}), followed by the sentence
+#' \code{"Failing parameters: 'mu', 'tau'."} that names the failing parameters
+#' (the first five and the number of the others), and one message for every
+#' parameter whose enabled diagnostics are not assessable.
 #'
 #' @seealso [JAGS_fit()] [parameter_coordinates()]
 #' @export
@@ -704,51 +709,41 @@ JAGS_check_convergence <- function(
   }
   # A diagnostic that was computed is a value that fails its criterion or not,
   # also in a row where another diagnostic could not be computed: only the
-  # diagnostics that failed to compute are not assessable.
+  # diagnostics that failed to compute are not assessable. One message per
+  # criterion states the most extreme failing value, as in 0.3.0, and names
+  # the failing parameters.
   assessable <- diagnostics[["state"]] %in% c("assessable", "not_assessable")
   checks <- list(
     list(
       column = "Rhat",
       threshold = max_Rhat,
       fails = function(x, target) x > target,
-      message = function(x, target, parameter){
-        paste0(
-          "R-hat ", round(x, 3), " for '", parameter,
-          "' is larger than the set target (", target, ")."
-        )
+      message = function(x, target){
+        paste0("R-hat ", round(max(x), 3), " is larger than the set target (", target, ").")
       }
     ),
     list(
       column = "ESS",
       threshold = min_ESS,
       fails = function(x, target) x < target,
-      message = function(x, target, parameter){
-        paste0(
-          "ESS ", round(x), " for '", parameter,
-          "' is lower than the set target (", target, ")."
-        )
+      message = function(x, target){
+        paste0("ESS ", round(min(x)), " is lower than the set target (", target, ").")
       }
     ),
     list(
       column = "MCMC_error",
       threshold = max_error,
       fails = function(x, target) x > target,
-      message = function(x, target, parameter){
-        paste0(
-          "MCMC error ", round(x, 5), " for '", parameter,
-          "' is larger than the set target (", target, ")."
-        )
+      message = function(x, target){
+        paste0("MCMC error ", round(max(x), 5), " is larger than the set target (", target, ").")
       }
     ),
     list(
       column = "MCMC_SD_error",
       threshold = max_SD_error,
       fails = function(x, target) x > target,
-      message = function(x, target, parameter){
-        paste0(
-          "MCMC SD error ", round(x, 3), " for '", parameter,
-          "' is larger than the set target (", target, ")."
-        )
+      message = function(x, target){
+        paste0("MCMC SD error ", round(max(x), 3), " is larger than the set target (", target, ").")
       }
     )
   )
@@ -762,15 +757,24 @@ JAGS_check_convergence <- function(
     if(any(failed)){
       fails <- c(
         fails,
-        mapply(
-          FUN = check[["message"]],
-          x = diagnostics[[check[["column"]]]][failed],
-          parameter = diagnostics[["parameter"]][failed],
-          MoreArgs = list(target = check[["threshold"]]),
-          USE.NAMES = FALSE
+        paste(
+          check[["message"]](diagnostics[[check[["column"]]]][failed], check[["threshold"]]),
+          .bt_convergence_failing_parameters(diagnostics[["parameter"]][failed])
         )
       )
     }
   }
   fails
+}
+
+# The sentence that names the parameters failing a criterion; the first few
+# are listed and the 'diagnostics' attribute of the result holds all of them.
+.bt_convergence_failing_parameters <- function(parameters, limit = 5L){
+
+  listed <- paste0("'", parameters[seq_len(min(limit, length(parameters)))], "'", collapse = ", ")
+  if(length(parameters) > limit){
+    listed <- paste0(listed, " and ", length(parameters) - limit, " more")
+  }
+
+  paste0("Failing parameters: ", listed, ".")
 }

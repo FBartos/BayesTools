@@ -101,7 +101,12 @@ one row per available parameter and classifies it as
 stops before reaching that parameter. Its \code{Rhat} column is the larger
 of the point estimate and the upper confidence limit of the potential scale
 reduction factor (see \code{max_Rhat}). The \code{errors} attribute carries
-failed checks.
+the failed checks: one message per failed criterion, with the most extreme
+value, as in \code{BayesTools} 0.3.0 (for example \code{"R-hat 1.234 is
+larger than the set target (1.05)."}), followed by the sentence
+\code{"Failing parameters: 'mu', 'tau'."} that names the failing parameters
+(the first five and the number of the others), and one message for every
+parameter whose enabled diagnostics are not assessable.
 }
 \description{
 Checks whether the supplied \link[runjags]{runjags-package} model

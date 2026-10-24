@@ -108,7 +108,10 @@ test_that("convergence roles come from declarations, not name suffixes", {
   expect_true(check(fit, check_indicators = FALSE))
   indicators <- check(fit, check_indicators = TRUE)
   expect_false(indicators)
-  expect_match(attr(indicators, "errors"), "R-hat .* for 'mu_indicator'")
+  expect_length(attr(indicators, "errors"), 1L)
+  expect_match(attr(indicators, "errors"), "^R-hat ")
+  expect_match(attr(indicators, "errors"), " is larger than the set target (1.05). Failing parameters: 'mu_indicator'.",
+               fixed = TRUE)
 
   # Continuous priors whose names end in '_indicator' or '_inclusion' are
   # ordinary sampled parameters: they are checked, never rejected as
@@ -137,7 +140,7 @@ test_that("convergence roles come from declarations, not name suffixes", {
     .convergence_states(named_check),
     c(dose_indicator = "assessable", p_inclusion = "assessable")
   )
-  expect_match(attr(named_check, "errors"), "for 'p_inclusion'", fixed = TRUE)
+  expect_match(attr(named_check, "errors"), "Failing parameters: 'p_inclusion'.", fixed = TRUE)
 })
 
 test_that("indicator diagnostics are invariant to categorical labels", {
@@ -521,8 +524,10 @@ test_that("targeted convergence checks retain requested product-space indicators
       mu_inclusion = "not_requested"
     )
   )
-  expect_match(attr(targeted, "errors"), "R-hat Inf for 'mu_indicator'",
-               fixed = TRUE, all = FALSE)
+  expect_identical(
+    attr(targeted, "errors"),
+    "R-hat Inf is larger than the set target (1.05). Failing parameters: 'mu_indicator'."
+  )
 
   explicit_inclusion <- JAGS_check_convergence(
     fit,
@@ -538,8 +543,10 @@ test_that("targeted convergence checks retain requested product-space indicators
     attr(explicit_inclusion, "diagnostics")$state,
     c("assessable", "not_requested", "assessable")
   )
-  expect_match(attr(explicit_inclusion, "errors"), "R-hat Inf for 'mu_inclusion'",
-               fixed = TRUE, all = FALSE)
+  expect_identical(
+    attr(explicit_inclusion, "errors"),
+    "R-hat Inf is larger than the set target (1.05). Failing parameters: 'mu_inclusion'."
+  )
 })
 
 test_that("a base convergence monitor selects every indexed element", {
@@ -656,9 +663,9 @@ test_that("chains stuck at different values fail the criteria and are not ignore
     result <- JAGS_check_convergence(stuck_fit, allow_not_assessable = allow)
     expect_false(result)
     errors <- attr(result, "errors")
-    expect_match(errors, "R-hat Inf for 'mu' is larger than the set target (1.05).",
+    expect_match(errors, "R-hat Inf is larger than the set target (1.05). Failing parameters: 'mu'.",
                  fixed = TRUE, all = FALSE)
-    expect_match(errors, "ESS 0 for 'mu' is lower than the set target (500).",
+    expect_match(errors, "ESS 0 is lower than the set target (500). Failing parameters: 'mu'.",
                  fixed = TRUE, all = FALSE)
     expect_false(any(grepl("not assessable", errors, fixed = TRUE)))
     diagnostics <- attr(result, "diagnostics")
@@ -668,9 +675,9 @@ test_that("chains stuck at different values fail the criteria and are not ignore
     # the MCMC error of an ESS of 0 is infinite as well (F322)
     expect_identical(diagnostics$MCMC_error, Inf)
     expect_identical(diagnostics$MCMC_SD_error, Inf)
-    expect_match(errors, "MCMC error Inf for 'mu' is larger than the set target (0.01).",
+    expect_match(errors, "MCMC error Inf is larger than the set target (0.01). Failing parameters: 'mu'.",
                  fixed = TRUE, all = FALSE)
-    expect_match(errors, "MCMC SD error Inf for 'mu' is larger than the set target (0.05).",
+    expect_match(errors, "MCMC SD error Inf is larger than the set target (0.05). Failing parameters: 'mu'.",
                  fixed = TRUE, all = FALSE)
   }
 
@@ -680,13 +687,13 @@ test_that("chains stuck at different values fail the criteria and are not ignore
     max_SD_error = NULL, allow_not_assessable = TRUE
   )
   expect_false(r_hat_only)
-  expect_match(attr(r_hat_only, "errors"), "R-hat Inf for 'mu'", fixed = TRUE)
+  expect_match(attr(r_hat_only, "errors"), "R-hat Inf is larger than the set target (1.05). Failing parameters: 'mu'.", fixed = TRUE)
   ess_only <- JAGS_check_convergence(
     stuck_fit, max_Rhat = NULL, min_ESS = 500, max_error = NULL,
     max_SD_error = NULL, allow_not_assessable = TRUE
   )
   expect_false(ess_only)
-  expect_match(attr(ess_only, "errors"), "ESS 0 for 'mu'", fixed = TRUE)
+  expect_match(attr(ess_only, "errors"), "ESS 0 is lower than the set target (500). Failing parameters: 'mu'.", fixed = TRUE)
 
   # a model indicator stuck in different components per chain
   indicator_priors <- list(mu = prior_mixture(list(
@@ -701,7 +708,7 @@ test_that("chains stuck at different values fail the criteria and are not ignore
     indicator_fit, check_indicators = TRUE, allow_not_assessable = TRUE
   )
   expect_false(stuck_indicator)
-  expect_match(attr(stuck_indicator, "errors"), "R-hat Inf for 'mu_indicator",
+  expect_match(attr(stuck_indicator, "errors"), "R-hat Inf is larger than the set target (1.05). Failing parameters: 'mu_indicator'",
                fixed = TRUE, all = FALSE)
 
   # a column that is constant when pooled stays not assessable, unchanged
@@ -735,10 +742,10 @@ test_that("an error-only check fails for chains stuck at different values (F322)
     both     = list(max_error = 0.01, max_SD_error = 0.05)
   )
   messages <- list(
-    error    = "MCMC error Inf for 'mu' is larger than the set target (0.01).",
-    SD_error = "MCMC SD error Inf for 'mu' is larger than the set target (0.05).",
-    both     = c("MCMC error Inf for 'mu' is larger than the set target (0.01).",
-                 "MCMC SD error Inf for 'mu' is larger than the set target (0.05).")
+    error    = "MCMC error Inf is larger than the set target (0.01). Failing parameters: 'mu'.",
+    SD_error = "MCMC SD error Inf is larger than the set target (0.05). Failing parameters: 'mu'.",
+    both     = c("MCMC error Inf is larger than the set target (0.01). Failing parameters: 'mu'.",
+                 "MCMC SD error Inf is larger than the set target (0.05). Failing parameters: 'mu'.")
   )
   for(name in names(criteria)){
     for(allow in c(FALSE, TRUE)){
@@ -1676,6 +1683,63 @@ test_that("one chain warns and retains its other convergence criteria", {
   expect_match(attr(failed, "errors"), "ESS")
 })
 
+test_that("a failed criterion gives one message with the most extreme value and the failing parameters", {
+
+  set.seed(47)
+  n <- 300
+  parameters <- paste0("p", 1:7)
+  draws <- function(offsets){
+    matrix(stats::rnorm(n * 7), ncol = 7, dimnames = list(NULL, parameters)) +
+      rep(offsets, each = n)
+  }
+  priors <- stats::setNames(rep(list(prior("normal", list(0, 1))), 7), parameters)
+
+  # six parameters diverge between the chains by growing amounts, one agrees
+  fit <- .mock_convergence_fit(draws(rep(0, 7)), draws(c(6, 5, 4, 3, 2, 1, 0)), priors)
+  result <- JAGS_check_convergence(
+    fit, max_Rhat = 1.05, min_ESS = NULL, max_error = NULL, max_SD_error = NULL
+  )
+  diagnostics <- attr(result, "diagnostics")
+  failing <- diagnostics$parameter[diagnostics$Rhat > 1.05]
+  expect_identical(failing, parameters[1:6])
+
+  # one message per criterion, as in 0.3.0, with the most extreme value; the
+  # failing parameters follow, the first five by name
+  expect_identical(
+    attr(result, "errors"),
+    paste0(
+      "R-hat ", round(max(diagnostics$Rhat), 3), " is larger than the set target (1.05). ",
+      "Failing parameters: 'p1', 'p2', 'p3', 'p4', 'p5' and 1 more."
+    )
+  )
+
+  # every enabled criterion that fails adds one message
+  both <- JAGS_check_convergence(
+    fit, max_Rhat = 1.05, min_ESS = 1e6, max_error = NULL, max_SD_error = NULL
+  )
+  messages <- attr(both, "errors")
+  expect_length(messages, 2L)
+  expect_identical(messages[[1L]], attr(result, "errors"))
+  expect_identical(
+    messages[[2L]],
+    paste0(
+      "ESS ", round(min(attr(both, "diagnostics")$ESS)), " is lower than the set target (1e+06). ",
+      "Failing parameters: 'p1', 'p2', 'p3', 'p4', 'p5' and 2 more."
+    )
+  )
+
+  # all failing parameters are named when there are few of them
+  few <- JAGS_check_convergence(
+    .mock_convergence_fit(draws(rep(0, 7)), draws(c(6, 5, 0, 0, 0, 0, 0)), priors),
+    max_Rhat = 1.05, min_ESS = NULL, max_error = NULL, max_SD_error = NULL
+  )
+  expect_match(attr(few, "errors"), " Failing parameters: 'p1', 'p2'.", fixed = TRUE)
+  expect_length(attr(few, "errors"), 1L)
+
+  # the diagnostics attribute keeps one row per parameter
+  expect_identical(attr(both, "diagnostics")$parameter, parameters)
+})
+
 test_that("fail_fast stops computing after a failed parameter", {
 
   set.seed(46)
@@ -1731,7 +1795,7 @@ test_that("computed failures are reported when another diagnostic of the row is 
   }
 
   # the computed R-hat of 'a' fails whatever allow_not_assessable says
-  expect_identical(failures(TRUE), "R-hat Inf for 'a' is larger than the set target (1.05).")
+  expect_identical(failures(TRUE), "R-hat Inf is larger than the set target (1.05). Failing parameters: 'a'.")
   strict <- failures(FALSE)
   expect_length(strict, 2L)
   expect_match(strict[[1L]], "ESS, MCMC error, MCMC SD error diagnostics are not assessable for 'a'.", fixed = TRUE)

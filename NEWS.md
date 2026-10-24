@@ -1146,7 +1146,11 @@ old behaviour.
     checks, including derived and auxiliary ones) and `allow_not_assessable`,
     and returns a `diagnostics` attribute that classifies every available
     parameter as `"assessable"`, `"structural_constant"`, `"not_assessable"`,
-    `"not_requested"`, or `"not_checked"` (after `fail_fast` stops). With
+    `"not_requested"`, or `"not_checked"` (after `fail_fast` stops). A failed
+    criterion still gives one message in the `errors` attribute, as in 0.3.0
+    ("R-hat 1.234 is larger than the set target (1.05)." with the most extreme
+    value), followed by the sentence "Failing parameters: 'mu', 'tau'." that
+    names them (the first five and the number of the others). With
     `check_indicators = TRUE`, eligible indicators are added to a `monitor`
     selection. The `autofit_control` of `JAGS_fit()` and `JAGS_extend()` takes
     the same `monitor` and `allow_not_assessable`, and unknown `monitor` names
