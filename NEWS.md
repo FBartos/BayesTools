@@ -194,16 +194,6 @@ old behaviour.
     versions no longer invert the `inv_<parameter>` columns of 0.3.0 fits and
     stop with a missing-parameter error.
 - removed functions and arguments:
-  - removes the weight-function distribution functions `mdone.sided()`,
-    `mdtwo.sided()`, `mpone.sided()`, `mptwo.sided()`, `mqone.sided()`,
-    `mqtwo.sided()`, `rone.sided()`, `rtwo.sided()`, and their `_fixed`
-    variants (16 functions); use `mpdf()`, `mcdf()`, `mquant()`, and `rng()`
-    on a `prior_weightfunction()` prior.
-  - removes `JAGS_diagnostics_density()`, `JAGS_diagnostics_trace()`, and
-    `JAGS_diagnostics_autocorrelation()`; use `JAGS_diagnostics(type =
-    "density")`, `"trace"`, or `"autocorrelation"`.
-  - removes `interpret2()` and `interpret_tables()`; use `interpret()` or
-    `interpret_records()`.
   - removes the `transform_orthonormal` argument (deprecated since 0.2.14) of
     `runjags_estimates_table()` / `JAGS_estimates_table()`,
     `ensemble_estimates_table()`, and `JAGS_diagnostics()`; use

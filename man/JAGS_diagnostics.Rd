@@ -2,6 +2,9 @@
 % Please edit documentation in R/JAGS-diagnostics.R
 \name{JAGS_diagnostics}
 \alias{JAGS_diagnostics}
+\alias{JAGS_diagnostics_density}
+\alias{JAGS_diagnostics_autocorrelation}
+\alias{JAGS_diagnostics_trace}
 \title{Plot diagnostics of a 'JAGS' model}
 \usage{
 JAGS_diagnostics(
@@ -13,6 +16,46 @@ JAGS_diagnostics(
   ylim = NULL,
   lags = 30,
   n_points = 1000,
+  transformations = NULL,
+  transform_factors = FALSE,
+  short_name = FALSE,
+  parameter_names = FALSE,
+  formula_prefix = TRUE,
+  ...
+)
+
+JAGS_diagnostics_density(
+  fit,
+  parameter,
+  plot_type = "base",
+  xlim = NULL,
+  n_points = 1000,
+  transformations = NULL,
+  transform_factors = FALSE,
+  short_name = FALSE,
+  parameter_names = FALSE,
+  formula_prefix = TRUE,
+  ...
+)
+
+JAGS_diagnostics_trace(
+  fit,
+  parameter,
+  plot_type = "base",
+  ylim = NULL,
+  transformations = NULL,
+  transform_factors = FALSE,
+  short_name = FALSE,
+  parameter_names = FALSE,
+  formula_prefix = TRUE,
+  ...
+)
+
+JAGS_diagnostics_autocorrelation(
+  fit,
+  parameter,
+  plot_type = "base",
+  lags = 30,
   transformations = NULL,
   transform_factors = FALSE,
   short_name = FALSE,

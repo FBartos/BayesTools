@@ -1,0 +1,1 @@
+RoBMA found moderate evidence in favor of the Effect, BF10 = 3.50, with mean model-averaged estimate mu = 0.298 kg, 95% CI [-0.020,  0.601].

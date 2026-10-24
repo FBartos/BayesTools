@@ -49,7 +49,11 @@
 #' of class 'ggplot' if \code{plot_type = "ggplot"}.
 #'
 #' @name JAGS_diagnostics
+#' @aliases JAGS_diagnostics_density JAGS_diagnostics_autocorrelation JAGS_diagnostics_trace
 #' @export JAGS_diagnostics
+#' @export JAGS_diagnostics_density
+#' @export JAGS_diagnostics_autocorrelation
+#' @export JAGS_diagnostics_trace
 
 #' @rdname JAGS_diagnostics
 JAGS_diagnostics                 <- function(fit, parameter, type, plot_type = "base",
@@ -231,6 +235,42 @@ JAGS_diagnostics                 <- function(fit, parameter, type, plot_type = "
   }
 
 
+}
+
+#' @rdname JAGS_diagnostics
+JAGS_diagnostics_density         <- function(fit, parameter, plot_type = "base",
+                                             xlim = NULL, n_points = 1000,
+                                             transformations = NULL, transform_factors = FALSE,
+                                             short_name = FALSE, parameter_names = FALSE, formula_prefix = TRUE, ...){
+
+  JAGS_diagnostics(fit = fit, parameter = parameter, plot_type = plot_type, type = "density",
+                   xlim = xlim, n_points = n_points,
+                   transformations = transformations, transform_factors = transform_factors,
+                   short_name = short_name, parameter_names = parameter_names, formula_prefix = formula_prefix, ...)
+}
+
+#' @rdname JAGS_diagnostics
+JAGS_diagnostics_trace           <- function(fit, parameter, plot_type = "base",
+                                             ylim = NULL,
+                                             transformations = NULL, transform_factors = FALSE,
+                                             short_name = FALSE, parameter_names = FALSE, formula_prefix = TRUE, ...){
+
+  JAGS_diagnostics(fit = fit, parameter = parameter, plot_type = plot_type, type = "trace",
+                   ylim = ylim,
+                   transformations = transformations, transform_factors = transform_factors,
+                   short_name = short_name, parameter_names = parameter_names, formula_prefix = formula_prefix, ...)
+}
+
+#' @rdname JAGS_diagnostics
+JAGS_diagnostics_autocorrelation <- function(fit, parameter, plot_type = "base",
+                                             lags = 30,
+                                             transformations = NULL, transform_factors = FALSE,
+                                             short_name = FALSE, parameter_names = FALSE, formula_prefix = TRUE, ...){
+
+  JAGS_diagnostics(fit = fit, parameter = parameter, plot_type = plot_type, type = "autocorrelation",
+                   lags = lags,
+                   transformations = transformations, transform_factors = transform_factors,
+                   short_name = short_name, parameter_names = parameter_names, formula_prefix = formula_prefix, ...)
 }
 
 .diagnostics_plot_data                 <- function(fit, parameter, prior_list, transformations, transform_factors){

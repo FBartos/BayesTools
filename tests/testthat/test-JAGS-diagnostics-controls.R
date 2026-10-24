@@ -21,15 +21,36 @@ skip_if_not_test_profile("unit")
 }
 
 
-test_that("JAGS diagnostics are selected by 'type' only", {
+test_that("the released JAGS_diagnostics_* wrappers select the diagnostic type", {
 
+  fit <- .mock_public_diagnostics_fit()
   exports <- getNamespaceExports("BayesTools")
-  expect_true("JAGS_diagnostics" %in% exports)
-  expect_false(any(c(
+  expect_true(all(c(
+    "JAGS_diagnostics",
     "JAGS_diagnostics_density",
     "JAGS_diagnostics_trace",
     "JAGS_diagnostics_autocorrelation"
   ) %in% exports))
+
+  layer_data <- function(plot){
+    lapply(ggplot2::ggplot_build(plot)$data, function(layer) layer[, intersect(colnames(layer), c("x", "y")), drop = FALSE])
+  }
+
+  for(type in c("density", "trace", "autocorrelation")){
+    wrapper <- get(paste0("JAGS_diagnostics_", type), envir = asNamespace("BayesTools"))
+    extra   <- if(type == "autocorrelation") list(lags = 3) else list()
+    expect_equal(
+      layer_data(do.call(wrapper, c(list(fit, parameter = "theta", plot_type = "ggplot"), extra))),
+      layer_data(do.call(JAGS_diagnostics, c(list(fit, parameter = "theta", type = type, plot_type = "ggplot"), extra)))
+    )
+  }
+
+  # the argument removed from the wrappers is rejected as in JAGS_diagnostics()
+  expect_error(
+    JAGS_diagnostics_density(fit, parameter = "theta", transform_orthonormal = TRUE),
+    "The 'transform_orthonormal' argument was removed; use 'transform_factors = TRUE'.",
+    fixed = TRUE
+  )
 })
 
 

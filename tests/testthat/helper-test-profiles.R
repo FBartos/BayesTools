@@ -35,6 +35,7 @@ bayestools_test_profile_contexts <- list(
     "distributions-mpoint",
     "distributions-point",
     "distributions-tools",
+    "distributions-weightfunctions",
     "draws-metadata",
     "factor-interaction-coefficients",
     "formula-contribution-state",

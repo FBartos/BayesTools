@@ -2,6 +2,7 @@
 % Please edit documentation in R/interpret.R
 \name{interpret_records}
 \alias{interpret_records}
+\alias{interpret_tables}
 \title{Normalize structured interpretation sources}
 \usage{
 interpret_records(
@@ -12,6 +13,8 @@ interpret_records(
   method = NULL,
   digits = 3
 )
+
+interpret_tables(sources, spec, ...)
 }
 \arguments{
 \item{sources}{named list of interpretation sources. Each source can be a
@@ -43,6 +46,11 @@ generic \code{"text"} rendering. Downstream packages should usually request
 \item{method}{optional method name used only by the generic text renderer.}
 
 \item{digits}{number of digits used only by the generic text renderer.}
+
+\item{spec}{alias for \code{plan} used by \code{interpret_tables}.}
+
+\item{...}{additional arguments passed from \code{interpret_tables} to
+\code{interpret_records}.}
 }
 \value{
 \code{interpret_records} returns a data frame with class
@@ -53,7 +61,8 @@ the Bayes factor on the natural scale in the canonical orientation (\code{0}
 or \code{Inf} for a log-scale value beyond the double range). The text
 rendering classifies and prints a log-scale value from its logarithm, so
 such values keep their evidence strength and are printed as
-\code{exp(<log>)}.
+\code{exp(<log>)}. \code{interpret_tables} is a convenience wrapper around
+\code{interpret_records}.
 }
 \description{
 \code{interpret_records} normalizes interpretation inputs from

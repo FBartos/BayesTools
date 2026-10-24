@@ -1,0 +1,1 @@
+Test found moderate evidence in favor of the Effect, BF10 = 10.00, with mean model-averaged estimate mu = 0.298, 95% CI [0.109, 0.499]. Test found weak evidence against the Bias, BF_pb = 0.500.
