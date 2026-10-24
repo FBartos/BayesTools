@@ -111,6 +111,67 @@ test_that("monotone weightfunction RNG fixes the first reference bin", {
   expect_true(all(general >= -1e-12 & general <= 1 + 1e-12))
 })
 
+test_that("weightfunction RNG keeps the extraDistr draws and RNG stream", {
+
+  # monotone: cumulative sums of one Dirichlet draw, reference bin fixed to one
+  set.seed(5)
+  draws <- extraDistr::rdirichlet(3, alpha = c(1, 2, 3))
+  expected_seed <- .Random.seed
+  set.seed(5)
+  actual <- rone.sided(3, alpha = c(1, 2, 3))
+  expect_equal(actual, cbind(1, draws[,2] + draws[,3], draws[,3]))
+  expect_identical(.Random.seed, expected_seed)
+
+  # two-sided with row-specific concentrations
+  alpha <- matrix(c(1, 2, 3, 2, 1, 1), nrow = 2, byrow = TRUE)
+  set.seed(5)
+  draws <- extraDistr::rdirichlet(2, alpha = alpha)
+  expected_seed <- .Random.seed
+  set.seed(5)
+  actual <- rtwo.sided(2, alpha = alpha)
+  expect_equal(actual, cbind(1, draws[,2] + draws[,3], draws[,3]))
+  expect_identical(.Random.seed, expected_seed)
+
+  # general (alpha1, alpha2): two draws in this order (values of the release code)
+  set.seed(5)
+  extraDistr::rdirichlet(3, alpha = c(1, 2))
+  extraDistr::rdirichlet(3, alpha = c(2, 3))
+  expected_seed <- .Random.seed
+  set.seed(5)
+  actual <- rone.sided(3, alpha1 = c(1, 2), alpha2 = c(2, 3))
+  expect_equal(actual, rbind(
+    c(1, 0.08512392505, 0.8233342000),
+    c(1, 0.11289401034, 0.3717778611),
+    c(1, 0.08883173862, 0.4820797988)
+  ), tolerance = 1e-8)
+  expect_identical(.Random.seed, expected_seed)
+})
+
+test_that("weightfunction RNG reports unavailable Dirichlet draws with the typed condition", {
+
+  expected_message <- "Dirichlet draws are unavailable because sampling produced non-finite or degenerate simplex draws. Use a less extreme 'alpha' specification."
+  expect_dirichlet_unavailable <- function(expr){
+    error <- tryCatch(expr, error = identity)
+    expect_s3_class(error, "BayesTools_dirichlet_rng_unavailable")
+    if(inherits(error, "error")){
+      expect_identical(class(error), c("BayesTools_dirichlet_rng_unavailable", "BayesTools_prior_rng_unavailable", "error", "condition"))
+      expect_identical(conditionMessage(error), expected_message)
+      expect_null(conditionCall(error))
+    }
+  }
+
+  set.seed(11)
+  expect_dirichlet_unavailable(rone.sided(3, alpha = c(1e308, 1e308)))
+  set.seed(11)
+  expect_dirichlet_unavailable(rtwo.sided(3, alpha = c(1e308, 1e308)))
+  set.seed(11)
+  expect_dirichlet_unavailable(rone.sided(3, alpha = matrix(c(1e308, 1e308), nrow = 3, ncol = 2, byrow = TRUE)))
+  set.seed(11)
+  expect_dirichlet_unavailable(rone.sided(3, alpha1 = c(1e308, 1e308), alpha2 = c(1, 1)))
+  set.seed(11)
+  expect_dirichlet_unavailable(rone.sided(3, alpha1 = c(1, 1), alpha2 = c(1e308, 1e308)))
+})
+
 test_that("fixed weightfunction helpers support non-negative relative weights", {
 
   omega <- c(1, .5, 1.5)

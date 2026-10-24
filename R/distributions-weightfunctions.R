@@ -367,8 +367,8 @@ mqtwo.sided_fixed <- function(p, omega, lower.tail = TRUE, log.p = FALSE){
     alpha2 <- do.call(rbind, lapply(1:n, function(i)alpha2))
   }
 
-  x1 <- extraDistr::rdirichlet(n, alpha = alpha1)
-  x2 <- extraDistr::rdirichlet(n, alpha = alpha2) * (1 - x1[,1])
+  x1 <- .prior_dirichlet_draws(alpha1, n)
+  x2 <- .prior_dirichlet_draws(alpha2, n) * (1 - x1[,1])
 
   x <- matrix(ncol = ncol(alpha1) + ncol(alpha2) - 1, nrow = n)
 
@@ -396,7 +396,7 @@ mqtwo.sided_fixed <- function(p, omega, lower.tail = TRUE, log.p = FALSE){
     alpha <- do.call(rbind, lapply(1:n, function(i)alpha))
   }
 
-  x <- extraDistr::rdirichlet(n, alpha = alpha)
+  x <- .prior_dirichlet_draws(alpha, n)
   x <- t(apply(x[,ncol(x):1, drop = FALSE], 1, cumsum))[,ncol(x):1, drop = FALSE]
   x[,1] <- 1
 
