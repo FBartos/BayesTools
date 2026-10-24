@@ -298,8 +298,6 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
   "The Savage-Dickey density ratio is likely to be overestimated."
 )
 
-.Savage_Dickey_BF_normal_extrapolation_warning <- .Savage_Dickey_BF_extrapolation_warning
-
 .Savage_Dickey_BF.fun    <- function(posterior, null_hypothesis, normal_approximation, silent, density_method,
                                      label = NULL, null_mass_NA = FALSE){
 
@@ -553,11 +551,7 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
      !isTRUE(support_exclusion[["excluded"]]) &&
      (null_hypothesis < posterior_range[1] || null_hypothesis > posterior_range[2]) &&
      !isTRUE(null_at_support_boundary)){
-    warnings <- c(warnings, if(isTRUE(normal_approximation)){
-      .Savage_Dickey_BF_normal_extrapolation_warning
-    }else{
-      .Savage_Dickey_BF_extrapolation_warning
-    })
+    warnings <- c(warnings, .Savage_Dickey_BF_extrapolation_warning)
   }
 
   kde_height <- function(){

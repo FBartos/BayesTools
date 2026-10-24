@@ -86,6 +86,36 @@ test_that("monotone weightfunction marginal helpers use reference-first cumulati
   )
 })
 
+test_that("weightfunction marginal helpers agree with the marginals of the matching prior", {
+
+  q_seq <- seq(0, 1, .1)
+  alpha <- c(.3, 1, 2)
+  helpers <- list(
+    "one-sided" = list(density = mdone.sided, cdf = mpone.sided, quantile = mqone.sided),
+    "two-sided" = list(density = mdtwo.sided, cdf = mptwo.sided, quantile = mqtwo.sided)
+  )
+
+  for(side in names(helpers)){
+    wf_prior <- prior_weightfunction(side = side, steps = c(.025, .05), weights = wf_cumulative(alpha))
+    expect_equal(
+      unname(helpers[[side]][["density"]](q_seq, alpha = alpha)),
+      unname(mpdf(wf_prior, q_seq)),
+      tolerance = 1e-12
+    )
+    expect_equal(
+      unname(helpers[[side]][["cdf"]](q_seq, alpha = alpha)),
+      unname(mcdf(wf_prior, q_seq)),
+      tolerance = 1e-12
+    )
+    # (the helper of 0.3.0 returns 0 for the reference bin at probability 0, the prior returns 1)
+    expect_equal(
+      unname(helpers[[side]][["quantile"]](q_seq[-1], alpha = alpha)),
+      unname(mquant(wf_prior, q_seq[-1])),
+      tolerance = 1e-12
+    )
+  }
+})
+
 test_that("monotone weightfunction RNG fixes the first reference bin", {
 
   set.seed(1)

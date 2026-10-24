@@ -1336,8 +1336,9 @@ old behaviour.
     inputs. Printing a Bayes factor of class `BayesTools_BF` (for example the
     result of `Savage_Dickey_BF()`) shows its values and warnings, and printing
     an element of `ensemble_inference()` shows its probabilities, Bayes factor,
-    and the attributes of 0.3.0, without the logarithmic bookkeeping; the
-    stored objects keep all attributes.
+    and its attributes (those of 0.3.0, and the `marglik_failure` audit of a
+    result computed under a failure policy), without the logarithmic
+    bookkeeping; the stored objects keep all attributes.
 - formulas, scaling, and original-scale quantities:
   - `ensemble_estimates_table(transform_scaled = TRUE)` and
     `marginal_estimates_table(transform_scaled = TRUE)` transform mixed
