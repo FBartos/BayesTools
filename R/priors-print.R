@@ -12,6 +12,12 @@
 #' @param silent to silently return the print message.
 #' @param ... additional arguments
 #'
+#' @details A weightfunction prior, or a publication-bias prior with a
+#' weightfunction component, prints the specification of its
+#' \code{\link{selection_model}} after the prior name only when that
+#' specification differs from the default \code{selection_model()}. The
+#' branches of a bias-prior mixture are numbered by their position.
+#'
 #' @examples
 #' # create some prior distributions
 #' p0 <- prior(distribution = "point",  parameters = list(location = 0))
@@ -91,8 +97,10 @@ print.prior <- function(x, short_name = FALSE, parameter_names = FALSE, plot = F
       }else{
         list()
       }
+      # the block is shown for a selection model that differs from the default
+      # selection_model(), so that a default weightfunction prints as before
       for(i in seq_along(models)){
-        if(!is.null(models[[i]])){
+        if(!is.null(models[[i]]) && !identical(models[[i]], selection_model())){
           cat("\n")
           if(length(models) > 1L){
             cat("Prior branch ", i, "\n", sep = "")

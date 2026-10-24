@@ -1104,8 +1104,12 @@ old behaviour.
     univariate models; at most one estimate-level random term is resolved
     through its one-to-one grouping map; publication groups (`group`) apply
     only to `weight_rule = "best"`, and under the default `"product"` rule,
-    which is invariant to publication partitions, `print()` reports them as
-    unused. Product and best p-value rules of vector selection compile to fixed
+    which is invariant to publication partitions, `print()` of the
+    specification reports them as unused. `print()` of a weight-function prior
+    (also within prior lists, mixtures, and bias priors) shows the
+    specification after the prior only when it differs from the default
+    `selection_model()`, so a default weight-function prior prints as in 0.3.0.
+    Product and best p-value rules of vector selection compile to fixed
     branch metadata without additional sampled parameters, and the
     weight-function prior itself is unchanged.
   - adds the selection helpers `selection_qmc_design()` (deterministic

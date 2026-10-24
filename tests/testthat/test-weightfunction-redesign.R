@@ -306,9 +306,17 @@ test_that("selection model printing distinguishes source choices from weight-pri
   expect_true(any(grepl("Weight of the best p-value", utils::capture.output(print(combined)), fixed = TRUE)))
   mixture <- prior_mixture(list(reference, combined))
   printed <- utils::capture.output(print(mixture))
-  expect_true(all(c("Prior branch 1", "Prior branch 2") %in% printed))
-  expect_true(any(grepl("Product of estimate weights", printed, fixed = TRUE)))
+  # only the branch with a non-default model shows its block (numbered by position)
+  expect_true("Prior branch 2" %in% printed)
+  expect_false("Prior branch 1" %in% printed)
+  expect_false(any(grepl("Product of estimate weights", printed, fixed = TRUE)))
   expect_true(any(grepl("Weight of the best p-value", printed, fixed = TRUE)))
+  other <- prior_bias(selection = prior_weightfunction(steps = .05, model = selection_model(
+    other_random_effects = "integrate")))
+  printed_both <- utils::capture.output(print(prior_mixture(list(other, combined))))
+  expect_true(all(c("Prior branch 1", "Prior branch 2") %in% printed_both))
+  default_mixture <- prior_mixture(list(reference, prior_bias(selection = reference)))
+  expect_false(any(grepl("Selection model|Prior branch", utils::capture.output(print(default_mixture)))))
 })
 
 test_that("prior_weightfunction stores canonical geometry and weight priors", {
