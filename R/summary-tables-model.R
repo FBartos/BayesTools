@@ -1340,10 +1340,9 @@ runjags_inference_table  <- function(fit, title = NULL, footnotes = NULL, warnin
   row_labels <- character()
 
   for(par in names(prior_list)){
-    # the row and warning labels of the parameter, rendered from the prior
+    # the row label of the parameter, rendered from the prior
     term_parts <- .bt_label_parts_term(par, prior_list[[par]])
     term_label <- .bt_label(term_parts, style = "table", formula_prefix = formula_prefix)
-    term_warning_label <- .bt_label(term_parts, style = "warning", formula_prefix = formula_prefix)
 
     # spike-and-slab priors and spike-and-slab totals of ordered priors: the
     # prior whose inclusion is tested and the column of its indicator
@@ -1377,7 +1376,16 @@ runjags_inference_table  <- function(fit, title = NULL, footnotes = NULL, warnin
         temp_diagnostics    <- .indicator_BF_diagnostics(temp_indicator_list, temp_prior_prob, temp_BF, log_BF = temp_log_BF)
         temp_row            <- cbind(temp_row, .indicator_BF_diagnostic_row(temp_diagnostics)[, BF_diagnostic_columns, drop = FALSE])
         if(BF_error_diagnostics){
-          warnings <- c(warnings, .indicator_BF_warnings(term_warning_label, temp_diagnostics))
+          # the warning names the parameter of the fit, as in 0.3.0 (the
+          # spike-and-slab total of an ordered prior has no counterpart there)
+          warnings <- c(warnings, .indicator_BF_warnings(
+            if(.bt_is_ordered_spike_and_slab_total(prior_list[[par]])){
+              .bt_label(term_parts, style = "warning", formula_prefix = formula_prefix)
+            }else{
+              par
+            },
+            temp_diagnostics
+          ))
         }
       }
 
@@ -1427,7 +1435,7 @@ runjags_inference_table  <- function(fit, title = NULL, footnotes = NULL, warnin
           temp_diagnostics    <- .indicator_BF_diagnostics(temp_indicator_list, temp_prior_prob[["alternative"]], temp_BF, log_BF = temp_log_BF)
           temp_row            <- cbind(temp_row, .indicator_BF_diagnostic_row(temp_diagnostics)[, BF_diagnostic_columns, drop = FALSE])
           if(BF_error_diagnostics){
-            warnings <- c(warnings, .indicator_BF_warnings(term_warning_label, temp_diagnostics))
+            warnings <- c(warnings, .indicator_BF_warnings(par, temp_diagnostics))
           }
         }
 
@@ -1439,10 +1447,8 @@ runjags_inference_table  <- function(fit, title = NULL, footnotes = NULL, warnin
 
       }else{
 
-        # compute summary for each component (rows and warnings name the
-        # component after the term, as the component rows of estimates tables)
+        # compute summary for each component
         for(component in unique(components)){
-          component_parts <- .bt_label_parts_update(term_parts, component = component)
           temp_parameter <- paste0(par, " [", component, "]")
           temp_log_BF    <- .inclusion_log_BF.probs(prior_probs = temp_prior_prob, post_probs = temp_post_prob, is_null = names(temp_post_prob) != component)
           temp_BF        <- exp(temp_log_BF)
@@ -1458,10 +1464,7 @@ runjags_inference_table  <- function(fit, title = NULL, footnotes = NULL, warnin
             temp_diagnostics    <- .indicator_BF_diagnostics(temp_indicator_list, temp_prior_prob[[component]], temp_BF, log_BF = temp_log_BF)
             temp_row            <- cbind(temp_row, .indicator_BF_diagnostic_row(temp_diagnostics)[, BF_diagnostic_columns, drop = FALSE])
             if(BF_error_diagnostics){
-              warnings <- c(warnings, .indicator_BF_warnings(
-                .bt_label(component_parts, style = "warning", formula_prefix = formula_prefix),
-                temp_diagnostics
-              ))
+              warnings <- c(warnings, .indicator_BF_warnings(temp_parameter, temp_diagnostics))
             }
           }
 
@@ -1469,11 +1472,8 @@ runjags_inference_table  <- function(fit, title = NULL, footnotes = NULL, warnin
           BF_bound_operators <- c(BF_bound_operators, temp_BF_reporting$operator)
           BF_log_values <- c(BF_log_values, temp_BF_reporting$log_value)
           parameter_roles <- c(parameter_roles, mixture_role)
-          row_labels <- c(row_labels, .bt_label(
-            component_parts,
-            style          = "table",
-            formula_prefix = formula_prefix
-          ))
+          # a component row names the component after the term, as in 0.3.0
+          row_labels <- c(row_labels, paste0(term_label, " [", component, "]"))
         }
 
       }

@@ -441,11 +441,6 @@ old behaviour.
       every factor (`(mu) x:g[-1SD, a]`), and the table's warnings start with
       the row label (was the backend node, `mu_x__xXx__g[-1SD, a]:`); a
       marginal of a parameter without levels is `mu` (was `mu[]`);
-    - inference-table rows of mixture components are `(mu) z[narrow]` (was
-      `(mu) z [narrow]`), a factor level of a mixture component is
-      `(mu) x[b][narrow]` (was `(mu) x[narrow][b]`), and the Bayes factor
-      MC-error warnings name the row label (was the backend node, e.g.
-      `mu_intercept`);
     - factor plot legends show the level text of each level cell (both levels
       of an interaction cell, `b, v`; without the leading space of transformed
       contrasts; level names with brackets whole).
