@@ -352,6 +352,69 @@ test_that("print.BayesTools_marglik reports a successful sampler result", {
   expect_length(output, 4L)
 })
 
+test_that("a result of one sampler repetition prints as the bridge result of 0.3.0", {
+
+  # the text of bridgesampling's print of a 'bridge' object, as 0.3.0 printed
+  # a JAGS_bridgesampling() result
+  upstream <- structure(
+    list(logml = -27.228432, niter = 6L, method = "normal", repetitions = 1, mcse_logml = .01),
+    class = "bridge"
+  )
+  release_text <- c(
+    "Bridge sampling estimate of the log marginal likelihood: -27.22843",
+    "Estimate obtained in 6 iteration(s) via method \"normal\"."
+  )
+  testthat::local_mocked_bindings(
+    bridge_sampler = function(...) upstream,
+    .package = "bridgesampling"
+  )
+  posterior <- coda::as.mcmc(matrix(seq_len(20), ncol = 1, dimnames = list(NULL, "mu")))
+  call_bridge <- function(...){
+    JAGS_bridgesampling(
+      fit = posterior, log_posterior = function(parameters, data) 0, data = list(),
+      prior_list = list(mu = prior("normal", list(0, 1))), ...
+    )
+  }
+  result <- call_bridge()
+  printed <- capture.output(returned <- print(result))
+  expect_identical(printed, release_text)
+  expect_identical(printed, capture.output(print(upstream)))
+  expect_identical(returned, result)
+
+  # a known excess of the iteration limit (a condition added since 0.3.0) adds one line
+  expect_warning(limited <- call_bridge(maxiter = 5L), class = "BayesTools_marglik_iteration_limit")
+  expect_true(limited[["iteration_limit_exceeded"]])
+  expect_identical(capture.output(print(limited)), c(
+    release_text,
+    "  iteration counts exceeded 'maxiter'; inspect 'repetitions' and 'diagnostics' (counts may include upstream retries)"
+  ))
+
+  # failed, manual, exact and repeated results have no bridge print and keep the summary
+  expect_identical(capture.output(print(bridgesampling_object(NA)))[[1L]], "BayesTools marginal-likelihood result")
+  expect_identical(capture.output(print(bridgesampling_object(-10)))[[1L]], "BayesTools marginal-likelihood result")
+  testthat::local_mocked_bindings(
+    bridge_sampler = .mock_bridge_sampler,
+    .package = "bridgesampling"
+  )
+  expect_identical(capture.output(print(call_bridge(repetitions = 2L)))[[1L]], "BayesTools marginal-likelihood result")
+
+})
+
+test_that("the print of a real single-repetition result is the print of its upstream bridge object", {
+
+  # (not mocked: the upstream sampler is the real one)
+  set.seed(1)
+  chain <- function() coda::mcmc(matrix(
+    c(rnorm(400), rnorm(400)), ncol = 2, dimnames = list(NULL, c("mu", "sigma"))
+  ))
+  real <- JAGS_bridgesampling(
+    fit = coda::mcmc.list(chain(), chain()), log_posterior = function(parameters, data) 0, data = list(),
+    prior_list = list(mu = prior("normal", list(0, 1)), sigma = prior("normal", list(0, 1))), seed = 1
+  )
+  expect_identical(capture.output(print(real)), capture.output(print(real[["diagnostics"]][["upstream"]])))
+  expect_match(capture.output(print(real))[[1L]], "^Bridge sampling estimate of the log marginal likelihood: ")
+})
+
 test_that("JAGS_bridgesampling seeds bridge proposal draws explicitly", {
 
   seen <- new.env(parent = emptyenv())

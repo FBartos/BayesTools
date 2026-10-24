@@ -218,7 +218,9 @@ released versions, so that \code{bridgesampling::bf()}, \code{post_prob()} and
 \code{logml()} apply to it. For a single repetition, \code{niter}, \code{method}, and the
 sampler draws \code{q11}, \code{q12}, \code{q21}, \code{q22} of the upstream result are kept at
 the top level, so that \code{bridgesampling::error_measures()} and \code{summary()}
-work as for a released \code{bridge} object. \code{logml} is one scalar natural-log
+work as for a released \code{bridge} object, and the result prints as that
+object did (one line added when \code{maxiter} was exceeded). Failed, manual,
+exact and repeated results print a BayesTools summary. \code{logml} is one scalar natural-log
 marginal likelihood, aggregated as the median of finite repetition-level
 log marginal likelihoods. \code{repetitions} contains one diagnostic row per
 bridge repetition, \code{aggregation} records the aggregation and failure policy,

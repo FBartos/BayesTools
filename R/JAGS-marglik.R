@@ -293,7 +293,9 @@
 #' `logml()` apply to it. For a single repetition, `niter`, `method`, and the
 #' sampler draws `q11`, `q12`, `q21`, `q22` of the upstream result are kept at
 #' the top level, so that `bridgesampling::error_measures()` and `summary()`
-#' work as for a released `bridge` object. `logml` is one scalar natural-log
+#' work as for a released `bridge` object, and the result prints as that
+#' object did (one line added when `maxiter` was exceeded). Failed, manual,
+#' exact and repeated results print a BayesTools summary. `logml` is one scalar natural-log
 #' marginal likelihood, aggregated as the median of finite repetition-level
 #' log marginal likelihoods. `repetitions` contains one diagnostic row per
 #' bridge repetition, `aggregation` records the aggregation and failure policy,

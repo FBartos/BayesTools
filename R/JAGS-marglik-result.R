@@ -443,10 +443,32 @@
   )
 }
 
+# A successful result of one sampler repetition prints as the 'bridge' object of
+# 0.3.0 did (bridgesampling's print method); the diagnostic of an exceeded
+# iteration limit is added below it. Failed, manual, exact and repeated results
+# have no such print and keep the BayesTools summary.
+.bt_marglik_is_single_repetition <- function(x){
+
+  isTRUE(x[["success"]]) && identical(x[["aggregation"]][["n_repetitions"]], 1L) &&
+    !is.null(x[["niter"]]) && !is.null(x[["method"]])
+}
+
+.bt_marglik_iteration_limit_line <- function(){
+
+  "  iteration counts exceeded 'maxiter'; inspect 'repetitions' and 'diagnostics' (counts may include upstream retries)\n"
+}
+
 #' @export
 print.BayesTools_marglik <- function(x, ...){
 
   .bt_validate_marglik_result(x)
+  if(.bt_marglik_is_single_repetition(x)){
+    NextMethod()
+    if(isTRUE(x[["iteration_limit_exceeded"]])){
+      cat(.bt_marglik_iteration_limit_line())
+    }
+    return(invisible(x))
+  }
   cat("BayesTools marginal-likelihood result\n")
   if(isFALSE(x[["success"]])){
     cat("  failed computation (logml = NA; the ensemble 'on_failure' policy applies)\n")
@@ -465,7 +487,7 @@ print.BayesTools_marglik <- function(x, ...){
     )
   }
   if(isTRUE(x[["iteration_limit_exceeded"]])){
-    cat("  iteration counts exceeded 'maxiter'; inspect 'repetitions' and 'diagnostics' (counts may include upstream retries)\n")
+    cat(.bt_marglik_iteration_limit_line())
   }
   invisible(x)
 }

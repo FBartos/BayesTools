@@ -71,6 +71,10 @@ Every marginal-likelihood result has the class vector
 `post_prob()` and `logml()` apply to it as to the `bridge` objects of 0.3.0; a
 single repetition also keeps `niter`, `method` and the sampler draws `q11`,
 `q12`, `q21`, `q22` at the top level for `error_measures()` and `summary()`.
+Such a result (successful, one sampler repetition) prints through
+bridgesampling's `print.bridge` as in 0.3.0, plus the iteration-limit line when
+`iteration_limit_exceeded` is TRUE; failed, manual, exact and repeated results
+keep the BayesTools summary print.
 Marginal-likelihood `success` records finite-estimate availability; finite
 repetitions remain aggregated even when the known total iteration count
 exceeds `maxiter`. Optional schema-1 field `iteration_limit_exceeded` is TRUE

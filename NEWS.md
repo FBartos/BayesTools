@@ -176,9 +176,13 @@ old behaviour.
     (`c("BayesTools_marglik", "bridge", "list")`), so that bridgesampling's
     `bf()`, `post_prob()`, and `logml()` apply as before, and a single
     repetition retains `niter`, `method`, and the sampler draws that
-    `error_measures()` and `summary()` read. Recompute marginal likelihoods
-    with `JAGS_bridgesampling()` or wrap a known natural-log value with
-    `bridgesampling_object(logml)`.
+    `error_measures()` and `summary()` read. Printing the result of one
+    sampler repetition gives the print of the `"bridge"` object of 0.3.0
+    ("Bridge sampling estimate of the log marginal likelihood: ..."), with one
+    added line when the iteration limit `maxiter` was exceeded; failed,
+    manual, exact and repeated results print a BayesTools summary. Recompute
+    marginal likelihoods with `JAGS_bridgesampling()` or wrap a known
+    natural-log value with `bridgesampling_object(logml)`.
   - weight-function priors saved from 0.3.0 (alone or inside prior lists,
     mixtures, and bias priors) lack the selection-model specification and are
     rejected by `print()`, `rng()`, `mcdf()`, `mean()`, and `prior_mixture()`;
