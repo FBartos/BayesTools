@@ -143,6 +143,21 @@ compute_inference <- function(prior_weights, margliks, is_null = NULL,
   return(output)
 }
 
+# The probabilities and the inclusion Bayes factor of ensemble_inference() as
+# 0.3.0 printed them: the logarithmic probabilities, the natural-log Bayes
+# factor and the model-probability declarations of the object are not printed.
+#' @export
+print.inference <- function(x, ...){
+
+  shown <- x
+  for(attribute in c("log_BF", "log_prior_probs", "log_post_probs", "model_probability_declaration")){
+    attr(shown, attribute) <- NULL
+  }
+  print.default(shown, ...)
+
+  invisible(x)
+}
+
 .model_averaging_prior_probs <- function(prior_weights){
 
   if(any(!is.finite(prior_weights))){

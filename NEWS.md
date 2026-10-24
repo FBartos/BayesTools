@@ -1332,7 +1332,11 @@ old behaviour.
     of `compute_inference(conditional = TRUE)` states that the inclusion Bayes
     factor stays the unconditional inclusion odds.
     `inclusion_BF()` documentation identifies natural-log marginal-likelihood
-    inputs.
+    inputs. Printing a Bayes factor of class `BayesTools_BF` (for example the
+    result of `Savage_Dickey_BF()`) shows its values and warnings, and printing
+    an element of `ensemble_inference()` shows its probabilities, Bayes factor,
+    and the attributes of 0.3.0, without the logarithmic bookkeeping; the
+    stored objects keep all attributes.
 - formulas, scaling, and original-scale quantities:
   - `ensemble_estimates_table(transform_scaled = TRUE)` and
     `marginal_estimates_table(transform_scaled = TRUE)` transform mixed

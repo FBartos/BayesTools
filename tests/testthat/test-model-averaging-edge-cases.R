@@ -185,6 +185,30 @@ test_that("compute_inference is invariant to model order", {
   expect_equal(reordered$BF, reference$BF, tolerance = 1e-12)
 })
 
+test_that("ensemble_inference elements print as in 0.3.0 without the logarithmic bookkeeping", {
+
+  model_list <- lapply(1:3, function(i) {
+    list(marglik = .mock_bridge(log(c(2, 1, 4))[i]), prior_weights = i)
+  })
+  inference <- ensemble_inference(model_list, "theta", list(theta = c(TRUE, FALSE, FALSE)))
+
+  printed <- utils::capture.output(returned <- print(inference$theta))
+  expect_identical(returned, inference$theta)
+  expect_identical(printed[startsWith(printed, "$")], c("$prior_probs", "$post_probs", "$BF"))
+  expect_identical(
+    printed[grepl("^attr", printed)],
+    c('attr(,"is_null")', 'attr(,"conditional")', 'attr(,"class")', 'attr(,"parameter_name")')
+  )
+  expect_false(any(grepl("log_BF|log_prior_probs|log_post_probs|model_probability_declaration", printed)))
+  expect_identical(sum(nzchar(printed)), 14L)
+
+  # the stored object keeps its numerical bookkeeping
+  expect_true(all(c("log_BF", "log_prior_probs", "log_post_probs", "model_probability_declaration") %in%
+                    names(attributes(inference$theta))))
+  printed_all <- utils::capture.output(print(inference))
+  expect_false(any(grepl("log_BF|log_prior_probs|log_post_probs|model_probability_declaration", printed_all)))
+})
+
 test_that("conditional compute_inference renormalizes alternatives but keeps full inclusion BF", {
 
   prior_weights <- c(null = 2, alt_wide = 3, alt_narrow = 5)

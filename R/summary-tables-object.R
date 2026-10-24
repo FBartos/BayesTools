@@ -291,6 +291,24 @@ BF_carrier_drop <- function(x){
   .BF_carrier_drop(x)
 }
 
+# The values of a Bayes factor with its warnings, as 0.3.0 printed them; the
+# carrier attributes (canonical logarithms, orientation, numerical diagnostics)
+# are not printed. Bound operators are shown when the values include bounds.
+#' @export
+print.BayesTools_BF <- function(x, ...){
+
+  shown <- as.numeric(x)
+  names(shown) <- names(x)
+  attr(shown, "warnings") <- attr(x, "warnings", exact = TRUE)
+  bound <- attr(x, "bound_operator", exact = TRUE)
+  if(any(!is.na(bound))){
+    attr(shown, "bound_operator") <- bound
+  }
+  print.default(shown, ...)
+
+  invisible(x)
+}
+
 #' @export
 `[.BayesTools_BF` <- function(x, i, ...){
 

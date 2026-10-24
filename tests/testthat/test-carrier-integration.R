@@ -102,3 +102,31 @@ test_that("validated exact support exclusion precedes a stored grid's span guard
     method = "unmatched-support", density_method = "qCMDE", support = posterior_support_attribute(c(-1, 1)))
   expect_error(Savage_Dickey_BF(x, -.5, silent = TRUE, density_method = "precomputed"), "does not span", fixed = TRUE)
 })
+
+test_that("printing a Bayes factor shows its values and warnings, not its carrier attributes", {
+
+  x <- format_BF_from_log(c(a = 2, b = -1))
+  attr(x, "warnings") <- c("first warning", "second warning")
+  attr(x, "log_BF") <- c(2, -1)
+  attr(x, "orientation") <- "prior/posterior"
+
+  # as the plain vector with a "warnings" attribute that 0.3.0 printed
+  released <- c(a = exp(2), b = exp(-1))
+  attr(released, "warnings") <- c("first warning", "second warning")
+  printed <- utils::capture.output(returned <- print(x))
+  expect_identical(printed, utils::capture.output(print(released)))
+  expect_identical(returned, x)
+  expect_false(any(grepl("canonical_log_BF|producer_values|carrier_|log_BF|orientation|numerical_diagnostics|class", printed)))
+
+  # without warnings only the values are printed
+  expect_identical(
+    utils::capture.output(print(format_BF_from_log(c(a = 2, b = -1)))),
+    utils::capture.output(print(c(a = exp(2), b = exp(-1))))
+  )
+
+  # bound operators are part of the value and stay visible
+  bounded <- format_BF_from_log(c(a = 2, b = 3), bound_operator = c(">", NA))
+  printed_bounded <- utils::capture.output(print(bounded))
+  expect_identical(printed_bounded[-(1:2)], c('attr(,"bound_operator")', '[1] ">" NA '))
+  expect_identical(utils::capture.output(print(bounded[2])), utils::capture.output(print(c(b = exp(3)))))
+})
