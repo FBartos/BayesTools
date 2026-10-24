@@ -199,11 +199,6 @@ old behaviour.
     `ensemble_estimates_table()`, and `JAGS_diagnostics()`; use
     `transform_factors = TRUE`. `JAGS_diagnostics()` stops when it receives
     the argument, and the other functions report it as unused.
-  - removes the `seed` argument of `JAGS_extend()`. It only set R's random
-    seed: the extended chains always continue their own backend random-number
-    state and cannot be reseeded. Calls that pass `seed` (including
-    `update(fit, sample_extend = )` in RoBMA 4.0.0) stop with "unused
-    argument"; drop the argument.
   - new arguments and the removed ones change positional calls:
     `JAGS_fit()` takes `formula_random_prior_list` and
     `formula_random_effects_compile_list` before `chains`;
@@ -216,7 +211,7 @@ old behaviour.
     `remove_random_effects`, `keep_random_effects`,
     `remove_random_structures`, and `keep_random_structures` before
     `remove_diagnostics`; `JAGS_extend()` takes `runtime_setup`,
-    `runtime_cache`, and `worker_output` where `seed` was; and the arguments
+    `runtime_cache`, and `worker_output` after `seed`; and the arguments
     after `transform_orthonormal` of `runjags_estimates_table()`,
     `ensemble_estimates_table()`, and `JAGS_diagnostics()` move one position
     forward. Pass these and later arguments by name.
@@ -329,6 +324,15 @@ old behaviour.
     after a seeded `marginal_inference()`, must pass its own seed. Unseeded
     `JAGS_get_inits()` and `mix_posteriors()` take their seed with one draw
     from the caller's stream.
+  - `JAGS_extend()` keeps its `seed` argument, which now reseeds the chains: the
+    first extension of a seeded call starts every chain from the `.RNG.seed`
+    that `JAGS_fit()` derives from the seed for that chain (the stored
+    generator state is replaced, the parameter values of the end state are
+    kept), and the caller's random-number state is restored. In 0.3.0 the
+    argument only set R's random seed and the extension always continued the
+    stored generator states, so seeded extensions differ from 0.3.0 under the
+    same seed. Without a `seed`, and for further extensions of the automatic
+    fitting, the chains continue their stored states as before.
 - inference and convergence results:
   - conditioning on a parameter without an inclusion indicator (a prior that
     is neither spike-and-slab nor a null/alternative mixture), or on an

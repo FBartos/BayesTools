@@ -439,6 +439,81 @@ test_that("JAGS_extend rejects stale fitted metadata before backend work", {
   expect_identical(package_calls, 0L)
 })
 
+.jags_extend_test_end_state <- function(){
+  structure(c(
+    "\".RNG.state\" <- c(18236142, -1797149935)\n\"mu\" <- 0.309265360267742\n\".RNG.name\" <- \"base::Super-Duper\"\n",
+    "\".RNG.state\" <- c(-1576309028, 1661259421)\n\"mu\" <- 0.590024216246024\n\".RNG.name\" <- \"base::Super-Duper\"\n"
+  ), class = "runjagsinits")
+}
+
+test_that("a seeded extension reseeds the chains from their stored end states", {
+
+  skip_if_not_installed("runjags")
+  withr::local_preserve_seed()
+
+  end_state <- .jags_extend_test_end_state()
+  fit       <- list(end.state = end_state)
+  reseeded  <- .JAGS_extend_reseed(fit, 11)
+  state     <- lapply(reseeded$end.state, runjags::list.format)
+
+  # the generator state is replaced by the chain seeds of JAGS_fit(); the
+  # generator and the parameter values of the end state are kept
+  expect_s3_class(reseeded$end.state, "runjagsinits")
+  expect_identical(lapply(state, names), rep(list(c("mu", ".RNG.name", ".RNG.seed")), 2))
+  expect_equal(vapply(state, function(s) s[[".RNG.seed"]], numeric(1)), as.numeric(.JAGS_chain_seeds(11, 2)))
+  expect_identical(vapply(state, function(s) s[[".RNG.name"]], character(1)), rep("base::Super-Duper", 2))
+  expect_identical(
+    vapply(state, function(s) s[["mu"]], numeric(1)),
+    vapply(lapply(end_state, runjags::list.format), function(s) s[["mu"]], numeric(1))
+  )
+
+  # the seeds do not depend on the caller's generator; adjacent seeds do not share streams
+  set.seed(5)
+  expect_identical(.JAGS_extend_reseed(fit, 11)$end.state, reseeded$end.state)
+  other <- lapply(.JAGS_extend_reseed(fit, 12)$end.state, runjags::list.format)
+  expect_length(intersect(
+    vapply(state, function(s) s[[".RNG.seed"]], numeric(1)),
+    vapply(other, function(s) s[[".RNG.seed"]], numeric(1))
+  ), 0)
+})
+
+test_that("a seeded JAGS_extend extends from the reseeded end states and restores the caller's generator", {
+
+  skip_if_not_installed("runjags")
+  withr::local_preserve_seed()
+
+  fit <- .jags_extend_test_fit()
+  fit[["end.state"]] <- .jags_extend_test_end_state()
+  received <- list()
+  testthat::local_mocked_bindings(
+    extend.jags = function(runjags.object, ...){
+      received[[length(received) + 1L]] <<- runjags.object[["end.state"]]
+      stop("stop after recording")
+    },
+    .package = "runjags"
+  )
+  run <- function(...){
+    suppressWarnings(JAGS_extend(fit, autofit_control = .jags_extend_test_control(), ...))
+  }
+
+  set.seed(7)
+  state_before <- .Random.seed
+  run(seed = 11)
+  expect_identical(.Random.seed, state_before)
+  run()
+  run(seed = 11)
+
+  expect_identical(received[[1]], .JAGS_extend_reseed(list(end.state = fit[["end.state"]]), 11)$end.state)
+  expect_identical(received[[2]], fit[["end.state"]])
+  expect_identical(received[[3]], received[[1]])
+  expect_false(identical(received[[1]], received[[2]]))
+
+  expect_error(run(seed = NA), "'seed'")
+  expect_error(run(seed = "1"), "'seed'")
+  expect_error(run(seed = .Machine$integer.max + 1), "'seed'")
+  expect_length(received, 3)
+})
+
 test_that("JAGS_extend preserves the last valid fit after a backend error", {
 
   skip_if_not_installed("runjags")
@@ -450,7 +525,7 @@ test_that("JAGS_extend preserves the last valid fit after a backend error", {
     .package = "runjags"
   )
 
-  expect_false("seed" %in% names(formals(JAGS_extend)))
+  expect_true("seed" %in% names(formals(JAGS_extend)))
   expect_warning(
     result <- JAGS_extend(
       fit,

@@ -113,6 +113,15 @@
 #'   when it returns. With \code{seed = NULL}, the initial values are drawn
 #'   from one seed taken from the caller's random-number stream (see
 #'   \code{\link{JAGS_get_inits}}), which the fit then continues to use.
+#'   \code{JAGS_extend()} continues the stored random-number generator state of
+#'   every chain unless a \code{seed} is supplied. A \code{seed} replaces the
+#'   stored state of each chain by the chain seed that \code{JAGS_fit()} gives
+#'   it (drawn from \code{seed} as above), keeping the generator and the
+#'   parameter values of the end state, so the first extension is reproducible
+#'   for the same \code{seed}, fit, and R random-number generator settings.
+#'   Further extensions of the automatic fitting continue the generator states
+#'   of their chains, and the caller's random-number state is restored when
+#'   \code{JAGS_extend()} returns.
 #' @param worker_output optional file path for parallel worker stdout and stderr.
 #'   The parent directory must exist. Workers append to the same file, so messages
 #'   can interleave. \code{NULL} retains the backend default of discarding worker
@@ -221,7 +230,7 @@
 #'
 #' @return \code{JAGS_fit} returns an object of class 'runjags' and 'BayesTools_fit'.
 #' \code{JAGS_extend} continues the backend random-number generator state of the
-#' existing chains; it does not reseed them.
+#' existing chains, or reseeds them from \code{seed}.
 #' Stored parameter and RNG states initialize reconstruction; recompilation can
 #' reset sampler tuning and follows runjags' adaptation policy. The model is
 #' always recompiled from these stored states, never continued from a compiled
@@ -919,7 +928,7 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
 
 #' @rdname JAGS_fit
 JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 500, max_error = 0.01, max_SD_error = 0.05, max_time = list(time = 60, unit = "mins"), sample_extend = 1000, restarts = 10, max_extend = 10, check_indicators = FALSE, monitor = NULL, allow_not_assessable = FALSE),
-                        parallel = FALSE, cores = NULL, silent = TRUE,
+                        parallel = FALSE, cores = NULL, silent = TRUE, seed = NULL,
                         runtime_setup = attr(fit, "runtime_setup", exact = TRUE),
                         runtime_cache = attr(fit, "runtime_cache", exact = TRUE),
                         worker_output = NULL){
@@ -937,6 +946,13 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
   check_bool(parallel, "parallel", allow_NA = FALSE)
   check_int(cores, "cores", lower = 1, allow_NULL = TRUE, allow_NA = FALSE)
   check_bool(silent, "silent", allow_NA = FALSE)
+  check_real(seed, "seed", lower = -.Machine$integer.max, upper = .Machine$integer.max,
+             allow_NULL = TRUE, allow_NA = FALSE)
+  # A seeded extension leaves the caller's random-number state as it found it.
+  if(!is.null(seed)){
+    rng_state <- .bt_rng_state()
+    on.exit(.bt_rng_restore(rng_state), add = TRUE)
+  }
   worker_output <- .JAGS_validate_worker_output(worker_output)
   .JAGS_validate_runtime_setup(runtime_setup)
   .JAGS_validate_runtime_cache(runtime_cache)
@@ -1047,6 +1063,13 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
     user_silent.runjags <- runjags::runjags.getOption("silent.runjags")
     on.exit(runjags::runjags.options(silent.jags = user_silent.jags, silent.runjags = user_silent.runjags), add = TRUE)
     runjags::runjags.options(silent.jags = TRUE, silent.runjags = TRUE)
+  }
+
+  # The first extension starts from chain seeds derived from 'seed'; further
+  # extensions of the automatic fitting continue the generator states of their
+  # chains.
+  if(!is.null(seed)){
+    refit_call$runjags.object <- .JAGS_extend_reseed(fit, seed)
   }
 
   start_time <- .bt_jags_extend_time()
@@ -1163,6 +1186,29 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
 
 .bt_jags_extend_time <- function(){
   Sys.time()
+}
+
+# The chains of an extension are continued from their stored end states. A
+# seeded extension replaces the stored generator state of every chain by the
+# '.RNG.seed' that 'seed' gives the chain in JAGS_fit() (.JAGS_chain_seeds()),
+# keeping the generator and the parameter values of the end state. Chain k +
+# 1 of seed s therefore does not reuse the stream of chain k of seed s + 1.
+.JAGS_extend_reseed <- function(fit, seed){
+
+  end_state   <- fit[["end.state"]]
+  chain_seeds <- .JAGS_chain_seeds(seed, length(end_state))
+  for(j in seq_along(end_state)){
+    state <- runjags::list.format(end_state[[j]])
+    state[[".RNG.state"]] <- NULL
+    state[[".RNG.seed"]]  <- chain_seeds[[j]]
+    if(is.null(state[[".RNG.name"]])){
+      state[[".RNG.name"]] <- if(length(end_state) > 4) "lecuyer::RngStream" else "base::Super-Duper"
+    }
+    end_state[[j]] <- runjags::dump.format(state)
+  }
+  fit[["end.state"]] <- end_state
+
+  fit
 }
 
 # runjags keeps the compiled rjags model of a run in 'method.options$rjags':
