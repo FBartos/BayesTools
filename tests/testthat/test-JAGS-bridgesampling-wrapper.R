@@ -1329,22 +1329,55 @@ test_that("marginal-likelihood results keep the bridge class of released results
   )
   expect_equal(bridgesampling::bf(bridgesampling_object(0), bridgesampling_object(-1))$bf, exp(1))
 
-  # a single repetition keeps what error_measures() and summary() read
+  # a single repetition keeps the scalar fields that its print reads, not the
+  # sampler draws, which stay once in 'diagnostics$upstream'
   upstream <- first[["diagnostics"]][["upstream"]]
-  for(field in c("niter", "method", "q11", "q12", "q21", "q22")){
+  for(field in c("niter", "method")){
     expect_identical(first[[field]], upstream[[field]], info = field)
   }
+  expect_null(first[["q11"]])
+  expect_null(first[["q22"]])
+
+  # summary() and error_measures() forward to the stored sampler result
   expect_identical(bridgesampling::error_measures(first), bridgesampling::error_measures(upstream))
   summary_table <- summary(first)
+  expect_identical(summary_table, summary(upstream))
   expect_identical(summary_table$Logml_Estimate, first[["logml"]])
   expect_identical(summary_table$Method, "normal")
 
-  # repetitions: the aggregate is available to logml(), bf() and post_prob()
+  # repetitions: the aggregate is available to logml(), bf() and post_prob(); the
+  # summary and the error measures are those of the stored bridge_list
   repeated <- JAGS_bridgesampling(posterior, function(parameters, data) 0, list(), prior_list, repetitions = 2L, seed = 1)
   expect_identical(class(repeated), c("BayesTools_marglik", "bridge", "list"))
   expect_identical(bridgesampling::logml(repeated), repeated[["logml"]])
   expect_equal(bridgesampling::bf(repeated, second, log = TRUE)$bf, repeated[["logml"]] - second[["logml"]])
   expect_null(repeated[["q11"]])
+  repeated_upstream <- repeated[["diagnostics"]][["upstream"]]
+  expect_s3_class(repeated_upstream, "bridge_list")
+  expect_identical(summary(repeated), summary(repeated_upstream))
+  expect_s3_class(summary(repeated), "summary.bridge_list")
+  expect_identical(bridgesampling::error_measures(repeated), bridgesampling::error_measures(repeated_upstream))
+  expect_named(bridgesampling::error_measures(repeated), c("min", "max", "IQR"))
+})
+
+test_that("summary() and error_measures() of results without a sampler result are a clear typed error", {
+
+  skip_if_not_installed("bridgesampling")
+  posterior <- coda::mcmc(matrix(0, nrow = 100L, ncol = 1L, dimnames = list(NULL, "theta")))
+  exact <- JAGS_bridgesampling(
+    fit = posterior, log_posterior = function(parameters, data) 0, data = NULL,
+    prior_list = list(theta = prior("point", list(location = 0)))
+  )
+  expect_identical(exact[["aggregation"]][["rule"]], "exact_zero_dimensional")
+  for(result in list(exact, bridgesampling_object(-10), bridgesampling_object(-Inf), bridgesampling_object(NA))){
+    for(call in list(function() summary(result), function() bridgesampling::error_measures(result))){
+      condition <- expect_error(call(), class = "BayesTools_marglik_sampler_result_unavailable")
+      expect_s3_class(condition, "BayesTools_marglik_unavailable")
+      expect_null(conditionCall(condition))
+      expect_match(conditionMessage(condition), "bridge-sampling result is unavailable", fixed = TRUE)
+      expect_match(conditionMessage(condition), "'diagnostics$upstream'", fixed = TRUE)
+    }
+  }
 })
 
 test_that("manual marginal-likelihood objects declare their scale", {

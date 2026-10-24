@@ -3,8 +3,8 @@
 .bt_marglik_result_version <- 1L
 
 # The class vector of every result. The 'bridge' class of 0.3.0 results stays,
-# so that bridgesampling's bf(), post_prob(), logml(), error_measures() and
-# summary() apply as before; the BayesTools methods (print) come first.
+# so that bridgesampling's bf(), post_prob() and logml() apply as before; the
+# BayesTools methods (print, summary, error_measures) come first.
 .bt_marglik_class <- c("BayesTools_marglik", "bridge", "list")
 
 .bt_marglik_empty_repetitions <- function(){
@@ -317,11 +317,11 @@
       chains = chain_metadata
     )
   )
-  # A single repetition keeps the fields of the upstream 'bridge' object that
-  # bridgesampling's error_measures() and summary() read (the full upstream
-  # result stays in 'diagnostics').
+  # A single repetition keeps the scalar fields of the upstream 'bridge' object
+  # that its print reads (the full upstream result stays in 'diagnostics', which
+  # summary() and error_measures() use).
   if(n_repetitions == 1L){
-    for(field in c("niter", "method", "q11", "q12", "q21", "q22")){
+    for(field in c("niter", "method")){
       if(!is.null(upstream[[field]])){
         out[[field]] <- upstream[[field]]
       }
@@ -456,6 +456,39 @@
 .bt_marglik_iteration_limit_line <- function(){
 
   "  iteration counts exceeded 'maxiter'; inspect 'repetitions' and 'diagnostics' (counts may include upstream retries)\n"
+}
+
+# The sampler result of bridgesampling that summary() and error_measures() read.
+# A failed, manual or exact result has none.
+.bt_marglik_sampler_result <- function(x){
+
+  upstream <- x[["diagnostics"]][["upstream"]]
+  if(!inherits(upstream, c("bridge", "bridge_list"))){
+    stop(errorCondition(
+      message = paste0(
+        "The bridge-sampling result is unavailable: a failed, manual or exact ",
+        "marginal-likelihood result stores no sampler result in 'diagnostics$upstream'. ",
+        "Compute the marginal likelihood of a model with sampled parameters with ",
+        "'JAGS_bridgesampling()' to obtain one."
+      ),
+      call = NULL,
+      class = c("BayesTools_marglik_sampler_result_unavailable", "BayesTools_marglik_unavailable")
+    ))
+  }
+
+  upstream
+}
+
+#' @export
+summary.BayesTools_marglik <- function(object, ...){
+
+  summary(.bt_marglik_sampler_result(object), ...)
+}
+
+#' @exportS3Method bridgesampling::error_measures
+error_measures.BayesTools_marglik <- function(bridge_object, ...){
+
+  bridgesampling::error_measures(.bt_marglik_sampler_result(bridge_object), ...)
 }
 
 #' @export

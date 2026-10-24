@@ -69,8 +69,11 @@ guaranteed remedies; pivot names are basis-dependent sampled redundancy.
 Every marginal-likelihood result has the class vector
 `c("BayesTools_marglik", "bridge", "list")`, so bridgesampling's `bf()`,
 `post_prob()` and `logml()` apply to it as to the `bridge` objects of 0.3.0; a
-single repetition also keeps `niter`, `method` and the sampler draws `q11`,
-`q12`, `q21`, `q22` at the top level for `error_measures()` and `summary()`.
+single repetition also keeps `niter` and `method` at the top level. Keep the
+sampler draws once, in `diagnostics$upstream`: `summary()` and
+`error_measures()` forward to it, and a result without one (failed, manual,
+exact) stops with `BayesTools_marglik_sampler_result_unavailable` (parent
+`BayesTools_marglik_unavailable`).
 Such a result (successful, one sampler repetition) prints through
 bridgesampling's `print.bridge` as in 0.3.0, plus the iteration-limit line when
 `iteration_limit_exceeded` is TRUE; failed, manual, exact and repeated results

@@ -215,12 +215,16 @@ processes are not relayed to this diagnostic field. Errors retain the
 \value{
 A \code{BayesTools_marglik} object that also has the class \code{bridge} of
 released versions, so that \code{bridgesampling::bf()}, \code{post_prob()} and
-\code{logml()} apply to it. For a single repetition, \code{niter}, \code{method}, and the
-sampler draws \code{q11}, \code{q12}, \code{q21}, \code{q22} of the upstream result are kept at
-the top level, so that \code{bridgesampling::error_measures()} and \code{summary()}
-work as for a released \code{bridge} object, and the result prints as that
+\code{logml()} apply to it. For a single repetition, \code{niter} and \code{method} of the
+upstream result are kept at the top level, and the result prints as that
 object did (one line added when \code{maxiter} was exceeded). Failed, manual,
-exact and repeated results print a BayesTools summary. \code{logml} is one scalar natural-log
+exact and repeated results print a BayesTools summary.
+\code{summary()} and \code{bridgesampling::error_measures()} of a result forward to the
+sampler result stored in \code{diagnostics$upstream} (the \code{bridge} summary and
+error measures of one repetition, the \code{bridge_list} ones of repetitions); a
+failed, manual or exact result stores none and stops with an error of class
+\code{BayesTools_marglik_sampler_result_unavailable} (parent
+\code{BayesTools_marglik_unavailable}). \code{logml} is one scalar natural-log
 marginal likelihood, aggregated as the median of finite repetition-level
 log marginal likelihoods. \code{repetitions} contains one diagnostic row per
 bridge repetition, \code{aggregation} records the aggregation and failure policy,

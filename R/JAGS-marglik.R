@@ -290,12 +290,16 @@
 #' }
 #' @return A `BayesTools_marglik` object that also has the class `bridge` of
 #' released versions, so that `bridgesampling::bf()`, `post_prob()` and
-#' `logml()` apply to it. For a single repetition, `niter`, `method`, and the
-#' sampler draws `q11`, `q12`, `q21`, `q22` of the upstream result are kept at
-#' the top level, so that `bridgesampling::error_measures()` and `summary()`
-#' work as for a released `bridge` object, and the result prints as that
+#' `logml()` apply to it. For a single repetition, `niter` and `method` of the
+#' upstream result are kept at the top level, and the result prints as that
 #' object did (one line added when `maxiter` was exceeded). Failed, manual,
-#' exact and repeated results print a BayesTools summary. `logml` is one scalar natural-log
+#' exact and repeated results print a BayesTools summary.
+#' `summary()` and `bridgesampling::error_measures()` of a result forward to the
+#' sampler result stored in `diagnostics$upstream` (the `bridge` summary and
+#' error measures of one repetition, the `bridge_list` ones of repetitions); a
+#' failed, manual or exact result stores none and stops with an error of class
+#' `BayesTools_marglik_sampler_result_unavailable` (parent
+#' `BayesTools_marglik_unavailable`). `logml` is one scalar natural-log
 #' marginal likelihood, aggregated as the median of finite repetition-level
 #' log marginal likelihoods. `repetitions` contains one diagnostic row per
 #' bridge repetition, `aggregation` records the aggregation and failure policy,
