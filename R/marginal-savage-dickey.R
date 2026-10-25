@@ -85,7 +85,11 @@
 #' Bayes factor and, unless \code{silent = TRUE}, emitted once per parameter
 #' or level. The warnings of the conditions that are reported as \code{NA}
 #' (a posterior point mass at the null, a zero or infinite prior ordinate) are
-#' prefixed with the label of the level (for example \code{mu[A]}).
+#' prefixed with the rendered label of the level, as in the rows of the marginal
+#' summary tables (for example \code{theta[A]} or, for a level of the formula
+#' parameter \code{mu}, \code{(mu) x[A]}); the warning table of
+#' \code{marginal_estimates_table()} prefixes the warnings that 0.3.0 reported
+#' with the fitted parameter instead.
 #'
 #' The KDE posterior ordinate needs at least two finite continuous draws with
 #' positive spread (unless exact support excludes the null). With fewer, or with
@@ -252,8 +256,11 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
   out
 }
 
-# Labels of emitted Savage-Dickey diagnostics follow the marginal summary
-# tables: 'parameter[level]', or 'parameter' for a single intercept level.
+# Labels of the diagnostics of the conditions added since 0.3.0 (a posterior point
+# mass at the null, a zero or infinite prior ordinate, ...): 'parameter[level]',
+# or 'parameter' for a single intercept level. The warnings released in 0.3.0 are
+# not labelled here; marginal_estimates_table() prefixes those with the fitted
+# parameter.
 .Savage_Dickey_BF.parameter_label <- function(posterior){
 
   parameter <- attr(posterior, "parameter", exact = TRUE)
@@ -267,8 +274,8 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
 
 .Savage_Dickey_BF.level_label <- function(posterior, index){
 
-  # a level with label parts is named by its rendered warning label, as in
-  # marginal_estimates_table()
+  # a level with label parts is named by its rendered warning label (the row
+  # label of the summary tables)
   quantities <- .bt_draws_quantities(posterior[[index]])
   if(!is.null(quantities)){
     return(.bt_label(quantities$label_parts[[1L]], style = "warning"))

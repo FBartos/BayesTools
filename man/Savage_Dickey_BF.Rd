@@ -130,7 +130,11 @@ Diagnostic messages are stored in the \code{"warnings"} attribute of each
 Bayes factor and, unless \code{silent = TRUE}, emitted once per parameter
 or level. The warnings of the conditions that are reported as \code{NA}
 (a posterior point mass at the null, a zero or infinite prior ordinate) are
-prefixed with the label of the level (for example \code{mu[A]}).
+prefixed with the rendered label of the level, as in the rows of the marginal
+summary tables (for example \code{theta[A]} or, for a level of the formula
+parameter \code{mu}, \code{(mu) x[A]}); the warning table of
+\code{marginal_estimates_table()} prefixes the warnings that 0.3.0 reported
+with the fitted parameter instead.
 
 The KDE posterior ordinate needs at least two finite continuous draws with
 positive spread (unless exact support excludes the null). With fewer, or with
