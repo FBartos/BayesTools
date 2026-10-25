@@ -443,9 +443,13 @@ test_that("stored marglik results use their bridge methods in a new session", {
     on.exit(unlink(result_file), add = TRUE)
     saveRDS(result, result_file)
     output <- suppressWarnings(system2(rscript, c("--vanilla", shQuote(script_file), shQuote(result_file), call), stdout = TRUE, stderr = TRUE))
-    skip_if(!is.null(attr(output, "status")), paste("The new session failed:", paste(utils::tail(output, 3L), collapse = " ")))
-    expect_identical(trimws(output[[1L]]), "LOADED: FALSE")
-    trimws(output[-1L])
+    # a session that fails before its first call (it cannot start or load BayesTools) skips;
+    # a failure after that line is a failure of the code under test
+    loaded <- grep("^LOADED:", output)
+    skip_if(length(loaded) == 0L, paste("The new session failed before its first call:", paste(utils::tail(output, 3L), collapse = " ")))
+    expect_null(attr(output, "status"), info = paste(utils::tail(output, 3L), collapse = " "))
+    expect_identical(trimws(output[[loaded[[1L]]]]), "LOADED: FALSE")
+    trimws(output[-seq_len(loaded[[1L]])])
   }
 
   # summary() reads the bridge summary of the stored sampler result
