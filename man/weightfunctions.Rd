@@ -67,7 +67,8 @@ mqone.sided_fixed(p, omega, lower.tail = TRUE, log.p = FALSE)
 mqtwo.sided_fixed(p, omega, lower.tail = TRUE, log.p = FALSE)
 }
 \arguments{
-\item{x, q}{vector or matrix of quantiles.}
+\item{x, q}{numeric vector of quantiles; the parameter arguments (\code{alpha},
+\code{omega}) may be matrices with one row per quantile.}
 
 \item{alpha}{vector or matrix with concentration parameters for
 the Dirichlet distribution for a monotonic one.sided or a two.sided

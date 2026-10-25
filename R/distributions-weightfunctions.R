@@ -3,7 +3,8 @@
 #' @description Marginal density, marginal distribution function,
 #' marginal quantile function and random generation for weight functions.
 #'
-#' @param x,q vector or matrix of quantiles.
+#' @param x,q numeric vector of quantiles; the parameter arguments (\code{alpha},
+#' \code{omega}) may be matrices with one row per quantile.
 #' @param p vector of probabilities.
 #' @param n number of observations.
 #' @param alpha vector or matrix with concentration parameters for
