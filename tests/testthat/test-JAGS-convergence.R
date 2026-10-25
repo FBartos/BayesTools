@@ -1683,6 +1683,24 @@ test_that("one chain warns and retains its other convergence criteria", {
   expect_match(attr(failed, "errors"), "ESS")
 })
 
+test_that("the one-chain R-hat warning is signalled immediately, as in 0.3.0", {
+
+  set.seed(44)
+  chain <- cbind(mu = rnorm(2000))
+  fit <- .mock_convergence_fit(chain, prior_list = list(mu = prior("normal", list(0, 1))))
+  # (the flag of warning() is visible to a calling handler through the signalling call on the stack)
+  immediate <- logical()
+  withCallingHandlers(
+    JAGS_check_convergence(fit, max_Rhat = 1.05, min_ESS = 100, max_error = NULL, max_SD_error = NULL),
+    warning = function(w){
+      signalled <- Filter(function(call) identical(call[[1L]], quote(warning)), sys.calls())
+      immediate <<- c(immediate, vapply(signalled, function(call) isTRUE(call[["immediate."]]), logical(1)))
+      invokeRestart("muffleWarning")
+    }
+  )
+  expect_identical(immediate, TRUE)
+})
+
 test_that("a failed criterion gives one message with the most extreme value and the failing parameters", {
 
   set.seed(47)
