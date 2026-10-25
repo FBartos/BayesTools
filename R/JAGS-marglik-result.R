@@ -253,16 +253,13 @@
 
   if(any(iteration_limit_exceeded)){
     affected <- repetitions[iteration_limit_exceeded, , drop = FALSE]
-    # a refused aggregate returns no result: the warning's own field is all there is to inspect
-    refused <- !any(finite) || (any(!finite) && identical(nonfinite, "error"))
+    # the sentence of 0.3.0 (typo fixed); the affected repetitions, 'maxiter' and the
+    # upstream warnings are fields of the condition (a refused aggregate returns no
+    # result, so the field is all there is to inspect)
     warning(warningCondition(
       message = paste0(
-        "Bridge-sampling iteration counts exceeded 'maxiter' = ", maxiter,
-        " for repetition(s) ",
-        paste0(affected$repetition, " (niter = ", affected$niter, ")", collapse = ", "),
-        ". Iteration counts may include upstream retries. ",
-        if(refused) "Inspect the 'repetitions' field of this warning, or increase 'maxiter'."
-        else "Inspect 'repetitions' and 'diagnostics', or increase 'maxiter'."
+        "Marginal likelihood could not be estimated within the maximum number of ",
+        "iterations and might be more variable than usual."
       ),
       call = NULL,
       class = c("BayesTools_marglik_iteration_limit", "BayesTools_marglik_diagnostic"),

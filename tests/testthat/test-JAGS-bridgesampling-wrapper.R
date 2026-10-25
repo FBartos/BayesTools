@@ -1717,9 +1717,9 @@ test_that("bridge iteration telemetry preserves availability and always warns on
           expect_identical(warning$repetitions,
             out$value$repetitions[!is.na(out$value$repetitions$niter) &
               out$value$repetitions$niter > 10, , drop = FALSE])
-          expect_match(conditionMessage(warning), "niter = 11", fixed = TRUE)
-          expect_match(conditionMessage(warning), "'maxiter' = 10", fixed = TRUE)
-          expect_match(conditionMessage(warning), "counts may include upstream retries", fixed = TRUE)
+          expect_identical(conditionMessage(warning), paste0(
+            "Marginal likelihood could not be estimated within the maximum number of ",
+            "iterations and might be more variable than usual."))
         }
         expect_match(paste(capture.output(print(out$value)), collapse = "\n"),
           "iteration counts exceeded", fixed = TRUE)
@@ -1830,10 +1830,11 @@ test_that("iteration warning reports the complete observed retry context", {
   })
   expect_length(warnings, 1L)
   expect_identical(conditionMessage(warnings[[1L]]), paste0(
-    "Bridge-sampling iteration counts exceeded 'maxiter' = 10 for repetition(s) ",
-    "1 (niter = 11), 2 (niter = 12). Iteration counts may include upstream retries. ",
-    "Inspect 'repetitions' and 'diagnostics', ",
-    "or increase 'maxiter'."))
+    "Marginal likelihood could not be estimated within the maximum number of ",
+    "iterations and might be more variable than usual."))
+  expect_identical(warnings[[1L]]$repetitions$repetition, 1:2)
+  expect_identical(warnings[[1L]]$repetitions$niter, c(11, 12))
+  expect_identical(warnings[[1L]]$maxiter, 10L)
   expect_identical(warnings[[1L]]$upstream_warnings, "retry diagnostic")
   expect_identical(result$iteration_limit_exceeded, TRUE)
   result["iteration_limit_exceeded"] <- list(NULL)
@@ -1841,7 +1842,7 @@ test_that("iteration warning reports the complete observed retry context", {
     "iteration_limit_exceeded", fixed = TRUE)
 })
 
-test_that("iteration warnings describe refused nonfinite aggregates truthfully", {
+test_that("iteration warnings of refused nonfinite aggregates carry their affected repetitions", {
 
   upstream <- list(logml = c(-1, NA_real_), niter = c(2, 11), method = "normal")
   testthat::local_mocked_bindings(bridge_sampler = function(...){
@@ -1868,9 +1869,11 @@ test_that("iteration warnings describe refused nonfinite aggregates truthfully",
         warning <- warnings[[1L]]
         expect_s3_class(warning, "BayesTools_marglik_iteration_limit")
         expect_identical(conditionMessage(warning), paste0(
-          "Bridge-sampling iteration counts exceeded 'maxiter' = 10 for repetition(s) ",
-          "2 (niter = 11). Iteration counts may include upstream retries. ",
-          "Inspect the 'repetitions' field of this warning, or increase 'maxiter'."))
+          "Marginal likelihood could not be estimated within the maximum number of ",
+          "iterations and might be more variable than usual."))
+        expect_identical(warning$repetitions$repetition, 2L)
+        expect_identical(warning$repetitions$niter, 11)
+        expect_identical(warning$maxiter, 10L)
       }
     }
   }
