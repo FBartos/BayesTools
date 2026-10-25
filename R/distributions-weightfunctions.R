@@ -30,6 +30,14 @@
 #' marginals of a [prior_weightfunction()] prior are available through
 #' [mpdf()], [mcdf()], [mquant()], and [rng()].
 #'
+#' The marginals of the monotonic parameterization are Beta distributions with
+#' the cumulative sums of \code{alpha} as shapes. Finite \code{alpha} whose
+#' cumulative sums exceed the largest double signal an error of class
+#' \code{BayesTools_weightfunction_beta_shape_unavailable} (parent
+#' \code{BayesTools_weightfunction_unavailable}) from the density,
+#' distribution, and quantile functions. Degenerate Dirichlet draws of the
+#' random generation signal \code{BayesTools_dirichlet_rng_unavailable}.
+#'
 #' @examples
 #' # draw samples from a two-sided weight function
 #' rtwo.sided(10, alpha = c(1, 1))
@@ -308,8 +316,9 @@ mqtwo.sided_fixed <- function(p, omega, lower.tail = TRUE, log.p = FALSE){
 
   # marginals of reversed cumulative sums of Dirichlet variables are beta
   # distributed; the first/reference publication weight is fixed to one.
-  alpha_alpha <- t(apply(alpha[,ncol(alpha):1, drop = FALSE], 1, cumsum))[, ncol(alpha):1, drop = FALSE]
-  alpha_beta  <- cbind(0, t(apply(alpha, 1, cumsum))[, -ncol(alpha), drop = FALSE])
+  beta_shapes <- .weightfunctions_beta_shapes(alpha)
+  alpha_alpha <- beta_shapes[["shape1"]]
+  alpha_beta  <- beta_shapes[["shape2"]]
 
   lik <- cbind(
     dpoint(x, location = 1, log = log),
@@ -450,8 +459,9 @@ mqtwo.sided_fixed <- function(p, omega, lower.tail = TRUE, log.p = FALSE){
 
   # marginals of reversed cumulative sums of Dirichlet variables are beta
   # distributed; the first/reference publication weight is fixed to one.
-  alpha_alpha <- t(apply(alpha[,ncol(alpha):1, drop = FALSE], 1, cumsum))[, ncol(alpha):1, drop = FALSE]
-  alpha_beta  <- cbind(0, t(apply(alpha, 1, cumsum))[, -ncol(alpha), drop = FALSE])
+  beta_shapes <- .weightfunctions_beta_shapes(alpha)
+  alpha_alpha <- beta_shapes[["shape1"]]
+  alpha_beta  <- beta_shapes[["shape2"]]
 
   p <- cbind(
     ppoint(q, location = 1, lower.tail = lower.tail, log.p = log.p),
@@ -514,8 +524,9 @@ mqtwo.sided_fixed <- function(p, omega, lower.tail = TRUE, log.p = FALSE){
 
   # marginals of reversed cumulative sums of Dirichlet variables are beta
   # distributed; the first/reference publication weight is fixed to one.
-  alpha_alpha <- t(apply(alpha[,ncol(alpha):1, drop = FALSE], 1, cumsum))[, ncol(alpha):1, drop = FALSE]
-  alpha_beta  <- cbind(0, t(apply(alpha, 1, cumsum))[, -ncol(alpha), drop = FALSE])
+  beta_shapes <- .weightfunctions_beta_shapes(alpha)
+  alpha_alpha <- beta_shapes[["shape1"]]
+  alpha_beta  <- beta_shapes[["shape2"]]
 
   q <- cbind(
     qpoint(p, location = 1, lower.tail = lower.tail, log.p = log.p),
@@ -557,6 +568,30 @@ mqtwo.sided_fixed <- function(p, omega, lower.tail = TRUE, log.p = FALSE){
 }
 
 ### helper functions
+# The Beta shapes of the marginals of the monotone weight function: the
+# reference weight is fixed to one and the weight j has the shapes
+# sum(alpha[j:J]) and sum(alpha[1:(j - 1)]). Finite concentrations can have
+# cumulative sums beyond the largest double; dbeta(), pbeta() and qbeta() then
+# silently evaluate a different distribution, so such shapes are refused.
+.weightfunctions_beta_shapes <- function(alpha){
+
+  shape1 <- t(apply(alpha[,ncol(alpha):1, drop = FALSE], 1, cumsum))[, ncol(alpha):1, drop = FALSE]
+  shape2 <- cbind(0, t(apply(alpha, 1, cumsum))[, -ncol(alpha), drop = FALSE])
+
+  if(any(!is.finite(shape1[, -1L])) || any(!is.finite(shape2[, -1L]))){
+    stop(errorCondition(
+      message = paste0(
+        "The Beta shapes of the weight-function marginals are not representable: ",
+        "the cumulative sums of 'alpha' exceed the largest double. ",
+        "Use less extreme 'alpha' values."
+      ),
+      call = NULL,
+      class = c("BayesTools_weightfunction_beta_shape_unavailable", "BayesTools_weightfunction_unavailable")
+    ))
+  }
+
+  list(shape1 = shape1, shape2 = shape2)
+}
 .weightfunctions_one_sided_parameterization <- function(alpha, alpha1, alpha2){
   has_alpha  <- !is.null(alpha)
   has_alpha1 <- !is.null(alpha1)

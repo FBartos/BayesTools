@@ -202,6 +202,48 @@ test_that("weightfunction RNG reports unavailable Dirichlet draws with the typed
   expect_dirichlet_unavailable(rone.sided(3, alpha1 = c(1, 1), alpha2 = c(1e308, 1e308)))
 })
 
+test_that("weightfunction marginals refuse Beta shapes beyond the largest double", {
+
+  expected_message <- paste0(
+    "The Beta shapes of the weight-function marginals are not representable: ",
+    "the cumulative sums of 'alpha' exceed the largest double. ",
+    "Use less extreme 'alpha' values."
+  )
+  expect_shape_unavailable <- function(expr){
+    error <- tryCatch(expr, error = identity)
+    expect_s3_class(error, "BayesTools_weightfunction_beta_shape_unavailable")
+    if(inherits(error, "error")){
+      expect_identical(class(error), c(
+        "BayesTools_weightfunction_beta_shape_unavailable", "BayesTools_weightfunction_unavailable", "error", "condition"
+      ))
+      expect_identical(conditionMessage(error), expected_message)
+      expect_null(conditionCall(error))
+    }
+  }
+
+  # the cumulative sums 3e308, 2e308 and 1e308 of the four concentrations overflow
+  alpha <- rep(1e308, 4)
+  expect_shape_unavailable(mqone.sided(.5, alpha = alpha))
+  expect_shape_unavailable(mqtwo.sided(.5, alpha = alpha))
+  expect_shape_unavailable(mdone.sided(.5, alpha = alpha))
+  expect_shape_unavailable(mdtwo.sided(.5, alpha = alpha))
+  expect_shape_unavailable(mpone.sided(.5, alpha = alpha))
+  expect_shape_unavailable(mptwo.sided(.5, alpha = alpha))
+  expect_shape_unavailable(mqone.sided(.5, alpha = alpha, lower.tail = FALSE, log.p = FALSE))
+  expect_shape_unavailable(mpone.sided(c(.2, .4), alpha = rbind(c(1, 1, 1, 1), alpha)))
+
+  # shapes below the largest double stay supported: the weights concentrate at .75, .5 and .25
+  expect_equal(mqone.sided(.5, alpha = rep(1e100, 4)), matrix(c(1, .75, .5, .25), nrow = 1), tolerance = 1e-6)
+  expect_equal(mqtwo.sided(.5, alpha = rep(1e100, 4)), matrix(c(1, .75, .5, .25), nrow = 1), tolerance = 1e-6)
+
+  # the random generation of the same concentrations has the typed Dirichlet condition
+  for(draw in list(rone.sided, rtwo.sided)){
+    set.seed(11)
+    error <- tryCatch(draw(3, alpha = alpha), error = identity)
+    expect_s3_class(error, "BayesTools_dirichlet_rng_unavailable")
+  }
+})
+
 test_that("fixed weightfunction helpers support non-negative relative weights", {
 
   omega <- c(1, .5, 1.5)

@@ -116,6 +116,14 @@ fixed weights (\code{omega}); the non-monotonic parameterization
 (\code{alpha1}, \code{alpha2}) supports random generation only. The same
 marginals of a \code{\link[=prior_weightfunction]{prior_weightfunction()}} prior are available through
 \code{\link[=mpdf]{mpdf()}}, \code{\link[=mcdf]{mcdf()}}, \code{\link[=mquant]{mquant()}}, and \code{\link[=rng]{rng()}}.
+
+The marginals of the monotonic parameterization are Beta distributions with
+the cumulative sums of \code{alpha} as shapes. Finite \code{alpha} whose
+cumulative sums exceed the largest double signal an error of class
+\code{BayesTools_weightfunction_beta_shape_unavailable} (parent
+\code{BayesTools_weightfunction_unavailable}) from the density,
+distribution, and quantile functions. Degenerate Dirichlet draws of the
+random generation signal \code{BayesTools_dirichlet_rng_unavailable}.
 }
 \examples{
 # draw samples from a two-sided weight function
