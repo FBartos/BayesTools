@@ -36,8 +36,10 @@
 #' cumulative sums exceed the largest double signal an error of class
 #' \code{BayesTools_weightfunction_beta_shape_unavailable} (parent
 #' \code{BayesTools_weightfunction_unavailable}) from the density,
-#' distribution, and quantile functions. Degenerate Dirichlet draws of the
-#' random generation signal \code{BayesTools_dirichlet_rng_unavailable}.
+#' distribution, and quantile functions, and from [mpdf()], [mcdf()], and
+#' [mquant()] of a cumulative [prior_weightfunction()]. Degenerate Dirichlet
+#' draws of the random generation signal
+#' \code{BayesTools_dirichlet_rng_unavailable}.
 #'
 #' @examples
 #' # draw samples from a two-sided weight function
@@ -579,7 +581,15 @@ mqtwo.sided_fixed <- function(p, omega, lower.tail = TRUE, log.p = FALSE){
   shape1 <- t(apply(alpha[,ncol(alpha):1, drop = FALSE], 1, cumsum))[, ncol(alpha):1, drop = FALSE]
   shape2 <- cbind(0, t(apply(alpha, 1, cumsum))[, -ncol(alpha), drop = FALSE])
 
-  if(any(!is.finite(shape1[, -1L])) || any(!is.finite(shape2[, -1L]))){
+  .weightfunctions_check_beta_shapes(shape1[, -1L], shape2[, -1L])
+
+  list(shape1 = shape1, shape2 = shape2)
+}
+# (shared with the marginals of weight-function priors,
+# .weightfunction_alpha_marginal())
+.weightfunctions_check_beta_shapes <- function(shape1, shape2){
+
+  if(any(!is.finite(shape1)) || any(!is.finite(shape2))){
     stop(errorCondition(
       message = paste0(
         "The Beta shapes of the weight-function marginals are not representable: ",
@@ -591,7 +601,7 @@ mqtwo.sided_fixed <- function(p, omega, lower.tail = TRUE, log.p = FALSE){
     ))
   }
 
-  list(shape1 = shape1, shape2 = shape2)
+  invisible(TRUE)
 }
 .weightfunctions_one_sided_parameterization <- function(alpha, alpha1, alpha2){
   has_alpha  <- !is.null(alpha)

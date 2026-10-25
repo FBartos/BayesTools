@@ -114,6 +114,31 @@ test_that("weightfunction marginal helpers agree with the marginals of the match
       tolerance = 1e-12
     )
   }
+
+  # concentrations with overflowing cumulative sums are refused identically by the helpers and the prior
+  overflow <- rep(1e308, 4)
+  for(side in names(helpers)){
+    wf_prior <- prior_weightfunction(side = side, steps = c(.025, .05, .1), weights = wf_cumulative(overflow))
+    refusals <- list(
+      list(helper = function() helpers[[side]][["density"]](.5, alpha = overflow),  prior = function() mpdf(wf_prior, .5)),
+      list(helper = function() helpers[[side]][["cdf"]](.5, alpha = overflow),      prior = function() mcdf(wf_prior, .5)),
+      list(helper = function() helpers[[side]][["quantile"]](.5, alpha = overflow), prior = function() mquant(wf_prior, .5))
+    )
+    for(refusal in refusals){
+      helper_error <- tryCatch(refusal[["helper"]](), error = identity)
+      prior_error  <- tryCatch(refusal[["prior"]](),  error = identity)
+      expect_s3_class(helper_error, "BayesTools_weightfunction_beta_shape_unavailable")
+      expect_s3_class(prior_error,  "BayesTools_weightfunction_beta_shape_unavailable")
+      expect_identical(class(prior_error), class(helper_error))
+      expect_identical(conditionMessage(prior_error), conditionMessage(helper_error))
+    }
+  }
+
+  # one non-finite shape stops as well, and shapes below the largest double stay supported
+  wf_prior <- prior_weightfunction(side = "one-sided", steps = c(.025, .05, .1), weights = wf_cumulative(c(1e308, 1e308, 1e308, 1)))
+  expect_s3_class(tryCatch(mquant(wf_prior, .5), error = identity), "BayesTools_weightfunction_beta_shape_unavailable")
+  wf_prior <- prior_weightfunction(side = "one-sided", steps = c(.025, .05, .1), weights = wf_cumulative(rep(1e100, 4)))
+  expect_equal(unname(mquant(wf_prior, .5)), matrix(c(1, .75, .5, .25), nrow = 1), tolerance = 1e-6)
 })
 
 test_that("monotone weightfunction RNG fixes the first reference bin", {

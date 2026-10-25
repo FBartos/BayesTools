@@ -491,10 +491,16 @@ wf_independent <- function(prior, scale = "omega"){
     return(list(type = "point", location = 1))
   }
 
+  shape1 <- sum(alpha[index:length(alpha)])
+  shape2 <- sum(alpha[seq_len(index - 1L)])
+  # finite concentrations can have cumulative sums beyond the largest double,
+  # which pbeta(), qbeta() and the JAGS evaluators would take as another law
+  .weightfunctions_check_beta_shapes(shape1, shape2)
+
   list(
     type  = "beta",
-    alpha = sum(alpha[index:length(alpha)]),
-    beta  = sum(alpha[seq_len(index - 1L)])
+    alpha = shape1,
+    beta  = shape2
   )
 }
 .weightfunction_rng <- function(prior, n){

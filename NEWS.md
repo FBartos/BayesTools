@@ -134,10 +134,12 @@ old behaviour.
   `alpha` functions (`mdone.sided()`, `mdtwo.sided()`, `mpone.sided()`,
   `mptwo.sided()`, `mqone.sided()`, `mqtwo.sided()`, `rone.sided()`,
   `rtwo.sided()`) require finite `omega` and `alpha`. The density,
-  distribution, and quantile functions of `alpha` stop with
+  distribution, and quantile functions of `alpha`, and `mpdf()`, `mcdf()`, and
+  `mquant()` of a cumulative `prior_weightfunction()`, stop with
   `BayesTools_weightfunction_beta_shape_unavailable` (parent
-  `BayesTools_weightfunction_unavailable`) when the cumulative sums of
-  `alpha` exceed the largest double; 0.3.0 evaluated another distribution.
+  `BayesTools_weightfunction_unavailable`) when a Beta shape, a cumulative sum
+  of the concentrations, exceeds the largest double; 0.3.0 evaluated another
+  distribution.
 - cumulative weight-function priors now refuse numeric Dirichlet concentrations
   below `0.01`, including specifications accepted by released versions. The new
   ordinary Dirichlet prior and its ordered/random allocations use the same
