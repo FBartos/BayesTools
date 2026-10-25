@@ -1439,8 +1439,11 @@ test_that("summary() and error_measures() of results without a sampler result ar
       condition <- expect_error(call(), class = "BayesTools_marglik_sampler_result_unavailable")
       expect_s3_class(condition, "BayesTools_marglik_unavailable")
       expect_null(conditionCall(condition))
-      expect_match(conditionMessage(condition), "bridge-sampling result is unavailable", fixed = TRUE)
-      expect_match(conditionMessage(condition), "'diagnostics$upstream'", fixed = TRUE)
+      expect_identical(conditionMessage(condition), paste0(
+        "The bridge-sampling result is unavailable: summary() and error_measures() ",
+        "require a sampled marginal likelihood, and a failed, manual or exact ",
+        "marginal-likelihood result stores no sampler result in 'diagnostics$upstream'."
+      ))
     }
   }
 })
