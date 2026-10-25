@@ -136,7 +136,7 @@ test_that("as_mixed_posteriors applies AND and OR conditioning exactly", {
   expect_equal(.bt_meta_get(or_samples$mu_b, "component"), c(2L, 1L, 1L, 1L))
 })
 
-test_that("unknown and non-conditional labels fail closed", {
+test_that("a declared parameter without an inclusion indicator warns as at 0.3.0 and unknown labels fail closed", {
 
   prior_list <- list(
     mu_a = prior_spike_and_slab(
@@ -152,9 +152,39 @@ test_that("unknown and non-conditional labels fail closed", {
   )
   fit <- .mock_marginal_fit(posterior, prior_list)
 
+  # a declared parameter without an inclusion indicator: the released warning (typo fixed) and all draws
+  released_warning <- paste0(
+    "The parameter 'theta' is not a conditional parameter. ",
+    "All samples are assumed to come from the conditional posterior distribution."
+  )
+  expect_warning(
+    conditional <- as_mixed_posteriors(fit, parameters = "theta", conditional = "theta"),
+    released_warning,
+    fixed = TRUE
+  )
+  expect_equal(as.numeric(conditional[["theta"]]), c(1, 2))
+  expect_equal(as.numeric(conditional[["theta"]]), as.numeric(as_mixed_posteriors(fit, parameters = "theta")[["theta"]]))
+  expect_warning(
+    inference <- as_marginal_inference(
+      model               = fit,
+      marginal_parameters = "theta",
+      parameters          = "theta",
+      conditional_list    = list(theta = "theta"),
+      conditional_rule    = "AND",
+      formula             = NULL,
+      null_hypothesis     = 0.123,
+      n_samples           = 128,
+      silent              = TRUE
+    ),
+    released_warning,
+    fixed = TRUE
+  )
+  expect_equal(as.numeric(inference[["conditional"]][["theta"]]), c(1, 2))
+
+  # an undeclared (for example misspelled) label keeps the clear error
   expect_error(
-    as_mixed_posteriors(fit, parameters = "theta", conditional = "theta"),
-    "The parameter 'theta' is not a conditional parameter.",
+    as_mixed_posteriors(fit, parameters = "theta", conditional = "thetaa"),
+    "The 'thetaa' values are not recognized by the 'conditional' argument.",
     fixed = TRUE
   )
   expect_error(

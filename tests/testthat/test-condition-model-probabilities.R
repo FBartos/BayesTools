@@ -12,8 +12,13 @@ test_that("bias posterior masks use their declared event family", {
   }
   expect_identical(.condition_event_label_posterior_mask(priors, draws, "PET"), c(TRUE, TRUE))
   expect_identical(.condition_event_label_posterior_mask(priors, draws, "PEESE"), c(FALSE, FALSE))
-  expect_error(.condition_event_label_posterior_mask(list(bias = prior("normal", list(0, 1))), draws, "bias"),
-    "The parameter 'bias' is not a conditional parameter.", fixed = TRUE)
+  expect_warning(
+    mask <- .condition_event_label_posterior_mask(list(bias = prior("normal", list(0, 1))), draws, "bias"),
+    paste0("The parameter 'bias' is not a conditional parameter. ",
+           "All samples are assumed to come from the conditional posterior distribution."),
+    fixed = TRUE
+  )
+  expect_identical(mask, c(TRUE, TRUE))
 })
 
 test_that("within-fit branch event logs preserve extreme finite raw weights", {

@@ -236,13 +236,19 @@
              which(components == "alternative"))
   }
 
-  stop(
+  # a declared parameter without an inclusion indicator (as at 0.3.0): all
+  # draws are taken as conditional; an undeclared label stops above
+  warning(
     sprintf(
-      "The parameter '%s' is not a conditional parameter.",
+      paste0(
+        "The parameter '%s' is not a conditional parameter. ",
+        "All samples are assumed to come from the conditional posterior distribution."
+      ),
       label
     ),
-    call. = FALSE
+    call. = FALSE, immediate. = TRUE
   )
+  rep(TRUE, nrow(model_samples))
 }
 
 .condition_event_posterior_mask <- function(event, prior_list, model_samples){

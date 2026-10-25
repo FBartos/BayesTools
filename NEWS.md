@@ -336,14 +336,16 @@ old behaviour.
     `JAGS_get_inits()` and `mix_posteriors()` take their seed with one draw
     from the caller's stream.
 - inference and convergence results:
-  - conditioning on a parameter without an inclusion indicator (a prior that
-    is neither spike-and-slab nor a null/alternative mixture), or on an
-    unknown label, stops with "The parameter '...' is not a conditional
-    parameter." instead of warning and using all draws. This applies to
-    `as_mixed_posteriors(conditional = )`,
+  - conditioning on an unknown label (a name the model does not have) stops
+    with an error instead of warning and using all draws. Conditioning on a
+    declared parameter without an inclusion indicator (a prior that is
+    neither spike-and-slab nor a null/alternative mixture) keeps the warning
+    of 0.3.0 and uses all draws: "The parameter '...' is not a conditional
+    parameter. All samples are assumed to come from the conditional
+    posterior distribution." (the text of 0.3.0 had the typo "compe"). This
+    applies to `as_mixed_posteriors(conditional = )`,
     `as_marginal_inference(conditional_list = )`, and the conditional
-    summaries and plots built on them; remove such parameters from the
-    conditioning set.
+    summaries and plots built on them.
   - `Savage_Dickey_BF()`, `marginal_inference()`, `as_marginal_inference()`,
     and `marginal_estimates_table()` return a finite Bayes factor when the null
     hypothesis lies outside the posterior draws: the kernel density at the

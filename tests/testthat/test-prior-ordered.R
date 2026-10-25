@@ -723,7 +723,13 @@ test_that("ordered scalar measures use declared contractions and exact primitive
   bernoulli <- make(prior("bernoulli",list(.5)),c(.25,.25,.5),theta=rep(c(0,1),20))
   bernoulli_levels <- transform_factor_samples(as_mixed_posteriors(bernoulli$fit,"mu_f"))$mu_f
   expect_identical(.posterior_atoms_for_column(.posterior_atoms_get(bernoulli_levels),4)$mass,c(.5,.5))
-  expect_error(as_mixed_posteriors(bernoulli$fit,"mu_f",conditional="mu_f"),"not a conditional parameter")
+  expect_warning(
+    unconditioned <- as_mixed_posteriors(bernoulli$fit,"mu_f",conditional="mu_f"),
+    paste0("The parameter 'mu_f' is not a conditional parameter. ",
+           "All samples are assumed to come from the conditional posterior distribution."),
+    fixed=TRUE
+  )
+  expect_identical(.bt_meta_get(unconditioned$mu_f,"draw_index"),seq_len(40L))
   spike <- make(prior_spike_and_slab(prior("normal",list(0,1)),prior("point",list(.5))),indicator=rep(c(0,1),20))
   conditional <- as_mixed_posteriors(spike$fit,"mu_f",conditional="mu_f")
   expect_identical(.bt_meta_get(conditional$mu_f,"draw_index"),seq(2L,40L,2L))
