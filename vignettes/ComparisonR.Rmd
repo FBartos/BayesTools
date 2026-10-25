@@ -9,26 +9,24 @@ bibliography: ../inst/REFERENCES.bib
 csl: ../inst/apa.csl
 vignette: >
   %\VignetteIndexEntry{Comparison to other R packages}
-  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEngine{knitr::rmarkdown_notangle}
   %\VignetteEncoding{UTF-8}
 ---
 
 
-```{r setup, include = FALSE, purl = FALSE}
-source("precomputed-vignette-cache.R")
-comparison_cache <- load_precomputed_vignette_cache(
-  "ComparisonR",
-  cache_file = "ComparisonR.RDS",
-  project_root = ".."
+```{r setup, include = FALSE}
+source("vignette-cache.R", local = knitr::knit_global())
+
+cached_fits <- vignette_cache(
+  name     = "ComparisonR",
+  objects  = c("ttest_model_H0", "ttest_model_Hp", "marglik_model_H0", "marglik_model_Hp"),
+  packages = c("BayesFactor")
 )
-invisible(list2env(
-  comparison_cache,
-  envir = knitr::knit_global()
-))
+
 knitr::opts_chunk$set(
   collapse = TRUE,
   comment  = "#>",
-  eval     = TRUE,
+  eval     = vignette_cache_eval(cached_fits),
   dev      = "png"
 )
 if(.Platform$OS.type == "windows"){
@@ -36,13 +34,10 @@ if(.Platform$OS.type == "windows"){
 }
 ```
 
-```{r begin-comparison-cache-regeneration, include = FALSE, eval = FALSE, purl = TRUE}
-# From the project root, extract this vignette with knitr::purl(), then
-# evaluate the extracted script from the vignettes directory.
-pkgload::load_all("..", quiet = TRUE)
-source("precomputed-vignette-cache.R")
-comparison_cache_file <- "ComparisonR.RDS"
+```{r load-models, include = FALSE}
+vignette_cache_load(cached_fits)
 ```
+
 
 BayesTools R package allows package developers and users to conveniently specify a wide variety of models. In this vignette, I show how to reproduce some commonly used models and compare the results to output from other, more specialized, R packages.
 
@@ -140,7 +135,7 @@ ttest_data <- list(
 
 Then, I pass the arguments into the `JAGS_fit()` function that wraps around the runjags R package [@runjags], specifying the prior distributions, preparing the starting values, etc...
 
-```{r fit-comparison-models, eval = FALSE, purl = TRUE} 
+```{r fit-comparison-models, eval = FALSE}
 ttest_model_H0 <- JAGS_fit(
   model_syntax = ttest_model,
   data         = ttest_data,
@@ -184,7 +179,7 @@ log_posterior <- function(parameters, data){
 
 The function requires two arguments, `parameters` and `data`, both of which are forwarded to it via the `JAGS_bridgesampling` function that wraps around the bridge sampling R package [@bridgesampling], specifying the marginal likelihood for prior distributions and taking care of all required transformations etc...
 
-```{r bridge-comparison-models, eval = FALSE, purl = TRUE}
+```{r bridge-comparison-models, eval = FALSE}
 marglik_model_H0 <- JAGS_bridgesampling(
   fit           = ttest_model_H0,
   log_posterior = log_posterior,
@@ -202,12 +197,10 @@ marglik_model_Hp <- JAGS_bridgesampling(
 )
 ```
 
-`JAGS_bridgesampling()` returns each marginal likelihood on the natural-log scale. The log Bayes factor in favor of the null hypothesis is therefore the difference between the two log marginal likelihoods; exponentiating returns the Bayes factor on its ordinary ratio scale.
+To obtain the resulting Bayes factor in favor of the null hypothesis, I can use the `bf()` function from the bridgesampling R package
 
 ```{r}
-log_BF_0plus <- marglik_model_H0$logml - marglik_model_Hp$logml
-BF_0plus <- exp(log_BF_0plus)
-BF_0plus
+bridgesampling::bf(marglik_model_H0, marglik_model_Hp)
 ```
 
 or specify a BayesTools model ensemble object that can be further inspected by a variety of functions.
@@ -232,18 +225,8 @@ BayesFactor_ttest
 
 This is of course a trivial example, however, it showcases flexibility of the BayesTools package. The prior distribution on the standardized effect size parameter $\delta$ can be changed to any of the multitude of supported distributions without effecting rest of the code, allowing users and package developers to specify more customized tests.
 
-```{r save-comparison-cache, include = FALSE, eval = FALSE, purl = TRUE}
-write_precomputed_vignette_cache(
-  objects = list(
-    ttest_model_H0 = ttest_model_H0,
-    ttest_model_Hp = ttest_model_Hp,
-    marglik_model_H0 = marglik_model_H0,
-    marglik_model_Hp = marglik_model_Hp
-  ),
-  vignette = "ComparisonR",
-  cache_file = comparison_cache_file,
-  project_root = ".."
-)
+```{r save-models, include = FALSE, eval = FALSE}
+vignette_cache_save(cached_fits)
 ```
 
 

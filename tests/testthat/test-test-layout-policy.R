@@ -42,38 +42,6 @@ test_that("live fitting is confined to the centralized fit file", {
   expect_identical(violations, character())
 })
 
-test_that("vignettes use the BayesTools marginal-likelihood contract", {
-
-  vignette_directory <- testthat::test_path("..", "..", "vignettes")
-  skip_if_not(
-    dir.exists(vignette_directory),
-    paste0(
-      "Repository vignette sources are not available in this ",
-      "installed-package test context."
-    )
-  )
-
-  vignette_files <- list.files(
-    vignette_directory,
-    pattern = "\\.Rmd$",
-    full.names = TRUE
-  )
-  violations <- unlist(lapply(vignette_files, function(path){
-    lines <- readLines(path, warn = FALSE, encoding = "UTF-8")
-    matches <- grep(
-      "bridgesampling::bf\\s*\\(",
-      lines,
-      value = TRUE
-    )
-    if(length(matches) == 0L){
-      return(character())
-    }
-    paste0(basename(path), ": ", trimws(matches))
-  }), use.names = FALSE)
-
-  expect_identical(violations, character())
-})
-
 test_that("CI does not bypass vignette construction or checking", {
 
   workflow_file <- testthat::test_path(
@@ -154,14 +122,7 @@ test_that("vignettes never fit models during ordinary rendering", {
     }
   }
 
-  cache_files <- file.path(
-    vignette_directory,
-    paste0(tools::file_path_sans_ext(basename(vignette_files)), ".RDS")
-  )
-  missing_caches <- basename(cache_files[!file.exists(cache_files)])
-
   expect_identical(violations, character())
-  expect_identical(missing_caches, character())
 })
 
 

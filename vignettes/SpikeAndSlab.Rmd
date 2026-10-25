@@ -9,26 +9,23 @@ bibliography: ../inst/REFERENCES.bib
 csl: ../inst/apa.csl
 vignette: >
   %\VignetteIndexEntry{Bayes factors via spike and slab prior vs. bridge sampling}
-  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEngine{knitr::rmarkdown_notangle}
   %\VignetteEncoding{UTF-8}
 ---
 
 
-```{r setup, include = FALSE, purl = FALSE}
-source("precomputed-vignette-cache.R")
-spike_and_slab_cache <- load_precomputed_vignette_cache(
-  "SpikeAndSlab",
-  cache_file = "SpikeAndSlab.RDS",
-  project_root = ".."
+```{r setup, include = FALSE}
+source("vignette-cache.R", local = knitr::knit_global())
+
+cached_fits <- vignette_cache(
+  name     = "SpikeAndSlab",
+  objects  = c("M0", "M1", "marglik_model_H0", "marglik_model_H1", "MS")
 )
-invisible(list2env(
-  spike_and_slab_cache,
-  envir = knitr::knit_global()
-))
+
 knitr::opts_chunk$set(
   collapse = TRUE,
   comment  = "#>",
-  eval     = TRUE,
+  eval     = vignette_cache_eval(cached_fits),
   dev      = "png"
 )
 if(.Platform$OS.type == "windows"){
@@ -36,13 +33,10 @@ if(.Platform$OS.type == "windows"){
 }
 ```
 
-```{r begin-spike-and-slab-cache-regeneration, include = FALSE, eval = FALSE, purl = TRUE}
-# From the project root, extract this vignette with knitr::purl(), then
-# evaluate the extracted script from the vignettes directory.
-pkgload::load_all("..", quiet = TRUE)
-source("precomputed-vignette-cache.R")
-spike_and_slab_cache_file <- "SpikeAndSlab.RDS"
+```{r load-models, include = FALSE}
+vignette_cache_load(cached_fits)
 ```
+
 
 One of the main features of BayesTools is assistance in generating JAGS [@JAGS] code based on formulas and prior distribution objects and subsequent estimation of marginal likelihoods with the bridgesampling R package [@bridgesampling]. Marginal likelihoods, $p(\text{data} \mid \mathcal{M})$, are the key ingredient for computing Bayes factors,
 
@@ -140,7 +134,7 @@ data_formula <- data.frame(
 
 We estimate the models with the `JAGS_fit` function. Since we are using the formula interface (which allows us to specify multiple formulas for different parameters), we need to pass the arguments as named lists,
 
-```{r fit-spike-and-slab-comparison-models, eval = FALSE, purl = TRUE} 
+```{r fit-spike-and-slab-comparison-models, eval = FALSE}
 M0 <- JAGS_fit(
   # specification for the `model_likelihood` part
   model_syntax = model_likelihood,
@@ -190,7 +184,7 @@ where the `parameters` arguments is a list containing the parameters and `data` 
 
 Finally, we pass our objects to the `JAGS_bridgesampling` function to compute the marginal likelihoods.
 
-```{r bridge-spike-and-slab-comparison-models, eval = FALSE, purl = TRUE}
+```{r bridge-spike-and-slab-comparison-models, eval = FALSE}
 marglik_model_H0 <- JAGS_bridgesampling(
   # specification for the model part
   fit           = M0,
@@ -253,7 +247,7 @@ prior_beta_spike_and_slab <- prior_spike_and_slab(
 
 Then we can directly proceed to calling the `JAGS_fit` function with the same specification as we used for the `M1` model, however, changing the prior distribution object for the predictor `x` to the newly created `prior_beta_spike_and_slab` prior distribution.
 
-```{r fit-spike-and-slab-model, eval = FALSE, purl = TRUE}
+```{r fit-spike-and-slab-model, eval = FALSE}
 MS <- JAGS_fit(
   model_syntax = model_likelihood,
   data         = list(y = y, N = N),
@@ -279,19 +273,8 @@ JAGS_inference_table(MS, BF_diagnostics = TRUE)
 
 As before, we find absence of evidence for either of the hypotheses, $\text{BF}_{10} = 1.199$, with posterior probability of $P(\mathcal{M}_{1} \mid \text{data}) = 0.545$.
 
-```{r save-spike-and-slab-cache, include = FALSE, eval = FALSE, purl = TRUE}
-write_precomputed_vignette_cache(
-  objects = list(
-    M0 = M0,
-    M1 = M1,
-    marglik_model_H0 = marglik_model_H0,
-    marglik_model_H1 = marglik_model_H1,
-    MS = MS
-  ),
-  vignette = "SpikeAndSlab",
-  cache_file = spike_and_slab_cache_file,
-  project_root = ".."
-)
+```{r save-models, include = FALSE, eval = FALSE}
+vignette_cache_save(cached_fits)
 ```
 
 ### References

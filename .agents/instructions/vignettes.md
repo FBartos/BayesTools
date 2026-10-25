@@ -1,7 +1,7 @@
 # Vignettes
 
-Use this guide for files under `vignettes/` and their precomputed `.RDS`
-objects. Follow the nearest current vignette when a local pattern differs from
+Use this guide for files under `vignettes/` and their cached fits under
+`models/`. Follow the nearest current vignette when a local pattern differs from
 this guide.
 
 ## Files and Headers
@@ -18,48 +18,33 @@ examples. Gate Suggests-only packages with
 
 ## Cached Fits
 
-Every current `.Rmd` has a matching `.RDS` cache in `vignettes/`. Ordinary
-vignette rendering must never fit models or compute marginal likelihoods.
-Preserve the three-part pattern:
+Use `vignettes/vignette-cache.R`, following the same pattern as RoBMA.
+The cache directory under `models/` matches the vignette filename without
+`.Rmd`, and each object is an ordinary `.RDS` file. Only expensive fitted
+models and marginal-likelihood results need caching; cheap prior-only examples
+do not need caches.
 
-1. validate and load the precomputed cache in setup;
-2. display the fitting code with `eval = FALSE`;
-3. keep hidden, single-purpose regeneration setup and saving code.
+1. Declare `cached_fits <- vignette_cache(...)` in setup and use
+   `vignette_cache_eval(cached_fits)` as the default chunk evaluation setting.
+2. Load objects with `vignette_cache_load(cached_fits)` in a hidden chunk.
+3. Display fitting and marginal-likelihood code with `eval = FALSE`.
+4. Save objects with `vignette_cache_save(cached_fits)` in a hidden,
+   non-evaluated chunk.
 
-Use `vignettes/precomputed-vignette-cache.R` for the shared cache contract and
-the dedicated random-effects cache helper where that vignette requires its
-stronger metadata checks. Preserve `purl` controls so regeneration scripts
-contain the intended chunks only.
+Use `knitr::rmarkdown_notangle` as the vignette engine, as in RoBMA, so package
+checks do not extract and execute the fitting code. Ordinary rendering never
+runs expensive JAGS/Stan fits or marginal-likelihood computations. Result
+chunks are skipped during package checks and when caches or declared optional
+packages are absent. The `models/` directory remains
+excluded from the source package.
 
-Do not add migrations for stale cached objects. Regenerate them with the current
-BayesTools implementation. Use fixed seeds in all regeneration code and record
-enough provenance to reject stale or substituted fits. Cheap prior-only
-examples should not acquire a fitted-model cache. Regeneration never reads a
-previous cache. Fit models whose objects keep their formula or closure
-environment, such as rstanarm fits, in an environment that holds only their
-data, so a cache never stores the knitting workspace.
-
-Cache validity depends only on source fingerprints: the vignette source; its
-cache helper; `DESCRIPTION` excluding `Author`, `Built`, `Packaged`, `Version`,
-`Repository`, and `Date/Publication`; `NAMESPACE`; and the `R/` and `src/`
-sources. The shared helper also fingerprints package
-data, and RandomEffects its configure and cleanup scripts and lme4 data sets.
-Changing any of them makes the cache stale until it is regenerated. R and
-package versions are producer provenance: manifests record them, and
-validation reports differences in its status and with a message when the cache
-is loaded, but they never make a cache stale. Caches therefore build on newer R
-versions and after version bumps. Keep fingerprints and integrity checks
-independent of the validating session: normalize line endings, read
-`DESCRIPTION` in its declared encoding rather than the session locale, hash
-stored serialized bytes, and fingerprint R objects without the `serialize()`
-header. Re-serialized output records the session's R version and native
-encoding, and fitted models embed the versions of the namespaces they
-reference.
-
-The repository tests reject evaluated calls to `JAGS_fit()`,
-`JAGS_bridgesampling()`, and `rstanarm::stan_lmer()` during ordinary rendering.
-They also enforce BayesTools' marginal-likelihood contract; do not replace it
-with direct `bridgesampling::bf()` calls in vignettes.
+Regeneration is manual: from the vignette directory in a fresh R session with
+the current package loaded, run setup, data/prior definitions and fitting
+chunks, then the saving chunk; skip the cache-loading chunk. Keep the declared
+seeds and fitting settings. Do not add source fingerprints, manifests,
+migrations, or specialized regeneration runners. Fit models whose objects
+retain their formula environment, such as rstanarm fits, in an environment
+containing only their data so caches do not store the knitting workspace.
 
 ## Code, Citations, and Prose
 
@@ -74,6 +59,7 @@ forcing alignment across unrelated nested calls.
 - Write concise, active, scientifically precise prose. Avoid marketing language
   and unnecessary section depth.
 
-When changing cache contents or fitting code, run `unit`, `fit`, and `fixture`,
-then render the affected vignette. Documentation-only prose changes do not
-require refitting when the cache contract and displayed results are unchanged.
+For setup or prose changes, run focused checks and render the affected
+vignettes without refitting. Missing caches permit checking the source-only
+render but do not verify numerical output. Follow the workspace policy on
+obtaining approval before regenerating vignette fits.

@@ -1568,8 +1568,9 @@ old behaviour.
     as unsupported.
 
 ### Development
+- Vignettes use the same simple per-object RDS cache setup as RoBMA, with manual regeneration and no source fingerprints. Restores the direct `bridgesampling::bf()` example.
 - Declares `waldo` as an explicit test dependency in `Suggests`.
-- Model-fit and vignette source fingerprints ignore the publication-only
+- Model-fit source fingerprints ignore the publication-only
   DESCRIPTION fields `Repository` and `Date/Publication`, while retaining
   source-content changes.
 
