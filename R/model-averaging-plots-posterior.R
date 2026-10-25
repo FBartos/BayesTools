@@ -227,6 +227,10 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
       par_names <- colnames(samples[["omega"]])
 
       if (!is.null(show_figures)) {
+        # an index above the number of weights has the sentence of 0.3.0; the other invalid indices the range message
+        if (is.numeric(show_figures) && length(show_figures) == 1L && !is.na(show_figures) && show_figures > length(par_names)) {
+          stop("'show_figures' corresponds to a number larger than the number of weight function parameters.", call. = FALSE)
+        }
         .weightfunction_check_individual_index(show_figures, length(par_names), "show_figures", select_one = TRUE)
         par_names <- par_names[show_figures]
       }

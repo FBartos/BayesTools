@@ -1102,9 +1102,16 @@ test_that("individual omega plots validate the figure selector", {
     cbind("omega[1]" = rep(1, 200), "omega[2]" = seq(.005, .995, length.out = 200)),
     list(omega = selection)), "omega")
   expected <- "'show_figures' must be between 1 and 2 for a weight function with 2 publication weights."
-  for(index in c(0L, 3L, 99L)){
+  for(index in 0L){
     expect_error(plot_posterior(omega, "omega", individual = TRUE, show_figures = index, plot_type = "ggplot",
                                 n_points = 64), expected, fixed = TRUE, info = index)
+  }
+  # an index above the number of weights has the sentence of 0.3.0
+  for(index in c(3L, 99L)){
+    expect_error(plot_posterior(omega, "omega", individual = TRUE, show_figures = index, plot_type = "ggplot",
+                                n_points = 64),
+                 "'show_figures' corresponds to a number larger than the number of weight function parameters.",
+                 fixed = TRUE, info = index)
   }
   expect_error(plot_posterior(omega, "omega", individual = TRUE, show_figures = -1L, plot_type = "ggplot", n_points = 64),
                "show_figures", fixed = TRUE)
