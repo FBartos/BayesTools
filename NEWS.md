@@ -125,7 +125,19 @@ old behaviour.
 - fixed weight-function priors now refuse reference-bin weights other than
   exactly `1`, including nearby values accepted by released versions. Named
   exact-one reference weights are newly accepted; integer values remain accepted;
-  nonreference zero and above-one weights remain supported.
+  nonreference zero and above-one weights remain supported. The restored
+  weight-function distribution functions `mdone.sided_fixed()`,
+  `mdtwo.sided_fixed()`, `mpone.sided_fixed()`, `mptwo.sided_fixed()`,
+  `mqone.sided_fixed()`, `mqtwo.sided_fixed()`, `rone.sided_fixed()`, and
+  `rtwo.sided_fixed()` apply the same exact-one rule to `omega` (0.3.0 compared
+  the reference weight with `all.equal()`), and these functions and the
+  `alpha` functions (`mdone.sided()`, `mdtwo.sided()`, `mpone.sided()`,
+  `mptwo.sided()`, `mqone.sided()`, `mqtwo.sided()`, `rone.sided()`,
+  `rtwo.sided()`) require finite `omega` and `alpha`. The density,
+  distribution, and quantile functions of `alpha` stop with
+  `BayesTools_weightfunction_beta_shape_unavailable` (parent
+  `BayesTools_weightfunction_unavailable`) when the cumulative sums of
+  `alpha` exceed the largest double; 0.3.0 evaluated another distribution.
 - cumulative weight-function priors now refuse numeric Dirichlet concentrations
   below `0.01`, including specifications accepted by released versions. The new
   ordinary Dirichlet prior and its ordered/random allocations use the same
@@ -207,9 +219,12 @@ old behaviour.
 - removed functions and arguments:
   - removes the `transform_orthonormal` argument (deprecated since 0.2.14) of
     `runjags_estimates_table()` / `JAGS_estimates_table()`,
-    `ensemble_estimates_table()`, and `JAGS_diagnostics()`; use
-    `transform_factors = TRUE`. `JAGS_diagnostics()` stops when it receives
-    the argument, and the other functions report it as unused.
+    `ensemble_estimates_table()`, `JAGS_diagnostics()`, and its wrappers
+    `JAGS_diagnostics_density()`, `JAGS_diagnostics_trace()`, and
+    `JAGS_diagnostics_autocorrelation()`; use `transform_factors = TRUE`.
+    `JAGS_diagnostics()` stops when it receives the argument (also through
+    the wrappers, which pass `...` on), and the other functions report it as
+    unused.
   - removes the `seed` argument of `JAGS_extend()`. At 0.3.0 it only set R's
     random seed and never changed the draws: the extended chains continue their
     stored backend random-number generator states, and they still do. Calls
@@ -219,8 +234,11 @@ old behaviour.
     NULL or a function accepting one context argument."). Drop the argument.
   - the removal of `transform_orthonormal` moves the arguments after it in
     `runjags_estimates_table()` / `JAGS_estimates_table()`,
-    `ensemble_estimates_table()`, and `JAGS_diagnostics()` one position
-    forward, and `JAGS_extend()` takes `runtime_setup`, `runtime_cache`, and
+    `ensemble_estimates_table()`, `JAGS_diagnostics()`, and its wrappers
+    `JAGS_diagnostics_density()`, `JAGS_diagnostics_trace()`, and
+    `JAGS_diagnostics_autocorrelation()` (`short_name`, `parameter_names`, and
+    `formula_prefix`) one position forward, and `JAGS_extend()` takes
+    `runtime_setup`, `runtime_cache`, and
     `worker_output` where `seed` was; pass them by name. Arguments added since
     0.3.0 follow the released arguments (before `...`) in `JAGS_fit()`,
     `JAGS_bridgesampling()`, and `runjags_estimates_table()` /
