@@ -291,18 +291,27 @@ BF_carrier_drop <- function(x){
   .BF_carrier_drop(x)
 }
 
-# The values of a Bayes factor with its warnings, as 0.3.0 printed them; the
-# carrier attributes (canonical logarithms, orientation, numerical diagnostics)
-# are not printed. Bound operators are shown when the values include bounds.
+# The values of a Bayes factor with its public attributes, as 0.3.0 printed
+# them: the warnings, and the name, scale and direction of a formatted Bayes
+# factor (format_BF() always set them). A Bayes factor as its producer returns
+# it (a carrier of the default scale and direction, like the result of
+# Savage_Dickey_BF()) prints its values and warnings only, as the result of
+# 0.3.0 did. The carrier attributes (canonical logarithms, orientation,
+# numerical diagnostics) are not printed. Bound operators are shown when the
+# values include bounds.
 #' @export
 print.BayesTools_BF <- function(x, ...){
 
   shown <- as.numeric(x)
   names(shown) <- names(x)
-  attr(shown, "warnings") <- attr(x, "warnings", exact = TRUE)
-  bound <- attr(x, "bound_operator", exact = TRUE)
-  if(any(!is.na(bound))){
-    attr(shown, "bound_operator") <- bound
+  producer_default <- !is.null(.BF_carrier_log(x)) &&
+    identical(attr(x, "name", exact = TRUE), "BF") &&
+    isFALSE(attr(x, "logBF", exact = TRUE)) && isFALSE(attr(x, "BF01", exact = TRUE))
+  public <- c(if(!producer_default) c("name", "logBF", "BF01"), "warnings", "bound_operator")
+  for(attribute in intersect(names(attributes(x)), public)){
+    value <- attr(x, attribute, exact = TRUE)
+    if(identical(attribute, "bound_operator") && all(is.na(value))) next
+    attr(shown, attribute) <- value
   }
   print.default(shown, ...)
 

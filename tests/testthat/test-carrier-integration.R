@@ -130,3 +130,25 @@ test_that("printing a Bayes factor shows its values and warnings, not its carrie
   expect_identical(printed_bounded[-(1:2)], c('attr(,"bound_operator")', '[1] ">" NA '))
   expect_identical(utils::capture.output(print(bounded[2])), utils::capture.output(print(c(b = exp(3)))))
 })
+
+test_that("printing a bounded Bayes factor keeps its public scale and direction attributes", {
+
+  # as the unbounded result, which 0.3.0 printed with its name, scale and direction;
+  # only the value of the bound operator differs
+  for(flags in list(list(logBF = TRUE, BF01 = TRUE), list(logBF = FALSE, BF01 = TRUE), list(logBF = TRUE, BF01 = FALSE))){
+    unbounded <- do.call(format_BF, c(list(20, inclusion = TRUE), flags))
+    bounded   <- do.call(format_BF, c(list(structure(20, bound_operator = ">"), inclusion = TRUE), flags))
+    printed_unbounded <- utils::capture.output(print(unbounded))
+    printed_bounded   <- utils::capture.output(print(bounded))
+
+    expect_true(all(c('attr(,"name")', 'attr(,"logBF")', 'attr(,"BF01")') %in% printed_bounded))
+    expect_identical(printed_bounded[-length(printed_bounded)], printed_unbounded[-length(printed_unbounded)])
+    expect_identical(printed_unbounded[length(printed_unbounded)], "[1] NA")
+    expect_true(printed_bounded[length(printed_bounded)] %in% c('[1] "<"', '[1] ">"'))
+    expect_false(any(grepl("canonical_log_BF|producer_values|carrier_|orientation|numerical_diagnostics|class", printed_bounded)))
+  }
+
+  # the printed name identifies the logarithmic exclusion Bayes factor
+  printed <- utils::capture.output(print(format_BF(structure(20, bound_operator = ">"), logBF = TRUE, BF01 = TRUE, inclusion = TRUE)))
+  expect_true('[1] "log(Exclusion BF)"' %in% printed)
+})
