@@ -1357,10 +1357,12 @@ old behaviour.
     of `compute_inference(conditional = TRUE)` states that the inclusion Bayes
     factor stays the unconditional inclusion odds.
     `inclusion_BF()` documentation identifies natural-log marginal-likelihood
-    inputs. Printing a Bayes factor of class `BayesTools_BF` (for example the
-    result of `Savage_Dickey_BF()`) shows its values and warnings, plus the
-    `name`, `logBF`, and `BF01` attributes of a formatted Bayes factor (also a
-    bounded one) as 0.3.0 printed them, and printing
+    inputs. Printing a Bayes factor of class `BayesTools_BF` shows its values
+    and warnings, plus the `name`, `logBF`, and `BF01` attributes of a
+    formatted Bayes factor (also a bounded one), as 0.3.0 printed them. The
+    exception is a Bayes factor of the default scale and direction as its
+    producer returns it, such as the result of `Savage_Dickey_BF()`, which
+    prints its values and warnings only, as at 0.3.0. Printing
     an element of `ensemble_inference()` shows its probabilities, Bayes factor,
     and its attributes (those of 0.3.0, and the `marglik_failure` audit of a
     result computed under a failure policy), without the logarithmic
