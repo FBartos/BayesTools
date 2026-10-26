@@ -53,17 +53,23 @@ pre code {
 ```
 
 
-BayesTools can generate JAGS [@JAGS] mixed models directly from formulas with random-effect terms. Its random-coefficient syntax follows the conventions used by lme4 [@lme4], while `prior_random()` centralizes random-effect standard deviation priors, correlation priors, variance-allocation priors, and monitoring policy. The first and crossed-effect examples also include Bayesian comparison models fitted with rstanarm [@rstanarm].
+BayesTools can generate JAGS [@JAGS] mixed models directly from formulas with random-effect terms.
+Its random-coefficient syntax follows the conventions used by lme4 [@lme4], and `prior_random()` allows users to specify the corresponding prior distributions, e.g., random-effect standard deviation priors, correlation priors, variance-allocation priors.
 
-This vignette uses data sets included in lme4. The first example fits the `sleepstudy` random-intercept and random-slope model, then switches to independent random effects with the lme4 `||` idiom. The second example uses the ordered temperatures in `cake` to fit heterogeneous compound-symmetry, AR(1), and heterogeneous AR(1) random-effect covariance structures, and also shows factor random-slope columns. The later examples cover nested random intercepts in `Pastes` and crossed random effects in `Penicillin`, including a total-variance allocation prior.
+This vignette illustrates how to use the functionality on example datasets distributed with lme4.
+The first example fits the `sleepstudy` random-intercept and random-slope model, then switches to independent random effects with the lme4 `||` idiom. 
+The first and crossed-effect examples also include Bayesian comparison models fitted with rstanarm [@rstanarm].
+The second example uses the ordered temperatures in `cake` to fit heterogeneous compound-symmetry, AR(1), and heterogeneous AR(1) random-effect covariance structures, and also shows factor random-slope columns. 
+The later examples cover nested random intercepts in `Pastes` and crossed random effects in `Penicillin`, including a total-variance allocation prior.
 
 ## Formula Semantics
 
-BayesTools keeps intercept control and factor contrasts separate.
-In a fixed formula, `0 + factor` or `factor - 1` fixes the intercept at zero but preserves the factor basis selected by `prior_factor()`.
+One major difference from standard R formulas is that BayesTools formulas keeps intercept control and factor contrasts separate.
+In a fixed effects formula, `0 + factor` or `factor - 1` fixes the intercept at zero but preserves the factor basis selected by `prior_factor()`.
 For example, an independent factor prior creates one coefficient per factor level, while treatment and mean-difference priors retain their own bases despite the same no-intercept formula.
+(The reason behind this choice is that prior specification, i.e., factor contrast, should not change when other coefficients are modified.)
 
-Random effects use two related but distinct grammars:
+Random effects specification use two related but distinct grammars:
 
 | Structure syntax | Left-side role | Marginal SDs | Correlation |
 |---|---|---|---|
@@ -80,7 +86,7 @@ The first three structures operate on coefficient columns.
 Their `1`, `0`, and `-1` terms include or remove the random intercept, and their left side can contain continuous slopes, factor slopes, and interactions.
 A random factor reuses its already established fixed contrast by default.
 Set `random_block(contrasts = c(factor_name = "contrast"))` when the random basis should be explicit or differ from the fixed basis.
-Therefore `us(0 + group | study)` plus an independent block contrast means one correlated random coefficient per `group` level and no random intercept; `0 + group` by itself does not force indicators.
+Therefore `us(0 + group | study)` plus an independent block contrast means one correlated random coefficient per `group` level and no random intercept; `0 + group` by itself does not force by-group indicators.
 
 The structured CS/HCS and AR1/HAR families operate on discrete index levels instead.
 They reject `1`, `0`, `-1`, and block contrast overrides.
@@ -94,27 +100,13 @@ HCS estimates one common pairwise correlation and an SD per index level.
 US estimates an unrestricted correlation matrix among the selected coefficient columns.
 For two columns each has only one correlation, but their basis ownership and correlation prior remain different; with three or more columns HCS additionally imposes equality across every pair.
 
-A bare random formula or unnamed one-entry formula list has no redundant top-level component prefix in public parameter names; an explicitly named one-entry list retains its name.
-In a formula list with two or more entries, missing names become `component 1`, `component 2`, and so on.
-Public random-effect quantities come from the semantic parameter catalog and follow `(formula) owner: quantity(arguments)`, for example `(mu) Subject: sd(Days)` and `(mu) Subject: cor(intercept,Days)`.
-Parentheses contain coefficient or parameter names, while square brackets contain factor or index levels.
-Coordinate-table entries, compact scalar `rho`, and LKJ construction variables are backend details rather than public aliases. The coordinate, quantity, and alias tables are stored and validated together in one fitted parameter map.
-
 ### Default correlation priors
 
 Correlation priors are completed only after the formula determines the structure and its dimension.
 An omitted US/UN correlation prior becomes `LKJ(1)`.
 An omitted scalar correlation prior is uniform over the complete admissible raw-correlation interval: `(-1 / (K - 1), 1)` for CS/HCS, `(-1, 1)` for AR1/HAR, and `(0, 1)` for CAR, where `K` is the number of resolved index levels.
-Consequently, the default never removes negative correlations from a structure that permits them.
-Use `random_covariance(cor = ..., cor_scale = ...)` for explicit scalar
-correlation priors. The default `cor_scale = "fisher_z"` places the prior on
-Fisher's z; `"cor"` places it on the raw correlation and `"logit"` maps the
-structure's complete admissible interval to the real line.
-
-BayesTools cannot choose a generic default SD magnitude because that scale belongs to the outcome model.
-Direct `JAGS_formula()` use must therefore supply an SD prior or allocation.
-Higher-level packages can treat a `prior_random()` object containing only contrasts, correlations, or policies as a partial specification and add their own outcome-scale defaults.
-
+Use `random_covariance(cor = ..., cor_scale = ...)` for explicit scalar correlation priors. 
+The default `cor_scale = "fisher_z"` places the prior on Fisher's z; `"cor"` places it on the raw correlation and `"logit"` maps the structure's complete admissible interval to the real line.
 
 ```{r packages, message = FALSE, warning = FALSE, results = "hide"}
 suppressPackageStartupMessages({
@@ -549,13 +541,14 @@ compare_structured_correlation_estimates <- function(lme4_model, hcs_model,
 
 ## Random Intercepts and Slopes
 
-The `sleepstudy` data contain reaction times for subjects measured across days of sleep deprivation. We standardize the response so that simple unit-scale priors are meaningful, and leave the predictor in its original units so BayesTools can standardize it through the formula interface.
+The `sleepstudy` data contain reaction times for subjects measured across days of sleep deprivation. 
+We standardize the response so that simple standard normal priors can be used, and leave the predictor in its original units so BayesTools can standardize it through the formula interface.
 
 ```{r}
 data("sleepstudy", package = "lme4")
-sleepstudy$Subject <- factor(sleepstudy$Subject)
+sleepstudy$Subject    <- factor(sleepstudy$Subject)
 sleepstudy$Reaction_z <- as.numeric(scale(sleepstudy$Reaction))
-sleepstudy$Days_s <- as.numeric(scale(sleepstudy$Days))
+sleepstudy$Days_s     <- as.numeric(scale(sleepstudy$Days))
 head(sleepstudy)
 ```
 
@@ -587,9 +580,9 @@ sleep_stan_environment <- list2env(list(sleepstudy = sleepstudy), parent = globa
 stan_correlated <- local(rstanarm::stan_lmer(
   Reaction_z ~ Days + (1 + Days | Subject),
   data = sleepstudy,
-  prior = rstanarm::normal(0, 1, autoscale = FALSE),
-  prior_intercept = rstanarm::normal(0, 1, autoscale = FALSE),
-  prior_aux = rstanarm::exponential(1, autoscale = FALSE),
+  prior            = rstanarm::normal(0, 1, autoscale = FALSE),
+  prior_intercept  = rstanarm::normal(0, 1, autoscale = FALSE),
+  prior_aux        = rstanarm::exponential(1, autoscale = FALSE),
   prior_covariance = rstanarm::decov(regularization = 2, concentration = 1, shape = 1, scale = 1),
   chains = 2, iter = 1000, warmup = 500, seed = 11, refresh = 0, adapt_delta = 0.95
 ), envir = sleep_stan_environment)
@@ -597,9 +590,9 @@ stan_correlated <- local(rstanarm::stan_lmer(
 stan_correlated_scaled <- local(rstanarm::stan_lmer(
   Reaction_z ~ Days_s + (1 + Days_s | Subject),
   data = sleepstudy,
-  prior = rstanarm::normal(0, 1, autoscale = FALSE),
+  prior           = rstanarm::normal(0, 1, autoscale = FALSE),
   prior_intercept = rstanarm::normal(0, 1, autoscale = FALSE),
-  prior_aux = rstanarm::exponential(1, autoscale = FALSE),
+  prior_aux       = rstanarm::exponential(1, autoscale = FALSE),
   prior_covariance = rstanarm::decov(regularization = 2, concentration = 1, shape = 1, scale = 1),
   chains = 2, iter = 1000, warmup = 500, seed = 12, refresh = 0, adapt_delta = 0.95
 ), envir = sleep_stan_environment)
@@ -617,31 +610,18 @@ sleep_likelihood <-
 "
 
 sleep_formula <- list(mu = ~ Days + us(1 + Days | Subject, name = "Subject"))
-
-sleep_data <- list(Reaction_z = sleepstudy$Reaction_z, N = nrow(sleepstudy))
+sleep_data    <- list(Reaction_z = sleepstudy$Reaction_z, N = nrow(sleepstudy))
 ```
 
-Each random-effect term has a block name. If `name` is omitted, the block name is the sanitized grouping expression, so a single `(1 + Days | Subject)` block would be named `Subject`. With two or more random-effect blocks and `prior_random()`, BayesTools requires explicit block names. The explicit unstructured form `us(1 + Days | Subject, name = "Subject")` is equivalent to lme4's `(1 + Days | Subject)` but makes the prior-matching name visible.
-
-The sampled representation is a backend choice, not a different statistical
-model. `prior_random(parameterization = "noncentered")` is the default;
-`"centered"` samples realized group coefficients, and `"auto"` uses a
-deterministic design-based heuristic for each block. A block can override the
-global choice with `random_block(parameterization = ...)`. The SD, allocation,
-and correlation priors and the semantic posterior summaries are unchanged.
-Explicit centering requires strictly positive backend-owned SD coordinates;
-zero-mass scales, inclusion-gated allocations, and external or row-indexed SD
-sources require the noncentered representation. Scalar CS/HCS/AR1/HAR/CAR
-correlations are sampled through a compact internal `rho` coordinate; use
-`random_effects_correlation_draws()` only when a dense draw-by-matrix array is
-actually needed.
-
-`formula_scale_list` standardizes predictors, not the response. The response standardization above makes unit-scale priors appropriate for the intercept, residual SD, and random-effect SDs. Priors for `Days` and its random-effect SD are specified on the fitted standardized-`Days` scale, and the summary functions backtransform them to the original day scale.
+Each random-effect term has a block name. 
+If `name` is omitted, the block name is the sanitized grouping expression, so a single `(1 + Days | Subject)` block would be named `Subject`.
+With two or more random-effect blocks and `prior_random()`, BayesTools requires explicit block names.
+The explicit unstructured form `us(1 + Days | Subject, name = "Subject")` is equivalent to lme4's `(1 + Days | Subject)` but makes the prior-matching name visible.
 
 ```{r}
-unit_prior <- prior(distribution = "normal", parameters = list(mean = 0, sd = 1))
+unit_prior    <- prior(distribution = "normal", parameters = list(mean = 0, sd = 1))
 unit_sd_prior <- prior(distribution = "normal", parameters = list(mean = 0, sd = 1), truncation = list(0, Inf))
-cor_prior <- prior(distribution = "normal", parameters = list(mean = 0, sd = 0.5))
+cor_prior     <- prior(distribution = "normal", parameters = list(mean = 0, sd = 0.5))
 sleep_fixed_priors <- list(intercept = unit_prior, Days = unit_prior)
 
 sleep_random_priors <- list(
@@ -653,7 +633,8 @@ sleep_random_priors <- list(
 )
 ```
 
-The model uses the standardized response and is fitted on standardized `Days`; `JAGS_estimates_table()` transforms fixed effects, random-effect SDs, and the random-effect correlation back to the original `Days` scale.
+`formula_scale_list` allows us to standardizes predictors before fitting the model.
+As such, priors for `Days` and its random-effect SD are specified on the fitted standardized-`Days` scale, and the summary functions backtransform them to the original day scale.
 
 ```{r fit-sleep, eval = FALSE}
 fit_sleep <- JAGS_fit(
@@ -670,20 +651,24 @@ fit_sleep <- JAGS_fit(
 JAGS_estimates_table(fit_sleep, transform_scaled = TRUE, random_effects_summary = "standard", remove_diagnostics = TRUE)
 ```
 
-The estimates are not expected to be identical: lme4 reports maximum-likelihood point estimates, while BayesTools and rstanarm report posterior summaries under their priors. The first table compares the fitted standardized-`Days` scale.
+The estimates are not fully identical: lme4 reports maximum-likelihood point estimates, while BayesTools and rstanarm report posterior summaries under their priors. The first table compares the fitted standardized-`Days` scale.
 
 ```{r}
 compare_estimates(
-  lme4_model = lme4_correlated_scaled, stan_model = stan_correlated_scaled,
-  bayes_model = fit_sleep, slope_name = "Days_s", transform_scaled = FALSE)
+  lme4_model  = lme4_correlated_scaled,
+  stan_model  = stan_correlated_scaled,
+  bayes_model = fit_sleep, 
+  slope_name  = "Days_s", transform_scaled = FALSE)
 ```
 
 With `transform_scaled = TRUE`, BayesTools reports the original `Days` scale. Random intercept--slope correlations are transformed too, and can change substantially because the original-scale random intercept is defined at `Days = 0` rather than at the mean day.
 
 ```{r}
 compare_estimates(
-  lme4_model = lme4_correlated, stan_model = stan_correlated,
-  bayes_model = fit_sleep, slope_name = "Days", transform_scaled = TRUE)
+  lme4_model  = lme4_correlated,
+  stan_model  = stan_correlated,
+  bayes_model = fit_sleep, 
+  slope_name = "Days", transform_scaled = TRUE)
 ```
 
 
