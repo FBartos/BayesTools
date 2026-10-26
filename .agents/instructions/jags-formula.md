@@ -4,6 +4,10 @@ Use this guide when changing `JAGS_fit()`, generated JAGS syntax, formulas,
 scaling, contrasts, random effects, posterior extraction, parameter metadata,
 or marginal likelihoods.
 
+For the rationale and superseded alternatives behind random-summary scaling,
+unavailable table values, and parameter-map 17, see
+[maintainer decisions](decision-rationale.md).
+
 ## Keep the Fitting Paths Synchronized
 
 Mixtures of ordered prior containers retain constructor and RNG support, but

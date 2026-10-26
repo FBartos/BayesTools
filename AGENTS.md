@@ -18,6 +18,9 @@ Check [pending workspace decisions](../.agents/decisions.md) when present.
 
 Read the guide relevant to the change and maintain it with the implementation:
 
+- [Decision rationale](.agents/instructions/decision-rationale.md): settled
+  scaling, unavailable-table-value, and transformed-prior decisions; consult
+  before proposing a semantic reversal during review.
 - [Priors](.agents/instructions/priors.md): constructors, distribution methods,
   transformations, provenance, structural prior-density ordinates, and
   Savage-Dickey ordinates.

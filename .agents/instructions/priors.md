@@ -4,6 +4,9 @@ Use this guide when changing prior constructors, distribution methods, density
 provenance, transformations, mixtures, or prior-density and Savage-Dickey
 ordinates.
 
+The [maintainer decision record](decision-rationale.md) explains why pure
+random-SD rescaling preserves its prior law and why map 17 requires refitting.
+
 ## Prior Contract
 
 Ordinary bound factor mixtures and spikes sample through their exact declared
