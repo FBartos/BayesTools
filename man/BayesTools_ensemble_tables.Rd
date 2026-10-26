@@ -139,13 +139,14 @@ be printed. Defaults to \code{TRUE}.}
 
 \item{transform_scaled}{whether coefficients from standardized
 continuous predictors should be transformed back to the original
-scale. For \code{runjags_estimates_table()}, random-effect summaries are
-also derived on the transformed scale when the fit contains
+scale. For \code{runjags_estimates_table()}, \code{FALSE} keeps fixed and
+random effects on the fitted predictor scale, while \code{TRUE} transforms
+both to the original predictor scale when the fit contains
 \code{formula_scale} metadata: random-effect SDs and correlations are
 computed from the transformed covariance draws. Subtraction-centering can
 leave a numerically nonzero predictor mean; its induced effects are retained.
 Composite original-scale SDs have available draws but may have unavailable
-prior laws. Fitted-scale coefficients and raw random-effect SDs remain
+prior laws. Fitted-scale coefficients and semantic random-effect summaries remain
 available without this transformation. A block whose missing-term fallback
 mixes categorical coding or omits a representable contribution has no
 available original-scale output, with reason

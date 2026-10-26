@@ -284,13 +284,14 @@ instead of the table. Defaults to \code{FALSE}.}
 
 \item{transform_scaled}{whether coefficients from standardized
 continuous predictors should be transformed back to the original
-scale. For \code{runjags_estimates_table()}, random-effect summaries are
-also derived on the transformed scale when the fit contains
+scale. For \code{runjags_estimates_table()}, \code{FALSE} keeps fixed and
+random effects on the fitted predictor scale, while \code{TRUE} transforms
+both to the original predictor scale when the fit contains
 \code{formula_scale} metadata: random-effect SDs and correlations are
 computed from the transformed covariance draws. Subtraction-centering can
 leave a numerically nonzero predictor mean; its induced effects are retained.
 Composite original-scale SDs have available draws but may have unavailable
-prior laws. Fitted-scale coefficients and raw random-effect SDs remain
+prior laws. Fitted-scale coefficients and semantic random-effect summaries remain
 available without this transformation. A block whose missing-term fallback
 mixes categorical coding or omits a representable contribution has no
 available original-scale output, with reason
@@ -348,32 +349,35 @@ standard set.
 \code{"full"} additionally includes deterministic representations such as
 aggregate variances, allocation-derived component SDs, and alternate SD or
 variance multipliers.
-\code{"raw"} keeps the historical raw monitored parameters on their fitted
-scale, and
+\code{"raw"} keeps the historical monitored implementation parameters, and
 \code{"none"} removes random-effect parameters from the table. The
 \code{"standard"} and \code{"full"} modes always obtain public semantic
-quantities from the fitted parameter map on their declared display scale,
+quantities from the fitted parameter map,
 and omit the internal (unnormalized gamma) allocation nodes of
-ordered-factor priors. A scaled random-effect block whose design is
-linearly dependent has no identified original-scale quantities: these modes
-leave its rows out and report it in the table warnings (\code{"raw"} shows
-its fitted SDs), while \code{transform_scaled = TRUE} stops with
+ordered-factor priors. In every reporting mode, \code{transform_scaled = FALSE}
+keeps both fixed coefficients and random-effect SDs, variances, and
+correlations on the fitted predictor scale; \code{transform_scaled = TRUE}
+transforms them to the original predictor scale. Centering changes the
+definition of a random intercept and can therefore change its SD and its
+correlations with random slopes. Allocation totals and weights retain their
+declared parameterization.
+A scaled random-effect block whose design is linearly dependent has no
+identified original-scale quantities: \code{transform_scaled = TRUE} stops with
 \code{BayesTools_formula_transform_unavailable}, reason
 \code{"original_scale_not_identified"}.
 A block whose missing-term fallback mixes categorical coding or omits a
 representable contribution, or whose shared SD columns transform to different
-SDs, likewise omits its original-scale rows with a warning; explicit
-\code{transform_scaled = TRUE} stops with reason
-\code{"original_scale_not_representable"}. Use \code{"raw"} for fitted SDs,
+SDs, likewise stops under \code{transform_scaled = TRUE} with reason
+\code{"original_scale_not_representable"}. Use \code{transform_scaled = FALSE}
+for fitted-scale summaries in either \code{"standard"} or \code{"full"} mode,
 or include the needed lower-order terms for an uncertified fallback.
 The \code{"raw"} rows of random-effect and allocation implementation
-coordinates (fitted-scale SDs, Cholesky factors and correlation matrices,
+coordinates (block SDs, Cholesky factors and correlation matrices,
 LKJ primitives, standardized group effects, and allocation nodes) are
 backend coordinates shown for inspection: their labels describe the
 coordinate, but they are not catalog quantities and do not select one in
 \code{\link[=parameter_catalog_resolve]{parameter_catalog_resolve()}}, hypotheses, or plots.
-\code{transform_scaled = TRUE} additionally transforms remaining formula
-coefficients. Internal latent and realized group-coefficient coordinates
+Internal latent and realized group-coefficient coordinates
 are omitted when \code{transform_scaled = TRUE}, including in \code{"raw"}
 mode, because those coordinates remain on the fitted standardized scale.}
 
@@ -434,7 +438,8 @@ row and the columns \code{row} (the row label), \code{quantity_id} (the
 its canonical name or an exact alias such as a transformed factor level
 \code{<parameter>[dif: level]}; \code{""} for rows that are not catalog
 quantities, such as inclusion rows, mixture components, backend
-coordinates, ordered-factor allocation shares, and rows whose values
+coordinates, fitted random-effect summaries whose catalog quantity is on
+the original scale, ordered-factor allocation shares, and rows whose values
 \code{transformations} changed, whose
 label parts record the transformation as \code{"custom"}), and
 \code{label_parts} (the label parts the row label is

@@ -363,7 +363,7 @@
         "The original-scale random-effect quantities of block '", random_term$block_name,
         "' of formula parameter '", prefix, "' are unavailable: the missing-term ",
         "fallback mixes categorical coding or omits a representable contribution. ",
-        "Use the fitted scale ('transform_scaled = FALSE', 'random_effects_summary = \"raw\"'), ",
+        "Use the fitted scale ('transform_scaled = FALSE'), ",
         "or include the needed lower-order terms in the block."
       ),
       parameter = prefix, reason = "original_scale_not_representable"

@@ -397,16 +397,15 @@ original-scale law, and every request for original-scale values stops with
 `original_scale_not_identified` (`transform_scaled = TRUE` tables,
 `transform_scale_samples()`, `parameter_draws()` and the mixed posteriors of
 those SDs, the prior law of an SD on the original scale). The estimates table
-without `transform_scaled` leaves the block's original-scale random-effect rows
-out and says so in its warnings; `random_effects_summary = "raw"` shows the
-fitted SDs. An SD shared by several columns of a block (the indicator columns
+with `transform_scaled = FALSE` reports its fitted-scale random-effect
+quantities, including in `standard` and `full` summaries. An SD shared by
+several columns of a block (the indicator columns
 of a logical predictor's interaction with a scaled slope) has one original-scale
 value only when its columns transform to the same SD, which a correlated block
 never guarantees: otherwise original-scale requests stop with
 `BayesTools_formula_transform_unavailable`, reason
-`original_scale_not_representable`, and the estimates table without
-`transform_scaled` leaves the block's original-scale rows out with a warning
-in the same way.
+`original_scale_not_representable`; fitted-scale estimates tables remain
+available in every summary mode.
 For a diagonal block, shared-column equality compares variance weights on
 each source SD leaf separately with the existing relative tolerance 1e-12.
 Zero/nonzero weights differ exactly, however large another leaf's weight is;
@@ -744,6 +743,15 @@ Random-effect compilation and reconstruction are shared infrastructure. Keep
 block names, grouping levels, design columns, correlation structure, scale,
 monitor names, and reconstruction metadata consistent across
 `R/JAGS-formula-random*.R` and `R/random-effects-*.R`.
+
+In estimates tables, `transform_scaled` selects fitted versus original predictor
+units for both fixed coefficients and random-effect SDs, variances, and
+correlations. `random_effects_summary` selects the depth of the summary,
+independently of that scale choice. Allocation totals and weights retain their
+declared parameterization. Catalog accessors continue to return their declared
+quantities; fitted table rows that differ from original-scale catalog quantities
+must not carry those quantity IDs. Original-scale availability errors and
+induced-term footnotes apply only when transformation is requested.
 
 Keep the parser's two random-effect families separate:
 

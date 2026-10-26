@@ -62,32 +62,35 @@
 #' \code{"full"} additionally includes deterministic representations such as
 #' aggregate variances, allocation-derived component SDs, and alternate SD or
 #' variance multipliers.
-#' \code{"raw"} keeps the historical raw monitored parameters on their fitted
-#' scale, and
+#' \code{"raw"} keeps the historical monitored implementation parameters, and
 #' \code{"none"} removes random-effect parameters from the table. The
 #' \code{"standard"} and \code{"full"} modes always obtain public semantic
-#' quantities from the fitted parameter map on their declared display scale,
+#' quantities from the fitted parameter map,
 #' and omit the internal (unnormalized gamma) allocation nodes of
-#' ordered-factor priors. A scaled random-effect block whose design is
-#' linearly dependent has no identified original-scale quantities: these modes
-#' leave its rows out and report it in the table warnings (\code{"raw"} shows
-#' its fitted SDs), while \code{transform_scaled = TRUE} stops with
+#' ordered-factor priors. In every reporting mode, \code{transform_scaled = FALSE}
+#' keeps both fixed coefficients and random-effect SDs, variances, and
+#' correlations on the fitted predictor scale; \code{transform_scaled = TRUE}
+#' transforms them to the original predictor scale. Centering changes the
+#' definition of a random intercept and can therefore change its SD and its
+#' correlations with random slopes. Allocation totals and weights retain their
+#' declared parameterization.
+#' A scaled random-effect block whose design is linearly dependent has no
+#' identified original-scale quantities: \code{transform_scaled = TRUE} stops with
 #' \code{BayesTools_formula_transform_unavailable}, reason
 #' \code{"original_scale_not_identified"}.
 #' A block whose missing-term fallback mixes categorical coding or omits a
 #' representable contribution, or whose shared SD columns transform to different
-#' SDs, likewise omits its original-scale rows with a warning; explicit
-#' \code{transform_scaled = TRUE} stops with reason
-#' \code{"original_scale_not_representable"}. Use \code{"raw"} for fitted SDs,
+#' SDs, likewise stops under \code{transform_scaled = TRUE} with reason
+#' \code{"original_scale_not_representable"}. Use \code{transform_scaled = FALSE}
+#' for fitted-scale summaries in either \code{"standard"} or \code{"full"} mode,
 #' or include the needed lower-order terms for an uncertified fallback.
 #' The \code{"raw"} rows of random-effect and allocation implementation
-#' coordinates (fitted-scale SDs, Cholesky factors and correlation matrices,
+#' coordinates (block SDs, Cholesky factors and correlation matrices,
 #' LKJ primitives, standardized group effects, and allocation nodes) are
 #' backend coordinates shown for inspection: their labels describe the
 #' coordinate, but they are not catalog quantities and do not select one in
 #' [parameter_catalog_resolve()], hypotheses, or plots.
-#' \code{transform_scaled = TRUE} additionally transforms remaining formula
-#' coefficients. Internal latent and realized group-coefficient coordinates
+#' Internal latent and realized group-coefficient coordinates
 #' are omitted when \code{transform_scaled = TRUE}, including in \code{"raw"}
 #' mode, because those coordinates remain on the fitted standardized scale.
 #' @param simplify_names whether semantic random-effect row names should use
@@ -149,7 +152,8 @@
 #' its canonical name or an exact alias such as a transformed factor level
 #' \code{<parameter>[dif: level]}; \code{""} for rows that are not catalog
 #' quantities, such as inclusion rows, mixture components, backend
-#' coordinates, ordered-factor allocation shares, and rows whose values
+#' coordinates, fitted random-effect summaries whose catalog quantity is on
+#' the original scale, ordered-factor allocation shares, and rows whose values
 #' \code{transformations} changed, whose
 #' label parts record the transformation as \code{"custom"}), and
 #' \code{label_parts} (the label parts the row label is
@@ -383,13 +387,10 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
     coordinates = coordinates,
     mode = random_effects_summary,
     simplify_names = simplify_names,
-    omit_unidentified = !transform_scaled
+    transform_scaled = transform_scaled
   )
   model_samples <- random_summary$model_samples
   prior_list <- random_summary$prior_list
-  if(length(random_summary$warnings) > 0L){
-    warnings <- c(warnings, random_summary$warnings)
-  }
   random_included <- list()
   random_unconditioned <- logical()
   if(conditional){
@@ -962,7 +963,7 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
       parameter_names = parameter_names,
       row_labels      = colnames(model_samples)
     ))
-    if(random_effects_summary %in% c("standard", "full")){
+    if(transform_scaled && random_effects_summary %in% c("standard", "full")){
       footnotes <- c(footnotes, .bt_random_effect_summary_induced_term_footnotes(
         fit        = fit,
         row_labels = colnames(model_samples)
@@ -975,10 +976,12 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
   class(runjags_summary)              <- c("BayesTools_table", "BayesTools_runjags_summary", class(runjags_summary))
   attr(runjags_summary, "type")       <- c(rep("estimate", n_estimate_cols), summary_diagnostic_columns)
   attr(runjags_summary, "parameters") <- parameter_names
+  quantity_ids <- .bt_table_quantity_ids(column_parts, parameter_catalog(fit))
+  quantity_ids[quantity_ids %in% random_summary$fitted_quantity_ids] <- ""
   attr(runjags_summary, "quantities") <- .bt_table_quantities(
     rows         = rownames(runjags_summary),
     label_parts  = column_parts,
-    quantity_ids = .bt_table_quantity_ids(column_parts, parameter_catalog(fit))
+    quantity_ids = quantity_ids
   )
   attr(runjags_summary, "rownames")   <- TRUE
   attr(runjags_summary, "title")      <- title

@@ -5560,9 +5560,11 @@ parameter_transform_jacobian <- function(values, transform){
   cbind(model_samples, zeroes)
 }
 
-.bt_parameter_draw_random_summary <- function(fit, key, model_samples){
+.bt_parameter_draw_random_summary <- function(fit, key, model_samples,
+                                               transform_scaled = TRUE){
 
   prior_list <- attr(fit, "prior_list", exact = TRUE)
+  formula_scale <- if(transform_scaled) attr(fit, "formula_scale", exact = TRUE) else NULL
   evaluator <- key$evaluator
   random_term <- if(nzchar(key$random_block)){
     .bt_parameter_catalog_find_random_term(fit, key)
@@ -5597,7 +5599,7 @@ parameter_transform_jacobian <- function(values, transform){
       model_samples = model_samples,
       prior_list = prior_list,
       parameter = key$formula_parameter,
-      formula_scale = attr(fit, "formula_scale", exact = TRUE),
+      formula_scale = formula_scale,
       formula_design = attr(fit, "formula_design", exact = TRUE)[[key$formula_parameter]]
     )
     values <- summary$values[, key$index]
@@ -5626,7 +5628,7 @@ parameter_transform_jacobian <- function(values, transform){
       model_samples = model_samples,
       prior_list = prior_list,
       parameter = key$formula_parameter,
-      formula_scale = attr(fit, "formula_scale", exact = TRUE),
+      formula_scale = formula_scale,
       formula_design = attr(fit, "formula_design", exact = TRUE)[[key$formula_parameter]]
     )
     summary <- .bt_random_effect_summary_correlation_samples(

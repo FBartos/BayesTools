@@ -2139,13 +2139,10 @@ test_that("the indicator columns of a logical-by-continuous term are labelled by
   scaled <- flag_carrier(list(x = TRUE))$fit
   expect_true(all(expected %in% parameter_catalog(scaled)$quantities$canonical_name))
   fitted_table <- JAGS_estimates_table(scaled, remove_diagnostics = TRUE)
-  expect_identical(rownames(fitted_table), c("(mu) intercept", "(mu) x", "(mu) flag"))
-  expect_identical(attr(fitted_table, "warnings"), paste0(
-    "The original-scale random-effect quantities of block 'id' of formula parameter 'mu' ",
-    "are not shown: its fitted block has no certified representation of these original-scale ",
-    "quantities. Use 'random_effects_summary = \"raw\"' for its fitted-scale SDs."
-  ))
-  expect_match(attr(fitted_table, "warnings"), "random_effects_summary", fixed = TRUE)
+  expect_identical(rownames(fitted_table), c("(mu) intercept", "(mu) x", "(mu) flag", expected))
+  expect_length(attr(fitted_table, "warnings"), 0L)
+  expect_equal(as.data.frame(fitted_table)[expected, "Mean"],
+               as.data.frame(table)[expected, "Mean"], tolerance = 1e-12)
   raw <- JAGS_estimates_table(scaled, remove_diagnostics = TRUE, random_effects_summary = "raw")
   expect_equal(
     unname(as.data.frame(raw)[grep("sd(", rownames(raw), fixed = TRUE), "Mean"]),

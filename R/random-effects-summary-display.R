@@ -298,11 +298,11 @@
 .bt_parameter_catalog_random_summary_samples <- function(
     fit, model_samples, prior_list, coordinates,
     mode = c("standard", "full", "raw", "none"),
-    simplify_names = FALSE, omit_unidentified = TRUE){
+    simplify_names = FALSE, transform_scaled = TRUE){
 
   mode <- match.arg(mode)
   check_bool(simplify_names, "simplify_names", allow_NA = FALSE)
-  check_bool(omit_unidentified, "omit_unidentified", allow_NA = FALSE)
+  check_bool(transform_scaled, "transform_scaled", allow_NA = FALSE)
   if(identical(mode, "raw")){
     return(list(model_samples = model_samples, prior_list = prior_list))
   }
@@ -333,76 +333,34 @@
 
   summary_columns <- vector("list", nrow(quantities))
   summary_priors <- vector("list", nrow(quantities))
-  # a quantity of a block whose original-scale values do not exist has no
-  # original-scale draws: a linearly dependent design
-  # (original_scale_not_identified) or SDs shared by columns that transform to
-  # different SDs or an uncertified missing-term map
-  # (original_scale_not_representable). The fitted-scale table
-  # leaves it out and reports it, an original-scale request
-  # (omit_unidentified = FALSE) stops
-  unidentified <- rep(NA_character_, nrow(quantities))
+  fitted_quantity_ids <- character()
   for(i in seq_len(nrow(quantities))){
     quantity <- quantities[i, , drop = FALSE]
-    values <- tryCatch(
-      as.matrix(.bt_parameter_draws_from_quantities(
-        object        = fit,
-        quantities    = quantity,
-        model_samples = model_samples
-      )),
-      BayesTools_formula_transform_unavailable = function(condition){
-        if(!isTRUE(omit_unidentified) || !condition$reason %in% c(
-          "original_scale_not_identified", "original_scale_not_representable"
-        )){
-          stop(condition)
-        }
-        condition$reason
-      }
+    # Reuse the catalog's evaluator, but select the table's requested scale.
+    # Fitted summaries do not need the original-scale covariance dependencies.
+    values <- .bt_parameter_draw_random_summary(
+      fit = fit, key = quantity$extraction_key[[1L]],
+      model_samples = as.matrix(model_samples), transform_scaled = transform_scaled
     )
-    if(is.character(values)){
-      unidentified[i] <- values
-      next
-    }
-    if(ncol(values) != 1L || nrow(values) != nrow(model_samples)){
+    if(length(values) != nrow(model_samples)){
       stop(
         "A semantic random-effect summary could not be aligned with the fitted posterior draws.",
         call. = FALSE
       )
     }
-    summary_columns[[i]] <- as.numeric(values[, 1L])
+    summary_columns[[i]] <- as.numeric(values)
+    key <- quantity$extraction_key[[1L]]
+    if(!transform_scaled && key$evaluator %in% c("sd", "sd_variance", "correlation") &&
+       !.bt_parameter_catalog_random_sd_is_direct(
+         .bt_parameter_catalog_find_random_term(fit, key),
+         key$formula_parameter, attr(fit, "formula_scale", exact = TRUE))){
+      fitted_quantity_ids <- c(fitted_quantity_ids, quantity$quantity_id)
+    }
     summary_priors[[i]] <- .bt_parameter_catalog_random_summary_prior(
       fit,
       quantity,
       simplify_names = simplify_names
     )
-  }
-  warnings <- character()
-  if(any(!is.na(unidentified))){
-    omitted <- !is.na(unidentified)
-    blocks <- unique(data.frame(
-      parameter = quantities$formula_parameter[omitted],
-      block = vapply(quantities$extraction_key[omitted], function(key) key$random_block, character(1)),
-      reason = unidentified[omitted],
-      stringsAsFactors = FALSE
-    ))
-    warnings <- paste0(
-      "The original-scale random-effect quantities of block '", blocks$block,
-      "' of formula parameter '", blocks$parameter, "' are not shown: ",
-      ifelse(
-        blocks$reason == "original_scale_not_identified",
-        "its fitted design is linearly dependent, so they are not identified",
-        paste0(
-          "its fitted block has no certified representation of these ",
-          "original-scale quantities"
-        )
-      ),
-      ". Use 'random_effects_summary = \"raw\"' for its fitted-scale SDs."
-    )
-    quantities <- quantities[!omitted, , drop = FALSE]
-    summary_columns <- summary_columns[!omitted]
-    summary_priors <- summary_priors[!omitted]
-  }
-  if(nrow(quantities) == 0L){
-    return(c(cleaned, list(warnings = warnings)))
   }
   names(summary_columns) <- quantities$canonical_name
   names(summary_priors) <- quantities$canonical_name
@@ -412,7 +370,7 @@
   list(
     model_samples = cbind(cleaned$model_samples, summary_matrix),
     prior_list = c(cleaned$prior_list, summary_priors),
-    warnings = warnings
+    fitted_quantity_ids = fitted_quantity_ids
   )
 }
 
