@@ -98,10 +98,11 @@
 #' original-scale SDs. For a standardized slope that interacts with a factor
 #' whose level intercepts are not columns of the block (\code{diag(1 + f:x | g)}),
 #' the intercept shifts that centering induces by level are not block
-#' coefficients: the original-scale SD of the intercept is the SD of the group
-#' effect at the predictor mean, not the SD of the intercept of a level, while
-#' the slope SDs are exact. \code{runjags_estimates_table()} says so in a
-#' footnote of the intercept SD row. Estimated marginal means of
+#' coefficients. The surviving-coordinate transformation retains the intercept
+#' at the predictor mean, while the slope SDs are exact.
+#' \code{runjags_estimates_table()} instead reports the unavailable original-scale
+#' intercept quantities as \code{NA} with a row-specific note, and retains the
+#' identifiable slope summaries. Estimated marginal means of
 #' [marginal_estimates_table()] are
 #' predictions at the stated predictor values, which do not depend on the
 #' standardization, and are not changed. Defaults to \code{FALSE}.

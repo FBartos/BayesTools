@@ -75,13 +75,17 @@
 #' correlations with random slopes. Allocation totals and weights retain their
 #' declared parameterization.
 #' A scaled random-effect block whose design is linearly dependent has no
-#' identified original-scale quantities: \code{transform_scaled = TRUE} stops with
-#' \code{BayesTools_formula_transform_unavailable}, reason
-#' \code{"original_scale_not_identified"}.
+#' identified original-scale quantities: \code{transform_scaled = TRUE} reports
+#' their rows as \code{NA} with a note explaining the unavailable transformation.
 #' A block whose missing-term fallback mixes categorical coding or omits a
 #' representable contribution, or whose shared SD columns transform to different
-#' SDs, likewise stops under \code{transform_scaled = TRUE} with reason
-#' \code{"original_scale_not_representable"}. Use \code{transform_scaled = FALSE}
+#' SDs, likewise has \code{NA} original-scale rows. If centering a factor-by-slope
+#' interaction induces level-specific intercepts absent from the block, only
+#' the intercept SD, its variance and correlations involving it are unavailable;
+#' identifiable slope summaries remain. These table notes also accompany
+#' \code{return_samples = TRUE} as a \code{footnotes} attribute. Inference
+#' accessors retain their own transformation and availability contracts.
+#' Use \code{transform_scaled = FALSE}
 #' for fitted-scale summaries in either \code{"standard"} or \code{"full"} mode,
 #' or include the needed lower-order terms for an uncertified fallback.
 #' The \code{"raw"} rows of random-effect and allocation implementation
@@ -419,8 +423,19 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
     requested <- unique(unlist(lapply(setdiff(names(prior_list), omitted), function(owner){
       .prior_linear_prior_columns(owner, prior_list[[owner]])
     }), use.names = FALSE))
+    original_columns <- colnames(model_samples)
+    excluded <- intersect(random_summary$excluded, original_columns)
+    if(length(excluded)) model_samples <- model_samples[, !original_columns %in% excluded, drop = FALSE]
     model_samples <- .bt_transform_scale_posterior(model_samples, formula_scale,
       formula_design = attr(fit, "formula_design", exact = TRUE), targets = requested)
+    if(length(excluded)){
+      missing <- setdiff(excluded, colnames(model_samples))
+      if(length(missing)) model_samples <- cbind(model_samples,
+        matrix(NA_real_, nrow(model_samples), length(missing), dimnames = list(NULL, missing)))
+      model_samples[, excluded] <- NA_real_
+      model_samples <- model_samples[, c(intersect(original_columns, colnames(model_samples)),
+        setdiff(colnames(model_samples), original_columns)), drop = FALSE]
+    }
     model_samples <- .bt_remove_internal_random_coordinates(
       posterior = model_samples,
       coordinates = coordinates
@@ -886,16 +901,28 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
   if(transform_scaled){
     column_parts <- .bt_label_parts_log_intercept(column_parts, formula_scale)
   }
+  unavailable <- match(colnames(model_samples), names(random_summary$unavailable))
+  if(any(!is.na(unavailable))) model_samples[, !is.na(unavailable)] <- NA_real_
   colnames(model_samples) <- .bt_label(
     column_parts,
     style          = "table",
     formula_prefix = formula_prefix,
     simplify       = simplify_names
   )
+  transform_notes <- if(any(!is.na(unavailable))){
+    stats::setNames(
+      paste0(colnames(model_samples)[!is.na(unavailable)], ": ",
+             random_summary$unavailable[unavailable[!is.na(unavailable)]]),
+      colnames(model_samples)[!is.na(unavailable)]
+    )
+  }else{
+    character()
+  }
 
   # return samples if requested
   if(return_samples){
     attr(model_samples, "prior_list") <- prior_list
+    if(length(transform_notes)) attr(model_samples, "footnotes") <- c(footnotes, transform_notes)
     return(model_samples)
   }
 
@@ -948,7 +975,8 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
       ),
       structural          = parameter_names %in% structural_columns
     )
-    footnotes <- c(footnotes, .bt_random_effect_summary_correlation_footnotes(
+    if(any(!is.na(unavailable))) runjags_summary[!is.na(unavailable), ] <- NA_real_
+    correlation_notes <- .bt_random_effect_summary_correlation_footnotes(
       model_samples   = model_samples,
       parameter_names = parameter_names,
       prior_list      = prior_list,
@@ -957,18 +985,14 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
       cholesky_names  = .bt_random_effect_summary_cholesky_coordinate_names(
         attr(fit, "formula_design", exact = TRUE)
       )
-    ))
+    )
+    footnotes <- c(footnotes, correlation_notes[!names(correlation_notes) %in% names(transform_notes)])
     footnotes <- c(footnotes, .bt_random_effect_summary_unconditioned_footnotes(
       unconditioned   = random_unconditioned,
       parameter_names = parameter_names,
       row_labels      = colnames(model_samples)
     ))
-    if(transform_scaled && random_effects_summary %in% c("standard", "full")){
-      footnotes <- c(footnotes, .bt_random_effect_summary_induced_term_footnotes(
-        fit        = fit,
-        row_labels = colnames(model_samples)
-      ))
-    }
+    if(length(transform_notes)) footnotes <- c(footnotes, transform_notes)
   }
 
   # prepare output
@@ -977,7 +1001,8 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
   attr(runjags_summary, "type")       <- c(rep("estimate", n_estimate_cols), summary_diagnostic_columns)
   attr(runjags_summary, "parameters") <- parameter_names
   quantity_ids <- .bt_table_quantity_ids(column_parts, parameter_catalog(fit))
-  quantity_ids[quantity_ids %in% random_summary$fitted_quantity_ids] <- ""
+  quantity_ids[quantity_ids %in% c(random_summary$fitted_quantity_ids,
+                                  random_summary$unavailable_quantity_ids)] <- ""
   attr(runjags_summary, "quantities") <- .bt_table_quantities(
     rows         = rownames(runjags_summary),
     label_parts  = column_parts,
@@ -1778,75 +1803,6 @@ runjags_inference_table  <- function(fit, title = NULL, footnotes = NULL, warnin
     ),
     labels
   )
-}
-
-# The original-scale SD of the intercept of a scaled block whose design induces
-# lower-order terms that no column of the block carries (the level intercepts
-# of `diag(1 + f:x | g)`): the block keeps the documented name-paired map, so
-# the row is the SD of the group effect at the predictor mean, not the SD of
-# the intercept of a level. The slope SDs are exact. Named by the rows.
-.bt_random_effect_summary_induced_term_footnotes <- function(fit, row_labels){
-
-  formula_scale <- attr(fit, "formula_scale", exact = TRUE)
-  designs <- attr(fit, "formula_design", exact = TRUE)
-  if(length(formula_scale) == 0L || !is.list(designs)){
-    return(NULL)
-  }
-
-  quantities <- NULL
-  footnotes <- character()
-  for(parameter in names(formula_scale)){
-    parameter_scale <- formula_scale[[parameter]]
-    design <- designs[[parameter]]
-    if(is.null(attr(parameter_scale, "random_effect_sd_leaves", exact = TRUE)) ||
-       is.null(design)){
-      next
-    }
-    for(random_term in .bt_formula_design_random_effects(design)){
-      if(!any(random_term$assign == 0L) ||
-         .bt_parameter_catalog_random_sd_is_direct(
-           random_term   = random_term,
-           parameter     = parameter,
-           formula_scale = formula_scale
-         ) ||
-         !.random_sd_block_drops_induced_terms(
-           formula_scale = parameter_scale,
-           prefix        = parameter,
-           random_term   = random_term,
-           source_data   = design$source_data
-         )){
-        next
-      }
-      if(is.null(quantities)){
-        quantities <- parameter_catalog(fit)$quantities
-      }
-      row <- which(
-        quantities$formula_parameter == parameter &
-          quantities$quantity == "sd" &
-          vapply(quantities$arguments, function(argument) {
-            length(argument) > 0L && identical(argument[[1L]], "intercept")
-          }, logical(1)) &
-          vapply(quantities$extraction_key, function(key) {
-            identical(key$random_block, random_term$block_name)
-          }, logical(1))
-      )
-      labels <- intersect(quantities$canonical_name[row], row_labels)
-      footnotes <- c(footnotes, stats::setNames(
-        paste0(
-          labels,
-          ": the SD of the group effect at the predictor mean; the intercept shifts ",
-          "that the scaled slope induces by level are not columns of the block."
-        ),
-        labels
-      ))
-    }
-  }
-
-  if(length(footnotes) == 0L){
-    return(NULL)
-  }
-
-  footnotes
 }
 
 # An original-scale random-effect correlation is defined when both SDs are

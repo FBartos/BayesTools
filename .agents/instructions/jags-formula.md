@@ -379,11 +379,13 @@ returning a partial map. Only the design transform's
 a refusal from its certificate is final, and all other failures propagate.
 For a scaled slope that interacts with a factor whose level
 intercepts are not columns of the block (`diag(1 + f:x | g)`), the induced
-level-specific intercept shifts are not block columns: the original-scale SD
-of the intercept is the SD of the group effect at the predictor mean, not the
-SD of the intercept of a level, while the slope SDs are exact.
-`JAGS_estimates_table()` states this in a footnote of the intercept SD row, and
-the `transform_scaled` roxygen of the summary functions documents it. The name-paired map takes each column as its own coordinate by
+level-specific intercept shifts are not block columns. The surviving-coordinate
+map retains the group effect at the predictor mean and exact slope SDs, but
+`JAGS_estimates_table(transform_scaled = TRUE)` reports its unavailable
+original-scale intercept SD/variance and correlations as `NA` with row-specific
+notes, retaining the identifiable slope quantities. This reporting rule applies
+also to raw tables and returned table samples; it does not redefine inference
+accessors or the parameter catalog. The name-paired map takes each column as its own coordinate by
 position: the indicator columns of a logical predictor's interaction with a
 scaled slope share one SD leaf and put no weight on each other, and the leaf's
 SD is their common per-column value. Hand-built SD-leaf metadata without the
@@ -394,9 +396,12 @@ three-way term without its margins) has no unique original-scale map
 to it: the block's SDs are composite catalog quantities without an
 original-scale law, and every request for original-scale values stops with
 `BayesTools_formula_transform_unavailable`, reason
-`original_scale_not_identified` (`transform_scaled = TRUE` tables,
-`transform_scale_samples()`, `parameter_draws()` and the mixed posteriors of
-those SDs, the prior law of an SD on the original scale). The estimates table
+`original_scale_not_identified` (`transform_scale_samples()`,
+`parameter_draws()` and the mixed posteriors of
+those SDs, the prior law of an SD on the original scale). Original-scale
+estimates tables instead retain the affected random-effect rows as `NA` with
+notes; fixed-effect transformation errors are not caught by this reporting rule.
+The estimates table
 with `transform_scaled = FALSE` reports its fitted-scale random-effect
 quantities, including in `standard` and `full` summaries. An SD shared by
 several columns of a block (the indicator columns
@@ -404,8 +409,9 @@ of a logical predictor's interaction with a scaled slope) has one original-scale
 value only when its columns transform to the same SD, which a correlated block
 never guarantees: otherwise original-scale requests stop with
 `BayesTools_formula_transform_unavailable`, reason
-`original_scale_not_representable`; fitted-scale estimates tables remain
-available in every summary mode.
+`original_scale_not_representable`; original-scale tables report the affected
+rows as `NA` with notes, and fitted-scale estimates tables remain available in
+every summary mode.
 For a diagonal block, shared-column equality compares variance weights on
 each source SD leaf separately with the existing relative tolerance 1e-12.
 Zero/nonzero weights differ exactly, however large another leaf's weight is;
@@ -719,6 +725,8 @@ names.
   `parameter_map_version`; there are no separate registry/catalog versions or
   fit attributes. Bump `.bt_parameter_map_version` whenever selectors or map
   semantics change; fits with another version must be refitted.
+  Version 17 corrects the persisted pure-rescaling classification of named
+  random-effect fallback maps; older maps must not be relabelled in place.
 - That cache is session-local: the map carries only a `runtime_cache_id`, and
   the entries live in a bounded package registry. Never attach a cache to the
   map itself - it would be serialized into every saved fit and replayed on load,

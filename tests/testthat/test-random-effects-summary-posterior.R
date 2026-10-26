@@ -2149,7 +2149,6 @@ test_that("the indicator columns of a logical-by-continuous term are labelled by
     c(0.5, 1, 1.5), tolerance = 1e-12
   )
   refusals <- list(
-    table = function() JAGS_estimates_table(scaled, transform_scaled = TRUE),
     samples = function() transform_scale_samples(scaled),
     draws = function() parameter_draws(
       scaled, parameter_catalog_resolve(parameter_catalog(scaled), "(mu) sd(flag:x)")
@@ -2158,6 +2157,9 @@ test_that("the indicator columns of a logical-by-continuous term are labelled by
       scaled, parameter_catalog_resolve(parameter_catalog(scaled), "(mu) cor(intercept,flag[TRUE]:x)")
     )
   )
+  original_table <- JAGS_estimates_table(scaled, transform_scaled = TRUE, remove_diagnostics = TRUE)
+  expect_true(all(is.na(as.data.frame(original_table)[expected, ])))
+  expect_true(all(grepl("no certified representation", attr(original_table, "footnotes"), fixed = TRUE)))
   for(label in names(refusals)){
     refusal <- expect_error(
       refusals[[label]](), class = "BayesTools_formula_transform_unavailable", info = label

@@ -318,10 +318,11 @@ with a standardized random slope are labelled by their fitted coordinates
 original-scale SDs. For a standardized slope that interacts with a factor
 whose level intercepts are not columns of the block (\code{diag(1 + f:x | g)}),
 the intercept shifts that centering induces by level are not block
-coefficients: the original-scale SD of the intercept is the SD of the group
-effect at the predictor mean, not the SD of the intercept of a level, while
-the slope SDs are exact. \code{runjags_estimates_table()} says so in a
-footnote of the intercept SD row. Estimated marginal means of
+coefficients. The surviving-coordinate transformation retains the intercept
+at the predictor mean, while the slope SDs are exact.
+\code{runjags_estimates_table()} instead reports the unavailable original-scale
+intercept quantities as \code{NA} with a row-specific note, and retains the
+identifiable slope summaries. Estimated marginal means of
 \code{\link[=marginal_estimates_table]{marginal_estimates_table()}} are
 predictions at the stated predictor values, which do not depend on the
 standardization, and are not changed. Defaults to \code{FALSE}.}
@@ -362,13 +363,17 @@ definition of a random intercept and can therefore change its SD and its
 correlations with random slopes. Allocation totals and weights retain their
 declared parameterization.
 A scaled random-effect block whose design is linearly dependent has no
-identified original-scale quantities: \code{transform_scaled = TRUE} stops with
-\code{BayesTools_formula_transform_unavailable}, reason
-\code{"original_scale_not_identified"}.
+identified original-scale quantities: \code{transform_scaled = TRUE} reports
+their rows as \code{NA} with a note explaining the unavailable transformation.
 A block whose missing-term fallback mixes categorical coding or omits a
 representable contribution, or whose shared SD columns transform to different
-SDs, likewise stops under \code{transform_scaled = TRUE} with reason
-\code{"original_scale_not_representable"}. Use \code{transform_scaled = FALSE}
+SDs, likewise has \code{NA} original-scale rows. If centering a factor-by-slope
+interaction induces level-specific intercepts absent from the block, only
+the intercept SD, its variance and correlations involving it are unavailable;
+identifiable slope summaries remain. These table notes also accompany
+\code{return_samples = TRUE} as a \code{footnotes} attribute. Inference
+accessors retain their own transformation and availability contracts.
+Use \code{transform_scaled = FALSE}
 for fitted-scale summaries in either \code{"standard"} or \code{"full"} mode,
 or include the needed lower-order terms for an uncertified fallback.
 The \code{"raw"} rows of random-effect and allocation implementation

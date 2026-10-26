@@ -295,6 +295,101 @@
   ""
 }
 
+# Table availability is separate from the catalog's surviving-coordinate
+# convention. Never display a fitted intercept as an original-unit intercept.
+.bt_random_effect_table_transform_status <- function(fit, model_samples, coordinates){
+
+  formula_scale <- attr(fit, "formula_scale", exact = TRUE)
+  designs <- attr(fit, "formula_design", exact = TRUE)
+  prior_list <- attr(fit, "prior_list", exact = TRUE)
+  unavailable <- character()
+  excluded <- quantity_ids <- character()
+  quantities <- parameter_catalog(fit)$quantities
+  for(parameter in names(formula_scale)){
+    design <- designs[[parameter]]
+    for(term in .bt_formula_design_random_effects(design)){
+      if(.bt_parameter_catalog_random_sd_is_direct(term, parameter, formula_scale)) next
+      sources <- model_samples
+      if(any(.bt_random_effect_cholesky_names(term, term$n_columns) %in% colnames(sources))){
+        sources <- .bt_parameter_catalog_complete_cholesky_triangle(term, sources)
+      }
+      transformed <- tryCatch(
+        .bt_random_effect_summary_complete_scaled_samples(
+          term, sources, prior_list, parameter, formula_scale, design,
+          complete_correlation = FALSE
+        ),
+        BayesTools_formula_transform_unavailable = function(condition){
+          if(!condition$reason %in% c("original_scale_not_identified", "original_scale_not_representable")){
+            stop(condition)
+          }
+          condition
+        }
+      )
+      whole_block <- inherits(transformed, "BayesTools_formula_transform_unavailable")
+      missing_intercept <- !whole_block && any(term$assign == 0L) &&
+        .random_sd_block_drops_induced_terms(formula_scale[[parameter]], parameter,
+                                            term, design$source_data)
+      if(missing_intercept){
+        # Missing numeric slopes need not invalidate the intercept. Only a
+        # dropped contribution to its numeric group can change its meaning.
+        spec <- .bt_random_effect_unscale_design_spec(term, design$source_data)
+        context <- .bt_formula_unscale_design_context(spec, formula_scale[[parameter]], parameter)
+        group <- .random_sd_column_unscale_groups(unique(term$sd_parameter_names),
+          formula_scale[[parameter]], parameter)[[1L]]
+        map <- .random_sd_unscale_matrix(group$column_terms, formula_scale[[parameter]],
+          parameter, term, design$source_data)
+        target <- context$components[[which(term$assign == 0L)[1L]]][[1L]]$target
+        missing_intercept <- any(vapply(seq_along(context$components), function(j){
+          any(vapply(context$components[[j]], function(component){
+            length(component$dropped) > 0L && identical(component$target, target) &&
+              !any(map[context$groups[[target]], j] != 0)
+          }, logical(1)))
+        }, logical(1)))
+      }
+      if(!whole_block && !missing_intercept) next
+      rows <- quantities$formula_parameter == parameter &
+        quantities$quantity %in% c("sd", "var", "cor") &
+        vapply(quantities$extraction_key, function(key){
+          identical(key$random_block, term$block_name)
+        }, logical(1))
+      raw_rows <- coordinates$formula_parameter == parameter &
+        coordinates$random_block == term$block_name &
+        (coordinates$role == "random_sd" | startsWith(coordinates$role, "random_correlation"))
+      raw <- coordinates$coordinate_name[raw_rows]
+      if(whole_block){
+        detail <- if(identical(transformed$reason, "original_scale_not_identified")){
+          "the random-effect design is linearly dependent"
+        }else{
+          "the random-effect block has no certified representation on the original predictor scale"
+        }
+        excluded <- c(excluded, raw)
+      }else{
+        detail <- "centering induces level-specific intercepts that are not columns of the random-effect block"
+        rows <- rows & vapply(quantities$arguments, function(arguments){
+          "intercept" %in% arguments
+        }, logical(1))
+        intercept <- which(term$assign == 0L)
+        R_names <- outer(seq_len(term$n_columns), seq_len(term$n_columns), function(i, j){
+          paste0(term$parameter_stem, "_xRE_CORx_R[", i, ",", j, "]")
+        })
+        affected <- c(term$sd_parameter_names[intercept], R_names[intercept, ], R_names[, intercept])
+        # A Cholesky factor or its primitives require the complete correlation
+        # matrix; slope-only R entries and semantic slope correlations remain valid.
+        affected <- c(affected, as.vector(.bt_random_effect_cholesky_names(term, term$n_columns)),
+                      term$correlation$primitive_names)
+        raw <- intersect(raw, affected)
+      }
+      note <- paste0("NA: the original-scale value is unavailable because ", detail,
+                     ". Use 'transform_scaled = FALSE' for fitted-scale values.")
+      unavailable <- c(unavailable, stats::setNames(
+        rep(note, sum(rows) + length(raw)), c(quantities$canonical_name[rows], raw)
+      ))
+      quantity_ids <- c(quantity_ids, quantities$quantity_id[rows])
+    }
+  }
+  list(unavailable = unavailable, excluded = excluded, unavailable_quantity_ids = quantity_ids)
+}
+
 .bt_parameter_catalog_random_summary_samples <- function(
     fit, model_samples, prior_list, coordinates,
     mode = c("standard", "full", "raw", "none"),
@@ -303,8 +398,13 @@
   mode <- match.arg(mode)
   check_bool(simplify_names, "simplify_names", allow_NA = FALSE)
   check_bool(transform_scaled, "transform_scaled", allow_NA = FALSE)
+  transform_status <- if(transform_scaled && !identical(mode, "none")){
+    .bt_random_effect_table_transform_status(fit, as.matrix(model_samples), coordinates)
+  }else{
+    list()
+  }
   if(identical(mode, "raw")){
-    return(list(model_samples = model_samples, prior_list = prior_list))
+    return(c(list(model_samples = model_samples, prior_list = prior_list), transform_status))
   }
   cleaned <- .bt_random_effect_summary_remove_raw(
     model_samples = model_samples,
@@ -338,10 +438,14 @@
     quantity <- quantities[i, , drop = FALSE]
     # Reuse the catalog's evaluator, but select the table's requested scale.
     # Fitted summaries do not need the original-scale covariance dependencies.
-    values <- .bt_parameter_draw_random_summary(
-      fit = fit, key = quantity$extraction_key[[1L]],
-      model_samples = as.matrix(model_samples), transform_scaled = transform_scaled
-    )
+    values <- if(quantity$canonical_name %in% names(transform_status$unavailable)){
+      rep(NA_real_, nrow(model_samples))
+    }else{
+      .bt_parameter_draw_random_summary(
+        fit = fit, key = quantity$extraction_key[[1L]],
+        model_samples = as.matrix(model_samples), transform_scaled = transform_scaled
+      )
+    }
     if(length(values) != nrow(model_samples)){
       stop(
         "A semantic random-effect summary could not be aligned with the fitted posterior draws.",
@@ -367,11 +471,11 @@
   summary_matrix <- do.call(cbind, summary_columns)
   colnames(summary_matrix) <- quantities$canonical_name
 
-  list(
+  c(list(
     model_samples = cbind(cleaned$model_samples, summary_matrix),
     prior_list = c(cleaned$prior_list, summary_priors),
     fitted_quantity_ids = fitted_quantity_ids
-  )
+  ), transform_status)
 }
 
 .bt_parameter_catalog_random_summary_order <- function(quantities, mode){

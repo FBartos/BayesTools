@@ -3,7 +3,8 @@
                                                               prior_list,
                                                               parameter = NULL,
                                                               formula_scale = NULL,
-                                                              formula_design = NULL){
+                                                              formula_design = NULL,
+                                                              complete_correlation = TRUE){
 
   sd_names <- unique(random_term$sd_parameter_names)
   sd_names <- sd_names[!is.na(sd_names)]
@@ -44,10 +45,12 @@
   if(any(!existing)){
     completed <- cbind(completed, completed_sd[, !existing, drop = FALSE])
   }
-  completed <- .bt_random_effect_summary_complete_correlation_samples(
-    random_term = random_term,
-    model_samples = completed
-  )
+  if(complete_correlation){
+    completed <- .bt_random_effect_summary_complete_correlation_samples(
+      random_term = random_term,
+      model_samples = completed
+    )
+  }
   correlation_required_groups <- if(.bt_random_effect_summary_requires_correlation(random_term)){
     random_term$block_name
   }else{

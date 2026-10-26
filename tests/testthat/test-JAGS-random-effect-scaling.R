@@ -726,6 +726,20 @@ test_that("transform_scaled selects fixed and random summary scales at every dep
     draws <- parameter_draws(fit, parameter_catalog_resolve(parameter_catalog(fit), random_rows[i]))
     expect_equal(as.numeric(as.matrix(draws)), expected[, i], tolerance = 1e-12)
   }
+  lower_only <- posterior[, !colnames(posterior) %in%
+    c(as.vector(R_names), L_names[upper.tri(L_names)]), drop = FALSE]
+  lower_fit <- make_random_scale_table_fit(compiled, lower_only)
+  for(mode in c("standard", "full")){
+    lower_samples <- JAGS_estimates_table(lower_fit, transform_scaled = TRUE,
+      random_effects_summary = mode, remove_diagnostics = TRUE, return_samples = TRUE)
+    expect_equal(unname(lower_samples[, random_rows]), unname(expected), tolerance = 1e-12)
+  }
+  correlation_only <- make_random_scale_table_fit(compiled,
+    posterior[, !colnames(posterior) %in% as.vector(L_names), drop = FALSE])
+  raw_correlation <- JAGS_estimates_table(correlation_only, transform_scaled = TRUE,
+    random_effects_summary = "raw", remove_diagnostics = TRUE, return_samples = TRUE)
+  expect_equal(as.numeric(raw_correlation[, "(mu) cor(x,intercept | id)"]),
+               expected[, 3L], tolerance = 1e-12)
   for(transform_scaled in c(FALSE, TRUE)){
     raw <- JAGS_estimates_table(
       fit, transform_scaled = transform_scaled, random_effects_summary = "raw",
@@ -2000,12 +2014,13 @@ test_that("unequal shared logical-column SDs refuse even when a different source
     if(extra){
       for(request in list(
         function() transform_scale_samples(fit),
-        function() JAGS_estimates_table(fit, transform_scaled = TRUE, remove_diagnostics = TRUE),
         function() as_mixed_posteriors(fit, leaves, transform_scaled = TRUE)
       )){
         refusal <- expect_error(request(), class = "BayesTools_formula_transform_unavailable")
         expect_identical(refusal$reason, "original_scale_not_representable")
       }
+      original <- JAGS_estimates_table(fit, transform_scaled = TRUE, remove_diagnostics = TRUE)
+      expect_true(all(is.na(as.data.frame(original)[grep("sd(", rownames(original), fixed = TRUE), ])))
     }else{
       expect_equal(unname(transform_scale_samples(fit)[, shared]), rep(expected[1L], 3L), tolerance = 2e-15)
     }
@@ -3626,8 +3641,14 @@ test_that("a scaled random block with a linearly dependent design keeps the fit 
       setup$tau, tolerance = 1e-12, info = label
     )
 
-    # original-scale requests refuse with the class and the reason
-    expect_not_identified(JAGS_estimates_table(fit, transform_scaled = TRUE), label)
+    # Tables retain unavailable rows as NA; inference requests still refuse.
+    for(mode in c("standard", "full", "raw")){
+      original <- JAGS_estimates_table(fit, transform_scaled = TRUE,
+        random_effects_summary = mode, remove_diagnostics = TRUE)
+      sd_rows <- grep("sd(", rownames(original), fixed = TRUE)
+      expect_true(all(is.na(as.data.frame(original)[sd_rows, ])))
+      expect_true(all(grepl("linearly dependent", attr(original, "footnotes"), fixed = TRUE)))
+    }
     expect_not_identified(transform_scale_samples(fit), label)
     expect_not_identified(
       parameter_draws(fit, parameter_catalog_resolve(catalog, "(mu) sd(intercept)")), label
@@ -3743,7 +3764,6 @@ test_that("mixed-coding missing-term fallbacks refuse public original-scale outp
 
     for(request in list(
       function() transform_scale_samples(fit),
-      function() JAGS_estimates_table(fit, transform_scaled = TRUE, remove_diagnostics = TRUE),
       function() as_mixed_posteriors(fit, owners, transform_scaled = TRUE),
       function() parameter_draws(fit, parameter_catalog_resolve(catalog, "(mu) sd(f{1})"))
     )){
@@ -3757,6 +3777,12 @@ test_that("mixed-coding missing-term fallbacks refuse public original-scale outp
           "or include the needed lower-order terms in the block."
         ))
       }
+    }
+    for(mode in c("standard", "full", "raw")){
+      table <- JAGS_estimates_table(fit, transform_scaled = TRUE,
+        random_effects_summary = mode, remove_diagnostics = TRUE)
+      expect_true(all(is.na(as.data.frame(table)[grep("sd(", rownames(table), fixed = TRUE), ])))
+      expect_true(all(grepl("no certified representation", attr(table, "footnotes"), fixed = TRUE)))
     }
     context <- .prior_density_context(attr(fit, "prior_list"), c("mu_intercept", names),
       formula_scale = attr(fit, "formula_scale"),
@@ -3844,7 +3870,7 @@ test_that("fallback refusal respects exact zeros, tiny means, rank and range", {
   expect_identical(refusal$reason, "nonfinite_transform")
 })
 
-test_that("the table of a block that drops induced terms says what its intercept SD is", {
+test_that("tables report unavailable induced intercepts as NA with a note", {
 
   skip_if_not_installed("runjags")
 
@@ -3853,14 +3879,17 @@ test_that("the table of a block that drops induced terms says what its intercept
     sd = prior("gamma", list(2, 2)), monitor = random_block_scale_monitor()
   ))
   note <- paste0(
-    "(mu) sd(intercept): the SD of the group effect at the predictor mean; ",
-    "the intercept shifts that the scaled slope induces by level are not ",
-    "columns of the block."
+    "(mu) sd(intercept): NA: the original-scale value is unavailable because ",
+    "centering induces level-specific intercepts that are not columns of the ",
+    "random-effect block. Use 'transform_scaled = FALSE' for fitted-scale values."
   )
 
   # `f:x` induces the level intercepts, which no column of the block carries
   setup <- random_block_scale_fit(~ 1 + x + diag(1 + f:x | id), df, block)
-  table <- JAGS_estimates_table(setup$fit, transform_scaled = TRUE, remove_diagnostics = TRUE)
+  table <- JAGS_estimates_table(setup$fit, transform_scaled = TRUE)
+  expect_true(all(is.na(as.data.frame(table)["(mu) sd(intercept)", ])))
+  expect_false(any(is.nan(unlist(as.data.frame(table)["(mu) sd(intercept)", ]))))
+  expect_equal(as.data.frame(table)["(mu) sd(f[a]:x)", "Mean"], setup$tau[2L] / stats::sd(df$x))
   expect_identical(attr(table, "footnotes"), stats::setNames(note, "(mu) sd(intercept)"))
   expect_identical(
     attr(table[c("(mu) intercept", "(mu) sd(f[a]:x)"), ], "footnotes"), NULL
@@ -3874,6 +3903,13 @@ test_that("the table of a block that drops induced terms says what its intercept
       setup$fit, remove_diagnostics = TRUE, random_effects_summary = mode
     )
     expect_length(attr(fitted, "footnotes"), 0L)
+    original <- JAGS_estimates_table(setup$fit, transform_scaled = TRUE,
+      remove_diagnostics = TRUE, random_effects_summary = mode, return_samples = TRUE)
+    intercept <- grep("sd(intercept", colnames(original), fixed = TRUE)
+    expect_length(intercept, 1L)
+    expect_true(all(is.na(original[, intercept])))
+    expect_true(any(grepl("level-specific intercepts", attr(original, "footnotes"), fixed = TRUE)))
+    if(mode == "full") expect_true(all(is.na(original[, "(mu) var(intercept)"])))
   }
 
   # blocks whose design is representable report the intercept of a level
@@ -3919,5 +3955,67 @@ test_that("named fallback maps preserve pure random-slope prior rescalings", {
   }
   for(posterior in mixed){
     expect_no_error(posterior_measure_check(posterior, "prior_density"))
+  }
+})
+
+test_that("unavailable transformed intercept correlations do not hide valid slope pairs", {
+
+  skip_if_not_installed("runjags")
+  data <- random_block_scale_data()
+  R <- matrix(.25, 4L, 4L)
+  diag(R) <- 1
+  R_names <- outer(1:4, 1:4, function(i, j) paste0("mu__xREx__id_xRE_CORx_R[", i, ",", j, "]"))
+  L_names <- sub("_xRE_CORx_R", "_xRE_CORx_L", R_names, fixed = TRUE)
+  setup <- random_block_scale_fit(
+    ~ 1 + x + us(1 + f:x | id), data,
+    prior_random(id = random_block(sd = prior("gamma", list(2, 2)),
+      cor = prior_lkj(eta = 1), monitor = random_block_scale_monitor(correlation = TRUE))),
+    extra = list(values = c(as.vector(R), as.vector(t(chol(R)))),
+                 names = c(as.vector(R_names), as.vector(L_names)))
+  )
+  for(mode in c("standard", "full", "raw")){
+    samples <- JAGS_estimates_table(setup$fit, transform_scaled = TRUE,
+      random_effects_summary = mode, return_samples = TRUE, remove_diagnostics = TRUE)
+    intercept <- grepl("sd(intercept", colnames(samples), fixed = TRUE) |
+      (grepl("cor(", colnames(samples), fixed = TRUE) & grepl("intercept", colnames(samples), fixed = TRUE))
+    expect_true(any(intercept))
+    expect_true(all(is.na(samples[, intercept])))
+    slope_pair <- grepl("cor(f[b]:x,f[a]:x", colnames(samples), fixed = TRUE) |
+      grepl("cor(f[a]:x,f[b]:x", colnames(samples), fixed = TRUE)
+    expect_true(any(slope_pair))
+    expect_equal(as.numeric(samples[, slope_pair]), rep(.25, nrow(samples) * sum(slope_pair)), tolerance = 1e-12)
+    table <- JAGS_estimates_table(setup$fit, transform_scaled = TRUE,
+      random_effects_summary = mode, remove_diagnostics = TRUE)
+    expect_false(any(grepl("both SDs are positive", attr(table, "footnotes"), fixed = TRUE)))
+  }
+})
+
+test_that("dropping numeric interaction slopes retains an identified intercept", {
+
+  skip_if_not_installed("runjags")
+  data <- data.frame(x = c(2, 4, 7, 9), z = c(1, 3, 2, 7),
+                     id = factor(c("a", "a", "b", "b")))
+  for(scaled in list(list(x = TRUE), list(x = TRUE, z = TRUE))){
+    compiled <- JAGS_formula(~ 1 + x + z + diag(1 + x:z | id), "mu", data,
+      prior_list = list(intercept = prior("normal", list(0, 1)),
+                        x = prior("normal", list(0, 1)), z = prior("normal", list(0, 1))),
+      formula_scale = scaled,
+      prior_random = prior_random(id = random_block(
+        sd = prior("gamma", list(2, 2)), monitor = random_block_scale_monitor())))
+    sd_names <- compiled$formula_design$random_effects[[1L]]$sd_parameter_names
+    posterior <- matrix(rep(c(0, 0, 0, .5, 1), 3L), nrow = 3L, byrow = TRUE,
+      dimnames = list(NULL, c("mu_intercept", "mu_x", "mu_z", sd_names)))
+    fit <- make_random_scale_table_fit(compiled, posterior)
+    shift <- if("z" %in% names(scaled)) mean(data$x) * mean(data$z) /
+      (stats::sd(data$x) * stats::sd(data$z)) else 0
+    expected <- sqrt(.5^2 + shift^2)
+    for(mode in c("standard", "full", "raw")){
+      table <- JAGS_estimates_table(fit, transform_scaled = TRUE,
+        random_effects_summary = mode, remove_diagnostics = TRUE)
+      row <- grep("sd(intercept", rownames(table), fixed = TRUE)
+      expect_length(row, 1L)
+      expect_equal(as.data.frame(table)[row, "Mean"], expected, tolerance = 1e-12)
+      expect_length(attr(table, "footnotes"), 0L)
+    }
   }
 })
