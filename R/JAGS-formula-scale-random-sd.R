@@ -606,7 +606,7 @@
       next
     }
     column_scale <- vapply(seq_len(nrow(A)), function(row){
-      if(identical(which(.random_sd_unscale_row_nonzero(A[row, ])), row)){
+      if(identical(unname(which(.random_sd_unscale_row_nonzero(A[row, ]))), row)){
         abs(A[row, row])
       }else{
         NA_real_

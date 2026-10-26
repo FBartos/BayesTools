@@ -3883,3 +3883,41 @@ test_that("the table of a block that drops induced terms says what its intercept
     expect_length(attr(table, "footnotes"), 0L)
   }
 })
+
+test_that("named fallback maps preserve pure random-slope prior rescalings", {
+
+  skip_if_not_installed("runjags")
+
+  data <- random_block_scale_data()
+  setup <- random_block_scale_fit(
+    ~ 1 + x + diag(1 + f:x | id), data,
+    prior_random(id = random_block(
+      sd = prior("gamma", list(2, 2)), monitor = random_block_scale_monitor()
+    ))
+  )
+  scale <- attr(setup$fit, "formula_scale")$mu
+  design <- attr(setup$fit, "formula_design")$mu
+  laws <- .random_sd_original_scale_laws(scale, "mu", design)
+  slopes <- setup$sd_names[-1L]
+  multiplier <- 1 / stats::sd(data$x)
+  expect_equal(unname(laws$scale[slopes]), rep(multiplier, length(slopes)), tolerance = 1e-12)
+  expect_false(any(slopes %in% names(laws$refused)))
+
+  catalog <- parameter_catalog(setup$fit)
+  selection <- parameter_catalog_resolve(catalog, "(mu) sd(intercept)")
+  density <- parameter_prior_density(setup$fit, selection)
+  expect_false(is.null(density))
+  expect_equal(prior_density_ordinate(density, .4)$log_density,
+               stats::dgamma(.4, 2, 2, log = TRUE), tolerance = 1e-12)
+  owners <- unique(sub("\\[.*$", "", slopes))
+  mixed <- as_mixed_posteriors(setup$fit, owners, transform_scaled = TRUE)
+  densities <- posterior_metadata(mixed, "prior_densities")
+  grid <- c(.1, .4, 1)
+  for(slope in slopes){
+    expect_equal(random_block_density_ordinate(densities[[slope]], grid),
+                 stats::dgamma(grid / multiplier, 2, 2) / multiplier, tolerance = 1e-8)
+  }
+  for(posterior in mixed){
+    expect_no_error(posterior_measure_check(posterior, "prior_density"))
+  }
+})
