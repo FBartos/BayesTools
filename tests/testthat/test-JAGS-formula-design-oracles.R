@@ -10425,6 +10425,20 @@ test_that("transform_scale_samples requires correlations for scaled correlated r
     fixed = TRUE
   )
 
+  # fitted-scale summaries read the catalog's correlation coordinates; the original-scale
+  # table first transforms the block, which needs the monitored correlation samples
+  expect_error(
+    .parameter_catalog_random_summary_samples(
+      model_samples = posterior,
+      prior_list = formula_result$prior_list,
+      formula_design = list(mu = formula_result$formula_design),
+      mode = "standard",
+      formula_scale = list(mu = formula_result$formula_scale),
+      transform_scaled = FALSE
+    ),
+    "missing or invalid canonical correlation coordinates",
+    fixed = TRUE
+  )
   expect_error(
     .parameter_catalog_random_summary_samples(
       model_samples = posterior,
@@ -10433,7 +10447,7 @@ test_that("transform_scale_samples requires correlations for scaled correlated r
       mode = "standard",
       formula_scale = list(mu = formula_result$formula_scale)
     ),
-    "missing or invalid canonical correlation coordinates",
+    "requires random-effect correlation samples",
     fixed = TRUE
   )
 })
@@ -10543,19 +10557,20 @@ test_that("JAGS_estimates_table backtransforms random-effect correlations", {
   expected_sd <- sqrt(diag(expected_cov))
   expected_cor <- expected_cov[1, 2] / prod(expected_sd)
 
+  # transform_scaled = FALSE keeps the fitted-scale SDs and correlation
   expect_equal(
     unname(semantic_samples[, "(mu) sd(intercept)"]),
-    rep(expected_sd[1], 2),
+    rep(source_sd[1], 2),
     tolerance = 1e-12
   )
   expect_equal(
     unname(semantic_samples[, "(mu) sd(x)"]),
-    rep(expected_sd[2], 2),
+    rep(source_sd[2], 2),
     tolerance = 1e-12
   )
   expect_equal(
     unname(semantic_samples[, "(mu) cor(intercept,x)"]),
-    rep(expected_cor, 2),
+    rep(source_cor[1, 2], 2),
     tolerance = 1e-12
   )
   expect_equal(

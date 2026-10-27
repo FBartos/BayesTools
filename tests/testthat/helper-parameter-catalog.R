@@ -38,7 +38,7 @@
 .parameter_catalog_random_summary_samples <- function(
     model_samples, prior_list, formula_design = NULL,
     mode = c("standard", "full", "raw", "none"),
-    formula_scale = NULL){
+    formula_scale = NULL, transform_scaled = TRUE){
 
   model_samples <- as.matrix(model_samples)
   chains <- coda::mcmc.list(coda::mcmc(model_samples))
@@ -53,7 +53,8 @@
     model_samples = model_samples,
     prior_list = prior_list,
     coordinates = parameter_coordinates(fit),
-    mode = mode
+    mode = mode,
+    transform_scaled = transform_scaled
   )
 }
 
