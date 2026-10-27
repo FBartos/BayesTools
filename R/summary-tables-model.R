@@ -79,10 +79,12 @@
 #' their rows as \code{NA} with a note explaining the unavailable transformation.
 #' A block whose missing-term fallback mixes categorical coding or omits a
 #' representable contribution likewise has \code{NA} original-scale rows. An SD
-#' shared by columns that transform to different SDs, as the indicator columns of
-#' a logical predictor's interaction with a scaled slope do in a correlated block,
-#' is \code{NA} with its variance, while the other rows of the block keep their
-#' original-scale values. If centering a factor-by-slope
+#' shared by several columns, as by the indicator columns of a logical
+#' predictor's interaction with a scaled slope, needs its columns to be certified
+#' as having one original-scale SD; a correlated block never certifies it (even
+#' when the columns happen to transform to the same value) and a diagonal block
+#' needs equal column SDs. Such an SD is \code{NA} with its variance, while the
+#' other rows of the block keep their original-scale values. If centering a factor-by-slope
 #' interaction induces level-specific effects absent from the block (the
 #' intercepts of \code{f:x}, the \code{z} slopes of \code{f:x:z} without
 #' \code{f:z}), only the SDs, variances and correlations of the columns that
@@ -431,7 +433,7 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
     original_columns <- colnames(model_samples)
     excluded <- intersect(random_summary$excluded, original_columns)
     if(length(excluded)) model_samples <- model_samples[, !original_columns %in% excluded, drop = FALSE]
-    # (an SD leaf shared by columns that transform to different SDs is NA, with its note)
+    # (an SD leaf shared by columns that are not certified to have one SD is NA, with its note)
     model_samples <- .bt_transform_scale_posterior(model_samples, formula_scale,
       formula_design = attr(fit, "formula_design", exact = TRUE), targets = requested,
       shared_leaf = "na")

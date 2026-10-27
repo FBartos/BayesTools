@@ -369,10 +369,12 @@ identified original-scale quantities: \code{transform_scaled = TRUE} reports
 their rows as \code{NA} with a note explaining the unavailable transformation.
 A block whose missing-term fallback mixes categorical coding or omits a
 representable contribution likewise has \code{NA} original-scale rows. An SD
-shared by columns that transform to different SDs, as the indicator columns of
-a logical predictor's interaction with a scaled slope do in a correlated block,
-is \code{NA} with its variance, while the other rows of the block keep their
-original-scale values. If centering a factor-by-slope
+shared by several columns, as by the indicator columns of a logical
+predictor's interaction with a scaled slope, needs its columns to be certified
+as having one original-scale SD; a correlated block never certifies it (even
+when the columns happen to transform to the same value) and a diagonal block
+needs equal column SDs. Such an SD is \code{NA} with its variance, while the
+other rows of the block keep their original-scale values. If centering a factor-by-slope
 interaction induces level-specific effects absent from the block (the
 intercepts of \code{f:x}, the \code{z} slopes of \code{f:x:z} without
 \code{f:z}), only the SDs, variances and correlations of the columns that

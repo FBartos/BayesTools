@@ -2133,9 +2133,9 @@ test_that("the indicator columns of a logical-by-continuous term are labelled by
   }
   expect_equal(unname(table["(mu) sd(flag:x)", "Mean"]), 1.5, tolerance = 1e-12)
 
-  # with a scaled x the shared SD of the correlated indicator columns has no
-  # single original-scale value (its columns transform to different SDs): the
-  # map and the fitted-scale tables work, original-scale requests refuse
+  # with a scaled x the shared SD of the correlated indicator columns is not
+  # certified as one original-scale value (a correlated block never certifies a
+  # shared SD): the map and the fitted-scale tables work, original-scale requests refuse
   scaled <- flag_carrier(list(x = TRUE))$fit
   expect_true(all(expected %in% parameter_catalog(scaled)$quantities$canonical_name))
   fitted_table <- JAGS_estimates_table(scaled, remove_diagnostics = TRUE)
@@ -2163,7 +2163,7 @@ test_that("the indicator columns of a logical-by-continuous term are labelled by
   original <- stats::setNames(as.data.frame(original_table)[expected, "Mean"], expected)
   expect_identical(names(original)[is.na(original)], "(mu) sd(flag:x)")
   expect_identical(names(attr(original_table, "footnotes")), "(mu) sd(flag:x)")
-  expect_match(attr(original_table, "footnotes"), "its shared design columns transform to different SDs", fixed = TRUE)
+  expect_match(attr(original_table, "footnotes"), "its shared design columns cannot be certified to have a single SD", fixed = TRUE)
   scaled_design <- attr(scaled, "formula_design")$mu
   A <- BayesTools:::.bt_formula_unscale_design_transform(
     BayesTools:::.bt_random_effect_unscale_design_spec(scaled_design$random_effects[[1L]], scaled_design$source_data),

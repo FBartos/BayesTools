@@ -2025,7 +2025,7 @@ test_that("unequal shared logical-column SDs refuse even when a different source
       sd_means <- stats::setNames(as.data.frame(original)[sd_rows, "Mean"], sd_rows)
       expect_identical(names(sd_means)[is.na(sd_means)], "(mu) sd(x:flag)")
       expect_identical(names(attr(original, "footnotes")), "(mu) sd(x:flag)")
-      expect_match(attr(original, "footnotes"), "its shared design columns transform to different SDs", fixed = TRUE)
+      expect_match(attr(original, "footnotes"), "its shared design columns cannot be certified to have a single SD", fixed = TRUE)
       reference_sd <- sqrt(diag(ref %*% diag(tau^2) %*% t(ref)))
       expect_equal(unname(sd_means[c("(mu) sd(intercept)", "(mu) sd(x:z)", "(mu) sd(x:flag:z)")]),
                    unname(reference_sd[c(1L, xz, three)]), tolerance = 1e-10)
@@ -4070,7 +4070,7 @@ test_that("a correlated block with a shared logical-column SD keeps its identifi
 
   data <- random_availability_data()
   s_z <- stats::sd(data$z)
-  shared_note <- "its shared design columns transform to different SDs on the original scale"
+  shared_note <- "its shared design columns cannot be certified to have a single SD on the original scale"
 
   diagonal <- random_availability_fit(~ 1 + x + z + diag(1 + z + flag:x | id), data, c("x", "z"))
   correlated <- random_availability_fit(~ 1 + x + z + us(1 + z + flag:x | id), data, c("x", "z"), correlated = TRUE)

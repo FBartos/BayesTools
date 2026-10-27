@@ -416,11 +416,16 @@ with `transform_scaled = FALSE` reports its fitted-scale random-effect
 quantities, including in `standard` and `full` summaries. An SD shared by
 several columns of a block (the indicator columns
 of a logical predictor's interaction with a scaled slope) has one original-scale
-value only when its columns transform to the same SD, which a correlated block
-never guarantees: otherwise original-scale requests stop with
+value only when its columns are certified to transform to the same SD. A
+diagonal block certifies it by equal variance weights; a correlated block never
+does, even when the columns happen to transform to the same value (the SD of
+`us(1 + z + flag:x | g)` is the diagonal block's `tau / sd(x)` in every draw, and
+is still not certified). Otherwise original-scale requests stop with
 `BayesTools_formula_transform_unavailable`, reason
 `original_scale_not_representable`. Original-scale tables apply the rule per
-row: only the shared SD (and its variance) is `NA` with a note, and so are the
+row: only the shared SD (and its variance) is `NA` with a note ("its shared
+design columns cannot be certified to have a single SD on the original scale"),
+and so are the
 rows of the columns that no block column represents (see above). The other
 rows of the block are identified pure rescalings or exact map entries and keep
 their original-scale values, among them the SDs of the unshared columns and the

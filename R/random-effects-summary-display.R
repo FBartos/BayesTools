@@ -328,7 +328,8 @@
       whole_block <- inherits(transformed, "BayesTools_formula_transform_unavailable")
       # The columns whose original-scale value the block cannot carry (a
       # dropped centering contribution has no column of its numeric group) and
-      # the SD leaves shared by columns that transform to different SDs.
+      # the SD leaves shared by columns that are not certified to have one SD
+      # (a correlated block never certifies it, a diagonal block needs equal SDs).
       unrepresented <- if(whole_block) integer() else
         .random_sd_block_unrepresented_columns(formula_scale[[parameter]], parameter,
                                               term, design$source_data)
@@ -346,7 +347,7 @@
       raw <- coordinates$coordinate_name[raw_rows]
       intercept_note <- "centering induces level-specific intercepts that are not columns of the random-effect block"
       effect_note <- "centering induces level-specific lower-order effects that are not columns of the random-effect block"
-      shared_note <- "its shared design columns transform to different SDs on the original scale"
+      shared_note <- "its shared design columns cannot be certified to have a single SD on the original scale"
       table_note <- function(detail){
         paste0("NA: the original-scale value is unavailable because ", detail,
                ". Use 'transform_scaled = FALSE' for fitted-scale values.")

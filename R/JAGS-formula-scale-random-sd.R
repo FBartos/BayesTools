@@ -35,8 +35,10 @@
 #   defines the map from its fitted-scale to its original-scale coefficients
 #   (see .random_sd_unscale_matrix()); without it, hand-built SD-leaf
 #   metadata are transformed by pairing coefficient names.
-# @param shared_leaf what an SD leaf shared by design columns that transform to
-#   different SDs does: "stop" refuses the block (original_scale_not_representable);
+# @param shared_leaf what an SD leaf shared by design columns that are not
+#   certified to have one SD (a correlated block never certifies it; a diagonal
+#   block needs equal column SDs) does: "stop" refuses the block
+#   (original_scale_not_representable);
 #   "na" (the tables of random-effect summaries) sets that leaf's draws to NA and
 #   lists it in the "unavailable_sd_leaves" attribute of the result, so that the
 #   quantities that are identified keep their values.
