@@ -68,7 +68,39 @@ vignette_cache_eval <- function(cache) {
 
   !vignette_cache_checking() &&
     !length(vignette_cache_missing_packages(cache)) &&
-    !length(vignette_cache_missing(cache))
+    (!length(vignette_cache_missing(cache)) ||
+       isTRUE(getOption("BayesTools.vignette_refit", TRUE)))
+}
+
+vignette_cache_setup <- function(cache) {
+
+  knitr::opts_hooks$set(cache_fits = function(options) {
+
+    if (!isTRUE(options$eval) || !vignette_cache_eval(cache)) {
+      options$eval <- FALSE
+      return(options)
+    }
+
+    objects <- options$cache_fits
+    stopifnot(is.character(objects), length(objects) > 0L, all(objects %in% names(cache)))
+    chunk_cache <- cache[objects]
+    if (!length(vignette_cache_missing(chunk_cache))) {
+      vignette_cache_load(chunk_cache, envir = knitr::knit_global())
+      options$eval <- FALSE
+    }
+    options$error <- FALSE
+    options
+  })
+
+  knitr::knit_hooks$set(cache_fits = function(before, options, envir) {
+
+    if (!before && isTRUE(options$eval)) {
+      vignette_cache_save(cache[options$cache_fits], envir = envir)
+    }
+    invisible(NULL)
+  })
+
+  invisible(cache)
 }
 
 vignette_cache_load <- function(cache, envir = parent.frame()) {

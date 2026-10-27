@@ -23,6 +23,8 @@ cached_fits <- vignette_cache(
   packages = c("BayesFactor")
 )
 
+vignette_cache_setup(cached_fits)
+
 knitr::opts_chunk$set(
   collapse = TRUE,
   comment  = "#>",
@@ -34,9 +36,6 @@ if(.Platform$OS.type == "windows"){
 }
 ```
 
-```{r load-models, include = FALSE}
-vignette_cache_load(cached_fits)
-```
 
 
 BayesTools R package allows package developers and users to conveniently specify a wide variety of models. In this vignette, I show how to reproduce some commonly used models and compare the results to output from other, more specialized, R packages.
@@ -135,7 +134,7 @@ ttest_data <- list(
 
 Then, I pass the arguments into the `JAGS_fit()` function that wraps around the runjags R package [@runjags], specifying the prior distributions, preparing the starting values, etc...
 
-```{r fit-comparison-models, eval = FALSE}
+```{r fit-comparison-models, cache_fits = c("ttest_model_H0", "ttest_model_Hp")}
 ttest_model_H0 <- JAGS_fit(
   model_syntax = ttest_model,
   data         = ttest_data,
@@ -179,7 +178,7 @@ log_posterior <- function(parameters, data){
 
 The function requires two arguments, `parameters` and `data`, both of which are forwarded to it via the `JAGS_bridgesampling` function that wraps around the bridge sampling R package [@bridgesampling], specifying the marginal likelihood for prior distributions and taking care of all required transformations etc...
 
-```{r bridge-comparison-models, eval = FALSE}
+```{r bridge-comparison-models, cache_fits = c("marglik_model_H0", "marglik_model_Hp")}
 marglik_model_H0 <- JAGS_bridgesampling(
   fit           = ttest_model_H0,
   log_posterior = log_posterior,
@@ -225,9 +224,6 @@ BayesFactor_ttest
 
 This is of course a trivial example, however, it showcases flexibility of the BayesTools package. The prior distribution on the standardized effect size parameter $\delta$ can be changed to any of the multitude of supported distributions without effecting rest of the code, allowing users and package developers to specify more customized tests.
 
-```{r save-models, include = FALSE, eval = FALSE}
-vignette_cache_save(cached_fits)
-```
 
 
 ## Footnotes

@@ -22,6 +22,8 @@ cached_fits <- vignette_cache(
   objects  = c("M0", "M1", "marglik_model_H0", "marglik_model_H1", "MS")
 )
 
+vignette_cache_setup(cached_fits)
+
 knitr::opts_chunk$set(
   collapse = TRUE,
   comment  = "#>",
@@ -33,9 +35,6 @@ if(.Platform$OS.type == "windows"){
 }
 ```
 
-```{r load-models, include = FALSE}
-vignette_cache_load(cached_fits)
-```
 
 
 One of the main features of BayesTools is assistance in generating JAGS [@JAGS] code based on formulas and prior distribution objects and subsequent estimation of marginal likelihoods with the bridgesampling R package [@bridgesampling]. Marginal likelihoods, $p(\text{data} \mid \mathcal{M})$, are the key ingredient for computing Bayes factors,
@@ -134,7 +133,7 @@ data_formula <- data.frame(
 
 We estimate the models with the `JAGS_fit` function. Since we are using the formula interface (which allows us to specify multiple formulas for different parameters), we need to pass the arguments as named lists,
 
-```{r fit-spike-and-slab-comparison-models, eval = FALSE}
+```{r fit-spike-and-slab-comparison-models, cache_fits = c("M0", "M1")}
 M0 <- JAGS_fit(
   # specification for the `model_likelihood` part
   model_syntax = model_likelihood,
@@ -184,7 +183,7 @@ where the `parameters` arguments is a list containing the parameters and `data` 
 
 Finally, we pass our objects to the `JAGS_bridgesampling` function to compute the marginal likelihoods.
 
-```{r bridge-spike-and-slab-comparison-models, eval = FALSE}
+```{r bridge-spike-and-slab-comparison-models, cache_fits = c("marglik_model_H0", "marglik_model_H1")}
 marglik_model_H0 <- JAGS_bridgesampling(
   # specification for the model part
   fit           = M0,
@@ -247,7 +246,7 @@ prior_beta_spike_and_slab <- prior_spike_and_slab(
 
 Then we can directly proceed to calling the `JAGS_fit` function with the same specification as we used for the `M1` model, however, changing the prior distribution object for the predictor `x` to the newly created `prior_beta_spike_and_slab` prior distribution.
 
-```{r fit-spike-and-slab-model, eval = FALSE}
+```{r fit-spike-and-slab-model, cache_fits = "MS"}
 MS <- JAGS_fit(
   model_syntax = model_likelihood,
   data         = list(y = y, N = N),
@@ -273,9 +272,6 @@ JAGS_inference_table(MS, BF_diagnostics = TRUE)
 
 As before, we find absence of evidence for either of the hypotheses, $\text{BF}_{10} = 1.199$, with posterior probability of $P(\mathcal{M}_{1} \mid \text{data}) = 0.545$.
 
-```{r save-models, include = FALSE, eval = FALSE}
-vignette_cache_save(cached_fits)
-```
 
 ### References
 

@@ -18,30 +18,38 @@ examples. Gate Suggests-only packages with
 
 ## Cached Fits
 
-Use `vignettes/vignette-cache.R`, following the same pattern as RoBMA.
+Use `vignettes/vignette-cache.R`.
 The cache directory under `models/` matches the vignette filename without
 `.Rmd`, and each object is an ordinary `.RDS` file. Only expensive fitted
 models and marginal-likelihood results need caching; cheap prior-only examples
 do not need caches.
 
-1. Declare `cached_fits <- vignette_cache(...)` in setup and use
+1. Declare `cached_fits <- vignette_cache(...)` in setup, register
+   `vignette_cache_setup(cached_fits)`, and use
    `vignette_cache_eval(cached_fits)` as the default chunk evaluation setting.
-2. Load objects with `vignette_cache_load(cached_fits)` in a hidden chunk.
-3. Display fitting and marginal-likelihood code with `eval = FALSE`.
-4. Save objects with `vignette_cache_save(cached_fits)` in a hidden,
-   non-evaluated chunk.
+2. Give each fitting or marginal-likelihood chunk a `cache_fits` option naming
+   its output objects, for example `cache_fits = "fit_sleep"` or
+   `cache_fits = c("M0", "M1")`. Keep the fitting code itself ordinary R.
+3. Knit loads those objects and skips the chunk when its RDS files all exist.
+   Otherwise it runs the chunk and saves its objects immediately afterward.
+   A chunk with multiple objects regenerates the whole group if any are missing.
+   Separate independent fits into separate chunks when individual reuse matters.
 
 Use `knitr::rmarkdown_notangle` as the vignette engine, as in RoBMA, so package
-checks do not extract and execute the fitting code. Ordinary rendering never
-runs expensive JAGS/Stan fits or marginal-likelihood computations. Result
-chunks are skipped during package checks and when caches or declared optional
-packages are absent. The `models/` directory remains
-excluded from the source package.
+checks do not extract and execute the fitting code. Fitting and result chunks
+are skipped during package checks and when declared optional packages are
+absent. Ordinary rendering, including the Knit button, generates missing fits
+and can therefore take as long as the declared JAGS/Stan fits and marginal
+likelihood computations. The `models/` directory remains excluded from the
+source package; use builds without vignettes for routine package development.
 
-Regeneration is manual: from the vignette directory in a fresh R session with
-the current package loaded, run setup, data/prior definitions and fitting
-chunks, then the saving chunk; skip the cache-loading chunk. Keep the declared
-seeds and fitting settings. Do not add source fingerprints, manifests,
+To regenerate a fit after changing its code, remove its RDS file and Knit again.
+Existing files are reused without checking whether the model code changed.
+Remove any dependent marginal-likelihood caches too when changing a model.
+For rendering without fitting, set `options(BayesTools.vignette_refit = FALSE)`
+in the rendering session before calling `rmarkdown::render()`; missing caches
+then skip the vignette's evaluated examples. Keep the declared seeds and
+fitting settings. Do not add source fingerprints, manifests,
 migrations, or specialized regeneration runners. Fit models whose objects
 retain their formula environment, such as rstanarm fits, in an environment
 containing only their data so caches do not store the knitting workspace.
@@ -60,6 +68,7 @@ forcing alignment across unrelated nested calls.
   and unnecessary section depth.
 
 For setup or prose changes, run focused checks and render the affected
-vignettes without refitting. Missing caches permit checking the source-only
-render but do not verify numerical output. Follow the workspace policy on
-obtaining approval before regenerating vignette fits.
+vignettes with `options(BayesTools.vignette_refit = FALSE)`. Missing caches
+permit checking the source-only render but do not verify numerical output.
+Follow the workspace policy on obtaining approval before regenerating
+vignette fits.

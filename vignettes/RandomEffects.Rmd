@@ -29,6 +29,8 @@ cached_fits <- vignette_cache(
 )
 
 options(width = 140)
+vignette_cache_setup(cached_fits)
+
 knitr::opts_chunk$set(
   collapse = TRUE,
   comment  = "#>",
@@ -116,9 +118,6 @@ suppressPackageStartupMessages({
 })
 ```
 
-```{r load-models, include = FALSE}
-vignette_cache_load(cached_fits)
-```
 
 
 ```{r comparison-helpers, include = FALSE}
@@ -571,7 +570,7 @@ lme4_correlated_scaled <- lme4::lmer(
 )
 ```
 
-```{r fit-stan-correlated, eval = FALSE}
+```{r fit-stan-correlated, cache_fits = c("stan_correlated", "stan_correlated_scaled")}
 # A stanreg object keeps the environment of its formula. Fitting in an
 # environment that holds only the data keeps the other session objects out of
 # the saved fits.
@@ -636,7 +635,7 @@ sleep_random_priors <- list(
 `formula_scale_list` allows us to standardizes predictors before fitting the model.
 As such, priors for `Days` and its random-effect SD are specified on the fitted standardized-`Days` scale, and the summary functions backtransform them to the original day scale.
 
-```{r fit-sleep, eval = FALSE}
+```{r fit-sleep, cache_fits = "fit_sleep"}
 fit_sleep <- JAGS_fit(
   model_syntax = sleep_likelihood, data = sleep_data, prior_list = list(sigma = unit_sd_prior),
   formula_list = sleep_formula, formula_data_list = list(mu = sleepstudy),
@@ -696,7 +695,7 @@ sleep_independent_priors <- list(
 )
 ```
 
-```{r fit-sleep-independent, eval = FALSE}
+```{r fit-sleep-independent, cache_fits = "fit_sleep_independent"}
 fit_sleep_independent <- JAGS_fit(
   model_syntax = sleep_likelihood, data = sleep_data, prior_list = list(sigma = unit_sd_prior),
   formula_list = sleep_independent_formula, formula_data_list = list(mu = sleepstudy),
@@ -815,7 +814,7 @@ recipe_design$formula_design$random_effects[[1]]$column_names
 names(recipe_design$prior_list)
 ```
 
-```{r fit-cake-recipe, eval = FALSE}
+```{r fit-cake-recipe, cache_fits = "fit_cake_recipe"}
 fit_cake_recipe <- JAGS_fit(
   model_syntax = cake_likelihood, data = cake_data, prior_list = list(sigma = unit_sd_prior),
   formula_list = list(mu = recipe_formula),
@@ -841,7 +840,7 @@ compare_recipe_estimates(lme4_model = lme4_recipe, bayes_model = fit_cake_recipe
 
 The HCS structure estimates a separate random-effect SD for each temperature and one common correlation across all temperature pairs. For structured factor effects, BayesTools expands the factor into one column per level, so the formula does not use the usual `0 +` model-matrix notation. For CS/HCS blocks, multiple index variables such as `temperature + recipe` are combined as `interaction(temperature, recipe, drop = TRUE)`.
 
-```{r fit-cake-hcs, eval = FALSE}
+```{r fit-cake-hcs, cache_fits = "fit_cake_hcs"}
 fit_cake_hcs <- JAGS_fit(
   model_syntax = cake_likelihood, data = cake_data, prior_list = list(sigma = unit_sd_prior),
   formula_list = list(mu = ~ temp + hcs(temperature | replicate, name = "replicate")),
@@ -871,7 +870,7 @@ The AR(1) structure estimates one shared random-effect SD and one
 adjacent-temperature correlation; correlations at longer lags are powers of
 this correlation.
 
-```{r fit-cake-ar1, eval = FALSE}
+```{r fit-cake-ar1, cache_fits = "fit_cake_ar1"}
 fit_cake_ar1 <- JAGS_fit(
   model_syntax = cake_likelihood, data = cake_data, prior_list = list(sigma = unit_sd_prior),
   formula_list = list(mu = ~ temp + ar1(temperature | replicate, name = "replicate")),
@@ -897,7 +896,7 @@ compare_ar1_estimates(lme4_model = lme4_temperature, bayes_model = fit_cake_ar1)
 
 The `har()` structure combines the previous two ideas: it estimates a separate SD for each ordered temperature and one AR(1) adjacent-temperature correlation.
 
-```{r fit-cake-har, eval = FALSE}
+```{r fit-cake-har, cache_fits = "fit_cake_har"}
 fit_cake_har <- JAGS_fit(
   model_syntax = cake_likelihood, data = cake_data, prior_list = list(sigma = unit_sd_prior),
   formula_list = list(mu = ~ temp + har(temperature | replicate, name = "replicate")),
@@ -965,7 +964,7 @@ sleep_car_priors <- list(
 )
 ```
 
-```{r fit-sleep-car, eval = FALSE}
+```{r fit-sleep-car, cache_fits = "fit_sleep_car"}
 fit_sleep_car <- JAGS_fit(
   model_syntax = sleep_likelihood, data = sleep_data, prior_list = list(sigma = unit_sd_prior),
   formula_list = list(mu = ~ Days + car(Days | Subject, name = "subject_days")),
@@ -1031,7 +1030,7 @@ nested_allocation_priors <- list(
 )
 ```
 
-```{r fit-nested, eval = FALSE}
+```{r fit-nested, cache_fits = "fit_nested"}
 fit_nested <- JAGS_fit(
   model_syntax = nested_likelihood, data = nested_data, prior_list = list(sigma = unit_sd_prior),
   formula_list = nested_formula, formula_data_list = list(mu = Pastes),
@@ -1088,7 +1087,7 @@ lme4_crossed <- lme4::lmer(
 lme4::VarCorr(lme4_crossed)
 ```
 
-```{r fit-stan-crossed, eval = FALSE}
+```{r fit-stan-crossed, cache_fits = "stan_crossed"}
 # As for the sleepstudy fits, the formula environment holds only the data.
 crossed_stan_environment <- list2env(list(Penicillin = Penicillin), parent = globalenv())
 
@@ -1137,7 +1136,7 @@ crossed_independent_priors <- list(
 )
 ```
 
-```{r fit-crossed-independent, eval = FALSE}
+```{r fit-crossed-independent, cache_fits = "fit_crossed_independent"}
 fit_crossed_independent <- JAGS_fit(
   model_syntax = crossed_likelihood, data = crossed_data, prior_list = list(sigma = unit_sd_prior),
   formula_list = crossed_formula, formula_data_list = list(mu = Penicillin),
@@ -1168,7 +1167,7 @@ crossed_allocation_priors <- list(
 )
 ```
 
-```{r fit-crossed-allocation, eval = FALSE}
+```{r fit-crossed-allocation, cache_fits = "fit_crossed_allocation"}
 fit_crossed_allocation <- JAGS_fit(
   model_syntax = crossed_likelihood, data = crossed_data, prior_list = list(sigma = unit_sd_prior),
   formula_list = crossed_formula, formula_data_list = list(mu = Penicillin),
@@ -1190,9 +1189,6 @@ compare_crossed_estimates(
   bayes_independent = fit_crossed_independent, bayes_allocation = fit_crossed_allocation)
 ```
 
-```{r save-models, include = FALSE, eval = FALSE}
-vignette_cache_save(cached_fits)
-```
 
 
 ### References
