@@ -34,6 +34,8 @@ do not need caches.
    Otherwise it runs the chunk and saves its objects immediately afterward.
    A chunk with multiple objects regenerates the whole group if any are missing.
    Separate independent fits into separate chunks when individual reuse matters.
+   Keep printed output, such as `summary()`, out of these chunks: a chunk
+   loaded from its cache does not run.
 
 Use `knitr::rmarkdown_notangle` as the vignette engine, as in RoBMA, so package
 checks do not extract and execute the fitting code. Fitting and result chunks
