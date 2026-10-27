@@ -69,7 +69,8 @@ vignette_cache_eval <- function(cache) {
   !vignette_cache_checking() &&
     !length(vignette_cache_missing_packages(cache)) &&
     (!length(vignette_cache_missing(cache)) ||
-       isTRUE(getOption("BayesTools.vignette_refit", TRUE)))
+       isTRUE(getOption("BayesTools.vignette_refit",
+                        tolower(Sys.getenv("BAYESTOOLS_VIGNETTE_REFIT")) != "false")))
 }
 
 vignette_cache_setup <- function(cache) {

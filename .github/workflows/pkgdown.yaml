@@ -11,6 +11,8 @@ on:
 jobs:
   build:
     runs-on: ${{ matrix.config.os }}
+    env:
+      BAYESTOOLS_VIGNETTE_REFIT: "false"
     strategy:
       fail-fast: false
       matrix:

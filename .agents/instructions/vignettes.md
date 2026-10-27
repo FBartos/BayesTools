@@ -43,12 +43,22 @@ and can therefore take as long as the declared JAGS/Stan fits and marginal
 likelihood computations. The `models/` directory remains excluded from the
 source package; use builds without vignettes for routine package development.
 
+The R-CMD-check and pkgdown CI jobs set `BAYESTOOLS_VIGNETTE_REFIT=false`.
+This disables missing-cache generation in their direct renders and inherited
+build/article subprocesses while retaining vignette-rendering checks.
+`R CMD build` runs before the package-check gate: ordinary local or release
+builds with vignette building enabled can generate missing fits too. Set
+`BAYESTOOLS_VIGNETTE_REFIT=false` in the environment for such builds, or use
+`R CMD build --no-build-vignettes` when rendering is not needed. An R option
+in the calling session does not configure a separate R process.
+
 To regenerate a fit after changing its code, remove its RDS file and Knit again.
 Existing files are reused without checking whether the model code changed.
 Remove any dependent marginal-likelihood caches too when changing a model.
 For rendering without fitting, set `options(BayesTools.vignette_refit = FALSE)`
 in the rendering session before calling `rmarkdown::render()`; missing caches
-then skip the vignette's evaluated examples. Keep the declared seeds and
+then skip the vignette's evaluated examples. This option overrides the
+environment setting when explicitly supplied. Keep the declared seeds and
 fitting settings. Do not add source fingerprints, manifests,
 migrations, or specialized regeneration runners. Fit models whose objects
 retain their formula environment, such as rstanarm fits, in an environment
