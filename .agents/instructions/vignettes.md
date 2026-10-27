@@ -60,9 +60,11 @@ in the rendering session before calling `rmarkdown::render()`; missing caches
 then skip the vignette's evaluated examples. This option overrides the
 environment setting when explicitly supplied. Keep the declared seeds and
 fitting settings. Do not add source fingerprints, manifests,
-migrations, or specialized regeneration runners. Fit models whose objects
-retain their formula environment, such as rstanarm fits, in an environment
-containing only their data so caches do not store the knitting workspace.
+migrations, or specialized regeneration runners. Objects that retain their
+formula environment, such as rstanarm fits, serialize the global environment
+only by reference, so regenerate caches by knitting into the global
+environment (the Knit button and `R CMD build` do); `rmarkdown::render()` with
+another `envir` would store the knitting workspace in the cached fits.
 
 ## Code, Citations, and Prose
 
