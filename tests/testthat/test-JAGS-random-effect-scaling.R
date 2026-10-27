@@ -2019,8 +2019,16 @@ test_that("unequal shared logical-column SDs refuse even when a different source
         refusal <- expect_error(request(), class = "BayesTools_formula_transform_unavailable")
         expect_identical(refusal$reason, "original_scale_not_representable")
       }
+      # only the SD of the shared leaf is unavailable (with its note); the other SDs keep their original-scale values
       original <- JAGS_estimates_table(fit, transform_scaled = TRUE, remove_diagnostics = TRUE)
-      expect_true(all(is.na(as.data.frame(original)[grep("sd(", rownames(original), fixed = TRUE), ])))
+      sd_rows <- rownames(original)[grep("sd(", rownames(original), fixed = TRUE)]
+      sd_means <- stats::setNames(as.data.frame(original)[sd_rows, "Mean"], sd_rows)
+      expect_identical(names(sd_means)[is.na(sd_means)], "(mu) sd(x:flag)")
+      expect_identical(names(attr(original, "footnotes")), "(mu) sd(x:flag)")
+      expect_match(attr(original, "footnotes"), "its shared design columns transform to different SDs", fixed = TRUE)
+      reference_sd <- sqrt(diag(ref %*% diag(tau^2) %*% t(ref)))
+      expect_equal(unname(sd_means[c("(mu) sd(intercept)", "(mu) sd(x:z)", "(mu) sd(x:flag:z)")]),
+                   unname(reference_sd[c(1L, xz, three)]), tolerance = 1e-10)
     }else{
       expect_equal(unname(transform_scale_samples(fit)[, shared]), rep(expected[1L], 3L), tolerance = 2e-15)
     }
@@ -4054,6 +4062,52 @@ test_that("a shifted slope also removes its correlations, not those among repres
                                   "(mu) cor(z,z:f[b]:x)", "(mu) cor(z,z:f[c]:x)"))
   expect_equal(unname(result$mean[c("(mu) cor(intercept,z:f[a]:x)", "(mu) cor(z:f[a]:x,z:f[b]:x)")]),
                rep(setup$correlation, 2L), tolerance = 1e-12)
+})
+
+test_that("a correlated block with a shared logical-column SD keeps its identified rows", {
+
+  skip_if_not_installed("runjags")
+
+  data <- random_availability_data()
+  s_z <- stats::sd(data$z)
+  shared_note <- "its shared design columns transform to different SDs on the original scale"
+
+  diagonal <- random_availability_fit(~ 1 + x + z + diag(1 + z + flag:x | id), data, c("x", "z"))
+  correlated <- random_availability_fit(~ 1 + x + z + us(1 + z + flag:x | id), data, c("x", "z"), correlated = TRUE)
+  expect_identical(correlated$sd_names, diagonal$sd_names)
+  reference <- random_availability_means(diagonal)$mean
+  # z is a pure rescaling in both blocks
+  expect_equal(reference[["(mu) sd(z)"]], diagonal$tau[2L] / s_z, tolerance = 1e-12)
+
+  for(mode in c("standard", "full", "raw")){
+    result <- random_availability_means(correlated, mode)
+    values <- result$mean
+    unavailable <- names(values)[is.na(values)]
+    # only the shared SD (and its variance) and the intercept rows are unavailable
+    expect_true("(mu) sd(flag:x)" %in% unavailable || mode == "raw", info = mode)
+    expect_false(any(c("(mu) sd(z)", "(mu) cor(z,flag[FALSE]:x)", "(mu) cor(z,flag[TRUE]:x)",
+                       "(mu) cor(flag[FALSE]:x,flag[TRUE]:x)") %in% unavailable), info = mode)
+    if(mode != "raw"){
+      expect_equal(values[["(mu) sd(z)"]], reference[["(mu) sd(z)"]], tolerance = 1e-12, info = mode)
+      expect_equal(unname(values[c("(mu) cor(z,flag[FALSE]:x)", "(mu) cor(z,flag[TRUE]:x)",
+                                    "(mu) cor(flag[FALSE]:x,flag[TRUE]:x)")]),
+                   rep(correlated$correlation, 3L), tolerance = 1e-12, info = mode)
+      expect_true(all(c("(mu) sd(intercept)", "(mu) cor(intercept,z)") %in% unavailable), info = mode)
+      expect_true(all(grepl("intercept", setdiff(unavailable, c("(mu) sd(flag:x)", "(mu) var(flag:x)")), fixed = TRUE)),
+                  info = mode)
+      expect_match(attr(result$table, "footnotes")[["(mu) sd(flag:x)"]], shared_note, fixed = TRUE)
+    }
+  }
+  # raw coordinates: the shared SD leaf is NA with its note, the SD of z is not
+  raw <- random_availability_means(correlated, "raw")
+  shared_leaf <- grep("flag", rownames(raw$table)[grep("sd(", rownames(raw$table), fixed = TRUE)], value = TRUE)
+  expect_true(all(is.na(raw$mean[shared_leaf])))
+  expect_equal(unname(raw$mean[grep("sd(z", names(raw$mean), fixed = TRUE)]), diagonal$tau[2L] / s_z,
+               tolerance = 1e-12)
+
+  # the accessors keep their contract: the block has no original-scale value for the shared SD
+  refusal <- expect_error(transform_scale_samples(correlated$fit), class = "BayesTools_formula_transform_unavailable")
+  expect_identical(refusal$reason, "original_scale_not_representable")
 })
 
 test_that("named fallback maps preserve pure random-slope prior rescalings", {

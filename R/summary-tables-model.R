@@ -78,8 +78,11 @@
 #' identified original-scale quantities: \code{transform_scaled = TRUE} reports
 #' their rows as \code{NA} with a note explaining the unavailable transformation.
 #' A block whose missing-term fallback mixes categorical coding or omits a
-#' representable contribution, or whose shared SD columns transform to different
-#' SDs, likewise has \code{NA} original-scale rows. If centering a factor-by-slope
+#' representable contribution likewise has \code{NA} original-scale rows. An SD
+#' shared by columns that transform to different SDs, as the indicator columns of
+#' a logical predictor's interaction with a scaled slope do in a correlated block,
+#' is \code{NA} with its variance, while the other rows of the block keep their
+#' original-scale values. If centering a factor-by-slope
 #' interaction induces level-specific effects absent from the block (the
 #' intercepts of \code{f:x}, the \code{z} slopes of \code{f:x:z} without
 #' \code{f:z}), only the SDs, variances and correlations of the columns that
@@ -428,8 +431,10 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
     original_columns <- colnames(model_samples)
     excluded <- intersect(random_summary$excluded, original_columns)
     if(length(excluded)) model_samples <- model_samples[, !original_columns %in% excluded, drop = FALSE]
+    # (an SD leaf shared by columns that transform to different SDs is NA, with its note)
     model_samples <- .bt_transform_scale_posterior(model_samples, formula_scale,
-      formula_design = attr(fit, "formula_design", exact = TRUE), targets = requested)
+      formula_design = attr(fit, "formula_design", exact = TRUE), targets = requested,
+      shared_leaf = "na")
     if(length(excluded)){
       missing <- setdiff(excluded, colnames(model_samples))
       if(length(missing)) model_samples <- cbind(model_samples,

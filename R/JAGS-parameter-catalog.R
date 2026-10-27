@@ -5561,7 +5561,8 @@ parameter_transform_jacobian <- function(values, transform){
 }
 
 .bt_parameter_draw_random_summary <- function(fit, key, model_samples,
-                                               transform_scaled = TRUE){
+                                               transform_scaled = TRUE,
+                                               shared_leaf = "stop"){
 
   prior_list <- attr(fit, "prior_list", exact = TRUE)
   formula_scale <- if(transform_scaled) attr(fit, "formula_scale", exact = TRUE) else NULL
@@ -5600,7 +5601,8 @@ parameter_transform_jacobian <- function(values, transform){
       prior_list = prior_list,
       parameter = key$formula_parameter,
       formula_scale = formula_scale,
-      formula_design = attr(fit, "formula_design", exact = TRUE)[[key$formula_parameter]]
+      formula_design = attr(fit, "formula_design", exact = TRUE)[[key$formula_parameter]],
+      shared_leaf = shared_leaf
     )
     values <- summary$values[, key$index]
     return(if(identical(evaluator, "sd_variance")) values^2 else values)
@@ -5629,7 +5631,8 @@ parameter_transform_jacobian <- function(values, transform){
       prior_list = prior_list,
       parameter = key$formula_parameter,
       formula_scale = formula_scale,
-      formula_design = attr(fit, "formula_design", exact = TRUE)[[key$formula_parameter]]
+      formula_design = attr(fit, "formula_design", exact = TRUE)[[key$formula_parameter]],
+      shared_leaf = shared_leaf
     )
     summary <- .bt_random_effect_summary_correlation_samples(
       random_term,

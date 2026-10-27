@@ -35,11 +35,18 @@
 #   defines the map from its fitted-scale to its original-scale coefficients
 #   (see .random_sd_unscale_matrix()); without it, hand-built SD-leaf
 #   metadata are transformed by pairing coefficient names.
+# @param shared_leaf what an SD leaf shared by design columns that transform to
+#   different SDs does: "stop" refuses the block (original_scale_not_representable);
+#   "na" (the tables of random-effect summaries) sets that leaf's draws to NA and
+#   lists it in the "unavailable_sd_leaves" attribute of the result, so that the
+#   quantities that are identified keep their values.
 .apply_random_sd_unscale <- function(posterior, random_sd_cols, formula_scale,
                                      prefix,
                                      correlation_required_groups = NULL,
-                                     formula_design = NULL){
+                                     formula_design = NULL,
+                                     shared_leaf = c("stop", "na")){
 
+  shared_leaf <- match.arg(shared_leaf)
 
   if(length(random_sd_cols) == 0){
     return(posterior)
@@ -57,7 +64,8 @@
       formula_scale = formula_scale,
       prefix = prefix,
       correlation_required_groups = correlation_required_groups,
-      formula_design = formula_design
+      formula_design = formula_design,
+      shared_leaf = shared_leaf
     ))
   }
 
@@ -70,11 +78,13 @@
 .apply_random_sd_column_unscale <- function(posterior, column_groups,
                                             formula_scale, prefix,
                                             correlation_required_groups = NULL,
-                                            formula_design = NULL){
+                                            formula_design = NULL,
+                                            shared_leaf = "stop"){
 
   if(length(column_groups) == 0L){
     return(posterior)
   }
+  unavailable_leaves <- character()
 
   required_groups <- .random_sd_correlation_required_groups(
     formula_scale = formula_scale,
@@ -150,6 +160,11 @@
         target_columns = column_index,
         correlated = !is.null(source_cor)
       )){
+        if(identical(shared_leaf, "na")){
+          posterior[, sd_col] <- NA_real_
+          unavailable_leaves <- c(unavailable_leaves, sd_col)
+          next
+        }
         .bt_formula_transform_stop(
           paste0(
             "Random-effect SD column '", sd_col,
@@ -162,6 +177,10 @@
       }
       posterior[, sd_col] <- transformed_sd_by_column[, column_index[1L]]
     }
+  }
+
+  if(length(unavailable_leaves) > 0L){
+    attr(posterior, "unavailable_sd_leaves") <- unavailable_leaves
   }
 
   posterior

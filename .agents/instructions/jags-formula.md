@@ -419,9 +419,15 @@ of a logical predictor's interaction with a scaled slope) has one original-scale
 value only when its columns transform to the same SD, which a correlated block
 never guarantees: otherwise original-scale requests stop with
 `BayesTools_formula_transform_unavailable`, reason
-`original_scale_not_representable`; original-scale tables report the affected
-rows as `NA` with notes, and fitted-scale estimates tables remain available in
-every summary mode.
+`original_scale_not_representable`. Original-scale tables apply the rule per
+row: only the shared SD (and its variance) is `NA` with a note, and so are the
+rows of the columns that no block column represents (see above). The other
+rows of the block are identified pure rescalings or exact map entries and keep
+their original-scale values, among them the SDs of the unshared columns and the
+correlations among identified columns (`sd(z)` in `us(1 + z + flag:x | g)` is
+the diagonal block's `tau / sd(z)`); the raw table sets the shared leaf's SD
+coordinate to `NA` and transforms the rest. Fitted-scale estimates tables remain
+available in every summary mode.
 For a diagonal block, shared-column equality compares variance weights on
 each source SD leaf separately with the existing relative tolerance 1e-12.
 Zero/nonzero weights differ exactly, however large another leaf's weight is;

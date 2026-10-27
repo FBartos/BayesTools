@@ -368,8 +368,11 @@ A scaled random-effect block whose design is linearly dependent has no
 identified original-scale quantities: \code{transform_scaled = TRUE} reports
 their rows as \code{NA} with a note explaining the unavailable transformation.
 A block whose missing-term fallback mixes categorical coding or omits a
-representable contribution, or whose shared SD columns transform to different
-SDs, likewise has \code{NA} original-scale rows. If centering a factor-by-slope
+representable contribution likewise has \code{NA} original-scale rows. An SD
+shared by columns that transform to different SDs, as the indicator columns of
+a logical predictor's interaction with a scaled slope do in a correlated block,
+is \code{NA} with its variance, while the other rows of the block keep their
+original-scale values. If centering a factor-by-slope
 interaction induces level-specific effects absent from the block (the
 intercepts of \code{f:x}, the \code{z} slopes of \code{f:x:z} without
 \code{f:z}), only the SDs, variances and correlations of the columns that

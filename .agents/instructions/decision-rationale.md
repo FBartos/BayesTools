@@ -41,7 +41,16 @@ is in `tests/testthat/test-JAGS-summary-tables.R`,
 **Decision.** If a requested original-scale random quantity cannot be represented
 or identified by the fitted block, keep its table row as `NA` with the specific
 reason. Apply this to standard/full/raw displays and returned table samples;
-retain identifiable quantities in the same block.
+retain identifiable quantities in the same block. The rule is per row (settled
+with the maintainer on 2026-10-27 after the pre-release review): for a
+correlated block with an SD shared by several columns, only the shared SD (and
+its variance) and the rows of unrepresented columns are `NA`; the SD of an
+unshared column and the correlations among identified columns keep their
+values. A block whose whole design is refused (linearly dependent, or a fallback
+that mixes categorical coding) has no identified row, and all its rows are `NA`.
+The unrepresented columns are those that a dropped centering contribution would
+have to shift: the intercept for `f:x`, and likewise the lower-order slope `z`
+for `f:x:z`, and so on for every numeric group of the block.
 
 **Why.** For `diag(1 + f:x | id)` with centered `x`, the transformation can
 require factor-specific intercepts absent from the block. Its surviving fitted

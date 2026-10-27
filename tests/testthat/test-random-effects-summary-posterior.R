@@ -2157,9 +2157,28 @@ test_that("the indicator columns of a logical-by-continuous term are labelled by
       scaled, parameter_catalog_resolve(parameter_catalog(scaled), "(mu) cor(intercept,flag[TRUE]:x)")
     )
   )
+  # the table reports the shared SD as NA with its note; the other rows are identified and keep
+  # their original-scale values (the exact map of the block applied to the fitted covariance)
   original_table <- JAGS_estimates_table(scaled, transform_scaled = TRUE, remove_diagnostics = TRUE)
-  expect_true(all(is.na(as.data.frame(original_table)[expected, ])))
-  expect_true(all(grepl("no certified representation", attr(original_table, "footnotes"), fixed = TRUE)))
+  original <- stats::setNames(as.data.frame(original_table)[expected, "Mean"], expected)
+  expect_identical(names(original)[is.na(original)], "(mu) sd(flag:x)")
+  expect_identical(names(attr(original_table, "footnotes")), "(mu) sd(flag:x)")
+  expect_match(attr(original_table, "footnotes"), "its shared design columns transform to different SDs", fixed = TRUE)
+  scaled_design <- attr(scaled, "formula_design")$mu
+  A <- BayesTools:::.bt_formula_unscale_design_transform(
+    BayesTools:::.bt_random_effect_unscale_design_spec(scaled_design$random_effects[[1L]], scaled_design$source_data),
+    attr(scaled, "formula_scale")$mu, "mu"
+  )$matrix
+  tau <- c(0.5, 1, 1.5, 1.5)
+  original_covariance <- A %*% (diag(tau) %*% correlation %*% diag(tau)) %*% t(A)
+  expect_equal(unname(original[c("(mu) sd(intercept)", "(mu) sd(flag)")]),
+               unname(sqrt(diag(original_covariance))[1:2]), tolerance = 1e-12)
+  original_correlation <- stats::cov2cor(original_covariance)
+  for(pair in utils::combn(names(columns), 2L, simplify = FALSE)){
+    label <- paste0("(mu) cor(", pair[1L], ",", pair[2L], ")")
+    expect_equal(unname(original[label]), original_correlation[columns[[pair[1L]]], columns[[pair[2L]]]],
+                 tolerance = 1e-12, info = label)
+  }
   for(label in names(refusals)){
     refusal <- expect_error(
       refusals[[label]](), class = "BayesTools_formula_transform_unavailable", info = label

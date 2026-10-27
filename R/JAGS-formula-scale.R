@@ -1485,9 +1485,10 @@ JAGS_formula_scale_finalize <- function(formula_scale, design = NULL,
 # @param formula_design Optional fitted formula designs keyed by parameter name;
 #   the random-effect SDs of a parameter are unscaled with the design of its
 #   blocks (see .apply_random_sd_unscale()).
+# @param shared_leaf see .apply_random_sd_unscale()
 # @return Transformed posterior matrix
 .apply_unscale_transform <- function(posterior, formula_scale, targets = NULL,
-                                     formula_design = NULL) {
+                                     formula_design = NULL, shared_leaf = "stop") {
 
   if (is.null(formula_scale) || length(formula_scale) == 0) {
     return(posterior)
@@ -1513,7 +1514,7 @@ JAGS_formula_scale_finalize <- function(formula_scale, design = NULL,
     matched_prefix <- TRUE
     posterior <- .apply_unscale_transform_single(posterior, param_scale, prefix = param_name,
       fitted_state = fitted_state, targets = targets,
-      formula_design = formula_design[[param_name]])
+      formula_design = formula_design[[param_name]], shared_leaf = shared_leaf)
   }
 
   if(!matched_prefix){
@@ -1536,7 +1537,7 @@ JAGS_formula_scale_finalize <- function(formula_scale, design = NULL,
 # @return Transformed posterior matrix
 .apply_unscale_transform_single <- function(posterior, formula_scale, prefix,
                                              fitted_state = posterior, targets = NULL,
-                                             formula_design = NULL) {
+                                             formula_design = NULL, shared_leaf = "stop") {
 
   if (is.null(formula_scale) || length(formula_scale) == 0) {
     return(posterior)
@@ -1596,7 +1597,7 @@ JAGS_formula_scale_finalize <- function(formula_scale, design = NULL,
     .bt_formula_scale_require_design(formula_scale, prefix)
   }
   posterior <- .apply_random_sd_unscale(posterior, random_sd_cols, formula_scale, prefix,
-    formula_design = formula_design)
+    formula_design = formula_design, shared_leaf = shared_leaf)
 
   return(posterior)
 }

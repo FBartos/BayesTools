@@ -316,7 +316,7 @@
       transformed <- tryCatch(
         .bt_random_effect_summary_complete_scaled_samples(
           term, sources, prior_list, parameter, formula_scale, design,
-          complete_correlation = FALSE
+          complete_correlation = FALSE, shared_leaf = "na"
         ),
         BayesTools_formula_transform_unavailable = function(condition){
           if(!condition$reason %in% c("original_scale_not_identified", "original_scale_not_representable")){
@@ -326,12 +326,15 @@
         }
       )
       whole_block <- inherits(transformed, "BayesTools_formula_transform_unavailable")
-      # The columns whose original-scale value the block cannot carry: a dropped
-      # centering contribution has no column of its numeric group.
+      # The columns whose original-scale value the block cannot carry (a
+      # dropped centering contribution has no column of its numeric group) and
+      # the SD leaves shared by columns that transform to different SDs.
       unrepresented <- if(whole_block) integer() else
         .random_sd_block_unrepresented_columns(formula_scale[[parameter]], parameter,
                                               term, design$source_data)
-      if(!whole_block && length(unrepresented) == 0L) next
+      shared <- if(whole_block) character() else
+        attr(transformed, "unavailable_sd_leaves", exact = TRUE)
+      if(!whole_block && length(unrepresented) == 0L && length(shared) == 0L) next
       block_rows <- quantities$formula_parameter == parameter &
         quantities$quantity %in% c("sd", "var", "cor") &
         vapply(quantities$extraction_key, function(key){
@@ -343,6 +346,7 @@
       raw <- coordinates$coordinate_name[raw_rows]
       intercept_note <- "centering induces level-specific intercepts that are not columns of the random-effect block"
       effect_note <- "centering induces level-specific lower-order effects that are not columns of the random-effect block"
+      shared_note <- "its shared design columns transform to different SDs on the original scale"
       table_note <- function(detail){
         paste0("NA: the original-scale value is unavailable because ", detail,
                ". Use 'transform_scaled = FALSE' for fitted-scale values.")
@@ -361,6 +365,7 @@
         sd_names <- unique(term$sd_parameter_names)
         sd_names <- sd_names[!is.na(sd_names)]
         leaf_of_column <- match(term$sd_parameter_names, sd_names)
+        shared_leaf <- match(shared, sd_names)
         pairs <- if(term$n_columns > 1L) utils::combn(seq_len(term$n_columns), 2L) else NULL
         # intercepts have their own wording, other lower-order effects a common one
         columns_note <- function(columns){
@@ -373,7 +378,11 @@
           note <- NULL
           if(key$evaluator %in% c("sd", "sd_variance")){
             leaf_columns <- intersect(which(leaf_of_column == key$index), unrepresented)
-            if(length(leaf_columns) > 0L) note <- columns_note(leaf_columns)
+            if(length(leaf_columns) > 0L){
+              note <- columns_note(leaf_columns)
+            }else if(key$index %in% shared_leaf){
+              note <- table_note(shared_note)
+            }
           }else if(identical(key$evaluator, "correlation") && !is.null(pairs)){
             involved <- intersect(pairs[, key$index], unrepresented)
             if(length(involved) > 0L) note <- columns_note(involved)
@@ -385,8 +394,9 @@
         }
         # Raw coordinates: those of an unrepresented column (its SD, its
         # correlation matrix entries) and, because they require the complete
-        # correlation matrix, the Cholesky factor and its primitives. Slope-only
-        # entries and the semantic correlations of represented columns remain valid.
+        # correlation matrix, the Cholesky factor and its primitives; the SD
+        # coordinate of a shared leaf. Slope-only entries and the semantic
+        # correlations of represented columns remain valid.
         raw_notes <- character()
         if(length(unrepresented) > 0L){
           R_names <- outer(seq_len(term$n_columns), seq_len(term$n_columns), function(i, j){
@@ -398,6 +408,8 @@
           affected <- intersect(raw, affected)
           raw_notes <- stats::setNames(rep(columns_note(unrepresented), length(affected)), affected)
         }
+        shared_raw <- setdiff(intersect(raw, shared), names(raw_notes))
+        raw_notes <- c(raw_notes, stats::setNames(rep(table_note(shared_note), length(shared_raw)), shared_raw))
         raw <- names(raw_notes)
         raw_notes <- unname(raw_notes)
       }
@@ -463,7 +475,8 @@
     }else{
       .bt_parameter_draw_random_summary(
         fit = fit, key = quantity$extraction_key[[1L]],
-        model_samples = as.matrix(model_samples), transform_scaled = transform_scaled
+        model_samples = as.matrix(model_samples), transform_scaled = transform_scaled,
+        shared_leaf = "na"
       )
     }
     if(length(values) != nrow(model_samples)){

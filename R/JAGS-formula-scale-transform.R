@@ -132,7 +132,8 @@ transform_scale_samples <- function(fit, formula_scale = NULL){
 # formula-scale information (which carries the fitted unscale designs).
 .bt_transform_scale_posterior <- function(posterior, formula_scale,
                                           formula_design = NULL,
-                                          coordinates = NULL, targets = NULL){
+                                          coordinates = NULL, targets = NULL,
+                                          shared_leaf = "stop"){
 
   .check_formula_scale_info(formula_scale)
   formula_scale <- .bt_formula_scale_list_with_unscale_designs(
@@ -141,7 +142,7 @@ transform_scale_samples <- function(fit, formula_scale = NULL){
   )
 
   posterior <- .apply_unscale_transform(as.matrix(posterior), formula_scale, targets = targets,
-    formula_design = formula_design)
+    formula_design = formula_design, shared_leaf = shared_leaf)
   .bt_remove_internal_random_coordinates(
     posterior = posterior,
     coordinates = coordinates

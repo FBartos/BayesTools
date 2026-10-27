@@ -4,7 +4,8 @@
                                                               parameter = NULL,
                                                               formula_scale = NULL,
                                                               formula_design = NULL,
-                                                              complete_correlation = TRUE){
+                                                              complete_correlation = TRUE,
+                                                              shared_leaf = "stop"){
 
   sd_names <- unique(random_term$sd_parameter_names)
   sd_names <- sd_names[!is.na(sd_names)]
@@ -63,7 +64,8 @@
     formula_scale = parameter_scale,
     prefix = parameter,
     correlation_required_groups = correlation_required_groups,
-    formula_design = formula_design
+    formula_design = formula_design,
+    shared_leaf = shared_leaf
   )
   # The unscaled correlation matrix columns hold the original-scale
   # correlations, which are defined also in singular draws where the
@@ -193,7 +195,8 @@
                                                  prior_list,
                                                  parameter = NULL,
                                                  formula_scale = NULL,
-                                                 formula_design = NULL){
+                                                 formula_design = NULL,
+                                                 shared_leaf = "stop"){
 
   if(!is.null(random_term$sd_binding) &&
      .bt_random_sd_binding_has_external_source(random_term$sd_binding) &&
@@ -214,8 +217,10 @@
     prior_list = prior_list,
     parameter = parameter,
     formula_scale = formula_scale,
-    formula_design = formula_design
+    formula_design = formula_design,
+    shared_leaf = shared_leaf
   )
+  unavailable_leaves <- attr(model_samples, "unavailable_sd_leaves", exact = TRUE)
 
   components <- .bt_random_effect_summary_sd_components(random_term, sd_names)
   values <- matrix(NA_real_, nrow = nrow(model_samples), ncol = length(sd_names))
@@ -257,7 +262,8 @@
         sd_names = sd_names,
         parameter = parameter,
         formula_scale = formula_scale,
-        formula_design = formula_design
+        formula_design = formula_design,
+        shared_leaf = shared_leaf
       )
     }else{
       fallback_values <- fallback[, fallback_columns[fallback_used], drop = FALSE]
@@ -267,12 +273,14 @@
         sd_names = sd_names[fallback_used],
         parameter = parameter,
         formula_scale = formula_scale,
-        formula_design = formula_design
+        formula_design = formula_design,
+        shared_leaf = shared_leaf
       )
     }
   }
 
-  missing <- colSums(!is.na(values)) == 0L
+  # (a leaf set to NA as unavailable is not a missing value)
+  missing <- colSums(!is.na(values)) == 0L & !sd_names %in% unavailable_leaves
   if(any(missing)){
     .bt_random_effect_summary_missing_sd_values_stop(
       random_term = random_term,
