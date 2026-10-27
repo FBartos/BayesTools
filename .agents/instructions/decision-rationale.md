@@ -33,8 +33,9 @@ packages with different priors or posterior sampling.
 Do not attach an original-scale catalog quantity ID to a fitted-scale table row.
 Catalog quantities retain their own declared semantics; this decision does not
 make them depend on table options. Implemented in `6684637`; regression coverage
-is in `tests/testthat/test-JAGS-summary-tables.R`,
-`test-JAGS-formula-scale.R`, and `test-random-effects-summary-posterior.R`.
+is `transform_scaled selects fixed and random summary scales at every depth` in
+`tests/testthat/test-JAGS-random-effect-scaling.R` and the summary tests of
+`tests/testthat/test-random-effects-summary-posterior.R`.
 
 ## An unavailable original coordinate is NA in an estimates table
 
@@ -63,7 +64,11 @@ table policy.
 This is a reporting policy, not permission to invent lower-order random terms,
 alter the fitted model, catch unrelated fixed-effect/input errors, or replace
 typed refusals in general inference accessors with NAs. Implemented in
-`98c8af4`; the public-table and scaling tests above cover the boundary.
+`98c8af4`; the boundary is covered by the table-availability tests of
+`tests/testthat/test-JAGS-random-effect-scaling.R` (`tables report unavailable
+induced intercepts as NA with a note`, the shifted-slope and shared-leaf
+tests) and by the logical-column block tests of
+`tests/testthat/test-random-effects-summary-posterior.R`.
 
 ## Preserve exact prior laws for pure SD rescaling
 
@@ -83,5 +88,7 @@ vector-owner support into `parameter_prior_density()`. Persisted maps changed
 to version 17 because they stored the erroneous classification. Older development
 fits must be refitted, not relabelled or resealed. The maintainer authorized the
 declared vignette-cache refresh (`1494bb2`); that one-time authorization does not
-change the general vignette policy. The catalog/scaling tests cover classification
-and supported prior-density routes.
+change the general vignette policy. `named fallback maps preserve pure random-slope
+prior rescalings` in `tests/testthat/test-JAGS-random-effect-scaling.R` and the
+classification checks of `tests/testthat/test-JAGS-parameter-catalog.R` cover
+classification and supported prior-density routes.
