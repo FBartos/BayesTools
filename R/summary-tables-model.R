@@ -80,9 +80,11 @@
 #' A block whose missing-term fallback mixes categorical coding or omits a
 #' representable contribution, or whose shared SD columns transform to different
 #' SDs, likewise has \code{NA} original-scale rows. If centering a factor-by-slope
-#' interaction induces level-specific intercepts absent from the block, only
-#' the intercept SD, its variance and correlations involving it are unavailable;
-#' identifiable slope summaries remain. These table notes also accompany
+#' interaction induces level-specific effects absent from the block (the
+#' intercepts of \code{f:x}, the \code{z} slopes of \code{f:x:z} without
+#' \code{f:z}), only the SDs, variances and correlations of the columns that
+#' would absorb them (the intercept, or the lower-order slope) are unavailable;
+#' the summaries of the other columns remain. These table notes also accompany
 #' \code{return_samples = TRUE} as a \code{footnotes} attribute. Inference
 #' accessors retain their own transformation and availability contracts.
 #' Use \code{transform_scaled = FALSE}

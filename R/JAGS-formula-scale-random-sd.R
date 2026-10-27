@@ -40,6 +40,7 @@
                                      correlation_required_groups = NULL,
                                      formula_design = NULL){
 
+
   if(length(random_sd_cols) == 0){
     return(posterior)
   }
@@ -455,6 +456,46 @@
       FALSE
     }
   )
+}
+
+# The columns of a block whose original-scale meaning the name-paired fallback
+# map (.random_sd_unscale_matrix()) cannot carry. Centering a scaled slope of a
+# column adds its contribution to the numeric group that drops the slope (the
+# intercept group for `f:x`, the `z` group for `f:x:z`); when the fallback map
+# has no entry for the column in that group, no column of the group represents
+# the contribution, and the columns of the group coded on a subset of the
+# categorical variables of the source column would have to absorb it. Their
+# SDs, variances, correlations and raw coordinates are not the original-scale
+# quantities. Exact maps and blocks without a dropped contribution have none.
+# Returns the column indices (integer(0) when every column is represented).
+.random_sd_block_unrepresented_columns <- function(formula_scale, prefix,
+                                                   random_term, source_data = NULL){
+
+  if(!.random_sd_block_drops_induced_terms(formula_scale, prefix, random_term, source_data)){
+    return(integer())
+  }
+  spec <- .bt_random_effect_unscale_design_spec(random_term, source_data)
+  context <- .bt_formula_unscale_design_context(spec, formula_scale, prefix)
+  group <- .random_sd_column_unscale_groups(
+    unique(random_term$sd_parameter_names), formula_scale, prefix
+  )[[1L]]
+  map <- .random_sd_unscale_matrix(group$column_terms, formula_scale, prefix,
+    random_term, source_data)
+
+  affected <- integer()
+  for(j in seq_along(context$components)){
+    for(component in context$components[[j]]){
+      if(length(component$dropped) == 0L) next
+      columns <- context$groups[[component$target]]
+      if(length(columns) == 0L || any(map[columns, j] != 0)) next
+      columns <- columns[vapply(columns, function(k){
+        all(context$categorical_sets[[k]] %in% context$categorical_sets[[j]])
+      }, logical(1))]
+      affected <- c(affected, columns)
+    }
+  }
+
+  sort(unique(unname(affected)))
 }
 
 # The unscale-design specification of a fitted random-effect block, in the

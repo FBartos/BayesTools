@@ -382,12 +382,18 @@ returning a partial map. Only the design transform's
 `original_scale_not_representable` refusal selects the name-paired fallback;
 a refusal from its certificate is final, and all other failures propagate.
 For a scaled slope that interacts with a factor whose level
-intercepts are not columns of the block (`diag(1 + f:x | g)`), the induced
-level-specific intercept shifts are not block columns. The surviving-coordinate
-map retains the group effect at the predictor mean and exact slope SDs, but
-`JAGS_estimates_table(transform_scaled = TRUE)` reports its unavailable
-original-scale intercept SD/variance and correlations as `NA` with row-specific
-notes, retaining the identifiable slope quantities. This reporting rule applies
+effects are not columns of the block (`diag(1 + f:x | g)`: the level intercepts;
+`diag(1 + z + f:x:z | g)` with `z` unscaled or scaled: the level slopes of `z`),
+the induced level-specific shifts are not block columns. The surviving-coordinate
+map retains the shifted coefficient (the intercept, or the lower-order slope) at
+the predictor mean, but `JAGS_estimates_table(transform_scaled = TRUE)` reports
+the unavailable original-scale SD/variance and correlations of every such column
+as `NA` with row-specific notes, retaining the quantities of the other columns.
+A column is shifted when a dropped centering contribution of some column has no
+nonzero entry of the fallback map in its numeric target group (the intercept
+group for `f:x`, the `z` group for `f:x:z`): the columns of that group coded on
+a subset of the source column's categorical variables are the unavailable ones;
+exact maps (`diag(1 + z + x:z | g)`) have none. This reporting rule applies
 also to raw tables and returned table samples; it does not redefine inference
 accessors or the parameter catalog. The name-paired map takes each column as its own coordinate by
 position: the indicator columns of a logical predictor's interaction with a

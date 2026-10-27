@@ -96,13 +96,15 @@
 #' with a standardized random slope are labelled by their fitted coordinates
 #' (\code{(mu) g: sd(x)}) until they are transformed to the catalog's
 #' original-scale SDs. For a standardized slope that interacts with a factor
-#' whose level intercepts are not columns of the block (\code{diag(1 + f:x | g)}),
-#' the intercept shifts that centering induces by level are not block
-#' coefficients. The surviving-coordinate transformation retains the intercept
-#' at the predictor mean, while the slope SDs are exact.
+#' whose level effects are not columns of the block (\code{diag(1 + f:x | g)}:
+#' the level intercepts; \code{diag(1 + z + f:x:z | g)}: the level slopes of
+#' \code{z}), the shifts that centering induces by level are not block
+#' coefficients. The surviving-coordinate transformation retains the shifted
+#' coefficients (here the intercept, or the slope of \code{z}) at the predictor
+#' mean; the SDs of the columns that no centering shifts are exact.
 #' \code{runjags_estimates_table()} instead reports the unavailable original-scale
-#' intercept quantities as \code{NA} with a row-specific note, and retains the
-#' identifiable slope summaries. Estimated marginal means of
+#' quantities of the shifted columns as \code{NA} with a row-specific note, and
+#' retains the identifiable summaries. Estimated marginal means of
 #' [marginal_estimates_table()] are
 #' predictions at the stated predictor values, which do not depend on the
 #' standardization, and are not changed. Defaults to \code{FALSE}.

@@ -3920,6 +3920,142 @@ test_that("tables report unavailable induced intercepts as NA with a note", {
   }
 })
 
+# Fixtures of the original-scale availability tests: scaled x (and z), a factor f and a
+# logical flag, with draws that repeat one fixed set of SDs (and correlations).
+random_availability_data <- function(){
+
+  set.seed(5)
+  data.frame(
+    x    = rnorm(36, mean = 10, sd = 2),
+    z    = rnorm(36, mean = 3, sd = 1.5),
+    f    = factor(rep(c("a", "b", "c"), length.out = 36)),
+    flag = rep(c(TRUE, FALSE, FALSE), 12),
+    id   = factor(rep(paste0("g", 1:6), each = 6))
+  )
+}
+
+random_availability_fit <- function(formula, data, scaled, correlated = FALSE, tau = NULL, correlation = 0.2){
+
+  formula_result <- JAGS_formula(
+    formula, "mu", data,
+    prior_list = list(
+      intercept = prior("normal", list(0, 1)),
+      x = prior("normal", list(0, 1)),
+      z = prior("normal", list(0, 1))
+    ),
+    formula_scale = stats::setNames(as.list(rep(TRUE, length(scaled))), scaled),
+    prior_random = prior_random(id = do.call(random_block, c(
+      list(sd = prior("gamma", list(2, 2)),
+           monitor = random_monitor(latent = FALSE, coefficients = FALSE, correlation = correlated)),
+      if(correlated) list(cor = prior_lkj(eta = 1))
+    )))
+  )
+  term <- formula_result$formula_design$random_effects[[1L]]
+  sd_names <- unique(term$sd_parameter_names)
+  if(is.null(tau)) tau <- seq_along(sd_names) / 2
+  extra <- NULL
+  if(correlated){
+    k <- term$n_columns
+    R <- matrix(correlation, k, k)
+    diag(R) <- 1
+    R_names <- outer(seq_len(k), seq_len(k), function(i, j){
+      paste0(term$parameter_stem, "_xRE_CORx_R[", i, ",", j, "]")
+    })
+    extra <- c(
+      stats::setNames(as.vector(R), as.vector(R_names)),
+      stats::setNames(as.vector(t(chol(R))), as.vector(.bt_random_effect_cholesky_names(term, k)))
+    )
+  }
+  values <- c(mu_intercept = 0, mu_x = 0, mu_z = 0, stats::setNames(tau, sd_names), extra)
+  posterior <- matrix(rep(values, 3L), nrow = 3L, byrow = TRUE, dimnames = list(NULL, names(values)))
+
+  list(fit = make_random_scale_table_fit(formula_result, posterior), term = term, tau = tau,
+       sd_names = sd_names, correlation = correlation)
+}
+
+random_availability_means <- function(setup, mode = "standard"){
+
+  table <- JAGS_estimates_table(setup$fit, transform_scaled = TRUE, remove_diagnostics = TRUE,
+                                random_effects_summary = mode)
+  list(table = table, mean = stats::setNames(as.data.frame(table)[["Mean"]], rownames(table)))
+}
+
+test_that("a lower-order numeric slope that centering shifts level-specifically is NA in original-scale tables", {
+
+  skip_if_not_installed("runjags")
+
+  # B: the centered x of `f:x:z` induces level-specific z slopes, which no column of the block carries
+  data <- random_availability_data()
+  setup <- random_availability_fit(~ 1 + x + z + diag(1 + z + f:x:z | id), data, "x")
+  result <- random_availability_means(setup)
+  expect_true(is.na(result$mean[["(mu) sd(z)"]]))
+  expect_identical(names(attr(result$table, "footnotes")), "(mu) sd(z)")
+  expect_true(startsWith(
+    unname(attr(result$table, "footnotes")),
+    "(mu) sd(z): NA: the original-scale value is unavailable because centering induces level-specific lower-order effects"
+  ))
+  expect_equal(result$mean[["(mu) sd(intercept)"]], setup$tau[1L], tolerance = 1e-12)
+  expect_equal(unname(result$mean[grep("sd(z:f", names(result$mean), fixed = TRUE)]),
+               setup$tau[3:5] / stats::sd(data$x), tolerance = 1e-12)
+  # the fitted scale keeps every value, and the summary depths agree
+  fitted <- JAGS_estimates_table(setup$fit, remove_diagnostics = TRUE)
+  expect_equal(as.data.frame(fitted)["(mu) sd(z)", "Mean"], setup$tau[2L], tolerance = 1e-12)
+  full <- random_availability_means(setup, "full")
+  expect_identical(names(full$mean)[is.na(full$mean)], c("(mu) sd(z)", "(mu) var(z)"))
+  raw <- random_availability_means(setup, "raw")
+  expect_identical(names(raw$mean)[is.na(raw$mean)], "(mu) id: sd(z)")
+})
+
+test_that("every shifted column group is NA when x and z are scaled", {
+
+  skip_if_not_installed("runjags")
+
+  # C: the intercept, x and z all receive level-specific shifts from `f:x:z`
+  data <- random_availability_data()
+  setup <- random_availability_fit(~ 1 + x + z + diag(1 + x + z + f:x:z | id), data, c("x", "z"))
+  result <- random_availability_means(setup)
+  expect_identical(
+    names(result$mean)[is.na(result$mean)],
+    c("(mu) sd(intercept)", "(mu) sd(x)", "(mu) sd(z)")
+  )
+  expect_equal(unname(result$mean[grep("sd(x:z:f", names(result$mean), fixed = TRUE)]),
+               setup$tau[4:6] / (stats::sd(data$x) * stats::sd(data$z)), tolerance = 1e-12)
+  notes <- attr(result$table, "footnotes")
+  expect_match(notes[["(mu) sd(intercept)"]], "level-specific intercepts", fixed = TRUE)
+  expect_match(notes[["(mu) sd(x)"]], "level-specific lower-order effects", fixed = TRUE)
+  expect_match(notes[["(mu) sd(z)"]], "level-specific lower-order effects", fixed = TRUE)
+})
+
+test_that("a represented lower-order numeric slope keeps its exact original-scale value", {
+
+  skip_if_not_installed("runjags")
+
+  # D: without the factor the lower-order slope is represented (the exact map applies)
+  data <- random_availability_data()
+  setup <- random_availability_fit(~ 1 + x + z + diag(1 + z + x:z | id), data, "x")
+  result <- random_availability_means(setup)
+  expect_false(anyNA(result$mean))
+  expect_length(attr(result$table, "footnotes"), 0L)
+  ratio <- mean(data$x) / stats::sd(data$x)
+  expect_equal(result$mean[["(mu) sd(z)"]], sqrt(setup$tau[2L]^2 + ratio^2 * setup$tau[3L]^2),
+               tolerance = 1e-12)
+  expect_equal(result$mean[["(mu) sd(z:x)"]], setup$tau[3L] / stats::sd(data$x), tolerance = 1e-12)
+})
+
+test_that("a shifted slope also removes its correlations, not those among represented columns", {
+
+  skip_if_not_installed("runjags")
+
+  data <- random_availability_data()
+  setup <- random_availability_fit(~ 1 + x + z + us(1 + z + f:x:z | id), data, "x", correlated = TRUE)
+  result <- random_availability_means(setup)
+  unavailable <- names(result$mean)[is.na(result$mean)]
+  expect_identical(unavailable, c("(mu) sd(z)", "(mu) cor(intercept,z)", "(mu) cor(z,z:f[a]:x)",
+                                  "(mu) cor(z,z:f[b]:x)", "(mu) cor(z,z:f[c]:x)"))
+  expect_equal(unname(result$mean[c("(mu) cor(intercept,z:f[a]:x)", "(mu) cor(z:f[a]:x,z:f[b]:x)")]),
+               rep(setup$correlation, 2L), tolerance = 1e-12)
+})
+
 test_that("named fallback maps preserve pure random-slope prior rescalings", {
 
   skip_if_not_installed("runjags")

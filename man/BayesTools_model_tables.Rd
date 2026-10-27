@@ -316,13 +316,15 @@ logical predictor in such an interaction) are refused. The SD columns of a block
 with a standardized random slope are labelled by their fitted coordinates
 (\code{(mu) g: sd(x)}) until they are transformed to the catalog's
 original-scale SDs. For a standardized slope that interacts with a factor
-whose level intercepts are not columns of the block (\code{diag(1 + f:x | g)}),
-the intercept shifts that centering induces by level are not block
-coefficients. The surviving-coordinate transformation retains the intercept
-at the predictor mean, while the slope SDs are exact.
+whose level effects are not columns of the block (\code{diag(1 + f:x | g)}:
+the level intercepts; \code{diag(1 + z + f:x:z | g)}: the level slopes of
+\code{z}), the shifts that centering induces by level are not block
+coefficients. The surviving-coordinate transformation retains the shifted
+coefficients (here the intercept, or the slope of \code{z}) at the predictor
+mean; the SDs of the columns that no centering shifts are exact.
 \code{runjags_estimates_table()} instead reports the unavailable original-scale
-intercept quantities as \code{NA} with a row-specific note, and retains the
-identifiable slope summaries. Estimated marginal means of
+quantities of the shifted columns as \code{NA} with a row-specific note, and
+retains the identifiable summaries. Estimated marginal means of
 \code{\link[=marginal_estimates_table]{marginal_estimates_table()}} are
 predictions at the stated predictor values, which do not depend on the
 standardization, and are not changed. Defaults to \code{FALSE}.}
@@ -368,9 +370,11 @@ their rows as \code{NA} with a note explaining the unavailable transformation.
 A block whose missing-term fallback mixes categorical coding or omits a
 representable contribution, or whose shared SD columns transform to different
 SDs, likewise has \code{NA} original-scale rows. If centering a factor-by-slope
-interaction induces level-specific intercepts absent from the block, only
-the intercept SD, its variance and correlations involving it are unavailable;
-identifiable slope summaries remain. These table notes also accompany
+interaction induces level-specific effects absent from the block (the
+intercepts of \code{f:x}, the \code{z} slopes of \code{f:x:z} without
+\code{f:z}), only the SDs, variances and correlations of the columns that
+would absorb them (the intercept, or the lower-order slope) are unavailable;
+the summaries of the other columns remain. These table notes also accompany
 \code{return_samples = TRUE} as a \code{footnotes} attribute. Inference
 accessors retain their own transformation and availability contracts.
 Use \code{transform_scaled = FALSE}

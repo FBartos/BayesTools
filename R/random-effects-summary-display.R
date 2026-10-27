@@ -326,28 +326,13 @@
         }
       )
       whole_block <- inherits(transformed, "BayesTools_formula_transform_unavailable")
-      missing_intercept <- !whole_block && any(term$assign == 0L) &&
-        .random_sd_block_drops_induced_terms(formula_scale[[parameter]], parameter,
-                                            term, design$source_data)
-      if(missing_intercept){
-        # Missing numeric slopes need not invalidate the intercept. Only a
-        # dropped contribution to its numeric group can change its meaning.
-        spec <- .bt_random_effect_unscale_design_spec(term, design$source_data)
-        context <- .bt_formula_unscale_design_context(spec, formula_scale[[parameter]], parameter)
-        group <- .random_sd_column_unscale_groups(unique(term$sd_parameter_names),
-          formula_scale[[parameter]], parameter)[[1L]]
-        map <- .random_sd_unscale_matrix(group$column_terms, formula_scale[[parameter]],
-          parameter, term, design$source_data)
-        target <- context$components[[which(term$assign == 0L)[1L]]][[1L]]$target
-        missing_intercept <- any(vapply(seq_along(context$components), function(j){
-          any(vapply(context$components[[j]], function(component){
-            length(component$dropped) > 0L && identical(component$target, target) &&
-              !any(map[context$groups[[target]], j] != 0)
-          }, logical(1)))
-        }, logical(1)))
-      }
-      if(!whole_block && !missing_intercept) next
-      rows <- quantities$formula_parameter == parameter &
+      # The columns whose original-scale value the block cannot carry: a dropped
+      # centering contribution has no column of its numeric group.
+      unrepresented <- if(whole_block) integer() else
+        .random_sd_block_unrepresented_columns(formula_scale[[parameter]], parameter,
+                                              term, design$source_data)
+      if(!whole_block && length(unrepresented) == 0L) next
+      block_rows <- quantities$formula_parameter == parameter &
         quantities$quantity %in% c("sd", "var", "cor") &
         vapply(quantities$extraction_key, function(key){
           identical(key$random_block, term$block_name)
@@ -356,6 +341,12 @@
         coordinates$random_block == term$block_name &
         (coordinates$role == "random_sd" | startsWith(coordinates$role, "random_correlation"))
       raw <- coordinates$coordinate_name[raw_rows]
+      intercept_note <- "centering induces level-specific intercepts that are not columns of the random-effect block"
+      effect_note <- "centering induces level-specific lower-order effects that are not columns of the random-effect block"
+      table_note <- function(detail){
+        paste0("NA: the original-scale value is unavailable because ", detail,
+               ". Use 'transform_scaled = FALSE' for fitted-scale values.")
+      }
       if(whole_block){
         detail <- if(identical(transformed$reason, "original_scale_not_identified")){
           "the random-effect design is linearly dependent"
@@ -363,26 +354,55 @@
           "the random-effect block has no certified representation on the original predictor scale"
         }
         excluded <- c(excluded, raw)
+        rows <- block_rows
+        row_notes <- rep(table_note(detail), sum(rows))
+        raw_notes <- rep(table_note(detail), length(raw))
       }else{
-        detail <- "centering induces level-specific intercepts that are not columns of the random-effect block"
-        rows <- rows & vapply(quantities$arguments, function(arguments){
-          "intercept" %in% arguments
-        }, logical(1))
-        intercept <- which(term$assign == 0L)
-        R_names <- outer(seq_len(term$n_columns), seq_len(term$n_columns), function(i, j){
-          paste0(term$parameter_stem, "_xRE_CORx_R[", i, ",", j, "]")
-        })
-        affected <- c(term$sd_parameter_names[intercept], R_names[intercept, ], R_names[, intercept])
-        # A Cholesky factor or its primitives require the complete correlation
-        # matrix; slope-only R entries and semantic slope correlations remain valid.
-        affected <- c(affected, as.vector(.bt_random_effect_cholesky_names(term, term$n_columns)),
-                      term$correlation$primitive_names)
-        raw <- intersect(raw, affected)
+        sd_names <- unique(term$sd_parameter_names)
+        sd_names <- sd_names[!is.na(sd_names)]
+        leaf_of_column <- match(term$sd_parameter_names, sd_names)
+        pairs <- if(term$n_columns > 1L) utils::combn(seq_len(term$n_columns), 2L) else NULL
+        # intercepts have their own wording, other lower-order effects a common one
+        columns_note <- function(columns){
+          table_note(if(all(term$assign[columns] == 0L)) intercept_note else effect_note)
+        }
+        rows <- rep(FALSE, nrow(quantities))
+        row_notes <- character()
+        for(i in which(block_rows)){
+          key <- quantities$extraction_key[[i]]
+          note <- NULL
+          if(key$evaluator %in% c("sd", "sd_variance")){
+            leaf_columns <- intersect(which(leaf_of_column == key$index), unrepresented)
+            if(length(leaf_columns) > 0L) note <- columns_note(leaf_columns)
+          }else if(identical(key$evaluator, "correlation") && !is.null(pairs)){
+            involved <- intersect(pairs[, key$index], unrepresented)
+            if(length(involved) > 0L) note <- columns_note(involved)
+          }
+          if(!is.null(note)){
+            rows[i] <- TRUE
+            row_notes <- c(row_notes, note)
+          }
+        }
+        # Raw coordinates: those of an unrepresented column (its SD, its
+        # correlation matrix entries) and, because they require the complete
+        # correlation matrix, the Cholesky factor and its primitives. Slope-only
+        # entries and the semantic correlations of represented columns remain valid.
+        raw_notes <- character()
+        if(length(unrepresented) > 0L){
+          R_names <- outer(seq_len(term$n_columns), seq_len(term$n_columns), function(i, j){
+            paste0(term$parameter_stem, "_xRE_CORx_R[", i, ",", j, "]")
+          })
+          affected <- c(term$sd_parameter_names[unrepresented], R_names[unrepresented, ], R_names[, unrepresented],
+                        as.vector(.bt_random_effect_cholesky_names(term, term$n_columns)),
+                        term$correlation$primitive_names)
+          affected <- intersect(raw, affected)
+          raw_notes <- stats::setNames(rep(columns_note(unrepresented), length(affected)), affected)
+        }
+        raw <- names(raw_notes)
+        raw_notes <- unname(raw_notes)
       }
-      note <- paste0("NA: the original-scale value is unavailable because ", detail,
-                     ". Use 'transform_scaled = FALSE' for fitted-scale values.")
       unavailable <- c(unavailable, stats::setNames(
-        rep(note, sum(rows) + length(raw)), c(quantities$canonical_name[rows], raw)
+        c(row_notes, raw_notes), c(quantities$canonical_name[rows], raw)
       ))
       quantity_ids <- c(quantity_ids, quantities$quantity_id[rows])
     }
