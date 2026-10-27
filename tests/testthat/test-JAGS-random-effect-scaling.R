@@ -1955,7 +1955,7 @@ test_that("the weights of a shared random-effect SD leaf are compared relative t
   for(x_sd in c(2, 1e7, 1e8)){
     expect_error(
       transform_scale_samples(shared_leaf_samples(x_sd)),
-      paste0("Random-effect SD column '", shared, "' cannot be unscaled because its shared design columns transform to different SDs."),
+      paste0("Random-effect SD column '", shared, "' cannot be unscaled because its shared design columns cannot be certified to have a single SD on the original scale."),
       fixed = TRUE, info = paste("sd(x) =", x_sd)
     )
   }
@@ -4108,6 +4108,7 @@ test_that("a correlated block with a shared logical-column SD keeps its identifi
   # the accessors keep their contract: the block has no original-scale value for the shared SD
   refusal <- expect_error(transform_scale_samples(correlated$fit), class = "BayesTools_formula_transform_unavailable")
   expect_identical(refusal$reason, "original_scale_not_representable")
+  expect_match(conditionMessage(refusal), "its shared design columns cannot be certified to have a single SD", fixed = TRUE)
 })
 
 test_that("named fallback maps preserve pure random-slope prior rescalings", {

@@ -170,7 +170,7 @@
         .bt_formula_transform_stop(
           paste0(
             "Random-effect SD column '", sd_col,
-            "' cannot be unscaled because its shared design columns transform to different SDs."
+            "' cannot be unscaled because its shared design columns cannot be certified to have a single SD on the original scale."
           ),
           parameter = prefix,
           reason = "original_scale_not_representable",
