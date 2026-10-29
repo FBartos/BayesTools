@@ -24,11 +24,9 @@ cached_fits <- vignette_cache(
     "marglik_brms_intercept", "marglik_brms_slope", "marglik_sleep_intercept", "marglik_sleep_slope",
     "fit_sleep_slope_spike", "brms_independent", "fit_sleep_independent",
     "marglik_brms_independent", "marglik_sleep_independent", "fit_sleep_hcs",
-    "fit_sleep_hcs_test", "fit_ovary_car", "marglik_ovary_car", "marglik_ovary_null",
-    "fit_ovary_car_test", "fit_nested",
-    "stan_crossed", "fit_crossed_independent", "fit_crossed_allocation"
+    "fit_sleep_hcs_test", "fit_nested", "fit_crossed_independent", "fit_crossed_allocation"
   ),
-  packages = c("lme4", "nlme", "brms", "rstanarm", "runjags", "rjags")
+  packages = c("lme4", "brms", "runjags", "rjags")
 )
 
 options(width = 140)
@@ -61,11 +59,11 @@ pre code {
 BayesTools can generate JAGS [@JAGS] mixed models directly from formulas with random-effect terms.
 Its random-coefficient syntax follows the conventions used by lme4 [@lme4], and `prior_random()` allows users to specify the corresponding prior distributions, e.g., random-effect standard deviation priors, correlation priors, variance-allocation priors.
 
-This vignette illustrates how to use the functionality on example datasets distributed with lme4 and nlme.
+This vignette illustrates how to use the functionality on example datasets distributed with lme4.
 The first example uses the `sleepstudy` data and shows random intercepts, correlated and independent random slopes, and Bayes factor tests for the random slope and the correlation, comparing lme4, brms [@brms], and BayesTools.
 The second example continues with the `sleepstudy` data and shows a heterogeneous compound-symmetry covariance over the study days and a test of its correlation against a specific value.
 The third example uses the `Pastes` data and shows nested random intercepts.
-The fourth example uses the `Penicillin` data and shows crossed random effects, compared with rstanarm [@rstanarm].
+The fourth example uses the `Penicillin` data and shows crossed random effects with independent SD priors and a variance allocation prior.
 
 ## Formula Semantics
 
@@ -116,7 +114,6 @@ Random-effect SD priors have no default and must always be supplied, either once
 suppressPackageStartupMessages({
   library(BayesTools)
   library(lme4)
-  library(rstanarm)
 })
 ```
 
@@ -168,8 +165,7 @@ compare_sleep_estimates <- function(bayes_model, brms_model = NULL, lme4_model =
   comparison
 }
 
-compare_crossed_estimates <- function(lme4_model, stan_model,
-                                      bayes_independent, bayes_allocation) {
+compare_crossed_estimates <- function(lme4_model, bayes_independent, bayes_allocation) {
 
   lme4_vc <- lme4::VarCorr(lme4_model)
   lme4_fixed <- lme4::fixef(lme4_model)
@@ -178,14 +174,6 @@ compare_crossed_estimates <- function(lme4_model, stan_model,
     "sigma"                = stats::sigma(lme4_model),
     "plate: sd(intercept)"  = attr(lme4_vc[["plate"]], "stddev")[["(Intercept)"]],
     "sample: sd(intercept)" = attr(lme4_vc[["sample"]], "stddev")[["(Intercept)"]]
-  )
-
-  stan_samples <- as.matrix(stan_model)
-  stan_estimates <- c(
-    "intercept"            = mean(stan_samples[, "(Intercept)"]),
-    "sigma"                = mean(stan_samples[, "sigma"]),
-    "plate: sd(intercept)"  = mean(sqrt(stan_samples[, "Sigma[plate:(Intercept),(Intercept)]"])),
-    "sample: sd(intercept)" = mean(sqrt(stan_samples[, "Sigma[sample:(Intercept),(Intercept)]"]))
   )
 
   bayes_estimates <- function(model) {
@@ -202,7 +190,6 @@ compare_crossed_estimates <- function(lme4_model, stan_model,
 
   comparison <- data.frame(
     parameter = names(lme4_estimates), lme4 = as.numeric(lme4_estimates),
-    rstanarm = as.numeric(stan_estimates),
     BayesTools_independent = as.numeric(bayes_estimates(bayes_independent)),
     BayesTools_allocation = as.numeric(bayes_estimates(bayes_allocation))
   )
@@ -278,63 +265,6 @@ compare_structured_estimates <- function(lme4_model, bayes_model) {
                    lme4_sd, lme4_cor[2, 1]),
     BayesTools = c(mean(bayes_samples[, "(mu) intercept"]), mean(bayes_samples[, "(mu) Days"]),
                    mean(bayes_samples[, "sigma"]), bayes_sd, mean(bayes_samples[, "(mu) cor"])),
-    row.names  = NULL
-  )
-  comparison[, -1] <- round(comparison[, -1], 3)
-  comparison
-}
-
-# The SD of a subject's deviation on each day implied by the random intercept and
-# slope (on the standardized Days scale used for fitting) and estimated by HCS.
-compare_day_sds <- function(slope_model, hcs_model, days) {
-
-  slope_samples <- JAGS_estimates_table(
-    slope_model, transform_scaled = FALSE, random_effects_summary = "standard",
-    remove_diagnostics = TRUE, return_samples = TRUE
-  )
-  hcs_samples <- JAGS_estimates_table(
-    hcs_model, transform_scaled = FALSE, random_effects_summary = "standard",
-    remove_diagnostics = TRUE, return_samples = TRUE
-  )
-
-  day_levels <- sort(unique(days))
-  day_z      <- (day_levels - mean(days)) / stats::sd(days)
-  sd_0  <- slope_samples[, "(mu) sd(intercept)"]
-  sd_1  <- slope_samples[, "(mu) sd(Days)"]
-  cor_s <- slope_samples[, "(mu) cor(intercept,Days)"]
-  slope_sd <- vapply(day_z, function(x) {
-    mean(sqrt(sd_0^2 + 2 * cor_s * sd_0 * sd_1 * x + sd_1^2 * x^2))
-  }, numeric(1))
-
-  data.frame(
-    day       = day_levels,
-    slope     = round(slope_sd, 3),
-    HCS       = round(colMeans(hcs_samples[, paste0("(mu) sd(Days_f[", day_levels, "])")]), 3),
-    row.names = NULL
-  )
-}
-
-# gls() with an exponential correlation and a nugget parameterizes the same
-# covariance as car() plus a residual: total variance tau^2, nugget share n, and
-# correlation exp(-distance / range), so sd = tau sqrt(1 - n), sigma = tau sqrt(n),
-# and cor = exp(-1 / range).
-compare_car_estimates <- function(nlme_model, bayes_model) {
-
-  cor_struct <- coef(nlme_model$modelStruct$corStruct, unconstrained = FALSE)
-  tau        <- nlme_model$sigma
-  nlme_fixed <- coef(nlme_model)
-  bayes_samples <- JAGS_estimates_table(
-    bayes_model, random_effects_summary = "standard",
-    remove_diagnostics = TRUE, return_samples = TRUE
-  )
-
-  comparison <- data.frame(
-    parameter  = c("intercept", "sin_time", "cos_time", "sigma", "sd", "cor"),
-    nlme       = c(nlme_fixed[["(Intercept)"]], nlme_fixed[["sin_time"]], nlme_fixed[["cos_time"]],
-                   tau * sqrt(cor_struct[["nugget"]]), tau * sqrt(1 - cor_struct[["nugget"]]),
-                   exp(-1 / cor_struct[["range"]])),
-    BayesTools = colMeans(bayes_samples[, c("(mu) intercept", "(mu) sin_time", "(mu) cos_time",
-                                            "sigma", "(mu) sd", "(mu) cor")]),
     row.names  = NULL
   )
   comparison[, -1] <- round(comparison[, -1], 3)
@@ -918,7 +848,9 @@ compare_nested_estimates(lme4_model = lme4_nested, bayes_model = fit_nested)
 
 ## Crossed Random Effects
 
-The `Penicillin` data set has crossed random intercepts for `plate` and `sample`. We again standardize the response so the same unit-scale priors can be used. This example has no continuous predictor to standardize through the formula interface.
+The `Penicillin` data contain the diameter of the growth-inhibition zone of six penicillin samples, each tested once on each of 24 agar plates (144 measurements).
+Every sample appears on every plate, so the plate and sample effects are crossed: a measurement shares its plate with the other five samples and its sample with the other 23 plates.
+We again standardize the response so the unit-scale priors from the previous examples apply.
 
 ```{r}
 data("Penicillin", package = "lme4")
@@ -926,7 +858,7 @@ Penicillin$diameter_z <- as.numeric(scale(Penicillin$diameter))
 head(Penicillin)
 ```
 
-The lme4 and rstanarm comparison models are
+In lme4, crossed random effects are separate terms, `(1 | plate) + (1 | sample)`: one random intercept for each plate and one for each sample.
 
 ```{r}
 lme4_crossed <- lme4::lmer(
@@ -936,19 +868,8 @@ lme4_crossed <- lme4::lmer(
 lme4::VarCorr(lme4_crossed)
 ```
 
-```{r fit-stan-crossed, cache_fits = "stan_crossed"}
-stan_crossed <- rstanarm::stan_lmer(
-  diameter_z ~ 1 + (1 | plate) + (1 | sample),
-  data = Penicillin,
-  prior = rstanarm::normal(0, 1, autoscale = FALSE),
-  prior_intercept = rstanarm::normal(0, 1, autoscale = FALSE),
-  prior_aux = rstanarm::normal(0, 1, autoscale = FALSE),
-  prior_covariance = rstanarm::decov(regularization = 1, concentration = 1, shape = 1, scale = 1),
-  chains = 2, iter = 1000, warmup = 500, seed = 21, refresh = 0, adapt_delta = 0.95
-)
-```
-
-The BayesTools formula uses explicit block names because there are two random-effect blocks.
+BayesTools uses the same formula; the two random-effect blocks take the names of their grouping variables, `plate` and `sample`, which the priors below refer to.
+The likelihood, the data, and the intercept prior follow the previous examples, with `diameter_z` as the response.
 
 ```{r}
 crossed_likelihood <-
@@ -959,19 +880,14 @@ crossed_likelihood <-
 }
 "
 
-crossed_formula <- list(
-  mu = ~ 1 +
-    diag(1 | plate,  name = "plate") +
-    diag(1 | sample, name = "sample")
-)
-
-crossed_data <- list(diameter_z = Penicillin$diameter_z, N = nrow(Penicillin))
+crossed_formula <- list(mu = ~ 1 + (1 | plate) + (1 | sample))
+crossed_data    <- list(diameter_z = Penicillin$diameter_z, N = nrow(Penicillin))
 crossed_fixed_priors <- list(intercept = unit_prior)
 ```
 
 ### Independent SD Priors
 
-The most direct specification assigns independent half-normal SD priors to the two crossed random-effect blocks.
+The most direct specification gives each block its own half-normal SD prior through `random_block()`, addressed by the block names from the formula.
 
 ```{r}
 crossed_independent_priors <- list(
@@ -998,17 +914,18 @@ JAGS_estimates_table(fit_crossed_independent, random_effects_summary = "standard
 
 ### Variance Allocation Prior
 
-Alternatively, a variance-allocation prior puts one prior on the total random-effect SD and a Dirichlet prior on the fraction of variance assigned to `plate` and `sample`.
+Alternatively, as in the nested example, `random_variance_allocation()` places one prior on the total SD of the two blocks, `total_re: sd_total`, and a uniform Dirichlet prior on the proportions of its variance assigned to `plate` and `sample`.
 
 ```{r}
 crossed_allocation_priors <- list(
   mu = prior_random(
-    monitor = random_monitor(latent = FALSE),
     allocation = random_variance_allocation(
-      name = "total_re", display_name = "total_re",
-      terms = c(plate = "plate", sample = "sample"),
-      sd = unit_sd_prior, weights = prior("dirichlet", parameters = list(alpha = c(1, 1)))
-    )
+      name    = "total_re",
+      terms   = c(plate = "plate", sample = "sample"),
+      sd      = unit_sd_prior,
+      weights = prior("dirichlet", parameters = list(alpha = c(1, 1)))
+    ),
+    monitor = random_monitor(latent = FALSE)
   )
 )
 ```
@@ -1027,12 +944,14 @@ fit_crossed_allocation <- JAGS_fit(
 JAGS_estimates_table(fit_crossed_allocation, random_effects_summary = "standard", remove_diagnostics = TRUE)
 ```
 
-The two crossed-effect fits use the same likelihood and random-effect formula. The difference is only the prior structure: independent SD priors treat the two heterogeneity components separately, while the allocation prior controls the total random-effect scale and estimates how that variance is split. The comparison table mirrors the first example and includes both BayesTools prior specifications.
+The two BayesTools fits differ only in the prior on the random-effect SDs: the independent priors treat the two blocks separately, while the allocation prior sets the scale of their total and estimates how it splits.
+The table below compares both with lme4.
 
 ```{r}
 compare_crossed_estimates(
-  lme4_model = lme4_crossed, stan_model = stan_crossed,
-  bayes_independent = fit_crossed_independent, bayes_allocation = fit_crossed_allocation)
+  lme4_model = lme4_crossed,
+  bayes_independent = fit_crossed_independent, 
+  bayes_allocation = fit_crossed_allocation)
 ```
 
 
