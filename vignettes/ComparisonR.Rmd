@@ -1,5 +1,5 @@
 ---
-title: "Comparison to other R packages"
+title: "Bayesian t-Test Compared with BayesFactor"
 author: "František Bartoš"
 date: "2nd of April 2022"
 output:
@@ -8,7 +8,7 @@ output:
 bibliography: ../inst/REFERENCES.bib
 csl: ../inst/apa.csl
 vignette: >
-  %\VignetteIndexEntry{Comparison to other R packages}
+  %\VignetteIndexEntry{Bayesian t-Test Compared with BayesFactor}
   %\VignetteEngine{knitr::rmarkdown_notangle}
   %\VignetteEncoding{UTF-8}
 ---

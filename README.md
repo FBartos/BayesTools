@@ -31,8 +31,8 @@ The package functionality is illustrated via the following vignettes:
 
 | Vignette | Topic |
 |:---|:---|
-| [*Comparison to other R packages*](https://fbartos.github.io/BayesTools/articles/ComparisonR.html) | Bayesian two-sample t-test with `JAGS_fit()` and bridge sampling, compared with the `BayesFactor` package |
-| [*Bayes factors via spike and slab prior vs. bridge sampling*](https://fbartos.github.io/BayesTools/articles/SpikeAndSlab.html) | Inclusion Bayes factors from a spike and slab prior compared with bridge-sampling marginal likelihoods |
+| [*Bayesian t-Test Compared with BayesFactor*](https://fbartos.github.io/BayesTools/articles/ComparisonR.html) | Bayesian two-sample t-test with `JAGS_fit()` and bridge sampling, compared with the `BayesFactor` package |
+| [*Variable Selection with Spike-and-Slab Priors*](https://fbartos.github.io/BayesTools/articles/SpikeAndSlab.html) | Inclusion Bayes factors from a spike and slab prior compared with bridge-sampling marginal likelihoods |
 | [*Random Effects with Formula Syntax*](https://fbartos.github.io/BayesTools/articles/RandomEffects.html) | lme4-like random-effects formulas (intercepts, slopes, correlations, nested and crossed effects) compared with `brms` |
 
 ## Installation

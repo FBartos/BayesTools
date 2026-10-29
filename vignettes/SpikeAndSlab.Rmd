@@ -1,5 +1,5 @@
 ---
-title: "Bayes factors via spike and slab prior vs. bridge sampling"
+title: "Variable Selection with Spike-and-Slab Priors"
 author: "František Bartoš"
 date: "16th of June 2022"
 output:
@@ -8,7 +8,7 @@ output:
 bibliography: ../inst/REFERENCES.bib
 csl: ../inst/apa.csl
 vignette: >
-  %\VignetteIndexEntry{Bayes factors via spike and slab prior vs. bridge sampling}
+  %\VignetteIndexEntry{Variable Selection with Spike-and-Slab Priors}
   %\VignetteEngine{knitr::rmarkdown_notangle}
   %\VignetteEncoding{UTF-8}
 ---
