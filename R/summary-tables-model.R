@@ -539,7 +539,7 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
 
       # process spike and slab using helper function; its only new column is
       # the renamed inclusion indicator
-      term_parts    <- .bt_label_parts_term(par, prior_list[[par]])
+      term_parts    <- .bt_label_parts_inclusion_term(par, prior_list[[par]])
       processed     <- .process_spike_and_slab(model_samples, prior_list, par, conditional, remove_inclusion, warnings)
       new_columns   <- setdiff(
         colnames(processed$model_samples),
@@ -556,6 +556,7 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
     }else if(is.prior.mixture(prior_list[[par]])){
 
       term_parts <- .bt_label_parts_term(par, prior_list[[par]])
+      inclusion_parts <- .bt_label_parts_inclusion_term(par, prior_list[[par]])
       mixture_coordinate_parts <- .bt_label_parts_prior(par, prior_list[[par]])$parts
 
       # check for publication bias component
@@ -797,7 +798,7 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
           colnames(model_samples)[colnames(model_samples) == paste0(par, "_indicator")] <- paste0(par, " (inclusion)")
           inclusion_columns <- c(inclusion_columns, paste0(par, " (inclusion)"))
           created_parts[[paste0(par, " (inclusion)")]] <- .bt_label_parts_update(
-            term_parts,
+            inclusion_parts,
             inclusion = ""
           )[[1L]]
         }else{
@@ -813,7 +814,7 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
           inclusion_columns <- c(inclusion_columns, colnames(temp_new_samples))
           for(component in unique(components)){
             created_parts[[paste0(par, " (inclusion: ", component, ")")]] <- .bt_label_parts_update(
-              term_parts,
+              inclusion_parts,
               inclusion = component
             )[[1L]]
           }
@@ -1378,7 +1379,7 @@ runjags_inference_table  <- function(fit, title = NULL, footnotes = NULL, warnin
 
   for(par in names(prior_list)){
     # the row label of the parameter, rendered from the prior
-    term_parts <- .bt_label_parts_term(par, prior_list[[par]])
+    term_parts <- .bt_label_parts_inclusion_term(par, prior_list[[par]])
     term_label <- .bt_label(term_parts, style = "table", formula_prefix = formula_prefix)
 
     # spike-and-slab priors and spike-and-slab totals of ordered priors: the
@@ -1674,21 +1675,22 @@ runjags_inference_table  <- function(fit, title = NULL, footnotes = NULL, warnin
     ])
 
     # an SD, its variance and its multiplier are conditioned on the inclusion
-    # event of the SD's own prior, as the raw summary conditions that prior
-    sd_event <- list(included = NULL, unconditioned = FALSE)
-    if(summary_type %in% c("sd", "var", "sd_mult")){
+    # event of the SD's own prior, and a scalar correlation on that of its
+    # correlation prior, as the raw summary conditions that prior
+    prior_event <- list(included = NULL, unconditioned = FALSE)
+    if(summary_type %in% c("sd", "var", "sd_mult", "cor")){
       if(is.null(quantities)){
         quantities <- parameter_catalog(fit)$quantities
       }
-      sd_event <- .bt_random_effect_summary_sd_event(
+      prior_event <- .bt_random_effect_summary_prior_event(
         parameter_name    = parameter_name,
         quantities        = quantities,
         fit_priors        = attr(fit, "prior_list", exact = TRUE),
         raw_model_samples = raw_model_samples
       )
     }
-    if(length(gate_names) == 0L && is.null(sd_event$included)){
-      if(sd_event$unconditioned){
+    if(length(gate_names) == 0L && is.null(prior_event$included)){
+      if(prior_event$unconditioned){
         unconditioned[[parameter_name]] <- FALSE
       }
       next
@@ -1709,8 +1711,8 @@ runjags_inference_table  <- function(fit, title = NULL, footnotes = NULL, warnin
         raw_model_samples[, gate_names, drop = FALSE] != 1
       ) == 0L
     }
-    if(!is.null(sd_event$included)){
-      included <- included & sd_event$included
+    if(!is.null(prior_event$included)){
+      included <- included & prior_event$included
     }
     model_samples[!included, parameter_name] <- NA_real_
     included_draws[[parameter_name]] <- included
@@ -1718,7 +1720,7 @@ runjags_inference_table  <- function(fit, title = NULL, footnotes = NULL, warnin
       warnings,
       .runjags_conditional_warning(parameter_name, sum(included))
     )
-    if(sd_event$unconditioned){
+    if(prior_event$unconditioned){
       unconditioned[[parameter_name]] <- TRUE
     }
   }
@@ -1731,15 +1733,16 @@ runjags_inference_table  <- function(fit, title = NULL, footnotes = NULL, warnin
   )
 }
 
-# The inclusion event of the SD prior behind a semantic random-effect row: the
-# indicator of a spike-and-slab SD, the alternative component of a
-# null/alternative mixture SD (the events the "raw" summary conditions these
-# priors on). A mixture with other components has no single event (the "raw"
-# summary reports its components as rows of their own): the row is then flagged
-# as not conditionable. Rows of an allocation, rows whose SD has no such prior,
-# and rows of other quantities have no event.
-.bt_random_effect_summary_sd_event <- function(parameter_name, quantities,
-                                               fit_priors, raw_model_samples){
+# The inclusion event of the SD or scalar-correlation prior behind a semantic
+# random-effect row: the indicator of a spike-and-slab prior, the alternative
+# component of a null/alternative mixture prior (the events the "raw" summary
+# conditions these priors on). A mixture with other components has no single
+# event (the "raw" summary reports its components as rows of their own): the
+# row is then flagged as not conditionable. Rows of an allocation, rows whose
+# source has no such prior (an LKJ correlation has none), and rows of other
+# quantities have no event.
+.bt_random_effect_summary_prior_event <- function(parameter_name, quantities,
+                                                  fit_priors, raw_model_samples){
 
   none <- list(included = NULL, unconditioned = FALSE)
   row <- match(parameter_name, quantities$canonical_name)
@@ -1783,8 +1786,8 @@ runjags_inference_table  <- function(fit, title = NULL, footnotes = NULL, warnin
   )
 }
 
-# Remarks of the semantic random-effect rows whose SD prior has an inclusion
-# event that conditioning could not use (see .bt_random_effect_summary_sd_event()).
+# Remarks of the semantic random-effect rows whose prior has an inclusion
+# event that conditioning could not use (see .bt_random_effect_summary_prior_event()).
 # `unconditioned` is named by the rows' parameter names: TRUE where gating
 # indicators conditioned the row nevertheless.
 .bt_random_effect_summary_unconditioned_footnotes <- function(unconditioned,
@@ -1808,7 +1811,7 @@ runjags_inference_table  <- function(fit, title = NULL, footnotes = NULL, warnin
         ": summarized over the draws its gating indicators retain",
         ": summarized over all draws"
       ),
-      "; its SD prior's inclusion event could not be conditioned on."
+      "; its prior's inclusion event could not be conditioned on."
     ),
     labels
   )

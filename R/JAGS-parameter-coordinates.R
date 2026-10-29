@@ -364,6 +364,9 @@
     }
   }
 
+  # The spike-and-slab and mixture nodes of an SD prior or of the scalar
+  # correlation prior of a structured block; the slab variable of the
+  # correlation is a correlation coordinate on the prior's sampling scale.
   auxiliary_roles <- c(
     "_indicator" = "random_inclusion_indicator",
     "_inclusion" = "random_inclusion_probability",
@@ -380,6 +383,16 @@
         return(list(
           random_term = random_term,
           role = unname(auxiliary_roles[[suffix]])
+        ))
+      }
+      if(identical(owner_name, .bt_random_effect_summary_rho_prior_name(random_term))){
+        return(list(
+          random_term = random_term,
+          role = if(identical(suffix, "_variable")){
+            "random_correlation"
+          }else{
+            unname(auxiliary_roles[[suffix]])
+          }
         ))
       }
     }

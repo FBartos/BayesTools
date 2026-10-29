@@ -621,6 +621,14 @@
   names
 }
 
+# The quantity names of the scalar-correlation coordinates of a structured
+# block on their sampling scales, keyed by the coordinate suffix.
+.bt_random_effect_rho_quantities <- c(
+  rho = "cor",
+  rho_z = "cor (Fisher z)",
+  rho_logit = "cor (logit)"
+)
+
 .bt_random_effect_summary_raw_rho_display_names <- function(names, raw_names,
                                                             random_term,
                                                             prefix){
@@ -636,7 +644,7 @@
     rho_z = paste0(stem, "_rho_z"),
     rho_logit = paste0(stem, "_rho_logit")
   )
-  rho_quantities <- c(rho = "cor", rho_z = "cor (Fisher z)", rho_logit = "cor (logit)")
+  rho_quantities <- .bt_random_effect_rho_quantities
   for(rho_label in names(rho_names)){
     names[raw_names == rho_names[[rho_label]]] <- .bt_random_effect_semantic_name(
       parameter = "",

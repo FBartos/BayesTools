@@ -4158,15 +4158,10 @@ parameter_transform_jacobian <- function(values, transform){
             type = "inclusion",
             parts = parts
           )
-          effect <- .bt_random_effect_summary_inclusion_effect_label(
+          effect_parameter <- .bt_random_effect_summary_inclusion_argument(
             random_term,
             prior_name
           )
-          effect_parameter <- if(identical(effect, owner)){
-            "sd"
-          }else{
-            paste0("sd(", effect, ")")
-          }
           argument <- if(is.prior.spike_and_slab(prior)){
             effect_parameter
           }else{

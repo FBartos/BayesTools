@@ -565,7 +565,8 @@ JAGS_formula_predictor_basis <- function(fit, directions,
 
 # The fitted coordinates a random block samples itself: its SDs, latent
 # deviations, group coefficients, means, correlations, the variance
-# allocations of its SDs, and the inclusion gates of its SDs. They enter the
+# allocations of its SDs, and the inclusion gates of its SDs and of its scalar
+# correlation. They enter the
 # conditional predictor of the block's formula parameter.
 .bt_formula_predictor_random_roles <- c(
   "random_sd",

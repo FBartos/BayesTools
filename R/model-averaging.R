@@ -367,7 +367,7 @@ ensemble_inference <- function(model_list, parameters, is_null_list,
 
     if(!is.null(unlist(formula_parameter))){
       parameter_name <- .bt_label(
-        .bt_label_parts_term(parameters[p], parameter_priors[[1L]]),
+        .bt_label_parts_inclusion_term(parameters[p], parameter_priors[[1L]]),
         style = "table"
       )
       class(out[[parameters[p]]]) <- c(class(out[[parameters[p]]]), "inference.formula")

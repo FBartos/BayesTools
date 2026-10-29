@@ -819,13 +819,19 @@ parameter_labels <- function(x, style = c("selector", "table", "plot", "warning"
 
 # Label parts of a random-effect SD prior-list entry as a whole term: the SD
 # of the random term it scales, owned by its random-effect block
-# (`(mu) id: sd(x)`). The entry is named after its formula parameter and block,
-# `<parameter>__xREx__<block>_<term>`, from the prior's own declared
-# attributes. NULL for any other prior.
+# (`(mu) id: sd(x)`). The scalar correlation prior of a structured block is the
+# block's correlation on its sampling scale (`(mu) id: cor`,
+# `(mu) id: cor (Fisher z)`, `(mu) id: cor (logit)`), as its prior is
+# specified. The entry is named after its formula parameter and block,
+# `<parameter>__xREx__<block>_<term>` (`_rho`, `_rho_z`, or `_rho_logit` for
+# the correlation), from the prior's own declared attributes. NULL for any
+# other prior.
 .bt_label_parts_random_term <- function(parameter, prior, formula_parameter){
 
   block <- attr(prior, "random_factor", exact = TRUE)
-  if(!isTRUE(attr(prior, "random_sd", exact = TRUE)) ||
+  random_sd <- isTRUE(attr(prior, "random_sd", exact = TRUE))
+  random_correlation <- isTRUE(attr(prior, "random_correlation", exact = TRUE))
+  if(!(random_sd || random_correlation) ||
      !nzchar(formula_parameter) || !is.character(block) ||
      length(block) != 1L || is.na(block) || !nzchar(block)){
     return(NULL)
@@ -837,6 +843,23 @@ parameter_labels <- function(x, style = c("selector", "table", "plot", "warning"
   owner <- attr(prior, "random_name", exact = TRUE)
   if(!is.character(owner) || length(owner) != 1L || is.na(owner) || !nzchar(owner)){
     owner <- block
+  }
+  if(random_correlation){
+    rho_scale <- substring(parameter, nchar(stem) + 1L)
+    if(!rho_scale %in% names(.bt_random_effect_rho_quantities)){
+      return(NULL)
+    }
+    return(.bt_label_parts(
+      components        = block,
+      formula_parameter = formula_parameter,
+      random            = list(
+        owner             = owner,
+        quantity          = .bt_random_effect_rho_quantities[[rho_scale]],
+        arguments         = character(),
+        display_arguments = character()
+      ),
+      selector          = parameter
+    ))
   }
   components <- strsplit(substring(parameter, nchar(stem) + 1L), "__xXx__", fixed = TRUE)[[1L]]
   term <- paste(components, collapse = ":")
@@ -861,6 +884,9 @@ parameter_labels <- function(x, style = c("selector", "table", "plot", "warning"
 # selectors. NULL for any other prior.
 .bt_label_parts_random_sd_coordinates <- function(parameter, prior){
 
+  if(!isTRUE(attr(prior, "random_sd", exact = TRUE))){
+    return(NULL)
+  }
   formula_parameter <- .bt_label_formula_parameter(prior)
   term_parts <- .bt_label_parts_random_term(parameter, prior, formula_parameter)
   if(is.null(term_parts)){
@@ -1012,6 +1038,22 @@ parameter_labels <- function(x, style = c("selector", "table", "plot", "warning"
       attr(prior, "interaction_terms", exact = TRUE)
     }
   )
+}
+
+# Label parts of the term whose inclusion a spike-and-slab or mixture prior-list
+# entry tests (inference rows and inclusion columns): the entry's term, except
+# that the scalar correlation of a structured block is `cor` on every sampling
+# scale, where its spike and slab are the same events.
+.bt_label_parts_inclusion_term <- function(parameter, prior){
+
+  parts <- .bt_label_parts_term(parameter, prior)
+  if(!isTRUE(attr(prior, "random_correlation", exact = TRUE)) ||
+     is.null(parts$random)){
+    return(parts)
+  }
+  random <- parts$random
+  random$quantity <- "cor"
+  .bt_label_parts_update(parts, random = random)[[1L]]
 }
 
 # Column names of the fitted coordinates of a prior-list entry: their

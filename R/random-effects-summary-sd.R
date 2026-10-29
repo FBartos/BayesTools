@@ -327,6 +327,10 @@
     }
     indicator <- as.numeric(model_samples[, indicator_name])
     prior_components <- attr(prior, "components")
+    effect <- .bt_random_effect_summary_inclusion_argument(
+      random_term,
+      prior_name
+    )
     if(is.prior.spike_and_slab(prior)){
       alternative_index <- which(prior_components == "alternative")
       if(length(alternative_index) != 1L){
@@ -337,15 +341,6 @@
         type = "inclusion",
         parts = c(random_term$block_name, .bt_random_effect_summary_safe_label(prior_name))
       ))
-      display_effect <- .bt_random_effect_summary_inclusion_effect_label(
-        random_term,
-        prior_name
-      )
-      effect <- if(identical(display_effect, owner)){
-        "sd"
-      }else{
-        paste0("sd(", display_effect, ")")
-      }
       labels <- c(labels, .bt_random_effect_semantic_name(
         parameter = "",
         owner = owner,
@@ -373,15 +368,6 @@
             component
           )
         ))
-        display_effect <- .bt_random_effect_summary_inclusion_effect_label(
-          random_term,
-          prior_name
-        )
-        effect <- if(identical(display_effect, owner)){
-          "sd"
-        }else{
-          paste0("sd(", display_effect, ")")
-        }
         argument <- paste0(effect, "[", component, "]")
         labels <- c(labels, .bt_random_effect_semantic_name(
           parameter = "",
@@ -461,16 +447,59 @@
   .bt_random_effect_public_name(random_term)
 }
 
+# The argument of the inclusion quantity of a spike-and-slab or mixture prior
+# of the block: the scalar correlation (`cor`) for the correlation prior of a
+# structured block, whatever its sampling scale, otherwise the SD it scales
+# (`sd` for the SD shared by all the columns, `sd(x)` for the SD of a term).
+.bt_random_effect_summary_inclusion_argument <- function(random_term,
+                                                         prior_name){
+
+  if(identical(prior_name, .bt_random_effect_summary_rho_prior_name(random_term))){
+    return("cor")
+  }
+  effect <- .bt_random_effect_summary_inclusion_effect_label(
+    random_term,
+    prior_name
+  )
+  if(identical(effect, .bt_random_effect_public_name(random_term))){
+    return("sd")
+  }
+  paste0("sd(", effect, ")")
+}
+
+# The prior-list name of the scalar correlation of a structured block (the
+# prior of its sampled coordinate, `rho`, `rho_z`, or `rho_logit`); NULL for
+# blocks without a scalar correlation.
+.bt_random_effect_summary_rho_prior_name <- function(random_term){
+
+  correlation <- random_term$correlation
+  if(!is.list(correlation) || !identical(correlation$type, "rho")){
+    return(NULL)
+  }
+  prior_name <- correlation$prior_name
+  if(!is.character(prior_name) || length(prior_name) != 1L ||
+     is.na(prior_name) || !nzchar(prior_name)){
+    return(NULL)
+  }
+
+  prior_name
+}
+
+# The spike-and-slab and mixture priors of a block with an inclusion quantity:
+# its SD priors, then its scalar correlation prior.
 .bt_random_effect_summary_inclusion_prior_names <- function(random_term,
                                                             prior_list){
 
-  sd_names <- unique(random_term$sd_parameter_names)
-  sd_names <- sd_names[!is.na(sd_names)]
-  if(length(sd_names) == 0L || length(prior_list) == 0L){
+  if(length(prior_list) == 0L){
     return(character())
   }
+  sd_names <- unique(random_term$sd_parameter_names)
+  sd_names <- sd_names[!is.na(sd_names)]
 
-  prior_names <- unique(sub("[[][^][]+[]]$", "", sd_names))
+  prior_names <- unique(c(
+    sub("[[][^][]+[]]$", "", sd_names),
+    .bt_random_effect_summary_rho_prior_name(random_term)
+  ))
   prior_names <- prior_names[prior_names %in% names(prior_list)]
   prior_names[vapply(prior_names, function(prior_name){
     prior <- prior_list[[prior_name]]
