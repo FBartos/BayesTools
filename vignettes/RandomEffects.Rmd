@@ -24,7 +24,7 @@ cached_fits <- vignette_cache(
     "marglik_brms_intercept", "marglik_brms_slope", "marglik_sleep_intercept", "marglik_sleep_slope",
     "fit_sleep_slope_spike", "brms_independent", "fit_sleep_independent",
     "marglik_brms_independent", "marglik_sleep_independent", "fit_sleep_hcs",
-    "fit_sleep_ar1", "fit_sleep_har", "fit_sleep_car", "fit_nested",
+    "fit_sleep_har", "fit_sleep_hcs_test", "fit_nested",
     "stan_crossed", "fit_crossed_independent", "fit_crossed_allocation"
   ),
   packages = c("lme4", "brms", "rstanarm", "runjags", "rjags")
@@ -62,7 +62,7 @@ Its random-coefficient syntax follows the conventions used by lme4 [@lme4], and 
 
 This vignette illustrates how to use the functionality on example datasets distributed with lme4.
 The first example uses the `sleepstudy` data and shows random intercepts, correlated and independent random slopes, and Bayes factor tests for the random slope and the correlation, comparing lme4, brms [@brms], and BayesTools.
-The second example uses the `sleepstudy` data and shows heterogeneous compound-symmetry, AR(1), heterogeneous AR(1), and continuous-time AR(1) random-effect covariance structures over the study days.
+The second example continues with the `sleepstudy` data and shows heterogeneous compound-symmetry and heterogeneous AR(1) random-effect covariance structures over the study days, and a test of the correlation against a specific value.
 The third example uses the `Pastes` data and shows nested random intercepts.
 The fourth example uses the `Penicillin` data and shows crossed random effects, compared with rstanarm [@rstanarm].
 
@@ -266,14 +266,8 @@ compare_structured_estimates <- function(lme4_model, bayes_model) {
     remove_diagnostics = TRUE, return_samples = TRUE
   )
 
-  # AR(1) and CAR estimate one shared SD; HCS and HAR one SD per day.
-  if ("(mu) sd" %in% colnames(bayes_samples)) {
-    sd_names <- "sd"
-    lme4_sd  <- sqrt(lme4_vc[1, 1])
-  } else {
-    sd_names <- paste0("sd(Days_f[", sub("^Days_f", "", rownames(lme4_vc)), "])")
-    lme4_sd  <- sqrt(diag(lme4_vc))
-  }
+  sd_names <- paste0("sd(Days_f[", sub("^Days_f", "", rownames(lme4_vc)), "])")
+  lme4_sd  <- sqrt(diag(lme4_vc))
   bayes_sd <- colMeans(bayes_samples[, paste0("(mu) ", sd_names), drop = FALSE])
 
   lme4_fixed <- lme4::fixef(lme4_model)
@@ -639,7 +633,7 @@ compare_sleep_estimates(bayes_model = fit_sleep_independent, brms_model = brms_i
 
 The Bayes factor comparing the correlated and the independent random-slope models tests the correlation.
 Because `Days` is standardized, the correlation refers to the random intercept at the mean day.
-BayesTools does not provide a spike-and-slab prior for LKJ correlations, so we use bridge sampling only.
+BayesTools does not provide a spike-and-slab prior for LKJ correlations, so we use bridge sampling only (later example shows how to test scalar correlations).
 
 ```{r bridge-correlation, cache_fits = c("marglik_brms_independent", "marglik_sleep_independent")}
 marglik_brms_independent  <- brms::bridge_sampler(brms_independent, silent = TRUE)
@@ -661,171 +655,158 @@ data.frame(
 
 ## Structured Random-Effect Correlations
 
-The structured covariances use the levels of a discrete index instead of coefficient columns.
-We return to `sleepstudy` and use the day of measurement as the index: in addition to the fixed `Days` slope, each subject receives one random effect per day, and the covariance structure determines how these day-specific effects are correlated.
+The structured random effects covariances use the levels of a discrete index instead of coefficient columns.
+We continue with `sleepstudy` and use the day of measurement as the index: in addition to the fixed `Days` slope, each subject receives one random effect per day, and the covariance structure determines how these day-specific effects are correlated.
+We show two structures that estimate a separate SD for each day: heterogeneous compound symmetry (HCS), with one correlation shared by all pairs of days, and heterogeneous AR(1) (HAR), whose correlation decays with the distance between days.
+We then test whether the HCS correlation equals a specific value.
 
 ```{r}
 sleepstudy$Days_f <- factor(sleepstudy$Days)
-
-cor_prior <- prior(distribution = "normal", parameters = list(mean = 0, sd = 0.5))
-day_random_priors <- list(
-  mu = prior_random(
-    Subject = random_block(
-      sd = unit_sd_prior, cor = cor_prior,
-      monitor = random_monitor(latent = FALSE, coefficients = FALSE, correlation = TRUE))
-  )
-)
 ```
 
-lme4 2.0-1 and later fits the same structures with `cs()` and `ar1()`.
-Note that lme4's `cs()` estimates a separate SD for each column by default and therefore corresponds to BayesTools' `hcs()`, while lme4's `ar1()` and `ar1(hom = FALSE)` correspond to BayesTools' `ar1()` and `har()`.
-lme4 uses the `0 + Days_f` model-matrix notation to obtain one column per day.
+### Heterogeneous Compound Symmetry
+
+In lme4, the `cs()` term allows us to specify a compound-symmetry covariance.
+It estimates a separate SD for each column by default when using the  `0 + Days_f` model-matrix notation
 
 ```{r}
 lme4_hcs <- lme4::lmer(
   Reaction_z ~ Days_s + cs(0 + Days_f | Subject),
   data = sleepstudy, REML = FALSE
 )
-lme4_ar1 <- lme4::lmer(
-  Reaction_z ~ Days_s + ar1(0 + Days_f | Subject),
-  data = sleepstudy, REML = FALSE
-)
-lme4_har <- lme4::lmer(
-  Reaction_z ~ Days_s + ar1(0 + Days_f | Subject, hom = FALSE),
-  data = sleepstudy, REML = FALSE
-)
+lme4_hcs
 ```
 
-### Heterogeneous Compound Symmetry
+BayesTools uses an explicit `hcs()` term in the `mu` formula.
+The left side automatically expands the factor into one column per level (the `0 +` notation does not apply here).
+The likelihood, the data, and the prior distributions for `sigma` and the fixed effects remain unchanged from the previous example.
 
-The HCS structure estimates a separate random-effect SD for each day and one common correlation across all pairs of days.
-For structured factor effects, BayesTools expands the factor into one column per level, so the formula does not use the `0 +` model-matrix notation.
-For CS/HCS blocks, multiple index variables such as `a + b` are combined as `interaction(a, b, drop = TRUE)`.
+```{r}
+sleep_hcs_formula_list <- list(mu = ~ Days + hcs(Days_f | Subject))
+```
+
+The `random_block()` function sets the SD prior which applies to every day-specific SD independently.
+Without a `cor` argument, the correlation receives the default uniform prior over its admissible interval: (-1/9, 1) for an HCS correlation with 10 days and (-1, 1) for an AR(1) correlation specified later.
+`random_monitor()` allows us to stores only the correlation posterior samples.
+
+```{r}
+day_random_priors <- list(mu = prior_random(Subject = random_block(
+  sd      = unit_sd_prior,
+  monitor = random_monitor(latent = FALSE, coefficients = FALSE, correlation = TRUE)
+)))
+```
 
 ```{r fit-sleep-hcs, cache_fits = "fit_sleep_hcs"}
 fit_sleep_hcs <- JAGS_fit(
-  model_syntax = sleep_likelihood, data = sleep_data, prior_list = list(sigma = unit_sd_prior),
-  formula_list = list(mu = ~ Days + hcs(Days_f | Subject, name = "Subject")),
-  formula_data_list = list(mu = sleepstudy),
-  formula_prior_list = sleep_fixed_priors,
+  model_syntax = sleep_likelihood, data = sleep_data, prior_list = sleep_prior_list,
+  formula_list = sleep_hcs_formula_list, formula_data_list = list(mu = sleepstudy),
+  formula_prior_list = sleep_fixed_priors, formula_random_prior_list = day_random_priors,
   formula_scale_list = list(mu = list(Days = TRUE)),
-  formula_random_prior_list = day_random_priors,
-  chains = 2, adapt = 1000, burnin = 2000, sample = 5000, thin = 20, seed = 31
+  chains = 2, adapt = 1000, burnin = 2000, sample = 5000, thin = 1, seed = 31
 )
 ```
-
 ```{r}
-JAGS_estimates_table(fit_sleep_hcs, transform_scaled = FALSE, random_effects_summary = "standard", remove_diagnostics = TRUE)
+JAGS_estimates_table(fit_sleep_hcs)
 ```
 
-The table compares the estimates with the lme4 `cs()` fit.
+Table below compares the estimates with the lme4 `cs()` fit.
 
 ```{r}
 compare_structured_estimates(lme4_model = lme4_hcs, bayes_model = fit_sleep_hcs)
 ```
 
-### Autoregressive Correlation
-
-The AR(1) structure estimates one shared random-effect SD and one adjacent-day correlation; correlations at longer lags are powers of this correlation.
-
-```{r fit-sleep-ar1, cache_fits = "fit_sleep_ar1"}
-fit_sleep_ar1 <- JAGS_fit(
-  model_syntax = sleep_likelihood, data = sleep_data, prior_list = list(sigma = unit_sd_prior),
-  formula_list = list(mu = ~ Days + ar1(Days_f | Subject, name = "Subject")),
-  formula_data_list = list(mu = sleepstudy),
-  formula_prior_list = sleep_fixed_priors,
-  formula_scale_list = list(mu = list(Days = TRUE)),
-  formula_random_prior_list = day_random_priors,
-  chains = 2, adapt = 1000, burnin = 2000, sample = 5000, thin = 20, seed = 32
-)
-```
-
-```{r}
-JAGS_estimates_table(fit_sleep_ar1, transform_scaled = FALSE, random_effects_summary = "standard", remove_diagnostics = TRUE)
-```
-
-The table compares the estimates with the lme4 `ar1()` fit.
-
-```{r}
-compare_structured_estimates(lme4_model = lme4_ar1, bayes_model = fit_sleep_ar1)
-```
-
 ### Heterogeneous Autoregressive Correlation
 
-The `har()` structure combines the previous two ideas: it estimates a separate SD for each day and one AR(1) adjacent-day correlation.
+In lme4, `ar1(hom = FALSE)` specifies an AR(1) correlation, `cor^abs(i - j)` between days `i` and `j`, with a separate SD for each day.
+
+```{r}
+lme4_har <- lme4::lmer(
+  Reaction_z ~ Days_s + ar1(0 + Days_f | Subject, hom = FALSE),
+  data = sleepstudy, REML = FALSE
+)
+lme4_har
+```
+
+BayesTools uses the `har()` term with the same prior distributions as the HCS model.
+
+```{r}
+sleep_har_formula_list <- list(mu = ~ Days + har(Days_f | Subject))
+```
 
 ```{r fit-sleep-har, cache_fits = "fit_sleep_har"}
 fit_sleep_har <- JAGS_fit(
-  model_syntax = sleep_likelihood, data = sleep_data, prior_list = list(sigma = unit_sd_prior),
-  formula_list = list(mu = ~ Days + har(Days_f | Subject, name = "Subject")),
-  formula_data_list = list(mu = sleepstudy),
-  formula_prior_list = sleep_fixed_priors,
+  model_syntax = sleep_likelihood, data = sleep_data, prior_list = sleep_prior_list,
+  formula_list = sleep_har_formula_list, formula_data_list = list(mu = sleepstudy),
+  formula_prior_list = sleep_fixed_priors, formula_random_prior_list = day_random_priors,
   formula_scale_list = list(mu = list(Days = TRUE)),
-  formula_random_prior_list = day_random_priors,
-  chains = 2, adapt = 1000, burnin = 2000, sample = 5000, thin = 20, seed = 33
+  chains = 2, adapt = 1000, burnin = 5000, sample = 10000, thin = 1, seed = 33
 )
 ```
-
 ```{r}
-JAGS_estimates_table(fit_sleep_har, transform_scaled = FALSE, random_effects_summary = "standard", remove_diagnostics = TRUE)
+JAGS_estimates_table(fit_sleep_har)
 ```
 
-The table compares the estimates with the lme4 `ar1(hom = FALSE)` fit.
-The residual SD differs most: with one observation per subject and day, the data barely separate it from the day-specific SDs.
+Table below compares the estimates with the lme4 `ar1(hom = FALSE)` fit.
 
 ```{r}
 compare_structured_estimates(lme4_model = lme4_har, bayes_model = fit_sleep_har)
 ```
 
-### Continuous-Time Autoregressive Syntax
+### Testing the Correlation
 
-For irregularly spaced repeated measures, `car()` uses the numeric distances between time values rather than integer lags. The fixed `Days` effect is standardized below, but the CAR time grid remains on the original day scale. Because the `sleepstudy` days are one day apart, the CAR model implies the same covariance as the AR(1) model above, except that the CAR correlation is restricted to positive values; the lme4 `ar1()` fit therefore also serves as its comparison.
+A spike-and-slab prior tests a parameter against zero.
+The day-specific random effects are so strongly correlated that all posterior draws of such a test would include the correlation, as in the random-slope test.
+We therefore ask a more informative question: does the HCS correlation equal 0.9?
+We compare the hypothesis with the uniform prior of the HCS model in two ways.
 
-```{r}
-sleep_car_design <- JAGS_formula(
-  formula = ~ Days + car(Days | Subject, name = "subject_days"),
-  parameter = "mu",
-  data = sleepstudy,
-  prior_list = sleep_fixed_priors$mu,
-  formula_scale = list(Days = TRUE),
-  prior_random = prior_random(
-    subject_days = random_block(
-      sd = unit_sd_prior, cor = cor_prior,
-      monitor = random_monitor(latent = FALSE, coefficients = FALSE, correlation = TRUE)))
-)
-
-sleep_car_design$formula_design$random_effects[[1]]$car$time_values
-names(sleep_car_design$prior_list)
-```
+First, the Savage-Dickey density ratio [@wagenmakers2010bayesian] obtains the Bayes factor directly from the fitted HCS model: it divides the posterior density of the correlation at 0.9 by its prior density.
+We extract the posterior draws of the correlation with their prior distribution and pass them to `hypothesis_BF()`.
 
 ```{r}
-sleep_car_priors <- list(
-  mu = prior_random(
-    subject_days = random_block(
-      sd = unit_sd_prior, cor = cor_prior,
-      monitor = random_monitor(latent = FALSE, coefficients = FALSE, correlation = TRUE)))
+hcs_cor <- "mu__xREx__Subject_rho"
+hcs_cor_posterior <- marginal_posterior(
+  as_mixed_posteriors(fit_sleep_hcs, hcs_cor), hcs_cor,
+  use_formula = FALSE, prior_samples = TRUE
 )
+hypothesis_BF(hcs_cor_posterior, hypothesis = paste(hcs_cor, "= 0.9"), parameter = hcs_cor, BF01 = TRUE, seed = 1)
 ```
 
-```{r fit-sleep-car, cache_fits = "fit_sleep_car"}
-fit_sleep_car <- JAGS_fit(
-  model_syntax = sleep_likelihood, data = sleep_data, prior_list = list(sigma = unit_sd_prior),
-  formula_list = list(mu = ~ Days + car(Days | Subject, name = "subject_days")),
-  formula_data_list = list(mu = sleepstudy),
-  formula_prior_list = sleep_fixed_priors,
+Second, a mixture prior places half of the prior probability on a correlation of 0.9 (the spike) and half on the same uniform distribution (the slab) and tests the hypothesis within a single fit, as the spike-and-slab prior did for the random slope.
+`random_covariance(cor_scale = "cor")` specifies the correlation prior on the raw correlation scale.
+
+```{r}
+cor_test_prior <- prior_mixture(
+  prior_list = list(
+    prior(distribution = "spike",   parameters = list(location = 0.9)),
+    prior(distribution = "uniform", parameters = list(a = -1/9, b = 1))
+  ),
+  is_null = c(TRUE, FALSE)
+)
+day_test_priors <- list(mu = prior_random(Subject = random_block(
+  sd         = unit_sd_prior,
+  covariance = random_covariance(cor = cor_test_prior, cor_scale = "cor"),
+  monitor    = random_monitor(latent = FALSE, coefficients = FALSE, correlation = TRUE)
+)))
+```
+
+```{r fit-sleep-hcs-test, cache_fits = "fit_sleep_hcs_test"}
+fit_sleep_hcs_test <- JAGS_fit(
+  model_syntax = sleep_likelihood, data = sleep_data, prior_list = sleep_prior_list,
+  formula_list = sleep_hcs_formula_list, formula_data_list = list(mu = sleepstudy),
+  formula_prior_list = sleep_fixed_priors, formula_random_prior_list = day_test_priors,
   formula_scale_list = list(mu = list(Days = TRUE)),
-  formula_random_prior_list = sleep_car_priors,
-  chains = 2, adapt = 500, burnin = 500, sample = 1000, seed = 14
+  chains = 2, adapt = 1000, burnin = 2000, sample = 5000, thin = 20, seed = 31
 )
 ```
 
-```{r}
-JAGS_estimates_table(fit_sleep_car, transform_scaled = FALSE, random_effects_summary = "standard", remove_diagnostics = TRUE)
-```
+The `JAGS_inference_table` function compares the slab with the spike, so an inclusion Bayes factor below 1 favors a correlation of 0.9.
 
 ```{r}
-compare_structured_estimates(lme4_model = lme4_ar1, bayes_model = fit_sleep_car)
+JAGS_inference_table(fit_sleep_hcs_test)
 ```
+
+Both approaches agree: the data favor a correlation of 0.9 over the uniform alternative by a Bayes factor of about 5 (the inverse of the inclusion Bayes factor).
+The Savage-Dickey ratio reuses the estimated model but relies on a density estimate at the tested value; the mixture prior needs a separate fit but extends to testing several parameters at once.
 
 
 ## Nested Random Effects

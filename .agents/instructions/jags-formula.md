@@ -748,6 +748,9 @@ names.
   semantics change; fits with another version must be refitted.
   Version 17 corrects the persisted pure-rescaling classification of named
   random-effect fallback maps; older maps must not be relabelled in place.
+  Version 18 gives the spike-and-slab and mixture nodes of a structured
+  block's scalar-correlation prior random-effect roles and an
+  `inclusion(cor)` quantity, as for SD priors.
 - That cache is session-local: the map carries only a `runtime_cache_id`, and
   the entries live in a bounded package registry. Never attach a cache to the
   map itself - it would be serialized into every saved fit and replayed on load,
@@ -848,7 +851,10 @@ coordinate remains internal. Total-variance allocations expose `sd_total`,
 Inclusion quantities follow the same labels: `inclusion(sd)` for the SD shared
 by all columns, `inclusion(sd(f3:h3))` for the SD prior of a term (the term of
 the prior's own name, never a backend `__xXx__` name or a list of cells),
-`inclusion(sd(x)[component])` for a mixture component, and, for an allocation
+`inclusion(sd(x)[component])` for a mixture component, `inclusion(cor)` for
+the scalar-correlation prior of a structured block on any `cor_scale` (its
+inference row is `<owner>: cor`; its prior listing keeps the sampling scale,
+`<owner>: cor (Fisher z)` or `cor (logit)`), and, for an allocation
 component, `inclusion(<component>)` with the allocation's public
 `component_names`, as `var_prop(<component>)` has them.
 Gate-only roots are slab-plus-inclusion containers and do not publish a root

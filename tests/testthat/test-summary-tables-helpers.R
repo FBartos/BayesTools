@@ -1544,8 +1544,8 @@ test_that("conditional random-effect SD summaries use the inclusion event of the
   expect_identical(
     unname(attr(standard, "footnotes")),
     c(
-      "(mu) sd(x): summarized over all draws; its SD prior's inclusion event could not be conditioned on.",
-      "(mu) var(x): summarized over all draws; its SD prior's inclusion event could not be conditioned on."
+      "(mu) sd(x): summarized over all draws; its prior's inclusion event could not be conditioned on.",
+      "(mu) var(x): summarized over all draws; its prior's inclusion event could not be conditioned on."
     )
   )
   expect_identical(names(attr(standard, "footnotes")), c("(mu) sd(x)", "(mu) var(x)"))

@@ -2381,3 +2381,130 @@ test_that("inclusion quantities follow the SD and allocation label conventions",
   ) %in% names))
   expect_false("(mu) allocation: inclusion(study)" %in% names)
 })
+
+test_that("spike-and-slab scalar correlations follow the SD inclusion conventions", {
+
+  skip_if_not_installed("runjags")
+
+  data <- data.frame(
+    id = factor(rep(paste0("s", 1:5), each = 4L)),
+    t = factor(rep(1:4, 5L))
+  )
+  sd_prior <- prior("normal", list(0, 1), list(0, Inf))
+  monitor <- random_monitor(latent = FALSE, coefficients = FALSE, correlation = FALSE)
+  # prior draws carry the indicator, inclusion probability, and slab variable
+  # of the correlation prior, as a fit monitors them
+  carrier <- function(structure, cor_scale, cor = NULL){
+    # (a raw-scale slab within the CS support of four columns)
+    if(is.null(cor)) cor <- prior_spike_and_slab(
+      if(identical(cor_scale, "cor")){
+        prior("normal", list(0, 0.5), list(-1 / 3, 1))
+      }else{
+        prior("normal", list(0, 0.5))
+      },
+      prior_inclusion = prior("beta", list(1, 1))
+    )
+    result <- JAGS_formula(
+      stats::as.formula(paste0("~ 1 + ", structure, "(t | id)")), "mu", data,
+      prior_list = list(intercept = prior("normal", list(0, 1))),
+      prior_random = prior_random(id = random_block(
+        covariance = random_covariance(sd = sd_prior, cor = cor, cor_scale = cor_scale),
+        monitor = monitor
+      ))
+    )
+    posterior <- BayesTools:::.generate_prior_sample_matrix(result$prior_list, 40L, seed = 1)
+    fit <- structure(
+      list(
+        mcmc = coda::mcmc.list(coda::mcmc(posterior)),
+        sample = nrow(posterior),
+        summary.pars = list(mutate = NULL),
+        monitor = colnames(posterior)
+      ),
+      class = c("runjags", "BayesTools_fit", "list")
+    )
+    attr(fit, "prior_list") <- result$prior_list
+    attr(fit, "formula_design") <- list(mu = result$formula_design)
+    attr(fit, "formula_scale") <- list(mu = result$formula_scale)
+    attach_test_parameter_map(fit)
+  }
+  backend <- "_(?:indicator|inclusion|variable)$|_xREx__|_rho"
+
+  for(case in list(c("ar1", "fisher_z"), c("hcs", "fisher_z"),
+                   c("ar1", "logit"), c("cs", "cor"))){
+    fit <- carrier(case[1L], case[2L])
+    prior_name <- paste0("mu__xREx__id_", switch(
+      case[2L], fisher_z = "rho_z", logit = "rho_logit", cor = "rho"
+    ))
+    indicator <- as.numeric(as.matrix(fit$mcmc)[, paste0(prior_name, "_indicator")])
+    expect_true(any(indicator == 0) && any(indicator == 1))
+
+    # the inference row is the correlation of the block, as `id: sd(x)` for SDs
+    inference <- JAGS_inference_table(fit)
+    expect_identical(rownames(inference), "(mu) id: cor")
+    expect_equal(inference[["post_prob"]], mean(indicator))
+
+    # the inclusion is a semantic quantity; its backend nodes are internal
+    quantities <- parameter_catalog(fit)$quantities
+    expect_identical(
+      quantities$canonical_name[quantities$quantity == "inclusion"],
+      "(mu) inclusion(cor)"
+    )
+    expect_false(any(grepl(backend, quantities$canonical_name[!quantities$internal])))
+    inclusion <- parameter_catalog_resolve(parameter_catalog(fit), "(mu) inclusion(cor)")
+    expect_equal(as.numeric(as.matrix(parameter_draws(fit, inclusion))[, 1L]), indicator)
+
+    for(summary in c("standard", "full")){
+      for(transform_scaled in c(FALSE, TRUE)){
+        estimates <- JAGS_estimates_table(
+          fit,
+          random_effects_summary = summary,
+          transform_scaled = transform_scaled
+        )
+        expect_true(all(c("(mu) inclusion(cor)", "(mu) cor") %in% rownames(estimates)))
+        expect_false(any(grepl(backend, rownames(estimates))))
+        expect_equal(as.numeric(estimates["(mu) inclusion(cor)", "Mean"]), mean(indicator))
+      }
+    }
+    raw <- JAGS_estimates_table(fit, random_effects_summary = "raw")
+    expect_true("(mu) id: cor (inclusion)" %in% rownames(raw))
+    expect_false(any(grepl(backend, rownames(raw))))
+
+    # the prior listing names the scale the prior is specified on
+    scale_label <- switch(
+      case[2L], fisher_z = "cor (Fisher z)", logit = "cor (logit)", cor = "cor"
+    )
+    model <- list(
+      fit = fit,
+      inference = list(m_number = 1, marglik = 0, prior_prob = 1, post_prob = 1, inclusion_BF = 1)
+    )
+    prior_rows <- unlist(model_summary_table(model)[, 4L])
+    expect_true(any(startsWith(prior_rows, paste0("(mu) id: ", scale_label, " ~ "))))
+
+    # conditional summaries condition the correlation on its inclusion event
+    cor_draws <- as.numeric(as.matrix(parameter_draws(
+      fit,
+      parameter_catalog_resolve(parameter_catalog(fit), "(mu) cor")
+    ))[, 1L])
+    conditional <- JAGS_estimates_table(fit, conditional = TRUE)
+    expect_equal(
+      as.numeric(conditional["(mu) cor", "Mean"]),
+      mean(cor_draws[indicator == 1])
+    )
+  }
+
+  # a null/alternative mixture names its components, as mixture SD priors do
+  mixture <- carrier("ar1", "fisher_z", cor = prior_mixture(
+    list(prior("spike", list(0)), prior("normal", list(0, 0.5))),
+    is_null = c(TRUE, FALSE)
+  ))
+  expect_identical(rownames(JAGS_inference_table(mixture)), "(mu) id: cor")
+  quantities <- parameter_catalog(mixture)$quantities
+  expect_setequal(
+    quantities$canonical_name[quantities$quantity == "inclusion"],
+    c("(mu) inclusion(cor[null])", "(mu) inclusion(cor[alternative])")
+  )
+  expect_false(any(grepl(backend, quantities$canonical_name[!quantities$internal])))
+  expect_false(any(grepl(backend, rownames(JAGS_estimates_table(mixture)))))
+  expect_true("(mu) id: cor (inclusion)" %in%
+                rownames(JAGS_estimates_table(mixture, random_effects_summary = "raw")))
+})
