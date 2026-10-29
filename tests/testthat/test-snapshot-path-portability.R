@@ -1,66 +1,53 @@
 skip_if_not_test_profile("unit")
 
 
-.snapshot_build_excludes <- function(paths, build_ignore) {
+test_that("the package build ships only the CRAN smoke test", {
 
-  vapply(paths, function(path) {
-    any(vapply(build_ignore, grepl, logical(1), x = path,
-               ignore.case = TRUE, perl = TRUE))
-  }, logical(1))
-}
-
-
-test_that("repository build policy excludes snapshot review candidates", {
-
-  build_ignore_path <- testthat::test_path("..", "..", ".Rbuildignore")
+  package_root <- testthat::test_path("..", "..")
+  build_ignore_path <- file.path(package_root, ".Rbuildignore")
   skip_if_not(
     file.exists(build_ignore_path),
     "Repository build-ignore policy is unavailable in this installed-package test context."
   )
   build_ignore <- readLines(build_ignore_path, warn = FALSE)
-  review_candidates <- c(
-    "tests/testthat/_snaps/context/figure.new.svg",
-    "tests/results/context/table.new.txt"
-  )
-  expect_true(all(.snapshot_build_excludes(review_candidates, build_ignore)))
-  expect_false(any(.snapshot_build_excludes(
-    sub("\\.new\\.", ".", review_candidates), build_ignore
-  )))
+  test_paths   <- file.path("tests", list.files(
+    file.path(package_root, "tests"),
+    recursive  = TRUE,
+    all.files  = TRUE,
+    include.dirs = TRUE
+  ))
+  # R CMD build matches .Rbuildignore as case-insensitive Perl regexes and
+  # drops everything below an excluded directory
+  matches_build_ignore <- function(path) {
+    any(vapply(build_ignore, grepl, logical(1), x = path,
+               ignore.case = TRUE, perl = TRUE))
+  }
+  excluded <- vapply(test_paths, function(path) {
+    parts     <- strsplit(path, "/", fixed = TRUE)[[1L]]
+    ancestors <- vapply(seq_along(parts), function(i) {
+      paste(parts[seq_len(i)], collapse = "/")
+    }, character(1))
+    any(vapply(ancestors, matches_build_ignore, logical(1)))
+  }, logical(1))
+  expect_setequal(test_paths[!excluded], c(
+    "tests/namespace-only-contrasts.R",
+    "tests/testthat.R",
+    "tests/testthat",
+    "tests/testthat/test-cran-smoke.R",
+    "tests/testthat/helper-test-profiles.R"
+  ))
 })
 
 
-test_that("visual snapshot paths fit the portable tar name field", {
+test_that("visual snapshot paths are unique on case-insensitive file systems", {
 
-  snapshot_root <- testthat::test_path("_snaps")
   snapshot_paths <- list.files(
-    snapshot_root,
+    testthat::test_path("_snaps"),
     pattern = "\\.svg$",
     recursive = TRUE,
     full.names = FALSE
   )
-  build_ignore_path <- testthat::test_path("..", "..", ".Rbuildignore")
-  if (file.exists(build_ignore_path)) {
-    build_ignore <- readLines(build_ignore_path, warn = FALSE)
-    snapshot_paths <- snapshot_paths[!.snapshot_build_excludes(
-      paste0("tests/testthat/_snaps/", snapshot_paths), build_ignore
-    )]
-  }
-  package_paths <- file.path(
-    "BayesTools",
-    "tests",
-    "testthat",
-    "_snaps",
-    snapshot_paths
-  )
-  package_paths <- gsub("\\", "/", package_paths, fixed = TRUE)
-  path_bytes <- nchar(enc2utf8(package_paths), type = "bytes")
-
-  violations <- sprintf(
-    "%d bytes: %s",
-    path_bytes[path_bytes >= 100L],
-    package_paths[path_bytes >= 100L]
-  )
-  expect_identical(violations, character())
+  package_paths <- gsub("\\", "/", snapshot_paths, fixed = TRUE)
 
   collision_keys <- tolower(package_paths)
   collision_paths <- sort(unique(package_paths[
