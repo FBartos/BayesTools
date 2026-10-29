@@ -44,7 +44,7 @@ The package functionality is illustrated via the following vignettes:
 |:--------------------------|:----------------------------------------------------------------------|
 | [*Comparison to other R packages*](`r article_url("ComparisonR")`) | Bayesian two-sample t-test with `JAGS_fit()` and bridge sampling, compared with the `BayesFactor` package |
 | [*Bayes factors via spike and slab prior vs. bridge sampling*](`r article_url("SpikeAndSlab")`) | Inclusion Bayes factors from a spike and slab prior compared with bridge-sampling marginal likelihoods |
-| [*Formula random effects and lme4*](`r article_url("RandomEffects")`) | lme4-like random-effects formulas (intercepts, slopes, correlations, nested and crossed effects) compared with `brms` |
+| [*Random Effects with Formula Syntax*](`r article_url("RandomEffects")`) | lme4-like random-effects formulas (intercepts, slopes, correlations, nested and crossed effects) compared with `brms` |
 
 ## Installation
 

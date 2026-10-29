@@ -1,5 +1,5 @@
 ---
-title: "Formula random effects and lme4"
+title: "Random Effects with Formula Syntax"
 author: "František Bartoš"
 date: "13th of June 2023 (updated: 25th of October 2026)"
 output:
@@ -8,7 +8,7 @@ output:
 bibliography: ../inst/REFERENCES.bib
 csl: ../inst/apa.csl
 vignette: >
-  %\VignetteIndexEntry{Formula random effects and lme4}
+  %\VignetteIndexEntry{Random Effects with Formula Syntax}
   %\VignetteEngine{knitr::rmarkdown_notangle}
   %\VignetteEncoding{UTF-8}
 ---
