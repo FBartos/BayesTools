@@ -944,9 +944,22 @@ parameter_prior_density.BayesTools_fit <- function(
   }else{
     NULL
   }
-  if(is.null(source_prior) || !is.prior(source_prior) ||
-     .prior_linear_prior_dimension(source_prior) != 1L){
+  if(is.null(source_prior) || !is.prior(source_prior)){
     return(NULL)
+  }
+  if(.prior_linear_prior_dimension(source_prior) != 1L){
+    # one level of an independent factor prior (e.g., the per-level SDs of an
+    # hcs block) has the prior's own scalar distribution as its marginal
+    columns <- .prior_linear_prior_columns(key$source_prior, source_prior)
+    if(!is.prior.independent(source_prior) ||
+       !key$source_parameter %in% columns){
+      return(NULL)
+    }
+    source_prior <- prior(
+      distribution = source_prior$distribution,
+      parameters   = source_prior$parameters,
+      truncation   = source_prior$truncation
+    )
   }
   transform <- .bt_parameter_transform_from_quantity(object, quantity)
   .bt_parameter_prior_density_transformed(

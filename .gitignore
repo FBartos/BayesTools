@@ -34,3 +34,7 @@ CLAUDE.md
 
 # Written by failing test runs under TESTTHAT_MAX_FAILS.
 tests/testthat/testthat-problems.rds
+
+# Local scenario fit caches and last-run timings.
+/tests/scenarios/cache
+/tests/scenarios/timings/*.new.tsv

@@ -11,6 +11,12 @@ knitr::opts_chunk$set(
   fig.path = "man/figures/README-",
   out.width = "100%"
 )
+
+site_url <- "https://fbartos.github.io/BayesTools/"
+
+article_url <- function(page) {
+  paste0(site_url, "articles/", page, ".html")
+}
 ```
 
 # BayesTools
@@ -36,11 +42,9 @@ The package functionality is illustrated via the following vignettes:
 
 | Vignette                  | Topic                                                                 |
 |:--------------------------|:----------------------------------------------------------------------|
-| [*Introduction to BayesTools*](`r article_url("v00-introduction")`) | Package overview, simple features, and worked |
-| [*Formula Interface with Spike and Slab*](`r article_url("v01-prior-distributions")`) | Default, informed, and custom prior distributions; rescaling guidance |
-| [*Random Effects Formulas*](`r article_url("v02-bayesian-meta-analysis")`) | Random-effects meta-analysis with `brma()`, compared with `metafor::rma()` |
-
- C:/R-Packages/BayesToolsVerse/BayesTools/vignettes/ComparisonR.Rmd 
+| [*Bayesian t-Test Compared with BayesFactor*](`r article_url("ComparisonR")`) | Bayesian two-sample t-test with `JAGS_fit()` and bridge sampling, compared with the `BayesFactor` package |
+| [*Variable Selection with Spike-and-Slab Priors*](`r article_url("SpikeAndSlab")`) | Inclusion Bayes factors from a spike and slab prior compared with bridge-sampling marginal likelihoods |
+| [*Random Effects with Formula Syntax*](`r article_url("RandomEffects")`) | lme4-like random-effects formulas (intercepts, slopes, correlations, nested and crossed effects) compared with `brms` |
 
 ## Installation
 

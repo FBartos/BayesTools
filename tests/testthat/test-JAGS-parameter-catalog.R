@@ -3822,6 +3822,46 @@ test_that("random covariance families share one semantic naming grammar", {
                "No public parameter quantity matches")
 })
 
+test_that("the level SDs of hcs and har blocks have the SD prior as their marginal law", {
+
+  # the level SDs are one independent factor prior over the levels; each level
+  # SD has the scalar gamma(2, 2) law and its variance the squared law
+  data <- data.frame(
+    group = factor(c("a", "a", "b", "b")),
+    level = factor(c("x", "y", "x", "y"))
+  )
+  values <- c(0.2, 0.5, 1, 2)
+  for(formula in list(~ 1 + hcs(level | group), ~ 1 + har(level | group))){
+    result <- JAGS_formula(
+      formula = formula, parameter = "mu", data = data,
+      prior_list = list(intercept = prior("normal", list(0, 1))),
+      prior_random = prior_random(sd = prior("gamma", list(2, 2)))
+    )
+    term <- result$formula_design$random_effects[[1L]]
+    draws <- cbind(mu_intercept = c(0, 0), matrix(c(1, 2, 3, 4), 2L))
+    colnames(draws)[2:3] <- term$sd_parameter_names
+    draws <- cbind(draws, matrix(0.1, 2L, 1L, dimnames = list(NULL, term$correlation$sample_name)))
+    fit <- .parameter_catalog_test_fit(
+      coda::mcmc.list(coda::mcmc(draws)), result$prior_list,
+      formula_design = list(mu = result$formula_design)
+    )
+    catalog <- parameter_catalog(fit)
+    ordinates <- function(name){
+      density <- parameter_prior_density(fit, parameter_catalog_resolve(catalog, name, "mu"))
+      expect_false(is.null(density), info = name)
+      exp(vapply(values, function(value){
+        prior_density_ordinate(density, value)$log_density
+      }, numeric(1)))
+    }
+    for(level in c("x", "y")){
+      expect_equal(ordinates(paste0("sd(level[", level, "])")),
+                   stats::dgamma(values, 2, 2), tolerance = 1e-8)
+      expect_equal(ordinates(paste0("var(level[", level, "])")),
+                   stats::dgamma(sqrt(values), 2, 2) / (2 * sqrt(values)), tolerance = 1e-8)
+    }
+  }
+})
+
 test_that("transformed random summaries hide fitted-scale implementation rows", {
 
   data <- data.frame(

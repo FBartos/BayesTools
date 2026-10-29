@@ -31,3 +31,4 @@
 ^tests/testthat/_snaps/.*\.new\.svg$
 ^tests/results/.*\.new\.txt$
 ^tests/testthat/testthat-problems\.rds$
+^tests/scenarios$

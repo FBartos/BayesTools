@@ -1,0 +1,12 @@
+type	name	elapsed	memory_gb	r_version	platform
+fit	fit_allocation	6.160000000	0.516406	4.6.0	Windows/x86_64-w64-mingw32
+fit	fit_independent	3.870000000	0.552246	4.6.0	Windows/x86_64-w64-mingw32
+text	estimates-allocation	0.660000000	0.509570	4.6.0	Windows/x86_64-w64-mingw32
+text	estimates-allocation-full	1.750000000	0.573828	4.6.0	Windows/x86_64-w64-mingw32
+text	estimates-independent	0.450000000	0.498047	4.6.0	Windows/x86_64-w64-mingw32
+text	estimates-independent-full	0.590000000	0.503613	4.6.0	Windows/x86_64-w64-mingw32
+text	lme4-comparison	0.200000000	0.372754	4.6.0	Windows/x86_64-w64-mingw32
+plot	fitted-comparison	0.200000000	0.538574	4.6.0	Windows/x86_64-w64-mingw32
+plot	posterior-allocation	3.170000000	0.601172	4.6.0	Windows/x86_64-w64-mingw32
+plot	posterior-independent	0.250000000	0.580273	4.6.0	Windows/x86_64-w64-mingw32
+plot	ranef-comparison	1.100000000	0.596191	4.6.0	Windows/x86_64-w64-mingw32

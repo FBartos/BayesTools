@@ -50,12 +50,10 @@ Suggests:
     knitr,
     pkgload,
     rstan,
-    rstanarm,
     brms,
     rjags,
     runjags,
     lme4 (>= 2.0-1),
-    nlme,
     BayesFactor,
     RoBMA,
     rmarkdown
