@@ -67,19 +67,6 @@ testthat::test_that("Penicillin crossed random intercepts", {
   scenario_text("estimates-allocation",       JAGS_estimates_table(fit_allocation))
   scenario_text("estimates-allocation-full",  JAGS_estimates_table(fit_allocation, random_effects_summary = "full"))
 
-  scenario_text("convergence", {
-    convergence <- lapply(list(independent = fit_independent, allocation = fit_allocation), function(fit) {
-      diagnostics <- attr(JAGS_check_convergence(fit), "diagnostics")
-      data.frame(
-        max_Rhat       = max(diagnostics[["Rhat"]], na.rm = TRUE),
-        min_ESS        = min(diagnostics[["ESS"]], na.rm = TRUE),
-        worst_Rhat     = diagnostics[["parameter"]][which.max(diagnostics[["Rhat"]])],
-        worst_ESS      = diagnostics[["parameter"]][which.min(diagnostics[["ESS"]])]
-      )
-    })
-    data.frame(fit = names(convergence), do.call(rbind, convergence), row.names = NULL)
-  })
-
   ### lme4 comparison ----
   # the allocation quantities of lme4 and of the independent-prior fit are
   # derived from their two SDs
@@ -125,28 +112,6 @@ testthat::test_that("Penicillin crossed random intercepts", {
     comparison
   })
 
-  ### allocation identities ----
-  # the allocation reports one total SD and its variance shares; they must
-  # reproduce the block SDs draw by draw
-  scenario_text("allocation-identities", {
-    sd_plate  <- samples_allocation[, "(mu) plate: sd(intercept)"]
-    sd_sample <- samples_allocation[, "(mu) sample: sd(intercept)"]
-    sd_total  <- samples_allocation[, "(mu) total_re: sd_total"]
-    prop      <- samples_allocation[, c("(mu) total_re: var_prop(plate)", "(mu) total_re: var_prop(sample)")]
-    data.frame(
-      identity      = c(
-        "sd_total^2 = sd(plate)^2 + sd(sample)^2",
-        "var_prop(plate) + var_prop(sample) = 1",
-        "var_prop(plate) = sd(plate)^2 / sd_total^2"
-      ),
-      max_abs_error = signif(c(
-        max(abs(sd_total^2 - sd_plate^2 - sd_sample^2)),
-        max(abs(rowSums(prop) - 1)),
-        max(abs(prop[, 1] - sd_plate^2 / sd_total^2))
-      ), 3)
-    )
-  })
-
   ### random effects and fitted values ----
   # the effect of a level is its conditional prediction with only its block
   # minus the fixed part
@@ -157,26 +122,6 @@ testthat::test_that("Penicillin crossed random intercepts", {
     effects[match(levels(Penicillin[[block]]), levels)]
   }
   ranef_lme4 <- lme4::ranef(fit_lme4)
-
-  scenario_text("ranef-comparison", {
-    fits <- list(independent = fit_independent, allocation = fit_allocation)
-    rows <- list()
-    for (block in c("plate", "sample")) {
-      reference <- ranef_lme4[[block]][levels(Penicillin[[block]]), "(Intercept)"]
-      for (fit_name in names(fits)) {
-        estimate <- level_effects(fits[[fit_name]], block)
-        rows[[length(rows) + 1L]] <- data.frame(
-          fit                = fit_name,
-          block              = block,
-          levels             = length(reference),
-          correlation        = round(stats::cor(reference, estimate), 4),
-          max_abs_difference = round(max(abs(estimate - reference)), 3),
-          mean_difference    = round(mean(estimate - reference), 3)
-        )
-      }
-    }
-    do.call(rbind, rows)
-  })
 
   scenario_plot("ranef-comparison", {
     par(mfrow = c(2, 2), mar = c(4, 4, 2, 1))

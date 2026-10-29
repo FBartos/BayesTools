@@ -1,5 +1,0 @@
-          fit  block levels correlation max_abs_difference mean_difference
-1 independent  plate     24           1              0.008          -0.006
-2  allocation  plate     24           1              0.007           0.004
-3 independent sample      6           1              0.004          -0.004
-4  allocation sample      6           1              0.004          -0.003

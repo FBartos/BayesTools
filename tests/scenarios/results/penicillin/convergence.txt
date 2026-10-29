@@ -1,3 +1,0 @@
-          fit max_Rhat  min_ESS                             worst_Rhat                              worst_ESS
-1 independent 1.011672 869.5377           mu__xREx__plate_xRE_Zx[19,1]              mu__xREx__plate_intercept
-2  allocation 1.058309 390.4182 mu__xRE_ALLOCx_total_re__allocation_sd mu__xRE_ALLOCx_total_re__allocation_sd

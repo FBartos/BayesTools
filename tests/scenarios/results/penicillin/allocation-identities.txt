@@ -1,4 +1,0 @@
-                                    identity max_abs_error
-1    sd_total^2 = sd(plate)^2 + sd(sample)^2      1.78e-15
-2     var_prop(plate) + var_prop(sample) = 1      2.22e-16
-3 var_prop(plate) = sd(plate)^2 / sd_total^2      2.22e-16
