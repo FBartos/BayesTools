@@ -24,7 +24,7 @@ metadata are in [jags-formula.md](jags-formula.md).
 - `R/hypothesis-model-marginal.R`: marginal-means plans (provider kind
   `"marginal_means"`).
 - `R/hypothesis-model-select.R`: parsing against the provider catalog, parameter
-  selection, component vocabulary, rewrite.
+  selection, component vocabulary, level-token insertion, rewrite.
 - `R/hypothesis-model-ordinates.R`: stored-ordinate bookkeeping, attachment
   through a backend, warning and diagnostics lifting to table rows.
 - `R/hypothesis-model-provider.R`: `hypothesis_provider()` generic, the default
@@ -34,11 +34,17 @@ metadata are in [jags-formula.md](jags-formula.md).
 
 ## Stages of `hypothesis_BF_model()`
 
+`namespace` selects the provider component (a formula parameter) and
+`component` the level token of a factor term; they combine. A reference to a
+factor term without a level stands for the token's level (`x = 0.1` with
+`component = "B"` is `x[B] = 0.1`).
+
 1. Arguments are checked; the provider is validated; `density_method` is
    matched (case-insensitive, partial) over `provider$density_methods` or the
-   registered backends that are not of type `"stored"`; the backend's
-   `control()` normalizes `density_control` (ordinate backends always, other
-   backends when a control is supplied).
+   registered backends that are not of type `"stored"`; the provider's
+   `check_density_control()` runs first, then the backend's `control()`
+   normalizes `density_control` (ordinate backends always, other backends when
+   a control is supplied).
 2. Every statement is parsed with the provider catalog (`simplify_names =
    TRUE`) and planned (resolve, select the entry, rewrite onto the tested
    parameter, route, targets with `prior_ordinate_status()`). The draws of a
@@ -49,7 +55,11 @@ metadata are in [jags-formula.md](jags-formula.md).
    pass; point-target refusals; `source_refusals`; the backend's
    `available(object, plan, control)`; then `method_refusals` (name-keyed, then
    type-keyed). Nothing is evaluated before all plans are checked. Availability
-   is computed on every call and never cached.
+   is computed on every call and never cached. `available()` receives the
+   control normalized by the backend's `control()`, also for marginal means
+   (the call's control or the provider's stored default); if normalization
+   fails, the plans are checked with the control as given and the failure is
+   raised after the plan checks and the request validation.
 4. `provider$check_plans(plans)` validates across statements. For marginal
    means the engine first refuses mixed point/region requests and point
    statements on several levels of a model-averaged provider.
@@ -97,8 +107,8 @@ starts from `hypothesis_provider(<its fit>)` and replaces callbacks with
 | `metadata()` | `list(catalog, entries)`; entry columns `quantity_id, parameter, component, term, source, formula_parameter, role, quantity, status, fixed_value, aliases, member_quantity_ids`; alias rows of the extended catalog carry `namespace = component = entry component` |
 | `uncovered(resolution, quantity_ids, symbol, metadata)` | refusal list (`reason` plus `type` or complete `class`) for resolved quantities without an entry |
 | `sample_parameters(parameter)`, `mixed_posteriors(parameters, conditional, conditional_rule, transform_scaled, n_prior_samples)`, `density_parameter(samples, parameter, sample_parameters)`, `formula_name_map(formula_parameter)` | draws of a fixed target: prior-list names to mix, `as_mixed_posteriors()`, element tested, formula coefficient owners |
-| `random` | `select`, `mixed_posterior`, `support`, `density_target`, `sd_pair`, `zero_boundary`, `defined_share`, `defined_footnote`, `defined_draws`, `prior_draws` (signatures in `?hypothesis_provider`) |
-| `point_mass_reason()`, `full_ensemble(parameter)`, `combination_hint(plan)`, `check_plans(plans)` | optional hooks (default provider: no point-mass text, mixture rule, hint for factor terms with null components, none) |
+| `random` | `select`, `mixed_posterior`, `support`, `density_target`, `sd_pair`, `zero_boundary`, `defined_share`, `defined_footnote`, `defined_draws`, `prior_draws` (signatures in `?hypothesis_provider`); a `density_target()` refusal may carry `type` (default `"target"`) and `cause` (default `"random_target"`, or `"original_scale"`) |
+| `point_mass_reason()`, `full_ensemble(parameter)`, `combination_hint(plan)`, `check_plans(plans)`, `check_density_control(density_method, density_control)` | optional hooks (default provider: no point-mass text, mixture rule, hint for factor terms with null components, none, none); `check_density_control()` stops to refuse a control before the backend's `control()` wherever that runs (not for `KDE`/`normal` with `NULL`), including the stored marginal-means default |
 
 Marginal-means providers add `inference`, `model_averaged` (logical),
 `select(hypothesis, parameter)` (parameter and aliases of a statement),
@@ -163,14 +173,19 @@ normalizes and validates (default: no settings); `attach(posterior, request,
 control, cache)` returns the posterior with one ordinate per requested value in
 `posterior_ordinate` metadata (matching the draws' parameter and condition
 metadata) or stops with the backend's own condition; `reuse(entry, request,
-control)` (default `FALSE`); `warnings(posterior, request)` (records with
-`warning, parameter, level, label, value`; default reads `diagnostics$warning`);
-`diagnostics(posterior, request)` and `bind_diagnostics(list)`;
+control, posterior)` (default `FALSE`; `posterior` holds the entry);
+`warnings(posterior, request)` (records with `warning, parameter, level,
+label, value`; default reads `diagnostics$warning`);
+`diagnostics(posterior, request)` and `bind_diagnostics(list)`; `warnings()`
+and `diagnostics()` receive the group's first attach request, never `NULL`;
 `rescale_failure(condition, requested, evaluated, label, density_method)` for
 variances evaluated through SDs; `refusal_classes(cause)` for the generic causes
 `original_scale`, `conditional_random`, `random_target`; `clear_cache()`.
 `request`: `kind` (`scalar`/`level`), `route` (plan kind), `object`, `model`,
-`parameter`, `label`, `level`, `values`, `conditional`, `spec` (`primitive`,
+`parameter`, `label`, `level`, `values` (those not reused), `conditional`,
+`condition` (the non-`NULL` of `conditional`, `conditional_rule`,
+`condition_key`, `condition_event`, `resolved_condition_event` declared by the
+draws' `posterior_metadata()`; `list()` when none), `spec` (`primitive`,
 `linear` with `weights` and `prior_density`, or provider specs),
 `display_transform`, `density_method`, `inference_type`. The engine owns
 bookkeeping only; acceptance rules, thresholds, warnings and their text belong
@@ -185,12 +200,21 @@ with `_fixed`, `_target`, `_method`, the classes of `prior_ordinate_status()`
 (+ `BayesTools_hypothesis_ordinate`), and BayesTools resolution errors after
 `BayesTools_hypothesis_statement`. Backend conditions stay the backend's.
 `hypothesis_stop()` raises the same refusals for other entry points of a
-package.
+package. `posterior_fitted_linear_weights()` raises
+`BayesTools_fitted_linear_weights_unavailable` (parent
+`BayesTools_formula_transform_unavailable`; fields `reason`, `cause`) for
+stochastic formula contribution products; the engine turns it into the method
+refusal of cause `"original_scale"` (no fields; the backend adds its classes).
+It and `posterior_linear_weight_space()` take the caller's `build` and
+`refit_class` for refit requests. `hypothesis_quantities()` returns a 0-row
+table of its columns for a model without tested entries.
 
 ## Checks
 
 `tests/testthat/test-hypothesis-BF-model.R` (unit, synthetic fits, toy backend,
-toy providers) and `test-hypothesis-BF-model-fixture.R` (cached fits:
+toy providers), `test-hypothesis-BF-model-review.R` (cached fits: level tokens,
+empty quantities, refusal types, backend request conditioning), and
+`test-hypothesis-BF-model-fixture.R` (cached fits:
 `fit_hypothesis_hcs`, `fit_hypothesis_car`, `fit_hypothesis_spike_ar1`,
 `fit_label_random_slope`, `fit_re_summary_point_components`,
 `fit_dual_param_regression`, `fit_formula_treatment`). The one-call result must
