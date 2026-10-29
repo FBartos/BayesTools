@@ -31,7 +31,9 @@
 - adds `JAGS_deterministic_nodes()` and `JAGS_evaluate_deterministic()` for the deterministic quantities generated in JAGS models, and `parameter_source()` for referencing existing JAGS nodes
 - adds `posterior_metadata()`, metadata constructors, and `posterior_transform()` for transforming posterior draws together with their supports, atoms, and densities
 - adds `parameter_prior_density()`, `prior_density_ordinate()`, and `prior_ordinate_status()` for exact prior densities and ordinates of model quantities, including random-effect SDs, variance allocations, and LKJ correlations
-- adds `hypothesis_BF()` for point and region hypotheses specified as expressions (including comparisons of factor levels) on posterior draws or directly on a fitted model by the names of its parameter catalog, with the hypothesis parser `hypothesis_parse()`, `hypothesis_linear_target()`, and an engine for downstream model classes with registrable density backends (`hypothesis_BF_model()`, `hypothesis_provider()`, `register_hypothesis_density_backend()`)
+- adds `hypothesis_BF()` for point and region hypotheses specified as expressions (including comparisons of factor levels), with the hypothesis parser `hypothesis_parse()` and `hypothesis_linear_target()`
+- `hypothesis_BF()` also tests the quantities of a fitted model by the names of its parameter catalog
+- adds `hypothesis_BF_model()`, `hypothesis_provider()`, and `register_hypothesis_density_backend()` for downstream model classes and density methods
 - adds the `density_method` argument to `Savage_Dickey_BF()`, `plot_posterior()`, and `plot_marginal()` for posterior densities precomputed by downstream packages
 - adds `JAGS_formula_coefficient_transform()` and `JAGS_formula_prior_density()` for original-scale prior densities of scaled formula coefficients
 - adds `JAGS_formula_draws()` for evaluating formulas on draws without a fit
