@@ -24,6 +24,10 @@ Read the guide relevant to the change and maintain it with the implementation:
 - [Priors](.agents/instructions/priors.md): constructors, distribution methods,
   transformations, provenance, structural prior-density ordinates, and
   Savage-Dickey ordinates.
+- [Hypothesis Bayes factors](.agents/instructions/hypothesis.md): the
+  fit-level `hypothesis_BF()` engine, its provider and density-backend
+  contracts, scale, conditioning, caching, random numbers, and condition
+  classes.
 - [JAGS and formulas](.agents/instructions/jags-formula.md): fitting paths,
   scaling, contrasts, random effects, parameter maps, and marginal likelihoods.
 - [Testing](.agents/instructions/testing.md): profiles, fit catalogs, cached
@@ -47,7 +51,10 @@ their defined meaning. Check the relevant contract before changing behavior.
 - Marginal inference and model averaging: `R/marginal-*.R` and
   `R/model-averaging*.R`.
 - Posterior densities, supports, atoms, and extraction: `R/posterior-*.R`.
-- Hypothesis Bayes factors: `R/hypothesis-*.R`.
+- Hypothesis Bayes factors: `R/hypothesis-*.R` (draw-based evaluation in
+  `R/hypothesis-BF*.R`, parser and algebra in `R/hypothesis-ast.R` and
+  `R/hypothesis-affine.R`; the fit-level engine, provider, and density
+  backends in `R/hypothesis-model*.R`).
 - Parameter labels and sources: `R/parameter-*.R`.
 - Summaries and validation: `R/summary-tables*.R`, `R/interpret.R`, and
   `R/tools.R`.

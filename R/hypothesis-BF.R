@@ -11,7 +11,10 @@
 #'
 #' @description Computes Bayes factors for scalar hypotheses written as
 #' expressions, for example \code{"theta = 0"}, \code{"theta > 0"}, or
-#' \code{"theta = 0 vs theta > 0"}. Factor/posterior-list levels can be
+#' \code{"theta = 0 vs theta > 0"}. \code{hypothesis_BF()} is a generic: the
+#' default method evaluates posterior draws and marginal posteriors, and the
+#' method for a fitted model (\code{BayesTools_fit}) tests the quantities of
+#' its parameter catalog by their public names (see Fitted models). Factor/posterior-list levels can be
 #' referenced as \code{"mu_alloc[alternate] > mu_alloc[random]"} when the
 #' marginal posterior carries joint prior information. Level names that
 #' contain brackets, such as the \code{cut()} level \code{(0,1]}, are
@@ -28,7 +31,8 @@
 #' marginal-posterior list is reused for matching level hypotheses.
 #'
 #' @param posterior posterior draws, a \code{marginal_posterior}, a
-#' \code{marginal_inference} object, or a data frame/matrix of posterior draws.
+#' \code{marginal_inference} object, or a data frame/matrix of posterior draws,
+#' or a model fitted with [JAGS_fit()] (a \code{BayesTools_fit}).
 #' Posterior draws must be finite and quantity names must be unique.
 #' @param prior prior draws for numeric/data-frame inputs, or for numeric
 #' draws a scalar BayesTools prior object (including mixture and
@@ -80,9 +84,19 @@
 #' and transitive point-vs-region tests report \code{NA}. The default
 #' \code{BF_error} column is printed as \code{error\%(BF)}. Individual columns
 #' are selected by these column names; other spellings are rejected.
+#' @param namespace,component,transform_scaled,conditional,density_control,n_samples
+#' arguments of the method for a fitted model, passed to
+#' [hypothesis_BF_model()], which documents them: the component of the model
+#' that the statements refer to (the formula parameter such as \code{"mu"},
+#' \code{"model"}, or \code{"random"}) or a catalog component, the scale
+#' (\code{transform_scaled = FALSE}, the default, tests the fitted scale as in
+#' [JAGS_estimates_table()]), the conditioning of the tested quantities on
+#' their inclusion events, the settings of the density backend, and the number
+#' of prior samples.
 #' @param ... for the \code{cbind()} method, the tables to bind; unused by the
-#' \code{as.data.frame()} method. \code{hypothesis_BF()} takes no further
-#' arguments and stops on unknown ones.
+#' \code{as.data.frame()} method. The method for draws takes no further
+#' arguments and stops on unknown ones; the method for a fitted model warns
+#' about them.
 #'
 #' @details Level combinations require the same complete declared joint prior
 #' context. Fixed reference levels use the shared typed ordinate refusals;
@@ -257,12 +271,58 @@
 #' [parameter_catalog_resolve()] do; its fields \code{alias} and
 #' \code{available} name the unresolved and the available references.
 #'
+#' @section Fitted models:
+#' \code{hypothesis_BF(fit, "(mu) cor = 0.9", BF01 = TRUE, seed = 1)} tests the
+#' quantities of the parameter catalog ([parameter_catalog()]) of a fitted
+#' model by the names that [JAGS_estimates_table()] shows, without backticks
+#' (coefficients such as \code{"x"} or \code{"x_fac[B]"}, random-effect
+#' quantities such as \code{"(mu) sd(intercept)"} or \code{"(mu) cor"},
+#' scalar parameters such as \code{"sigma"}), and statements with \code{vs}
+#' work as for draws. A point null on a quantity with a prior point mass at
+#' that value (a spike-and-slab coefficient at its spike) stops with
+#' \code{BayesTools_point_mass_at_null}; \code{conditional = TRUE} tests the
+#' quantity within its inclusion event, and region hypotheses work without it.
+#' The fit method evaluates the Savage-Dickey density ratio
+#' \insertCite{dickey1971weighted,wagenmakers2010bayesian}{BayesTools} at the
+#' posterior and prior ordinates of the tested quantity;
+#' [hypothesis_BF_model()] describes the engine, its refusals, and the density
+#' backends that evaluate point hypotheses ([hypothesis_density_backend()]).
+#' The result is the same as extracting the quantity
+#' ([parameter_mixed_posterior()] or [as_mixed_posteriors()] with
+#' [marginal_posterior()]) and testing its draws.
+#'
+#' @references
+#' \insertAllCited{}
+#'
 #' @export
-hypothesis_BF <- function(posterior, prior = NULL, hypothesis, parameter = NULL,
-                          logBF = FALSE, BF01 = FALSE, seed = NULL,
-                          density_method = c("KDE", "normal", "precomputed"),
-                          columns = "default") {
+hypothesis_BF <- function(posterior, ...){
 
+  UseMethod("hypothesis_BF")
+}
+
+
+#' @rdname hypothesis_BF
+#' @exportS3Method hypothesis_BF default
+hypothesis_BF.default <- function(posterior, prior = NULL, hypothesis,
+                                  parameter = NULL, logBF = FALSE,
+                                  BF01 = FALSE, seed = NULL,
+                                  density_method = c("KDE", "normal", "precomputed"),
+                                  columns = "default", ...) {
+
+  if(...length() > 0L){
+    unused <- names(list(...))
+    if(is.null(unused)){
+      unused <- rep("", ...length())
+    }
+    stop(
+      "unused argument", if(length(unused) > 1L) "s", " (",
+      paste0(ifelse(nzchar(unused), paste0(unused, " = "), ""),
+             vapply(list(...), function(x) paste(deparse(x), collapse = ""),
+                    character(1)), collapse = ", "),
+      ")",
+      call. = FALSE
+    )
+  }
   hypothesis_ast <- if(inherits(hypothesis, "BayesTools_hypothesis_ast")){
     .bt_validate_hypothesis_ast(hypothesis)
     hypothesis
@@ -361,6 +421,44 @@ hypothesis_BF <- function(posterior, prior = NULL, hypothesis, parameter = NULL,
     allowed = c("KDE", "normal", "precomputed"),
     name    = "density_method"
   ))
+}
+
+
+#' @rdname hypothesis_BF
+#' @exportS3Method hypothesis_BF BayesTools_fit
+hypothesis_BF.BayesTools_fit <- function(posterior, hypothesis, namespace = NULL,
+                                         component = NULL,
+                                         transform_scaled = FALSE,
+                                         conditional = FALSE, logBF = FALSE,
+                                         BF01 = FALSE, seed = NULL,
+                                         density_method = "KDE",
+                                         density_control = NULL,
+                                         n_samples = 10000,
+                                         columns = "default", ...){
+
+  conditional_omitted <- missing(conditional)
+  .hypothesis_model_warn_unused_dots(
+    dots    = list(...),
+    allowed = character(),
+    caller  = "hypothesis_BF()"
+  )
+
+  hypothesis_BF_model(
+    object              = posterior,
+    hypothesis          = hypothesis,
+    namespace           = namespace,
+    component           = component,
+    transform_scaled    = transform_scaled,
+    conditional         = conditional,
+    logBF               = logBF,
+    BF01                = BF01,
+    seed                = seed,
+    density_method      = density_method,
+    density_control     = density_control,
+    n_samples           = n_samples,
+    columns             = columns,
+    conditional_omitted = conditional_omitted
+  )
 }
 
 

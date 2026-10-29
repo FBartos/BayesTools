@@ -3070,6 +3070,62 @@ test_that("Convergence-role and LKJ-diagonal models fit correctly", {
   )$registry_entry
 })
 
+test_that("Structured-correlation models for fit-level hypotheses fit correctly", {
+
+  skip_if_not_installed("rjags")
+  skip_if_not_installed("runjags")
+
+  # One heterogeneous compound-symmetry and one continuous-time AR(1) block,
+  # each with a sampled scalar correlation (default prior) that
+  # hypothesis_BF() tests by its public name, '(mu) cor'.
+  model_syntax <- "model{\n  for(i in 1:N){\n    y[i] ~ dnorm(mu[i], 1)\n  }\n}"
+  sd_prior <- prior("normal", list(0, 1), list(0, Inf))
+  structured_fit <- function(formula, data, seed){
+    suppressWarnings(JAGS_fit(
+      model_syntax = model_syntax,
+      data = list(y = data$y, N = nrow(data)),
+      formula_list = list(mu = formula),
+      formula_data_list = list(mu = data),
+      formula_prior_list = list(mu = list(intercept = prior("normal", list(0, 1)))),
+      formula_random_prior_list = list(mu = prior_random(id = random_block(
+        sd = sd_prior,
+        monitor = random_monitor(latent = FALSE, coefficients = FALSE, correlation = TRUE)
+      ))),
+      chains = 2, adapt = 100, burnin = 150, sample = 300, seed = seed, silent = TRUE
+    ))
+  }
+
+  set.seed(7)
+  hcs_data <- data.frame(
+    id = factor(rep(sprintf("g%02d", 1:12), each = 4L)),
+    f  = factor(rep(c("a", "b", "c", "d"), 12L), levels = c("a", "b", "c", "d"))
+  )
+  hcs_data$y <- 0.2 + stats::rnorm(12, 0, 0.8)[as.integer(hcs_data$id)] +
+    stats::rnorm(nrow(hcs_data), 0, 0.5)
+  model_registry[["fit_hypothesis_hcs"]] <<- save_fit(
+    structured_fit(~ 1 + hcs(f | id), hcs_data, seed = 21L),
+    "fit_hypothesis_hcs",
+    simple_priors = TRUE, formulas = TRUE, random_effects = TRUE,
+    assertion_only = TRUE,
+    note = "Heterogeneous compound-symmetry block with a sampled scalar correlation for fit-level hypothesis_BF()."
+  )$registry_entry
+
+  set.seed(8)
+  car_data <- data.frame(
+    id   = factor(rep(sprintf("m%02d", 1:10), each = 5L)),
+    time = rep(c(0, 0.5, 1.2, 2.0, 3.1), 10L)
+  )
+  car_data$y <- 0.1 + stats::rnorm(10, 0, 0.7)[as.integer(car_data$id)] +
+    stats::rnorm(nrow(car_data), 0, 0.5)
+  model_registry[["fit_hypothesis_car"]] <<- save_fit(
+    structured_fit(~ 1 + car(time | id), car_data, seed = 22L),
+    "fit_hypothesis_car",
+    simple_priors = TRUE, formulas = TRUE, random_effects = TRUE,
+    assertion_only = TRUE,
+    note = "Continuous-time AR(1) block with a sampled scalar correlation for fit-level hypothesis_BF()."
+  )$registry_entry
+})
+
 # ============================================================================ #
 # CENTRALIZED LIVE-FIT TESTS FROM test-JAGS-fit-edge-cases.R
 # ============================================================================ #

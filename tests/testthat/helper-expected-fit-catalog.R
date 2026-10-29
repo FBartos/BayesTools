@@ -2099,6 +2099,36 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       expected_chains = 2L,
       expected_iterations = 300L,
       flags = list(simple_priors = TRUE, formulas = TRUE, random_effects = TRUE, assertion_only = TRUE)
+    ),
+    catalog_row(
+      "fit_hypothesis_hcs",
+      has_marglik = FALSE,
+      model_family = "gaussian-regression-random-effects",
+      formula = '~ 1 + hcs(f | id)',
+      scale_policy = "random-effects,structured-correlation",
+      prior_features = "simple,formula,random-effects,hcs",
+      expected_monitor = c(
+        "mu_intercept", .bayestools_indexed_monitors("mu__xREx__id_f", 4L), "mu__xREx__id_rho"
+      ),
+      expected_formula_parameters = "mu",
+      oracle_type = "formula-fixture-metadata",
+      expected_chains = 2L,
+      expected_iterations = 300L,
+      flags = list(simple_priors = TRUE, formulas = TRUE, random_effects = TRUE, assertion_only = TRUE)
+    ),
+    catalog_row(
+      "fit_hypothesis_car",
+      has_marglik = FALSE,
+      model_family = "gaussian-regression-random-effects",
+      formula = '~ 1 + car(time | id)',
+      scale_policy = "random-effects,structured-correlation",
+      prior_features = "simple,formula,random-effects,car",
+      expected_monitor = c("mu_intercept", "mu__xREx__id_sd", "mu__xREx__id_rho"),
+      expected_formula_parameters = "mu",
+      oracle_type = "formula-fixture-metadata",
+      expected_chains = 2L,
+      expected_iterations = 300L,
+      flags = list(simple_priors = TRUE, formulas = TRUE, random_effects = TRUE, assertion_only = TRUE)
     )
   ))
 

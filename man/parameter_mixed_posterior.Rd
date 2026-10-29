@@ -4,7 +4,12 @@
 \alias{parameter_mixed_posterior}
 \title{Mixed posterior of one catalog quantity}
 \usage{
-parameter_mixed_posterior(fit, selection, conditional = FALSE)
+parameter_mixed_posterior(
+  fit,
+  selection,
+  conditional = FALSE,
+  transform_scaled = TRUE
+)
 }
 \arguments{
 \item{fit}{a model fitted with \code{\link[=JAGS_fit]{JAGS_fit()}}.}
@@ -30,6 +35,14 @@ e.g. a variance proportion of one, keep their renormalized masses). The
 declared \code{condition} names the gates of the event. Quantities without an
 inclusion gate cannot be conditioned, nor can a total of an allocation
 without parent gates that has an ungated component.}
+
+\item{transform_scaled}{whether the random-effect quantities (SDs,
+variances, and correlations) of a fit with scaled predictors are reported
+on the original scale (\code{TRUE}, the default) or on the fitted scale of the
+standardized predictors (\code{FALSE}), as for \code{\link[=JAGS_estimates_table]{JAGS_estimates_table()}}. The
+draws, the declared support and atoms, and the prior density share the
+scale. Fits without scaled predictors, and quantities that the scaling
+does not affect, are unchanged.}
 }
 \value{
 A numeric vector of class \code{mixed_posteriors},

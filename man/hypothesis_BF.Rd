@@ -2,10 +2,14 @@
 % Please edit documentation in R/hypothesis-BF.R
 \name{hypothesis_BF}
 \alias{hypothesis_BF}
+\alias{hypothesis_BF.default}
+\alias{hypothesis_BF.BayesTools_fit}
 \alias{as.data.frame.BayesTools_hypothesis_BF}
 \title{Hypothesis Bayes Factors}
 \usage{
-hypothesis_BF(
+hypothesis_BF(posterior, ...)
+
+\method{hypothesis_BF}{default}(
   posterior,
   prior = NULL,
   hypothesis,
@@ -14,15 +18,39 @@ hypothesis_BF(
   BF01 = FALSE,
   seed = NULL,
   density_method = c("KDE", "normal", "precomputed"),
-  columns = "default"
+  columns = "default",
+  ...
+)
+
+\method{hypothesis_BF}{BayesTools_fit}(
+  posterior,
+  hypothesis,
+  namespace = NULL,
+  component = NULL,
+  transform_scaled = FALSE,
+  conditional = FALSE,
+  logBF = FALSE,
+  BF01 = FALSE,
+  seed = NULL,
+  density_method = "KDE",
+  density_control = NULL,
+  n_samples = 10000,
+  columns = "default",
+  ...
 )
 
 \method{as.data.frame}{BayesTools_hypothesis_BF}(x, row.names = NULL, optional = FALSE, ...)
 }
 \arguments{
 \item{posterior}{posterior draws, a \code{marginal_posterior}, a
-\code{marginal_inference} object, or a data frame/matrix of posterior draws.
+\code{marginal_inference} object, or a data frame/matrix of posterior draws,
+or a model fitted with \code{\link[=JAGS_fit]{JAGS_fit()}} (a \code{BayesTools_fit}).
 Posterior draws must be finite and quantity names must be unique.}
+
+\item{...}{for the \code{cbind()} method, the tables to bind; unused by the
+\code{as.data.frame()} method. The method for draws takes no further
+arguments and stops on unknown ones; the method for a fitted model warns
+about them.}
 
 \item{prior}{prior draws for numeric/data-frame inputs, or for numeric
 draws a scalar BayesTools prior object (including mixture and
@@ -82,15 +110,20 @@ and transitive point-vs-region tests report \code{NA}. The default
 \code{BF_error} column is printed as \code{error\%(BF)}. Individual columns
 are selected by these column names; other spellings are rejected.}
 
+\item{namespace, component, transform_scaled, conditional, density_control, n_samples}{arguments of the method for a fitted model, passed to
+\code{\link[=hypothesis_BF_model]{hypothesis_BF_model()}}, which documents them: the component of the model
+that the statements refer to (the formula parameter such as \code{"mu"},
+\code{"model"}, or \code{"random"}) or a catalog component, the scale
+(\code{transform_scaled = FALSE}, the default, tests the fitted scale as in
+\code{\link[=JAGS_estimates_table]{JAGS_estimates_table()}}), the conditioning of the tested quantities on
+their inclusion events, the settings of the density backend, and the number
+of prior samples.}
+
 \item{x}{a hypothesis Bayes factor table.}
 
 \item{row.names}{optional row names for the complete exported frame.}
 
 \item{optional}{logical; exported column names are always syntactic and unique.}
-
-\item{...}{for the \code{cbind()} method, the tables to bind; unused by the
-\code{as.data.frame()} method. \code{hypothesis_BF()} takes no further
-arguments and stops on unknown ones.}
 }
 \value{
 A BayesTools table of class \code{BayesTools_hypothesis_BF}. The
@@ -164,7 +197,10 @@ class \code{BayesTools_parameter_not_found} (also
 \description{
 Computes Bayes factors for scalar hypotheses written as
 expressions, for example \code{"theta = 0"}, \code{"theta > 0"}, or
-\code{"theta = 0 vs theta > 0"}. Factor/posterior-list levels can be
+\code{"theta = 0 vs theta > 0"}. \code{hypothesis_BF()} is a generic: the
+default method evaluates posterior draws and marginal posteriors, and the
+method for a fitted model (\code{BayesTools_fit}) tests the quantities of
+its parameter catalog by their public names (see Fitted models). Factor/posterior-list levels can be
 referenced as \code{"mu_alloc[alternate] > mu_alloc[random]"} when the
 marginal posterior carries joint prior information. Level names that
 contain brackets, such as the \code{cut()} level \code{(0,1]}, are
@@ -296,4 +332,29 @@ existing percent relative-error units. Declared nonmissing bounds are in
 \code{"hypothesis/warnings"}. Compact printing retains its existing layout.
 \code{cbind()} binds the displayed columns of hypothesis tables (with their
 row names, at full precision) into a plain data frame.
+}
+\section{Fitted models}{
+
+\code{hypothesis_BF(fit, "(mu) cor = 0.9", BF01 = TRUE, seed = 1)} tests the
+quantities of the parameter catalog (\code{\link[=parameter_catalog]{parameter_catalog()}}) of a fitted
+model by the names that \code{\link[=JAGS_estimates_table]{JAGS_estimates_table()}} shows, without backticks
+(coefficients such as \code{"x"} or \code{"x_fac[B]"}, random-effect
+quantities such as \code{"(mu) sd(intercept)"} or \code{"(mu) cor"},
+scalar parameters such as \code{"sigma"}), and statements with \code{vs}
+work as for draws. A point null on a quantity with a prior point mass at
+that value (a spike-and-slab coefficient at its spike) stops with
+\code{BayesTools_point_mass_at_null}; \code{conditional = TRUE} tests the
+quantity within its inclusion event, and region hypotheses work without it.
+The fit method evaluates the Savage-Dickey density ratio
+\insertCite{dickey1971weighted,wagenmakers2010bayesian}{BayesTools} at the
+posterior and prior ordinates of the tested quantity;
+\code{\link[=hypothesis_BF_model]{hypothesis_BF_model()}} describes the engine, its refusals, and the density
+backends that evaluate point hypotheses (\code{\link[=hypothesis_density_backend]{hypothesis_density_backend()}}).
+The result is the same as extracting the quantity
+(\code{\link[=parameter_mixed_posterior]{parameter_mixed_posterior()}} or \code{\link[=as_mixed_posteriors]{as_mixed_posteriors()}} with
+\code{\link[=marginal_posterior]{marginal_posterior()}}) and testing its draws.
+}
+
+\references{
+\insertAllCited{}
 }

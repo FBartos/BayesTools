@@ -93,6 +93,13 @@
 #'   declared `condition` names the gates of the event. Quantities without an
 #'   inclusion gate cannot be conditioned, nor can a total of an allocation
 #'   without parent gates that has an ungated component.
+#' @param transform_scaled whether the random-effect quantities (SDs,
+#'   variances, and correlations) of a fit with scaled predictors are reported
+#'   on the original scale (`TRUE`, the default) or on the fitted scale of the
+#'   standardized predictors (`FALSE`), as for [JAGS_estimates_table()]. The
+#'   draws, the declared support and atoms, and the prior density share the
+#'   scale. Fits without scaled predictors, and quantities that the scaling
+#'   does not affect, are unchanged.
 #'
 #' @return A numeric vector of class `mixed_posteriors`,
 #'   `mixed_posteriors.simple`, `marginal_posterior.simple`, and
@@ -102,12 +109,19 @@
 #' @seealso [parameter_catalog()], [parameter_prior_density()],
 #'   [posterior_metadata()], [posterior_atoms_free()]
 #' @export
-parameter_mixed_posterior <- function(fit, selection, conditional = FALSE){
+parameter_mixed_posterior <- function(fit, selection, conditional = FALSE,
+                                      transform_scaled = TRUE){
 
   if(!inherits(fit, "BayesTools_fit")){
     stop("'fit' must be a 'BayesTools_fit' object.", call. = FALSE)
   }
   check_bool(conditional, "conditional", allow_NA = FALSE)
+  check_bool(transform_scaled, "transform_scaled", allow_NA = FALSE)
+  if(!transform_scaled){
+    # The fitted scale: draws and prior densities read the declared predictor
+    # scales of the fit, so a fit without them is on the fitted scale.
+    attr(fit, "formula_scale") <- list()
+  }
   catalog <- parameter_catalog(fit)
   .bt_validate_parameter_selection(selection, catalog = catalog)
   if(nrow(selection$quantities) != 1L){

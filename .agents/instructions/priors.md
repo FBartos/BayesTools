@@ -896,6 +896,10 @@ prior object its transformed density; nonlinear expressions of a
 deterministic prior are inexact. Only user-supplied prior draws keep a
 kernel (or normal) estimate of the prior ordinate, signalled by a warning of
 the same inexact class (draw-only inputs have no structural prior density).
+The fit-level method of `hypothesis_BF()` (a `BayesTools_fit` by public
+catalog names), its provider, and its density backends are specified in
+[hypothesis.md](hypothesis.md); it evaluates the same rule on the draws and
+prior densities that the catalog extraction provides.
 `Savage_Dickey_BF()` applies the same rule and classes to its prior ordinate
 through the same check: a zero or infinite prior ordinate makes the density
 ratio a 0/0 or singular limit that a posterior kernel estimate cannot
