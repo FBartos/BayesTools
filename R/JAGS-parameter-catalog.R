@@ -315,7 +315,7 @@ parameter_catalog.BayesTools_fit <- function(object, transform_scaled = TRUE, ..
 # identifiers do not depend on the scale. The map is built from the stored
 # coordinates, kept with the parameter map of the fit, and is the stored map
 # itself for a fit whose predictors are not scaled (or whose scales change
-# nothing).
+# nothing). It keeps the aliases of the stored map.
 .bt_parameter_fitted_map <- function(fit){
 
   map            <- parameter_map(fit)
@@ -340,12 +340,23 @@ parameter_catalog.BayesTools_fit <- function(object, transform_scaled = TRUE, ..
         formula_design = formula_design,
         formula_scale  = NULL
       )
-      if(identical(catalog$quantities, map$quantities) &&
-         identical(catalog$aliases, map$aliases)){
+      if(identical(catalog$quantities, map$quantities)){
         return(map)
       }
+      # The accepted names do not depend on the scale: the aliases of the stored
+      # map stay (the compilation without the scales would drop the original-scale
+      # labels of a log-intercept, such as 'exp(intercept)'), and those of a
+      # quantity that has none are compiled for the fitted scale.
+      aliases <- map$aliases[
+        map$aliases$quantity_id %in% catalog$quantities$quantity_id, , drop = FALSE
+      ]
+      added <- catalog$aliases[
+        !catalog$aliases$quantity_id %in% aliases$quantity_id, , drop = FALSE
+      ]
+      aliases <- rbind(aliases, added)
+      rownames(aliases) <- NULL
 
-      .bt_parameter_map_new(map$coordinates, catalog$quantities, catalog$aliases)
+      .bt_parameter_map_new(map$coordinates, catalog$quantities, aliases)
     }
   )
 }

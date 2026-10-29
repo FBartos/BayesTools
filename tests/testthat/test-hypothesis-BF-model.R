@@ -2732,11 +2732,12 @@ test_that("different level expressions with equal fitted weights are separate gr
 .hypothesis_model_test_scaled_fit <- function(prior_random, formula, z = FALSE,
                                               x_prior = prior("normal", list(0, 1)),
                                               formula_scale = TRUE, n = 2000L,
-                                              seed = 42L, priors_hook = NULL){
+                                              seed = 42L, priors_hook = NULL,
+                                              intercept_prior = prior("normal", list(0, 1))){
 
   data <- data.frame(x = .hypothesis_model_test_x_values(),
                      z = rep(c(1, 5, 2), 4L), g = factor(rep(1:4, each = 3L)))
-  priors <- list(intercept = prior("normal", list(0, 1)), x = x_prior)
+  priors <- list(intercept = intercept_prior, x = x_prior)
   if(z) priors$z <- prior("normal", list(0, 1))
   compiled <- JAGS_formula(formula, "mu", data, priors, prior_random = prior_random,
                            formula_scale = formula_scale)
@@ -3490,5 +3491,42 @@ test_that("prior draws of a standardized block are extracted with a selection of
   expect_equal(dim(as.matrix(draws)), c(200L, 1L))
   expect_true(all(is.finite(as.matrix(draws))))
   expect_equal(posterior_metadata(draws, "support")[[1L]]$bounds, c(0, Inf))
+
+})
+
+
+test_that("the fitted-scale catalog keeps the names of the original scale", {
+
+  # a log-intercept of a scaled formula is named by its original-scale label,
+  # 'exp(intercept)', on both scales: with a standardized random slope the
+  # quantities of the two catalogs differ, without it they are the same
+  for(random in c(TRUE, FALSE)){
+    formula <- if(random) ~ 1 + x + (0 + x || g) else ~ 1 + x
+    attr(formula, "log(intercept)") <- TRUE
+    fit <- .hypothesis_model_test_scaled_fit(
+      if(random) prior_random(g = random_block(sd = prior("uniform", list(1, 2)))),
+      formula, intercept_prior = prior("lognormal", list(0, 0.5))
+    )
+    original <- parameter_catalog(fit)
+    fitted   <- parameter_catalog(fit, transform_scaled = FALSE)
+    expect_identical(identical(fitted$quantities, original$quantities), !random)
+    expect_true(all(c("exp(intercept)", "(mu) exp(intercept)") %in% original$aliases$alias))
+    expect_identical(fitted$aliases, original$aliases)
+    intercept <- original$quantities$quantity_id[original$quantities$canonical_name == "mu_intercept"]
+    for(catalog in list(original, fitted)){
+      for(alias in c("exp(intercept)", "(mu) exp(intercept)")){
+        expect_identical(
+          parameter_catalog_resolve(catalog, alias, namespace = "mu")$quantity_id, intercept,
+          info = paste(random, alias)
+        )
+      }
+    }
+    if(random){
+      expect_identical(
+        parameter_catalog_resolve(fitted, "(mu) sd(x)")$quantity_id,
+        parameter_catalog_resolve(original, "(mu) sd(x)")$quantity_id
+      )
+    }
+  }
 
 })

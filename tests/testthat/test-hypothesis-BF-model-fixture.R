@@ -369,3 +369,24 @@ test_that("a selection of the fitted-scale catalog is extracted with the gates o
   )
 
 })
+
+
+test_that("the fitted-scale catalog of a cached fit keeps its aliases", {
+
+  fit <- .hypothesis_model_fixture_fit("fit_dual_param_regression")
+  original <- parameter_catalog(fit)
+  fitted   <- parameter_catalog(fit, transform_scaled = FALSE)
+  expect_identical(fitted$aliases, original$aliases)
+  expect_true(all(c("exp(intercept)", "(log_sigma) exp(intercept)") %in% fitted$aliases$alias))
+  for(catalog in list(original, fitted)){
+    expect_identical(
+      parameter_catalog_resolve(catalog, "exp(intercept)", namespace = "log_sigma")$quantity_id,
+      parameter_catalog_resolve(catalog, "(log_sigma) exp(intercept)")$quantity_id
+    )
+  }
+  expect_identical(
+    parameter_catalog_resolve(fitted, "exp(intercept)", namespace = "log_sigma")$quantity_id,
+    parameter_catalog_resolve(original, "exp(intercept)", namespace = "log_sigma")$quantity_id
+  )
+
+})
