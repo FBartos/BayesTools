@@ -97,7 +97,12 @@ except \code{attach} of an ordinate backend.
 \item{\code{available(object, plan, control)}}{whether the backend can
 evaluate the statement \code{plan} of the model \code{object} (the
 \code{capability_object} of the provider) with the normalized
-\code{control}. It is evaluated on every call and never cached. It
+\code{control}, the settings that \code{control()} returns for the call
+(for the stored marginal means of a model, for the settings of the call or
+the stored settings that the provider inherits). Settings that
+\code{control()} refuses reach \code{available()} as they were supplied,
+and the engine stops with the failure of \code{control()} after the
+plans are checked. It is evaluated on every call and never cached. It
 returns \code{NULL} when the backend can, and otherwise a refusal: a list
 with the \code{reason} (a string) and optionally \code{class} (additional
 condition classes appended to \code{BayesTools_hypothesis_method} and
@@ -105,9 +110,13 @@ condition classes appended to \code{BayesTools_hypothesis_method} and
 of further fields of the condition). The engine stops with the refusal
 before any statement is evaluated.}
 \item{\code{control(control)}}{the normalized \code{density_control} of
-the backend (defaults filled in), stopping on invalid settings. The
-default accepts no settings: \code{NULL} and an empty list give
-\code{NULL}, anything else is an error.}
+the backend (defaults filled in), stopping on invalid settings. It is
+called with the settings of the call (or the stored settings of the
+provider) on every call with an ordinate backend, and for the settings
+that a call supplies to another backend, after the
+\code{check_density_control()} of the provider
+(\code{\link[=hypothesis_provider]{hypothesis_provider()}}). The default accepts no settings: \code{NULL}
+and an empty list give \code{NULL}, anything else is an error.}
 \item{\code{attach(posterior, request, control, cache)}}{the whole
 ordinate step of an ordinate backend. \code{posterior} is the marginal
 posterior of the tested quantity (a vector, or for the request of a
@@ -131,31 +140,49 @@ its \code{capability_object}), \code{model} (the object of the provider),
 it), \code{level}, \code{values} (the point values to compute),
 \code{conditional} (the conditioning of the draws: the parameter whose
 inclusion event the draws are conditioned on, or \code{NULL}),
-\code{spec} (the structure of the tested quantity that the provider
+\code{condition} (the declared conditioning of the draws that the
+ordinates belong to, read from their metadata
+(\code{\link[=posterior_metadata]{posterior_metadata()}}, \code{"condition"}): the elements
+\code{conditional} (the effective conditioning, a character vector that
+is empty for averaged draws), \code{conditional_rule},
+\code{condition_key}, \code{condition_event}, and
+\code{resolved_condition_event}, those the draws declare; an empty list
+for draws without a declaration), \code{spec} (the structure of the tested quantity that the provider
 declares: for example \code{type = "primitive"} or \code{"linear"} with
 the \code{weights} on the fitted coordinates and the \code{prior_density}),
 \code{display_transform} (the transformation from the evaluated to the
 tested scale, or \code{NULL}), \code{density_method} (the name of the
 backend), and \code{inference_type} (marginal means: the marginal
 inference the draws belong to).}
-\item{\code{reuse(entry, request, control)}}{whether the ordinate
-\code{entry} that is stored on the draws at a requested value is
-current for the request (the method, control, source of the fit, target,
-and conditioning agree), so that it is not computed again. The default
-reuses nothing: stored ordinates at the requested values are replaced.}
+\item{\code{reuse(entry, request, control, posterior)}}{whether the
+ordinate \code{entry} that is stored on the draws \code{posterior} at a
+requested value is current for the \code{request} (the method, control,
+source of the fit, target, and conditioning agree), so that it is not
+computed again. \code{posterior} are the draws that carry \code{entry}
+(for the request of a factor level, the draws of that level), with their
+metadata; \code{request$condition} is their declared conditioning. The
+default reuses nothing: stored ordinates at the requested values are
+replaced.}
 \item{\code{warnings(posterior, request)}}{the warnings of the ordinates
 stored on \code{posterior} (recursively over the levels of a list), as a
 data frame with the columns \code{warning}, \code{parameter},
 \code{level}, \code{label}, and \code{value}. The engine puts each
 warning on the rows of the statements it belongs to. The default reads
-the \code{warning} element of the diagnostics of each stored ordinate.}
+the \code{warning} element of the diagnostics of each stored ordinate.
+The \code{request} is the request that \code{attach} received for the
+group of statements, before the values whose stored ordinates
+\code{reuse} accepted were left out of \code{values}; for a group that
+is attached level by level (the levels of a factor term, marginal
+means) it is the request of the first level, and the requests of the
+group differ in their \code{level}, \code{values}, \code{label},
+\code{spec}, and \code{condition} only.}
 \item{\code{diagnostics(posterior, request)}}{the public diagnostics of
-the stored ordinates (a data frame), stored as the
-\code{density_diagnostics} attribute of the table, and
-\code{bind_diagnostics(list)}, which combines the diagnostics of several
-groups of statements. Without \code{diagnostics} the table has no such
-attribute; the default of \code{bind_diagnostics} row-binds the data
-frames.}
+the stored ordinates (a data frame; \code{request} as for
+\code{warnings}), stored as the \code{density_diagnostics} attribute of
+the table, and \code{bind_diagnostics(list)}, which combines the
+diagnostics of several groups of statements. Without \code{diagnostics}
+the table has no such attribute; the default of \code{bind_diagnostics}
+row-binds the data frames.}
 \item{\code{rescale_failure(condition, requested, evaluated, label,
   density_method)}}{restates a condition that \code{attach} raised for the
 evaluated values \code{evaluated} of a request for the values
@@ -166,7 +193,10 @@ one.}
 \item{\code{refusal_classes(cause)}}{additional condition classes for the
 refusals of the ordinate backends for a generic cause
 (\code{"original_scale"}, \code{"conditional_random"}, or
-\code{"random_target"}).}
+\code{"random_target"}); they follow the classes of the refusal of the
+engine (for example \code{BayesTools_hypothesis_target} and
+\code{BayesTools_hypothesis_unavailable}). A provider names the cause of
+the refusal of a random-effect quantity (\code{\link[=hypothesis_provider]{hypothesis_provider()}}).}
 \item{\code{clear_cache()}}{drops the caches of the backend; the engine
 calls it when it drops its own caches.}
 }

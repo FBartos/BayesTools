@@ -105,8 +105,14 @@ quantity, and any elements the other callbacks need),
 \code{\link[=as_mixed_posteriors]{as_mixed_posteriors()}}), \code{support(selected)} (the exact bounds),
 \code{density_target(parameter, transform_scaled, operation)} (a list with the
 quantity that a density backend evaluates, its \code{parameter_spec}, and
-\code{display_transform}, or the \code{reason} and \code{cause} of a
-quantity without one), \code{sd_pair(selected)} (the standard deviation
+\code{display_transform}, or the refusal of a quantity without one: its
+\code{reason}, and optionally its \code{type} (\code{"target"}, the
+default, \code{"method"}, or \code{"fixed"}: the engine's refusal
+\code{BayesTools_hypothesis_<type>} and its parent
+\code{BayesTools_hypothesis_unavailable}) and its \code{cause}
+(\code{"random_target"}, the default, or \code{"original_scale"}), for
+which the density backend appends its classes
+(\code{refusal_classes(cause)})), \code{sd_pair(selected)} (the standard deviation
 of which a variance is the square, or \code{NULL}),
 \code{zero_boundary(selected)} (\code{NULL}, or a list with the
 statement that tests the omission of a component),
@@ -127,6 +133,19 @@ term.}
 \item{\code{check_plans(plans)}}{\code{NULL}, or a function that
 validates the plans of all statements of a request and stops with a
 refusal.}
+\item{\code{check_density_control(density_method, density_control)}}{
+\code{NULL}, or a function that checks the \code{density_control} of a
+call before the \code{control()} of the density backend sees it. It
+receives the name of the selected backend and the settings as supplied (a
+list, possibly empty, or \code{NULL}) wherever \code{control()} is
+called: on every call with an ordinate backend, and on every call that
+supplies settings to another backend (for stored marginal means also
+where the stored settings are normalized). It stops with the condition
+that refuses the settings; its value is ignored. Without it the
+built-in backends accept \code{NULL} and an empty list and refuse other
+settings with the message \code{'density_control' is not used by
+  density_method = 'KDE'.}, and the \code{control()} of a backend
+validates its own settings.}
 }
 A provider of \code{kind = "marginal_means"} describes the stored marginal
 means of a model instead: \code{inference} (the marginal inference with the

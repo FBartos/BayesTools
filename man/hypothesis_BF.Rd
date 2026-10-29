@@ -112,8 +112,10 @@ are selected by these column names; other spellings are rejected.}
 
 \item{namespace, component, transform_scaled, conditional, density_control, n_samples}{arguments of the method for a fitted model, passed to
 \code{\link[=hypothesis_BF_model]{hypothesis_BF_model()}}, which documents them: the component of the model
-that the statements refer to (the formula parameter such as \code{"mu"},
-\code{"model"}, or \code{"random"}) or a catalog component, the scale
+that the statements refer to (\code{namespace}: the formula parameter such
+as \code{"mu"}, \code{"model"}, or \code{"random"}), the level of a factor
+term that references to the term without a level stand for
+(\code{component}, which combines with \code{namespace}), the scale
 (\code{transform_scaled = FALSE}, the default, tests the fitted scale as in
 \code{\link[=JAGS_estimates_table]{JAGS_estimates_table()}}), the conditioning of the tested quantities on
 their inclusion events, the settings of the density backend, and the number

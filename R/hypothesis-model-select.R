@@ -465,6 +465,71 @@
 }
 
 
+# The level token of a request ('component' of hypothesis_BF_model(), the
+# catalog component hypothesis_resolve() filters the references by) names the
+# level of a factor term that the references to the term without a level
+# stand for. The statement is restated with the level, so that it is planned,
+# and refused, as the statement on that level: 'x_fac = 0.1' with the token
+# "B" is 'x_fac[B] = 0.1'. 'selected' is the selection of
+# .hypothesis_model_select_parameter() made with the token.
+.hypothesis_model_insert_level <- function(hypothesis, selected, level) {
+
+  entry <- selected[["entry"]]
+  if (is.null(level) || !identical(entry[["role"]], "formula_coefficient_group")) {
+    return(hypothesis)
+  }
+  occurrences <- selected[["resolution"]][["occurrences"]]
+  members     <- unlist(entry[["member_quantity_ids"]], use.names = FALSE)
+  roots <- unique(occurrences[["parameter"]][
+    is.na(occurrences[["level"]]) & occurrences[["quantity_id"]] %in% members
+  ])
+  if (length(roots) == 0L) {
+    return(hypothesis)
+  }
+
+  ast <- .hypothesis_model_ast(hypothesis)
+  ast[["statements"]] <- lapply(ast[["statements"]], function(statement) {
+    for (side_name in c("left", "right")) {
+      statement[[side_name]][["expression"]] <- .hypothesis_model_insert_level_node(
+        statement[[side_name]][["expression"]], roots, level
+      )
+      statement[[side_name]] <- .bt_hypothesis_refresh_side(statement[[side_name]])
+    }
+    statement[["source"]] <- .bt_hypothesis_render_statement(statement)
+    statement
+  })
+  .bt_validate_hypothesis_ast(ast)
+
+  ast
+}
+
+
+.hypothesis_model_insert_level_node <- function(node, roots, level) {
+
+  if (identical(node[["type"]], "symbol")) {
+    if (node[["name"]] %in% roots) {
+      node <- list(type = "level_reference", source = node[["source"]],
+                   parameter = node[["name"]], level = level)
+    }
+  } else if (node[["type"]] %in% c("parentheses", "negation")) {
+    node[["expression"]] <- .hypothesis_model_insert_level_node(
+      node[["expression"]], roots, level
+    )
+  } else if (node[["type"]] %in% c("boolean", "comparison")) {
+    node[["left"]]  <- .hypothesis_model_insert_level_node(node[["left"]], roots, level)
+    node[["right"]] <- .hypothesis_model_insert_level_node(node[["right"]], roots, level)
+  } else if (node[["type"]] %in% c("arithmetic", "function")) {
+    node[["arguments"]] <- lapply(
+      node[["arguments"]], .hypothesis_model_insert_level_node,
+      roots = roots, level = level
+    )
+  }
+  node[["source"]] <- .bt_hypothesis_render_node(node)
+
+  node
+}
+
+
 .hypothesis_model_symbol_roots <- function(hypothesis) {
 
   return(hypothesis_symbols(.hypothesis_model_ast(hypothesis)))

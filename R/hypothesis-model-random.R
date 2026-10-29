@@ -107,7 +107,7 @@
 
   if (identical(method, "precomputed")) {
     target    <- plan[["density_target"]]
-    posterior <- .hypothesis_model_plan_attach_scalar(
+    attached  <- .hypothesis_model_plan_attach_scalar(
       provider          = provider,
       backend           = backend,
       plan              = plan,
@@ -120,6 +120,8 @@
       density_control   = density_control,
       display_transform = target[["display_transform"]]
     )
+    posterior <- attached[["posterior"]]
+    request   <- attached[["request"]]
   }
 
   out <- hypothesis_BF.default(
@@ -137,6 +139,7 @@
       table     = out,
       posterior = posterior,
       backend   = backend,
+      request   = request,
       parameter = parameter
     )
   }
@@ -647,9 +650,9 @@
   refused <- function(reason, type = "method") {
     list(refusals = .hypothesis_model_plan_precomputed_refusals(reason, type))
   }
-  refused_cause <- function(reason, cause) {
+  refused_cause <- function(reason, cause, type = "method") {
     list(refusals = list(
-      ordinate = .hypothesis_model_cause_refusal(reason, cause)
+      ordinate = .hypothesis_model_cause_refusal(reason, cause, type)
     ))
   }
   if (plan[["conditional"]]) {
@@ -681,7 +684,18 @@
         target[["reason"]] <- own[["reason"]]
       }
     }
-    return(refused_cause(target[["reason"]], "random_target"))
+    # The refusal of the provider keeps its type (default "target": no
+    # supported target) and its cause (default "random_target"), for which the
+    # backend declares its additional classes.
+    return(refused_cause(
+      target[["reason"]],
+      cause = .hypothesis_model_random_refusal_field(
+        target, "cause", "random_target", c("original_scale", "random_target")
+      ),
+      type  = .hypothesis_model_random_refusal_field(
+        target, "type", "target", c("target", "method", "fixed")
+      )
+    ))
   }
   # Values outside the support are refused by their prior ordinates.
   values <- .hypothesis_model_plan_random_source_values(plan, evaluation)
@@ -706,6 +720,28 @@
   }
 
   list(refusals = list(), density_target = target)
+}
+
+
+# The 'field' of a refusal of random$density_target(): 'default' when absent,
+# otherwise one of 'allowed'.
+.hypothesis_model_random_refusal_field <- function(target, field, default,
+                                                   allowed) {
+
+  value <- target[[field]]
+  if (is.null(value)) {
+    return(default)
+  }
+  if (!is.character(value) || length(value) != 1L || !value %in% allowed) {
+    stop(
+      "Invalid hypothesis provider: the '", field, "' of a refusal of ",
+      "'random$density_target()' must be one of ",
+      paste0("'", allowed, "'", collapse = ", "), ".",
+      call. = FALSE
+    )
+  }
+
+  value
 }
 
 

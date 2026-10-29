@@ -9,6 +9,27 @@
 # ============================================================================ #
 
 
+# The table of a model without quantities that the engine tests: the columns
+# of hypothesis_quantities() without rows.
+.hypothesis_model_quantities_empty <- function() {
+
+  data.frame(
+    alias                 = character(),
+    parameter             = character(),
+    component             = character(),
+    term                  = character(),
+    bracket               = character(),
+    point_test            = logical(),
+    direction_test        = logical(),
+    contrast_test         = logical(),
+    point_test_methods    = character(),
+    contrast_test_methods = character(),
+    reason                = character(),
+    stringsAsFactors      = FALSE
+  )
+}
+
+
 # One row of eligibility columns.
 .hypothesis_model_quantities_row <- function(bracket = FALSE, point_test = FALSE,
                                        direction_test = FALSE,
@@ -337,6 +358,9 @@
       )
     }
   }
+  if (length(rows) == 0L) {
+    return(.hypothesis_model_quantities_empty())
+  }
   out <- do.call(rbind, rows)
   out <- out[, c(
     "alias", "parameter", "component", "term", "bracket", "point_test",
@@ -498,6 +522,9 @@ hypothesis_quantities.BayesTools_fit <- function(object, transform_scaled = NULL
       check.names       = FALSE
     )
   })
+  if (length(rows) == 0L) {
+    return(NULL)
+  }
   out <- do.call(rbind, rows)
   out <- unique(out)
   rownames(out) <- NULL
@@ -510,10 +537,16 @@ hypothesis_quantities.BayesTools_fit <- function(object, transform_scaled = NULL
 
   metadata <- provider[["metadata"]]()
   catalog  <- .hypothesis_model_quantities_catalog(metadata)
+  if (is.null(catalog)) {
+    return(.hypothesis_model_quantities_empty())
+  }
   catalog  <- catalog[
     !catalog[["component"]] %in% names(provider[["components"]][["refused"]]),
     , drop = FALSE
   ]
+  if (nrow(catalog) == 0L) {
+    return(.hypothesis_model_quantities_empty())
+  }
   out  <- catalog[, c("alias", "parameter", "component", "term"), drop = FALSE]
   keys <- catalog[["quantity_id"]]
   unique_rows <- match(unique(keys), keys)
@@ -547,11 +580,11 @@ hypothesis_quantities.BayesTools_fit <- function(object, transform_scaled = NULL
     )
   }, logical(1))
   out <- out[resolves, , drop = FALSE]
-  out[["bracket"]] <- ifelse(
+  out[["bracket"]] <- as.character(ifelse(
     out[["bracket"]],
     paste0(out[["parameter"]], "[level]"),
     NA_character_
-  )
+  ))
   out <- out[, c(
     "alias", "parameter", "component", "term", "bracket", "point_test",
     "direction_test", "contrast_test", "point_test_methods",

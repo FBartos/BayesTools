@@ -34,8 +34,12 @@ the vocabulary of its provider (for a \code{BayesTools_fit}: \code{"auto"},
 the formula parameters such as \code{"mu"}, \code{"model"}, or
 \code{"random"}); \code{NULL} selects the default.}
 
-\item{component}{a catalog component (for example a factor level) passed
-to \code{\link[=hypothesis_resolve]{hypothesis_resolve()}}. It cannot be combined with \code{namespace}.}
+\item{component}{a catalog component (the level token of a factor term)
+passed to \code{\link[=hypothesis_resolve]{hypothesis_resolve()}}: a reference to a factor term without a
+level stands for this level, so that \code{"x_fac = 0.1"} with
+\code{component = "B"} is the statement \code{"x_fac[B] = 0.1"}. It
+combines with \code{namespace}, which selects the formula parameter (for
+example when the factor is shared by several formulas).}
 
 \item{transform_scaled}{whether coefficients of scaled predictors, and
 random-effect SDs, variances, and correlations of such predictors, are

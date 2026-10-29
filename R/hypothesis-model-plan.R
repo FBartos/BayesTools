@@ -488,7 +488,9 @@ hypothesis_stop <- function(reason, type = c("target", "fixed", "method",
   plan <- .hypothesis_model_plan_new(
     statement    = statement,
     hypothesis   = .hypothesis_model_rewrite(
-      hypothesis = statement,
+      hypothesis = .hypothesis_model_insert_level(
+        statement, selected, level_component
+      ),
       aliases    = selected[["aliases"]],
       parameter  = parameter,
       resolved_roots = selected[["roots"]]

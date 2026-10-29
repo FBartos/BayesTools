@@ -104,11 +104,12 @@
 # Attaches the ordinates that 'backend' computes for one request: the point
 # values 'request$values' of a posterior (a vector) or of the level
 # 'request$level' of a list of level posteriors. Stored ordinates at the
-# requested values are kept only when the backend's reuse() accepts them and
-# are removed otherwise (so that a replacement never collides with the
-# unique-value rule of the ordinate attribute); the backend's attach() then
-# computes the missing ones. The attached ordinates are checked with
-# posterior_ordinate_supports_bf().
+# requested values are kept only when the backend's reuse() accepts them (it
+# receives the draws that carry the ordinate, to compare their conditioning
+# and provenance with the request) and are removed otherwise (so that a
+# replacement never collides with the unique-value rule of the ordinate
+# attribute); the backend's attach() then computes the missing ones. The
+# attached ordinates are checked with posterior_ordinate_supports_bf().
 .hypothesis_model_attach_request <- function(posterior, backend, request,
                                              control, cache) {
 
@@ -128,7 +129,7 @@
   reusable  <- requested
   reusable[requested] <- vapply(entries[requested], function(entry) {
     is.function(backend[["reuse"]]) &&
-      isTRUE(backend[["reuse"]](entry, request, control))
+      isTRUE(backend[["reuse"]](entry, request, control, sample))
   }, logical(1))
   posterior_metadata(sample, "posterior_ordinate") <-
     .hypothesis_model_ordinate_combine(entries[!requested | reusable])
@@ -290,8 +291,10 @@
 # put on the rows of the statements it belongs to (the point side with its
 # value and label). A backend without diagnostics() sets no attribute; one
 # without warnings() has the warnings of its ordinate diagnostics lifted.
+# 'request' is the request that the backend's attach() received for the group
+# of statements (the first one of a group that is attached level by level).
 .hypothesis_model_append_ordinate_warnings <- function(
-    table, posterior, backend, parameter = NULL, request = NULL) {
+    table, posterior, backend, request, parameter = NULL) {
 
   if (is.function(backend[["diagnostics"]])) {
     diagnostics <- backend[["diagnostics"]](posterior, request)

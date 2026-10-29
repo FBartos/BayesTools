@@ -144,6 +144,7 @@ bayestools_test_profile_contexts <- list(
     "fixture-integrity",
     "hypothesis-BF-bridge",
     "hypothesis-BF-model-fixture",
+    "hypothesis-BF-model-review",
     "JAGS-deterministic-nodes-fixture",
     "JAGS-ensemble-tables",
     "JAGS-fit",

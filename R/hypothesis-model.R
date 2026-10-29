@@ -119,9 +119,12 @@
 
 
 # The request of a density backend for the point values 'values' of the
-# posterior of a plan (see hypothesis_density_backend()).
+# posterior of a plan (see hypothesis_density_backend()). 'sample' are the
+# draws that the ordinates belong to (the vector, or the draws of the level
+# of a request for a factor level): their conditioning is the 'condition' of
+# the request.
 .hypothesis_model_request <- function(provider, backend, plan, kind, parameter,
-                                      label, values, spec = NULL,
+                                      label, values, sample, spec = NULL,
                                       conditional = NULL, level = NA_character_,
                                       display_transform = NULL) {
 
@@ -135,6 +138,7 @@
     level             = level,
     values            = values,
     conditional       = conditional,
+    condition         = .hypothesis_model_condition_metadata(sample),
     spec              = spec,
     display_transform = display_transform,
     density_method    = backend[["name"]],
@@ -144,7 +148,9 @@
 
 
 # Attaches the ordinates of scalar point values to a posterior with the
-# ordinate backend.
+# ordinate backend. Returns the posterior with the ordinates and the request
+# that the backend received (which its warnings() and diagnostics() receive
+# as well).
 .hypothesis_model_plan_attach_scalar <- function(provider, backend, plan,
                                                  posterior, parameter,
                                                  parameter_label, values, spec,
@@ -157,17 +163,18 @@
   )
   request <- .hypothesis_model_request(
     provider, backend, plan, kind = "scalar", parameter = parameter,
-    label = parameter_label, values = unique(values), spec = spec,
-    conditional = conditional, display_transform = display_transform
+    label = parameter_label, values = unique(values), sample = posterior,
+    spec = spec, conditional = conditional, display_transform = display_transform
   )
-
-  .hypothesis_model_attach_request(
+  posterior <- .hypothesis_model_attach_request(
     posterior = posterior,
     backend   = backend,
     request   = request,
     control   = density_control,
     cache     = new.env(parent = emptyenv())
   )
+
+  list(posterior = posterior, request = request)
 }
 
 
@@ -179,8 +186,8 @@
   posterior <- plan[["draws"]][["posterior"]]
   method    <- .hypothesis_model_plan_execution_method(plans, backend)
   if (identical(method, "precomputed")) {
-    targets   <- .hypothesis_model_plan_targets(plans)
-    posterior <- .hypothesis_model_plan_attach_scalar(
+    targets  <- .hypothesis_model_plan_targets(plans)
+    attached <- .hypothesis_model_plan_attach_scalar(
       provider        = provider,
       backend         = backend,
       plan            = plan,
@@ -192,6 +199,8 @@
       conditional     = if (plan[["conditional"]]) plan[["parameter"]],
       density_control = density_control
     )
+    posterior <- attached[["posterior"]]
+    request   <- attached[["request"]]
   }
 
   out <- hypothesis_BF.default(
@@ -208,7 +217,8 @@
     out <- .hypothesis_model_append_ordinate_warnings(
       table     = out,
       posterior = posterior,
-      backend   = backend
+      backend   = backend,
+      request   = request
     )
   }
 
@@ -239,6 +249,7 @@
     ))
     posterior <- .hypothesis_model_keep_requested_ordinates(posterior, refs)
     cache     <- new.env(parent = emptyenv())
+    requests  <- list()
     for (i in seq_len(nrow(refs))) {
       target <- targets[[which(
         vapply(targets, function(target) target[["level"]], character(1)) ==
@@ -247,7 +258,8 @@
       request <- .hypothesis_model_request(
         provider, backend, plan, kind = "level",
         parameter = plan[["parameter"]], label = plan[["parameter"]],
-        values = refs[["value"]][[i]], spec = target[["spec"]],
+        values = refs[["value"]][[i]],
+        sample = posterior[[refs[["level"]][[i]]]], spec = target[["spec"]],
         conditional = if (plan[["conditional"]]) plan[["parameter"]],
         level = refs[["level"]][[i]]
       )
@@ -258,7 +270,10 @@
         control   = density_control,
         cache     = cache
       )
+      requests[[i]] <- request
     }
+    # The requests of a group differ in their level, values, and spec only.
+    request <- requests[[1L]]
   }
 
   out <- hypothesis_BF.default(
@@ -275,7 +290,8 @@
     out <- .hypothesis_model_append_ordinate_warnings(
       table     = out,
       posterior = posterior,
-      backend   = backend
+      backend   = backend,
+      request   = request
     )
   }
 
@@ -307,8 +323,8 @@
   }
   method <- .hypothesis_model_plan_execution_method(plans, backend)
   if (identical(method, "precomputed")) {
-    targets <- .hypothesis_model_plan_targets(plans)
-    target[["posterior"]] <- .hypothesis_model_plan_attach_scalar(
+    targets  <- .hypothesis_model_plan_targets(plans)
+    attached <- .hypothesis_model_plan_attach_scalar(
       provider        = provider,
       backend         = backend,
       plan            = plan,
@@ -323,6 +339,8 @@
       ),
       density_control = density_control
     )
+    target[["posterior"]] <- attached[["posterior"]]
+    request               <- attached[["request"]]
   }
 
   out <- hypothesis_BF.default(
@@ -339,7 +357,8 @@
     out <- .hypothesis_model_append_ordinate_warnings(
       table     = out,
       posterior = target[["posterior"]],
-      backend   = backend
+      backend   = backend,
+      request   = request
     )
   }
   # One linear target: row i is statement i.
@@ -372,6 +391,9 @@
 # that is to be matched to them.
 .hypothesis_model_condition_metadata <- function(samples) {
 
+  if (is.null(samples)) {
+    return(list())
+  }
   condition   <- posterior_metadata(samples, "condition")
   conditional <- .hypothesis_model_first_nonempty_condition(
     condition,
@@ -696,8 +718,8 @@
       )
     }
     if (precomputed) {
-      targets <- .hypothesis_model_plan_targets(plans)
-      target[["posterior"]] <- .hypothesis_model_plan_attach_scalar(
+      targets  <- .hypothesis_model_plan_targets(plans)
+      attached <- .hypothesis_model_plan_attach_scalar(
         provider        = provider,
         backend         = backend,
         plan            = plan,
@@ -712,6 +734,8 @@
         ),
         density_control = density_control
       )
+      target[["posterior"]] <- attached[["posterior"]]
+      request               <- attached[["request"]]
     }
     out <- hypothesis_BF.default(
       posterior      = target[["posterior"]],
@@ -727,7 +751,8 @@
       out <- .hypothesis_model_append_ordinate_warnings(
         table     = out,
         posterior = target[["posterior"]],
-        backend   = backend
+        backend   = backend,
+        request   = request
       )
     }
     # One linear target: row i is statement i.
@@ -742,7 +767,7 @@
 
   inference_type <- plan[["inference_type"]]
   if (precomputed) {
-    provider <- .hypothesis_model_marginal_attach(
+    attached <- .hypothesis_model_marginal_attach(
       provider        = provider,
       backend         = backend,
       plan            = plan,
@@ -751,6 +776,8 @@
       inference_type  = inference_type,
       density_control = density_control
     )
+    provider <- attached[["provider"]]
+    request  <- attached[["request"]]
   }
   inference <- provider[["inference"]]
   inference[["conditional"]] <- inference[[inference_type]]
@@ -770,7 +797,8 @@
     out <- .hypothesis_model_append_ordinate_warnings(
       table     = out,
       posterior = inference[["conditional"]][[parameter]],
-      backend   = backend
+      backend   = backend,
+      request   = request
     )
   }
 
@@ -779,16 +807,23 @@
 
 
 # Attaches the ordinates of the point values of the marginal means of one
-# parameter to the stored marginal inference of the provider.
+# parameter to the stored marginal inference of the provider. Returns the
+# provider with the ordinates and the request that the backend received (the
+# first one for a group with several levels; the requests of a group differ in
+# their level, values, and spec only).
 .hypothesis_model_marginal_attach <- function(provider, backend, plan,
                                               parameter, hypothesis,
                                               inference_type, density_control) {
 
   point_refs <- .hypothesis_model_point_refs(hypothesis, parameter)
+  samples    <- provider[["inference"]][[inference_type]][[parameter]]
   if (nrow(point_refs) == 0L) {
-    return(provider)
+    request <- .hypothesis_model_request(
+      provider, backend, plan, kind = "level", parameter = parameter,
+      label = parameter, values = numeric(), sample = NULL
+    )
+    return(list(provider = provider, request = request))
   }
-  samples <- provider[["inference"]][[inference_type]][[parameter]]
   point_refs <- .hypothesis_model_marginal_resolve_singleton_levels(
     samples    = samples,
     point_refs = point_refs
@@ -799,7 +834,8 @@
       posterior  = samples,
       point_refs = point_refs
     )
-  cache <- new.env(parent = emptyenv())
+  cache    <- new.env(parent = emptyenv())
+  requests <- list()
   for (i in seq_len(nrow(point_refs))) {
     samples <- provider[["inference"]][[inference_type]][[parameter]]
     if (is.null(samples)) {
@@ -813,7 +849,8 @@
     request <- .hypothesis_model_request(
       provider, backend, plan, kind = "level", parameter = parameter,
       label = paste0(parameter, "[", ref[["level"]], "]"),
-      values = ref[["value"]], level = ref[["level"]]
+      values = ref[["value"]], sample = samples[[ref[["level"]]]],
+      level = ref[["level"]]
     )
     provider[["inference"]][[inference_type]][[parameter]] <-
       .hypothesis_model_attach_request(
@@ -823,9 +860,10 @@
         control   = density_control,
         cache     = cache
       )
+    requests[[i]] <- request
   }
 
-  provider
+  list(provider = provider, request = requests[[1L]])
 }
 
 
@@ -896,8 +934,12 @@
 #'   the vocabulary of its provider (for a \code{BayesTools_fit}: \code{"auto"},
 #'   the formula parameters such as \code{"mu"}, \code{"model"}, or
 #'   \code{"random"}); \code{NULL} selects the default.
-#' @param component a catalog component (for example a factor level) passed
-#'   to [hypothesis_resolve()]. It cannot be combined with \code{namespace}.
+#' @param component a catalog component (the level token of a factor term)
+#'   passed to [hypothesis_resolve()]: a reference to a factor term without a
+#'   level stands for this level, so that \code{"x_fac = 0.1"} with
+#'   \code{component = "B"} is the statement \code{"x_fac[B] = 0.1"}. It
+#'   combines with \code{namespace}, which selects the formula parameter (for
+#'   example when the factor is shared by several formulas).
 #' @param transform_scaled whether coefficients of scaled predictors, and
 #'   random-effect SDs, variances, and correlations of such predictors, are
 #'   tested on the original scale (\code{TRUE}) or on the fitted scale
@@ -950,9 +992,6 @@ hypothesis_BF_model <- function(object, hypothesis, namespace = NULL,
              allow_NA = FALSE)
   check_char(component, "component", check_length = 1, allow_NULL = TRUE,
              allow_NA = FALSE)
-  if(!is.null(namespace) && !is.null(component)){
-    stop("Supply either 'namespace' or 'component', not both.", call. = FALSE)
-  }
   check_bool(transform_scaled, "transform_scaled", allow_NA = FALSE)
   check_bool(conditional, "conditional", allow_NA = FALSE)
   check_bool(logBF, "logBF", allow_NA = FALSE)
@@ -979,7 +1018,9 @@ hypothesis_BF_model <- function(object, hypothesis, namespace = NULL,
   )
   backend <- .hypothesis_model_backend(density_method)
   if(identical(backend[["type"]], "ordinate") || !is.null(density_control)){
-    density_control <- .hypothesis_model_backend_control(backend, density_control)
+    density_control <- .hypothesis_model_backend_control(
+      backend, density_control, provider
+    )
   }
   metadata <- provider[["metadata"]]()
 
@@ -1035,6 +1076,36 @@ hypothesis_BF_model <- function(object, hypothesis, namespace = NULL,
 }
 
 
+# The control that a marginal-means request evaluates with: 'normalized' (the
+# control of the call, or the stored one of the provider for an ordinate
+# backend, normalized by the backend), 'check' (what the availability of the
+# backend is checked with: the normalized control, or the control as given
+# when it cannot be normalized), and the 'error' that stopped the
+# normalization. Only ordinate backends and calls with a control normalize.
+.hypothesis_model_marginal_means_control <- function(provider, backend,
+                                                     density_method,
+                                                     density_control) {
+
+  ordinate <- identical(backend[["type"]], "ordinate")
+  if (!ordinate && is.null(density_control)) {
+    return(list(normalized = NULL, check = NULL, error = NULL))
+  }
+  given <- density_control
+  if (is.null(given) && ordinate) {
+    given <- provider[["density_control_default"]](density_method)
+  }
+  tryCatch(
+    {
+      normalized <- .hypothesis_model_backend_control(backend, given, provider)
+      list(normalized = normalized, check = normalized, error = NULL)
+    },
+    error = function(error) {
+      list(normalized = NULL, check = given, error = error)
+    }
+  )
+}
+
+
 # The hypotheses on the stored marginal means of a model: the statements are
 # parsed without a catalog and each is planned on the marginal means of the
 # parameter it names (or of 'parameter').
@@ -1062,15 +1133,17 @@ hypothesis_BF_model <- function(object, hypothesis, namespace = NULL,
         cache     = cache
       )
     })
-    check_control <- if(is.null(density_control)){
-      if(identical(backend[["type"]], "ordinate")){
-        provider[["density_control_default"]](density_method)
-      }
-    }else{
-      density_control
-    }
+    # The control of the backend: the settings of the call, or for an ordinate
+    # backend the stored settings of the provider, normalized by the backend as
+    # on fitted models. The backend sees the normalized control in
+    # available(). A control that cannot be normalized does not stop the
+    # checks of the plans: they use the control as given, and the failure is
+    # raised after them and the request validation.
+    control <- .hypothesis_model_marginal_means_control(
+      provider, backend, density_method, density_control
+    )
     for (plan in plans) {
-      .hypothesis_model_plan_check(plan, provider, backend, check_control)
+      .hypothesis_model_plan_check(plan, provider, backend, control[["check"]])
     }
     refusal <- .hypothesis_model_plan_marginal_means_request_refusal(plans, provider)
     if (!is.null(refusal)) {
@@ -1081,14 +1154,13 @@ hypothesis_BF_model <- function(object, hypothesis, namespace = NULL,
     }
     point       <- any(vapply(plans, `[[`, logical(1), "point"))
     precomputed <- identical(backend[["type"]], "ordinate") && point
-    if (precomputed) {
-      density_control <- if (is.null(density_control)) {
-        provider[["density_control_default"]](density_method)
-      } else {
-        .hypothesis_model_backend_control(backend, density_control)
+    if (precomputed || !is.null(density_control)) {
+      if (!is.null(control[["error"]])) {
+        stop(control[["error"]])
       }
-    } else if (!is.null(density_control)) {
-      .hypothesis_model_backend_control(backend, density_control)
+    }
+    if (precomputed) {
+      density_control <- control[["normalized"]]
     }
 
     keys   <- vapply(plans, `[[`, character(1), "group")
