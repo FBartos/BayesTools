@@ -40,7 +40,7 @@ The package functionality is illustrated via the following vignettes:
 | [*Formula Interface with Spike and Slab*](`r article_url("v01-prior-distributions")`) | Default, informed, and custom prior distributions; rescaling guidance |
 | [*Random Effects Formulas*](`r article_url("v02-bayesian-meta-analysis")`) | Random-effects meta-analysis with `brma()`, compared with `metafor::rma()` |
 
-Simple JAGS automation and  C:/R-Packages/BayesToolsVerse/BayesTools/vignettes/ComparisonR.Rmd 
+ C:/R-Packages/BayesToolsVerse/BayesTools/vignettes/ComparisonR.Rmd 
 
 ## Installation
 
