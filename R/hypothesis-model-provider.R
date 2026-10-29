@@ -199,7 +199,10 @@ hypothesis_provider.BayesTools_fit <- function(object, ...){
     caller            = "hypothesis_BF()",
     transform_scaled_default = FALSE,
     ordinate_label    = "ordinate density methods",
-    random_point_mass_advice = "Use a region or directional hypothesis.",
+    random_point_mass_advice = paste0(
+      "Use a region or directional hypothesis, or 'conditional = TRUE' to ",
+      "test the quantity within its inclusion event."
+    ),
     density_methods   = NULL,
     components        = list(
       values   = values,

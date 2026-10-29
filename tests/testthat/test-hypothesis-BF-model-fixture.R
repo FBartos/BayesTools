@@ -203,7 +203,8 @@ test_that("spike-and-slab random-effect SDs are tested within their inclusion ev
   # a point null at the spike stops without conditional = TRUE; region tests keep
   # working on the full ensemble
   expect_error(hypothesis_BF(fit, "(mu) sd(intercept) = 0"),
-               class = "BayesTools_point_mass_at_null")
+               "or 'conditional = TRUE' to test the quantity within its inclusion event",
+               fixed = TRUE, class = "BayesTools_point_mass_at_null")
   expect_error(hypothesis_BF(fit, "(mu) var(intercept) = 0", conditional = FALSE),
                class = "BayesTools_point_mass_at_null")
   region <- hypothesis_BF(fit, "(mu) sd(intercept) > 0.1", conditional = FALSE, seed = 1)
@@ -278,7 +279,8 @@ test_that("spike-and-slab structured correlations of a cached fit are tested wit
   # a point null at a spike stops without conditional = TRUE; region tests keep
   # working on the full ensemble
   expect_error(hypothesis_BF(fit, "(mu) cor = 0", conditional = FALSE),
-               class = "BayesTools_point_mass_at_null")
+               "or 'conditional = TRUE' to test the quantity within its inclusion event",
+               fixed = TRUE, class = "BayesTools_point_mass_at_null")
   expect_error(hypothesis_BF(fit, "(mu) sd = 0", conditional = FALSE),
                class = "BayesTools_point_mass_at_null")
   region <- hypothesis_BF(fit, "(mu) cor > 0.1", conditional = FALSE, seed = 1)
