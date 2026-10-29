@@ -1,7 +1,7 @@
 ---
 title: "Bayes factors via spike and slab prior vs. bridge sampling"
 author: "František Bartoš"
-date: "`r Sys.Date()`"
+date: "16th of June 2022"
 output:
   rmarkdown::html_vignette:
     self_contained: yes
