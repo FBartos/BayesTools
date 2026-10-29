@@ -2799,3 +2799,61 @@ test_that("conditional point-component posteriors declare the support of the res
     tolerance = 1e-8
   )
 })
+
+test_that("conditional gated allocation quantities declare the support of their inclusion event", {
+
+  skip_if_not_installed("runjags")
+
+  # (study, drug) gates drawn independently with probability 1/2, so that the
+  # draws visit every gate state
+  fit <- .random_effects_gated_total_variance_allocation_fit()
+  draws <- BayesTools:::.generate_prior_sample_matrix(attr(fit, "prior_list"), 2000, seed = 42)
+  gates <- grep("_indicator$", colnames(as.matrix(fit$mcmc)), value = TRUE)
+  set.seed(123)
+  for(gate in gates){
+    draws <- cbind(draws, stats::rbinom(nrow(draws), 1, 0.5))
+    colnames(draws)[ncol(draws)] <- gate
+  }
+  fit$mcmc <- coda::mcmc.list(coda::mcmc(draws))
+  fit$sample <- nrow(draws)
+  catalog <- parameter_catalog(fit)
+  reciprocal <- function(x) posterior_transform(x, "exp_lin", list(a = 0, b = -1))
+
+  # a gate that is off puts the SD, the variance, and the total on the atom 0
+  # and the variance proportion of the other component on 0; within the event
+  # (the gates on) the atom is gone, except the proportion of 1 that remains
+  for(case in list(
+    list(name = "(mu) study: sd(intercept)", points = numeric()),
+    list(name = "(mu) study: var(intercept)", points = numeric()),
+    list(name = "(mu) allocation: sd_total", points = numeric()),
+    list(name = "(mu) allocation: var_prop(drug)", points = 1)
+  )){
+    selection <- parameter_catalog_resolve(catalog, case$name)
+    unconditional <- parameter_mixed_posterior(fit, selection)
+    mixed <- parameter_mixed_posterior(fit, selection, conditional = TRUE)
+    before <- posterior_metadata(unconditional, "support")
+    support <- posterior_metadata(mixed, "support")
+
+    # the bounds and their exactness are the catalog's; the points are those the
+    # event can take, which are the declared atoms of the conditional draws
+    expect_identical(support$bounds, before$bounds, info = case$name)
+    expect_identical(support$exact, before$exact, info = case$name)
+    expect_identical(support$points, case$points, info = case$name)
+    expect_identical(support$type, if(length(case$points)) "mixed" else "interval",
+                     info = case$name)
+    atoms <- posterior_metadata(mixed, "atoms")
+    expect_identical(sort(as.numeric(atoms$locations)), case$points, info = case$name)
+    # (unconditionally the gate that is off still puts the quantity on 0)
+    expect_true(0 %in% before$points, info = case$name)
+
+    # a reciprocal of the conditional draws, which are away from 0, needs the
+    # declared support to leave out the atom 0 (its image is infinite)
+    stale <- mixed
+    posterior_metadata(stale, "support") <- before
+    expect_error(reciprocal(stale), class = "BayesTools_transformation_image_unavailable",
+                 info = case$name)
+    inverse <- reciprocal(mixed)
+    expect_identical(posterior_metadata(inverse, "support")$points, case$points,
+                     info = case$name)
+  }
+})

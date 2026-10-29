@@ -102,7 +102,11 @@
 #'   components, with their prior probabilities renormalized to 1, on the
 #'   scale of the quantity, and declares no atom, the point components being
 #'   the complement of the event). The declared `condition` names the gates
-#'   (the component indicator) of the event. Quantities without an inclusion
+#'   (the component indicator) of the event, and the declared `support` is
+#'   that of the event: the catalog support under the restricted prior for a
+#'   point-component quantity, and the catalog support without the points the
+#'   event excludes (the atom at 0 of a gate that is off) for a gated
+#'   allocation quantity. Quantities without an inclusion
 #'   gate cannot be conditioned, nor can a total of an allocation without
 #'   parent gates that has an ungated component, the coordinates of a
 #'   selection prior (weight function, PET/PEESE, p-hacking), the inclusion
@@ -389,6 +393,8 @@ parameter_gate_states <- function(fit, selection, draws = NULL){
   }
   out <- .posterior_support_set(out, if(isTRUE(conditional) && identical(plan$kind, "point")){
     .bt_parameter_point_conditioned_support(fit, plan, quantity)
+  }else if(isTRUE(conditional) && isTRUE(plan$kind %in% c("component", "total", "var_prop"))){
+    .bt_parameter_gate_conditioned_support(quantity$support[[1L]], prior_density)
   }else{
     quantity$support[[1L]]
   })
@@ -1382,6 +1388,36 @@ parameter_gate_states <- function(fit, selection, draws = NULL){
   attr(fit, "prior_list") <- prior_list
 
   fit
+}
+
+# The declared support of a gated allocation quantity within its inclusion
+# event: the catalog support without the points the event excludes (the atom at
+# 0 of a gate that is off), and with the points the event can still take (a
+# variance proportion of 1). The points of the event are those of the prior
+# density restricted to it, so the bounds and their exactness stay the
+# catalog's; without a prior density the event's points are not declared and
+# the catalog support stays.
+.bt_parameter_gate_conditioned_support <- function(support, prior_density){
+
+  if(is.null(support) || length(support$points) == 0L || is.null(prior_density)){
+    return(support)
+  }
+  points <- prior_density$points
+  possible <- if(is.data.frame(points) && nrow(points) > 0L) points$x[points$p > 0] else numeric()
+  kept <- support$points[vapply(support$points, function(point){
+    any(abs(possible - point) <= 1e-12 * max(1, abs(point)))
+  }, logical(1))]
+  if(length(kept) == length(support$points)){
+    return(support)
+  }
+
+  .posterior_support_new(
+    bounds = support$bounds,
+    points = kept,
+    exact  = support$exact,
+    source = support$source,
+    type   = if(length(kept) > 0L) "mixed" else "interval"
+  )
 }
 
 # The declared support of a point-plan quantity within its inclusion event: the

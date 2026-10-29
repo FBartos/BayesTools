@@ -737,6 +737,12 @@ continuous (`alternative`) component, as the conditional summaries and
 `as_mixed_posteriors(conditional = )` condition it; the density is that of the
 prior restricted to those components (prior probabilities renormalized to 1)
 through the routes above, on the scale of the quantity, and no atom remains.
+The declared support of conditional draws is that of the event, never the
+unconditional one (a stale point or bound misleads boundary reflection and
+transformations): for point components the catalog support of the quantity
+under the restricted prior; for gated allocation quantities the catalog support
+without the points the event excludes (the atom 0 of a gate that is off), with
+the points it can still take (a variance proportion of 1).
 
 A product component of a combination (a `multiply_by` product, or an ordered
 level as its total times its Beta allocation share) with a structural route

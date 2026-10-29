@@ -44,7 +44,11 @@ prior of a point-component quantity is restricted to its continuous
 components, with their prior probabilities renormalized to 1, on the
 scale of the quantity, and declares no atom, the point components being
 the complement of the event). The declared \code{condition} names the gates
-(the component indicator) of the event. Quantities without an inclusion
+(the component indicator) of the event, and the declared \code{support} is
+that of the event: the catalog support under the restricted prior for a
+point-component quantity, and the catalog support without the points the
+event excludes (the atom at 0 of a gate that is off) for a gated
+allocation quantity. Quantities without an inclusion
 gate cannot be conditioned, nor can a total of an allocation without
 parent gates that has an ungated component, the coordinates of a
 selection prior (weight function, PET/PEESE, p-hacking), the inclusion
