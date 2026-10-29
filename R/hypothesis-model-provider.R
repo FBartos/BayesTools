@@ -50,6 +50,14 @@
 #'   \code{transform_scaled} is \code{NULL}.}
 #'   \item{\code{ordinate_label}}{how the messages of refusals name the
 #'   ordinate backends (default \code{"ordinate density methods"}).}
+#'   \item{\code{component_argument}}{the name of the argument through which
+#'   the caller selects a value of \code{components} (default
+#'   \code{"namespace"}, the argument of [hypothesis_BF_model()] and of the
+#'   method of [hypothesis_BF()] for a \code{BayesTools_fit}). The messages of
+#'   the engine that name that argument ("The 'hypothesis' argument selects
+#'   namespace = 'mu' but 'namespace' was set to 'random'.") use it; a model
+#'   class that passes the selection under another name sets it, for example
+#'   \code{"component"}.}
 #'   \item{\code{density_methods}}{the names that \code{density_method} can
 #'   match, in order (default: the registered backends that are not of type
 #'   \code{"stored"}).}
@@ -93,7 +101,8 @@
 #'   quantity, and any elements the other callbacks need),
 #'   \code{mixed_posterior(parameter, transform_scaled, conditional, selected)}
 #'   (the mixed posterior as the one-element list returned by
-#'   [as_mixed_posteriors()]), \code{support(selected)} (the exact bounds),
+#'   [as_mixed_posteriors()]), \code{support(selected)} (the exact bounds on
+#'   the scale requested from \code{select()}, which are those of the draws),
 #'   \code{density_target(parameter, transform_scaled, operation)} (a list with the
 #'   quantity that a density backend evaluates, its \code{parameter_spec}, and
 #'   \code{display_transform}, or the refusal of a quantity without one: its
@@ -197,6 +206,7 @@ hypothesis_provider.BayesTools_fit <- function(object, ...){
     build             = "BayesTools",
     refit_class       = NULL,
     caller            = "hypothesis_BF()",
+    component_argument = "namespace",
     transform_scaled_default = FALSE,
     ordinate_label    = "ordinate density methods",
     random_point_mass_advice = paste0(
@@ -290,6 +300,13 @@ hypothesis_provider.BayesTools_fit <- function(object, ...){
     if(!is.character(value) || length(value) != 1L || is.na(value)){
       fail("'", name, "' must be a string.")
     }
+  }
+  if(!is.null(provider[["component_argument"]]) &&
+     (!is.character(provider[["component_argument"]]) ||
+      length(provider[["component_argument"]]) != 1L ||
+      is.na(provider[["component_argument"]]) ||
+      !nzchar(provider[["component_argument"]]))){
+    fail("'component_argument' must be a string or NULL.")
   }
   if(!is.null(provider[["density_methods"]]) &&
      (!is.character(provider[["density_methods"]]) ||
@@ -787,11 +804,17 @@ hypothesis_provider.BayesTools_fit <- function(object, ...){
       entry     <- entry_of(parameter)
       selection <- selection_of(entry)
       quantity  <- selection[["quantities"]]
+      # the quantity on the scale of the request (its support is the one of the
+      # draws): the catalog quantity of the fitted scale for transform_scaled =
+      # FALSE
+      on_scale  <- if(transform_scaled) selection else
+        .bt_parameter_fitted_scale(fit, selection)[["selection"]]
       list(
         entry = list(
           parameter   = entry[["parameter"]],
           quantity_id = entry[["quantity_id"]],
-          selection   = selection
+          selection   = selection,
+          on_scale    = on_scale
         ),
         spec  = list(
           label   = quantity[["canonical_name"]],
@@ -820,7 +843,7 @@ hypothesis_provider.BayesTools_fit <- function(object, ...){
       out
     },
     support = function(selected){
-      support <- selected[["entry"]][["selection"]][["quantities"]][["support"]][[1L]]
+      support <- selected[["entry"]][["on_scale"]][["quantities"]][["support"]][[1L]]
       if(is.null(support) || !isTRUE(support[["exact"]])){
         return(c(-Inf, Inf))
       }
@@ -851,7 +874,7 @@ hypothesis_provider.BayesTools_fit <- function(object, ...){
       if(is.null(posterior_metadata(values, "undefined_draws"))){
         return(NULL)
       }
-      n_draws <- sum(vapply(.fit_to_posterior(fit), nrow, integer(1)))
+      n_draws <- nrow(as.matrix(.fit_to_posterior(fit)))
       if(isTRUE(conditional)){
         states  <- parameter_gate_states(fit, selected[["entry"]][["selection"]])
         n_draws <- sum(states[["event"]])

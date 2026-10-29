@@ -10,11 +10,25 @@
 # ============================================================================ #
 
 
+# The user-facing argument that selects the component in the vocabulary of the
+# provider ('component_argument'): the messages of the engine name it
+# ("namespace" for a BayesTools_fit, whose engine argument is 'namespace').
+.hypothesis_model_component_argument <- function(provider) {
+
+  argument <- provider[["component_argument"]]
+  if (is.null(argument)) {
+    return("namespace")
+  }
+
+  argument
+}
+
+
 # The component of a request in the vocabulary of the provider: NULL selects
 # the default, the synonyms of the provider map to their value, and the value
 # must be one of the provider's.
 .hypothesis_model_component_normalize <- function(component, components,
-                                                  argument = "component") {
+                                                  argument = "namespace") {
 
   if (is.null(component)) {
     component <- components[["default"]]
@@ -46,14 +60,16 @@
 .hypothesis_model_check_component_compatible <- function(component,
                                                          selected_component,
                                                          argument,
-                                                         class = NULL) {
+                                                         class = NULL,
+                                                         component_argument = "namespace") {
 
   if (!identical(component, "auto") &&
       !identical(component, selected_component)) {
     .hypothesis_model_stop_component_mismatch(
       paste0(
-        "The '", argument, "' argument selects component = '",
-        selected_component, "' but 'component' was set to '", component, "'."
+        "The '", argument, "' argument selects ", component_argument, " = '",
+        selected_component, "' but '", component_argument, "' was set to '",
+        component, "'."
       ),
       class = class
     )
@@ -105,8 +121,9 @@
                                                component, metadata = NULL,
                                                level_component = NULL) {
 
+  component_argument <- .hypothesis_model_component_argument(provider)
   component          <- .hypothesis_model_component_normalize(
-    component, provider[["components"]]
+    component, provider[["components"]], component_argument
   )
   if (is.null(metadata)) {
     metadata <- provider[["metadata"]]()
@@ -151,9 +168,10 @@
         }
         candidates <- ambiguity[["candidates"]]
         namespace  <- .hypothesis_model_component_namespace(
-          candidates = candidates,
-          quantities = error[["candidates"]],
-          component  = component
+          candidates         = candidates,
+          quantities         = error[["candidates"]],
+          component          = component,
+          component_argument = component_argument
         )
         if (!is.null(namespace)) {
           return(hypothesis_resolve(
@@ -281,11 +299,13 @@
           component          = component,
           selected_component = selected_components,
           argument           = "hypothesis",
-          class              = "BayesTools_hypothesis_statement"
+          class              = "BayesTools_hypothesis_statement",
+          component_argument = component_argument
         )
       }
       .hypothesis_model_stop_component_mismatch(
-        paste0("The hypothesis does not resolve to component = '", component, "'."),
+        paste0("The hypothesis does not resolve to ", component_argument,
+               " = '", component, "'."),
         class = "BayesTools_hypothesis_statement"
       )
     }
@@ -349,7 +369,8 @@
 # the component. 'candidates' are the catalog entries of the ambiguous
 # quantities 'quantities'.
 .hypothesis_model_component_namespace <- function(candidates, quantities,
-                                                  component) {
+                                                  component,
+                                                  component_argument = "namespace") {
 
   if (identical(component, "auto") ||
       length(unique(candidates[["parameter"]])) < 2L) {
@@ -358,7 +379,8 @@
   selected <- candidates[candidates[["component"]] == component, , drop = FALSE]
   if (nrow(selected) == 0L) {
     .hypothesis_model_stop_component_mismatch(
-      paste0("The hypothesis does not resolve to component = '", component, "'."),
+      paste0("The hypothesis does not resolve to ", component_argument,
+             " = '", component, "'."),
       class = "BayesTools_hypothesis_statement"
     )
   }

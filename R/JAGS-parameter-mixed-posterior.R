@@ -140,16 +140,18 @@ parameter_mixed_posterior <- function(fit, selection, conditional = FALSE,
   }
   check_bool(conditional, "conditional", allow_NA = FALSE)
   check_bool(transform_scaled, "transform_scaled", allow_NA = FALSE)
-  if(!transform_scaled){
-    # The fitted scale: draws and prior densities read the declared predictor
-    # scales of the fit, so a fit without them is on the fitted scale.
-    attr(fit, "formula_scale") <- list()
-  }
-  catalog <- parameter_catalog(fit)
-  .bt_validate_parameter_selection(selection, catalog = catalog)
+  .bt_validate_parameter_selection(selection, catalog = parameter_catalog(fit))
   if(nrow(selection$quantities) != 1L){
     stop("'selection' must contain exactly one parameter quantity.",
          call. = FALSE)
+  }
+  if(!transform_scaled){
+    # The fitted scale: the fit without its declared predictor scales and the
+    # quantity of its catalog (support, atoms, prior density and draws all
+    # share the scale).
+    fitted    <- .bt_parameter_fitted_scale(fit, selection)
+    fit       <- fitted$fit
+    selection <- fitted$selection
   }
 
   .bt_parameter_mixed_posterior(
@@ -157,6 +159,58 @@ parameter_mixed_posterior <- function(fit, selection, conditional = FALSE,
     selection   = selection,
     conditional = conditional
   )
+}
+
+# The fit on the fitted scale of its predictors, and the quantity of 'selection'
+# in the catalog of that fit. The catalog of a fit with scaled predictors
+# describes the original scale of its random-effect SDs, variances, and
+# correlations (support, atoms, scale of the source coordinates); without the
+# declared scales the same catalog describes the fitted coordinates. The
+# quantity identifiers do not depend on the scale. The catalog is built from the
+# coordinates of the fit and kept with the parameter map.
+.bt_parameter_fitted_scale <- function(fit, selection){
+
+  formula_scale <- attr(fit, "formula_scale", exact = TRUE)
+  if(length(formula_scale) == 0L){
+    return(list(fit = fit, selection = selection))
+  }
+  map            <- parameter_map(fit)
+  prior_list     <- attr(fit, "prior_list", exact = TRUE)
+  formula_design <- attr(fit, "formula_design", exact = TRUE)
+  fitted_map <- parameter_map_cache(
+    map      = map,
+    provider = "BayesTools.fitted_scale",
+    key      = list(version = 1L, prior_list = prior_list, formula_design = formula_design),
+    compute  = function(){
+      catalog <- .bt_build_parameter_catalog(
+        coordinates    = map$coordinates,
+        prior_list     = prior_list,
+        formula_design = formula_design,
+        formula_scale  = NULL
+      )
+      .bt_parameter_map_new(map$coordinates, catalog$quantities, catalog$aliases)
+    }
+  )
+  attr(fit, "formula_scale") <- list()
+  attr(fit, "parameter_map") <- fitted_map
+
+  catalog <- parameter_catalog(fit)
+  rows    <- match(selection$quantity_id, catalog$quantities$quantity_id)
+  if(anyNA(rows)){
+    stop("The quantity '", selection$quantities$canonical_name[is.na(rows)][1L],
+         "' is not available on the fitted scale of the predictors.",
+         call. = FALSE)
+  }
+  selection <- list(
+    schema_version        = .bt_parameter_selection_version,
+    parameter_map_version = catalog$schema_version,
+    quantity_id           = catalog$quantities$quantity_id[rows],
+    quantities            = catalog$quantities[rows, , drop = FALSE]
+  )
+  class(selection) <- c("BayesTools_parameter_selection", "list")
+  .bt_validate_parameter_selection(selection, catalog = catalog)
+
+  list(fit = fit, selection = selection)
 }
 
 #' Per-draw gate and point states of a catalog quantity

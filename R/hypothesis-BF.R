@@ -40,8 +40,10 @@
 #' Ignored when \code{posterior} already contains deterministic prior density
 #' information.
 #' @param hypothesis character vector with scalar hypothesis statements written
-#' in the restricted grammar described in Details, or a validated object from
-#' [hypothesis_parse()].
+#' in the restricted grammar described in Details, or, for posterior draws and
+#' marginal posteriors, a validated object from [hypothesis_parse()]. The method
+#' for a fitted model takes character strings only and stops with the
+#' \code{BayesTools_hypothesis_statement} condition for a parsed hypothesis.
 #' @param parameter optional scalar quantity name for numeric vectors or
 #' \code{marginal_posterior} objects.
 #' @param logBF whether to display the Bayes factor on the log scale.

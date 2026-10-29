@@ -27,7 +27,9 @@ hypothesis_BF_model(
 
 \item{hypothesis}{character vector with hypothesis statements (see
 \code{\link[=hypothesis_BF]{hypothesis_BF()}}). Names of the parameter catalog of the model need no
-backticks.}
+backticks. The statements of a model are character strings: a parsed
+hypothesis (\code{\link[=hypothesis_parse]{hypothesis_parse()}}) stops with an error of class
+\code{BayesTools_hypothesis_statement}.}
 
 \item{namespace}{the component of the model the statements refer to, in
 the vocabulary of its provider (for a \code{BayesTools_fit}: \code{"auto"},

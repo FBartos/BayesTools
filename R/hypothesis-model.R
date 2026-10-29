@@ -929,7 +929,9 @@
 #' @param object a model object with a [hypothesis_provider()] method.
 #' @param hypothesis character vector with hypothesis statements (see
 #'   [hypothesis_BF()]). Names of the parameter catalog of the model need no
-#'   backticks.
+#'   backticks. The statements of a model are character strings: a parsed
+#'   hypothesis ([hypothesis_parse()]) stops with an error of class
+#'   \code{BayesTools_hypothesis_statement}.
 #' @param namespace the component of the model the statements refer to, in
 #'   the vocabulary of its provider (for a \code{BayesTools_fit}: \code{"auto"},
 #'   the formula parameters such as \code{"mu"}, \code{"model"}, or
@@ -987,6 +989,16 @@ hypothesis_BF_model <- function(object, hypothesis, namespace = NULL,
 
   provider <- hypothesis_provider(object)
   .hypothesis_model_validate_provider(provider)
+  if(inherits(hypothesis, "BayesTools_hypothesis_ast")){
+    .hypothesis_model_stop(.hypothesis_model_refusal(
+      paste0(
+        "The statements of a fitted model must be character strings; a ",
+        "'hypothesis_parse()' object is not accepted. Pass the statements as ",
+        "character strings ('hypothesis_render()' renders a parsed hypothesis)."
+      ),
+      "statement"
+    ))
+  }
   check_char(hypothesis, "hypothesis", check_length = 0, allow_NA = FALSE)
   check_char(namespace, "namespace", check_length = 1, allow_NULL = TRUE,
              allow_NA = FALSE)

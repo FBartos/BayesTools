@@ -25,9 +25,12 @@ scaled predictors on the original scale (\code{TRUE}) or the fitted scale
 }
 \value{
 A data frame with the columns \code{alias} (a name that
-\code{\link[=hypothesis_BF]{hypothesis_BF()}} resolves to the row's quantity with the row's
-\code{component}; a name shared by several quantities of a component is not
-listed), \code{parameter}, \code{component}, \code{term}, \code{bracket} (a
+\code{\link[=hypothesis_BF]{hypothesis_BF()}} resolves to the row's quantity when the row's
+\code{component} is passed as the argument that selects the component of the
+model, which the provider names in its \code{component_argument}: the
+\code{namespace} argument for a \code{BayesTools_fit}; a name shared by
+several quantities of a component is not listed), \code{parameter},
+\code{component}, \code{term}, \code{bracket} (a
 \code{parameter[level]} template for fitted factor terms, or a concrete
 level selector for each marginal-mean row), \code{point_test},
 \code{direction_test}, \code{contrast_test} (\code{NA} for quantities

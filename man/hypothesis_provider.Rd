@@ -59,6 +59,14 @@ random-effect quantity; and the scale of \code{\link[=hypothesis_quantities]{hyp
 \code{transform_scaled} is \code{NULL}.}
 \item{\code{ordinate_label}}{how the messages of refusals name the
 ordinate backends (default \code{"ordinate density methods"}).}
+\item{\code{component_argument}}{the name of the argument through which
+the caller selects a value of \code{components} (default
+\code{"namespace"}, the argument of \code{\link[=hypothesis_BF_model]{hypothesis_BF_model()}} and of the
+method of \code{\link[=hypothesis_BF]{hypothesis_BF()}} for a \code{BayesTools_fit}). The messages of
+the engine that name that argument ("The 'hypothesis' argument selects
+namespace = 'mu' but 'namespace' was set to 'random'.") use it; a model
+class that passes the selection under another name sets it, for example
+\code{"component"}.}
 \item{\code{density_methods}}{the names that \code{density_method} can
 match, in order (default: the registered backends that are not of type
 \code{"stored"}).}
@@ -102,7 +110,8 @@ the fitted names.}
 quantity, and any elements the other callbacks need),
 \code{mixed_posterior(parameter, transform_scaled, conditional, selected)}
 (the mixed posterior as the one-element list returned by
-\code{\link[=as_mixed_posteriors]{as_mixed_posteriors()}}), \code{support(selected)} (the exact bounds),
+\code{\link[=as_mixed_posteriors]{as_mixed_posteriors()}}), \code{support(selected)} (the exact bounds on
+the scale requested from \code{select()}, which are those of the draws),
 \code{density_target(parameter, transform_scaled, operation)} (a list with the
 quantity that a density backend evaluates, its \code{parameter_spec}, and
 \code{display_transform}, or the refusal of a quantity without one: its

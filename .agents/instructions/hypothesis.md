@@ -10,8 +10,10 @@ metadata are in [jags-formula.md](jags-formula.md).
 ## Files
 
 - `R/hypothesis-BF.R`: `hypothesis_BF()` generic; `.default` (draws, marginal
-  posteriors, marginal inference; unchanged signature, unknown arguments stop)
-  and `.BayesTools_fit` (calls the engine; unused `...` warn).
+  posteriors, marginal inference; unchanged signature, unknown arguments stop;
+  the statements may be a `hypothesis_parse()` object) and `.BayesTools_fit`
+  (calls the engine; unused `...` warn; the statements are character strings,
+  a parsed hypothesis stops with `BayesTools_hypothesis_statement`).
 - `R/hypothesis-model.R`: entry `hypothesis_BF_model()`, group execution,
   binding, row names, `hypothesis_cache_clear()`.
 - `R/hypothesis-model-plan.R`: refusals, plan cache, plan skeleton, scalar,
@@ -53,8 +55,9 @@ factor term without a level stands for the token's level (`x = 0.1` with
 3. Every plan is checked against the requested backend
    (`.hypothesis_model_plan_status()`): plan refusal; region-only statements
    pass; point-target refusals; `source_refusals`; the backend's
-   `available(object, plan, control)`; then `method_refusals` (name-keyed, then
-   type-keyed). Nothing is evaluated before all plans are checked. Availability
+   `available(object, plan, control)`; then `method_refusals` (keyed by the name
+   of the backend, then by the evaluation `method` of a draws backend, then by
+   its type). Nothing is evaluated before all plans are checked. Availability
    is computed on every call and never cached. `available()` receives the
    control normalized by the backend's `control()`, also for marginal means
    (the call's control or the provider's stored default); for marginal means,
@@ -103,13 +106,13 @@ starts from `hypothesis_provider(<its fit>)` and replaces callbacks with
 |---|---|
 | `kind` | `"model"`; `"marginal_means"` for stored marginal means |
 | `object`, `fit`, `capability_object` | model object (hashed, passed to backends as `request$model`), its `BayesTools_fit`, object backends compute from (`request$object`; default `object`) |
-| `build`, `refit_class`, `caller`, `ordinate_label`, `random_point_mass_advice`, `transform_scaled_default` | wording and class hooks: build named in refit requests, classes prefixed to `BayesTools_refit_required`, entry point named in reasons (`"hypothesis_BF()"`), label of the ordinate backends in refusal reasons, sentence ending the random point-mass reason, default scale of `hypothesis_quantities()` |
+| `build`, `refit_class`, `caller`, `component_argument`, `ordinate_label`, `random_point_mass_advice`, `transform_scaled_default` | wording and class hooks: build named in refit requests, classes prefixed to `BayesTools_refit_required`, entry point named in reasons (`"hypothesis_BF()"`), the user-facing argument that selects a `components` value in the messages of the engine (default `"namespace"`; a model class whose argument is `component` sets `"component"`), label of the ordinate backends in refusal reasons, sentence ending the random point-mass reason, default scale of `hypothesis_quantities()` |
 | `density_methods` | names `density_method` may match, in order (default: registered non-`stored` backends) |
 | `components` | `values`, `synonyms`, `default`, `refused` (named reasons), `random`, `advice`; fit provider: `auto`, formula parameters / `model`, `random` |
 | `metadata()` | `list(catalog, entries)`; entry columns `quantity_id, parameter, component, term, source, formula_parameter, role, quantity, status, fixed_value, aliases, member_quantity_ids`; alias rows of the extended catalog carry `namespace = component = entry component` |
 | `uncovered(resolution, quantity_ids, symbol, metadata)` | refusal list (`reason` plus `type` or complete `class`) for resolved quantities without an entry |
 | `sample_parameters(parameter)`, `mixed_posteriors(parameters, conditional, conditional_rule, transform_scaled, n_prior_samples)`, `density_parameter(samples, parameter, sample_parameters)`, `formula_name_map(formula_parameter)` | draws of a fixed target: prior-list names to mix, `as_mixed_posteriors()`, element tested, formula coefficient owners |
-| `random` | `select`, `mixed_posterior`, `support`, `density_target`, `sd_pair`, `zero_boundary`, `defined_share`, `defined_footnote`, `defined_draws`, `prior_draws` (signatures in `?hypothesis_provider`); a `density_target()` refusal may carry `type` (default `"target"`) and `cause` (default `"random_target"`, or `"original_scale"`) |
+| `random` | `select`, `mixed_posterior`, `support` (of the scale requested from `select`), `density_target`, `sd_pair`, `zero_boundary`, `defined_share`, `defined_footnote`, `defined_draws`, `prior_draws` (signatures in `?hypothesis_provider`); a `density_target()` refusal may carry `type` (default `"target"`) and `cause` (default `"random_target"`, or `"original_scale"`) |
 | `point_mass_reason()`, `full_ensemble(parameter)`, `combination_hint(plan)`, `check_plans(plans)`, `check_density_control(density_method, density_control)` | optional hooks (default provider: no point-mass text, mixture rule, hint for factor terms with null components, none, none); `check_density_control()` stops to refuse a control before the backend's `control()` wherever that runs (not for `KDE`/`normal` with `NULL`), including the stored marginal-means default |
 
 Marginal-means providers add `inference`, `model_averaged` (logical),
@@ -139,10 +142,15 @@ combine several coordinates with point masses stop with its error.
 ## Scale and conditioning
 
 `transform_scaled = FALSE` (fitted scale) is the default for coefficients and
-random-effect SDs, variances, and correlations alike
-(`parameter_mixed_posterior(transform_scaled = )` blanks the declared predictor
-scales of the fit for draws and prior densities). `conditional = TRUE`
-conditions coefficients through `as_mixed_posteriors(conditional = <parameter>,
+random-effect SDs, variances, and correlations alike. For a random-effect
+quantity `parameter_mixed_posterior(transform_scaled = )` takes the fit without
+its declared predictor scales and the quantity of that fit's catalog (rebuilt
+from the stored coordinates, same quantity identifiers), so the draws, the
+declared support and atoms, the prior density, and the conditioning share the
+scale; the default provider's `random$support()` reads the same quantity. The
+coefficient route extracts through `as_mixed_posteriors(transform_scaled = )`.
+`conditional = TRUE` conditions coefficients through
+`as_mixed_posteriors(conditional = <parameter>,
 conditional_rule = "AND")` and random-effect quantities through
 `parameter_mixed_posterior(conditional = TRUE)`: an allocation-derived quantity
 within its gates, and an SD, variance, or structured correlation with a

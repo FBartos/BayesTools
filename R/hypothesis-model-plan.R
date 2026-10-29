@@ -273,7 +273,13 @@ hypothesis_stop <- function(reason, type = c("target", "fixed", "method",
       return(refusal)
     }
   }
+  # The refusals are keyed by the name of the backend, by the evaluation method
+  # of a draws backend (so a registered name for the normal approximation keeps
+  # the refusals of "normal"), and by the type of the backend.
   refusal <- plan[["method_refusals"]][[backend[["name"]]]]
+  if (is.null(refusal) && !is.null(backend[["method"]])) {
+    refusal <- plan[["method_refusals"]][[backend[["method"]]]]
+  }
   if (is.null(refusal)) {
     refusal <- plan[["method_refusals"]][[backend[["type"]]]]
   }

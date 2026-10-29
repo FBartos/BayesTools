@@ -2716,3 +2716,467 @@ test_that("different level expressions with equal fitted weights are separate gr
                                                        "marginal means")
 
 })
+
+
+# ---------------------------------------------------------------------------- #
+# Scale of random-effect quantities
+# ---------------------------------------------------------------------------- #
+
+# The values of the predictor of the fits below: 'x' (standardized by the fit)
+# has the sample SD of these values, so that the original-scale SD of a random
+# slope is its fitted-scale SD times 1 / sd(x_values).
+.hypothesis_model_test_x_values <- function() rep(c(2, 4, 6, 9), each = 3L)
+
+# A fit whose random block has standardized predictors; its draws are samples
+# of the priors (the posterior is the prior, the Bayes factors are near 1).
+.hypothesis_model_test_scaled_fit <- function(prior_random, formula, z = FALSE,
+                                              x_prior = prior("normal", list(0, 1)),
+                                              formula_scale = TRUE, n = 2000L,
+                                              seed = 42L){
+
+  data <- data.frame(x = .hypothesis_model_test_x_values(),
+                     z = rep(c(1, 5, 2), 4L), g = factor(rep(1:4, each = 3L)))
+  priors <- list(intercept = prior("normal", list(0, 1)), x = x_prior)
+  if(z) priors$z <- prior("normal", list(0, 1))
+  compiled <- JAGS_formula(formula, "mu", data, priors, prior_random = prior_random,
+                           formula_scale = formula_scale)
+  draws <- .generate_prior_sample_matrix(compiled$prior_list, n, seed = seed)
+
+  .parameter_catalog_test_fit(
+    coda::mcmc.list(coda::mcmc(draws)), compiled$prior_list,
+    list(mu = compiled$formula_design), list(mu = compiled$formula_scale)
+  )
+}
+
+# A runjags-class fit of a standardized LKJ(2) block of two columns, with the
+# correlation of the two columns drawn from its exact Beta marginal.
+.hypothesis_model_test_scaled_lkj_fit <- function(formula, z, n = 2000L, seed = 5L){
+
+  set.seed(seed)
+  data <- data.frame(x = .hypothesis_model_test_x_values(),
+                     z = rep(c(1, 5, 2), 4L), g = factor(rep(1:4, each = 3L)))
+  priors <- list(intercept = prior("normal", list(0, 1)), x = prior("normal", list(0, 1)))
+  if(z) priors$z <- prior("normal", list(0, 1))
+  compiled <- JAGS_formula(
+    formula, "mu", data, priors, formula_scale = TRUE,
+    prior_random = prior_random(g = random_block(
+      sd = prior("uniform", list(1, 2)), cor = prior_lkj(eta = 2),
+      monitor = random_monitor(latent = FALSE, coefficients = FALSE, correlation = TRUE)
+    ))
+  )
+  term     <- compiled$formula_design$random_effects[[1L]]
+  r        <- 2 * stats::rbeta(n, 2, 2) - 1
+  sd_names <- unique(term$sd_parameter_names)
+  cor_names <- as.vector(outer(1:2, 1:2, function(row, column){
+    paste0(term$parameter_stem, "_xRE_CORx_R[", row, ",", column, "]")
+  }))
+  chol_names <- as.vector(.bt_random_effect_cholesky_names(term, 2L))
+  fixed <- cbind(mu_intercept = stats::rnorm(n), mu_x = stats::rnorm(n))
+  if(z) fixed <- cbind(fixed, mu_z = stats::rnorm(n))
+  sds <- matrix(stats::runif(n * length(sd_names), 1, 2), n, length(sd_names),
+                dimnames = list(NULL, sd_names))
+  correlation <- cbind(1, r, r, 1)
+  colnames(correlation) <- cor_names
+  cholesky <- cbind(1, r, 0, sqrt(1 - r^2))
+  colnames(cholesky) <- chol_names
+  draws <- cbind(fixed, sds, correlation, cholesky)
+
+  chains  <- coda::mcmc.list(coda::mcmc(draws))
+  carrier <- .parameter_catalog_test_fit(
+    chains, compiled$prior_list,
+    list(mu = compiled$formula_design), list(mu = compiled$formula_scale)
+  )
+  fit <- structure(
+    list(mcmc = chains, sample = n, summary.pars = list(mutate = NULL),
+         monitor = colnames(draws)),
+    class = c("runjags", "BayesTools_fit", "list")
+  )
+  for(name in c("prior_list", "formula_design", "formula_scale", "parameter_map")){
+    attr(fit, name) <- attr(carrier, name)
+  }
+  fit <- .bt_attach_draw_geometry(fit)
+
+  .bt_attach_fit_contract(fit)
+}
+
+# The log Bayes factor of the point statement 'q = value' for the draws of a
+# quantity with the prior object that declares its law and its bounds: the
+# computation of the draws, which reads no support of the catalog.
+.hypothesis_model_test_prior_reference <- function(draws, prior, value){
+
+  attr(hypothesis_BF(
+    as.numeric(draws), prior, paste0("q = ", format(value, digits = 17)),
+    parameter = "q", seed = 1
+  ), "raw_log_BF")
+}
+
+.hypothesis_model_test_select <- function(fit, name){
+
+  parameter_catalog_resolve(parameter_catalog(fit), name)
+}
+
+
+test_that("the support and the Bayes factors of random-effect SDs and variances are those of the requested scale", {
+
+  fit <- .hypothesis_model_test_scaled_fit(
+    prior_random(g = random_block(sd = prior("uniform", list(1, 2)))),
+    ~ 1 + x + (0 + x || g)
+  )
+  original_to_fitted <- 1 / stats::sd(.hypothesis_model_test_x_values())
+
+  for(transform_scaled in c(FALSE, TRUE)){
+    k <- if(transform_scaled) original_to_fitted else 1
+    info <- paste("transform_scaled =", transform_scaled)
+    # the bounds of the Uniform(1, 2) prior of the SD on the scale of the draws
+    sd_draws  <- parameter_mixed_posterior(
+      fit, .hypothesis_model_test_select(fit, "(mu) sd(x)"), transform_scaled = transform_scaled
+    )
+    var_draws <- parameter_mixed_posterior(
+      fit, .hypothesis_model_test_select(fit, "(mu) var(x)"), transform_scaled = transform_scaled
+    )
+    expect_equal(posterior_metadata(sd_draws, "support")$bounds, k * c(1, 2), info = info)
+    expect_equal(posterior_metadata(var_draws, "support")$bounds, k^2 * c(1, 4), info = info)
+    expect_true(all(sd_draws >= k & sd_draws <= 2 * k), info = info)
+
+    # the Savage-Dickey ratio, with the reflection of the posterior density at
+    # the bounds of the prior (the bounds themselves only where they are exact)
+    values <- if(transform_scaled) c(1.05, 1.1, 1.5, 1.95) else c(1, 1.05, 1.1, 1.5, 1.95, 2)
+    for(value in values){
+      reference <- .hypothesis_model_test_prior_reference(
+        sd_draws, prior("uniform", list(k, 2 * k)), k * value
+      )
+      expect_equal(
+        attr(hypothesis_BF(fit, paste0("(mu) sd(x) = ", format(k * value, digits = 17)),
+                           transform_scaled = transform_scaled, seed = 1), "raw_log_BF"),
+        reference, tolerance = 1e-10, info = paste(info, "SD", value)
+      )
+      # a variance is tested through its SD
+      expect_equal(
+        attr(hypothesis_BF(fit, paste0("(mu) var(x) = ", format((k * value)^2, digits = 17)),
+                           transform_scaled = transform_scaled, seed = 1), "raw_log_BF"),
+        reference, tolerance = 1e-8, info = paste(info, "variance", value)
+      )
+    }
+  }
+
+  # the discovery table tests both quantities on either scale
+  for(transform_scaled in list(NULL, FALSE, TRUE)){
+    quantities <- hypothesis_quantities(fit, transform_scaled = transform_scaled)
+    random <- quantities[quantities$parameter %in% c("(mu) sd(x)", "(mu) var(x)"), ]
+    expect_identical(random$point_test, c(TRUE, TRUE), info = format(transform_scaled))
+    expect_identical(random$reason, c("", ""), info = format(transform_scaled))
+  }
+
+  # a tampered selection is refused on either scale
+  selection <- .hypothesis_model_test_select(fit, "(mu) sd(x)")
+  selection$quantities$support[[1L]]$bounds <- c(0, 1)
+  for(transform_scaled in c(FALSE, TRUE)){
+    expect_error(parameter_mixed_posterior(fit, selection, transform_scaled = transform_scaled),
+                 "stale or does not belong", info = transform_scaled)
+  }
+
+  # a fit without scaled predictors is on one scale
+  plain <- .hypothesis_model_test_scaled_fit(
+    prior_random(g = random_block(sd = prior("uniform", list(1, 2)))),
+    ~ 1 + x + (0 + x || g), formula_scale = FALSE
+  )
+  plain_selection <- .hypothesis_model_test_select(plain, "(mu) sd(x)")
+  expect_identical(
+    parameter_mixed_posterior(plain, plain_selection, transform_scaled = FALSE),
+    parameter_mixed_posterior(plain, plain_selection, transform_scaled = TRUE)
+  )
+
+})
+
+
+test_that("the SD of a standardized intercept column has its prior density on the fitted scale", {
+
+  fit <- .hypothesis_model_test_scaled_fit(
+    prior_random(g = random_block(sd = prior("uniform", list(1, 2)))),
+    ~ 1 + x + (1 + x || g)
+  )
+  selection <- .hypothesis_model_test_select(fit, "(mu) sd(intercept)")
+  draws <- parameter_mixed_posterior(fit, selection, transform_scaled = FALSE)
+  expect_equal(posterior_metadata(draws, "support")$bounds, c(1, 2))
+  expect_false(is.null(posterior_metadata(draws, "prior_density")))
+  for(value in c(1.1, 1.5)){
+    expect_equal(
+      attr(hypothesis_BF(fit, paste0("(mu) sd(intercept) = ", value), seed = 1), "raw_log_BF"),
+      .hypothesis_model_test_prior_reference(draws, prior("uniform", list(1, 2)), value),
+      tolerance = 1e-10, info = value
+    )
+  }
+  quantities <- hypothesis_quantities(fit)
+  expect_true(quantities$point_test[quantities$parameter == "(mu) sd(intercept)"])
+
+})
+
+
+test_that("the support of conditioned and gated random-effect SDs is that of the requested scale", {
+
+  slab <- prior_spike_and_slab(
+    prior("uniform", list(1, 2)), prior_inclusion = prior("spike", list(0.5))
+  )
+  fit <- .hypothesis_model_test_scaled_fit(
+    prior_random(g = random_block(sd = slab)), ~ 1 + x + (0 + x || g), n = 3000L
+  )
+  original_to_fitted <- 1 / stats::sd(.hypothesis_model_test_x_values())
+  selection <- .hypothesis_model_test_select(fit, "(mu) sd(x)")
+
+  for(transform_scaled in c(FALSE, TRUE)){
+    k <- if(transform_scaled) original_to_fitted else 1
+    info <- paste("transform_scaled =", transform_scaled)
+    # without conditioning: the point at 0 and the slab
+    averaged <- parameter_mixed_posterior(fit, selection, transform_scaled = transform_scaled)
+    expect_equal(posterior_metadata(averaged, "support")$bounds, c(0, 2 * k), info = info)
+    expect_equal(as.numeric(posterior_metadata(averaged, "atoms")$locations), 0, info = info)
+    # within the inclusion event: the slab
+    conditioned <- parameter_mixed_posterior(
+      fit, selection, conditional = TRUE, transform_scaled = transform_scaled
+    )
+    expect_equal(posterior_metadata(conditioned, "support")$bounds, k * c(1, 2), info = info)
+    expect_true(all(conditioned >= k & conditioned <= 2 * k), info = info)
+    for(value in c(1.1, 1.5, 1.95)){
+      expect_equal(
+        attr(hypothesis_BF(fit, paste0("(mu) sd(x) = ", format(k * value, digits = 17)),
+                           conditional = TRUE, transform_scaled = transform_scaled, seed = 1),
+             "raw_log_BF"),
+        .hypothesis_model_test_prior_reference(
+          conditioned, prior("uniform", list(k, 2 * k)), k * value
+        ),
+        tolerance = 1e-10, info = paste(info, value)
+      )
+    }
+  }
+
+})
+
+
+test_that("the correlation of a standardized block is tested on either scale", {
+
+  fit <- .hypothesis_model_test_scaled_lkj_fit(~ 1 + x + z + (0 + x + z | g), z = TRUE)
+  selection <- .hypothesis_model_test_select(fit, "(mu) cor(x,z)")
+  for(transform_scaled in c(FALSE, TRUE)){
+    draws <- parameter_mixed_posterior(fit, selection, transform_scaled = transform_scaled)
+    expect_equal(posterior_metadata(draws, "support")$bounds, c(-1, 1),
+                 info = transform_scaled)
+    # (cor + 1) / 2 has the Beta(2, 2) law of an LKJ(2) correlation of two columns
+    for(value in c(-0.8, 0, 0.3, 0.9)){
+      expect_equal(
+        attr(hypothesis_BF(fit, paste0("(mu) cor(x,z) = ", value),
+                           transform_scaled = transform_scaled, seed = 1), "raw_log_BF"),
+        .hypothesis_model_test_prior_reference(
+          (as.numeric(draws) + 1) / 2, prior("beta", list(2, 2)), (value + 1) / 2
+        ),
+        tolerance = 1e-8, info = paste(transform_scaled, value)
+      )
+    }
+  }
+  quantities <- hypothesis_quantities(fit)
+  expect_true(quantities$point_test[quantities$parameter == "(mu) cor(x,z)"])
+
+  # the correlation of the intercept and a standardized slope on the fitted scale
+  fit <- .hypothesis_model_test_scaled_lkj_fit(~ 1 + x + (1 + x | g), z = FALSE)
+  draws <- parameter_mixed_posterior(
+    fit, .hypothesis_model_test_select(fit, "(mu) cor(intercept,x)"), transform_scaled = FALSE
+  )
+  expect_equal(posterior_metadata(draws, "support")$bounds, c(-1, 1))
+  expect_equal(
+    attr(hypothesis_BF(fit, "(mu) cor(intercept,x) = 0.3", seed = 1), "raw_log_BF"),
+    .hypothesis_model_test_prior_reference(
+      (as.numeric(draws) + 1) / 2, prior("beta", list(2, 2)), 0.65
+    ),
+    tolerance = 1e-8
+  )
+
+})
+
+
+test_that("the support and the Bayes factors of a standardized coefficient are those of the requested scale", {
+
+  fit <- .hypothesis_model_test_scaled_fit(
+    prior_random(g = random_block(sd = prior("uniform", list(1, 2)))),
+    ~ 1 + x + (0 + x || g), x_prior = prior("uniform", list(-1, 2))
+  )
+  original_to_fitted <- 1 / stats::sd(.hypothesis_model_test_x_values())
+
+  for(transform_scaled in c(FALSE, TRUE)){
+    k <- if(transform_scaled) original_to_fitted else 1
+    info <- paste("transform_scaled =", transform_scaled)
+    draws <- as_mixed_posteriors(fit, "mu_x", transform_scaled = transform_scaled)$mu_x
+    expect_equal(posterior_metadata(draws, "support")$bounds, k * c(-1, 2), info = info)
+    for(value in c(-0.9, 0.2, 1.8)){
+      expect_equal(
+        attr(hypothesis_BF(fit, paste0("x = ", format(k * value, digits = 17)),
+                           transform_scaled = transform_scaled, seed = 1), "raw_log_BF"),
+        .hypothesis_model_test_prior_reference(draws, prior("uniform", list(-k, 2 * k)), k * value),
+        tolerance = 1e-8, info = paste(info, value)
+      )
+    }
+  }
+
+})
+
+
+test_that("method refusals follow the evaluation method of a registered draws backend", {
+
+  # the exponential of a linear combination of the fitted coefficients is
+  # tested with KDE only
+  formula <- ~ 1 + x
+  attr(formula, "log(intercept)") <- TRUE
+  set.seed(9)
+  fit <- .hypothesis_model_test_route_fit(
+    "log_tau", list(intercept = stats::rgamma(400L, 2, 2), x = stats::rnorm(400L, 0, 0.3)),
+    formula,
+    list(intercept = prior("gamma", list(2, 2)), x = prior("normal", list(0, 1))),
+    data.frame(x = c(2, 4, 6))
+  )
+  alias <- hypothesis_density_backend("normalAlias", type = "draws", method = "normal")
+  with_toy_backend(alias, {
+    refusal <- function(method){
+      tryCatch(
+        hypothesis_BF(fit, "intercept = 0.5", transform_scaled = TRUE,
+                      density_method = method, seed = 1),
+        error = identity
+      )
+    }
+    builtin <- refusal("normal")
+    expect_s3_class(builtin, "BayesTools_hypothesis_method")
+    registered <- refusal("normalAlias")
+    expect_s3_class(registered, "BayesTools_hypothesis_method")
+    expect_identical(conditionMessage(registered), conditionMessage(builtin))
+    expect_s3_class(
+      hypothesis_BF(fit, "intercept = 0.5", transform_scaled = TRUE, seed = 1),
+      "BayesTools_hypothesis_BF"
+    )
+
+    # the table lists the methods that evaluate a quantity
+    quantities <- hypothesis_quantities(fit, transform_scaled = TRUE)
+    methods    <- quantities$point_test_methods[quantities$alias == "intercept"]
+    expect_match(methods, "KDE", fixed = TRUE)
+    expect_false(grepl("normalAlias", methods, fixed = TRUE))
+
+    # a statement that the normal approximation evaluates is evaluated by the alias
+    expect_identical(
+      attr(hypothesis_BF(fit, "x = 0.1", density_method = "normalAlias", seed = 1), "raw_log_BF"),
+      attr(hypothesis_BF(fit, "x = 0.1", density_method = "normal", seed = 1), "raw_log_BF")
+    )
+
+    # and the stored marginal means refuse the normal approximation by any name
+    marginal <- .hypothesis_model_toy_marginal(
+      .hypothesis_model_test_fit(), "bt_hypothesis_test_marginal_alias",
+      density_methods = c("KDE", "normal", "normalAlias")
+    )
+    for(method in c("normal", "normalAlias")){
+      expect_error(
+        hypothesis_BF_model(marginal, "f[B] = 0.2", density_method = method),
+        "'normal' density_method is not supported for marginal-means hypotheses.",
+        fixed = TRUE, class = "BayesTools_hypothesis_method", info = method
+      )
+    }
+  })
+
+})
+
+
+test_that("the fit method takes the statements as character strings", {
+
+  fit <- .hypothesis_model_test_fit()
+  parsed <- hypothesis_parse("x = 0.1")
+  for(call in list(
+    function() hypothesis_BF(fit, parsed, seed = 1),
+    function() hypothesis_BF_model(fit, parsed, seed = 1)
+  )){
+    condition <- tryCatch(call(), error = identity)
+    expect_s3_class(condition, "BayesTools_hypothesis_statement")
+    expect_match(conditionMessage(condition), "must be character strings", fixed = TRUE)
+    expect_match(conditionMessage(condition), "Pass the statements as character strings",
+                 fixed = TRUE)
+  }
+  # the rendered statement is accepted, and the draw-based method takes the parsed one
+  rendered <- hypothesis_render(parsed)
+  expect_type(rendered, "character")
+  expect_identical(
+    attr(hypothesis_BF(fit, rendered, seed = 1), "raw_log_BF"),
+    attr(hypothesis_BF(fit, "x = 0.1", seed = 1), "raw_log_BF")
+  )
+  set.seed(1)
+  draws <- stats::rnorm(500, 0.4, 0.3)
+  normal <- prior("normal", list(0, 1))
+  expect_identical(
+    attr(hypothesis_BF(draws, normal, parsed, parameter = "x", seed = 1), "raw_log_BF"),
+    attr(hypothesis_BF(draws, normal, "x = 0.1", parameter = "x", seed = 1), "raw_log_BF")
+  )
+
+})
+
+
+test_that("the messages name the argument that the provider selects the component with", {
+
+  # three formula parameters: a statement on two of them has no component of the third
+  set.seed(5)
+  data <- data.frame(x = c(-2, -1, 0, 3, 5, 7))
+  compile <- function(parameter){
+    JAGS_formula(~ 1 + x, parameter, data, list(
+      intercept = prior("normal", list(0, 1)), x = prior("normal", list(0, 1))
+    ), formula_scale = TRUE)
+  }
+  parameters <- c("mu", "log_sigma", "log_tau")
+  compiled   <- stats::setNames(lapply(parameters, compile), parameters)
+  columns    <- paste0(rep(parameters, each = 2L), "_", c("intercept", "x"))
+  fit <- .parameter_catalog_test_fit(
+    coda::mcmc.list(coda::mcmc(matrix(
+      stats::rnorm(400L * length(columns), 0.3, 0.5), 400L, length(columns),
+      dimnames = list(NULL, columns)
+    ))),
+    do.call(c, unname(lapply(compiled, `[[`, "prior_list"))),
+    lapply(compiled, `[[`, "formula_design"), lapply(compiled, `[[`, "formula_scale")
+  )
+  model <- structure(list(fit = fit), class = "bt_hypothesis_test_vocabulary")
+  registerS3method("hypothesis_provider", "bt_hypothesis_test_vocabulary", function(object, ...){
+    modifyList(hypothesis_provider(object$fit),
+               list(object = object, component_argument = "component"))
+  }, envir = asNamespace("BayesTools"))
+  expect_identical(hypothesis_provider(fit)$component_argument, "namespace")
+  expect_identical(hypothesis_provider(model)$component_argument, "component")
+
+  mismatch <- function(object, statement){
+    condition <- tryCatch(
+      hypothesis_BF_model(object, statement, namespace = "log_tau"), error = identity
+    )
+    expect_s3_class(condition, "BayesTools_hypothesis_component_mismatch")
+    expect_s3_class(condition, "BayesTools_hypothesis_statement")
+    conditionMessage(condition)
+  }
+  # a statement of one component
+  expect_identical(
+    mismatch(fit, "mu_x = 0.1"),
+    "The 'hypothesis' argument selects namespace = 'mu' but 'namespace' was set to 'log_tau'."
+  )
+  expect_identical(
+    mismatch(model, "mu_x = 0.1"),
+    "The 'hypothesis' argument selects component = 'mu' but 'component' was set to 'log_tau'."
+  )
+  # a statement of several components
+  expect_identical(mismatch(fit, "mu_x = log_sigma_x"),
+                   "The hypothesis does not resolve to namespace = 'log_tau'.")
+  expect_identical(mismatch(model, "mu_x = log_sigma_x"),
+                   "The hypothesis does not resolve to component = 'log_tau'.")
+  # the advice of an ambiguous statement is the provider's own
+  ambiguous <- tryCatch(hypothesis_BF(fit, "x = 0.1", seed = 1), error = identity)
+  expect_s3_class(ambiguous, "BayesTools_hypothesis_ambiguous")
+  expect_match(conditionMessage(ambiguous), "Set 'namespace' to", fixed = TRUE)
+
+  # the field is validated
+  for(value in list(1, NA_character_, "", c("a", "b"))){
+    broken <- structure(list(fit = fit), class = "bt_hypothesis_test_vocabulary_broken")
+    registerS3method("hypothesis_provider", "bt_hypothesis_test_vocabulary_broken",
+      function(object, ...){
+        modifyList(hypothesis_provider(object$fit),
+                   list(object = object, component_argument = value))
+      }, envir = asNamespace("BayesTools"))
+    expect_error(hypothesis_BF_model(broken, "mu_x = 0.1"),
+                 "'component_argument' must be a string or NULL", fixed = TRUE)
+  }
+
+})
