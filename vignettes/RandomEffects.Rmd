@@ -793,15 +793,13 @@ We therefore ask a more informative question: does the HCS correlation equal 0.9
 We compare the hypothesis with the uniform prior of the HCS model in two ways.
 
 First, the Savage-Dickey density ratio [@wagenmakers2010bayesian] obtains the Bayes factor directly from the fitted HCS model: it divides the posterior density of the correlation at 0.9 by its prior density.
-We extract the posterior draws of the correlation with their prior distribution and pass them to `hypothesis_BF()`.
+`parameter_catalog_resolve()` selects the correlation by the name the estimates table shows, `parameter_mixed_posterior()` extracts its posterior draws together with its prior distribution, and `hypothesis_BF()` refers to it in backticks.
 
 ```{r}
-hcs_cor <- "mu__xREx__Subject_rho"
-hcs_cor_posterior <- marginal_posterior(
-  as_mixed_posteriors(fit_sleep_hcs, hcs_cor), hcs_cor,
-  use_formula = FALSE, prior_samples = TRUE
+hcs_cor <- parameter_mixed_posterior(
+  fit_sleep_hcs, parameter_catalog_resolve(parameter_catalog(fit_sleep_hcs), "(mu) cor")
 )
-hypothesis_BF(hcs_cor_posterior, hypothesis = paste(hcs_cor, "= 0.9"), parameter = hcs_cor, BF01 = TRUE, seed = 1)
+hypothesis_BF(hcs_cor, hypothesis = "`(mu) cor` = 0.9", BF01 = TRUE, seed = 1)
 ```
 
 Second, a mixture prior places half of the prior probability on a correlation of 0.9 (the spike) and half on the same uniform distribution (the slab) and tests the hypothesis within a single fit, as the spike-and-slab prior did for the random slope.
@@ -995,15 +993,10 @@ JAGS_inference_table(fit_ovary_car_test)
 Third, the Savage-Dickey density ratio divides the posterior density of `cor` at 0.5 by its prior density in the model with the uniform prior.
 
 ```{r}
-ovary_cor <- "mu__xREx__Mare_rho"
-ovary_cor_posterior <- marginal_posterior(
-  as_mixed_posteriors(fit_ovary_car, ovary_cor), ovary_cor,
-  use_formula = FALSE, prior_samples = TRUE
+ovary_cor <- parameter_mixed_posterior(
+  fit_ovary_car, parameter_catalog_resolve(parameter_catalog(fit_ovary_car), "(mu) cor")
 )
-ovary_savage_dickey <- hypothesis_BF(
-  ovary_cor_posterior, hypothesis = paste(ovary_cor, "= 0.5"), parameter = ovary_cor,
-  BF01 = TRUE, seed = 1
-)
+ovary_savage_dickey <- hypothesis_BF(ovary_cor, hypothesis = "`(mu) cor` = 0.5", BF01 = TRUE, seed = 1)
 ovary_savage_dickey
 ```
 
