@@ -64,9 +64,8 @@ Its random-coefficient syntax follows the conventions used by lme4 [@lme4], and 
 This vignette illustrates how to use the functionality on example datasets distributed with lme4 and nlme.
 The first example uses the `sleepstudy` data and shows random intercepts, correlated and independent random slopes, and Bayes factor tests for the random slope and the correlation, comparing lme4, brms [@brms], and BayesTools.
 The second example continues with the `sleepstudy` data and shows a heterogeneous compound-symmetry covariance over the study days and a test of its correlation against a specific value.
-The third example uses the `Ovary` data from nlme [@pinheiro2000mixed] and shows a continuous-time autoregressive covariance over unequally spaced measurement times, with a test of its correlation by bridge sampling, a mixture prior, and the Savage-Dickey density ratio.
-The fourth example uses the `Pastes` data and shows nested random intercepts.
-The fifth example uses the `Penicillin` data and shows crossed random effects, compared with rstanarm [@rstanarm].
+The third example uses the `Pastes` data and shows nested random intercepts.
+The fourth example uses the `Penicillin` data and shows crossed random effects, compared with rstanarm [@rstanarm].
 
 ## Formula Semantics
 
@@ -831,190 +830,19 @@ The data favor a correlation of 0.9 over the uniform alternative by a Bayes fact
 The Savage-Dickey ratio reuses the estimated model but relies on a density estimate at the tested value; the mixture prior needs a separate fit but again allows us to extend the approach to testing several parameters at once.
 
 
-## Continuous-Time Autoregressive Correlation
-
-The `Ovary` data [@pinheiro2000mixed] contain the number of large ovarian follicles of 11 mares, counted from three days before ovulation until three days after the next ovulation.
-The measurement times of each mare are rescaled so that its two ovulations fall at times 0 and 1; the measurements are therefore unequally spaced on this scale.
-Following @pinheiro2000mixed, we treat the counts as approximately normal and describe the cycle with sine and cosine terms.
-
-A mare's deviations from this cyclic trend persist over consecutive measurements and fade as the time between them grows.
-The `car(Time | Mare)` term gives each mare one random effect per measurement time, with one shared SD and the correlation `cor^abs(t_i - t_j)` between the times `t_i` and `t_j`.
-Because the distance is measured in cycles, `cor` is the correlation between deviations one full cycle apart.
-Unlike `ar1()`, which uses only the order of the measurements, `car()` uses the actual distances between them.
-
-```{r}
-data("Ovary", package = "nlme")
-Ovary <- as.data.frame(Ovary)
-Ovary$Mare        <- factor(Ovary$Mare, ordered = FALSE)
-Ovary$follicles_z <- as.numeric(scale(Ovary$follicles))
-Ovary$sin_time    <- sin(2 * pi * Ovary$Time)
-Ovary$cos_time    <- cos(2 * pi * Ovary$Time)
-head(Ovary)
-```
-
-lme4 has no continuous-time covariance structure.
-In nlme, `gls()` with an exponential correlation and a nugget specifies the same model: the correlation between measurements of the same mare is `(1 - nugget) * exp(-distance / range)`, where the nugget corresponds to the residual variance and `exp(-1 / range)` to `cor`.
-
-```{r}
-nlme_car <- nlme::gls(
-  follicles_z ~ sin_time + cos_time, data = Ovary, method = "ML",
-  correlation = nlme::corExp(form = ~ Time | Mare, nugget = TRUE)
-)
-nlme_car
-```
-
-BayesTools specifies the likelihood and the priors as in the previous examples.
-Without a `cor` argument, the CAR correlation receives the default uniform prior on (0, 1).
-
-```{r}
-ovary_likelihood <-
-"model{
-  for(i in 1:N){
-    follicles_z[i] ~ dnorm(mu[i], pow(sigma, -2))
-  }
-}
-"
-ovary_data         <- list(follicles_z = Ovary$follicles_z, N = nrow(Ovary))
-ovary_prior_list   <- list(sigma = unit_sd_prior)
-ovary_formula_list <- list(mu = ~ sin_time + cos_time + car(Time | Mare))
-ovary_fixed_priors <- list(mu = list(intercept = unit_prior, sin_time = unit_prior, cos_time = unit_prior))
-ovary_random_priors <- list(mu = prior_random(Mare = random_block(
-  sd      = unit_sd_prior,
-  monitor = random_monitor(latent = FALSE, coefficients = FALSE, correlation = TRUE)
-)))
-```
-
-```{r fit-ovary-car, cache_fits = "fit_ovary_car"}
-fit_ovary_car <- JAGS_fit(
-  model_syntax = ovary_likelihood, data = ovary_data, prior_list = ovary_prior_list,
-  formula_list = ovary_formula_list, formula_data_list = list(mu = Ovary),
-  formula_prior_list = ovary_fixed_priors, formula_random_prior_list = ovary_random_priors,
-  chains = 2, adapt = 1000, burnin = 2000, sample = 10000, seed = 1
-)
-```
-```{r}
-JAGS_estimates_table(fit_ovary_car)
-```
-
-Table below compares the posterior means with the nlme estimates.
-The posterior distributions of `sd` and `cor` are right-skewed, so their means exceed the maximum likelihood estimates.
-
-```{r}
-compare_car_estimates(nlme_model = nlme_car, bayes_model = fit_ovary_car)
-```
-
-### Testing the Correlation
-
-Does the correlation between a mare's deviations halve over one cycle, i.e., does `cor` equal 0.5?
-We compare this hypothesis with the uniform prior in three ways: bridge sampling, a mixture prior, and the Savage-Dickey density ratio.
-
-First, bridge sampling compares the marginal likelihoods of the model with the uniform prior and of the model with `cor` fixed at 0.5.
-`random_covariance(cor_scale = "cor")` specifies the point prior on the raw correlation scale.
-Bridge sampling requires the latent random effects, which the default `random_monitor()` stores.
-Because `car()` has one random effect per measurement, these fits are large, so the chunk below caches only the marginal likelihoods.
-
-```{r}
-ovary_bridge_priors <- list(mu = prior_random(Mare = random_block(sd = unit_sd_prior)))
-ovary_null_priors   <- list(mu = prior_random(Mare = random_block(
-  sd         = unit_sd_prior,
-  covariance = random_covariance(cor = prior("spike", list(location = 0.5)), cor_scale = "cor")
-)))
-ovary_log_posterior <- function(parameters, data){
-  sum(dnorm(
-    x    = data[["follicles_z"]],
-    mean = parameters[["mu"]],
-    sd   = parameters[["sigma"]],
-    log  = TRUE
-  ))
-}
-```
-
-```{r bridge-ovary, cache_fits = c("marglik_ovary_car", "marglik_ovary_null")}
-fit_ovary_bridge <- JAGS_fit(
-  model_syntax = ovary_likelihood, data = ovary_data, prior_list = ovary_prior_list,
-  formula_list = ovary_formula_list, formula_data_list = list(mu = Ovary),
-  formula_prior_list = ovary_fixed_priors, formula_random_prior_list = ovary_bridge_priors,
-  chains = 2, adapt = 1000, burnin = 2000, sample = 5000, seed = 1
-)
-fit_ovary_null <- JAGS_fit(
-  model_syntax = ovary_likelihood, data = ovary_data, prior_list = ovary_prior_list,
-  formula_list = ovary_formula_list, formula_data_list = list(mu = Ovary),
-  formula_prior_list = ovary_fixed_priors, formula_random_prior_list = ovary_null_priors,
-  chains = 2, adapt = 1000, burnin = 2000, sample = 5000, seed = 1
-)
-marglik_ovary_car <- JAGS_bridgesampling(
-  fit_ovary_bridge, log_posterior = ovary_log_posterior, data = ovary_data,
-  prior_list = ovary_prior_list, seed = 1)
-marglik_ovary_null <- JAGS_bridgesampling(
-  fit_ovary_null, log_posterior = ovary_log_posterior, data = ovary_data,
-  prior_list = ovary_prior_list, seed = 1)
-```
-
-Second, a mixture prior places half of the prior probability on `cor = 0.5` (the spike) and half on the uniform distribution (the slab) and tests the hypothesis within a single fit.
-
-```{r}
-ovary_test_priors <- list(mu = prior_random(Mare = random_block(
-  sd         = unit_sd_prior,
-  covariance = random_covariance(
-    cor = prior_mixture(
-      prior_list = list(
-        prior(distribution = "spike",   parameters = list(location = 0.5)),
-        prior(distribution = "uniform", parameters = list(a = 0, b = 1))
-      ),
-      is_null = c(TRUE, FALSE)
-    ),
-    cor_scale = "cor"
-  ),
-  monitor = random_monitor(latent = FALSE, coefficients = FALSE, correlation = TRUE)
-)))
-```
-
-```{r fit-ovary-car-test, cache_fits = "fit_ovary_car_test"}
-fit_ovary_car_test <- JAGS_fit(
-  model_syntax = ovary_likelihood, data = ovary_data, prior_list = ovary_prior_list,
-  formula_list = ovary_formula_list, formula_data_list = list(mu = Ovary),
-  formula_prior_list = ovary_fixed_priors, formula_random_prior_list = ovary_test_priors,
-  chains = 2, adapt = 1000, burnin = 2000, sample = 10000, seed = 1
-)
-```
-```{r}
-JAGS_inference_table(fit_ovary_car_test)
-```
-
-Third, the Savage-Dickey density ratio divides the posterior density of `cor` at 0.5 by its prior density in the model with the uniform prior.
-
-```{r}
-ovary_cor <- parameter_mixed_posterior(
-  fit_ovary_car, parameter_catalog_resolve(parameter_catalog(fit_ovary_car), "(mu) cor")
-)
-ovary_savage_dickey <- hypothesis_BF(ovary_cor, hypothesis = "`(mu) cor` = 0.5", BF01 = TRUE, seed = 1)
-ovary_savage_dickey
-```
-
-Table below collects the three Bayes factors in favor of `cor = 0.5`.
-
-```{r}
-data.frame(
-  method = c("bridge sampling", "mixture prior", "Savage-Dickey density ratio"),
-  BF01   = c(bridgesampling::bf(marglik_ovary_null, marglik_ovary_car)$bf,
-             1 / as.numeric(JAGS_inference_table(fit_ovary_car_test)$inclusion_BF),
-             as.numeric(ovary_savage_dickey$BF))
-)
-```
-
-All three approaches agree: the data favor the uniform prior over `cor = 0.5` by a Bayes factor of about 10, so a mare's deviations decorrelate faster than halving over one cycle.
-Bridge sampling needs two fits and stores the latent random effects; the mixture prior needs one dedicated fit; the Savage-Dickey density ratio reuses the estimation fit but relies on a density estimate at the tested value.
-
-
 ## Nested Random Effects
 
-The `Pastes` data contain samples from casks nested within batches. BayesTools supports the lme4 slash notation directly: `(1 | batch/cask)` expands to separate batch and cask-within-batch intercepts. The generated block names are `batch` and `cask_batch`, which can be targeted by a variance-allocation prior.
+The `Pastes` data contain the strength of a chemical paste measured twice in each of three casks from each of ten delivery batches (60 measurements).
+The casks are nested within the batches, so a cask's random effect has to be defined within its batch.
+We again standardize the response so the unit-scale priors from the previous examples apply.
 
 ```{r}
 data("Pastes", package = "lme4")
 Pastes$strength_z <- as.numeric(scale(Pastes$strength))
 head(Pastes)
 ```
+
+In lme4, the slash notation `(1 | batch/cask)` expands to `(1 | batch) + (1 | batch:cask)`: one random intercept for each batch and one for each cask within its batch.
 
 ```{r}
 lme4_nested <- lme4::lmer(
@@ -1023,6 +851,9 @@ lme4_nested <- lme4::lmer(
 )
 lme4::VarCorr(lme4_nested)
 ```
+
+BayesTools accepts the same slash notation and creates one random-effect block per nesting level, named `batch` and `cask_batch`.
+The likelihood, the data, and the intercept prior follow the previous examples, with `strength_z` as the response.
 
 ```{r}
 nested_likelihood <-
@@ -1039,16 +870,27 @@ nested_formula <- list(
 
 nested_data <- list(strength_z = Pastes$strength_z, N = nrow(Pastes))
 nested_fixed_priors <- list(intercept = unit_prior)
+```
+
+Instead of separate SD priors for the two blocks, we specify a variance allocation prior with `random_variance_allocation()`.
+It places one prior on the total random-effect SD, `sd_total` and a Dirichlet prior on the proportions of the total variance assigned to each block, `var_prop`.
+With `alpha = c(1, 1)`, every split between the batch and cask levels is equally likely a priori.
+This is convenient when the overall amount of heterogeneity is easier to anticipate than its split between the levels, and the prior distribution on the total SD stays the same however many blocks share it.
+
+`name = "nested_re"` labels the allocation and prefixes its rows `(nested_re: sd_total)`. 
+`terms` lists the random-effect blocks it scales: the values `"batch"` and `"cask_batch"` are the blocks generated by `(1 | batch/cask)`, and the names `batch` and `cask` label the components in the output (`var_prop(batch)`, `var_prop(cask)`).
+Other specifications are possible: independent SD priors for each block, `prior_random(batch = random_block(sd = ...), cask_batch = random_block(sd = ...))`, as shown for crossed random effects below.
+
+```{r}
 nested_allocation_priors <- list(
   mu = prior_random(
-    monitor = random_monitor(latent = FALSE, coefficients = FALSE, correlation = FALSE),
     allocation = random_variance_allocation(
-      name = "nested_re",
-      display_name = "nested_re",
-      terms = c(batch = "batch", cask = "cask_batch"),
-      sd = unit_sd_prior,
+      name    = "nested_re",
+      terms   = c(batch = "batch", cask = "cask_batch"),
+      sd      = unit_sd_prior,
       weights = prior("dirichlet", parameters = list(alpha = c(1, 1)))
-    )
+    ),
+    monitor = random_monitor(latent = FALSE, coefficients = FALSE, correlation = FALSE)
   )
 )
 ```
@@ -1067,25 +909,7 @@ fit_nested <- JAGS_fit(
 JAGS_estimates_table(fit_nested, random_effects_summary = "standard", remove_diagnostics = TRUE)
 ```
 
-For larger random-effect models, `random_effects_metadata = TRUE` adds the
-formula-level random-effect name, grouping label, and random-effect structure. The
-same names can be used to restrict the random-effect rows; here we display only
-the nested `cask:batch` component. Its SD and variance are reported by
-`random_effects_summary = "full"`; the allocation rows (`sd_total` and
-`var_prop(...)`) belong to no single block and are therefore not selected.
-
-```{r}
-JAGS_estimates_table(
-  fit_nested,
-  random_effects_summary = "full",
-  random_effects_metadata = TRUE,
-  keep_parameters = "random",
-  keep_random_effects = "cask:batch",
-  remove_diagnostics = TRUE
-)
-```
-
-The nested lme4 and BayesTools estimates are compared below. The BayesTools allocation rows report `nested_re: sd_total` and the `nested_re: var_prop(...)` values assigned to the batch and cask-within-batch components. Here `name` is the stable allocation identifier and `display_name` is its public semantic owner; set `display_name = ""` when no owner prefix is needed.
+The nested lme4 and BayesTools estimates are compared in the table below.
 
 ```{r}
 compare_nested_estimates(lme4_model = lme4_nested, bayes_model = fit_nested)
