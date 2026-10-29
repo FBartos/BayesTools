@@ -87,16 +87,24 @@ vignette_cache_md5 <- function(lines) {
 
 # A chunk's key has one "<input> <md5>" line for its code without comments or
 # formatting, one for each workspace object the code references (its deparsed
-# value), and one for each cached object it uses (that object's key).
+# value), and one for each cached object it uses (that object's key). Objects
+# the chunk itself assigns, such as uncached intermediate fits, are outputs and
+# not inputs, even when an earlier render left them in the workspace. Inputs
+# and cached keys are sorted locale-independently (radix).
 vignette_cache_key <- function(cache, options, envir) {
 
-  code <- parse(text = options$code, keep.source = FALSE)
-  used <- setdiff(unique(all.names(code)), options$cache_fits)
-  used <- sort(used[vapply(used, exists, logical(1), envir = envir, inherits = FALSE)])
+  code     <- parse(text = options$code, keep.source = FALSE)
+  assigned <- unlist(lapply(code, function(expression) {
+    if (is.call(expression) && as.character(expression[[1]]) %in% c("<-", "=") &&
+        is.name(expression[[2]])) as.character(expression[[2]])
+  }))
+  used <- setdiff(unique(all.names(code)), c(options$cache_fits, assigned))
+  used <- sort(used[vapply(used, exists, logical(1), envir = envir, inherits = FALSE)], method = "radix")
 
   hashes <- vapply(used, function(name) {
     if (name %in% names(cache)) {
-      vignette_cache_md5(vignette_cache_read_key(cache[name])[[1]])
+      # (a missing or old-format key reads as NULL and hashes as no lines)
+      vignette_cache_md5(sort(as.character(vignette_cache_read_key(cache[name])[[1]]), method = "radix"))
     } else {
       vignette_cache_md5(deparse(get(name, envir = envir, inherits = FALSE)))
     }
@@ -155,7 +163,11 @@ vignette_cache_setup <- function(cache) {
     if (!length(vignette_cache_missing(chunk_cache))) {
       stored_key <- vignette_cache_read_key(chunk_cache)
       unkeyed    <- vapply(stored_key, is.null, logical(1))
-      changed    <- !unkeyed & !vapply(stored_key, identical, logical(1), options$cache_key)
+      # (keys written under another locale may list the same lines in another order)
+      changed    <- !unkeyed & !vapply(stored_key, function(stored) {
+        !is.null(stored) &&
+          identical(sort(stored, method = "radix"), sort(options$cache_key, method = "radix"))
+      }, logical(1))
       inputs     <- vignette_cache_changed_inputs(unlist(stored_key[changed]), options$cache_key)
 
       if (any(changed) && vignette_cache_refit()) {

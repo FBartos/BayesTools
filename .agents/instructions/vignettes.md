@@ -59,6 +59,8 @@ in the calling session does not configure a separate R process.
 A cached chunk's `.key` file has one `<input> <md5>` line for its code without
 comments or formatting, one per workspace object the code references (its
 deparsed value), and one per cached object it uses (that object's key).
+Inputs are sorted locale-independently, and keys are compared regardless of
+line order, so knits under different locales accept each other's keys.
 Changing a model's code or its priors therefore refits that chunk on the next
 knit, and a refitted model refits the marginal-likelihood chunks that use it;
 the knit message names the changed inputs. Keys do not track package versions,
