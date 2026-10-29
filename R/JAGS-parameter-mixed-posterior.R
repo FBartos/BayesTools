@@ -387,7 +387,11 @@ parameter_gate_states <- function(fit, selection, draws = NULL){
     attr(out, "prior_list") <- .bt_prior_without_multiply_by(
       attr(fit, "prior_list", exact = TRUE)[[key$dependencies]])
   }
-  out <- .posterior_support_set(out, quantity$support[[1L]])
+  out <- .posterior_support_set(out, if(isTRUE(conditional) && identical(plan$kind, "point")){
+    .bt_parameter_point_conditioned_support(fit, plan, quantity)
+  }else{
+    quantity$support[[1L]]
+  })
   if(!is.null(prior_density)){
     out <- .bt_meta_set(out, "prior_density", prior_density)
   }
@@ -1378,6 +1382,22 @@ parameter_gate_states <- function(fit, selection, draws = NULL){
   attr(fit, "prior_list") <- prior_list
 
   fit
+}
+
+# The declared support of a point-plan quantity within its inclusion event: the
+# catalog support of the quantity under the prior restricted to the event
+# (.bt_parameter_point_conditioned_fit()), from the machinery that declares the
+# unconditional support (the union of the continuous components' supports on
+# the scale of the quantity, exact where the catalog declares it exact for that
+# prior, and without the points of the point components that the event leaves
+# out). The unconditional support of the catalog would keep the bounds and
+# point of the point components and so misdeclare the support of the draws.
+.bt_parameter_point_conditioned_support <- function(fit, plan, quantity){
+
+  .bt_parameter_catalog_quantity_support(
+    object   = .bt_parameter_point_conditioned_fit(fit, plan, quantity$canonical_name),
+    quantity = quantity
+  )
 }
 
 # The point plan of a coordinate of the selection prior of the fit (a

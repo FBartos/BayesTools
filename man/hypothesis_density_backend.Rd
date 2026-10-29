@@ -99,10 +99,12 @@ evaluate the statement \code{plan} of the model \code{object} (the
 \code{capability_object} of the provider) with the normalized
 \code{control}, the settings that \code{control()} returns for the call
 (for the stored marginal means of a model, for the settings of the call or
-the stored settings that the provider inherits). Settings that
-\code{control()} refuses reach \code{available()} as they were supplied,
-and the engine stops with the failure of \code{control()} after the
-plans are checked. It is evaluated on every call and never cached. It
+the stored settings that the provider inherits). For the stored marginal
+means, settings that \code{control()} refuses reach \code{available()} as
+they were supplied, and the engine stops with the failure of
+\code{control()} after the plans are checked; for a fitted model, the
+failure of \code{control()} stops the call before any plan is checked. It
+is evaluated on every call and never cached. It
 returns \code{NULL} when the backend can, and otherwise a refusal: a list
 with the \code{reason} (a string) and optionally \code{class} (additional
 condition classes appended to \code{BayesTools_hypothesis_method} and

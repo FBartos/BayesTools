@@ -328,18 +328,18 @@ test_that("conditional mixed posteriors of point components keep their continuou
   cases <- list(
     list(name = "(mu) sd(intercept)", row = "(mu) sd(intercept)",
          column = "mu__xREx__g_intercept", indicator = "mu__xREx__g_intercept_indicator",
-         map = identity, at = c(0.3, 0.8, 1.5),
+         map = identity, at = c(0.3, 0.8, 1.5), bounds = c(0, Inf),
          density = function(x) slab(x) + log(2)),
     list(name = "(mu) var(intercept)", row = "(mu) var(intercept)",
          column = "mu__xREx__g_intercept", indicator = "mu__xREx__g_intercept_indicator",
-         map = function(x) x^2, at = c(0.09, 0.64, 2.25),
+         map = function(x) x^2, at = c(0.09, 0.64, 2.25), bounds = c(0, Inf),
          density = function(x) slab(sqrt(x)) + log(2) - log(2 * sqrt(x))),
     list(name = "mu_x", row = "(mu) x", column = "mu_x", indicator = "mu_x_indicator",
-         map = identity, at = c(-1, 0.2, 1.4), density = slab),
+         map = identity, at = c(-1, 0.2, 1.4), bounds = c(-Inf, Inf), density = slab),
     list(name = "mu_f[b]", row = "(mu) f[b]", column = "mu_f[1]", indicator = "mu_f_indicator",
-         map = identity, at = c(-1, 0.2, 1.4), density = slab),
+         map = identity, at = c(-1, 0.2, 1.4), bounds = c(-Inf, Inf), density = slab),
     list(name = "mu_f[c]", row = "(mu) f[c]", column = "mu_f[2]", indicator = "mu_f_indicator",
-         map = identity, at = c(-1, 0.2, 1.4), density = slab)
+         map = identity, at = c(-1, 0.2, 1.4), bounds = c(-Inf, Inf), density = slab)
   )
   for(case in cases){
     mixed    <- conditional(case$name)
@@ -360,6 +360,14 @@ test_that("conditional mixed posteriors of point components keep their continuou
     expect_identical(condition$conditional_rule, "AND", info = case$name)
     expect_false(condition$averaged, info = case$name)
     expect_true(posterior_atoms_free(mixed), info = case$name)
+
+    # the declared support is that of the slab: no point, exact (the
+    # unconditional support has the spike as a point)
+    support <- posterior_metadata(mixed, "support")
+    expect_identical(support$bounds, case$bounds, info = case$name)
+    expect_length(support$points, 0L)
+    expect_true(support$exact, info = case$name)
+    expect_identical(support$type, "interval", info = case$name)
 
     # the prior restricted to the slab, on the scale of the quantity
     density <- posterior_metadata(mixed, "prior_density")
@@ -439,12 +447,19 @@ test_that("conditional mixed posteriors renormalize several continuous component
   expect_equal(as.numeric(b), b_draws[included, "b"])
   expect_identical(posterior_metadata(b, "condition")$conditional, "b_indicator")
   expect_true(posterior_atoms_free(b))
+  # (the union of the supports of the two continuous components, without a point)
+  b_support <- posterior_metadata(b, "support")
+  expect_identical(b_support$bounds, c(-Inf, Inf))
+  expect_length(b_support$points, 0L)
+  expect_true(b_support$exact)
 
   # draws and prior density of as_mixed_posteriors(conditional = "b")
   samples  <- as_mixed_posteriors(mixture, "b", conditional = "b", n_prior_samples = 2000)
   marginal <- marginal_posterior(samples, "b", prior_samples = TRUE, use_formula = FALSE,
                                  n_samples = BayesTools:::.prior_linear_density_default_grid())
   expect_equal(as.numeric(b), as.numeric(marginal), tolerance = 1e-14)
+  expect_identical(posterior_metadata(marginal, "support")$bounds, b_support$bounds)
+  expect_identical(posterior_metadata(marginal, "support")$exact, b_support$exact)
   at <- c(-3, -1, 0, 0.3, 1, 2, 2.5, 4)
   log_density <- function(x){
     vapply(at, function(value){
@@ -576,13 +591,13 @@ test_that("conditional mixed posteriors of a spike-and-slab SD and correlation e
 
   cases <- list(
     list(name = "(mu) sd", column = "mu__xREx__id_sd", indicator = sd_indicator,
-         map = identity, at = c(0.2, 0.9),
+         map = identity, at = c(0.2, 0.9), bounds = c(0, Inf),
          density = function(x) stats::dnorm(x, log = TRUE) + log(2)),
     list(name = "(mu) var", column = "mu__xREx__id_sd", indicator = sd_indicator,
-         map = function(x) x^2, at = c(0.04, 0.81),
+         map = function(x) x^2, at = c(0.04, 0.81), bounds = c(0, Inf),
          density = function(x) stats::dnorm(sqrt(x), log = TRUE) + log(2) - log(2 * sqrt(x))),
     list(name = "(mu) cor", column = "mu__xREx__id_rho", indicator = cor_indicator,
-         map = identity, at = c(-0.4, 0.1, 0.7),
+         map = identity, at = c(-0.4, 0.1, 0.7), bounds = c(-1, 1),
          # the Fisher-z slab normal(0, 0.5), on the scale of the correlation
          density = function(x) stats::dnorm(atanh(x), 0, 0.5, log = TRUE) - log(1 - x^2))
   )
@@ -601,6 +616,10 @@ test_that("conditional mixed posteriors of a spike-and-slab SD and correlation e
     expect_identical(posterior_metadata(mixed, "condition")$conditional, case$indicator,
                      info = case$name)
     expect_true(posterior_atoms_free(mixed), info = case$name)
+    support <- posterior_metadata(mixed, "support")
+    expect_identical(support$bounds, case$bounds, info = case$name)
+    expect_length(support$points, 0L)
+    expect_true(support$exact, info = case$name)
     density <- posterior_metadata(mixed, "prior_density")
     expect_identical(nrow(density$points), 0L, info = case$name)
     expect_equal(

@@ -57,9 +57,11 @@ factor term without a level stands for the token's level (`x = 0.1` with
    type-keyed). Nothing is evaluated before all plans are checked. Availability
    is computed on every call and never cached. `available()` receives the
    control normalized by the backend's `control()`, also for marginal means
-   (the call's control or the provider's stored default); if normalization
-   fails, the plans are checked with the control as given and the failure is
-   raised after the plan checks and the request validation.
+   (the call's control or the provider's stored default); for marginal means,
+   if normalization fails, the plans are checked with the control as given and
+   the failure is raised after the plan checks and the request validation. A
+   model route raises the failure of `control()` at stage 1, before any plan is
+   made or checked (`available()` is not called).
 4. `provider$check_plans(plans)` validates across statements. For marginal
    means the engine first refuses mixed point/region requests and point
    statements on several levels of a model-averaged provider.

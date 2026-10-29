@@ -2637,3 +2637,165 @@ test_that("parameter_mixed_posterior conditions on a monitored component indicat
     fixed = TRUE
   )
 })
+
+test_that("conditional point-component posteriors declare the support of the restricted prior", {
+
+  # A spike at 0 and a slab bounded away from it: the unconditional support
+  # reaches down to the spike, the conditional draws never do. The KDE of a
+  # point test reflects at exact interval bounds only, so a conditional posterior
+  # that kept the unconditional support gives another Bayes factor.
+  slab_fit <- function(structure = "id", cor_scale = "fisher_z", n = 1000L){
+    data <- data.frame(id = factor(rep(1:5, each = 4L)), t = factor(rep(1:4, 5L)))
+    inclusion <- prior("spike", list(0.5))
+    covariance <- if(identical(structure, "id")){
+      random_covariance(sd = prior_spike_and_slab(prior("uniform", list(1, 2)),
+                                                  prior_inclusion = inclusion))
+    }else{
+      random_covariance(
+        sd        = prior("gamma", list(2, 2)),
+        cor       = prior_spike_and_slab(prior("uniform", list(0.2, 0.8)),
+                                         prior_inclusion = inclusion),
+        cor_scale = cor_scale
+      )
+    }
+    formula <- if(identical(structure, "id")) ~ 1 + id(1 | id) else
+      stats::as.formula(paste0("~ 1 + ", structure, "(t | id)"))
+    compiled <- JAGS_formula(
+      formula, "mu", data,
+      prior_list   = list(intercept = prior("normal", list(0, 1))),
+      prior_random = prior_random(id = random_block(
+        covariance = covariance,
+        monitor = random_monitor(latent = FALSE, coefficients = FALSE, correlation = FALSE)
+      ))
+    )
+    draws <- BayesTools:::.generate_prior_sample_matrix(compiled$prior_list, n, seed = 42)
+    .parameter_catalog_test_fit(
+      coda::mcmc.list(coda::mcmc(draws)), compiled$prior_list,
+      list(mu = compiled$formula_design), list(mu = compiled$formula_scale)
+    )
+  }
+  support_of <- function(x) posterior_metadata(x, "support")
+  expect_interval_support <- function(support, bounds, info){
+    expect_equal(support$bounds, bounds, tolerance = 1e-12, info = info)
+    expect_length(support$points, 0L)
+    expect_true(support$exact, info = info)
+    expect_identical(support$type, "interval", info = info)
+  }
+  # the Bayes factor of a point test on the conditional draws of a fit, against
+  # the same draws with the support declared by hand (from the slab, not from
+  # the catalog) and with the unconditional support of the catalog
+  hand_bayes_factors <- function(fit, name, conditional, bounds, value){
+    selection <- parameter_catalog_resolve(parameter_catalog(fit), name)
+    one_call  <- attr(hypothesis_BF(
+      fit, paste0(name, " = ", value), conditional = TRUE, seed = 1
+    ), "raw_log_BF")
+    quoted <- paste0("`", name, "` = ", value)
+    hand   <- conditional
+    posterior_metadata(hand, "support") <- posterior_support_attribute(bounds)
+    stale  <- conditional
+    posterior_metadata(stale, "support") <- support_of(parameter_mixed_posterior(fit, selection))
+    c(
+      one_call = one_call,
+      hand     = attr(hypothesis_BF(hand, hypothesis = quoted, seed = 1), "raw_log_BF"),
+      stale    = attr(hypothesis_BF(stale, hypothesis = quoted, seed = 1), "raw_log_BF")
+    )
+  }
+
+  # an SD with a Uniform(1, 2) slab, and its variance
+  fit <- slab_fit()
+  for(name in c("(mu) sd", "(mu) var")){
+    selection <- parameter_catalog_resolve(parameter_catalog(fit), name)
+    mixed <- parameter_mixed_posterior(fit, selection, conditional = TRUE)
+    bounds <- if(identical(name, "(mu) sd")) c(1, 2) else c(1, 4)
+    expect_interval_support(support_of(mixed), bounds, name)
+    expect_true(all(as.numeric(mixed) >= bounds[1L] & as.numeric(mixed) <= bounds[2L]), info = name)
+    # the unconditional support still reaches the spike
+    unconditional <- support_of(parameter_mixed_posterior(fit, selection))
+    expect_identical(unconditional$bounds[1L], 0, info = name)
+    expect_identical(unconditional$points, 0, info = name)
+  }
+  sd_selection <- parameter_catalog_resolve(parameter_catalog(fit), "(mu) sd")
+  sd_mixed <- parameter_mixed_posterior(fit, sd_selection, conditional = TRUE)
+  for(value in c(1, 1.01, 1.5)){
+    log_bf <- hand_bayes_factors(fit, "(mu) sd", sd_mixed, c(1, 2), value)
+    expect_identical(log_bf[["one_call"]], log_bf[["hand"]], info = as.character(value))
+    # (an exact-interval KDE with reflection, from the prior object alone)
+    expect_equal(
+      log_bf[["one_call"]],
+      attr(hypothesis_BF(as.numeric(sd_mixed), prior = prior("uniform", list(1, 2)),
+                         hypothesis = paste0("x = ", value), parameter = "x", seed = 1),
+           "raw_log_BF"),
+      tolerance = 1e-8, info = as.character(value)
+    )
+  }
+  # next to the bound the stale support gave a Bayes factor off by a factor of two
+  near_bound <- hand_bayes_factors(fit, "(mu) sd", sd_mixed, c(1, 2), 1.01)
+  expect_gt(abs(near_bound[["stale"]] - near_bound[["hand"]]), 0.3)
+
+  # correlations with a Uniform(0.2, 0.8) slab on the sampling scale
+  hand_bounds <- list(
+    fisher_z = tanh(c(0.2, 0.8)),
+    logit    = -1 + 2 * stats::plogis(c(0.2, 0.8)),
+    cor      = c(0.2, 0.8)
+  )
+  for(cor_scale in names(hand_bounds)){
+    fit <- slab_fit("ar1", cor_scale)
+    selection <- parameter_catalog_resolve(parameter_catalog(fit), "(mu) cor")
+    mixed <- parameter_mixed_posterior(fit, selection, conditional = TRUE)
+    bounds <- hand_bounds[[cor_scale]]
+    expect_interval_support(support_of(mixed), bounds, cor_scale)
+    expect_true(all(as.numeric(mixed) >= bounds[1L] & as.numeric(mixed) <= bounds[2L]),
+                info = cor_scale)
+    expect_true(support_of(parameter_mixed_posterior(fit, selection))$bounds[1L] <= 0,
+                info = cor_scale)
+    # (the point ordinate of the bounded-logit scale is unavailable for any prior)
+    if(!identical(cor_scale, "logit")){
+      value <- bounds[1L] + 0.005
+      log_bf <- hand_bayes_factors(fit, "(mu) cor", mixed, bounds, value)
+      expect_identical(log_bf[["one_call"]], log_bf[["hand"]], info = cor_scale)
+      expect_gt(abs(log_bf[["stale"]] - log_bf[["hand"]]), 0.3)
+      if(identical(cor_scale, "cor")){
+        expect_equal(
+          log_bf[["one_call"]],
+          attr(hypothesis_BF(as.numeric(mixed), prior = prior("uniform", list(0.2, 0.8)),
+                             hypothesis = paste0("x = ", value), parameter = "x", seed = 1),
+               "raw_log_BF"),
+          tolerance = 1e-8
+        )
+      }
+    }
+  }
+
+  # a coefficient: the support of as_mixed_posteriors(conditional = ), whose
+  # Bayes factor also equals that of the prior object
+  set.seed(1)
+  indicator <- stats::rbinom(400L, 1, 0.5)
+  draws <- cbind(
+    theta           = ifelse(indicator == 1, stats::runif(400L, 1, 2), 0),
+    theta_indicator = indicator
+  )
+  fit <- .parameter_catalog_test_fit(
+    coda::mcmc.list(coda::mcmc(draws)),
+    list(theta = prior_spike_and_slab(prior("uniform", list(1, 2)),
+                                      prior_inclusion = prior("spike", list(0.5))))
+  )
+  selection <- parameter_catalog_resolve(parameter_catalog(fit), "theta")
+  mixed <- parameter_mixed_posterior(fit, selection, conditional = TRUE)
+  marginal <- marginal_posterior(
+    as_mixed_posteriors(fit, "theta", conditional = "theta", n_prior_samples = 500),
+    "theta", prior_samples = TRUE, use_formula = FALSE, n_samples = 2048
+  )
+  expect_interval_support(support_of(mixed), c(1, 2), "theta")
+  expect_identical(support_of(mixed)$bounds, support_of(marginal)$bounds)
+  expect_identical(support_of(mixed)$exact, support_of(marginal)$exact)
+  expect_identical(support_of(mixed)$type, support_of(marginal)$type)
+  log_bf <- hand_bayes_factors(fit, "theta", mixed, c(1, 2), 1.01)
+  expect_identical(log_bf[["one_call"]], log_bf[["hand"]])
+  expect_gt(abs(log_bf[["stale"]] - log_bf[["hand"]]), 0.1)
+  expect_equal(
+    log_bf[["one_call"]],
+    attr(hypothesis_BF(as.numeric(mixed), prior = prior("uniform", list(1, 2)),
+                       hypothesis = "x = 1.01", parameter = "x", seed = 1), "raw_log_BF"),
+    tolerance = 1e-8
+  )
+})
