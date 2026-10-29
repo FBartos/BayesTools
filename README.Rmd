@@ -23,12 +23,24 @@ knitr::opts_chunk$set(
 
 The goal of BayesTools is to provide functions that simplify building R packages focused on Bayesian inference and Bayesian model-averaging.
 
-Currently, the package provides several tools:
+The package provides several tools:
 
   - prior distribution (with S3 methods for plot/print/pdf/cdf/rng/...)
-  - JAGS models automation (generating JAGS model syntax and `bridgesampling` marginal likelihood functions for prior distributions, various wrappers, ...) 
-  - formula random effects for JAGS models (lme4-like syntax, random-effect priors, structured covariance, and LKJ helpers)
+  - JAGS models automation (generating JAGS model syntax and `bridgesampling` marginal likelihood functions for prior distributions, ...) 
+  - formula generation (simple parameters and random effects via lme4-like syntax)
   - model-averaging (mixing posterior distributions, computing Bayes factors, generating summary tables, ...)
+  
+## Vignette Map
+
+The package functionality is illustrated via the following vignettes:
+
+| Vignette                  | Topic                                                                 |
+|:--------------------------|:----------------------------------------------------------------------|
+| [*Introduction to BayesTools*](`r article_url("v00-introduction")`) | Package overview, simple features, and worked |
+| [*Formula Interface with Spike and Slab*](`r article_url("v01-prior-distributions")`) | Default, informed, and custom prior distributions; rescaling guidance |
+| [*Random Effects Formulas*](`r article_url("v02-bayesian-meta-analysis")`) | Random-effects meta-analysis with `brma()`, compared with `metafor::rma()` |
+
+Simple JAGS automation and  C:/R-Packages/BayesToolsVerse/BayesTools/vignettes/ComparisonR.Rmd 
 
 ## Installation
 
