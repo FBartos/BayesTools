@@ -92,7 +92,9 @@ Native JAGS distributions live in `src/distributions/`; shared kernels are in
 - Document exports with roxygen2 and `\insertCite{key}{BayesTools}`;
   vignettes use Pandoc citations.
 - For a completed feature, increment the development version in `DESCRIPTION`
-  and update `NEWS.md` for the final feature state.
+  and update `NEWS.md` for the final feature state: one short line per
+  user-visible change since the last release, revising existing entries
+  instead of recording changes to unreleased work.
 - Preserve reviewed numerical and visual baselines. Generate candidates for
   inspection; accept changes only after maintainer review or explicitly
   delegated review.
