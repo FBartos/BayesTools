@@ -1441,3 +1441,1271 @@ test_that("the eligibility table lists what the engine tests", {
   expect_identical(scaled$alias, quantities$alias)
 
 })
+
+
+# ---------------------------------------------------------------------------- #
+# The session cache of plans
+# ---------------------------------------------------------------------------- #
+
+# The cache of an object is found by the hash of the object's whole content. The
+# objects here are plain lists: the cache does not read what it is a cache of.
+# The provider of an object names the object the cache belongs to.
+.hypothesis_model_test_cache <- function(object){
+
+  .hypothesis_model_plan_cache(list(object = object))
+}
+
+
+test_that("an object has one cache, found by its content", {
+
+  hypothesis_cache_clear()
+  withr::defer(hypothesis_cache_clear())
+  object  <- list(fit = list(draws = c(1, 2, 3)), data = "a", priors = "p")
+  copy    <- list(fit = list(draws = c(1, 2, 3)), data = "a", priors = "p")
+  other   <- list(fit = list(draws = c(1, 2, 4)), data = "a", priors = "p")
+  changed <- list(fit = list(draws = c(1, 2, 3)), data = "a", priors = "q")
+
+  cache <- .hypothesis_model_test_cache(object)
+  expect_true(is.environment(cache))
+  expect_identical(.hypothesis_model_test_cache(object), cache)
+  expect_identical(.hypothesis_model_test_cache(copy), cache)
+  # other draws, or other priors, are other objects
+  expect_false(identical(.hypothesis_model_test_cache(other), cache))
+  expect_false(identical(.hypothesis_model_test_cache(changed), cache))
+  # without an object the cache is that of the call
+  expect_false(identical(.hypothesis_model_plan_cache(), .hypothesis_model_plan_cache()))
+  expect_false(isTRUE(.hypothesis_model_plan_cache()[[".bounded"]]))
+  expect_true(isTRUE(cache[[".bounded"]]))
+
+  # an object that cannot be hashed has the cache of its call only
+  local_mocked_bindings(
+    hash = function(x, ...) stop("cannot hash"),
+    .package = "rlang"
+  )
+  expect_false(identical(.hypothesis_model_test_cache(object),
+                         .hypothesis_model_test_cache(object)))
+
+})
+
+
+test_that("a plan is computed once per object, statement and arguments", {
+
+  hypothesis_cache_clear()
+  withr::defer(hypothesis_cache_clear())
+  builds <- 0L
+  build  <- function(){
+    builds <<- builds + 1L
+    list(value = builds)
+  }
+  cache <- .hypothesis_model_test_cache(list(a = 1))
+  expect_identical(.hypothesis_model_plan_cached(cache, "one", build), list(value = 1L))
+  expect_identical(.hypothesis_model_plan_cached(cache, "one", build), list(value = 1L))
+  expect_identical(.hypothesis_model_plan_cached(cache, "two", build), list(value = 2L))
+  expect_identical(builds, 2L)
+  # the cache of another object has its own entries, and a failing computation
+  # keeps nothing
+  other <- .hypothesis_model_test_cache(list(a = 2))
+  expect_identical(.hypothesis_model_plan_cached(other, "one", build), list(value = 3L))
+  expect_error(.hypothesis_model_plan_cached(cache, "failing", function(){
+    stop("no plan")
+  }), "no plan")
+  expect_false(exists("failing", envir = cache, inherits = FALSE))
+  # without a cache the plan is computed each time
+  expect_identical(.hypothesis_model_plan_cached(NULL, "one", build), list(value = 4L))
+  expect_identical(.hypothesis_model_plan_cached(NULL, "one", build), list(value = 5L))
+
+})
+
+
+test_that("the cache of an object keeps a bounded number of entries and no entry above its size", {
+
+  hypothesis_cache_clear()
+  withr::defer(hypothesis_cache_clear())
+  cache <- .hypothesis_model_test_cache(list(a = 1))
+  limit <- .hypothesis_model_plan_cache_limit()
+  for(i in seq_len(limit + 5L)){
+    .hypothesis_model_plan_cached(cache, paste0("entry-", i), function() list(i))
+  }
+  kept <- setdiff(ls(cache, all.names = TRUE), c(".bounded", ".order", ".sizes"))
+  expect_length(kept, limit)
+  # the oldest entries are the ones dropped
+  expect_false(exists("entry-1", envir = cache, inherits = FALSE))
+  expect_true(exists(paste0("entry-", limit + 5L), envir = cache, inherits = FALSE))
+  expect_identical(cache[[".order"]], paste0("entry-", 6:(limit + 5L)))
+
+  # entries above the size bound are computed again, not kept
+  local_mocked_bindings(
+    .hypothesis_model_plan_cache_max_bytes = function() 4000,
+    .package = "BayesTools"
+  )
+  cache  <- .hypothesis_model_test_cache(list(a = 2))
+  builds <- 0L
+  large  <- function(){
+    builds <<- builds + 1L
+    numeric(1000L)
+  }
+  .hypothesis_model_plan_cached(cache, "large", large)
+  .hypothesis_model_plan_cached(cache, "large", large)
+  expect_identical(builds, 2L)
+  expect_false(exists("large", envir = cache, inherits = FALSE))
+  # the entries together stay under the size bound, the oldest out
+  small <- function() numeric(200L)
+  for(i in 1:6){
+    .hypothesis_model_plan_cached(cache, paste0("small-", i), small)
+  }
+  expect_lte(sum(cache[[".sizes"]]), 4000)
+  expect_true(exists("small-6", envir = cache, inherits = FALSE))
+  expect_false(exists("small-1", envir = cache, inherits = FALSE))
+
+})
+
+
+test_that("the package keeps the caches of a few objects, the oldest out", {
+
+  hypothesis_cache_clear()
+  withr::defer(hypothesis_cache_clear())
+  limit    <- .hypothesis_model_plan_registry_limit()
+  objects  <- lapply(seq_len(limit + 2L), function(i) list(draws = i))
+  caches   <- lapply(objects, .hypothesis_model_test_cache)
+  registry <- setdiff(ls(.hypothesis_model_plan_registry, all.names = TRUE), ".order")
+  expect_length(registry, limit)
+  # the last objects' caches are kept and found again; the first is new again
+  expect_identical(.hypothesis_model_test_cache(objects[[limit + 2L]]), caches[[limit + 2L]])
+  expect_false(identical(.hypothesis_model_test_cache(objects[[1L]]), caches[[1L]]))
+
+  hypothesis_cache_clear()
+  expect_length(ls(.hypothesis_model_plan_registry, all.names = TRUE), 0L)
+
+})
+
+
+# The number of plans `expr` builds.
+.hypothesis_model_test_plan_builds <- function(expr){
+
+  builds   <- 0L
+  original <- .hypothesis_model_plan
+  value    <- with_mocked_bindings(
+    expr,
+    .hypothesis_model_plan = function(...){
+      builds <<- builds + 1L
+      original(...)
+    },
+    .package = "BayesTools"
+  )
+
+  list(value = value, builds = builds)
+}
+
+
+test_that("hypothesis_BF() and hypothesis_quantities() build the plan of a statement once per fit", {
+
+  fit      <- .hypothesis_model_test_fit()
+  provider <- hypothesis_provider(fit)
+  metadata <- provider$metadata()
+  entries  <- metadata$entries
+  entry    <- as.list(entries[entries$parameter == "mu_x", setdiff(names(entries), "aliases"),
+                              drop = FALSE])
+  statement <- paste0("`", .hypothesis_model_quantities_reference_root(metadata, entry), "` = 0")
+  plan_of   <- function(...){
+    .hypothesis_model_plans(provider, statement, component = entry$component,
+                            metadata = metadata, ...)[[1L]]
+  }
+  hypothesis_cache_clear()
+  withr::defer(hypothesis_cache_clear())
+
+  first <- .hypothesis_model_test_plan_builds(plan_of())
+  expect_identical(first$builds, 1L)
+  again <- .hypothesis_model_test_plan_builds(plan_of())
+  expect_identical(again$builds, 0L)
+  expect_identical(again$value, first$value)
+  # another argument of the plan is another plan of the statement
+  expect_identical(.hypothesis_model_test_plan_builds(plan_of(n_samples = 500L))$builds, 1L)
+  expect_identical(.hypothesis_model_test_plan_builds(plan_of(n_samples = 500L))$builds, 0L)
+  expect_identical(.hypothesis_model_test_plan_builds(plan_of(transform_scaled = TRUE))$builds, 1L)
+
+  # hypothesis_quantities() plans every statement of the fit once, the statement
+  # above among them, and once again for the next call
+  hypothesis_cache_clear()
+  quantities <- .hypothesis_model_test_plan_builds(hypothesis_quantities(fit))
+  expect_gt(quantities$builds, 1L)
+  expect_identical(.hypothesis_model_test_plan_builds(plan_of())$builds, 0L)
+  repeated <- .hypothesis_model_test_plan_builds(hypothesis_quantities(fit))
+  expect_identical(repeated$builds, 0L)
+  expect_identical(repeated$value, quantities$value)
+
+  # and so does hypothesis_BF(), which reads the plan the method above kept
+  call <- .hypothesis_model_test_plan_builds(suppressWarnings(tryCatch(
+    hypothesis_BF(fit, statement, namespace = entry$component, seed = 1),
+    error = function(e) e
+  )))
+  expect_identical(call$builds, 0L)
+  expect_s3_class(call$value, "BayesTools_hypothesis_BF")
+
+})
+
+
+test_that("the results of a cache are those of a call without one", {
+
+  fit      <- .hypothesis_model_test_fit()
+  metadata <- hypothesis_provider(fit)$metadata()
+  entries  <- metadata$entries
+  run <- function(cached){
+    hypothesis_cache_clear()
+    with_mocked_bindings(
+      {
+        # each statement twice: the second time from the cache
+        statements <- lapply(seq_len(nrow(entries)), function(i){
+          entry     <- as.list(entries[i, setdiff(names(entries), "aliases"), drop = FALSE])
+          statement <- paste0(
+            "`", .hypothesis_model_quantities_reference_root(metadata, entry), "` > 0"
+          )
+          call <- function(){
+            suppressWarnings(tryCatch(
+              hypothesis_BF(fit, statement, namespace = entry$component, seed = 1),
+              error = function(e) e
+            ))
+          }
+          list(call(), call())
+        })
+        list(statements = statements, quantities = hypothesis_quantities(fit))
+      },
+      .hypothesis_model_plan_cache = if(cached){
+        .hypothesis_model_plan_cache
+      }else{
+        function(provider = NULL) new.env(parent = emptyenv())
+      },
+      .package = "BayesTools"
+    )
+  }
+  withr::defer(hypothesis_cache_clear())
+  cached   <- run(TRUE)
+  uncached <- run(FALSE)
+  expect_identical(cached, uncached)
+  expect_gt(length(cached$statements), 1L)
+  for(pair in cached$statements){
+    expect_identical(pair[[1L]], pair[[2L]])
+  }
+
+})
+
+
+# ---------------------------------------------------------------------------- #
+# Plans of formula coefficients on the original scale
+# ---------------------------------------------------------------------------- #
+
+# Draws with the declared metadata of a posterior ('...' are the fields of
+# posterior_metadata()).
+.hypothesis_model_test_draws <- function(x, ..., class = NULL){
+
+  if(!is.null(class)){
+    class(x) <- class
+  }
+  fields <- list(...)
+  for(field in names(fields)){
+    posterior_metadata(x, field) <- fields[[field]]
+  }
+
+  x
+}
+
+
+# The averaged, atom-free mixed posterior of a scalar target; 'mixture' marks a
+# mixture of components, 'source' the structure that declares the atoms.
+.hypothesis_model_test_exp_affine_sample <- function(mixture = FALSE,
+                                                     source = "single_model_structure"){
+
+  condition_event <- structure(list(
+    conditional      = character(),
+    conditional_rule = "AND",
+    families         = list(),
+    condition_key    = "<averaged>"
+  ), class = "BayesTools_condition_event")
+  sample_class <- c("mixed_posteriors.simple", "mixed_posteriors")
+  if(isTRUE(mixture)){
+    sample_class <- c("mixed_posteriors.mixture", sample_class)
+  }
+
+  .hypothesis_model_test_draws(
+    c(.15, .25, .35),
+    class     = sample_class,
+    condition = list(
+      conditional              = character(),
+      condition_key            = "<averaged>",
+      resolved_condition_event = condition_event,
+      averaged                 = TRUE
+    ),
+    atoms     = posterior_atom_attribute(source = source)
+  )
+}
+
+
+.hypothesis_model_test_exp_affine_prior_density <- function(){
+
+  structure(list(
+    points = data.frame(x = numeric(), p = numeric())
+  ), class = c("prior_linear_density", "prior_density"))
+}
+
+
+test_that("exp-affine targets are certified only as atom-free, averaged scalar posteriors", {
+
+  prior_density <- .hypothesis_model_test_exp_affine_prior_density()
+  # atom-free averaged posteriors are certified, whether or not they mix components
+  mixture <- .hypothesis_model_test_exp_affine_sample(
+    mixture = TRUE, source = "product_space_structure"
+  )
+  posterior <- .hypothesis_model_test_exp_affine_sample()
+  expect_null(.hypothesis_model_plan_exp_affine_certify(mixture, prior_density))
+  expect_null(.hypothesis_model_plan_exp_affine_certify(posterior, prior_density))
+
+  refusal <- function(sample, density = prior_density){
+    out <- .hypothesis_model_plan_exp_affine_certify(sample, density)
+    expect_identical(out[["class"]],
+                     c("BayesTools_hypothesis_target", "BayesTools_hypothesis_unavailable"))
+    out[["reason"]]
+  }
+  # declared point masses of the posterior
+  atomic <- mixture
+  posterior_metadata(atomic, "atoms") <- posterior_atom_attribute(
+    point_masses = data.frame(x = 0, mass = .1)
+  )
+  expect_match(refusal(atomic), "posterior is atom-free", fixed = TRUE)
+  atomic <- posterior
+  posterior_metadata(atomic, "atoms") <- posterior_atom_attribute(
+    point_masses = data.frame(x = 0, mass = 0.25)
+  )
+  expect_match(refusal(atomic), "posterior is atom-free", fixed = TRUE)
+  # unconditioned draws are declared by 'averaged', not by the condition key
+  keyed <- posterior
+  posterior_metadata(keyed, "condition") <- list(
+    conditional   = character(),
+    condition_key = "<averaged>",
+    averaged      = FALSE
+  )
+  expect_match(refusal(keyed), "structural evidence for an unconditional posterior", fixed = TRUE)
+  unproven <- posterior
+  posterior_metadata(unproven, "condition") <- NULL
+  expect_match(refusal(unproven), "structural evidence for an unconditional posterior", fixed = TRUE)
+  # point masses of the prior, and draws that are no certified scalar posterior
+  atomic_prior <- prior_density
+  atomic_prior[["points"]] <- data.frame(x = 0, p = 0.25)
+  expect_match(refusal(posterior, atomic_prior), "prior is atom-free", fixed = TRUE)
+  expect_match(
+    refusal(as.numeric(posterior)),
+    "require a certified scalar mixed posterior",
+    fixed = TRUE
+  )
+
+})
+
+
+test_that("exp-affine targets are tested on their own scale with the certified prior density", {
+
+  density <- .hypothesis_model_test_exp_affine_prior_density()
+  # the target's marginal posterior (marginal_posterior() in the plan): its
+  # draws with the prior density and the exact support of the map
+  target  <- .hypothesis_model_test_draws(
+    c(.15, .25, .35),
+    class         = c("marginal_posterior.simple", "marginal_posterior"),
+    prior_density = density,
+    support       = posterior_support_attribute(c(0, Inf))
+  )
+  captured <- NULL
+  # the engine evaluates a group with the draw-based method directly
+  local_mocked_bindings(
+    hypothesis_BF.default = function(posterior, hypothesis, ...){
+      captured <<- list(posterior = posterior, hypothesis = hypothesis, ...)
+      structure(
+        data.frame(BF = 2, check.names = FALSE),
+        hypothesis_ast = hypothesis, raw_BF = 2,
+        class = c("BayesTools_hypothesis_BF", "data.frame")
+      )
+    },
+    .package = "BayesTools"
+  )
+  plan <- list(
+    parameter   = "log_tau_intercept",
+    point       = TRUE,
+    conditional = FALSE,
+    draws       = list(posterior = target),
+    targets     = list()
+  )
+  hypothesis <- hypothesis_parse("log_tau_intercept = 0.2")
+  .hypothesis_model_plan_execute_scalar(
+    plans           = list(plan),
+    hypothesis      = hypothesis,
+    provider        = list(),
+    backend         = .hypothesis_model_backend("KDE"),
+    logBF           = FALSE,
+    BF01            = FALSE,
+    seed            = 1,
+    density_control = NULL,
+    columns         = "all"
+  )
+
+  # no prior draws: the posterior carries the prior density, and the
+  # statement keeps its original-scale values
+  expect_null(captured[["prior"]])
+  expect_identical(captured[["density_method"]], "KDE")
+  expect_identical(posterior_metadata(captured[["posterior"]], "prior_density"), density)
+  expect_equal(as.numeric(captured[["posterior"]]), c(.15, .25, .35))
+  expect_identical(captured[["hypothesis"]], hypothesis)
+
+})
+
+
+test_that("scalar and exp-affine plans catch only declared measure refusal conditions", {
+
+  condition <- tryCatch(
+    .bt_formula_density_stop("Declared law unavailable.", reason = "numerical_scale_unavailable"),
+    error = identity
+  )
+  plan <- list(parameter = "mu_x", selected = list(entry = list()), transform_scaled = TRUE)
+  plan_of <- function(exp){
+    if(exp){
+      .hypothesis_model_plan_exp_affine(plan, list(), list(), list())
+    }else{
+      .hypothesis_model_plan_scalar(plan, list(), list())
+    }
+  }
+  for(exp in c(FALSE, TRUE)){
+    with_mocked_bindings({
+      result <- plan_of(exp)
+      expect_identical(result$refusal, .hypothesis_model_refusal_from_condition(condition))
+      expect_identical(result$kind, if(exp) "exp_affine" else "scalar")
+    }, .hypothesis_model_plan_scalar_available = function(...) stop(condition),
+       .hypothesis_model_plan_exp_affine_available = function(...) stop(condition),
+       .package = "BayesTools")
+    for(class in c("BayesTools_refit_required", "BayesTools_formula_transform_unavailable",
+                   "simpleError")){
+      error <- structure(list(message = "Strict owner or programming failure.", call = NULL),
+                         class = c(class, "error", "condition"))
+      with_mocked_bindings({
+        expect_error(plan_of(exp), class = class)
+      }, .hypothesis_model_plan_scalar_available = function(...) stop(error),
+         .hypothesis_model_plan_exp_affine_available = function(...) stop(error),
+         .package = "BayesTools")
+    }
+  }
+
+})
+
+
+test_that("point values outside the open support of a coefficient are refused", {
+
+  description <- "transformed coefficient 'log_tau_intercept'"
+  refusal <- .hypothesis_model_plan_support_refusal(0, c(0, Inf), description)
+  expect_identical(
+    refusal[["reason"]],
+    paste0("Point-null value 0 is outside or on the boundary of the open support ",
+           "for transformed coefficient 'log_tau_intercept'.")
+  )
+  expect_identical(refusal[["class"]],
+                   c("BayesTools_hypothesis_target", "BayesTools_hypothesis_unavailable"))
+  for(value in c(0, -1, Inf, NA)){
+    expect_match(
+      .hypothesis_model_plan_support_refusal(value, c(0, Inf), description)[["reason"]],
+      "outside or on the boundary",
+      fixed = TRUE,
+      info = value
+    )
+  }
+  expect_match(.hypothesis_model_plan_support_refusal(1, c(0, 1), description)[["reason"]],
+               "outside or on the boundary", fixed = TRUE)
+  expect_null(.hypothesis_model_plan_support_refusal(0.5, c(0, Inf), description))
+  expect_null(.hypothesis_model_plan_support_refusal(1, c(0, Inf), description))
+  expect_null(.hypothesis_model_plan_support_refusal(-1, c(-Inf, Inf), description))
+  expect_null(.hypothesis_model_plan_support_refusal(0, NULL, description))
+
+})
+
+
+# A fit of a formula parameter with the draws of its coefficients.
+.hypothesis_model_test_route_fit <- function(parameter, coefficients, formula, prior_list, data){
+
+  compiled <- JAGS_formula(
+    formula = formula, parameter = parameter, data = data,
+    prior_list = prior_list, formula_scale = TRUE
+  )
+  draws <- do.call(cbind, coefficients)
+  colnames(draws) <- paste0(parameter, "_", names(coefficients))
+
+  .parameter_catalog_test_fit(
+    coda::mcmc.list(coda::mcmc(draws)), compiled$prior_list,
+    stats::setNames(list(compiled$formula_design), parameter),
+    stats::setNames(list(compiled$formula_scale), parameter)
+  )
+}
+
+
+test_that("the route of a formula coefficient follows its fitted transform", {
+
+  # synthetic compiler rows, not posterior-inference evidence
+  location <- .hypothesis_model_test_route_fit(
+    "mu", list(intercept = c(-.2, 0, .2), x = c(-.1, 0, .1)), ~ 1 + x,
+    list(intercept = prior("normal", list(0, 1)), x = prior("normal", list(0, 1))),
+    data.frame(x = c(2, 4, 6))
+  )
+  intercept <- JAGS_formula_coefficient_route(location, "mu", "mu_intercept")
+  expect_identical(intercept[["type"]], "affine")
+  expect_identical(intercept[["formula_parameter"]], "mu")
+  expect_identical(intercept[["target"]], "mu_intercept")
+  expect_identical(intercept[["weights"]], c(mu_intercept = 1, mu_x = -2))
+  expect_identical(intercept[["support"]], c(-Inf, Inf))
+  slope <- JAGS_formula_coefficient_route(location, "mu", "mu_x")
+  expect_identical(slope[["type"]], "affine")
+  expect_identical(slope[["weights"]], c(mu_x = 0.5))
+
+  # a unit log-intercept is an identity map on its positive support, which
+  # keeps the primitive target of the coefficient itself
+  formula <- ~ 1
+  attr(formula, "log(intercept)") <- TRUE
+  unit <- .hypothesis_model_test_route_fit(
+    "log_tau", list(intercept = c(.2, .3, .4)), formula,
+    list(intercept = prior("gamma", list(2, 2))), data.frame(row = 1:3)
+  )
+  route <- JAGS_formula_coefficient_route(unit, "log_tau", "log_tau_intercept")
+  expect_identical(route[["type"]], "identity")
+  expect_identical(route[["weights"]], c(log_tau_intercept = 1))
+  expect_identical(route[["support"]], c(0, Inf))
+  description <- "transformed coefficient 'log_tau_intercept'"
+  for(value in c(0, -1)){
+    expect_match(
+      .hypothesis_model_plan_support_refusal(value, route[["support"]], description)[["reason"]],
+      "outside or on the boundary",
+      fixed = TRUE,
+      info = value
+    )
+  }
+  expect_null(.hypothesis_model_plan_support_refusal(1, route[["support"]], description))
+
+  # a log-intercept with a slope is the exponential of a linear combination
+  formula <- ~ 1 + x
+  attr(formula, "log(intercept)") <- TRUE
+  scale <- .hypothesis_model_test_route_fit(
+    "log_tau", list(intercept = c(.2, .3, .4), x = c(-.1, 0, .1)), formula,
+    list(intercept = prior("gamma", list(2, 2)), x = prior("normal", list(0, 1))),
+    data.frame(x = c(2, 4, 6))
+  )
+  exp_affine <- JAGS_formula_coefficient_route(scale, "log_tau", "log_tau_intercept")
+  expect_identical(exp_affine[["type"]], "exp_affine")
+  expect_identical(exp_affine[["support"]], c(0, Inf))
+
+  # a coefficient fixed by the model has no route
+  compiled <- JAGS_formula(
+    formula = ~ 1 + x, parameter = "mu", data = data.frame(x = c(2, 4, 6)),
+    prior_list = list(intercept = prior("point", list(3)), x = prior("point", list(0))),
+    formula_scale = TRUE
+  )
+  fixed <- .parameter_catalog_test_fit(
+    coda::mcmc.list(coda::mcmc(matrix(numeric(), 3L, 0L))), compiled$prior_list,
+    list(mu = compiled$formula_design), list(mu = compiled$formula_scale)
+  )
+  expect_identical(
+    JAGS_formula_coefficient_route(fixed, "mu", "mu_x")[["reason"]],
+    "The fitted coefficient 'mu_x' is structurally fixed and has no posterior hypothesis route."
+  )
+
+})
+
+
+test_that("the route of a formula coefficient follows the declared map type of the transform", {
+
+  fit <- .hypothesis_model_test_route_fit(
+    "mu", list(intercept = c(-.2, 0, .2), x = c(-.1, 0, .1)), ~ 1 + x,
+    list(intercept = prior("normal", list(0, 1)), x = prior("normal", list(0, 1))),
+    data.frame(x = c(2, 4, 6))
+  )
+  declared <- JAGS_formula_coefficient_transform(fit, "mu")
+  # artificial consumer-branch test: copies of the genuine descriptor deliberately
+  # contradict or omit producer metadata; the consumer must follow the declared
+  # map type and the raw weights
+  declared[["matrix"]]["mu_intercept", ] <- c(1, 1)
+  declared[["source_transforms"]][["mu_x"]] <- "log"
+  route <- function(targets, caller = "hypothesis_BF()"){
+    transform <- declared
+    transform[["targets"]] <- targets
+    local_mocked_bindings(
+      JAGS_formula_coefficient_transform = function(...) transform,
+      .package = "BayesTools"
+    )
+    JAGS_formula_coefficient_route(fit, "mu", "mu_intercept", caller = caller)
+  }
+  targets <- declared[["targets"]]
+  targets[["map_type"]][targets[["target"]] == "mu_intercept"] <- "unsupported"
+  unsupported <- route(targets, caller = "toy()")
+  expect_identical(unsupported[["type"]], "unsupported")
+  expect_match(unsupported[["reason"]], "not supported by toy()", fixed = TRUE)
+
+  targets[["map_type"]][targets[["target"]] == "mu_intercept"] <- "affine"
+  affine <- route(targets)
+  expect_identical(affine[["type"]], "affine")
+  expect_identical(affine[["weights"]], c(mu_intercept = 1, mu_x = 1))
+  expect_identical(affine[["support"]], c(-Inf, Inf))
+
+  # transforms without the declared map types are not certified
+  for(targets in list(NULL, data.frame(target = "mu_intercept"))){
+    uncertified <- route(targets)
+    expect_identical(uncertified[["type"]], "unsupported")
+    expect_match(uncertified[["reason"]], "lacks the certified structural metadata", fixed = TRUE)
+  }
+
+})
+
+
+# ---------------------------------------------------------------------------- #
+# Selection, rewriting, and the references of point statements
+# ---------------------------------------------------------------------------- #
+
+test_that("fitted hypotheses resolve and rewrite the structured AST", {
+
+  fit      <- .hypothesis_model_test_fit()
+  provider <- hypothesis_provider(fit)
+  ast      <- hypothesis_parse("x > abs(x)")
+  # the AST is parsed once: the selection and the rewrite take it as it is
+  local_mocked_bindings(
+    hypothesis_parse = function(...) stop("hypothesis was parsed twice"),
+    .package = "BayesTools"
+  )
+
+  selected <- .hypothesis_model_select_parameter(
+    provider   = provider,
+    hypothesis = ast,
+    component  = "mu"
+  )
+  rewritten <- .hypothesis_model_rewrite(
+    hypothesis = ast,
+    aliases    = selected[["aliases"]],
+    parameter  = selected[["parameter"]]
+  )
+
+  expect_identical(selected[["parameter"]], "mu_x")
+  expect_s3_class(selected[["resolution"]], "BayesTools_hypothesis_resolution")
+  expect_s3_class(rewritten, "BayesTools_hypothesis_ast")
+  expect_identical(hypothesis_render(rewritten), "mu_x > abs(mu_x)")
+
+})
+
+
+test_that("hypothesis plans rewrite aliases independently by statement", {
+
+  fit      <- .hypothesis_model_test_fit()
+  provider <- hypothesis_provider(fit)
+  plans <- .hypothesis_model_plans(provider, c("x > 0", "mu_x < 0"), component = "mu")
+
+  expect_identical(
+    vapply(plans, function(plan) hypothesis_render(plan[["hypothesis"]]), character(1L)),
+    c("mu_x > 0", "mu_x < 0")
+  )
+
+})
+
+
+test_that("hypothesis alias rewriting preserves trailing level-reference backticks", {
+
+  rewritten <- .hypothesis_model_rewrite(
+    hypothesis = "alloc > alloc[random]",
+    aliases    = list(alloc = "mu_alloc", mu_alloc = "mu_alloc"),
+    parameter  = "mu_alloc"
+  )
+
+  expect_s3_class(rewritten, "BayesTools_hypothesis_ast")
+  expect_equal(hypothesis_render(rewritten), "mu_alloc > `mu_alloc[random]`")
+
+})
+
+
+test_that("point-null references must be direct", {
+
+  expect_error(
+    .hypothesis_model_point_refs(hypothesis_parse("2 * mu = 0"), parameter = "mu"),
+    "direct parameter or level reference"
+  )
+  expect_equal(
+    .hypothesis_model_point_refs(hypothesis_parse("mu = 0"), parameter = "mu")[["value"]],
+    0
+  )
+  precise <- hypothesis_parse("mu = 0.701406683025")
+  expect_identical(
+    .hypothesis_model_point_refs(precise, parameter = "mu")[["value"]],
+    precise[["statements"]][[1L]][["left"]][["value"]]
+  )
+  expect_equal(
+    nrow(.hypothesis_model_point_refs(hypothesis_parse("2 * mu > 0"), parameter = "mu")),
+    0L
+  )
+
+})
+
+
+test_that("only linear combinations of factor levels bypass the direct guard", {
+
+  plan_of <- function(statement){
+    ast <- hypothesis_parse(statement)
+    .hypothesis_model_plan_new(
+      statement = ast, hypothesis = ast, parameter = "mu", label = "mu",
+      component = "mu"
+    )
+  }
+  # scalar parameters need a direct point reference; factor levels are linear
+  # targets whose combinations are compiled (.hypothesis_model_plan_linear())
+  # the statement has to be restated: a statement error, not an unavailable test
+  refusal <- .hypothesis_model_plan_direct_refusal(plan_of("2 * mu = 0"))
+  expect_identical(refusal[["class"]], "BayesTools_hypothesis_statement")
+  expect_match(refusal[["reason"]], "direct parameter or level reference", fixed = TRUE)
+  expect_null(.hypothesis_model_plan_direct_refusal(plan_of("mu = 0")))
+  expect_null(.hypothesis_model_plan_direct_refusal(plan_of("mu > 0")))
+
+})
+
+
+test_that("resolution refusals of the references are statement errors by their class", {
+
+  provider <- hypothesis_provider(.hypothesis_model_test_fit())
+  metadata <- list(catalog = NULL, entries = data.frame())
+  select   <- function(hypothesis){
+    tryCatch(
+      .hypothesis_model_select_parameter(provider, hypothesis, "auto", metadata),
+      error = identity
+    )
+  }
+  resolution <- function(class, ...){
+    structure(
+      class = c(class, "BayesTools_parameter_resolution_error", "error", "condition"),
+      list(message = "The statement was refused.", call = NULL, ...)
+    )
+  }
+  # a statement without parameter symbols and a level of another component are
+  # statement errors by their class, with the message and fields of the
+  # resolution, whatever the statement's form
+  refusals <- list(
+    no_parameters      = resolution("BayesTools_hypothesis_no_parameters"),
+    component_mismatch = resolution(
+      "BayesTools_hypothesis_component_mismatch",
+      symbol = "mu_g[a]", component = "mods"
+    )
+  )
+  for(name in names(refusals)){
+    local_mocked_bindings(
+      hypothesis_resolve = function(...) stop(refusals[[name]]),
+      .package = "BayesTools"
+    )
+    expected <- refusals[[name]]
+    class(expected) <- c("BayesTools_hypothesis_statement", class(expected))
+    for(statement in c("1 > 0", "mu = 0")){
+      expect_identical(select(statement), expected, info = paste(name, statement))
+    }
+  }
+  # other errors of the resolution are no statement refusals
+  unclassed <- simpleError("The resolution failed.")
+  local_mocked_bindings(
+    hypothesis_resolve = function(...) stop(unclassed),
+    .package = "BayesTools"
+  )
+  expect_identical(select("1 > 0"), unclassed)
+
+})
+
+
+test_that("metadata of an older build are a request to refit with the build of the provider", {
+
+  fit      <- .hypothesis_model_test_fit()
+  provider <- utils::modifyList(hypothesis_provider(fit), list(
+    build       = "Toy/BayesTools",
+    refit_class = "toy_refit_required"
+  ))
+  refit <- c("toy_refit_required", "BayesTools_refit_required", "error", "condition")
+
+  # a catalog without entries
+  local_mocked_bindings(
+    hypothesis_resolve = function(...) list(occurrences = data.frame(quantity_id = character())),
+    .hypothesis_model_entries_for_quantities = function(...) data.frame(),
+    .package = "BayesTools"
+  )
+  expect_error(
+    .hypothesis_model_select_parameter(
+      provider, "mu = 0", "auto", list(catalog = NULL, entries = data.frame())
+    ),
+    paste0("Resolved hypothesis metadata are unavailable. Refit the model with ",
+           "the current Toy/BayesTools build."),
+    fixed = TRUE,
+    class = "toy_refit_required"
+  )
+
+  # every stop on missing or unsupported fitted metadata has the class of the
+  # provider with its parent "BayesTools_refit_required", and no other class
+  selected <- list(
+    parameter = "mu_x",
+    component = "mu",
+    entry     = list(formula_parameter = "mu", role = "fixed_coefficient")
+  )
+  transform <- structure(
+    list(schema_version = 1L, target_names = "mu_x"),
+    class = "BayesTools_formula_coefficient_transform"
+  )
+  local_mocked_bindings(
+    JAGS_formula_coefficient_transform = function(...) transform,
+    parameter_coordinates = function(...) data.frame(
+      coordinate_name = "mu_z", formula_parameter = "mu", term = "z"
+    ),
+    .package = "BayesTools"
+  )
+  # a coefficient transform of an unsupported schema
+  error <- tryCatch(
+    .hypothesis_model_formula_coefficient_target(provider, selected),
+    error = identity
+  )
+  expect_identical(class(error), refit)
+  expect_match(conditionMessage(error), "Refit the model", fixed = TRUE)
+  expect_match(conditionMessage(error), "are unsupported", fixed = TRUE)
+  # a resolved coefficient absent from the fitted transform
+  transform[["schema_version"]] <- 4L
+  transform[["target_names"]]   <- "mu_z"
+  error <- tryCatch(
+    .hypothesis_model_formula_coefficient_target(provider, selected),
+    error = identity
+  )
+  expect_identical(class(error), refit)
+  expect_match(conditionMessage(error), "is absent from the fitted coefficient transformation",
+               fixed = TRUE)
+  # weights on coordinates absent from the fitted coordinate table
+  error <- tryCatch(
+    .hypothesis_model_target_prior_parameters(provider, c(mu_x = 1)),
+    error = identity
+  )
+  expect_identical(class(error), refit)
+  expect_match(conditionMessage(error), "Refit the model", fixed = TRUE)
+  # a factor level without fitted linear weights is stale fitted metadata, not
+  # a target refusal of a current fit
+  error <- tryCatch(
+    .hypothesis_model_plan_level_target(
+      plan     = list(draws = list(posterior = list(a = NULL)), label = "g"),
+      provider = provider,
+      level    = "a",
+      value    = 0,
+      label    = "g[a]"
+    ),
+    error = identity
+  )
+  expect_identical(class(error), refit)
+  expect_identical(
+    conditionMessage(error),
+    paste0("The linear weights of factor level 'g[a]' on the fitted coefficients ",
+           "are unavailable. Refit the model with the current Toy/BayesTools build.")
+  )
+
+})
+
+
+# ---------------------------------------------------------------------------- #
+# Variances, labels, and tables of results
+# ---------------------------------------------------------------------------- #
+
+test_that("variance point statements keep their Bayes factor orientation through the SD", {
+
+  parameter <- "(mu) study: tau2(intercept)"
+  sd        <- "(mu) study: tau(intercept)"
+  probabilities <- (seq_len(2001L) - 0.5) / 2001
+  posterior <- stats::setNames(
+    data.frame(stats::qgamma(probabilities, shape = 6, rate = 20)),
+    sd
+  )
+  prior <- stats::setNames(
+    data.frame(stats::qgamma(probabilities, shape = 2, rate = 4)),
+    sd
+  )
+
+  evaluate <- function(statement){
+
+    original <- hypothesis_rewrite(hypothesis_parse(statement), c(theta = parameter))
+    transformed <- .hypothesis_model_plan_sd_hypothesis(original, sd)
+    expect_equal(
+      transformed[["statements"]][[1L]][["left"]][["value"]],
+      sqrt(original[["statements"]][[1L]][["left"]][["value"]])
+    )
+    # draw-only priors have no structural prior density: the point ordinate is
+    # estimated from the prior draws, which is warned about
+    warned <- FALSE
+    out <- withCallingHandlers(
+      hypothesis_BF(
+        posterior      = posterior,
+        prior          = prior,
+        hypothesis     = transformed,
+        parameter      = sd,
+        seed           = 1,
+        density_method = "KDE",
+        columns        = "all"
+      ),
+      BayesTools_inexact_ordinate = function(warning){
+        warned <<- TRUE
+        invokeRestart("muffleWarning")
+      }
+    )
+    expect_true(warned, info = statement)
+    restored <- .hypothesis_model_plan_sd_restore(out, original)
+    # the densities are those of the variance: the SD densities over 2 * sd
+    expect_equal(
+      as.numeric(restored[["prior"]]),
+      as.numeric(out[["prior"]]) / (2 * 0.3),
+      tolerance = 1e-12
+    )
+    .hypothesis_model_restore_hypothesis_labels(out = restored, hypothesis = original)
+  }
+
+  implicit_equal     <- evaluate("theta = 0.09")
+  explicit_not_equal <- evaluate("theta != 0.09 vs theta = 0.09")
+  explicit_equal     <- evaluate("theta = 0.09 vs theta != 0.09")
+
+  expect_identical(implicit_equal["Alternative"], explicit_not_equal["Alternative"])
+  expect_identical(implicit_equal["Null"], explicit_not_equal["Null"])
+  expect_identical(implicit_equal[["Alternative"]], "(mu) study: tau2(intercept) != 0.09")
+  expect_identical(implicit_equal[["Null"]], "(mu) study: tau2(intercept) = 0.09")
+  expect_identical(explicit_equal[["Alternative"]], "(mu) study: tau2(intercept) = 0.09")
+  expect_equal(
+    attr(implicit_equal, "raw_BF"),
+    attr(explicit_not_equal, "raw_BF"),
+    tolerance = 1e-12
+  )
+  expect_equal(
+    attr(implicit_equal, "raw_BF") * attr(explicit_equal, "raw_BF"),
+    1,
+    tolerance = 1e-12
+  )
+
+})
+
+
+test_that("hypothesis results restore public interaction labels", {
+
+  probabilities <- (seq_len(2001L) - 0.5) / 2001
+  posterior <- stats::setNames(
+    data.frame(stats::qnorm(probabilities, mean = -0.2, sd = 0.8)),
+    "mu_interaction"
+  )
+  prior <- stats::setNames(
+    data.frame(stats::qnorm(probabilities)),
+    "mu_interaction"
+  )
+  out <- hypothesis_BF(
+    posterior  = posterior,
+    prior      = prior,
+    hypothesis = c("mu_interaction < 0", "mu_interaction < 1"),
+    parameter  = "mu_interaction"
+  )
+  raw_BF <- attr(out, "raw_BF", exact = TRUE)
+
+  display_hypothesis <- hypothesis_parse(c(
+    "alloc:ablat[random] < 0",
+    "alloc:ablat[random] < alloc:ablat[systematic]"
+  ))
+  out <- .hypothesis_model_restore_hypothesis_labels(
+    out                = out,
+    hypothesis         = display_hypothesis,
+    parameter_label    = "alloc:ablat",
+    producer_parameter = "mu_interaction",
+    route              = "scalar"
+  )
+
+  expect_identical(out[["Alternative"]], c(
+    "alloc:ablat[random] < 0",
+    "alloc:ablat[random] < alloc:ablat[systematic]"
+  ))
+  expect_identical(out[["Null"]], c(
+    "alloc:ablat[random] >= 0",
+    "alloc:ablat[random] >= alloc:ablat[systematic]"
+  ))
+  expect_identical(rownames(out), c("alloc:ablat (1)", "alloc:ablat (2)"))
+  expect_false(attr(out, "rownames", exact = TRUE))
+  expect_identical(attr(out, "raw_BF", exact = TRUE), raw_BF)
+  expect_identical(attr(out, "hypothesis_ast", exact = TRUE), display_hypothesis)
+  printed <- capture.output(print(out))
+  expect_true(any(grepl("alloc:ablat[random] < 0", printed, fixed = TRUE)))
+  expect_false(any(grepl("alloc:ablat1", printed, fixed = TRUE)))
+  expect_false(any(grepl("alloc:ablat (", printed, fixed = TRUE)))
+  expect_false(any(grepl("mu_interaction", printed, fixed = TRUE)))
+
+})
+
+
+test_that("hypothesis labels retain expanded factor levels", {
+
+  display     <- hypothesis_parse("Preregistered > 0")
+  transformed <- hypothesis_parse("mu_Preregistered > 0")
+  out <- data.frame(
+    Alternative = rep("mu_Preregistered > 0", 2L),
+    Null        = rep("mu_Preregistered <= 0", 2L),
+    BF          = c(2, 3),
+    row.names   = c(
+      "mu_Preregistered[Not Pre-Registered]",
+      "mu_Preregistered[Pre-Registered]"
+    ),
+    check.names = FALSE
+  )
+  attr(out, "hypothesis_ast") <- transformed
+
+  restored <- .hypothesis_model_restore_hypothesis_labels(
+    out                = out,
+    hypothesis         = display,
+    parameter_label    = "Preregistered",
+    producer_parameter = "mu_Preregistered",
+    route              = "levels"
+  )
+
+  expect_identical(restored[["Alternative"]], rep("Preregistered > 0", 2L))
+  expect_identical(restored[["Null"]], rep("Preregistered <= 0", 2L))
+  expect_identical(
+    rownames(restored),
+    c("Preregistered[Not Pre-Registered]", "Preregistered[Pre-Registered]")
+  )
+  expect_identical(attr(restored, "hypothesis_ast", exact = TRUE), display)
+
+})
+
+
+test_that("parameter groups bind producer logs in statement order and export visible values", {
+
+  statements <- c("a = 356 vs a != 356", "b > 0", "a = 0")
+  make_table <- function(parameter, hypothesis){
+    hypothesis_BF(
+      c(1, 2, 3), prior("normal", list(0, 1)), hypothesis,
+      parameter = parameter, density_method = "normal", columns = "all"
+    )
+  }
+  first  <- make_table("a", statements[c(1L, 3L)])
+  second <- make_table("b", statements[2L])
+  out <- .hypothesis_model_bind_parameter_results(
+    list(first, second), list(c(1L, 3L), 2L), hypothesis_parse(statements)
+  )
+  expected <- c(attr(first, "raw_log_BF")[1L], attr(second, "raw_log_BF"),
+                attr(first, "raw_log_BF")[2L])
+  expect_equal(expected[1L], 710, tolerance = 1e-12)
+  expect_identical(attr(out, "raw_log_BF"), expected)
+  expect_length(attr(out, "numerical_diagnostics"), 3L)
+  expect_identical(attr(out$BF_error, "name"), "error%(BF)")
+  expect_true(any(grepl("error%(BF)", capture.output(print(out)), fixed = TRUE)))
+  expect_identical(
+    as.numeric(out$BF_error),
+    c(as.numeric(first$BF_error)[1L], as.numeric(second$BF_error), as.numeric(first$BF_error)[2L])
+  )
+  expect_length(attr(out, "prior_numerical_diagnostics"), 3L)
+  inverse <- update(out, BF01 = TRUE)
+  expect_equal(as.numeric(inverse$BF)[1L], exp(-710), tolerance = 1e-14)
+
+})
+
+
+test_that("numerical model probability diagnostics survive the transport of a refusal", {
+
+  draws <- structure(seq_len(5) / 5, class = c("mixed_posteriors.simple", "numeric"))
+  attr(draws, "parameter") <- "theta"
+  diagnostics <- list(
+    model_indices = 1:2, log_prior_probabilities = log(c(.5, .5)),
+    log_posterior_probabilities = c(0, -1000), stage = "posterior"
+  )
+  unavailable <- data.frame(
+    column = "theta", measure = "atoms", reason = "Positive continuous mass is unavailable.",
+    cause = "numerical_model_probability_unavailable"
+  )
+  unavailable$diagnostics <- list(diagnostics)
+  posterior_metadata(draws, "measure_unavailable") <- unavailable
+
+  condition <- tryCatch(posterior_atoms_free(draws), error = identity)
+  refusal   <- .hypothesis_model_refusal_from_condition(condition)
+  expect_identical(refusal$fields$diagnostics, diagnostics)
+  expect_identical(refusal$reason, condition$message)
+  returned <- tryCatch(.hypothesis_model_stop(refusal), error = identity)
+  expect_identical(returned$diagnostics, diagnostics)
+  malformed <- unavailable
+  malformed$diagnostics[[1L]]$model_indices <- c(1L, 1L)
+  expect_error(posterior_metadata(draws, "measure_unavailable") <- malformed, "invalid")
+
+})
+
+
+# ---------------------------------------------------------------------------- #
+# Ordinates, warnings, and fixed draws
+# ---------------------------------------------------------------------------- #
+
+test_that("hypothesis ordinate metadata is limited to requested values", {
+
+  ordinate <- function(value){
+    posterior_ordinate_attribute(
+      value          = value,
+      ordinate       = value + 1,
+      method         = "toy",
+      density_method = "toy",
+      diagnostics    = list(marker = value)
+    )
+  }
+  posterior <- stats::rnorm(10)
+  posterior_metadata(posterior, "posterior_ordinate") <- posterior_ordinate_append(
+    ordinate(0), ordinate(1)
+  )
+  refs <- data.frame(level = NA_character_, value = 1)
+
+  out     <- .hypothesis_model_keep_requested_ordinates(posterior, refs)
+  entries <- .hypothesis_model_ordinate_entries(posterior_metadata(out, "posterior_ordinate"))
+
+  expect_length(entries, 1L)
+  expect_equal(entries[[1L]][["value"]], 1)
+  expect_identical(entries[[1L]][["diagnostics"]][["marker"]], 1)
+
+})
+
+
+test_that("warning ownership distinguishes exact references and expressions", {
+
+  statements <- c("tau = 0", "tau_total = 0", "2 * tau = 0", "g[A] = 0", "g[AA] = 0")
+  ast   <- hypothesis_parse(statements)
+  table <- data.frame(
+    Alternative = statements,
+    Null = c("tau != 0", "tau_total != 0", "2 * tau != 0", "g[A] != 0", "g[AA] != 0"),
+    row.names = c("tau", "tau_total", "scaled_tau", "g[A]", "g[AA]"),
+    check.names = FALSE
+  )
+  attr(table, "hypothesis_ast") <- ast
+  record <- function(parameter, label = parameter, level = NA_character_, value = 0){
+    data.frame(parameter = parameter, label = label, level = level, value = value,
+               warning = "Declared ordinate warning.", stringsAsFactors = FALSE)
+  }
+  warning_rows <- .hypothesis_model_warning_rows
+  expect_identical(warning_rows(table, record("tau")), "tau")
+  expect_identical(warning_rows(table, record("tau_total")), "tau_total")
+  expect_identical(warning_rows(table, record("2 * tau")), "scaled_tau")
+  expect_identical(warning_rows(table, record("g", "g[A]", "A")), "g[A]")
+  expect_identical(warning_rows(table, record("tau", value = .1)), character())
+  expanded <- table[rep(4L, 4L), , drop = FALSE]
+  rownames(expanded) <- c("g[A] (1)", "g[B] (1)", "g[A] (2)", "g[B] (2)")
+  expanded$Alternative <- "g = 0"
+  expanded$Null <- "g != 0"
+  attr(expanded, "hypothesis_ast") <- hypothesis_parse(c("g = 0", "g = 0"))
+  expect_identical(warning_rows(expanded, record("g", "g[A]", "A")), c("g[A] (1)", "g[A] (2)"))
+
+})
+
+
+test_that("primitive AST symbols match the warning records of ordinates", {
+
+  record <- data.frame(
+    label     = "mu_intercept",
+    parameter = "mu_intercept",
+    value     = 0,
+    stringsAsFactors = FALSE
+  )
+  side <- hypothesis_parse("mu_intercept = 0")$statements[[1L]][["left"]]
+  expect_true(.hypothesis_model_warning_side_matches(side, record))
+  side <- hypothesis_parse("tau = 0")$statements[[1L]][["left"]]
+  expect_false(.hypothesis_model_warning_side_matches(side, record))
+
+})
+
+
+test_that("multiple declared atomic locations are not one fixed scalar", {
+
+  cell <- .hypothesis_model_test_draws(
+    rep(.2, 3),
+    atoms = posterior_atom_attribute(data.frame(x = c(.2, .4), mass = c(.4, .6)))
+  )
+  expect_false(.hypothesis_model_plan_draws_fixed(cell))
+  duplicate <- posterior_atom_attribute(data.frame(x = c(.2, .2), mass = c(.4, .6)))
+  fixed <- .hypothesis_model_test_draws(rep(.2, 3), atoms = duplicate)
+  expect_true(.hypothesis_model_plan_draws_fixed(fixed))
+  expect_error(posterior_atom_attribute(data.frame(x = c(-.2, .2), mass = c(0, 1))))
+  expect_false(.hypothesis_model_plan_draws_fixed(numeric()))
+
+})
+
+
+test_that("region prior probabilities are evaluated for densities with provenance", {
+
+  # a combination without a structural ordinate route (three gamma terms) has
+  # provenance: its region probabilities are evaluated, although its ordinate
+  # method is "unsupported_provenance" like that of a grid without provenance;
+  # the method field does not route regions
+  gammas <- .prior_linear_combination_density(
+    list(
+      x = prior("gamma", list(2, 1)),
+      y = prior("gamma", list(2, 1)),
+      z = prior("gamma", list(2, 1))
+    ),
+    c(x = 1, y = 1, z = 1)
+  )
+  expect_identical(prior_density_ordinate(gammas, 6)[["method"]], "unsupported_provenance")
+  expect_true(.hypothesis_model_plan_density_has_provenance(gammas))
+  expect_false(.hypothesis_model_plan_density_has_provenance(NULL))
+
+})
+
+
+# ---------------------------------------------------------------------------- #
+# Groups of statements
+# ---------------------------------------------------------------------------- #
+
+# The Bayes factors of the rows of one call are those of the statements run one
+# at a time.
+.hypothesis_model_test_expect_combined_equals_single <- function(call, statements, info){
+
+  combined <- call(statements)
+  expect_s3_class(combined, "BayesTools_hypothesis_BF")
+  expect_identical(nrow(combined), length(statements), info = info)
+  for(i in seq_along(statements)){
+    expect_equal(
+      as.numeric(combined[["BF"]][[i]]), as.numeric(call(statements[[i]])[["BF"]]),
+      tolerance = 1e-8, info = paste(info, statements[[i]])
+    )
+  }
+
+  invisible(combined)
+}
+
+
+test_that("different level expressions with equal fitted weights are separate groups", {
+
+  fit      <- .hypothesis_model_test_fit()
+  provider <- hypothesis_provider(fit)
+  groups <- function(statements){
+    vapply(.hypothesis_model_plans(provider, statements), `[[`, character(1), "group")
+  }
+  # the reference level A is fixed: f[B] - f[A] and f[B] - 2 * f[A] have the
+  # fitted weights of f[B], but they are different linear combinations of levels
+  equal_weights <- c("f[B] - f[A] = 0.1", "f[B] - 2 * f[A] = 0.1")
+  plans <- .hypothesis_model_plans(provider, equal_weights)
+  expect_identical(
+    lapply(plans, function(plan) plan[["targets"]][[1L]][["spec"]][["weights"]]),
+    list(c("mu_f[1]" = 1), c("mu_f[1]" = 1))
+  )
+  expect_length(unique(groups(equal_weights)), 2L)
+  # one level expression, two thresholds: one group
+  expect_length(unique(groups(c("f[B] - f[A] = 0.1", "f[B] - f[A] = 0.2"))), 1L)
+  # a multiple of an expression is another expression, with other weights
+  expect_length(unique(groups(c("f[B] - f[C] = 0.1", "2 * f[B] - 2 * f[C] = 0.1"))), 2L)
+  # the groups are those of a request in any order
+  expect_identical(groups(rev(equal_weights)), rev(groups(equal_weights)))
+
+  call <- function(statements) hypothesis_BF(fit, statements, seed = 1, columns = "all")
+  .hypothesis_model_test_expect_combined_equals_single(call, equal_weights, "fit")
+  same <- .hypothesis_model_test_expect_combined_equals_single(
+    call, c("f[B] - f[A] = 0.1", "f[B] - f[A] = 0.2"), "same expression"
+  )
+  expect_identical(nrow(same), 2L)
+
+  # the stored marginal means of the same model
+  marginal <- .hypothesis_model_toy_marginal(fit, "bt_hypothesis_test_marginal_groups")
+  marginal_plans <- function(provider, statements){
+    lapply(statements, function(statement){
+      .hypothesis_model_plan_marginal_means(provider, statement, NULL, NULL)
+    })
+  }
+  marginal_provider <- hypothesis_provider(marginal)
+  expect_length(unique(vapply(marginal_plans(marginal_provider, equal_weights),
+                              `[[`, character(1), "group")), 2L)
+  expect_length(unique(vapply(marginal_plans(marginal_provider,
+                                             c("f[B] - f[A] = 0.1", "f[B] - f[A] = 0.2")),
+                              `[[`, character(1), "group")), 1L)
+  marginal_call <- function(statements){
+    hypothesis_BF_model(marginal, statements, seed = 1, columns = "all")
+  }
+  .hypothesis_model_test_expect_combined_equals_single(marginal_call, equal_weights,
+                                                       "marginal means")
+
+})
