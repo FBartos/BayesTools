@@ -60,8 +60,11 @@ The key of a cached chunk hashes its code without comments or formatting, the
 deparsed values of the workspace objects the code references, and the keys of
 the cached objects it uses. Changing a model's code or its priors therefore
 refits that chunk on the next knit, and a refitted model refits the
-marginal-likelihood chunks that use it. Package updates do not change keys;
-remove an RDS file to force a refit. With refitting disabled, a changed key
+marginal-likelihood chunks that use it. Keys do not track package versions,
+but deparsed objects built by package functions, such as priors, change when
+a package changes their structure; refitting an unchanged model with its seed
+reproduces the same draws. Removing an RDS file forces a refit of its chunk
+only: the key is unchanged, so remove dependent caches too. With refitting disabled, a changed key
 loads the existing cache with a warning. Existing caches without a `.key` file
 are adopted when knitting with refitting enabled; commit the `.key` files with
 their RDS files.
