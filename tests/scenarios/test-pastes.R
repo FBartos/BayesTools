@@ -131,6 +131,12 @@ testthat::test_that("Pastes nested random intercepts", {
     cask_batch = stats::setNames(ranef_lme4[["cask:batch"]][["(Intercept)"]], rownames(ranef_lme4[["cask:batch"]]))
   )
 
+  # the batch effects are less shrunk than lme4's: with ten batches the
+  # posterior SD of batch (about 0.45-0.5) exceeds the ML estimate (0.338; REML
+  # 0.398), and the allocation prior moves further variance to batch. The
+  # differences therefore grow linearly with the lme4 effect without a shift;
+  # averaging the closed-form conditional batch effects over the posterior
+  # draws reproduces the BayesTools effects within Monte Carlo error
   scenario_plot("ranef-comparison", {
     par(mfrow = c(2, 2), mar = c(4, 4, 2, 1))
     for (block in c("batch", "cask_batch")) {
