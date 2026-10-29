@@ -696,7 +696,10 @@ parameter_prior_density.BayesTools_fit <- function(
 # 'conditional', the density of a gated random-effect allocation quantity is
 # conditional on its inclusion event (parameter_mixed_posterior()): the
 # component's gates on for a component SD or variance, its own gate on for a
-# variance proportion, and any component active for an allocation total.
+# variance proportion, and any component active for an allocation total. The
+# density of a quantity of the fitted coordinates of one mixture or
+# spike-and-slab prior with point components is that of the prior restricted
+# to its continuous components (.bt_parameter_point_event_components()).
 .bt_parameter_prior_density_quantity <- function(object, selection, n_grid,
                                                  tail_prob,
                                                  conditional = FALSE){
@@ -730,18 +733,36 @@ parameter_prior_density.BayesTools_fit <- function(
          call. = FALSE)
   }
   key <- quantity$extraction_key[[1L]]
+  # the point plan of a mixture or spike-and-slab prior of the fitted
+  # coordinates: conditioning restricts that prior to its continuous components
+  point_plan <- if(isTRUE(conditional) &&
+                   (key$type %in% c("coordinate", "factor_level", "random_summary"))){
+    plan <- .bt_parameter_gate_plan(object, quantity)
+    if(identical(plan$kind, "point")) plan
+  }
+  conditioned <- NULL
+  if(!is.null(point_plan)){
+    .bt_parameter_point_event_check(quantity$canonical_name, point_plan)
+    conditioned <- .bt_parameter_point_conditioned_fit(
+      object, point_plan, quantity$canonical_name
+    )
+  }
   if(key$type %in% c("coordinate", "factor_level")){
     out <- .bt_parameter_prior_density_coordinates(
       object = object,
       quantity = quantity,
       key = key,
       n_grid = n_grid,
-      tail_prob = tail_prob
+      tail_prob = tail_prob,
+      conditional = point_plan$owner
     )
     if(!is.null(out)){
-      attr(out, "parameter_prior_density") <- list(
-        quantity_id = quantity$quantity_id,
-        source = "fitted_parameter_map"
+      attr(out, "parameter_prior_density") <- c(
+        list(
+          quantity_id = quantity$quantity_id,
+          source = "fitted_parameter_map"
+        ),
+        if(!is.null(point_plan)) list(conditional = "inclusion")
       )
     }
     return(out)
@@ -751,12 +772,12 @@ parameter_prior_density.BayesTools_fit <- function(
   }
 
   out <- .bt_parameter_prior_density_random_summary(
-    object      = object,
+    object      = if(is.null(conditioned)) object else conditioned,
     quantity    = quantity,
     key         = key,
     n_grid      = n_grid,
     tail_prob   = tail_prob,
-    conditional = conditional
+    conditional = conditional && is.null(point_plan)
   )
   if(!is.null(out)){
     attr(out, "parameter_prior_density") <- c(
@@ -860,9 +881,11 @@ parameter_prior_density.BayesTools_fit <- function(
 # the level's weights. Structural quantities are their fixed value. NULL only
 # when no fitted prior owns the coordinates; an owner that is not a BayesTools
 # prior (or a list of them) stops, and failures to build the prior-density
-# context propagate.
+# context propagate. 'conditional' names the prior (its inclusion event) the
+# context conditions on, as as_mixed_posteriors(conditional = ) does.
 .bt_parameter_prior_density_coordinates <- function(object, quantity, key,
-                                                    n_grid, tail_prob){
+                                                    n_grid, tail_prob,
+                                                    conditional = NULL){
 
   dependencies <- key$dependencies
   if(length(dependencies) == 0L || identical(quantity$status, "structural")){
@@ -913,7 +936,8 @@ parameter_prior_density.BayesTools_fit <- function(
     prior_list   = prior_list[owners],
     column_names = columns,
     n_grid       = n_grid,
-    tail_prob    = tail_prob
+    tail_prob    = tail_prob,
+    conditional  = conditional
   )
   full_weights <- stats::setNames(numeric(length(columns)), columns)
   full_weights[dependencies] <- weights

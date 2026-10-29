@@ -119,9 +119,10 @@ the other catalog quantities are refused as targets
 the default provider: non-formula vector and factor priors have no entries;
 `random$zero_boundary()` marks allocation-derived SDs at 0 without naming an
 omission alternative; `conditional = TRUE` for random-effect quantities is what
-`parameter_mixed_posterior(conditional = TRUE)` supports (allocation gates);
-quantities with point components (spike-and-slab SDs and correlations) stop with
-its error.
+`parameter_mixed_posterior(conditional = TRUE)` supports (allocation gates, and
+the continuous components of a spike-and-slab or `null`/`alternative` mixture
+prior of an SD, a variance, or a structured correlation); quantities that
+combine several coordinates with point masses stop with its error.
 
 ## Scale and conditioning
 
@@ -131,7 +132,14 @@ random-effect SDs, variances, and correlations alike
 scales of the fit for draws and prior densities). `conditional = TRUE`
 conditions coefficients through `as_mixed_posteriors(conditional = <parameter>,
 conditional_rule = "AND")` and random-effect quantities through
-`parameter_mixed_posterior(conditional = TRUE)`. Without it, a point null at a
+`parameter_mixed_posterior(conditional = TRUE)`: an allocation-derived quantity
+within its gates, and an SD, variance, or structured correlation with a
+spike-and-slab or mixture prior within the draws whose monitored component
+indicator selects a continuous (`alternative`) component, with the prior
+restricted to those components and renormalized, as
+`JAGS_estimates_table(conditional = TRUE)` conditions the same rows. Selection
+priors, unmonitored indicators, other mixture components, and combined
+coordinates stay refused. Without it, a point null at a
 prior point mass stops with `BayesTools_point_mass_at_null`, and a test of a
 parameter whose prior has null and alternative components warns once per group
 (`full_ensemble()`); pass `conditional = FALSE` explicitly to silence it.
@@ -183,7 +191,7 @@ package.
 
 `tests/testthat/test-hypothesis-BF-model.R` (unit, synthetic fits, toy backend,
 toy providers) and `test-hypothesis-BF-model-fixture.R` (cached fits:
-`fit_hypothesis_hcs`, `fit_hypothesis_car`, `fit_label_random_slope`,
-`fit_re_summary_point_components`, `fit_dual_param_regression`,
-`fit_formula_treatment`). The one-call result must equal the three-step
-extraction exactly for the same seed.
+`fit_hypothesis_hcs`, `fit_hypothesis_car`, `fit_hypothesis_spike_ar1`,
+`fit_label_random_slope`, `fit_re_summary_point_components`,
+`fit_dual_param_regression`, `fit_formula_treatment`). The one-call result must
+equal the three-step extraction exactly for the same seed.

@@ -8,10 +8,12 @@ skip_if_not_test_profile("fixture")
 #   Atoms, gate states, point-free status, and prior densities of catalog
 #   quantities of real fits: composite and allocated original-scale
 #   correlations, monitored linear predictors, and the point components of
-#   mixture and spike-and-slab formula and random-effect SD priors.
+#   mixture and spike-and-slab formula, random-effect SD, and structured
+#   correlation priors (also their conditional posteriors).
 #
 # MODELS/FIXTURES:
-#   - fit_re_summary_* and fit_lkj_diagonal_K2 models from test-00-model-fits.R
+#   - fit_re_summary_*, fit_lkj_diagonal_K2, fit_dnode_mixture, and
+#     fit_hypothesis_spike_ar1 models from test-00-model-fits.R
 #
 # TAGS: @fixture, @JAGS, @random-effects
 # ============================================================================ #
@@ -296,5 +298,314 @@ test_that("parameter_mixed_posterior declares the point components of mixture pr
     expect_equal(atoms$mass[as.numeric(atoms$locations[, 1L]) == 1], mean(selected),
                  info = name)
     expect_equal(sum(atoms$mass), 1, info = name)
+  }
+})
+
+test_that("conditional mixed posteriors of point components keep their continuous components", {
+
+  fit <- .re_summary_cached_fit("fit_re_summary_point_components")
+  draws <- as.matrix(BayesTools:::.fit_to_posterior(fit))
+  catalog <- parameter_catalog(fit)
+  conditional <- function(name, ...){
+    parameter_mixed_posterior(
+      fit, parameter_catalog_resolve(catalog, name), conditional = TRUE, ...
+    )
+  }
+  log_density <- function(x, values){
+    density <- posterior_metadata(x, "prior_density")
+    vapply(values, function(value){
+      prior_density_ordinate(density, value)$log_density
+    }, numeric(1))
+  }
+  statistics <- c("Mean", "SD", "0.025", "0.5", "0.975")
+  reference <- function(x){
+    c(mean(x), stats::sd(x), stats::quantile(x, c(0.025, 0.5, 0.975), names = FALSE))
+  }
+  table <- JAGS_estimates_table(fit, conditional = TRUE, random_effects_summary = "full")
+  n_grid <- BayesTools:::.prior_linear_density_default_grid()
+  slab <- function(x) stats::dnorm(x, log = TRUE)
+  # (the SD prior is a normal truncated to the positive axis)
+  cases <- list(
+    list(name = "(mu) sd(intercept)", row = "(mu) sd(intercept)",
+         column = "mu__xREx__g_intercept", indicator = "mu__xREx__g_intercept_indicator",
+         map = identity, at = c(0.3, 0.8, 1.5),
+         density = function(x) slab(x) + log(2)),
+    list(name = "(mu) var(intercept)", row = "(mu) var(intercept)",
+         column = "mu__xREx__g_intercept", indicator = "mu__xREx__g_intercept_indicator",
+         map = function(x) x^2, at = c(0.09, 0.64, 2.25),
+         density = function(x) slab(sqrt(x)) + log(2) - log(2 * sqrt(x))),
+    list(name = "mu_x", row = "(mu) x", column = "mu_x", indicator = "mu_x_indicator",
+         map = identity, at = c(-1, 0.2, 1.4), density = slab),
+    list(name = "mu_f[b]", row = "(mu) f[b]", column = "mu_f[1]", indicator = "mu_f_indicator",
+         map = identity, at = c(-1, 0.2, 1.4), density = slab),
+    list(name = "mu_f[c]", row = "(mu) f[c]", column = "mu_f[2]", indicator = "mu_f_indicator",
+         map = identity, at = c(-1, 0.2, 1.4), density = slab)
+  )
+  for(case in cases){
+    mixed    <- conditional(case$name)
+    included <- draws[, case$indicator] == 1
+    expect_true(any(included) && !all(included), info = case$name)
+
+    # the draws of the slab component: the rows of the conditional estimates table
+    expect_equal(as.numeric(mixed), case$map(draws[included, case$column]), info = case$name)
+    expect_identical(BayesTools:::.bt_meta_get(mixed, "draw_index"), which(included), info = case$name)
+    expect_equal(
+      as.numeric(table[case$row, statistics]), reference(as.numeric(mixed)),
+      tolerance = 1e-12, info = case$name
+    )
+
+    # the condition names the component indicator; no point component remains
+    condition <- posterior_metadata(mixed, "condition")
+    expect_identical(condition$conditional, case$indicator, info = case$name)
+    expect_identical(condition$conditional_rule, "AND", info = case$name)
+    expect_false(condition$averaged, info = case$name)
+    expect_true(posterior_atoms_free(mixed), info = case$name)
+
+    # the prior restricted to the slab, on the scale of the quantity
+    density <- posterior_metadata(mixed, "prior_density")
+    expect_identical(nrow(density$points), 0L, info = case$name)
+    expect_identical(attr(density, "parameter_prior_density")$conditional, "inclusion",
+                     info = case$name)
+    expect_equal(log_density(mixed, case$at), case$density(case$at), tolerance = 1e-8,
+                 info = case$name)
+
+    # unconditionally the same quantity keeps its atom
+    expect_false(posterior_atoms_free(parameter_mixed_posterior(
+      fit, parameter_catalog_resolve(catalog, case$name)
+    )), info = case$name)
+  }
+  expect_true(any(grepl(
+    paste0("Conditional summary for (mu) sd(intercept) is based on ",
+           sum(draws[, "mu__xREx__g_intercept_indicator"] == 1), " samples."),
+    attr(table, "warnings"), fixed = TRUE
+  )))
+
+  # a coefficient equals as_mixed_posteriors(conditional = <parameter>) and
+  # marginal_posterior(), in its draws and in its prior density
+  at <- c(-2, -0.5, 0, 0.3, 1.5)
+  for(case in list(
+    list(parameter = "mu_x", name = "mu_x", level = NULL),
+    list(parameter = "mu_f", name = "mu_f[b]", level = "b"),
+    list(parameter = "mu_f", name = "mu_f[c]", level = "c")
+  )){
+    samples  <- as_mixed_posteriors(fit, case$parameter, conditional = case$parameter,
+                                    conditional_rule = "AND", n_prior_samples = 2000)
+    marginal <- marginal_posterior(samples, case$parameter, prior_samples = TRUE,
+                                   use_formula = FALSE, n_samples = n_grid)
+    if(!is.null(case$level)) marginal <- marginal[[case$level]]
+    mixed <- conditional(case$name)
+    expect_equal(as.numeric(mixed), as.numeric(marginal), tolerance = 1e-14, info = case$name)
+    expect_equal(log_density(mixed, at), log_density(marginal, at), tolerance = 1e-10,
+                 info = case$name)
+  }
+
+  # the fitted scale: the same quantity for a fit without scaled predictors
+  expect_identical(
+    as.numeric(conditional("(mu) sd(intercept)", transform_scaled = FALSE)),
+    as.numeric(conditional("(mu) sd(intercept)"))
+  )
+
+  # the default mixture of a continuous and a point component has both components
+  # 'alternative', so the event would keep a point component: refused, while the
+  # estimates table conditions it on all draws
+  expect_error(
+    conditional("mu_intercept"),
+    paste0("The inclusion event of 'mu_intercept' is unavailable: an 'alternative' ",
+           "component of its prior is not continuous, and the inclusion event cannot ",
+           "contain a point component. Use 'conditional = FALSE'."),
+    fixed = TRUE
+  )
+  expect_true(any(grepl("mu_intercept is based on 200 samples", attr(table, "warnings"),
+                        fixed = TRUE)))
+  # the inclusion indicator of a component is no quantity of an inclusion event
+  expect_error(
+    conditional("(mu) inclusion(sd(intercept))"),
+    paste0("The inclusion event of '(mu) inclusion(sd(intercept))' is unavailable: it is ",
+           "the inclusion indicator of a component of its prior. Use 'conditional = FALSE'."),
+    fixed = TRUE
+  )
+})
+
+test_that("conditional mixed posteriors renormalize several continuous components and refuse the rest", {
+
+  # a null/alternative mixture of two continuous components and a point
+  mixture <- .re_summary_cached_fit("fit_dnode_mixture")
+  catalog <- parameter_catalog(mixture)
+  b_draws <- as.matrix(BayesTools:::.fit_to_posterior(mixture))
+  b_selection <- parameter_catalog_resolve(catalog, "b")
+  b <- parameter_mixed_posterior(mixture, b_selection, conditional = TRUE)
+  included <- b_draws[, "b_indicator"] %in% c(1, 3)
+  expect_true(any(included) && !all(included))
+  expect_equal(as.numeric(b), b_draws[included, "b"])
+  expect_identical(posterior_metadata(b, "condition")$conditional, "b_indicator")
+  expect_true(posterior_atoms_free(b))
+
+  # draws and prior density of as_mixed_posteriors(conditional = "b")
+  samples  <- as_mixed_posteriors(mixture, "b", conditional = "b", n_prior_samples = 2000)
+  marginal <- marginal_posterior(samples, "b", prior_samples = TRUE, use_formula = FALSE,
+                                 n_samples = BayesTools:::.prior_linear_density_default_grid())
+  expect_equal(as.numeric(b), as.numeric(marginal), tolerance = 1e-14)
+  at <- c(-3, -1, 0, 0.3, 1, 2, 2.5, 4)
+  log_density <- function(x){
+    vapply(at, function(value){
+      prior_density_ordinate(posterior_metadata(x, "prior_density"), value)$log_density
+    }, numeric(1))
+  }
+  expect_equal(log_density(b), log_density(marginal), tolerance = 1e-10)
+  # the two continuous components with equal prior weights renormalized to 1
+  expect_equal(
+    log_density(b),
+    log(0.5 * ifelse(at >= 0, 2 * stats::dnorm(at), 0) + 0.5 * stats::dnorm(at, 2, 0.5)),
+    tolerance = 1e-8
+  )
+  statistics <- c("Mean", "SD", "0.025", "0.5", "0.975")
+  table <- JAGS_estimates_table(mixture, conditional = TRUE)
+  expect_equal(as.numeric(table["b", statistics]),
+               c(mean(as.numeric(b)), stats::sd(as.numeric(b)), stats::quantile(as.numeric(b), c(0.025, 0.5, 0.975), names = FALSE)),
+               tolerance = 1e-12)
+
+  # the coordinates of the selection prior have no inclusion event
+  for(name in c("PET", "omega[1]")){
+    expect_error(
+      parameter_mixed_posterior(mixture, parameter_catalog_resolve(catalog, name),
+                                conditional = TRUE),
+      paste0("The inclusion event of '", name, "' is unavailable: it is a coordinate of ",
+             "the selection prior of the fit (weight function, PET/PEESE, or p-hacking), ",
+             "which has no inclusion event for its coordinates. Use 'conditional = FALSE'."),
+      fixed = TRUE, info = name
+    )
+  }
+
+  # a mixture with other components than 'null' and 'alternative' has no single
+  # inclusion event: the conditional summaries keep all of its draws
+  components <- .re_summary_cached_fit("fit_re_summary_mixture_sd")
+  components_catalog <- parameter_catalog(components)
+  for(name in c("(mu) sd(intercept)", "(mu) var(intercept)")){
+    expect_error(
+      parameter_mixed_posterior(components, parameter_catalog_resolve(components_catalog, name),
+                                conditional = TRUE),
+      paste0("The inclusion event of '", name, "' is unavailable: its prior has components ",
+             "other than 'null' and 'alternative', which define no single inclusion event. ",
+             "Use 'conditional = FALSE'."),
+      fixed = TRUE, info = name
+    )
+  }
+  sd_draws <- parameter_mixed_posterior(
+    components, parameter_catalog_resolve(components_catalog, "(mu) sd(intercept)")
+  )
+  conditional_table <- JAGS_estimates_table(components, conditional = TRUE)
+  expect_equal(as.numeric(conditional_table["(mu) sd(intercept)", "Mean"]), mean(as.numeric(sd_draws)),
+               tolerance = 1e-12)
+
+  # quantities that combine several coordinates with point masses keep their refusal
+  allocated <- .re_summary_cached_fit("fit_re_summary_allocated")
+  allocated_catalog <- parameter_catalog(allocated)
+  for(name in c("(mu) p: sd(intercept)", "(mu) p: cor(intercept,x)")){
+    expect_error(
+      parameter_mixed_posterior(allocated, parameter_catalog_resolve(allocated_catalog, name),
+                                conditional = TRUE),
+      paste0("The inclusion event of '", name, "' is unavailable: the quantity has no ",
+             "inclusion gate. Use 'conditional = FALSE'."),
+      fixed = TRUE, info = name
+    )
+  }
+
+  # the spike-and-slab SD of a scaled predictor, a one-to-one rescaling of its
+  # fitted SD, on both scales
+  allocated_draws <- as.matrix(BayesTools:::.fit_to_posterior(allocated))
+  included <- allocated_draws[, "mu__xREx__p_x_indicator"] == 1
+  expect_true(any(included) && !all(included))
+  quantities <- allocated_catalog$quantities
+  scale <- quantities$extraction_key[[match("(mu) p: sd(x)", quantities$canonical_name)]]$source_scale
+  expect_true(is.finite(scale) && scale > 0 && scale != 1)
+  sd_mixed <- list()
+  for(transform_scaled in c(FALSE, TRUE)){
+    table <- JAGS_estimates_table(allocated, conditional = TRUE,
+                                  random_effects_summary = "full",
+                                  transform_scaled = transform_scaled)
+    factor <- if(transform_scaled) scale else 1
+    for(name in c("(mu) p: sd(x)", "(mu) p: var(x)")){
+      mixed <- parameter_mixed_posterior(
+        allocated, parameter_catalog_resolve(allocated_catalog, name),
+        conditional = TRUE, transform_scaled = transform_scaled
+      )
+      expected <- factor * allocated_draws[included, "mu__xREx__p_x"]
+      if(grepl("var", name, fixed = TRUE)) expected <- expected^2
+      expect_equal(as.numeric(mixed), expected, info = paste(name, transform_scaled))
+      expect_equal(
+        as.numeric(table[name, statistics]),
+        c(mean(expected), stats::sd(expected), stats::quantile(expected, c(0.025, 0.5, 0.975), names = FALSE)),
+        tolerance = 1e-12, info = paste(name, transform_scaled)
+      )
+      expect_true(posterior_atoms_free(mixed), info = paste(name, transform_scaled))
+      expect_identical(nrow(posterior_metadata(mixed, "prior_density")$points), 0L,
+                       info = paste(name, transform_scaled))
+      if(grepl("sd", name, fixed = TRUE)) sd_mixed[[as.character(transform_scaled)]] <- mixed
+    }
+  }
+  # the prior of the original-scale SD is that of the fitted SD rescaled
+  at <- c(0.05, 0.2, 0.5)
+  log_density <- function(x, values){
+    vapply(values, function(value){
+      prior_density_ordinate(posterior_metadata(x, "prior_density"), value)$log_density
+    }, numeric(1))
+  }
+  expect_equal(
+    log_density(sd_mixed[["TRUE"]], at),
+    log_density(sd_mixed[["FALSE"]], at / scale) - log(scale),
+    tolerance = 1e-8
+  )
+})
+
+test_that("conditional mixed posteriors of a spike-and-slab SD and correlation equal the conditional summaries", {
+
+  # an AR(1) block with spike-and-slab priors on its SD and on its Fisher-z
+  # scalar correlation (parameter map 18)
+  fit <- .re_summary_cached_fit("fit_hypothesis_spike_ar1")
+  draws <- as.matrix(BayesTools:::.fit_to_posterior(fit))
+  catalog <- parameter_catalog(fit)
+  statistics <- c("Mean", "SD", "0.025", "0.5", "0.975")
+  table <- JAGS_estimates_table(fit, conditional = TRUE, random_effects_summary = "full")
+  sd_indicator  <- "mu__xREx__id_sd_indicator"
+  cor_indicator <- "mu__xREx__id_rho_z_indicator"
+  for(indicator in c(sd_indicator, cor_indicator)){
+    expect_true(any(draws[, indicator] == 1) && any(draws[, indicator] == 0), info = indicator)
+  }
+  # the two events differ
+  expect_false(identical(draws[, sd_indicator], draws[, cor_indicator]))
+
+  cases <- list(
+    list(name = "(mu) sd", column = "mu__xREx__id_sd", indicator = sd_indicator,
+         map = identity, at = c(0.2, 0.9),
+         density = function(x) stats::dnorm(x, log = TRUE) + log(2)),
+    list(name = "(mu) var", column = "mu__xREx__id_sd", indicator = sd_indicator,
+         map = function(x) x^2, at = c(0.04, 0.81),
+         density = function(x) stats::dnorm(sqrt(x), log = TRUE) + log(2) - log(2 * sqrt(x))),
+    list(name = "(mu) cor", column = "mu__xREx__id_rho", indicator = cor_indicator,
+         map = identity, at = c(-0.4, 0.1, 0.7),
+         # the Fisher-z slab normal(0, 0.5), on the scale of the correlation
+         density = function(x) stats::dnorm(atanh(x), 0, 0.5, log = TRUE) - log(1 - x^2))
+  )
+  for(case in cases){
+    mixed <- parameter_mixed_posterior(
+      fit, parameter_catalog_resolve(catalog, case$name), conditional = TRUE
+    )
+    included <- draws[, case$indicator] == 1
+    expect_equal(as.numeric(mixed), case$map(draws[included, case$column]), info = case$name)
+    expect_equal(
+      as.numeric(table[case$name, statistics]),
+      c(mean(as.numeric(mixed)), stats::sd(as.numeric(mixed)),
+        stats::quantile(as.numeric(mixed), c(0.025, 0.5, 0.975), names = FALSE)),
+      tolerance = 1e-12, info = case$name
+    )
+    expect_identical(posterior_metadata(mixed, "condition")$conditional, case$indicator,
+                     info = case$name)
+    expect_true(posterior_atoms_free(mixed), info = case$name)
+    density <- posterior_metadata(mixed, "prior_density")
+    expect_identical(nrow(density$points), 0L, info = case$name)
+    expect_equal(
+      vapply(case$at, function(value) prior_density_ordinate(density, value)$log_density, numeric(1)),
+      case$density(case$at), tolerance = 1e-8, info = case$name
+    )
   }
 })

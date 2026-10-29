@@ -20,7 +20,15 @@ parameter_mixed_posterior(
 \item{conditional}{whether to condition on the inclusion event of the
 quantity: the gates of its allocation chain on for an allocation-derived
 component SD or variance, and its own inclusion gate on for a variance
-proportion. An allocation total (\code{sd_total}, \code{var_total}) is conditioned
+proportion; for a quantity of the fitted coordinates of one mixture or
+spike-and-slab prior with point components (a coefficient, a factor
+level, a random-effect SD or variance, or the scalar correlation of a
+structured block on any \code{cor_scale}), the component indicator of that
+prior selecting a continuous component (the \code{"alternative"} components of
+a prior whose components are \code{"null"} and \code{"alternative"}, the event of
+\code{JAGS_estimates_table(conditional = TRUE)} and of
+\verb{as_mixed_posteriors(conditional = <parameter>)}). An allocation total
+(\code{sd_total}, \code{var_total}) is conditioned
 on its parent-allocation (binding-factor) gates on when some component
 has no inclusion gate (some component is then always active), and on at
 least one component active when every component has an inclusion gate
@@ -31,10 +39,21 @@ gates, which are not one conjunction or disjunction, and is refused
 draws in the
 event are kept, and the prior density is
 restricted to the event and renormalized (point masses inside the event,
-e.g. a variance proportion of one, keep their renormalized masses). The
-declared \code{condition} names the gates of the event. Quantities without an
-inclusion gate cannot be conditioned, nor can a total of an allocation
-without parent gates that has an ungated component.}
+e.g. a variance proportion of one, keep their renormalized masses; the
+prior of a point-component quantity is restricted to its continuous
+components, with their prior probabilities renormalized to 1, on the
+scale of the quantity, and declares no atom, the point components being
+the complement of the event). The declared \code{condition} names the gates
+(the component indicator) of the event. Quantities without an inclusion
+gate cannot be conditioned, nor can a total of an allocation without
+parent gates that has an ungated component, the coordinates of a
+selection prior (weight function, PET/PEESE, p-hacking), the inclusion
+indicator of a component, a quantity whose prior has other components
+than \code{"null"} and \code{"alternative"} or a point \code{"alternative"} component,
+one whose component indicator is not monitored, and a quantity that
+combines several coordinates of which some can take a point mass (e.g.
+original-scale SDs of a block with spike-and-slab SD priors); each stops
+with a message naming the reason.}
 
 \item{transform_scaled}{whether the random-effect quantities (SDs,
 variances, and correlations) of a fit with scaled predictors are reported

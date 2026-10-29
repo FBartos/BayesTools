@@ -730,7 +730,13 @@ e.g. the `_indicator`, `_inclusion`, and `_variable` coordinates of mixture
 priors).
 `parameter_mixed_posterior(conditional = TRUE)` keeps the draws of the
 quantity's inclusion event and uses the density restricted to that event (the
-gate atom drops out, atoms inside the event are renormalized).
+gate atom drops out, atoms inside the event are renormalized). For a quantity
+of the fitted coordinates of a mixture or spike-and-slab prior with point
+components the event is the draws whose monitored component indicator selects a
+continuous (`alternative`) component, as the conditional summaries and
+`as_mixed_posteriors(conditional = )` condition it; the density is that of the
+prior restricted to those components (prior probabilities renormalized to 1)
+through the routes above, on the scale of the quantity, and no atom remains.
 
 A product component of a combination (a `multiply_by` product, or an ordered
 level as its total times its Beta allocation share) with a structural route

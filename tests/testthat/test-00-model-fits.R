@@ -3124,6 +3124,39 @@ test_that("Structured-correlation models for fit-level hypotheses fit correctly"
     assertion_only = TRUE,
     note = "Continuous-time AR(1) block with a sampled scalar correlation for fit-level hypothesis_BF()."
   )$registry_entry
+
+  # An AR(1) block with spike-and-slab priors on its SD and its Fisher-z scalar
+  # correlation, weakly identified so that both indicators visit both states.
+  set.seed(7)
+  spike_data <- data.frame(
+    id = factor(rep(sprintf("g%02d", 1:12), each = 4L)),
+    f  = factor(rep(c("a", "b", "c", "d"), 12L), levels = c("a", "b", "c", "d"))
+  )
+  spike_data$y <- 0.2 + stats::rnorm(12, 0, 0.2)[as.integer(spike_data$id)] +
+    stats::rnorm(nrow(spike_data), 0, 1)
+  model_registry[["fit_hypothesis_spike_ar1"]] <<- save_fit(
+    suppressWarnings(JAGS_fit(
+      model_syntax = model_syntax,
+      data = list(y = spike_data$y, N = nrow(spike_data)),
+      formula_list = list(mu = ~ 1 + ar1(f | id)),
+      formula_data_list = list(mu = spike_data),
+      formula_prior_list = list(mu = list(intercept = prior("normal", list(0, 1)))),
+      formula_random_prior_list = list(mu = prior_random(id = random_block(
+        covariance = random_covariance(
+          sd = prior_spike_and_slab(sd_prior, prior_inclusion = prior("spike", list(0.5))),
+          cor = prior_spike_and_slab(prior("normal", list(0, 0.5)),
+                                     prior_inclusion = prior("spike", list(0.5))),
+          cor_scale = "fisher_z"
+        ),
+        monitor = random_monitor(latent = FALSE, coefficients = FALSE, correlation = TRUE)
+      ))),
+      chains = 2, adapt = 100, burnin = 150, sample = 300, seed = 23L, silent = TRUE
+    )),
+    "fit_hypothesis_spike_ar1",
+    simple_priors = TRUE, spike_and_slab_priors = TRUE, formulas = TRUE, random_effects = TRUE,
+    assertion_only = TRUE,
+    note = "AR(1) block with spike-and-slab priors on its SD and its Fisher-z scalar correlation for conditional fit-level hypothesis_BF()."
+  )$registry_entry
 })
 
 # ============================================================================ #

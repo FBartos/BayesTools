@@ -2490,6 +2490,69 @@ test_that("spike-and-slab scalar correlations follow the SD inclusion convention
       as.numeric(conditional["(mu) cor", "Mean"]),
       mean(cor_draws[indicator == 1])
     )
+
+    # parameter_mixed_posterior(conditional = TRUE) keeps those draws (the rows of
+    # the conditional summary), names the component indicator as the gate of the
+    # event, and restricts the prior of the correlation to the slab, on the scale
+    # of the correlation
+    selection <- parameter_catalog_resolve(parameter_catalog(fit), "(mu) cor")
+    mixed <- parameter_mixed_posterior(fit, selection, conditional = TRUE)
+    expect_equal(as.numeric(mixed), cor_draws[indicator == 1])
+    expect_identical(BayesTools:::.bt_meta_get(mixed, "draw_index"), which(indicator == 1))
+    expect_equal(
+      as.numeric(conditional["(mu) cor", c("Mean", "SD", "0.025", "0.5", "0.975")]),
+      c(mean(mixed), stats::sd(mixed), stats::quantile(mixed, c(0.025, 0.5, 0.975), names = FALSE)),
+      tolerance = 1e-12
+    )
+    condition <- posterior_metadata(mixed, "condition")
+    expect_identical(condition$conditional, paste0(prior_name, "_indicator"))
+    expect_identical(condition$conditional_rule, "AND")
+    expect_false(condition$averaged)
+    expect_true(posterior_atoms_free(mixed))
+    expect_false(posterior_atoms_free(parameter_mixed_posterior(fit, selection)))
+    density <- posterior_metadata(mixed, "prior_density")
+    expect_identical(nrow(density$points), 0L)
+    at <- c(-0.3, 0.1, 0.6)
+    transform <- parameter_transform(fit, selection)
+    # (the CS and HCS correlations of four columns lie in (-1/3, 1))
+    lower <- if(case[1L] %in% c("cs", "hcs")) -1 / 3 else -1
+    expected <- if(identical(case[2L], "cor")){
+      # the normal slab truncated to the support of the correlation
+      stats::dnorm(at, 0, 0.5, log = TRUE) -
+        log(stats::pnorm(1, 0, 0.5) - stats::pnorm(lower, 0, 0.5))
+    }else{
+      z <- parameter_transform_inverse(at, transform)
+      mass <- if(identical(case[2L], "fisher_z")) 1 - stats::pnorm(atanh(lower), 0, 0.5) else 1
+      stats::dnorm(z, 0, 0.5, log = TRUE) - log(parameter_transform_jacobian(z, transform)) -
+        log(mass)
+    }
+    grid <- density$density
+    n_grid <- length(grid$x)
+    expect_equal(stats::approx(grid$x, grid$y, xout = at)$y, exp(expected), tolerance = 1e-3)
+    expect_equal(sum(diff(grid$x) * (grid$y[-1L] + grid$y[-n_grid]) / 2), 1, tolerance = 1e-3)
+    if(!identical(case[2L], "logit")){
+      expect_equal(
+        vapply(at, function(value) prior_density_ordinate(density, value)$log_density, numeric(1)),
+        expected,
+        tolerance = 1e-8
+      )
+    }
+
+    # the one-call test of the fit equals the three-step extraction exactly
+    # (a point value where the scale has an exact ordinate; the bounded logit
+    # has none)
+    for(statement in c("(mu) cor > 0.1", if(!identical(case[2L], "logit")) "(mu) cor = 0.2")){
+      one_call <- hypothesis_BF(fit, statement, conditional = TRUE, seed = 1)
+      manual   <- hypothesis_BF(
+        mixed, hypothesis = sub("(mu) cor", "`(mu) cor`", statement, fixed = TRUE), seed = 1
+      )
+      expect_identical(attr(one_call, "raw_log_BF"), attr(manual, "raw_log_BF"),
+                       info = paste(case, statement))
+      expect_true(is.finite(attr(one_call, "raw_log_BF")), info = paste(case, statement))
+    }
+    # a point null at the spike stops without conditional = TRUE
+    expect_error(hypothesis_BF(fit, "(mu) cor = 0", conditional = FALSE),
+                 class = "BayesTools_point_mass_at_null", info = paste(case, collapse = " "))
   }
 
   # a null/alternative mixture names its components, as mixture SD priors do
@@ -2507,4 +2570,70 @@ test_that("spike-and-slab scalar correlations follow the SD inclusion convention
   expect_false(any(grepl(backend, rownames(JAGS_estimates_table(mixture)))))
   expect_true("(mu) id: cor (inclusion)" %in%
                 rownames(JAGS_estimates_table(mixture, random_effects_summary = "raw")))
+
+  # its inclusion event is the 'alternative' component: the conditional summary
+  # and parameter_mixed_posterior(conditional = TRUE) keep the same draws
+  mixture_selection <- parameter_catalog_resolve(parameter_catalog(mixture), "(mu) cor")
+  mixture_indicator <- as.numeric(as.matrix(mixture$mcmc)[, "mu__xREx__id_rho_z_indicator"])
+  expect_true(all(mixture_indicator %in% 1:2) && any(mixture_indicator == 1))
+  mixture_draws <- as.numeric(as.matrix(parameter_draws(mixture, mixture_selection))[, 1L])
+  mixture_conditional <- parameter_mixed_posterior(mixture, mixture_selection, conditional = TRUE)
+  expect_equal(as.numeric(mixture_conditional), mixture_draws[mixture_indicator == 2])
+  expect_equal(
+    as.numeric(JAGS_estimates_table(mixture, conditional = TRUE)["(mu) cor", "Mean"]),
+    mean(mixture_conditional)
+  )
+  expect_identical(posterior_metadata(mixture_conditional, "condition")$conditional,
+                   "mu__xREx__id_rho_z_indicator")
+  expect_true(posterior_atoms_free(mixture_conditional))
+  # the inclusion indicators of its components are no quantities of an event
+  expect_error(
+    parameter_mixed_posterior(
+      mixture, parameter_catalog_resolve(parameter_catalog(mixture), "(mu) inclusion(cor[alternative])"),
+      conditional = TRUE
+    ),
+    "it is the inclusion indicator of a component of its prior",
+    fixed = TRUE
+  )
+})
+
+test_that("parameter_mixed_posterior conditions on a monitored component indicator only", {
+
+  set.seed(1)
+  indicator <- stats::rbinom(100L, 1, 0.5)
+  point_fit <- function(monitor_indicator){
+    draws <- cbind(
+      theta           = ifelse(indicator == 1, stats::rnorm(100L), 0),
+      theta_indicator = indicator
+    )
+    if(!monitor_indicator){
+      draws <- draws[, "theta", drop = FALSE]
+    }
+    .parameter_catalog_test_fit(
+      coda::mcmc.list(coda::mcmc(draws)),
+      list(theta = prior_spike_and_slab(
+        prior("normal", list(0, 1)), prior_inclusion = prior("spike", list(0.5))
+      ))
+    )
+  }
+
+  monitored <- point_fit(TRUE)
+  selection <- parameter_catalog_resolve(parameter_catalog(monitored), "theta")
+  mixed <- parameter_mixed_posterior(monitored, selection, conditional = TRUE)
+  expect_length(mixed, sum(indicator == 1))
+  expect_identical(posterior_metadata(mixed, "condition")$conditional, "theta_indicator")
+  expect_true(posterior_atoms_free(mixed))
+
+  # without the indicator in the draws the point states are unknown: no atoms
+  # are declared, and the inclusion event cannot be identified
+  unmonitored <- point_fit(FALSE)
+  selection <- parameter_catalog_resolve(parameter_catalog(unmonitored), "theta")
+  expect_null(posterior_metadata(parameter_mixed_posterior(unmonitored, selection), "atoms"))
+  expect_error(
+    parameter_mixed_posterior(unmonitored, selection, conditional = TRUE),
+    paste0("The inclusion event of 'theta' is unavailable: the component indicator of ",
+           "its prior is not monitored (the point components are not in the draws). ",
+           "Use 'conditional = FALSE'."),
+    fixed = TRUE
+  )
 })

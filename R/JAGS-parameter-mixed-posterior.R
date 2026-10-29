@@ -78,7 +78,15 @@
 #' @param conditional whether to condition on the inclusion event of the
 #'   quantity: the gates of its allocation chain on for an allocation-derived
 #'   component SD or variance, and its own inclusion gate on for a variance
-#'   proportion. An allocation total (`sd_total`, `var_total`) is conditioned
+#'   proportion; for a quantity of the fitted coordinates of one mixture or
+#'   spike-and-slab prior with point components (a coefficient, a factor
+#'   level, a random-effect SD or variance, or the scalar correlation of a
+#'   structured block on any `cor_scale`), the component indicator of that
+#'   prior selecting a continuous component (the `"alternative"` components of
+#'   a prior whose components are `"null"` and `"alternative"`, the event of
+#'   `JAGS_estimates_table(conditional = TRUE)` and of
+#'   `as_mixed_posteriors(conditional = <parameter>)`). An allocation total
+#'   (`sd_total`, `var_total`) is conditioned
 #'   on its parent-allocation (binding-factor) gates on when some component
 #'   has no inclusion gate (some component is then always active), and on at
 #'   least one component active when every component has an inclusion gate
@@ -89,10 +97,21 @@
 #'   draws in the
 #'   event are kept, and the prior density is
 #'   restricted to the event and renormalized (point masses inside the event,
-#'   e.g. a variance proportion of one, keep their renormalized masses). The
-#'   declared `condition` names the gates of the event. Quantities without an
-#'   inclusion gate cannot be conditioned, nor can a total of an allocation
-#'   without parent gates that has an ungated component.
+#'   e.g. a variance proportion of one, keep their renormalized masses; the
+#'   prior of a point-component quantity is restricted to its continuous
+#'   components, with their prior probabilities renormalized to 1, on the
+#'   scale of the quantity, and declares no atom, the point components being
+#'   the complement of the event). The declared `condition` names the gates
+#'   (the component indicator) of the event. Quantities without an inclusion
+#'   gate cannot be conditioned, nor can a total of an allocation without
+#'   parent gates that has an ungated component, the coordinates of a
+#'   selection prior (weight function, PET/PEESE, p-hacking), the inclusion
+#'   indicator of a component, a quantity whose prior has other components
+#'   than `"null"` and `"alternative"` or a point `"alternative"` component,
+#'   one whose component indicator is not monitored, and a quantity that
+#'   combines several coordinates of which some can take a point mass (e.g.
+#'   original-scale SDs of a block with spike-and-slab SD priors); each stops
+#'   with a message naming the reason.
 #' @param transform_scaled whether the random-effect quantities (SDs,
 #'   variances, and correlations) of a fit with scaled predictors are reported
 #'   on the original scale (`TRUE`, the default) or on the fitted scale of the
@@ -276,7 +295,14 @@ parameter_gate_states <- function(fit, selection, draws = NULL){
   draws <- .bt_parameter_draws_from_quantities(fit, quantity, model_samples = original_sources)
   values <- unname(as.numeric(as.matrix(draws)[, 1L]))
   plan <- .bt_parameter_gate_plan(fit, quantity)
-  states <- .bt_parameter_gate_states(fit, plan, length(values), model_samples = original_sources)
+  if(isTRUE(conditional) && identical(plan$kind, "point")){
+    # a point plan is conditioned on its own terms (or refused naming its source)
+    .bt_parameter_point_event_check(name, plan)
+  }
+  states <- .bt_parameter_gate_states(
+    fit, plan, length(values), model_samples = original_sources,
+    with_event = isTRUE(conditional)
+  )
   if(!is.null(states$reason)) stop(states$reason)
 
   keep <- !is.na(values)
@@ -826,10 +852,16 @@ parameter_gate_states <- function(fit, selection, draws = NULL){
 #     or publication-bias mixture prior, on the constant its branch gives it.
 #   point: a quantity of the fitted coordinates of one mixture or
 #     spike-and-slab prior with point components (a coefficient, a factor
-#     level, or a random-effect SD or its variance), on the image of a point
-#     component in the draws whose component indicator selects it; and the
-#     inclusion indicator of a component of such an SD prior, on 1 where
-#     the component indicator selects the component and on 0 otherwise.
+#     level, a random-effect SD or its variance, or the scalar correlation of
+#     a structured block), on the image of a point component in the draws
+#     whose component indicator selects it; and the inclusion indicator of a
+#     component of such an SD prior, on 1 where the component indicator
+#     selects the component and on 0 otherwise.
+#   Every point plan names its source in 'origin': "prior" (the first of
+#   these, the only one with an inclusion event: the draws whose monitored
+#   indicator selects a continuous component, 'event_gates', with the owning
+#   prior in 'owner'), "selection" (the coordinates of the selection prior),
+#   and "indicator" (the inclusion indicator of a component).
 .bt_parameter_gate_plan <- function(fit, quantity){
 
   key <- quantity$extraction_key[[1L]]
@@ -954,8 +986,13 @@ parameter_gate_states <- function(fit, selection, draws = NULL){
 # when unavailable), and 'known' whether the atom states are determined (the
 # mixture indicator of a prior with a point component is monitored). The
 # states are read from the posterior draws of 'fit', or from 'model_samples'
-# (a matrix of fitted coordinates with one row per draw).
-.bt_parameter_gate_states <- function(fit, plan, n, model_samples = NULL){
+# (a matrix of fitted coordinates with one row per draw). With 'with_event',
+# a point plan of a mixture or spike-and-slab prior gives the inclusion event
+# of parameter_mixed_posterior(conditional = TRUE) (the draws of the
+# continuous components); parameter_gate_states() leaves it out (NULL), as the
+# other point plans have none.
+.bt_parameter_gate_states <- function(fit, plan, n, model_samples = NULL,
+                                      with_event = FALSE){
 
   if(is.null(plan)){
     return(NULL)
@@ -1041,7 +1078,9 @@ parameter_gate_states <- function(fit, selection, draws = NULL){
     return(list(
       atom    = plan$locations[component],
       defined = defined,
-      event   = NULL,
+      event   = if(isTRUE(with_event) && !is.null(plan$event_components)){
+        plan$event_components[component]
+      },
       known   = TRUE
     ))
   }
@@ -1130,6 +1169,7 @@ parameter_gate_states <- function(fit, selection, draws = NULL){
 
   list(
     kind        = "point",
+    origin      = "indicator",
     prior       = prior,
     locations   = as.numeric(components == quantity$component),
     prior_probabilities = .bt_prior_component_probabilities(prior),
@@ -1204,18 +1244,140 @@ parameter_gate_states <- function(fit, selection, draws = NULL){
   coordinates <- parameter_coordinates(fit)
   status <- coordinates$monitor_status[match(indicator, coordinates$coordinate_name)]
   known <- !is.na(status) && status %in% c("sampled", "structural")
+  event <- .bt_parameter_point_event_components(prior, locations)
 
   list(
     kind        = "point",
+    origin      = "prior",
+    owner       = owners,
     prior       = prior,
     locations   = locations,
     prior_probabilities = .bt_prior_component_probabilities(prior),
     indicator   = if(known) indicator,
     unknown     = !known,
     chain_gates = character(),
-    event_gates = character(),
+    # the inclusion event (parameter_mixed_posterior(conditional = TRUE)): the
+    # draws whose monitored indicator selects a continuous component
+    event_components = event$components,
+    event_reason     = event$reason,
+    event_gates = if(known && is.null(event$reason)) indicator else character(),
     event_rule  = "AND"
   )
+}
+
+# The inclusion event of a mixture or spike-and-slab prior with point
+# components, as the conditional summaries and as_mixed_posteriors() condition
+# it (.bt_random_effect_summary_prior_event(), .condition_event_label_posterior_mask()):
+# the 'alternative' components of a prior whose components are 'null' and
+# 'alternative'. They must be continuous, the point components of the plan
+# being the complement of the event. 'components' is the logical per component
+# of the prior; 'reason' states why the prior has no such event (those
+# conditional summaries and as_mixed_posteriors() then do not condition it, or
+# condition it on a component that has a point location).
+.bt_parameter_point_event_components <- function(prior, locations){
+
+  components <- attr(prior, "components", exact = TRUE)
+  if(!is.character(components) || length(components) != length(prior) ||
+     !all(components %in% c("null", "alternative"))){
+    return(list(
+      components = NULL,
+      reason = paste0(
+        "its prior has components other than 'null' and 'alternative', which ",
+        "define no single inclusion event"
+      )
+    ))
+  }
+  event <- components == "alternative"
+  continuous <- vapply(seq_along(prior), function(i){
+    is.na(locations[[i]]) && isFALSE(.bt_prior_has_point_component(prior[[i]]))
+  }, logical(1))
+  if(!any(event)){
+    return(list(
+      components = NULL,
+      reason = "its prior has no 'alternative' component"
+    ))
+  }
+  if(!all(continuous[event])){
+    return(list(
+      components = NULL,
+      reason = paste0(
+        "an 'alternative' component of its prior is not continuous, and the ",
+        "inclusion event cannot contain a point component"
+      )
+    ))
+  }
+
+  list(components = event, reason = NULL)
+}
+
+# Stops when the point plan of a quantity has no inclusion event for
+# parameter_mixed_posterior(conditional = TRUE), naming the source of the plan:
+# the point components of a mixture or spike-and-slab prior of the fitted
+# coordinates are conditioned on their continuous components; the branches of a
+# selection prior and the inclusion indicator of a component are not.
+.bt_parameter_point_event_check <- function(name, plan){
+
+  refuse <- function(reason){
+    stop(
+      "The inclusion event of '", name, "' is unavailable: ", reason,
+      ". Use 'conditional = FALSE'.",
+      call. = FALSE
+    )
+  }
+  if(identical(plan$origin, "selection")){
+    refuse(paste0(
+      "it is a coordinate of the selection prior of the fit (weight function, ",
+      "PET/PEESE, or p-hacking), which has no inclusion event for its coordinates"
+    ))
+  }
+  if(identical(plan$origin, "indicator")){
+    refuse("it is the inclusion indicator of a component of its prior")
+  }
+  if(isTRUE(plan$unknown)){
+    refuse(paste0(
+      "the component indicator of its prior is not monitored (the point ",
+      "components are not in the draws)"
+    ))
+  }
+  if(!is.null(plan$event_reason)){
+    refuse(plan$event_reason)
+  }
+
+  invisible(NULL)
+}
+
+# The fit with the prior of a point plan restricted to its inclusion event: the
+# mixture of its continuous ('alternative') components with their prior
+# probabilities renormalized to 1 (the component itself when there is one), as
+# .condition_event_model_options() builds the models of
+# as_mixed_posteriors(conditional = ). The prior density routes then give the
+# density of the quantity within the event, as for any prior of that kind.
+.bt_parameter_point_conditioned_fit <- function(fit, plan, name){
+
+  prior_list <- attr(fit, "prior_list", exact = TRUE)
+  options <- .condition_event_model_options(
+    prior_list,
+    .condition_event(prior_list, plan$owner, "AND")
+  )
+  restricted <- lapply(options$prior_lists, `[[`, plan$owner)
+  if(length(restricted) == 0L){
+    stop(
+      "The inclusion event of '", name, "' is unavailable: it has prior ",
+      "probability zero. Use 'conditional = FALSE'.",
+      call. = FALSE
+    )
+  }
+  prior_list[[plan$owner]] <- if(length(restricted) == 1L){
+    restricted[[1L]]
+  }else{
+    .prior_density_copy_parent_attributes(
+      prior_mixture(restricted, is_null = rep(FALSE, length(restricted))),
+      prior_list[[plan$owner]]
+    )
+  }
+  attr(fit, "prior_list") <- prior_list
+
+  fit
 }
 
 # The point plan of a coordinate of the selection prior of the fit (a
@@ -1313,6 +1475,7 @@ parameter_gate_states <- function(fit, selection, draws = NULL){
 
   list(
     kind        = "point",
+    origin      = "selection",
     prior       = prior,
     locations   = locations,
     prior_probabilities = if(length(branches) > 1L){

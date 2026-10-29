@@ -12,9 +12,9 @@ skip_if_not_test_profile("fixture")
 #   of fits with several formula parameters.
 #
 # MODELS/FIXTURES (test-00-model-fits.R):
-#   fit_hypothesis_hcs, fit_hypothesis_car, fit_label_random_slope,
-#   fit_re_summary_point_components, fit_dual_param_regression,
-#   fit_formula_treatment
+#   fit_hypothesis_hcs, fit_hypothesis_car, fit_hypothesis_spike_ar1,
+#   fit_label_random_slope, fit_re_summary_point_components,
+#   fit_dual_param_regression, fit_formula_treatment
 #
 # TAGS: @fixture, @hypothesis
 # ============================================================================ #
@@ -167,11 +167,55 @@ test_that("spike-and-slab coefficients are tested within their inclusion event",
                                seed = 1), "raw_log_BF")
   )
 
-  # the inclusion event of a random-effect quantity with point components is
-  # not available from parameter_mixed_posterior()
-  expect_error(hypothesis_BF(fit, "(mu) sd(intercept) > 0.1", conditional = TRUE),
-               "inclusion event of '\\(mu\\) sd\\(intercept\\)' is unavailable")
+})
 
+
+test_that("spike-and-slab random-effect SDs are tested within their inclusion event", {
+
+  fit <- .hypothesis_model_fixture_fit("fit_re_summary_point_components")
+  catalog <- parameter_catalog(fit)
+  three_step <- function(name, statement, ...){
+    draws <- parameter_mixed_posterior(
+      fit, parameter_catalog_resolve(catalog, name), ...
+    )
+    hypothesis_BF(draws, hypothesis = statement, seed = 1)
+  }
+
+  # conditional = TRUE equals the three-step extraction exactly: point values,
+  # regions, and the variance (tested through its SD, or on the variance draws)
+  for(case in list(
+    list(statement = "(mu) sd(intercept) = 0.5", name = "(mu) sd(intercept)",
+         manual = "`(mu) sd(intercept)` = 0.5"),
+    list(statement = "(mu) sd(intercept) > 0.1", name = "(mu) sd(intercept)",
+         manual = "`(mu) sd(intercept)` > 0.1"),
+    list(statement = "(mu) var(intercept) = 0.25", name = "(mu) sd(intercept)",
+         manual = "`(mu) sd(intercept)` = 0.5"),
+    list(statement = "(mu) var(intercept) > 0.04", name = "(mu) var(intercept)",
+         manual = "`(mu) var(intercept)` > 0.04")
+  )){
+    one_call <- hypothesis_BF(fit, case$statement, conditional = TRUE, seed = 1)
+    manual   <- three_step(case$name, case$manual, conditional = TRUE)
+    expect_identical(attr(one_call, "raw_log_BF"), attr(manual, "raw_log_BF"),
+                     info = case$statement)
+    expect_true(is.finite(attr(one_call, "raw_log_BF")), info = case$statement)
+  }
+
+  # a point null at the spike stops without conditional = TRUE; region tests keep
+  # working on the full ensemble
+  expect_error(hypothesis_BF(fit, "(mu) sd(intercept) = 0"),
+               class = "BayesTools_point_mass_at_null")
+  expect_error(hypothesis_BF(fit, "(mu) var(intercept) = 0", conditional = FALSE),
+               class = "BayesTools_point_mass_at_null")
+  region <- hypothesis_BF(fit, "(mu) sd(intercept) > 0.1", conditional = FALSE, seed = 1)
+  expect_identical(
+    attr(region, "raw_log_BF"),
+    attr(three_step("(mu) sd(intercept)", "`(mu) sd(intercept)` > 0.1"), "raw_log_BF")
+  )
+  expect_false(isTRUE(all.equal(
+    attr(region, "raw_log_BF"),
+    attr(hypothesis_BF(fit, "(mu) sd(intercept) > 0.1", conditional = TRUE, seed = 1),
+         "raw_log_BF")
+  )))
 })
 
 
@@ -206,4 +250,38 @@ test_that("factor levels and several formula parameters resolve by their names",
   expect_error(hypothesis_BF(fit, "mu_intercept > 0.5", namespace = "log_sigma"),
                class = "BayesTools_hypothesis_component_mismatch")
   expect_error(hypothesis_BF(fit, "mu_intercept > 0.5", namespace = "nothing"), "should be one of")
+})
+
+
+test_that("spike-and-slab structured correlations of a cached fit are tested within their inclusion event", {
+
+  fit <- .hypothesis_model_fixture_fit("fit_hypothesis_spike_ar1")
+  three_step <- function(name, statement, ...){
+    draws <- parameter_mixed_posterior(
+      fit, parameter_catalog_resolve(parameter_catalog(fit), name), ...
+    )
+    hypothesis_BF(draws, hypothesis = statement, seed = 1)
+  }
+  for(case in list(
+    list(statement = "(mu) cor = 0.2", name = "(mu) cor", manual = "`(mu) cor` = 0.2"),
+    list(statement = "(mu) cor > 0.1", name = "(mu) cor", manual = "`(mu) cor` > 0.1"),
+    list(statement = "(mu) sd = 0.5", name = "(mu) sd", manual = "`(mu) sd` = 0.5"),
+    list(statement = "(mu) var > 0.04", name = "(mu) var", manual = "`(mu) var` > 0.04")
+  )){
+    one_call <- hypothesis_BF(fit, case$statement, conditional = TRUE, seed = 1)
+    manual   <- three_step(case$name, case$manual, conditional = TRUE)
+    expect_identical(attr(one_call, "raw_log_BF"), attr(manual, "raw_log_BF"),
+                     info = case$statement)
+    expect_true(is.finite(attr(one_call, "raw_log_BF")), info = case$statement)
+  }
+
+  # a point null at a spike stops without conditional = TRUE; region tests keep
+  # working on the full ensemble
+  expect_error(hypothesis_BF(fit, "(mu) cor = 0", conditional = FALSE),
+               class = "BayesTools_point_mass_at_null")
+  expect_error(hypothesis_BF(fit, "(mu) sd = 0", conditional = FALSE),
+               class = "BayesTools_point_mass_at_null")
+  region <- hypothesis_BF(fit, "(mu) cor > 0.1", conditional = FALSE, seed = 1)
+  expect_identical(attr(region, "raw_log_BF"),
+                   attr(three_step("(mu) cor", "`(mu) cor` > 0.1"), "raw_log_BF"))
 })
