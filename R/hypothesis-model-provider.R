@@ -798,27 +798,37 @@ hypothesis_provider.BayesTools_fit <- function(object, ...){
       namespace = quantity[["namespace"]]
     )
   }
+  # The fit and the selection on the scale of a request: the catalog of the
+  # original scale describes the original-scale quantity (its status, support,
+  # atoms, gates, and extraction), so every callback that reads the quantity
+  # for draws on the fitted scale takes the fit without the predictor scales
+  # and the quantity of its catalog.
+  on_scale <- function(selection, transform_scaled){
+    if(transform_scaled){
+      return(list(fit = fit, selection = selection))
+    }
+
+    .bt_parameter_fitted_scale(fit, selection)
+  }
+  selected_on_scale <- function(selected){
+    on_scale(selected[["entry"]][["selection"]], !isTRUE(selected[["entry"]][["fitted_scale"]]))
+  }
 
   list(
     select = function(parameter, transform_scaled){
       entry     <- entry_of(parameter)
       selection <- selection_of(entry)
-      quantity  <- selection[["quantities"]]
-      # the quantity on the scale of the request (its support is the one of the
-      # draws): the catalog quantity of the fitted scale for transform_scaled =
-      # FALSE
-      on_scale  <- if(transform_scaled) selection else
-        .bt_parameter_fitted_scale(fit, selection)[["selection"]]
+      quantity  <- on_scale(selection, transform_scaled)[["selection"]][["quantities"]]
       list(
         entry = list(
-          parameter   = entry[["parameter"]],
-          quantity_id = entry[["quantity_id"]],
-          selection   = selection,
-          on_scale    = on_scale
+          parameter    = entry[["parameter"]],
+          quantity_id  = entry[["quantity_id"]],
+          selection    = selection,
+          fitted_scale = !transform_scaled
         ),
         spec  = list(
-          label   = quantity[["canonical_name"]],
-          status  = quantity[["status"]],
+          label    = quantity[["canonical_name"]],
+          status   = quantity[["status"]],
           quantity = quantity[["quantity"]]
         )
       )
@@ -843,7 +853,7 @@ hypothesis_provider.BayesTools_fit <- function(object, ...){
       out
     },
     support = function(selected){
-      support <- selected[["entry"]][["on_scale"]][["quantities"]][["support"]][[1L]]
+      support <- selected_on_scale(selected)[["selection"]][["quantities"]][["support"]][[1L]]
       if(is.null(support) || !isTRUE(support[["exact"]])){
         return(c(-Inf, Inf))
       }
@@ -858,10 +868,11 @@ hypothesis_provider.BayesTools_fit <- function(object, ...){
       )
     },
     sd_pair = function(selected){
-      .hypothesis_model_default_sd_pair(fit, selected)
+      scaled <- selected_on_scale(selected)
+      .hypothesis_model_default_sd_pair(scaled[["fit"]], scaled[["selection"]])
     },
     zero_boundary = function(selected){
-      quantity <- selected[["entry"]][["selection"]][["quantities"]]
+      quantity <- selected_on_scale(selected)[["selection"]][["quantities"]]
       key      <- quantity[["extraction_key"]][[1L]]
       if(!identical(quantity[["quantity"]], "sd") ||
          !isTRUE(key[["allocation_derived"]])){
@@ -876,7 +887,8 @@ hypothesis_provider.BayesTools_fit <- function(object, ...){
       }
       n_draws <- nrow(as.matrix(.fit_to_posterior(fit)))
       if(isTRUE(conditional)){
-        states  <- parameter_gate_states(fit, selected[["entry"]][["selection"]])
+        scaled  <- selected_on_scale(selected)
+        states  <- parameter_gate_states(scaled[["fit"]], scaled[["selection"]])
         n_draws <- sum(states[["event"]])
       }
       if(length(values) >= n_draws) return(NULL)
@@ -892,13 +904,11 @@ hypothesis_provider.BayesTools_fit <- function(object, ...){
         seed          = seed,
         formula_scale = list()
       )
+      scaled <- on_scale(selected[["entry"]][["selection"]], transform_scaled)
       extraction_fit <- JAGS_with_draws(
-        fit, coda::mcmc.list(coda::mcmc(raw_samples))
+        scaled[["fit"]], coda::mcmc.list(coda::mcmc(raw_samples))
       )
-      if(!transform_scaled){
-        attr(extraction_fit, "formula_scale") <- list()
-      }
-      draws   <- parameter_draws(extraction_fit, selected[["entry"]][["selection"]])
+      draws   <- parameter_draws(extraction_fit, scaled[["selection"]])
       samples <- as.matrix(draws)
       colnames(samples) <- parameter
       declared <- posterior_metadata(draws, "undefined_draws")
@@ -913,12 +923,12 @@ hypothesis_provider.BayesTools_fit <- function(object, ...){
 }
 
 
-# The standard deviation whose square is the selected variance quantity (the
-# catalog quantity with the same owner and component, and the standard
-# deviation evaluator of the variance's extraction key), or NULL.
-.hypothesis_model_default_sd_pair <- function(fit, selected){
+# The standard deviation whose square is the variance quantity of 'selection'
+# (the catalog quantity of 'fit' with the same owner and component, and the
+# standard deviation evaluator of the variance's extraction key), or NULL.
+.hypothesis_model_default_sd_pair <- function(fit, selection){
 
-  quantity <- selected[["entry"]][["selection"]][["quantities"]]
+  quantity <- selection[["quantities"]]
   key      <- quantity[["extraction_key"]][[1L]]
   sd_evaluator <- switch(
     as.character(key[["evaluator"]]),

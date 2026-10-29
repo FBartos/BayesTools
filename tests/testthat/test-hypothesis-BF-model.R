@@ -2732,7 +2732,7 @@ test_that("different level expressions with equal fitted weights are separate gr
 .hypothesis_model_test_scaled_fit <- function(prior_random, formula, z = FALSE,
                                               x_prior = prior("normal", list(0, 1)),
                                               formula_scale = TRUE, n = 2000L,
-                                              seed = 42L){
+                                              seed = 42L, priors_hook = NULL){
 
   data <- data.frame(x = .hypothesis_model_test_x_values(),
                      z = rep(c(1, 5, 2), 4L), g = factor(rep(1:4, each = 3L)))
@@ -2740,6 +2740,8 @@ test_that("different level expressions with equal fitted weights are separate gr
   if(z) priors$z <- prior("normal", list(0, 1))
   compiled <- JAGS_formula(formula, "mu", data, priors, prior_random = prior_random,
                            formula_scale = formula_scale)
+  # 'priors_hook' replaces priors of the compiled prior list
+  if(is.function(priors_hook)) compiled$prior_list <- priors_hook(compiled)
   draws <- .generate_prior_sample_matrix(compiled$prior_list, n, seed = seed)
 
   .parameter_catalog_test_fit(
@@ -3178,5 +3180,129 @@ test_that("the messages name the argument that the provider selects the componen
     expect_error(hypothesis_BF_model(broken, "mu_x = 0.1"),
                  "'component_argument' must be a string or NULL", fixed = TRUE)
   }
+
+})
+
+
+# A runjags-class fit of a standardized block of the nested variance
+# allocations of the study and drug terms; it monitors the Cholesky factor of
+# the correlation of the study block and not the primitive LKJ variables.
+.hypothesis_model_test_scaled_allocation_fit <- function(n = 1000L, seed = 42L){
+
+  compiled <- JAGS_formula(
+    ~ 1 + random(1 + x | study, name = "study", covariance = "us") +
+      random(1 | drug, name = "drug", covariance = "diag"),
+    "mu",
+    data.frame(study = factor(rep(1:4, each = 3L)), drug = factor(rep(1:3, 4L)),
+               x = rep(c(2, 4, 6), 4L)),
+    list(intercept = prior("normal", list(0, 1))), formula_scale = TRUE,
+    prior_random = prior_random(
+      root  = random_variance_allocation(
+        name = "root", terms = c(study = "study", drug = "drug"),
+        sd = prior("gamma", list(2, 2))
+      ),
+      split = random_variance_allocation(
+        name = "split", terms = "study", target = "sd_component",
+        parent = allocation_ref("root", "study")
+      ),
+      study = random_block(cor = prior_lkj(2))
+    )
+  )
+  draws <- .generate_prior_sample_matrix(compiled$prior_list, n, seed = seed)
+  term  <- compiled$formula_design$random_effects[[1L]]
+  r     <- 2 * stats::rbeta(n, 2, 2) - 1
+  cholesky <- cbind(1, r, 0, sqrt(1 - r^2))
+  colnames(cholesky) <- as.vector(.bt_random_effect_cholesky_names(term, 2L))
+  draws <- cbind(
+    draws[, !colnames(draws) %in% term$correlation$primitive_names, drop = FALSE],
+    cholesky[, !colnames(cholesky) %in% colnames(draws), drop = FALSE]
+  )
+
+  chains  <- coda::mcmc.list(coda::mcmc(draws))
+  carrier <- .parameter_catalog_test_fit(
+    chains, compiled$prior_list,
+    list(mu = compiled$formula_design), list(mu = compiled$formula_scale)
+  )
+  fit <- structure(
+    list(mcmc = chains, sample = n, summary.pars = list(mutate = NULL),
+         monitor = colnames(draws)),
+    class = c("runjags", "BayesTools_fit", "list")
+  )
+  for(name in c("prior_list", "formula_design", "formula_scale", "parameter_map")){
+    attr(fit, name) <- attr(carrier, name)
+  }
+  fit <- .bt_attach_draw_geometry(fit)
+
+  .bt_attach_fit_contract(fit)
+}
+
+
+test_that("the prior draws of a standardized block are extracted with the catalog of the fitted scale", {
+
+  fit <- .hypothesis_model_test_scaled_allocation_fit()
+  selection <- .hypothesis_model_test_select(fit, "(mu) study: sd(x)")
+  scaled <- .bt_parameter_fitted_scale(fit, selection)
+  # the original-scale SD of the standardized slope needs the Cholesky factor
+  # (not monitored); the fitted-scale SD does not
+  expect_true(any(grepl("_CORx_L", selection$quantities$extraction_key[[1L]]$dependencies)))
+  expect_false(any(grepl("_CORx_L", scaled$selection$quantities$extraction_key[[1L]]$dependencies)))
+
+  # region hypotheses on a quantity whose prior has no density with provenance
+  # take their prior probabilities from prior draws
+  result <- hypothesis_BF(fit, "(mu) study: sd(x) > 0.5", seed = 1, n_samples = 1000L)
+  expect_s3_class(result, "BayesTools_hypothesis_BF")
+  raw <- transform_prior_samples(fit, n_samples = 1000L, seed = 1, formula_scale = list())
+  prior_values <- as.numeric(as.matrix(parameter_draws(
+    JAGS_with_draws(scaled$fit, coda::mcmc.list(coda::mcmc(raw))), scaled$selection
+  )))
+  posterior <- parameter_mixed_posterior(fit, selection, transform_scaled = FALSE)
+  expect_identical(
+    attr(result, "raw_log_BF"),
+    attr(hypothesis_BF.default(
+      posterior = as.numeric(posterior), prior = prior_values,
+      hypothesis = "q > 0.5", parameter = "q", seed = 1
+    ), "raw_log_BF")
+  )
+  # the provider callback is the same extraction
+  provider <- hypothesis_provider(fit)
+  selected <- provider$random$select("(mu) study: sd(x)", FALSE)
+  expect_identical(
+    as.numeric(provider$random$prior_draws("(mu) study: sd(x)", selected, FALSE, 1000L, 1)$samples),
+    prior_values
+  )
+
+})
+
+
+test_that("a quantity that is fixed on the fitted scale is refused as fixed", {
+
+  # the fitted SD of the intercept is fixed and the SD of the slope is sampled:
+  # the original-scale SD of the intercept combines both and is sampled
+  fit <- .hypothesis_model_test_scaled_fit(
+    prior_random(g = random_block(sd = prior("spike", list(1.5)))),
+    ~ 1 + x + (1 + x || g), n = 1000L, seed = 2L,
+    priors_hook = function(compiled){
+      sd_names <- unique(compiled$formula_design$random_effects[[1L]]$sd_parameter_names)
+      compiled$prior_list[[sd_names[[2L]]]] <- prior("uniform", list(1, 2))
+      compiled$prior_list
+    }
+  )
+  selection <- .hypothesis_model_test_select(fit, "(mu) sd(intercept)")
+  expect_false(identical(selection$quantities$status, "structural"))
+  expect_identical(
+    .bt_parameter_fitted_scale(fit, selection)$selection$quantities$status, "structural"
+  )
+  for(statement in c("(mu) sd(intercept) > 1", "(mu) var(intercept) > 1")){
+    expect_error(hypothesis_BF(fit, statement, seed = 1),
+                 class = "BayesTools_hypothesis_fixed", info = statement)
+  }
+  quantities <- hypothesis_quantities(fit)
+  fixed <- quantities[quantities$parameter %in% c("(mu) sd(intercept)", "(mu) var(intercept)"), ]
+  expect_identical(fixed$point_test, c(FALSE, FALSE))
+  expect_identical(fixed$direction_test, c(FALSE, FALSE))
+  expect_match(fixed$reason, "is fixed by the fitted model", fixed = TRUE)
+  # the sampled SD of the slope is tested
+  expect_s3_class(hypothesis_BF(fit, "(mu) sd(x) > 1.2", seed = 1), "BayesTools_hypothesis_BF")
+  expect_true(quantities$point_test[quantities$parameter == "(mu) sd(x)"])
 
 })

@@ -287,3 +287,49 @@ test_that("spike-and-slab structured correlations of a cached fit are tested wit
   expect_identical(attr(region, "raw_log_BF"),
                    attr(three_step("(mu) cor", "`(mu) cor` > 0.1"), "raw_log_BF"))
 })
+
+
+test_that("the random-effect callbacks of the default provider read the quantity on the requested scale", {
+
+  # the fitted-scale quantity of a standardized block is a direct coordinate,
+  # the original-scale quantity of the intercept SD is a composite
+  fit <- .hypothesis_model_fixture_fit("fit_label_random_slope")
+  provider <- hypothesis_provider(fit)
+  seen <- list()
+  local_mocked_bindings(
+    .hypothesis_model_default_sd_pair = function(fit, selection){
+      seen[[length(seen) + 1L]] <<- list(
+        scales = length(attr(fit, "formula_scale", exact = TRUE)),
+        source = selection$quantities$source_type
+      )
+      NULL
+    },
+    .package = "BayesTools"
+  )
+  for(transform_scaled in c(FALSE, TRUE)){
+    selected <- provider$random$select("(mu) sd(intercept)", transform_scaled)
+    provider$random$sd_pair(selected)
+  }
+  expect_identical(seen[[1L]]$source, "identity")
+  expect_identical(seen[[1L]]$scales, 0L)
+  expect_identical(seen[[2L]]$source, "composite")
+  expect_gt(seen[[2L]]$scales, 0L)
+
+  # the eligible draws of a conditional quantity are those in the inclusion
+  # event of the gates of the fitted-scale quantity
+  fit <- .hypothesis_model_fixture_fit("fit_re_summary_allocated")
+  provider <- hypothesis_provider(fit)
+  parameter <- "(mu) s: sd(intercept)"
+  selected  <- provider$random$select(parameter, FALSE)
+  expect_null(parameter_gate_states(fit, selected$entry$selection)$event)
+  conditioned <- parameter_mixed_posterior(
+    fit, selected$entry$selection, conditional = TRUE, transform_scaled = FALSE
+  )
+  partial <- as.numeric(conditioned)[-1L]
+  posterior_metadata(partial, "undefined_draws") <- stats::setNames("test", parameter)
+  expect_equal(
+    provider$random$defined_share(partial, selected, conditional = TRUE),
+    list(defined = length(conditioned) - 1L, eligible = length(conditioned))
+  )
+
+})
