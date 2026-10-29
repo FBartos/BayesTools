@@ -77,28 +77,33 @@ vignette_cache_eval <- function(cache) {
     (!length(vignette_cache_missing(cache)) || vignette_cache_refit())
 }
 
-# A chunk's key covers its code without comments or formatting, the values of the
-# workspace objects the code references, and the keys of the cached objects it uses.
+vignette_cache_md5 <- function(lines) {
+
+  file <- tempfile()
+  on.exit(unlink(file))
+  writeLines(as.character(lines), file)
+  unname(tools::md5sum(file))
+}
+
+# A chunk's key has one "<input> <md5>" line for its code without comments or
+# formatting, one for each workspace object the code references (its deparsed
+# value), and one for each cached object it uses (that object's key).
 vignette_cache_key <- function(cache, options, envir) {
 
-  code  <- parse(text = options$code, keep.source = FALSE)
-  input <- lapply(code, deparse)
-  used  <- setdiff(unique(all.names(code)), options$cache_fits)
-  used  <- used[vapply(used, exists, logical(1), envir = envir, inherits = FALSE)]
+  code <- parse(text = options$code, keep.source = FALSE)
+  used <- setdiff(unique(all.names(code)), options$cache_fits)
+  used <- sort(used[vapply(used, exists, logical(1), envir = envir, inherits = FALSE)])
 
-  for (name in sort(used)) {
-    value <- if (name %in% names(cache)) {
-      vignette_cache_read_key(cache[name])
+  hashes <- vapply(used, function(name) {
+    if (name %in% names(cache)) {
+      vignette_cache_md5(vignette_cache_read_key(cache[name])[[1]])
     } else {
-      deparse(get(name, envir = envir, inherits = FALSE))
+      vignette_cache_md5(deparse(get(name, envir = envir, inherits = FALSE)))
     }
-    input <- c(input, name, value)
-  }
+  }, character(1))
 
-  key_file <- tempfile()
-  on.exit(unlink(key_file))
-  writeLines(as.character(unlist(input)), key_file)
-  unname(tools::md5sum(key_file))
+  c(paste(".code", vignette_cache_md5(unlist(lapply(code, deparse)))),
+    paste(used, hashes))
 }
 
 vignette_cache_key_paths <- function(cache) {
@@ -106,11 +111,17 @@ vignette_cache_key_paths <- function(cache) {
   sub("\\.[Rr][Dd][Ss]$", ".key", unname(cache))
 }
 
+# Returns one key per object; NULL when the key file is missing or predates
+# the "<input> <md5>" format.
 vignette_cache_read_key <- function(cache) {
 
-  vapply(vignette_cache_key_paths(cache), function(path) {
-    if (file.exists(path)) readLines(path, n = 1L, warn = FALSE) else NA_character_
-  }, character(1), USE.NAMES = FALSE)
+  lapply(vignette_cache_key_paths(cache), function(path) {
+    if (!file.exists(path)) {
+      return(NULL)
+    }
+    key <- readLines(path, warn = FALSE)
+    if (!length(key) || !all(grepl(" ", key))) NULL else key
+  })
 }
 
 vignette_cache_write_key <- function(cache, key) {
@@ -119,6 +130,12 @@ vignette_cache_write_key <- function(cache, key) {
     writeLines(key, path)
   }
   invisible(cache)
+}
+
+vignette_cache_changed_inputs <- function(stored_key, key) {
+
+  inputs <- function(lines) sub(" .*$", "", lines)
+  sort(unique(c(inputs(setdiff(key, stored_key)), inputs(setdiff(stored_key, key)))))
 }
 
 vignette_cache_setup <- function(cache) {
@@ -137,22 +154,25 @@ vignette_cache_setup <- function(cache) {
 
     if (!length(vignette_cache_missing(chunk_cache))) {
       stored_key <- vignette_cache_read_key(chunk_cache)
-      changed    <- !is.na(stored_key) & stored_key != options$cache_key
+      unkeyed    <- vapply(stored_key, is.null, logical(1))
+      changed    <- !unkeyed & !vapply(stored_key, identical, logical(1), options$cache_key)
+      inputs     <- vignette_cache_changed_inputs(unlist(stored_key[changed]), options$cache_key)
 
       if (any(changed) && vignette_cache_refit()) {
-        message("Refitting cached vignette objects with changed inputs: ",
-                paste(objects, collapse = ", "))
+        message("Refitting cached vignette objects ", paste(objects, collapse = ", "),
+                "; changed inputs: ", paste(inputs, collapse = ", "))
         options$error <- FALSE
         return(options)
       }
       if (any(changed)) {
         warning("Cached vignette objects were created from different inputs: ",
-                paste(objects[changed], collapse = ", "),
-                ". Enable refitting or delete their RDS files.", call. = FALSE)
+                paste(objects[changed], collapse = ", "), " (changed: ",
+                paste(inputs, collapse = ", "),
+                "). Enable refitting or delete their RDS files.", call. = FALSE)
       }
       # Caches saved before keys existed are adopted as they are.
-      if (anyNA(stored_key) && vignette_cache_refit()) {
-        vignette_cache_write_key(chunk_cache[is.na(stored_key)], options$cache_key)
+      if (any(unkeyed) && vignette_cache_refit()) {
+        vignette_cache_write_key(chunk_cache[unkeyed], options$cache_key)
       }
       vignette_cache_load(chunk_cache, envir = knitr::knit_global())
       options$eval <- FALSE

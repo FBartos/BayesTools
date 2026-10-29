@@ -56,16 +56,19 @@ builds with vignette building enabled can generate missing fits too. Set
 `R CMD build --no-build-vignettes` when rendering is not needed. An R option
 in the calling session does not configure a separate R process.
 
-The key of a cached chunk hashes its code without comments or formatting, the
-deparsed values of the workspace objects the code references, and the keys of
-the cached objects it uses. Changing a model's code or its priors therefore
-refits that chunk on the next knit, and a refitted model refits the
-marginal-likelihood chunks that use it. Keys do not track package versions,
-but deparsed objects built by package functions, such as priors, change when
-a package changes their structure; refitting an unchanged model with its seed
-reproduces the same draws. Removing an RDS file forces a refit of its chunk
-only: the key is unchanged, so remove dependent caches too. With refitting disabled, a changed key
-loads the existing cache with a warning. Existing caches without a `.key` file
+A cached chunk's `.key` file has one `<input> <md5>` line for its code without
+comments or formatting, one per workspace object the code references (its
+deparsed value), and one per cached object it uses (that object's key).
+Changing a model's code or its priors therefore refits that chunk on the next
+knit, and a refitted model refits the marginal-likelihood chunks that use it;
+the knit message names the changed inputs. Keys do not track package versions,
+but deparsed objects built by package functions, such as priors, change when a
+package changes their structure; refitting an unchanged model with its seed
+reproduces the same draws. Knit with one package build at a time: two builds
+that deparse an object differently refit each other's caches. Removing an RDS
+file forces a refit of its chunk only: the key is unchanged, so remove
+dependent caches too. With refitting disabled, a changed key loads the existing
+cache with a warning. Caches without a key file, or with an older key format,
 are adopted when knitting with refitting enabled; commit the `.key` files with
 their RDS files.
 For rendering without fitting, set `options(BayesTools.vignette_refit = FALSE)`
