@@ -270,11 +270,19 @@
         weights <- .hypothesis_model_linear_weights(posterior_metadata(sample, "linear_weights"))
         if(length(weights)){
           available <- tryCatch(.hypothesis_model_fitted_linear_weights(provider, sample, weights),
-            BayesTools_hypothesis_cause = function(condition) condition,
+            BayesTools_fitted_linear_weights_unavailable = function(condition) condition,
             BayesTools_formula_measure_unavailable = function(condition) condition)
           if(inherits(available, "condition")){
-            refusal <- .hypothesis_model_refusal_from_condition(available)
-            refusal[["class"]] <- unique(c(.hypothesis_model_refusal(conditionMessage(available), "method")[["class"]], refusal[["class"]]))
+            # a stochastic multiplier is the method refusal for its cause (the
+            # backend adds its classes); a declared measure refusal keeps its
+            # classes and fields after those of the method refusal
+            refusal <- if(inherits(available, "BayesTools_fitted_linear_weights_unavailable")){
+              .hypothesis_model_weights_refusal(available)
+            }else{
+              refusal <- .hypothesis_model_refusal_from_condition(available)
+              refusal[["class"]] <- unique(c(.hypothesis_model_refusal(conditionMessage(available), "method")[["class"]], refusal[["class"]]))
+              refusal
+            }
             if(is.null(method_refusals[["ordinate"]])) method_refusals[["ordinate"]] <<- refusal
           }
         }
@@ -379,7 +387,7 @@
   weights <- .hypothesis_model_linear_weights(target[["weights"]])
   density <- posterior_metadata(target[["posterior"]], "prior_density")
   fitted <- tryCatch(.hypothesis_model_fitted_linear_weights(provider, target$posterior, weights),
-    BayesTools_hypothesis_cause = function(condition) condition)
+    BayesTools_fitted_linear_weights_unavailable = function(condition) condition)
   spec <- if(inherits(fitted, "condition")) list(type = "unsupported_formula_transform",
     weights = numeric(), prior_density = density, reason = conditionMessage(fitted)) else
     list(type = "linear", weights = fitted, prior_density = density)

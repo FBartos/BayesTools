@@ -106,17 +106,30 @@
 }
 
 
-# The error with which a helper of the planning reports an ordinate cause; the
-# planning turns it into a refusal of the plan (the class
-# "BayesTools_hypothesis_cause").
-.hypothesis_model_stop_cause <- function(reason, cause) {
+# The condition with which posterior_fitted_linear_weights() reports that the
+# weights of formula contributions have no raw fitted linear projection (the
+# multiplier of a contribution is stochastic). It is no refusal of a
+# hypothesis: the planning turns it into the refusal of the ordinate backends
+# for its 'cause' (.hypothesis_model_weights_refusal()), and other callers
+# (plots) give it their own classes.
+.hypothesis_model_stop_stochastic_weights <- function(message) {
 
-  refusal <- .hypothesis_model_cause_refusal(reason, cause)
   stop(structure(
-    class = c(refusal[["class"]], "BayesTools_hypothesis_cause", "error",
-              "condition"),
-    list(message = reason, call = NULL, cause = cause)
+    class = c("BayesTools_fitted_linear_weights_unavailable",
+              "BayesTools_formula_transform_unavailable", "error", "condition"),
+    list(message = message, call = NULL, reason = "stochastic_multiplier",
+         cause = "original_scale")
   ))
+}
+
+
+# The refusal of the ordinate backends that a
+# "BayesTools_fitted_linear_weights_unavailable" condition stands for: the
+# method refusal of its message for its cause, to which a density backend
+# appends its classes.
+.hypothesis_model_weights_refusal <- function(condition) {
+
+  .hypothesis_model_cause_refusal(conditionMessage(condition), condition[["cause"]])
 }
 
 
@@ -1016,11 +1029,10 @@ JAGS_formula_coefficient_route <- function(fit, parameter, target,
     multiplier <- attr(priors[[owner]], "multiply_by", exact = TRUE)
     if(is.null(multiplier)) next
     if(!is.numeric(multiplier) || length(multiplier) != 1L || !is.finite(multiplier)){
-      .hypothesis_model_stop_cause(paste0(
+      .hypothesis_model_stop_stochastic_weights(paste0(
         provider[["ordinate_label"]],
         " are unavailable for stochastic formula contribution products. ",
-        "Use density_method = 'KDE'."),
-        "original_scale")
+        "Use density_method = 'KDE'."))
     }
     out[columns] <- out[columns] * multiplier
   }
@@ -1042,20 +1054,31 @@ JAGS_formula_coefficient_route <- function(fit, parameter, target,
 #' \code{posterior_linear_weight_space()} returns the coordinate space of the
 #' linear weights of the draws (\code{"coefficient"} or
 #' \code{"formula_contribution"}, \code{NULL} without weights) and stops with
-#' \code{BayesTools_refit_required} for outdated metadata.
+#' \code{BayesTools_refit_required} (preceded by \code{refit_class}) for
+#' outdated metadata.
 #' \code{posterior_fitted_linear_weights()} returns the weights on the fitted
 #' coordinates, with the declared constant multipliers of formula
 #' contributions folded in; stochastic multipliers have no raw fitted linear
 #' projection and stop with the classes
-#' \code{BayesTools_hypothesis_method}, \code{BayesTools_hypothesis_unavailable},
-#' and \code{BayesTools_hypothesis_cause} (the field \code{cause} is
-#' \code{"original_scale"}).
+#' \code{BayesTools_fitted_linear_weights_unavailable} and its parent
+#' \code{BayesTools_formula_transform_unavailable} (and no class of a
+#' hypothesis refusal, so that a caller outside of [hypothesis_BF()] gives it
+#' its own). The condition has the fields \code{reason}
+#' (\code{"stochastic_multiplier"}) and \code{cause} (\code{"original_scale"},
+#' the cause for which the density backends of a hypothesis refuse the
+#' target); its message says that the ordinate density methods are
+#' unavailable.
 #'
 #' @param sample posterior draws with metadata ([posterior_metadata()]).
 #' @param measure the measure to check.
 #' @param weights a named numeric vector of weights on the fitted coordinates.
 #' @param ordinate_label how the message names the density methods that
 #'   compute posterior ordinates.
+#' @param build the name of the build in the request to refit a model with
+#'   outdated metadata ("Recreate the posterior with the current <build>
+#'   build.").
+#' @param refit_class condition classes that precede
+#'   \code{BayesTools_refit_required} in that request, or \code{NULL}.
 #'
 #' @seealso [posterior_measure_check()], [hypothesis_BF()]
 #' @rdname posterior_linear_target_checks
@@ -1070,10 +1093,15 @@ posterior_formula_measure_check <- function(sample, measure){
 
 #' @rdname posterior_linear_target_checks
 #' @export
-posterior_linear_weight_space <- function(sample){
+posterior_linear_weight_space <- function(sample, build = "BayesTools",
+                                          refit_class = NULL){
+
+  check_char(build, "build", check_length = 1, allow_NA = FALSE)
+  check_char(refit_class, "refit_class", check_length = 0, allow_NULL = TRUE,
+             allow_NA = FALSE)
 
   .hypothesis_model_linear_weight_space(
-    list(build = "BayesTools", refit_class = NULL), sample
+    list(build = build, refit_class = refit_class), sample
   )
 }
 
@@ -1081,12 +1109,17 @@ posterior_linear_weight_space <- function(sample){
 #' @rdname posterior_linear_target_checks
 #' @export
 posterior_fitted_linear_weights <- function(sample, weights,
-                                            ordinate_label = "Ordinate density methods"){
+                                            ordinate_label = "Ordinate density methods",
+                                            build = "BayesTools",
+                                            refit_class = NULL){
 
   check_char(ordinate_label, "ordinate_label", check_length = 1, allow_NA = FALSE)
+  check_char(build, "build", check_length = 1, allow_NA = FALSE)
+  check_char(refit_class, "refit_class", check_length = 0, allow_NULL = TRUE,
+             allow_NA = FALSE)
 
   .hypothesis_model_fitted_linear_weights(
-    list(build = "BayesTools", refit_class = NULL,
+    list(build = build, refit_class = refit_class,
          ordinate_label = ordinate_label),
     sample, weights
   )
@@ -1596,7 +1629,7 @@ posterior_fitted_linear_weights <- function(sample, weights,
   weights <- weights[weights != 0]
   if(!is.null(sample) && identical(.hypothesis_model_linear_weight_space(provider, sample), "formula_contribution")){
     folded <- tryCatch(.hypothesis_model_fitted_linear_weights(provider, sample, weights),
-      BayesTools_hypothesis_cause = function(condition) condition)
+      BayesTools_fitted_linear_weights_unavailable = function(condition) condition)
     if(inherits(folded, "condition")) return(list(prior_density = density,
       weights = numeric(), static = FALSE, reason = conditionMessage(folded)))
     return(list(prior_density = density, weights = folded, static = TRUE))

@@ -8,18 +8,27 @@
 \usage{
 posterior_formula_measure_check(sample, measure)
 
-posterior_linear_weight_space(sample)
+posterior_linear_weight_space(sample, build = "BayesTools", refit_class = NULL)
 
 posterior_fitted_linear_weights(
   sample,
   weights,
-  ordinate_label = "Ordinate density methods"
+  ordinate_label = "Ordinate density methods",
+  build = "BayesTools",
+  refit_class = NULL
 )
 }
 \arguments{
 \item{sample}{posterior draws with metadata (\code{\link[=posterior_metadata]{posterior_metadata()}}).}
 
 \item{measure}{the measure to check.}
+
+\item{build}{the name of the build in the request to refit a model with
+outdated metadata ("Recreate the posterior with the current \if{html}{\out{<build>}}
+build.").}
+
+\item{refit_class}{condition classes that precede
+\code{BayesTools_refit_required} in that request, or \code{NULL}.}
 
 \item{weights}{a named numeric vector of weights on the fitted coordinates.}
 
@@ -39,14 +48,20 @@ target.
 \code{posterior_linear_weight_space()} returns the coordinate space of the
 linear weights of the draws (\code{"coefficient"} or
 \code{"formula_contribution"}, \code{NULL} without weights) and stops with
-\code{BayesTools_refit_required} for outdated metadata.
+\code{BayesTools_refit_required} (preceded by \code{refit_class}) for
+outdated metadata.
 \code{posterior_fitted_linear_weights()} returns the weights on the fitted
 coordinates, with the declared constant multipliers of formula
 contributions folded in; stochastic multipliers have no raw fitted linear
 projection and stop with the classes
-\code{BayesTools_hypothesis_method}, \code{BayesTools_hypothesis_unavailable},
-and \code{BayesTools_hypothesis_cause} (the field \code{cause} is
-\code{"original_scale"}).
+\code{BayesTools_fitted_linear_weights_unavailable} and its parent
+\code{BayesTools_formula_transform_unavailable} (and no class of a
+hypothesis refusal, so that a caller outside of \code{\link[=hypothesis_BF]{hypothesis_BF()}} gives it
+its own). The condition has the fields \code{reason}
+(\code{"stochastic_multiplier"}) and \code{cause} (\code{"original_scale"},
+the cause for which the density backends of a hypothesis refuse the
+target); its message says that the ordinate density methods are
+unavailable.
 }
 \seealso{
 \code{\link[=posterior_measure_check]{posterior_measure_check()}}, \code{\link[=hypothesis_BF]{hypothesis_BF()}}

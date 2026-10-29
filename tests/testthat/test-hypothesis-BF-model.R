@@ -11,7 +11,7 @@ skip_if_not_test_profile("unit")
 #
 # ============================================================================ #
 
-.hypothesis_model_test_fit <- function(seed = 3L, n = 400L){
+.hypothesis_model_test_fit <- function(seed = 3L, n = 400L, formula_scale = TRUE){
 
   set.seed(seed)
   data <- data.frame(x = c(-2, -1, 0, 3, 5, 7), f = factor(rep(c("A", "B", "C"), 2)))
@@ -20,7 +20,7 @@ skip_if_not_test_profile("unit")
     x         = prior("normal", list(0, 1)),
     f         = prior_factor("normal", list(0, 1), contrast = "treatment")
   )
-  compiled <- JAGS_formula(~ 1 + x + f, "mu", data, priors, formula_scale = TRUE)
+  compiled <- JAGS_formula(~ 1 + x + f, "mu", data, priors, formula_scale = formula_scale)
   columns  <- c("mu_intercept", "mu_x", "mu_f[1]", "mu_f[2]")
   draws <- cbind(
     matrix(stats::rnorm(n * length(columns), 0.3, 0.5), n, length(columns),
@@ -692,13 +692,34 @@ test_that("a marginal-means provider is tested on its stored marginal inference"
   )
 }
 
+# The draws 'sample' of a level of 'mu_f' as the contribution of a formula term
+# multiplied by 'multiplier' (a number, or the name of a parameter); 'scaled'
+# declares a scaling of the coefficients that the weights cannot be remapped
+# through.
+.hypothesis_model_formula_contribution <- function(sample, multiplier, scaled = FALSE){
+
+  posterior_metadata(sample, "linear_weight_space") <- "formula_contribution"
+  context <- posterior_metadata(sample, "prior_context")
+  attr(context$prior_list$mu_f, "multiply_by") <- multiplier
+  if(scaled){
+    context$formula_scale <- list(mu = list(x = 1))
+  }
+  posterior_metadata(sample, "prior_context") <- context
+
+  sample
+}
+
 # A model with a marginal-means provider that stores the marginal posterior of
-# the levels of 'f'; 'overrides' replace elements of the provider.
-.hypothesis_model_toy_marginal <- function(fit, class, ...){
+# the levels of 'f' ('levels_hook' changes them); '...' replace elements of the
+# provider.
+.hypothesis_model_toy_marginal <- function(fit, class, levels_hook = NULL, ...){
 
   samples <- as_mixed_posteriors(fit, "mu_f", n_prior_samples = 2000)
   levels  <- marginal_posterior(samples, "mu_f", prior_samples = TRUE,
                                 use_formula = FALSE, n_samples = 2000)
+  if(is.function(levels_hook)){
+    levels <- levels_hook(levels)
+  }
   overrides <- list(...)
   registerS3method("hypothesis_provider", class, function(object, ...){
     provider <- list(
@@ -1235,6 +1256,140 @@ test_that("every callback of a backend receives the request of its group", {
     expect_identical(state$warnings[[1L]]$kind, "level")
     expect_identical(state$warnings[[1L]]$level, "B")
     expect_identical(state$requests[[2L]]$level, "C")
+  })
+
+})
+
+
+test_that("the fitted linear weights of stochastic products raise their own condition", {
+
+  fit     <- .hypothesis_model_test_fit(formula_scale = FALSE)
+  samples <- as_mixed_posteriors(fit, "mu_f", n_prior_samples = 500)
+  levels  <- marginal_posterior(samples, "mu_f", prior_samples = TRUE,
+                                use_formula = FALSE, n_samples = 500)
+  weights <- posterior_metadata(levels$B, "linear_weights")
+  multiplied <- function(multiplier){
+    .hypothesis_model_formula_contribution(levels$B, multiplier)
+  }
+
+  # a constant multiplier is folded in
+  expect_equal(posterior_fitted_linear_weights(multiplied(3), weights), c("mu_f[1]" = 3))
+
+  # a stochastic one has no fitted linear projection: its own condition, with
+  # the cause for which the density backends refuse the target, and no class
+  # of a refusal of a hypothesis
+  condition <- tryCatch(posterior_fitted_linear_weights(multiplied("sigma"), weights),
+                        error = identity)
+  expect_identical(class(condition), c(
+    "BayesTools_fitted_linear_weights_unavailable",
+    "BayesTools_formula_transform_unavailable", "error", "condition"
+  ))
+  expect_identical(
+    conditionMessage(condition),
+    paste0("Ordinate density methods are unavailable for stochastic formula ",
+           "contribution products. Use density_method = 'KDE'.")
+  )
+  expect_identical(condition$reason, "stochastic_multiplier")
+  expect_identical(condition$cause, "original_scale")
+  expect_identical(names(unclass(condition)), c("message", "call", "reason", "cause"))
+  expect_false(any(grepl("^BayesTools_hypothesis_", class(condition))))
+  labelled <- tryCatch(
+    posterior_fitted_linear_weights(multiplied("sigma"), weights, ordinate_label = "Toy ordinates"),
+    error = identity
+  )
+  expect_match(conditionMessage(labelled), "^Toy ordinates are unavailable")
+
+})
+
+
+test_that("the weight helpers name the build and the refit class of the caller", {
+
+  fit     <- .hypothesis_model_test_fit(formula_scale = FALSE)
+  samples <- as_mixed_posteriors(fit, "mu_f", n_prior_samples = 500)
+  levels  <- marginal_posterior(samples, "mu_f", prior_samples = TRUE,
+                                use_formula = FALSE, n_samples = 500)
+  weights <- posterior_metadata(levels$B, "linear_weights")
+  # contribution weights of a scaled formula cannot be remapped: refit
+  stale <- .hypothesis_model_formula_contribution(levels$B, 3, scaled = TRUE)
+
+  default <- tryCatch(posterior_linear_weight_space(stale), error = identity)
+  expect_s3_class(default, "BayesTools_refit_required")
+  expect_match(conditionMessage(default), "with the current BayesTools build.", fixed = TRUE)
+  expect_false(inherits(default, "toy_refit_required"))
+
+  for(helper in list(
+    function(...) posterior_linear_weight_space(stale, ...),
+    function(...) posterior_fitted_linear_weights(stale, weights, ...)
+  )){
+    named <- tryCatch(helper(build = "Toy/BayesTools", refit_class = "toy_refit_required"),
+                      error = identity)
+    expect_identical(class(named)[1:2], c("toy_refit_required", "BayesTools_refit_required"))
+    expect_match(conditionMessage(named), "with the current Toy/BayesTools build.", fixed = TRUE)
+    expect_s3_class(tryCatch(helper(), error = identity), "BayesTools_refit_required")
+    expect_error(helper(build = 1), "build")
+    expect_error(helper(refit_class = 1), "refit_class")
+  }
+  # without a refit request the arguments change nothing
+  expect_identical(posterior_linear_weight_space(levels$B, build = "Toy", refit_class = "toy"),
+                   "coefficient")
+
+})
+
+
+test_that("marginal means with stochastic products refuse the ordinate backends by their cause", {
+
+  fit <- .hypothesis_model_test_fit(formula_scale = FALSE)
+  toy <- .hypothesis_model_toy_backend(
+    refusal_classes = function(cause) c(paste0("toy_density_", cause), "toy_density_unavailable")
+  )
+  model <- .hypothesis_model_toy_marginal(
+    fit, "bt_hypothesis_test_marginal_stochastic",
+    levels_hook = function(levels){
+      for(level in c("B", "C")){
+        levels[[level]] <- .hypothesis_model_formula_contribution(levels[[level]], "sigma")
+      }
+      levels
+    },
+    density_control_default = function(density_method) list()
+  )
+  expected <- c(
+    "BayesTools_hypothesis_method", "BayesTools_hypothesis_unavailable",
+    "toy_density_original_scale", "toy_density_unavailable", "error", "condition"
+  )
+  with_toy_backend(toy, {
+    refused <- tryCatch(
+      hypothesis_BF_model(model, "f[B] = 0.2", density_method = "toyNormal"),
+      error = identity
+    )
+    # the classes of the refusal and of the backend for the cause, and no fields
+    expect_identical(class(refused), expected)
+    expect_identical(names(unclass(refused)), c("message", "call"))
+    expect_identical(
+      conditionMessage(refused),
+      paste0("toy ordinates are unavailable for stochastic formula contribution ",
+             "products. Use density_method = 'KDE'.")
+    )
+
+    # a linear combination of the levels, whose weights refuse the same way
+    local_mocked_bindings(
+      .hypothesis_model_fitted_linear_weights = function(provider, sample, weights){
+        BayesTools:::.hypothesis_model_stop_stochastic_weights(
+          "toy ordinates are unavailable for stochastic formula contribution products."
+        )
+      },
+      .package = "BayesTools"
+    )
+    combination <- tryCatch(
+      hypothesis_BF_model(model, "f[B] - f[C] = 0.1", density_method = "toyNormal"),
+      error = identity
+    )
+    expect_identical(class(combination), expected)
+    expect_identical(names(unclass(combination)), c("message", "call"))
+    # the draws and the region statements do not need the fitted weights
+    expect_s3_class(hypothesis_BF_model(model, "f[B] = 0.2", density_method = "KDE"),
+                    "BayesTools_hypothesis_BF")
+    expect_s3_class(hypothesis_BF_model(model, "f[B] > 0.2", density_method = "toyNormal"),
+                    "BayesTools_hypothesis_BF")
   })
 
 })
