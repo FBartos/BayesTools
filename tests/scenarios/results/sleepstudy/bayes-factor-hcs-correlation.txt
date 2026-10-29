@@ -1,0 +1,4 @@
+                      H1        H0          method log_BF10 note
+1 cor ~ uniform(-1/9, 1) cor = 0.9 bridge sampling   -1.713     
+2 cor ~ uniform(-1/9, 1) cor = 0.9   Savage-Dickey   -1.661     
+3 cor ~ uniform(-1/9, 1) cor = 0.9   mixture prior   -1.582     

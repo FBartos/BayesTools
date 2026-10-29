@@ -1,4 +1,4 @@
-bayestools_known_test_profiles <- c("unit", "fixture", "visual", "visual-fixture", "fit")
+bayestools_known_test_profiles <- c("unit", "fixture", "visual", "visual-fixture", "fit", "cran")
 
 
 bayestools_quiet_llm_reporter <- function(...) {
@@ -175,6 +175,9 @@ bayestools_test_profile_contexts <- list(
   fit = c(
     "00-model-fits",
     "fixture-integrity"
+  ),
+  cran = c(
+    "cran-smoke"
   )
 )
 

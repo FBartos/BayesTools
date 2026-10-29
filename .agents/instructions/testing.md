@@ -45,6 +45,11 @@ failure. `tools/test.R` runs all lanes with the fit cache in
 - `fit`: centralized live fitting and marginal-likelihood generation. It
   refreshes the cache unless `BAYESTOOLS_TEST_SKIP_REFIT=TRUE` is set
   intentionally for a validated cache.
+- `cran`: `test-cran-smoke.R`, the only tests CRAN runs. `tests/testthat.R`
+  selects it when testthat's `on_cran()` holds. It checks native-routine,
+  S3-method, and export registration, and compiles, samples, and bridges one
+  minimal model using every JAGS module distribution and function. Keep it
+  well under 30 seconds; do not add behavioral tests to it.
 - `all`: every profile; this is the default CI and coverage profile.
 
 Start with relevant `unit` tests. Use `fixture` for cached-object behavior and
@@ -65,7 +70,8 @@ This package uses testthat edition 3. Do not add `context()`.
 - Shared helpers live in `tests/testthat/common-functions.R`.
 - Profile routing lives in `tests/testthat/helper-test-profiles.R`.
 - Only `tests/testthat/test-00-model-fits.R` may fit ordinary models or compute
-  marginal likelihoods for cached fixtures. Other tests must load cached fits.
+  marginal likelihoods for cached fixtures. Other tests must load cached fits;
+  the CRAN smoke fit is the one uncached exception.
 - The expected fit catalog lives in
   `tests/testthat/helper-expected-fit-catalog.R`. Update the fitting file and
   catalog together when a new cached fit is necessary.
@@ -118,7 +124,7 @@ Accept/Reject/Skip decisions. Accept replaces the baseline, Reject removes the
 candidate, and Skip keeps it for later review. Non-interactive runs retain
 candidates and never update baselines.
 
-`test_tests()` runs all five lanes by default. It reuses a validated fit cache;
+`test_tests()` runs all six lanes by default. It reuses a validated fit cache;
 use `refit = TRUE` to clean and rebuild it. With `filter`, refitting first runs
 the centralized `fit` lane and then the selected test files. `regenerate = TRUE`
 combines refitting with forced snapshot review. BayesTools has no timing

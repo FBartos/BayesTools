@@ -1,7 +1,7 @@
 ---
 title: "Random Effects with Formula Syntax"
 author: "František Bartoš"
-date: "13th of June 2023 (updated: 25th of October 2026)"
+date: "29th of October 2026"
 output:
   rmarkdown::html_vignette:
     self_contained: yes
@@ -70,7 +70,7 @@ The fourth example uses the `Penicillin` data and shows crossed random effects w
 One major difference from standard R formulas is that BayesTools formulas keeps intercept control and factor contrasts separate.
 In a fixed effects formula, BayesTools' `0 + factor` or `factor - 1` fixes the intercept at zero but preserves the factor contrast specified by `prior_factor()`.
 For example, an independent factor prior creates one coefficient per factor level, while treatment and mean-difference priors retain their own contrast despite the same no-intercept formula.
-(The reason behind this choice is that prior specification, i.e., factor contrast, should not change when other coefficients are modified.)
+The reason behind this choice is that prior specification, i.e., factor contrast, should not change when other coefficients are modified.
 
 Random effects specification differs between two types of random structures:
 
@@ -432,7 +432,7 @@ sleep_slope_formula_list <- list(mu = ~ Days + (1 + Days | Subject))
 ```
 
 The `random_block()` function adds the correlation prior next to the SD prior.
-The SD prior applies to both random-effect SDs unless the `terms` argument overrides it for a specific term; for example, `terms = list(Days = ...)` sets a separate prior for the `Days` SD, which we use for the spike-and-slab test later.
+The SD prior applies to both random-effect SDs unless the `terms` argument overrides it for a specific term; for example, `terms = list(Days = ...)` sets a separate prior for the `Days` SD, which we use for a hypothesis test via a spike-and-slab prior later.
 
 ```{r}
 sleep_slope_priors <- list(mu = prior_random(Subject = random_block(
@@ -489,7 +489,7 @@ marglik_brms_slope     <- brms::bridge_sampler(brms_slope, silent = TRUE)
 ```
 
 BayesTools models are passed to the `JAGS_bridgesampling` function, which additionally requires the log-likelihood of the data as a function of the parameters.
-BayesTools automatically processes prepares the parameters (`mu` and `sigma`) and evaluates the prior densities.
+BayesTools automatically prepares the parameters (`mu` and `sigma`) and evaluates the prior densities.
 
 ```{r}
 log_posterior <- function(parameters, data){
@@ -841,7 +841,7 @@ fit_nested <- JAGS_fit(
 ```
 
 ```{r}
-JAGS_estimates_table(fit_nested, random_effects_summary = "standard", remove_diagnostics = TRUE)
+JAGS_estimates_table(fit_nested, random_effects_summary = "standard")
 ```
 
 The nested lme4 and BayesTools estimates are compared in the table below.
@@ -916,13 +916,13 @@ fit_crossed_independent <- JAGS_fit(
 ```
 
 ```{r}
-JAGS_estimates_table(fit_crossed_independent, random_effects_summary = "standard", remove_diagnostics = TRUE)
+JAGS_estimates_table(fit_crossed_independent, random_effects_summary = "standard")
 ```
 
 ### Variance Allocation Prior
 
 Alternatively, as in the nested example, `random_variance_allocation()` places one prior on the total SD of the two blocks, `total_re: sd_total`, and a uniform Dirichlet prior on the proportions of its variance assigned to `plate` and `sample`.
-The `sample` block keeps the mean-centered parameterization; its SD now comes from the allocation.
+The `sample` block keeps the mean-centered parameterization while its SD now comes from the allocation specification.
 
 ```{r}
 crossed_allocation_priors <- list(
@@ -950,7 +950,7 @@ fit_crossed_allocation <- JAGS_fit(
 ```
 
 ```{r}
-JAGS_estimates_table(fit_crossed_allocation, random_effects_summary = "standard", remove_diagnostics = TRUE)
+JAGS_estimates_table(fit_crossed_allocation, random_effects_summary = "standard")
 ```
 
 The two BayesTools fits differ only in the prior on the random-effect SDs: the independent priors treat the two blocks separately, while the allocation prior sets the scale of their total and estimates how it splits.

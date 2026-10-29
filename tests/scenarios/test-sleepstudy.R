@@ -8,7 +8,8 @@ scenario_start("sleepstudy")
 # vignette): estimates compared with lme4 on the fitted and the original Days
 # scale, Bayes factors for the random slope (bridge sampling and spike and
 # slab), for the intercept-slope correlation (bridge sampling), and for the
-# HCS correlation equal to 0.9 (Savage-Dickey and a mixture prior)
+# HCS correlation equal to 0.9 (bridge sampling, Savage-Dickey, and a
+# mixture prior)
 
 testthat::test_that("sleepstudy random intercepts, slopes, and HCS", {
 
@@ -90,8 +91,8 @@ testthat::test_that("sleepstudy random intercepts, slopes, and HCS", {
       chains = 4, adapt = 1000, burnin = 1000, sample = 5000, seed = 1
     )
   })
-  fit_hcs <- scenario_fit("fit_hcs", {
-    JAGS_fit(
+  hcs <- scenario_fit("fit_hcs", {
+    fit <- JAGS_fit(
       model_syntax = likelihood, data = data_list, prior_list = list(sigma = unit_sd_prior),
       formula_list = list(mu = ~ Days + hcs(Days_f | Subject)), formula_data_list = list(mu = sleepstudy),
       formula_prior_list = list(mu = list(intercept = unit_prior, Days = unit_prior)),
@@ -99,6 +100,24 @@ testthat::test_that("sleepstudy random intercepts, slopes, and HCS", {
       formula_scale_list = list(mu = list(Days = TRUE)),
       chains = 4, adapt = 1000, burnin = 2000, sample = 5000, seed = 31
     )
+    list(fit = fit, marglik = JAGS_bridgesampling(
+      fit, log_posterior = log_posterior, data = data_list, prior_list = list(sigma = unit_sd_prior), seed = 1))
+  })
+  # the null model of the HCS correlation test: the correlation fixed at 0.9
+  hcs_null <- scenario_fit("fit_hcs_null", {
+    fit <- JAGS_fit(
+      model_syntax = likelihood, data = data_list, prior_list = list(sigma = unit_sd_prior),
+      formula_list = list(mu = ~ Days + hcs(Days_f | Subject)), formula_data_list = list(mu = sleepstudy),
+      formula_prior_list = list(mu = list(intercept = unit_prior, Days = unit_prior)),
+      formula_random_prior_list = list(mu = prior_random(Subject = random_block(
+        sd         = unit_sd_prior,
+        covariance = random_covariance(cor = prior("spike", list(location = 0.9)), cor_scale = "cor")
+      ))),
+      formula_scale_list = list(mu = list(Days = TRUE)),
+      chains = 4, adapt = 1000, burnin = 2000, sample = 5000, seed = 31
+    )
+    list(fit = fit, marglik = JAGS_bridgesampling(
+      fit, log_posterior = log_posterior, data = data_list, prior_list = list(sigma = unit_sd_prior), seed = 1))
   })
   fit_hcs_test <- scenario_fit("fit_hcs_test", {
     JAGS_fit(
@@ -125,6 +144,7 @@ testthat::test_that("sleepstudy random intercepts, slopes, and HCS", {
   fit_intercept   <- intercept[["fit"]]
   fit_slope       <- slope[["fit"]]
   fit_independent <- independent[["fit"]]
+  fit_hcs         <- hcs[["fit"]]
 
   ### model summaries ----
   scenario_text("estimates-intercept",   JAGS_estimates_table(fit_intercept))
@@ -197,29 +217,63 @@ testthat::test_that("sleepstudy random intercepts, slopes, and HCS", {
   })
 
   ### Bayes factors ----
-  scenario_text("bayes-factors", {
-    log_bf <- function(marglik_1, marglik_0) bridgesampling::bf(marglik_1, marglik_0, log = TRUE)[["bf"]]
+  # each test compares H1 against H0 as log BF10 (positive values favour H1):
+  # bridge sampling compares two separately fitted models, the other methods
+  # obtain the same Bayes factor from a single fit
+  log_bf10_bridge <- function(marglik_1, marglik_0) {
+    bridgesampling::bf(marglik_1, marglik_0, log = TRUE)[["bf"]]
+  }
+  bf_comparison <- function(H1, H0, log_BF10, note = "") {
+    data.frame(H1 = H1, H0 = H0, method = names(log_BF10),
+               log_BF10 = round(unname(log_BF10), 3), note = note)
+  }
+
+  # random slope: the spike-and-slab prior on sd(Days) includes or excludes
+  # the slope within one fit; with every draw including it, the inclusion BF
+  # is only a bound set by the number of draws
+  scenario_text("bayes-factor-random-slope", {
+    slope_spike <- JAGS_inference_table(fit_slope_spike)[["inclusion_BF"]]
+    spike_bound <- identical(attr(slope_spike, "bound_operator"), ">")
+    bf_comparison(
+      H1 = "(1 + Days | Subject)",
+      H0 = "(1 | Subject)",
+      log_BF10 = c(
+        "bridge sampling" = log_bf10_bridge(slope[["marglik"]], intercept[["marglik"]]),
+        "spike and slab"  = log(as.numeric(slope_spike))
+      ),
+      note = c("", if (spike_bound) "lower bound: all draws include the slope" else "")
+    )
+  })
+
+  # intercept-slope correlation: LKJ(1) correlation against independent
+  # intercepts and slopes
+  scenario_text("bayes-factor-correlation", {
+    bf_comparison(
+      H1 = "(1 + Days | Subject), cor ~ LKJ(1)",
+      H0 = "(1 + Days || Subject)",
+      log_BF10 = c(
+        "bridge sampling" = log_bf10_bridge(slope[["marglik"]], independent[["marglik"]])
+      )
+    )
+  })
+
+  # HCS correlation: the default uniform(-1/9, 1) prior against cor = 0.9;
+  # Savage-Dickey compares the prior and posterior densities at 0.9 of the
+  # free fit, the mixture prior samples both hypotheses in one fit
+  scenario_text("bayes-factor-hcs-correlation", {
     hcs_cor <- parameter_mixed_posterior(
       fit_hcs, parameter_catalog_resolve(parameter_catalog(fit_hcs), "(mu) cor")
     )
     savage_dickey <- hypothesis_BF(hcs_cor, hypothesis = "`(mu) cor` = 0.9", BF01 = TRUE, seed = 1)
-    # with every draw including the slope, the spike-and-slab inclusion BF is
-    # only a bound set by the number of draws
-    slope_spike <- JAGS_inference_table(fit_slope_spike)
-    slope_spike_bound <- identical(attr(slope_spike[["inclusion_BF"]], "bound_operator"), ">")
-    data.frame(
-      test   = c("random slope", "random slope", "intercept-slope correlation",
-                 "HCS correlation = 0.9", "HCS correlation = 0.9"),
-      method = c("bridge sampling", "spike and slab", "bridge sampling",
-                 "Savage-Dickey", "mixture prior"),
-      log_BF10 = round(c(
-        log_bf(slope[["marglik"]], intercept[["marglik"]]),
-        log(as.numeric(slope_spike[["inclusion_BF"]])),
-        log_bf(slope[["marglik"]], independent[["marglik"]]),
-        -log(as.numeric(savage_dickey[["BF"]])),
-        log(as.numeric(JAGS_inference_table(fit_hcs_test)[["inclusion_BF"]]))
-      ), 3),
-      note = c("", if (slope_spike_bound) "lower bound: all draws include the slope" else "", "", "", "")
+    mixture <- JAGS_inference_table(fit_hcs_test)[["inclusion_BF"]]
+    bf_comparison(
+      H1 = "cor ~ uniform(-1/9, 1)",
+      H0 = "cor = 0.9",
+      log_BF10 = c(
+        "bridge sampling" = log_bf10_bridge(hcs[["marglik"]], hcs_null[["marglik"]]),
+        "Savage-Dickey"   = -log(as.numeric(savage_dickey[["BF"]])),
+        "mixture prior"   = log(as.numeric(mixture))
+      )
     )
   })
   scenario_text("inference-slope-spike", JAGS_inference_table(fit_slope_spike))

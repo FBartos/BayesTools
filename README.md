@@ -14,14 +14,14 @@ coverage](https://codecov.io/gh/FBartos/BayesTools/branch/master/graph/badge.svg
 The goal of BayesTools is to provide functions that simplify building R
 packages focused on Bayesian inference and Bayesian model-averaging.
 
-Currently, the package provides several tools:
+The package provides several tools:
 
 - prior distribution (with S3 methods for plot/print/pdf/cdf/rng/…)
 - JAGS models automation (generating JAGS model syntax and
   `bridgesampling` marginal likelihood functions for prior
-  distributions, various wrappers, …)
-- formula random effects for JAGS models (lme4-like syntax,
-  random-effect priors, structured covariance, and LKJ helpers)
+  distributions, …)
+- formula generation (simple parameters and random effects via lme4-like
+  syntax)
 - model-averaging (mixing posterior distributions, computing Bayes
   factors, generating summary tables, …)
 
@@ -57,6 +57,14 @@ Prior distribution can be created with the `prior` function.
 
 ``` r
 library(BayesTools)
+#> 
+#> Attaching package: 'BayesTools'
+#> The following objects are masked from 'package:stats':
+#> 
+#>     sd, var
+#> The following object is masked from 'package:grDevices':
+#> 
+#>     pdf
 
 p0 <- prior(distribution = "point",  parameters = list(location = 0))
 p1 <- prior(distribution = "normal", parameters = list(mean = 0, sd = 1))
@@ -224,10 +232,8 @@ marglik1 <- JAGS_bridgesampling(fit = fit1, log_posterior = log_posterior, data 
 marglik2 <- JAGS_bridgesampling(fit = fit2, log_posterior = log_posterior, data = data, prior_list = priors_list2)
 
 marglik1
-#> BayesTools marginal-likelihood result
-#>   logml (natural log): -13.13825
-#>   aggregation: median_finite_logml
-#>   repetitions: 1 included, 0 failed
+#> Bridge sampling estimate of the log marginal likelihood: -13.13825
+#> Estimate obtained in 4 iteration(s) via method "normal".
 ```
 
 ## Model-Averaging
@@ -257,7 +263,7 @@ model_summary_table(models[[1]])
 #>  Model               1             Parameter prior distributions
 #>  Prior prob.     0.333                                          
 #>  log(marglik)   -12.02                                          
-#>  Post. prob.     0.571
+#>  Post. prob.     0.571                                          
 #>  Inclusion BF    2.661
 model_summary_table(models[[2]])
 #>                                                                 
