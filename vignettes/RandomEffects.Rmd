@@ -716,10 +716,7 @@ Since the day-specific random effects are so strongly correlated that all poster
 First, the Savage-Dickey density ratio allows us to obtains the Bayes factor directly from the fitted HCS model: it divides the posterior density of the correlation at 0.9 by its prior density.
 
 ```{r}
-hcs_cor <- parameter_mixed_posterior(
-  fit_sleep_hcs, parameter_catalog_resolve(parameter_catalog(fit_sleep_hcs), "(mu) cor")
-)
-hypothesis_BF(hcs_cor, hypothesis = "`(mu) cor` = 0.9", BF01 = TRUE, seed = 1)
+hypothesis_BF(fit_sleep_hcs, hypothesis = "(mu) cor = 0.9", BF01 = TRUE, seed = 1)
 ```
 
 Second, a mixture prior places half of the prior probability on a correlation of 0.9 (the spike) and half on the same uniform distribution (the slab) and tests the hypothesis within a single fit using the product space approach.
