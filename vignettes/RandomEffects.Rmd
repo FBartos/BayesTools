@@ -888,12 +888,15 @@ crossed_fixed_priors <- list(intercept = unit_prior)
 ### Independent SD Priors
 
 The most direct specification gives each block its own half-normal SD prior through `random_block()`, addressed by the block names from the formula.
+With only six samples, the intercept and the sample effects are strongly correlated a posteriori, which slows down the default (noncentered) sampler.
+`parameterization = "mean_centered"` samples the sample effects around the fixed intercept instead, which removes this correlation without changing the model or its priors.
 
 ```{r}
 crossed_independent_priors <- list(
   mu = prior_random(
     plate  = random_block(sd = unit_sd_prior, monitor = random_monitor(latent = FALSE)),
-    sample = random_block(sd = unit_sd_prior, monitor = random_monitor(latent = FALSE))
+    sample = random_block(sd = unit_sd_prior, monitor = random_monitor(latent = FALSE),
+                          parameterization = "mean_centered")
   )
 )
 ```
@@ -915,10 +918,12 @@ JAGS_estimates_table(fit_crossed_independent, random_effects_summary = "standard
 ### Variance Allocation Prior
 
 Alternatively, as in the nested example, `random_variance_allocation()` places one prior on the total SD of the two blocks, `total_re: sd_total`, and a uniform Dirichlet prior on the proportions of its variance assigned to `plate` and `sample`.
+The `sample` block keeps the mean-centered parameterization; its SD now comes from the allocation.
 
 ```{r}
 crossed_allocation_priors <- list(
   mu = prior_random(
+    sample     = random_block(parameterization = "mean_centered"),
     allocation = random_variance_allocation(
       name    = "total_re",
       terms   = c(plate = "plate", sample = "sample"),
