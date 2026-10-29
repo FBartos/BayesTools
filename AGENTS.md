@@ -98,6 +98,6 @@ Native JAGS distributions live in `src/distributions/`; shared kernels are in
 - Preserve reviewed numerical and visual baselines. Generate candidates for
   inspection; accept changes only after maintainer review or explicitly
   delegated review.
-- Use `skip_on_cran()` for computationally intensive tests. Keep `AGENTS.md`,
+- CRAN runs only the `cran` smoke profile (see the testing guide). Keep `AGENTS.md`,
   `.agents/`, and development-only material excluded through `.Rbuildignore`;
   CI workflows belong in `.github/workflows/`.
