@@ -1,0 +1,6 @@
+                         test          method log_BF10                                     note
+1                random slope bridge sampling   17.399                                         
+2                random slope  spike and slab    9.903 lower bound: all draws include the slope
+3 intercept-slope correlation bridge sampling    3.115                                         
+4       HCS correlation = 0.9   Savage-Dickey   -1.661                                         
+5       HCS correlation = 0.9   mixture prior   -1.582                                         
