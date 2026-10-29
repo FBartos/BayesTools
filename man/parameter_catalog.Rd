@@ -18,7 +18,7 @@
 \usage{
 parameter_catalog(object, ...)
 
-\method{parameter_catalog}{BayesTools_fit}(object, ...)
+\method{parameter_catalog}{BayesTools_fit}(object, transform_scaled = TRUE, ...)
 
 parameter_catalog_schema()
 
@@ -58,6 +58,11 @@ parameter_transform_jacobian(values, transform)
 \item{object}{fitted object.}
 
 \item{...}{arguments for methods.}
+
+\item{transform_scaled}{for the catalog of a fitted model, whether the
+random-effect quantities of blocks with scaled predictors are those of the
+original scale (\code{TRUE}, the default) or of the fitted scale of the
+standardized predictors (\code{FALSE}), as for \code{\link[=parameter_mixed_posterior]{parameter_mixed_posterior()}}.}
 
 \item{catalog}{a \code{BayesTools_parameter_catalog} object.}
 
@@ -201,6 +206,27 @@ does not belong to the catalog it is used with (for example one resolved
 from another fit) stops with an error of class
 \code{BayesTools_parameter_resolution_error}; resolve the parameter again from
 the fit's catalog.
+
+\code{parameter_catalog(fit, transform_scaled = FALSE)} is the catalog of the
+fitted scale of the predictors. It has the quantities, identifiers, names,
+and aliases of the default catalog (\code{transform_scaled = TRUE}), with the
+fitted-coordinate \code{support}, \code{status}, \code{fixed_value}, \code{source_type}, and
+\code{extraction_key} of the random-effect SDs, variances, and correlations of
+blocks with scaled predictors (a bounded SD prior keeps its bounds, an SD
+that the original scale combines from several fitted coefficients is the
+fitted coefficient itself, and an SD fixed on the fitted scale is
+structural). It is the default catalog for a fit without scaled predictors
+and for quantities that the scales do not affect. A selection resolved from
+either catalog is accepted by \code{parameter_draws()}, \code{parameter_prior_density()},
+\code{parameter_transform()}, \code{parameter_gate_states()},
+\code{random_effects_marginal_update_plan()}, and \code{\link[=parameter_mixed_posterior]{parameter_mixed_posterior()}},
+which use the matching scale: a selection of the fitted-scale catalog is
+extracted from the fit without its predictor scales, a selection of the
+default catalog from the fit as it is (so blanking the \code{formula_scale} of the
+fit is not needed to extract the fitted scale). A selection that belongs to
+neither catalog stops as described above, and
+\code{\link[=parameter_mixed_posterior]{parameter_mixed_posterior()}} stops for a selection of the fitted-scale
+catalog with \code{transform_scaled = TRUE}.
 
 \code{parameter_draws()} is the deferred extraction boundary. The BayesTools fit
 method reads only the coordinates declared by the selected

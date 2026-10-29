@@ -15,7 +15,9 @@ parameter_mixed_posterior(
 \item{fit}{a model fitted with \code{\link[=JAGS_fit]{JAGS_fit()}}.}
 
 \item{selection}{a selection of one catalog quantity, created with
-\code{\link[=parameter_catalog_resolve]{parameter_catalog_resolve()}}.}
+\code{\link[=parameter_catalog_resolve]{parameter_catalog_resolve()}} from the catalog of the fit
+(\code{\link[=parameter_catalog]{parameter_catalog()}}) or, with \code{transform_scaled = FALSE}, from the
+catalog of the fitted scale (\code{parameter_catalog(fit, transform_scaled = FALSE)}); a selection of the latter with \code{transform_scaled = TRUE} stops.}
 
 \item{conditional}{whether to condition on the inclusion event of the
 quantity: the gates of its allocation chain on for an allocation-derived

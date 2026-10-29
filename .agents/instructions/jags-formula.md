@@ -551,6 +551,26 @@ coordinate and semantic compilers remain pure stages in
 stored map. Use these accessors and `R/parameter-source.R` rather than parsing
 names.
 
+The stored catalog describes the original scale of the random-effect SDs,
+variances, and correlations of blocks with scaled predictors (support, atoms,
+gates, status, extraction). `parameter_catalog(fit, transform_scaled = FALSE)`
+is the catalog of the fitted scale: the same coordinates compiled without the
+declared predictor scales (`.bt_parameter_fitted_map()`, built once per fit and
+kept in the parameter-map runtime cache; the stored map itself when the scales
+change nothing), with the same quantity identifiers, names, and aliases.
+`parameter_draws()`, `parameter_prior_density()`, `parameter_transform()`,
+`parameter_gate_states()`, `random_effects_marginal_update_plan()`, and
+`parameter_mixed_posterior()` accept a selection of either catalog and extract
+it on the scale of its catalog (`.bt_parameter_selection_scale()`: the catalog
+of the fit first, then the fitted-scale catalog; a selection of the latter is
+extracted from the fit without its scales). Downstream packages therefore
+select the scale through the catalog they resolve from and do not blank
+`formula_scale` of the fit. A selection of neither catalog is a stale or foreign
+selection, and `parameter_mixed_posterior(transform_scaled = TRUE)` refuses a
+selection of the fitted-scale catalog. The fit-cache key of the tests contains
+`parameter_catalog.BayesTools_fit` (the fitting file calls it): editing it, or
+what it calls, needs a `fit` profile refresh of the cached fits.
+
 - Keep coordinate names and quantity IDs unique within their respective
   schemas, and keep every schema field type-stable. `canonical_name` is a
   selector rather than a key: it must be unique per namespace and component,

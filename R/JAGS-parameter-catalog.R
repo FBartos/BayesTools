@@ -104,6 +104,27 @@
 #' `BayesTools_parameter_resolution_error`; resolve the parameter again from
 #' the fit's catalog.
 #'
+#' `parameter_catalog(fit, transform_scaled = FALSE)` is the catalog of the
+#' fitted scale of the predictors. It has the quantities, identifiers, names,
+#' and aliases of the default catalog (`transform_scaled = TRUE`), with the
+#' fitted-coordinate `support`, `status`, `fixed_value`, `source_type`, and
+#' `extraction_key` of the random-effect SDs, variances, and correlations of
+#' blocks with scaled predictors (a bounded SD prior keeps its bounds, an SD
+#' that the original scale combines from several fitted coefficients is the
+#' fitted coefficient itself, and an SD fixed on the fitted scale is
+#' structural). It is the default catalog for a fit without scaled predictors
+#' and for quantities that the scales do not affect. A selection resolved from
+#' either catalog is accepted by `parameter_draws()`, `parameter_prior_density()`,
+#' `parameter_transform()`, `parameter_gate_states()`,
+#' `random_effects_marginal_update_plan()`, and [parameter_mixed_posterior()],
+#' which use the matching scale: a selection of the fitted-scale catalog is
+#' extracted from the fit without its predictor scales, a selection of the
+#' default catalog from the fit as it is (so blanking the `formula_scale` of the
+#' fit is not needed to extract the fitted scale). A selection that belongs to
+#' neither catalog stops as described above, and
+#' [parameter_mixed_posterior()] stops for a selection of the fitted-scale
+#' catalog with `transform_scaled = TRUE`.
+#'
 #' `parameter_draws()` is the deferred extraction boundary. The BayesTools fit
 #' method reads only the coordinates declared by the selected
 #' extraction key; a quantity whose source coordinates were not monitored
@@ -205,6 +226,10 @@
 #' formula-scale transformations.
 #'
 #' @param object fitted object.
+#' @param transform_scaled for the catalog of a fitted model, whether the
+#'   random-effect quantities of blocks with scaled predictors are those of the
+#'   original scale (`TRUE`, the default) or of the fitted scale of the
+#'   standardized predictors (`FALSE`), as for [parameter_mixed_posterior()].
 #' @param catalog a `BayesTools_parameter_catalog` object.
 #' @param quantities quantity rows matching the quantity schema.
 #' @param aliases alias rows matching the alias schema.
@@ -271,10 +296,137 @@ parameter_catalog <- function(object, ...){
 
 #' @rdname parameter_catalog
 #' @exportS3Method parameter_catalog BayesTools_fit
-parameter_catalog.BayesTools_fit <- function(object, ...){
+parameter_catalog.BayesTools_fit <- function(object, transform_scaled = TRUE, ...){
 
+  check_bool(transform_scaled, "transform_scaled", allow_NA = FALSE)
   JAGS_validate_fit_contract(object, requires = "parameter_map")
+  if(!transform_scaled){
+    return(.bt_parameter_map_catalog(.bt_parameter_fitted_map(object)))
+  }
+
   .bt_parameter_map_catalog(parameter_map(object))
+}
+
+# The parameter map of the fitted scale of the predictors. The catalog of a
+# fit with scaled predictors describes the original scale of its random-effect
+# SDs, variances, and correlations (support, atoms, gates, extraction, scale of
+# the source coordinates); built without the declared scales, the same
+# coordinates give the catalog of the fitted coordinates. The quantity
+# identifiers do not depend on the scale. The map is built from the stored
+# coordinates, kept with the parameter map of the fit, and is the stored map
+# itself for a fit whose predictors are not scaled (or whose scales change
+# nothing).
+.bt_parameter_fitted_map <- function(fit){
+
+  map            <- parameter_map(fit)
+  prior_list     <- attr(fit, "prior_list", exact = TRUE)
+  formula_design <- attr(fit, "formula_design", exact = TRUE)
+  declared <- length(attr(fit, "formula_scale", exact = TRUE)) > 0L ||
+    any(vapply(formula_design, function(design){
+      length(design[["formula_scale"]]) > 0L
+    }, logical(1)))
+  if(!declared){
+    return(map)
+  }
+
+  parameter_map_cache(
+    map      = map,
+    provider = "BayesTools.fitted_scale",
+    key      = list(version = 2L, prior_list = prior_list, formula_design = formula_design),
+    compute  = function(){
+      catalog <- .bt_build_parameter_catalog(
+        coordinates    = map$coordinates,
+        prior_list     = prior_list,
+        formula_design = formula_design,
+        formula_scale  = NULL
+      )
+      if(identical(catalog$quantities, map$quantities) &&
+         identical(catalog$aliases, map$aliases)){
+        return(map)
+      }
+
+      .bt_parameter_map_new(map$coordinates, catalog$quantities, catalog$aliases)
+    }
+  )
+}
+
+# The fit on the fitted scale of its predictors: without the declared scales
+# and with the parameter map of that scale.
+.bt_parameter_fitted_fit <- function(fit){
+
+  map <- .bt_parameter_fitted_map(fit)
+  attr(fit, "formula_scale") <- list()
+  attr(fit, "parameter_map") <- map
+
+  fit
+}
+
+# The fit on the fitted scale of its predictors, and the quantity of 'selection'
+# (a selection of either catalog of the fit) in the catalog of that fit.
+.bt_parameter_fitted_scale <- function(fit, selection){
+
+  fit     <- .bt_parameter_fitted_fit(fit)
+  catalog <- parameter_catalog(fit)
+  rows    <- match(selection$quantity_id, catalog$quantities$quantity_id)
+  if(anyNA(rows)){
+    stop("The quantity '", selection$quantities$canonical_name[is.na(rows)][1L],
+         "' is not available on the fitted scale of the predictors.",
+         call. = FALSE)
+  }
+  selection <- list(
+    schema_version        = .bt_parameter_selection_version,
+    parameter_map_version = catalog$schema_version,
+    quantity_id           = catalog$quantities$quantity_id[rows],
+    quantities            = catalog$quantities[rows, , drop = FALSE]
+  )
+  class(selection) <- c("BayesTools_parameter_selection", "list")
+  .bt_validate_parameter_selection(selection, catalog = catalog)
+
+  list(fit = fit, selection = selection)
+}
+
+# Whether the quantities of a selection are rows of a catalog (the selection is
+# validated by .bt_validate_parameter_selection()).
+.bt_parameter_selection_in_catalog <- function(selection, catalog){
+
+  rows <- match(selection$quantity_id, catalog$quantities$quantity_id)
+
+  !anyNA(rows) &&
+    identical(selection$quantities, catalog$quantities[rows, , drop = FALSE])
+}
+
+# The catalog of a fit that a selection belongs to: "original" (the catalog of
+# the fit, which a quantity that does not depend on the predictor scales shares
+# with the catalog of the fitted scale) or "fitted" (the catalog of
+# parameter_catalog(fit, transform_scaled = FALSE) only). A selection of
+# neither stops as a selection of another catalog.
+.bt_parameter_selection_scale <- function(fit, selection){
+
+  .bt_validate_parameter_selection(selection)
+  catalog <- parameter_catalog(fit)
+  if(.bt_parameter_selection_in_catalog(selection, catalog)){
+    return("original")
+  }
+  fitted <- parameter_catalog(fit, transform_scaled = FALSE)
+  if(.bt_parameter_selection_in_catalog(selection, fitted)){
+    return("fitted")
+  }
+
+  .bt_validate_parameter_selection(selection, catalog = catalog)
+  "original"
+}
+
+# The fit that a selection is extracted from: the fit for a selection of its
+# catalog, and the fit on the fitted scale for a selection of the catalog of
+# that scale (the draws, prior density, transform and gate states of the
+# selection are then those of the fitted-scale quantity).
+.bt_parameter_selection_fit <- function(fit, selection){
+
+  if(identical(.bt_parameter_selection_scale(fit, selection), "fitted")){
+    return(.bt_parameter_fitted_fit(fit))
+  }
+
+  fit
 }
 
 #' @rdname parameter_catalog
@@ -515,8 +667,7 @@ parameter_prior_density <- function(object, selection, ...){
 parameter_draws.BayesTools_fit <- function(object, selection,
                                             model_samples = NULL, ...){
 
-  catalog <- parameter_catalog(object)
-  .bt_validate_parameter_selection(selection, catalog = catalog)
+  object <- .bt_parameter_selection_fit(object, selection)
   quantities <- selection$quantities
 
   .bt_parameter_draws_from_quantities(
@@ -674,8 +825,7 @@ parameter_prior_density.BayesTools_fit <- function(
     object, selection, n_grid = .prior_linear_density_default_grid(),
     tail_prob = .prior_linear_density_tail_prob(), ...){
 
-  catalog <- parameter_catalog(object)
-  .bt_validate_parameter_selection(selection, catalog = catalog)
+  object <- .bt_parameter_selection_fit(object, selection)
   if(nrow(selection$quantities) != 1L){
     stop("'selection' must contain exactly one parameter quantity.",
          call. = FALSE)
@@ -2157,8 +2307,7 @@ parameter_transform <- function(object, selection){
   if(!inherits(object, "BayesTools_fit")){
     stop("'object' must be a BayesTools fit.", call. = FALSE)
   }
-  catalog <- parameter_catalog(object)
-  .bt_validate_parameter_selection(selection, catalog = catalog)
+  object <- .bt_parameter_selection_fit(object, selection)
   if(nrow(selection$quantities) != 1L){
     stop("'selection' must contain exactly one parameter quantity.",
          call. = FALSE)

@@ -147,7 +147,10 @@ quantity `parameter_mixed_posterior(transform_scaled = )` takes the fit without
 its declared predictor scales and the quantity of that fit's catalog (rebuilt
 from the stored coordinates, same quantity identifiers), so the draws, the
 declared support and atoms, the prior density, and the conditioning share the
-scale; the callbacks of the default provider's `random` read the same quantity
+scale (the quantity of `parameter_catalog(fit, transform_scaled = FALSE)`, the
+catalog that downstream providers resolve their selections from for the fitted
+scale; see [jags-formula.md](jags-formula.md)); the callbacks of the default
+provider's `random` read the same quantity
 (`select()` status, `support()`, `sd_pair()`, `zero_boundary()`,
 `defined_share()`, and the extraction of `prior_draws()`). The coefficient
 route extracts through `as_mixed_posteriors(transform_scaled = )`.

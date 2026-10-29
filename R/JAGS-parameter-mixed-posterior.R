@@ -74,7 +74,10 @@
 #'
 #' @param fit a model fitted with [JAGS_fit()].
 #' @param selection a selection of one catalog quantity, created with
-#'   [parameter_catalog_resolve()].
+#'   [parameter_catalog_resolve()] from the catalog of the fit
+#'   ([parameter_catalog()]) or, with `transform_scaled = FALSE`, from the
+#'   catalog of the fitted scale (`parameter_catalog(fit, transform_scaled =
+#'   FALSE)`); a selection of the latter with `transform_scaled = TRUE` stops.
 #' @param conditional whether to condition on the inclusion event of the
 #'   quantity: the gates of its allocation chain on for an allocation-derived
 #'   component SD or variance, and its own inclusion gate on for a variance
@@ -140,15 +143,20 @@ parameter_mixed_posterior <- function(fit, selection, conditional = FALSE,
   }
   check_bool(conditional, "conditional", allow_NA = FALSE)
   check_bool(transform_scaled, "transform_scaled", allow_NA = FALSE)
-  .bt_validate_parameter_selection(selection, catalog = parameter_catalog(fit))
+  scale <- .bt_parameter_selection_scale(fit, selection)
   if(nrow(selection$quantities) != 1L){
     stop("'selection' must contain exactly one parameter quantity.",
          call. = FALSE)
   }
+  if(transform_scaled && identical(scale, "fitted")){
+    .bt_parameter_selection_stop(
+      "The parameter selection belongs to the catalog of the fitted scale ('parameter_catalog(fit, transform_scaled = FALSE)'), not to that of the original scale: use 'transform_scaled = FALSE'."
+    )
+  }
   if(!transform_scaled){
     # The fitted scale: the fit without its declared predictor scales and the
     # quantity of its catalog (support, atoms, prior density and draws all
-    # share the scale).
+    # share the scale); a selection of that catalog is used as it is.
     fitted    <- .bt_parameter_fitted_scale(fit, selection)
     fit       <- fitted$fit
     selection <- fitted$selection
@@ -159,58 +167,6 @@ parameter_mixed_posterior <- function(fit, selection, conditional = FALSE,
     selection   = selection,
     conditional = conditional
   )
-}
-
-# The fit on the fitted scale of its predictors, and the quantity of 'selection'
-# in the catalog of that fit. The catalog of a fit with scaled predictors
-# describes the original scale of its random-effect SDs, variances, and
-# correlations (support, atoms, scale of the source coordinates); without the
-# declared scales the same catalog describes the fitted coordinates. The
-# quantity identifiers do not depend on the scale. The catalog is built from the
-# coordinates of the fit and kept with the parameter map.
-.bt_parameter_fitted_scale <- function(fit, selection){
-
-  formula_scale <- attr(fit, "formula_scale", exact = TRUE)
-  if(length(formula_scale) == 0L){
-    return(list(fit = fit, selection = selection))
-  }
-  map            <- parameter_map(fit)
-  prior_list     <- attr(fit, "prior_list", exact = TRUE)
-  formula_design <- attr(fit, "formula_design", exact = TRUE)
-  fitted_map <- parameter_map_cache(
-    map      = map,
-    provider = "BayesTools.fitted_scale",
-    key      = list(version = 1L, prior_list = prior_list, formula_design = formula_design),
-    compute  = function(){
-      catalog <- .bt_build_parameter_catalog(
-        coordinates    = map$coordinates,
-        prior_list     = prior_list,
-        formula_design = formula_design,
-        formula_scale  = NULL
-      )
-      .bt_parameter_map_new(map$coordinates, catalog$quantities, catalog$aliases)
-    }
-  )
-  attr(fit, "formula_scale") <- list()
-  attr(fit, "parameter_map") <- fitted_map
-
-  catalog <- parameter_catalog(fit)
-  rows    <- match(selection$quantity_id, catalog$quantities$quantity_id)
-  if(anyNA(rows)){
-    stop("The quantity '", selection$quantities$canonical_name[is.na(rows)][1L],
-         "' is not available on the fitted scale of the predictors.",
-         call. = FALSE)
-  }
-  selection <- list(
-    schema_version        = .bt_parameter_selection_version,
-    parameter_map_version = catalog$schema_version,
-    quantity_id           = catalog$quantities$quantity_id[rows],
-    quantities            = catalog$quantities[rows, , drop = FALSE]
-  )
-  class(selection) <- c("BayesTools_parameter_selection", "list")
-  .bt_validate_parameter_selection(selection, catalog = catalog)
-
-  list(fit = fit, selection = selection)
 }
 
 #' Per-draw gate and point states of a catalog quantity
@@ -269,8 +225,7 @@ parameter_gate_states <- function(fit, selection, draws = NULL){
   if(!inherits(fit, "BayesTools_fit")){
     stop("'fit' must be a 'BayesTools_fit' object.", call. = FALSE)
   }
-  catalog <- parameter_catalog(fit)
-  .bt_validate_parameter_selection(selection, catalog = catalog)
+  fit <- .bt_parameter_selection_fit(fit, selection)
   if(nrow(selection$quantities) != 1L){
     stop("'selection' must contain exactly one parameter quantity.",
          call. = FALSE)

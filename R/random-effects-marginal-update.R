@@ -123,8 +123,7 @@
 #' @export
 random_effects_marginal_update_plan <- function(fit, selection){
 
-  catalog <- parameter_catalog(fit)
-  .bt_validate_parameter_selection(selection, catalog = catalog)
+  fit <- .bt_parameter_selection_fit(fit, selection)
   if(nrow(selection$quantities) != 1L){
     stop("'selection' must contain exactly one parameter quantity.",
          call. = FALSE)

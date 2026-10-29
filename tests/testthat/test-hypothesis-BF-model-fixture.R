@@ -333,3 +333,39 @@ test_that("the random-effect callbacks of the default provider read the quantity
   )
 
 })
+
+
+test_that("a selection of the fitted-scale catalog is extracted with the gates of the fitted scale", {
+
+  fit  <- .hypothesis_model_fixture_fit("fit_re_summary_allocated")
+  name <- "(mu) s: sd(intercept)"
+  original <- parameter_catalog_resolve(parameter_catalog(fit), name)
+  fitted   <- parameter_catalog_resolve(parameter_catalog(fit, transform_scaled = FALSE), name)
+
+  # the original-scale SD of the standardized intercept column combines
+  # several fitted coordinates: its support has no declared atoms and no gates
+  original_support <- posterior_metadata(parameter_draws(fit, original), "support")[[1L]]
+  expect_false(original_support$exact)
+  expect_null(parameter_gate_states(fit, original)$event)
+  # the fitted-scale SD is the allocation-derived coordinate, which is 0 where its gates are off
+  fitted_support <- posterior_metadata(parameter_draws(fit, fitted), "support")[[1L]]
+  expect_true(fitted_support$exact)
+  expect_identical(fitted_support$type, "mixed")
+  expect_identical(fitted_support$points, 0)
+  gates <- parameter_gate_states(fit, fitted)
+  expect_true(any(gates$event))
+  expect_false(all(gates$event))
+
+  # the conditional mixed posterior of the fitted scale is the draws in the event of those gates
+  conditioned <- parameter_mixed_posterior(fit, fitted, conditional = TRUE, transform_scaled = FALSE)
+  expect_identical(length(conditioned), sum(gates$event))
+  expect_identical(
+    conditioned,
+    parameter_mixed_posterior(fit, original, conditional = TRUE, transform_scaled = FALSE)
+  )
+  expect_error(
+    parameter_mixed_posterior(fit, fitted, conditional = TRUE, transform_scaled = TRUE),
+    "belongs to the catalog of the fitted scale", fixed = TRUE
+  )
+
+})

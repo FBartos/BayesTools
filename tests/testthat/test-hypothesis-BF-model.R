@@ -2817,6 +2817,24 @@ test_that("different level expressions with equal fitted weights are separate gr
   parameter_catalog_resolve(parameter_catalog(fit), name)
 }
 
+# The fit as a model whose density methods are those of the backends of
+# BayesTools: the refusals of backends that other packages register in the
+# session (the fixture tests load RoBMA) are not listed in its eligibility
+# table.
+.hypothesis_model_test_own_methods <- function(fit){
+
+  registered <- hypothesis_density_backends()
+  own <- registered$name[!is.na(registered$package) & registered$package == "BayesTools" &
+                           registered$type != "stored"]
+  model <- structure(list(fit = fit), class = "bt_hypothesis_test_own_methods")
+  registerS3method("hypothesis_provider", "bt_hypothesis_test_own_methods", function(object, ...){
+    utils::modifyList(hypothesis_provider(object$fit),
+                      list(object = object, density_methods = own))
+  }, envir = asNamespace("BayesTools"))
+
+  model
+}
+
 
 test_that("the support and the Bayes factors of random-effect SDs and variances are those of the requested scale", {
 
@@ -2863,7 +2881,8 @@ test_that("the support and the Bayes factors of random-effect SDs and variances 
 
   # the discovery table tests both quantities on either scale
   for(transform_scaled in list(NULL, FALSE, TRUE)){
-    quantities <- hypothesis_quantities(fit, transform_scaled = transform_scaled)
+    quantities <- hypothesis_quantities(.hypothesis_model_test_own_methods(fit),
+                                        transform_scaled = transform_scaled)
     random <- quantities[quantities$parameter %in% c("(mu) sd(x)", "(mu) var(x)"), ]
     expect_identical(random$point_test, c(TRUE, TRUE), info = format(transform_scaled))
     expect_identical(random$reason, c("", ""), info = format(transform_scaled))
@@ -3304,5 +3323,172 @@ test_that("a quantity that is fixed on the fitted scale is refused as fixed", {
   # the sampled SD of the slope is tested
   expect_s3_class(hypothesis_BF(fit, "(mu) sd(x) > 1.2", seed = 1), "BayesTools_hypothesis_BF")
   expect_true(quantities$point_test[quantities$parameter == "(mu) sd(x)"])
+
+})
+
+
+test_that("the catalog of the fitted scale describes the fitted coordinates of a standardized block", {
+
+  fit <- .hypothesis_model_test_scaled_fit(
+    prior_random(g = random_block(sd = prior("uniform", list(1, 2)))),
+    ~ 1 + x + (0 + x || g)
+  )
+  k <- 1 / stats::sd(.hypothesis_model_test_x_values())
+  original <- parameter_catalog(fit)
+  fitted   <- parameter_catalog(fit, transform_scaled = FALSE)
+  expect_identical(parameter_catalog(fit, transform_scaled = TRUE), original)
+  expect_s3_class(fitted, "BayesTools_parameter_catalog")
+  # the same quantities with the same identifiers, names, and aliases
+  expect_identical(fitted$quantities$quantity_id, original$quantities$quantity_id)
+  expect_identical(fitted$quantities$canonical_name, original$quantities$canonical_name)
+  expect_identical(fitted$aliases, original$aliases)
+  expect_error(parameter_catalog(fit, transform_scaled = NA), "transform_scaled")
+  expect_error(parameter_catalog(fit, transform_scaled = "no"), "transform_scaled")
+
+  row <- function(catalog, name) catalog$quantities[catalog$quantities$canonical_name == name, ]
+  for(name in c("(mu) sd(x)", "(mu) var(x)")){
+    power <- if(identical(name, "(mu) sd(x)")) 1 else 2
+    bounds <- c(1, 2)^power
+    expect_equal(row(original, name)$support[[1L]]$bounds, k^power * bounds, info = name)
+    expect_equal(row(fitted, name)$support[[1L]]$bounds, bounds, info = name)
+    expect_true(row(fitted, name)$support[[1L]]$exact, info = name)
+  }
+  expect_identical(row(original, "(mu) sd(x)")$source_type, "one_to_one_transform")
+  expect_identical(row(fitted, "(mu) sd(x)")$source_type, "identity")
+  expect_equal(row(original, "(mu) sd(x)")$extraction_key[[1L]]$source_scale, k)
+  expect_equal(row(fitted, "(mu) sd(x)")$extraction_key[[1L]]$source_scale, 1)
+  expect_identical(row(fitted, "(mu) sd(x)")$status, "sampled")
+  # quantities that the scales do not touch are shared
+  expect_identical(row(fitted, "mu_x"), row(original, "mu_x"))
+
+  # a status that differs: the intercept SD is fixed on the fitted scale and
+  # combined with the sampled slope SD on the original scale
+  fixed <- .hypothesis_model_test_scaled_fit(
+    prior_random(g = random_block(sd = prior("spike", list(1.5)))),
+    ~ 1 + x + (1 + x || g), n = 1000L, seed = 2L,
+    priors_hook = function(compiled){
+      sd_names <- unique(compiled$formula_design$random_effects[[1L]]$sd_parameter_names)
+      compiled$prior_list[[sd_names[[2L]]]] <- prior("uniform", list(1, 2))
+      compiled$prior_list
+    }
+  )
+  expect_identical(row(parameter_catalog(fixed), "(mu) sd(intercept)")$status, "sampled")
+  fixed_row <- row(parameter_catalog(fixed, transform_scaled = FALSE), "(mu) sd(intercept)")
+  expect_identical(fixed_row$status, "structural")
+  expect_equal(fixed_row$fixed_value, 1.5)
+
+  # a fit without scaled predictors has one catalog, also with the scales
+  # of its formula blanked
+  plain <- .hypothesis_model_test_scaled_fit(
+    prior_random(g = random_block(sd = prior("uniform", list(1, 2)))),
+    ~ 1 + x + (0 + x || g), formula_scale = FALSE
+  )
+  expect_identical(parameter_catalog(plain, transform_scaled = FALSE), parameter_catalog(plain))
+  blanked <- fit
+  attr(blanked, "formula_scale") <- list()
+  expect_identical(parameter_catalog(blanked), original)
+  expect_identical(parameter_catalog(blanked, transform_scaled = FALSE), fitted)
+
+})
+
+
+test_that("selections of either catalog are extracted on the scale of their catalog", {
+
+  fit <- .hypothesis_model_test_scaled_fit(
+    prior_random(g = random_block(sd = prior("uniform", list(1, 2)))),
+    ~ 1 + x + (0 + x || g)
+  )
+  k <- 1 / stats::sd(.hypothesis_model_test_x_values())
+  original <- .hypothesis_model_test_select(fit, "(mu) sd(x)")
+  fitted   <- parameter_catalog_resolve(
+    parameter_catalog(fit, transform_scaled = FALSE), "(mu) sd(x)"
+  )
+  expect_false(identical(original$quantities, fitted$quantities))
+  expect_identical(original$quantity_id, fitted$quantity_id)
+
+  # draws, prior densities, and transforms
+  original_draws <- parameter_draws(fit, original)
+  fitted_draws   <- parameter_draws(fit, fitted)
+  expect_true(all(as.matrix(original_draws) >= k & as.matrix(original_draws) <= 2 * k))
+  expect_true(all(as.matrix(fitted_draws) >= 1 & as.matrix(fitted_draws) <= 2))
+  expect_equal(as.numeric(as.matrix(original_draws)) / as.numeric(as.matrix(fitted_draws)),
+               rep(k, nrow(as.matrix(fitted_draws))), tolerance = 1e-10)
+  expect_equal(posterior_metadata(fitted_draws, "support")[[1L]]$bounds, c(1, 2))
+  for(case in list(list(selection = original, k = k), list(selection = fitted, k = 1))){
+    density <- parameter_prior_density(fit, case$selection)
+    expect_equal(range(density$density$x), case$k * c(1, 2), tolerance = 1e-6)
+    transform <- parameter_transform(fit, case$selection)
+    expect_equal(parameter_transform_forward(c(1, 2), transform), case$k * c(1, 2))
+  }
+  # the same quantity as the mixed posterior of the fitted scale, from either catalog
+  mixed <- parameter_mixed_posterior(fit, original, transform_scaled = FALSE)
+  expect_identical(parameter_mixed_posterior(fit, fitted, transform_scaled = FALSE), mixed)
+  expect_equal(as.numeric(mixed), as.numeric(as.matrix(fitted_draws)))
+  expect_equal(posterior_metadata(mixed, "support")$bounds, c(1, 2))
+  # the fit with the scales blanked (the extraction of a downstream package)
+  blanked <- fit
+  attr(blanked, "formula_scale") <- list()
+  expect_equal(as.numeric(as.matrix(parameter_draws(blanked, original))),
+               as.numeric(as.matrix(fitted_draws)))
+  expect_equal(as.numeric(as.matrix(parameter_draws(blanked, fitted))),
+               as.numeric(as.matrix(fitted_draws)))
+  expect_no_error(random_effects_marginal_update_plan(fit, fitted))
+  expect_no_error(parameter_gate_states(fit, fitted))
+
+  # the selection of the fitted-scale catalog is not a selection of the original scale
+  expect_error(parameter_mixed_posterior(fit, fitted, transform_scaled = TRUE),
+               "belongs to the catalog of the fitted scale", fixed = TRUE,
+               class = "BayesTools_parameter_resolution_error")
+  expect_error(parameter_mixed_posterior(fit, fitted),
+               "use 'transform_scaled = FALSE'", fixed = TRUE)
+  expect_equal(posterior_metadata(parameter_mixed_posterior(fit, original), "support")$bounds,
+               k * c(1, 2))
+
+  # selections of another catalog are refused by every function
+  tampered <- fitted
+  tampered$quantities$support[[1L]]$bounds <- c(0, 1)
+  foreign <- parameter_catalog_resolve(
+    parameter_catalog(.hypothesis_model_test_fit(), transform_scaled = FALSE), "sigma"
+  )
+  for(selection in list(tampered, foreign)){
+    for(call in list(
+      function() parameter_draws(fit, selection),
+      function() parameter_prior_density(fit, selection),
+      function() parameter_transform(fit, selection),
+      function() parameter_gate_states(fit, selection),
+      function() parameter_mixed_posterior(fit, selection, transform_scaled = FALSE),
+      function() parameter_mixed_posterior(fit, selection, transform_scaled = TRUE)
+    )){
+      expect_error(call(), "does not belong to this fitted catalog", class = "BayesTools_parameter_resolution_error")
+    }
+  }
+  # a selection of several quantities is refused where one is needed
+  both <- parameter_catalog_resolve(
+    parameter_catalog(fit, transform_scaled = FALSE), "mu_x"
+  )
+  both$quantities <- rbind(both$quantities, fitted$quantities)
+  both$quantity_id <- both$quantities$quantity_id
+  expect_error(parameter_mixed_posterior(fit, both, transform_scaled = FALSE),
+               "exactly one parameter quantity", fixed = TRUE)
+
+})
+
+
+test_that("prior draws of a standardized block are extracted with a selection of the fitted-scale catalog", {
+
+  fit <- .hypothesis_model_test_scaled_allocation_fit()
+  raw <- transform_prior_samples(fit, n_samples = 200L, seed = 1, formula_scale = list())
+  view <- JAGS_with_draws(fit, coda::mcmc.list(coda::mcmc(raw)))
+  original <- .hypothesis_model_test_select(fit, "(mu) study: sd(x)")
+  fitted   <- parameter_catalog_resolve(
+    parameter_catalog(fit, transform_scaled = FALSE), "(mu) study: sd(x)"
+  )
+  # the original-scale SD needs the Cholesky coordinates, which are not monitored
+  expect_error(parameter_draws(view, original),
+               class = "BayesTools_draws_view_coordinate_unavailable")
+  draws <- parameter_draws(view, fitted)
+  expect_equal(dim(as.matrix(draws)), c(200L, 1L))
+  expect_true(all(is.finite(as.matrix(draws))))
+  expect_equal(posterior_metadata(draws, "support")[[1L]]$bounds, c(0, Inf))
 
 })
