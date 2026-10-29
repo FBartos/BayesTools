@@ -79,6 +79,13 @@ if (!exists("bayestools_quiet_llm_reporter", mode = "function")) {
     local = TRUE
   )
 }
+# Always refresh the scenario helpers: restored workspaces can carry functions
+# and cached scenario roots from a previous checkout.
+.scenario_state <- new.env(parent = emptyenv())
+source(
+  file.path(.bayestools_test_project_root, "tests", "scenarios", "helper-scenarios.R"),
+  local = TRUE
+)
 .bayestools_clean_test_cache <- local({
 
   cache_root <- Sys.getenv("BAYESTOOLS_TEST_FILES_DIR")

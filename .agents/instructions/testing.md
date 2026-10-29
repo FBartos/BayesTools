@@ -53,6 +53,10 @@ profiles when a fitting change invalidates required caches; post-fit or
 plotting changes alone do not require refitting. Establish one representative
 path before expanding expensive validation.
 
+Maintainer scenarios live in `tests/scenarios/` and run outside these profiles
+with `Rscript tools/test-scenario.R <scenario>`; see its README. Their text,
+figure, and timing baselines change only with maintainer review.
+
 ## Test Organization and Caches
 
 This package uses testthat edition 3. Do not add `context()`.
