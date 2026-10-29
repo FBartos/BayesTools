@@ -364,7 +364,12 @@
     prior_list <- list()
     original_prior_names <- character()
   }else{
-    prior_list <- .bt_random_prior_terms_to_prior_list(block_prior, model_terms, homogeneous_sd)
+    prior_list <- .bt_random_prior_terms_to_prior_list(
+      block_prior,
+      model_terms,
+      homogeneous_sd,
+      block_name = random_term$block_name
+    )
     original_prior_names <- names(prior_list)
   }
   monitor_policy <- block_prior$monitor

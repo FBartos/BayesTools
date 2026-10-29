@@ -35,8 +35,16 @@
 #' `sd` must be a BayesTools prior object with nonnegative support, such as a
 #' truncated normal, gamma, point prior at zero, or mixture prior. When a
 #' structure needs multiple marginal standard deviations, a single `sd` prior is
-#' replicated over those SD components unless a more specific override is
-#' supplied by the random-effect resolver.
+#' replicated over those SD components unless `random_block(terms = ...)`
+#' overrides the prior of individual terms; `sd` remains the default for the
+#' terms that are not overridden. A block with one SD per term (DIAG, US/UN,
+#' HCS, and HAR) may omit `sd`, both in the block and at the top level, when
+#' `terms` supplies a prior for every resolved term: the coefficient columns
+#' such as `"intercept"` or a slope label, or the index term whose per-level
+#' SDs HCS and HAR share one prior. Coverage is checked when the formula is
+#' resolved, and uncovered terms are named in the error. Structures with one
+#' shared SD (ID, `diag(..., hom = TRUE)`, CS, AR1, and CAR) take no term overrides
+#' and always require `sd`.
 #' Non-point multivariate (vector) SD priors are unsupported; use
 #' nonnegative scalar SD priors. Deterministic nonnegative point vectors and
 #' supported independent factor priors retain their usual behavior.
@@ -247,7 +255,10 @@
 #'
 #' @param ... named `random_block()` specifications and, optionally,
 #'   top-level `random_variance_allocation()` specifications.
-#' @param sd prior distribution for random-effect standard deviations.
+#' @param sd prior distribution for random-effect standard deviations. In
+#'   `random_block()`, it is the default for the terms that `terms` does not
+#'   override, and may be omitted when `terms` covers every SD of the block
+#'   (see the standard-deviation priors section).
 #' @param covariance optional `random_covariance()` specification.
 #' @param cor optional correlation prior. Use `prior_lkj()` for unstructured
 #'   correlation matrices and an ordinary scalar prior for structured
@@ -403,7 +414,9 @@ prior_random <- function(..., sd = NULL, covariance = NULL, cor = NULL,
 #' @param terms for `random_block()`, an optional named list of term-specific
 #'   SD overrides. Each entry must be either a prior object or
 #'   `random_block(sd = ...)`, and names must match resolved model terms such
-#'   as `"intercept"` or a slope term label. For
+#'   as `"intercept"` or a slope term label (the index term for HCS and HAR).
+#'   Terms not listed use `sd`; when every term is listed, `sd` may be
+#'   omitted. For
 #'   `random_variance_allocation()`, optional random-effect block names targeted
 #'   by the shared allocation. If `NULL`, the allocation targets all remaining
 #'   unallocated random-effect blocks at resolution time.

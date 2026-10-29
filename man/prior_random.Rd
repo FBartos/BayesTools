@@ -73,7 +73,10 @@ random_new_levels(method = c("error", "zero", "sample"))
 \item{...}{named \code{random_block()} specifications and, optionally,
 top-level \code{random_variance_allocation()} specifications.}
 
-\item{sd}{prior distribution for random-effect standard deviations.}
+\item{sd}{prior distribution for random-effect standard deviations. In
+\code{random_block()}, it is the default for the terms that \code{terms} does not
+override, and may be omitted when \code{terms} covers every SD of the block
+(see the standard-deviation priors section).}
 
 \item{covariance}{optional \code{random_covariance()} specification.}
 
@@ -98,7 +101,9 @@ A named block can additionally request \code{"mean_centered"}; see details.}
 \item{terms}{for \code{random_block()}, an optional named list of term-specific
 SD overrides. Each entry must be either a prior object or
 \code{random_block(sd = ...)}, and names must match resolved model terms such
-as \code{"intercept"} or a slope term label. For
+as \code{"intercept"} or a slope term label (the index term for HCS and HAR).
+Terms not listed use \code{sd}; when every term is listed, \code{sd} may be
+omitted. For
 \code{random_variance_allocation()}, optional random-effect block names targeted
 by the shared allocation. If \code{NULL}, the allocation targets all remaining
 unallocated random-effect blocks at resolution time.}
@@ -258,8 +263,16 @@ if the formula contains a block named \code{"study"}, then
 \code{sd} must be a BayesTools prior object with nonnegative support, such as a
 truncated normal, gamma, point prior at zero, or mixture prior. When a
 structure needs multiple marginal standard deviations, a single \code{sd} prior is
-replicated over those SD components unless a more specific override is
-supplied by the random-effect resolver.
+replicated over those SD components unless \code{random_block(terms = ...)}
+overrides the prior of individual terms; \code{sd} remains the default for the
+terms that are not overridden. A block with one SD per term (DIAG, US/UN,
+HCS, and HAR) may omit \code{sd}, both in the block and at the top level, when
+\code{terms} supplies a prior for every resolved term: the coefficient columns
+such as \code{"intercept"} or a slope label, or the index term whose per-level
+SDs HCS and HAR share one prior. Coverage is checked when the formula is
+resolved, and uncovered terms are named in the error. Structures with one
+shared SD (ID, \code{diag(..., hom = TRUE)}, CS, AR1, and CAR) take no term overrides
+and always require \code{sd}.
 Non-point multivariate (vector) SD priors are unsupported; use
 nonnegative scalar SD priors. Deterministic nonnegative point vectors and
 supported independent factor priors retain their usual behavior.

@@ -923,6 +923,69 @@ test_that("term-specific SD overrides are validated at construction", {
   )
 })
 
+test_that("term-specific SD overrides can cover every SD of a block without 'sd'", {
+
+  set.seed(1)
+  data <- data.frame(
+    g = factor(rep(1:6, each = 4L)),
+    t = factor(rep(1:4, 6L)),
+    x = stats::rnorm(24L)
+  )
+  sd_prior <- .parameterization_sd_prior()
+  slab_prior <- prior_spike_and_slab(prior_parameter = sd_prior)
+  compile <- function(block, formula = ~ x + (1 + x | g),
+                      prior_list = list(intercept = prior("normal", list(0, 1)),
+                                        x = prior("normal", list(0, 1)))){
+    JAGS_formula(formula, "mu", data, prior_list,
+      prior_random = prior_random(g = block))
+  }
+
+  # Full coverage resolves to the same JAGS priors as 'sd' plus the overrides.
+  covered <- compile(random_block(
+    cor = prior_lkj(eta = 1),
+    terms = list(intercept = sd_prior, x = slab_prior)
+  ))
+  with_sd <- compile(random_block(
+    sd = sd_prior,
+    cor = prior_lkj(eta = 1),
+    terms = list(x = slab_prior)
+  ))
+  expect_identical(covered$prior_list, with_sd$prior_list)
+  expect_identical(covered$formula_syntax, with_sd$formula_syntax)
+  expect_true(is.prior.spike_and_slab(covered$prior_list$mu__xREx__g_x))
+
+  # A per-level SD structure is covered by its index term.
+  for(structure in c("hcs", "har")){
+    formula <- stats::as.formula(paste0("~ 1 + ", structure, "(t | g)"))
+    intercept_only <- list(intercept = prior("normal", list(0, 1)))
+    covered <- compile(random_block(terms = list(t = sd_prior)),
+      formula = formula, prior_list = intercept_only)
+    with_sd <- compile(random_block(sd = sd_prior),
+      formula = formula, prior_list = intercept_only)
+    expect_identical(covered$prior_list, with_sd$prior_list)
+    expect_identical(covered$formula_syntax, with_sd$formula_syntax)
+  }
+
+  # Uncovered terms are named; unknown names and shared-SD blocks refuse as before.
+  expect_error(
+    compile(random_block(cor = prior_lkj(eta = 1), terms = list(intercept = sd_prior))),
+    "Random-effect SD prior is missing for term(s) 'x' in block 'g'. Supply 'sd' or cover them in 'terms'.",
+    fixed = TRUE
+  )
+  expect_error(
+    compile(random_block(terms = list(intercept = sd_prior, z = sd_prior))),
+    "Unknown random-effect term override(s): z.",
+    fixed = TRUE
+  )
+  expect_error(
+    compile(random_block(terms = list(intercept = sd_prior)),
+      formula = ~ 1 + cs(t | g),
+      prior_list = list(intercept = prior("normal", list(0, 1)))),
+    "Random-effect SD prior is missing. Supply 'sd' in prior_random() or random_block().",
+    fixed = TRUE
+  )
+})
+
 test_that("compiled blocks apply inherited correlation priors by dimension", {
 
   set.seed(1)

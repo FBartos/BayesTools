@@ -1037,7 +1037,8 @@
 }
 
 .bt_random_prior_terms_to_prior_list <- function(block_prior, model_terms,
-                                                homogeneous_sd = FALSE){
+                                                homogeneous_sd = FALSE,
+                                                block_name = NULL){
 
   # A block controlled by an external SD source has no SD prior of its own.
   if(!is.null(block_prior[["sd_source", exact = TRUE]])){
@@ -1055,16 +1056,16 @@
   if(is.null(sd_prior) && !is.null(covariance_sd)){
     sd_prior <- block_prior$covariance$sd
   }
-  if(is.null(sd_prior)){
+  # Without term overrides, or with one shared SD, the block needs its own
+  # 'sd'; otherwise 'terms' may cover every SD (checked below).
+  if(is.null(sd_prior) && (is.null(block_prior$terms) || homogeneous_sd)){
     stop("Random-effect SD prior is missing. Supply 'sd' in prior_random() or random_block().", call. = FALSE)
   }
 
-  if(homogeneous_sd){
-    out <- list(sd = sd_prior)
-  }else{
-    out <- rep(list(sd_prior), length(model_terms))
-    names(out) <- model_terms
-  }
+  # 'sd' (when supplied) is the default for the terms 'terms' does not override.
+  sd_names <- if(homogeneous_sd) "sd" else model_terms
+  out <- rep(list(sd_prior), length(sd_names))
+  names(out) <- sd_names
 
   if(!is.null(block_prior$terms)){
     term_overrides <- block_prior$terms
@@ -1097,6 +1098,17 @@
         stop("Random-effect term override '", term, "' must be a prior or random_block(sd = ...).", call. = FALSE)
       }
     }
+  }
+
+  uncovered_terms <- names(out)[vapply(out, is.null, logical(1))]
+  if(length(uncovered_terms) > 0L){
+    block_label <- if(!is.null(block_name)) paste0(" in block '", block_name, "'") else ""
+    stop(
+      "Random-effect SD prior is missing for term(s) ",
+      paste0("'", uncovered_terms, "'", collapse = ", "),
+      block_label, ". Supply 'sd' or cover them in 'terms'.",
+      call. = FALSE
+    )
   }
 
   out
