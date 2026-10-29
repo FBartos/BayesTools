@@ -445,7 +445,7 @@ fit_sleep_intercept <- JAGS_fit(
   formula_list = sleep_formula_list, formula_data_list = list(mu = sleepstudy),
   formula_prior_list = sleep_fixed_priors, formula_random_prior_list = sleep_sd_priors,
   formula_scale_list = list(mu = list(Days = TRUE)),
-  chains = 2, adapt = 1000, burnin = 1000, sample = 2000, thin = 1, seed = 1
+  chains = 2, adapt = 1000, burnin = 1000, sample = 2000, seed = 1
 )
 ```
 ```{r}
@@ -518,7 +518,7 @@ fit_sleep_slope <- JAGS_fit(
   formula_list = sleep_slope_formula_list, formula_data_list = list(mu = sleepstudy),
   formula_prior_list = sleep_fixed_priors, formula_random_prior_list = sleep_slope_priors,
   formula_scale_list = list(mu = list(Days = TRUE)),
-  chains = 2, adapt = 1000, burnin = 1000, sample = 2000, thin = 1, seed = 1
+  chains = 2, adapt = 1000, burnin = 1000, sample = 2000, seed = 1
 )
 ```
 ```{r}
@@ -675,7 +675,7 @@ fit_sleep_independent <- JAGS_fit(
   formula_list = sleep_independent_formula_list, formula_data_list = list(mu = sleepstudy),
   formula_prior_list = sleep_fixed_priors, formula_random_prior_list = sleep_sd_priors,
   formula_scale_list = list(mu = list(Days = TRUE)),
-  chains = 2, adapt = 1000, burnin = 1000, sample = 2000, thin = 1, seed = 1
+  chains = 2, adapt = 1000, burnin = 1000, sample = 2000, seed = 1
 )
 ```
 ```{r}
@@ -763,7 +763,7 @@ fit_sleep_hcs <- JAGS_fit(
   formula_list = sleep_hcs_formula_list, formula_data_list = list(mu = sleepstudy),
   formula_prior_list = sleep_fixed_priors, formula_random_prior_list = day_random_priors,
   formula_scale_list = list(mu = list(Days = TRUE)),
-  chains = 2, adapt = 1000, burnin = 2000, sample = 5000, thin = 1, seed = 31
+  chains = 2, adapt = 1000, burnin = 2000, sample = 5000, seed = 31
 )
 ```
 ```{r}
@@ -776,24 +776,15 @@ Table below compares the estimates with the lme4 `cs()` fit.
 compare_structured_estimates(lme4_model = lme4_hcs, bayes_model = fit_sleep_hcs)
 ```
 
-The day-specific SDs increase over the study.
-The random-slope model implies the same pattern: a subject's deviation on day $d$ is the random intercept plus the random slope times the standardized day $x_d$, so its SD is $\sqrt{\sigma_0^2 + 2 \rho \sigma_0 \sigma_1 x_d + \sigma_1^2 x_d^2}$, where $\sigma_0$ and $\sigma_1$ are the random intercept and slope SDs and $\rho$ is their correlation.
-Table below compares these implied SDs (posterior means) with the HCS estimates.
+The day-specific SDs generally increase over the study, implying similar pattern to the one modeled by the random-slope model previously.
 HCS recovers the increase without assuming a linear trend per subject, and its day-specific SDs also capture departures from the smooth pattern implied by the random-slope model, such as the smaller SD on day 7.
-
-```{r}
-compare_day_sds(slope_model = fit_sleep_slope, hcs_model = fit_sleep_hcs, days = sleepstudy$Days)
-```
 
 ### Testing the Correlation
 
-A spike-and-slab prior tests a parameter against zero.
-The day-specific random effects are so strongly correlated that all posterior draws of such a test would include the correlation, as in the random-slope test.
-We therefore ask a more informative question: does the HCS correlation equal 0.9?
-We compare the hypothesis with the uniform prior of the HCS model in two ways.
+The structured covariance constructions allow us to also test the correlation value using a Savage-Dickey density ratio  [@wagenmakers2010bayesian] and the product-space approach.
+Since the day-specific random effects are so strongly correlated that all posterior draws of such a test would include the correlation (as in the random-slope test), we test whether the HCS correlation equals 0.9 (against a hypothesis with a uniform prior over the admissible range).
 
-First, the Savage-Dickey density ratio [@wagenmakers2010bayesian] obtains the Bayes factor directly from the fitted HCS model: it divides the posterior density of the correlation at 0.9 by its prior density.
-`parameter_catalog_resolve()` selects the correlation by the name the estimates table shows, `parameter_mixed_posterior()` extracts its posterior draws together with its prior distribution, and `hypothesis_BF()` refers to it in backticks.
+First, the Savage-Dickey density ratio allows us to obtains the Bayes factor directly from the fitted HCS model: it divides the posterior density of the correlation at 0.9 by its prior density.
 
 ```{r}
 hcs_cor <- parameter_mixed_posterior(
@@ -802,16 +793,15 @@ hcs_cor <- parameter_mixed_posterior(
 hypothesis_BF(hcs_cor, hypothesis = "`(mu) cor` = 0.9", BF01 = TRUE, seed = 1)
 ```
 
-Second, a mixture prior places half of the prior probability on a correlation of 0.9 (the spike) and half on the same uniform distribution (the slab) and tests the hypothesis within a single fit, as the spike-and-slab prior did for the random slope.
-`random_covariance(cor_scale = "cor")` specifies the correlation prior on the raw correlation scale.
+Second, a mixture prior places half of the prior probability on a correlation of 0.9 (the spike) and half on the same uniform distribution (the slab) and tests the hypothesis within a single fit using the product space approach.
+`random_covariance(cor_scale = "cor")` specifies that the correlation prior is on the raw correlation scale.
 
 ```{r}
 cor_test_prior <- prior_mixture(
   prior_list = list(
     prior(distribution = "spike",   parameters = list(location = 0.9)),
     prior(distribution = "uniform", parameters = list(a = -1/9, b = 1))
-  ),
-  is_null = c(TRUE, FALSE)
+  ),is_null = c(TRUE, FALSE)
 )
 day_test_priors <- list(mu = prior_random(Subject = random_block(
   sd         = unit_sd_prior,
@@ -826,7 +816,7 @@ fit_sleep_hcs_test <- JAGS_fit(
   formula_list = sleep_hcs_formula_list, formula_data_list = list(mu = sleepstudy),
   formula_prior_list = sleep_fixed_priors, formula_random_prior_list = day_test_priors,
   formula_scale_list = list(mu = list(Days = TRUE)),
-  chains = 2, adapt = 1000, burnin = 2000, sample = 5000, thin = 20, seed = 31
+  chains = 2, adapt = 1000, burnin = 2000, sample = 5000, seed = 31
 )
 ```
 
@@ -836,8 +826,9 @@ The `JAGS_inference_table` function compares the slab with the spike, so an incl
 JAGS_inference_table(fit_sleep_hcs_test)
 ```
 
-Both approaches agree: the data favor a correlation of 0.9 over the uniform alternative by a Bayes factor of about 5 (the inverse of the inclusion Bayes factor).
-The Savage-Dickey ratio reuses the estimated model but relies on a density estimate at the tested value; the mixture prior needs a separate fit but extends to testing several parameters at once.
+Both approaches come to a similar conclusion.
+The data favor a correlation of 0.9 over the uniform alternative by a Bayes factor of about 5.
+The Savage-Dickey ratio reuses the estimated model but relies on a density estimate at the tested value; the mixture prior needs a separate fit but again allows us to extend the approach to testing several parameters at once.
 
 
 ## Continuous-Time Autoregressive Correlation
@@ -898,7 +889,7 @@ fit_ovary_car <- JAGS_fit(
   model_syntax = ovary_likelihood, data = ovary_data, prior_list = ovary_prior_list,
   formula_list = ovary_formula_list, formula_data_list = list(mu = Ovary),
   formula_prior_list = ovary_fixed_priors, formula_random_prior_list = ovary_random_priors,
-  chains = 2, adapt = 1000, burnin = 2000, sample = 10000, thin = 1, seed = 1
+  chains = 2, adapt = 1000, burnin = 2000, sample = 10000, seed = 1
 )
 ```
 ```{r}
@@ -943,13 +934,13 @@ fit_ovary_bridge <- JAGS_fit(
   model_syntax = ovary_likelihood, data = ovary_data, prior_list = ovary_prior_list,
   formula_list = ovary_formula_list, formula_data_list = list(mu = Ovary),
   formula_prior_list = ovary_fixed_priors, formula_random_prior_list = ovary_bridge_priors,
-  chains = 2, adapt = 1000, burnin = 2000, sample = 5000, thin = 1, seed = 1
+  chains = 2, adapt = 1000, burnin = 2000, sample = 5000, seed = 1
 )
 fit_ovary_null <- JAGS_fit(
   model_syntax = ovary_likelihood, data = ovary_data, prior_list = ovary_prior_list,
   formula_list = ovary_formula_list, formula_data_list = list(mu = Ovary),
   formula_prior_list = ovary_fixed_priors, formula_random_prior_list = ovary_null_priors,
-  chains = 2, adapt = 1000, burnin = 2000, sample = 5000, thin = 1, seed = 1
+  chains = 2, adapt = 1000, burnin = 2000, sample = 5000, seed = 1
 )
 marglik_ovary_car <- JAGS_bridgesampling(
   fit_ovary_bridge, log_posterior = ovary_log_posterior, data = ovary_data,
@@ -983,7 +974,7 @@ fit_ovary_car_test <- JAGS_fit(
   model_syntax = ovary_likelihood, data = ovary_data, prior_list = ovary_prior_list,
   formula_list = ovary_formula_list, formula_data_list = list(mu = Ovary),
   formula_prior_list = ovary_fixed_priors, formula_random_prior_list = ovary_test_priors,
-  chains = 2, adapt = 1000, burnin = 2000, sample = 10000, thin = 1, seed = 1
+  chains = 2, adapt = 1000, burnin = 2000, sample = 10000, seed = 1
 )
 ```
 ```{r}
