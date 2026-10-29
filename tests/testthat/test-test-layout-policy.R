@@ -73,7 +73,10 @@ test_that("CI does not bypass vignette construction or checking", {
   )))
 })
 
-test_that("vignettes never fit models during ordinary rendering", {
+# Rendering fits only missing or stale caches (see .agents/instructions/vignettes.md):
+# every fitting call belongs to a chunk with a `cache_fits` option, or is not
+# evaluated.
+test_that("vignettes fit models only in cached chunks", {
 
   vignette_directory <- testthat::test_path("..", "..", "vignettes")
   skip_if_not(
@@ -110,7 +113,7 @@ test_that("vignettes never fit models during ordinary rendering", {
         "(JAGS_fit|JAGS_bridgesampling|rstanarm::stan_lmer)\\s*\\(",
         line
       )
-      if(fits_model && !grepl("eval\\s*=\\s*FALSE", chunk_header)){
+      if(fits_model && !grepl("eval\\s*=\\s*FALSE|cache_fits\\s*=", chunk_header)){
         violations <- c(
           violations,
           paste0(

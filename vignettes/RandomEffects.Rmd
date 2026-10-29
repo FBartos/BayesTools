@@ -24,10 +24,11 @@ cached_fits <- vignette_cache(
     "marglik_brms_intercept", "marglik_brms_slope", "marglik_sleep_intercept", "marglik_sleep_slope",
     "fit_sleep_slope_spike", "brms_independent", "fit_sleep_independent",
     "marglik_brms_independent", "marglik_sleep_independent", "fit_sleep_hcs",
-    "fit_sleep_har", "fit_sleep_hcs_test", "fit_nested",
+    "fit_sleep_hcs_test", "fit_ovary_car", "marglik_ovary_car", "marglik_ovary_null",
+    "fit_ovary_car_test", "fit_nested",
     "stan_crossed", "fit_crossed_independent", "fit_crossed_allocation"
   ),
-  packages = c("lme4", "brms", "rstanarm", "runjags", "rjags")
+  packages = c("lme4", "nlme", "brms", "rstanarm", "runjags", "rjags")
 )
 
 options(width = 140)
@@ -60,11 +61,12 @@ pre code {
 BayesTools can generate JAGS [@JAGS] mixed models directly from formulas with random-effect terms.
 Its random-coefficient syntax follows the conventions used by lme4 [@lme4], and `prior_random()` allows users to specify the corresponding prior distributions, e.g., random-effect standard deviation priors, correlation priors, variance-allocation priors.
 
-This vignette illustrates how to use the functionality on example datasets distributed with lme4.
+This vignette illustrates how to use the functionality on example datasets distributed with lme4 and nlme.
 The first example uses the `sleepstudy` data and shows random intercepts, correlated and independent random slopes, and Bayes factor tests for the random slope and the correlation, comparing lme4, brms [@brms], and BayesTools.
-The second example continues with the `sleepstudy` data and shows heterogeneous compound-symmetry and heterogeneous AR(1) random-effect covariance structures over the study days, and a test of the correlation against a specific value.
-The third example uses the `Pastes` data and shows nested random intercepts.
-The fourth example uses the `Penicillin` data and shows crossed random effects, compared with rstanarm [@rstanarm].
+The second example continues with the `sleepstudy` data and shows a heterogeneous compound-symmetry covariance over the study days and a test of its correlation against a specific value.
+The third example uses the `Ovary` data from nlme [@pinheiro2000mixed] and shows a continuous-time autoregressive covariance over unequally spaced measurement times, with a test of its correlation by bridge sampling, a mixture prior, and the Savage-Dickey density ratio.
+The fourth example uses the `Pastes` data and shows nested random intercepts.
+The fifth example uses the `Penicillin` data and shows crossed random effects, compared with rstanarm [@rstanarm].
 
 ## Formula Semantics
 
@@ -277,6 +279,63 @@ compare_structured_estimates <- function(lme4_model, bayes_model) {
                    lme4_sd, lme4_cor[2, 1]),
     BayesTools = c(mean(bayes_samples[, "(mu) intercept"]), mean(bayes_samples[, "(mu) Days"]),
                    mean(bayes_samples[, "sigma"]), bayes_sd, mean(bayes_samples[, "(mu) cor"])),
+    row.names  = NULL
+  )
+  comparison[, -1] <- round(comparison[, -1], 3)
+  comparison
+}
+
+# The SD of a subject's deviation on each day implied by the random intercept and
+# slope (on the standardized Days scale used for fitting) and estimated by HCS.
+compare_day_sds <- function(slope_model, hcs_model, days) {
+
+  slope_samples <- JAGS_estimates_table(
+    slope_model, transform_scaled = FALSE, random_effects_summary = "standard",
+    remove_diagnostics = TRUE, return_samples = TRUE
+  )
+  hcs_samples <- JAGS_estimates_table(
+    hcs_model, transform_scaled = FALSE, random_effects_summary = "standard",
+    remove_diagnostics = TRUE, return_samples = TRUE
+  )
+
+  day_levels <- sort(unique(days))
+  day_z      <- (day_levels - mean(days)) / stats::sd(days)
+  sd_0  <- slope_samples[, "(mu) sd(intercept)"]
+  sd_1  <- slope_samples[, "(mu) sd(Days)"]
+  cor_s <- slope_samples[, "(mu) cor(intercept,Days)"]
+  slope_sd <- vapply(day_z, function(x) {
+    mean(sqrt(sd_0^2 + 2 * cor_s * sd_0 * sd_1 * x + sd_1^2 * x^2))
+  }, numeric(1))
+
+  data.frame(
+    day       = day_levels,
+    slope     = round(slope_sd, 3),
+    HCS       = round(colMeans(hcs_samples[, paste0("(mu) sd(Days_f[", day_levels, "])")]), 3),
+    row.names = NULL
+  )
+}
+
+# gls() with an exponential correlation and a nugget parameterizes the same
+# covariance as car() plus a residual: total variance tau^2, nugget share n, and
+# correlation exp(-distance / range), so sd = tau sqrt(1 - n), sigma = tau sqrt(n),
+# and cor = exp(-1 / range).
+compare_car_estimates <- function(nlme_model, bayes_model) {
+
+  cor_struct <- coef(nlme_model$modelStruct$corStruct, unconstrained = FALSE)
+  tau        <- nlme_model$sigma
+  nlme_fixed <- coef(nlme_model)
+  bayes_samples <- JAGS_estimates_table(
+    bayes_model, random_effects_summary = "standard",
+    remove_diagnostics = TRUE, return_samples = TRUE
+  )
+
+  comparison <- data.frame(
+    parameter  = c("intercept", "sin_time", "cos_time", "sigma", "sd", "cor"),
+    nlme       = c(nlme_fixed[["(Intercept)"]], nlme_fixed[["sin_time"]], nlme_fixed[["cos_time"]],
+                   tau * sqrt(cor_struct[["nugget"]]), tau * sqrt(1 - cor_struct[["nugget"]]),
+                   exp(-1 / cor_struct[["range"]])),
+    BayesTools = colMeans(bayes_samples[, c("(mu) intercept", "(mu) sin_time", "(mu) cos_time",
+                                            "sigma", "(mu) sd", "(mu) cor")]),
     row.names  = NULL
   )
   comparison[, -1] <- round(comparison[, -1], 3)
@@ -655,10 +714,12 @@ data.frame(
 
 ## Structured Random-Effect Correlations
 
-The structured random effects covariances use the levels of a discrete index instead of coefficient columns.
-We continue with `sleepstudy` and use the day of measurement as the index: in addition to the fixed `Days` slope, each subject receives one random effect per day, and the covariance structure determines how these day-specific effects are correlated.
-We show two structures that estimate a separate SD for each day: heterogeneous compound symmetry (HCS), with one correlation shared by all pairs of days, and heterogeneous AR(1) (HAR), whose correlation decays with the distance between days.
-We then test whether the HCS correlation equals a specific value.
+The random intercept and slope model implies a specific covariance between a subject's measurements on different days: subjects differ in their level and in a linear trend, so the SD of their deviations changes over the days.
+Structured covariances model the covariance between days directly, without assuming that each subject follows a straight line.
+They use the levels of a discrete index instead of coefficient columns: in addition to the fixed `Days` slope, each subject receives one random effect per day, and the covariance structure determines how these day-specific effects are correlated.
+A random intercept alone corresponds to compound symmetry, in which all pairs of days share one correlation and all days one SD.
+Heterogeneous compound symmetry (HCS) keeps the common correlation but estimates a separate SD for each day.
+We fit the HCS model, compare its day-specific SDs with those implied by the random-slope model, and test whether its correlation equals a specific value.
 
 ```{r}
 sleepstudy$Days_f <- factor(sleepstudy$Days)
@@ -686,7 +747,7 @@ sleep_hcs_formula_list <- list(mu = ~ Days + hcs(Days_f | Subject))
 ```
 
 The `random_block()` function sets the SD prior which applies to every day-specific SD independently.
-Without a `cor` argument, the correlation receives the default uniform prior over its admissible interval: (-1/9, 1) for an HCS correlation with 10 days and (-1, 1) for an AR(1) correlation specified later.
+Without a `cor` argument, the correlation receives the default uniform prior over its admissible interval, (-1/9, 1) for an HCS correlation with 10 days.
 `random_monitor()` allows us to stores only the correlation posterior samples.
 
 ```{r}
@@ -715,41 +776,13 @@ Table below compares the estimates with the lme4 `cs()` fit.
 compare_structured_estimates(lme4_model = lme4_hcs, bayes_model = fit_sleep_hcs)
 ```
 
-### Heterogeneous Autoregressive Correlation
-
-In lme4, `ar1(hom = FALSE)` specifies an AR(1) correlation, `cor^abs(i - j)` between days `i` and `j`, with a separate SD for each day.
-
-```{r}
-lme4_har <- lme4::lmer(
-  Reaction_z ~ Days_s + ar1(0 + Days_f | Subject, hom = FALSE),
-  data = sleepstudy, REML = FALSE
-)
-lme4_har
-```
-
-BayesTools uses the `har()` term with the same prior distributions as the HCS model.
+The day-specific SDs increase over the study.
+The random-slope model implies the same pattern: a subject's deviation on day $d$ is the random intercept plus the random slope times the standardized day $x_d$, so its SD is $\sqrt{\sigma_0^2 + 2 \rho \sigma_0 \sigma_1 x_d + \sigma_1^2 x_d^2}$, where $\sigma_0$ and $\sigma_1$ are the random intercept and slope SDs and $\rho$ is their correlation.
+Table below compares these implied SDs (posterior means) with the HCS estimates.
+HCS recovers the increase without assuming a linear trend per subject, and its day-specific SDs also capture departures from the smooth pattern implied by the random-slope model, such as the smaller SD on day 7.
 
 ```{r}
-sleep_har_formula_list <- list(mu = ~ Days + har(Days_f | Subject))
-```
-
-```{r fit-sleep-har, cache_fits = "fit_sleep_har"}
-fit_sleep_har <- JAGS_fit(
-  model_syntax = sleep_likelihood, data = sleep_data, prior_list = sleep_prior_list,
-  formula_list = sleep_har_formula_list, formula_data_list = list(mu = sleepstudy),
-  formula_prior_list = sleep_fixed_priors, formula_random_prior_list = day_random_priors,
-  formula_scale_list = list(mu = list(Days = TRUE)),
-  chains = 2, adapt = 1000, burnin = 5000, sample = 10000, thin = 1, seed = 33
-)
-```
-```{r}
-JAGS_estimates_table(fit_sleep_har)
-```
-
-Table below compares the estimates with the lme4 `ar1(hom = FALSE)` fit.
-
-```{r}
-compare_structured_estimates(lme4_model = lme4_har, bayes_model = fit_sleep_har)
+compare_day_sds(slope_model = fit_sleep_slope, hcs_model = fit_sleep_hcs, days = sleepstudy$Days)
 ```
 
 ### Testing the Correlation
@@ -807,6 +840,186 @@ JAGS_inference_table(fit_sleep_hcs_test)
 
 Both approaches agree: the data favor a correlation of 0.9 over the uniform alternative by a Bayes factor of about 5 (the inverse of the inclusion Bayes factor).
 The Savage-Dickey ratio reuses the estimated model but relies on a density estimate at the tested value; the mixture prior needs a separate fit but extends to testing several parameters at once.
+
+
+## Continuous-Time Autoregressive Correlation
+
+The `Ovary` data [@pinheiro2000mixed] contain the number of large ovarian follicles of 11 mares, counted from three days before ovulation until three days after the next ovulation.
+The measurement times of each mare are rescaled so that its two ovulations fall at times 0 and 1; the measurements are therefore unequally spaced on this scale.
+Following @pinheiro2000mixed, we treat the counts as approximately normal and describe the cycle with sine and cosine terms.
+
+A mare's deviations from this cyclic trend persist over consecutive measurements and fade as the time between them grows.
+The `car(Time | Mare)` term gives each mare one random effect per measurement time, with one shared SD and the correlation `cor^abs(t_i - t_j)` between the times `t_i` and `t_j`.
+Because the distance is measured in cycles, `cor` is the correlation between deviations one full cycle apart.
+Unlike `ar1()`, which uses only the order of the measurements, `car()` uses the actual distances between them.
+
+```{r}
+data("Ovary", package = "nlme")
+Ovary <- as.data.frame(Ovary)
+Ovary$Mare        <- factor(Ovary$Mare, ordered = FALSE)
+Ovary$follicles_z <- as.numeric(scale(Ovary$follicles))
+Ovary$sin_time    <- sin(2 * pi * Ovary$Time)
+Ovary$cos_time    <- cos(2 * pi * Ovary$Time)
+head(Ovary)
+```
+
+lme4 has no continuous-time covariance structure.
+In nlme, `gls()` with an exponential correlation and a nugget specifies the same model: the correlation between measurements of the same mare is `(1 - nugget) * exp(-distance / range)`, where the nugget corresponds to the residual variance and `exp(-1 / range)` to `cor`.
+
+```{r}
+nlme_car <- nlme::gls(
+  follicles_z ~ sin_time + cos_time, data = Ovary, method = "ML",
+  correlation = nlme::corExp(form = ~ Time | Mare, nugget = TRUE)
+)
+nlme_car
+```
+
+BayesTools specifies the likelihood and the priors as in the previous examples.
+Without a `cor` argument, the CAR correlation receives the default uniform prior on (0, 1).
+
+```{r}
+ovary_likelihood <-
+"model{
+  for(i in 1:N){
+    follicles_z[i] ~ dnorm(mu[i], pow(sigma, -2))
+  }
+}
+"
+ovary_data         <- list(follicles_z = Ovary$follicles_z, N = nrow(Ovary))
+ovary_prior_list   <- list(sigma = unit_sd_prior)
+ovary_formula_list <- list(mu = ~ sin_time + cos_time + car(Time | Mare))
+ovary_fixed_priors <- list(mu = list(intercept = unit_prior, sin_time = unit_prior, cos_time = unit_prior))
+ovary_random_priors <- list(mu = prior_random(Mare = random_block(
+  sd      = unit_sd_prior,
+  monitor = random_monitor(latent = FALSE, coefficients = FALSE, correlation = TRUE)
+)))
+```
+
+```{r fit-ovary-car, cache_fits = "fit_ovary_car"}
+fit_ovary_car <- JAGS_fit(
+  model_syntax = ovary_likelihood, data = ovary_data, prior_list = ovary_prior_list,
+  formula_list = ovary_formula_list, formula_data_list = list(mu = Ovary),
+  formula_prior_list = ovary_fixed_priors, formula_random_prior_list = ovary_random_priors,
+  chains = 2, adapt = 1000, burnin = 2000, sample = 10000, thin = 1, seed = 1
+)
+```
+```{r}
+JAGS_estimates_table(fit_ovary_car)
+```
+
+Table below compares the posterior means with the nlme estimates.
+The posterior distributions of `sd` and `cor` are right-skewed, so their means exceed the maximum likelihood estimates.
+
+```{r}
+compare_car_estimates(nlme_model = nlme_car, bayes_model = fit_ovary_car)
+```
+
+### Testing the Correlation
+
+Does the correlation between a mare's deviations halve over one cycle, i.e., does `cor` equal 0.5?
+We compare this hypothesis with the uniform prior in three ways: bridge sampling, a mixture prior, and the Savage-Dickey density ratio.
+
+First, bridge sampling compares the marginal likelihoods of the model with the uniform prior and of the model with `cor` fixed at 0.5.
+`random_covariance(cor_scale = "cor")` specifies the point prior on the raw correlation scale.
+Bridge sampling requires the latent random effects, which the default `random_monitor()` stores.
+Because `car()` has one random effect per measurement, these fits are large, so the chunk below caches only the marginal likelihoods.
+
+```{r}
+ovary_bridge_priors <- list(mu = prior_random(Mare = random_block(sd = unit_sd_prior)))
+ovary_null_priors   <- list(mu = prior_random(Mare = random_block(
+  sd         = unit_sd_prior,
+  covariance = random_covariance(cor = prior("spike", list(location = 0.5)), cor_scale = "cor")
+)))
+ovary_log_posterior <- function(parameters, data){
+  sum(dnorm(
+    x    = data[["follicles_z"]],
+    mean = parameters[["mu"]],
+    sd   = parameters[["sigma"]],
+    log  = TRUE
+  ))
+}
+```
+
+```{r bridge-ovary, cache_fits = c("marglik_ovary_car", "marglik_ovary_null")}
+fit_ovary_bridge <- JAGS_fit(
+  model_syntax = ovary_likelihood, data = ovary_data, prior_list = ovary_prior_list,
+  formula_list = ovary_formula_list, formula_data_list = list(mu = Ovary),
+  formula_prior_list = ovary_fixed_priors, formula_random_prior_list = ovary_bridge_priors,
+  chains = 2, adapt = 1000, burnin = 2000, sample = 5000, thin = 1, seed = 1
+)
+fit_ovary_null <- JAGS_fit(
+  model_syntax = ovary_likelihood, data = ovary_data, prior_list = ovary_prior_list,
+  formula_list = ovary_formula_list, formula_data_list = list(mu = Ovary),
+  formula_prior_list = ovary_fixed_priors, formula_random_prior_list = ovary_null_priors,
+  chains = 2, adapt = 1000, burnin = 2000, sample = 5000, thin = 1, seed = 1
+)
+marglik_ovary_car <- JAGS_bridgesampling(
+  fit_ovary_bridge, log_posterior = ovary_log_posterior, data = ovary_data,
+  prior_list = ovary_prior_list, seed = 1)
+marglik_ovary_null <- JAGS_bridgesampling(
+  fit_ovary_null, log_posterior = ovary_log_posterior, data = ovary_data,
+  prior_list = ovary_prior_list, seed = 1)
+```
+
+Second, a mixture prior places half of the prior probability on `cor = 0.5` (the spike) and half on the uniform distribution (the slab) and tests the hypothesis within a single fit.
+
+```{r}
+ovary_test_priors <- list(mu = prior_random(Mare = random_block(
+  sd         = unit_sd_prior,
+  covariance = random_covariance(
+    cor = prior_mixture(
+      prior_list = list(
+        prior(distribution = "spike",   parameters = list(location = 0.5)),
+        prior(distribution = "uniform", parameters = list(a = 0, b = 1))
+      ),
+      is_null = c(TRUE, FALSE)
+    ),
+    cor_scale = "cor"
+  ),
+  monitor = random_monitor(latent = FALSE, coefficients = FALSE, correlation = TRUE)
+)))
+```
+
+```{r fit-ovary-car-test, cache_fits = "fit_ovary_car_test"}
+fit_ovary_car_test <- JAGS_fit(
+  model_syntax = ovary_likelihood, data = ovary_data, prior_list = ovary_prior_list,
+  formula_list = ovary_formula_list, formula_data_list = list(mu = Ovary),
+  formula_prior_list = ovary_fixed_priors, formula_random_prior_list = ovary_test_priors,
+  chains = 2, adapt = 1000, burnin = 2000, sample = 10000, thin = 1, seed = 1
+)
+```
+```{r}
+JAGS_inference_table(fit_ovary_car_test)
+```
+
+Third, the Savage-Dickey density ratio divides the posterior density of `cor` at 0.5 by its prior density in the model with the uniform prior.
+
+```{r}
+ovary_cor <- "mu__xREx__Mare_rho"
+ovary_cor_posterior <- marginal_posterior(
+  as_mixed_posteriors(fit_ovary_car, ovary_cor), ovary_cor,
+  use_formula = FALSE, prior_samples = TRUE
+)
+ovary_savage_dickey <- hypothesis_BF(
+  ovary_cor_posterior, hypothesis = paste(ovary_cor, "= 0.5"), parameter = ovary_cor,
+  BF01 = TRUE, seed = 1
+)
+ovary_savage_dickey
+```
+
+Table below collects the three Bayes factors in favor of `cor = 0.5`.
+
+```{r}
+data.frame(
+  method = c("bridge sampling", "mixture prior", "Savage-Dickey density ratio"),
+  BF01   = c(bridgesampling::bf(marglik_ovary_null, marglik_ovary_car)$bf,
+             1 / as.numeric(JAGS_inference_table(fit_ovary_car_test)$inclusion_BF),
+             as.numeric(ovary_savage_dickey$BF))
+)
+```
+
+All three approaches agree: the data favor the uniform prior over `cor = 0.5` by a Bayes factor of about 10, so a mare's deviations decorrelate faster than halving over one cycle.
+Bridge sampling needs two fits and stores the latent random effects; the mixture prior needs one dedicated fit; the Savage-Dickey density ratio reuses the estimation fit but relies on a density estimate at the tested value.
 
 
 ## Nested Random Effects
