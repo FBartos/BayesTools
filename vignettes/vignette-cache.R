@@ -64,13 +64,61 @@ vignette_cache_missing_packages <- function(cache) {
   packages[!has_package]
 }
 
+vignette_cache_refit <- function() {
+
+  isTRUE(getOption("BayesTools.vignette_refit",
+                   tolower(Sys.getenv("BAYESTOOLS_VIGNETTE_REFIT")) != "false"))
+}
+
 vignette_cache_eval <- function(cache) {
 
   !vignette_cache_checking() &&
     !length(vignette_cache_missing_packages(cache)) &&
-    (!length(vignette_cache_missing(cache)) ||
-       isTRUE(getOption("BayesTools.vignette_refit",
-                        tolower(Sys.getenv("BAYESTOOLS_VIGNETTE_REFIT")) != "false")))
+    (!length(vignette_cache_missing(cache)) || vignette_cache_refit())
+}
+
+# A chunk's key covers its code without comments or formatting, the values of the
+# workspace objects the code references, and the keys of the cached objects it uses.
+vignette_cache_key <- function(cache, options, envir) {
+
+  code  <- parse(text = options$code, keep.source = FALSE)
+  input <- lapply(code, deparse)
+  used  <- setdiff(unique(all.names(code)), options$cache_fits)
+  used  <- used[vapply(used, exists, logical(1), envir = envir, inherits = FALSE)]
+
+  for (name in sort(used)) {
+    value <- if (name %in% names(cache)) {
+      vignette_cache_read_key(cache[name])
+    } else {
+      deparse(get(name, envir = envir, inherits = FALSE))
+    }
+    input <- c(input, name, value)
+  }
+
+  key_file <- tempfile()
+  on.exit(unlink(key_file))
+  writeLines(as.character(unlist(input)), key_file)
+  unname(tools::md5sum(key_file))
+}
+
+vignette_cache_key_paths <- function(cache) {
+
+  sub("\\.[Rr][Dd][Ss]$", ".key", unname(cache))
+}
+
+vignette_cache_read_key <- function(cache) {
+
+  vapply(vignette_cache_key_paths(cache), function(path) {
+    if (file.exists(path)) readLines(path, n = 1L, warn = FALSE) else NA_character_
+  }, character(1), USE.NAMES = FALSE)
+}
+
+vignette_cache_write_key <- function(cache, key) {
+
+  for (path in vignette_cache_key_paths(cache)) {
+    writeLines(key, path)
+  }
+  invisible(cache)
 }
 
 vignette_cache_setup <- function(cache) {
@@ -85,7 +133,27 @@ vignette_cache_setup <- function(cache) {
     objects <- options$cache_fits
     stopifnot(is.character(objects), length(objects) > 0L, all(objects %in% names(cache)))
     chunk_cache <- cache[objects]
+    options$cache_key <- vignette_cache_key(cache, options, envir = knitr::knit_global())
+
     if (!length(vignette_cache_missing(chunk_cache))) {
+      stored_key <- vignette_cache_read_key(chunk_cache)
+      changed    <- !is.na(stored_key) & stored_key != options$cache_key
+
+      if (any(changed) && vignette_cache_refit()) {
+        message("Refitting cached vignette objects with changed inputs: ",
+                paste(objects, collapse = ", "))
+        options$error <- FALSE
+        return(options)
+      }
+      if (any(changed)) {
+        warning("Cached vignette objects were created from different inputs: ",
+                paste(objects[changed], collapse = ", "),
+                ". Enable refitting or delete their RDS files.", call. = FALSE)
+      }
+      # Caches saved before keys existed are adopted as they are.
+      if (anyNA(stored_key) && vignette_cache_refit()) {
+        vignette_cache_write_key(chunk_cache[is.na(stored_key)], options$cache_key)
+      }
       vignette_cache_load(chunk_cache, envir = knitr::knit_global())
       options$eval <- FALSE
     }
@@ -97,6 +165,7 @@ vignette_cache_setup <- function(cache) {
 
     if (!before && isTRUE(options$eval)) {
       vignette_cache_save(cache[options$cache_fits], envir = envir)
+      vignette_cache_write_key(cache[options$cache_fits], options$cache_key)
     }
     invisible(NULL)
   })

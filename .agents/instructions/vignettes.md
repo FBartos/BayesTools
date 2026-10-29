@@ -30,8 +30,10 @@ do not need caches.
 2. Give each fitting or marginal-likelihood chunk a `cache_fits` option naming
    its output objects, for example `cache_fits = "fit_sleep"` or
    `cache_fits = c("M0", "M1")`. Keep the fitting code itself ordinary R.
-3. Knit loads those objects and skips the chunk when its RDS files all exist.
-   Otherwise it runs the chunk and saves its objects immediately afterward.
+3. Knit loads those objects and skips the chunk when its RDS files all exist
+   and their `.key` files match the chunk's current key.
+   Otherwise it runs the chunk and saves its objects and keys immediately
+   afterward.
    A chunk with multiple objects regenerates the whole group if any are missing.
    Separate independent fits into separate chunks when individual reuse matters.
    Keep printed output, such as `summary()`, out of these chunks: a chunk
@@ -54,15 +56,21 @@ builds with vignette building enabled can generate missing fits too. Set
 `R CMD build --no-build-vignettes` when rendering is not needed. An R option
 in the calling session does not configure a separate R process.
 
-To regenerate a fit after changing its code, remove its RDS file and Knit again.
-Existing files are reused without checking whether the model code changed.
-Remove any dependent marginal-likelihood caches too when changing a model.
+The key of a cached chunk hashes its code without comments or formatting, the
+deparsed values of the workspace objects the code references, and the keys of
+the cached objects it uses. Changing a model's code or its priors therefore
+refits that chunk on the next knit, and a refitted model refits the
+marginal-likelihood chunks that use it. Package updates do not change keys;
+remove an RDS file to force a refit. With refitting disabled, a changed key
+loads the existing cache with a warning. Existing caches without a `.key` file
+are adopted when knitting with refitting enabled; commit the `.key` files with
+their RDS files.
 For rendering without fitting, set `options(BayesTools.vignette_refit = FALSE)`
 in the rendering session before calling `rmarkdown::render()`; missing caches
 then skip the vignette's evaluated examples. This option overrides the
 environment setting when explicitly supplied. Keep the declared seeds and
-fitting settings. Do not add source fingerprints, manifests,
-migrations, or specialized regeneration runners. Objects that retain their
+fitting settings. Do not add manifests, migrations, or specialized
+regeneration runners beyond these keys. Objects that retain their
 formula environment, such as rstanarm fits, serialize the global environment
 only by reference, so regenerate caches by knitting into the global
 environment (the Knit button and `R CMD build` do); `rmarkdown::render()` with
