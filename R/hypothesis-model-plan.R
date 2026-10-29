@@ -1336,7 +1336,7 @@ posterior_fitted_linear_weights <- function(sample, weights,
   reason <- paste0(
     "The requested nonlinear fitted-scale hypothesis for '",
     plan[["parameter"]], "' is supported only with density_method = 'KDE'. ",
-    provider[["ordinate_label"]], " ordinates support only direct parameter or level point ",
+    provider[["ordinate_label"]], " support only direct parameter or level point ",
     "hypotheses with an exact linear fitted-scale map."
   )
   # The ordinate backends are refused for the cause "original_scale"; the
