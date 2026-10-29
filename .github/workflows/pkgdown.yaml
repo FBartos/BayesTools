@@ -82,7 +82,7 @@ jobs:
           # Check installation without loading namespaces: loading RoBMA would
           # load a cached BayesTools DLL that the installation step cannot
           # replace on Windows while this process holds it.
-          required_packages <- c('devtools', 'pkgdown', 'BayesFactor', 'RoBMA', 'runjags', 'rjags', 'rstan', 'rstanarm', 'scales', 'vdiffr', 'testthat', 'covr', 'knitr', 'rmarkdown', 'pandoc', 'lme4')
+          required_packages <- c('devtools', 'pkgdown', 'BayesFactor', 'RoBMA', 'runjags', 'rjags', 'rstan', 'rstanarm', 'brms', 'scales', 'vdiffr', 'testthat', 'covr', 'knitr', 'rmarkdown', 'pandoc', 'lme4')
           is_installed <- nzchar(vapply(required_packages, function(package) system.file(package = package), character(1)))
           missing_packages <- required_packages[!is_installed]
 

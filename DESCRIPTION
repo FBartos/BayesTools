@@ -51,9 +51,10 @@ Suggests:
     pkgload,
     rstan,
     rstanarm,
+    brms,
     rjags,
     runjags,
-    lme4,
+    lme4 (>= 2.0-1),
     BayesFactor,
     RoBMA,
     rmarkdown
