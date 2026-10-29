@@ -327,7 +327,9 @@ test_that("an ordinate backend attaches ordinates that the draws evaluate", {
                                          data.frame(method = "toy", n = 1L)
                                        })
   with_toy_backend(toy, {
-    expect_identical(hypothesis_density_backends()$policy[[4]]$error, c(0.025, 0.05))
+    registered <- hypothesis_density_backends()
+    expect_identical(registered$policy[[match("toyNormal", registered$name)]]$error,
+                     c(0.025, 0.05))
     toy_table <- hypothesis_BF(fit, "x = 0.1", density_method = "toyNormal", seed = 1)
     normal    <- hypothesis_BF(fit, "x = 0.1", density_method = "normal", seed = 1)
     # the exact normal ordinate is the normal approximation of the draws
@@ -1433,7 +1435,12 @@ test_that("the eligibility table lists what the engine tests", {
   factor_rows <- quantities[quantities$parameter == "mu_f", ]
   expect_true(all(factor_rows$bracket == "mu_f[level]"))
   expect_true(all(factor_rows$contrast_test))
-  expect_true(all(quantities$point_test_methods == "KDE"))
+  # the methods of the backends of BayesTools (backends of other packages that
+  # are registered in the session are listed next to them)
+  registered <- hypothesis_density_backends()
+  own        <- registered$name[!is.na(registered$package) & registered$package == "BayesTools"]
+  listed     <- lapply(strsplit(quantities$point_test_methods, ", ", fixed = TRUE), intersect, own)
+  expect_true(all(vapply(listed, identical, logical(1), y = "KDE")))
   expect_identical(sort(unique(quantities$component)), c("model", "mu"))
   expect_true(all(c("x", "(mu) x", "mu_x") %in% quantities$alias))
   expect_warning(hypothesis_quantities(fit, nonsense = 1), "Unused argument")
