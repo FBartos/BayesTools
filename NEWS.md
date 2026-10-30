@@ -13,7 +13,7 @@
 - conditioning on an unknown parameter name is an error instead of a warning
 - `Savage_Dickey_BF()` requires an exact, finite, and nonzero prior ordinate at the null hypothesis (classed errors otherwise), returns a finite Bayes factor when the null lies outside the posterior draws, and returns `NA` with the reason for levels with a posterior point mass at the null
 - `JAGS_check_convergence()` and autofit classify parameters by their declared roles: constant parameters are structural, sampled parameters with constant draws fail unless `allow_not_assessable = TRUE`, and indicators are identified from their priors rather than their names
-- parameter labels are rendered from structured label parts, which changes some labels: contrast coefficients that are not levels are labelled `term{j}`, interaction cells and formula prefixes are named consistently across tables, and individual weight-function omegas in plots follow the order of summary tables
+- parameter labels are rendered from structured label parts, which changes some labels: contrast coefficients that are not levels are labelled `term{j}`, interaction cells and formula prefixes are named consistently across tables, Bayes factor MC-error warnings name parameters by their table labels, and individual weight-function omegas in plots follow the order of summary tables
 - `JAGS_fit()` monitors point priors
 - posterior draw metadata are stored in one validated attribute (`posterior_metadata()`); arithmetic drops the metadata, values modified in place stop with `BayesTools_stale_metadata`, and posterior plots take point masses only from declared posterior atoms
 

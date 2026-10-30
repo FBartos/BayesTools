@@ -1576,7 +1576,7 @@ test_that("original-scale transforms require the fitted design of the formula", 
   )
 })
 
-test_that("inference rows are rendered labels and warnings name the fitted parameters", {
+test_that("inference rows and Bayes factor warnings are rendered labels, named after the fitted parameters", {
 
   data <- data.frame(x = seq(-1, 1, length.out = 12), z = sin(seq_len(12)))
   fit <- .label_test_fit(~ x + z, data, list(
@@ -1600,14 +1600,15 @@ test_that("inference rows are rendered labels and warnings name the fitted param
     }
     # a mixture component is named after the term in brackets, as in 0.3.0
     expect_identical(rownames(table), rows)
-    # the Bayes factor MC-error warnings name the parameters of the fit and
-    # their components, as in 0.3.0; the table maps them to its rows
+    # the Bayes factor MC-error warnings are named after the parameters of the
+    # fit and their components, as in 0.3.0, so the table maps them to its
+    # rows; their messages name the rows
     warnings <- attr(table, "warnings")
     nodes <- c("mu_x", "mu_z [narrow]", "mu_z [wide]")
     expect_identical(names(warnings), nodes)
     expect_true(all(startsWith(
       warnings,
-      paste0("Bayes factor MC error for ", nodes, " is based on")
+      paste0("Bayes factor MC error for ", rows, " is based on")
     )))
     expect_identical(attr(table, "parameters"), nodes)
     expect_identical(names(attr(table[2, ], "warnings")), "mu_z [narrow]")

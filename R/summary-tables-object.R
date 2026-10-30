@@ -574,7 +574,10 @@ Math.BayesTools_BF <- function(x, ...){
   return(out)
 }
 
-.indicator_BF_warnings <- function(parameter, diagnostics, severe_limit = 20, warning_limit = 100){
+# The warning is named after `parameter` (which maps it to its table row) and
+# its message names the parameter by `label`.
+.indicator_BF_warnings <- function(parameter, diagnostics, severe_limit = 20, warning_limit = 100,
+                                   label = parameter){
 
   minority_visits <- min(diagnostics$visits, diagnostics$n_samples - diagnostics$visits)
 
@@ -582,12 +585,12 @@ Math.BayesTools_BF <- function(x, ...){
     return()
   }else if(minority_visits < severe_limit){
     return(stats::setNames(
-      sprintf("Bayes factor MC error for %s is based on only %i posterior samples from the less frequent model.", parameter, minority_visits),
+      sprintf("Bayes factor MC error for %s is based on only %i posterior samples from the less frequent model.", label, minority_visits),
       parameter
     ))
   }else if(minority_visits < warning_limit){
     return(stats::setNames(
-      sprintf("Bayes factor MC error for %s is based on %i posterior samples from the less frequent model.", parameter, minority_visits),
+      sprintf("Bayes factor MC error for %s is based on %i posterior samples from the less frequent model.", label, minority_visits),
       parameter
     ))
   }else{
