@@ -76,8 +76,17 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             libssl-dev \
+            libuv1-dev \
             libcurl4-openssl-dev \
             libxml2-dev \
+            libfontconfig1-dev \
+            libharfbuzz-dev \
+            libfribidi-dev \
+            libfreetype6-dev \
+            libpng-dev \
+            libtiff5-dev \
+            libjpeg-dev \
+            libcairo2-dev \
             jags
 
       - name: Install JAGS (Windows)
@@ -164,8 +173,11 @@ jobs:
           devtools::install()
         shell: Rscript {0}
 
+      # Report every failure instead of stopping at testthat's default of ten.
       - name: Run Test Profile
         shell: pwsh
+        env:
+          TESTTHAT_MAX_FAILS: Inf
         run: |
           Rscript tools/test-profile.R "$env:BAYESTOOLS_CI_PROFILE"
 
