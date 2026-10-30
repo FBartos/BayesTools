@@ -144,7 +144,7 @@ jobs:
           $profile = "all"
 
           "BAYESTOOLS_CI_PROFILE=$profile" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-          "BAYESTOOLS_TEST_FILES_DIR=$env:RUNNER_TEMP\BayesTools_test_files" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "BAYESTOOLS_TEST_FILES_DIR=$(Join-Path $env:RUNNER_TEMP 'BayesTools_test_files')" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           Write-Host "Selected BayesTools test profile: $profile"
 
       - name: Install the required packages
@@ -181,11 +181,14 @@ jobs:
         run: |
           Rscript tools/test-profile.R "$env:BAYESTOOLS_CI_PROFILE"
 
+      # The fits and the snapshot candidates of failed snapshot tests.
       - name: Upload Test Artifacts
         if: always()
         uses: actions/upload-artifact@v6
         with:
-          name: bayestools-test-artifacts-${{ github.event_name }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/BayesTools_test_files
+          name: bayestools-test-artifacts-${{ runner.os }}-${{ github.event_name }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/BayesTools_test_files
+            tests/testthat/_snaps/**/*.new.*
           if-no-files-found: ignore
           retention-days: 14
