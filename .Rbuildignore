@@ -31,3 +31,4 @@
 ^tests/results$
 ^tests/scenarios$
 ^tests/testthat/(?!(test-cran-smoke|helper-test-profiles)\.R$).+
+^tests/vdiffr\.Rout\.fail$
