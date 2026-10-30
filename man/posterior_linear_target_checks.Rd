@@ -24,7 +24,7 @@ posterior_fitted_linear_weights(
 \item{measure}{the measure to check.}
 
 \item{build}{the name of the build in the request to refit a model with
-outdated metadata ("Recreate the posterior with the current \if{html}{\out{<build>}}
+outdated metadata ("Recreate the posterior with the current \verb{<build>}
 build.").}
 
 \item{refit_class}{condition classes that precede

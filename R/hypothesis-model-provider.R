@@ -40,7 +40,7 @@
 #'   in \code{available()} and in their requests (default \code{object}).}
 #'   \item{\code{build}, \code{refit_class}}{the name of the build in the
 #'   requests to refit a model with outdated metadata ("Refit the model with
-#'   the current <build> build."), and classes that precede
+#'   the current \verb{<build>} build."), and classes that precede
 #'   \code{BayesTools_refit_required} in those conditions.}
 #'   \item{\code{caller}, \code{random_point_mass_advice},
 #'   \code{transform_scaled_default}}{the name of the entry point in the

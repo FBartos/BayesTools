@@ -1081,7 +1081,7 @@ JAGS_formula_coefficient_route <- function(fit, parameter, target,
 #' @param ordinate_label how the message names the density methods that
 #'   compute posterior ordinates.
 #' @param build the name of the build in the request to refit a model with
-#'   outdated metadata ("Recreate the posterior with the current <build>
+#'   outdated metadata ("Recreate the posterior with the current \verb{<build>}
 #'   build.").
 #' @param refit_class condition classes that precede
 #'   \code{BayesTools_refit_required} in that request, or \code{NULL}.

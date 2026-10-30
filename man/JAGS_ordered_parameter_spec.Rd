@@ -73,8 +73,8 @@ supply numerical charts or correct replay after changing an ancestor. These
 coordinate/expression conditions inherit \code{BayesTools_ordered_unavailable}.
 Missing or inconsistent fitted provenance reports: "Fitted ordered numeric
 provenance is unavailable. Refit the model with this version of BayesTools."
-Missing projection totals report: "Ordered total sources for '\if{html}{\out{<term>}}' are
+Missing projection totals report: "Ordered total sources for '\verb{<term>}' are
 unavailable in 'draws'. Include its declared source coordinates." Invalid
-total states report: "Ordered total indicator '\if{html}{\out{<coordinate>}}' does not select
+total states report: "Ordered total indicator '\verb{<coordinate>}' does not select
 a declared component."
 }
