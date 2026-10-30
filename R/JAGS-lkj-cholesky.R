@@ -199,6 +199,9 @@ JAGS_lkj_corr_cholesky <- function(name, K, eta = 1,
 # factor have unit norm by construction, so the diagonal is exactly 1, as in
 # the module's bt_lkj_corr(), instead of the rounded row sums of squares
 # (1 +/- a few eps), which would make a constant diagonal vary between draws.
+# The off-diagonal cells sum the products in the module's order, m = 1, ...,
+# column, so they reproduce its monitors bit for bit; tcrossprod() would sum in
+# the order of the BLAS that R uses.
 # `L` is a K x K matrix or an n x K x K array; the result has the same shape.
 # Draws with a missing factor (NA entries) keep missing diagonals.
 .bt_lkj_cholesky_L_to_R <- function(L){
@@ -213,12 +216,18 @@ JAGS_lkj_corr_cholesky <- function(name, K, eta = 1,
 
   K <- dim(L)[2L]
   R <- array(NA_real_, dim = dim(L))
-  for(draw_i in seq_len(dim(L)[1L])){
-    R[draw_i, , ] <- tcrossprod(matrix(L[draw_i, , ], nrow = K, ncol = K))
-  }
-  for(k in seq_len(K)){
-    defined <- is.finite(R[, k, k])
-    R[defined, k, k] <- 1
+  for(row in seq_len(K)){
+    for(column in seq_len(row - 1L)){
+      cell <- 0
+      for(m in seq_len(column)){
+        cell <- cell + L[, row, m] * L[, column, m]
+      }
+      R[, row, column] <- cell
+      R[, column, row] <- cell
+    }
+    diagonal <- rowSums(L[, row, , drop = FALSE]^2)
+    diagonal[is.finite(diagonal)] <- 1
+    R[, row, row] <- diagonal
   }
 
   if(single){
