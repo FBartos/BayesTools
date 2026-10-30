@@ -18,10 +18,10 @@
 - posterior draw metadata are stored in one validated attribute (`posterior_metadata()`); arithmetic drops the metadata, values modified in place stop with `BayesTools_stale_metadata`, and posterior plots take point masses only from declared posterior atoms
 
 ### Features
-- adds formula random effects via `prior_random()`, `random_block()`, and related helpers, with lme4-like syntax (independent, nested, and interacted grouping, factor random slopes) and diagonal, unstructured (LKJ prior), compound-symmetry, AR(1), heterogeneous, and continuous-time AR(1) covariance structures
+- adds formula random effects via `prior_random()`, `random_block()`, and related helpers, with lme4-like syntax (independent, nested, and interacted grouping, factor random slopes, where a mean-difference or orthonormal factor term is one exchangeable unit with one SD) and diagonal, unstructured (LKJ prior), compound-symmetry, AR(1), heterogeneous, and continuous-time AR(1) covariance structures
 - adds random-effect variance allocations with Dirichlet weights and optional inclusion gates (`random_variance_allocation()`), known group covariance kernels (`random_group_covariance()`), external SD sources (`random_sd_source()`), spike-and-slab and mixture priors on random-effect SDs and correlations, and centered or noncentered parameterizations
 - adds predictions with random effects (`JAGS_predict_formula()`; `formula_target`, `blocks`, and `new_levels` in `JAGS_evaluate_formula()`), marginal covariance helpers, and exact marginalization of Gaussian random-effect blocks in `JAGS_bridgesampling()`
-- adds random-effect summaries to estimates tables (`random_effects_summary` and related filters) on the fitted or original scale, and `random_effects_summary_posterior()`
+- adds random-effect summaries to estimates tables (`random_effects_summary` and related filters) on the fitted or original scale, with level-cell correlations and multiple correlations (`cor_total`) of factor terms, and `random_effects_summary_posterior()`
 - adds the `RandomEffects` vignette comparing BayesTools formula random effects with lme4 and brms
 - adds `prior_ordered()` for ordered-factor priors that split a total effect across level increments with fixed or Dirichlet allocations
 - adds Dirichlet simplex priors and moment and inverse-moment nonlocal priors

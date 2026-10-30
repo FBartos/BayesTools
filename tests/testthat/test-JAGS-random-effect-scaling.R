@@ -373,7 +373,7 @@ test_that("JAGS_estimates_table unscales diagonal random intercept-slope blocks 
   )
 })
 
-test_that("contrast-coefficient random slopes `{j}` unscale with their scaled interactions", {
+test_that("exchangeable factor random slopes unscale with their scaled interactions", {
 
   skip_if_not_installed("runjags")
 
@@ -401,20 +401,20 @@ test_that("contrast-coefficient random slopes `{j}` unscale with their scaled in
     )
   )
   random_term <- formula_result$formula_design$random_effects[[1]]
-  # The factor comes first in the interaction term, so its coefficient index
-  # `{j}` trails the scaled covariate: `g__xXx__x{j}`.
+  # The mean-difference term g and its interaction g:x are each one
+  # exchangeable unit with one SD.
   expect_identical(
     unname(random_term$sd_leaves$leaf_terms),
-    c("intercept", "g{1}", "g{2}", "x", "g__xXx__x{1}", "g__xXx__x{2}")
+    c("intercept", "g", "x", "g__xXx__x")
   )
-  fitted_sd <- c(1, 2, 3, 4, 5, 6)
+  fitted_sd <- c(1, 2, 4, 5)
   posterior <- matrix(
     rep(c(0, fitted_sd), 3),
     nrow = 3,
     byrow = TRUE,
     dimnames = list(
       NULL,
-      c("mu_intercept", random_term$sd_parameter_names)
+      c("mu_intercept", unique(random_term$sd_parameter_names))
     )
   )
   fit <- make_random_scale_table_fit(formula_result, posterior)
@@ -428,16 +428,15 @@ test_that("contrast-coefficient random slopes `{j}` unscale with their scaled in
   ))
 
   # Diagonal block: original-scale SDs combine each coefficient with its
-  # scaled interaction through the unscaling coefficients -m/s and 1/s.
+  # scaled interaction through the unscaling coefficients -m/s and 1/s; every
+  # column of the unit g has the same variance weights, so its SD is certified.
   scale_info <- formula_result$formula_scale$mu_x
   ratio <- scale_info$mean / scale_info$sd
   expected <- c(
     "(mu) sd(intercept)" = sqrt(1^2 + ratio^2 * 4^2),
-    "(mu) sd(g{1})"      = sqrt(2^2 + ratio^2 * 5^2),
-    "(mu) sd(g{2})"      = sqrt(3^2 + ratio^2 * 6^2),
+    "(mu) sd(g)"         = sqrt(2^2 + ratio^2 * 5^2),
     "(mu) sd(x)"         = 4 / scale_info$sd,
-    "(mu) sd(g:x{1})"    = 5 / scale_info$sd,
-    "(mu) sd(g:x{2})"    = 6 / scale_info$sd
+    "(mu) sd(g:x)"       = 5 / scale_info$sd
   )
   for(row in names(expected)){
     expect_equal(
@@ -1652,29 +1651,47 @@ test_that("random-effect SDs of a block with a factor-by-scaled-slope term follo
   # levels (u0 - m / s times the slopes by level) is not carried by coefficient
   # names.
   cases <- list(
-    list(~ 1 + x + diag(1 + f + f:x | id), ~ f + f:x, block(), list()),
-    list(~ 1 + x + diag(1 + f + f:x | id), ~ f + f:x, block(contrasts = c(f = "meandif")),
-         list(f = contr.meandif(3))),
-    list(~ 1 + x + diag(1 + f * x | id), ~ f * x, block(), list()),
-    list(~ 1 + x + diag(1 + x | id), ~ x, block(), list())
+    list(~ 1 + x + diag(1 + f + f:x | id), ~ f + f:x, block(), list(), NULL),
+    list(~ 1 + x + diag(1 + f * x | id), ~ f * x, block(), list(), NULL),
+    list(~ 1 + x + diag(1 + x | id), ~ x, block(), list(), NULL)
   )
   for(case in cases){
-    setup <- random_block_scale_fit(case[[1L]], df, case[[3L]])
+    setup <- random_block_scale_fit(case[[1L]], df, case[[3L]], tau = case[[5L]])
+    leaves <- setup$formula_result$formula_design$random_effects[[1L]]$sd_leaves
+    tau_by_column <- setup$tau[leaves$leaf_index_by_column]
     A <- random_block_unscale_reference(case[[2L]], grid, m, s, case[[4L]])
-    expected <- unname(sqrt(diag(A %*% diag(setup$tau^2, nrow = length(setup$tau)) %*% t(A))))
+    expected <- unname(sqrt(diag(A %*% diag(tau_by_column^2, nrow = length(tau_by_column)) %*% t(A))))
     transformed <- transform_scale_samples(setup$fit)
     expect_equal(
-      unname(transformed[1L, setup$sd_names]), expected, tolerance = 1e-10,
+      unname(transformed[1L, setup$sd_names]),
+      expected[match(seq_along(setup$sd_names), leaves$leaf_index_by_column)],
+      tolerance = 1e-10,
       info = paste(deparse(case[[1L]]), paste(names(case[[4L]]), collapse = ","))
     )
   }
 
+  # A mean-difference f is one exchangeable unit. The level slopes of the
+  # indicator-coded f:x, with their own SDs, shift its levels on the original
+  # scale by P diag(tau_slopes^2) P: the original-scale levels are not
+  # exchangeable, and one SD cannot represent them. The accessors refuse the
+  # block; the tables keep the identified rows.
+  setup <- random_block_scale_fit(~ 1 + x + diag(1 + f + f:x | id), df, block(contrasts = c(f = "meandif")))
+  refusal <- expect_error(
+    transform_scale_samples(setup$fit),
+    class = "BayesTools_formula_transform_unavailable"
+  )
+  expect_identical(refusal$reason, "original_scale_not_representable")
+  table_samples <- function(fit){
+    JAGS_estimates_table(fit, transform_scaled = TRUE, random_effects_summary = "standard",
+                         remove_diagnostics = TRUE, return_samples = TRUE)
+  }
+  samples <- table_samples(setup$fit)
+  expect_true(all(is.na(samples[, "(mu) sd(f)"])))
   # the analytic intercept SD of centered sum-to-zero level contrasts is
   # sqrt(tau0^2 + (m / s)^2 * sum(tau_slopes_by_level^2) / 9)
-  setup <- random_block_scale_fit(~ 1 + x + diag(1 + f + f:x | id), df, block(contrasts = c(f = "meandif")))
   expect_equal(
-    unname(transform_scale_samples(setup$fit)[1L, setup$sd_names[1L]]),
-    sqrt(setup$tau[1L]^2 + (m / s)^2 * sum(setup$tau[4:6]^2) / 9),
+    unname(samples[1L, "(mu) sd(intercept)"]),
+    sqrt(setup$tau[1L]^2 + (m / s)^2 * sum(setup$tau[3:5]^2) / 9),
     tolerance = 1e-12
   )
 
@@ -1684,10 +1701,10 @@ test_that("random-effect SDs of a block with a factor-by-scaled-slope term follo
     id = factor(c("u", "u", "u", "v", "v", "v"))
   )
   small <- random_block_scale_fit(
-    ~ 1 + x + diag(1 + f + f:x | id), df_small, block(contrasts = c(f = "meandif")), tau = 1:6
+    ~ 1 + x + diag(1 + f + f:x | id), df_small, block(contrasts = c(f = "meandif")), tau = c(1, 2, 4, 5, 6)
   )
   expect_equal(
-    unname(transform_scale_samples(small$fit)[1L, small$sd_names[1L]]),
+    unname(table_samples(small$fit)[1L, "(mu) sd(intercept)"]),
     5.562773089426212, tolerance = 1e-12
   )
 })
@@ -1916,7 +1933,10 @@ test_that("the weights of a shared random-effect SD leaf are compared relative t
   expect_false(invariant(c(1, 0), c(1, 1e-26)))
   expect_true(invariant(c(1, 1e-26), c(1, 1e-26)*(1+1e-15)))
   expect_true(invariant(c(1e-26, 0), c(1e-26, 0)))
-  expect_false(.random_sd_shared_leaf_is_invariant(diag(3), c("a", "a", "b"), 1:2, TRUE))
+  # a correlated block certifies a shared leaf whose columns are one common
+  # rescaling of their own fitted columns, and nothing else
+  expect_true(.random_sd_shared_leaf_is_invariant(diag(3), c("a", "a", "b"), 1:2, TRUE))
+  expect_false(.random_sd_shared_leaf_is_invariant(M, c("a", "a", "b"), 1:2, TRUE))
 
   # a shared leaf whose columns genuinely transform to different SDs is refused
   # also when the weights are of order 1 / sd(x)^2 for a predictor with a very
@@ -3773,7 +3793,7 @@ test_that("mixed-coding missing-term fallbacks refuse public original-scale outp
     for(request in list(
       function() transform_scale_samples(fit),
       function() as_mixed_posteriors(fit, owners, transform_scaled = TRUE),
-      function() parameter_draws(fit, parameter_catalog_resolve(catalog, "(mu) sd(f{1})"))
+      function() parameter_draws(fit, parameter_catalog_resolve(catalog, "(mu) sd(f)"))
     )){
       refusal <- expect_error(request(), class = "BayesTools_formula_transform_unavailable")
       expect_identical(refusal$reason, "original_scale_not_representable")
@@ -4064,51 +4084,49 @@ test_that("a shifted slope also removes its correlations, not those among repres
                rep(setup$correlation, 2L), tolerance = 1e-12)
 })
 
-test_that("a correlated block with a shared logical-column SD keeps its identified rows", {
+test_that("a correlated block certifies a shared logical-column SD of a common rescaling", {
 
   skip_if_not_installed("runjags")
 
   data <- random_availability_data()
+  s_x <- stats::sd(data$x)
   s_z <- stats::sd(data$z)
-  shared_note <- "its shared design columns cannot be certified to have a single SD on the original scale"
 
   diagonal <- random_availability_fit(~ 1 + x + z + diag(1 + z + flag:x | id), data, c("x", "z"))
   correlated <- random_availability_fit(~ 1 + x + z + us(1 + z + flag:x | id), data, c("x", "z"), correlated = TRUE)
   expect_identical(correlated$sd_names, diagonal$sd_names)
   reference <- random_availability_means(diagonal)$mean
-  # z is a pure rescaling in both blocks
+  # z and the indicator columns of flag:x are pure rescalings in both blocks:
+  # flag[FALSE]:x and flag[TRUE]:x are both divided by sd(x), so their shared
+  # SD is certified also in the correlated block
   expect_equal(reference[["(mu) sd(z)"]], diagonal$tau[2L] / s_z, tolerance = 1e-12)
+  expect_equal(reference[["(mu) sd(flag:x)"]], diagonal$tau[3L] / s_x, tolerance = 1e-12)
 
   for(mode in c("standard", "full", "raw")){
     result <- random_availability_means(correlated, mode)
     values <- result$mean
     unavailable <- names(values)[is.na(values)]
-    # only the shared SD (and its variance) and the intercept rows are unavailable
-    expect_true("(mu) sd(flag:x)" %in% unavailable || mode == "raw", info = mode)
-    expect_false(any(c("(mu) sd(z)", "(mu) cor(z,flag[FALSE]:x)", "(mu) cor(z,flag[TRUE]:x)",
-                       "(mu) cor(flag[FALSE]:x,flag[TRUE]:x)") %in% unavailable), info = mode)
+    expect_false(any(c("(mu) sd(flag:x)", "(mu) sd(z)", "(mu) cor(z,flag[FALSE]:x)",
+                       "(mu) cor(z,flag[TRUE]:x)", "(mu) cor(flag[FALSE]:x,flag[TRUE]:x)") %in% unavailable),
+                 info = mode)
     if(mode != "raw"){
       expect_equal(values[["(mu) sd(z)"]], reference[["(mu) sd(z)"]], tolerance = 1e-12, info = mode)
+      expect_equal(values[["(mu) sd(flag:x)"]], reference[["(mu) sd(flag:x)"]], tolerance = 1e-12, info = mode)
       expect_equal(unname(values[c("(mu) cor(z,flag[FALSE]:x)", "(mu) cor(z,flag[TRUE]:x)",
                                     "(mu) cor(flag[FALSE]:x,flag[TRUE]:x)")]),
                    rep(correlated$correlation, 3L), tolerance = 1e-12, info = mode)
+      # only the intercept rows, which the flag-specific intercepts would shift, are unavailable
       expect_true(all(c("(mu) sd(intercept)", "(mu) cor(intercept,z)") %in% unavailable), info = mode)
-      expect_true(all(grepl("intercept", setdiff(unavailable, c("(mu) sd(flag:x)", "(mu) var(flag:x)")), fixed = TRUE)),
-                  info = mode)
-      expect_match(attr(result$table, "footnotes")[["(mu) sd(flag:x)"]], shared_note, fixed = TRUE)
+      expect_true(all(grepl("intercept", unavailable, fixed = TRUE)), info = mode)
+      expect_false("(mu) sd(flag:x)" %in% names(attr(result$table, "footnotes")), info = mode)
     }
   }
-  # raw coordinates: the shared SD leaf is NA with its note, the SD of z is not
+  # raw coordinates: the shared SD leaf is its rescaled value
   raw <- random_availability_means(correlated, "raw")
   shared_leaf <- grep("flag", rownames(raw$table)[grep("sd(", rownames(raw$table), fixed = TRUE)], value = TRUE)
-  expect_true(all(is.na(raw$mean[shared_leaf])))
+  expect_equal(unname(raw$mean[shared_leaf]), correlated$tau[3L] / s_x, tolerance = 1e-12)
   expect_equal(unname(raw$mean[grep("sd(z", names(raw$mean), fixed = TRUE)]), diagonal$tau[2L] / s_z,
                tolerance = 1e-12)
-
-  # the accessors keep their contract: the block has no original-scale value for the shared SD
-  refusal <- expect_error(transform_scale_samples(correlated$fit), class = "BayesTools_formula_transform_unavailable")
-  expect_identical(refusal$reason, "original_scale_not_representable")
-  expect_match(conditionMessage(refusal), "its shared design columns cannot be certified to have a single SD", fixed = TRUE)
 })
 
 test_that("named fallback maps preserve pure random-slope prior rescalings", {

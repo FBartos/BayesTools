@@ -231,6 +231,12 @@
       fitted_term,
       context = "Random-effect prediction metadata"
     )
+    # a us() block that is one exchangeable unit is fitted as its diagonal
+    # block; the formula declares us()
+    if(identical(fitted_term$formula_structure, "us") &&
+       identical(fitted_structure, "diag")){
+      fitted_structure <- "us"
+    }
     .bt_validate_random_effect_term_supported(requested_term)
     requested_homogeneous <- .bt_random_effect_homogeneous_sd(
       requested_term,

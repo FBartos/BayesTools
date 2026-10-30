@@ -1211,6 +1211,12 @@
     if(length(index) == 2L) as.integer(index[[2L]]) else NA_integer_
   }, integer(1)))
   correlation <- coordinates$role == "random_correlation"
+  # An exchangeable unit of an LKJ block has exact zero within-unit
+  # correlations; when it reorders the vine, the first diagonal element of the
+  # design-order Cholesky factor is a row norm (1 up to rounding).
+  unit_layout <- .bt_convergence_role_lkj_unit_cells(formula_design)
+  assign_roles(coordinate_names %in% unit_layout$reordered, "derived")
+  assign_roles(coordinate_names %in% unit_layout$structural, "structural")
   assign_roles(
     correlation & endsWith(bases, "_xRE_CORx_R") & cell_row == cell_column,
     "structural"
@@ -1558,6 +1564,43 @@
 
 # Variance-allocation inclusion indicators; an indicator whose inclusion
 # probability is a point prior at 0 or 1 is a constant.
+# The correlation cells of the LKJ blocks with an exchangeable unit
+# (.bt_random_effect_lkj_layout()): the within-unit cells of the correlation
+# matrix (`structural`), and the first Cholesky diagonal element of a block
+# whose unit reorders the vine (`reordered`).
+.bt_convergence_role_lkj_unit_cells <- function(formula_design){
+
+  if(inherits(formula_design, "BayesTools_formula_design")){
+    formula_design <- list(formula_design)
+  }
+  out <- list(structural = character(), reordered = character())
+  if(!is.list(formula_design)){
+    return(out)
+  }
+  for(design in formula_design){
+    for(random_term in .bt_formula_design_random_effects(design)){
+      correlation <- random_term$correlation
+      if(!is.list(correlation) || !identical(correlation$type, "lkj") ||
+         length(correlation$unit_columns) == 0L){
+        next
+      }
+      layout <- .bt_random_effect_lkj_layout(random_term, context = "Convergence role metadata")
+      cells <- expand.grid(row = layout$unit_columns, column = layout$unit_columns)
+      cells <- cells[cells$row != cells$column, , drop = FALSE]
+      stem <- random_term$parameter_stem
+      out$structural <- c(
+        out$structural,
+        paste0(stem, "_xRE_CORx_R[", cells$row, ",", cells$column, "]")
+      )
+      if(!.bt_lkj_layout_identity_order(layout)){
+        out$reordered <- c(out$reordered, paste0(stem, "_xRE_CORx_L[1,1]"))
+      }
+    }
+  }
+
+  out
+}
+
 .bt_convergence_role_allocation_indicators <- function(formula_design,
                                                        prior_list){
 

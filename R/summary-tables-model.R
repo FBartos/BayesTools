@@ -80,10 +80,11 @@
 #' A block whose missing-term fallback mixes categorical coding or omits a
 #' representable contribution likewise has \code{NA} original-scale rows. An SD
 #' shared by several columns, as by the indicator columns of a logical
-#' predictor's interaction with a scaled slope, needs its columns to be certified
-#' as having one original-scale SD; a correlated block never certifies it (even
-#' when the columns happen to transform to the same value) and a diagonal block
-#' needs equal column SDs. Such an SD is \code{NA} with its variance, while the
+#' predictor's interaction with a scaled slope or the columns of a meandif or
+#' orthonormal factor term, needs its columns to be certified as having one
+#' original-scale SD: in a correlated block every column must be its own fitted
+#' column rescaled by one common factor, and in a diagonal block the columns
+#' need equal variance weights. Such an SD is \code{NA} with its variance, while the
 #' other rows of the block keep their original-scale values. If centering a factor-by-slope
 #' interaction induces level-specific effects absent from the block (the
 #' intercepts of \code{f:x}, the \code{z} slopes of \code{f:x:z} without
@@ -1680,7 +1681,7 @@ runjags_inference_table  <- function(fit, title = NULL, footnotes = NULL, warnin
     # event of the SD's own prior, and a scalar correlation on that of its
     # correlation prior, as the raw summary conditions that prior
     prior_event <- list(included = NULL, unconditioned = FALSE)
-    if(summary_type %in% c("sd", "var", "sd_mult", "cor")){
+    if(summary_type %in% c("sd", "var", "sd_mult", "cor", "cor_total")){
       if(is.null(quantities)){
         quantities <- parameter_catalog(fit)$quantities
       }
@@ -1837,10 +1838,8 @@ runjags_inference_table  <- function(fit, title = NULL, footnotes = NULL, warnin
   for(i in seq_along(parameter_names)){
     parameter_name <- parameter_names[[i]]
     prior <- prior_list[[parameter_name]]
-    summary_correlation <- !is.null(prior) && identical(
-      attr(prior, "random_summary", exact = TRUE),
-      "cor"
-    )
+    summary_type <- if(is.null(prior)) "" else attr(prior, "random_summary", exact = TRUE)
+    summary_correlation <- isTRUE(summary_type %in% c("cor", "cor_total"))
     coordinate_row <- match(parameter_name, coordinates$coordinate_name)
     coordinate_role <- if(is.na(coordinate_row)){
       ""
@@ -1872,6 +1871,8 @@ runjags_inference_table  <- function(fit, title = NULL, footnotes = NULL, warnin
         n_draws = n_draws,
         reason = if(positive_definite_coordinate){
           "positive_definite"
+        }else if(identical(summary_type, "cor_total")){
+          "multiple_correlation"
         }else{
           "correlation"
         }

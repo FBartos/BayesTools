@@ -92,3 +92,39 @@ change the general vignette policy. `named fallback maps preserve pure random-sl
 prior rescalings` in `tests/testthat/test-JAGS-random-effect-scaling.R` and the
 classification checks of `tests/testthat/test-JAGS-parameter-catalog.R` cover
 classification and supported prior-density routes.
+
+## Meandif and orthonormal factor terms are exchangeable units
+
+**Decision** (settled with the maintainer on 2026-10-30). In ID/DIAG/US
+random-effect blocks a meandif or orthonormal factor term is one exchangeable
+unit under every structure: one shared SD and zero within-unit correlations.
+The units are `f`, `f:x` (`x` continuous) and `f:g` (all factors so coded); a
+term crossing them with treatment, independent, or ordered factors has one unit
+per partner column (`sd(f:h[h2])`). Under US a unit keeps its correlations with
+the other columns, with the LKJ(eta) prior restricted to an identity unit block,
+`det(R)^(eta - 1)`, implemented by ordering the unit first in the C-vine with
+its within-unit primitives fixed at 1/2. Two or more units of three or more
+levels in one US block are refused with a classed error rather than made
+mutually uncorrelated. Two-level factors (one column) are ordinary LKJ columns
+in the design order. Summaries report `sd(f)`, the correlation with each level
+`cor(o, f[a])` (also for two-level factors), and the multiple correlation
+`cor_total(o, f)`; the coordinates `f{j}` are internal. An SD shared by several
+columns (a unit, or the indicator columns of a logical flag's interaction with
+a slope) is certified on the original scale whenever its columns are pure
+rescalings by one common factor, in diagonal and correlated blocks; the
+diagonal equal-variance-weight certificate remains. This revises the earlier
+rule that a correlated block never certifies a shared SD.
+`random_variance_allocation(target = "block")` counts SD leaves, so a block
+that is one unit has one SD component.
+
+**Why.** `contr.orthonormal()` and `contr.meandif()` take an eigenbasis of the
+centering matrix, which is not unique for three or more levels; LAPACK rounding
+picks it, and it differs across platforms. Fixed effects are unaffected
+(their mnormal/mt/mcauchy priors are spherical), but per-column SDs and an LKJ
+prior over contrast columns made the random-effect model of the level
+deviations depend on that arbitrary basis (CI showed it as platform-dependent
+results). An exchangeable unit is the basis-free model the contrast declares.
+Silently restricting the model when an implementation is hard (for example,
+making two units uncorrelated) would change the statistical target, so such
+cases are refused instead. Cross-platform reproducibility of the basis itself
+is a separate follow-up.

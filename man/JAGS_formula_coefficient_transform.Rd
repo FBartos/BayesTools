@@ -65,7 +65,7 @@ linear in the fitted coefficients. Declared measure limitations additionally
 inherit \code{BayesTools_formula_measure_unavailable}; generic context/program
 failures and numeric transformation failures retain their strict boundary.
 Numeric refusal reasons include \code{"zero_multiplier_denominator"},
-\code{"missing_multiplier_state"}, and \code{"nonfinite_transform"}. Formula-design 6,
+\code{"missing_multiplier_state"}, and \code{"nonfinite_transform"}. Formula-design 7,
 unscale-design 2, and transform 4 require refitting older stored formats;
 readers never reconstruct missing fitted declaration ownership.
 A requested parameter without a persisted formula design stops with

@@ -1828,7 +1828,7 @@ test_that("label parts are validated once per content and modifications are rech
   expect_identical(calls, before)
 })
 
-test_that("the SD columns of random interactions with transformed contrasts are labelled by contrast coordinate", {
+test_that("the SD columns of random interactions are labelled by level cell or exchangeable unit", {
 
   skip_if_not_installed("runjags")
 
@@ -1848,12 +1848,10 @@ test_that("the SD columns of random interactions with transformed contrasts are 
       ))
     )
   }
-  # contrast coefficient j of the term, like the fixed coefficient `x:g{j}`
-  coordinates <- function(term, label, n){
-    list(
-      columns = paste0(term, "{", seq_len(n), "}"),
-      labels = paste0("(mu) sd(", label, "{", seq_len(n), "})")
-    )
+  # an exchangeable unit of mean-difference or orthonormal columns: one SD,
+  # labelled by the term
+  unit <- function(label){
+    list(columns = NULL, labels = paste0("(mu) sd(", label, ")"))
   }
   # the level cells of a factor whose margin is absent from the block
   cells <- list(
@@ -1864,15 +1862,13 @@ test_that("the SD columns of random interactions with transformed contrasts are 
     # `f:x` without `x` is coded by level indicators whatever the contrast: cells
     list(~ 1 + diag(1 + f:x | id), c(f = "meandif"), "mu__xREx__id_f__xXx__x", cells),
     list(~ 1 + diag(1 + f:x | id), c(f = "orthonormal"), "mu__xREx__id_f__xXx__x", cells),
-    # with the margin `x` in the block the columns are contrast coordinates
-    list(~ 1 + diag(1 + f * x | id), c(f = "meandif"), "mu__xREx__id_f__xXx__x",
-         coordinates("mu__xREx__id_f__xXx__x", "f:x", 2L)),
-    list(~ 1 + diag(1 + f * x | id), c(f = "orthonormal"), "mu__xREx__id_f__xXx__x",
-         coordinates("mu__xREx__id_f__xXx__x", "f:x", 2L)),
+    # with the margin `x` in the block the columns are one exchangeable unit
+    list(~ 1 + diag(1 + f * x | id), c(f = "meandif"), "mu__xREx__id_f__xXx__x", unit("f:x")),
+    list(~ 1 + diag(1 + f * x | id), c(f = "orthonormal"), "mu__xREx__id_f__xXx__x", unit("f:x")),
     list(~ 1 + diag(1 + f * g | id), c(f = "meandif", g = "meandif"), "mu__xREx__id_f__xXx__g",
-         coordinates("mu__xREx__id_f__xXx__g", "f:g", 2L)),
+         unit("f:g")),
     list(~ 1 + diag(1 + f * g | id), c(f = "orthonormal", g = "orthonormal"), "mu__xREx__id_f__xXx__g",
-         coordinates("mu__xREx__id_f__xXx__g", "f:g", 2L)),
+         unit("f:g")),
     # independent and treatment contrasts keep their level labels
     list(~ 1 + diag(1 + f:x | id), c(f = "independent"), "mu__xREx__id_f__xXx__x", cells),
     list(~ 1 + diag(1 + f:x | id), c(f = "treatment"), "mu__xREx__id_f__xXx__x", cells),

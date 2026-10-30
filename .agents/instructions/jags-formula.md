@@ -299,7 +299,7 @@ Never infer an unscaling map from sampled values or parameter-name
 coincidences; tests build `formula_scale` through `JAGS_formula()` (see
 `formula_scale_for_test()`).
 
-Formula-design 6, unscale-design 2 and coefficient-transform 4 require refitting
+Formula-design 7, unscale-design 2 and coefficient-transform 4 require refitting
 older formats. One private finalizer completes current compiler specs from
 actual full priors and owned scalar data for fit/draws-only producers, writing
 the same owner to both carriers; fit readers never complete missing ownership.
@@ -415,12 +415,16 @@ The estimates table
 with `transform_scaled = FALSE` reports its fitted-scale random-effect
 quantities, including in `standard` and `full` summaries. An SD shared by
 several columns of a block (the indicator columns
-of a logical predictor's interaction with a scaled slope) has one original-scale
-value only when its columns are certified to transform to the same SD. A
-diagonal block certifies it by equal variance weights; a correlated block never
-does, even when the columns happen to transform to the same value (the SD of
-`us(1 + z + flag:x | g)` is the diagonal block's `tau / sd(x)` in every draw, and
-is still not certified). Otherwise original-scale requests stop with
+of a logical predictor's interaction with a scaled slope, the columns of an
+exchangeable meandif/orthonormal unit) has one original-scale value only when
+its columns are certified to transform to the same SD. A diagonal block
+certifies it by equal variance weights; a correlated block when every column of
+the leaf is its own fitted column rescaled by one common factor (the SD of
+`us(1 + z + flag:x | g)` is `tau / sd(x)`, and a unit keeps its identity
+correlation block). A correlated column that mixes fitted columns (the
+centering contribution of a scaled slope to the intercept) is not certified,
+even when the columns happen to transform to the same value. Otherwise
+original-scale requests stop with
 `BayesTools_formula_transform_unavailable`, reason
 `original_scale_not_representable`. Original-scale tables apply the rule per
 row: only the shared SD (and its variance) is `NA` with a note ("its shared
@@ -437,7 +441,8 @@ For a diagonal block, shared-column equality compares variance weights on
 each source SD leaf separately with the existing relative tolerance 1e-12.
 Zero/nonzero weights differ exactly, however large another leaf's weight is;
 each leaf has its own independent SD scale. Common tiny weights and zero/zero
-pairs retain their equality, and correlated blocks retain their refusal.
+pairs retain their equality; a correlated block compares the common rescaling
+factors with the same tolerance.
 The ensemble and marginal tables with `transform_scaled = TRUE` take the block
 design from the formula state of the mixed posteriors (`as_mixed_posteriors()`;
 `mix_posteriors()` attaches a state whenever a requested parameter is a fixed
@@ -613,20 +618,50 @@ what it calls, needs a `fit` profile refresh of the cached fits.
   factor coded by its eigendecomposition contrast keeps the tag gate (labels
   follow the coding, not the declared contrast tag). Every other coordinate is
   contrast coefficient `<parameter>{j}`, labelled so in tables, diagnostics,
-  mixed-posterior columns, and random-slope components (`sd(g{j})`). A
+  and mixed-posterior columns of fixed effects. A
   `{j}` selector of a direct level coordinate is refused (in catalog
   resolution and in `hypothesis_parse()` with a catalog) with class
   `BayesTools_selector_unavailable`, naming the level in the same form. JAGS
   coordinate names such as `mu_g[2]` remain backend column names, used by
   coordinate-based functions such as `JAGS_materialize_draws()`, but are not
   factor selectors.
-  The SD columns of a random interaction whose factors are all contrast-coded
-  (meandif, orthonormal) and whose margins are present in the block
-  (`diag(1 + f * x | id)`, `diag(1 + f * g | id)`) are contrast coefficients of
-  the term, `<term>{j}` (`sd(f:x{1})`, `sd(f:g{2})`), in the mixed-posterior
-  columns (`mu__xREx__id_f__xXx__x{1}`) as in the catalog; an interaction with
-  an independent or treatment factor, or with a factor whose margin is absent
-  (`diag(1 + f:x | id)`), keeps its level cells.
+  Exchangeable units. In ID/DIAG/US blocks (not the structured families,
+  which own their basis) the columns that a meandif or orthonormal factor
+  codes (`.bt_random_effect_factor_units()`) form one unit: `f`, `f:x` with
+  `x` continuous, and `f:g` with every factor so coded; a term crossing such
+  factors with treatment, independent, ordered, or indicator-coded factors has
+  one unit per column of that partner coding (`f:h[b]`). The unit is checked
+  against the stored term design (the Kronecker product of the factor
+  codings, first factor fastest). A unit has one SD leaf, the scalar node
+  `<stem>_<term>` of a scalar prior (indexed `[u]` per unit of a multi-unit
+  term or for allocation and external-source leaves), labelled by the term
+  (`sd(f)`, `sd(f:h[b])`); a factor-classed or vector SD prior on it is refused
+  (`BayesTools_random_effects_exchangeable_units_unavailable`, reason
+  `unit_sd_prior`). Its coordinates `<term>{j}` are internal (raw tables and
+  raw LKJ labels only); their selectors (`sd(f{j})`, `cor(o,f{j})`) are
+  refused with `BayesTools_selector_unavailable` (reason "unit" in the refused
+  table, `unit_dimension` in the extraction key), naming the unit's quantity. Under US a unit of two or more columns is first in the
+  LKJ vine with its within-unit primitives fixed at 1/2
+  (`random_term$correlation$unit_columns`); two such units in one block are
+  refused (reason `several_correlated_units`), a block that is one unit has no
+  correlation parameter (a `cor` prior is refused as for a single column) and
+  is stored as the diagonal block it is (`random_term$structure` "diag", its SD
+  priors tagged "diag", `random_term$formula_structure` "us" for prediction
+  matching), and
+  a one-column unit (two-level factor) is an ordinary LKJ column in the
+  design order. Correlation rows (`.bt_random_effect_correlation_rows()`):
+  pairs of ordinary columns, `cor(o,f[a])` per level cell of a unit (cells of
+  two units for a one-column unit, the one-column element leading), and
+  `cor_total(o,f)` = sqrt(r' R_ff^-1 r), support [0, 1], whenever the leading
+  element is one column (undefined, NA, in a draw whose R_ff is singular, as an
+  original-scale unit can be at a zero SD; definedness "multiple_correlation"); on the original scale the level
+  cells of a unit whose shared SD is not certified are NA with the shared-SD
+  note; within-unit correlations are structural zeros
+  (convergence role `structural`), and a reordered vine makes `L[1,1]`
+  `derived`. Prior laws: pairs and cells 2 Beta(eta - 1 + K/2) - 1;
+  `cor_total` t^2 ~ Beta(k/2, eta + (K - k - 1)/2) for a unit of k columns.
+  In a two-column block a cell's `lkj2` source carries its sign in
+  `source_scale` (cor = sign (2u - 1)).
   The indicator columns of a logical predictor's interaction with a continuous
   one whose margin is absent from the block (`flagFALSE:x`, `flagTRUE:x` of
   `(1 + flag + flag:x | id)`) share one SD, labelled by the term (`sd(flag:x)`),
@@ -771,6 +806,9 @@ what it calls, needs a `fit` profile refresh of the cached fits.
   Version 18 gives the spike-and-slab and mixture nodes of a structured
   block's scalar-correlation prior random-effect roles and an
   `inclusion(cor)` quantity, as for SD priors.
+  Version 19 makes a meandif or orthonormal factor term one exchangeable unit
+  (one SD row, level-cell `cor` rows and `cor_total` rows, free LKJ
+  primitives only).
 - That cache is session-local: the map carries only a `runtime_cache_id`, and
   the entries live in a bounded package registry. Never attach a cache to the
   map itself - it would be serialized into every saved fit and replayed on load,

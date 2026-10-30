@@ -297,6 +297,31 @@
   invisible(TRUE)
 }
 
+# The SD of an exchangeable unit (see .bt_random_effect_factor_units()) is one
+# scalar: a prior that gives the coordinates of its basis separate SDs (a
+# factor or vector prior) would make the model depend on that arbitrary basis.
+.bt_random_effect_check_unit_sd_prior <- function(prior, term){
+
+  if(.bt_random_prior_has_non_scalar_family(prior) || is.prior.factor(prior)){
+    stop(errorCondition(
+      paste0(
+        "Random-effect SD prior for '", gsub("__xXx__", ":", term, fixed = TRUE),
+        "' must be an ordinary scalar prior: the columns of a meandif or ",
+        "orthonormal factor term share one SD, because their coding basis is ",
+        "arbitrary. Use a scalar prior (e.g., prior(\"point\", list(0)) for a point ",
+        "mass), or contr.treatment or contr.independent coding for an SD per level."
+      ),
+      class = c("BayesTools_random_effects_exchangeable_units_unavailable",
+                "BayesTools_random_effects_error"),
+      reason = "unit_sd_prior",
+      term = term,
+      call = NULL
+    ))
+  }
+
+  invisible(TRUE)
+}
+
 .bt_random_effect_check_structured_sd_priors <- function(prior_list,
                                                         model_terms,
                                                         random_structure,
@@ -324,7 +349,33 @@
     model_term, predictors_type, data,
     indicator_factors = .bt_random_effect_factor_term_indicators(factor_term_design, model_term)
   )
-  if(random_structure %in% c("cs", "hcs", "ar1", "car", "har")){
+  units <- if(!random_structure %in% c("cs", "hcs", "ar1", "car", "har") &&
+              contrast %in% c("contr.orthonormal", "contr.meandif", "contr.mixed")){
+    .bt_random_effect_factor_units(model_term, columns, factor_term_design)
+  }
+  if(!is.null(units)){
+    .bt_random_effect_check_unit_sd_prior(prior, model_term)
+    if(length(units) == 1L){
+      sd_parameter_names <- rep(paste0(parameter, "_", model_term), length(columns))
+    }else{
+      # one SD per unit, with the term's prior on each
+      unit_terms <- vapply(units, `[[`, character(1), "term")
+      attr(prior, "levels") <- length(units)
+      attr(prior, "level_names") <- unit_terms
+      prior <- .bt_random_effect_set_factor_prior_class(prior, "prior.independent")
+      prior <- .bt_factor_prior_set_design(
+        prior = prior,
+        level_names = unit_terms,
+        factor_contrasts = stats::setNames("contr.independent", .bt_factor_placeholder_term),
+        design = diag(length(units))
+      )
+      unit_by_column <- integer(length(columns))
+      for(unit in seq_along(units)){
+        unit_by_column[match(units[[unit]]$columns, columns)] <- unit
+      }
+      sd_parameter_names <- paste0(parameter, "_", model_term, "[", unit_by_column, "]")
+    }
+  }else if(random_structure %in% c("cs", "hcs", "ar1", "car", "har")){
     .bt_random_effect_check_scalar_sd_prior(prior, model_term)
     prior_type <- "prior.independent"
     attr(prior, "levels") <- length(columns)
@@ -640,6 +691,160 @@
   }
 }
 
+# The exchangeable units of a random factor term. The coding basis of a
+# meandif or orthonormal factor is arbitrary (an eigenbasis of the centring
+# matrix, which rounding picks for three or more levels), so the columns it
+# codes form one unit: one SD and uncorrelated coordinates, whose level-cell
+# deviations then do not depend on the basis. A term whose factors are all so
+# coded is one unit; a term that crosses them with factors of another coding
+# (treatment, independent, ordered, or indicator-coded) has one unit per column
+# of that partner coding. A unit holds its block `columns`, its SD component
+# label `term` (the term, with the partner's level or coefficient in a
+# multi-unit term: `f__xXx__h[b]`), the labels of the level `cells` of its
+# coded factors, and `weights`, the design of its columns at those cells (the
+# map from its coordinates to the cell deviations). NULL for a term without a
+# meandif or orthonormal factor.
+.bt_random_effect_factor_units <- function(model_term, columns, factor_term_design){
+
+  if(!is.function(factor_term_design)){
+    stop("Random-effect factor units require the random-effect term design.", call. = FALSE)
+  }
+  term_design <- factor_term_design(model_term)
+  factor_contrasts <- term_design$factor_contrasts
+  exchangeable <- factor_contrasts %in% c("contr.orthonormal", "contr.meandif")
+  if(!any(exchangeable)){
+    return(NULL)
+  }
+
+  level_names <- term_design$level_names
+  factor_terms <- names(level_names)
+  codings <- lapply(factor_terms, function(factor_term){
+    .factor_contrast_matrix(level_names[[factor_term]], factor_contrasts[[factor_term]])
+  })
+  names(codings) <- factor_terms
+  # level cells and coefficients vary the first factor fastest, as the columns
+  # of an interaction in a design matrix do
+  coded_design <- function(factors, cells, coefficients){
+    out <- matrix(1, nrow = nrow(cells), ncol = nrow(coefficients))
+    for(factor_term in factors){
+      out <- out * codings[[factor_term]][cells[[factor_term]], coefficients[[factor_term]], drop = FALSE]
+    }
+    out
+  }
+  level_grid <- expand.grid(lapply(level_names, seq_along), KEEP.OUT.ATTRS = FALSE)
+  coefficient_grid <- expand.grid(
+    lapply(codings, function(coding) seq_len(ncol(coding))),
+    KEEP.OUT.ATTRS = FALSE
+  )
+  if(length(columns) != nrow(coefficient_grid) ||
+     !isTRUE(all.equal(
+       coded_design(factor_terms, level_grid, coefficient_grid),
+       unname(term_design$design),
+       tolerance = 1e-12, check.attributes = FALSE
+     ))){
+    stop(
+      "Internal error: the design columns of random-effect term '", model_term,
+      "' do not match the codings of its factors.",
+      call. = FALSE
+    )
+  }
+
+  exchangeable_terms <- factor_terms[exchangeable]
+  partner_terms <- factor_terms[!exchangeable]
+  partner_key <- if(length(partner_terms) == 0L){
+    rep(1L, nrow(coefficient_grid))
+  }else{
+    key <- do.call(paste, c(unname(as.list(coefficient_grid[partner_terms])), sep = ","))
+    match(key, unique(key))
+  }
+  # a partner coefficient is a level of its factor where its coding is one
+  # (treatment, independent), and coefficient `j` otherwise
+  partner_label <- function(factor_term, coefficient){
+    contrast <- factor_contrasts[[factor_term]]
+    levels <- level_names[[factor_term]]
+    if(identical(contrast, "contr.treatment")){
+      paste0("[", levels[coefficient + 1L], "]")
+    }else if(identical(contrast, "contr.independent")){
+      paste0("[", levels[coefficient], "]")
+    }else{
+      .bt_parameter_catalog_factor_coefficient_component(coefficient)
+    }
+  }
+  components <- strsplit(model_term, "__xXx__", fixed = TRUE)[[1L]]
+  cell_grid <- expand.grid(level_names[exchangeable_terms], KEEP.OUT.ATTRS = FALSE, stringsAsFactors = FALSE)
+  cell_index <- expand.grid(lapply(level_names[exchangeable_terms], seq_along), KEEP.OUT.ATTRS = FALSE)
+
+  lapply(seq_len(max(partner_key)), function(unit){
+    coefficients <- which(partner_key == unit)
+    term_components <- components
+    for(factor_term in partner_terms){
+      term_components[components == factor_term] <- paste0(
+        factor_term,
+        partner_label(factor_term, coefficient_grid[[factor_term]][coefficients[[1L]]])
+      )
+    }
+    cells <- vapply(seq_len(nrow(cell_grid)), function(cell){
+      cell_components <- term_components
+      for(factor_term in exchangeable_terms){
+        cell_components[components == factor_term] <- paste0(
+          factor_term, "[", cell_grid[[factor_term]][cell], "]"
+        )
+      }
+      paste(cell_components, collapse = "__xXx__")
+    }, character(1))
+    list(
+      columns = columns[coefficients],
+      term    = paste(term_components, collapse = "__xXx__"),
+      cells   = cells,
+      weights = coded_design(
+        exchangeable_terms,
+        cell_index,
+        coefficient_grid[coefficients, , drop = FALSE]
+      )
+    )
+  })
+}
+
+# The design columns of the exchangeable unit that a us() block orders first
+# in its LKJ vine: its unit of two or more columns (integer() without one, and
+# for other structures; a unit of one column is an ordinary column). Several
+# such units are refused: the LKJ prior with several identity unit blocks is
+# not implemented, and making the units mutually uncorrelated would silently
+# change the specified model.
+.bt_random_effect_lkj_unit_columns <- function(sd_leaves, structure, block_name){
+
+  if(!identical(structure, "us")){
+    return(integer())
+  }
+  units <- Filter(function(unit) length(unit$columns) >= 2L, sd_leaves$units)
+  if(length(units) == 0L){
+    return(integer())
+  }
+  if(length(units) > 1L){
+    terms <- vapply(units, function(unit){
+      gsub("__xXx__", ":", unit$term, fixed = TRUE)
+    }, character(1))
+    stop(errorCondition(
+      paste0(
+        "Correlations of random-effect block '", block_name, "' are unavailable: ",
+        "structure 'us' correlates several meandif or orthonormal factor terms with ",
+        "three or more levels (", paste0("'", terms, "'", collapse = ", "), "), ",
+        "each of which is one exchangeable unit, and correlated units are not ",
+        "implemented. Use structure 'diag', place the terms in separate blocks, or ",
+        "code the factors with contr.treatment or contr.independent."
+      ),
+      class = c("BayesTools_random_effects_exchangeable_units_unavailable",
+                "BayesTools_random_effects_error"),
+      reason = "several_correlated_units",
+      block = block_name,
+      terms = terms,
+      call = NULL
+    ))
+  }
+
+  units[[1L]]$columns
+}
+
 .bt_random_effect_bind_ordered_sd_prior <- function(prior, parameter,
                                                     model_term, columns,
                                                     predictors_type, data){
@@ -767,14 +972,6 @@
     ))
   }
 
-  if(!(isTRUE(homogeneous_sd) || ncol(model_matrix) == 1L)){
-    stop(
-      "Block-level variance allocation supports random-effect blocks with one SD component. ",
-      "Use random intercepts, single-column random slopes, homogeneous SD structures, or target = \"sd_component\" for heterogeneous blocks.",
-      call. = FALSE
-    )
-  }
-
   sd_leaves <- .bt_random_effect_resolved_sd_leaves(
     parameter = parameter,
     model_matrix = model_matrix,
@@ -787,6 +984,13 @@
     homogeneous_sd = homogeneous_sd,
     factor_term_design = factor_term_design
   )
+  if(sd_leaves$n_leaves != 1L){
+    stop(
+      "Block-level variance allocation supports random-effect blocks with one SD component. ",
+      "Use random intercepts, a single continuous or meandif/orthonormal factor slope, homogeneous SD structures, or target = \"sd_component\" for heterogeneous blocks.",
+      call. = FALSE
+    )
+  }
 
   if(isTRUE(homogeneous_sd)){
     sd_term <- "sd"
@@ -803,11 +1007,9 @@
     sd_term <- model_terms[allocated_term_indexes]
   }
 
-  sd_parameter <- if(ncol(model_matrix) == 1L){
-    sd_leaves$leaf_names_by_column[[1L]]
-  }else{
-    paste0(parameter, "_", sd_term)
-  }
+  # the one SD component of the block (a homogeneous block's shared SD, its
+  # only column, or its only exchangeable unit)
+  sd_parameter <- sd_leaves$leaf_names[[1L]]
   sd_suffix <- paste0(parameter_suffix, "_", sd_term)
   n_columns <- ncol(model_matrix)
   sd_parameter_names <- rep(sd_parameter, n_columns)
@@ -877,6 +1079,7 @@
   terms_indexes <- .bt_random_effect_term_indexes(model_matrix, has_intercept)
   leaf_terms <- rep(NA_character_, n_columns)
   leaf_names <- rep(NA_character_, n_columns)
+  units <- list()
   # The leaves of the SD priors of a block are the nodes of those priors, so a
   # sole design column is a scalar node; the leaves of an allocation or of an
   # external SD source are indexed by their column.
@@ -910,7 +1113,25 @@
         ordered_sd_prior <- !is.null(prior_list) &&
           model_term %in% names(prior_list) &&
           is.prior.ordered(prior_list[[model_term]])
-        if(random_structure %in% c("cs", "hcs", "ar1", "car", "har") ||
+        # a covariance structure that owns its basis has one column per level cell
+        term_units <- if(!random_structure %in% c("cs", "hcs", "ar1", "car", "har") &&
+                         contrast %in% c("contr.orthonormal", "contr.meandif", "contr.mixed")){
+          .bt_random_effect_factor_units(model_term, columns, factor_term_design)
+        }
+        if(!is.null(term_units)){
+          # one SD per exchangeable unit: the scalar node of the term's prior,
+          # or an element of it per unit
+          for(unit in seq_along(term_units)){
+            unit_columns <- term_units[[unit]]$columns
+            leaf_terms[unit_columns] <- term_units[[unit]]$term
+            leaf_names[unit_columns] <- if(isTRUE(prior_nodes) && length(term_units) == 1L){
+              paste0(parameter, "_", model_term)
+            }else{
+              paste0(parameter, "_", model_term, "[", unit, "]")
+            }
+          }
+          units <- c(units, term_units)
+        }else if(random_structure %in% c("cs", "hcs", "ar1", "car", "har") ||
            contrast %in% c(
              "contr.treatment",
              "contr.independent",
@@ -971,6 +1192,10 @@
     leaf_terms[match(leaf_name, leaf_names)]
   }, character(1))
   leaf_index_by_column <- match(leaf_names, unique_leaf_names)
+  unit_index_by_column <- rep(NA_integer_, n_columns)
+  for(unit in seq_along(units)){
+    unit_index_by_column[units[[unit]]$columns] <- unit
+  }
 
   out <- list(
     terms_indexes = terms_indexes,
@@ -980,6 +1205,8 @@
     leaf_names = unique_leaf_names,
     leaf_terms = unique_leaf_terms,
     leaf_index_by_column = leaf_index_by_column,
+    units = units,
+    unit_index_by_column = unit_index_by_column,
     column_names = colnames(model_matrix),
     column_index = seq_len(n_columns),
     n_leaves = length(unique_leaf_names)

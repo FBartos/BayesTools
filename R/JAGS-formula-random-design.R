@@ -537,14 +537,6 @@
   if(n_par < 1L){
     stop("Random-effect term '", random_term$block_name, "' does not generate any design columns.", call. = FALSE)
   }
-  # A top-level correlation prior applies only when this block has a
-  # correlation parameter, which depends on the resolved design dimension.
-  block_prior <- .bt_random_block_resolve_correlation(
-    block_prior,
-    structure = random_structure,
-    n_columns = n_par,
-    block_name = random_term$block_name
-  )
 
   # The level cells coded by a factor term's design columns, which SD factor
   # priors of the term carry as their factor design and the SD component
@@ -605,6 +597,45 @@
   new_prior_list <- c(new_prior_list, sd_spec$prior_list)
   sd_binding <- sd_spec$sd_binding
   row_indexed_external_sd <- .bt_random_sd_binding_has_row_external_source(sd_binding)
+
+  # The exchangeable unit of a us() block (.bt_random_effect_factor_units()) is
+  # ordered first in its LKJ vine with an identity within-unit block; a unit of
+  # one column is an ordinary column. A block that is one unit has no
+  # correlation parameter.
+  lkj_unit_columns <- .bt_random_effect_lkj_unit_columns(
+    sd_leaves = sd_leaves,
+    structure = random_structure,
+    block_name = random_term$block_name
+  )
+  correlated_columns <- if(length(lkj_unit_columns) == n_par) 1L else n_par
+  # A top-level correlation prior applies only when this block has a
+  # correlation parameter, which depends on the resolved design dimension.
+  block_prior <- .bt_random_block_resolve_correlation(
+    block_prior,
+    structure = random_structure,
+    n_columns = correlated_columns,
+    block_name = random_term$block_name
+  )
+  if(random_structure == "us" && n_par > 1L && correlated_columns == 1L){
+    if(!is.null(block_prior$covariance$cor)){
+      stop(
+        "Random-effect structure 'us' of a block that is one meandif or orthonormal ",
+        "factor term has no correlation parameter (its columns share one SD and are ",
+        "uncorrelated); remove the 'cor' prior.",
+        call. = FALSE
+      )
+    }
+    # the block is the diagonal block of its columns, and is stored as one
+    # (its SD priors included); the formula keeps its declared structure
+    formula_structure <- random_structure
+    random_structure <- "diag"
+    for(prior_name in names(sd_spec$prior_list)){
+      attr(sd_spec$prior_list[[prior_name]], "random_structure") <- random_structure
+      attr(new_prior_list[[prior_name]], "random_structure") <- random_structure
+    }
+  }else{
+    formula_structure <- random_structure
+  }
 
   parameterization <- .bt_random_effect_resolve_parameterization(
     block_prior = block_prior,
@@ -796,7 +827,6 @@
     }
   }else if(random_structure == "us"){
     lkj_prior <- .bt_random_block_lkj_prior(block_prior)
-    lkj_unit_columns <- integer()
     lkj_arguments <- list(
       name = paste0(parameter, "_xRE_CORx"),
       K = n_par,
@@ -1194,6 +1224,7 @@
   }
   random_term["jags_data_names"] <- list(random_jags_data_names)
   random_term$structure        <- random_structure
+  random_term$formula_structure <- formula_structure
   random_term$homogeneous_sd   <- homogeneous_sd
   random_term$interface        <- "prior_random"
   random_term$sd_binding       <- sd_binding

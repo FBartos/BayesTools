@@ -329,7 +329,8 @@
       # The columns whose original-scale value the block cannot carry (a
       # dropped centering contribution has no column of its numeric group) and
       # the SD leaves shared by columns that are not certified to have one SD
-      # (a correlated block never certifies it, a diagonal block needs equal SDs).
+      # (a correlated block needs a common rescaling of its columns, a diagonal
+      # block equal variance weights).
       unrepresented <- if(whole_block) integer() else
         .random_sd_block_unrepresented_columns(formula_scale[[parameter]], parameter,
                                               term, design$source_data)
@@ -337,7 +338,7 @@
         attr(transformed, "unavailable_sd_leaves", exact = TRUE)
       if(!whole_block && length(unrepresented) == 0L && length(shared) == 0L) next
       block_rows <- quantities$formula_parameter == parameter &
-        quantities$quantity %in% c("sd", "var", "cor") &
+        quantities$quantity %in% c("sd", "var", "cor", "cor_total") &
         vapply(quantities$extraction_key, function(key){
           identical(key$random_block, term$block_name)
         }, logical(1))
@@ -367,7 +368,7 @@
         sd_names <- sd_names[!is.na(sd_names)]
         leaf_of_column <- match(term$sd_parameter_names, sd_names)
         shared_leaf <- match(shared, sd_names)
-        pairs <- if(term$n_columns > 1L) utils::combn(seq_len(term$n_columns), 2L) else NULL
+        correlation_rows <- .bt_random_effect_correlation_rows(term)
         # intercepts have their own wording, other lower-order effects a common one
         columns_note <- function(columns){
           table_note(if(all(term$assign[columns] == 0L)) intercept_note else effect_note)
@@ -384,9 +385,16 @@
             }else if(key$index %in% shared_leaf){
               note <- table_note(shared_note)
             }
-          }else if(identical(key$evaluator, "correlation") && !is.null(pairs)){
-            involved <- intersect(pairs[, key$index], unrepresented)
-            if(length(involved) > 0L) note <- columns_note(involved)
+          }else if(identical(key$evaluator, "correlation") && length(correlation_rows) > 0L){
+            row <- correlation_rows[[key$index]]
+            involved <- intersect(row$columns, unrepresented)
+            if(length(involved) > 0L){
+              note <- columns_note(involved)
+            }else if(identical(row$type, "level") &&
+                     any(leaf_of_column[.bt_random_effect_correlation_row_unit_columns(row)] %in% shared_leaf)){
+              # the level cells of a unit without one original-scale SD
+              note <- table_note(shared_note)
+            }
           }
           if(!is.null(note)){
             rows[i] <- TRUE
@@ -521,7 +529,7 @@
     quantities$quantity,
     c(
       "sd_total", "sd_common", "sd", "sd_mult",
-      "var_prop", "var_mult", "inclusion", "cor"
+      "var_prop", "var_mult", "inclusion", "cor", "cor_total"
     )
   )
   quantities[order(quantity_order, na.last = TRUE), , drop = FALSE]
@@ -532,7 +540,7 @@
   allocation_derived <- vapply(quantities$extraction_key, function(key){
     isTRUE(key$allocation_derived)
   }, logical(1))
-  correlation <- quantities$quantity == "cor"
+  correlation <- quantities$quantity %in% c("cor", "cor_total")
   inclusion   <- quantities$quantity == "inclusion"
   block_scale <- quantities$owner_type == "random_block" &
     quantities$quantity == "sd" &

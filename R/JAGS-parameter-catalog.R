@@ -55,9 +55,15 @@
 #' coefficient names, while square brackets inside an argument contain its
 #' factor or index level. Examples include `(mu) study: sd(intercept)`,
 #' `(mu) study: cor(group[sensitivity],group[specificity])`, and
-#' `(mu) var_prop(study)`. Formula-prefix omission is accepted as
-#' an alias. Additional aliases are limited to genuine semantic equivalences,
-#' such as a CS/HCS pairwise correlation referring to its shared `cor`.
+#' `(mu) var_prop(study)`. A mean-difference or orthonormal factor term of a
+#' block is one exchangeable unit (see [prior_random()]) with one SD quantity,
+#' `sd(f)`; its correlations are reported by level, `cor(x,f[a])`, together
+#' with the multiple correlation `cor_total(x,f)` (support `[0, 1]`), and its
+#' coefficient coordinates `f{j}` appear only in raw tables: a selector such
+#' as `sd(f{1})` stops with class `BayesTools_selector_unavailable`, naming the
+#' unit's quantity. Formula-prefix omission is accepted as an alias.
+#' Additional aliases are limited to genuine semantic equivalences, such as a
+#' CS/HCS pairwise correlation referring to its shared `cor`.
 #' Random-effect quantities also carry centrally generated simplified aliases.
 #' These remove a sole intercept argument and may omit a redundant owner, but
 #' are considered by resolvers only when `simplify_names = TRUE`.
@@ -141,8 +147,9 @@
 #' whose SD draws are not available (a row-indexed or unmonitored external SD
 #' source) cannot be masked and keeps its fitted draws.
 #' Each catalog quantity declares its `definedness` (`"always"`, or the reason
-#' of possibly undefined draws: `"correlation"`, or `"allocation_active"` for
-#' the variance shares of gated total-variance allocations) and its exact
+#' of possibly undefined draws: `"correlation"`, `"multiple_correlation"` for a
+#' `cor_total`, or `"allocation_active"` for the variance shares of gated
+#' total-variance allocations) and its exact
 #' `support` from the prior provenance of its source coordinates (`NULL` when
 #' it is not derivable). A quantity with point masses in its prior density
 #' (an SD, variance, total, or variance share of an allocation with inclusion
@@ -1158,7 +1165,12 @@ parameter_prior_density.BayesTools_fit <- function(
 # Prior density of a pairwise correlation of an LKJ(eta) block with K columns.
 # Every off-diagonal correlation r of an LKJ(eta) correlation matrix has the
 # marginal (r + 1) / 2 ~ Beta(eta - 1 + K / 2, eta - 1 + K / 2)
-# (Lewandowski, Kurowicka, and Joe, 2009): the first-row correlations are the
+# (Lewandowski, Kurowicka, and Joe, 2009), as has the correlation of a column
+# with a level cell of an exchangeable unit under the LKJ prior restricted to
+# an identity unit block (its correlations with the unit's columns have a
+# uniform direction); the multiple correlation of a column with a unit of k
+# columns has t^2 ~ Beta(k / 2, eta + (K - k - 1) / 2) (the onion construction,
+# their Section 3). The first-row correlations are the
 # canonical partial correlations of the emitted primitives, whose shape is
 # eta + (K - 2) / 2, and the LKJ density is invariant under permutations of
 # the columns. The primitives are a priori independent of every SD, gate, and
@@ -1178,14 +1190,16 @@ parameter_prior_density.BayesTools_fit <- function(
   correlation <- random_term$correlation
   K <- random_term$n_columns
   eta <- correlation$eta
+  rows <- .bt_random_effect_correlation_rows(random_term)
   if(!is.list(correlation) || !identical(correlation$type, "lkj") ||
      !is.numeric(K) || length(K) != 1L || is.na(K) || K < 2L ||
      !is.numeric(eta) || length(eta) != 1L || !is.finite(eta) || eta <= 0 ||
      !is.numeric(key$index) || length(key$index) != 1L ||
-     key$index > K * (K - 1L) / 2L){
+     key$index > length(rows)){
     return(NULL)
   }
-  pair <- utils::combn(seq_len(K), 2L)[, key$index]
+  row <- rows[[key$index]]
+  pair <- row$columns
   unscale <- .bt_parameter_prior_density_random_unscale_matrix(
     object      = object,
     random_term = random_term,
@@ -1197,11 +1211,31 @@ parameter_prior_density.BayesTools_fit <- function(
   sources <- lapply(pair, function(row){
     which(.random_sd_unscale_row_nonzero(unscale[row, ]))
   })
-  if(any(lengths(sources) != 1L) || sources[[1L]] == sources[[2L]]){
+  if(any(lengths(sources) != 1L) || anyDuplicated(unlist(sources))){
     return(NULL)
   }
+  # the columns of a unit keep its reported quantities when one factor
+  # rescales all of them
+  unit_columns <- row$elements[[2L]]$columns
+  if(length(unit_columns) > 1L){
+    factors <- unscale[cbind(unit_columns, unlist(sources[match(unit_columns, pair)]))]
+    if(!isTRUE(all.equal(factors, rep(factors[[1L]], length(factors)), tolerance = 1e-12))){
+      return(NULL)
+    }
+  }
 
-  # the Beta margin is symmetric, so a sign flip of the pair keeps it
+  if(identical(row$type, "total")){
+    # the multiple correlation t of a column with a unit of k columns:
+    # t^2 ~ Beta(k / 2, eta + (K - k - 1) / 2)
+    return(.bt_parameter_prior_density_transformed(
+      prior("beta", list(alpha = row$k / 2, beta = eta + (K - row$k - 1) / 2)),
+      list(type = "sqrt_scale", scale = 1),
+      n_grid = n_grid,
+      tail_prob = tail_prob
+    ))
+  }
+  # pairs and the level cells of a unit have the LKJ(eta) marginal of dimension
+  # K; the Beta margin is symmetric, so a sign flip keeps it
   shape <- eta - 1 + K / 2
   .bt_parameter_prior_density_transformed(
     prior("beta", list(alpha = shape, beta = shape)),
@@ -2346,7 +2380,13 @@ parameter_transform <- function(object, selection){
                   identical(source_transform, "var_prop")){
     list(type = "identity")
   }else if(identical(source_transform, "lkj2")){
-    list(type = "affine", offset = -1, scale = 2)
+    # cor = sign * (2u - 1), the sign of a level cell of a unit
+    sign <- if(is.numeric(key$source_scale) && isTRUE(is.finite(key$source_scale))){
+      key$source_scale
+    }else{
+      1
+    }
+    list(type = "affine", offset = -sign, scale = 2 * sign)
   }else if(identical(source_transform, "fisher_z")){
     list(type = "tanh")
   }else if(identical(source_transform, "logit")){
@@ -3791,7 +3831,8 @@ parameter_transform_jacobian <- function(values, transform){
         allocation_derived = allocation_derived
       ),
       metadata[names(metadata) %in% c(
-        "prior_name", "allocation_label", "parent_allocation", "index"
+        "prior_name", "allocation_label", "parent_allocation", "index",
+        "unit_dimension"
       )]
     )
     label_parts <- .bt_label_parts(
@@ -4198,6 +4239,8 @@ parameter_transform_jacobian <- function(values, transform){
         }
         for(i in seq_along(sd_names)){
           sd_quantity <- "sd"
+          # the SD of an exchangeable unit: its coordinates' selectors are refused
+          unit_metadata <- .bt_parameter_catalog_unit_metadata(random_term, sd_names[i])
           sd_arguments <- .bt_random_effect_semantic_sd_arguments(
             components[i]
           )
@@ -4261,7 +4304,7 @@ parameter_transform_jacobian <- function(values, transform){
             parameter = parameter,
             evaluator = "sd",
             dependencies = dependencies,
-            metadata = c(term_metadata, list(index = i)),
+            metadata = c(term_metadata, list(index = i), unit_metadata),
             block = block,
             term = block,
             component = components[i],
@@ -4291,7 +4334,7 @@ parameter_transform_jacobian <- function(values, transform){
             parameter = parameter,
             evaluator = "sd_variance",
             dependencies = dependencies,
-            metadata = c(term_metadata, list(index = i)),
+            metadata = c(term_metadata, list(index = i), unit_metadata),
             block = block,
             term = block,
             component = components[i],
@@ -4460,8 +4503,7 @@ parameter_transform_jacobian <- function(values, transform){
       }
       if(!is.null(correlation) && identical(correlation$type, "lkj") &&
          random_term$n_columns > 1L){
-        pairs <- utils::combn(seq_len(random_term$n_columns), 2L)
-        components <- .bt_random_effect_summary_column_components(random_term)
+        correlation_rows <- .bt_random_effect_correlation_rows(random_term)
         scaled_correlation <- !.bt_parameter_catalog_random_sd_is_direct(
           random_term = random_term,
           parameter = parameter,
@@ -4491,13 +4533,18 @@ parameter_transform_jacobian <- function(values, transform){
           )
         ))
         out$suppress <- unique(c(out$suppress, correlation_suppress))
-        one_to_one <- random_term$n_columns == 2L && !scaled_correlation &&
-          length(correlation$primitive_names) == 1L
-        for(i in seq_len(ncol(pairs))){
-          pair <- components[pairs[, i]]
+        for(i in seq_along(correlation_rows)){
+          row <- correlation_rows[[i]]
+          pair <- row$parts
+          # in a two-column block, a pair or level-cell correlation is its
+          # primitive's partial correlation 2u - 1 times the sign of the cell
+          # weight; a multiple correlation is its absolute value
+          one_to_one <- random_term$n_columns == 2L && !scaled_correlation &&
+            length(correlation$primitive_names) == 1L &&
+            !identical(row$type, "total")
           raw_name <- .bt_random_effect_summary_name(
             parameter = parameter,
-            type = "cor",
+            type = row$quantity,
             parts = c(block, pair)
           )
           add_definition(
@@ -4506,16 +4553,20 @@ parameter_transform_jacobian <- function(values, transform){
             parameter = parameter,
             evaluator = "correlation",
             dependencies = correlation_dependencies,
-            metadata = c(term_metadata, list(index = i)),
+            metadata = c(
+              term_metadata,
+              list(index = i),
+              if(identical(row$type, "total")) list(unit_dimension = row$k)
+            ),
             block = block,
             term = block,
-            component = paste0(pair[1L], ",", pair[2L]),
+            component = row$label,
             fitted_scale = "fitted_covariance",
             display_scale = "unitless",
             owner_type = "random_block",
             owner_name = owner,
             public_owner = public_owner,
-            quantity = "cor",
+            quantity = row$quantity,
             arguments = pair,
             source_type = if(one_to_one){
               "one_to_one_transform"
@@ -4527,7 +4578,13 @@ parameter_transform_jacobian <- function(values, transform){
             }else{
               ""
             },
-            source_transform = if(one_to_one) "lkj2" else "lkj"
+            source_transform = if(one_to_one) "lkj2" else "lkj",
+            # the sign of a level cell (a pair is the partial correlation itself)
+            source_scale = if(one_to_one && identical(row$type, "level")){
+              sign(prod(vapply(row$elements, `[[`, numeric(1), "weights")))
+            }else{
+              NA_real_
+            }
           )
         }
       }
@@ -4941,6 +4998,7 @@ parameter_transform_jacobian <- function(values, transform){
   switch(
     quantity$quantity,
     "cor"       = interval(-1, 1),
+    "cor_total" = interval(0, 1),
     "var_prop"  = interval(0, 1),
     "inclusion" = .posterior_support_new(c(0, 1), points = c(0, 1), source = "catalog",
                                          type = "points"),
@@ -5002,7 +5060,7 @@ parameter_transform_jacobian <- function(values, transform){
 # and indicators have none.
 .bt_parameter_catalog_random_chain_has_atoms <- function(object, quantity, key){
 
-  if(identical(quantity$quantity, "cor")){
+  if(quantity$quantity %in% c("cor", "cor_total")){
     # A correlation has atoms only on the original scale of a scaled block: where
     # an SD is zero, the original-scale pair of coefficients that share the
     # other fitted coefficient are perfectly correlated (the fitted-scale
@@ -5176,7 +5234,7 @@ parameter_transform_jacobian <- function(values, transform){
     return("always")
   }
   if(identical(key$evaluator, "correlation")){
-    return("correlation")
+    return(if(identical(quantity$quantity, "cor_total")) "multiple_correlation" else "correlation")
   }
   if(identical(key$evaluator, "allocation") &&
      identical(quantity$quantity, "var_prop")){
@@ -5486,9 +5544,6 @@ parameter_transform_jacobian <- function(values, transform){
       is.list(key) && identical(key$type, "factor_level")
     }, logical(1)) &
     !vapply(parts, is.null, logical(1))
-  if(!any(factor_rows)){
-    return(out)
-  }
   dependency <- vapply(keys, function(key){
     if(is.list(key) && length(key$dependencies) == 1L &&
        identical(as.numeric(key$weights), 1)){
@@ -5551,7 +5606,13 @@ parameter_transform_jacobian <- function(values, transform){
     )
   })
   rows <- rows[!vapply(rows, is.null, logical(1))]
+  rows <- lapply(rows, function(row){
+    row$reason <- rep("level", nrow(row))
+    row
+  })
+  rows <- c(rows, .bt_parameter_catalog_unit_coordinate_selectors(quantities, keys, parts))
   if(length(rows) == 0L){
+    out$reason <- character()
     return(out)
   }
   out <- do.call(rbind, rows)
@@ -5570,6 +5631,72 @@ parameter_transform_jacobian <- function(values, transform){
   out
 }
 
+# The refused selectors of the contrast coordinates `<term>{j}` of an
+# exchangeable unit (rows of .bt_parameter_catalog_level_coefficient_selectors()
+# with reason "unit"): `sd(f{j})` and `var(f{j})` for its SD and variance, and
+# `cor(o,f{j})` in both orders for its multiple correlation `cor_total(o,f)`,
+# each suggesting the unit's quantity in the same form.
+.bt_parameter_catalog_unit_metadata <- function(random_term, sd_name){
+
+  for(unit in random_term$sd_leaves$units){
+    if(identical(random_term$sd_parameter_names[[unit$columns[[1L]]]], sd_name)){
+      return(list(unit_dimension = length(unit$columns)))
+    }
+  }
+
+  list()
+}
+
+.bt_parameter_catalog_unit_coordinate_selectors <- function(quantities, keys, parts){
+
+  rows <- which(!quantities$internal & vapply(keys, function(key){
+    is.list(key) && is.numeric(key$unit_dimension) && length(key$unit_dimension) == 1L
+  }, logical(1)) & !vapply(parts, is.null, logical(1)))
+  forms <- function(part){
+    c(
+      .bt_label(part, style = "selector"),
+      .bt_label(part, style = "table", formula_prefix = TRUE),
+      .bt_label(part, style = "table", formula_prefix = FALSE)
+    )
+  }
+  out <- list()
+  for(i in rows){
+    part <- parts[[i]]
+    random <- part$random
+    k <- keys[[i]]$unit_dimension
+    unit_position <- if(identical(random$quantity, "cor_total")) 2L else 1L
+    term <- random$display_arguments[[unit_position]]
+    for(j in seq_len(k)){
+      coordinate <- paste0(term, .bt_parameter_catalog_factor_coefficient_component(j))
+      variants <- if(identical(random$quantity, "cor_total")){
+        list(c(random$display_arguments[[1L]], coordinate),
+             c(coordinate, random$display_arguments[[1L]]))
+      }else{
+        list(coordinate)
+      }
+      for(arguments in variants){
+        refused <- random
+        refused$quantity <- if(identical(random$quantity, "cor_total")) "cor" else random$quantity
+        refused$arguments <- arguments
+        refused$display_arguments <- arguments
+        refused_part <- .bt_label_parts_update(part, random = refused)[[1L]]
+        out[[length(out) + 1L]] <- data.frame(
+          selector    = forms(refused_part),
+          level       = forms(part),
+          term        = gsub("__xXx__", ":", term, fixed = TRUE),
+          coefficient = j,
+          quantity_id = quantities$quantity_id[[i]],
+          namespace   = quantities$namespace[[i]],
+          reason      = "unit",
+          stringsAsFactors = FALSE
+        )
+      }
+    }
+  }
+
+  out
+}
+
 # Refuses a contrast-coefficient selector `<term>{j}` whose coordinate is a
 # level (rows of .bt_parameter_catalog_level_coefficient_selectors() for one
 # selector): class BayesTools_selector_unavailable (parents
@@ -5579,14 +5706,24 @@ parameter_transform_jacobian <- function(values, transform){
 
   selector <- refused$selector[[1L]]
   levels <- unique(refused$level)
-  .bt_parameter_catalog_stop(
-    class = c("BayesTools_selector_unavailable", "BayesTools_hypothesis_target"),
-    message = paste0(
+  message <- if(identical(refused$reason[[1L]], "unit")){
+    paste0(
+      "Selector '", selector, "' is unavailable: the columns of factor term '",
+      refused$term[[1L]], "' are one exchangeable unit, whose contrast ",
+      "coordinates have no own SD or correlation. Select ",
+      paste0("'", levels, "'", collapse = " or "), "."
+    )
+  }else{
+    paste0(
       "Selector '", selector, "' is unavailable: coefficient ",
       refused$coefficient[[1L]], " of factor term '", refused$term[[1L]],
       "' is a level, not a contrast coefficient. Select it by its level ",
       "label, ", paste0("'", levels, "'", collapse = " or "), "."
-    ),
+    )
+  }
+  .bt_parameter_catalog_stop(
+    class = c("BayesTools_selector_unavailable", "BayesTools_hypothesis_target"),
+    message = message,
     selector    = selector,
     level       = levels,
     quantity_id = unique(refused$quantity_id)

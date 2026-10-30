@@ -116,6 +116,7 @@ bayestools_test_profile_contexts <- list(
     "random-parameterization",
     "random-effects-correlation-draws",
     "random-effects-diagonal-factor",
+    "random-effects-factor-units",
     "random-effects-independent-scalability",
     "random-effects-marginal-covariance",
     "random-effects-marginal-update",

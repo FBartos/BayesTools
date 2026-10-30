@@ -76,8 +76,8 @@ Random effects specification differs between two types of random structures:
 
 | Structure syntax | Left-side role | Marginal SDs | Correlation |
 |---|---|---|---|
-| Plain bar, `us()` / `un()` | coefficient formula | one per generated coefficient | unrestricted LKJ correlation matrix |
-| Double bar, `diag()` | coefficient formula | one per generated coefficient | independent |
+| Plain bar, `us()` / `un()` | coefficient formula | one per generated coefficient (one per mean-difference/orthonormal factor term) | unrestricted LKJ correlation matrix |
+| Double bar, `diag()` | coefficient formula | one per generated coefficient (one per mean-difference/orthonormal factor term) | independent |
 | `id()` | coefficient formula | one shared SD | independent |
 | `cs()` | one or more discrete indices | one shared SD | one common pairwise correlation |
 | `hcs()` | one or more discrete indices | one per index level | one common pairwise correlation |
@@ -90,6 +90,8 @@ Their `1`, `0`, and `-1` terms include or remove the random intercept, and their
 A random factor reuses its already specified fixed effect contrast by default.
 Set `random_block(contrasts = c(factor_name = "contrast"))` when the random contrast should be explicit or differ from the fixed contrast.
 Therefore `us(0 + group | study)` with an independent block contrast means one correlated random coefficient per `group` level and no random intercept; `0 + group` by itself does not force by-group indicators (as standard R formula does).
+A mean-difference or orthonormal factor term is one exchangeable unit: its contrast columns are an arbitrary basis of the level deviations, so they share one SD, `sd(group)`, and are uncorrelated with each other.
+Under `us()` the unit keeps its correlations with the other coefficients, which are reported for each level, `cor(intercept, group[a])`, together with the multiple correlation `cor_total(intercept, group)`; a `us()` block may contain at most one such term with three or more levels.
 
 The structured CS/HCS and AR1/HAR families operate on discrete index levels instead.
 They reject `1`, `0`, `-1`, and block contrast overrides.

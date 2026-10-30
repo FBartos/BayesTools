@@ -32,7 +32,7 @@
 
 .bt_formula_design_schema_version <- function(){
 
-  6L
+  7L
 }
 
 .bt_formula_design_stored_data_scale <- function(){

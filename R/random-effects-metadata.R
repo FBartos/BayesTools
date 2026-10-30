@@ -219,7 +219,7 @@
     alias,
     "random" = flags$any,
     "random_sd" = flags$summary %in% c("sd", "sd_total", "sd_common") | random_sd,
-    "random_cor" = flags$summary == "cor" | random_rho,
+    "random_cor" = flags$summary %in% c("cor", "cor_total") | random_rho,
     "random_var_prop" = flags$summary == "var_prop" | is_dirichlet_allocation,
     "random_var_mult" = flags$summary == "var_mult",
     "random_allocation" = flags$summary %in% c(

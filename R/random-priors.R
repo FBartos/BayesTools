@@ -60,7 +60,8 @@
 #' structure-owned indices. Supported structure labels are:
 #'
 #' * `"ID"`: independent columns with one shared SD.
-#' * `"DIAG"`: independent columns with one SD per generated column.
+#' * `"DIAG"`: independent columns with one SD per generated column (one per
+#'   exchangeable unit of a mean-difference or orthonormal factor term).
 #' * `"CS"` / `"HCS"`: compound symmetry over one or more index variables,
 #'   with one scalar correlation; `"HCS"` has one SD per index level.
 #'   Multiple index variables in `cs(index1 + index2 | group)` are combined
@@ -78,6 +79,26 @@
 #' contrast override and reject explicit `1`, `0`, or `-1` terms. HCS is not an
 #' alias for US: HCS has one common pairwise correlation, whereas US estimates
 #' an unrestricted correlation matrix among coefficient columns.
+#'
+#' A mean-difference or orthonormal factor term (also `f:x`, and `f:g` when
+#' every factor is so coded) is one exchangeable unit in a DIAG or US/UN block:
+#' its contrast columns form an arbitrary basis of the level deviations, so they
+#' share one SD (reported as `sd(f)`, with one scalar prior) and are
+#' uncorrelated, which makes the model of the level deviations independent of
+#' the basis. A term that crosses such a factor with a treatment, independent,
+#' or ordered factor has one unit per column of that partner (e.g.,
+#' `sd(f:h[b])`). Under US/UN a unit keeps its correlations with the other
+#' columns: the LKJ prior is restricted to an identity unit block (density
+#' `det(R)^(eta - 1)`), and the summaries report the correlation with each
+#' level of the factor, `cor(x, f[a])`, and the multiple correlation with the
+#' whole term, `cor_total(x, f)`, instead of correlations of contrast columns.
+#' A US/UN block with more than one such term of three or more levels is
+#' refused (class `BayesTools_random_effects_exchangeable_units_unavailable`,
+#' reason `"several_correlated_units"`), as is a factor or vector SD prior on a
+#' unit (reason `"unit_sd_prior"`); a US/UN block that is one such term is its
+#' diagonal block, and a two-level factor has one column and is an ordinary
+#' column of the LKJ prior. Use treatment or independent contrasts for one SD
+#' per level.
 #'
 #' The formula parser owns the actual structure used by a block. Supplying a
 #' conflicting `structure` in `random_covariance()` is rejected when the formula
@@ -184,8 +205,9 @@
 #' blocks through `terms`. If `terms = NULL`, a single root block allocation
 #' targets all random-effect blocks at resolution time and must resolve to at
 #' least two blocks. Generated JAGS
-#' syntax supports allocated blocks with one SD component, homogeneous
-#' structures where one SD controls the block, and explicit
+#' syntax supports allocated blocks with one SD component (such as a block that
+#' is one mean-difference or orthonormal factor term, an exchangeable unit with
+#' one SD), homogeneous structures where one SD controls the block, and explicit
 #' `target = "sd_component"` allocations that split the resolved SD components
 #' of one heterogeneous block. Row-shaped external sources are applied inside
 #' the observation-level random-effect contribution, including child
@@ -508,7 +530,8 @@ random_block <- function(sd = NULL, covariance = NULL, cor = NULL,
 #' @param target allocation target type. `"block"` allocates across named
 #'   random-effect blocks or symbolic intermediate components.
 #'   `"sd_component"` expands one selected heterogeneous block to its resolved
-#'   SD components.
+#'   SD components (one per exchangeable unit of a mean-difference or
+#'   orthonormal factor term).
 #' @param scale variance normalization. `"total_variance"` uses
 #'   `sd_child = sd_parent * sqrt(w)`. `"mean_variance"` uses
 #'   `sd_child = sd_parent * sqrt(K * w)` and is intended for

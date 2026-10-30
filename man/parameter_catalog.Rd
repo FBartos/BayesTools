@@ -158,9 +158,15 @@ disambiguation. Parentheses contain parameter or
 coefficient names, while square brackets inside an argument contain its
 factor or index level. Examples include \verb{(mu) study: sd(intercept)},
 \verb{(mu) study: cor(group[sensitivity],group[specificity])}, and
-\verb{(mu) var_prop(study)}. Formula-prefix omission is accepted as
-an alias. Additional aliases are limited to genuine semantic equivalences,
-such as a CS/HCS pairwise correlation referring to its shared \code{cor}.
+\verb{(mu) var_prop(study)}. A mean-difference or orthonormal factor term of a
+block is one exchangeable unit (see \code{\link[=prior_random]{prior_random()}}) with one SD quantity,
+\code{sd(f)}; its correlations are reported by level, \code{cor(x,f[a])}, together
+with the multiple correlation \code{cor_total(x,f)} (support \verb{[0, 1]}), and its
+coefficient coordinates \verb{f\{j\}} appear only in raw tables: a selector such
+as \verb{sd(f\{1\})} stops with class \code{BayesTools_selector_unavailable}, naming the
+unit's quantity. Formula-prefix omission is accepted as an alias.
+Additional aliases are limited to genuine semantic equivalences, such as a
+CS/HCS pairwise correlation referring to its shared \code{cor}.
 Random-effect quantities also carry centrally generated simplified aliases.
 These remove a sole intercept argument and may omit a redundant owner, but
 are considered by resolvers only when \code{simplify_names = TRUE}.
@@ -244,8 +250,9 @@ undefined, i.e. where one of the SDs of its pair is zero; a correlation
 whose SD draws are not available (a row-indexed or unmonitored external SD
 source) cannot be masked and keeps its fitted draws.
 Each catalog quantity declares its \code{definedness} (\code{"always"}, or the reason
-of possibly undefined draws: \code{"correlation"}, or \code{"allocation_active"} for
-the variance shares of gated total-variance allocations) and its exact
+of possibly undefined draws: \code{"correlation"}, \code{"multiple_correlation"} for a
+\code{cor_total}, or \code{"allocation_active"} for the variance shares of gated
+total-variance allocations) and its exact
 \code{support} from the prior provenance of its source coordinates (\code{NULL} when
 it is not derivable). A quantity with point masses in its prior density
 (an SD, variance, total, or variance share of an allocation with inclusion

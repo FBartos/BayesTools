@@ -395,7 +395,7 @@ hypothesis_provider.BayesTools_fit <- function(object, ...){
 .hypothesis_model_random_quantities <- function(){
 
   c("sd", "var", "sd_total", "var_total", "sd_common", "var_common", "cor",
-    "var_prop", "sd_mult", "var_mult")
+    "cor_total", "var_prop", "sd_mult", "var_mult")
 }
 
 

@@ -98,7 +98,8 @@ missing draws only if it declares them as undefined through its
 "undefined_draws") <- }; a single value for a vector, or values named by
 column for a matrix), as set by \code{\link[=parameter_draws]{parameter_draws()}} from the catalog's
 \code{definedness} (\code{"correlation"} for original-scale random-effect
-correlations, \code{"allocation_active"} for variance shares of gated
+correlations, \code{"multiple_correlation"} for their \code{cor_total}
+multiple correlations, \code{"allocation_active"} for variance shares of gated
 total-variance allocations). Such a row
 is summarized over its defined draws and a table footnote reports their
 share, e.g., "summarized over k of n draws where the correlation is

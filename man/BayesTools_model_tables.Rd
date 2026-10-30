@@ -370,10 +370,11 @@ their rows as \code{NA} with a note explaining the unavailable transformation.
 A block whose missing-term fallback mixes categorical coding or omits a
 representable contribution likewise has \code{NA} original-scale rows. An SD
 shared by several columns, as by the indicator columns of a logical
-predictor's interaction with a scaled slope, needs its columns to be certified
-as having one original-scale SD; a correlated block never certifies it (even
-when the columns happen to transform to the same value) and a diagonal block
-needs equal column SDs. Such an SD is \code{NA} with its variance, while the
+predictor's interaction with a scaled slope or the columns of a meandif or
+orthonormal factor term, needs its columns to be certified as having one
+original-scale SD: in a correlated block every column must be its own fitted
+column rescaled by one common factor, and in a diagonal block the columns
+need equal variance weights. Such an SD is \code{NA} with its variance, while the
 other rows of the block keep their original-scale values. If centering a factor-by-slope
 interaction induces level-specific effects absent from the block (the
 intercepts of \code{f:x}, the \code{z} slopes of \code{f:x:z} without

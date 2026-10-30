@@ -894,13 +894,13 @@ test_that("contrast-coded random slope components name levels or coefficients", 
     unname(result$formula_design$random_effects[[1L]]$sd_leaves$leaf_terms)
   }
 
-  # Mean-difference columns are contrast coefficients, never `[j]`.
+  # Mean-difference columns are one exchangeable unit, labelled by the term.
   expect_identical(
     leaf_terms(
       ~ 1 + m + (1 + m || id), "m",
       prior_factor("mnormal", list(0, 1), contrast = "meandif")
     ),
-    c("intercept", "m{1}", "m{2}")
+    c("intercept", "m")
   )
   # The first cumulative column is level "10"; the next is an increment.
   expect_identical(

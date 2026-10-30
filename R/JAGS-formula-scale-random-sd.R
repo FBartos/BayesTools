@@ -36,8 +36,8 @@
 #   (see .random_sd_unscale_matrix()); without it, hand-built SD-leaf
 #   metadata are transformed by pairing coefficient names.
 # @param shared_leaf what an SD leaf shared by design columns that are not
-#   certified to have one SD (a correlated block never certifies it; a diagonal
-#   block needs equal column SDs) does: "stop" refuses the block
+#   certified to have one SD (a correlated block needs its columns rescaled by
+#   one common factor; a diagonal block needs equal variance weights) does: "stop" refuses the block
 #   (original_scale_not_representable);
 #   "na" (the tables of random-effect summaries) sets that leaf's draws to NA and
 #   lists it in the "unavailable_sd_leaves" attribute of the result, so that the
@@ -704,7 +704,17 @@
     M, leaf_names_by_column, target_columns, correlated){
 
   if(isTRUE(correlated)){
-    return(FALSE)
+    # In a correlated block, the columns of the leaf keep one SD (and an
+    # exchangeable unit its identity correlation block) when each is its own
+    # fitted column rescaled by one common factor.
+    factors <- vapply(target_columns, function(column){
+      nonzero <- unname(which(.random_sd_unscale_row_nonzero(M[column, ])))
+      if(identical(nonzero, column)) M[column, column] else NA_real_
+    }, numeric(1))
+    return(!anyNA(factors) && isTRUE(all.equal(
+      factors, rep(factors[[1L]], length(factors)),
+      tolerance = 1e-12, scale = max(abs(factors))
+    )))
   }
   leaf_names <- unique(leaf_names_by_column)
   variance_weights <- vapply(leaf_names, function(leaf_name){
@@ -1280,9 +1290,12 @@
     lkj_layout = lkj_layout
   )
   u_present <- u_names %in% colnames(posterior)
-  if(!any(L_present) && all(u_present)){
+  if(all(u_present) && (!any(L_present) || !.bt_lkj_layout_identity_order(lkj_layout))){
     # Only the LKJ primitives are available (e.g., prior draws or fits without
-    # monitored correlation matrices): the correlation of the 'lkj' node.
+    # monitored correlation matrices), or the vine of an exchangeable unit is
+    # reordered: the correlation of the 'lkj' node, which keeps the exact
+    # identity block of the unit (L L' of the design-order factor holds it only
+    # up to rounding).
     return(.bt_dnode_lkj_correlation(
       posterior[, u_names, drop = FALSE],
       K = n_terms,

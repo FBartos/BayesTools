@@ -136,7 +136,8 @@ budget and must not specify \code{sd} or \code{sd_source}.}
 \item{target}{allocation target type. \code{"block"} allocates across named
 random-effect blocks or symbolic intermediate components.
 \code{"sd_component"} expands one selected heterogeneous block to its resolved
-SD components.}
+SD components (one per exchangeable unit of a mean-difference or
+orthonormal factor term).}
 
 \item{scale}{variance normalization. \code{"total_variance"} uses
 \code{sd_child = sd_parent * sqrt(w)}. \code{"mean_variance"} uses
@@ -290,7 +291,8 @@ on generated random-coefficient columns; CS/HCS, AR1/HAR, and CAR operate on
 structure-owned indices. Supported structure labels are:
 \itemize{
 \item \code{"ID"}: independent columns with one shared SD.
-\item \code{"DIAG"}: independent columns with one SD per generated column.
+\item \code{"DIAG"}: independent columns with one SD per generated column (one per
+exchangeable unit of a mean-difference or orthonormal factor term).
 \item \code{"CS"} / \code{"HCS"}: compound symmetry over one or more index variables,
 with one scalar correlation; \code{"HCS"} has one SD per index level.
 Multiple index variables in \code{cs(index1 + index2 | group)} are combined
@@ -309,6 +311,26 @@ coding is resolved separately and can be set explicitly with
 contrast override and reject explicit \code{1}, \code{0}, or \code{-1} terms. HCS is not an
 alias for US: HCS has one common pairwise correlation, whereas US estimates
 an unrestricted correlation matrix among coefficient columns.
+
+A mean-difference or orthonormal factor term (also \code{f:x}, and \code{f:g} when
+every factor is so coded) is one exchangeable unit in a DIAG or US/UN block:
+its contrast columns form an arbitrary basis of the level deviations, so they
+share one SD (reported as \code{sd(f)}, with one scalar prior) and are
+uncorrelated, which makes the model of the level deviations independent of
+the basis. A term that crosses such a factor with a treatment, independent,
+or ordered factor has one unit per column of that partner (e.g.,
+\code{sd(f:h[b])}). Under US/UN a unit keeps its correlations with the other
+columns: the LKJ prior is restricted to an identity unit block (density
+\code{det(R)^(eta - 1)}), and the summaries report the correlation with each
+level of the factor, \code{cor(x, f[a])}, and the multiple correlation with the
+whole term, \code{cor_total(x, f)}, instead of correlations of contrast columns.
+A US/UN block with more than one such term of three or more levels is
+refused (class \code{BayesTools_random_effects_exchangeable_units_unavailable},
+reason \code{"several_correlated_units"}), as is a factor or vector SD prior on a
+unit (reason \code{"unit_sd_prior"}); a US/UN block that is one such term is its
+diagonal block, and a two-level factor has one column and is an ordinary
+column of the LKJ prior. Use treatment or independent contrasts for one SD
+per level.
 
 The formula parser owns the actual structure used by a block. Supplying a
 conflicting \code{structure} in \code{random_covariance()} is rejected when the formula
@@ -420,8 +442,9 @@ allocated across components. The allocation targets named random-effect
 blocks through \code{terms}. If \code{terms = NULL}, a single root block allocation
 targets all random-effect blocks at resolution time and must resolve to at
 least two blocks. Generated JAGS
-syntax supports allocated blocks with one SD component, homogeneous
-structures where one SD controls the block, and explicit
+syntax supports allocated blocks with one SD component (such as a block that
+is one mean-difference or orthonormal factor term, an exchangeable unit with
+one SD), homogeneous structures where one SD controls the block, and explicit
 \code{target = "sd_component"} allocations that split the resolved SD components
 of one heterogeneous block. Row-shaped external sources are applied inside
 the observation-level random-effect contribution, including child

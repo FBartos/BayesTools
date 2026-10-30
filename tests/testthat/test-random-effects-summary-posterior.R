@@ -2133,9 +2133,9 @@ test_that("the indicator columns of a logical-by-continuous term are labelled by
   }
   expect_equal(unname(table["(mu) sd(flag:x)", "Mean"]), 1.5, tolerance = 1e-12)
 
-  # with a scaled x the shared SD of the correlated indicator columns is not
-  # certified as one original-scale value (a correlated block never certifies a
-  # shared SD): the map and the fitted-scale tables work, original-scale requests refuse
+  # with a scaled x the indicator columns are both divided by sd(x): one common
+  # rescaling certifies their shared SD also in the correlated block, and the
+  # original-scale requests return it
   scaled <- flag_carrier(list(x = TRUE))$fit
   expect_true(all(expected %in% parameter_catalog(scaled)$quantities$canonical_name))
   fitted_table <- JAGS_estimates_table(scaled, remove_diagnostics = TRUE)
@@ -2148,22 +2148,12 @@ test_that("the indicator columns of a logical-by-continuous term are labelled by
     unname(as.data.frame(raw)[grep("sd(", rownames(raw), fixed = TRUE), "Mean"]),
     c(0.5, 1, 1.5), tolerance = 1e-12
   )
-  refusals <- list(
-    samples = function() transform_scale_samples(scaled),
-    draws = function() parameter_draws(
-      scaled, parameter_catalog_resolve(parameter_catalog(scaled), "(mu) sd(flag:x)")
-    ),
-    correlation = function() parameter_draws(
-      scaled, parameter_catalog_resolve(parameter_catalog(scaled), "(mu) cor(intercept,flag[TRUE]:x)")
-    )
-  )
-  # the table reports the shared SD as NA with its note; the other rows are identified and keep
-  # their original-scale values (the exact map of the block applied to the fitted covariance)
+  # every row keeps its original-scale value (the exact map of the block applied
+  # to the fitted covariance)
   original_table <- JAGS_estimates_table(scaled, transform_scaled = TRUE, remove_diagnostics = TRUE)
   original <- stats::setNames(as.data.frame(original_table)[expected, "Mean"], expected)
-  expect_identical(names(original)[is.na(original)], "(mu) sd(flag:x)")
-  expect_identical(names(attr(original_table, "footnotes")), "(mu) sd(flag:x)")
-  expect_match(attr(original_table, "footnotes"), "its shared design columns cannot be certified to have a single SD", fixed = TRUE)
+  expect_false(anyNA(original))
+  expect_length(attr(original_table, "footnotes"), 0L)
   scaled_design <- attr(scaled, "formula_design")$mu
   A <- BayesTools:::.bt_formula_unscale_design_transform(
     BayesTools:::.bt_random_effect_unscale_design_spec(scaled_design$random_effects[[1L]], scaled_design$source_data),
@@ -2171,20 +2161,28 @@ test_that("the indicator columns of a logical-by-continuous term are labelled by
   )$matrix
   tau <- c(0.5, 1, 1.5, 1.5)
   original_covariance <- A %*% (diag(tau) %*% correlation %*% diag(tau)) %*% t(A)
-  expect_equal(unname(original[c("(mu) sd(intercept)", "(mu) sd(flag)")]),
-               unname(sqrt(diag(original_covariance))[1:2]), tolerance = 1e-12)
+  expect_equal(unname(original[c("(mu) sd(intercept)", "(mu) sd(flag)", "(mu) sd(flag:x)")]),
+               unname(sqrt(diag(original_covariance))[1:3]), tolerance = 1e-12)
+  expect_equal(unname(sqrt(diag(original_covariance))[3]), unname(sqrt(diag(original_covariance))[4]),
+               tolerance = 1e-12)
   original_correlation <- stats::cov2cor(original_covariance)
   for(pair in utils::combn(names(columns), 2L, simplify = FALSE)){
     label <- paste0("(mu) cor(", pair[1L], ",", pair[2L], ")")
     expect_equal(unname(original[label]), original_correlation[columns[[pair[1L]]], columns[[pair[2L]]]],
                  tolerance = 1e-12, info = label)
   }
-  for(label in names(refusals)){
-    refusal <- expect_error(
-      refusals[[label]](), class = "BayesTools_formula_transform_unavailable", info = label
-    )
-    expect_identical(refusal$reason, "original_scale_not_representable", info = label)
-  }
+  # the accessors return the same original-scale values
+  sd_draws <- parameter_draws(
+    scaled, parameter_catalog_resolve(parameter_catalog(scaled), "(mu) sd(flag:x)")
+  )
+  expect_equal(as.numeric(as.matrix(sd_draws)), rep(unname(original[["(mu) sd(flag:x)"]]), 6L),
+               tolerance = 1e-12)
+  correlation_draws <- parameter_draws(
+    scaled, parameter_catalog_resolve(parameter_catalog(scaled), "(mu) cor(intercept,flag[TRUE]:x)")
+  )
+  expect_equal(as.numeric(as.matrix(correlation_draws)),
+               rep(unname(original[["(mu) cor(intercept,flag[TRUE]:x)"]]), 6L), tolerance = 1e-12)
+  expect_no_error(transform_scale_samples(scaled))
 
   # a diagonal block keeps the label of the shared SD
   diagonal <- JAGS_formula(

@@ -103,11 +103,14 @@ bayestools_reference_random_effect_log_prior <- function(samples,
         call. = FALSE
       )
     }
-    marglik <- marglik + BayesTools:::.bt_lkj_cholesky_cpc_u_log_prior(
-      u_values,
-      K = n_columns,
-      eta = eta
-    )
+    # the free primitives: the pairs (i, j) of the C-vine after the leading
+    # within-unit pairs of an exchangeable unit (fixed at 1/2), with their
+    # Beta(eta + (K - i - 1) / 2) laws
+    unit_size <- length(correlation$unit_columns)
+    vine_row <- unlist(lapply(2:n_columns, function(j) seq_len(j - 1L)))
+    free <- seq_along(vine_row) > unit_size * (unit_size - 1L) / 2L
+    alpha <- eta + (n_columns - vine_row[free] - 1) / 2
+    marglik <- marglik + sum(stats::dbeta(u_values, alpha, alpha, log = TRUE))
     if(is.na(marglik)){
       return(-Inf)
     }

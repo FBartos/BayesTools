@@ -165,6 +165,155 @@
   transformed[, sd_names, drop = FALSE]
 }
 
+# The correlation quantities of an LKJ block, in catalog order (the `index` of
+# their catalog rows). The block's elements are its ordinary columns and its
+# exchangeable units (.bt_random_effect_factor_units()), whose coordinates in an
+# arbitrary basis are not reported. Two ordinary columns give a "pair" row
+# cor(a, b). A unit and another element give a "level" row per level cell of
+# the unit (and of the other element if it is a unit): the correlation of the
+# cell deviations, cor(o, f[a]), which does not depend on the basis (the cells
+# of a unit sum to zero). When the leading element is one column (an ordinary
+# column leads; of two units the one with fewer columns), they also give a
+# "total" row cor_total(o, f): the multiple correlation of that column with the
+# unit, sqrt(r' R_ff^-1 r) for its correlations r with the unit's columns.
+# A row holds the block `columns` it involves, its `quantity` ("cor" or
+# "cor_total"), its display `parts` and `label` "<first>,<second>", and per
+# element (`elements`) the block columns and the cell `weights` that map them
+# to the reported deviations; a "total" row gives the unit's dimension `k`.
+.bt_random_effect_correlation_rows <- function(random_term){
+
+  K <- random_term$n_columns
+  if(!is.numeric(K) || length(K) != 1L || is.na(K) || K < 2L){
+    return(list())
+  }
+  components <- .bt_random_effect_summary_column_components(random_term)
+  units <- random_term$sd_leaves$units
+  unit_of_column <- rep(NA_integer_, K)
+  for(unit in seq_along(units)){
+    unit_of_column[units[[unit]]$columns] <- unit
+  }
+
+  # the elements in column order: an ordinary column, or a unit at its first column
+  elements <- list()
+  for(column in seq_len(K)){
+    unit <- unit_of_column[column]
+    if(is.na(unit)){
+      elements[[length(elements) + 1L]] <- list(
+        columns = column,
+        cells   = components[column],
+        weights = matrix(1, nrow = 1L, ncol = 1L),
+        term    = components[column],
+        unit    = FALSE
+      )
+    }else if(column == min(units[[unit]]$columns)){
+      elements[[length(elements) + 1L]] <- list(
+        columns = units[[unit]]$columns,
+        cells   = .bt_random_effect_summary_display_components(random_term, units[[unit]]$cells),
+        weights = units[[unit]]$weights,
+        term    = .bt_random_effect_summary_display_components(random_term, units[[unit]]$term),
+        unit    = TRUE
+      )
+    }
+  }
+
+  rows <- list()
+  add_row <- function(type, quantity, lead, other, parts, lead_cell = 1L, other_cell = 1L){
+    rows[[length(rows) + 1L]] <<- list(
+      type     = type,
+      quantity = quantity,
+      columns  = c(lead$columns, other$columns),
+      parts    = parts,
+      label    = paste0(parts[1L], ",", parts[2L]),
+      elements = list(
+        list(columns = lead$columns, weights = lead$weights[lead_cell, ]),
+        list(columns = other$columns, weights = other$weights[other_cell, ])
+      ),
+      k        = length(other$columns)
+    )
+  }
+  for(a in seq_along(elements)){
+    for(b in seq_along(elements)[seq_along(elements) > a]){
+      lead <- elements[[a]]
+      other <- elements[[b]]
+      if(!lead$unit && !other$unit){
+        add_row("pair", "cor", lead, other, parts = c(lead$cells, other$cells))
+        next
+      }
+      if(lead$unit && (!other$unit || length(other$columns) < length(lead$columns))){
+        lead <- elements[[b]]
+        other <- elements[[a]]
+      }
+      for(lead_cell in seq_along(lead$cells)){
+        for(other_cell in seq_along(other$cells)){
+          add_row(
+            "level", "cor", lead, other,
+            parts = c(lead$cells[lead_cell], other$cells[other_cell]),
+            lead_cell = lead_cell, other_cell = other_cell
+          )
+        }
+      }
+      if(length(lead$columns) == 1L){
+        add_row("total", "cor_total", lead, other, parts = c(lead$term, other$term))
+      }
+    }
+  }
+
+  rows
+}
+
+# The block columns of the exchangeable units that a correlation row combines
+# by their cell weights (the elements of more than one column).
+.bt_random_effect_correlation_row_unit_columns <- function(row){
+
+  unlist(lapply(row$elements, function(element){
+    if(length(element$columns) > 1L) element$columns
+  }), use.names = FALSE)
+}
+
+# The draws of the correlation quantities `rows` (.bt_random_effect_correlation_rows())
+# from draws x K x K correlation matrices R.
+.bt_random_effect_correlation_row_values <- function(rows, R){
+
+  values <- matrix(NA_real_, nrow = dim(R)[1L], ncol = length(rows))
+  quadratic <- function(first, second){
+    out <- 0
+    for(i in seq_along(first$columns)){
+      for(j in seq_along(second$columns)){
+        out <- out + first$weights[[i]] * second$weights[[j]] *
+          R[, first$columns[[i]], second$columns[[j]]]
+      }
+    }
+    out
+  }
+  for(i in seq_along(rows)){
+    row <- rows[[i]]
+    lead <- row$elements[[1L]]
+    other <- row$elements[[2L]]
+    if(identical(row$type, "total")){
+      # sqrt(r' R_ff^-1 r) for the correlations r of the leading column. A
+      # draw whose unit correlation matrix is singular (an original-scale unit
+      # of lower rank, e.g. at a zero SD) has no inverse: it is undefined.
+      r <- R[, other$columns, lead$columns, drop = FALSE]
+      dim(r) <- c(dim(R)[1L], length(other$columns))
+      R_ff <- R[, other$columns, other$columns, drop = FALSE]
+      values[, i] <- vapply(seq_len(dim(R)[1L]), function(draw){
+        r_draw <- r[draw, ]
+        R_draw <- matrix(R_ff[draw, , ], length(other$columns))
+        if(anyNA(r_draw) || anyNA(R_draw) ||
+           rcond(R_draw) < sqrt(.Machine$double.eps)){
+          return(NA_real_)
+        }
+        sqrt(sum(r_draw * solve(R_draw, r_draw)))
+      }, numeric(1))
+    }else{
+      values[, i] <- quadratic(lead, other) /
+        sqrt(quadratic(lead, lead) * quadratic(other, other))
+    }
+  }
+
+  values
+}
+
 .bt_random_effect_summary_correlation_samples <- function(random_term,
                                                           model_samples){
 
@@ -212,13 +361,12 @@
     .bt_random_effect_summary_missing_correlation_stop(random_term)
   }
 
-  pairs <- utils::combn(seq_len(random_term$n_columns), 2L)
-  values <- matrix(NA_real_, nrow = nrow(model_samples), ncol = ncol(pairs))
-  labels <- character(ncol(pairs))
-  parts <- vector("list", ncol(pairs))
-  for(i in seq_len(ncol(pairs))){
-    first <- pairs[1L, i]
-    second <- pairs[2L, i]
+  rows <- .bt_random_effect_correlation_rows(random_term)
+  values <- matrix(NA_real_, nrow = nrow(model_samples), ncol = length(rows))
+  pair <- vapply(rows, function(row) identical(row$type, "pair"), logical(1))
+  for(i in which(pair)){
+    first <- rows[[i]]$columns[[1L]]
+    second <- rows[[i]]$columns[[2L]]
     if(original_scale){
       values[, i] <- model_samples[, R_names[second, first]]
     }else{
@@ -228,24 +376,54 @@
       dim(second_values) <- c(dim(cholesky)[1L], dim(cholesky)[3L])
       values[, i] <- rowSums(first_values * second_values)
     }
-    pair <- .bt_random_effect_summary_column_components(random_term)[c(first, second)]
-    labels[i] <- paste0(pair[1L], ",", pair[2L])
-    parts[[i]] <- pair
+  }
+  if(!all(pair)){
+    # the quantities of exchangeable units, from the correlation matrices
+    R <- if(original_scale){
+      K <- random_term$n_columns
+      out <- array(NA_real_, dim = c(nrow(model_samples), K, K))
+      for(row in seq_len(K)){
+        for(column in seq_len(K)){
+          out[, row, column] <- model_samples[, R_names[row, column]]
+        }
+      }
+      out
+    }else{
+      .bt_lkj_cholesky_L_to_R(cholesky)
+    }
+    values[, !pair] <- .bt_random_effect_correlation_row_values(rows[!pair], R)
+  }
+  if(original_scale){
+    # A level-cell correlation weights the columns of a unit by their SDs; it
+    # is the correlation-weighted value only when they share one SD, which an
+    # original-scale unit has only where its shared SD is certified (the
+    # multiple correlation is invariant to rescaling its columns).
+    unavailable <- attr(model_samples, "unavailable_sd_leaves", exact = TRUE)
+    for(i in which(vapply(rows, function(row) identical(row$type, "level"), logical(1)))){
+      leaves <- random_term$sd_parameter_names[.bt_random_effect_correlation_row_unit_columns(rows[[i]])]
+      if(any(leaves %in% unavailable)){
+        values[, i] <- NA_real_
+      }
+    }
   }
 
-  list(labels = labels, parts = parts, values = values)
+  list(
+    labels = vapply(rows, `[[`, character(1), "label"),
+    parts  = lapply(rows, `[[`, "parts"),
+    values = values
+  )
 }
 
-# A pairwise correlation of an LKJ block is defined where both SDs of its pair
-# are positive (the covariance over the product of the SDs is 0 / 0 at a zero
-# SD). The fitted-scale correlation draws of 'index' (the pair's position in
-# the block's pairs) are missing on the other draws, as in
-# .random_sd_transformed_correlation() for the original-scale correlations of
-# a scaled block.
+# A correlation of an LKJ block is defined where the SDs of all its columns are
+# positive (the covariance over the product of the SDs is 0 / 0 at a zero
+# SD). The fitted-scale correlation draws of 'index' (the position of the
+# quantity in .bt_random_effect_correlation_rows()) are missing on the other
+# draws, as in .random_sd_transformed_correlation() for the original-scale
+# correlations of a scaled block.
 .bt_random_effect_summary_mask_undefined_correlation <- function(
     random_term, values, index, model_samples, prior_list){
 
-  pair <- utils::combn(seq_len(random_term$n_columns), 2L)[, index]
+  pair <- .bt_random_effect_correlation_rows(random_term)[[index]]$columns
   sd_draws <- .bt_random_effect_sd_draws(
     random_term = random_term,
     n_columns = random_term$n_columns,
@@ -281,7 +459,7 @@
 
   positive <- is.finite(sd_draws[, pair, drop = FALSE]) &
     sd_draws[, pair, drop = FALSE] > 0
-  values[rowSums(positive) < 2L] <- NA_real_
+  values[rowSums(positive) < length(pair)] <- NA_real_
 
   values
 }
@@ -307,6 +485,16 @@
      length(leaves$leaf_terms_by_column) == random_term$n_columns &&
      !identical(unique(unname(leaves$leaf_terms_by_column)), "sd")){
     components <- leaves$leaf_terms_by_column
+  }
+  # the columns of an exchangeable unit are its coordinates `term{j}` (in an
+  # arbitrary basis; only raw tables show them)
+  for(unit in leaves$units){
+    if(length(components) == random_term$n_columns){
+      components[unit$columns] <- paste0(
+        unit$term,
+        .bt_parameter_catalog_factor_coefficient_component(seq_along(unit$columns))
+      )
+    }
   }
 
   components <- .bt_random_effect_summary_display_components(random_term, components)

@@ -11197,9 +11197,11 @@ test_that("transform_scale_samples unscales random-factor correlations in column
   )
 
   random_term <- formula_result$formula_design$random_effects[[1]]
+  # the orthonormal factor term is one exchangeable unit: one SD, and an
+  # identity correlation block of its two columns
   expect_equal(
     random_term$sd_parameter_names[3:4],
-    paste0("mu__xREx__id_f[", 1:2, "]")
+    rep("mu__xREx__id_f", 2L)
   )
   sd_cols <- unique(random_term$sd_parameter_names)
   R_names <- outer(
@@ -11221,15 +11223,15 @@ test_that("transform_scale_samples unscales random-factor correlations in column
     c(
       1, 0.2, 0.3, 0.4,
       0.2, 1, 0.5, 0.6,
-      0.3, 0.5, 1, 0.7,
-      0.4, 0.6, 0.7, 1
+      0.3, 0.5, 1, 0,
+      0.4, 0.6, 0, 1
     ),
     nrow = 4,
     byrow = TRUE
   )
   source_L <- t(chol(source_cor))
   posterior <- matrix(
-    c(source_sd, as.vector(source_cor), as.vector(source_L)),
+    c(source_sd[1:3], as.vector(source_cor), as.vector(source_L)),
     nrow = 1,
     dimnames = list(NULL, c(sd_cols, as.vector(R_names), as.vector(L_names)))
   )
@@ -11249,9 +11251,12 @@ test_that("transform_scale_samples unscales random-factor correlations in column
   expected_cor <- expected_cov / tcrossprod(expected_sd)
   expected_L <- t(chol(expected_cor))
 
+  # the unit's columns are not rescaled: its SD and identity block are kept
+  expect_identical(expected_sd[3], expected_sd[4])
+  expect_identical(expected_cor[3, 4], 0)
   expect_equal(
     unname(transformed[1, sd_cols]),
-    expected_sd,
+    expected_sd[1:3],
     tolerance = 1e-12
   )
   expect_equal(
@@ -12219,7 +12224,7 @@ test_that("fixed and random blocks own independent concrete factor bases", {
   treatment_term <- result$formula_design$random_effects[[1L]]
   meandif_term <- result$formula_design$random_effects[[2L]]
 
-  expect_identical(result$formula_design$schema_version, 6L)
+  expect_identical(result$formula_design$schema_version, 7L)
   expect_equal(result$formula_design$contrast_matrices$f, fixed_matrix)
   expect_equal(treatment_term$contrast_matrices$f, treatment_matrix)
   expect_equal(meandif_term$contrast_matrices$f, meandif_matrix)
@@ -12227,14 +12232,14 @@ test_that("fixed and random blocks own independent concrete factor bases", {
   expect_identical(meandif_term$contrast_owner, "random_block")
   expect_false(isTRUE(all.equal(fixed_matrix, treatment_matrix)))
   expect_false(isTRUE(all.equal(fixed_matrix, meandif_matrix)))
+  # The mean-difference columns are one exchangeable unit with one SD.
   expect_identical(
     meandif_term$sd_parameter_names,
-    paste0("mu__xREx__id_meandif_f[", 1:2, "]")
+    rep("mu__xREx__id_meandif_f", 2L)
   )
-  # Mean-difference columns are contrast coefficients `{j}`, not levels.
   expect_identical(
     meandif_term$sd_leaves$leaf_terms_by_column,
-    paste0("f{", 1:2, "}")
+    rep("f", 2L)
   )
 
   treatment_prediction <- .bt_random_effect_prediction_data(
@@ -13783,7 +13788,8 @@ test_that("random slopes of a two-level factor name the scalar SD node of their 
          rows = c("(mu) sd(intercept)", "(mu) sd(f2[b])", "(mu) sd(x)", "(mu) sd(f2[b]:x)")),
     list(formula = ~ 1 + diag(1 + f2 | id), data = orthonormal_df, correlated = FALSE,
          names = c("mu__xREx__id_intercept", "mu__xREx__id_f2"),
-         rows = c("(mu) sd(intercept)", "(mu) sd(f2{1})"))
+         # an orthonormal factor term is one unit, labelled by the term
+         rows = c("(mu) sd(intercept)", "(mu) sd(f2)"))
   )
   for(case in cases){
     label <- paste(deparse(case$formula), "(", case$names[length(case$names)], ")")
@@ -14155,27 +14161,28 @@ test_that("SD components of mixed-contrast random interactions are level cells o
     unname(result$formula_design$random_effects[[1L]]$sd_leaves$leaf_terms)
   }
   both <- ~ 1 + diag(1 + f * g | study, hom = FALSE)
-  coefficients <- c("f__xXx__g{1}", "f__xXx__g{2}")
 
-  # the interaction columns are products with a contrast coefficient, not cells
+  # an orthonormal or mean-difference factor is an exchangeable unit with one
+  # SD; crossed with a treatment factor it gives one unit per partner column,
+  # labelled by the partner's level
   treatment_orthonormal <- compile(both, "contr.treatment", "contr.orthonormal")
   expect_identical(
     leaf_terms(treatment_orthonormal),
-    c("intercept", "f[y]", "f[z]", "g{1}", coefficients)
+    c("intercept", "f[y]", "f[z]", "g", "f[y]__xXx__g", "f[z]__xXx__g")
   )
   expect_identical(
     leaf_terms(compile(both, "contr.orthonormal", "contr.treatment")),
-    c("intercept", "f{1}", "f{2}", "g[q]", coefficients)
+    c("intercept", "f", "g[q]", "f__xXx__g[q]")
   )
   expect_identical(
     leaf_terms(compile(both, "contr.meandif", "contr.treatment")),
-    c("intercept", "f{1}", "f{2}", "g[q]", coefficients)
+    c("intercept", "f", "g[q]", "f__xXx__g[q]")
   )
   # the public labels follow the leaf terms
   expect_identical(
     rownames(.oracle_independent_sd_table(treatment_orthonormal)),
     c("(mu) intercept", "(mu) sd(intercept)", "(mu) sd(f[y])", "(mu) sd(f[z])",
-      "(mu) sd(g{1})", "(mu) sd(f:g{1})", "(mu) sd(f:g{2})")
+      "(mu) sd(g)", "(mu) sd(f[y]:g)", "(mu) sd(f[z]:g)")
   )
 
   # treatment and treatment: the interaction columns are the (y, q) and (z, q) cells
@@ -14222,25 +14229,26 @@ test_that("SD components of mixed-contrast random interactions are level cells o
       info = paste(contrasts, collapse = " x ")
     )
   }
-  # the factor of the interaction that is coded by its contrast keeps the tag
-  # gate: orthonormal g with its margin f in the block, orthonormal f with g
+  # the factor of the interaction that is coded by its contrast is a unit per
+  # level of the indicator-coded factor: orthonormal g with its margin f in
+  # the block, orthonormal f with g
   expect_identical(
     leaf_terms(compile(~ 1 + diag(1 + f + f:g | study, hom = FALSE), "contr.treatment", "contr.orthonormal")),
-    c("intercept", "f[y]", "f[z]", paste0("f__xXx__g{", 1:3, "}"))
+    c("intercept", "f[y]", "f[z]", paste0("f[", c("x", "y", "z"), "]__xXx__g"))
   )
   expect_identical(
     leaf_terms(compile(~ 1 + diag(1 + g + f:g | study, hom = FALSE), "contr.orthonormal", "contr.treatment")),
-    c("intercept", "g[q]", paste0("g__xXx__f{", 1:4, "}"))
+    c("intercept", "g[q]", paste0("g[", c("p", "q"), "]__xXx__f"))
   )
   # while f, coded by indicators next to a treatment-coded g, gives cells
   expect_identical(
     leaf_terms(compile(~ 1 + diag(1 + f + f:g | study, hom = FALSE), "contr.orthonormal", "contr.treatment")),
-    c("intercept", "f{1}", "f{2}", paste0("f[", c("x", "y", "z"), "]__xXx__g[q]"))
+    c("intercept", "f", paste0("f[", c("x", "y", "z"), "]__xXx__g[q]"))
   )
-  # an orthonormal main-effect design keeps its coordinate labels
+  # an orthonormal main-effect design is one unit
   expect_identical(
     leaf_terms(compile(~ 1 + diag(1 + g | study, hom = FALSE), "contr.treatment", "contr.orthonormal")),
-    c("intercept", "g{1}")
+    c("intercept", "g")
   )
 })
 
