@@ -1115,7 +1115,6 @@ test_that("posterior plot functions (meandif) work", {
 
 test_that("posterior plot model averaging based on complex single JAGS models (formulas + spike factors + mixture)", {
 
-  skip_on_os(c("mac", "linux", "solaris"))
   skip_if_not_installed("RoBMA")
   skip_if_missing_fits("fit_complex_mixed")
   skip_if_not_installed("rjags")
