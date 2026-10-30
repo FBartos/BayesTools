@@ -22,7 +22,7 @@
 - adds random-effect variance allocations with Dirichlet weights and optional inclusion gates (`random_variance_allocation()`), known group covariance kernels (`random_group_covariance()`), external SD sources (`random_sd_source()`), spike-and-slab and mixture priors on random-effect SDs and correlations, and centered or noncentered parameterizations
 - adds predictions with random effects (`JAGS_predict_formula()`; `formula_target`, `blocks`, and `new_levels` in `JAGS_evaluate_formula()`), marginal covariance helpers, and exact marginalization of Gaussian random-effect blocks in `JAGS_bridgesampling()`
 - adds random-effect summaries to estimates tables (`random_effects_summary` and related filters) on the fitted or original scale, and `random_effects_summary_posterior()`
-- adds the `RandomEffects` vignette comparing BayesTools formula random effects with lme4 and rstanarm
+- adds the `RandomEffects` vignette comparing BayesTools formula random effects with lme4 and brms
 - adds `prior_ordered()` for ordered-factor priors that split a total effect across level increments with fixed or Dirichlet allocations
 - adds Dirichlet simplex priors and moment and inverse-moment nonlocal priors
 - adds `prior_factor_levels()` for attaching factor metadata to factor priors
