@@ -759,11 +759,13 @@ test_that("BayesTools fits require the parameter map for bridge replay", {
 
 test_that("global log-posterior callbacks survive a PSOCK round trip", {
 
+  # The worker loads BayesTools to unserialize the callback, which takes over a
+  # minute when covr instruments the package.
   cluster <- tryCatch(
     parallel::makePSOCKcluster(
       1L,
       setup_timeout = 10,
-      timeout = 30
+      timeout = 600
     ),
     error = function(e) e
   )
