@@ -791,7 +791,9 @@ test_that("the parameter-map cache is session-local and never saved with a fit",
     map, provider = "TestPkg", key = "k", compute = function() "stored"
   )
   saved <- serialize(fit, NULL)
-  expect_false(grepl("stored", rawToChar(saved[saved != as.raw(0L)]), fixed = TRUE))
+  # (grepRaw() searches the bytes; grepl() on rawToChar() output misses the
+  # value in a UTF-8 locale, where the serialized bytes are an invalid string)
+  expect_length(grepRaw("stored", saved, fixed = TRUE), 0L)
 
   # A session that never saw this fit holds no entry for it, so the value is
   # recomputed rather than replayed from whenever the fit was written. (A
