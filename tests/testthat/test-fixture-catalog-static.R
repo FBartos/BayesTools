@@ -18,7 +18,7 @@ test_that("source-derived fixture catalog covers every generated fit", {
   catalog <- bayestools_expected_fit_catalog()
   expect_expected_fit_catalog_schema(catalog)
 
-  expect_equal(nrow(source_rows), 115L)
+  expect_equal(nrow(source_rows), 116L)
   expect_equal(sum(source_rows$has_marglik), 22L)
   expect_equal(sum(source_rows$assertion_only), 42L)
   literal_point <- source_rows[source_rows$model_name == "fit_ordered_literal_point", , drop = FALSE]

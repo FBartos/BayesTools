@@ -1304,7 +1304,7 @@ test_that("Random effects models fit correctly", {
   model_registry[["fit_random_factor_slope"]] <<- result$registry_entry
   fit_random_factor_slope <- result$fit
 
-  # Random factor slope with orthonormal contrast
+  # Random factor slope with mean-difference contrast (one exchangeable unit)
   formula_list_re_fac <- list(mu = ~ 1 + x_fac3 + (x_fac3 ||id))
   formula_data_list_re_fac <- list(mu = data_formula)
   formula_prior_list_re_fac <- list(
@@ -3067,6 +3067,32 @@ test_that("Convergence-role and LKJ-diagonal models fit correctly", {
     simple_priors = TRUE, formulas = TRUE, random_effects = TRUE,
     assertion_only = TRUE,
     note = "Three-term LKJ random-effect block for exact correlation diagonals and raw backend-coordinate labels."
+  )$registry_entry
+
+  # A four-level mean-difference factor is one exchangeable unit of the LKJ
+  # block: first in the vine, with an identity unit block and one SD.
+  data_formula$f <- factor(rep(c("a", "b", "c", "d"), 12L))
+  model_registry[["fit_lkj_factor_unit"]] <<- save_fit(
+    JAGS_fit(
+      model_syntax = "model{\nfor(i in 1:N){\n  y[i] ~ dnorm(mu[i], 1)\n}\n}",
+      data = data,
+      formula_list = list(mu = ~ 1 + x + f + us(1 + x + f | id)),
+      formula_data_list = list(mu = data_formula),
+      formula_prior_list = list(mu = list(
+        intercept = prior("normal", list(0, 1)),
+        x = prior("normal", list(0, 1)),
+        f = prior_factor("mnormal", list(0, 1), contrast = "meandif")
+      )),
+      formula_random_prior_list = list(mu = prior_random(id = random_block(
+        sd = prior("normal", list(0, 1), list(0, Inf)),
+        cor = prior_lkj(eta = 2),
+        monitor = random_monitor(correlation = TRUE)
+      ))),
+      chains = 2, adapt = 100, burnin = 200, sample = 500, seed = 13L
+    ),
+    "fit_lkj_factor_unit",
+    simple_priors = TRUE, factor_priors = TRUE, formulas = TRUE, random_effects = TRUE,
+    note = "LKJ random-effect block with a four-level mean-difference factor as one exchangeable unit (fixed within-unit primitives, reordered vine)."
   )$registry_entry
 })
 
@@ -4845,6 +4871,61 @@ test_that("native JAGS LKJ module of a unit layout matches its R evaluator", {
   expect_identical(unname(samples[, node$coordinates]), unname(values))
   expect_true(all(samples[, "Omega_R[2,4]"] == 0))
   expect_gt(length(unique(samples[, "Omega_R[1,2]"])), 1L)
+})
+
+test_that("native JAGS LKJ blocks with an exchangeable unit extend their fits", {
+
+  skip_if_not_installed("rjags")
+  skip_if_not_installed("runjags")
+  skip_if_not(
+    isTRUE(BayesTools_load_JAGS_module(quiet = TRUE, warn = FALSE)),
+    "BayesTools JAGS module is unavailable."
+  )
+
+  set.seed(3)
+  data_formula <- data.frame(
+    f  = factor(rep(c("a", "b", "c", "d"), 12L)),
+    id = factor(rep(LETTERS[1:6], each = 8L))
+  )
+  data <- list(y = stats::rnorm(48), N = 48L)
+  unit_fit <- function(seed){
+    JAGS_fit(
+      model_syntax = "model{\nfor(i in 1:N){\n  y[i] ~ dnorm(mu[i], 1)\n}\n}",
+      data = data,
+      formula_list = list(mu = ~ 1 + f + us(1 + f | id)),
+      formula_data_list = list(mu = data_formula),
+      formula_prior_list = list(mu = list(
+        intercept = prior("normal", list(0, 1)),
+        f = prior_factor("mnormal", list(0, 1), contrast = "meandif")
+      )),
+      formula_random_prior_list = list(mu = prior_random(id = random_block(
+        sd = prior("normal", list(0, 1), list(0, Inf)),
+        cor = prior_lkj(eta = 2),
+        monitor = random_monitor(correlation = TRUE)
+      ))),
+      chains = 2, adapt = 100, burnin = 100, sample = 200, seed = seed, silent = TRUE
+    )
+  }
+  # the unit (columns 2:4) has exact zero within-unit correlations
+  within <- paste0("mu__xREx__id_xRE_CORx_R[", c(2, 2, 3, 3, 4, 4), ",", c(3, 4, 2, 4, 2, 3), "]")
+
+  fit <- unit_fit(22L)
+  samples <- as.matrix(fit$mcmc)
+  expect_true(all(samples[, within] == 0))
+  expect_gt(length(unique(samples[, "mu__xREx__id_xRE_CORx_R[1,2]"])), 1L)
+  extended <- JAGS_extend(
+    fit,
+    autofit_control = list(
+      max_Rhat = NULL, min_ESS = NULL, max_error = NULL, max_SD_error = NULL,
+      max_time = list(time = 60, unit = "secs"),
+      sample_extend = 100, restarts = 1, max_extend = 1
+    ),
+    silent = TRUE
+  )
+  expect_identical(JAGS_draw_geometry(extended)$total_draws, 600L)
+  extended_samples <- as.matrix(extended$mcmc)
+  expect_true(all(extended_samples[, within] == 0))
+  expect_identical(parameter_catalog(extended), parameter_catalog(fit))
 })
 
 test_that("native JAGS LKJ primitive sampling refuses a draw rounded to the boundary of (0, 1)", {
@@ -7041,6 +7122,40 @@ test_that("JAGS bridgesampling gives unit marglik for prior-only random-effect s
   )
   expect_equal(lkj_module$formula_result$jags_modules, "BayesTools")
   expect_true(any(grepl("_xRE_CORx_lkj_u", lkj_module$formula_result$add_parameters, fixed = TRUE)))
+
+  # A three-level mean-difference factor is one exchangeable unit: the LKJ
+  # prior restricted to its identity block is normalized over the free
+  # primitives, and a diagonal unit has one SD.
+  unit_priors <- list(
+    intercept = prior("normal", list(0, 1)),
+    f = prior_factor("mnormal", list(0, 1), contrast = "meandif")
+  )
+  lkj_unit <- expect_formula_random_prior_only_bridge(
+    formula = ~ 1 + f + us(1 + f | id),
+    data = factor_data,
+    prior_list = unit_priors,
+    prior_random_list = prior_random(
+      id = random_block(
+        sd = sd_prior,
+        cor = prior_lkj(eta = 1.5, include_correlation = FALSE)
+      )
+    ),
+    seed = 13
+  )
+  lkj_unit_term <- lkj_unit$formula_result$formula_design$random_effects[[1]]
+  expect_identical(lkj_unit_term$correlation$unit_columns, 2:3)
+  expect_identical(lkj_unit_term$correlation$primitive_names, paste0("mu__xREx__id_xRE_CORx_lkj_u[", 2:3, "]"))
+  diag_unit <- expect_formula_random_prior_only_bridge(
+    formula = ~ 1 + f + diag(1 + f | id),
+    data = factor_data,
+    prior_list = unit_priors,
+    prior_random_list = prior_random(id = random_block(sd = sd_prior)),
+    seed = 14
+  )
+  expect_identical(
+    unique(diag_unit$formula_result$formula_design$random_effects[[1]]$sd_parameter_names),
+    c("mu__xREx__id_intercept", "mu__xREx__id_f")
+  )
 
   cs_fisher_z <- expect_formula_random_prior_only_bridge(
     formula = ~ 1 + cs(f | id),

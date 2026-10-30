@@ -55,17 +55,20 @@ bayestools_optional_fit_requirements <- function() {
 }
 
 # The Cholesky factor and correlation cells, LKJ primitives, and (monitored
-# with the primitives) partial correlations of a K-term LKJ block.
-.bayestools_lkj_monitors <- function(stem, K, cpc = FALSE) {
+# with the primitives) partial correlations of a K-term LKJ block. A block
+# whose exchangeable unit of `unit_size` columns is first in the vine samples
+# only the primitives after its within-unit pairs.
+.bayestools_lkj_monitors <- function(stem, K, cpc = FALSE, unit_size = 0L) {
   matrix_cells <- function(matrix_name) {
     .bayestools_random_z_monitors(paste0(stem, "_xRE_CORx_", matrix_name), K, K)
   }
   n_pairs <- K * (K - 1L) / 2L
+  free <- seq_len(n_pairs)[seq_len(n_pairs) > unit_size * (unit_size - 1L) / 2L]
   c(
     matrix_cells("L"),
     matrix_cells("R"),
-    .bayestools_indexed_monitors(paste0(stem, "_xRE_CORx_lkj_u"), n_pairs),
-    if (cpc) .bayestools_indexed_monitors(paste0(stem, "_xRE_CORx_lkj_cpc"), n_pairs)
+    paste0(stem, "_xRE_CORx_lkj_u[", free, "]"),
+    if (cpc) paste0(stem, "_xRE_CORx_lkj_cpc[", free, "]")
   )
 }
 
@@ -1090,7 +1093,7 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       expected_monitor = c(
         "mu_intercept", "mu_x_fac3[1]", "mu_x_fac3[2]",
         "mu__xREx__id_intercept",
-        "mu__xREx__id_x_fac3[1]", "mu__xREx__id_x_fac3[2]", "sigma",
+        "mu__xREx__id_x_fac3", "sigma",
         .bayestools_random_z_monitors("mu__xREx__id_xRE_Zx", 10L, 3L)
       ),
       expected_formula_parameters = "mu",
@@ -2099,6 +2102,25 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       expected_chains = 2L,
       expected_iterations = 300L,
       flags = list(simple_priors = TRUE, formulas = TRUE, random_effects = TRUE, assertion_only = TRUE)
+    ),
+    catalog_row(
+      "fit_lkj_factor_unit",
+      has_marglik = FALSE,
+      model_family = "gaussian-regression-random-effects",
+      formula = '~ 1 + x + f + us(1 + x + f | id)',
+      scale_policy = "random-effects,lkj,exchangeable-unit",
+      prior_features = "simple,formula,factor,random-effects,lkj",
+      expected_monitor = c(
+        "mu_intercept", "mu_x", "mu_f[1]", "mu_f[2]", "mu_f[3]",
+        "mu__xREx__id_intercept", "mu__xREx__id_x", "mu__xREx__id_f",
+        .bayestools_lkj_monitors("mu__xREx__id", 5L, unit_size = 3L),
+        .bayestools_random_z_monitors("mu__xREx__id_xRE_Zx", 6L, 5L)
+      ),
+      expected_formula_parameters = "mu",
+      oracle_type = "formula-fixture-metadata",
+      expected_chains = 2L,
+      expected_iterations = 500L,
+      flags = list(simple_priors = TRUE, factor_priors = TRUE, formulas = TRUE, random_effects = TRUE)
     ),
     catalog_row(
       "fit_hypothesis_hcs",
