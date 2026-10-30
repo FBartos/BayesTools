@@ -8,6 +8,11 @@
   .BayesTools_private$native_dll_path <- NULL
   .BayesTools_private$native_dll_loaded_manually <- FALSE
 
+  # rjags partially matches seq(along = ) when it loads and loads modules; R CMD
+  # check reports that as a NOTE of every package whose code check loads this
+  # namespace.
+  old_options <- options(warnPartialMatchArgs = FALSE)
+  on.exit(options(old_options), add = TRUE)
   if(requireNamespace("rjags", quietly = TRUE)){
     BayesTools_load_JAGS_module(quiet = TRUE, warn = FALSE)
   }
