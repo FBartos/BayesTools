@@ -28,7 +28,6 @@
 ^dev$
 ^\.dev($|/)
 ^\.StatsVault($|/)
-^tests/testthat/_snaps/.*\.new\.svg$
-^tests/results/.*\.new\.txt$
-^tests/testthat/testthat-problems\.rds$
+^tests/results$
 ^tests/scenarios$
+^tests/testthat/(?!(test-cran-smoke|helper-test-profiles)\.R$).+

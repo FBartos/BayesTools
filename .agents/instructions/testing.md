@@ -49,7 +49,9 @@ failure. `tools/test.R` runs all lanes with the fit cache in
   selects it when testthat's `on_cran()` holds. It checks native-routine,
   S3-method, and export registration, and compiles, samples, and bridges one
   minimal model using every JAGS module distribution and function. Keep it
-  well under 30 seconds; do not add behavioral tests to it.
+  well under 30 seconds; do not add behavioral tests to it. `.Rbuildignore`
+  keeps every other test file, snapshot, and reference out of the built
+  package, so the other profiles run only from the source tree.
 - `all`: every profile; this is the default CI and coverage profile.
 
 Start with relevant `unit` tests. Use `fixture` for cached-object behavior and

@@ -185,14 +185,12 @@ jobs:
           }
         shell: Rscript {0}
 
+      # The built package ships only CRAN's smoke test; R-tests runs the profiles.
       - name: Check
         if: runner.os != 'Windows'
         env:
           _R_CHECK_CRAN_INCOMING_REMOTE_: false
-          BAYESTOOLS_TEST_PROFILE: all
           AGENT: 1
-          NOT_CRAN: true
-          VDIFFR_RUN_TESTS: true
         run: |
           options(crayon.enabled = TRUE)
           rcmdcheck::rcmdcheck(
@@ -205,10 +203,7 @@ jobs:
         if: runner.os == 'Windows'
         env:
           _R_CHECK_CRAN_INCOMING_REMOTE_: false
-          BAYESTOOLS_TEST_PROFILE: all
           AGENT: 1
-          NOT_CRAN: true
-          VDIFFR_RUN_TESTS: true
           JAGS_ROOT: "/c/progra~1/JAGS/JAGS-4.3.1"
           JAGS_MAJOR_VERSION: 4
         run: |
