@@ -390,8 +390,14 @@ test_that("R-side LKJ correlation reconstructions have an exactly unit diagonal"
     dimnames = list(NULL, u_names)
   )
   L <- BayesTools:::.bt_lkj_cholesky_cpc_u_to_L(u, K = K)
+  # L L' summed in the module's order, m = 1, ..., min(row, column), as
+  # bt_lkj_corr() does; tcrossprod() would sum in the order of R's BLAS.
   plain_R <- t(vapply(seq_len(n_draws), function(draw){
-    as.vector(tcrossprod(L[draw, , ]))
+    R <- matrix(0, K, K)
+    for(row in seq_len(K)) for(column in seq_len(K)) for(m in seq_len(min(row, column))){
+      R[row, column] <- R[row, column] + L[draw, row, m] * L[draw, column, m]
+    }
+    as.vector(R)
   }, numeric(K * K)))
   # The draws exercise the rounding: plain row sums of squares miss 1.
   expect_true(any(plain_R[, on_diagonal] != 1))
