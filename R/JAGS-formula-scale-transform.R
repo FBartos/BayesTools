@@ -556,7 +556,11 @@ transform_prior_samples <- function(fit, n_samples = 10000, seed = NULL, formula
     K <- random_term$n_columns
     eta <- correlation$eta
     primitive_names <- correlation$primitive_names
-    alpha <- .bt_lkj_cholesky_alpha(K = K, eta = eta)
+    # the free primitives (the fixed ones of an exchangeable unit are constants)
+    alpha <- .bt_lkj_layout_alpha(
+      .bt_random_effect_lkj_layout(random_term, K, context = "LKJ prior sampling metadata"),
+      eta = eta
+    )
     if(length(primitive_names) != length(alpha)){
       stop(
         "Stored LKJ primitive metadata do not match the random-effect dimension.",

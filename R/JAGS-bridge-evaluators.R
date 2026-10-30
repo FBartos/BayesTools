@@ -819,6 +819,11 @@
     n_columns,
     context = "Bridge sampling random-effect metadata"
   )
+  layout <- .bt_random_effect_lkj_layout(
+    random_term,
+    n_columns,
+    context = "Bridge sampling random-effect metadata"
+  )
   correlation <- .bt_random_effect_correlation_metadata(
     random_term,
     structure = "us",
@@ -848,9 +853,9 @@
       return(-Inf)
     }
 
-    .bt_lkj_cholesky_cpc_u_log_prior(
+    .bt_lkj_layout_log_prior(
       u_values,
-      K = n_columns,
+      layout = layout,
       eta = eta
     )
   }

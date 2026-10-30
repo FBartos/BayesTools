@@ -796,12 +796,18 @@
     }
   }else if(random_structure == "us"){
     lkj_prior <- .bt_random_block_lkj_prior(block_prior)
-    lkj_module <- JAGS_lkj_corr_cholesky(
+    lkj_unit_columns <- integer()
+    lkj_arguments <- list(
       name = paste0(parameter, "_xRE_CORx"),
       K = n_par,
       eta = lkj_prior$eta,
       include_correlation = isTRUE(monitor_policy$correlation) && isTRUE(lkj_prior$include_correlation),
       include_primitives = isTRUE(monitor_policy$lkj_primitives) || isTRUE(lkj_prior$include_primitives)
+    )
+    do.call(.bt_check_lkj_cholesky_module_inputs, lkj_arguments)
+    lkj_module <- do.call(
+      .bt_JAGS_lkj_corr_cholesky_module,
+      c(lkj_arguments, list(unit_columns = lkj_unit_columns))
     )
     random_syntax <- c(random_syntax, lkj_module$syntax)
     add_parameters <- c(add_parameters, lkj_module$monitor, lkj_module$primitive_names)
@@ -810,6 +816,7 @@
     correlation_metadata <- list(
       type = "lkj",
       eta = lkj_prior$eta,
+      unit_columns = lkj_unit_columns,
       primitive_names = lkj_module$primitive_names,
       cpc_names = lkj_module$cpc_names,
       primitive_bounds = lkj_module$primitive_bounds,

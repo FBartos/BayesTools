@@ -519,24 +519,29 @@
 # matrix '<name>_R' = L L' (with an exact unit diagonal) through the
 # BayesTools JAGS module, and the monitored partial correlations
 # '<name>_lkj_cpc[p] <- 2 * u[p] - 1'. The R evaluator computes L with the
-# module's own native kernel.
+# module's own native kernel. With an exchangeable unit (`unit_columns`, see
+# .bt_lkj_layout()) only the free primitives are parents; L is the design-order
+# factor of the vine built with the unit first, and R the vine correlation
+# matrix with its cells permuted to the design order.
 
 .bt_dnode_lkj <- function(name, K, include_correlation = TRUE,
                           include_primitives = FALSE,
-                          parameter = NA_character_, block = NA_character_){
+                          parameter = NA_character_, block = NA_character_,
+                          unit_columns = integer()){
 
-  n_pairs <- .bt_lkj_cholesky_n_pairs(K)
+  layout <- .bt_lkj_layout(K, unit_columns)
+  free_pairs <- layout$free_pairs
   L_name <- paste0(name, "_L")
   R_name <- paste0(name, "_R")
   u_name <- paste0(name, "_lkj_u")
   cpc_name <- paste0(name, "_lkj_cpc")
-  primitive_names <- if(n_pairs > 0L){
-    paste0(u_name, "[", seq_len(n_pairs), "]")
+  primitive_names <- if(length(free_pairs) > 0L){
+    paste0(u_name, "[", free_pairs, "]")
   }else{
     character()
   }
-  cpc_names <- if(isTRUE(include_primitives) && n_pairs > 0L){
-    paste0(cpc_name, "[", seq_len(n_pairs), "]")
+  cpc_names <- if(isTRUE(include_primitives) && length(free_pairs) > 0L){
+    paste0(cpc_name, "[", free_pairs, "]")
   }else{
     character()
   }
@@ -565,7 +570,8 @@
       u_name = u_name,
       primitive_names = primitive_names,
       cpc_name = cpc_name,
-      cpc_names = cpc_names
+      cpc_names = cpc_names,
+      layout = layout
     )
   )
 }
@@ -577,18 +583,21 @@
     return(NULL)
   }
   K <- random_term$n_columns
+  context <- "Random-effect deterministic node metadata"
   primitive_names <- .bt_random_effect_lkj_primitive_names(
     random_term,
     K,
-    context = "Random-effect deterministic node metadata"
+    context = context
   )
+  layout <- .bt_random_effect_lkj_layout(random_term, K, context = context)
   node <- .bt_dnode_lkj(
     name = sub("_L$", "", correlation$cholesky_name),
     K = K,
     include_correlation = !is.null(correlation$correlation_name),
     include_primitives = length(correlation$cpc_names) > 0L,
     parameter = parameter,
-    block = random_term$block_name
+    block = random_term$block_name,
+    unit_columns = layout$unit_columns
   )
   if(!identical(node$spec$primitive_names, primitive_names) ||
      !identical(node$spec$cpc_names, as.character(correlation$cpc_names))){
@@ -607,15 +616,23 @@
 
   spec <- node$spec
   K <- spec$K
+  layout <- spec$layout
   L_flat_name <- paste0(node$node, "_L_flat")
   R_flat_name <- paste0(node$node, "_R_flat")
+  position_name <- paste0(node$node, "_lkj_position")
+  identity_order <- .bt_lkj_layout_identity_order(layout)
 
   syntax <- character()
   if(length(spec$primitive_names) > 0L){
-    syntax <- c(
-      syntax,
+    syntax <- c(syntax, if(identity_order){
       paste0(L_flat_name, "[1:", K * K, "] <- bt_lkj_cholesky(", spec$u_name, ", ", K, ")")
-    )
+    }else{
+      c(
+        paste0(position_name, "[", seq_len(K), "] <- ", layout$position),
+        paste0(L_flat_name, "[1:", K * K, "] <- bt_lkj_cholesky_ordered(",
+               spec$u_name, ", ", K, ", ", position_name, ")")
+      )
+    })
     if(!is.null(spec$R_name)){
       syntax <- c(
         syntax,
@@ -624,7 +641,9 @@
     }
   }
 
-  cell_syntax <- function(matrix_name, flat_name){
+  # `source`: the vine variable of each design column whose flat cells are read
+  # (the vine-order correlation matrix is permuted to the design order)
+  cell_syntax <- function(matrix_name, flat_name, source = seq_len(K)){
     out <- character()
     for(row in seq_len(K)){
       for(column in seq_len(K)){
@@ -632,7 +651,7 @@
         if(K == 1L){
           out <- c(out, paste0(target, " <- 1"))
         }else{
-          flat_index <- .bt_lkj_cholesky_flat_index(row, column, K)
+          flat_index <- .bt_lkj_cholesky_flat_index(source[[row]], source[[column]], K)
           out <- c(out, paste0(target, " <- ", flat_name, "[", flat_index, "]"))
         }
       }
@@ -641,9 +660,9 @@
   }
   syntax <- c(syntax, cell_syntax(spec$L_name, L_flat_name))
   if(!is.null(spec$R_name)){
-    syntax <- c(syntax, cell_syntax(spec$R_name, R_flat_name))
+    syntax <- c(syntax, cell_syntax(spec$R_name, R_flat_name, source = layout$position))
   }
-  for(p in seq_along(spec$cpc_names)){
+  for(p in layout$free_pairs[seq_along(spec$cpc_names)]){
     syntax <- c(
       syntax,
       paste0(spec$cpc_name, "[", p, "] <- 2 * ", spec$u_name, "[", p, "] - 1")
@@ -659,11 +678,12 @@
   2 * u - 1
 }
 
-# The correlation matrices (draws x K x K) of LKJ primitives u (draws x
-# K(K-1)/2): R = L L' of the module's Cholesky factor.
-.bt_dnode_lkj_correlation <- function(u, K){
+# The correlation matrices (draws x K x K) of the free LKJ primitives u (draws x
+# free primitives) of a vine layout (the identity layout of dimension K by
+# default): the module's correlation matrix, R = L L' of the vine factor.
+.bt_dnode_lkj_correlation <- function(u, K, layout = .bt_lkj_layout(K)){
 
-  .bt_lkj_cholesky_L_to_R(.bt_lkj_cholesky_cpc_u_to_L(u, K = K))
+  .bt_lkj_layout_u_to_R(u, layout)
 }
 
 .bt_dnode_lkj_evaluate <- function(node, lookup){
@@ -679,7 +699,7 @@
     return(NULL)
   }
 
-  L <- .bt_lkj_cholesky_cpc_u_to_L(u, K = K)
+  L <- .bt_lkj_layout_u_to_L(u, spec$layout)
   cells <- function(values){
     out <- matrix(NA_real_, nrow = n, ncol = K * K)
     for(row in seq_len(K)){
@@ -691,7 +711,12 @@
   }
   values <- cells(L)
   if(!is.null(spec$R_name)){
-    values <- cbind(values, cells(.bt_lkj_cholesky_L_to_R(L)))
+    R <- if(.bt_lkj_layout_identity_order(spec$layout)){
+      .bt_lkj_cholesky_L_to_R(L)
+    }else{
+      .bt_lkj_layout_u_to_R(u, spec$layout)
+    }
+    values <- cbind(values, cells(R))
   }
   if(length(spec$cpc_names) > 0L){
     values <- cbind(values, .bt_dnode_lkj_cpc(u))

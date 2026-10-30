@@ -42,6 +42,7 @@
       random_term,
       n_columns
     )
+    layout <- .bt_random_effect_lkj_layout(random_term, n_columns)
     cholesky_names <- as.vector(.bt_random_effect_cholesky_names(
       random_term = random_term,
       n_columns = n_columns
@@ -59,6 +60,7 @@
       rep(NA_integer_, length(cholesky_names))
     }
     force(primitive_names)
+    force(layout)
     force(cholesky_names)
     force(n_columns)
 
@@ -81,13 +83,13 @@
         # out-of-support primitives still fail below.
         cleared <- rowSums(!is.na(primitives)) == 0L
         if(!any(cleared)){
-          return(.bt_lkj_cholesky_cpc_u_to_L(primitives, K = n_columns))
+          return(.bt_lkj_layout_u_to_L(primitives, layout))
         }
         out <- array(NA_real_, dim = c(nrow(posterior), n_columns, n_columns))
         if(!all(cleared)){
-          out[!cleared, , ] <- .bt_lkj_cholesky_cpc_u_to_L(
+          out[!cleared, , ] <- .bt_lkj_layout_u_to_L(
             primitives[!cleared, , drop = FALSE],
-            K = n_columns
+            layout
           )
         }
         return(out)
@@ -700,13 +702,42 @@
   )
 }
 
+# The vine layout of the LKJ block of a random-effect term (.bt_lkj_layout()):
+# the exchangeable unit stored in 'random_term$correlation$unit_columns', none
+# (the identity layout) when the field is absent.
+.bt_random_effect_lkj_layout <- function(
+    random_term,
+    n_columns = random_term$n_columns,
+    context = "Random-effect posterior reconstruction metadata"){
+
+  unit_columns <- random_term$correlation$unit_columns
+  if(is.null(unit_columns)){
+    unit_columns <- integer()
+  }
+  layout <- tryCatch(
+    .bt_lkj_layout(n_columns, unit_columns),
+    error = function(e) NULL
+  )
+  if(is.null(layout)){
+    .bt_stop_refit_required(
+      context,
+      .bt_random_effect_metadata_block_detail(random_term),
+      " stores an invalid LKJ unit layout 'random_term$correlation$unit_columns'. ",
+      "Refit the model with this version of BayesTools."
+    )
+  }
+
+  layout
+}
+
+# The names of the free LKJ primitives of a random-effect term (the sampled
+# coordinates of its correlation matrix).
 .bt_random_effect_lkj_primitive_names <- function(
     random_term,
     n_columns,
     context = "Random-effect posterior reconstruction metadata"){
 
-  n_pairs <- n_columns * (n_columns - 1L) / 2L
-  if(n_pairs < 1L){
+  if(n_columns * (n_columns - 1L) / 2L < 1L){
     return(character(0))
   }
 
@@ -723,6 +754,11 @@
       call. = FALSE
     )
   }
+  n_pairs <- length(.bt_random_effect_lkj_layout(
+    random_term,
+    n_columns,
+    context = context
+  )$free_pairs)
 
   primitive_names <- correlation$primitive_names
   if(!is.character(primitive_names) || length(primitive_names) != n_pairs ||

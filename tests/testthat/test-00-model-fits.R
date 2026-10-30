@@ -4813,6 +4813,40 @@ test_that("native JAGS ordered LKJ factor is the R kernel and keeps the finite e
   )
 })
 
+test_that("native JAGS LKJ module of a unit layout matches its R evaluator", {
+
+  skip_if_not_installed("rjags")
+  skip_if_not(
+    isTRUE(BayesTools_load_JAGS_module(quiet = TRUE, warn = FALSE)),
+    "BayesTools JAGS module is unavailable."
+  )
+  module <- .bt_JAGS_lkj_corr_cholesky_module(
+    name = "Omega", K = 4, eta = 2, include_correlation = TRUE,
+    include_primitives = TRUE, unit_columns = c(2L, 4L)
+  )
+  con <- textConnection(paste0("model{\n", module$syntax, "\n}"))
+  on.exit(close(con), add = TRUE)
+  model <- rjags::jags.model(
+    file = con, n.chains = 1L, n.adapt = 100L, quiet = TRUE,
+    inits = list(.RNG.name = "base::Wichmann-Hill", .RNG.seed = 1L)
+  )
+  samples <- as.matrix(rjags::coda.samples(
+    model = model, variable.names = module$monitor, n.iter = 200L,
+    quiet = TRUE, progress.bar = "none"
+  ))
+  node <- .bt_dnode_lkj(
+    "Omega", K = 4, include_correlation = TRUE, include_primitives = TRUE,
+    unit_columns = c(2L, 4L)
+  )
+  values <- .bt_deterministic_node_evaluate(
+    node,
+    .bt_deterministic_lookup(samples[, module$primitive_names, drop = FALSE])
+  )
+  expect_identical(unname(samples[, node$coordinates]), unname(values))
+  expect_true(all(samples[, "Omega_R[2,4]"] == 0))
+  expect_gt(length(unique(samples[, "Omega_R[1,2]"])), 1L)
+})
+
 test_that("native JAGS LKJ primitive sampling refuses a draw rounded to the boundary of (0, 1)", {
 
   skip_if_not_installed("rjags")

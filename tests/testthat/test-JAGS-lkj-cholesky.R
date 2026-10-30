@@ -380,6 +380,147 @@ test_that("the ordered LKJ Cholesky factor is the design-order factor of the vin
   )
 })
 
+test_that("an LKJ unit layout orders the unit first and fixes its within-unit primitives", {
+
+  layout <- BayesTools:::.bt_lkj_layout(4, c(2L, 4L))
+  expect_identical(layout$vine_order, c(2L, 4L, 1L, 3L))
+  expect_identical(layout$position, c(3L, 1L, 4L, 2L))
+  expect_identical(layout$fixed_pairs, 1L)
+  expect_identical(layout$free_pairs, 2:6)
+  layout3 <- BayesTools:::.bt_lkj_layout(5, c(5, 1, 3))
+  expect_identical(layout3$vine_order, c(5L, 1L, 3L, 2L, 4L))
+  expect_identical(layout3$fixed_pairs, 1:3)
+  expect_identical(layout3$free_pairs, 4:10)
+  identity <- BayesTools:::.bt_lkj_layout(4)
+  expect_true(BayesTools:::.bt_lkj_layout_is_identity(identity))
+  expect_identical(identity$position, 1:4)
+  expect_identical(identity$fixed_pairs, integer())
+  expect_identical(identity$free_pairs, 1:6)
+  for(unit_columns in list(2, c(1, 1), c(0, 2), c(2, 5), c(1.5, 2), c(1, NA))){
+    expect_error(
+      BayesTools:::.bt_lkj_layout(4, unit_columns),
+      "'unit_columns' must be empty or hold at least two distinct columns of the block.",
+      fixed = TRUE
+    )
+  }
+
+  set.seed(20261030)
+  eta <- 1.7
+  u <- matrix(stats::rbeta(5L * 30L, 2, 2), ncol = 5L)
+  L <- BayesTools:::.bt_lkj_layout_u_to_L(u, layout)
+  R <- BayesTools:::.bt_lkj_layout_u_to_R(u, layout)
+  # independent: the vine correlation matrix of the full primitives (the unit
+  # pair fixed at 1/2), with design column d at vine variable position[d]
+  vine <- BayesTools:::.bt_lkj_cholesky_cpc_u_to_L(cbind(0.5, u), K = 4)
+  for(draw in seq_len(nrow(u))){
+    expect_identical(R[draw, 2L, 4L], 0)
+    expect_identical(diag(R[draw, , ]), rep(1, 4))
+    expect_true(all(L[draw, , ][upper.tri(diag(4))] == 0))
+    expect_lt(max(abs(tcrossprod(L[draw, , ]) - R[draw, , ])), 1e-14)
+    expect_lt(max(abs(R[draw, , ] - tcrossprod(vine[draw, , ])[layout$position, layout$position])), 1e-14)
+  }
+  # pairs (1,3), (2,3), (1,4), (2,4), (3,4) of the vine: alpha = eta + (K - i - 1) / 2
+  alpha <- eta + c(1, 0.5, 1, 0.5, 0)
+  expect_equal(BayesTools:::.bt_lkj_layout_alpha(layout, eta), alpha)
+  expect_equal(
+    BayesTools:::.bt_lkj_layout_log_prior(u, layout, eta),
+    rowSums(stats::dbeta(u, rep(alpha, each = nrow(u)), rep(alpha, each = nrow(u)), log = TRUE)),
+    tolerance = 1e-12
+  )
+  expect_equal(BayesTools:::.bt_lkj_layout_L_to_u(L, layout), u, tolerance = 1e-10)
+  expect_equal(BayesTools:::.bt_lkj_layout_L_to_u(L[1L, , ], layout), u[1L, ], tolerance = 1e-10)
+  # a factor whose unit block is not the identity has no free primitives
+  R_other <- R[1L, , ]
+  R_other[2L, 4L] <- R_other[4L, 2L] <- 0.2
+  expect_true(all(is.na(BayesTools:::.bt_lkj_layout_L_to_u(t(chol(R_other)), layout))))
+  expect_error(
+    BayesTools:::.bt_lkj_layout_u_to_L(cbind(0.5, u), layout),
+    "'u' must hold one value per free LKJ primitive.", fixed = TRUE
+  )
+
+  # The restricted LKJ(eta) density: the density of the free primitives over
+  # the Jacobian of their map to the free correlation cells is proportional to
+  # det(R)^(eta - 1).
+  free_cells <- which(upper.tri(diag(4)), arr.ind = TRUE)
+  free_cells <- free_cells[!(free_cells[, 1L] == 2L & free_cells[, 2L] == 4L), , drop = FALSE]
+  cells <- function(u_free) BayesTools:::.bt_lkj_layout_u_to_R(u_free, layout)[free_cells]
+  log_target <- vapply(seq_len(10L), function(draw){
+    u_free <- u[draw, ]
+    jacobian <- vapply(seq_along(u_free), function(p){
+      step <- replace(numeric(length(u_free)), p, 1e-6)
+      (cells(u_free + step) - cells(u_free - step)) / 2e-6
+    }, numeric(nrow(free_cells)))
+    BayesTools:::.bt_lkj_layout_log_prior(u_free, layout, eta) -
+      log(abs(det(jacobian))) - (eta - 1) * log(det(R[draw, , ]))
+  }, numeric(1))
+  expect_lt(stats::sd(log_target), 1e-6)
+
+  # the identity layout is the plain construction
+  u6 <- matrix(stats::rbeta(6L * 5L, 2, 2), ncol = 6L)
+  expect_identical(
+    BayesTools:::.bt_lkj_layout_u_to_L(u6, identity),
+    BayesTools:::.bt_lkj_cholesky_cpc_u_to_L(u6, K = 4)
+  )
+  expect_identical(
+    BayesTools:::.bt_lkj_layout_log_prior(u6, identity, eta),
+    BayesTools:::.bt_lkj_cholesky_cpc_u_log_prior(u6, K = 4, eta = eta)
+  )
+  expect_identical(
+    BayesTools:::.bt_lkj_layout_L_to_u(BayesTools:::.bt_lkj_layout_u_to_L(u6, identity), identity),
+    BayesTools:::.bt_lkj_cholesky_L_to_cpc_u(BayesTools:::.bt_lkj_cholesky_cpc_u_to_L(u6, K = 4), K = 4)
+  )
+})
+
+test_that("the LKJ node of a unit layout samples only the free primitives", {
+
+  module <- BayesTools:::.bt_JAGS_lkj_corr_cholesky_module(
+    name = "Omega", K = 4, eta = 2, include_correlation = TRUE,
+    include_primitives = TRUE, unit_columns = c(2L, 4L)
+  )
+  expect_identical(module$primitive_names, paste0("Omega_lkj_u[", 2:6, "]"))
+  expect_identical(module$cpc_names, paste0("Omega_lkj_cpc[", 2:6, "]"))
+  expect_identical(names(module$primitive_bounds$lb), module$primitive_names)
+  expect_match(module$syntax, "Omega_lkj_u[1] <- 0.5", fixed = TRUE)
+  expect_match(module$syntax, "Omega_lkj_u[2:6] ~ dbt_lkj_cpc(Omega_lkj_alpha[2:6])", fixed = TRUE)
+  expect_false(grepl("Omega_lkj_alpha[1]", module$syntax, fixed = TRUE))
+  expect_match(module$syntax, "Omega_L_flat[1:16] <- bt_lkj_cholesky_ordered(Omega_lkj_u, 4, Omega_lkj_position)", fixed = TRUE)
+  # R in design order reads the vine cell (position[row], position[column])
+  expect_match(module$syntax, "Omega_R[2,4] <- Omega_R_flat[2]", fixed = TRUE)
+  expect_match(module$syntax, "Omega_R[1,3] <- Omega_R_flat[12]", fixed = TRUE)
+
+  # a leading unit keeps the design order: no permutation
+  leading <- BayesTools:::.bt_JAGS_lkj_corr_cholesky_module(
+    name = "Omega", K = 3, eta = 1, include_correlation = TRUE,
+    include_primitives = FALSE, unit_columns = c(1L, 2L)
+  )
+  expect_match(leading$syntax, "Omega_L_flat[1:9] <- bt_lkj_cholesky(Omega_lkj_u, 3)", fixed = TRUE)
+  expect_false(grepl("_lkj_position", leading$syntax, fixed = TRUE))
+  expect_error(
+    BayesTools:::.bt_JAGS_lkj_corr_cholesky_module(
+      name = "Omega", K = 3, eta = 1, include_correlation = TRUE,
+      include_primitives = FALSE, unit_columns = 1:3
+    ),
+    "An LKJ-Cholesky block needs at least one free primitive.", fixed = TRUE
+  )
+
+  # the R evaluator of the node: the layout's factor and correlation matrix
+  node <- BayesTools:::.bt_dnode_lkj(
+    "Omega", K = 4, include_correlation = TRUE, include_primitives = TRUE,
+    unit_columns = c(2L, 4L)
+  )
+  set.seed(1)
+  u <- matrix(stats::rbeta(5L * 20L, 2, 2), ncol = 5L, dimnames = list(NULL, module$primitive_names))
+  values <- BayesTools:::.bt_deterministic_node_evaluate(node, BayesTools:::.bt_deterministic_lookup(u))
+  colnames(values) <- node$coordinates
+  layout <- BayesTools:::.bt_lkj_layout(4, c(2L, 4L))
+  L <- BayesTools:::.bt_lkj_layout_u_to_L(unname(u), layout)
+  R <- BayesTools:::.bt_lkj_layout_u_to_R(unname(u), layout)
+  expect_identical(unname(values[, "Omega_L[3,2]"]), L[, 3L, 2L])
+  expect_identical(unname(values[, "Omega_R[1,3]"]), R[, 1L, 3L])
+  expect_true(all(values[, "Omega_R[2,4]"] == 0))
+  expect_identical(unname(values[, "Omega_lkj_cpc[4]"]), 2 * unname(u[, "Omega_lkj_u[4]"]) - 1)
+})
+
 test_that("native LKJ helpers handle vectorized R-side transforms", {
   u <- rbind(
     c(0.61, 0.22, 0.74),

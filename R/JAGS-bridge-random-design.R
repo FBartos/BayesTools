@@ -555,7 +555,7 @@
   correlation[intersect(
     names(correlation),
     c(
-      "type", "eta", "primitive_names", "primitive_bounds",
+      "type", "eta", "unit_columns", "primitive_names", "primitive_bounds",
       "structure", "rho_name", "sample_name", "prior_name", "parameter_name",
       "sample_fixed", "rho_scale", "bounds", "cholesky_name", "correlation_name",
       "time_variable", "time_values", "distance_matrix"

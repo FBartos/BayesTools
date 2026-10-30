@@ -3539,8 +3539,11 @@ parameter_transform_jacobian <- function(values, transform){
       coordinates,
       correlation$primitive_names
     )
-    n_pairs <- random_term$n_columns * (random_term$n_columns - 1L) / 2L
-    if(length(primitive_dependencies) == n_pairs){
+    n_free <- length(.bt_random_effect_lkj_layout(
+      random_term,
+      context = "Parameter catalog"
+    )$free_pairs)
+    if(length(primitive_dependencies) == n_free){
       return(primitive_dependencies)
     }
     return(.bt_parameter_catalog_coordinates(

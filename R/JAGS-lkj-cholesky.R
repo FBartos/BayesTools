@@ -32,12 +32,22 @@ JAGS_lkj_corr_cholesky <- function(name, K, eta = 1,
   )
 }
 
+# `unit_columns`: the columns of an exchangeable unit of the block, whose
+# within-unit primitives are fixed at 1/2 (see .bt_lkj_layout()). Only the free
+# primitives are sampled and monitored; they keep the indices of their pairs.
 .bt_JAGS_lkj_corr_cholesky_module <- function(name, K, eta,
                                               include_correlation,
-                                              include_primitives){
+                                              include_primitives,
+                                              unit_columns = integer()){
 
   pairs <- .bt_lkj_cholesky_cpc_pairs(K = K, eta = eta)
   n_pairs <- nrow(pairs)
+  layout <- .bt_lkj_layout(K, unit_columns)
+  free_pairs <- layout$free_pairs
+  n_free <- length(free_pairs)
+  if(n_pairs > 0L && n_free == 0L){
+    stop("An LKJ-Cholesky block needs at least one free primitive.", call. = FALSE)
+  }
 
   L_name <- paste0(name, "_L")
   R_name <- paste0(name, "_R")
@@ -47,17 +57,23 @@ JAGS_lkj_corr_cholesky <- function(name, K, eta = 1,
 
   syntax <- c(paste0("# LKJ-Cholesky correlation module: ", name))
 
-  if(n_pairs > 0L){
-    for(p in seq_len(n_pairs)){
+  if(n_free > 0L){
+    for(p in free_pairs){
       syntax <- c(
         syntax,
         paste0(alpha_name, "[", p, "] <- ", .bt_JAGS_numeric_literal(pairs$alpha[p]))
       )
     }
-    syntax <- c(
-      syntax,
+    for(p in layout$fixed_pairs){
+      syntax <- c(syntax, paste0(u_name, "[", p, "] <- 0.5"))
+    }
+    # the fixed primitives are the leading pairs, the free ones a contiguous tail
+    syntax <- c(syntax, if(n_free == n_pairs){
       paste0(u_name, "[1:", n_pairs, "] ~ dbt_lkj_cpc(", alpha_name, ")")
-    )
+    }else{
+      free_range <- paste0("[", free_pairs[[1L]], ":", n_pairs, "]")
+      paste0(u_name, free_range, " ~ dbt_lkj_cpc(", alpha_name, free_range, ")")
+    })
   }
 
   # The Cholesky factor, correlation matrix, and partial correlations are the
@@ -66,7 +82,8 @@ JAGS_lkj_corr_cholesky <- function(name, K, eta = 1,
     name = name,
     K = K,
     include_correlation = include_correlation,
-    include_primitives = include_primitives
+    include_primitives = include_primitives,
+    unit_columns = unit_columns
   )
   syntax <- c(syntax, .bt_deterministic_node_emit(node))
 
@@ -74,16 +91,16 @@ JAGS_lkj_corr_cholesky <- function(name, K, eta = 1,
   cpc_names <- node$spec$cpc_names
   primitive_lb <- numeric(0)
   primitive_ub <- numeric(0)
-  if(n_pairs > 0L){
-    primitive_lb <- stats::setNames(rep(0, n_pairs), primitive_names)
-    primitive_ub <- stats::setNames(rep(1, n_pairs), primitive_names)
+  if(n_free > 0L){
+    primitive_lb <- stats::setNames(rep(0, n_free), primitive_names)
+    primitive_ub <- stats::setNames(rep(1, n_free), primitive_names)
   }
 
   monitor <- L_name
   if(include_correlation){
     monitor <- c(monitor, R_name)
   }
-  if(include_primitives && n_pairs > 0L){
+  if(include_primitives && n_free > 0L){
     monitor <- c(monitor, primitive_names, cpc_names)
   }
 
@@ -366,7 +383,13 @@ JAGS_lkj_corr_cholesky <- function(name, K, eta = 1,
 
   K <- .bt_lkj_cholesky_check_K(K)
   eta <- .bt_lkj_cholesky_check_eta(eta)
-  alpha <- .bt_lkj_cholesky_alpha(K = K, eta = eta)
+  .bt_lkj_cholesky_u_log_density(u, alpha = .bt_lkj_cholesky_alpha(K = K, eta = eta))
+}
+
+# The log density of primitives u under independent Beta(alpha, alpha) laws
+# (-Inf outside (0, 1)); `u` is a vector or a draws x length(alpha) matrix.
+.bt_lkj_cholesky_u_log_density <- function(u, alpha){
+
   n_pairs <- length(alpha)
 
   if(is.matrix(u)){
@@ -420,4 +443,160 @@ JAGS_lkj_corr_cholesky <- function(name, K, eta = 1,
 
 .bt_lkj_cholesky_flat_index <- function(row, column, K){
   (row - 1L) * K + column
+}
+
+# LKJ vine layouts --------------------------------------------------------------
+#
+# A correlated block builds its C-vine in a vine order: design column d is vine
+# variable position[d]. The columns of an exchangeable unit (`unit_columns`, in
+# design order) come first, and their within-unit primitives, the leading pairs
+# (i, j) with j <= k of the column-major pair order, are fixed at u = 1/2, so
+# the unit block of the correlation matrix is the identity. The other (free)
+# primitives keep their LKJ Beta laws, which gives the LKJ(eta) density
+# det(R)^(eta - 1) restricted to that block (Lewandowski, Kurowicka & Joe, 2009:
+# the vine partial correlations are independent, and those of the unit block
+# determine it). Without a unit the vine order is the design order and every
+# primitive is free (the identity layout).
+.bt_lkj_layout <- function(K, unit_columns = integer()){
+
+  K <- .bt_lkj_cholesky_check_K(K)
+  if(!is.numeric(unit_columns) || anyNA(unit_columns) ||
+     any(unit_columns != floor(unit_columns)) ||
+     any(unit_columns < 1 | unit_columns > K) ||
+     anyDuplicated(unit_columns) || length(unit_columns) == 1L){
+    stop("'unit_columns' must be empty or hold at least two distinct columns of the block.", call. = FALSE)
+  }
+  unit_columns <- as.integer(unit_columns)
+  vine_order <- c(unit_columns, setdiff(seq_len(K), unit_columns))
+  n_pairs <- .bt_lkj_cholesky_n_pairs(K)
+  n_fixed <- .bt_lkj_cholesky_n_pairs(length(unit_columns))
+
+  list(
+    K            = K,
+    unit_columns = unit_columns,
+    vine_order   = vine_order,
+    position     = match(seq_len(K), vine_order),
+    fixed_pairs  = seq_len(n_fixed),
+    free_pairs   = seq_len(n_pairs)[seq_len(n_pairs) > n_fixed]
+  )
+}
+
+.bt_lkj_layout_is_identity <- function(layout){
+  length(layout$unit_columns) == 0L
+}
+
+.bt_lkj_layout_identity_order <- function(layout){
+  identical(layout$position, seq_len(layout$K))
+}
+
+# The full primitives of the free primitives u (a vector, or a draws x free
+# matrix): the fixed primitives are 1/2.
+.bt_lkj_layout_full_u <- function(u, layout){
+
+  n_free <- length(layout$free_pairs)
+  if(if(is.matrix(u)) ncol(u) != n_free else length(u) != n_free){
+    stop("'u' must hold one value per free LKJ primitive.", call. = FALSE)
+  }
+  if(length(layout$fixed_pairs) == 0L){
+    return(u)
+  }
+
+  n_pairs <- .bt_lkj_cholesky_n_pairs(layout$K)
+  if(is.matrix(u)){
+    out <- matrix(0.5, nrow = nrow(u), ncol = n_pairs)
+    out[, layout$free_pairs] <- u
+  }else{
+    out <- rep(0.5, n_pairs)
+    out[layout$free_pairs] <- u
+  }
+  out
+}
+
+# The design-order lower Cholesky factors of the free primitives u (the
+# module's bt_lkj_cholesky() in the vine order, bt_lkj_cholesky_ordered()
+# otherwise): a K x K matrix, or a draws x K x K array.
+.bt_lkj_layout_u_to_L <- function(u, layout){
+
+  u_full <- .bt_lkj_layout_full_u(u, layout)
+  if(.bt_lkj_layout_identity_order(layout)){
+    return(.bt_lkj_cholesky_cpc_u_to_L(u_full, K = layout$K))
+  }
+  .bt_lkj_cholesky_cpc_u_to_L_ordered(u_full, K = layout$K, position = layout$position)
+}
+
+# The design-order correlation matrices of the free primitives u: the cells of
+# the vine-order correlation matrix (the module's bt_lkj_corr()) permuted, so
+# that the unit block is exactly the identity. R = L L' of the design-order
+# factor only up to rounding.
+.bt_lkj_layout_u_to_R <- function(u, layout){
+
+  u_full <- .bt_lkj_layout_full_u(u, layout)
+  R <- .bt_lkj_cholesky_L_to_R(.bt_lkj_cholesky_cpc_u_to_L(u_full, K = layout$K))
+  if(.bt_lkj_layout_identity_order(layout)){
+    return(R)
+  }
+  position <- layout$position
+  if(is.matrix(R)){
+    return(R[position, position, drop = FALSE])
+  }
+  R[, position, position, drop = FALSE]
+}
+
+.bt_lkj_layout_alpha <- function(layout, eta){
+
+  .bt_lkj_cholesky_alpha(K = layout$K, eta = eta)[layout$free_pairs]
+}
+
+# The log prior density of the free primitives u (the fixed primitives have no
+# density: they are constants of the vine, whose Jacobian factor is 1).
+.bt_lkj_layout_log_prior <- function(u, layout, eta){
+
+  eta <- .bt_lkj_cholesky_check_eta(eta)
+  .bt_lkj_cholesky_u_log_density(u, alpha = .bt_lkj_layout_alpha(layout, eta))
+}
+
+# The free primitives of design-order lower Cholesky factors L (a K x K matrix
+# or a draws x K x K array; the inverse of .bt_lkj_layout_u_to_L()): the
+# primitives of the vine-order factor of the reordered correlation matrix. Rows
+# are NA where L is not a valid factor (see .bt_lkj_cholesky_L_to_cpc_u()) or
+# where its unit block is not the identity (the fixed primitives differ from
+# 1/2 by more than 1e-10), which the layout cannot represent.
+.bt_lkj_layout_L_to_u <- function(L, layout){
+
+  K <- layout$K
+  if(.bt_lkj_layout_is_identity(layout)){
+    return(.bt_lkj_cholesky_L_to_cpc_u(L, K = K))
+  }
+
+  single <- is.matrix(L)
+  if(single){
+    L <- array(L, dim = c(1L, dim(L)))
+  }
+  if(!is.array(L) || length(dim(L)) != 3L || dim(L)[2L] != K || dim(L)[3L] != K){
+    stop("'L' must be a K x K matrix or an n x K x K array.", call. = FALSE)
+  }
+
+  n_draws <- dim(L)[1L]
+  # validity of the design-order factors (unit rows, positive diagonal)
+  valid <- !is.na(.bt_lkj_cholesky_L_to_cpc_u(L, K = K)[, 1L])
+  vine_L <- array(NA_real_, dim = dim(L))
+  if(any(valid)){
+    R <- .bt_lkj_cholesky_L_to_R(L[valid, , , drop = FALSE])
+    vine_order <- layout$vine_order
+    for(i in seq_len(sum(valid))){
+      factor <- try(t(chol(R[i, vine_order, vine_order])), silent = TRUE)
+      if(!inherits(factor, "try-error")){
+        vine_L[which(valid)[i], , ] <- factor
+      }
+    }
+  }
+  u_full <- .bt_lkj_cholesky_L_to_cpc_u(vine_L, K = K)
+  fixed <- u_full[, layout$fixed_pairs, drop = FALSE]
+  u_full[rowSums(is.na(fixed) | abs(fixed - 0.5) > 1e-10) > 0L, ] <- NA_real_
+  u <- u_full[, layout$free_pairs, drop = FALSE]
+
+  if(single){
+    return(as.numeric(u[1L, ]))
+  }
+  u
 }

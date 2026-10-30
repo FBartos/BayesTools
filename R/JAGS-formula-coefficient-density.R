@@ -127,7 +127,14 @@ JAGS_formula_internal_coordinate_priors <- function(fit){
         K,
         context = "Internal formula-coordinate prior metadata"
       )
-      alpha <- .bt_lkj_cholesky_alpha(K = K, eta = correlation$eta)
+      alpha <- .bt_lkj_layout_alpha(
+        .bt_random_effect_lkj_layout(
+          random_term,
+          K,
+          context = "Internal formula-coordinate prior metadata"
+        ),
+        eta = correlation$eta
+      )
       if(length(primitive_names) != length(alpha)){
         stop(
           "Stored LKJ primitive metadata do not match the compiled random-effect dimension.",

@@ -722,9 +722,11 @@
 }
 
 # Raw labels of the LKJ primitives of a correlated block: primitive `p` (and
-# its canonical partial correlation) belongs to the component pair (i, j) of
-# the LKJ-Cholesky construction, `lkj_u(<i>,<j> | <group>)` and
-# `lkj_cpc(<i>,<j> | <group>)`.
+# its canonical partial correlation) belongs to the pair (i, j) of vine
+# variables of the LKJ-Cholesky construction, labelled by their components,
+# `lkj_u(<i>,<j> | <group>)` and `lkj_cpc(<i>,<j> | <group>)`. A free primitive
+# keeps the index of its pair (the fixed ones of an exchangeable unit are not
+# coordinates).
 .bt_random_effect_summary_raw_lkj_display_names <- function(names, raw_names,
                                                             random_term,
                                                             prefix){
@@ -738,7 +740,13 @@
   if(length(components) < 2L){
     return(names)
   }
-  pairs <- .bt_lkj_cholesky_cpc_pairs(K = length(components))
+  layout <- .bt_random_effect_lkj_layout(
+    random_term,
+    length(components),
+    context = "Random-effect summary metadata"
+  )
+  pairs <- .bt_lkj_cholesky_cpc_pairs(K = length(components))[layout$free_pairs, , drop = FALSE]
+  components <- components[layout$vine_order]
   labels <- list(
     lkj_u   = correlation$primitive_names,
     lkj_cpc = correlation$cpc_names

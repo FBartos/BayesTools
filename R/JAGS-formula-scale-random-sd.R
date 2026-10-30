@@ -96,13 +96,15 @@
 
   for(group in column_groups){
     group_key <- group$group_key
+    random_term <- .random_sd_design_block(formula_design, group_key, group$leaf_names)
     M <- .random_sd_unscale_matrix(
       column_terms = group$column_terms,
       formula_scale = formula_scale,
       prefix = prefix,
-      random_term = .random_sd_design_block(formula_design, group_key, group$leaf_names),
+      random_term = random_term,
       source_data = formula_design$source_data
     )
+    lkj_layout <- .random_sd_lkj_layout(random_term, length(group$column_terms))
 
     source_sd <- posterior[, group$leaf_names_by_column, drop = FALSE]
     source_cor <- .random_sd_correlation_draws(
@@ -110,7 +112,8 @@
       prefix = prefix,
       group_key = group_key,
       n_terms = length(group$column_terms),
-      required = group_key %in% required_groups
+      required = group_key %in% required_groups,
+      lkj_layout = lkj_layout
     )
     transformed_sd_by_column <- matrix(
       NA_real_,
@@ -146,7 +149,8 @@
         prefix = prefix,
         group_key = group_key,
         correlation = transformed_cor,
-        nonzero_source_sd = .random_sd_nonzero_source_sd(source_sd)
+        nonzero_source_sd = .random_sd_nonzero_source_sd(source_sd),
+        lkj_layout = lkj_layout
       )
     }
 
@@ -230,6 +234,12 @@
     view <- block[intersect(fields, names(block))]
     if(inherits(view$term_formula, "formula")){
       environment(view$term_formula) <- emptyenv()
+    }
+    # the LKJ unit layout that reads the correlation draws
+    if(is.list(block$correlation)){
+      view$correlation <- block$correlation[
+        intersect(c("type", "unit_columns"), names(block$correlation))
+      ]
     }
     view
   })
@@ -805,9 +815,13 @@
 .random_sd_assign_transformed_correlation <- function(posterior, prefix,
                                                       group_key,
                                                       correlation,
-                                                      nonzero_source_sd){
+                                                      nonzero_source_sd,
+                                                      lkj_layout = NULL){
 
   n_terms <- dim(correlation)[2L]
+  if(is.null(lkj_layout)){
+    lkj_layout <- .bt_lkj_layout(n_terms)
+  }
 
   R_names <- .random_sd_correlation_matrix_names(
     prefix = prefix,
@@ -825,7 +839,8 @@
   u_names <- .random_sd_lkj_primitive_names(
     prefix = prefix,
     group_key = group_key,
-    n_terms = n_terms
+    n_terms = n_terms,
+    lkj_layout = lkj_layout
   )
   cpc_names <- sub("_lkj_u[", "_lkj_cpc[", u_names, fixed = TRUE)
 
@@ -892,9 +907,9 @@
     }
   }
   if(has_u || has_cpc){
-    u <- .bt_lkj_cholesky_L_to_cpc_u(
+    u <- .bt_lkj_layout_L_to_u(
       L[valid_draw, , , drop = FALSE],
-      K = n_terms
+      lkj_layout
     )
     if(has_u){
       posterior[valid_draw, u_names] <- u
@@ -907,14 +922,38 @@
   posterior
 }
 
-.random_sd_lkj_primitive_names <- function(prefix, group_key, n_terms){
+# The free LKJ primitives of a block (lkj_layout: its .bt_lkj_layout(), the
+# identity layout by default).
+.random_sd_lkj_primitive_names <- function(prefix, group_key, n_terms,
+                                           lkj_layout = NULL){
 
-  n_pairs <- n_terms * (n_terms - 1L) / 2L
-  if(n_pairs < 1L){
+  if(n_terms * (n_terms - 1L) / 2L < 1L){
     return(character())
   }
+  if(is.null(lkj_layout)){
+    lkj_layout <- .bt_lkj_layout(n_terms)
+  }
 
-  paste0(prefix, "__xREx__", group_key, "_xRE_CORx_lkj_u[", seq_len(n_pairs), "]")
+  paste0(prefix, "__xREx__", group_key, "_xRE_CORx_lkj_u[", lkj_layout$free_pairs, "]")
+}
+
+# The LKJ unit layout of the fitted block that owns an SD group (NULL without
+# a fitted design, or for a block without LKJ correlation: the identity layout).
+.random_sd_lkj_layout <- function(random_term, n_terms){
+
+  if(n_terms < 2L){
+    return(NULL)
+  }
+  correlation <- if(is.list(random_term)) random_term$correlation
+  if(!is.list(correlation) || !identical(correlation$type, "lkj")){
+    return(NULL)
+  }
+
+  .bt_random_effect_lkj_layout(
+    random_term,
+    n_terms,
+    context = "Random-effect SD unscaling metadata"
+  )
 }
 
 .random_sd_correlation_matrix_names <- function(prefix, group_key, suffix,
@@ -1179,10 +1218,13 @@
 }
 
 .random_sd_correlation_draws <- function(posterior, prefix, group_key, n_terms,
-                                         required = FALSE){
+                                         required = FALSE, lkj_layout = NULL){
 
   if(n_terms < 2L){
     return(NULL)
+  }
+  if(is.null(lkj_layout)){
+    lkj_layout <- .bt_lkj_layout(n_terms)
   }
 
   stem <- paste0(prefix, "__xREx__", group_key)
@@ -1234,7 +1276,8 @@
   u_names <- .random_sd_lkj_primitive_names(
     prefix = prefix,
     group_key = group_key,
-    n_terms = n_terms
+    n_terms = n_terms,
+    lkj_layout = lkj_layout
   )
   u_present <- u_names %in% colnames(posterior)
   if(!any(L_present) && all(u_present)){
@@ -1242,7 +1285,8 @@
     # monitored correlation matrices): the correlation of the 'lkj' node.
     return(.bt_dnode_lkj_correlation(
       posterior[, u_names, drop = FALSE],
-      K = n_terms
+      K = n_terms,
+      layout = lkj_layout
     ))
   }
 
