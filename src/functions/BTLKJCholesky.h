@@ -23,6 +23,23 @@ namespace jags {
       bool isDiscreteValued(std::vector<bool> const &mask) const;
     };
 
+    class BTLKJCholeskyOrdered : public VectorFunction
+    {
+    public:
+      BTLKJCholeskyOrdered();
+      void evaluate(double *value,
+                    std::vector<double const *> const &args,
+                    std::vector<unsigned int> const &lengths) const;
+      unsigned int length(std::vector<unsigned int> const &lengths,
+                          std::vector<double const *> const &args) const;
+      bool checkParameterLength(std::vector<unsigned int> const &lengths) const;
+      bool checkParameterValue(std::vector<double const *> const &args,
+                               std::vector<unsigned int> const &lengths) const;
+      bool checkParameterDiscrete(std::vector<bool> const &mask) const;
+      bool checkParameterFixed(std::vector<bool> const &mask) const;
+      bool isDiscreteValued(std::vector<bool> const &mask) const;
+    };
+
     class BTLKJCorr : public VectorFunction
     {
     public:

@@ -309,6 +309,77 @@ test_that("LKJ CPC construction remains stable near primitive boundaries", {
   }
 })
 
+test_that("the ordered LKJ Cholesky factor is the design-order factor of the vine correlation", {
+
+  # independent of the factor: log det R = sum over pairs of log(4 u (1 - u)),
+  # the squared innovation factors of the vine construction
+  log_det_from_u <- function(u) rowSums(log(4 * u * (1 - u)))
+  set.seed(20261030)
+  for(K in 2:6){
+    n_pairs <- K * (K - 1L) / 2L
+    regular <- seq_len(40L)
+    u <- rbind(
+      matrix(stats::rbeta(40L * n_pairs, 1.5, 1.5), ncol = n_pairs),
+      # primitives at which the rounded correlation matrix is singular, also
+      # with subnormal pivots of the rotations
+      matrix(rep(c(1e-40, 1 - 1e-16, 0.5), length.out = 3L * n_pairs), ncol = n_pairs, byrow = TRUE),
+      rep(c(0.5, 2^-1074, 2^-1074, 0.8), length.out = n_pairs)
+    )
+    vine <- BayesTools:::.bt_lkj_cholesky_cpc_u_to_L(u, K = K)
+    for(position in list(seq_len(K), rev(seq_len(K)), c(seq(2L, K), 1L), sample(K))){
+      ordered <- BayesTools:::.bt_lkj_cholesky_cpc_u_to_L_ordered(u, K = K, position = position)
+      expect_identical(dim(ordered), dim(vine))
+      upper <- upper.tri(diag(K))
+      problems <- expectation_problems({
+        for(draw in seq_len(nrow(u))){
+          L <- ordered[draw, , ]
+          expect_true(all(is.finite(L)))
+          expect_true(all(L[upper] == 0))
+          expect_true(all(diag(L) >= 0))
+          # the same correlation matrix, reordered, to the rounding of unit-norm rows
+          expect_true(max(abs(tcrossprod(L) - tcrossprod(vine[draw, , ])[position, position])) < 1e-14)
+          if(draw %in% regular){
+            # a well-conditioned correlation matrix keeps its determinant: the
+            # diagonal is positive and its product that of the primitives
+            expect_true(all(diag(L) > 0))
+            expect_equal(2 * sum(log(diag(L))), log_det_from_u(u[draw, , drop = FALSE]),
+                         tolerance = 1e-12)
+          }
+        }
+      })
+      expect_identical(problems, character(), info = paste(K, paste(position, collapse = ",")))
+    }
+    # the identity order is the vine factor itself
+    expect_identical(
+      BayesTools:::.bt_lkj_cholesky_cpc_u_to_L_ordered(u, K = K, position = seq_len(K)),
+      vine
+    )
+  }
+
+  # subnormal pivots a = 2^-1073, b = 3 * 2^-1074 (a rotation from their rounded
+  # radius 2^-1072 would scale the next row's squared norm to 0.8125)
+  u <- c(0.5, 0.5, 0.5, 2^-1074, 2^-1074, 0.8)
+  L <- BayesTools:::.bt_lkj_cholesky_cpc_u_to_L_ordered(u, K = 4, position = c(1, 2, 4, 3))
+  vine <- BayesTools:::.bt_lkj_cholesky_cpc_u_to_L(u, K = 4)
+  expect_lt(max(abs(tcrossprod(L) - tcrossprod(vine)[c(1, 2, 4, 3), c(1, 2, 4, 3)])), 1e-14)
+
+  u <- c(0.3, 0.6, 0.8)
+  expect_identical(
+    BayesTools:::.bt_lkj_cholesky_cpc_u_to_L_ordered(u, K = 3, position = c(3, 1, 2)),
+    BayesTools:::.bt_lkj_cholesky_cpc_u_to_L_ordered(matrix(u, 1L), K = 3, position = c(3, 1, 2))[1L, , ]
+  )
+  for(position in list(c(1, 1, 2), c(1, 2), c(1, 2, 4), c(1, 2.5, 3), c(1, NA, 3))){
+    expect_error(
+      BayesTools:::.bt_lkj_cholesky_cpc_u_to_L_ordered(u, K = 3, position = position),
+      "'position' must be a permutation of 1, ..., K.", fixed = TRUE
+    )
+  }
+  expect_error(
+    .Call("BayesTools_lkj_cholesky_from_u_ordered", u, 3L, c(1, 1, 2), PACKAGE = "BayesTools"),
+    "'position' must be a permutation of 1, ..., K.", fixed = TRUE
+  )
+})
+
 test_that("native LKJ helpers handle vectorized R-side transforms", {
   u <- rbind(
     c(0.61, 0.22, 0.74),

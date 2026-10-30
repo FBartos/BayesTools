@@ -65,10 +65,20 @@ SEXP coerce_numeric(SEXP x, const char *name)
   return Rf_coerceVector(x, REALSXP);
 }
 
-SEXP lkj_cholesky_from_u(SEXP u, SEXP K)
+// 'position' is R_NilValue for the vine order, or a permutation of 1, ..., K:
+// the factor is then the design-order factor of fill_cholesky_from_u_ordered().
+SEXP lkj_cholesky_from_u(SEXP u, SEXP K, SEXP position)
 {
   const unsigned int K_value = scalar_K(K);
   const unsigned int n_pairs = checked_n_pairs(K_value);
+
+  const bool ordered = position != R_NilValue;
+  SEXP position_real = PROTECT(ordered ? coerce_numeric(position, "position") : R_NilValue);
+  if(ordered && (static_cast<unsigned int>(Rf_length(position_real)) != K_value ||
+                 !bayestools::lkj::valid_position(REAL(position_real), K_value))){
+    Rf_error("'position' must be a permutation of 1, ..., K.");
+  }
+  double const *position_ptr = ordered ? REAL(position_real) : nullptr;
 
   SEXP u_real = PROTECT(coerce_numeric(u, "u"));
   const bool matrix_input = is_matrix(u);
@@ -107,10 +117,19 @@ SEXP lkj_cholesky_from_u(SEXP u, SEXP K)
     if(matrix_input){
       double const *draw_u = n_pairs == 0 ? nullptr : u_ptr + draw;
       check_u_values_strided(draw_u, n_pairs, n_draws);
-      bayestools::lkj::fill_cholesky_from_u_strided(&row_major[0], n_pairs == 0 ? 0 : draw_u, K_value, n_draws);
+      if(ordered){
+        bayestools::lkj::fill_cholesky_from_u_ordered_strided(&row_major[0], n_pairs == 0 ? 0 : draw_u, K_value,
+                                                              n_draws, position_ptr);
+      }else{
+        bayestools::lkj::fill_cholesky_from_u_strided(&row_major[0], n_pairs == 0 ? 0 : draw_u, K_value, n_draws);
+      }
     }else{
       check_u_values(u_ptr, n_pairs);
-      bayestools::lkj::fill_cholesky_from_u(&row_major[0], n_pairs == 0 ? 0 : u_ptr, K_value);
+      if(ordered){
+        bayestools::lkj::fill_cholesky_from_u_ordered(&row_major[0], n_pairs == 0 ? 0 : u_ptr, K_value, position_ptr);
+      }else{
+        bayestools::lkj::fill_cholesky_from_u(&row_major[0], n_pairs == 0 ? 0 : u_ptr, K_value);
+      }
     }
 
     for(unsigned int row = 0; row < K_value; ++row){
@@ -144,7 +163,7 @@ SEXP lkj_cholesky_from_u(SEXP u, SEXP K)
     UNPROTECT(1);
   }
 
-  UNPROTECT(2);
+  UNPROTECT(3);
   return out;
 }
 
@@ -152,7 +171,12 @@ SEXP lkj_cholesky_from_u(SEXP u, SEXP K)
 
 extern "C" SEXP BayesTools_lkj_cholesky_from_u(SEXP u, SEXP K)
 {
-  return lkj_cholesky_from_u(u, K);
+  return lkj_cholesky_from_u(u, K, R_NilValue);
+}
+
+extern "C" SEXP BayesTools_lkj_cholesky_from_u_ordered(SEXP u, SEXP K, SEXP position)
+{
+  return lkj_cholesky_from_u(u, K, position);
 }
 
 extern "C" SEXP BayesTools_lkj_log_prior_u(SEXP u, SEXP alpha)

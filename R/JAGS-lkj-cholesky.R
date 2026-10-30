@@ -194,6 +194,28 @@ JAGS_lkj_corr_cholesky <- function(name, K, eta = 1,
   .Call("BayesTools_lkj_cholesky_from_u", u, as.integer(K), PACKAGE = "BayesTools")
 }
 
+# The lower Cholesky factor in design order of the correlation matrix whose
+# vine-order factor .bt_lkj_cholesky_cpc_u_to_L() builds: design column d is
+# vine variable position[d]. It is the module's bt_lkj_cholesky_ordered()
+# kernel, so JAGS and R agree to the last bit; the identity order returns the
+# vine factor itself.
+.bt_lkj_cholesky_cpc_u_to_L_ordered <- function(u, K, position){
+
+  K <- .bt_lkj_cholesky_check_K(K)
+  n_pairs <- .bt_lkj_cholesky_n_pairs(K)
+  .bt_lkj_cholesky_check_u_shape(u, n_pairs)
+  .bt_lkj_cholesky_check_u_support(u)
+  if(!is.numeric(position) || length(position) != K || anyNA(position) ||
+     !identical(sort(as.integer(position)), seq_len(K)) ||
+     any(position != as.integer(position))){
+    stop("'position' must be a permutation of 1, ..., K.", call. = FALSE)
+  }
+
+  .BayesTools_require_native_lkj()
+  .Call("BayesTools_lkj_cholesky_from_u_ordered", u, as.integer(K), as.numeric(position),
+        PACKAGE = "BayesTools")
+}
+
 # Correlation matrices R = L L' of lower Cholesky factors of correlation
 # matrices, such as .bt_lkj_cholesky_cpc_u_to_L() output. The rows of such a
 # factor have unit norm by construction, so the diagonal is exactly 1, as in

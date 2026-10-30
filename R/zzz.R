@@ -194,6 +194,7 @@ BayesTools_load_JAGS_module <- function(quiet = TRUE, warn = TRUE){
 .BayesTools_native_symbols <- function(){
   c(
     "BayesTools_lkj_cholesky_from_u",
+    "BayesTools_lkj_cholesky_from_u_ordered",
     "BayesTools_lkj_log_prior_u",
     "BayesTools_moment_d",
     "BayesTools_moment_p",

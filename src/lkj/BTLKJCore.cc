@@ -52,6 +52,26 @@ bool valid_alpha(double const *alpha, unsigned int length)
   return true;
 }
 
+// 'position' holds a permutation of 1, ..., K (as doubles, the JAGS argument type).
+bool valid_position(double const *position, unsigned int K)
+{
+  std::vector<bool> seen(K, false);
+  for(unsigned int i = 0; i < K; ++i){
+    const double value = position[i];
+    if(!std::isfinite(value) || value < 1.0 || value > static_cast<double>(K) ||
+       std::floor(value) != value){
+      return false;
+    }
+    const unsigned int index = static_cast<unsigned int>(value) - 1;
+    if(seen[index]){
+      return false;
+    }
+    seen[index] = true;
+  }
+
+  return true;
+}
+
 namespace {
 
 // Preserve the LKJ transform on [0, 1] and keep descendant evaluation
@@ -97,6 +117,71 @@ void fill_cholesky_from_u_strided(double *value, double const *u, unsigned int K
       multiplier *= innovation_from_u(u_value);
     }
     value[flat_index(row, row, K)] = multiplier;
+  }
+}
+
+void fill_cholesky_from_u_ordered(double *value, double const *u, unsigned int K, double const *position)
+{
+  fill_cholesky_from_u_ordered_strided(value, u, K, 1, position);
+}
+
+// The lower Cholesky factor, in design order, of the correlation matrix whose
+// vine-order factor fill_cholesky_from_u() builds, where design column d is
+// vine variable position[d]. The rows of the vine factor are taken in design
+// order and re-triangularized by Givens rotations of their columns (an LQ
+// decomposition): the rotations preserve the row inner products, so L L' is the
+// reordered correlation matrix up to rounding, and the correlation matrix itself
+// is never formed (its Cholesky factorization would lose the small positive
+// diagonal that a primitive near 0 or 1 leaves). An entry that is already zero
+// is not rotated, so the identity order returns the vine factor unchanged. A
+// rank-deficient factor (the clamped extension of an out-of-support proposal)
+// stays finite. In another order a diagonal entry is a conditional SD given the
+// preceding design columns, which the rotations resolve to absolute rounding
+// accuracy only: a conditional SD below rounding of the unit-norm rows (a
+// numerically singular correlation matrix) can come out as 0, whereas the vine
+// order keeps the relative accuracy of its products of innovations.
+void fill_cholesky_from_u_ordered_strided(double *value, double const *u, unsigned int K, unsigned int stride,
+                                          double const *position)
+{
+  std::vector<double> vine(K * K);
+  fill_cholesky_from_u_strided(&vine[0], u, K, stride);
+
+  for(unsigned int row = 1; row <= K; ++row){
+    const unsigned int source = static_cast<unsigned int>(position[row - 1]);
+    for(unsigned int column = 1; column <= K; ++column){
+      value[flat_index(row, column, K)] = vine[flat_index(source, column, K)];
+    }
+  }
+
+  for(unsigned int row = 1; row <= K; ++row){
+    for(unsigned int column = K; column > row; --column){
+      const double b = value[flat_index(row, column, K)];
+      if(b == 0.0){
+        continue;
+      }
+      // The rotation is computed from the pivot pair scaled to a maximum of 1:
+      // c and s from a subnormal radius would carry its rounding (c^2 + s^2
+      // far from 1) into the rotated rows.
+      const double a = value[flat_index(row, row, K)];
+      const double scale = std::max(std::fabs(a), std::fabs(b));
+      const double scaled_r = std::hypot(a / scale, b / scale);
+      const double c = (a / scale) / scaled_r;
+      const double s = (b / scale) / scaled_r;
+      const double r = scale * scaled_r;
+      for(unsigned int other = row; other <= K; ++other){
+        const double x = value[flat_index(other, row, K)];
+        const double y = value[flat_index(other, column, K)];
+        value[flat_index(other, row, K)] = c * x + s * y;
+        value[flat_index(other, column, K)] = c * y - s * x;
+      }
+      value[flat_index(row, row, K)] = r;
+      value[flat_index(row, column, K)] = 0.0;
+    }
+    if(value[flat_index(row, row, K)] < 0.0){
+      for(unsigned int other = row; other <= K; ++other){
+        value[flat_index(other, row, K)] = -value[flat_index(other, row, K)];
+      }
+    }
   }
 }
 

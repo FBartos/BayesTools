@@ -40,11 +40,13 @@ test_that("the JAGS module compiles, samples, and bridges a minimal model", {
     sigma = prior("invgamma", list(2, 1))
   )
   lkj <- JAGS_lkj_corr_cholesky("Omega", K = 3, eta = 1, include_correlation = TRUE)
+  ordered <- "Omega_L_ordered[1:9] <- bt_lkj_cholesky_ordered(Omega_lkj_u[1:3], 3, position[1:3])"
 
   fit <- suppressWarnings(JAGS_fit(
-    model_syntax   = paste0("model{\n", lkj$syntax, "\n}"),
+    model_syntax   = paste0("model{\n", lkj$syntax, ordered, "\n}"),
+    data           = list(position = c(3, 1, 2)),
     prior_list     = prior_list,
-    add_parameters = lkj$monitor,
+    add_parameters = c(lkj$monitor, "Omega_lkj_u", "Omega_L_ordered"),
     chains = 1, adapt = 100, burnin = 100, sample = 500,
     silent = TRUE, seed = 1
   ))
@@ -54,6 +56,13 @@ test_that("the JAGS module compiles, samples, and bridges a minimal model", {
   expect_true(all(c("theta", "phi", "sigma") %in% colnames(samples)))
   expect_true(all(is.finite(samples)))
   expect_true(all(samples[, "sigma"] > 0))
+  # the ordered factor of the module is the R kernel (JAGS flattens row by row)
+  u <- samples[, paste0("Omega_lkj_u[", 1:3, "]"), drop = FALSE]
+  expected <- .bt_lkj_cholesky_cpc_u_to_L_ordered(u, K = 3, position = c(3, 1, 2))
+  expect_identical(
+    unname(samples[, paste0("Omega_L_ordered[", 1:9, "]"), drop = FALSE]),
+    matrix(aperm(expected, c(1L, 3L, 2L)), nrow = nrow(u))
+  )
 
   marglik <- JAGS_bridgesampling(
     fit           = fit,

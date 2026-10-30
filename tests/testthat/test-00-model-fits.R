@@ -4745,6 +4745,74 @@ test_that("native JAGS LKJ transforms reject invalid geometry before evaluation"
   }
 })
 
+test_that("native JAGS ordered LKJ factor is the R kernel and keeps the finite extension", {
+
+  skip_if_not_installed("rjags")
+  skip_if_not(
+    isTRUE(BayesTools_load_JAGS_module(quiet = TRUE, warn = FALSE)),
+    "BayesTools JAGS module is unavailable."
+  )
+  evaluate <- function(syntax, data){
+    con <- textConnection(syntax)
+    on.exit(close(con), add = TRUE)
+    model <- rjags::jags.model(
+      file = con, data = data, n.chains = 1L, n.adapt = 0L, quiet = TRUE
+    )
+    samples <- rjags::coda.samples(
+      model = model, variable.names = "out", n.iter = 1L,
+      quiet = TRUE, progress.bar = "none"
+    )
+    as.numeric(as.matrix(samples)[1L, ])
+  }
+  ordered_syntax <- "model{ out[1:9] <- bt_lkj_cholesky_ordered(u, 3, position) }"
+  corr_syntax    <- "model{ out[1:9] <- bt_lkj_corr(u, 3) }"
+  for(position in list(c(1, 2, 3), c(3, 1, 2), c(2, 3, 1))){
+    for(u in list(c(0.3, 0.6, 0.8), c(1e-40, 0.5, 1 - 1e-16))){
+      # JAGS flattens the factor row by row
+      expect_identical(
+        evaluate(ordered_syntax, list(u = u, position = position)),
+        as.vector(t(.bt_lkj_cholesky_cpc_u_to_L_ordered(u, K = 3, position = position)))
+      )
+    }
+    # an out-of-support proposal keeps the finite extension of the clamped
+    # primitives: the factor of their vine correlation matrix, reordered
+    u <- c(-0.25, 1.3, 0.5)
+    L <- matrix(evaluate(ordered_syntax, list(u = u, position = position)), 3L, byrow = TRUE)
+    R <- matrix(evaluate(corr_syntax, list(u = u)), 3L, byrow = TRUE)
+    expect_true(all(is.finite(L)))
+    expect_true(all(L[upper.tri(L)] == 0))
+    expect_true(all(diag(L) >= 0))
+    expect_lt(max(abs(tcrossprod(L) - R[position, position])), 1e-14)
+  }
+  for(position in list(c(1, 1, 2), c(1, 2, 4))){
+    expect_error(evaluate(ordered_syntax, list(u = c(0.3, 0.6, 0.8), position = position)))
+  }
+
+  # primitives that are partly fixed and partly sampled
+  con <- textConnection(paste0(
+    "model{ u[1] <- 0.5; u[2:3] ~ dbt_lkj_cpc(alpha[1:2]); ",
+    "out[1:9] <- bt_lkj_cholesky_ordered(u[1:3], 3, position[1:3]) }"
+  ))
+  on.exit(close(con), add = TRUE)
+  model <- rjags::jags.model(
+    file = con, data = list(alpha = c(1.5, 1), position = c(2, 3, 1)),
+    inits = list(.RNG.name = "base::Wichmann-Hill", .RNG.seed = 1L),
+    n.chains = 1L, n.adapt = 0L, quiet = TRUE
+  )
+  samples <- as.matrix(rjags::coda.samples(
+    model = model, variable.names = c("u", "out"), n.iter = 50L,
+    quiet = TRUE, progress.bar = "none"
+  ))
+  u <- samples[, paste0("u[", 1:3, "]"), drop = FALSE]
+  expect_true(all(u[, 1L] == 0.5))
+  expect_gt(length(unique(u[, 2L])), 1L)
+  expected <- .bt_lkj_cholesky_cpc_u_to_L_ordered(u, K = 3, position = c(2, 3, 1))
+  expect_identical(
+    unname(samples[, paste0("out[", 1:9, "]"), drop = FALSE]),
+    matrix(aperm(expected, c(1L, 3L, 2L)), nrow = nrow(u))
+  )
+})
+
 test_that("native JAGS LKJ primitive sampling refuses a draw rounded to the boundary of (0, 1)", {
 
   skip_if_not_installed("rjags")

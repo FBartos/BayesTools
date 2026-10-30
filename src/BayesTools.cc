@@ -23,6 +23,7 @@ namespace jags {
       insert(new DBTMoment);
       insert(new DBTInvMoment);
       insert(new BTLKJCholesky);
+      insert(new BTLKJCholeskyOrdered);
       insert(new BTLKJCorr);
     }
 

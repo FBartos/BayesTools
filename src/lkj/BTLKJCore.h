@@ -11,11 +11,15 @@ unsigned int flat_index(unsigned int row, unsigned int column, unsigned int K);
 bool valid_u(double const *u, unsigned int length);
 bool valid_u_strided(double const *u, unsigned int length, unsigned int stride);
 bool valid_alpha(double const *alpha, unsigned int length);
+bool valid_position(double const *position, unsigned int K);
 
 double cpc_from_u(double u);
 
 void fill_cholesky_from_u(double *value, double const *u, unsigned int K);
 void fill_cholesky_from_u_strided(double *value, double const *u, unsigned int K, unsigned int stride);
+void fill_cholesky_from_u_ordered(double *value, double const *u, unsigned int K, double const *position);
+void fill_cholesky_from_u_ordered_strided(double *value, double const *u, unsigned int K, unsigned int stride,
+                                          double const *position);
 void fill_corr_from_cholesky(double *value, double const *L, unsigned int K);
 void fill_corr_from_u(double *value, double const *u, unsigned int K);
 
