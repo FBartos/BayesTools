@@ -4240,7 +4240,8 @@ test_that("single-chain fits skip R-hat and retain the remaining criteria", {
   expect_true(convergence)
   expect_true(is.na(attr(convergence, "diagnostics")$Rhat))
 
-  expect_warning(autofit <- JAGS_fit(
+  # runjags warns that the prior-only model has no data
+  expect_warning(expect_warning(autofit <- JAGS_fit(
     "model{}", prior_list = prior_list, chains = 1,
     adapt = 50, burnin = 50, sample = 1000, seed = 1, silent = TRUE,
     autofit = TRUE,
@@ -4248,7 +4249,7 @@ test_that("single-chain fits skip R-hat and retain the remaining criteria", {
       max_error = NULL, max_SD_error = NULL, max_extend = 1,
       max_time = NULL, sample_extend = 100, restarts = 1,
       check_indicators = FALSE)
-  ), "Only one chain was run", fixed = TRUE)
+  ), "Only one chain was run", fixed = TRUE), "No data was specified", fixed = TRUE)
   expect_s3_class(autofit, "runjags")
   expect_equal(nrow(.extract_posterior_samples(autofit, as_list = TRUE)[[1L]]), 1000)
   expect_false(any(grepl("max_extend", attr(autofit, "warnings"), fixed = TRUE)))
