@@ -39,9 +39,10 @@ plan carries \code{reason} and \code{message} instead.
 
 \code{update} is \code{"scale"} when the contribution of the affected blocks is
 scaled by one coefficient, \code{"column_scale"} when the SDs of some columns of
-a block change (\code{component_index}; the other column SDs of a direct
-per-column SD are held fixed, and the driven columns of an
-allocation-derived SD are listed in \code{driven_columns}), \code{"allocation"} when
+a block change (\code{component_index}, the first column of the selected SD;
+the other column SDs of a direct per-column SD are held fixed, a direct SD
+shared by several columns lists them in \code{driven_columns}, and so do the
+driven columns of an allocation-derived SD), \code{"allocation"} when
 a Dirichlet weight of a variance allocation changes, and \code{"correlation"}
 for a correlation coordinate. A direct per-column SD with unequal column
 SDs reports \code{"column_scale"}.
@@ -108,7 +109,8 @@ factor \code{column_scale} updates only when it drives part of the columns of th
 one block it reaches. All of them hold the allocation weights fixed and scale
 every driven column SD by the same factor (\code{held_fixed}, above), so the
 \code{column_scale} plan of an allocation-derived SD differs from that of a direct
-SD, which replaces one column scale only. Their
+SD, which replaces the scale of its own columns only (one column, or every
+column in \code{driven_columns} for an SD shared by several columns). Their
 \code{coefficient_scale_transform} converts a selected variance to its square
 root and leaves a selected SD unchanged. These
 quantity-scale plans require the public SD to be on the fitted coefficient

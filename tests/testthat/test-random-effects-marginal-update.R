@@ -816,6 +816,64 @@ test_that("non-affine update grids reproduce compiled factor states", {
 })
 
 
+test_that("the update of an SD shared by several columns drives all of them", {
+
+  # the indicator columns of flag:x and of flag:z share one SD each, so the
+  # catalog index of sd(flag:z) (its SD leaf, 3) is not its first column (4)
+  data <- data.frame(
+    id = factor(rep(c("a", "b", "c"), each = 4L)),
+    flag = rep(c(TRUE, FALSE), 6L),
+    x = rep(c(-1, 0.5, 2, 1), 3L),
+    z = rep(c(0.3, -0.8, 1.1), 4L)
+  )
+  expected <- list(intercept = list(1L, NULL), "flag:x" = list(2L, 2:3),
+                   "flag:z" = list(4L, 4:5))
+  for(structure in c("diag", "us")){
+    fit <- .random_update_test_fit(
+      stats::as.formula(paste0("~ 1 + ", structure, "(1 + flag:x + flag:z | id)")), data
+    )
+    for(component in names(expected)){
+      plan <- .random_update_test_plan(fit, "random_sd", component)
+      info <- paste(structure, component)
+      expect_identical(plan$update, "column_scale", info = info)
+      expect_identical(plan$component_index, expected[[component]][[1L]], info = info)
+      expect_identical(plan$driven_columns, expected[[component]][[2L]], info = info)
+    }
+  }
+
+  # the grid replaces the scale of every column of the shared SD: its factor
+  # states are those of the posterior with the SD coordinate replaced
+  plan <- .random_update_test_plan(fit, "random_sd", "flag:z")
+  posterior <- as.matrix(fit)
+  values <- c(0.25, 0.8)
+  grid <- random_effects_marginal_update_grid(
+    fit = fit, update = plan, values = values, posterior_samples = posterior
+  )
+  expect_identical(grid$driven_columns, 4:5)
+  expect_null(grid$column_factor)
+  for(value_i in seq_along(values)){
+    candidate <- posterior
+    candidate[, plan$source_parameter] <- values[[value_i]]
+    direct <- random_effects_marginal_factor_states(
+      fit = fit,
+      parameter = "mu",
+      posterior_samples = candidate,
+      prior_list = attr(fit, "prior_list"),
+      blocks = plan$blocks,
+      row_blocks = list(seq_len(nrow(data)))
+    )
+    for(draw in seq_len(nrow(posterior))){
+      scale <- grid$coefficient_scale[draw, ]
+      scale[grid$driven_columns] <- grid$candidate_scale[value_i, draw]
+      cholesky <- matrix(grid$coefficient_cholesky[draw, , ],
+                         nrow = length(scale), ncol = length(scale))
+      expect_equal(direct$factor_states[[draw]][[1L]]$coefficient_factor,
+                   cholesky * scale, tolerance = 1e-12)
+    }
+  }
+})
+
+
 test_that("every random covariance structure declares an exact update route", {
 
   data <- data.frame(

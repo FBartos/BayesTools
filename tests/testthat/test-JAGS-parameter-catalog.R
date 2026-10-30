@@ -2786,6 +2786,59 @@ test_that("allocation quantities with inclusion gates or point scales declare th
   expect_points_are_density_atoms(nested, "nested")
 })
 
+test_that("a component SD shared by several columns has the law of its own allocation weight", {
+
+  # The indicator columns of flag:x and of flag:z share one SD each: the SD
+  # components are (intercept, flag:x, flag:z) over five columns, so the
+  # weight of sd(flag:z) is the third, not that of its third column (flag:x).
+  alpha <- c(1, 2, 5)
+  data <- data.frame(
+    id = factor(rep(c("a", "b", "c"), each = 4L)),
+    flag = rep(c(TRUE, FALSE), 6L),
+    x = rep(c(-1, 0.5, 2, 1), 3L),
+    z = rep(c(0.3, -0.8, 1.1), 4L)
+  )
+  result <- JAGS_formula(
+    ~ 1 + diag(1 + flag:x + flag:z | id), "mu", data,
+    list(intercept = prior("normal", list(0, 1))),
+    prior_random = prior_random(allocation = random_variance_allocation(
+      name = "split", terms = "id", target = "sd_component",
+      sd = prior("gamma", list(2, 2)),
+      weights = prior("dirichlet", list(alpha = alpha))
+    ))
+  )
+  design <- result$formula_design
+  columns <- unique(c("mu_intercept", JAGS_to_monitor(result$prior_list)))
+  columns <- columns[!columns %in% unlist(lapply(design$random_effects,
+                                                 `[[`, "sd_parameter_names"))]
+  fit <- .parameter_catalog_test_fit(
+    coda::mcmc.list(coda::mcmc(matrix(0.5, 2L, length(columns),
+                                      dimnames = list(NULL, columns)))),
+    result$prior_list,
+    formula_design = list(mu = design)
+  )
+  # SD_k = T sqrt(w_k), T ~ gamma(2, 2), w_k ~ beta(alpha_k, sum(alpha) - alpha_k)
+  reference <- function(value, k){
+    stats::integrate(function(t){
+      stats::dgamma(t, 2, 2) *
+        stats::dbeta((value / t)^2, alpha[[k]], sum(alpha) - alpha[[k]]) * 2 * value / t^2
+    }, value, Inf, rel.tol = 1e-10)$value
+  }
+  values <- c(0.3, 0.7, 1.2)
+  for(k in 2:3){
+    label <- c("", "flag:x", "flag:z")[[k]]
+    selection <- parameter_catalog_resolve(
+      parameter_catalog(fit), paste0("sd(", label, ")"), "mu"
+    )
+    density <- parameter_prior_density(fit, selection)
+    ordinates <- vapply(values, function(value){
+      exp(prior_density_ordinate(density, value)$log_density)
+    }, numeric(1))
+    expect_equal(ordinates, vapply(values, reference, numeric(1), k = k),
+                 tolerance = 1e-6, info = label)
+  }
+})
+
 test_that("quantities with structural atoms that the catalog cannot derive declare an inexact support", {
 
   # An inclusion gate or a point component in a scale prior puts point masses

@@ -40,9 +40,10 @@
 #'
 #'   `update` is `"scale"` when the contribution of the affected blocks is
 #'   scaled by one coefficient, `"column_scale"` when the SDs of some columns of
-#'   a block change (`component_index`; the other column SDs of a direct
-#'   per-column SD are held fixed, and the driven columns of an
-#'   allocation-derived SD are listed in `driven_columns`), `"allocation"` when
+#'   a block change (`component_index`, the first column of the selected SD;
+#'   the other column SDs of a direct per-column SD are held fixed, a direct SD
+#'   shared by several columns lists them in `driven_columns`, and so do the
+#'   driven columns of an allocation-derived SD), `"allocation"` when
 #'   a Dirichlet weight of a variance allocation changes, and `"correlation"`
 #'   for a correlation coordinate. A direct per-column SD with unequal column
 #'   SDs reports `"column_scale"`.
@@ -99,7 +100,8 @@
 #' one block it reaches. All of them hold the allocation weights fixed and scale
 #' every driven column SD by the same factor (`held_fixed`, above), so the
 #' `column_scale` plan of an allocation-derived SD differs from that of a direct
-#' SD, which replaces one column scale only. Their
+#' SD, which replaces the scale of its own columns only (one column, or every
+#' column in `driven_columns` for an SD shared by several columns). Their
 #' `coefficient_scale_transform` converts a selected variance to its square
 #' root and leaves a selected SD unchanged. These
 #' quantity-scale plans require the public SD to be on the fitted coefficient
@@ -245,7 +247,8 @@ random_effects_marginal_update_plan <- function(fit, selection){
 #'   posterior coefficient scales, correlation Cholesky factors, and the
 #'   selected candidate scales. The candidate scale replaces the scale of
 #'   column `component_index` only for a plan that holds the sibling SDs fixed
-#'   (a direct per-column SD). For a plan with `held_fixed =
+#'   (a direct per-column SD), and of every column in `driven_columns` when the
+#'   direct SD is shared by several columns. For a plan with `held_fixed =
 #'   "allocation_weights"` (an allocation-derived component SD) the grid also
 #'   contains `column_factor` (values by posterior draws), the factor
 #'   `candidate_scale / coefficient_scale[, component_index]` by which the
@@ -393,6 +396,10 @@ random_effects_marginal_update_grid <- function(
       out$held_fixed <- update$held_fixed
       out$driven_columns <- update$driven_columns
       out$column_factor <- unname(column_factor)
+    }else if(!is.null(update$driven_columns)){
+      # a direct SD shared by several columns: the candidate scale replaces the
+      # scale of each of them
+      out$driven_columns <- update$driven_columns
     }
   }else{
     candidate <- posterior[rep(1L, length(values)), , drop = FALSE]
@@ -780,6 +787,24 @@ random_effects_marginal_update_grid <- function(
 }
 
 
+# The design columns of the SD that the catalog index 'index' selects. The
+# catalog indexes the unique SD nodes of a block (its SD leaves), and several
+# columns can share one leaf (the indicator columns of a logical predictor's
+# interaction), so the index of an SD is not the index of a column.
+.bt_random_effect_marginal_update_sd_columns <- function(random_term, index){
+
+  sd_names <- random_term$sd_parameter_names
+  leaves   <- unique(sd_names[!is.na(sd_names)])
+  if(!is.numeric(index) || length(index) != 1L || is.na(index) ||
+     index < 1L || index > length(leaves) || index != floor(index)){
+    stop("The selected random-effect SD does not identify an SD of its block.",
+         call. = FALSE)
+  }
+
+  which(sd_names == leaves[[index]])
+}
+
+
 .bt_random_effect_marginal_update_sd <- function(fit, quantity, key,
                                                   random_term){
 
@@ -787,6 +812,10 @@ random_effects_marginal_update_grid <- function(
     random_term,
     context = "Random-effect marginal covariance update plan"
   )
+  # the first column of the selected SD, and all its columns when it is shared
+  columns <- .bt_random_effect_marginal_update_sd_columns(random_term, key$index)
+  column  <- columns[[1L]]
+  shared_columns <- if(length(columns) > 1L) columns
   if(isTRUE(key$allocation_derived)){
     allocations <- random_term$sd_binding$allocations
     allocations <- Filter(function(allocation){
@@ -833,7 +862,7 @@ random_effects_marginal_update_grid <- function(
       ),
       source = .bt_random_sd_binding_source_name(random_term$sd_binding$source),
       first = block,
-      column = key$index
+      column = column
     )
     if(identical(reach$family, "unsupported")){
       return(.bt_random_effect_marginal_update_unavailable(
@@ -854,7 +883,7 @@ random_effects_marginal_update_grid <- function(
           list(type = "square")
         },
         coefficient_input = "quantity",
-        component_index = key$index,
+        component_index = column,
         structure = structure,
         held_fixed = "allocation_weights"
       ))
@@ -865,7 +894,7 @@ random_effects_marginal_update_grid <- function(
       family = "factor",
       update = "column_scale",
       blocks = block,
-      component_index = key$index,
+      component_index = column,
       structure = structure,
       coefficient_input = "quantity",
       coefficient_scale_transform = if(identical(key$evaluator, "sd_variance")){
@@ -894,13 +923,15 @@ random_effects_marginal_update_grid <- function(
   homogeneous <- length(unique(random_term$sd_parameter_names)) == 1L
   affine <- n_columns == 1L || structure %in% c("id", "diag") || homogeneous
   if(isTRUE(affine)){
+    column_update <- !(n_columns == 1L || homogeneous)
     return(.bt_random_effect_marginal_update_affine(
-      update = if(n_columns == 1L || homogeneous) "scale" else "column_scale",
+      update = if(column_update) "column_scale" else "scale",
       blocks = random_term$block_name,
       coefficient_transform = list(type = "square"),
       coefficient_input = "source",
-      component_index = key$index,
-      structure = structure
+      component_index = column,
+      structure = structure,
+      driven_columns = if(column_update) shared_columns
     ))
   }
 
@@ -910,9 +941,10 @@ random_effects_marginal_update_grid <- function(
       family = "factor",
       update = "column_scale",
       blocks = random_term$block_name,
-      component_index = key$index,
+      component_index = column,
       structure = structure,
-      coefficient_input = "source"
+      coefficient_input = "source",
+      driven_columns = shared_columns
     ))
   }
 
@@ -1020,7 +1052,7 @@ random_effects_marginal_update_grid <- function(
 .bt_random_effect_marginal_update_affine <- function(
     update, blocks, coefficient_transform, coefficient_input,
     component_index = NA_integer_, structure = "", allocation = NULL,
-    held_fixed = NULL){
+    held_fixed = NULL, driven_columns = NULL){
 
   out <- list(
     family = "affine",
@@ -1034,6 +1066,9 @@ random_effects_marginal_update_grid <- function(
   )
   if(!is.null(held_fixed)){
     out$held_fixed <- held_fixed
+  }
+  if(!is.null(driven_columns)){
+    out$driven_columns <- driven_columns
   }
 
   out

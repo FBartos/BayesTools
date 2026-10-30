@@ -1629,14 +1629,15 @@ parameter_prior_density.BayesTools_fit <- function(
     return(NULL)
   }
   if(identical(target, "sd_component")){
-    leaf_index <- allocation$leaf_index_by_column
-    if(length(leaf_index) < key$index || is.na(leaf_index[[key$index]])){
+    # the catalog index of an SD is its leaf, the weight index of a component
+    # allocation (several columns can share one leaf)
+    if(!key$index %in% allocation$leaf_index_by_column){
       return(NULL)
     }
     factors <- allocation$parent_factors
     factors[[length(factors) + 1L]] <- list(
       weight_name = allocation$weight_name,
-      index = leaf_index[[key$index]],
+      index = as.integer(key$index),
       scale = allocation$scale,
       n_targets = allocation$n_targets
     )

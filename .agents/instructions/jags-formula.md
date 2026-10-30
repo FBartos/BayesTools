@@ -940,7 +940,11 @@ a block for an aggregate (which has no selected column), has no exact scalar
 update (`unsupported`, reason `partial_scale_reach`). Downstream priors for the
 update (RoBMA's IWMDE prior side) use the same conditional and move all reached
 columns. A direct per-column SD keeps `column_scale` with its siblings fixed and
-has no `held_fixed`.
+has no `held_fixed`. The catalog index of an SD is its SD leaf, not a column:
+`component_index` is the first column of the selected SD, and an SD shared by
+several columns lists all of them in `driven_columns`, whose scales the grid's
+candidate replaces (a direct SD) or multiplies by `column_factor` (an
+allocation-derived SD).
 Formula-scaled allocation-derived SDs, and SDs that depend on several fitted
 coordinates, have no exact single-coordinate update and are `unsupported`.
 Do not make a downstream package reconstruct these quantities from raw JAGS
