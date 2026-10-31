@@ -698,12 +698,12 @@
 # uncorrelated coordinates, whose level-cell deviations then do not depend on
 # the basis. A term whose factors are all so coded is one unit; a term that
 # crosses them with factors of another coding (treatment, independent, ordered,
-# or indicator-coded) has one unit per column of that partner coding. A unit holds its block `columns`, its SD component
-# label `term` (the term, with the partner's level or coefficient in a
-# multi-unit term: `f__xXx__h[b]`), the labels of the level `cells` of its
-# coded factors, and `weights`, the design of its columns at those cells (the
-# map from its coordinates to the cell deviations). NULL for a term without a
-# meandif or orthonormal factor.
+# or indicator-coded) has one unit per column of that partner coding. A unit
+# holds its block `columns`, its SD component label `term` (the term, with the
+# partner's level or coefficient in a multi-unit term: `f__xXx__h[b]`), the
+# labels of the level `cells` of its coded factors, and `weights`, the design of
+# its columns at those cells (the map from its coordinates to the cell
+# deviations). NULL for a term without a meandif or orthonormal factor.
 .bt_random_effect_factor_units <- function(model_term, columns, factor_term_design){
 
   if(!is.function(factor_term_design)){

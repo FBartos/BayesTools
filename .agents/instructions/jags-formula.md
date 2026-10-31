@@ -294,9 +294,10 @@ fit get it from `JAGS_formula_draws()`, which builds it as `JAGS_fit()` does;
 never evaluate from prior-list factor metadata. The one route that rebuilds the
 model matrix from contrast names, `marginal_posterior()` on draws without a
 formula state, refuses a stored orthonormal or mean-difference basis that
-differs from the current contrasts (`BayesTools_refit_required`). The `log(intercept)` flag of an
-evaluation is the stored flag of the design, also for an explicit formula
-without the attribute; an explicit attribute that disagrees with it stops with
+differs from the current contrasts (`BayesTools_refit_required`). The
+`log(intercept)` flag of an evaluation is the stored flag of the design, also
+for an explicit formula without the attribute; an explicit attribute that
+disagrees with it stops with
 `BayesTools_formula_transform_unavailable` (reason `log_intercept_mismatch`; as
 `marginal_posterior()` requires them to agree).
 Formulas stored in designs and
@@ -646,9 +647,9 @@ what it calls, needs a `fit` profile refresh of the cached fits.
   without `x`) counts as independent whatever its declared contrast, so the
   columns of an interaction-only term are level cells (`f[a]:x`), while a
   factor coded by an orthonormal or mean-difference contrast keeps the tag gate
-  (labels follow the coding, not the declared contrast tag). Every other coordinate is
-  contrast coefficient `<parameter>{j}`, labelled so in tables, diagnostics,
-  and mixed-posterior columns of fixed effects. A
+  (labels follow the coding, not the declared contrast tag). Every other
+  coordinate is contrast coefficient `<parameter>{j}`, labelled so in tables,
+  diagnostics, and mixed-posterior columns of fixed effects. A
   `{j}` selector of a direct level coordinate is refused (in catalog
   resolution and in `hypothesis_parse()` with a catalog) with class
   `BayesTools_selector_unavailable`, naming the level in the same form. JAGS

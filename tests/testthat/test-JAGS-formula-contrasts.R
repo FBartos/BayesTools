@@ -29,6 +29,23 @@ test_that("orthonormal contrasts are the closed-form Helmert basis for 2, 3 and 
   expect_true(all(contr.orthonormal(7)[below] == 0))
 })
 
+test_that("orthonormal and mean-difference contrasts are exactly the scaled Helmert columns for 2 to 10 levels", {
+
+  # stats::contr.helmert() holds the integer columns (-1 repeated j times, j, zeros);
+  # dividing each by sqrt(j * (j + 1)) is the single correctly rounded operation
+  # per entry that the closed form states, with no decimal literals
+  for(a in 2:10){
+    helmert <- unname(stats::contr.helmert(a))
+    expected <- matrix(0, nrow = a, ncol = a - 1L)
+    for(j in seq_len(a - 1L)){
+      expected[, j] <- helmert[, j] / sqrt(j * (j + 1))
+    }
+
+    expect_identical(contr.orthonormal(a), expected, info = paste("orthonormal", a))
+    expect_identical(contr.meandif(a), expected / sqrt(1 - 1 / a), info = paste("meandif", a))
+  }
+})
+
 test_that("orthonormal contrasts have orthonormal, centred columns and imply the centring matrix", {
 
   for(a in 2:10){

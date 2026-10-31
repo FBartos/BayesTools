@@ -2774,9 +2774,9 @@ parameter_transform_jacobian <- function(values, transform){
 # Contrasts whose term design rows are exact 0/1 structure. For these, a design
 # row equal to a unit vector states that the level cell is that coordinate.
 # Mean-difference and orthonormal rows come from a closed-form basis, where a
-# unit row (the last mean-difference row is one by construction) is a property
-# of the chosen basis, not of the meaning of the contrast, so they never state a
-# level cell.
+# unit row (the last mean-difference row has a single nonzero entry, equal to
+# one only up to rounding) is a property of the chosen basis, not of the meaning
+# of the contrast, so they never state a level cell.
 .bt_parameter_catalog_structural_contrasts <- function(){
 
   c(
