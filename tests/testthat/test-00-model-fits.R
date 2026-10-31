@@ -4926,6 +4926,40 @@ test_that("native JAGS LKJ blocks with an exchangeable unit extend their fits", 
   extended_samples <- as.matrix(extended$mcmc)
   expect_true(all(extended_samples[, within] == 0))
   expect_identical(parameter_catalog(extended), parameter_catalog(fit))
+
+  # a unit leading the design keeps the vine order: its Cholesky block is the
+  # constant identity, which the enabled convergence checks treat as structural
+  data_formula$x <- stats::rnorm(48)
+  leading <- JAGS_fit(
+    model_syntax = "model{\nfor(i in 1:N){\n  y[i] ~ dnorm(mu[i], 1)\n}\n}",
+    data = data,
+    formula_list = list(mu = ~ 1 + f + x + us(0 + f + x | id)),
+    formula_data_list = list(mu = data_formula),
+    formula_prior_list = list(mu = list(
+      intercept = prior("normal", list(0, 1)),
+      x = prior("normal", list(0, 1)),
+      f = prior_factor("mnormal", list(0, 1), contrast = "meandif")
+    )),
+    formula_random_prior_list = list(mu = prior_random(id = random_block(
+      sd = prior("normal", list(0, 1), list(0, Inf)),
+      monitor = random_monitor(correlation = TRUE)
+    ))),
+    chains = 2, adapt = 100, burnin = 100, sample = 200, seed = 23L, silent = TRUE
+  )
+  unit_cholesky <- paste0("mu__xREx__id_xRE_CORx_L[", c(1, 2, 3, 2, 3, 3), ",", c(1, 1, 1, 2, 2, 3), "]")
+  leading_samples <- as.matrix(leading$mcmc)[, unit_cholesky]
+  # one value per cell over all draws: the identity up to rounding of the
+  # diagonal row norms
+  expect_identical(apply(leading_samples, 2L, function(cell) length(unique(cell))), stats::setNames(rep(1L, 6L), unit_cholesky))
+  expect_equal(unname(leading_samples[1L, ]), c(1, 0, 0, 1, 0, 1), tolerance = 1e-14)
+  check <- JAGS_check_convergence(leading, prior_list = attr(leading, "prior_list"),
+    max_Rhat = 10, min_ESS = 1, max_error = NULL, max_SD_error = NULL)
+  diagnostics <- attr(check, "diagnostics")
+  expect_identical(
+    diagnostics$state[match(unit_cholesky, diagnostics$parameter)],
+    rep("structural_constant", length(unit_cholesky))
+  )
+  expect_false(any(diagnostics$state == "not_assessable"))
 })
 
 test_that("native JAGS LKJ primitive sampling refuses a draw rounded to the boundary of (0, 1)", {

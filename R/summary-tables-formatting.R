@@ -318,14 +318,15 @@
 # 'definedness'): "correlation" for an original-scale random-effect
 # correlation (NA when an SD is zero), "multiple_correlation" for the
 # multiple correlation with an exchangeable factor unit (NA also when the
-# unit's correlation matrix is singular), "allocation_active" for the variance
+# unit's correlation matrix is singular at working precision, or rounding
+# puts the value outside its support), "allocation_active" for the variance
 # share of a gated total-variance allocation (NA when no component is
 # active), and "positive_definite" for raw Cholesky and LKJ coordinates (NA
 # unless the correlation matrix is positive definite). Summaries of such quantities use
 # the defined draws and report their share in a row footnote.
 .bt_undefined_draws_reasons <- c(
   correlation       = "where the correlation is defined, i.e. both SDs are positive",
-  multiple_correlation = "where the multiple correlation is defined, i.e. the SDs are positive and the correlation matrix of the factor term is not singular",
+  multiple_correlation = "where the multiple correlation is defined and evaluable, i.e. the SDs are positive and the correlation matrix of the factor term is not singular at working precision, with the computed value within its support",
   allocation_active = "where the variance share is defined, i.e. an allocation component is active",
   ordered_parameterization = "where the model contains this ordered allocation parameterization",
   positive_definite = "where the correlation matrix is positive definite"

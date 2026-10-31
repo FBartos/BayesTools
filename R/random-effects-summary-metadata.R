@@ -291,19 +291,32 @@
     other <- row$elements[[2L]]
     if(identical(row$type, "total")){
       # sqrt(r' R_ff^-1 r) for the correlations r of the leading column. A
-      # draw whose unit correlation matrix is singular (an original-scale unit
-      # of lower rank, e.g. at a zero SD) has no inverse: it is undefined.
+      # draw whose unit correlation matrix is singular at working precision
+      # (an original-scale unit of lower rank, e.g. at a zero SD) has no
+      # inverse: it is undefined. An ill-conditioned nonsingular matrix keeps
+      # its value unless rounding puts it above one beyond the support
+      # tolerance of posterior summaries (sqrt(eps)): such a draw is not
+      # determinable at working precision and is undefined too. (A fitted-scale
+      # unit block is the identity, as are the original-scale unit blocks of
+      # the models that can be fitted.)
       r <- R[, other$columns, lead$columns, drop = FALSE]
       dim(r) <- c(dim(R)[1L], length(other$columns))
       R_ff <- R[, other$columns, other$columns, drop = FALSE]
       values[, i] <- vapply(seq_len(dim(R)[1L]), function(draw){
         r_draw <- r[draw, ]
         R_draw <- matrix(R_ff[draw, , ], length(other$columns))
-        if(anyNA(r_draw) || anyNA(R_draw) ||
-           rcond(R_draw) < sqrt(.Machine$double.eps)){
+        if(anyNA(r_draw) || anyNA(R_draw)){
           return(NA_real_)
         }
-        sqrt(sum(r_draw * solve(R_draw, r_draw)))
+        eigenvalues <- eigen(R_draw, symmetric = TRUE, only.values = TRUE)$values
+        if(min(eigenvalues) <= length(eigenvalues) * .Machine$double.eps * max(eigenvalues)){
+          return(NA_real_)
+        }
+        squared <- sum(backsolve(chol(R_draw), r_draw, transpose = TRUE)^2)
+        if(squared > 1 + sqrt(.Machine$double.eps)){
+          return(NA_real_)
+        }
+        sqrt(squared)
       }, numeric(1))
     }else{
       values[, i] <- quadratic(lead, other) /

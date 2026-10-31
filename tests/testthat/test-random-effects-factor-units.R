@@ -694,6 +694,90 @@ test_that("a multiple correlation of a singular unit block is undefined, not an 
   labels <- vapply(rows, `[[`, character(1), "label")
   expect_true(is.na(values[1L, labels == "intercept,f"]))
   expect_equal(values[1L, labels == "intercept,x"], 0.3)
+
+  # an ill-conditioned but nonsingular unit block keeps its value:
+  # R_ff = [[1, 1 - e], [1 - e, 1]] and r = (1/2, 1/2) give r' R_ff^-1 r = 1 / (2 (2 - e))
+  term <- .unit_term(.unit_formula(~ 1 + g + us(1 + g | id), "g"))
+  rows <- .bt_random_effect_correlation_rows(term)
+  e <- 1e-9
+  R <- matrix(c(1, 0.5, 0.5, 0.5, 1, 1 - e, 0.5, 1 - e, 1), 3L)
+  values <- .bt_random_effect_correlation_row_values(rows, array(R, dim = c(1L, 3L, 3L)))
+  labels <- vapply(rows, `[[`, character(1), "label")
+  expect_equal(values[1L, labels == "intercept,g"], sqrt(1 / (2 * (2 - e))), tolerance = 1e-6)
+
+  # a nearly singular block with correlations at the boundary (exactly about
+  # 0.999999) may round above one; it never leaves the support tolerance
+  # of posterior summaries, and a fitted-scale identity block at the boundary
+  # stays finite
+  term <- .unit_term(.unit_formula(~ 1 + f + us(1 + f | id), "f"))
+  rows <- .bt_random_effect_correlation_rows(term)
+  labels <- vapply(rows, `[[`, character(1), "label")
+  b <- 0.7071067811861939
+  R <- diag(4)
+  R[2:4, 2:4] <- matrix(c(1, 0, b, 0, 1, b, b, b, 1), 3L)
+  R[1, 2:4] <- R[2:4, 1] <- c(0, 0, 1.0001620857883492e-6)
+  value <- .bt_random_effect_correlation_row_values(rows, array(R, dim = c(1L, 4L, 4L)))[1L, labels == "intercept,f"]
+  expect_true(is.na(value) || (value >= 0 && value <= 1 + sqrt(.Machine$double.eps)))
+  R <- diag(4)
+  R[1, 2:4] <- R[2:4, 1] <- c(0.6, 0.8, 0)
+  value <- .bt_random_effect_correlation_row_values(rows, array(R, dim = c(1L, 4L, 4L)))[1L, labels == "intercept,f"]
+  expect_equal(value, 1, tolerance = 1e-15)
+})
+
+test_that("convergence roles mark the constant cells of a unit block as structural", {
+
+  roles <- function(result){
+    K <- .unit_term(result)$n_columns
+    cells <- expand.grid(row = seq_len(K), column = seq_len(K))
+    names <- function(matrix_name){
+      paste0("mu__xREx__id_xRE_CORx_", matrix_name, "[", cells$row, ",", cells$column, "]")
+    }
+    # the three fixed within-unit primitives lead the vine; the fourth is
+    # free (all four monitored explicitly, by their base name)
+    primitives <- paste0("mu__xREx__id_xRE_CORx_lkj_u[", 1:4, "]")
+    coordinates <- .bt_build_parameter_coordinates(
+      columns = c(names("L"), names("R"), primitives),
+      prior_list = result$prior_list,
+      formula_design = list(mu = result$formula_design),
+      add_parameters = c(result$add_parameters, "mu__xREx__id_xRE_CORx_lkj_u"),
+      model_syntax = paste0("model{\n", result$formula_syntax, "}"),
+      data_names = names(result$data)
+    )
+    role <- function(matrix_name){
+      matrix(coordinates$convergence_role[match(names(matrix_name), coordinates$coordinate_name)], K)
+    }
+    list(
+      L = role("L"), R = role("R"),
+      u = coordinates$convergence_role[match(primitives, coordinates$coordinate_name)]
+    )
+  }
+  # derived cells, with the zero upper Cholesky triangle and the unit diagonal
+  # and within-unit cells of the correlation matrix structural
+  expected <- function(K, unit){
+    L <- matrix("derived", K, K)
+    L[upper.tri(L)] <- "structural"
+    R <- matrix("derived", K, K)
+    diag(R) <- "structural"
+    R[unit, unit] <- "structural"
+    list(L = L, R = R, u = c(rep("structural", 3L), "sampled"))
+  }
+  monitor <- prior_random(id = random_block(
+    sd = .unit_sd_prior,
+    monitor = random_monitor(correlation = TRUE)
+  ))
+
+  # a unit leading the design keeps the vine order: its Cholesky block is the
+  # identity, so constant
+  leading <- .unit_formula(~ 1 + f + x + us(0 + f + x | id), c("f", "x"), prior_random = monitor)
+  expect_identical(.unit_term(leading)$correlation$unit_columns, 1:3)
+  out <- expected(4L, 1:3)
+  out$L[1:3, 1:3] <- "structural"
+  expect_identical(roles(leading), out)
+
+  # a reordered vine: the first Cholesky diagonal is a row norm (derived)
+  reordered <- .unit_formula(~ 1 + x + f + us(1 + x + f | id), c("x", "f"), prior_random = monitor)
+  expect_identical(.unit_term(reordered)$correlation$unit_columns, 3:5)
+  expect_identical(roles(reordered), expected(5L, 3:5))
 })
 
 test_that("original-scale level cells need only the unit's own certified SD", {

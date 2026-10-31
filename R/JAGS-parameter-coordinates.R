@@ -1566,8 +1566,11 @@
 # probability is a point prior at 0 or 1 is a constant.
 # The correlation cells of the LKJ blocks with an exchangeable unit
 # (.bt_random_effect_lkj_layout()): the within-unit cells of the correlation
-# matrix (`structural`), and the first Cholesky diagonal element of a block
-# whose unit reorders the vine (`reordered`).
+# matrix, the fixed within-unit primitives and, for a unit leading the design
+# (an unreordered vine), the identity block of the Cholesky factor
+# (`structural`), and the first
+# Cholesky diagonal element of a block whose unit reorders the vine
+# (`reordered`).
 .bt_convergence_role_lkj_unit_cells <- function(formula_design){
 
   if(inherits(formula_design, "BayesTools_formula_design")){
@@ -1590,9 +1593,17 @@
       stem <- random_term$parameter_stem
       out$structural <- c(
         out$structural,
-        paste0(stem, "_xRE_CORx_R[", cells$row, ",", cells$column, "]")
+        paste0(stem, "_xRE_CORx_R[", cells$row, ",", cells$column, "]"),
+        paste0(stem, "_xRE_CORx_lkj_u[", layout$fixed_pairs, "]")
       )
-      if(!.bt_lkj_layout_identity_order(layout)){
+      if(.bt_lkj_layout_identity_order(layout)){
+        lower <- cells[cells$row > cells$column, , drop = FALSE]
+        out$structural <- c(
+          out$structural,
+          paste0(stem, "_xRE_CORx_L[", lower$row, ",", lower$column, "]"),
+          paste0(stem, "_xRE_CORx_L[", layout$unit_columns, ",", layout$unit_columns, "]")
+        )
+      }else{
         out$reordered <- c(out$reordered, paste0(stem, "_xRE_CORx_L[1,1]"))
       }
     }
