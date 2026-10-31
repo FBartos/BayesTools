@@ -1,0 +1,3 @@
+                    H1            H0          method log_BF10                                     note
+1 (1 + Days | Subject) (1 | Subject) bridge sampling   17.399                                         
+2 (1 + Days | Subject) (1 | Subject)  spike and slab    9.903 lower bound: all draws include the slope

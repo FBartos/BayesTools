@@ -1,0 +1,3 @@
+include Makevars.win.common
+
+PKG_CXXFLAGS = -D_GLIBCXX_USE_CXX11_ABI=0

@@ -86,6 +86,61 @@ test_that("monotone weightfunction marginal helpers use reference-first cumulati
   )
 })
 
+test_that("weightfunction marginal helpers agree with the marginals of the matching prior", {
+
+  q_seq <- seq(0, 1, .1)
+  alpha <- c(.3, 1, 2)
+  helpers <- list(
+    "one-sided" = list(density = mdone.sided, cdf = mpone.sided, quantile = mqone.sided),
+    "two-sided" = list(density = mdtwo.sided, cdf = mptwo.sided, quantile = mqtwo.sided)
+  )
+
+  for(side in names(helpers)){
+    wf_prior <- prior_weightfunction(side = side, steps = c(.025, .05), weights = wf_cumulative(alpha))
+    expect_equal(
+      unname(helpers[[side]][["density"]](q_seq, alpha = alpha)),
+      unname(mpdf(wf_prior, q_seq)),
+      tolerance = 1e-12
+    )
+    expect_equal(
+      unname(helpers[[side]][["cdf"]](q_seq, alpha = alpha)),
+      unname(mcdf(wf_prior, q_seq)),
+      tolerance = 1e-12
+    )
+    # (the helper of 0.3.0 returns 0 for the reference bin at probability 0, the prior returns 1)
+    expect_equal(
+      unname(helpers[[side]][["quantile"]](q_seq[-1], alpha = alpha)),
+      unname(mquant(wf_prior, q_seq[-1])),
+      tolerance = 1e-12
+    )
+  }
+
+  # concentrations with overflowing cumulative sums are refused identically by the helpers and the prior
+  overflow <- rep(1e308, 4)
+  for(side in names(helpers)){
+    wf_prior <- prior_weightfunction(side = side, steps = c(.025, .05, .1), weights = wf_cumulative(overflow))
+    refusals <- list(
+      list(helper = function() helpers[[side]][["density"]](.5, alpha = overflow),  prior = function() mpdf(wf_prior, .5)),
+      list(helper = function() helpers[[side]][["cdf"]](.5, alpha = overflow),      prior = function() mcdf(wf_prior, .5)),
+      list(helper = function() helpers[[side]][["quantile"]](.5, alpha = overflow), prior = function() mquant(wf_prior, .5))
+    )
+    for(refusal in refusals){
+      helper_error <- tryCatch(refusal[["helper"]](), error = identity)
+      prior_error  <- tryCatch(refusal[["prior"]](),  error = identity)
+      expect_s3_class(helper_error, "BayesTools_weightfunction_beta_shape_unavailable")
+      expect_s3_class(prior_error,  "BayesTools_weightfunction_beta_shape_unavailable")
+      expect_identical(class(prior_error), class(helper_error))
+      expect_identical(conditionMessage(prior_error), conditionMessage(helper_error))
+    }
+  }
+
+  # one non-finite shape stops as well, and shapes below the largest double stay supported
+  wf_prior <- prior_weightfunction(side = "one-sided", steps = c(.025, .05, .1), weights = wf_cumulative(c(1e308, 1e308, 1e308, 1)))
+  expect_s3_class(tryCatch(mquant(wf_prior, .5), error = identity), "BayesTools_weightfunction_beta_shape_unavailable")
+  wf_prior <- prior_weightfunction(side = "one-sided", steps = c(.025, .05, .1), weights = wf_cumulative(rep(1e100, 4)))
+  expect_equal(unname(mquant(wf_prior, .5)), matrix(c(1, .75, .5, .25), nrow = 1), tolerance = 1e-6)
+})
+
 test_that("monotone weightfunction RNG fixes the first reference bin", {
 
   set.seed(1)
@@ -109,6 +164,109 @@ test_that("monotone weightfunction RNG fixes the first reference bin", {
   general <- rone.sided(1000, alpha1 = c(1, 1), alpha2 = c(1, 1))
   expect_equal(general[,1], rep(1, nrow(general)), tolerance = 1e-12)
   expect_true(all(general >= -1e-12 & general <= 1 + 1e-12))
+})
+
+test_that("weightfunction RNG keeps the extraDistr draws and RNG stream", {
+
+  # monotone: cumulative sums of one Dirichlet draw, reference bin fixed to one
+  set.seed(5)
+  draws <- extraDistr::rdirichlet(3, alpha = c(1, 2, 3))
+  expected_seed <- .Random.seed
+  set.seed(5)
+  actual <- rone.sided(3, alpha = c(1, 2, 3))
+  expect_equal(actual, cbind(1, draws[,2] + draws[,3], draws[,3]))
+  expect_identical(.Random.seed, expected_seed)
+
+  # two-sided with row-specific concentrations
+  alpha <- matrix(c(1, 2, 3, 2, 1, 1), nrow = 2, byrow = TRUE)
+  set.seed(5)
+  draws <- extraDistr::rdirichlet(2, alpha = alpha)
+  expected_seed <- .Random.seed
+  set.seed(5)
+  actual <- rtwo.sided(2, alpha = alpha)
+  expect_equal(actual, cbind(1, draws[,2] + draws[,3], draws[,3]))
+  expect_identical(.Random.seed, expected_seed)
+
+  # general (alpha1, alpha2): two draws in this order (values of the release code)
+  set.seed(5)
+  extraDistr::rdirichlet(3, alpha = c(1, 2))
+  extraDistr::rdirichlet(3, alpha = c(2, 3))
+  expected_seed <- .Random.seed
+  set.seed(5)
+  actual <- rone.sided(3, alpha1 = c(1, 2), alpha2 = c(2, 3))
+  expect_equal(actual, rbind(
+    c(1, 0.08512392505, 0.8233342000),
+    c(1, 0.11289401034, 0.3717778611),
+    c(1, 0.08883173862, 0.4820797988)
+  ), tolerance = 1e-8)
+  expect_identical(.Random.seed, expected_seed)
+})
+
+test_that("weightfunction RNG reports unavailable Dirichlet draws with the typed condition", {
+
+  expected_message <- "Dirichlet draws are unavailable because sampling produced non-finite or degenerate simplex draws. Use a less extreme 'alpha' specification."
+  expect_dirichlet_unavailable <- function(expr){
+    error <- tryCatch(expr, error = identity)
+    expect_s3_class(error, "BayesTools_dirichlet_rng_unavailable")
+    if(inherits(error, "error")){
+      expect_identical(class(error), c("BayesTools_dirichlet_rng_unavailable", "BayesTools_prior_rng_unavailable", "error", "condition"))
+      expect_identical(conditionMessage(error), expected_message)
+      expect_null(conditionCall(error))
+    }
+  }
+
+  set.seed(11)
+  expect_dirichlet_unavailable(rone.sided(3, alpha = c(1e308, 1e308)))
+  set.seed(11)
+  expect_dirichlet_unavailable(rtwo.sided(3, alpha = c(1e308, 1e308)))
+  set.seed(11)
+  expect_dirichlet_unavailable(rone.sided(3, alpha = matrix(c(1e308, 1e308), nrow = 3, ncol = 2, byrow = TRUE)))
+  set.seed(11)
+  expect_dirichlet_unavailable(rone.sided(3, alpha1 = c(1e308, 1e308), alpha2 = c(1, 1)))
+  set.seed(11)
+  expect_dirichlet_unavailable(rone.sided(3, alpha1 = c(1, 1), alpha2 = c(1e308, 1e308)))
+})
+
+test_that("weightfunction marginals refuse Beta shapes beyond the largest double", {
+
+  expected_message <- paste0(
+    "The Beta shapes of the weight-function marginals are not representable: ",
+    "the cumulative sums of 'alpha' exceed the largest double. ",
+    "Use less extreme 'alpha' values."
+  )
+  expect_shape_unavailable <- function(expr){
+    error <- tryCatch(expr, error = identity)
+    expect_s3_class(error, "BayesTools_weightfunction_beta_shape_unavailable")
+    if(inherits(error, "error")){
+      expect_identical(class(error), c(
+        "BayesTools_weightfunction_beta_shape_unavailable", "BayesTools_weightfunction_unavailable", "error", "condition"
+      ))
+      expect_identical(conditionMessage(error), expected_message)
+      expect_null(conditionCall(error))
+    }
+  }
+
+  # the cumulative sums 3e308, 2e308 and 1e308 of the four concentrations overflow
+  alpha <- rep(1e308, 4)
+  expect_shape_unavailable(mqone.sided(.5, alpha = alpha))
+  expect_shape_unavailable(mqtwo.sided(.5, alpha = alpha))
+  expect_shape_unavailable(mdone.sided(.5, alpha = alpha))
+  expect_shape_unavailable(mdtwo.sided(.5, alpha = alpha))
+  expect_shape_unavailable(mpone.sided(.5, alpha = alpha))
+  expect_shape_unavailable(mptwo.sided(.5, alpha = alpha))
+  expect_shape_unavailable(mqone.sided(.5, alpha = alpha, lower.tail = FALSE, log.p = FALSE))
+  expect_shape_unavailable(mpone.sided(c(.2, .4), alpha = rbind(c(1, 1, 1, 1), alpha)))
+
+  # shapes below the largest double stay supported: the weights concentrate at .75, .5 and .25
+  expect_equal(mqone.sided(.5, alpha = rep(1e100, 4)), matrix(c(1, .75, .5, .25), nrow = 1), tolerance = 1e-6)
+  expect_equal(mqtwo.sided(.5, alpha = rep(1e100, 4)), matrix(c(1, .75, .5, .25), nrow = 1), tolerance = 1e-6)
+
+  # the random generation of the same concentrations has the typed Dirichlet condition
+  for(draw in list(rone.sided, rtwo.sided)){
+    set.seed(11)
+    error <- tryCatch(draw(3, alpha = alpha), error = identity)
+    expect_s3_class(error, "BayesTools_dirichlet_rng_unavailable")
+  }
 })
 
 test_that("fixed weightfunction helpers support non-negative relative weights", {

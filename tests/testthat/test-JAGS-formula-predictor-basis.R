@@ -1,0 +1,755 @@
+skip_if_not_test_profile("unit")
+
+.formula_predictor_basis_fit <- function(formula_result, samples,
+                                         extra_priors = list()) {
+
+  samples <- coda::mcmc(as.matrix(samples))
+  class(samples) <- c("BayesTools_fit", class(samples))
+  parameter <- formula_result$formula_design$parameter
+  attr(samples, "prior_list") <- c(
+    formula_result$prior_list,
+    extra_priors
+  )
+  attr(samples, "formula_design") <- stats::setNames(
+    list(formula_result$formula_design),
+    parameter
+  )
+  if (!is.null(formula_result$formula_scale)) {
+    attr(samples, "formula_scale") <- stats::setNames(
+      list(formula_result$formula_scale),
+      parameter
+    )
+  }
+  attach_test_parameter_map(samples)
+}
+
+.formula_predictor_basis_multi_fit <- function(formula_results, samples,
+                                               extra_priors = list()) {
+
+  samples <- coda::mcmc(as.matrix(samples))
+  class(samples) <- c("BayesTools_fit", class(samples))
+  attr(samples, "prior_list") <- c(
+    do.call(c, unname(lapply(formula_results, `[[`, "prior_list"))),
+    extra_priors
+  )
+  attr(samples, "formula_design") <- lapply(
+    formula_results,
+    `[[`,
+    "formula_design"
+  )
+  attach_test_parameter_map(samples)
+}
+
+# A fit object carrying the finalized designs of a JAGS_formula_draws() result.
+.formula_predictor_basis_carrier_fit <- function(carrier) {
+
+  fit <- coda::mcmc.list(coda::mcmc(as.matrix(carrier)))
+  class(fit) <- c("BayesTools_fit", class(fit))
+  for (name in c("prior_list", "formula_design", "formula_scale")) {
+    attr(fit, name) <- attr(carrier, name)
+  }
+  fit <- .bt_attach_parameter_map(fit)
+  fit <- .bt_attach_draw_geometry(fit)
+  .bt_attach_fit_contract(fit)
+}
+
+
+test_that("formula predictor bases preserve exact factor columns and ordering", {
+
+  data <- data.frame(
+    group = factor(
+      c("sensitivity", "specificity", "sensitivity", "specificity"),
+      levels = c("sensitivity", "specificity")
+    )
+  )
+  formula_result <- JAGS_formula(
+    formula = ~ 0 + group,
+    parameter = "mu",
+    data = data,
+    prior_list = list(
+      group = prior_factor(
+        "normal",
+        list(mean = 0, sd = 1),
+        contrast = "independent"
+      )
+    )
+  )
+  coordinate_names <- c("mu_group[1]", "mu_group[2]")
+  samples <- matrix(
+    c(-0.2, 0.5, 0.1, 0.8),
+    nrow = 2L,
+    byrow = TRUE,
+    dimnames = list(NULL, coordinate_names)
+  )
+  fit <- .formula_predictor_basis_fit(formula_result, samples)
+  directions <- matrix(
+    c(1, 0, 0.5, -1),
+    nrow = 2L,
+    byrow = TRUE,
+    dimnames = list(NULL, coordinate_names)
+  )
+
+  basis <- JAGS_formula_predictor_basis(
+    fit,
+    directions = directions,
+    posterior_samples = samples
+  )
+  expected <- directions %*% t(
+    formula_result$formula_design$model_matrix[, c("group1", "group2")]
+  )
+
+  expect_s3_class(basis, "BayesTools_formula_predictor_basis")
+  expect_identical(basis$status, "affine")
+  expect_identical(basis$parameter, "mu")
+  expect_identical(basis$coordinates, coordinate_names)
+  expect_identical(unname(basis$basis), unname(expected))
+})
+
+
+test_that("formula predictor bases apply persisted scaling and multipliers", {
+
+  x_prior <- prior("normal", list(mean = 0, sd = 1))
+  attr(x_prior, "multiply_by") <- "sigma"
+  formula_result <- JAGS_formula(
+    formula = ~ 1 + x,
+    parameter = "mu",
+    data = data.frame(x = c(2, 4, 6)),
+    prior_list = list(
+      intercept = prior("normal", list(mean = 0, sd = 1)),
+      x = x_prior
+    ),
+    formula_scale = TRUE
+  )
+  sample_names <- c("mu_intercept", "mu_x", "sigma")
+  samples <- matrix(
+    c(0.1, -0.2, 2, -0.1, 0.3, 4),
+    nrow = 2L,
+    byrow = TRUE,
+    dimnames = list(NULL, sample_names)
+  )
+  fit <- .formula_predictor_basis_fit(
+    formula_result,
+    samples,
+    extra_priors = list(sigma = prior("gamma", list(shape = 2, rate = 1)))
+  )
+  directions <- matrix(
+    c(1, 0.5),
+    ncol = 1L,
+    dimnames = list(NULL, "mu_x")
+  )
+
+  basis <- JAGS_formula_predictor_basis(
+    fit,
+    directions = directions,
+    posterior_samples = samples
+  )
+  x_column <- formula_result$formula_design$model_matrix[, "x"]
+  expected <- outer(directions[, 1L] * samples[, "sigma"], x_column)
+
+  expect_identical(basis$status, "affine")
+  expect_equal(basis$basis, expected, tolerance = 0)
+})
+
+
+test_that("formula predictor bases take declared scalar constants as multipliers", {
+
+  slope <- prior("point", list(2))
+  attr(slope, "multiply_by") <- "sigma"
+  result <- JAGS_formula(
+    formula = ~ 1 + x,
+    parameter = "mu",
+    data = data.frame(x = c(2, 4, 6)),
+    prior_list = list(intercept = prior("point", list(5)), x = slope),
+    formula_scale = TRUE
+  )
+  # JAGS_fit() finalizes the scale with the model data, so the fitted design
+  # declares sigma = 3 although the draws carry no sigma column.
+  scale <- .bt_formula_scale_finalize(
+    result$formula_scale, result$formula_design,
+    prior_list = result$prior_list, model_data = list(sigma = 3),
+    owner_scope = "fit"
+  )
+  design <- result$formula_design
+  design$formula_scale <- scale
+  constant_fit <- function(draws, extra_priors = list()) {
+    fit <- coda::mcmc(draws)
+    class(fit) <- c("BayesTools_fit", class(fit))
+    priors <- c(result$prior_list, extra_priors)
+    attr(fit, "prior_list") <- priors
+    attr(fit, "formula_design") <- list(mu = design)
+    attr(fit, "formula_scale") <- list(mu = scale)
+    attr(fit, "parameter_map") <- .bt_build_parameter_map(
+      columns = colnames(draws), prior_list = priors,
+      formula_design = list(mu = design), formula_scale = list(mu = scale)
+    )
+    fit <- .bt_attach_draw_geometry(fit)
+    .bt_attach_fit_contract(fit)
+  }
+  x_column <- as.numeric(design$model_matrix[, "x"])
+
+  draws <- cbind(mu_intercept = c(5, 5), mu_x = c(2, 2))
+  fit <- constant_fit(draws)
+  expect_equal(
+    unname(JAGS_evaluate_formula(fit, parameter = "mu")[, 1L]),
+    5 + 3 * 2 * x_column
+  )
+  basis <- JAGS_formula_predictor_basis(fit, directions = c(mu_x = 1))
+  expect_identical(basis$status, "affine")
+  expect_equal(unname(basis$basis), matrix(3 * x_column, nrow = 1L))
+  # a matrix of directions without draws: one basis row per direction
+  basis <- JAGS_formula_predictor_basis(
+    fit, directions = matrix(c(1, -2), ncol = 1L, dimnames = list(NULL, "mu_x"))
+  )
+  expect_identical(basis$status, "affine")
+  expect_equal(unname(basis$basis), outer(c(1, -2), 3 * x_column))
+
+  # the declared constant takes precedence over a column of the draws, as in
+  # JAGS_evaluate_formula()
+  with_column <- constant_fit(
+    cbind(draws, sigma = c(7, 7)),
+    extra_priors = list(sigma = prior("normal", list(0, 1)))
+  )
+  expect_equal(
+    unname(JAGS_evaluate_formula(with_column, parameter = "mu")[, 1L]),
+    5 + 3 * 2 * x_column
+  )
+  basis <- JAGS_formula_predictor_basis(with_column, directions = c(mu_x = 1))
+  expect_identical(basis$status, "affine")
+  expect_equal(unname(basis$basis), matrix(3 * x_column, nrow = 1L))
+  # supplied draws still align the rows of the directions
+  basis <- JAGS_formula_predictor_basis(
+    with_column, directions = c(mu_x = 1),
+    posterior_samples = as.matrix(with_column)
+  )
+  expect_equal(unname(basis$basis), matrix(3 * x_column, nrow = 2L, ncol = 3L, byrow = TRUE))
+})
+
+
+test_that("formula predictor bases expose metadata-declared fallbacks", {
+
+  log_formula <- ~ 1 + x
+  attr(log_formula, "log(intercept)") <- TRUE
+  log_result <- JAGS_formula(
+    formula = log_formula,
+    parameter = "mu",
+    data = data.frame(x = c(-1, 2)),
+    prior_list = list(
+      intercept = prior("gamma", list(shape = 2, rate = 1)),
+      x = prior("normal", list(mean = 0, sd = 1))
+    )
+  )
+  log_samples <- matrix(
+    c(0.5, -0.3, 1.5, 0.2),
+    nrow = 2L,
+    byrow = TRUE,
+    dimnames = list(NULL, c("mu_intercept", "mu_x"))
+  )
+  log_fit <- .formula_predictor_basis_fit(log_result, log_samples)
+  # The logged intercept and an ordinary coefficient are additive in different
+  # coordinates, so a direction moving both has no single additive update.
+  log_basis <- JAGS_formula_predictor_basis(
+    log_fit,
+    directions = c(mu_intercept = 1, mu_x = 1),
+    posterior_samples = log_samples
+  )
+
+  expect_identical(log_basis$status, "non_affine")
+  expect_match(log_basis$reason, "log\\(\\)")
+  expect_null(log_basis$basis)
+
+  z_prior <- prior("normal", list(mean = 0, sd = 1))
+  attr(z_prior, "multiply_by") <- "mu_x"
+  multiplier_result <- JAGS_formula(
+    formula = ~ 0 + x + z,
+    parameter = "mu",
+    data = data.frame(x = c(-1, 1), z = c(1, -1)),
+    prior_list = list(
+      x = prior("normal", list(mean = 0, sd = 1)),
+      z = z_prior
+    )
+  )
+  multiplier_samples <- matrix(
+    c(0.2, 0.3, -0.1, 0.4),
+    nrow = 2L,
+    byrow = TRUE,
+    dimnames = list(NULL, c("mu_x", "mu_z"))
+  )
+  multiplier_fit <- .formula_predictor_basis_fit(
+    multiplier_result,
+    multiplier_samples
+  )
+  multiplier_basis <- JAGS_formula_predictor_basis(
+    multiplier_fit,
+    directions = c(mu_x = 1),
+    posterior_samples = multiplier_samples[1L, , drop = FALSE]
+  )
+
+  expect_identical(multiplier_basis$status, "unsupported")
+  expect_match(multiplier_basis$reason, "multipliers")
+  expect_null(multiplier_basis$basis)
+})
+
+
+test_that("logged intercepts are affine in their own log coordinate", {
+
+  log_formula <- ~ 1 + x
+  attr(log_formula, "log(intercept)") <- TRUE
+  result <- JAGS_formula(
+    formula = log_formula,
+    parameter = "log_tau",
+    data = data.frame(x = c(-1, 0.5, 2)),
+    prior_list = list(
+      intercept = prior("gamma", list(shape = 2, rate = 1)),
+      x = prior("normal", list(mean = 0, sd = 1))
+    )
+  )
+  coordinate_names <- c("log_tau_intercept", "log_tau_x")
+  samples <- matrix(
+    c(0.5, -0.2, 1.5, 0.3),
+    nrow = 2L,
+    byrow = TRUE,
+    dimnames = list(NULL, coordinate_names)
+  )
+  fit <- .formula_predictor_basis_fit(result, samples)
+  model_matrix <- result$formula_design$model_matrix
+
+  # log tau_k(alpha') = log tau_k(alpha) + (log alpha' - log alpha): the basis
+  # is the intercept's model column times the direction, and the caller forms
+  # the update from the logarithms.
+  directions <- matrix(
+    c(1, 0, 0.5, 0),
+    nrow = 2L,
+    byrow = TRUE,
+    dimnames = list(NULL, coordinate_names)
+  )
+  intercept_basis <- JAGS_formula_predictor_basis(
+    fit,
+    directions = directions,
+    posterior_samples = samples
+  )
+
+  expect_identical(intercept_basis$status, "affine")
+  expect_identical(intercept_basis$coordinate, "log")
+  expect_identical(intercept_basis$parameter, "log_tau")
+  expect_identical(
+    unname(intercept_basis$basis),
+    unname(outer(directions[, 1L], model_matrix[, "(Intercept)"]))
+  )
+
+  # An ordinary coefficient of the same design keeps the fitted coordinate.
+  coefficient_basis <- JAGS_formula_predictor_basis(
+    fit,
+    directions = c(log_tau_x = 1),
+    posterior_samples = samples
+  )
+
+  expect_identical(coefficient_basis$status, "affine")
+  expect_identical(coefficient_basis$coordinate, "identity")
+  expect_identical(
+    unname(coefficient_basis$basis),
+    unname(outer(rep(1, nrow(samples)), model_matrix[, "x"]))
+  )
+
+  # A zero direction moves nothing and stays in the fitted coordinate.
+  still_basis <- JAGS_formula_predictor_basis(
+    fit,
+    directions = c(log_tau_intercept = 0),
+    posterior_samples = samples
+  )
+
+  expect_identical(still_basis$status, "affine")
+  expect_identical(still_basis$coordinate, "identity")
+  expect_true(all(still_basis$basis == 0))
+})
+
+
+test_that("formula evaluators ignore intercept multipliers stored by older fits", {
+
+  data <- data.frame(x = c(-1, 0.5, 2))
+  result <- JAGS_formula(
+    ~ 1 + x, "mu", data,
+    list(intercept = prior("normal", list(0, 1)), x = prior("normal", list(0, 1)))
+  )
+  samples <- matrix(
+    c(0.5, -0.2, 1.5, 0.3),
+    nrow = 2L,
+    byrow = TRUE,
+    dimnames = list(NULL, c("mu_intercept", "mu_x"))
+  )
+  fit <- .formula_predictor_basis_fit(result, samples)
+  fit_design <- attr(fit, "formula_design")$mu
+  fit_priors <- attr(fit, "prior_list")[c("mu_intercept", "mu_x")]
+
+  # JAGS_formula() once accepted an intercept 'multiply_by' that the JAGS
+  # model never applied; the evaluators follow the fitted model.
+  for(multiply_by in list(2, "mu_x")){
+    legacy <- fit
+    prior_list <- attr(legacy, "prior_list")
+    attr(prior_list$mu_intercept, "multiply_by") <- multiply_by
+    attr(legacy, "prior_list") <- prior_list
+    designs <- attr(legacy, "formula_design")
+    attr(designs$mu$prior_list$mu_intercept, "multiply_by") <- multiply_by
+    attr(legacy, "formula_design") <- designs
+    legacy_priors <- prior_list[c("mu_intercept", "mu_x")]
+
+    expect_identical(
+      JAGS_evaluate_formula(legacy, parameter = "mu"),
+      JAGS_evaluate_formula(fit, parameter = "mu")
+    )
+    for(i in seq_len(nrow(samples))){
+      expected <- bayestools_marglik_parameters_formula_design(
+        samples[i, ], fit_design, fit_priors, list()
+      )
+      expect_identical(
+        bayestools_marglik_parameters_formula_design(
+          samples[i, ], designs$mu, legacy_priors, list()
+        ),
+        expected
+      )
+      expect_identical(
+        BayesTools:::.bt_dnode_linear_predictor_fixed_plan(
+          designs$mu, legacy_priors, FALSE
+        )$value(samples[i, ], list()),
+        expected
+      )
+    }
+    expect_identical(
+      JAGS_formula_coordinate_dependencies(legacy, c("mu_intercept", "mu_x")),
+      JAGS_formula_coordinate_dependencies(fit, c("mu_intercept", "mu_x"))
+    )
+    expect_identical(
+      JAGS_formula_predictor_basis(legacy, directions = c(mu_intercept = 1, mu_x = 0.5),
+                                   posterior_samples = samples),
+      JAGS_formula_predictor_basis(fit, directions = c(mu_intercept = 1, mu_x = 0.5),
+                                   posterior_samples = samples)
+    )
+  }
+})
+
+
+test_that("logged intercepts keep their indirect-dependency fallbacks", {
+
+  log_formula <- ~ 1 + x
+  attr(log_formula, "log(intercept)") <- TRUE
+  x_prior <- prior("normal", list(mean = 0, sd = 1))
+  attr(x_prior, "multiply_by") <- "log_tau_intercept"
+  result <- JAGS_formula(
+    formula = log_formula,
+    parameter = "log_tau",
+    data = data.frame(x = c(-1, 2)),
+    prior_list = list(
+      intercept = prior("gamma", list(shape = 2, rate = 1)),
+      x = x_prior
+    )
+  )
+  samples <- matrix(
+    c(0.5, -0.2, 1.5, 0.3),
+    nrow = 2L,
+    byrow = TRUE,
+    dimnames = list(NULL, c("log_tau_intercept", "log_tau_x"))
+  )
+  fit <- .formula_predictor_basis_fit(result, samples)
+
+  # The log coordinate does not excuse the indirect-dependency checks: the
+  # intercept also scales another term here, so no additive update exists.
+  basis <- JAGS_formula_predictor_basis(
+    fit,
+    directions = c(log_tau_intercept = 1),
+    posterior_samples = samples
+  )
+
+  expect_identical(basis$status, "unsupported")
+  expect_match(basis$reason, "multipliers")
+  expect_null(basis$basis)
+})
+
+
+test_that("formula dependencies cover every persisted predictor", {
+
+  mu_result <- JAGS_formula(
+    formula = ~ 0 + x,
+    parameter = "mu",
+    data = data.frame(x = c(-1, 1)),
+    prior_list = list(x = prior("normal", list(mean = 0, sd = 1)))
+  )
+  z_prior <- prior("normal", list(mean = 0, sd = 1))
+  attr(z_prior, "multiply_by") <- "mu_x"
+  scale_result <- JAGS_formula(
+    formula = ~ 0 + z,
+    parameter = "log_tau",
+    data = data.frame(z = c(1, 2)),
+    prior_list = list(z = z_prior)
+  )
+  samples <- matrix(
+    c(0.2, -0.1, 0.4, 0.3),
+    nrow = 2L,
+    byrow = TRUE,
+    dimnames = list(NULL, c("mu_x", "log_tau_z"))
+  )
+  fit <- .formula_predictor_basis_multi_fit(
+    list(mu = mu_result, log_tau = scale_result),
+    samples
+  )
+
+  dependencies <- JAGS_formula_coordinate_dependencies(fit, "mu_x")
+  expect_equal(
+    dependencies,
+    data.frame(
+      coordinate_name = c("mu_x", "mu_x"),
+      formula_parameter = c("mu", "log_tau"),
+      dependency_type = c("coefficient", "multiplier"),
+      stringsAsFactors = FALSE
+    )
+  )
+
+  basis <- JAGS_formula_predictor_basis(
+    fit,
+    directions = c(mu_x = 1),
+    posterior_samples = samples[1L, , drop = FALSE]
+  )
+  expect_identical(basis$status, "unsupported")
+  expect_match(basis$reason, "multipliers")
+  expect_null(basis$basis)
+})
+
+
+test_that("formula dependencies include external random SD sources", {
+
+  result <- JAGS_formula(
+    formula = ~ 1 + diag(1 | study),
+    parameter = "mu",
+    data = data.frame(study = factor(c("a", "a", "b"))),
+    prior_list = list(
+      intercept = prior("normal", list(mean = 0, sd = 1))
+    ),
+    prior_random = prior_random(
+      study = random_block(sd_source = random_sd_source("tau"))
+    )
+  )
+  samples <- matrix(
+    c(0.1, 0.5, -0.2, 0.8),
+    nrow = 2L,
+    byrow = TRUE,
+    dimnames = list(NULL, c("mu_intercept", "tau"))
+  )
+  fit <- .formula_predictor_basis_fit(
+    result,
+    samples,
+    extra_priors = list(tau = prior("gamma", list(shape = 2, rate = 1)))
+  )
+
+  dependencies <- JAGS_formula_coordinate_dependencies(fit, "tau")
+  expect_equal(dependencies$coordinate_name, "tau")
+  expect_equal(dependencies$formula_parameter, "mu")
+  expect_equal(dependencies$dependency_type, "random_sd_source")
+})
+
+
+test_that("a random block's own sampled coordinates are predictor dependencies", {
+
+  data <- data.frame(g = factor(c("a", "a", "b")))
+  formula <- ~ 1 + random(1 | g, name = "block", covariance = "diag")
+  priors <- list(intercept = prior("point", list(0)))
+  random_priors <- prior_random(
+    parameterization = "noncentered",
+    block = random_block(
+      sd = prior("gamma", list(2, 2)),
+      monitor = random_monitor(latent = TRUE)
+    )
+  )
+  compiled <- JAGS_formula(formula, "mu", data, priors, prior_random = random_priors)
+  draws <- .generate_prior_sample_matrix(compiled$prior_list, 2L, seed = 7)
+  term <- compiled$formula_design$random_effects[[1L]]
+  latent_names <- as.vector(.bt_random_effect_latent_names(
+    term, length(term$group_levels), term$n_columns
+  ))
+  draws <- cbind(draws, matrix(
+    c(1, 2, -1, -2), 2L, dimnames = list(NULL, latent_names)
+  ))
+  carrier <- JAGS_formula_draws(
+    draws, formula, "mu", data, priors, prior_random = random_priors
+  )
+  fit <- .formula_predictor_basis_carrier_fit(carrier)
+  coordinates <- parameter_coordinates(fit)
+  sd_name <- coordinates$coordinate_name[coordinates$role == "random_sd"]
+  owned <- coordinates[coordinates$role %in% c("random_sd", "random_latent"), ]
+  expect_length(sd_name, 1L)
+  expect_identical(sort(unique(owned$role)), c("random_latent", "random_sd"))
+
+  dependencies <- JAGS_formula_coordinate_dependencies(fit, owned$coordinate_name)
+  expect_identical(dependencies$coordinate_name, owned$coordinate_name)
+  expect_identical(dependencies$formula_parameter, rep("mu", nrow(owned)))
+  expect_identical(dependencies$dependency_type, rep("random_effect", nrow(owned)))
+
+  # doubling the SD doubles the conditional predictor: the dependency is real
+  doubled <- as.matrix(carrier)
+  doubled[, sd_name] <- 2 * doubled[, sd_name]
+  doubled_carrier <- JAGS_formula_draws(
+    doubled, formula, "mu", data, priors, prior_random = random_priors
+  )
+  expect_equal(
+    JAGS_evaluate_formula(doubled_carrier, parameter = "mu", formula_target = "conditional"),
+    2 * JAGS_evaluate_formula(carrier, parameter = "mu", formula_target = "conditional")
+  )
+
+  # the basis still refuses coordinates that are not fixed coefficients
+  basis <- JAGS_formula_predictor_basis(fit, directions = stats::setNames(1, sd_name))
+  expect_identical(basis$status, "unsupported")
+  expect_null(basis$basis)
+})
+
+
+test_that("coordinates read by expression points are predictor dependencies", {
+
+  data <- data.frame(x = c(-2, -1, 1, 2), z = c(1, 3, -1, 0))
+  dependency_frame <- function(coordinate_name, dependency_type) {
+    data.frame(
+      coordinate_name = coordinate_name,
+      formula_parameter = "mu",
+      dependency_type = dependency_type,
+      stringsAsFactors = FALSE
+    )
+  }
+
+  # An external parent of an expression-point coefficient.
+  draws <- cbind(theta = c(.25, .75), mu_x = c(.5, 1.5))
+  attr(draws, "prior_list") <- list(theta = prior("normal", list(0, 1)))
+  carrier <- JAGS_formula_draws(
+    draws, ~ x, "mu", data["x"],
+    list(
+      intercept = prior("point", list(0)),
+      x = prior("point", list(location = expression(2 * theta)))
+    )
+  )
+  fit <- .formula_predictor_basis_carrier_fit(carrier)
+  expect_equal(
+    JAGS_formula_coordinate_dependencies(fit, c("theta", "mu_x")),
+    dependency_frame(c("theta", "mu_x"), c("point_expression", "coefficient"))
+  )
+
+  # A fitted coefficient that feeds an expression-point coefficient: moving
+  # mu_z by one moves the predictor by z + 2 x, not by the column of z.
+  draws <- cbind(mu_intercept = c(.1, .2), mu_z = c(.25, .75))
+  attr(draws, "prior_list") <- list()
+  priors <- list(
+    intercept = prior("normal", list(0, 1)),
+    z = prior("normal", list(0, 1)),
+    x = prior("point", list(location = expression(2 * mu_z)))
+  )
+  carrier <- JAGS_formula_draws(draws, ~ x + z, "mu", data, priors)
+  fit <- .formula_predictor_basis_carrier_fit(carrier)
+  expect_equal(
+    JAGS_formula_coordinate_dependencies(fit, "mu_z"),
+    dependency_frame(c("mu_z", "mu_z"), c("coefficient", "point_expression"))
+  )
+  moved <- draws
+  moved[, "mu_z"] <- moved[, "mu_z"] + 1
+  moved_carrier <- JAGS_formula_draws(moved, ~ x + z, "mu", data, priors)
+  expect_equal(
+    unname(JAGS_evaluate_formula(moved_carrier, parameter = "mu") -
+             JAGS_evaluate_formula(carrier, parameter = "mu")),
+    unname(outer(data$z + 2 * data$x, c(1, 1)))
+  )
+  basis <- JAGS_formula_predictor_basis(fit, directions = c(mu_z = 1))
+  expect_identical(basis$status, "unsupported")
+  expect_match(basis$reason, "expression-point")
+  expect_null(basis$basis)
+
+  # The parents of an expression-point multiplier and of its parents.
+  scaled <- prior("normal", list(0, 1))
+  attr(scaled, "multiply_by") <- "sigma"
+  draws <- cbind(mu_intercept = c(.1, .2), mu_x = c(.5, -.5), theta = c(1, 3))
+  attr(draws, "prior_list") <- list(
+    theta = prior("normal", list(0, 1)),
+    delta = prior("point", list(location = expression(theta + 1))),
+    sigma = prior("point", list(location = expression(2 * delta)))
+  )
+  carrier <- JAGS_formula_draws(
+    draws, ~ 1 + x, "mu", data["x"],
+    list(intercept = prior("normal", list(0, 1)), x = scaled)
+  )
+  fit <- .formula_predictor_basis_carrier_fit(carrier)
+  expect_equal(
+    JAGS_formula_coordinate_dependencies(fit, c("theta", "mu_x")),
+    dependency_frame(c("theta", "mu_x"), c("point_expression", "coefficient"))
+  )
+})
+
+
+test_that("expression and callback dependencies are reported by their types", {
+
+  data <- data.frame(x = c(-1, 0, 2))
+  dependency_frame <- function(coordinate_name, dependency_type){
+    data.frame(
+      coordinate_name = coordinate_name,
+      formula_parameter = "mu",
+      dependency_type = dependency_type,
+      stringsAsFactors = FALSE
+    )
+  }
+
+  # A fitted coefficient and an external parameter read by a formula expression.
+  draws <- cbind(mu_intercept = c(.1, .2), mu_x = c(.5, -.5), theta = c(2, 3))
+  attr(draws, "prior_list") <- list(theta = prior("normal", list(0, 1)))
+  priors <- list(
+    intercept = prior("normal", list(0, 1)),
+    x = prior("normal", list(0, 1))
+  )
+  carrier <- JAGS_formula_draws(
+    draws, ~ 1 + x + expression(theta * mu_x), "mu", data, priors
+  )
+  fit <- .formula_predictor_basis_carrier_fit(carrier)
+  expect_equal(
+    JAGS_formula_coordinate_dependencies(fit, c("mu_intercept", "mu_x", "theta")),
+    dependency_frame(
+      c("mu_intercept", "mu_x", "mu_x", "theta"),
+      c("coefficient", "coefficient", "expression", "expression")
+    )
+  )
+  basis <- JAGS_formula_predictor_basis(fit, directions = c(mu_x = 1))
+  expect_identical(basis$status, "unsupported")
+  expect_match(basis$reason, "formula expression")
+
+  # A random SD callback reads declared inputs; its dependencies are reported
+  # as opaque for every queried coordinate.
+  df <- data.frame(study = factor(c("a", "a", "b")), scale = c(1, 2, 3))
+  tau_source <- parameter_source(
+    "tau",
+    shape = "row",
+    values = function(parameters, data, n_rows){
+      parameters$tau_total * data$scale[seq_len(n_rows)]
+    },
+    inputs = "tau_total"
+  )
+  result <- JAGS_formula(
+    formula = ~ 1 + diag(1 | study),
+    parameter = "mu",
+    data = df,
+    prior_list = list(intercept = prior("normal", list(0, 1))),
+    prior_random = prior_random(
+      study = random_block(sd_source = random_sd_source(tau_source))
+    )
+  )
+  samples <- matrix(
+    c(0.1, 0.5, -0.2, 0.8),
+    nrow = 2L, byrow = TRUE,
+    dimnames = list(NULL, c("mu_intercept", "tau_total"))
+  )
+  fit <- .formula_predictor_basis_fit(
+    result, samples,
+    extra_priors = list(tau_total = prior("gamma", list(shape = 2, rate = 1)))
+  )
+  expect_equal(
+    JAGS_formula_coordinate_dependencies(fit, c("mu_intercept", "tau_total")),
+    dependency_frame(
+      c("mu_intercept", "mu_intercept", "tau_total"),
+      c("coefficient", "opaque_random_sd_callback", "opaque_random_sd_callback")
+    )
+  )
+  basis <- JAGS_formula_predictor_basis(
+    fit, directions = c(mu_intercept = 1),
+    posterior_samples = samples[1L, , drop = FALSE]
+  )
+  expect_identical(basis$status, "unsupported")
+  expect_match(basis$reason, "opaque posterior-coordinate dependencies")
+})

@@ -39,6 +39,13 @@ for printed parameters.}
 \description{
 Prints a prior object
 }
+\details{
+A weightfunction prior, or a publication-bias prior with a
+weightfunction component, prints the specification of its
+\code{\link{selection_model}} after the prior name only when that
+specification differs from the default \code{selection_model()}. The
+branches of a bias-prior mixture are numbered by their position.
+}
 \examples{
 # create some prior distributions
 p0 <- prior(distribution = "point",  parameters = list(location = 0))

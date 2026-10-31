@@ -1,0 +1,154 @@
+skip_if_not_test_profile("unit")
+
+test_that("public formatting retains a live carrier's canonical source logs", {
+  producer <- hypothesis_BF(c(1, 2, 3), prior("normal", list(0, 1)),
+    "a = 356 vs a != 356", parameter = "a", density_method = "normal", columns = "all")
+  expect_equal(as.numeric(format_BF(producer$BF, logBF = TRUE)), 710, tolerance = 1e-12)
+  inverse <- as.numeric(format_BF(producer$BF, BF01 = TRUE))
+  expect_gt(inverse, 0)
+  expect_equal(inverse / exp(-710), 1, tolerance = 1e-12)
+  logs <- c(overflow = 800, tiny = -800, ordinary = -2, missing = NA_real_)
+  diagnostics <- list(list(marker = 1), list(marker = 2), NULL, NULL)
+  source_bounds <- c(">", "<", NA_character_, NA_character_)
+  for(start_log in c(FALSE, TRUE)) for(start_inverse in c(FALSE, TRUE)){
+    carrier <- .format_BF_from_log(logs, start_log, start_inverse,
+      bound_operator = source_bounds, diagnostics = diagnostics)
+    for(want_log in c(FALSE, TRUE)) for(want_inverse in c(FALSE, TRUE)){
+      actual <- format_BF(carrier, want_log, want_inverse)
+      expected <- .format_BF_from_log(logs, want_log, want_inverse,
+        bound_operator = source_bounds, diagnostics = diagnostics)
+      expect_identical(actual, expected)
+      expect_identical(names(actual), names(logs))
+      expect_identical(.BF_carrier_log(actual), unname(logs))
+      expect_identical(attr(actual, "numerical_diagnostics"), diagnostics)
+    }
+    selected <- carrier[c(3L, 1L, 1L, 4L)]
+    actual <- format_BF(selected, logBF = TRUE)
+    expect_identical(as.numeric(actual), unname(logs[c(3L, 1L, 1L, 4L)]))
+    expect_identical(attr(actual, "numerical_diagnostics"), diagnostics[c(3L, 1L, 1L, 4L)])
+  }
+  for(value in list(c(0, Inf, NA, 2), unclass(producer$BF))){
+    plain <- as.numeric(value)
+    expect_identical(as.numeric(format_BF(plain, logBF = TRUE)), log(plain))
+  }
+  for(invalidated in list(producer$BF + 0, exp(producer$BF), {x <- producer$BF; x[1L] <- 2; x})){
+    expect_null(.BF_carrier_log(invalidated))
+    expect_identical(as.numeric(format_BF(invalidated, logBF = TRUE)), log(as.numeric(invalidated)))
+  }
+})
+
+test_that("removing a public linear recipe clears its companion space", {
+  x <- c(1, 2, 3)
+  posterior_metadata(x, "linear_weights") <- c(a = 1)
+  expect_identical(posterior_metadata(x, "linear_weight_space"), "coefficient")
+  posterior_metadata(x, "linear_weights") <- NULL
+  expect_null(posterior_metadata(x, "linear_weights"))
+  expect_null(posterior_metadata(x, "linear_weight_space"))
+})
+
+test_that("public linear recipes reject nonfinite weights without mutation", {
+  x <- c(1, 2, 3)
+  for(value in c(NA_real_, NaN, Inf, -Inf)){
+    for(weights in list(c(a = value), matrix(value, 1L, 1L, dimnames = list("target", "a")))){
+      original <- serialize(x, NULL)
+      condition <- tryCatch({posterior_metadata(x, "linear_weights") <- weights; NULL}, error = identity)
+      expect_s3_class(condition, "error")
+      if(inherits(condition, "condition")){
+        expect_match(conditionMessage(condition), "finite numeric vector or matrix", fixed = TRUE)
+        expect_null(conditionCall(condition))
+      }
+      expect_identical(serialize(x, NULL), original)
+    }
+  }
+  finite <- matrix(c(1, 0, -2, 3), 2L, dimnames = list(c("A", "B"), c("a", "b")))
+  posterior_metadata(x, "linear_weights") <- finite
+  expect_identical(posterior_metadata(x, "linear_weights"), finite)
+})
+
+test_that("list measure refusals emit exactly once at the actual level", {
+  good <- structure(seq(-1, 1, length.out = 100L), class = c("marginal_posterior.simple", "marginal_posterior"))
+  attr(good, "parameter") <- "theta"
+  posterior_metadata(good, "atoms") <- posterior_atom_attribute()
+  posterior_metadata(good, "prior_density") <- prior("normal", list(0, 1))
+  bad <- good
+  posterior_metadata(bad, "measure_unavailable") <- data.frame(column = "theta", measure = "atoms",
+    reason = "Declared contribution measure is unavailable", cause = "unsupported_contribution_measure")
+  parent <- structure(list(bad = bad, good = good), class = c("marginal_posterior.factor", "marginal_posterior", "list"), parameter = "theta")
+  messages <- character()
+  actual <- withCallingHandlers(Savage_Dickey_BF(parent, silent = FALSE), warning = function(w){messages <<- c(messages, conditionMessage(w)); invokeRestart("muffleWarning")})
+  expect_length(messages, 1L)
+  expect_match(messages, "theta[bad]:", fixed = TRUE)
+  expect_true(is.na(actual$bad))
+  expect_true(is.finite(actual$good))
+  expect_s3_class(attr(actual$bad, "numerical_diagnostics"), "BayesTools_formula_measure_unavailable")
+  expect_silent(Savage_Dickey_BF(parent, silent = TRUE))
+  expect_error(Savage_Dickey_BF(bad, silent = TRUE), class = "BayesTools_formula_measure_unavailable")
+})
+
+test_that("validated exact support exclusion precedes a stored grid's span guard", {
+  x <- structure(seq(0, 1, length.out = 301L), class = c("marginal_posterior.simple", "marginal_posterior"))
+  attr(x, "parameter") <- "theta"
+  posterior_metadata(x, "atoms") <- posterior_atom_attribute()
+  posterior_metadata(x, "prior_density") <- prior("normal", list(0, 1))
+  posterior_metadata(x, "posterior_density") <- posterior_density_attribute(seq(0, 1, length.out = 101L), rep(.5, 101L),
+    method = "support-guard", density_method = "qCMDE", support = posterior_support_attribute(c(0, 1)))
+  result <- Savage_Dickey_BF(x, -.5, silent = TRUE, density_method = "precomputed")
+  expect_identical(as.numeric(result), Inf)
+  expect_identical(attr(result, "posterior_density_source"), "exact_support_exclusion")
+  expect_true(attr(result, "posterior_density_fallback"))
+  expect_match(attr(result, "posterior_density_fallback_warnings"), "Ignoring the precomputed posterior density", fixed = TRUE)
+  expect_false(any(grepl("extrapolation", attr(result, "warnings"))))
+  posterior_metadata(x, "posterior_density") <- posterior_density_attribute(seq(0, 1, length.out = 101L), rep(.5, 101L),
+    method = "unmatched-support", density_method = "qCMDE", support = posterior_support_attribute(c(-1, 1)))
+  expect_error(Savage_Dickey_BF(x, -.5, silent = TRUE, density_method = "precomputed"), "does not span", fixed = TRUE)
+})
+
+test_that("printing a Bayes factor shows its values and warnings, not its carrier attributes", {
+
+  x <- format_BF_from_log(c(a = 2, b = -1))
+  attr(x, "warnings") <- c("first warning", "second warning")
+  attr(x, "log_BF") <- c(2, -1)
+  attr(x, "orientation") <- "prior/posterior"
+
+  # as the plain vector with a "warnings" attribute that 0.3.0 printed
+  released <- c(a = exp(2), b = exp(-1))
+  attr(released, "warnings") <- c("first warning", "second warning")
+  printed <- utils::capture.output(returned <- print(x))
+  expect_identical(printed, utils::capture.output(print(released)))
+  expect_identical(returned, x)
+  expect_false(any(grepl("canonical_log_BF|producer_values|carrier_|log_BF|orientation|numerical_diagnostics|class", printed)))
+
+  # without warnings only the values are printed
+  expect_identical(
+    utils::capture.output(print(format_BF_from_log(c(a = 2, b = -1)))),
+    utils::capture.output(print(c(a = exp(2), b = exp(-1))))
+  )
+
+  # bound operators are part of the value and stay visible
+  bounded <- format_BF_from_log(c(a = 2, b = 3), bound_operator = c(">", NA))
+  printed_bounded <- utils::capture.output(print(bounded))
+  expect_identical(printed_bounded[-(1:2)], c('attr(,"bound_operator")', '[1] ">" NA '))
+  expect_identical(utils::capture.output(print(bounded[2])), utils::capture.output(print(c(b = exp(3)))))
+})
+
+test_that("printing a bounded Bayes factor keeps its public scale and direction attributes", {
+
+  # as the unbounded result, which 0.3.0 printed with its name, scale and direction;
+  # only the value of the bound operator differs
+  for(flags in list(list(logBF = TRUE, BF01 = TRUE), list(logBF = FALSE, BF01 = TRUE), list(logBF = TRUE, BF01 = FALSE))){
+    unbounded <- do.call(format_BF, c(list(20, inclusion = TRUE), flags))
+    bounded   <- do.call(format_BF, c(list(structure(20, bound_operator = ">"), inclusion = TRUE), flags))
+    printed_unbounded <- utils::capture.output(print(unbounded))
+    printed_bounded   <- utils::capture.output(print(bounded))
+
+    expect_true(all(c('attr(,"name")', 'attr(,"logBF")', 'attr(,"BF01")') %in% printed_bounded))
+    expect_identical(printed_bounded[-length(printed_bounded)], printed_unbounded[-length(printed_unbounded)])
+    expect_identical(printed_unbounded[length(printed_unbounded)], "[1] NA")
+    expect_true(printed_bounded[length(printed_bounded)] %in% c('[1] "<"', '[1] ">"'))
+    expect_false(any(grepl("canonical_log_BF|producer_values|carrier_|orientation|numerical_diagnostics|class", printed_bounded)))
+  }
+
+  # the printed name identifies the logarithmic exclusion Bayes factor
+  printed <- utils::capture.output(print(format_BF(structure(20, bound_operator = ">"), logBF = TRUE, BF01 = TRUE, inclusion = TRUE)))
+  expect_true('[1] "log(Exclusion BF)"' %in% printed)
+})

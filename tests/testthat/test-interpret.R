@@ -269,6 +269,52 @@ test_that(".interpret.BF reports finite-sample BF bounds", {
 })
 
 
+test_that(".interpret.BF never prints a bound that rounds to zero as 0.000", {
+
+  # a small positive bound is printed as its reciprocal, as in the BF tables
+  small <- interpret(
+    list(effect = list(BF = 1e-4, BF_bound_operator = "<")),
+    list(dummy = 1),
+    list(list(inference = "effect")),
+    "Method"
+  )
+  expect_identical(small, "Method found at least strong evidence against the effect, BF < 1/10000.")
+  expect_false(grepl("0.000", small, fixed = TRUE))
+
+  bounded <- structure(1e-4, bound_operator = "<")
+  expect_identical(
+    BayesTools:::.interpret.BF(bounded, "effect", "Inclusion BF"),
+    "at least strong evidence against the effect, Inclusion BF < 1/10000"
+  )
+  expect_identical(
+    BayesTools:::.interpret.BF(4e-4, "effect", NULL, "<"),
+    "at least strong evidence against the effect, BF < 1/2500"
+  )
+  expect_identical(
+    BayesTools:::.interpret.BF(1e-4, "effect", NULL, ">"),
+    "a finite-sample bound for the evidence concerning the effect, BF > 1/10000"
+  )
+
+  # a reciprocal beyond the double range is printed as exp(<log>)
+  tiny <- 1e-320
+  expect_identical(
+    BayesTools:::.interpret.BF(tiny, "effect", NULL, "<"),
+    paste0("at least strong evidence against the effect, BF < exp(", format(log(tiny), trim = TRUE), ")")
+  )
+
+  # bounds that do not round to zero keep their decimals
+  expect_identical(
+    BayesTools:::.interpret.BF(0.002, "effect", NULL, "<"),
+    "at least strong evidence against the effect, BF < 0.002"
+  )
+  expect_identical(
+    BayesTools:::.interpret.BF(0.5, "effect", NULL, "<"),
+    "at least weak evidence against the effect, BF < 0.500"
+  )
+
+})
+
+
 test_that(".interpret.BF rejects invalid Bayes factors before formatting", {
 
   invalid_BFs <- list(0, Inf, NA_real_, NaN, -1)
@@ -487,7 +533,6 @@ test_that("interpret_records normalizes ordered table and direct-record sources"
         upper_value = 1.50,
         lower_prob = 0.025,
         upper_prob = 0.975,
-        interval_level = 0.95,
         conditioning = "conditional on effect inclusion"
       )
     ),
@@ -545,6 +590,7 @@ test_that("interpret_records normalizes ordered table and direct-record sources"
   expect_equal(estimate$central_name, "mode")
   expect_equal(estimate$central_value, 1.25)
   expect_equal(estimate$conditioning, "conditional on effect inclusion")
+  expect_equal(estimate$interval_level, 0.95)
 
   moderator_estimate <- records[records$record_id == "moderators.moderator.x1.estimate", ]
   expect_equal(moderator_estimate$central_name, "mean")
@@ -649,6 +695,179 @@ test_that("interpret_records matches explicitly requested padded probability col
 })
 
 
+test_that("interpret_records labels fallback intervals with their own probabilities", {
+
+  estimates <- data.frame(
+    Mean = 0.3,
+    "0.025" = 0.1,
+    "0.5" = 0.3,
+    "0.975" = 0.5,
+    check.names = FALSE
+  )
+  rownames(estimates) <- "mu"
+  source <- list(
+    type = "table",
+    data = estimates,
+    schema = list(lower_prob = 0.05, upper_prob = 0.95)
+  )
+  plan <- list(list(kind = "estimate", source = "est", row = "mu"))
+
+  out <- interpret_records(sources = list(est = source), plan = plan)
+  expect_equal(out$lower_value, 0.1)
+  expect_equal(out$upper_value, 0.5)
+  expect_equal(out$lower_prob, 0.025)
+  expect_equal(out$upper_prob, 0.975)
+  expect_equal(out$interval_level, 0.95)
+
+  text <- interpret_records(sources = list(est = source), plan = plan, output = "text")
+  expect_match(text, "95%", fixed = TRUE)
+  expect_false(grepl("90%", text, fixed = TRUE))
+})
+
+
+test_that("interpret_records supports central-only estimate tables", {
+
+  estimates <- ensemble_estimates_table(
+    samples = list(theta = c(-1, 0, 2)),
+    parameters = "theta",
+    probs = NULL
+  )
+  plan <- list(list(
+    kind = "estimate",
+    source = "estimates",
+    row = "theta"
+  ))
+
+  out <- interpret_records(
+    sources = list(estimates = estimates),
+    plan = plan
+  )
+  text <- interpret_records(
+    sources = list(estimates = estimates),
+    plan = plan,
+    output = "text"
+  )
+
+  expect_equal(out$central_name, "mean")
+  expect_equal(out$central_value, mean(c(-1, 0, 2)))
+  expect_true(is.na(out$lower_value))
+  expect_true(is.na(out$upper_value))
+  expect_true(is.na(out$interval_level))
+  expect_false(grepl("interval", text, fixed = TRUE))
+})
+
+test_that("interpret_records derives interval levels from endpoint probabilities", {
+  estimate <- list(
+    kind = "estimate",
+    parameter = "theta",
+    central_name = "mean",
+    central_value = 0,
+    lower_value = -1,
+    upper_value = 1,
+    lower_prob = 0.025,
+    upper_prob = 0.975
+  )
+  out <- interpret_records(
+    sources = list(estimate = estimate),
+    plan = list(list(kind = "estimate", source = "estimate"))
+  )
+  expect_equal(out$interval_level, 0.95)
+
+  arbitrary <- data.frame(
+    Mean = 0,
+    lower = -1,
+    upper = 1,
+    check.names = FALSE
+  )
+  arbitrary_out <- interpret_records(
+    sources = list(arbitrary = list(
+      data = arbitrary,
+      schema = list(
+        central = "Mean",
+        lower = "lower",
+        upper = "upper"
+      )
+    )),
+    plan = list(list(
+      kind = "estimate",
+      source = "arbitrary",
+      row = 1
+    ))
+  )
+  arbitrary_text <- interpret_records(
+    sources = list(arbitrary = list(
+      data = arbitrary,
+      schema = list(
+        central = "Mean",
+        lower = "lower",
+        upper = "upper"
+      )
+    )),
+    plan = list(list(
+      kind = "estimate",
+      source = "arbitrary",
+      row = 1
+    )),
+    output = "text"
+  )
+  expect_true(is.na(arbitrary_out$interval_level))
+  expect_match(arbitrary_text, "uncertainty interval", fixed = TRUE)
+
+  invalid_inputs <- list(
+    schema = function(){
+      interpret_records(
+        sources = list(estimates = list(
+          data = arbitrary,
+          schema = list(
+            central = "Mean",
+            lower = "lower",
+            upper = "upper",
+            interval_level = 0.95
+          )
+        )),
+        plan = list(list(kind = "estimate", source = "estimates"))
+      )
+    },
+    plan = function(){
+      interpret_records(
+        sources = list(estimates = arbitrary),
+        plan = list(list(
+          kind = "estimate",
+          source = "estimates",
+          interval_level = 0.95
+        ))
+      )
+    },
+    record = function(){
+      bad_record <- estimate
+      bad_record$interval_level <- 0.95
+      interpret_records(
+        sources = list(estimate = bad_record),
+        plan = list(list(kind = "estimate", source = "estimate"))
+      )
+    },
+    records = function(){
+      bad_records <- as.data.frame(estimate, check.names = FALSE)
+      bad_records$interval_level <- 0.95
+      interpret_records(
+        sources = list(estimates = list(
+          type = "records",
+          data = bad_records
+        )),
+        plan = list(list(kind = "estimate", source = "estimates"))
+      )
+    }
+  )
+  for(invalid_input in invalid_inputs){
+    expect_error(
+      invalid_input(),
+      "'interval_level' is derived output and cannot be supplied",
+      fixed = TRUE
+    )
+  }
+})
+
+
 test_that("interpret_tables aliases interpret_records and supports optional missing entries", {
 
   table <- data.frame(
@@ -686,5 +905,260 @@ test_that("interpret function input validation works", {
 
   # Test invalid specification elements
   expect_error(interpret(list(), list(), list(list(inference = 1)), "Test"))
+
+})
+
+test_that("N22 fallback endpoints retain their actual probability labels", {
+
+  source <- data.frame(Mean = .3, "0.025" = .1, "0.975" = .5,
+                       check.names = FALSE, row.names = "mu")
+  plan <- list(list(kind = "estimate", source = "est", row = "mu",
+                    lower_prob = .05, upper_prob = .95, label = "chosen label"))
+  records <- interpret_records(list(est = source), plan)
+  expect_equal(unlist(records[c("lower_value", "upper_value")], use.names = FALSE), c(.1, .5))
+  expect_equal(unlist(records[c("lower_prob", "upper_prob", "interval_level")],
+                      use.names = FALSE), c(.025, .975, .95), tolerance = 1e-15)
+  expect_identical(records$label, "chosen label")
+  text <- interpret_records(list(est = source), plan, output = "text")
+  expect_match(paste(text, collapse = "\n"), "95%", fixed = TRUE)
+  expect_false(grepl("90%", paste(text, collapse = "\n"), fixed = TRUE))
+})
+
+test_that("N22 exact requested and inferred probabilities keep the source interval", {
+
+  source <- data.frame(Mean = .3, "0.025" = .1, "0.975" = .5,
+                       check.names = FALSE, row.names = "mu")
+  for(probabilities in list(list(lower_prob = .025, upper_prob = .975), list())){
+    plan <- list(c(list(kind = "estimate", source = "est", row = "mu"), probabilities))
+    records <- interpret_records(list(est = source), plan)
+    expect_equal(unlist(records[c("lower_prob", "upper_prob", "interval_level")],
+                        use.names = FALSE), c(.025, .975, .95), tolerance = 1e-15)
+  }
+})
+
+test_that("N73 expanded estimates stay together before the next plan item", {
+
+  source <- data.frame(Mean = c(.3, .4), "0.025" = c(.1, .2), "0.975" = c(.5, .6),
+                       check.names = FALSE, row.names = c("a", "b"))
+  plan <- list(list(kind = "for_each", source = "est", rows = c("a", "b"),
+                    template = "estimate"), list(kind = "note", text = "after"))
+  records <- interpret_records(list(est = source), plan)
+  expect_identical(records$kind, c("estimate", "estimate", "note"))
+  expect_identical(records$row[1:2], c("a", "b"))
+  expect_equal(records$order, c(1, 1, 2), tolerance = 0)
+  text <- interpret_records(list(est = source), plan, output = "text")
+  expect_identical(tail(text, 1L), "after")
+})
+
+test_that("N73 paired child records stay adjacent in row order", {
+
+  estimates <- data.frame(Mean = c(.3, .4), "0.025" = c(.1, .2), "0.975" = c(.5, .6),
+                          check.names = FALSE, row.names = c("a", "b"))
+  evidence <- data.frame(prior_prob = c(.5, .5), post_prob = c(2 / 3, .2),
+                         inclusion_BF = c(2, 1 / 4), row.names = c("a", "b"))
+  plan <- list(list(kind = "for_each", source = "tests", pair_with = "est",
+                    rows = c("a", "b")), list(kind = "note", text = "after"))
+  records <- interpret_records(list(tests = evidence, est = estimates), plan)
+  expect_identical(records$kind, c("evidence", "estimate", "evidence", "estimate", "note"))
+  expect_identical(records$row[1:4], c("a", "a", "b", "b"))
+  expect_equal(records$order, c(1, 1, 1, 1, 2), tolerance = 0)
+  expect_identical(records$order, c(1, 1, 1, 1, 2))
+})
+
+test_that("N73 ordinary explicitly ordered plan items remain stable", {
+
+  plan <- list(list(kind = "note", order = 3, text = "last"),
+               list(kind = "note", order = 1, text = "first"),
+               list(kind = "note", order = 1, text = "second"))
+  expect_identical(as.character(interpret_records(list(est = data.frame(Mean = .3, row.names = "mu")), plan, output = "text")),
+                   c("first", "second", "last"))
+})
+
+test_that("N73 explicit pair reference order overrides retain precedence", {
+
+  estimates <- data.frame(Mean = .3, row.names = "a")
+  evidence <- data.frame(prior_prob = .5, post_prob = 2 / 3, inclusion_BF = 2, row.names = "a")
+  plan <- list(list(kind = "pair", order = 2,
+                    evidence = list(source = "tests", row = "a", order = 5),
+                    estimate = list(source = "est", row = "a", order = 1)),
+               list(kind = "note", order = 3, text = "between"))
+  records <- interpret_records(list(tests = evidence, est = estimates), plan)
+  expect_identical(records$kind, c("estimate", "note", "evidence"))
+  expect_equal(records$order, c(1, 3, 5), tolerance = 0)
+})
+
+test_that("N73 explicit integer reference orders retain their representation", {
+
+  estimates <- data.frame(Mean = .3, row.names = "a")
+  evidence <- data.frame(prior_prob = .5, post_prob = 2 / 3, inclusion_BF = 2, row.names = "a")
+  plan <- list(list(kind = "pair", order = 2L,
+                    evidence = list(source = "tests", row = "a", order = 5L),
+                    estimate = list(source = "est", row = "a", order = 1L)),
+               list(kind = "note", order = 3L, text = "between"))
+  records <- interpret_records(list(tests = evidence, est = estimates), plan)
+  expect_identical(records$kind, c("estimate", "note", "evidence"))
+  expect_identical(records$order, c(1L, 3L, 5L))
+})
+
+.interpret_log_BF_table <- function(){
+
+  log_BF <- .format_BF_from_log(c(overflow = 800, tiny = -800, ordinary = 2), logBF = TRUE)
+  tests <- data.frame(prior_prob = rep(0.5, 3), post_prob = c(1, 0, 0.88), check.names = FALSE)
+  tests[["inclusion_BF"]] <- log_BF
+  rownames(tests) <- names(log_BF)
+  class(tests) <- c("BayesTools_table", "data.frame")
+  attr(tests, "type") <- c("prior_prob", "post_prob", "inclusion_BF")
+
+  tests
+}
+
+.interpret_log_BF_record <- function(BF_value, orientation, bound = NULL, scale = "log", output = "text"){
+
+  data <- list(kind = "evidence", label = "effect", BF_value = BF_value,
+               BF_scale = scale, BF_orientation = orientation)
+  if(!is.null(bound)){
+    data[["BF_bound_operator"]] <- bound
+  }
+  out <- interpret_records(list(bf = list(type = "record", data = data)),
+                           list(list(kind = "evidence", source = "bf")), output = output)
+
+  if(output == "text") as.character(out) else out
+}
+
+test_that("interpret_records keeps the evidence of log-scale Bayes factors beyond the double range", {
+
+  tests <- .interpret_log_BF_table()
+  table_evidence <- function(row, output = "text"){
+    interpret_records(
+      list(tests = tests),
+      list(list(kind = "evidence", source = "tests", row = row, label = row)),
+      output = output
+    )
+  }
+
+  expect_identical(
+    as.character(table_evidence("overflow")),
+    "strong evidence in favor of the overflow, Inclusion BF = exp(800)"
+  )
+  overflow <- table_evidence("overflow", "records")
+  expect_equal(overflow$BF_value, 800)
+  expect_identical(overflow$BF_scale, "log")
+
+  expect_identical(
+    as.character(table_evidence("tiny")),
+    "strong evidence against the tiny, Inclusion BF = exp(-800)"
+  )
+  expect_identical(
+    as.character(table_evidence("ordinary")),
+    "moderate evidence in favor of the ordinary, Inclusion BF = 7.39"
+  )
+  expect_equal(table_evidence("ordinary", "records")$BF_canonical_value, exp(2), tolerance = 1e-12)
+
+})
+
+test_that("interpret_records reads the logarithm of a natural-scale Bayes factor beyond the double range", {
+
+  for(BF01 in c(FALSE, TRUE)){
+    BF <- .format_BF_from_log(c(overflow = 800, tiny = -800, ordinary = 2), logBF = FALSE, BF01 = BF01, inclusion = TRUE)
+    # the displayed natural values are 0 or Inf, the carrier keeps the logarithms
+    expect_true(all(is.infinite(as.numeric(BF)[1:2]) | as.numeric(BF)[1:2] == 0))
+    tests <- data.frame(prior_prob = rep(0.5, 3), post_prob = c(1, 0, 0.88), check.names = FALSE)
+    tests[["inclusion_BF"]] <- BF
+    rownames(tests) <- names(BF)
+    class(tests) <- c("BayesTools_table", "data.frame")
+    attr(tests, "type") <- c("prior_prob", "post_prob", "inclusion_BF")
+    table_evidence <- function(row, output = "text"){
+      interpret_records(list(tests = tests),
+        list(list(kind = "evidence", source = "tests", row = row, label = row)), output = output)
+    }
+    expect_identical(as.character(table_evidence("overflow")),
+                     "strong evidence in favor of the overflow, Inclusion BF = exp(800)", info = BF01)
+    expect_identical(as.character(table_evidence("tiny")),
+                     "strong evidence against the tiny, Inclusion BF = exp(-800)", info = BF01)
+    expect_identical(as.character(table_evidence("ordinary")),
+                     "moderate evidence in favor of the ordinary, Inclusion BF = 7.39", info = BF01)
+    overflow <- table_evidence("overflow", "records")
+    expect_identical(overflow$BF_scale, "log")
+    expect_equal(overflow$BF_value, if(BF01) -800 else 800)
+    expect_equal(overflow$BF_canonical_value, exp(800))
+    # an ordinary natural-scale value keeps the linear reading
+    expect_identical(table_evidence("ordinary", "records")$BF_scale, "linear")
+  }
+})
+
+test_that("interpret_records applies the orientation of a log-scale Bayes factor to its logarithm", {
+
+  # the reciprocal of exp(710) stays representable
+  reverse <- .interpret_log_BF_record(710, "null_over_alternative", output = "records")
+  expect_identical(reverse$BF_canonical_value, exp(-710))
+  expect_identical(
+    .interpret_log_BF_record(710, "null_over_alternative"),
+    "strong evidence against the effect, BF = exp(-710)"
+  )
+  expect_identical(
+    .interpret_log_BF_record(-710, "null_over_alternative", output = "records")$BF_canonical_value,
+    Inf
+  )
+  expect_identical(
+    .interpret_log_BF_record(-710, "null_over_alternative"),
+    "strong evidence in favor of the effect, BF = exp(710)"
+  )
+  expect_identical(
+    .interpret_log_BF_record(-800, "exclusion_over_inclusion"),
+    "strong evidence in favor of the effect, Inclusion BF = exp(800)"
+  )
+  expect_identical(
+    .interpret_log_BF_record(800, "alternative_over_null", ">"),
+    "at least strong evidence in favor of the effect, BF > exp(800)"
+  )
+  expect_identical(
+    .interpret_log_BF_record(800, "alternative_over_null", "<"),
+    "a finite-sample bound for the evidence concerning the effect, BF < exp(800)"
+  )
+  expect_identical(
+    .interpret_log_BF_record(0, "alternative_over_null"),
+    "no evidence for or against the effect, BF = 1.00"
+  )
+
+})
+
+test_that("interpret text prints an unbounded Bayes factor that rounds to zero as its reciprocal", {
+
+  expect_identical(
+    .interpret_log_BF_record(log(1e-4), "alternative_over_null"),
+    "strong evidence against the effect, BF = 1/10000"
+  )
+  expect_identical(
+    BayesTools:::.interpret.BF(1e-4, "effect", NULL),
+    "strong evidence against the effect, BF = 1/10000"
+  )
+  expect_identical(
+    BayesTools:::.interpret.BF(0.002, "effect", NULL),
+    "strong evidence against the effect, BF = 0.002"
+  )
+
+})
+
+test_that("interpret_records text of natural-scale and in-range log-scale Bayes factors is unchanged", {
+
+  expect_identical(
+    .interpret_log_BF_record(Inf, "alternative_over_null", scale = "linear"),
+    "evidence for effect unavailable"
+  )
+  expect_error(.interpret_log_BF_record(0, "alternative_over_null", scale = "linear"), "inference_BF")
+  for(log_value in seq(-4, 4, by = 0.25)){
+    expect_identical(
+      .interpret_log_BF_record(log_value, "alternative_over_null"),
+      BayesTools:::.interpret.BF(exp(log_value), "effect", "BF")
+    )
+    expect_identical(
+      .interpret_log_BF_record(log_value, "null_over_alternative"),
+      BayesTools:::.interpret.BF(exp(-log_value), "effect", "BF")
+    )
+  }
+
+  # the internal logarithm must be a finite number
+  expect_error(BayesTools:::.interpret.BF(1, "effect", NULL, log_BF = Inf), "inference_BF")
+  expect_error(BayesTools:::.interpret.BF(1, "effect", NULL, log_BF = NA_real_), "inference_BF")
 
 })

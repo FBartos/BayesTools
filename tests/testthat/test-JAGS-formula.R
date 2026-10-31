@@ -80,6 +80,346 @@ test_that("formula_add_intercept repairs only top-level no-intercept terms", {
   expect_error(formula_add_intercept("~ x - 1"), "'formula' must be a formula.", fixed = TRUE)
 })
 
+test_that("formula_add_intercept restores the intercept after a term removal that follows 0 or - 1", {
+
+  for(formula in list(~ 0 + g * x - x, ~ x - 1 - z, ~ 0 + a - b, ~ 0 - x, y ~ 0 + a - b)){
+    out <- formula_add_intercept(formula)
+    expect_equal(attr(stats::terms(out), "intercept"), 1, info = deparse(formula))
+    expect_equal(
+      attr(stats::terms(out), "term.labels"),
+      attr(stats::terms(formula), "term.labels"),
+      info = deparse(formula)
+    )
+  }
+
+  data <- data.frame(
+    g = factor(rep(c("a", "b", "c"), 4), levels = c("a", "b", "c")),
+    x = seq(-1, 1, length.out = 12)
+  )
+  priors <- list(
+    g = prior_factor("normal", list(0, 1), contrast = "independent"),
+    "g:x" = prior_factor("normal", list(0, 1), contrast = "independent")
+  )
+  removal <- JAGS_formula(~ 0 + g * x - x, "mu", data, priors)
+  explicit <- JAGS_formula(~ 0 + g + g:x, "mu", data, priors)
+  expect_identical(removal$formula_syntax, explicit$formula_syntax)
+  expect_identical(removal$prior_list, explicit$prior_list)
+  expect_identical(removal$data, explicit$data)
+  for(field in c("model_matrix", "assign", "raw_column_names")){
+    expect_identical(removal$formula_design[[field]], explicit$formula_design[[field]], info = field)
+  }
+})
+
+test_that("JAGS_formula refuses a logical predictor that a factor interaction codes by indicators", {
+
+  data <- data.frame(
+    g     = factor(rep(c("a", "b", "c"), 4), levels = c("a", "b", "c")),
+    h     = factor(rep(c("u", "v"), each = 6), levels = c("u", "v")),
+    flag  = rep(c(TRUE, FALSE), 6),
+    flag2 = rep(c(TRUE, TRUE, FALSE), 4),
+    x     = seq(-1, 1, length.out = 12)
+  )
+  priors_for <- function(formula){
+    labels <- attr(stats::terms(formula), "term.labels")
+    priors <- lapply(labels, function(label){
+      if(any(strsplit(label, ":", fixed = TRUE)[[1L]] %in% c("g", "h"))){
+        prior_factor("normal", list(0, 1), contrast = "treatment")
+      }else{
+        prior("normal", list(0, 1))
+      }
+    })
+    names(priors) <- labels
+    if(attr(stats::terms(formula), "intercept") == 1L){
+      priors <- c(list(intercept = prior("normal", list(0, 1))), priors)
+    }
+    priors
+  }
+  remedy <- ", where model.matrix() would code it as a two-level factor. Convert it to a factor, or to numeric 0/1, in the data, or standardize it with 'formula_scale'."
+
+  # model.matrix() codes the logical by indicators: one column per FALSE/TRUE
+  # cell, which the declared factor design (one column per factor cell) lacks.
+  refused <- list(
+    list(~ flag:g, "flag:g"), list(~ g:flag, "g:flag"), list(~ flag + flag:g, "flag:g"),
+    list(~ 0 + flag:g, "flag:g"), list(~ flag:h, "flag:h"), list(~ flag:x:g, "flag:x:g"),
+    list(~ flag:g:h, "flag:g:h")
+  )
+  for(case in refused){
+    expect_error(
+      JAGS_formula(case[[1L]], "mu", data, priors_for(case[[1L]])),
+      paste0("The logical predictor 'flag' is unavailable in the interaction term '", case[[2L]], "'", remedy),
+      fixed = TRUE,
+      info = deparse(case[[1L]])
+    )
+  }
+  expect_error(
+    JAGS_formula(~ flag:g + flag2:h, "mu", data, priors_for(~ flag:g + flag2:h)),
+    paste0(
+      "The logical predictors 'flag', 'flag2' are unavailable in the interaction terms 'flag:g', 'flag2:h', ",
+      "where model.matrix() would code them as a two-level factor. Convert them to factors, or to numeric 0/1, in the data, or standardize them with 'formula_scale'."
+    ),
+    fixed = TRUE
+  )
+  # the refusal precedes the prior checks
+  expect_error(
+    JAGS_formula(~ flag:g, "mu", data, list(intercept = prior("normal", list(0, 1)))),
+    "logical predictor 'flag' is unavailable",
+    fixed = TRUE
+  )
+  # F318 (2): a classed refusal naming the predictors and the terms
+  condition <- tryCatch(
+    JAGS_formula(~ flag:g + flag2:h, "mu", data, priors_for(~ flag:g + flag2:h)),
+    error = identity
+  )
+  expect_s3_class(condition, "BayesTools_formula_transform_unavailable")
+  expect_identical(condition$reason, "logical_factor_interaction")
+  expect_identical(condition$predictors, c("flag", "flag2"))
+  expect_identical(condition$terms, c("flag:g", "flag2:h"))
+
+  # main effects, hierarchical interactions and numeric interactions keep the
+  # contrast coding of the logical (one 'flagTRUE' column)
+  accepted <- list(
+    ~ flag, ~ flag * g, ~ flag * h, ~ flag * x, ~ g + g:flag, ~ g:h + flag:g:h,
+    ~ flag * g * x, ~ flag * flag2
+  )
+  for(formula in accepted){
+    compiled <- JAGS_formula(formula, "mu", data, priors_for(formula))
+    columns <- colnames(compiled$formula_design$model_matrix)
+    expect_true(any(grepl("flagTRUE", columns, fixed = TRUE)), info = deparse(formula))
+    expect_false(any(grepl("flagFALSE", columns, fixed = TRUE)), info = deparse(formula))
+  }
+  # the same interaction is available once the predictor is a factor or numeric 0/1
+  for(converted in list(factor(data$flag), as.numeric(data$flag))){
+    converted_data <- data
+    converted_data$flag <- converted
+    compiled <- JAGS_formula(~ flag:g, "mu", converted_data, priors_for(~ flag:g))
+    expect_true(is.matrix(compiled$formula_design$model_matrix))
+  }
+})
+
+test_that("JAGS_formula standardizes a logical predictor in a factor interaction instead of refusing it", {
+
+  data <- data.frame(
+    g    = factor(rep(c("a", "b", "c"), 4), levels = c("a", "b", "c")),
+    flag = rep(c(TRUE, FALSE), 6),
+    x    = seq(-1, 1, length.out = 12)
+  )
+  priors <- list(
+    intercept = prior("normal", list(0, 1)),
+    x         = prior("normal", list(0, 1)),
+    "flag:g"  = prior_factor("normal", list(0, 1), contrast = "treatment")
+  )
+  coefficient_names <- c("mu_intercept", "mu_x", paste0("mu_flag__xXx__g[", 1:3, "]"))
+  beta <- c(0.5, -1, 2, 3, -4)
+
+  # a standardized logical is numeric in the design: the interaction multiplies
+  # the standardized flag with the level indicators of `g`
+  standardized_flag <- (data$flag - mean(data$flag)) / stats::sd(data$flag)
+  standardized_x <- (data$x - mean(data$x)) / stats::sd(data$x)
+  cases <- list(
+    list(scale = TRUE, x = standardized_x),
+    list(scale = list(flag = TRUE), x = data$x),
+    list(scale = list(flag = TRUE, x = TRUE), x = standardized_x)
+  )
+  for(case in cases){
+    info <- paste(deparse(case$scale), collapse = "")
+    compiled <- JAGS_formula(~ x + flag:g, "mu", data, priors, formula_scale = case$scale)
+    design <- compiled$formula_design$model_matrix
+    expect_identical(ncol(design), 5L, info = info)
+
+    indicators <- cbind(data$g == "a", data$g == "b", data$g == "c") * 1
+    independent <- 0.5 - 1 * case$x + drop(standardized_flag * (indicators %*% c(2, 3, -4)))
+    expect_equal(unname(drop(design %*% beta)), independent, info = info)
+
+    carrier <- JAGS_formula_draws(
+      matrix(beta, 1L, dimnames = list(NULL, coefficient_names)),
+      ~ x + flag:g, "mu", data, priors, formula_scale = case$scale
+    )
+    expect_equal(unname(drop(JAGS_evaluate_formula(carrier, parameter = "mu"))), independent, info = info)
+  }
+
+  # a logical that stays logical in the design is still refused
+  for(scale in list(NULL, FALSE, list(x = TRUE), list(flag = FALSE, x = TRUE))){
+    expect_error(
+      JAGS_formula(~ x + flag:g, "mu", data, priors, formula_scale = scale),
+      "The logical predictor 'flag' is unavailable in the interaction term 'flag:g'",
+      fixed = TRUE,
+      info = paste(deparse(scale), collapse = "")
+    )
+  }
+})
+
+test_that("JAGS_formula refuses a one-level factor in the package's words", {
+
+  # F189: base R's contrasts<- stopped with "contrasts can be applied only to
+  # factors with 2 or more levels", naming neither the factor nor the remedy,
+  # also for an independent prior (contr.independent(1) is defined)
+  data <- data.frame(
+    g  = factor(rep("a", 6)),
+    h  = rep(c("u", "v"), 3),
+    id = factor(rep(c("s1", "s2", "s3"), each = 2)),
+    x  = seq(-1, 1, length.out = 6)
+  )
+  priors <- list(
+    independent = prior_factor("normal", list(0, 1), contrast = "independent"),
+    treatment   = prior_factor("normal", list(0, 1), contrast = "treatment"),
+    orthonormal = prior_factor("mnormal", list(0, 1), contrast = "orthonormal"),
+    meandif     = prior_factor("mnormal", list(0, 1), contrast = "meandif")
+  )
+  expect_refused <- function(call, predictor, message, info){
+    condition <- tryCatch(call, error = identity)
+    expect_s3_class(condition, "BayesTools_formula_transform_unavailable")
+    expect_identical(condition$reason, "single_level_factor", info = info)
+    expect_identical(condition$predictor, predictor, info = info)
+    expect_match(conditionMessage(condition), message, fixed = TRUE, info = info)
+    expect_no_match(conditionMessage(condition), "contrasts can be applied", fixed = TRUE)
+  }
+  for(contrast in names(priors)){
+    expect_refused(
+      JAGS_formula(~ 0 + g + x, "mu", data,
+                   list(g = priors[[contrast]], x = prior("normal", list(0, 1)))),
+      "g",
+      paste0("Factor predictor 'g' has a single level ('a') in the data, so it has no contrasts ",
+             "to code. Remove 'g' from the formula, or supply data in which it has at least two levels."),
+      info = contrast
+    )
+  }
+  # a character predictor with one value is a one-level factor as well
+  data$g_chr <- "a"
+  expect_refused(
+    JAGS_formula(~ 1 + g_chr, "mu", data,
+                 list(intercept = prior("normal", list(0, 1)), g_chr = priors$independent)),
+    "g_chr", "Factor predictor 'g_chr' has a single level ('a')", info = "character"
+  )
+  # a random-effect factor of an ID/DIAG/US block
+  data$f <- factor(rep("a", 6))
+  gamma_block <- random_block(sd = prior("gamma", list(2, 2)))
+  for(formula in list(~ 1 + diag(0 + f | id), ~ 1 + us(1 + f | id))){
+    expect_refused(
+      JAGS_formula(formula, "mu", data, list(intercept = prior("normal", list(0, 1))),
+                   prior_random = prior_random(id = gamma_block)),
+      "f", "Random-effect factor predictor 'f' has a single level ('a')",
+      info = paste(deparse(formula), collapse = "")
+    )
+  }
+  # a factor with two levels, and a one-level index of a structured block, compile
+  expect_no_error(JAGS_formula(
+    ~ 1 + h, "mu", data,
+    list(intercept = prior("normal", list(0, 1)), h = priors$independent)
+  ))
+  expect_no_error(JAGS_formula(
+    ~ 1 + cs(f | id), "mu", data, list(intercept = prior("normal", list(0, 1))),
+    prior_random = prior_random(id = gamma_block)
+  ))
+})
+
+test_that("JAGS_formula refuses a logical predictor that a random-effect factor interaction codes by indicators", {
+
+  # F326 (1): `diag(1 + flag:f | id)` stopped at compile time with an
+  # internal-consistency message ("factor design ... has 3 column(s), but the
+  # random-effect design has 6"), where the fixed formula gets the actionable text
+  data <- data.frame(
+    f    = factor(rep(c("a", "b", "c"), 4), levels = c("a", "b", "c")),
+    flag = rep(c(TRUE, FALSE), 6),
+    id   = factor(rep(c("s1", "s2", "s3", "s4"), each = 3)),
+    x    = seq(-1, 1, length.out = 12)
+  )
+  compile <- function(formula, formula_scale = NULL){
+    JAGS_formula(
+      formula, "mu", data,
+      list(intercept = prior("normal", list(0, 1))),
+      formula_scale = formula_scale,
+      prior_random = prior_random(id = random_block(sd = prior("gamma", list(2, 2))))
+    )
+  }
+  remedy <- ", where model.matrix() would code it as a two-level factor. Convert it to a factor, or to numeric 0/1, in the data, or standardize it with 'formula_scale'."
+
+  for(formula in list(
+    ~ 1 + diag(1 + flag:f | id), ~ 1 + diag(0 + flag:f | id), ~ 1 + us(1 + flag:f | id),
+    ~ 1 + diag(1 + flag + flag:f | id), ~ 1 + diag(1 + f:flag | id), ~ 1 + (1 + flag:f | id)
+  )){
+    info <- paste(deparse(formula), collapse = "")
+    condition <- tryCatch(compile(formula), error = identity)
+    expect_s3_class(condition, "BayesTools_formula_transform_unavailable")
+    expect_identical(condition$reason, "logical_factor_interaction", info = info)
+    expect_identical(condition$predictors, "flag", info = info)
+    expect_match(
+      conditionMessage(condition),
+      paste0("The logical predictor 'flag' is unavailable in the interaction term '"),
+      fixed = TRUE, info = info
+    )
+    expect_match(conditionMessage(condition), remedy, fixed = TRUE, info = info)
+    expect_no_match(conditionMessage(condition), "random-effect design has", fixed = TRUE)
+  }
+
+  # a hierarchical interaction, a main effect, a numeric interaction and a
+  # standardized logical keep compiling
+  for(formula in list(
+    ~ 1 + diag(1 + flag * f | id), ~ 1 + diag(1 + flag | id), ~ 1 + diag(1 + flag:x | id),
+    ~ 1 + diag(1 + f + f:x | id)
+  )){
+    expect_s3_class(compile(formula)$formula_design, "BayesTools_formula_design")
+  }
+  for(scale in list(TRUE, list(flag = TRUE))){
+    expect_s3_class(
+      compile(~ 1 + diag(1 + flag:f | id), formula_scale = scale)$formula_design,
+      "BayesTools_formula_design"
+    )
+  }
+  # the same interaction is available once the predictor is a factor or numeric 0/1
+  converted <- data
+  converted$flag <- as.numeric(converted$flag)
+  expect_s3_class(
+    JAGS_formula(
+      ~ 1 + diag(1 + flag:f | id), "mu", converted,
+      list(intercept = prior("normal", list(0, 1))),
+      prior_random = prior_random(id = random_block(sd = prior("gamma", list(2, 2))))
+    )$formula_design,
+    "BayesTools_formula_design"
+  )
+})
+
+test_that("JAGS_formula rejects scaled intercept priors", {
+
+  data <- data.frame(x = c(-1, 0.5, 2))
+  message <- paste0(
+    "The intercept prior 'prior_list[[\"intercept\"]]' has a 'multiply_by' ",
+    "attribute, but intercept priors cannot be scaled. Remove 'multiply_by' ",
+    "from the intercept prior; it is supported only for the priors of ",
+    "formula terms."
+  )
+  log_formula <- ~ 1 + x
+  attr(log_formula, "log(intercept)") <- TRUE
+  for(multiply_by in list(2, "s")){
+    intercept_prior <- prior("gamma", list(shape = 2, rate = 1))
+    attr(intercept_prior, "multiply_by") <- multiply_by
+    for(formula in list(~ 1 + x, ~ 0 + x, log_formula)){
+      expect_error(
+        JAGS_formula(
+          formula, "mu", data,
+          list(intercept = intercept_prior, x = prior("normal", list(0, 1)))
+        ),
+        message,
+        fixed = TRUE
+      )
+    }
+    # A default continuous prior with a multiplier cannot fill the intercept.
+    expect_error(
+      JAGS_formula(~ 1 + x, "mu", data, list("__default_continuous" = intercept_prior)),
+      message,
+      fixed = TRUE
+    )
+  }
+
+  # Term priors keep their multiplier.
+  x_prior <- prior("normal", list(0, 1))
+  attr(x_prior, "multiply_by") <- 2
+  result <- JAGS_formula(
+    ~ 1 + x, "mu", data,
+    list(intercept = prior("normal", list(0, 1)), x = x_prior)
+  )
+  expect_match(result$formula_syntax, "mu_intercept + 2 * mu_x * mu_data_x[i]", fixed = TRUE)
+})
+
 test_that("JAGS_formula stores exact fitted formula design metadata", {
 
   df <- data.frame(
@@ -104,6 +444,16 @@ test_that("JAGS_formula stores exact fitted formula design metadata", {
   design <- result$formula_design
 
   expect_s3_class(design, "BayesTools_formula_design")
+  expect_identical(design$schema_version, 7L)
+  expect_identical(
+    design$stored_data_scale,
+    c(
+      source_data = "original",
+      expression_data = "original",
+      model_frame = "model",
+      model_matrix = "model"
+    )
+  )
   expect_identical(design$parameter, "mu")
   expect_equal(design$formula, ~ x + x2 + f, ignore_formula_env = TRUE)
   expect_equal(nrow(design$model_frame), nrow(df))
@@ -113,6 +463,10 @@ test_that("JAGS_formula stores exact fitted formula design metadata", {
   expect_equal(design$assign, attr(design$model_matrix, "assign"))
   expect_equal(attr(design$terms, "term.labels"), c("x", "x2", "f"))
   expect_equal(design$contrasts$f, "contr.treatment")
+  expect_equal(
+    design$contrast_matrices$f,
+    stats::contr.treatment(c("a", "b"))
+  )
   expect_equal(design$xlevels$f, c("a", "b"))
   expect_equal(design$predictors, c("x", "x2", "f"))
   expect_equal(design$predictor_types, c(x = "continuous", x2 = "continuous", f = "factor"))
@@ -314,13 +668,6 @@ test_that("Expression handling functions work", {
   f5 <- formula(y ~ expression(x) + z)
   f6 <- formula(y ~ expression(x) + z + expression(b))
 
-  expect_true(!.has_expression(f1))
-  expect_true(!.has_expression(f2))
-  expect_true(.has_expression(f3))
-  expect_true(.has_expression(f4))
-  expect_true(.has_expression(f5))
-  expect_true(.has_expression(f6))
-
   expect_equal(.extract_expressions(f3), list("x"))
   expect_equal(.extract_expressions(f4), list("x"))
   expect_equal(.extract_expressions(f5), list("x"))
@@ -352,25 +699,27 @@ test_that("Random effects handling functions work", {
   expect_true(.has_random_effects(f6))
   expect_true(.has_random_effects(f7))
 
-  t1 <- list("1 | id")
-  t2 <- list("1 + x_cont1 | id")
-  t3 <- list("x_cont1 | id", "0 + x_cont2 || group")
-  attr(t1[[1]], "grouping_factor") <- "id"
-  attr(t2[[1]], "grouping_factor") <- "id"
-  attr(t3[[1]], "grouping_factor") <- "id"
-  attr(t3[[2]], "grouping_factor") <- "group"
-  attr(t1[[1]], "independent") <- FALSE
-  attr(t2[[1]], "independent") <- FALSE
-  attr(t3[[1]], "independent") <- FALSE
-  attr(t3[[2]], "independent") <- TRUE
+  parsed_f3 <- .bt_parse_random_effects(f3)$terms
+  parsed_f4 <- .bt_parse_random_effects(f4)$terms
+  parsed_f7 <- .bt_parse_random_effects(f7)$terms
 
-  expect_equal(.extract_random_effects(f1), list())
-  expect_equal(.extract_random_effects(f2), list())
-  expect_equal(.extract_random_effects(f3), t1)
-  expect_equal(.extract_random_effects(f4), t2)
-  expect_equal(.extract_random_effects(f5), t2)
-  expect_equal(.extract_random_effects(f6), t2)
-  expect_equal(.extract_random_effects(f7), t3)
+  expect_length(parsed_f3, 1L)
+  expect_equal(parsed_f3[[1]]$term_formula, ~ 1, ignore_formula_env = TRUE)
+  expect_equal(parsed_f3[[1]]$group_label, "id")
+  expect_false(isTRUE(parsed_f3[[1]]$independent))
+
+  expect_length(parsed_f4, 1L)
+  expect_equal(parsed_f4[[1]]$term_formula, ~ 1 + x_cont1, ignore_formula_env = TRUE)
+  expect_equal(parsed_f4[[1]]$group_label, "id")
+  expect_false(isTRUE(parsed_f4[[1]]$independent))
+
+  expect_length(parsed_f7, 2L)
+  expect_equal(parsed_f7[[1]]$term_formula, ~ x_cont1, ignore_formula_env = TRUE)
+  expect_equal(parsed_f7[[1]]$group_label, "id")
+  expect_false(isTRUE(parsed_f7[[1]]$independent))
+  expect_equal(parsed_f7[[2]]$term_formula, ~ 0 + x_cont2, ignore_formula_env = TRUE)
+  expect_equal(parsed_f7[[2]]$group_label, "group")
+  expect_true(isTRUE(parsed_f7[[2]]$independent))
 
   expect_equal(.remove_random_effects(f1), formula( ~ 1), ignore_formula_env = TRUE)
   expect_equal(.remove_random_effects(f2), formula( ~ x_cont1), ignore_formula_env = TRUE)
@@ -406,15 +755,6 @@ test_that("-1 (no intercept) formula handling works correctly", {
   expect_equal(result_basic$prior_list$mu_intercept$parameters$location, 0)
   expect_true(grepl("mu_intercept", result_basic$formula_syntax))
 
-  # Test 2: Helper function test
-  expect_equal(.add_intercept_to_formula(~ x - 1), ~ x, ignore_formula_env = TRUE)
-  expect_equal(.add_intercept_to_formula(~ x + y - 1), ~ x + y, ignore_formula_env = TRUE)
-  expect_equal(.add_intercept_to_formula(~ - 1), ~ 1, ignore_formula_env = TRUE)
-
-  expect_equal(.add_intercept_to_formula(~ x + 0), ~ x, ignore_formula_env = TRUE)
-  expect_equal(.add_intercept_to_formula(~ x + y + 0), ~ x + y, ignore_formula_env = TRUE)
-  expect_equal(.add_intercept_to_formula(~ 0), ~ 1, ignore_formula_env = TRUE)
-
   skip_if_not_installed("coda")
 
   prior_list_continuous <- list(
@@ -426,6 +766,7 @@ test_that("-1 (no intercept) formula handling works correctly", {
   posterior <- matrix(c(1, 2), nrow = 2)
   colnames(posterior) <- "mu_x_cont"
   posterior <- coda::as.mcmc(posterior)
+  attr(posterior, "formula_design") <- list(mu = result_continuous$formula_design)
 
   expect_false("mu_intercept" %in% colnames(posterior))
   expect_equal(
@@ -457,7 +798,7 @@ test_that("log(intercept) attribute works for specifying log(int) + sum(beta_i *
 
   # Test 1: Basic -1 formula functionality
   prior_list_basic <- list(
-    "intercept" = prior("normal", list(0, 1)),
+    "intercept" = prior("gamma", list(2, 1)),
     "x_fac3md"  = prior_factor("mnormal", contrast = "meandif", list(0, 1))
   )
 
@@ -473,7 +814,7 @@ test_that("log(intercept) attribute works for specifying log(int) + sum(beta_i *
                                data = df_test[, "x_fac3md", drop = FALSE],
                                prior_list = prior_list_basic)
 
-  # generates normal intercept
+  # generates an ordinary intercept
   expect_equal(
     result_basic[["formula_syntax"]],
     "for(i in 1:N_mu){\n  mu[i] = mu_intercept + inprod(mu_x_fac3md, mu_data_x_fac3md[i,])\n}\n"
@@ -485,11 +826,16 @@ test_that("log(intercept) attribute works for specifying log(int) + sum(beta_i *
     "for(i in 1:N_mu){\n  mu[i] = log(mu_intercept) + inprod(mu_x_fac3md, mu_data_x_fac3md[i,])\n}\n"
   )
 
+  expect_false(result_basic$formula_design$log_intercept)
+  expect_true(result_log$formula_design$log_intercept)
+
   # everything else should match
   result_basic[["formula_syntax"]] <- NULL
   result_log[["formula_syntax"]]   <- NULL
   result_basic[["formula"]] <- NULL
   result_log[["formula"]]   <- NULL
+  result_basic[["formula_design"]][["log_intercept"]] <- NULL
+  result_log[["formula_design"]][["log_intercept"]]   <- NULL
   expect_equal(result_basic, result_log)
 })
 
@@ -521,6 +867,11 @@ test_that("JAGS_evaluate_formula works with log(intercept) attribute", {
   samples <- matrix(c(2, 0.5), nrow = 1)
   colnames(samples) <- c("mu_intercept", "mu_x_cont")
   samples <- coda::as.mcmc.list(coda::as.mcmc(samples))
+  formula_log <- ~ x_cont
+  attr(formula_log, "log(intercept)") <- TRUE
+  # the samples with the designs of the formulas without and with log(intercept)
+  samples_no_log <- JAGS_formula_draws(samples, ~ x_cont, "mu", df_test, prior_list)
+  samples_log <- JAGS_formula_draws(samples, formula_log, "mu", df_test, prior_list)
 
   # New data for prediction
   new_data <- data.frame(x_cont = c(0, 1, -1))
@@ -530,17 +881,82 @@ test_that("JAGS_evaluate_formula works with log(intercept) attribute", {
   # For x_cont =  1: result = 2 + 0.5 * 1 = 2.5
   # For x_cont = -1: result = 2 + 0.5 * (-1) = 1.5
   formula_no_log <- ~ x_cont
-  result_no_log <- JAGS_evaluate_formula(samples, formula_no_log, "mu", new_data, prior_list_processed)
+  result_no_log <- JAGS_evaluate_formula(samples_no_log, formula_no_log, "mu", new_data, prior_list_processed)
   expect_equal(as.vector(result_no_log[,1]), c(2, 2.5, 1.5), tolerance = 1e-10)
 
   # Test with log(intercept): result = log(intercept) + x_cont * data
   # For x_cont =  0: result = log(2) + 0.5 * 0 = log(2)
   # For x_cont =  1: result = log(2) + 0.5 * 1 = log(2) + 0.5
   # For x_cont = -1: result = log(2) + 0.5 * (-1) = log(2) - 0.5
-  formula_log <- ~ x_cont
-  attr(formula_log, "log(intercept)") <- TRUE
-  result_log <- JAGS_evaluate_formula(samples, formula_log, "mu", new_data, prior_list_processed)
+  result_log <- JAGS_evaluate_formula(samples_log, formula_log, "mu", new_data, prior_list_processed)
   expect_equal(as.vector(result_log[,1]), c(log(2), log(2) + 0.5, log(2) - 0.5), tolerance = 1e-10)
+})
+
+test_that("JAGS_evaluate_formula takes the log(intercept) flag of an explicit formula from the fitted design", {
+
+  skip_if_not_installed("rjags")
+  skip_if_missing_fits(c("fit_dual_param_regression"))
+
+  fit <- readRDS(file.path(temp_fits_dir, "fit_dual_param_regression.RDS"))
+  design <- attr(fit, "formula_design", exact = TRUE)
+  expect_true(design$log_sigma$log_intercept)
+  expect_false(design$mu$log_intercept)
+  new_data <- data.frame(x_sigma = c(1, 3, 5), x_mu = c(1, 3, 5))
+
+  # the replay of the fitted formula, and an explicit formula without the
+  # attribute, evaluate the log intercept of the fit
+  replay <- JAGS_evaluate_formula(fit, parameter = "log_sigma", data = new_data)
+  expect_equal(unname(rowMeans(replay)), c(-0.847, -1.259, -1.671), tolerance = 1e-3)
+  explicit <- JAGS_evaluate_formula(fit, ~ x_sigma, parameter = "log_sigma", data = new_data)
+  expect_identical(explicit, replay)
+  log_formula <- ~ x_sigma
+  attr(log_formula, "log(intercept)") <- TRUE
+  expect_identical(
+    JAGS_evaluate_formula(fit, log_formula, parameter = "log_sigma", data = new_data),
+    replay
+  )
+  # a subset of the terms evaluates with the same flag: the replay is the log
+  # intercept plus the slope part, which a formula without the intercept gives
+  intercept_part <- JAGS_evaluate_formula(fit, ~ 1, parameter = "log_sigma", data = new_data)
+  slope_part <- JAGS_evaluate_formula(fit, ~ 0 + x_sigma, parameter = "log_sigma", data = new_data)
+  # (rows of the new data by posterior draws)
+  expect_equal(intercept_part[2L, ], intercept_part[1L, ])
+  expect_equal(
+    unname(intercept_part[1L, ]),
+    unname(log(as.matrix(fit$mcmc)[, "log_sigma_intercept"])),
+    tolerance = 1e-12
+  )
+  expect_false(isTRUE(all.equal(unname(slope_part), unname(replay))))
+  expect_equal(slope_part + intercept_part, replay, tolerance = 1e-12)
+
+  # an explicit attribute that disagrees with the fitted design is refused,
+  # naming both values
+  linear_formula <- ~ x_sigma
+  attr(linear_formula, "log(intercept)") <- FALSE
+  refusal <- expect_error(
+    JAGS_evaluate_formula(fit, linear_formula, parameter = "log_sigma", data = new_data),
+    class = "BayesTools_formula_transform_unavailable"
+  )
+  expect_identical(refusal$reason, "log_intercept_mismatch")
+  expect_identical(c(refusal$explicit, refusal$stored), c(FALSE, TRUE))
+  expect_match(conditionMessage(refusal), "(FALSE) does not match", fixed = TRUE)
+  expect_match(conditionMessage(refusal), "fitted formula for parameter 'log_sigma' (TRUE)", fixed = TRUE)
+  expect_false(inherits(refusal, "BayesTools_refit_required"))
+
+  # and so is the attribute on a formula whose fitted design has none
+  mu_formula <- ~ x_mu
+  attr(mu_formula, "log(intercept)") <- TRUE
+  refusal <- expect_error(
+    JAGS_evaluate_formula(fit, mu_formula, parameter = "mu", data = new_data),
+    class = "BayesTools_formula_transform_unavailable"
+  )
+  expect_identical(refusal$reason, "log_intercept_mismatch")
+  expect_match(conditionMessage(refusal), "(TRUE) does not match", fixed = TRUE)
+  expect_match(conditionMessage(refusal), "fitted formula for parameter 'mu' (FALSE)", fixed = TRUE)
+  expect_identical(
+    JAGS_evaluate_formula(fit, ~ x_mu, parameter = "mu", data = new_data),
+    JAGS_evaluate_formula(fit, parameter = "mu", data = new_data)
+  )
 })
 
 test_that("Default priors (__default_factor and __default_continuous) work correctly", {

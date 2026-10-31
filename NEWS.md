@@ -1,3 +1,91 @@
+# version 0.4.0
+### Breaking changes
+- requires R >= 4.3.0 and the `reformulas` package; BayesTools now compiles a JAGS module (inverse-gamma, moment, inverse-moment, and LKJ distributions) and requires JAGS 4.x (>= 4.3.0), including its headers and libraries for installation from source
+- fits, mixed and marginal posteriors, marginal likelihoods, and weight-function priors created with BayesTools 0.3.0 or earlier (including RoBMA 4.0.0 models) must be refitted or recreated; post-fit functions stop on them with a `BayesTools_refit_required` error
+- marginal likelihoods are `BayesTools_marglik` objects (still inheriting from `"bridge"`), and the model-averaging functions accept only these; use `JAGS_bridgesampling()` or `bridgesampling_object(logml)`
+- inverse-gamma priors use the module distribution `dbt_invgamma` on the parameter itself instead of a gamma prior on `inv_<parameter>`
+- removes the deprecated `transform_orthonormal` argument (use `transform_factors`) and the ineffective `seed` argument of `JAGS_extend()`; pass the arguments that followed them by name
+- `check_bool()` rejects `NA` by default and `check_int()` rejects infinite values
+- fixed weight-function priors require a reference weight of exactly 1, and cumulative weight-function and Dirichlet priors require concentrations of at least 0.01
+- stricter inputs: finite autofit convergence thresholds, named `add_bounds`, factor priors outside formulas need `prior_factor_levels()`, formula random effects need `prior_random()`, and mean-difference or orthonormal priors on indicator-coded interaction terms (e.g., `g:x` in `~ g + g:x`) and `multiply_by` on the intercept prior are rejected
+- `JAGS_evaluate_formula()`, `transform_scale_samples()`, and original-scale transformations require the formula design stored by `JAGS_fit()`; attach it to draws without a fit with `JAGS_formula_draws()`
+- chain seeds are drawn from `seed` with R's random-number generator instead of `seed + chain`, and `mix_posteriors()` allocates draws with multinomial counts, so seeded results differ from 0.3.0; seeded functions restore the caller's random-number state instead of resetting it
+- conditioning on an unknown parameter name is an error instead of a warning
+- `Savage_Dickey_BF()` requires an exact, finite, and nonzero prior ordinate at the null hypothesis (classed errors otherwise), returns a finite Bayes factor when the null lies outside the posterior draws, and returns `NA` with the reason for levels with a posterior point mass at the null
+- `JAGS_check_convergence()` and autofit classify parameters by their declared roles: constant parameters are structural, sampled parameters with constant draws fail unless `allow_not_assessable = TRUE`, and indicators are identified from their priors rather than their names
+- parameter labels are rendered from structured label parts, which changes some labels: contrast coefficients that are not levels are labelled `term{j}`, interaction cells and formula prefixes are named consistently across tables, Bayes factor MC-error warnings name parameters by their table labels, and individual weight-function omegas in plots follow the order of summary tables
+- `JAGS_fit()` monitors point priors
+- posterior draw metadata are stored in one validated attribute (`posterior_metadata()`); arithmetic drops the metadata, values modified in place stop with `BayesTools_stale_metadata`, and posterior plots take point masses only from declared posterior atoms
+
+### Features
+- adds formula random effects via `prior_random()`, `random_block()`, and related helpers, with lme4-like syntax (independent, nested, and interacted grouping, factor random slopes, where a mean-difference or orthonormal factor term is one exchangeable unit with one SD) and diagonal, unstructured (LKJ prior), compound-symmetry, AR(1), heterogeneous, and continuous-time AR(1) covariance structures
+- adds random-effect variance allocations with Dirichlet weights and optional inclusion gates (`random_variance_allocation()`), known group covariance kernels (`random_group_covariance()`), external SD sources (`random_sd_source()`), spike-and-slab and mixture priors on random-effect SDs and correlations, and centered or noncentered parameterizations
+- adds predictions with random effects (`JAGS_predict_formula()`; `formula_target`, `blocks`, and `new_levels` in `JAGS_evaluate_formula()`), marginal covariance helpers, and exact marginalization of Gaussian random-effect blocks in `JAGS_bridgesampling()`
+- adds random-effect summaries to estimates tables (`random_effects_summary` and related filters) on the fitted or original scale, with level-cell correlations and multiple correlations (`cor_total`) of factor terms, and `random_effects_summary_posterior()`
+- adds the `RandomEffects` vignette comparing BayesTools formula random effects with lme4 and brms
+- adds `prior_ordered()` for ordered-factor priors that split a total effect across level increments with fixed or Dirichlet allocations
+- adds Dirichlet simplex priors and moment and inverse-moment nonlocal priors
+- adds `prior_factor_levels()` for attaching factor metadata to factor priors
+- adds `selection_model()` for specifying how random effects and sampling errors enter selection models, and selection helpers for downstream packages
+- adds a versioned parameter map stored with each fit, with `parameter_catalog()`, `parameter_catalog_resolve()`, `parameter_draws()`, `parameter_labels()`, and `parameter_mixed_posterior()` for selecting, extracting, and labelling model quantities
+- adds `JAGS_deterministic_nodes()` and `JAGS_evaluate_deterministic()` for the deterministic quantities generated in JAGS models, and `parameter_source()` for referencing existing JAGS nodes
+- adds `posterior_metadata()`, metadata constructors, and `posterior_transform()` for transforming posterior draws together with their supports, atoms, and densities
+- adds `parameter_prior_density()`, `prior_density_ordinate()`, and `prior_ordinate_status()` for exact prior densities and ordinates of model quantities, including random-effect SDs, variance allocations, and LKJ correlations
+- adds `hypothesis_BF()` for point and region hypotheses specified as expressions (including comparisons of factor levels), with the hypothesis parser `hypothesis_parse()` and `hypothesis_linear_target()`
+- `hypothesis_BF()` also tests the quantities of a fitted model by the names of its parameter catalog
+- adds `hypothesis_BF_model()`, `hypothesis_provider()`, and `register_hypothesis_density_backend()` for downstream model classes and density methods
+- adds the `density_method` argument to `Savage_Dickey_BF()`, `plot_posterior()`, and `plot_marginal()` for posterior densities precomputed by downstream packages
+- adds `JAGS_formula_coefficient_transform()` and `JAGS_formula_prior_density()` for original-scale prior densities of scaled formula coefficients
+- adds `JAGS_formula_draws()` for evaluating formulas on draws without a fit
+- adds `runtime_setup`, `runtime_cache`, and `worker_output` to `JAGS_fit()` and `JAGS_extend()`, `jags_modules` to `JAGS_fit()`, and the parallel cluster helpers `JAGS_runtime_cluster()` and `JAGS_runtime_cluster_stop()`
+- adds `monitor` and `allow_not_assessable` to `JAGS_check_convergence()` and `autofit_control`, with per-parameter convergence diagnostics
+- adds `seed`, `repetitions`, `method`, `cores`, and `nonfinite` to `JAGS_bridgesampling()`, and `JAGS_marglik_priors_rows()` for row-wise prior densities
+- adds `on_failure` to the model-averaging functions for models whose marginal likelihood failed
+- adds `harrell_davis_quantile()`; posterior PET-PEESE bands use Harrell-Davis quantiles
+- adds `as_marginal_inference(compute_BF = FALSE)`
+- exports helpers used by downstream packages (Bayes factor formatting, formula scaling, random-effect grouping, and posterior metadata helpers)
+
+### Changes
+- `JAGS_estimates_table()` uses `transform_scaled` for both fixed and random effects; original-scale rows that cannot be computed are reported as `NA` with a note
+- marginal likelihoods exceeding the iteration limit keep their estimate and warn
+- `JAGS_extend()` recompiles the model from the stored chain states, so repeated extensions and extensions of reloaded fits are reproducible
+- estimates tables identify inclusion rows from the priors instead of the row labels
+- small Bayes factor bounds print as reciprocals (e.g., `<1/10000`)
+
+### Fixes
+- prior densities of linear combinations (formula levels, marginal means, original-scale coefficients, and Savage-Dickey ordinates) use exact routes where available instead of a numerical grid, which was off by up to 20% for `multiply_by` products
+- `mean()` and `var()` of truncated normal priors are computed analytically; numerical integration was wrong far in the tails and for narrow truncations
+- far-tail truncated normal, t, and Cauchy priors sample and invert exactly
+- the Savage-Dickey posterior ordinate is the exact kernel density at the null, reflected at exact support bounds; the previous grid estimate overestimated the density of long-tailed posteriors
+- original-scale transformations of formulas such as `~ g + g:x` and `~ f/x` are derived from the fitted design; formulas without an original-scale representation stop
+- prior densities of monitored formula coefficients no longer apply `multiply_by` scaling
+- `expression()` formula terms are included in marginal-likelihood reconstruction
+- `log(intercept)` formulas in `marginal_posterior()` and `as_mixed_posteriors(transform_scaled = TRUE)`
+- `marginal_posterior()` for intercept-only formulas, predictors entering only through interactions, and model averages in which a model omits a factor term
+- naming of interaction coefficients without main effects (e.g., `g:x` in `~ g + g:x`)
+- formulas generating duplicate JAGS node names stop with an informative error
+- `plot_posterior()` bias prior overlays follow the full conditioning of the samples
+- prior overlays weight spike-and-slab priors by the inclusion probability instead of 50/50
+- individual omega and weight-function posterior plots with duplicate or zero-weight bias priors
+- factor plot labels of interaction cells and secondary axes of mixed density plots
+- `marginal_estimates_table()` reports Bayes factor warnings of scalar parameters
+- `stan_estimates_table()` handles matrix-valued parameters
+- p-hacking null masses no longer become negative for far-tail cut points
+- `JAGS_bridgesampling()` stops on rank-deficient bridge coordinates instead of returning a meaningless estimate
+- package contrasts resolve without attaching BayesTools
+
+### Performance
+- `JAGS_fit()` resolves the JAGS executable once per session (about 0.8 s faster per fit)
+- prior density curves and PET-PEESE prior bands are evaluated in batches (prior band plots take seconds instead of minutes)
+- `JAGS_bridgesampling()` compiles formula and prior evaluators once per call
+- two-bin cumulative weight-function priors are sampled through their Beta marginal
+- saved fits no longer contain the compiled rjags model
+- `as_mixed_posteriors(transform_scaled = TRUE)` caches the transformed prior densities
+
+### Development
+- vignettes generate missing or outdated fitted-model caches when knitted; set `BAYESTOOLS_VIGNETTE_REFIT=false` to render without fitting
+- declares `waldo` as a test dependency
+
 # version 0.3.0
 ### Features
 - major refactoring and speed-up of unit tests

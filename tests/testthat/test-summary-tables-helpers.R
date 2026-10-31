@@ -20,6 +20,80 @@ skip_if_not_test_profile("unit")
 REFERENCE_DIR <<- testthat::test_path("..", "results", "summary-tables-helpers")
 source(testthat::test_path("common-functions.R"))
 
+.summary_test_sd_leaves <- function(sd_names, terms) {
+
+  structure(
+    list(leaf_terms = stats::setNames(terms, sd_names)),
+    class = c("BayesTools_random_effect_sd_leaves", "list")
+  )
+}
+
+
+test_that("semantic inclusion rows retain probability-only summaries", {
+
+  samples <- cbind(
+    "(mu) id: inclusion(sd(x))" = c(0, 1, 0, 1),
+    "beta (inclusion)" = c(1, 1, 0, 0),
+    theta = 1:4
+  )
+  actual <- .runjags_summary_fast(
+    model_samples = samples,
+    n_samples     = 4L,
+    n_chains      = 1L,
+    conditional   = TRUE,
+    inclusion     = c(TRUE, TRUE, FALSE)
+  )
+
+  inclusion <- c("(mu) id: inclusion(sd(x))", "beta (inclusion)")
+  expect_equal(as.numeric(actual[inclusion, "Mean"]), c(0.5, 0.5))
+  expect_true(all(is.na(actual[inclusion, c("SD", "0.025", "0.975")])))
+  expect_true(all(is.finite(as.numeric(actual["theta", ]))))
+
+  # Inclusion rows come from metadata; labels alone do not blank a row.
+  unflagged <- .runjags_summary_fast(
+    model_samples = samples,
+    n_samples     = 4L,
+    n_chains      = 1L,
+    conditional   = TRUE
+  )
+  expect_true(all(is.finite(as.matrix(unflagged[inclusion, c("SD", "0.025", "0.975")]))))
+  expect_error(
+    .runjags_summary_fast(
+      model_samples = samples,
+      n_samples     = 4L,
+      n_chains      = 1L,
+      conditional   = TRUE,
+      inclusion     = TRUE
+    ),
+    "'inclusion' argument must have length '3'"
+  )
+})
+
+
+test_that("undefined semantic draws are omitted without fake diagnostics", {
+
+  samples <- cbind(
+    "var_prop(study)" = c(NA, 1, 0, 0.25, NA, 1, 0, 0.25),
+    theta = seq_len(8L)
+  )
+  actual <- .runjags_summary_fast(
+    model_samples = samples,
+    n_samples     = 4L,
+    n_chains      = 2L,
+    conditional   = FALSE
+  )
+
+  expect_equal(actual["var_prop(study)", "Mean"], mean(c(1, 0, 0.25)))
+  expect_equal(actual["var_prop(study)", "SD"], stats::sd(c(1, 0, 0.25, 1, 0, 0.25)))
+  expect_true(all(is.na(actual[
+    "var_prop(study)",
+    c("ESS", "R_hat", "MCMC_error")
+  ])))
+  expect_true(all(is.finite(as.numeric(
+    actual["theta", c("ESS", "MCMC_error")]
+  ))))
+})
+
 
 test_that("format_BF works correctly", {
 
@@ -73,6 +147,8 @@ test_that("format_BF input validation works", {
   expect_error(format_BF("3"), "must be a numeric")
   expect_error(format_BF(3, logBF = "TRUE"), "must be a logical")
   expect_error(format_BF(3, BF01 = "TRUE"), "must be a logical")
+  expect_error(format_BF(3, logBF = NA), "cannot contain NA")
+  expect_error(format_BF(3, BF01 = NA), "cannot contain NA")
 
 })
 
@@ -80,7 +156,7 @@ test_that("format_BF input validation works", {
 test_that("BF MC error helper formats relative percentage column", {
 
   expect_equal(.BF_error_column_name(), "error%(Inclusion BF)")
-  expect_equal(.BF_error_column_name(BF01 = TRUE), "error%(Inclusion BF)")
+  expect_equal(.BF_error_column_name(BF01 = TRUE), "error%(Exclusion BF)")
 
 })
 
@@ -94,6 +170,18 @@ test_that("format_BF preserves finite-sample BF bounds across BF scales", {
   expect_equal(as.numeric(formatted), as.numeric(BF))
   expect_equal(attr(formatted, "bound_operator"), c(">", "<"))
   expect_equal(attr(formatted[1], "bound_operator"), ">")
+  expect_s3_class(formatted[1], "BayesTools_BF")
+  expect_s3_class(formatted[c(2, 1)], "BayesTools_BF")
+  expect_identical(attr(formatted[c(2, 1)], "bound_operator"), c("<", ">"))
+  expect_null(attr(formatted, "canonical_log_BF", exact = TRUE))
+  for(logBF in c(FALSE, TRUE)){
+    for(BF01 in c(FALSE, TRUE)){
+      bounded <- format_BF(BF, logBF = logBF, BF01 = BF01)
+      expect_s3_class(bounded[2:1], "BayesTools_BF")
+      expect_identical(attr(bounded[2:1], "logBF"), logBF)
+      expect_identical(attr(bounded[2:1], "BF01"), BF01)
+    }
+  }
 
   exclusion <- format_BF(BF, BF01 = TRUE, inclusion = TRUE)
   expect_equal(as.numeric(exclusion), 1 / as.numeric(BF))
@@ -103,6 +191,10 @@ test_that("format_BF preserves finite-sample BF bounds across BF scales", {
   log_exclusion <- format_BF(BF, logBF = TRUE, BF01 = TRUE, inclusion = TRUE)
   expect_equal(as.numeric(log_exclusion), log(1 / as.numeric(BF)), tolerance = 1e-12)
   expect_equal(attr(log_exclusion, "bound_operator"), c("<", ">"))
+
+  invalid_bound <- BF
+  attr(invalid_bound, "bound_operator") <- ">="
+  expect_error(format_BF(invalid_bound), "BF bound operators")
 
 })
 
@@ -233,7 +325,7 @@ test_that("indicator BF diagnostics use indicator MCSE and handle boundaries", {
     )
   )
 
-  fit
+  attach_test_parameter_map(fit)
 }
 
 
@@ -297,6 +389,44 @@ test_that("runjags_inference_table reports BEAST/BSSVS-style bounds at indicator
 })
 
 
+test_that("runjags_inference_table keeps inclusion Bayes factors beyond the double range in log space", {
+
+  skip_if_not_installed("runjags")
+
+  # prior inclusion 1e-320 and posterior inclusion .5: BF = 1 / (1e-320 / (1 - 1e-320)) overflows
+  prior_prob <- 1e-320
+  log_prior_odds <- log(prior_prob) - log1p(-prior_prob)
+  fit <- .runjags_inference_fit_for_test(rep(c(0, 1), 5), prior_prob = prior_prob)
+  log_table <- runjags_inference_table(fit, logBF = TRUE)
+  expect_equal(as.numeric(log_table$inclusion_BF), -log_prior_odds, tolerance = 1e-12)
+  expect_equal(as.numeric(runjags_inference_table(fit, logBF = TRUE, BF01 = TRUE)$inclusion_BF),
+               log_prior_odds, tolerance = 1e-12)
+  natural <- runjags_inference_table(fit)
+  expect_identical(as.numeric(natural$inclusion_BF), Inf)
+  expect_equal(attr(natural$inclusion_BF, "canonical_log_BF"), -log_prior_odds, tolerance = 1e-12)
+  expect_equal(as.numeric(format_BF(natural$inclusion_BF, logBF = TRUE)), -log_prior_odds, tolerance = 1e-12)
+  diagnostics <- runjags_inference_table(fit, BF_diagnostics = TRUE, logBF = TRUE)
+  expect_true(is.finite(diagnostics$BF_error_percent))
+  expect_equal(as.numeric(diagnostics$BF_error_percent), 100 * as.numeric(diagnostics$MCMC_error) / (.5 * .5),
+               tolerance = 1e-12)
+
+  # the finite-sample bound of a boundary indicator keeps its logarithm too
+  boundary <- runjags_inference_table(.runjags_inference_fit_for_test(rep(1, 10), prior_prob = prior_prob), logBF = TRUE)
+  expect_equal(as.numeric(boundary$inclusion_BF), log(9) - log_prior_odds, tolerance = 1e-12)
+  expect_identical(attr(boundary$inclusion_BF, "bound_operator"), ">")
+  lower <- runjags_inference_table(.runjags_inference_fit_for_test(rep(0, 10), prior_prob = prior_prob), logBF = TRUE)
+  expect_equal(as.numeric(lower$inclusion_BF), -log(9) - log_prior_odds, tolerance = 1e-12)
+  expect_identical(attr(lower$inclusion_BF, "bound_operator"), "<")
+
+  # ordinary tables are unchanged on every scale
+  ordinary <- .runjags_inference_fit_for_test(rep(c(0, 0, 1), length.out = 12), prior_prob = .3)
+  post <- 4 / 12
+  reference <- (post / (1 - post)) / (.3 / .7)
+  expect_equal(as.numeric(runjags_inference_table(ordinary)$inclusion_BF), reference, tolerance = 1e-12)
+  expect_equal(as.numeric(runjags_inference_table(ordinary, logBF = TRUE, BF01 = TRUE)$inclusion_BF),
+               -log(reference), tolerance = 1e-12)
+})
+
 test_that("runjags_inference_table reports undefined BF at prior probability boundaries", {
 
   skip_if_not_installed("runjags")
@@ -357,6 +487,160 @@ test_that("BayesTools table row subsetting keeps printed diagnostics local", {
 })
 
 
+test_that("BayesTools table row and column subsets retain print metadata", {
+
+  table <- data.frame(
+    Mean = c(1, 2),
+    SD   = c(0.1, 0.2),
+    ESS  = c(1000, 900),
+    row.names = c("theta", "beta")
+  )
+  class(table) <- c(
+    "BayesTools_table",
+    "BayesTools_runjags_summary",
+    class(table)
+  )
+  attr(table, "type")       <- c("estimate", "estimate", "ESS")
+  attr(table, "parameters") <- c("theta", "beta")
+  attr(table, "title")      <- "Estimates"
+  attr(table, "footnotes")  <- "Posterior summaries."
+  attr(table, "rownames")   <- TRUE
+
+  subset <- table["theta", c("Mean", "ESS"), drop = FALSE]
+  output <- capture_output_lines(subset, print = TRUE, width = 80)
+
+  expect_identical(attr(subset, "parameters"), "theta")
+  expect_identical(attr(subset, "title"), "Estimates")
+  expect_identical(attr(subset, "footnotes"), "Posterior summaries.")
+  expect_true(isTRUE(attr(subset, "rownames")))
+  expect_true(any(grepl("theta", output, fixed = TRUE)))
+  expect_true(any(grepl("Posterior summaries.", output, fixed = TRUE)))
+})
+
+test_that("BayesTools table column subsets keep the sources of repeated selections", {
+
+  # two Bayes factor columns, the second named as a repeated selection of the
+  # first would be (`inclusion_BF.1`)
+  original  <- marginal_estimates_table(list(theta = 1:3), list(theta = 2), "theta")
+  alternate <- marginal_estimates_table(list(theta = 1:3), list(theta = 100), "theta")
+  combined  <- add_column(
+    original, "inclusion_BF.1", alternate$inclusion_BF, column_type = "BF"
+  )
+  expect_identical(
+    names(combined),
+    c("Mean", "SD", "0.025", "0.5", "0.975", "inclusion_BF", "inclusion_BF.1")
+  )
+  column_values <- function(table){
+    vapply(table, function(column) as.numeric(column), numeric(1), USE.NAMES = FALSE)
+  }
+  base_values <- column_values(combined)
+  expect_equal(base_values[6:7], c(2, 100))
+  plain <- as.data.frame(combined)
+  # the positions base data-frame selection gives every selected column
+  positions <- data.frame(t(seq_along(plain)))
+  names(positions) <- names(plain)
+
+  # the selected columns equal those of a base data-frame subset in every
+  # selector kind, with their own type
+  selectors <- list(
+    character = c("inclusion_BF", "inclusion_BF"),
+    character_mixed = c("inclusion_BF.1", "inclusion_BF", "inclusion_BF.1"),
+    numeric = c(6L, 6L),
+    numeric_mixed = c(7L, 6L, 6L, 1L),
+    negative = -c(1L, 2L, 3L, 4L, 5L, 6L),
+    logical = c(rep(FALSE, 5L), TRUE, TRUE),
+    repeated_other_type = c("Mean", "Mean", "inclusion_BF")
+  )
+  for(selector in selectors){
+    subset <- combined[, selector, drop = FALSE]
+    reference <- plain[, selector, drop = FALSE]
+    expect_equal(column_values(subset), column_values(reference), tolerance = 1e-12)
+    expect_identical(
+      attr(subset, "type"),
+      attr(combined, "type")[unlist(positions[, selector, drop = FALSE], use.names = FALSE)]
+    )
+    expect_true(all(vapply(subset, inherits, logical(1), "BayesTools_BF") ==
+                      (attr(subset, "type") %in% c("inclusion_BF", "BF"))))
+  }
+  repeated <- combined[, c("inclusion_BF", "inclusion_BF"), drop = FALSE]
+  expect_equal(column_values(repeated), c(2, 2))
+  expect_identical(attr(repeated, "type"), c("inclusion_BF", "inclusion_BF"))
+  expect_equal(column_values(combined[, c(7L, 6L, 6L)]), c(100, 2, 2))
+  expect_identical(
+    attr(combined[, c(7L, 6L, 6L)], "type"),
+    c("BF", "inclusion_BF", "inclusion_BF")
+  )
+
+  # the list-style selector resolves the same way
+  listed <- combined[c("inclusion_BF", "inclusion_BF")]
+  expect_equal(column_values(listed), c(2, 2))
+  expect_identical(attr(listed, "type"), c("inclusion_BF", "inclusion_BF"))
+
+  # a repeated selection prints with its Bayes factor formatting, also without
+  # a name collision with an existing suffix
+  single  <- combined[, "inclusion_BF", drop = FALSE]
+  doubled <- single[, c("inclusion_BF", "inclusion_BF"), drop = FALSE]
+  expect_identical(attr(doubled, "type"), c("inclusion_BF", "inclusion_BF"))
+  for(table in list(repeated, doubled)){
+    printed <- capture_output_lines(table, print = TRUE, width = 80)
+    expect_true(any(grepl("Inclusion BF\\s+Inclusion BF", printed)))
+    expect_true(any(grepl("2.000\\s+2.000", printed)))
+  }
+})
+
+test_that("BayesTools table row subsets drop footnotes named after removed rows", {
+
+  table <- data.frame(Mean = c(1, 2), row.names = c("theta", "beta"))
+  class(table) <- c("BayesTools_table", class(table))
+  attr(table, "type")      <- "estimate"
+  attr(table, "footnotes") <- c(
+    "General note.",
+    beta = "beta: row note.",
+    other = "Named note."
+  )
+  attr(table, "rownames")  <- TRUE
+
+  expect_identical(
+    attr(table["theta", , drop = FALSE], "footnotes"),
+    c("General note.", other = "Named note.")
+  )
+  expect_identical(
+    attr(table[c("beta", "theta"), , drop = FALSE], "footnotes"),
+    attr(table, "footnotes")
+  )
+  expect_identical(
+    attr(table[, "Mean", drop = FALSE], "footnotes"),
+    attr(table, "footnotes")
+  )
+})
+
+
+test_that("BayesTools table row subsets keep per-row n_models denominators", {
+
+  table <- data.frame(
+    models     = c(1, 2),
+    prior_prob = c(0.75, 0.80)
+  )
+  rownames(table) <- c("theta", "beta")
+  class(table) <- c("BayesTools_table", "BayesTools_ensemble_summary", class(table))
+  attr(table, "type")     <- c("n_models", "prior_prob")
+  attr(table, "n_models") <- c(2L, 3L)
+  attr(table, "rownames") <- TRUE
+
+  output <- capture_output_lines(table, print = TRUE, width = 80)
+  expect_true(any(grepl("1/2", output, fixed = TRUE)))
+  expect_true(any(grepl("2/3", output, fixed = TRUE)))
+
+  subset <- table["beta", , drop = FALSE]
+  expect_identical(attr(subset, "n_models"), 3L)
+  subset_output <- capture_output_lines(subset, print = TRUE, width = 80)
+  expect_true(any(grepl("2/3", subset_output, fixed = TRUE)))
+  expect_false(any(grepl("1/2", subset_output, fixed = TRUE)))
+  expect_false(any(grepl("2/", subset_output, fixed = TRUE) &
+                     !grepl("2/3", subset_output, fixed = TRUE)))
+})
+
+
 test_that("update preserves relative BF MC error percentage across BF scales", {
 
   table <- data.frame(
@@ -384,17 +668,17 @@ test_that("update preserves relative BF MC error percentage across BF scales", {
   BF01_table <- update(table, BF01 = TRUE)
   expect_equal(as.numeric(BF01_table[["inclusion_BF"]]), 1/3)
   expect_equal(as.numeric(BF01_table[["BF_error_percent"]]), 8)
-  expect_equal(attr(BF01_table[["BF_error_percent"]], "name"), "error%(Inclusion BF)")
+  expect_equal(attr(BF01_table[["BF_error_percent"]], "name"), "error%(Exclusion BF)")
 
   BF01_from_log <- update(log_table, BF01 = TRUE)
   expect_equal(as.numeric(BF01_from_log[["inclusion_BF"]]), 1/3)
   expect_equal(as.numeric(BF01_from_log[["BF_error_percent"]]), 8)
-  expect_equal(attr(BF01_from_log[["BF_error_percent"]], "name"), "error%(Inclusion BF)")
+  expect_equal(attr(BF01_from_log[["BF_error_percent"]], "name"), "error%(Exclusion BF)")
 
   log_BF01_table <- update(table, logBF = TRUE, BF01 = TRUE)
   expect_equal(as.numeric(log_BF01_table[["inclusion_BF"]]), log(1/3))
   expect_equal(as.numeric(log_BF01_table[["BF_error_percent"]]), 8)
-  expect_equal(attr(log_BF01_table[["BF_error_percent"]], "name"), "error%(Inclusion BF)")
+  expect_equal(attr(log_BF01_table[["BF_error_percent"]], "name"), "error%(Exclusion BF)")
 
   default_from_log_BF01 <- update(log_BF01_table)
   expect_equal(as.numeric(default_from_log_BF01[["inclusion_BF"]]), 3)
@@ -420,7 +704,7 @@ test_that("update preserves relative BF MC error percentage across BF scales", {
     theta = prior("normal", list(0, 1)),
     beta  = prior("mnormal", list(mean = 0, sd = 1, K = 1))
   )
-  fit
+  attach_test_parameter_map(fit)
 }
 
 .expect_runjags_estimate_values_for_test <- function(table, samples, probs) {
@@ -441,6 +725,929 @@ test_that("update preserves relative BF MC error percentage across BF scales", {
   expect_equal(attr(table, "parameters"), colnames(samples))
   expect_true(attr(table, "rownames"))
 }
+
+test_that("bias summary filtering preserves branch metadata and unrelated draws", {
+
+  skip_if_not_installed("runjags")
+  indicator <- rep(1:3, 2)
+  samples <- cbind(
+    bias_indicator = indicator,
+    "omega[1]" = 1,
+    "omega[2]" = ifelse(indicator == 1, .5, 1),
+    PET = ifelse(indicator == 2, .2, 0),
+    PEESE = ifelse(indicator == 3, .3, 0),
+    mu_omega_level = seq_along(indicator)
+  )
+  priors <- list(
+    bias = prior_mixture(list(
+      prior_weightfunction("one-sided", .05, wf_cumulative(c(1, 1))),
+      prior_PET("normal", list(0, 1)),
+      prior_PEESE("normal", list(0, 1))
+    )),
+    mu_omega_level = prior("normal", list(0, 1))
+  )
+  fit <- .runjags_table_fit_for_test(samples)
+  attr(fit, "prior_list") <- priors
+  fit <- attach_test_parameter_map(fit)
+
+  conditional <- runjags_estimates_table(
+    fit, conditional = TRUE, return_samples = TRUE, remove_diagnostics = TRUE
+  )
+  expect_equal(as.numeric(conditional[, "mu_omega_level"]), samples[, "mu_omega_level"])
+  expect_equal(is.na(conditional[, "omega[0.05,1]"]), indicator != 1)
+  conditional_priors <- attr(conditional, "prior_list")
+  expect_true(is.prior.PET(conditional_priors$PET))
+  expect_true(is.prior.PEESE(conditional_priors$PEESE))
+
+  removed <- runjags_estimates_table(
+    fit, remove_parameters = "omega", return_samples = TRUE, remove_diagnostics = TRUE
+  )
+  expect_false(any(grepl("^omega\\[", colnames(removed))))
+  remaining_priors <- attr(removed, "prior_list")
+  expect_identical(remaining_priors$bias, priors$bias)
+  expect_null(remaining_priors$omega)
+  expect_true(is.prior.PET(remaining_priors$PET))
+  expect_true(is.prior.PEESE(remaining_priors$PEESE))
+})
+
+.named_component_mixture_fit_for_test <- function(data, formula, mixture, samples){
+
+  formula_result <- JAGS_formula(
+    formula,
+    "mu",
+    data = data,
+    prior_list = list(intercept = prior("normal", list(0, 1)), x = mixture)
+  )
+  fit <- .runjags_table_fit_for_test(samples)
+  attr(fit, "prior_list") <- formula_result$prior_list
+  attr(fit, "formula_design") <- list(mu = formula_result$formula_design)
+  attach_test_parameter_map(fit)
+}
+
+test_that("conditional estimates split factor mixtures with named components", {
+
+  skip_if_not_installed("runjags")
+  set.seed(61)
+  n <- 40L
+  indicator <- rep(1:2, length.out = n)
+  samples <- cbind(
+    mu_intercept = stats::rnorm(n),
+    "mu_x[1]" = stats::rnorm(n),
+    "mu_x[2]" = stats::rnorm(n),
+    mu_x_indicator = indicator
+  )
+  fit <- .named_component_mixture_fit_for_test(
+    data.frame(x = factor(rep(c("a", "b", "c"), 4L))),
+    ~ 1 + x,
+    prior_mixture(list(
+      prior_factor("normal", list(0, 1), contrast = "treatment"),
+      prior_factor("normal", list(0, 2), contrast = "treatment")
+    ), components = c("narrow", "wide")),
+    samples
+  )
+
+  conditional <- suppressWarnings(runjags_estimates_table(
+    fit, conditional = TRUE, remove_diagnostics = TRUE
+  ))
+  # a level cell of a mixture component: the level after the factor, the
+  # component after the cell
+  coefficient_rows <- c(
+    "(mu) x[b][narrow]", "(mu) x[c][narrow]",
+    "(mu) x[b][wide]", "(mu) x[c][wide]"
+  )
+  expect_identical(
+    rownames(conditional),
+    c("(mu) intercept", coefficient_rows,
+      "(mu) x (inclusion: narrow)", "(mu) x (inclusion: wide)")
+  )
+  expected_means <- c(
+    mean(samples[indicator == 1L, "mu_x[1]"]),
+    mean(samples[indicator == 1L, "mu_x[2]"]),
+    mean(samples[indicator == 2L, "mu_x[1]"]),
+    mean(samples[indicator == 2L, "mu_x[2]"])
+  )
+  expect_equal(
+    unname(conditional[coefficient_rows, "Mean"]),
+    expected_means,
+    tolerance = 1e-12
+  )
+
+  transformed <- suppressWarnings(runjags_estimates_table(
+    fit, conditional = TRUE, remove_diagnostics = TRUE,
+    transformations = list(mu_x = list(fun = exp))
+  ))
+  expect_identical(rownames(transformed), rownames(conditional))
+  expect_equal(
+    unname(transformed[coefficient_rows, "Mean"]),
+    c(
+      mean(exp(samples[indicator == 1L, "mu_x[1]"])),
+      mean(exp(samples[indicator == 1L, "mu_x[2]"])),
+      mean(exp(samples[indicator == 2L, "mu_x[1]"])),
+      mean(exp(samples[indicator == 2L, "mu_x[2]"]))
+    ),
+    tolerance = 1e-12
+  )
+})
+
+test_that("conditional component transformations store component priors", {
+
+  skip_if_not_installed("runjags")
+  set.seed(62)
+  n <- 40L
+  indicator <- rep(1:2, length.out = n)
+  samples <- cbind(
+    mu_intercept = stats::rnorm(n),
+    mu_x = stats::rnorm(n),
+    mu_x_indicator = indicator
+  )
+  mixture <- prior_mixture(list(
+    prior("normal", list(0, 1)),
+    prior("normal", list(0, 2))
+  ), components = c("narrow", "wide"))
+  fit <- .named_component_mixture_fit_for_test(
+    data.frame(x = stats::rnorm(6L)),
+    ~ 1 + x,
+    mixture,
+    samples
+  )
+
+  conditional <- suppressWarnings(runjags_estimates_table(
+    fit, conditional = TRUE, remove_diagnostics = TRUE, return_samples = TRUE,
+    transformations = list(mu_x = list(fun = exp))
+  ))
+  component_priors <- attr(conditional, "prior_list")[c("mu_x[narrow]", "mu_x[wide]")]
+  expect_true(all(vapply(component_priors, is.prior, logical(1))))
+  expect_equal(component_priors[["mu_x[narrow]"]], mixture[[1L]], ignore_attr = TRUE)
+  expect_equal(component_priors[["mu_x[wide]"]], mixture[[2L]], ignore_attr = TRUE)
+  expect_identical(
+    vapply(component_priors, attr, character(1), which = "parameter"),
+    c("mu_x[narrow]" = "mu", "mu_x[wide]" = "mu")
+  )
+  expect_equal(
+    as.numeric(conditional[, "(mu) x[narrow]"]),
+    ifelse(indicator == 1L, exp(samples[, "mu_x"]), NA_real_)
+  )
+})
+
+test_that("spike-at-zero coefficients non-zero on the original scale are reported", {
+
+  skip_if_not_installed("runjags")
+  set.seed(63)
+  data <- data.frame(
+    x = c(3, 5, 7, 4, 6, 8),
+    f = factor(rep(c("a", "b", "c"), 2L))
+  )
+  formula_result <- JAGS_formula(
+    ~ x * f,
+    "mu",
+    data = data,
+    prior_list = list(
+      intercept = prior("normal", list(0, 1)),
+      x = prior("normal", list(0, 1)),
+      f = prior_factor("point", list(location = 0), contrast = "treatment"),
+      "x:f" = prior_factor("normal", list(0, 1), contrast = "treatment")
+    ),
+    formula_scale = list(x = TRUE)
+  )
+  n <- 20L
+  samples <- cbind(
+    mu_intercept = stats::rnorm(n),
+    mu_x = stats::rnorm(n),
+    "mu_f[1]" = 0,
+    "mu_f[2]" = 0,
+    "mu_x__xXx__f[1]" = stats::rnorm(n),
+    "mu_x__xXx__f[2]" = stats::rnorm(n)
+  )
+  fit <- .runjags_table_fit_for_test(samples)
+  attr(fit, "prior_list") <- formula_result$prior_list
+  attr(fit, "formula_design") <- list(mu = formula_result$formula_design)
+  attr(fit, "formula_scale") <- list(mu = formula_result$formula_scale)
+  fit <- attach_test_parameter_map(fit)
+
+  # On the standardized scale the main effect is exactly zero and omitted.
+  standardized <- runjags_estimates_table(fit, remove_diagnostics = TRUE)
+  expect_false(any(c("(mu) f[b]", "(mu) f[c]") %in% rownames(standardized)))
+
+  # On the original scale f[k] = -(x:f[k]) * mean(x) / sd(x).
+  original <- runjags_estimates_table(
+    fit, remove_diagnostics = TRUE, transform_scaled = TRUE
+  )
+  expect_true(all(c("(mu) f[b]", "(mu) f[c]") %in% rownames(original)))
+  shift <- mean(data$x) / stats::sd(data$x)
+  expected <- -samples[, c("mu_x__xXx__f[1]", "mu_x__xXx__f[2]")] * shift
+  expect_equal(
+    unname(original[c("(mu) f[b]", "(mu) f[c]"), "Mean"]),
+    unname(colMeans(expected)),
+    tolerance = 1e-12
+  )
+  expect_equal(
+    unname(original[c("(mu) f[b]", "(mu) f[c]"), "SD"]),
+    unname(apply(expected, 2L, stats::sd)),
+    tolerance = 1e-12
+  )
+})
+
+# Synthetic fit whose inclusion indicators hold 0/1 draws (spike-and-slab and
+# allocation gates) or component indices (two-component mixtures); `simplex`
+# columns are normalised to sum to one. `adjust` optionally changes the draws
+# (a function of the draw matrix) before the fit is built.
+.inclusion_rows_fit_for_test <- function(columns, prior_list, formula_design = NULL,
+                                         simplex = character(), n = 60L,
+                                         adjust = NULL){
+
+  draws <- vapply(columns, function(column){
+    values <- stats::runif(n)
+    if(!endsWith(column, "_indicator")){
+      return(values)
+    }
+    owner <- prior_list[[sub("_indicator$", "", column)]]
+    if(is.prior.mixture(owner) && !is.prior.spike_and_slab(owner)){
+      return(1 + as.numeric(values > 0.4))
+    }
+    as.numeric(values > 0.6)
+  }, numeric(n))
+  colnames(draws) <- columns
+  if(length(simplex) > 0L){
+    draws[, simplex] <- draws[, simplex] / rowSums(draws[, simplex])
+  }
+  if(!is.null(adjust)){
+    draws <- adjust(draws)
+  }
+  fit <- structure(
+    list(mcmc = coda::mcmc.list(coda::mcmc(draws)), sample = n),
+    class = c("runjags", "BayesTools_fit", "list")
+  )
+  attr(fit, "prior_list") <- prior_list
+  attr(fit, "formula_design") <- formula_design
+  attach_test_parameter_map(fit)
+}
+
+test_that("estimates tables blank inclusion rows identified from metadata", {
+
+  skip_if_not_installed("runjags")
+  set.seed(64)
+  blank_columns <- c("SD", "0.025", "0.5", "0.975")
+  expect_inclusion_rows <- function(table, rows){
+    expect_true(all(rows %in% rownames(table)))
+    expect_true(all(is.na(as.matrix(table[rows, blank_columns]))))
+    expect_true(all(is.finite(as.numeric(table[rows, "Mean"]))))
+    expect_true(all(is.finite(as.numeric(table[rows, "MCMC_error"]))))
+    expect_true(all(is.finite(as.numeric(table[rows, "ESS"]))))
+  }
+  expect_summary_rows <- function(table, rows){
+    expect_true(all(rows %in% rownames(table)))
+    expect_true(all(is.finite(as.matrix(table[rows, blank_columns]))))
+  }
+
+  # Non-formula spike-and-slab and mixture indicators. An ordinary parameter
+  # whose name contains "inclusion" keeps its summary.
+  simple_priors <- list(
+    beta = prior_spike_and_slab(
+      prior("normal", list(0, 1)),
+      prior_inclusion = prior("beta", list(1, 1))
+    ),
+    par = prior_mixture(
+      list(prior("normal", list(0, 1)), prior("normal", list(3, 1))),
+      components = c("comp", "other")
+    ),
+    inclusion_rate = prior("beta", list(2, 2))
+  )
+  simple_fit <- .inclusion_rows_fit_for_test(
+    JAGS_to_monitor(simple_priors),
+    simple_priors
+  )
+  simple_table <- runjags_estimates_table(simple_fit)
+  expect_inclusion_rows(
+    simple_table,
+    c("beta (inclusion)", "par (inclusion: comp)", "par (inclusion: other)")
+  )
+  expect_summary_rows(simple_table, c("beta", "par", "inclusion_rate"))
+  simple_draws <- as.matrix(simple_fit$mcmc[[1L]])
+  expect_equal(
+    as.numeric(simple_table["beta (inclusion)", "Mean"]),
+    mean(simple_draws[, "beta_indicator"])
+  )
+  expect_equal(
+    as.numeric(simple_table["par (inclusion: comp)", "Mean"]),
+    mean(simple_draws[, "par_indicator"] == 1)
+  )
+
+  # Random-effect inclusion gates (spike-and-slab and mixture SDs, with and
+  # without owner prefixes) and variance-allocation gates, in the default and
+  # the raw random-effect summaries. A factor level whose label contains
+  # " (inclusion" is not an inclusion row.
+  data <- data.frame(
+    x = c(-1.2, -0.4, 0.3, 1.1, -0.7, 0.9, 0.2, -1.5, 1.4, 0.6, -0.1, 0.8),
+    f = factor(
+      rep(c("pre", "post (inclusion)"), 6L),
+      levels = c("pre", "post (inclusion)")
+    ),
+    id = factor(rep(c("a", "b", "c", "d"), 3L)),
+    grp = factor(rep(c("g1", "g2", "g3"), each = 4L))
+  )
+  fixed_priors <- list(
+    intercept = prior("normal", list(0, 1)),
+    x = prior("normal", list(0, 1)),
+    f = prior_factor("normal", list(0, 1), contrast = "treatment")
+  )
+  spike_sd <- prior_spike_and_slab(prior("normal", list(0, 1), list(0, Inf)))
+  mixture_sd <- prior_mixture(
+    list(prior("spike", list(0)), prior("normal", list(0, 1), list(0, Inf))),
+    components = c("a", "b")
+  )
+  formula_fit <- function(formula, prior_list, prior_random, columns = NULL){
+    result <- JAGS_formula(
+      formula,
+      "mu",
+      data = data,
+      prior_list = prior_list,
+      prior_random = prior_random
+    )
+    simplex <- character()
+    if(is.null(columns)){
+      columns <- JAGS_to_monitor(result$prior_list)
+    }else{
+      columns <- columns(result$formula_design)
+      simplex <- attr(columns, "simplex")
+    }
+    .inclusion_rows_fit_for_test(
+      columns,
+      result$prior_list,
+      list(mu = result$formula_design),
+      simplex = simplex
+    )
+  }
+  allocation_columns <- function(design){
+    allocation <- design$random_effects[[1L]]$sd_binding$allocations[[1L]]
+    weights <- paste0(allocation$weight_name, "[", 1:2, "]")
+    structure(
+      c(
+        "mu_intercept",
+        allocation$source_node,
+        weights,
+        vapply(allocation$inclusion, `[[`, character(1), "prob_name"),
+        vapply(allocation$inclusion, `[[`, character(1), "indicator_name")
+      ),
+      simplex = weights
+    )
+  }
+
+  random_fits <- list(
+    unnamed = list(
+      fit = formula_fit(
+        ~ 1 + x + f + (x - 1 || id),
+        fixed_priors,
+        prior_random(id = random_block(sd = spike_sd))
+      ),
+      inclusion = "(mu) inclusion(sd(x))",
+      summary = c("(mu) x", "(mu) f[post (inclusion)]", "(mu) sd(x)")
+    ),
+    mixture = list(
+      fit = formula_fit(
+        ~ 1 + x + (x - 1 || id),
+        fixed_priors[c("intercept", "x")],
+        prior_random(id = random_block(sd = mixture_sd))
+      ),
+      inclusion = c("(mu) inclusion(sd(x)[a])", "(mu) inclusion(sd(x)[b])"),
+      summary = c("(mu) x", "(mu) sd(x)")
+    ),
+    named = list(
+      fit = formula_fit(
+        ~ 1 + x +
+          random(x - 1 | id, name = "id", covariance = "diag") +
+          random(1 | grp, name = "grp", covariance = "diag"),
+        fixed_priors[c("intercept", "x")],
+        prior_random(
+          id = random_block(sd = spike_sd),
+          grp = random_block(sd = spike_sd)
+        )
+      ),
+      inclusion = c(
+        "(mu) id: inclusion(sd(x))",
+        "(mu) grp: inclusion(sd(intercept))"
+      ),
+      summary = c("(mu) id: sd(x)", "(mu) grp: sd(intercept)")
+    ),
+    allocation = list(
+      fit = formula_fit(
+        ~ 1 +
+          random(1 | id, name = "study", covariance = "diag") +
+          random(1 | grp, name = "drug", covariance = "diag"),
+        fixed_priors["intercept"],
+        prior_random(allocation = random_variance_allocation(
+          name = "total",
+          terms = c(study = "study", drug = "drug"),
+          sd = prior("gamma", list(2, 2)),
+          weights = prior("dirichlet", list(alpha = c(1, 1))),
+          inclusion = list(
+            study = prior("spike", list(location = 0.3)),
+            drug  = prior("spike", list(location = 0.7))
+          )
+        )),
+        columns = allocation_columns
+      ),
+      inclusion = c("(mu) total: inclusion(study)", "(mu) total: inclusion(drug)"),
+      summary = c("(mu) total: sd_total", "(mu) total: var_prop(study)")
+    )
+  )
+
+  for(case in random_fits){
+    standard <- runjags_estimates_table(case$fit)
+    raw <- runjags_estimates_table(case$fit, random_effects_summary = "raw")
+    expect_inclusion_rows(standard, case$inclusion)
+    expect_summary_rows(standard, case$summary)
+    expect_setequal(rownames(standard)[is.na(standard[["SD"]])], case$inclusion)
+
+    # the raw summary blanks the same indicators under its backend labels
+    raw_inclusion <- rownames(raw)[is.na(raw[["SD"]])]
+    expect_inclusion_rows(raw, raw_inclusion)
+    expect_equal(
+      sort(as.numeric(raw[raw_inclusion, "Mean"])),
+      sort(as.numeric(standard[case$inclusion, "Mean"]))
+    )
+    expect_true(all(is.finite(as.numeric(raw[
+      setdiff(rownames(raw), raw_inclusion), "SD"
+    ]))))
+  }
+  expect_true("(mu) f[post (inclusion)]" %in% rownames(runjags_estimates_table(
+    random_fits$unnamed$fit,
+    random_effects_summary = "raw"
+  )))
+
+  # The indicator of a spike-and-slab total of an ordered factor is its only
+  # inclusion row.
+  ordered_data <- data.frame(
+    f = factor(rep(c("lo", "mid", "hi"), 4L), levels = c("lo", "mid", "hi"))
+  )
+  ordered_result <- JAGS_formula(
+    ~ 1 + f,
+    "mu",
+    data = ordered_data,
+    prior_list = list(
+      intercept = prior("normal", list(0, 1)),
+      f = prior_ordered(prior_spike_and_slab(
+        prior("normal", list(0, 1), list(0, Inf))
+      ))
+    )
+  )
+  eta_name <- .JAGS_prior_dirichlet_eta_name(
+    .prior_ordered_dirichlet_records(ordered_result$prior_list$mu_f)[[1L]]$node
+  )
+  ordered_fit <- .inclusion_rows_fit_for_test(
+    c(
+      "mu_intercept", "mu_f[1]", "mu_f[2]",
+      paste0("mu_f_ordered_total", c("_indicator", "_inclusion", "", "_variable")),
+      paste0(eta_name, "[", 1:2, "]")
+    ),
+    ordered_result$prior_list,
+    list(mu = ordered_result$formula_design)
+  )
+  ordered_table <- runjags_estimates_table(ordered_fit)
+  ordered_inclusion <- rownames(ordered_table)[is.na(ordered_table[["SD"]])]
+  expect_length(ordered_inclusion, 1L)
+  expect_inclusion_rows(ordered_table, ordered_inclusion)
+  expect_equal(
+    as.numeric(ordered_table[ordered_inclusion, "Mean"]),
+    mean(as.matrix(ordered_fit$mcmc[[1L]])[, "mu_f_ordered_total_indicator"])
+  )
+})
+
+# Ordered factor whose total has the given prior, as a fit of seeded draws.
+.ordered_total_fit_for_test <- function(total, n = 60L, adjust = NULL){
+
+  data <- data.frame(
+    f = factor(rep(c("lo", "mid", "hi"), 4L), levels = c("lo", "mid", "hi"))
+  )
+  result <- JAGS_formula(
+    ~ 1 + f,
+    "mu",
+    data = data,
+    prior_list = list(
+      intercept = prior("normal", list(0, 1)),
+      f = prior_ordered(total)
+    )
+  )
+  eta_name <- .JAGS_prior_dirichlet_eta_name(
+    .prior_ordered_dirichlet_records(result$prior_list$mu_f)[[1L]]$node
+  )
+  .inclusion_rows_fit_for_test(
+    c(
+      "mu_intercept", "mu_f[1]", "mu_f[2]",
+      paste0("mu_f_ordered_total", c("_indicator", "_inclusion", "", "_variable")),
+      paste0(eta_name, "[", 1:2, "]")
+    ),
+    result$prior_list,
+    list(mu = result$formula_design),
+    n = n,
+    adjust = adjust
+  )
+}
+
+test_that("remove_inclusion removes every row flagged as an inclusion row", {
+
+  skip_if_not_installed("runjags")
+  set.seed(261)
+  removed_rows <- function(fit, ...){
+    kept <- runjags_estimates_table(fit, remove_diagnostics = TRUE, remove_inclusion = TRUE, ...)
+    all <- runjags_estimates_table(fit, remove_diagnostics = TRUE, ...)
+    expect_true(all(rownames(kept) %in% rownames(all)))
+    expect_equal(
+      as.matrix(kept),
+      as.matrix(all)[rownames(kept), , drop = FALSE],
+      tolerance = 1e-12
+    )
+    setdiff(rownames(all), rownames(kept))
+  }
+
+  # the indicator of a spike-and-slab total of an ordered factor
+  ordered_fit <- .ordered_total_fit_for_test(
+    prior_spike_and_slab(prior("normal", list(0, 1), list(0, Inf)))
+  )
+  expect_identical(removed_rows(ordered_fit), "(mu) f_ordered_total_indicator")
+  expect_identical(removed_rows(ordered_fit, transform_factors = TRUE), "(mu) f_ordered_total_indicator")
+  samples <- runjags_estimates_table(
+    ordered_fit, remove_inclusion = TRUE, return_samples = TRUE
+  )
+  expect_false("(mu) f_ordered_total_indicator" %in% colnames(samples))
+  expect_true("(mu) f_ordered_total" %in% colnames(samples))
+  # the inclusion row is kept by default
+  default <- runjags_estimates_table(ordered_fit, remove_diagnostics = TRUE)
+  expect_equal(
+    as.numeric(default["(mu) f_ordered_total_indicator", "Mean"]),
+    mean(as.matrix(ordered_fit$mcmc[[1L]])[, "mu_f_ordered_total_indicator"])
+  )
+
+  # the raw gates of a variance allocation (the standard summary reports them
+  # as semantic inclusion quantities, which were removed already)
+  data <- data.frame(
+    id = factor(rep(c("a", "b", "c", "d"), 3L)),
+    grp = factor(rep(c("g1", "g2", "g3"), each = 4L))
+  )
+  result <- JAGS_formula(
+    ~ 1 +
+      random(1 | id, name = "study", covariance = "diag") +
+      random(1 | grp, name = "drug", covariance = "diag"),
+    "mu",
+    data = data,
+    prior_list = list(intercept = prior("normal", list(0, 1))),
+    prior_random = prior_random(allocation = random_variance_allocation(
+      name = "total",
+      terms = c(study = "study", drug = "drug"),
+      sd = prior("gamma", list(2, 2)),
+      weights = prior("dirichlet", list(alpha = c(1, 1))),
+      inclusion = list(
+        study = prior("spike", list(location = 0.3)),
+        drug  = prior("spike", list(location = 0.7))
+      )
+    ))
+  )
+  allocation <- result$formula_design$random_effects[[1L]]$sd_binding$allocations[[1L]]
+  weights <- paste0(allocation$weight_name, "[", 1:2, "]")
+  allocation_fit <- .inclusion_rows_fit_for_test(
+    c(
+      "mu_intercept",
+      allocation$source_node,
+      weights,
+      vapply(allocation$inclusion, `[[`, character(1), "prob_name"),
+      vapply(allocation$inclusion, `[[`, character(1), "indicator_name")
+    ),
+    result$prior_list,
+    list(mu = result$formula_design),
+    simplex = weights
+  )
+  raw <- removed_rows(allocation_fit, random_effects_summary = "raw")
+  expect_length(raw, 2L)
+  expect_true(all(grepl("include_(study|drug)_indicator$", raw)))
+  expect_setequal(
+    removed_rows(allocation_fit),
+    c("(mu) total: inclusion(study)", "(mu) total: inclusion(drug)")
+  )
+})
+
+test_that("inference tables report the inclusion event of an ordered spike-and-slab total", {
+
+  skip_if_not_installed("runjags")
+  set.seed(262)
+
+  # 86 of 100 draws include the total
+  indicator <- c(rep(1, 86), rep(0, 14))
+  ordered_fit <- .ordered_total_fit_for_test(
+    prior_spike_and_slab(prior("normal", list(0, 1), list(0, Inf))),
+    n = 100L,
+    adjust = function(draws){
+      draws[, "mu_f_ordered_total_indicator"] <- indicator
+      draws
+    }
+  )
+  expected_BF <- (0.86 / 0.14) / (0.5 / 0.5)
+
+  table <- runjags_inference_table(ordered_fit)
+  expect_identical(rownames(table), "(mu) f")
+  expect_equal(unname(unlist(table[, c("prior_prob", "post_prob")])), c(0.5, 0.86))
+  expect_equal(as.numeric(table[["inclusion_BF"]]), expected_BF, tolerance = 1e-12)
+  expect_identical(attr(table, "parameters"), "mu_f")
+  expect_identical(attr(table, "parameter_roles"), "model_inclusion")
+  expect_equal(
+    as.numeric(runjags_inference_table(ordered_fit, logBF = TRUE)[["inclusion_BF"]]),
+    log(expected_BF),
+    tolerance = 1e-12
+  )
+  expect_equal(
+    as.numeric(runjags_inference_table(ordered_fit, BF01 = TRUE)[["inclusion_BF"]]),
+    1 / expected_BF,
+    tolerance = 1e-12
+  )
+  expect_identical(
+    rownames(runjags_inference_table(ordered_fit, formula_prefix = FALSE)),
+    "f"
+  )
+  diagnostics <- runjags_inference_table(ordered_fit, BF_diagnostics = TRUE)
+  expect_identical(rownames(diagnostics), "(mu) f")
+  expect_true(all(c("MCMC_error", "BF_error_percent") %in% colnames(diagnostics)))
+
+  # the same event of a plain spike-and-slab factor gives the same row
+  result <- JAGS_formula(
+    ~ 1 + f,
+    "mu",
+    data = data.frame(f = factor(rep(c("lo", "mid", "hi"), 4L), levels = c("lo", "mid", "hi"))),
+    prior_list = list(
+      intercept = prior("normal", list(0, 1)),
+      f = prior_spike_and_slab(prior_factor("normal", list(0, 1), contrast = "treatment"))
+    )
+  )
+  plain_fit <- .inclusion_rows_fit_for_test(
+    c(
+      "mu_intercept", "mu_f[1]", "mu_f[2]", "mu_f_indicator", "mu_f_inclusion",
+      "mu_f_variable[1]", "mu_f_variable[2]"
+    ),
+    result$prior_list,
+    list(mu = result$formula_design),
+    n = 100L,
+    adjust = function(draws){
+      draws[, "mu_f_indicator"] <- indicator
+      draws
+    }
+  )
+  plain <- runjags_inference_table(plain_fit)
+  expect_identical(rownames(plain), "(mu) f")
+  expect_equal(unname(unlist(plain[, c("prior_prob", "post_prob")])), c(0.5, 0.86))
+  expect_equal(as.numeric(plain[["inclusion_BF"]]), expected_BF, tolerance = 1e-12)
+})
+
+test_that("conditional random-effect SD summaries use the inclusion event of the SD prior", {
+
+  skip_if_not_installed("runjags")
+  set.seed(260)
+  sd_name <- "mu__xREx__id_x"
+  indicator_name <- paste0(sd_name, "_indicator")
+  data <- data.frame(
+    x = c(-1.2, -0.4, 0.3, 1.1, -0.7, 0.9, 0.2, -1.5, 1.4, 0.6, -0.1, 0.8),
+    id = factor(rep(c("a", "b", "c", "d"), 3L))
+  )
+  # the SD is 0 unless the alternative component (indicator value) is active
+  sd_fit <- function(sd_prior, alternative){
+    result <- JAGS_formula(
+      ~ 1 + x + (x - 1 || id),
+      "mu",
+      data = data,
+      prior_list = list(
+        intercept = prior("normal", list(0, 1)),
+        x = prior("normal", list(0, 1))
+      ),
+      prior_random = prior_random(id = random_block(sd = sd_prior))
+    )
+    .inclusion_rows_fit_for_test(
+      JAGS_to_monitor(result$prior_list),
+      result$prior_list,
+      list(mu = result$formula_design),
+      adjust = function(draws){
+        draws[, sd_name] <- draws[, sd_name] * (draws[, indicator_name] %in% alternative)
+        draws
+      }
+    )
+  }
+  estimates <- function(fit, ...){
+    runjags_estimates_table(fit, remove_diagnostics = TRUE, ...)
+  }
+  statistics <- c("Mean", "SD", "0.025", "0.5", "0.975")
+  reference <- function(x){
+    c(mean(x), stats::sd(x), stats::quantile(x, c(0.025, 0.5, 0.975), names = FALSE))
+  }
+  row_values <- function(table, row){
+    as.numeric(table[row, statistics])
+  }
+
+  # spike-and-slab and null/alternative mixture SDs: the rows of the SD, its
+  # variance, and the raw summary of the same prior summarize the included draws
+  cases <- list(
+    spike_and_slab = list(
+      fit = sd_fit(prior_spike_and_slab(prior("normal", list(0, 1), list(0, Inf))), 1),
+      alternative = 1,
+      inclusion = "(mu) inclusion(sd(x))"
+    ),
+    mixture = list(
+      fit = sd_fit(
+        prior_mixture(
+          list(prior("spike", list(0)), prior("normal", list(0, 1), list(0, Inf))),
+          is_null = c(TRUE, FALSE)
+        ),
+        2
+      ),
+      alternative = 2,
+      inclusion = "(mu) inclusion(sd(x)[alternative])"
+    )
+  )
+  for(case in cases){
+    draws <- as.matrix(case$fit$mcmc[[1L]])
+    included <- draws[, indicator_name] %in% case$alternative
+    expect_gt(abs(mean(draws[included, sd_name]) - mean(draws[, sd_name])), 0.05)
+
+    standard <- estimates(case$fit, conditional = TRUE)
+    expect_equal(
+      row_values(standard, "(mu) sd(x)"),
+      reference(draws[included, sd_name]),
+      tolerance = 1e-12
+    )
+    expect_equal(
+      row_values(standard, "(mu) intercept"),
+      reference(draws[, "mu_intercept"]),
+      tolerance = 1e-12
+    )
+    expect_equal(
+      as.numeric(standard[case$inclusion, "Mean"]),
+      mean(included)
+    )
+    expect_true(any(grepl(
+      paste0("Conditional summary for (mu) sd(x) is based on ", sum(included), " samples."),
+      attr(standard, "warnings"),
+      fixed = TRUE
+    )))
+
+    # the raw summary conditions the same prior on the same draws
+    raw <- estimates(case$fit, conditional = TRUE, random_effects_summary = "raw")
+    expect_equal(
+      row_values(raw, "(mu) id: sd(x)"),
+      row_values(standard, "(mu) sd(x)"),
+      tolerance = 1e-12
+    )
+
+    # the variance row of the full summary has the same event
+    full <- estimates(case$fit, conditional = TRUE, random_effects_summary = "full")
+    expect_equal(
+      row_values(full, "(mu) var(x)"),
+      reference(draws[included, sd_name]^2),
+      tolerance = 1e-12
+    )
+    expect_equal(
+      row_values(full, "(mu) sd(x)"),
+      row_values(standard, "(mu) sd(x)"),
+      tolerance = 1e-12
+    )
+
+    # unconditional summaries use all draws and carry no conditional warning
+    averaged <- estimates(case$fit, random_effects_summary = "full")
+    expect_equal(
+      row_values(averaged, "(mu) sd(x)"),
+      reference(draws[, sd_name]),
+      tolerance = 1e-12
+    )
+    expect_equal(
+      row_values(averaged, "(mu) var(x)"),
+      reference(draws[, sd_name]^2),
+      tolerance = 1e-12
+    )
+    expect_null(attr(averaged, "warnings"))
+  }
+
+  # a mixture without a null/alternative structure has no single inclusion event
+  # (the raw summary reports its components as rows of their own): the semantic
+  # rows stay unconditional and say so
+  components <- sd_fit(
+    prior_mixture(
+      list(prior("spike", list(0)), prior("normal", list(0, 1), list(0, Inf))),
+      components = c("a", "b")
+    ),
+    2
+  )
+  draws <- as.matrix(components$mcmc[[1L]])
+  standard <- estimates(components, conditional = TRUE, random_effects_summary = "full")
+  expect_equal(
+    row_values(standard, "(mu) sd(x)"),
+    reference(draws[, sd_name]),
+    tolerance = 1e-12
+  )
+  expect_equal(
+    row_values(standard, "(mu) var(x)"),
+    reference(draws[, sd_name]^2),
+    tolerance = 1e-12
+  )
+  expect_identical(
+    unname(attr(standard, "footnotes")),
+    c(
+      "(mu) sd(x): summarized over all draws; its prior's inclusion event could not be conditioned on.",
+      "(mu) var(x): summarized over all draws; its prior's inclusion event could not be conditioned on."
+    )
+  )
+  expect_identical(names(attr(standard, "footnotes")), c("(mu) sd(x)", "(mu) var(x)"))
+  expect_false(any(grepl("is based on", attr(standard, "warnings"), fixed = TRUE)))
+  expect_null(attr(estimates(components, random_effects_summary = "full"), "footnotes"))
+})
+
+test_that("indexed random-effect columns recover their declared prior", {
+
+  p <- prior("mnormal", list(mean = 0, sd = 1, K = 2))
+  for(name in c("mu_fac[1]", "mu_fac[1,2]")){
+    expect_identical(
+      BayesTools:::.bt_random_effect_summary_prior_for_column(name, list(mu_fac = p)),
+      p
+    )
+  }
+})
+
+test_that("raw correlation labels distinguish backend transforms", {
+
+  raw_names <- paste0("mu__xREx__study", c("_rho", "_rho_z", "_rho_logit"))
+  random_term <- list(parameter_stem = "mu__xREx__study", block_name = "study", has_explicit_name = TRUE)
+  expect_identical(
+    BayesTools:::.bt_random_effect_summary_raw_rho_display_names(
+      raw_names, raw_names, random_term, prefix = ""
+    ),
+    c("study: cor", "study: cor (Fisher z)", "study: cor (logit)")
+  )
+  expect_identical(BayesTools:::.BF_error_column_name(TRUE), "error%(Exclusion BF)")
+  expect_identical(BayesTools:::.BF_error_column_name(FALSE), "error%(Inclusion BF)")
+})
+
+test_that("estimates tables keep their row labels when display labels collide", {
+
+  skip_if_not_installed("runjags")
+
+  # the same coefficients of two formulas, without formula prefixes
+  priors <- list(
+    intercept = prior("normal", list(0, 1)),
+    x = prior("normal", list(0, 1))
+  )
+  data <- data.frame(x = c(1, 3, 5, 7))
+  mu <- JAGS_formula(~ x, "mu", data, priors)
+  sigma <- JAGS_formula(~ x, "sigma", data, priors)
+  fit <- structure(
+    list(
+      mcmc = coda::mcmc.list(coda::mcmc(cbind(
+        mu_intercept = 1:4, mu_x = 2:5, sigma_intercept = 3:6, sigma_x = 4:7
+      ))),
+      sample = 4L
+    ),
+    class = c("runjags", "BayesTools_fit", "list")
+  )
+  attr(fit, "prior_list") <- c(mu$prior_list, sigma$prior_list)
+  attr(fit, "formula_design") <- list(mu = mu$formula_design, sigma = sigma$formula_design)
+  fit <- attach_test_parameter_map(fit)
+
+  labels <- c("intercept", "x", "intercept.1", "x.1")
+  means <- c(2.5, 3.5, 4.5, 5.5)
+  for(settings in list(
+    list(),
+    list(remove_diagnostics = TRUE),
+    list(conditional = TRUE),
+    list(remove_diagnostics = TRUE, conditional = TRUE)
+  )){
+    table <- do.call(
+      runjags_estimates_table,
+      c(list(fit, formula_prefix = FALSE), settings)
+    )
+    expect_identical(rownames(table), labels)
+    expect_equal(as.numeric(table[, "Mean"]), means)
+    expect_identical(attr(table, "quantities")$row, labels)
+    expect_identical(
+      attr(table, "parameters"),
+      c("mu_intercept", "mu_x", "sigma_intercept", "sigma_x")
+    )
+    expect_equal(as.numeric(table["x.1", "Mean"]), 5.5)
+  }
+
+  # the labels of the returned samples are the display labels
+  expect_identical(
+    colnames(runjags_estimates_table(
+      fit, formula_prefix = FALSE, return_samples = TRUE
+    )),
+    c("intercept", "x", "intercept", "x")
+  )
+
+  # the default prefixes are unchanged and the ensemble table makes the same
+  # labels unique
+  expect_identical(
+    rownames(runjags_estimates_table(fit, remove_diagnostics = TRUE)),
+    c("(mu) intercept", "(mu) x", "(sigma) intercept", "(sigma) x")
+  )
+  mixed <- as_mixed_posteriors(fit, names(fit$mcmc[[1L]][1L, ]), n_prior_samples = 32L)
+  ensemble <- ensemble_estimates_table(
+    mixed,
+    c("mu_intercept", "mu_x", "sigma_intercept", "sigma_x"),
+    formula_prefix = FALSE
+  )
+  expect_identical(rownames(ensemble), labels)
+  expect_equal(as.numeric(ensemble[, "Mean"]), means)
+})
 
 test_that("runjags_estimates_table reports exact sample summaries without snapshots", {
 
@@ -475,6 +1682,324 @@ test_that("runjags_estimates_table reports exact sample summaries without snapsh
   ))
 
   .expect_runjags_estimate_values_for_test(transformed, transformed_posterior, c(0.25, 0.75))
+})
+
+test_that("raw random-effect correlation aliases include logit-scale rho columns", {
+
+  samples <- matrix(
+    seq_len(5L * 5L),
+    nrow = 5L,
+    dimnames = list(
+      NULL,
+      c(
+        "mu_intercept",
+        "mu__xREx__id_sd",
+        "mu__xREx__id_rho",
+        "mu__xREx__id_rho_z",
+        "mu__xREx__id_rho_logit"
+      )
+    )
+  )
+  formula_design <- list(
+    mu = structure(
+      list(
+        parameter = "mu",
+        name_map = BayesTools:::.bt_formula_name_map_empty(),
+        random_effects = list(list(
+          parameter_stem = "mu__xREx__id",
+          parameter = "mu",
+          block_name = "id",
+          group_label = "id",
+          has_explicit_name = TRUE,
+           structure = "diag",
+           column_names = "sd",
+           sd_parameter_names = "mu__xREx__id_sd",
+           sd_leaves = .summary_test_sd_leaves("mu__xREx__id_sd", "sd"),
+           group_levels = "a"
+        ))
+      ),
+      class = c("BayesTools_formula_design", "list")
+    )
+  )
+
+  coordinates <- build_test_parameter_coordinates(
+    columns = colnames(samples),
+    formula_design = formula_design
+  )
+
+  removed <- BayesTools:::.bt_JAGS_estimates_filter_raw_random_columns(
+    model_samples = samples,
+    prior_list = list(),
+    coordinates = coordinates,
+    remove_parameters = "random_cor"
+  )
+  expect_true("mu__xREx__id_sd" %in% colnames(removed))
+  expect_false("mu__xREx__id_rho" %in% colnames(removed))
+  expect_false("mu__xREx__id_rho_z" %in% colnames(removed))
+  expect_false("mu__xREx__id_rho_logit" %in% colnames(removed))
+
+  kept <- BayesTools:::.bt_JAGS_estimates_filter_raw_random_columns(
+    model_samples = samples,
+    prior_list = list(),
+    coordinates = coordinates,
+    keep_parameters = "random_cor"
+  )
+  expect_true("mu_intercept" %in% colnames(kept))
+  expect_false("mu__xREx__id_sd" %in% colnames(kept))
+  expect_true("mu__xREx__id_rho" %in% colnames(kept))
+  expect_true("mu__xREx__id_rho_z" %in% colnames(kept))
+  expect_true("mu__xREx__id_rho_logit" %in% colnames(kept))
+})
+
+
+test_that("raw random-effect monitors respect formula filters", {
+
+  skip_if_not_installed("runjags")
+
+  posterior <- matrix(
+    seq_len(6L * 4L),
+    nrow = 6L,
+    dimnames = list(
+      NULL,
+      c(
+        "mu_intercept",
+        "mu__xREx__id_sd",
+        "log_sigma_intercept",
+        "log_sigma__xREx__site_sd"
+      )
+    )
+  )
+  fit <- .runjags_table_fit_for_test(posterior)
+
+  mu_prior <- prior("normal", list(0, 1))
+  attr(mu_prior, "parameter") <- "mu"
+  log_sigma_prior <- prior("normal", list(0, 1))
+  attr(log_sigma_prior, "parameter") <- "log_sigma"
+  attr(fit, "prior_list") <- list(
+    mu_intercept = mu_prior,
+    log_sigma_intercept = log_sigma_prior
+  )
+  attr(fit, "formula_design") <- list(
+    mu = structure(
+      list(
+        parameter = "mu",
+        name_map = BayesTools:::.bt_formula_name_map_empty(),
+        random_effects = list(list(
+          parameter_stem = "mu__xREx__id",
+          parameter = "mu",
+          block_name = "id",
+          group_label = "id",
+          has_explicit_name = TRUE,
+           structure = "diag",
+           column_names = "sd",
+           sd_parameter_names = "mu__xREx__id_sd",
+           sd_leaves = .summary_test_sd_leaves("mu__xREx__id_sd", "sd"),
+           group_levels = "a"
+        ))
+      ),
+      class = c("BayesTools_formula_design", "list")
+    ),
+    log_sigma = structure(
+      list(
+        parameter = "log_sigma",
+        name_map = BayesTools:::.bt_formula_name_map_empty(),
+        random_effects = list(list(
+          parameter_stem = "log_sigma__xREx__site",
+          parameter = "log_sigma",
+          block_name = "site",
+          group_label = "site",
+          has_explicit_name = TRUE,
+           structure = "diag",
+           column_names = "sd",
+           sd_parameter_names = "log_sigma__xREx__site_sd",
+           sd_leaves = .summary_test_sd_leaves(
+             "log_sigma__xREx__site_sd",
+             "sd"
+           ),
+           group_levels = "a"
+        ))
+      ),
+      class = c("BayesTools_formula_design", "list")
+    )
+  )
+  fit <- attach_test_parameter_map(fit)
+
+  removed <- suppressWarnings(runjags_estimates_table(
+    fit,
+    remove_formulas = "mu",
+    random_effects_summary = "raw",
+    return_samples = TRUE,
+    remove_diagnostics = TRUE
+  ))
+  kept <- suppressWarnings(runjags_estimates_table(
+    fit,
+    keep_formulas = "log_sigma",
+    random_effects_summary = "raw",
+    return_samples = TRUE,
+    remove_diagnostics = TRUE
+  ))
+
+  expect_equal(ncol(removed), 2L)
+  expect_false(any(startsWith(colnames(removed), "(mu) ")))
+  expect_true(any(startsWith(colnames(removed), "(log_sigma) ")))
+  expect_equal(ncol(kept), 2L)
+  expect_false(any(startsWith(colnames(kept), "(mu) ")))
+  expect_true(any(startsWith(colnames(kept), "(log_sigma) ")))
+})
+
+
+test_that("raw random-effect columns use their longest matching parameter stem", {
+
+  short_term <- list(
+    parameter_stem = "mu__xREx__a",
+    parameter = "mu",
+    block_name = "a",
+    group_label = "group_a",
+    has_explicit_name = TRUE,
+    structure = "diag",
+    column_names = "intercept",
+    sd_parameter_names = "mu__xREx__a_intercept",
+    sd_leaves = .summary_test_sd_leaves(
+      "mu__xREx__a_intercept",
+      "intercept"
+    ),
+    group_levels = "a"
+  )
+  long_term <- list(
+    parameter_stem = "mu__xREx__a_b",
+    parameter = "mu",
+    block_name = "a_b",
+    group_label = "group_a_b",
+    has_explicit_name = TRUE,
+    structure = "diag",
+    column_names = "intercept",
+    sd_parameter_names = "mu__xREx__a_b_intercept",
+    sd_leaves = .summary_test_sd_leaves(
+      "mu__xREx__a_b_intercept",
+      "intercept"
+    ),
+    group_levels = "a"
+  )
+  formula_design <- list(
+    mu = structure(
+      list(
+        parameter = "mu",
+        name_map = BayesTools:::.bt_formula_name_map_empty(),
+        random_effects = list(short_term, long_term)
+      ),
+      class = c("BayesTools_formula_design", "list")
+    )
+  )
+  short_column <- "mu__xREx__a_intercept"
+  long_column <- "mu__xREx__a_b_intercept"
+  samples <- matrix(
+    seq_len(6L),
+    nrow = 2L,
+    dimnames = list(NULL, c("mu_intercept", short_column, long_column))
+  )
+  coordinates <- build_test_parameter_coordinates(
+    columns = colnames(samples),
+    formula_design = formula_design
+  )
+
+  short_metadata <- BayesTools:::.bt_random_effect_summary_raw_metadata_for_parameter(
+    parameter_name = short_column,
+    coordinates = coordinates
+  )
+  long_metadata <- BayesTools:::.bt_random_effect_summary_raw_metadata_for_parameter(
+    parameter_name = long_column,
+    coordinates = coordinates
+  )
+  expect_equal(
+    short_metadata,
+    list(name = "a", grouping = "group_a", structure = "diag")
+  )
+  expect_equal(
+    long_metadata,
+    list(name = "a_b", grouping = "group_a_b", structure = "diag")
+  )
+
+  removed_short <- BayesTools:::.bt_random_effect_summary_filter_raw_columns(
+    model_samples = samples,
+    coordinates = coordinates,
+    remove_random_effects = "a"
+  )
+  expect_identical(
+    colnames(removed_short),
+    c("mu_intercept", long_column)
+  )
+
+  removed_long <- BayesTools:::.bt_random_effect_summary_filter_raw_columns(
+    model_samples = samples,
+    coordinates = coordinates,
+    remove_random_effects = "a_b"
+  )
+  expect_identical(
+    colnames(removed_long),
+    c("mu_intercept", short_column)
+  )
+
+  kept_short <- BayesTools:::.bt_random_effect_summary_filter_raw_columns(
+    model_samples = samples,
+    coordinates = coordinates,
+    keep_random_effects = "a"
+  )
+  expect_identical(
+    colnames(kept_short),
+    c("mu_intercept", short_column)
+  )
+
+  kept_long <- BayesTools:::.bt_random_effect_summary_filter_raw_columns(
+    model_samples = samples,
+    coordinates = coordinates,
+    keep_random_effects = "a_b"
+  )
+  expect_identical(
+    colnames(kept_long),
+    c("mu_intercept", long_column)
+  )
+
+  kept_long_for_table <- BayesTools:::.bt_JAGS_estimates_filter_raw_random_columns(
+    model_samples = samples,
+    prior_list = list(),
+    coordinates = coordinates,
+    keep_parameters = "intercept",
+    keep_random_effects = "a_b"
+  )
+  expect_identical(
+    colnames(kept_long_for_table),
+    c("mu_intercept", long_column)
+  )
+})
+
+
+test_that("backend logit-scale correlations use semantic correlation labels", {
+
+  raw_name <- "mu__xREx__id_rho_logit"
+  formula_design <- structure(
+    list(
+      parameter = "mu",
+      name_map = BayesTools:::.bt_formula_name_map_empty(),
+      random_effects = list(list(
+        parameter_stem = "mu__xREx__id",
+        parameter = "mu",
+        block_name = "id",
+        group_label = "id",
+        has_explicit_name = TRUE,
+        structure = "diag",
+        column_names = "intercept",
+        sd_parameter_names = character(),
+        group_levels = "a"
+      ))
+    ),
+    class = c("BayesTools_formula_design", "list")
+  )
+  coordinates <- build_test_parameter_coordinates(
+    columns = raw_name,
+    formula_design = list(mu = formula_design)
+  )
+
+  expect_identical(coordinates$display_label, "(mu) id: cor (logit)")
 })
 
 
@@ -512,6 +2037,183 @@ test_that("runjags summary helper keeps only requested diagnostics", {
     diagnostic_columns = FALSE
   )
   expect_equal(colnames(no_diagnostics), c("Mean", "SD", "0.5"))
+})
+
+# Fit of `mu ~ 1 + x` with a standardized slope: seeded draws, the parameter
+# map and the fitted scale (predictor SD sd(c(1, 3, 5, 7))) of a real fit.
+.scaled_slope_fit_for_test <- function(){
+
+  result <- JAGS_formula(
+    ~ x,
+    "mu",
+    data.frame(x = c(1, 3, 5, 7)),
+    list(
+      intercept = prior("normal", list(0, 1)),
+      x = prior("normal", list(0, 1))
+    ),
+    formula_scale = list(x = TRUE)
+  )
+  draws <- cbind(mu_intercept = c(1, 2, 3, 4), mu_x = c(0.1, 0.2, 0.3, 0.4))
+  fit <- structure(
+    list(
+      mcmc = coda::mcmc.list(coda::mcmc(draws)),
+      sample = nrow(draws),
+      summary.pars = list(mutate = NULL)
+    ),
+    class = c("runjags", "BayesTools_fit", "list")
+  )
+  attr(fit, "prior_list") <- result$prior_list
+  attr(fit, "formula_design") <- list(mu = result$formula_design)
+  attach_test_parameter_map(fit)
+}
+
+test_that("unscaling refuses columns that are transformations of coefficients", {
+
+  fit <- .scaled_slope_fit_for_test()
+  scale <- attr(fit, "formula_scale")
+  slope <- c(0.1, 0.2, 0.3, 0.4) / stats::sd(c(1, 3, 5, 7))
+  parameters <- c("mu_intercept", "mu_x")
+  marginal_inference <- list(mu_x = 2)
+
+  # the slope itself is unscaled
+  mixed <- as_mixed_posteriors(fit, parameters, n_prior_samples = 64L)
+  table <- ensemble_estimates_table(
+    mixed, parameters, transform_scaled = TRUE, formula_scale = scale
+  )
+  expect_equal(table["(mu) x", "Mean"], mean(slope), tolerance = 1e-12)
+  expect_equal(
+    marginal_estimates_table(
+      list(mu_x = mixed$mu_x), marginal_inference, "mu_x",
+      transform_scaled = TRUE, formula_scale = scale
+    )["(mu) x", "Mean"],
+    mean(slope),
+    tolerance = 1e-12
+  )
+
+  # its exponential has no fitted coordinates: the tables stop (they reported 0)
+  mixed$mu_x <- posterior_transform(mixed$mu_x, "exp")
+  expect_equal(as.numeric(mixed$mu_x), exp(c(0.1, 0.2, 0.3, 0.4)))
+  for(refused in list(
+    function() ensemble_estimates_table(
+      mixed, parameters, transform_scaled = TRUE, formula_scale = scale
+    ),
+    function() marginal_estimates_table(
+      list(mu_x = mixed$mu_x), marginal_inference, "mu_x",
+      transform_scaled = TRUE, formula_scale = scale
+    )
+  )){
+    error <- expect_error(refused(), class = "BayesTools_formula_transform_unavailable")
+    expect_identical(error$reason, "transformed_column_not_fitted")
+    expect_identical(error$parameter, "mu")
+    expect_identical(
+      conditionMessage(error),
+      paste0(
+        "Cannot transform '(mu) x' to the original predictor scale: it is not a ",
+        "combination of fitted coefficients (it records the output transformation ",
+        "'exp' of coefficients). Unscale the samples first, for example with ",
+        "'transform_scaled = TRUE' in as_mixed_posteriors(), and apply the ",
+        "transformation afterwards."
+      )
+    )
+  }
+
+  # an affine transformation with an offset is no combination of the coefficients
+  # either, and is not called nonlinear
+  affine <- as_mixed_posteriors(fit, parameters, n_prior_samples = 64L)
+  affine$mu_x <- posterior_transform(affine$mu_x, "lin", list(a = 1, b = 2))
+  expect_equal(as.numeric(affine$mu_x), 1 + 2 * c(0.1, 0.2, 0.3, 0.4))
+  error <- expect_error(
+    ensemble_estimates_table(affine, parameters, transform_scaled = TRUE, formula_scale = scale),
+    class = "BayesTools_formula_transform_unavailable"
+  )
+  expect_identical(error$reason, "transformed_column_not_fitted")
+  expect_identical(
+    conditionMessage(error),
+    paste0(
+      "Cannot transform '(mu) x' to the original predictor scale: it is not a ",
+      "combination of fitted coefficients (it records the output transformation ",
+      "'lin' of coefficients). Unscale the samples first, for example with ",
+      "'transform_scaled = TRUE' in as_mixed_posteriors(), and apply the ",
+      "transformation afterwards."
+    )
+  )
+  expect_false(grepl("nonlinear", conditionMessage(error), fixed = TRUE))
+
+  # unscaling first and transforming afterwards is supported
+  unscaled <- as_mixed_posteriors(fit, parameters, n_prior_samples = 64L, transform_scaled = TRUE)
+  unscaled$mu_x <- posterior_transform(unscaled$mu_x, "exp")
+  expect_equal(
+    ensemble_estimates_table(unscaled, parameters)["(mu) x", "Mean"],
+    mean(exp(slope)),
+    tolerance = 1e-12
+  )
+})
+
+test_that("transform_scaled = TRUE without formula_scale refuses in ensemble and marginal tables", {
+
+  fit <- .scaled_slope_fit_for_test()
+  scale <- attr(fit, "formula_scale")
+  slope <- c(0.1, 0.2, 0.3, 0.4)
+  original_slope <- slope / stats::sd(c(1, 3, 5, 7))
+  mixed <- as_mixed_posteriors(fit, c("mu_intercept", "mu_x"), n_prior_samples = 64L)
+  marginal_samples <- list(mu_x = mixed$mu_x)
+  marginal_inference <- list(mu_x = 2)
+
+  estimates <- function(...){
+    ensemble_estimates_table(mixed, "mu_x", ...)["(mu) x", "Mean"]
+  }
+  marginal <- function(...){
+    marginal_estimates_table(
+      marginal_samples, marginal_inference, "mu_x", ...
+    )["(mu) x", "Mean"]
+  }
+
+  # the scale is required (the tables reported the standardized means)
+  for(refused in list(
+    function() estimates(transform_scaled = TRUE),
+    function() marginal(transform_scaled = TRUE)
+  )){
+    error <- expect_error(refused(), class = "BayesTools_formula_transform_unavailable")
+    expect_identical(error$reason, "formula_scale_missing")
+    expect_identical(
+      conditionMessage(error),
+      paste0(
+        "Cannot transform the samples to the original predictor scale: the ",
+        "'formula_scale' argument is required when 'transform_scaled = TRUE'. ",
+        "Pass the 'formula_scale' attribute of the fitted model, or create the ",
+        "samples with 'transform_scaled = TRUE' in as_mixed_posteriors()."
+      )
+    )
+  }
+
+  # with the fitted scale the means are those of the original scale
+  expect_equal(
+    estimates(transform_scaled = TRUE, formula_scale = scale),
+    mean(original_slope),
+    tolerance = 1e-12
+  )
+  expect_equal(
+    marginal(transform_scaled = TRUE, formula_scale = scale),
+    mean(original_slope),
+    tolerance = 1e-12
+  )
+
+  # an empty list declares no scaled predictor, the defaults are unchanged
+  expect_equal(estimates(transform_scaled = TRUE, formula_scale = list()), mean(slope))
+  expect_equal(marginal(transform_scaled = TRUE, formula_scale = list()), mean(slope))
+  expect_equal(estimates(), mean(slope))
+  expect_equal(estimates(transform_scaled = FALSE), mean(slope))
+  expect_equal(marginal(), mean(slope))
+
+  # samples that were unscaled at creation need no scale
+  unscaled <- as_mixed_posteriors(
+    fit, c("mu_intercept", "mu_x"), n_prior_samples = 64L, transform_scaled = TRUE
+  )
+  expect_equal(
+    ensemble_estimates_table(unscaled, "mu_x", transform_scaled = TRUE)["(mu) x", "Mean"],
+    mean(original_slope),
+    tolerance = 1e-12
+  )
 })
 
 test_that("ensemble_estimates_table preserves parameter and matrix row semantics", {
@@ -627,6 +2329,110 @@ test_that("ensemble inference table reports exact inclusion probability algebra"
     "cannot be 'conditional'",
     fixed = TRUE
   )
+
+  attr(inference, "conditional") <- NULL
+  attr(inference$theta, "is_null") <- NULL
+  expect_error(
+    ensemble_inference_table(inference, c("theta", "beta")),
+    "must have a logical 'is_null' attribute",
+    fixed = TRUE
+  )
+})
+
+test_that("ensemble inference tables refuse conditional inference of a parameter", {
+
+  message <- "The inference object cannot be 'conditional'."
+  models <- lapply(0:1, function(value){
+    list(marglik = .bt_marglik_manual_result(value), prior_weights = 1)
+  })
+  conditional <- compute_inference(
+    prior_weights = c(1, 1), margliks = c(0, 1),
+    is_null = c(TRUE, FALSE), conditional = TRUE
+  )
+  unconditional <- compute_inference(
+    prior_weights = c(1, 1), margliks = c(0, 1),
+    is_null = c(TRUE, FALSE), conditional = FALSE
+  )
+  expect_true(attr(conditional, "conditional"))
+
+  # a hand-built list without the outer attribute
+  expect_error(
+    ensemble_inference_table(list(theta = conditional), "theta"),
+    message,
+    fixed = TRUE
+  )
+  # a conditional ensemble_inference() result, whole and subset (`[` drops the
+  # outer attribute of a list)
+  inference <- ensemble_inference(
+    models, c("theta", "beta"),
+    list(theta = c(TRUE, FALSE), beta = c(FALSE, TRUE)),
+    conditional = TRUE
+  )
+  expect_true(attr(inference, "conditional"))
+  expect_error(ensemble_inference_table(inference, "theta"), message, fixed = TRUE)
+  expect_null(attr(inference["theta"], "conditional"))
+  expect_error(ensemble_inference_table(inference["theta"], "theta"), message, fixed = TRUE)
+  expect_error(
+    ensemble_inference_table(list(theta = unconditional, beta = conditional), c("theta", "beta")),
+    message,
+    fixed = TRUE
+  )
+
+  # unconditional inference is reported as before: prior .5, posterior
+  # exp(1) / (1 + exp(1)), Bayes factor exp(1)
+  table <- ensemble_inference_table(list(theta = unconditional), "theta")
+  expect_equal(table$prior_prob, 0.5)
+  expect_equal(table$post_prob, exp(1) / (1 + exp(1)), tolerance = 1e-12)
+  expect_equal(as.numeric(table$inclusion_BF), exp(1), tolerance = 1e-12)
+  unconditional_ensemble <- ensemble_inference(
+    models, "theta", list(theta = c(TRUE, FALSE)), conditional = FALSE
+  )
+  expect_equal(
+    as.numeric(ensemble_inference_table(unconditional_ensemble, "theta")$inclusion_BF),
+    exp(1),
+    tolerance = 1e-12
+  )
+})
+
+test_that("summary tables list an expression point prior instead of reading it as a numeric spike", {
+
+  models <- list(.mock_ensemble_table_model(
+    model_number = 1L,
+    prior_list = list(theta = prior("normal", list(0, 1)),
+                      beta = prior("point", list(expression(2 * theta))),
+                      gamma = prior("point", list(0))),
+    prior_prob = 0.50,
+    post_prob = 0.50,
+    marglik = log(2),
+    inclusion_BF = 1,
+    fit_summary = .mock_ensemble_fit_summary(
+      MCMC_error = c(0.01, 0.02, 0.03),
+      MCMC_SD_error = c(0.10, 0.20, 0.30),
+      ESS = c(500, 400, 300),
+      R_hat = c(1.01, 1.02, 1.03)
+    )
+  ))
+  parameters <- c(theta = "theta", beta = "beta", gamma = "gamma")
+
+  # the spike at the numeric zero is omitted, the expression point is listed
+  for(table in list(ensemble_summary_table(models, parameters), ensemble_diagnostics_table(models, parameters))){
+    expect_identical(table$theta, "Normal(0, 1)")
+    expect_identical(table$beta, "Spike(2 * theta)")
+    expect_identical(table$gamma, "")
+  }
+  model_text <- paste(utils::capture.output(print(model_summary_table(models[[1L]]))), collapse = "\n")
+  expect_match(model_text, "beta ~ Spike(2 * theta)", fixed = TRUE)
+  expect_false(grepl("gamma", model_text, fixed = TRUE))
+
+  # all spikes are listed without the omission
+  for(table in list(ensemble_summary_table(models, parameters, remove_spike_0 = FALSE),
+                    ensemble_diagnostics_table(models, parameters, remove_spike_0 = FALSE))){
+    expect_identical(table$beta, "Spike(2 * theta)")
+    expect_identical(table$gamma, "Spike(0)")
+  }
+  model_text <- paste(utils::capture.output(print(model_summary_table(models[[1L]], remove_spike_0 = FALSE))), collapse = "\n")
+  expect_match(model_text, "beta ~ Spike(2 * theta)", fixed = TRUE)
+  expect_match(model_text, "gamma ~ Spike(0)", fixed = TRUE)
 })
 
 test_that("ensemble summary and diagnostics tables preserve model alignment", {
@@ -683,6 +2489,19 @@ test_that("ensemble summary and diagnostics tables preserve model alignment", {
     remove_spike_0 = FALSE
   )
   diagnostics <- ensemble_diagnostics_table(models, c(theta = "theta", beta = "beta"))
+
+  expect_error(
+    ensemble_summary_table(models, c(theta = "theta", beta = "beta"), remove_spike_0 = NA),
+    "cannot contain NA"
+  )
+  expect_error(
+    ensemble_diagnostics_table(models, c(theta = "theta", beta = "beta"), remove_spike_0 = NA),
+    "cannot contain NA"
+  )
+  expect_error(
+    model_summary_table(models[[1]], remove_spike_0 = NA),
+    "cannot contain NA"
+  )
 
   expect_equal(summary$Model, c(3, 1, 2))
   expect_equal(summary$prior_prob, c(0.20, 0.30, 0.50), tolerance = 1e-12)
@@ -773,6 +2592,10 @@ test_that("add_column works correctly", {
   expect_true("Category" %in% names(result5))
   expect_equal(attr(result5, "type")[4], "string")
   test_reference_table(result5, "add_column_string.txt")
+
+  all_missing <- add_column(test_data, "Missing", c(NA_real_, NA_real_))
+  expect_equal(attr(all_missing, "type")[4], "estimate")
+  expect_true(all(is.na(all_missing$Missing)))
 
 })
 
@@ -983,5 +2806,213 @@ test_that("ensemble_diagnostics_empty_table works correctly", {
   expect_equal(nrow(empty_table), 0)
   expect_true(ncol(empty_table) > 0)
   test_reference_table(empty_table, "ensemble_diagnostics_empty.txt")
+
+})
+
+test_that("log-scale inclusion BF tables stay in log space beyond the double range", {
+
+  # Review scenario: log BF -800.69, which exp() turns into 0.
+  log_BF <- -800.69
+  theta <- structure(
+    list(
+      prior_probs = c(null = 0.5, alt = 0.5),
+      post_probs = c(null = 1, alt = 0),
+      BF = exp(log_BF)
+    ),
+    is_null = c(TRUE, FALSE),
+    parameter_name = "theta",
+    log_BF = log_BF
+  )
+  inference <- list(theta = theta)
+  attr(inference, "conditional") <- FALSE
+
+  linear <- ensemble_inference_table(inference, "theta")
+  expect_identical(as.numeric(linear$inclusion_BF), 0)
+  log_table <- ensemble_inference_table(inference, "theta", logBF = TRUE)
+  expect_identical(as.numeric(log_table$inclusion_BF), log_BF)
+  expect_identical(attr(log_table$inclusion_BF, "name"), "log(Inclusion BF)")
+  printed <- utils::capture.output(print(log_table))
+  expect_true(any(grepl("-800.690", printed, fixed = TRUE)))
+  expect_false(any(grepl("Inf", printed, fixed = TRUE)))
+  log_BF01 <- ensemble_inference_table(inference, "theta", logBF = TRUE, BF01 = TRUE)
+  expect_identical(as.numeric(log_BF01$inclusion_BF), -log_BF)
+
+  # Re-formatting a log-scale table keeps the log values.
+  expect_identical(
+    as.numeric(update(log_table, logBF = TRUE, BF01 = TRUE)$inclusion_BF),
+    -log_BF
+  )
+  expect_identical(as.numeric(update(log_BF01, logBF = TRUE)$inclusion_BF), log_BF)
+  expect_identical(as.numeric(update(log_table)$inclusion_BF), 0)
+
+  models <- list(
+    .mock_ensemble_table_model(
+      model_number = 1L,
+      prior_list = list(theta = prior("point", list(0))),
+      prior_prob = 0.5,
+      post_prob = 1,
+      marglik = 0,
+      inclusion_BF = exp(-log_BF),
+      fit_summary = NULL
+    ),
+    .mock_ensemble_table_model(
+      model_number = 2L,
+      prior_list = list(theta = prior("normal", list(0, 1))),
+      prior_prob = 0.5,
+      post_prob = 0,
+      marglik = log_BF,
+      inclusion_BF = exp(log_BF),
+      fit_summary = NULL
+    )
+  )
+  attr(models[[1L]]$inference, "inclusion_log_BF") <- -log_BF
+  attr(models[[2L]]$inference, "inclusion_log_BF") <- log_BF
+  summary <- ensemble_summary_table(models, "theta", logBF = TRUE)
+  expect_identical(as.numeric(summary$inclusion_BF), c(-log_BF, log_BF))
+
+  # Inference objects without the log-space attribute keep log(BF).
+  attr(inference$theta, "log_BF") <- NULL
+  inference$theta$BF <- 3
+  expect_equal(
+    as.numeric(ensemble_inference_table(inference, "theta", logBF = TRUE)$inclusion_BF),
+    log(3),
+    tolerance = 1e-15
+  )
+})
+
+test_that("small Bayes factor reciprocals are written out without scientific notation", {
+
+  small <- BayesTools:::.format_BF_small_value
+  expect_identical(small(1e-3, log(1e-3)), "1/1000")
+  expect_identical(small(1e-5, log(1e-5)), "1/100000")
+  expect_identical(small(2.5e-7, log(2.5e-7)), "1/4000000")
+  expect_identical(small(1e-14, log(1e-14)), "1/100000000000000")
+  expect_identical(small(1e-20, log(1e-20)), "1/1e+20")
+  expect_identical(small(1.234e-30, log(1.234e-30)), "1/8.1e+29")
+  expect_identical(small(1e-320, log(1e-320)), paste0("exp(", format(log(1e-320), trim = TRUE), ")"))
+
+  bound <- 1e-5
+  attr(bound, "bound_operator") <- "<"
+  expect_identical(.format_BF_column(format_BF(bound)), "<1/100000")
+  expect_identical(.interpret_BF_value_text(1e-5, log(1e-5)), "1/100000")
+  expect_match(.interpret.BF(format_BF(bound), "theta inclusion", "Inclusion BF"), "Inclusion BF < 1/100000", fixed = TRUE)
+})
+
+test_that("Bayes factor formatting and table updates accept tables without rows", {
+
+  empty <- format_BF(numeric(0))
+  expect_length(empty, 0L)
+  expect_identical(attr(empty, "name"), "BF")
+  expect_identical(attr(format_BF(numeric(0), logBF = TRUE, BF01 = TRUE, inclusion = TRUE), "name"),
+                   "log(Exclusion BF)")
+  expect_error(format_BF(NULL), "cannot be NULL", fixed = TRUE)
+  table <- data.frame(prior_prob = numeric(0), post_prob = numeric(0), inclusion_BF = format_BF(numeric(0), inclusion = TRUE))
+  class(table) <- c("BayesTools_table", "data.frame")
+  attr(table, "type") <- c("prior_prob", "post_prob", "inclusion_BF")
+  for(args in list(list(logBF = TRUE), list(BF01 = TRUE), list(logBF = TRUE, BF01 = TRUE))){
+    updated <- do.call(update, c(list(table), args))
+    expect_identical(nrow(updated), 0L)
+    expect_identical(attr(updated, "logBF"), isTRUE(args$logBF))
+    expect_identical(attr(updated$inclusion_BF, "name"), BayesTools:::.BF_column_name(
+      logBF = isTRUE(args$logBF), BF01 = isTRUE(args$BF01), inclusion = TRUE))
+  }
+})
+
+test_that("a named transformation is validated against the known transformations", {
+
+  check <- BayesTools:::.check_transformation_input
+  for(name in c("lin", "exp_lin", "tanh", "exp")){
+    expect_null(check(name, NULL, FALSE))
+  }
+  expect_error(check("bogus", NULL, FALSE),
+               "Unknown transformation 'bogus'. Use 'lin', 'exp_lin', 'tanh', 'exp', or a list of functions 'fun', 'inv', and 'jac'.",
+               fixed = TRUE)
+  expect_error(check(c("exp", "lin"), NULL, FALSE), "'transformation'", fixed = TRUE)
+  expect_null(check(list(fun = exp, inv = log, jac = exp), NULL, FALSE))
+  expect_error(density(prior("normal", list(0, 1)), transformation = "bogus"), "Unknown transformation 'bogus'", fixed = TRUE)
+})
+
+test_that("R116 N69 bounded positive Bayes factors never print a rounded zero bound", {
+
+  values <- c(1e-4, 1e-4, .Machine$double.xmin * .Machine$double.eps, .01, 100, 0, NA, Inf, 1e-4)
+  attr(values, "bound_operator") <- c("<", ">", "<", "<", ">", "<", "<", ">", NA)
+  original <- values
+  formatted <- .format_BF_column(values)
+  expect_identical(formatted[1:2], c("<1/10000", ">1/10000"))
+  expect_identical(formatted[3L], paste0("<exp(", format(log(values[[3L]]), trim = TRUE), ")"))
+  ordinary <- format(round(values, 3), nsmall = 3)
+  ordinary_index <- c(4:6, 8L)
+  expect_identical(formatted[ordinary_index], paste0(attr(values, "bound_operator")[ordinary_index], trimws(ordinary[ordinary_index])))
+  expect_identical(formatted[7L], ordinary[7L])
+  expect_identical(formatted[9L], ordinary[9L])
+  expect_identical(values, original)
+  bf <- format_BF(values)
+  expect_identical(as.numeric(bf), as.numeric(original))
+  expect_identical(attr(bf, "bound_operator"), attr(values, "bound_operator"))
+  expect_false(attr(bf, "logBF"))
+  expect_false(attr(bf, "BF01"))
+  table <- data.frame(BF = bf)
+  class(table) <- c("BayesTools_table", "data.frame")
+  attr(table, "type") <- "BF"
+  before <- table
+  expect_output(print(table), "<1/10000", fixed = TRUE)
+  # Log-BF columns keep significant digits instead of reciprocals.
+  small_log <- exp(1e-5)
+  attr(small_log, "bound_operator") <- "<"
+  expect_identical(.format_BF_column(format_BF(small_log, logBF = TRUE)), "<1e-05")
+  expect_identical(table, before)
+  expect_identical(as.numeric(as.data.frame(table)$BF), as.numeric(original))
+  expect_identical(as.numeric(data.frame(table)$BF), as.numeric(original))
+})
+
+test_that("bounded log-scale Bayes factor cells keep small endpoints of either sign", {
+
+  for(case in list(
+    list(log_value = -1e-5, operator = ">", expected = ">-1e-05"),
+    list(log_value = -1e-5, operator = "<", expected = "<-1e-05"),
+    list(log_value = 1e-5,  operator = ">", expected = ">1e-05"),
+    list(log_value = -3e-4, operator = ">", expected = ">-3e-04"),
+    list(log_value = 0,     operator = ">", expected = ">0.000")
+  )){
+    bound <- exp(case$log_value)
+    attr(bound, "bound_operator") <- case$operator
+    expect_identical(.format_BF_column(format_BF(bound, logBF = TRUE)), case$expected)
+  }
+
+  # endpoints that do not round to zero, and the natural scale, are unchanged
+  mixed <- c(exp(-1e-5), exp(0.5), exp(-2))
+  attr(mixed, "bound_operator") <- c(">", ">", "<")
+  expect_identical(.format_BF_column(format_BF(mixed, logBF = TRUE)), c(">-1e-05", ">0.500", "<-2.000"))
+  natural <- exp(-1e-5)
+  attr(natural, "bound_operator") <- ">"
+  expect_identical(.format_BF_column(format_BF(natural)), ">1.000")
+  expect_identical(.format_BF_column(format_BF(natural, logBF = TRUE, BF01 = TRUE)), "<1e-05")
+
+})
+
+test_that("bounded Bayes factor cells print an endpoint beyond the double range as exp of its logarithm", {
+
+  # the oriented natural value is Inf or 0 while its logarithm is finite
+  expect_identical(.format_BF_column(.format_BF_from_log(-750, BF01 = TRUE, bound_operator = ">")), "<exp(750)")
+  expect_identical(.format_BF_column(.format_BF_from_log(750, bound_operator = ">")), ">exp(750)")
+  expect_identical(.format_BF_column(.format_BF_from_log(750, bound_operator = "<")), "<exp(750)")
+  expect_identical(.format_BF_column(.format_BF_from_log(c(-750, 2, 750), bound_operator = c(">", NA, "<"))),
+                   c(">exp(-750)", "7.389", "<exp(750)"))
+
+  # the documented underflow endpoints and unbounded cells are unchanged
+  expect_identical(.format_BF_column(.format_BF_from_log(-750, bound_operator = ">")), ">exp(-750)")
+  expect_identical(.format_BF_column(.format_BF_from_log(750, BF01 = TRUE, bound_operator = ">")), "<exp(-750)")
+  expect_identical(.format_BF_column(.format_BF_from_log(710, BF01 = TRUE, bound_operator = ">")), "<exp(-710)")
+  expect_identical(.format_BF_column(.format_BF_from_log(-750, BF01 = TRUE)), "Inf")
+  expect_identical(.format_BF_column(format_BF(Inf)), "Inf")
+  expect_identical(.format_BF_column(format_BF(0)), "0.000")
+
+  # the table print shows the same endpoint after a change of the orientation
+  table <- data.frame(parameter = 1, check.names = FALSE)
+  table$BF <- .format_BF_from_log(-750, bound_operator = ">")
+  class(table) <- c("BayesTools_table", "data.frame")
+  attr(table, "type") <- c("integer", "inclusion_BF")
+  expect_output(print(update(table, BF01 = TRUE)), "<exp(750)", fixed = TRUE)
+  expect_output(print(update(table)), ">exp(-750)", fixed = TRUE)
 
 })

@@ -1,51 +1,166 @@
-bayestools_known_test_profiles <- c("unit", "fixture", "visual", "visual-fixture", "fit")
+bayestools_known_test_profiles <- c("unit", "fixture", "visual", "visual-fixture", "fit", "cran")
+
+
+bayestools_quiet_llm_reporter <- function(...) {
+
+  reporter_class <- R6::R6Class(
+    classname = "BayesToolsQuietLlmReporter",
+    inherit   = testthat::LlmReporter,
+    public    = list(
+      add_result = function(context, test, result) {
+
+        if (self$is_full()) {
+          return(invisible())
+        }
+        if (inherits(result, "expectation_skip")) {
+          self$n_skip <- self$n_skip + 1L
+          return(invisible())
+        }
+
+        super$add_result(context, test, result)
+      }
+    )
+  )
+
+  reporter_class$new(...)
+}
 
 bayestools_test_profile_contexts <- list(
   unit = c(
+    "carrier-integration",
+    "condition-model-probabilities",
+    "density-display-coherence",
+    "backend-fingerprint",
+    "bounded-plot-transformations",
     "distributions-mpoint",
     "distributions-point",
     "distributions-tools",
     "distributions-weightfunctions",
+    "draws-metadata",
     "factor-interaction-coefficients",
+    "formula-contribution-state",
+    "JAGS-formula-selected-replay",
+    "JAGS-formula-point-replay",
+    "JAGS-bridge-natural-state",
+    "priors-bound-factor-rng",
+    "formula-numerical-measures",
     "fixture-catalog-static",
+    "harrell-davis-quantile",
+    "hypothesis-ast",
+    "hypothesis-inference-precision",
+    "hypothesis-BF",
+    "hypothesis-BF-model",
+    "hypothesis-BF-parser-adversarial",
+    "hypothesis-prior-region-grid",
+    "hypothesis-unavailable-levels",
     "interpret",
+    "interactive-test-runner",
+    "JAGS-bridge-compiler",
+    "JAGS-bridge-fixed-zero-random",
+    "JAGS-bridge-formula-context-validation",
+    "JAGS-bridge-marginal-random",
+    "JAGS-bridge-raw-rank",
+    "JAGS-bridgesampling-wrapper",
+    "JAGS-convergence",
+    "JAGS-deterministic-nodes",
     "JAGS-diagnostic-plot-data",
+    "JAGS-diagnostics-controls",
+    "JAGS-draw-geometry",
+    "JAGS-draws-view",
+    "JAGS-fit-contract",
+    "JAGS-fit-settings",
+    "JAGS-formula-coefficient-density",
+    "JAGS-formula-coefficient-arithmetic",
+    "JAGS-formula-default-priors",
     "JAGS-formula-design-oracles",
+    "JAGS-formula-powers",
+    "JAGS-formula-prediction-targets",
+    "JAGS-formula-predictor-basis",
+    "JAGS-indexed-parameters",
+    "JAGS-lkj-cholesky",
     "JAGS-marginal-distributions",
+    "JAGS-marglik-missing-monitors",
+    "JAGS-parameter-catalog",
+    "JAGS-parameter-coordinates",
     "JAGS-posterior-extraction",
+    "JAGS-random-effects-compile",
+    "JAGS-runtime-cache",
+    "JAGS-runtime-setup",
+    "JAGS-selection-inits",
+    "JAGS-structured-rho-support",
+    "JAGS-random-effect-scaling",
     "marginal-inference-conditioning",
-    "marginal-prior-samplers",
+    "model-averaging-compatibility-guards",
     "model-averaging-edge-cases",
     "model-averaging-plots-edge-cases",
+    "model-probability-ownership",
+    "native-registration",
+    "native-range",
+    "parameter-labels",
+    "prior-density-ordinate",
+    "prior-ordered",
+    "prior-ordered-direct-display",
+    "priors-automatic-transformation",
     "priors-coverage",
     "priors-density-numeric",
     "priors-informed",
     "priors-linear-density",
+    "priors-native-missing",
+    "priors-nonlocal",
+    "priors-numerical",
     "priors-plot-data",
     "priors-print",
     "priors-tools",
+    "random-allocation-inclusion",
+    "random-mean-parameterization",
+    "random-parameterization",
+    "random-effects-correlation-draws",
+    "random-effects-diagonal-factor",
+    "random-effects-factor-units",
+    "random-effects-independent-scalability",
+    "random-effects-marginal-covariance",
+    "random-effects-marginal-update",
+    "random-effects-memory",
+    "random-effects-structured-local",
+    "random-effects-summary-posterior",
+    "reference-table-review",
+    "robma-facing-exports",
     "selection-kernels",
+    "simplex-finite-total",
+    "snapshot-path-portability",
+    "stochastic-reference-policy",
+    "summary-tables",
     "summary-tables-helpers",
+    "test-layout-policy",
     "tools-evaluation",
     "tools-input",
+    "transformation-point-images",
     "weightfunction-plot-analytic",
     "weightfunction-redesign"
   ),
   fixture = c(
+    "density-display-producers",
+    "expression-priors-fixture",
+    "formula-contribution-fixture",
     "fixture-integrity",
+    "hypothesis-BF-bridge",
+    "hypothesis-BF-model-fixture",
+    "hypothesis-BF-model-review",
+    "JAGS-deterministic-nodes-fixture",
     "JAGS-ensemble-tables",
     "JAGS-fit",
     "JAGS-formula-scale",
+    "JAGS-formula-draws-fixture",
     "JAGS-formula",
     "JAGS-summary-tables",
     "model-averaging",
+    "parameter-labels-fixture",
+    "random-effects-summary-posterior-fixture",
     "selection-kernels",
-    "summary-tables",
     "weightfunction-redesign"
   ),
   visual = c(
     "JAGS-ensemble-plots",
-    "marginal-prior-samplers",
     "model-averaging-plots",
     "priors",
     "priors-density",
@@ -60,16 +175,16 @@ bayestools_test_profile_contexts <- list(
   ),
   fit = c(
     "00-model-fits",
-    "fixture-integrity",
-    "JAGS-fit-edge-cases",
-    "JAGS-fit-lm-oracles",
-    "JAGS-marglik"
+    "fixture-integrity"
+  ),
+  cran = c(
+    "cran-smoke"
   )
 )
 
 bayestools_normalize_test_profiles <- function(profiles = NULL) {
   if (is.null(profiles) || length(profiles) == 0L) {
-    profiles <- Sys.getenv("BAYESTOOLS_TEST_PROFILE", "all")
+    profiles <- Sys.getenv("BAYESTOOLS_TEST_PROFILE", "unit")
   }
 
   profiles <- unlist(strsplit(as.character(profiles), "[,;[:space:]]+"))
@@ -165,15 +280,5 @@ skip_if_not_visual_tests <- function() {
 skip_if_not_visual_fixture_tests <- function() {
   skip_if_not_test_profile("visual-fixture")
   testthat::skip_if_not_installed("vdiffr")
-  invisible(TRUE)
-}
-
-skip_if_not_heavy_tests <- function() {
-  skip_if_not_test_profile("fit")
-  invisible(TRUE)
-}
-
-skip_if_no_jags_runtime <- function() {
-  testthat::skip_if_not_installed("rjags")
   invisible(TRUE)
 }
