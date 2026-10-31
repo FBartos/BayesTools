@@ -1172,17 +1172,21 @@
 # The coordinates of a mean-difference or orthonormal coded factor are one of
 # many equivalent bases of the centred level space, so a prior over them
 # defines a level-effect prior that does not depend on the basis only if it is
-# invariant under rotations of those coordinates. Spherical (orthonormal or
-# mean-difference) priors are; among priors with independent coordinates only
-# the zero-mean normal is (Maxwell's characterisation), with the zero spike as
-# its degenerate case. Every other treatment or independent prior, and every
-# ordered prior (its increments are tied to the declared order of the
-# coordinates), would be a different model for each basis.
-.bt_formula_prior_rotation_invariant <- function(prior){
+# invariant under the changes of that basis. Spherical (orthonormal or
+# mean-difference) priors are. With two or more coordinates (a factor of three
+# or more levels) the changes of basis are all rotations, and among priors with
+# independent coordinates only the zero-mean normal is invariant under them
+# (Maxwell's characterisation), with the zero spike as its degenerate case.
+# With one coordinate (`one_coordinate`, every coded factor of the term has two
+# levels) the basis can only change sign, so a prior symmetric about zero
+# suffices. Every other treatment or independent prior, and every ordered prior
+# (its increments are tied to the declared order of the coordinates), would be
+# a different model for each basis.
+.bt_formula_prior_rotation_invariant <- function(prior, one_coordinate = FALSE){
 
   if(is.prior.mixture(prior)){
     return(all(vapply(seq_along(prior), function(i){
-      .bt_formula_prior_rotation_invariant(prior[[i]])
+      .bt_formula_prior_rotation_invariant(prior[[i]], one_coordinate)
     }, logical(1))))
   }
   if(is.prior.none(prior)){
@@ -1195,46 +1199,97 @@
      .posterior_atoms_is_zero_point(prior)){
     return(TRUE)
   }
-  if(identical(prior[["distribution"]], "normal")){
-    mean <- prior[["parameters"]][["mean"]]
-    truncation <- prior[["truncation"]]
-    return(is.numeric(mean) && length(mean) == 1L && isTRUE(mean == 0) &&
+
+  parameters <- prior[["parameters"]]
+  truncation <- prior[["truncation"]]
+  is_zero <- function(x){
+    is.numeric(x) && length(x) == 1L && isTRUE(x == 0)
+  }
+  if(!one_coordinate){
+    return(identical(prior[["distribution"]], "normal") && is_zero(parameters[["mean"]]) &&
              isTRUE(truncation[["lower"]] == -Inf) && isTRUE(truncation[["upper"]] == Inf))
   }
 
-  FALSE
+  # one coordinate: symmetric truncation and a family centred at zero
+  lower <- truncation[["lower"]]
+  upper <- truncation[["upper"]]
+  if(!is.numeric(lower) || !is.numeric(upper) || length(lower) != 1L ||
+     length(upper) != 1L || !isTRUE(lower == -upper)){
+    return(FALSE)
+  }
+  distribution <- prior[["distribution"]]
+  if(!is.character(distribution) || length(distribution) != 1L){
+    return(FALSE)
+  }
+  switch(
+    distribution,
+    "normal"    = is_zero(parameters[["mean"]]),
+    "t"         = ,
+    "cauchy"    = ,
+    "moment"    = ,
+    "invmoment" = is_zero(parameters[["location"]]),
+    "uniform"   = is.numeric(parameters[["a"]]) && is.numeric(parameters[["b"]]) &&
+      length(parameters[["a"]]) == 1L && length(parameters[["b"]]) == 1L &&
+      isTRUE(parameters[["a"]] == -parameters[["b"]]),
+    FALSE
+  )
 }
 # The check of one factor term, between its per-term contrasts and its design:
 # a term of two or more factors in which a factor is coded by a mean-difference
 # or orthonormal contrast needs a prior that is invariant under a change of that
 # basis (see .bt_formula_prior_rotation_invariant()), otherwise the term is
-# refused before any design or JAGS data exist.
+# refused before any design or JAGS data exist. `level_names` is the term's
+# level metadata (a list of the levels of each factor), from which the number of
+# levels of the coded factors follows; without it the rule for three or more
+# levels applies. An ordered prior is also an ordered refusal.
 .bt_validate_basis_invariant_factor_prior <- function(prior, model_term,
-                                                      factor_contrasts){
+                                                      factor_contrasts,
+                                                      level_names = NULL){
 
   coded <- factor_contrasts[factor_contrasts %in% c("contr.orthonormal", "contr.meandif")]
-  if(length(factor_contrasts) < 2L || length(coded) == 0L ||
-     .bt_formula_prior_rotation_invariant(prior)){
+  if(length(factor_contrasts) < 2L || length(coded) == 0L){
+    return(invisible(TRUE))
+  }
+  coded_factors <- names(coded)
+  coded_levels  <- vapply(coded_factors, function(factor){
+    length(level_names[[factor]])
+  }, integer(1))
+  one_coordinate <- all(coded_levels == 2L)
+  if(.bt_formula_prior_rotation_invariant(prior, one_coordinate)){
     return(invisible(TRUE))
   }
 
   term <- gsub("__xXx__", ":", model_term, fixed = TRUE)
-  coded_factors <- names(coded)
-  message <- paste0(
-    "The prior of the interaction term '", term, "' is unavailable: it depends on the basis of ",
-    paste0(
-      "the ", ifelse(coded == "contr.meandif", "mean-difference", "orthonormal"),
-      " contrast of '", coded_factors, "'", collapse = " and "
-    ),
-    ", so it would not treat the levels of ",
-    paste0("'", coded_factors, "'", collapse = " and "),
-    " exchangeably. Use a zero-mean normal prior or a zero spike prior, or a ",
+  ordered <- is.prior.ordered(prior)
+  quoted_factors <- paste0("'", coded_factors, "'", collapse = " and ")
+  alternative <- paste0(
     "mean-difference or orthonormal prior (prior_factor(\"mnormal\", \"mt\" or ",
     "\"mcauchy\", contrast = \"meandif\" or \"orthonormal\")), for '", term, "'."
   )
+  message <- if(one_coordinate && !ordered){
+    paste0(
+      "The prior of the interaction term '", term, "' is unavailable: it is not symmetric ",
+      "about zero, so it would not treat the two levels of ", quoted_factors,
+      " exchangeably. Use a prior that is symmetric about zero (a zero-centred normal, ",
+      "t, or Cauchy prior without asymmetric truncation, or a zero spike prior), or a ",
+      alternative
+    )
+  }else{
+    paste0(
+      "The prior of the interaction term '", term, "' is unavailable: it depends on the basis of ",
+      paste0(
+        "the ", ifelse(coded == "contr.meandif", "mean-difference", "orthonormal"),
+        " contrast of '", coded_factors, "'", collapse = " and "
+      ),
+      ", so it would not treat the levels of ", quoted_factors,
+      " exchangeably. Use a zero-mean normal prior or a zero spike prior, or a ",
+      alternative
+    )
+  }
   .bt_formula_transform_stop(
     message,
-    reason = "basis_dependent_factor_prior", terms = term, predictors = coded_factors
+    reason = "basis_dependent_factor_prior", terms = term, predictors = coded_factors,
+    .class = if(ordered) "BayesTools_ordered_unavailable"
   )
 }
 .bt_validate_formula_reconstruction_prior <- function(prior_object,

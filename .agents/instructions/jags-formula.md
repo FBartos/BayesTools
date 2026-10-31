@@ -245,15 +245,22 @@ An interaction of two or more factors in which a factor is coded by a
 mean-difference or orthonormal contrast takes only a prior that does not
 depend on that basis: a mean-difference or orthonormal prior, or a treatment or
 independent prior (or mixture) whose every component is an untruncated
-zero-mean `normal` or a spike at zero. Any other treatment or independent
-prior (t, Cauchy, a shifted or truncated normal, a nonzero point) and every
-ordered prior on such a term is refused before fitting with
-`BayesTools_formula_transform_unavailable`, reason
-`basis_dependent_factor_prior`, naming the term and the coded factors: with
-independent coordinates only the normal is invariant under every rotation, so
+zero-mean `normal` or a spike at zero. When every coded factor of the term has
+two levels, its coordinate can only change sign under a change of basis, so
+every treatment or independent prior (or mixture) whose components are
+symmetric about zero is accepted instead: a `normal`, `t`, Cauchy, `moment`, or
+`invmoment` prior centred at zero, a `uniform` prior with `a = -b`, or a zero
+spike, each with no truncation or truncation symmetric about zero. Any other
+treatment or independent prior (a shifted or one-sided truncated prior, a
+nonzero point, another family) and every ordered prior on such a term is
+refused before fitting with `BayesTools_formula_transform_unavailable` (an
+ordered prior also carries `BayesTools_ordered_unavailable`), reason
+`basis_dependent_factor_prior`, naming the term and the coded factors. With
+three or more levels the changes of basis are rotations and, among priors with
+independent coordinates, only the normal is invariant under every rotation, so
 any other prior would define a different level-effect prior for each basis. A
-term whose coded factor is indicator-coded, and terms without a mean-difference
-or orthonormal factor, are not affected. Heavier tails that keep
+term whose coded factor is indicator-coded, and terms without a
+mean-difference or orthonormal factor, are not affected. Heavier tails that keep
 exchangeability come from the mean-difference or orthonormal `mt` and `mcauchy`
 priors.
 

@@ -202,9 +202,12 @@
 #'     contrast and would not treat the factor levels exchangeably. Only
 #'     mean-difference and orthonormal priors, and treatment or independent
 #'     priors built from zero-mean untruncated normal and zero spike priors,
-#'     are accepted on such a term; other treatment and independent priors and
-#'     every ordered prior are refused (the fields \code{terms} and
-#'     \code{predictors} name the term and the coded factors).
+#'     are accepted on such a term; when every coded factor has two levels,
+#'     treatment and independent priors symmetric about zero are accepted as
+#'     well. Other treatment and independent priors and every ordered prior are
+#'     refused (the fields \code{terms} and \code{predictors} name the term and
+#'     the coded factors; a refused ordered prior also has class
+#'     \code{BayesTools_ordered_unavailable}).
 #' }
 #' Other invalid inputs stop with ordinary errors.
 #'
@@ -652,7 +655,8 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
       .bt_validate_basis_invariant_factor_prior(
         prior            = this_prior,
         model_term       = model_terms[i],
-        factor_contrasts = attr(this_prior, "factor_contrasts")
+        factor_contrasts = attr(this_prior, "factor_contrasts"),
+        level_names      = attr(this_prior, "level_names")
       )
       factor_design_info <- .factor_term_design_from_formula(
         formula         = formula,

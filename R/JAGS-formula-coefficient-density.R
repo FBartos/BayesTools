@@ -1426,11 +1426,11 @@ JAGS_formula_prior_density <- function(
     context$tail_prob < 0.5
 }
 
-.bt_formula_transform_stop <- function(message, ...){
+.bt_formula_transform_stop <- function(message, ..., .class = NULL){
 
   condition <- structure(
     c(list(message = message, call = NULL), list(...)),
-    class = c("BayesTools_formula_transform_unavailable", "error",
+    class = c("BayesTools_formula_transform_unavailable", .class, "error",
               "condition")
   )
   stop(condition)

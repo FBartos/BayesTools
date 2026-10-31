@@ -817,6 +817,7 @@ test_that("interaction priors that depend on a mean-difference or orthonormal ba
       fit_formula(~ o * g, o = ordered_prior, g = coded, "o:g" = ordered_prior),
       class = "BayesTools_formula_transform_unavailable"
     )
+    expect_s3_class(condition, "BayesTools_ordered_unavailable")
     expect_identical(conditionMessage(condition), message_for("o:g", "g", label))
     expect_identical(condition$reason, "basis_dependent_factor_prior")
     expect_identical(condition$terms, "o:g")
@@ -861,6 +862,159 @@ test_that("interaction priors that depend on a mean-difference or orthonormal ba
     c(h = "contr.treatment", g = "contr.treatment"))
 })
 
+
+test_that("interaction priors symmetric about zero are available when every coded factor has two levels", {
+
+  # A two-level factor has one coordinate, whose basis can only change sign, so
+  # any prior symmetric about zero keeps its two levels exchangeable. With a
+  # coded factor of three or more levels the rotation rule applies.
+  data <- expand.grid(
+    h  = factor(c("u", "v", "w")),
+    g2 = factor(c("a", "b")),
+    g3 = factor(c("a", "b", "c")),
+    k  = factor(c("p", "q")),
+    o  = ordered(c("lo", "mid", "hi"))
+  )
+  normal <- prior("normal", list(0, 1))
+  treatment <- function(distribution, parameters, ...){
+    prior_factor(distribution, parameters, contrast = "treatment", ...)
+  }
+  fit_formula <- function(formula, ...){
+    JAGS_formula(formula, "mu", data, list(intercept = normal, ...))
+  }
+  accepted <- function(...){
+    tryCatch({fit_formula(...); NULL}, error = conditionMessage)
+  }
+  two_level_message <- function(term, factors){
+    paste0(
+      "The prior of the interaction term '", term, "' is unavailable: it is not symmetric about zero, ",
+      "so it would not treat the two levels of ", paste0("'", factors, "'", collapse = " and "),
+      " exchangeably. Use a prior that is symmetric about zero (a zero-centred normal, t, or Cauchy ",
+      "prior without asymmetric truncation, or a zero spike prior), or a mean-difference or ",
+      "orthonormal prior (prior_factor(\"mnormal\", \"mt\" or \"mcauchy\", contrast = ",
+      "\"meandif\" or \"orthonormal\")), for '", term, "'."
+    )
+  }
+
+  for(contrast in c("meandif", "orthonormal")){
+    coded <- prior_factor("mnormal", list(0, 1), contrast = contrast)
+    on_hg2 <- function(prior){
+      accepted(~ h * g2, h = treatment("normal", list(0, 1)), g2 = coded, "h:g2" = prior)
+    }
+
+    # symmetric about zero: accepted
+    symmetric <- list(
+      "t"                 = treatment("t", list(0, 1, 3)),
+      "cauchy"            = treatment("cauchy", list(0, 1)),
+      "independent t"     = prior_factor("t", list(0, 1, 3), contrast = "independent"),
+      "uniform"           = treatment("uniform", list(-1, 1)),
+      "truncated normal"  = treatment("normal", list(0, 1), truncation = list(-2, 2)),
+      "truncated t"       = treatment("t", list(0, 1, 3), truncation = list(-3, 3)),
+      "moment"            = treatment("moment", list(mode = 0.5)),
+      "inverse moment"    = treatment("invmoment", list(mode = 0.5, df = 3)),
+      "zero normal"       = treatment("normal", list(0, 1)),
+      "zero spike"        = treatment("spike", list(0)),
+      "spike and t"       = prior_mixture(list(treatment("spike", list(0)), treatment("t", list(0, 1, 3))),
+        is_null = c(TRUE, FALSE)),
+      "t spike-and-slab"  = prior_spike_and_slab(treatment("t", list(0, 1, 3))),
+      "mt"                = prior_factor("mt", list(0, 1, 3), contrast = contrast)
+    )
+    for(case in names(symmetric)){
+      expect_null(on_hg2(symmetric[[case]]), info = paste(contrast, case))
+    }
+
+    # not symmetric about zero: refused with the two-level message
+    asymmetric <- list(
+      "nonzero mean"       = treatment("normal", list(0.5, 1)),
+      "one-sided normal"   = treatment("normal", list(0, 1), truncation = list(0, Inf)),
+      "shifted t"          = treatment("t", list(0.5, 1, 3)),
+      "asymmetric bounds"  = treatment("normal", list(0, 1), truncation = list(-1, 2)),
+      "lognormal"          = treatment("lognormal", list(0, 1)),
+      "gamma"              = treatment("gamma", list(2, 1)),
+      "uniform"            = treatment("uniform", list(0, 1)),
+      "shifted moment"     = treatment("moment", list(mode = 0.5, location = 1)),
+      "nonzero point"      = treatment("point", list(1)),
+      "mixture with gamma" = prior_mixture(list(treatment("spike", list(0)), treatment("gamma", list(2, 1))),
+        is_null = c(TRUE, FALSE))
+    )
+    for(case in names(asymmetric)){
+      condition <- expect_error(
+        fit_formula(~ h * g2, h = treatment("normal", list(0, 1)), g2 = coded, "h:g2" = asymmetric[[case]]),
+        class = "BayesTools_formula_transform_unavailable", info = paste(contrast, case)
+      )
+      expect_identical(conditionMessage(condition), two_level_message("h:g2", "g2"), info = paste(contrast, case))
+      expect_identical(condition$reason, "basis_dependent_factor_prior")
+      expect_identical(condition$terms, "h:g2")
+      expect_identical(condition$predictors, "g2")
+      expect_false(inherits(condition, "BayesTools_ordered_unavailable"))
+    }
+
+    # an ordered prior stays refused, also with a two-level coded factor, and is an ordered refusal
+    label <- if(contrast == "meandif") "mean-difference" else "orthonormal"
+    ordered_prior <- prior_ordered(prior("point", list(0)), allocation = c(.2, .8))
+    condition <- expect_error(
+      fit_formula(~ o * g2, o = ordered_prior, g2 = coded, "o:g2" = ordered_prior),
+      class = "BayesTools_formula_transform_unavailable"
+    )
+    expect_s3_class(condition, "BayesTools_ordered_unavailable")
+    expect_identical(conditionMessage(condition), paste0(
+      "The prior of the interaction term 'o:g2' is unavailable: it depends on the basis of the ", label,
+      " contrast of 'g2', so it would not treat the levels of 'g2' exchangeably. Use a zero-mean normal ",
+      "prior or a zero spike prior, or a mean-difference or orthonormal prior (prior_factor(\"mnormal\", ",
+      "\"mt\" or \"mcauchy\", contrast = \"meandif\" or \"orthonormal\")), for 'o:g2'."))
+    expect_identical(condition$reason, "basis_dependent_factor_prior")
+    expect_identical(condition$terms, "o:g2")
+    expect_identical(condition$predictors, "g2")
+
+    # a coded factor with three levels keeps the rotation rule, alone and next to a two-level one
+    centred_t <- treatment("t", list(0, 1, 3))
+    condition <- expect_error(
+      fit_formula(~ h * g3, h = treatment("normal", list(0, 1)), g3 = coded, "h:g3" = centred_t),
+      class = "BayesTools_formula_transform_unavailable"
+    )
+    expect_match(conditionMessage(condition), "depends on the basis of the", fixed = TRUE)
+    expect_identical(condition$predictors, "g3")
+    expect_null(accepted(~ h * g3, h = treatment("normal", list(0, 1)), g3 = coded,
+      "h:g3" = treatment("normal", list(0, 1))))
+    condition <- expect_error(
+      fit_formula(~ g2 * g3, g2 = coded, g3 = coded, "g2:g3" = centred_t),
+      class = "BayesTools_formula_transform_unavailable"
+    )
+    expect_identical(condition$predictors, c("g2", "g3"))
+    expect_identical(condition$terms, "g2:g3")
+    expect_null(accepted(~ g2 * g3, g2 = coded, g3 = coded, "g2:g3" = treatment("normal", list(0, 1))))
+
+    # a three-factor term refers to all of its coded factors
+    three <- function(prior){
+      accepted(~ h * g3 * k, h = treatment("normal", list(0, 1)), g3 = coded, k = treatment("normal", list(0, 1)),
+        "h:g3" = treatment("normal", list(0, 1)), "h:k" = treatment("normal", list(0, 1)),
+        "g3:k" = treatment("normal", list(0, 1)), "h:g3:k" = prior)
+    }
+    expect_match(three(centred_t), "depends on the basis of the", fixed = TRUE)
+    expect_null(three(treatment("normal", list(0, 1))))
+    expect_null(three(prior_factor("mt", list(0, 1, 3), contrast = contrast)))
+  }
+
+  # the message of a term with differently coded factors names each contrast
+  condition <- expect_error(
+    fit_formula(~ g2 * g3, g2 = prior_factor("mnormal", list(0, 1), contrast = "meandif"),
+      g3 = prior_factor("mnormal", list(0, 1), contrast = "orthonormal"),
+      "g2:g3" = treatment("t", list(0, 1, 3))),
+    class = "BayesTools_formula_transform_unavailable"
+  )
+  expect_identical(conditionMessage(condition), paste0(
+    "The prior of the interaction term 'g2:g3' is unavailable: it depends on the basis of the ",
+    "mean-difference contrast of 'g2' and the orthonormal contrast of 'g3', so it would not treat ",
+    "the levels of 'g2' and 'g3' exchangeably. Use a zero-mean normal prior or a zero spike prior, or a ",
+    "mean-difference or orthonormal prior (prior_factor(\"mnormal\", \"mt\" or \"mcauchy\", contrast = ",
+    "\"meandif\" or \"orthonormal\")), for 'g2:g3'."))
+  expect_identical(condition$predictors, c("g2", "g3"))
+
+  # two two-level coded factors share one sign-only coordinate
+  expect_null(accepted(~ g2 * k, g2 = prior_factor("mnormal", list(0, 1), contrast = "meandif"),
+    k = prior_factor("mnormal", list(0, 1), contrast = "orthonormal"),
+    "g2:k" = treatment("t", list(0, 1, 3))))
+})
 
 test_that("formula marginal posteriors accept predictors that enter only interactions", {
 

@@ -124,8 +124,9 @@ A formula interaction of two or more factors in which a factor is coded by a
 mean-difference or orthonormal contrast accepts only priors that do not depend
 on the basis of that contrast: mean-difference and orthonormal priors, and
 treatment or independent priors that are zero-mean untruncated normal or zero
-spike priors. Other treatment and independent priors, and ordered priors, are
-refused (see the conditions of \code{\link[=JAGS_formula]{JAGS_formula()}}).
+spike priors (priors symmetric about zero when every coded factor of the term
+has two levels). Other treatment and independent priors, and ordered priors,
+are refused (see the conditions of \code{\link[=JAGS_formula]{JAGS_formula()}}).
 }
 \examples{
 # create an orthonormal prior distribution

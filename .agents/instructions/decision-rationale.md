@@ -141,7 +141,8 @@ check and bridge sampling with supplied formula inputs keep refusing a
 mismatch. There is no eigen fallback. Interaction terms in which a factor is
 coded by these contrasts accept only priors that are invariant under a change
 of basis: orthonormal or mean-difference priors, and treatment or independent
-priors built from zero-mean untruncated normals and zero spikes; other
+priors built from zero-mean untruncated normals and zero spikes (priors
+symmetric about zero when every coded factor of the term has two levels); other
 treatment, independent, and all ordered priors on such terms are refused.
 
 **Why.** Any orthonormal basis B of the centred space gives B B' = I - J/a,
@@ -151,9 +152,11 @@ the choice; only the raw coordinates `f{j}` and seeded draws do. The eigen
 basis was chosen by LAPACK rounding, which made CI snapshots and
 floating-point residues in hypothesis tests platform-dependent. The closed
 form uses only correctly rounded operations, so it is identical everywhere.
-Priors with independent coordinates are invariant under every rotation only
-when they are normal (Maxwell's characterisation), so a Cauchy, t, shifted,
-truncated, or ordered prior on these coordinates would define a different
-level-effect prior for every basis; heavier tails that keep exchangeability
-come from a shared scale mixture, the orthonormal or mean-difference `mt`
-and `mcauchy` priors.
+With two or more coordinates, priors with independent coordinates are
+invariant under every rotation only when they are normal (Maxwell's
+characterisation), so a Cauchy, t, shifted, truncated, or ordered prior on
+these coordinates would define a different level-effect prior for every basis;
+heavier tails that keep exchangeability come from a shared scale mixture, the
+orthonormal or mean-difference `mt` and `mcauchy` priors. A two-level factor
+has one coordinate, whose basis can only change sign, so priors symmetric about
+zero are accepted there.

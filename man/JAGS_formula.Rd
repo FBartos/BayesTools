@@ -231,9 +231,12 @@ mean-difference or orthonormal contrast, depends on the basis of that
 contrast and would not treat the factor levels exchangeably. Only
 mean-difference and orthonormal priors, and treatment or independent
 priors built from zero-mean untruncated normal and zero spike priors,
-are accepted on such a term; other treatment and independent priors and
-every ordered prior are refused (the fields \code{terms} and
-\code{predictors} name the term and the coded factors).
+are accepted on such a term; when every coded factor has two levels,
+treatment and independent priors symmetric about zero are accepted as
+well. Other treatment and independent priors and every ordered prior are
+refused (the fields \code{terms} and \code{predictors} name the term and
+the coded factors; a refused ordered prior also has class
+\code{BayesTools_ordered_unavailable}).
 }
 Other invalid inputs stop with ordinary errors.
 }
