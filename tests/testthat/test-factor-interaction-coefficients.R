@@ -743,6 +743,124 @@ test_that("mean-difference and orthonormal priors are unavailable for indicator-
   expect_identical(attr(null_term$prior_list$mu_g__xXx__x, "factor_contrasts"), c(g = "contr.independent"))
 })
 
+test_that("interaction priors that depend on a mean-difference or orthonormal basis are unavailable", {
+
+  # Any orthonormal basis of the centred level space gives the same level
+  # effects only under a prior that is invariant under rotations of the
+  # coefficients: orthonormal and mean-difference priors, zero-mean untruncated
+  # normal priors, and zero spikes. Other treatment, independent, and ordered
+  # priors would define a different model for each basis.
+  data <- expand.grid(
+    h = factor(c("u", "v", "w")),
+    g = factor(c("a", "b", "c")),
+    o = ordered(c("lo", "mid", "hi"))
+  )
+  normal <- prior("normal", list(0, 1))
+  treatment <- function(distribution, parameters, ...){
+    prior_factor(distribution, parameters, contrast = "treatment", ...)
+  }
+  fit_formula <- function(formula, ...){
+    JAGS_formula(formula, "mu", data, list(intercept = normal, ...))
+  }
+  message_for <- function(term, factor, contrast){
+    paste0(
+      "The prior of the interaction term '", term, "' is unavailable: it depends on the basis of the ",
+      contrast, " contrast of '", factor, "', so it would not treat the levels of '", factor,
+      "' exchangeably. Use a zero-mean normal prior or a zero spike prior, or a mean-difference ",
+      "or orthonormal prior (prior_factor(\"mnormal\", \"mt\" or \"mcauchy\", contrast = ",
+      "\"meandif\" or \"orthonormal\")), for '", term, "'."
+    )
+  }
+
+  for(contrast in c("meandif", "orthonormal")){
+    label <- if(contrast == "meandif") "mean-difference" else "orthonormal"
+    coded <- prior_factor("mnormal", list(0, 1), contrast = contrast)
+    on_hg <- function(prior){
+      fit_formula(~ h * g, h = treatment("normal", list(0, 1)), g = coded, "h:g" = prior)
+    }
+
+    refused <- list(
+      "t"                = treatment("t", list(0, 1, 3)),
+      "cauchy"           = treatment("cauchy", list(0, 1)),
+      "nonzero mean"     = treatment("normal", list(0.5, 1)),
+      "truncated normal" = treatment("normal", list(0, 1), truncation = list(0, Inf)),
+      "nonzero point"    = treatment("point", list(1)),
+      "t mixture"        = prior_mixture(list(treatment("t", list(0, 1, 3)), treatment("spike", list(0))),
+        is_null = c(FALSE, TRUE)),
+      "t spike-and-slab" = prior_spike_and_slab(treatment("t", list(0, 1, 3)))
+    )
+    for(case in names(refused)){
+      condition <- expect_error(on_hg(refused[[case]]), class = "BayesTools_formula_transform_unavailable",
+        info = paste(contrast, case))
+      expect_identical(conditionMessage(condition), message_for("h:g", "g", label), info = paste(contrast, case))
+      expect_identical(condition$reason, "basis_dependent_factor_prior")
+      expect_identical(condition$terms, "h:g")
+      expect_identical(condition$predictors, "g")
+      expect_null(conditionCall(condition))
+    }
+
+    # the same refusal for an independent-coded t prior and the default factor prior
+    expect_error(
+      on_hg(prior_factor("t", list(0, 1, 3), contrast = "independent")),
+      message_for("h:g", "g", label), fixed = TRUE, class = "BayesTools_formula_transform_unavailable"
+    )
+    expect_error(
+      fit_formula(~ h * g, h = treatment("normal", list(0, 1)), g = coded,
+        "__default_factor" = treatment("t", list(0, 1, 3))),
+      message_for("h:g", "g", label), fixed = TRUE, class = "BayesTools_formula_transform_unavailable"
+    )
+
+    # every ordered prior on a term with a coded factor is refused
+    ordered_total <- prior("point", list(0))
+    ordered_prior <- prior_ordered(ordered_total, allocation = c(.2, .8))
+    condition <- expect_error(
+      fit_formula(~ o * g, o = ordered_prior, g = coded, "o:g" = ordered_prior),
+      class = "BayesTools_formula_transform_unavailable"
+    )
+    expect_identical(conditionMessage(condition), message_for("o:g", "g", label))
+    expect_identical(condition$reason, "basis_dependent_factor_prior")
+    expect_identical(condition$terms, "o:g")
+    expect_identical(condition$predictors, "g")
+
+    # rotation-invariant priors are accepted on the same term
+    accepted <- list(
+      "zero-mean normal"       = treatment("normal", list(0, 1)),
+      "independent normal"     = prior_factor("normal", list(0, 1), contrast = "independent"),
+      "infinite truncation"    = treatment("normal", list(0, 1), truncation = list(-Inf, Inf)),
+      "zero spike"             = treatment("spike", list(0)),
+      "zero point"             = treatment("point", list(0)),
+      "normal and spike"       = prior_mixture(list(treatment("normal", list(0, 1)), treatment("spike", list(0))),
+        is_null = c(FALSE, TRUE)),
+      "normal spike-and-slab"  = prior_spike_and_slab(treatment("normal", list(0, 1))),
+      "mnormal"                = prior_factor("mnormal", list(0, 1), contrast = contrast),
+      "mt"                     = prior_factor("mt", list(0, 1, 3), contrast = contrast),
+      "mcauchy"                = prior_factor("mcauchy", list(0, 1), contrast = contrast),
+      "mpoint"                 = prior_factor("point", list(0), contrast = contrast)
+    )
+    for(case in names(accepted)){
+      outcome <- tryCatch({on_hg(accepted[[case]]); NULL}, error = conditionMessage)
+      expect_null(outcome, info = paste(contrast, case))
+    }
+  }
+
+  # a coded factor in a term that is not an interaction of factors, an indicator-coded
+  # factor, and terms without a coded factor are not affected
+  coded <- prior_factor("mnormal", list(0, 1), contrast = "meandif")
+  t_prior <- prior_factor("t", list(0, 1, 3), contrast = "independent")
+  indicator <- fit_formula(~ g + g:h, g = coded, "g:h" = t_prior)
+  expect_identical(attr(indicator$prior_list$mu_g__xXx__h, "factor_contrasts"),
+    c(g = "contr.independent", h = "contr.independent"))
+  ordered_partner <- fit_formula(~ h * o, h = treatment("normal", list(0, 1)),
+    o = prior_ordered(prior("point", list(0)), allocation = c(.2, .8)),
+    "h:o" = treatment("t", list(0, 1, 3)))
+  expect_false(any(attr(ordered_partner$prior_list$mu_h__xXx__o, "factor_contrasts") %in%
+    c("contr.orthonormal", "contr.meandif")))
+  uncoded <- fit_formula(~ h * g, h = treatment("normal", list(0, 1)),
+    g = treatment("normal", list(0, 1)), "h:g" = treatment("t", list(0, 1, 3)))
+  expect_identical(attr(uncoded$prior_list$mu_h__xXx__g, "factor_contrasts"),
+    c(h = "contr.treatment", g = "contr.treatment"))
+})
+
 
 test_that("formula marginal posteriors accept predictors that enter only interactions", {
 

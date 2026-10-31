@@ -196,6 +196,15 @@
 #'   \item \code{"homogeneous_scaled_block"}: a homogeneous-SD random block with
 #'     a standardized slope (see Details; the fields \code{parameter} and
 #'     \code{coordinates} name the formula parameter and the shared SD).
+#'   \item \code{"basis_dependent_factor_prior"}: the prior of an interaction
+#'     term of two or more factors, of which at least one is coded by a
+#'     mean-difference or orthonormal contrast, depends on the basis of that
+#'     contrast and would not treat the factor levels exchangeably. Only
+#'     mean-difference and orthonormal priors, and treatment or independent
+#'     priors built from zero-mean untruncated normal and zero spike priors,
+#'     are accepted on such a term; other treatment and independent priors and
+#'     every ordered prior are refused (the fields \code{terms} and
+#'     \code{predictors} name the term and the coded factors).
 #' }
 #' Other invalid inputs stop with ordinary errors.
 #'
@@ -638,6 +647,13 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
           stop("Unsupported matrix-valued factor contrast metadata.", call. = FALSE)
         }
       }, character(1))
+      # a factor coded by a mean-difference or orthonormal contrast in an
+      # interaction needs a prior that does not depend on the coding basis
+      .bt_validate_basis_invariant_factor_prior(
+        prior            = this_prior,
+        model_term       = model_terms[i],
+        factor_contrasts = attr(this_prior, "factor_contrasts")
+      )
       factor_design_info <- .factor_term_design_from_formula(
         formula         = formula,
         data            = data,

@@ -225,6 +225,15 @@ contrast name (the field \code{predictor} names it; set the coding with
 \item \code{"homogeneous_scaled_block"}: a homogeneous-SD random block with
 a standardized slope (see Details; the fields \code{parameter} and
 \code{coordinates} name the formula parameter and the shared SD).
+\item \code{"basis_dependent_factor_prior"}: the prior of an interaction
+term of two or more factors, of which at least one is coded by a
+mean-difference or orthonormal contrast, depends on the basis of that
+contrast and would not treat the factor levels exchangeably. Only
+mean-difference and orthonormal priors, and treatment or independent
+priors built from zero-mean untruncated normal and zero spike priors,
+are accepted on such a term; other treatment and independent priors and
+every ordered prior are refused (the fields \code{terms} and
+\code{predictors} name the term and the coded factors).
 }
 Other invalid inputs stop with ordinary errors.
 }

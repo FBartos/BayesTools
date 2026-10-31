@@ -1169,6 +1169,74 @@
 
   invisible(TRUE)
 }
+# The coordinates of a mean-difference or orthonormal coded factor are one of
+# many equivalent bases of the centred level space, so a prior over them
+# defines a level-effect prior that does not depend on the basis only if it is
+# invariant under rotations of those coordinates. Spherical (orthonormal or
+# mean-difference) priors are; among priors with independent coordinates only
+# the zero-mean normal is (Maxwell's characterisation), with the zero spike as
+# its degenerate case. Every other treatment or independent prior, and every
+# ordered prior (its increments are tied to the declared order of the
+# coordinates), would be a different model for each basis.
+.bt_formula_prior_rotation_invariant <- function(prior){
+
+  if(is.prior.mixture(prior)){
+    return(all(vapply(seq_along(prior), function(i){
+      .bt_formula_prior_rotation_invariant(prior[[i]])
+    }, logical(1))))
+  }
+  if(is.prior.none(prior)){
+    return(TRUE)
+  }
+  if(is.prior.ordered(prior)){
+    return(FALSE)
+  }
+  if(is.prior.orthonormal(prior) || is.prior.meandif(prior) ||
+     .posterior_atoms_is_zero_point(prior)){
+    return(TRUE)
+  }
+  if(identical(prior[["distribution"]], "normal")){
+    mean <- prior[["parameters"]][["mean"]]
+    truncation <- prior[["truncation"]]
+    return(is.numeric(mean) && length(mean) == 1L && isTRUE(mean == 0) &&
+             isTRUE(truncation[["lower"]] == -Inf) && isTRUE(truncation[["upper"]] == Inf))
+  }
+
+  FALSE
+}
+# The check of one factor term, between its per-term contrasts and its design:
+# a term of two or more factors in which a factor is coded by a mean-difference
+# or orthonormal contrast needs a prior that is invariant under a change of that
+# basis (see .bt_formula_prior_rotation_invariant()), otherwise the term is
+# refused before any design or JAGS data exist.
+.bt_validate_basis_invariant_factor_prior <- function(prior, model_term,
+                                                      factor_contrasts){
+
+  coded <- factor_contrasts[factor_contrasts %in% c("contr.orthonormal", "contr.meandif")]
+  if(length(factor_contrasts) < 2L || length(coded) == 0L ||
+     .bt_formula_prior_rotation_invariant(prior)){
+    return(invisible(TRUE))
+  }
+
+  term <- gsub("__xXx__", ":", model_term, fixed = TRUE)
+  coded_factors <- names(coded)
+  message <- paste0(
+    "The prior of the interaction term '", term, "' is unavailable: it depends on the basis of ",
+    paste0(
+      "the ", ifelse(coded == "contr.meandif", "mean-difference", "orthonormal"),
+      " contrast of '", coded_factors, "'", collapse = " and "
+    ),
+    ", so it would not treat the levels of ",
+    paste0("'", coded_factors, "'", collapse = " and "),
+    " exchangeably. Use a zero-mean normal prior or a zero spike prior, or a ",
+    "mean-difference or orthonormal prior (prior_factor(\"mnormal\", \"mt\" or ",
+    "\"mcauchy\", contrast = \"meandif\" or \"orthonormal\")), for '", term, "'."
+  )
+  .bt_formula_transform_stop(
+    message,
+    reason = "basis_dependent_factor_prior", terms = term, predictors = coded_factors
+  )
+}
 .bt_validate_formula_reconstruction_prior <- function(prior_object,
                                                        prior_name){
 

@@ -241,6 +241,22 @@ rejected for such a term. The one exception is a mean-difference or
 orthonormal point mass at zero; an ordered prior is rejected even when its
 total is zero.
 
+An interaction of two or more factors in which a factor is coded by a
+mean-difference or orthonormal contrast takes only a prior that does not
+depend on that basis: a mean-difference or orthonormal prior, or a treatment or
+independent prior (or mixture) whose every component is an untruncated
+zero-mean `normal` or a spike at zero. Any other treatment or independent
+prior (t, Cauchy, a shifted or truncated normal, a nonzero point) and every
+ordered prior on such a term is refused before fitting with
+`BayesTools_formula_transform_unavailable`, reason
+`basis_dependent_factor_prior`, naming the term and the coded factors: with
+independent coordinates only the normal is invariant under every rotation, so
+any other prior would define a different level-effect prior for each basis. A
+term whose coded factor is indicator-coded, and terms without a mean-difference
+or orthonormal factor, are not affected. Heavier tails that keep
+exchangeability come from the mean-difference or orthonormal `mt` and `mcauchy`
+priors.
+
 Formula design metadata is authoritative for fixed and random terms. Fixed
 and random coefficient formulas may use literal whole interaction-expansion
 degrees from 2 through `.Machine$integer.max`, such as `(x + z)^2`. This is the
@@ -260,7 +276,9 @@ a single level in the data, which has no contrasts to code
 `model.matrix()` would code by indicators in a factor interaction, fixed or
 random (`logical_factor_interaction`), a random-only factor with a contrasts
 matrix or an unsupported contrast name (`unsupported_random_factor_contrast`),
-and a homogeneous scaled block (`homogeneous_scaled_block`, below).
+an interaction prior that depends on the basis of a mean-difference or
+orthonormal factor (`basis_dependent_factor_prior`, above), and a homogeneous
+scaled block (`homogeneous_scaled_block`, below).
 `transform_scale_samples()` reports a `formula_scale` entry that omits a
 standardized predictor of the fit as `incomplete_formula_scale`. Formula
 evaluation and prediction (`JAGS_evaluate_formula()`,
