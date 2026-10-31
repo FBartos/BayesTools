@@ -1119,6 +1119,7 @@ test_that("posterior plot model averaging based on complex single JAGS models (f
   skip_if_missing_fits("fit_complex_mixed")
   skip_if_not_installed("rjags")
   skip_if_not_installed("bridgesampling")
+  skip_on_os(c("mac", "linux", "solaris"))
 
   fit1 <- readRDS(file.path(temp_fits_dir, "fit_complex_mixed.RDS"))
 
@@ -1360,6 +1361,7 @@ test_that("posterior plot model averaging based on simple single JAGS models  (f
   skip_if_missing_fits("fit_simple_formula_mixed")
   skip_if_not_installed("rjags")
   skip_if_not_installed("bridgesampling")
+  skip_on_os(c("mac", "linux", "solaris"))
 
   fit1 <- readRDS(file.path(temp_fits_dir, "fit_simple_formula_mixed.RDS"))
 
@@ -1565,6 +1567,7 @@ test_that("posterior plot based on as_mixed_posteriors (weightfunction) work", {
   skip_if_missing_fits("fit_complex_mixed")
   skip_if_not_installed("rjags")
   skip_if_not_installed("bridgesampling")
+  skip_on_os(c("mac", "linux", "solaris"))
 
   fit1   <- readRDS(file.path(temp_fits_dir, "fit_wf_twosided.RDS"))
   fit2   <- readRDS(file.path(temp_fits_dir, "fit_wf_onesided.RDS"))

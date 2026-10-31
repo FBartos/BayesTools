@@ -20,6 +20,7 @@ skip_if_not_test_profile(c("visual", "visual-fixture"))
 #   - skip_if_not_installed("vdiffr"): For visual tests
 #   - skip_if_not_visual_fixture_tests(): For visual tests using pre-fitted models
 #   - skip_if_no_fits(): For tests using pre-fitted models
+#   - skip_on_os(): Multivariate sampling differs across OSes
 #
 # MODELS/FIXTURES:
 #   - fit_summary0, fit_summary1, fit_orthonormal_0, fit_orthonormal_1
@@ -633,6 +634,7 @@ test_that("plot_models handles orthonormal priors", {
   skip_if_not_installed("rjags")
   skip_on_cran()
   skip_if_no_fits()
+  skip_on_os(c("mac", "linux", "solaris"))
 
   # Load orthonormal models with marginal likelihoods
   fit_orthonormal_0 <- readRDS(file.path(temp_fits_dir, "fit_orthonormal_0.RDS"))
