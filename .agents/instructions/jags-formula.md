@@ -266,7 +266,10 @@ standardized predictor of the fit as `incomplete_formula_scale`. Formula
 evaluation and prediction (`JAGS_evaluate_formula()`,
 `JAGS_predict_formula()`) go only through the stored design: draws without a
 fit get it from `JAGS_formula_draws()`, which builds it as `JAGS_fit()` does;
-never evaluate from prior-list factor metadata. The `log(intercept)` flag of an
+never evaluate from prior-list factor metadata. The one route that rebuilds the
+model matrix from contrast names, `marginal_posterior()` on draws without a
+formula state, refuses a stored orthonormal or mean-difference basis that
+differs from the current contrasts (`BayesTools_refit_required`). The `log(intercept)` flag of an
 evaluation is the stored flag of the design, also for an explicit formula
 without the attribute; an explicit attribute that disagrees with it stops with
 `BayesTools_formula_transform_unavailable` (reason `log_intercept_mismatch`; as

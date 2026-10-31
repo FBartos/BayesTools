@@ -99,8 +99,10 @@
 #'
 #' @param samples model-averaged posterior samples created by \code{mix_posteriors()}.
 #' Mixed factor posteriors that lack the factor metadata of this version of
-#' BayesTools (such as those created by BayesTools 0.3.0) must be recreated
-#' from models fitted with this version: they stop with an error of class
+#' BayesTools (such as those created by BayesTools 0.3.0), and, without an
+#' attached formula state, orthonormal or mean-difference factor posteriors
+#' whose stored contrast basis differs from the current contrasts, must be
+#' recreated from models fitted with this version: they stop with an error of class
 #' \code{BayesTools_refit_required} (see [JAGS_validate_fit_contract()]).
 #' @param parameter parameter of interest
 #' @param formula model formula (needs to be specified if \code{parameter} was part of a formula)
@@ -313,6 +315,12 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
       predictors_type <- vapply(predictors_info, function(predictor_info){
         if(isTRUE(predictor_info[["factor"]])) "factor" else "continuous"
       }, character(1))
+
+      # the raw draws meet a design rebuilt from the contrast names unless a
+      # formula state evaluates the stored design
+      if(is.null(formula_state)){
+        .marginal_posterior_check_stored_factor_basis(samples, JAGS_model_terms, model_terms)
+      }
 
 
       ### prepare at specification
@@ -1264,6 +1272,43 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
         "densities from the untransformed prior distributions. Pass the ",
         "transformation to 'marginal_posterior(transformation = )' instead.",
         call. = FALSE
+      )
+    }
+  }
+
+  invisible(TRUE)
+}
+
+# Without a fitted formula state, the marginal posterior combines the raw
+# coefficient draws with a design matrix rebuilt from the contrast names. The
+# draws of a factor term coded by an orthonormal or mean-difference contrast
+# belong to the basis stored with them ('factor_design'), so a stored basis that
+# differs from the current contrasts (draws created before the closed-form
+# basis, whose level effects the rebuilt design would silently mix up) is
+# refused. The comparison has a tolerance because the products of several coded
+# factors differ from their stored design by rounding.
+.marginal_posterior_check_stored_factor_basis <- function(samples, jags_terms, terms){
+
+  coded_contrasts <- c("contr.orthonormal", "contr.meandif")
+  for(i in seq_along(jags_terms)){
+    term_samples <- samples[[jags_terms[i]]]
+    factor_contrasts <- attr(term_samples, "factor_contrasts", exact = TRUE)
+    stored_design    <- attr(term_samples, "factor_design", exact = TRUE)
+    if(!any(as.character(factor_contrasts) %in% coded_contrasts) || is.null(stored_design)){
+      next
+    }
+
+    declared <- term_samples
+    attr(declared, "factor_design") <- NULL
+    rebuilt_design <- .factor_term_design_from_metadata(declared)$design
+    stored_design  <- unname(as.matrix(stored_design))
+    rebuilt_design <- unname(as.matrix(rebuilt_design))
+    if(!identical(dim(stored_design), dim(rebuilt_design)) ||
+       max(abs(stored_design - rebuilt_design)) > 1e-12){
+      .bt_stop_refit_required(
+        "The stored contrast basis of factor term '", terms[i], "' differs from the ",
+        "current mean-difference and orthonormal contrasts. Refit the model with ",
+        "this version of BayesTools."
       )
     }
   }

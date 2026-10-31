@@ -21,8 +21,10 @@ marginal_posterior(
 \arguments{
 \item{samples}{model-averaged posterior samples created by \code{mix_posteriors()}.
 Mixed factor posteriors that lack the factor metadata of this version of
-BayesTools (such as those created by BayesTools 0.3.0) must be recreated
-from models fitted with this version: they stop with an error of class
+BayesTools (such as those created by BayesTools 0.3.0), and, without an
+attached formula state, orthonormal or mean-difference factor posteriors
+whose stored contrast basis differs from the current contrasts, must be
+recreated from models fitted with this version: they stop with an error of class
 \code{BayesTools_refit_required} (see \code{\link[=JAGS_validate_fit_contract]{JAGS_validate_fit_contract()}}).}
 
 \item{parameter}{parameter of interest}

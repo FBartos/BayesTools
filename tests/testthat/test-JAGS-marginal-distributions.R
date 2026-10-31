@@ -5929,7 +5929,8 @@ test_that("the kernel posterior ordinate refuses constant continuous draws on th
 })
 
 .formula_level_samples_for_test <- function(formula, prior_list, posterior, parameter, data,
-                                            design = c("none", "log", "full")){
+                                            design = c("none", "log", "full"),
+                                            parameters = colnames(posterior)){
   design <- match.arg(design)
   formula_result <- JAGS_formula(formula = formula, parameter = parameter, data = data, prior_list = prior_list)
   fit <- list(mcmc = coda::mcmc.list(coda::mcmc(posterior)), summary.pars = list(mutate = NULL),
@@ -5944,7 +5945,7 @@ test_that("the kernel posterior ordinate refuses constant continuous draws on th
   if(identical(design, "log")){
     attr(fit, "formula_design") <- stats::setNames(list(list(log_intercept = TRUE)), parameter)
   }
-  as_mixed_posteriors(fit, parameters = colnames(posterior), n_prior_samples = 1000)
+  as_mixed_posteriors(fit, parameters = parameters, n_prior_samples = 1000)
 }
 
 test_that("transformed log-intercept formula levels use the lognormal prior law", {
@@ -6056,6 +6057,77 @@ test_that("a transformed formula level whose prior law cannot be reproduced reco
     unavailable <- .bt_meta_get(transformed, "measure_unavailable")
     expect_identical(unavailable$measure, "prior_density")
     expect_identical(unavailable$cause, "structural_target_law_unavailable")
+  }
+})
+
+test_that("the state-free formula route refuses a stored contrast basis that differs from the current one", {
+
+  # Without a formula state the raw coefficient draws meet a design rebuilt from
+  # the contrast names, which is wrong for draws created under another basis.
+  data <- expand.grid(a = factor(letters[1:3]), b = factor(LETTERS[1:3]), c = factor(c("p", "q", "r")))
+  coded <- function(contrast) prior_factor("mnormal", list(0, 1), contrast = contrast)
+  priors <- list(intercept = prior("normal", list(0, 1)),
+    a = coded("meandif"), b = coded("orthonormal"), c = coded("meandif"),
+    "a:b" = coded("meandif"), "a:c" = coded("meandif"), "b:c" = coded("meandif"),
+    "a:b:c" = coded("meandif"))
+  formula <- ~ a * b * c
+  prior_list <- JAGS_formula(formula, "mu", data, priors)$prior_list
+  columns <- unlist(lapply(names(prior_list), function(term){
+    if(is.prior.factor(prior_list[[term]])) .JAGS_prior_factor_names(term, prior_list[[term]]) else term
+  }), use.names = FALSE)
+  set.seed(1)
+  posterior <- matrix(stats::rnorm(60 * length(columns)), 60, dimnames = list(NULL, columns))
+  samples <- .formula_level_samples_for_test(formula, priors, posterior, "mu", data,
+    "none", parameters = names(prior_list))
+  expect_null(.bt_formula_state_get(samples, "mu_a"))
+
+  rotate <- function(design, angle = .4){
+    rotation <- diag(ncol(design))
+    rotation[1:2, 1:2] <- matrix(c(cos(angle), sin(angle), -sin(angle), cos(angle)), 2)
+    design %*% rotation
+  }
+  rotated <- function(term){
+    out <- samples
+    attr(out[[term]], "factor_design") <- rotate(attr(samples[[term]], "factor_design"))
+    out
+  }
+  marginal_of <- function(samples, term, ...){
+    marginal_posterior(samples, term, formula = formula, prior_samples = FALSE, ...)
+  }
+
+  # the unmodified object passes for the main effect, a two-factor interaction,
+  # and the three-factor product, whose stored design differs from the rebuilt
+  # one by rounding only
+  expect_length(marginal_of(samples, "mu_a", at = list(b = "A", c = "p")), 3L)
+  expect_length(marginal_of(samples, "mu_a__xXx__b", at = list(c = "p")), 9L)
+  expect_length(marginal_of(samples, "mu_a__xXx__b__xXx__c"), 27L)
+  product <- samples[["mu_a__xXx__b__xXx__c"]]
+  declared <- product
+  attr(declared, "factor_design") <- NULL
+  difference <- max(abs(attr(product, "factor_design") - .factor_term_design_from_metadata(declared)$design))
+  expect_lt(difference, 1e-12)
+
+  # a rotated stored design is refused, naming the term
+  cases <- list(
+    list(term = "mu_a",                 label = "a",     at = list(b = "A", c = "p")),
+    list(term = "mu_a__xXx__b",         label = "a:b",   at = list(c = "p")),
+    list(term = "mu_a__xXx__b__xXx__c", label = "a:b:c", at = list())
+  )
+  for(case in cases){
+    condition <- expect_error(marginal_of(rotated(case$term), case$term, at = case$at),
+      class = "BayesTools_refit_required")
+    expect_identical(conditionMessage(condition), paste0(
+      "The stored contrast basis of factor term '", case$label, "' differs from the current ",
+      "mean-difference and orthonormal contrasts. Refit the model with this version of BayesTools."))
+  }
+
+  # the route that does not rebuild the design uses the stored one
+  levels <- marginal_posterior(rotated("mu_a"), "mu_a", use_formula = FALSE, prior_samples = FALSE)
+  raw <- matrix(as.numeric(samples[["mu_a"]]), nrow(samples[["mu_a"]]))
+  stored <- rotate(attr(samples[["mu_a"]], "factor_design"))
+  expect_length(levels, 3L)
+  for(i in seq_along(levels)){
+    expect_equal(as.numeric(levels[[i]]), as.vector(raw %*% stored[i, ]), tolerance = 1e-12)
   }
 })
 

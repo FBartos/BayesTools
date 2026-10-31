@@ -135,7 +135,10 @@ is the normalised Helmert basis (column j: `-1/sqrt(j(j+1))` in rows 1..j,
 `j/sqrt(j(j+1))` in row j+1, zero below) and `contr.meandif()` is that basis
 divided by `sqrt(1 - 1/a)`. Post-fit computations on fitted draws use the
 matrices stored with the fit (`formula_design$contrast_matrices`, prior
-`factor_design`). There is no eigen fallback.
+`factor_design`); the state-free `marginal_posterior()` formula route refuses
+a stored basis that differs from the current one, and the ordered metadata
+check and bridge sampling with supplied formula inputs keep refusing a
+mismatch. There is no eigen fallback.
 
 **Why.** Any orthonormal basis B of the centred space gives B B' = I - J/a,
 so spherical coefficient priors, the exchangeable random-effect units, the
