@@ -354,8 +354,10 @@ numeric affine coefficients are applied afterwards. Whole base `prod()` and
 safe ratio regrouping preserve representable nonzeros or raise
 `nonfinite_transform`, including on the direct random name-paired fallback.
 Fixed missing lower-order effects refuse even when their coefficients are tiny.
-Eigen-generated contrasts do not imply exact stored-double orthogonality;
-tiny within-basis coefficients can have poor relative accuracy in doubles.
+Orthonormal and mean-difference contrasts are a closed-form normalised
+Helmert basis, bit-identical on every platform; stored doubles are orthogonal
+only to rounding, and tiny within-basis coefficients can have poor relative
+accuracy in doubles.
 Parameter-map 16 and coefficient-transform 4 invalidate older classifications;
 refit and recreate detached derived objects. Design 6/unscale-design 2 remain.
 
@@ -615,8 +617,8 @@ what it calls, needs a `fit` profile refresh of the cached fits.
   margin is absent from the block, as in `f:g` without `f` or `g`, or `f:x`
   without `x`) counts as independent whatever its declared contrast, so the
   columns of an interaction-only term are level cells (`f[a]:x`), while a
-  factor coded by its eigendecomposition contrast keeps the tag gate (labels
-  follow the coding, not the declared contrast tag). Every other coordinate is
+  factor coded by an orthonormal or mean-difference contrast keeps the tag gate
+  (labels follow the coding, not the declared contrast tag). Every other coordinate is
   contrast coefficient `<parameter>{j}`, labelled so in tables, diagnostics,
   and mixed-posterior columns of fixed effects. A
   `{j}` selector of a direct level coordinate is refused (in catalog

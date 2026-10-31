@@ -4575,9 +4575,16 @@ test_that("scaled factor contrasts retain independently declared scalar level la
   uncertified <- .transform_factor_contrast_samples(input, input, parameter,
     "mixed_posteriors.orthonormal_transformed")
   uncertified_atoms <- .posterior_atoms_get(uncertified, allow_partial = TRUE)
+  # Only the level cells whose stored design row has one nonzero entry are one
+  # coordinate up to a constant.
+  design <- .factor_term_design_from_metadata(input)$design
+  single_coordinate <- unname(rowSums(design != 0) == 1)
+  expect_identical(length(single_coordinate), length(columns))
+  expect_true(any(single_coordinate))
+  expect_false(all(single_coordinate))
   expect_identical(vapply(seq_along(columns), function(i)
     is.null(.posterior_atoms_for_column(uncertified_atoms, i)), logical(1)),
-    c(FALSE, FALSE, TRUE, TRUE, TRUE, TRUE))
+    !single_coordinate)
   expect_error(plot_posterior(stats::setNames(list(uncertified), parameter), parameter,
     plot_type = "ggplot", prior = FALSE, n_points = 32),
     "atom metadata do not identify the factor columns", fixed = TRUE)

@@ -965,8 +965,17 @@ test_that("factor scalar certificate fallback preserves unknown laws and strict 
   fixture <- .factor_level_atom_samples_for_test()
   unknown <- with_mocked_bindings(marginal_posterior(fixture$mixed, "mu_fac", use_formula = FALSE, prior_samples = TRUE),
     .posterior_atoms_formula = function(...) NULL, .package = "BayesTools")
-  expect_true(posterior_atoms_free(unknown$A))
-  for(level in c("B", "C")){
+  # A level whose stored design row has one nonzero entry is that coordinate
+  # up to a constant, so its certificate comes from the scalar atom; the other
+  # levels mix coordinates and stay unknown.
+  levels <- c("A", "B", "C")
+  single_coordinate <- rowSums(fixture$design != 0) == 1
+  expect_true(any(single_coordinate))
+  expect_false(all(single_coordinate))
+  for(level in levels[single_coordinate]){
+    expect_true(posterior_atoms_free(unknown[[level]]))
+  }
+  for(level in levels[!single_coordinate]){
     expect_true(all(is.finite(as.numeric(unknown[[level]]))))
     expect_null(posterior_metadata(unknown[[level]], "atoms"))
     condition <- expect_error(posterior_atoms_free(unknown[[level]]), class = "BayesTools_formula_atoms_unavailable")

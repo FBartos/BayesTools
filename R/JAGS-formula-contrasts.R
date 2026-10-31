@@ -7,10 +7,13 @@
 #' @details
 #' The package includes the following contrast functions:
 #' \describe{
-#'   \item{\code{contr.orthonormal}}{Return a matrix of orthonormal contrasts.
-#'     Code is based on \code{stanova::contr.bayes} and corresponding to description
-#'     by \insertCite{rouder2012default;textual}{BayesTools}. Returns a matrix with n rows and
-#'     k columns, with k = n - 1 if \code{contrasts = TRUE} and k = n if \code{contrasts = FALSE}.}
+#'   \item{\code{contr.orthonormal}}{Return a matrix of orthonormal contrasts: a normalised
+#'     Helmert basis, whose columns have unit length and sum to zero and which is identical on
+#'     every platform. Any orthonormal basis of the centred space implies the same exchangeable
+#'     prior on the factor level effects under a spherical prior on the coefficients, which
+#'     corresponds to the description by \insertCite{rouder2012default;textual}{BayesTools}.
+#'     Returns a matrix with n rows and k columns, with k = n - 1 if \code{contrasts = TRUE}
+#'     and k = n if \code{contrasts = FALSE}.}
 #'   \item{\code{contr.meandif}}{Return a matrix of mean difference contrasts.
 #'     This is an adjustment to the \code{contr.orthonormal} that ascertains that the prior
 #'     distributions on difference between the gran mean and factor level are identical independent
@@ -80,19 +83,32 @@ NULL
   as.integer(n)
 }
 
+# The normalised Helmert basis: column j holds -1/d in rows 1..j, j/d in row
+# j + 1 and 0 below, with d = sqrt(j * (j + 1)). Its columns are orthonormal and
+# sum to zero, so B B' = I - J/n. Every entry is one correctly rounded IEEE
+# operation, so the matrix is bit-identical on every platform (a LAPACK
+# eigenbasis of the same space is not).
+.bt_helmert_contrast_basis <- function(n){
+
+  basis <- matrix(0, nrow = n, ncol = n - 1L)
+  for(j in seq_len(n - 1L)){
+    d <- sqrt(j * (j + 1))
+    basis[seq_len(j), j] <- -1 / d
+    basis[j + 1L, j]     <- j / d
+  }
+
+  basis
+}
+
 #' @rdname contr.BayesTools
 #' @export
 contr.orthonormal <- function(n, contrasts = TRUE){
-  # based on: stanova::contr.bayes
+
   n <- .bt_contrast_level_count(n, contrasts)
 
   cont <- diag(n)
   if(contrasts){
-    a       <- n
-    I_a     <- diag(a)
-    J_a     <- matrix(1, nrow = a, ncol = a)
-    Sigma_a <- I_a - J_a/a
-    cont    <- eigen(Sigma_a)$vectors[, seq_len(a - 1), drop = FALSE]
+    cont <- .bt_helmert_contrast_basis(n)
   }
 
   return(cont)
@@ -106,12 +122,7 @@ contr.meandif <- function(n, contrasts = TRUE){
 
   cont <- diag(n)
   if(contrasts){
-    a       <- n
-    I_a     <- diag(a)
-    J_a     <- matrix(1, nrow = a, ncol = a)
-    Sigma_a <- I_a - J_a/a
-    cont    <- eigen(Sigma_a)$vectors[, seq_len(a - 1), drop = FALSE]
-    cont    <- cont / (sqrt(1 - 1/n))
+    cont <- .bt_helmert_contrast_basis(n) / (sqrt(1 - 1/n))
   }
 
   return(cont)

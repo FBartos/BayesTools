@@ -3041,8 +3041,8 @@ test_that("categorical hierarchy and indicator partitions keep unrelated SD laws
     leaves <- unique(term$sd_parameter_names[untouched])
     expect_true(all(leaves %in% names(laws$scale)))
     expect_equal(unname(laws$scale[leaves]), rep(1, length(leaves)), tolerance = 0)
-    # Coefficients within the f basis may be tiny: no claim of idealized
-    # eigenvector orthogonality is made about those persisted doubles.
+    # Coefficients within the f basis are rounded doubles of the closed-form
+    # basis: no claim of exact orthogonality is made about those persisted doubles.
   }
 })
 

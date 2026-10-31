@@ -117,7 +117,7 @@ rule that a correlated block never certifies a shared SD.
 `random_variance_allocation(target = "block")` counts SD leaves, so a block
 that is one unit has one SD component.
 
-**Why.** `contr.orthonormal()` and `contr.meandif()` take an eigenbasis of the
+**Why.** `contr.orthonormal()` and `contr.meandif()` took an eigenbasis of the
 centering matrix, which is not unique for three or more levels; LAPACK rounding
 picks it, and it differs across platforms. Fixed effects are unaffected
 (their mnormal/mt/mcauchy priors are spherical), but per-column SDs and an LKJ
@@ -126,5 +126,21 @@ deviations depend on that arbitrary basis (CI showed it as platform-dependent
 results). An exchangeable unit is the basis-free model the contrast declares.
 Silently restricting the model when an implementation is hard (for example,
 making two units uncorrelated) would change the statistical target, so such
-cases are refused instead. Cross-platform reproducibility of the basis itself
-is a separate follow-up.
+cases are refused instead. The basis itself is now closed form (next section).
+
+## Orthonormal and mean-difference contrasts use a closed-form basis
+
+**Decision** (settled with the maintainer on 2026-10-31). `contr.orthonormal()`
+is the normalised Helmert basis (column j: `-1/sqrt(j(j+1))` in rows 1..j,
+`j/sqrt(j(j+1))` in row j+1, zero below) and `contr.meandif()` is that basis
+divided by `sqrt(1 - 1/a)`. Post-fit computations on fitted draws use the
+matrices stored with the fit (`formula_design$contrast_matrices`, prior
+`factor_design`). There is no eigen fallback.
+
+**Why.** Any orthonormal basis B of the centred space gives B B' = I - J/a,
+so spherical coefficient priors, the exchangeable random-effect units, the
+level effects, their posterior and the marginal likelihood do not depend on
+the choice; only the raw coordinates `f{j}` and seeded draws do. The eigen
+basis was chosen by LAPACK rounding, which made CI snapshots and
+floating-point residues in hypothesis tests platform-dependent. The closed
+form uses only correctly rounded operations, so it is identical everywhere.
