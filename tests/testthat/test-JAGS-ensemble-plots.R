@@ -1564,14 +1564,12 @@ test_that("posterior plot based on as_mixed_posteriors (PET-PEESE) work", {
 test_that("posterior plot based on as_mixed_posteriors (weightfunction) work", {
 
   skip_if_not_installed("RoBMA")
-  skip_if_missing_fits("fit_complex_mixed")
+  skip_if_missing_fits(c("fit_wf_twosided", "fit_wf_onesided"))
   skip_if_not_installed("rjags")
   skip_if_not_installed("bridgesampling")
-  skip_on_os(c("mac", "linux", "solaris"))
 
   fit1   <- readRDS(file.path(temp_fits_dir, "fit_wf_twosided.RDS"))
   fit2   <- readRDS(file.path(temp_fits_dir, "fit_wf_onesided.RDS"))
-  fitmix <- readRDS(file.path(temp_fits_dir, "fit_complex_mixed.RDS"))
 
   mixed_posteriors1 <- as_mixed_posteriors(
     mode        = fit1,
@@ -1581,11 +1579,6 @@ test_that("posterior plot based on as_mixed_posteriors (weightfunction) work", {
   mixed_posteriors2 <- as_mixed_posteriors(
     mode        = fit2,
     parameters  = names(attr(fit2, "prior_list")),
-    force_plots = TRUE
-  )
-  mixed_posteriorsmix <- as_mixed_posteriors(
-    mode        = fitmix,
-    parameters  = names(attr(fitmix, "prior_list")),
     force_plots = TRUE
   )
 
@@ -1644,6 +1637,25 @@ test_that("posterior plot based on as_mixed_posteriors (weightfunction) work", {
     par(mar = c(4, 4, 1, 4))
     plot_posterior(mixed_posteriors2, "omega", prior = TRUE, dots_prior = list(col = "orange"))
   })
+})
+
+# The snapshots of the mixed model draw its factor coefficients with JAGS's conjugate
+# multivariate-normal sampler, which differs across OSes.
+test_that("posterior plot based on as_mixed_posteriors (weightfunction in a factor model) work", {
+
+  skip_if_not_installed("RoBMA")
+  skip_if_missing_fits("fit_complex_mixed")
+  skip_if_not_installed("rjags")
+  skip_if_not_installed("bridgesampling")
+  skip_on_os(c("mac", "linux", "solaris"))
+
+  fitmix <- readRDS(file.path(temp_fits_dir, "fit_complex_mixed.RDS"))
+
+  mixed_posteriorsmix <- as_mixed_posteriors(
+    mode        = fitmix,
+    parameters  = names(attr(fitmix, "prior_list")),
+    force_plots = TRUE
+  )
 
   vdiffr::expect_doppelganger("simple-posterior-omegamix-ind-no-prior", function(){
     oldpar <- graphics::par(no.readonly = TRUE)
