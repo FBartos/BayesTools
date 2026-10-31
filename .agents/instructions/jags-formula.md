@@ -653,10 +653,13 @@ what it calls, needs a `fit` profile refresh of the cached fits.
   pairs of ordinary columns, `cor(o,f[a])` per level cell of a unit (cells of
   two units for a one-column unit, the one-column element leading), and
   `cor_total(o,f)` = sqrt(r' R_ff^-1 r), support [0, 1], whenever the leading
-  element is one column (undefined, NA, in a draw whose R_ff is singular, as an
-  original-scale unit can be at a zero SD; definedness "multiple_correlation"); on the original scale the level
+  element is one column (undefined, NA, in a draw whose R_ff is singular at
+  working precision, as an original-scale unit can be at a zero SD, or whose
+  rounded value would leave its support beyond sqrt(eps); definedness
+  "multiple_correlation"); on the original scale the level
   cells of a unit whose shared SD is not certified are NA with the shared-SD
-  note; within-unit correlations are structural zeros
+  note; within-unit correlations, the fixed within-unit primitives, and the
+  identity Cholesky block of a unit leading the design are structural
   (convergence role `structural`), and a reordered vine makes `L[1,1]`
   `derived`. Prior laws: pairs and cells 2 Beta(eta - 1 + K/2) - 1;
   `cor_total` t^2 ~ Beta(k/2, eta + (K - k - 1)/2) for a unit of k columns.
