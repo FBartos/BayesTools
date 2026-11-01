@@ -8,6 +8,8 @@
 # with --all. 'native' marks a case that runs JAGS, whose key includes the
 # native sources and the JAGS version; a case that reaches a package function
 # calling a native routine includes the native sources without it.
+# 'references' names the directories (relative to tests/) of the reference
+# baselines a case compares with; their reviewed files enter its key.
 bayestools_certification_cases <- function() {
   list(
     `density-kernels` = list(
@@ -16,7 +18,8 @@ bayestools_certification_cases <- function() {
     ),
     `fit-assertions` = list(
       description = "Live-fit assertions of the post-fit interface, run when the code they reach changes.",
-      native      = TRUE
+      native      = TRUE,
+      references  = "results/JAGS-fit-edge-cases"
     ),
     `hypothesis-bayes-factors` = list(
       description = "Point and region Bayes factors of hypothesis_BF() against a conjugate posterior.",
@@ -86,12 +89,13 @@ bayestools_certification_marker_file <- function(case,
 # reach; the package DESCRIPTION without its version
 # (.test_cache_description_md5()); the R version; and, for a case that runs
 # JAGS or reaches a package function that calls a native routine, the native
-# sources (and, for JAGS, its version). 'helper_env' holds the test helpers as
-# testthat sources them.
+# sources (and, for JAGS, its version); and the reviewed baselines in its
+# reference directories (a directory without any is keyed as missing).
+# 'helper_env' holds the test helpers as testthat sources them.
 bayestools_certification_key <- function(case, helper_env,
                                          test_dir = testthat::test_path(),
-                                         namespace = asNamespace("BayesTools")) {
-  cases <- bayestools_certification_cases()
+                                         namespace = asNamespace("BayesTools"),
+                                         cases = bayestools_certification_cases()) {
   if (!case %in% names(cases)) {
     stop("Unknown certification case: ", case, call. = FALSE)
   }
@@ -133,6 +137,17 @@ bayestools_certification_key <- function(case, helper_env,
       if (runs_jags) c(jags_version = as.character(rjags::jags.version())),
       vapply(native_files, .test_cache_file_md5, character(1))
     )
+  }
+  for (directory in cases[[case]]$references) {
+    root  <- file.path(test_dir, "..", directory)
+    files <- sort(list.files(root, recursive = TRUE), method = "radix")
+    files <- files[!grepl("[.]new[.][^.]+$", files)]
+    key <- c(key, if (length(files) == 0L) {
+      stats::setNames("missing", paste0("reference_", directory))
+    } else {
+      stats::setNames(vapply(file.path(root, files), .test_cache_file_md5, character(1)),
+                      paste0("reference_", directory, "/", files))
+    })
   }
   key
 }

@@ -75,7 +75,9 @@ failure. `tools/test.R` runs all lanes with the fit cache in
   `.test_cache_reached_package_objects()`); DESCRIPTION without its version;
   the R version; and, for a case that runs JAGS (`native = TRUE`) or reaches a
   package function that calls a native routine, the native sources (and the
-  JAGS version for JAGS). A case is current while its marker holds its key, so it
+  JAGS version for JAGS); a case that compares with reference baselines
+  declares their directories (`references`) and their reviewed files enter
+  its key. A case is current while its marker holds its key, so it
   runs again when code it reaches changes. An unfiltered `test_tests()` runs
   the cases that are not current after `all` (`certification = FALSE` skips
   them).

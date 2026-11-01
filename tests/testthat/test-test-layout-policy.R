@@ -323,6 +323,40 @@ test_that("certification cases are registered, outside `all`, and keyed by the c
 })
 
 
+test_that("certification cases that compare with reference baselines key them", {
+
+  # a case that calls the reference-baseline helpers declares their directories
+  for (case in names(bayestools_certification_cases())) {
+    uses_references <- any(grepl("test_reference_", readLines(bayestools_certification_file(case), warn = FALSE)))
+    directories     <- bayestools_certification_cases()[[case]]$references
+    expect_identical(length(directories) > 0L, uses_references, info = case)
+    expect_true(all(dir.exists(file.path(testthat::test_path(), "..", directories))), info = case)
+  }
+
+  # a changed, a removed, and a new baseline change the key; a candidate does not
+  results <- withr::local_tempdir()
+  tests   <- file.path(results, "tests")
+  dir.create(file.path(tests, "testthat"), recursive = TRUE)
+  dir.create(file.path(tests, "results", "case"), recursive = TRUE)
+  file.copy(bayestools_certification_file("hypothesis-bayes-factors"), file.path(tests, "testthat", "test-certification-case.R"))
+  file.copy(testthat::test_path("..", "..", "DESCRIPTION"), results)
+  writeLines("reviewed", file.path(tests, "results", "case", "a.txt"))
+  cases   <- list(case = list(description = "", native = FALSE, references = "results/case"))
+  helpers <- environment(bayestools_certification_key)
+  key_of  <- function() {
+    bayestools_certification_key("case", helpers, test_dir = file.path(tests, "testthat"), cases = cases)
+  }
+  key <- key_of()
+  expect_true("reference_results/case/a.txt" %in% names(key))
+  writeLines("candidate", file.path(tests, "results", "case", "a.new.txt"))
+  expect_identical(key_of(), key)
+  writeLines("changed", file.path(tests, "results", "case", "a.txt"))
+  expect_false(identical(key_of(), key))
+  unlink(file.path(tests, "results", "case", "a.txt"))
+  expect_identical(unname(key_of()[["reference_results/case"]]), "missing")
+})
+
+
 test_that("a certification marker is current only while it holds the key", {
 
   marker <- withr::local_tempfile(fileext = ".txt")
