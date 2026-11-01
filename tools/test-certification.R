@@ -76,8 +76,15 @@
 
 .run_certification_case <- function(case, script_path, helpers) {
 
-  log_file <- file.path(dirname(helpers$bayestools_certification_marker_file(case)), paste0(case, ".log"))
+  marker   <- helpers$bayestools_certification_marker_file(case)
+  log_file <- file.path(dirname(marker), paste0(case, ".log"))
   dir.create(dirname(log_file), recursive = TRUE, showWarnings = FALSE)
+  # a rerun invalidates the case first, so a child that dies before its own
+  # bookkeeping (a startup crash, the timeout) cannot leave the old marker
+  unlink(marker)
+  if (file.exists(marker)) {
+    stop("Cannot remove the certification marker ", marker, ".", call. = FALSE)
+  }
   rscript <- file.path(R.home("bin"), if (.Platform$OS.type == "windows") "Rscript.exe" else "Rscript")
   started <- Sys.time()
   # --vanilla: the child inherits this process's test controls, which a user

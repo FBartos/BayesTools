@@ -303,7 +303,8 @@ test_that("certification cases are registered, outside `all`, and keyed by the c
   helpers <- environment(bayestools_certification_key)
   key <- bayestools_certification_key("model-averaging", helpers)
   expect_identical(setdiff(c("case_file", "description", "r_version", "jags_version", "helper_fn_expect_true",
-                             "package_fn_models_inference", "package_fn_JAGS_bridgesampling"), names(key)), character())
+                             "package_fn_models_inference", "package_fn_JAGS_bridgesampling", "package_fn_.onLoad"),
+                           names(key)), character())
   expect_false("package_fn_hypothesis_BF.BayesTools_fit" %in% names(key))
   expect_true(any(startsWith(names(key), "package_src_")))
   # the same key wherever the helpers are sourced (devtools::test() sources
@@ -331,6 +332,29 @@ test_that("a certification marker is current only while it holds the key", {
   expect_identical(changed$state, "stale")
   expect_identical(changed$changed, c("helper_fn_g", "package_fn_f", "package_fn_h"))
   expect_error(bayestools_write_certification_marker("case", c(case_file = "a\nb"), marker), "spans lines")
+})
+
+
+test_that("a certification rerun invalidates the case before its process starts", {
+
+  runner_path <- testthat::test_path("..", "..", "tools", "test-certification.R")
+  skip_if_not(file.exists(runner_path), "Repository runner source is unavailable in installed-package tests.")
+  runner <- new.env()
+  source(runner_path, local = runner)
+
+  # a case process that dies at startup, before any bookkeeping of its own
+  directory <- withr::local_tempdir()
+  crash     <- file.path(directory, "crash.R")
+  writeLines("quit(save = 'no', status = 3L)", crash)
+  helpers <- list(
+    bayestools_certification_marker_file = function(case) file.path(directory, paste0(case, ".txt")),
+    bayestools_certification_timeout     = 60
+  )
+  bayestools_write_certification_marker("case", c(case_file = "a"), helpers$bayestools_certification_marker_file("case"))
+
+  passed <- suppressMessages(runner$.run_certification_case("case", crash, helpers))
+  expect_false(passed)
+  expect_false(file.exists(helpers$bayestools_certification_marker_file("case")))
 })
 
 

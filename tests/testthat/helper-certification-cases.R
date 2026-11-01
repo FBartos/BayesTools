@@ -81,7 +81,8 @@ bayestools_certification_marker_file <- function(case,
 
 # The key of a certification case, as named hashes: the case file; the test
 # helper functions and the package objects (.test_cache_reached_package_objects())
-# that its code reaches; the package DESCRIPTION without its version
+# that its code and the package's load hooks (which every run executes)
+# reach; the package DESCRIPTION without its version
 # (.test_cache_description_md5()); the R version; and, for a case that runs
 # native code, the native sources and the JAGS version. 'helper_env' holds the
 # test helpers as testthat sources them.
@@ -99,7 +100,7 @@ bayestools_certification_key <- function(case, helper_env,
 
   references <- .test_cache_code_references(parse(case_file, keep.source = FALSE, encoding = "UTF-8"))
   closure    <- .bayestools_certification_helper_closure(references, helper_env, namespace)
-  roots      <- setdiff(closure$used, closure$helpers)
+  roots      <- c(setdiff(closure$used, closure$helpers), ".onLoad", ".onAttach")
   reached    <- .test_cache_reached_package_objects(roots, closure$strings, namespace)
 
   helper_hashes <- vapply(closure$helpers, function(name) {

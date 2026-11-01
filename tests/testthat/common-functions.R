@@ -1496,10 +1496,12 @@ save_fit <- function(fit, name, marglik = NULL, simple_priors = FALSE, vector_pr
 # What starts the model-fit key: the code that generates the cached fits and
 # marginal likelihoods, which is the blocks of the fitting test file that call
 # save_fit() (the file's setup code outside the test blocks is included, its
-# helper definitions are not, since they serve the assertion blocks), the
+# helper definitions are not, since they serve its other blocks), the
 # helpers whose functions the key hashes, and the package load hooks. The
-# assertion blocks of the file test the post-fit interface of live fits; they
-# do not define a cached object.
+# other blocks of the file check the cache it builds (the registry, extending
+# a saved fit, the completion marker); they do not define a cached object. The
+# live-fit assertions of the post-fit interface are the fit-assertions
+# certification case.
 .test_cache_fit_generator_roots <- function() {
   fit_file <- testthat::test_path("test-00-model-fits.R")
   expressions <- if (file.exists(fit_file)) {
