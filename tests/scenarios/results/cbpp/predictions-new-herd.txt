@@ -1,0 +1,5 @@
+  period glmer BayesTools zero BayesTools zero sd BayesTools sample BayesTools sample sd brms sample brms sample sd
+1      1 0.198           0.188              0.039             0.211                0.128       0.212          0.127
+2      2 0.084           0.091              0.027             0.110                0.086       0.110          0.086
+3      3 0.074           0.082              0.025             0.100                0.081       0.100          0.080
+4      4 0.048           0.060              0.023             0.075                0.067       0.075          0.066

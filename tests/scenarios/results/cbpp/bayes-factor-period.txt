@@ -1,0 +1,3 @@
+                   H1             H0                 method log_BF10 note
+1 period + (1 | herd) 1 + (1 | herd)        bridge sampling    7.368     
+2 period + (1 | herd) 1 + (1 | herd) bridge sampling (brms)    7.368     
