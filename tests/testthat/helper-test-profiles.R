@@ -292,9 +292,10 @@ skip_if_not_visual_fixture_tests <- function() {
 # directories) and removes unreviewed new ones, then keeps the run's output for
 # review: testthat's own '.new' candidate when it wrote one during the run (a
 # changed section; testthat rewrites it on every failing run), otherwise the
-# new or changed file as the candidate. Every file is attempted, also when
-# another file cannot be read or written; failures are reported, and the run
-# fails.
+# new or changed file as the candidate. A run starts only when every file was
+# read (bayestools_snapshot_unreadable()); afterwards every file is attempted,
+# also when another file cannot be read or written; failures are reported, and
+# the run fails.
 bayestools_snapshot_state <- function(root) {
 
   directory <- file.path(root, "_snaps")
@@ -310,6 +311,14 @@ bayestools_snapshot_state <- function(root) {
       error = function(error) list(bytes = NULL, mtime = file.mtime(file), error = conditionMessage(error))
     )
   }), files)
+}
+
+bayestools_snapshot_unreadable <- function(state) {
+  unreadable <- names(state)[vapply(state, function(x) is.null(x$bytes), logical(1))]
+  if (length(unreadable) == 0L) {
+    return(character())
+  }
+  paste0(unreadable, ": ", vapply(state[unreadable], `[[`, character(1), "error"))
 }
 
 bayestools_snapshot_is_candidate <- function(files) {
@@ -330,9 +339,9 @@ bayestools_quarantine_snapshots <- function(root, before, after = bayestools_sna
   }, logical(1))]
   deleted <- setdiff(baselines_before, baselines_after)
 
-  problems <- character()
-  for (file in names(before)[vapply(before, function(x) is.null(x$bytes), logical(1))]) {
-    problems <- c(problems, paste0("reading ", file, " before the run: ", before[[file]]$error))
+  problems <- bayestools_snapshot_unreadable(before)
+  if (length(problems) > 0L) {
+    problems <- paste0("reading before the run ", problems)
   }
   attempt  <- function(action, file, expr) {
     tryCatch(
@@ -362,10 +371,11 @@ bayestools_quarantine_snapshots <- function(root, before, after = bayestools_sna
   for (file in changed) {
     candidate <- bayestools_snapshot_candidate_path(file)
     written   <- after[[candidate]]
+    # an unreadable candidate is judged by its modification time alone
     fresh     <- !is.null(written) && (
       is.null(before[[candidate]]) ||
         !identical(written$mtime, before[[candidate]]$mtime) ||
-        !identical(written$bytes, before[[candidate]]$bytes)
+        (!is.null(written$bytes) && !identical(written$bytes, before[[candidate]]$bytes))
     )
     if (!fresh) {
       attempt("writing candidate", candidate, {
@@ -381,9 +391,11 @@ bayestools_quarantine_snapshots <- function(root, before, after = bayestools_sna
 # testthat's reviewer lists only candidates next to an existing baseline, so
 # candidates of new snapshots (no baseline) are reviewed against an empty
 # placeholder baseline staged in a temporary tree (a blank SVG for figures,
-# which the image views can display): accepting creates the baseline,
-# rejecting removes the candidate, and skipping keeps it. A candidate that
-# cannot be staged or installed is kept and reported as failed.
+# which the image views can display; never equal to the candidate, so that an
+# accepted candidate is recognised by the staged baseline holding its bytes):
+# accepting creates the baseline, rejecting removes the candidate, and
+# skipping keeps it. A candidate that cannot be read, staged, or installed is
+# kept and reported as failed.
 bayestools_new_snapshot_candidates <- function(root) {
 
   state      <- names(bayestools_snapshot_state(root))
@@ -407,22 +419,27 @@ bayestools_review_new_snapshots <- function(root, review = testthat::snapshot_re
   relative <- substring(normalizePath(changes$baseline, winslash = "/", mustWork = FALSE), nchar(snaps) + 2L)
   staged_baseline  <- file.path(review_root, "_snaps", relative)
   staged_candidate <- bayestools_snapshot_candidate_path(staged_baseline)
-  placeholder <- lapply(changes$baseline, function(file) {
-    if (grepl("[.]svg$", file, ignore.case = TRUE)) {
-      charToRaw("<svg xmlns='http://www.w3.org/2000/svg' width='720' height='576' viewBox='0 0 720 576'></svg>\n")
-    } else {
-      raw()
-    }
-  })
+  read_bytes <- function(file) {
+    tryCatch(readBin(file, "raw", file.size(file)), error = function(error) NULL)
+  }
   copied <- function(from, to) {
     isTRUE(tryCatch(suppressWarnings(copy(from, to, overwrite = TRUE)), error = function(error) FALSE))
   }
 
   changes$status <- "skipped"
+  candidate_bytes <- lapply(changes$candidate, read_bytes)
   for (i in seq_len(nrow(changes))) {
+    placeholder <- if (grepl("[.]svg$", changes$baseline[[i]], ignore.case = TRUE)) {
+      charToRaw("<svg xmlns='http://www.w3.org/2000/svg' width='720' height='576' viewBox='0 0 720 576'></svg>\n")
+    } else {
+      raw()
+    }
+    if (identical(placeholder, candidate_bytes[[i]])) {
+      placeholder <- c(placeholder, charToRaw("\n"))
+    }
     dir.create(dirname(staged_baseline[[i]]), recursive = TRUE, showWarnings = FALSE)
-    writeBin(placeholder[[i]], staged_baseline[[i]])
-    if (!copied(changes$candidate[[i]], staged_candidate[[i]])) {
+    writeBin(placeholder, staged_baseline[[i]])
+    if (is.null(candidate_bytes[[i]]) || !copied(changes$candidate[[i]], staged_candidate[[i]])) {
       unlink(c(staged_baseline[[i]], staged_candidate[[i]]))
       changes$status[[i]] <- "failed to stage"
     }
@@ -434,7 +451,7 @@ bayestools_review_new_snapshots <- function(root, review = testthat::snapshot_re
     if (file.exists(staged_candidate[[i]])) {
       next
     }
-    accepted <- !identical(readBin(staged_baseline[[i]], "raw", file.size(staged_baseline[[i]])), placeholder[[i]])
+    accepted <- identical(read_bytes(staged_baseline[[i]]), candidate_bytes[[i]])
     if (accepted) {
       dir.create(dirname(changes$baseline[[i]]), recursive = TRUE, showWarnings = FALSE)
       if (!copied(staged_baseline[[i]], changes$baseline[[i]])) {

@@ -135,6 +135,10 @@ reporter_object <- if (identical(reporter, "llm")) {
 message("testthat reporter: ", reporter)
 snapshot_root  <- file.path("tests", "testthat")
 snapshot_state <- bayestools_snapshot_state(snapshot_root)
+if (length(bayestools_snapshot_unreadable(snapshot_state)) > 0L) {
+  stop("Cannot read the snapshot files, so a run could not restore them; no tests ran:\n- ",
+       paste(bayestools_snapshot_unreadable(snapshot_state), collapse = "\n- "), call. = FALSE)
+}
 unreviewed     <- list(changed = character(), deleted = character(), problems = character())
 # The guard's report is printed in 'finally', so it also follows a test failure
 # that propagates from devtools::test().

@@ -285,6 +285,9 @@ test_that("an unreadable file does not stop the restoration of the other snapsho
   after[[file.path(snaps, "a.new.svg")]] <- list(bytes = NULL, mtime = Sys.time(), error = "locked")
   after[[file.path(snaps, "c.svg")]]     <- list(bytes = NULL, mtime = Sys.time(), error = "locked")
 
+  expect_identical(bayestools_snapshot_unreadable(before), character())
+  expect_identical(bayestools_snapshot_unreadable(after), paste0(file.path(snaps, c("a.new.svg", "c.svg")), ": locked"))
+
   result <- bayestools_quarantine_snapshots(root, before, after)
   expect_identical(readLines(file.path(snaps, "a.svg")), "reviewed a")
   expect_identical(readLines(file.path(snaps, "b.svg")), "reviewed b")
@@ -295,6 +298,49 @@ test_that("an unreadable file does not stop the restoration of the other snapsho
   expect_setequal(basename(result$changed), c("a.svg", "b.svg", "c.svg"))
   expect_length(result$problems, 1L)
   expect_match(result$problems, "c.new.svg: the run's output could not be read: locked", fixed = TRUE)
+})
+
+
+test_that("an unreadable stale candidate is replaced by the run's output", {
+
+  root  <- withr::local_tempdir()
+  snaps <- file.path(root, "_snaps")
+  dir.create(snaps)
+  writeLines("reviewed", file.path(snaps, "plot.svg"))
+  writeLines("stale", file.path(snaps, "plot.new.svg"))
+  before <- bayestools_snapshot_state(root)
+
+  writeLines("unreviewed", file.path(snaps, "plot.svg"))
+  # the candidate is untouched by the run but locked while it is read
+  after <- bayestools_snapshot_state(root)
+  after[[file.path(snaps, "plot.new.svg")]]$bytes <- NULL
+  after[[file.path(snaps, "plot.new.svg")]]$error <- "locked"
+
+  result <- bayestools_quarantine_snapshots(root, before, after)
+  expect_identical(result$problems, character())
+  expect_identical(readLines(file.path(snaps, "plot.svg")), "reviewed")
+  expect_identical(readLines(file.path(snaps, "plot.new.svg")), "unreviewed")
+})
+
+
+test_that("new-snapshot review installs or removes a candidate equal to its placeholder", {
+
+  root  <- withr::local_tempdir()
+  snaps <- file.path(root, "_snaps", "context")
+  dir.create(snaps, recursive = TRUE)
+  writeBin(raw(), file.path(snaps, "accept.new.txt"))
+  writeBin(raw(), file.path(snaps, "reject.new.txt"))
+
+  review <- function(path) {
+    staged <- file.path(path, "_snaps", "context")
+    file.rename(file.path(staged, "accept.new.txt"), file.path(staged, "accept.txt"))
+    file.remove(file.path(staged, "reject.new.txt"))
+  }
+  result <- bayestools_review_new_snapshots(root, review = review)
+  expect_identical(result$status[order(basename(result$candidate))], c("accepted", "rejected"))
+  expect_identical(file.size(file.path(snaps, "accept.txt")), 0)
+  expect_false(file.exists(file.path(snaps, "reject.txt")))
+  expect_identical(list.files(snaps), "accept.txt")
 })
 
 
