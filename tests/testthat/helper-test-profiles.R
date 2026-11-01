@@ -1,4 +1,4 @@
-bayestools_known_test_profiles <- c("unit", "fixture", "visual", "visual-fixture", "fit", "cran")
+bayestools_known_test_profiles <- c("unit", "fixture", "visual", "visual-fixture", "fit", "cran", "meta")
 
 
 bayestools_quiet_llm_reporter <- function(...) {
@@ -43,7 +43,6 @@ bayestools_test_profile_contexts <- list(
     "JAGS-formula-point-replay",
     "priors-bound-factor-rng",
     "formula-numerical-measures",
-    "fixture-catalog-static",
     "harrell-davis-quantile",
     "hypothesis-ast",
     "hypothesis-BF-inference",
@@ -52,7 +51,6 @@ bayestools_test_profile_contexts <- list(
     "hypothesis-BF-parser-adversarial",
     "hypothesis-prior-region-grid",
     "interpret",
-    "interactive-test-runner",
     "JAGS-bridge-compiler",
     "JAGS-bridge-marginal-random",
     "JAGS-bridgesampling-wrapper",
@@ -124,15 +122,11 @@ bayestools_test_profile_contexts <- list(
     "random-effects-memory",
     "random-effects-structured-local",
     "random-effects-summary-posterior",
-    "reference-table-review",
     "robma-facing-exports",
     "selection-kernels",
     "simplex-finite-total",
-    "snapshot-path-portability",
-    "stochastic-reference-policy",
     "summary-tables",
     "summary-tables-helpers",
-    "test-layout-policy",
     "tools-evaluation",
     "tools-input",
     "transformation-point-images",
@@ -178,6 +172,14 @@ bayestools_test_profile_contexts <- list(
   ),
   cran = c(
     "cran-smoke"
+  ),
+  meta = c(
+    "test-layout-policy",
+    "fixture-catalog-static",
+    "snapshot-path-portability",
+    "interactive-test-runner",
+    "reference-table-review",
+    "stochastic-reference-policy"
   )
 )
 

@@ -52,6 +52,11 @@ failure. `tools/test.R` runs all lanes with the fit cache in
   well under 30 seconds; do not add behavioral tests to it. `.Rbuildignore`
   keeps every other test file, snapshot, and reference out of the built
   package, so the other profiles run only from the source tree.
+- `meta`: tests of the test tooling itself, not of package behavior: the
+  layout and registration policy, CI workflows and build scripts, fixture-cache
+  keys and the fixture catalog, reference-baseline and snapshot review, the
+  interactive runner, and the stochastic-reference helpers. Run it after
+  changing test helpers, runners, workflows, or build scripts.
 - `all`: every profile; this is the default CI and coverage profile.
 
 Start with relevant `unit` tests. Use `fixture` for cached-object behavior and
@@ -131,7 +136,7 @@ Accept/Reject/Skip decisions. Accept replaces the baseline, Reject removes the
 candidate, and Skip keeps it for later review. Non-interactive runs retain
 candidates and never update baselines.
 
-`test_tests()` runs all six lanes by default. It reuses a validated fit cache;
+`test_tests()` runs all seven lanes by default. It reuses a validated fit cache;
 use `refit = TRUE` to clean and rebuild it. With `filter`, refitting first runs
 the centralized `fit` lane and then the selected test files. `regenerate = TRUE`
 combines refitting with forced snapshot review. BayesTools has no timing

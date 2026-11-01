@@ -1,4 +1,4 @@
-skip_if_not_test_profile("unit")
+skip_if_not_test_profile("meta")
 
 # ============================================================================ #
 # TEST FILE: Static Fixture Catalog

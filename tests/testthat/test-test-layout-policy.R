@@ -1,4 +1,4 @@
-skip_if_not_test_profile("unit")
+skip_if_not_test_profile("meta")
 
 test_that("live fitting is confined to the centralized fit file", {
 

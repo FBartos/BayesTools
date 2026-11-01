@@ -1,4 +1,4 @@
-skip_if_not_test_profile("unit")
+skip_if_not_test_profile("meta")
 
 
 test_that("stochastic reference signatures ignore sampled values only", {

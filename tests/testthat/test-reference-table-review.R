@@ -1,4 +1,4 @@
-skip_if_not_test_profile("unit")
+skip_if_not_test_profile("meta")
 
 source(testthat::test_path("common-functions.R"))
 
