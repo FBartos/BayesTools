@@ -72,15 +72,15 @@ test_that("bridge-sampled model averaging reproduces exact enumeration", {
     list(fit = fit, marglik = JAGS_bridgesampling(fit, log_posterior = log_posterior, data = averaging_data_list, seed = 1),
          prior_weights = 1)
   })
-  expect_equal_each(vapply(models, function(model) model$marglik$logml, numeric(1)), averaging_exact$logml, tolerance = 0.02)
+  expect_lt(max(abs(vapply(models, function(model) model$marglik$logml, numeric(1)) - averaging_exact$logml)), 0.02)
 
   models <- models_inference(models)
-  expect_equal_each(vapply(models, function(model) model$inference$post_prob, numeric(1)), averaging_exact$post_prob, tolerance = 0.005)
+  expect_lt(max(abs(vapply(models, function(model) model$inference$post_prob, numeric(1)) - averaging_exact$post_prob)), 0.005)
 
   parameters   <- paste0("mu_", averaging_terms)
   is_null_list <- stats::setNames(lapply(averaging_terms, function(term) !averaging_subsets[, term]), parameters)
   inference    <- ensemble_inference(models, parameters = parameters, is_null_list = is_null_list, conditional = FALSE)
-  expect_equal_each(log(vapply(inference, `[[`, numeric(1), "BF")), unname(averaging_exact$log_BF), tolerance = 0.05)
+  expect_lt(max(abs(log(vapply(inference, `[[`, numeric(1), "BF")) - averaging_exact$log_BF)), 0.05)
 
   mixed <- mix_posteriors(models, parameters = parameters, is_null_list = is_null_list, seed = 1)
   draws <- vapply(mixed, length, numeric(1))

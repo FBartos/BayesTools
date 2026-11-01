@@ -107,7 +107,7 @@ bridge_logml <- function(fit, log_posterior, prior_list = NULL, seeds = 1:10, ..
 
 expect_bridge_exact <- function(logml, exact) {
   expect_lt(stats::sd(logml), 0.01)
-  expect_equal_each(logml, rep(exact, length(logml)), tolerance = certification_tolerance)
+  expect_lt(max(abs(logml - exact)), certification_tolerance)
 }
 
 test_that("bridge sampling recovers the exact log marginal likelihood with known sigma", {
