@@ -65,7 +65,9 @@ share the same prior distribution. For continuous formula terms,
 The prior of a formula term can carry a \code{"multiply_by"} attribute (a
 number or the name of another parameter) that multiplies the term's
 contribution to the linear predictor; the intercept prior cannot be scaled
-and a \code{"multiply_by"} attribute on it is an error.}
+and a \code{"multiply_by"} attribute on it is an error. For a mixture or
+spike-and-slab prior, set the attribute on that prior itself; a component
+carrying one is an error.}
 
 \item{formula_scale}{named list specifying whether to standardize continuous predictors.
 If \code{NULL} (default), no standardization is applied. If a named list is provided,

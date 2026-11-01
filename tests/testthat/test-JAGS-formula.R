@@ -420,6 +420,50 @@ test_that("JAGS_formula rejects scaled intercept priors", {
   expect_match(result$formula_syntax, "mu_intercept + 2 * mu_x * mu_data_x[i]", fixed = TRUE)
 })
 
+test_that("JAGS_formula rejects a multiplier on a component of a mixture prior", {
+
+  data <- data.frame(x = c(-1, 0.5, 2), f = factor(c("a", "b", "c")))
+  unit <- prior("normal", list(0, 1))
+  scaled_unit <- unit
+  attr(scaled_unit, "multiply_by") <- "sigma"
+  scaled_factor <- prior_factor("mcauchy", list(location = 0, scale = 1 / 2), contrast = "orthonormal")
+  attr(scaled_factor, "multiply_by") <- "sigma"
+  message <- function(term) paste0(
+    "A component of the mixture prior 'prior_list[[\"", term, "\"]]' has a ",
+    "'multiply_by' attribute, which applies only to the prior of a whole term. ",
+    "Set 'multiply_by' on the mixture or spike-and-slab prior instead of on its ",
+    "components."
+  )
+
+  # the multiplier of a component was dropped from the linear predictor
+  expect_error(
+    JAGS_formula(~ 1 + x, "mu", data, list(intercept = unit, x = prior_spike_and_slab(scaled_unit))),
+    message("x"), fixed = TRUE
+  )
+  expect_error(
+    JAGS_formula(~ 1 + f, "mu", data, list(intercept = unit, f = prior_spike_and_slab(scaled_factor))),
+    message("f"), fixed = TRUE
+  )
+  expect_error(
+    JAGS_formula(~ 1 + x, "mu", data, list(
+      intercept = unit, x = prior_mixture(list(scaled_unit, prior("spike", list(0))), is_null = c(FALSE, TRUE))
+    )),
+    message("x"), fixed = TRUE
+  )
+  expect_error(
+    JAGS_formula(~ 1 + x, "mu", data, list(
+      intercept = prior_mixture(list(scaled_unit, unit)), x = unit
+    )),
+    "intercept priors cannot be scaled", fixed = TRUE
+  )
+
+  # on the spike-and-slab prior the multiplier scales the term
+  spike <- prior_spike_and_slab(unit)
+  attr(spike, "multiply_by") <- "sigma"
+  result <- JAGS_formula(~ 1 + x, "mu", data, list(intercept = unit, x = spike))
+  expect_match(result$formula_syntax, "sigma * mu_x * mu_data_x[i]", fixed = TRUE)
+})
+
 test_that("JAGS_formula stores exact fitted formula design metadata", {
 
   df <- data.frame(

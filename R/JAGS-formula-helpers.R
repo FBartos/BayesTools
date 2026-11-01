@@ -1060,8 +1060,16 @@
                                              model_terms_type){
 
   # The linear predictor enters the intercept unscaled; a 'multiply_by'
-  # multiplier applies only to the coefficients of formula terms.
-  if(!is.null(attr(prior_list[["intercept"]], "multiply_by", exact = TRUE))){
+  # multiplier applies only to the coefficients of formula terms, as an
+  # attribute of the prior of a whole term: the components of a mixture or
+  # spike-and-slab prior do not carry their own (it would be ignored).
+  component_multiply_by <- function(this_prior){
+    is.prior.mixture(this_prior) && any(vapply(seq_along(this_prior), function(i){
+      !is.null(attr(this_prior[[i]], "multiply_by", exact = TRUE))
+    }, logical(1)))
+  }
+  if(!is.null(attr(prior_list[["intercept"]], "multiply_by", exact = TRUE)) ||
+     component_multiply_by(prior_list[["intercept"]])){
     stop(
       "The intercept prior 'prior_list[[\"intercept\"]]' has a 'multiply_by' ",
       "attribute, but intercept priors cannot be scaled. Remove 'multiply_by' ",
@@ -1069,6 +1077,17 @@
       "formula terms.",
       call. = FALSE
     )
+  }
+  for(model_term in model_terms){
+    if(component_multiply_by(prior_list[[model_term]])){
+      stop(
+        "A component of the mixture prior 'prior_list[[\"", model_term, "\"]]' ",
+        "has a 'multiply_by' attribute, which applies only to the prior of a ",
+        "whole term. Set 'multiply_by' on the mixture or spike-and-slab prior ",
+        "instead of on its components.",
+        call. = FALSE
+      )
+    }
   }
 
   for(model_term in model_terms){
