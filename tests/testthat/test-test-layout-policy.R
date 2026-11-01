@@ -1,6 +1,6 @@
 skip_if_not_test_profile("meta")
 
-test_that("live fitting is confined to the centralized fit file", {
+test_that("live fitting is confined to the centralized fit file and the certification cases", {
 
   test_directory <- testthat::test_path()
   test_files <- list.files(
@@ -27,7 +27,9 @@ test_that("live fitting is confined to the centralized fit file", {
     "rjags::coda\\.samples\\s*\\(",
     "runjags::run\\.jags\\s*\\("
   )
-  noncentralized <- test_files[basename(test_files) != centralized_file]
+  # the certification cases fit live outside the cached fixtures (testing.md)
+  noncentralized <- test_files[basename(test_files) != centralized_file &
+                                 !startsWith(basename(test_files), "test-certification-")]
   violations <- unlist(lapply(noncentralized, function(path){
     lines <- readLines(path, warn = FALSE)
     matched <- unique(unlist(lapply(backend_patterns, function(pattern){

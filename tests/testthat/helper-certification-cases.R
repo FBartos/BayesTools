@@ -13,6 +13,10 @@ bayestools_certification_cases <- function() {
       description = "Expensive reference sweeps of prior densities, ordinates, region grids, and quantile estimators moved out of the unit lane.",
       native      = FALSE
     ),
+    `fit-assertions` = list(
+      description = "Live-fit assertions of the post-fit interface, run when the code they reach changes.",
+      native      = TRUE
+    ),
     `hypothesis-bayes-factors` = list(
       description = "Point and region Bayes factors of hypothesis_BF() against a conjugate posterior.",
       native      = TRUE

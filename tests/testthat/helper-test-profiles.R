@@ -185,6 +185,7 @@ bayestools_test_profile_contexts <- list(
   ),
   certification = c(
     "certification-density-kernels",
+    "certification-fit-assertions",
     "certification-hypothesis-bayes-factors",
     "certification-marginal-likelihood",
     "certification-model-averaging"

@@ -137,9 +137,11 @@ subsystem. The marker certifies a passing run of
 those inputs: the last block of the fitting file writes it only when no earlier
 block of the file recorded a failed expectation and the fitting file, `src/`,
 and `DESCRIPTION` are unchanged since refitting started, and otherwise removes
-any existing marker and fails. The assertion blocks of the fitting file
-test the post-fit interface of live fits; they run with the file, which a
-current cache skips and the `fit` profile reruns by default.
+any existing marker and fails. The fitting file only generates the cache: the
+assertions on the post-fit interface of live fits (input validation, convergence
+checks, formula and random-effect fits, the LKJ modules, bridge-sampling
+helpers) are the certification case `fit-assertions`, so the `fit` profile does
+not run them.
 
 Do not modify `GENERATE_REFERENCE_FILES` unless the maintainer explicitly asks.
 
