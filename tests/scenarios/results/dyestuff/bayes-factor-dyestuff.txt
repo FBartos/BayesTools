@@ -1,0 +1,7 @@
+           H1               H0                        method log_BF10 note
+1 (1 | Batch) no batch effects                         exact    2.382     
+2 (1 | Batch) no batch effects               bridge sampling    2.366     
+3 (1 | Batch) no batch effects        bridge sampling (brms)    2.384     
+4 (1 | Batch) no batch effects                spike and slab    2.412     
+5 (1 | Batch) no batch effects   Savage-Dickey (noncentered)    2.442     
+6 (1 | Batch) no batch effects Savage-Dickey (mean-centered)    3.016     

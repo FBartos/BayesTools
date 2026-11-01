@@ -1,0 +1,13 @@
+       source parameter estimate median    lCI   uCI
+1       exact intercept    0.000     NA     NA    NA
+2        lme4 intercept    0.000     NA     NA    NA
+3  BayesTools intercept    0.004  0.003 -0.646 0.661
+4        brms intercept    0.005  0.005 -0.666 0.676
+5       exact     sigma    0.827     NA     NA    NA
+6        lme4     sigma    0.786     NA     NA    NA
+7  BayesTools     sigma    0.826  0.812  0.620 1.117
+8        brms     sigma    0.827  0.811  0.621 1.118
+9       exact sd(Batch)    0.734     NA     NA    NA
+10       lme4 sd(Batch)    0.591     NA     NA    NA
+11 BayesTools sd(Batch)    0.739  0.693  0.229 1.502
+12       brms sd(Batch)    0.738  0.694  0.230 1.486
