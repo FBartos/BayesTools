@@ -179,9 +179,11 @@ testthat::test_that("Konstantopoulos three-level meta-analysis", {
   })
 
   ### Bayes factors ----
-  # the district level: three levels against schools only, as log BF10; with
-  # every draw including the district SD, the inclusion BF is only a bound
-  # set by the number of draws
+  # the district level: three levels against schools only, as log BF10. No
+  # draw of the spike-and-slab fit excludes the district SD, so its inclusion
+  # BF is printed as the draw-count limit; it is not a valid lower bound here:
+  # at the exact BF of about 1850 roughly 20 of the 40000 draws would exclude
+  # the SD if the inclusion indicator mixed
   scenario_text("bayes-factor-district", {
     district_spike <- JAGS_inference_table(fit_district_spike)[["inclusion_BF"]]
     spike_bound    <- identical(attr(district_spike, "bound_operator"), ">")
@@ -194,7 +196,7 @@ testthat::test_that("Konstantopoulos three-level meta-analysis", {
         "bridge sampling (brms)" = scenario_log_bf_bridge(brms_three_level[["marglik"]], brms_two_level[["marglik"]]),
         "spike and slab"         = log(as.numeric(district_spike))
       ),
-      note = c("", "", "", if (spike_bound) "lower bound: all draws include the district SD" else "")
+      note = c("", "", "", if (spike_bound) "draw-count limit: no draw excludes the district SD" else "")
     )
   })
   scenario_text("inference-district-spike", JAGS_inference_table(fit_district_spike))
