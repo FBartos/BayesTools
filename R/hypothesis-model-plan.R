@@ -1452,6 +1452,8 @@ posterior_fitted_linear_weights <- function(sample, weights,
   entry     <- plan[["selected"]][["entry"]]
   parameter <- plan[["parameter"]]
   levels    <- .hypothesis_model_plan_term_levels(metadata, entry)
+  plan[["hypothesis"]] <- .hypothesis_model_catalog_levels(plan[["hypothesis"]], parameter, levels[["level"]])
+  plan[["refs"]] <- hypothesis_parse_point_reference(hypothesis = plan[["hypothesis"]], allow_compound = TRUE)
   occurrences <- hypothesis_symbols(
     plan[["hypothesis"]],
     occurrences = TRUE

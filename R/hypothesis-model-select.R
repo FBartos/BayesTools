@@ -562,6 +562,48 @@
 }
 
 
+# A level written as it reads ("`g[(0,1]]`") and the parameter catalog's
+# escaped form ("g[\"(0,1%5D\"]") name the same level. The levels of a
+# factor term in the catalog are escaped tokens, so a level reference of
+# 'parameter' that is not one of 'levels' is replaced by its escaped token
+# when that is one.
+.hypothesis_model_catalog_levels <- function(hypothesis, parameter, levels) {
+
+  map_node <- function(node) {
+    if (identical(node[["type"]], "level_reference")) {
+      if (identical(node[["parameter"]], parameter) && !node[["level"]] %in% levels) {
+        token <- .bt_label_token(node[["level"]])
+        if (token %in% levels) {
+          node[["level"]] <- token
+        }
+      }
+    } else if (node[["type"]] %in% c("parentheses", "negation")) {
+      node[["expression"]] <- map_node(node[["expression"]])
+    } else if (node[["type"]] %in% c("boolean", "comparison")) {
+      node[["left"]]  <- map_node(node[["left"]])
+      node[["right"]] <- map_node(node[["right"]])
+    } else if (node[["type"]] %in% c("arithmetic", "function")) {
+      node[["arguments"]] <- lapply(node[["arguments"]], map_node)
+    }
+    node[["source"]] <- .bt_hypothesis_render_node(node)
+    node
+  }
+
+  ast <- .hypothesis_model_ast(hypothesis)
+  ast[["statements"]] <- lapply(ast[["statements"]], function(statement) {
+    for (side_name in c("left", "right")) {
+      statement[[side_name]][["expression"]] <- map_node(statement[[side_name]][["expression"]])
+      statement[[side_name]] <- .bt_hypothesis_refresh_side(statement[[side_name]])
+    }
+    statement[["source"]] <- .bt_hypothesis_render_statement(statement)
+    statement
+  })
+  .bt_validate_hypothesis_ast(ast)
+
+  ast
+}
+
+
 .hypothesis_model_symbol_roots <- function(hypothesis) {
 
   return(hypothesis_symbols(.hypothesis_model_ast(hypothesis)))

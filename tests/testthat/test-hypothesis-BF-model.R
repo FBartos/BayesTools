@@ -217,6 +217,37 @@ test_that("whole-factor statements label each row by its level", {
     }
   }
 
+  # cut() levels need backticks; the label is the statement on that level,
+  # which hypothesis_BF() accepts as written
+  data$bin <- cut(c(0.5, 1.5, 2.5, 0.2, 1.2, 2.2), c(0, 1, 2, 3))
+  compiled <- JAGS_formula(~ 1 + bin, "mu", data, list(
+    intercept = prior("normal", list(0, 1)),
+    bin       = prior_factor("mnormal", list(mean = 0, sd = 1), contrast = "meandif")
+  ))
+  fit <- .parameter_catalog_test_fit(
+    coda::mcmc.list(coda::mcmc(matrix(stats::rnorm(400 * 3, 0.3, 0.5), 400, 3,
+                                      dimnames = list(NULL, c("mu_intercept", "mu_bin[1]", "mu_bin[2]"))))),
+    compiled$prior_list, list(mu = compiled$formula_design), list(mu = compiled$formula_scale)
+  )
+  table <- as.data.frame(hypothesis_BF(fit, "bin > 0", seed = 1))
+  expect_identical(table$Alternative, c("`bin[(0,1]]` > 0", "`bin[(1,2]]` > 0", "`bin[(2,3]]` > 0"))
+  expect_equal(
+    as.data.frame(hypothesis_BF(fit, table$Alternative[[2L]], seed = 1))$BF10,
+    table$BF10[[2L]],
+    tolerance = 1e-12
+  )
+  # the level as it reads and the catalog's escaped form are the same level
+  expect_equal(
+    as.data.frame(hypothesis_BF(fit, "bin[\"(1,2%5D\"] > 0", seed = 1))$BF10,
+    table$BF10[[2L]],
+    tolerance = 1e-12
+  )
+  expect_equal(
+    attr(hypothesis_BF(fit, "`bin[(0,1]]` > `bin[(1,2]]`", seed = 1), "raw_log_BF"),
+    attr(hypothesis_BF(fit, "bin[\"(0,1%5D\"] > bin[\"(1,2%5D\"]", seed = 1), "raw_log_BF"),
+    tolerance = 1e-12
+  )
+
   # the notation of a statement on one level: backticks when the root or the
   # level is not syntactic, and only whole references are replaced
   expect_identical(.hypothesis_model_level_label("f != 0", "f", "(0,1]"), "`f[(0,1]]` != 0")
