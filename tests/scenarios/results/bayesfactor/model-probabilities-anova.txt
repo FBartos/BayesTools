@@ -1,0 +1,6 @@
+     model JZS quadrature BayesFactor (MC) BayesTools
+null  null         0.0000           0.0000     0.0000
+supp  supp         0.0000           0.0000     0.0000
+dose  dose         0.0046           0.0048     0.0046
+add    add         0.2671           0.2750     0.2668
+full  full         0.7283           0.7203     0.7286

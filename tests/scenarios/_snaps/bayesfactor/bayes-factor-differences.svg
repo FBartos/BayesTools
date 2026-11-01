@@ -1,0 +1,81 @@
+<?xml version='1.0' encoding='UTF-8' ?>
+<svg xmlns='http://www.w3.org/2000/svg' xmlns:xlink='http://www.w3.org/1999/xlink' class='svglite' data-engine-version='2.0' width='720.00pt' height='576.00pt' viewBox='0 0 720.00 576.00'>
+<defs>
+  <style type='text/css'><![CDATA[
+    .svglite line, .svglite polyline, .svglite polygon, .svglite path, .svglite rect, .svglite circle {
+      fill: none;
+      stroke: #000000;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      stroke-miterlimit: 10.00;
+    }
+  ]]></style>
+</defs>
+<rect width='100%' height='100%' style='stroke: none; fill: #FFFFFF;'/>
+<defs>
+  <clipPath id='cpMC4wMHw3MjAuMDB8MC4wMHw1NzYuMDA='>
+    <rect x='0.00' y='0.00' width='720.00' height='576.00' />
+  </clipPath>
+</defs>
+<g clip-path='url(#cpMC4wMHw3MjAuMDB8MC4wMHw1NzYuMDA=)'>
+</g>
+<defs>
+  <clipPath id='cpMTE1LjIwfDcwNS42MHwxNC40MHw1MTguNDA='>
+    <rect x='115.20' y='14.40' width='590.40' height='504.00' />
+  </clipPath>
+</defs>
+<g clip-path='url(#cpMTE1LjIwfDcwNS42MHwxNC40MHw1MTguNDA=)'>
+<circle cx='404.51' cy='33.07' r='2.70' style='stroke-width: 0.75; fill: #000000;' />
+<circle cx='399.79' cy='110.84' r='2.70' style='stroke-width: 0.75; fill: #000000;' />
+<circle cx='397.52' cy='188.62' r='2.70' style='stroke-width: 0.75; fill: #000000;' />
+<circle cx='398.64' cy='266.40' r='2.70' style='stroke-width: 0.75; fill: #000000;' />
+<circle cx='398.32' cy='344.18' r='2.70' style='stroke-width: 0.75; fill: #000000;' />
+<circle cx='407.41' cy='421.96' r='2.70' style='stroke-width: 0.75; fill: #000000;' />
+<circle cx='398.89' cy='499.73' r='2.70' style='stroke-width: 0.75; fill: #000000;' />
+</g>
+<g clip-path='url(#cpMC4wMHw3MjAuMDB8MC4wMHw1NzYuMDA=)'>
+<line x1='211.61' y1='518.40' x2='609.19' y2='518.40' style='stroke-width: 0.75;' />
+<line x1='211.61' y1='518.40' x2='211.61' y2='525.60' style='stroke-width: 0.75;' />
+<line x1='311.01' y1='518.40' x2='311.01' y2='525.60' style='stroke-width: 0.75;' />
+<line x1='410.40' y1='518.40' x2='410.40' y2='525.60' style='stroke-width: 0.75;' />
+<line x1='509.79' y1='518.40' x2='509.79' y2='525.60' style='stroke-width: 0.75;' />
+<line x1='609.19' y1='518.40' x2='609.19' y2='525.60' style='stroke-width: 0.75;' />
+<text x='211.61' y='544.32' text-anchor='middle' style='font-size: 12.00px; font-family: sans;' textLength='27.35px' lengthAdjust='spacingAndGlyphs'>-0.04</text>
+<text x='311.01' y='544.32' text-anchor='middle' style='font-size: 12.00px; font-family: sans;' textLength='27.35px' lengthAdjust='spacingAndGlyphs'>-0.02</text>
+<text x='410.40' y='544.32' text-anchor='middle' style='font-size: 12.00px; font-family: sans;' textLength='23.36px' lengthAdjust='spacingAndGlyphs'>0.00</text>
+<text x='509.79' y='544.32' text-anchor='middle' style='font-size: 12.00px; font-family: sans;' textLength='23.36px' lengthAdjust='spacingAndGlyphs'>0.02</text>
+<text x='609.19' y='544.32' text-anchor='middle' style='font-size: 12.00px; font-family: sans;' textLength='23.36px' lengthAdjust='spacingAndGlyphs'>0.04</text>
+<polygon points='115.20,518.40 705.60,518.40 705.60,14.40 115.20,14.40 ' style='stroke-width: 0.75; fill: none;' />
+<text x='410.40' y='573.12' text-anchor='middle' style='font-size: 12.00px; font-family: sans;' textLength='96.05px' lengthAdjust='spacingAndGlyphs'>log BF - reference</text>
+</g>
+<g clip-path='url(#cpMTE1LjIwfDcwNS42MHwxNC40MHw1MTguNDA=)'>
+<circle cx='410.40' cy='188.62' r='2.70' style='stroke-width: 0.75;' />
+<circle cx='410.40' cy='266.40' r='2.70' style='stroke-width: 0.75;' />
+<circle cx='395.34' cy='344.18' r='2.70' style='stroke-width: 0.75;' />
+<circle cx='196.92' cy='421.96' r='2.70' style='stroke-width: 0.75;' />
+</g>
+<g clip-path='url(#cpMC4wMHw3MjAuMDB8MC4wMHw1NzYuMDA=)'>
+<line x1='115.20' y1='499.73' x2='115.20' y2='33.07' style='stroke-width: 0.75;' />
+<line x1='115.20' y1='499.73' x2='108.00' y2='499.73' style='stroke-width: 0.75;' />
+<line x1='115.20' y1='421.96' x2='108.00' y2='421.96' style='stroke-width: 0.75;' />
+<line x1='115.20' y1='344.18' x2='108.00' y2='344.18' style='stroke-width: 0.75;' />
+<line x1='115.20' y1='266.40' x2='108.00' y2='266.40' style='stroke-width: 0.75;' />
+<line x1='115.20' y1='188.62' x2='108.00' y2='188.62' style='stroke-width: 0.75;' />
+<line x1='115.20' y1='110.84' x2='108.00' y2='110.84' style='stroke-width: 0.75;' />
+<line x1='115.20' y1='33.07' x2='108.00' y2='33.07' style='stroke-width: 0.75;' />
+<text x='100.80' y='503.86' text-anchor='end' style='font-size: 12.00px; font-family: sans;' textLength='56.04px' lengthAdjust='spacingAndGlyphs'>regression</text>
+<text x='100.80' y='426.08' text-anchor='end' style='font-size: 12.00px; font-family: sans;' textLength='60.70px' lengthAdjust='spacingAndGlyphs'>ANOVA full</text>
+<text x='100.80' y='348.31' text-anchor='end' style='font-size: 12.00px; font-family: sans;' textLength='65.38px' lengthAdjust='spacingAndGlyphs'>ANOVA add</text>
+<text x='100.80' y='270.53' text-anchor='end' style='font-size: 12.00px; font-family: sans;' textLength='71.39px' lengthAdjust='spacingAndGlyphs'>ANOVA dose</text>
+<text x='100.80' y='192.75' text-anchor='end' style='font-size: 12.00px; font-family: sans;' textLength='71.39px' lengthAdjust='spacingAndGlyphs'>ANOVA supp</text>
+<text x='100.80' y='114.97' text-anchor='end' style='font-size: 12.00px; font-family: sans;' textLength='68.03px' lengthAdjust='spacingAndGlyphs'>two-sample t</text>
+<text x='100.80' y='37.20' text-anchor='end' style='font-size: 12.00px; font-family: sans;' textLength='69.38px' lengthAdjust='spacingAndGlyphs'>one-sample t</text>
+</g>
+<g clip-path='url(#cpMTE1LjIwfDcwNS42MHwxNC40MHw1MTguNDA=)'>
+<line x1='410.40' y1='518.40' x2='410.40' y2='14.40' style='stroke-width: 0.75; stroke: #7F7F7F; stroke-dasharray: 4.00,4.00;' />
+<circle cx='538.63' cy='28.80' r='2.70' style='stroke-width: 0.75; fill: #000000;' />
+<circle cx='538.63' cy='43.20' r='2.70' style='stroke-width: 0.75;' />
+<text x='549.43' y='32.93' style='font-size: 12.00px; font-family: sans;' textLength='150.77px' lengthAdjust='spacingAndGlyphs'>BayesTools bridge sampling</text>
+<text x='549.43' y='47.33' style='font-size: 12.00px; font-family: sans;' textLength='144.07px' lengthAdjust='spacingAndGlyphs'>BayesFactor (Monte Carlo)</text>
+</g>
+</svg>
