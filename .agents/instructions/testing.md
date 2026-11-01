@@ -118,6 +118,11 @@ current cache skips and the `fit` profile reruns by default.
 
 Do not modify `GENERATE_REFERENCE_FILES` unless the maintainer explicitly asks.
 
+A missing reference baseline fails: `test_reference_table()`,
+`test_reference_table_stochastic()`, and `test_reference_text()` cache the
+current output as `<name>.new.txt` and fail, and accepting that candidate in
+review creates the baseline.
+
 The interactive `test_tests()` runner, loaded by the project `.Rprofile` and
 invoked comprehensively by sourcing `.dev/user-tests.R`, caches changed
 `test_reference_table()` output beside its baseline as `<name>.new.txt`. After
@@ -180,6 +185,12 @@ Retain candidates for review; accept intentional visual changes only after
 maintainer or explicitly delegated review. Keep stochastic plot inputs
 deterministic so a snapshot represents rendering behavior rather than random
 draws.
+
+testthat stores a snapshot without a baseline as if it were reviewed, and its
+cleanup deletes snapshots it considers unused. `tools/test-profile.R` (also
+used by `test_tests()`) therefore records `_snaps/` before a run; afterwards it
+keeps every new or changed snapshot file as a `.new` candidate, restores the
+reviewed and deleted files, and fails. Remove an obsolete snapshot explicitly.
 
 ## Final Verification
 

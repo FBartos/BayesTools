@@ -133,11 +133,31 @@ reporter_object <- if (identical(reporter, "llm")) {
 }
 
 message("testthat reporter: ", reporter)
+snapshot_root  <- file.path("tests", "testthat")
+snapshot_state <- bayestools_snapshot_state(snapshot_root)
+unreviewed     <- list(changed = character(), deleted = character())
 tryCatch(
   devtools::test(
     filter = test_filter,
     stop_on_failure = stop_on_failure,
     reporter = reporter_object
   ),
-  finally = report_elapsed()
+  finally = {
+    unreviewed <- bayestools_quarantine_snapshots(snapshot_root, snapshot_state)
+    report_elapsed()
+  }
 )
+if (length(unreviewed$changed) > 0L || length(unreviewed$deleted) > 0L) {
+  stop(
+    "Snapshot baselines changed without review; the reviewed files were restored.",
+    if (length(unreviewed$changed) > 0L) paste0(
+      "\nNew or changed snapshots (kept as '.new' candidates for review):\n- ",
+      paste(unreviewed$changed, collapse = "\n- ")
+    ),
+    if (length(unreviewed$deleted) > 0L) paste0(
+      "\nSnapshots deleted by testthat's cleanup (restored; remove obsolete ones through review):\n- ",
+      paste(unreviewed$deleted, collapse = "\n- ")
+    ),
+    call. = FALSE
+  )
+}

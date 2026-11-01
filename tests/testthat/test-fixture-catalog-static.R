@@ -76,8 +76,13 @@ test_that("source-derived fixture catalog preserves registry schema flags", {
 })
 
 test_that("reviewed fits have summary-table baselines and assertion-only fits have none", {
+  # this file runs only from the source tree (the built package ships just the
+  # CRAN smoke test), so a missing reference directory is a deleted baseline set
   reference_dir <- testthat::test_path("..", "results", "JAGS-summary-tables")
-  skip_if_not(dir.exists(reference_dir), "Reference tables are not available in this installed-package test context.")
+  expect_true(dir.exists(reference_dir), info = paste("Missing reference directory:", reference_dir))
+  if (!dir.exists(reference_dir)) {
+    return(invisible())
+  }
 
   catalog <- bayestools_expected_fit_catalog()
   baselines <- file.exists(file.path(

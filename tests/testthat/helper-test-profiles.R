@@ -284,3 +284,45 @@ skip_if_not_visual_fixture_tests <- function() {
   testthat::skip_if_not_installed("vdiffr")
   invisible(TRUE)
 }
+
+# testthat stores a snapshot without a baseline (a new SVG or snapshot file,
+# or a new section of one) as if it were reviewed, and its cleanup deletes
+# baselines it considers unused. The runner records the reviewed snapshot files
+# before a run; afterwards every new or changed file becomes a '.new'
+# candidate, the reviewed content and any deleted file are restored, and the
+# run fails, so baselines change only through review.
+bayestools_snapshot_state <- function(root) {
+
+  directory <- file.path(root, "_snaps")
+  files <- if (dir.exists(directory)) {
+    list.files(directory, recursive = TRUE, full.names = TRUE)
+  } else {
+    character()
+  }
+  files <- files[!grepl("[.]new[.][^.]+$", files)]
+
+  stats::setNames(lapply(files, function(file) readBin(file, "raw", file.size(file))), files)
+}
+
+bayestools_quarantine_snapshots <- function(root, before) {
+
+  after   <- bayestools_snapshot_state(root)
+  changed <- names(after)[vapply(names(after), function(file) {
+    !identical(after[[file]], before[[file]])
+  }, logical(1))]
+  deleted <- setdiff(names(before), names(after))
+
+  for (file in changed) {
+    writeBin(after[[file]], sub("([.][^.]+)$", ".new\\1", file))
+    if (is.null(before[[file]])) {
+      unlink(file)
+    } else {
+      writeBin(before[[file]], file)
+    }
+  }
+  for (file in deleted) {
+    writeBin(before[[file]], file)
+  }
+
+  list(changed = changed, deleted = deleted)
+}

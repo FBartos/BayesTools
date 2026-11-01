@@ -552,6 +552,10 @@ test_reference_text <- function(text, filename, info_msg = NULL,
     if (file.exists(ref_file)) {
       expected_output <- readLines(ref_file, warn = FALSE)
       expected_output <- paste0(expected_output, collapse = "\n")
+      candidate <- cache_reference_table_candidate(text, expected_output, ref_file)
+      if (!is.null(candidate)) {
+        info_msg <- reference_table_failure_info(info_msg, candidate)
+      }
       expect_equal(text, expected_output, info = info_msg)
     } else {
       fail_missing_reference(text, ref_file, info_msg)

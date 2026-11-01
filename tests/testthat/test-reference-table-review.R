@@ -142,6 +142,57 @@ test_that("reference-table review applies accept, reject, and skip", {
 })
 
 
+test_that("text reference candidates are removed on agreement and refreshed on change", {
+
+  print_dir      <- withr::local_tempdir()
+  reference_file <- file.path(print_dir, "text.txt")
+  candidate_file <- reference_table_candidate_path(reference_file)
+  writeLines("stale candidate", candidate_file)
+  writeLines(c("first", "second"), reference_file)
+
+  expect_success(test_reference_text("first\nsecond", "text.txt", print_dir = print_dir))
+  expect_false(file.exists(candidate_file))
+
+  expect_failure(test_reference_text("latest\noutput", "text.txt", print_dir = print_dir),
+                 "Changed reference table cached")
+  expect_identical(readLines(candidate_file, warn = FALSE), c("latest", "output"))
+  expect_identical(readLines(reference_file, warn = FALSE), c("first", "second"))
+})
+
+
+test_that("snapshot changes from a run become candidates and reviewed files are restored", {
+
+  root  <- withr::local_tempdir()
+  snaps <- file.path(root, "_snaps", "context")
+  dir.create(snaps, recursive = TRUE)
+  writeLines("reviewed", file.path(snaps, "changed.svg"))
+  writeLines("reviewed", file.path(snaps, "kept.svg"))
+  writeLines("reviewed", file.path(snaps, "deleted.md"))
+  writeLines("failed comparison", file.path(snaps, "kept.new.svg"))
+  before <- bayestools_snapshot_state(root)
+  expect_setequal(basename(names(before)), c("changed.svg", "kept.svg", "deleted.md"))
+
+  # what a run can do: a new baseline, a changed one, and a cleanup deletion
+  writeLines("unreviewed", file.path(snaps, "created.svg"))
+  writeLines("rewritten", file.path(snaps, "changed.svg"))
+  unlink(file.path(snaps, "deleted.md"))
+
+  result <- bayestools_quarantine_snapshots(root, before)
+  expect_setequal(basename(result$changed), c("created.svg", "changed.svg"))
+  expect_identical(basename(result$deleted), "deleted.md")
+  expect_false(file.exists(file.path(snaps, "created.svg")))
+  expect_identical(readLines(file.path(snaps, "created.new.svg")), "unreviewed")
+  expect_identical(readLines(file.path(snaps, "changed.svg")), "reviewed")
+  expect_identical(readLines(file.path(snaps, "changed.new.svg")), "rewritten")
+  expect_identical(readLines(file.path(snaps, "deleted.md")), "reviewed")
+  expect_identical(readLines(file.path(snaps, "kept.new.svg")), "failed comparison")
+
+  # an unchanged run reports nothing
+  result <- bayestools_quarantine_snapshots(root, bayestools_snapshot_state(root))
+  expect_identical(result, list(changed = character(), deleted = character()))
+})
+
+
 test_that("missing reference baselines fail and cache a reviewable candidate", {
 
   print_dir <- withr::local_tempdir()

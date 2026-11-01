@@ -117,12 +117,16 @@ test_that("D9 estimates use supplied two-chain geometry and preserve diagnostic 
 test_that("estimates diagnostics match known-answer chains parameter by parameter", {
 
   # four stationary AR(1) chains per parameter: theta with phi = 0.5 and equal
-  # chains, eta with phi = 0.9 and chain means 0, 0.5, 1, 1.5. The effective
-  # sample size of a stationary AR(1) chain is n (1 - phi) / (1 + phi) per
-  # chain; coda's estimate scatters by 3-4.5% (SD over 100 replicates of this
-  # design), so 0.2 is about five SDs. Equal chains give R-hat <= 1.002 in those
-  # replicates; the shifted means give a population R-hat of at least
-  # sqrt(1 + 0.3125), so a wrong chain split or column mapping fails
+  # chains, eta with phi = 0.9 and chain means 0, 0.5, 1, 1.5. With unit
+  # marginal variance, a chain's spectral density at zero is
+  # (1 + phi) / (1 - phi), so the effective sample size is n (1 - phi) / (1 + phi)
+  # per chain and the MCMC error sqrt((1 + phi) / (1 - phi) / (n chains)); chain
+  # shifts change neither. Over 100 replicates of this design coda's ESS
+  # scatters by 3-4.5% and its MCMC error by 2-3.5% (SDs), so 0.2 and 0.15 are
+  # about five SDs, while the IID standard error is 0.58 and 0.23 of the target.
+  # Equal chains give R-hat <= 1.002 in those replicates; the shifted means give
+  # a population R-hat of at least sqrt(1 + 0.3125). A wrong chain split,
+  # column mapping, or error definition fails
   set.seed(1)
   n   <- 5000L
   ar1 <- function(phi) {
@@ -142,13 +146,14 @@ test_that("estimates diagnostics match known-answer chains parameter by paramete
   fit   <- attach_test_parameter_map(fit)
   table <- JAGS_estimates_table(JAGS_with_draws(fit, draws))
 
-  expected_ess <- 4 * n * c(theta = (1 - 0.5) / (1 + 0.5), eta = (1 - 0.9) / (1 + 0.9))
-  expect_equal(table[c("theta", "eta"), "ESS"] / expected_ess, c(1, 1), tolerance = 0.2, ignore_attr = TRUE)
+  phi          <- c(theta = 0.5, eta = 0.9)
+  expected_ess <- 4 * n * (1 - phi) / (1 + phi)
+  expected_se  <- sqrt((1 + phi) / (1 - phi) / (4 * n))
+  expect_equal_each(unname(table[c("theta", "eta"), "ESS"] / expected_ess), c(1, 1), tolerance = 0.2)
+  expect_equal_each(unname(table[c("theta", "eta"), "MCMC_error"] / expected_se), c(1, 1), tolerance = 0.15)
   expect_lt(table["theta", "R_hat"], 1.01)
   expect_gt(table["eta", "R_hat"], sqrt(1 + 0.3125))
   expect_equal(table[["MCMC_SD_error"]], table[["MCMC_error"]] / table[["SD"]], tolerance = 1e-12)
-  # the time-series SE of equal chains is the SD over the root effective size
-  expect_equal(table["theta", "MCMC_error"], table["theta", "SD"] / sqrt(table["theta", "ESS"]), tolerance = 0.02)
 })
 
 test_that("D9 fresh views clear fit-level posterior estimates and repeated-view metadata", {
