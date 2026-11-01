@@ -420,14 +420,15 @@ bayestools_review_new_snapshots <- function(root, review = testthat::snapshot_re
   staged_baseline  <- file.path(review_root, "_snaps", relative)
   staged_candidate <- bayestools_snapshot_candidate_path(staged_baseline)
   read_bytes <- function(file) {
-    tryCatch(readBin(file, "raw", file.size(file)), error = function(error) NULL)
+    tryCatch(suppressWarnings(readBin(file, "raw", file.size(file))), error = function(error) NULL)
   }
   copied <- function(from, to) {
     isTRUE(tryCatch(suppressWarnings(copy(from, to, overwrite = TRUE)), error = function(error) FALSE))
   }
 
-  changes$status <- "skipped"
+  changes$status  <- "skipped"
   candidate_bytes <- lapply(changes$candidate, read_bytes)
+  placeholders    <- vector("list", nrow(changes))
   for (i in seq_len(nrow(changes))) {
     placeholder <- if (grepl("[.]svg$", changes$baseline[[i]], ignore.case = TRUE)) {
       charToRaw("<svg xmlns='http://www.w3.org/2000/svg' width='720' height='576' viewBox='0 0 720 576'></svg>\n")
@@ -437,6 +438,7 @@ bayestools_review_new_snapshots <- function(root, review = testthat::snapshot_re
     if (identical(placeholder, candidate_bytes[[i]])) {
       placeholder <- c(placeholder, charToRaw("\n"))
     }
+    placeholders[[i]] <- placeholder
     dir.create(dirname(staged_baseline[[i]]), recursive = TRUE, showWarnings = FALSE)
     writeBin(placeholder, staged_baseline[[i]])
     if (is.null(candidate_bytes[[i]]) || !copied(changes$candidate[[i]], staged_candidate[[i]])) {
@@ -451,7 +453,15 @@ bayestools_review_new_snapshots <- function(root, review = testthat::snapshot_re
     if (file.exists(staged_candidate[[i]])) {
       next
     }
-    accepted <- identical(read_bytes(staged_baseline[[i]]), candidate_bytes[[i]])
+    # the decision is read from the staged baseline: the candidate's bytes
+    # (accepted) or the placeholder (rejected); anything else, an unreadable
+    # file included, keeps the candidate
+    staged <- read_bytes(staged_baseline[[i]])
+    if (!identical(staged, candidate_bytes[[i]]) && !identical(staged, placeholders[[i]])) {
+      changes$status[[i]] <- "failed to read the review decision"
+      next
+    }
+    accepted <- identical(staged, candidate_bytes[[i]])
     if (accepted) {
       dir.create(dirname(changes$baseline[[i]]), recursive = TRUE, showWarnings = FALSE)
       if (!copied(staged_baseline[[i]], changes$baseline[[i]])) {

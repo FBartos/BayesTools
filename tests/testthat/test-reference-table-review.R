@@ -394,6 +394,21 @@ test_that("new-snapshot review stages a displayable placeholder and keeps candid
   expect_identical(result$status, "failed to install")
   expect_true(file.exists(file.path(snaps, "plot.new.svg")))
   expect_false(file.exists(file.path(snaps, "plot.svg")))
+
+  # a staged baseline that cannot be read after the review keeps the candidate
+  accept_and_lock <- function(path) {
+    accept_all(path)
+    staged <- list.files(path, pattern = "[.]svg$", recursive = TRUE, full.names = TRUE)
+    unlink(staged)
+    dir.create(staged)
+  }
+  expect_warning(
+    result <- bayestools_review_new_snapshots(root, review = accept_and_lock),
+    "failed to read the review decision", fixed = TRUE
+  )
+  expect_identical(result$status, "failed to read the review decision")
+  expect_true(file.exists(file.path(snaps, "plot.new.svg")))
+  expect_false(file.exists(file.path(snaps, "plot.svg")))
 })
 
 
