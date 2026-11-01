@@ -1,3 +1,5 @@
+# The lanes of `all`; the certification lane (helper-certification-cases.R)
+# runs only when it is named.
 bayestools_known_test_profiles <- c("unit", "fixture", "visual", "visual-fixture", "fit", "cran", "meta")
 
 
@@ -180,6 +182,11 @@ bayestools_test_profile_contexts <- list(
     "interactive-test-runner",
     "reference-table-review",
     "stochastic-reference-policy"
+  ),
+  certification = c(
+    "certification-hypothesis-bayes-factors",
+    "certification-marginal-likelihood",
+    "certification-model-averaging"
   )
 )
 
@@ -219,13 +226,13 @@ bayestools_normalize_test_profiles <- function(profiles = NULL) {
     profiles <- bayestools_known_test_profiles
   }
 
-  invalid <- setdiff(profiles, bayestools_known_test_profiles)
+  invalid <- setdiff(profiles, c(bayestools_known_test_profiles, "certification"))
   if (length(invalid) > 0L) {
     stop(
       "Unknown BAYESTOOLS_TEST_PROFILE value(s): ",
       paste(invalid, collapse = ", "),
       ". Expected one or more of: all, ",
-      paste(bayestools_known_test_profiles, collapse = ", "),
+      paste(c(bayestools_known_test_profiles, "certification"), collapse = ", "),
       call. = FALSE
     )
   }

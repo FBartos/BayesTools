@@ -229,6 +229,7 @@ test_tests <- function(filter = NULL, reporter = "progress", refit = FALSE,
                        update = FALSE, update_timings = FALSE,
                        regenerate = FALSE,
                        load_package = TRUE, stop_on_failure = FALSE,
+                       certification = TRUE,
                        root = file.path(
                          .bayestools_test_project_root, "tests", "testthat"
                        )) {
@@ -245,6 +246,7 @@ test_tests <- function(filter = NULL, reporter = "progress", refit = FALSE,
     stop_on_failure,
     "stop_on_failure"
   )
+  certification   <- .bayestools_test_validate_flag(certification, "certification")
   if (!is.null(filter) &&
       (!is.character(filter) || length(filter) != 1L || is.na(filter))) {
     stop("'filter' must be NULL or one regular expression.", call. = FALSE)
@@ -333,6 +335,10 @@ test_tests <- function(filter = NULL, reporter = "progress", refit = FALSE,
       .bayestools_clean_test_cache()
     }
     results[["all"]] <- .run_bayestools_test_profile("all")
+    # the certification cases whose key changed since they last passed
+    if (certification) {
+      results[["certification"]] <- .run_bayestools_test_profile("certification")
+    }
   } else {
     if (refit) {
       .bayestools_clean_test_cache()

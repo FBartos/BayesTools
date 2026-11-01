@@ -1,12 +1,13 @@
 args <- commandArgs(trailingOnly = TRUE)
 profile <- if (length(args) > 0L && nzchar(args[[1L]])) args[[1L]] else Sys.getenv("BAYESTOOLS_TEST_PROFILE", "unit")
+run_certification_lane <- identical(tolower(profile), "certification")
 filter <- if (identical(tolower(profile), "filter")) {
   if (length(args) < 2L || !any(nzchar(args[-1L]))) {
     stop("Profile 'filter' requires one testthat filter.", call. = FALSE)
   }
   paste(args[-1L], collapse = "|")
 } else {
-  if (length(args) > 1L) {
+  if (length(args) > 1L && !run_certification_lane) {
     stop("Unexpected test-profile arguments: ", paste(args[-1L], collapse = ", "), call. = FALSE)
   }
   NULL
@@ -49,7 +50,7 @@ resolve_test_files_dir <- function() {
 
 Sys.setenv(BAYESTOOLS_TEST_FILES_DIR = resolve_test_files_dir())
 
-if (any(c("fit", "visual-fixture") %in% selected_profiles)) {
+if (any(c("fit", "visual-fixture", "certification") %in% selected_profiles)) {
   Sys.setenv(NOT_CRAN = "true")
 }
 if (any(c("visual", "visual-fixture") %in% selected_profiles)) {
@@ -133,6 +134,14 @@ reporter_object <- if (identical(reporter, "llm")) {
 }
 
 message("testthat reporter: ", reporter)
+if (run_certification_lane) {
+  source(file.path("tools", "test-certification.R"))
+  tryCatch(
+    run_certification(args[-1L], normalizePath(script_path, winslash = "/", mustWork = TRUE), reporter_object),
+    finally = report_elapsed()
+  )
+  quit(save = "no", status = 0L)
+}
 snapshot_root  <- file.path("tests", "testthat")
 snapshot_state <- bayestools_snapshot_state(snapshot_root)
 if (length(bayestools_snapshot_unreadable(snapshot_state)) > 0L) {

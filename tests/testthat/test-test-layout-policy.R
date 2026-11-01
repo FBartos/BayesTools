@@ -288,6 +288,50 @@ test_that("every test file's profile gate matches its registry lanes", {
   )
 }
 
+test_that("certification cases are registered, outside `all`, and keyed by the code they reach", {
+
+  case_files <- list.files(testthat::test_path(), pattern = "^test-certification-.*\\.R$")
+  cases      <- names(bayestools_certification_cases())
+  expect_setequal(sub("^test-certification-(.*)\\.R$", "\\1", case_files), cases)
+  expect_setequal(bayestools_test_profile_contexts$certification, paste0("certification-", cases))
+  expect_false("certification" %in% bayestools_normalize_test_profiles("all"))
+
+  # the key follows the case file into the helpers and the package objects
+  # its code reaches, and not into the rest of the package
+  helpers <- environment(bayestools_certification_key)
+  key <- bayestools_certification_key("model-averaging", helpers)
+  expect_identical(setdiff(c("case_file", "description", "r_version", "jags_version", "helper_fn_expect_equal_each",
+                             "package_fn_models_inference", "package_fn_JAGS_bridgesampling"), names(key)), character())
+  expect_false("package_fn_hypothesis_BF.BayesTools_fit" %in% names(key))
+  expect_true(any(startsWith(names(key), "package_src_")))
+  # the same key wherever the helpers are sourced (devtools::test() sources
+  # them into the attached package environment)
+  fresh <- new.env(parent = asNamespace("BayesTools"))
+  for (name in names(key)[startsWith(names(key), "helper_fn_")]) {
+    assign(sub("^helper_fn_", "", name), get(sub("^helper_fn_", "", name), envir = helpers), envir = fresh)
+  }
+  expect_identical(bayestools_certification_key("model-averaging", fresh), key)
+})
+
+
+test_that("a certification marker is current only while it holds the key", {
+
+  marker <- withr::local_tempfile(fileext = ".txt")
+  key    <- c(case_file = "a", package_fn_f = "b", helper_fn_g = "c")
+  expect_identical(bayestools_certification_state("case", key, marker)$state, "missing")
+
+  bayestools_write_certification_marker("case", key, marker)
+  state <- bayestools_certification_state("case", key, marker)
+  expect_identical(state$state, "current")
+  expect_false(is.na(state$completed_at))
+
+  changed <- bayestools_certification_state("case", c(case_file = "a", package_fn_f = "B", package_fn_h = "d"), marker)
+  expect_identical(changed$state, "stale")
+  expect_identical(changed$changed, c("helper_fn_g", "package_fn_f", "package_fn_h"))
+  expect_error(bayestools_write_certification_marker("case", c(case_file = "a\nb"), marker), "spans lines")
+})
+
+
 test_that("configure accepts only JAGS 4.x from every version source", {
 
   skip_on_cran()

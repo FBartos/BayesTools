@@ -57,7 +57,27 @@ failure. `tools/test.R` runs all lanes with the fit cache in
   keys and the fixture catalog, reference-baseline and snapshot review, the
   interactive runner, and the stochastic-reference helpers. Run it after
   changing test helpers, runners, workflows, or build scripts.
-- `all`: every profile; this is the default CI and coverage profile.
+- `all`: every profile above; this is the default CI and coverage profile.
+- `certification`: deeper numerical verification, outside `all` and CI. A case
+  is `test-certification-<case>.R`, gated by
+  `skip_if_not_test_profile("certification")` and registered in
+  `bayestools_certification_cases()` (`helper-certification-cases.R`) and in
+  the lane registry; it may fit models live and compares with exact or
+  independent references at tolerances derived from numerical or Monte Carlo
+  error. `Rscript tools/test-profile.R certification` runs the cases that are
+  not current, `certification --status` reports every case, `--all` runs all
+  cases, and `certification <case> ...` runs the named ones. Each case runs in
+  its own `--vanilla` R process with a one-hour limit and logs to
+  `<BAYESTOOLS_TEST_FILES_DIR>/certification/<case>.log`. A clean pass (no
+  failure, error, warning, or skip) whose key did not change during the run
+  writes the case's marker there. The key hashes the case file; the
+  test-helper functions and package objects its code reaches (the closure of
+  `.test_cache_reached_package_objects()`); DESCRIPTION without its version;
+  the R version; and, for a case that runs native code, the native sources and
+  the JAGS version. A case is current while its marker holds its key, so it
+  runs again when code it reaches changes. An unfiltered `test_tests()` runs
+  the cases that are not current after `all` (`certification = FALSE` skips
+  them).
 
 Start with relevant `unit` tests. Use `fixture` for cached-object behavior and
 `visual`/`visual-fixture` for affected plotting. Add `fit` before dependent
@@ -78,7 +98,7 @@ This package uses testthat edition 3. Do not add `context()`.
 - Profile routing lives in `tests/testthat/helper-test-profiles.R`.
 - Only `tests/testthat/test-00-model-fits.R` may fit ordinary models or compute
   marginal likelihoods for cached fixtures. Other tests must load cached fits;
-  the CRAN smoke fit is the one uncached exception.
+  the CRAN smoke fit and the certification cases are the uncached exceptions.
 - The expected fit catalog lives in
   `tests/testthat/helper-expected-fit-catalog.R`. Update the fitting file and
   catalog together when a new cached fit is necessary.

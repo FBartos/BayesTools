@@ -75,7 +75,7 @@ test_that("interactive runner dispatches comprehensive and filtered profiles", {
 
   expected_formals <- c(
     "filter", "reporter", "refit", "update", "update_timings",
-    "regenerate", "load_package", "stop_on_failure", "root"
+    "regenerate", "load_package", "stop_on_failure", "certification", "root"
   )
   expect_identical(names(formals(runner_env$test_tests)), expected_formals)
   expect_identical(formals(runner_env$test_tests)[["reporter"]], "progress")
@@ -127,9 +127,20 @@ test_that("interactive runner dispatches comprehensive and filtered profiles", {
   )
   expect_identical(
     vapply(calls, `[[`, character(1), "profile"),
-    "all"
+    c("all", "certification")
   )
   expect_identical(cleaned, 1L)
+
+  calls <- list()
+  runner_env$test_tests(
+    certification = FALSE,
+    load_package  = FALSE,
+    root          = testthat::test_path()
+  )
+  expect_identical(
+    vapply(calls, `[[`, character(1), "profile"),
+    "all"
+  )
 
   calls <- list()
   runner_env$test_tests(
@@ -139,7 +150,7 @@ test_that("interactive runner dispatches comprehensive and filtered profiles", {
   )
   expect_identical(
     vapply(calls, `[[`, character(1), "profile"),
-    "all"
+    c("all", "certification")
   )
   expect_identical(cleaned, 2L)
 
