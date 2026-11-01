@@ -997,9 +997,10 @@ test_that("Marginal likelihoods match for manual and automatic scaling", {
     expect_true(is.numeric(marglik_manual$logml))
     expect_true(is.numeric(marglik_auto$logml))
 
-    # The log marginal likelihoods should be very similar
-    # (both models use same scaled data internally)
-    expect_equal(marglik_manual$logml, marglik_auto$logml, tolerance = 0.1)
+    # The log marginal likelihoods should be very similar (both models use the
+    # same scaled data internally); an absolute bound, since expect_equal()
+    # compares relative to the magnitude of the log marginal likelihood
+    expect_lt(abs(marglik_manual$logml - marglik_auto$logml), 0.1)
     return(invisible())
   }
 
