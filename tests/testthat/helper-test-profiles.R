@@ -287,10 +287,12 @@ skip_if_not_visual_fixture_tests <- function() {
 
 # testthat stores a snapshot without a baseline (a new SVG or snapshot file,
 # or a new section of one) as if it were reviewed, and its cleanup deletes
-# baselines it considers unused. The runner records the reviewed snapshot files
-# before a run; afterwards every new or changed file becomes a '.new'
-# candidate, the reviewed content and any deleted file are restored, and the
-# run fails, so baselines change only through review.
+# baselines it considers unused. The runner records the snapshot files before
+# a run. Afterwards it first restores the reviewed baselines (recreating
+# directories) and removes unreviewed new ones, then keeps the run's output for
+# review: testthat's own fresh '.new' candidate when it wrote one (a changed
+# section), otherwise the new or changed file as the candidate. Every file is
+# attempted; failures are reported, and the run fails.
 bayestools_snapshot_state <- function(root) {
 
   directory <- file.path(root, "_snaps")
@@ -299,30 +301,113 @@ bayestools_snapshot_state <- function(root) {
   } else {
     character()
   }
-  files <- files[!grepl("[.]new[.][^.]+$", files)]
 
   stats::setNames(lapply(files, function(file) readBin(file, "raw", file.size(file))), files)
 }
 
+bayestools_snapshot_is_candidate <- function(files) {
+  grepl("[.]new[.][^.]+$", files)
+}
+
+bayestools_snapshot_candidate_path <- function(files) {
+  sub("([.][^.]+)$", ".new\\1", files)
+}
+
 bayestools_quarantine_snapshots <- function(root, before) {
 
-  after   <- bayestools_snapshot_state(root)
-  changed <- names(after)[vapply(names(after), function(file) {
+  after            <- bayestools_snapshot_state(root)
+  baselines_before <- names(before)[!bayestools_snapshot_is_candidate(names(before))]
+  baselines_after  <- names(after)[!bayestools_snapshot_is_candidate(names(after))]
+  changed <- baselines_after[vapply(baselines_after, function(file) {
     !identical(after[[file]], before[[file]])
   }, logical(1))]
-  deleted <- setdiff(names(before), names(after))
+  deleted <- setdiff(baselines_before, baselines_after)
 
-  for (file in changed) {
-    writeBin(after[[file]], sub("([.][^.]+)$", ".new\\1", file))
-    if (is.null(before[[file]])) {
-      unlink(file)
+  problems <- character()
+  attempt  <- function(action, file, expr) {
+    tryCatch(
+      {
+        force(expr)
+        TRUE
+      },
+      error = function(error) {
+        problems <<- c(problems, paste0(action, " ", file, ": ", conditionMessage(error)))
+        FALSE
+      }
+    )
+  }
+
+  # the reviewed state first, so a failure below cannot leave unreviewed bytes
+  for (file in c(changed, deleted)) {
+    if (file %in% baselines_before) {
+      attempt("restoring", file, {
+        dir.create(dirname(file), recursive = TRUE, showWarnings = FALSE)
+        writeBin(before[[file]], file)
+      })
     } else {
-      writeBin(before[[file]], file)
+      attempt("removing", file, if (!file.remove(file)) stop("the file could not be removed"))
     }
   }
-  for (file in deleted) {
-    writeBin(before[[file]], file)
+  for (file in changed) {
+    candidate <- bayestools_snapshot_candidate_path(file)
+    fresh <- !is.null(after[[candidate]]) && !identical(after[[candidate]], before[[candidate]])
+    if (!fresh) {
+      attempt("writing candidate", candidate, writeBin(after[[file]], candidate))
+    }
   }
 
-  list(changed = changed, deleted = deleted)
+  list(changed = changed, deleted = deleted, problems = problems)
+}
+
+# testthat's reviewer lists only candidates next to an existing baseline, so
+# candidates of new snapshots (no baseline) are reviewed against an empty
+# baseline staged in a temporary tree: accepting creates the baseline,
+# rejecting removes the candidate, and skipping keeps it.
+bayestools_new_snapshot_candidates <- function(root) {
+
+  state      <- names(bayestools_snapshot_state(root))
+  candidates <- state[bayestools_snapshot_is_candidate(state)]
+  baselines  <- sub("[.]new([.][^.]+)$", "\\1", candidates)
+  missing    <- !file.exists(baselines)
+
+  data.frame(candidate = candidates[missing], baseline = baselines[missing], stringsAsFactors = FALSE)
+}
+
+bayestools_review_new_snapshots <- function(root, review = testthat::snapshot_review) {
+
+  changes <- bayestools_new_snapshot_candidates(root)
+  if (nrow(changes) == 0L) {
+    return(invisible(cbind(changes, status = character())))
+  }
+
+  review_root <- tempfile("bayestools-new-snapshot-review-")
+  on.exit(unlink(review_root, recursive = TRUE), add = TRUE)
+  snaps    <- normalizePath(file.path(root, "_snaps"), winslash = "/", mustWork = TRUE)
+  relative <- substring(normalizePath(changes$baseline, winslash = "/", mustWork = FALSE), nchar(snaps) + 2L)
+  staged_baseline  <- file.path(review_root, "_snaps", relative)
+  staged_candidate <- bayestools_snapshot_candidate_path(staged_baseline)
+  for (i in seq_len(nrow(changes))) {
+    dir.create(dirname(staged_baseline[[i]]), recursive = TRUE, showWarnings = FALSE)
+    writeBin(raw(), staged_baseline[[i]])
+    file.copy(changes$candidate[[i]], staged_candidate[[i]])
+  }
+
+  review(path = review_root)
+
+  changes$status <- "skipped"
+  for (i in seq_len(nrow(changes))) {
+    if (file.exists(staged_candidate[[i]])) {
+      next
+    }
+    if (file.size(staged_baseline[[i]]) > 0L) {
+      dir.create(dirname(changes$baseline[[i]]), recursive = TRUE, showWarnings = FALSE)
+      file.copy(staged_baseline[[i]], changes$baseline[[i]], overwrite = TRUE)
+      changes$status[[i]] <- "accepted"
+    } else {
+      changes$status[[i]] <- "rejected"
+    }
+    file.remove(changes$candidate[[i]])
+  }
+
+  invisible(changes)
 }

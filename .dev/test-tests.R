@@ -206,6 +206,8 @@ review_test_snapshots <- function(root = file.path(
     available <- vapply(required, requireNamespace, logical(1), quietly = TRUE)
     if (all(available)) {
       testthat::snapshot_review(path = root)
+      # candidates of new snapshots have no baseline for testthat's reviewer
+      bayestools_review_new_snapshots(root)
     } else {
       message(
         "Interactive visual-snapshot review is unavailable; install: ",

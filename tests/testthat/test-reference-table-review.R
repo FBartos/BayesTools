@@ -170,7 +170,7 @@ test_that("snapshot changes from a run become candidates and reviewed files are 
   writeLines("reviewed", file.path(snaps, "deleted.md"))
   writeLines("failed comparison", file.path(snaps, "kept.new.svg"))
   before <- bayestools_snapshot_state(root)
-  expect_setequal(basename(names(before)), c("changed.svg", "kept.svg", "deleted.md"))
+  expect_setequal(basename(names(before)), c("changed.svg", "kept.svg", "deleted.md", "kept.new.svg"))
 
   # what a run can do: a new baseline, a changed one, and a cleanup deletion
   writeLines("unreviewed", file.path(snaps, "created.svg"))
@@ -180,6 +180,7 @@ test_that("snapshot changes from a run become candidates and reviewed files are 
   result <- bayestools_quarantine_snapshots(root, before)
   expect_setequal(basename(result$changed), c("created.svg", "changed.svg"))
   expect_identical(basename(result$deleted), "deleted.md")
+  expect_identical(result$problems, character())
   expect_false(file.exists(file.path(snaps, "created.svg")))
   expect_identical(readLines(file.path(snaps, "created.new.svg")), "unreviewed")
   expect_identical(readLines(file.path(snaps, "changed.svg")), "reviewed")
@@ -189,7 +190,90 @@ test_that("snapshot changes from a run become candidates and reviewed files are 
 
   # an unchanged run reports nothing
   result <- bayestools_quarantine_snapshots(root, bayestools_snapshot_state(root))
-  expect_identical(result, list(changed = character(), deleted = character()))
+  expect_identical(result, list(changed = character(), deleted = character(), problems = character()))
+})
+
+
+test_that("the snapshot guard keeps testthat's fresh candidates and restores removed directories", {
+
+  root  <- withr::local_tempdir()
+  snaps <- file.path(root, "_snaps")
+  dir.create(file.path(snaps, "sections"), recursive = TRUE)
+  dir.create(file.path(snaps, "retired"))
+  writeLines("old section", file.path(snaps, "sections", "file.md"))
+  writeLines("stale candidate", file.path(snaps, "sections", "other.new.md"))
+  writeLines("reviewed", file.path(snaps, "sections", "other.md"))
+  writeLines("obsolete", file.path(snaps, "retired", "old.svg"))
+  before <- bayestools_snapshot_state(root)
+
+  # a changed and an added section: testthat writes the added section into the
+  # baseline and its candidate holds the changed and the added section; a
+  # stale candidate beside another changed file is replaced; cleanup removes a
+  # retired directory
+  writeLines(c("old section", "added section"), file.path(snaps, "sections", "file.md"))
+  writeLines(c("changed section", "added section"), file.path(snaps, "sections", "file.new.md"))
+  writeLines("rewritten", file.path(snaps, "sections", "other.md"))
+  unlink(file.path(snaps, "retired"), recursive = TRUE)
+
+  result <- bayestools_quarantine_snapshots(root, before)
+  expect_identical(result$problems, character())
+  expect_identical(readLines(file.path(snaps, "sections", "file.md")), "old section")
+  expect_identical(readLines(file.path(snaps, "sections", "file.new.md")), c("changed section", "added section"))
+  expect_identical(readLines(file.path(snaps, "sections", "other.md")), "reviewed")
+  expect_identical(readLines(file.path(snaps, "sections", "other.new.md")), "rewritten")
+  expect_identical(readLines(file.path(snaps, "retired", "old.svg")), "obsolete")
+})
+
+
+test_that("a failed candidate write still restores the reviewed baseline and is reported", {
+
+  root  <- withr::local_tempdir()
+  snaps <- file.path(root, "_snaps", "context")
+  dir.create(snaps, recursive = TRUE)
+  writeLines("reviewed", file.path(snaps, "plot.svg"))
+  before <- bayestools_snapshot_state(root)
+
+  writeLines("unreviewed", file.path(snaps, "plot.svg"))
+  # a directory in place of the candidate makes writing it fail
+  dir.create(file.path(snaps, "plot.new.svg"))
+
+  result <- suppressWarnings(bayestools_quarantine_snapshots(root, before))
+  expect_identical(readLines(file.path(snaps, "plot.svg")), "reviewed")
+  expect_length(result$problems, 1L)
+  expect_match(result$problems, "writing candidate", fixed = TRUE)
+})
+
+
+test_that("candidates of new snapshots are reviewed against an empty baseline", {
+
+  root  <- withr::local_tempdir()
+  snaps <- file.path(root, "_snaps", "context")
+  dir.create(snaps, recursive = TRUE)
+  writeLines("accept me", file.path(snaps, "accept.new.svg"))
+  writeLines("reject me", file.path(snaps, "reject.new.md"))
+  writeLines("skip me", file.path(snaps, "skip.new.svg"))
+  writeLines("reviewed", file.path(snaps, "existing.svg"))
+  writeLines("changed", file.path(snaps, "existing.new.svg"))
+
+  expect_setequal(basename(bayestools_new_snapshot_candidates(root)$candidate),
+                  c("accept.new.svg", "reject.new.md", "skip.new.svg"))
+
+  # a stand-in for testthat's reviewer: accept moves a candidate over its
+  # staged baseline, reject deletes it, skip leaves it
+  review <- function(path) {
+    staged <- file.path(path, "_snaps", "context")
+    file.rename(file.path(staged, "accept.new.svg"), file.path(staged, "accept.svg"))
+    file.remove(file.path(staged, "reject.new.md"))
+  }
+  result <- bayestools_review_new_snapshots(root, review = review)
+  expect_identical(result$status[order(basename(result$candidate))], c("accepted", "rejected", "skipped"))
+  expect_identical(readLines(file.path(snaps, "accept.svg")), "accept me")
+  expect_false(file.exists(file.path(snaps, "accept.new.svg")))
+  expect_false(file.exists(file.path(snaps, "reject.md")))
+  expect_false(file.exists(file.path(snaps, "reject.new.md")))
+  expect_true(file.exists(file.path(snaps, "skip.new.svg")))
+  expect_false(file.exists(file.path(snaps, "skip.svg")))
+  expect_identical(readLines(file.path(snaps, "existing.new.svg")), "changed")
 })
 
 
