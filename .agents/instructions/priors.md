@@ -649,6 +649,11 @@ is cheap and keeps the numerical diagnostics that only a built grid has. A
 builder that mixes or refines grids passes `.defer = FALSE`. The density of a
 context (`.prior_density_from_context()`) defers the same grid with its own
 provenance record and builds it, with its diagnostics, on the first read.
+A built large grid is kept in the session memo (`.bt_content_memo()`, the three
+most recent grids, recognised only by `identical()` arguments including the
+refinement settings), so a second height or region probability of the same
+density does not rebuild the grids of its refinement sequence; the mass check
+and the warnings of the build run again on a hit.
 
 Heights and region probabilities require recorded provenance (the
 `adaptive_evaluation` attribute naming the prior measure): a density grid

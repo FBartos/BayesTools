@@ -4424,6 +4424,82 @@ test_that("large combinations without atoms build their numerical grid only for 
   expect_true(is.list(attr(context_eager, "numerical_diagnostics")$grid_normalization))
 })
 
+test_that("large combination grids are kept in the session memo by their arguments", {
+
+  .BayesTools_private$content_memo <- NULL
+  withr::defer(.BayesTools_private$content_memo <- NULL)
+
+  # N(0, 1) + N(0, .01) has a grid of 2^16 knots, the large size
+  priors <- list(a = prior("normal", list(0, 1)), b = prior("normal", list(0, .01)))
+  weights <- c(a = 1, b = 1)
+  builds <- 0L
+  build <- .prior_linear_combination_build
+  local_mocked_bindings(.prior_linear_combination_build = function(...){
+    builds <<- builds + 1L
+    build(...)
+  })
+  memo_size <- function() length(.BayesTools_private$content_memo$prior_linear_combination_grid)
+
+  first <- .prior_linear_combination_density(priors, weights, .defer = FALSE)
+  second <- .prior_linear_combination_density(priors, weights, .defer = FALSE)
+  expect_identical(builds, 1L)
+  expect_identical(second, first)
+  expect_identical(memo_size(), 1L)
+
+  # a deferred density of the same arguments reads the kept grid
+  deferred <- .prior_linear_combination_density(priors, weights)
+  expect_identical(.prior_linear_density_materialize(deferred), first)
+  expect_identical(builds, 1L)
+
+  # any other argument gets its own entry: weights, priors, tail probability,
+  # grid size, spacing, evaluation record and output map (a grid built from
+  # other arguments differs unless the argument leaves the grid as it is)
+  other <- list(
+    list(priors = priors, weights = c(a = 1, b = -1), differs = TRUE),
+    list(priors = list(a = priors$a, b = prior("normal", list(0, .011))), weights = weights, differs = TRUE),
+    list(priors = priors, weights = weights, tail_prob = 2e-4, differs = TRUE),
+    list(priors = priors, weights = weights, n_grid = 131072L, differs = TRUE),
+    list(priors = priors, weights = weights, grid_spacing = 1e-3, differs = FALSE),
+    list(priors = priors, weights = weights, .record_evaluation = FALSE, differs = FALSE),
+    list(priors = priors, weights = weights, output_transformation = "lin",
+         output_transformation_arguments = list(a = 1, b = 2), differs = TRUE)
+  )
+  for(i in seq_along(other)){
+    arguments <- other[[i]]
+    density <- do.call(.prior_linear_combination_density, c(
+      list(prior_list = arguments$priors, weights = arguments$weights, .defer = FALSE),
+      arguments[setdiff(names(arguments), c("priors", "weights", "differs"))]
+    ))
+    expect_identical(builds, 1L + i)
+    expect_identical(!identical(density$density, first$density), arguments$differs)
+  }
+  # the first request is dropped by the entries since: the memo is bounded
+  expect_identical(memo_size(), .prior_linear_density_grid_memo_limit())
+  expect_identical(.prior_linear_combination_density(priors, weights, .defer = FALSE), first)
+  expect_identical(builds, 9L)
+
+  # grids below the large size are not kept
+  .BayesTools_private$content_memo <- NULL
+  builds <- 0L
+  narrow <- list(a = prior("normal", list(0, 1)), b = prior("normal", list(0, .1)))
+  for(i in 1:2){
+    small <- .prior_linear_combination_density(narrow, weights)
+  }
+  expect_identical(builds, 2L)
+  expect_identical(memo_size(), 0L)
+
+  # a warning of the build is repeated when the grid is taken from the memo
+  local_mocked_bindings(.prior_linear_combination_build = function(...){
+    warning("grid warning", call. = FALSE)
+    build(...)
+  })
+  expect_warning(warned <- .prior_linear_combination_density(priors, weights, .defer = FALSE),
+                 "grid warning", fixed = TRUE)
+  expect_warning(again <- .prior_linear_combination_density(priors, weights, .defer = FALSE),
+                 "grid warning", fixed = TRUE)
+  expect_identical(again, warned)
+})
+
 # A small fitted object whose formula parameter is standardized (x), with one
 # more parameter (sigma) outside the formula.
 transformed_density_test_fit <- function(x_prior = prior("normal", list(0, 1))){
