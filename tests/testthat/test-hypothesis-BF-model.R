@@ -189,6 +189,42 @@ test_that("factor levels, vs statements, and several statements bind in order", 
 })
 
 
+test_that("whole-factor statements label each row by its level", {
+
+  # a mean-difference factor, every level of which is tested
+  set.seed(3)
+  data     <- data.frame(x = c(-2, -1, 0, 3, 5, 7), f = factor(rep(c("A", "B", "C"), 2)))
+  compiled <- JAGS_formula(~ 1 + f, "mu", data, list(
+    intercept = prior("normal", list(0, 1)),
+    f         = prior_factor("mnormal", list(mean = 0, sd = 1), contrast = "meandif")
+  ))
+  columns <- c("mu_intercept", "mu_f[1]", "mu_f[2]")
+  draws   <- matrix(stats::rnorm(400 * 3, 0.3, 0.5), 400, 3, dimnames = list(NULL, columns))
+  fit <- .parameter_catalog_test_fit(
+    coda::mcmc.list(coda::mcmc(draws)), compiled$prior_list,
+    list(mu = compiled$formula_design), list(mu = compiled$formula_scale)
+  )
+  for(statement in c("f > 0", "`f` = 0")){
+    table  <- as.data.frame(hypothesis_BF(fit, statement, seed = 1))
+    levels <- sub("^f\\[(.*)\\]$", "\\1", table$parameter)
+    expect_true(all(grepl("^f\\[.+\\]$", table$parameter)) && nrow(table) > 1L, info = statement)
+    if(identical(statement, "f > 0")){
+      expect_identical(table$Alternative, paste0("f[", levels, "] > 0"))
+      expect_identical(table$Null, paste0("f[", levels, "] <= 0"))
+    }else{
+      expect_identical(table$Alternative, paste0("f[", levels, "] != 0"))
+      expect_identical(table$Null, paste0("f[", levels, "] = 0"))
+    }
+  }
+
+  # the notation of a statement on one level: backticks when the root or the
+  # level is not syntactic, and only whole references are replaced
+  expect_identical(.hypothesis_model_level_label("f != 0", "f", "(0,1]"), "`f[(0,1]]` != 0")
+  expect_identical(.hypothesis_model_level_label("`(mu) f` > f", c("(mu) f", "f"), "a"), "`(mu) f[a]` > f[a]")
+  expect_identical(.hypothesis_model_level_label("ff + f.x + f > 0", "f", "a"), "ff + f.x + f[a] > 0")
+})
+
+
 test_that("refused statements stop with the classes of the engine", {
 
   fit <- .hypothesis_model_test_fit()

@@ -61,7 +61,8 @@
     hypothesis      = display,
     parameter_label = plan[["label"]],
     producer_parameter = plan[["parameter"]],
-    route           = plan[["route"]]
+    route           = plan[["route"]],
+    roots           = lapply(plans, function(plan) plan[["selected"]][["roots"]])
   )
 }
 
@@ -588,7 +589,7 @@
 
 .hypothesis_model_restore_hypothesis_labels <- function(
     out, hypothesis, parameter_label = NULL, producer_parameter = NULL,
-    route = "scalar") {
+    route = "scalar", roots = NULL) {
 
   if (!is.data.frame(out)) {
     return(out)
@@ -633,24 +634,39 @@
   # BayesTools expands one common quantity list in statement-major order.
   # Equal statement text still denotes separate original statement positions.
   statement_i <- rep(seq_along(statements), each = quantities_per_statement)
+  # the level of each row of a whole-factor statement ("[a]")
+  suffix <- rep("", nrow(out))
+  if (identical(route, "levels")) {
+    check_char(producer_parameter, "producer_parameter", check_length = 1L, allow_NA = FALSE)
+    producer_rows <- sub(" \\([0-9]+\\)$", "", rownames(out))
+    has_suffix <- startsWith(producer_rows, paste0(producer_parameter, "["))
+    suffix[has_suffix] <- substring(producer_rows[has_suffix], nchar(producer_parameter) + 1L)
+  }
+  # a row of a whole-factor statement is labelled by its level, as a
+  # statement on that level would be written
+  row_label <- function(display) {
+    labels <- display[statement_i]
+    if (!identical(route, "levels") || is.null(roots)) {
+      return(labels)
+    }
+    for (i in which(nzchar(suffix))) {
+      labels[[i]] <- .hypothesis_model_level_label(
+        labels[[i]], roots[[statement_i[[i]]]], sub("^\\[(.*)\\]$", "\\1", suffix[[i]])
+      )
+    }
+    labels
+  }
   if ("Alternative" %in% names(out)) {
-    out[["Alternative"]] <- display_left[statement_i]
+    out[["Alternative"]] <- row_label(display_left)
   }
   if ("Null" %in% names(out)) {
-    out[["Null"]] <- display_right[statement_i]
+    out[["Null"]] <- row_label(display_right)
   }
 
   attr(out, "hypothesis_ast") <- hypothesis
 
   if (!is.null(parameter_label)) {
     old_rownames  <- rownames(out)
-    suffix        <- rep("", length(old_rownames))
-    if (identical(route, "levels")) {
-      check_char(producer_parameter, "producer_parameter", check_length = 1L, allow_NA = FALSE)
-      producer_rows <- sub(" \\([0-9]+\\)$", "", old_rownames)
-      has_suffix <- startsWith(producer_rows, paste0(producer_parameter, "["))
-      suffix[has_suffix] <- substring(producer_rows[has_suffix], nchar(producer_parameter) + 1L)
-    }
     out <- .hypothesis_model_set_row_names(
       out       = out,
       row_names = .hypothesis_model_row_names(
@@ -662,6 +678,33 @@
   attr(out, "rownames") <- FALSE
 
   return(out)
+}
+
+
+# The label of one level of a whole-factor statement: each reference to the
+# factor ('roots', as the statement wrote them, with or without backticks)
+# becomes the reference to the level, 'root[level]', in backticks when the
+# root or the level is not syntactic (the notation of a statement on one
+# level, e.g. "f[a] = 0" or "`f[(0,1]]` = 0").
+.hypothesis_model_level_label <- function(label, roots, level) {
+
+  roots <- unique(roots[!is.na(roots) & nzchar(roots)])
+  for (root in roots[order(-nchar(roots))]) {
+    syntactic <- identical(make.names(root), root) && grepl("^[A-Za-z0-9._]+$", level)
+    reference <- if (syntactic) {
+      paste0(root, "[", level, "]")
+    } else {
+      paste0("`", root, "[", level, "]`")
+    }
+    escaped <- gsub("([][{}()+*^$|\\\\?.])", "\\\\\\1", root)
+    label <- gsub(paste0("`", escaped, "`"), reference, label, fixed = FALSE)
+    label <- gsub(
+      paste0("(?<![A-Za-z0-9._`])", escaped, "(?![A-Za-z0-9._`\\[])"),
+      reference, label, perl = TRUE
+    )
+  }
+
+  label
 }
 
 
