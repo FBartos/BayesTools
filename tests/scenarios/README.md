@@ -70,6 +70,15 @@ and SVG baselines.
   requires `vdiffr`. `scenario_agreement_plot()` draws estimate-minus-reference
   differences against the reference with a band of 0.1 reference SD.
 - `scenario_time()` times a block without storing its value.
+- Comparisons with other software share small helpers:
+  `scenario_comparison_table()` lists reference values (such as lme4 or
+  metafor estimates, or an exact reference) and posterior summaries of draws
+  (BayesTools, brms) parameter by parameter, `scenario_draws()` selects and
+  relabels draws for it, `scenario_bf_table()` and `scenario_log_bf_bridge()`
+  tabulate log Bayes factors by method, and `scenario_prediction_table()`
+  merges point predictions and prediction draws with their data rows.
+  Scenarios that compare with brms, metafor, or ape need those packages
+  installed.
 
 `scenario_text()` and `scenario_plot()` each reset the random seed to 1 before
 evaluating an artifact. Text under `results/`, SVG files under `_snaps/`, and

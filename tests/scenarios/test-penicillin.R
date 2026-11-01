@@ -86,30 +86,21 @@ testthat::test_that("Penicillin crossed random intercepts", {
       sd_sample    = lme4_sd[["sample"]],
       allocation_summaries(lme4_sd[["plate"]], lme4_sd[["sample"]])[1L, ]
     )
-    posterior_summary <- function(draws) {
-      c(estimate = mean(draws), median = stats::median(draws),
-        lCI = unname(stats::quantile(draws, 0.025)), uCI = unname(stats::quantile(draws, 0.975)))
-    }
+    sd_columns <- c(
+      intercept = "(mu) intercept", sigma = "sigma",
+      sd_plate = "(mu) plate: sd(intercept)", sd_sample = "(mu) sample: sd(intercept)"
+    )
+    independent_draws <- scenario_draws(samples_independent, sd_columns)
     independent_draws <- cbind(
-      samples_independent[, c("(mu) intercept", "sigma", "(mu) plate: sd(intercept)", "(mu) sample: sd(intercept)")],
-      allocation_summaries(samples_independent[, "(mu) plate: sd(intercept)"], samples_independent[, "(mu) sample: sd(intercept)"])
+      independent_draws, allocation_summaries(independent_draws[, "sd_plate"], independent_draws[, "sd_sample"])
     )
-    allocation_draws <- samples_allocation[, c(
-      "(mu) intercept", "sigma", "(mu) plate: sd(intercept)", "(mu) sample: sd(intercept)",
-      "(mu) total_re: sd_total", "(mu) total_re: var_prop(plate)"
-    )]
-    comparison <- rbind(
-      data.frame(fit = "lme4", parameter = names(lme4_values), estimate = unname(lme4_values),
-                 median = NA_real_, lCI = NA_real_, uCI = NA_real_),
-      data.frame(fit = "independent", parameter = names(lme4_values),
-                 t(apply(independent_draws, 2, posterior_summary)), row.names = NULL),
-      data.frame(fit = "allocation", parameter = names(lme4_values),
-                 t(apply(allocation_draws, 2, posterior_summary)), row.names = NULL)
+    allocation_draws <- scenario_draws(samples_allocation, c(
+      sd_columns, sd_total = "(mu) total_re: sd_total", var_prop_plate = "(mu) total_re: var_prop(plate)"
+    ))
+    scenario_comparison_table(
+      names(lme4_values), references = list(lme4 = lme4_values),
+      posteriors = list(independent = independent_draws, allocation = allocation_draws), label = "fit"
     )
-    comparison[, 3:6] <- round(comparison[, 3:6], 3)
-    comparison <- comparison[order(match(comparison$parameter, names(lme4_values))), ]
-    rownames(comparison) <- NULL
-    comparison
   })
 
   ### random effects and fitted values ----

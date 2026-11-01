@@ -1848,6 +1848,114 @@ scenario_agreement_plot <- function(reference, estimate, main = "",
 }
 
 
+# Posterior mean, median, and central 95% interval of one parameter's draws.
+scenario_posterior_summary <- function(draws) {
+
+  return(c(
+    estimate = mean(draws), median = stats::median(draws),
+    lCI = unname(stats::quantile(draws, 0.025)),
+    uCI = unname(stats::quantile(draws, 0.975))
+  ))
+}
+
+
+# Select posterior draws and rename them to comparison labels: `columns` maps
+# the labels (names) to the columns of `draws` (values).
+scenario_draws <- function(draws, columns) {
+
+  draws   <- as.matrix(draws)
+  missing <- setdiff(columns, colnames(draws))
+  if (length(missing) > 0L) {
+    stop("Draws lack the columns: ", paste(missing, collapse = ", "), ".",
+         call. = FALSE)
+  }
+  draws <- draws[, unname(columns), drop = FALSE]
+  colnames(draws) <- names(columns)
+
+  return(draws)
+}
+
+
+# Compare sources parameter by parameter: one row per parameter and source,
+# first the point values of `references` (named numeric vectors, such as ML
+# estimates or an exact reference), then the posterior summaries of
+# `posteriors` (draws matrices named by `parameters`; absent columns give NA).
+scenario_comparison_table <- function(parameters, references = list(),
+                                      posteriors = list(), label = "source",
+                                      digits = 3) {
+
+  reference_rows <- lapply(names(references), function(source) {
+    data.frame(source = source, parameter = parameters,
+               estimate = unname(references[[source]][parameters]),
+               median = NA_real_, lCI = NA_real_, uCI = NA_real_)
+  })
+  posterior_rows <- lapply(names(posteriors), function(source) {
+    draws <- posteriors[[source]]
+    summaries <- t(vapply(parameters, function(parameter) {
+      if (parameter %in% colnames(draws)) {
+        scenario_posterior_summary(draws[, parameter])
+      } else {
+        c(estimate = NA_real_, median = NA_real_, lCI = NA_real_, uCI = NA_real_)
+      }
+    }, numeric(4)))
+    data.frame(source = source, parameter = parameters, summaries,
+               row.names = NULL)
+  })
+  out <- do.call(rbind, c(reference_rows, posterior_rows))
+  out[, 3:6] <- round(out[, 3:6], digits)
+  out <- out[order(match(out$parameter, parameters)), ]
+  rownames(out) <- NULL
+  names(out)[1L] <- label
+
+  return(out)
+}
+
+
+# Log Bayes factor of two bridge-sampling marginal likelihoods; positive
+# values favour the first.
+scenario_log_bf_bridge <- function(marglik_1, marglik_0) {
+
+  return(bridgesampling::bf(marglik_1, marglik_0, log = TRUE)[["bf"]])
+}
+
+
+# One row per method of a test of H1 against H0, as log BF10 (positive values
+# favour H1).
+scenario_bf_table <- function(H1, H0, log_BF10, note = "") {
+
+  return(data.frame(H1 = H1, H0 = H0, method = names(log_BF10),
+                    log_BF10 = round(unname(log_BF10), 3), note = note))
+}
+
+
+# Merge predictions with their data rows: a numeric vector adds one column; a
+# matrix of draws with one row per data row adds its mean and SD.
+scenario_prediction_table <- function(data, predictions, digits = 3) {
+
+  out <- data
+  for (name in names(predictions)) {
+    value <- predictions[[name]]
+    if (is.matrix(value)) {
+      if (nrow(value) != nrow(data)) {
+        stop("Prediction '", name, "' must have one row per data row.",
+             call. = FALSE)
+      }
+      out[[name]] <- round(rowMeans(value), digits)
+      out[[paste0(name, " sd")]] <- round(apply(value, 1, stats::sd), digits)
+    } else {
+      if (length(value) != nrow(data)) {
+        stop("Prediction '", name, "' must have one value per data row.",
+             call. = FALSE)
+      }
+      out[[name]] <- round(value, digits)
+    }
+  }
+  rownames(out) <- NULL
+
+  return(out)
+}
+
+
 .scenario_artifacts_in_file <- function(path) {
 
   artifacts <- list(
