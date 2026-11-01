@@ -12,7 +12,7 @@ fit	fit_gun_null	16.640000000	0.595410	4.6.0	Windows/x86_64-w64-mingw32
 fit	fit_gun_ordered	34.310000000	0.595410	4.6.0	Windows/x86_64-w64-mingw32
 fit	fit_gun_spike	5.230000000	0.571191	4.6.0	Windows/x86_64-w64-mingw32
 fit	fit_gun_unordered	24.460000000	0.595313	4.6.0	Windows/x86_64-w64-mingw32
-fit	reference_gun	8.570000000	1.048828	4.6.0	Windows/x86_64-w64-mingw32
+fit	reference_gun	8.570000000	0.841797	4.6.0	Windows/x86_64-w64-mingw32
 fit_model	fit_cake_linear	7.780000000	NA	4.6.0	Windows/x86_64-w64-mingw32
 fit_model	fit_cake_ordered	32.370000000	NA	4.6.0	Windows/x86_64-w64-mingw32
 fit_model	fit_cake_unordered	7.920000000	NA	4.6.0	Windows/x86_64-w64-mingw32
@@ -26,13 +26,13 @@ fit_marglik	fit_gun_null	14.860000000	NA	4.6.0	Windows/x86_64-w64-mingw32
 fit_marglik	fit_gun_ordered	29.080000000	NA	4.6.0	Windows/x86_64-w64-mingw32
 fit_marglik	fit_gun_unordered	20.100000000	NA	4.6.0	Windows/x86_64-w64-mingw32
 text	bayes-factor-cake	0.000000000	0.659863	4.6.0	Windows/x86_64-w64-mingw32
-text	bayes-factor-gun	0.150000000	0.724805	4.6.0	Windows/x86_64-w64-mingw32
+text	bayes-factor-gun	0.130000000	0.696484	4.6.0	Windows/x86_64-w64-mingw32
 text	comparison-cake-temperature	0.530000000	1.006055	4.6.0	Windows/x86_64-w64-mingw32
 text	comparison-gun-physique	0.530000000	0.721875	4.6.0	Windows/x86_64-w64-mingw32
-text	estimates-cake-ordered-levels	2.620000000	0.984375	4.6.0	Windows/x86_64-w64-mingw32
+text	estimates-cake-ordered-levels	2.360000000	0.984375	4.6.0	Windows/x86_64-w64-mingw32
 text	estimates-gun-ordered	1.300000000	0.625879	4.6.0	Windows/x86_64-w64-mingw32
-text	estimates-gun-ordered-levels	1.790000000	0.877832	4.6.0	Windows/x86_64-w64-mingw32
-text	hypotheses-gun-ordered	4.440000000	0.964844	4.6.0	Windows/x86_64-w64-mingw32
+text	estimates-gun-ordered-levels	1.450000000	0.743750	4.6.0	Windows/x86_64-w64-mingw32
+text	hypotheses-gun-ordered	2.220000000	0.859863	4.6.0	Windows/x86_64-w64-mingw32
 text	inference-gun-spike	0.070000000	0.629590	4.6.0	Windows/x86_64-w64-mingw32
 text	predictions-gun	0.210000000	0.726562	4.6.0	Windows/x86_64-w64-mingw32
 plot	level-effects	0.700000000	0.978613	4.6.0	Windows/x86_64-w64-mingw32
