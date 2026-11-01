@@ -661,11 +661,13 @@ prior_mixture <- function(prior_list, is_null = rep(FALSE, length(prior_list)), 
     priors_type <- .get_prior_factor_list_type(prior_list)
 
     # change prior none/scalar spikes into factor prior spikes (an explicit
-    # point factor prior keeps its declared contrast)
+    # point factor prior keeps its declared contrast); a 'multiply_by'
+    # attribute is kept so that formula validation can refuse it
     for(i in seq_along(prior_list)){
       if(is.prior.point(prior_list[[i]]) && !is.prior.factor(prior_list[[i]])){
         # Save mixture metadata before recreating the factor-compatible prior.
         component_attr <- attr(prior_list[[i]], "component", exact = TRUE)
+        multiply_by    <- attr(prior_list[[i]], "multiply_by", exact = TRUE)
         prior_weight   <- .prior_model_weight(prior_list[[i]])
         prior_list[[i]] <- prior_factor(
           distribution = "point",
@@ -673,10 +675,12 @@ prior_mixture <- function(prior_list, is_null = rep(FALSE, length(prior_list)), 
           prior_weights = prior_weight,
           contrast     = gsub("prior.", "", priors_type[["class"]], fixed = TRUE)
         )
-        attr(prior_list[[i]], "component") <- component_attr
+        attr(prior_list[[i]], "component")   <- component_attr
+        attr(prior_list[[i]], "multiply_by") <- multiply_by
       }else if(is.prior.none(prior_list[[i]])){
         # Save mixture metadata before recreating the factor-compatible prior.
         component_attr <- attr(prior_list[[i]], "component", exact = TRUE)
+        multiply_by    <- attr(prior_list[[i]], "multiply_by", exact = TRUE)
         prior_weight   <- .prior_model_weight(prior_list[[i]])
         prior_list[[i]] <- prior_factor(
           distribution = "point",
@@ -684,7 +688,8 @@ prior_mixture <- function(prior_list, is_null = rep(FALSE, length(prior_list)), 
           prior_weights = prior_weight,
           contrast     = gsub("prior.", "", priors_type[["class"]], fixed = TRUE)
         )
-        attr(prior_list[[i]], "component") <- component_attr
+        attr(prior_list[[i]], "component")   <- component_attr
+        attr(prior_list[[i]], "multiply_by") <- multiply_by
       }
     }
 
@@ -716,11 +721,13 @@ prior_mixture <- function(prior_list, is_null = rep(FALSE, length(prior_list)), 
     for(i in seq_along(prior_list)){
       if(is.prior.none(prior_list[[i]])){
         prior_weight <- .prior_model_weight(prior_list[[i]])
+        multiply_by  <- attr(prior_list[[i]], "multiply_by", exact = TRUE)
         prior_list[[i]] <- prior(
           distribution = "point",
           parameters   = list(location = 0),
           prior_weights = prior_weight
         )
+        attr(prior_list[[i]], "multiply_by") <- multiply_by
       }
     }
 

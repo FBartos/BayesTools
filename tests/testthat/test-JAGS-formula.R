@@ -456,6 +456,27 @@ test_that("JAGS_formula rejects a multiplier on a component of a mixture prior",
     )),
     "intercept priors cannot be scaled", fixed = TRUE
   )
+  # also on point and none components, which prior_mixture() converts
+  scaled_point <- prior("point", list(location = 2))
+  attr(scaled_point, "multiply_by") <- "sigma"
+  scaled_none <- prior_none()
+  attr(scaled_none, "multiply_by") <- "sigma"
+  expect_error(
+    JAGS_formula(~ 1 + f, "mu", data, list(
+      intercept = unit, f = prior_mixture(list(prior_factor("normal", list(0, 1), contrast = "treatment"), scaled_point))
+    )),
+    message("f"), fixed = TRUE
+  )
+  expect_error(
+    JAGS_formula(~ 1 + f, "mu", data, list(
+      intercept = unit, f = prior_mixture(list(prior_factor("normal", list(0, 1), contrast = "treatment"), scaled_none))
+    )),
+    message("f"), fixed = TRUE
+  )
+  expect_error(
+    JAGS_formula(~ 1 + x, "mu", data, list(intercept = unit, x = prior_mixture(list(unit, scaled_none)))),
+    message("x"), fixed = TRUE
+  )
 
   # on the spike-and-slab prior the multiplier scales the term
   spike <- prior_spike_and_slab(unit)
