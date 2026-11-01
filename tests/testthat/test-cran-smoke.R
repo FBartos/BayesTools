@@ -11,8 +11,11 @@ test_that("native routines and S3 methods are registered", {
   registered <- getDLLRegisteredRoutines(dll)[[".Call"]]
   expect_setequal(.BayesTools_native_symbols(), names(registered))
 
-  # columns: generic, class, method, and the package of a foreign generic
-  methods  <- getNamespaceInfo("BayesTools", "S3methods")
+  # columns: generic, class, method, and the package of a foreign generic. The
+  # declarations come from the NAMESPACE file: tests that register mock methods
+  # at run time add rows holding functions to the live namespace table
+  path     <- find.package("BayesTools")
+  methods  <- parseNamespaceFile(basename(path), dirname(path))[["S3methods"]]
   resolved <- vapply(seq_len(nrow(methods)), function(i){
     owner <- if(is.na(methods[i, 4L])) "BayesTools" else methods[i, 4L]
     !is.null(getS3method(methods[i, 1L], methods[i, 2L], optional = TRUE,
