@@ -5,8 +5,9 @@
 # after a clean pass (no failure, error, warning, or skip), writes a marker
 # holding the case's key (bayestools_certification_key()). A case whose key
 # matches its marker is current and runs again only when requested by name or
-# with --all. 'native' marks a case that runs native code (JAGS fits), whose
-# key includes the native sources and the JAGS version.
+# with --all. 'native' marks a case that runs JAGS, whose key includes the
+# native sources and the JAGS version; a case that reaches a package function
+# calling a native routine includes the native sources without it.
 bayestools_certification_cases <- function() {
   list(
     `density-kernels` = list(
@@ -84,8 +85,9 @@ bayestools_certification_marker_file <- function(case,
 # that its code and the package's load hooks (which every run executes)
 # reach; the package DESCRIPTION without its version
 # (.test_cache_description_md5()); the R version; and, for a case that runs
-# native code, the native sources and the JAGS version. 'helper_env' holds the
-# test helpers as testthat sources them.
+# JAGS or reaches a package function that calls a native routine, the native
+# sources (and, for JAGS, its version). 'helper_env' holds the test helpers as
+# testthat sources them.
 bayestools_certification_key <- function(case, helper_env,
                                          test_dir = testthat::test_path(),
                                          namespace = asNamespace("BayesTools")) {
@@ -117,14 +119,18 @@ bayestools_certification_key <- function(case, helper_env,
     stats::setNames(helper_hashes, paste0("helper_fn_", closure$helpers)),
     stats::setNames(package_hashes, paste0(package_prefix, reached))
   )
-  if (isTRUE(cases[[case]]$native)) {
+  runs_jags    <- isTRUE(cases[[case]]$native)
+  calls_native <- any(vapply(package_objects, function(object) {
+    is.function(object) && any(c(".Call", ".External") %in% all.names(body(object)))
+  }, logical(1)))
+  if (runs_jags || calls_native) {
     native_files <- .test_cache_package_src_files(
       files    = c("Makevars.in", "Makevars.win", "Makevars.win.common", "Makevars.ucrt"),
       patterns = "\\.(c|cc|h)$"
     )
     key <- c(
       key,
-      jags_version = as.character(rjags::jags.version()),
+      if (runs_jags) c(jags_version = as.character(rjags::jags.version())),
       vapply(native_files, .test_cache_file_md5, character(1))
     )
   }

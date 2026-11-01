@@ -314,6 +314,12 @@ test_that("certification cases are registered, outside `all`, and keyed by the c
     assign(sub("^helper_fn_", "", name), get(sub("^helper_fn_", "", name), envir = helpers), envir = fresh)
   }
   expect_identical(bayestools_certification_key("model-averaging", fresh), key)
+
+  # a case without JAGS that reaches native routines (prior densities) keys
+  # the native sources but not the JAGS version
+  density_key <- bayestools_certification_key("density-kernels", helpers)
+  expect_true(any(startsWith(names(density_key), "package_src_")))
+  expect_false("jags_version" %in% names(density_key))
 })
 
 

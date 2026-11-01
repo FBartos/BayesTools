@@ -73,8 +73,9 @@ failure. `tools/test.R` runs all lanes with the fit cache in
   writes the case's marker there. The key hashes the case file; the
   test-helper functions and package objects its code reaches (the closure of
   `.test_cache_reached_package_objects()`); DESCRIPTION without its version;
-  the R version; and, for a case that runs native code, the native sources and
-  the JAGS version. A case is current while its marker holds its key, so it
+  the R version; and, for a case that runs JAGS (`native = TRUE`) or reaches a
+  package function that calls a native routine, the native sources (and the
+  JAGS version for JAGS). A case is current while its marker holds its key, so it
   runs again when code it reaches changes. An unfiltered `test_tests()` runs
   the cases that are not current after `all` (`certification = FALSE` skips
   them).
