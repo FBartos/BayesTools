@@ -1,0 +1,10 @@
+                                        Mean    SD 0.025   0.5 0.975 error(MCMC) error(MCMC)/SD  ESS R-hat
+(mu) intercept                         0.181 0.090 0.003 0.180 0.362     0.00099          0.011 8686 1.000
+(mu) school_district: sd(intercept)    0.188 0.031 0.133 0.187 0.254     0.00064          0.021 2408 1.002
+(mu) school_district: var(intercept)   0.036 0.012 0.018 0.035 0.065     0.00025          0.021 2375 1.002
+(mu) heterogeneity: sd_total           0.328 0.061 0.236 0.318 0.476     0.00184          0.030 1127 1.005
+(mu) heterogeneity: var_total          0.112 0.045 0.056 0.101 0.227     0.00145          0.032 1031 1.006
+(mu) heterogeneity: var_prop(district) 0.641 0.139 0.334 0.657 0.869     0.00420          0.030 1107 1.003
+(mu) heterogeneity: var_prop(school)   0.359 0.139 0.131 0.343 0.666     0.00420          0.030 1107 1.003
+(mu) district: sd(intercept)           0.264 0.073 0.150 0.254 0.434     0.00234          0.032  965 1.005
+(mu) district: var(intercept)          0.075 0.044 0.023 0.065 0.189     0.00148          0.034  912 1.006
