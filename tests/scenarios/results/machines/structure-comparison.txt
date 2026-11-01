@@ -1,0 +1,9 @@
+  structure lme4_logLik exact_logml BayesTools_logml brms_logml BayesTools_log_BF_vs_us brms_log_BF_vs_us
+1        us       4.593          NA          -13.288    -13.323                   0.000             0.000
+2     slope       4.593          NA          -12.148    -12.349                   1.140             0.974
+3   meandif          NA          NA          -12.102         NA                   1.186                NA
+4      diag      -1.011     -14.094          -14.022    -14.081                  -0.735            -0.758
+5        id      -3.173     -13.935          -13.897    -13.995                  -0.609            -0.672
+6        cs       0.167     -12.400          -12.367         NA                   0.921                NA
+7       hcs       4.053     -11.886          -12.150         NA                   1.137                NA
+8    nested       0.167     -12.265          -12.210    -11.671                   1.077             1.652

@@ -77,6 +77,10 @@ and SVG baselines.
   relabels draws for it, `scenario_bf_table()` and `scenario_log_bf_bridge()`
   tabulate log Bayes factors by method, and `scenario_prediction_table()`
   merges point predictions and prediction draws with their data rows.
+  `scenario_gaussian_logml()` gives a reference log marginal likelihood for
+  Gaussian mixed models with N(0, 1) coefficient and half-normal SD priors by
+  integrating the coefficients and random effects analytically and
+  importance-sampling the variance parameters.
   Scenarios that compare with brms, metafor, or ape need those packages
   installed.
 

@@ -1,0 +1,8 @@
+  Machine   lme4 us zero us zero sd us sample us sample sd us brms us brms sd cs sample cs sample sd nested sample nested sample sd nested brms
+1       A -0.903  -0.743      0.294    -0.745        0.770  -0.753      0.751    -0.690        0.899        -0.687            0.978      -0.693
+2       B  0.083  -0.015      0.444    -0.025        1.241  -0.004      1.260     0.085        0.905         0.096            0.987       0.107
+3       C  0.820   0.698      0.298     0.697        0.784   0.704      0.798     0.797        0.905         0.799            0.992       0.802
+  nested brms sd
+1          0.997
+2          1.007
+3          1.008

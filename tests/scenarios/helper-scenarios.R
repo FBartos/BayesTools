@@ -1928,6 +1928,50 @@ scenario_bf_table <- function(H1, H0, log_BF10, note = "") {
 }
 
 
+# Reference log marginal likelihood of a Gaussian mixed model whose fixed
+# coefficients have independent N(0, 1) priors and whose SDs have
+# half-normal(0, `sd_prior_sd`) priors. With the coefficients and the random
+# effects integrated out, y | theta ~ N(0, X X' + covariance(theta)), where
+# `covariance(theta)` includes the residual variance, so only the variance
+# parameters theta remain. They are importance-sampled from a multivariate t
+# (5 df) fitted to the posterior `draws` (columns in theta order) on the log
+# scale of the SDs and the logit scale of the correlations named in
+# `correlation_bounds`, whose uniform priors on (lower, upper) are logistic
+# there. Returns the log marginal likelihood and its relative standard error.
+scenario_gaussian_logml <- function(y, X, covariance, draws,
+                                    correlation_bounds = list(),
+                                    sd_prior_sd = 1, size = 20000L) {
+
+  XX     <- tcrossprod(X)
+  is_cor <- colnames(draws) %in% names(correlation_bounds)
+  lower  <- vapply(colnames(draws)[is_cor], function(name) correlation_bounds[[name]][[1L]], numeric(1))
+  upper  <- vapply(colnames(draws)[is_cor], function(name) correlation_bounds[[name]][[2L]], numeric(1))
+
+  U <- as.matrix(draws)
+  U[, !is_cor] <- log(U[, !is_cor])
+  U[, is_cor]  <- stats::qlogis(t((t(U[, is_cor, drop = FALSE]) - lower) / (upper - lower)))
+  center <- colMeans(U)
+  scale  <- 1.5 * stats::cov(U)
+  proposals <- mvtnorm::rmvt(size, sigma = scale, df = 5, delta = center, type = "shifted")
+  log_q     <- mvtnorm::dmvt(proposals, delta = center, sigma = scale, df = 5, log = TRUE, type = "shifted")
+
+  log_w <- vapply(seq_len(size), function(i) {
+    u     <- proposals[i, ]
+    theta <- exp(u)
+    theta[is_cor] <- lower + (upper - lower) * stats::plogis(u[is_cor])
+    mvtnorm::dmvnorm(y, sigma = XX + covariance(theta), log = TRUE) +
+      sum(log(2) + stats::dnorm(theta[!is_cor], sd = sd_prior_sd, log = TRUE) + u[!is_cor]) +
+      sum(stats::dlogis(u[is_cor], log = TRUE))
+  }, numeric(1)) - log_q
+  weights <- exp(log_w - max(log_w))
+
+  return(c(
+    logml = max(log_w) + log(mean(weights)),
+    relative_se = stats::sd(weights) / sqrt(size) / mean(weights)
+  ))
+}
+
+
 # Merge predictions with their data rows: a numeric vector adds one column; a
 # matrix of draws with one row per data row adds its mean and SD.
 scenario_prediction_table <- function(data, predictions, digits = 3) {
