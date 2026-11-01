@@ -114,6 +114,43 @@ test_that("D9 estimates use supplied two-chain geometry and preserve diagnostic 
   expect_identical(view$original_fit, fit)
 })
 
+test_that("estimates diagnostics match known-answer chains parameter by parameter", {
+
+  # four stationary AR(1) chains per parameter: theta with phi = 0.5 and equal
+  # chains, eta with phi = 0.9 and chain means 0, 0.5, 1, 1.5. The effective
+  # sample size of a stationary AR(1) chain is n (1 - phi) / (1 + phi) per
+  # chain; coda's estimate scatters by 3-4.5% (SD over 100 replicates of this
+  # design), so 0.2 is about five SDs. Equal chains give R-hat <= 1.002 in those
+  # replicates; the shifted means give a population R-hat of at least
+  # sqrt(1 + 0.3125), so a wrong chain split or column mapping fails
+  set.seed(1)
+  n   <- 5000L
+  ar1 <- function(phi) {
+    x <- numeric(n)
+    x[1L] <- stats::rnorm(1L)
+    innovation <- stats::rnorm(n, sd = sqrt(1 - phi^2))
+    for (i in 2:n) x[i] <- phi * x[i - 1L] + innovation[i]
+    x
+  }
+  draws <- coda::mcmc.list(lapply(0:3, function(chain) {
+    coda::mcmc(cbind(theta = ar1(0.5), eta = ar1(0.9) + 0.5 * chain))
+  }))
+  fit <- .draws_view_fit_for_test()
+  fit$mcmc    <- draws
+  fit$monitor <- c("theta", "eta")
+  attr(fit, "prior_list") <- list(theta = prior("normal", list(0, 1)), eta = prior("normal", list(0, 1)))
+  fit   <- attach_test_parameter_map(fit)
+  table <- JAGS_estimates_table(JAGS_with_draws(fit, draws))
+
+  expected_ess <- 4 * n * c(theta = (1 - 0.5) / (1 + 0.5), eta = (1 - 0.9) / (1 + 0.9))
+  expect_equal(table[c("theta", "eta"), "ESS"] / expected_ess, c(1, 1), tolerance = 0.2, ignore_attr = TRUE)
+  expect_lt(table["theta", "R_hat"], 1.01)
+  expect_gt(table["eta", "R_hat"], sqrt(1 + 0.3125))
+  expect_equal(table[["MCMC_SD_error"]], table[["MCMC_error"]] / table[["SD"]], tolerance = 1e-12)
+  # the time-series SE of equal chains is the SD over the root effective size
+  expect_equal(table["theta", "MCMC_error"], table["theta", "SD"] / sqrt(table["theta", "ESS"]), tolerance = 0.02)
+})
+
 test_that("D9 fresh views clear fit-level posterior estimates and repeated-view metadata", {
 
   fit <- .draws_view_fit_for_test()
