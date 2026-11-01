@@ -997,8 +997,17 @@
   cache <- attr(deferred, "cache", exact = TRUE)
   if(is.null(cache$value)){
     arguments <- attr(deferred, "arguments", exact = TRUE)
+    # a deferred grid kept from before the kinds were recorded is a row mixture
+    kind <- attr(deferred, "kind", exact = TRUE)
+    if(is.null(kind)){
+      kind <- "rows"
+    }
+    if(!is.character(kind) || length(kind) != 1L ||
+       !kind %in% c("rows", "combination", "context")){
+      stop("The deferred prior-density grid has an unknown kind.", call. = FALSE)
+    }
     value <- switch(
-      attr(deferred, "kind", exact = TRUE),
+      kind,
       "rows"        = do.call(.prior_density_rows_grid, arguments),
       "combination" = do.call(.prior_linear_combination_grid, arguments),
       "context"     = do.call(.prior_density_from_context, c(arguments, list(.defer = FALSE)))
@@ -1015,11 +1024,16 @@
 }
 
 # The density with its numerical grid built (the density itself when its grid
-# is not deferred).
+# is not deferred). The built density keeps the attributes its producer added
+# to the deferred one (e.g. those of JAGS_formula_prior_density()).
 .prior_linear_density_materialize <- function(x){
 
   if(.prior_linear_density_is_deferred(x)){
-    return(.prior_linear_density_deferred_value(.subset2(x, "density")))
+    value <- .prior_linear_density_deferred_value(.subset2(x, "density"))
+    for(name in setdiff(names(attributes(x)), names(attributes(value)))){
+      attr(value, name) <- attr(x, name, exact = TRUE)
+    }
+    return(value)
   }
   x
 }

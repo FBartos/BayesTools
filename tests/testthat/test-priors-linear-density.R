@@ -4334,6 +4334,34 @@ test_that("row mixtures without atoms build their numerical grid only for grid c
                         "prior_linear_density_deferred"))
 })
 
+test_that("materialized deferred grids keep their producer's attributes and kept row mixtures build", {
+
+  priors  <- list(a = prior("normal", list(0, 1)), b = prior("normal", list(0, .01)))
+  weights <- c(a = 1, b = 1)
+  eager    <- .prior_linear_combination_density(priors, weights, .defer = FALSE)
+  deferred <- .prior_linear_combination_density(priors, weights)
+  expect_true(.prior_linear_density_is_deferred(deferred))
+  # a producer's attribute (as JAGS_formula_prior_density() adds) stays
+  attr(deferred, "producer_target") <- "mu_x"
+  built <- .prior_linear_density_materialize(deferred)
+  expect_identical(attr(built, "producer_target"), "mu_x")
+  attr(built, "producer_target") <- NULL
+  expect_identical(built, eager)
+
+  # a deferred row mixture kept from before the kinds were recorded
+  # (each from a fresh object, whose grid is not yet built)
+  context <- .prior_density_build_context(priors, names(priors), n_grid = 256L)
+  rows    <- rbind(c(a = 1, b = 1), c(a = 1, b = 2))
+  eager_rows <- .prior_linear_density_materialize(.prior_density_from_context_rows(context, rows))
+  kept <- .prior_density_from_context_rows(context, rows)
+  expect_true(.prior_linear_density_is_deferred(kept))
+  attr(kept$density, "kind") <- NULL
+  expect_identical(.prior_linear_density_materialize(unserialize(serialize(kept, NULL))), eager_rows)
+  other <- .prior_density_from_context_rows(context, rows)
+  attr(other$density, "kind") <- "other"
+  expect_error(.prior_linear_density_materialize(other), "unknown kind", fixed = TRUE)
+})
+
 test_that("large combinations without atoms build their numerical grid only for grid consumers", {
 
   # N(0, 1) + N(0, .01): the narrow source sets 64 knots per robust scale
