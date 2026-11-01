@@ -153,6 +153,31 @@ testthat::test_that("Konstantopoulos three-level meta-analysis", {
     )
   })
 
+  ### exact marginal likelihoods ----
+  # with the pooled effect (N(0, 1)) and the random effects integrated out,
+  # the marginal likelihoods are integrals over the half-normal(0, 0.5) SDs,
+  # which importance sampling evaluates
+  exact_logml <- scenario_fit("exact_marglik", {
+    same_district <- outer(dat$district, dat$district, "==") * 1
+    same_school   <- same_district * outer(dat$school, dat$school, "==")
+    sampling      <- diag(dat$vi)
+    pooled        <- matrix(1, nrow(dat))
+    set.seed(1)
+    c(
+      three_level = scenario_gaussian_logml(
+        dat$yi, pooled, function(t) t[1]^2 * same_district + t[2]^2 * same_school + sampling,
+        JAGS_estimates_table(fit_three_level, return_samples = TRUE)[, c(
+          "(mu) district: sd(intercept)", "(mu) school_district: sd(intercept)")],
+        sd_prior_sd = 0.5
+      )[["logml"]],
+      two_level = scenario_gaussian_logml(
+        dat$yi, pooled, function(t) t[1]^2 * same_school + sampling,
+        JAGS_estimates_table(two_level[["fit"]], return_samples = TRUE)[, "(mu) sd(intercept)", drop = FALSE],
+        sd_prior_sd = 0.5
+      )[["logml"]]
+    )
+  })
+
   ### Bayes factors ----
   # the district level: three levels against schools only, as log BF10; with
   # every draw including the district SD, the inclusion BF is only a bound
@@ -164,11 +189,12 @@ testthat::test_that("Konstantopoulos three-level meta-analysis", {
       H1 = "(1 | district/school)",
       H0 = "(1 | district:school)",
       log_BF10 = c(
+        "exact"                  = exact_logml[["three_level"]] - exact_logml[["two_level"]],
         "bridge sampling"        = scenario_log_bf_bridge(three_level[["marglik"]], two_level[["marglik"]]),
         "bridge sampling (brms)" = scenario_log_bf_bridge(brms_three_level[["marglik"]], brms_two_level[["marglik"]]),
         "spike and slab"         = log(as.numeric(district_spike))
       ),
-      note = c("", "", if (spike_bound) "lower bound: all draws include the district SD" else "")
+      note = c("", "", "", if (spike_bound) "lower bound: all draws include the district SD" else "")
     )
   })
   scenario_text("inference-district-spike", JAGS_inference_table(fit_district_spike))

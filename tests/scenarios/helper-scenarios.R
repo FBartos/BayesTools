@@ -1942,6 +1942,7 @@ scenario_gaussian_logml <- function(y, X, covariance, draws,
                                     correlation_bounds = list(),
                                     sd_prior_sd = 1, size = 20000L) {
 
+  y      <- as.numeric(y)
   XX     <- tcrossprod(X)
   is_cor <- colnames(draws) %in% names(correlation_bounds)
   lower  <- vapply(colnames(draws)[is_cor], function(name) correlation_bounds[[name]][[1L]], numeric(1))
