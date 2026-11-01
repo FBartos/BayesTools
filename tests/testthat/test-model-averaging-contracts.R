@@ -1,5 +1,430 @@
 skip_if_not_test_profile("unit")
 
+# ============================================================================ #
+# TEST FILE: Model-averaging contracts
+# ============================================================================ #
+#
+# PURPOSE:
+#   Model probabilities and their ownership under extreme weights, event conditioning,
+#   carrier integration, and compatibility guards of model averaging.
+# ============================================================================ #
+
+test_that("bias posterior masks use their declared event family", {
+  priors <- list(bias = prior_PET("normal", list(0, 1)))
+  draws <- matrix(c(1, 2), 2L, dimnames = list(NULL, "bias_indicator"))
+  expect_identical(.condition_event_label_posterior_mask(priors, draws, "bias"), c(TRUE, TRUE))
+  expect_identical(.condition_event_label_posterior_mask(list(bias = prior_none()), draws, "bias"), c(FALSE, FALSE))
+  p <- prior_mixture(list(prior_none(), priors$bias), is_null = c(TRUE, FALSE))
+  for(rule in c("AND", "OR")){
+    event <- .condition_event(list(bias = p), c("bias", "PET"), rule)
+    expect_identical(.condition_event_posterior_mask(event, list(bias = p), draws), c(FALSE, TRUE))
+  }
+  expect_identical(.condition_event_label_posterior_mask(priors, draws, "PET"), c(TRUE, TRUE))
+  expect_identical(.condition_event_label_posterior_mask(priors, draws, "PEESE"), c(FALSE, FALSE))
+  expect_warning(
+    mask <- .condition_event_label_posterior_mask(list(bias = prior("normal", list(0, 1))), draws, "bias"),
+    paste0("The parameter 'bias' is not a conditional parameter. ",
+           "All samples are assumed to come from the conditional posterior distribution."),
+    fixed = TRUE
+  )
+  expect_identical(mask, c(TRUE, TRUE))
+})
+
+test_that("within-fit branch event logs preserve extreme finite raw weights", {
+  cases <- list(maximum = rep(.Machine$double.xmax, 2L), tiny = c(1e200, 1e-200), ordinary = c(1, 1))
+  for(w in cases){
+    p <- prior_mixture(list(prior("point", list(0), prior_weights = w[1L]),
+      prior("normal", list(0, 1), prior_weights = w[2L])), is_null = c(TRUE, FALSE))
+    original <- p
+    event <- .condition_event(list(theta = p), "theta", "AND")
+    result <- .condition_event_model_options(list(theta = p), event)
+    reference <- log(w[2L]) - max(log(w)) - log(sum(exp(log(w) - max(log(w)))))
+    expect_equal(result$log_event_probability, reference, tolerance = 1e-12)
+    expect_equal(result$event_probability, exp(reference), tolerance = 1e-15)
+    expect_length(result$prior_lists, 1L)
+    expect_identical(unname(result$weights), 1)
+    expect_identical(unname(result$log_weights), 0)
+    .model_probability_validate(result$weights, result$log_weights, result$model_probability_declaration, normalized = TRUE)
+    context <- .prior_density_conditional_context(list(theta = p), "theta", "theta")
+    expect_identical(context$model_weights, 1)
+    expect_identical(p, original)
+    options <- .prior_density_condition_component(p)
+    expect_true(is.finite(options[[2L]]$log_probability))
+    bias <- prior_mixture(list(prior_PET("normal", list(0, 1), prior_weights = w[1L]),
+      prior_PEESE("normal", list(0, 1), prior_weights = w[2L])))
+    bias_result <- .condition_event_model_options(list(bias = bias), .condition_event(list(bias = bias), "PEESE", "AND"))
+    expect_equal(bias_result$log_event_probability, reference, tolerance = 1e-12)
+    expect_identical(bias_result$weights, 1)
+  }
+  rare <- prior_spike_and_slab(prior("normal", list(0, 1)), prior("point", list(1e-200)))
+  result <- .condition_event_model_options(list(a = rare, b = rare), .condition_event(list(a = rare, b = rare), c("a", "b"), "AND"))
+  expect_equal(result$log_event_probability, 2 * log(1e-200), tolerance = 1e-12)
+  expect_identical(result$weights, 1)
+  expect_identical(result$event_probability, 0)
+  zero <- prior_spike_and_slab(prior("normal", list(0, 1)), prior("point", list(0)))
+  result <- .condition_event_model_options(list(theta = zero), .condition_event(list(theta = zero), "theta", "AND"))
+  expect_identical(result$log_event_probability, -Inf)
+  expect_length(result$prior_lists, 0L)
+})
+
+test_that("declared positive option products survive event underflow", {
+  priors <- list(a = prior_spike_and_slab(prior("normal", list(0, 1)), prior("point", list(1e-200))),
+    b = prior_spike_and_slab(prior("normal", list(0, 1)), prior("point", list(1e-200))))
+  event <- .condition_event(priors, c("a", "b"), "AND")
+  options <- .condition_event_model_options(priors, event)
+  expect_length(options$prior_lists, 1L)
+  expect_identical(options$weights, 1)
+  expect_identical(options$event_probability, 0)
+  expect_equal(options$log_event_probability, 2 * log(1e-200), tolerance = 1e-12)
+  expect_identical(options$log_weights, 0)
+  context <- .prior_density_conditional_context(priors, c("a", "b"), c("a", "b"))
+  expect_identical(context$model_weights, 1)
+  expect_identical(context$model_log_weights, 0)
+})
+
+test_that("exact zero supplied event options stay impossible", {
+  priors <- list(a = prior_spike_and_slab(prior("normal", list(0, 1)), prior("point", list(0))),
+    b = prior_spike_and_slab(prior("normal", list(0, 1)), prior("point", list(1e-200))))
+  options <- .condition_event_model_options(priors, .condition_event(priors, c("a", "b"), "AND"))
+  expect_length(options$prior_lists, 0L)
+  expect_identical(options$weights, numeric())
+  expect_identical(options$event_probability, 0)
+  expect_identical(options$log_event_probability, -Inf)
+})
+
+test_that("model-averaging compatibility guards report metadata mismatches", {
+
+  fake_fit <- structure(list(), class = "null_model")
+
+  simple_a <- prior("normal", list(0, 1))
+  simple_b <- prior("normal", list(0, 1))
+  attr(simple_b, "interaction") <- TRUE
+  attr(simple_b, "interaction_terms") <- c("x", "y")
+
+  expect_error(
+    .mix_posteriors.simple(
+      fits = list(fake_fit, fake_fit),
+      priors = list(simple_a, simple_b),
+      parameter = "theta",
+      post_probs = c(0.5, 0.5),
+      seed = 1,
+      n_samples = 10
+    ),
+    "non-matching prior factor type specifications",
+    fixed = TRUE
+  )
+
+  factor_a <- prior_factor(
+    "normal",
+    list(0, 1),
+    contrast = "treatment"
+  )
+  factor_b <- prior_factor(
+    "normal",
+    list(0, 1),
+    contrast = "treatment"
+  )
+  attr(factor_a, "levels") <- 3
+  attr(factor_b, "levels") <- 3
+  attr(factor_a, "level_names") <- c("A", "B", "C")
+  attr(factor_b, "level_names") <- c("X", "Y", "Z")
+
+  expect_error(
+    .mix_posteriors.factor(
+      fits = list(fake_fit, fake_fit),
+      priors = list(factor_a, factor_b),
+      parameter = "fac",
+      post_probs = c(0.5, 0.5),
+      seed = 1,
+      n_samples = 10
+    ),
+    "non-matching prior factor type specifications",
+    fixed = TRUE
+  )
+})
+
+test_that("bias condition labels treat an expanded prior list as one branch each", {
+
+  prior_list <- list(
+    prior_none(),
+    prior_PET("normal", list(0, 1)),
+    prior_PEESE("normal", list(0, 1))
+  )
+
+  values <- BayesTools:::.condition_event_bias_label_values(
+    prior_list,
+    c("PET", "PEESE")
+  )
+
+  expect_equal(nrow(values), 3L)
+  expect_equal(as.logical(values[, "PET"]), c(FALSE, TRUE, FALSE))
+  expect_equal(as.logical(values[, "PEESE"]), c(FALSE, FALSE, TRUE))
+
+  event <- list(
+    conditional = "PET",
+    families = list(bias = list(name = "bias", type = "bias", labels = "PET")),
+    conditional_rule = "AND"
+  )
+  conditioned <- BayesTools:::.bias_prior_list_for_condition(prior_list, event)
+  expect_equal(
+    vapply(conditioned, BayesTools:::.prior_model_weight, numeric(1)),
+    c(0, 1, 0)
+  )
+})
+
+test_that("plot_models overall diamond uses the requested factor column", {
+
+  skip_if_not_installed("ggplot2")
+
+  make_summary <- function(parameter, mean, lo, hi) {
+    out <- data.frame(
+      Mean = mean,
+      "0.025" = lo,
+      "0.975" = hi,
+      check.names = FALSE
+    )
+    class(out) <- c("BayesTools_table", "BayesTools_runjags_summary", "data.frame")
+    attr(out, "parameters") <- parameter
+    out
+  }
+
+  samples <- structure(
+    cbind(
+      `fac[A]` = c(0, 1, 2, 3),
+      `fac[B]` = c(10, 20, 30, 40)
+    ),
+    class = c("mixed_posteriors.factor", "mixed_posteriors"),
+    levels = 2,
+    orthonormal = FALSE,
+    meandif = FALSE,
+    prior_list = list(
+      prior_factor("normal", list(0, 1), contrast = "treatment")
+    )
+  )
+  colnames(samples) <- c("fac[A]", "fac[B]")
+
+  model <- list(
+    fit = structure(list(), prior_list = list(fac = attr(samples, "prior_list")[[1]])),
+    fit_summary = rbind(
+      make_summary("fac[A]", 1.5, 0, 3),
+      make_summary("fac[B]", 25, 10, 40)
+    ),
+    inference = list(prior_prob = 1, post_prob = 1, inclusion_BF = 1)
+  )
+  attr(model$fit_summary, "parameters") <- c("fac[A]", "fac[B]")
+
+  plot_a <- BayesTools:::.plot_models.simple(
+    models_summary = list(model$fit_summary),
+    models_inference = list(model$inference),
+    total_inference = structure(list(), is_null = FALSE),
+    total_samples = samples,
+    prior_list = attr(samples, "prior_list"),
+    parameter = "fac[A]",
+    par_name = "fac[A]",
+    plot_type = "ggplot",
+    prior = FALSE,
+    conditional = FALSE,
+    order = NULL,
+    transformation = NULL,
+    transformation_arguments = NULL,
+    transformation_settings = FALSE
+  )
+  plot_b <- BayesTools:::.plot_models.simple(
+    models_summary = list(model$fit_summary),
+    models_inference = list(model$inference),
+    total_inference = structure(list(), is_null = FALSE),
+    total_samples = samples,
+    prior_list = attr(samples, "prior_list"),
+    parameter = "fac[B]",
+    par_name = "fac[B]",
+    plot_type = "ggplot",
+    prior = FALSE,
+    conditional = FALSE,
+    order = NULL,
+    transformation = NULL,
+    transformation_arguments = NULL,
+    transformation_settings = FALSE
+  )
+
+  built_a <- ggplot2::ggplot_build(plot_a)
+  built_b <- ggplot2::ggplot_build(plot_b)
+  overall_a <- built_a$data[[length(built_a$data) - 1L]]
+  overall_b <- built_b$data[[length(built_b$data) - 1L]]
+
+  expect_equal(
+    sort(unique(overall_a$x)),
+    sort(unique(c(
+      unname(stats::quantile(samples[, "fac[A]"], .025)),
+      mean(samples[, "fac[A]"]),
+      unname(stats::quantile(samples[, "fac[A]"], .975))
+    ))),
+    tolerance = 1e-12
+  )
+  expect_equal(
+    sort(unique(overall_b$x)),
+    sort(unique(c(
+      unname(stats::quantile(samples[, "fac[B]"], .025)),
+      mean(samples[, "fac[B]"]),
+      unname(stats::quantile(samples[, "fac[B]"], .975))
+    ))),
+    tolerance = 1e-12
+  )
+  expect_false(isTRUE(all.equal(sort(unique(overall_a$x)), sort(unique(overall_b$x)))))
+})
+
+test_that("public formatting retains a live carrier's canonical source logs", {
+  producer <- hypothesis_BF(c(1, 2, 3), prior("normal", list(0, 1)),
+    "a = 356 vs a != 356", parameter = "a", density_method = "normal", columns = "all")
+  expect_equal(as.numeric(format_BF(producer$BF, logBF = TRUE)), 710, tolerance = 1e-12)
+  inverse <- as.numeric(format_BF(producer$BF, BF01 = TRUE))
+  expect_gt(inverse, 0)
+  expect_equal(inverse / exp(-710), 1, tolerance = 1e-12)
+  logs <- c(overflow = 800, tiny = -800, ordinary = -2, missing = NA_real_)
+  diagnostics <- list(list(marker = 1), list(marker = 2), NULL, NULL)
+  source_bounds <- c(">", "<", NA_character_, NA_character_)
+  for(start_log in c(FALSE, TRUE)) for(start_inverse in c(FALSE, TRUE)){
+    carrier <- .format_BF_from_log(logs, start_log, start_inverse,
+      bound_operator = source_bounds, diagnostics = diagnostics)
+    for(want_log in c(FALSE, TRUE)) for(want_inverse in c(FALSE, TRUE)){
+      actual <- format_BF(carrier, want_log, want_inverse)
+      expected <- .format_BF_from_log(logs, want_log, want_inverse,
+        bound_operator = source_bounds, diagnostics = diagnostics)
+      expect_identical(actual, expected)
+      expect_identical(names(actual), names(logs))
+      expect_identical(.BF_carrier_log(actual), unname(logs))
+      expect_identical(attr(actual, "numerical_diagnostics"), diagnostics)
+    }
+    selected <- carrier[c(3L, 1L, 1L, 4L)]
+    actual <- format_BF(selected, logBF = TRUE)
+    expect_identical(as.numeric(actual), unname(logs[c(3L, 1L, 1L, 4L)]))
+    expect_identical(attr(actual, "numerical_diagnostics"), diagnostics[c(3L, 1L, 1L, 4L)])
+  }
+  for(value in list(c(0, Inf, NA, 2), unclass(producer$BF))){
+    plain <- as.numeric(value)
+    expect_identical(as.numeric(format_BF(plain, logBF = TRUE)), log(plain))
+  }
+  for(invalidated in list(producer$BF + 0, exp(producer$BF), {x <- producer$BF; x[1L] <- 2; x})){
+    expect_null(.BF_carrier_log(invalidated))
+    expect_identical(as.numeric(format_BF(invalidated, logBF = TRUE)), log(as.numeric(invalidated)))
+  }
+})
+
+test_that("removing a public linear recipe clears its companion space", {
+  x <- c(1, 2, 3)
+  posterior_metadata(x, "linear_weights") <- c(a = 1)
+  expect_identical(posterior_metadata(x, "linear_weight_space"), "coefficient")
+  posterior_metadata(x, "linear_weights") <- NULL
+  expect_null(posterior_metadata(x, "linear_weights"))
+  expect_null(posterior_metadata(x, "linear_weight_space"))
+})
+
+test_that("public linear recipes reject nonfinite weights without mutation", {
+  x <- c(1, 2, 3)
+  for(value in c(NA_real_, NaN, Inf, -Inf)){
+    for(weights in list(c(a = value), matrix(value, 1L, 1L, dimnames = list("target", "a")))){
+      original <- serialize(x, NULL)
+      condition <- tryCatch({posterior_metadata(x, "linear_weights") <- weights; NULL}, error = identity)
+      expect_s3_class(condition, "error")
+      if(inherits(condition, "condition")){
+        expect_match(conditionMessage(condition), "finite numeric vector or matrix", fixed = TRUE)
+        expect_null(conditionCall(condition))
+      }
+      expect_identical(serialize(x, NULL), original)
+    }
+  }
+  finite <- matrix(c(1, 0, -2, 3), 2L, dimnames = list(c("A", "B"), c("a", "b")))
+  posterior_metadata(x, "linear_weights") <- finite
+  expect_identical(posterior_metadata(x, "linear_weights"), finite)
+})
+
+test_that("list measure refusals emit exactly once at the actual level", {
+  good <- structure(seq(-1, 1, length.out = 100L), class = c("marginal_posterior.simple", "marginal_posterior"))
+  attr(good, "parameter") <- "theta"
+  posterior_metadata(good, "atoms") <- posterior_atom_attribute()
+  posterior_metadata(good, "prior_density") <- prior("normal", list(0, 1))
+  bad <- good
+  posterior_metadata(bad, "measure_unavailable") <- data.frame(column = "theta", measure = "atoms",
+    reason = "Declared contribution measure is unavailable", cause = "unsupported_contribution_measure")
+  parent <- structure(list(bad = bad, good = good), class = c("marginal_posterior.factor", "marginal_posterior", "list"), parameter = "theta")
+  messages <- character()
+  actual <- withCallingHandlers(Savage_Dickey_BF(parent, silent = FALSE), warning = function(w){messages <<- c(messages, conditionMessage(w)); invokeRestart("muffleWarning")})
+  expect_length(messages, 1L)
+  expect_match(messages, "theta[bad]:", fixed = TRUE)
+  expect_true(is.na(actual$bad))
+  expect_true(is.finite(actual$good))
+  expect_s3_class(attr(actual$bad, "numerical_diagnostics"), "BayesTools_formula_measure_unavailable")
+  expect_silent(Savage_Dickey_BF(parent, silent = TRUE))
+  expect_error(Savage_Dickey_BF(bad, silent = TRUE), class = "BayesTools_formula_measure_unavailable")
+})
+
+test_that("validated exact support exclusion precedes a stored grid's span guard", {
+  x <- structure(seq(0, 1, length.out = 301L), class = c("marginal_posterior.simple", "marginal_posterior"))
+  attr(x, "parameter") <- "theta"
+  posterior_metadata(x, "atoms") <- posterior_atom_attribute()
+  posterior_metadata(x, "prior_density") <- prior("normal", list(0, 1))
+  posterior_metadata(x, "posterior_density") <- posterior_density_attribute(seq(0, 1, length.out = 101L), rep(.5, 101L),
+    method = "support-guard", density_method = "qCMDE", support = posterior_support_attribute(c(0, 1)))
+  result <- Savage_Dickey_BF(x, -.5, silent = TRUE, density_method = "precomputed")
+  expect_identical(as.numeric(result), Inf)
+  expect_identical(attr(result, "posterior_density_source"), "exact_support_exclusion")
+  expect_true(attr(result, "posterior_density_fallback"))
+  expect_match(attr(result, "posterior_density_fallback_warnings"), "Ignoring the precomputed posterior density", fixed = TRUE)
+  expect_false(any(grepl("extrapolation", attr(result, "warnings"))))
+  posterior_metadata(x, "posterior_density") <- posterior_density_attribute(seq(0, 1, length.out = 101L), rep(.5, 101L),
+    method = "unmatched-support", density_method = "qCMDE", support = posterior_support_attribute(c(-1, 1)))
+  expect_error(Savage_Dickey_BF(x, -.5, silent = TRUE, density_method = "precomputed"), "does not span", fixed = TRUE)
+})
+
+test_that("printing a Bayes factor shows its values and warnings, not its carrier attributes", {
+
+  x <- format_BF_from_log(c(a = 2, b = -1))
+  attr(x, "warnings") <- c("first warning", "second warning")
+  attr(x, "log_BF") <- c(2, -1)
+  attr(x, "orientation") <- "prior/posterior"
+
+  # as the plain vector with a "warnings" attribute that 0.3.0 printed
+  released <- c(a = exp(2), b = exp(-1))
+  attr(released, "warnings") <- c("first warning", "second warning")
+  printed <- utils::capture.output(returned <- print(x))
+  expect_identical(printed, utils::capture.output(print(released)))
+  expect_identical(returned, x)
+  expect_false(any(grepl("canonical_log_BF|producer_values|carrier_|log_BF|orientation|numerical_diagnostics|class", printed)))
+
+  # without warnings only the values are printed
+  expect_identical(
+    utils::capture.output(print(format_BF_from_log(c(a = 2, b = -1)))),
+    utils::capture.output(print(c(a = exp(2), b = exp(-1))))
+  )
+
+  # bound operators are part of the value and stay visible
+  bounded <- format_BF_from_log(c(a = 2, b = 3), bound_operator = c(">", NA))
+  printed_bounded <- utils::capture.output(print(bounded))
+  expect_identical(printed_bounded[-(1:2)], c('attr(,"bound_operator")', '[1] ">" NA '))
+  expect_identical(utils::capture.output(print(bounded[2])), utils::capture.output(print(c(b = exp(3)))))
+})
+
+test_that("printing a bounded Bayes factor keeps its public scale and direction attributes", {
+
+  # as the unbounded result, which 0.3.0 printed with its name, scale and direction;
+  # only the value of the bound operator differs
+  for(flags in list(list(logBF = TRUE, BF01 = TRUE), list(logBF = FALSE, BF01 = TRUE), list(logBF = TRUE, BF01 = FALSE))){
+    unbounded <- do.call(format_BF, c(list(20, inclusion = TRUE), flags))
+    bounded   <- do.call(format_BF, c(list(structure(20, bound_operator = ">"), inclusion = TRUE), flags))
+    printed_unbounded <- utils::capture.output(print(unbounded))
+    printed_bounded   <- utils::capture.output(print(bounded))
+
+    expect_true(all(c('attr(,"name")', 'attr(,"logBF")', 'attr(,"BF01")') %in% printed_bounded))
+    expect_identical(printed_bounded[-length(printed_bounded)], printed_unbounded[-length(printed_unbounded)])
+    expect_identical(printed_unbounded[length(printed_unbounded)], "[1] NA")
+    expect_true(printed_bounded[length(printed_bounded)] %in% c('[1] "<"', '[1] ">"'))
+    expect_false(any(grepl("canonical_log_BF|producer_values|carrier_|orientation|numerical_diagnostics|class", printed_bounded)))
+  }
+
+  # the printed name identifies the logarithmic exclusion Bayes factor
+  printed <- utils::capture.output(print(format_BF(structure(20, bound_operator = ">"), logBF = TRUE, BF01 = TRUE, inclusion = TRUE)))
+  expect_true('[1] "log(Exclusion BF)"' %in% printed)
+})
+
 test_that("owned structural zero splits agree without subtracting infinities", {
   owned <- function(value, log_value){
     pair <- .model_probability_pair(value, log_value, "prior", "raw")
@@ -744,7 +1169,6 @@ test_that("single fixed weightfunctions declare one complete joint point", {
   expect_identical(nrow(posterior_metadata(sibling, "atoms")$locations), 0L)
   expect_identical(posterior_metadata(sibling, "atoms")$marginals[[1L]]$mass, 1)
 })
-
 
 
 test_that("bias-mixture scalar declarations use the retained compiler omega map", {

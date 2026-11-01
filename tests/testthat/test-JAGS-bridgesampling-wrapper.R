@@ -1884,3 +1884,937 @@ test_that("iteration warnings of refused nonfinite aggregates carry their affect
     }
   }
 })
+
+test_that("R133 raw affine dependence refuses bounded bridge coordinates before sampling", {
+  x2 <- seq(1, 4, length.out = 200)
+  dependent <- cbind(x1 = 2 * x2 + 1, x2 = x2)
+  sampler_calls <- 0L
+  testthat::local_mocked_bindings(bridge_sampler = function(...){
+    sampler_calls <<- sampler_calls + 1L
+    structure(list(logml = -1, niter = 1L, method = "normal", mcse_logml = .1), class = "bridge")
+  }, .package = "bridgesampling")
+  for(bounds in list(c(0, 10), c(0, Inf), c(-Inf, 10), c(-Inf, Inf))){
+    posterior <- dependent
+    attr(posterior, "lb") <- c(x1 = bounds[1], x2 = bounds[1])
+    attr(posterior, "ub") <- c(x1 = bounds[2], x2 = bounds[2])
+    expect_error(.bt_JAGS_bridge_check_coordinate_rank(posterior), "rank-deficient (rank 1 of 2", fixed = TRUE)
+    expect_error(JAGS_bridgesampling(coda::as.mcmc(dependent),
+      log_posterior = function(parameters, data) 0, data = list(),
+      prior_list = list(x1 = prior("normal", list(0, 1), truncation = list(bounds[1], bounds[2]))),
+      add_parameters = "x2", add_bounds = list(lb = c(x2 = bounds[1]), ub = c(x2 = bounds[2]))),
+      "rank-deficient (rank 1 of 2", fixed = TRUE)
+  }
+  expect_identical(sampler_calls, 0L)
+  full_rank <- dependent
+  full_rank[, "x2"] <- dependent[c(seq(2, 200, 2), seq(1, 199, 2)), "x2"]
+  expect_s3_class(JAGS_bridgesampling(coda::as.mcmc(full_rank),
+    log_posterior = function(parameters, data) 0, data = list(),
+    prior_list = list(x1 = prior("normal", list(0, 1), truncation = list(0, 10))),
+    add_parameters = "x2", add_bounds = list(lb = c(x2 = 0), ub = c(x2 = 10))), "BayesTools_marglik")
+  expect_identical(sampler_calls, 1L)
+})
+
+test_that("R133 bridge rank checks preserve transformed-only and ordinary controls", {
+  t <- seq(1, 2, length.out = 200)
+  transformed_dependence <- cbind(x1 = exp(t), x2 = exp(2 * t))
+  attr(transformed_dependence, "lb") <- c(x1 = 0, x2 = 0)
+  attr(transformed_dependence, "ub") <- c(x1 = Inf, x2 = Inf)
+  expect_error(.bt_JAGS_bridge_check_coordinate_rank(transformed_dependence), "rank-deficient (rank 1 of 2", fixed = TRUE)
+  full_rank <- cbind(x1 = t, x2 = sin(t))
+  expect_true(.bt_JAGS_bridge_check_coordinate_rank(full_rank))
+  expect_true(.bt_JAGS_bridge_check_coordinate_rank(cbind(x1 = t, constant = 1)))
+  expect_error(.bt_JAGS_bridge_check_coordinate_rank(full_rank[1:2, ]), "2 posterior draws span only rank 1 of 2", fixed = TRUE)
+  expect_error(.bt_JAGS_bridge_check_coordinate_rank(cbind(x1 = t, x2 = 2 * t)), "rank-deficient (rank 1 of 2", fixed = TRUE)
+})
+
+test_that("R143 independent bridge coordinates retain rank at large magnitudes", {
+
+  independent <- cbind(x1 = c(1, 2, 3, 4), x2 = c(1, 4, 2, 3))
+  # These centered columns are independent; their first two rows have
+  # determinant -3. This moderate-scale reference also uses the existing QR.
+  expect_identical(qr(scale(independent), tol = 1e-7)$rank, 2L)
+  sampler_calls <- 0L
+  sampler_arguments <- NULL
+  testthat::local_mocked_bindings(bridge_sampler = function(...){
+    sampler_calls <<- sampler_calls + 1L
+    sampler_arguments <<- list(...)
+    structure(list(logml = -1, niter = 1L, method = "normal", mcse_logml = .1), class = "bridge")
+  }, .package = "bridgesampling")
+
+  for(coordinate_scale in c(1, 1e160)){
+    coordinates <- independent * coordinate_scale
+    original <- coordinates
+    expect_true(all(is.finite(coordinates)))
+    expect_error(.bt_JAGS_bridge_check_matrix_rank(coordinates), NA)
+    expect_identical(coordinates, original)
+    for(lower in c(0, -Inf)){
+      posterior <- coordinates
+      attr(posterior, "lb") <- c(x1 = lower, x2 = lower)
+      attr(posterior, "ub") <- c(x1 = Inf, x2 = Inf)
+      original_posterior <- posterior
+      expect_error(.bt_JAGS_bridge_check_coordinate_rank(posterior), NA)
+      expect_identical(posterior, original_posterior)
+      sampler_calls <- 0L
+      sampler_arguments <- NULL
+      expect_error(JAGS_bridgesampling(coda::as.mcmc(coordinates),
+        log_posterior = function(parameters, data) 0, data = list(),
+        prior_list = list(x1 = prior("normal", list(0, coordinate_scale), truncation = list(lower, Inf))),
+        add_parameters = "x2", add_bounds = list(lb = c(x2 = lower), ub = c(x2 = Inf))), NA)
+      expect_identical(sampler_calls, 1L)
+      if(!is.null(sampler_arguments)){
+        expect_identical(sampler_arguments$samples, coda::as.mcmc(original_posterior))
+        expect_identical(sampler_arguments$lb, attr(original_posterior, "lb"))
+        expect_identical(sampler_arguments$ub, attr(original_posterior, "ub"))
+      }
+      expect_identical(coordinates, original)
+    }
+  }
+
+  # Numerical conditioning preserves the accepted QR tolerance and the
+  # exclusion of genuinely constant or nonfinite columns.
+  for(epsilon in c(1e-8, 1e-5)){
+    near_affine <- cbind(x1 = independent[, "x1"],
+      x2 = independent[, "x1"] + epsilon * independent[, "x2"])
+    expected_rank <- if(epsilon == 1e-8) 1L else 2L
+    expect_identical(qr(scale(near_affine), tol = 1e-7)$rank, expected_rank)
+    for(coordinate_scale in c(1, 1e160)){
+      if(expected_rank == 1L){
+        condition <- tryCatch(.bt_JAGS_bridge_check_matrix_rank(near_affine * coordinate_scale),
+          error = identity)
+        expect_s3_class(condition, "BayesTools_marglik_rank_deficiency")
+        if(inherits(condition, "error")){
+          expect_match(conditionMessage(condition), "rank-deficient (rank 1 of 2", fixed = TRUE)
+          expect_null(conditionCall(condition))
+        }
+      }else{
+        expect_error(.bt_JAGS_bridge_check_matrix_rank(near_affine * coordinate_scale), NA)
+      }
+    }
+  }
+  expect_true(.bt_JAGS_bridge_check_matrix_rank(cbind(x1 = independent[, "x1"],
+    zero = 0, constant = 7, nonfinite = c(1, 2, Inf, 4))))
+})
+
+test_that("R143 tiny affine bridge coordinates refuse before bound transformations", {
+
+  x2 <- seq(1, 4, length.out = 200)
+  moderate <- cbind(x1 = 2 * x2 + 1, x2 = x2)
+  expect_identical(qr(scale(moderate), tol = 1e-7)$rank, 1L)
+  # Log transformation removes the affine relation, so only the transformed
+  # check would wrongly accept this supplied deterministic coordinate.
+  expect_identical(qr(scale(log(moderate)), tol = 1e-7)$rank, 2L)
+  sampler_calls <- 0L
+  testthat::local_mocked_bindings(bridge_sampler = function(...){
+    sampler_calls <<- sampler_calls + 1L
+    structure(list(logml = -1, niter = 1L, method = "normal", mcse_logml = .1), class = "bridge")
+  }, .package = "bridgesampling")
+
+  for(coordinate_scale in c(1, 1e-200)){
+    scaled_x2 <- coordinate_scale * x2
+    coordinates <- cbind(x1 = 2 * scaled_x2 + coordinate_scale, x2 = scaled_x2)
+    original <- coordinates
+    expect_true(all(is.finite(coordinates)))
+    expect_identical(qr(scale(log(coordinates)), tol = 1e-7)$rank, 2L)
+    expect_error(.bt_JAGS_bridge_check_matrix_rank(coordinates),
+      "rank-deficient (rank 1 of 2", fixed = TRUE)
+    expect_identical(coordinates, original)
+    for(lower in c(0, -Inf)){
+      posterior <- coordinates
+      attr(posterior, "lb") <- c(x1 = lower, x2 = lower)
+      attr(posterior, "ub") <- c(x1 = Inf, x2 = Inf)
+      original_posterior <- posterior
+      expect_error(.bt_JAGS_bridge_check_coordinate_rank(posterior),
+        "rank-deficient (rank 1 of 2", fixed = TRUE)
+      expect_identical(posterior, original_posterior)
+      sampler_calls <- 0L
+      expect_error(JAGS_bridgesampling(coda::as.mcmc(coordinates),
+        log_posterior = function(parameters, data) 0, data = list(),
+        prior_list = list(x1 = prior("normal", list(0, coordinate_scale), truncation = list(lower, Inf))),
+        add_parameters = "x2", add_bounds = list(lb = c(x2 = lower), ub = c(x2 = Inf))),
+        "rank-deficient (rank 1 of 2", fixed = TRUE)
+      expect_identical(sampler_calls, 0L)
+      expect_identical(coordinates, original)
+    }
+  }
+})
+
+test_that("bridge rank refusals expose diagnostic classes and exact context", {
+
+  sampler_calls <- 0L
+  testthat::local_mocked_bindings(bridge_sampler = function(...){
+    sampler_calls <<- sampler_calls + 1L
+    structure(list(logml = -1, niter = 1L, method = "normal"), class = "bridge")
+  }, .package = "bridgesampling")
+  public_rank <- function(coordinates){
+    tryCatch(JAGS_bridgesampling(
+      coda::as.mcmc(coordinates),
+      log_posterior = function(parameters, data) 0,
+      data = list(),
+      prior_list = setNames(rep(list(prior("normal", list(0, 1))),
+        ncol(coordinates)), colnames(coordinates))
+    ), error = identity)
+  }
+  t <- seq(-1, 1, length.out = 20L)
+  cases <- list(
+    list(coordinates = cbind(x1 = c(-1, 1), x2 = c(1, -1)),
+      reason = "insufficient_draws", n_draws = 2L,
+      message = paste0("The bridge-sampling target was rejected by diagnostics: ",
+        "2 posterior draws span only rank 1 of 2 varying bridge coordinates. ",
+        "Increase the number of posterior draws, for example with a larger ",
+        "'sample' in JAGS_fit() or with JAGS_extend().")),
+    list(coordinates = cbind(x1 = t, x2 = 2 * t),
+      reason = "dependent_coordinates", n_draws = 20L,
+      message = paste0("The bridge-sampling target was rejected by diagnostics: ",
+        "the posterior draws of the bridge coordinates are rank-deficient ",
+        "(rank 1 of 2 varying coordinates; linearly dependent coordinate(s): 'x2'). ",
+        "Only free stochastic nodes whose prior density 'log_posterior' adds ",
+        "can be supplied through 'add_parameters'; reconstruct deterministic ",
+        "nodes, such as row-shaped SD sources computed from other parameters, ",
+        "with parameter_source(values = ..., inputs = ...) or inside 'log_posterior'."))
+  )
+  for(case in cases){
+    condition <- public_rank(case$coordinates)
+    expect_s3_class(condition, "BayesTools_marglik_rank_deficiency")
+    expect_s3_class(condition, "BayesTools_marglik_input")
+    expect_identical(condition$reason, case$reason)
+    expect_identical(condition$rank, 1L)
+    expect_identical(condition$n_coordinates, 2L)
+    expect_identical(condition$n_draws, case$n_draws)
+    expect_identical(condition$dependent_coordinates, "x2")
+    expect_identical(conditionMessage(condition), case$message)
+    expect_null(conditionCall(condition))
+  }
+  expect_identical(sampler_calls, 0L)
+
+  # The fields use the filtered diagnostic matrix, not the supplied width.
+  coordinates <- cbind(x1 = t, x2 = 2 * t, x3 = 3 * t, x4 = 4 * t,
+    x5 = 5 * t, constant = 7, nonfinite = c(Inf, rep(1, 19)))
+  condition <- tryCatch(BayesTools:::.bt_JAGS_bridge_check_matrix_rank(coordinates),
+    error = identity)
+  expect_identical(condition$n_coordinates, 5L)
+  expect_identical(condition$dependent_coordinates, paste0("x", 2:5))
+  expect_match(conditionMessage(condition), "'x2', 'x3', 'x4', ...", fixed = TRUE)
+  colnames(coordinates) <- NULL
+  condition <- tryCatch(BayesTools:::.bt_JAGS_bridge_check_matrix_rank(coordinates),
+    error = identity)
+  expect_identical(condition$dependent_coordinates, character())
+
+  # Reasons describe the observed sample diagnostic, not an exclusive cause.
+  a <- c(0, 1, 0, 1)
+  b <- c(0, 0, 1, 1)
+  mixed <- cbind(a = a, b = b, c = a + b, d = 2 * a + b, e = a + 2 * b)
+  condition <- public_rank(mixed)
+  expect_s3_class(condition, "BayesTools_marglik_rank_deficiency")
+  expect_identical(condition$reason, "insufficient_draws")
+  expect_identical(condition$rank, 2L)
+  expect_identical(condition$n_coordinates, 5L)
+  expect_identical(condition$n_draws, 4L)
+  expect_identical(condition$dependent_coordinates, c("c", "d", "e"))
+  duplicated <- cbind(x1 = rep(c(0, 1), each = 3L),
+    x2 = rep(c(0, 2), each = 3L))
+  condition <- public_rank(duplicated)
+  expect_s3_class(condition, "BayesTools_marglik_rank_deficiency")
+  expect_identical(condition$reason, "dependent_coordinates")
+  expect_identical(condition$rank, 1L)
+  expect_identical(condition$n_coordinates, 2L)
+  expect_identical(condition$n_draws, 6L)
+  expect_identical(condition$dependent_coordinates, "x2")
+  expect_identical(sampler_calls, 0L)
+})
+
+.bridge_formula_validation_inputs <- function(){
+
+  list(
+    formula_list = list(mu = ~ 1, sigma = ~ 1),
+    formula_data_list = list(mu = list(), sigma = list()),
+    formula_prior_list = list(mu = list(), sigma = list()),
+    formula_scale_list = NULL,
+    formula_random_prior_list = NULL,
+    formula_random_effects_compile_list = NULL
+  )
+}
+
+.bridge_formula_validation_design <- function(){
+
+  formula_data <- data.frame(.row = 1)
+  out <- lapply(c("mu", "sigma"), function(parameter){
+    JAGS_formula(
+      formula = ~ 1,
+      parameter = parameter,
+      data = formula_data,
+      prior_list = list(intercept = prior("point", list(0)))
+    )$formula_design
+  })
+  stats::setNames(out, c("mu", "sigma"))
+}
+
+.bridge_formula_validation_context <- function(inputs, fitted_design = NULL){
+
+  fit <- list()
+  if(is.null(fitted_design)){
+    fitted_design <- .bridge_formula_validation_design()
+  }
+  attr(fit, "formula_design") <- fitted_design
+  for(parameter in names(fitted_design)){
+    scale <- .bt_formula_scale_finalize(fitted_design[[parameter]]$formula_scale,
+      fitted_design[[parameter]], fitted_design[[parameter]]$prior_list)
+    fitted_design[[parameter]]$formula_scale <- scale
+  }
+  attr(fit, "formula_design") <- fitted_design
+
+  do.call(
+    BayesTools:::.bt_JAGS_bridge_formula_context,
+    c(list(fit = fit), inputs)
+  )
+}
+
+test_that("bridge formula inputs require fully named unique required lists", {
+
+  invalid_names <- list(
+    unnamed = NULL,
+    missing = c(NA_character_, "sigma"),
+    empty = c("", "sigma"),
+    duplicate = c("mu", "mu")
+  )
+
+  for(argument in c(
+    "formula_list",
+    "formula_data_list",
+    "formula_prior_list"
+  )){
+    for(case in names(invalid_names)){
+      inputs <- .bridge_formula_validation_inputs()
+      if(is.null(invalid_names[[case]])){
+        inputs[[argument]] <- unname(inputs[[argument]])
+      }else{
+        names(inputs[[argument]]) <- invalid_names[[case]]
+      }
+
+      expected <- if(identical(case, "duplicate")){
+        paste0(
+          "The '", argument,
+          "' argument must not contain duplicate names"
+        )
+      }else{
+        paste0(
+          "The '", argument,
+          "' argument must be a fully named list."
+        )
+      }
+      expect_error(
+        .bridge_formula_validation_context(inputs),
+        expected,
+        fixed = TRUE,
+        info = paste(argument, case)
+      )
+    }
+  }
+})
+
+test_that("bridge formula inputs validate explicitly supplied optional names", {
+
+  invalid_names <- list(
+    unnamed = NULL,
+    missing = c(NA_character_, "sigma"),
+    empty = c("", "sigma"),
+    duplicate = c("mu", "mu"),
+    unrecognized = c("mu", "tau")
+  )
+
+  for(argument in c(
+    "formula_scale_list",
+    "formula_random_prior_list",
+    "formula_random_effects_compile_list"
+  )){
+    for(case in names(invalid_names)){
+      inputs <- .bridge_formula_validation_inputs()
+      inputs[[argument]] <- list(NULL, NULL)
+      if(!is.null(invalid_names[[case]])){
+        names(inputs[[argument]]) <- invalid_names[[case]]
+      }
+
+      expected <- if(identical(case, "duplicate")){
+        paste0(
+          "The '", argument,
+          "' argument must not contain duplicate names"
+        )
+      }else if(identical(case, "unrecognized")){
+        paste0(
+          "The 'tau' objects are not recognized by the '",
+          argument,
+          "' argument."
+        )
+      }else{
+        paste0(
+          "The '", argument,
+          "' argument must be a fully named list."
+        )
+      }
+      expect_error(
+        .bridge_formula_validation_context(inputs),
+        expected,
+        fixed = TRUE,
+        info = paste(argument, case)
+      )
+    }
+  }
+})
+
+test_that("bridge formula inputs preserve empty optional lists", {
+
+  inputs <- .bridge_formula_validation_inputs()
+  inputs$formula_scale_list <- list()
+  inputs$formula_random_prior_list <- list()
+  inputs$formula_random_effects_compile_list <- list()
+
+  rebuildability <- do.call(
+    BayesTools:::.bt_JAGS_bridge_formula_inputs_rebuildability,
+    inputs
+  )
+
+  expect_identical(
+    rebuildability,
+    list(rebuildable = TRUE, detail = NULL)
+  )
+})
+
+test_that("bridge formula name errors retain fitted-design mismatch context", {
+
+  inputs <- .bridge_formula_validation_inputs()
+  names(inputs$formula_prior_list) <- c("mu", "mu")
+
+  expect_error(
+    .bridge_formula_validation_context(inputs),
+    paste0(
+      "JAGS_bridgesampling() supplied formula-related inputs do not fully ",
+      "match the fitted formula design. First mismatch: The ",
+      "'formula_prior_list' argument must not contain duplicate names"
+    ),
+    fixed = TRUE
+  )
+})
+
+test_that("bridge formula inputs cannot replace missing fitted metadata", {
+
+  expect_error(
+    do.call(
+      BayesTools:::.bt_JAGS_bridge_formula_context,
+      c(list(fit = list()), .bridge_formula_validation_inputs())
+    ),
+    paste0(
+      "the fitted formula-design metadata are missing. Refit the model with ",
+      "this version of BayesTools; supplied formula inputs cannot replace ",
+      "fitted replay metadata."
+    ),
+    fixed = TRUE,
+    class = "BayesTools_refit_required"
+  )
+})
+
+.bridge_formula_prior_context <- function(multiply_by = NULL){
+
+  formula_data <- data.frame(x = c(-1, 0, 1))
+  formula_priors <- list(
+    intercept = prior("normal", list(0, 1)),
+    x = prior("normal", list(0, 1))
+  )
+  if(!is.null(multiply_by)){
+    attr(formula_priors$x, "multiply_by") <- multiply_by
+  }
+  formula_output <- JAGS_formula(
+    formula = ~ 1 + x,
+    parameter = "mu",
+    data = formula_data,
+    prior_list = formula_priors
+  )
+
+  list(
+    design = formula_output$formula_design,
+    inputs = list(
+      formula_list = list(mu = formula_output$formula),
+      formula_data_list = list(mu = formula_data),
+      formula_prior_list = list(mu = formula_priors),
+      formula_scale_list = NULL,
+      formula_random_prior_list = NULL,
+      formula_random_effects_compile_list = NULL
+    )
+  )
+}
+
+test_that("bridge formula context compares semantic prior multiplier metadata", {
+
+  multiplier_cases <- list(
+    added = list(fitted = NULL, supplied = "sigma"),
+    removed = list(fitted = "sigma", supplied = NULL),
+    changed_name = list(fitted = "sigma", supplied = "tau"),
+    changed_value = list(fitted = 2, supplied = 3)
+  )
+
+  for(case in names(multiplier_cases)){
+    fitted <- .bridge_formula_prior_context(
+      multiplier_cases[[case]]$fitted
+    )
+    supplied <- .bridge_formula_prior_context(
+      multiplier_cases[[case]]$supplied
+    )
+
+    expect_error(
+      .bridge_formula_validation_context(
+        supplied$inputs,
+        fitted_design = list(mu = fitted$design)
+      ),
+      paste0(
+        "formula prior metadata differ for parameter 'mu', ",
+        "prior 'mu_x'"
+      ),
+      fixed = TRUE,
+      info = case
+    )
+  }
+})
+
+test_that("bridge formula context ignores nonsemantic prior attributes", {
+
+  fitted <- .bridge_formula_prior_context("sigma")
+  supplied <- .bridge_formula_prior_context("sigma")
+  attr(fitted$design$prior_list$mu_x, "bridge_note") <- "fitted only"
+  attr(supplied$inputs$formula_prior_list$mu$x, "bridge_note") <- "supplied only"
+
+  expect_silent(
+    context <- .bridge_formula_validation_context(
+      supplied$inputs,
+      fitted_design = list(mu = fitted$design)
+    )
+  )
+  expect_s3_class(
+    context$formula_design_list$mu,
+    "BayesTools_formula_design"
+  )
+})
+
+test_that("bridge formula context treats fitted source semantics as authoritative", {
+
+  formula_data <- data.frame(
+    id = factor(c("a", "b", "a"), levels = c("a", "b")),
+    tau_factor = c(1, 2, 3)
+  )
+  fitted_source <- parameter_source(
+    "tau",
+    shape = "row",
+    values = function(parameters, data, n_rows){
+      data$tau_factor[seq_len(n_rows)]
+    },
+    inputs = character()
+  )
+  fitted_prior_random <- prior_random(
+    id = random_block(sd_source = random_sd_source(fitted_source))
+  )
+  formula_priors <- list(intercept = prior("normal", list(0, 1)))
+  formula <- ~ 1 + random(1 | id, name = "id", covariance = "diag")
+  fitted <- JAGS_formula(
+    formula = formula,
+    parameter = "mu",
+    data = formula_data,
+    prior_list = formula_priors,
+    prior_random = fitted_prior_random
+  )
+  fit <- list()
+  completed_scale <- .bt_formula_scale_finalize(fitted$formula_scale, fitted$formula_design,
+    fitted$prior_list)
+  fitted$formula_design$formula_scale <- completed_scale
+  attr(fit, "formula_design") <- list(mu = fitted$formula_design)
+  context_args <- list(
+    fit = fit,
+    formula_list = list(mu = formula),
+    formula_data_list = list(mu = formula_data),
+    formula_prior_list = list(mu = formula_priors),
+    formula_scale_list = NULL,
+    formula_random_prior_list = list(mu = fitted_prior_random)
+  )
+
+  context <- do.call(
+    BayesTools:::.bt_JAGS_bridge_formula_context,
+    context_args
+  )
+  expect_identical(
+    context$formula_design_list$mu,
+    fitted$formula_design
+  )
+  expect_null(context$formula_data_list)
+
+  changed_callback <- parameter_source(
+    "tau",
+    shape = "row",
+    values = function(parameters, data, n_rows){
+      2 * data$tau_factor[seq_len(n_rows)]
+    },
+    inputs = character()
+  )
+  callback_args <- context_args
+  callback_args$formula_random_prior_list <- list(mu = prior_random(
+    id = random_block(sd_source = random_sd_source(changed_callback))
+  ))
+  expect_error(
+    do.call(
+      BayesTools:::.bt_JAGS_bridge_formula_context,
+      callback_args
+    ),
+    "scale/allocation metadata differ",
+    fixed = TRUE
+  )
+  expect_error(
+    do.call(
+      BayesTools:::.bt_JAGS_bridge_formula_context,
+      callback_args
+    ),
+    paste0(
+      "callbacks are compared by identity, including their environment, so inputs ",
+      "built again by the same helper differ; omit the formula inputs to use the ",
+      "stored design)."
+    ),
+    fixed = TRUE
+  )
+
+  source_data_args <- context_args
+  source_data_args$formula_data_list$mu$tau_factor <- c(3, 2, 1)
+  expect_error(
+    do.call(
+      BayesTools:::.bt_JAGS_bridge_formula_context,
+      source_data_args
+    ),
+    "original formula source data differ for parameter 'mu'",
+    fixed = TRUE
+  )
+})
+
+
+test_that("bridge node pieces merge by name with the last assignment winning", {
+
+  # The merge runs for every draw of a bridge. Its contract: first appearance
+  # decides a node's position, the last assignment decides its value, and
+  # empty or unnamed pieces contribute nothing.
+  merged <- .bt_JAGS_bridge_merge_nodes(
+    c(a = 1, b = 2),
+    numeric(),
+    c(3, 4),
+    NULL,
+    c(b = 20, c = 30),
+    c(a = 10L)
+  )
+  expect_identical(merged, c(a = 10, b = 20, c = 30))
+  expect_identical(.bt_JAGS_bridge_merge_nodes(), numeric())
+  expect_identical(.bt_JAGS_bridge_merge_nodes(numeric(), c(1, 2)), numeric())
+})
+
+
+test_that("the cached bridge node layout reproduces the by-name merge", {
+
+  # A bridge builds the node layout once and replays it by position. Every
+  # state must give the vector the by-name merge builds, including repeated
+  # names across pieces, matrix coordinates and logical values.
+  state <- c("mu" = 0.5, "tau" = 1.25, "rho[1]" = 0.1)
+  pieces <- list(
+    prior_parameters = list(mu = 2.5, tau = 1.25),
+    formula_prior_parameters = list(`mu_gamma` = c(1, 2, 3)),
+    formula_parameters = list(mu = c(0.1, 0.2), flag = TRUE),
+    add_parameter_values = list(block = matrix(1:6 / 2, nrow = 2L))
+  )
+  random_nodes <- c("tau" = 3.5, "sigma[2]" = 0.75)
+
+  reference <- .bt_JAGS_bridge_context_nodes(
+    state = state,
+    prior_parameters = pieces$prior_parameters,
+    formula_prior_parameters = pieces$formula_prior_parameters,
+    formula_parameters = pieces$formula_parameters,
+    add_parameter_values = pieces$add_parameter_values,
+    random_nodes = random_nodes
+  )
+
+  node_cache <- new.env(parent = emptyenv())
+  cached <- .bt_JAGS_bridge_context_nodes(
+    state = state,
+    prior_parameters = pieces$prior_parameters,
+    formula_prior_parameters = pieces$formula_prior_parameters,
+    formula_parameters = pieces$formula_parameters,
+    add_parameter_values = pieces$add_parameter_values,
+    random_nodes = random_nodes,
+    node_cache = node_cache
+  )
+  expect_identical(cached, reference)
+
+  # a second state of the same shape reuses the layout
+  other_state <- state + 1
+  other_pieces <- pieces
+  other_pieces$formula_parameters$mu <- c(-1, -2)
+  other_random <- random_nodes * 2
+  expect_identical(
+    .bt_JAGS_bridge_context_nodes(
+      state = other_state,
+      prior_parameters = other_pieces$prior_parameters,
+      formula_prior_parameters = other_pieces$formula_prior_parameters,
+      formula_parameters = other_pieces$formula_parameters,
+      add_parameter_values = other_pieces$add_parameter_values,
+      random_nodes = other_random,
+      node_cache = node_cache
+    ),
+    .bt_JAGS_bridge_context_nodes(
+      state = other_state,
+      prior_parameters = other_pieces$prior_parameters,
+      formula_prior_parameters = other_pieces$formula_prior_parameters,
+      formula_parameters = other_pieces$formula_parameters,
+      add_parameter_values = other_pieces$add_parameter_values,
+      random_nodes = other_random
+    )
+  )
+
+  # a different shape rebuilds the layout instead of replaying a stale one
+  changed <- pieces
+  changed$formula_parameters$mu <- c(0.1, 0.2, 0.3)
+  expect_identical(
+    .bt_JAGS_bridge_context_nodes(
+      state = state,
+      prior_parameters = changed$prior_parameters,
+      formula_prior_parameters = changed$formula_prior_parameters,
+      formula_parameters = changed$formula_parameters,
+      add_parameter_values = changed$add_parameter_values,
+      random_nodes = random_nodes,
+      node_cache = node_cache
+    ),
+    .bt_JAGS_bridge_context_nodes(
+      state = state,
+      prior_parameters = changed$prior_parameters,
+      formula_prior_parameters = changed$formula_prior_parameters,
+      formula_parameters = changed$formula_parameters,
+      add_parameter_values = changed$add_parameter_values,
+      random_nodes = random_nodes
+    )
+  )
+
+  # unnamed pieces have no position rule and return to the by-name merge
+  unnamed_state <- unname(state)
+  expect_identical(
+    .bt_JAGS_bridge_context_nodes(
+      state = unnamed_state,
+      prior_parameters = pieces$prior_parameters,
+      formula_prior_parameters = pieces$formula_prior_parameters,
+      formula_parameters = pieces$formula_parameters,
+      add_parameter_values = pieces$add_parameter_values,
+      random_nodes = random_nodes,
+      node_cache = node_cache
+    ),
+    .bt_JAGS_bridge_context_nodes(
+      state = unnamed_state,
+      prior_parameters = pieces$prior_parameters,
+      formula_prior_parameters = pieces$formula_prior_parameters,
+      formula_parameters = pieces$formula_parameters,
+      add_parameter_values = pieces$add_parameter_values,
+      random_nodes = random_nodes
+    )
+  )
+})
+
+
+test_that("the node selection takes unnamed nodes alike with and without the cache (F077)", {
+
+  nodes <- c(a = 1, 2, c = 3)
+  expect_identical(
+    .bt_JAGS_bridge_select_nodes(nodes, c("", "c")),
+    .bt_JAGS_bridge_select_nodes(nodes, c("", "c"), new.env(parent = emptyenv()))
+  )
+  expect_identical(
+    unname(.bt_JAGS_bridge_select_nodes(nodes, c("", "c"))),
+    c(2, 3)
+  )
+})
+
+test_that("the rebuilt formula context neither merges nor reports the supplied data (F077)", {
+
+  data <- data.frame(x = c(0.5, 1, 2, 3))
+  formula_prior <- list(
+    intercept = prior("normal", list(0, 1)),
+    x = prior("normal", list(0, 1))
+  )
+  fitted <- JAGS_formula(~ 1 + x, "mu", data, formula_prior)
+  fit <- coda::mcmc(matrix(0, 20L, 2L, dimnames = list(NULL, c("mu_intercept", "mu_x"))))
+  attr(fit, "prior_list") <- fitted$prior_list
+  attr(fit, "formula_design") <- list(mu = fitted$formula_design)
+  fit <- attach_test_parameter_map(fit)
+
+  # a data column named like a generated JAGS data entry used to be reported as
+  # "conflicting data" although the rebuilt data lists are never used
+  conflicting <- data
+  conflicting[["N_mu"]] <- c(9, 9, 9, 9)
+  rebuilt <- .bt_JAGS_bridge_rebuild_formula_context(
+    fit = fit,
+    formula_list = list(mu = fitted$formula),
+    formula_data_list = list(mu = conflicting),
+    formula_prior_list = list(mu = formula_prior),
+    formula_scale_list = NULL,
+    formula_random_prior_list = NULL
+  )
+  expect_identical(names(rebuilt), "formula_design_list")
+  expect_identical(names(rebuilt$formula_design_list), "mu")
+})
+
+test_that("the cached node selection keeps the availability check", {
+
+  nodes <- c(a = 1, b = 2, c = 3)
+  node_cache <- new.env(parent = emptyenv())
+
+  expect_identical(
+    .bt_JAGS_bridge_select_nodes(nodes, c("c", "a"), node_cache),
+    .bt_JAGS_bridge_select_nodes(nodes, c("c", "a"))
+  )
+  # replayed selection on a second state of the same layout
+  expect_identical(
+    .bt_JAGS_bridge_select_nodes(c(a = 10, b = 20, c = 30), c("c", "a"),
+                                 node_cache),
+    c(c = 30, a = 10)
+  )
+  # a different request and a missing node are rejected as before
+  expect_identical(
+    .bt_JAGS_bridge_select_nodes(nodes, "b", node_cache),
+    c(b = 2)
+  )
+  expect_error(
+    .bt_JAGS_bridge_select_nodes(nodes, c("a", "d"), node_cache),
+    "Requested bridge context node(s) are unavailable: 'd'.",
+    fixed = TRUE
+  )
+  expect_error(
+    .bt_JAGS_bridge_select_nodes(c(a = 1), c("a", "d"), node_cache),
+    "Requested bridge context node(s) are unavailable: 'd'.",
+    fixed = TRUE
+  )
+})
+
+
+test_that("the cached bridge node information reproduces the per-draw build", {
+
+  # The node information is built once per bridge and replayed by the shape of
+  # the pieces that decide the node names (as the node layout is). Every state
+  # must give the table the uncached build gives.
+  state <- c("mu" = 0.5, "tau" = 1.25, "rho[1]" = 0.1)
+  pieces <- list(
+    prior_parameters = list(mu = 2.5, tau = 1.25),
+    formula_prior_parameters = list(`mu_gamma` = c(1, 2, 3)),
+    formula_parameters = list(mu = c(0.1, 0.2), flag = TRUE),
+    add_parameter_values = list(block = matrix(1:6 / 2, nrow = 2L))
+  )
+  random <- list(
+    mu = list(
+      study = list(
+        nodes = c("study[1]" = 0.1, "study[2]" = 0.2, "tau" = 3.5),
+        allocation = list(weights = list(c("w[1]" = 0.5, "w[2]" = 0.5)))
+      ),
+      site = list(nodes = c("site[1]" = 1, "study[2]" = 2), allocation = NULL)
+    )
+  )
+  node_info <- function(state, pieces, random, node_cache = NULL){
+    .bt_JAGS_bridge_context_node_info(
+      state = state,
+      prior_parameters = pieces$prior_parameters,
+      formula_prior_parameters = pieces$formula_prior_parameters,
+      formula_parameters = pieces$formula_parameters,
+      add_parameter_values = pieces$add_parameter_values,
+      random = random,
+      node_cache = node_cache
+    )
+  }
+
+  builds <- 0L
+  build <- .bt_JAGS_bridge_build_node_info
+  testthat::local_mocked_bindings(
+    .bt_JAGS_bridge_build_node_info = function(...){
+      builds <<- builds + 1L
+      build(...)
+    },
+    .package = "BayesTools"
+  )
+
+  reference <- node_info(state, pieces, random)
+  expect_gt(nrow(reference), length(state))
+  expect_true(all(c("state", "prior_parameters", "formula_prior_parameters",
+                    "formula_parameters", "add_parameters", "random") %in% reference$source))
+  expect_identical(builds, 1L)
+
+  node_cache <- new.env(parent = emptyenv())
+  expect_identical(node_info(state, pieces, random, node_cache), reference)
+  expect_identical(builds, 2L)
+
+  # draws of the same shape (other values) are answered without a build
+  other_pieces <- pieces
+  other_pieces$formula_parameters$mu <- c(-1, -2)
+  other_pieces$add_parameter_values$block <- matrix(6:1 / 3, nrow = 2L)
+  other_random <- random
+  other_random$mu$study$nodes[] <- 9
+  expect_identical(node_info(state + 1, other_pieces, other_random, node_cache), reference)
+  expect_identical(node_info(state, pieces, random, node_cache), reference)
+  expect_identical(builds, 2L)
+
+  # every change of a shape that decides a node name rebuilds the table, and it
+  # equals the uncached build of the changed pieces
+  rebuilds <- list(
+    state_name = list(state = stats::setNames(state, c("mu", "tau", "rho[2]")), pieces = pieces, random = random),
+    length = list(state = state, pieces = {
+      out <- pieces
+      out$formula_parameters$mu <- c(0.1, 0.2, 0.3)
+      out
+    }, random = random),
+    dimension = list(state = state, pieces = {
+      out <- pieces
+      out$add_parameter_values$block <- matrix(1:6 / 2, nrow = 3L)
+      out
+    }, random = random),
+    piece_name = list(state = state, pieces = {
+      out <- pieces
+      names(out$prior_parameters) <- c("mu", "sigma")
+      out
+    }, random = random),
+    list_of_a_piece = list(state = state, pieces = {
+      out <- pieces
+      out$formula_prior_parameters <- list()
+      out$prior_parameters$`mu_gamma` <- c(1, 2, 3)
+      out
+    }, random = random),
+    dropped_piece = list(state = state, pieces = {
+      out <- pieces
+      out$formula_parameters$flag <- "text"
+      out
+    }, random = random),
+    random_node = list(state = state, pieces = pieces, random = {
+      out <- random
+      names(out$mu$study$nodes)[1L] <- "study[9]"
+      out
+    }),
+    random_block = list(state = state, pieces = pieces, random = {
+      out <- random
+      names(out$mu) <- c("study", "other")
+      out
+    }),
+    allocation = list(state = state, pieces = pieces, random = {
+      out <- random
+      names(out$mu$study$allocation$weights[[1L]]) <- c("w[1]", "w[3]")
+      out
+    }),
+    no_random = list(state = state, pieces = pieces, random = list())
+  )
+  for(name in names(rebuilds)){
+    changed <- rebuilds[[name]]
+    before <- builds
+    cached <- node_info(changed$state, changed$pieces, changed$random, node_cache)
+    expect_identical(builds, before + 1L, info = name)
+    expect_identical(cached, node_info(changed$state, changed$pieces, changed$random), info = name)
+    expect_false(identical(cached, reference), info = name)
+    # and the cache now serves that shape
+    before <- builds
+    expect_identical(node_info(changed$state, changed$pieces, changed$random, node_cache), cached, info = name)
+    expect_identical(builds, before, info = name)
+  }
+
+  # without a cache every call builds
+  before <- builds
+  node_info(state, pieces, random)
+  node_info(state, pieces, random)
+  expect_identical(builds, before + 2L)
+})
