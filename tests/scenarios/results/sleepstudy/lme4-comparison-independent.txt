@@ -1,11 +1,16 @@
        source     parameter estimate median    lCI   uCI
 1        lme4     intercept    0.000     NA     NA    NA
 2  BayesTools     intercept   -0.010 -0.006 -0.363 0.321
-3        lme4          Days    0.535     NA     NA    NA
-4  BayesTools          Days    0.533  0.532  0.375 0.692
-5        lme4         sigma    0.454     NA     NA    NA
-6  BayesTools         sigma    0.458  0.457  0.409 0.515
-7        lme4 sd(intercept)    0.647     NA     NA    NA
-8  BayesTools sd(intercept)    0.711  0.693  0.495 1.033
-9        lme4      sd(Days)    0.292     NA     NA    NA
-10 BayesTools      sd(Days)    0.324  0.315  0.210 0.491
+3        brms     intercept   -0.009 -0.009 -0.345 0.324
+4        lme4          Days    0.535     NA     NA    NA
+5  BayesTools          Days    0.533  0.532  0.375 0.692
+6        brms          Days    0.531  0.532  0.356 0.703
+7        lme4         sigma    0.454     NA     NA    NA
+8  BayesTools         sigma    0.458  0.457  0.409 0.515
+9        brms         sigma    0.459  0.458  0.409 0.516
+10       lme4 sd(intercept)    0.647     NA     NA    NA
+11 BayesTools sd(intercept)    0.711  0.693  0.495 1.033
+12       brms sd(intercept)    0.706  0.690  0.497 1.010
+13       lme4      sd(Days)    0.292     NA     NA    NA
+14 BayesTools      sd(Days)    0.324  0.315  0.210 0.491
+15       brms      sd(Days)    0.326  0.316  0.207 0.500

@@ -5,11 +5,13 @@ scenario_start("sleepstudy")
 ### Description
 # random intercepts and slopes and a heterogeneous compound-symmetry covariance
 # for the lme4 sleepstudy data (the first two examples of the RandomEffects
-# vignette): estimates compared with lme4 on the fitted and the original Days
-# scale, Bayes factors for the random slope (bridge sampling and spike and
-# slab), for the intercept-slope correlation (bridge sampling), and for the
-# HCS correlation equal to 0.9 (bridge sampling, Savage-Dickey, and a
-# mixture prior)
+# vignette): estimates compared with lme4 and with brms under matched priors on
+# the fitted and the original Days scale, Bayes factors for the random slope
+# (bridge sampling in BayesTools and brms, and spike and slab), for the
+# intercept-slope correlation (bridge sampling in BayesTools and brms), and for
+# the HCS correlation equal to 0.9 (bridge sampling, Savage-Dickey, and a
+# mixture prior), and fitted, population-level, and new-subject predictions
+# compared with lme4 and brms
 
 testthat::test_that("sleepstudy random intercepts, slopes, and HCS", {
 
@@ -38,6 +40,46 @@ testthat::test_that("sleepstudy random intercepts, slopes, and HCS", {
   lme4_slope_days  <- lme4::lmer(Reaction_z ~ Days + (1 + Days | Subject),      data = sleepstudy, REML = FALSE)
   lme4_independent <- lme4::lmer(Reaction_z ~ Days_s + (1 + Days_s || Subject), data = sleepstudy, REML = FALSE)
   lme4_hcs         <- lme4::lmer(Reaction_z ~ Days_s + cs(0 + Days_f | Subject), data = sleepstudy, REML = FALSE)
+
+  ### brms fits ----
+  # the intercept, slope, and independent models with the BayesTools priors:
+  # normal(0, 1) on the intercept of `0 + Intercept` and on the standardized
+  # Days_s coefficient, and normal(0, 1) on the SDs and sigma, which brms
+  # bounds at zero (half-normal); each block returns the fit and its
+  # bridge-sampling marginal likelihood
+  brms_intercept <- scenario_fit("brms_intercept", {
+    fit <- brms::brm(
+      Reaction_z ~ 0 + Intercept + Days_s + (1 | Subject), data = sleepstudy,
+      prior = c(brms::prior(normal(0, 1), class = b), brms::prior(normal(0, 1), class = sd),
+                brms::prior(normal(0, 1), class = sigma)),
+      save_pars = brms::save_pars(all = TRUE), backend = "rstan",
+      chains = 4, cores = 4, iter = 6000, warmup = 1000, seed = 1, refresh = 0
+    )
+    set.seed(1)
+    list(fit = fit, marglik = brms::bridge_sampler(fit, silent = TRUE))
+  })
+  brms_slope <- scenario_fit("brms_slope", {
+    fit <- brms::brm(
+      Reaction_z ~ 0 + Intercept + Days_s + (1 + Days_s | Subject), data = sleepstudy,
+      prior = c(brms::prior(normal(0, 1), class = b), brms::prior(normal(0, 1), class = sd),
+                brms::prior(normal(0, 1), class = sigma), brms::prior(lkj(1), class = cor)),
+      save_pars = brms::save_pars(all = TRUE), backend = "rstan",
+      chains = 4, cores = 4, iter = 6000, warmup = 1000, seed = 1, refresh = 0
+    )
+    set.seed(1)
+    list(fit = fit, marglik = brms::bridge_sampler(fit, silent = TRUE))
+  })
+  brms_independent <- scenario_fit("brms_independent", {
+    fit <- brms::brm(
+      Reaction_z ~ 0 + Intercept + Days_s + (1 + Days_s || Subject), data = sleepstudy,
+      prior = c(brms::prior(normal(0, 1), class = b), brms::prior(normal(0, 1), class = sd),
+                brms::prior(normal(0, 1), class = sigma)),
+      save_pars = brms::save_pars(all = TRUE), backend = "rstan",
+      chains = 4, cores = 4, iter = 6000, warmup = 1000, seed = 1, refresh = 0
+    )
+    set.seed(1)
+    list(fit = fit, marglik = brms::bridge_sampler(fit, silent = TRUE))
+  })
 
   ### BayesTools fits ----
   # each fit block returns the fit and, where a Bayes factor needs it, its
@@ -154,25 +196,43 @@ testthat::test_that("sleepstudy random intercepts, slopes, and HCS", {
   scenario_text("estimates-hcs",         JAGS_estimates_table(fit_hcs))
   scenario_text("estimates-hcs-test",    JAGS_estimates_table(fit_hcs_test))
 
-  ### lme4 comparisons ----
-  posterior_summary <- function(draws) {
-    c(estimate = mean(draws), median = stats::median(draws),
-      lCI = unname(stats::quantile(draws, 0.025)), uCI = unname(stats::quantile(draws, 0.975)))
-  }
+  ### lme4 and brms comparisons ----
   # one row per parameter and source: the lme4 estimate, then the BayesTools
-  # posterior summaries; `bayes_names` maps the parameters to table columns
-  compare_with_lme4 <- function(lme4_values, fit, bayes_names, transform_scaled = FALSE) {
+  # and brms posterior summaries; `bayes_names` maps the parameters to
+  # BayesTools table columns
+  compare_with_lme4 <- function(lme4_values, fit, bayes_names, transform_scaled = FALSE, brms_draws = NULL) {
     samples <- JAGS_estimates_table(fit, transform_scaled = transform_scaled, return_samples = TRUE)
-    bayes   <- t(apply(samples[, bayes_names, drop = FALSE], 2, posterior_summary))
-    out <- rbind(
-      data.frame(source = "lme4", parameter = names(bayes_names), estimate = unname(lme4_values[names(bayes_names)]),
-                 median = NA_real_, lCI = NA_real_, uCI = NA_real_),
-      data.frame(source = "BayesTools", parameter = names(bayes_names), bayes, row.names = NULL)
+    scenario_comparison_table(
+      names(bayes_names), references = list(lme4 = lme4_values),
+      posteriors = c(list(BayesTools = scenario_draws(samples, bayes_names)),
+                     if (!is.null(brms_draws)) list(brms = brms_draws))
     )
-    out[, 3:6] <- round(out[, 3:6], 3)
-    out <- out[order(match(out$parameter, names(bayes_names))), ]
-    rownames(out) <- NULL
-    out
+  }
+  brms_names <- c(
+    intercept = "b_Intercept", Days = "b_Days_s", sigma = "sigma",
+    "sd(intercept)" = "sd_Subject__Intercept", "sd(Days)" = "sd_Subject__Days_s",
+    "cor(intercept,Days)" = "cor_Subject__Intercept__Days_s"
+  )
+  brms_draws <- function(fit, parameters) {
+    scenario_draws(as.matrix(fit), brms_names[parameters])
+  }
+  # brms draws on the original Days scale: with Days_s = (Days - m) / s, the
+  # coefficients transform linearly and the random intercepts and slopes by
+  # A = [1, -m / s; 0, 1 / s], so their covariance becomes A Sigma A'
+  brms_original_scale <- function(fit) {
+    draws <- brms_draws(fit, names(brms_names))
+    m <- mean(sleepstudy$Days)
+    s <- stats::sd(sleepstudy$Days)
+    var_intercept <- draws[, "sd(intercept)"]^2
+    var_days      <- draws[, "sd(Days)"]^2
+    covariance    <- draws[, "cor(intercept,Days)"] * draws[, "sd(intercept)"] * draws[, "sd(Days)"]
+    sd_intercept  <- sqrt(var_intercept - 2 * m / s * covariance + (m / s)^2 * var_days)
+    sd_days       <- draws[, "sd(Days)"] / s
+    cbind(
+      intercept = draws[, "intercept"] - draws[, "Days"] * m / s, Days = draws[, "Days"] / s,
+      sigma = draws[, "sigma"], "sd(intercept)" = sd_intercept, "sd(Days)" = sd_days,
+      "cor(intercept,Days)" = (covariance - m / s * var_days) / s / (sd_intercept * sd_days)
+    )
   }
   lme4_coefficients <- function(model, days = "Days_s") {
     vc  <- lme4::VarCorr(model)
@@ -194,13 +254,17 @@ testthat::test_that("sleepstudy random intercepts, slopes, and HCS", {
   )
 
   scenario_text("lme4-comparison-intercept",
-    compare_with_lme4(lme4_coefficients(lme4_intercept), fit_intercept, slope_names[1:4]))
+    compare_with_lme4(lme4_coefficients(lme4_intercept), fit_intercept, slope_names[1:4],
+                      brms_draws = brms_draws(brms_intercept[["fit"]], names(slope_names)[1:4])))
   scenario_text("lme4-comparison-slope",
-    compare_with_lme4(lme4_coefficients(lme4_slope), fit_slope, slope_names))
+    compare_with_lme4(lme4_coefficients(lme4_slope), fit_slope, slope_names,
+                      brms_draws = brms_draws(brms_slope[["fit"]], names(slope_names))))
   scenario_text("lme4-comparison-slope-original-scale",
-    compare_with_lme4(lme4_coefficients(lme4_slope_days, days = "Days"), fit_slope, slope_names, transform_scaled = TRUE))
+    compare_with_lme4(lme4_coefficients(lme4_slope_days, days = "Days"), fit_slope, slope_names, transform_scaled = TRUE,
+                      brms_draws = brms_original_scale(brms_slope[["fit"]])))
   scenario_text("lme4-comparison-independent",
-    compare_with_lme4(lme4_coefficients(lme4_independent), fit_independent, slope_names[1:5]))
+    compare_with_lme4(lme4_coefficients(lme4_independent), fit_independent, slope_names[1:5],
+                      brms_draws = brms_draws(brms_independent[["fit"]], names(slope_names)[1:5])))
 
   scenario_text("lme4-comparison-hcs", {
     lme4_vc  <- as.matrix(lme4::VarCorr(lme4_hcs)[["Subject"]])
@@ -218,15 +282,8 @@ testthat::test_that("sleepstudy random intercepts, slopes, and HCS", {
 
   ### Bayes factors ----
   # each test compares H1 against H0 as log BF10 (positive values favour H1):
-  # bridge sampling compares two separately fitted models, the other methods
-  # obtain the same Bayes factor from a single fit
-  log_bf10_bridge <- function(marglik_1, marglik_0) {
-    bridgesampling::bf(marglik_1, marglik_0, log = TRUE)[["bf"]]
-  }
-  bf_comparison <- function(H1, H0, log_BF10, note = "") {
-    data.frame(H1 = H1, H0 = H0, method = names(log_BF10),
-               log_BF10 = round(unname(log_BF10), 3), note = note)
-  }
+  # bridge sampling compares two separately fitted models (in BayesTools and
+  # in brms), the other methods obtain the same Bayes factor from a single fit
 
   # random slope: the spike-and-slab prior on sd(Days) includes or excludes
   # the slope within one fit; with every draw including it, the inclusion BF
@@ -234,25 +291,27 @@ testthat::test_that("sleepstudy random intercepts, slopes, and HCS", {
   scenario_text("bayes-factor-random-slope", {
     slope_spike <- JAGS_inference_table(fit_slope_spike)[["inclusion_BF"]]
     spike_bound <- identical(attr(slope_spike, "bound_operator"), ">")
-    bf_comparison(
+    scenario_bf_table(
       H1 = "(1 + Days | Subject)",
       H0 = "(1 | Subject)",
       log_BF10 = c(
-        "bridge sampling" = log_bf10_bridge(slope[["marglik"]], intercept[["marglik"]]),
-        "spike and slab"  = log(as.numeric(slope_spike))
+        "bridge sampling"        = scenario_log_bf_bridge(slope[["marglik"]], intercept[["marglik"]]),
+        "bridge sampling (brms)" = scenario_log_bf_bridge(brms_slope[["marglik"]], brms_intercept[["marglik"]]),
+        "spike and slab"         = log(as.numeric(slope_spike))
       ),
-      note = c("", if (spike_bound) "lower bound: all draws include the slope" else "")
+      note = c("", "", if (spike_bound) "lower bound: all draws include the slope" else "")
     )
   })
 
   # intercept-slope correlation: LKJ(1) correlation against independent
   # intercepts and slopes
   scenario_text("bayes-factor-correlation", {
-    bf_comparison(
+    scenario_bf_table(
       H1 = "(1 + Days | Subject), cor ~ LKJ(1)",
       H0 = "(1 + Days || Subject)",
       log_BF10 = c(
-        "bridge sampling" = log_bf10_bridge(slope[["marglik"]], independent[["marglik"]])
+        "bridge sampling"        = scenario_log_bf_bridge(slope[["marglik"]], independent[["marglik"]]),
+        "bridge sampling (brms)" = scenario_log_bf_bridge(brms_slope[["marglik"]], brms_independent[["marglik"]])
       )
     )
   })
@@ -266,11 +325,11 @@ testthat::test_that("sleepstudy random intercepts, slopes, and HCS", {
     )
     savage_dickey <- hypothesis_BF(hcs_cor, hypothesis = "`(mu) cor` = 0.9", BF01 = TRUE, seed = 1)
     mixture <- JAGS_inference_table(fit_hcs_test)[["inclusion_BF"]]
-    bf_comparison(
+    scenario_bf_table(
       H1 = "cor ~ uniform(-1/9, 1)",
       H0 = "cor = 0.9",
       log_BF10 = c(
-        "bridge sampling" = log_bf10_bridge(hcs[["marglik"]], hcs_null[["marglik"]]),
+        "bridge sampling" = scenario_log_bf_bridge(hcs[["marglik"]], hcs_null[["marglik"]]),
         "Savage-Dickey"   = -log(as.numeric(savage_dickey[["BF"]])),
         "mixture prior"   = log(as.numeric(mixture))
       )
@@ -308,6 +367,42 @@ testthat::test_that("sleepstudy random intercepts, slopes, and HCS", {
     scenario_agreement_plot(stats::fitted(lme4_slope),       fitted_mean(fit_slope),       "Random intercepts and slopes")
     scenario_agreement_plot(stats::fitted(lme4_independent), fitted_mean(fit_independent), "Independent intercepts and slopes")
     scenario_agreement_plot(stats::fitted(lme4_hcs),         fitted_mean(fit_hcs),         "HCS")
+  })
+
+  # brms shares the priors, so the posterior means of the conditional and the
+  # population-level (fixed-part) predictions agree within Monte Carlo error
+  scenario_plot("brms-fitted-comparison", {
+    par(mfrow = c(2, 2), mar = c(4, 4, 2, 1))
+    fitted_mean <- function(fit, target) rowMeans(JAGS_predict_formula(fit, "mu", formula_target = target)$value)
+    brms_mean   <- function(fit, re_formula = NULL) colMeans(brms::posterior_epred(fit, re_formula = re_formula))
+    scenario_agreement_plot(brms_mean(brms_intercept[["fit"]]),   fitted_mean(fit_intercept, "conditional"),
+                            "Random intercepts", reference_label = "brms")
+    scenario_agreement_plot(brms_mean(brms_slope[["fit"]]),       fitted_mean(fit_slope, "conditional"),
+                            "Random intercepts and slopes", reference_label = "brms")
+    scenario_agreement_plot(brms_mean(brms_independent[["fit"]]), fitted_mean(fit_independent, "conditional"),
+                            "Independent intercepts and slopes", reference_label = "brms")
+    scenario_agreement_plot(brms_mean(brms_slope[["fit"]], re_formula = NA), fitted_mean(fit_slope, "fixed"),
+                            "Population level (slopes)", reference_label = "brms")
+  })
+
+  ### predictions for a new subject ----
+  # lme4 predicts a new subject at the population level, which the "zero"
+  # policy reproduces; the "sample" policy draws the new subject's intercept
+  # and slope from the fitted covariance, as brms sample_new_levels = "gaussian"
+  scenario_text("predictions-new-subject", {
+    new_subject <- data.frame(Subject = factor("new"), Days = 0:9)
+    new_subject$Days_s <- (new_subject$Days - mean(sleepstudy$Days)) / stats::sd(sleepstudy$Days)
+    predict_new <- function(new_levels, seed = NULL) {
+      JAGS_predict_formula(fit_slope, "mu", data = new_subject, formula_target = "conditional",
+                           new_levels = new_levels, seed = seed)$value
+    }
+    scenario_prediction_table(new_subject[, "Days", drop = FALSE], list(
+      "lme4"              = stats::predict(lme4_slope, newdata = new_subject, allow.new.levels = TRUE),
+      "BayesTools zero"   = predict_new("zero"),
+      "BayesTools sample" = predict_new("sample", seed = 1),
+      "brms sample"       = t(brms::posterior_epred(brms_slope[["fit"]], newdata = new_subject,
+                                                    allow_new_levels = TRUE, sample_new_levels = "gaussian"))
+    ))
   })
 
   ### prior and posterior distributions ----
