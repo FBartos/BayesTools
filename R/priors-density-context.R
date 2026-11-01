@@ -283,7 +283,8 @@
 .prior_density_context_density <- function(context, weights,
                                            source_transforms = NULL,
                                            output_transformation = NULL,
-                                           output_transformation_arguments = NULL){
+                                           output_transformation_arguments = NULL,
+                                           .defer = FALSE){
 
   standardized_weights <- .prior_density_context_standardized_weights(
     context, weights, source_transforms
@@ -307,7 +308,8 @@
     source_transforms                = source_transforms,
     output_transformation            = if(is.null(offset)) output_transformation else NULL,
     output_transformation_arguments  = if(is.null(offset)) output_transformation_arguments else NULL,
-    grid_spacing                     = context$grid_spacing
+    grid_spacing                     = context$grid_spacing,
+    .defer                           = .defer && is.null(offset)
   )
   if(!is.null(offset)){
     out <- .prior_linear_density_transform(out, "lin", list(a = offset, b = 1), n_grid = context$n_grid)
@@ -519,7 +521,8 @@
       n_grid     = context$n_grid,
       tail_prob  = context$tail_prob,
       source_transforms = source_transforms,
-      grid_spacing      = context$grid_spacing
+      grid_spacing      = context$grid_spacing,
+      .defer            = FALSE
     )
   }
 
@@ -583,7 +586,8 @@
       n_grid            = context$n_grid,
       tail_prob         = context$tail_prob,
       source_transforms = source_transforms,
-      grid_spacing      = context$grid_spacing
+      grid_spacing      = context$grid_spacing,
+      .defer            = FALSE
     )
   })
 
@@ -656,7 +660,8 @@
                                         source_transforms = NULL,
                                         output_transformation = NULL,
                                         output_transformation_arguments = NULL,
-                                        .record_evaluation = TRUE){
+                                        .record_evaluation = TRUE,
+                                        .defer = TRUE){
 
   .model_probability_context_validate(context)
   .model_probability_context_measure_check(context, weights)
@@ -666,8 +671,29 @@
       weights                         = weights,
       source_transforms               = source_transforms,
       output_transformation           = output_transformation,
-      output_transformation_arguments = output_transformation_arguments
+      output_transformation_arguments = output_transformation_arguments,
+      .defer                          = isTRUE(.defer) && isTRUE(.record_evaluation)
     )
+    if(.prior_linear_density_is_deferred(out)){
+      # the context's own record and numerical diagnostics describe the grid
+      # that is built on its first read
+      arguments <- list(
+        context = context,
+        weights = weights,
+        source_transforms = source_transforms,
+        output_transformation = output_transformation,
+        output_transformation_arguments = output_transformation_arguments
+      )
+      deferred <- list(
+        density = .prior_linear_density_deferred(arguments, "context"),
+        points  = .prior_linear_density_empty_points(),
+        n_grid  = out$n_grid
+      )
+      class(deferred) <- c("prior_linear_density", "prior_density")
+      attr(deferred, "weights") <- attr(out, "weights", exact = TRUE)
+      attr(deferred, "adaptive_evaluation") <- list(kind = "density_context", arguments = arguments)
+      return(deferred)
+    }
   }else if(inherits(context, "prior_density_model_mixture_context")){
     out <- .prior_density_model_mixture_density(
       context                         = context,
@@ -770,7 +796,7 @@
       output_transformation_arguments = output_transformation_arguments
     )
     out <- list(
-      density = .prior_linear_density_deferred(arguments),
+      density = .prior_linear_density_deferred(arguments, "rows"),
       points  = .prior_linear_density_empty_points(),
       n_grid  = context$n_grid
     )
@@ -869,10 +895,42 @@
   out
 }
 
+# Whether a prior is continuous by its structure (no point, spike-and-slab,
+# mixture, discrete, 'none' or expression prior; an ordered prior needs a
+# continuous total and a Dirichlet allocation).
+.prior_density_continuous_prior <- function(prior){
+
+  if(!is.prior(prior) || is.prior.point(prior) || is.prior.spike_and_slab(prior) ||
+     is.prior.mixture(prior) || is.prior.discrete(prior) || is.prior.none(prior) ||
+     .is_prior_expression(prior)){
+    return(FALSE)
+  }
+  if(is.prior.ordered(prior)){
+    return(identical(prior$allocation$type, "dirichlet") &&
+             is.numeric(prior$allocation$alpha) && all(prior$allocation$alpha > 0) &&
+             .prior_density_continuous_prior(prior$total))
+  }
+  TRUE
+}
+
+# Whether an output transformation leaves a measure without atoms: any but a
+# constant map ('lin' or 'exp_lin' with b = 0; arguments that do not decide it
+# are refused).
+.prior_density_atom_free_transformation <- function(output_transformation,
+                                                    output_transformation_arguments){
+
+  if(is.character(output_transformation) && length(output_transformation) == 1L &&
+     output_transformation %in% c("lin", "exp_lin")){
+    b <- output_transformation_arguments[["b"]]
+    if(!is.null(b) && (!is.numeric(b) || length(b) != 1L || !is.finite(b) || b == 0)){
+      return(FALSE)
+    }
+  }
+  TRUE
+}
+
 # Whether a row mixture of a prior-density context is free of point masses
-# by its structure: every prior of the context is continuous (no point,
-# spike-and-slab, mixture, discrete, 'none' or expression priors; an ordered
-# prior needs a continuous total and a Dirichlet allocation), every row has a
+# by its structure: every prior of the context is continuous, every row has a
 # nonzero standardized weight (a row without one is the point at zero), and
 # the output transformation is not a constant map.
 .prior_density_rows_atom_free <- function(context, rows, output_transformation,
@@ -881,20 +939,7 @@
   if(!inherits(context, "prior_density_context") || is.null(context$n_grid)){
     return(FALSE)
   }
-  continuous <- function(prior){
-    if(!is.prior(prior) || is.prior.point(prior) || is.prior.spike_and_slab(prior) ||
-       is.prior.mixture(prior) || is.prior.discrete(prior) || is.prior.none(prior) ||
-       .is_prior_expression(prior)){
-      return(FALSE)
-    }
-    if(is.prior.ordered(prior)){
-      return(identical(prior$allocation$type, "dirichlet") &&
-               is.numeric(prior$allocation$alpha) && all(prior$allocation$alpha > 0) &&
-               continuous(prior$total))
-    }
-    TRUE
-  }
-  if(!all(vapply(context$prior_list, continuous, logical(1)))){
+  if(!all(vapply(context$prior_list, .prior_density_continuous_prior, logical(1)))){
     return(FALSE)
   }
   nonzero <- tryCatch(
@@ -906,39 +951,63 @@
   if(!all(nonzero)){
     return(FALSE)
   }
-  if(is.character(output_transformation) && length(output_transformation) == 1L &&
-     output_transformation %in% c("lin", "exp_lin")){
-    b <- output_transformation_arguments[["b"]]
-    if(!is.null(b) && (!is.numeric(b) || length(b) != 1L || !is.finite(b) || b == 0)){
-      return(FALSE)
-    }
-  }
-  TRUE
+  .prior_density_atom_free_transformation(output_transformation, output_transformation_arguments)
 }
 
 # A deferred numerical grid of a prior linear density without atoms: the
-# 'density' field of a row mixture whose grid is built only when needed. It
-# holds the builder's arguments (the density's provenance record) and a cache;
-# reading any grid field through `$` or `[[` builds the grid once
-# (.prior_density_rows_grid()) and keeps it, and the continuous mass is 1.
-# .prior_linear_density_materialize() returns the built density with the
-# grid's attributes, for consumers that read those.
-.prior_linear_density_deferred <- function(arguments){
+# 'density' field of a density whose grid is built only when needed. It holds
+# the builder's arguments (the density's provenance record), the kind of
+# builder and a cache; reading any grid field through `$` or `[[` builds the
+# grid once and keeps it, and the continuous mass is 1. The kinds are the row
+# mixture of a context (.prior_density_rows_grid()), a linear combination
+# (.prior_linear_combination_grid()) and the density of a context
+# (.prior_density_from_context() without deferral). The builders are called by
+# name, so that a replaced binding is used. .prior_linear_density_materialize()
+# returns the built density with the grid's attributes, for consumers that
+# read those.
+.prior_linear_density_deferred <- function(arguments, kind){
 
-  structure(list(), arguments = arguments, cache = new.env(parent = emptyenv()),
+  structure(list(), arguments = arguments, kind = kind,
+            cache = new.env(parent = emptyenv()),
             class = "prior_linear_density_deferred")
+}
+
+# A prior linear density whose grid is deferred: no atoms, unit continuous
+# mass and the recorded 'adaptive_evaluation' of its linear combination.
+.prior_linear_density_deferred_combination <- function(arguments, n_grid){
+
+  out <- list(
+    density = .prior_linear_density_deferred(arguments, "combination"),
+    points  = .prior_linear_density_empty_points(),
+    n_grid  = n_grid
+  )
+  class(out) <- c("prior_linear_density", "prior_density")
+  attr(out, "weights") <- arguments$weights
+  attr(out, "adaptive_evaluation") <- list(kind = "linear_combination", arguments = arguments)
+  out
+}
+
+.prior_linear_density_is_deferred <- function(x){
+
+  is.list(x) && inherits(.subset2(x, "density"), "prior_linear_density_deferred")
 }
 
 .prior_linear_density_deferred_value <- function(deferred){
 
   cache <- attr(deferred, "cache", exact = TRUE)
   if(is.null(cache$value)){
-    value <- do.call(.prior_density_rows_grid, attr(deferred, "arguments", exact = TRUE))
+    arguments <- attr(deferred, "arguments", exact = TRUE)
+    value <- switch(
+      attr(deferred, "kind", exact = TRUE),
+      "rows"        = do.call(.prior_density_rows_grid, arguments),
+      "combination" = do.call(.prior_linear_combination_grid, arguments),
+      "context"     = do.call(.prior_density_from_context, c(arguments, list(.defer = FALSE)))
+    )
     if(!inherits(value, "prior_linear_density") || !is.list(value$density) ||
        !isTRUE(value$density$mass == 1) ||
        (!is.null(value$points) && nrow(value$points) > 0L)){
       stop("The deferred prior-density grid does not have the structure of its ",
-           "atom-free row mixture.", call. = FALSE)
+           "atom-free measure.", call. = FALSE)
     }
     cache$value <- value
   }
@@ -949,7 +1018,7 @@
 # is not deferred).
 .prior_linear_density_materialize <- function(x){
 
-  if(is.list(x) && inherits(.subset2(x, "density"), "prior_linear_density_deferred")){
+  if(.prior_linear_density_is_deferred(x)){
     return(.prior_linear_density_deferred_value(.subset2(x, "density")))
   }
   x

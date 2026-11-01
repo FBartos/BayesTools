@@ -637,6 +637,19 @@ refinement, transformations of the density). Ordinates, exact heights and
 region probabilities evaluate the recorded route and never build it; the
 atoms (none), continuous mass (1) and grid size are exact without it.
 
+A linear combination without a product group defers its numerical grid in the
+same way when the grid is large (`.prior_linear_density_large_grid()`, 65,536
+knots: a narrow source beside a wide or heavy-tailed one, since the grid has
+64 knots per robust scale of the narrowest source, up to 2,097,152) and its
+structure has no atom: every source that sets the grid a continuous scalar
+prior (a rounding residue is a point that only shifts the grid), no source
+transformation, and no output map but an affine one. A nonlinear map can warn
+or fail on grid values, so it builds at once, as does every smaller grid, which
+is cheap and keeps the numerical diagnostics that only a built grid has. A
+builder that mixes or refines grids passes `.defer = FALSE`. The density of a
+context (`.prior_density_from_context()`) defers the same grid with its own
+provenance record and builds it, with its diagnostics, on the first read.
+
 Heights and region probabilities require recorded provenance (the
 `adaptive_evaluation` attribute naming the prior measure): a density grid
 without it has no error control and cannot be refined, so it is used for

@@ -1955,7 +1955,8 @@
       prior_list        = recipe$prior_list,
       weights           = recipe$weights,
       n_grid            = recipe$n_grid,
-      source_transforms = recipe$source_transforms
+      source_transforms = recipe$source_transforms,
+      .defer            = FALSE
     ),
     error = function(e) "unavailable"
   )

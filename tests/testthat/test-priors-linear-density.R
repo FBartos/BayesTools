@@ -4334,6 +4334,96 @@ test_that("row mixtures without atoms build their numerical grid only for grid c
                         "prior_linear_density_deferred"))
 })
 
+test_that("large combinations without atoms build their numerical grid only for grid consumers", {
+
+  # N(0, 1) + N(0, .01): the narrow source sets 64 knots per robust scale
+  # (.0074) over the +/-3.7 range of the wide one, so the grid has 2^16 knots
+  # and, the combination being atom-free, is deferred until a grid field is
+  # read. Its route needs no grid, and the grid built later is the eager one.
+  priors <- list(a = prior("normal", list(0, 1)), b = prior("normal", list(0, .01)))
+  weights <- c(a = 1, b = 1)
+  builds <- 0L
+  build <- .prior_linear_combination_grid
+  local_mocked_bindings(.prior_linear_combination_grid = function(...){
+    builds <<- builds + 1L
+    build(...)
+  })
+  eager <- .prior_linear_combination_density(priors, weights, .defer = FALSE)
+  expect_false(inherits(eager$density, "prior_linear_density_deferred"))
+  expect_identical(eager$n_grid, .prior_linear_density_large_grid())
+  builds <- 0L
+
+  deferred <- .prior_linear_combination_density(priors, weights)
+  expect_s3_class(deferred$density, "prior_linear_density_deferred")
+  expect_identical(attr(deferred, "adaptive_evaluation"), attr(eager, "adaptive_evaluation"))
+  expect_identical(attr(deferred, "weights"), attr(eager, "weights"))
+  expect_identical(deferred$points, eager$points)
+  expect_identical(deferred$n_grid, eager$n_grid)
+  expect_identical(deferred$density$mass, eager$density$mass)
+  expect_true(prior_density_has_provenance(deferred))
+
+  # ordinates, exact heights, region probabilities and plots over a given
+  # range evaluate the route
+  for(value in c(-1, 0, .4)){
+    expect_identical(prior_density_ordinate(deferred, value), prior_density_ordinate(eager, value))
+    expect_identical(.prior_linear_density_height(deferred, value),
+                     .prior_linear_density_height(eager, value))
+  }
+  region <- list(intervals = matrix(c(-.5, 1), 1L), indicator = function(x) x > -.5 & x < 1)
+  expect_identical(
+    .prior_density_route_region(.prior_density_route_from_adaptive(attr(deferred, "adaptive_evaluation")), region),
+    .prior_density_route_region(.prior_density_route_from_adaptive(attr(eager, "adaptive_evaluation")), region)
+  )
+  expect_identical(.prior_linear_density_to_plot_data(deferred, x_range = c(-3, 3)),
+                   .prior_linear_density_to_plot_data(eager, x_range = c(-3, 3)))
+  expect_identical(builds, 0L)
+
+  # the first grid read builds the grid once
+  expect_identical(deferred$density$x, eager$density$x)
+  expect_identical(deferred$density[["y"]], eager$density$y)
+  expect_identical(names(deferred$density), names(eager$density))
+  expect_identical(.prior_linear_density_materialize(deferred), eager)
+  expect_identical(builds, 1L)
+
+  # an affine output map keeps the deferral (its requested grid size is the
+  # density's); a nonlinear map, which can warn or fail on grid values, a
+  # constant map (one atom) and a grid below the large size are built at once
+  affine_arguments <- list(a = 1, b = 2)
+  affine <- .prior_linear_combination_density(priors, weights, output_transformation = "lin",
+                                              output_transformation_arguments = affine_arguments)
+  affine_eager <- .prior_linear_combination_density(priors, weights, output_transformation = "lin",
+                                                    output_transformation_arguments = affine_arguments,
+                                                    .defer = FALSE)
+  expect_s3_class(affine$density, "prior_linear_density_deferred")
+  expect_identical(affine$n_grid, affine_eager$n_grid)
+  expect_identical(.prior_linear_density_materialize(affine), affine_eager)
+  builds <- 0L
+  nonlinear <- .prior_linear_combination_density(priors, weights, output_transformation = "exp")
+  constant <- .prior_linear_combination_density(priors, weights, output_transformation = "lin",
+                                                output_transformation_arguments = list(a = 2, b = 0))
+  small <- .prior_linear_combination_density(
+    list(a = prior("normal", list(0, 1)), b = prior("normal", list(0, .1))), weights
+  )
+  for(density in list(nonlinear, constant, small)){
+    expect_false(inherits(density$density, "prior_linear_density_deferred"))
+  }
+  expect_identical(builds, 3L)
+  expect_identical(constant$points$x, 2)
+  expect_null(constant$density)
+
+  # the density of a context defers the same grid with its own record, and
+  # builds it with the numerical diagnostics of the context
+  context <- .prior_density_build_context(priors, names(priors), n_grid = 4096L)
+  context_deferred <- .prior_density_from_context(context, weights)
+  context_eager <- .prior_density_from_context(context, weights, .defer = FALSE)
+  expect_s3_class(context_deferred$density, "prior_linear_density_deferred")
+  expect_identical(attr(context_deferred, "adaptive_evaluation"), attr(context_eager, "adaptive_evaluation"))
+  expect_identical(context_deferred$n_grid, context_eager$n_grid)
+  expect_identical(prior_density_ordinate(context_deferred, .2), prior_density_ordinate(context_eager, .2))
+  expect_identical(.prior_linear_density_materialize(context_deferred), context_eager)
+  expect_true(is.list(attr(context_eager, "numerical_diagnostics")$grid_normalization))
+})
+
 # A small fitted object whose formula parameter is standardized (x), with one
 # more parameter (sigma) outside the formula.
 transformed_density_test_fit <- function(x_prior = prior("normal", list(0, 1))){

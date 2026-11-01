@@ -1184,22 +1184,23 @@
   locations
 }
 
-.prior_linear_additive_combination_density <- function(prior_list, weights,
-                                                       n_grid = .prior_linear_density_default_grid(),
-                                                       tail_prob = .prior_linear_density_tail_prob(),
-                                                       source_transforms = NULL,
-                                                       grid_spacing = NULL){
+# The setup of the additive part of a linear combination: its weight groups
+# and the grid they fix. It costs little next to that grid, so a caller can
+# decide on the grid before it is built. NULL for a combination without a
+# weighted group (the point 0).
+.prior_linear_additive_plan <- function(prior_list, weights, n_grid, tail_prob,
+                                        source_transforms, grid_spacing){
 
   weights <- weights[is.finite(weights)]
   weights <- weights[weights != 0]
 
   if(length(weights) == 0){
-    return(.prior_linear_density_point(0))
+    return(NULL)
   }
 
   groups <- .prior_linear_weight_groups(prior_list, weights)
   if(length(groups) == 0){
-    return(.prior_linear_density_point(0))
+    return(NULL)
   }
 
   if(is.null(source_transforms)){
@@ -1228,11 +1229,43 @@
     scale        = robust_scale,
     grid_spacing = grid_spacing
   )
-  n_grid <- resolution$n_grid
   dx <- resolution$dx
   if(!is.finite(dx) || dx <= 0){
     dx <- 1
   }
+
+  list(
+    weights           = weights,
+    groups            = groups,
+    source_transforms = source_transforms,
+    residue_locations = residue_locations,
+    n_grid            = resolution$n_grid,
+    dx                = dx
+  )
+}
+
+# 'plan' is the .prior_linear_additive_plan() of the same arguments when the
+# caller has it.
+.prior_linear_additive_combination_density <- function(prior_list, weights,
+                                                       n_grid = .prior_linear_density_default_grid(),
+                                                       tail_prob = .prior_linear_density_tail_prob(),
+                                                       source_transforms = NULL,
+                                                       grid_spacing = NULL,
+                                                       plan = NULL){
+
+  if(is.null(plan)){
+    plan <- .prior_linear_additive_plan(prior_list, weights, n_grid, tail_prob,
+                                        source_transforms, grid_spacing)
+  }
+  if(is.null(plan)){
+    return(.prior_linear_density_point(0))
+  }
+  weights           <- plan$weights
+  groups            <- plan$groups
+  source_transforms <- plan$source_transforms
+  residue_locations <- plan$residue_locations
+  n_grid            <- plan$n_grid
+  dx                <- plan$dx
 
   dist <- .prior_linear_density_point(0)
   group_dists <- list()
@@ -1299,7 +1332,8 @@
                                               output_transformation = NULL,
                                               output_transformation_arguments = NULL,
                                               grid_spacing = NULL,
-                                              .record_evaluation = TRUE){
+                                              .record_evaluation = TRUE,
+                                              .defer = TRUE){
 
   check_list(prior_list, "prior_list")
   if(is.null(weights) || length(weights) == 0){
@@ -1340,6 +1374,89 @@
     source_transforms[is.na(source_transforms)] <- NA_character_
   }
 
+  # The numerical grid of a combination whose structure fixes its measure
+  # (atom-free) is built when a grid field is first read; evaluations of the
+  # recorded route (ordinates, heights, region probabilities) never read it.
+  # A builder that needs the grid at once passes '.defer = FALSE'.
+  split <- .prior_linear_split_multiply_groups(prior_list, weights)
+  plan <- NULL
+  if(length(split$product_groups) == 0L){
+    plan <- .prior_linear_additive_plan(
+      prior_list, split$additive_weights, n_grid, tail_prob, source_transforms, grid_spacing
+    )
+  }
+  if(isTRUE(.record_evaluation) && isTRUE(.defer) &&
+     .prior_linear_density_defers_grid(plan, output_transformation, output_transformation_arguments)){
+    arguments <- list(
+      prior_list = prior_list,
+      weights = weights,
+      n_grid = n_grid,
+      tail_prob = tail_prob,
+      source_transforms = source_transforms,
+      output_transformation = output_transformation,
+      output_transformation_arguments = output_transformation_arguments,
+      grid_spacing = grid_spacing
+    )
+    return(.prior_linear_density_deferred_combination(
+      arguments,
+      n_grid = if(is.null(output_transformation)) plan$n_grid else n_grid
+    ))
+  }
+
+  .prior_linear_combination_grid(
+    prior_list                      = prior_list,
+    weights                         = weights,
+    n_grid                          = n_grid,
+    tail_prob                       = tail_prob,
+    source_transforms               = source_transforms,
+    output_transformation           = output_transformation,
+    output_transformation_arguments = output_transformation_arguments,
+    grid_spacing                    = grid_spacing,
+    .record_evaluation              = .record_evaluation,
+    .plan                           = plan
+  )
+}
+
+# Whether the grid of a combination is deferred (see .prior_linear_combination_density()):
+# the combination has no product group ('plan' is NULL otherwise), its grid is
+# large enough for a build to be noticeable, and its structure alone fixes the
+# outcome of the build: only continuous scalar priors set the grid (a rounding
+# residue is a point that shifts it and leaves it without atoms, but not alone),
+# no source transformation, and no output map but an affine one (a nonlinear
+# map can warn or fail on the values of the grid, and a constant map turns the
+# measure into an atom). Every other combination is built at once, as is a
+# small one, which is cheap and keeps its numerical diagnostics.
+.prior_linear_density_defers_grid <- function(plan, output_transformation,
+                                              output_transformation_arguments){
+
+  if(is.null(plan) || plan$n_grid < .prior_linear_density_large_grid() ||
+     any(!is.na(plan$source_transforms))){
+    return(FALSE)
+  }
+  on_grid <- is.na(plan$residue_locations)
+  scalar_continuous <- vapply(plan$groups[on_grid], function(group){
+    is.prior.simple(group$prior) && .prior_density_continuous_prior(group$prior)
+  }, logical(1))
+  if(!any(on_grid) || !all(scalar_continuous)){
+    return(FALSE)
+  }
+  if(is.null(output_transformation)){
+    return(TRUE)
+  }
+  a <- output_transformation_arguments[["a"]]
+  identical(output_transformation, "lin") &&
+    (is.null(a) || (is.numeric(a) && length(a) == 1L && is.finite(a))) &&
+    .prior_density_atom_free_transformation(output_transformation, output_transformation_arguments)
+}
+
+# The combination with its numerical grid, for validated arguments ('weights'
+# without zeros, 'source_transforms' named by the weights). '.plan' is the
+# .prior_linear_additive_plan() of its additive part when the caller has it.
+.prior_linear_combination_grid <- function(prior_list, weights, n_grid, tail_prob,
+                                           source_transforms, output_transformation,
+                                           output_transformation_arguments, grid_spacing,
+                                           .record_evaluation = TRUE, .plan = NULL){
+
   split <- .prior_linear_split_multiply_groups(prior_list, weights)
   components <- list(
     .prior_linear_additive_combination_density(
@@ -1348,7 +1465,8 @@
       n_grid             = n_grid,
       tail_prob          = tail_prob,
       source_transforms  = source_transforms,
-      grid_spacing       = grid_spacing
+      grid_spacing       = grid_spacing,
+      plan               = .plan
     )
   )
   if(length(split$product_groups) > 0){
@@ -4824,7 +4942,8 @@
       n_grid            = n_grid,
       tail_prob         = tail_prob,
       source_transforms = source_transforms,
-      grid_spacing      = spacing
+      grid_spacing      = spacing,
+      .defer            = FALSE
     )
   }
   density <- tryCatch(build(grid_spacing), BayesTools_prior_grid_limit = function(e) NULL)

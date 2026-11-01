@@ -18,6 +18,13 @@
   2097152L
 }
 
+# Knots from which the grid of a combination without atoms is built only when
+# read (.prior_linear_density_defers_grid()). A build of 2^16 knots takes about
+# 0.1 s; the grids of the default size are far below.
+.prior_linear_density_large_grid <- function(){
+  65536L
+}
+
 # Knots per robust scale of the narrowest continuous component of a combination
 # (.prior_linear_density_resolution()).
 .prior_linear_density_points_per_scale <- function(){
