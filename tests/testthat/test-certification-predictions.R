@@ -13,8 +13,9 @@ skip_if_not_installed("runjags")
 # for a new group under new_levels = "sample"; the marginal target with the
 # covariance method has the fixed mean and the random-effect covariance
 # 0.6^2 z z'. Sampled means and SDs are held to four Monte Carlo SDs at the
-# fit's effective sample size: SD / sqrt(ESS) for a mean and SD / sqrt(2 ESS)
-# for an SD (the predictions are normal).
+# effective sample size of each prediction's draws: SD / sqrt(ESS) for a mean
+# and SD / sqrt(2 ESS) for an SD (the predictions are normal). Every ESS
+# exceeds 1000, so no bound exceeds 0.13 of a prediction SD.
 
 prediction_data <- local({
   set.seed(4)
@@ -53,9 +54,9 @@ test_that("formula predictions match the exact Gaussian posterior predictions", 
     formula_random_prior_list = list(mu = prior_random(g = random_block(sd = prior("point", list(location = prediction_sd))))),
     chains = 4, adapt = 1000, burnin = 1000, sample = 10000, seed = 1
   )
-  estimates <- as.data.frame(JAGS_estimates_table(fit))
-  ess <- min(estimates[["ESS"]], na.rm = TRUE)
   expect_moments <- function(draws, exact) {
+    ess <- apply(draws, 1L, function(row) coda::effectiveSize(coda::mcmc(row)))
+    expect_true(all(is.finite(ess) & ess > 1000))
     observed <- cbind(mean = rowMeans(draws), sd = apply(draws, 1L, stats::sd))
     expect_true(all(abs(observed[, "mean"] - exact[, "mean"]) < 4 * exact[, "sd"] / sqrt(ess)))
     expect_true(all(abs(observed[, "sd"] - exact[, "sd"]) < 4 * exact[, "sd"] / sqrt(2 * ess)))

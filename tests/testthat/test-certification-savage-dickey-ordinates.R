@@ -39,6 +39,7 @@ test_that("Savage-Dickey ordinates stay within their Monte Carlo error away from
     chains = 4, adapt = 1000, burnin = 1000, sample = 10000, seed = 1
   )
   ess <- min(as.data.frame(JAGS_estimates_table(fit))[["ESS"]])
+  expect_true(is.finite(ess) && ess > 1000)
   m <- ordinate_posterior[["mean"]]
   s <- ordinate_posterior[["sd"]]
   nulls <- round(m - c(0, 1, 2, 3) * s, 4)
