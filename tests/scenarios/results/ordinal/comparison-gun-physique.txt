@@ -1,0 +1,13 @@
+      source              parameter estimate median    lCI   uCI
+1       lme4       Average - Slight   -0.159     NA     NA    NA
+2    ordered       Average - Slight   -0.144 -0.118 -0.494 0.094
+3  brms mo()       Average - Slight   -0.150 -0.125 -0.500 0.079
+4  unordered       Average - Slight   -0.153 -0.154 -0.701 0.405
+5       lme4         Heavy - Slight   -0.350     NA     NA    NA
+6    ordered         Heavy - Slight   -0.298 -0.303 -0.763 0.189
+7  brms mo()         Heavy - Slight   -0.305 -0.306 -0.776 0.170
+8  unordered         Heavy - Slight   -0.336 -0.341 -0.875 0.238
+9       lme4 total share of Average       NA     NA     NA    NA
+10   ordered total share of Average    0.486  0.482  0.031 0.965
+11 brms mo() total share of Average    0.493  0.491  0.033 0.967
+12 unordered total share of Average       NA     NA     NA    NA

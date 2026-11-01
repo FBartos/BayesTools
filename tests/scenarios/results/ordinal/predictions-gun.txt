@@ -1,0 +1,7 @@
+  Method Physique   lme4 BayesTools BayesTools sd brms mo() brms mo() sd
+1     M1   Slight  1.083      1.055         0.169     1.058        0.170
+2     M2   Slight -0.743     -0.766         0.168    -0.762        0.169
+3     M1  Average  0.924      0.911         0.135     0.909        0.134
+4     M2  Average -0.902     -0.909         0.135    -0.912        0.135
+5     M1    Heavy  0.732      0.756         0.175     0.753        0.171
+6     M2    Heavy -1.093     -1.064         0.175    -1.067        0.171
