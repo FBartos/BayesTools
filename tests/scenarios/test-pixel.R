@@ -120,37 +120,35 @@ testthat::test_that("Pixel AR(1) and CAR day effects", {
   bayes_columns <- function(parameters) {
     stats::setNames(ifelse(parameters == "sigma", "sigma", paste0("(mu) ", parameters)), parameters)
   }
-  scenario_text("comparison-slope", {
-    dog <- lme4::VarCorr(lme4_slope)[["Dog"]]
-    lme4_values <- c(
-      lme4_fixed(lme4_slope),
-      "Dog: sd(intercept)" = attr(dog, "stddev")[["(Intercept)"]], "Dog: sd(day_s)" = attr(dog, "stddev")[["day_s"]],
-      "Dog: cor(intercept,day_s)" = attr(dog, "correlation")[2L, 1L]
+  slope_dog    <- lme4::VarCorr(lme4_slope)[["Dog"]]
+  slope_values <- c(
+    lme4_fixed(lme4_slope),
+    "Dog: sd(intercept)" = attr(slope_dog, "stddev")[["(Intercept)"]], "Dog: sd(day_s)" = attr(slope_dog, "stddev")[["day_s"]],
+    "Dog: cor(intercept,day_s)" = attr(slope_dog, "correlation")[2L, 1L]
+  )
+  scenario_comparison(
+    "comparison-slope", names(slope_values), main = "Random intercepts and slopes per dog",
+    references = list(lme4 = slope_values),
+    posteriors = list(
+      BayesTools = scenario_draws(JAGS_estimates_table(fit_slope, return_samples = TRUE), bayes_columns(names(slope_values))),
+      brms       = scenario_draws(as.matrix(brms_slope[["fit"]]), c(
+        intercept = "b_Intercept", day_s = "b_day_s", day_s2 = "b_day_s2", sigma = "sigma",
+        "Dog_Side: sd(intercept)" = "sd_Dog:Side__Intercept", "Dog: sd(intercept)" = "sd_Dog__Intercept",
+        "Dog: sd(day_s)" = "sd_Dog__day_s", "Dog: cor(intercept,day_s)" = "cor_Dog__Intercept__day_s"))
     )
-    scenario_comparison_table(
-      names(lme4_values), references = list(lme4 = lme4_values),
-      posteriors = list(
-        BayesTools = scenario_draws(JAGS_estimates_table(fit_slope, return_samples = TRUE), bayes_columns(names(lme4_values))),
-        brms       = scenario_draws(as.matrix(brms_slope[["fit"]]), c(
-          intercept = "b_Intercept", day_s = "b_day_s", day_s2 = "b_day_s2", sigma = "sigma",
-          "Dog_Side: sd(intercept)" = "sd_Dog:Side__Intercept", "Dog: sd(intercept)" = "sd_Dog__Intercept",
-          "Dog: sd(day_s)" = "sd_Dog__day_s", "Dog: cor(intercept,day_s)" = "cor_Dog__Intercept__day_s"))
-      )
-    )
-  })
+  )
   # the CAR rows describe a different correlation function (cor^|day distance|
   # against cor^|index distance|), shown next to the AR(1) fits
-  scenario_text("comparison-ar1", {
-    dog <- as.matrix(lme4::VarCorr(lme4_ar1)[["Dog"]])
-    lme4_values <- c(lme4_fixed(lme4_ar1), "Dog: sd" = sqrt(dog[1L, 1L]), "Dog: cor" = stats::cov2cor(dog)[2L, 1L])
-    scenario_comparison_table(
-      names(lme4_values), references = list(lme4 = lme4_values),
-      posteriors = list(
-        BayesTools       = scenario_draws(JAGS_estimates_table(fit_ar1, return_samples = TRUE), bayes_columns(names(lme4_values))),
-        "BayesTools CAR" = scenario_draws(JAGS_estimates_table(fit_car, return_samples = TRUE), bayes_columns(names(lme4_values)))
-      )
+  ar1_dog    <- as.matrix(lme4::VarCorr(lme4_ar1)[["Dog"]])
+  ar1_values <- c(lme4_fixed(lme4_ar1), "Dog: sd" = sqrt(ar1_dog[1L, 1L]), "Dog: cor" = stats::cov2cor(ar1_dog)[2L, 1L])
+  scenario_comparison(
+    "comparison-ar1", names(ar1_values), main = "AR(1) and CAR day effects",
+    references = list(lme4 = ar1_values),
+    posteriors = list(
+      BayesTools       = scenario_draws(JAGS_estimates_table(fit_ar1, return_samples = TRUE), bayes_columns(names(ar1_values))),
+      "BayesTools CAR" = scenario_draws(JAGS_estimates_table(fit_car, return_samples = TRUE), bayes_columns(names(ar1_values)))
     )
-  })
+  )
 
   ### exact marginal likelihoods ----
   # each structure's marginal likelihood reduces to a low-dimensional integral

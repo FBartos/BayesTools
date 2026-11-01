@@ -310,51 +310,74 @@ testthat::test_that("Machines factor random slopes and covariance structures", {
     c(stats::setNames(sqrt(diag(covariance)), paste0("sd(", labels, ")")),
       stats::setNames(correlation[pairs], paste0("cor(", labels[pairs[, "col"]], ",", labels[pairs[, "row"]], ")")))
   }
-  compare_structure <- function(structure, lme4_random, brms_columns = NULL) {
-    references <- c(lme4_values(lme4_fits[[structure]]), lme4_random)
-    parameters <- names(references)
-    samples    <- JAGS_estimates_table(structures[[structure]][["fit"]], return_samples = TRUE)
+  structure_references <- function(structure, lme4_random) {
+    list(lme4 = c(lme4_values(lme4_fits[[structure]]), lme4_random))
+  }
+  structure_posteriors <- function(structure, parameters, brms_columns = NULL) {
+    samples       <- JAGS_estimates_table(structures[[structure]][["fit"]], return_samples = TRUE)
     bayes_columns <- stats::setNames(ifelse(parameters == "sigma", "sigma", paste0("(mu) ", parameters)), parameters)
-    fixed_brms <- c(intercept = "b_Intercept", "Machine[B]" = "b_MachineB", "Machine[C]" = "b_MachineC", sigma = "sigma")
-    scenario_comparison_table(
-      parameters, references = list(lme4 = references),
-      posteriors = c(
-        list(BayesTools = scenario_draws(samples, bayes_columns)),
-        if (!is.null(brms_columns)) list(brms = scenario_draws(as.matrix(brms_fits[[structure]][["fit"]]), c(fixed_brms, brms_columns)))
-      )
+    fixed_brms    <- c(intercept = "b_Intercept", "Machine[B]" = "b_MachineB", "Machine[C]" = "b_MachineC", sigma = "sigma")
+    c(
+      list(BayesTools = scenario_draws(samples, bayes_columns)),
+      if (!is.null(brms_columns)) list(brms = scenario_draws(as.matrix(brms_fits[[structure]][["fit"]]), c(fixed_brms, brms_columns)))
     )
   }
+  fixed_parameters <- c("intercept", "Machine[B]", "Machine[C]", "sigma")
+  machine_sd_brms  <- c("sd(Machine[A])" = "sd_Worker__MachineA", "sd(Machine[B])" = "sd_Worker__MachineB",
+                        "sd(Machine[C])" = "sd_Worker__MachineC")
 
-  scenario_text("comparison-us", compare_structure("us", lme4_worker(lme4_fits[["us"]]), c(
-    "sd(Machine[A])" = "sd_Worker__MachineA", "sd(Machine[B])" = "sd_Worker__MachineB", "sd(Machine[C])" = "sd_Worker__MachineC",
-    "cor(Machine[A],Machine[B])" = "cor_Worker__MachineA__MachineB", "cor(Machine[A],Machine[C])" = "cor_Worker__MachineA__MachineC",
-    "cor(Machine[B],Machine[C])" = "cor_Worker__MachineB__MachineC"
-  )))
-  scenario_text("comparison-slope", compare_structure("slope", lme4_worker(lme4_fits[["slope"]]), c(
-    "sd(intercept)" = "sd_Worker__Intercept", "sd(Machine[B])" = "sd_Worker__MachineB", "sd(Machine[C])" = "sd_Worker__MachineC",
-    "cor(intercept,Machine[B])" = "cor_Worker__Intercept__MachineB", "cor(intercept,Machine[C])" = "cor_Worker__Intercept__MachineC",
-    "cor(Machine[B],Machine[C])" = "cor_Worker__MachineB__MachineC"
-  )))
-  scenario_text("comparison-diag", compare_structure("diag", lme4_worker(lme4_fits[["diag"]])[1:3], c(
-    "sd(Machine[A])" = "sd_Worker__MachineA", "sd(Machine[B])" = "sd_Worker__MachineB", "sd(Machine[C])" = "sd_Worker__MachineC"
-  )))
-  scenario_text("comparison-id", compare_structure("id", c(sd = lme4_worker(lme4_fits[["id"]])[[1L]]), c(
-    sd = "sd_Worker:Machine__Intercept"
-  )))
-  scenario_text("comparison-cs", {
-    worker <- lme4_worker(lme4_fits[["cs"]])
-    compare_structure("cs", c(sd = worker[[1L]], cor = worker[[4L]]))
-  })
-  scenario_text("comparison-hcs", {
-    worker <- lme4_worker(lme4_fits[["hcs"]])
-    compare_structure("hcs", c(worker[1:3], cor = worker[[4L]]))
-  })
-  scenario_text("comparison-nested", {
-    sds <- vapply(lme4::VarCorr(lme4_fits[["nested"]]), attr, numeric(1), "stddev")
-    compare_structure("nested", c("Worker: sd(intercept)" = sds[["Worker"]], "Machine_Worker: sd(intercept)" = sds[["Machine:Worker"]]), c(
+  us_random <- lme4_worker(lme4_fits[["us"]])
+  scenario_comparison(
+    "comparison-us", c(fixed_parameters, names(us_random)), main = "Unstructured machine effects",
+    references = structure_references("us", us_random),
+    posteriors = structure_posteriors("us", c(fixed_parameters, names(us_random)), c(
+      machine_sd_brms,
+      "cor(Machine[A],Machine[B])" = "cor_Worker__MachineA__MachineB", "cor(Machine[A],Machine[C])" = "cor_Worker__MachineA__MachineC",
+      "cor(Machine[B],Machine[C])" = "cor_Worker__MachineB__MachineC"
+    ))
+  )
+  slope_random <- lme4_worker(lme4_fits[["slope"]])
+  scenario_comparison(
+    "comparison-slope", c(fixed_parameters, names(slope_random)), main = "Random intercepts and treatment machine slopes",
+    references = structure_references("slope", slope_random),
+    posteriors = structure_posteriors("slope", c(fixed_parameters, names(slope_random)), c(
+      "sd(intercept)" = "sd_Worker__Intercept", "sd(Machine[B])" = "sd_Worker__MachineB", "sd(Machine[C])" = "sd_Worker__MachineC",
+      "cor(intercept,Machine[B])" = "cor_Worker__Intercept__MachineB", "cor(intercept,Machine[C])" = "cor_Worker__Intercept__MachineC",
+      "cor(Machine[B],Machine[C])" = "cor_Worker__MachineB__MachineC"
+    ))
+  )
+  diag_random <- lme4_worker(lme4_fits[["diag"]])[1:3]
+  scenario_comparison(
+    "comparison-diag", c(fixed_parameters, names(diag_random)), main = "Independent machine effects",
+    references = structure_references("diag", diag_random),
+    posteriors = structure_posteriors("diag", c(fixed_parameters, names(diag_random)), machine_sd_brms)
+  )
+  scenario_comparison(
+    "comparison-id", c(fixed_parameters, "sd"), main = "Identity machine effects (one SD)",
+    references = structure_references("id", c(sd = lme4_worker(lme4_fits[["id"]])[[1L]])),
+    posteriors = structure_posteriors("id", c(fixed_parameters, "sd"), c(sd = "sd_Worker:Machine__Intercept"))
+  )
+  cs_worker <- lme4_worker(lme4_fits[["cs"]])
+  scenario_comparison(
+    "comparison-cs", c(fixed_parameters, "sd", "cor"), main = "Compound symmetry",
+    references = structure_references("cs", c(sd = cs_worker[[1L]], cor = cs_worker[[4L]])),
+    posteriors = structure_posteriors("cs", c(fixed_parameters, "sd", "cor"))
+  )
+  hcs_worker <- lme4_worker(lme4_fits[["hcs"]])
+  scenario_comparison(
+    "comparison-hcs", c(fixed_parameters, names(hcs_worker)[1:3], "cor"), main = "Heterogeneous compound symmetry",
+    references = structure_references("hcs", c(hcs_worker[1:3], cor = hcs_worker[[4L]])),
+    posteriors = structure_posteriors("hcs", c(fixed_parameters, names(hcs_worker)[1:3], "cor"))
+  )
+  nested_sds    <- vapply(lme4::VarCorr(lme4_fits[["nested"]]), attr, numeric(1), "stddev")
+  nested_random <- c("Worker: sd(intercept)" = nested_sds[["Worker"]], "Machine_Worker: sd(intercept)" = nested_sds[["Machine:Worker"]])
+  scenario_comparison(
+    "comparison-nested", c(fixed_parameters, names(nested_random)), main = "Nested worker and worker-by-machine effects",
+    references = structure_references("nested", nested_random),
+    posteriors = structure_posteriors("nested", c(fixed_parameters, names(nested_random)), c(
       "Worker: sd(intercept)" = "sd_Worker__Intercept", "Machine_Worker: sd(intercept)" = "sd_Worker:Machine__Intercept"
     ))
-  })
+  )
 
   ### predictions for a new worker ----
   # lme4 predicts a new worker at the population level, as the "zero" policy;

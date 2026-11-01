@@ -197,16 +197,10 @@ testthat::test_that("sleepstudy random intercepts, slopes, and HCS", {
   scenario_text("estimates-hcs-test",    JAGS_estimates_table(fit_hcs_test))
 
   ### lme4 and brms comparisons ----
-  # one row per parameter and source: the lme4 estimate, then the BayesTools
-  # and brms posterior summaries; `bayes_names` maps the parameters to
-  # BayesTools table columns
-  compare_with_lme4 <- function(lme4_values, fit, bayes_names, transform_scaled = FALSE, brms_draws = NULL) {
-    samples <- JAGS_estimates_table(fit, transform_scaled = transform_scaled, return_samples = TRUE)
-    scenario_comparison_table(
-      names(bayes_names), references = list(lme4 = lme4_values),
-      posteriors = c(list(BayesTools = scenario_draws(samples, bayes_names)),
-                     if (!is.null(brms_draws)) list(brms = brms_draws))
-    )
+  # per parameter: the lme4 estimate, then the BayesTools and brms posterior
+  # summaries; `bayes_names` maps the parameters to BayesTools table columns
+  bayes_draws <- function(fit, bayes_names, transform_scaled = FALSE) {
+    scenario_draws(JAGS_estimates_table(fit, transform_scaled = transform_scaled, return_samples = TRUE), bayes_names)
   }
   brms_names <- c(
     intercept = "b_Intercept", Days = "b_Days_s", sigma = "sigma",
@@ -253,32 +247,45 @@ testthat::test_that("sleepstudy random intercepts, slopes, and HCS", {
     "cor(intercept,Days)" = "(mu) cor(intercept,Days)"
   )
 
-  scenario_text("lme4-comparison-intercept",
-    compare_with_lme4(lme4_coefficients(lme4_intercept), fit_intercept, slope_names[1:4],
-                      brms_draws = brms_draws(brms_intercept[["fit"]], names(slope_names)[1:4])))
-  scenario_text("lme4-comparison-slope",
-    compare_with_lme4(lme4_coefficients(lme4_slope), fit_slope, slope_names,
-                      brms_draws = brms_draws(brms_slope[["fit"]], names(slope_names))))
-  scenario_text("lme4-comparison-slope-original-scale",
-    compare_with_lme4(lme4_coefficients(lme4_slope_days, days = "Days"), fit_slope, slope_names, transform_scaled = TRUE,
-                      brms_draws = brms_original_scale(brms_slope[["fit"]])))
-  scenario_text("lme4-comparison-independent",
-    compare_with_lme4(lme4_coefficients(lme4_independent), fit_independent, slope_names[1:5],
-                      brms_draws = brms_draws(brms_independent[["fit"]], names(slope_names)[1:5])))
+  scenario_comparison(
+    "lme4-comparison-intercept", names(slope_names)[1:4], main = "Random intercepts",
+    references = list(lme4 = lme4_coefficients(lme4_intercept)),
+    posteriors = list(BayesTools = bayes_draws(fit_intercept, slope_names[1:4]),
+                      brms       = brms_draws(brms_intercept[["fit"]], names(slope_names)[1:4]))
+  )
+  scenario_comparison(
+    "lme4-comparison-slope", names(slope_names), main = "Random intercepts and slopes",
+    references = list(lme4 = lme4_coefficients(lme4_slope)),
+    posteriors = list(BayesTools = bayes_draws(fit_slope, slope_names),
+                      brms       = brms_draws(brms_slope[["fit"]], names(slope_names)))
+  )
+  scenario_comparison(
+    "lme4-comparison-slope-original-scale", names(slope_names), main = "Random intercepts and slopes, original Days scale",
+    references = list(lme4 = lme4_coefficients(lme4_slope_days, days = "Days")),
+    posteriors = list(BayesTools = bayes_draws(fit_slope, slope_names, transform_scaled = TRUE),
+                      brms       = brms_original_scale(brms_slope[["fit"]]))
+  )
+  scenario_comparison(
+    "lme4-comparison-independent", names(slope_names)[1:5], main = "Independent intercepts and slopes",
+    references = list(lme4 = lme4_coefficients(lme4_independent)),
+    posteriors = list(BayesTools = bayes_draws(fit_independent, slope_names[1:5]),
+                      brms       = brms_draws(brms_independent[["fit"]], names(slope_names)[1:5]))
+  )
 
-  scenario_text("lme4-comparison-hcs", {
-    lme4_vc  <- as.matrix(lme4::VarCorr(lme4_hcs)[["Subject"]])
-    day_sds  <- stats::setNames(sqrt(diag(lme4_vc)), paste0("sd(Days_f[", levels(sleepstudy$Days_f), "])"))
-    lme4_values <- c(
+  hcs_vc  <- as.matrix(lme4::VarCorr(lme4_hcs)[["Subject"]])
+  day_sds <- stats::setNames(sqrt(diag(hcs_vc)), paste0("sd(Days_f[", levels(sleepstudy$Days_f), "])"))
+  hcs_names <- c(
+    intercept = "(mu) intercept", Days = "(mu) Days", sigma = "sigma",
+    stats::setNames(paste0("(mu) ", names(day_sds)), names(day_sds)), cor = "(mu) cor"
+  )
+  scenario_comparison(
+    "lme4-comparison-hcs", names(hcs_names), main = "HCS day effects",
+    references = list(lme4 = c(
       intercept = lme4::fixef(lme4_hcs)[["(Intercept)"]], Days = lme4::fixef(lme4_hcs)[["Days_s"]],
-      sigma = stats::sigma(lme4_hcs), day_sds, cor = stats::cov2cor(lme4_vc)[2L, 1L]
-    )
-    hcs_names <- c(
-      intercept = "(mu) intercept", Days = "(mu) Days", sigma = "sigma",
-      stats::setNames(paste0("(mu) ", names(day_sds)), names(day_sds)), cor = "(mu) cor"
-    )
-    compare_with_lme4(lme4_values, fit_hcs, hcs_names)
-  })
+      sigma = stats::sigma(lme4_hcs), day_sds, cor = stats::cov2cor(hcs_vc)[2L, 1L]
+    )),
+    posteriors = list(BayesTools = bayes_draws(fit_hcs, hcs_names))
+  )
 
   ### Bayes factors ----
   # each test compares H1 against H0 as log BF10 (positive values favour H1):

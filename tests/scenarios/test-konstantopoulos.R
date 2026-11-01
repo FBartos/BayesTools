@@ -132,26 +132,25 @@ testthat::test_that("Konstantopoulos three-level meta-analysis", {
   district_share <- function(sd_district, sd_school) {
     cbind(var_prop_district = sd_district^2 / (sd_district^2 + sd_school^2))
   }
-  scenario_text("comparison-three-level", {
-    metafor_sd <- sqrt(metafor_three$sigma2)
-    metafor_values <- c(
-      intercept = as.numeric(stats::coef(metafor_three)), sd_district = metafor_sd[[1L]], sd_school = metafor_sd[[2L]],
-      district_share(metafor_sd[[1L]], metafor_sd[[2L]])[1L, ]
+  metafor_sd <- sqrt(metafor_three$sigma2)
+  metafor_values <- c(
+    intercept = as.numeric(stats::coef(metafor_three)), sd_district = metafor_sd[[1L]], sd_school = metafor_sd[[2L]],
+    district_share(metafor_sd[[1L]], metafor_sd[[2L]])[1L, ]
+  )
+  with_share <- function(draws) cbind(draws, district_share(draws[, "sd_district"], draws[, "sd_school"]))
+  bayes_columns <- c(intercept = "(mu) intercept", sd_district = "(mu) district: sd(intercept)",
+                     sd_school = "(mu) school_district: sd(intercept)")
+  scenario_comparison(
+    "comparison-three-level", names(metafor_values), main = "Three-level meta-analysis",
+    references = list(metafor = metafor_values),
+    posteriors = list(
+      BayesTools  = with_share(scenario_draws(JAGS_estimates_table(fit_three_level, return_samples = TRUE), bayes_columns)),
+      brms        = with_share(scenario_draws(as.matrix(brms_three_level[["fit"]]), c(
+        intercept = "b_Intercept", sd_district = "sd_district__Intercept", sd_school = "sd_district:school__Intercept"))),
+      allocation  = scenario_draws(JAGS_estimates_table(fit_allocation, random_effects_summary = "full", return_samples = TRUE),
+                                   c(bayes_columns, var_prop_district = "(mu) heterogeneity: var_prop(district)"))
     )
-    with_share <- function(draws) cbind(draws, district_share(draws[, "sd_district"], draws[, "sd_school"]))
-    bayes_columns <- c(intercept = "(mu) intercept", sd_district = "(mu) district: sd(intercept)",
-                       sd_school = "(mu) school_district: sd(intercept)")
-    scenario_comparison_table(
-      names(metafor_values), references = list(metafor = metafor_values),
-      posteriors = list(
-        BayesTools  = with_share(scenario_draws(JAGS_estimates_table(fit_three_level, return_samples = TRUE), bayes_columns)),
-        brms        = with_share(scenario_draws(as.matrix(brms_three_level[["fit"]]), c(
-          intercept = "b_Intercept", sd_district = "sd_district__Intercept", sd_school = "sd_district:school__Intercept"))),
-        allocation  = scenario_draws(JAGS_estimates_table(fit_allocation, random_effects_summary = "full", return_samples = TRUE),
-                                     c(bayes_columns, var_prop_district = "(mu) heterogeneity: var_prop(district)"))
-      )
-    )
-  })
+  )
 
   ### exact marginal likelihoods ----
   # with the pooled effect (N(0, 1)) and the random effects integrated out,

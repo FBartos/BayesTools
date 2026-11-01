@@ -77,31 +77,30 @@ testthat::test_that("Pastes nested random intercepts", {
     cbind(sd_total = sqrt(variance_total), var_prop_batch = sd_batch^2 / variance_total)
   }
 
-  scenario_text("lme4-comparison", {
-    lme4_sd <- vapply(lme4::VarCorr(fit_lme4), attr, numeric(1), "stddev")
-    lme4_values <- c(
-      intercept      = lme4::fixef(fit_lme4)[["(Intercept)"]],
-      sigma          = stats::sigma(fit_lme4),
-      sd_batch       = lme4_sd[["batch"]],
-      sd_cask        = lme4_sd[["cask:batch"]],
-      allocation_summaries(lme4_sd[["batch"]], lme4_sd[["cask:batch"]])[1L, ]
-    )
-    sd_columns <- c(
-      intercept = "(mu) intercept", sigma = "sigma",
-      sd_batch = "(mu) batch: sd(intercept)", sd_cask = "(mu) cask_batch: sd(intercept)"
-    )
-    allocation_draws <- scenario_draws(samples_allocation, c(
-      sd_columns, sd_total = "(mu) nested_re: sd_total", var_prop_batch = "(mu) nested_re: var_prop(batch)"
-    ))
-    independent_draws <- scenario_draws(samples_independent, sd_columns)
-    independent_draws <- cbind(
-      independent_draws, allocation_summaries(independent_draws[, "sd_batch"], independent_draws[, "sd_cask"])
-    )
-    scenario_comparison_table(
-      names(lme4_values), references = list(lme4 = lme4_values),
-      posteriors = list(allocation = allocation_draws, independent = independent_draws), label = "fit"
-    )
-  })
+  lme4_sd <- vapply(lme4::VarCorr(fit_lme4), attr, numeric(1), "stddev")
+  lme4_values <- c(
+    intercept      = lme4::fixef(fit_lme4)[["(Intercept)"]],
+    sigma          = stats::sigma(fit_lme4),
+    sd_batch       = lme4_sd[["batch"]],
+    sd_cask        = lme4_sd[["cask:batch"]],
+    allocation_summaries(lme4_sd[["batch"]], lme4_sd[["cask:batch"]])[1L, ]
+  )
+  sd_columns <- c(
+    intercept = "(mu) intercept", sigma = "sigma",
+    sd_batch = "(mu) batch: sd(intercept)", sd_cask = "(mu) cask_batch: sd(intercept)"
+  )
+  allocation_draws <- scenario_draws(samples_allocation, c(
+    sd_columns, sd_total = "(mu) nested_re: sd_total", var_prop_batch = "(mu) nested_re: var_prop(batch)"
+  ))
+  independent_draws <- scenario_draws(samples_independent, sd_columns)
+  independent_draws <- cbind(
+    independent_draws, allocation_summaries(independent_draws[, "sd_batch"], independent_draws[, "sd_cask"])
+  )
+  scenario_comparison(
+    "lme4-comparison", names(lme4_values), label = "fit", main = "Nested batch and cask effects",
+    references = list(lme4 = lme4_values),
+    posteriors = list(allocation = allocation_draws, independent = independent_draws)
+  )
 
   ### random effects and fitted values ----
   # the effect of a level is its conditional prediction with only its block

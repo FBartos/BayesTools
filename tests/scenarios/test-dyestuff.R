@@ -184,25 +184,30 @@ testthat::test_that("Dyestuff one-way random intercepts against an exact referen
   ### exact, lme4, and brms comparisons ----
   # the exact rows are posterior means; lme4 reports ML estimates (Dyestuff2:
   # a singular fit with batch SD 0)
-  compare_fits <- function(name) {
+  comparison_references <- function(name) {
     lme4_fit <- lme4_fits[[name]]
-    samples  <- JAGS_estimates_table(noncentered[[name]][["fit"]], return_samples = TRUE)
-    scenario_comparison_table(
-      c("intercept", "sigma", "sd(Batch)"),
-      references = list(
-        exact = exact[[name]][["mean"]],
-        lme4  = c(intercept = lme4::fixef(lme4_fit)[["(Intercept)"]], sigma = stats::sigma(lme4_fit),
-                  "sd(Batch)" = attr(lme4::VarCorr(lme4_fit)[["Batch"]], "stddev")[["(Intercept)"]])
-      ),
-      posteriors = list(
-        BayesTools = scenario_draws(samples, c(intercept = "(mu) intercept", sigma = "sigma", "sd(Batch)" = "(mu) sd(intercept)")),
-        brms       = scenario_draws(as.matrix(brms_random[[name]][["fit"]]),
-                                    c(intercept = "b_Intercept", sigma = "sigma", "sd(Batch)" = "sd_Batch__Intercept"))
-      )
+    list(
+      exact = exact[[name]][["mean"]],
+      lme4  = c(intercept = lme4::fixef(lme4_fit)[["(Intercept)"]], sigma = stats::sigma(lme4_fit),
+                "sd(Batch)" = attr(lme4::VarCorr(lme4_fit)[["Batch"]], "stddev")[["(Intercept)"]])
     )
   }
-  scenario_text("comparison-dyestuff",  compare_fits("Dyestuff"))
-  scenario_text("comparison-dyestuff2", compare_fits("Dyestuff2"))
+  comparison_posteriors <- function(name) {
+    list(
+      BayesTools = scenario_draws(JAGS_estimates_table(noncentered[[name]][["fit"]], return_samples = TRUE),
+                                  c(intercept = "(mu) intercept", sigma = "sigma", "sd(Batch)" = "(mu) sd(intercept)")),
+      brms       = scenario_draws(as.matrix(brms_random[[name]][["fit"]]),
+                                  c(intercept = "b_Intercept", sigma = "sigma", "sd(Batch)" = "sd_Batch__Intercept"))
+    )
+  }
+  scenario_comparison(
+    "comparison-dyestuff", c("intercept", "sigma", "sd(Batch)"), main = "Dyestuff",
+    references = comparison_references("Dyestuff"), posteriors = comparison_posteriors("Dyestuff")
+  )
+  scenario_comparison(
+    "comparison-dyestuff2", c("intercept", "sigma", "sd(Batch)"), main = "Dyestuff2",
+    references = comparison_references("Dyestuff2"), posteriors = comparison_posteriors("Dyestuff2")
+  )
 
   ### Bayes factors ----
   # the batch SD tau against no batch effects as log BF10: the exact reference,

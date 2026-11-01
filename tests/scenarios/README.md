@@ -71,9 +71,15 @@ and SVG baselines.
   differences against the reference with a band of 0.1 reference SD.
 - `scenario_time()` times a block without storing its value.
 - Comparisons with other software share small helpers:
+  `scenario_comparison()` locks a parameter-by-parameter comparison twice,
+  as the exact table of `scenario_comparison_table()` under `results/` and
+  as a figure under `_snaps/` (`scenario_comparison_plot()`: each parameter
+  on its own scale with its range printed, sources side by side, references
+  as open diamonds and posteriors with 95% intervals); interactive runs show
+  the figure and print the table only with `show_table = TRUE`.
   `scenario_comparison_table()` lists reference values (such as lme4 or
   metafor estimates, or an exact reference) and posterior summaries of draws
-  (BayesTools, brms) parameter by parameter, `scenario_draws()` selects and
+  (BayesTools, brms), `scenario_draws()` selects and
   relabels draws for it, `scenario_bf_table()` and `scenario_log_bf_bridge()`
   tabulate log Bayes factors by method, and `scenario_prediction_table()`
   merges point predictions and prediction draws with their data rows.

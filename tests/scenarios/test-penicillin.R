@@ -77,31 +77,30 @@ testthat::test_that("Penicillin crossed random intercepts", {
     cbind(sd_total = sqrt(variance_total), var_prop_plate = sd_plate^2 / variance_total)
   }
 
-  scenario_text("lme4-comparison", {
-    lme4_sd <- vapply(lme4::VarCorr(fit_lme4), attr, numeric(1), "stddev")
-    lme4_values <- c(
-      intercept    = lme4::fixef(fit_lme4)[["(Intercept)"]],
-      sigma        = stats::sigma(fit_lme4),
-      sd_plate     = lme4_sd[["plate"]],
-      sd_sample    = lme4_sd[["sample"]],
-      allocation_summaries(lme4_sd[["plate"]], lme4_sd[["sample"]])[1L, ]
-    )
-    sd_columns <- c(
-      intercept = "(mu) intercept", sigma = "sigma",
-      sd_plate = "(mu) plate: sd(intercept)", sd_sample = "(mu) sample: sd(intercept)"
-    )
-    independent_draws <- scenario_draws(samples_independent, sd_columns)
-    independent_draws <- cbind(
-      independent_draws, allocation_summaries(independent_draws[, "sd_plate"], independent_draws[, "sd_sample"])
-    )
-    allocation_draws <- scenario_draws(samples_allocation, c(
-      sd_columns, sd_total = "(mu) total_re: sd_total", var_prop_plate = "(mu) total_re: var_prop(plate)"
-    ))
-    scenario_comparison_table(
-      names(lme4_values), references = list(lme4 = lme4_values),
-      posteriors = list(independent = independent_draws, allocation = allocation_draws), label = "fit"
-    )
-  })
+  lme4_sd <- vapply(lme4::VarCorr(fit_lme4), attr, numeric(1), "stddev")
+  lme4_values <- c(
+    intercept    = lme4::fixef(fit_lme4)[["(Intercept)"]],
+    sigma        = stats::sigma(fit_lme4),
+    sd_plate     = lme4_sd[["plate"]],
+    sd_sample    = lme4_sd[["sample"]],
+    allocation_summaries(lme4_sd[["plate"]], lme4_sd[["sample"]])[1L, ]
+  )
+  sd_columns <- c(
+    intercept = "(mu) intercept", sigma = "sigma",
+    sd_plate = "(mu) plate: sd(intercept)", sd_sample = "(mu) sample: sd(intercept)"
+  )
+  independent_draws <- scenario_draws(samples_independent, sd_columns)
+  independent_draws <- cbind(
+    independent_draws, allocation_summaries(independent_draws[, "sd_plate"], independent_draws[, "sd_sample"])
+  )
+  allocation_draws <- scenario_draws(samples_allocation, c(
+    sd_columns, sd_total = "(mu) total_re: sd_total", var_prop_plate = "(mu) total_re: var_prop(plate)"
+  ))
+  scenario_comparison(
+    "lme4-comparison", names(lme4_values), label = "fit", main = "Crossed plate and sample effects",
+    references = list(lme4 = lme4_values),
+    posteriors = list(independent = independent_draws, allocation = allocation_draws)
+  )
 
   ### random effects and fitted values ----
   # the effect of a level is its conditional prediction with only its block

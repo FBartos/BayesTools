@@ -1911,6 +1911,99 @@ scenario_comparison_table <- function(parameters, references = list(),
 }
 
 
+# Draw a comparison table: one column per parameter, each on its own scale
+# (its range printed at the column's bottom and top), with the sources side by
+# side; references are open diamonds, posteriors filled points with their 95%
+# intervals.
+scenario_comparison_plot <- function(table, main = "") {
+
+  sources    <- unique(table[[1L]])
+  parameters <- unique(table[["parameter"]])
+  posterior  <- vapply(sources, function(source) {
+    any(!is.na(table[["lCI"]][table[[1L]] == source]))
+  }, logical(1))
+  colours <- character(length(sources))
+  colours[!posterior] <- c("#000000", "#666666", "#999999")[seq_len(sum(!posterior))]
+  colours[posterior]  <- c("#0072B2", "#E69F00", "#009E73", "#D55E00", "#CC79A7", "#56B4E9")[seq_len(sum(posterior))]
+  symbols <- ifelse(posterior, 19, 5)
+
+  k       <- length(parameters)
+  offsets <- if (length(sources) == 1L) 0 else seq(-0.3, 0.3, length.out = length(sources))
+  rotate  <- k > 6L
+  bottom  <- if (rotate) min(10, max(4, 2 + 0.33 * max(nchar(parameters)))) else 4
+  graphics::par(mar = c(bottom, 1, 5, 1))
+  graphics::plot(NA, xlim = c(0.5, k + 0.5), ylim = c(-0.06, 1.06), axes = FALSE,
+                 xlab = "", ylab = "")
+  graphics::title(main = main, line = 3)
+  graphics::rect(seq_len(k) - 0.45, 0, seq_len(k) + 0.45, 1, border = NA,
+                 col = rep(c("grey97", "grey92"), length.out = k))
+  label_value <- function(x) formatC(signif(x, 2), format = "fg", digits = 2)
+
+  for (i in seq_len(k)) {
+    rows   <- table[table[["parameter"]] == parameters[i], ]
+    values <- c(rows[["estimate"]], rows[["lCI"]], rows[["uCI"]])
+    if (!any(is.finite(values))) {
+      next
+    }
+    limits <- range(values, na.rm = TRUE)
+    if (diff(limits) == 0) {
+      limits <- limits + c(-1, 1) * max(abs(limits[1L]) * 0.1, 0.1)
+    }
+    # pad the range, without crossing 0 for nonnegative quantities such as SDs
+    padded  <- limits + c(-1, 1) * 0.08 * diff(limits)
+    limits  <- c(if (limits[1L] >= 0) max(0, padded[1L]) else padded[1L], padded[2L])
+    rescale <- function(x) (x - limits[1L]) / diff(limits)
+    graphics::text(i, -0.035, label_value(limits[1L]), cex = 0.65, col = "grey40")
+    graphics::text(i,  1.035, label_value(limits[2L]), cex = 0.65, col = "grey40")
+    for (j in seq_along(sources)) {
+      row <- rows[rows[[1L]] == sources[j], ]
+      if (nrow(row) == 0L || is.na(row[["estimate"]])) {
+        next
+      }
+      x <- i + offsets[j]
+      if (!is.na(row[["lCI"]])) {
+        graphics::segments(x, rescale(row[["lCI"]]), x, rescale(row[["uCI"]]), col = colours[j], lwd = 2)
+      }
+      graphics::points(x, rescale(row[["estimate"]]), pch = symbols[j], col = colours[j], cex = 1.2, lwd = 2)
+    }
+  }
+
+  if (rotate) {
+    graphics::text(seq_len(k), -0.1, parameters, srt = 40, adj = c(1, 1), xpd = NA, cex = 0.75)
+  } else {
+    labels <- vapply(strwrap(parameters, 14, simplify = FALSE), paste, character(1), collapse = "\n")
+    graphics::axis(1, at = seq_len(k), labels = labels, tick = FALSE, cex.axis = 0.75, padj = 0.5)
+  }
+  graphics::legend(x = (k + 1) / 2, y = 1.08, xjust = 0.5, yjust = 0, horiz = TRUE, xpd = NA, bty = "n",
+                   legend = sources, col = colours, pch = symbols, lwd = ifelse(posterior, 2, NA), cex = 0.85)
+
+  return(invisible(NULL))
+}
+
+
+# Lock a comparison as a text table (exact values, for review of changes) and
+# as a figure (scenario_comparison_plot()). Interactive runs show the figure
+# and print the table only with `show_table = TRUE`; the arguments are those
+# of scenario_comparison_table().
+scenario_comparison <- function(name, parameters, references = list(),
+                                posteriors = list(), label = "source",
+                                main = name, show_table = FALSE) {
+
+  table  <- scenario_comparison_table(parameters, references = references,
+                                      posteriors = posteriors, label = label)
+  config <- .scenario_config()
+  if (!show_table && isTRUE(config[["show_output"]])) {
+    assign("config", utils::modifyList(config, list(show_output = FALSE)), envir = .scenario_state)
+    on.exit(assign("config", config, envir = .scenario_state), add = TRUE)
+  }
+  scenario_text(name, table)
+  assign("config", config, envir = .scenario_state)
+  scenario_plot(name, scenario_comparison_plot(table, main = main))
+
+  return(invisible(table))
+}
+
+
 # Log Bayes factor of two bridge-sampling marginal likelihoods; positive
 # values favour the first.
 scenario_log_bf_bridge <- function(marglik_1, marglik_0) {
@@ -2021,13 +2114,14 @@ scenario_prediction_table <- function(data, predictions, digits = 3) {
     } else {
       ""
     }
-    type <- switch(
+    types <- switch(
       call_name,
-      scenario_text = "text",
-      scenario_plot = "plot",
+      scenario_text       = "text",
+      scenario_plot       = "plot",
+      scenario_comparison = c("text", "plot"),
       NULL
     )
-    if (!is.null(type)) {
+    for (type in types) {
       artifact_name <- node[[2L]]
       if (is.character(artifact_name) && length(artifact_name) == 1L &&
           !is.na(artifact_name)) {

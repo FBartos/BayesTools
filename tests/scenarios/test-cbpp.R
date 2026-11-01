@@ -180,28 +180,25 @@ testthat::test_that("cbpp binomial random herd intercepts", {
     "sd(herd)" = "sd_herd__Intercept"
   )
 
-  scenario_text("comparison-herd", {
-    scenario_comparison_table(
-      c(names(bayes_names), "sd(herd)"),
-      references = list("glmer Laplace" = glmer_values(glmer_herd), "glmer AGQ" = glmer_values(glmer_herd_agq)),
-      posteriors = list(
-        BayesTools = scenario_draws(JAGS_estimates_table(fit_herd, return_samples = TRUE),
-                                    c(bayes_names, "sd(herd)" = "(mu) sd(intercept)")),
-        brms       = scenario_draws(as.matrix(brms_herd[["fit"]]), brms_names)
-      )
+  scenario_comparison(
+    "comparison-herd", c(names(bayes_names), "sd(herd)"), main = "Random herd intercepts",
+    references = list("glmer Laplace" = glmer_values(glmer_herd), "glmer AGQ" = glmer_values(glmer_herd_agq)),
+    posteriors = list(
+      BayesTools = scenario_draws(JAGS_estimates_table(fit_herd, return_samples = TRUE),
+                                  c(bayes_names, "sd(herd)" = "(mu) sd(intercept)")),
+      brms       = scenario_draws(as.matrix(brms_herd[["fit"]]), brms_names)
     )
-  })
-  scenario_text("comparison-overdispersion", {
-    scenario_comparison_table(
-      c(names(bayes_names), "sd(herd)", "sd(obs)"),
-      references = list("glmer Laplace" = glmer_values(glmer_overdispersion)),
-      posteriors = list(
-        BayesTools = scenario_draws(JAGS_estimates_table(fit_overdispersion, return_samples = TRUE),
-                                    c(bayes_names, "sd(herd)" = "(mu) herd: sd(intercept)", "sd(obs)" = "(mu) obs: sd(intercept)")),
-        brms       = scenario_draws(as.matrix(brms_overdispersion[["fit"]]), c(brms_names, "sd(obs)" = "sd_obs__Intercept"))
-      )
+  )
+  scenario_comparison(
+    "comparison-overdispersion", c(names(bayes_names), "sd(herd)", "sd(obs)"),
+    main = "Herd and observation-level effects",
+    references = list("glmer Laplace" = glmer_values(glmer_overdispersion)),
+    posteriors = list(
+      BayesTools = scenario_draws(JAGS_estimates_table(fit_overdispersion, return_samples = TRUE),
+                                  c(bayes_names, "sd(herd)" = "(mu) herd: sd(intercept)", "sd(obs)" = "(mu) obs: sd(intercept)")),
+      brms       = scenario_draws(as.matrix(brms_overdispersion[["fit"]]), c(brms_names, "sd(obs)" = "sd_obs__Intercept"))
     )
-  })
+  )
 
   ### Bayes factors ----
   # log BF10 (positive values favour H1); bridge sampling compares separately

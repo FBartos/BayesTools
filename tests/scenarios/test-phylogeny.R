@@ -101,22 +101,21 @@ testthat::test_that("Lim 2014 phylogenetic meta-analysis", {
 
   ### metafor and brms comparison ----
   # metafor's ML estimate of the species SD is 0 (a boundary)
-  scenario_text("comparison-phylo", {
-    metafor_sd <- sqrt(metafor_phylo$sigma2)
-    metafor_values <- c(intercept = as.numeric(stats::coef(metafor_phylo)), sd_article = metafor_sd[[1L]],
-                        sd_species = metafor_sd[[2L]], sd_phylogeny = metafor_sd[[3L]])
-    scenario_comparison_table(
-      names(metafor_values), references = list(metafor = metafor_values),
-      posteriors = list(
-        BayesTools = scenario_draws(JAGS_estimates_table(fit_phylo, return_samples = TRUE), c(
-          intercept = "(mu) intercept", sd_article = "(mu) article: sd(intercept)",
-          sd_species = "(mu) species: sd(intercept)", sd_phylogeny = "(mu) species_phy: sd(intercept)")),
-        brms       = scenario_draws(as.matrix(brms_phylo[["fit"]]), c(
-          intercept = "b_Intercept", sd_article = "sd_article__Intercept",
-          sd_species = "sd_species__Intercept", sd_phylogeny = "sd_species_phy__Intercept"))
-      )
+  metafor_sd <- sqrt(metafor_phylo$sigma2)
+  metafor_values <- c(intercept = as.numeric(stats::coef(metafor_phylo)), sd_article = metafor_sd[[1L]],
+                      sd_species = metafor_sd[[2L]], sd_phylogeny = metafor_sd[[3L]])
+  scenario_comparison(
+    "comparison-phylo", names(metafor_values), main = "Phylogenetic meta-analysis",
+    references = list(metafor = metafor_values),
+    posteriors = list(
+      BayesTools = scenario_draws(JAGS_estimates_table(fit_phylo, return_samples = TRUE), c(
+        intercept = "(mu) intercept", sd_article = "(mu) article: sd(intercept)",
+        sd_species = "(mu) species: sd(intercept)", sd_phylogeny = "(mu) species_phy: sd(intercept)")),
+      brms       = scenario_draws(as.matrix(brms_phylo[["fit"]]), c(
+        intercept = "b_Intercept", sd_article = "sd_article__Intercept",
+        sd_species = "sd_species__Intercept", sd_phylogeny = "sd_species_phy__Intercept"))
     )
-  })
+  )
 
   ### exact marginal likelihoods ----
   # with the pooled effect (N(0, 1)) and all random effects integrated out,
