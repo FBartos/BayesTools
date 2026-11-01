@@ -244,6 +244,113 @@ test_that("a failed candidate write still restores the reviewed baseline and is 
 })
 
 
+test_that("a candidate that testthat rewrites unchanged on a repeated failing run is kept", {
+
+  root  <- withr::local_tempdir()
+  snaps <- file.path(root, "_snaps")
+  dir.create(snaps)
+  writeLines("old section", file.path(snaps, "file.md"))
+  # the candidate of an earlier failing run: the changed and an added section
+  writeLines(c("changed section", "added section"), file.path(snaps, "file.new.md"))
+  Sys.setFileTime(file.path(snaps, c("file.md", "file.new.md")), Sys.time() - 60)
+  before <- bayestools_snapshot_state(root)
+
+  # the same run again: the same candidate bytes, and the added section in the
+  # baseline
+  writeLines(c("changed section", "added section"), file.path(snaps, "file.new.md"))
+  writeLines(c("old section", "added section"), file.path(snaps, "file.md"))
+
+  result <- bayestools_quarantine_snapshots(root, before)
+  expect_identical(result$problems, character())
+  expect_identical(readLines(file.path(snaps, "file.md")), "old section")
+  expect_identical(readLines(file.path(snaps, "file.new.md")), c("changed section", "added section"))
+})
+
+
+test_that("an unreadable file does not stop the restoration of the other snapshots", {
+
+  root  <- withr::local_tempdir()
+  snaps <- file.path(root, "_snaps")
+  dir.create(snaps)
+  writeLines("reviewed a", file.path(snaps, "a.svg"))
+  writeLines("reviewed b", file.path(snaps, "b.svg"))
+  writeLines("reviewed c", file.path(snaps, "c.svg"))
+  before <- bayestools_snapshot_state(root)
+
+  writeLines("unreviewed a", file.path(snaps, "a.svg"))
+  writeLines("unreviewed b", file.path(snaps, "b.svg"))
+  writeLines("fresh candidate", file.path(snaps, "a.new.svg"))
+  # what reading a file locked by another process records
+  after <- bayestools_snapshot_state(root)
+  after[[file.path(snaps, "a.new.svg")]] <- list(bytes = NULL, mtime = Sys.time(), error = "locked")
+  after[[file.path(snaps, "c.svg")]]     <- list(bytes = NULL, mtime = Sys.time(), error = "locked")
+
+  result <- bayestools_quarantine_snapshots(root, before, after)
+  expect_identical(readLines(file.path(snaps, "a.svg")), "reviewed a")
+  expect_identical(readLines(file.path(snaps, "b.svg")), "reviewed b")
+  expect_identical(readLines(file.path(snaps, "c.svg")), "reviewed c")
+  expect_identical(readLines(file.path(snaps, "a.new.svg")), "fresh candidate")
+  expect_identical(readLines(file.path(snaps, "b.new.svg")), "unreviewed b")
+  # the unreadable baseline counts as changed; its output cannot be kept
+  expect_setequal(basename(result$changed), c("a.svg", "b.svg", "c.svg"))
+  expect_length(result$problems, 1L)
+  expect_match(result$problems, "c.new.svg: the run's output could not be read: locked", fixed = TRUE)
+})
+
+
+test_that("new-snapshot review stages a displayable placeholder and keeps candidates it cannot move", {
+
+  root  <- withr::local_tempdir()
+  snaps <- file.path(root, "_snaps", "context")
+  dir.create(snaps, recursive = TRUE)
+  writeLines("<svg>plot</svg>", file.path(snaps, "plot.new.svg"))
+  writeLines("text", file.path(snaps, "text.new.md"))
+
+  staged <- list()
+  review <- function(path) {
+    files <- list.files(path, recursive = TRUE, full.names = TRUE)
+    staged <<- stats::setNames(lapply(files, readLines), basename(files))
+  }
+  bayestools_review_new_snapshots(root, review = review)
+  expect_match(staged[["plot.svg"]], "^<svg xmlns='http://www.w3.org/2000/svg' width='720' height='576'")
+  expect_identical(staged[["text.md"]], character())
+  expect_identical(staged[["plot.new.svg"]], "<svg>plot</svg>")
+
+  # a failed staging copy keeps the candidate out of the review
+  failing_copy <- function(from, to, overwrite) {
+    if (grepl("plot", from)) FALSE else file.copy(from, to, overwrite = overwrite)
+  }
+  reject_all <- function(path) {
+    unlink(list.files(path, pattern = "[.]new[.]", recursive = TRUE, full.names = TRUE))
+  }
+  expect_warning(
+    result <- bayestools_review_new_snapshots(root, review = reject_all, copy = failing_copy),
+    "plot.new.svg (failed to stage)", fixed = TRUE
+  )
+  expect_identical(result$status[order(basename(result$candidate))], c("failed to stage", "rejected"))
+  expect_true(file.exists(file.path(snaps, "plot.new.svg")))
+  expect_false(file.exists(file.path(snaps, "text.new.md")))
+
+  # a failed installation of an accepted candidate keeps the candidate
+  accept_all <- function(path) {
+    for (candidate in list.files(path, pattern = "[.]new[.]", recursive = TRUE, full.names = TRUE)) {
+      file.rename(candidate, sub("[.]new([.][^.]+)$", "\\1", candidate))
+    }
+  }
+  # copies into the staging tree succeed, the installation fails
+  failing_install <- function(from, to, overwrite) {
+    if (grepl("bayestools-new-snapshot-review-", to, fixed = TRUE)) file.copy(from, to, overwrite = overwrite) else FALSE
+  }
+  expect_warning(
+    result <- bayestools_review_new_snapshots(root, review = accept_all, copy = failing_install),
+    "failed to install", fixed = TRUE
+  )
+  expect_identical(result$status, "failed to install")
+  expect_true(file.exists(file.path(snaps, "plot.new.svg")))
+  expect_false(file.exists(file.path(snaps, "plot.svg")))
+})
+
+
 test_that("candidates of new snapshots are reviewed against an empty baseline", {
 
   root  <- withr::local_tempdir()
