@@ -343,18 +343,28 @@
 
 # A statement whose references name several model parameters is ambiguous
 # ("BayesTools_hypothesis_ambiguous" with the parent
-# "BayesTools_hypothesis_statement", .hypothesis_model_ambiguous_class());
-# 'component' selects one of them. The provider words the advice.
+# "BayesTools_hypothesis_statement", .hypothesis_model_ambiguous_class()).
+# Across components, 'component' selects one of them and the provider words
+# the advice; parameters of one component cannot be separated that way, so the
+# message says that a statement refers to one parameter.
 .hypothesis_model_stop_multiple_parameters <- function(entries, provider) {
 
-  .hypothesis_model_stop(.hypothesis_model_refusal(
+  parameters <- paste(unique(entries[["parameter"]]), collapse = ", ")
+  components <- unique(entries[["component"]])
+  # parameters of one component: choosing a component cannot resolve them
+  message <- if (length(components) == 1L && !is.na(components)) {
     paste0(
-      "Hypothesis references multiple model parameters (",
-      paste(unique(entries[["parameter"]]), collapse = ", "),
-      "). ", provider[["components"]][["advice"]]
-    ),
-    "ambiguous"
-  ))
+      "The hypothesis references several parameters of '", components, "' (",
+      parameters, "); a hypothesis on a fitted model refers to one parameter ",
+      "or to the levels of one factor. Test each parameter separately."
+    )
+  } else {
+    paste0(
+      "Hypothesis references multiple model parameters (", parameters, "). ",
+      provider[["components"]][["advice"]]
+    )
+  }
+  .hypothesis_model_stop(.hypothesis_model_refusal(message, "ambiguous"))
 }
 
 

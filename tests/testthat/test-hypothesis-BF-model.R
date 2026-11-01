@@ -238,6 +238,19 @@ test_that("refused statements stop with the classes of the engine", {
   multiple <- condition(hypothesis_BF(fit, "x > f[B]"))
   expect_s3_class(multiple, "BayesTools_hypothesis_ambiguous")
   expect_s3_class(multiple, "BayesTools_hypothesis_statement")
+  # parameters of one namespace: choosing the namespace cannot separate them
+  for(namespace in list(NULL, "mu")){
+    multiple <- condition(hypothesis_BF(fit, "x > f[B]", namespace = namespace))
+    expect_s3_class(multiple, "BayesTools_hypothesis_ambiguous")
+    expect_identical(
+      conditionMessage(multiple),
+      paste0(
+        "The hypothesis references several parameters of 'mu' (mu_x, mu_f); a ",
+        "hypothesis on a fitted model refers to one parameter or to the levels ",
+        "of one factor. Test each parameter separately."
+      )
+    )
+  }
 
   fixed <- condition(hypothesis_BF(fit, "f[A] = 0"))
   expect_s3_class(fixed, "BayesTools_hypothesis_fixed")
