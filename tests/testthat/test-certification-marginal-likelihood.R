@@ -15,7 +15,11 @@ skip_if_not_installed("bridgesampling")
 # random-intercept estimates (13 bridge coordinates, or 7 with the intercepts
 # integrated out) 0.005 to 0.025 below it across four fit seeds, a small bias
 # that the tolerance allows twice over; the exact values agree with an
-# independent grid sum (step 0.002) to 1e-5.
+# independent grid sum (step 0.002) to 1e-5. A model with 50 random intercepts
+# (54 bridge coordinates) is held to the same tolerance under 3 bridge seeds;
+# in development the errors did not grow with the number of groups (6, 20,
+# and 50 groups: at most 0.014 with the latent intercepts and 0.007 with them
+# integrated out, across 3 bridge seeds).
 
 certification_data <- local({
   set.seed(1)
@@ -96,11 +100,17 @@ log_posterior_known_sigma <- function(parameters, data) {
 log_posterior_sigma <- function(parameters, data) {
   sum(stats::dnorm(data$y, parameters$mu, parameters$sigma, log = TRUE))
 }
+# the bridge target with the random intercepts integrated out
+log_posterior_marginal <- function(parameters, data, bridge_context) {
+  covariance <- bridge_context$marginalized_random$mu$covariance + parameters$sigma^2 * diag(length(data$y))
+  gaussian_log_density(data$y - parameters$mu, covariance)
+}
 
 # the bridge estimates of a fit under several seeds
-bridge_logml <- function(fit, log_posterior, prior_list = NULL, seeds = 1:10, ...) {
+bridge_logml <- function(fit, log_posterior, prior_list = NULL, seeds = 1:10,
+                         data = certification_jags_data, ...) {
   vapply(seeds, function(seed) {
-    JAGS_bridgesampling(fit, log_posterior = log_posterior, data = certification_jags_data,
+    JAGS_bridgesampling(fit, log_posterior = log_posterior, data = data,
                         prior_list = prior_list, seed = seed, ...)$logml
   }, numeric(1))
 }
@@ -146,13 +156,45 @@ test_that("bridge sampling recovers the exact log marginal likelihood of a rando
   expect_bridge_exact(bridge_logml(fit, log_posterior_sigma, prior_list = list(sigma = unit_sd_prior)), exact)
 
   # the intercepts integrated out of the bridge target
-  log_posterior_marginal <- function(parameters, data, bridge_context) {
-    covariance <- bridge_context$marginalized_random$mu$covariance + parameters$sigma^2 * diag(length(data$y))
-    gaussian_log_density(data$y - parameters$mu, covariance)
-  }
   expect_bridge_exact(
     bridge_logml(fit, log_posterior_marginal, prior_list = list(sigma = unit_sd_prior),
                  bridge_context = "marginal", formula_random_effects_marginalize_list = list(mu = "g")),
     exact
   )
+})
+
+test_that("bridge sampling stays accurate with 50 random intercepts", {
+
+  set.seed(50)
+  data <- data.frame(x = stats::rnorm(250L), g = factor(rep(seq_len(50L), each = 5L)))
+  data$y <- 0.3 + 0.5 * data$x + stats::rnorm(50L, 0, 0.5)[as.integer(data$g)] + stats::rnorm(250L, 0, 0.7)
+  jags_data <- list(y = data$y, N = nrow(data))
+
+  # for each tau, X X' + tau^2 Z Z' + sigma^2 I has the eigenvectors of
+  # X X' + tau^2 Z Z' and its eigenvalues plus sigma^2
+  same_group <- outer(data$g, data$g, "==") * 1
+  exact <- log_integrate_half_normal(function(tau) {
+    decomposition <- eigen(tcrossprod(cbind(1, data$x)) + tau^2 * same_group, symmetric = TRUE)
+    squares <- drop(crossprod(decomposition$vectors, data$y))^2
+    log_integrate_half_normal(function(sigma) {
+      variances <- decomposition$values + sigma^2
+      -0.5 * (length(data$y) * log(2 * pi) + sum(log(variances)) + sum(squares / variances))
+    })
+  })
+
+  fit <- JAGS_fit(
+    gaussian_likelihood, jags_data, prior_list = list(sigma = unit_sd_prior),
+    formula_list = list(mu = ~ x + (1 | g)), formula_data_list = list(mu = data),
+    formula_prior_list = list(mu = list(intercept = unit_prior, x = unit_prior)),
+    formula_random_prior_list = list(mu = prior_random(g = random_block(sd = unit_sd_prior))),
+    chains = 4, adapt = 1000, burnin = 1000, sample = 5000, seed = 1
+  )
+
+  latent   <- bridge_logml(fit, log_posterior_sigma, prior_list = list(sigma = unit_sd_prior),
+                           seeds = 1:3, data = jags_data)
+  marginal <- bridge_logml(fit, log_posterior_marginal, prior_list = list(sigma = unit_sd_prior),
+                           seeds = 1L, data = jags_data, bridge_context = "marginal",
+                           formula_random_effects_marginalize_list = list(mu = "g"))
+  expect_lt(max(abs(latent - exact)), certification_tolerance)
+  expect_lt(abs(marginal - exact), certification_tolerance)
 })
