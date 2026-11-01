@@ -74,6 +74,7 @@ test_that("stochastic table candidates track structural changes only", {
 
 test_that("reference-table review applies accept, reject, and skip", {
 
+  # 'new' has no baseline: accepting its candidate creates the baseline
   root <- withr::local_tempdir()
   names <- c("accept", "reject", "skip")
   for (name in names) {
@@ -85,10 +86,11 @@ test_that("reference-table review applies accept, reject, and skip", {
       file.path(directory, paste0(name, ".new.txt"))
     )
   }
-  writeLines("orphan", file.path(root, "orphan.new.txt"))
+  writeLines("new baseline", file.path(root, "new.new.txt"))
+  names <- c(names, "new")
 
   changes <- reference_table_candidates(root)
-  expect_identical(changes[["name"]], paste0("context/", names))
+  expect_identical(changes[["name"]], c(paste0("context/", names[1:3]), "new"))
 
   review_root <- withr::local_tempdir()
   staged_expected  <- character(nrow(changes))
@@ -101,12 +103,18 @@ test_that("reference-table review applies accept, reject, and skip", {
     staged_candidate[[i]] <- reference_table_candidate_path(
       staged_expected[[i]]
     )
-    file.copy(changes[["expected"]][[i]], staged_expected[[i]])
+    if (file.exists(changes[["expected"]][[i]])) {
+      file.copy(changes[["expected"]][[i]], staged_expected[[i]])
+    } else {
+      writeLines(character(), staged_expected[[i]])
+    }
     file.copy(changes[["candidate"]][[i]], staged_candidate[[i]])
   }
 
-  file.copy(staged_candidate[[1L]], staged_expected[[1L]], overwrite = TRUE)
-  unlink(staged_candidate[[1L]])
+  for (accepted in c(1L, 4L)) {
+    file.copy(staged_candidate[[accepted]], staged_expected[[accepted]], overwrite = TRUE)
+    unlink(staged_candidate[[accepted]])
+  }
   unlink(staged_candidate[[2L]])
 
   reviewed <- .apply_reference_table_review(
@@ -114,7 +122,7 @@ test_that("reference-table review applies accept, reject, and skip", {
     staged_expected,
     staged_candidate
   )
-  expect_identical(reviewed[["status"]], c("accepted", "rejected", "skipped"))
+  expect_identical(reviewed[["status"]], c("accepted", "rejected", "skipped", "accepted"))
   expect_identical(
     readLines(changes[["expected"]][[1L]], warn = FALSE),
     "accept new"
@@ -123,7 +131,33 @@ test_that("reference-table review applies accept, reject, and skip", {
     readLines(changes[["expected"]][[2L]], warn = FALSE),
     "reject old"
   )
+  expect_identical(
+    readLines(changes[["expected"]][[4L]], warn = FALSE),
+    "new baseline"
+  )
   expect_false(file.exists(changes[["candidate"]][[1L]]))
   expect_false(file.exists(changes[["candidate"]][[2L]]))
   expect_true(file.exists(changes[["candidate"]][[3L]]))
+  expect_false(file.exists(changes[["candidate"]][[4L]]))
+})
+
+
+test_that("missing reference baselines fail and cache a reviewable candidate", {
+
+  print_dir <- withr::local_tempdir()
+  table     <- data.frame(value = 1, row.names = "row")
+  expected_candidate <- capture_output_lines(table, print = TRUE, width = 150)
+  checks <- list(
+    table = function() test_reference_table(table, "table.txt", print_dir = print_dir),
+    stochastic = function() test_reference_table_stochastic(table, "stochastic.txt", print_dir = print_dir),
+    text = function() test_reference_text("first\nsecond", "text.txt", print_dir = print_dir)
+  )
+  candidates <- list(table = expected_candidate, stochastic = expected_candidate, text = c("first", "second"))
+  for (name in names(checks)) {
+    reference_file <- file.path(print_dir, paste0(name, ".txt"))
+    expect_failure(checks[[name]](), "not found")
+    expect_false(file.exists(reference_file))
+    expect_identical(readLines(reference_table_candidate_path(reference_file), warn = FALSE), candidates[[name]])
+  }
+  expect_identical(reference_table_candidates(print_dir)[["name"]], c("stochastic", "table", "text"))
 })

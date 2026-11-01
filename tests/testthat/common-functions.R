@@ -347,7 +347,11 @@ test_reference_table <- function(table, filename, info_msg = NULL,
       }
       expect_equal(actual_output, expected_output, info = info_msg)
     } else {
-      skip(paste("Reference file", filename, "not found."))
+      fail_missing_reference(
+        capture_output_lines(table, print = TRUE, width = 150),
+        ref_file,
+        info_msg
+      )
     }
   }
 }
@@ -525,7 +529,11 @@ test_reference_table_stochastic <- function(table, filename, info_msg = NULL,
       )
       expect_stochastic_table_invariants(table, info_msg = info_msg)
     } else {
-      skip(paste("Reference file", filename, "not found."))
+      fail_missing_reference(
+        capture_output_lines(table, print = TRUE, width = 150),
+        ref_file,
+        info_msg
+      )
     }
   }
 }
@@ -546,7 +554,7 @@ test_reference_text <- function(text, filename, info_msg = NULL,
       expected_output <- paste0(expected_output, collapse = "\n")
       expect_equal(text, expected_output, info = info_msg)
     } else {
-      skip(paste("Reference file", filename, "not found."))
+      fail_missing_reference(text, ref_file, info_msg)
     }
   }
 }

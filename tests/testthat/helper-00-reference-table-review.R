@@ -21,6 +21,27 @@ cache_reference_table_candidate <- function(actual_output, expected_output,
 }
 
 
+# A missing baseline fails and caches the current output as a candidate, so a
+# deleted or never-reviewed reference cannot pass; review_reference_tables()
+# offers the candidate, and accepting it creates the baseline.
+fail_missing_reference <- function(actual_output, reference_file, info_msg = NULL) {
+
+  candidate <- reference_table_candidate_path(reference_file)
+  dir.create(dirname(candidate), recursive = TRUE, showWarnings = FALSE)
+  writeLines(actual_output, candidate)
+  message <- paste0(
+    "Reference file ", basename(reference_file), " not found. The current ",
+    "output is cached at ", normalizePath(candidate, winslash = "/"),
+    " and will be offered for review after the test run."
+  )
+  if (!is.null(info_msg) && nzchar(info_msg)) {
+    message <- paste(info_msg, message, sep = "\n")
+  }
+
+  testthat::fail(message)
+}
+
+
 reference_table_failure_info <- function(info_msg, candidate) {
 
   review_info <- paste0(
@@ -58,14 +79,9 @@ reference_table_candidates <- function(root = file.path("tests", "results")) {
     return(empty)
   }
 
+  # candidates of missing baselines are included: accepting one creates it
   candidates <- normalizePath(candidates, winslash = "/", mustWork = TRUE)
   expected   <- sub("[.]new[.]txt$", ".txt", candidates)
-  keep       <- file.exists(expected)
-  candidates <- candidates[keep]
-  expected   <- expected[keep]
-  if (length(candidates) == 0L) {
-    return(empty)
-  }
 
   relative <- substring(candidates, nchar(root) + 2L)
   changes <- data.frame(
@@ -101,8 +117,11 @@ reference_table_candidates <- function(root = file.path("tests", "results")) {
     }
 
     staged <- readLines(staged_expected[[i]], warn = FALSE, encoding = "UTF-8")
-    old <- readLines(changes[["expected"]][[i]], warn = FALSE,
-                     encoding = "UTF-8")
+    old <- if (file.exists(changes[["expected"]][[i]])) {
+      readLines(changes[["expected"]][[i]], warn = FALSE, encoding = "UTF-8")
+    } else {
+      character()
+    }
     new <- readLines(changes[["candidate"]][[i]], warn = FALSE,
                      encoding = "UTF-8")
     if (identical(staged, new)) {
@@ -165,11 +184,17 @@ review_reference_tables <- function(root = file.path("tests", "results")) {
     staged_candidate[[i]] <- reference_table_candidate_path(
       staged_expected[[i]]
     )
-    .copy_reference_table_file(
-      changes[["expected"]][[i]],
-      staged_expected[[i]],
-      "review reference table"
-    )
+    if (file.exists(changes[["expected"]][[i]])) {
+      .copy_reference_table_file(
+        changes[["expected"]][[i]],
+        staged_expected[[i]],
+        "review reference table"
+      )
+    } else {
+      # a missing baseline is reviewed against an empty one
+      dir.create(dirname(staged_expected[[i]]), recursive = TRUE, showWarnings = FALSE)
+      writeLines(character(), staged_expected[[i]])
+    }
     .copy_reference_table_file(
       changes[["candidate"]][[i]],
       staged_candidate[[i]],
