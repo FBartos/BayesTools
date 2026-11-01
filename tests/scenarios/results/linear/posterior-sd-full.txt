@@ -1,0 +1,6 @@
+  parameter  exact BayesTools
+1 intercept 0.0704     0.0703
+2      supp 0.0704     0.0697
+3      dose 0.0710     0.0711
+4 supp:dose 0.0710     0.0706
+5     sigma 0.0527     0.0524

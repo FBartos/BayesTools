@@ -1,0 +1,13 @@
+       source parameter estimate median    lCI    uCI
+1       exact intercept   -1.482     NA     NA     NA
+2          lm intercept   -1.489     NA     NA     NA
+3  BayesTools intercept   -1.482 -1.482 -1.774 -1.190
+4       exact      supp   -0.537     NA     NA     NA
+5          lm      supp   -0.540     NA     NA     NA
+6  BayesTools      supp   -0.537 -0.537 -0.831 -0.243
+7       exact      dose    1.270     NA     NA     NA
+8          lm      dose    1.276     NA     NA     NA
+9  BayesTools      dose    1.270  1.271  1.051  1.493
+10      exact supp:dose    0.254     NA     NA     NA
+11         lm supp:dose    0.255     NA     NA     NA
+12 BayesTools supp:dose    0.254  0.255  0.034  0.476
