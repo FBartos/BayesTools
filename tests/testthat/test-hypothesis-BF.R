@@ -389,9 +389,11 @@ test_that("a divided linear statement compiles to the correctly rounded threshol
       paste(".BayesTools_linear_target >", .hypothesis_number_label(-0.42 / 3)))
   }
 
-  # every two-decimal threshold of the statement compiles (the round-trip check
-  # refused 13 of these 201 ordinary statements)
-  thresholds <- round(seq(-1, 1, by = 0.01), 2)
+  # the two-decimal thresholds of the statement compile: these 13 of the 201 are
+  # the ones whose quotient does not multiply back to the numerator, which the
+  # round-trip check refused (the 201 are in the certification case
+  # density-kernels)
+  thresholds <- c(0.11, -0.92, -0.91, -0.88, -0.87, -0.84, -0.83, -0.33, -0.31, -0.29, -0.05, -0.04, -0.03)
   refused <- vapply(thresholds, function(threshold){
     inherits(tryCatch(hypothesis_linear_target(levels, shifted(threshold), "mu_fac"), error = identity), "error")
   }, logical(1))

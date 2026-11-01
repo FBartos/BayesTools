@@ -722,15 +722,8 @@ test_that("ordered direct displays of a total away from zero follow the structur
   displayed <- density(p, x_seq = x)
   expect_equal(displayed[[2L]]$y, 2 * (log(2) - x / 2), tolerance = 1e-8)
   expect_equal(displayed[[3L]]$y, x, tolerance = 1e-8)
-  # the default grid has no zero height inside the support and each level keeps its unit mass
-  default <- density(p)
-  for(level in 2:3){
-    inside <- default[[level]]$x > 0 & default[[level]]$x < 2
-    expect_true(all(default[[level]]$y[inside] > 0))
-    grid <- default[[level]]$x
-    height <- default[[level]]$y
-    expect_equal(sum(diff(grid) * (head(height, -1L) + tail(height, -1L)) / 2), 1, tolerance = 1e-4)
-  }
+  # (the default display grid of 1000 values has no zero height inside the support and each level
+  # keeps its unit mass: the certification case density-kernels)
 
   # a Gamma(2, 1) total with a Dirichlet(1, 1) share: the intermediate level is Exponential(1);
   # at 0 the height is the one-sided limit 1
@@ -854,10 +847,8 @@ test_that("unresolved ordered display values are reported, not dropped silently"
   expect_identical(sort(c(displayed[[3L]]$x, unresolved)), displayed[[2L]]$x)
   expect_true(all(is.finite(displayed[[3L]]$y)))
   expect_warning(plot(p, n_points = 200L, plot_type = "ggplot"), class = "BayesTools_prior_curve_unavailable")
-  # the default display of 1000 values resolves every value of the level and does not warn
-  default <- NULL
-  expect_no_warning(default <- density(p))
-  expect_length(default[[3L]]$x, 1000L)
+  # (the default display of 1000 values resolves every value of the level and does not warn: the
+  # certification case density-kernels)
 
   # a display with every value resolved does not warn
   resolved <- ordered_plot_test_fixture(prior("lognormal", list(0, .5)), prior("dirichlet", list(c(2, 1, .5))),

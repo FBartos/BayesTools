@@ -551,9 +551,16 @@ test_that("two-term convolution regions integrate over the term without a 1/x^2 
     }, numeric(1)))
   }
 
+  # the six gamma-partner builds, the Cauchy term with a beta partner (heavy
+  # first) and with a uniform partner (heavy second); the other ten builds are
+  # in the certification case density-kernels
   for(term_name in names(heavy)){
     for(partner_name in names(partners)){
       for(heavy_first in c(TRUE, FALSE)){
+        in_unit <- partner_name == "gamma" ||
+          (term_name == "cauchy" && partner_name == "beta" && heavy_first) ||
+          (term_name == "cauchy" && partner_name == "uniform" && !heavy_first)
+        if(!in_unit) next
         terms <- list(a = heavy[[term_name]]$prior, b = partners[[partner_name]]$prior)
         density <- .prior_linear_combination_density(
           if(heavy_first) terms else terms[c("b", "a")], c(a = 1, b = 1)

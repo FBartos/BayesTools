@@ -9,6 +9,10 @@
 # key includes the native sources and the JAGS version.
 bayestools_certification_cases <- function() {
   list(
+    `density-kernels` = list(
+      description = "Expensive reference sweeps of prior densities, ordinates, region grids, and quantile estimators moved out of the unit lane.",
+      native      = FALSE
+    ),
     `hypothesis-bayes-factors` = list(
       description = "Point and region Bayes factors of hypothesis_BF() against a conjugate posterior.",
       native      = TRUE

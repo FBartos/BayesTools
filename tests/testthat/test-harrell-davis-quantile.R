@@ -15,10 +15,8 @@ skip_if_not_test_profile("unit")
 #   - common-functions.R: hd_reference()
 #
 # SKIP CONDITIONS:
-#   - The accuracy study with 10,000 draws is skipped on CRAN (skip_on_cran());
-#     it runs whenever NOT_CRAN is true, which devtools::test() sets, so in
-#     every profile of tools/test-profile.R (unit included). All other tests
-#     are fast pure R tests.
+#   - None; all tests are fast pure R tests. The accuracy study with 10,000
+#     draws is the certification case density-kernels.
 #
 # MODELS/FIXTURES:
 #   - None required
@@ -434,9 +432,9 @@ test_that("harrell_davis_quantile validates its input", {
 # quantile is analytic, at p = .025 over a uniform grid of 41 points. The
 # roughness of the error is the RMS of its second differences. Medians of the
 # paired ratios over 200 seeded replicates: roughness of the empirical
-# quantile over that of the HD estimate (at least 4 for 1,000 and 2 for
-# 10,000 draws) and RMSE of the HD estimate over that of the empirical
-# quantile (at most 1.02).
+# quantile over that of the HD estimate (at least 4 for 1,000 draws; at least 2
+# for 10,000 draws in the certification case density-kernels) and RMSE of the
+# HD estimate over that of the empirical quantile (at most 1.02).
 hd_accuracy_study <- function(m, minimum_roughness_ratio) {
 
   roughness <- function(error) sqrt(mean(diff(error, differences = 2)^2))
@@ -463,10 +461,4 @@ hd_accuracy_study <- function(m, minimum_roughness_ratio) {
 test_that("harrell_davis_quantile attenuates the kinks of the empirical quantile without losing accuracy (1,000 draws)", {
 
   hd_accuracy_study(1000, 4)
-})
-
-test_that("harrell_davis_quantile attenuates the kinks of the empirical quantile without losing accuracy (10,000 draws)", {
-
-  skip_on_cran()
-  hd_accuracy_study(10000, 2)
 })

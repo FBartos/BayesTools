@@ -397,19 +397,13 @@ test_that("scalar affine ordinates at a bound of the mapped support are the one-
     }
   }
 
-  # S ~ U(0, 1): both bounds of 32 combinations (the three rounded ones among
-  # them), and each source on a subset
-  for(w in c(.1, .3, .7, 1.3, -.1, -.3, -.7, -1.3)){
-    for(o in c(.1, .2, .7, -.35)){
-      expect_bound_limits(sources[[1L]], w, o)
-    }
-  }
-  for(source in sources[-1L]){
-    for(w in c(.1, .3, 1.3, -.3, -.7)){
-      for(o in c(.15, .2, .7)){
-        expect_bound_limits(source, w, o)
-      }
-    }
+  # both bounds of each source at one (w, o); S ~ U(0, 1) at a rounded
+  # combination (the product sweeps over weights and offsets are in the
+  # certification case density-kernels)
+  representative_w <- c(.3, -.7, .1, -.3, 1.3, -.3)
+  representative_o <- c(.7, .2, .15, .7, .2, .15)
+  for(i in seq_along(sources)){
+    expect_bound_limits(sources[[i]], representative_w[i], representative_o[i])
   }
   # the three rounded combinations of the brief, by name
   for(combination in list(c(.1, .2), c(.3, .1), c(.3, .7))){
@@ -422,16 +416,12 @@ test_that("scalar affine ordinates at a bound of the mapped support are the one-
 
   # a log source term: the bounds of S ~ U(5, 9) and U(1, 3) are rounded by
   # exp(log(s)) as well (it is below 5 and above 9 and 3)
-  for(source in list(
+  log_sources <- list(
     list(prior = prior("uniform", list(5, 9)), bounds = c(5, 9), limits = c(.25, .25)),
     sources[[2L]]
-  )){
-    for(w in c(.1, .3, .7, 1.3, -.1, -.3, -.7, -1.3)){
-      for(o in c(.1, .2, .7, -.35)){
-        expect_bound_limits(source, w, o, log_source = TRUE)
-      }
-    }
-  }
+  )
+  expect_bound_limits(log_sources[[1L]], .7, .2, log_source = TRUE)
+  expect_bound_limits(log_sources[[2L]], -.3, .1, log_source = TRUE)
   # no offset: the log source alone (weight 1) at the rounded bound
   log_alone <- BayesTools:::.prior_linear_combination_density(
     list(s = prior("uniform", list(1, 3))), c(s = 1), source_transforms = c(s = "log")

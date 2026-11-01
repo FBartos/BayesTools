@@ -184,6 +184,7 @@ bayestools_test_profile_contexts <- list(
     "stochastic-reference-policy"
   ),
   certification = c(
+    "certification-density-kernels",
     "certification-hypothesis-bayes-factors",
     "certification-marginal-likelihood",
     "certification-model-averaging"

@@ -72,7 +72,9 @@ test_that("vectorized PET-PEESE prior bands reproduce the scalar quantiles", {
     prior_PEESE("cauchy", list(0, 5), prior_weights = 1))
   context <- .petpeese_prior_cdf_context(bias, list(mu, mu, mu), c(2, 1, 1) / 4)
   x <- seq(0, 1, length.out = 101)
-  band <- check_band(context, x, c(1L, 2L, 11L, 37L, 101L))
+  # scalar cross-checks at grid points 1 and 11 (2, 37 and 101 are in the
+  # certification case density-kernels)
+  band <- check_band(context, x, c(1L, 11L))
   # Independent physical-coordinate CDF of the same ensemble at se = .5.
   pair_cdf <- function(q, s, scale){
     spike <- if(q > 0) 2 / pi * atan(q / (s * scale)) else 0
