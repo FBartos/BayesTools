@@ -12,6 +12,10 @@
 # baselines a case compares with; their reviewed files enter its key.
 bayestools_certification_cases <- function() {
   list(
+    `count-marginal-likelihood` = list(
+      description = "Bridge-sampling log marginal likelihoods of Poisson and negative-binomial GLMMs against a quadrature and importance-sampling reference.",
+      native      = TRUE
+    ),
     `density-kernels` = list(
       description = "Expensive reference sweeps of prior densities, ordinates, region grids, and quantile estimators moved out of the unit lane.",
       native      = FALSE
@@ -31,6 +35,22 @@ bayestools_certification_cases <- function() {
     ),
     `model-averaging` = list(
       description = "Model probabilities, inclusion Bayes factors, and averaged posteriors against exact enumeration.",
+      native      = TRUE
+    ),
+    predictions = list(
+      description = "Fixed, conditional, and marginal predictions of JAGS_predict_formula() against the exact Gaussian posterior.",
+      native      = TRUE
+    ),
+    `savage-dickey-ordinates` = list(
+      description = "Savage-Dickey Bayes factors at nulls away from the posterior mode against exact conjugate ordinates.",
+      native      = TRUE
+    ),
+    `scaled-priors` = list(
+      description = "Bayes factors of coefficient priors scaled by the residual SD against exact two-dimensional integrals.",
+      native      = TRUE
+    ),
+    `simplex-priors` = list(
+      description = "Bridge-sampling log marginal likelihoods with Dirichlet priors against closed forms.",
       native      = TRUE
     )
   )

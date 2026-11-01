@@ -184,11 +184,16 @@ bayestools_test_profile_contexts <- list(
     "stochastic-reference-policy"
   ),
   certification = c(
+    "certification-count-marginal-likelihood",
     "certification-density-kernels",
     "certification-fit-assertions",
     "certification-hypothesis-bayes-factors",
     "certification-marginal-likelihood",
-    "certification-model-averaging"
+    "certification-model-averaging",
+    "certification-predictions",
+    "certification-savage-dickey-ordinates",
+    "certification-scaled-priors",
+    "certification-simplex-priors"
   )
 )
 
