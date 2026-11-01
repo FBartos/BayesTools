@@ -1,5 +1,5 @@
           source parameter estimate median    lCI    uCI
-1  glmer Laplace intercept   -1.398     NA     NA     NA
+1  glmer Laplace intercept   -1.399     NA     NA     NA
 2      glmer AGQ intercept   -1.399     NA     NA     NA
 3     BayesTools intercept   -1.483 -1.475 -2.006 -0.995
 4           brms intercept   -1.479 -1.473 -1.995 -0.994
@@ -7,7 +7,7 @@
 6      glmer AGQ period[2]   -0.991     NA     NA     NA
 7     BayesTools period[2]   -0.857 -0.852 -1.438 -0.303
 8           brms period[2]   -0.859 -0.854 -1.441 -0.292
-9  glmer Laplace period[3]   -1.128     NA     NA     NA
+9  glmer Laplace period[3]   -1.129     NA     NA     NA
 10     glmer AGQ period[3]   -1.128     NA     NA     NA
 11    BayesTools period[3]   -0.981 -0.971 -1.606 -0.382
 12          brms period[3]   -0.982 -0.978 -1.595 -0.393

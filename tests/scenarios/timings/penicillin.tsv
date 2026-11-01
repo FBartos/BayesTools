@@ -9,4 +9,4 @@ text	lme4-comparison	0.170000000	0.370508	4.6.0	Windows/x86_64-w64-mingw32
 plot	fitted-comparison	0.290000000	0.613477	4.6.0	Windows/x86_64-w64-mingw32
 plot	posterior-allocation	0.600000000	0.711133	4.6.0	Windows/x86_64-w64-mingw32
 plot	posterior-independent	0.190000000	0.575391	4.6.0	Windows/x86_64-w64-mingw32
-plot	ranef-comparison	1.300000000	0.549219	4.6.0	Windows/x86_64-w64-mingw32
+plot	ranef-comparison	0.580000000	0.549219	4.6.0	Windows/x86_64-w64-mingw32
