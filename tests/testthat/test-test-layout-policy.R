@@ -300,7 +300,7 @@ test_that("certification cases are registered, outside `all`, and keyed by the c
   # its code reaches, and not into the rest of the package
   helpers <- environment(bayestools_certification_key)
   key <- bayestools_certification_key("model-averaging", helpers)
-  expect_identical(setdiff(c("case_file", "description", "r_version", "jags_version", "helper_fn_expect_equal_each",
+  expect_identical(setdiff(c("case_file", "description", "r_version", "jags_version", "helper_fn_expect_true",
                              "package_fn_models_inference", "package_fn_JAGS_bridgesampling"), names(key)), character())
   expect_false("package_fn_hypothesis_BF.BayesTools_fit" %in% names(key))
   expect_true(any(startsWith(names(key), "package_src_")))
