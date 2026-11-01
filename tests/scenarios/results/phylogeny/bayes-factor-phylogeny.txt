@@ -1,0 +1,5 @@
+                            H1                      H0                 method log_BF10 note
+1 phylogenetic species effects no phylogenetic effects                  exact    2.808     
+2 phylogenetic species effects no phylogenetic effects        bridge sampling    2.834     
+3 phylogenetic species effects no phylogenetic effects bridge sampling (brms)    3.367     
+4 phylogenetic species effects no phylogenetic effects          Savage-Dickey    3.013     

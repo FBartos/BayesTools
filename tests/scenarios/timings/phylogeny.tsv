@@ -1,0 +1,17 @@
+type	name	elapsed	memory_gb	r_version	platform
+fit	brms_no_phylo	91.590000000	1.829590	4.6.0	Windows/x86_64-w64-mingw32
+fit	brms_phylo	149.080000000	1.756348	4.6.0	Windows/x86_64-w64-mingw32
+fit	exact_marglik	40.610000000	3.236230	4.6.0	Windows/x86_64-w64-mingw32
+fit	fit_no_phylo	41.340000000	1.749512	4.6.0	Windows/x86_64-w64-mingw32
+fit	fit_phylo	712.810000000	1.875684	4.6.0	Windows/x86_64-w64-mingw32
+fit_model	fit_no_phylo	12.610000000	NA	4.6.0	Windows/x86_64-w64-mingw32
+fit_model	fit_phylo	655.160000000	NA	4.6.0	Windows/x86_64-w64-mingw32
+fit_marglik	fit_no_phylo	28.730000000	NA	4.6.0	Windows/x86_64-w64-mingw32
+fit_marglik	fit_phylo	57.650000000	NA	4.6.0	Windows/x86_64-w64-mingw32
+text	bayes-factor-phylogeny	1.080000000	1.785449	4.6.0	Windows/x86_64-w64-mingw32
+text	comparison-phylo	0.790000000	1.571777	4.6.0	Windows/x86_64-w64-mingw32
+text	estimates-no-phylo	0.910000000	1.572656	4.6.0	Windows/x86_64-w64-mingw32
+text	estimates-phylo	1.290000000	1.569922	4.6.0	Windows/x86_64-w64-mingw32
+text	likelihood-ratio-metafor	0.000000000	0.878125	4.6.0	Windows/x86_64-w64-mingw32
+plot	posterior-sd	1.950000000	1.819238	4.6.0	Windows/x86_64-w64-mingw32
+plot	species-effects	1.290000000	1.573047	4.6.0	Windows/x86_64-w64-mingw32
