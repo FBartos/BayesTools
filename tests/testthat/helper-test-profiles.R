@@ -37,6 +37,7 @@ bayestools_test_profile_contexts <- list(
     "distributions-tools",
     "distributions-weightfunctions",
     "draws-metadata",
+    "exported-schemas-and-aliases",
     "factor-interaction-coefficients",
     "formula-contribution-state",
     "JAGS-formula-selected-replay",
