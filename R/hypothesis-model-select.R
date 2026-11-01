@@ -566,7 +566,9 @@
 # escaped form ("g[\"(0,1%5D\"]") name the same level. The levels of a
 # factor term in the catalog are escaped tokens, so a level reference of
 # 'parameter' that is not one of 'levels' is replaced by its escaped token
-# when that is one.
+# when that is one. Evaluation matches a reference to the level names before
+# decoding it, so a token that is also the name of another level (levels
+# "a]" and "a%5D") would name that level: the reference is refused.
 .hypothesis_model_catalog_levels <- function(hypothesis, parameter, levels) {
 
   map_node <- function(node) {
@@ -574,6 +576,16 @@
       if (identical(node[["parameter"]], parameter) && !node[["level"]] %in% levels) {
         token <- .bt_label_token(node[["level"]])
         if (token %in% levels) {
+          if (token %in% .bt_label_token_decode(levels)) {
+            .bt_parameter_catalog_stop(
+              class   = "BayesTools_parameter_ambiguous",
+              message = paste0(
+                "The level '", node[["level"]], "' of '", parameter, "' cannot be referenced: its ",
+                "escaped form '", token, "' is the name of another level. Rename the factor levels."
+              ),
+              alias = paste0(parameter, "[", node[["level"]], "]")
+            )
+          }
           node[["level"]] <- token
         }
       }

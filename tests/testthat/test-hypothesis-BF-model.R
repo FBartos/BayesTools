@@ -248,11 +248,44 @@ test_that("whole-factor statements label each row by its level", {
     tolerance = 1e-12
   )
 
-  # the notation of a statement on one level: backticks when the root or the
-  # level is not syntactic, and only whole references are replaced
-  expect_identical(.hypothesis_model_level_label("f != 0", "f", "(0,1]"), "`f[(0,1]]` != 0")
-  expect_identical(.hypothesis_model_level_label("`(mu) f` > f", c("(mu) f", "f"), "a"), "`(mu) f[a]` > f[a]")
-  expect_identical(.hypothesis_model_level_label("ff + f.x + f > 0", "f", "a"), "ff + f.x + f[a] > 0")
+  # each label is the statement on its level as hypothesis_BF() reads it:
+  # references to the factor become level references, while a function of
+  # the same name and levels with backslashes or backticks keep their form
+  level_fit <- function(levels, name = "f") {
+    data <- data.frame(factor(rep(levels, 2), levels = levels))
+    names(data) <- name
+    compiled <- JAGS_formula(stats::reformulate(name), "mu", data, stats::setNames(list(
+      prior("normal", list(0, 1)),
+      prior_factor("mnormal", list(mean = 0, sd = 1), contrast = "meandif")
+    ), c("intercept", name)))
+    columns <- c("mu_intercept", paste0("mu_", name, "[", seq_along(levels[-1L]), "]"))
+    draws   <- matrix(stats::rnorm(400 * length(columns), 0.3, 0.5), 400, dimnames = list(NULL, columns))
+    .parameter_catalog_test_fit(coda::mcmc.list(coda::mcmc(draws)), compiled$prior_list,
+                                list(mu = compiled$formula_design), list(mu = compiled$formula_scale))
+  }
+  expect_round_trip <- function(fit, statement, tolerance = 1e-12) {
+    table <- as.data.frame(hypothesis_BF(fit, statement, seed = 1))
+    expect_identical(anyDuplicated(table$Alternative), 0L, info = statement)
+    for (i in seq_len(nrow(table))) {
+      expect_equal(as.data.frame(hypothesis_BF(fit, table$Alternative[[i]], seed = 1))$BF10,
+                   table$BF10[[i]], tolerance = tolerance, info = table$Alternative[[i]])
+    }
+    table
+  }
+  # a nonlinear event estimates its prior probability from prior draws,
+  # which differ between the whole factor and one level
+  table <- expect_round_trip(level_fit(c("a", "b", "c"), "exp"), "exp(exp) > 1", tolerance = 0.05)
+  expect_identical(table$Alternative, paste0("exp(exp[", c("a", "b", "c"), "]) > 1"))
+  expect_round_trip(level_fit(c("a\\b", "a`b", "c")), "f > 0")
+
+  # a level whose escaped form is the name of another level ("a]" is "a%5D")
+  # cannot be referenced as it reads
+  collision <- level_fit(c("a]", "a%5D", "third"))
+  table <- as.data.frame(hypothesis_BF(collision, "f > 0", seed = 1))
+  expect_error(hypothesis_BF(collision, table$Alternative[[1L]], seed = 1),
+               class = "BayesTools_parameter_ambiguous")
+  expect_equal(as.data.frame(hypothesis_BF(collision, "f[a%255D] > 0", seed = 1))$BF10,
+               table$BF10[[2L]], tolerance = 1e-12)
 })
 
 

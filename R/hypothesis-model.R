@@ -596,7 +596,7 @@
   }
 
   statements <- hypothesis[["statements"]]
-  result_label <- function(statement, side_name) {
+  result_label <- function(statement, side_name, field = "label") {
 
     implicit_equality <- !isTRUE(statement[["explicit"]]) &&
       identical(statement[["left"]][["type"]], "point")
@@ -604,7 +604,7 @@
       side_name <- switch(side_name, left = "right", right = "left")
     }
 
-    statement[[side_name]][["label"]]
+    statement[[side_name]][[field]]
   }
   transformed_statements <- .hypothesis_model_result_statements(out)
   if (!is.list(transformed_statements) ||
@@ -643,24 +643,36 @@
     suffix[has_suffix] <- substring(producer_rows[has_suffix], nchar(producer_parameter) + 1L)
   }
   # a row of a whole-factor statement is labelled by its level, as a
-  # statement on that level would be written
-  row_label <- function(display) {
+  # statement on that level would be written: each reference to the factor
+  # ('roots') becomes the reference to the level ("f > 0" -> "f[a] > 0"),
+  # in backticks unless it is a syntactic root and a level without brackets,
+  # backticks, or backslashes ("`f[(0,1]]` > 0")
+  row_label <- function(display, side_name) {
     labels <- display[statement_i]
     if (!identical(route, "levels") || is.null(roots)) {
       return(labels)
     }
     for (i in which(nzchar(suffix))) {
-      labels[[i]] <- .hypothesis_model_level_label(
-        labels[[i]], roots[[statement_i[[i]]]], sub("^\\[(.*)\\]$", "\\1", suffix[[i]])
+      statement <- statements[[statement_i[[i]]]]
+      level     <- sub("^\\[(.*)\\]$", "\\1", suffix[[i]])
+      for (side in c("left", "right")) {
+        statement[[side]][["expression"]] <- .hypothesis_model_insert_level_node(
+          statement[[side]][["expression"]], roots[[statement_i[[i]]]], level
+        )
+        statement[[side]] <- .bt_hypothesis_refresh_side(statement[[side]])
+      }
+      labels[[i]] <- gsub(
+        "`([A-Za-z.][A-Za-z0-9._]*(\\[[^][`\\\\]+\\])?)`", "\\1",
+        result_label(statement, side_name, field = "source"), perl = TRUE
       )
     }
     labels
   }
   if ("Alternative" %in% names(out)) {
-    out[["Alternative"]] <- row_label(display_left)
+    out[["Alternative"]] <- row_label(display_left, "left")
   }
   if ("Null" %in% names(out)) {
-    out[["Null"]] <- row_label(display_right)
+    out[["Null"]] <- row_label(display_right, "right")
   }
 
   attr(out, "hypothesis_ast") <- hypothesis
@@ -678,33 +690,6 @@
   attr(out, "rownames") <- FALSE
 
   return(out)
-}
-
-
-# The label of one level of a whole-factor statement: each reference to the
-# factor ('roots', as the statement wrote them, with or without backticks)
-# becomes the reference to the level, 'root[level]', in backticks when the
-# root or the level is not syntactic (the notation of a statement on one
-# level, e.g. "f[a] = 0" or "`f[(0,1]]` = 0").
-.hypothesis_model_level_label <- function(label, roots, level) {
-
-  roots <- unique(roots[!is.na(roots) & nzchar(roots)])
-  for (root in roots[order(-nchar(roots))]) {
-    syntactic <- identical(make.names(root), root) && grepl("^[A-Za-z0-9._]+$", level)
-    reference <- if (syntactic) {
-      paste0(root, "[", level, "]")
-    } else {
-      paste0("`", root, "[", level, "]`")
-    }
-    escaped <- gsub("([][{}()+*^$|\\\\?.])", "\\\\\\1", root)
-    label <- gsub(paste0("`", escaped, "`"), reference, label, fixed = FALSE)
-    label <- gsub(
-      paste0("(?<![A-Za-z0-9._`])", escaped, "(?![A-Za-z0-9._`\\[])"),
-      reference, label, perl = TRUE
-    )
-  }
-
-  label
 }
 
 
