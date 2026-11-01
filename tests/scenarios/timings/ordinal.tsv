@@ -5,7 +5,6 @@ fit	brms_cake_unordered	58.430000000	1.138672	4.6.0	Windows/x86_64-w64-mingw32
 fit	brms_gun_null	66.290000000	0.901953	4.6.0	Windows/x86_64-w64-mingw32
 fit	brms_gun_ordered	64.720000000	0.898438	4.6.0	Windows/x86_64-w64-mingw32
 fit	brms_gun_unordered	59.070000000	0.901953	4.6.0	Windows/x86_64-w64-mingw32
-fit	exact_gun	8.420000000	0.830371	4.6.0	Windows/x86_64-w64-mingw32
 fit	fit_cake_linear	25.820000000	1.138086	4.6.0	Windows/x86_64-w64-mingw32
 fit	fit_cake_ordered	58.750000000	1.137988	4.6.0	Windows/x86_64-w64-mingw32
 fit	fit_cake_unordered	29.440000000	1.137988	4.6.0	Windows/x86_64-w64-mingw32
@@ -13,6 +12,7 @@ fit	fit_gun_null	16.640000000	0.595410	4.6.0	Windows/x86_64-w64-mingw32
 fit	fit_gun_ordered	34.310000000	0.595410	4.6.0	Windows/x86_64-w64-mingw32
 fit	fit_gun_spike	5.230000000	0.571191	4.6.0	Windows/x86_64-w64-mingw32
 fit	fit_gun_unordered	24.460000000	0.595313	4.6.0	Windows/x86_64-w64-mingw32
+fit	reference_gun	8.570000000	1.048828	4.6.0	Windows/x86_64-w64-mingw32
 fit_model	fit_cake_linear	7.780000000	NA	4.6.0	Windows/x86_64-w64-mingw32
 fit_model	fit_cake_ordered	32.370000000	NA	4.6.0	Windows/x86_64-w64-mingw32
 fit_model	fit_cake_unordered	7.920000000	NA	4.6.0	Windows/x86_64-w64-mingw32
@@ -28,11 +28,11 @@ fit_marglik	fit_gun_unordered	20.100000000	NA	4.6.0	Windows/x86_64-w64-mingw32
 text	bayes-factor-cake	0.000000000	0.659863	4.6.0	Windows/x86_64-w64-mingw32
 text	bayes-factor-gun	0.150000000	0.724805	4.6.0	Windows/x86_64-w64-mingw32
 text	comparison-cake-temperature	0.530000000	1.006055	4.6.0	Windows/x86_64-w64-mingw32
-text	comparison-gun-physique	0.590000000	0.721875	4.6.0	Windows/x86_64-w64-mingw32
+text	comparison-gun-physique	0.530000000	0.721875	4.6.0	Windows/x86_64-w64-mingw32
 text	estimates-cake-ordered-levels	2.620000000	0.984375	4.6.0	Windows/x86_64-w64-mingw32
-text	estimates-gun-ordered	1.330000000	0.625879	4.6.0	Windows/x86_64-w64-mingw32
-text	estimates-gun-ordered-levels	2.440000000	0.877832	4.6.0	Windows/x86_64-w64-mingw32
+text	estimates-gun-ordered	1.300000000	0.625879	4.6.0	Windows/x86_64-w64-mingw32
+text	estimates-gun-ordered-levels	1.790000000	0.877832	4.6.0	Windows/x86_64-w64-mingw32
 text	hypotheses-gun-ordered	4.440000000	0.964844	4.6.0	Windows/x86_64-w64-mingw32
-text	inference-gun-spike	0.080000000	0.629590	4.6.0	Windows/x86_64-w64-mingw32
+text	inference-gun-spike	0.070000000	0.629590	4.6.0	Windows/x86_64-w64-mingw32
 text	predictions-gun	0.210000000	0.726562	4.6.0	Windows/x86_64-w64-mingw32
-plot	level-effects	0.820000000	0.978613	4.6.0	Windows/x86_64-w64-mingw32
+plot	level-effects	0.700000000	0.978613	4.6.0	Windows/x86_64-w64-mingw32

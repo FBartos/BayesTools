@@ -13,7 +13,7 @@ scenario_start("ordinal")
 # effects mo() with b ~ N(0, 1 / D) and simo ~ Dirichlet(1) are the same
 # model. Compared with brms and lme4, against unordered (mean-difference)
 # and linear codings, with Bayes factors from bridge sampling, a
-# spike-and-slab prior on the ordered total, and, for Gun, exact marginal
+# spike-and-slab prior on the ordered total, and, for Gun, reference marginal
 # likelihoods (the fixed and random effects integrated analytically, the SDs
 # and the increment share importance-sampled)
 
@@ -118,11 +118,12 @@ testthat::test_that("Ordered-factor predictors for the Gun and cake data", {
   })
   gun_lme4 <- lme4::lmer(rounds_z ~ Method + Physique + (1 | Team), data = Gun, REML = FALSE)
 
-  # exact marginal likelihoods: with the fixed coefficients N(0, 1) and the
-  # team intercepts integrated out, y ~ N(0, X X' + tau^2 Z Z' + sigma^2 I);
+  # reference marginal likelihoods: with the fixed coefficients N(0, 1) and
+  # the team intercepts integrated out, y ~ N(0, X X' + tau^2 Z Z' + sigma^2 I);
   # for the ordered model the physique column is 0, s, 1 for the three levels
-  # with the share s ~ uniform(0, 1)
-  gun_exact <- scenario_fit("exact_gun", {
+  # with the share s ~ uniform(0, 1); the SDs and the share are importance-
+  # sampled (scenario_gaussian_logml(), with its relative standard error)
+  gun_reference <- scenario_fit("reference_gun", {
     same_team <- outer(Gun$Team, Gun$Team, "==") * 1
     residual  <- diag(nrow(Gun))
     base      <- cbind(1, Gun$method_c)
@@ -130,7 +131,7 @@ testthat::test_that("Ordered-factor predictors for the Gun and cake data", {
     sd_columns <- c("sigma", "(mu) sd(intercept)")
     draws <- function(name, columns = sd_columns) JAGS_estimates_table(gun[[name]][["fit"]], return_samples = TRUE)[, columns]
     set.seed(1)
-    c(
+    list(
       ordered = scenario_gaussian_logml(
         Gun$rounds_z, matrix(0, nrow(Gun), 0L),
         function(t) {
@@ -139,14 +140,14 @@ testthat::test_that("Ordered-factor predictors for the Gun and cake data", {
         },
         draws("ordered", c(sd_columns, "(mu) Physique_ordered_allocation[Average]")),
         correlation_bounds = list("(mu) Physique_ordered_allocation[Average]" = c(0, 1))
-      )[["logml"]],
+      ),
       unordered = scenario_gaussian_logml(
         Gun$rounds_z, cbind(base, Gun$physique_1, Gun$physique_2),
         function(t) t[2]^2 * same_team + t[1]^2 * residual, draws("unordered")
-      )[["logml"]],
+      ),
       null = scenario_gaussian_logml(
         Gun$rounds_z, base, function(t) t[2]^2 * same_team + t[1]^2 * residual, draws("null")
-      )[["logml"]]
+      )
     )
   })
 
@@ -182,25 +183,33 @@ testthat::test_that("Ordered-factor predictors for the Gun and cake data", {
 
   scenario_text("bayes-factor-gun", {
     log_bf <- function(fits, h1, h0) scenario_log_bf_bridge(fits[[h1]][["marglik"]], fits[[h0]][["marglik"]])
+    reference_bf <- function(h1, h0) gun_reference[[h1]][["logml"]] - gun_reference[[h0]][["logml"]]
+    reference_note <- function(h1, h0) {
+      sprintf("reference relative SEs %.1f%%, %.1f%%", 100 * gun_reference[[h1]][["relative_se"]],
+              100 * gun_reference[[h0]][["relative_se"]])
+    }
     rbind(
       scenario_bf_table("ordered physique", "no physique effect", c(
-        "exact" = gun_exact[["ordered"]] - gun_exact[["null"]],
+        "importance sampling" = reference_bf("ordered", "null"),
         "bridge sampling" = log_bf(gun, "ordered", "null"),
         "bridge sampling (brms)" = log_bf(gun_brms, "ordered", "null"),
-        "spike and slab" = log(as.numeric(JAGS_inference_table(fit_gun_spike)[["inclusion_BF"]])))),
+        "spike and slab" = log(as.numeric(JAGS_inference_table(fit_gun_spike)[["inclusion_BF"]]))),
+        note = reference_note("ordered", "null")),
       scenario_bf_table("unordered physique", "no physique effect", c(
-        "exact" = gun_exact[["unordered"]] - gun_exact[["null"]],
+        "importance sampling" = reference_bf("unordered", "null"),
         "bridge sampling" = log_bf(gun, "unordered", "null"),
-        "bridge sampling (brms)" = log_bf(gun_brms, "unordered", "null"))),
+        "bridge sampling (brms)" = log_bf(gun_brms, "unordered", "null")),
+        note = reference_note("unordered", "null")),
       scenario_bf_table("ordered physique", "unordered physique", c(
-        "exact" = gun_exact[["ordered"]] - gun_exact[["unordered"]],
+        "importance sampling" = reference_bf("ordered", "unordered"),
         "bridge sampling" = log_bf(gun, "ordered", "unordered"),
-        "bridge sampling (brms)" = log_bf(gun_brms, "ordered", "unordered")))
+        "bridge sampling (brms)" = log_bf(gun_brms, "ordered", "unordered")),
+        note = reference_note("ordered", "unordered"))
     )
   })
   # hypotheses on the ordered levels: Heavy is the total, so its Savage-Dickey
-  # BF against 0 is the BF of the ordered model against the null (exact
-  # exp(-0.454) = 0.635); Average = share x Heavy with the share in (0, 1), so
+  # BF against 0 is the BF of the ordered model against the null (reference
+  # about exp(-0.454) = 0.635); Average = share x Heavy with the share in (0, 1), so
   # Average < Heavy is the complement of Heavy < 0 and its BF is the inverse.
   # Point nulls on an intermediate level are refused: a Beta(1, 1) share gives
   # an infinite prior ordinate.
