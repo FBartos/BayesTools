@@ -1066,7 +1066,7 @@ test_that("explicit drop policy records non-finite repetitions", {
   )
 })
 
-test_that("non-finite repetitions name their cause and keep the muffled warnings (F020)", {
+test_that("non-finite repetitions name their cause and keep the muffled warnings", {
 
   mock_upstream <- function(logml, niter){
     force(logml)
@@ -1148,7 +1148,7 @@ test_that("non-finite repetitions name their cause and keep the muffled warnings
   expect_false(grepl("drop", sub("^.*finite", "", conditionMessage(error)), fixed = TRUE))
 })
 
-test_that("callback condition classes survive the bridge-sampling context (F020)", {
+test_that("callback condition classes survive the bridge-sampling context", {
 
   posterior <- coda::mcmc(matrix(0, nrow = 100L, ncol = 1L,
                                 dimnames = list(NULL, "theta")))
@@ -1172,7 +1172,7 @@ test_that("callback condition classes survive the bridge-sampling context (F020)
   expect_identical(error$upstream_warnings, character())
 })
 
-test_that("an NA of the callback at a posterior draw is refused (F018)", {
+test_that("an NA of the callback at a posterior draw is refused", {
 
   # No mocking: the counts come from the warnings of the real upstream sampler.
   # The exact posterior of mu | y under mu ~ N(0, 1) and unit-variance data.
@@ -1210,7 +1210,7 @@ test_that("an NA of the callback at a posterior draw is refused (F018)", {
   expect_gt(length(error$upstream_warnings), 0L)
 })
 
-test_that("an NA of the callback at a proposal draw is evaluated as zero density and reported (F018)", {
+test_that("an NA of the callback at a proposal draw is evaluated as zero density and reported", {
 
   # NA only beyond the range of the posterior draws is met by proposal draws
   # alone (uniform draws have lighter tails than the normal proposal): the
@@ -1244,7 +1244,7 @@ test_that("an NA of the callback at a proposal draw is evaluated as zero density
   expect_true(any(grepl("on the proposal draws produced NA", result$diagnostics$upstream_warnings, fixed = TRUE)))
 })
 
-test_that("the NA counts of the callback are summed over the repetitions of the sampler (F018)", {
+test_that("the NA counts of the callback are summed over the repetitions of the sampler", {
 
   signal <- BayesTools:::.bt_JAGS_bridge_signal_callback_na
   proposal <- "5 evaluation(s) of log_prob() on the proposal draws produced NA and have been replaced by -Inf."
@@ -1265,7 +1265,7 @@ test_that("the NA counts of the callback are summed over the repetitions of the 
   )
 })
 
-test_that("an NA of the callback with method = 'warp3' is outside the NA policy (F018)", {
+test_that("an NA of the callback with method = 'warp3' is outside the NA policy", {
 
   # The roxygen states the scope of the policy: bridgesampling stops on an NA
   # of the warp3 route with an upstream error, before it words any warning.
@@ -1326,7 +1326,7 @@ test_that("the inclusion-gate refusal of bridge sampling lists at most three ind
   )
 })
 
-test_that("empty formula inputs are no formula input for a fit without formulas (F074)", {
+test_that("empty formula inputs are no formula input for a fit without formulas", {
 
   testthat::local_mocked_bindings(
     bridge_sampler = .mock_bridge_sampler,
@@ -1466,7 +1466,7 @@ test_that("manual marginal-likelihood objects declare their scale", {
   expect_error(bridgesampling_object(c(1, 2)), "one numeric")
 })
 
-test_that("P-F8 bridge wrapper preserves explicit use_neff and its default", {
+test_that("bridge wrapper preserves explicit use_neff and its default", {
 
   seen <- list()
   testthat::local_mocked_bindings(
@@ -1490,7 +1490,7 @@ test_that("P-F8 bridge wrapper preserves explicit use_neff and its default", {
   expect_s3_class(explicit, "BayesTools_marglik")
 })
 
-test_that("P-F8 deferred callback arguments record warnings without escape", {
+test_that("deferred callback arguments record warnings without escape", {
 
   testthat::local_mocked_bindings(
     bridge_sampler = .mock_bridge_sampler,
@@ -1509,7 +1509,7 @@ test_that("P-F8 deferred callback arguments record warnings without escape", {
   expect_true(result$repetitions$success)
 })
 
-test_that("P-F8 deferred callback argument errors retain bridge context", {
+test_that("deferred callback argument errors retain bridge context", {
 
   testthat::local_mocked_bindings(
     bridge_sampler = .mock_bridge_sampler,
@@ -1526,7 +1526,7 @@ test_that("P-F8 deferred callback argument errors retain bridge context", {
   ), "Bridge sampling failed: extra unavailable", fixed = TRUE)
 })
 
-test_that("P-F8 exact point route ignores upstream use_neff controls", {
+test_that("exact point route ignores upstream use_neff controls", {
 
   posterior <- coda::mcmc(matrix(0, nrow = 100L, ncol = 1L,
                                 dimnames = list(NULL, "theta")))
@@ -1547,7 +1547,7 @@ test_that("P-F8 exact point route ignores upstream use_neff controls", {
   }
 })
 
-test_that("P-F8 exact point route forwards genuine likelihood arguments", {
+test_that("exact point route forwards genuine likelihood arguments", {
 
   posterior <- coda::mcmc(matrix(0, nrow = 100L, ncol = 1L,
                                 dimnames = list(NULL, "theta")))
@@ -1565,7 +1565,7 @@ test_that("P-F8 exact point route forwards genuine likelihood arguments", {
   expect_identical(result$aggregation$rule, "exact_zero_dimensional")
 })
 
-test_that("P-F8 exact point route ignores all named upstream controls", {
+test_that("exact point route ignores all named upstream controls", {
 
   posterior <- coda::mcmc(matrix(0, nrow = 100L, ncol = 1L,
                                 dimnames = list(NULL, "theta")))
@@ -1592,7 +1592,7 @@ test_that("P-F8 exact point route ignores all named upstream controls", {
   expect_identical(genuine$logml, -3)
 })
 
-test_that("P-F8 exact point callback warnings are recorded without escape", {
+test_that("exact point callback warnings are recorded without escape", {
 
   posterior <- coda::mcmc(matrix(0, nrow = 100L, ncol = 1L,
                                 dimnames = list(NULL, "theta")))
@@ -1628,7 +1628,7 @@ test_that("P-F8 exact point callback warnings are recorded without escape", {
   expect_identical(RNGkind(), kind_before)
 })
 
-test_that("P-F8 exact point callback errors retain bridge context and RNG state", {
+test_that("exact point callback errors retain bridge context and RNG state", {
 
   posterior <- coda::mcmc(matrix(0, nrow = 100L, ncol = 1L,
                                 dimnames = list(NULL, "theta")))
@@ -1655,7 +1655,7 @@ test_that("P-F8 exact point callback errors retain bridge context and RNG state"
   expect_identical(RNGkind(), kind_before)
 })
 
-test_that("P-F8 exact point result validation retains its own error context", {
+test_that("exact point result validation retains its own error context", {
 
   posterior <- coda::mcmc(matrix(0, nrow = 100L, ncol = 1L,
                                 dimnames = list(NULL, "theta")))
@@ -1885,7 +1885,7 @@ test_that("iteration warnings of refused nonfinite aggregates carry their affect
   }
 })
 
-test_that("R133 raw affine dependence refuses bounded bridge coordinates before sampling", {
+test_that("raw affine dependence refuses bounded bridge coordinates before sampling", {
   x2 <- seq(1, 4, length.out = 200)
   dependent <- cbind(x1 = 2 * x2 + 1, x2 = x2)
   sampler_calls <- 0L
@@ -1914,7 +1914,7 @@ test_that("R133 raw affine dependence refuses bounded bridge coordinates before 
   expect_identical(sampler_calls, 1L)
 })
 
-test_that("R133 bridge rank checks preserve transformed-only and ordinary controls", {
+test_that("bridge rank checks preserve transformed-only and ordinary controls", {
   t <- seq(1, 2, length.out = 200)
   transformed_dependence <- cbind(x1 = exp(t), x2 = exp(2 * t))
   attr(transformed_dependence, "lb") <- c(x1 = 0, x2 = 0)
@@ -1927,7 +1927,7 @@ test_that("R133 bridge rank checks preserve transformed-only and ordinary contro
   expect_error(.bt_JAGS_bridge_check_coordinate_rank(cbind(x1 = t, x2 = 2 * t)), "rank-deficient (rank 1 of 2", fixed = TRUE)
 })
 
-test_that("R143 independent bridge coordinates retain rank at large magnitudes", {
+test_that("independent bridge coordinates retain rank at large magnitudes", {
 
   independent <- cbind(x1 = c(1, 2, 3, 4), x2 = c(1, 4, 2, 3))
   # These centered columns are independent; their first two rows have
@@ -1995,7 +1995,7 @@ test_that("R143 independent bridge coordinates retain rank at large magnitudes",
     zero = 0, constant = 7, nonfinite = c(1, 2, Inf, 4))))
 })
 
-test_that("R143 tiny affine bridge coordinates refuse before bound transformations", {
+test_that("tiny affine bridge coordinates refuse before bound transformations", {
 
   x2 <- seq(1, 4, length.out = 200)
   moderate <- cbind(x1 = 2 * x2 + 1, x2 = x2)
@@ -2614,7 +2614,7 @@ test_that("the cached bridge node layout reproduces the by-name merge", {
 })
 
 
-test_that("the node selection takes unnamed nodes alike with and without the cache (F077)", {
+test_that("the node selection takes unnamed nodes alike with and without the cache", {
 
   nodes <- c(a = 1, 2, c = 3)
   expect_identical(
@@ -2627,7 +2627,7 @@ test_that("the node selection takes unnamed nodes alike with and without the cac
   )
 })
 
-test_that("the rebuilt formula context neither merges nor reports the supplied data (F077)", {
+test_that("the rebuilt formula context neither merges nor reports the supplied data", {
 
   data <- data.frame(x = c(0.5, 1, 2, 3))
   formula_prior <- list(

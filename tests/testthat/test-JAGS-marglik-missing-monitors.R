@@ -1,6 +1,6 @@
 skip_if_not_test_profile("unit")
 
-test_that("R133 ordinary scalar and vector bridge inputs distinguish missing names", {
+test_that("ordinary scalar and vector bridge inputs distinguish missing names", {
   scalar <- list(mu = prior("normal", list(0, 1)))
   vector <- list(o = prior("mnormal", list(mean = 0, sd = 1, K = 2)))
   for(samples in list(c(other = 1), list(other = 1))){
@@ -34,7 +34,7 @@ test_that("R133 ordinary scalar and vector bridge inputs distinguish missing nam
   expect_identical(JAGS_marglik_parameters(numeric(), list(o = prior("mpoint", list(location = 2, K = 2)))), list(o = c(2, 2)))
 })
 
-test_that("absent samples of the deterministic-node parameter paths are missing monitored columns (F224)", {
+test_that("absent samples of the deterministic-node parameter paths are missing monitored columns", {
 
   selection <- prior_weightfunction("one-sided", .025, wf_independent(prior("gamma", list(2, 1))))
   phacking  <- prior_phacking(form = "linear")

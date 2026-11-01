@@ -8,7 +8,7 @@ skip_if_not_test_profile("unit")
   x
 }
 
-test_that("R133 finite named images refuse false boundary atoms across public and point producers", {
+test_that("finite named images refuse false boundary atoms across public and point producers", {
   cases <- list(list(-1000, "exp", NULL), list(20, "tanh", NULL), list(-20, "tanh", NULL),
                 list(1e-300, "exp_lin", list(b = 2)))
   for(case in cases){
@@ -43,7 +43,7 @@ test_that("R133 finite named images refuse false boundary atoms across public an
   }
 })
 
-test_that("R133 ordinary point images and true source zero preserve atoms and masses", {
+test_that("ordinary point images and true source zero preserve atoms and masses", {
   for(case in list(list(-1, "exp", NULL, exp(-1)), list(.5, "tanh", NULL, tanh(.5)),
                   list(0, "exp_lin", list(b = 2), 0))){
     x <- posterior_transform(.image_point_draws(case[[1L]]), case[[2L]], case[[3L]])
@@ -65,7 +65,7 @@ test_that("R133 ordinary point images and true source zero preserve atoms and ma
     "The constant prior-density transformation is not representable.", fixed = TRUE)
 })
 
-test_that("R133 matrix atoms scalar marginals and infinite support limits retain their meaning", {
+test_that("matrix atoms scalar marginals and infinite support limits retain their meaning", {
   margin <- posterior_atom_attribute(point_masses = data.frame(x = .5, mass = .3))
   atoms <- .posterior_atoms_new(locations = matrix(c(.5, -1), 1, dimnames = list(NULL, c("a", "b"))),
     mass = .3, column_names = c("a", "b"),
@@ -87,7 +87,7 @@ test_that("R133 matrix atoms scalar marginals and infinite support limits retain
   expect_identical(as.numeric(.posterior_atoms_transform(.posterior_atoms_new(1, .3), "lin", list(a = -1))$locations), 0)
 })
 
-test_that("R133 named replay allocation and joint point producers check declared images", {
+test_that("named replay allocation and joint point producers check declared images", {
   # Synthetic declared-source metadata, no fitted model or adaptive provenance.
   source <- function(location) list(model = c(1L, 2L), models = list(
     list(parameterization = "ordinary", prior = prior("point", list(location))),
@@ -112,7 +112,7 @@ test_that("R133 named replay allocation and joint point producers check declared
   expect_identical(mapped$mass, 1)
 })
 
-test_that("R133 region indicators refuse positive-source underflow and preserve true-zero comparisons", {
+test_that("region indicators refuse positive-source underflow and preserve true-zero comparisons", {
   region <- function(inclusive) list(intervals = .prior_region_intervals(-Inf, 0),
     indicator = function(x) if(inclusive) x <= 0 else x < 0)
   evaluate <- function(location, inclusive) .prior_region_transformed("exp_lin", list(b = 2), region(inclusive),
@@ -138,7 +138,7 @@ test_that("R133 region indicators refuse positive-source underflow and preserve 
                     use_formula = FALSE, prior_samples = TRUE)
 }
 
-test_that("R133 D3 transports the specific image leaf while computing valid siblings", {
+test_that("point-image refusals transport the specific image leaf while computing valid siblings", {
   # Synthetic compiled factor metadata and mocked prior transport, not fitted numerical evidence.
   posterior <- .image_factor_posterior()
   posterior$A <- NULL

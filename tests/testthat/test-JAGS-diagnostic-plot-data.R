@@ -487,7 +487,7 @@ test_that("diagnostic plot data rejects malformed transformations and insufficie
   attach_test_parameter_map(fit)
 }
 
-test_that("R116 D10 sparse ACF preserves original lags and explicit pair diagnostics", {
+test_that("sparse ACF preserves original lags and explicit pair diagnostics", {
 
   fit <- .sparse_acf_fit_for_test()
   input <- .diagnostics_plot_data(fit, "theta", attr(fit, "prior_list"), NULL, FALSE)
@@ -545,7 +545,7 @@ test_that("R116 D10 sparse ACF preserves original lags and explicit pair diagnos
   expect_error(.diagnostics_plot_data(.sparse_acf_fit_for_test(2L), "theta", attr(fit, "prior_list"), NULL, FALSE), "The parameter with a spike and slab prior did not result in enough samples under the slab for producing a diagnostic figure.", fixed = TRUE)
 })
 
-test_that("R116 D10 physical short chains pad requested lags without recomputation", {
+test_that("physical short chains pad requested lags without recomputation", {
 
   values <- c(-1, -.4, -.1, .3, .7, 1.1)
   input <- matrix(rep(values, 2L), ncol = 1L, dimnames = list(NULL, "theta"))
@@ -705,7 +705,7 @@ test_that("diagnostics of a single PET, PEESE, weightfunction or p-hacking bias 
   expect_bounds(fit, "pi_null", "pi_null", phacking, c(0, upper), upper * c(-.25, 1.25))
 })
 
-test_that("a bias mixture is drawn as the components of its branches (F221)", {
+test_that("a bias mixture is drawn as the components of its branches", {
 
   bias <- prior_mixture(list(
     prior_none(),
@@ -731,7 +731,7 @@ test_that("a bias mixture is drawn as the components of its branches (F221)", {
   }
 })
 
-test_that("the trace axis shows the retained MCMC iteration of thinned chains (F223)", {
+test_that("the trace axis shows the retained MCMC iteration of thinned chains", {
 
   chain_1 <- coda::mcmc(cbind(theta = seq(-1, 1, length.out = 6)), start = 11, thin = 2)
   chain_2 <- coda::mcmc(cbind(theta = seq(1, -1, length.out = 6)), start = 11, thin = 2)
@@ -751,7 +751,7 @@ test_that("the trace axis shows the retained MCMC iteration of thinned chains (F
   expect_identical(attr(trace_data$theta, "x_range"), c(11, 21))
 })
 
-test_that("PET and PEESE diagnostics of a bias prior without that branch are refused clearly (F216)", {
+test_that("PET and PEESE diagnostics of a bias prior without that branch are refused clearly", {
 
   selection <- prior_weightfunction("one-sided", c(.025), wf_cumulative(c(1, 1)))
   bias      <- prior_bias(selection, prior_phacking(form = "linear"))
@@ -1047,7 +1047,7 @@ test_that("density and autocorrelation diagnostics skip the weight bins a prior 
   expect_s3_class(JAGS_diagnostics(fit, "alpha", "density", plot_type = "ggplot"), "ggplot")
 })
 
-test_that("the structural columns of the diagnostics are the coordinates with the structural convergence role (F322)", {
+test_that("the structural columns of the diagnostics are the coordinates with the structural convergence role", {
 
   # an ordered prior whose total and allocation shares are fixed: both
   # coefficients are constants of the prior, as in a spike prior
@@ -1171,7 +1171,7 @@ test_that("a weightfunction with fixed weights is diagnosed like a spike prior",
   expect_s3_class(JAGS_diagnostics(fit, "omega", "trace", plot_type = "ggplot"), "ggplot")
 })
 
-test_that("a parameter with a prior_none() prior has no diagnostics to draw (F322)", {
+test_that("a parameter with a prior_none() prior has no diagnostics to draw", {
 
   fit <- structure(list(
     mcmc = coda::mcmc.list(
@@ -1257,7 +1257,7 @@ test_that("a diagnostic transformation applies to the PET and PEESE column and t
   expect_equal(ggplot2::ggplot_build(shifted)$data[[1]]$y, ggplot2::ggplot_build(plain)$data[[1]]$y + 10)
 })
 
-test_that("the atom draws of a point-plus-continuous mixture stay out of its density (F288)", {
+test_that("the atom draws of a point-plus-continuous mixture stay out of its density", {
 
   slab <- prior("normal", list(7.5, 1), list(5, 10))
   mixture <- prior_mixture(list(prior("point", list(0)), slab), is_null = c(TRUE, FALSE))
@@ -1288,7 +1288,7 @@ test_that("the atom draws of a point-plus-continuous mixture stay out of its den
   expect_identical(sum(vapply(trace_data$mu, function(chain) sum(chain$y == 0), numeric(1))), 200)
 })
 
-test_that("an ordered component of a factor mixture is treated as the real line (F288)", {
+test_that("an ordered component of a factor mixture is treated as the real line", {
 
   ordered_component <- function(sd, truncation = NULL){
     prior_factor_levels(prior_ordered(
@@ -1304,7 +1304,7 @@ test_that("an ordered component of a factor mixture is treated as the real line 
   expect_identical(.diagnostics_prior_bounds(bounded, "p"), list(lower = -Inf, upper = Inf))
 })
 
-test_that("a transformation keyed by a bias or p-hacking prior applies to every column the diagnostics show (F299)", {
+test_that("a transformation keyed by a bias or p-hacking prior applies to every column the diagnostics show", {
 
   inc <- function(x) x + 10
   grid <- seq(.005, .995, length.out = 100)
@@ -1345,7 +1345,7 @@ test_that("a transformation keyed by a bias or p-hacking prior applies to every 
   }
 })
 
-test_that("the density bounds of a bias mixture follow the dispatched column (F321)", {
+test_that("the density bounds of a bias mixture follow the dispatched column", {
 
   selection <- prior_weightfunction("one-sided", c(.025), wf_cumulative(c(1, 1)))
 

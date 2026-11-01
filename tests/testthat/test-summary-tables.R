@@ -764,7 +764,7 @@ test_that("update.BayesTools_table works correctly", {
 
 })
 
-test_that("N24 scientific quantile labels remain parseable in ensemble estimates", {
+test_that("scientific quantile labels remain parseable in ensemble estimates", {
 
   x <- structure(seq(-2, 2, length.out = 101), class = "mixed_posteriors",
                  prior_list = list(prior("normal", list(mean = 0, sd = 1))))
@@ -783,7 +783,7 @@ test_that("N24 scientific quantile labels remain parseable in ensemble estimates
   expect_equal(records$interval_level, .999, tolerance = 1e-15)
 })
 
-test_that("N24 scientific quantile labels remain parseable in marginal estimates", {
+test_that("scientific quantile labels remain parseable in marginal estimates", {
 
   x <- structure(seq(-2, 2, length.out = 101), class = "mixed_posteriors",
                  prior_list = list(prior("normal", list(mean = 0, sd = 1))))

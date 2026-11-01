@@ -117,7 +117,7 @@ test_that("formula designs persist a validated semantic name map", {
   )
 })
 
-test_that("a malformed name-map entry is a refit error, not a plain error (F209)", {
+test_that("a malformed name-map entry is a refit error, not a plain error", {
 
   map <- JAGS_formula(
     formula = ~ x,

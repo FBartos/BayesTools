@@ -826,7 +826,7 @@ test_that("compiled formula prior evaluator matches public formula density helpe
   )
 })
 
-test_that("the ordered-prior bridge reader is compiled once, not per draw (F075)", {
+test_that("the ordered-prior bridge reader is compiled once, not per draw", {
 
   data <- data.frame(f = ordered(c("lo", "mid", "hi", "top")))
   priors <- JAGS_formula(~f, "mu", data,
@@ -856,7 +856,7 @@ test_that("the ordered-prior bridge reader is compiled once, not per draw (F075)
   expect_length(first$mu_f, 3L)
 })
 
-test_that("compiled scalar prior readers refuse missing monitored coordinates (F077)", {
+test_that("compiled scalar prior readers refuse missing monitored coordinates", {
 
   evaluator <- BayesTools:::.bt_JAGS_bridge_compile_prior_evaluator(
     prior("normal", list(0, 1)), "mu"
@@ -3170,7 +3170,7 @@ test_that("fixed-zero random blocks leave the bridge target and dimension invari
   )
 })
 
-test_that("the bridge context labels BayesTools-owned latent coordinates, not as additional parameters (F076)", {
+test_that("the bridge context labels BayesTools-owned latent coordinates, not as additional parameters", {
 
   data <- data.frame(
     id_zero = factor(c("a", "b", "c", "d")),

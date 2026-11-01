@@ -907,7 +907,7 @@ test_that("marginal inference conditions treatment factor levels by active weigh
   expect_equal(.bt_meta_condition(factor_only_levels[["C"]], "effective_conditional"), "mu_fac")
 })
 
-test_that("N35 unnamed and permuted conditionals preserve the declared active subset", {
+test_that("unnamed and permuted conditionals preserve the declared active subset", {
 
   prior_list <- list(beta = prior_spike_and_slab(prior("normal", list(0, 1)),
     prior_inclusion = prior("point", list(.5))))

@@ -1464,7 +1464,7 @@ test_that("explicit kernel_mode routes are validated before any rounding", {
   )
 })
 
-test_that("declared integers are checked exactly, never rounded (F331)", {
+test_that("declared integers are checked exactly, never rounded", {
 
   spec <- selection_backend_spec(
     prior_weightfunction("one-sided", .025, wf_fixed(c(1, .5))),
@@ -1695,7 +1695,7 @@ test_that("p-hacking null masses of intervals too narrow for double precision ar
   }
 })
 
-test_that("fractional or missing declared integers are refused, not truncated onto another branch (F225)", {
+test_that("fractional or missing declared integers are refused, not truncated onto another branch", {
 
   route <- function(spec, kernel_mode = NULL, S = 4L){
     BayesTools:::.selection_row_kernel_mode(spec, kernel_mode, S)
@@ -1742,7 +1742,7 @@ test_that("fractional or missing declared integers are refused, not truncated on
   )
 })
 
-test_that("global breaks must contain the step-selection breaks exactly, as the bin mapping does (F225)", {
+test_that("global breaks must contain the step-selection breaks exactly, as the bin mapping does", {
 
   selection <- prior_weightfunction("one-sided", c(.025), wf_fixed(c(1, .5)))
   expect_error(
@@ -1756,7 +1756,7 @@ test_that("global breaks must contain the step-selection breaks exactly, as the 
   )
 })
 
-test_that("the cumulative-weight evaluator returns the literal 1 for the reference bin (F226)", {
+test_that("the cumulative-weight evaluator returns the literal 1 for the reference bin", {
 
   wf <- prior_weightfunction("one-sided", c(.025, .5), wf_cumulative(c(1, 1, 1)))
   eta <- c(0.096, 2.027, 2.881)
@@ -1772,7 +1772,7 @@ test_that("the cumulative-weight evaluator returns the literal 1 for the referen
   expect_identical(omega[-1L], c(sum(standardized[2:3]), standardized[3]))
 })
 
-test_that("a context's per-row p-hacking forms take precedence over the branch metadata (F226)", {
+test_that("a context's per-row p-hacking forms take precedence over the branch metadata", {
 
   spec <- selection_backend_spec(
     prior_phacking(form = "linear"),
@@ -1792,7 +1792,7 @@ test_that("a context's per-row p-hacking forms take precedence over the branch m
   )
 })
 
-test_that("a context's per-row kernel modes take precedence over the branch metadata (F226)", {
+test_that("a context's per-row kernel modes take precedence over the branch metadata", {
 
   selection <- prior_weightfunction("one-sided", .025, wf_fixed(c(1, .5)))
   phacking  <- prior_phacking(form = "linear")
@@ -1834,7 +1834,7 @@ test_that("a context's per-row kernel modes take precedence over the branch meta
   expect_identical(selection_native_kernel_args(mixture, S = 2L, kernel_mode = c(2L, 1L))$kernel_mode, c(2L, 1L))
 })
 
-test_that("generated p-hacking constants read back as the doubles the evaluators use (F226)", {
+test_that("generated p-hacking constants read back as the doubles the evaluators use", {
 
   for(prior in list(
     prior_phacking(form = "linear"),
@@ -1856,7 +1856,7 @@ test_that("generated p-hacking constants read back as the doubles the evaluators
   }
 })
 
-test_that("unresolvable p-hacking null masses are numerically unavailable conditions (F288)", {
+test_that("unresolvable p-hacking null masses are numerically unavailable conditions", {
 
   for(arguments in list(
     list("quadratic", source = .25, destination = .024999, target = .025),

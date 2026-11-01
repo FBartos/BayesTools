@@ -672,7 +672,7 @@ test_that("joint prior methods keep plain-formula values or refuse at double-pre
   expect_equal(unname(mcdf(vector_t, .3)[1L, ]), rep(stats::pt(.3, 3), 2L), tolerance = 1e-14)
 })
 
-test_that("JAGS precision syntax of a huge scale stays positive and unrepresentable ones are refused (F216)", {
+test_that("JAGS precision syntax of a huge scale stays positive and unrepresentable ones are refused", {
 
   # the square of the scale overflows at 1e155, the square of its inverse does not
   syntax <- JAGS_add_priors("model{}", list(mu = prior("normal", list(0, 1e155))))
@@ -714,7 +714,7 @@ test_that("JAGS precision syntax of a huge scale stays positive and unrepresenta
   }
 })
 
-test_that("a multivariate-t initial scale mixture that underflows to zero is refused (F216)", {
+test_that("a multivariate-t initial scale mixture that underflows to zero is refused", {
 
   error <- tryCatch(
     JAGS_get_inits(

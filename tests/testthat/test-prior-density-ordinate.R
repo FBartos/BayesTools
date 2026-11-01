@@ -2527,7 +2527,7 @@ test_that("quadrature ordinates are exact only within a relative error bound", {
   expect_true(is.numeric(offset$provenance$integration$estimate))
   expect_true(is.na(BayesTools:::.prior_density_route_quadrature_density(scale_route, 0)))
 })
-test_that("R116 N06 nested named transformations retain declared support", {
+test_that("nested named transformations retain declared support", {
   normal <- .prior_linear_combination_density(list(x = prior("normal", list(0, 1))), c(x = 1), n_grid = 128)
   exponential <- .prior_density_output_transform(normal, .bt_posterior_transformation("exp"))
   squared <- .prior_density_output_transform(exponential, .bt_posterior_transformation("exp_lin", list(b = 2)))
@@ -2568,7 +2568,7 @@ test_that("R116 N06 nested named transformations retain declared support", {
   expect_true(refused$exact)
 })
 
-test_that("R116 N06 constants and finite images have conservative provenance", {
+test_that("constants and finite images have conservative provenance", {
   constant <- list(kind = "scalar_affine", offset = 2, scale = 0)
   expect_equal(.prior_density_ordinate_provenance_support(constant), c(lower = 2, upper = 2))
   expect_identical(.prior_density_ordinate_provenance_atoms(constant), 2)
@@ -2668,7 +2668,7 @@ test_that("the exp_lin zero limit of a narrow truncated gamma or beta uses the l
   expect_identical(.prior_density_ordinate_lower_log_coefficient(beta_provenance(.4), 2), NA_real_)
 })
 
-test_that("R116 N89 point-only densities are exact off their stored atom", {
+test_that("point-only densities are exact off their stored atom", {
 
   point <- .prior_linear_density_point(.5)
   at <- prior_density_ordinate(point, .5)
@@ -2817,7 +2817,7 @@ test_that("a route point mass that is not a stored atom gives the continuous res
   expect_identical(names(unknown), names(demoted))
 })
 
-test_that("R116 D2 positive powers retain zero atoms and weighted continuous ordinates", {
+test_that("positive powers retain zero atoms and weighted continuous ordinates", {
 
   spike <- prior_spike_and_slab(prior("normal", list(0, 1), list(0, Inf)), prior_inclusion = prior("spike", list(.5)))
   context <- .prior_density_context(list(x = spike), "x", n_grid = 128)
@@ -2902,7 +2902,7 @@ test_that("a point-mass ordinate reports the structural limit of a regular conti
   expect_identical(unknown$log_density, .prior_density_ordinate_grid_log_density(density, 0))
 })
 
-test_that("R116 D2 posterior producer maps declared zero states without changing mass", {
+test_that("posterior producer maps declared zero states without changing mass", {
 
   draws <- cbind(x = c(rep(0, 12), seq(.1, 2, length.out = 24)), x_indicator = rep(c(0, 1), c(12, 24)))
   fit <- coda::mcmc(draws)

@@ -3358,7 +3358,7 @@ test_that("deterministic point locations are added once, and lost declarations a
   expect_equal(prior_density_ordinate(doubled, 1)$log_density, stats::dnorm(1, 0, 2, log = TRUE), tolerance = 1e-10)
 })
 
-test_that("the convolution route adds the deterministic point locations once (F320)", {
+test_that("the convolution route adds the deterministic point locations once", {
 
   # 1e16 + 1 - 1e16 is 1 in one extended-precision sum and 0 or 1 pairwise
   # (by the order of the terms), here on the convolution route of two gamma terms
@@ -4073,7 +4073,7 @@ test_that("the batched quadrature integrates every piece kind and isolates faili
   expect_equal(capped[2L], .05 - sin(10) / 200, tolerance = 1e-8)
 })
 
-test_that("a piece narrow against its magnitude takes the affine transport (F046)", {
+test_that("a piece narrow against its magnitude takes the affine transport", {
 
   coordinate <- function(lower, upper) .prior_density_quadrature_coordinate(lower, upper, TRUE)
   # the relative width (b - a) / max(|a|, |b|) decides: below 1e-3 the affine
@@ -4590,7 +4590,7 @@ for(weight_scale in c(1e-200, 1e200)){
   })
 }
 
-test_that("N03 combined normal scale remains finite when the norm overflows", {
+test_that("combined normal scale remains finite when the norm overflows", {
 
   vector_prior <- prior("mnormal", list(mean = 0, sd = 1e-200, K = 2))
   scalar <- BayesTools:::.prior_linear_vector_scalar_prior(
@@ -4600,7 +4600,7 @@ test_that("N03 combined normal scale remains finite when the norm overflows", {
   expect_equal(scalar$parameters$sd / 1.3e108, sqrt(2), tolerance = 1e-12)
 })
 
-test_that("N03 only all-zero normal weights give the structural zero", {
+test_that("only all-zero normal weights give the structural zero", {
 
   scalar <- BayesTools:::.prior_linear_vector_scalar_prior(
     prior("mnormal", list(mean = 3, sd = 1, K = 2)), c(0, 0)
@@ -4609,7 +4609,7 @@ test_that("N03 only all-zero normal weights give the structural zero", {
   expect_identical(scalar$parameters$location, 0)
 })
 
-test_that("N03 empty weights retain the structural zero without warnings", {
+test_that("empty weights retain the structural zero without warnings", {
 
   vector_prior <- prior("mnormal", list(mean = 0, sd = 1, K = 2))
   expect_no_warning(scalar <- BayesTools:::.prior_linear_vector_scalar_prior(vector_prior, numeric()))
@@ -4617,7 +4617,7 @@ test_that("N03 empty weights retain the structural zero without warnings", {
   expect_identical(scalar$parameters$location, 0)
 })
 
-test_that("N03 subnormal weights keep a representable combined normal scale", {
+test_that("subnormal weights keep a representable combined normal scale", {
 
   weights <- c(1e-320, 1e-320)
   vector_prior <- prior("mnormal", list(mean = 0, sd = 1e308, K = 2))
@@ -4626,7 +4626,7 @@ test_that("N03 subnormal weights keep a representable combined normal scale", {
   expect_equal(scalar$parameters$sd / (1e308 * max(abs(weights))), sqrt(2), tolerance = 1e-12)
 })
 
-test_that("N03 t projections preserve scale, location and degrees of freedom", {
+test_that("t projections preserve scale, location and degrees of freedom", {
 
   scalar <- BayesTools:::.prior_linear_vector_scalar_prior(
     prior("mt", list(location = 2, scale = 3, df = 7, K = 2)), c(.6, .8)
@@ -4636,7 +4636,7 @@ test_that("N03 t projections preserve scale, location and degrees of freedom", {
                c(2.8, 3, 7), tolerance = 1e-14)
 })
 
-test_that("N93 accepted subnormal quadrature reports unavailable full precision", {
+test_that("accepted subnormal quadrature reports unavailable full precision", {
 
   route <- list(type = "conditional_normal", n_grid = 1024L, spec = list(
     additive_mean = 0, additive_sd = 0, product_mean = 0, product_sd = 1,
@@ -4658,7 +4658,7 @@ test_that("N93 accepted subnormal quadrature reports unavailable full precision"
   expect_false(grepl("n_samples", message, fixed = TRUE))
 })
 
-test_that("N93 full-precision quadrature returns its height with diagnostics", {
+test_that("full-precision quadrature returns its height with diagnostics", {
 
   route <- list(type = "conditional_normal", n_grid = 1024L, spec = list(
     additive_mean = 0, additive_sd = 0, product_mean = 0, product_sd = 1,
@@ -4672,7 +4672,7 @@ test_that("N93 full-precision quadrature returns its height with diagnostics", {
   expect_true(attr(height, "numerical_diagnostics")$converged)
 })
 
-test_that("N93 rejected real quadrature keeps its diagnostic remedy", {
+test_that("rejected real quadrature keeps its diagnostic remedy", {
 
   priors <- list(a = prior("normal", list(0, 1)), b = prior("normal", list(0, 1)),
                  s = prior("beta", list(.1, .1)))
@@ -4756,7 +4756,7 @@ for(location in c(0, 1e-200)){
   })
 }
 
-test_that("N03 invalid point-factor weights cannot become a structural zero", {
+test_that("invalid point-factor weights cannot become a structural zero", {
 
   point_factor <- prior_factor_levels(
     prior_factor("point", list(location = 0), contrast = "independent"), c("a", "b")
@@ -4766,7 +4766,7 @@ test_that("N03 invalid point-factor weights cannot become a structural zero", {
                "The 'weights' must be defined.", fixed = TRUE)
 })
 
-test_that("N03 subnormal base product retains the independent normal scale", {
+test_that("subnormal base product retains the independent normal scale", {
 
   vector_prior <- prior("mnormal", list(mean = 0, sd = 1.5e-8, K = 4))
   scalar <- BayesTools:::.prior_linear_vector_scalar_prior(vector_prior, rep(1e-300, 4))
@@ -4777,7 +4777,7 @@ test_that("N03 subnormal base product retains the independent normal scale", {
   expect_equal(scalar$parameters$sd / (1e-300 * 1.5e-8), 2, tolerance = 1e-12)
 })
 
-test_that("N03 multivariate point projection retains a finite tiny location", {
+test_that("multivariate point projection retains a finite tiny location", {
 
   scalar <- BayesTools:::.prior_linear_vector_scalar_prior(
     prior("mpoint", list(location = 1e-200, K = 2)), c(1.3e308, 1.3e308)
@@ -4786,7 +4786,7 @@ test_that("N03 multivariate point projection retains a finite tiny location", {
   expect_equal(scalar$parameters$location / 1e108, 2.6, tolerance = 1e-14)
 })
 
-test_that("N03 centered mean-difference point factor retains structural zero", {
+test_that("centered mean-difference point factor retains structural zero", {
 
   point_factor <- prior_factor_levels(
     prior_factor("point", list(location = 0), contrast = "meandif"), c("a", "b", "c")
@@ -4796,7 +4796,7 @@ test_that("N03 centered mean-difference point factor retains structural zero", {
   expect_identical(scalar$parameters$location, 0)
 })
 
-test_that("N03 unrepresentable normal scales and invalid weights remain refused", {
+test_that("unrepresentable normal scales and invalid weights remain refused", {
 
   vector_prior <- prior("mnormal", list(mean = 0, sd = 2, K = 2))
   expect_error(BayesTools:::.prior_linear_vector_scalar_prior(vector_prior, c(1e308, 1e308)),

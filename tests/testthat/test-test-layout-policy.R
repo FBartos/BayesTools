@@ -767,7 +767,7 @@ test_that("passing comparisons are recorded at once and failing ones read as tes
   expect_warning(expect_equal(1, 1, tol = 1e-3), "deprecated")
 })
 
-test_that("R133 explicit Unix prefixes keep version headers libraries and rpath coherent", {
+test_that("explicit Unix prefixes keep version headers libraries and rpath coherent", {
   skip_on_cran()
   sh <- unname(Sys.which("sh"))
   skip_if(!nzchar(sh), "A POSIX shell is required to run configure.")

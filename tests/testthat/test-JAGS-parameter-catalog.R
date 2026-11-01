@@ -6501,7 +6501,7 @@ test_that("catalog aliases equal the per-quantity data frame assembly they repla
   )
 })
 
-test_that("R116 D8 actual extreme LKJ primitives fail with numerical provenance", {
+test_that("actual extreme LKJ primitives fail with numerical provenance", {
 
   block <- .lkj_block_fit(2L, 1e-300)
   correlation <- block$random_term$correlation
@@ -6544,7 +6544,7 @@ test_that("R116 D8 actual extreme LKJ primitives fail with numerical provenance"
     class = "BayesTools_lkj_rng_unavailable")
 })
 
-test_that("R116 D8 ordinary LKJ prior values and caller RNG remain valid", {
+test_that("ordinary LKJ prior values and caller RNG remain valid", {
 
   block <- .lkj_block_fit(2L, 1)
   correlation <- block$random_term$correlation
@@ -6563,7 +6563,7 @@ test_that("R116 D8 ordinary LKJ prior values and caller RNG remain valid", {
   expect_equal(samples[, paste0(correlation$correlation_name, "[1,1]")], rep(1, 16), tolerance = 0)
 })
 
-test_that("R116 D8 nonfinite LKJ RNG mock preserves condition row indices", {
+test_that("nonfinite LKJ RNG mock preserves condition row indices", {
 
   # Transport-only mock; the real eta=1e-300 test above supplies numerical evidence.
   block <- .lkj_block_fit(2L, 1)

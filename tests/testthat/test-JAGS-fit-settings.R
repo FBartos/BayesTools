@@ -751,7 +751,7 @@ test_that("JAGS_fit reports and records backend errors recovered by a restart", 
   }
 })
 
-test_that("the final failed fitting attempt is not announced as a restart (F212)", {
+test_that("the final failed fitting attempt is not announced as a restart", {
 
   skip_if_not_installed("runjags")
   backend_calls <- 0L
@@ -1373,7 +1373,7 @@ test_that("post-fit cleanup errors identify the actual parallel operation", {
       "The runtime finish callback was not run."), fixed = TRUE)
 })
 
-test_that("seeds outside the integer range or missing are refused instead of coerced to NA (F223)", {
+test_that("seeds outside the integer range or missing are refused instead of coerced to NA", {
 
   limit <- .Machine$integer.max
   settings <- function(seed) JAGS_check_and_list_fit_settings(

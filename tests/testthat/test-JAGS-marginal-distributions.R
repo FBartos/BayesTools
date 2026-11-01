@@ -5397,7 +5397,7 @@ test_that("Savage-Dickey prior support is the exact support, not the grid range"
   expect_s3_class(condition, "BayesTools_zero_ordinate")
 })
 
-test_that("N07 point slab atoms use the canonical component indices", {
+test_that("point slab atoms use the canonical component indices", {
 
   slab <- prior_spike_and_slab(prior("point", list(3)))
   atoms <- BayesTools:::.posterior_atoms_from_components(
@@ -5409,7 +5409,7 @@ test_that("N07 point slab atoms use the canonical component indices", {
   expect_true(atoms$declared)
 })
 
-test_that("N07 all-included point slab retains its declared atom", {
+test_that("all-included point slab retains its declared atom", {
 
   atoms <- BayesTools:::.posterior_atoms_from_components(
     prior_spike_and_slab(prior("point", list(3))), rep(1L, 4), 1L, "x"
@@ -5418,7 +5418,7 @@ test_that("N07 all-included point slab retains its declared atom", {
   expect_identical(atoms$mass, 1)
 })
 
-test_that("N07 continuous slab has only the excluded atom and zero slabs coalesce", {
+test_that("continuous slab has only the excluded atom and zero slabs coalesce", {
 
   component <- c(1L, 1L, 1L, 2L)
   continuous <- BayesTools:::.posterior_atoms_from_components(
@@ -5433,7 +5433,7 @@ test_that("N07 continuous slab has only the excluded atom and zero slabs coalesc
   expect_identical(zero$mass, 1)
 })
 
-test_that("N07 missing component provenance is refused rather than reconstructed", {
+test_that("missing component provenance is refused rather than reconstructed", {
 
   expect_error(
     BayesTools:::.posterior_atoms_from_components(
@@ -5445,7 +5445,7 @@ test_that("N07 missing component provenance is refused rather than reconstructed
 })
 
 
-test_that("N08 nearby unequal simplex coefficients retain their exact interval", {
+test_that("nearby unequal simplex coefficients retain their exact interval", {
 
   priors <- list(w = prior("dirichlet", list(alpha = c(2, 3))))
   support <- BayesTools:::.posterior_support_from_prior_list_weights(
@@ -5457,7 +5457,7 @@ test_that("N08 nearby unequal simplex coefficients retain their exact interval",
   expect_true(support$exact)
 })
 
-test_that("N08 equal simplex coefficients and omitted coefficients keep their meaning", {
+test_that("equal simplex coefficients and omitted coefficients keep their meaning", {
 
   priors <- list(w = prior("dirichlet", list(alpha = c(2, 3))))
   equal <- BayesTools:::.posterior_support_from_prior_list_weights(

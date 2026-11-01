@@ -295,7 +295,7 @@ test_that("publication-weight nodes reproduce the JAGS monitors of every weight 
   }
 })
 
-test_that("p-hacking nodes reproduce the JAGS monitors of a p-hacking mixture (F224)", {
+test_that("p-hacking nodes reproduce the JAGS monitors of a p-hacking mixture", {
 
   # none | p-hacking | weights and p-hacking, with a mixture parameter next to it
   fit <- .dnode_cached_fit("fit_selection_kernel_summary")

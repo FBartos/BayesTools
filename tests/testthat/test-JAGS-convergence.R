@@ -726,7 +726,7 @@ test_that("chains stuck at different values fail the criteria and are not ignore
   expect_match(attr(refused, "errors"), "not assessable for 'mu'", fixed = TRUE, all = FALSE)
 })
 
-test_that("an error-only check fails for chains stuck at different values (F322)", {
+test_that("an error-only check fails for chains stuck at different values", {
 
   # An error-only check used to accept them: the time-series SE of constant
   # chains is exactly 0 although the pooled draws vary. Their ESS is 0, so the
@@ -1253,7 +1253,7 @@ test_that("explicit convergence monitors reach additional monitored parameters",
   )
 })
 
-test_that("unavailable monitors carry the parameter-not-found class and add_parameters refuses NA (F212)", {
+test_that("unavailable monitors carry the parameter-not-found class and add_parameters refuses NA", {
 
   before_sampling <- tryCatch(
     BayesTools:::.bt_convergence_validate_monitor_names("thetaa", c("mu", "theta")),
@@ -1794,7 +1794,7 @@ test_that("fail_fast stops computing after a failed parameter", {
                c("assessable", "assessable"))
 })
 
-test_that("computed failures are reported when another diagnostic of the row is not assessable (F277)", {
+test_that("computed failures are reported when another diagnostic of the row is not assessable", {
 
   diagnostics <- data.frame(
     parameter = c("a", "b"),

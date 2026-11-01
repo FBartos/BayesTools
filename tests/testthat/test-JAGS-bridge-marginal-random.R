@@ -2196,7 +2196,7 @@ test_that("shared random SD bindings refuse ambiguous and overridden sources", {
   ))
 })
 
-test_that("marginalization requests cover several formula parameters and refuse an empty list (F100)", {
+test_that("marginalization requests cover several formula parameters and refuse an empty list", {
 
   data <- data.frame(id = factor(c("a", "a", "b", "b")))
   make <- function(parameter){

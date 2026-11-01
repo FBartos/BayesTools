@@ -1623,7 +1623,7 @@ test_that("scaled mixed contrast coefficients keep joint spike atoms", {
   expect_identical(colnames(g_atoms$locations), c("mu_g{1}", "mu_g{2}"))
 })
 
-test_that("N26 matching masks bind by key and legacy ensemble masks stay positional", {
+test_that("matching masks bind by key and legacy ensemble masks stay positional", {
 
   models <- list(.mock_mixing_model(0, 0), .mock_mixing_model(50, 0))
   keys <- c("theta", "beta")
@@ -1657,7 +1657,7 @@ test_that("N26 matching masks bind by key and legacy ensemble masks stay positio
   expect_length(missing$inference, 0L)
 })
 
-test_that("N27 dropping every positive-prior model gives the intended error without warning", {
+test_that("dropping every positive-prior model gives the intended error without warning", {
 
   messages <- character()
   result <- withCallingHandlers(tryCatch(

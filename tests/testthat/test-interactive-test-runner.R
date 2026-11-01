@@ -153,7 +153,7 @@ test_that("interactive runner dispatches comprehensive and filtered profiles", {
   )
 })
 
-test_that("N100 resolver prefers the session binary and keeps PATH fallback", {
+test_that("the resolver prefers the session binary and keeps PATH fallback", {
 
   runner_path <- testthat::test_path("..", "..", ".dev", "test-tests.R")
   skip_if_not(

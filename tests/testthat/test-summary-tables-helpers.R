@@ -2932,7 +2932,7 @@ test_that("a named transformation is validated against the known transformations
   expect_error(density(prior("normal", list(0, 1)), transformation = "bogus"), "Unknown transformation 'bogus'", fixed = TRUE)
 })
 
-test_that("R116 N69 bounded positive Bayes factors never print a rounded zero bound", {
+test_that("bounded positive Bayes factors never print a rounded zero bound", {
 
   values <- c(1e-4, 1e-4, .Machine$double.xmin * .Machine$double.eps, .01, 100, 0, NA, Inf, 1e-4)
   attr(values, "bound_operator") <- c("<", ">", "<", "<", ">", "<", "<", ">", NA)

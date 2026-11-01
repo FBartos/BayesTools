@@ -81,7 +81,7 @@ test_that("coordinate materialization adds fixed values and removes internals", 
   )
 })
 
-test_that("an internal coordinate request names the coordinate (F221)", {
+test_that("an internal coordinate request names the coordinate", {
 
   chains <- coda::mcmc.list(coda::mcmc(
     matrix(c(1, 0, 2, 0, 3, 0), ncol = 2, byrow = TRUE,

@@ -1,6 +1,6 @@
 skip_if_not_test_profile("unit")
 
-test_that("R133 finite simplex entries cannot normalize a nonfinite total", {
+test_that("finite simplex entries cannot normalize a nonfinite total", {
   huge <- c(1e308, 1e308)
   expect_error(.canonicalize_simplex(huge, "weights"),
     "The 'weights' simplex values must sum to one; row 1 has a non-finite total or roundoff bound.", fixed = TRUE)
@@ -14,7 +14,7 @@ test_that("R133 finite simplex entries cannot normalize a nonfinite total", {
   expect_error(.canonicalize_simplex(c(Inf, 0)), "must be finite numeric values")
 })
 
-test_that("R133 near-one simplex values retain normalization diagnostics and labels", {
+test_that("near-one simplex values retain normalization diagnostics and labels", {
   values <- c(first = .2, second = .3, third = .5 + .Machine$double.eps)
   normalized <- .canonicalize_simplex(values, diagnostics = TRUE)
   expect_identical(normalized$values, values / sum(values))

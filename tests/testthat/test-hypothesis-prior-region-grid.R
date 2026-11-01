@@ -1124,7 +1124,7 @@ test_that("region probabilities of Cauchy-like and integer-df convolutions, tran
   expect_equal(probability(atoms, 2, 5, inclusive = TRUE), 1, tolerance = 1e-14)
 })
 
-test_that("convolution region probabilities keep the first term's mass beyond its last finite breakpoint (F332)", {
+test_that("convolution region probabilities keep the first term's mass beyond its last finite breakpoint", {
 
   probability <- function(density, lower, upper){
     region <- list(

@@ -314,7 +314,7 @@ test_that("whitelisted function names remain valid quantity identifiers", {
   )
 })
 
-test_that("N36 an explicit comparison must retain both nonempty sides", {
+test_that("an explicit comparison must retain both nonempty sides", {
 
   message <- "Hypothesis must contain one statement or one explicit 'vs' comparison."
   for(statement in c("theta = 0 vs ", " vs theta > 0", " vs ", "theta > 0 vs  vs theta < 0")){

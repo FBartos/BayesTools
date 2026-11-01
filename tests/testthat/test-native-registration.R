@@ -109,7 +109,7 @@ test_that("unloading the package unloads its JAGS module without a message", {
   expect_identical(output, character())
 })
 
-test_that("the BayesTools JAGS module loads (F065)", {
+test_that("the BayesTools JAGS module loads", {
 
   skip_on_cran()
   skip_if_not_installed("rjags")

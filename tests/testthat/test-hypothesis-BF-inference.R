@@ -24,7 +24,7 @@ skip_if_not_test_profile("unit")
                     use_formula = FALSE, prior_samples = TRUE)
 }
 
-test_that("D3 whole-factor unavailable rows retain labels and valid siblings", {
+test_that("whole-factor unavailable rows retain labels and valid siblings", {
 
   posterior <- .unavailable_factor_posterior()
   for(statement in c("mu_fac = 0", "mu_fac > 0", "mu_fac = 0 vs mu_fac > 0")){
@@ -51,7 +51,7 @@ test_that("D3 whole-factor unavailable rows retain labels and valid siblings", {
                class = "BayesTools_parameter_not_found")
 })
 
-test_that("D3 opted-in routes catch errors while warnings and generic errors propagate", {
+test_that("opted-in routes catch errors while warnings and generic errors propagate", {
 
   posterior <- .unavailable_factor_posterior()
   check_ordinate <- .hypothesis_check_prior_ordinate
@@ -73,7 +73,7 @@ test_that("D3 opted-in routes catch errors while warnings and generic errors pro
                "Metadata is malformed.", fixed = TRUE)
 })
 
-test_that("D3 known region diagnostic refusals form complete unavailable tables", {
+test_that("known region diagnostic refusals form complete unavailable tables", {
 
   posterior <- .unavailable_factor_posterior()
   testthat::local_mocked_bindings(.package = "BayesTools",
@@ -97,7 +97,7 @@ test_that("D3 known region diagnostic refusals form complete unavailable tables"
     class = "BayesTools_prior_region_probability_rejected", fixed = TRUE)
 })
 
-test_that("D3 region missing provenance and invalid probability metadata remain strict", {
+test_that("region missing provenance and invalid probability metadata remain strict", {
 
   posterior <- .unavailable_factor_posterior()
   density <- .bt_meta_get(posterior$B, "prior_density")
@@ -119,7 +119,7 @@ test_that("D3 region missing provenance and invalid probability metadata remain 
   expect_identical(condition$absolute_error, .001)
 })
 
-test_that("D3 marginal table known prior refusals preserve reasons and scalar strictness", {
+test_that("marginal table known prior refusals preserve reasons and scalar strictness", {
 
   fit <- coda::mcmc(cbind(beta = seq(.1, 2, length.out = 20),
                           beta_indicator = rep(1L, 20)))

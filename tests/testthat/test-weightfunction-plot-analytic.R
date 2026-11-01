@@ -786,7 +786,7 @@ test_that("weightfunction prior plots omit the mean of a heavy-tailed log-weight
   }
 })
 
-test_that("weightfunction prior plots omit the mean of a log-weight prior beyond the largest double (F332)", {
+test_that("weightfunction prior plots omit the mean of a log-weight prior beyond the largest double", {
 
   # E[omega] = exp(sd^2 / 2) leaves the double range for sd above 37.7: mean()
   # reports that range limit, the plots omit the mean like an infinite one

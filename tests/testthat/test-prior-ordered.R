@@ -402,7 +402,7 @@ test_that("formula binding refuses ordered container mixtures without changing t
   expect_s3_class(wf, "prior.bias_mixture")
 })
 
-test_that("D6 ordered declarations reuse the Dirichlet minimum and binding revalidates it", {
+test_that("ordered declarations reuse the Dirichlet minimum and binding revalidates it", {
 
   total <- prior("normal", list(0, 1))
   expect_error(prior_ordered(total, allocation = prior("dirichlet", list(alpha = c(.0099, 1)))), "The 'alpha' must be equal or higher than 0.01.", fixed = TRUE)
@@ -547,7 +547,7 @@ test_that("the ordered density kernel excludes rows outside any factor's support
 })
 
 
-test_that("the ordered density kernel refuses a missing total instead of propagating it (F193)", {
+test_that("the ordered density kernel refuses a missing total instead of propagating it", {
   data <- data.frame(f = ordered(c("lo", "mid", "hi"), levels = c("lo", "mid", "hi")))
   info <- JAGS_formula(~ f, "mu", data, list(intercept = prior("point", list(0)),
     f = prior_ordered(prior("uniform", list(0, 1)), allocation = prior("dirichlet", list(c(.5, .5))))))
@@ -1654,7 +1654,7 @@ test_that("rng() of an ordered prior returns the requested quantity", {
                "The 'bogus' values are not recognized by the 'quantity' argument.", fixed = TRUE)
 })
 
-test_that("a standalone ordered prior with an allocation list named by factor is unavailable (F124)", {
+test_that("a standalone ordered prior with an allocation list named by factor is unavailable", {
 
   # the list entries name the factors of a formula term; outside a formula the
   # prior has no named factor (it was refused as a missing entry for '.factor')
@@ -2731,7 +2731,7 @@ test_that("ordered densities are direct when supported and bridge sampling stops
   )
 })
 
-test_that("the bridge posterior information of an ordered prior lists its total and allocation coordinates with bounds (F100)", {
+test_that("the bridge posterior information of an ordered prior lists its total and allocation coordinates with bounds", {
 
   df <- data.frame(
     y = seq_len(6),

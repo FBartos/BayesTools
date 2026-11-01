@@ -1034,7 +1034,7 @@ test_that("parameter and random SD sources validate simple external references",
   )
 })
 
-test_that("source data conflicts name the variable and the remedy, not a refit (F017)", {
+test_that("source data conflicts name the variable and the remedy, not a refit", {
 
   design <- structure(
     list(source_data = data.frame(raw_x = c(1, 2))),

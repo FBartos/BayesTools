@@ -106,7 +106,7 @@ test_that("Gamma initialization fallback preserves representable median proporti
   )
 })
 
-test_that("a two-bin cumulative initialization falls back to the median of the weight (F222)", {
+test_that("a two-bin cumulative initialization falls back to the median of the weight", {
 
   weights  <- function(alpha) prior_weightfunction("one-sided", .05, wf_cumulative(alpha))
   fallback <- "deterministic, order-one rescaling"

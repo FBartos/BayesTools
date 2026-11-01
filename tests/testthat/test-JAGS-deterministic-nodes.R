@@ -960,7 +960,7 @@ test_that("multivariate-t priors are registered nodes that replay from their pri
   expect_identical(unname(replayed), unname(component * (indicator == 2)))
 })
 
-test_that("the p-hacking nodes are a registered family with one evaluator (F224)", {
+test_that("the p-hacking nodes are a registered family with one evaluator", {
 
   expect_true("phacking" %in% BayesTools:::.bt_deterministic_node_families)
   selection <- prior_weightfunction("one-sided", c(.025), wf_cumulative(c(1, 1)))

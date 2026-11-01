@@ -108,7 +108,7 @@ test_that("prior() rejects unknown distribution names", {
                "The specified distribution name")
 })
 
-test_that("constructors refuse invalid expression points, NA bounds, expression scales and undetermined or fractional K (F233)", {
+test_that("constructors refuse invalid expression points, NA bounds, expression scales and undetermined or fractional K", {
 
   # the complete message: a base R error (a comparison of an expression, an
   # NA in a condition, a coercion) would not match it
@@ -560,7 +560,7 @@ test_that("exchangeable vector priors expose exact numeric and JAGS APIs", {
 })
 
 
-test_that("D6 numeric Dirichlet declarations enforce the inclusive concentration minimum", {
+test_that("numeric Dirichlet declarations enforce the inclusive concentration minimum", {
 
   message <- "The 'alpha' must be equal or higher than 0.01."
   expect_error(prior("dirichlet", list(alpha = c(.0099, 1))), message, fixed = TRUE)
@@ -581,7 +581,7 @@ test_that("D6 numeric Dirichlet declarations enforce the inclusive concentration
   expect_error(rng(symbolic, 10), "The 'prior' argument must not contain parameter expressions.", fixed = TRUE)
 })
 
-test_that("D6 supported Dirichlet draws retain the extraDistr values and RNG stream", {
+test_that("supported Dirichlet draws retain the extraDistr values and RNG stream", {
 
   for(alpha in list(c(.01, .01), c(.01, 1), c(1, 1))){
     set.seed(1)
@@ -595,7 +595,7 @@ test_that("D6 supported Dirichlet draws retain the extraDistr values and RNG str
   }
 })
 
-test_that("D6 degenerate Dirichlet sampling has a stable availability condition", {
+test_that("degenerate Dirichlet sampling has a stable availability condition", {
 
   set.seed(1)
   error <- tryCatch(rng(prior("dirichlet", list(alpha = c(1e308, 1e308))), 10), error = identity)
@@ -2047,7 +2047,7 @@ test_that("the literal of a numeric constant is the shortest text that parses ba
   expect_identical(as.numeric(.JAGS_prior_number(hard)), as.numeric(hard))
 })
 
-test_that("numeric constants are written with a decimal point under options(OutDec) (F322)", {
+test_that("numeric constants are written with a decimal point under options(OutDec)", {
 
   numbers <- c(0.5, 1/3, 0.1, 1e5, 1e-5, 100, 0.1 + 0.2, 123456.789)
   reference <- .JAGS_prior_number(numbers)
@@ -2231,7 +2231,7 @@ test_that("only a numeric zero point is a spike at zero", {
   expect_false(.is_prior_point_zero(prior("mpoint", list(1, 2))))
 })
 
-test_that("syntax, initial values and monitored nodes agree for ordinary priors (F223)", {
+test_that("syntax, initial values and monitored nodes agree for ordinary priors", {
 
   priors <- list(
     normal    = prior("normal", list(0, 1)),
@@ -2270,7 +2270,7 @@ test_that("syntax, initial values and monitored nodes agree for ordinary priors 
   }
 })
 
-test_that("declared roots of factor spike-and-slab and factor mixture priors carry the factor shape (F223)", {
+test_that("declared roots of factor spike-and-slab and factor mixture priors carry the factor shape", {
 
   factor_prior <- function(sd){
     prior <- prior_factor("normal", list(0, sd), contrast = "treatment")
@@ -2294,7 +2294,7 @@ test_that("declared roots of factor spike-and-slab and factor mixture priors car
   expect_identical(roots[["q"]], integer())
 })
 
-test_that("generated priors are inserted into the model block, not a preceding data block (F223)", {
+test_that("generated priors are inserted into the model block, not a preceding data block", {
 
   syntax <- "data{ y <- 1 }\nmodel{ z ~ dnorm(0, 1) }"
   with_prior <- JAGS_add_priors(syntax, list(x = prior("normal", list(0, 1))))
@@ -2319,7 +2319,7 @@ test_that("generated priors are inserted into the model block, not a preceding d
   expect_true(regexpr(.bt_backend_anchor_name, anchored$model_syntax, fixed = TRUE) > regexpr("model{", anchored$model_syntax, fixed = TRUE))
 })
 
-test_that("the model-block locator ignores JAGS comments (F322)", {
+test_that("the model-block locator ignores JAGS comments", {
 
   # a comment between 'model' and the brace, as the old first-brace insertion accepted
   expect_identical(.JAGS_model_block_opening("model # note\n{ }"), nchar("model # note\n") + 1L)

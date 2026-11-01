@@ -865,7 +865,7 @@ test_that(".format_factor_level_parameter_names rejects interaction metadata mis
   )
 })
 
-test_that("D6 prior sample matrix preserves genuine cumulative RNG availability conditions", {
+test_that("prior sample matrix preserves genuine cumulative RNG availability conditions", {
 
   p <- prior_weightfunction(steps = .05, weights = wf_cumulative(c(1e308, 1e308)))
   set.seed(1)

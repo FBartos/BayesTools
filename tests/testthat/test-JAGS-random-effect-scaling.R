@@ -19,7 +19,7 @@ make_random_scale_table_fit <- function(formula_result, posterior){
   attach_test_parameter_map(fit)
 }
 
-test_that("D5 unscaled samples omit only internal latent and group coefficients", {
+test_that("unscaled samples omit only internal latent and group coefficients", {
 
   skip_if_not_installed("runjags")
 
@@ -78,7 +78,7 @@ test_that("D5 unscaled samples omit only internal latent and group coefficients"
   expect_identical(serialize(fit, NULL), original_fit)
 })
 
-test_that("D5 removing every random coordinate retains a zero-column matrix", {
+test_that("removing every random coordinate retains a zero-column matrix", {
 
   skip_if_not_installed("runjags")
 

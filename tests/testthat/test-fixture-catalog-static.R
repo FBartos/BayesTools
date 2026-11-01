@@ -422,7 +422,7 @@ test_that("the DESCRIPTION fingerprint of the model-fit key ignores the version 
   expect_length(.test_cache_description_hashes("fixture-consumer"), 0L)
 })
 
-test_that("N95 model-fit DESCRIPTION key keeps source identity across publication", {
+test_that("model-fit DESCRIPTION key keeps source identity across publication", {
 
   description <- tempfile("DESCRIPTION")
   withr::defer(unlink(description))
@@ -466,7 +466,7 @@ test_that("a cache marker is stale when a source left the key", {
   expect_false(.test_cache_metadata_current(marker_name))
 })
 
-test_that("an empty requirement set names no cache artifact, and the catalog is parsed once (F272)", {
+test_that("an empty requirement set names no cache artifact, and the catalog is parsed once", {
 
   expect_identical(.test_cache_artifact_paths("directory", character()), character())
   expect_identical(

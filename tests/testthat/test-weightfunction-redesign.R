@@ -23,7 +23,7 @@ test_that("log-weight component density propagates missing values", {
 
 source(testthat::test_path("common-functions.R"))
 
-test_that("D6 cumulative declarations and persisted descriptors enforce the minimum", {
+test_that("cumulative declarations and persisted descriptors enforce the minimum", {
 
   message <- "The 'alpha' must be equal or higher than 0.01."
   expect_error(wf_cumulative(c(.0099, 1)), message, fixed = TRUE)
@@ -39,7 +39,7 @@ test_that("D6 cumulative declarations and persisted descriptors enforce the mini
   expect_error(BayesTools:::.weightfunction_validate_weights(descriptor, 2, "most_significant"), "The 'alpha' argument must have length '2'.", fixed = TRUE)
 })
 
-test_that("D6 supported cumulative draws retain the extraDistr values and RNG stream", {
+test_that("supported cumulative draws retain the extraDistr values and RNG stream", {
 
   for(alpha in list(c(.01, .01), c(.01, 1), c(1, 1))){
     set.seed(1)
@@ -54,7 +54,7 @@ test_that("D6 supported cumulative draws retain the extraDistr values and RNG st
   }
 })
 
-test_that("D6 degenerate cumulative sampling has the Dirichlet availability condition", {
+test_that("degenerate cumulative sampling has the Dirichlet availability condition", {
 
   set.seed(1)
   error <- tryCatch(rng(prior_weightfunction(steps = .05, weights = wf_cumulative(c(1e308, 1e308))), 10), error = identity)
@@ -66,7 +66,7 @@ test_that("D6 degenerate cumulative sampling has the Dirichlet availability cond
   }
 })
 
-test_that("D7 fixed reference weights require exactly one", {
+test_that("fixed reference weights require exactly one", {
 
   for(reference in c(1 - 1e-12, 1 + 1e-12)){
     expect_error(prior_weightfunction(steps = .05, weights = wf_fixed(c(reference, .5))), "The reference-bin fixed weight must be exactly 1.", fixed = TRUE)
@@ -75,7 +75,7 @@ test_that("D7 fixed reference weights require exactly one", {
   expect_identical(prior_weightfunction(steps = c(.025, .05), weights = wf_fixed(c(1, 0, 2)))$weights$omega, c(1, 0, 2))
 })
 
-test_that("D7 named and integer exact reference weights retain literal draws and syntax", {
+test_that("named and integer exact reference weights retain literal draws and syntax", {
 
   for(weights in list(c(reference = 1, middle = 0, last = 2), c(1L, 0L, 2L))){
     p <- tryCatch(prior_weightfunction(steps = c(.025, .05), weights = wf_fixed(weights)), error = identity)

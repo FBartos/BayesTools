@@ -1,6 +1,6 @@
 skip_if_not_test_profile("unit")
 
-test_that("R133 literal whole formula powers expand fixed interactions and replay", {
+test_that("literal whole formula powers expand fixed interactions and replay", {
   data <- data.frame(x = c(-1, 0, 2, 3), z = c(2, 1, -1, 4), y = 0)
   priors <- setNames(rep(list(prior("normal", list(0, 1))), 4), c("intercept", "x", "z", "x:z"))
   explicit <- JAGS_formula(~ x + z + x:z, "mu", data, priors)
@@ -18,7 +18,7 @@ test_that("R133 literal whole formula powers expand fixed interactions and repla
   }
 })
 
-test_that("R133 random whole powers retain the explicit design and structural covariance", {
+test_that("random whole powers retain the explicit design and structural covariance", {
   data <- data.frame(x = c(-1, 0, 2, 3), z = c(2, 1, -1, 4), g = factor(c("a", "a", "b", "b")))
   compile <- function(formula) JAGS_formula(formula, "mu", data,
     list(intercept = prior("normal", list(0, 1))),
@@ -40,7 +40,7 @@ test_that("R133 random whole powers retain the explicit design and structural co
   }
 })
 
-test_that("R133 unsupported public powers and arithmetic calls retain refusal", {
+test_that("unsupported public powers and arithmetic calls retain refusal", {
   data <- data.frame(x = 1:4, z = 4:1)
   priors <- setNames(rep(list(prior("normal", list(0, 1))), 4), c("intercept", "x", "z", "x:z"))
   for(formula in list(~ (x + z)^0, ~ (x + z)^1, ~ (x + z)^(-1), ~ (x + z)^degree)){

@@ -25,7 +25,7 @@ skip_if_not_test_profile("unit")
   }))
 }
 
-test_that("a derived-draw view prints without a leading space on its second line (F221)", {
+test_that("a derived-draw view prints without a leading space on its second line", {
 
   view <- JAGS_with_draws(.draws_view_fit_for_test(), .draws_view_replacement())
   output <- capture.output(print(view))
@@ -35,7 +35,7 @@ test_that("a derived-draw view prints without a leading space on its second line
   ))
 })
 
-test_that("D9 derived views preserve original state and local metadata without sampler slots", {
+test_that("derived views preserve original state and local metadata without sampler slots", {
 
   fit <- .draws_view_fit_for_test()
   replacement <- .draws_view_replacement()
@@ -61,7 +61,7 @@ test_that("D9 derived views preserve original state and local metadata without s
   expect_equal(as.numeric(as_mixed_posteriors(view, "theta")$theta), as.numeric(coda::as.mcmc(view)))
 })
 
-test_that("D9 view boundaries refuse before evaluating runtime or inference arguments", {
+test_that("view boundaries refuse before evaluating runtime or inference arguments", {
 
   view <- JAGS_with_draws(.draws_view_fit_for_test(), .draws_view_replacement())
   expected <- c(
@@ -94,7 +94,7 @@ test_that("D9 view boundaries refuse before evaluating runtime or inference argu
     "The derived-draw view does not contain requested sampled coordinates: 'theta'. Regenerate the view with those coordinates or use 'fit$original_fit'.")
 })
 
-test_that("D9 estimates use supplied two-chain geometry and preserve diagnostic early returns", {
+test_that("estimates use supplied two-chain geometry and preserve diagnostic early returns", {
 
   fit <- .draws_view_fit_for_test()
   replacement <- .draws_view_replacement()
@@ -156,7 +156,7 @@ test_that("estimates diagnostics match known-answer chains parameter by paramete
   expect_equal(table[["MCMC_SD_error"]], table[["MCMC_error"]] / table[["SD"]], tolerance = 1e-12)
 })
 
-test_that("D9 fresh views clear fit-level posterior estimates and repeated-view metadata", {
+test_that("fresh views clear fit-level posterior estimates and repeated-view metadata", {
 
   fit <- .draws_view_fit_for_test()
   density <- posterior_density_attribute(c(-4, 0, 4), c(.01, .2, .01), method = "iwmde", density_method = "precomputed")

@@ -3556,7 +3556,7 @@ test_that("checked prior quadratures agree independently and exhausted budgets r
 
 })
 
-test_that("N28 symbolic and centered point-versus-region targets agree", {
+test_that("symbolic and centered point-versus-region targets agree", {
 
   posterior <- data.frame(theta = seq(-1, 2, length.out = 201),
                            phi = seq(-2, 1, length.out = 201)^3)
@@ -3577,7 +3577,7 @@ test_that("N28 symbolic and centered point-versus-region targets agree", {
   expect_error(run("theta = phi vs theta > 0 & phi > 0"))
 })
 
-test_that("N33 hypothesis exports retain precision, warning rows and selected BF bounds", {
+test_that("hypothesis exports retain precision, warning rows and selected BF bounds", {
 
   result <- hypothesis_BF(seq(-1, 1, length.out = 201), prior("normal", list(0, 1)),
     c("theta > 0", "theta < 0"), parameter = "theta", columns = "all")
@@ -3628,7 +3628,7 @@ test_that("N33 hypothesis exports retain precision, warning rows and selected BF
   expect_error(as.data.frame(result, row.names = "one"))
 })
 
-test_that("N34 a genuine compiled combination prints its persisted quantity label", {
+test_that("a genuine compiled combination prints its persisted quantity label", {
 
   formula <- JAGS_formula(~ fac, "mu", data.frame(fac = factor(c("A", "B", "C"))),
     prior_list = list(intercept = prior("normal", list(0, 1)),
@@ -3647,7 +3647,7 @@ test_that("N34 a genuine compiled combination prints its persisted quantity labe
   expect_false(any(grepl(".BayesTools_linear_target", rownames(result), fixed = TRUE)))
 })
 
-test_that("R116 N05 direct ordinate matching filters original parameter and condition leaves", {
+test_that("direct ordinate matching filters original parameter and condition leaves", {
 
   prior_density <- .prior_linear_combination_density(list(theta = prior("normal", list(0, 1))), c(theta = 1), n_grid = 128)
   posterior <- .hypothesis_marginal_posterior_for_test(seq(-2, 2, length.out = 101), prior_density)
@@ -3686,7 +3686,7 @@ test_that("R116 N05 direct ordinate matching filters original parameter and cond
   expect_identical(.posterior_ordinate_direct_status(posterior, null_hypothesis = 0)[c("present", "relevant", "valid")], list(present = FALSE, relevant = FALSE, valid = FALSE))
 })
 
-test_that("R116 N05 source collection retains only compatible raw ordinate leaves", {
+test_that("source collection retains only compatible raw ordinate leaves", {
 
   theta <- posterior_ordinate_attribute(0, .5, "qCMDE", "precomputed", parameter = "theta")
   phi <- posterior_ordinate_attribute(1, 100, "qCMDE", "precomputed", parameter = "phi")

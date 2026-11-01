@@ -908,7 +908,7 @@ test_that("interpret function input validation works", {
 
 })
 
-test_that("N22 fallback endpoints retain their actual probability labels", {
+test_that("fallback endpoints retain their actual probability labels", {
 
   source <- data.frame(Mean = .3, "0.025" = .1, "0.975" = .5,
                        check.names = FALSE, row.names = "mu")
@@ -924,7 +924,7 @@ test_that("N22 fallback endpoints retain their actual probability labels", {
   expect_false(grepl("90%", paste(text, collapse = "\n"), fixed = TRUE))
 })
 
-test_that("N22 exact requested and inferred probabilities keep the source interval", {
+test_that("exact requested and inferred probabilities keep the source interval", {
 
   source <- data.frame(Mean = .3, "0.025" = .1, "0.975" = .5,
                        check.names = FALSE, row.names = "mu")
@@ -936,7 +936,7 @@ test_that("N22 exact requested and inferred probabilities keep the source interv
   }
 })
 
-test_that("N73 expanded estimates stay together before the next plan item", {
+test_that("expanded estimates stay together before the next plan item", {
 
   source <- data.frame(Mean = c(.3, .4), "0.025" = c(.1, .2), "0.975" = c(.5, .6),
                        check.names = FALSE, row.names = c("a", "b"))
@@ -950,7 +950,7 @@ test_that("N73 expanded estimates stay together before the next plan item", {
   expect_identical(tail(text, 1L), "after")
 })
 
-test_that("N73 paired child records stay adjacent in row order", {
+test_that("paired child records stay adjacent in row order", {
 
   estimates <- data.frame(Mean = c(.3, .4), "0.025" = c(.1, .2), "0.975" = c(.5, .6),
                           check.names = FALSE, row.names = c("a", "b"))
@@ -965,7 +965,7 @@ test_that("N73 paired child records stay adjacent in row order", {
   expect_identical(records$order, c(1, 1, 1, 1, 2))
 })
 
-test_that("N73 ordinary explicitly ordered plan items remain stable", {
+test_that("ordinary explicitly ordered plan items remain stable", {
 
   plan <- list(list(kind = "note", order = 3, text = "last"),
                list(kind = "note", order = 1, text = "first"),
@@ -974,7 +974,7 @@ test_that("N73 ordinary explicitly ordered plan items remain stable", {
                    c("first", "second", "last"))
 })
 
-test_that("N73 explicit pair reference order overrides retain precedence", {
+test_that("explicit pair reference order overrides retain precedence", {
 
   estimates <- data.frame(Mean = .3, row.names = "a")
   evidence <- data.frame(prior_prob = .5, post_prob = 2 / 3, inclusion_BF = 2, row.names = "a")
@@ -987,7 +987,7 @@ test_that("N73 explicit pair reference order overrides retain precedence", {
   expect_equal(records$order, c(1, 3, 5), tolerance = 0)
 })
 
-test_that("N73 explicit integer reference orders retain their representation", {
+test_that("explicit integer reference orders retain their representation", {
 
   estimates <- data.frame(Mean = .3, row.names = "a")
   evidence <- data.frame(prior_prob = .5, post_prob = 2 / 3, inclusion_BF = 2, row.names = "a")

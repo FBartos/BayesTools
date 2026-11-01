@@ -285,7 +285,7 @@ test_that("formula coefficient transforms expose the sample transformation", {
   .bt_attach_fit_contract(fit)
 }
 
-test_that("D5 unscaled fitted chains return a numeric matrix in chain order", {
+test_that("unscaled fitted chains return a numeric matrix in chain order", {
 
   columns <- c("theta", "alpha")
   chains <- coda::mcmc.list(
@@ -315,7 +315,7 @@ test_that("D5 unscaled fitted chains return a numeric matrix in chain order", {
   expect_identical(serialize(fit, NULL), original_fit)
 })
 
-test_that("D5 an empty scale overrides fitted scaling for a single chain", {
+test_that("an empty scale overrides fitted scaling for a single chain", {
 
   formula_result <- JAGS_formula(
     ~ 1 + x, "mu", data.frame(x = c(2, 4, 6)),

@@ -1,6 +1,6 @@
 skip_if_not_test_profile("unit")
 
-test_that("R133 native scalar methods preserve NA and NaN separately", {
+test_that("native scalar methods preserve NA and NaN separately", {
   specifications <- list(
     list("moment", list(tau = 1, order = 1), list(lower = .2, upper = 3)),
     list("invmoment", list(tau = 1, order = 1, df = 3), list(lower = .2, upper = 3)),
@@ -22,7 +22,7 @@ test_that("R133 native scalar methods preserve NA and NaN separately", {
   }
 })
 
-test_that("R133 native log flags retain missing values and finite reference identities", {
+test_that("native log flags retain missing values and finite reference identities", {
   missing <- c(NA_real_, NaN)
   for(family in c("moment", "invmoment", "invgamma")){
     parameters <- switch(family, moment = list(0, 1, 1), invmoment = list(0, 1, 1, 3), invgamma = list(3, 2))
@@ -47,7 +47,7 @@ test_that("R133 native log flags retain missing values and finite reference iden
   expect_equal(cdf(p, 1), stats::pgamma(2, 3, lower.tail = FALSE), tolerance = 1e-12)
 })
 
-test_that("R133 generic truncated Normal CDF preserves both missing values", {
+test_that("generic truncated Normal CDF preserves both missing values", {
   p <- prior("normal", list(0, 1), truncation = list(-1, 2))
   q <- c(NA_real_, NaN, .5, -Inf, Inf)
   reference <- (stats::pnorm(.5) - stats::pnorm(-1)) / (stats::pnorm(2) - stats::pnorm(-1))
