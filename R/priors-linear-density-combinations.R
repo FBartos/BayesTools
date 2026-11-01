@@ -1452,54 +1452,10 @@
 # The combination with its numerical grid, for validated arguments ('weights'
 # without zeros, 'source_transforms' named by the weights). '.plan' is the
 # .prior_linear_additive_plan() of its additive part when the caller has it.
-# A large grid is a pure function of the arguments, and one analysis asks for
-# the same one again (every height or region probability of a density
-# refines through the same sequence of grids), so it is kept in the session
-# memo (.bt_content_memo(): recognised only by identical() arguments). The
-# memo holds the grid before its mass check, which warns on every call;
-# warnings of the build itself are repeated on a hit.
 .prior_linear_combination_grid <- function(prior_list, weights, n_grid, tail_prob,
                                            source_transforms, output_transformation,
                                            output_transformation_arguments, grid_spacing,
                                            .record_evaluation = TRUE, .plan = NULL){
-
-  built <- FALSE
-  entry <- .bt_content_memo(
-    kind    = "prior_linear_combination_grid",
-    key     = list(prior_list, weights, n_grid, tail_prob, source_transforms,
-                   output_transformation, output_transformation_arguments,
-                   grid_spacing, .record_evaluation),
-    compute = function(){
-      built <<- TRUE
-      warnings <- list()
-      dist <- withCallingHandlers(
-        .prior_linear_combination_build(
-          prior_list, weights, n_grid, tail_prob, source_transforms,
-          output_transformation, output_transformation_arguments, grid_spacing,
-          .record_evaluation, .plan
-        ),
-        warning = function(condition) warnings[[length(warnings) + 1L]] <<- condition
-      )
-      list(dist = dist, warnings = warnings)
-    },
-    limit   = .prior_linear_density_grid_memo_limit(),
-    keep    = function(entry){
-      max(entry$dist$n_grid, length(entry$dist$density$x)) >= .prior_linear_density_large_grid()
-    }
-  )
-  if(!built){
-    for(condition in entry$warnings){
-      warning(condition)
-    }
-  }
-
-  .prior_linear_density_normalize(entry$dist, warn = TRUE)
-}
-
-.prior_linear_combination_build <- function(prior_list, weights, n_grid, tail_prob,
-                                            source_transforms, output_transformation,
-                                            output_transformation_arguments, grid_spacing,
-                                            .record_evaluation, .plan){
 
   split <- .prior_linear_split_multiply_groups(prior_list, weights)
   components <- list(
@@ -1636,7 +1592,7 @@
       adaptive_evaluation = TRUE
     )
   }
-  dist
+  return(.prior_linear_density_normalize(dist, warn = TRUE))
 }
 
 # Acceptance of numerical prior heights and region probabilities is purely

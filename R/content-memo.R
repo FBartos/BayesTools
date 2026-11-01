@@ -23,11 +23,8 @@
 # The result of 'compute()' for the inputs 'key' (the object, or the list of
 # objects, whose content decides the result): the kept result of an entry
 # identical() to 'key', otherwise a fresh one that is kept. A recognised entry
-# moves to the front so that frequently reused inputs stay. A 'keep' function
-# decides from a fresh result whether it is kept at all, so that results that
-# are cheap to recompute do not displace expensive ones.
-.bt_content_memo <- function(kind, key, compute, limit = .bt_content_memo_limit(),
-                             keep = NULL){
+# moves to the front so that frequently reused inputs stay.
+.bt_content_memo <- function(kind, key, compute, limit = .bt_content_memo_limit()){
 
   entries <- .BayesTools_private$content_memo[[kind]]
   for(i in seq_along(entries)){
@@ -40,9 +37,6 @@
   }
 
   value <- compute()
-  if(!is.null(keep) && !isTRUE(keep(value))){
-    return(value)
-  }
   entries <- c(list(list(key = key, value = value)), entries)
   if(length(entries) > limit){
     entries <- entries[seq_len(limit)]
