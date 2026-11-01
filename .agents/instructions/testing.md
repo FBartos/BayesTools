@@ -189,8 +189,11 @@ draws.
 testthat stores a snapshot without a baseline as if it were reviewed, and its
 cleanup deletes snapshots it considers unused. `tools/test-profile.R` (also
 used by `test_tests()`) therefore records `_snaps/` before a run; afterwards it
-keeps every new or changed snapshot file as a `.new` candidate, restores the
-reviewed and deleted files, and fails. Remove an obsolete snapshot explicitly.
+restores the reviewed and deleted files, keeps the run's new or changed output
+as `.new` candidates (testthat's own candidate when it wrote one), and fails.
+`review_test_snapshots()` also reviews candidates of new snapshots, which
+testthat's reviewer cannot list, against an empty baseline. Remove an obsolete
+snapshot explicitly.
 
 ## Final Verification
 
