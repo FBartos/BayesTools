@@ -12,9 +12,9 @@ fit_marglik	fit_three_level	10.960000000	NA	4.6.0	Windows/x86_64-w64-mingw32
 fit_marglik	fit_two_level	6.450000000	NA	4.6.0	Windows/x86_64-w64-mingw32
 text	bayes-factor-district	0.080000000	0.943945	4.6.0	Windows/x86_64-w64-mingw32
 text	comparison-three-level	0.300000000	1.234375	4.6.0	Windows/x86_64-w64-mingw32
-text	estimates-allocation-full	0.980000000	1.410254	4.6.0	Windows/x86_64-w64-mingw32
-text	estimates-three-level	0.350000000	0.989258	4.6.0	Windows/x86_64-w64-mingw32
-text	inference-district-spike	0.120000000	1.010156	4.6.0	Windows/x86_64-w64-mingw32
-text	predictions-new-school	2.680000000	1.178320	4.6.0	Windows/x86_64-w64-mingw32
-plot	effects-comparison	0.310000000	1.374512	4.6.0	Windows/x86_64-w64-mingw32
+text	estimates-allocation-full	0.900000000	1.410254	4.6.0	Windows/x86_64-w64-mingw32
+text	estimates-three-level	0.340000000	0.989258	4.6.0	Windows/x86_64-w64-mingw32
+text	inference-district-spike	0.080000000	1.010156	4.6.0	Windows/x86_64-w64-mingw32
+text	predictions-new-school	2.410000000	1.178320	4.6.0	Windows/x86_64-w64-mingw32
+plot	effects-comparison	0.270000000	1.374512	4.6.0	Windows/x86_64-w64-mingw32
 plot	posterior-allocation	0.110000000	1.024902	4.6.0	Windows/x86_64-w64-mingw32
