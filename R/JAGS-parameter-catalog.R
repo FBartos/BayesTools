@@ -31,7 +31,11 @@
 #' persisted term-only design matrix. A coordinate that is not a level cell (a
 #' mean-difference or orthonormal coefficient, or a later ordered increment) is
 #' coefficient `j` of the contrast coding, named `<parameter>{j}` and displayed
-#' as `term{j}`. The level names of transformed summaries,
+#' as `term{j}`. The total of an ordered term ([prior_ordered()]) is the
+#' quantity `<parameter>_ordered_total` displayed as `term{total}` (`term{total}:g{1}`
+#' for the slice of an ordinary factor; the inclusion indicator of a mixture
+#' total is displayed as `term{total} (inclusion)`), and the labels of earlier
+#' versions (`term_ordered_total`) remain aliases. The level names of transformed summaries,
 #' `<parameter>[dif: level]`, and the row labels those summaries display,
 #' `(formula) term[dif: level]` and `term[dif: level]`, are aliases of the
 #' level quantity. JAGS
@@ -3186,9 +3190,12 @@ parameter_transform_jacobian <- function(values, transform){
 # the summaries render for it - its table labels with and without the formula
 # prefix, the exp(intercept) label of the log intercept in original-scale
 # tables, and for factor level cells the level names and table rows of
-# transformed contrasts - with the label parts each is rendered from.
+# transformed contrasts - with the label parts each is rendered from. The
+# totals and total indicators of ordered terms also keep the labels they had
+# before their labels followed the label grammar ('legacy_parts').
 # Random-effect quantities have their own semantic aliases.
-.bt_parameter_catalog_label_aliases <- function(quantity, formula_scale = NULL){
+.bt_parameter_catalog_label_aliases <- function(quantity, formula_scale = NULL,
+                                                legacy_parts = NULL){
 
   parts <- quantity$label_parts[[1L]]
   if(is.null(parts)){
@@ -3199,6 +3206,13 @@ parameter_transform_jacobian <- function(values, transform){
     .bt_parameter_catalog_alias_rendering(parts, formula_prefix = TRUE),
     .bt_parameter_catalog_alias_rendering(parts, formula_prefix = FALSE)
   )
+  if(!is.null(legacy_parts)){
+    # the labels the quantity had before its labels followed the label grammar
+    renderings <- c(renderings, list(
+      .bt_parameter_catalog_alias_rendering(legacy_parts, formula_prefix = TRUE),
+      .bt_parameter_catalog_alias_rendering(legacy_parts, formula_prefix = FALSE)
+    ))
+  }
   if(!identical(original_scale, parts)){
     # the original-scale label differs only for the log intercept; otherwise
     # its renderings repeat the two above
@@ -3224,7 +3238,8 @@ parameter_transform_jacobian <- function(values, transform){
 }
 
 .bt_parameter_catalog_aliases <- function(quantities, formula_design = NULL,
-                                          formula_scale = NULL){
+                                          formula_scale = NULL,
+                                          legacy_parts = list()){
 
   out <- .bt_parameter_catalog_empty_aliases()
   public <- quantities[!quantities$internal, , drop = FALSE]
@@ -3296,7 +3311,9 @@ parameter_transform_jacobian <- function(values, transform){
                         candidates = structured, labels = structured_labels)
       )
       # rendered labels that may coincide with another quantity's selector
-      label_aliases <- .bt_parameter_catalog_label_aliases(quantity, formula_scale)
+      label_aliases <- .bt_parameter_catalog_label_aliases(
+        quantity, formula_scale, legacy_parts[[quantity$canonical_name]]
+      )
       new_labels <- !label_aliases$values %in% values
       if(any(new_labels)){
         secondary[[length(secondary) + 1L]] <- list(
@@ -4711,7 +4728,8 @@ parameter_transform_jacobian <- function(values, transform){
   aliases <- .bt_parameter_catalog_aliases(
     quantities,
     formula_design,
-    formula_scale = formula_scale
+    formula_scale = formula_scale,
+    legacy_parts = .bt_ordered_total_label_parts_list(prior_list, legacy = TRUE)
   )
   .bt_parameter_catalog_new(quantities, aliases)
 }

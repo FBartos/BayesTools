@@ -1057,8 +1057,8 @@ test_that("contrast-coefficient selectors of level coordinates name the level", 
   rows <- setdiff(rownames(table), paste0(head, "intercept"))
   expect_identical(
     rows,
-    c(paste0(head, "g_ordered_total"),
-      paste0(head, "g_ordered_allocation[", levels[-1L], "]")),
+    c(paste0(head, "g{total}"),
+      paste0(head, "g[share: ", levels[-1L], "]")),
     info = info
   )
   expect_equal(
@@ -1105,9 +1105,10 @@ test_that("displayed factor rows resolve to the quantities that produced them", 
               transform_factors = transform,
               formula_prefix = prefix
             )
-            # A bracketed row always names a level label.
+            # A bracketed row always names a level label (after the tag of a
+            # transformed level, `dif`, or of an allocation share, `share`).
             rows <- c(rownames(model_table), rownames(ensemble_table))
-            bracket_content <- sub("^[^[]*\\[(dif: )?(.*)\\]$", "\\2",
+            bracket_content <- sub("^[^[]*\\[(dif: |share: )?(.*)\\]$", "\\2",
                                    grep("\\[", rows, value = TRUE))
             expect_true(all(bracket_content %in% levels),
                         info = paste(info, transform, prefix))

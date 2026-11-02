@@ -1,6 +1,6 @@
 # Authoritative fitted parameter map.
 
-.bt_parameter_map_version <- 19L
+.bt_parameter_map_version <- 20L
 
 #' Fitted parameter map and coordinate view
 #'

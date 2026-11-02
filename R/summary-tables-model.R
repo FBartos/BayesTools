@@ -26,8 +26,9 @@
 #' @param remove_inclusion whether estimates of the inclusion probabilities
 #' should be excluded from the summary table. Defaults to \code{FALSE}.
 #' The indicator rows of spike-and-slab and mixture priors, of spike-and-slab
-#' totals of ordered-factor priors, and the raw variance-allocation gates are
-#' removed. The backend \code{_variable} and \code{_inclusion} rows of an
+#' totals of ordered-factor priors (labelled \code{<term>{total} (inclusion)}),
+#' and the raw variance-allocation gates are removed. The backend
+#' \code{_variable} and \code{_inclusion} rows of an
 #' ordered prior with a spike-and-slab total are not recognized as inclusion
 #' rows and remain in the table.
 #' Retained inclusion rows (spike-and-slab and mixture indicators, random-effect
@@ -1124,7 +1125,8 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
 # nodes 'prior_par_eta_<node>'), one column per ordered increment named by
 # the level it reaches: '<parameter>_ordered_allocation[<level>]', with the
 # ordered factor ('_<factor>') when the term has several and the theta slice
-# ('[<slice>]') when the term has slice-specific allocations. Shared ('id')
+# ('[<slice>]') when the term has slice-specific allocations, and labelled
+# 'term[share: <level>]' (see .bt_ordered_label_text()). Shared ('id')
 # allocations are shown with every term that uses them.
 # Transformed estimates show the level effects of ordered-factor priors, so
 # their total effect (the effect of the last level) and the slab draws of a

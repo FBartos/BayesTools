@@ -106,8 +106,8 @@ test_that("ordered-factor tables show sampled parameters or level effects", {
   # untransformed tables show the total and the allocation shares, the
   # normalized gamma nodes, instead of the increments; semantic tables omit
   # the gamma nodes themselves
-  expected <- c("(mu) intercept", "(mu) f_ordered_total",
-                "(mu) f_ordered_allocation[mid]", "(mu) f_ordered_allocation[hi]")
+  expected <- c("(mu) intercept", "(mu) f{total}",
+                "(mu) f[share: mid]", "(mu) f[share: hi]")
   for(mode in c("standard", "full")){
     expect_identical(
       rownames(JAGS_estimates_table(fit, random_effects_summary = mode,

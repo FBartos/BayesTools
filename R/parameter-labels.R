@@ -219,7 +219,17 @@
 #' contrast coefficients that are not level cells are written with curly
 #' braces (`g{1}`). Selectors percent-escape syntax-sensitive level characters
 #' and quote interaction tokens as the catalog does; table, plot, and warning
-#' labels show the level labels as they are. The label parts of catalog
+#' labels show the level labels as they are. The quantities of an ordered
+#' term ([prior_ordered()]) follow the same grammar: its total is a coefficient
+#' of the term that is not a level, `f{total}` (`f:x{total}` for a term with a
+#' continuous predictor, written on the last component that is not an ordinary
+#' factor), and the share of the total reached at a level is a per-level
+#' quantity of the ordered factor, `f[share: mid]` (`f[share: mid]:x`, with
+#' the tag on the component of its ordered factor). When the ordinary factors
+#' of the term index several slices, the slice follows the last ordinary
+#' factor: `f{total}:g{1}`, `f[share: mid]:g{1}`, `g{1}:f{total}`. The
+#' inclusion indicator of a mixture total reads `f{total} (inclusion)`. The
+#' label parts of catalog
 #' aliases render the aliases with `style = "table"`; under a `vocabulary`,
 #' they render the aliases of the renamed random-effect quantities (including
 #' the pairwise aliases of the shared correlation of `cs()` and `hcs()`

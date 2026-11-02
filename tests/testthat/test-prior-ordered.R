@@ -740,8 +740,8 @@ test_that("ordered scalar measures use declared contractions and exact primitive
   expect_equal(mean(as.numeric(total_conditional)),2.1,tolerance=1e-15)
   raw_table <- JAGS_estimates_table(spike$fit,conditional=TRUE,transform_factors=FALSE,remove_diagnostics=TRUE)
   level_table <- JAGS_estimates_table(spike$fit,conditional=TRUE,transform_factors=TRUE,remove_diagnostics=TRUE)
-  expect_equal(raw_table["(mu) f_ordered_total","Mean"],2.1,tolerance=1e-15)
-  expect_equal(raw_table["(mu) f_ordered_allocation[mid]","Mean"],.5,tolerance=1e-15)
+  expect_equal(raw_table["(mu) f{total}","Mean"],2.1,tolerance=1e-15)
+  expect_equal(raw_table["(mu) f[share: mid]","Mean"],.5,tolerance=1e-15)
   expect_equal(level_table["(mu) f[top]","Mean"],2.1,tolerance=1e-15)
   unconditional_levels <- transform_factor_samples(as_mixed_posteriors(spike$fit,"mu_f"))$mu_f
   subset <- .bt_draws_subset_rows(unconditional_levels,seq(2L,40L,2L))
@@ -3644,7 +3644,7 @@ test_that("estimates tables show ordered totals and shares or the level effects"
   allocation_rows <- function(case){
     table <- JAGS_estimates_table(case$fit, transform_factors = FALSE,
                                   remove_diagnostics = TRUE)
-    rows <- grep("_ordered_allocation", rownames(table), value = TRUE)
+    rows <- grep("[share: ", rownames(table), value = TRUE, fixed = TRUE)
     list(rows = rows, means = unname(table[rows, "Mean"]))
   }
   share_means <- function(case, nodes){
@@ -3661,9 +3661,9 @@ test_that("estimates tables show ordered totals and shares or the level effects"
   ))
   out <- allocation_rows(slices)
   expect_identical(out$rows, c(
-    "(mu) f_ordered_allocation[mid]", "(mu) f_ordered_allocation[hi]",
-    "(mu) f:g_ordered_allocation[1][mid]", "(mu) f:g_ordered_allocation[1][hi]",
-    "(mu) f:g_ordered_allocation[2][mid]", "(mu) f:g_ordered_allocation[2][hi]"
+    "(mu) f[share: mid]", "(mu) f[share: hi]",
+    "(mu) f[share: mid]:g{1}", "(mu) f[share: hi]:g{1}",
+    "(mu) f[share: mid]:g{2}", "(mu) f[share: hi]:g{2}"
   ))
   expect_equal(out$means, share_means(slices, c(
     "prior_par_eta_mu_f_ordered_alloc_f_1",
@@ -3692,10 +3692,10 @@ test_that("estimates tables show ordered totals and shares or the level effects"
   ))
   out <- allocation_rows(two)
   expect_identical(out$rows, c(
-    "(mu) f_ordered_allocation[mid]", "(mu) f_ordered_allocation[hi]",
-    "(mu) o_ordered_allocation[q]", "(mu) o_ordered_allocation[r]",
-    "(mu) f:o_ordered_allocation_f[mid]", "(mu) f:o_ordered_allocation_f[hi]",
-    "(mu) f:o_ordered_allocation_o[q]", "(mu) f:o_ordered_allocation_o[r]"
+    "(mu) f[share: mid]", "(mu) f[share: hi]",
+    "(mu) o[share: q]", "(mu) o[share: r]",
+    "(mu) f[share: mid]:o", "(mu) f[share: hi]:o",
+    "(mu) f:o[share: q]", "(mu) f:o[share: r]"
   ))
   expect_equal(out$means, share_means(two, c(
     "prior_par_eta_mu_f_ordered_alloc_f_1",
@@ -3712,8 +3712,8 @@ test_that("estimates tables show ordered totals and shares or the level effects"
   shared <- ordered_table_fit(~ f + x + f:x, shared_priors)
   out <- allocation_rows(shared)
   expect_identical(out$rows, c(
-    "(mu) f_ordered_allocation[mid]", "(mu) f_ordered_allocation[hi]",
-    "(mu) f:x_ordered_allocation[mid]", "(mu) f:x_ordered_allocation[hi]"
+    "(mu) f[share: mid]", "(mu) f[share: hi]",
+    "(mu) f[share: mid]:x", "(mu) f[share: hi]:x"
   ))
   expect_equal(out$means, rep(share_means(shared, "prior_par_eta_ordered_alloc_shape_f"), 2L),
                tolerance = 1e-12)
@@ -3739,6 +3739,228 @@ test_that("estimates tables show ordered totals and shares or the level effects"
                                         transform_factors = TRUE), "footnotes"))
 })
 
+
+test_that("rendered labels of ordered quantities follow the label grammar", {
+
+  # Totals read `term{total}` (`{s}` marks the slice of the ordinary factor),
+  # shares read `term[share: level]`, and the inclusion indicator of a mixture
+  # total reads like an ordinary inclusion row. Only the rendered labels differ
+  # from the backend names: the selectors, catalog canonical names, and the
+  # columns of the sampled parameters keep them.
+  data <- data.frame(
+    f = ordered(rep(c("lo", "mid", "hi"), 8L), levels = c("lo", "mid", "hi")),
+    o = ordered(rep(c("p", "q", "r"), each = 8L), levels = c("p", "q", "r")),
+    g = factor(rep(c("A", "B", "C"), 8L)),
+    h = factor(rep(c("u", "v"), each = 12L)),
+    x = sin(seq_len(24L))
+  )
+  N01 <- prior("normal", list(0, 1))
+  treatment <- prior_factor("normal", list(0, 1), contrast = "treatment")
+  spike <- prior_spike_and_slab(N01, prior("point", list(.5)))
+
+  # A fit of deterministic draws of the sampled parameters of its ordered
+  # priors (totals, indicator and variable of a mixture total, and gamma
+  # allocation nodes) and of the increments they give.
+  label_fit <- function(formula, priors, n = 20L){
+    info <- JAGS_formula(formula, "mu", data, priors)
+    bound <- info$prior_list
+    ordered <- names(bound)[vapply(bound, is.prior.ordered, logical(1))]
+    specs <- Map(.bt_ordered_spec, ordered, bound[ordered])
+    draws <- matrix(numeric(), n, 0L)
+    for(spec in specs){
+      total <- matrix(seq_len(n) / 10, n, length(spec$total_names))
+      if(is.prior.mixture(spec$total_prior)){
+        variable <- total + rep(seq_along(spec$total_names) - 1L, each = n)
+        colnames(variable) <- spec$total_node$spec$components[[1L]]$coordinates
+        indicator <- matrix(rep(c(0, 1), n / 2), ncol = 1L,
+                            dimnames = list(NULL, spec$total_node$spec$indicator))
+        draws <- cbind(draws, variable, indicator)
+        total <- variable * c(indicator)
+      }
+      colnames(total) <- spec$total_names
+      draws <- cbind(draws, total)
+      for(record in spec$allocations){
+        if(!identical(record$spec$type, "dirichlet") || all(record$gamma_coordinates %in% colnames(draws))) next
+        gamma <- matrix(rep(seq_len(record$dim), each = n), n) * seq_len(n)
+        colnames(gamma) <- record$gamma_coordinates
+        draws <- cbind(draws, gamma)
+      }
+    }
+    set.seed(1)
+    for(name in names(bound)){
+      prior <- bound[[name]]
+      value <- if(is.prior.ordered(prior)){
+        .bt_deterministic_node_evaluate(.bt_dnode_ordered_coefficients(specs[[name]]),
+                                        .bt_deterministic_lookup(draws))
+      }else{
+        columns <- if(is.prior.factor(prior)) .JAGS_prior_factor_names(name, prior) else name
+        matrix(stats::rnorm(n * length(columns)), n, length(columns), dimnames = list(NULL, columns))
+      }
+      draws <- cbind(draws, value)
+    }
+    fit <- structure(
+      list(mcmc = coda::mcmc.list(coda::mcmc(draws)), sample = n,
+           summary.pars = list(mutate = NULL), monitor = colnames(draws)),
+      class = c("runjags", "BayesTools_fit", "list")
+    )
+    attr(fit, "prior_list") <- bound
+    attr(fit, "formula_design") <- list(mu = info$formula_design)
+    list(fit = attach_test_parameter_map(fit), draws = draws, ordered = ordered)
+  }
+  # the ordered rows of a table: totals, indicators, and shares
+  ordered_rows <- function(table){
+    rows <- rownames(table)
+    rows[grepl("{total}", rows, fixed = TRUE) | grepl("[share: ", rows, fixed = TRUE)]
+  }
+  without_inclusion <- function(labels) labels[!grepl("(inclusion)", labels, fixed = TRUE)]
+
+  # the label (with the formula prefix omitted) of every ordered row of each
+  # variant: the totals, then the shares of each ordered term in prior order
+  variants <- list(
+    single = list(~ f, list(intercept = N01, f = prior_ordered(N01)),
+      c("f{total}", "f[share: mid]", "f[share: hi]")),
+    continuous = list(~ f + x + f:x,
+      list(intercept = N01, f = prior_ordered(N01), x = N01, "f:x" = prior_ordered(N01)),
+      c("f{total}", "f[share: mid]", "f[share: hi]",
+        "f:x{total}", "f[share: mid]:x", "f[share: hi]:x")),
+    two_ordered = list(~ f * o,
+      list(intercept = N01, f = prior_ordered(N01), o = prior_ordered(N01), "f:o" = prior_ordered(N01)),
+      c("f{total}", "f[share: mid]", "f[share: hi]",
+        "o{total}", "o[share: q]", "o[share: r]",
+        "f:o{total}", "f[share: mid]:o", "f[share: hi]:o", "f:o[share: q]", "f:o[share: r]")),
+    sliced = list(~ f * g,
+      list(intercept = N01, f = prior_ordered(N01), g = treatment, "f:g" = prior_ordered(N01)),
+      c("f{total}", "f[share: mid]", "f[share: hi]",
+        "f{total}:g{1}", "f{total}:g{2}",
+        "f[share: mid]:g{1}", "f[share: hi]:g{1}", "f[share: mid]:g{2}", "f[share: hi]:g{2}")),
+    sliced_first = list(~ g * f,
+      list(intercept = N01, f = prior_ordered(N01), g = treatment, "g:f" = prior_ordered(N01)),
+      c("f{total}", "f[share: mid]", "f[share: hi]",
+        "g{1}:f{total}", "g{2}:f{total}",
+        "g{1}:f[share: mid]", "g{1}:f[share: hi]", "g{2}:f[share: mid]", "g{2}:f[share: hi]")),
+    sliced_three = list(~ f * g * h,
+      list(intercept = N01, f = prior_ordered(N01), g = treatment,
+           h = prior_factor("normal", list(0, 1), contrast = "treatment"),
+           "f:g" = prior_ordered(N01), "f:h" = prior_ordered(N01),
+           "g:h" = prior_factor("normal", list(0, 1), contrast = "treatment"),
+           "f:g:h" = prior_ordered(N01)),
+      c("f{total}", "f[share: mid]", "f[share: hi]",
+        "f{total}:g{1}", "f{total}:g{2}",
+        "f[share: mid]:g{1}", "f[share: hi]:g{1}", "f[share: mid]:g{2}", "f[share: hi]:g{2}",
+        "f{total}:h", "f[share: mid]:h", "f[share: hi]:h",
+        "f{total}:g:h{1}", "f{total}:g:h{2}",
+        "f[share: mid]:g:h{1}", "f[share: hi]:g:h{1}", "f[share: mid]:g:h{2}", "f[share: hi]:g:h{2}")),
+    shared_id = list(~ f * g,
+      list(intercept = N01, f = prior_ordered(N01, id = "shape"), g = treatment,
+           "f:g" = prior_ordered(N01, id = "shape")),
+      c("f{total}", "f[share: mid]", "f[share: hi]",
+        "f{total}:g{1}", "f{total}:g{2}", "f[share: mid]:g", "f[share: hi]:g")),
+    spike = list(~ f, list(intercept = N01, f = prior_ordered(spike)),
+      c("f{total} (inclusion)", "f{total}", "f[share: mid]", "f[share: hi]")),
+    spike_sliced = list(~ f * g,
+      list(intercept = N01, f = prior_ordered(N01), g = treatment, "f:g" = prior_ordered(spike)),
+      c("f{total}", "f[share: mid]", "f[share: hi]",
+        "f{total}:g (inclusion)", "f{total}:g{1}", "f{total}:g{2}",
+        "f[share: mid]:g{1}", "f[share: hi]:g{1}", "f[share: mid]:g{2}", "f[share: hi]:g{2}"))
+  )
+  # the unchanged backend selector of every ordered row
+  selectors <- list(
+    single = c("mu_f_ordered_total", "mu_f_ordered_allocation[mid]", "mu_f_ordered_allocation[hi]"),
+    two_ordered = c(
+      "mu_f_ordered_total", "mu_f_ordered_allocation[mid]", "mu_f_ordered_allocation[hi]",
+      "mu_o_ordered_total", "mu_o_ordered_allocation[q]", "mu_o_ordered_allocation[r]",
+      "mu_f__xXx__o_ordered_total",
+      "mu_f__xXx__o_ordered_allocation_f[mid]", "mu_f__xXx__o_ordered_allocation_f[hi]",
+      "mu_f__xXx__o_ordered_allocation_o[q]", "mu_f__xXx__o_ordered_allocation_o[r]"),
+    sliced = c(
+      "mu_f_ordered_total", "mu_f_ordered_allocation[mid]", "mu_f_ordered_allocation[hi]",
+      "mu_f__xXx__g_ordered_total[1]", "mu_f__xXx__g_ordered_total[2]",
+      "mu_f__xXx__g_ordered_allocation[1][mid]", "mu_f__xXx__g_ordered_allocation[1][hi]",
+      "mu_f__xXx__g_ordered_allocation[2][mid]", "mu_f__xXx__g_ordered_allocation[2][hi]"),
+    shared_id = c(
+      "mu_f_ordered_total", "mu_f_ordered_allocation[mid]", "mu_f_ordered_allocation[hi]",
+      "mu_f__xXx__g_ordered_total[1]", "mu_f__xXx__g_ordered_total[2]",
+      "mu_f__xXx__g_ordered_allocation[mid]", "mu_f__xXx__g_ordered_allocation[hi]"),
+    spike = c("mu_f_ordered_total_indicator", "mu_f_ordered_total",
+              "mu_f_ordered_allocation[mid]", "mu_f_ordered_allocation[hi]")
+  )
+
+  for(name in names(variants)){
+    case <- label_fit(variants[[name]][[1L]], variants[[name]][[2L]])
+    expected <- paste("(mu)", variants[[name]][[3L]])
+
+    # fit tables
+    table <- JAGS_estimates_table(case$fit, transform_factors = FALSE, remove_diagnostics = TRUE)
+    expect_identical(ordered_rows(table), expected, info = name)
+    if(!is.null(selectors[[name]])){
+      row_selectors <- parameter_labels(attr(table, "quantities"), style = "selector")
+      expect_identical(row_selectors[match(expected, rownames(table))], selectors[[name]], info = name)
+    }
+
+    # mixed and ensemble displays (the indicator is no display row)
+    ensemble <- ensemble_estimates_table(as_mixed_posteriors(case$fit, case$ordered), case$ordered,
+                                         transform_factors = FALSE)
+    expect_identical(ordered_rows(ensemble), without_inclusion(expected), info = name)
+
+    # sampled parameters: the unchanged columns, the new labels
+    sampled <- lapply(JAGS_ordered_parameter_spec(case$fit, draws = case$draws), `[[`, "sampled_parameters")
+    sampled_labels <- unlist(lapply(sampled, function(x) .bt_label(unname(x$label_parts), "table")), use.names = FALSE)
+    sampled_columns <- unlist(lapply(sampled, function(x) colnames(x$values)), use.names = FALSE)
+    expect_setequal(sampled_labels, without_inclusion(expected))
+    expect_true(all(grepl("^mu_.*_ordered_(total|allocation)", sampled_columns)), info = name)
+  }
+
+  # the catalog: canonical names are unchanged, the new and the legacy
+  # labels resolve to the same quantity, and no alias belongs to two quantities
+  case <- label_fit(variants$spike_sliced[[1L]], variants$spike_sliced[[2L]])
+  catalog <- parameter_catalog(case$fit)
+  resolved <- function(alias) parameter_catalog_resolve(catalog, alias)$quantities$canonical_name
+  forms <- list(
+    "mu_f__xXx__g_ordered_total[1]" = c("(mu) f{total}:g{1}", "f{total}:g{1}",
+                                        "(mu) f:g_ordered_total[1]", "f:g_ordered_total[1]"),
+    "mu_f__xXx__g_ordered_total[2]" = c("(mu) f{total}:g{2}", "f{total}:g{2}",
+                                        "(mu) f:g_ordered_total[2]", "f:g_ordered_total[2]"),
+    "mu_f__xXx__g_ordered_total_indicator" = c("(mu) f{total}:g (inclusion)", "f{total}:g (inclusion)",
+                                               "(mu) f:g_ordered_total_indicator", "f:g_ordered_total_indicator"),
+    "mu_f_ordered_total" = c("(mu) f{total}", "f{total}", "(mu) f_ordered_total", "f_ordered_total")
+  )
+  for(canonical in names(forms)){
+    expect_identical(resolved(canonical), canonical)
+    for(alias in forms[[canonical]]){
+      expect_identical(resolved(alias), canonical, info = alias)
+    }
+    expect_identical(catalog$quantities$display_label[catalog$quantities$canonical_name == canonical],
+                     forms[[canonical]][[1L]], info = canonical)
+  }
+  # the hypothesis parser reads the labels of the catalog
+  for(alias in c("(mu) f{total}:g{1}", "f{total}:g{1}", "(mu) f:g_ordered_total[1]")){
+    parsed <- hypothesis_parse(paste(alias, "> 0"), catalog = catalog)
+    expect_identical(unique(hypothesis_resolve(parsed, catalog)$occurrences$canonical_name),
+                     "mu_f__xXx__g_ordered_total[1]", info = alias)
+  }
+  # shares are display rows, not catalog quantities
+  expect_error(parameter_catalog_resolve(catalog, "(mu) f[share: mid]"), class = "BayesTools_parameter_not_found")
+  aliases <- catalog$aliases[grepl("[{]total[}]|ordered_total", catalog$aliases$alias), ]
+  owners <- unique(data.frame(key = paste(aliases$alias, aliases$namespace, sep = "\r"),
+                              id = aliases$quantity_id))
+  expect_gt(nrow(owners), 20L)
+  expect_false(anyDuplicated(owners$key) > 0L)
+  other_canonical <- catalog$quantities$canonical_name[!catalog$quantities$quantity_id %in% owners$id]
+  expect_false(any(aliases$alias %in% other_canonical))
+  # the slab variable of the total keeps its backend label
+  expect_true("(mu) f:g_ordered_total_variable[1]" %in% catalog$quantities$display_label)
+
+  # remove_inclusion removes the indicator row, and only it
+  spike_case <- label_fit(variants$spike[[1L]], variants$spike[[2L]])
+  all_rows <- rownames(JAGS_estimates_table(spike_case$fit, transform_factors = FALSE, remove_diagnostics = TRUE))
+  kept_rows <- rownames(JAGS_estimates_table(spike_case$fit, transform_factors = FALSE,
+                                             remove_diagnostics = TRUE, remove_inclusion = TRUE))
+  expect_identical(setdiff(all_rows, kept_rows), "(mu) f{total} (inclusion)")
+  expect_setequal(
+    rownames(JAGS_estimates_table(spike_case$fit, transform_factors = TRUE, remove_diagnostics = TRUE)),
+    c("(mu) intercept", "(mu) f[mid]", "(mu) f[hi]", "(mu) f{total} (inclusion)")
+  )
+})
 
 test_that("internal ordered conditional localization retains canonical bound provenance", {
 

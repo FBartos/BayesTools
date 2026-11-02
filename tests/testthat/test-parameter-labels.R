@@ -730,7 +730,7 @@ test_that("mixed-posterior columns and ensemble rows are catalog labels of their
       rows <- rows[rows != "(mu) intercept"]
       model_table <- runjags_estimates_table(fit, transform_factors = transform_factors)
       for(row in rows){
-        if(contrast == "ordered" && !transform_factors && grepl("allocation", row, fixed = TRUE)){
+        if(contrast == "ordered" && !transform_factors && grepl("[share: ", row, fixed = TRUE)){
           expect_true(row %in% rownames(model_table), info = row)
           expect_equal(table[row, "Mean"], model_table[row, "Mean"], tolerance = 1e-10, info = row)
           next

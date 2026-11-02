@@ -415,9 +415,12 @@ prior_factor <- function(distribution, parameters, truncation = list(lower = -In
 #' Estimates tables with \code{transform_factors = TRUE} report the level
 #' effects (the first level of a \code{"cumulative"} contrast is the reference
 #' and has no row). With \code{transform_factors = FALSE}, they report the
-#' sampled parameters: the total effect and, for random allocations, the
-#' allocation share of each increment, labelled by the level the increment
-#' reaches (see [runjags_estimates_table()] and [ensemble_estimates_table()]).
+#' sampled parameters: the total effect, labelled \code{f{total}}, and, for
+#' random allocations, the allocation share of each increment, labelled by the
+#' level the increment reaches, \code{f[share: mid]} (see
+#' [runjags_estimates_table()], [ensemble_estimates_table()], and
+#' [parameter_labels()] for the labels of terms with several slices or
+#' predictors).
 #' Totals and primitive shares remain on the fitted scale when interactions
 #' prevent an original-scale factorization. Inclusion conditioning uses the
 #' declared total event; a discrete total alone does not create such an event.

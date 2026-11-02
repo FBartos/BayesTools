@@ -641,7 +641,24 @@ what it calls, needs a `fit` profile refresh of the cached fits.
   treatment and ordered levels are labelled by the cell itself). A
   coordinate is a direct level cell only where the contrast makes
   it so structurally (treatment, independent, first ordered coordinate),
-  never by floating-point equality of design rows. In a random interaction, a
+  never by floating-point equality of design rows. The quantities of an
+  ordered term follow the same grammar (one helper,
+  `.bt_ordered_label_text()`, builds every label): the total is a coefficient
+  of the term that is not a level, `f{total}`, written on the last component
+  that is not an ordinary factor (`f:x{total}`, `f:o{total}`), and the share of
+  the total added at a level is a per-level quantity of its ordered factor,
+  `f[share: mid]`, with the tag on the component of that factor
+  (`f[share: mid]:x`, `f:o[share: q]`). When the ordinary factors of the term
+  index several slices (`theta_dim > 1`), the slice follows the last ordinary
+  factor, `f{total}:g{1}`, `f[share: mid]:g{1}`, `g{1}:f{total}`,
+  `f{total}:g:h{1}`, unless the allocation is shared by `id` (no slice). The
+  inclusion indicator of a mixture total reads like an ordinary inclusion row,
+  `f{total} (inclusion)`, without a slice. Only the rendered labels follow this
+  grammar: the JAGS nodes, the catalog canonical names (`mu_f_ordered_total`),
+  the label-part selectors, and the columns of
+  `JAGS_ordered_parameter_spec()$sampled_parameters` keep the backend names, and
+  the earlier labels of the total and its indicator (`f_ordered_total`,
+  `f:g_ordered_total[1]`) remain catalog aliases. In a random interaction, a
   factor that R codes by level indicators (the stored coding of the term: its
   margin is absent from the block, as in `f:g` without `f` or `g`, or `f:x`
   without `x`) counts as independent whatever its declared contrast, so the
@@ -787,8 +804,9 @@ what it calls, needs a `fit` profile refresh of the cached fits.
   fitted scale. Mixed producers retain these primitive sources with their
   selected model and row; raw ensemble tables use their complete declared-model
   union, including fixed allocations and undefined shares in absent models.
-  `JAGS_ordered_parameter_spec()` owns source names, labels, tensor projections
-  and exact scalar point states. Every available ordered semantic value uses
+  `JAGS_ordered_parameter_spec()` owns source names, labels (`f{total}`,
+  `f[share: mid]`; the sampled columns keep the backend names), tensor
+  projections and exact scalar point states. Every available ordered semantic value uses
   its retained primitive projection, including continuous cumulative effects;
   declared view transformations and undefined rows retain their meaning.
   Formula projections receive fitted weights and reuse the aligned fitted

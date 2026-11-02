@@ -1,3 +1,41 @@
+# Labels of the quantities of an ordered term follow the label grammar: `term{...}`
+# marks a coefficient of the term that is not a level (`f{total}`), and
+# `term[tag: level]` a per-level quantity (`f[share: mid]`, as `[dif: level]`
+# marks a transformed level). The label is built from the term components in
+# term order. The ordered components are the ordered factors; the slice
+# components are the ordinary factors, whose contrast coordinates index the
+# slices of a term with 'theta_dim' > 1: a total is marked on the last
+# component that is not a slice component (`f{total}`, `f:x{total}`,
+# `g{1}:f{total}`), a share on the component of its ordered factor
+# (`f[share: mid]:o`), and the slice index '{s}' follows the last slice
+# component (`f{total}:g:h{1}`). Only rendered labels follow this grammar; the
+# selectors and JAGS nodes keep the backend names.
+.bt_ordered_label_text <- function(components, metadata, quantity, factor = NULL,
+                                   level = NULL, slice = NULL, inclusion = FALSE){
+
+  slice_components <- components %in% metadata$ordinary_terms
+  text <- components
+  if(identical(quantity, "total")){
+    marked <- max(c(1L, which(!slice_components)))
+    text[marked] <- paste0(text[marked], "{total}")
+  }else{
+    marked <- match(factor, components)
+    if(is.na(marked)) marked <- length(components)
+    text[marked] <- paste0(text[marked], "[share: ", level, "]")
+  }
+  if(!is.null(slice) && any(slice_components)){
+    last <- max(which(slice_components))
+    text[last] <- paste0(text[last], "{", slice, "}")
+  }
+  paste0(paste(text, collapse = ":"), if(inclusion) " (inclusion)")
+}
+
+# The slice index of the totals of an ordered term: NULL without slices.
+.bt_ordered_total_slices <- function(metadata){
+
+  if(metadata$theta_dim > 1L) seq_len(metadata$theta_dim)
+}
+
 .bt_ordered_allocation_parts <- function(spec, record, sliced = NULL, slice = record$slice){
 
   if(is.null(sliced)) sliced <- spec$metadata$theta_dim > 1L && is.null(record$id)
@@ -8,10 +46,66 @@
     if(sliced) paste0("[",slice,"]"))
   names <- paste0(spec$parameter,suffix,"[",tokens,"]")
   parts <- lapply(seq_along(names),function(i){
-    .bt_label_parts(components=paste0(paste(spec$label_parts$components,collapse=":"),suffix,"[",tokens[[i]],"]"),
+    .bt_label_parts(components=.bt_ordered_label_text(spec$label_parts$components,spec$metadata,"share",
+        factor=record$factor,level=tokens[[i]],slice=if(sliced) slice),
       formula_parameter=spec$label_parts$formula_parameter,selector=names[[i]])
   })
   stats::setNames(parts,names)
+}
+
+# Label parts of the total coordinates of the ordered prior 'prior' of
+# 'parameter', named by the coordinates, and of the inclusion indicator of a
+# mixture total (the label of the total without its slice index and with the
+# inclusion suffix). With 'legacy', the labels the quantities had before their
+# labels followed the label grammar (`f_ordered_total`, `f:g_ordered_total[1]`,
+# `f_ordered_total_indicator`), which the catalog keeps as aliases.
+.bt_ordered_total_label_parts <- function(parameter, prior,
+                                          term = .bt_label_parts_term(parameter, prior),
+                                          legacy = FALSE){
+
+  metadata <- .prior_ordered_metadata(prior)
+  names <- .prior_ordered_total_monitor_names(prior, parameter)
+  slices <- .bt_ordered_total_slices(metadata)
+  stem <- paste0(paste(term$components, collapse = ":"), "_ordered_total")
+  text <- if(legacy){
+    paste0(stem, if(!is.null(slices)) paste0("[", slices, "]"))
+  }else{
+    vapply(seq_along(names), function(i){
+      .bt_ordered_label_text(term$components, metadata, "total", slice = slices[i])
+    }, character(1))
+  }
+  if(is.prior.mixture(prior$total)){
+    names <- c(names, paste0(.prior_ordered_total_name(parameter), "_indicator"))
+    text <- c(text, if(legacy){
+      paste0(stem, "_indicator")
+    }else{
+      .bt_ordered_label_text(term$components, metadata, "total", inclusion = TRUE)
+    })
+  }
+  stats::setNames(lapply(seq_along(names), function(i){
+    .bt_label_parts(components = text[[i]], formula_parameter = term$formula_parameter,
+                    selector = names[[i]])
+  }), names)
+}
+
+# The label parts of the totals (and total indicators) of the ordered terms in
+# 'prior_list', named by their coordinates. The ordered SD components of a
+# random block are backend coordinates and keep their backend labels.
+.bt_ordered_total_label_parts_list <- function(prior_list, legacy = FALSE){
+
+  parts <- list()
+  for(parameter in names(prior_list)){
+    prior <- prior_list[[parameter]]
+    if(!is.prior.ordered(prior) || is.null(attr(prior, "ordered_metadata", exact = TRUE))){
+      next
+    }
+    term <- .bt_label_parts_term(parameter, prior)
+    if(is.null(term$random)){
+      parts <- c(parts, .bt_ordered_total_label_parts(parameter, prior, term, legacy))
+    }
+  }
+
+  parts
 }
 
 .bt_ordered_allocation_shares <- function(parameter, prior, model_samples){
@@ -188,12 +282,7 @@
       totals[rows, ] <- source$primitives[rows, spec$total_names, drop = FALSE]
     }
   }
-  parts <- lapply(template$total_names, function(name){
-    suffix <- substring(name, nchar(source$parameter) + 1L)
-    .bt_label_parts(components = paste0(paste(template$label_parts$components, collapse = ":"), suffix),
-      formula_parameter = template$label_parts$formula_parameter, selector = name)
-  })
-  names(parts) <- template$total_names
+  parts <- .bt_ordered_total_label_parts(template$parameter, template$prior)[template$total_names]
   columns <- list(totals)
   undefined <- character()
   for(factor in template$metadata$ordered_terms){

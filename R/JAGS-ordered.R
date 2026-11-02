@@ -45,7 +45,9 @@
 #' the monitored total is their fitted snapshot alternative. No supplied draws
 #' means no values field. With \code{weights = NULL} and supplied \code{draws},
 #' each term also contains \code{sampled_parameters}: \code{values} is the fitted
-#' total/share matrix, \code{label_parts} names its rendered labels, and
+#' total/share matrix (its columns keep the backend names of the sources),
+#' \code{label_parts} holds the rendered labels (\code{f{total}},
+#' \code{f[share: mid]}, see [parameter_labels()]), and
 #' \code{allocation_names} identifies its sampled share columns. Fixed totals
 #' materialize every slice; fixed allocations produce no sampled share columns.
 #'

@@ -698,7 +698,8 @@
                                                   formula_parameter,
                                                   name_map_row = NULL,
                                                   factor_cache = new.env(parent = emptyenv()),
-                                                  weight_bins = character()){
+                                                  weight_bins = character(),
+                                                  ordered_totals = list()){
 
   # a publication-weight bin is labelled by its p-value interval, as the
   # summaries print it
@@ -707,6 +708,11 @@
       components = weight_bins[[coordinate_name]],
       selector   = coordinate_name
     ))
+  }
+  # the total of an ordered term (and the indicator of its mixture total) is
+  # labelled by its term and the label grammar of ordered quantities
+  if(coordinate_name %in% names(ordered_totals)){
+    return(ordered_totals[[coordinate_name]])
   }
 
   verbatim <- function(label, parameter = formula_parameter){
@@ -836,6 +842,7 @@
   name_map <- .bt_parameter_coordinates_name_map(formula_design)
   factor_cache <- new.env(parent = emptyenv())
   weight_bins <- .bt_weight_bin_interval_labels(prior_list)
+  ordered_totals <- .bt_ordered_total_label_parts_list(prior_list)
   lapply(seq_len(nrow(coordinates)), function(i){
     coordinate_name <- coordinates$coordinate_name[i]
     base_name <- .bt_parameter_coordinates_base(coordinate_name)
@@ -853,7 +860,8 @@
       formula_parameter = coordinates$formula_parameter[i],
       name_map_row      = name_map[name_map$jags_name == base_name, , drop = FALSE],
       factor_cache      = factor_cache,
-      weight_bins       = weight_bins
+      weight_bins       = weight_bins,
+      ordered_totals    = ordered_totals
     )
   })
 }
@@ -897,7 +905,8 @@
                                            role, formula_parameter,
                                            name_map_row = NULL,
                                            factor_cache = new.env(parent = emptyenv()),
-                                           weight_bins = character()){
+                                           weight_bins = character(),
+                                           ordered_totals = list()){
 
   .bt_label(
     .bt_parameter_coordinates_label_parts(
@@ -908,7 +917,8 @@
       formula_parameter = formula_parameter,
       name_map_row      = name_map_row,
       factor_cache      = factor_cache,
-      weight_bins       = weight_bins
+      weight_bins       = weight_bins,
+      ordered_totals    = ordered_totals
     ),
     style = "table"
   )
@@ -959,6 +969,7 @@
     .bt_parameter_coordinates_random_prior_auxiliary_owners(prior_list)
   )
   weight_bins <- .bt_weight_bin_interval_labels(prior_list)
+  ordered_totals <- .bt_ordered_total_label_parts_list(prior_list)
   coefficient_auxiliaries <-
     .bt_parameter_coordinates_coefficient_auxiliaries(prior_list)
   dirichlet_auxiliaries <- c(
@@ -1100,7 +1111,8 @@
         formula_parameter = formula_parameter,
         name_map_row      = name_map_row,
         factor_cache      = factor_cache,
-        weight_bins       = weight_bins
+        weight_bins       = weight_bins,
+        ordered_totals    = ordered_totals
       ),
       grouping,
       structure,

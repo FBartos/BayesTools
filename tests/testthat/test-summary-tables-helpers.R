@@ -1263,17 +1263,17 @@ test_that("remove_inclusion removes every row flagged as an inclusion row", {
   ordered_fit <- .ordered_total_fit_for_test(
     prior_spike_and_slab(prior("normal", list(0, 1), list(0, Inf)))
   )
-  expect_identical(removed_rows(ordered_fit), "(mu) f_ordered_total_indicator")
-  expect_identical(removed_rows(ordered_fit, transform_factors = TRUE), "(mu) f_ordered_total_indicator")
+  expect_identical(removed_rows(ordered_fit), "(mu) f{total} (inclusion)")
+  expect_identical(removed_rows(ordered_fit, transform_factors = TRUE), "(mu) f{total} (inclusion)")
   samples <- runjags_estimates_table(
     ordered_fit, remove_inclusion = TRUE, return_samples = TRUE
   )
-  expect_false("(mu) f_ordered_total_indicator" %in% colnames(samples))
-  expect_true("(mu) f_ordered_total" %in% colnames(samples))
+  expect_false("(mu) f{total} (inclusion)" %in% colnames(samples))
+  expect_true("(mu) f{total}" %in% colnames(samples))
   # the inclusion row is kept by default
   default <- runjags_estimates_table(ordered_fit, remove_diagnostics = TRUE)
   expect_equal(
-    as.numeric(default["(mu) f_ordered_total_indicator", "Mean"]),
+    as.numeric(default["(mu) f{total} (inclusion)", "Mean"]),
     mean(as.matrix(ordered_fit$mcmc[[1L]])[, "mu_f_ordered_total_indicator"])
   )
 

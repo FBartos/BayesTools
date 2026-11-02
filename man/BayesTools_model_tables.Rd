@@ -243,8 +243,8 @@ grand mean, and factors with \code{\link[=prior_ordered]{prior_ordered()}} prior
 their level effects (without the reference level of a \code{"cumulative"}
 contrast, which is fixed at zero). Untransformed ordered factors show the
 sampled parameters: \code{runjags_estimates_table()} reports the total
-effect (\code{<term>_ordered_total}) and the allocation shares of the
-random allocations (\code{<term>_ordered_allocation[<level>]}, the share
+effect (\code{<term>{total}}) and the allocation shares of the
+random allocations (\code{<term>[share: <level>]}, the share
 of the total added when reaching \code{<level>}; fixed allocations have no
 rows). \code{ensemble_estimates_table()} reports retained fitted totals and
 the union of allocation shares sampled by any declared ordered model.
@@ -257,8 +257,9 @@ mixed objects without retained sources must be recreated from source fits.}
 \item{remove_inclusion}{whether estimates of the inclusion probabilities
 should be excluded from the summary table. Defaults to \code{FALSE}.
 The indicator rows of spike-and-slab and mixture priors, of spike-and-slab
-totals of ordered-factor priors, and the raw variance-allocation gates are
-removed. The backend \code{_variable} and \code{_inclusion} rows of an
+totals of ordered-factor priors (labelled \code{<term>{total} (inclusion)}),
+and the raw variance-allocation gates are removed. The backend
+\code{_variable} and \code{_inclusion} rows of an
 ordered prior with a spike-and-slab total are not recognized as inclusion
 rows and remain in the table.
 Retained inclusion rows (spike-and-slab and mixture indicators, random-effect
