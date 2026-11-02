@@ -456,7 +456,27 @@ relative criterion of the other quadrature leaves (1e-4,
 `2^21` nodes (at most five coordinates admit a doubling), a Beta exponent below
 the strong-singularity limit (0.1) rejects the result with the leaf's
 integration diagnostics (`converged = FALSE`), and more coordinates refuse the
-route. The density at the offset is classified for one total times a product of
+route. A single random total with a finite support bound (uniform, truncated
+families) has a conditional density with jumps or kinks in `B` where
+`(x - s(B)) / c(B)` crosses a bound, which consecutive tensor rules miss alike
+(rule doubling accepted a relative error of 5e-3 for `T ~ U(1, 1.01)` times two
+uniform shares). Its integrals are therefore split at closed-form breakpoints
+(`R/prior-density-ordered-pieces.R`): `c` and `s` are affine in each coordinate,
+so `x - s = b c` and `c = 0` are affine equations in a coordinate; the innermost
+coordinate is split at their roots, and each outer coordinate at the roots of
+the same equations at the corners of the deeper coordinates (where the inner
+breakpoints reach an end of `[0, 1]`, the only kinks of the inner integral).
+Pieces that reach an end of `[0, 1]` are Gauss-Jacobi rules with the Beta weight
+of that end, the other pieces Gauss-Jacobi rules without a weight with the
+Beta density as a factor. A value is accepted when the last two rules agree at
+the criterion and the two before them at 100 times it; unresolved values
+(singular bounds, e.g. a Beta(0.6, 0.6) total) are rejected, and a bounded
+total with more than three coordinates is refused. Plotted densities accept the
+last two rules at 1e-3 (the outer coordinates of three or more are not split).
+The range of a combination (display grids) is the product of the total's range
+and the range of the reduced coefficients: the coefficient is multilinear in
+the allocations, each on its simplex, so it is extreme at a vertex, an entry
+of the tensor; no cube of the shares is enumerated. The density at the offset is classified for one total times a product of
 shares (`f_T(0) E[1 / |c|]` in closed form, infinite when a share's exponent
 is at most 1); other offsets and the support bounds use the quadrature or stay
 unclassified. Spike-and-slab and mixture totals are expanded per term before

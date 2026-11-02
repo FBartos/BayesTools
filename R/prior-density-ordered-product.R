@@ -232,25 +232,32 @@
     out[!is.finite(out)] <- 0
     return(out)
   }
+  matrix(.prior_ordered_product_scale_density(spec, values, state$shift, state$scale), n, length(x))
+}
+
+# Density f_T((x - shift) / scale) / |scale| of a single random total T at the
+# elementwise values 'x' (a vector or matrix recycled with 'shift' and 'scale'
+# down the rows); a coefficient of 0, where the conditional law is a point, has
+# no density.
+.prior_ordered_product_scale_density <- function(spec, x, shift, scale){
+
   term <- spec$terms[[spec$random_terms[[1L]]]]
-  total <- term$total
-  argument <- (values - state$shift) / state$scale
+  argument <- (x - shift) / scale
   if(!is.null(term$mean)){
-    # a normal total: the density of the argument directly (no coefficient
-    # c(B) = 0, where the conditional law is a point, has a density)
-    out <- stats::dnorm(argument, term$mean, term$sd) / abs(state$scale)
+    # a normal total: the density of the argument directly
+    out <- stats::dnorm(argument, term$mean, term$sd) / abs(scale)
     out[!is.finite(out)] <- 0
     return(out)
   }
-  usable <- which(state$scale != 0 & is.finite(argument))
-  out <- matrix(0, n, length(x))
+  scale <- rep_len(scale, length(argument))
+  usable <- which(scale != 0 & is.finite(argument))
+  out <- numeric(length(argument))
   if(length(usable) > 0L){
-    rows <- ((usable - 1L) %% n) + 1L
-    log_density <- .prior_quadrature_log_density(total, argument[usable], spec$log_density) -
-      log(abs(state$scale[rows]))
+    log_density <- .prior_quadrature_log_density(term$total, as.vector(argument)[usable], spec$log_density) -
+      log(abs(scale[usable]))
     out[usable] <- exp(log_density)
   }
-  out
+  if(is.matrix(argument)) matrix(out, nrow(argument), ncol(argument)) else out
 }
 
 # Conditional probability of the continuous region 'intervals' given B at the
@@ -295,9 +302,8 @@
 
 # Nodes (a row per node, a column per coordinate) and weights of the tensor
 # Gauss-Jacobi rule with 'n' nodes per coordinate.
-.prior_ordered_product_nodes <- function(spec, n){
+.prior_ordered_product_nodes <- function(spec, n, coordinates = spec$structure$coordinates){
 
-  coordinates <- spec$structure$coordinates
   p <- length(coordinates)
   total <- as.numeric(n)^p
   nodes <- matrix(0, total, p)
@@ -548,9 +554,7 @@
   if(!is.null(strong)){
     integral <- .prior_ordered_product_not_attempted(strong)
   }else{
-    result <- .prior_ordered_product_integrate(spec, function(state, columns){
-      .prior_ordered_product_conditional_density(spec, state, value)
-    }, 1L)
+    result <- .prior_ordered_product_integrate_density(spec, value)
     integral <- .prior_ordered_product_integral(result, 1L,
       "zero ordinate for a structurally positive density")
   }
@@ -641,10 +645,7 @@
   if(!is.null(strong)){
     return(.prior_ordered_product_not_attempted(strong))
   }
-  result <- .prior_ordered_product_integrate(spec, function(state, columns){
-    matrix(.prior_ordered_product_conditional_probability(spec, state, intervals),
-           ncol = length(columns), nrow = length(state$shift))
-  }, 1L)
+  result <- .prior_ordered_product_integrate_region(spec, intervals)
   .prior_ordered_product_integral(result, 1L, "zero probability for a structurally positive region")
 }
 
@@ -665,9 +666,8 @@
   special <- finite & (at_shift | x == hull[1L] | x == hull[2L])
   open <- which(finite & is.na(out) & !special)
   if(length(open) > 0L && is.null(.prior_ordered_product_strong_singularity(spec))){
-    result <- .prior_ordered_product_integrate(spec, function(state, columns){
-      .prior_ordered_product_conditional_density(spec, state, x[open][columns])
-    }, length(open), tolerance = 1e-3, budget = 5e7)
+    result <- .prior_ordered_product_integrate_density(spec, x[open], tolerance = 1e-3, budget = 5e7,
+                                                       display = TRUE)
     out[open[result$accepted]] <- result$estimate[result$accepted]
   }
   for(i in which(special)){

@@ -96,9 +96,11 @@ coordinates of the allocations: for a single total with a simple
 continuous prior, or normal totals, the ordinate and region probabilities
 integrate the closed-form conditional law over these coordinates with a
 tensor Gauss-Jacobi rule, doubled until two rules agree (method
-\code{"scale_mixture"}, provenance \code{ordered_product}). Its offset density is
-classified for a single total times a product of shares, and a Beta
-exponent below 0.1 rejects the quadrature. Other combinations (several
+\code{"scale_mixture"}, provenance \code{ordered_product}); a total with a finite
+support bound is integrated with the closed-form breakpoints where the
+argument of its density crosses a bound (at most three coordinates). Its
+offset density is classified for a single total times a product of shares,
+and a Beta exponent below 0.1 rejects the quadrature. Other combinations (several
 totals that are not normal, point totals that make the level a nonlinear
 function of several shares) are \code{unknown} and refused. Their
 ordinates use

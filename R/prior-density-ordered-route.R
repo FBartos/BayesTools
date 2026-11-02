@@ -269,6 +269,13 @@
   if(identical(mode, "scale")){
     spec$log_density <- .prior_simple_lpdf_evaluator(terms[[random]]$total, purpose = "natural_integral")
   }
+  if(.prior_ordered_product_bounded_total(spec) && p > .prior_ordered_product_piece_coordinates()){
+    return(refuse(paste0(
+      "A total with a bounded support in a product of ", p, " allocation coordinates has no verified ",
+      "quadrature: its density has kinks where the argument crosses a bound, which the nested pieces ",
+      "split for at most ", .prior_ordered_product_piece_coordinates(), " coordinates."
+    )))
+  }
   spec$hull <- .prior_ordered_product_hull(spec)
   list(type = "ordered_product", spec = spec, n_grid = n_grid)
 }
@@ -340,31 +347,23 @@
 
 # Numerical range of a combination of an ordered term that is not one
 # allocation share: the sum over its slices of the products of the range of the
-# total and the range of the slice's coefficient (the allocation shares attain
-# its extremes at the corners of their unit cube).
+# total and the range of the slice's coefficient. The coefficient is multilinear
+# in the allocations, each on its simplex, so it attains its extremes at the
+# vertices, where it equals an entry of the slice's reduced tensor: its range is
+# the range of the tensor's coefficients (no enumeration of the shares).
 .prior_ordered_product_range <- function(ordered_prior, weights, indices, tail_prob){
 
   slices <- .prior_ordered_linear_slices(ordered_prior, weights, indices)
   if(length(slices) == 0L){
     return(c(0, 0))
   }
-  terms <- lapply(slices, function(slice) list(tensor = slice$tensor))
-  structure <- .prior_ordered_product_structure(terms)
-  for(j in seq_along(terms)){
-    terms[[j]]$class_tensor <- .prior_ordered_product_class_tensor(terms[[j]], structure)
-  }
-  p <- length(structure$coordinates)
-  corners <- if(p == 0L) matrix(0, 1L, 0L) else .prior_ordered_product_corners(structure)
-  coefficients <- .prior_ordered_product_coefficients(
-    terms, .prior_ordered_product_shares(structure, corners), nrow(corners)
-  )
   .prior_ordered_total_linear_measure_check(ordered_prior$total)
   total_range <- .prior_linear_group_range(
     list(prior = ordered_prior$total, weights = c(.ordered_total = 1), indices = 1L),
     tail_prob = tail_prob, source_transforms = c(.ordered_total = NA_character_)
   )
-  ranges <- vapply(coefficients, function(coefficient){
-    range(.prior_ordered_product_bound_products(coefficient, total_range))
+  ranges <- vapply(slices, function(slice){
+    range(.prior_ordered_product_bound_products(range(slice$tensor$coefficients), total_range))
   }, numeric(2))
   c(sum(ranges[1L, ]), sum(ranges[2L, ]))
 }

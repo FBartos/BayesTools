@@ -514,3 +514,190 @@ test_that("a level of one slice is the total times a Beta share, as in a term wi
   expect_equal(.route_height(top, .3), stats::dnorm(.3), tolerance = 1e-12)
   expect_equal(.route_probability(top, .3), stats::pnorm(.3, lower.tail = FALSE), tolerance = 1e-12)
 })
+
+# Totals with a bounded support: the conditional density f_T(x / c(B)) / |c(B)|
+# jumps or has kinks in the shares where x / c(B) crosses a bound of T. The
+# product T U V of a total with the cells of two uniform shares (f mid, o q)
+# has closed-form references.
+.bounded_cross_priors <- function(total){
+
+  .interaction_priors(~ f * o, list(intercept = N01, f = prior_ordered(N01),
+    o = prior_ordered(N01), "f:o" = prior_ordered(total, allocation = list(
+      f = prior("dirichlet", list(c(1, .5, .5))), o = prior("dirichlet", list(c(1, 1)))))))
+}
+
+.bounded_cross_route <- function(total, cell = "f=mid, o=q"){
+
+  .interaction_route(.bounded_cross_priors(total)[["mu_f__xXx__o"]], cell)
+}
+
+# The density of T U V at x < 1, T ~ U(1, 1 + width): (-log(x) log(1 + width) +
+# log(1 + width)^2 / 2) / width.
+.uniform_product_density <- function(x, width){
+
+  (-log(x) * log1p(width) + log1p(width)^2 / 2) / width
+}
+
+test_that("a total with a bounded support is integrated with the breakpoints of its bounds", {
+
+  # the case that rule doubling alone accepted at a relative error of 5e-3
+  narrow <- .bounded_cross_route(prior("uniform", list(1, 1.01)))
+  ordinate <- BayesTools:::.prior_density_route_ordinate(narrow, .72)
+  expect_true(ordinate$exact)
+  expect_equal(exp(ordinate$log_density), .uniform_product_density(.72, .01), tolerance = 1e-9)
+  expect_equal(exp(ordinate$log_density), 0.331822869503, tolerance = 1e-9)
+  # and through the public ordinate of the prior density of the level
+  priors <- .bounded_cross_priors(prior("uniform", list(1, 1.01)))
+  density <- BayesTools:::.prior_linear_combination_density(
+    priors, .cell_combination(priors[["mu_f__xXx__o"]], "f=mid, o=q"), n_grid = 128L)
+  public <- prior_density_ordinate(density, .72)
+  expect_true(public$exact)
+  expect_equal(exp(public$log_density), 0.331822869503, tolerance = 1e-9)
+
+  # every value within the criterion of the closed form, for narrow to wide supports
+  x <- seq(.01, .99, length.out = 99)
+  for(width in c(1, .1, .01, .001)){
+    route <- .bounded_cross_route(prior("uniform", list(1, 1 + width)))
+    result <- BayesTools:::.prior_ordered_product_integrate_density(route$spec, x)
+    expect_true(all(result$accepted), info = width)
+    expect_lt(max(abs(result$value / .uniform_product_density(x, width) - 1)), 1e-7)
+  }
+
+  # T ~ U(1, 2) over both regimes of x (the density is log(2 / x)^2 / 2 above 1)
+  wide <- .bounded_cross_route(prior("uniform", list(1, 2)))
+  x <- c(seq(.05, .95, length.out = 11), seq(1.05, 1.95, length.out = 11))
+  reference <- ifelse(x < 1, .uniform_product_density(x, 1), log(2 / x)^2 / 2)
+  heights <- vapply(x, function(value) .route_height(wide, value), numeric(1))
+  expect_lt(max(abs(heights / reference - 1)), 1e-7)
+
+  # truncated normal totals with one or two finite bounds: a one-dimensional integral over T
+  for(total in list(prior("normal", list(1, .5), list(0, 1.5)), prior("normal", list(0, 1), list(-Inf, 1)),
+                    prior("normal", list(1, .3), list(.8, Inf)))){
+    route <- .bounded_cross_route(total)
+    x <- seq(.05, .95, length.out = 12)
+    reference <- vapply(x, function(value){
+      upper <- total$truncation$upper
+      stats::integrate(function(t) BayesTools::mpdf(total, t) * (-log(value / t)) / t,
+                       max(total$truncation$lower, value), if(is.finite(upper)) upper else 40,
+                       rel.tol = 1e-12)$value
+    }, numeric(1))
+    heights <- vapply(x, function(value) .route_height(route, value), numeric(1))
+    expect_lt(max(abs(heights / reference - 1)), 1e-7)
+  }
+
+  # regions: P(X > x) = E[S_T(x / W)] with W = U V
+  survival <- function(y, width) pmin(1, pmax(0, (1 + width - y) / width))
+  for(value in c(.2, .72, .95)){
+    reference <- stats::integrate(function(w) -log(w) * survival(value / w, .01), value / 1.01, value,
+                                  rel.tol = 1e-12)$value +
+      stats::integrate(function(w) -log(w), value, 1, rel.tol = 1e-12)$value
+    expect_equal(.route_probability(narrow, value), reference, tolerance = 1e-9, info = value)
+    expect_equal(.route_probability(narrow, -Inf, value), 1 - reference, tolerance = 1e-9, info = value)
+  }
+})
+
+test_that("a coefficient that changes sign and three coordinates are integrated with their breakpoints", {
+
+  # T (G1 - G2), (G1, G2, G3) ~ Dirichlet(1, 1, 1), T ~ U(1, 2): G1 - G2 has the density 1 - |d|
+  single <- .interaction_priors(~ f, list(intercept = N01, f = prior_ordered(prior("uniform", list(1, 2)),
+    allocation = prior("dirichlet", list(c(1, 1, 1))))))[["mu_f"]]
+  difference <- BayesTools:::.prior_density_route_linear(list(mu_f = single),
+    c("mu_f[1]" = 1, "mu_f[2]" = -1), NULL, 1024L)
+  expect_identical(difference$type, "ordered_product")
+  x <- c(seq(-1.9, -.05, length.out = 10), seq(.05, 1.9, length.out = 10))
+  reference <- vapply(x, function(value){
+    stats::integrate(function(t) pmax(0, 1 - abs(value) / t) / t, max(1, abs(value)), 2, rel.tol = 1e-12)$value
+  }, numeric(1))
+  heights <- vapply(x, function(value) .route_height(difference, value), numeric(1))
+  expect_lt(max(abs(heights / reference - 1)), 1e-7)
+  tail <- stats::integrate(function(t) ifelse(.3 / t < 1, (1 - .3 / t)^2 / 2, 0), 1, 2, rel.tol = 1e-12)$value
+  expect_equal(.route_probability(difference, .3), tail, tolerance = 1e-9)
+  expect_equal(.route_probability(difference, -Inf, -.3), tail, tolerance = 1e-9)
+
+  # the cell of three 3-level ordered factors is T times a product of three uniform shares (log W
+  # is minus a Gamma(3) variable), T ~ U(1, 2)
+  data <- expand.grid(f = ordered(c("a", "b", "c")), o = ordered(c("p", "q", "r")), q = ordered(c("u", "v", "w")))
+  three <- JAGS_formula(~ f * o * q, "mu", data, list(intercept = N01, f = prior_ordered(N01),
+    o = prior_ordered(N01), q = prior_ordered(N01), "f:o" = prior_ordered(N01), "f:q" = prior_ordered(N01),
+    "o:q" = prior_ordered(N01), "f:o:q" = prior_ordered(prior("uniform", list(1, 2)))))$prior_list[[
+      "mu_f__xXx__o__xXx__q"]]
+  cell <- .interaction_route(three, "f=b, o=q, q=v")
+  expect_length(cell$spec$structure$coordinates, 3L)
+  x <- c(.02, .3, .9, 1.7)
+  reference <- vapply(x, function(value){
+    stats::integrate(function(t) log(t / value)^2 / 2 / t, max(1, value), 2, rel.tol = 1e-12)$value
+  }, numeric(1))
+  heights <- vapply(x, function(value) .route_height(cell, value), numeric(1))
+  expect_lt(max(abs(heights / reference - 1)), 1e-7)
+  expect_equal(.route_probability(cell, .3),
+               stats::integrate(function(t) stats::pgamma(log(t / .3), 3), 1, 2, rel.tol = 1e-12)$value,
+               tolerance = 1e-9)
+})
+
+test_that("a bounded total with more coordinates than the pieces admit is refused", {
+
+  data <- expand.grid(f = ordered(c("a", "b", "c", "d")), o = ordered(c("p", "q", "r", "s")))
+  crossed <- JAGS_formula(~ f * o, "mu", data, list(intercept = N01, f = prior_ordered(N01),
+    o = prior_ordered(N01), "f:o" = prior_ordered(prior("uniform", list(1, 2)))))$prior_list[["mu_f__xXx__o"]]
+  # four coordinates for the contrast of two cells: refused for a bounded total
+  contrast <- .interaction_route(crossed, c("f=c, o=r", "f=b, o=q"), c(1, -1))
+  expect_identical(contrast$type, "unknown")
+  expect_match(contrast$reason, "no verified quadrature", fixed = TRUE)
+  expect_identical(BayesTools:::.prior_density_route_ordinate(contrast, .3)$behavior, "unknown")
+})
+
+test_that("a combination with many allocation coordinates is refused before any grid is built", {
+
+  # the contrast of the first and the last of 34 levels leaves 32 coordinates of one allocation
+  levels <- sprintf("L%02d", 1:34)
+  data <- data.frame(f = ordered(levels, levels = levels))
+  priors <- JAGS_formula(~ f, "mu", data, list(intercept = N01, f = prior_ordered(N01)))$prior_list
+  prior <- priors[["mu_f"]]
+  weights <- stats::setNames(33:1, BayesTools:::.JAGS_prior_factor_names("mu_f", prior))
+  route <- BayesTools:::.prior_density_route_linear(priors, weights, NULL, 64L)
+  expect_identical(route$type, "unknown")
+  expect_match(route$reason, "32 independent allocation coordinates", fixed = TRUE)
+  # the range comes from the extrema of the reduced coefficients, never from a cube of 2^32 corners
+  testthat::local_mocked_bindings(
+    .prior_ordered_product_corners = function(structure) stop("a cube of the shares was enumerated"),
+    .package = "BayesTools"
+  )
+  total_range <- BayesTools:::.prior_linear_group_range(
+    list(prior = prior$total, weights = c(.ordered_total = 1), indices = 1L), 1e-4,
+    c(.ordered_total = NA_character_))
+  expect_equal(BayesTools:::.prior_ordered_product_range(prior, weights, seq_along(weights), 1e-4),
+               33 * total_range, tolerance = 1e-12)
+  elapsed <- system.time(condition <- tryCatch(
+    BayesTools:::.prior_linear_combination_density(priors, weights, n_grid = 64L), error = identity
+  ))[["elapsed"]]
+  expect_s3_class(condition, "BayesTools_formula_measure_unavailable")
+  expect_match(conditionMessage(condition), "32 independent allocation coordinates", fixed = TRUE)
+  expect_lt(elapsed, 10)
+})
+
+test_that("a bounded total with integrable singularities at its bounds is rejected, never certified wrongly", {
+
+  # Beta(.6, .6): the density is infinite at both bounds, so the pieces end in singularities
+  # that Gauss-Legendre pieces resolve slowly
+  total <- prior("beta", list(.6, .6))
+  route <- .bounded_cross_route(total)
+  x <- c(.05, .2, .5, .8, .95)
+  reference <- vapply(x, function(value){
+    stats::integrate(function(t) stats::dbeta(t, .6, .6) * (-log(value / t)) / t, value, 1,
+                     rel.tol = 1e-9, subdivisions = 4000L, stop.on.error = FALSE)$value
+  }, numeric(1))
+  result <- BayesTools:::.prior_ordered_product_integrate_density(route$spec, x)
+  # an accepted value is within the criterion of the reference; the others are rejected
+  expect_true(all(abs(result$value / reference - 1)[result$accepted] < 1e-4))
+  ordinate <- BayesTools:::.prior_density_route_ordinate(route, .5)
+  expect_false(ordinate$exact)
+  expect_false(ordinate$provenance$integration$converged)
+  expect_match(ordinate$reason, "rejected by its diagnostics", fixed = TRUE)
+  # the display grid of the combination is unavailable too: no height is read from a grid
+  priors <- .interaction_priors(~ f * o, list(intercept = N01, f = prior_ordered(N01), o = prior_ordered(N01),
+    "f:o" = prior_ordered(total, allocation = list(f = prior("dirichlet", list(c(1, .5, .5))),
+                                                    o = prior("dirichlet", list(c(1, 1)))))))
+  expect_error(BayesTools:::.prior_linear_combination_density(priors,
+    .cell_combination(priors[["mu_f__xXx__o"]], "f=mid, o=q")),
+    class = "BayesTools_formula_measure_unavailable")
+})
