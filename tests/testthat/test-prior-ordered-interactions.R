@@ -828,6 +828,24 @@ test_that("values within the floating-point resolution of a singular bound are r
                  stop.on.error = FALSE)$value, tolerance = 1e-4)
 })
 
+# The bound of the mass that the unresolved nodes of one inner integral leave out, with the standard
+# arguments: the nodes 'pieces' with the density 'evaluated' of the scale density (its near-bound
+# attributes included), the slopes of the shift and of the scale in the coordinate, and the cap on the
+# inner integral and the numbers of unresolved outer nodes of the outer part.
+.unresolved_bound <- function(spec, pieces, evaluated, scale, dscale, dshift, weight = 1, cap = Inf,
+                              flagged = 0L, flagged_early = 0L){
+
+  near <- attr(evaluated, "unresolved")
+  near_bounds <- attr(evaluated, "near_bounds")
+  evaluated[!is.finite(evaluated)] <- 0
+  exponents <- BayesTools:::.prior_ordered_product_bound_exponents(spec$terms[[spec$random_terms[[1L]]]]$total)
+  BayesTools:::.prior_ordered_product_unresolved_bias(
+    spec, pieces, evaluated, pieces$unresolved | near, near_bounds, scale, rep(dscale, length(scale)),
+    rep(dshift, length(scale)), as.numeric(names(exponents)), unname(exponents), weight,
+    sum(pieces$w * evaluated), cap, flagged, flagged_early, 1L, 1L
+  )
+}
+
 test_that("the mass left out by unresolved nodes is bounded by an envelope of the density, not by sampled values", {
 
   # the log envelope of the density of a total at a distance from its bound, against the density
@@ -901,13 +919,7 @@ test_that("the mass left out by unresolved nodes is bounded by an envelope of th
                                                        matrix(c(NA, 1, NA), 1), 1, 1, n)
   evaluated <- BayesTools:::.prior_ordered_product_scale_density(spec, rep(x, length(pieces$v)), 0, pieces$v)
   unresolved <- pieces$unresolved | attr(evaluated, "unresolved")
-  evaluated[!is.finite(evaluated)] <- 0
-  bound <- function(flagged = 0L, weight = 1){
-    BayesTools:::.prior_ordered_product_unresolved_bias(
-      spec, pieces, evaluated, unresolved, pieces$v, rep(1, length(pieces$v)), rep(0, length(pieces$v)),
-      weight, sum(pieces$w * evaluated), flagged, 1L, 1L
-    )
-  }
+  bound <- function(...) .unresolved_bound(spec, pieces, evaluated, pieces$v, 1, 0, ...)
   rule <- BayesTools:::.prior_ordered_beta_rule(n, 1, 1)
   left <- 12 * log(rule$u)
   right <- log1p(-rule$u)
@@ -920,20 +932,21 @@ test_that("the mass left out by unresolved nodes is bounded by an envelope of th
   # the nodes on the side of the breakpoint outside the support have the exact density 0
   expect_lt(bound(), 1.1 * flagged_mass)
 
-  # the unresolved nodes of an outer coordinate leave out the inner integral at their value, which is
-  # bounded by the computed integral plus the bound of its own unresolved nodes
-  inner <- sum(pieces$w * evaluated)
-  expect_equal(bound(flagged = 1L, weight = .25), .25 * bound() + .25 * (inner + bound()), tolerance = 1e-12)
-  expect_equal(bound(flagged = 2L, weight = .25), .25 * bound() + .5 * (inner + bound()), tolerance = 1e-12)
+  # the unresolved nodes of the last outer coordinate leave out the inner integral at their unrounded
+  # value, bounded by the cap of the inner integral (or the computed integral plus the bound of its own
+  # unresolved nodes, if larger); those of an earlier outer coordinate, and a missing cap, have no bound
+  lost <- bound()
+  inner <- sum(pieces$w * ifelse(is.finite(evaluated), evaluated, 0))
+  expect_equal(bound(weight = .25, cap = 2, flagged = 1L), .25 * lost + .25 * 2 * (1 + 1e-6), tolerance = 1e-12)
+  expect_equal(bound(weight = .25, cap = 2, flagged = 2L), .25 * lost + .25 * 2 * 2 * (1 + 1e-6), tolerance = 1e-12)
+  expect_equal(bound(weight = .25, cap = 1e-12, flagged = 1L), .25 * lost + .25 * (inner + lost), tolerance = 1e-12)
+  expect_identical(bound(weight = .25, cap = Inf, flagged = 1L), Inf)
+  expect_identical(bound(weight = .25, cap = 2, flagged_early = 1L), Inf)
   # an unresolved node that has no singular edge to bound the mass at has no bound
   without_edge <- pieces
   without_edge$bound_left[] <- NA_real_
   without_edge$bound_right[] <- NA_real_
-  expect_identical(
-    BayesTools:::.prior_ordered_product_unresolved_bias(
-      spec, without_edge, evaluated, unresolved, pieces$v, rep(1, length(pieces$v)), rep(0, length(pieces$v)),
-      1, inner, 0L, 1L, 1L
-    ), Inf)
+  expect_identical(.unresolved_bound(spec, without_edge, evaluated, pieces$v, 1, 0), Inf)
 })
 
 test_that("the bound counts the nodes on the side of a breakpoint inside the support, with the slope of the argument", {
@@ -955,11 +968,7 @@ test_that("the bound counts the nodes on the side of a breakpoint inside the sup
     shift <- .2 + case$ds * pieces$v
     evaluated <- BayesTools:::.prior_ordered_product_scale_density(spec, case$x, shift, scale)
     unresolved <- pieces$unresolved | attr(evaluated, "unresolved")
-    evaluated[!is.finite(evaluated)] <- 0
-    bound <- BayesTools:::.prior_ordered_product_unresolved_bias(
-      spec, pieces, evaluated, unresolved, scale, rep(dc, length(scale)), rep(case$ds, length(scale)),
-      1, sum(pieces$w * evaluated), 0L, 1L, 1L
-    )
+    bound <- .unresolved_bound(spec, pieces, evaluated, scale, dc, case$ds)
     # the exact flagged mass: the nodes of the piece inside the support (the left piece near its right
     # edge for ds > 0, the right piece near its left edge for ds < 0)
     piece <- if(case$inside == "left") seq_len(n) else n + seq_len(n)
@@ -973,4 +982,136 @@ test_that("the bound counts the nodes on the side of a breakpoint inside the sup
     # smaller), and the larger of the two is bounded
     expect_lt(bound, 1.25 * flagged_mass)
   }
+})
+
+test_that("the supremum of the density near a regular bound is analytic, and unknown families have none", {
+
+  # an independent grid maximum of the density in the interval of the radius around the bound
+  radius <- 1e-3
+  grid_maximum <- function(density, bound, lower, upper){
+    points <- seq(max(bound - radius, lower), min(bound + radius, upper), length.out = 2001L)
+    max(density(points[points > lower & points < upper]))
+  }
+  cases <- list(
+    list(prior("uniform", list(1, 1 + 1e-9)), 1, 1, 1 + 1e-9, function(t) rep(1 / ((1 + 1e-9) - 1), length(t))),
+    list(prior("beta", list(2.5, 1.5)), 1, 0, 1, function(t) stats::dbeta(t, 2.5, 1.5)),
+    list(prior("beta", list(1, 1)), 0, 0, 1, function(t) stats::dbeta(t, 1, 1)),
+    list(prior("beta", list(.6, .8), truncation = list(lower = .2, upper = .7)), .2, .2, .7,
+         function(t) stats::dbeta(t, .6, .8) / (stats::pbeta(.7, .6, .8) - stats::pbeta(.2, .6, .8))),
+    list(prior("beta", list(.6, .8), truncation = list(lower = .2, upper = .7)), .7, .2, .7,
+         function(t) stats::dbeta(t, .6, .8) / (stats::pbeta(.7, .6, .8) - stats::pbeta(.2, .6, .8))),
+    list(prior("gamma", list(2.5, 1.2), truncation = list(lower = .5, upper = 4)), .5, .5, 4,
+         function(t) stats::dgamma(t, 2.5, 1.2) / (stats::pgamma(4, 2.5, 1.2) - stats::pgamma(.5, 2.5, 1.2))),
+    list(prior("gamma", list(.7, 1.2), truncation = list(lower = .5, upper = 4)), 4, .5, 4,
+         function(t) stats::dgamma(t, .7, 1.2) / (stats::pgamma(4, .7, 1.2) - stats::pgamma(.5, .7, 1.2))),
+    list(prior("exp", list(2), truncation = list(lower = .1, upper = 3)), .1, .1, 3,
+         function(t) stats::dexp(t, 2) / (stats::pexp(3, 2) - stats::pexp(.1, 2))),
+    list(prior("normal", list(1, .5), truncation = list(lower = 0, upper = 3)), 3, 0, 3,
+         function(t) stats::dnorm(t, 1, .5) / (stats::pnorm(3, 1, .5) - stats::pnorm(0, 1, .5))),
+    list(prior("normal", list(1, .5), truncation = list(lower = 1 - 1e-4, upper = 3)), 1 - 1e-4, 1 - 1e-4, 3,
+         function(t) stats::dnorm(t, 1, .5) / (stats::pnorm(3, 1, .5) - stats::pnorm(1 - 1e-4, 1, .5)))
+  )
+  for(case in cases){
+    bound <- exp(BayesTools:::.prior_ordered_product_density_supremum(case[[1L]], case[[2L]], radius))
+    reference <- grid_maximum(case[[5L]], case[[2L]], case[[3L]], case[[4L]])
+    expect_gte(bound, reference * (1 - 1e-12))
+    expect_lt(bound, 1.01 * reference)
+  }
+  # a family without an analytic supremum, and a density that is infinite at the bound, have none
+  expect_true(is.na(BayesTools:::.prior_ordered_product_density_supremum(
+    prior("lognormal", list(0, 1), truncation = list(lower = 0, upper = 2)), 2)))
+  expect_true(is.na(BayesTools:::.prior_ordered_product_density_supremum(prior("beta", list(.5, .5)), 0)))
+})
+
+test_that("a bounded total of a narrow support is rejected where the rounding of the argument across its bounds matters", {
+
+  # T ~ U(1, 1 + w) times U V: f_X(x) = (-log(x) log(1 + w) + log(1 + w)^2 / 2) / w for x <= 1, with the
+  # width of the stored support. An argument that rounds across a bound changes the density from 1 / w to
+  # 0, which is a relative 2.4e-4 of the density at w = 1e-12 (x = .7), 2.4e-3 at 1e-13 (x = .5) and 1.7e-2
+  # at 1e-14 (x = .7): such values are rejected, the others certified within the criterion
+  reference <- function(x, width){
+    actual <- (1 + width) - 1
+    (-log(x) * log1p(actual) + log1p(actual)^2 / 2) / actual
+  }
+  x <- c(.1, .3, .5, .7, .9, .99)
+  for(width in c(1e-6, 1e-8, 1e-10, 1e-11, 1e-12, 1e-13, 1e-14)){
+    route <- .bounded_cross_route(prior("uniform", list(1, 1 + width)))
+    result <- BayesTools:::.prior_ordered_product_integrate_density(route$spec, x)
+    accepted <- result$accepted
+    if(any(accepted)){
+      expect_lt(max(abs(result$estimate / reference(x, width) - 1)[accepted]), 1e-4, label = width)
+    }
+    if(width >= 1e-9){
+      expect_true(all(accepted), info = width)
+    }
+  }
+  for(case in list(c(1e-12, .7), c(1e-13, .5), c(1e-14, .7))){
+    route <- .bounded_cross_route(prior("uniform", list(1, 1 + case[[1L]])))
+    result <- BayesTools:::.prior_ordered_product_integrate_density(route$spec, case[[2L]])
+    expect_false(result$accepted, info = case)
+    expect_true(result$unresolved, info = case)
+    ordinate <- BayesTools:::.prior_density_route_ordinate(route, case[[2L]])
+    expect_false(ordinate$exact, info = case)
+    expect_match(ordinate$reason, "not representable at this value", fixed = TRUE)
+  }
+  # the same with a Beta total whose bound is regular
+  route <- .bounded_cross_route(prior("beta", list(1, 1)))
+  result <- BayesTools:::.prior_ordered_product_integrate_density(route$spec, c(.3, .7))
+  expect_true(all(result$accepted))
+  expect_equal(result$estimate, log(c(.3, .7))^2 / 2, tolerance = 1e-8)
+})
+
+test_that("the inner integral at the unresolved nodes of the last outer coordinate is capped, and not bounded otherwise", {
+
+  # T ~ Beta(1, .5) times U and V: the inner integral over V at every U (also at the unrounded value of
+  # an unresolved outer node) is below the cap sup(beta_p |c|) / |kappa| of the substitution to t
+  route <- .bounded_cross_route(prior("beta", list(1, .5)))
+  spec <- route$spec
+  inner <- spec$structure$coordinates[[2L]]
+  integral <- function(u, x){
+    low <- BayesTools:::.prior_ordered_product_state(spec, cbind(u, 0))
+    high <- BayesTools:::.prior_ordered_product_state(spec, cbind(u, 1))
+    breakpoint <- (x - low$scale) / (high$scale - low$scale)
+    pieces <- c(0, if(breakpoint > 0 && breakpoint < 1) breakpoint, 1)
+    sum(vapply(seq_len(length(pieces) - 1L), function(i){
+      stats::integrate(function(v){
+        stats::dbeta(v, inner$a, inner$b) * BayesTools:::.prior_ordered_product_scale_density(
+          spec, x, low$shift + (high$shift - low$shift) * v, low$scale + (high$scale - low$scale) * v)
+      }, pieces[[i]], pieces[[i + 1L]], rel.tol = 1e-9, subdivisions = 1000L)$value
+    }, numeric(1)))
+  }
+  for(x in c(.05, .3, .5, .9)){
+    # (the adaptive reference integral resolves a breakpoint that is 1e-6 or more from the end)
+    values <- unique(c(x + 10^-(2:6), x - 10^-(2:6), seq(.01, 1, length.out = 12)))
+    values <- values[values > 0 & values <= 1]
+    low <- BayesTools:::.prior_ordered_product_state(spec, cbind(values, 0))
+    high <- BayesTools:::.prior_ordered_product_state(spec, cbind(values, 1))
+    caps <- BayesTools:::.prior_ordered_product_inner_cap(inner, low, high, x)
+    exact <- vapply(values, integral, numeric(1), x = x)
+    expect_true(all(is.finite(caps)), info = x)
+    expect_true(all(exact <= caps * (1 + 1e-6)), info = x)
+  }
+  # shares with a density that is infinite at an end, and a cancelling kappa, have no cap
+  low <- list(scale = 1, shift = 0)
+  high <- list(scale = 2, shift = 0)
+  expect_identical(BayesTools:::.prior_ordered_product_inner_cap(list(a = 1, b = .1), low, high, .5), Inf)
+  expect_identical(BayesTools:::.prior_ordered_product_inner_cap(list(a = 1, b = 1), low, high, 0), Inf)
+
+  # T ~ Beta(1, .5), U uniform, V ~ Beta(1, .1): the inner integral grows as d^(e + b - 1) at the
+  # breakpoint of the outer coordinate (the unrounded nodes carry at least 3.76e-10 of the density at
+  # x = .5 with 64 nodes, which the rounded nodes did not), so the value has no bound and is rejected
+  priors <- .interaction_priors(~ f * o, list(intercept = N01, f = prior_ordered(N01), o = prior_ordered(N01),
+    "f:o" = prior_ordered(prior("beta", list(1, .5)), allocation = list(
+      f = prior("dirichlet", list(c(1, .5, .5))), o = prior("dirichlet", list(c(1, .1)))))))
+  singular <- .interaction_route(priors[["mu_f__xXx__o"]], "f=mid, o=q")
+  expect_identical(singular$spec$structure$coordinates[[2L]]$b, .1)
+  ordinate <- BayesTools:::.prior_density_route_ordinate(singular, .5)
+  expect_false(ordinate$exact)
+  expect_match(ordinate$reason, "not representable at this value", fixed = TRUE)
+  # an unresolved node of a coordinate before the last one has no bound either
+  expect_identical(
+    BayesTools:::.prior_ordered_product_unresolved_bias(
+      spec, list(row = integer(), w = numeric()), numeric(), logical(), matrix(FALSE, 0L, 2L), numeric(),
+      numeric(), numeric(), c(0, 1), c(1, .5), 1, 1, 5, 0L, 1L, 1L, 1L),
+    Inf)
 })

@@ -271,7 +271,6 @@
   }
   if(.prior_ordered_product_bounded_total(spec)){
     exponents <- .prior_ordered_product_bound_exponents(terms[[random]]$total)
-    spec$bound_exponents <- exponents
     if(anyNA(exponents) || any(exponents < .prior_ordered_product_exponent_limit())){
       return(refuse(paste0(
         "The density of the total of an ordered term at a bound of its support is infinite with ",

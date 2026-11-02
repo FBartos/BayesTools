@@ -485,21 +485,33 @@ convergent sequence decrease; cancelling errors of a slowly converging sequence
 were accepted before, e.g. 3.3e-4 for a Beta(1, 0.9) total times two uniform
 shares); other values are rejected. The nodes of a smoothed piece closer to a
 singular breakpoint than 8 units of the floating-point resolution of its location
-(or whose argument rounds onto a singular bound of the total) are not resolved:
-the density is not represented there. What they leave out is bounded without
-sampling the integrand: the node's weight times the envelope of the density of
-its family at the exact (logarithmic) distance of the node from the bound
-(Beta `C max(1, (1 - d)^(b - 1)) d^(a - 1)` with the mass `C` of the truncation,
-gamma `C d^(k - 1)`; the larger of the envelope and the computed value), and
-for an unresolved node of an outer coordinate its weight times the computed
-inner integral plus the bound of the inner nodes (a node counted once per
-unresolved outer coordinate). A node without an envelope (a bound that is no
-singular breakpoint of its piece, another family) makes the bound infinite. A
-value whose bound exceeds the criterion is rejected with the representability
-limit named in the message, never zeroed silently (a Beta(0.5, 0.5) total times two
-uniform shares at a distance of 1e-10 from its bound lost 1.1e-3 of the density
-when the unresolved nodes were set to 0); densities of such totals are accepted
-down to a distance of about 1e-4 of the bound. The probabilities of regions
+(or whose argument rounds onto any bound of the total, which changes the
+density from its value there to 0, or back) are not resolved. What they leave
+out is bounded without sampling the integrand, by the larger of the computed
+value and an analytic bound of the density at the node: next to a singular
+bound the envelope of the family at the exact (logarithmic) distance of the node
+from the bound (Beta `C max(1, (1 - d)^(b - 1)) d^(a - 1)` with the mass `C` of
+the truncation, gamma `C d^(k - 1)`; zero on the side of the bound outside the
+support), next to a regular bound the supremum of the density within 1e-8 of
+it (uniform `1 / width`, Beta, gamma, exponential and normal densities as
+products of monotone or unimodal factors), times the weight of the node. The
+unrounded value of an unresolved node of the last outer coordinate is not
+carried (only its rounded value is): the inner integral there is bounded by
+`sup(beta_p |c|) / |kappa|` (the substitution to the argument t, whose
+derivative is `kappa / c^2` with the constant `kappa = -ds c0 - dc (x - s0)`,
+for an innermost share of both shapes at least 1; at most the computed integral
+plus the bound of the inner nodes if larger), and the unresolved nodes of an
+earlier outer coordinate have no bound. A node without a bound (a bound that
+is no singular breakpoint of its piece, a family without an envelope or
+supremum, a share with an infinite density, a cancelling `kappa`) makes the
+bound infinite. A value whose bound exceeds the criterion is rejected with the
+representability limit named in the message, never zeroed silently (a
+Beta(0.5, 0.5) total times two uniform shares at a distance of 1e-10 from its
+bound lost 1.1e-3 of the density when the unresolved nodes were set to 0, and a
+uniform total of width 1e-12 times two uniform shares lost 2.4e-4 when its
+bounds were not checked); densities of such Beta totals are accepted down to a
+distance of about 1e-6 of the bound, of uniform totals down to a width of about
+1e-10. The probabilities of regions
 are continuous in the shares and are not affected. Plotted densities accept the
 last two rules at 1e-3 (the outer coordinates of three or more are not split).
 The range of a combination (display grids) is the product of the total's range
