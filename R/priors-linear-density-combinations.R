@@ -1541,9 +1541,10 @@
 # structural route of a combination with an ordered level is known, has no atom
 # (a level whose share is identically zero is the point 0) and no strong
 # singularity of a product of shares (whose grid is refused), no source
-# transformation, and no output map but an affine one (a nonlinear map can warn
-# or fail on the values of the grid, and a constant map turns the measure into
-# an atom). Every other combination is built at once, as is a small one without
+# transformation, and no output map but an affine one, none with an ordered
+# level (a nonlinear map can warn or fail on the values of the grid, an affine
+# map's values can collapse, and a constant map turns the measure into an
+# atom). Every other combination is built at once, as is a small one without
 # an ordered level, which is cheap and keeps its numerical diagnostics. Grid
 # attributes (e.g. 'product_grid_resolution') belong to the built grid
 # (.prior_linear_density_materialize()).
@@ -1566,6 +1567,11 @@
     return(FALSE)
   }
   if(any(ordered)){
+    # an output map is applied to the built grid, whose transformed values
+    # can collapse (see the affine conditions below); it is built at once
+    if(!is.null(output_transformation)){
+      return(FALSE)
+    }
     route <- tryCatch(
       .prior_density_route_linear(prior_list, plan$weights, plan$source_transforms, n_grid),
       error = function(e) NULL

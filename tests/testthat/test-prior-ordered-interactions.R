@@ -197,6 +197,10 @@ test_that("ordered terms that share a random allocation are not summed as indepe
   expect_error(density_of(shared, both_middle), class = "BayesTools_formula_measure_unavailable")
   condition <- tryCatch(density_of(shared, both_middle), error = function(e) e)
   expect_match(conditionMessage(condition), "id:shape|factor:f", fixed = TRUE)
+  # their design rows are refused when built as well, not deferred
+  shared_context <- BayesTools:::.prior_density_build_context(shared, names(both_middle), n_grid = 256L)
+  expect_error(BayesTools:::.prior_density_from_context_rows(shared_context, rbind(both_middle, both_middle)),
+               "id:shape|factor:f", fixed = TRUE, class = "BayesTools_formula_measure_unavailable")
   # the route reports the same reason instead of an independent product
   route <- BayesTools:::.prior_density_route_linear(shared, both_middle, NULL)
   expect_identical(route$type, "unknown")
@@ -454,6 +458,12 @@ test_that("shares with a strong singularity, many coordinates, and point totals"
   expect_error(BayesTools:::.prior_linear_combination_density(list(mu_o__xXx__g = steep),
     .cell_combination(steep, c("o=q, g=B", "o=q, g=C"), c(1, -1))),
     "strong singularity", class = "BayesTools_formula_measure_unavailable")
+  # and so are design rows of that combination, not deferred
+  steep_weights <- .cell_combination(steep, c("o=q, g=B", "o=q, g=C"), c(1, -1))
+  steep_context <- BayesTools:::.prior_density_build_context(list(mu_o__xXx__g = steep), names(steep_weights),
+                                                             n_grid = 256L)
+  expect_error(BayesTools:::.prior_density_from_context_rows(steep_context, rbind(steep_weights, steep_weights)),
+               "strong singularity", class = "BayesTools_formula_measure_unavailable")
 
   # more allocation coordinates than the node cap admits are refused
   expect_identical(BayesTools:::.prior_ordered_product_sizes(5L), c(6L, 12L))

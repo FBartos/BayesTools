@@ -4499,6 +4499,14 @@ test_that("ordered levels without atoms build their numerical grid only for grid
     density <- .prior_linear_combination_density(case$priors, case$weights, n_grid = 256L)
     expect_false(inherits(density$density, "prior_linear_density_deferred"))
   }
+  # an output map applies to the built grid, whose values an affine map can
+  # collapse, so a level with one builds (and refuses) at once
+  affine <- .prior_linear_combination_density(priors, c("mu_shape[1]" = 1), n_grid = 256L,
+    output_transformation = "lin", output_transformation_arguments = list(a = 1, b = 2))
+  expect_false(inherits(affine$density, "prior_linear_density_deferred"))
+  expect_error(.prior_linear_combination_density(priors, c("mu_shape[1]" = 1), n_grid = 256L,
+    output_transformation = "lin", output_transformation_arguments = list(a = 1e16, b = 1)),
+    "collapses or changes orientation", fixed = TRUE)
 
   # the design rows of the levels (a marginal_posterior() level) defer as well
   context <- .prior_density_build_context(priors, c("mu_intercept", "mu_shape[1]", "mu_shape[2]"),

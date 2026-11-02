@@ -787,7 +787,8 @@
   rows <- .prior_density_distinct_rows(weights)
   if(isTRUE(.record_evaluation) &&
      .prior_density_rows_atom_free(context, weights[rows$indices, , drop = FALSE],
-                                   output_transformation, output_transformation_arguments)){
+                                   output_transformation, output_transformation_arguments,
+                                   source_transforms)){
     arguments <- list(
       context = context,
       weights = weights,
@@ -945,9 +946,15 @@
 # Whether a row mixture of a prior-density context is free of point masses
 # by its structure: every prior of the context is continuous, every row has a
 # nonzero standardized weight (a row without one is the point at zero), and
-# the output transformation is not a constant map.
+# the output transformation is not a constant map. With an ordered prior the
+# rows defer as its combinations do (.prior_linear_density_defers_grid()):
+# without source or output maps, and with every row's structural route known,
+# without an atom and without a strong singularity of a product of shares
+# (ordered terms that share a random allocation, for one, have no route and
+# are refused when built).
 .prior_density_rows_atom_free <- function(context, rows, output_transformation,
-                                          output_transformation_arguments){
+                                          output_transformation_arguments,
+                                          source_transforms = NULL){
 
   if(!inherits(context, "prior_density_context") || is.null(context$n_grid)){
     return(FALSE)
@@ -964,7 +971,27 @@
   if(!all(nonzero)){
     return(FALSE)
   }
+  if(any(vapply(context$prior_list, is.prior.ordered, logical(1))) &&
+     !.prior_density_rows_ordered_routes(context, rows, source_transforms, output_transformation)){
+    return(FALSE)
+  }
   .prior_density_atom_free_transformation(output_transformation, output_transformation_arguments)
+}
+
+.prior_density_rows_ordered_routes <- function(context, rows, source_transforms,
+                                               output_transformation){
+
+  if(!is.null(output_transformation) || any(!is.na(source_transforms))){
+    return(FALSE)
+  }
+  all(vapply(seq_len(nrow(rows)), function(row_i){
+    route <- tryCatch(
+      .prior_density_route_context(context, rows[row_i, ], NULL, NULL, NULL),
+      error = function(e) NULL
+    )
+    !is.null(route) && !.prior_density_route_has_leaf(route, c("atom", "unknown")) &&
+      is.null(.prior_ordered_route_strong_singularity(route))
+  }, logical(1)))
 }
 
 # A deferred numerical grid of a prior linear density without atoms: the

@@ -432,6 +432,9 @@
   if(identical(route$type, "ordered_product")){
     return(.prior_ordered_product_strong_singularity(route$spec))
   }
+  if(identical(route$type, "transform")){
+    return(.prior_ordered_route_strong_singularity(route$source))
+  }
   if(identical(route$type, "mixture")){
     for(component in route$components[route$weights > 0]){
       reason <- .prior_ordered_route_strong_singularity(component)
