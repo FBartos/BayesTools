@@ -827,3 +827,150 @@ test_that("values within the floating-point resolution of a singular bound are r
                  log((1 - 1e-10) / t)), 1 - 1e-10, 1, rel.tol = 1e-12, subdivisions = 4000L,
                  stop.on.error = FALSE)$value, tolerance = 1e-4)
 })
+
+test_that("the mass left out by unresolved nodes is bounded by an envelope of the density, not by sampled values", {
+
+  # the log envelope of the density of a total at a distance from its bound, against the density
+  envelope <- function(total, bound, distance){
+    exponent <- BayesTools:::.prior_ordered_product_bound_exponent(total, bound)
+    exp(BayesTools:::.prior_ordered_product_density_envelope(total, rep(bound, length(distance)),
+                                                              rep(exponent, length(distance)), distance))
+  }
+  distances <- 10^-(5:15)
+  cases <- list(
+    list(prior("beta", list(.5, .5)), 0, function(t) stats::dbeta(t, .5, .5)),
+    list(prior("beta", list(.5, .5)), 1, function(t) stats::dbeta(t, .5, .5)),
+    list(prior("beta", list(2.5, .7)), 0, function(t) stats::dbeta(t, 2.5, .7)),
+    list(prior("beta", list(2.5, .7)), 1, function(t) stats::dbeta(t, .7, 2.5)),
+    list(prior("beta", list(.6, 3.5)), 1, function(t) stats::dbeta(t, 3.5, .6)),
+    list(prior("beta", list(.6, .8), truncation = list(lower = 0, upper = .6)), 0,
+         function(t) stats::dbeta(t, .6, .8) / stats::pbeta(.6, .6, .8)),
+    list(prior("gamma", list(.6, 2)), 0, function(t) stats::dgamma(t, .6, 2)),
+    list(prior("gamma", list(.7, 1.5), truncation = list(lower = 0, upper = 5)), 0,
+         function(t) stats::dgamma(t, .7, 1.5) / stats::pgamma(5, .7, 1.5))
+  )
+  for(case in cases){
+    bound <- envelope(case[[1L]], case[[2L]], distances)
+    # the density at the distance d from the bound (the Beta density at 1 - d is that of the
+    # exchanged shapes at d)
+    density <- case[[3L]](distances)
+    expect_true(all(bound >= density), info = paste(case[[1L]]$distribution, case[[2L]]))
+    # the envelope is the density up to the monotone factor over the distance: tight near the bound
+    expect_lt(max((bound / density)[distances <= 1e-8]), 1 + 1e-6)
+  }
+  # no envelope without a known family, with another exponent, or at a distance that is not small
+  expect_true(is.na(BayesTools:::.prior_ordered_product_density_envelope(
+    prior("normal", list(0, 1), truncation = list(lower = 0, upper = Inf)), 0, 1, 1e-10)))
+  expect_true(is.na(BayesTools:::.prior_ordered_product_density_envelope(
+    prior("beta", list(.5, .5)), 0, .7, 1e-10)))
+  expect_true(is.na(BayesTools:::.prior_ordered_product_density_envelope(
+    prior("beta", list(.5, .5)), 0, .5, 1e-3)))
+  expect_true(is.na(BayesTools:::.prior_ordered_product_density_envelope(
+    prior("beta", list(.5, .5)), .3, .5, 1e-10)))
+
+  # T ~ Beta(1e17, .5) times U V at x = .5: the whole density lies inside the unresolved interval,
+  # where the sampled values of the resolved nodes are tiny (the estimate was 4e-10 of 0.693, the bound
+  # 1e-23): an independent analytic bracket of f_X(.5) from E[log(T / x) / T; T > x]
+  a <- 1e17
+  x <- .5
+  h <- 1e-5
+  p_tail <- .5 / (a + .5) / h
+  lower <- (1 - p_tail) * min(-log(x), log((1 - h) / x) / (1 - h))
+  route <- .bounded_cross_route(prior("beta", list(a, .5)))
+  exponents <- BayesTools:::.prior_ordered_product_bound_exponents(route$spec$terms[[1L]]$total)
+  for(n in c(64L, 512L)){
+    nested <- BayesTools:::.prior_ordered_product_nested(
+      route$spec, matrix(x, 1L), as.numeric(names(exponents)), unname(exponents),
+      function(group, scale, shift) BayesTools:::.prior_ordered_product_scale_density(route$spec, x, shift, scale),
+      1L, n, TRUE, check = TRUE
+    )
+    expect_gte(nested$bias, lower - nested$value)
+    expect_gt(nested$bias, 1e-4 * abs(nested$value))
+  }
+  ordinate <- BayesTools:::.prior_density_route_ordinate(route, x)
+  expect_false(ordinate$exact)
+  expect_match(ordinate$reason, "not representable at this value", fixed = TRUE)
+
+  # T ~ Beta(1, .5) times U at x = .99: the contribution of the flagged nodes with the exact (logarithmic)
+  # distance of each node from the breakpoint, which the sampled value of the resolved nodes underestimated
+  e <- .5
+  n <- 48L
+  x <- .99
+  spec <- .bounded_cross_route(prior("beta", list(1, e)))$spec
+  pieces <- BayesTools:::.prior_ordered_product_split(matrix(c(0, x, 1), 1), matrix(c(NA, e, NA), 1),
+                                                       matrix(c(NA, 1, NA), 1), 1, 1, n)
+  evaluated <- BayesTools:::.prior_ordered_product_scale_density(spec, rep(x, length(pieces$v)), 0, pieces$v)
+  unresolved <- pieces$unresolved | attr(evaluated, "unresolved")
+  evaluated[!is.finite(evaluated)] <- 0
+  bound <- function(flagged = 0L, weight = 1){
+    BayesTools:::.prior_ordered_product_unresolved_bias(
+      spec, pieces, evaluated, unresolved, pieces$v, rep(1, length(pieces$v)), rep(0, length(pieces$v)),
+      weight, sum(pieces$w * evaluated), flagged, 1L, 1L
+    )
+  }
+  rule <- BayesTools:::.prior_ordered_beta_rule(n, 1, 1)
+  left <- 12 * log(rule$u)
+  right <- log1p(-rule$u)
+  log_d <- pmax(left, right) + log1p(exp(-abs(left - right)))
+  distance <- (1 - x) * exp(left - log_d)
+  right_piece <- n + seq_len(n)
+  flagged_mass <- sum((pieces$w[right_piece] * e * distance^(e - 1) * (x + distance)^-e)[unresolved[right_piece]])
+  expect_gt(flagged_mass, 0)
+  expect_gte(bound(), flagged_mass)
+  # the nodes on the side of the breakpoint outside the support have the exact density 0
+  expect_lt(bound(), 1.1 * flagged_mass)
+
+  # the unresolved nodes of an outer coordinate leave out the inner integral at their value, which is
+  # bounded by the computed integral plus the bound of its own unresolved nodes
+  inner <- sum(pieces$w * evaluated)
+  expect_equal(bound(flagged = 1L, weight = .25), .25 * bound() + .25 * (inner + bound()), tolerance = 1e-12)
+  expect_equal(bound(flagged = 2L, weight = .25), .25 * bound() + .5 * (inner + bound()), tolerance = 1e-12)
+  # an unresolved node that has no singular edge to bound the mass at has no bound
+  without_edge <- pieces
+  without_edge$bound_left[] <- NA_real_
+  without_edge$bound_right[] <- NA_real_
+  expect_identical(
+    BayesTools:::.prior_ordered_product_unresolved_bias(
+      spec, without_edge, evaluated, unresolved, pieces$v, rep(1, length(pieces$v)), rep(0, length(pieces$v)),
+      1, inner, 0L, 1L, 1L
+    ), Inf)
+})
+
+test_that("the bound counts the nodes on the side of a breakpoint inside the support, with the slope of the argument", {
+
+  # T ~ Gamma(.6, 1) at its lower bound 0 with a shift that depends on the coordinate: the argument
+  # (x - s(v)) / c(v) with s = .2 + ds v, c = 1 + .2 v is 0 at v* = .3 and positive on the side of v*
+  # that makes the numerator positive; the exact density at a node is that of its exact distance
+  # d = |ds| |v - v*| / c(v) from the bound (the distance in the coordinate comes from the logarithmic
+  # form of the node, which the rounded node does not carry)
+  shape <- .6
+  spec <- .bounded_cross_route(prior("gamma", list(shape, 1)))$spec
+  n <- 48L
+  c_start <- 1
+  dc <- .2
+  for(case in list(list(ds = .5, x = .35, inside = "left"), list(ds = -.5, x = .05, inside = "right"))){
+    pieces <- BayesTools:::.prior_ordered_product_split(matrix(c(0, .3, 1), 1), matrix(c(NA, shape, NA), 1),
+                                                         matrix(c(NA, 0, NA), 1), 1, 1, n)
+    scale <- c_start + dc * pieces$v
+    shift <- .2 + case$ds * pieces$v
+    evaluated <- BayesTools:::.prior_ordered_product_scale_density(spec, case$x, shift, scale)
+    unresolved <- pieces$unresolved | attr(evaluated, "unresolved")
+    evaluated[!is.finite(evaluated)] <- 0
+    bound <- BayesTools:::.prior_ordered_product_unresolved_bias(
+      spec, pieces, evaluated, unresolved, scale, rep(dc, length(scale)), rep(case$ds, length(scale)),
+      1, sum(pieces$w * evaluated), 0L, 1L, 1L
+    )
+    # the exact flagged mass: the nodes of the piece inside the support (the left piece near its right
+    # edge for ds > 0, the right piece near its left edge for ds < 0)
+    piece <- if(case$inside == "left") seq_len(n) else n + seq_len(n)
+    log_distance <- if(case$inside == "left") pieces$log_right[piece] else pieces$log_left[piece]
+    distance <- abs(case$ds) * exp(log_distance) / scale[piece]
+    exact <- stats::dgamma(distance, shape, 1) / scale[piece]
+    flagged_mass <- sum((pieces$w[piece] * exact)[unresolved[piece]])
+    expect_gt(flagged_mass, 0)
+    expect_gte(bound, flagged_mass)
+    # the computed value of a rounded node can exceed the exact density (its rounded distance is
+    # smaller), and the larger of the two is bounded
+    expect_lt(bound, 1.25 * flagged_mass)
+  }
+})

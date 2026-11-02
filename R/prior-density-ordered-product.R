@@ -260,12 +260,21 @@
       log(abs(scale[usable]))
     out[usable] <- exp(log_density)
   }
-  # the argument within a few units of the resolution of a finite bound is not resolved
-  # (rounded onto the bound, or its distance and the singular density there inexact)
+  # the argument within a few units of the resolution of a finite bound where the density is
+  # singular (an infinite density, or one that vanishes with an infinite derivative) is not
+  # resolved (rounded onto the bound, or its distance and the singular density there inexact);
+  # next to a regular bound the rounding changes the density by the rounding level only
   near <- rep(FALSE, length(out))
-  for(bound in bounds[is.finite(bounds)]){
+  finite <- bounds[is.finite(bounds)]
+  exponents <- if(is.null(spec$bound_exponents)) .prior_ordered_product_bound_exponents(term$total) else
+    spec$bound_exponents
+  for(index in seq_along(finite)){
+    if(!.prior_ordered_product_needs_smoothing(unname(exponents[[index]]))){
+      next
+    }
     near <- near | (is.finite(as.vector(argument)) &
-      abs(as.vector(argument) - bound) <= 8 * .Machine$double.eps * max(abs(bound), .Machine$double.xmin))
+      abs(as.vector(argument) - finite[[index]]) <=
+        8 * .Machine$double.eps * max(abs(finite[[index]]), .Machine$double.xmin))
   }
   attr(out, "unresolved") <- near
   if(is.matrix(argument)) matrix(out, nrow(argument), ncol(argument)) else out

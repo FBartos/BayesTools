@@ -485,12 +485,18 @@ convergent sequence decrease; cancelling errors of a slowly converging sequence
 were accepted before, e.g. 3.3e-4 for a Beta(1, 0.9) total times two uniform
 shares); other values are rejected. The nodes of a smoothed piece closer to a
 singular breakpoint than 8 units of the floating-point resolution of its location
-(or whose argument rounds onto a bound of the total) are not resolved: the
-density is not represented there, so their weight times the largest resolved
-value over the exponent (the mass ~ f(d) d / e of the neglected distance d) bounds
-what they leave out, summed over the inner and the outer coordinates. A value
-whose bound exceeds the criterion is rejected with the representability limit
-named in the message, never zeroed silently (a Beta(0.5, 0.5) total times two
+(or whose argument rounds onto a singular bound of the total) are not resolved:
+the density is not represented there. What they leave out is bounded without
+sampling the integrand: the node's weight times the envelope of the density of
+its family at the exact (logarithmic) distance of the node from the bound
+(Beta `C max(1, (1 - d)^(b - 1)) d^(a - 1)` with the mass `C` of the truncation,
+gamma `C d^(k - 1)`; the larger of the envelope and the computed value), and
+for an unresolved node of an outer coordinate its weight times the computed
+inner integral plus the bound of the inner nodes (a node counted once per
+unresolved outer coordinate). A node without an envelope (a bound that is no
+singular breakpoint of its piece, another family) makes the bound infinite. A
+value whose bound exceeds the criterion is rejected with the representability
+limit named in the message, never zeroed silently (a Beta(0.5, 0.5) total times two
 uniform shares at a distance of 1e-10 from its bound lost 1.1e-3 of the density
 when the unresolved nodes were set to 0); densities of such totals are accepted
 down to a distance of about 1e-4 of the bound. The probabilities of regions

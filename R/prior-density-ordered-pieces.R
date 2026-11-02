@@ -27,9 +27,10 @@
 # infinite with an unknown or very small exponent are refused.
 #
 # The nodes next to a singular breakpoint that the floating-point resolution of
-# its location does not resolve leave out a mass that is bounded
+# its location does not resolve leave out a mass that is bounded by the
+# envelope of the density of the total at their exact distances from the bound
 # (.prior_ordered_product_unresolved_bias()); a value whose bound exceeds the
-# criterion is rejected, never set to 0.
+# criterion, or has no bound, is rejected, never set to 0.
 #
 # The rules are doubled, and a value is accepted only when the last two rules
 # agree at the criterion, the difference at least halved from the one before,
@@ -101,8 +102,8 @@
 }
 
 # Rows of a matrix sorted increasingly (columns compared elementwise), with the
-# companion matrix 'e' permuted alike.
-.prior_ordered_product_sort_rows <- function(x, e){
+# companion matrices in the list 'companions' permuted alike.
+.prior_ordered_product_sort_rows <- function(x, companions){
 
   k <- ncol(x)
   for(pass in seq_len(k - 1L)){
@@ -111,45 +112,58 @@
       low <- pmin(x[, j], x[, j + 1L])
       x[, j + 1L] <- pmax(x[, j], x[, j + 1L])
       x[, j] <- low
-      kept <- e[, j]
-      e[swap, j] <- e[swap, j + 1L]
-      e[swap, j + 1L] <- kept[swap]
+      for(i in seq_along(companions)){
+        kept <- companions[[i]][, j]
+        companions[[i]][swap, j] <- companions[[i]][swap, j + 1L]
+        companions[[i]][swap, j + 1L] <- kept[swap]
+      }
     }
   }
-  list(x = x, e = e)
+  list(x = x, companions = companions)
 }
 
 # The breakpoints of a coordinate at one setting of the deeper coordinates: the
 # candidate roots (a column each) of the equations of the bounds at the
 # reference values of the groups and of the sign of the coefficient, from the
-# states 'low' and 'high' of the coordinate at 0 and 1, with the exponent of the
-# bound of each root (1 for the sign).
+# states 'low' and 'high' of the coordinate at 0 and 1, with the exponent and
+# the value of the bound of each root (1 and NA for the sign).
 .prior_ordered_product_candidates <- function(low, high, references, bounds, exponents){
 
   dc <- high$scale - low$scale
   ds <- high$shift - low$shift
   values <- list()
   exponent <- numeric()
+  bound <- numeric()
   for(r in seq_len(ncol(references))){
     for(k in seq_along(bounds)){
       values[[length(values) + 1L]] <-
         (references[, r] - low$shift - bounds[[k]] * low$scale) / (ds + bounds[[k]] * dc)
       exponent <- c(exponent, exponents[[k]])
+      bound <- c(bound, bounds[[k]])
     }
   }
   values[[length(values) + 1L]] <- -low$scale / dc
-  list(values = values, exponents = c(exponent, 1))
+  list(values = values, exponents = c(exponent, 1), bounds = c(bound, NA_real_))
 }
 
 # The sorted edges (from 0 to 1) of the pieces of a coordinate from the
-# candidate roots, with the exponent at each interior edge (NA at 0 and 1).
+# candidate roots, with the exponent and the value of the bound at each interior
+# edge (NA at 0 and 1). A root outside the open interval (0, 1) is no
+# breakpoint (the argument does not reach the bound there): it is moved to the
+# end 1, where it bounds a piece of zero width, and carries no exponent.
 .prior_ordered_product_finish_edges <- function(candidates){
 
   breaks <- do.call(cbind, candidates$values)
   exponents <- matrix(candidates$exponents, nrow = nrow(breaks), ncol = ncol(breaks), byrow = TRUE)
-  breaks[!is.finite(breaks) | breaks <= 0 | breaks >= 1] <- 1
-  sorted <- .prior_ordered_product_sort_rows(breaks, exponents)
-  list(edges = cbind(0, sorted$x, 1), exponents = cbind(NA_real_, sorted$e, NA_real_))
+  bounds <- matrix(candidates$bounds, nrow = nrow(breaks), ncol = ncol(breaks), byrow = TRUE)
+  outside <- !is.finite(breaks) | breaks <= 0 | breaks >= 1
+  breaks[outside] <- 1
+  exponents[outside] <- NA_real_
+  bounds[outside] <- NA_real_
+  sorted <- .prior_ordered_product_sort_rows(breaks, list(exponents, bounds))
+  list(edges = cbind(0, sorted$x, 1),
+       exponents = cbind(NA_real_, sorted$companions[[1L]], NA_real_),
+       bounds = cbind(NA_real_, sorted$companions[[2L]], NA_real_))
 }
 
 # The nodes of the pieces of [0, 1] between the sorted 'edges' (a row of edges
@@ -157,10 +171,18 @@
 # the integral row ('row'), the node ('v') and the weight that multiplies the
 # integrand there (the Beta density and the width of the piece included).
 # 'exponents' are the exponents of the density of the total at the interior
-# edges; a piece next to an edge with an exponent below 1 is smoothed there.
-.prior_ordered_product_split <- function(edges, exponents, a, b, n){
+# edges and 'edge_bounds' the bounds of its support that the edges belong to; a
+# piece next to an edge with an exponent below 1 is smoothed there. A node of
+# such a piece closer to the edge than a few units of the floating-point
+# resolution of the edge is 'unresolved', and the exact (logarithmic) distance
+# of the nodes of such a piece from its singular edges is returned for the
+# bound of the mass they leave out (the log distance, the bound and the
+# exponent of the left and of the right edge, NA without a singular edge).
+.prior_ordered_product_split <- function(edges, exponents, edge_bounds, a, b, n){
 
-  out <- list(row = integer(), v = numeric(), w = numeric(), unresolved = logical())
+  out <- list(row = integer(), v = numeric(), w = numeric(), unresolved = logical(),
+              log_left = numeric(), log_right = numeric(), bound_left = numeric(), bound_right = numeric(),
+              exponent_left = numeric(), exponent_right = numeric())
   log_beta <- lbeta(a, b)
   last <- ncol(edges)
   for(j in seq_len(last - 1L)){
@@ -172,6 +194,8 @@
     }
     left_exponent <- if(j > 1L) exponents[kept, j] else rep(NA_real_, length(kept))
     right_exponent <- if(j + 1L < last) exponents[kept, j + 1L] else rep(NA_real_, length(kept))
+    left_bound <- if(j > 1L) edge_bounds[kept, j] else rep(NA_real_, length(kept))
+    right_bound <- if(j + 1L < last) edge_bounds[kept, j + 1L] else rep(NA_real_, length(kept))
     singular <- .prior_ordered_product_needs_smoothing(left_exponent) |
       .prior_ordered_product_needs_smoothing(right_exponent)
     reaches_end <- upper[kept] == 1
@@ -194,6 +218,9 @@
       out$v <- c(out$v, as.vector(v))
       out$w <- c(out$w, as.vector(weight))
       out$unresolved <- c(out$unresolved, rep(FALSE, length(rows) * n))
+      for(field in c("log_left", "log_right", "bound_left", "bound_right", "exponent_left", "exponent_right")){
+        out[[field]] <- c(out[[field]], rep(NA_real_, length(rows) * n))
+      }
     }
     # pieces next to a singular breakpoint: tau = s^qL / (s^qL + (1 - s)^qR), Gauss-Legendre in s
     rows <- which(singular)
@@ -228,14 +255,28 @@
       # the edge is not resolved: its distance, and the density that is infinite or
       # vanishing there, are rounded (it may round onto the edge itself)
       resolution <- 8 * .Machine$double.eps
-      near_left <- !left_beta & .prior_ordered_product_needs_smoothing(left_exponent[rows]) &
+      singular_left <- !left_beta & .prior_ordered_product_needs_smoothing(left_exponent[rows])
+      singular_right <- .prior_ordered_product_needs_smoothing(right_exponent[rows])
+      near_left <- singular_left &
         width * exp(log_tau) <= resolution * pmax(abs(lower[rows_kept]), .Machine$double.xmin)
-      near_right <- .prior_ordered_product_needs_smoothing(right_exponent[rows]) &
+      near_right <- singular_right &
         width * exp(log_one_minus_tau) <= resolution * pmax(abs(upper[rows_kept]), .Machine$double.xmin)
+      # the exact distances from the singular edges (the rounded nodes do not carry them)
+      log_left <- log(width) + log_tau
+      log_left[!singular_left, ] <- NA_real_
+      log_right <- log(width) + log_one_minus_tau
+      log_right[!singular_right, ] <- NA_real_
+      per_node <- function(values) as.vector(matrix(values, nrow = length(rows), ncol = n))
       out$row <- c(out$row, rep(rows_kept, times = n))
       out$v <- c(out$v, as.vector(v))
       out$w <- c(out$w, as.vector(weight))
       out$unresolved <- c(out$unresolved, as.vector(near_left | near_right))
+      out$log_left <- c(out$log_left, as.vector(log_left))
+      out$log_right <- c(out$log_right, as.vector(log_right))
+      out$bound_left <- c(out$bound_left, per_node(ifelse(singular_left, left_bound[rows], NA_real_)))
+      out$bound_right <- c(out$bound_right, per_node(ifelse(singular_right, right_bound[rows], NA_real_)))
+      out$exponent_left <- c(out$exponent_left, per_node(ifelse(singular_left, left_exponent[rows], NA_real_)))
+      out$exponent_right <- c(out$exponent_right, per_node(ifelse(singular_right, right_exponent[rows], NA_real_)))
     }
   }
   out
@@ -250,7 +291,7 @@
   rows <- nrow(prefix)
   corners <- as.matrix(expand.grid(rep(list(c(0, 1)), deeper), KEEP.OUT.ATTRS = FALSE))
   references <- values[g, , drop = FALSE]
-  candidates <- list(values = list(), exponents = numeric())
+  candidates <- list(values = list(), exponents = numeric(), bounds = numeric())
   for(corner in seq_len(nrow(corners))){
     tail <- matrix(corners[corner, ], nrow = rows, ncol = deeper, byrow = TRUE)
     found <- .prior_ordered_product_candidates(
@@ -260,6 +301,7 @@
     )
     candidates$values <- c(candidates$values, found$values)
     candidates$exponents <- c(candidates$exponents, found$exponents)
+    candidates$bounds <- c(candidates$bounds, found$bounds)
   }
   .prior_ordered_product_finish_edges(candidates)
 }
@@ -349,7 +391,8 @@
 }
 
 # One rule size of the nested pieces for the 'groups': the integral of each
-# group and the evaluations of the integrand.
+# group, the bound of the mass that its unresolved nodes leave out (with
+# 'check'), and the evaluations of the integrand.
 .prior_ordered_product_nested <- function(spec, values, bounds, exponents, integrand, groups, n, nested,
                                            check = FALSE){
 
@@ -358,19 +401,20 @@
   prefix <- matrix(0, length(groups), 0L)
   weight <- rep(1, length(groups))
   g <- groups
-  flagged <- rep(FALSE, length(groups))
+  flagged <- rep(0L, length(groups))
   for(k in seq_len(p - 1L)){
     if(nested){
       found <- .prior_ordered_product_edges(spec, prefix, g, values, bounds, exponents, p - k)
     }else{
       found <- list(edges = matrix(c(0, 1), nrow = nrow(prefix), ncol = 2L, byrow = TRUE),
-                    exponents = matrix(NA_real_, nrow = nrow(prefix), ncol = 2L))
+                    exponents = matrix(NA_real_, nrow = nrow(prefix), ncol = 2L),
+                    bounds = matrix(NA_real_, nrow = nrow(prefix), ncol = 2L))
     }
-    split <- .prior_ordered_product_split(found$edges, found$exponents, coordinates[[k]]$a,
+    split <- .prior_ordered_product_split(found$edges, found$exponents, found$bounds, coordinates[[k]]$a,
                                           coordinates[[k]]$b, n)
     prefix <- cbind(prefix[split$row, , drop = FALSE], split$v)
     weight <- weight[split$row] * split$w
-    flagged <- flagged[split$row] | split$unresolved
+    flagged <- flagged[split$row] + as.integer(split$unresolved)
     g <- g[split$row]
   }
   # the innermost coordinate: affine coefficients at its ends, breakpoints of
@@ -381,14 +425,11 @@
   found <- .prior_ordered_product_finish_edges(.prior_ordered_product_candidates(
     low, high, values[g, , drop = FALSE], bounds, exponents
   ))
-  split <- .prior_ordered_product_split(found$edges, found$exponents, inner$a, inner$b, n)
+  split <- .prior_ordered_product_split(found$edges, found$exponents, found$bounds, inner$a, inner$b, n)
   dc <- high$scale - low$scale
   ds <- high$shift - low$shift
-  evaluated <- integrand(
-    g[split$row],
-    low$scale[split$row] + dc[split$row] * split$v,
-    low$shift[split$row] + ds[split$row] * split$v
-  )
+  scale <- low$scale[split$row] + dc[split$row] * split$v
+  evaluated <- integrand(g[split$row], scale, low$shift[split$row] + ds[split$row] * split$v)
   # a node whose argument rounds onto a bound of the total has no density value
   near <- attr(evaluated, "unresolved", exact = TRUE)
   unresolved <- split$unresolved | (if(is.null(near)) FALSE else near)
@@ -402,55 +443,134 @@
   bias <- rep(0, length(groups))
   if(check){
     bias <- .prior_ordered_product_unresolved_bias(
-      spec, split, evaluated, unresolved, weight, inner_integral, flagged, g, groups
+      spec, split, evaluated, unresolved, scale, dc[split$row], ds[split$row], weight, inner_integral,
+      flagged, g, groups
     )
   }
   list(value = value, bias = bias, evaluations = length(split$row))
 }
 
-# A bound of the mass that the nodes next to a singular bound that are not
-# resolved (closer to the bound than a few units of the floating-point
-# resolution of its location, or whose argument rounds onto the bound) leave
-# out of an integral of a density. The density near the bound is ~ dist^(e - 1)
-# and the mass of the neglected distance d is ~ f(d) d / e, at most the weight
-# of the unresolved nodes times the largest resolved value over e; the same
-# holds for the unresolved nodes of the outer coordinates and the inner
-# integral. Returns the bound per group. A value that is not representable near
-# the bound (the representability limit of the double precision, e.g. a
-# Beta(0.5, 0.5) total at a distance of 1e-10 from its bound in a product with
-# uniform shares) is therefore rejected by the caller, never zeroed.
-.prior_ordered_product_unresolved_bias <- function(spec, split, evaluated, unresolved, weight,
-                                                    inner_integral, flagged, g, groups){
+# The logarithm of an upper bound of the density of the total at a point inside
+# its support at the distance 'distance' from its bound 'bound', where the
+# density is ~ distance^(exponent - 1) (the families whose bound the pieces
+# smooth: Beta at 0 and 1, gamma at 0); NA where no bound is established
+# (another family, an exponent that is not the family's, a distance that is not
+# small: the nodes it bounds are within a few units of the floating-point
+# resolution of the bound, and a node farther from it belongs to another bound
+# or to no singular breakpoint). The Beta density C t^(a - 1) (1 - t)^(b - 1)
+# at the bound 0 has the distance d = t, and the factor (1 - t)^(b - 1) is
+# monotone, at most 1 for b >= 1 and (1 - d)^(b - 1) for b < 1, so the density
+# is at most C max(1, (1 - d)^(b - 1)) d^(a - 1) with C = 1 / (B(a, b) mass of
+# the truncation); at the bound 1 the shapes are exchanged. The gamma density
+# C t^(k - 1) exp(-rate t) is at most C t^(k - 1). The distance is enlarged
+# for the monotone factor to cover the rounding of the distance, and the bound
+# by a relative 1e-8 for the rounding of its evaluation.
+.prior_ordered_product_density_envelope <- function(total, bound, exponent, distance){
 
-  exponents <- .prior_ordered_product_bound_exponents(
-    spec$terms[[spec$random_terms[[1L]]]]$total
+  out <- rep(NA_real_, length(distance))
+  parameters <- total$parameters
+  log_mass <- tryCatch(
+    if(.is_prior_default_range(total)) 0 else .prior_simple_log_C(total),
+    error = function(error) NA_real_
   )
-  exponent <- min(1, exponents)
-  n_rows <- length(g)
-  # the inner nodes: weight of the unresolved ones times the largest resolved value, per integral
-  inner_bias <- numeric(n_rows)
-  if(any(unresolved)){
-    resolved <- !unresolved
-    largest <- rep(Inf, n_rows)
-    if(any(resolved)){
-      maxima <- tapply(abs(evaluated[resolved]), split$row[resolved], max)
-      largest[as.integer(names(maxima))] <- maxima
-    }
-    mass <- tapply(split$w[unresolved], split$row[unresolved], sum)
-    rows <- as.integer(names(mass))
-    inner_bias[rows] <- as.numeric(mass) * largest[rows] / exponent
+  if(!is.finite(log_mass)){
+    return(out)
   }
-  by_group <- rowsum(weight * inner_bias, g)
+  enlarged <- 2 * distance + 4 * .Machine$double.eps
+  small <- is.finite(distance) & distance > 0 & enlarged < 1e-4
+  if(identical(total$distribution, "beta")){
+    at_zero <- !is.na(bound) & bound == 0
+    at_one <- !is.na(bound) & bound == 1
+    expected <- ifelse(at_zero, parameters$alpha, parameters$beta)
+    other <- ifelse(at_zero, parameters$beta, parameters$alpha)
+    valid <- small & (at_zero | at_one) & !is.na(exponent) & exponent == expected
+    monotone <- pmax(0, (other - 1) * log1p(-pmin(enlarged, 0.25)))
+    out[valid] <- (-lbeta(parameters$alpha, parameters$beta) - log_mass + monotone +
+      (exponent - 1) * log(distance))[valid]
+  }else if(identical(total$distribution, "gamma")){
+    valid <- small & !is.na(bound) & bound == 0 & !is.na(exponent) & exponent == parameters$shape
+    out[valid] <- (parameters$shape * log(parameters$rate) - lgamma(parameters$shape) - log_mass +
+      (exponent - 1) * log(distance))[valid]
+  }
+  out + log1p(1e-8)
+}
+
+# A bound of the mass that the unresolved nodes (closer to a singular bound
+# than a few units of the floating-point resolution of its location, or whose
+# argument rounds onto the bound) leave out of an integral of a density, per
+# group. The density at such a node is ~ distance^(e - 1) from the bound, which
+# the rounded node cannot carry, and is bounded without sampling the integrand:
+# by the envelope of its family at the exact distance of the node from the
+# bound (.prior_ordered_product_density_envelope(); the distance in the
+# argument is the distance in the coordinate times the slope |ds + bound dc| of
+# the numerator of the argument over the coefficient there), the Beta density of
+# the coordinate and the Jacobian of the smoothing being in the weight of the
+# node. An unresolved node without such an envelope (a bound that is not a
+# singular breakpoint of the piece, another family) makes the bound infinite.
+# The unresolved nodes of the outer coordinates leave out the whole inner
+# integral at their value, which is bounded by the computed inner integral plus
+# the bound of its own unresolved nodes (the computed integral could be missing
+# exactly that); a node is counted once for every outer coordinate that is
+# unresolved. The caller rejects a value whose bound exceeds the criterion,
+# never zeroes it silently (the representability limit of the double precision,
+# e.g. a Beta(0.5, 0.5) total at a distance of 1e-10 from its bound in a
+# product with uniform shares).
+.prior_ordered_product_unresolved_bias <- function(spec, split, evaluated, unresolved, scale, dscale, dshift,
+                                                    weight, inner_integral, flagged, g, groups){
+
+  total <- spec$terms[[spec$random_terms[[1L]]]]$total
+  n_rows <- length(g)
+  lost <- numeric(n_rows)
+  nodes <- which(unresolved)
+  if(length(nodes) > 0L){
+    log_distance <- matrix(NA_real_, length(nodes), 2L)
+    bound <- exponent <- signed <- log_distance
+    for(side in 1:2){
+      suffix <- c("left", "right")[[side]]
+      edge_bound <- split[[paste0("bound_", suffix)]][nodes]
+      signed[, side] <- dshift[nodes] + edge_bound * dscale[nodes]
+      log_distance[, side] <- log(abs(signed[, side])) + split[[paste0("log_", suffix)]][nodes] -
+        log(abs(scale[nodes]))
+      bound[, side] <- edge_bound
+      exponent[, side] <- split[[paste0("exponent_", suffix)]][nodes]
+    }
+    log_distance[!is.finite(log_distance)] <- NA_real_
+    # the bound that the node is closer to in the argument
+    nearest <- ifelse(is.na(log_distance[, 1L]), 2L,
+                      ifelse(is.na(log_distance[, 2L]), 1L,
+                             ifelse(log_distance[, 1L] <= log_distance[, 2L], 1L, 2L)))
+    pick <- cbind(seq_along(nodes), nearest)
+    log_envelope <- .prior_ordered_product_density_envelope(
+      total, bound[pick], exponent[pick], exp(log_distance[pick])
+    ) - log(abs(scale[nodes]))
+    # the argument t - bound = -(ds + bound dc) (v - v*) / c(v) has the sign of the side of the
+    # breakpoint v* that the node lies on (right of the left edge of its piece, left of the right
+    # edge): a node on the side of the bound outside the support has the exact density 0, so the
+    # computed value alone is what it gets wrong
+    known <- !is.na(bound[pick]) & !is.na(signed[pick]) & signed[pick] != 0
+    argument_sign <- -sign(signed[pick]) * sign(scale[nodes]) * c(1, -1)[nearest]
+    at_lower <- !is.na(bound[pick]) & bound[pick] == total$truncation$lower
+    inside <- !known | ifelse(at_lower, argument_sign > 0, argument_sign < 0)
+    # |computed - exact| is at most the larger of the two (both are non-negative)
+    log_larger <- ifelse(inside, pmax(log_envelope, log(abs(evaluated[nodes]))), log(abs(evaluated[nodes])))
+    log_larger[inside & is.na(log_envelope)] <- Inf
+    # a node of zero weight adds nothing to the computed integral either
+    node_lost <- numeric(length(nodes))
+    positive <- split$w[nodes] > 0
+    node_lost[positive] <- exp(log(split$w[nodes][positive]) + log_larger[positive])
+    lost_by_row <- rowsum(node_lost, split$row[nodes])
+    lost[as.integer(rownames(lost_by_row))] <- lost_by_row[, 1L]
+  }
+  # the inner nodes, and the outer unresolved nodes at the bound of their inner integral
+  contribution <- ifelse(weight > 0, weight * lost, 0)
+  outer <- flagged > 0L & weight > 0
+  if(any(outer)){
+    contribution[outer] <- contribution[outer] +
+      weight[outer] * flagged[outer] * (inner_integral[outer] + lost[outer])
+  }
+  by_group <- rowsum(contribution, g)
   bias <- rep(0, length(groups))
   bias[match(as.integer(rownames(by_group)), groups)] <- by_group[, 1L]
-  # the outer nodes: weight of the unresolved ones times the largest inner integral of the group
-  if(any(flagged)){
-    flagged_weight <- rowsum(weight[flagged], g[flagged])
-    largest <- tapply(abs(inner_integral), g, max)
-    index <- match(as.integer(rownames(flagged_weight)), groups)
-    bias[index] <- bias[index] +
-      flagged_weight[, 1L] * as.numeric(largest[rownames(flagged_weight)]) / exponent
-  }
   bias
 }
 
