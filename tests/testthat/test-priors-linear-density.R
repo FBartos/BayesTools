@@ -4458,7 +4458,7 @@ test_that("ordered levels without atoms build their numerical grid only for grid
   # grid is the route quadrature of up to 1024 product values, so a level
   # without atoms (a continuous total with Dirichlet allocations, the default
   # Dirichlet(1, ...) included) defers it at any grid size. The middle level is
-  # one share, the difference of the two levels minus the second share.
+  # one share, as is the top level beside a normal intercept.
   data <- data.frame(shape = ordered(c("lo", "mid", "hi")))
   ordered_priors <- function(total, allocation = NULL){
     JAGS_formula(~ shape, "mu", data, list(intercept = prior("normal", list(0, 1)),
@@ -4472,8 +4472,7 @@ test_that("ordered levels without atoms build their numerical grid only for grid
     builds <<- builds + 1L
     build(...)
   })
-  for(weights in list(c("mu_shape[1]" = 1), c("mu_shape[1]" = 1, "mu_shape[2]" = -1),
-                      c(mu_intercept = 1, "mu_shape[2]" = 1))){
+  for(weights in list(c("mu_shape[1]" = 1), c(mu_intercept = 1, "mu_shape[2]" = 1))){
     eager <- .prior_linear_combination_density(priors, weights, n_grid = 256L, .defer = FALSE)
     builds <- 0L
     deferred <- .prior_linear_combination_density(priors, weights, n_grid = 256L)
@@ -4490,11 +4489,14 @@ test_that("ordered levels without atoms build their numerical grid only for grid
     expect_identical(builds, 1L)
   }
 
-  # a fixed allocation (a share can be 0) and a total with atoms build at once
+  # a fixed allocation (a share can be 0), a total with atoms, and a product of
+  # shares (the difference of the two levels), whose quadrature can resolve no
+  # value, build at once
   for(case in list(
     list(priors = ordered_priors(prior("normal", list(0, 1)), c(.4, .6)), weights = c("mu_shape[1]" = 1)),
     list(priors = ordered_priors(prior_spike_and_slab(prior("normal", list(0, 1)))),
-         weights = c("mu_shape[1]" = 1))
+         weights = c("mu_shape[1]" = 1)),
+    list(priors = priors, weights = c("mu_shape[1]" = 1, "mu_shape[2]" = -1))
   )){
     density <- .prior_linear_combination_density(case$priors, case$weights, n_grid = 256L)
     expect_false(inherits(density$density, "prior_linear_density_deferred"))
