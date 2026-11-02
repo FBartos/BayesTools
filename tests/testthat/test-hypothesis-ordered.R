@@ -599,4 +599,70 @@ test_that("planning errors of ordered quantities name their displayed labels", {
   condition <- tryCatch(hypothesis_BF(sliced, "mu_f__xXx__g_ordered_allocation[2][hi] > 0.5", conditional = TRUE),
                         error = function(e) e)
   expect_identical(conditionMessage(condition), event_message("(mu) f[share: hi]:g{2}"))
+  # levels with the characters of regular expressions and of their quoting (a
+  # name is matched literally)
+  for(level in c("a\\Eb", "a\\E(b", "a\\Qb", "a [b]", "a {b}", "a.b", "a|b", "a$1")){
+    odd <- .ordered_hypothesis_single(levels = c("lo", level, "hi"), n = 1000L)
+    for(statement in c(paste0("(mu) f[share: ", level, "] > 0.5"),
+                       paste0("mu_f_ordered_allocation[", level, "] > 0.5"))){
+      condition <- tryCatch(hypothesis_BF(odd, statement, conditional = TRUE), error = function(e) e)
+      expect_identical(conditionMessage(condition), event_message(paste0("(mu) f[share: ", level, "]")),
+                       info = paste(level, statement))
+    }
+  }
+})
+
+test_that("ordered totals with several bounded alternatives are tested within each component", {
+
+  # a point null (component 1) and two bounded alternatives: the posterior
+  # ordinate at a bound of a slab is that of the slab's own draws, reflected at
+  # its own bounds, not the ordinate of the pooled alternatives
+  n <- 80000L
+  disjoint <- prior_mixture(list(prior("point", list(0), prior_weights = 5),
+    prior("uniform", list(1, 2), prior_weights = 1), prior("uniform", list(3, 4), prior_weights = 3)),
+    is_null = c(TRUE, FALSE, FALSE))
+  overlapping <- prior_mixture(list(prior("point", list(0), prior_weights = 2),
+    prior("uniform", list(1, 3), prior_weights = 1), prior("uniform", list(2, 4), prior_weights = 3)),
+    is_null = c(TRUE, FALSE, FALSE))
+  # posterior draws of the component probabilities 'probabilities'
+  drawn <- function(probabilities, bounds){
+    function(sources){
+      component <- sample.int(3L, n, replace = TRUE, prob = probabilities)
+      sources[, "mu_f_ordered_total_indicator"] <- component
+      sources[, "mu_f_ordered_total"] <- 0
+      for(i in 2:3){
+        sources[component == i, "mu_f_ordered_total"] <- stats::runif(sum(component == i), bounds[[i - 1L]][[1L]], bounds[[i - 1L]][[2L]])
+      }
+      sources
+    }
+  }
+  # Bayes factors of the null values: the prior density of a value inside the
+  # slabs 'slabs' (weights, bounds) over the posterior density (the same
+  # mixture with the component probabilities 'posterior'; both conditional on
+  # the alternatives when 'conditional')
+  density <- function(x, weights, bounds, conditional){
+    weights <- weights[-1L] / (if(conditional) sum(weights[-1L]) else sum(weights))
+    sum(vapply(seq_along(weights), function(i){
+      weights[[i]] * stats::dunif(x, bounds[[i]][[1L]], bounds[[i]][[2L]])
+    }, numeric(1)))
+  }
+  check <- function(total, bounds, prior_weights, posterior, values, conditional, label){
+    fit <- .ordered_hypothesis_single(total = total, n = n, modify = drawn(posterior, bounds))
+    for(value in values){
+      expected <- density(value, prior_weights, bounds, conditional) / density(value, posterior, bounds, conditional)
+      expect_equal(.ordered_hypothesis_bf(fit, paste("f{total} =", value), conditional = conditional)$BF,
+                   expected, tolerance = 0.08, info = paste(label, conditional, value))
+    }
+  }
+  disjoint_bounds <- list(c(1, 2), c(3, 4))
+  overlapping_bounds <- list(c(1, 3), c(2, 4))
+  for(conditional in c(TRUE, FALSE)){
+    # the posterior is the prior: every Bayes factor is 1, at the bounds of the slabs too
+    check(disjoint, disjoint_bounds, c(5, 1, 3), c(5, 1, 3), c(1, 1.5, 2, 3, 3.5, 4), conditional, "disjoint")
+    check(overlapping, overlapping_bounds, c(2, 1, 3), c(2, 1, 3), c(1, 1.5, 2, 2.5, 3, 3.5, 4), conditional,
+          "overlapping")
+    # the posterior probabilities of the components differ from the prior ones
+    check(disjoint, disjoint_bounds, c(5, 1, 3), c(2, 1, 1), c(1, 2, 3, 4), conditional, "disjoint reweighted")
+    check(overlapping, overlapping_bounds, c(2, 1, 3), c(1, 2, 1), c(1, 2, 3, 4), conditional, "overlapping reweighted")
+  }
 })

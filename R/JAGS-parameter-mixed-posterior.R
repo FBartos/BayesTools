@@ -454,6 +454,8 @@ parameter_gate_states <- function(fit, selection, draws = NULL){
 
   key <- quantity$extraction_key[[1L]]
   if(!key$type %in% c("coordinate", "factor_level") || !length(key$dependencies)) return(NULL)
+  ordered <- .bt_ordered_total_mixture_components(fit, key, sources, keep)
+  if(!is.null(ordered)) return(ordered)
   priors <- .marginal_posterior_strip_multiply_by(attr(fit, "prior_list", exact = TRUE))
   owners <- names(priors)[vapply(names(priors), function(owner){
     any(key$dependencies %in% .prior_linear_prior_columns(owner, priors[[owner]]))

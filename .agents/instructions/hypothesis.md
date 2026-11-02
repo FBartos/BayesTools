@@ -138,7 +138,12 @@ a level of `f`: the references the resolution matched to the quantity become the
 symbol of the root (`.hypothesis_model_ordered_symbols()`) and errors name the
 displayed label. A spike-and-slab or mixture total refuses point tests at its
 null without `conditional = TRUE` (`BayesTools_point_mass_at_null`) and warns
-about the full ensemble on unconditional regions, as do its shares; a point
+about the full ensemble on unconditional regions, as do its shares; its draws
+carry the component their monitored indicator selects and the exact support of
+every component, and a conditional total the support under the priors
+restricted to the event, so that several bounded alternatives are reflected at
+their own bounds (`.bt_ordered_total_mixture_components()`,
+`.bt_ordered_conditioned_support()`); a point
 total is fixed by the model; a total with a parameter expression has no prior
 law; on the original scale a total is tested only when the scaling leaves the
 coefficients of its term unchanged. Contrast coefficients and

@@ -195,6 +195,36 @@
   }), source = "catalog")
 }
 
+# The components of the draws of a total coordinate whose `total` prior is a
+# mixture or spike-and-slab prior: the component that its monitored indicator
+# selects in each retained draw, and the exact support of every component, so
+# that the posterior ordinate of a total with several bounded alternatives is
+# estimated within each component (and reflected at its own bounds). NULL for
+# other quantities and when the indicator is not monitored.
+.bt_ordered_total_mixture_components <- function(fit, key, sources, keep){
+
+  if(!identical(key$type, "coordinate")){
+    return(NULL)
+  }
+  prior_list <- attr(fit, "prior_list", exact = TRUE)
+  owner <- .bt_ordered_total_owner(prior_list, key$dependencies)
+  if(is.null(owner) || !.posterior_components_is_mixture(prior_list[[owner]]$total)){
+    return(NULL)
+  }
+  total <- prior_list[[owner]]$total
+  indicator <- paste0(.prior_ordered_total_name(owner), "_indicator")
+  if(!indicator %in% colnames(sources)){
+    return(NULL)
+  }
+
+  .posterior_components_new(
+    index    = .bt_component_from_indicator(total, sources[keep, indicator]),
+    supports = lapply(seq_along(total), function(component){
+      .posterior_support_from_prior(.posterior_components_component_prior(total, component))
+    })
+  )
+}
+
 # The prior density of the total coordinate of an ordered term (the density of
 # its `total` prior, also for every slice) and of a share (the Beta marginal of
 # its Dirichlet allocation). With 'conditional', the density of a total is

@@ -74,10 +74,34 @@
 }
 
 
+# The whole-name occurrences of 'name' in 'text' replaced by 'label': literal
+# matching (a name holds the levels of a factor, which are no pattern) of
+# occurrences that no letter, digit, or underscore touches (the name of the
+# total is a prefix of the name of its indicator coordinate).
+.hypothesis_model_replace_name <- function(text, name, label) {
+
+  word <- "[A-Za-z0-9_]"
+  vapply(text, function(x) {
+    start <- as.integer(gregexpr(name, x, fixed = TRUE)[[1L]])
+    if (identical(start, -1L)) {
+      return(x)
+    }
+    end    <- start + nchar(name) - 1L
+    before <- substr(rep(x, length(start)), start - 1L, start - 1L)
+    after  <- substr(rep(x, length(start)), end + 1L, end + 1L)
+    whole  <- !grepl(word, before) & !grepl(word, after)
+    for (i in rev(which(whole))) {
+      x <- paste0(substr(x, 1L, start[[i]] - 1L), label, substr(x, end[[i]] + 1L, nchar(x)))
+    }
+
+    x
+  }, character(1), USE.NAMES = FALSE)
+}
+
+
 # The planning or the evaluation 'expr' of a statement on an ordered quantity,
 # with the root of the quantity and its canonical name named by its displayed
-# 'label' in the messages of its errors (whole names only: the name of the
-# total is a prefix of the name of its indicator coordinate).
+# 'label' in the messages of its errors.
 .hypothesis_model_ordered_labels <- function(selected, label, expr) {
 
   entry <- selected[["entry"]]
@@ -87,12 +111,7 @@
   names <- unique(c(entry[["parameter"]], entry[["term"]]))
   rename <- function(text) {
     for (name in names) {
-      pattern <- paste0("(?<![A-Za-z0-9_])\\Q", name, "\\E(?![A-Za-z0-9_])")
-      text <- vapply(text, function(x) {
-        matches <- gregexpr(pattern, x, perl = TRUE)
-        regmatches(x, matches) <- list(rep(label, length(regmatches(x, matches)[[1L]])))
-        x
-      }, character(1), USE.NAMES = FALSE)
+      text <- .hypothesis_model_replace_name(text, name, label)
     }
     text
   }
