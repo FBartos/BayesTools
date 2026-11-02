@@ -5013,7 +5013,7 @@ test_that("factor terms omitted by a mixed model are zero on every coefficient c
   )
 })
 
-test_that("terms with unknown support leave level support unknown", {
+test_that("ordered terms add their derived support to the level support, unknown supports stay unknown", {
 
   data <- data.frame(f = ordered(c("low", "mid", "high"), levels = c("low", "mid", "high")))
   formula_result <- JAGS_formula(
@@ -5035,10 +5035,10 @@ test_that("terms with unknown support leave level support unknown", {
 
   levels <- marginal_posterior(samples, "mu_f", formula = ~ f)
   # the reference level is the truncated intercept alone; the other levels add
-  # an ordered term whose support is not derived, so their support is unknown
+  # the ordered term: a fixed share of its unbounded total (exact)
   expect_equal(BayesTools:::.posterior_support_bounds(levels[["low"]]), c(0, Inf))
-  expect_null(.bt_meta_get(levels[["mid"]], "support"))
-  expect_null(.bt_meta_get(levels[["high"]], "support"))
+  expect_equal(BayesTools:::.posterior_support_bounds(levels[["mid"]]), c(-Inf, Inf))
+  expect_equal(BayesTools:::.posterior_support_bounds(levels[["high"]]), c(-Inf, Inf))
 
   known <- BayesTools:::.posterior_support_new(c(0, Inf))
   expect_null(BayesTools:::.posterior_support_sum(list(known, NULL)))

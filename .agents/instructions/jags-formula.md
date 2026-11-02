@@ -805,7 +805,14 @@ what it calls, needs a `fit` profile refresh of the cached fits.
   `mu_f_ordered_allocation[mid]`; fixed allocations have none, and a shared
   `id` allocation has the shares of every term that uses it) are catalog
   quantities: the total has the support and the prior law of the `total` prior,
-  the share the support [0, 1] and the Beta marginal of the Dirichlet prior. Mixed producers retain these primitive sources with their
+  the share the support [0, 1] and the Beta marginal of the Dirichlet prior.
+  The level of an ordered term (any linear combination of its coefficients) is
+  the total of each slice times a convex combination of the combination's
+  weights: its support is exact where that multiplier is fixed (equal weights,
+  as the top level of a cumulative contrast, which is the total, or fixed
+  allocations) and otherwise a hull of the total's bounds that is not exact
+  (`.posterior_support_group_ordered()`), under the restricted total when
+  conditioned. Mixed producers retain these primitive sources with their
   selected model and row; raw ensemble tables use their complete declared-model
   union, including fixed allocations and undefined shares in absent models.
   `JAGS_ordered_parameter_spec()` owns source names, labels (`f{total}`,

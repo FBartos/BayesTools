@@ -810,3 +810,126 @@ test_that("the pooled ordinate is reflected at the common exact support of the c
   expect_match(plan(rep(2L, 100), list(point, posterior_support_attribute(c(1.5, 2))))$warning,
                "unusable for their posterior samples")
 })
+
+# ---------------------------------------------------------------------------- #
+# Levels of ordered terms: the support of a level follows from its design
+# ---------------------------------------------------------------------------- #
+
+test_that("the support of an ordered level follows from the total and the allocation", {
+
+  slab <- prior("uniform", list(1, 2))
+  fit <- function(...){
+    info <- JAGS_formula(~ f, "mu", .ordered_hypothesis_data(), list(intercept = N01, f = prior_ordered(...)))
+    info$prior_list$mu_f
+  }
+  group <- function(prior, weights){
+    columns <- paste0("mu_f[", seq_along(weights), "]")
+    list(prior = prior, columns = columns, weights = weights[weights != 0], indices = which(weights != 0))
+  }
+  support <- function(prior, weights) BayesTools:::.posterior_support_group_ordered(group(prior, weights))
+
+  # the top level of a cumulative contrast is the total: its support is exact
+  dirichlet <- fit(slab)
+  top <- support(dirichlet, c(1, 1))
+  expect_identical(top$bounds, c(1, 2))
+  expect_true(top$exact)
+  # an inner level is the total times a share in (0, 1): a hull, not exact
+  inner <- support(dirichlet, c(1, 0))
+  expect_identical(inner$bounds, c(0, 2))
+  expect_false(inner$exact)
+  expect_identical(support(fit(prior("uniform", list(-1, 2))), c(1, 0))$bounds, c(-1, 2))
+  expect_identical(support(fit(prior("normal", list(0, 1), list(0, Inf))), c(1, 0))$bounds, c(0, Inf))
+  # a contrast of the levels is a hull of the weights
+  contrast <- support(dirichlet, c(1, -1))
+  expect_identical(contrast$bounds, c(-2, 2))
+  expect_false(contrast$exact)
+  # a fixed allocation fixes the share of every level
+  fixed <- fit(slab, allocation = c(.25, .75))
+  expect_identical(support(fixed, c(1, 0))$bounds, c(.25, .5))
+  expect_true(support(fixed, c(1, 0))$exact)
+  expect_identical(support(fixed, c(1, 1))$bounds, c(1, 2))
+  # the support of a total that has none, or of a prior without bound metadata
+  expect_null(BayesTools:::.posterior_support_group_ordered(
+    list(prior = prior_ordered(slab), columns = c("a", "b"), weights = c(a = 1), indices = 1L)))
+
+  # the totals of the slices of a crossed term are independent
+  info <- JAGS_formula(~ f * g, "mu", .ordered_hypothesis_data(), list(intercept = N01, f = prior_ordered(slab),
+    g = prior_factor("normal", list(0, 1), contrast = "treatment"), `f:g` = prior_ordered(slab)))
+  crossed <- info$prior_list[["mu_f__xXx__g"]]
+  crossed_support <- function(weights){
+    BayesTools:::.posterior_support_group_ordered(list(prior = crossed, columns = paste0("c[", 1:4, "]"),
+      weights = weights[weights != 0], indices = which(weights != 0)))
+  }
+  # the top level of one slice is that slice's total
+  expect_identical(crossed_support(c(1, 1, 0, 0))$bounds, c(1, 2))
+  expect_true(crossed_support(c(1, 1, 0, 0))$exact)
+  # the top levels of both slices add
+  expect_identical(crossed_support(c(1, 1, 1, 1))$bounds, c(2, 4))
+  expect_true(crossed_support(c(1, 1, 1, 1))$exact)
+  expect_false(crossed_support(c(1, 0, 1, 1))$exact)
+})
+
+test_that("the levels of an ordered term are reflected at the bounds of its total", {
+
+  n <- 80000L
+  slab <- prior("uniform", list(1, 2))
+
+  # a slab-only total: the top level is the total, with its exact support
+  fit <- .ordered_hypothesis_single(total = slab, n = n, seed = 719L)
+  marginal <- marginal_posterior(as_mixed_posteriors(fit, "mu_f"), "mu_f", prior_samples = TRUE,
+                                 use_formula = FALSE, n_samples = n)
+  top <- BayesTools:::.posterior_support_get(marginal[["hi"]])
+  expect_identical(top$bounds, c(1, 2))
+  expect_true(top$exact)
+  inner <- BayesTools:::.posterior_support_get(marginal[["mid"]])
+  expect_identical(inner$bounds, c(0, 2))
+  expect_false(inner$exact)
+  for(value in c(1, 1.5, 2)){
+    total <- .ordered_hypothesis_bf(fit, paste0("f{total} = ", value))$BF
+    level <- .ordered_hypothesis_bf(fit, paste0("f[hi] = ", value))$BF
+    # the posterior is the prior: the Bayes factor is 1 (it was 2 at the bounds)
+    expect_equal(level, 1, tolerance = 0.08, info = value)
+    expect_equal(level, total, tolerance = 1e-6, info = value)
+  }
+  # the inner levels have no exact bound and are tested as before
+  for(value in c(.5, 1)){
+    expect_equal(.ordered_hypothesis_bf(fit, paste0("f[mid] = ", value))$BF, 1, tolerance = 0.08, info = value)
+  }
+
+  # within the inclusion event of a spike-and-slab total
+  set.seed(404)
+  fit <- .ordered_hypothesis_single(total = prior_spike_and_slab(slab, prior("point", list(.5))), n = n, seed = 719L)
+  for(value in c(1, 1.5, 2)){
+    level <- .ordered_hypothesis_bf(fit, paste0("f[hi] = ", value), conditional = TRUE)$BF
+    expect_equal(level, 1, tolerance = 0.08, info = value)
+    expect_equal(level, .ordered_hypothesis_bf(fit, paste0("f{total} = ", value), conditional = TRUE)$BF,
+                 tolerance = 1e-6, info = value)
+  }
+
+  # unbounded totals are tested as before
+  fit <- .ordered_hypothesis_single(total = N01, n = n, seed = 719L)
+  for(value in c(-.5, .5)){
+    level <- .ordered_hypothesis_bf(fit, paste0("f[hi] = ", value))$BF
+    expect_equal(level, 1, tolerance = 0.08, info = value)
+    expect_equal(level, .ordered_hypothesis_bf(fit, paste0("f{total} = ", value))$BF, tolerance = 1e-6, info = value)
+  }
+
+  # the levels of an ordinary factor with bounded coefficients are the
+  # coefficients: exact bounds at both of them
+  set.seed(405)
+  info <- JAGS_formula(~ g, "mu", .ordered_hypothesis_data(), list(intercept = N01,
+    g = prior_factor("uniform", list(1, 2), contrast = "treatment")))
+  columns <- cbind(mu_intercept = stats::rnorm(n), `mu_g[1]` = stats::runif(n, 1, 2), `mu_g[2]` = stats::runif(n, 1, 2))
+  fit <- structure(
+    list(mcmc = coda::mcmc.list(coda::mcmc(columns)), sample = n, summary.pars = list(mutate = NULL),
+         monitor = colnames(columns)),
+    class = c("runjags", "BayesTools_fit", "list")
+  )
+  attr(fit, "prior_list")     <- info$prior_list
+  attr(fit, "formula_design") <- list(mu = info$formula_design)
+  fit <- attach_test_parameter_map(fit)
+  for(level in c("B", "C")) for(value in c(1, 2)){
+    expect_equal(.ordered_hypothesis_bf(fit, paste0("g[", level, "] = ", value))$BF, 1, tolerance = 0.08,
+                 info = paste(level, value))
+  }
+})

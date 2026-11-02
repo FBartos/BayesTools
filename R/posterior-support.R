@@ -926,6 +926,63 @@ posterior_support_attribute <- function(bounds, points = NULL, type = NULL,
   .posterior_support_point(value, source = source)
 }
 
+# Support of a linear combination 'group$weights' of the coefficients of an
+# ordered prior. The coefficients of a slice are its total times the shares
+# (convex weights) of the ordered factors, so the combination is
+# sum_s total_s * u_s, where u_s is a convex combination of the weights of the
+# slice. A slice whose weights are equal (u_s is that weight, e.g. the top level
+# of a cumulative contrast, which equals the total) or whose allocations are
+# fixed (u_s is their sum) is the scaled support of its total, exact when the
+# total's is. Any other slice is bounded by the weights of its coefficients:
+# the support is then a hull of the total's bounds, not exact.
+.posterior_support_group_ordered <- function(group, source = "linear_prior"){
+
+  prior <- group$prior
+  metadata <- attr(prior, "ordered_metadata", exact = TRUE)
+  if(is.null(metadata) || length(group$columns) != metadata$coefficient_dim){
+    return(NULL)
+  }
+  total <- .posterior_support_from_prior(prior$total, source = source)
+  if(is.null(total)){
+    return(NULL)
+  }
+
+  weights <- numeric(metadata$coefficient_dim)
+  weights[group$indices] <- as.numeric(group$weights)
+
+  slices <- lapply(seq_len(metadata$theta_dim), function(slice){
+    coefficients <- which(metadata$slice_index == slice)
+    slice_weights <- weights[coefficients]
+    # the multiplier of the total when the allocations of the slice are fixed
+    shares <- rep(1, length(coefficients))
+    for(factor_term in metadata$ordered_terms){
+      allocation <- .prior_ordered_allocation_for_coefficient(metadata, factor_term, slice)
+      shares <- if(identical(allocation$spec$type, "fixed")){
+        shares * allocation$spec$weights[metadata$coefficient_grid[[factor_term]][coefficients]]
+      }else{
+        NA_real_
+      }
+    }
+    multiplier <- if(!anyNA(shares)){
+      sum(slice_weights * shares)
+    }else if(all(slice_weights == slice_weights[1L])){
+      slice_weights[1L]
+    }else{
+      NULL
+    }
+    if(!is.null(multiplier)){
+      return(.posterior_support_scale(total, multiplier, source = source))
+    }
+
+    corners <- c(total$bounds[1L], total$bounds[2L]) %o% range(slice_weights)
+    corners[is.nan(corners)] <- 0
+    .posterior_support_new(range(corners), exact = FALSE, source = source,
+                           type = "interval")
+  })
+
+  .posterior_support_sum(slices, source = source)
+}
+
 .posterior_support_group_linear <- function(group, source = "linear_prior"){
 
   prior <- group$prior
@@ -966,6 +1023,9 @@ posterior_support_attribute <- function(bounds, points = NULL, type = NULL,
       component_group$prior <- component
       .posterior_support_group_linear(component_group, source = source)
     }), source = source))
+  }
+  if(is.prior.ordered(prior)){
+    return(.posterior_support_group_ordered(group, source = source))
   }
   if(is.prior.vector(prior) && !is.prior.treatment(prior) && !is.prior.independent(prior)){
     if(is.prior.simplex(prior)){
