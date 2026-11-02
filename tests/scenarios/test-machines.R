@@ -15,12 +15,12 @@ scenario_start("machines")
 # unstructured one, and compound symmetry with a positive correlation is the
 # nested model (equal log-likelihoods)
 #
-# TODO: with six workers the fixed machine effects trade off with the means of
-# the noncentered worker effects, so these multi-column blocks mix slowly
-# (an ESS of about 40 from 16000 draws); the mean-centered parameterization is
-# available only for a scalar random intercept. The fits use long thinned
-# chains for now; consider other parameterizations for multi-column and
-# structured blocks.
+# The worker blocks are mean-centered: with six workers the fixed machine
+# effects trade off with the means of noncentered worker effects (an ESS of
+# about 40 from 16000 draws), so each block samples its effects around the
+# fixed effects it absorbs (the intercept and the machine effects), and the
+# nested worker-by-machine effects around the worker effects and the machine
+# effects
 
 testthat::test_that("Machines factor random slopes and covariance structures", {
 
@@ -44,8 +44,9 @@ testthat::test_that("Machines factor random slopes and covariance structures", {
   # priors: intercept ~ N(0, 1), one N(0, 1) per treatment-contrast machine
   # coefficient, half-normal(0, 1) for sigma and the SDs, LKJ(1) for
   # unstructured correlations, and the default uniform(-1/2, 1) CS/HCS
-  # correlation; long thinned chains (see the TODO above). Each block returns
-  # the fit and its bridge-sampling marginal likelihood
+  # correlation; mean-centered worker blocks (see above) with 4 chains of
+  # 4000 draws. Each block returns the fit and its bridge-sampling marginal
+  # likelihood
   unit_sd_prior <- prior("normal", list(mean = 0, sd = 1), truncation = list(0, Inf))
   fixed_priors  <- list(mu = list(
     intercept = prior("normal", list(mean = 0, sd = 1)),
@@ -55,15 +56,16 @@ testthat::test_that("Machines factor random slopes and covariance structures", {
     JAGS_bridgesampling(fit, log_posterior = log_posterior, data = data_list, prior_list = list(sigma = unit_sd_prior), seed = 1)
   }
   structures <- list()
+  centered_block <- function(...) random_block(sd = unit_sd_prior, parameterization = "mean_centered", ...)
   # one correlated coefficient per machine (no random intercept)
   structures[["us"]] <- scenario_fit("fit_us", {
     fit <- JAGS_fit(
       model_syntax = likelihood, data = data_list, prior_list = list(sigma = unit_sd_prior),
       formula_list = list(mu = ~ Machine + us(0 + Machine | Worker)), formula_data_list = list(mu = Machines),
       formula_prior_list = fixed_priors,
-      formula_random_prior_list = list(mu = prior_random(Worker = random_block(
-        sd = unit_sd_prior, cor = prior_lkj(eta = 1), contrasts = c(Machine = "independent")))),
-      chains = 4, adapt = 1000, burnin = 5000, sample = 10000, thin = 10, seed = 1
+      formula_random_prior_list = list(mu = prior_random(Worker = centered_block(
+        cor = prior_lkj(eta = 1), contrasts = c(Machine = "independent")))),
+      chains = 4, adapt = 1000, burnin = 2000, sample = 4000, seed = 1
     )
     list(fit = fit, marglik = marglik(fit))
   })
@@ -73,9 +75,9 @@ testthat::test_that("Machines factor random slopes and covariance structures", {
       model_syntax = likelihood, data = data_list, prior_list = list(sigma = unit_sd_prior),
       formula_list = list(mu = ~ Machine + (1 + Machine | Worker)), formula_data_list = list(mu = Machines),
       formula_prior_list = fixed_priors,
-      formula_random_prior_list = list(mu = prior_random(Worker = random_block(
-        sd = unit_sd_prior, cor = prior_lkj(eta = 1)))),
-      chains = 4, adapt = 1000, burnin = 5000, sample = 10000, thin = 10, seed = 1
+      formula_random_prior_list = list(mu = prior_random(Worker = centered_block(
+        cor = prior_lkj(eta = 1)))),
+      chains = 4, adapt = 1000, burnin = 2000, sample = 4000, seed = 1
     )
     list(fit = fit, marglik = marglik(fit))
   })
@@ -85,9 +87,9 @@ testthat::test_that("Machines factor random slopes and covariance structures", {
       model_syntax = likelihood, data = data_list, prior_list = list(sigma = unit_sd_prior),
       formula_list = list(mu = ~ Machine + (1 + Machine | Worker)), formula_data_list = list(mu = Machines),
       formula_prior_list = fixed_priors,
-      formula_random_prior_list = list(mu = prior_random(Worker = random_block(
-        sd = unit_sd_prior, cor = prior_lkj(eta = 1), contrasts = c(Machine = "meandif")))),
-      chains = 4, adapt = 1000, burnin = 5000, sample = 10000, thin = 10, seed = 1
+      formula_random_prior_list = list(mu = prior_random(Worker = centered_block(
+        cor = prior_lkj(eta = 1), contrasts = c(Machine = "meandif")))),
+      chains = 4, adapt = 1000, burnin = 2000, sample = 4000, seed = 1
     )
     list(fit = fit, marglik = marglik(fit))
   })
@@ -97,9 +99,9 @@ testthat::test_that("Machines factor random slopes and covariance structures", {
       model_syntax = likelihood, data = data_list, prior_list = list(sigma = unit_sd_prior),
       formula_list = list(mu = ~ Machine + diag(0 + Machine | Worker)), formula_data_list = list(mu = Machines),
       formula_prior_list = fixed_priors,
-      formula_random_prior_list = list(mu = prior_random(Worker = random_block(
-        sd = unit_sd_prior, contrasts = c(Machine = "independent")))),
-      chains = 4, adapt = 1000, burnin = 5000, sample = 10000, thin = 10, seed = 1
+      formula_random_prior_list = list(mu = prior_random(Worker = centered_block(
+        contrasts = c(Machine = "independent")))),
+      chains = 4, adapt = 1000, burnin = 2000, sample = 4000, seed = 1
     )
     list(fit = fit, marglik = marglik(fit))
   })
@@ -109,9 +111,9 @@ testthat::test_that("Machines factor random slopes and covariance structures", {
       model_syntax = likelihood, data = data_list, prior_list = list(sigma = unit_sd_prior),
       formula_list = list(mu = ~ Machine + id(0 + Machine | Worker)), formula_data_list = list(mu = Machines),
       formula_prior_list = fixed_priors,
-      formula_random_prior_list = list(mu = prior_random(Worker = random_block(
-        sd = unit_sd_prior, contrasts = c(Machine = "independent")))),
-      chains = 4, adapt = 1000, burnin = 5000, sample = 10000, thin = 10, seed = 1
+      formula_random_prior_list = list(mu = prior_random(Worker = centered_block(
+        contrasts = c(Machine = "independent")))),
+      chains = 4, adapt = 1000, burnin = 2000, sample = 4000, seed = 1
     )
     list(fit = fit, marglik = marglik(fit))
   })
@@ -121,8 +123,8 @@ testthat::test_that("Machines factor random slopes and covariance structures", {
       model_syntax = likelihood, data = data_list, prior_list = list(sigma = unit_sd_prior),
       formula_list = list(mu = ~ Machine + cs(Machine | Worker)), formula_data_list = list(mu = Machines),
       formula_prior_list = fixed_priors,
-      formula_random_prior_list = list(mu = prior_random(Worker = random_block(sd = unit_sd_prior))),
-      chains = 4, adapt = 1000, burnin = 5000, sample = 10000, thin = 10, seed = 1
+      formula_random_prior_list = list(mu = prior_random(Worker = centered_block())),
+      chains = 4, adapt = 1000, burnin = 2000, sample = 4000, seed = 1
     )
     list(fit = fit, marglik = marglik(fit))
   })
@@ -132,8 +134,8 @@ testthat::test_that("Machines factor random slopes and covariance structures", {
       model_syntax = likelihood, data = data_list, prior_list = list(sigma = unit_sd_prior),
       formula_list = list(mu = ~ Machine + hcs(Machine | Worker)), formula_data_list = list(mu = Machines),
       formula_prior_list = fixed_priors,
-      formula_random_prior_list = list(mu = prior_random(Worker = random_block(sd = unit_sd_prior))),
-      chains = 4, adapt = 1000, burnin = 5000, sample = 10000, thin = 10, seed = 1
+      formula_random_prior_list = list(mu = prior_random(Worker = centered_block())),
+      chains = 4, adapt = 1000, burnin = 2000, sample = 4000, seed = 1
     )
     list(fit = fit, marglik = marglik(fit))
   })
@@ -143,8 +145,9 @@ testthat::test_that("Machines factor random slopes and covariance structures", {
       model_syntax = likelihood, data = data_list, prior_list = list(sigma = unit_sd_prior),
       formula_list = list(mu = ~ Machine + (1 | Worker/Machine)), formula_data_list = list(mu = Machines),
       formula_prior_list = fixed_priors,
-      formula_random_prior_list = list(mu = prior_random(sd = unit_sd_prior)),
-      chains = 4, adapt = 1000, burnin = 5000, sample = 10000, thin = 10, seed = 1
+      formula_random_prior_list = list(mu = prior_random(
+        sd = unit_sd_prior, Worker = centered_block(), Machine_Worker = centered_block())),
+      chains = 4, adapt = 1000, burnin = 2000, sample = 4000, seed = 1
     )
     list(fit = fit, marglik = marglik(fit))
   })
@@ -230,12 +233,13 @@ testthat::test_that("Machines factor random slopes and covariance structures", {
   scenario_text("estimates-hcs",     JAGS_estimates_table(structures[["hcs"]][["fit"]]))
   scenario_text("estimates-nested",  JAGS_estimates_table(structures[["nested"]][["fit"]]))
 
-  ### exact marginal likelihoods ----
+  ### reference marginal likelihoods ----
   # for the structures without an LKJ correlation matrix, the marginal
   # likelihood reduces to a low-dimensional integral over sigma, the SDs, and
   # the CS/HCS correlation (uniform(-1/2, 1) prior), which importance sampling
-  # evaluates with an error far below that of bridge sampling
-  exact_logml <- scenario_fit("exact_marglik", {
+  # (scenario_gaussian_logml(), with its relative standard error) evaluates
+  # with an error far below that of bridge sampling
+  reference_logml <- scenario_fit("reference_marglik", {
     same_worker  <- outer(Machines$Worker, Machines$Worker, "==") * 1
     same_cell    <- same_worker * outer(Machines$Machine, Machines$Machine, "==")
     machine_cell <- lapply(levels(Machines$Machine), function(m) same_cell * outer(Machines$Machine == m, Machines$Machine == m))
@@ -262,17 +266,19 @@ testthat::test_that("Machines factor random slopes and covariance structures", {
       scenario_gaussian_logml(
         Machines$score_z, stats::model.matrix(~ Machine, Machines), covariances[[structure]], draws,
         correlation_bounds = list("(mu) cor" = c(-1 / 2, 1))
-      )[["logml"]]
-    }, numeric(1))
+      )
+    }, numeric(2))
   })
 
   ### structure comparison ----
   # lme4 log-likelihoods (equal for us and slope, and for cs and nested), and
-  # log marginal likelihoods (exact where available, bridge sampling in
-  # BayesTools and brms) with log BF against the unstructured model. Bridge
+  # log marginal likelihoods (the importance-sampling reference with its
+  # relative standard error where available, bridge sampling in BayesTools and
+  # brms) with log BF against the unstructured model. Bridge
   # sampling errors exceed their reported errors: the BayesTools HCS estimate
-  # (seed 1) lies 0.26 below the exact value (other seeds give -11.84 to
-  # -11.98) and the brms nested estimate 0.59 above it
+  # (seed 1) lies 0.16 below the reference (seeds 2 to 6 give -11.79 to
+  # -11.99), the BayesTools nested estimate 0.11 above it (seeds 2 to 6 give
+  # -12.29 to -11.91), and the brms nested estimate 0.59 above it
   scenario_text("structure-comparison", {
     log_ml <- function(fits) vapply(fits, function(x) x[["marglik"]][["logml"]], numeric(1))
     bayes  <- log_ml(structures)
@@ -282,7 +288,8 @@ testthat::test_that("Machines factor random slopes and covariance structures", {
       lme4_logLik    = vapply(names(structures), function(s) {
         if (s %in% names(lme4_fits)) as.numeric(stats::logLik(lme4_fits[[s]])) else NA_real_
       }, numeric(1)),
-      exact_logml      = unname(exact_logml[names(structures)]),
+      reference_logml  = unname(reference_logml["logml", ][names(structures)]),
+      reference_rse    = unname(reference_logml["relative_se", ][names(structures)]),
       BayesTools_logml = bayes,
       brms_logml       = unname(brms[names(structures)]),
       BayesTools_log_BF_vs_us = bayes - bayes[["us"]],
@@ -358,9 +365,38 @@ testthat::test_that("Machines factor random slopes and covariance structures", {
     posteriors = structure_posteriors("id", c(fixed_parameters, "sd"), c(sd = "sd_Worker:Machine__Intercept"))
   )
   cs_worker <- lme4_worker(lme4_fits[["cs"]])
+  # exact CS posterior means: the fixed effects (N(0, 1)) and the worker
+  # effects integrate analytically (one identical 9 x 9 covariance block per
+  # worker), and sigma, the SD, and the correlation by a grid sum (step 0.004,
+  # 0.05, 0.017; within 5e-7 of a grid twice as fine)
+  reference_cs <- scenario_fit("reference_cs", {
+    rows <- split(seq_len(nrow(Machines)), Machines$Worker)
+    X <- stats::model.matrix(~ Machine, Machines)[rows[[1L]], ]
+    Y <- vapply(rows, function(r) Machines$score_z[r], numeric(length(rows[[1L]])))
+    same_cell <- outer(Machines$Machine[rows[[1L]]], Machines$Machine[rows[[1L]]], "==") * 1
+    grid <- expand.grid(sigma = seq(0.06, 0.26, by = 0.004), sd = seq(0.12, 3.62, by = 0.05),
+                        cor = seq(-0.5, 1, length.out = 92)[-c(1L, 92L)])
+    values <- t(vapply(seq_len(nrow(grid)), function(i) {
+      worker <- grid$sd[i]^2 * ((1 - grid$cor[i]) * same_cell + grid$cor[i]) + diag(grid$sigma[i]^2, nrow(X))
+      R   <- chol(worker)
+      VY  <- backsolve(R, forwardsolve(t(R), Y))
+      VX  <- backsolve(R, forwardsolve(t(R), X))
+      b   <- crossprod(X, rowSums(VY))
+      RM  <- chol(diag(ncol(X)) + length(rows) * crossprod(X, VX))
+      Mb  <- backsolve(RM, forwardsolve(t(RM), b))
+      c(-0.5 * (length(rows) * 2 * sum(log(diag(R))) + 2 * sum(log(diag(RM))) + sum(Y * VY) - sum(b * Mb)), Mb)
+    }, numeric(4)))
+    log_posterior <- values[, 1] + stats::dnorm(grid$sigma, log = TRUE) + stats::dnorm(grid$sd, log = TRUE)
+    weights <- exp(log_posterior - max(log_posterior))
+    weights <- weights / sum(weights)
+    c(intercept = sum(weights * values[, 2]), "Machine[B]" = sum(weights * values[, 3]),
+      "Machine[C]" = sum(weights * values[, 4]), sigma = sum(weights * grid$sigma),
+      sd = sum(weights * grid$sd), cor = sum(weights * grid$cor))
+  })
   scenario_comparison(
     "comparison-cs", c(fixed_parameters, "sd", "cor"), main = "Compound symmetry",
-    references = structure_references("cs", c(sd = cs_worker[[1L]], cor = cs_worker[[4L]])),
+    references = c(structure_references("cs", c(sd = cs_worker[[1L]], cor = cs_worker[[4L]])),
+                   list(exact = reference_cs)),
     posteriors = structure_posteriors("cs", c(fixed_parameters, "sd", "cor"))
   )
   hcs_worker <- lme4_worker(lme4_fits[["hcs"]])
