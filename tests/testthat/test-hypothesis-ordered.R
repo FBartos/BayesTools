@@ -243,6 +243,10 @@ test_that("the total is tested against its known normal posterior", {
   quantities <- hypothesis_quantities(fit)
   expect_true(all(c("(mu) f{total}", "(mu) f[share: mid]", "(mu) f[share: hi]") %in% quantities$alias))
   expect_true(all(quantities$point_test[quantities$alias %in% c("(mu) f{total}", "(mu) f[share: mid]")]))
+  # a point null on a transformed reference
+  expect_error(.ordered_hypothesis_bf(fit, "2 * f{total} = 0.3"),
+               "Point-null tests for ordered quantities require a direct scalar parameter reference.",
+               fixed = TRUE)
 })
 
 test_that("the total equals the top level of a cumulative fit", {

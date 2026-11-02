@@ -480,11 +480,9 @@
     }
   )
   prior_density <- posterior_metadata(samples[[parameter]], "prior_density")
-  noun <- if (identical(plan[["selected"]][["entry"]][["source"]], "ordered")) {
-    "ordered quantity"
-  } else {
-    "random-effect quantity"
-  }
+  ordered <- identical(plan[["selected"]][["entry"]][["source"]], "ordered")
+  noun    <- if (ordered) "ordered quantity" else "random-effect quantity"
+  nouns   <- if (ordered) "ordered quantities" else "random-effect quantities"
   plan[["draws"]]         <- list(samples = samples, posterior = samples[[parameter]])
   plan[["prior_density"]] <- prior_density
   # Region probabilities need a prior density with deterministic provenance;
@@ -508,7 +506,7 @@
   if (any(!refs[["direct"]])) {
     plan[["refusal"]] <- .hypothesis_model_refusal(
       paste0(
-        "Point-null tests for ", noun, "s require a direct ",
+        "Point-null tests for ", nouns, " require a direct ",
         "scalar parameter reference."
       ),
       "statement"
