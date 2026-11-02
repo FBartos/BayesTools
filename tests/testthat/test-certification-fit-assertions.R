@@ -2149,6 +2149,39 @@ test_that("compiled LKJ CPC distribution logDensity matches beta density for obs
   expect_equal(deviance$penalty, 0, tolerance = 1e-12)
 })
 
+test_that("generated LKJ primitives are scalar nodes with bounded univariate slice samplers", {
+  skip_if_not(
+    isTRUE(BayesTools_load_JAGS_module(quiet = TRUE, warn = FALSE)),
+    "BayesTools JAGS module is unavailable."
+  )
+
+  # a bounded univariate slice sampler evaluates the model only inside (0, 1),
+  # so the multivariate-normal likelihood never sees a singular correlation
+  # matrix at a proposal outside the support
+  for(unit_columns in list(integer(), c(1L, 3L))){
+    module <- BayesTools:::.bt_JAGS_lkj_corr_cholesky_module(
+      name = "Omega", K = 4L, eta = 0.8, include_correlation = TRUE,
+      include_primitives = FALSE, unit_columns = unit_columns
+    )
+    y <- matrix(stats::rnorm(4 * 30), ncol = 4L) %*% chol(matrix(0.5, 4, 4) + diag(0.5, 4))
+    model <- rjags::jags.model(
+      textConnection(paste0(
+        "model{\n", module$syntax,
+        "for(i in 1:N){ y[i,1:4] ~ dmnorm.vcov(zero[1:4], Omega_R[1:4,1:4]) }\n}\n"
+      )),
+      data = list(y = y, N = nrow(y), zero = rep(0, 4)),
+      n.chains = 1, n.adapt = 0, quiet = TRUE,
+      inits = list(.RNG.name = "base::Mersenne-Twister", .RNG.seed = 11)
+    )
+    samplers <- rjags::list.samplers(model)
+    primitive <- vapply(samplers, function(nodes) any(grepl("Omega_lkj_u", nodes, fixed = TRUE)), logical(1))
+    expect_setequal(unlist(samplers[primitive]), module$primitive_names)
+    expect_true(all(lengths(samplers[primitive]) == 1L))
+    expect_true(all(names(samplers)[primitive] == "base::RealSlicer"))
+    expect_no_error(stats::update(model, 500, progress.bar = "none"))
+  }
+})
+
 test_that("JAGS LKJ posterior for bivariate normal correlation matches grid oracle", {
   eta <- 0.8
   y <- .lkj_bivariate_data()

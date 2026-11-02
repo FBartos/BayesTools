@@ -195,7 +195,7 @@ test_that("LKJ alpha generation is available without native routines", {
   )
 
   expect_equal(module$pairs$alpha, c(1.5, 1.5, 1))
-  expect_match(module$syntax, "Sigma_lkj_u[1:3] ~ dbt_lkj_cpc(Sigma_lkj_alpha)", fixed = TRUE)
+  expect_match(module$syntax, "for(i in 1:3){ Sigma_lkj_u[i] ~ dbt_lkj_cpc(Sigma_lkj_alpha[i]) }", fixed = TRUE)
   expect_error(
     BayesTools:::.bt_lkj_cholesky_cpc_u_to_L(c(0.5), K = 2),
     "native LKJ routines requested",
@@ -481,7 +481,7 @@ test_that("the LKJ node of a unit layout samples only the free primitives", {
   expect_identical(module$cpc_names, paste0("Omega_lkj_cpc[", 2:6, "]"))
   expect_identical(names(module$primitive_bounds$lb), module$primitive_names)
   expect_match(module$syntax, "Omega_lkj_u[1] <- 0.5", fixed = TRUE)
-  expect_match(module$syntax, "Omega_lkj_u[2:6] ~ dbt_lkj_cpc(Omega_lkj_alpha[2:6])", fixed = TRUE)
+  expect_match(module$syntax, "for(i in 2:6){ Omega_lkj_u[i] ~ dbt_lkj_cpc(Omega_lkj_alpha[i]) }", fixed = TRUE)
   expect_false(grepl("Omega_lkj_alpha[1]", module$syntax, fixed = TRUE))
   expect_match(module$syntax, "Omega_L_flat[1:16] <- bt_lkj_cholesky_ordered(Omega_lkj_u, 4, Omega_lkj_position)", fixed = TRUE)
   # R in design order reads the vine cell (position[row], position[column])
@@ -746,7 +746,7 @@ test_that("JAGS LKJ-Cholesky module backend uses compiled distribution and trans
   expect_equal(module$backend, "module")
   expect_match(module$syntax, "Sigma_lkj_alpha[1] <- 1.5", fixed = TRUE)
   expect_match(module$syntax, "Sigma_lkj_alpha[3] <- 1", fixed = TRUE)
-  expect_match(module$syntax, "Sigma_lkj_u[1:3] ~ dbt_lkj_cpc(Sigma_lkj_alpha)", fixed = TRUE)
+  expect_match(module$syntax, "for(i in 1:3){ Sigma_lkj_u[i] ~ dbt_lkj_cpc(Sigma_lkj_alpha[i]) }", fixed = TRUE)
   expect_match(module$syntax, "Sigma_L_flat[1:9] <- bt_lkj_cholesky(Sigma_lkj_u, 3)", fixed = TRUE)
   expect_match(module$syntax, "Sigma_R_flat[1:9] <- bt_lkj_corr(Sigma_lkj_u, 3)", fixed = TRUE)
   expect_match(module$syntax, "Sigma_L[3,2] <- Sigma_L_flat[8]", fixed = TRUE)
@@ -803,7 +803,7 @@ test_that("compiled backend keeps generated syntax compact for larger dimensions
   module_lines <- strsplit(module$syntax, "\n", fixed = TRUE)[[1]]
 
   expect_lt(length(module_lines), 200L)
-  expect_match(module$syntax, "Sigma_lkj_u[1:28] ~ dbt_lkj_cpc(Sigma_lkj_alpha)", fixed = TRUE)
+  expect_match(module$syntax, "for(i in 1:28){ Sigma_lkj_u[i] ~ dbt_lkj_cpc(Sigma_lkj_alpha[i]) }", fixed = TRUE)
   expect_match(module$syntax, "Sigma_L_flat[1:64] <- bt_lkj_cholesky(Sigma_lkj_u, 8)", fixed = TRUE)
   expect_match(module$syntax, "Sigma_R_flat[1:64] <- bt_lkj_corr(Sigma_lkj_u, 8)", fixed = TRUE)
   expect_false(grepl("sqrt", module$syntax, fixed = TRUE))

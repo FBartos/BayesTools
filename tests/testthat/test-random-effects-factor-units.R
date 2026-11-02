@@ -141,7 +141,7 @@ test_that("us() orders a unit first in its LKJ vine with an identity unit block"
   }
   expect_match(
     result$formula_syntax,
-    "mu__xREx__id_xRE_CORx_lkj_u[4:10] ~ dbt_lkj_cpc(mu__xREx__id_xRE_CORx_lkj_alpha[4:10])",
+    "for(i in 4:10){ mu__xREx__id_xRE_CORx_lkj_u[i] ~ dbt_lkj_cpc(mu__xREx__id_xRE_CORx_lkj_alpha[i]) }",
     fixed = TRUE
   )
   expect_match(result$formula_syntax, "bt_lkj_cholesky_ordered(", fixed = TRUE)

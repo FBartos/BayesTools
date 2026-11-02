@@ -67,13 +67,16 @@ JAGS_lkj_corr_cholesky <- function(name, K, eta = 1,
     for(p in layout$fixed_pairs){
       syntax <- c(syntax, paste0(u_name, "[", p, "] <- 0.5"))
     }
-    # the fixed primitives are the leading pairs, the free ones a contiguous tail
-    syntax <- c(syntax, if(n_free == n_pairs){
-      paste0(u_name, "[1:", n_pairs, "] ~ dbt_lkj_cpc(", alpha_name, ")")
-    }else{
-      free_range <- paste0("[", free_pairs[[1L]], ":", n_pairs, "]")
-      paste0(u_name, free_range, " ~ dbt_lkj_cpc(", alpha_name, free_range, ")")
-    })
+    # The fixed primitives are the leading pairs, the free ones a contiguous
+    # tail. Each free primitive is its own scalar node: the vector law is the
+    # product of the independent Beta(alpha, alpha) laws, and JAGS updates a
+    # scalar node with a bounded slice sampler that evaluates the model only
+    # inside (0, 1) (a vector node's multivariate slice sampler proposes
+    # primitives outside it).
+    syntax <- c(syntax, paste0(
+      "for(i in ", free_pairs[[1L]], ":", n_pairs, "){ ",
+      u_name, "[i] ~ dbt_lkj_cpc(", alpha_name, "[i]) }"
+    ))
   }
 
   # The Cholesky factor, correlation matrix, and partial correlations are the
