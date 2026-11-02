@@ -2682,7 +2682,7 @@ test_that("conditional point-component posteriors declare the support of the res
   # the Bayes factor of a point test on the conditional draws of a fit, against
   # the same draws with the support declared by hand (from the slab, not from
   # the catalog) and with the unconditional support of the catalog
-  hand_bayes_factors <- function(fit, name, conditional, bounds, value){
+  hand_bayes_factors <- function(fit, name, conditional, bounds, value, components = TRUE){
     selection <- parameter_catalog_resolve(parameter_catalog(fit), name)
     one_call  <- attr(hypothesis_BF(
       fit, paste0(name, " = ", value), conditional = TRUE, seed = 1
@@ -2692,6 +2692,9 @@ test_that("conditional point-component posteriors declare the support of the res
     posterior_metadata(hand, "support") <- posterior_support_attribute(bounds)
     stale  <- conditional
     posterior_metadata(stale, "support") <- support_of(parameter_mixed_posterior(fit, selection))
+    # (the components of the draws declare the exact support of a single
+    # continuous component, which the pooled ordinate is reflected at)
+    if(!components) stale <- .bt_meta_set(stale, "components", NULL)
     c(
       one_call = one_call,
       hand     = attr(hypothesis_BF(hand, hypothesis = quoted, seed = 1), "raw_log_BF"),
@@ -2787,9 +2790,12 @@ test_that("conditional point-component posteriors declare the support of the res
   expect_identical(support_of(mixed)$bounds, support_of(marginal)$bounds)
   expect_identical(support_of(mixed)$exact, support_of(marginal)$exact)
   expect_identical(support_of(mixed)$type, support_of(marginal)$type)
-  log_bf <- hand_bayes_factors(fit, "theta", mixed, c(1, 2), 1.01)
+  log_bf <- hand_bayes_factors(fit, "theta", mixed, c(1, 2), 1.01, components = FALSE)
   expect_identical(log_bf[["one_call"]], log_bf[["hand"]])
   expect_gt(abs(log_bf[["stale"]] - log_bf[["hand"]]), 0.1)
+  # with the components of the draws, the unconditional support is not needed
+  with_components <- hand_bayes_factors(fit, "theta", mixed, c(1, 2), 1.01)
+  expect_identical(with_components[["stale"]], with_components[["hand"]])
   expect_equal(
     log_bf[["one_call"]],
     attr(hypothesis_BF(as.numeric(mixed), prior = prior("uniform", list(1, 2)),

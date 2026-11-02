@@ -486,8 +486,12 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
   }
 
   # A model mixture whose continuous components have different exact supports
-  # mixes per-component KDE ordinates (KDE path only).
+  # mixes per-component KDE ordinates (KDE path only). A single continuous
+  # component, or several with one exact support, are pooled and reflected at
+  # that support when the draws carry no exact interval support of their own
+  # (the unconditional support of a mixture with an atom is inexact).
   component_plan <- NULL
+  pooled_support <- NULL
   posterior_density_components <- NULL
   if(kernel_route){
     warnings <- c(warnings, continuous_posterior[["component_warning"]])
@@ -498,6 +502,13 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
     )
     if(!is.null(component_plan[["warning"]])){
       warnings <- c(warnings, component_plan[["warning"]])
+      component_plan <- NULL
+    }
+    if(!is.null(component_plan[["pooled_bounds"]])){
+      if(any(is.finite(component_plan[["pooled_bounds"]])) &&
+         is.null(.posterior_support_bounds(continuous_samples, interval_only = TRUE))){
+        pooled_support <- component_plan[["pooled_bounds"]]
+      }
       component_plan <- NULL
     }
   }
@@ -519,6 +530,9 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
        .posterior_support_has_interval(stored_support)){
       posterior_support_bounds <- stored_support$bounds
     }
+  }
+  if(is.null(posterior_support_bounds)){
+    posterior_support_bounds <- pooled_support
   }
   null_at_support_boundary <- FALSE
   if(!is.null(posterior_support_bounds)){
@@ -570,6 +584,7 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
     height <- .Savage_Dickey_BF.kd(
       samples         = continuous_samples,
       null_hypothesis = null_hypothesis,
+      support         = pooled_support,
       warn_extrapolation = FALSE
     )
     height <- height * continuous_mass
@@ -815,9 +830,11 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
 
 # Per-component posterior ordinates of a model mixture whose continuous
 # components have different exact supports. Returns NULL for the pooled
-# estimate: without component metadata, with a single continuous component, or
-# when all continuous components share their support. Components whose support
-# or draws cannot be used also fall back to the pooled estimate, with a warning.
+# estimate: without component metadata, or when a continuous component has no
+# exact support. A single continuous component, or several that share their
+# exact support, return that support as `pooled_bounds`: the pooled estimate is
+# reflected at it. Components whose support or draws cannot be used fall back
+# to the pooled estimate, with a warning.
 .Savage_Dickey_BF.component_plan <- function(samples, index, components){
 
   if(is.null(index) || is.null(components) || length(samples) < 2L){
@@ -825,7 +842,7 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
   }
 
   ids <- sort(unique(index))
-  if(length(ids) < 2L){
+  if(length(ids) < 1L){
     return(NULL)
   }
 
@@ -849,7 +866,7 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
   }
 
   if(all(vapply(bounds, function(x) all(x == bounds[[1L]]), logical(1)))){
-    return(NULL)
+    return(list(pooled_bounds = bounds[[1L]]))
   }
 
   list(

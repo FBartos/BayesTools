@@ -1097,8 +1097,12 @@ with the prior densities of the kept elements.
 - When continuous components have different supports, estimate the ordinate
   per component (boundary-reflected on its own support, zero when that
   support excludes the null, the one-sided limit on a bound) and mix by the
-  components' shares of the continuous draws. Shared or unavailable supports
-  keep the pooled estimate.
+  components' shares of the continuous draws. A single continuous component,
+  or several with one exact support, keep the pooled estimate, reflected at
+  that support when the draws declare no exact interval support of their own
+  (the unconditional support of a mixture with an atom is not an interval).
+  Unavailable or inexact component supports keep the pooled estimate with the
+  support of the draws.
 - A null outside the continuous draws gives the finite kernel-tail value with
   the warning of 0.3.0 that the density ratio is likely to be overestimated,
   once per parameter or level, emitted without a label.

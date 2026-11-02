@@ -666,3 +666,147 @@ test_that("ordered totals with several bounded alternatives are tested within ea
     check(overlapping, overlapping_bounds, c(2, 1, 3), c(1, 2, 1), c(1, 2, 3, 4), conditional, "overlapping reweighted")
   }
 })
+
+# ---------------------------------------------------------------------------- #
+# Savage-Dickey ordinates at the bounds of a single bounded alternative
+# ---------------------------------------------------------------------------- #
+
+# A fit of ~ x whose coefficient has the prior 'prior_x' and the draws 'values'
+# (with the component indicator, spike-and-slab inclusion, and slab variable
+# columns that the prior monitors, when given).
+.ordered_hypothesis_coefficient_fit <- function(prior_x, values, indicator = NULL,
+                                                inclusion = NULL, variable = NULL){
+
+  info <- JAGS_formula(~ x, "mu", .ordered_hypothesis_data(), list(intercept = N01, x = prior_x))
+  columns <- list(mu_intercept = stats::rnorm(length(values)), mu_x = values,
+                  mu_x_indicator = indicator, mu_x_inclusion = inclusion, mu_x_variable = variable)
+  columns <- do.call(cbind, columns[!vapply(columns, is.null, logical(1))])
+  fit <- structure(
+    list(mcmc = coda::mcmc.list(coda::mcmc(columns)), sample = length(values),
+         summary.pars = list(mutate = NULL), monitor = colnames(columns)),
+    class = c("runjags", "BayesTools_fit", "list")
+  )
+  attr(fit, "prior_list")     <- info$prior_list
+  attr(fit, "formula_design") <- list(mu = info$formula_design)
+
+  attach_test_parameter_map(fit)
+}
+
+# Draws from a normal truncated to [lower, upper].
+.ordered_hypothesis_truncated_normal <- function(n, mean, sd, lower, upper){
+
+  stats::qnorm(stats::runif(n, stats::pnorm(lower, mean, sd), stats::pnorm(upper, mean, sd)), mean, sd)
+}
+
+.ordered_hypothesis_truncated_density <- function(x, mean, sd, lower, upper){
+
+  stats::dnorm(x, mean, sd) / (stats::pnorm(upper, mean, sd) - stats::pnorm(lower, mean, sd))
+}
+
+test_that("a single bounded alternative is reflected at its bounds, also without conditioning", {
+
+  # spike at 0 (inclusion probability 1/2) and a slab on [1, 2]: the posterior
+  # ordinate at a bound of the slab is that of the slab's draws reflected at the
+  # bound (the unconditional support of the spike and slab is not an interval)
+  n <- 80000L
+  set.seed(401)
+  uniform_slab <- prior("uniform", list(1, 2))
+  truncated_slab <- prior("normal", list(0, 1), list(1, 2))
+  half <- prior("point", list(.5))
+  indicator <- stats::rbinom(n, 1, .5)
+  variable  <- stats::runif(n, 1, 2)
+  # a posterior that differs from the prior: inclusion probability .7 and the
+  # slab normal(0, 1.5) truncated to [1, 2]
+  indicator_post <- stats::rbinom(n, 1, .7)
+  variable_post  <- .ordered_hypothesis_truncated_normal(n, 0, 1.5, 1, 2)
+
+  fits <- list(
+    coefficient = list(
+      same = .ordered_hypothesis_coefficient_fit(prior_spike_and_slab(uniform_slab, half),
+        variable * indicator, indicator, rep(.5, n), variable),
+      differs = .ordered_hypothesis_coefficient_fit(prior_spike_and_slab(truncated_slab, half),
+        variable_post * indicator_post, indicator_post, rep(.5, n), variable_post)
+    ),
+    total = list(
+      same = .ordered_hypothesis_single(total = prior_spike_and_slab(uniform_slab, half), n = n, seed = 719L),
+      differs = .ordered_hypothesis_single(total = prior_spike_and_slab(truncated_slab, half), n = n, seed = 719L,
+        modify = function(sources){
+          sources[, "mu_f_ordered_total_indicator"] <- indicator_post
+          sources[, "mu_f_ordered_total_variable"]  <- variable_post
+          sources[, "mu_f_ordered_total"]           <- indicator_post * variable_post
+          sources
+        })
+    )
+  )
+  names_of <- c(coefficient = "x", total = "f{total}")
+  for(kind in names(fits)) for(conditional in c(TRUE, FALSE)) for(value in c(1, 1.5, 2)){
+    statement <- paste(names_of[[kind]], "=", value)
+    info <- paste(kind, conditional, value)
+    # the posterior is the prior: the Bayes factor is 1 (it was 2 at the bounds)
+    expect_equal(.ordered_hypothesis_bf(fits[[kind]]$same, statement, conditional = conditional)$BF, 1,
+                 tolerance = 0.08, info = info)
+    # the ratio of the prior and posterior densities of the slab, and of the
+    # prior and posterior inclusion probabilities without conditioning
+    expected <- .ordered_hypothesis_truncated_density(value, 0, 1, 1, 2) /
+      .ordered_hypothesis_truncated_density(value, 0, 1.5, 1, 2) * if(conditional) 1 else .5 / .7
+    expect_equal(.ordered_hypothesis_bf(fits[[kind]]$differs, statement, conditional = conditional)$BF,
+                 expected, tolerance = 0.08, info = info)
+  }
+
+  # several alternatives with one support: the pooled draws are reflected at it
+  set.seed(402)
+  mixture <- prior_mixture(list(prior("point", list(0), prior_weights = 2),
+    prior("uniform", list(1, 2), prior_weights = 1), prior("normal", list(0, 1), list(1, 2), prior_weights = 1)),
+    is_null = c(TRUE, FALSE, FALSE))
+  component <- sample.int(3L, n, replace = TRUE, prob = c(.5, .25, .25))
+  values <- numeric(n)
+  values[component == 2L] <- stats::runif(sum(component == 2L), 1, 2)
+  values[component == 3L] <- .ordered_hypothesis_truncated_normal(sum(component == 3L), 0, 1, 1, 2)
+  fit <- .ordered_hypothesis_coefficient_fit(mixture, values, indicator = component)
+  for(conditional in c(TRUE, FALSE)) for(value in c(1, 1.5, 2)){
+    expect_equal(.ordered_hypothesis_bf(fit, paste("x =", value), conditional = conditional)$BF, 1,
+                 tolerance = 0.08, info = paste("two slabs", conditional, value))
+  }
+
+  # without an atom, or with an unbounded alternative, there is nothing to repair
+  set.seed(403)
+  slab_only <- .ordered_hypothesis_coefficient_fit(uniform_slab, stats::runif(n, 1, 2))
+  indicator_u <- stats::rbinom(n, 1, .5)
+  variable_u  <- stats::rnorm(n)
+  unbounded <- .ordered_hypothesis_coefficient_fit(prior_spike_and_slab(N01, half),
+    variable_u * indicator_u, indicator_u, rep(.5, n), variable_u)
+  for(value in c(1, 1.5, 2)){
+    expect_equal(.ordered_hypothesis_bf(slab_only, paste("x =", value))$BF, 1, tolerance = 0.08, info = value)
+  }
+  for(conditional in c(TRUE, FALSE)) for(value in c(-.5, .5)){
+    expect_equal(.ordered_hypothesis_bf(unbounded, paste("x =", value), conditional = conditional)$BF, 1,
+                 tolerance = 0.08, info = paste(conditional, value))
+  }
+})
+
+test_that("the pooled ordinate is reflected at the common exact support of the continuous components", {
+
+  point <- posterior_support_attribute(c(0, 0), points = 0, type = "points")
+  unit <- posterior_support_attribute(c(1, 2))
+  other <- posterior_support_attribute(c(1, 3))
+  slab <- stats::runif(100, 1, 2)
+  plan <- function(index, supports, samples = slab){
+    BayesTools:::.Savage_Dickey_BF.component_plan(
+      samples, index, BayesTools:::.posterior_components_new(index = index, supports = supports))
+  }
+
+  # one continuous component and several with one support are pooled at it
+  expect_identical(plan(rep(2L, 100), list(point, unit))$pooled_bounds, c(1, 2))
+  expect_identical(plan(rep(2:3, 50), list(point, unit, unit))$pooled_bounds, c(1, 2))
+  # different supports are mixed per component, as before
+  mixed <- plan(rep(2:3, 50), list(point, unit, other))
+  expect_null(mixed$pooled_bounds)
+  expect_identical(mixed$bounds, list(c(1, 2), c(1, 3)))
+  # an inexact or missing component support leaves the pooled estimate as it was
+  expect_null(plan(rep(2L, 100), list(point, posterior_support_attribute(c(1, 2), exact = FALSE))))
+  expect_null(plan(rep(2L, 100), list(point, NULL)))
+  expect_null(BayesTools:::.Savage_Dickey_BF.component_plan(slab, NULL, NULL))
+  # a support that the draws leave is reported
+  expect_match(plan(rep(2L, 100), list(point, posterior_support_attribute(c(1.5, 2))))$warning,
+               "unusable for their posterior samples")
+})
