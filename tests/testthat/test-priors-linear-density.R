@@ -4452,6 +4452,69 @@ test_that("large combinations without atoms build their numerical grid only for 
   expect_true(is.list(attr(context_eager, "numerical_diagnostics")$grid_normalization))
 })
 
+test_that("ordered levels without atoms build their numerical grid only for grid consumers", {
+
+  # A level of an ordered term is its total times an allocation share, and its
+  # grid is the route quadrature of up to 1024 product values, so a level
+  # without atoms (a continuous total with Dirichlet allocations, the default
+  # Dirichlet(1, ...) included) defers it at any grid size. The middle level is
+  # one share, the difference of the two levels minus the second share.
+  data <- data.frame(shape = ordered(c("lo", "mid", "hi")))
+  ordered_priors <- function(total, allocation = NULL){
+    JAGS_formula(~ shape, "mu", data, list(intercept = prior("normal", list(0, 1)),
+      shape = prior_ordered(total, allocation)))$prior_list
+  }
+  priors <- ordered_priors(prior("normal", list(0, 1)))
+  expect_identical(priors$mu_shape$allocation$type, "default_dirichlet")
+  builds <- 0L
+  build <- .prior_linear_combination_grid
+  local_mocked_bindings(.prior_linear_combination_grid = function(...){
+    builds <<- builds + 1L
+    build(...)
+  })
+  for(weights in list(c("mu_shape[1]" = 1), c("mu_shape[1]" = 1, "mu_shape[2]" = -1),
+                      c(mu_intercept = 1, "mu_shape[2]" = 1))){
+    eager <- .prior_linear_combination_density(priors, weights, n_grid = 256L, .defer = FALSE)
+    builds <- 0L
+    deferred <- .prior_linear_combination_density(priors, weights, n_grid = 256L)
+    expect_s3_class(deferred$density, "prior_linear_density_deferred")
+    expect_identical(attr(deferred, "adaptive_evaluation"), attr(eager, "adaptive_evaluation"))
+    expect_identical(deferred$points, eager$points)
+    expect_identical(deferred$n_grid, eager$n_grid)
+    expect_identical(deferred$density$mass, eager$density$mass)
+    for(value in c(-.5, .2, 1)){
+      expect_identical(prior_density_ordinate(deferred, value), prior_density_ordinate(eager, value))
+    }
+    expect_identical(builds, 0L)
+    expect_identical(.prior_linear_density_materialize(deferred), eager)
+    expect_identical(builds, 1L)
+  }
+
+  # a fixed allocation (a share can be 0) and a total with atoms build at once
+  for(case in list(
+    list(priors = ordered_priors(prior("normal", list(0, 1)), c(.4, .6)), weights = c("mu_shape[1]" = 1)),
+    list(priors = ordered_priors(prior_spike_and_slab(prior("normal", list(0, 1)))),
+         weights = c("mu_shape[1]" = 1))
+  )){
+    density <- .prior_linear_combination_density(case$priors, case$weights, n_grid = 256L)
+    expect_false(inherits(density$density, "prior_linear_density_deferred"))
+  }
+
+  # the design rows of the levels (a marginal_posterior() level) defer as well
+  context <- .prior_density_build_context(priors, c("mu_intercept", "mu_shape[1]", "mu_shape[2]"),
+                                          n_grid = 256L)
+  rows <- rbind(c(mu_intercept = 1, "mu_shape[1]" = 1, "mu_shape[2]" = 0),
+                c(mu_intercept = 1, "mu_shape[1]" = 1, "mu_shape[2]" = 1))
+  eager_rows <- local({
+    local_mocked_bindings(.prior_density_rows_atom_free = function(...) FALSE)
+    .prior_density_from_context_rows(context, rows)
+  })
+  deferred_rows <- .prior_density_from_context_rows(context, rows)
+  expect_s3_class(deferred_rows$density, "prior_linear_density_deferred")
+  expect_identical(prior_density_ordinate(deferred_rows, .3), prior_density_ordinate(eager_rows, .3))
+  expect_identical(.prior_linear_density_materialize(deferred_rows), eager_rows)
+})
+
 # A small fitted object whose formula parameter is standardized (x), with one
 # more parameter (sigma) outside the formula.
 transformed_density_test_fit <- function(x_prior = prior("normal", list(0, 1))){

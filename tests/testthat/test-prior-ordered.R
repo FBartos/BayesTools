@@ -2957,7 +2957,9 @@ test_that("prior curves without a structural route omit unresolved heavy-tailed 
   )
   expect_true(attr(resolved, "product_grid_resolution")$resolved)
   level <- .prior_linear_combination_density(list(g = bound(prior("cauchy", list(0, 1)), c(2, 3))), c("g[1]" = 1))
-  expect_false(attr(level, "product_grid_resolution")$resolved)
+  # the level defers its grid; the resolution record is an attribute of the built grid
+  expect_s3_class(level$density, "prior_linear_density_deferred")
+  expect_false(attr(.prior_linear_density_materialize(level), "product_grid_resolution")$resolved)
   for(density in list(resolved, level)){
     data <- plot_data(density)
     expect_length(data$warnings, 0L)

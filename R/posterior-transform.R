@@ -634,6 +634,8 @@ posterior_transform <- function(x, transformation, transformation_arguments = NU
     return(do.call(builders[[adaptive$kind]], arguments))
   }
 
+  # the attributes copied below belong to the built grid of a deferred density
+  density <- .prior_linear_density_materialize(density)
   out <- .prior_linear_density_transform(
     density,
     map$transformation,

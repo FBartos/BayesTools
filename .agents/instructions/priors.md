@@ -743,7 +743,10 @@ interpolates its numerical grid.
 A row mixture of a density context (`.prior_density_from_context_rows()`,
 e.g. the prior density of a formula `marginal_posterior()` level) whose
 structure has no point mass (only continuous priors, every row with a
-nonzero weight, no constant output map) defers its numerical grid, which
+nonzero weight, no constant output map; an ordered prior is continuous with
+a continuous total and Dirichlet allocations, the default Dirichlet(1, ...)
+included, while a fixed allocation can make a level the point 0) defers its
+numerical grid, which
 holds one exact display grid per row product component: its `density` field
 keeps the builder's arguments and a cache, and the grid is built on the first
 read of a grid field (plots without a given range, grid heights and
@@ -752,14 +755,21 @@ region probabilities evaluate the recorded route and never build it; the
 atoms (none), continuous mass (1) and grid size are exact without it.
 
 A linear combination without a product group defers its numerical grid in the
-same way when the grid is large (`.prior_linear_density_large_grid()`, 65,536
-knots: a narrow source beside a wide or heavy-tailed one, since the grid has
-64 knots per robust scale of the narrowest source, up to 2,097,152) and its
-structure has no atom: every source that sets the grid a continuous scalar
-prior (a rounding residue is a point that only shifts the grid), no source
-transformation, and no output map but an affine one. A nonlinear map can warn
-or fail on grid values, so it builds at once, as does every smaller grid, which
-is cheap and keeps the numerical diagnostics that only a built grid has. A
+same way when its build is noticeable, a large grid
+(`.prior_linear_density_large_grid()`, 65,536 knots: a narrow source beside a
+wide or heavy-tailed one, since the grid has 64 knots per robust scale of the
+narrowest source, up to 2,097,152) or an ordered level at any grid size (its
+grid is the route quadrature of up to 1024 product values, about 0.5 s), and
+its structure has no atom: every source that sets the grid a continuous scalar
+prior or a continuous ordered prior (a rounding residue is a point that only
+shifts the grid), with an ordered level a known structural route without an
+atom (a level whose share is identically zero is the point 0) and without a
+strong singularity of a product of shares (whose grid is refused, at once), no
+source transformation, and no output map but an affine one. A nonlinear map can
+warn or fail on grid values, so it builds at once, as does every smaller grid
+without an ordered level, which is cheap and keeps the numerical diagnostics
+that only a built grid has. Grid attributes such as `product_grid_resolution`
+belong to the built grid (`.prior_linear_density_materialize()`). A
 builder that mixes or refines grids passes `.defer = FALSE`. The density of a
 context (`.prior_density_from_context()`) defers the same grid with its own
 provenance record and builds it, with its diagnostics, on the first read.

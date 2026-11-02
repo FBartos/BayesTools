@@ -897,7 +897,9 @@
 
 # Whether a prior is continuous by its structure (no point, spike-and-slab,
 # mixture, discrete, 'none' or expression prior; an ordered prior needs a
-# continuous total and a Dirichlet allocation).
+# continuous total and Dirichlet allocations: the default one, Dirichlet(1, ...)
+# or the single share 1, a declared one with positive concentrations, or one of
+# these per factor; a fixed allocation can make a level the point 0).
 .prior_density_continuous_prior <- function(prior){
 
   if(!is.prior(prior) || is.prior.point(prior) || is.prior.spike_and_slab(prior) ||
@@ -906,11 +908,22 @@
     return(FALSE)
   }
   if(is.prior.ordered(prior)){
-    return(identical(prior$allocation$type, "dirichlet") &&
-             is.numeric(prior$allocation$alpha) && all(prior$allocation$alpha > 0) &&
+    return(.prior_density_dirichlet_allocation(prior$allocation) &&
              .prior_density_continuous_prior(prior$total))
   }
   TRUE
+}
+
+.prior_density_dirichlet_allocation <- function(allocation){
+
+  switch(
+    if(is.list(allocation) && is.character(allocation$type)) allocation$type[1L] else "",
+    "default_dirichlet" = TRUE,
+    "dirichlet"         = is.numeric(allocation$alpha) && all(allocation$alpha > 0),
+    "by_factor"         = length(allocation$allocations) > 0L &&
+      all(vapply(allocation$allocations, .prior_density_dirichlet_allocation, logical(1))),
+    FALSE
+  )
 }
 
 # Whether an output transformation leaves a measure without atoms: any but a

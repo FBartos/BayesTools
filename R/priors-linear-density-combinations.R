@@ -1499,7 +1499,8 @@
     )
   }
   if(isTRUE(.record_evaluation) && isTRUE(.defer) &&
-     .prior_linear_density_defers_grid(plan, output_transformation, output_transformation_arguments)){
+     .prior_linear_density_defers_grid(plan, prior_list, n_grid, output_transformation,
+                                       output_transformation_arguments)){
     arguments <- list(
       prior_list = prior_list,
       weights = weights,
@@ -1531,27 +1532,48 @@
 }
 
 # Whether the grid of a combination is deferred (see .prior_linear_combination_density()):
-# the combination has no product group ('plan' is NULL otherwise), its grid is
-# large enough for a build to be noticeable, and its structure alone fixes the
-# outcome of the build: only continuous scalar priors set the grid (a rounding
-# residue is a point that shifts it and leaves it without atoms, but not alone),
-# no source transformation, and no output map but an affine one (a nonlinear
-# map can warn or fail on the values of the grid, and a constant map turns the
-# measure into an atom). Every other combination is built at once, as is a
-# small one, which is cheap and keeps its numerical diagnostics.
-.prior_linear_density_defers_grid <- function(plan, output_transformation,
+# the combination has no product group ('plan' is NULL otherwise), its build is
+# noticeable (a large grid, or an ordered level, whose grid is the route
+# quadrature of up to 1024 product values), and its structure alone fixes the
+# outcome of the build: only continuous scalar priors and ordered priors with a
+# continuous total and Dirichlet allocations set the grid (a rounding residue
+# is a point that shifts it and leaves it without atoms, but not alone), the
+# structural route of a combination with an ordered level is known, has no atom
+# (a level whose share is identically zero is the point 0) and no strong
+# singularity of a product of shares (whose grid is refused), no source
+# transformation, and no output map but an affine one (a nonlinear map can warn
+# or fail on the values of the grid, and a constant map turns the measure into
+# an atom). Every other combination is built at once, as is a small one without
+# an ordered level, which is cheap and keeps its numerical diagnostics. Grid
+# attributes (e.g. 'product_grid_resolution') belong to the built grid
+# (.prior_linear_density_materialize()).
+.prior_linear_density_defers_grid <- function(plan, prior_list, n_grid, output_transformation,
                                               output_transformation_arguments){
 
-  if(is.null(plan) || plan$n_grid < .prior_linear_density_large_grid() ||
-     any(!is.na(plan$source_transforms))){
+  if(is.null(plan) || any(!is.na(plan$source_transforms))){
     return(FALSE)
   }
   on_grid <- is.na(plan$residue_locations)
-  scalar_continuous <- vapply(plan$groups[on_grid], function(group){
-    is.prior.simple(group$prior) && .prior_density_continuous_prior(group$prior)
+  ordered <- vapply(plan$groups[on_grid], function(group){
+    is.prior.ordered(group$prior)
   }, logical(1))
-  if(!any(on_grid) || !all(scalar_continuous)){
+  continuous <- vapply(plan$groups[on_grid], function(group){
+    (is.prior.simple(group$prior) || is.prior.ordered(group$prior)) &&
+      .prior_density_continuous_prior(group$prior)
+  }, logical(1))
+  if(!any(on_grid) || !all(continuous) ||
+     (plan$n_grid < .prior_linear_density_large_grid() && !any(ordered))){
     return(FALSE)
+  }
+  if(any(ordered)){
+    route <- tryCatch(
+      .prior_density_route_linear(prior_list, plan$weights, plan$source_transforms, n_grid),
+      error = function(e) NULL
+    )
+    if(is.null(route) || .prior_density_route_has_leaf(route, c("atom", "unknown")) ||
+       !is.null(.prior_ordered_route_strong_singularity(route))){
+      return(FALSE)
+    }
   }
   if(is.null(output_transformation)){
     return(TRUE)
