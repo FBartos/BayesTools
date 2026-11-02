@@ -934,7 +934,9 @@ posterior_support_attribute <- function(bounds, points = NULL, type = NULL,
 # of a cumulative contrast, which equals the total) or whose allocations are
 # fixed (u_s is their sum) is the scaled support of its total, exact when the
 # total's is. Any other slice is bounded by the weights of its coefficients:
-# the support is then a hull of the total's bounds, not exact.
+# the support is then a hull of the total's bounds, not exact. The totals of
+# the slices are independent unless the total is a mixture (one component for
+# all slices).
 .posterior_support_group_ordered <- function(group, source = "linear_prior"){
 
   prior <- group$prior
@@ -965,6 +967,8 @@ posterior_support_attribute <- function(bounds, points = NULL, type = NULL,
     }
     multiplier <- if(!anyNA(shares)){
       sum(slice_weights * shares)
+    }else if(all(total$bounds == 0)){
+      0
     }else if(all(slice_weights == slice_weights[1L])){
       slice_weights[1L]
     }else{
@@ -980,7 +984,17 @@ posterior_support_attribute <- function(bounds, points = NULL, type = NULL,
                            type = "interval")
   })
 
-  .posterior_support_sum(slices, source = source)
+  support <- .posterior_support_sum(slices, source = source)
+  # the slices of a mixture total share its component: their sum is exact only
+  # within a component (the total localized to it) or for a single active slice
+  active <- vapply(seq_len(metadata$theta_dim), function(slice){
+    any(weights[metadata$slice_index == slice] != 0)
+  }, logical(1))
+  if(!is.null(support) && sum(active) > 1L && .posterior_components_is_mixture(prior$total)){
+    support$exact <- FALSE
+  }
+
+  support
 }
 
 .posterior_support_group_linear <- function(group, source = "linear_prior"){
@@ -1237,6 +1251,15 @@ posterior_support_attribute <- function(bounds, points = NULL, type = NULL,
     !is_prior_bias(x)
 }
 
+# An ordered prior whose total is a mixture or spike-and-slab prior: the
+# component of its draws is the one that the monitored indicator of its total
+# selects ("ordered_total_component"), and the key of that component names the
+# ordered prior.
+.posterior_components_is_ordered_mixture <- function(x){
+
+  is.prior(x) && is.prior.ordered(x) && .posterior_components_is_mixture(x$total)
+}
+
 .posterior_components_component_prior <- function(mixture, component){
 
   component_i <- as.numeric(component)
@@ -1259,11 +1282,19 @@ posterior_support_attribute <- function(bounds, points = NULL, type = NULL,
     prior_list <- context$prior_list
   }
   for(parameter in setdiff(names(key), ".model")){
-    if(!.posterior_components_is_mixture(prior_list[[parameter]])){
+    prior <- prior_list[[parameter]]
+    if(.posterior_components_is_ordered_mixture(prior)){
+      prior_list[[parameter]] <- .bt_ordered_localize_total(
+        prior,
+        .posterior_components_component_prior(prior$total, key[[parameter]])
+      )
+      next
+    }
+    if(!.posterior_components_is_mixture(prior)){
       stop("Component keys must refer to mixture priors.", call. = FALSE)
     }
     prior_list[[parameter]] <- .posterior_components_component_prior(
-      prior_list[[parameter]],
+      prior,
       key[[parameter]]
     )
   }
@@ -1352,7 +1383,8 @@ posterior_support_attribute <- function(bounds, points = NULL, type = NULL,
       .posterior_components_source_weights(context, row_weights, source_transforms)
     )
     names(groups)[vapply(groups, function(group){
-      .posterior_components_is_mixture(group$prior)
+      .posterior_components_is_mixture(group$prior) ||
+        .posterior_components_is_ordered_mixture(group$prior)
     }, logical(1))]
   })
 

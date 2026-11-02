@@ -979,7 +979,8 @@ Everything around the ordinate comes
 from declared metadata: posterior atoms, exact support, and for mixtures each
 draw's component with the components' exact supports (`components`:
 the model of a `mix_posteriors()` ensemble, or the indicator tuple of the
-mixture terms entering the quantity for `as_mixed_posteriors()`). Never infer
+mixture terms entering the quantity for `as_mixed_posteriors()`: for an ordered
+term the component of its mixture total, `ordered_total_component`). Never infer
 atoms, supports, or components from the draws. A Bernoulli parameter declares
 its atoms at the states its prior declares (both, or the one a degenerate
 probability leaves; `.posterior_support_from_prior()`), and only their masses

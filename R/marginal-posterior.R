@@ -1713,9 +1713,11 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
 
   n_rows <- if(is.null(dim(weights))) 1L else nrow(weights)
   indicators <- lapply(parameters, function(parameter){
-    component <- .bt_meta_get(samples[[parameter]], "component")
+    # the component of an ordered term is that of its total
+    ordered <- .posterior_components_is_ordered_mixture(context$prior_list[[parameter]])
+    component <- .bt_meta_get(samples[[parameter]], if(ordered) "ordered_total_component" else "component")
     if(is.null(component) ||
-       !.bt_meta_get(samples[[parameter]], "component_source") %in% c("mixture", "spike_and_slab") ||
+       (!ordered && !.bt_meta_get(samples[[parameter]], "component_source") %in% c("mixture", "spike_and_slab")) ||
        length(component) * n_rows != n_values){
       stop("Mixture component indices are unavailable.", call. = FALSE)
     }

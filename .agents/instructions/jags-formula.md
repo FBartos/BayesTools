@@ -812,7 +812,10 @@ what it calls, needs a `fit` profile refresh of the cached fits.
   as the top level of a cumulative contrast, which is the total, or fixed
   allocations) and otherwise a hull of the total's bounds that is not exact
   (`.posterior_support_group_ordered()`), under the restricted total when
-  conditioned. Mixed producers retain these primitive sources with their
+  conditioned. The levels of a term whose total is a mixture or spike-and-slab
+  prior carry the component of the total (`ordered_total_component`) and the
+  support of the level under each component (the spike is the point 0), so
+  that its ordinate is reflected within each bounded component. Mixed producers retain these primitive sources with their
   selected model and row; raw ensemble tables use their complete declared-model
   union, including fixed allocations and undefined shares in absent models.
   `JAGS_ordered_parameter_spec()` owns source names, labels (`f{total}`,

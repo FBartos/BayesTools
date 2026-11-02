@@ -867,6 +867,26 @@ test_that("the support of an ordered level follows from the total and the alloca
   expect_identical(crossed_support(c(1, 1, 1, 1))$bounds, c(2, 4))
   expect_true(crossed_support(c(1, 1, 1, 1))$exact)
   expect_false(crossed_support(c(1, 0, 1, 1))$exact)
+
+  # the slices of a spike-and-slab total share its component: the sum of the
+  # slices is exact for one active slice, and (conservatively) not for several
+  spike_and_slab <- prior_spike_and_slab(prior("uniform", list(-1, 2)), prior("point", list(.5)))
+  info <- JAGS_formula(~ f * g, "mu", .ordered_hypothesis_data(), list(intercept = N01, f = prior_ordered(spike_and_slab),
+    g = prior_factor("normal", list(0, 1), contrast = "treatment"), `f:g` = prior_ordered(spike_and_slab)))
+  shared <- info$prior_list[["mu_f__xXx__g"]]
+  shared_support <- function(weights){
+    BayesTools:::.posterior_support_group_ordered(list(prior = shared, columns = paste0("c[", 1:4, "]"),
+      weights = weights[weights != 0], indices = which(weights != 0)))
+  }
+  expect_identical(shared_support(c(1, 1, 0, 0))$bounds, c(-1, 2))
+  expect_true(shared_support(c(1, 1, 0, 0))$exact)
+  expect_identical(shared_support(c(1, 1, 1, 1))$bounds, c(-2, 4))
+  expect_false(shared_support(c(1, 1, 1, 1))$exact)
+  # within a component of the total the slices are independent
+  component <- shared
+  component$total <- spike_and_slab[[which(attr(spike_and_slab, "components") == "alternative")]]
+  expect_true(BayesTools:::.posterior_support_group_ordered(list(prior = component, columns = paste0("c[", 1:4, "]"),
+    weights = c(1, 1, 1, 1), indices = 1:4))$exact)
 })
 
 test_that("the levels of an ordered term are reflected at the bounds of its total", {
@@ -896,14 +916,37 @@ test_that("the levels of an ordered term are reflected at the bounds of its tota
     expect_equal(.ordered_hypothesis_bf(fit, paste0("f[mid] = ", value))$BF, 1, tolerance = 0.08, info = value)
   }
 
-  # within the inclusion event of a spike-and-slab total
+  # within the inclusion event of a spike-and-slab total, and without it: the
+  # level of each component is reflected at the bounds of its total's component
   set.seed(404)
   fit <- .ordered_hypothesis_single(total = prior_spike_and_slab(slab, prior("point", list(.5))), n = n, seed = 719L)
-  for(value in c(1, 1.5, 2)){
-    level <- .ordered_hypothesis_bf(fit, paste0("f[hi] = ", value), conditional = TRUE)$BF
-    expect_equal(level, 1, tolerance = 0.08, info = value)
-    expect_equal(level, .ordered_hypothesis_bf(fit, paste0("f{total} = ", value), conditional = TRUE)$BF,
-                 tolerance = 1e-6, info = value)
+  for(conditional in c(TRUE, FALSE)) for(value in c(1, 1.5, 2)){
+    level <- .ordered_hypothesis_bf(fit, paste0("f[hi] = ", value), conditional = conditional)$BF
+    expect_equal(level, 1, tolerance = 0.08, info = paste(conditional, value))
+    expect_equal(level, .ordered_hypothesis_bf(fit, paste0("f{total} = ", value), conditional = conditional)$BF,
+                 tolerance = 1e-6, info = paste(conditional, value))
+  }
+  # the inner levels have a hull support and are tested as before
+  for(conditional in c(TRUE, FALSE)) for(value in c(.5, 1, 1.5)){
+    expect_equal(.ordered_hypothesis_bf(fit, paste0("f[mid] = ", value), conditional = conditional)$BF, 1,
+                 tolerance = 0.08, info = paste(conditional, value))
+  }
+
+  # several bounded alternatives: the level equals the total at the bounds of every slab
+  disjoint <- prior_mixture(list(prior("point", list(0), prior_weights = 5),
+    prior("uniform", list(1, 2), prior_weights = 1), prior("uniform", list(3, 4), prior_weights = 3)),
+    is_null = c(TRUE, FALSE, FALSE))
+  overlapping <- prior_mixture(list(prior("point", list(0), prior_weights = 2),
+    prior("uniform", list(1, 3), prior_weights = 1), prior("uniform", list(2, 4), prior_weights = 3)),
+    is_null = c(TRUE, FALSE, FALSE))
+  for(total in list(disjoint = disjoint, overlapping = overlapping)){
+    fit <- .ordered_hypothesis_single(total = total, n = n, seed = 719L)
+    for(conditional in c(TRUE, FALSE)) for(value in 1:4){
+      level <- .ordered_hypothesis_bf(fit, paste0("f[hi] = ", value), conditional = conditional)$BF
+      expect_equal(level, 1, tolerance = 0.08, info = paste(conditional, value))
+      expect_equal(level, .ordered_hypothesis_bf(fit, paste0("f{total} = ", value), conditional = conditional)$BF,
+                   tolerance = 1e-6, info = paste(conditional, value))
+    }
   }
 
   # unbounded totals are tested as before
@@ -931,5 +974,64 @@ test_that("the levels of an ordered term are reflected at the bounds of its tota
   for(level in c("B", "C")) for(value in c(1, 2)){
     expect_equal(.ordered_hypothesis_bf(fit, paste0("g[", level, "] = ", value))$BF, 1, tolerance = 0.08,
                  info = paste(level, value))
+  }
+})
+
+test_that("the levels of an ordered term with a mixture total carry the supports of its components", {
+
+  n <- 4000L
+  total <- prior_spike_and_slab(prior("uniform", list(1, 2)), prior("point", list(.5)))
+  fit <- .ordered_hypothesis_single(total = total, n = n, seed = 719L)
+  mixed <- as_mixed_posteriors(fit, "mu_f")
+  marginal <- marginal_posterior(mixed, "mu_f", prior_samples = TRUE, use_formula = FALSE, n_samples = n)
+  total_component <- BayesTools:::.bt_meta_get(mixed[["mu_f"]], "ordered_total_component")
+  spike <- which(attr(total, "components") == "null")
+  slab  <- which(attr(total, "components") == "alternative")
+
+  for(level in c("mid", "hi")){
+    components <- BayesTools:::.posterior_components_get(marginal[[level]])
+    expect_s3_class(components, "BayesTools_posterior_components")
+    # the component of a draw is that of the total
+    expect_identical(as.integer(components$keys[components$index, "mu_f"]), as.integer(total_component))
+    key <- function(component) match(component, components$keys[, "mu_f"])
+    # the spike component is the point at zero, for every level
+    expect_identical(components$supports[[key(spike)]]$bounds, c(0, 0))
+    expect_true(components$supports[[key(spike)]]$exact)
+    # the top level is the total of the slab (exact), an inner level a hull
+    expect_identical(components$supports[[key(slab)]]$bounds, if(level == "hi") c(1, 2) else c(0, 2))
+    expect_identical(components$supports[[key(slab)]]$exact, level == "hi")
+  }
+
+  # draws whose total component is unavailable stop instead of being pooled
+  broken <- mixed
+  broken[["mu_f"]] <- BayesTools:::.bt_meta_set(broken[["mu_f"]], "ordered_total_component", NULL)
+  expect_error(marginal_posterior(broken, "mu_f", prior_samples = TRUE, use_formula = FALSE, n_samples = n),
+               "Mixture component indices are unavailable")
+})
+
+test_that("the levels of a spike-and-slab factor are reflected at the bounds of the slab", {
+
+  # the levels of an ordinary factor with a spike-and-slab prior are its
+  # coefficients: the component supports give the reflection at both bounds
+  n <- 80000L
+  set.seed(406)
+  prior_g <- prior_spike_and_slab(prior_factor("uniform", list(1, 2), contrast = "treatment"), prior("point", list(.5)))
+  info <- JAGS_formula(~ g, "mu", .ordered_hypothesis_data(), list(intercept = N01, g = prior_g))
+  indicator <- stats::rbinom(n, 1, .5)
+  variable  <- cbind(stats::runif(n, 1, 2), stats::runif(n, 1, 2))
+  columns <- cbind(mu_intercept = stats::rnorm(n), `mu_g[1]` = variable[, 1] * indicator,
+                   `mu_g[2]` = variable[, 2] * indicator, mu_g_indicator = indicator, mu_g_inclusion = .5,
+                   `mu_g_variable[1]` = variable[, 1], `mu_g_variable[2]` = variable[, 2])
+  fit <- structure(
+    list(mcmc = coda::mcmc.list(coda::mcmc(columns)), sample = n, summary.pars = list(mutate = NULL),
+         monitor = colnames(columns)),
+    class = c("runjags", "BayesTools_fit", "list")
+  )
+  attr(fit, "prior_list")     <- info$prior_list
+  attr(fit, "formula_design") <- list(mu = info$formula_design)
+  fit <- attach_test_parameter_map(fit)
+  for(conditional in c(TRUE, FALSE)) for(level in c("B", "C")) for(value in c(1, 1.5, 2)){
+    expect_equal(.ordered_hypothesis_bf(fit, paste0("g[", level, "] = ", value), conditional = conditional)$BF, 1,
+                 tolerance = 0.08, info = paste(conditional, level, value))
   }
 })
