@@ -1043,12 +1043,13 @@ test_that("the levels of a spike-and-slab factor are reflected at the bounds of 
 # The marginal posterior of the levels of the ordered term of an ensemble of
 # models with the totals 'totals' (posterior draws from their priors, equal
 # marginal likelihoods and prior model probabilities).
-.ordered_hypothesis_ensemble <- function(totals, n, conditional = FALSE){
+.ordered_hypothesis_ensemble <- function(totals, n, conditional = FALSE,
+                                         log_marglik = rep(0, length(totals))){
 
-  models <- Map(function(total, seed){
+  models <- Map(function(total, seed, marglik){
     list(fit = .ordered_hypothesis_single(total = total, n = n, seed = seed),
-         marglik = bridgesampling_object(0), prior_weights = 1)
-  }, totals, seq_along(totals) + 718L)
+         marglik = bridgesampling_object(marglik), prior_weights = 1)
+  }, totals, seq_along(totals) + 718L, log_marglik)
   mixed <- mix_posteriors(models, "mu_f", is_null_list = list(mu_f = rep(FALSE, length(totals))),
                           conditional = conditional, n_samples = n * length(totals), seed = 413)
 
@@ -1123,4 +1124,41 @@ test_that("the levels of ensembles are reflected at the bounds of the total of e
       expect_equal(bf(marginal, value), 1, tolerance = 0.08, info = paste(case, conditional, value))
     }
   }
+})
+
+test_that("conditional ensembles keep the support of the sampled models when a mixture model has no draws", {
+
+  # a model with a spike and a slab on [5, 6] (log marginal likelihood -40) and
+  # a model with a total on [1, 2]: all draws come from one model. Conditionally
+  # on the inclusion of the totals, the prior probability of the model with the
+  # simple total is 2/3 and that of the mixture model 1/3, so that the Bayes
+  # factor within the support of the sampled model is that probability over the
+  # (unit) posterior probability of the model
+  n <- 40000L
+  mixture <- prior_spike_and_slab(prior("uniform", list(5, 6)), prior("point", list(.5)))
+  simple <- prior("uniform", list(1, 2))
+  bf <- function(marginal, value){
+    as.numeric(Savage_Dickey_BF(marginal, null_hypothesis = value, silent = TRUE)[["hi"]])
+  }
+
+  # no draw comes from the mixture model: components are the sampled models
+  marginal <- .ordered_hypothesis_ensemble(list(mixture, simple), n, conditional = TRUE, log_marglik = c(-40, 0))
+  components <- BayesTools:::.posterior_components_get(marginal[["hi"]])
+  expect_identical(colnames(components$keys), ".model")
+  expect_identical(as.numeric(components$keys[, ".model"]), 2)
+  expect_identical(components$supports[[1L]]$bounds, c(1, 2))
+  expect_true(components$supports[[1L]]$exact)
+  for(value in c(1, 1.5, 2)) expect_equal(bf(marginal, value), 2 / 3, tolerance = 0.08, info = value)
+  # without conditioning each model has the prior probability 1/2
+  marginal <- .ordered_hypothesis_ensemble(list(mixture, simple), n, log_marglik = c(-40, 0))
+  for(value in c(1, 1.5, 2)) expect_equal(bf(marginal, value), 1 / 2, tolerance = 0.08, info = value)
+
+  # all draws come from the mixture model
+  marginal <- .ordered_hypothesis_ensemble(list(mixture, simple), n, conditional = TRUE, log_marglik = c(0, -40))
+  components <- BayesTools:::.posterior_components_get(marginal[["hi"]])
+  expect_identical(colnames(components$keys), c(".model", "mu_f"))
+  expect_identical(components$supports[[1L]]$bounds, c(5, 6))
+  for(value in c(5, 5.5, 6)) expect_equal(bf(marginal, value), 1 / 3, tolerance = 0.08, info = value)
+  marginal <- .ordered_hypothesis_ensemble(list(mixture, simple), n, log_marglik = c(0, -40))
+  for(value in c(5, 5.5, 6)) expect_equal(bf(marginal, value), 1 / 2, tolerance = 0.08, info = value)
 })

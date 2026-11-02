@@ -1684,7 +1684,22 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
       ))
     }
     if(!model_mixture){
-      return(NULL)
+      # no sampled model has a total with components (the models with one have
+      # no draws): the components are the sampled models, with the supports of
+      # their own prior lists
+      models <- as.numeric(sort(unique(model_component)))
+      keys <- matrix(models, ncol = 1L, dimnames = list(NULL, ".model"))
+      return(.posterior_components_new(
+        index    = rep(match(model_component, models), each = n_rows),
+        supports = .posterior_components_supports(
+          context               = context,
+          keys                  = keys,
+          weights               = weights,
+          output_transformation = output_transformation,
+          source_transforms     = source_transforms
+        ),
+        keys     = keys
+      ))
     }
     return(.posterior_components_new(
       index    = rep(model_component, each = n_rows),

@@ -818,8 +818,10 @@ what it calls, needs a `fit` profile refresh of the cached fits.
   that its ordinate is reflected within each bounded component; in an
   ensemble (`mix_posteriors()`, also conditional) a component is a model and,
   for its ordered terms with a mixture total, the component of that total
-  (keys `.model` and the parameter). Ordinary spike-and-slab and mixture priors
-  are not mixed across models. Mixed producers retain these primitive sources
+  (keys `.model` and the parameter), or the model alone when no sampled model
+  has such a total (the supports then follow from the prior lists of the
+  sampled models). Ordinary spike-and-slab and mixture priors are not mixed
+  across models. Mixed producers retain these primitive sources
   with their selected model and row; raw ensemble tables use their complete declared-model
   union, including fixed allocations and undefined shares in absent models.
   `JAGS_ordered_parameter_spec()` owns source names, labels (`f{total}`,
