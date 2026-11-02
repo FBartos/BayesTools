@@ -260,6 +260,14 @@
       log(abs(scale[usable]))
     out[usable] <- exp(log_density)
   }
+  # the argument within a few units of the resolution of a finite bound is not resolved
+  # (rounded onto the bound, or its distance and the singular density there inexact)
+  near <- rep(FALSE, length(out))
+  for(bound in bounds[is.finite(bounds)]){
+    near <- near | (is.finite(as.vector(argument)) &
+      abs(as.vector(argument) - bound) <= 8 * .Machine$double.eps * max(abs(bound), .Machine$double.xmin))
+  }
+  attr(out, "unresolved") <- near
   if(is.matrix(argument)) matrix(out, nrow(argument), ncol(argument)) else out
 }
 
@@ -388,7 +396,12 @@
   accepted <- isTRUE(result$accepted[[i]])
   message <- result$message
   if(identical(message, "OK") && !accepted){
-    message <- if(isTRUE(result$estimate[[i]] == 0)){
+    message <- if(isTRUE(result$unresolved[i])){
+      paste0(
+        "the distance from a bound of the total is below the floating-point resolution of the ",
+        "quadrature nodes next to it, so the mass near the bound is not representable at this value"
+      )
+    }else if(isTRUE(result$estimate[[i]] == 0)){
       zero_message
     }else if(!is.finite(result$estimate[[i]]) || !is.finite(result$change[[i]])){
       "the integral over the allocation shares is not finite"

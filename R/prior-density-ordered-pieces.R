@@ -26,6 +26,11 @@
 # q e >= 6, a Gauss-Legendre rule in s. Totals whose density at a bound is
 # infinite with an unknown or very small exponent are refused.
 #
+# The nodes next to a singular breakpoint that the floating-point resolution of
+# its location does not resolve leave out a mass that is bounded
+# (.prior_ordered_product_unresolved_bias()); a value whose bound exceeds the
+# criterion is rejected, never set to 0.
+#
 # The rules are doubled, and a value is accepted only when the last two rules
 # agree at the criterion, the difference at least halved from the one before,
 # and the two rules before agreed at 100 times the criterion (the differences of
@@ -155,7 +160,7 @@
 # edges; a piece next to an edge with an exponent below 1 is smoothed there.
 .prior_ordered_product_split <- function(edges, exponents, a, b, n){
 
-  out <- list(row = integer(), v = numeric(), w = numeric())
+  out <- list(row = integer(), v = numeric(), w = numeric(), unresolved = logical())
   log_beta <- lbeta(a, b)
   last <- ncol(edges)
   for(j in seq_len(last - 1L)){
@@ -188,6 +193,7 @@
       out$row <- c(out$row, rep(rows, times = n))
       out$v <- c(out$v, as.vector(v))
       out$w <- c(out$w, as.vector(weight))
+      out$unresolved <- c(out$unresolved, rep(FALSE, length(rows) * n))
     }
     # pieces next to a singular breakpoint: tau = s^qL / (s^qL + (1 - s)^qR), Gauss-Legendre in s
     rows <- which(singular)
@@ -218,9 +224,18 @@
                                 log(width) + log_one_minus_tau, log1p(-v))
       weight <- width * matrix(rule$w, nrow = length(rows), ncol = n, byrow = TRUE) *
         exp((a - 1) * log_v + (b - 1) * log_one_minus_v - log_beta + log_derivative)
+      # a node closer to a singular breakpoint than a few units of the resolution of
+      # the edge is not resolved: its distance, and the density that is infinite or
+      # vanishing there, are rounded (it may round onto the edge itself)
+      resolution <- 8 * .Machine$double.eps
+      near_left <- !left_beta & .prior_ordered_product_needs_smoothing(left_exponent[rows]) &
+        width * exp(log_tau) <= resolution * pmax(abs(lower[rows_kept]), .Machine$double.xmin)
+      near_right <- .prior_ordered_product_needs_smoothing(right_exponent[rows]) &
+        width * exp(log_one_minus_tau) <= resolution * pmax(abs(upper[rows_kept]), .Machine$double.xmin)
       out$row <- c(out$row, rep(rows_kept, times = n))
       out$v <- c(out$v, as.vector(v))
       out$w <- c(out$w, as.vector(weight))
+      out$unresolved <- c(out$unresolved, as.vector(near_left | near_right))
     }
   }
   out
@@ -257,7 +272,8 @@
 # agreement of the last two rules (a plotted density).
 .prior_ordered_product_piecewise <- function(spec, values, integrand,
                                               tolerance = .prior_linear_density_refinement_tolerance()$relative,
-                                              budget = Inf, nested = TRUE, stable = TRUE){
+                                              budget = Inf, nested = TRUE, stable = TRUE,
+                                              check = FALSE){
 
   coordinates <- spec$structure$coordinates
   p <- length(coordinates)
@@ -273,6 +289,7 @@
   accepted <- rep(FALSE, m)
   previous <- rep(NA_real_, m)
   previous_change <- rep(NA_real_, m)
+  unresolved <- rep(FALSE, m)
   evaluations <- 0
   rules <- 0L
   message <- "OK"
@@ -294,12 +311,14 @@
       rules <- rules + 1L
       current <- rep(NA_real_, length(active))
       chunk <- max(1L, floor(3e6 / per_group))
+      bias <- rep(0, length(active))
       for(start in seq.int(1L, length(active), by = chunk)){
         groups <- active[start:min(length(active), start + chunk - 1L)]
         integrals <- .prior_ordered_product_nested(
-          spec, values, bounds, exponents, integrand, groups, size, nested
+          spec, values, bounds, exponents, integrand, groups, size, nested, check = check
         )
         current[match(groups, active)] <- integrals$value
+        bias[match(groups, active)] <- integrals$bias
         evaluations <- evaluations + integrals$evaluations
       }
       difference <- abs(current - previous[active])
@@ -314,6 +333,11 @@
           previous_change[active] <= 100 * tolerance * current &
           (difference <= 0.5 * previous_change[active] | difference <= 1e-3 * tolerance * current)
       }
+      # the unresolved nodes next to a singular bound could change the value by more than
+      # the criterion: never certified (and never zeroed silently)
+      representable <- is.finite(bias) & bias <= tolerance * abs(current)
+      unresolved[active] <- !representable
+      good <- good & representable
       accepted[active[good]] <- TRUE
       value[active[good]] <- current[good]
       previous_change[active] <- difference
@@ -321,18 +345,20 @@
     }
   }
   list(value = value, estimate = estimate, change = change, accepted = accepted,
-       evaluations = evaluations, message = message, sizes = sizes)
+       unresolved = unresolved, evaluations = evaluations, message = message, sizes = sizes)
 }
 
 # One rule size of the nested pieces for the 'groups': the integral of each
 # group and the evaluations of the integrand.
-.prior_ordered_product_nested <- function(spec, values, bounds, exponents, integrand, groups, n, nested){
+.prior_ordered_product_nested <- function(spec, values, bounds, exponents, integrand, groups, n, nested,
+                                           check = FALSE){
 
   coordinates <- spec$structure$coordinates
   p <- length(coordinates)
   prefix <- matrix(0, length(groups), 0L)
   weight <- rep(1, length(groups))
   g <- groups
+  flagged <- rep(FALSE, length(groups))
   for(k in seq_len(p - 1L)){
     if(nested){
       found <- .prior_ordered_product_edges(spec, prefix, g, values, bounds, exponents, p - k)
@@ -344,6 +370,7 @@
                                           coordinates[[k]]$b, n)
     prefix <- cbind(prefix[split$row, , drop = FALSE], split$v)
     weight <- weight[split$row] * split$w
+    flagged <- flagged[split$row] | split$unresolved
     g <- g[split$row]
   }
   # the innermost coordinate: affine coefficients at its ends, breakpoints of
@@ -362,7 +389,9 @@
     low$scale[split$row] + dc[split$row] * split$v,
     low$shift[split$row] + ds[split$row] * split$v
   )
-  # a node of a singular piece may round onto the bound itself: a single point
+  # a node whose argument rounds onto a bound of the total has no density value
+  near <- attr(evaluated, "unresolved", exact = TRUE)
+  unresolved <- split$unresolved | (if(is.null(near)) FALSE else near)
   evaluated[!is.finite(evaluated)] <- 0
   inner_integral <- numeric(length(g))
   sums <- rowsum(split$w * evaluated, split$row)
@@ -370,7 +399,59 @@
   totals <- rowsum(weight * inner_integral, g)
   value <- rep(NA_real_, length(groups))
   value[match(as.integer(rownames(totals)), groups)] <- totals[, 1L]
-  list(value = value, evaluations = length(split$row))
+  bias <- rep(0, length(groups))
+  if(check){
+    bias <- .prior_ordered_product_unresolved_bias(
+      spec, split, evaluated, unresolved, weight, inner_integral, flagged, g, groups
+    )
+  }
+  list(value = value, bias = bias, evaluations = length(split$row))
+}
+
+# A bound of the mass that the nodes next to a singular bound that are not
+# resolved (closer to the bound than a few units of the floating-point
+# resolution of its location, or whose argument rounds onto the bound) leave
+# out of an integral of a density. The density near the bound is ~ dist^(e - 1)
+# and the mass of the neglected distance d is ~ f(d) d / e, at most the weight
+# of the unresolved nodes times the largest resolved value over e; the same
+# holds for the unresolved nodes of the outer coordinates and the inner
+# integral. Returns the bound per group. A value that is not representable near
+# the bound (the representability limit of the double precision, e.g. a
+# Beta(0.5, 0.5) total at a distance of 1e-10 from its bound in a product with
+# uniform shares) is therefore rejected by the caller, never zeroed.
+.prior_ordered_product_unresolved_bias <- function(spec, split, evaluated, unresolved, weight,
+                                                    inner_integral, flagged, g, groups){
+
+  exponents <- .prior_ordered_product_bound_exponents(
+    spec$terms[[spec$random_terms[[1L]]]]$total
+  )
+  exponent <- min(1, exponents)
+  n_rows <- length(g)
+  # the inner nodes: weight of the unresolved ones times the largest resolved value, per integral
+  inner_bias <- numeric(n_rows)
+  if(any(unresolved)){
+    resolved <- !unresolved
+    largest <- rep(Inf, n_rows)
+    if(any(resolved)){
+      maxima <- tapply(abs(evaluated[resolved]), split$row[resolved], max)
+      largest[as.integer(names(maxima))] <- maxima
+    }
+    mass <- tapply(split$w[unresolved], split$row[unresolved], sum)
+    rows <- as.integer(names(mass))
+    inner_bias[rows] <- as.numeric(mass) * largest[rows] / exponent
+  }
+  by_group <- rowsum(weight * inner_bias, g)
+  bias <- rep(0, length(groups))
+  bias[match(as.integer(rownames(by_group)), groups)] <- by_group[, 1L]
+  # the outer nodes: weight of the unresolved ones times the largest inner integral of the group
+  if(any(flagged)){
+    flagged_weight <- rowsum(weight[flagged], g[flagged])
+    largest <- tapply(abs(inner_integral), g, max)
+    index <- match(as.integer(rownames(flagged_weight)), groups)
+    bias[index] <- bias[index] +
+      flagged_weight[, 1L] * as.numeric(largest[rownames(flagged_weight)]) / exponent
+  }
+  bias
 }
 
 # ---- entry points ------------------------------------------------------------------
@@ -390,7 +471,7 @@
       function(group, scale, shift){
         .prior_ordered_product_scale_density(spec, x[group], shift, scale)
       },
-      tolerance = tolerance, budget = budget, nested = nested, stable = !display
+      tolerance = tolerance, budget = budget, nested = nested, stable = !display, check = TRUE
     ))
   }
   .prior_ordered_product_integrate(spec, function(state, columns){

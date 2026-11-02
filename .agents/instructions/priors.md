@@ -483,8 +483,19 @@ at the criterion, their difference is at least halved from the one before, and
 the two rules before agreed at 100 times the criterion (the differences of a
 convergent sequence decrease; cancelling errors of a slowly converging sequence
 were accepted before, e.g. 3.3e-4 for a Beta(1, 0.9) total times two uniform
-shares); other values are rejected. Plotted densities accept the last two rules
-at 1e-3 (the outer coordinates of three or more are not split).
+shares); other values are rejected. The nodes of a smoothed piece closer to a
+singular breakpoint than 8 units of the floating-point resolution of its location
+(or whose argument rounds onto a bound of the total) are not resolved: the
+density is not represented there, so their weight times the largest resolved
+value over the exponent (the mass ~ f(d) d / e of the neglected distance d) bounds
+what they leave out, summed over the inner and the outer coordinates. A value
+whose bound exceeds the criterion is rejected with the representability limit
+named in the message, never zeroed silently (a Beta(0.5, 0.5) total times two
+uniform shares at a distance of 1e-10 from its bound lost 1.1e-3 of the density
+when the unresolved nodes were set to 0); densities of such totals are accepted
+down to a distance of about 1e-4 of the bound. The probabilities of regions
+are continuous in the shares and are not affected. Plotted densities accept the
+last two rules at 1e-3 (the outer coordinates of three or more are not split).
 The range of a combination (display grids) is the product of the total's range
 and the range of the reduced coefficients: the coefficient is multilinear in
 the allocations, each on its simplex, so it is extreme at a vertex, an entry

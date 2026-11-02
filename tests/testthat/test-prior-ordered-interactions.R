@@ -759,9 +759,10 @@ test_that("a non-monotone sequence of rules is not accepted", {
   )
   rules_used <- function(values){
     testthat::local_mocked_bindings(
-      .prior_ordered_product_nested = function(spec, values_, bounds, exponents, integrand, groups, n, nested){
+      .prior_ordered_product_nested = function(spec, values_, bounds, exponents, integrand, groups, n,
+                                               nested, check = FALSE){
         index <<- index + 1L
-        list(value = rep(values[[index]], length(groups)), evaluations = 1)
+        list(value = rep(values[[index]], length(groups)), bias = rep(0, length(groups)), evaluations = 1)
       },
       .package = "BayesTools"
     )
@@ -777,4 +778,52 @@ test_that("a non-monotone sequence of rules is not accepted", {
   expect_identical(convergent[["rules"]], 5L)
   # the erratic one is not accepted at the fifth rule (9e-4 after 1.5e-3 is not halving)
   expect_gt(erratic[["rules"]], 5L)
+})
+
+test_that("values within the floating-point resolution of a singular bound are rejected, never certified wrongly", {
+
+  # T ~ Beta(.5, .5) times U V near the bound x = 1 of the support: the density is ~ (1 - x)^1.5, the
+  # quadrature nodes next to the breakpoint at distance 1 - x round onto it once 1 - x approaches the
+  # floating-point resolution of the shares (the lost mass was 1.1e-3 of the density at 1 - 1e-10)
+  reference <- function(x){
+    delta <- 1 - x
+    stats::integrate(function(s){
+      2 * sqrt(delta) / pi * log1p(delta * (1 - s^2) / x) / (1 - delta * s^2)^1.5
+    }, 0, 1, rel.tol = 1e-12, abs.tol = 0)$value
+  }
+  total <- prior("beta", list(.5, .5))
+  priors <- .bounded_cross_priors(total)
+  density <- BayesTools:::.prior_linear_combination_density(
+    priors, .cell_combination(priors[["mu_f__xXx__o"]], "f=mid, o=q"), n_grid = 128L)
+
+  for(delta in c(1e-2, 1e-4)){
+    ordinate <- prior_density_ordinate(density, 1 - delta)
+    expect_true(ordinate$exact, info = delta)
+    expect_equal(exp(ordinate$log_density), reference(1 - delta), tolerance = 1e-5, info = delta)
+  }
+  for(delta in c(1e-6, 1e-8, 1e-10, 1e-12)){
+    x <- 1 - delta
+    ordinate <- prior_density_ordinate(density, x)
+    # the density is bracketed analytically by 4 d^1.5 / (3 pi) and the same over x^2.5 (the
+    # integral loses accuracy at 1 - 1e-12): it is either certified within the criterion or rejected
+    bracket <- 4 * delta^1.5 / (3 * pi) * c(1, x^-2.5)
+    if(ordinate$exact){
+      value <- exp(ordinate$log_density)
+      expect_true(value >= bracket[[1L]] * (1 - 1e-4) && value <= bracket[[2L]] * (1 + 1e-4), info = delta)
+    }else{
+      expect_false(ordinate$provenance$integration$converged)
+      expect_match(ordinate$reason, "floating-point resolution", fixed = TRUE)
+    }
+  }
+  # the unresolved mass at 1 - 1e-10 is not zeroed: it is rejected
+  ordinate <- prior_density_ordinate(density, 1 - 1e-10)
+  expect_false(ordinate$exact)
+  expect_match(ordinate$reason, "not representable at this value", fixed = TRUE)
+  # the height stops instead of returning the biased value
+  expect_error(BayesTools:::.prior_linear_density_height(density, 1 - 1e-10), "rejected by diagnostics")
+  # regions are not affected: the probabilities are continuous in the shares
+  expect_equal(.route_probability(.bounded_cross_route(total), 1 - 1e-10),
+               stats::integrate(function(t) stats::dbeta(t, .5, .5) * (1 - (1 - 1e-10) / t + (1 - 1e-10) / t *
+                 log((1 - 1e-10) / t)), 1 - 1e-10, 1, rel.tol = 1e-12, subdivisions = 4000L,
+                 stop.on.error = FALSE)$value, tolerance = 1e-4)
 })
