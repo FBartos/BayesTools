@@ -948,10 +948,10 @@
 # nonzero standardized weight (a row without one is the point at zero), and
 # the output transformation is not a constant map. With an ordered prior the
 # rows defer as its combinations do (.prior_linear_density_defers_grid()):
-# without source or output maps, and with every row's structural route known,
-# without an atom and without a strong singularity of a product of shares
-# (ordered terms that share a random allocation, for one, have no route and
-# are refused when built).
+# without source or output maps, with totals that have a numerical grid, and
+# with every row's structural route known, without an atom and without a
+# strong singularity of a product of shares (ordered terms that share a random
+# allocation, for one, have no route and are refused when built).
 .prior_density_rows_atom_free <- function(context, rows, output_transformation,
                                           output_transformation_arguments,
                                           source_transforms = NULL){
@@ -981,17 +981,22 @@
 .prior_density_rows_ordered_routes <- function(context, rows, source_transforms,
                                                output_transformation){
 
-  if(!is.null(output_transformation) || any(!is.na(source_transforms))){
+  ordered <- Filter(is.prior.ordered, context$prior_list)
+  if(!is.null(output_transformation) || any(!is.na(source_transforms)) ||
+     !all(vapply(ordered, .prior_ordered_total_has_grid, logical(1), tail_prob = context$tail_prob))){
     return(FALSE)
   }
-  all(vapply(seq_len(nrow(rows)), function(row_i){
+  for(row_i in seq_len(nrow(rows))){
     route <- tryCatch(
       .prior_density_route_context(context, rows[row_i, ], NULL, NULL, NULL),
       error = function(e) NULL
     )
-    !is.null(route) && !.prior_density_route_has_leaf(route, c("atom", "unknown")) &&
-      is.null(.prior_ordered_route_strong_singularity(route))
-  }, logical(1)))
+    if(is.null(route) || .prior_density_route_has_leaf(route, c("atom", "unknown")) ||
+       !is.null(.prior_ordered_route_strong_singularity(route))){
+      return(FALSE)
+    }
+  }
+  TRUE
 }
 
 # A deferred numerical grid of a prior linear density without atoms: the

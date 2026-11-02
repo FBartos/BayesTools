@@ -640,6 +640,19 @@
   )
 }
 
+# Whether the total of an ordered prior has a numerical grid: a finite range
+# that spans more than one representable value (the checks of its scalar
+# builder, .prior_linear_scalar_distribution(), which refuses the density of
+# a level at once otherwise). A level's grid is deferred only with it.
+.prior_ordered_total_has_grid <- function(ordered_prior, tail_prob){
+
+  total_range <- tryCatch(
+    .prior_linear_scalar_range(ordered_prior$total, 1, tail_prob, NA_character_),
+    error = function(e) c(NA_real_, NA_real_)
+  )
+  all(is.finite(total_range)) && total_range[1L] < total_range[2L]
+}
+
 .prior_ordered_total_linear_measure_check <- function(total){
 
   if(.bt_ordered_total_has_expression(total)){
@@ -1499,7 +1512,7 @@
     )
   }
   if(isTRUE(.record_evaluation) && isTRUE(.defer) &&
-     .prior_linear_density_defers_grid(plan, prior_list, n_grid, output_transformation,
+     .prior_linear_density_defers_grid(plan, prior_list, n_grid, tail_prob, output_transformation,
                                        output_transformation_arguments)){
     arguments <- list(
       prior_list = prior_list,
@@ -1540,7 +1553,8 @@
 # is a point that shifts it and leaves it without atoms, but not alone), the
 # structural route of a combination with an ordered level is known, has no atom
 # (a level whose share is identically zero is the point 0) and no strong
-# singularity of a product of shares (whose grid is refused), no source
+# singularity of a product of shares (whose grid is refused), its totals have a
+# numerical grid (.prior_ordered_total_has_grid(); refused otherwise), no source
 # transformation, and no output map but an affine one, none with an ordered
 # level (a nonlinear map can warn or fail on the values of the grid, an affine
 # map's values can collapse, and a constant map turns the measure into an
@@ -1548,7 +1562,7 @@
 # an ordered level, which is cheap and keeps its numerical diagnostics. Grid
 # attributes (e.g. 'product_grid_resolution') belong to the built grid
 # (.prior_linear_density_materialize()).
-.prior_linear_density_defers_grid <- function(plan, prior_list, n_grid, output_transformation,
+.prior_linear_density_defers_grid <- function(plan, prior_list, n_grid, tail_prob, output_transformation,
                                               output_transformation_arguments){
 
   if(is.null(plan) || any(!is.na(plan$source_transforms))){
@@ -1568,8 +1582,12 @@
   }
   if(any(ordered)){
     # an output map is applied to the built grid, whose transformed values
-    # can collapse (see the affine conditions below); it is built at once
-    if(!is.null(output_transformation)){
+    # can collapse (see the affine conditions below); it is built at once, as
+    # is a level whose total has no numerical grid (refused at once)
+    if(!is.null(output_transformation) ||
+       !all(vapply(plan$groups[on_grid][ordered], function(group){
+         .prior_ordered_total_has_grid(group$prior, tail_prob)
+       }, logical(1)))){
       return(FALSE)
     }
     route <- tryCatch(

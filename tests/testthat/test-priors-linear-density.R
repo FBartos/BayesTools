@@ -4507,6 +4507,16 @@ test_that("ordered levels without atoms build their numerical grid only for grid
   expect_error(.prior_linear_combination_density(priors, c("mu_shape[1]" = 1), n_grid = 256L,
     output_transformation = "lin", output_transformation_arguments = list(a = 1e16, b = 1)),
     "collapses or changes orientation", fixed = TRUE)
+  # a total whose numerical range collapses (normal(1, 1e-20)) refuses its
+  # levels at once, in combinations and in design rows
+  collapsed <- ordered_priors(prior("normal", list(1, 1e-20)))
+  expect_error(.prior_linear_combination_density(collapsed, c("mu_shape[1]" = 1), n_grid = 256L),
+               "collapses to one representable value", fixed = TRUE)
+  collapsed_context <- .prior_density_build_context(collapsed, c("mu_intercept", "mu_shape[1]", "mu_shape[2]"),
+                                                    n_grid = 256L)
+  collapsed_row <- c(mu_intercept = 0, "mu_shape[1]" = 1, "mu_shape[2]" = 0)
+  expect_error(.prior_density_from_context_rows(collapsed_context, rbind(collapsed_row, collapsed_row)),
+               "collapses to one representable value", fixed = TRUE)
 
   # the design rows of the levels (a marginal_posterior() level) defer as well
   context <- .prior_density_build_context(priors, c("mu_intercept", "mu_shape[1]", "mu_shape[2]"),
