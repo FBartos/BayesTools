@@ -4517,6 +4517,20 @@ test_that("ordered levels without atoms build their numerical grid only for grid
   collapsed_row <- c(mu_intercept = 0, "mu_shape[1]" = 1, "mu_shape[2]" = 0)
   expect_error(.prior_density_from_context_rows(collapsed_context, rbind(collapsed_row, collapsed_row)),
                "collapses to one representable value", fixed = TRUE)
+  # every refusal of the total's grid at the level's spacing stays at
+  # construction: a spacing the total's range cannot hold (a weight of 1e-100)
+  # and a total whose grid knots coincide (two adjacent doubles)
+  adjacent <- ordered_priors(prior("uniform", list(1, 1 + .Machine$double.eps)))
+  for(case in list(list(priors = priors, weights = c("mu_shape[1]" = 1e-100)),
+                   list(priors = adjacent, weights = c("mu_shape[1]" = 1)))){
+    eager_error <- tryCatch(.prior_linear_combination_density(case$priors, case$weights, n_grid = 256L,
+                                                              .defer = FALSE), error = identity)
+    expect_s3_class(eager_error, "error")
+    expect_error(.prior_linear_combination_density(case$priors, case$weights, n_grid = 256L),
+                 conditionMessage(eager_error), fixed = TRUE)
+  }
+  tiny_row <- c(mu_intercept = 0, "mu_shape[1]" = 1e-100, "mu_shape[2]" = 0)
+  expect_error(.prior_density_from_context_rows(context, rbind(tiny_row, tiny_row)))
 
   # the design rows of the levels (a marginal_posterior() level) defer as well
   context <- .prior_density_build_context(priors, c("mu_intercept", "mu_shape[1]", "mu_shape[2]"),

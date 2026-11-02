@@ -640,17 +640,21 @@
   )
 }
 
-# Whether the total of an ordered prior has a numerical grid: a finite range
-# that spans more than one representable value (the checks of its scalar
-# builder, .prior_linear_scalar_distribution(), which refuses the density of
-# a level at once otherwise). A level's grid is deferred only with it.
-.prior_ordered_total_has_grid <- function(ordered_prior, tail_prob){
+# Whether the steps of an ordered level's build before its product quadrature
+# succeed (.prior_ordered_linear_distribution() with the combination's spacing
+# 'dx' and grid size): the level's allocation share, and the total's grid,
+# which refuses a range that is not finite or collapses, a spacing the range
+# cannot hold, or knots that do not differ. A warning counts as a failure, so
+# that the build gives it at once; a product of shares has no single share.
+.prior_ordered_level_prebuilds <- function(group, dx, n_grid, tail_prob){
 
-  total_range <- tryCatch(
-    .prior_linear_scalar_range(ordered_prior$total, 1, tail_prob, NA_character_),
-    error = function(e) c(NA_real_, NA_real_)
-  )
-  all(is.finite(total_range)) && total_range[1L] < total_range[2L]
+  tryCatch({
+    share <- .prior_ordered_linear_share(group$prior, group$weights, group$indices)
+    if(!identical(share$type, "point") || share$scale != 0){
+      .prior_ordered_total_linear_distribution(group$prior$total, dx, n_grid, tail_prob)
+    }
+    TRUE
+  }, warning = function(w) FALSE, error = function(e) FALSE)
 }
 
 .prior_ordered_total_linear_measure_check <- function(total){
@@ -1504,13 +1508,8 @@
   # (atom-free) is built when a grid field is first read; evaluations of the
   # recorded route (ordinates, heights, region probabilities) never read it.
   # A builder that needs the grid at once passes '.defer = FALSE'.
-  split <- .prior_linear_split_multiply_groups(prior_list, weights)
-  plan <- NULL
-  if(length(split$product_groups) == 0L){
-    plan <- .prior_linear_additive_plan(
-      prior_list, split$additive_weights, n_grid, tail_prob, source_transforms, grid_spacing
-    )
-  }
+  plan <- .prior_linear_combination_plan(prior_list, weights, n_grid, tail_prob,
+                                         source_transforms, grid_spacing)
   if(isTRUE(.record_evaluation) && isTRUE(.defer) &&
      .prior_linear_density_defers_grid(plan, prior_list, n_grid, tail_prob, output_transformation,
                                        output_transformation_arguments)){
@@ -1551,10 +1550,10 @@
 # outcome of the build: only continuous scalar priors and ordered priors with a
 # continuous total and Dirichlet allocations set the grid (a rounding residue
 # is a point that shifts it and leaves it without atoms, but not alone), the
-# structural route of a combination with an ordered level is known, has no atom
-# (a level whose share is identically zero is the point 0) and no strong
-# singularity of a product of shares (whose grid is refused), its totals have a
-# numerical grid (.prior_ordered_total_has_grid(); refused otherwise), no source
+# structural route of a combination with an ordered level is known and has no
+# atom (a level whose share is identically zero is the point 0) and no product
+# of shares, the steps of the level's build before its product quadrature
+# succeed at once (.prior_ordered_level_prebuilds()), no source
 # transformation, and no output map but an affine one, none with an ordered
 # level (a nonlinear map can warn or fail on the values of the grid, an affine
 # map's values can collapse, and a constant map turns the measure into an
@@ -1582,21 +1581,25 @@
   }
   if(any(ordered)){
     # an output map is applied to the built grid, whose transformed values
-    # can collapse (see the affine conditions below); it is built at once, as
-    # is a level whose total has no numerical grid (refused at once)
-    if(!is.null(output_transformation) ||
-       !all(vapply(plan$groups[on_grid][ordered], function(group){
-         .prior_ordered_total_has_grid(group$prior, tail_prob)
-       }, logical(1)))){
+    # can collapse (see the affine conditions below), so it is built at once
+    if(!is.null(output_transformation)){
       return(FALSE)
     }
+    # every ordered term is one allocation share of one slice: a product of
+    # shares, whose quadrature can resolve no value, is built at once
     route <- tryCatch(
       .prior_density_route_linear(prior_list, plan$weights, plan$source_transforms, n_grid),
       error = function(e) NULL
     )
-    if(is.null(route) || .prior_density_route_has_leaf(route, c("atom", "unknown")) ||
-       !is.null(.prior_ordered_route_strong_singularity(route))){
+    if(is.null(route) || .prior_density_route_has_leaf(route, c("atom", "unknown", "ordered_product"))){
       return(FALSE)
+    }
+    # the steps of the build before the product quadrature run now, so that
+    # their refusals stay at construction
+    for(group in plan$groups[on_grid][ordered]){
+      if(!.prior_ordered_level_prebuilds(group, plan$dx, plan$n_grid, tail_prob)){
+        return(FALSE)
+      }
     }
   }
   if(is.null(output_transformation)){
@@ -1606,6 +1609,19 @@
   identical(output_transformation, "lin") &&
     (is.null(a) || (is.numeric(a) && length(a) == 1L && is.finite(a))) &&
     .prior_density_atom_free_transformation(output_transformation, output_transformation_arguments)
+}
+
+# The additive plan of a combination (.prior_linear_additive_plan()), NULL with
+# a product group, for validated arguments ('weights' without zeros).
+.prior_linear_combination_plan <- function(prior_list, weights, n_grid, tail_prob,
+                                           source_transforms, grid_spacing){
+
+  split <- .prior_linear_split_multiply_groups(prior_list, weights)
+  if(length(split$product_groups) > 0L){
+    return(NULL)
+  }
+  .prior_linear_additive_plan(prior_list, split$additive_weights, n_grid, tail_prob,
+                              source_transforms, grid_spacing)
 }
 
 # The combination with its numerical grid, for validated arguments ('weights'

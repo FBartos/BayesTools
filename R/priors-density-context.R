@@ -947,10 +947,9 @@
 # by its structure: every prior of the context is continuous, every row has a
 # nonzero standardized weight (a row without one is the point at zero), and
 # the output transformation is not a constant map. With an ordered prior the
-# rows defer as its combinations do (.prior_linear_density_defers_grid()):
-# without source or output maps, with totals that have a numerical grid, and
-# with every row's structural route known, without an atom and without a
-# strong singularity of a product of shares (ordered terms that share a random
+# rows have no source or output map and defer only when the combination of
+# every row defers (.prior_linear_density_defers_grid()), whose build then
+# refuses nothing at construction (ordered terms that share a random
 # allocation, for one, have no route and are refused when built).
 .prior_density_rows_atom_free <- function(context, rows, output_transformation,
                                           output_transformation_arguments,
@@ -971,32 +970,43 @@
   if(!all(nonzero)){
     return(FALSE)
   }
-  if(any(vapply(context$prior_list, is.prior.ordered, logical(1))) &&
-     !.prior_density_rows_ordered_routes(context, rows, source_transforms, output_transformation)){
-    return(FALSE)
+  if(any(vapply(context$prior_list, is.prior.ordered, logical(1)))){
+    if(!is.null(output_transformation) || any(!is.na(source_transforms))){
+      return(FALSE)
+    }
+    for(row_i in seq_len(nrow(rows))){
+      if(!isTRUE(tryCatch(.prior_density_context_row_defers(context, rows[row_i, ]),
+                          error = function(e) FALSE))){
+        return(FALSE)
+      }
+    }
   }
   .prior_density_atom_free_transformation(output_transformation, output_transformation_arguments)
 }
 
-.prior_density_rows_ordered_routes <- function(context, rows, source_transforms,
-                                               output_transformation){
+# Whether one row of a context with an ordered prior keeps the deferral of a
+# row mixture: a row without an ordered term does; a row with one only when
+# the combination that the context builds for it (.prior_density_context_density())
+# defers its grid (.prior_linear_density_defers_grid()), which a recipe offset,
+# applied to the built grid, prevents.
+.prior_density_context_row_defers <- function(context, row){
 
-  ordered <- Filter(is.prior.ordered, context$prior_list)
-  if(!is.null(output_transformation) || any(!is.na(source_transforms)) ||
-     !all(vapply(ordered, .prior_ordered_total_has_grid, logical(1), tail_prob = context$tail_prob))){
+  standardized <- .prior_density_context_standardized_weights(context, row)
+  canonical <- .bt_formula_context_canonical(context, standardized)
+  weights <- standardized[standardized != 0]
+  groups <- .prior_linear_weight_groups(canonical$prior_list, weights)
+  if(!any(vapply(groups, function(group) is.prior.ordered(group$prior), logical(1)))){
+    return(TRUE)
+  }
+  if(!is.null(attr(standardized, "formula_recipe_offset", exact = TRUE))){
     return(FALSE)
   }
-  for(row_i in seq_len(nrow(rows))){
-    route <- tryCatch(
-      .prior_density_route_context(context, rows[row_i, ], NULL, NULL, NULL),
-      error = function(e) NULL
-    )
-    if(is.null(route) || .prior_density_route_has_leaf(route, c("atom", "unknown")) ||
-       !is.null(.prior_ordered_route_strong_singularity(route))){
-      return(FALSE)
-    }
-  }
-  TRUE
+  attr(standardized, "formula_contribution_transforms") <- NULL
+  .bt_formula_require_multiplier_laws(canonical, standardized)
+  plan <- .prior_linear_combination_plan(canonical$prior_list, weights, context$n_grid,
+                                         context$tail_prob, NULL, context$grid_spacing)
+  .prior_linear_density_defers_grid(plan, canonical$prior_list, context$n_grid,
+                                    context$tail_prob, NULL, NULL)
 }
 
 # A deferred numerical grid of a prior linear density without atoms: the

@@ -745,12 +745,11 @@ e.g. the prior density of a formula `marginal_posterior()` level) whose
 structure has no point mass (only continuous priors, every row with a
 nonzero weight, no constant output map; an ordered prior is continuous with
 a continuous total and Dirichlet allocations, the default Dirichlet(1, ...)
-included, while a fixed allocation can make a level the point 0, and its rows
-also need the conditions of an ordered level below for every row: no source
-or output map, totals with a numerical grid, and a known structural route
-without an atom or a strong singularity, which ordered terms sharing a random
-allocation lack) defers its
-numerical grid, which
+included, while a fixed allocation can make a level the point 0; the rows
+then have no source or output map, and every row with an ordered term defers
+only as its combination would below, so ordered terms sharing a random
+allocation, which have no route, are refused at once) defers its numerical
+grid, which
 holds one exact display grid per row product component: its `density` field
 keeps the builder's arguments and a cache, and the grid is built on the first
 read of a grid field (plots without a given range, grid heights and
@@ -766,16 +765,19 @@ narrowest source, up to 2,097,152) or an ordered level at any grid size (its
 grid is the route quadrature of up to 1024 product values, about 0.5 s), and
 its structure has no atom: every source that sets the grid a continuous scalar
 prior or a continuous ordered prior (a rounding residue is a point that only
-shifts the grid), with an ordered level a known structural route without an
-atom (a level whose share is identically zero is the point 0) and without a
-strong singularity of a product of shares, and a total whose numerical range is
-finite and spans more than one representable value (otherwise the level is
-refused, at once), no source transformation, and no output map but an affine
-one (none with an ordered level). A nonlinear map can warn or fail on grid
-values, so it builds
-at once, as does every smaller grid
-without an ordered level, which is cheap and keeps the numerical diagnostics
-that only a built grid has. Grid attributes such as `product_grid_resolution`
+shifts the grid), no source transformation, and no output map but an affine
+one. With an ordered level the structural route is known, has no atom (a level
+whose share is identically zero is the point 0) and every ordered term is one
+allocation share of one slice (a product of shares, whose quadrature can
+resolve no value, builds at once), there is no output map (an affine map can
+collapse the grid's values), and the steps of the level's build before its
+product quadrature run at once (`.prior_ordered_level_prebuilds()`: the share
+and the total's grid at the combination's spacing, which refuses a range that
+is not finite or collapses, a spacing the range cannot hold, or knots that do
+not differ), so their refusals and warnings stay at construction. A nonlinear
+map can warn or fail on grid values, so it builds at once, as does every
+smaller grid without an ordered level, which is cheap and keeps the numerical
+diagnostics that only a built grid has. Grid attributes such as `product_grid_resolution`
 belong to the built grid (`.prior_linear_density_materialize()`). A
 builder that mixes or refines grids passes `.defer = FALSE`. The density of a
 context (`.prior_density_from_context()`) defers the same grid with its own
