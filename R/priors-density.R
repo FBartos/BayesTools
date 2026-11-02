@@ -566,18 +566,21 @@ density.prior <- function(x,
       unbounded
     }else{
       lapply(seq_len(nrow(design)), function(i){
-        share <- .prior_ordered_linear_share(
-          ordered_prior = x,
-          weights       = design[i, ],
-          indices       = seq_len(ncol(design))
-        )
-        # A scaled Beta share lies in [0, scale].
-        shares <- if(identical(share$type, "point")) share$scale else c(0, share$scale)
-        # A zero share gives an exact zero level whatever the total.
-        products <- as.vector(outer(total_hull, shares, function(total, share){
-          ifelse(share == 0, 0, total * share)
-        }))
-        range(products)
+        # a level without an allocation share has no known exact support
+        tryCatch({
+          share <- .prior_ordered_linear_share(
+            ordered_prior = x,
+            weights       = design[i, ],
+            indices       = seq_len(ncol(design))
+          )
+          # A scaled Beta share lies in [0, scale].
+          shares <- if(identical(share$type, "point")) share$scale else c(0, share$scale)
+          # A zero share gives an exact zero level whatever the total.
+          products <- as.vector(outer(total_hull, shares, function(total, share){
+            ifelse(share == 0, 0, total * share)
+          }))
+          range(products)
+        }, error = function(e) c(-Inf, Inf))
       })
     }
   }, error = function(e) unbounded)
@@ -640,18 +643,6 @@ density.prior <- function(x,
   }
 
   metadata <- .prior_ordered_metadata(x)
-  if(length(metadata$ordered_terms) != 1L ||
-     metadata$theta_dim != 1L ||
-     length(metadata$allocations) != 1L){
-    if(is.null(total$density)) return(NULL)
-    stop(
-      "Mixed-measure ordered densities currently require one ordered term ",
-      "and one scalar total. Split the interaction into explicitly named ",
-      "terms before requesting its density.",
-      call. = FALSE
-    )
-  }
-
   design_info <- .factor_term_design_from_metadata(x)
   component_names <- .bt_label(
     .bt_label_factor_level_parts(
@@ -662,6 +653,21 @@ density.prior <- function(x,
   )
   weights <- design_info$design
   colnames(weights) <- .JAGS_prior_factor_names(metadata$parameter_name, x)
+
+  # Each row of the design is one level cell, which touches one slice of the
+  # term. A total of point masses only keeps the sampled display for a level
+  # whose measure has no route (its refusal is the formula-measure condition);
+  # with a continuous total the refusal is raised.
+  if(is.null(total$density)){
+    available <- vapply(seq_len(nrow(weights)), function(i){
+      share <- tryCatch(
+        .prior_ordered_linear_share(x, weights[i, ], seq_len(ncol(weights))),
+        BayesTools_formula_measure_unavailable = function(condition) NULL
+      )
+      !is.null(share)
+    }, logical(1))
+    if(!all(available)) return(NULL)
+  }
 
   samples <- NULL
   if(force_samples){

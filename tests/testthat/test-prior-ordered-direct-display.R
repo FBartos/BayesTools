@@ -308,7 +308,10 @@ test_that("ordered mixed-measure labels describe the actual displayed measure", 
   expect_identical(plot(point, show_figures = 4L, plot_type = "ggplot", n_points = 64L, ylab = "Custom")$scales$get_scales("y")$name, "Custom")
 })
 
-test_that("ordered complex points-only totals retain their existing sampled fallback", {
+test_that("ordered points-only totals keep the sampled fallback for levels without an allocation share", {
+  # Every level of f:g (a treatment factor g) is one slice of the term with one
+  # allocation share, so its mixed measure is analytic; a level of f:o involves
+  # the allocations of two ordered factors, whose product has no share.
   for(two_ordered in c(FALSE, TRUE)){
     data <- expand.grid(f = ordered(c("early", "middle", "late", "last"),
       levels = c("early", "middle", "late", "last")),
@@ -324,14 +327,24 @@ test_that("ordered complex points-only totals retain their existing sampled fall
     for(force in c(FALSE, TRUE)){
       set.seed(600)
       sampled <- density(p, x_range = c(0, 2), n_points = 64L, n_samples = 128L, force_samples = force)
-      expect_null(attr(sampled, "method", exact = TRUE))
-      expect_identical(unname(vapply(sampled, function(component) length(component$samples), integer(1))),
-        rep(128L, length(sampled)))
+      if(two_ordered){
+        expect_null(attr(sampled, "method", exact = TRUE))
+        expect_identical(unname(vapply(sampled, function(component) length(component$samples), integer(1))),
+          rep(128L, length(sampled)))
+      }else{
+        expect_identical(attr(sampled, "method", exact = TRUE), "analytic_mixed_measure")
+        expect_identical(unname(vapply(sampled, function(component) length(component$samples), integer(1))),
+          rep(if(force) 128L else 0L, length(sampled)))
+      }
     }
     mixed <- build(prior_spike_and_slab(prior("normal", list(0, 1)), prior("point", list(.5))))
-    expect_error(density(mixed, x_range = c(-3, 3), n_points = 64L, n_samples = 128L),
-      paste0("Mixed-measure ordered densities currently require one ordered term and one scalar total. ",
-        "Split the interaction into explicitly named terms before requesting its density."), fixed = TRUE)
+    if(two_ordered){
+      expect_error(density(mixed, x_range = c(-3, 3), n_points = 64L, n_samples = 128L),
+        class = "BayesTools_formula_measure_unavailable")
+    }else{
+      expect_identical(attr(density(mixed, x_range = c(-3, 3), n_points = 64L, n_samples = 128L),
+        "method", exact = TRUE), "analytic_mixed_measure")
+    }
   }
 })
 

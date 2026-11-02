@@ -388,6 +388,14 @@
   if(length(ordered) == 0L){
     return(NULL)
   }
+  # ordered terms that share a random allocation are dependent
+  shared <- tryCatch(
+    .prior_ordered_check_independent_groups(groups),
+    BayesTools_formula_measure_unavailable = function(e) e
+  )
+  if(inherits(shared, "BayesTools_formula_measure_unavailable")){
+    return(list(reason = conditionMessage(shared)))
+  }
 
   for(parameter in ordered){
     group <- groups[[parameter]]

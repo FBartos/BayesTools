@@ -420,6 +420,26 @@ against it, so its mass can be missed without a convergence failure. Such
 ordinates are small at ordinary scales, but the missed fraction does not
 depend on the units of the value, and the reported error does not bound it.
 
+Ordered terms in interactions: a coefficient of an ordered term is
+`T_s * prod_k G_{k,s}[i_k]`, the total of its slice `s` (the coordinates of the
+ordinary factors, which are treatment or independent coded, so a coefficient
+touches one slice) times one cumulative allocation per ordered factor. A
+combination of coefficients is reduced per slice to a tensor over the
+allocation records that stay random, keyed by the record (`id`), never by the
+prior-list entry (`.prior_ordered_linear_slices()`, the tensor contraction of
+R/JAGS-ordered-projection.R): fixed allocations contract with their weights,
+a full simplex disappears, and increment weights are never added across slices
+(weights of +1 and -1 on fixed allocations of two slices do not cancel). A
+combination of one slice with one remaining allocation whose nonzero weights
+are one value has the Beta share below; every other combination (several
+slices, several remaining allocations, other coefficients) is refused with
+`BayesTools_formula_measure_unavailable` (cause
+`unsupported_contribution_measure`) instead of aborting, so hypotheses, prior
+densities, plots and transformed densities report the measure as unavailable.
+Ordered terms of one combination that share a random allocation (the same
+`id` of a factor) are dependent and refused the same way instead of being
+convolved as independent terms.
+
 Product terms (`multiply_by`) and ordered-prior levels share one route
 (R/prior-density-route.R). An ordered level (or allocation subset) is the
 ordered total times its allocation share (`.prior_ordered_linear_share()`):

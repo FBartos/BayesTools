@@ -694,58 +694,140 @@
   )
 }
 
-.prior_ordered_linear_share <- function(ordered_prior, weights, indices){
+# The slices of a linear combination of the coefficients of an ordered term. A
+# coefficient is theta_c = T_s * prod_k G_{k,s}[i_k(c)]: the total T_s of its
+# slice s (the coordinates of the ordinary factors of the term, which are
+# treatment or independent coded, so every coefficient touches one slice) times
+# one cumulative allocation per ordered factor k. The combination is reduced
+# per slice to a tensor of coefficients over the allocation records that stay
+# random (R/JAGS-ordered-projection.R): a fixed allocation contracts with its
+# weights, and a random one disappears when its coordinates have the same
+# coefficient (a full simplex). Increment weights are never added across
+# slices, whose totals and allocations are different random variables (fixed
+# weights of +1 and -1 in two slices do not cancel). Each element holds the
+# 'slice' and its reduced 'tensor' (named records, coefficient array); slices
+# without a nonzero weight are omitted.
+.prior_ordered_linear_slices <- function(ordered_prior, weights, indices){
 
-  # Allocation share multiplying the ordered total in a level combination:
-  # a fixed point or 'scale' times a Beta(alpha[1], alpha[2]) variable.
   ordered_prior <- .prior_ordered_default_bound(ordered_prior)
   metadata <- .prior_ordered_metadata(ordered_prior)
-  if(length(metadata$ordered_terms) != 1L ||
-     metadata$theta_dim != 1L ||
-     length(metadata$allocations) != 1L){
-    stop(
-      "Mixed-measure ordered densities currently require one ordered term ",
-      "and one scalar total. Split the interaction into explicitly named ",
-      "terms before requesting its marginal density.",
-      call. = FALSE
-    )
-  }
-
   coefficient_weights <- numeric(metadata$coefficient_dim)
   coefficient_weights[indices] <- weights
-  record <- metadata$allocations[[1L]]
-  increments <- metadata$coefficient_grid[[metadata$ordered_terms[[1L]]]]
-  allocation_weights <- numeric(length(record$spec$weights))
-  if(identical(record$spec$type, "dirichlet")){
-    allocation_weights <- numeric(length(record$spec$alpha))
+
+  slices <- list()
+  for(slice in seq_len(metadata$theta_dim)){
+    in_slice <- which(metadata$slice_index == slice)
+    if(all(coefficient_weights[in_slice] == 0)){
+      next
+    }
+    records <- lapply(metadata$ordered_terms, function(factor_term){
+      .prior_ordered_allocation_for_coefficient(metadata, factor_term, slice)
+    })
+    names(records) <- vapply(records, `[[`, character(1), "key")
+    slices[[length(slices) + 1L]] <- list(
+      slice  = slice,
+      tensor = .bt_ordered_tensor_reduce(list(
+        records      = records,
+        coefficients = coefficient_weights[in_slice]
+      ))
+    )
   }
-  for(i in seq_along(coefficient_weights)){
-    allocation_weights[increments[[i]]] <-
-      allocation_weights[increments[[i]]] + coefficient_weights[[i]]
+  slices
+}
+
+# The classed refusal of an ordered combination without a density route: a
+# formula-measure condition (cause 'unsupported_contribution_measure'), so
+# every entry point that reads prior densities (hypotheses, parameter and
+# formula densities, plots, transformed densities) reports the measure as
+# unavailable instead of aborting.
+.prior_ordered_density_unavailable <- function(detail){
+
+  .bt_formula_density_stop(
+    paste0("The prior density of this ordered-prior combination is unavailable: ",
+           detail),
+    reason = "unsupported_contribution_measure"
+  )
+}
+
+# The keys of the allocation records that stay random in the combination of
+# each ordered group of 'groups' (records with the same 'id' are one random
+# variable, named by one key).
+.prior_ordered_random_records <- function(groups){
+
+  ordered <- Filter(function(group) is.prior.ordered(group$prior), groups)
+  lapply(ordered, function(group){
+    slices <- .prior_ordered_linear_slices(group$prior, group$weights, group$indices)
+    unique(unlist(lapply(slices, function(slice) names(slice$tensor$records)),
+                  use.names = FALSE))
+  })
+}
+
+# Keys of the random allocations that two ordered terms of a combination use
+# (the same 'id' of a factor): their sum is not a sum of independent terms.
+.prior_ordered_shared_records <- function(groups){
+
+  n_ordered <- sum(vapply(groups, function(group) is.prior.ordered(group$prior), logical(1)))
+  if(n_ordered < 2L){
+    return(character())
+  }
+  keys <- unlist(.prior_ordered_random_records(groups), use.names = FALSE)
+  unique(keys[duplicated(keys)])
+}
+
+.prior_ordered_check_independent_groups <- function(groups){
+
+  shared <- .prior_ordered_shared_records(groups)
+  if(length(shared) > 0L){
+    .prior_ordered_density_unavailable(paste0(
+      "its ordered terms share the random allocation ",
+      paste0("'", shared, "'", collapse = ", "),
+      " (the same 'id'), which makes their sum dependent."
+    ))
+  }
+  invisible(TRUE)
+}
+
+# Allocation share multiplying the ordered total in a level combination: a
+# fixed point or 'scale', or 'scale' times a Beta(alpha[1], alpha[2]) variable
+# of the one random allocation that remains in the combination's single
+# slice, with the slice and its allocation 'record'. Every other combination
+# (several slices, several random allocations, coefficients that are not one
+# value on a subset of the increments) has no such share and is refused with
+# the formula-measure condition.
+.prior_ordered_linear_share <- function(ordered_prior, weights, indices){
+
+  slices <- .prior_ordered_linear_slices(ordered_prior, weights, indices)
+  if(length(slices) == 0L){
+    return(list(type = "point", scale = 0))
+  }
+  if(length(slices) > 1L){
+    .prior_ordered_density_unavailable(paste0(
+      "the combination spans ", length(slices), " slices of the ordered term, ",
+      "whose totals and allocations are independent. Test the coefficients of ",
+      "one slice, or request the marginals of the levels."
+    ))
+  }
+  tensor <- slices[[1L]]$tensor
+  if(length(tensor$records) == 0L){
+    return(list(type = "point", scale = tensor$coefficients[[1L]]))
+  }
+  if(length(tensor$records) > 1L){
+    .prior_ordered_density_unavailable(paste0(
+      "the combination involves the allocations of ", length(tensor$records),
+      " ordered factors, so its multiplier is not one allocation share."
+    ))
   }
 
-  if(identical(record$spec$type, "fixed")){
-    scale <- sum(allocation_weights * record$spec$weights)
-    return(list(type = "point", scale = scale))
-  }
-  if(!identical(record$spec$type, "dirichlet")){
-    stop("Unsupported ordered allocation specification.", call. = FALSE)
-  }
-
-  unique_weights <- unique(allocation_weights)
-  if(length(unique_weights) == 1L){
-    return(list(type = "point", scale = unique_weights[[1L]]))
-  }
-
+  record <- tensor$records[[1L]]
+  allocation_weights <- tensor$coefficients
   nonzero <- allocation_weights != 0
   nonzero_values <- unique(allocation_weights[nonzero])
   if(length(nonzero_values) != 1L){
-    stop(
-      "This ordered-prior linear combination is not a level or a single ",
-      "allocation subset, so its Dirichlet multiplier has no beta reduction. ",
-      "Request factor-level marginals instead.",
-      call. = FALSE
-    )
+    .prior_ordered_density_unavailable(paste0(
+      "the combination is not a level or a single allocation subset, so its ",
+      "Dirichlet multiplier has no beta reduction. Request factor-level ",
+      "marginals instead."
+    ))
   }
 
   scale <- nonzero_values[[1L]]
@@ -758,7 +840,8 @@
     return(list(type = "point", scale = scale))
   }
 
-  list(type = "beta", scale = scale, alpha = c(alpha_selected, alpha_remaining))
+  list(type = "beta", scale = scale, alpha = c(alpha_selected, alpha_remaining),
+       slice = slices[[1L]]$slice, record = record)
 }
 
 # Prior terms of an ordered level (or allocation subset): the ordered total
@@ -821,7 +904,7 @@
   if(identical(share$type,"point") && share$scale==0){
     out <- .prior_linear_density_point(0)
     attr(out,"ordered_measure") <- list(method="analytic_components",total=ordered_prior$total,
-      allocation=.prior_ordered_metadata(.prior_ordered_default_bound(ordered_prior))$allocations[[1L]]$spec,
+      allocation=.prior_ordered_measure_allocation(ordered_prior, weights, indices),
       coefficient_weights=stats::setNames(as.numeric(weights),names(weights)))
     return(out)
   }
@@ -876,15 +959,29 @@
   attr(out, "ordered_measure") <- list(
     method = "analytic_components",
     total = ordered_prior$total,
-    allocation = .prior_ordered_metadata(
-      .prior_ordered_default_bound(ordered_prior)
-    )$allocations[[1L]]$spec,
+    allocation = .prior_ordered_measure_allocation(ordered_prior, weights, indices),
     coefficient_weights = stats::setNames(
       as.numeric(weights),
       names(weights)
     )
   )
   out
+}
+
+# The allocation specification recorded with the measure of a combination: the
+# one of the first ordered factor in the first slice that has a nonzero weight.
+.prior_ordered_measure_allocation <- function(ordered_prior, weights, indices){
+
+  metadata <- .prior_ordered_metadata(.prior_ordered_default_bound(ordered_prior))
+  coefficient_weights <- numeric(metadata$coefficient_dim)
+  coefficient_weights[indices] <- weights
+  slice <- metadata$slice_index[coefficient_weights != 0][1L]
+  if(is.na(slice)){
+    slice <- 1L
+  }
+  .prior_ordered_allocation_for_coefficient(
+    metadata, metadata$ordered_terms[[1L]], slice
+  )$spec
 }
 
 # The value of a constant map (a 'lin' or 'exp_lin' transformation with b = 0),
@@ -1202,6 +1299,8 @@
   if(length(groups) == 0){
     return(NULL)
   }
+  # the groups of a grid are convolved as independent terms
+  .prior_ordered_check_independent_groups(groups)
 
   if(is.null(source_transforms)){
     source_transforms <- rep(NA_character_, length(weights))
