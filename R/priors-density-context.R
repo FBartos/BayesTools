@@ -961,6 +961,14 @@
   if(!all(vapply(context$prior_list, .prior_density_continuous_prior, logical(1)))){
     return(FALSE)
   }
+  # a numeric 'multiply_by' scale is folded into the weights, and a zero one
+  # makes a row the point 0, which nonzero standardized weights do not show
+  if(any(vapply(context$prior_list, function(prior){
+    multiplier <- attr(prior, "multiply_by", exact = TRUE)
+    !is.null(multiplier) && !is.character(multiplier)
+  }, logical(1)))){
+    return(FALSE)
+  }
   nonzero <- tryCatch(
     vapply(seq_len(nrow(rows)), function(row_i){
       length(.prior_density_context_standardized_weights(context, rows[row_i, ])) > 0L
@@ -993,16 +1001,18 @@
 
   standardized <- .prior_density_context_standardized_weights(context, row)
   canonical <- .bt_formula_context_canonical(context, standardized)
+  offset <- attr(standardized, "formula_recipe_offset", exact = TRUE)
+  attr(standardized, "formula_recipe_offset") <- NULL
+  attr(standardized, "formula_contribution_transforms") <- NULL
+  .bt_formula_require_multiplier_laws(canonical, standardized)
   weights <- standardized[standardized != 0]
   groups <- .prior_linear_weight_groups(canonical$prior_list, weights)
   if(!any(vapply(groups, function(group) is.prior.ordered(group$prior), logical(1)))){
     return(TRUE)
   }
-  if(!is.null(attr(standardized, "formula_recipe_offset", exact = TRUE))){
+  if(!is.null(offset)){
     return(FALSE)
   }
-  attr(standardized, "formula_contribution_transforms") <- NULL
-  .bt_formula_require_multiplier_laws(canonical, standardized)
   plan <- .prior_linear_combination_plan(canonical$prior_list, weights, context$n_grid,
                                          context$tail_prob, NULL, context$grid_spacing)
   .prior_linear_density_defers_grid(plan, canonical$prior_list, context$n_grid,

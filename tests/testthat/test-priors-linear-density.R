@@ -4531,8 +4531,30 @@ test_that("ordered levels without atoms build their numerical grid only for grid
     expect_error(.prior_linear_combination_density(case$priors, case$weights, n_grid = 256L),
                  conditionMessage(eager_error), fixed = TRUE)
   }
+  # design rows refuse at once with the error of their eager build
+  eager_rows_of <- function(context, rows){
+    local_mocked_bindings(.prior_density_rows_atom_free = function(...) FALSE)
+    .prior_density_from_context_rows(context, rows)
+  }
+  tiny_context <- .prior_density_build_context(priors, c("mu_intercept", "mu_shape[1]", "mu_shape[2]"),
+                                               n_grid = 256L)
   tiny_row <- c(mu_intercept = 0, "mu_shape[1]" = 1e-100, "mu_shape[2]" = 0)
-  expect_error(.prior_density_from_context_rows(context, rbind(tiny_row, tiny_row)))
+  tiny_eager <- tryCatch(eager_rows_of(tiny_context, rbind(tiny_row, tiny_row)), error = identity)
+  expect_s3_class(tiny_eager, "error")
+  expect_error(.prior_density_from_context_rows(tiny_context, rbind(tiny_row, tiny_row)),
+               conditionMessage(tiny_eager), fixed = TRUE)
+
+  # a numeric multiply_by of 0 makes a row the point 0 although its
+  # standardized weight is not 0, so such rows build at once with their atom
+  zero_scaled <- list(x = prior("normal", list(0, 1)),
+                      g = prior_factor_levels(prior_ordered(prior("normal", list(0, 1))), c("lo", "mid", "hi")))
+  attr(zero_scaled$x, "multiply_by") <- 0
+  zero_context <- .prior_density_build_context(zero_scaled, c("x", "g[1]", "g[2]"), n_grid = 256L)
+  zero_rows <- rbind(c(x = 1, "g[1]" = 0, "g[2]" = 0), c(x = 0, "g[1]" = 1, "g[2]" = 1))
+  zero_density <- .prior_density_from_context_rows(zero_context, zero_rows)
+  expect_false(inherits(zero_density$density, "prior_linear_density_deferred"))
+  expect_identical(zero_density, eager_rows_of(zero_context, zero_rows))
+  expect_identical(zero_density$points$x, 0)
 
   # the design rows of the levels (a marginal_posterior() level) defer as well
   context <- .prior_density_build_context(priors, c("mu_intercept", "mu_shape[1]", "mu_shape[2]"),
