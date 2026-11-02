@@ -260,8 +260,16 @@ test_that("ordered prior model intervals use analytic means and generalized stru
   parameter <- .prior_ordered_metadata(interaction)$parameter_name
   names <- .bt_label(.bt_label_factor_level_parts(parameter, interaction,
     transformation = "none"), style = "selector")
-  expect_error(.plot_models_ordered_prior_summary(interaction, names[[5L]], 4),
-    class = "BayesTools_prior_interval_unavailable")
+  # a level of two ordered factors is a total times two allocation shares: its
+  # prior mean is 2 * E[share] * E[share] and its interval that of prior draws
+  summary <- .plot_models_ordered_prior_summary(interaction, names[[5L]], 4)
+  expect_equal(summary[[1L]], 2 * .5 * .5, tolerance = 1e-6)
+  set.seed(20)
+  draws <- .prior_ordered_draws(interaction, 200000L)
+  cell <- as.vector(draws$coefficients %*% .factor_term_design_from_metadata(interaction)$design[5L, ])
+  # the probabilities of the interval bounds under independent prior draws
+  # (Monte Carlo error of each 3.5e-4)
+  expect_equal(c(mean(cell <= summary[[2L]]), mean(cell <= summary[[3L]])), c(.025, .975), tolerance = 3e-3)
 })
 
 test_that("ordered prior overlays omit only the design reference and retain level styles", {

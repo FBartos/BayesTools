@@ -266,6 +266,7 @@ plot_models <- function(model_list, samples, inference, parameter, plot_type = "
       "normal" = c(-Inf, Inf),
       "conditional_normal" = c(-Inf, Inf),
       "scale_product" = .prior_scale_product_hull(route$spec),
+      "ordered_product" = route$spec$hull,
       "mixture" = {
         hulls <- lapply(route$components[route$weights > 0], source_hull)
         if(any(vapply(hulls, is.null, logical(1)))) NULL else range(unlist(hulls))

@@ -310,8 +310,9 @@ test_that("ordered mixed-measure labels describe the actual displayed measure", 
 
 test_that("ordered points-only totals keep the sampled fallback for levels without an allocation share", {
   # Every level of f:g (a treatment factor g) is one slice of the term with one
-  # allocation share, so its mixed measure is analytic; a level of f:o involves
-  # the allocations of two ordered factors, whose product has no share.
+  # allocation share, so its mixed measure is analytic; a level of f:o with a
+  # point total is a nonlinear function of the shares of two ordered factors,
+  # whose density has no route.
   for(two_ordered in c(FALSE, TRUE)){
     data <- expand.grid(f = ordered(c("early", "middle", "late", "last"),
       levels = c("early", "middle", "late", "last")),
@@ -338,13 +339,10 @@ test_that("ordered points-only totals keep the sampled fallback for levels witho
       }
     }
     mixed <- build(prior_spike_and_slab(prior("normal", list(0, 1)), prior("point", list(.5))))
-    if(two_ordered){
-      expect_error(density(mixed, x_range = c(-3, 3), n_points = 64L, n_samples = 128L),
-        class = "BayesTools_formula_measure_unavailable")
-    }else{
-      expect_identical(attr(density(mixed, x_range = c(-3, 3), n_points = 64L, n_samples = 128L),
-        "method", exact = TRUE), "analytic_mixed_measure")
-    }
+    # a normal slab: the levels of f:g and f:o are analytic (a level of f:o is a
+    # normal total times two allocation shares)
+    expect_identical(attr(density(mixed, x_range = c(-3, 3), n_points = 64L, n_samples = 128L),
+      "method", exact = TRUE), "analytic_mixed_measure")
   }
 })
 

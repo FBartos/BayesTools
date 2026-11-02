@@ -388,7 +388,8 @@
   if(length(ordered) == 0L){
     return(NULL)
   }
-  # ordered terms that share a random allocation are dependent
+  # ordered terms that share a random allocation are dependent, and their sum
+  # has no route: only the slices of one term share records jointly
   shared <- tryCatch(
     .prior_ordered_check_independent_groups(groups),
     BayesTools_formula_measure_unavailable = function(e) e
@@ -397,6 +398,8 @@
     return(list(reason = conditionMessage(shared)))
   }
 
+  shares <- list()
+  product <- FALSE
   for(parameter in ordered){
     group <- groups[[parameter]]
     if(!is.null(attr(group$prior, "multiply_by", exact = TRUE))){
@@ -404,11 +407,27 @@
     }
     share <- tryCatch(
       .prior_ordered_linear_share(group$prior, group$weights, group$indices),
+      BayesTools_formula_measure_unavailable = function(e) "product",
       error = function(e) e
     )
     if(inherits(share, "error")){
       return(list(reason = conditionMessage(share)))
     }
+    if(identical(share, "product")){
+      product <- TRUE
+    }else{
+      shares[[parameter]] <- share
+    }
+  }
+  # a combination that is not one share of one slice per term is the
+  # ordered-product leaf
+  if(product){
+    return(list(product = TRUE))
+  }
+
+  for(parameter in ordered){
+    group <- groups[[parameter]]
+    share <- shares[[parameter]]
     weights <- weights[setdiff(names(weights), names(group$weights))]
     if(identical(share$type, "point") && share$scale == 0){
       next
@@ -833,6 +852,9 @@
         provenance = list(kind = "unsupported_provenance", ordered = TRUE),
         recipe     = .prior_density_route_recipe(prior_list, weights, source_transforms, n_grid)
       ))
+    }
+    if(isTRUE(ordered$product)){
+      return(.prior_density_route_ordered_product(prior_list, weights, source_transforms, n_grid))
     }
     return(.prior_density_route_linear(
       ordered$prior_list, ordered$weights, ordered$source_transforms, n_grid
@@ -1324,6 +1346,9 @@
     "scale_product" = .prior_numerical_ordinate(
       .prior_scale_product_ordinate(route$spec, value, route$n_grid), value,
       "scale_mixture", .prior_density_route_provenance(route)),
+    "ordered_product" = .prior_numerical_ordinate(
+      .prior_ordered_product_ordinate(route$spec, value, route$n_grid), value,
+      "scale_mixture", .prior_density_route_provenance(route)),
     "log_scale_product" = .prior_numerical_ordinate(
       .prior_density_route_log_scale_product_ordinate(route, value), value,
       "scale_mixture", .prior_density_route_provenance(route)),
@@ -1484,6 +1509,7 @@
     "conditional_normal" = list(kind = "conditional_normal_mixture"),
     "truncated_normal_convolution" = .prior_truncated_normal_convolution_provenance(route$spec),
     "scale_product" = .prior_scale_product_route_provenance(route$spec),
+    "ordered_product" = .prior_ordered_product_route_provenance(route$spec),
     "log_scale_product" = list(
       kind   = "log_scale_product",
       source = .prior_scale_product_route_provenance(route$product$spec)
@@ -1540,6 +1566,7 @@
     "conditional_normal" = .prior_region_conditional_normal(route$spec, region, route$n_grid),
     "truncated_normal_convolution" = .prior_region_conditional_normal(route$spec, region, route$n_grid),
     "scale_product" = .prior_region_scale_product(route$spec, region, route$n_grid),
+    "ordered_product" = .prior_region_ordered_product(route$spec, region, route$n_grid),
     "log_scale_product" = .prior_region_scale_product(
       route$product$spec,
       list(intervals = .prior_region_check_inverse_intervals(region$intervals,
@@ -1596,6 +1623,7 @@
       }
     },
     "truncated_normal_convolution" = .prior_truncated_normal_convolution_density(route$spec, x),
+    "ordered_product" = .prior_ordered_product_density(route$spec, x),
     "log_scale_product" = {
       y <- exp(x)
       representable <- .prior_density_full_precision(y)
@@ -1701,7 +1729,8 @@
 .prior_density_route_has_quadrature <- function(route){
 
   .prior_density_route_has_leaf(route, c("conditional_normal", "scale_product",
-                                         "log_scale_product", "convolution"))
+                                         "log_scale_product", "convolution",
+                                         "ordered_product"))
 }
 
 # Values a plotted density of the route must include: 'points' (atoms,
@@ -1747,6 +1776,9 @@
     "conditional_normal" = list(points = finite(route$spec$additive_mean),
                                 lower = numeric(), upper = numeric()),
     "scale_product" = hull(route$spec$offset, .prior_scale_product_hull(route$spec)),
+    "ordered_product" = hull(
+      c(route$spec$offset, .prior_ordered_product_constant_shift(route$spec)), route$spec$hull
+    ),
     "convolution" = hull(.prior_convolution_meeting_points(route$spec),
                          .prior_convolution_hull(route$spec)),
     "mixture" = combine(lapply(route$components[route$weights > 0],

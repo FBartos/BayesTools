@@ -3438,7 +3438,7 @@ test_that("ordered mixed measures propagate through marginal inference", {
   )
 })
 
-test_that("ordered Dirichlet marginals reject non-level combinations", {
+test_that("ordered Dirichlet marginals of non-level combinations are ordered products", {
   p <- prior_ordered(
     prior_spike_and_slab(
       prior("normal", list(0, 1)),
@@ -3450,16 +3450,29 @@ test_that("ordered Dirichlet marginals reject non-level combinations", {
   attr(p, "levels") <- 3
   p <- BayesTools:::.prior_ordered_default_bound(p, "mu_f")
 
+  # f[1] + 2 f[2] is T (G1 + 2 G2) = T (2 - B) with B = G1 ~ Beta(2, 3): not
+  # one allocation share (it has no beta reduction), but an ordered product
   expect_error(
-    BayesTools:::.prior_ordered_linear_distribution(
-      p,
-      weights = c(1, 2),
-      indices = 1:2,
-      dx = .01,
-      n_grid = 128
-    ),
-    "not a level or a single allocation subset"
+    BayesTools:::.prior_ordered_linear_share(p, c(1, 2), 1:2),
+    class = "BayesTools_formula_measure_unavailable"
   )
+  distribution <- BayesTools:::.prior_ordered_linear_distribution(
+    p,
+    weights = c(1, 2),
+    indices = 1:2,
+    dx = .01,
+    n_grid = 128
+  )
+  expect_identical(distribution$points, data.frame(x = 0, p = .5))
+  expect_equal(distribution$density$mass, .5)
+  x <- distribution$density$x[c(20L, 50L, 80L, 110L)]
+  reference <- vapply(x, function(value){
+    .5 * stats::integrate(function(b) stats::dnorm(value / (2 - b)) / (2 - b) * stats::dbeta(b, 2, 3),
+                          0, 1, rel.tol = 1e-12)$value
+  }, numeric(1))
+  expect_equal(distribution$density$y[c(20L, 50L, 80L, 110L)] * distribution$density$mass, reference,
+               tolerance = 1e-4)
+  expect_true(attr(distribution, "product_grid_resolution", exact = TRUE)$resolved)
 })
 
 test_that("ordered levels are exact products of the total and its allocation share", {

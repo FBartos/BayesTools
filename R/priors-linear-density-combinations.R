@@ -654,7 +654,14 @@
                                         tail_prob){
 
   ordered_prior <- .prior_ordered_default_bound(ordered_prior)
-  share <- .prior_ordered_linear_share(ordered_prior, weights, indices)
+  share <- tryCatch(
+    .prior_ordered_linear_share(ordered_prior, weights, indices),
+    BayesTools_formula_measure_unavailable = function(condition) NULL
+  )
+  if(is.null(share)){
+    # not one allocation share of one slice: the range of the ordered product
+    return(.prior_ordered_product_range(ordered_prior, weights, indices, tail_prob))
+  }
   if(identical(share$type,"point") && share$scale==0) return(c(0,0))
   .prior_ordered_total_linear_measure_check(ordered_prior$total)
   total_group <- list(
@@ -900,7 +907,14 @@
   if(is.null(n_grid)){
     n_grid <- .prior_linear_density_default_grid()
   }
-  share <- .prior_ordered_linear_share(ordered_prior, weights, indices)
+  share <- tryCatch(
+    .prior_ordered_linear_share(ordered_prior, weights, indices),
+    BayesTools_formula_measure_unavailable = function(condition) NULL
+  )
+  if(is.null(share)){
+    # not one allocation share of one slice: the grid of the route of the ordered product
+    return(.prior_ordered_product_distribution(ordered_prior, weights, indices, n_grid, tail_prob))
+  }
   if(identical(share$type,"point") && share$scale==0){
     out <- .prior_linear_density_point(0)
     attr(out,"ordered_measure") <- list(method="analytic_components",total=ordered_prior$total,

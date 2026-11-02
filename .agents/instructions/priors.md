@@ -431,14 +431,47 @@ R/JAGS-ordered-projection.R): fixed allocations contract with their weights,
 a full simplex disappears, and increment weights are never added across slices
 (weights of +1 and -1 on fixed allocations of two slices do not cancel). A
 combination of one slice with one remaining allocation whose nonzero weights
-are one value has the Beta share below; every other combination (several
-slices, several remaining allocations, other coefficients) is refused with
-`BayesTools_formula_measure_unavailable` (cause
-`unsupported_contribution_measure`) instead of aborting, so hypotheses, prior
-densities, plots and transformed densities report the measure as unavailable.
-Ordered terms of one combination that share a random allocation (the same
-`id` of a factor) are dependent and refused the same way instead of being
-convolved as independent terms.
+are one value has the Beta share below. Every other combination is the
+ordered-product leaf (`R/prior-density-ordered-product.R`,
+`R/prior-density-ordered-route.R`, route type `ordered_product`, method
+`"scale_mixture"`): `X = m + sum_j c_j(B) T_j` with the totals `T_j` of the
+slices, `m` the deterministic offset, and `c_j` multilinear in independent Beta
+coordinates `B` of the Dirichlet allocations. An allocation whose coefficients
+take two values in the combination is one cumulative share; otherwise its
+increments that no term distinguishes are aggregated (the Dirichlet
+aggregation property) and its stick-breaking coordinates `V_j ~ Beta(alpha_j,
+sum_{k > j} alpha_k)` are used, one set per allocation record for every slice
+and term that uses it. Given `B` the law is closed form: a single random
+total of any simple continuous prior with an exact density and distribution
+function is `f_T((x - s) / c) / |c|` (`s` the point totals' shift); several
+totals, and normal terms added to the combination, are normal only when all
+random totals are untruncated normal priors, with mean `s + sum c_j mu_j` and
+variance `sum c_j^2 sigma_j^2` plus the added variance; any other
+combination refuses (cause `unsupported_contribution_measure`).
+Ordinates and region probabilities integrate this law over `B` with the tensor
+Gauss-Jacobi rule of the Beta weights (the weights absorb the endpoint
+singularities), doubling the nodes per coordinate until two rules agree at the
+relative criterion of the other quadrature leaves (1e-4,
+`.prior_linear_density_refinement_tolerance()`); the tensor rule is capped at
+`2^21` nodes (at most five coordinates admit a doubling), a Beta exponent below
+the strong-singularity limit (0.1) rejects the result with the leaf's
+integration diagnostics (`converged = FALSE`), and more coordinates refuse the
+route. The density at the offset is classified for one total times a product of
+shares (`f_T(0) E[1 / |c|]` in closed form, infinite when a share's exponent
+is at most 1); other offsets and the support bounds use the quadrature or stay
+unclassified. Spike-and-slab and mixture totals are expanded per term before
+the leaf is built (a shared indicator is one component of the term, never one
+per slice, so the atom has the mass of the indicator); mixture totals of
+several slices other than spike-and-slab refuse. Point totals shift the law
+by `sum t c(B)`; with no random total the level is a point, a scaled Beta
+share when one coordinate remains, and refused otherwise. A plotted grid of
+three or more coordinates is coarser (257 values) and its values accept a
+relative change of 1e-3 between the last two rules within a budget of 5e7
+node evaluations. Ordered terms of one combination that share a random
+allocation (the same `id` of a factor) are dependent: the display grid
+convolves its groups as independent terms, so such combinations are refused
+with `BayesTools_formula_measure_unavailable` (the slices of one term share
+their records in the leaf).
 
 Product terms (`multiply_by`) and ordered-prior levels share one route
 (R/prior-density-route.R). An ordered level (or allocation subset) is the

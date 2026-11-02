@@ -86,7 +86,21 @@ Normal multiplied by a Lognormal with meanlog zero and sdlog 40 has
 offset log density \eqn{800 - \log(2\pi)/2}, which remains available.
 Levels of ordered priors are the ordered total times their Dirichlet
 allocation share and are classified in the same way; a non-normal total or
-multiplied term uses the analogous \code{"scale_mixture"} quadrature. Their
+multiplied term uses the analogous \code{"scale_mixture"} quadrature. A level of
+an interaction takes the share of its slice (the coordinates of the ordinary
+factors, whose totals and allocations are independent). A level of several
+ordered factors, a combination across slices, or a combination of
+increments that is not one cumulative share is a total (or several
+independent totals) times a multilinear function of independent Beta
+coordinates of the allocations: for a single total with a simple
+continuous prior, or normal totals, the ordinate and region probabilities
+integrate the closed-form conditional law over these coordinates with a
+tensor Gauss-Jacobi rule, doubled until two rules agree (method
+\code{"scale_mixture"}, provenance \code{ordered_product}). Its offset density is
+classified for a single total times a product of shares, and a Beta
+exponent below 0.1 rejects the quadrature. Other combinations (several
+totals that are not normal, point totals that make the level a nonlinear
+function of several shares) are \code{unknown} and refused. Their
 ordinates use
 quadrature over the multiplier's declared support, split at its bounds, at
 quantiles of its declared prior (spaced out next to a bound with infinite

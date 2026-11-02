@@ -390,6 +390,22 @@
   .prior_region_result(integral$value, integral$integration)
 }
 
+.prior_region_ordered_product <- function(spec, region, n_grid){
+
+  if(nrow(region$intervals) == 0L){
+    return(.prior_region_result(0))
+  }
+  if(.prior_region_whole(region)){
+    return(.prior_region_result(1))
+  }
+  outside <- .prior_region_hull_probability(region, spec$hull)
+  if(!is.null(outside)){
+    return(.prior_region_result(outside))
+  }
+  integral <- .prior_ordered_product_region(spec, region, n_grid)
+  .prior_region_result(integral$value, integral$integration)
+}
+
 .prior_region_convolution <- function(spec, region, n_grid){
 
   if(nrow(region$intervals) == 0L){
