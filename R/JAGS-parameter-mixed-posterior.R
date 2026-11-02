@@ -886,6 +886,9 @@ parameter_gate_states <- function(fit, selection, draws = NULL){
   key <- quantity$extraction_key[[1L]]
   ordered <- .bt_ordered_quantity_plan(fit,quantity)
   if(!is.null(ordered)) return(ordered)
+  if(identical(key$type, "ordered_allocation")){
+    return(.bt_ordered_share_plan(fit, key))
+  }
   if(!identical(key$type, "random_summary")){
     plan <- .bt_parameter_point_plan(fit, quantity)
     if(is.null(plan)){
@@ -1022,6 +1025,10 @@ parameter_gate_states <- function(fit, selection, draws = NULL){
     event <- if(length(plan$event_gates)) .condition_event_posterior_mask(
       .condition_event(plan$prior_list,plan$event_gates,"AND"),plan$prior_list,model_samples) else NULL
     return(list(atom=projection$atom,defined=rep(TRUE,n),event=event,known=!any(projection$state=="unavailable"),reason=projection$reason))
+  }
+  if(identical(plan$kind, "ordered_share")){
+    if(is.null(model_samples)) model_samples <- as.matrix(.fit_to_posterior(fit))
+    return(.bt_ordered_share_states(plan, n, model_samples))
   }
   gate_columns <- unique(c(
     plan$chain_gates, plan$component_gates, plan$parent_gates

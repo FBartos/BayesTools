@@ -528,6 +528,33 @@ hypothesis_provider.BayesTools_fit <- function(object, ...){
     )
   }
 
+  # totals and shares of ordered terms: sampled or derived quantities with a
+  # bracket-free root, tested on their own mixed posteriors by the route of the
+  # random-effect quantities
+  ordered <- which(
+    public & quantities[["status"]] != "unavailable" &
+      .bt_ordered_quantity_rows(quantities, prior_list)
+  )
+  for(row in ordered){
+    quantity <- as.list(quantities[row, , drop = FALSE])
+    root     <- .bt_ordered_hypothesis_root(quantities[row, , drop = FALSE])
+    add_entry(
+      quantity          = quantity,
+      parameter         = root,
+      component         = quantity[["namespace"]],
+      term              = quantity[["canonical_name"]],
+      source            = "ordered",
+      formula_parameter = quantity[["formula_parameter"]],
+      alias_rows        = rbind(
+        data.frame(alias = root, simplified = FALSE, stringsAsFactors = FALSE),
+        native_aliases(quantity[["quantity_id"]])
+      ),
+      # the rows of the table are named by the displayed label of the quantity;
+      # its other names still resolve through the catalog
+      entry_aliases     = quantity[["display_label"]]
+    )
+  }
+
   # random-effect quantities
   random <- which(
     public & startsWith(quantities[["role"]], "random_") &
@@ -759,13 +786,37 @@ hypothesis_provider.BayesTools_fit <- function(object, ...){
 .hypothesis_model_default_full_ensemble <- function(fit, parameter){
 
   prior_list <- attr(fit, "prior_list", exact = TRUE)
-  if(!parameter %in% names(prior_list) ||
-     !is.prior.mixture(prior_list[[parameter]])){
+  prior <- if(parameter %in% names(prior_list)){
+    prior_list[[parameter]]
+  }else{
+    # the total prior of the term of an ordered quantity (a total or a share)
+    .hypothesis_model_default_ordered_total(fit, parameter)
+  }
+  if(!is.prior.mixture(prior)){
     return(FALSE)
   }
-  prior_components <- attr(prior_list[[parameter]], "components", exact = TRUE)
+  prior_components <- attr(prior, "components", exact = TRUE)
 
   any(prior_components == "null") && any(prior_components == "alternative")
+}
+
+
+# The total prior of the ordered term of the ordered quantity (total or share)
+# whose entry has the parameter 'parameter'; NULL for other parameters.
+.hypothesis_model_default_ordered_total <- function(fit, parameter){
+
+  entries <- .hypothesis_model_default_metadata(fit)[["entries"]]
+  entry   <- entries[entries[["source"]] == "ordered" &
+                       entries[["parameter"]] == parameter, , drop = FALSE]
+  if(nrow(entry) != 1L){
+    return(NULL)
+  }
+  quantities <- parameter_catalog(fit)[["quantities"]]
+  quantity   <- quantities[match(entry[["quantity_id"]], quantities[["quantity_id"]]), , drop = FALSE]
+  prior_list <- attr(fit, "prior_list", exact = TRUE)
+  owner      <- .bt_ordered_quantity_owner(quantity, prior_list)
+
+  prior_list[[owner]][["total"]]
 }
 
 
@@ -777,7 +828,8 @@ hypothesis_provider.BayesTools_fit <- function(object, ...){
 
   entry_of <- function(parameter){
     entries <- metadata()[["entries"]]
-    entry   <- entries[entries[["component"]] == "random" &
+    entry   <- entries[(entries[["component"]] == "random" |
+                          entries[["source"]] == "ordered") &
                          entries[["parameter"]] == parameter, , drop = FALSE]
     if(nrow(entry) != 1L){
       stop("Random-effect quantity '", parameter, "' is not available.",
@@ -827,9 +879,21 @@ hypothesis_provider.BayesTools_fit <- function(object, ...){
           fitted_scale = !transform_scaled
         ),
         spec  = list(
-          label    = quantity[["canonical_name"]],
+          label    = if(identical(entry[["source"]], "ordered")){
+            quantity[["display_label"]]
+          }else{
+            quantity[["canonical_name"]]
+          },
           status   = quantity[["status"]],
-          quantity = quantity[["quantity"]]
+          quantity = if(identical(entry[["source"]], "ordered")){
+            if(identical(quantity[["extraction_key"]][[1L]][["type"]], "ordered_allocation")){
+              "share"
+            }else{
+              "total"
+            }
+          }else{
+            quantity[["quantity"]]
+          }
         )
       )
     },
@@ -930,6 +994,10 @@ hypothesis_provider.BayesTools_fit <- function(object, ...){
 
   quantity <- selection[["quantities"]]
   key      <- quantity[["extraction_key"]][[1L]]
+  # a quantity without an evaluator (an ordered total or share) has no pair
+  if(!is.character(key[["evaluator"]]) || length(key[["evaluator"]]) != 1L){
+    return(NULL)
+  }
   sd_evaluator <- switch(
     as.character(key[["evaluator"]]),
     sd_variance    = "sd",

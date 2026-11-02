@@ -34,7 +34,14 @@
   display    <- .hypothesis_model_plan_group_ast(plans, "statement")
   hypothesis <- .hypothesis_model_plan_group_ast(plans, "hypothesis")
   if (conditional_omitted) {
-    .hypothesis_model_warn_full_ensemble(provider, plan[["parameter"]])
+    ordered <- identical(plan[["selected"]][["entry"]][["source"]], "ordered")
+    .hypothesis_model_warn_full_ensemble(
+      provider, plan[["parameter"]],
+      label   = if(ordered) plan[["label"]] else plan[["parameter"]],
+      subject = if(ordered && identical(plan[["random"]][["spec"]][["quantity"]], "share")) {
+        "the total of its term"
+      }
+    )
   }
   arguments <- list(
     plans           = plans,
@@ -47,14 +54,14 @@
     density_control = density_control,
     columns         = columns
   )
-  out <- switch(
+  out <- .hypothesis_model_ordered_labels(plan, switch(
     plan[["route"]],
     scalar      = do.call(.hypothesis_model_plan_execute_scalar, arguments),
     levels      = do.call(.hypothesis_model_plan_execute_levels, arguments),
     combination = do.call(.hypothesis_model_plan_execute_combination, arguments),
     random      = do.call(.hypothesis_model_plan_execute_random, arguments),
     stop("Internal error: unknown hypothesis route.", call. = FALSE)
-  )
+  ))
 
   .hypothesis_model_restore_hypothesis_labels(
     out             = out,
@@ -67,20 +74,46 @@
 }
 
 
+# The evaluation 'expr' of a plan on an ordered quantity, with the root of the
+# quantity named by its displayed label in the messages of its errors.
+.hypothesis_model_ordered_labels <- function(plan, expr) {
+
+  if (!identical(plan[["selected"]][["entry"]][["source"]], "ordered")) {
+    return(expr)
+  }
+  tryCatch(expr, error = function(condition) {
+    condition[["message"]] <- gsub(
+      plan[["parameter"]], plan[["label"]], conditionMessage(condition), fixed = TRUE
+    )
+    if (is.character(condition[["label"]])) {
+      condition[["label"]] <- gsub(
+        plan[["parameter"]], plan[["label"]], condition[["label"]], fixed = TRUE
+      )
+    }
+    stop(condition)
+  })
+}
+
+
 # A coefficient test on the full ensemble of a prior with a null and an
 # alternative component includes the models in which the coefficient is fixed
 # by its null component (the provider decides which parameters those are).
-.hypothesis_model_warn_full_ensemble <- function(provider, parameter) {
+.hypothesis_model_warn_full_ensemble <- function(provider, parameter,
+                                                  label = parameter,
+                                                  subject = NULL) {
 
   if (!is.function(provider[["full_ensemble"]]) ||
       !isTRUE(provider[["full_ensemble"]](parameter))) {
     return(invisible(FALSE))
   }
+  if (is.null(subject)) {
+    subject <- label
+  }
   warning(
     "Model-averaged parameter test: this hypothesis uses the full ",
-    "ensemble for ", parameter, ", including models where ",
-    parameter, " is fixed by its null component. To test the ",
-    "hypothesis only within models where ", parameter,
+    "ensemble for ", label, ", including models where ",
+    subject, " is fixed by its null component. To test the ",
+    "hypothesis only within models where ", subject,
     " is active, use 'conditional = TRUE'.",
     call. = FALSE
   )

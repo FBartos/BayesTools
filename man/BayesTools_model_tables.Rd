@@ -392,7 +392,9 @@ coordinates (block SDs, Cholesky factors and correlation matrices,
 LKJ primitives, standardized group effects, and allocation nodes) are
 backend coordinates shown for inspection: their labels describe the
 coordinate, but they are not catalog quantities and do not select one in
-\code{\link[=parameter_catalog_resolve]{parameter_catalog_resolve()}}, hypotheses, or plots.
+\code{\link[=parameter_catalog_resolve]{parameter_catalog_resolve()}}, hypotheses, or plots (the shares of the
+ordered-factor allocations, which the table shows as \code{<term>[share:
+<level>]}, are catalog quantities).
 Internal latent and realized group-coefficient coordinates
 are omitted when \code{transform_scaled = TRUE}, including in \code{"raw"}
 mode, because those coordinates remain on the fitted standardized scale.}

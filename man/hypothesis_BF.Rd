@@ -344,8 +344,15 @@ quantities of the parameter catalog (\code{\link[=parameter_catalog]{parameter_c
 model by the names that \code{\link[=JAGS_estimates_table]{JAGS_estimates_table()}} shows, without backticks
 (coefficients such as \code{"x"} or \code{"x_fac[B]"}, random-effect
 quantities such as \code{"(mu) sd(intercept)"} or \code{"(mu) cor"},
-scalar parameters such as \code{"sigma"}), and statements with \code{vs}
-work as for draws. A point null on a quantity with a prior point mass at
+scalar parameters such as \code{"sigma"}, and the total and the allocation
+shares of an ordered term, \code{"f{total}"} and \code{"f[share: mid]"},
+also by their earlier names \code{"f_ordered_total"} and
+\code{"f_ordered_allocation[mid]"}), and statements with \code{vs}
+work as for draws. The total of a spike-and-slab or mixture prior has a point
+mass at its null: its point tests need \code{conditional = TRUE}, and the
+total of a point prior is fixed by the model. On the original scale
+(\code{transform_scaled = TRUE}) a total is tested when the scaling leaves
+the coefficients of its term unchanged; the shares are unitless. A point null on a quantity with a prior point mass at
 that value (a spike-and-slab coefficient at its spike) stops with
 \code{BayesTools_point_mass_at_null}; \code{conditional = TRUE} tests the
 quantity within its inclusion event, and region hypotheses work without it.

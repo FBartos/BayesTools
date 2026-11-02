@@ -420,7 +420,14 @@ prior_factor <- function(distribution, parameters, truncation = list(lower = -In
 #' level the increment reaches, \code{f[share: mid]} (see
 #' [runjags_estimates_table()], [ensemble_estimates_table()], and
 #' [parameter_labels()] for the labels of terms with several slices or
-#' predictors).
+#' predictors). The total (one per slice) and each share of a random
+#' allocation are quantities of the parameter catalog ([parameter_catalog()]),
+#' also under their earlier names (\code{f_ordered_total},
+#' \code{f_ordered_allocation[mid]}), and \code{hypothesis_BF()} tests them
+#' (for example \code{"f{total} = 0"} or \code{"f[share: mid] > 0.5"}): the
+#' total has the prior law of \code{total}, a share the Beta marginal of its
+#' Dirichlet allocation. A spike-and-slab or mixture total needs
+#' \code{conditional = TRUE} for point tests at its null.
 #' Totals and primitive shares remain on the fitted scale when interactions
 #' prevent an original-scale factorization. Inclusion conditioning uses the
 #' declared total event; a discrete total alone does not create such an event.

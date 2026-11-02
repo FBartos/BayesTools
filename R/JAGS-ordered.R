@@ -29,7 +29,9 @@
 
 #' @title Fitted ordered parameter specifications
 #' @description Reads the persisted total, allocation and coefficient recipes
-#' of ordered terms. These backend recipes do not add public catalog quantities.
+#' of ordered terms. The recipes are backend specifications; the totals and the
+#' shares of random allocations they describe are catalog quantities of the fit
+#' ([parameter_catalog()]).
 #' @param fit a model fitted with [JAGS_fit()].
 #' @param parameters optional names of ordered terms; \code{NULL} selects all.
 #' @param weights optional named numeric fitted-coordinate projection weights.
@@ -106,6 +108,10 @@ JAGS_ordered_parameter_spec <- function(fit, parameters = NULL, weights = NULL, 
     coordinates <- parameter_coordinates(fit)
     specs <- lapply(specs,function(spec){
       spec$total_quantities <- catalog$quantities[match(spec$total_names,catalog$quantities$canonical_name),,drop=FALSE]
+      share_names <- unlist(lapply(spec$allocations,function(record){
+        if(identical(record$spec$type,"dirichlet")) names(.bt_ordered_allocation_parts(spec,record))
+      }),use.names=FALSE)
+      spec$share_quantities <- catalog$quantities[match(share_names,catalog$quantities$canonical_name),,drop=FALSE]
       gamma_coordinates <- unlist(lapply(spec$allocations,`[[`,"gamma_coordinates"),use.names=FALSE)
       total_monitors <- setdiff(.JAGS_monitor.ordered(spec$prior,spec$parameter),
         c(spec$parameter,.bt_parameter_coordinates_base(gamma_coordinates)))

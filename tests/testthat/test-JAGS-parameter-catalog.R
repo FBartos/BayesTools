@@ -1046,9 +1046,9 @@ test_that("contrast-coefficient selectors of level coordinates name the level", 
 }
 
 # An untransformed model table of an ordered term shows its sampled
-# parameters: the total, which resolves to its catalog quantity, and the
-# allocation shares, the normalized gamma nodes, labelled by the level each
-# increment reaches (display rows, not catalog quantities).
+# parameters: the total and the allocation shares, the normalized gamma nodes,
+# labelled by the level each increment reaches. Every row resolves to its
+# catalog quantity, whose draws the table summarizes.
 .expect_ordered_sampled_rows <- function(table, fit, levels, prefix, info){
 
   samples <- as.matrix(fit$mcmc)
@@ -1067,9 +1067,19 @@ test_that("contrast-coefficient selectors of level coordinates name the level", 
     tolerance = 1e-10,
     info = info
   )
+  catalog <- parameter_catalog(fit)
+  selections <- lapply(rows, parameter_catalog_resolve, catalog = catalog)
   expect_identical(
-    attr(table, "quantities")$quantity_id[match(rows, rownames(table))] != "",
-    c(TRUE, rep(FALSE, length(levels) - 1L)),
+    attr(table, "quantities")$quantity_id[match(rows, rownames(table))],
+    vapply(selections, function(selection) selection$quantity_id, character(1)),
+    info = info
+  )
+  expect_equal(
+    vapply(selections, function(selection){
+      mean(as.matrix(parameter_draws(fit, selection)))
+    }, numeric(1)),
+    unname(table[rows, "Mean"]),
+    tolerance = 1e-10,
     info = info
   )
 }

@@ -349,7 +349,11 @@
 # message says that a statement refers to one parameter.
 .hypothesis_model_stop_multiple_parameters <- function(entries, provider) {
 
-  parameters <- paste(unique(entries[["parameter"]]), collapse = ", ")
+  # an ordered quantity is named by its displayed label, not by its root
+  shown <- entries[["parameter"]]
+  ordered <- entries[["source"]] %in% "ordered"
+  shown[ordered] <- vapply(entries[["aliases"]][ordered], `[[`, character(1), 1L)
+  parameters <- paste(unique(shown), collapse = ", ")
   components <- unique(entries[["component"]])
   # parameters of one component: choosing a component cannot resolve them
   message <- if (length(components) == 1L && !is.na(components)) {
@@ -559,6 +563,63 @@
   node[["source"]] <- .bt_hypothesis_render_node(node)
 
   node
+}
+
+
+# The references of the statement to an ordered quantity (the total or a share
+# of an ordered term) as the plain symbol of its entry. The parser reads the
+# trailing bracket of a share or sliced total, `f[share: a]` or
+# `f:g_ordered_total[1]`, as the level of a factor term, and a name that ends
+# in a bracket cannot be a root of the rewritten statement; the references
+# that the resolution matched to the quantity are replaced by its parameter.
+.hypothesis_model_ordered_symbols <- function(hypothesis, selected) {
+
+  entry <- selected[["entry"]]
+  if (!identical(entry[["source"]], "ordered")) {
+    return(hypothesis)
+  }
+  occurrences <- selected[["resolution"]][["occurrences"]]
+  occurrences <- occurrences[
+    !is.na(occurrences[["level"]]) &
+      occurrences[["quantity_id"]] == entry[["quantity_id"]], , drop = FALSE
+  ]
+  if (nrow(occurrences) == 0L) {
+    return(hypothesis)
+  }
+  replace_node <- function(node) {
+    if (identical(node[["type"]], "level_reference")) {
+      if (any(occurrences[["parameter"]] == node[["parameter"]] &
+              occurrences[["level"]] == node[["level"]])) {
+        node <- list(type = "symbol", source = node[["source"]],
+                     name = entry[["parameter"]])
+      }
+    } else if (node[["type"]] %in% c("parentheses", "negation")) {
+      node[["expression"]] <- replace_node(node[["expression"]])
+    } else if (node[["type"]] %in% c("boolean", "comparison")) {
+      node[["left"]]  <- replace_node(node[["left"]])
+      node[["right"]] <- replace_node(node[["right"]])
+    } else if (node[["type"]] %in% c("arithmetic", "function")) {
+      node[["arguments"]] <- lapply(node[["arguments"]], replace_node)
+    }
+    node[["source"]] <- .bt_hypothesis_render_node(node)
+
+    node
+  }
+
+  ast <- .hypothesis_model_ast(hypothesis)
+  ast[["statements"]] <- lapply(ast[["statements"]], function(statement) {
+    for (side_name in c("left", "right")) {
+      statement[[side_name]][["expression"]] <- replace_node(
+        statement[[side_name]][["expression"]]
+      )
+      statement[[side_name]] <- .bt_hypothesis_refresh_side(statement[[side_name]])
+    }
+    statement[["source"]] <- .bt_hypothesis_render_statement(statement)
+    statement
+  })
+  .bt_validate_hypothesis_ast(ast)
+
+  ast
 }
 
 

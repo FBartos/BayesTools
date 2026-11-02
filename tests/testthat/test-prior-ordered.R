@@ -3938,9 +3938,13 @@ test_that("rendered labels of ordered quantities follow the label grammar", {
     expect_identical(unique(hypothesis_resolve(parsed, catalog)$occurrences$canonical_name),
                      "mu_f__xXx__g_ordered_total[1]", info = alias)
   }
-  # shares are display rows, not catalog quantities
-  expect_error(parameter_catalog_resolve(catalog, "(mu) f[share: mid]"), class = "BayesTools_parameter_not_found")
-  aliases <- catalog$aliases[grepl("[{]total[}]|ordered_total", catalog$aliases$alias), ]
+  # the shares of random allocations are catalog quantities of their gamma
+  # coordinates, selected by their labels and by their earlier labels
+  for(alias in c("(mu) f[share: mid]", "f[share: mid]", "(mu) f_ordered_allocation[mid]",
+                 "f_ordered_allocation[mid]", "mu_f_ordered_allocation[mid]")){
+    expect_identical(resolved(alias), "mu_f_ordered_allocation[mid]", info = alias)
+  }
+  aliases <- catalog$aliases[grepl("[{]total[}]|ordered_total|[[]share: |ordered_allocation", catalog$aliases$alias), ]
   owners <- unique(data.frame(key = paste(aliases$alias, aliases$namespace, sep = "\r"),
                               id = aliases$quantity_id))
   expect_gt(nrow(owners), 20L)

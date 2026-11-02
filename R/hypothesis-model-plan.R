@@ -507,8 +507,9 @@ hypothesis_stop <- function(reason, type = c("target", "fixed", "method",
   plan <- .hypothesis_model_plan_new(
     statement    = statement,
     hypothesis   = .hypothesis_model_rewrite(
-      hypothesis = .hypothesis_model_insert_level(
-        statement, selected, level_component
+      hypothesis = .hypothesis_model_ordered_symbols(
+        .hypothesis_model_insert_level(statement, selected, level_component),
+        selected
       ),
       aliases    = selected[["aliases"]],
       parameter  = parameter,
@@ -523,7 +524,8 @@ hypothesis_stop <- function(reason, type = c("target", "fixed", "method",
     n_samples    = n_samples
   )
   entry <- selected[["entry"]]
-  plan  <- if (identical(selected[["component"]], provider[["components"]][["random"]])) {
+  plan  <- if (identical(selected[["component"]], provider[["components"]][["random"]]) ||
+               identical(entry[["source"]], "ordered")) {
     .hypothesis_model_plan_random(plan, provider, cache)
   } else if (identical(entry[["role"]], "formula_coefficient_group")) {
     .hypothesis_model_plan_linear(plan, provider, metadata, cache)

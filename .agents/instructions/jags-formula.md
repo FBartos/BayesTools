@@ -799,9 +799,13 @@ what it calls, needs a `fit` profile refresh of the cached fits.
 - Ordered-factor terms are summarized like the other contrasts: transformed
   tables show the level effects (without design-fixed zero levels and without
   the total, which the last level repeats); untransformed model tables show
-  the sampled parameters, the total and the normalized allocation shares
-  (display rows derived from the gamma nodes, not catalog quantities), on the
-  fitted scale. Mixed producers retain these primitive sources with their
+  the sampled parameters, the total and the normalized allocation shares, on the
+  fitted scale. The total of each slice (its total coordinate) and each share of
+  a random allocation (derived from the gamma coordinates of its allocation,
+  `mu_f_ordered_allocation[mid]`; fixed allocations have none, and a shared
+  `id` allocation has the shares of every term that uses it) are catalog
+  quantities: the total has the support and the prior law of the `total` prior,
+  the share the support [0, 1] and the Beta marginal of the Dirichlet prior. Mixed producers retain these primitive sources with their
   selected model and row; raw ensemble tables use their complete declared-model
   union, including fixed allocations and undefined shares in absent models.
   `JAGS_ordered_parameter_spec()` owns source names, labels (`f{total}`,

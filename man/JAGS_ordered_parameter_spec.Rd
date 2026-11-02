@@ -58,7 +58,9 @@ cumulative effects. Declared view transformations and undefined rows are kept.
 }
 \description{
 Reads the persisted total, allocation and coefficient recipes
-of ordered terms. These backend recipes do not add public catalog quantities.
+of ordered terms. The recipes are backend specifications; the totals and the
+shares of random allocations they describe are catalog quantities of the fit
+(\code{\link[=parameter_catalog]{parameter_catalog()}}).
 }
 \details{
 Missing fitted numeric provenance raises

@@ -36,7 +36,11 @@
   if(metadata$theta_dim > 1L) seq_len(metadata$theta_dim)
 }
 
-.bt_ordered_allocation_parts <- function(spec, record, sliced = NULL, slice = record$slice){
+# Label parts of the shares of one allocation record, named by their selectors.
+# With 'legacy', the labels the shares had before their labels followed the
+# label grammar (`f_ordered_allocation[mid]`), which the catalog keeps as aliases.
+.bt_ordered_allocation_parts <- function(spec, record, sliced = NULL, slice = record$slice,
+                                         legacy = FALSE){
 
   if(is.null(sliced)) sliced <- spec$metadata$theta_dim > 1L && is.null(record$id)
   levels <- .factor_level_list(spec$prior)[[record$factor]]
@@ -46,11 +50,16 @@
     if(sliced) paste0("[",slice,"]"))
   names <- paste0(spec$parameter,suffix,"[",tokens,"]")
   parts <- lapply(seq_along(names),function(i){
-    .bt_label_parts(components=.bt_ordered_label_text(spec$label_parts$components,spec$metadata,"share",
-        factor=record$factor,level=tokens[[i]],slice=if(sliced) slice),
+    text <- if(legacy){
+      paste0(paste(spec$label_parts$components,collapse=":"),suffix,"[",tokens[[i]],"]")
+    }else{
+      .bt_ordered_label_text(spec$label_parts$components,spec$metadata,"share",
+        factor=record$factor,level=tokens[[i]],slice=if(sliced) slice)
+    }
+    .bt_label_parts(components=text,
       formula_parameter=spec$label_parts$formula_parameter,selector=names[[i]])
   })
-  stats::setNames(parts,names)
+  structure(stats::setNames(parts,names), levels = tokens)
 }
 
 # Label parts of the total coordinates of the ordered prior 'prior' of
@@ -88,20 +97,45 @@
   }), names)
 }
 
+# The names of the bound ordered terms of 'prior_list' whose totals and shares
+# are public quantities. The ordered SD components of a random block are
+# backend coordinates and keep their backend labels.
+.bt_ordered_fixed_terms <- function(prior_list){
+
+  keep <- vapply(prior_list, function(prior){
+    is.prior.ordered(prior) && !is.null(attr(prior, "ordered_metadata", exact = TRUE)) &&
+      !.bt_is_random_effect_prior(prior)
+  }, logical(1))
+
+  names(prior_list)[keep]
+}
+
 # The label parts of the totals (and total indicators) of the ordered terms in
-# 'prior_list', named by their coordinates. The ordered SD components of a
-# random block are backend coordinates and keep their backend labels.
-.bt_ordered_total_label_parts_list <- function(prior_list, legacy = FALSE){
+# 'prior_list', named by their coordinates.
+.bt_ordered_total_label_parts_list <- function(prior_list){
 
   parts <- list()
-  for(parameter in names(prior_list)){
+  for(parameter in .bt_ordered_fixed_terms(prior_list)){
+    parts <- c(parts, .bt_ordered_total_label_parts(parameter, prior_list[[parameter]]))
+  }
+
+  parts
+}
+
+# The labels the totals, total indicators, and shares of the ordered terms in
+# 'prior_list' had before their labels followed the label grammar, as label
+# parts named by their coordinates (the catalog keeps them as aliases).
+.bt_ordered_legacy_label_parts <- function(prior_list){
+
+  parts <- list()
+  for(parameter in .bt_ordered_fixed_terms(prior_list)){
     prior <- prior_list[[parameter]]
-    if(!is.prior.ordered(prior) || is.null(attr(prior, "ordered_metadata", exact = TRUE))){
-      next
-    }
-    term <- .bt_label_parts_term(parameter, prior)
-    if(is.null(term$random)){
-      parts <- c(parts, .bt_ordered_total_label_parts(parameter, prior, term, legacy))
+    parts <- c(parts, .bt_ordered_total_label_parts(parameter, prior, legacy = TRUE))
+    spec <- .bt_ordered_spec(parameter, prior)
+    for(record in spec$allocations){
+      if(identical(record$spec$type, "dirichlet")){
+        parts <- c(parts, .bt_ordered_allocation_parts(spec, record, legacy = TRUE))
+      }
     }
   }
 
@@ -325,11 +359,14 @@
   samples <- display$samples
   quantity_ids <- rep("",ncol(samples))
   ordered <- source$models[vapply(source$models,function(spec) is.null(spec$parameterization),logical(1))]
-  if(length(ordered) && !is.null(ordered[[1L]]$total_quantities)){
-    total_quantities <- ordered[[1L]]$total_quantities
-    matches <- match(total_quantities$canonical_name,colnames(samples))
-    valid <- !is.na(matches) & !is.na(total_quantities$quantity_id)
-    quantity_ids[matches[valid]] <- total_quantities$quantity_id[valid]
+  # the totals and the shares of the models are catalog quantities of their fits
+  for(spec in rev(ordered)){
+    for(quantities in list(spec$total_quantities,spec$share_quantities)){
+      if(is.null(quantities)) next
+      matches <- match(quantities$canonical_name,colnames(samples))
+      valid <- !is.na(matches) & !is.na(quantities$quantity_id)
+      quantity_ids[matches[valid]] <- quantities$quantity_id[valid]
+    }
   }
   quantities <- .bt_draws_quantity_table(colnames(samples), quantity_ids,
     rep(list(character()), ncol(samples)), rep(list(numeric()), ncol(samples)), unname(display$parts))

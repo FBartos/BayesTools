@@ -460,6 +460,12 @@
     plan[["refusal"]] <- .hypothesis_model_plan_fixed_refusal(label)
     return(plan)
   }
+  if (identical(plan[["selected"]][["entry"]][["source"]], "ordered")) {
+    plan[["refusal"]] <- .hypothesis_model_plan_ordered_refusal(plan, provider, selected)
+    if (!is.null(plan[["refusal"]])) {
+      return(plan)
+    }
+  }
   samples <- .hypothesis_model_plan_cached(
     cache,
     paste("random_samples", parameter, plan[["transform_scaled"]],
@@ -474,6 +480,11 @@
     }
   )
   prior_density <- posterior_metadata(samples[[parameter]], "prior_density")
+  noun <- if (identical(plan[["selected"]][["entry"]][["source"]], "ordered")) {
+    "ordered quantity"
+  } else {
+    "random-effect quantity"
+  }
   plan[["draws"]]         <- list(samples = samples, posterior = samples[[parameter]])
   plan[["prior_density"]] <- prior_density
   # Region probabilities need a prior density with deterministic provenance;
@@ -483,7 +494,7 @@
   if (plan[["prior_draws"]] && plan[["conditional"]]) {
     plan[["refusal"]] <- .hypothesis_model_refusal(
       paste0(
-        "Conditional hypotheses are unavailable for random-effect quantity '",
+        "Conditional hypotheses are unavailable for ", noun, " '",
         label, "' because its prior density is unavailable."
       ),
       "target"
@@ -497,7 +508,7 @@
   if (any(!refs[["direct"]])) {
     plan[["refusal"]] <- .hypothesis_model_refusal(
       paste0(
-        "Point-null tests for random-effect quantities require a direct ",
+        "Point-null tests for ", noun, "s require a direct ",
         "scalar parameter reference."
       ),
       "statement"
@@ -507,7 +518,7 @@
   if (is.null(prior_density)) {
     plan[["refusal"]] <- .hypothesis_model_refusal(
       paste0(
-        "Point-null Bayes factors are unavailable for random-effect quantity '",
+        "Point-null Bayes factors are unavailable for ", noun, " '",
         label, "' because its prior density is unavailable. Use a region or ",
         "directional hypothesis."
       ),
@@ -533,8 +544,8 @@
   }
   zero_alternative <- zero_boundary[["alternative"]]
   point_mass_reason <- paste0(
-    "Point-null Bayes factors at %s are unavailable for random-effect ",
-    "quantity '%s' because its prior has a point mass at %s. ",
+    "Point-null Bayes factors at %s are unavailable for ", noun,
+    " '%s' because its prior has a point mass at %s. ",
     gsub("%", "%%", provider[["random_point_mass_advice"]], fixed = TRUE)
   )
   plan[["targets"]] <- lapply(seq_len(nrow(refs)), function(i) {
@@ -586,6 +597,74 @@
   plan[["density_target"]]  <- precomputed[["density_target"]]
 
   plan
+}
+
+
+# Refusals of the total and the shares of an ordered term: the total of a
+# point `total` prior is fixed by the model, and on the original scale of the
+# predictors a total is tested only when the scale transformation leaves the
+# coefficients of its term unchanged (a share is a unitless fraction of the
+# total and is the same on both scales). NULL when the quantity is tested.
+.hypothesis_model_plan_ordered_refusal <- function(plan, provider, selected) {
+
+  fit        <- provider[["fit"]]
+  quantity   <- selected[["entry"]][["selection"]][["quantities"]]
+  key        <- quantity[["extraction_key"]][[1L]]
+  if (identical(key[["type"]], "ordered_allocation")) {
+    return(NULL)
+  }
+  prior_list <- attr(fit, "prior_list", exact = TRUE)
+  owner      <- .bt_ordered_quantity_owner(quantity, prior_list)
+  total      <- prior_list[[owner]][["total"]]
+  label      <- selected[["spec"]][["label"]]
+  if (is.prior.point(total) && !.is_prior_expression(total)) {
+    return(.hypothesis_model_plan_fixed_refusal(label))
+  }
+  if (.bt_ordered_total_has_expression(total)) {
+    return(.hypothesis_model_refusal(
+      paste0(
+        "The prior of the total '", label, "' contains a parameter ",
+        "expression, which has no prior law outside the fitted model, so ",
+        "hypothesis tests on the total are unavailable."
+      ),
+      "target"
+    ))
+  }
+  if (isTRUE(plan[["transform_scaled"]]) &&
+      !.hypothesis_model_ordered_total_unscaled(fit, owner, quantity)) {
+    return(.hypothesis_model_refusal(
+      paste0(
+        "The total '", label, "' is defined on the fitted scale of the ",
+        "predictors: the scale transformation changes the coefficients of its ",
+        "term, so it has no original-scale counterpart. Test it with ",
+        "'transform_scaled = FALSE'."
+      ),
+      "target"
+    ))
+  }
+
+  NULL
+}
+
+
+# Whether the scale transformation of the predictors leaves every coefficient
+# of the ordered term 'owner' unchanged (the original-scale coefficient is the
+# fitted one), so that the total of the term is the same on both scales.
+.hypothesis_model_ordered_total_unscaled <- function(fit, owner, quantity) {
+
+  formula_parameter <- quantity[["formula_parameter"]]
+  scale <- attr(fit, "formula_scale", exact = TRUE)[[formula_parameter]]
+  if (length(scale) == 0L) {
+    return(TRUE)
+  }
+  coefficients <- .JAGS_prior_factor_names(owner, attr(fit, "prior_list", exact = TRUE)[[owner]])
+
+  all(vapply(coefficients, function(target) {
+    identical(
+      JAGS_formula_coefficient_route(fit, formula_parameter, target)[["type"]],
+      "identity"
+    )
+  }, logical(1)))
 }
 
 
@@ -657,7 +736,11 @@
   }
   if (plan[["conditional"]]) {
     return(refused_cause(
-      "Conditional random-effect hypotheses support 'density_method = \"KDE\"' only.",
+      paste0(
+        "Conditional ",
+        if (identical(plan[["selected"]][["entry"]][["source"]], "ordered")) "ordered" else "random-effect",
+        " hypotheses support 'density_method = \"KDE\"' only."
+      ),
       "conditional_random"
     ))
   }

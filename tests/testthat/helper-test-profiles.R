@@ -50,6 +50,7 @@ bayestools_test_profile_contexts <- list(
     "hypothesis-BF-inference",
     "hypothesis-BF",
     "hypothesis-BF-model",
+    "hypothesis-ordered",
     "hypothesis-BF-parser-adversarial",
     "hypothesis-prior-region-grid",
     "interpret",

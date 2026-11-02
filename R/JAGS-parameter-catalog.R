@@ -35,7 +35,11 @@
 #' quantity `<parameter>_ordered_total` displayed as `term{total}` (`term{total}:g{1}`
 #' for the slice of an ordinary factor; the inclusion indicator of a mixture
 #' total is displayed as `term{total} (inclusion)`), and the labels of earlier
-#' versions (`term_ordered_total`) remain aliases. The level names of transformed summaries,
+#' versions (`term_ordered_total`) remain aliases. Each share of a random
+#' allocation of an ordered term is a derived quantity,
+#' `<parameter>_ordered_allocation[<level>]` displayed as `term[share: level]`
+#' (support \[0, 1\], the Beta marginal of the Dirichlet prior); its earlier
+#' labels (`term_ordered_allocation[level]`) are aliases. The level names of transformed summaries,
 #' `<parameter>[dif: level]`, and the row labels those summaries display,
 #' `(formula) term[dif: level]` and `term[dif: level]`, are aliases of the
 #' level quantity. JAGS
@@ -818,6 +822,8 @@ parameter_draws.BayesTools_fit <- function(object, selection,
     }
     values <- if(identical(key$type, "factor_level")){
       .bt_parameter_draw_factor_level(key, model_samples)
+    }else if(identical(key$type, "ordered_allocation")){
+      .bt_parameter_draw_ordered_allocation(object, key, model_samples)
     }else{
       .bt_parameter_draw_random_summary(
         fit = object,
@@ -905,6 +911,13 @@ parameter_prior_density.BayesTools_fit <- function(
          call. = FALSE)
   }
   key <- quantity$extraction_key[[1L]]
+  if(identical(key$type, "ordered_allocation") ||
+     (identical(key$type, "coordinate") &&
+      !is.null(.bt_ordered_total_owner(attr(object, "prior_list", exact = TRUE), key$dependencies)))){
+    return(.bt_parameter_prior_density_ordered(
+      object, quantity, key, n_grid, tail_prob, conditional
+    ))
+  }
   # the point plan of a mixture or spike-and-slab prior of the fitted
   # coordinates: conditioning restricts that prior to its continuous components
   point_plan <- if(isTRUE(conditional) &&
@@ -3191,8 +3204,8 @@ parameter_transform_jacobian <- function(values, transform){
 # prefix, the exp(intercept) label of the log intercept in original-scale
 # tables, and for factor level cells the level names and table rows of
 # transformed contrasts - with the label parts each is rendered from. The
-# totals and total indicators of ordered terms also keep the labels they had
-# before their labels followed the label grammar ('legacy_parts').
+# totals, total indicators, and shares of ordered terms also keep the labels
+# they had before their labels followed the label grammar ('legacy_parts').
 # Random-effect quantities have their own semantic aliases.
 .bt_parameter_catalog_label_aliases <- function(quantity, formula_scale = NULL,
                                                 legacy_parts = NULL){
@@ -4717,7 +4730,10 @@ parameter_transform_jacobian <- function(values, transform){
     prior_list = prior_list,
     formula_design = formula_design
   )
-  quantities <- rbind(base, factor_map$quantities, random_map$derived)
+  quantities <- rbind(
+    base, factor_map$quantities, random_map$derived,
+    .bt_ordered_share_quantities(coordinates, prior_list)
+  )
   rownames(quantities) <- NULL
   quantities <- .bt_parameter_catalog_add_support(
     quantities     = quantities,
@@ -4729,7 +4745,7 @@ parameter_transform_jacobian <- function(values, transform){
     quantities,
     formula_design,
     formula_scale = formula_scale,
-    legacy_parts = .bt_ordered_total_label_parts_list(prior_list, legacy = TRUE)
+    legacy_parts = .bt_ordered_legacy_label_parts(prior_list)
   )
   .bt_parameter_catalog_new(quantities, aliases)
 }
@@ -4808,6 +4824,12 @@ parameter_transform_jacobian <- function(values, transform){
     return(.posterior_support_point(quantity$fixed_value, source = "catalog"))
   }
   key <- quantity$extraction_key[[1L]]
+  if(identical(key$type, "ordered_allocation") || identical(key$type, "coordinate")){
+    ordered <- .bt_ordered_quantity_support(object, key)
+    if(!is.null(ordered)){
+      return(ordered)
+    }
+  }
   if(key$type %in% c("coordinate", "factor_level")){
     weights <- if(identical(key$type, "coordinate")){
       rep(1, length(key$dependencies))
@@ -5290,6 +5312,18 @@ parameter_transform_jacobian <- function(values, transform){
       is.numeric(key$weights) && !anyNA(key$weights) &&
         all(is.finite(key$weights)) &&
         length(key$weights) == length(key$dependencies)
+    )
+  }
+  if(identical(key$type, "ordered_allocation")){
+    return(
+      length(key$dependencies) >= 2L &&
+        is.character(key$parameter) && length(key$parameter) == 1L &&
+        !is.na(key$parameter) && nzchar(key$parameter) &&
+        is.character(key$allocation_key) && length(key$allocation_key) == 1L &&
+        !is.na(key$allocation_key) && nzchar(key$allocation_key) &&
+        is.numeric(key$index) && length(key$index) == 1L &&
+        !is.na(key$index) && key$index == as.integer(key$index) &&
+        key$index >= 1L && key$index <= length(key$dependencies)
     )
   }
   if(!identical(key$type, "random_summary")){

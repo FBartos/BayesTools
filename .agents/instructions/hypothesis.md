@@ -128,7 +128,20 @@ members are its level cells, with an extension quantity of provider
 `"BayesToolsHypothesis"`), scalar `parameter` quantities that own a prior
 (not indicators, inclusions, or vector-prior components), and supported
 random-effect quantities (`sd`, `var`, totals, `cor`, `var_prop`, multipliers;
-component `"random"`, canonical names as row labels). Contrast coefficients and
+component `"random"`, canonical names as row labels), and the totals (one per
+slice) and the shares of the random allocations of ordered terms (source
+`"ordered"`, component the formula parameter, displayed labels as row labels).
+The ordered quantities take the random-effect route with the root of their
+entry, the canonical name with its trailing bracket in braces
+(`mu_f_ordered_allocation{mid}`), because the parser reads `f[share: mid]` as
+a level of `f`: the references the resolution matched to the quantity become the
+symbol of the root (`.hypothesis_model_ordered_symbols()`) and errors name the
+displayed label. A spike-and-slab or mixture total refuses point tests at its
+null without `conditional = TRUE` (`BayesTools_point_mass_at_null`) and warns
+about the full ensemble on unconditional regions, as do its shares; a point
+total is fixed by the model; a total with a parameter expression has no prior
+law; on the original scale a total is tested only when the scaling leaves the
+coefficients of its term unchanged. Contrast coefficients and
 the other catalog quantities are refused as targets
 (`BayesTools_hypothesis_statement` / `BayesTools_hypothesis_target`). Limits of
 the default provider: non-formula vector and factor priors have no entries;

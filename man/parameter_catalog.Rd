@@ -138,7 +138,11 @@ as \verb{term\{j\}}. The total of an ordered term (\code{\link[=prior_ordered]{p
 quantity \verb{<parameter>_ordered_total} displayed as \verb{term\{total\}} (\verb{term\{total\}:g\{1\}}
 for the slice of an ordinary factor; the inclusion indicator of a mixture
 total is displayed as \verb{term\{total\} (inclusion)}), and the labels of earlier
-versions (\code{term_ordered_total}) remain aliases. The level names of transformed summaries,
+versions (\code{term_ordered_total}) remain aliases. Each share of a random
+allocation of an ordered term is a derived quantity,
+\verb{<parameter>_ordered_allocation[<level>]} displayed as \code{term[share: level]}
+(support [0, 1], the Beta marginal of the Dirichlet prior); its earlier
+labels (\code{term_ordered_allocation[level]}) are aliases. The level names of transformed summaries,
 \verb{<parameter>[dif: level]}, and the row labels those summaries display,
 \verb{(formula) term[dif: level]} and \code{term[dif: level]}, are aliases of the
 level quantity. JAGS
