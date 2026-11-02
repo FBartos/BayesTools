@@ -1667,8 +1667,23 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
     return(NULL)
   }
 
-  if(inherits(context, "prior_density_model_mixture_context")){
+  model_mixture <- inherits(context, "prior_density_model_mixture_context")
+  if(model_mixture || (inherits(context, "prior_density_conditional_context") && !is.null(model_component))){
     if(is.null(model_component) || length(model_component) * n_rows != n_values){
+      return(NULL)
+    }
+    # an ordered term with a mixture total in a model: the component of a draw
+    # is its model and the component of that total, jointly
+    parameters <- .posterior_components_model_mixture_parameters(
+      context, weights, sort(unique(model_component)))
+    if(length(parameters) > 0L){
+      return(.marginal_posterior_model_total_components(
+        context, weights, model_component, parameters, n_rows, samples,
+        source_transforms     = source_transforms,
+        output_transformation = output_transformation
+      ))
+    }
+    if(!model_mixture){
       return(NULL)
     }
     return(.posterior_components_new(
@@ -1699,6 +1714,49 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
     n_values              = n_values,
     source_transforms     = source_transforms,
     output_transformation = output_transformation
+  )
+}
+
+# The components of a model-mixture marginal whose models have ordered terms
+# with mixture totals: a component is a model and, for its ordered parameters,
+# the component of the total ("ordered_total_component", NA for a model whose
+# total is no mixture), so that the support of each component follows from the
+# localized total of the model.
+.marginal_posterior_model_total_components <- function(context, weights, model_component,
+                                                       parameters, n_rows, samples,
+                                                       source_transforms = NULL,
+                                                       output_transformation = NULL){
+
+  totals <- vapply(parameters, function(parameter){
+    component <- .bt_meta_get(samples[[parameter]], "ordered_total_component")
+    if(is.null(component)){
+      # no draw comes from a model with a mixture total
+      return(rep(NA_real_, length(model_component)))
+    }
+    if(length(component) != length(model_component)){
+      stop("Mixture component indices are unavailable.", call. = FALSE)
+    }
+    as.numeric(component)
+  }, numeric(length(model_component)))
+  draw_keys <- cbind(.model = as.numeric(model_component), matrix(totals, nrow = length(model_component),
+    dimnames = list(NULL, parameters)))
+
+  key_text <- do.call(paste, c(as.data.frame(draw_keys), sep = "\r"))
+  unique_keys <- unique(key_text)
+  index <- match(key_text, unique_keys)
+  keys <- draw_keys[match(unique_keys, key_text), , drop = FALSE]
+  rownames(keys) <- NULL
+
+  .posterior_components_new(
+    index    = rep(index, each = n_rows),
+    supports = .posterior_components_supports(
+      context               = context,
+      keys                  = keys,
+      weights               = weights,
+      output_transformation = output_transformation,
+      source_transforms     = source_transforms
+    ),
+    keys     = keys
   )
 }
 

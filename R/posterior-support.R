@@ -1283,6 +1283,10 @@ posterior_support_attribute <- function(bounds, points = NULL, type = NULL,
   }
   for(parameter in setdiff(names(key), ".model")){
     prior <- prior_list[[parameter]]
+    # (a model of an ensemble whose total is no mixture has no component of it)
+    if(is.na(key[[parameter]])){
+      next
+    }
     if(.posterior_components_is_ordered_mixture(prior)){
       prior_list[[parameter]] <- .bt_ordered_localize_total(
         prior,
@@ -1330,7 +1334,8 @@ posterior_support_attribute <- function(bounds, points = NULL, type = NULL,
 
 # Exact support of the linear combination 'weights' (the union over its rows)
 # within each component of 'keys' (one row per component); NULL entries for
-# models with zero prior weight or unknown support.
+# models with zero prior weight or unknown support. Keys with a model (an
+# ensemble) read the prior list of that model.
 .posterior_components_supports <- function(context, keys, weights,
                                            output_transformation = NULL,
                                            output_transformation_arguments = NULL,
@@ -1338,7 +1343,7 @@ posterior_support_attribute <- function(bounds, points = NULL, type = NULL,
 
   weight_rows <- .posterior_support_weight_rows(weights)
   model_mixture <- inherits(context, "prior_density_model_mixture_context")
-  if(!model_mixture){
+  if(!model_mixture && !".model" %in% colnames(keys)){
     weight_rows <- lapply(weight_rows, .posterior_components_source_weights,
                           context = context, source_transforms = source_transforms)
   }
@@ -1370,6 +1375,29 @@ posterior_support_attribute <- function(bounds, points = NULL, type = NULL,
       transformation_arguments = output_transformation_arguments
     )
   })
+}
+
+# Ordered parameters with a mixture total, entering the linear combination
+# 'weights' (any row) in one of the 'models' of an ensemble (its model-mixture
+# or conditional context). The draws of such a parameter name the component of
+# the total of their model.
+.posterior_components_model_mixture_parameters <- function(context, weights, models){
+
+  weight_rows <- .posterior_support_weight_rows(weights)
+  parameters <- lapply(models, function(model_i){
+    prior_list <- .prior_density_model_prior_list(context$prior_list, model_i)
+    lapply(weight_rows, function(row_weights){
+      groups <- tryCatch(
+        .prior_linear_weight_groups(prior_list, row_weights[is.finite(row_weights)]),
+        error = function(e) list()
+      )
+      names(groups)[vapply(groups, function(group){
+        .posterior_components_is_ordered_mixture(group$prior)
+      }, logical(1))]
+    })
+  })
+
+  unique(unlist(parameters, use.names = FALSE))
 }
 
 # Mixture parameters of a single-fit context entering the linear combination

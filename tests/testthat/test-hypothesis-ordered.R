@@ -1035,3 +1035,92 @@ test_that("the levels of a spike-and-slab factor are reflected at the bounds of 
                  tolerance = 0.08, info = paste(conditional, level, value))
   }
 })
+
+# ---------------------------------------------------------------------------- #
+# Model-averaged ensembles of ordered terms with mixture totals
+# ---------------------------------------------------------------------------- #
+
+# The marginal posterior of the levels of the ordered term of an ensemble of
+# models with the totals 'totals' (posterior draws from their priors, equal
+# marginal likelihoods and prior model probabilities).
+.ordered_hypothesis_ensemble <- function(totals, n, conditional = FALSE){
+
+  models <- Map(function(total, seed){
+    list(fit = .ordered_hypothesis_single(total = total, n = n, seed = seed),
+         marglik = bridgesampling_object(0), prior_weights = 1)
+  }, totals, seq_along(totals) + 718L)
+  mixed <- mix_posteriors(models, "mu_f", is_null_list = list(mu_f = rep(FALSE, length(totals))),
+                          conditional = conditional, n_samples = n * length(totals), seed = 413)
+
+  marginal_posterior(mixed, "mu_f", use_formula = FALSE, prior_samples = TRUE, n_samples = 2048)
+}
+
+test_that("ensembles identify the components of a level by model and by the component of its total", {
+
+  n <- 60000L
+  slab <- prior_spike_and_slab(prior("uniform", list(1, 2)), prior("point", list(.5)))
+  shifted <- prior_spike_and_slab(prior("uniform", list(1.5, 3)), prior("point", list(.5)))
+  simple <- prior("uniform", list(1, 2))
+  spike <- which(attr(slab, "components") == "null")
+  alternative <- which(attr(slab, "components") == "alternative")
+  bf <- function(marginal, level, value){
+    as.numeric(Savage_Dickey_BF(marginal, null_hypothesis = value, silent = TRUE)[[level]])
+  }
+
+  # a model with a mixture total and a model without one
+  marginal <- .ordered_hypothesis_ensemble(list(slab, simple), n)
+  components <- BayesTools:::.posterior_components_get(marginal[["hi"]])
+  expect_identical(colnames(components$keys), c(".model", "mu_f"))
+  expect_identical(nrow(components$keys), 3L)
+  for(i in seq_len(nrow(components$keys))){
+    key <- components$keys[i, ]
+    support <- components$supports[[i]]
+    expect_true(support$exact)
+    if(key[[".model"]] == 2L){
+      # the model without a mixture total has no component of it
+      expect_true(is.na(key[["mu_f"]]))
+      expect_identical(support$bounds, c(1, 2))
+    }else if(key[["mu_f"]] == spike){
+      expect_identical(support$bounds, c(0, 0))
+    }else{
+      expect_identical(key[["mu_f"]], as.numeric(alternative))
+      expect_identical(support$bounds, c(1, 2))
+    }
+  }
+  # the posterior is the prior: the Bayes factor is 1 at the bounds as well
+  for(value in c(1, 1.5, 2)) expect_equal(bf(marginal, "hi", value), 1, tolerance = 0.08, info = value)
+  # the inner level has a hull support and keeps the pooled estimate
+  inner <- BayesTools:::.posterior_components_get(marginal[["mid"]])
+  expect_false(all(vapply(inner$supports, function(support) isTRUE(support$exact), logical(1))))
+  for(value in c(.5, 1, 1.5)) expect_equal(bf(marginal, "mid", value), 1, tolerance = 0.08, info = value)
+
+  # ensembles without a mixture total are keyed by model only
+  marginal <- .ordered_hypothesis_ensemble(list(simple, prior("uniform", list(1.5, 3))), n)
+  expect_identical(colnames(BayesTools:::.posterior_components_get(marginal[["hi"]])$keys), ".model")
+})
+
+test_that("the levels of ensembles are reflected at the bounds of the total of each model", {
+
+  n <- 60000L
+  slab <- prior_spike_and_slab(prior("uniform", list(1, 2)), prior("point", list(.5)))
+  shifted <- prior_spike_and_slab(prior("uniform", list(1.5, 3)), prior("point", list(.5)))
+  unbounded <- prior_spike_and_slab(N01, prior("point", list(.5)))
+  bf <- function(marginal, value){
+    as.numeric(Savage_Dickey_BF(marginal, null_hypothesis = value, silent = TRUE)[["hi"]])
+  }
+  # (the Bayes factor outside the support of every model is undefined)
+  cases <- list(
+    same_bounds = list(totals = list(slab, slab), values = c(1, 1.5, 2)),
+    different_bounds = list(totals = list(slab, shifted), values = c(1, 1.5, 2, 3)),
+    with_simple_model = list(totals = list(slab, prior("uniform", list(1, 2))), values = c(1, 1.5, 2)),
+    unbounded = list(totals = list(unbounded, N01), values = c(-.5, .5))
+  )
+  for(conditional in c(FALSE, TRUE)) for(case in names(cases)){
+    marginal <- .ordered_hypothesis_ensemble(cases[[case]]$totals, n, conditional)
+    for(value in cases[[case]]$values){
+      # every Bayes factor is 1 for a posterior equal to the prior; the models with different bounds
+      # gave 1.2 to 1.4 at 1.5 and 2 when their draws were pooled
+      expect_equal(bf(marginal, value), 1, tolerance = 0.08, info = paste(case, conditional, value))
+    }
+  }
+})

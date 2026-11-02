@@ -815,8 +815,12 @@ what it calls, needs a `fit` profile refresh of the cached fits.
   conditioned. The levels of a term whose total is a mixture or spike-and-slab
   prior carry the component of the total (`ordered_total_component`) and the
   support of the level under each component (the spike is the point 0), so
-  that its ordinate is reflected within each bounded component. Mixed producers retain these primitive sources with their
-  selected model and row; raw ensemble tables use their complete declared-model
+  that its ordinate is reflected within each bounded component; in an
+  ensemble (`mix_posteriors()`, also conditional) a component is a model and,
+  for its ordered terms with a mixture total, the component of that total
+  (keys `.model` and the parameter). Ordinary spike-and-slab and mixture priors
+  are not mixed across models. Mixed producers retain these primitive sources
+  with their selected model and row; raw ensemble tables use their complete declared-model
   union, including fixed allocations and undefined shares in absent models.
   `JAGS_ordered_parameter_spec()` owns source names, labels (`f{total}`,
   `f[share: mid]`; the sampled columns keep the backend names), tensor
