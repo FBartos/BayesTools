@@ -263,17 +263,28 @@
 #' contracts or its design-information checks do not support centering.
 #'
 #' An explicitly named `random_block()` may request `"mean_centered"` for a
-#' sampled scalar random intercept. It samples group locations around the
-#' fixed intercept's compiled contribution, preserving the original effect,
-#' SD, allocation, and correlation priors. The fixed effect need not have a
-#' Normal prior; a compiled `log(intercept)` contribution is also supported.
-#' Other moderator terms remain in the predictor. At most one block per
-#' formula may receive the intercept. This mode requires the positive-SD
-#' contract above and currently excludes known between-group covariance and
-#' random slopes. Selection-model callers must additionally require that the
-#' translated block is retained in the selection normalizer. Semantic random
-#' coefficients remain zero-mean deviations; prediction and bridge sampling
-#' retain their existing coefficient and standardized-latent conventions.
+#' sampled block. It samples the group effects around the compiled
+#' contribution of the fixed terms the block absorbs, preserving the original
+#' effect, SD, allocation, and correlation priors (hierarchical centering).
+#' A block absorbs every fixed term whose design columns its random-effect
+#' design spans (such as the intercept and the slope of `x` for `(1 + x | g)`,
+#' or the intercept and a factor term for `us(0 + f | g)`), every term
+#' constant within its groups when it has a random intercept (such as a
+#' group-level moderator), and the group locations of a mean-centered block
+#' whose groups contain its groups (nested blocks, such as `(1 | g/h)` with
+#' both blocks mean-centered). Each term is absorbed by the first block that
+#' can absorb it, coarser groupings first; other terms, including terms only
+#' partly spanned by a block design, remain in the predictor. The fixed
+#' effects need not have Normal priors; multipliers and a compiled
+#' `log(intercept)` contribution are also supported. A block that would
+#' absorb nothing and a rank-deficient block design are rejected. This mode requires the
+#' positive-SD contract above and excludes known between-group covariance
+#' and CAR structures. Selection-model callers must additionally require that
+#' the translated block is retained in the selection normalizer. Semantic
+#' random coefficients remain zero-mean deviations; prediction and bridge
+#' sampling retain their existing coefficient and standardized-latent
+#' conventions. Mean centering usually mixes better when the data inform the
+#' group effects well, and noncentering when they do not.
 #'
 #' @param ... named `random_block()` specifications and, optionally,
 #'   top-level `random_variance_allocation()` specifications.

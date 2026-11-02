@@ -695,6 +695,44 @@ test_that("JAGS_fit predicts observed random effects from latent monitors", {
   expect_true(all(is.finite(prediction)))
 })
 
+test_that("mean-centered fits read the semantic predictor through their group locations", {
+
+  skip_if_not_installed("runjags")
+  skip_if_not_installed("rjags")
+
+  # four groups observed twice on each level of a three-level factor; the
+  # fitted predictor (from the group locations) equals the evaluator's
+  # X c + Z b (from the standardized latents) at every draw, for correlated
+  # (LKJ, compound-symmetry, and AR(1)) and nested blocks, and the fits use
+  # all their JAGS data (no unused-data warning)
+  set.seed(5)
+  data <- expand.grid(rep = 1:2, f = factor(c("a", "b", "c")), g = factor(1:4))
+  data$y <- c(0, 0.6, 1.1)[as.integer(data$f)] + stats::rnorm(4L, 0, 0.5)[as.integer(data$g)] +
+    stats::rnorm(nrow(data), 0, 0.3)
+  sd_prior <- prior("normal", list(0, 1), list(0, Inf))
+  centered <- function(...) random_block(sd = sd_prior, parameterization = "mean_centered", ...)
+  models <- list(
+    us     = list(~ f + us(0 + f | g), prior_random(g = centered(cor = prior_lkj(eta = 1), contrasts = c(f = "independent")))),
+    cs     = list(~ f + cs(f | g), prior_random(g = centered())),
+    ar1    = list(~ f + ar1(f | g), prior_random(g = centered())),
+    nested = list(~ f + (1 | g/f), prior_random(sd = sd_prior, g = centered(), f_g = centered()))
+  )
+  for(model in models){
+    fit <- JAGS_fit(
+      model_syntax = "model{ for(i in 1:N_mu){ y[i] ~ dnorm(mu[i], pow(0.3, -2)) } }",
+      data = list(y = data$y),
+      formula_list = list(mu = model[[1L]]), formula_data_list = list(mu = data),
+      formula_prior_list = list(mu = list(intercept = prior("normal", list(0, 1)),
+                                          f = prior_factor("normal", list(0, 1), contrast = "treatment"))),
+      formula_random_prior_list = list(mu = model[[2L]]),
+      add_parameters = "mu", chains = 1, adapt = 100, burnin = 200, sample = 300, silent = TRUE, seed = 3
+    )
+    draws <- as.matrix(fit$mcmc)
+    evaluated <- JAGS_evaluate_formula(fit, parameter = "mu", formula_target = "conditional")
+    expect_lt(max(abs(t(evaluated) - draws[, paste0("mu[", seq_len(nrow(data)), "]")])), 1e-12)
+  }
+})
+
 test_that("centered and noncentered fits preserve substantive output schemas", {
 
   skip_if_not_installed("runjags")

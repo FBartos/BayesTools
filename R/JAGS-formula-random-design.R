@@ -260,8 +260,7 @@
                                         prior_random = NULL,
                                         sd_binding_context = NULL,
                                         group_data = data,
-                                        compile_mode = c("sampled", "marginalized"),
-                                        fixed_intercept = NULL){
+                                        compile_mode = c("sampled", "marginalized")){
 
   if(is.null(prior_random)){
     stop("Formula random effects require 'prior_random'.", call. = FALSE)
@@ -716,10 +715,15 @@
     row_indexed_external_sd = row_indexed_external_sd,
     parameterization = parameterization$resolved
   )
-  mean_translation <- if(identical(parameterization$resolved, "mean_centered")){
-    .bt_random_effect_mean_translation(random_term, parameter, fixed_intercept,
-      has_intercept, model_matrix, random_structure, group_covariance)
-  }else NULL
+  # A mean-centered block's group effects are emitted once the translations
+  # of all blocks of the formula are resolved (.bt_random_effect_mean_translations()).
+  mean_centered <- isTRUE(sampled_random_effect) &&
+    identical(parameterization$resolved, "mean_centered")
+  mean_centering <- NULL
+  if(mean_centered){
+    .bt_random_effect_mean_centering_check(random_term$block_name, random_structure, group_covariance)
+    mean_centering <- list(sd_name = paste0(parameter, "_xRE_STDx"), cholesky_name = NULL)
+  }
   # step 1:
   if(isTRUE(sampled_random_effect) &&
      identical(parameterization$resolved, "noncentered") &&
@@ -789,16 +793,8 @@
         "_xRE_COEFx[i,1] / ", parameter, "_xRE_STDx[1]\n",
         " }\n"
       ))
-    }else if(isTRUE(sampled_random_effect) && !is.null(mean_translation)){
-      random_syntax <- c(random_syntax, paste0(
-        " for(g in 1:", n_id, "){\n",
-        "   ", mean_translation$location_name, "[g,1] ~ dnorm(",
-        mean_translation$fixed_intercept_expression, ", pow(", parameter, "_xRE_STDx[1], -2))\n",
-        "   ", mean_translation$coefficient_name, "[g,1] <- ",
-        mean_translation$location_name, "[g,1] - ", mean_translation$fixed_intercept_expression, "\n",
-        "   ", mean_translation$latent_name, "[g,1] <- ",
-        mean_translation$coefficient_name, "[g,1] / ", parameter, "_xRE_STDx[1]\n",
-        " }\n"))
+    }else if(mean_centered){
+      # independent group effects around their locations (emitted later)
     }else if(isTRUE(sampled_random_effect) &&
              identical(parameterization$resolved, "centered")){
       random_syntax <- c(random_syntax, .bt_JAGS_centered_independent_random(
@@ -853,7 +849,10 @@
       cholesky_name = lkj_module$cholesky_name,
       correlation_name = lkj_module$correlation_name
     )
-    if(isTRUE(sampled_random_effect) &&
+    if(mean_centered){
+      # sequential conditionals through the LKJ factor (emitted later)
+      mean_centering$cholesky_name <- lkj_module$cholesky_name
+    }else if(isTRUE(sampled_random_effect) &&
        identical(parameterization$resolved, "centered")){
       correlation_expression <- function(row, column){
         terms <- paste0(
@@ -971,7 +970,11 @@
       correlation_metadata$time_variable <- car_metadata$time_variable
       correlation_metadata$time_values <- car_metadata$time_values
     }
-    if(isTRUE(sampled_random_effect) && isTRUE(group_local)){
+    if(mean_centered){
+      # sequential conditionals in the arithmetic of the direct transform
+      # (emitted later)
+      mean_centering$structured <- list(structure = random_structure, rho_name = corr_module$rho_name)
+    }else if(isTRUE(sampled_random_effect) && isTRUE(group_local)){
       random_syntax <- c(random_syntax, .bt_JAGS_structured_local_transform(
         parameter = parameter,
         layout = latent_layout,
@@ -1036,8 +1039,13 @@
     }
   }
 
-  # step 4
-  if(isTRUE(sampled_random_effect) && !is.null(structured_layout) &&
+  # step 4 (the fitted predictor reads a mean-centered block's group locations)
+  if(mean_centered){
+    mean_centering$predictor_term <- .bt_random_effect_mean_predictor_term(
+      stem = parameter, model_matrix = model_matrix,
+      indicator_layout = !is.null(structured_layout)
+    )
+  }else if(isTRUE(sampled_random_effect) && !is.null(structured_layout) &&
      !isTRUE(row_indexed_external_sd)){
     random_syntax <- c(random_syntax, paste0(
       " for(i in 1:", nrow(model_matrix), "){\n",
@@ -1174,6 +1182,8 @@
   if(isTRUE(sampled_random_effect) && !is.null(structured_layout)){
     JAGS_data[[paste0(parameter, "_xRE_MAPx")]] <- grouping_mapping
     JAGS_data[[paste0(parameter, "_xRE_COLx")]] <- structured_layout$row_column
+  }else if(mean_centered && !grepl("_xRE_DATAx", mean_centering$predictor_term, fixed = TRUE)){
+    JAGS_data[[paste0(parameter, "_xRE_MAPx")]]  <- grouping_mapping
   }else if(isTRUE(sampled_random_effect)){
     JAGS_data[[paste0(parameter, "_xRE_DATAx")]] <- model_matrix
     JAGS_data[[paste0(parameter, "_xRE_MAPx")]]  <- grouping_mapping
@@ -1238,7 +1248,7 @@
   random_term$parameterization_resolved  <- parameterization$resolved
   random_term$parameterization_reason    <- parameterization$reason
   random_term$parameterization_policy    <- parameterization$policy
-  random_term$mean_translation           <- mean_translation
+  random_term$mean_translation           <- NULL
   random_term$latent_layout <- latent_layout
   attr(random_term, "random_block") <- random_term$block_name
   attr(random_term, "compile_mode") <- compile_mode
@@ -1254,6 +1264,7 @@
     jags_modules   = unique(jags_modules),
     required_packages = unique(required_packages),
     random_effect  = random_term,
+    mean_centering = mean_centering,
     formula        = formula
   ))
 }

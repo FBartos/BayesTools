@@ -246,7 +246,7 @@
         block_name, "': ", eligibility$reason, ".", call. = FALSE)
     }
     return(list(requested = requested, resolved = "mean_centered",
-      reason = "explicit translation of a scalar random intercept", policy = policy))
+      reason = "explicit hierarchical centering around absorbed fixed terms", policy = policy))
   }
   if(isTRUE(eligibility$ok) && !is.null(structure) &&
      requested %in% c("centered", "auto")){
@@ -306,33 +306,19 @@
   )
 }
 
-.bt_random_effect_mean_translation <- function(random_term, parameter,
-                                                fixed_intercept, has_intercept,
-                                                model_matrix, structure,
-                                                group_covariance){
+# Structures and covariances whose group effects a mean-centered block cannot
+# sample around a location: CAR blocks (their centered form is a Markov
+# chain of conditionals) and known between-group covariance.
+.bt_random_effect_mean_centering_check <- function(block_name, structure, group_covariance){
 
-  if(!is.list(fixed_intercept) ||
-     !is.character(fixed_intercept$coordinate) || length(fixed_intercept$coordinate) != 1L ||
-     !nzchar(fixed_intercept$coordinate) || !is.character(fixed_intercept$expression) ||
-     length(fixed_intercept$expression) != 1L || !nzchar(fixed_intercept$expression)){
-    stop("Mean-centered parameterization requires a compatible fixed-intercept contribution.",
-         call. = FALSE)
-  }
-  if(!isTRUE(has_intercept) || ncol(model_matrix) != 1L ||
-     !identical(colnames(model_matrix), "(Intercept)") ||
-     !all(model_matrix == 1) || !structure %in% c("id", "diag", "us")){
-    stop("Mean-centered parameterization is available only for a scalar random intercept.",
-         call. = FALSE)
+  if(identical(structure, "car")){
+    stop("Mean-centered parameterization is unavailable for random-effect block '", block_name,
+         "': continuous-time AR(1) structures are not supported.", call. = FALSE)
   }
   if(!is.null(group_covariance)){
     stop("Mean-centered parameterization is unavailable with known between-group covariance.",
          call. = FALSE)
   }
-  list(schema_version = 1L, block_name = random_term$block_name,
-    fixed_intercept = fixed_intercept$coordinate,
-    fixed_intercept_expression = fixed_intercept$expression,
-    location_name = paste0(parameter, "_xRE_MEANx"),
-    coefficient_name = paste0(parameter, "_xRE_COEFx"),
-    latent_name = paste0(parameter, "_xRE_Zx"),
-    group_map_name = paste0(parameter, "_xRE_MAPx"))
+
+  invisible(TRUE)
 }

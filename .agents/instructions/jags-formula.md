@@ -971,6 +971,31 @@ correlation priors avoid it. The compiler applies no cutoff or truncation. SD ma
 BayesTools must not supply a generic scale, and direct `JAGS_formula()` use
 requires an SD prior, SD source, or variance allocation.
 
+Sampled blocks are noncentered (standardized latents), centered (zero-mean
+realized coefficients), or mean-centered (hierarchically centered;
+`R/JAGS-formula-random-mean.R`). A mean-centered block samples its group
+effects around the fixed terms it absorbs: whole terms whose columns lie in
+the span of the block design (a constant least-squares map A; the predictor
+keeps the rounding residual `(X_a - Z A) c_a`, so exactness never rests on
+the span tolerance), whole group-level terms through the block's all-ones
+column (every declared group observed), and the locations of a linked
+mean-centered parent whose groups contain its groups and whose design is
+exactly `Z P`. Blocks resolve parents first (proper nesting, formula order
+otherwise); each fixed term and each parent is absorbed once; terms only
+partly spanned stay in the predictor; a rank-deficient design or nothing to
+absorb is refused. The fitted predictor reads the group locations instead of
+the absorbed terms and parent; the translation has a unit Jacobian, so
+priors, posterior, semantic coefficients, standardized latents, evaluator,
+predictions, and bridge coordinates stay those of the noncentered model.
+Correlated mean-centered blocks use sequential scalar conditionals (Gibbs
+updates; a dense `dmnorm.vcov` node gets a slow multivariate slice sampler)
+in the arithmetic of the noncentered transforms that reconstruction replays:
+the LKJ factor, the CS prefix recurrence, and the AR(1) recurrence. Free LKJ primitives are scalar
+`dbt_lkj_cpc` nodes, so their bounded slice samplers evaluate the model only
+inside `(0, 1)`. Bridge sampling compares the persisted translation by
+identity when it rebuilds the design. CAR blocks and known group covariance
+are not mean-centered; `auto` never resolves to it.
+
 Random-effect catalog names use `(formula) owner: quantity(arguments)`.
 Parentheses contain coefficient or parameter names; square brackets contain
 factor or index levels, and curly braces contrast coefficients that are not a

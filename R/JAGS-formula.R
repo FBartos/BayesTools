@@ -554,23 +554,10 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
     context = paste0("Formula expression for parameter '", parameter, "'")
   )
 
-  # prepare the indexing vector; the intercept term (log(intercept) if the
-  # formula has the log(intercept) attribute) is the node's intercept term
-  intercept_syntax <- NULL
+  # prepare the indexing vector (the intercept column has index 0)
   if(has_intercept){
     terms_indexes    <- attr(model_matrix, "assign") + 1
     terms_indexes[1] <- 0
-
-    intercept_syntax <- .bt_dnode_linear_predictor_term_syntax(
-      .bt_dnode_linear_predictor_term(
-        parameter = parameter,
-        model_term = "intercept",
-        type = "intercept",
-        columns = 1L,
-        prior = prior_list[["intercept"]],
-        log = log_intercept
-      )
-    )
   }else{
     terms_indexes    <- attr(model_matrix, "assign")
   }
@@ -729,9 +716,7 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
     add_parameters <- c(add_parameters, random_sd_binding_context$add_parameters)
   }
   compiled_random_effects <- parsed_random_effects
-  mean_translation_owner <- NULL
-  mean_intercept <- if(has_intercept) list(coordinate = paste0(parameter, "_intercept"),
-    expression = intercept_syntax) else NULL
+  mean_centering <- list()
   for(random_i in seq_along(parsed_random_effects)){
     random_effect_data <- random_effect_scaled_data
     random_structure <- .bt_random_effect_structure(parsed_random_effects[[random_i]])
@@ -749,22 +734,11 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
       prior_random = prior_random,
       sd_binding_context = random_sd_binding_context,
       group_data = random_effect_unscaled_data,
-      compile_mode = compile_mode,
-      fixed_intercept = mean_intercept
+      compile_mode = compile_mode
     )
     compiled_random_effects[[random_i]] <- temp_random[["random_effect"]]
-    if(!is.null(temp_random[["random_effect"]]$mean_translation)){
-      if(!is.null(mean_translation_owner)){
-        stop("Mean-centered parameterization requires one explicitly selected random-effect block per formula.",
-             call. = FALSE)
-      }
-      mean_translation_owner <- temp_random[["random_effect"]]$block_name
-      # the group locations replace the node's fixed intercept term
-      intercept_term <- temp_random[["random_effect"]]$mean_translation$fixed_intercept_expression
-      if(is.null(intercept_syntax) || !identical(intercept_term, intercept_syntax)){
-        stop("Mean-centered parameterization is unavailable because the fixed-intercept contribution could not be resolved.",
-             call. = FALSE)
-      }
+    if(!is.null(temp_random[["mean_centering"]])){
+      mean_centering[[as.character(random_i)]] <- temp_random[["mean_centering"]]
     }
 
     for(data_i in seq_along(temp_random[["data"]])){
@@ -787,6 +761,51 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
     add_parameters <- c(add_parameters, temp_random[["add_parameters"]])
     jags_modules <- c(jags_modules, temp_random[["jags_modules"]])
     required_packages <- c(required_packages, temp_random[["required_packages"]])
+  }
+
+  # mean-centered blocks sample their group effects around the fixed terms
+  # (and parent block) they absorb (JAGS-formula-random-mean.R)
+  if(length(mean_centering) > 0L){
+    mean_blocks <- as.integer(names(mean_centering))
+    translations <- .bt_random_effect_mean_translations(
+      blocks = lapply(mean_blocks, function(random_i){
+        list(term = compiled_random_effects[[random_i]], centering = mean_centering[[as.character(random_i)]])
+      }),
+      fixed = .bt_random_effect_mean_fixed_design(
+        parameter = parameter, model_matrix = model_matrix, terms_indexes = terms_indexes,
+        model_terms = model_terms, model_terms_type = model_terms_type, prior_list = prior_list,
+        has_intercept = has_intercept, log_intercept = log_intercept
+      )
+    )
+    for(j in seq_along(mean_blocks)){
+      random_i <- mean_blocks[[j]]
+      compiled_random_effects[[random_i]]$mean_translation <- translations[[j]]$spec
+      random_syntax <- c(random_syntax, translations[[j]]$syntax)
+      for(data_name in names(translations[[j]]$data)){
+        JAGS_data[[data_name]] <- translations[[j]]$data[[data_name]]
+      }
+      compiled_random_effects[[random_i]]["jags_data_names"] <- list(c(
+        compiled_random_effects[[random_i]]$jags_data_names, names(translations[[j]]$data)
+      ))
+      random_key <- paste0("__xREx__", attr(compiled_random_effects[[random_i]], "random_block"))
+      jags_data_names[random_key] <- list(compiled_random_effects[[random_i]]$jags_data_names)
+      # a linked parent's rows enter through its child's locations, and the
+      # absorbed terms' columns through the group locations
+      if(!is.null(translations[[j]]$spec$child)){
+        row_data <- paste0(compiled_random_effects[[random_i]]$parameter_stem, c("_xRE_MAPx", "_xRE_DATAx", "_xRE_COLx"))
+        JAGS_data[row_data] <- NULL
+        compiled_random_effects[[random_i]]["jags_data_names"] <- list(setdiff(
+          compiled_random_effects[[random_i]]$jags_data_names, row_data
+        ))
+        jags_data_names[random_key] <- list(compiled_random_effects[[random_i]]$jags_data_names)
+      }
+      for(model_term in translations[[j]]$spec$absorbed_terms){
+        if(!is.null(jags_data_names[[model_term]])){
+          JAGS_data[[jags_data_names[[model_term]]]] <- NULL
+          jags_data_names[[model_term]] <- NULL
+        }
+      }
+    }
   }
 
   # add the parameter name as a prefix and attribute to each prior in the list

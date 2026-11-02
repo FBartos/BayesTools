@@ -7,13 +7,14 @@
 #   for(i in 1:N_p){ p[i] = <term> + <term> + ... }
 # with, in this order,
 #   the intercept    p_intercept, or log(p_intercept) for log(intercept)
-#                    formulas (a mean-centered random intercept replaces it by
-#                    its group location),
+#                    formulas,
 #   continuous terms [m *] p_<term> * p_data_<term>[i],
 #   factor terms     [m *] inprod(p_<term>, p_data_<term>[i,]),
 #   expression() terms,
-#   sampled random-effect blocks  p__xREx__<block>[i] (or the group location
-#                    'p__xREx__<block>_xRE_MEANx[...]' of a mean-centered block),
+#   sampled random-effect blocks  p__xREx__<block>[i] (or the group locations
+#                    'p__xREx__<block>_xRE_MEANx[...]' read through the block
+#                    design for a mean-centered block, which absorbs fixed terms
+#                    and a linked parent block; see JAGS-formula-random-mean.R),
 # where m is the term prior's 'multiply_by' (a number or a parameter; the
 # intercept prior cannot carry one, see .bt_validate_formula_term_priors()).
 # JAGS_formula() writes this syntax from the node of the fitted design
@@ -68,6 +69,17 @@
   }
 
   paste0(multiplier, "inprod(", term$name, ", ", term$data_name, "[i,])")
+}
+
+# The effective coefficient of each design column of a fixed term: the value
+# its column is multiplied by in the linear predictor.
+.bt_dnode_linear_predictor_term_column_expressions <- function(term){
+
+  if(identical(term$type, "intercept")){
+    return(.bt_dnode_linear_predictor_term_syntax(term))
+  }
+  multiplier <- if(!is.null(term$multiply_by)) paste0(term$multiply_by, " * ")
+  paste0(multiplier, .bt_dnode_linear_predictor_coefficient_names(term))
 }
 
 # JAGS syntax of the linear predictor of formula parameter 'parameter' from its
@@ -166,26 +178,28 @@
   n_rows <- nrow(design$model_matrix)
   terms <- .bt_dnode_linear_predictor_design_terms(design, design$prior_list)
   random_terms <- .bt_formula_design_sampled_random_effects(design)
-  mean_translated <- vapply(random_terms, function(random_term){
-    !is.null(random_term$mean_translation)
-  }, logical(1))
+  # Mean-centered blocks absorb fixed terms into their group locations, and a
+  # linked parent block's term into its child's (see JAGS-formula-random-mean.R).
+  absorbed <- unlist(lapply(random_terms, function(random_term){
+    random_term$mean_translation$absorbed_terms
+  }), use.names = FALSE)
 
   terms_syntax <- vapply(terms, .bt_dnode_linear_predictor_term_syntax, character(1))
-  if(any(mean_translated)){
-    # A mean-centered random intercept replaces the fixed intercept.
-    terms_syntax <- terms_syntax[vapply(terms, `[[`, character(1), "type") != "intercept"]
-  }
+  terms_syntax <- terms_syntax[!vapply(terms, `[[`, character(1), "model_term") %in% absorbed]
   expressions <- design$transformed_terms
+  random_syntax <- lapply(random_terms, function(random_term){
+    translation <- random_term$mean_translation
+    if(is.null(translation)){
+      return(paste0(random_term$parameter_stem, "[i]"))
+    }
+    # a linked parent's locations enter through its child; the rounding
+    # residual of its map stays
+    c(if(is.null(translation$child)) translation$predictor_term, translation$residual_term)
+  })
   terms_syntax <- c(
     terms_syntax,
     vapply(expressions, .clean_from_expression, character(1), USE.NAMES = FALSE),
-    vapply(random_terms, function(random_term){
-      translation <- random_term$mean_translation
-      if(!is.null(translation)){
-        return(paste0(translation$location_name, "[", translation$group_map_name, "[i],1]"))
-      }
-      paste0(random_term$parameter_stem, "[i]")
-    }, character(1))
+    unlist(random_syntax, use.names = FALSE)
   )
 
   coefficient_dependencies <- unlist(lapply(terms, function(term){
