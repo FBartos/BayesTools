@@ -176,7 +176,7 @@ testthat::test_that("Ordered-factor predictors for the Gun and cake data", {
                                  "Heavy - Slight" = lme4::fixef(gun_lme4)[["PhysiqueHeavy"]])),
       posteriors = list(
         ordered = cbind(scenario_draws(ordered, c("Average - Slight" = "(mu) Physique[Average]", "Heavy - Slight" = "(mu) Physique[Heavy]")),
-                        "total share of Average" = JAGS_estimates_table(gun[["ordered"]][["fit"]], return_samples = TRUE)[, "(mu) Physique_ordered_allocation[Average]"]),
+                        "total share of Average" = JAGS_estimates_table(gun[["ordered"]][["fit"]], return_samples = TRUE)[, "(mu) Physique[share: Average]"]),
         "brms mo()" = cbind("Average - Slight" = brms_levels[, 1L], "Heavy - Slight" = brms_levels[, 2L],
                             "total share of Average" = brms_draws[, "simo_moPhysique_mo1[1]"]),
         unordered = stats::setNames(as.data.frame(unordered_levels), parameters[1:2])
