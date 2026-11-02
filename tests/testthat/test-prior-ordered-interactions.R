@@ -675,29 +675,106 @@ test_that("a combination with many allocation coordinates is refused before any 
   expect_lt(elapsed, 10)
 })
 
-test_that("a bounded total with integrable singularities at its bounds is rejected, never certified wrongly", {
+test_that("Beta totals with singular ends are integrated to the criterion", {
 
-  # Beta(.6, .6): the density is infinite at both bounds, so the pieces end in singularities
-  # that Gauss-Legendre pieces resolve slowly
-  total <- prior("beta", list(.6, .6))
-  route <- .bounded_cross_route(total)
-  x <- c(.05, .2, .5, .8, .95)
-  reference <- vapply(x, function(value){
-    stats::integrate(function(t) stats::dbeta(t, .6, .6) * (-log(value / t)) / t, value, 1,
-                     rel.tol = 1e-9, subdivisions = 4000L, stop.on.error = FALSE)$value
-  }, numeric(1))
-  result <- BayesTools:::.prior_ordered_product_integrate_density(route$spec, x)
-  # an accepted value is within the criterion of the reference; the others are rejected
-  expect_true(all(abs(result$value / reference - 1)[result$accepted] < 1e-4))
-  ordinate <- BayesTools:::.prior_density_route_ordinate(route, .5)
-  expect_false(ordinate$exact)
-  expect_false(ordinate$provenance$integration$converged)
-  expect_match(ordinate$reason, "rejected by its diagnostics", fixed = TRUE)
-  # the display grid of the combination is unavailable too: no height is read from a grid
-  priors <- .interaction_priors(~ f * o, list(intercept = N01, f = prior_ordered(N01), o = prior_ordered(N01),
-    "f:o" = prior_ordered(total, allocation = list(f = prior("dirichlet", list(c(1, .5, .5))),
-                                                    o = prior("dirichlet", list(c(1, 1)))))))
-  expect_error(BayesTools:::.prior_linear_combination_density(priors,
-    .cell_combination(priors[["mu_f__xXx__o"]], "f=mid, o=q")),
+  # T ~ Beta(a, b) times U V: the density of X = T W, W = U V (density -log w), is
+  # the integral over t of f_T(t) (-log(x / t)) / t, and the substitution z = (1 - t)^b
+  # removes the singularity of the upper end for the independent reference
+  density_reference <- function(x, a, b){
+    stats::integrate(function(z){
+      t <- 1 - z^(1 / b)
+      t^(a - 2) * log(t / x) / (b * beta(a, b))
+    }, 0, (1 - x)^b, rel.tol = 1e-11, abs.tol = 0, subdivisions = 4000L)$value
+  }
+  # P(X > x) = integral of f_T(t) P(W > x / t) with P(W > w) = 1 - w + w log w
+  probability_reference <- function(x, a, b){
+    stats::integrate(function(z){
+      t <- 1 - z^(1 / b)
+      w <- x / t
+      t^(a - 1) / (b * beta(a, b)) * (1 - w + w * log(w))
+    }, 0, (1 - x)^b, rel.tol = 1e-11, abs.tol = 0, subdivisions = 4000L)$value
+  }
+
+  # the case that rule doubling accepted at a relative error of 3.3e-4 (through the public ordinate)
+  priors <- .bounded_cross_priors(prior("beta", list(1, .9)))
+  density <- BayesTools:::.prior_linear_combination_density(
+    priors, .cell_combination(priors[["mu_f__xXx__o"]], "f=mid, o=q"), n_grid = 128L)
+  public <- prior_density_ordinate(density, 1e-4)
+  expect_true(public$exact)
+  expect_equal(exp(public$log_density), 39.5360676101493, tolerance = 1e-9)
+  expect_equal(exp(public$log_density), density_reference(1e-4, 1, .9), tolerance = 1e-9)
+
+  # singular lower ends (a < 1), upper ends (b < 1), both, and exponents between 1 and 2
+  x <- c(.0001, .01, .1, .3, .72, .9, .99)
+  for(shape in list(c(.6, .6), c(.9, 1), c(1, .6), c(.7, 1.3), c(1.5, .7), c(.5, .9), c(1.5, 1.5), c(2, 1.5))){
+    route <- .bounded_cross_route(prior("beta", list(shape[[1L]], shape[[2L]])))
+    expect_identical(route$type, "ordered_product")
+    result <- BayesTools:::.prior_ordered_product_integrate_density(route$spec, x)
+    expect_true(all(result$accepted), info = shape)
+    reference <- vapply(x, density_reference, numeric(1), a = shape[[1L]], b = shape[[2L]])
+    expect_lt(max(abs(result$value / reference - 1)), 1e-5)
+    for(value in c(.01, .3, .95)){
+      expect_equal(.route_probability(route, value), probability_reference(value, shape[[1L]], shape[[2L]]),
+                   tolerance = 1e-8, info = c(shape, value))
+    }
+  }
+
+  # a singular gamma total (shape < 1 at 0) and a truncated Beta whose bounds are regular
+  gamma <- .bounded_cross_route(prior("gamma", list(.7, 1)))
+  expect_lt(max(abs(vapply(c(.01, .5, 2, 5), function(value) .route_height(gamma, value), numeric(1)) /
+    vapply(c(.01, .5, 2, 5), function(value){
+      stats::integrate(function(t) stats::dgamma(t, .7, 1) * (-log(value / t)) / t, value, Inf,
+                       rel.tol = 1e-11, abs.tol = 0)$value
+    }, numeric(1)) - 1)), 1e-6)
+})
+
+test_that("totals with an unknown or very singular density at a bound are refused", {
+
+  # exponent .3 < .5: the nodes next to the bound cannot be resolved to the criterion
+  route <- .bounded_cross_route(prior("beta", list(.3, 1.5)))
+  expect_identical(route$type, "unknown")
+  expect_match(route$reason, "infinite with the exponent 0.3", fixed = TRUE)
+  expect_error(BayesTools:::.prior_linear_combination_density(
+    .bounded_cross_priors(prior("beta", list(.3, 1.5))),
+    .cell_combination(.bounded_cross_priors(prior("beta", list(.3, 1.5)))[["mu_f__xXx__o"]], "f=mid, o=q")),
     class = "BayesTools_formula_measure_unavailable")
+  # a family whose infinite density has no known exponent
+  testthat::local_mocked_bindings(
+    .prior_ordered_product_bound_exponent = function(prior, bound) NA_real_,
+    .package = "BayesTools"
+  )
+  route <- .bounded_cross_route(prior("uniform", list(1, 2)))
+  expect_identical(route$type, "unknown")
+  expect_match(route$reason, "an unknown exponent", fixed = TRUE)
+})
+
+test_that("a non-monotone sequence of rules is not accepted", {
+
+  route <- .bounded_cross_route(prior("uniform", list(1, 2)))
+  sequences <- list(
+    # differences 1.5e-3 then 9e-4: both small but the last is not at most half of the one before
+    erratic = c(10, 10.3, 10.31, 10.3115, 10.3124, 10.3127, 10.3128),
+    # differences 5e-3 then 5e-4: a convergent sequence
+    convergent = c(10, 10.3, 10.31, 10.315, 10.3155, 10.31552, 10.315521)
+  )
+  rules_used <- function(values){
+    testthat::local_mocked_bindings(
+      .prior_ordered_product_nested = function(spec, values_, bounds, exponents, integrand, groups, n, nested){
+        index <<- index + 1L
+        list(value = rep(values[[index]], length(groups)), evaluations = 1)
+      },
+      .package = "BayesTools"
+    )
+    index <- 0L
+    result <- BayesTools:::.prior_ordered_product_piecewise(route$spec, matrix(.5, 1L, 1L),
+      function(group, scale, shift) 0)
+    list(accepted = result$accepted, rules = index)
+  }
+  erratic <- rules_used(sequences$erratic)
+  convergent <- rules_used(sequences$convergent)
+  # the convergent sequence is accepted at the fifth rule (difference 5e-4 after 5e-3)
+  expect_true(convergent[["accepted"]])
+  expect_identical(convergent[["rules"]], 5L)
+  # the erratic one is not accepted at the fifth rule (9e-4 after 1.5e-3 is not halving)
+  expect_gt(erratic[["rules"]], 5L)
 })

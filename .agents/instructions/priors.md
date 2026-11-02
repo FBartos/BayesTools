@@ -468,11 +468,23 @@ the same equations at the corners of the deeper coordinates (where the inner
 breakpoints reach an end of `[0, 1]`, the only kinks of the inner integral).
 Pieces that reach an end of `[0, 1]` are Gauss-Jacobi rules with the Beta weight
 of that end, the other pieces Gauss-Jacobi rules without a weight with the
-Beta density as a factor. A value is accepted when the last two rules agree at
-the criterion and the two before them at 100 times it; unresolved values
-(singular bounds, e.g. a Beta(0.6, 0.6) total) are rejected, and a bounded
-total with more than three coordinates is refused. Plotted densities accept the
-last two rules at 1e-3 (the outer coordinates of three or more are not split).
+Beta density as a factor. A piece next to a breakpoint where the density of the
+total is ~ dist^(e - 1) with e < 1 (infinite: a Beta or gamma total with a
+shape below 1) or a non-integer e below 4 is not of the pure form a Jacobi weight
+absorbs (the probability of a region and the outer coordinates have a constant
+or analytic part beside the dist^e term); its end is smoothed by the
+substitution tau = s^q, q = ceiling(6 / e), with a Gauss-Legendre rule in s (the
+exponents are known in closed form: the shapes of the Beta and gamma families at
+their natural bounds, 1 otherwise). A total whose density is infinite at a bound
+with an unknown exponent, or with e < 0.5 (the nodes resolve only 1e-16 of the
+distance, neglecting (1e-16)^e of the mass), and a bounded total with more than
+three coordinates are refused. A value is accepted when the last two rules agree
+at the criterion, their difference is at least halved from the one before, and
+the two rules before agreed at 100 times the criterion (the differences of a
+convergent sequence decrease; cancelling errors of a slowly converging sequence
+were accepted before, e.g. 3.3e-4 for a Beta(1, 0.9) total times two uniform
+shares); other values are rejected. Plotted densities accept the last two rules
+at 1e-3 (the outer coordinates of three or more are not split).
 The range of a combination (display grids) is the product of the total's range
 and the range of the reduced coefficients: the coefficient is multilinear in
 the allocations, each on its simplex, so it is extreme at a vertex, an entry

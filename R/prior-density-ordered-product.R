@@ -250,7 +250,10 @@
     return(out)
   }
   scale <- rep_len(scale, length(argument))
-  usable <- which(scale != 0 & is.finite(argument))
+  # strictly inside the support: the density at a bound itself (a node that rounds onto a
+  # bound of a singular piece) is a single point
+  bounds <- unlist(term$total$truncation[c("lower", "upper")], use.names = FALSE)
+  usable <- which(scale != 0 & is.finite(argument) & argument > bounds[[1L]] & argument < bounds[[2L]])
   out <- numeric(length(argument))
   if(length(usable) > 0L){
     log_density <- .prior_quadrature_log_density(term$total, as.vector(argument)[usable], spec$log_density) -

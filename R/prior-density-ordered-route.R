@@ -269,6 +269,17 @@
   if(identical(mode, "scale")){
     spec$log_density <- .prior_simple_lpdf_evaluator(terms[[random]]$total, purpose = "natural_integral")
   }
+  if(.prior_ordered_product_bounded_total(spec)){
+    exponents <- .prior_ordered_product_bound_exponents(terms[[random]]$total)
+    if(anyNA(exponents) || any(exponents < .prior_ordered_product_exponent_limit())){
+      return(refuse(paste0(
+        "The density of the total of an ordered term at a bound of its support is infinite with ",
+        if(anyNA(exponents)) "an unknown exponent" else paste0("the exponent ", format(min(exponents))),
+        ", which the pieces next to the bound do not integrate to the accuracy of an ordinate (the ",
+        "exponent must be at least ", format(.prior_ordered_product_exponent_limit()), ")."
+      )))
+    }
+  }
   if(.prior_ordered_product_bounded_total(spec) && p > .prior_ordered_product_piece_coordinates()){
     return(refuse(paste0(
       "A total with a bounded support in a product of ", p, " allocation coordinates has no verified ",

@@ -98,7 +98,9 @@ integrate the closed-form conditional law over these coordinates with a
 tensor Gauss-Jacobi rule, doubled until two rules agree (method
 \code{"scale_mixture"}, provenance \code{ordered_product}); a total with a finite
 support bound is integrated with the closed-form breakpoints where the
-argument of its density crosses a bound (at most three coordinates). Its
+argument of its density crosses a bound (at most three coordinates; a
+density that is infinite at a bound is smoothed there with its closed-form
+exponent, and refused when the exponent is unknown or below 0.5). Its
 offset density is classified for a single total times a product of shares,
 and a Beta exponent below 0.1 rejects the quadrature. Other combinations (several
 totals that are not normal, point totals that make the level a nonlinear

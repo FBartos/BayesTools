@@ -2,25 +2,34 @@
 # bounded support (R/prior-density-ordered-product.R).
 #
 # A single random total T with a finite support bound b has a conditional
-# density f_T((x - s(B)) / c(B)) / |c(B)| with jumps or kinks in the shares B
-# where the argument crosses a bound, and the probability of a region has kinks
-# where the argument of a region endpoint does; consecutive tensor rules miss
-# such features alike. The coefficient c(B) and the shift s(B) are multilinear
-# in the shares, so for fixed other coordinates they are affine in one
-# coordinate v, c(v) = c0 + (c1 - c0) v and s(v) likewise, and the points where
-# the argument hits a bound,
+# density f_T((x - s(B)) / c(B)) / |c(B)| with jumps, kinks, or integrable
+# singularities in the shares B where the argument crosses a bound, and the
+# probability of a region has such features where the argument of a region
+# endpoint does; consecutive tensor rules miss them alike. The coefficient c(B)
+# and the shift s(B) are multilinear in the shares, so for fixed other
+# coordinates they are affine in one coordinate v, c(v) = c0 + (c1 - c0) v and
+# s(v) likewise, and the points where the argument hits a bound,
 #   x - s(v) = b c(v)  =>  v = (x - s0 - b c0) / ((s1 - s0) + b (c1 - c0)),
 # and where c changes sign, v = -c0 / (c1 - c0), are closed form. The integral
 # over the innermost coordinate is split there. The integral over an outer
 # coordinate u is non-smooth where such a point of the inner coordinates reaches
 # an end of [0, 1], that is where the same equations hold at a corner of the
 # inner coordinates (an affine equation in u), so the outer coordinates are
-# split at these corners as well. Pieces that reach an end of [0, 1] are
-# Gauss-Jacobi rules with the Beta weight of that end, the other pieces
-# Gauss-Jacobi rules without a weight and the Beta density as a factor, so every
-# piece is a smooth integral. The rules are doubled and a value is accepted
-# when the last two rules agree at the criterion and the two rules before them
-# agreed at 100 times the criterion; other values are rejected.
+# split at these corners as well. A piece that reaches an end of [0, 1] is a
+# Gauss-Jacobi rule with the Beta weight of that end, so every end of a smooth
+# piece is exact. A piece next to a breakpoint where the density of the total is
+# infinite (a Beta total with a shape below 1, a gamma total with shape below 1)
+# has an algebraic singularity dist^(e - 1) there, e the exponent of the
+# density at the bound (known in closed form), which is not of the pure form
+# that a Jacobi weight absorbs for the probabilities of regions and for the
+# outer coordinates; the end is smoothed by the substitution tau = s^q with
+# q e >= 6, a Gauss-Legendre rule in s. Totals whose density at a bound is
+# infinite with an unknown or very small exponent are refused.
+#
+# The rules are doubled, and a value is accepted only when the last two rules
+# agree at the criterion, the difference at least halved from the one before,
+# and the two rules before agreed at 100 times the criterion (the differences of
+# an accepted sequence decrease); other values are rejected.
 
 # Whether the total of the single random term has a finite support bound.
 .prior_ordered_product_bounded_total <- function(spec){
@@ -38,49 +47,141 @@
   3L
 }
 
-# Rows of a matrix sorted increasingly (columns compared elementwise).
-.prior_ordered_product_sort_rows <- function(x){
+# The smallest exponent of the density of a total at a bound that the pieces
+# integrate (the density is ~ dist^(e - 1) there): the nodes of a piece next to
+# a smaller exponent resolve distances of 1e-16 and neglect (1e-16)^e of the
+# mass.
+.prior_ordered_product_exponent_limit <- function(){
+
+  0.5
+}
+
+# The exponent e of the density of a simple continuous prior at the finite
+# bound 'bound' of its support (the density is ~ dist^(e - 1) there): the shape
+# of the Beta and gamma families at their natural bounds, 1 for a finite
+# positive density or a density that vanishes faster than any power, and NA
+# for an infinite density of unknown exponent or an unclassified behavior.
+.prior_ordered_product_bound_exponent <- function(prior, bound){
+
+  parameters <- prior$parameters
+  if(identical(prior$distribution, "beta")){
+    if(bound == 0) return(parameters$alpha)
+    if(bound == 1) return(parameters$beta)
+  }
+  if(identical(prior$distribution, "gamma") && bound == 0){
+    return(parameters$shape)
+  }
+  behavior <- .prior_density_ordinate_continuous_behavior(.prior_density_ordinate_primitive(prior, bound))
+  if(behavior %in% c("regular", "zero")) 1 else NA_real_
+}
+
+# The exponents of the finite bounds of the total of the single random term
+# (a named numeric, by bound), NULL for a total without a finite bound.
+.prior_ordered_product_bound_exponents <- function(total){
+
+  bounds <- unlist(total$truncation[c("lower", "upper")], use.names = FALSE)
+  bounds <- bounds[is.finite(bounds)]
+  stats::setNames(vapply(bounds, function(bound){
+    .prior_ordered_product_bound_exponent(total, bound)
+  }, numeric(1)), bounds)
+}
+
+# Whether the density ~ dist^(e - 1) at a bound is not analytic there (an
+# exponent below 1, an infinite density, or a non-integer exponent below 4, a
+# vanishing density with an infinite derivative or higher derivative), which
+# the substitution tau = s^q with q e >= 6 smooths.
+.prior_ordered_product_needs_smoothing <- function(exponent){
+
+  !is.na(exponent) & (exponent < 1 | (abs(exponent - round(exponent)) > 1e-12 & exponent < 4))
+}
+
+# Rows of a matrix sorted increasingly (columns compared elementwise), with the
+# companion matrix 'e' permuted alike.
+.prior_ordered_product_sort_rows <- function(x, e){
 
   k <- ncol(x)
   for(pass in seq_len(k - 1L)){
     for(j in seq_len(k - pass)){
+      swap <- x[, j] > x[, j + 1L]
       low <- pmin(x[, j], x[, j + 1L])
       x[, j + 1L] <- pmax(x[, j], x[, j + 1L])
       x[, j] <- low
+      kept <- e[, j]
+      e[swap, j] <- e[swap, j + 1L]
+      e[swap, j + 1L] <- kept[swap]
     }
   }
-  x
+  list(x = x, e = e)
+}
+
+# The breakpoints of a coordinate at one setting of the deeper coordinates: the
+# candidate roots (a column each) of the equations of the bounds at the
+# reference values of the groups and of the sign of the coefficient, from the
+# states 'low' and 'high' of the coordinate at 0 and 1, with the exponent of the
+# bound of each root (1 for the sign).
+.prior_ordered_product_candidates <- function(low, high, references, bounds, exponents){
+
+  dc <- high$scale - low$scale
+  ds <- high$shift - low$shift
+  values <- list()
+  exponent <- numeric()
+  for(r in seq_len(ncol(references))){
+    for(k in seq_along(bounds)){
+      values[[length(values) + 1L]] <-
+        (references[, r] - low$shift - bounds[[k]] * low$scale) / (ds + bounds[[k]] * dc)
+      exponent <- c(exponent, exponents[[k]])
+    }
+  }
+  values[[length(values) + 1L]] <- -low$scale / dc
+  list(values = values, exponents = c(exponent, 1))
+}
+
+# The sorted edges (from 0 to 1) of the pieces of a coordinate from the
+# candidate roots, with the exponent at each interior edge (NA at 0 and 1).
+.prior_ordered_product_finish_edges <- function(candidates){
+
+  breaks <- do.call(cbind, candidates$values)
+  exponents <- matrix(candidates$exponents, nrow = nrow(breaks), ncol = ncol(breaks), byrow = TRUE)
+  breaks[!is.finite(breaks) | breaks <= 0 | breaks >= 1] <- 1
+  sorted <- .prior_ordered_product_sort_rows(breaks, exponents)
+  list(edges = cbind(0, sorted$x, 1), exponents = cbind(NA_real_, sorted$e, NA_real_))
 }
 
 # The nodes of the pieces of [0, 1] between the sorted 'edges' (a row of edges
 # per integral, from 0 to 1) for a Beta(a, b) weight, with 'n' nodes per piece:
 # the integral row ('row'), the node ('v') and the weight that multiplies the
 # integrand there (the Beta density and the width of the piece included).
-.prior_ordered_product_split <- function(edges, a, b, n){
+# 'exponents' are the exponents of the density of the total at the interior
+# edges; a piece next to an edge with an exponent below 1 is smoothed there.
+.prior_ordered_product_split <- function(edges, exponents, a, b, n){
 
   out <- list(row = integer(), v = numeric(), w = numeric())
   log_beta <- lbeta(a, b)
-  for(j in seq_len(ncol(edges) - 1L)){
+  last <- ncol(edges)
+  for(j in seq_len(last - 1L)){
     lower <- edges[, j]
     upper <- edges[, j + 1L]
     kept <- which(upper > lower)
     if(length(kept) == 0L){
       next
     }
+    left_exponent <- if(j > 1L) exponents[kept, j] else rep(NA_real_, length(kept))
+    right_exponent <- if(j + 1L < last) exponents[kept, j + 1L] else rep(NA_real_, length(kept))
+    singular <- .prior_ordered_product_needs_smoothing(left_exponent) |
+      .prior_ordered_product_needs_smoothing(right_exponent)
     reaches_end <- upper[kept] == 1
+    # pieces without a singular breakpoint: Gauss-Jacobi with the Beta weight of an end
     for(right in c(TRUE, FALSE)){
-      rows <- kept[reaches_end == right]
+      rows <- kept[!singular & reaches_end == right]
       if(length(rows) == 0L){
         next
       }
-      # the Beta weight of an end that the piece reaches; the factor of the
-      # other end is a smooth function of the piece
-      left_exponent <- if(j == 1L) a else 1
-      right_exponent <- if(right) b else 1
-      rule <- .prior_ordered_beta_rule(n, left_exponent, right_exponent)
+      left_parameter <- if(j == 1L) a else 1
+      right_parameter <- if(right) b else 1
+      rule <- .prior_ordered_beta_rule(n, left_parameter, right_parameter)
       width <- upper[rows] - lower[rows]
       v <- lower[rows] + outer(width, rule$u)
-      weight <- (width * exp(lbeta(left_exponent, right_exponent) - log_beta)) *
+      weight <- (width * exp(lbeta(left_parameter, right_parameter) - log_beta)) *
         (if(j == 1L) width^(a - 1) else v^(a - 1)) *
         (if(right) width^(b - 1) else (1 - v)^(b - 1)) *
         matrix(rule$w, nrow = length(rows), ncol = n, byrow = TRUE)
@@ -88,38 +189,64 @@
       out$v <- c(out$v, as.vector(v))
       out$w <- c(out$w, as.vector(weight))
     }
+    # pieces next to a singular breakpoint: tau = s^qL / (s^qL + (1 - s)^qR), Gauss-Legendre in s
+    rows <- which(singular)
+    if(length(rows) > 0L){
+      rows_kept <- kept[rows]
+      width <- upper[rows_kept] - lower[rows_kept]
+      left_beta <- j == 1L
+      right_beta <- upper[rows_kept] == 1
+      smoothing <- function(exponent){
+        ifelse(.prior_ordered_product_needs_smoothing(exponent), ceiling(6 / exponent), 1)
+      }
+      q_left <- if(left_beta) rep(smoothing(a), length(rows)) else smoothing(left_exponent[rows])
+      q_right <- ifelse(right_beta, smoothing(b), smoothing(right_exponent[rows]))
+      rule <- .prior_ordered_beta_rule(n, 1, 1)
+      log_s <- matrix(log(rule$u), nrow = length(rows), ncol = n, byrow = TRUE)
+      log_t <- matrix(log1p(-rule$u), nrow = length(rows), ncol = n, byrow = TRUE)
+      left <- q_left * log_s
+      right_term <- q_right * log_t
+      log_d <- pmax(left, right_term) + log1p(exp(-abs(left - right_term)))
+      log_tau <- left - log_d
+      log_one_minus_tau <- right_term - log_d
+      first <- log(q_left) + (q_left - 1) * log_s + right_term
+      second <- log(q_right) + left + (q_right - 1) * log_t
+      log_derivative <- pmax(first, second) + log1p(exp(-abs(first - second))) - 2 * log_d
+      v <- lower[rows_kept] + width * exp(log_tau)
+      log_v <- if(left_beta) log(width) + log_tau else log(v)
+      log_one_minus_v <- ifelse(matrix(right_beta, nrow = length(rows), ncol = n),
+                                log(width) + log_one_minus_tau, log1p(-v))
+      weight <- width * matrix(rule$w, nrow = length(rows), ncol = n, byrow = TRUE) *
+        exp((a - 1) * log_v + (b - 1) * log_one_minus_v - log_beta + log_derivative)
+      out$row <- c(out$row, rep(rows_kept, times = n))
+      out$v <- c(out$v, as.vector(v))
+      out$w <- c(out$w, as.vector(weight))
+    }
   }
   out
 }
 
-# The sorted edges (from 0 to 1) of the pieces of the coordinate after the
-# fixed 'prefix' (a row per integral, with the group 'g' of target values in
-# 'values'): the breakpoints at the 'corners' (the values of the deeper
-# coordinates, a row each) of the equations of the bounds and of the sign of the
-# coefficient. Without 'corners' only the coordinate itself is split.
-.prior_ordered_product_edges <- function(spec, prefix, g, values, bounds, deeper){
+# The sorted edges and their exponents of the coordinate after the fixed
+# 'prefix' (a row per integral, with the group 'g' of target values in
+# 'values'): the breakpoints at the 'deeper' coordinates' corners of the
+# equations of the bounds and of the sign of the coefficient.
+.prior_ordered_product_edges <- function(spec, prefix, g, values, bounds, exponents, deeper){
 
   rows <- nrow(prefix)
   corners <- as.matrix(expand.grid(rep(list(c(0, 1)), deeper), KEEP.OUT.ATTRS = FALSE))
   references <- values[g, , drop = FALSE]
-  candidates <- list()
+  candidates <- list(values = list(), exponents = numeric())
   for(corner in seq_len(nrow(corners))){
     tail <- matrix(corners[corner, ], nrow = rows, ncol = deeper, byrow = TRUE)
-    low <- .prior_ordered_product_state(spec, cbind(prefix, 0, tail))
-    high <- .prior_ordered_product_state(spec, cbind(prefix, 1, tail))
-    dc <- high$scale - low$scale
-    ds <- high$shift - low$shift
-    for(r in seq_len(ncol(references))){
-      for(bound in bounds){
-        candidates[[length(candidates) + 1L]] <-
-          (references[, r] - low$shift - bound * low$scale) / (ds + bound * dc)
-      }
-    }
-    candidates[[length(candidates) + 1L]] <- -low$scale / dc
+    found <- .prior_ordered_product_candidates(
+      .prior_ordered_product_state(spec, cbind(prefix, 0, tail)),
+      .prior_ordered_product_state(spec, cbind(prefix, 1, tail)),
+      references, bounds, exponents
+    )
+    candidates$values <- c(candidates$values, found$values)
+    candidates$exponents <- c(candidates$exponents, found$exponents)
   }
-  breaks <- do.call(cbind, candidates)
-  breaks[!is.finite(breaks) | breaks <= 0 | breaks >= 1] <- 1
-  cbind(0, .prior_ordered_product_sort_rows(breaks), 1)
+  .prior_ordered_product_finish_edges(candidates)
 }
 
 # The expectation of 'integrand(group, c, s)' over the shares for the groups of
@@ -136,8 +263,9 @@
   p <- length(coordinates)
   m <- nrow(values)
   total <- spec$terms[[spec$random_terms[[1L]]]]$total
-  bounds <- unlist(total$truncation[c("lower", "upper")], use.names = FALSE)
-  bounds <- bounds[is.finite(bounds)]
+  exponents <- .prior_ordered_product_bound_exponents(total)
+  bounds <- as.numeric(names(exponents))
+  exponents <- unname(exponents)
   sizes <- .prior_ordered_product_sizes(p)
   value <- rep(NA_real_, m)
   estimate <- rep(NA_real_, m)
@@ -169,7 +297,7 @@
       for(start in seq.int(1L, length(active), by = chunk)){
         groups <- active[start:min(length(active), start + chunk - 1L)]
         integrals <- .prior_ordered_product_nested(
-          spec, values, bounds, integrand, groups, size, nested
+          spec, values, bounds, exponents, integrand, groups, size, nested
         )
         current[match(groups, active)] <- integrals$value
         evaluations <- evaluations + integrals$evaluations
@@ -180,8 +308,11 @@
       good <- is.finite(current) & current > 0 & is.finite(difference) &
         difference <= tolerance * current
       if(stable){
+        # the differences of a convergent sequence decrease: at least halve (or
+        # are at the rounding level) and follow an earlier difference that is small
         good <- good & is.finite(previous_change[active]) &
-          previous_change[active] <= 100 * tolerance * current
+          previous_change[active] <= 100 * tolerance * current &
+          (difference <= 0.5 * previous_change[active] | difference <= 1e-3 * tolerance * current)
       }
       accepted[active[good]] <- TRUE
       value[active[good]] <- current[good]
@@ -195,7 +326,7 @@
 
 # One rule size of the nested pieces for the 'groups': the integral of each
 # group and the evaluations of the integrand.
-.prior_ordered_product_nested <- function(spec, values, bounds, integrand, groups, n, nested){
+.prior_ordered_product_nested <- function(spec, values, bounds, exponents, integrand, groups, n, nested){
 
   coordinates <- spec$structure$coordinates
   p <- length(coordinates)
@@ -203,12 +334,14 @@
   weight <- rep(1, length(groups))
   g <- groups
   for(k in seq_len(p - 1L)){
-    edges <- if(nested){
-      .prior_ordered_product_edges(spec, prefix, g, values, bounds, p - k)
+    if(nested){
+      found <- .prior_ordered_product_edges(spec, prefix, g, values, bounds, exponents, p - k)
     }else{
-      matrix(c(0, 1), nrow = nrow(prefix), ncol = 2L, byrow = TRUE)
+      found <- list(edges = matrix(c(0, 1), nrow = nrow(prefix), ncol = 2L, byrow = TRUE),
+                    exponents = matrix(NA_real_, nrow = nrow(prefix), ncol = 2L))
     }
-    split <- .prior_ordered_product_split(edges, coordinates[[k]]$a, coordinates[[k]]$b, n)
+    split <- .prior_ordered_product_split(found$edges, found$exponents, coordinates[[k]]$a,
+                                          coordinates[[k]]$b, n)
     prefix <- cbind(prefix[split$row, , drop = FALSE], split$v)
     weight <- weight[split$row] * split$w
     g <- g[split$row]
@@ -218,27 +351,19 @@
   inner <- coordinates[[p]]
   low <- .prior_ordered_product_state(spec, cbind(prefix, 0))
   high <- .prior_ordered_product_state(spec, cbind(prefix, 1))
+  found <- .prior_ordered_product_finish_edges(.prior_ordered_product_candidates(
+    low, high, values[g, , drop = FALSE], bounds, exponents
+  ))
+  split <- .prior_ordered_product_split(found$edges, found$exponents, inner$a, inner$b, n)
   dc <- high$scale - low$scale
   ds <- high$shift - low$shift
-  references <- values[g, , drop = FALSE]
-  candidates <- list()
-  for(r in seq_len(ncol(references))){
-    for(bound in bounds){
-      candidates[[length(candidates) + 1L]] <-
-        (references[, r] - low$shift - bound * low$scale) / (ds + bound * dc)
-    }
-  }
-  candidates[[length(candidates) + 1L]] <- -low$scale / dc
-  breaks <- do.call(cbind, candidates)
-  breaks[!is.finite(breaks) | breaks <= 0 | breaks >= 1] <- 1
-  split <- .prior_ordered_product_split(
-    cbind(0, .prior_ordered_product_sort_rows(breaks), 1), inner$a, inner$b, n
-  )
   evaluated <- integrand(
     g[split$row],
     low$scale[split$row] + dc[split$row] * split$v,
     low$shift[split$row] + ds[split$row] * split$v
   )
+  # a node of a singular piece may round onto the bound itself: a single point
+  evaluated[!is.finite(evaluated)] <- 0
   inner_integral <- numeric(length(g))
   sums <- rowsum(split$w * evaluated, split$row)
   inner_integral[as.integer(rownames(sums))] <- sums[, 1L]
