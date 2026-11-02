@@ -54,7 +54,7 @@
     density_control = density_control,
     columns         = columns
   )
-  out <- .hypothesis_model_ordered_labels(plan, switch(
+  out <- .hypothesis_model_ordered_labels(plan[["selected"]], plan[["label"]], switch(
     plan[["route"]],
     scalar      = do.call(.hypothesis_model_plan_execute_scalar, arguments),
     levels      = do.call(.hypothesis_model_plan_execute_levels, arguments),
@@ -74,21 +74,32 @@
 }
 
 
-# The evaluation 'expr' of a plan on an ordered quantity, with the root of the
-# quantity named by its displayed label in the messages of its errors.
-.hypothesis_model_ordered_labels <- function(plan, expr) {
+# The planning or the evaluation 'expr' of a statement on an ordered quantity,
+# with the root of the quantity and its canonical name named by its displayed
+# 'label' in the messages of its errors (whole names only: the name of the
+# total is a prefix of the name of its indicator coordinate).
+.hypothesis_model_ordered_labels <- function(selected, label, expr) {
 
-  if (!identical(plan[["selected"]][["entry"]][["source"]], "ordered")) {
+  entry <- selected[["entry"]]
+  if (!identical(entry[["source"]], "ordered")) {
     return(expr)
   }
+  names <- unique(c(entry[["parameter"]], entry[["term"]]))
+  rename <- function(text) {
+    for (name in names) {
+      pattern <- paste0("(?<![A-Za-z0-9_])\\Q", name, "\\E(?![A-Za-z0-9_])")
+      text <- vapply(text, function(x) {
+        matches <- gregexpr(pattern, x, perl = TRUE)
+        regmatches(x, matches) <- list(rep(label, length(regmatches(x, matches)[[1L]])))
+        x
+      }, character(1), USE.NAMES = FALSE)
+    }
+    text
+  }
   tryCatch(expr, error = function(condition) {
-    condition[["message"]] <- gsub(
-      plan[["parameter"]], plan[["label"]], conditionMessage(condition), fixed = TRUE
-    )
+    condition[["message"]] <- rename(conditionMessage(condition))
     if (is.character(condition[["label"]])) {
-      condition[["label"]] <- gsub(
-        plan[["parameter"]], plan[["label"]], condition[["label"]], fixed = TRUE
-      )
+      condition[["label"]] <- rename(condition[["label"]])
     }
     stop(condition)
   })

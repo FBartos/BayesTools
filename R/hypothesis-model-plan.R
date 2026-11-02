@@ -526,7 +526,9 @@ hypothesis_stop <- function(reason, type = c("target", "fixed", "method",
   entry <- selected[["entry"]]
   plan  <- if (identical(selected[["component"]], provider[["components"]][["random"]]) ||
                identical(entry[["source"]], "ordered")) {
-    .hypothesis_model_plan_random(plan, provider, cache)
+    .hypothesis_model_ordered_labels(
+      selected, plan[["label"]], .hypothesis_model_plan_random(plan, provider, cache)
+    )
   } else if (identical(entry[["role"]], "formula_coefficient_group")) {
     .hypothesis_model_plan_linear(plan, provider, metadata, cache)
   } else {

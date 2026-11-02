@@ -139,16 +139,20 @@
 }
 
 # The per-draw states of the plan of a share: never on an atom, always
-# defined, in the event when the total of its term is in its alternative.
-.bt_ordered_share_states <- function(plan, n, model_samples){
+# defined. The inclusion event (the total of its term is in its alternative)
+# is evaluated on request only, as it needs the indicator of the total: the
+# draws and the prior of an unconditional share do not.
+.bt_ordered_share_states <- function(plan, n, model_samples, with_event = FALSE){
 
   list(
     atom    = rep(NA_real_, n),
     defined = rep(TRUE, n),
-    event   = .condition_event_posterior_mask(
-      .condition_event(plan$prior_list, plan$event_gates, "AND"),
-      plan$prior_list, model_samples
-    ),
+    event   = if(isTRUE(with_event)){
+      .condition_event_posterior_mask(
+        .condition_event(plan$prior_list, plan$event_gates, "AND"),
+        plan$prior_list, model_samples
+      )
+    },
     known   = TRUE
   )
 }
@@ -170,6 +174,25 @@
   }
 
   .posterior_support_from_prior(prior_list[[owner]]$total, source = "catalog")
+}
+
+# The declared support of an ordered quantity within its inclusion event: the
+# catalog support of the quantity under the priors restricted to the event
+# (.condition_event_model_options(): the continuous components of the total
+# priors), united over the restricted models. The unconditional support keeps
+# the bounds and the point of the null component, which the draws of the event
+# never take.
+.bt_ordered_conditioned_support <- function(fit, plan, quantity){
+
+  prior_list <- plan$prior_list
+  options <- .condition_event_model_options(
+    prior_list, .condition_event(prior_list, plan$event_gates, "AND")
+  )
+  .posterior_support_union(lapply(options$prior_lists, function(restricted){
+    restricted_fit <- fit
+    attr(restricted_fit, "prior_list") <- restricted
+    .bt_parameter_catalog_quantity_support(restricted_fit, quantity)
+  }), source = "catalog")
 }
 
 # The prior density of the total coordinate of an ordered term (the density of

@@ -498,3 +498,105 @@ test_that("the total is tested on the original scale only when its term is unsca
                .ordered_hypothesis_bf(unscaled, "f{total} > 0", transform_scaled = FALSE)$BF,
                tolerance = 1e-12)
 })
+
+test_that("conditional ordered totals take the support of their restricted prior", {
+
+  # spike at 0 and a Uniform(1, 2) slab: the draws of the inclusion event lie
+  # in [1, 2], whose exact support the boundary correction of the posterior
+  # ordinate needs (the unconditional support has the point 0 and is inexact)
+  n <- 40000L
+  spike <- prior_spike_and_slab(prior("uniform", list(1, 2)), prior("point", list(.5)))
+  included <- function(slab){
+    function(sources){
+      sources[, "mu_f_ordered_total_indicator"] <- stats::rbinom(n, 1L, .5)
+      sources[, "mu_f_ordered_total_variable"]  <- slab(n)
+      sources[, "mu_f_ordered_total"] <- sources[, "mu_f_ordered_total_indicator"] *
+        sources[, "mu_f_ordered_total_variable"]
+      sources
+    }
+  }
+  # the posterior is the prior: the Bayes factor is 1 at the boundaries and inside
+  fit <- .ordered_hypothesis_single(total = spike, n = n, modify = included(function(n) stats::runif(n, 1, 2)))
+  selection <- parameter_catalog_resolve(parameter_catalog(fit), "f{total}")
+  expect_identical(unclass(selection$quantities$support[[1L]])$points, 0)
+  expect_false(selection$quantities$support[[1L]]$exact)
+  support <- posterior_metadata(
+    parameter_mixed_posterior(fit, selection, conditional = TRUE, transform_scaled = FALSE), "support"
+  )
+  expect_identical(unclass(support)$bounds, c(1, 2))
+  expect_length(unclass(support)$points, 0L)
+  expect_true(support$exact)
+  for(value in c(1, 1.5, 2)){
+    expect_equal(.ordered_hypothesis_bf(fit, paste("f{total} =", value), conditional = TRUE)$BF, 1,
+                 tolerance = 0.05, info = value)
+  }
+  # the posterior density 2 (2 - x) on [1, 2] against the prior density 1: the
+  # Bayes factors are 1 / 2 at the bound 1 and 1 at 1.5 (the kernel error at
+  # the reflected boundary is tolerated up to 8%)
+  fit <- .ordered_hypothesis_single(total = spike, n = n,
+                                    modify = included(function(n) 1 + stats::rbeta(n, 1, 2)))
+  expect_equal(.ordered_hypothesis_bf(fit, "f{total} = 1", conditional = TRUE)$BF, 1 / 2, tolerance = 0.08)
+  expect_equal(.ordered_hypothesis_bf(fit, "f{total} = 1.5", conditional = TRUE)$BF, 1, tolerance = 0.05)
+  # a slab-only bounded prior (the unconditional support is exact)
+  fit <- .ordered_hypothesis_single(total = prior("uniform", list(1, 2)), n = n)
+  for(value in c(1, 1.5, 2)){
+    expect_equal(.ordered_hypothesis_bf(fit, paste("f{total} =", value))$BF, 1, tolerance = 0.05, info = value)
+  }
+})
+
+test_that("unconditional shares do not need the inclusion indicator of their total", {
+
+  # a fit that did not monitor the indicator of the spike-and-slab total
+  n <- 40000L
+  spike <- prior_spike_and_slab(N01, prior("point", list(.5)))
+  fit <- .ordered_hypothesis_single(total = spike, n = n, modify = function(sources){
+    sources <- .ordered_gamma(sources, stats::rgamma(n, 3), stats::rgamma(n, 1))
+    sources[, !grepl("_indicator$", colnames(sources)), drop = FALSE]
+  })
+  expect_false("mu_f_ordered_total_indicator" %in% colnames(as.matrix(fit$mcmc)))
+  selection <- parameter_catalog_resolve(parameter_catalog(fit), "f[share: mid]")
+  expect_identical(selection$quantities$status, "derived")
+  expect_length(parameter_mixed_posterior(fit, selection, transform_scaled = FALSE), n)
+  # the Beta(3, 1) posterior of the share against its Beta(1, 1) prior: BF 7
+  unconditional <- .ordered_hypothesis_bf(fit, "f[share: mid] > 0.5")
+  expect_equal(unconditional$BF, 7, tolerance = 0.06)
+  # the inclusion event needs the indicator
+  indicator_message <- paste0(
+    "Ordered total indicator 'mu_f_ordered_total_indicator' is unavailable in 'draws'. ",
+    "Include its monitored source coordinate."
+  )
+  expect_error(parameter_mixed_posterior(fit, selection, conditional = TRUE, transform_scaled = FALSE),
+               indicator_message, fixed = TRUE)
+  expect_error(.ordered_hypothesis_bf(fit, "f[share: mid] > 0.5", conditional = TRUE),
+               indicator_message, fixed = TRUE)
+})
+
+test_that("planning errors of ordered quantities name their displayed labels", {
+
+  # a normal total has no inclusion event to condition on
+  fit <- .ordered_hypothesis_single(n = 1000L)
+  event_message <- function(label){
+    paste0("The inclusion event of '", label, "' is unavailable: the quantity has no ",
+           "inclusion gate. Use 'conditional = FALSE'.")
+  }
+  for(statement in c("f[share: mid] > 0.5", "(mu) f[share: mid] > 0.5", "f_ordered_allocation[mid] > 0.5",
+                     "mu_f_ordered_allocation[mid] > 0.5")){
+    condition <- tryCatch(hypothesis_BF(fit, statement, conditional = TRUE), error = function(e) e)
+    expect_identical(conditionMessage(condition), event_message("(mu) f[share: mid]"), info = statement)
+  }
+  for(statement in c("f{total} > 0", "f_ordered_total > 0", "mu_f_ordered_total > 0")){
+    condition <- tryCatch(hypothesis_BF(fit, statement, conditional = TRUE), error = function(e) e)
+    expect_identical(conditionMessage(condition), event_message("(mu) f{total}"), info = statement)
+  }
+  # sliced quantities
+  data <- .ordered_hypothesis_data()
+  sliced <- .ordered_hypothesis_fit(~ f * g, list(intercept = N01, f = prior_ordered(N01),
+    g = prior_factor("normal", list(0, 1), contrast = "treatment"), "f:g" = prior_ordered(N01)), data, n = 1000L)
+  for(statement in c("f{total}:g{2} > 0", "mu_f__xXx__g_ordered_total[2] > 0")){
+    condition <- tryCatch(hypothesis_BF(sliced, statement, conditional = TRUE), error = function(e) e)
+    expect_identical(conditionMessage(condition), event_message("(mu) f{total}:g{2}"), info = statement)
+  }
+  condition <- tryCatch(hypothesis_BF(sliced, "mu_f__xXx__g_ordered_allocation[2][hi] > 0.5", conditional = TRUE),
+                        error = function(e) e)
+  expect_identical(conditionMessage(condition), event_message("(mu) f[share: hi]:g{2}"))
+})

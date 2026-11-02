@@ -404,6 +404,8 @@ parameter_gate_states <- function(fit, selection, draws = NULL){
     .bt_parameter_point_conditioned_support(fit, plan, quantity)
   }else if(isTRUE(conditional) && isTRUE(plan$kind %in% c("component", "total", "var_prop"))){
     .bt_parameter_gate_conditioned_support(quantity$support[[1L]], prior_density)
+  }else if(isTRUE(conditional) && identical(plan$kind, "ordered_projection")){
+    .bt_ordered_conditioned_support(fit, plan, quantity)
   }else{
     quantity$support[[1L]]
   })
@@ -1028,7 +1030,7 @@ parameter_gate_states <- function(fit, selection, draws = NULL){
   }
   if(identical(plan$kind, "ordered_share")){
     if(is.null(model_samples)) model_samples <- as.matrix(.fit_to_posterior(fit))
-    return(.bt_ordered_share_states(plan, n, model_samples))
+    return(.bt_ordered_share_states(plan, n, model_samples, with_event))
   }
   gate_columns <- unique(c(
     plan$chain_gates, plan$component_gates, plan$parent_gates
