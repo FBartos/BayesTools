@@ -8,10 +8,10 @@ fit_model	fit_no_phylo	12.610000000	NA	4.6.0	Windows/x86_64-w64-mingw32
 fit_model	fit_phylo	655.160000000	NA	4.6.0	Windows/x86_64-w64-mingw32
 fit_marglik	fit_no_phylo	28.730000000	NA	4.6.0	Windows/x86_64-w64-mingw32
 fit_marglik	fit_phylo	57.650000000	NA	4.6.0	Windows/x86_64-w64-mingw32
-text	bayes-factor-phylogeny	2.040000000	2.839063	4.6.0	Windows/x86_64-w64-mingw32
-text	comparison-phylo	0.920000000	2.653809	4.6.0	Windows/x86_64-w64-mingw32
-text	estimates-no-phylo	2.090000000	2.881836	4.6.0	Windows/x86_64-w64-mingw32
-text	estimates-phylo	1.940000000	2.792090	4.6.0	Windows/x86_64-w64-mingw32
-text	likelihood-ratio-metafor	0.000000000	1.807617	4.6.0	Windows/x86_64-w64-mingw32
-plot	posterior-sd	2.810000000	3.281445	4.6.0	Windows/x86_64-w64-mingw32
-plot	species-effects	1.530000000	2.831348	4.6.0	Windows/x86_64-w64-mingw32
+text	bayes-factor-phylogeny	0.830000000	2.721973	4.6.0	Windows/x86_64-w64-mingw32
+text	comparison-phylo	0.900000000	2.653809	4.6.0	Windows/x86_64-w64-mingw32
+text	estimates-no-phylo	0.970000000	2.726758	4.6.0	Windows/x86_64-w64-mingw32
+text	estimates-phylo	1.940000000	2.692871	4.6.0	Windows/x86_64-w64-mingw32
+text	likelihood-ratio-metafor	0.000000000	1.729980	4.6.0	Windows/x86_64-w64-mingw32
+plot	posterior-sd	1.800000000	3.220410	4.6.0	Windows/x86_64-w64-mingw32
+plot	species-effects	1.530000000	2.761523	4.6.0	Windows/x86_64-w64-mingw32
