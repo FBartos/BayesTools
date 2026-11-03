@@ -1,5 +1,5 @@
                    H1                    H0                 method log_BF10 note
-1 ordered temperature    linear temperature        bridge sampling    0.127     
+1 ordered temperature    linear temperature        bridge sampling    0.145     
 2 ordered temperature    linear temperature bridge sampling (brms)    0.134     
-3 ordered temperature unordered temperature        bridge sampling    6.687     
+3 ordered temperature unordered temperature        bridge sampling    6.707     
 4 ordered temperature unordered temperature bridge sampling (brms)    6.675     
