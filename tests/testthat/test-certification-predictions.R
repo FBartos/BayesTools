@@ -15,7 +15,8 @@ skip_if_not_installed("runjags")
 # 0.6^2 z z'. Sampled means and SDs are held to four Monte Carlo SDs:
 # SD / sqrt(ESS) for a mean, with the effective sample size of each
 # prediction's draws, and SD / sqrt(2 ESS2) for an SD (the predictions are
-# normal), with the effective sample size ESS2 of their squared deviations.
+# normal), with the effective sample size ESS2 of their squared deviations
+# (both estimated chain by chain).
 # Every ESS exceeds 1000, so no bound exceeds 0.13 of a prediction SD.
 
 prediction_data <- local({
@@ -56,8 +57,10 @@ test_that("formula predictions match the exact Gaussian posterior predictions", 
     chains = 4, adapt = 1000, burnin = 1000, sample = 10000, seed = 1
   )
   expect_moments <- function(draws, exact) {
-    ess <- apply(draws, 1L, function(row) coda::effectiveSize(coda::mcmc(row)))
-    ess_square <- apply(draws, 1L, function(row) coda::effectiveSize(coda::mcmc((row - mean(row))^2)))
+    # the draws of the 4 chains follow one another
+    chains <- function(row) coda::mcmc.list(lapply(split(row, rep(1:4, each = length(row) / 4L)), coda::mcmc))
+    ess <- apply(draws, 1L, function(row) coda::effectiveSize(chains(row)))
+    ess_square <- apply(draws, 1L, function(row) coda::effectiveSize(chains((row - mean(row))^2)))
     expect_true(all(is.finite(ess) & ess > 1000 & is.finite(ess_square) & ess_square > 1000))
     observed <- cbind(mean = rowMeans(draws), sd = apply(draws, 1L, stats::sd))
     expect_true(all(abs(observed[, "mean"] - exact[, "mean"]) < 4 * exact[, "sd"] / sqrt(ess)))
@@ -117,8 +120,10 @@ test_that("mean-centered random intercepts and slopes predict the exact Gaussian
   expect_identical(JAGS_formula_design(fit)$mu$random_effects[[1L]]$mean_translation$absorbed_terms,
                    c("intercept", "x"))
   expect_moments <- function(draws, exact) {
-    ess <- apply(draws, 1L, function(row) coda::effectiveSize(coda::mcmc(row)))
-    ess_square <- apply(draws, 1L, function(row) coda::effectiveSize(coda::mcmc((row - mean(row))^2)))
+    # the draws of the 4 chains follow one another
+    chains <- function(row) coda::mcmc.list(lapply(split(row, rep(1:4, each = length(row) / 4L)), coda::mcmc))
+    ess <- apply(draws, 1L, function(row) coda::effectiveSize(chains(row)))
+    ess_square <- apply(draws, 1L, function(row) coda::effectiveSize(chains((row - mean(row))^2)))
     expect_true(all(is.finite(ess) & ess > 1000 & is.finite(ess_square) & ess_square > 1000))
     observed <- cbind(mean = rowMeans(draws), sd = apply(draws, 1L, stats::sd))
     expect_true(all(abs(observed[, "mean"] - exact[, "mean"]) < 4 * exact[, "sd"] / sqrt(ess)))

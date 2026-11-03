@@ -123,6 +123,11 @@ registers no such node, and `selection_backend_spec()` writes its constant
 `selection_backend_spec()` change only the syntax it emits: the evaluators
 (`JAGS_marglik_parameters()`, `JAGS_marglik_priors()`, bridge sampling) read the
 default names and the grid that `JAGS_fit()` emits.
+The internal intermediates of random-effect blocks (latent transforms, realized
+coefficients, mean-centering locations and their helpers, structured
+recurrences) are not families: they are internal coordinates, and the
+random-effect reconstruction recomputes block contributions from the
+canonical latents, SDs, and correlations.
 `JAGS_deterministic_nodes()` lists the nodes;
 `JAGS_deterministic_evaluator()` resolves them once into an evaluator
 of draws (repeated or one-draw evaluation), and `JAGS_evaluate_deterministic()`

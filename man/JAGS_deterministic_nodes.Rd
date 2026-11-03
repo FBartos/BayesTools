@@ -48,10 +48,12 @@ nodes of \code{fit} resolved when the evaluator is created.
 }
 \description{
 \code{JAGS_deterministic_nodes()} lists the deterministic
-nodes that BayesTools generates in the JAGS model of a fit, with the family
-that defines them, the coordinates they produce, and the coordinates they
-are computed from. \code{JAGS_evaluate_deterministic()} recomputes their
-values from draws of those coordinates. \code{JAGS_deterministic_evaluator()}
+nodes that BayesTools generates in the JAGS model of a fit (other than the
+internal intermediates of random-effect blocks, which the random-effect
+reconstruction recomputes), with the family that defines them, the
+coordinates they produce, and the coordinates they are computed from.
+\code{JAGS_evaluate_deterministic()} recomputes their values from draws of
+those coordinates. \code{JAGS_deterministic_evaluator()}
 resolves the nodes of a fit once and returns a function that evaluates them
 on draws, for repeated evaluations (e.g. one draw at a time).
 }
