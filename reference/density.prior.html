@@ -18,7 +18,7 @@ distribution across a range of values."><!-- mathjax --><script src="https://cdn
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.3.0</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.4.0</span>
       </span>
     </div>
 
@@ -33,10 +33,13 @@ distribution across a range of values."><!-- mathjax --><script src="https://cdn
     <span class="caret"></span>
   </a>
   <ul class="dropdown-menu" role="menu"><li>
-      <a href="../articles/ComparisonR.html">Comparison to other R packages</a>
+      <a href="../articles/ComparisonR.html">Bayesian t-Test Compared with BayesFactor</a>
     </li>
     <li>
-      <a href="../articles/SpikeAndSlab.html">Bayes factors via spike and slab prior vs. bridge sampling</a>
+      <a href="../articles/RandomEffects.html">Random Effects with Formula Syntax</a>
+    </li>
+    <li>
+      <a href="../articles/SpikeAndSlab.html">Variable Selection with Spike-and-Slab Priors</a>
     </li>
   </ul></li>
 <li>
@@ -100,7 +103,7 @@ distribution across a range of values.</p>
 
 <dt id="arg-x-range">x_range<a class="anchor" aria-label="anchor" href="#arg-x-range"></a></dt>
 <dd><p>vector of length two with
-lower and upper range for the support
+lower and upper display limits
 (used if <code>x_seq</code> is unspecified)</p></dd>
 
 
@@ -108,9 +111,10 @@ lower and upper range for the support
 <dd><p>quantile used for
 automatically obtaining <code>x_range</code>
 if both <code>x_range</code> and <code>x_seq</code>
-are unspecified. Defaults to <code>0.005</code>
-for all but Cauchy, Student-t, Gamma, and
-Inverse-gamme distributions that use
+are unspecified. A number in the open interval <code>(0, 0.5)</code>;
+other values are refused. Defaults to <code>0.005</code>
+for all but Cauchy, Student-t, Gamma, inverse-gamma,
+moment, and inverse-moment distributions that use
 <code>0.010</code>.</p></dd>
 
 
@@ -128,7 +132,14 @@ analytically (or if samples are forced with
 
 <dt id="arg-force-samples">force_samples<a class="anchor" aria-label="anchor" href="#arg-force-samples"></a></dt>
 <dd><p>should prior be sampled instead
-of obtaining analytic solution whenever possible</p></dd>
+of obtaining analytic solution whenever possible. For supported ordered
+mixed measures, exact analytic curves and atoms are retained and the
+requested samples are attached to each component. Supported scalar ordered
+literal point totals and mixtures whose total components are all literal
+points do not sample, store draws, or advance the RNG when
+<code>force_samples = FALSE</code>. With <code>force_samples = TRUE</code>, their
+original seeded draws are attached without replacing the analytic measure.
+Other ordered families retain their existing sampling fallback.</p></dd>
 
 
 <dt id="arg-individual">individual<a class="anchor" aria-label="anchor" href="#arg-individual"></a></dt>
@@ -151,8 +162,12 @@ specifying one of the prepared transformations:</p><dl><dt>lin</dt>
 
 </dl><p>, or a list containing the transformation function <code>fun</code>,
 inverse transformation function <code>inv</code>, and derivative of the
-transformation <code>jac</code>, evaluated on the original support. See examples
-for details.</p></dd>
+transformation <code>jac</code>, evaluated on the original support. A custom
+transformation can also declare <code>output_support = c(lower, upper)</code>.
+Display grids on the transformed scale are evaluated only within these
+bounds; a wider plotting range is retained without extending the density.
+Infinite inverse values at support boundaries are omitted from continuous
+density grids. Point masses retain their transformed locations.</p></dd>
 
 
 <dt id="arg-transformation-arguments">transformation_arguments<a class="anchor" aria-label="anchor" href="#arg-transformation-arguments"></a></dt>
@@ -162,13 +177,15 @@ the <code>transformation</code></p></dd>
 
 <dt id="arg-transformation-settings">transformation_settings<a class="anchor" aria-label="anchor" href="#arg-transformation-settings"></a></dt>
 <dd><p>boolean indicating whether the
-settings the <code>x_seq</code> or <code>x_range</code> was specified on
-the transformed support</p></dd>
+explicitly supplied <code>x_seq</code> or <code>x_range</code> is on
+the transformed scale. Automatically selected prior-coordinate ranges
+are always obtained on the source scale before the density family's
+existing transformation handling.</p></dd>
 
 
 <dt id="arg-truncate-end">truncate_end<a class="anchor" aria-label="anchor" href="#arg-truncate-end"></a></dt>
-<dd><p>whether the density should be set to zero in
-for the endpoints of truncated distributions</p></dd>
+<dd><p>whether the density should be set to zero
+for endpoints of truncated distributions</p></dd>
 
 
 <dt id="arg--">...<a class="anchor" aria-label="anchor" href="#arg--"></a></dt>
@@ -177,7 +194,85 @@ for the endpoints of truncated distributions</p></dd>
 </dl></div>
     <div id="value">
     <h2>Value</h2>
-    <p><code>density.prior</code> returns an object of class 'density'.</p>
+    <p><code>density.prior</code> returns an object of class 'density'. For
+Dirichlet simplex priors it returns a named list of beta-marginal density
+objects, one for each simplex coordinate. Ordered priors return one component
+per factor level. When a level has both discrete and continuous probability,
+its <code>atoms</code> table stores exact <code>location</code> and <code>mass</code> values,
+while its <code>continuous</code> table stores a density already weighted to
+integrate to the remaining continuous mass over its full support. A clipped
+plotting grid preserves density heights;
+<code>diagnostics$continuous_integral</code> reports its numerical trapezoid
+integral, which can differ from the exact continuous mass because of
+clipping and grid discretization. Nonfinite continuous ordinates are omitted
+by the structural mixed-measure route; the curve is not renormalized.
+A supported scalar point total times a random allocation share has a
+continuous scaled-Beta distribution at intermediate levels, with declared
+atoms retained for zero-total branches, reference levels, fixed shares,
+and the full-total level.
+A spike-and-slab prior returns a list of class
+<code>density.prior.spike_and_slab</code> with the slab density (<code>variable</code>)
+and the density of the spike at zero (<code>inclusion</code>), each scaled by its
+prior mass. Under a <code>transformation</code>, a prior with inclusion probability
+1 has no prior mass in the spike, returns <code>inclusion = NULL</code>, and does
+not require a representable image of the spike location (for example
+<code>log(0)</code>); any other inclusion probability does.</p>
+    </div>
+    <div id="details">
+    <h2>Details</h2>
+    <p>Sample-based density estimates for continuous priors with finite
+support use boundary-reflected kernel density estimates. The plotting range
+controls the evaluation grid, while reflection is based on the prior's true
+truncation bounds.
+Automatic transformed prior-coordinate ranges keep the existing source
+range and equally spaced source grid. Where the existing marginal and
+transformed density route supports it, a source display endpoint with an
+infinite transformed image uses the prior's existing marginal
+tail quantile, controlled by <code>x_range_quant</code>. Prior-list plots use the
+union of participating component marginal quantiles. This is a finite display window;
+the prior support, density, probability masses and mixture weights are unchanged.
+Invalid atom images remain unavailable. When an endpoint quantile is
+unavailable or its transformed image is still not finite (for example the 0.995
+quantile of a very wide prior under <code>"exp"</code>), the automatic display range
+of the transformed prior is unavailable: <code><a href="https://rdrr.io/r/stats/density.html" class="external-link">density()</a></code> stops with
+<code>BayesTools_prior_range_unavailable</code>, parent
+<code>BayesTools_transformation_domain</code> and <code>BayesTools_transformation</code>,
+with <code>call = NULL</code>, and the message names the remedy of explicit display
+limits (<code>x_range</code> or <code>x_seq</code>; <code>xlim</code> in the plotting functions).
+In <code><a href="plot_posterior.html">plot_posterior()</a></code> only the prior curve is omitted, with a warning of
+class <code>BayesTools_prior_curve_unavailable</code> (see there), and the posterior
+is drawn alone. Explicit source or transformed coordinates keep
+their supplied interpretation. Individual weightfunction and ordered routes
+retain their existing transformation behavior and conditions.
+Nonindividual PET/PEESE standard-error axes
+and weightfunction p-value axes retain their specialized interpretation.
+Declared point locations and finite builtin support bounds must have
+representable images. Finite-source exponential underflow, tanh saturation,
+positive-power underflow and nonfinite point images stop with
+<code>BayesTools_transformation_image_unavailable</code>, parent
+<code>BayesTools_transformation</code>, with <code>call = NULL</code> and fields
+<code>transformation</code>, <code>source_values</code>, and <code>images</code> for the
+matched failing finite sources. True zero under positive powers and infinite
+mathematical support limits retain their meaning. Continuous display grids
+retain their existing handling.
+Direct ordered Dirichlet-product densities use stable log-share arithmetic
+for literal, untruncated Normal totals with mean zero and finite positive SD,
+retaining the existing quadrature budget and tolerances. This guarded route
+does not certify tiny or nonrepresentable ranges. Every other total takes
+the same quadrature at each display value and accepts it when it converges
+within its tolerances and exceeds the absolute tolerance (the integral of a
+total concentrated away from zero can miss the band where the integrand is
+positive and give zero); the display values it does not accept take the
+structural route of the level (its total times a Beta share), built without
+a numerical grid. A quadrature that does not converge is not repeated for the
+rest of the level. Small second Beta shapes remain a numerical risk of the
+quadrature. A display value whose density neither the quadrature nor the route
+resolves (an <code>NA</code> height inside the support) is left out of the level and
+reported by a warning of class
+<code>BayesTools_prior_curve_unavailable</code> with the fields
+<code>unresolved_values</code>, <code>structural_values</code> (the limits at support
+ends without a structural classification, which are not warned about) and
+<code>levels</code>.</p>
     </div>
     <div id="see-also">
     <h2>See also</h2>
@@ -196,7 +291,7 @@ for the endpoints of truncated distributions</p></dd>
 </div>
 
 <div class="pkgdown">
-  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.0.</p>
+  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.1.</p>
 </div>
 
       </footer></div>

@@ -17,7 +17,7 @@
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.3.0</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.4.0</span>
       </span>
     </div>
 
@@ -32,10 +32,13 @@
     <span class="caret"></span>
   </a>
   <ul class="dropdown-menu" role="menu"><li>
-      <a href="../articles/ComparisonR.html">Comparison to other R packages</a>
+      <a href="../articles/ComparisonR.html">Bayesian t-Test Compared with BayesFactor</a>
     </li>
     <li>
-      <a href="../articles/SpikeAndSlab.html">Bayes factors via spike and slab prior vs. bridge sampling</a>
+      <a href="../articles/RandomEffects.html">Random Effects with Formula Syntax</a>
+    </li>
+    <li>
+      <a href="../articles/SpikeAndSlab.html">Variable Selection with Spike-and-Slab Priors</a>
     </li>
   </ul></li>
 <li>
@@ -118,6 +121,14 @@ for printed parameters.</p></dd>
     <h2>Value</h2>
     <p><code>print.prior</code> invisibly returns the print statement.</p>
     </div>
+    <div id="details">
+    <h2>Details</h2>
+    <p>A weightfunction prior, or a publication-bias prior with a
+weightfunction component, prints the specification of its
+<code><a href="selection_model.html">selection_model</a></code> after the prior name only when that
+specification differs from the default <code><a href="selection_model.html">selection_model()</a></code>. The
+branches of a bias-prior mixture are numbered by their position.</p>
+    </div>
     <div id="see-also">
     <h2>See also</h2>
     <div class="dont-index"><p><code><a href="prior.html">prior()</a></code></p></div>
@@ -161,7 +172,7 @@ for printed parameters.</p></dd>
 </div>
 
 <div class="pkgdown">
-  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.0.</p>
+  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.1.</p>
 </div>
 
       </footer></div>

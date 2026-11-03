@@ -19,7 +19,7 @@ bounds of parameters based on a list of prior distributions."><!-- mathjax --><s
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.3.0</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.4.0</span>
       </span>
     </div>
 
@@ -34,10 +34,13 @@ bounds of parameters based on a list of prior distributions."><!-- mathjax --><s
     <span class="caret"></span>
   </a>
   <ul class="dropdown-menu" role="menu"><li>
-      <a href="../articles/ComparisonR.html">Comparison to other R packages</a>
+      <a href="../articles/ComparisonR.html">Bayesian t-Test Compared with BayesFactor</a>
     </li>
     <li>
-      <a href="../articles/SpikeAndSlab.html">Bayes factors via spike and slab prior vs. bridge sampling</a>
+      <a href="../articles/RandomEffects.html">Random Effects with Formula Syntax</a>
+    </li>
+    <li>
+      <a href="../articles/SpikeAndSlab.html">Variable Selection with Spike-and-Slab Priors</a>
     </li>
   </ul></li>
 <li>
@@ -59,7 +62,7 @@ bounds of parameters based on a list of prior distributions."><!-- mathjax --><s
   <div class="col-md-9 contents">
     <div class="page-header">
     <h1>Prepare 'JAGS' posterior for 'bridgesampling'</h1>
-    <small class="dont-index">Source: <a href="https://github.com/FBartos/BayesTools/blob/master/R/JAGS-marglik.R" class="external-link"><code>R/JAGS-marglik.R</code></a></small>
+    <small class="dont-index">Source: <a href="https://github.com/FBartos/BayesTools/blob/master/R/JAGS-bridge-posterior.R" class="external-link"><code>R/JAGS-bridge-posterior.R</code></a></small>
     <div class="hidden name"><code>JAGS_bridgesampling_posterior.Rd</code></div>
     </div>
 
@@ -83,25 +86,29 @@ bounds of parameters based on a list of prior distributions.</p>
 
 
 <dl><dt id="arg-posterior">posterior<a class="anchor" aria-label="anchor" href="#arg-posterior"></a></dt>
-<dd><p>matrix of mcmc samples from the posterior
-distribution</p></dd>
+<dd><p>matrix of mcmc samples from the posterior distribution.</p></dd>
 
 
 <dt id="arg-prior-list">prior_list<a class="anchor" aria-label="anchor" href="#arg-prior-list"></a></dt>
-<dd><p>named list of prior distribution
-(names correspond to the parameter names) of parameters not specified within the
-<code>formula_list</code></p></dd>
+<dd><p>named list of prior distributions. Names correspond to
+parameter names owned by BayesTools priors and determine the posterior
+columns retained for bridge sampling together with their bounds.</p></dd>
 
 
 <dt id="arg-add-parameters">add_parameters<a class="anchor" aria-label="anchor" href="#arg-add-parameters"></a></dt>
-<dd><p>vector of additional parameter names that should be used
-in bridgesampling but were not specified in the <code>prior_list</code></p></dd>
+<dd><p>character vector of additional monitored posterior
+parameter names to retain in addition to the prior-owned parameters. These
+parameters are passed through as named entries and must be indexed by name
+by downstream likelihood code.</p></dd>
 
 
 <dt id="arg-add-bounds">add_bounds<a class="anchor" aria-label="anchor" href="#arg-add-bounds"></a></dt>
-<dd><p>list with two name vectors (<code>"lb"</code> and <code>"up"</code>)
-containing lower and upper bounds of the additional parameters that were not
-specified in the <code>prior_list</code></p></dd>
+<dd><p>list with two named numeric vectors, <code>"lb"</code> and
+<code>"ub"</code>, containing lower and upper bounds for every
+<code>add_parameters</code> entry. The vectors are named by the
+<code>add_parameters</code> entries (every entry, no others), contain no
+<code>NA</code>, and satisfy <code>lb &lt; ub</code>; <code>-Inf</code> and <code>Inf</code> are
+allowed. Must be supplied whenever <code>add_parameters</code> is non-empty.</p></dd>
 
 </dl></div>
     <div id="value">
@@ -123,7 +130,7 @@ lower and upper boundaries.</p>
 </div>
 
 <div class="pkgdown">
-  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.0.</p>
+  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.1.</p>
 </div>
 
       </footer></div>

@@ -19,7 +19,7 @@ function."><!-- mathjax --><script src="https://cdnjs.cloudflare.com/ajax/libs/m
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.3.0</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.4.0</span>
       </span>
     </div>
 
@@ -34,10 +34,13 @@ function."><!-- mathjax --><script src="https://cdnjs.cloudflare.com/ajax/libs/m
     <span class="caret"></span>
   </a>
   <ul class="dropdown-menu" role="menu"><li>
-      <a href="../articles/ComparisonR.html">Comparison to other R packages</a>
+      <a href="../articles/ComparisonR.html">Bayesian t-Test Compared with BayesFactor</a>
     </li>
     <li>
-      <a href="../articles/SpikeAndSlab.html">Bayes factors via spike and slab prior vs. bridge sampling</a>
+      <a href="../articles/RandomEffects.html">Random Effects with Formula Syntax</a>
+    </li>
+    <li>
+      <a href="../articles/SpikeAndSlab.html">Variable Selection with Spike-and-Slab Priors</a>
     </li>
   </ul></li>
 <li>
@@ -70,7 +73,15 @@ function.</p>
     </div>
 
     <div id="ref-usage">
-    <div class="sourceCode"><pre class="sourceCode r"><code><span><span class="fu">JAGS_formula</span><span class="op">(</span><span class="va">formula</span>, <span class="va">parameter</span>, <span class="va">data</span>, <span class="va">prior_list</span>, formula_scale <span class="op">=</span> <span class="cn">NULL</span><span class="op">)</span></span></code></pre></div>
+    <div class="sourceCode"><pre class="sourceCode r"><code><span><span class="fu">JAGS_formula</span><span class="op">(</span></span>
+<span>  <span class="va">formula</span>,</span>
+<span>  <span class="va">parameter</span>,</span>
+<span>  <span class="va">data</span>,</span>
+<span>  <span class="va">prior_list</span>,</span>
+<span>  formula_scale <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  prior_random <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  random_effects_compile <span class="op">=</span> <span class="cn">NULL</span></span>
+<span><span class="op">)</span></span></code></pre></div>
     </div>
 
     <div id="arguments">
@@ -79,44 +90,85 @@ function.</p>
 
 <dl><dt id="arg-formula">formula<a class="anchor" aria-label="anchor" href="#arg-formula"></a></dt>
 <dd><p>formula specifying the right hand side of the assignment (the
-left hand side is ignored). If the formula contains <code>-1</code>, it will be
-automatically converted to include an intercept with a spike(0) prior.
+left hand side is ignored), or a <code>BayesTools_random_effects</code> object returned
+by <code><a href="random_effects_formula.html">random_effects_formula()</a></code>. If the formula suppresses the intercept with
+<code>0 +</code> or <code>-1</code>, it is converted to include an intercept with a
+spike(0) prior.
 The formula can also have a <code>"log(intercept)"</code> attribute set to <code>TRUE</code>
 to generate syntax of the form <code>log(intercept) + sum(beta_i * x_i)</code>, which
-is useful for parameters that must be positive (e.g., standard deviation).</p></dd>
+is useful for parameters that must be positive (e.g., standard deviation).
+In that case, the intercept prior must have strictly positive support.</p></dd>
 
 
 <dt id="arg-parameter">parameter<a class="anchor" aria-label="anchor" href="#arg-parameter"></a></dt>
-<dd><p>name of the parameter to be created with the formula</p></dd>
+<dd><p>valid unindexed JAGS node name of the parameter to be
+created with the formula</p></dd>
 
 
 <dt id="arg-data">data<a class="anchor" aria-label="anchor" href="#arg-data"></a></dt>
-<dd><p>data.frame containing predictors included in the formula</p></dd>
+<dd><p>data.frame containing predictors included in the formula. A
+logical predictor is coded as a two-level indicator; an interaction of a
+logical predictor with a factor in which <code><a href="https://rdrr.io/r/stats/model.matrix.html" class="external-link">model.matrix()</a></code> would code it
+by indicators (e.g., <code>flag:g</code> without <code>g</code>) is unavailable, in a
+fixed formula and in a random-effect term alike,
+unless <code>formula_scale</code> standardizes the predictor, which makes it
+numeric. Otherwise convert the predictor to a factor or to numeric 0/1.</p></dd>
 
 
 <dt id="arg-prior-list">prior_list<a class="anchor" aria-label="anchor" href="#arg-prior-list"></a></dt>
 <dd><p>named list of prior distribution of parameters specified within
-the <code>formula</code>. When using <code>-1</code> in the formula, an "intercept" prior
-can be explicitly specified; otherwise, <code>prior("spike", list(0))</code> is
-automatically added. The list can also include two special entries:</p></dd>
+the <code>formula</code>. The name <code>"intercept"</code> is reserved for the intercept:
+no other predictor or prior name may contain the substring <code>"intercept"</code>.
+When suppressing the intercept in the formula, an
+"intercept" prior can be explicitly specified; otherwise,
+<code>prior("spike", list(0))</code> is
+automatically added, or <code>prior("spike", list(1))</code> when the formula uses
+the <code>"log(intercept)"</code> attribute. The list can also include two special entries:</p><dl><dt><code>"__default_continuous"</code></dt>
+<dd><p>A prior to use for any continuous predictors
+(including the intercept) that are not explicitly specified in the prior list.
+This can also be a zero-argument function returning a prior object; in that
+case it is evaluated only if a missing continuous term needs the default.</p></dd>
+
+<dt><code>"__default_factor"</code></dt>
+<dd><p>A prior to use for any factor predictors
+(including interactions involving factors) that are not explicitly specified
+in the prior list. This can also be a zero-argument function returning a prior
+object; in that case it is evaluated only if a missing factor term needs the
+default.</p></dd>
+
+
+</dl><p>These default priors allow for more concise specification when many predictors
+share the same prior distribution. For continuous formula terms,
+<code><a href="prior.html">prior_none()</a></code> is canonicalized to a point prior at zero.
+The prior of a formula term can carry a <code>"multiply_by"</code> attribute (a
+number or the name of another parameter) that multiplies the term's
+contribution to the linear predictor; the intercept prior cannot be scaled
+and a <code>"multiply_by"</code> attribute on it is an error. For a mixture or
+spike-and-slab prior, set the attribute on that prior itself; a component
+carrying one is an error.</p></dd>
 
 
 <dt id="arg-formula-scale">formula_scale<a class="anchor" aria-label="anchor" href="#arg-formula-scale"></a></dt>
 <dd><p>named list specifying whether to standardize continuous predictors.
 If <code>NULL</code> (default), no standardization is applied. If a named list is provided,
 continuous predictors with <code>TRUE</code> values will be standardized (mean-centered and
-scaled by standard deviation). The intercept is never standardized.</p><dl><dt><code>"__default_continuous"</code></dt>
-<dd><p>A prior to use for any continuous predictors
-(including the intercept) that are not explicitly specified in the prior list.</p></dd>
-
-<dt><code>"__default_factor"</code></dt>
-<dd><p>A prior to use for any factor predictors
-(including interactions involving factors) that are not explicitly specified
-in the prior list.</p></dd>
+scaled by standard deviation). The intercept is never standardized. Scaled
+predictors are centered in every fixed and random term, including terms
+without a free intercept, so the model is specified on the standardized
+scale; see Details.</p></dd>
 
 
-</dl><p>These default priors allow for more concise specification when many predictors
-share the same prior distribution.</p></dd>
+<dt id="arg-prior-random">prior_random<a class="anchor" aria-label="anchor" href="#arg-prior-random"></a></dt>
+<dd><p>optional <code><a href="prior_random.html">prior_random()</a></code> object defining random-effect
+standard-deviation, covariance, monitoring, and prediction policies. Required
+when <code>formula</code> contains random effects.</p></dd>
+
+
+<dt id="arg-random-effects-compile">random_effects_compile<a class="anchor" aria-label="anchor" href="#arg-random-effects-compile"></a></dt>
+<dd><p>optional <code><a href="random_effects_compile.html">random_effects_compile()</a></code> object
+specifying which resolved random-effect blocks should be compiled as sampled
+random effects and which should be compiled as structural marginalized
+blocks.</p></dd>
 
 </dl></div>
     <div id="value">
@@ -127,13 +179,145 @@ JAGS data object, modified prior_list, and (if standardization was applied) a
     </div>
     <div id="details">
     <h2>Details</h2>
-    <p>When a formula with <code>-1</code> (no intercept) is specified, the
-function automatically removes the <code>-1</code>, adds an intercept back to the
-formula, and includes a spike(0) prior for the intercept to ensure equivalent
-model behavior while maintaining consistent formula parsing.</p>
+    <p>When a formula suppresses the intercept with <code>0 +</code> or
+<code>-1</code>, the function adds an intercept back to the compiled formula and
+includes a point prior that contributes zero on the formula scale: spike(0)
+ordinarily and spike(1) for a log-transformed intercept.</p>
+<p>Scaling with <code>formula_scale</code> replaces a continuous predictor \(x\)
+by \((x - m) / s\) in every term, where \(m\) and \(s\) are its mean
+and standard deviation in the fitting data. Centering also applies to terms
+without a free intercept, which is intended: the model is specified on the
+standardized scale. For example, <code>~ 0 + x</code> with a scaled <code>x</code> fits
+\(\mu = b (x - m) / s\), a line through \((m, 0)\) rather than through
+the origin; on the original scale its slope is \(b / s\) and its implied
+intercept is \(-b m / s\). Original-scale summaries
+(<code>transform_scaled = TRUE</code>) report that implied intercept although the
+standardized intercept is fixed at zero. Likewise, a random-effect block
+without a random intercept, such as <code>(0 + x | g)</code>, fits group
+contributions \(u (x - m) / s\). It implies an original-scale random
+intercept \(-u m / s\) (SD \(\tau |m| / s\) for a scaled-slope SD
+\(\tau\)), perfectly correlated with the original-scale slope
+\(u / s\); random-effect summaries report the block's own coefficients,
+such as <code>sd(x)</code> \(= \tau / s\), and not this implied intercept.
+Leave a predictor unscaled when a line or group slope through the origin of
+\(x\) is intended.</p>
+<p>Independence of random-effect coefficients is likewise specified on the
+centered scale. An independent block such as <code>(1 + x || g)</code> (or a
+<code><a href="https://rdrr.io/r/base/diag.html" class="external-link">diag()</a></code> block) with a scaled <code>x</code> has independent
+group coefficients \(u_0\) and \(u_1\) with SDs \(\tau_0\) and
+\(\tau_1\). On the original scale, the group intercept
+\(u_0 - u_1 m / s\) and slope \(u_1 / s\) are correlated with
+$$\rho = -\frac{\tau_1 m / s}{\sqrt{\tau_0^2 + (\tau_1 m / s)^2}},$$
+for example \(\rho \approx -0.93\) for equal SDs and
+\(m / s = 2.5\). The original-scale summaries of such a block report its
+SDs, \(\sqrt{\tau_0^2 + (\tau_1 m / s)^2}\)
+and \(\tau_1 / s\), but no
+correlation, because the block has no correlation parameter. Use a
+correlated block, such as <code>(1 + x | g)</code>, to estimate the correlation,
+or leave <code>x</code> unscaled for independence on the original scale.</p>
+<p>A homogeneous-SD block (<code>id()</code>, <code>random(covariance = "id")</code>, or
+<code>diag(..., hom = TRUE)</code>) shares one SD among its columns, which cannot
+carry the different original-scale SDs of the columns. A homogeneous block
+with more than one column that contains a column of a scaled predictor is
+therefore refused by <code>JAGS_formula()</code>, whether its shared SD is sampled
+or fixed by a point prior: use a heterogeneous block, or leave the predictor
+unscaled. Single-column homogeneous blocks, such as
+<code>id(0 + x | g)</code>, are not affected.</p>
+<p>Factor contrasts are owned by <code><a href="prior_factor.html">prior_factor()</a></code> and stored formula metadata,
+not inferred from whether an intercept is present. Thus <code>~ 0 + group</code> with
+an independent factor prior means a structural zero intercept plus one
+coefficient per group level. With treatment or mean-difference contrasts,
+the same no-intercept expression preserves that selected basis.
+An interaction without one of its lower-order terms, such as <code>g:x</code>
+in <code>~ g + g:x</code>, codes that factor by level indicators, as
+<code><a href="https://rdrr.io/r/stats/model.matrix.html" class="external-link">stats::model.matrix()</a></code> does, and has one coefficient per level
+(e.g., one slope per level of <code>g</code>). Such a term does not use the
+contrast of that factor, so its prior may use a different contrast than the
+factor's terms that code it by its contrast (e.g., a mean-difference
+<code>g</code> with an independent <code>g:x</code>). When no term codes the factor by
+its contrast (e.g., <code>~ g:x + g:z</code>), its indicator-coded terms must
+agree on the contrast instead. Mean-difference and orthonormal priors,
+other than a point mass at zero, are unavailable for such a term; use a
+treatment or independent prior for per-level coefficients, or add the
+lower-order term (here <code>~ g * x</code>) to keep the contrast.</p>
 <p>When using default priors (<code>"__default_continuous"</code> or <code>"__default_factor"</code>),
 explicitly specified priors for individual terms take precedence over the defaults.
 The defaults are only applied to terms that are not already in the prior list.</p>
+<p>Formula random effects require <code>prior_random</code>. Random-effect SD priors in
+<code>prior_list</code> using <code>"term|group"</code> names are no longer supported.
+Continuous fixed-effect terms must expand to one design-matrix column.
+Matrix-valued continuous predictors are not currently supported.
+Fixed formulas support literal data-column names and standard formula
+operators, including interaction expansion such as <code>(x + z)^2</code> with
+literal whole degrees from 2 through <code>.Machine$integer.max</code>. This is
+formula expansion, not arithmetic powers; <code>I(x^2)</code> remains unsupported.
+Degree 0 or 1 and symbolic degrees retain the base-R formula refusal.
+Dot expansion, <code><a href="https://rdrr.io/r/stats/offset.html" class="external-link">offset()</a></code>, inline transformations, and
+arbitrary calls are rejected; create explicit data columns for transformed
+predictors. The BayesTools <code>expression(...)</code> facility accepts finite
+numeric constants, formula or model data, JAGS-style <code>i</code> indexing,
+sampled scalar or one-dimensional indexed parameters, arithmetic operators,
+and <code><a href="https://rdrr.io/r/base/MathFun.html" class="external-link">abs()</a></code>, <code><a href="https://rdrr.io/r/base/Log.html" class="external-link">exp()</a></code>, <code><a href="https://rdrr.io/r/base/Log.html" class="external-link">log()</a></code>, or <code><a href="https://rdrr.io/r/base/MathFun.html" class="external-link">sqrt()</a></code>. Expressions
+retain literal JAGS indexing: users must write <code>x</code> or <code>x[i]</code> as
+required by the JAGS data shape. Their parsed syntax and dependencies are
+persisted and replayed draw by draw during prediction and marginal-
+likelihood reconstruction. Parameter dependencies must be owned by a prior
+or declared through <code>add_parameters</code>; opaque deterministic nodes and
+formula-output dependencies are rejected by <code><a href="JAGS_fit.html">JAGS_fit()</a></code> because their
+defining JAGS graph is unavailable during replay.
+Random-effect predictors likewise support literal data-column names and
+formula operators, but not inline transformations or arbitrary calls.
+Create transformed random slopes as explicit data columns. Grouping terms
+support variables, <code>:</code> interactions, and <code>/</code> nesting.</p>
+<p>Random-effect structures have two left-side grammars. <code>id()</code>, <code><a href="https://rdrr.io/r/base/diag.html" class="external-link">diag()</a></code>, and
+<code>us()</code> / <code>un()</code> use a coefficient formula, so <code>1</code>, <code>0</code>, and <code>-1</code> control the
+random intercept and slopes or interactions generate coefficient columns.
+Plain bars default to <code>us()</code> and double bars to <code><a href="https://rdrr.io/r/base/diag.html" class="external-link">diag()</a></code>. A factor's concrete
+random basis is inherited from resolved contrast metadata by default and can
+be set for one block with <code>random_block(contrasts = ...)</code>.</p>
+<p><code>cs()</code> / <code>hcs()</code>, <code>ar1()</code> / <code><a href="https://rdrr.io/r/stats/ar.html" class="external-link">ar()</a></code> / <code>har()</code>, and <code>car()</code> instead use a
+structure-owned index specification. They reject intercept controls and
+block contrast overrides. See <code><a href="random_effects_formula.html">random_effects_formula()</a></code> and
+<code><a href="prior_random.html">prior_random()</a></code> for their index and covariance contracts.
+Categorical predictor and grouping levels must not contain BayesTools'
+reserved internal tokens, such as <code>__xXx__</code>.
+The predictor name <code>intercept</code> is reserved for the formula intercept.</p>
+    </div>
+    <div id="conditions">
+    <h2>Conditions</h2>
+
+
+<p>Refusals that callers may need to tell apart are errors of class
+<code>BayesTools_formula_transform_unavailable</code> (parents <code>error</code> and
+<code>condition</code>); their <code>reason</code> field names the cause:</p><ul><li><p><code>"single_level_factor"</code>: a factor with a single level in the data
+has no contrasts to code (the field <code>predictor</code> names it). The index
+of a <code>cs()</code>, <code>hcs()</code>, <code>ar1()</code>, or <code>har()</code> block is coded
+by one indicator per level and may have a single level.</p></li>
+<li><p><code>"logical_factor_interaction"</code>: a logical predictor in an
+interaction with a factor that <code><a href="https://rdrr.io/r/stats/model.matrix.html" class="external-link">model.matrix()</a></code> would code by
+indicators, in a fixed formula or a random-effect term (see the
+<code>data</code> argument; the fields <code>predictors</code> and <code>terms</code> name
+them).</p></li>
+<li><p><code>"unsupported_random_factor_contrast"</code>: a factor used only in a
+random-effect block that carries a contrasts matrix or an unsupported
+contrast name (the field <code>predictor</code> names it; set the coding with
+<code>random_block(contrasts = )</code>).</p></li>
+<li><p><code>"homogeneous_scaled_block"</code>: a homogeneous-SD random block with
+a standardized slope (see Details; the fields <code>parameter</code> and
+<code>coordinates</code> name the formula parameter and the shared SD).</p></li>
+<li><p><code>"basis_dependent_factor_prior"</code>: the prior of an interaction
+term of two or more factors, of which at least one is coded by a
+mean-difference or orthonormal contrast, depends on the basis of that
+contrast and would not treat the factor levels exchangeably. Only
+mean-difference and orthonormal priors, and treatment or independent
+priors built from zero-mean untruncated normal and zero spike priors,
+are accepted on such a term; when every coded factor has two levels,
+treatment and independent priors symmetric about zero are accepted as
+well. Other treatment and independent priors and every ordered prior are
+refused (the fields <code>terms</code> and <code>predictors</code> name the term and
+the coded factors; a refused ordered prior also has class
+<code>BayesTools_ordered_unavailable</code>).</p></li>
+</ul><p>Other invalid inputs stop with ordinary errors.</p>
     </div>
     <div id="see-also">
     <h2>See also</h2>
@@ -200,7 +384,7 @@ The defaults are only applied to terms that are not already in the prior list.</
 </div>
 
 <div class="pkgdown">
-  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.0.</p>
+  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.1.</p>
 </div>
 
       </footer></div>

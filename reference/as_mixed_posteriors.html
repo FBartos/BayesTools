@@ -20,7 +20,7 @@ or prior_mixture priors - the model-averaging is done within the model."><!-- ma
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.3.0</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.4.0</span>
       </span>
     </div>
 
@@ -35,10 +35,13 @@ or prior_mixture priors - the model-averaging is done within the model."><!-- ma
     <span class="caret"></span>
   </a>
   <ul class="dropdown-menu" role="menu"><li>
-      <a href="../articles/ComparisonR.html">Comparison to other R packages</a>
+      <a href="../articles/ComparisonR.html">Bayesian t-Test Compared with BayesFactor</a>
     </li>
     <li>
-      <a href="../articles/SpikeAndSlab.html">Bayes factors via spike and slab prior vs. bridge sampling</a>
+      <a href="../articles/RandomEffects.html">Random Effects with Formula Syntax</a>
+    </li>
+    <li>
+      <a href="../articles/SpikeAndSlab.html">Variable Selection with Spike-and-Slab Priors</a>
     </li>
   </ul></li>
 <li>
@@ -60,7 +63,7 @@ or prior_mixture priors - the model-averaging is done within the model."><!-- ma
   <div class="col-md-9 contents">
     <div class="page-header">
     <h1>Export BayesTools JAGS model posterior distribution as model-average posterior distributions via <code>mix_posteriors</code></h1>
-    <small class="dont-index">Source: <a href="https://github.com/FBartos/BayesTools/blob/master/R/model-averaging.R" class="external-link"><code>R/model-averaging.R</code></a></small>
+    <small class="dont-index">Source: <a href="https://github.com/FBartos/BayesTools/blob/master/R/model-averaging-as-mixed-posteriors.R" class="external-link"><code>R/model-averaging-as-mixed-posteriors.R</code></a></small>
     <div class="hidden name"><code>as_mixed_posteriors.Rd</code></div>
     </div>
 
@@ -88,7 +91,10 @@ or <a href="prior_mixture.html">prior_mixture</a> priors - the model-averaging i
 
 
 <dl><dt id="arg-model">model<a class="anchor" aria-label="anchor" href="#arg-model"></a></dt>
-<dd><p>model fit via the <a href="JAGS_fit.html">JAGS_fit</a> function</p></dd>
+<dd><p>model fit via the <a href="JAGS_fit.html">JAGS_fit</a> function with this version of
+BayesTools. Fits without its parameter map and fit contract (such as fits
+created by BayesTools 0.3.0) must be refitted: they stop with an error of
+class <code>BayesTools_refit_required</code> (see <code><a href="JAGS_fit_contract.html">JAGS_validate_fit_contract()</a></code>).</p></dd>
 
 
 <dt id="arg-parameters">parameters<a class="anchor" aria-label="anchor" href="#arg-parameters"></a></dt>
@@ -116,7 +122,17 @@ single parameter.</p></dd>
 original (unscaled) scale. When <code>TRUE</code>, posterior samples are
 transformed, and the result can be directly passed to <a href="plot_posterior.html">plot_posterior</a> which will
 automatically detect the transformation and use transformed deterministic prior densities.
-Requires a model fitted with <code>formula_scale_list</code>. Defaults to <code>FALSE</code>.</p></dd>
+Requires a model fitted with <code>formula_scale_list</code>. Defaults to <code>FALSE</code>.
+The transformed prior densities are computed for the requested
+<code>parameters</code> only and are kept for the fitted object, so repeated calls
+with the same fit, priors, conditioning, and <code>n_prior_samples</code> reuse them.
+The prior density of a random-effect SD is that of the SD on the original
+scale: the fitted law rescaled when the original-scale SD is a rescaling of
+one fitted SD, and otherwise (an SD that combines several fitted SDs, such as
+the intercept SD of a block with a non-centered scaled slope) unavailable,
+which <code><a href="hypothesis_BF.html">hypothesis_BF()</a></code>, <code><a href="marginal_posterior.html">marginal_posterior()</a></code> with <code>prior_samples = TRUE</code>
+and <code><a href="plot_posterior.html">plot_posterior()</a></code> with <code>prior = TRUE</code> report with an error of class
+<code>BayesTools_formula_measure_unavailable</code> (see <code><a href="posterior_measure_check.html">posterior_measure_check()</a></code>).</p></dd>
 
 
 <dt id="arg-n-prior-samples">n_prior_samples<a class="anchor" aria-label="anchor" href="#arg-n-prior-samples"></a></dt>
@@ -146,7 +162,7 @@ distributions (either a vector of matrix).</p>
 </div>
 
 <div class="pkgdown">
-  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.0.</p>
+  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.1.</p>
 </div>
 
       </footer></div>

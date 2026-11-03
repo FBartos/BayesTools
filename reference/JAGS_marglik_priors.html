@@ -19,7 +19,7 @@ function"><!-- mathjax --><script src="https://cdnjs.cloudflare.com/ajax/libs/ma
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.3.0</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.4.0</span>
       </span>
     </div>
 
@@ -34,10 +34,13 @@ function"><!-- mathjax --><script src="https://cdnjs.cloudflare.com/ajax/libs/ma
     <span class="caret"></span>
   </a>
   <ul class="dropdown-menu" role="menu"><li>
-      <a href="../articles/ComparisonR.html">Comparison to other R packages</a>
+      <a href="../articles/ComparisonR.html">Bayesian t-Test Compared with BayesFactor</a>
     </li>
     <li>
-      <a href="../articles/SpikeAndSlab.html">Bayes factors via spike and slab prior vs. bridge sampling</a>
+      <a href="../articles/RandomEffects.html">Random Effects with Formula Syntax</a>
+    </li>
+    <li>
+      <a href="../articles/SpikeAndSlab.html">Variable Selection with Spike-and-Slab Priors</a>
     </li>
   </ul></li>
 <li>
@@ -59,7 +62,7 @@ function"><!-- mathjax --><script src="https://cdnjs.cloudflare.com/ajax/libs/ma
   <div class="col-md-9 contents">
     <div class="page-header">
     <h1>Compute marginal likelihood for 'JAGS' priors</h1>
-    <small class="dont-index">Source: <a href="https://github.com/FBartos/BayesTools/blob/master/R/JAGS-marglik.R" class="external-link"><code>R/JAGS-marglik.R</code></a></small>
+    <small class="dont-index">Source: <a href="https://github.com/FBartos/BayesTools/blob/master/R/JAGS-marglik-priors.R" class="external-link"><code>R/JAGS-marglik-priors.R</code></a></small>
     <div class="hidden name"><code>JAGS_marglik_priors.Rd</code></div>
     </div>
 
@@ -72,7 +75,11 @@ function</p>
     <div id="ref-usage">
     <div class="sourceCode"><pre class="sourceCode r"><code><span><span class="fu">JAGS_marglik_priors</span><span class="op">(</span><span class="va">samples</span>, <span class="va">prior_list</span><span class="op">)</span></span>
 <span></span>
-<span><span class="fu">JAGS_marglik_priors_formula</span><span class="op">(</span><span class="va">samples</span>, <span class="va">formula_prior_list</span><span class="op">)</span></span></code></pre></div>
+<span><span class="fu">JAGS_marglik_priors_rows</span><span class="op">(</span><span class="va">samples</span>, <span class="va">prior_list</span><span class="op">)</span></span>
+<span></span>
+<span><span class="fu">JAGS_marglik_priors_rows_evaluator</span><span class="op">(</span><span class="va">prior_list</span><span class="op">)</span></span>
+<span></span>
+<span><span class="fu">JAGS_marglik_priors_formula</span><span class="op">(</span><span class="va">samples</span>, <span class="va">formula_prior_list</span>, prior_list <span class="op">=</span> <span class="cn">NULL</span><span class="op">)</span></span></code></pre></div>
     </div>
 
     <div id="arguments">
@@ -80,14 +87,16 @@ function</p>
 
 
 <dl><dt id="arg-samples">samples<a class="anchor" aria-label="anchor" href="#arg-samples"></a></dt>
-<dd><p>samples provided by bridgesampling
-function</p></dd>
+<dd><p>samples provided by the bridgesampling function. Supply one
+named posterior row to <code>JAGS_marglik_priors()</code> and a named matrix or data
+frame to <code>JAGS_marglik_priors_rows()</code>. Row-wise samples must have real
+numeric columns.</p></dd>
 
 
 <dt id="arg-prior-list">prior_list<a class="anchor" aria-label="anchor" href="#arg-prior-list"></a></dt>
-<dd><p>named list of prior distribution
-(names correspond to the parameter names) of parameters not specified within the
-<code>formula_list</code></p></dd>
+<dd><p>named list of model-level prior distributions. For
+<code>JAGS_marglik_priors_formula()</code>, optional model priors whose shared ordered
+allocations have already been included by <code>JAGS_marglik_priors()</code>.</p></dd>
 
 
 <dt id="arg-formula-prior-list">formula_prior_list<a class="anchor" aria-label="anchor" href="#arg-formula-prior-list"></a></dt>
@@ -100,7 +109,27 @@ within the <code>formula</code></p></dd>
     <div id="value">
     <h2>Value</h2>
     <p><code>JAGS_marglik_priors</code> returns a numeric value
-of likelihood evaluated at the current posterior sample.</p>
+of the log prior density evaluated at the current posterior sample.
+<code>JAGS_marglik_priors_rows</code> returns one numeric value for every row of
+posterior samples. <code>JAGS_marglik_priors_rows_evaluator</code> returns a
+function that applies the same row-wise evaluation without recompiling the
+prior structure on each call. Samples that lack monitored coordinates the
+priors require stop with an error of class
+<code>BayesTools_missing_monitored_columns</code> (also
+<code>BayesTools_marglik_input</code>).</p>
+    </div>
+    <div id="details">
+    <h2>Details</h2>
+    <p><code>JAGS_marglik_priors_rows()</code> preserves joint prior boundaries
+within each posterior row. In particular, auxiliary-gamma contributions for
+vector and Dirichlet priors are summed separately within each row.</p>
+<p>When model and formula priors share an ordered Dirichlet allocation, supply
+the model priors as <code>prior_list</code> to <code>JAGS_marglik_priors_formula()</code>. Its
+contribution then excludes allocations already included by
+<code>JAGS_marglik_priors(samples, prior_list)</code>, so the two log prior contributions
+can be added without counting shared allocations twice.
+Evaluate the combined contribution as
+<code>JAGS_marglik_priors(samples, prior_list) + JAGS_marglik_priors_formula(samples, formula_prior_list, prior_list)</code>.</p>
     </div>
 
   </div>
@@ -115,7 +144,7 @@ of likelihood evaluated at the current posterior sample.</p>
 </div>
 
 <div class="pkgdown">
-  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.0.</p>
+  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.1.</p>
 </div>
 
       </footer></div>

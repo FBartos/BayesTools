@@ -21,7 +21,7 @@ marginal estimate via a Savage-Dickey density approximation."><!-- mathjax --><s
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.3.0</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.4.0</span>
       </span>
     </div>
 
@@ -36,10 +36,13 @@ marginal estimate via a Savage-Dickey density approximation."><!-- mathjax --><s
     <span class="caret"></span>
   </a>
   <ul class="dropdown-menu" role="menu"><li>
-      <a href="../articles/ComparisonR.html">Comparison to other R packages</a>
+      <a href="../articles/ComparisonR.html">Bayesian t-Test Compared with BayesFactor</a>
     </li>
     <li>
-      <a href="../articles/SpikeAndSlab.html">Bayes factors via spike and slab prior vs. bridge sampling</a>
+      <a href="../articles/RandomEffects.html">Random Effects with Formula Syntax</a>
+    </li>
+    <li>
+      <a href="../articles/SpikeAndSlab.html">Variable Selection with Spike-and-Slab Priors</a>
     </li>
   </ul></li>
 <li>
@@ -61,7 +64,7 @@ marginal estimate via a Savage-Dickey density approximation."><!-- mathjax --><s
   <div class="col-md-9 contents">
     <div class="page-header">
     <h1>Model-average marginal posterior distributions and marginal Bayes factors</h1>
-    <small class="dont-index">Source: <a href="https://github.com/FBartos/BayesTools/blob/master/R/marginal-distributions.R" class="external-link"><code>R/marginal-distributions.R</code></a></small>
+    <small class="dont-index">Source: <a href="https://github.com/FBartos/BayesTools/blob/master/R/marginal-inference.R" class="external-link"><code>R/marginal-inference.R</code></a></small>
     <div class="hidden name"><code>marginal_inference.Rd</code></div>
     </div>
 
@@ -84,7 +87,8 @@ marginal estimate via a Savage-Dickey density approximation.</p>
 <span>  normal_approximation <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  n_samples <span class="op">=</span> <span class="fl">10000</span>,</span>
 <span>  seed <span class="op">=</span> <span class="cn">NULL</span>,</span>
-<span>  silent <span class="op">=</span> <span class="cn">FALSE</span></span>
+<span>  silent <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  density_method <span class="op">=</span> <span class="st">"KDE"</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
 
@@ -106,14 +110,21 @@ should be created</p></dd>
 <dt id="arg-parameters">parameters<a class="anchor" aria-label="anchor" href="#arg-parameters"></a></dt>
 <dd><p>all parameters included in the model_list that are
 relevant for the formula (all of which need to have specification of
-<code>is_null_list</code>)</p></dd>
+<code>is_null_list</code>)
+Parameter keys must be unique, nonmissing and nonempty. Unnamed
+<code>is_null_list</code> entries bind positionally; complete unique names bind by
+key. Null masks are normalized before conditional model filtering.</p></dd>
 
 
 <dt id="arg-is-null-list">is_null_list<a class="anchor" aria-label="anchor" href="#arg-is-null-list"></a></dt>
 <dd><p>list with entries for each parameter carrying either
 logical vector of indicators specifying whether the model corresponds
 to the null or alternative hypothesis (or an integer vector indexing models
-corresponding to the null hypothesis)</p></dd>
+corresponding to the null hypothesis; use <code>0</code> or <code>integer(0)</code>
+when no models are null)
+Exact matching unique list names bind by parameter name; other ensemble
+lists retain positional order. Marginal inference requires unnamed lists or
+unique complete names matching its requested parameters.</p></dd>
 
 
 <dt id="arg-formula">formula<a class="anchor" aria-label="anchor" href="#arg-formula"></a></dt>
@@ -125,26 +136,53 @@ corresponding to the null hypothesis)</p></dd>
 
 
 <dt id="arg-normal-approximation">normal_approximation<a class="anchor" aria-label="anchor" href="#arg-normal-approximation"></a></dt>
-<dd><p>whether the height of prior and posterior density should be
-approximated via a normal distribution (rather than kernel density). Defaults to <code>FALSE</code>.</p></dd>
+<dd><p>whether the height of the posterior density at
+the null should be approximated via a normal distribution (rather than
+kernel density). The prior height is always the structural prior-density
+ordinate. Defaults to <code>FALSE</code>.</p></dd>
 
 
 <dt id="arg-n-samples">n_samples<a class="anchor" aria-label="anchor" href="#arg-n-samples"></a></dt>
 <dd><p>controls the numerical grid used for model-averaged
-prior densities</p></dd>
+prior densities (a grid has at least 16 points). It is not used when the
+samples carry a stored prior-density context. For a simple parameter, an
+explicitly attached <code>prior_density</code> is authoritative and is propagated
+instead of being reconstructed from <code>prior_list</code>.</p></dd>
 
 
 <dt id="arg-seed">seed<a class="anchor" aria-label="anchor" href="#arg-seed"></a></dt>
-<dd><p>seed for random number generation</p></dd>
+<dd><p>seed for random number generation. The caller's random-number
+state (<code>.Random.seed</code> and <code><a href="https://rdrr.io/r/base/Random.html" class="external-link">RNGkind()</a></code>) is restored afterwards.
+With <code>NULL</code>, each model-averaging step draws its sampling seed from the
+caller's random-number stream.</p></dd>
 
 
 <dt id="arg-silent">silent<a class="anchor" aria-label="anchor" href="#arg-silent"></a></dt>
 <dd><p>whether warnings should be returned silently. Defaults to <code>FALSE</code></p></dd>
 
+
+<dt id="arg-density-method">density_method<a class="anchor" aria-label="anchor" href="#arg-density-method"></a></dt>
+<dd><p>posterior density method used for Savage-Dickey Bayes
+factors. Currently only <code>"KDE"</code> is supported by
+<code>marginal_inference()</code> and <code><a href="as_marginal_inference.html">as_marginal_inference()</a></code> because
+generic model-averaged marginal posteriors do not have a well-defined
+precomputed density source.</p></dd>
+
 </dl></div>
     <div id="value">
     <h2>Value</h2>
     <p><code>marginal_inference</code> returns an object of class 'marginal_inference'.</p>
+    </div>
+    <div id="details">
+    <h2>Details</h2>
+    <p>A parameter or level whose conditional marginal posterior has a
+declared point mass at the null hypothesis (e.g., the reference level of a
+treatment-coded factor, fixed at zero) gets an <code>NA</code> inclusion Bayes
+factor with the reason in its <code>"warnings"</code> attribute, which summary
+tables report; the other parameters and levels are computed. A parameter
+(scalar marginal) or level whose posterior ordinate is numerically
+unavailable (for example, a kernel estimate from identical draws) gets an
+<code>NA</code> inclusion Bayes factor with the reason in the same way.</p>
     </div>
     <div id="see-also">
     <h2>See also</h2>
@@ -163,7 +201,7 @@ prior densities</p></dd>
 </div>
 
 <div class="pkgdown">
-  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.0.</p>
+  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.1.</p>
 </div>
 
       </footer></div>

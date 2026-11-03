@@ -17,7 +17,7 @@
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.3.0</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.4.0</span>
       </span>
     </div>
 
@@ -32,10 +32,13 @@
     <span class="caret"></span>
   </a>
   <ul class="dropdown-menu" role="menu"><li>
-      <a href="../articles/ComparisonR.html">Comparison to other R packages</a>
+      <a href="../articles/ComparisonR.html">Bayesian t-Test Compared with BayesFactor</a>
     </li>
     <li>
-      <a href="../articles/SpikeAndSlab.html">Bayes factors via spike and slab prior vs. bridge sampling</a>
+      <a href="../articles/RandomEffects.html">Random Effects with Formula Syntax</a>
+    </li>
+    <li>
+      <a href="../articles/SpikeAndSlab.html">Variable Selection with Spike-and-Slab Priors</a>
     </li>
   </ul></li>
 <li>
@@ -84,19 +87,27 @@
         </td>
         <td><p>Create BayesTools ensemble summary tables</p></td>
       </tr><tr><td>
+          <p><code><a href="BayesTools_load_JAGS_module.html">BayesTools_load_JAGS_module()</a></code> </p>
+        </td>
+        <td><p>Load the BayesTools JAGS module</p></td>
+      </tr><tr><td>
           <p><code><a href="BayesTools_model_tables.html">model_summary_table()</a></code> <code><a href="BayesTools_model_tables.html">runjags_estimates_table()</a></code> <code><a href="BayesTools_model_tables.html">runjags_inference_table()</a></code> <code><a href="BayesTools_model_tables.html">JAGS_estimates_table()</a></code> <code><a href="BayesTools_model_tables.html">JAGS_inference_table()</a></code> <code><a href="BayesTools_model_tables.html">JAGS_summary_table()</a></code> <code><a href="BayesTools_model_tables.html">model_summary_empty_table()</a></code> <code><a href="BayesTools_model_tables.html">runjags_estimates_empty_table()</a></code> <code><a href="BayesTools_model_tables.html">runjags_inference_empty_table()</a></code> <code><a href="BayesTools_model_tables.html">JAGS_estimates_empty_table()</a></code> <code><a href="BayesTools_model_tables.html">JAGS_inference_empty_table()</a></code> <code><a href="BayesTools_model_tables.html">stan_estimates_table()</a></code> </p>
         </td>
         <td><p>Create BayesTools model tables</p></td>
       </tr><tr><td>
+          <p><code><a href="BF_carrier_drop.html">BF_carrier_drop()</a></code> </p>
+        </td>
+        <td><p>Remove the carrier attributes of a Bayes factor</p></td>
+      </tr><tr><td>
           <p><code><a href="bridgesampling_object.html">bridgesampling_object()</a></code> </p>
         </td>
-        <td><p>Create a 'bridgesampling' object</p></td>
+        <td><p>Create a BayesTools marginal-likelihood object</p></td>
       </tr><tr><td>
           <p><code><a href="check_input.html">check_bool()</a></code> <code><a href="check_input.html">check_char()</a></code> <code><a href="check_input.html">check_real()</a></code> <code><a href="check_input.html">check_int()</a></code> <code><a href="check_input.html">check_list()</a></code> </p>
         </td>
         <td><p>Check input</p></td>
       </tr><tr><td>
-          <p><code><a href="contr.BayesTools.html">contr.orthonormal()</a></code> <code><a href="contr.BayesTools.html">contr.meandif()</a></code> <code><a href="contr.BayesTools.html">contr.independent()</a></code> </p>
+          <p><code><a href="contr.BayesTools.html">contr.orthonormal()</a></code> <code><a href="contr.BayesTools.html">contr.meandif()</a></code> <code><a href="contr.BayesTools.html">contr.independent()</a></code> <code><a href="contr.BayesTools.html">contr.ordered_cumulative()</a></code> <code><a href="contr.BayesTools.html">contr.ordered_cumulative_levels()</a></code> </p>
         </td>
         <td><p>BayesTools Contrast Matrices</p></td>
       </tr><tr><td>
@@ -108,9 +119,17 @@
         </td>
         <td><p>Compute posterior probabilities and inclusion Bayes factors</p></td>
       </tr><tr><td>
+          <p><code><a href="fit_backend_fingerprint.html">fit_backend_fingerprint()</a></code> </p>
+        </td>
+        <td><p>Fingerprint the loaded BayesTools fitting backend</p></td>
+      </tr><tr><td>
           <p><code><a href="format_BF.html">format_BF()</a></code> </p>
         </td>
         <td><p>Format Bayes factor</p></td>
+      </tr><tr><td>
+          <p><code><a href="format_BF_from_log.html">format_BF_from_log()</a></code> </p>
+        </td>
+        <td><p>Format Bayes factors from natural-log values</p></td>
       </tr><tr><td>
           <p><code><a href="formula_add_intercept.html">formula_add_intercept()</a></code> </p>
         </td>
@@ -124,6 +143,58 @@
         </td>
         <td><p>Add list of prior objects to a plot</p></td>
       </tr><tr><td>
+          <p><code><a href="harrell_davis_quantile.html">harrell_davis_quantile()</a></code> </p>
+        </td>
+        <td><p>Harrell-Davis quantiles of posterior draws</p></td>
+      </tr><tr><td>
+          <p><code><a href="hypothesis_ast.html">hypothesis_parse()</a></code> <code><a href="hypothesis_ast.html">hypothesis_ast_schema()</a></code> <code><a href="hypothesis_ast.html">hypothesis_render()</a></code> <code><a href="hypothesis_ast.html">hypothesis_symbols()</a></code> <code><a href="hypothesis_ast.html">hypothesis_rewrite()</a></code> <code><a href="hypothesis_ast.html">hypothesis_resolve()</a></code> </p>
+        </td>
+        <td><p>Versioned hypothesis syntax trees</p></td>
+      </tr><tr><td>
+          <p><code><a href="hypothesis_BF.html">hypothesis_BF()</a></code> <code><a href="hypothesis_BF.html">as.data.frame(<i>&lt;BayesTools_hypothesis_BF&gt;</i>)</a></code> </p>
+        </td>
+        <td><p>Hypothesis Bayes Factors</p></td>
+      </tr><tr><td>
+          <p><code><a href="hypothesis_BF_model.html">hypothesis_BF_model()</a></code> </p>
+        </td>
+        <td><p>Hypothesis Bayes factors of a fitted model</p></td>
+      </tr><tr><td>
+          <p><code><a href="hypothesis_cache_clear.html">hypothesis_cache_clear()</a></code> </p>
+        </td>
+        <td><p>Drop the caches of the hypothesis engine</p></td>
+      </tr><tr><td>
+          <p><code><a href="hypothesis_density_backend.html">hypothesis_density_backend()</a></code> <code><a href="hypothesis_density_backend.html">register_hypothesis_density_backend()</a></code> <code><a href="hypothesis_density_backend.html">unregister_hypothesis_density_backend()</a></code> <code><a href="hypothesis_density_backend.html">hypothesis_density_backends()</a></code> </p>
+        </td>
+        <td><p>Density backends of fit-level hypothesis Bayes factors</p></td>
+      </tr><tr><td>
+          <p><code><a href="hypothesis_linear_target.html">hypothesis_linear_target()</a></code> </p>
+        </td>
+        <td><p>Compile a hypothesis linear in the levels of one parameter</p></td>
+      </tr><tr><td>
+          <p><code><a href="hypothesis_linear_target_side.html">hypothesis_linear_target_side()</a></code> </p>
+        </td>
+        <td><p>Linear form of one side of a hypothesis statement</p></td>
+      </tr><tr><td>
+          <p><code><a href="hypothesis_parse_point_reference.html">hypothesis_parse_point_reference()</a></code> <code><a href="hypothesis_parse_point_reference.html">hypothesis_parse_level_reference()</a></code> <code><a href="hypothesis_parse_point_reference.html">hypothesis_normalize_level_references()</a></code> </p>
+        </td>
+        <td><p>Hypothesis parser helpers</p></td>
+      </tr><tr><td>
+          <p><code><a href="hypothesis_provider.html">hypothesis_provider()</a></code> </p>
+        </td>
+        <td><p>Hypothesis provider of a fitted model</p></td>
+      </tr><tr><td>
+          <p><code><a href="hypothesis_quantities.html">hypothesis_quantities()</a></code> </p>
+        </td>
+        <td><p>Available Hypothesis Quantities</p></td>
+      </tr><tr><td>
+          <p><code><a href="hypothesis_stop.html">hypothesis_stop()</a></code> </p>
+        </td>
+        <td><p>Stop with a refusal of a hypothesis</p></td>
+      </tr><tr><td>
+          <p><code><a href="hypothesis_table_helpers.html">hypothesis_alias_label()</a></code> <code><a href="hypothesis_table_helpers.html">hypothesis_unique_named_warnings()</a></code> </p>
+        </td>
+        <td><p>Helpers of hypothesis tables</p></td>
+      </tr><tr><td>
           <p><code><a href="inclusion_BF.html">inclusion_BF()</a></code> </p>
         </td>
         <td><p>Compute inclusion Bayes factors</p></td>
@@ -136,7 +207,11 @@
         </td>
         <td><p>Normalize structured interpretation sources</p></td>
       </tr><tr><td>
-          <p><code><a href="is.prior.html">is.prior()</a></code> <code><a href="is.prior.html">is.prior.point()</a></code> <code><a href="is.prior.html">is.prior.none()</a></code> <code><a href="is.prior.html">is.prior.simple()</a></code> <code><a href="is.prior.html">is.prior.discrete()</a></code> <code><a href="is.prior.html">is.prior.vector()</a></code> <code><a href="is.prior.html">is.prior.PET()</a></code> <code><a href="is.prior.html">is.prior.PEESE()</a></code> <code><a href="is.prior.html">is.prior.weightfunction()</a></code> <code><a href="is.prior.html">is.prior.factor()</a></code> <code><a href="is.prior.html">is.prior.orthonormal()</a></code> <code><a href="is.prior.html">is.prior.treatment()</a></code> <code><a href="is.prior.html">is.prior.independent()</a></code> <code><a href="is.prior.html">is.prior.spike_and_slab()</a></code> <code><a href="is.prior.html">is.prior.meandif()</a></code> <code><a href="is.prior.html">is.prior.mixture()</a></code> </p>
+          <p><code><a href="invert_BF_bound_operator.html">invert_BF_bound_operator()</a></code> </p>
+        </td>
+        <td><p>Invert the orientation of Bayes factor bound operators</p></td>
+      </tr><tr><td>
+          <p><code><a href="is.prior.html">is.prior()</a></code> <code><a href="is.prior.html">is.prior.point()</a></code> <code><a href="is.prior.html">is.prior.none()</a></code> <code><a href="is.prior.html">is.prior.simple()</a></code> <code><a href="is.prior.html">is.prior.discrete()</a></code> <code><a href="is.prior.html">is.prior.vector()</a></code> <code><a href="is.prior.html">is.prior.simplex()</a></code> <code><a href="is.prior.html">is.prior.PET()</a></code> <code><a href="is.prior.html">is.prior.PEESE()</a></code> <code><a href="is.prior.html">is.prior.weightfunction()</a></code> <code><a href="is.prior.html">is.prior.factor()</a></code> <code><a href="is.prior.html">is.prior.ordered()</a></code> <code><a href="is.prior.html">is.prior.orthonormal()</a></code> <code><a href="is.prior.html">is.prior.treatment()</a></code> <code><a href="is.prior.html">is.prior.independent()</a></code> <code><a href="is.prior.html">is.prior.spike_and_slab()</a></code> <code><a href="is.prior.html">is.prior.meandif()</a></code> <code><a href="is.prior.html">is.prior.mixture()</a></code> </p>
         </td>
         <td><p>Reports whether x is a a prior object</p></td>
       </tr><tr><td>
@@ -168,9 +243,17 @@
         </td>
         <td><p>Assess convergence of a runjags model</p></td>
       </tr><tr><td>
+          <p><code><a href="JAGS_deterministic_nodes.html">JAGS_deterministic_nodes()</a></code> <code><a href="JAGS_deterministic_nodes.html">JAGS_evaluate_deterministic()</a></code> <code><a href="JAGS_deterministic_nodes.html">JAGS_deterministic_evaluator()</a></code> </p>
+        </td>
+        <td><p>Generated deterministic nodes</p></td>
+      </tr><tr><td>
           <p><code><a href="JAGS_diagnostics.html">JAGS_diagnostics()</a></code> <code><a href="JAGS_diagnostics.html">JAGS_diagnostics_density()</a></code> <code><a href="JAGS_diagnostics.html">JAGS_diagnostics_trace()</a></code> <code><a href="JAGS_diagnostics.html">JAGS_diagnostics_autocorrelation()</a></code> </p>
         </td>
         <td><p>Plot diagnostics of a 'JAGS' model</p></td>
+      </tr><tr><td>
+          <p><code><a href="JAGS_draw_geometry.html">JAGS_draw_geometry()</a></code> <code><a href="JAGS_draw_geometry.html">JAGS_draw_geometry_schema()</a></code> <code><a href="JAGS_draw_geometry.html">JAGS_materialize_draws()</a></code> <code><a href="JAGS_draw_geometry.html">JAGS_with_draws()</a></code> <code><a href="JAGS_draw_geometry.html">as.mcmc.list(<i>&lt;BayesTools_draws_view&gt;</i>)</a></code> <code><a href="JAGS_draw_geometry.html">as.mcmc(<i>&lt;BayesTools_draws_view&gt;</i>)</a></code> <code><a href="JAGS_draw_geometry.html">print(<i>&lt;BayesTools_draws_view&gt;</i>)</a></code> </p>
+        </td>
+        <td><p>JAGS draw geometry and deterministic materialization</p></td>
       </tr><tr><td>
           <p><code><a href="JAGS_evaluate_formula.html">JAGS_evaluate_formula()</a></code> </p>
         </td>
@@ -180,25 +263,81 @@
         </td>
         <td><p>Fits a 'JAGS' model</p></td>
       </tr><tr><td>
+          <p><code><a href="JAGS_fit_contract.html">JAGS_formula_name_map()</a></code> <code><a href="JAGS_fit_contract.html">JAGS_fit_contract()</a></code> <code><a href="JAGS_fit_contract.html">JAGS_validate_fit_contract()</a></code> <code><a href="JAGS_fit_contract.html">JAGS_fit_contract_schema()</a></code> </p>
+        </td>
+        <td><p>JAGS formula name map and fitted-object contract</p></td>
+      </tr><tr><td>
           <p><code><a href="JAGS_formula.html">JAGS_formula()</a></code> </p>
         </td>
         <td><p>Create JAGS formula syntax and data object</p></td>
+      </tr><tr><td>
+          <p><code><a href="JAGS_formula_coefficient_route.html">JAGS_formula_coefficient_route()</a></code> </p>
+        </td>
+        <td><p>Original-scale route of a formula coefficient</p></td>
+      </tr><tr><td>
+          <p><code><a href="JAGS_formula_coefficient_transform.html">JAGS_formula_internal_coordinate_priors()</a></code> <code><a href="JAGS_formula_coefficient_transform.html">JAGS_formula_coefficient_transform()</a></code> <code><a href="JAGS_formula_coefficient_transform.html">JAGS_formula_coefficient_transform_schema()</a></code> <code><a href="JAGS_formula_coefficient_transform.html">JAGS_formula_prior_density()</a></code> </p>
+        </td>
+        <td><p>Formula coefficient transformations and induced prior densities</p></td>
+      </tr><tr><td>
+          <p><code><a href="JAGS_formula_coordinate_dependencies.html">JAGS_formula_coordinate_dependencies()</a></code> </p>
+        </td>
+        <td><p>Fitted-formula coordinate dependencies</p></td>
       </tr><tr><td>
           <p><code><a href="JAGS_formula_design.html">JAGS_formula_design()</a></code> </p>
         </td>
         <td><p>Extract Fitted JAGS Formula Design Metadata</p></td>
       </tr><tr><td>
+          <p><code><a href="JAGS_formula_draws.html">JAGS_formula_draws()</a></code> </p>
+        </td>
+        <td><p>Formula designs for draws without a fit</p></td>
+      </tr><tr><td>
+          <p><code><a href="JAGS_formula_point_finalize.html">JAGS_formula_point_finalize()</a></code> <code><a href="JAGS_formula_point_finalize.html">JAGS_formula_scale_finalize()</a></code> </p>
+        </td>
+        <td><p>Finalize formula designs built outside JAGS_fit()</p></td>
+      </tr><tr><td>
+          <p><code><a href="JAGS_formula_predictor_basis.html">JAGS_formula_predictor_basis()</a></code> </p>
+        </td>
+        <td><p>Exact fitted-formula predictor update basis</p></td>
+      </tr><tr><td>
+          <p><code><a href="JAGS_formula_random_marginal_covariance.html">JAGS_formula_random_marginal_covariance()</a></code> </p>
+        </td>
+        <td><p>Compile formula random effects as marginal JAGS covariance nodes</p></td>
+      </tr><tr><td>
           <p><code><a href="JAGS_get_inits.html">JAGS_get_inits()</a></code> </p>
         </td>
         <td><p>Create initial values for 'JAGS' model</p></td>
       </tr><tr><td>
-          <p><code><a href="JAGS_marglik_parameters.html">JAGS_marglik_parameters()</a></code> <code><a href="JAGS_marglik_parameters.html">JAGS_marglik_parameters_formula()</a></code> </p>
+          <p><code><a href="JAGS_lkj_corr_cholesky.html">JAGS_lkj_corr_cholesky()</a></code> </p>
+        </td>
+        <td><p>Generate a JAGS LKJ-Cholesky correlation module</p></td>
+      </tr><tr><td>
+          <p><code><a href="JAGS_marglik_parameters.html">JAGS_marglik_parameters_formula()</a></code> <code><a href="JAGS_marglik_parameters.html">JAGS_marglik_parameters()</a></code> </p>
         </td>
         <td><p>Extract parameters for 'JAGS' priors</p></td>
       </tr><tr><td>
-          <p><code><a href="JAGS_marglik_priors.html">JAGS_marglik_priors()</a></code> <code><a href="JAGS_marglik_priors.html">JAGS_marglik_priors_formula()</a></code> </p>
+          <p><code><a href="JAGS_marglik_priors.html">JAGS_marglik_priors()</a></code> <code><a href="JAGS_marglik_priors.html">JAGS_marglik_priors_rows()</a></code> <code><a href="JAGS_marglik_priors.html">JAGS_marglik_priors_rows_evaluator()</a></code> <code><a href="JAGS_marglik_priors.html">JAGS_marglik_priors_formula()</a></code> </p>
         </td>
         <td><p>Compute marginal likelihood for 'JAGS' priors</p></td>
+      </tr><tr><td>
+          <p><code><a href="JAGS_ordered_density_kernel.html">JAGS_ordered_density_kernel()</a></code> </p>
+        </td>
+        <td><p>Batched numerical density kernel for ordered primitives</p></td>
+      </tr><tr><td>
+          <p><code><a href="JAGS_ordered_parameter_spec.html">JAGS_ordered_parameter_spec()</a></code> </p>
+        </td>
+        <td><p>Fitted ordered parameter specifications</p></td>
+      </tr><tr><td>
+          <p><code><a href="JAGS_package_builds.html">JAGS_package_builds()</a></code> </p>
+        </td>
+        <td><p>Build fingerprints of loaded packages</p></td>
+      </tr><tr><td>
+          <p><code><a href="JAGS_predict_formula.html">JAGS_predict_formula()</a></code> </p>
+        </td>
+        <td><p>Formula prediction with explicit random-effect target</p></td>
+      </tr><tr><td>
+          <p><code><a href="JAGS_runtime_cluster.html">JAGS_runtime_cluster()</a></code> <code><a href="JAGS_runtime_cluster.html">JAGS_runtime_cluster_stop()</a></code> </p>
+        </td>
+        <td><p>Worker clusters with the running package builds</p></td>
       </tr><tr><td>
           <p><code><a href="JAGS_to_monitor.html">JAGS_to_monitor()</a></code> </p>
         </td>
@@ -236,9 +375,37 @@
         </td>
         <td><p>Multivariate point mass distribution</p></td>
       </tr><tr><td>
-          <p><code><a href="parameter_names.html">format_parameter_names()</a></code> <code><a href="parameter_names.html">JAGS_parameter_names()</a></code> </p>
+          <p><code><a href="parameter_catalog.html">parameter_catalog()</a></code> <code><a href="parameter_catalog.html">parameter_catalog_schema()</a></code> <code><a href="parameter_catalog.html">parameter_catalog_extend()</a></code> <code><a href="parameter_catalog.html">parameter_catalog_resolve()</a></code> <code><a href="parameter_catalog.html">parameter_draws()</a></code> <code><a href="parameter_catalog.html">parameter_prior_density()</a></code> <code><a href="parameter_catalog.html">parameter_transform()</a></code> <code><a href="parameter_catalog.html">parameter_transform_forward()</a></code> <code><a href="parameter_catalog.html">parameter_transform_inverse()</a></code> <code><a href="parameter_catalog.html">parameter_transform_jacobian()</a></code> </p>
         </td>
-        <td><p>Clean parameter names from JAGS</p></td>
+        <td><p>Semantic parameter catalogs and deferred draw extraction</p></td>
+      </tr><tr><td>
+          <p><code><a href="parameter_gate_states.html">parameter_gate_states()</a></code> </p>
+        </td>
+        <td><p>Per-draw gate and point states of a catalog quantity</p></td>
+      </tr><tr><td>
+          <p><code><a href="parameter_labels.html">parameter_labels()</a></code> </p>
+        </td>
+        <td><p>Parameter labels</p></td>
+      </tr><tr><td>
+          <p><code><a href="parameter_map.html">parameter_map()</a></code> <code><a href="parameter_map.html">parameter_coordinates()</a></code> <code><a href="parameter_map.html">parameter_coordinates_schema()</a></code> <code><a href="parameter_map.html">parameter_map_schema()</a></code> </p>
+        </td>
+        <td><p>Fitted parameter map and coordinate view</p></td>
+      </tr><tr><td>
+          <p><code><a href="parameter_map_cache.html">parameter_map_cache()</a></code> </p>
+        </td>
+        <td><p>Cache a value derived from a fitted parameter map</p></td>
+      </tr><tr><td>
+          <p><code><a href="parameter_mixed_posterior.html">parameter_mixed_posterior()</a></code> </p>
+        </td>
+        <td><p>Mixed posterior of one catalog quantity</p></td>
+      </tr><tr><td>
+          <p><code><a href="parameter_names.html">format_parameter_names()</a></code> <code><a href="parameter_names.html">JAGS_parameter_names()</a></code> <code><a href="parameter_names.html">JAGS_regex_escape()</a></code> <code><a href="parameter_names.html">JAGS_indexed_parameter_columns()</a></code> <code><a href="parameter_names.html">JAGS_indexed_parameter_matrix()</a></code> <code><a href="parameter_names.html">JAGS_indexed_parameter_vector()</a></code> </p>
+        </td>
+        <td><p>JAGS parameter-name helpers</p></td>
+      </tr><tr><td>
+          <p><code><a href="parameter_source.html">parameter_source()</a></code> <code><a href="parameter_source.html">random_sd_source()</a></code> </p>
+        </td>
+        <td><p>External JAGS parameter source</p></td>
       </tr><tr><td>
           <p><code><a href="phack_pi_null.html">phack_pi_null()</a></code> <code><a href="phack_pi_null.html">phack_alpha_from_pi_null()</a></code> <code><a href="phack_pi_null.html">phack_backend_constants()</a></code> </p>
         </td>
@@ -247,6 +414,10 @@
           <p><code><a href="plot.prior.html">plot(<i>&lt;prior&gt;</i>)</a></code> </p>
         </td>
         <td><p>Plots a prior object</p></td>
+      </tr><tr><td>
+          <p><code><a href="plot.prior_linear_density.html">plot(<i>&lt;prior_linear_density&gt;</i>)</a></code> </p>
+        </td>
+        <td><p>Plot a prior linear density</p></td>
       </tr><tr><td>
           <p><code><a href="plot_marginal.html">plot_marginal()</a></code> </p>
         </td>
@@ -272,6 +443,46 @@
         </td>
         <td><p>Point mass distribution</p></td>
       </tr><tr><td>
+          <p><code><a href="posterior_atoms_free.html">posterior_atoms_free()</a></code> </p>
+        </td>
+        <td><p>Whether posterior draws are declared atom-free</p></td>
+      </tr><tr><td>
+          <p><code><a href="posterior_atom_attribute.html">posterior_atom_attribute()</a></code> </p>
+        </td>
+        <td><p>Declare posterior point-mass metadata</p></td>
+      </tr><tr><td>
+          <p><code><a href="posterior_density_attribute.html">posterior_density_attribute()</a></code> <code><a href="posterior_density_attribute.html">posterior_ordinate_attribute()</a></code> <code><a href="posterior_density_attribute.html">posterior_ordinate_append()</a></code> <code><a href="posterior_density_attribute.html">posterior_ordinate_supports_bf()</a></code> <code><a href="posterior_density_attribute.html">posterior_ordinate_has_value()</a></code> </p>
+        </td>
+        <td><p>Posterior density and ordinate attributes</p></td>
+      </tr><tr><td>
+          <p><code><a href="posterior_density_method_match.html">posterior_density_method_match()</a></code> <code><a href="posterior_density_method_match.html">posterior_density_method_uses_precomputed()</a></code> </p>
+        </td>
+        <td><p>Posterior density method helpers</p></td>
+      </tr><tr><td>
+          <p><code><a href="posterior_linear_target_checks.html">posterior_formula_measure_check()</a></code> <code><a href="posterior_linear_target_checks.html">posterior_linear_weight_space()</a></code> <code><a href="posterior_linear_target_checks.html">posterior_fitted_linear_weights()</a></code> </p>
+        </td>
+        <td><p>Metadata checks of the linear targets of posterior draws</p></td>
+      </tr><tr><td>
+          <p><code><a href="posterior_log_ordinate_attribute.html">posterior_log_ordinate_attribute()</a></code> </p>
+        </td>
+        <td><p>Posterior ordinate attributes from log heights</p></td>
+      </tr><tr><td>
+          <p><code><a href="posterior_measure_check.html">posterior_measure_check()</a></code> </p>
+        </td>
+        <td><p>Check that a measure of posterior draws is available</p></td>
+      </tr><tr><td>
+          <p><code><a href="posterior_metadata.html">posterior_metadata()</a></code> <code><a href="posterior_metadata.html">`posterior_metadata&lt;-`()</a></code> </p>
+        </td>
+        <td><p>Metadata of BayesTools posterior draws</p></td>
+      </tr><tr><td>
+          <p><code><a href="posterior_support_attribute.html">posterior_support_attribute()</a></code> </p>
+        </td>
+        <td><p>Posterior support metadata</p></td>
+      </tr><tr><td>
+          <p><code><a href="posterior_transform.html">posterior_transform()</a></code> </p>
+        </td>
+        <td><p>Transform posterior draws with their metadata</p></td>
+      </tr><tr><td>
           <p><code><a href="print.BayesTools_table.html">print(<i>&lt;BayesTools_table&gt;</i>)</a></code> </p>
         </td>
         <td><p>Print a BayesTools table</p></td>
@@ -288,9 +499,21 @@
         </td>
         <td><p>Creates a composed publication-bias prior</p></td>
       </tr><tr><td>
+          <p><code><a href="prior_density_has_provenance.html">prior_density_has_provenance()</a></code> </p>
+        </td>
+        <td><p>Whether a prior density has deterministic provenance</p></td>
+      </tr><tr><td>
+          <p><code><a href="prior_density_ordinate.html">prior_density_ordinate()</a></code> </p>
+        </td>
+        <td><p>Classify a prior-density ordinate</p></td>
+      </tr><tr><td>
           <p><code><a href="prior_factor.html">prior_factor()</a></code> </p>
         </td>
         <td><p>Creates a prior distribution for factors</p></td>
+      </tr><tr><td>
+          <p><code><a href="prior_factor_levels.html">prior_factor_levels()</a></code> </p>
+        </td>
+        <td><p>Levels of a factor prior distribution</p></td>
       </tr><tr><td>
           <p><code><a href="prior_functions.html">rng(<i>&lt;prior&gt;</i>)</a></code> <code><a href="prior_functions.html">cdf(<i>&lt;prior&gt;</i>)</a></code> <code><a href="prior_functions.html">ccdf(<i>&lt;prior&gt;</i>)</a></code> <code><a href="prior_functions.html">lpdf(<i>&lt;prior&gt;</i>)</a></code> <code><a href="prior_functions.html">pdf(<i>&lt;prior&gt;</i>)</a></code> <code><a href="prior_functions.html">quant(<i>&lt;prior&gt;</i>)</a></code> <code><a href="prior_functions.html">mcdf(<i>&lt;prior&gt;</i>)</a></code> <code><a href="prior_functions.html">mccdf(<i>&lt;prior&gt;</i>)</a></code> <code><a href="prior_functions.html">mlpdf(<i>&lt;prior&gt;</i>)</a></code> <code><a href="prior_functions.html">mpdf(<i>&lt;prior&gt;</i>)</a></code> <code><a href="prior_functions.html">mquant(<i>&lt;prior&gt;</i>)</a></code> </p>
         </td>
@@ -312,6 +535,18 @@
         </td>
         <td><p>Creates a mixture of prior distributions</p></td>
       </tr><tr><td>
+          <p><code><a href="prior_ordered.html">prior_ordered()</a></code> </p>
+        </td>
+        <td><p>Creates a prior distribution for ordered factor effects</p></td>
+      </tr><tr><td>
+          <p><code><a href="prior_ordered_total_name.html">prior_ordered_total_name()</a></code> </p>
+        </td>
+        <td><p>Name of the total node of an ordered prior</p></td>
+      </tr><tr><td>
+          <p><code><a href="prior_ordinate_status.html">prior_ordinate_status()</a></code> </p>
+        </td>
+        <td><p>Point-hypothesis eligibility of prior ordinates</p></td>
+      </tr><tr><td>
           <p><code><a href="prior_phacking.html">prior_phacking()</a></code> </p>
         </td>
         <td><p>Creates a prior distribution for a p-hacking selection kernel</p></td>
@@ -320,6 +555,10 @@
         </td>
         <td><p>Creates a prior distribution for PET or PEESE models</p></td>
       </tr><tr><td>
+          <p><code><a href="prior_random.html">prior_random()</a></code> <code><a href="prior_random.html">random_block()</a></code> <code><a href="prior_random.html">random_variance_allocation()</a></code> <code><a href="prior_random.html">allocation_ref()</a></code> <code><a href="prior_random.html">random_covariance()</a></code> <code><a href="prior_random.html">prior_lkj()</a></code> <code><a href="prior_random.html">random_monitor()</a></code> <code><a href="prior_random.html">random_new_levels()</a></code> </p>
+        </td>
+        <td><p>Random-effect prior specification</p></td>
+      </tr><tr><td>
           <p><code><a href="prior_spike_and_slab.html">prior_spike_and_slab()</a></code> </p>
         </td>
         <td><p>Creates a spike and slab prior distribution</p></td>
@@ -327,6 +566,78 @@
           <p><code><a href="prior_weightfunction.html">prior_weightfunction()</a></code> <code><a href="prior_weightfunction.html">wf_cumulative()</a></code> <code><a href="prior_weightfunction.html">wf_fixed()</a></code> <code><a href="prior_weightfunction.html">wf_independent()</a></code> </p>
         </td>
         <td><p>Creates a prior distribution for a weight function</p></td>
+      </tr><tr><td>
+          <p><code><a href="random_effects_compile.html">random_effects_compile()</a></code> </p>
+        </td>
+        <td><p>Random-effect compilation policy</p></td>
+      </tr><tr><td>
+          <p><code><a href="random_effects_correlation_draws.html">random_effects_correlation_draws()</a></code> </p>
+        </td>
+        <td><p>Scalar-structured random-effect correlation draws</p></td>
+      </tr><tr><td>
+          <p><code><a href="random_effects_dependency_matrix.html">random_effects_dependency_matrix()</a></code> </p>
+        </td>
+        <td><p>Structural row dependencies of formula random effects</p></td>
+      </tr><tr><td>
+          <p><code><a href="random_effects_formula.html">random_effects_formula()</a></code> </p>
+        </td>
+        <td><p>Normalize random-effect formula input</p></td>
+      </tr><tr><td>
+          <p><code><a href="random_effects_level_roles.html">random_effects_level_roles()</a></code> </p>
+        </td>
+        <td><p>Grouping-level roles of formula random effects</p></td>
+      </tr><tr><td>
+          <p><code><a href="random_effects_marginal_diagonal_factor.html">random_effects_marginal_diagonal_factor()</a></code> </p>
+        </td>
+        <td><p>Diagonal-plus-factor random-effect marginal representation</p></td>
+      </tr><tr><td>
+          <p><code><a href="random_effects_marginal_factor_diagonal.html">random_effects_marginal_factor_diagonal()</a></code> </p>
+        </td>
+        <td><p>Random-effect marginal covariance diagonals from factor states</p></td>
+      </tr><tr><td>
+          <p><code><a href="random_effects_marginal_factor_product.html">random_effects_marginal_factor_product()</a></code> </p>
+        </td>
+        <td><p>Multiply random-effect marginal covariance factors by row vectors</p></td>
+      </tr><tr><td>
+          <p><code><a href="random_effects_marginal_factor_states.html">random_effects_marginal_factor_states()</a></code> </p>
+        </td>
+        <td><p>Random-effect marginal covariance factor states</p></td>
+      </tr><tr><td>
+          <p><code><a href="random_effects_marginal_factor_vcov.html">random_effects_marginal_factor_vcov()</a></code> </p>
+        </td>
+        <td><p>Materialize random-effect marginal covariance factors</p></td>
+      </tr><tr><td>
+          <p><code><a href="random_effects_marginal_update_grid.html">random_effects_marginal_update_grid()</a></code> </p>
+        </td>
+        <td><p>Random-effect marginal covariance update grid</p></td>
+      </tr><tr><td>
+          <p><code><a href="random_effects_marginal_update_plan.html">random_effects_marginal_update_plan()</a></code> </p>
+        </td>
+        <td><p>Random-effect marginal covariance update plan</p></td>
+      </tr><tr><td>
+          <p><code><a href="random_effects_marginal_variance_factors.html">random_effects_marginal_variance_factors()</a></code> </p>
+        </td>
+        <td><p>Random-effect marginal variance factors</p></td>
+      </tr><tr><td>
+          <p><code><a href="random_effects_marginal_vcov.html">random_effects_marginal_vcov()</a></code> </p>
+        </td>
+        <td><p>Random-effect marginal variance-covariance samples</p></td>
+      </tr><tr><td>
+          <p><code><a href="random_effects_source_roles.html">random_effects_source_roles()</a></code> </p>
+        </td>
+        <td><p>Structural source roles of formula random effects</p></td>
+      </tr><tr><td>
+          <p><code><a href="random_effects_summary_posterior.html">random_effects_summary_posterior()</a></code> </p>
+        </td>
+        <td><p>Extract random-effect summary posterior distributions</p></td>
+      </tr><tr><td>
+          <p><code><a href="random_group_component_names.html">random_group_component_names()</a></code> <code><a href="random_group_component_names.html">random_group_prediction_keys()</a></code> </p>
+        </td>
+        <td><p>Grouping variables and group keys of a compiled random-effect term</p></td>
+      </tr><tr><td>
+          <p><code><a href="random_group_covariance.html">random_group_covariance()</a></code> </p>
+        </td>
+        <td><p>Known group covariance for random effects</p></td>
       </tr><tr><td>
           <p><code><a href="range.prior.html">range(<i>&lt;prior&gt;</i>)</a></code> </p>
         </td>
@@ -351,6 +662,26 @@
           <p><code><a href="selection_backend_spec.html">selection_backend_spec()</a></code> </p>
         </td>
         <td><p>Compile selection priors for backend consumers</p></td>
+      </tr><tr><td>
+          <p><code><a href="selection_context_validate.html">selection_context_validate()</a></code> <code><a href="selection_context_validate.html">selection_context_subset_rows()</a></code> <code><a href="selection_context_validate.html">selection_context_subset_observations()</a></code> <code><a href="selection_context_validate.html">selection_native_static_args()</a></code> <code><a href="selection_context_validate.html">selection_native_kernel_args()</a></code> <code><a href="selection_context_validate.html">selection_row_arg()</a></code> </p>
+        </td>
+        <td><p>Selection context helpers</p></td>
+      </tr><tr><td>
+          <p><code><a href="selection_event_support.html">selection_event_support()</a></code> </p>
+        </td>
+        <td><p>Check Gaussian selection-event support</p></td>
+      </tr><tr><td>
+          <p><code><a href="selection_model.html">selection_model()</a></code> <code><a href="selection_model.html">selection_model_spec()</a></code> <code><a href="selection_model.html">check_selection_model()</a></code> <code><a href="selection_model.html">print(<i>&lt;selection_model&gt;</i>)</a></code> </p>
+        </td>
+        <td><p>Specifies source conditioning in a selection model</p></td>
+      </tr><tr><td>
+          <p><code><a href="selection_qmc_design.html">selection_qmc_design()</a></code> </p>
+        </td>
+        <td><p>Fixed randomized quasi-Monte Carlo design</p></td>
+      </tr><tr><td>
+          <p><code><a href="simplify_as_mixed_posterior_bias.html">simplify_as_mixed_posterior_bias()</a></code> </p>
+        </td>
+        <td><p>Scalar PET, PEESE or omega posterior from a bias mixed posterior</p></td>
       </tr><tr><td>
           <p><code><a href="transform_factor_samples.html">transform_factor_samples()</a></code> </p>
         </td>
@@ -404,7 +735,7 @@
 </div>
 
 <div class="pkgdown">
-  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.0.</p>
+  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.1.</p>
 </div>
 
       </footer></div>

@@ -17,7 +17,7 @@
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.3.0</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.4.0</span>
       </span>
     </div>
 
@@ -32,10 +32,13 @@
     <span class="caret"></span>
   </a>
   <ul class="dropdown-menu" role="menu"><li>
-      <a href="../articles/ComparisonR.html">Comparison to other R packages</a>
+      <a href="../articles/ComparisonR.html">Bayesian t-Test Compared with BayesFactor</a>
     </li>
     <li>
-      <a href="../articles/SpikeAndSlab.html">Bayes factors via spike and slab prior vs. bridge sampling</a>
+      <a href="../articles/RandomEffects.html">Random Effects with Formula Syntax</a>
+    </li>
+    <li>
+      <a href="../articles/SpikeAndSlab.html">Variable Selection with Spike-and-Slab Priors</a>
     </li>
   </ul></li>
 <li>
@@ -57,7 +60,7 @@
   <div class="col-md-9 contents">
     <div class="page-header">
     <h1>Print a BayesTools table</h1>
-    <small class="dont-index">Source: <a href="https://github.com/FBartos/BayesTools/blob/master/R/summary-tables.R" class="external-link"><code>R/summary-tables.R</code></a></small>
+    <small class="dont-index">Source: <a href="https://github.com/FBartos/BayesTools/blob/master/R/summary-tables-object.R" class="external-link"><code>R/summary-tables-object.R</code></a></small>
     <div class="hidden name"><code>print.BayesTools_table.Rd</code></div>
     </div>
 
@@ -86,6 +89,19 @@
     <h2>Value</h2>
     <p><code>print.BayesTools_table</code> returns <code>NULL</code>.</p>
     </div>
+    <div id="details">
+    <h2>Details</h2>
+    <p>Finite positive Bayes-factor bounds that would round to zero at
+three decimals are printed as reciprocals (for example <code>&lt;1/10000</code>),
+or as <code><a href="https://rdrr.io/r/base/Log.html" class="external-link">exp()</a></code> of their logarithm when the reciprocal overflows.
+Log-scale bounds that would round to zero keep three significant digits,
+whichever sign they have (for example <code>&gt;-1e-05</code>). This
+changes only their presentation; numeric values, BF direction and bound
+operators are retained.
+A validated finite-log endpoint whose natural value in the displayed
+orientation is not representable (<code>0</code> or <code>Inf</code>) is printed as
+<code>exp(log_endpoint)</code>.</p>
+    </div>
 
   </div>
   <div class="col-md-3 hidden-xs hidden-sm" id="pkgdown-sidebar">
@@ -99,7 +115,7 @@
 </div>
 
 <div class="pkgdown">
-  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.0.</p>
+  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.1.</p>
 </div>
 
       </footer></div>

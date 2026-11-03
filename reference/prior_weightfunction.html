@@ -20,7 +20,7 @@ the publication weights in those bins."><!-- mathjax --><script src="https://cdn
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.3.0</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.4.0</span>
       </span>
     </div>
 
@@ -35,10 +35,13 @@ the publication weights in those bins."><!-- mathjax --><script src="https://cdn
     <span class="caret"></span>
   </a>
   <ul class="dropdown-menu" role="menu"><li>
-      <a href="../articles/ComparisonR.html">Comparison to other R packages</a>
+      <a href="../articles/ComparisonR.html">Bayesian t-Test Compared with BayesFactor</a>
     </li>
     <li>
-      <a href="../articles/SpikeAndSlab.html">Bayes factors via spike and slab prior vs. bridge sampling</a>
+      <a href="../articles/RandomEffects.html">Random Effects with Formula Syntax</a>
+    </li>
+    <li>
+      <a href="../articles/SpikeAndSlab.html">Variable Selection with Spike-and-Slab Priors</a>
     </li>
   </ul></li>
 <li>
@@ -60,7 +63,7 @@ the publication weights in those bins."><!-- mathjax --><script src="https://cdn
   <div class="col-md-9 contents">
     <div class="page-header">
     <h1>Creates a prior distribution for a weight function</h1>
-    <small class="dont-index">Source: <a href="https://github.com/FBartos/BayesTools/blob/master/R/priors.R" class="external-link"><code>R/priors.R</code></a></small>
+    <small class="dont-index">Source: <a href="https://github.com/FBartos/BayesTools/blob/master/R/priors-weightfunction.R" class="external-link"><code>R/priors-weightfunction.R</code></a></small>
     <div class="hidden name"><code>prior_weightfunction.Rd</code></div>
     </div>
 
@@ -77,7 +80,8 @@ the publication weights in those bins.</p>
 <span>  steps <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">0.025</span>, <span class="fl">0.05</span><span class="op">)</span>,</span>
 <span>  weights <span class="op">=</span> <span class="fu">wf_cumulative</span><span class="op">(</span><span class="op">)</span>,</span>
 <span>  reference <span class="op">=</span> <span class="st">"most_significant"</span>,</span>
-<span>  prior_weights <span class="op">=</span> <span class="fl">1</span></span>
+<span>  prior_weights <span class="op">=</span> <span class="fl">1</span>,</span>
+<span>  model <span class="op">=</span> <span class="fu"><a href="selection_model.html">selection_model</a></span><span class="op">(</span><span class="op">)</span></span>
 <span><span class="op">)</span></span>
 <span></span>
 <span><span class="fu">wf_cumulative</span><span class="op">(</span>alpha <span class="op">=</span> <span class="cn">NULL</span><span class="op">)</span></span>
@@ -113,15 +117,28 @@ supported and fixes the most significant bin to <code>omega = 1</code>.</p></dd>
 <dd><p>prior odds associated with a given distribution.</p></dd>
 
 
+<dt id="arg-model">model<a class="anchor" aria-label="anchor" href="#arg-model"></a></dt>
+<dd><p>a fixed selection-model specification from
+<code><a href="selection_model.html">selection_model()</a></code>. Its choices do not add weight-prior parameters or
+change <code>prior_weights</code>.</p></dd>
+
+
 <dt id="arg-alpha">alpha<a class="anchor" aria-label="anchor" href="#arg-alpha"></a></dt>
-<dd><p>positive cumulative-Dirichlet concentration parameters. If
-omitted, a flat Dirichlet prior is used with one concentration parameter per
-bin.</p></dd>
+<dd><p>finite numeric cumulative-Dirichlet concentration parameters,
+each at least <code>0.01</code>. If omitted, a flat Dirichlet prior is used with
+one concentration parameter per bin. The supported minimum is not a
+numerical guarantee: accepted R sampling can still be unavailable, and
+two-bin cumulative JAGS initialization near the minimum can repeatedly
+refuse ratios that are no longer representable strictly inside <code>(0, 1)</code>.
+Such failures are explicit; concentrations, draws and initialization settings
+are not repaired. See <code><a href="prior_functions.html">prior_functions</a></code> for sampling conditions.</p></dd>
 
 
 <dt id="arg-omega">omega<a class="anchor" aria-label="anchor" href="#arg-omega"></a></dt>
 <dd><p>fixed non-negative relative publication weights, one per bin.
-The reference-bin weight must be exactly 1.</p></dd>
+When assembled by <code>prior_weightfunction()</code>, the reference-bin weight
+must be exactly 1. Named and integer values are accepted; nearby values are
+refused without normalization.</p></dd>
 
 
 <dt id="arg-prior">prior<a class="anchor" aria-label="anchor" href="#arg-prior"></a></dt>
@@ -133,7 +150,8 @@ The reference-bin weight must be exactly 1.</p></dd>
 prior directly on the non-negative publication weight. <code>"log_omega"</code>
 places the prior on <code>log(omega)</code> and transforms with
 <code>omega = exp(log_omega)</code>, allowing weights above one whenever the log
-prior assigns mass above zero.</p></dd>
+prior assigns mass above zero. <code>"log"</code> is accepted as an alias of
+<code>"log_omega"</code>.</p></dd>
 
 </dl></div>
     <div id="value">
@@ -173,7 +191,7 @@ prior assigns mass above zero.</p></dd>
 </div>
 
 <div class="pkgdown">
-  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.0.</p>
+  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.1.</p>
 </div>
 
       </footer></div>

@@ -18,7 +18,7 @@ JAGS_fit function."><!-- mathjax --><script src="https://cdnjs.cloudflare.com/aj
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.3.0</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.4.0</span>
       </span>
     </div>
 
@@ -33,10 +33,13 @@ JAGS_fit function."><!-- mathjax --><script src="https://cdnjs.cloudflare.com/aj
     <span class="caret"></span>
   </a>
   <ul class="dropdown-menu" role="menu"><li>
-      <a href="../articles/ComparisonR.html">Comparison to other R packages</a>
+      <a href="../articles/ComparisonR.html">Bayesian t-Test Compared with BayesFactor</a>
     </li>
     <li>
-      <a href="../articles/SpikeAndSlab.html">Bayes factors via spike and slab prior vs. bridge sampling</a>
+      <a href="../articles/RandomEffects.html">Random Effects with Formula Syntax</a>
+    </li>
+    <li>
+      <a href="../articles/SpikeAndSlab.html">Variable Selection with Spike-and-Slab Priors</a>
     </li>
   </ul></li>
 <li>
@@ -58,7 +61,7 @@ JAGS_fit function."><!-- mathjax --><script src="https://cdnjs.cloudflare.com/aj
   <div class="col-md-9 contents">
     <div class="page-header">
     <h1>Check and list 'JAGS' fitting settings</h1>
-    <small class="dont-index">Source: <a href="https://github.com/FBartos/BayesTools/blob/master/R/JAGS-fit.R" class="external-link"><code>R/JAGS-fit.R</code></a></small>
+    <small class="dont-index">Source: <a href="https://github.com/FBartos/BayesTools/blob/master/R/JAGS-fit-settings.R" class="external-link"><code>R/JAGS-fit-settings.R</code></a></small>
     <div class="hidden name"><code>JAGS_check_and_list.Rd</code></div>
     </div>
 
@@ -133,7 +136,30 @@ defaults to <code>chains</code></p></dd>
 
 
 <dt id="arg-seed">seed<a class="anchor" aria-label="anchor" href="#arg-seed"></a></dt>
-<dd><p>seed for random number generation</p></dd>
+<dd><p>seed for random number generation by <code><a href="JAGS_fit.html">JAGS_fit()</a></code>: an
+integer between <code>-.Machine$integer.max</code> and <code>.Machine$integer.max</code>.
+Draws are reproducible for the same <code>seed</code>, <code>chains</code>, and R
+random-number generator settings (<code><a href="https://rdrr.io/r/base/Random.html" class="external-link">RNGkind()</a></code>), and, with
+<code>parallel = TRUE</code>, the same <code>cores</code>. Parallel draws need not equal
+serial draws with the same seed, because the backend passes each chain's
+initial state to its worker in a serialized text form. Initial values are
+drawn from the priors after <code>set.seed(seed)</code>, and each chain's JAGS
+random-number seed is drawn from the same seed with
+<code>sample.int(.Machine$integer.max, chains)</code> (see
+<code><a href="JAGS_get_inits.html">JAGS_get_inits</a></code>). A chain's JAGS seed therefore does not
+depend on the number of chains, but the JAGS generator does: with more
+than four chains it changes from <code>"base::Super-Duper"</code> to
+<code>"lecuyer::RngStream"</code>, so the draws of a chain differ between fits
+with up to four and with more chains. The chains of adjacent seeds (e.g.,
+<code>seed</code> and <code>seed + 1</code>) do not share random-number streams.
+Automatic restarts after a failed initialization (see <code>restarts</code> in
+<code>autofit_control</code>) draw their seeds from a separate stream of the
+same seed (the first L'Ecuyer-CMRG substream), so the i-th restart does
+not repeat the fit with <code>seed + i</code>. A seeded fit restores the
+caller's random-number state (<code>.Random.seed</code> and <code><a href="https://rdrr.io/r/base/Random.html" class="external-link">RNGkind()</a></code>)
+when it returns. With <code>seed = NULL</code>, the initial values are drawn
+from one seed taken from the caller's random-number stream (see
+<code><a href="JAGS_get_inits.html">JAGS_get_inits</a></code>), which the fit then continues to use.</p></dd>
 
 
 <dt id="arg-check-mins">check_mins<a class="anchor" aria-label="anchor" href="#arg-check-mins"></a></dt>
@@ -163,9 +189,14 @@ should some input be checked. Defaults to:</p><dl><dt>chains</dt>
 
 <dt id="arg-autofit-control">autofit_control<a class="anchor" aria-label="anchor" href="#arg-autofit-control"></a></dt>
 <dd><p>a list of arguments controlling the autofit function.
+Convergence thresholds and <code>max_time$time</code> must be finite and non-missing.
+Set a convergence threshold or <code>max_time</code> to <code>NULL</code> to disable that check.
 Possible options are:</p><dl><dt>max_Rhat</dt>
 <dd><p>maximum R-hat error for the autofit function.
-Defaults to <code>1.05</code>.</p></dd>
+Defaults to <code>1.05</code>. R-hat is the larger of the point estimate and
+the upper confidence limit of the potential scale reduction factor,
+whereas the summary tables show the point estimate (see
+<code><a href="JAGS_check_convergence.html">JAGS_check_convergence()</a></code>).</p></dd>
 
 <dt>min_ESS</dt>
 <dd><p>minimum effective sample size. Defaults to <code>500</code>.</p></dd>
@@ -178,9 +209,9 @@ Defaults to <code>1.05</code>.</p></dd>
 deviation of the parameters. Defaults to <code>0.05</code>.</p></dd>
 
 <dt>max_time</dt>
-<dd><p>list specifying the time <code>time</code> and <code>units</code>
-after which the automatic fitting function is stopped. The units arguments
-need to correspond to <code>units</code> passed to <a href="https://rdrr.io/r/base/difftime.html" class="external-link">difftime</a> function.</p></dd>
+<dd><p>list with fields <code>time</code> and <code>unit</code>, specifying
+when the automatic fitting function is stopped. The <code>unit</code> value
+corresponds to the <code>units</code> argument of <a href="https://rdrr.io/r/base/difftime.html" class="external-link">difftime</a>.</p></dd>
 
 <dt>max_extend</dt>
 <dd><p>number of times after which the automatic fitting function is stopped.</p></dd>
@@ -190,12 +221,40 @@ need to correspond to <code>units</code> passed to <a href="https://rdrr.io/r/ba
 <code>1000</code>.</p></dd>
 
 <dt>restarts</dt>
-<dd><p>number of times new initial values should be generated in case the model
-fails to initialize. Defaults to <code>10</code>.</p></dd>
+<dd><p>maximum number of fitting attempts when the model fails
+to initialize; every failed attempt but the last is retried with new
+initial values (<code>restarts = 1</code> fits once, without a retry). A
+failed attempt that is retried is reported as a warning of the fit.
+Defaults to <code>10</code>.</p></dd>
 
 <dt>check_indicators</dt>
 <dd><p>whether model indicator variables should be included
-in convergence checks. Defaults to <code>FALSE</code>.</p></dd>
+in convergence checks, including when <code>monitor</code> selects a narrower
+parameter set. Auxiliary inclusion-probability coordinates remain excluded
+unless requested explicitly. Defaults to <code>FALSE</code>.</p></dd>
+
+<dt>monitor</dt>
+<dd><p>optional character vector selecting parameters for
+convergence checks. Base names select all indexed elements. Requests are
+resolved against the monitored nodes that the summary tables show,
+including the derived and auxiliary ones that the default selection
+excludes. Base names that are not
+monitored are rejected before sampling (error class
+<code>BayesTools_parameter_not_found</code>); an indexed element such as
+<code>"mu[2]"</code> is resolved against the fitted columns after the first
+run and fails then when it does not exist. Defaults to <code>NULL</code>, which
+checks the default selection of <code><a href="JAGS_check_convergence.html">JAGS_check_convergence()</a></code>: the sampled
+parameters of the priors, <code>add_parameters</code> that depend on a
+stochastic node, and the stochastic nodes that formulas monitor (such as
+latent random effects and LKJ primitives). Deterministic nodes that
+formulas monitor (such as random-effect correlation matrices and their
+Cholesky factors) are derived and not checked by default. The role of
+every fitted coordinate is stored in the <code>convergence_role</code> column
+of <code><a href="parameter_map.html">parameter_coordinates()</a></code>.</p></dd>
+
+<dt>allow_not_assessable</dt>
+<dd><p>whether undefined diagnostics for requested
+sampled parameters may be ignored. Defaults to <code>FALSE</code>.</p></dd>
 
 
 </dl></dd>
@@ -210,8 +269,7 @@ is allowed to be NULL and skipped in the check</p></dd>
     <h2>Value</h2>
     <p><code>JAGS_check_and_list_fit_settings</code> invisibly returns a
 list of checked fit settings. <code>JAGS_check_and_list_autofit_settings</code>
-invisibly returns a list of checked autofit settings.
-parameter names.</p>
+invisibly returns a list of checked autofit settings.</p>
     </div>
 
   </div>
@@ -226,7 +284,7 @@ parameter names.</p>
 </div>
 
 <div class="pkgdown">
-  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.0.</p>
+  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.1.</p>
 </div>
 
       </footer></div>

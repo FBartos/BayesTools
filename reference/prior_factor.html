@@ -19,7 +19,7 @@ systems might vary due to differences in JAGS numerical precision.)"><!-- mathja
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.3.0</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.4.0</span>
       </span>
     </div>
 
@@ -34,10 +34,13 @@ systems might vary due to differences in JAGS numerical precision.)"><!-- mathja
     <span class="caret"></span>
   </a>
   <ul class="dropdown-menu" role="menu"><li>
-      <a href="../articles/ComparisonR.html">Comparison to other R packages</a>
+      <a href="../articles/ComparisonR.html">Bayesian t-Test Compared with BayesFactor</a>
     </li>
     <li>
-      <a href="../articles/SpikeAndSlab.html">Bayes factors via spike and slab prior vs. bridge sampling</a>
+      <a href="../articles/RandomEffects.html">Random Effects with Formula Syntax</a>
+    </li>
+    <li>
+      <a href="../articles/SpikeAndSlab.html">Variable Selection with Spike-and-Slab Priors</a>
     </li>
   </ul></li>
 <li>
@@ -109,14 +112,14 @@ by a <code>location</code>, <code>scale</code>, and <code>df</code> parameters.<
 <dt><code>"gamma"</code></dt>
 <dd><p>for a gamma distribution characterized
 by either <code>shape</code> and <code>rate</code>, or <code>shape</code> and
-<code>scale</code> parameters. The later is internally converted to
+<code>scale</code> parameters. The latter is internally converted to
 the <code>shape</code> and <code>rate</code> parametrization</p></dd>
 
 <dt><code>"invgamma"</code></dt>
 <dd><p>for an inverse-gamma distribution
 characterized by a <code>shape</code> and <code>scale</code> parameters. The
-JAGS part uses a 1/gamma distribution with a shape and rate
-parameter.</p></dd>
+JAGS part uses the BayesTools module distribution
+<code>dbt_invgamma(shape, scale)</code> on the natural parameter.</p></dd>
 
 <dt><code>"beta"</code></dt>
 <dd><p>for a beta distribution
@@ -131,6 +134,32 @@ parameter. The later is internally converted to
 <dt><code>"uniform"</code></dt>
 <dd><p>for a uniform distribution defined on a
 range from <code>a</code> to <code>b</code></p></dd>
+
+<dt><code>"moment"</code></dt>
+<dd><p>for a Johnson-Rossell moment prior characterized
+by exactly one of <code>mode</code> or <code>tau</code>, an optional <code>order</code>
+that defaults to 1, and an optional <code>location</code> that defaults to 0.</p></dd>
+
+<dt><code>"invmoment"</code></dt>
+<dd><p>for a Johnson-Rossell inverse-moment prior
+characterized by exactly one of <code>mode</code> or <code>tau</code>, a <code>df</code>,
+an optional <code>order</code> that defaults to 1, and an optional
+<code>location</code> that defaults to 0.</p></dd>
+
+<dt><code>"dirichlet"</code></dt>
+<dd><p>for a Dirichlet distribution over a simplex,
+whose finite nonnegative coordinates must have a finite total and roundoff
+bound and sum to one within that bound,
+characterized by a concentration vector <code>alpha</code>. Numeric entries
+must be finite and at least <code>0.01</code>; this is a supported-input minimum,
+not a numerical guarantee. Positive expression-valued concentrations retain
+their existing JAGS-only support: expression containers, including literal
+elements, are not statically evaluated or validated, and R random generation
+refuses them. Cumulative weight functions and ordered allocations require
+numeric concentrations. Accepted sampling can still be unavailable; see
+<code><a href="prior_functions.html">prior_functions</a></code>. Two-bin cumulative JAGS initialization near
+the minimum can repeatedly refuse unrepresentable interior ratios. Density
+and plot methods show one beta marginal per simplex coordinate.</p></dd>
 
 
 </dl></dd>
@@ -164,14 +193,15 @@ across factor levels. In contrast to <code>"orthonormal"</code>, the marginal di
 are identical regardless of the number of factor levels and the specified prior
 distribution corresponds to the difference from grand mean for each factor level.
 Only supports <code>distribution = "mnormal"</code> and <code>distribution = "mt"</code>
-which generates the corresponding multivariate normal/t distributions.</p></dd>
+which generates the corresponding multivariate normal/t distributions. The
+distribution must be centered exactly at zero.</p></dd>
 
 <dt><code>"orthonormal"</code></dt>
 <dd><p>for contrast centered around the grand mean
 with equal marginal distributions, making the prior distribution exchangeable
 across factor levels. Only supports <code>distribution = "mnormal"</code> and
 <code>distribution = "mt"</code> which generates the corresponding multivariate normal/t
-distributions.</p></dd>
+distributions. The distribution must be centered exactly at zero.</p></dd>
 
 <dt><code>"treatment"</code></dt>
 <dd><p>for contrasts using the first level as a comparison
@@ -179,9 +209,12 @@ group and setting equal prior distribution on differences between the individual
 factor levels and the comparison level.</p></dd>
 
 <dt><code>"independent"</code></dt>
-<dd><p>for contrasts specifying dependent prior distribution
-for each factor level (note that this leads to an overparameterized model if the
-intercept is included).</p></dd>
+<dd><p>for one independently regularized coefficient
+per factor level. With a free intercept, this coefficient design is
+likelihood-rank-deficient and its separation is prior-dependent. In a
+BayesTools formula with <code>0 + factor</code> or <code>factor - 1</code>, the intercept is
+instead fixed structurally at zero, so the level coefficients are
+identified directly.</p></dd>
 
 
 </dl></dd>
@@ -191,9 +224,24 @@ intercept is included).</p></dd>
     <h2>Value</h2>
     <p>return an object of class 'prior'.</p>
     </div>
+    <div id="details">
+    <h2>Details</h2>
+    <p>The factor prior owns the contrast family. BayesTools does not change that
+family merely because the formula includes or removes an intercept. In
+particular, <code>~ 0 + factor</code> represents a point-zero intercept and the
+contrast selected here; it requests one coefficient per level only when
+<code>contrast = "independent"</code>.</p>
+<p>A formula interaction of two or more factors in which a factor is coded by a
+mean-difference or orthonormal contrast accepts only priors that do not depend
+on the basis of that contrast: mean-difference and orthonormal priors, and
+treatment or independent priors that are zero-mean untruncated normal or zero
+spike priors (priors symmetric about zero when every coded factor of the term
+has two levels). Other treatment and independent priors, and ordered priors,
+are refused (see the conditions of <code><a href="JAGS_formula.html">JAGS_formula()</a></code>).</p>
+    </div>
     <div id="see-also">
     <h2>See also</h2>
-    <div class="dont-index"><p><code><a href="prior.html">prior()</a></code></p></div>
+    <div class="dont-index"><p><code><a href="prior.html">prior()</a></code>, <code><a href="JAGS_formula.html">JAGS_formula()</a></code></p></div>
     </div>
 
     <div id="ref-examples">
@@ -216,7 +264,7 @@ intercept is included).</p></dd>
 </div>
 
 <div class="pkgdown">
-  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.0.</p>
+  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.1.</p>
 </div>
 
       </footer></div>

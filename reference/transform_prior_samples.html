@@ -20,7 +20,7 @@ which depends on contributions from multiple coefficient priors."><!-- mathjax -
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.3.0</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.4.0</span>
       </span>
     </div>
 
@@ -35,10 +35,13 @@ which depends on contributions from multiple coefficient priors."><!-- mathjax -
     <span class="caret"></span>
   </a>
   <ul class="dropdown-menu" role="menu"><li>
-      <a href="../articles/ComparisonR.html">Comparison to other R packages</a>
+      <a href="../articles/ComparisonR.html">Bayesian t-Test Compared with BayesFactor</a>
     </li>
     <li>
-      <a href="../articles/SpikeAndSlab.html">Bayes factors via spike and slab prior vs. bridge sampling</a>
+      <a href="../articles/RandomEffects.html">Random Effects with Formula Syntax</a>
+    </li>
+    <li>
+      <a href="../articles/SpikeAndSlab.html">Variable Selection with Spike-and-Slab Priors</a>
     </li>
   </ul></li>
 <li>
@@ -60,7 +63,7 @@ which depends on contributions from multiple coefficient priors."><!-- mathjax -
   <div class="col-md-9 contents">
     <div class="page-header">
     <h1>Transform prior samples to original scale</h1>
-    <small class="dont-index">Source: <a href="https://github.com/FBartos/BayesTools/blob/master/R/JAGS-formula.R" class="external-link"><code>R/JAGS-formula.R</code></a></small>
+    <small class="dont-index">Source: <a href="https://github.com/FBartos/BayesTools/blob/master/R/JAGS-formula-scale-transform.R" class="external-link"><code>R/JAGS-formula-scale-transform.R</code></a></small>
     <div class="hidden name"><code>transform_prior_samples.Rd</code></div>
     </div>
 
@@ -94,18 +97,25 @@ which depends on contributions from multiple coefficient priors.</p>
 
 
 <dt id="arg-seed">seed<a class="anchor" aria-label="anchor" href="#arg-seed"></a></dt>
-<dd><p>random seed for reproducibility (optional)</p></dd>
+<dd><p>random seed for reproducibility (optional). The caller's
+random-number state (<code>.Random.seed</code> and <code><a href="https://rdrr.io/r/base/Random.html" class="external-link">RNGkind()</a></code>) is restored
+afterwards. With <code>NULL</code>, the caller's random-number stream is used.</p></dd>
 
 
 <dt id="arg-formula-scale">formula_scale<a class="anchor" aria-label="anchor" href="#arg-formula-scale"></a></dt>
 <dd><p>optional nested list containing standardization information.
-If not provided, extracted from <code>fit</code> attribute.</p></dd>
+If not provided, extracted from <code>fit</code> attribute. An entry must name
+every predictor that <code>fit</code> standardized for that parameter. The
+transformation is derived from the fitted structure stored in <code>fit</code>: the
+fixed-effect design, a log intercept, and the random-effect SD structure.</p></dd>
 
 </dl></div>
     <div id="value">
     <h2>Value</h2>
     <p>A matrix of prior samples on the original (unscaled) scale, with
-columns matching the structure of posterior samples.</p>
+columns matching the structure of posterior samples. Columns that are not
+mapped by the scale transformation, such as the totals and allocation nodes
+of ordered priors, keep their fitted-scale values.</p>
     </div>
     <div id="details">
     <h2>Details</h2>
@@ -118,6 +128,50 @@ multiple priors:</p>
 <p>This function generates samples from ALL priors simultaneously and applies
 the same matrix transformation used for posterior samples, which correctly
 handles the intercept and all other parameters.</p>
+<p>Monitored random-effect nodes that the model defines deterministically from
+other nodes are computed from the prior draws of those nodes with the
+model's own definitions: standard deviations derived from a variance
+allocation (<code><a href="prior_random.html">random_variance_allocation()</a></code>), scalar correlations
+sampled on the Fisher-z or logit scale, and LKJ Cholesky factors,
+correlation matrices, and partial correlations. Every parameter-catalog
+quantity that depends only on such nodes and on the priors can therefore be
+evaluated on the prior draws (see <code><a href="parameter_catalog.html">parameter_draws()</a></code>). The auxiliary
+nodes of spike-and-slab and mixture priors are included from the components
+of their <code><a href="prior_functions_methods.html">rng()</a></code> draws: the component indicator (<code>&lt;parameter&gt;_indicator</code>)
+of both, and the inclusion probability (<code>&lt;parameter&gt;_inclusion</code>) and
+slab draws (<code>&lt;parameter&gt;_variable</code>) of spike-and-slab priors; the
+random-number stream of the other columns is unchanged. The totals of
+ordered priors (<code>&lt;parameter&gt;_ordered_total</code>) are included with the
+same auxiliary nodes of a spike-and-slab or mixture total; the slices of a
+spike-and-slab total of an interaction share its inclusion probability and
+indicator, as in the fitted model. Standardized latent random effects,
+nodes derived from them, such as realized group coefficients, the
+component nodes of mixture priors, and the auxiliary nodes of Dirichlet
+priors are not included, so catalog quantities that depend on them cannot
+be evaluated on the prior draws.
+Variance-allocation inclusion indicators are included, drawn from their
+inclusion probabilities.
+Valid LKJ concentrations do not guarantee representable primitive Beta draws.
+Nonfinite draws or draws outside the open interval <code>(0, 1)</code> stop before
+deterministic replay with <code>BayesTools_lkj_rng_unavailable</code> (parent
+<code>BayesTools_prior_rng_unavailable</code>). The condition records <code>block</code>,
+<code>primitive</code>, <code>K</code>, <code>eta</code>, original-row <code>failed_draws</code> and <code>n_failed</code>.
+Choose a concentration whose primitive draws remain representable; no retry,
+clamping, endpoint substitution or prior change is performed. Explicit scalar
+correlation transforms that numerically saturate a boundary retain their
+compiler refusal rather than changing the requested prior or scale.</p>
+    </div>
+    <div id="conditions">
+    <h2>Conditions</h2>
+
+
+<p>The conditions of <code><a href="transform_scale_samples.html">transform_scale_samples()</a></code> apply
+(<code>BayesTools_formula_transform_unavailable</code> and
+<code>BayesTools_refit_required</code>). Expression-point priors without a
+certified persisted recipe stop with
+<code>BayesTools_formula_transform_unavailable</code> and reason
+<code>"uncertified_point_replay"</code>; non-representable LKJ primitive draws
+signal <code>BayesTools_lkj_rng_unavailable</code>.</p>
     </div>
     <div id="see-also">
     <h2>See also</h2>
@@ -144,7 +198,7 @@ handles the intercept and all other parameters.</p>
 </div>
 
 <div class="pkgdown">
-  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.0.</p>
+  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.1.</p>
 </div>
 
       </footer></div>

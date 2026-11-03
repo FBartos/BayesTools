@@ -17,7 +17,7 @@
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.3.0</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.4.0</span>
       </span>
     </div>
 
@@ -32,10 +32,13 @@
     <span class="caret"></span>
   </a>
   <ul class="dropdown-menu" role="menu"><li>
-      <a href="../articles/ComparisonR.html">Comparison to other R packages</a>
+      <a href="../articles/ComparisonR.html">Bayesian t-Test Compared with BayesFactor</a>
     </li>
     <li>
-      <a href="../articles/SpikeAndSlab.html">Bayes factors via spike and slab prior vs. bridge sampling</a>
+      <a href="../articles/RandomEffects.html">Random Effects with Formula Syntax</a>
+    </li>
+    <li>
+      <a href="../articles/SpikeAndSlab.html">Variable Selection with Spike-and-Slab Priors</a>
     </li>
   </ul></li>
 <li>
@@ -60,6 +63,132 @@
       <small>Source: <a href="https://github.com/FBartos/BayesTools/blob/master/NEWS.md" class="external-link"><code>NEWS.md</code></a></small>
     </div>
 
+    <div class="section level2">
+<h2 class="page-header" data-toc-text="0.4.0" id="version-040">version 0.4.0<a class="anchor" aria-label="anchor" href="#version-040"></a></h2>
+<div class="section level4">
+<h4 id="breaking-changes-0-4-0">Breaking changes<a class="anchor" aria-label="anchor" href="#breaking-changes-0-4-0"></a></h4>
+<ul><li>requires R &gt;= 4.3.0 and the <code>reformulas</code> package; BayesTools now compiles a JAGS module (inverse-gamma, moment, inverse-moment, and LKJ distributions) and requires JAGS 4.x (&gt;= 4.3.0), including its headers and libraries for installation from source</li>
+<li>fits, mixed and marginal posteriors, marginal likelihoods, and weight-function priors created with BayesTools 0.3.0 or earlier (including RoBMA 4.0.0 models) must be refitted or recreated; post-fit functions stop on them with a <code>BayesTools_refit_required</code> error</li>
+<li>marginal likelihoods are <code>BayesTools_marglik</code> objects (still inheriting from <code>"bridge"</code>), and the model-averaging functions accept only these; use <code><a href="../reference/JAGS_bridgesampling.html">JAGS_bridgesampling()</a></code> or <code>bridgesampling_object(logml)</code>
+</li>
+<li>inverse-gamma priors use the module distribution <code>dbt_invgamma</code> on the parameter itself instead of a gamma prior on <code>inv_&lt;parameter&gt;</code>
+</li>
+<li>removes the deprecated <code>transform_orthonormal</code> argument (use <code>transform_factors</code>) and the ineffective <code>seed</code> argument of <code><a href="../reference/JAGS_fit.html">JAGS_extend()</a></code>; pass the arguments that followed them by name</li>
+<li>
+<code><a href="../reference/check_input.html">check_bool()</a></code> rejects <code>NA</code> by default and <code><a href="../reference/check_input.html">check_int()</a></code> rejects infinite values</li>
+<li>fixed weight-function priors require a reference weight of exactly 1, and cumulative weight-function and Dirichlet priors require concentrations of at least 0.01</li>
+<li>stricter inputs: finite autofit convergence thresholds, named <code>add_bounds</code>, factor priors outside formulas need <code><a href="../reference/prior_factor_levels.html">prior_factor_levels()</a></code>, formula random effects need <code><a href="../reference/prior_random.html">prior_random()</a></code>, and mean-difference or orthonormal priors on indicator-coded interaction terms (e.g., <code>g:x</code> in <code>~ g + g:x</code>) and <code>multiply_by</code> on the intercept prior or on a component of a mixture or spike-and-slab term prior (where it was ignored) are rejected, and interaction priors that are not invariant to the mean-difference or orthonormal basis of a factor (anything but zero-mean normal and zero-spike priors, or symmetric priors for two-level factors) are rejected</li>
+<li>
+<code><a href="../reference/JAGS_evaluate_formula.html">JAGS_evaluate_formula()</a></code>, <code><a href="../reference/transform_scale_samples.html">transform_scale_samples()</a></code>, and original-scale transformations require the formula design stored by <code><a href="../reference/JAGS_fit.html">JAGS_fit()</a></code>; attach it to draws without a fit with <code><a href="../reference/JAGS_formula_draws.html">JAGS_formula_draws()</a></code>
+</li>
+<li>chain seeds are drawn from <code>seed</code> with R’s random-number generator instead of <code>seed + chain</code>, and <code><a href="../reference/mix_posteriors.html">mix_posteriors()</a></code> allocates draws with multinomial counts, so seeded results differ from 0.3.0; seeded functions restore the caller’s random-number state instead of resetting it</li>
+<li>
+<code><a href="../reference/contr.BayesTools.html">contr.orthonormal()</a></code> and <code><a href="../reference/contr.BayesTools.html">contr.meandif()</a></code> return a closed-form (normalised Helmert) basis identical on every platform, so raw orthonormal and mean-difference coefficients differ from 0.3.0</li>
+<li>conditioning on an unknown parameter name is an error instead of a warning</li>
+<li>
+<code><a href="../reference/Savage_Dickey_BF.html">Savage_Dickey_BF()</a></code> requires an exact, finite, and nonzero prior ordinate at the null hypothesis (classed errors otherwise), returns a finite Bayes factor when the null lies outside the posterior draws, and returns <code>NA</code> with the reason for levels with a posterior point mass at the null</li>
+<li>
+<code><a href="../reference/JAGS_check_convergence.html">JAGS_check_convergence()</a></code> and autofit classify parameters by their declared roles: constant parameters are structural, sampled parameters with constant draws fail unless <code>allow_not_assessable = TRUE</code>, and indicators are identified from their priors rather than their names</li>
+<li>parameter labels are rendered from structured label parts, which changes some labels: contrast coefficients that are not levels are labelled <code>term{j}</code>, interaction cells and formula prefixes are named consistently across tables, Bayes factor MC-error warnings name parameters by their table labels, and individual weight-function omegas in plots follow the order of summary tables</li>
+<li>
+<code><a href="../reference/JAGS_fit.html">JAGS_fit()</a></code> monitors point priors</li>
+<li>posterior draw metadata are stored in one validated attribute (<code><a href="../reference/posterior_metadata.html">posterior_metadata()</a></code>); arithmetic drops the metadata, values modified in place stop with <code>BayesTools_stale_metadata</code>, and posterior plots take point masses only from declared posterior atoms</li>
+</ul></div>
+<div class="section level4">
+<h4 id="features-0-4-0">Features<a class="anchor" aria-label="anchor" href="#features-0-4-0"></a></h4>
+<ul><li>adds formula random effects via <code><a href="../reference/prior_random.html">prior_random()</a></code>, <code><a href="../reference/prior_random.html">random_block()</a></code>, and related helpers, with lme4-like syntax (independent, nested, and interacted grouping, factor random slopes, where a mean-difference or orthonormal factor term is one exchangeable unit with one SD) and diagonal, unstructured (LKJ prior), compound-symmetry, AR(1), heterogeneous, and continuous-time AR(1) covariance structures</li>
+<li>adds random-effect variance allocations with Dirichlet weights and optional inclusion gates (<code><a href="../reference/prior_random.html">random_variance_allocation()</a></code>), known group covariance kernels (<code><a href="../reference/random_group_covariance.html">random_group_covariance()</a></code>), external SD sources (<code><a href="../reference/parameter_source.html">random_sd_source()</a></code>), spike-and-slab and mixture priors on random-effect SDs and correlations, and noncentered, centered, or mean-centered (hierarchically centered) parameterizations</li>
+<li>adds predictions with random effects (<code><a href="../reference/JAGS_predict_formula.html">JAGS_predict_formula()</a></code>; <code>formula_target</code>, <code>blocks</code>, and <code>new_levels</code> in <code><a href="../reference/JAGS_evaluate_formula.html">JAGS_evaluate_formula()</a></code>), marginal covariance helpers, and exact marginalization of Gaussian random-effect blocks in <code><a href="../reference/JAGS_bridgesampling.html">JAGS_bridgesampling()</a></code>
+</li>
+<li>adds random-effect summaries to estimates tables (<code>random_effects_summary</code> and related filters) on the fitted or original scale, with level-cell correlations and multiple correlations (<code>cor_total</code>) of factor terms, and <code><a href="../reference/random_effects_summary_posterior.html">random_effects_summary_posterior()</a></code>
+</li>
+<li>adds the <code>RandomEffects</code> vignette comparing BayesTools formula random effects with lme4 and brms</li>
+<li>adds <code><a href="../reference/prior_ordered.html">prior_ordered()</a></code> for ordered-factor priors that split a total effect across level increments with fixed or Dirichlet allocations</li>
+<li>adds Dirichlet simplex priors and moment and inverse-moment nonlocal priors</li>
+<li>adds <code><a href="../reference/prior_factor_levels.html">prior_factor_levels()</a></code> for attaching factor metadata to factor priors</li>
+<li>adds <code><a href="../reference/selection_model.html">selection_model()</a></code> for specifying how random effects and sampling errors enter selection models, and selection helpers for downstream packages</li>
+<li>adds a versioned parameter map stored with each fit, with <code><a href="../reference/parameter_catalog.html">parameter_catalog()</a></code>, <code><a href="../reference/parameter_catalog.html">parameter_catalog_resolve()</a></code>, <code><a href="../reference/parameter_catalog.html">parameter_draws()</a></code>, <code><a href="../reference/parameter_labels.html">parameter_labels()</a></code>, and <code><a href="../reference/parameter_mixed_posterior.html">parameter_mixed_posterior()</a></code> for selecting, extracting, and labelling model quantities</li>
+<li>adds <code><a href="../reference/JAGS_deterministic_nodes.html">JAGS_deterministic_nodes()</a></code> and <code><a href="../reference/JAGS_deterministic_nodes.html">JAGS_evaluate_deterministic()</a></code> for the deterministic quantities generated in JAGS models, and <code><a href="../reference/parameter_source.html">parameter_source()</a></code> for referencing existing JAGS nodes</li>
+<li>adds <code><a href="../reference/posterior_metadata.html">posterior_metadata()</a></code>, metadata constructors, and <code><a href="../reference/posterior_transform.html">posterior_transform()</a></code> for transforming posterior draws together with their supports, atoms, and densities</li>
+<li>adds <code><a href="../reference/parameter_catalog.html">parameter_prior_density()</a></code>, <code><a href="../reference/prior_density_ordinate.html">prior_density_ordinate()</a></code>, and <code><a href="../reference/prior_ordinate_status.html">prior_ordinate_status()</a></code> for exact prior densities and ordinates of model quantities, including random-effect SDs, variance allocations, and LKJ correlations</li>
+<li>adds <code><a href="../reference/hypothesis_BF.html">hypothesis_BF()</a></code> for point and region hypotheses specified as expressions (including comparisons of factor levels), with the hypothesis parser <code><a href="../reference/hypothesis_ast.html">hypothesis_parse()</a></code> and <code><a href="../reference/hypothesis_linear_target.html">hypothesis_linear_target()</a></code>
+</li>
+<li>
+<code><a href="../reference/hypothesis_BF.html">hypothesis_BF()</a></code> also tests the quantities of a fitted model by the names of its parameter catalog</li>
+<li>adds <code><a href="../reference/hypothesis_BF_model.html">hypothesis_BF_model()</a></code>, <code><a href="../reference/hypothesis_provider.html">hypothesis_provider()</a></code>, and <code><a href="../reference/hypothesis_density_backend.html">register_hypothesis_density_backend()</a></code> for downstream model classes and density methods</li>
+<li>adds the <code>density_method</code> argument to <code><a href="../reference/Savage_Dickey_BF.html">Savage_Dickey_BF()</a></code>, <code><a href="../reference/plot_posterior.html">plot_posterior()</a></code>, and <code><a href="../reference/plot_marginal.html">plot_marginal()</a></code> for posterior densities precomputed by downstream packages</li>
+<li>adds <code><a href="../reference/JAGS_formula_coefficient_transform.html">JAGS_formula_coefficient_transform()</a></code> and <code><a href="../reference/JAGS_formula_coefficient_transform.html">JAGS_formula_prior_density()</a></code> for original-scale prior densities of scaled formula coefficients</li>
+<li>adds <code><a href="../reference/JAGS_formula_draws.html">JAGS_formula_draws()</a></code> for evaluating formulas on draws without a fit</li>
+<li>adds <code>runtime_setup</code>, <code>runtime_cache</code>, and <code>worker_output</code> to <code><a href="../reference/JAGS_fit.html">JAGS_fit()</a></code> and <code><a href="../reference/JAGS_fit.html">JAGS_extend()</a></code>, <code>jags_modules</code> to <code><a href="../reference/JAGS_fit.html">JAGS_fit()</a></code>, and the parallel cluster helpers <code><a href="../reference/JAGS_runtime_cluster.html">JAGS_runtime_cluster()</a></code> and <code><a href="../reference/JAGS_runtime_cluster.html">JAGS_runtime_cluster_stop()</a></code>
+</li>
+<li>adds <code>monitor</code> and <code>allow_not_assessable</code> to <code><a href="../reference/JAGS_check_convergence.html">JAGS_check_convergence()</a></code> and <code>autofit_control</code>, with per-parameter convergence diagnostics</li>
+<li>adds <code>seed</code>, <code>repetitions</code>, <code>method</code>, <code>cores</code>, and <code>nonfinite</code> to <code><a href="../reference/JAGS_bridgesampling.html">JAGS_bridgesampling()</a></code>, and <code><a href="../reference/JAGS_marglik_priors.html">JAGS_marglik_priors_rows()</a></code> for row-wise prior densities</li>
+<li>adds <code>on_failure</code> to the model-averaging functions for models whose marginal likelihood failed</li>
+<li>adds <code><a href="../reference/harrell_davis_quantile.html">harrell_davis_quantile()</a></code>; posterior PET-PEESE bands use Harrell-Davis quantiles</li>
+<li>adds <code>as_marginal_inference(compute_BF = FALSE)</code>
+</li>
+<li>exports helpers used by downstream packages (Bayes factor formatting, formula scaling, random-effect grouping, and posterior metadata helpers)</li>
+</ul></div>
+<div class="section level4">
+<h4 id="changes-0-4-0">Changes<a class="anchor" aria-label="anchor" href="#changes-0-4-0"></a></h4>
+<ul><li>
+<code><a href="../reference/BayesTools_model_tables.html">JAGS_estimates_table()</a></code> uses <code>transform_scaled</code> for both fixed and random effects; original-scale rows that cannot be computed are reported as <code>NA</code> with a note</li>
+<li>marginal likelihoods exceeding the iteration limit keep their estimate and warn</li>
+<li>
+<code><a href="../reference/JAGS_fit.html">JAGS_extend()</a></code> recompiles the model from the stored chain states, so repeated extensions and extensions of reloaded fits are reproducible</li>
+<li>estimates tables identify inclusion rows from the priors instead of the row labels</li>
+<li>small Bayes factor bounds print as reciprocals (e.g., <code>&lt;1/10000</code>)</li>
+</ul></div>
+<div class="section level4">
+<h4 id="fixes-0-4-0">Fixes<a class="anchor" aria-label="anchor" href="#fixes-0-4-0"></a></h4>
+<ul><li>prior densities of linear combinations (formula levels, marginal means, original-scale coefficients, and Savage-Dickey ordinates) use exact routes where available instead of a numerical grid, which was off by up to 20% for <code>multiply_by</code> products</li>
+<li>
+<code><a href="https://rdrr.io/r/base/mean.html" class="external-link">mean()</a></code> and <code><a href="../reference/var.html">var()</a></code> of truncated normal priors are computed analytically; numerical integration was wrong far in the tails and for narrow truncations</li>
+<li>far-tail truncated normal, t, and Cauchy priors sample and invert exactly</li>
+<li>the Savage-Dickey posterior ordinate is the exact kernel density at the null, reflected at exact support bounds; the previous grid estimate overestimated the density of long-tailed posteriors</li>
+<li>original-scale transformations of formulas such as <code>~ g + g:x</code> and <code>~ f/x</code> are derived from the fitted design; formulas without an original-scale representation stop</li>
+<li>prior densities of monitored formula coefficients no longer apply <code>multiply_by</code> scaling</li>
+<li>
+<code><a href="https://rdrr.io/r/base/expression.html" class="external-link">expression()</a></code> formula terms are included in marginal-likelihood reconstruction</li>
+<li>
+<code>log(intercept)</code> formulas in <code><a href="../reference/marginal_posterior.html">marginal_posterior()</a></code> and <code>as_mixed_posteriors(transform_scaled = TRUE)</code>
+</li>
+<li>
+<code><a href="../reference/marginal_posterior.html">marginal_posterior()</a></code> for intercept-only formulas, predictors entering only through interactions, and model averages in which a model omits a factor term</li>
+<li>naming of interaction coefficients without main effects (e.g., <code>g:x</code> in <code>~ g + g:x</code>)</li>
+<li>formulas generating duplicate JAGS node names stop with an informative error</li>
+<li>
+<code><a href="../reference/plot_posterior.html">plot_posterior()</a></code> bias prior overlays follow the full conditioning of the samples</li>
+<li>prior overlays weight spike-and-slab priors by the inclusion probability instead of 50/50</li>
+<li>individual omega and weight-function posterior plots with duplicate or zero-weight bias priors</li>
+<li>factor plot labels of interaction cells and secondary axes of mixed density plots</li>
+<li>
+<code><a href="../reference/BayesTools_ensemble_tables.html">marginal_estimates_table()</a></code> reports Bayes factor warnings of scalar parameters</li>
+<li>
+<code><a href="../reference/BayesTools_model_tables.html">stan_estimates_table()</a></code> handles matrix-valued parameters</li>
+<li>p-hacking null masses no longer become negative for far-tail cut points</li>
+<li>
+<code><a href="../reference/JAGS_bridgesampling.html">JAGS_bridgesampling()</a></code> stops on rank-deficient bridge coordinates instead of returning a meaningless estimate</li>
+<li>package contrasts resolve without attaching BayesTools</li>
+</ul></div>
+<div class="section level4">
+<h4 id="performance-0-4-0">Performance<a class="anchor" aria-label="anchor" href="#performance-0-4-0"></a></h4>
+<ul><li>
+<code><a href="../reference/JAGS_fit.html">JAGS_fit()</a></code> resolves the JAGS executable once per session (about 0.8 s faster per fit)</li>
+<li>prior density curves and PET-PEESE prior bands are evaluated in batches (prior band plots take seconds instead of minutes)</li>
+<li>
+<code><a href="../reference/JAGS_bridgesampling.html">JAGS_bridgesampling()</a></code> compiles formula and prior evaluators once per call</li>
+<li>two-bin cumulative weight-function priors are sampled through their Beta marginal</li>
+<li>saved fits no longer contain the compiled rjags model</li>
+<li>
+<code>as_mixed_posteriors(transform_scaled = TRUE)</code> caches the transformed prior densities</li>
+</ul></div>
+<div class="section level4">
+<h4 id="development-0-4-0">Development<a class="anchor" aria-label="anchor" href="#development-0-4-0"></a></h4>
+<ul><li>vignettes generate missing or outdated fitted-model caches when knitted; set <code>BAYESTOOLS_VIGNETTE_REFIT=false</code> to render without fitting</li>
+<li>declares <code>waldo</code> as a test dependency</li>
+</ul></div>
+</div>
     <div class="section level2">
 <h2 class="page-header" data-toc-text="0.3.0" id="version-030">version 0.3.0<small>2026-05-06</small><a class="anchor" aria-label="anchor" href="#version-030"></a></h2>
 <div class="section level4">
@@ -532,7 +661,7 @@
 </div>
 
 <div class="pkgdown">
-  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.0.</p>
+  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.1.</p>
 </div>
 
       </footer></div>

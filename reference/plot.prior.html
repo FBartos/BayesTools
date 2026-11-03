@@ -17,7 +17,7 @@
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.3.0</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.4.0</span>
       </span>
     </div>
 
@@ -32,10 +32,13 @@
     <span class="caret"></span>
   </a>
   <ul class="dropdown-menu" role="menu"><li>
-      <a href="../articles/ComparisonR.html">Comparison to other R packages</a>
+      <a href="../articles/ComparisonR.html">Bayesian t-Test Compared with BayesFactor</a>
     </li>
     <li>
-      <a href="../articles/SpikeAndSlab.html">Bayes factors via spike and slab prior vs. bridge sampling</a>
+      <a href="../articles/RandomEffects.html">Random Effects with Formula Syntax</a>
+    </li>
+    <li>
+      <a href="../articles/SpikeAndSlab.html">Variable Selection with Spike-and-Slab Priors</a>
     </li>
   </ul></li>
 <li>
@@ -112,9 +115,10 @@ or ggplot2 <code>"ggplot"</code> for plotting.</p></dd>
 <dd><p>quantile used for
 automatically obtaining <code>x_range</code>
 if both <code>x_range</code> and <code>x_seq</code>
-are unspecified. Defaults to <code>0.005</code>
-for all but Cauchy, Student-t, Gamma, and
-Inverse-gamme distributions that use
+are unspecified. A number in the open interval <code>(0, 0.5)</code>;
+other values are refused. Defaults to <code>0.005</code>
+for all but Cauchy, Student-t, Gamma, inverse-gamma,
+moment, and inverse-moment distributions that use
 <code>0.010</code>.</p></dd>
 
 
@@ -132,7 +136,14 @@ analytically (or if samples are forced with
 
 <dt id="arg-force-samples">force_samples<a class="anchor" aria-label="anchor" href="#arg-force-samples"></a></dt>
 <dd><p>should prior be sampled instead
-of obtaining analytic solution whenever possible</p></dd>
+of obtaining analytic solution whenever possible. For supported ordered
+mixed measures, exact analytic curves and atoms are retained and the
+requested samples are attached to each component. Supported scalar ordered
+literal point totals and mixtures whose total components are all literal
+points do not sample, store draws, or advance the RNG when
+<code>force_samples = FALSE</code>. With <code>force_samples = TRUE</code>, their
+original seeded draws are attached without replacing the analytic measure.
+Other ordered families retain their existing sampling fallback.</p></dd>
 
 
 <dt id="arg-transformation">transformation<a class="anchor" aria-label="anchor" href="#arg-transformation"></a></dt>
@@ -150,8 +161,12 @@ specifying one of the prepared transformations:</p><dl><dt>lin</dt>
 
 </dl><p>, or a list containing the transformation function <code>fun</code>,
 inverse transformation function <code>inv</code>, and derivative of the
-transformation <code>jac</code>, evaluated on the original support. See examples
-for details.</p></dd>
+transformation <code>jac</code>, evaluated on the original support. A custom
+transformation can also declare <code>output_support = c(lower, upper)</code>.
+Display grids on the transformed scale are evaluated only within these
+bounds; a wider plotting range is retained without extending the density.
+Infinite inverse values at support boundaries are omitted from continuous
+density grids. Point masses retain their transformed locations.</p></dd>
 
 
 <dt id="arg-transformation-arguments">transformation_arguments<a class="anchor" aria-label="anchor" href="#arg-transformation-arguments"></a></dt>
@@ -161,14 +176,25 @@ the <code>transformation</code></p></dd>
 
 <dt id="arg-transformation-settings">transformation_settings<a class="anchor" aria-label="anchor" href="#arg-transformation-settings"></a></dt>
 <dd><p>boolean indicating whether the
-settings the <code>x_seq</code> or <code>x_range</code> was specified on
-the transformed support</p></dd>
+explicitly supplied <code>x_seq</code> or <code>x_range</code> is on
+the transformed scale. Automatically selected prior-coordinate ranges
+are always obtained on the source scale before the density family's
+existing transformation handling.</p></dd>
 
 
 <dt id="arg-show-figures">show_figures<a class="anchor" aria-label="anchor" href="#arg-show-figures"></a></dt>
 <dd><p>which figures should be returned in case of
 multiple plots are generated. Useful when priors for the omega
-parameter are plotted and <code>individual = TRUE</code>.</p></dd>
+parameter are plotted and <code>individual = TRUE</code>. For weight functions
+plotted individually by <code>plot.prior()</code> and <code><a href="plot_posterior.html">plot_posterior()</a></code>,
+figure <code>k</code> shows the publication weight omega of the <code>k</code>-th
+p-value interval in ascending order, the order in which summary tables
+(including RoBMA's) print the omegas; figure 1 is the reference weight of
+the most significant interval. In <code>plot.prior()</code>, a negative <code>k</code>
+omits figure <code>-k</code> (the default <code>-1</code> omits the reference weight
+fixed at 1). For a two-sided weight function prior, the intervals are its
+two-sided p-value bins; tables on the one-sided p-value scale print these
+weights first and then repeat them for the mirrored intervals.</p></dd>
 
 
 <dt id="arg-individual">individual<a class="anchor" aria-label="anchor" href="#arg-individual"></a></dt>
@@ -188,13 +214,64 @@ parameter that needs to be transformed.</p></dd>
 
 
 <dt id="arg--">...<a class="anchor" aria-label="anchor" href="#arg--"></a></dt>
-<dd><p>additional arguments</p></dd>
+<dd><p>additional graphical arguments. For mixed continuous and point
+distributions, <code>ylim</code> controls the density axis, <code>ylim2</code> controls
+the probability-mass axis, and <code>ylab2</code> controls its label.</p></dd>
 
 </dl></div>
     <div id="value">
     <h2>Value</h2>
     <p><code>plot.prior</code> returns either <code>NULL</code> or
-an object of class 'ggplot' if plot_type is <code>plot_type = "ggplot"</code>.</p>
+an object of class 'ggplot' if plot_type is <code>plot_type = "ggplot"</code>.
+Dirichlet simplex priors are plotted as one beta marginal per coordinate;
+the ggplot method returns a list unless a single figure is selected. Ordered
+ggplot results use the original figure indices: a multiple-figure selection
+returns a list through the largest selected index, with <code>NULL</code> entries
+for unselected figures, including the default reference level. A bare
+ggplot is returned only when exactly one figure is selected; a selection of
+several figures always returns a positional list, even if one figure is visible. For an
+ordered level with mixed probability measure, the continuous density and
+exact probability-mass arrows are drawn together without rescaling either
+component. For ordered and Dirichlet simplex priors, <code>show_figures</code>
+holds non-zero integers within the number of figures that are all positive
+(select) or all negative (omit); other values stop with an error before any
+figure is drawn. Individual weight functions take a single figure.</p>
+    </div>
+    <div id="details">
+    <h2>Details</h2>
+    <p>Declared point locations whose transformation images are not
+representable stop with <code>BayesTools_transformation_image_unavailable</code>,
+parent <code>BayesTools_transformation</code>. Its <code>call</code> is <code>NULL</code> and
+its <code>transformation</code>, <code>source_values</code> and <code>images</code> fields
+identify the matched failing finite entries; see <code><a href="posterior_transform.html">posterior_transform()</a></code>.
+Automatic prior-coordinate limits are selected on the source scale before
+transformation, regardless of <code>transformation_settings</code>. An endpoint
+with an infinite image uses the existing marginal tail convention described
+in <code><a href="density.prior.html">density.prior()</a></code>. Explicit <code>xlim</code> and <code>x_seq</code> retain their
+supplied source or transformed interpretation.</p>
+<p>Ordered prior plots retain the continuous density of every
+non-reference level, including priors with an infinite density at an exact
+point. Only nonfinite plotting ordinates are omitted; finite ordinates and
+declared point masses are unchanged. An infinite density point is not a
+probability mass. This display rule also applies to <code><a href="lines.prior.html">lines.prior()</a></code> and
+<code><a href="geom_prior.html">geom_prior()</a></code> and leaves <code><a href="density.prior.html">density.prior()</a></code> and <code><a href="prior_density_ordinate.html">prior_density_ordinate()</a></code>
+unchanged. Unknown or unsupported density routes keep their existing
+limitations.
+Simple priors, the marginals of simplex priors and individual omegas follow
+the same rule: nonfinite ordinates (such as the infinite density of a
+Gamma(0.5, 1) prior at zero) are not drawn, and the density axis ends at the
+largest finite ordinate. A curve without any finite ordinate stops with class
+<code>BayesTools_prior_curve_unavailable</code>; choose another <code>xlim</code>.
+Direct ordered plots and layers omit persisted zero-design reference levels
+from the default selection. Explicit selectors retain the original level
+numbering and can select a reference level. Genuine non-reference zero and
+point levels remain visible.
+Finite displayed peak heights depend on the evaluation grid and do not
+represent an infinite mathematical peak. A direct ordered curve with no
+finite plotting ordinate stops with class <code>BayesTools_prior_curve_unavailable</code>
+(also <code>BayesTools_plot_condition</code>); supply <code>x_seq</code> containing
+finite density ordinates. Probability-axis mapping and clipping checks use
+selected components only, including an explicitly selected reference.</p>
     </div>
     <div id="see-also">
     <h2>See also</h2>
@@ -242,7 +319,7 @@ an object of class 'ggplot' if plot_type is <code>plot_type = "ggplot"</code>.</
 </div>
 
 <div class="pkgdown">
-  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.0.</p>
+  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.1.</p>
 </div>
 
       </footer></div>

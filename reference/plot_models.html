@@ -17,7 +17,7 @@
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.3.0</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.4.0</span>
       </span>
     </div>
 
@@ -32,10 +32,13 @@
     <span class="caret"></span>
   </a>
   <ul class="dropdown-menu" role="menu"><li>
-      <a href="../articles/ComparisonR.html">Comparison to other R packages</a>
+      <a href="../articles/ComparisonR.html">Bayesian t-Test Compared with BayesFactor</a>
     </li>
     <li>
-      <a href="../articles/SpikeAndSlab.html">Bayes factors via spike and slab prior vs. bridge sampling</a>
+      <a href="../articles/RandomEffects.html">Random Effects with Formula Syntax</a>
+    </li>
+    <li>
+      <a href="../articles/SpikeAndSlab.html">Variable Selection with Spike-and-Slab Priors</a>
     </li>
   </ul></li>
 <li>
@@ -57,7 +60,7 @@
   <div class="col-md-9 contents">
     <div class="page-header">
     <h1>Plot estimates from models</h1>
-    <small class="dont-index">Source: <a href="https://github.com/FBartos/BayesTools/blob/master/R/model-averaging-plots.R" class="external-link"><code>R/model-averaging-plots.R</code></a></small>
+    <small class="dont-index">Source: <a href="https://github.com/FBartos/BayesTools/blob/master/R/model-averaging-plots-models.R" class="external-link"><code>R/model-averaging-plots-models.R</code></a></small>
     <div class="hidden name"><code>plot_models.Rd</code></div>
     </div>
 
@@ -146,8 +149,12 @@ specifying one of the prepared transformations:</p><dl><dt>lin</dt>
 
 </dl><p>, or a list containing the transformation function <code>fun</code>,
 inverse transformation function <code>inv</code>, and derivative of the
-transformation <code>jac</code>, evaluated on the original support. See examples
-for details.</p></dd>
+transformation <code>jac</code>, evaluated on the original support. A custom
+transformation can also declare <code>output_support = c(lower, upper)</code>.
+Display grids on the transformed scale are evaluated only within these
+bounds; a wider plotting range is retained without extending the density.
+Infinite inverse values at support boundaries are omitted from continuous
+density grids. Point masses retain their transformed locations.</p></dd>
 
 
 <dt id="arg-transformation-arguments">transformation_arguments<a class="anchor" aria-label="anchor" href="#arg-transformation-arguments"></a></dt>
@@ -157,8 +164,10 @@ the <code>transformation</code></p></dd>
 
 <dt id="arg-transformation-settings">transformation_settings<a class="anchor" aria-label="anchor" href="#arg-transformation-settings"></a></dt>
 <dd><p>boolean indicating whether the
-settings the <code>x_seq</code> or <code>x_range</code> was specified on
-the transformed support</p></dd>
+explicitly supplied <code>x_seq</code> or <code>x_range</code> is on
+the transformed scale. Automatically selected prior-coordinate ranges
+are always obtained on the source scale before the density family's
+existing transformation handling.</p></dd>
 
 
 <dt id="arg-par-name">par_name<a class="anchor" aria-label="anchor" href="#arg-par-name"></a></dt>
@@ -197,7 +206,22 @@ an object of class 'ggplot' if plot_type is <code>plot_type = "ggplot"</code>.</
     <h2>Details</h2>
     <p>Plots prior and posterior estimates of the same parameter
 across multiple models (prior distributions with orthonormal/meandif contrast
-are always plotted as differences from the grand mean).</p>
+are always plotted as differences from the grand mean).
+Ordered factors use the retained semantic level effects, omitting their
+zero-design reference rows, and per-model transformed level summaries.
+The model-averaged estimate uses the selected scalar level draws.
+With <code>prior = FALSE</code>, no prior means or intervals are computed or
+transformed; model
+probabilities and Bayes factors remain available for updating labels.
+With <code>prior = TRUE</code>, ordered level means use the total mean and exact
+allocation expectations with the persisted design. Their equal-tail 95\<!-- % -->
+intervals use structural prior probabilities and generalized quantiles,
+including exact jumps at point masses. No sampled prior means or quantiles
+are substituted. An undefined mean, unresolved expression, unsupported
+structural probability route, or unavailable numerical diagnostics raises
+<code>BayesTools_prior_interval_unavailable</code> (also
+<code>BayesTools_plot_condition</code>), identifying the model and level; set
+<code>prior = FALSE</code> to plot posterior estimates.</p>
     </div>
     <div id="see-also">
     <h2>See also</h2>
@@ -216,7 +240,7 @@ are always plotted as differences from the grand mean).</p>
 </div>
 
 <div class="pkgdown">
-  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.0.</p>
+  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.1.</p>
 </div>
 
       </footer></div>

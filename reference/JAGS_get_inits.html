@@ -18,7 +18,7 @@ a 'JAGS' model."><!-- mathjax --><script src="https://cdnjs.cloudflare.com/ajax/
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.3.0</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.4.0</span>
       </span>
     </div>
 
@@ -33,10 +33,13 @@ a 'JAGS' model."><!-- mathjax --><script src="https://cdnjs.cloudflare.com/ajax/
     <span class="caret"></span>
   </a>
   <ul class="dropdown-menu" role="menu"><li>
-      <a href="../articles/ComparisonR.html">Comparison to other R packages</a>
+      <a href="../articles/ComparisonR.html">Bayesian t-Test Compared with BayesFactor</a>
     </li>
     <li>
-      <a href="../articles/SpikeAndSlab.html">Bayes factors via spike and slab prior vs. bridge sampling</a>
+      <a href="../articles/RandomEffects.html">Random Effects with Formula Syntax</a>
+    </li>
+    <li>
+      <a href="../articles/SpikeAndSlab.html">Variable Selection with Spike-and-Slab Priors</a>
     </li>
   </ul></li>
 <li>
@@ -58,7 +61,7 @@ a 'JAGS' model."><!-- mathjax --><script src="https://cdnjs.cloudflare.com/ajax/
   <div class="col-md-9 contents">
     <div class="page-header">
     <h1>Create initial values for 'JAGS' model</h1>
-    <small class="dont-index">Source: <a href="https://github.com/FBartos/BayesTools/blob/master/R/JAGS-fit.R" class="external-link"><code>R/JAGS-fit.R</code></a></small>
+    <small class="dont-index">Source: <a href="https://github.com/FBartos/BayesTools/blob/master/R/JAGS-prior-inits.R" class="external-link"><code>R/JAGS-prior-inits.R</code></a></small>
     <div class="hidden name"><code>JAGS_get_inits.Rd</code></div>
     </div>
 
@@ -85,13 +88,26 @@ a 'JAGS' model.</p>
 
 
 <dt id="arg-seed">seed<a class="anchor" aria-label="anchor" href="#arg-seed"></a></dt>
-<dd><p>seed for random number generation</p></dd>
+<dd><p>seed for random number generation: a number between
+<code>-.Machine$integer.max</code> and <code>.Machine$integer.max</code>. The initial values are drawn
+after <code>set.seed(seed)</code>; each chain's <code>.RNG.seed</code> is drawn from the
+same seed with <code>sample.int(.Machine$integer.max, chains)</code>, so the seed
+of a chain does not depend on the number of chains. The caller's
+random-number state (<code>.Random.seed</code> and <code><a href="https://rdrr.io/r/base/Random.html" class="external-link">RNGkind()</a></code>) is restored
+afterwards. With <code>seed = NULL</code>, the seed is first drawn from the
+caller's random-number stream with <code>sample(666666, 1)</code>, which
+advances that stream by this one draw.</p></dd>
 
 </dl></div>
     <div id="value">
     <h2>Value</h2>
-    <p><code>JAGS_add_priors</code> returns a list of JAGS
-initial values.</p>
+    <p><code>JAGS_get_inits</code> returns a list with one element per chain,
+containing the chain's JAGS initial values and its <code>.RNG.name</code> and
+<code>.RNG.seed</code>. The generator is <code>"base::Super-Duper"</code> for up to
+four chains and <code>"lecuyer::RngStream"</code> for more chains, so the streams
+of a fit change when it is run with more than four chains. With an empty <code>prior_list</code>, each element contains
+only <code>.RNG.name</code> and <code>.RNG.seed</code>, so that fits of models whose
+priors are specified only in the model syntax remain reproducible.</p>
     </div>
 
   </div>
@@ -106,7 +122,7 @@ initial values.</p>
 </div>
 
 <div class="pkgdown">
-  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.0.</p>
+  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.1.</p>
 </div>
 
       </footer></div>

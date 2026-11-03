@@ -21,7 +21,7 @@ summary/diagnostics based on a list of models_inference models
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.3.0</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.4.0</span>
       </span>
     </div>
 
@@ -36,10 +36,13 @@ summary/diagnostics based on a list of models_inference models
     <span class="caret"></span>
   </a>
   <ul class="dropdown-menu" role="menu"><li>
-      <a href="../articles/ComparisonR.html">Comparison to other R packages</a>
+      <a href="../articles/ComparisonR.html">Bayesian t-Test Compared with BayesFactor</a>
     </li>
     <li>
-      <a href="../articles/SpikeAndSlab.html">Bayes factors via spike and slab prior vs. bridge sampling</a>
+      <a href="../articles/RandomEffects.html">Random Effects with Formula Syntax</a>
+    </li>
+    <li>
+      <a href="../articles/SpikeAndSlab.html">Variable Selection with Spike-and-Slab Priors</a>
     </li>
   </ul></li>
 <li>
@@ -61,7 +64,7 @@ summary/diagnostics based on a list of models_inference models
   <div class="col-md-9 contents">
     <div class="page-header">
     <h1>Create BayesTools ensemble summary tables</h1>
-    <small class="dont-index">Source: <a href="https://github.com/FBartos/BayesTools/blob/master/R/summary-tables.R" class="external-link"><code>R/summary-tables.R</code></a></small>
+    <small class="dont-index">Source: <a href="https://github.com/FBartos/BayesTools/blob/master/R/summary-tables-ensemble.R" class="external-link"><code>R/summary-tables-ensemble.R</code></a></small>
     <div class="hidden name"><code>BayesTools_ensemble_tables.Rd</code></div>
     </div>
 
@@ -82,7 +85,6 @@ summary/diagnostics based on a list of <a href="ensemble_inference.html">models_
 <span>  footnotes <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  warnings <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  transform_factors <span class="op">=</span> <span class="cn">FALSE</span>,</span>
-<span>  transform_orthonormal <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  formula_prefix <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  transform_scaled <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  formula_scale <span class="op">=</span> <span class="cn">NULL</span></span>
@@ -158,7 +160,19 @@ summary/diagnostics based on a list of <a href="ensemble_inference.html">models_
 
 
 <dl><dt id="arg-samples">samples<a class="anchor" aria-label="anchor" href="#arg-samples"></a></dt>
-<dd><p>posterior samples created by <a href="mix_posteriors.html">mix_posteriors</a></p></dd>
+<dd><p>posterior samples created by <a href="mix_posteriors.html">mix_posteriors</a>. For
+<code>ensemble_estimates_table()</code>, a sample vector or matrix may contain
+missing draws only if it declares them as undefined through its
+<code>undefined_draws</code> metadata (<code>posterior_metadata(x,
+"undefined_draws") &lt;- </code>; a single value for a vector, or values named by
+column for a matrix), as set by <code><a href="parameter_catalog.html">parameter_draws()</a></code> from the catalog's
+<code>definedness</code> (<code>"correlation"</code> for original-scale random-effect
+correlations, <code>"multiple_correlation"</code> for their <code>cor_total</code>
+multiple correlations, <code>"allocation_active"</code> for variance shares of gated
+total-variance allocations). Such a row
+is summarized over its defined draws and a table footnote reports their
+share, e.g., "summarized over k of n draws where the correlation is
+defined, i.e. both SDs are positive". Any other missing draw is an error.</p></dd>
 
 
 <dt id="arg-parameters">parameters<a class="anchor" aria-label="anchor" href="#arg-parameters"></a></dt>
@@ -187,13 +201,20 @@ diagnostics tables) specifying the parameters
 <dt id="arg-transform-factors">transform_factors<a class="anchor" aria-label="anchor" href="#arg-transform-factors"></a></dt>
 <dd><p>whether factors with orthonormal/meandif
 prior distribution should be transformed to differences from the
-grand mean</p></dd>
-
-
-<dt id="arg-transform-orthonormal">transform_orthonormal<a class="anchor" aria-label="anchor" href="#arg-transform-orthonormal"></a></dt>
-<dd><p>(to be depreciated) whether factors
-with orthonormal prior distributions should be transformed to
-differences from the grand mean</p></dd>
+grand mean, and factors with <code><a href="prior_ordered.html">prior_ordered()</a></code> prior distribution to
+their level effects (without the reference level of a <code>"cumulative"</code>
+contrast, which is fixed at zero). Untransformed ordered factors show the
+sampled parameters: <code><a href="BayesTools_model_tables.html">runjags_estimates_table()</a></code> reports the total
+effect (<code>&lt;term&gt;{total}</code>) and the allocation shares of the
+random allocations (<code>&lt;term&gt;[share: &lt;level&gt;]</code>, the share
+of the total added when reaching <code>&lt;level&gt;</code>; fixed allocations have no
+rows). <code>ensemble_estimates_table()</code> reports retained fitted totals and
+the union of allocation shares sampled by any declared ordered model.
+Fixed ordered allocations fill that union with their declared constants.
+Models without the ordered parameterization have undefined (<code>NA</code>)
+shares, with their defined fraction reported in a footnote. Shares remain
+defined on zero-total and excluded spike draws of an ordered model. Legacy
+mixed objects without retained sources must be recreated from source fits.</p></dd>
 
 
 <dt id="arg-formula-prefix">formula_prefix<a class="anchor" aria-label="anchor" href="#arg-formula-prefix"></a></dt>
@@ -204,23 +225,77 @@ be printed. Defaults to <code>TRUE</code>.</p></dd>
 <dt id="arg-transform-scaled">transform_scaled<a class="anchor" aria-label="anchor" href="#arg-transform-scaled"></a></dt>
 <dd><p>whether coefficients from standardized
 continuous predictors should be transformed back to the original
-scale. Defaults to <code>FALSE</code>.</p></dd>
+scale. For <code><a href="BayesTools_model_tables.html">runjags_estimates_table()</a></code>, <code>FALSE</code> keeps fixed and
+random effects on the fitted predictor scale, while <code>TRUE</code> transforms
+both to the original predictor scale when the fit contains
+<code>formula_scale</code> metadata: random-effect SDs and correlations are
+computed from the transformed covariance draws. Subtraction-centering can
+leave a numerically nonzero predictor mean; its induced effects are retained.
+Composite original-scale SDs have available draws but may have unavailable
+prior laws. Fitted-scale coefficients and semantic random-effect summaries remain
+available without this transformation. A block whose missing-term fallback
+mixes categorical coding or omits a representable contribution has no
+available original-scale output, with reason
+<code>"original_scale_not_representable"</code>. Use fitted-scale output or include
+the needed lower-order terms in the block. Mixed posterior samples are
+transformed through the fitted design of <code>formula_scale</code>: every column
+is mapped to its fitted coefficient by its <code>quantities</code> draw metadata
+(see <code><a href="posterior_metadata.html">posterior_metadata()</a></code>), and columns that are not fitted coefficients
+are refused (a <code><a href="posterior_transform.html">posterior_transform()</a></code> result, nonlinear or affine with an
+offset, stops with reason <code>"transformed_column_not_fitted"</code>: unscale
+first, then transform), as are random-effect SDs that the random-effect structure of
+<code>formula_scale</code> does not cover (SDs it does not contain, blocks it
+contains only in part, or blocks it leaves unchanged while the samples'
+original-scale SDs differ from the fitted ones). The SDs of a block are
+transformed through the fitted block design that the formula state of the
+samples carries (<code><a href="as_mixed_posteriors.html">as_mixed_posteriors()</a></code>, and <code><a href="mix_posteriors.html">mix_posteriors()</a></code> when fixed
+formula coefficients or random-effect SDs are among its parameters); samples
+without it can pair coefficient names only, and the SDs of a block that this
+does not map exactly (e.g., a factor in an interaction with a standardized
+slope whose margin is not in the block, or the indicator columns of a
+logical predictor in such an interaction) are refused. The SD columns of a block
+with a standardized random slope are labelled by their fitted coordinates
+(<code>(mu) g: sd(x)</code>) until they are transformed to the catalog's
+original-scale SDs. For a standardized slope that interacts with a factor
+whose level effects are not columns of the block (<code>diag(1 + f:x | g)</code>:
+the level intercepts; <code>diag(1 + z + f:x:z | g)</code>: the level slopes of
+<code>z</code>), the shifts that centering induces by level are not block
+coefficients. The surviving-coordinate transformation retains the shifted
+coefficients (here the intercept, or the slope of <code>z</code>) at the predictor
+mean; the SDs of the columns that no centering shifts are exact.
+<code><a href="BayesTools_model_tables.html">runjags_estimates_table()</a></code> instead reports the unavailable original-scale
+quantities of the shifted columns as <code>NA</code> with a row-specific note, and
+retains the identifiable summaries. Estimated marginal means of
+<code>marginal_estimates_table()</code> are
+predictions at the stated predictor values, which do not depend on the
+standardization, and are not changed. Defaults to <code>FALSE</code>.</p></dd>
 
 
 <dt id="arg-formula-scale">formula_scale<a class="anchor" aria-label="anchor" href="#arg-formula-scale"></a></dt>
 <dd><p>named list containing standardization information
-(mean and sd) for each standardized predictor. Required when
-<code>transform_scaled = TRUE</code> for ensemble/marginal tables. For
+(mean and sd) for each standardized predictor, together with the fitted
+design of each formula: the <code>formula_scale</code> attribute of the fitted
+model. Required when <code>transform_scaled = TRUE</code> for ensemble/marginal
+tables (unless the samples were unscaled by <code><a href="as_mixed_posteriors.html">as_mixed_posteriors()</a></code>; an empty
+list means that no predictor is scaled): without it the tables stop with
+<code>BayesTools_formula_transform_unavailable</code> (reason
+<code>"formula_scale_missing"</code>), as standardization information without the
+fitted design does. For
 <code>runjags_estimates_table</code>, this is automatically extracted from
 the fit object's <code>formula_scale</code> attribute.</p></dd>
 
 
 <dt id="arg-inference">inference<a class="anchor" aria-label="anchor" href="#arg-inference"></a></dt>
-<dd><p>model inference created by <a href="ensemble_inference.html">ensemble_inference</a></p></dd>
+<dd><p>model inference created by <a href="ensemble_inference.html">ensemble_inference</a>.
+<code>ensemble_inference_table()</code> refuses conditional inference, of the
+whole object or of any of its parameters.</p></dd>
 
 
 <dt id="arg-logbf">logBF<a class="anchor" aria-label="anchor" href="#arg-logbf"></a></dt>
-<dd><p>whether the Bayes factor should be on log scale</p></dd>
+<dd><p>whether the Bayes factor should be on log scale. When model
+inference objects store log-space inclusion Bayes factors, log-scale
+values are taken from them, so they remain finite beyond the range of
+natural-scale Bayes factors.</p></dd>
 
 
 <dt id="arg-bf-">BF01<a class="anchor" aria-label="anchor" href="#arg-bf-"></a></dt>
@@ -241,7 +316,9 @@ table</p></dd>
 
 <dt id="arg-remove-spike-">remove_spike_0<a class="anchor" aria-label="anchor" href="#arg-remove-spike-"></a></dt>
 <dd><p>whether prior distributions equal to spike
-at 0 should be removed from the <code>prior_list</code></p></dd>
+at 0 should be removed from the <code>prior_list</code>. In JAGS estimates
+tables with <code>transform_scaled = TRUE</code>, a coefficient with a spike at
+0 is kept when it is non-zero on the original scale.</p></dd>
 
 
 <dt id="arg-short-name">short_name<a class="anchor" aria-label="anchor" href="#arg-short-name"></a></dt>
@@ -258,7 +335,16 @@ Bayes factors, <code>ensemble_summary_table</code> returns a table with
 overview of the models included in the ensemble, and
 <code>ensemble_diagnostics_table</code> returns an overview of the MCMC
 diagnostics for the models included in the ensemble. All of the
-tables are objects of class 'BayesTools_table'.</p>
+tables are objects of class 'BayesTools_table'. The estimates tables
+(<code>ensemble_estimates_table</code> and <code>marginal_estimates_table</code>)
+carry the per-row quantity table <code>attr(table, "quantities")</code>: a data
+frame with one row per table row and the columns <code>row</code> (the row
+label), <code>quantity_id</code> (the <code><a href="parameter_catalog.html">parameter_catalog()</a></code> quantity id the
+summarized draws declare in their <code>quantities</code> metadata, see
+<code><a href="posterior_metadata.html">posterior_metadata()</a></code>; <code>""</code> when they declare none, e.g. for
+estimated marginal means), and <code>label_parts</code> (the label parts the row
+label is rendered from; see <code><a href="parameter_labels.html">parameter_labels()</a></code>). Subsetting the table
+subsets its quantity table.</p>
     </div>
     <div id="see-also">
     <h2>See also</h2>
@@ -277,7 +363,7 @@ tables are objects of class 'BayesTools_table'.</p>
 </div>
 
 <div class="pkgdown">
-  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.0.</p>
+  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.1.</p>
 </div>
 
       </footer></div>

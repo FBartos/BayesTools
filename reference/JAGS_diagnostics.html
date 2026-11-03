@@ -18,7 +18,7 @@ for a given parameter of a JAGS model."><!-- mathjax --><script src="https://cdn
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.3.0</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.4.0</span>
       </span>
     </div>
 
@@ -33,10 +33,13 @@ for a given parameter of a JAGS model."><!-- mathjax --><script src="https://cdn
     <span class="caret"></span>
   </a>
   <ul class="dropdown-menu" role="menu"><li>
-      <a href="../articles/ComparisonR.html">Comparison to other R packages</a>
+      <a href="../articles/ComparisonR.html">Bayesian t-Test Compared with BayesFactor</a>
     </li>
     <li>
-      <a href="../articles/SpikeAndSlab.html">Bayes factors via spike and slab prior vs. bridge sampling</a>
+      <a href="../articles/RandomEffects.html">Random Effects with Formula Syntax</a>
+    </li>
+    <li>
+      <a href="../articles/SpikeAndSlab.html">Variable Selection with Spike-and-Slab Priors</a>
     </li>
   </ul></li>
 <li>
@@ -79,7 +82,6 @@ for a given parameter of a JAGS model.</p>
 <span>  n_points <span class="op">=</span> <span class="fl">1000</span>,</span>
 <span>  transformations <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  transform_factors <span class="op">=</span> <span class="cn">FALSE</span>,</span>
-<span>  transform_orthonormal <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  short_name <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  parameter_names <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  formula_prefix <span class="op">=</span> <span class="cn">TRUE</span>,</span>
@@ -94,7 +96,6 @@ for a given parameter of a JAGS model.</p>
 <span>  n_points <span class="op">=</span> <span class="fl">1000</span>,</span>
 <span>  transformations <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  transform_factors <span class="op">=</span> <span class="cn">FALSE</span>,</span>
-<span>  transform_orthonormal <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  short_name <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  parameter_names <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  formula_prefix <span class="op">=</span> <span class="cn">TRUE</span>,</span>
@@ -108,7 +109,6 @@ for a given parameter of a JAGS model.</p>
 <span>  ylim <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  transformations <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  transform_factors <span class="op">=</span> <span class="cn">FALSE</span>,</span>
-<span>  transform_orthonormal <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  short_name <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  parameter_names <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  formula_prefix <span class="op">=</span> <span class="cn">TRUE</span>,</span>
@@ -122,7 +122,6 @@ for a given parameter of a JAGS model.</p>
 <span>  lags <span class="op">=</span> <span class="fl">30</span>,</span>
 <span>  transformations <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  transform_factors <span class="op">=</span> <span class="cn">FALSE</span>,</span>
-<span>  transform_orthonormal <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  short_name <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  parameter_names <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  formula_prefix <span class="op">=</span> <span class="cn">TRUE</span>,</span>
@@ -135,7 +134,8 @@ for a given parameter of a JAGS model.</p>
 
 
 <dl><dt id="arg-fit">fit<a class="anchor" aria-label="anchor" href="#arg-fit"></a></dt>
-<dd><p>a JAGS model fitted via <code><a href="JAGS_fit.html">JAGS_fit()</a></code></p></dd>
+<dd><p>a JAGS model fitted via <code><a href="JAGS_fit.html">JAGS_fit()</a></code> or a derived-draw view from
+<code><a href="JAGS_draw_geometry.html">JAGS_with_draws()</a></code>. Diagnostics describe the supplied view draws.</p></dd>
 
 
 <dt id="arg-parameter">parameter<a class="anchor" aria-label="anchor" href="#arg-parameter"></a></dt>
@@ -178,13 +178,20 @@ to specific parameters</p></dd>
 <dt id="arg-transform-factors">transform_factors<a class="anchor" aria-label="anchor" href="#arg-transform-factors"></a></dt>
 <dd><p>whether factors with orthonormal/meandif
 prior distribution should be transformed to differences from the
-grand mean</p></dd>
-
-
-<dt id="arg-transform-orthonormal">transform_orthonormal<a class="anchor" aria-label="anchor" href="#arg-transform-orthonormal"></a></dt>
-<dd><p>(to be depreciated) whether factors
-with orthonormal prior distributions should be transformed to
-differences from the grand mean</p></dd>
+grand mean, and factors with <code><a href="prior_ordered.html">prior_ordered()</a></code> prior distribution to
+their level effects (without the reference level of a <code>"cumulative"</code>
+contrast, which is fixed at zero). Untransformed ordered factors show the
+sampled parameters: <code><a href="BayesTools_model_tables.html">runjags_estimates_table()</a></code> reports the total
+effect (<code>&lt;term&gt;{total}</code>) and the allocation shares of the
+random allocations (<code>&lt;term&gt;[share: &lt;level&gt;]</code>, the share
+of the total added when reaching <code>&lt;level&gt;</code>; fixed allocations have no
+rows). <code><a href="BayesTools_ensemble_tables.html">ensemble_estimates_table()</a></code> reports retained fitted totals and
+the union of allocation shares sampled by any declared ordered model.
+Fixed ordered allocations fill that union with their declared constants.
+Models without the ordered parameterization have undefined (<code>NA</code>)
+shares, with their defined fraction reported in a footnote. Shares remain
+defined on zero-total and excluded spike draws of an ordered model. Legacy
+mixed objects without retained sources must be recreated from source fits.</p></dd>
 
 
 <dt id="arg-short-name">short_name<a class="anchor" aria-label="anchor" href="#arg-short-name"></a></dt>
@@ -210,7 +217,31 @@ be printed. Defaults to <code>TRUE</code>.</p></dd>
     <h2>Value</h2>
     <p><code>diagnostics</code> returns either <code>NULL</code> if <code>plot_type = "base"</code>
 or an object/list of objects (depending on the number of parameters to be plotted)
-of class 'ggplot2' if <code>plot_type = "ggplot2"</code>.</p>
+of class 'ggplot' if <code>plot_type = "ggplot"</code>.</p>
+    </div>
+    <div id="details">
+    <h2>Details</h2>
+    <p>The trace shows the retained MCMC iteration of every draw on its
+x axis (thinned chains keep their original positions).
+Autocorrelation uses the retained original iteration positions.
+Requested lags without finite observation pairs, beyond the retained chain,
+or with nonfinite autocorrelation are retained as <code>NA</code>. One warning per
+parameter and chain has classes <code>BayesTools_autocorrelation_unavailable</code>
+and <code>BayesTools_plot_condition</code>, with <code>parameter</code>, <code>chain</code>,
+<code>unavailable_lags</code>, <code>pair_count</code> and <code>reason</code> fields.
+Computed x/y objects retain full-length <code>pair_count</code> and
+<code>unavailability_reason</code> attributes; both renderers display finite bars
+only. No iteration compression, replacement estimate or confidence band is
+introduced.</p>
+<p>Coordinates whose convergence role is <code>"structural"</code> (see
+<code><a href="JAGS_check_convergence.html">JAGS_check_convergence()</a></code>) are constants of the prior: the weight bins that
+the prior fixes (for example by <code><a href="prior_weightfunction.html">wf_fixed()</a></code>) or the coefficients of an
+ordered prior with a point total and fixed allocation. The density and
+autocorrelation diagnostics omit them when their draws are constant, and
+when nothing else remains the call returns <code>NULL</code> with a message, as for
+a spike prior; the trace is produced as for any other parameter. A parameter
+with a <code><a href="prior.html">prior_none()</a></code> prior is not sampled: the call returns <code>NULL</code> with
+a message for every type.</p>
     </div>
     <div id="see-also">
     <h2>See also</h2>
@@ -229,7 +260,7 @@ of class 'ggplot2' if <code>plot_type = "ggplot2"</code>.</p>
 </div>
 
 <div class="pkgdown">
-  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.0.</p>
+  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.1.</p>
 </div>
 
       </footer></div>

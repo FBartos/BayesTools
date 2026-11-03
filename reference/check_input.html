@@ -18,7 +18,7 @@ objects/arguments to a function passed by a user."><!-- mathjax --><script src="
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.3.0</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.4.0</span>
       </span>
     </div>
 
@@ -33,10 +33,13 @@ objects/arguments to a function passed by a user."><!-- mathjax --><script src="
     <span class="caret"></span>
   </a>
   <ul class="dropdown-menu" role="menu"><li>
-      <a href="../articles/ComparisonR.html">Comparison to other R packages</a>
+      <a href="../articles/ComparisonR.html">Bayesian t-Test Compared with BayesFactor</a>
     </li>
     <li>
-      <a href="../articles/SpikeAndSlab.html">Bayes factors via spike and slab prior vs. bridge sampling</a>
+      <a href="../articles/RandomEffects.html">Random Effects with Formula Syntax</a>
+    </li>
+    <li>
+      <a href="../articles/SpikeAndSlab.html">Variable Selection with Spike-and-Slab Priors</a>
     </li>
   </ul></li>
 <li>
@@ -73,7 +76,7 @@ objects/arguments to a function passed by a user.</p>
 <span>  name <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/deparse.html" class="external-link">deparse</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/substitute.html" class="external-link">substitute</a></span><span class="op">(</span><span class="va">x</span><span class="op">)</span><span class="op">)</span>,</span>
 <span>  check_length <span class="op">=</span> <span class="fl">1</span>,</span>
 <span>  allow_NULL <span class="op">=</span> <span class="cn">FALSE</span>,</span>
-<span>  allow_NA <span class="op">=</span> <span class="cn">TRUE</span>,</span>
+<span>  allow_NA <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  call <span class="op">=</span> <span class="st">""</span></span>
 <span><span class="op">)</span></span>
 <span></span>
@@ -194,6 +197,15 @@ present. Defaults to <code>FALSE</code>.</p></dd>
     <h2>Value</h2>
     <p>returns <code>NULL</code>, called for the input check.</p>
     </div>
+    <div id="na-values">
+    <h2>NA values</h2>
+
+
+<p><code>allow_NA</code> defaults to <code>TRUE</code> for <code>check_char</code>,
+<code>check_int</code>, and <code>check_real</code>, but to <code>FALSE</code> for
+<code>check_bool</code>: a missing value cannot be used as a switch, so an
+<code>NA</code> flag is rejected unless <code>allow_NA = TRUE</code> is requested.</p>
+    </div>
 
     <div id="ref-examples">
     <h2>Examples</h2>
@@ -220,7 +232,7 @@ present. Defaults to <code>FALSE</code>.</p></dd>
 </div>
 
 <div class="pkgdown">
-  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.0.</p>
+  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.1.</p>
 </div>
 
       </footer></div>

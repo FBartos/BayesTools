@@ -21,7 +21,7 @@ density approximation."><!-- mathjax --><script src="https://cdnjs.cloudflare.co
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.3.0</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.4.0</span>
       </span>
     </div>
 
@@ -36,10 +36,13 @@ density approximation."><!-- mathjax --><script src="https://cdnjs.cloudflare.co
     <span class="caret"></span>
   </a>
   <ul class="dropdown-menu" role="menu"><li>
-      <a href="../articles/ComparisonR.html">Comparison to other R packages</a>
+      <a href="../articles/ComparisonR.html">Bayesian t-Test Compared with BayesFactor</a>
     </li>
     <li>
-      <a href="../articles/SpikeAndSlab.html">Bayes factors via spike and slab prior vs. bridge sampling</a>
+      <a href="../articles/RandomEffects.html">Random Effects with Formula Syntax</a>
+    </li>
+    <li>
+      <a href="../articles/SpikeAndSlab.html">Variable Selection with Spike-and-Slab Priors</a>
     </li>
   </ul></li>
 <li>
@@ -61,7 +64,7 @@ density approximation."><!-- mathjax --><script src="https://cdnjs.cloudflare.co
   <div class="col-md-9 contents">
     <div class="page-header">
     <h1>Model-average marginal posterior distributions and marginal Bayes factors based on BayesTools JAGS model via <code>marginal_inference</code></h1>
-    <small class="dont-index">Source: <a href="https://github.com/FBartos/BayesTools/blob/master/R/marginal-distributions.R" class="external-link"><code>R/marginal-distributions.R</code></a></small>
+    <small class="dont-index">Source: <a href="https://github.com/FBartos/BayesTools/blob/master/R/marginal-inference.R" class="external-link"><code>R/marginal-inference.R</code></a></small>
     <div class="hidden name"><code>as_marginal_inference.Rd</code></div>
     </div>
 
@@ -85,7 +88,9 @@ density approximation.</p>
 <span>  normal_approximation <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  n_samples <span class="op">=</span> <span class="fl">10000</span>,</span>
 <span>  silent <span class="op">=</span> <span class="cn">FALSE</span>,</span>
-<span>  force_plots <span class="op">=</span> <span class="cn">FALSE</span></span>
+<span>  force_plots <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  density_method <span class="op">=</span> <span class="st">"KDE"</span>,</span>
+<span>  compute_BF <span class="op">=</span> <span class="cn">TRUE</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
 
@@ -94,7 +99,10 @@ density approximation.</p>
 
 
 <dl><dt id="arg-model">model<a class="anchor" aria-label="anchor" href="#arg-model"></a></dt>
-<dd><p>model fit via the <a href="JAGS_fit.html">JAGS_fit</a> function</p></dd>
+<dd><p>model fit via the <a href="JAGS_fit.html">JAGS_fit</a> function with this version of
+BayesTools. Fits without its parameter map and fit contract (such as fits
+created by BayesTools 0.3.0) must be refitted: they stop with an error of
+class <code>BayesTools_refit_required</code> (see <code><a href="JAGS_fit_contract.html">JAGS_validate_fit_contract()</a></code>).</p></dd>
 
 
 <dt id="arg-marginal-parameters">marginal_parameters<a class="anchor" aria-label="anchor" href="#arg-marginal-parameters"></a></dt>
@@ -109,7 +117,10 @@ relevant for the formula (all of which need to have specification of
 
 
 <dt id="arg-conditional-list">conditional_list<a class="anchor" aria-label="anchor" href="#arg-conditional-list"></a></dt>
-<dd><p>list of conditional parameters for each marginal parameter</p></dd>
+<dd><p>list of conditional parameters for each marginal parameter
+Unnamed entries bind to <code>marginal_parameters</code> in supplied order;
+uniquely named complete lists bind by key. Partial or mismatched names and
+duplicate, missing or empty marginal keys are refused.</p></dd>
 
 
 <dt id="arg-conditional-rule">conditional_rule<a class="anchor" aria-label="anchor" href="#arg-conditional-rule"></a></dt>
@@ -126,13 +137,18 @@ Either "AND" or "OR". Defaults to "AND".</p></dd>
 
 
 <dt id="arg-normal-approximation">normal_approximation<a class="anchor" aria-label="anchor" href="#arg-normal-approximation"></a></dt>
-<dd><p>whether the height of prior and posterior density should be
-approximated via a normal distribution (rather than kernel density). Defaults to <code>FALSE</code>.</p></dd>
+<dd><p>whether the height of the posterior density at
+the null should be approximated via a normal distribution (rather than
+kernel density). The prior height is always the structural prior-density
+ordinate. Defaults to <code>FALSE</code>.</p></dd>
 
 
 <dt id="arg-n-samples">n_samples<a class="anchor" aria-label="anchor" href="#arg-n-samples"></a></dt>
 <dd><p>controls the numerical grid used for model-averaged
-prior densities</p></dd>
+prior densities (a grid has at least 16 points). It is not used when the
+samples carry a stored prior-density context. For a simple parameter, an
+explicitly attached <code>prior_density</code> is authoritative and is propagated
+instead of being reconstructed from <code>prior_list</code>.</p></dd>
 
 
 <dt id="arg-silent">silent<a class="anchor" aria-label="anchor" href="#arg-silent"></a></dt>
@@ -144,10 +160,48 @@ prior densities</p></dd>
 suitable for prior and posterior plots. Only available when conditioning on a
 single parameter.</p></dd>
 
+
+<dt id="arg-density-method">density_method<a class="anchor" aria-label="anchor" href="#arg-density-method"></a></dt>
+<dd><p>posterior density method used for Savage-Dickey Bayes
+factors. Currently only <code>"KDE"</code> is supported by
+<code><a href="marginal_inference.html">marginal_inference()</a></code> and <code>as_marginal_inference()</code> because
+generic model-averaged marginal posteriors do not have a well-defined
+precomputed density source.</p></dd>
+
+
+<dt id="arg-compute-bf">compute_BF<a class="anchor" aria-label="anchor" href="#arg-compute-bf"></a></dt>
+<dd><p>whether to compute inclusion Bayes factors. When
+<code>FALSE</code>, the averaged and conditional marginal posteriors are returned
+and the <code>inference</code> list is empty.</p></dd>
+
 </dl></div>
     <div id="value">
     <h2>Value</h2>
     <p><code>as_marginal_inference</code> returns an object of class 'marginal_inference'.</p>
+    </div>
+    <div id="details">
+    <h2>Details</h2>
+    <p>For <code>as_marginal_inference()</code>, <code>conditional_list</code> is
+applied separately to each output marginal or level. A requested conditional
+parameter is active only for levels whose linear combination has a nonzero
+weight for that parameter. Requested conditionals with zero weight are ignored
+for that level; if no requested conditionals are active, the level uses the
+fully averaged posterior and prior context. Level comparisons require the
+compared levels to use the same effective conditional subset and rule.
+As in <code><a href="marginal_inference.html">marginal_inference()</a></code>, a parameter or level whose conditional
+posterior has a declared point mass at the null hypothesis gets an
+<code>NA</code> inclusion Bayes factor with the reason in its <code>"warnings"</code>
+attribute.
+Known prior-ordinate refusals and a numerically unavailable posterior
+ordinate also produce <code>NA</code> plus the original reason, including scalar
+marginal table results; direct scalar <code><a href="Savage_Dickey_BF.html">Savage_Dickey_BF()</a></code> remains
+strict.
+A level whose effective conditional subset is non-empty and leaves no
+draws is unavailable: it gets the warning <code>"No samples left after
+conditioning."</code> (once per distinct conditioning event) and is absent from the
+<code>conditional</code> and <code>inference</code> entries of its parameter, while the
+other levels and the <code>averaged</code> marginals are kept. A parameter without
+an available level has no <code>conditional</code> or <code>inference</code> entry.</p>
     </div>
     <div id="see-also">
     <h2>See also</h2>
@@ -166,7 +220,7 @@ single parameter.</p></dd>
 </div>
 
 <div class="pkgdown">
-  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.0.</p>
+  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.1.</p>
 </div>
 
       </footer></div>

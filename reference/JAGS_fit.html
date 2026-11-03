@@ -20,7 +20,7 @@ of prior distributions."><!-- mathjax --><script src="https://cdnjs.cloudflare.c
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.3.0</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.4.0</span>
       </span>
     </div>
 
@@ -35,10 +35,13 @@ of prior distributions."><!-- mathjax --><script src="https://cdnjs.cloudflare.c
     <span class="caret"></span>
   </a>
   <ul class="dropdown-menu" role="menu"><li>
-      <a href="../articles/ComparisonR.html">Comparison to other R packages</a>
+      <a href="../articles/ComparisonR.html">Bayesian t-Test Compared with BayesFactor</a>
     </li>
     <li>
-      <a href="../articles/SpikeAndSlab.html">Bayes factors via spike and slab prior vs. bridge sampling</a>
+      <a href="../articles/RandomEffects.html">Random Effects with Formula Syntax</a>
+    </li>
+    <li>
+      <a href="../articles/SpikeAndSlab.html">Variable Selection with Spike-and-Slab Priors</a>
     </li>
   </ul></li>
 <li>
@@ -88,13 +91,20 @@ of prior distributions.</p>
 <span>  autofit <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  autofit_control <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>max_Rhat <span class="op">=</span> <span class="fl">1.05</span>, min_ESS <span class="op">=</span> <span class="fl">500</span>, max_error <span class="op">=</span> <span class="fl">0.01</span>, max_SD_error <span class="op">=</span></span>
 <span>    <span class="fl">0.05</span>, max_time <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>time <span class="op">=</span> <span class="fl">60</span>, unit <span class="op">=</span> <span class="st">"mins"</span><span class="op">)</span>, sample_extend <span class="op">=</span> <span class="fl">1000</span>, restarts <span class="op">=</span> <span class="fl">10</span>,</span>
-<span>    max_extend <span class="op">=</span> <span class="fl">10</span>, check_indicators <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span>,</span>
+<span>    max_extend <span class="op">=</span> <span class="fl">10</span>, check_indicators <span class="op">=</span> <span class="cn">FALSE</span>, monitor <span class="op">=</span> <span class="cn">NULL</span>, allow_not_assessable <span class="op">=</span></span>
+<span>    <span class="cn">FALSE</span><span class="op">)</span>,</span>
 <span>  parallel <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  cores <span class="op">=</span> <span class="va">chains</span>,</span>
 <span>  silent <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  seed <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  add_parameters <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  required_packages <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  formula_random_prior_list <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  formula_random_effects_compile_list <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  jags_modules <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  runtime_setup <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  runtime_cache <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  worker_output <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  <span class="va">...</span></span>
 <span><span class="op">)</span></span>
 <span></span>
@@ -102,11 +112,14 @@ of prior distributions.</p>
 <span>  <span class="va">fit</span>,</span>
 <span>  autofit_control <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>max_Rhat <span class="op">=</span> <span class="fl">1.05</span>, min_ESS <span class="op">=</span> <span class="fl">500</span>, max_error <span class="op">=</span> <span class="fl">0.01</span>, max_SD_error <span class="op">=</span></span>
 <span>    <span class="fl">0.05</span>, max_time <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>time <span class="op">=</span> <span class="fl">60</span>, unit <span class="op">=</span> <span class="st">"mins"</span><span class="op">)</span>, sample_extend <span class="op">=</span> <span class="fl">1000</span>, restarts <span class="op">=</span> <span class="fl">10</span>,</span>
-<span>    max_extend <span class="op">=</span> <span class="fl">10</span>, check_indicators <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span>,</span>
+<span>    max_extend <span class="op">=</span> <span class="fl">10</span>, check_indicators <span class="op">=</span> <span class="cn">FALSE</span>, monitor <span class="op">=</span> <span class="cn">NULL</span>, allow_not_assessable <span class="op">=</span></span>
+<span>    <span class="cn">FALSE</span><span class="op">)</span>,</span>
 <span>  parallel <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  cores <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  silent <span class="op">=</span> <span class="cn">TRUE</span>,</span>
-<span>  seed <span class="op">=</span> <span class="cn">NULL</span></span>
+<span>  runtime_setup <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/attr.html" class="external-link">attr</a></span><span class="op">(</span><span class="va">fit</span>, <span class="st">"runtime_setup"</span>, exact <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span>,</span>
+<span>  runtime_cache <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/attr.html" class="external-link">attr</a></span><span class="op">(</span><span class="va">fit</span>, <span class="st">"runtime_cache"</span>, exact <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span>,</span>
+<span>  worker_output <span class="op">=</span> <span class="cn">NULL</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
 
@@ -125,7 +138,8 @@ of prior distributions.</p>
 <dt id="arg-prior-list">prior_list<a class="anchor" aria-label="anchor" href="#arg-prior-list"></a></dt>
 <dd><p>named list of prior distribution
 (names correspond to the parameter names) of parameters not specified within the
-<code>formula_list</code></p></dd>
+<code>formula_list</code>. Factor priors must carry their levels, set with
+<code><a href="prior_factor_levels.html">prior_factor_levels()</a></code>.</p></dd>
 
 
 <dt id="arg-formula-list">formula_list<a class="anchor" aria-label="anchor" href="#arg-formula-list"></a></dt>
@@ -179,9 +193,14 @@ specified in <code>autofit_control</code>. Defaults to <code>FALSE</code>.</p></
 
 <dt id="arg-autofit-control">autofit_control<a class="anchor" aria-label="anchor" href="#arg-autofit-control"></a></dt>
 <dd><p>a list of arguments controlling the autofit function.
+Convergence thresholds and <code>max_time$time</code> must be finite and non-missing.
+Set a convergence threshold or <code>max_time</code> to <code>NULL</code> to disable that check.
 Possible options are:</p><dl><dt>max_Rhat</dt>
 <dd><p>maximum R-hat error for the autofit function.
-Defaults to <code>1.05</code>.</p></dd>
+Defaults to <code>1.05</code>. R-hat is the larger of the point estimate and
+the upper confidence limit of the potential scale reduction factor,
+whereas the summary tables show the point estimate (see
+<code><a href="JAGS_check_convergence.html">JAGS_check_convergence()</a></code>).</p></dd>
 
 <dt>min_ESS</dt>
 <dd><p>minimum effective sample size. Defaults to <code>500</code>.</p></dd>
@@ -194,9 +213,9 @@ Defaults to <code>1.05</code>.</p></dd>
 deviation of the parameters. Defaults to <code>0.05</code>.</p></dd>
 
 <dt>max_time</dt>
-<dd><p>list specifying the time <code>time</code> and <code>units</code>
-after which the automatic fitting function is stopped. The units arguments
-need to correspond to <code>units</code> passed to <a href="https://rdrr.io/r/base/difftime.html" class="external-link">difftime</a> function.</p></dd>
+<dd><p>list with fields <code>time</code> and <code>unit</code>, specifying
+when the automatic fitting function is stopped. The <code>unit</code> value
+corresponds to the <code>units</code> argument of <a href="https://rdrr.io/r/base/difftime.html" class="external-link">difftime</a>.</p></dd>
 
 <dt>max_extend</dt>
 <dd><p>number of times after which the automatic fitting function is stopped.</p></dd>
@@ -206,12 +225,40 @@ need to correspond to <code>units</code> passed to <a href="https://rdrr.io/r/ba
 <code>1000</code>.</p></dd>
 
 <dt>restarts</dt>
-<dd><p>number of times new initial values should be generated in case the model
-fails to initialize. Defaults to <code>10</code>.</p></dd>
+<dd><p>maximum number of fitting attempts when the model fails
+to initialize; every failed attempt but the last is retried with new
+initial values (<code>restarts = 1</code> fits once, without a retry). A
+failed attempt that is retried is reported as a warning of the fit.
+Defaults to <code>10</code>.</p></dd>
 
 <dt>check_indicators</dt>
 <dd><p>whether model indicator variables should be included
-in convergence checks. Defaults to <code>FALSE</code>.</p></dd>
+in convergence checks, including when <code>monitor</code> selects a narrower
+parameter set. Auxiliary inclusion-probability coordinates remain excluded
+unless requested explicitly. Defaults to <code>FALSE</code>.</p></dd>
+
+<dt>monitor</dt>
+<dd><p>optional character vector selecting parameters for
+convergence checks. Base names select all indexed elements. Requests are
+resolved against the monitored nodes that the summary tables show,
+including the derived and auxiliary ones that the default selection
+excludes. Base names that are not
+monitored are rejected before sampling (error class
+<code>BayesTools_parameter_not_found</code>); an indexed element such as
+<code>"mu[2]"</code> is resolved against the fitted columns after the first
+run and fails then when it does not exist. Defaults to <code>NULL</code>, which
+checks the default selection of <code><a href="JAGS_check_convergence.html">JAGS_check_convergence()</a></code>: the sampled
+parameters of the priors, <code>add_parameters</code> that depend on a
+stochastic node, and the stochastic nodes that formulas monitor (such as
+latent random effects and LKJ primitives). Deterministic nodes that
+formulas monitor (such as random-effect correlation matrices and their
+Cholesky factors) are derived and not checked by default. The role of
+every fitted coordinate is stored in the <code>convergence_role</code> column
+of <code><a href="parameter_map.html">parameter_coordinates()</a></code>.</p></dd>
+
+<dt>allow_not_assessable</dt>
+<dd><p>whether undefined diagnostics for requested
+sampled parameters may be ignored. Defaults to <code>FALSE</code>.</p></dd>
 
 
 </dl></dd>
@@ -231,18 +278,131 @@ defaults to <code>chains</code></p></dd>
 
 
 <dt id="arg-seed">seed<a class="anchor" aria-label="anchor" href="#arg-seed"></a></dt>
-<dd><p>seed for random number generation</p></dd>
+<dd><p>seed for random number generation by <code>JAGS_fit()</code>: an
+integer between <code>-.Machine$integer.max</code> and <code>.Machine$integer.max</code>.
+Draws are reproducible for the same <code>seed</code>, <code>chains</code>, and R
+random-number generator settings (<code><a href="https://rdrr.io/r/base/Random.html" class="external-link">RNGkind()</a></code>), and, with
+<code>parallel = TRUE</code>, the same <code>cores</code>. Parallel draws need not equal
+serial draws with the same seed, because the backend passes each chain's
+initial state to its worker in a serialized text form. Initial values are
+drawn from the priors after <code>set.seed(seed)</code>, and each chain's JAGS
+random-number seed is drawn from the same seed with
+<code>sample.int(.Machine$integer.max, chains)</code> (see
+<code><a href="JAGS_get_inits.html">JAGS_get_inits</a></code>). A chain's JAGS seed therefore does not
+depend on the number of chains, but the JAGS generator does: with more
+than four chains it changes from <code>"base::Super-Duper"</code> to
+<code>"lecuyer::RngStream"</code>, so the draws of a chain differ between fits
+with up to four and with more chains. The chains of adjacent seeds (e.g.,
+<code>seed</code> and <code>seed + 1</code>) do not share random-number streams.
+Automatic restarts after a failed initialization (see <code>restarts</code> in
+<code>autofit_control</code>) draw their seeds from a separate stream of the
+same seed (the first L'Ecuyer-CMRG substream), so the i-th restart does
+not repeat the fit with <code>seed + i</code>. A seeded fit restores the
+caller's random-number state (<code>.Random.seed</code> and <code><a href="https://rdrr.io/r/base/Random.html" class="external-link">RNGkind()</a></code>)
+when it returns. With <code>seed = NULL</code>, the initial values are drawn
+from one seed taken from the caller's random-number stream (see
+<code><a href="JAGS_get_inits.html">JAGS_get_inits</a></code>), which the fit then continues to use.</p></dd>
 
 
 <dt id="arg-add-parameters">add_parameters<a class="anchor" aria-label="anchor" href="#arg-add-parameters"></a></dt>
-<dd><p>vector of additional parameter names that should be used
-monitored but were not specified in the <code>prior_list</code></p></dd>
+<dd><p>vector of additional parameter names that should be
+monitored but were not specified in the <code>prior_list</code>. Automatic fitting
+checks their convergence like that of the other parameters. Fully observed
+data and a node that the model syntax defines deterministically (<code>&lt;-</code> or
+<code>=</code>) from data and constants only are structural constants and do not
+block convergence. A
+node that is stochastic (<code>~</code>) or depends on a stochastic node is
+checked, and its constant draws are not assessable (see
+<code>autofit_control$allow_not_assessable</code>). A name that repeats a parameter
+of <code>prior_list</code> is refused. A parameter that a formula needs monitored,
+such as the scalar SD source of a random-effect block
+(<code>random_sd_source("tau")</code>), is added automatically and, when
+<code>prior_list</code> already holds its prior, is monitored through that prior.</p></dd>
 
 
 <dt id="arg-required-packages">required_packages<a class="anchor" aria-label="anchor" href="#arg-required-packages"></a></dt>
 <dd><p>character vector specifying list of packages containing
 JAGS models required for sampling (in case that the function is run in parallel or in
-detached R session). Defaults to <code>NULL</code>.</p></dd>
+detached R session). Defaults to <code>NULL</code>. Parallel workers must load
+the same versions and native library builds as the parent session. When
+developing packages with <code>load_all()</code>, install matching builds into
+a library and set <code>R_LIBS_USER</code> before starting R and its workers.</p></dd>
+
+
+<dt id="arg-formula-random-prior-list">formula_random_prior_list<a class="anchor" aria-label="anchor" href="#arg-formula-random-prior-list"></a></dt>
+<dd><p>optional named list of <code><a href="prior_random.html">prior_random()</a></code>
+objects for random effects in <code>formula_list</code>. Required for any formula that
+contains random effects.</p></dd>
+
+
+<dt id="arg-formula-random-effects-compile-list">formula_random_effects_compile_list<a class="anchor" aria-label="anchor" href="#arg-formula-random-effects-compile-list"></a></dt>
+<dd><p>optional named list of
+<code><a href="random_effects_compile.html">random_effects_compile()</a></code> objects controlling which formula random-effect
+blocks are sampled and which are compiled as marginalized structural blocks.
+Defaults to <code>NULL</code>, which preserves the current all-sampled behavior.</p></dd>
+
+
+<dt id="arg-jags-modules">jags_modules<a class="anchor" aria-label="anchor" href="#arg-jags-modules"></a></dt>
+<dd><p>character vector specifying JAGS modules required by the
+generated model syntax. Defaults to <code>NULL</code>.</p></dd>
+
+
+<dt id="arg-runtime-setup">runtime_setup<a class="anchor" aria-label="anchor" href="#arg-runtime-setup"></a></dt>
+<dd><p>optional function accepting one <code>context</code> list. After
+required packages and JAGS modules load, it is called with <code>phase = "start"</code>
+in the calling process, then each parallel worker. The context contains
+<code>role</code> (<code>"local"</code>, <code>"coordinator"</code>, or <code>"worker"</code>),
+<code>chains</code> (total chains), <code>processes</code> (sampling processes),
+<code>process_id</code> (one-based worker index, or zero for the coordinator),
+<code>process_chains</code> (chains assigned to this process; zero for the
+coordinator), and <code>parallel</code>. Chains are divided round-robin among at
+most <code>min(cores, chains)</code> workers. On exit, including fitting failures,
+workers are stopped before the calling process receives <code>phase = "finish"</code>
+with its original topology context. Worker processes do not receive a finish
+callback. If stopping workers fails, a warning is issued and the finish
+callback is not run; cleanup still attempts every remaining worker and
+closes failed connections. This permits releasing coordinator resources before
+parallel work and restoring them afterward. Return values are ignored. The callback must be
+idempotent, must not change random-number generator state, and should capture
+only small immutable settings. Packages it uses must be included in
+<code>required_packages</code>. The callback is stored with the fit;
+<code>JAGS_extend()</code> reuses it with the current chain and worker topology.
+Supplying <code>NULL</code> explicitly disables replay.</p></dd>
+
+
+<dt id="arg-runtime-cache">runtime_cache<a class="anchor" aria-label="anchor" href="#arg-runtime-cache"></a></dt>
+<dd><p>optional function accepting <code>context</code> and
+<code>state = NULL</code> for optional computational caches. It must not change
+inference targets or random-number state and must capture only small settings.
+After runtime setup, a fit or extension calls it with <code>context$phase = "restore"</code>
+and a list of prior process shards assigned to this process (empty for new
+fits or workers without an assigned shard). Each prior shard
+is sent to at most one current process, in round-robin order; shards are not
+duplicated when worker count increases. Before workers stop, a completed fit
+calls it with <code>context$phase = "capture"</code> and <code>state = NULL</code>.
+Capture returns one serializable shard, or <code>NULL</code> to retain no state.
+The fitted object's <code>runtime_state</code> attribute stores process shards
+separately from its small <code>runtime_cache</code> callback. Backend extension
+calls receive neither attribute. <code>JAGS_extend()</code> restores old state
+independently of whether its callback elects to capture fresh state.
+Callback warnings and errors are reported without discarding valid draws;
+a failed capture callback leaves a <code>NULL</code> shard for its process. If a
+worker connection fails during capture, no shard is retained from any
+process for that fit. Capture warnings, including such failures, are also
+recorded in the fit's <code>warnings</code> attribute. Error and interrupt cleanup does
+not attempt capture; ordinary runtime cleanup still runs. Retained R snapshots,
+serialization buffers, and the caller's old fitted object consume memory in
+addition to active cache storage. Callback packages must be listed in
+<code>required_packages</code>. Passing <code>NULL</code> disables capture and restore.</p></dd>
+
+
+<dt id="arg-worker-output">worker_output<a class="anchor" aria-label="anchor" href="#arg-worker-output"></a></dt>
+<dd><p>optional file path for parallel worker stdout and stderr.
+The parent directory must exist. Workers append to the same file, so messages
+can interleave. <code>NULL</code> retains the backend default of discarding worker
+output. This setting is call-specific and is not retained with the fit;
+supply it again to <code>JAGS_extend()</code> when needed. Connection failures stop
+automatic fitting retries and preserve the original backend error.</p></dd>
 
 
 <dt id="arg--">...<a class="anchor" aria-label="anchor" href="#arg--"></a></dt>
@@ -251,12 +411,30 @@ detached R session). Defaults to <code>NULL</code>.</p></dd>
 
 <dt id="arg-fit">fit<a class="anchor" aria-label="anchor" href="#arg-fit"></a></dt>
 <dd><p>a 'BayesTools_fit' object (created by <code>JAGS_fit()</code> function) to be
-extended</p></dd>
+extended. A derived-draw view signals
+<code>BayesTools_draws_view_sampling_unavailable</code>, also
+<code>BayesTools_sampling_unavailable</code> and
+<code>BayesTools_draws_view_unavailable</code>, before runtime arguments are forced;
+extend its <code>original_fit</code> and regenerate it with <code><a href="JAGS_draw_geometry.html">JAGS_with_draws()</a></code>.
+Fits without the parameter map and fit contract of this version
+of BayesTools (such as fits created by BayesTools 0.3.0) must be refitted:
+they stop with an error of class <code>BayesTools_refit_required</code> (see
+<code><a href="JAGS_fit_contract.html">JAGS_validate_fit_contract()</a></code>).</p></dd>
 
 </dl></div>
     <div id="value">
     <h2>Value</h2>
-    <p><code>JAGS_fit</code> returns an object of class 'runjags' and 'BayesTools_fit'.</p>
+    <p><code>JAGS_fit</code> returns an object of class 'runjags' and 'BayesTools_fit'.
+<code>JAGS_extend</code> continues the backend random-number generator state of the
+existing chains; it does not reseed them.
+Stored parameter and RNG states initialize reconstruction; recompilation can
+reset sampler tuning and follows runjags' adaptation policy. The model is
+always recompiled from these stored states, never continued from a compiled
+model left in the session, so extending the same object twice, or a saved and
+reloaded copy of it, gives identical draws. Neither function keeps runjags'
+compiled rjags model (<code>method.options$rjags</code>) in the returned object;
+<code><a href="https://rdrr.io/pkg/runjags/man/run.jags.html" class="external-link">runjags::extend.jags()</a></code> recompiles a model without it, as after
+reloading.</p>
     </div>
     <div id="see-also">
     <h2>See also</h2>
@@ -303,7 +481,7 @@ extended</p></dd>
 </div>
 
 <div class="pkgdown">
-  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.0.</p>
+  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.1.</p>
 </div>
 
       </footer></div>

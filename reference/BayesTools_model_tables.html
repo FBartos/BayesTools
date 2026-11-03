@@ -18,7 +18,7 @@ provides estimates table for a runjags fit."><!-- mathjax --><script src="https:
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.3.0</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.4.0</span>
       </span>
     </div>
 
@@ -33,10 +33,13 @@ provides estimates table for a runjags fit."><!-- mathjax --><script src="https:
     <span class="caret"></span>
   </a>
   <ul class="dropdown-menu" role="menu"><li>
-      <a href="../articles/ComparisonR.html">Comparison to other R packages</a>
+      <a href="../articles/ComparisonR.html">Bayesian t-Test Compared with BayesFactor</a>
     </li>
     <li>
-      <a href="../articles/SpikeAndSlab.html">Bayes factors via spike and slab prior vs. bridge sampling</a>
+      <a href="../articles/RandomEffects.html">Random Effects with Formula Syntax</a>
+    </li>
+    <li>
+      <a href="../articles/SpikeAndSlab.html">Variable Selection with Spike-and-Slab Priors</a>
     </li>
   </ul></li>
 <li>
@@ -58,7 +61,7 @@ provides estimates table for a runjags fit."><!-- mathjax --><script src="https:
   <div class="col-md-9 contents">
     <div class="page-header">
     <h1>Create BayesTools model tables</h1>
-    <small class="dont-index">Source: <a href="https://github.com/FBartos/BayesTools/blob/master/R/summary-tables.R" class="external-link"><code>R/summary-tables.R</code></a></small>
+    <small class="dont-index">Source: <a href="https://github.com/FBartos/BayesTools/blob/master/R/summary-tables-model.R" class="external-link"><code>R/summary-tables-model.R</code></a></small>
     <div class="hidden name"><code>BayesTools_model_tables.Rd</code></div>
     </div>
 
@@ -90,7 +93,6 @@ provides estimates table for a runjags fit.</p>
 <span>  probs <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">0.025</span>, <span class="fl">0.5</span>, <span class="fl">0.975</span><span class="op">)</span>,</span>
 <span>  remove_spike_0 <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  transform_factors <span class="op">=</span> <span class="cn">FALSE</span>,</span>
-<span>  transform_orthonormal <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  formula_prefix <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  remove_inclusion <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  remove_parameters <span class="op">=</span> <span class="cn">NULL</span>,</span>
@@ -101,7 +103,14 @@ provides estimates table for a runjags fit.</p>
 <span>  transform_scaled <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  remove_diagnostics <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  diagnostic_columns <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/options.html" class="external-link">getOption</a></span><span class="op">(</span><span class="st">"BayesTools.JAGS_estimates_diagnostic_columns"</span>, <span class="kw">if</span></span>
-<span>    <span class="op">(</span><span class="va">remove_diagnostics</span><span class="op">)</span> <span class="st">"none"</span> <span class="kw">else</span> <span class="st">"all"</span><span class="op">)</span></span>
+<span>    <span class="op">(</span><span class="va">remove_diagnostics</span><span class="op">)</span> <span class="st">"none"</span> <span class="kw">else</span> <span class="st">"all"</span><span class="op">)</span>,</span>
+<span>  random_effects_summary <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"standard"</span>, <span class="st">"full"</span>, <span class="st">"raw"</span>, <span class="st">"none"</span><span class="op">)</span>,</span>
+<span>  simplify_names <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  random_effects_metadata <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  remove_random_effects <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  keep_random_effects <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  remove_random_structures <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  keep_random_structures <span class="op">=</span> <span class="cn">NULL</span></span>
 <span><span class="op">)</span></span>
 <span></span>
 <span><span class="fu">runjags_inference_table</span><span class="op">(</span></span>
@@ -127,7 +136,6 @@ provides estimates table for a runjags fit.</p>
 <span>  probs <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">0.025</span>, <span class="fl">0.5</span>, <span class="fl">0.975</span><span class="op">)</span>,</span>
 <span>  remove_spike_0 <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  transform_factors <span class="op">=</span> <span class="cn">FALSE</span>,</span>
-<span>  transform_orthonormal <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  formula_prefix <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  remove_inclusion <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  remove_parameters <span class="op">=</span> <span class="cn">NULL</span>,</span>
@@ -138,7 +146,14 @@ provides estimates table for a runjags fit.</p>
 <span>  transform_scaled <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  remove_diagnostics <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  diagnostic_columns <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/options.html" class="external-link">getOption</a></span><span class="op">(</span><span class="st">"BayesTools.JAGS_estimates_diagnostic_columns"</span>, <span class="kw">if</span></span>
-<span>    <span class="op">(</span><span class="va">remove_diagnostics</span><span class="op">)</span> <span class="st">"none"</span> <span class="kw">else</span> <span class="st">"all"</span><span class="op">)</span></span>
+<span>    <span class="op">(</span><span class="va">remove_diagnostics</span><span class="op">)</span> <span class="st">"none"</span> <span class="kw">else</span> <span class="st">"all"</span><span class="op">)</span>,</span>
+<span>  random_effects_summary <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"standard"</span>, <span class="st">"full"</span>, <span class="st">"raw"</span>, <span class="st">"none"</span><span class="op">)</span>,</span>
+<span>  simplify_names <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  random_effects_metadata <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  remove_random_effects <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  keep_random_effects <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  remove_random_structures <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  keep_random_structures <span class="op">=</span> <span class="cn">NULL</span></span>
 <span><span class="op">)</span></span>
 <span></span>
 <span><span class="fu">JAGS_inference_table</span><span class="op">(</span></span>
@@ -256,7 +271,9 @@ to be added to the table</p></dd>
 
 <dt id="arg-remove-spike-">remove_spike_0<a class="anchor" aria-label="anchor" href="#arg-remove-spike-"></a></dt>
 <dd><p>whether prior distributions equal to spike
-at 0 should be removed from the <code>prior_list</code></p></dd>
+at 0 should be removed from the <code>prior_list</code>. In JAGS estimates
+tables with <code>transform_scaled = TRUE</code>, a coefficient with a spike at
+0 is kept when it is non-zero on the original scale.</p></dd>
 
 
 <dt id="arg-short-name">short_name<a class="anchor" aria-label="anchor" href="#arg-short-name"></a></dt>
@@ -273,11 +290,17 @@ be printed. Defaults to <code>TRUE</code>.</p></dd>
 <dd><p>parameters to be removed from the summary.
 Can be <code>NULL</code> (default, no removal), a character vector of parameter
 names to remove, or <code>TRUE</code> to remove all parameters that are not
-part of any formula.</p></dd>
+part of any formula. For formula random effects, character filters also
+accept semantic selectors <code>"random"</code>, <code>"random_sd"</code>,
+<code>"random_cor"</code>,
+<code>"random_var_prop"</code>, <code>"random_var_mult"</code>,
+<code>"random_allocation"</code>, and <code>"random_sd_mult"</code>.</p></dd>
 
 
 <dt id="arg-fit">fit<a class="anchor" aria-label="anchor" href="#arg-fit"></a></dt>
-<dd><p>runjags model fit</p></dd>
+<dd><p>runjags model fit or a derived-draw view from <code><a href="JAGS_draw_geometry.html">JAGS_with_draws()</a></code>.
+Estimates and inference describe its supplied draws; chain diagnostics use
+the actual retained chain geometry.</p></dd>
 
 
 <dt id="arg-transformations">transformations<a class="anchor" aria-label="anchor" href="#arg-transformations"></a></dt>
@@ -287,7 +310,12 @@ to specific parameters</p></dd>
 
 <dt id="arg-conditional">conditional<a class="anchor" aria-label="anchor" href="#arg-conditional"></a></dt>
 <dd><p>summarizes estimates conditional on being included
-in the model for spike and slab priors. Defaults to <code>FALSE</code>.</p></dd>
+in the model for spike and slab priors. Defaults to <code>FALSE</code>.
+The standard and full random-effect summaries condition the SD, variance
+and multiplier rows of a random SD with a spike-and-slab or
+null/alternative mixture prior on that prior's own inclusion event, as the
+raw summary does. A mixture with other components has no single inclusion
+event: its rows are summarized over all draws and a footnote says so.</p></dd>
 
 
 <dt id="arg-probs">probs<a class="anchor" aria-label="anchor" href="#arg-probs"></a></dt>
@@ -297,18 +325,35 @@ in the model for spike and slab priors. Defaults to <code>FALSE</code>.</p></dd>
 <dt id="arg-transform-factors">transform_factors<a class="anchor" aria-label="anchor" href="#arg-transform-factors"></a></dt>
 <dd><p>whether factors with orthonormal/meandif
 prior distribution should be transformed to differences from the
-grand mean</p></dd>
-
-
-<dt id="arg-transform-orthonormal">transform_orthonormal<a class="anchor" aria-label="anchor" href="#arg-transform-orthonormal"></a></dt>
-<dd><p>(to be depreciated) whether factors
-with orthonormal prior distributions should be transformed to
-differences from the grand mean</p></dd>
+grand mean, and factors with <code><a href="prior_ordered.html">prior_ordered()</a></code> prior distribution to
+their level effects (without the reference level of a <code>"cumulative"</code>
+contrast, which is fixed at zero). Untransformed ordered factors show the
+sampled parameters: <code>runjags_estimates_table()</code> reports the total
+effect (<code>&lt;term&gt;{total}</code>) and the allocation shares of the
+random allocations (<code>&lt;term&gt;[share: &lt;level&gt;]</code>, the share
+of the total added when reaching <code>&lt;level&gt;</code>; fixed allocations have no
+rows). <code><a href="BayesTools_ensemble_tables.html">ensemble_estimates_table()</a></code> reports retained fitted totals and
+the union of allocation shares sampled by any declared ordered model.
+Fixed ordered allocations fill that union with their declared constants.
+Models without the ordered parameterization have undefined (<code>NA</code>)
+shares, with their defined fraction reported in a footnote. Shares remain
+defined on zero-total and excluded spike draws of an ordered model. Legacy
+mixed objects without retained sources must be recreated from source fits.</p></dd>
 
 
 <dt id="arg-remove-inclusion">remove_inclusion<a class="anchor" aria-label="anchor" href="#arg-remove-inclusion"></a></dt>
 <dd><p>whether estimates of the inclusion probabilities
-should be excluded from the summary table. Defaults to <code>FALSE</code>.</p></dd>
+should be excluded from the summary table. Defaults to <code>FALSE</code>.
+The indicator rows of spike-and-slab and mixture priors, of spike-and-slab
+totals of ordered-factor priors (labelled <code>&lt;term&gt;{total} (inclusion)</code>),
+and the raw variance-allocation gates are removed. The backend
+<code>_variable</code> and <code>_inclusion</code> rows of an
+ordered prior with a spike-and-slab total are not recognized as inclusion
+rows and remain in the table.
+Retained inclusion rows (spike-and-slab and mixture indicators, random-effect
+and variance-allocation inclusion gates) report the posterior inclusion
+probability as <code>Mean</code> together with the MCMC diagnostics; their SD and
+quantile cells are empty.</p></dd>
 
 
 <dt id="arg-remove-formulas">remove_formulas<a class="anchor" aria-label="anchor" href="#arg-remove-formulas"></a></dt>
@@ -319,7 +364,9 @@ should be removed from the summary. Defaults to <code>NULL</code>.</p></dd>
 <dt id="arg-keep-parameters">keep_parameters<a class="anchor" aria-label="anchor" href="#arg-keep-parameters"></a></dt>
 <dd><p>character vector of parameter names to keep.
 All other parameters will be removed unless they belong to formulas
-specified in <code>keep_formulas</code>. Defaults to <code>NULL</code>.</p></dd>
+specified in <code>keep_formulas</code>. The random-effect aliases listed for
+<code>remove_parameters</code> can also be used here, for example
+<code>keep_parameters = c("random_sd", "random_cor")</code>.</p></dd>
 
 
 <dt id="arg-keep-formulas">keep_formulas<a class="anchor" aria-label="anchor" href="#arg-keep-formulas"></a></dt>
@@ -336,7 +383,50 @@ instead of the table. Defaults to <code>FALSE</code>.</p></dd>
 <dt id="arg-transform-scaled">transform_scaled<a class="anchor" aria-label="anchor" href="#arg-transform-scaled"></a></dt>
 <dd><p>whether coefficients from standardized
 continuous predictors should be transformed back to the original
-scale. Defaults to <code>FALSE</code>.</p></dd>
+scale. For <code>runjags_estimates_table()</code>, <code>FALSE</code> keeps fixed and
+random effects on the fitted predictor scale, while <code>TRUE</code> transforms
+both to the original predictor scale when the fit contains
+<code>formula_scale</code> metadata: random-effect SDs and correlations are
+computed from the transformed covariance draws. Subtraction-centering can
+leave a numerically nonzero predictor mean; its induced effects are retained.
+Composite original-scale SDs have available draws but may have unavailable
+prior laws. Fitted-scale coefficients and semantic random-effect summaries remain
+available without this transformation. A block whose missing-term fallback
+mixes categorical coding or omits a representable contribution has no
+available original-scale output, with reason
+<code>"original_scale_not_representable"</code>. Use fitted-scale output or include
+the needed lower-order terms in the block. Mixed posterior samples are
+transformed through the fitted design of <code>formula_scale</code>: every column
+is mapped to its fitted coefficient by its <code>quantities</code> draw metadata
+(see <code><a href="posterior_metadata.html">posterior_metadata()</a></code>), and columns that are not fitted coefficients
+are refused (a <code><a href="posterior_transform.html">posterior_transform()</a></code> result, nonlinear or affine with an
+offset, stops with reason <code>"transformed_column_not_fitted"</code>: unscale
+first, then transform), as are random-effect SDs that the random-effect structure of
+<code>formula_scale</code> does not cover (SDs it does not contain, blocks it
+contains only in part, or blocks it leaves unchanged while the samples'
+original-scale SDs differ from the fitted ones). The SDs of a block are
+transformed through the fitted block design that the formula state of the
+samples carries (<code><a href="as_mixed_posteriors.html">as_mixed_posteriors()</a></code>, and <code><a href="mix_posteriors.html">mix_posteriors()</a></code> when fixed
+formula coefficients or random-effect SDs are among its parameters); samples
+without it can pair coefficient names only, and the SDs of a block that this
+does not map exactly (e.g., a factor in an interaction with a standardized
+slope whose margin is not in the block, or the indicator columns of a
+logical predictor in such an interaction) are refused. The SD columns of a block
+with a standardized random slope are labelled by their fitted coordinates
+(<code>(mu) g: sd(x)</code>) until they are transformed to the catalog's
+original-scale SDs. For a standardized slope that interacts with a factor
+whose level effects are not columns of the block (<code>diag(1 + f:x | g)</code>:
+the level intercepts; <code>diag(1 + z + f:x:z | g)</code>: the level slopes of
+<code>z</code>), the shifts that centering induces by level are not block
+coefficients. The surviving-coordinate transformation retains the shifted
+coefficients (here the intercept, or the slope of <code>z</code>) at the predictor
+mean; the SDs of the columns that no centering shifts are exact.
+<code>runjags_estimates_table()</code> instead reports the unavailable original-scale
+quantities of the shifted columns as <code>NA</code> with a row-specific note, and
+retains the identifiable summaries. Estimated marginal means of
+<code><a href="BayesTools_ensemble_tables.html">marginal_estimates_table()</a></code> are
+predictions at the stated predictor values, which do not depend on the
+standardization, and are not changed. Defaults to <code>FALSE</code>.</p></dd>
 
 
 <dt id="arg-remove-diagnostics">remove_diagnostics<a class="anchor" aria-label="anchor" href="#arg-remove-diagnostics"></a></dt>
@@ -356,8 +446,103 @@ estimates tables. Can be <code>"all"</code>, <code>"none"</code>, <code>TRUE</co
 diagnostics unless <code>remove_diagnostics = TRUE</code>.</p></dd>
 
 
+<dt id="arg-random-effects-summary">random_effects_summary<a class="anchor" aria-label="anchor" href="#arg-random-effects-summary"></a></dt>
+<dd><p>random-effect reporting mode for JAGS estimates
+tables. <code>"standard"</code> replaces raw implementation parameters with the
+semantic quantities corresponding to the fitted prior parameterization:
+directly specified block scales, correlations, inclusion probabilities,
+allocation aggregate SDs, and variance proportions or multipliers.
+Inclusion indicators do not add allocation-derived component SDs to this
+standard set.
+<code>"full"</code> additionally includes deterministic representations such as
+aggregate variances, allocation-derived component SDs, and alternate SD or
+variance multipliers.
+<code>"raw"</code> keeps the historical monitored implementation parameters, and
+<code>"none"</code> removes random-effect parameters from the table. The
+<code>"standard"</code> and <code>"full"</code> modes always obtain public semantic
+quantities from the fitted parameter map,
+and omit the internal (unnormalized gamma) allocation nodes of
+ordered-factor priors. In every reporting mode, <code>transform_scaled = FALSE</code>
+keeps both fixed coefficients and random-effect SDs, variances, and
+correlations on the fitted predictor scale; <code>transform_scaled = TRUE</code>
+transforms them to the original predictor scale. Centering changes the
+definition of a random intercept and can therefore change its SD and its
+correlations with random slopes. Allocation totals and weights retain their
+declared parameterization.
+A scaled random-effect block whose design is linearly dependent has no
+identified original-scale quantities: <code>transform_scaled = TRUE</code> reports
+their rows as <code>NA</code> with a note explaining the unavailable transformation.
+A block whose missing-term fallback mixes categorical coding or omits a
+representable contribution likewise has <code>NA</code> original-scale rows. An SD
+shared by several columns, as by the indicator columns of a logical
+predictor's interaction with a scaled slope or the columns of a meandif or
+orthonormal factor term, needs its columns to be certified as having one
+original-scale SD: in a correlated block every column must be its own fitted
+column rescaled by one common factor, and in a diagonal block the columns
+need equal variance weights. Such an SD is <code>NA</code> with its variance, while the
+other rows of the block keep their original-scale values. If centering a factor-by-slope
+interaction induces level-specific effects absent from the block (the
+intercepts of <code>f:x</code>, the <code>z</code> slopes of <code>f:x:z</code> without
+<code>f:z</code>), only the SDs, variances and correlations of the columns that
+would absorb them (the intercept, or the lower-order slope) are unavailable;
+the summaries of the other columns remain. These table notes also accompany
+<code>return_samples = TRUE</code> as a <code>footnotes</code> attribute. Inference
+accessors retain their own transformation and availability contracts.
+Use <code>transform_scaled = FALSE</code>
+for fitted-scale summaries in either <code>"standard"</code> or <code>"full"</code> mode,
+or include the needed lower-order terms for an uncertified fallback.
+The <code>"raw"</code> rows of random-effect and allocation implementation
+coordinates (block SDs, Cholesky factors and correlation matrices,
+LKJ primitives, standardized group effects, and allocation nodes) are
+backend coordinates shown for inspection: their labels describe the
+coordinate, but they are not catalog quantities and do not select one in
+<code><a href="parameter_catalog.html">parameter_catalog_resolve()</a></code>, hypotheses, or plots (the shares of the
+ordered-factor allocations, which the table shows as <code>&lt;term&gt;[share:
+&lt;level&gt;]</code>, are catalog quantities).
+Internal latent and realized group-coefficient coordinates
+are omitted when <code>transform_scaled = TRUE</code>, including in <code>"raw"</code>
+mode, because those coordinates remain on the fitted standardized scale.</p></dd>
+
+
+<dt id="arg-simplify-names">simplify_names<a class="anchor" aria-label="anchor" href="#arg-simplify-names"></a></dt>
+<dd><p>whether semantic random-effect row names should use
+simplified display labels. A sole random intercept is shown as <code>sd</code>, while
+canonical names such as <code>sd(intercept)</code> remain stored in the parameter map.
+Defaults to <code>FALSE</code>.</p></dd>
+
+
+<dt id="arg-random-effects-metadata">random_effects_metadata<a class="anchor" aria-label="anchor" href="#arg-random-effects-metadata"></a></dt>
+<dd><p>whether to add random-effect metadata columns
+to JAGS estimates tables. When <code>TRUE</code>, the table includes the
+user-facing random-effect name, grouping label, and covariance structure
+type for random-effect rows. The rows owned by a variance allocation (its
+totals, proportions, and inclusion indicators) belong to no single block and
+leave these columns empty. Defaults to <code>FALSE</code>.</p></dd>
+
+
+<dt id="arg-remove-random-effects-keep-random-effects">remove_random_effects, keep_random_effects<a class="anchor" aria-label="anchor" href="#arg-remove-random-effects-keep-random-effects"></a></dt>
+<dd><p>character vectors of
+random-effect names/blocks used to remove or keep random-effect rows.
+These match explicit <code>name = </code> values, generated block names, and
+grouping labels of blocks; they address blocks only, so they never match
+the rows owned by a variance allocation (<code>keep_random_effects</code> removes
+those rows, <code>remove_random_effects</code> keeps them). Non-random parameters
+are left unaffected; combine with <code>keep_parameters = "random"</code> to
+return only the selected random-effect rows.</p></dd>
+
+
+<dt id="arg-remove-random-structures-keep-random-structures">remove_random_structures, keep_random_structures<a class="anchor" aria-label="anchor" href="#arg-remove-random-structures-keep-random-structures"></a></dt>
+<dd><p>character vectors of
+random-effect covariance structures (for example <code>"diag"</code>, <code>"us"</code>,
+<code>"ar1"</code>, or <code>"hcs"</code>) used to remove or keep random-effect rows.
+Non-random parameters are left unaffected.</p></dd>
+
+
 <dt id="arg-logbf">logBF<a class="anchor" aria-label="anchor" href="#arg-logbf"></a></dt>
-<dd><p>whether the Bayes factor should be on log scale</p></dd>
+<dd><p>whether the Bayes factor should be on log scale. When model
+inference objects store log-space inclusion Bayes factors, log-scale
+values are taken from them, so they remain finite beyond the range of
+natural-scale Bayes factors.</p></dd>
 
 
 <dt id="arg-bf-">BF01<a class="anchor" aria-label="anchor" href="#arg-bf-"></a></dt>
@@ -386,20 +571,50 @@ diagnostics when <code>BF_diagnostics = TRUE</code> and none otherwise.</p></dd>
 overview of the fitted model, <code>runjags_estimates_table</code> returns
 a table with MCMC estimates, and <code>runjags_estimates_empty_table</code>
 returns an empty estimates table. All of the tables are objects of
-class 'BayesTools_table'.</p>
+class 'BayesTools_table'. The estimates table carries the per-row quantity
+table <code>attr(table, "quantities")</code>: a data frame with one row per table
+row and the columns <code>row</code> (the row label), <code>quantity_id</code> (the
+<code><a href="parameter_catalog.html">parameter_catalog()</a></code> quantity id of the quantity the row's label names,
+its canonical name or an exact alias such as a transformed factor level
+<code>&lt;parameter&gt;[dif: level]</code>; <code>""</code> for rows that are not catalog
+quantities, such as inclusion rows, mixture components, backend
+coordinates, fitted random-effect summaries whose catalog quantity is on
+the original scale, ordered-factor allocation shares, and rows whose values
+<code>transformations</code> changed, whose
+label parts record the transformation as <code>"custom"</code>), and
+<code>label_parts</code> (the label parts the row label is
+rendered from; <code><a href="parameter_labels.html">parameter_labels()</a></code> renders them, also with another formula
+parameter or random-effect quantity names). With
+<code>transform_scaled = TRUE</code>, the rows of standardized coefficients
+(including the exponentiated log intercept, an alias of the intercept) show
+their catalog quantity on the original predictor scale. Subsetting the
+table subsets its quantity table.</p>
     </div>
     <div id="details">
     <h2>Details</h2>
-    <p>For product-space JAGS inclusion Bayes factors, posterior inclusion
-probabilities of exactly 0 or 1 cannot produce a finite point estimate of
-the model odds ratio. In that case, inclusion BFs marked with <code>"&lt;"</code> or
-<code>"&gt;"</code> are finite-sample bounds: posterior inclusion probabilities of
-0 or 1 were replaced by <code>1/S</code> or <code>(S - 1)/S</code>, where <code>S</code> is
-the number of posterior samples. This is a reporting convention, not an
-unbiased finite Bayes-factor estimate. If the prior inclusion probability
-is exactly 0 or 1, the inclusion Bayes factor is undefined and reported as
-<code>NA</code>, because the corresponding inclusion/exclusion comparison was not
-tested.</p>
+    <p>For product-space JAGS inclusion Bayes factors, posterior
+inclusion probabilities of exactly 0 or 1 cannot produce a finite
+point estimate of the model odds ratio. In that case, inclusion BFs
+marked with <code>"&lt;"</code> or <code>"&gt;"</code> are finite-sample bounds: posterior
+inclusion probabilities of 0 or 1 were replaced by <code>1/S</code> or
+<code>(S - 1)/S</code>, where <code>S</code> is the number of posterior samples.
+This is a reporting convention, not an unbiased finite Bayes-factor
+estimate. If the prior inclusion probability is exactly 0 or 1, the
+inclusion Bayes factor is undefined and reported as <code>NA</code>, because
+the corresponding inclusion/exclusion comparison was not tested.</p>
+<p>The inference table has a row for every spike-and-slab and mixture prior,
+for the spike-and-slab total of an ordered-factor prior (reported under the
+term label), and for every random-effect inclusion gate.</p>
+<p>An original-scale random-effect correlation is defined in a posterior draw
+whenever both of its SDs are positive, including draws with a singular
+covariance (for example, a zero scaled intercept SD with a nonzero scaled
+slope SD gives an intercept-slope correlation of \(\pm 1\)). It is
+missing in draws with a zero SD (for example, an excluded spike-and-slab SD
+of a scaled slope). The affected rows are summarized over the defined draws,
+and a table footnote reports the share of defined draws for each affected
+row. Raw Cholesky and LKJ-primitive coordinates
+(<code>random_effects_summary = "raw"</code>) exist only for positive-definite
+correlation matrices and are also missing in singular draws.</p>
     </div>
     <div id="see-also">
     <h2>See also</h2>
@@ -418,7 +633,7 @@ tested.</p>
 </div>
 
 <div class="pkgdown">
-  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.0.</p>
+  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.1.</p>
 </div>
 
       </footer></div>

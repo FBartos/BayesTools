@@ -18,7 +18,7 @@ of a prior distribution."><!-- mathjax --><script src="https://cdnjs.cloudflare.
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.3.0</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.4.0</span>
       </span>
     </div>
 
@@ -33,10 +33,13 @@ of a prior distribution."><!-- mathjax --><script src="https://cdnjs.cloudflare.
     <span class="caret"></span>
   </a>
   <ul class="dropdown-menu" role="menu"><li>
-      <a href="../articles/ComparisonR.html">Comparison to other R packages</a>
+      <a href="../articles/ComparisonR.html">Bayesian t-Test Compared with BayesFactor</a>
     </li>
     <li>
-      <a href="../articles/SpikeAndSlab.html">Bayes factors via spike and slab prior vs. bridge sampling</a>
+      <a href="../articles/RandomEffects.html">Random Effects with Formula Syntax</a>
+    </li>
+    <li>
+      <a href="../articles/SpikeAndSlab.html">Variable Selection with Spike-and-Slab Priors</a>
     </li>
   </ul></li>
 <li>
@@ -58,7 +61,7 @@ of a prior distribution."><!-- mathjax --><script src="https://cdnjs.cloudflare.
   <div class="col-md-9 contents">
     <div class="page-header">
     <h1>Prior sd</h1>
-    <small class="dont-index">Source: <a href="https://github.com/FBartos/BayesTools/blob/master/R/priors.R" class="external-link"><code>R/priors.R</code></a></small>
+    <small class="dont-index">Source: <a href="https://github.com/FBartos/BayesTools/blob/master/R/priors-moments.R" class="external-link"><code>R/priors-moments.R</code></a></small>
     <div class="hidden name"><code>sd.prior.Rd</code></div>
     </div>
 
@@ -88,6 +91,12 @@ of a prior distribution.</p>
     <h2>Value</h2>
     <p>a standard deviation of an object of class 'prior'.</p>
     </div>
+    <div id="details">
+    <h2>Details</h2>
+    <p>The standard deviation is the square root of <code><a href="var.html">var()</a></code>; see
+<code><a href="var.prior.html">var()</a></code> for the precision check of truncated normal
+priors.</p>
+    </div>
     <div id="see-also">
     <h2>See also</h2>
     <div class="dont-index"><p><code><a href="prior.html">prior()</a></code></p></div>
@@ -116,7 +125,7 @@ of a prior distribution.</p>
 </div>
 
 <div class="pkgdown">
-  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.0.</p>
+  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.1.</p>
 </div>
 
       </footer></div>

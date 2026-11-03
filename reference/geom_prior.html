@@ -17,7 +17,7 @@
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.3.0</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.4.0</span>
       </span>
     </div>
 
@@ -32,10 +32,13 @@
     <span class="caret"></span>
   </a>
   <ul class="dropdown-menu" role="menu"><li>
-      <a href="../articles/ComparisonR.html">Comparison to other R packages</a>
+      <a href="../articles/ComparisonR.html">Bayesian t-Test Compared with BayesFactor</a>
     </li>
     <li>
-      <a href="../articles/SpikeAndSlab.html">Bayes factors via spike and slab prior vs. bridge sampling</a>
+      <a href="../articles/RandomEffects.html">Random Effects with Formula Syntax</a>
+    </li>
+    <li>
+      <a href="../articles/SpikeAndSlab.html">Variable Selection with Spike-and-Slab Priors</a>
     </li>
   </ul></li>
 <li>
@@ -57,7 +60,7 @@
   <div class="col-md-9 contents">
     <div class="page-header">
     <h1>Add prior object to a ggplot</h1>
-    <small class="dont-index">Source: <a href="https://github.com/FBartos/BayesTools/blob/master/R/priors-plot.R" class="external-link"><code>R/priors-plot.R</code></a></small>
+    <small class="dont-index">Source: <a href="https://github.com/FBartos/BayesTools/blob/master/R/priors-plot-layers.R" class="external-link"><code>R/priors-plot-layers.R</code></a></small>
     <div class="hidden name"><code>geom_prior.Rd</code></div>
     </div>
 
@@ -80,7 +83,7 @@
 <span>  show_parameter <span class="op">=</span> <span class="kw">if</span> <span class="op">(</span><span class="va">individual</span><span class="op">)</span> <span class="fl">1</span> <span class="kw">else</span> <span class="cn">NULL</span>,</span>
 <span>  individual <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  rescale_x <span class="op">=</span> <span class="cn">FALSE</span>,</span>
-<span>  scale_y2 <span class="op">=</span> <span class="fl">1</span>,</span>
+<span>  scale_y2 <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  <span class="va">...</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
@@ -105,9 +108,10 @@
 <dd><p>quantile used for
 automatically obtaining <code>x_range</code>
 if both <code>x_range</code> and <code>x_seq</code>
-are unspecified. Defaults to <code>0.005</code>
-for all but Cauchy, Student-t, Gamma, and
-Inverse-gamme distributions that use
+are unspecified. A number in the open interval <code>(0, 0.5)</code>;
+other values are refused. Defaults to <code>0.005</code>
+for all but Cauchy, Student-t, Gamma, inverse-gamma,
+moment, and inverse-moment distributions that use
 <code>0.010</code>.</p></dd>
 
 
@@ -125,7 +129,14 @@ analytically (or if samples are forced with
 
 <dt id="arg-force-samples">force_samples<a class="anchor" aria-label="anchor" href="#arg-force-samples"></a></dt>
 <dd><p>should prior be sampled instead
-of obtaining analytic solution whenever possible</p></dd>
+of obtaining analytic solution whenever possible. For supported ordered
+mixed measures, exact analytic curves and atoms are retained and the
+requested samples are attached to each component. Supported scalar ordered
+literal point totals and mixtures whose total components are all literal
+points do not sample, store draws, or advance the RNG when
+<code>force_samples = FALSE</code>. With <code>force_samples = TRUE</code>, their
+original seeded draws are attached without replacing the analytic measure.
+Other ordered families retain their existing sampling fallback.</p></dd>
 
 
 <dt id="arg-transformation">transformation<a class="anchor" aria-label="anchor" href="#arg-transformation"></a></dt>
@@ -143,8 +154,12 @@ specifying one of the prepared transformations:</p><dl><dt>lin</dt>
 
 </dl><p>, or a list containing the transformation function <code>fun</code>,
 inverse transformation function <code>inv</code>, and derivative of the
-transformation <code>jac</code>, evaluated on the original support. See examples
-for details.</p></dd>
+transformation <code>jac</code>, evaluated on the original support. A custom
+transformation can also declare <code>output_support = c(lower, upper)</code>.
+Display grids on the transformed scale are evaluated only within these
+bounds; a wider plotting range is retained without extending the density.
+Infinite inverse values at support boundaries are omitted from continuous
+density grids. Point masses retain their transformed locations.</p></dd>
 
 
 <dt id="arg-transformation-arguments">transformation_arguments<a class="anchor" aria-label="anchor" href="#arg-transformation-arguments"></a></dt>
@@ -154,14 +169,20 @@ the <code>transformation</code></p></dd>
 
 <dt id="arg-transformation-settings">transformation_settings<a class="anchor" aria-label="anchor" href="#arg-transformation-settings"></a></dt>
 <dd><p>boolean indicating whether the
-settings the <code>x_seq</code> or <code>x_range</code> was specified on
-the transformed support</p></dd>
+explicitly supplied <code>x_seq</code> or <code>x_range</code> is on
+the transformed scale. Automatically selected prior-coordinate ranges
+are always obtained on the source scale before the density family's
+existing transformation handling.</p></dd>
 
 
 <dt id="arg-show-parameter">show_parameter<a class="anchor" aria-label="anchor" href="#arg-show-parameter"></a></dt>
 <dd><p>which parameter should be returned in case of
 multiple parameters per prior. Useful when priors for the omega
-parameter are plotted and <code>individual = TRUE</code>.</p></dd>
+parameter are plotted and <code>individual = TRUE</code>. For weight functions,
+<code>k</code> selects the publication weight omega of the <code>k</code>-th p-value
+interval in ascending order, as <code>show_figures</code> in <code><a href="plot.prior.html">plot.prior()</a></code> and
+the order of the summary tables; <code>1</code> is the reference weight fixed at
+1.</p></dd>
 
 
 <dt id="arg-individual">individual<a class="anchor" aria-label="anchor" href="#arg-individual"></a></dt>
@@ -175,7 +196,9 @@ weightfunction is plotted.</p></dd>
 
 
 <dt id="arg-scale-y-">scale_y2<a class="anchor" aria-label="anchor" href="#arg-scale-y-"></a></dt>
-<dd><p>scaling factor for a secondary axis</p></dd>
+<dd><p>scaling factor for a secondary axis. The default
+<code>NULL</code> reuses the probability mapping from the active mixed
+plot when one is available.</p></dd>
 
 
 <dt id="arg--">...<a class="anchor" aria-label="anchor" href="#arg--"></a></dt>
@@ -184,7 +207,11 @@ weightfunction is plotted.</p></dd>
 </dl></div>
     <div id="value">
     <h2>Value</h2>
-    <p><code>geom_prior_list</code> returns an object of class 'ggplot'.</p>
+    <p><code>geom_prior</code> returns a ggplot2 layer for a continuous density
+(a list of layers for a weight function), and an overlay of class
+<code>BayesTools_prior_overlay</code> for a point mass, a mixture, or a spike
+and slab prior. Both are added to a prior plot with <code>+</code>; the overlay
+takes the scaling of the probability axis of the plot it is added to.</p>
     </div>
     <div id="see-also">
     <h2>See also</h2>
@@ -203,7 +230,7 @@ weightfunction is plotted.</p></dd>
 </div>
 
 <div class="pkgdown">
-  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.0.</p>
+  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.1.</p>
 </div>
 
       </footer></div>

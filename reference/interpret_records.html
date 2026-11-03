@@ -22,7 +22,7 @@ preserve Bayes-factor metadata, and carry traceability information."><!-- mathja
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.3.0</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.4.0</span>
       </span>
     </div>
 
@@ -37,10 +37,13 @@ preserve Bayes-factor metadata, and carry traceability information."><!-- mathja
     <span class="caret"></span>
   </a>
   <ul class="dropdown-menu" role="menu"><li>
-      <a href="../articles/ComparisonR.html">Comparison to other R packages</a>
+      <a href="../articles/ComparisonR.html">Bayesian t-Test Compared with BayesFactor</a>
     </li>
     <li>
-      <a href="../articles/SpikeAndSlab.html">Bayes factors via spike and slab prior vs. bridge sampling</a>
+      <a href="../articles/RandomEffects.html">Random Effects with Formula Syntax</a>
+    </li>
+    <li>
+      <a href="../articles/SpikeAndSlab.html">Variable Selection with Spike-and-Slab Priors</a>
     </li>
   </ul></li>
 <li>
@@ -101,7 +104,10 @@ Supported source types are <code>"table"</code>, <code>"record"</code>, and
 <code>BF</code>, <code>central</code>, <code>lower</code>, <code>upper</code>, and metadata such as
 <code>BF_orientation</code>, <code>BF_scale</code>, <code>BF_name</code>,
 <code>BF_bound_operator</code>, <code>lower_prob</code>, <code>upper_prob</code>,
-<code>interval_level</code>, <code>units</code>, and <code>conditioning</code>.</p></dd>
+<code>units</code>, and <code>conditioning</code>. <code>interval_level</code> is not accepted
+as input; normalized estimate records derive it from
+<code>upper_prob - lower_prob</code>, or retain <code>NA</code> when endpoint
+probabilities are unknown.</p></dd>
 
 
 <dt id="arg-plan">plan<a class="anchor" aria-label="anchor" href="#arg-plan"></a></dt>
@@ -144,8 +150,14 @@ generic <code>"text"</code> rendering. Downstream packages should usually reques
     <h2>Value</h2>
     <p><code>interpret_records</code> returns a data frame with class
 <code>"BayesTools_interpret_records"</code> when <code>output = "records"</code>, or a
-character vector when <code>output = "text"</code>. <code>interpret_tables</code> is a
-convenience wrapper around <code>interpret_records</code>.</p>
+character vector when <code>output = "text"</code>. Evidence records keep the
+supplied <code>BF_value</code> and <code>BF_scale</code>; <code>BF_canonical_value</code> is
+the Bayes factor on the natural scale in the canonical orientation (<code>0</code>
+or <code>Inf</code> for a log-scale value beyond the double range). The text
+rendering classifies and prints a log-scale value from its logarithm, so
+such values keep their evidence strength and are printed as
+<code>exp(&lt;log&gt;)</code>. <code>interpret_tables</code> is a convenience wrapper around
+<code>interpret_records</code>.</p>
     </div>
 
   </div>
@@ -160,7 +172,7 @@ convenience wrapper around <code>interpret_records</code>.</p>
 </div>
 
 <div class="pkgdown">
-  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.0.</p>
+  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.1.</p>
 </div>
 
       </footer></div>

@@ -21,7 +21,7 @@ and bridgesampling syntax to basic functions such as rng, quantile, and distribu
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.3.0</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.4.0</span>
       </span>
     </div>
 
@@ -36,10 +36,13 @@ and bridgesampling syntax to basic functions such as rng, quantile, and distribu
     <span class="caret"></span>
   </a>
   <ul class="dropdown-menu" role="menu"><li>
-      <a href="../articles/ComparisonR.html">Comparison to other R packages</a>
+      <a href="../articles/ComparisonR.html">Bayesian t-Test Compared with BayesFactor</a>
     </li>
     <li>
-      <a href="../articles/SpikeAndSlab.html">Bayes factors via spike and slab prior vs. bridge sampling</a>
+      <a href="../articles/RandomEffects.html">Random Effects with Formula Syntax</a>
+    </li>
+    <li>
+      <a href="../articles/SpikeAndSlab.html">Variable Selection with Spike-and-Slab Priors</a>
     </li>
   </ul></li>
 <li>
@@ -74,6 +77,23 @@ and bridgesampling syntax to basic functions such as rng, quantile, and distribu
     </div>
 
 
+    <div id="details">
+    <h2>Details</h2>
+    <p>Random-effect operations use the
+<code>BayesTools.random_effects_memory_limit_bytes</code> option as a
+deterministic pre-allocation guard. The default is <code>16 * 1024^3</code>
+bytes (16 GiB). The estimate includes the primary numeric payload,
+simultaneous working copies, row maps, group state, and covariance state
+known before allocation. Set a different positive byte ceiling with
+<code>options(BayesTools.random_effects_memory_limit_bytes = value)</code>.
+Experts may explicitly use <code>Inf</code> to disable the guard after verifying
+the operation's memory budget. Passing the guard does not promise that an
+allocation will succeed because R, JAGS, and the operating system have
+additional memory requirements. An operation above the ceiling stops with
+an error of class <code>BayesTools_random_effects_memory_limit</code> (also
+<code>BayesTools_random_effects_error</code>) whose fields <code>operation</code>,
+<code>peak_bytes</code>, and <code>limit_bytes</code> report the estimate.</p>
+    </div>
     <div id="see-also">
     <h2>See also</h2>
     <div class="dont-index"><p>Useful links:</p><ul><li><p><a href="https://fbartos.github.io/BayesTools/" class="external-link">https://fbartos.github.io/BayesTools/</a></p></li>
@@ -97,7 +117,7 @@ and bridgesampling syntax to basic functions such as rng, quantile, and distribu
 </div>
 
 <div class="pkgdown">
-  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.0.</p>
+  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.1.</p>
 </div>
 
       </footer></div>

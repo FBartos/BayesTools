@@ -21,7 +21,7 @@ Helper to remove all columns associated with a parameter"><!-- mathjax --><scrip
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.3.0</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.4.0</span>
       </span>
     </div>
 
@@ -36,10 +36,13 @@ Helper to remove all columns associated with a parameter"><!-- mathjax --><scrip
     <span class="caret"></span>
   </a>
   <ul class="dropdown-menu" role="menu"><li>
-      <a href="../articles/ComparisonR.html">Comparison to other R packages</a>
+      <a href="../articles/ComparisonR.html">Bayesian t-Test Compared with BayesFactor</a>
     </li>
     <li>
-      <a href="../articles/SpikeAndSlab.html">Bayes factors via spike and slab prior vs. bridge sampling</a>
+      <a href="../articles/RandomEffects.html">Random Effects with Formula Syntax</a>
+    </li>
+    <li>
+      <a href="../articles/SpikeAndSlab.html">Variable Selection with Spike-and-Slab Priors</a>
     </li>
   </ul></li>
 <li>
@@ -90,6 +93,10 @@ These functions consolidate common logic that was duplicated across
 <span>  remove_formulas <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  keep_parameters <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  keep_formulas <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  remove_random_effects <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  keep_random_effects <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  remove_random_structures <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  keep_random_structures <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  remove_spike_0 <span class="op">=</span> <span class="cn">TRUE</span></span>
 <span><span class="op">)</span></span>
 <span></span>
@@ -113,10 +120,11 @@ These functions consolidate common logic that was duplicated across
 <span>  <span class="va">model_samples</span>,</span>
 <span>  <span class="va">prior_list</span>,</span>
 <span>  transform_factors <span class="op">=</span> <span class="cn">FALSE</span>,</span>
-<span>  transformations <span class="op">=</span> <span class="cn">NULL</span></span>
-<span><span class="op">)</span></span>
-<span></span>
-<span><span class="fu">.rename_factor_levels</span><span class="op">(</span><span class="va">model_samples</span>, <span class="va">prior_list</span><span class="op">)</span></span></code></pre></div>
+<span>  transformations <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  components <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="op">)</span>,</span>
+<span>  with_label_parts <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  raw_model_samples <span class="op">=</span> <span class="cn">NULL</span></span>
+<span><span class="op">)</span></span></code></pre></div>
     </div>
 
     <div id="arguments">
@@ -167,6 +175,22 @@ the corresponding parameters (PET, PEESE, omega) are also added to the keep list
 <dd><p>character vector of formula names whose parameters should be kept (all others removed unless in keep_parameters)</p></dd>
 
 
+<dt id="arg-remove-random-effects">remove_random_effects<a class="anchor" aria-label="anchor" href="#arg-remove-random-effects"></a></dt>
+<dd><p>character vector of random-effect names/blocks to remove.</p></dd>
+
+
+<dt id="arg-keep-random-effects">keep_random_effects<a class="anchor" aria-label="anchor" href="#arg-keep-random-effects"></a></dt>
+<dd><p>character vector of random-effect names/blocks to keep while leaving non-random parameters unaffected.</p></dd>
+
+
+<dt id="arg-remove-random-structures">remove_random_structures<a class="anchor" aria-label="anchor" href="#arg-remove-random-structures"></a></dt>
+<dd><p>character vector of random-effect covariance structures to remove.</p></dd>
+
+
+<dt id="arg-keep-random-structures">keep_random_structures<a class="anchor" aria-label="anchor" href="#arg-keep-random-structures"></a></dt>
+<dd><p>character vector of random-effect covariance structures to keep while leaving non-random parameters unaffected.</p></dd>
+
+
 <dt id="arg-remove-spike-">remove_spike_0<a class="anchor" aria-label="anchor" href="#arg-remove-spike-"></a></dt>
 <dd><p>whether to remove spike at 0 priors</p></dd>
 
@@ -192,19 +216,39 @@ the corresponding parameters (PET, PEESE, omega) are also added to the keep list
 
 
 <dt id="arg-transform-factors">transform_factors<a class="anchor" aria-label="anchor" href="#arg-transform-factors"></a></dt>
-<dd><p>whether to transform orthonormal/meandif to differences</p></dd>
+<dd><p>whether to transform the orthonormal,
+mean-difference and ordered factor coefficients to the level scale</p></dd>
+
+
+<dt id="arg-components">components<a class="anchor" aria-label="anchor" href="#arg-components"></a></dt>
+<dd><p>mixture components summarized as parameters of their
+own: a list keyed by those parameters with the mixture's <code>parameter</code>
+and the <code>component</code></p></dd>
+
+
+<dt id="arg-with-label-parts">with_label_parts<a class="anchor" aria-label="anchor" href="#arg-with-label-parts"></a></dt>
+<dd><p>whether the label parts of the transformed columns
+are attached as the <code>"label_parts"</code> attribute</p></dd>
+
+
+<dt id="arg-raw-model-samples">raw_model_samples<a class="anchor" aria-label="anchor" href="#arg-raw-model-samples"></a></dt>
+<dd><p>optional aligned fitted primitive draws used to
+retain ordered source semantics through a factor transformation</p></dd>
 
 </dl></div>
     <div id="value">
     <h2>Value</h2>
     <p>matrix or mcmc.list of posterior samples</p>
-<p>list with cleaned model_samples and updated prior_list</p>
+<p>list with cleaned model_samples, updated prior_list, and the
+columns of the publication-weight bins that the selection priors declare as
+structural constants (structural: the reference bin, every bin of fixed
+weights), with the bins named by their p-value intervals</p>
 <p>updated model_samples matrix</p>
-<p>list with filtered model_samples and prior_list</p>
+<p>character vector of the names of the parameters to remove from
+<code>prior_list</code> and the samples</p>
 <p>list with updated model_samples, prior_list, and warnings</p>
 <p>updated model_samples matrix</p>
 <p>updated model_samples matrix</p>
-<p>updated model_samples matrix with renamed columns</p>
     </div>
 
   </div>
@@ -219,7 +263,7 @@ the corresponding parameters (PET, PEESE, omega) are also added to the keep list
 </div>
 
 <div class="pkgdown">
-  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.0.</p>
+  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.1.</p>
 </div>
 
       </footer></div>

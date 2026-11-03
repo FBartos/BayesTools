@@ -19,7 +19,7 @@ variables in Bayesian models."><!-- mathjax --><script src="https://cdnjs.cloudf
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.3.0</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.4.0</span>
       </span>
     </div>
 
@@ -34,10 +34,13 @@ variables in Bayesian models."><!-- mathjax --><script src="https://cdnjs.cloudf
     <span class="caret"></span>
   </a>
   <ul class="dropdown-menu" role="menu"><li>
-      <a href="../articles/ComparisonR.html">Comparison to other R packages</a>
+      <a href="../articles/ComparisonR.html">Bayesian t-Test Compared with BayesFactor</a>
     </li>
     <li>
-      <a href="../articles/SpikeAndSlab.html">Bayes factors via spike and slab prior vs. bridge sampling</a>
+      <a href="../articles/RandomEffects.html">Random Effects with Formula Syntax</a>
+    </li>
+    <li>
+      <a href="../articles/SpikeAndSlab.html">Variable Selection with Spike-and-Slab Priors</a>
     </li>
   </ul></li>
 <li>
@@ -59,7 +62,7 @@ variables in Bayesian models."><!-- mathjax --><script src="https://cdnjs.cloudf
   <div class="col-md-9 contents">
     <div class="page-header">
     <h1>BayesTools Contrast Matrices</h1>
-    <small class="dont-index">Source: <a href="https://github.com/FBartos/BayesTools/blob/master/R/JAGS-formula.R" class="external-link"><code>R/JAGS-formula.R</code></a></small>
+    <small class="dont-index">Source: <a href="https://github.com/FBartos/BayesTools/blob/master/R/JAGS-formula-contrasts.R" class="external-link"><code>R/JAGS-formula-contrasts.R</code></a></small>
     <div class="hidden name"><code>contr.BayesTools.Rd</code></div>
     </div>
 
@@ -74,7 +77,11 @@ variables in Bayesian models.</p>
 <span></span>
 <span><span class="fu">contr.meandif</span><span class="op">(</span><span class="va">n</span>, contrasts <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span>
 <span></span>
-<span><span class="fu">contr.independent</span><span class="op">(</span><span class="va">n</span>, contrasts <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span></code></pre></div>
+<span><span class="fu">contr.independent</span><span class="op">(</span><span class="va">n</span>, contrasts <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span>
+<span></span>
+<span><span class="fu">contr.ordered_cumulative</span><span class="op">(</span><span class="va">n</span>, contrasts <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span>
+<span></span>
+<span><span class="fu">contr.ordered_cumulative_levels</span><span class="op">(</span><span class="va">n</span>, contrasts <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span></code></pre></div>
     </div>
 
     <div id="arguments">
@@ -92,11 +99,14 @@ variables in Bayesian models.</p>
     <div id="details">
     <h2>Details</h2>
     <p>The package includes the following contrast functions:</p><dl><dt><code>contr.orthonormal</code></dt>
-<dd><p>Return a matrix of orthonormal contrasts.
-Code is based on <code>stanova::contr.bayes</code> and corresponding to description
-by Rouder et al. (2012)
-. Returns a matrix with n rows and
-k columns, with k = n - 1 if <code>contrasts = TRUE</code> and k = n if <code>contrasts = FALSE</code>.</p></dd>
+<dd><p>Return a matrix of orthonormal contrasts: a normalised
+Helmert basis, whose columns have unit length and sum to zero and which is identical on
+every platform. Any orthonormal basis of the centred space implies the same exchangeable
+prior on the factor level effects under a spherical prior on the coefficients, which
+corresponds to the description by Rouder et al. (2012)
+.
+Returns a matrix with n rows and k columns, with k = n - 1 if <code>contrasts = TRUE</code>
+and k = n if <code>contrasts = FALSE</code>.</p></dd>
 
 <dt><code>contr.meandif</code></dt>
 <dd><p>Return a matrix of mean difference contrasts.
@@ -112,6 +122,16 @@ with k = n - 1 if <code>contrasts = TRUE</code> and k = n if <code>contrasts = F
 <dd><p>Return a matrix of independent contrasts – a level for each term.
 Returns a matrix with n rows and k columns, with k = n if <code>contrasts = TRUE</code> and k = n
 if <code>contrasts = FALSE</code>.</p></dd>
+
+<dt><code>contr.ordered_cumulative</code></dt>
+<dd><p>Return a cumulative increment basis
+for ordered factors, with the first level fixed to zero and the last level
+equal to the full total effect.</p></dd>
+
+<dt><code>contr.ordered_cumulative_levels</code></dt>
+<dd><p>Return a cumulative level
+basis for ordered factors, where the first level receives the first
+allocation share and the last level equals the full total effect.</p></dd>
 
 
 </dl></div>
@@ -133,9 +153,9 @@ if <code>contrasts = FALSE</code>.</p></dd>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [2,]  0.7071068</span>
 <span class="r-in"><span><span class="fu">contr.orthonormal</span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">1</span>, <span class="fl">2</span>, <span class="fl">3</span><span class="op">)</span><span class="op">)</span></span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>            [,1]       [,2]</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> [1,]  0.0000000  0.8164966</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> [2,] -0.7071068 -0.4082483</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> [3,]  0.7071068 -0.4082483</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1,] -0.7071068 -0.4082483</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [2,]  0.7071068 -0.4082483</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [3,]  0.0000000  0.8164966</span>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="co"># Mean difference contrasts</span></span></span>
 <span class="r-in"><span><span class="fu">contr.meandif</span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">1</span>, <span class="fl">2</span><span class="op">)</span><span class="op">)</span></span></span>
@@ -144,9 +164,9 @@ if <code>contrasts = FALSE</code>.</p></dd>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [2,]    1</span>
 <span class="r-in"><span><span class="fu">contr.meandif</span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">1</span>, <span class="fl">2</span>, <span class="fl">3</span><span class="op">)</span><span class="op">)</span></span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>            [,1] [,2]</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> [1,]  0.0000000  1.0</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> [2,] -0.8660254 -0.5</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> [3,]  0.8660254 -0.5</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1,] -0.8660254 -0.5</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [2,]  0.8660254 -0.5</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [3,]  0.0000000  1.0</span>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="co"># Independent contrasts</span></span></span>
 <span class="r-in"><span><span class="fu">contr.independent</span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">1</span>, <span class="fl">2</span><span class="op">)</span><span class="op">)</span></span></span>
@@ -158,6 +178,18 @@ if <code>contrasts = FALSE</code>.</p></dd>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1,]    1    0    0</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [2,]    0    1    0</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [3,]    0    0    1</span>
+<span class="r-in"><span></span></span>
+<span class="r-in"><span><span class="co"># Ordered cumulative contrasts</span></span></span>
+<span class="r-in"><span><span class="fu">contr.ordered_cumulative</span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"low"</span>, <span class="st">"mid"</span>, <span class="st">"high"</span><span class="op">)</span><span class="op">)</span></span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>      [,1] [,2]</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1,]    0    0</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [2,]    1    0</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [3,]    1    1</span>
+<span class="r-in"><span><span class="fu">contr.ordered_cumulative_levels</span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"low"</span>, <span class="st">"mid"</span>, <span class="st">"high"</span><span class="op">)</span><span class="op">)</span></span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>      [,1] [,2] [,3]</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1,]    1    0    0</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [2,]    1    1    0</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [3,]    1    1    1</span>
 <span class="r-in"><span></span></span>
 </code></pre></div>
     </div>
@@ -173,7 +205,7 @@ if <code>contrasts = FALSE</code>.</p></dd>
 </div>
 
 <div class="pkgdown">
-  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.0.</p>
+  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.1.</p>
 </div>
 
       </footer></div>

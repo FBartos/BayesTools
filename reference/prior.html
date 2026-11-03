@@ -18,7 +18,7 @@ The prior can be visualized by the plot function."><!-- mathjax --><script src="
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.3.0</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.4.0</span>
       </span>
     </div>
 
@@ -33,10 +33,13 @@ The prior can be visualized by the plot function."><!-- mathjax --><script src="
     <span class="caret"></span>
   </a>
   <ul class="dropdown-menu" role="menu"><li>
-      <a href="../articles/ComparisonR.html">Comparison to other R packages</a>
+      <a href="../articles/ComparisonR.html">Bayesian t-Test Compared with BayesFactor</a>
     </li>
     <li>
-      <a href="../articles/SpikeAndSlab.html">Bayes factors via spike and slab prior vs. bridge sampling</a>
+      <a href="../articles/RandomEffects.html">Random Effects with Formula Syntax</a>
+    </li>
+    <li>
+      <a href="../articles/SpikeAndSlab.html">Variable Selection with Spike-and-Slab Priors</a>
     </li>
   </ul></li>
 <li>
@@ -108,14 +111,14 @@ by a <code>location</code>, <code>scale</code>, and <code>df</code> parameters.<
 <dt><code>"gamma"</code></dt>
 <dd><p>for a gamma distribution characterized
 by either <code>shape</code> and <code>rate</code>, or <code>shape</code> and
-<code>scale</code> parameters. The later is internally converted to
+<code>scale</code> parameters. The latter is internally converted to
 the <code>shape</code> and <code>rate</code> parametrization</p></dd>
 
 <dt><code>"invgamma"</code></dt>
 <dd><p>for an inverse-gamma distribution
 characterized by a <code>shape</code> and <code>scale</code> parameters. The
-JAGS part uses a 1/gamma distribution with a shape and rate
-parameter.</p></dd>
+JAGS part uses the BayesTools module distribution
+<code>dbt_invgamma(shape, scale)</code> on the natural parameter.</p></dd>
 
 <dt><code>"beta"</code></dt>
 <dd><p>for a beta distribution
@@ -130,6 +133,32 @@ parameter. The later is internally converted to
 <dt><code>"uniform"</code></dt>
 <dd><p>for a uniform distribution defined on a
 range from <code>a</code> to <code>b</code></p></dd>
+
+<dt><code>"moment"</code></dt>
+<dd><p>for a Johnson-Rossell moment prior characterized
+by exactly one of <code>mode</code> or <code>tau</code>, an optional <code>order</code>
+that defaults to 1, and an optional <code>location</code> that defaults to 0.</p></dd>
+
+<dt><code>"invmoment"</code></dt>
+<dd><p>for a Johnson-Rossell inverse-moment prior
+characterized by exactly one of <code>mode</code> or <code>tau</code>, a <code>df</code>,
+an optional <code>order</code> that defaults to 1, and an optional
+<code>location</code> that defaults to 0.</p></dd>
+
+<dt><code>"dirichlet"</code></dt>
+<dd><p>for a Dirichlet distribution over a simplex,
+whose finite nonnegative coordinates must have a finite total and roundoff
+bound and sum to one within that bound,
+characterized by a concentration vector <code>alpha</code>. Numeric entries
+must be finite and at least <code>0.01</code>; this is a supported-input minimum,
+not a numerical guarantee. Positive expression-valued concentrations retain
+their existing JAGS-only support: expression containers, including literal
+elements, are not statically evaluated or validated, and R random generation
+refuses them. Cumulative weight functions and ordered allocations require
+numeric concentrations. Accepted sampling can still be unavailable; see
+<code><a href="prior_functions.html">prior_functions</a></code>. Two-bin cumulative JAGS initialization near
+the minimum can repeatedly refuse unrepresentable interior ratios. Density
+and plot methods show one beta marginal per simplex coordinate.</p></dd>
 
 
 </dl></dd>
@@ -160,6 +189,40 @@ of its prior distributions.</p></dd>
     <p><code>prior</code> and <code>prior_none</code> return an object of class 'prior'.
 A named list containing the distribution name, parameters, and prior weights.</p>
     </div>
+    <div id="details">
+    <h2>Details</h2>
+    <p>Moment and inverse-moment priors are symmetric nonlocal priors
+with zero density at <code>location</code>. The <code>mode</code> parameter is the
+positive distance from <code>location</code> to each symmetric mode; supplied
+negative values are converted to their absolute value. Positional parameters
+are interpreted as <code>mode</code> for <code>"moment"</code> and <code>mode, df</code>
+for <code>"invmoment"</code>. Use named parameters for <code>tau</code>, <code>order</code>,
+<code>location</code>, or the inverse-moment <code>nu</code> alias. Positional input
+always treats the first parameter as <code>mode</code>. For moment priors,
+<code>tau = mode^2 / (2 * order)</code>. For inverse-moment priors,
+<code>tau = mode^2 * ((df + 1) / (2 * order))^(1 / order)</code>.
+Aliases <code>"pmom"</code>, <code>"pimom"</code>, and <code>"inversemoment"</code> are
+accepted, and inverse-moment <code>df</code> may also be supplied as <code>nu</code>.</p>
+<p>Native inverse-gamma, moment and inverse-moment calculations distinguish
+certified finite-input tails outside logarithmic range from unavailable
+arithmetic. Direct density and log-density evaluations signal
+<code>BayesTools_numerical_range_limit</code>; unresolved calculations signal
+<code>BayesTools_numerical_unavailable</code>. Both inherit
+<code>BayesTools_numerical_condition</code> and retain the original input indices,
+operation, family and requested scale. Truncated evaluations warn only for
+points inside the declared support and truncation. Numerical tail zeros do
+not declare zero probability mass or point atoms. Nonempty intervals whose
+two endpoints both lose tail-log range can have unavailable normalization.
+Finite-required fitting and bridge consumers refuse these range results;
+natural integration may consume certified negative-infinite log tails only
+after checking normalization and the required kernel and Jacobian.
+Certification requires the inspected MinGW-w64 11.x x86-64 log backend,
+documented Intel or AMD instruction contracts, checked floating-point modes
+and a checked extended logarithmic constant. Other backends, overflowing
+original nonlocal distances and uncertified coordinates remain unavailable
+in this FAR regime. Constructor parameter domains and ordinary arithmetic
+are unchanged.</p>
+    </div>
     <div id="see-also">
     <h2>See also</h2>
     <div class="dont-index"><p><code><a href="plot.prior.html">plot.prior()</a></code>, <a href="https://rdrr.io/r/stats/Normal.html" class="external-link">Normal</a>, <a href="https://rdrr.io/r/stats/Lognormal.html" class="external-link">Lognormal</a>, <a href="https://rdrr.io/r/stats/Cauchy.html" class="external-link">Cauchy</a>,
@@ -181,6 +244,14 @@ A named list containing the distribution name, parameters, and prior weights.</p
 <span class="r-in"><span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">p1</span><span class="op">)</span></span></span>
 <span class="r-plt img"><img src="prior-1.png" alt="" width="700" height="433"></span>
 <span class="r-in"><span></span></span>
+<span class="r-in"><span><span class="co"># create nonlocal priors centered on zero</span></span></span>
+<span class="r-in"><span><span class="va">p3</span> <span class="op">&lt;-</span> <span class="fu">prior</span><span class="op">(</span><span class="st">"moment"</span>, <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>mode <span class="op">=</span> <span class="fl">0.5</span><span class="op">)</span><span class="op">)</span></span></span>
+<span class="r-in"><span><span class="va">p4</span> <span class="op">&lt;-</span> <span class="fu">prior</span><span class="op">(</span><span class="st">"invmoment"</span>, <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>mode <span class="op">=</span> <span class="fl">0.5</span>, df <span class="op">=</span> <span class="fl">3</span><span class="op">)</span><span class="op">)</span></span></span>
+<span class="r-in"><span></span></span>
+<span class="r-in"><span><span class="co"># tau can be specified directly when named</span></span></span>
+<span class="r-in"><span><span class="va">p5</span> <span class="op">&lt;-</span> <span class="fu">prior</span><span class="op">(</span><span class="st">"pmom"</span>, <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>tau <span class="op">=</span> <span class="fl">0.125</span><span class="op">)</span><span class="op">)</span></span></span>
+<span class="r-in"><span><span class="va">p6</span> <span class="op">&lt;-</span> <span class="fu">prior</span><span class="op">(</span><span class="st">"pimom"</span>, <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>tau <span class="op">=</span> <span class="fl">0.5</span>, nu <span class="op">=</span> <span class="fl">3</span><span class="op">)</span><span class="op">)</span></span></span>
+<span class="r-in"><span></span></span>
 </code></pre></div>
     </div>
   </div>
@@ -195,7 +266,7 @@ A named list containing the distribution name, parameters, and prior weights.</p
 </div>
 
 <div class="pkgdown">
-  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.0.</p>
+  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.1.</p>
 </div>
 
       </footer></div>

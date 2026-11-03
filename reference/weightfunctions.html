@@ -18,7 +18,7 @@ marginal quantile function and random generation for weight functions."><!-- mat
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.3.0</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.4.0</span>
       </span>
     </div>
 
@@ -33,10 +33,13 @@ marginal quantile function and random generation for weight functions."><!-- mat
     <span class="caret"></span>
   </a>
   <ul class="dropdown-menu" role="menu"><li>
-      <a href="../articles/ComparisonR.html">Comparison to other R packages</a>
+      <a href="../articles/ComparisonR.html">Bayesian t-Test Compared with BayesFactor</a>
     </li>
     <li>
-      <a href="../articles/SpikeAndSlab.html">Bayes factors via spike and slab prior vs. bridge sampling</a>
+      <a href="../articles/RandomEffects.html">Random Effects with Formula Syntax</a>
+    </li>
+    <li>
+      <a href="../articles/SpikeAndSlab.html">Variable Selection with Spike-and-Slab Priors</a>
     </li>
   </ul></li>
 <li>
@@ -120,7 +123,8 @@ marginal quantile function and random generation for weight functions.</p>
 
 
 <dl><dt id="arg-x-q">x, q<a class="anchor" aria-label="anchor" href="#arg-x-q"></a></dt>
-<dd><p>vector or matrix of quantiles.</p></dd>
+<dd><p>numeric vector of quantiles; the parameter arguments (<code>alpha</code>,
+<code>omega</code>) may be matrices with one row per quantile.</p></dd>
 
 
 <dt id="arg-alpha">alpha<a class="anchor" aria-label="anchor" href="#arg-alpha"></a></dt>
@@ -176,50 +180,68 @@ and <code>mqtwo.sided_fixed</code> give the marginal quantile function,
 and <code>rone.sided</code>, <code>rtwo.sided</code>, <code>rone.sided_fixed</code>,
 and <code>rtwo.sided_fixed</code> generate random deviates.</p>
     </div>
+    <div id="details">
+    <h2>Details</h2>
+    <p>The marginal density, distribution function, and quantile function
+are implemented for the monotonic parameterization (<code>alpha</code>) and for
+fixed weights (<code>omega</code>); the non-monotonic parameterization
+(<code>alpha1</code>, <code>alpha2</code>) supports random generation only. The same
+marginals of a <code><a href="prior_weightfunction.html">prior_weightfunction()</a></code> prior are available through
+<code><a href="prior_functions_methods.html">mpdf()</a></code>, <code><a href="prior_functions_methods.html">mcdf()</a></code>, <code><a href="prior_functions_methods.html">mquant()</a></code>, and <code><a href="prior_functions_methods.html">rng()</a></code>.</p>
+<p>The marginals of the monotonic parameterization are Beta distributions with
+the cumulative sums of <code>alpha</code> as shapes. Finite <code>alpha</code> whose
+cumulative sums exceed the largest double signal an error of class
+<code>BayesTools_weightfunction_beta_shape_unavailable</code> (parent
+<code>BayesTools_weightfunction_unavailable</code>) from the density,
+distribution, and quantile functions, and from <code><a href="prior_functions_methods.html">mpdf()</a></code>, <code><a href="prior_functions_methods.html">mcdf()</a></code>, and
+<code><a href="prior_functions_methods.html">mquant()</a></code> of a cumulative <code><a href="prior_weightfunction.html">prior_weightfunction()</a></code>. Degenerate Dirichlet
+draws of the random generation signal
+<code>BayesTools_dirichlet_rng_unavailable</code>.</p>
+    </div>
 
     <div id="ref-examples">
     <h2>Examples</h2>
     <div class="sourceCode"><pre class="sourceCode r"><code><span class="r-in"><span><span class="co"># draw samples from a two-sided weight function</span></span></span>
 <span class="r-in"><span><span class="fu">rtwo.sided</span><span class="op">(</span><span class="fl">10</span>, alpha <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">1</span>, <span class="fl">1</span><span class="op">)</span><span class="op">)</span></span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>       [,1]       [,2]</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>  [1,]    1 0.29002039</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>  [2,]    1 0.33448277</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>  [3,]    1 0.14364780</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>  [4,]    1 0.32997058</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>  [5,]    1 0.93699041</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>  [6,]    1 0.69391624</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>  [7,]    1 0.29964801</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>  [8,]    1 0.31621015</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>  [9,]    1 0.04824246</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> [10,]    1 0.23571261</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  [1,]    1 0.38158741</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  [2,]    1 0.65898459</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  [3,]    1 0.26455932</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  [4,]    1 0.57377765</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  [5,]    1 0.94413481</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  [6,]    1 0.58500214</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  [7,]    1 0.08396359</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  [8,]    1 0.91470460</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  [9,]    1 0.62069994</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [10,]    1 0.81284209</span>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="co"># draw samples from a monotone one-sided weight function</span></span></span>
 <span class="r-in"><span><span class="fu">rone.sided</span><span class="op">(</span><span class="fl">10</span>, alpha <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">1</span>, <span class="fl">1</span>, <span class="fl">1</span><span class="op">)</span><span class="op">)</span></span></span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>       [,1]       [,2]       [,3]</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>  [1,]    1 0.64926698 0.59974495</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>  [2,]    1 0.02665348 0.01504035</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>  [3,]    1 0.93824797 0.69739275</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>  [4,]    1 0.52627879 0.46454111</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>  [5,]    1 0.84026459 0.28494895</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>  [6,]    1 0.28907031 0.01572115</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>  [7,]    1 0.52023337 0.35996305</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>  [8,]    1 0.57176205 0.53499686</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>  [9,]    1 0.89869697 0.43469677</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> [10,]    1 0.75096276 0.09075188</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>       [,1]      [,2]      [,3]</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  [1,]    1 0.9608803 0.8769134</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  [2,]    1 0.9759831 0.6407324</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  [3,]    1 0.2634984 0.2171226</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  [4,]    1 0.7707671 0.1587757</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  [5,]    1 0.5712306 0.4731679</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  [6,]    1 0.4843504 0.4602232</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  [7,]    1 0.8653360 0.8201653</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  [8,]    1 0.8242785 0.1804111</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  [9,]    1 0.6590175 0.5818302</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [10,]    1 0.4794643 0.1021826</span>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="co"># draw samples from a non-monotone one-sided weight function</span></span></span>
 <span class="r-in"><span><span class="fu">rone.sided</span><span class="op">(</span><span class="fl">10</span>, alpha1 <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">1</span>, <span class="fl">1</span><span class="op">)</span>, alpha2 <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">1</span>, <span class="fl">1</span><span class="op">)</span><span class="op">)</span></span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>       [,1]       [,2]      [,3]</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>  [1,]    1 0.76056497 0.9175268</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>  [2,]    1 0.05647669 0.2994945</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>  [3,]    1 0.75257832 0.7657803</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>  [4,]    1 0.30490697 0.9624643</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>  [5,]    1 0.71147467 0.9204233</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>  [6,]    1 0.64726949 0.6498803</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>  [7,]    1 0.72820127 0.7454558</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>  [8,]    1 0.30995976 0.3990243</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>  [9,]    1 0.76593092 0.8549241</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> [10,]    1 0.98010818 0.9831307</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  [1,]    1 0.90100116 0.9731780</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  [2,]    1 0.10270708 0.4825053</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  [3,]    1 0.82844974 0.8380465</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  [4,]    1 0.29140310 0.4802061</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  [5,]    1 0.72345174 0.9878073</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  [6,]    1 0.03404128 0.8208037</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  [7,]    1 0.90546006 0.9595856</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  [8,]    1 0.89529970 0.9757184</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  [9,]    1 0.21524578 0.9436983</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [10,]    1 0.91385254 0.9820721</span>
 <span class="r-in"><span></span></span>
 </code></pre></div>
     </div>
@@ -235,7 +257,7 @@ and <code>rtwo.sided_fixed</code> generate random deviates.</p>
 </div>
 
 <div class="pkgdown">
-  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.0.</p>
+  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.1.</p>
 </div>
 
       </footer></div>
