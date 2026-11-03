@@ -8,8 +8,10 @@ this guide.
 
 Inspect the current directory instead of copying a fixed vignette inventory.
 Keep sources UTF-8 and use the standard `rmarkdown::html_vignette` YAML header
-used by neighboring files. Use only relative project paths, including
-`../inst/REFERENCES.bib` and `../inst/apa.csl`.
+used by neighboring files. Use only relative project paths. The header's
+`bibliography` and `csl` resolve `../inst/REFERENCES.bib` and `../inst/apa.csl`
+with inline `normalizePath()`, because pkgdown runs Pandoc from a temporary
+intermediates directory and rmarkdown (>= 2.32) does not copy files outside it.
 
 Use the established setup options and Windows cairo configuration where
 applicable. Vignettes may attach packages because they are user-facing
