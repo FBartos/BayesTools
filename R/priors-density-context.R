@@ -972,7 +972,7 @@
   }
   nonzero <- tryCatch(
     vapply(seq_len(nrow(rows)), function(row_i){
-      .prior_density_context_row_valid(context, rows[row_i, ])
+      .prior_density_context_row_valid(context, rows[row_i, ], source_transforms)
     }, logical(1)),
     error = function(e) FALSE
   )
@@ -994,13 +994,20 @@
 }
 
 # Whether a row of a context has a nonzero combination that passes the
-# structural checks of its eager build (.prior_density_context_density(): the
-# multiplier laws, and the refusals of its products,
-# .prior_linear_product_group_multiplier()); a failing check is an error.
-.prior_density_context_row_valid <- function(context, row){
+# checks of its eager build (.prior_density_context_density(): finite weights,
+# the source maps, the multiplier laws, and the refusals of its products,
+# .prior_linear_product_group_multiplier()) and keeps a continuous component
+# on the grid: an additive source, or a product whose linear part and
+# multiplier both keep one (a row whose every source is a rounding residue, a
+# range the grid coordinates cannot resolve, is built as a point). A failing
+# check is an error.
+.prior_density_context_row_valid <- function(context, row, source_transforms = NULL){
 
-  standardized <- .prior_density_context_standardized_weights(context, row)
-  if(length(standardized) == 0L){
+  if(any(!is.finite(row))){
+    return(FALSE)
+  }
+  standardized <- .prior_density_context_standardized_weights(context, row, source_transforms)
+  if(length(standardized) == 0L || any(!is.finite(standardized))){
     return(FALSE)
   }
   canonical <- .bt_formula_context_canonical(context, standardized)
@@ -1012,11 +1019,22 @@
   for(product_group in split$product_groups){
     .prior_linear_product_group_multiplier(canonical$prior_list, split, product_group)
   }
-  # a row whose every source is a rounding residue (a range the grid
-  # coordinates cannot resolve) is built as a point
-  plan <- .prior_linear_combination_plan(canonical$prior_list, weights, context$n_grid,
-                                         context$tail_prob, NULL, context$grid_spacing)
-  is.null(plan) || any(is.na(plan$residue_locations))
+  # the plans of the parts the eager build constructs, which also check the
+  # source maps
+  keeps_source <- function(prior_list, weights){
+    plan <- .prior_linear_additive_plan(prior_list, weights, context$n_grid, context$tail_prob,
+                                        source_transforms, context$grid_spacing)
+    !is.null(plan) && any(is.na(plan$residue_locations))
+  }
+  continuous <- any(split$additive_weights != 0) &&
+    keeps_source(canonical$prior_list, split$additive_weights)
+  for(product_group in split$product_groups){
+    multiplier <- product_group$multiplier
+    linear_keeps     <- keeps_source(product_group$prior_list, product_group$weights)
+    multiplier_keeps <- keeps_source(canonical$prior_list[multiplier], stats::setNames(1, multiplier))
+    continuous <- continuous || (linear_keeps && multiplier_keeps)
+  }
+  continuous
 }
 
 # Whether one row of a context with an ordered prior keeps the deferral of a

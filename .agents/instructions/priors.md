@@ -742,14 +742,18 @@ interpolates its numerical grid.
 
 A row mixture of a density context (`.prior_density_from_context_rows()`,
 e.g. the prior density of a formula `marginal_posterior()` level) whose
-structure has no point mass (only continuous priors, every row with a
-nonzero weight, no constant output map; an ordered prior is continuous with
+structure has no point mass (only continuous priors, no numeric multiplier,
+every row with finite and nonzero weights that passes the checks of its build
+(source maps, multiplier laws, its products) and keeps a continuous source on
+the grid (an additive source, or a product whose linear part and multiplier
+both keep one; a row of rounding residues is a point), no constant output map;
+an ordered prior is continuous with
 a continuous total and Dirichlet allocations, the default Dirichlet(1, ...)
 included, while a fixed allocation can make a level the point 0; the rows
 then have no source or output map, and every row has an ordered term and
 defers as its combination would below, so ordered terms sharing a random
-allocation, which have no route, are refused at once; a row whose every source
-is a rounding residue is a point) defers its numerical grid, which
+allocation, which have no route, are refused at once) defers its numerical
+grid, which
 holds one exact display grid per row product component: its `density` field
 keeps the builder's arguments and a cache, and the grid is built on the first
 read of a grid field (plots without a given range, grid heights and

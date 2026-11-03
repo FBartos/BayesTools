@@ -4632,6 +4632,36 @@ test_that("ordered levels without atoms build their numerical grid only for grid
     expect_identical(residue_density, eager_rows_of(residue_context, case$rows))
     expect_gt(nrow(residue_density$points), 0L)
   }
+  # so is a product row whose linear part and multiplier are both rounding
+  # residues, alone and beside a continuous row
+  product_residue <- list(x = prior("uniform", list(1, 1 + 64 * residue_eps)),
+                          sigma = prior("uniform", list(1, 1 + 64 * residue_eps)),
+                          y = prior("normal", list(0, 1)))
+  attr(product_residue$x, "multiply_by") <- "sigma"
+  for(product_rows in list(rbind(c(x = 1, sigma = 0, y = 0), c(x = 1, sigma = 0, y = 0)),
+                           rbind(c(x = 1, sigma = 0, y = 0), c(x = 0, sigma = 0, y = 1)))){
+    product_context <- .prior_density_build_context(product_residue, colnames(product_rows), n_grid = 256L)
+    product_density <- .prior_density_from_context_rows(product_context, product_rows)
+    expect_false(inherits(product_density$density, "prior_linear_density_deferred"))
+    expect_identical(product_density, eager_rows_of(product_context, product_rows))
+    expect_gt(nrow(product_density$points), 0L)
+  }
+
+  # an invalid source map and non-finite weights refuse at once
+  scalar_context <- .prior_density_build_context(list(x = prior("normal", list(0, 1))), "x", n_grid = 256L)
+  scalar_rows <- rbind(c(x = 1), c(x = 1))
+  log_eager <- tryCatch(local({
+    local_mocked_bindings(.prior_density_rows_atom_free = function(...) FALSE)
+    .prior_density_from_context_rows(scalar_context, scalar_rows, source_transforms = c(x = "log"))
+  }), error = identity)
+  expect_s3_class(log_eager, "error")
+  expect_error(.prior_density_from_context_rows(scalar_context, scalar_rows, source_transforms = c(x = "log")),
+               conditionMessage(log_eager), fixed = TRUE)
+  infinite_rows <- rbind(c(x = Inf), c(x = Inf))
+  infinite_eager <- tryCatch(eager_rows_of(scalar_context, infinite_rows), error = identity)
+  expect_s3_class(infinite_eager, "error")
+  expect_error(.prior_density_from_context_rows(scalar_context, infinite_rows),
+               conditionMessage(infinite_eager), fixed = TRUE)
 })
 
 # A small fitted object whose formula parameter is standardized (x), with one
