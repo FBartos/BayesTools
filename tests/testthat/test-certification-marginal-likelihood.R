@@ -198,3 +198,100 @@ test_that("bridge sampling stays accurate with 50 random intercepts", {
   expect_lt(max(abs(latent - exact)), certification_tolerance)
   expect_lt(abs(marginal - exact), certification_tolerance)
 })
+
+test_that("bridge sampling recovers the exact log marginal likelihood of mean-centered blocks", {
+
+  # The mean-centered parameterization translates the group effects around the
+  # fixed terms they absorb; the bridge target (standardized latents) and the
+  # exact value are those of the noncentered model. Mean centering suits data
+  # that inform the group effects (with weakly informed effects it mixes worse
+  # than noncentering), so these models have four replicates per cell and a
+  # residual SD of 0.25. Each model is integrated over its two scale
+  # parameters. The estimates of 4 x 10000 draws are held to 0.05 of the
+  # exact values and to a Monte Carlo SD below 0.025 across 10 bridge seeds:
+  # with these 25 to 30 bridge coordinates the bridge estimates spread more
+  # than those of the smaller models above. In development, across three fit
+  # seeds, the largest errors were 0.013, 0.027, and 0.042 and the SDs at most
+  # 0.005, 0.011, and 0.018 (noncentered fits of the same models, 4 x 5000
+  # draws: errors up to 0.042, 0.070, and 0.153, SDs up to 0.017, 0.023, and
+  # 0.046).
+  data <- local({
+    set.seed(7)
+    data <- expand.grid(rep = 1:4, f = factor(c("a", "b", "c")), g = factor(1:6))
+    data$x <- stats::rnorm(nrow(data))
+    data$w <- c(-0.8, -0.3, 0, 0.2, 0.5, 0.9)[as.integer(data$g)]
+    cell <- (as.integer(data$g) - 1L) * 3L + as.integer(data$f)
+    data$y <- 0.3 + 0.5 * data$x + c(-0.2, 0, 0.3)[as.integer(data$f)] + 0.4 * data$w +
+      stats::rnorm(6L, 0, 0.4)[as.integer(data$g)] + stats::rnorm(18L, 0, 0.3)[cell] +
+      stats::rnorm(nrow(data), 0, 0.25)
+    data
+  })
+  n <- nrow(data)
+  jags_data  <- list(y = data$y, N = n)
+  same_group <- outer(data$g, data$g, "==") * 1
+  same_cell  <- same_group * outer(data$f, data$f, "==")
+  design     <- cbind(1, data$x, contr.meandif(levels(data$f))[as.integer(data$f), ])
+  centered_block <- function(...) random_block(sd = unit_sd_prior, parameterization = "mean_centered", ...)
+  fit_mean_centered <- function(likelihood, formula, random, prior_list = list(sigma = unit_sd_prior),
+                                formula_prior_list = fixed_priors) {
+    JAGS_fit(
+      likelihood, jags_data, prior_list = prior_list,
+      formula_list = list(mu = formula), formula_data_list = list(mu = data),
+      formula_prior_list = formula_prior_list, formula_random_prior_list = list(mu = random),
+      chains = 4, adapt = 1000, burnin = 1000, sample = 10000, seed = 1
+    )
+  }
+  expect_bridge_close <- function(logml, exact) {
+    expect_lt(stats::sd(logml), 0.025)
+    expect_lt(max(abs(logml - exact)), certification_tolerance)
+  }
+  absorbed <- function(fit) {
+    lapply(JAGS_formula_design(fit)$mu$random_effects, function(block) block$mean_translation$absorbed_terms)
+  }
+
+  # one SD for the level effects of f within g: the block spans the intercept
+  # and the mean-difference columns of f
+  fit <- fit_mean_centered(gaussian_likelihood, ~ x + f + id(0 + f | g),
+                           prior_random(g = centered_block(contrasts = c(f = "independent"))))
+  expect_identical(absorbed(fit), list(c("intercept", "f")))
+  exact <- log_integrate_half_normal(function(tau) {
+    log_integrate_half_normal(function(sigma) {
+      gaussian_log_density(data$y, tcrossprod(design) + tau^2 * same_cell + sigma^2 * diag(n))
+    })
+  })
+  expect_bridge_close(bridge_logml(fit, log_posterior_sigma, prior_list = list(sigma = unit_sd_prior),
+                                   data = jags_data), exact)
+
+  # a group-level moderator enters the location of the random intercept
+  fit <- fit_mean_centered(gaussian_likelihood, ~ x + w + (1 | g), prior_random(g = centered_block()),
+                           formula_prior_list = list(mu = list(intercept = unit_prior, x = unit_prior, w = unit_prior)))
+  expect_identical(absorbed(fit), list(c("intercept", "w")))
+  exact <- log_integrate_half_normal(function(tau) {
+    log_integrate_half_normal(function(sigma) {
+      gaussian_log_density(data$y, tcrossprod(cbind(1, data$x, data$w)) + tau^2 * same_group + sigma^2 * diag(n))
+    })
+  })
+  expect_bridge_close(bridge_logml(fit, log_posterior_sigma, prior_list = list(sigma = unit_sd_prior),
+                                   data = jags_data), exact)
+
+  # nested blocks with the residual SD known: the cells of g and f take f and
+  # the locations of g, which takes the intercept
+  known_sigma <- "model{
+    for(i in 1:N){
+      y[i] ~ dnorm(mu[i], pow(0.25, -2))
+    }
+  }
+  "
+  fit <- fit_mean_centered(known_sigma, ~ x + f + (1 | g/f),
+                           prior_random(sd = unit_sd_prior, g = centered_block(), f_g = centered_block()),
+                           prior_list = NULL)
+  expect_identical(absorbed(fit), list("f", "intercept"))
+  exact <- log_integrate_half_normal(function(tau_g) {
+    log_integrate_half_normal(function(tau_cell) {
+      gaussian_log_density(data$y, tcrossprod(design) + tau_g^2 * same_group + tau_cell^2 * same_cell +
+                             0.25^2 * diag(n))
+    })
+  })
+  log_posterior <- function(parameters, data) sum(stats::dnorm(data$y, parameters$mu, 0.25, log = TRUE))
+  expect_bridge_close(bridge_logml(fit, log_posterior, data = jags_data), exact)
+})
