@@ -1,0 +1,180 @@
+skip_if_not_test_profile("unit")
+
+test_that("bound treatment mixture draws the declared independent product law", {
+  mixture <- prior_factor_levels(prior_mixture(list(
+    prior_factor("normal", list(1, 2), contrast = "treatment", prior_weights = 2),
+    prior("point", list(0)))), c("c", "a", "b"))
+  n <- 400L
+  set.seed(71)
+  actual <- rng(mixture, n, transform_factor_samples = FALSE)
+  set.seed(71)
+  gates <- sample(1:2, n, replace = TRUE, prob = c(2, 1))
+  reference <- matrix(0, n, 2L)
+  # The declared stream is column-major within each selected component.
+  for(component in unique(gates)){
+    rows <- gates == component
+    reference[rows, ] <- if(component == 1L){
+      matrix(stats::rnorm(sum(rows) * 2L, 1, 2), sum(rows), 2L)
+    }else matrix(0, sum(rows), 2L)
+  }
+  expect_identical(unname(actual), structure(reference, components = gates))
+  expect_false(isTRUE(all.equal(reference, reference[, rep(1L, 2L)])))
+  set.seed(71)
+  transformed <- rng(mixture, n, transform_factor_samples = TRUE)
+  expect_equal(unname(transformed), structure(reference %*% t(attr(mixture, "factor_design")), components = gates))
+  set.seed(71)
+  expect_identical(rng(mixture, n, sample_components = TRUE), gates)
+})
+
+test_that("bound joint factor mixtures preserve the common t scale and exact design image", {
+  for(contrast in c("meandif", "orthonormal")){
+    mixture <- prior_factor_levels(prior_mixture(list(
+      prior_factor("mt", list(0, 1.5, 5), contrast = contrast), prior("point", list(0)))), c("c", "a", "b"))
+    set.seed(82)
+    actual <- rng(mixture, 400, transform_factor_samples = FALSE)
+    set.seed(82)
+    gates <- sample(1:2, 400, replace = TRUE, prob = c(1, 1))
+    reference <- matrix(0, 400, 2L)
+    for(component in unique(gates)){
+      rows <- gates == component
+      reference[rows, ] <- if(component == 1L){
+        mvtnorm::rmvt(sum(rows), delta = rep(0, 2), sigma = diag(1.5^2, 2), df = 5, type = "shifted")
+      }else matrix(0, sum(rows), 2L)
+    }
+    expect_equal(as.vector(actual), as.vector(reference), tolerance = 0)
+    set.seed(82)
+    transformed <- rng(mixture, 400)
+    expect_equal(as.vector(transformed), as.vector(reference %*% t(attr(mixture, "factor_design"))), tolerance = 0)
+  }
+})
+
+test_that("bound spike gates and interaction designs use exact raw and cell dimensions", {
+  for(contrast in c("treatment", "independent")){
+    slab <- prior_factor("normal", list(0, 1), contrast = contrast)
+    spike <- prior_factor_levels(prior_spike_and_slab(slab, prior("point", list(.4))), c("c", "a", "b"))
+    set.seed(93)
+    raw <- rng(spike, 200, transform_factor_samples = FALSE)
+    set.seed(93)
+    cells <- rng(spike, 200)
+    expect_identical(attr(raw, "inclusion"), attr(cells, "inclusion"))
+    expect_equal(as.vector(cells), as.vector(raw %*% t(attr(spike, "factor_design"))), tolerance = 0)
+    expect_true(all(raw[attr(raw, "inclusion") == 0, ] == 0))
+  }
+  data <- expand.grid(g = factor(c("c", "a", "b")), h = factor(c("u", "v")), x = c(1, 2))
+  mixture <- prior_mixture(list(prior_factor("normal", list(0, 1), contrast = "treatment"), prior("point", list(0))))
+  for(formula in list(~ g * h, ~ g + g:x)){
+    priors <- list(intercept = prior("point", list(0)), g = mixture,
+      h = mixture, `g:h` = mixture, `g:x` = mixture)
+    compiled <- JAGS_formula(formula, "mu", data, priors[c("intercept", attr(stats::terms(formula), "term.labels"))])
+    bound <- tail(compiled$prior_list, 1L)[[1L]]
+    set.seed(94)
+    raw <- rng(bound, 50, transform_factor_samples = FALSE)
+    set.seed(94)
+    cells <- rng(bound, 50)
+    expect_identical(dim(raw), c(50L, ncol(attr(bound, "factor_design"))))
+    expect_identical(dim(cells), c(50L, nrow(attr(bound, "factor_design"))))
+    expect_equal(as.vector(cells), as.vector(raw %*% t(attr(bound, "factor_design"))), tolerance = 0)
+  }
+})
+
+test_that("standalone and initialization contracts remain separate from bound containers", {
+  scalar <- prior_factor("normal", list(1, 2), contrast = "treatment")
+  set.seed(14)
+  standalone <- rng(scalar, 20, transform_factor_samples = FALSE)
+  set.seed(14)
+  expect_identical(standalone, stats::rnorm(20, 1, 2))
+  joint <- prior_factor("mnormal", list(0, 1), contrast = "orthonormal")
+  set.seed(15)
+  expect_warning(rng(joint, 5), "assuming two factor levels")
+  mixture <- prior_factor_levels(prior_mixture(list(joint, prior("point", list(0)))), 3)
+  broken <- mixture
+  broken[[1L]]$parameters$K <- 3
+  expect_error(rng(broken, 5), "disagree with an explicit 'K'")
+  prior_list <- list(b = prior_factor_levels(joint, 3))
+  expect_identical(JAGS_get_inits(prior_list, 2, seed = 16), JAGS_get_inits(prior_list, 2, seed = 16))
+  legacy <- prior_mixture(list(joint, prior("point", list(0))))
+  for(i in seq_along(legacy)) legacy[[i]]$parameters$K <- 2
+  expect_identical(dim(rng(legacy, 5)), c(5L, 3L))
+})
+
+test_that("lpdf and pdf of a bound factor prior resolve the coefficient dimension from the levels", {
+  for(contrast in c("orthonormal", "meandif")){
+    bound <- prior_factor_levels(prior_factor("mnormal", list(mean = 0, sd = 1.5), contrast = contrast), c("lo", "mid", "hi"))
+    expect_identical(ncol(rng(bound, 4, transform_factor_samples = FALSE)), 2L)
+    y <- c(.3, -1.2)
+    expect_equal(lpdf(bound, c(0, 0)), 2 * stats::dnorm(0, 0, 1.5, log = TRUE))
+    expect_equal(lpdf(bound, y), sum(stats::dnorm(y, 0, 1.5, log = TRUE)))
+    expect_equal(pdf(bound, y), prod(stats::dnorm(y, 0, 1.5)))
+    expect_equal(lpdf(bound, rbind(y, 2 * y)), c(sum(stats::dnorm(y, 0, 1.5, log = TRUE)), sum(stats::dnorm(2 * y, 0, 1.5, log = TRUE))),
+      ignore_attr = TRUE)
+  }
+  bound_t <- prior_factor_levels(prior_factor("mt", list(0, 1.5, 5), contrast = "orthonormal"), c("lo", "mid", "hi"))
+  expect_equal(lpdf(bound_t, c(.3, -1.2)),
+    mvtnorm::dmvt(c(.3, -1.2), delta = c(0, 0), sigma = diag(1.5^2, 2L), df = 5, type = "shifted", log = TRUE))
+  # an explicitly sized prior is unchanged
+  explicit <- prior("mnormal", list(mean = 0, sd = 1.5, K = 2))
+  expect_equal(lpdf(explicit, c(0, 0)), 2 * stats::dnorm(0, 0, 1.5, log = TRUE))
+})
+
+test_that("spike-and-slab and mixtures of explicit point factor priors keep their contrast", {
+  point <- prior_factor("point", list(2), contrast = "treatment")
+
+  spike <- prior_spike_and_slab(point)
+  expect_true(is.prior.spike_and_slab(spike))
+  expect_true(all(vapply(spike, is.prior.treatment, logical(1))))
+  expect_identical(spike[[1L]][["parameters"]][["location"]], 2)
+  expect_identical(spike[[2L]][["parameters"]][["location"]], 0)
+
+  mixture <- prior_mixture(list(point, prior_factor("point", list(0), contrast = "treatment")))
+  expect_true(is.prior.treatment(mixture))
+  expect_true(all(vapply(mixture, is.prior.treatment, logical(1))))
+
+  for(contrast in c("orthonormal", "meandif")){
+    joint_spike <- prior_spike_and_slab(prior_factor("point", list(0), contrast = contrast))
+    expect_true(all(vapply(joint_spike, inherits, logical(1), what = paste0("prior.", contrast))))
+  }
+})
+
+test_that("a point factor prior of another contrast than its sibling refuses instead of being recoded", {
+  point <- prior_factor("point", list(2), contrast = "treatment")
+  expect_error(
+    prior_mixture(list(point, prior_factor("normal", list(0, 1), contrast = "independent"))),
+    "only one type of factor priors")
+  expect_error(
+    prior_mixture(list(prior_factor("point", list(0), contrast = "orthonormal"),
+                       prior_factor("mnormal", list(0, 1), contrast = "meandif"))),
+    "only one type of factor priors")
+})
+
+test_that("the declared image of a treatment point factor survives binding and sampling in a mixture", {
+  point <- prior_factor("point", list(2), contrast = "treatment")
+  bound <- prior_factor_levels(
+    prior_mixture(list(point, prior_factor("normal", list(0, 1), contrast = "treatment"))),
+    c("a", "b", "c"))
+  expect_equal(as.vector(attr(bound[[1L]], "factor_design") %*% rep(2, 2L)), c(0, 2, 2))
+  set.seed(19)
+  draws <- rng(bound, 20)
+  point_rows <- draws[attr(draws, "components") == 1, , drop = FALSE]
+  expect_gt(nrow(point_rows), 0L)
+  expect_equal(unname(unique(point_rows)), matrix(c(0, 2, 2), nrow = 1L))
+})
+
+test_that("scalar point components of factor mixtures are coerced to the mixture's contrast", {
+  for(contrast in c("treatment", "independent")){
+    coerced <- prior_mixture(list(
+      prior_factor("normal", list(0, 1), contrast = contrast), prior("point", list(1))))
+    expect_true(inherits(coerced[[2L]], paste0("prior.", contrast)))
+    expect_true(is.prior.factor(coerced[[2L]]))
+    expect_identical(coerced[[2L]][["parameters"]][["location"]], 1)
+  }
+})
+
+test_that("a point factor prior without declared dimensions inherits K and two declarations must agree", {
+  levels   <- c("a", "b", "c")
+  point    <- prior_factor("point", list(2), contrast = "treatment")
+  declared <- prior_factor_levels(prior_factor("normal", list(0, 1), contrast = "treatment"), levels)
+  expect_equal(attr(prior_mixture(list(point, declared)), "K"), 2)
+  expect_error(
+    prior_mixture(list(prior_factor_levels(point, c(levels, "d")), declared)),
+    "only one type of factor priors")
+})

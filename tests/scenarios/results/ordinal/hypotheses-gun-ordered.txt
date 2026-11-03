@@ -1,0 +1,4 @@
+                        Alternative:                                Null:    BF error%(BF)
+                Physique[Heavy] != 0                  Physique[Heavy] = 0 0.640         NA
+                 Physique[Heavy] < 0                 Physique[Heavy] >= 0 9.911      1.733
+ Physique[Average] < Physique[Heavy] Physique[Average] >= Physique[Heavy] 0.101      1.733

@@ -1,0 +1,11 @@
+                        H1           H0                        method log_BF10            note
+1               dependence independence           BayesFactor (exact)    0.983       raceDolls
+2               dependence independence                   closed form    0.983       raceDolls
+3               dependence independence               bridge sampling    0.984       raceDolls
+4  log marginal likelihood   dependence closed form - bridge sampling    0.000       raceDolls
+5                          independence closed form - bridge sampling    0.001       raceDolls
+6               dependence independence           BayesFactor (exact)    3.335 mtcars cyl x am
+7               dependence independence                   closed form    3.335 mtcars cyl x am
+8               dependence independence               bridge sampling    3.326 mtcars cyl x am
+9  log marginal likelihood   dependence closed form - bridge sampling    0.001 mtcars cyl x am
+10                         independence closed form - bridge sampling   -0.008 mtcars cyl x am

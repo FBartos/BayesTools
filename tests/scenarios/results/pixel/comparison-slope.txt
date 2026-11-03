@@ -1,0 +1,25 @@
+       source                 parameter estimate median    lCI    uCI
+1        lme4                 intercept    0.363     NA     NA     NA
+2  BayesTools                 intercept    0.333  0.335 -0.206  0.858
+3        brms                 intercept    0.333  0.335 -0.235  0.886
+4        lme4                     day_s    0.098     NA     NA     NA
+5  BayesTools                     day_s    0.096  0.097 -0.162  0.343
+6        brms                     day_s    0.094  0.094 -0.160  0.336
+7        lme4                    day_s2   -0.283     NA     NA     NA
+8  BayesTools                    day_s2   -0.284 -0.284 -0.338 -0.230
+9        brms                    day_s2   -0.285 -0.285 -0.338 -0.231
+10       lme4                     sigma    0.275     NA     NA     NA
+11 BayesTools                     sigma    0.283  0.281  0.240  0.335
+12       brms                     sigma    0.283  0.281  0.240  0.335
+13       lme4   Dog_Side: sd(intercept)    0.519     NA     NA     NA
+14 BayesTools   Dog_Side: sd(intercept)    0.628  0.597  0.362  1.046
+15       brms   Dog_Side: sd(intercept)    0.633  0.601  0.366  1.065
+16       lme4        Dog: sd(intercept)    0.682     NA     NA     NA
+17 BayesTools        Dog: sd(intercept)    0.728  0.716  0.123  1.383
+18       brms        Dog: sd(intercept)    0.723  0.721  0.094  1.368
+19       lme4            Dog: sd(day_s)    0.268     NA     NA     NA
+20 BayesTools            Dog: sd(day_s)    0.349  0.328  0.194  0.628
+21       brms            Dog: sd(day_s)    0.347  0.325  0.193  0.621
+22       lme4 Dog: cor(intercept,day_s)   -0.084     NA     NA     NA
+23 BayesTools Dog: cor(intercept,day_s)   -0.056 -0.065 -0.762  0.697
+24       brms Dog: cor(intercept,day_s)   -0.054 -0.062 -0.767  0.703

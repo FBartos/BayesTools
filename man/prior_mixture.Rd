@@ -20,6 +20,11 @@ should be considered as a null distribution. Defaults to \code{rep(FALSE, length
 belong to the same mixture component (this is an alternative specification to the \code{is_null} argument).
 Defaults to \code{NULL} (i.e., \code{is_null} is used.}
 }
+\value{
+A prior object of class \code{prior.mixture} (with the classes of a
+factor, ordered or simple mixture where the components have them) that
+holds the component priors with their \code{prior_weights} and \code{components}.
+}
 \description{
 \code{prior_mixture} creates a mixture of prior distributions.
 This is a more generic version of the \code{prior_spike_and_slab} function.

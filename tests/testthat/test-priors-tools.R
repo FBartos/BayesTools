@@ -24,12 +24,8 @@ test_that("Prior handling works", {
   expect_error(BayesTools:::.check_parameter_positive(0, "par"), "The 'par' must be positive.")
   expect_null(BayesTools:::.check_parameter_positive(0, "par", TRUE))
   expect_error(BayesTools:::.check_parameter_positive(-.01, "par", TRUE), "The 'par' must be non-negative.")
-  expect_error(BayesTools:::.check_parameter_negative(0, "par"), "The 'par' must be negative.")
-  expect_null(BayesTools:::.check_parameter_negative(0, "par", TRUE))
-  expect_error(BayesTools:::.check_parameter_negative(.01, "par", TRUE), "The 'par' must be non-positive.")
-
-  expect_error(BayesTools:::.check_parameter_range(-.01, "par", lower = 0, upper = 1, include_bounds = TRUE), "The 'par' must be higher than 0 and lower than 1.")
-  expect_error(BayesTools:::.check_parameter_range(3, "par", lower = 1, upper = 3, include_bounds = FALSE), "The 'par' must be higher or equal to than 1 and lower or equal to than 3.")
+  expect_error(BayesTools:::.check_parameter_range(-.01, "par", lower = 0, upper = 1, include_bounds = TRUE), "The 'par' must be higher than or equal to 0 and lower than or equal to 1.", fixed = TRUE)
+  expect_error(BayesTools:::.check_parameter_range(3, "par", lower = 1, upper = 3, include_bounds = FALSE), "The 'par' must be higher than 1 and lower than 3.", fixed = TRUE)
 
 
   # check different ordering of names withing lists
@@ -45,6 +41,11 @@ test_that("Prior handling works", {
   expect_error(prior("normal", list("a", 1)), "The 'mean' must be a numeric vector of length 1.")
   expect_error(prior("normal", list(0, "location" = 1)), "Parameters 'location' are not supported for a normal distribution.")
   expect_error(prior("normal", list(0, 1), list(Inf, -Inf)), "The lower truncation point must be lower than the upper truncation points.")
+  expect_error(prior("normal", list(NA_real_, 1)), "must be defined")
+  expect_error(prior("normal", list(Inf, 1)), "must be finite")
+  expect_error(prior("normal", list(0, NA_real_)), "must be defined")
+  expect_error(prior("bernoulli", list(NA_real_)), "must be defined")
+  expect_error(prior("normal", list(0, 1), list(lower = NA_real_, upper = Inf)), "cannot contain NA")
   expect_error(prior("lognormal", list(0, 1), list(-5, Inf)), "Lower truncation point must be larger or equal to 0.")
   expect_error(prior("beta", list(0, 1), list(0, 2)), "Upper truncation point must be smaller or equal to 1.")
   expect_error(prior("normal", list(0, -1)), "The 'sd' must be positive.")
@@ -413,6 +414,10 @@ test_that(".check_and_set_truncation works correctly", {
     BayesTools:::.check_and_set_truncation(list(-Inf, 2), upper = 1),
     "Upper truncation point must be smaller or equal to 1"
   )
+  expect_error(
+    BayesTools:::.check_and_set_truncation(list(lower = NA_real_, upper = Inf)),
+    "cannot contain NA"
+  )
 
 })
 
@@ -437,6 +442,8 @@ test_that(".check_parameter works correctly", {
     BayesTools:::.check_parameter(c(1, 2), "param", length = 3),
     "must be a numeric vector of length 3"
   )
+  expect_error(BayesTools:::.check_parameter(NA_real_, "param"), "must be defined")
+  expect_error(BayesTools:::.check_parameter(Inf, "param"), "must be finite")
 
 })
 
@@ -458,11 +465,38 @@ test_that(".check_parameter_dimensions works correctly", {
 
   # Note: The function has some implementation quirks with vector input,
   # so we just test that invalid inputs throw some error
-  expect_error(BayesTools:::.check_parameter_dimensions(c(1, 2), "K"))
-  expect_error(BayesTools:::.check_parameter_dimensions(1.5, "K"))
+  expect_error(BayesTools:::.check_parameter_dimensions(c(1, 2), "K"),
+               "The 'K' must be a numeric vector of length 1.", fixed = TRUE)
+  expect_error(BayesTools:::.check_parameter_dimensions(1.5, "K"),
+               "The 'K' must be an integer", fixed = TRUE)
 
 })
 
+
+test_that("a declared K conflicts with the coefficients of the coding unless it is absent, NA or equal", {
+
+  conflicts <- BayesTools:::.bt_factor_K_declaration_conflicts
+  # undeclared, declared unresolved, or equal
+  expect_false(conflicts(NULL, 2))
+  expect_false(conflicts(NA, 2))
+  expect_false(conflicts(NA_real_, 2))
+  expect_false(conflicts(2, 2))
+  expect_false(conflicts(2L, 2))
+  # a different number, a non-scalar, a non-number or a non-finite number
+  expect_true(conflicts(3, 2))
+  expect_true(conflicts(c(2, 2), 2))
+  expect_true(conflicts(numeric(), 2))
+  expect_true(conflicts("2", 2))
+  expect_true(conflicts(TRUE, 2))
+  expect_true(conflicts(Inf, 2))
+
+  # and a bound factor mixture refuses a conflicting declaration of a component
+  joint <- prior_factor("mnormal", list(0, 1), contrast = "orthonormal")
+  mixture <- prior_factor_levels(prior_mixture(list(joint, prior("point", list(0)))), 3)
+  expect_identical(BayesTools:::.get_prior_factor_levels(mixture), 2L)
+  mixture[[1L]]$parameters$K <- 3
+  expect_error(BayesTools:::.get_prior_factor_levels(mixture), "disagree with an explicit 'K'", fixed = TRUE)
+})
 
 test_that(".get_prior_factor_levels works correctly", {
 
@@ -486,6 +520,19 @@ test_that(".get_prior_factor_levels works correctly", {
   attr(p_meandif, "levels") <- 3
   expect_equal(BayesTools:::.get_prior_factor_levels(p_meandif), 2)
 
+})
+
+
+test_that("spike-and-slab inclusion priors come from the inclusion attribute only", {
+
+  inclusion <- prior("beta", list(2, 3))
+  slab <- prior_spike_and_slab(prior("normal", list(0, 1)), prior_inclusion = inclusion)
+  expect_identical(BayesTools:::.get_spike_and_slab_inclusion(slab), inclusion)
+
+  # a list element named 'inclusion' (the pre-0.3.0 layout) is not consulted
+  stale <- slab
+  stale[["inclusion"]] <- prior("point", list(.5))
+  expect_identical(BayesTools:::.get_spike_and_slab_inclusion(stale), inclusion)
 })
 
 

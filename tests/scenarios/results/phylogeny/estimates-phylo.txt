@@ -1,0 +1,5 @@
+                                  Mean    SD  0.025    0.5 0.975 error(MCMC) error(MCMC)/SD  ESS R-hat
+(mu) intercept                  -0.133 0.150 -0.439 -0.136 0.181     0.00858          0.057  335 1.029
+(mu) article: sd(intercept)      0.373 0.037  0.300  0.373 0.446     0.00058          0.016 4127 1.000
+(mu) species: sd(intercept)      0.083 0.061  0.003  0.071 0.227     0.00151          0.025 1648 1.002
+(mu) species_phy: sd(intercept)  0.261 0.100  0.095  0.250 0.482     0.00281          0.028 1296 1.005

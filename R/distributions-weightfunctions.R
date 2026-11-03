@@ -3,7 +3,8 @@
 #' @description Marginal density, marginal distribution function,
 #' marginal quantile function and random generation for weight functions.
 #'
-#' @param x,q vector or matrix of quantiles.
+#' @param x,q numeric vector of quantiles; the parameter arguments (\code{alpha},
+#' \code{omega}) may be matrices with one row per quantile.
 #' @param p vector of probabilities.
 #' @param n number of observations.
 #' @param alpha vector or matrix with concentration parameters for
@@ -23,6 +24,22 @@
 #' @param lower.tail logical; if \code{TRUE} (default), probabilities
 #' are \eqn{P[X \le x]}, otherwise, \eqn{P[X > x]}.
 #'
+#' @details The marginal density, distribution function, and quantile function
+#' are implemented for the monotonic parameterization (\code{alpha}) and for
+#' fixed weights (\code{omega}); the non-monotonic parameterization
+#' (\code{alpha1}, \code{alpha2}) supports random generation only. The same
+#' marginals of a [prior_weightfunction()] prior are available through
+#' [mpdf()], [mcdf()], [mquant()], and [rng()].
+#'
+#' The marginals of the monotonic parameterization are Beta distributions with
+#' the cumulative sums of \code{alpha} as shapes. Finite \code{alpha} whose
+#' cumulative sums exceed the largest double signal an error of class
+#' \code{BayesTools_weightfunction_beta_shape_unavailable} (parent
+#' \code{BayesTools_weightfunction_unavailable}) from the density,
+#' distribution, and quantile functions, and from [mpdf()], [mcdf()], and
+#' [mquant()] of a cumulative [prior_weightfunction()]. Degenerate Dirichlet
+#' draws of the random generation signal
+#' \code{BayesTools_dirichlet_rng_unavailable}.
 #'
 #' @examples
 #' # draw samples from a two-sided weight function
@@ -276,44 +293,9 @@ mqtwo.sided_fixed <- function(p, omega, lower.tail = TRUE, log.p = FALSE){
 #### density functions ####
 .mdone.sided_general   <- function(x, alpha1, alpha2, log){
 
-  stop("Not implemented")
-  # would require product of two beta-distributed variables, since the weights in the opposite direction
+  # would require the product of two beta-distributed variables, since the weights in the opposite direction
   # start at the first cutoff modeled by the first alpha parameter
-  # https://math.stackexchange.com/questions/1073364/product-of-two-beta-distributed-random-variables
-  # https://www.dm.fct.unl.pt/sites/www.dm.fct.unl.pt/files/preprints/2012/7_12.pdf
-  # probably solvable with Meijer g-function
-
-  # # input check
-  # .weightfunctions_check_alpha(alpha1, "alpha1")
-  # .weightfunctions_check_alpha(alpha2, "alpha2")
-  #
-  # # transform to matrices for easier manipulation and checks
-  # if(length(x) == 1){
-  #   x <- rep(x, nrow(alpha1))
-  # }
-  # if(!is.matrix(alpha1)){
-  #   alpha1 <- matrix(alpha1, nrow = 1)
-  # }
-  # if(!is.matrix(alpha2)){
-  #   alpha2 <- matrix(alpha2, nrow = 1)
-  # }
-  #
-  # if(nrow(alpha1) != nrow(alpha2))
-  #   stop("Non matching dimensions of 'alpha1' and 'alpha2'.")
-  # if(nrow(alpha1) != length(x) & nrow(alpha1) != 1)
-  #   stop("Non matching dimensions of 'alpha' and 'x'.")
-  #
-  # if(nrow(alpha1) != length(x) & nrow(alpha1) == 1){
-  #   alpha1 <- do.call(rbind, lapply(1:length(x), function(i)alpha1))
-  #   alpha2 <- do.call(rbind, lapply(1:length(x), function(i)alpha2))
-  # }
-  #
-  #
-  # lik1 <- .mdone.sided_monotonic(x, alpha = alpha1, log = log)
-  # the side in the unexpected direction starts with the first step of alpha1, e.g., something like this:
-  # lik2 <- .dmone.sided_monotonic(x, alpha = alpha2, log = log) * beta(alpha[,1], t(apply(alpha[,-1], 1, sum)))
-  #
-  # return(cbind(lik2, lik1))
+  stop("Not implemented")
 }
 .mdone.sided_monotonic <- function(x, alpha, log){
 
@@ -337,8 +319,9 @@ mqtwo.sided_fixed <- function(p, omega, lower.tail = TRUE, log.p = FALSE){
 
   # marginals of reversed cumulative sums of Dirichlet variables are beta
   # distributed; the first/reference publication weight is fixed to one.
-  alpha_alpha <- t(apply(alpha[,ncol(alpha):1, drop = FALSE], 1, cumsum))[, ncol(alpha):1, drop = FALSE]
-  alpha_beta  <- cbind(0, t(apply(alpha, 1, cumsum))[, -ncol(alpha), drop = FALSE])
+  beta_shapes <- .weightfunctions_beta_shapes(alpha)
+  alpha_alpha <- beta_shapes[["shape1"]]
+  alpha_beta  <- beta_shapes[["shape2"]]
 
   lik <- cbind(
     dpoint(x, location = 1, log = log),
@@ -396,8 +379,8 @@ mqtwo.sided_fixed <- function(p, omega, lower.tail = TRUE, log.p = FALSE){
     alpha2 <- do.call(rbind, lapply(1:n, function(i)alpha2))
   }
 
-  x1 <- extraDistr::rdirichlet(n, alpha = alpha1)
-  x2 <- extraDistr::rdirichlet(n, alpha = alpha2) * (1 - x1[,1])
+  x1 <- .prior_dirichlet_draws(alpha1, n)
+  x2 <- .prior_dirichlet_draws(alpha2, n) * (1 - x1[,1])
 
   x <- matrix(ncol = ncol(alpha1) + ncol(alpha2) - 1, nrow = n)
 
@@ -425,7 +408,7 @@ mqtwo.sided_fixed <- function(p, omega, lower.tail = TRUE, log.p = FALSE){
     alpha <- do.call(rbind, lapply(1:n, function(i)alpha))
   }
 
-  x <- extraDistr::rdirichlet(n, alpha = alpha)
+  x <- .prior_dirichlet_draws(alpha, n)
   x <- t(apply(x[,ncol(x):1, drop = FALSE], 1, cumsum))[,ncol(x):1, drop = FALSE]
   x[,1] <- 1
 
@@ -456,28 +439,6 @@ mqtwo.sided_fixed <- function(p, omega, lower.tail = TRUE, log.p = FALSE){
 .mpone.sided_general   <- function(q, alpha1, alpha2, lower.tail, log.p){
 
   stop("Not implemented")
-
-  # # input check
-  # .weightfunctions_check_alpha(alpha1, "alpha1")
-  # .weightfunctions_check_alpha(alpha2, "alpha2")
-  #
-  #
-  # # transform to matrices for easier manipulation and checks
-  # if(!is.matrix(alpha1)){
-  #   alpha1 <- matrix(alpha1, nrow = 1)
-  # }
-  # if(!is.matrix(alpha2)){
-  #   alpha2 <- matrix(alpha2, nrow = 1)
-  # }
-  # if(length(q) == 1){
-  #   q <- rep(q, nrow(alpha1))
-  # }
-  #
-  # if(nrow(alpha1) != nrow(alpha2))
-  #   stop("Non matching dimensions of 'alpha1' and 'alpha2'.")
-  # if(nrow(alpha1) != length(q) & nrow(alpha1) != 1)
-  #   stop("Non matching dimensions of 'alpha' and 'q'.")
-
 }
 .mpone.sided_monotonic <- function(q, alpha, lower.tail, log.p){
 
@@ -501,8 +462,9 @@ mqtwo.sided_fixed <- function(p, omega, lower.tail = TRUE, log.p = FALSE){
 
   # marginals of reversed cumulative sums of Dirichlet variables are beta
   # distributed; the first/reference publication weight is fixed to one.
-  alpha_alpha <- t(apply(alpha[,ncol(alpha):1, drop = FALSE], 1, cumsum))[, ncol(alpha):1, drop = FALSE]
-  alpha_beta  <- cbind(0, t(apply(alpha, 1, cumsum))[, -ncol(alpha), drop = FALSE])
+  beta_shapes <- .weightfunctions_beta_shapes(alpha)
+  alpha_alpha <- beta_shapes[["shape1"]]
+  alpha_beta  <- beta_shapes[["shape2"]]
 
   p <- cbind(
     ppoint(q, location = 1, lower.tail = lower.tail, log.p = log.p),
@@ -541,33 +503,6 @@ mqtwo.sided_fixed <- function(p, omega, lower.tail = TRUE, log.p = FALSE){
 .mqone.sided_general   <- function(p, alpha1, alpha2, lower.tail, log.p){
 
   stop("Not implemented")
-
-  # # input check
-  # .weightfunctions_check_alpha(alpha1, "alpha1")
-  # .weightfunctions_check_alpha(alpha2, "alpha2")
-  #
-  #
-  # # transform to matrices for easier manipulation and checks
-  # if(!is.matrix(alpha1)){
-  #   alpha1 <- matrix(alpha1, nrow = 1)
-  # }
-  # if(!is.matrix(alpha2)){
-  #   alpha2 <- matrix(alpha2, nrow = 1)
-  # }
-  # if(length(p) == 1){
-  #   p <- rep(p, nrow(alpha1))
-  # }
-  #
-  # if(nrow(alpha1) != nrow(alpha2))
-  #   stop("Non matching dimensions of 'alpha1' and 'alpha2'.")
-  # if(nrow(alpha1) != length(p) & nrow(alpha1) != 1)
-  #   stop("Non matching dimensions of 'alpha' and 'p'.")
-  #
-  # if(nrow(alpha1) != length(p) & nrow(alpha1) == 1){
-  #   alpha1 <- do.call(rbind, lapply(1:length(p), function(i)alpha1))
-  #   alpha2 <- do.call(rbind, lapply(1:length(p), function(i)alpha2))
-  # }
-
 }
 .mqone.sided_monotonic <- function(p, alpha, lower.tail, log.p){
 
@@ -592,8 +527,9 @@ mqtwo.sided_fixed <- function(p, omega, lower.tail = TRUE, log.p = FALSE){
 
   # marginals of reversed cumulative sums of Dirichlet variables are beta
   # distributed; the first/reference publication weight is fixed to one.
-  alpha_alpha <- t(apply(alpha[,ncol(alpha):1, drop = FALSE], 1, cumsum))[, ncol(alpha):1, drop = FALSE]
-  alpha_beta  <- cbind(0, t(apply(alpha, 1, cumsum))[, -ncol(alpha), drop = FALSE])
+  beta_shapes <- .weightfunctions_beta_shapes(alpha)
+  alpha_alpha <- beta_shapes[["shape1"]]
+  alpha_beta  <- beta_shapes[["shape2"]]
 
   q <- cbind(
     qpoint(p, location = 1, lower.tail = lower.tail, log.p = log.p),
@@ -635,6 +571,38 @@ mqtwo.sided_fixed <- function(p, omega, lower.tail = TRUE, log.p = FALSE){
 }
 
 ### helper functions
+# The Beta shapes of the marginals of the monotone weight function: the
+# reference weight is fixed to one and the weight j has the shapes
+# sum(alpha[j:J]) and sum(alpha[1:(j - 1)]). Finite concentrations can have
+# cumulative sums beyond the largest double; dbeta(), pbeta() and qbeta() then
+# silently evaluate a different distribution, so such shapes are refused.
+.weightfunctions_beta_shapes <- function(alpha){
+
+  shape1 <- t(apply(alpha[,ncol(alpha):1, drop = FALSE], 1, cumsum))[, ncol(alpha):1, drop = FALSE]
+  shape2 <- cbind(0, t(apply(alpha, 1, cumsum))[, -ncol(alpha), drop = FALSE])
+
+  .weightfunctions_check_beta_shapes(shape1[, -1L], shape2[, -1L])
+
+  list(shape1 = shape1, shape2 = shape2)
+}
+# (shared with the marginals of weight-function priors,
+# .weightfunction_alpha_marginal())
+.weightfunctions_check_beta_shapes <- function(shape1, shape2){
+
+  if(any(!is.finite(shape1)) || any(!is.finite(shape2))){
+    stop(errorCondition(
+      message = paste0(
+        "The Beta shapes of the weight-function marginals are not representable: ",
+        "the cumulative sums of 'alpha' exceed the largest double. ",
+        "Use less extreme 'alpha' values."
+      ),
+      call = NULL,
+      class = c("BayesTools_weightfunction_beta_shape_unavailable", "BayesTools_weightfunction_unavailable")
+    ))
+  }
+
+  invisible(TRUE)
+}
 .weightfunctions_one_sided_parameterization <- function(alpha, alpha1, alpha2){
   has_alpha  <- !is.null(alpha)
   has_alpha1 <- !is.null(alpha1)
@@ -658,6 +626,8 @@ mqtwo.sided_fixed <- function(p, omega, lower.tail = TRUE, log.p = FALSE){
     stop(paste0("'", name, "' must be a vector of length at least 2."))
   if(is.matrix(alpha))if(ncol(alpha) < 2)
     stop(paste0("'", name, "' must be a matrix with at least 2 columns."))
+  if(any(!is.finite(alpha)))
+    stop(paste0("'", name, "' must be finite."))
   if(!all(alpha > 0))
     stop(paste0("'", name, "' must be positive."))
 }
@@ -668,10 +638,55 @@ mqtwo.sided_fixed <- function(p, omega, lower.tail = TRUE, log.p = FALSE){
     stop(paste0("'", name, "' must be a vector of length at least 2."))
   if(is.matrix(omega))if(ncol(omega) < 2)
     stop(paste0("'", name, "' must be a matrix with at least 2 columns."))
+  if(any(!is.finite(omega)))
+    stop(paste0("'", name, "' must be finite."))
   if(!all(omega >= 0))
     stop(paste0("'", name, "' must be non-negative."))
-  if(is.vector(omega) && !isTRUE(all.equal(omega[1], 1)))
+  if(is.vector(omega) && omega[1] != 1)
     stop(paste0("The reference-bin '", name, "' weight must be exactly 1."))
-  if(is.matrix(omega) && !all(vapply(seq_len(nrow(omega)), function(i) isTRUE(all.equal(omega[i,1], 1)), logical(1))))
+  if(is.matrix(omega) && any(omega[,1] != 1))
     stop(paste0("The reference-bin '", name, "' weight must be exactly 1."))
+}
+
+# Step-plot vertex indices of a weightfunction with 'n_cuts' cut points
+# (including the 0 and 1 end points): x indexes the cut points and y the bins.
+.weightfunction_step_indices <- function(n_cuts){
+
+  if(!is.numeric(n_cuts) || length(n_cuts) != 1L || !is.finite(n_cuts) ||
+     n_cuts < 2 || n_cuts != as.integer(n_cuts)){
+    stop("'n_cuts' must be an integer of at least 2.", call. = FALSE)
+  }
+  n_cuts <- as.integer(n_cuts)
+  n_bins <- n_cuts - 1L
+  if(n_cuts == 2L){
+    return(list(x = c(1L, 2L), y = c(1L, 1L)))
+  }
+
+  list(
+    x = c(1L, sort(rep(2L:(n_cuts - 1L), 2L)), n_cuts),
+    y = sort(rep(seq_len(n_bins), 2L))
+  )
+}
+# Plotted mean of a weight that has none (a heavy right tail on the log scale
+# makes E[omega] infinite) or none in double precision (it exceeds the largest
+# double, .weightfunction_plot_component_mean()): the mean line is omitted for
+# that bin, so NA breaks the line, and the y range comes from the finite values.
+.weightfunction_plot_mean <- function(x_mean){
+
+  x_mean[!is.finite(x_mean)] <- NA_real_
+  x_mean
+}
+# The mean of a weight component for plotting, from 'mean_function': a mean
+# beyond the largest double (the range limit of the moment calculation, which
+# mean() reports) is plotted like an infinite one.
+.weightfunction_plot_component_mean <- function(mean_function, component){
+
+  tryCatch(
+    mean_function(component),
+    BayesTools_numerical_range_limit = function(condition) Inf
+  )
+}
+.weightfunction_plot_y_range <- function(x_mean, x_lCI, x_uCI){
+
+  c(0, max(1, .weightfunction_plot_mean(x_mean), x_lCI, x_uCI, na.rm = TRUE))
 }

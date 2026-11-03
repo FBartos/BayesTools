@@ -25,7 +25,10 @@ Supported source types are \code{"table"}, \code{"record"}, and
 \code{BF}, \code{central}, \code{lower}, \code{upper}, and metadata such as
 \code{BF_orientation}, \code{BF_scale}, \code{BF_name},
 \code{BF_bound_operator}, \code{lower_prob}, \code{upper_prob},
-\code{interval_level}, \code{units}, and \code{conditioning}.}
+\code{units}, and \code{conditioning}. \code{interval_level} is not accepted
+as input; normalized estimate records derive it from
+\code{upper_prob - lower_prob}, or retain \code{NA} when endpoint
+probabilities are unknown.}
 
 \item{plan}{ordered list specifying which records to create. Plan items can
 have \code{kind = "evidence"}, \code{"estimate"}, \code{"pair"},
@@ -52,8 +55,14 @@ generic \code{"text"} rendering. Downstream packages should usually request
 \value{
 \code{interpret_records} returns a data frame with class
 \code{"BayesTools_interpret_records"} when \code{output = "records"}, or a
-character vector when \code{output = "text"}. \code{interpret_tables} is a
-convenience wrapper around \code{interpret_records}.
+character vector when \code{output = "text"}. Evidence records keep the
+supplied \code{BF_value} and \code{BF_scale}; \code{BF_canonical_value} is
+the Bayes factor on the natural scale in the canonical orientation (\code{0}
+or \code{Inf} for a log-scale value beyond the double range). The text
+rendering classifies and prints a log-scale value from its logarithm, so
+such values keep their evidence strength and are printed as
+\code{exp(<log>)}. \code{interpret_tables} is a convenience wrapper around
+\code{interpret_records}.
 }
 \description{
 \code{interpret_records} normalizes interpretation inputs from

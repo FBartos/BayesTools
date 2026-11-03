@@ -1,0 +1,967 @@
+---
+title: "Random Effects with Formula Syntax"
+author: "František Bartoš"
+date: "29th of October 2026"
+output:
+  rmarkdown::html_vignette:
+    self_contained: yes
+bibliography: ../inst/REFERENCES.bib
+csl: ../inst/apa.csl
+vignette: >
+  %\VignetteIndexEntry{Random Effects with Formula Syntax}
+  %\VignetteEngine{knitr::rmarkdown_notangle}
+  %\VignetteEncoding{UTF-8}
+---
+
+
+```{r setup, include = FALSE}
+source("vignette-cache.R", local = knitr::knit_global())
+
+cached_fits <- vignette_cache(
+  name     = "RandomEffects",
+  objects  = c(
+    "brms_intercept", "fit_sleep_intercept", "brms_slope", "fit_sleep_slope",
+    "marglik_brms_intercept", "marglik_brms_slope", "marglik_sleep_intercept", "marglik_sleep_slope",
+    "fit_sleep_slope_spike", "brms_independent", "fit_sleep_independent",
+    "marglik_brms_independent", "marglik_sleep_independent", "fit_sleep_hcs",
+    "fit_sleep_hcs_test", "fit_nested", "fit_crossed_independent", "fit_crossed_allocation"
+  ),
+  packages = c("lme4", "brms", "runjags", "rjags")
+)
+
+options(width = 140)
+vignette_cache_setup(cached_fits)
+
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment  = "#>",
+  eval     = vignette_cache_eval(cached_fits),
+  dev      = "png"
+)
+if(.Platform$OS.type == "windows"){
+  knitr::opts_chunk$set(dev.args = list(type = "cairo"))
+}
+```
+
+```{css output-scroll, echo = FALSE}
+pre {
+  overflow-x: auto;
+  word-break: normal;
+  word-wrap: normal;
+}
+
+pre code {
+  white-space: pre;
+}
+```
+
+
+BayesTools can generate JAGS [@JAGS] mixed models directly from formulas with random-effect terms.
+Its random-coefficient syntax follows the conventions used by lme4 [@lme4], and `prior_random()` allows users to specify the corresponding prior distributions, e.g., random-effect standard deviation priors, correlation priors, variance-allocation priors.
+
+This vignette illustrates how to use the functionality on example datasets distributed with lme4.
+The first example uses the `sleepstudy` data and shows random intercepts, correlated and independent random slopes, and Bayes factor tests for the random slope and the correlation, comparing lme4, brms [@brms], and BayesTools.
+The second example continues with the `sleepstudy` data and shows a heterogeneous compound-symmetry covariance over the study days and a test of its correlation against a specific value.
+The third example uses the `Pastes` data and shows nested random intercepts.
+The fourth example uses the `Penicillin` data and shows crossed random effects with independent SD priors and a variance allocation prior.
+
+## Formula Semantics
+
+One major difference from standard R formulas is that BayesTools formulas keeps intercept control and factor contrasts separate.
+In a fixed effects formula, BayesTools' `0 + factor` or `factor - 1` fixes the intercept at zero but preserves the factor contrast specified by `prior_factor()`.
+For example, an independent factor prior creates one coefficient per factor level, while treatment and mean-difference priors retain their own contrast despite the same no-intercept formula.
+The reason behind this choice is that prior specification, i.e., factor contrast, should not change when other coefficients are modified.
+
+Random effects specification differs between two types of random structures:
+
+| Structure syntax | Left-side role | Marginal SDs | Correlation |
+|---|---|---|---|
+| Plain bar, `us()` / `un()` | coefficient formula | one per generated coefficient (one per mean-difference/orthonormal factor term) | unrestricted LKJ correlation matrix |
+| Double bar, `diag()` | coefficient formula | one per generated coefficient (one per mean-difference/orthonormal factor term) | independent |
+| `id()` | coefficient formula | one shared SD | independent |
+| `cs()` | one or more discrete indices | one shared SD | one common pairwise correlation |
+| `hcs()` | one or more discrete indices | one per index level | one common pairwise correlation |
+| `ar1()` / `ar()` | one discrete ordered index | one shared SD | AR(1), `cor^abs(i - j)` |
+| `har()` | one discrete ordered index | one per index level | AR(1), `cor^abs(i - j)` |
+| `car()` | one numeric-distance coordinate | one shared SD | continuous AR(1), `cor^abs(t_i - t_j)` |
+
+The first three structures operate on coefficient columns.
+Their `1`, `0`, and `-1` terms include or remove the random intercept, and their left side can contain continuous slopes, factor slopes, and interactions.
+A random factor reuses its already specified fixed effect contrast by default.
+Set `random_block(contrasts = c(factor_name = "contrast"))` when the random contrast should be explicit or differ from the fixed contrast.
+Therefore `us(0 + group | study)` with an independent block contrast means one correlated random coefficient per `group` level and no random intercept; `0 + group` by itself does not force by-group indicators (as standard R formula does).
+A mean-difference or orthonormal factor term is one exchangeable unit: its contrast columns are an arbitrary basis of the level deviations, so they share one SD, `sd(group)`, and are uncorrelated with each other.
+Under `us()` the unit keeps its correlations with the other coefficients, which are reported for each level, `cor(intercept, group[a])`, together with the multiple correlation `cor_total(intercept, group)`; a `us()` block may contain at most one such term with three or more levels.
+
+The structured CS/HCS and AR1/HAR families operate on discrete index levels instead.
+They reject `1`, `0`, `-1`, and block contrast overrides.
+They accept factor, character, numeric/integer, or logical columns.
+Existing factor level order is retained; otherwise sorted unique values define the levels and AR(1) order.
+CS/HCS can combine several indices with `+`; AR1/HAR require exactly one.
+CAR requires one finite numeric/integer coordinate, or an ordered factor with numeric labels, and uses actual distances.
+
+### Correlation prior distributions
+
+Correlation priors are completed only after the formula determines the structure and its dimension.
+An omitted US/UN correlation prior becomes `LKJ(1)`.
+An omitted scalar correlation prior is uniform over the complete admissible raw-correlation interval: `(-1 / (K - 1), 1)` for CS/HCS with K levels, `(-1, 1)` for AR1/HAR, and `(0, 1)` for CAR.
+The correlation priors are specified via `random_covariance(cor = ..., cor_scale = ...)`. 
+The default `cor_scale = "fisher_z"` places the prior on Fisher's z; `"cor"` places it on the raw correlation and `"logit"` first rescales the correlation from its admissible interval to (0, 1) and then applies the logit transformation.
+
+### Standard deviation prior distributions
+
+Random-effect SD priors have no default and must always be supplied, either once for all blocks in `prior_random(sd = ...)` or per block in `random_block(sd = ...)`.
+
+```{r packages, message = FALSE, warning = FALSE, results = "hide"}
+suppressPackageStartupMessages({
+  library(BayesTools)
+  library(lme4)
+})
+```
+
+
+
+```{r comparison-helpers, include = FALSE}
+compare_sleep_estimates <- function(bayes_model, brms_model = NULL, lme4_model = NULL,
+                                    transform_scaled = FALSE) {
+
+  bayes_samples <- JAGS_estimates_table(
+    bayes_model, transform_scaled = transform_scaled, random_effects_summary = "standard",
+    remove_diagnostics = TRUE, return_samples = TRUE
+  )
+  bayes_names <- c(
+    "intercept"           = "(mu) intercept",
+    "Days"                = "(mu) Days",
+    "sigma"               = "sigma",
+    "sd(intercept)"       = "(mu) sd(intercept)",
+    "sd(Days)"            = "(mu) sd(Days)",
+    "cor(intercept,Days)" = "(mu) cor(intercept,Days)"
+  )
+  bayes_names <- bayes_names[bayes_names %in% colnames(bayes_samples)]
+  comparison  <- data.frame(parameter = names(bayes_names), row.names = NULL)
+
+  # `||` splits the lme4 random effects into one block per term; only `|` has a correlation.
+  if (!is.null(lme4_model)) {
+    lme4_vc  <- lme4::VarCorr(lme4_model)
+    lme4_cor <- attr(lme4_vc[["Subject"]], "correlation")
+    comparison$lme4 <- c(
+      lme4::fixef(lme4_model), stats::sigma(lme4_model),
+      unlist(lapply(lme4_vc, attr, "stddev")), if (ncol(lme4_cor) == 2) lme4_cor[1, 2]
+    )
+  }
+  if (!is.null(brms_model)) {
+    brms_names <- c(
+      "intercept"           = "b_Intercept",
+      "Days"                = "b_Days_s",
+      "sigma"               = "sigma",
+      "sd(intercept)"       = "sd_Subject__Intercept",
+      "sd(Days)"            = "sd_Subject__Days_s",
+      "cor(intercept,Days)" = "cor_Subject__Intercept__Days_s"
+    )
+    brms_samples <- as.matrix(brms_model, variable = unname(brms_names[names(bayes_names)]))
+    comparison$brms <- colMeans(brms_samples)
+  }
+  comparison$BayesTools <- colMeans(bayes_samples[, bayes_names, drop = FALSE])
+
+  comparison[, -1] <- round(comparison[, -1], 3)
+  comparison
+}
+
+compare_crossed_estimates <- function(lme4_model, bayes_independent, bayes_allocation) {
+
+  lme4_vc <- lme4::VarCorr(lme4_model)
+  lme4_fixed <- lme4::fixef(lme4_model)
+  lme4_estimates <- c(
+    "intercept"            = lme4_fixed[["(Intercept)"]],
+    "sigma"                = stats::sigma(lme4_model),
+    "plate: sd(intercept)"  = attr(lme4_vc[["plate"]], "stddev")[["(Intercept)"]],
+    "sample: sd(intercept)" = attr(lme4_vc[["sample"]], "stddev")[["(Intercept)"]]
+  )
+
+  bayes_estimates <- function(model) {
+    samples <- JAGS_estimates_table(
+      model, random_effects_summary = "full", remove_diagnostics = TRUE, return_samples = TRUE
+    )
+    c(
+      "intercept"            = mean(samples[, "(mu) intercept"]),
+      "sigma"                = mean(samples[, "sigma"]),
+      "plate: sd(intercept)"  = mean(samples[, "(mu) plate: sd(intercept)"]),
+      "sample: sd(intercept)" = mean(samples[, "(mu) sample: sd(intercept)"])
+    )
+  }
+
+  comparison <- data.frame(
+    parameter = names(lme4_estimates), lme4 = as.numeric(lme4_estimates),
+    BayesTools_independent = as.numeric(bayes_estimates(bayes_independent)),
+    BayesTools_allocation = as.numeric(bayes_estimates(bayes_allocation))
+  )
+  comparison[, -1] <- round(comparison[, -1], 3)
+  comparison
+}
+
+compare_nested_estimates <- function(lme4_model, bayes_model) {
+
+  lme4_vc <- lme4::VarCorr(lme4_model)
+  nested_group <- setdiff(names(lme4_vc), "batch")[1]
+  lme4_sd_batch <- attr(lme4_vc[["batch"]], "stddev")[["(Intercept)"]]
+  lme4_sd_nested <- attr(lme4_vc[[nested_group]], "stddev")[["(Intercept)"]]
+  lme4_total_variance <- lme4_sd_batch^2 + lme4_sd_nested^2
+  lme4_fixed <- lme4::fixef(lme4_model)
+  lme4_estimates <- c(
+    "intercept"                  = lme4_fixed[["(Intercept)"]],
+    "sigma"                      = stats::sigma(lme4_model),
+    "batch: sd(intercept)"        = lme4_sd_batch,
+    "cask_batch: sd(intercept)"   = lme4_sd_nested,
+    "nested_re: sd_total"         = sqrt(lme4_total_variance),
+    "nested_re: var_prop(batch)"  = lme4_sd_batch^2 / lme4_total_variance,
+    "nested_re: var_prop(cask)"   = lme4_sd_nested^2 / lme4_total_variance
+  )
+
+  bayes_samples <- JAGS_estimates_table(
+    bayes_model, random_effects_summary = "full",
+    remove_diagnostics = TRUE, return_samples = TRUE
+  )
+  bayes_estimates <- c(
+    "intercept"                  = mean(bayes_samples[, "(mu) intercept"]),
+    "sigma"                      = mean(bayes_samples[, "sigma"]),
+    "batch: sd(intercept)" = mean(bayes_samples[, "(mu) batch: sd(intercept)"]),
+    "cask_batch: sd(intercept)" = mean(
+      bayes_samples[, "(mu) cask_batch: sd(intercept)"]
+    ),
+    "nested_re: sd_total" = mean(
+      bayes_samples[, "(mu) nested_re: sd_total"]
+    ),
+    "nested_re: var_prop(batch)" = mean(
+      bayes_samples[, "(mu) nested_re: var_prop(batch)"]
+    ),
+    "nested_re: var_prop(cask)" = mean(
+      bayes_samples[, "(mu) nested_re: var_prop(cask)"]
+    )
+  )
+
+  comparison <- data.frame(
+    parameter = names(lme4_estimates), lme4 = as.numeric(lme4_estimates),
+    BayesTools = as.numeric(bayes_estimates)
+  )
+  comparison[, -1] <- round(comparison[, -1], 3)
+  comparison
+}
+
+compare_structured_estimates <- function(lme4_model, bayes_model) {
+
+  lme4_vc  <- as.matrix(lme4::VarCorr(lme4_model)[["Subject"]])
+  lme4_cor <- stats::cov2cor(lme4_vc)
+  bayes_samples <- JAGS_estimates_table(
+    bayes_model, transform_scaled = FALSE, random_effects_summary = "standard",
+    remove_diagnostics = TRUE, return_samples = TRUE
+  )
+
+  sd_names <- paste0("sd(Days_f[", sub("^Days_f", "", rownames(lme4_vc)), "])")
+  lme4_sd  <- sqrt(diag(lme4_vc))
+  bayes_sd <- colMeans(bayes_samples[, paste0("(mu) ", sd_names), drop = FALSE])
+
+  lme4_fixed <- lme4::fixef(lme4_model)
+  comparison <- data.frame(
+    parameter  = c("intercept", "Days", "sigma", sd_names, "cor"),
+    lme4       = c(lme4_fixed[["(Intercept)"]], lme4_fixed[["Days_s"]], stats::sigma(lme4_model),
+                   lme4_sd, lme4_cor[2, 1]),
+    BayesTools = c(mean(bayes_samples[, "(mu) intercept"]), mean(bayes_samples[, "(mu) Days"]),
+                   mean(bayes_samples[, "sigma"]), bayes_sd, mean(bayes_samples[, "(mu) cor"])),
+    row.names  = NULL
+  )
+  comparison[, -1] <- round(comparison[, -1], 3)
+  comparison
+}
+```
+
+
+## Random Intercepts and Slopes
+
+The `sleepstudy` data contain reaction times of 18 subjects measured over ten days of sleep deprivation.
+We illustrate BayesTools features in a few simple steps: 1) we specify a random intercept model, 2) extend the model with random slope, 3) compare the models using a Bayes factor, 4) specify a model without the random intercept-slope correlation, and 5) test for presence vs. absence of the correlation via a Bayes factor.
+For comparison we fit corresponding models with lme4 [@lme4] and brms [@brms].
+
+We standardize the response and the predictor to simplify prior specification for the example.
+This allows us to use standard normal priors for the centered intercept and the standardized effect of `Days`, half-normal prior for the residual SD using the scaled outcome, a half-normal prior for random-effect SD, and an LKJ(1) prior for the correlation between the random intercept and slope.
+For brms and lme4 we use the explicitly standardized variables defined below, BayesTools allows us to standardize the predictor directly in the model fitting interface.
+
+```{r}
+data("sleepstudy", package = "lme4")
+sleepstudy$Subject    <- factor(sleepstudy$Subject)
+sleepstudy$Reaction_z <- as.numeric(scale(sleepstudy$Reaction))
+sleepstudy$Days_s     <- as.numeric(scale(sleepstudy$Days))
+head(sleepstudy)
+```
+
+### Random Intercepts
+
+In lme4, a random intercept model is specified using the `(1 | Subject)` syntax in the `lme4::lmer` function.
+
+```{r}
+lme4_intercept <- lme4::lmer(
+  Reaction_z ~ Days_s + (1 | Subject),
+  data = sleepstudy, REML = FALSE
+)
+```
+```{r}
+lme4_intercept
+```
+
+brms uses the same syntax.
+Here we explicitly specify prior distributions for the individual parameters.
+We call `brms::prior()` with its namespace because BayesTools also exports `prior()` function.
+
+```{r}
+brms_priors <- c(
+  brms::prior(normal(0, 1), class = Intercept), # intercept
+  brms::prior(normal(0, 1), class = b),         # Days_s coefficient
+  brms::prior(normal(0, 1), class = sigma),     # residual sd
+  brms::prior(normal(0, 1), class = sd)         # random intercept sd
+)
+```
+
+brms bounds SDs at zero, so the normal priors on `sigma` and `sd` become half-normal priors.
+The model is estimated via `brms::brm` function and `save_pars` allows us to retain all parameters for bridge sampling used later.
+
+```{r fit-brms-intercept, cache_fits = "brms_intercept"}
+brms_intercept <- brms::brm(
+  Reaction_z ~ Days_s + (1 | Subject),
+  data = sleepstudy, prior = brms_priors, save_pars = brms::save_pars(all = TRUE),
+  chains = 2, iter = 3000, warmup = 1000, seed = 1, refresh = 0, silent = 2
+)
+```
+```{r}
+brms_intercept
+```
+
+BayesTools first requires separate specification of the JAGS likelihood and the directly supplied variables (`Reaction_z` and `N`).
+
+```{r}
+sleep_likelihood <-
+"model{
+  for(i in 1:N){
+    Reaction_z[i] ~ dnorm(mu[i], pow(sigma, -2))
+  }
+}
+"
+sleep_data <- list(Reaction_z = sleepstudy$Reaction_z, N = nrow(sleepstudy))
+```
+
+The `mu` parameter is specified via a formula that becomes assigned to fitting function's `formula_list` argument later (`sigma` parameter is specified directly in the `prior_list` of the same function).
+
+```{r}
+sleep_formula_list <- list(mu = ~ Days + (1 | Subject))
+```
+
+The BayesTools formula interface requires specifying prior distributions for the fixed and random effects parameters separately. 
+Prior distributions for the fixed effect intercept and predictor enter the fitting function via `formula_prior_list` argument, here specified in the named `sleep_fixed_priors` list.
+Prior distributions for the random effects intercept enter the fitting function via `formula_random_prior_list` argument, here specified in the named `sleep_sd_priors` list using the `prior_random` function.
+`prior_random()` assigns priors per random-effect block which takes its name from the grouping variable `Subject`.
+
+```{r}
+unit_prior    <- prior(distribution = "normal", parameters = list(mean = 0, sd = 1))
+unit_sd_prior <- prior(distribution = "normal", parameters = list(mean = 0, sd = 1), truncation = list(0, Inf))
+
+sleep_prior_list   <- list(sigma = unit_sd_prior)
+sleep_fixed_priors <- list(mu = list(intercept = unit_prior, Days = unit_prior))
+sleep_sd_priors    <- list(mu = prior_random(Subject = random_block(sd = unit_sd_prior)))
+```
+
+The model is estimated via `JAGS_fit` function. 
+`formula_scale_list` standardizes Days predictor before fitting, so the Days prior refers to the same standardized effect as Days_s in lme4 and brms (but allows us to obtain non-standardized effect later).
+
+```{r fit-sleep-intercept, cache_fits = "fit_sleep_intercept"}
+fit_sleep_intercept <- JAGS_fit(
+  model_syntax = sleep_likelihood, data = sleep_data, prior_list = sleep_prior_list,
+  formula_list = sleep_formula_list, formula_data_list = list(mu = sleepstudy),
+  formula_prior_list = sleep_fixed_priors, formula_random_prior_list = sleep_sd_priors,
+  formula_scale_list = list(mu = list(Days = TRUE)),
+  chains = 2, adapt = 1000, burnin = 1000, sample = 5000, seed = 1
+)
+```
+```{r}
+JAGS_estimates_table(fit_sleep_intercept)
+```
+
+Table below shows close agreement in the parameter estimates from all three packages.
+The lme4 maximum likelihood estimates of the random-effect SD slightly differs from the Bayesian approaches because their posterior distributions are wide and skewed with only 18 subjects.
+
+```{r}
+compare_sleep_estimates(bayes_model = fit_sleep_intercept, brms_model = brms_intercept, lme4_model = lme4_intercept)
+```
+
+### Random Slopes
+
+In lme4, adding `Days_s` to the left side of the random-effect term, `(1 + Days_s | Subject)`, gives each subject its own `Days_s` effect.
+The single bar `|` also estimates the correlation between the random intercepts and slopes.
+
+```{r}
+lme4_slope <- lme4::lmer(
+  Reaction_z ~ Days_s + (1 + Days_s | Subject),
+  data = sleepstudy, REML = FALSE
+)
+```
+```{r}
+lme4_slope
+```
+
+brms uses the same syntax.
+The `sd` prior now applies to both random-effect SDs (`brms::prior(..., class = sd, coef = Days_s)` would set a separate prior for the `Days_s` SD), and we add a prior distribution for the correlation.
+
+```{r}
+brms_slope_priors <- c(
+  brms_priors,
+  brms::prior(lkj(1), class = cor)              # random intercept-slope correlation
+)
+```
+
+```{r fit-brms-slope, cache_fits = "brms_slope"}
+brms_slope <- brms::brm(
+  Reaction_z ~ Days_s + (1 + Days_s | Subject),
+  data = sleepstudy, prior = brms_slope_priors, save_pars = brms::save_pars(all = TRUE),
+  chains = 2, iter = 3000, warmup = 1000, seed = 1, refresh = 0, silent = 2
+)
+```
+```{r}
+brms_slope
+```
+
+BayesTools uses the same random-effect term in the `mu` formula.
+The likelihood, the data, and the prior distributions for `sigma` and the fixed effects remain unchanged.
+
+```{r}
+sleep_slope_formula_list <- list(mu = ~ Days + (1 + Days | Subject))
+```
+
+The `random_block()` function adds the correlation prior next to the SD prior.
+The SD prior applies to both random-effect SDs unless the `terms` argument overrides it for a specific term; for example, `terms = list(Days = ...)` sets a separate prior for the `Days` SD, which we use for a hypothesis test via a spike-and-slab prior later.
+
+```{r}
+sleep_slope_priors <- list(mu = prior_random(Subject = random_block(
+  sd  = unit_sd_prior, 
+  cor = prior_lkj(eta = 1)
+)))
+```
+
+```{r fit-sleep-slope, cache_fits = "fit_sleep_slope"}
+fit_sleep_slope <- JAGS_fit(
+  model_syntax = sleep_likelihood, data = sleep_data, prior_list = sleep_prior_list,
+  formula_list = sleep_slope_formula_list, formula_data_list = list(mu = sleepstudy),
+  formula_prior_list = sleep_fixed_priors, formula_random_prior_list = sleep_slope_priors,
+  formula_scale_list = list(mu = list(Days = TRUE)),
+  chains = 2, adapt = 1000, burnin = 1000, sample = 5000, seed = 1
+)
+```
+```{r}
+JAGS_estimates_table(fit_sleep_slope)
+```
+
+Table below again shows close agreement between the brms and BayesTools posterior means.
+
+```{r}
+compare_sleep_estimates(bayes_model = fit_sleep_slope, brms_model = brms_slope, lme4_model = lme4_slope)
+```
+
+Because `formula_scale_list` standardized `Days` inside BayesTools, `transform_scaled = TRUE` reports the estimates on the original `Days` scale.
+We compare them with lme4 fitted to the original `Days`.
+The intercept, its SD, and the correlation then refer to the first day rather than the mean day, while the prior distributions still act on the standardized scale.
+
+```{r}
+lme4_slope_days <- lme4::lmer(
+  Reaction_z ~ Days + (1 + Days | Subject),
+  data = sleepstudy, REML = FALSE
+)
+compare_sleep_estimates(bayes_model = fit_sleep_slope, lme4_model = lme4_slope_days, transform_scaled = TRUE)
+```
+
+### Testing the Random Slope
+
+We can also test whether subjects differ in how their reaction times change over the days.
+This can be done by using a Bayes factor to compare the random-slope model with the random-intercept model.
+In brms we can obtain Bayes factors via bridge sampling [@bridgesampling] to compare the two model fits. 
+In BayesTools we can also use product-space approach [@lodewyckx2011tutorial] and obtain the Bayes factor from posterior samples by using a spike-and-slab prior distribution.
+While the product-space approach is less precise, it allows us to scale up the inference to examine multiple predictors simultaneously and automatically returns Bayesian model-averaged estimates.
+
+First, we obtain the Bayes factor via bridge sampling for both packages.
+brms models are passed directly to the `brms::bridge_sampler` function.
+
+```{r bridge-brms, cache_fits = c("marglik_brms_intercept", "marglik_brms_slope")}
+marglik_brms_intercept <- brms::bridge_sampler(brms_intercept, silent = TRUE)
+marglik_brms_slope     <- brms::bridge_sampler(brms_slope, silent = TRUE)
+```
+
+BayesTools models are passed to the `JAGS_bridgesampling` function, which additionally requires the log-likelihood of the data as a function of the parameters.
+BayesTools automatically prepares the parameters (`mu` and `sigma`) and evaluates the prior densities.
+
+```{r}
+log_posterior <- function(parameters, data){
+  sum(dnorm(
+    x    = data[["Reaction_z"]],
+    mean = parameters[["mu"]],
+    sd   = parameters[["sigma"]],
+    log  = TRUE
+  ))
+}
+```
+
+```{r bridge-sleep, cache_fits = c("marglik_sleep_intercept", "marglik_sleep_slope")}
+marglik_sleep_intercept <- JAGS_bridgesampling(
+  fit_sleep_intercept, log_posterior = log_posterior, data = sleep_data,
+  prior_list = sleep_prior_list, seed = 1)
+marglik_sleep_slope <- JAGS_bridgesampling(
+  fit_sleep_slope, log_posterior = log_posterior, data = sleep_data,
+  prior_list = sleep_prior_list, seed = 1)
+```
+
+Table below shows the log Bayes factors from both packages, which agree up to the bridge sampling error and show extreme evidence for the presence of the random slope.
+
+```{r}
+log_BF <- function(marglik_1, marglik_0) bridgesampling::bf(marglik_1, marglik_0, log = TRUE)$bf
+
+data.frame(
+  method = c("brms, bridge sampling", "BayesTools, bridge sampling"),
+  log_BF = c(log_BF(marglik_brms_slope,  marglik_brms_intercept),
+             log_BF(marglik_sleep_slope, marglik_sleep_intercept))
+)
+```
+
+Second, BayesTools allows us to obtain the Bayes factor using a spike-and-slab prior [@kuo1998variable] within a single model fit.
+An inclusion indicator switches the `Days` SD between zero (the spike) and the half-normal prior (the slab); with the SD at zero, the model reduces to the random-intercept model.
+The `terms` argument assigns a prior to each SD of the block: the half-normal prior to the intercept SD and the spike-and-slab prior to the `Days` SD.
+Because `terms` covers both SDs, the block needs no `sd` argument.
+`random_monitor(latent = FALSE)` reduces the size of the stored fit by omitting the subject-level random effects samples.
+
+```{r}
+sleep_spike_priors <- list(
+  mu = prior_random(
+    Subject = random_block(
+      cor   = prior_lkj(eta = 1),
+      terms = list(
+        intercept = unit_sd_prior,
+        Days      = prior_spike_and_slab(prior_parameter = unit_sd_prior)
+      ),
+      monitor = random_monitor(latent = FALSE)
+    )
+  )
+)
+```
+
+```{r fit-sleep-slope-spike, cache_fits = "fit_sleep_slope_spike"}
+fit_sleep_slope_spike <- JAGS_fit(
+  model_syntax = sleep_likelihood, data = sleep_data, prior_list = sleep_prior_list,
+  formula_list = sleep_slope_formula_list, formula_data_list = list(mu = sleepstudy),
+  formula_prior_list = sleep_fixed_priors, formula_random_prior_list = sleep_spike_priors,
+  formula_scale_list = list(mu = list(Days = TRUE)),
+  chains = 2, adapt = 1000, burnin = 1000, sample = 5000, seed = 1
+)
+```
+
+The `JAGS_inference_table` function summarizes the inclusion of the random slope.
+
+```{r}
+JAGS_inference_table(fit_sleep_slope_spike)
+```
+
+All posterior draws include the random slope, so the inclusion Bayes factor is bounded by the number of draws.
+The spike-and-slab prior agrees with conclusions from bridge sampling (extreme evidence), but it cannot precisely quantify such large Bayes factors.
+
+### Removing the Random Intercept-Slope Correlation
+
+In lme4, the double bar `||` removes the correlation between the random intercepts and slopes.
+
+```{r}
+lme4_independent <- lme4::lmer(
+  Reaction_z ~ Days_s + (1 + Days_s || Subject),
+  data = sleepstudy, REML = FALSE
+)
+```
+```{r}
+lme4_independent
+```
+
+brms uses the same syntax.
+Without the correlation, the prior distributions from the random-intercept model suffice; the `sd` prior applies to both random-effect SDs.
+
+```{r fit-brms-independent, cache_fits = "brms_independent"}
+brms_independent <- brms::brm(
+  Reaction_z ~ Days_s + (1 + Days_s || Subject),
+  data = sleepstudy, prior = brms_priors, save_pars = brms::save_pars(all = TRUE),
+  chains = 2, iter = 3000, warmup = 1000, seed = 1, refresh = 0, silent = 2
+)
+```
+```{r}
+brms_independent
+```
+
+BayesTools uses the same double bar (or the equivalent `diag()` covariance tag) in the `mu` formula.
+The random-effect prior distributions from the random-intercept model, `sleep_sd_priors`, again suffice.
+
+```{r}
+sleep_independent_formula_list <- list(mu = ~ Days + (1 + Days || Subject))
+```
+
+```{r fit-sleep-independent, cache_fits = "fit_sleep_independent"}
+fit_sleep_independent <- JAGS_fit(
+  model_syntax = sleep_likelihood, data = sleep_data, prior_list = sleep_prior_list,
+  formula_list = sleep_independent_formula_list, formula_data_list = list(mu = sleepstudy),
+  formula_prior_list = sleep_fixed_priors, formula_random_prior_list = sleep_sd_priors,
+  formula_scale_list = list(mu = list(Days = TRUE)),
+  chains = 2, adapt = 1000, burnin = 1000, sample = 5000, seed = 1
+)
+```
+```{r}
+JAGS_estimates_table(fit_sleep_independent)
+```
+
+Table below shows close agreement in the parameter estimates from all three packages.
+
+```{r}
+compare_sleep_estimates(bayes_model = fit_sleep_independent, brms_model = brms_independent, lme4_model = lme4_independent)
+```
+
+### Testing the Correlation
+
+The Bayes factor comparing the correlated and the independent random-slope models tests the correlation.
+Because `Days` is standardized, the correlation refers to the random intercept at the mean day.
+BayesTools does not provide a spike-and-slab prior for LKJ correlations, so we use bridge sampling only (later example shows how to test scalar correlations).
+
+```{r bridge-correlation, cache_fits = c("marglik_brms_independent", "marglik_sleep_independent")}
+marglik_brms_independent  <- brms::bridge_sampler(brms_independent, silent = TRUE)
+marglik_sleep_independent <- JAGS_bridgesampling(
+  fit_sleep_independent, log_posterior = log_posterior, data = sleep_data,
+  prior_list = sleep_prior_list, seed = 1)
+```
+
+Table below shows the Bayes factors from both packages, which agree up to the bridge sampling error and show strong evidence for the correlation.
+
+```{r}
+data.frame(
+  method = c("brms", "BayesTools"),
+  BF = c(bridgesampling::bf(marglik_brms_slope,  marglik_brms_independent)$bf,
+         bridgesampling::bf(marglik_sleep_slope, marglik_sleep_independent)$bf)
+)
+```
+
+
+## Structured Random-Effect Correlations
+
+The random intercept and slope model implies a specific covariance between a subject's measurements on different days: subjects differ in their level and in a linear trend, so the SD of their deviations changes over the days.
+Structured covariances model the covariance between days directly, without assuming that each subject follows a straight line.
+They use the levels of a discrete index instead of coefficient columns: in addition to the fixed `Days` slope, each subject receives one random effect per day, and the covariance structure determines how these day-specific effects are correlated.
+A random intercept alone corresponds to compound symmetry, in which all pairs of days share one correlation and all days one SD.
+Heterogeneous compound symmetry (HCS) keeps the common correlation but estimates a separate SD for each day.
+We fit the HCS model, compare its day-specific SDs with those implied by the random-slope model, and test whether its correlation equals a specific value.
+
+```{r}
+sleepstudy$Days_f <- factor(sleepstudy$Days)
+```
+
+### Heterogeneous Compound Symmetry
+
+In lme4, the `cs()` term allows us to specify a compound-symmetry covariance.
+It estimates a separate SD for each column by default when using the  `0 + Days_f` model-matrix notation
+
+```{r}
+lme4_hcs <- lme4::lmer(
+  Reaction_z ~ Days_s + cs(0 + Days_f | Subject),
+  data = sleepstudy, REML = FALSE
+)
+lme4_hcs
+```
+
+BayesTools uses an explicit `hcs()` term in the `mu` formula.
+The left side automatically expands the factor into one column per level (the `0 +` notation does not apply here).
+The likelihood, the data, and the prior distributions for `sigma` and the fixed effects remain unchanged from the previous example.
+
+```{r}
+sleep_hcs_formula_list <- list(mu = ~ Days + hcs(Days_f | Subject))
+```
+
+The `random_block()` function sets the SD prior which applies to every day-specific SD independently.
+Without a `cor` argument, the correlation receives the default uniform prior over its admissible interval, (-1/9, 1) for an HCS correlation with 10 days.
+`random_monitor()` allows us to stores only the correlation posterior samples.
+
+```{r}
+day_random_priors <- list(mu = prior_random(Subject = random_block(
+  sd      = unit_sd_prior,
+  monitor = random_monitor(latent = FALSE, coefficients = FALSE, correlation = TRUE)
+)))
+```
+
+```{r fit-sleep-hcs, cache_fits = "fit_sleep_hcs"}
+fit_sleep_hcs <- JAGS_fit(
+  model_syntax = sleep_likelihood, data = sleep_data, prior_list = sleep_prior_list,
+  formula_list = sleep_hcs_formula_list, formula_data_list = list(mu = sleepstudy),
+  formula_prior_list = sleep_fixed_priors, formula_random_prior_list = day_random_priors,
+  formula_scale_list = list(mu = list(Days = TRUE)),
+  chains = 2, adapt = 1000, burnin = 2000, sample = 5000, seed = 31
+)
+```
+```{r}
+JAGS_estimates_table(fit_sleep_hcs)
+```
+
+Table below compares the estimates with the lme4 `cs()` fit.
+
+```{r}
+compare_structured_estimates(lme4_model = lme4_hcs, bayes_model = fit_sleep_hcs)
+```
+
+The day-specific SDs generally increase over the study, implying similar pattern to the one modeled by the random-slope model previously.
+HCS recovers the increase without assuming a linear trend per subject, and its day-specific SDs also capture departures from the smooth pattern implied by the random-slope model, such as the smaller SD on day 7.
+
+### Testing the Correlation
+
+The structured covariance constructions allow us to also test the correlation value using a Savage-Dickey density ratio  [@wagenmakers2010bayesian] and the product-space approach.
+Since the day-specific random effects are so strongly correlated that all posterior draws of such a test would include the correlation (as in the random-slope test), we test whether the HCS correlation equals 0.9 (against a hypothesis with a uniform prior over the admissible range).
+
+First, the Savage-Dickey density ratio allows us to obtains the Bayes factor directly from the fitted HCS model: it divides the posterior density of the correlation at 0.9 by its prior density.
+
+```{r}
+hypothesis_BF(fit_sleep_hcs, hypothesis = "(mu) cor = 0.9", BF01 = TRUE, seed = 1)
+```
+
+Second, a mixture prior places half of the prior probability on a correlation of 0.9 (the spike) and half on the same uniform distribution (the slab) and tests the hypothesis within a single fit using the product space approach.
+`random_covariance(cor_scale = "cor")` specifies that the correlation prior is on the raw correlation scale.
+
+```{r}
+cor_test_prior <- prior_mixture(
+  prior_list = list(
+    prior(distribution = "spike",   parameters = list(location = 0.9)),
+    prior(distribution = "uniform", parameters = list(a = -1/9, b = 1))
+  ),is_null = c(TRUE, FALSE)
+)
+day_test_priors <- list(mu = prior_random(Subject = random_block(
+  sd         = unit_sd_prior,
+  covariance = random_covariance(cor = cor_test_prior, cor_scale = "cor"),
+  monitor    = random_monitor(latent = FALSE, coefficients = FALSE, correlation = TRUE)
+)))
+```
+
+```{r fit-sleep-hcs-test, cache_fits = "fit_sleep_hcs_test"}
+fit_sleep_hcs_test <- JAGS_fit(
+  model_syntax = sleep_likelihood, data = sleep_data, prior_list = sleep_prior_list,
+  formula_list = sleep_hcs_formula_list, formula_data_list = list(mu = sleepstudy),
+  formula_prior_list = sleep_fixed_priors, formula_random_prior_list = day_test_priors,
+  formula_scale_list = list(mu = list(Days = TRUE)),
+  chains = 2, adapt = 1000, burnin = 2000, sample = 5000, seed = 31
+)
+```
+
+The `JAGS_inference_table` function compares the slab with the spike, so an inclusion Bayes factor below 1 favors a correlation of 0.9.
+
+```{r}
+JAGS_inference_table(fit_sleep_hcs_test)
+```
+
+Both approaches come to a similar conclusion.
+The data favor a correlation of 0.9 over the uniform alternative by a Bayes factor of about 5.
+The Savage-Dickey ratio reuses the estimated model but relies on a density estimate at the tested value; the mixture prior needs a separate fit but again allows us to extend the approach to testing several parameters at once.
+
+
+## Nested Random Effects
+
+The `Pastes` data contain the strength of a chemical paste measured twice in each of three casks from each of ten delivery batches (60 measurements).
+The casks are nested within the batches, so a cask's random effect has to be defined within its batch.
+We again standardize the response so the unit-scale priors from the previous examples apply.
+
+```{r}
+data("Pastes", package = "lme4")
+Pastes$strength_z <- as.numeric(scale(Pastes$strength))
+head(Pastes)
+```
+
+In lme4, the slash notation `(1 | batch/cask)` expands to `(1 | batch) + (1 | batch:cask)`: one random intercept for each batch and one for each cask within its batch.
+
+```{r}
+lme4_nested <- lme4::lmer(
+  strength_z ~ 1 + (1 | batch/cask),
+  data = Pastes, REML = FALSE
+)
+lme4::VarCorr(lme4_nested)
+```
+
+BayesTools accepts the same slash notation and creates one random-effect block per nesting level, named `batch` and `cask_batch`.
+The likelihood, the data, and the intercept prior follow the previous examples, with `strength_z` as the response.
+
+```{r}
+nested_likelihood <-
+"model{
+  for(i in 1:N){
+    strength_z[i] ~ dnorm(mu[i], pow(sigma, -2))
+  }
+}
+"
+
+nested_formula <- list(
+  mu = ~ 1 + (1 | batch/cask)
+)
+
+nested_data <- list(strength_z = Pastes$strength_z, N = nrow(Pastes))
+nested_fixed_priors <- list(intercept = unit_prior)
+```
+
+Instead of separate SD priors for the two blocks, we specify a variance allocation prior with `random_variance_allocation()`.
+It places one prior on the total random-effect SD, `sd_total` and a Dirichlet prior on the proportions of the total variance assigned to each block, `var_prop`.
+With `alpha = c(1, 1)`, every split between the batch and cask levels is equally likely a priori.
+This is convenient when the overall amount of heterogeneity is easier to anticipate than its split between the levels, and the prior distribution on the total SD stays the same however many blocks share it.
+
+`name = "nested_re"` labels the allocation and prefixes its rows `(nested_re: sd_total)`. 
+`terms` lists the random-effect blocks it scales: the values `"batch"` and `"cask_batch"` are the blocks generated by `(1 | batch/cask)`, and the names `batch` and `cask` label the components in the output (`var_prop(batch)`, `var_prop(cask)`).
+Other specifications are possible: independent SD priors for each block, `prior_random(batch = random_block(sd = ...), cask_batch = random_block(sd = ...))`, as shown for crossed random effects below.
+
+With only ten batches, the intercept and the batch effects are strongly correlated a posteriori, which slows down the default (noncentered) sampler.
+`random_block(parameterization = "mean_centered")` samples the batch effects around the fixed intercept instead, which removes this correlation without changing the model or its priors.
+The block takes its SD from the allocation, so it needs no `sd` prior.
+
+```{r}
+nested_allocation_priors <- list(
+  mu = prior_random(
+    batch      = random_block(parameterization = "mean_centered"),
+    allocation = random_variance_allocation(
+      name    = "nested_re",
+      terms   = c(batch = "batch", cask = "cask_batch"),
+      sd      = unit_sd_prior,
+      weights = prior("dirichlet", parameters = list(alpha = c(1, 1)))
+    ),
+    monitor = random_monitor(latent = FALSE, coefficients = FALSE, correlation = FALSE)
+  )
+)
+```
+
+```{r fit-nested, cache_fits = "fit_nested"}
+fit_nested <- JAGS_fit(
+  model_syntax = nested_likelihood, data = nested_data, prior_list = list(sigma = unit_sd_prior),
+  formula_list = nested_formula, formula_data_list = list(mu = Pastes),
+  formula_prior_list = list(mu = nested_fixed_priors),
+  formula_random_prior_list = nested_allocation_priors,
+  chains = 4, adapt = 1000, burnin = 1000, sample = 4000, seed = 41
+)
+```
+
+```{r}
+JAGS_estimates_table(fit_nested, random_effects_summary = "standard")
+```
+
+The nested lme4 and BayesTools estimates are compared in the table below.
+
+```{r}
+compare_nested_estimates(lme4_model = lme4_nested, bayes_model = fit_nested)
+```
+
+
+## Crossed Random Effects
+
+The `Penicillin` data contain the diameter of the growth-inhibition zone of six penicillin samples, each tested once on each of 24 agar plates (144 measurements).
+Every sample appears on every plate, so the plate and sample effects are crossed: a measurement shares its plate with the other five samples and its sample with the other 23 plates.
+We again standardize the response so the unit-scale priors from the previous examples apply.
+
+```{r}
+data("Penicillin", package = "lme4")
+Penicillin$diameter_z <- as.numeric(scale(Penicillin$diameter))
+head(Penicillin)
+```
+
+In lme4, crossed random effects are separate terms, `(1 | plate) + (1 | sample)`: one random intercept for each plate and one for each sample.
+
+```{r}
+lme4_crossed <- lme4::lmer(
+  diameter_z ~ 1 + (1 | plate) + (1 | sample),
+  data = Penicillin, REML = FALSE
+)
+lme4::VarCorr(lme4_crossed)
+```
+
+BayesTools uses the same formula; the two random-effect blocks take the names of their grouping variables, `plate` and `sample`, which the priors below refer to.
+The likelihood, the data, and the intercept prior follow the previous examples, with `diameter_z` as the response.
+
+```{r}
+crossed_likelihood <-
+"model{
+  for(i in 1:N){
+    diameter_z[i] ~ dnorm(mu[i], pow(sigma, -2))
+  }
+}
+"
+
+crossed_formula <- list(mu = ~ 1 + (1 | plate) + (1 | sample))
+crossed_data    <- list(diameter_z = Penicillin$diameter_z, N = nrow(Penicillin))
+crossed_fixed_priors <- list(intercept = unit_prior)
+```
+
+### Independent SD Priors
+
+The most direct specification gives each block its own half-normal SD prior through `random_block()`, addressed by the block names from the formula.
+As in the nested example, the `sample` block is mean-centered: its six effects are strongly correlated with the intercept a posteriori.
+
+```{r}
+crossed_independent_priors <- list(
+  mu = prior_random(
+    plate  = random_block(sd = unit_sd_prior, monitor = random_monitor(latent = FALSE)),
+    sample = random_block(sd = unit_sd_prior, monitor = random_monitor(latent = FALSE),
+                          parameterization = "mean_centered")
+  )
+)
+```
+
+```{r fit-crossed-independent, cache_fits = "fit_crossed_independent"}
+fit_crossed_independent <- JAGS_fit(
+  model_syntax = crossed_likelihood, data = crossed_data, prior_list = list(sigma = unit_sd_prior),
+  formula_list = crossed_formula, formula_data_list = list(mu = Penicillin),
+  formula_prior_list = list(mu = crossed_fixed_priors),
+  formula_random_prior_list = crossed_independent_priors,
+  chains = 4, adapt = 2000, burnin = 2000, sample = 4000, seed = 2
+)
+```
+
+```{r}
+JAGS_estimates_table(fit_crossed_independent, random_effects_summary = "standard")
+```
+
+### Variance Allocation Prior
+
+Alternatively, as in the nested example, `random_variance_allocation()` places one prior on the total SD of the two blocks, `total_re: sd_total`, and a uniform Dirichlet prior on the proportions of its variance assigned to `plate` and `sample`.
+The `sample` block keeps the mean-centered parameterization while its SD now comes from the allocation specification.
+
+```{r}
+crossed_allocation_priors <- list(
+  mu = prior_random(
+    sample     = random_block(parameterization = "mean_centered"),
+    allocation = random_variance_allocation(
+      name    = "total_re",
+      terms   = c(plate = "plate", sample = "sample"),
+      sd      = unit_sd_prior,
+      weights = prior("dirichlet", parameters = list(alpha = c(1, 1)))
+    ),
+    monitor = random_monitor(latent = FALSE)
+  )
+)
+```
+
+```{r fit-crossed-allocation, cache_fits = "fit_crossed_allocation"}
+fit_crossed_allocation <- JAGS_fit(
+  model_syntax = crossed_likelihood, data = crossed_data, prior_list = list(sigma = unit_sd_prior),
+  formula_list = crossed_formula, formula_data_list = list(mu = Penicillin),
+  formula_prior_list = list(mu = crossed_fixed_priors),
+  formula_random_prior_list = crossed_allocation_priors,
+  chains = 4, adapt = 2000, burnin = 2000, sample = 4000, seed = 3
+)
+```
+
+```{r}
+JAGS_estimates_table(fit_crossed_allocation, random_effects_summary = "standard")
+```
+
+The two BayesTools fits differ only in the prior on the random-effect SDs: the independent priors treat the two blocks separately, while the allocation prior sets the scale of their total and estimates how it splits.
+The table below compares both with lme4.
+
+```{r}
+compare_crossed_estimates(
+  lme4_model = lme4_crossed,
+  bayes_independent = fit_crossed_independent, 
+  bayes_allocation = fit_crossed_allocation)
+```
+
+
+
+### References

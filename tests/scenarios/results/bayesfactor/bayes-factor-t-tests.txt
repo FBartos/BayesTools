@@ -1,0 +1,12 @@
+             H1              H0                         method log_BF10                            note
+1    delta != 0       delta = 0            BayesFactor (exact)    2.848 one-sample (paired differences)
+2    delta != 0       delta = 0 quadrature (BayesTools priors)    2.849 one-sample (paired differences)
+3    delta != 0       delta = 0                bridge sampling    2.847 one-sample (paired differences)
+4    delta != 0       delta = 0                  Savage-Dickey    2.684 one-sample (paired differences)
+5     delta > 0       delta = 0            BayesFactor (exact)    3.539           one-sample, one-sided
+6     delta > 0       delta = 0 quadrature (BayesTools priors)    3.539           one-sample, one-sided
+7     delta > 0       delta = 0                  hypothesis_BF    3.374           one-sample, one-sided
+8  group effect no group effect            BayesFactor (exact)    0.236 two-sample (independent groups)
+9  group effect no group effect                 JZS quadrature    0.236 two-sample (independent groups)
+10 group effect no group effect                bridge sampling    0.234 two-sample (independent groups)
+11 group effect no group effect                  Savage-Dickey    0.252 two-sample (independent groups)

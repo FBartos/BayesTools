@@ -1,0 +1,4 @@
+          structure lme4_logLik exact_logml BayesTools_logml brms_logml BayesTools_log_BF_vs_slope
+1 (1 + day_s | Dog)     -58.757     -74.286          -74.512    -74.249                      0.000
+2  ar1(day_f | Dog)     -52.828     -69.973          -69.893         NA                      4.618
+3    car(day | Dog)          NA     -71.846          -71.744         NA                      2.767

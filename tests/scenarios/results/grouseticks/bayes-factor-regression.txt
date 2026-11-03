@@ -1,0 +1,4 @@
+          H1             H0              method log_BF10 note
+1 complaints intercept only BayesFactor (exact)   12.943     
+2 complaints intercept only      JZS quadrature   12.943     
+3 complaints intercept only     bridge sampling   12.941     

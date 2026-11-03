@@ -1,0 +1,10 @@
+                        H1      H0                 method log_BF10                              note
+1           year (Poisson) no year    importance sampling   24.887 reference relative SEs 0.8%, 0.6%
+2           year (Poisson) no year        bridge sampling   24.868 reference relative SEs 0.8%, 0.6%
+3           year (Poisson) no year bridge sampling (brms)   24.858 reference relative SEs 0.8%, 0.6%
+4 year (negative binomial) no year    importance sampling   24.542 reference relative SEs 0.8%, 0.7%
+5 year (negative binomial) no year        bridge sampling   24.549 reference relative SEs 0.8%, 0.7%
+6 year (negative binomial) no year bridge sampling (brms)   24.503 reference relative SEs 0.8%, 0.7%
+7        negative binomial Poisson    importance sampling   97.956 reference relative SEs 0.8%, 0.8%
+8        negative binomial Poisson        bridge sampling   97.966 reference relative SEs 0.8%, 0.8%
+9        negative binomial Poisson bridge sampling (brms)   97.933 reference relative SEs 0.8%, 0.8%

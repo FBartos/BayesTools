@@ -67,7 +67,8 @@ mqone.sided_fixed(p, omega, lower.tail = TRUE, log.p = FALSE)
 mqtwo.sided_fixed(p, omega, lower.tail = TRUE, log.p = FALSE)
 }
 \arguments{
-\item{x, q}{vector or matrix of quantiles.}
+\item{x, q}{numeric vector of quantiles; the parameter arguments (\code{alpha},
+\code{omega}) may be matrices with one row per quantile.}
 
 \item{alpha}{vector or matrix with concentration parameters for
 the Dirichlet distribution for a monotonic one.sided or a two.sided
@@ -108,6 +109,24 @@ and \code{rtwo.sided_fixed} generate random deviates.
 \description{
 Marginal density, marginal distribution function,
 marginal quantile function and random generation for weight functions.
+}
+\details{
+The marginal density, distribution function, and quantile function
+are implemented for the monotonic parameterization (\code{alpha}) and for
+fixed weights (\code{omega}); the non-monotonic parameterization
+(\code{alpha1}, \code{alpha2}) supports random generation only. The same
+marginals of a \code{\link[=prior_weightfunction]{prior_weightfunction()}} prior are available through
+\code{\link[=mpdf]{mpdf()}}, \code{\link[=mcdf]{mcdf()}}, \code{\link[=mquant]{mquant()}}, and \code{\link[=rng]{rng()}}.
+
+The marginals of the monotonic parameterization are Beta distributions with
+the cumulative sums of \code{alpha} as shapes. Finite \code{alpha} whose
+cumulative sums exceed the largest double signal an error of class
+\code{BayesTools_weightfunction_beta_shape_unavailable} (parent
+\code{BayesTools_weightfunction_unavailable}) from the density,
+distribution, and quantile functions, and from \code{\link[=mpdf]{mpdf()}}, \code{\link[=mcdf]{mcdf()}}, and
+\code{\link[=mquant]{mquant()}} of a cumulative \code{\link[=prior_weightfunction]{prior_weightfunction()}}. Degenerate Dirichlet
+draws of the random generation signal
+\code{BayesTools_dirichlet_rng_unavailable}.
 }
 \examples{
 # draw samples from a two-sided weight function

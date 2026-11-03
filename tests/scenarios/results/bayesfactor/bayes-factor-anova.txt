@@ -1,0 +1,17 @@
+                            H1             H0           method log_BF10                    note
+1                         supp intercept only   JZS quadrature    0.181 BayesFactor error 0.01%
+2                         supp intercept only BayesFactor (MC)    0.181 BayesFactor error 0.01%
+3                         supp intercept only  bridge sampling    0.179 BayesFactor error 0.01%
+4                       dose_f intercept only   JZS quadrature   29.237 BayesFactor error 0.00%
+5                       dose_f intercept only BayesFactor (MC)   29.237 BayesFactor error 0.00%
+6                       dose_f intercept only  bridge sampling   29.235 BayesFactor error 0.00%
+7                supp + dose_f intercept only   JZS quadrature   33.292 BayesFactor error 1.59%
+8                supp + dose_f intercept only BayesFactor (MC)   33.289 BayesFactor error 1.59%
+9                supp + dose_f intercept only  bridge sampling   33.290 BayesFactor error 1.59%
+10 supp + dose_f + supp:dose_f intercept only   JZS quadrature   34.295 BayesFactor error 1.30%
+11 supp + dose_f + supp:dose_f intercept only BayesFactor (MC)   34.252 BayesFactor error 1.30%
+12 supp + dose_f + supp:dose_f intercept only  bridge sampling   34.294 BayesFactor error 1.30%
+13                 supp:dose_f no interaction   JZS quadrature    1.003      with supp + dose_f
+14                 supp:dose_f no interaction BayesFactor (MC)    0.963      with supp + dose_f
+15                 supp:dose_f no interaction  bridge sampling    1.005      with supp + dose_f
+16                 supp:dose_f no interaction   spike and slab    0.995      with supp + dose_f

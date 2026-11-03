@@ -1,0 +1,13 @@
+       source    parameter estimate median    lCI   uCI
+1     metafor    intercept   -0.157     NA     NA    NA
+2  BayesTools    intercept   -0.133 -0.136 -0.439 0.181
+3        brms    intercept   -0.146 -0.146 -0.436 0.147
+4     metafor   sd_article    0.386     NA     NA    NA
+5  BayesTools   sd_article    0.373  0.373  0.300 0.446
+6        brms   sd_article    0.373  0.373  0.300 0.446
+7     metafor   sd_species    0.000     NA     NA    NA
+8  BayesTools   sd_species    0.083  0.071  0.003 0.227
+9        brms   sd_species    0.083  0.071  0.003 0.224
+10    metafor sd_phylogeny    0.214     NA     NA    NA
+11 BayesTools sd_phylogeny    0.261  0.250  0.095 0.482
+12       brms sd_phylogeny    0.264  0.253  0.101 0.492

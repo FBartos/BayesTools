@@ -1,0 +1,1244 @@
+.bt_formula_context_check <- function(context){
+
+  expected_version <- if(inherits(context, "prior_density_model_mixture_context") ||
+    inherits(context, "prior_density_conditional_context")) 2L else 1L
+  if(!identical(context$schema_version, expected_version) ||
+     !is.character(context$linear_weight_space) || length(context$linear_weight_space) != 1L ||
+     is.na(context$linear_weight_space) ||
+     !context$linear_weight_space %in% c("coefficient", "formula_contribution")){
+    .bt_stop_refit_required("Stored formula prior context is unsupported. Refit or recreate it with this version of BayesTools.")
+  }
+  for(transform in context$transforms){
+    .bt_validate_formula_coefficient_transform(transform$descriptor)
+    if(!identical(transform$matrix, transform$descriptor$matrix) ||
+       !identical(transform$columns, transform$descriptor$source_names)){
+      .bt_stop_refit_required("Stored formula prior context has inconsistent transforms. Refit or recreate it with this version of BayesTools.")
+    }
+  }
+  invisible(TRUE)
+}
+
+.bt_formula_context_canonical <- function(context, standardized_weights){
+
+  if(!length(context$transforms)) return(context)
+  out <- .bt_formula_prior_density_context_raw_sources(context,
+    unique(unlist(lapply(context$transforms, `[[`, "columns"), use.names = FALSE)))
+  for(transform in attr(standardized_weights, "formula_contribution_transforms", exact = TRUE)){
+    out <- .bt_formula_prior_density_context_contributions(out, transform)
+  }
+  out$formula_scale <- NULL
+  out$transforms <- list()
+  out
+}
+
+.bt_formula_require_multiplier_laws <- function(context, weights, parameter = NULL){
+
+  for(owner in names(context$prior_list)){
+    prior <- context$prior_list[[owner]]
+    if(!is.prior(prior)) next
+    columns <- intersect(.prior_linear_prior_columns(owner, prior), names(weights)[weights != 0])
+    if(!length(columns)) next
+    if(is.prior.point(prior) && is.numeric(prior$parameters$location) && isTRUE(prior$parameters$location == 0)) next
+    multiplier <- attr(prior, "multiply_by", exact = TRUE)
+    if(is.character(multiplier) && is.null(context$prior_list[[multiplier]])) .bt_formula_density_stop(
+      "A compiled formula multiplier has no supplied prior law.",
+      parameter = parameter, reason = "missing_multiplier_law", state = multiplier)
+  }
+  invisible(TRUE)
+}
+
+# 'formula_design' holds, per formula parameter, the part of its fitted design
+# that the original-scale random-effect SDs need (the random-effect blocks and
+# the typed fitted data, see .bt_formula_design_random_unscale_view()). With
+# 'formula_scale' it defines the prior law of those SDs on the original scale
+# (see .prior_density_context_random_sd_scale()); the context stores it.
+.prior_density_context <- function(prior_list, column_names, formula_scale = NULL,
+                                   n_grid = .prior_linear_density_default_grid(),
+                                   tail_prob = .prior_linear_density_tail_prob(),
+                                   formula_design = NULL){
+
+  check_list(prior_list, "prior_list")
+  check_char(column_names, "column_names", check_length = FALSE)
+  check_list(formula_scale, "formula_scale", allow_NULL = TRUE)
+  check_list(formula_design, "formula_design", allow_NULL = TRUE)
+  check_int(n_grid, "n_grid", lower = 16)
+  check_real(tail_prob, "tail_prob", lower = 0, upper = 0.5, allow_bound = FALSE)
+
+  if(!is.null(formula_scale) && length(formula_scale) > 0){
+    .check_formula_scale_info(formula_scale)
+  }
+
+  transforms <- list()
+  if(!is.null(formula_scale) && length(formula_scale) > 0){
+    for(param_name in names(formula_scale)){
+      spec <- attr(formula_scale[[param_name]], "unscale_design", exact = TRUE)
+      affected_cols <- if(is.null(spec)) column_names[
+        .formula_scale_matches_prefix(column_names, param_name)
+      ] else intersect(names(spec$multipliers), column_names)
+      if(length(affected_cols) == 0){
+        next
+      }
+      column_names <- union(column_names, names(spec$multipliers))
+      affected_cols <- union(affected_cols, names(spec$multipliers))
+      if(!is.null(spec) && identical(spec$owner_scope, "compiler") && !isTRUE(spec$complete)){
+        formula_scale[[param_name]] <- .bt_formula_scale_finalize(
+          formula_scale[[param_name]], prior_list = prior_list, owner_scope = "prior_only")
+      }
+      coefficient_transform <- .bt_formula_coefficient_transform(
+        source_names = affected_cols,
+        formula_scale = formula_scale[[param_name]],
+        parameter = param_name
+      )
+      transforms[[param_name]] <- list(
+        descriptor    = coefficient_transform,
+        columns       = coefficient_transform$source_names,
+        matrix        = coefficient_transform$matrix,
+        log_intercept = any(coefficient_transform$source_transforms == "log"),
+        intercept     = paste0(param_name, "_intercept")
+      )
+    }
+  }
+
+  out <- list(
+    schema_version = 1L,
+    linear_weight_space = "coefficient",
+    prior_list    = prior_list,
+    column_names  = column_names,
+    formula_scale = formula_scale,
+    transforms    = transforms,
+    n_grid        = n_grid,
+    tail_prob     = tail_prob
+  )
+  if(!is.null(formula_design)){
+    out$formula_design <- formula_design
+  }
+  class(out) <- "prior_density_context"
+  return(out)
+}
+
+# The scales of the random-effect SDs among the requested 'columns' (those
+# with a nonzero weight) of a context with formula scaling: for each SD that is
+# a pure rescaling of its fitted SD on the original predictor scale, its |c|
+# (a named numeric; the law of the original-scale SD is the fitted law
+# rescaled by it, see .random_sd_original_scale_laws()). The SDs of blocks
+# without a scaled column keep their fitted law and are not returned. An SD that
+# is a composite of several fitted SDs, or whose block has no fitted design in
+# the context or a linearly dependent one, has no prior law here: the typed
+# refusal is raised when its
+# weight is requested, never when the context is built (contexts over fixed
+# columns carry no SD).
+.prior_density_context_random_sd_scale <- function(context, columns){
+
+  out <- stats::setNames(numeric(), character())
+  if(length(columns) == 0L || length(context$formula_scale) == 0L){
+    return(out)
+  }
+
+  for(prefix in names(context$formula_scale)){
+    parameter_scale <- context$formula_scale[[prefix]]
+    leaves <- attr(parameter_scale, "random_effect_sd_leaves", exact = TRUE)
+    if(is.null(leaves)){
+      next
+    }
+    requested <- intersect(columns, unlist(lapply(leaves, function(block){
+      as.character(block$leaf_names)
+    }), use.names = FALSE))
+    if(length(requested) == 0L){
+      next
+    }
+
+    laws <- .random_sd_original_scale_laws(parameter_scale, prefix, context$formula_design[[prefix]])
+    refused <- intersect(requested, names(laws$refused))
+    if(length(refused) > 0L){
+      column <- refused[[1L]]
+      cause <- laws$refused[[column]]
+      block <- laws$blocks[[column]]
+      if(identical(cause, "random_effect_design_unavailable")){
+        detail <- "the prior context carries no fitted design of its random-effect block"
+        remedy <- "Create the samples with as_mixed_posteriors()."
+        reason <- paste0(
+          "the context carries no fitted design of the random-effect block '", block,
+          "' of formula parameter '", prefix, "', which is needed to map its SD to the ",
+          "original predictor scale"
+        )
+      }else if(identical(cause, "original_scale_not_identified")){
+        detail <- "its random-effect block has a linearly dependent design"
+        remedy <- paste0(
+          "Use the SD on the fitted scale (transform_scaled = FALSE), or a block whose ",
+          "fitted terms are linearly independent."
+        )
+        reason <- paste0(
+          "the fitted terms of the random-effect block '", block, "' of formula parameter '",
+          prefix, "' are linearly dependent, so its original-scale coefficients are not ",
+          "uniquely determined"
+        )
+      }else if(identical(cause, "original_scale_not_representable")){
+        detail <- "its random-effect block has no certified original-scale representation"
+        remedy <- paste0(
+          "Use the SD on the fitted scale ('transform_scaled = FALSE'), or include ",
+          "the needed lower-order terms in the block."
+        )
+        reason <- paste0(
+          "the random-effect block '", block, "' of formula parameter '", prefix,
+          "' has no certified original-scale representation because its missing-term ",
+          "fallback mixes categorical coding or omits a representable contribution"
+        )
+      }else{
+        detail <- "its original-scale law combines several fitted SDs of its random-effect block"
+        remedy <- paste0(
+          "Use the SD on the fitted scale (transform_scaled = FALSE), or an SD that ",
+          "is a rescaling of one fitted SD."
+        )
+        reason <- paste0(
+          "the SD of '", column, "' on the original predictor scale combines several ",
+          "fitted SDs of the random-effect block '", block, "' of formula parameter '",
+          prefix, "', so its law is not that of one fitted SD"
+        )
+      }
+      .bt_formula_density_stop(
+        paste0(
+          "The prior law of the random-effect SD '", column,
+          "' on the original predictor scale is unavailable: ", reason, ". ", remedy
+        ),
+        parameter = prefix, target = column, reason = cause, detail = detail
+      )
+    }
+    pure <- intersect(requested, names(laws$scale))
+    out[pure] <- laws$scale[pure]
+  }
+
+  out
+}
+
+# Weights on the fitted coefficients of the combination 'weights' of the
+# context's columns (formula-scale transformations map scaled-coefficient
+# weights through the unscaling matrix M). With log-intercept scaling the
+# unscaled intercept is exp(M[intercept, ] %*% L), L the fitted coefficients
+# with the log of the fitted intercept, so only a combination with the log of
+# the unscaled intercept ('source_transforms' names "log" for it) is linear in
+# L: its weights are weights %*% M, with the log source on the fitted
+# intercept. A combination with the unscaled intercept itself stops.
+.prior_density_context_standardized_weights <- function(context, weights,
+                                                        source_transforms = NULL){
+
+  if(!inherits(context, "prior_density_context")){
+    stop("'context' must be a prior density context.", call. = FALSE)
+  }
+  if(is.null(names(weights))){
+    stop("'weights' must be a named numeric vector.", call. = FALSE)
+  }
+
+  # a weight of a column the context does not know would be dropped silently
+  # (c(a = 1, b_typo = 2) gave the density of 'a')
+  unknown <- setdiff(names(weights)[!is.na(weights) & weights != 0], context$column_names)
+  if(length(unknown) > 0L){
+    stop(
+      "No prior distribution was found for coefficient column(s): '",
+      paste0(unknown, collapse = "', '"), "'.",
+      call. = FALSE
+    )
+  }
+  weights <- weights[intersect(names(weights), context$column_names)]
+  out <- rep(0, length(context$column_names))
+  names(out) <- context$column_names
+
+  used <- rep(FALSE, length(weights))
+  names(used) <- names(weights)
+  contribution_transforms <- list()
+  offset <- 0
+  if(length(context$transforms)) .bt_formula_context_check(context)
+  for(transform in context$transforms){
+    cols <- intersect(transform$columns, names(weights)[weights != 0])
+    if(length(cols) == 0L) next
+    descriptor <- transform$descriptor
+    if(transform$log_intercept && transform$intercept %in% cols &&
+       descriptor$targets$map_type[match(transform$intercept, descriptor$targets$target)] != "identity" &&
+       !identical(unname(source_transforms[transform$intercept]), "log")){
+      .bt_formula_density_stop("This coefficient combination requires the log of its transformed intercept.",
+        parameter = descriptor$parameter, reason = "nonlinear_map")
+    }
+    recipe <- .bt_formula_prior_recipe_weights(descriptor, weights[cols])
+    offset <- offset + recipe$offset
+    out[names(recipe$weights)] <- out[names(recipe$weights)] + recipe$weights
+    if(identical(recipe$type, "contribution_affine")) contribution_transforms[[descriptor$parameter]] <- descriptor
+    used[cols] <- TRUE
+  }
+  remaining <- names(weights)[!used]
+  if(length(remaining)){
+    # a random-effect SD of a scaled block is the SD on the original scale: a
+    # rescaling of its fitted SD, or refused
+    sd_scale <- .prior_density_context_random_sd_scale(
+      context, remaining[is.finite(weights[remaining]) & weights[remaining] != 0]
+    )
+    out[names(sd_scale)] <- out[names(sd_scale)] + weights[names(sd_scale)] * sd_scale
+    unscaled <- setdiff(remaining, names(sd_scale))
+    out[unscaled] <- out[unscaled] + weights[unscaled]
+  }
+  out <- out[out != 0]
+  if(length(contribution_transforms)) attr(out, "formula_contribution_transforms") <- contribution_transforms
+  if(offset != 0) attr(out, "formula_recipe_offset") <- offset
+  out
+}
+
+.prior_density_context_density <- function(context, weights,
+                                           source_transforms = NULL,
+                                           output_transformation = NULL,
+                                           output_transformation_arguments = NULL,
+                                           .defer = FALSE){
+
+  standardized_weights <- .prior_density_context_standardized_weights(
+    context, weights, source_transforms
+  )
+
+  if(!is.null(source_transforms)){
+    source_transforms <- source_transforms[names(standardized_weights)]
+  }
+
+  canonical <- .bt_formula_context_canonical(context, standardized_weights)
+  offset <- attr(standardized_weights, "formula_recipe_offset", exact = TRUE)
+  attr(standardized_weights, "formula_recipe_offset") <- NULL
+  attr(standardized_weights, "formula_contribution_transforms") <- NULL
+  .bt_formula_require_multiplier_laws(canonical, standardized_weights)
+  priors <- canonical$prior_list
+  out <- .prior_linear_combination_density(
+    prior_list                       = priors,
+    weights                          = standardized_weights,
+    n_grid                           = context$n_grid,
+    tail_prob                        = context$tail_prob,
+    source_transforms                = source_transforms,
+    output_transformation            = if(is.null(offset)) output_transformation else NULL,
+    output_transformation_arguments  = if(is.null(offset)) output_transformation_arguments else NULL,
+    grid_spacing                     = context$grid_spacing,
+    .defer                           = .defer && is.null(offset)
+  )
+  if(!is.null(offset)){
+    out <- .prior_linear_density_transform(out, "lin", list(a = offset, b = 1), n_grid = context$n_grid)
+    out <- .prior_linear_density_transform(out, output_transformation, output_transformation_arguments, n_grid = context$n_grid)
+  }
+  out
+}
+
+.prior_density_model_mixture_context <- function(prior_list, column_names,
+                                                  n_grid = .prior_linear_density_default_grid(),
+                                                  tail_prob = .prior_linear_density_tail_prob()){
+
+  check_list(prior_list, "prior_list")
+  check_char(column_names, "column_names", check_length = FALSE)
+
+  model_priors <- lapply(prior_list, function(parameter_priors){
+    if(is.prior(parameter_priors)) list(parameter_priors) else parameter_priors
+  })
+  pairs <- lapply(model_priors, .prior_model_probability_pair)
+  prior_weights <- do.call(cbind, lapply(model_priors, function(priors) vapply(priors, .prior_model_weight, numeric(1))))
+  prior_logs <- lapply(model_priors, function(priors) vapply(priors, .prior_model_log_weight, numeric(1)))
+
+  if(!all(prior_weights[, 1] == prior_weights)){
+    stop("The model prior distributions are not aligned across parameters.", call. = FALSE)
+  }
+  if(!all(vapply(prior_logs, identical, logical(1), prior_logs[[1L]])) ||
+     !all(vapply(pairs, function(pair){
+    identical(pair$logs, pairs[[1L]]$logs) && identical(pair$declaration$model_indices, pairs[[1L]]$declaration$model_indices)
+  }, logical(1)))) stop("The model prior log probabilities are not aligned across parameters.", call. = FALSE)
+
+  pair <- pairs[[1L]]
+
+  out <- list(
+    schema_version = 2L,
+    linear_weight_space = "coefficient",
+    prior_list   = prior_list,
+    column_names = column_names,
+    model_weights = pair$probabilities,
+    model_log_weights = pair$logs,
+    model_probability_declaration = pair$declaration,
+    n_grid       = n_grid,
+    tail_prob    = tail_prob
+  )
+  class(out) <- "prior_density_model_mixture_context"
+  return(out)
+}
+
+.prior_density_condition_component <- function(prior){
+
+  if(is.prior.spike_and_slab(prior)){
+    components <- attr(prior, "components")
+    if(!all(components %in% c("null", "alternative"))){
+      stop("conditional mixture posterior distributions are available only for 'null' and 'alternative' components", call. = FALSE)
+    }
+
+    inclusion <- mean(.get_spike_and_slab_inclusion(prior))
+    inclusion <- min(max(inclusion, 0), 1)
+    probabilities <- ifelse(components == "alternative", inclusion, 1 - inclusion)
+
+    return(lapply(seq_along(prior), function(i){
+      list(
+        prior       = prior[[i]],
+        probability = probabilities[i],
+        log_probability = log(probabilities[i]),
+        alternative = components[i] == "alternative"
+      )
+    }))
+  }
+
+  if(is.prior.mixture(prior)){
+    components <- attr(prior, "components")
+    if(!all(components %in% c("null", "alternative"))){
+      stop("conditional mixture posterior distributions are available only for 'null' and 'alternative' components", call. = FALSE)
+    }
+
+    prior_weights <- attr(prior, "prior_weights")
+    pair <- .model_probability_prior(prior_weights, stage = "component",
+      ordinary = prior_weights / sum(prior_weights))
+
+    return(lapply(seq_along(prior), function(i){
+      list(
+        prior       = prior[[i]],
+        probability = pair$probabilities[i],
+        log_probability = pair$logs[i],
+        alternative = components[i] == "alternative"
+      )
+    }))
+  }
+
+  list(list(
+    prior       = prior,
+    probability = 1,
+    log_probability = 0,
+    alternative = TRUE
+  ))
+}
+
+.prior_density_copy_parent_attributes <- function(component, parent){
+
+  parent_attributes <- attributes(parent)
+  skip <- c("class", "names", "components", "prior_weights", "inclusion_prior")
+  child_owner <- attr(component, "model_probability_declaration", exact = TRUE)
+  parent_owner <- attr(parent, "model_probability_declaration", exact = TRUE)
+  skip <- c(skip, "model_prior_weights", "model_log_prior_weights", "model_probability_declaration")
+
+  for(attribute in setdiff(names(parent_attributes), skip)){
+    if(is.null(attr(component, attribute, exact = TRUE))){
+      attr(component, attribute) <- parent_attributes[[attribute]]
+    }
+  }
+  if(is.null(child_owner) && !is.null(parent_owner)) component <- .set_prior_model_probability(
+    component, .prior_model_weight(parent), .prior_model_log_weight(parent), parent_owner)
+  if(is.null(child_owner) && is.null(parent_owner) &&
+     !is.null(attr(parent, "model_prior_weights", exact = TRUE))){
+    attr(component, "model_prior_weights") <- attr(parent, "model_prior_weights", exact = TRUE)
+  }
+  if(!is.null(child_owner)) .prior_model_weight(component)
+
+  component
+}
+
+.prior_density_condition_models <- function(prior_list, conditional, conditional_rule,
+                                            condition_event = NULL){
+
+  if(is.null(condition_event)){
+    condition_event <- .condition_event(
+      prior_list        = prior_list,
+      conditional       = conditional,
+      conditional_rule  = conditional_rule
+    )
+  }
+
+  .condition_event_model_options(prior_list, condition_event)
+}
+
+.prior_density_conditional_context <- function(prior_list, column_names, conditional,
+                                               conditional_rule = "AND", formula_scale = NULL,
+                                               n_grid = .prior_linear_density_default_grid(),
+                                               tail_prob = .prior_linear_density_tail_prob(),
+                                               condition_event = NULL,
+                                               formula_design = NULL){
+
+  if(is.null(condition_event)){
+    condition_event <- .condition_event(
+      prior_list        = prior_list,
+      conditional       = conditional,
+      conditional_rule  = conditional_rule
+    )
+  }
+  condition_models <- .prior_density_condition_models(
+    prior_list        = prior_list,
+    conditional       = conditional,
+    conditional_rule  = conditional_rule,
+    condition_event   = condition_event
+  )
+  if(is.null(condition_models)){
+    return(.prior_density_context(prior_list, column_names, formula_scale, n_grid, tail_prob,
+                                  formula_design = formula_design))
+  }
+  if(length(condition_models$prior_lists) == 0L) stop("No prior models remain after applying the conditional event.", call. = FALSE)
+
+  # The coefficient transformations depend only on the formula scaling, not on
+  # the conditioning event.
+  transforms <- if(!is.null(formula_scale) && length(formula_scale) > 0){
+    .prior_density_context(prior_list, column_names, formula_scale, n_grid, tail_prob)$transforms
+  }else{
+    list()
+  }
+
+  out <- list(
+    schema_version = 2L,
+    linear_weight_space = "coefficient",
+    prior_list      = prior_list,
+    column_names    = column_names,
+    formula_scale   = formula_scale,
+    transforms      = transforms,
+    conditional     = condition_event[["conditional"]],
+    conditional_rule = condition_event[["conditional_rule"]],
+    condition_event = condition_event,
+    condition_key   = condition_event[["condition_key"]],
+    prior_lists     = condition_models$prior_lists,
+    model_weights   = condition_models$weights,
+    model_log_weights = condition_models$log_weights,
+    model_probability_declaration = condition_models$model_probability_declaration,
+    n_grid          = n_grid,
+    tail_prob       = tail_prob
+  )
+  if(!is.null(formula_design)){
+    out$formula_design <- formula_design
+  }
+  class(out) <- "prior_density_conditional_context"
+  return(out)
+}
+
+.prior_density_model_mixture_density <- function(context, weights,
+                                                  source_transforms = NULL,
+                                                  output_transformation = NULL,
+                                                  output_transformation_arguments = NULL){
+
+  if(!inherits(context, "prior_density_model_mixture_context")){
+    stop("'context' must be a prior density model-mixture context.", call. = FALSE)
+  }
+
+  dists <- vector("list", length(context$model_weights))
+  for(model_i in seq_along(context$model_weights)){
+    dists[[model_i]] <- .prior_linear_combination_density(
+      prior_list = .prior_density_model_prior_list(context$prior_list, model_i),
+      weights    = weights,
+      n_grid     = context$n_grid,
+      tail_prob  = context$tail_prob,
+      source_transforms = source_transforms,
+      grid_spacing      = context$grid_spacing,
+      .defer            = FALSE
+    )
+  }
+
+  dx <- min(vapply(dists, function(dist){
+    if(!is.null(dist$density) && length(dist$density$x) > 1){
+      return(dist$density$x[2] - dist$density$x[1])
+    }
+    Inf
+  }, numeric(1)))
+  if(!is.finite(dx)){
+    dx <- NA_real_
+  }
+
+  dist <- .prior_linear_density_mix(
+    dists   = dists,
+    weights = context$model_weights,
+    dx      = dx,
+    n_grid  = context$n_grid
+  )
+  attr(dist, "grid_resolution") <- .prior_linear_density_mixture_resolution(dist, dx)
+
+  .prior_linear_density_transform(dist, output_transformation,
+                                  output_transformation_arguments,
+                                  n_grid = context$n_grid)
+}
+
+.prior_density_conditional_context_density <- function(context, weights,
+                                                       source_transforms = NULL,
+                                                       output_transformation = NULL,
+                                                       output_transformation_arguments = NULL){
+
+  if(!inherits(context, "prior_density_conditional_context")){
+    stop("'context' must be a conditional prior density context.", call. = FALSE)
+  }
+
+  if(length(context$prior_lists) == 0){
+    stop("No prior models remain after applying the conditional event.", call. = FALSE)
+  }
+
+  dists <- lapply(context$prior_lists, function(prior_list){
+    if(!is.null(context$formula_scale) && length(context$formula_scale) > 0){
+      component_context <- .prior_density_context(
+        prior_list     = prior_list,
+        column_names   = context$column_names,
+        formula_scale  = context$formula_scale,
+        n_grid         = context$n_grid,
+        tail_prob      = context$tail_prob,
+        formula_design = context$formula_design
+      )
+      component_context$grid_spacing <- context$grid_spacing
+      return(.prior_density_context_density(
+        context           = component_context,
+        weights           = weights,
+        source_transforms = source_transforms
+      ))
+    }
+
+    .prior_linear_combination_density(
+      prior_list        = prior_list,
+      weights           = weights,
+      n_grid            = context$n_grid,
+      tail_prob         = context$tail_prob,
+      source_transforms = source_transforms,
+      grid_spacing      = context$grid_spacing,
+      .defer            = FALSE
+    )
+  })
+
+  dx <- min(vapply(dists, function(dist){
+    if(!is.null(dist$density) && length(dist$density$x) > 1){
+      return(dist$density$x[2] - dist$density$x[1])
+    }
+    Inf
+  }, numeric(1)))
+  if(!is.finite(dx)){
+    dx <- NA_real_
+  }
+
+  dist <- .prior_linear_density_mix(
+    dists   = dists,
+    weights = context$model_weights,
+    dx      = dx,
+    n_grid  = context$n_grid
+  )
+  attr(dist, "grid_resolution") <- .prior_linear_density_mixture_resolution(dist, dx)
+
+  .prior_linear_density_transform(dist, output_transformation,
+                                  output_transformation_arguments,
+                                  n_grid = context$n_grid)
+}
+
+.prior_density_build_context <- function(prior_list, column_names, formula_scale = NULL,
+                                         n_grid = .prior_linear_density_default_grid(),
+                                         tail_prob = .prior_linear_density_tail_prob(),
+                                         conditional = NULL,
+                                         conditional_rule = "AND",
+                                         condition_event = NULL,
+                                         formula_design = NULL){
+
+  if(is.null(condition_event)){
+    condition_event <- .condition_event(
+      prior_list        = prior_list,
+      conditional       = conditional,
+      conditional_rule  = conditional_rule
+    )
+  }
+
+  if(length(condition_event[["conditional"]]) > 0){
+    return(.prior_density_conditional_context(
+      prior_list       = prior_list,
+      column_names     = column_names,
+      conditional      = condition_event[["conditional"]],
+      conditional_rule = conditional_rule,
+      formula_scale    = formula_scale,
+      n_grid           = n_grid,
+      tail_prob        = tail_prob,
+      condition_event  = condition_event,
+      formula_design   = formula_design
+    ))
+  }
+
+  if(all(vapply(prior_list, is.prior, logical(1)))){
+    return(.prior_density_context(prior_list, column_names, formula_scale, n_grid, tail_prob,
+                                  formula_design = formula_design))
+  }
+
+  if(!is.null(formula_scale) && length(formula_scale) > 0){
+    stop("Formula-scale prior densities for model-list mixtures are not implemented.", call. = FALSE)
+  }
+
+  .prior_density_model_mixture_context(prior_list, column_names, n_grid, tail_prob)
+}
+
+.prior_density_from_context <- function(context, weights,
+                                        source_transforms = NULL,
+                                        output_transformation = NULL,
+                                        output_transformation_arguments = NULL,
+                                        .record_evaluation = TRUE,
+                                        .defer = TRUE){
+
+  .model_probability_context_validate(context)
+  .model_probability_context_measure_check(context, weights)
+  if(inherits(context, "prior_density_context")){
+    out <- .prior_density_context_density(
+      context                         = context,
+      weights                         = weights,
+      source_transforms               = source_transforms,
+      output_transformation           = output_transformation,
+      output_transformation_arguments = output_transformation_arguments,
+      .defer                          = isTRUE(.defer) && isTRUE(.record_evaluation)
+    )
+    if(.prior_linear_density_is_deferred(out)){
+      # the context's own record and numerical diagnostics describe the grid
+      # that is built on its first read
+      arguments <- list(
+        context = context,
+        weights = weights,
+        source_transforms = source_transforms,
+        output_transformation = output_transformation,
+        output_transformation_arguments = output_transformation_arguments
+      )
+      deferred <- list(
+        density = .prior_linear_density_deferred(arguments, "context"),
+        points  = .prior_linear_density_empty_points(),
+        n_grid  = out$n_grid
+      )
+      class(deferred) <- c("prior_linear_density", "prior_density")
+      attr(deferred, "weights") <- attr(out, "weights", exact = TRUE)
+      attr(deferred, "adaptive_evaluation") <- list(kind = "density_context", arguments = arguments)
+      return(deferred)
+    }
+  }else if(inherits(context, "prior_density_model_mixture_context")){
+    out <- .prior_density_model_mixture_density(
+      context                         = context,
+      weights                         = weights,
+      source_transforms               = source_transforms,
+      output_transformation           = output_transformation,
+      output_transformation_arguments = output_transformation_arguments
+    )
+  }else if(inherits(context, "prior_density_conditional_context")){
+    out <- .prior_density_conditional_context_density(
+      context                         = context,
+      weights                         = weights,
+      source_transforms               = source_transforms,
+      output_transformation           = output_transformation,
+      output_transformation_arguments = output_transformation_arguments
+    )
+  }else{
+    stop("Unknown prior density context.", call. = FALSE)
+  }
+
+  if(isTRUE(.record_evaluation)){
+    attr(out, "adaptive_evaluation") <- list(
+      kind = "density_context",
+      arguments = list(
+        context = context,
+        weights = weights,
+        source_transforms = source_transforms,
+        output_transformation = output_transformation,
+        output_transformation_arguments = output_transformation_arguments
+      )
+    )
+    attr(out, "numerical_diagnostics") <- list(
+      n_grid = context$n_grid,
+      tail_probability_per_source = context$tail_prob,
+      intended_captured_probability_per_continuous_source =
+        max(0, 1 - 2 * context$tail_prob),
+      numerical_range = .prior_linear_density_range(out),
+      grid_normalization =
+        attr(out, "grid_normalization", exact = TRUE),
+      fft_clipping =
+        attr(out, "fft_clipping", exact = TRUE),
+      adaptive_evaluation = TRUE
+    )
+  }
+  out
+}
+
+.prior_density_from_context_rows <- function(context, weights,
+                                              source_transforms = NULL,
+                                              output_transformation = NULL,
+                                              output_transformation_arguments = NULL,
+                                              .record_evaluation = TRUE){
+
+  .model_probability_context_validate(context)
+  if(inherits(context, "prior_density_model_mixture_context") || inherits(context, "prior_density_conditional_context")){
+    .bt_formula_context_check(context)
+  }
+  if(is.null(dim(weights))){
+    return(.prior_density_from_context(
+      context                         = context,
+      weights                         = weights,
+      source_transforms               = source_transforms,
+      output_transformation           = output_transformation,
+      output_transformation_arguments = output_transformation_arguments,
+      .record_evaluation              = .record_evaluation
+    ))
+  }
+
+  weights <- as.matrix(weights)
+  if(nrow(weights) == 0){
+    return(.prior_linear_density_point(0))
+  }
+  if(nrow(weights) == 1){
+    return(.prior_density_from_context(
+      context                         = context,
+      weights                         = weights[1, ],
+      source_transforms               = source_transforms,
+      output_transformation           = output_transformation,
+      output_transformation_arguments = output_transformation_arguments,
+      .record_evaluation              = .record_evaluation
+    ))
+  }
+
+  # The numerical grid (up to one exact display grid per row's product
+  # component) is needed only by display and grid-based consumers;
+  # ordinates, heights and region probabilities evaluate the recorded route.
+  # A row mixture whose structure has no point mass is therefore returned
+  # with its exact parts (no atoms, unit continuous mass, the context's grid
+  # size) and its grid deferred until one of its fields is read
+  # (.prior_linear_density_deferred()).
+  rows <- .prior_density_distinct_rows(weights)
+  if(isTRUE(.record_evaluation) &&
+     .prior_density_rows_atom_free(context, weights[rows$indices, , drop = FALSE],
+                                   output_transformation, output_transformation_arguments,
+                                   source_transforms)){
+    arguments <- list(
+      context = context,
+      weights = weights,
+      source_transforms = source_transforms,
+      output_transformation = output_transformation,
+      output_transformation_arguments = output_transformation_arguments
+    )
+    out <- list(
+      density = .prior_linear_density_deferred(arguments, "rows"),
+      points  = .prior_linear_density_empty_points(),
+      n_grid  = context$n_grid
+    )
+    class(out) <- c("prior_linear_density", "prior_density")
+    attr(out, "adaptive_evaluation") <- list(
+      kind      = "density_context_rows",
+      arguments = arguments
+    )
+    return(out)
+  }
+
+  .prior_density_rows_grid(
+    context                         = context,
+    weights                         = weights,
+    source_transforms               = source_transforms,
+    output_transformation           = output_transformation,
+    output_transformation_arguments = output_transformation_arguments,
+    .record_evaluation              = .record_evaluation,
+    rows                            = rows
+  )
+}
+
+# The row mixture of .prior_density_from_context_rows() with its numerical
+# grid ('weights' a matrix of at least two rows).
+.prior_density_rows_grid <- function(context, weights,
+                                     source_transforms = NULL,
+                                     output_transformation = NULL,
+                                     output_transformation_arguments = NULL,
+                                     .record_evaluation = TRUE,
+                                     rows = .prior_density_distinct_rows(weights)){
+
+  row_counts <- rows$counts
+  row_indices <- rows$indices
+
+  # Mix the rows on the linear-predictor scale and transform the mixture once;
+  # for one monotone map this equals the mixture of transformed rows, while
+  # mixing transformed grids would inherit their smallest image spacing.
+  dists <- lapply(row_indices, function(row_i){
+    .prior_density_from_context(
+      context                         = context,
+      weights                         = weights[row_i, ],
+      source_transforms               = source_transforms,
+      output_transformation           = NULL,
+      output_transformation_arguments = NULL,
+      .record_evaluation              = FALSE
+    )
+  })
+
+  dx <- min(vapply(dists, function(dist){
+    if(!is.null(dist$density) && length(dist$density$x) > 1){
+      return(dist$density$x[2] - dist$density$x[1])
+    }
+    Inf
+  }, numeric(1)))
+  if(!is.finite(dx)){
+    dx <- NA_real_
+  }
+
+  out <- .prior_linear_density_mix(
+    dists   = dists,
+    weights = row_counts,
+    dx      = dx,
+    n_grid  = if(!is.null(context$n_grid)) context$n_grid else NULL
+  )
+  attr(out, "grid_resolution") <- .prior_linear_density_mixture_resolution(out, dx)
+  out <- .prior_linear_density_transform(
+    out,
+    output_transformation,
+    output_transformation_arguments,
+    n_grid = context$n_grid
+  )
+  if(isTRUE(.record_evaluation)){
+    attr(out, "adaptive_evaluation") <- list(
+      kind = "density_context_rows",
+      arguments = list(
+        context = context,
+        weights = weights,
+        source_transforms = source_transforms,
+        output_transformation = output_transformation,
+        output_transformation_arguments = output_transformation_arguments
+      )
+    )
+    attr(out, "numerical_diagnostics") <- list(
+      n_grid = context$n_grid,
+      tail_probability_per_source = context$tail_prob,
+      intended_captured_probability_per_continuous_source =
+        max(0, 1 - 2 * context$tail_prob),
+      numerical_range = .prior_linear_density_range(out),
+      grid_normalization =
+        attr(out, "grid_normalization", exact = TRUE),
+      fft_clipping =
+        attr(out, "fft_clipping", exact = TRUE),
+      adaptive_evaluation = TRUE
+    )
+  }
+  out
+}
+
+# Whether a prior is continuous by its structure (no point, spike-and-slab,
+# mixture, discrete, 'none' or expression prior; an ordered prior needs a
+# continuous total and Dirichlet allocations: the default one, Dirichlet(1, ...)
+# or the single share 1, a declared one with positive concentrations, or one of
+# these per factor; a fixed allocation can make a level the point 0).
+.prior_density_continuous_prior <- function(prior){
+
+  if(!is.prior(prior) || is.prior.point(prior) || is.prior.spike_and_slab(prior) ||
+     is.prior.mixture(prior) || is.prior.discrete(prior) || is.prior.none(prior) ||
+     .is_prior_expression(prior)){
+    return(FALSE)
+  }
+  if(is.prior.ordered(prior)){
+    return(.prior_density_dirichlet_allocation(prior$allocation) &&
+             .prior_density_continuous_prior(prior$total))
+  }
+  TRUE
+}
+
+.prior_density_dirichlet_allocation <- function(allocation){
+
+  switch(
+    if(is.list(allocation) && is.character(allocation$type)) allocation$type[1L] else "",
+    "default_dirichlet" = TRUE,
+    "dirichlet"         = is.numeric(allocation$alpha) && all(allocation$alpha > 0),
+    "by_factor"         = length(allocation$allocations) > 0L &&
+      all(vapply(allocation$allocations, .prior_density_dirichlet_allocation, logical(1))),
+    FALSE
+  )
+}
+
+# Whether an output map is the affine 'lin' map with valid coefficients
+# (finite numeric 'a', finite nonzero 'b', their defaults 0 and 1, and no other
+# argument), whose image of a grid is atom-free and fails on no value.
+.prior_density_affine_output_map <- function(transformation, arguments){
+
+  if(!identical(transformation, "lin") ||
+     !(is.null(arguments) || (is.list(arguments) && length(arguments) == 0L) ||
+       (is.list(arguments) && !is.null(names(arguments)) &&
+          all(names(arguments) %in% c("a", "b")) && !anyDuplicated(names(arguments))))){
+    return(FALSE)
+  }
+  a <- arguments[["a"]]
+  (is.null(a) || (is.numeric(a) && length(a) == 1L && is.finite(a))) &&
+    .prior_density_atom_free_transformation(transformation, arguments)
+}
+
+# Whether an output transformation leaves a measure without atoms: any but a
+# constant map ('lin' or 'exp_lin' with b = 0; arguments that do not decide it
+# are refused).
+.prior_density_atom_free_transformation <- function(output_transformation,
+                                                    output_transformation_arguments){
+
+  if(is.character(output_transformation) && length(output_transformation) == 1L &&
+     output_transformation %in% c("lin", "exp_lin")){
+    b <- output_transformation_arguments[["b"]]
+    if(!is.null(b) && (!is.numeric(b) || length(b) != 1L || !is.finite(b) || b == 0)){
+      return(FALSE)
+    }
+  }
+  TRUE
+}
+
+# Whether a row mixture of a prior-density context is free of point masses
+# by its structure: every prior of the context is continuous, every row has a
+# nonzero standardized weight (a row without one is the point at zero) and
+# passes the structural checks of its build (.prior_density_context_row_valid()), and
+# the output transformation is not a constant map. With an ordered prior the
+# rows have no source or output map and every row has an ordered term whose
+# combination defers (.prior_linear_density_defers_grid()), whose build then
+# refuses nothing at construction (ordered terms that share a random
+# allocation, for one, have no route and are refused when built).
+.prior_density_rows_atom_free <- function(context, rows, output_transformation,
+                                          output_transformation_arguments,
+                                          source_transforms = NULL){
+
+  if(!inherits(context, "prior_density_context") || is.null(context$n_grid)){
+    return(FALSE)
+  }
+  if(!all(vapply(context$prior_list, .prior_density_continuous_prior, logical(1)))){
+    return(FALSE)
+  }
+  # a numeric 'multiply_by' scale is folded into the weights, and a zero one
+  # makes a row the point 0, which nonzero standardized weights do not show
+  if(any(vapply(context$prior_list, function(prior){
+    multiplier <- attr(prior, "multiply_by", exact = TRUE)
+    !is.null(multiplier) && !is.character(multiplier)
+  }, logical(1)))){
+    return(FALSE)
+  }
+  nonzero <- tryCatch(
+    vapply(seq_len(nrow(rows)), function(row_i){
+      .prior_density_context_row_valid(context, rows[row_i, ], source_transforms)
+    }, logical(1)),
+    error = function(e) FALSE
+  )
+  if(!all(nonzero)){
+    return(FALSE)
+  }
+  # an output map applies to the built grid: as for a combination, only an
+  # affine one with valid coefficients keeps the deferral (a nonlinear map can
+  # warn or fail on grid values, and other declarations are checked when the
+  # map is applied)
+  if(!is.null(output_transformation) &&
+     !.prior_density_affine_output_map(output_transformation, output_transformation_arguments)){
+    return(FALSE)
+  }
+  if(any(vapply(context$prior_list, is.prior.ordered, logical(1)))){
+    if(!is.null(output_transformation) || any(!is.na(source_transforms))){
+      return(FALSE)
+    }
+    for(row_i in seq_len(nrow(rows))){
+      if(!isTRUE(tryCatch(.prior_density_context_row_defers(context, rows[row_i, ]),
+                          error = function(e) FALSE))){
+        return(FALSE)
+      }
+    }
+  }
+  .prior_density_atom_free_transformation(output_transformation, output_transformation_arguments)
+}
+
+# Whether a row of a context has a nonzero combination that passes the
+# checks of its eager build (.prior_density_context_density(): finite weights,
+# the source maps, the multiplier laws, and the refusals of its products,
+# .prior_linear_product_group_multiplier()) and keeps a continuous component
+# on the grid: an additive source, or a product with a structural route whose
+# linear part and multiplier both keep one (a row whose every source is a
+# rounding residue, a range the grid coordinates cannot resolve, is built as a
+# point). A failing check is an error.
+.prior_density_context_row_valid <- function(context, row, source_transforms = NULL){
+
+  if(any(!is.finite(row))){
+    return(FALSE)
+  }
+  standardized <- .prior_density_context_standardized_weights(context, row, source_transforms)
+  if(length(standardized) == 0L || any(!is.finite(standardized))){
+    return(FALSE)
+  }
+  canonical <- .bt_formula_context_canonical(context, standardized)
+  attr(standardized, "formula_recipe_offset") <- NULL
+  attr(standardized, "formula_contribution_transforms") <- NULL
+  .bt_formula_require_multiplier_laws(canonical, standardized)
+  weights <- standardized[standardized != 0]
+  split <- .prior_linear_split_multiply_groups(canonical$prior_list, weights)
+  for(product_group in split$product_groups){
+    .prior_linear_product_group_multiplier(canonical$prior_list, split, product_group)
+  }
+  # the plans of the parts the eager build constructs, which also check the
+  # source maps
+  keeps_source <- function(prior_list, weights){
+    plan <- .prior_linear_additive_plan(prior_list, weights, context$n_grid, context$tail_prob,
+                                        source_transforms, context$grid_spacing)
+    !is.null(plan) && any(is.na(plan$residue_locations))
+  }
+  continuous <- any(split$additive_weights != 0) &&
+    keeps_source(canonical$prior_list, split$additive_weights)
+  for(product_group in split$product_groups){
+    multiplier <- product_group$multiplier
+    linear_keeps     <- keeps_source(product_group$prior_list, product_group$weights)
+    multiplier_keeps <- keeps_source(canonical$prior_list[multiplier], stats::setNames(1, multiplier))
+    # a product without a structural route is the numerical product of its
+    # factors' grids, which turns a range that collapses into an atom
+    route <- .prior_density_route_linear(canonical$prior_list, product_group$weights,
+                                         source_transforms[names(product_group$weights)], context$n_grid)
+    if(.prior_density_route_has_leaf(route, "unknown")){
+      return(FALSE)
+    }
+    continuous <- continuous || (linear_keeps && multiplier_keeps)
+  }
+  continuous
+}
+
+# Whether one row of a context with an ordered prior keeps the deferral of a
+# row mixture: only a row with an ordered term whose combination, as the
+# context builds it (.prior_density_context_density()), defers its grid
+# (.prior_linear_density_defers_grid()), which a recipe offset, applied to the
+# built grid, prevents; such a mixture defers only when every row does.
+.prior_density_context_row_defers <- function(context, row){
+
+  standardized <- .prior_density_context_standardized_weights(context, row)
+  canonical <- .bt_formula_context_canonical(context, standardized)
+  offset <- attr(standardized, "formula_recipe_offset", exact = TRUE)
+  attr(standardized, "formula_recipe_offset") <- NULL
+  attr(standardized, "formula_contribution_transforms") <- NULL
+  .bt_formula_require_multiplier_laws(canonical, standardized)
+  weights <- standardized[standardized != 0]
+  groups <- .prior_linear_weight_groups(canonical$prior_list, weights)
+  if(!any(vapply(groups, function(group) is.prior.ordered(group$prior), logical(1))) ||
+     !is.null(offset)){
+    return(FALSE)
+  }
+  plan <- .prior_linear_combination_plan(canonical$prior_list, weights, context$n_grid,
+                                         context$tail_prob, NULL, context$grid_spacing)
+  .prior_linear_density_defers_grid(plan, canonical$prior_list, context$n_grid,
+                                    context$tail_prob, NULL, NULL)
+}
+
+# A deferred numerical grid of a prior linear density without atoms: the
+# 'density' field of a density whose grid is built only when needed. It holds
+# the builder's arguments (the density's provenance record), the kind of
+# builder and a cache; reading any grid field through `$` or `[[` builds the
+# grid once and keeps it, and the continuous mass is 1. The kinds are the row
+# mixture of a context (.prior_density_rows_grid()), a linear combination
+# (.prior_linear_combination_grid()) and the density of a context
+# (.prior_density_from_context() without deferral). The builders are called by
+# name, so that a replaced binding is used. .prior_linear_density_materialize()
+# returns the built density with the grid's attributes, for consumers that
+# read those.
+.prior_linear_density_deferred <- function(arguments, kind){
+
+  structure(list(), arguments = arguments, kind = kind,
+            cache = new.env(parent = emptyenv()),
+            class = "prior_linear_density_deferred")
+}
+
+# A prior linear density whose grid is deferred: no atoms, unit continuous
+# mass and the recorded 'adaptive_evaluation' of its linear combination.
+.prior_linear_density_deferred_combination <- function(arguments, n_grid){
+
+  out <- list(
+    density = .prior_linear_density_deferred(arguments, "combination"),
+    points  = .prior_linear_density_empty_points(),
+    n_grid  = n_grid
+  )
+  class(out) <- c("prior_linear_density", "prior_density")
+  attr(out, "weights") <- arguments$weights
+  attr(out, "adaptive_evaluation") <- list(kind = "linear_combination", arguments = arguments)
+  out
+}
+
+.prior_linear_density_is_deferred <- function(x){
+
+  is.list(x) && inherits(.subset2(x, "density"), "prior_linear_density_deferred")
+}
+
+.prior_linear_density_deferred_value <- function(deferred){
+
+  cache <- attr(deferred, "cache", exact = TRUE)
+  if(is.null(cache$value)){
+    arguments <- attr(deferred, "arguments", exact = TRUE)
+    # a deferred grid kept from before the kinds were recorded is a row mixture
+    kind <- attr(deferred, "kind", exact = TRUE)
+    if(is.null(kind)){
+      kind <- "rows"
+    }
+    if(!is.character(kind) || length(kind) != 1L ||
+       !kind %in% c("rows", "combination", "context")){
+      stop("The deferred prior-density grid has an unknown kind.", call. = FALSE)
+    }
+    value <- switch(
+      kind,
+      "rows"        = do.call(.prior_density_rows_grid, arguments),
+      "combination" = do.call(.prior_linear_combination_grid, arguments),
+      "context"     = do.call(.prior_density_from_context, c(arguments, list(.defer = FALSE)))
+    )
+    if(!inherits(value, "prior_linear_density") || !is.list(value$density) ||
+       !isTRUE(value$density$mass == 1) ||
+       (!is.null(value$points) && nrow(value$points) > 0L)){
+      stop("The deferred prior-density grid does not have the structure of its ",
+           "atom-free measure.", call. = FALSE)
+    }
+    cache$value <- value
+  }
+  cache$value
+}
+
+# The density with its numerical grid built (the density itself when its grid
+# is not deferred). The built density keeps the attributes its producer added
+# to the deferred one (e.g. those of JAGS_formula_prior_density()).
+.prior_linear_density_materialize <- function(x){
+
+  if(.prior_linear_density_is_deferred(x)){
+    value <- .prior_linear_density_deferred_value(.subset2(x, "density"))
+    for(name in setdiff(names(attributes(x)), names(attributes(value)))){
+      attr(value, name) <- attr(x, name, exact = TRUE)
+    }
+    return(value)
+  }
+  x
+}
+
+#' @export
+`$.prior_linear_density_deferred` <- function(x, name){
+  if(identical(name, "mass")){
+    return(1)
+  }
+  .subset2(.prior_linear_density_deferred_value(x)$density, name)
+}
+
+#' @export
+`[[.prior_linear_density_deferred` <- function(x, i, ...){
+  if(identical(i, "mass")){
+    return(1)
+  }
+  .prior_linear_density_deferred_value(x)$density[[i, ...]]
+}
+
+#' @export
+`$<-.prior_linear_density_deferred` <- function(x, name, value){
+  density <- .prior_linear_density_deferred_value(x)$density
+  density[[name]] <- value
+  density
+}
+
+#' @export
+`[[<-.prior_linear_density_deferred` <- function(x, i, value){
+  density <- .prior_linear_density_deferred_value(x)$density
+  density[[i]] <- value
+  density
+}
+
+#' @export
+names.prior_linear_density_deferred <- function(x){
+  c("x", "y", "mass")
+}
+
+#' @export
+as.list.prior_linear_density_deferred <- function(x, ...){
+  .prior_linear_density_deferred_value(x)$density
+}
+
+#' @export
+print.prior_linear_density_deferred <- function(x, ...){
+  cat("<deferred prior-density grid>\n")
+  invisible(x)
+}
+
+.prior_density_coefficient_weights <- function(column_names, parameter){
+
+  weights <- rep(0, length(column_names))
+  names(weights) <- column_names
+  if(parameter %in% names(weights)){
+    weights[[parameter]] <- 1
+  }
+  weights
+}
+
+.prior_linear_density_mixture_resolution <- function(dist, dx){
+
+  # Spacing and knot count of a mixture evaluated on its finest component
+  # spacing; refinement halves this spacing.
+  if(is.null(dist$density) || !is.finite(dx) || dx <= 0){
+    return(NULL)
+  }
+  c(spacing = dx, n_grid = length(dist$density$x))
+}

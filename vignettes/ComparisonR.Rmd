@@ -1,32 +1,42 @@
 ---
-title: "Comparison to other R packages"
+title: "Bayesian t-Test Compared with BayesFactor"
 author: "František Bartoš"
-date: "`r Sys.Date()`"
+date: "2nd of April 2022"
 output:
   rmarkdown::html_vignette:
     self_contained: yes
 bibliography: ../inst/REFERENCES.bib
 csl: ../inst/apa.csl
 vignette: >
-  %\VignetteIndexEntry{Comparison to other R packages}
-  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteIndexEntry{Bayesian t-Test Compared with BayesFactor}
+  %\VignetteEngine{knitr::rmarkdown_notangle}
   %\VignetteEncoding{UTF-8}
 ---
 
 
 ```{r setup, include = FALSE}
-is_check <- ("CheckExEnv" %in% search()) ||
-             any(c("_R_CHECK_TIMINGS_", "_R_CHECK_LICENSE_") %in% names(Sys.getenv()))
+source("vignette-cache.R", local = knitr::knit_global())
+
+cached_fits <- vignette_cache(
+  name     = "ComparisonR",
+  objects  = c("ttest_model_H0", "ttest_model_Hp", "marglik_model_H0", "marglik_model_Hp"),
+  packages = c("BayesFactor")
+)
+
+vignette_cache_setup(cached_fits)
+
 knitr::opts_chunk$set(
   collapse = TRUE,
   comment  = "#>",
-  eval     = !is_check,
+  eval     = vignette_cache_eval(cached_fits),
   dev      = "png"
 )
 if(.Platform$OS.type == "windows"){
   knitr::opts_chunk$set(dev.args = list(type = "cairo"))
 }
 ```
+
+
 
 BayesTools R package allows package developers and users to conveniently specify a wide variety of models. In this vignette, I show how to reproduce some commonly used models and compare the results to output from other, more specialized, R packages.
 
@@ -124,7 +134,7 @@ ttest_data <- list(
 
 Then, I pass the arguments into the `JAGS_fit()` function that wraps around the runjags R package [@runjags], specifying the prior distributions, preparing the starting values, etc...
 
-```{r} 
+```{r fit-comparison-models, cache_fits = c("ttest_model_H0", "ttest_model_Hp")}
 ttest_model_H0 <- JAGS_fit(
   model_syntax = ttest_model,
   data         = ttest_data,
@@ -146,7 +156,7 @@ I can print the estimated model summary with `runjags_estimates_table()` functio
 runjags_estimates_table(ttest_model_Hp)
 ```
 
-To compute the Bayes factor in favor of $\mathcal{H}_+$ over $\mathcal{H}_0$, I need to first obtain the marginal likelihoods. The only additional step is specifying an R function that returns the log likelihood of the model. Here, instead of writing out the loops, I take advantage of the fact that summation on the log scale equals to multiplication on the original scale.
+To compute the Bayes factor in favor of $\mathcal{H}_0$ over $\mathcal{H}_+$, I need to first obtain the marginal likelihoods. The only additional step is specifying an R function that returns the log likelihood of the model. Here, instead of writing out the loops, I take advantage of the fact that summation on the log scale equals to multiplication on the original scale.
 
 ```{r}
 log_posterior <- function(parameters, data){
@@ -168,19 +178,21 @@ log_posterior <- function(parameters, data){
 
 The function requires two arguments, `parameters` and `data`, both of which are forwarded to it via the `JAGS_bridgesampling` function that wraps around the bridge sampling R package [@bridgesampling], specifying the marginal likelihood for prior distributions and taking care of all required transformations etc...
 
-```{r}
+```{r bridge-comparison-models, cache_fits = c("marglik_model_H0", "marglik_model_Hp")}
 marglik_model_H0 <- JAGS_bridgesampling(
   fit           = ttest_model_H0,
   log_posterior = log_posterior,
   data          = ttest_data,
-  prior_list    = ttest_priors_H0
+  prior_list    = ttest_priors_H0,
+  seed          = 2
 )
 
 marglik_model_Hp <- JAGS_bridgesampling(
   fit           = ttest_model_Hp,
   log_posterior = log_posterior,
   data          = ttest_data,
-  prior_list    = ttest_priors_Hp
+  prior_list    = ttest_priors_Hp,
+  seed          = 3
 )
 ```
 

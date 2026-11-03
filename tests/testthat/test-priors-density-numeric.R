@@ -4,6 +4,113 @@ skip_if_not_test_profile("unit")
 # TEST FILE: Prior Density Numeric Regression Tests
 # ============================================================================ #
 
+.density_numeric_trapezoid_mass <- function(density) {
+  sum(diff(density$x) * (head(density$y, -1) + tail(density$y, -1)) / 2)
+}
+
+test_that("density estimation from samples needs two samples, and a Dirichlet display keeps tiny complements", {
+
+  # one sample cannot select a bandwidth (the raw stats::density error)
+  for(p in list(prior("normal", list(0, 1)), prior("exp", list(1)), prior("beta", list(2, 2)))){
+    expect_error(density(p, force_samples = TRUE, n_samples = 1),
+                 "A kernel density estimate needs at least two finite samples", fixed = TRUE)
+  }
+  expect_s3_class(density(prior("normal", list(0, 1)), force_samples = TRUE, n_samples = 2), "density.prior")
+
+  # Dirichlet(1e16, 1): the complement of the first component is 1, while
+  # sum(alpha) - alpha[1] is 0 ("The 'beta' must be positive")
+  # (base R's qbeta() reports its own inaccuracy for these shapes)
+  displayed <- suppressWarnings(density(prior("dirichlet", list(alpha = c(1e16, 1)))))
+  expect_s3_class(displayed, "density.prior.simplex")
+  expect_identical(names(displayed), c("V1", "V2"))
+})
+
+test_that("the atom gate of the ordered mixed-measure density reads the unrefined total", {
+
+  # the gate reads the atoms and the presence of a continuous part only: the
+  # total on the grid of its range ('n_grid' knots) gives the same ones as the
+  # grid refined to the robust scale of its narrowest continuous source
+  totals <- list(
+    prior_spike_and_slab(prior("normal", list(0, 1)), prior_inclusion = prior("beta", list(2, 3))),
+    prior_spike_and_slab(prior("normal", list(10, .01)), prior_inclusion = prior("spike", list(.5))),
+    prior_mixture(list(prior("normal", list(0, 1), prior_weights = 1), prior("point", list(1), prior_weights = 1)),
+                  is_null = c(FALSE, FALSE)),
+    prior_mixture(list(prior("point", list(0), prior_weights = 1), prior("point", list(2), prior_weights = 1)),
+                  is_null = c(FALSE, FALSE)),
+    prior("point", list(1))
+  )
+  tail_prob <- .prior_linear_density_tail_prob()
+  for(total in totals){
+    refined <- .prior_ordered_total_linear_distribution(total, NA_real_, 1000L, tail_prob)
+    gate <- .prior_ordered_total_linear_distribution(total, NA_real_, 1000L, tail_prob, refine = FALSE)
+    expect_identical(gate$points, refined$points)
+    expect_identical(is.null(gate$density), is.null(refined$density))
+    if(!is.null(gate$density)){
+      expect_lte(length(gate$density$x), length(refined$density$x))
+    }
+  }
+  # the narrow slab is the case that is refined (64 knots per robust scale)
+  narrow <- .prior_ordered_total_linear_distribution(totals[[2L]], NA_real_, 1000L, tail_prob)
+  narrow_gate <- .prior_ordered_total_linear_distribution(totals[[2L]], NA_real_, 1000L, tail_prob, refine = FALSE)
+  expect_lt(length(narrow_gate$density$x), length(narrow$density$x))
+})
+
+test_that("range quantiles are validated and weights of unknown columns are refused", {
+
+  # the tail probability of the plotting range is in (0, 0.5): 0 gave an
+  # infinite range, and x_range_quant = 0 the base-R "'from' must be a finite number"
+  normal <- prior("normal", list(0, 1))
+  for(value in c(0, -.1)){
+    expect_error(range(normal, quantiles = value), "The 'quantiles' must be higher than 0.", fixed = TRUE)
+    expect_error(density(normal, x_range_quant = value), "The 'x_range_quant' must be higher than 0.", fixed = TRUE)
+  }
+  for(value in c(.5, .7)){
+    expect_error(range(normal, quantiles = value), "The 'quantiles' must be lower than 0.5.", fixed = TRUE)
+    expect_error(density(normal, x_range_quant = value), "The 'x_range_quant' must be lower than 0.5.", fixed = TRUE)
+  }
+  expect_equal(range(normal, quantiles = .01), stats::qnorm(c(.01, .99)), tolerance = 1e-12)
+
+  # c(a = 1, b_typo = 2) gave the density of 'a'
+  context <- .prior_density_context(list(a = normal), "a", n_grid = 128)
+  expect_error(.prior_density_from_context(context, c(a = 1, b_typo = 2)),
+               "No prior distribution was found for coefficient column(s): 'b_typo'.", fixed = TRUE)
+  expect_s3_class(.prior_density_from_context(context, c(a = 1, b_typo = 0)), "prior_density")
+  expect_s3_class(.prior_density_from_context(context, c(a = 1)), "prior_density")
+})
+
+test_that("diagonal multivariate Normal log densities retain checked and independent identities", {
+
+  for(k in c(1L, 2L, 5L)) for(spec in list(c(.3, .7), c(-4, .02), c(3e6, 2e6))){
+    mean <- spec[[1L]]
+    sd <- spec[[2L]]
+    p <- prior("mnormal", list(mean = mean, sd = sd, K = k))
+    x <- mean + sd * seq(-1.25, 1.75, length.out = k)
+    rows <- rbind(first = x, second = mean + sd * seq(.2, 2.2, length.out = k))
+    covariance <- diag(sd^2, k)
+    expect_identical(lpdf(p, x), mvtnorm::dmvnorm(x, rep(mean, k), covariance, log = TRUE))
+    expect_identical(lpdf(p, rows), mvtnorm::dmvnorm(rows, rep(mean, k), covariance, log = TRUE))
+    expect_equal(lpdf(p, x), sum(stats::dnorm(x, mean, sd, log = TRUE)), tolerance = 1e-12)
+    independent <- rowSums(matrix(stats::dnorm(as.numeric(rows), mean, sd, log = TRUE),
+      nrow = nrow(rows), dimnames = dimnames(rows)))
+    expect_equal(lpdf(p, rows), independent, tolerance = 1e-12)
+  }
+})
+
+test_that("internally diagonal Normal densities omit only the redundant symmetry check", {
+
+  original <- mvtnorm::dmvnorm
+  observed <- NULL
+  testthat::local_mocked_bindings(dmvnorm = function(x, mean, sigma, log, checkSymmetry = TRUE){
+    observed <<- list(sigma = sigma, log = log, checkSymmetry = checkSymmetry)
+    original(x, mean = mean, sigma = sigma, log = log, checkSymmetry = checkSymmetry)
+  }, .package = "mvtnorm")
+  p <- prior("mnormal", list(mean = 1, sd = 2, K = 2L))
+  expect_identical(lpdf(p, c(0, 1)), original(c(0, 1), c(1, 1), diag(4, 2), log = TRUE))
+  expect_false(observed$checkSymmetry)
+  expect_true(observed$log)
+  expect_identical(observed$sigma, diag(4, 2))
+})
+
 test_that("density transformation Jacobians use absolute inverse derivatives", {
   expect_equal(
     BayesTools:::.density.prior_transformation_y(
@@ -99,7 +206,8 @@ test_that("density rejects invalid range and transformation shapes", {
       x_seq = 0,
       transformation = list(fun = exp, inv = log, jac = exp, extra = identity)
     ),
-    "must have length '3'"
+    "The 'extra' objects are not recognized by the 'transformation' argument.",
+    fixed = TRUE
   )
 })
 
@@ -157,6 +265,13 @@ test_that("spike-and-slab density scales slab density and spike mass", {
   )
 
   expect_s3_class(d, "density.prior.spike_and_slab")
+  # it prints both component densities (print.density() printed an empty one)
+  printed <- utils::capture.output(returned <- print(d))
+  expect_identical(returned, d)
+  expect_match(printed[1L], "Spike-and-slab prior density: Normal(1, 2) * Spike(0.25)", fixed = TRUE)
+  expect_true(all(c("Variable (slab):", "Inclusion:") %in% printed))
+  expect_false(any(grepl("table of extent 0", printed, fixed = TRUE)))
+  expect_length(grep("Call:", printed, fixed = TRUE), 2L)
   expect_equal(d$variable$x, x_seq)
   expect_equal(d$variable$y, .25 * stats::dnorm(x_seq, mean = 1, sd = 2))
   expect_equal(d$inclusion$x, 0)
@@ -165,6 +280,108 @@ test_that("spike-and-slab density scales slab density and spike mass", {
   expect_equal(attr(d$inclusion, "y_range"), c(0, .75))
   expect_equal(attr(d, "y_range_variable"), attr(d$variable, "y_range"))
   expect_equal(attr(d, "y_range_inclusion"), attr(d$inclusion, "y_range"))
+})
+
+
+test_that("spike-and-slab density without a transformation keeps a zero-height inclusion point", {
+  slab <- prior("normal", list(mean = 0, sd = 1), list(0, Inf))
+  p <- prior_spike_and_slab(slab, prior("bernoulli", list(1)))
+  x_seq <- c(0, .5, 1)
+
+  d <- density(p, x_seq = x_seq, force_samples = FALSE, truncate_end = FALSE)
+
+  expect_s3_class(d, "density.prior.spike_and_slab")
+  expect_equal(d$variable$y, 2 * stats::dnorm(x_seq))
+  expect_equal(d$inclusion$x, 0)
+  expect_equal(d$inclusion$y, 0)
+  expect_equal(attr(d$inclusion, "y_range"), c(0, 0))
+  expect_equal(attr(d, "y_range_inclusion"), c(0, 0))
+  printed <- utils::capture.output(print(d))
+  expect_false(any(grepl("zero prior mass", printed, fixed = TRUE)))
+})
+
+
+test_that("boundary KDE validates explicit support bounds", {
+  expect_error(
+    BayesTools:::.density_kde_boundary(1:5, n = 32, bounds = c(1, 0)),
+    "lower boundary"
+  )
+  expect_error(
+    BayesTools:::.density_kde_boundary(1:5, n = 32, bounds = c(0, NA)),
+    "'bounds' must be a numeric vector of length 2",
+    fixed = TRUE
+  )
+
+  d <- BayesTools:::.density_kde_boundary(1:5, n = 32, bounds = c(-Inf, Inf))
+  expect_false(isTRUE(attr(d, "boundary_reflection")))
+})
+
+
+test_that("sampled uniform density uses boundary reflection on finite support", {
+  set.seed(11)
+  d <- density(
+    prior("uniform", list(0, 1)),
+    x_range = c(0, 1),
+    n_samples = 4000,
+    n_points = 512,
+    force_samples = TRUE,
+    truncate_end = FALSE
+  )
+
+  expect_equal(range(d$x), c(0, 1))
+  expect_true(all(is.finite(d$y)))
+  expect_true(all(d$y >= 0))
+  expect_equal(.density_numeric_trapezoid_mass(d), 1, tolerance = .02)
+  expect_gt(d$y[1], .8)
+  expect_gt(d$y[length(d$y)], .8)
+  expect_true(isTRUE(attr(d, "boundary_reflection")))
+})
+
+
+test_that("sampled exponential density reflects only the true lower boundary", {
+  set.seed(12)
+  d <- density(
+    prior("exp", list(rate = 1)),
+    x_range = c(0, 5),
+    n_samples = 4000,
+    n_points = 512,
+    force_samples = TRUE,
+    truncate_end = FALSE
+  )
+
+  expect_equal(range(d$x), c(0, 5))
+  expect_true(all(is.finite(d$y)))
+  expect_true(all(d$y >= 0))
+  expect_equal(.density_numeric_trapezoid_mass(d), stats::pexp(5), tolerance = .02)
+  expect_gt(d$y[1], .75)
+  expect_lt(d$y[length(d$y)], .2)
+  expect_true(isTRUE(attr(d, "boundary_reflection")))
+})
+
+
+test_that("sampled individual weightfunction densities reflect per-component support", {
+  set.seed(13)
+  d <- density(
+    prior_weightfunction(
+      "one-sided",
+      c(.05),
+      wf_independent(prior("beta", list(1, 1)))
+    ),
+    individual = TRUE,
+    force_samples = TRUE,
+    n_samples = 4000,
+    n_points = 512
+  )
+
+  continuous_density <- d[[2]]
+
+  expect_s3_class(d[[1]], "density.prior.point")
+  expect_s3_class(continuous_density, "density.prior.simple")
+  expect_equal(range(continuous_density$x), c(0, 1))
+  expect_true(all(is.finite(continuous_density$y)))
+  expect_true(all(continuous_density$y >= 0))
+  expect_equal(.density_numeric_trapezoid_mass(continuous_density), 1, tolerance = .02)
+  expect_true(isTRUE(attr(continuous_density, "boundary_reflection")))
 })
 
 
@@ -180,4 +397,60 @@ test_that("transformed spike-and-slab density reports transformed top-level rang
   ))
   expect_equal(attr(d, "x_range"), component_range)
   expect_true(attr(d, "x_range")[1] > 0)
+})
+
+test_that("a transformed discrete prior density moves its support points and keeps their masses", {
+
+  bernoulli <- prior("bernoulli", list(.3))
+  mass_density <- function(transformation, arguments, ...){
+    density(bernoulli, transformation = transformation, transformation_arguments = arguments,
+            truncate_end = FALSE, ...)
+  }
+
+  # an increasing map: the points move, the masses do not
+  doubled <- mass_density("lin", list(a = 0, b = 2))
+  expect_equal(doubled$x, c(0, 2))
+  expect_equal(doubled$y, c(.7, .3))
+  shifted <- mass_density("lin", list(a = 5, b = 3))
+  expect_equal(shifted$x, c(5, 8))
+  expect_equal(shifted$y, c(.7, .3))
+  exponential <- mass_density("exp", NULL)
+  expect_equal(exponential$x, c(1, exp(1)))
+  expect_equal(exponential$y, c(.7, .3))
+  expect_equal(attr(doubled, "y_range"), c(0, .7))
+
+  # a decreasing map lists the points in ascending order, each with its mass
+  flipped <- mass_density("lin", list(a = 0, b = -1))
+  expect_equal(flipped$x, c(-1, 0))
+  expect_equal(flipped$y, c(.3, .7))
+
+  # every point maps to its image: the source zero of exp_lin with b = 2 stays
+  power <- mass_density("exp_lin", list(a = 0, b = 2))
+  expect_equal(power$x, c(0, 1))
+  expect_equal(power$y, c(.7, .3))
+
+  # a constant map turns the whole mass into one atom
+  constant <- mass_density("lin", list(a = 3, b = 0))
+  expect_equal(constant$x, 3)
+  expect_equal(constant$y, 1)
+
+  # the zero-height end knots stay at the ends
+  padded <- density(bernoulli, transformation = "lin", transformation_arguments = list(a = 0, b = 2))
+  expect_equal(padded$x, c(0, 0, 2, 2))
+  expect_equal(padded$y, c(0, .7, .3, 0))
+  padded <- density(bernoulli, transformation = "lin", transformation_arguments = list(a = 0, b = -1))
+  expect_equal(padded$x, c(-1, -1, 0, 0))
+  expect_equal(padded$y, c(0, .3, .7, 0))
+
+  # sampled masses are the proportions of the transformed samples
+  set.seed(1)
+  sampled <- mass_density("lin", list(a = 1, b = -2), force_samples = TRUE, n_samples = 500)
+  expect_equal(sampled$x, c(-1, 1))
+  expect_equal(sampled$y, vapply(sampled$x, function(location) mean(sampled$samples == location), numeric(1)))
+  expect_equal(sum(sampled$y), 1)
+
+  # a continuous prior keeps the Jacobian of its density
+  normal <- density(prior("normal", list(0, 1)), transformation = "lin", transformation_arguments = list(a = 0, b = 2),
+                    truncate_end = FALSE)
+  expect_equal(normal$y, stats::dnorm(normal$x / 2) / 2)
 })

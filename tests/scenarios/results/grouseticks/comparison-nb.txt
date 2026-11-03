@@ -1,0 +1,19 @@
+       source parameter estimate median    lCI    uCI
+1    glmer.nb intercept    0.575     NA     NA     NA
+2  BayesTools intercept    0.603  0.605  0.372  0.823
+3        brms intercept    0.604  0.606  0.376  0.825
+4    glmer.nb    height   -0.859     NA     NA     NA
+5  BayesTools    height   -0.857 -0.856 -1.079 -0.637
+6        brms    height   -0.857 -0.856 -1.075 -0.640
+7    glmer.nb    year 1    0.653     NA     NA     NA
+8  BayesTools    year 1    0.652  0.649  0.375  0.950
+9        brms    year 1    0.648  0.648  0.368  0.932
+10   glmer.nb    year 2   -1.040     NA     NA     NA
+11 BayesTools    year 2   -1.026 -1.025 -1.342 -0.713
+12       brms    year 2   -1.026 -1.025 -1.347 -0.718
+13   glmer.nb  brood SD    0.901     NA     NA     NA
+14 BayesTools  brood SD    0.942  0.936  0.772  1.144
+15       brms  brood SD    0.941  0.936  0.772  1.139
+16   glmer.nb       phi    3.307     NA     NA     NA
+17 BayesTools       phi    3.370  3.315  2.393  4.670
+18       brms       phi    3.367  3.317  2.386  4.641

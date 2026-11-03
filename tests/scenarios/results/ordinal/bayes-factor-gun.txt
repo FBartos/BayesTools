@@ -1,0 +1,11 @@
+                   H1                 H0                 method log_BF10 note
+1    ordered physique no physique effect             quadrature   -0.453     
+2    ordered physique no physique effect        bridge sampling   -0.435     
+3    ordered physique no physique effect bridge sampling (brms)   -0.424     
+4    ordered physique no physique effect         spike and slab   -0.468     
+5  unordered physique no physique effect             quadrature   -2.757     
+6  unordered physique no physique effect        bridge sampling   -2.744     
+7  unordered physique no physique effect bridge sampling (brms)   -2.747     
+8    ordered physique unordered physique             quadrature    2.305     
+9    ordered physique unordered physique        bridge sampling    2.309     
+10   ordered physique unordered physique bridge sampling (brms)    2.323     

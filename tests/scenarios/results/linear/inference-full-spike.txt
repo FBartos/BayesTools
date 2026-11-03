@@ -1,0 +1,2 @@
+               Prior prob. Post. prob. Inclusion BF
+(mu) supp:dose       0.500       0.468        0.881

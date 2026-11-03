@@ -1,16 +1,40 @@
 args <- commandArgs(trailingOnly = TRUE)
 profile <- if (length(args) > 0L && nzchar(args[[1L]])) args[[1L]] else Sys.getenv("BAYESTOOLS_TEST_PROFILE", "unit")
+run_certification_lane <- identical(tolower(profile), "certification")
+filter <- if (identical(tolower(profile), "filter")) {
+  if (length(args) < 2L || !any(nzchar(args[-1L]))) {
+    stop("Profile 'filter' requires one testthat filter.", call. = FALSE)
+  }
+  paste(args[-1L], collapse = "|")
+} else {
+  if (length(args) > 1L && !run_certification_lane) {
+    stop("Unexpected test-profile arguments: ", paste(args[-1L], collapse = ", "), call. = FALSE)
+  }
+  NULL
+}
 
-if (Sys.getenv("AGENT") == "") {
+command <- commandArgs(trailingOnly = FALSE)
+file_arg <- grep("^--file=", command, value = TRUE)
+script_path <- if (length(file_arg) > 0L) {
+  sub("^--file=", "", file_arg[[length(file_arg)]])
+} else {
+  file.path("tools", "test-profile.R")
+}
+project_root <- normalizePath(file.path(dirname(script_path), ".."), mustWork = TRUE)
+setwd(project_root)
+
+if (Sys.getenv("AGENT") == "" &&
+    Sys.getenv("BAYESTOOLS_TEST_REPORTER") == "") {
   Sys.setenv(AGENT = "1")
 }
 
 source(file.path("tests", "testthat", "helper-test-profiles.R"))
 
-Sys.setenv(BAYESTOOLS_TEST_PROFILE = profile)
+profile_selection <- if (is.null(filter)) profile else "all"
+Sys.setenv(BAYESTOOLS_TEST_PROFILE = profile_selection)
 
-requested_profile_parts <- unique(unlist(strsplit(tolower(profile), "[,;[:space:]]+")))
-selected_profiles <- bayestools_normalize_test_profiles(profile)
+requested_profile_parts <- unique(unlist(strsplit(tolower(profile_selection), "[,;[:space:]]+")))
+selected_profiles <- bayestools_normalize_test_profiles(profile_selection)
 run_all_profiles <- "all" %in% requested_profile_parts
 
 resolve_test_files_dir <- function() {
@@ -26,7 +50,7 @@ resolve_test_files_dir <- function() {
 
 Sys.setenv(BAYESTOOLS_TEST_FILES_DIR = resolve_test_files_dir())
 
-if (any(c("fit", "visual-fixture") %in% selected_profiles)) {
+if (any(c("fit", "visual-fixture", "certification") %in% selected_profiles)) {
   Sys.setenv(NOT_CRAN = "true")
 }
 if (any(c("visual", "visual-fixture") %in% selected_profiles)) {
@@ -36,7 +60,10 @@ if ("fit" %in% selected_profiles && Sys.getenv("BAYESTOOLS_TEST_SKIP_REFIT") == 
   Sys.setenv(BAYESTOOLS_TEST_SKIP_REFIT = "false")
 }
 
-message("Running BayesTools test profile: ", Sys.getenv("BAYESTOOLS_TEST_PROFILE"))
+message(
+  "Running BayesTools test profile: ",
+  if (is.null(filter)) Sys.getenv("BAYESTOOLS_TEST_PROFILE") else "filter"
+)
 message("Selected profile lane(s): ", paste(selected_profiles, collapse = ", "))
 message("BAYESTOOLS_TEST_FILES_DIR: ", Sys.getenv("BAYESTOOLS_TEST_FILES_DIR"))
 message("BAYESTOOLS_TEST_SKIP_REFIT: ", Sys.getenv("BAYESTOOLS_TEST_SKIP_REFIT", unset = "<unset>"))
@@ -45,10 +72,12 @@ message("VDIFFR_RUN_TESTS: ", Sys.getenv("VDIFFR_RUN_TESTS", unset = "<unset>"))
 message("AGENT: ", Sys.getenv("AGENT", unset = "<unset>"))
 
 started <- Sys.time()
-on.exit({
+# A top-level on.exit() of an Rscript registers nothing, so the elapsed time is
+# printed explicitly after the test call, also when it fails.
+report_elapsed <- function() {
   elapsed <- difftime(Sys.time(), started, units = "secs")
   message("Elapsed seconds: ", round(as.numeric(elapsed), 1))
-}, add = TRUE)
+}
 
 if (!requireNamespace("devtools", quietly = TRUE)) {
   stop("The devtools package is required to run tools/test-profile.R.", call. = FALSE)
@@ -56,19 +85,98 @@ if (!requireNamespace("devtools", quietly = TRUE)) {
 if (!requireNamespace("testthat", quietly = TRUE)) {
   stop("The testthat package is required to run tools/test-profile.R.", call. = FALSE)
 }
-if (!exists("LlmReporter", envir = asNamespace("testthat"), inherits = FALSE)) {
+reporter <- Sys.getenv("BAYESTOOLS_TEST_REPORTER", unset = "llm")
+if (identical(reporter, "llm") &&
+    !exists("LlmReporter", envir = asNamespace("testthat"), inherits = FALSE)) {
   stop("testthat::LlmReporter is required; install testthat >= 3.3.0.", call. = FALSE)
 }
 
-test_filter <- if (run_all_profiles) NULL else bayestools_test_profile_filter(selected_profiles)
+test_filter <- if (!is.null(filter)) {
+  filter
+} else if (run_all_profiles) {
+  NULL
+} else {
+  bayestools_test_profile_filter(selected_profiles)
+}
 
-if (!is.null(test_filter)) {
+if (!is.null(filter)) {
+  message("testthat filter: ", filter)
+} else if (!is.null(test_filter)) {
   message("testthat filter selects ", length(bayestools_test_profile_selected_contexts(selected_profiles)), " context(s).")
 }
 
-message("testthat reporter: LlmReporter")
-devtools::test(
-  filter = test_filter,
-  stop_on_failure = TRUE,
-  reporter = testthat::LlmReporter$new()
+env_flag <- function(name, default) {
+  value <- Sys.getenv(name, unset = "")
+  if (!nzchar(value)) {
+    return(default)
+  }
+
+  value <- tolower(trimws(value))
+  if (value %in% c("1", "true", "yes", "on")) {
+    return(TRUE)
+  }
+  if (value %in% c("0", "false", "no", "off")) {
+    return(FALSE)
+  }
+
+  stop("Environment variable '", name, "' must be TRUE or FALSE.", call. = FALSE)
+}
+
+stop_on_failure <- env_flag("BAYESTOOLS_TEST_STOP_ON_FAILURE", TRUE)
+reporter_object <- if (identical(reporter, "llm")) {
+  if (env_flag("BAYESTOOLS_TEST_QUIET_SKIPS", FALSE)) {
+    bayestools_quiet_llm_reporter()
+  } else {
+    testthat::LlmReporter$new()
+  }
+} else {
+  reporter
+}
+
+message("testthat reporter: ", reporter)
+if (run_certification_lane) {
+  source(file.path("tools", "test-certification.R"))
+  tryCatch(
+    run_certification(args[-1L], normalizePath(script_path, winslash = "/", mustWork = TRUE), reporter_object),
+    finally = report_elapsed()
+  )
+  quit(save = "no", status = 0L)
+}
+snapshot_root  <- file.path("tests", "testthat")
+snapshot_state <- bayestools_snapshot_state(snapshot_root)
+if (length(bayestools_snapshot_unreadable(snapshot_state)) > 0L) {
+  stop("Cannot read the snapshot files, so a run could not restore them; no tests ran:\n- ",
+       paste(bayestools_snapshot_unreadable(snapshot_state), collapse = "\n- "), call. = FALSE)
+}
+unreviewed     <- list(changed = character(), deleted = character(), problems = character())
+# The guard's report is printed in 'finally', so it also follows a test failure
+# that propagates from devtools::test().
+report_unreviewed <- function(unreviewed) {
+  if (length(unreviewed$problems) > 0L) {
+    message("Restoring the reviewed snapshot files failed:\n- ", paste(unreviewed$problems, collapse = "\n- "))
+  }
+  if (length(unreviewed$changed) > 0L) {
+    message("New or changed snapshots (restored; kept as '.new' candidates for review):\n- ",
+            paste(unreviewed$changed, collapse = "\n- "))
+  }
+  if (length(unreviewed$deleted) > 0L) {
+    message("Snapshots deleted by testthat's cleanup (restored; remove obsolete ones through review):\n- ",
+            paste(unreviewed$deleted, collapse = "\n- "))
+  }
+}
+tryCatch(
+  devtools::test(
+    filter = test_filter,
+    stop_on_failure = stop_on_failure,
+    reporter = reporter_object
+  ),
+  finally = {
+    unreviewed <- bayestools_quarantine_snapshots(snapshot_root, snapshot_state)
+    report_unreviewed(unreviewed)
+    report_elapsed()
+  }
 )
+if (length(unreviewed$changed) > 0L || length(unreviewed$deleted) > 0L ||
+    length(unreviewed$problems) > 0L) {
+  stop("Snapshot files changed without review; see the report above.", call. = FALSE)
+}

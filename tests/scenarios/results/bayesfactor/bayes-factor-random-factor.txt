@@ -1,0 +1,4 @@
+          H1 H0           method log_BF10                    note
+1 group + ID ID   JZS quadrature    2.458 BayesFactor error 1.16%
+2 group + ID ID BayesFactor (MC)    2.457 BayesFactor error 1.16%
+3 group + ID ID  bridge sampling    2.465 BayesFactor error 1.16%
