@@ -948,8 +948,8 @@
 # nonzero standardized weight (a row without one is the point at zero) and
 # passes the structural checks of its build (.prior_density_context_row_valid()), and
 # the output transformation is not a constant map. With an ordered prior the
-# rows have no source or output map and defer only when the combination of
-# every row defers (.prior_linear_density_defers_grid()), whose build then
+# rows have no source or output map and every row has an ordered term whose
+# combination defers (.prior_linear_density_defers_grid()), whose build then
 # refuses nothing at construction (ordered terms that share a random
 # allocation, for one, have no route and are refused when built).
 .prior_density_rows_atom_free <- function(context, rows, output_transformation,
@@ -1012,14 +1012,18 @@
   for(product_group in split$product_groups){
     .prior_linear_product_group_multiplier(canonical$prior_list, split, product_group)
   }
-  TRUE
+  # a row whose every source is a rounding residue (a range the grid
+  # coordinates cannot resolve) is built as a point
+  plan <- .prior_linear_combination_plan(canonical$prior_list, weights, context$n_grid,
+                                         context$tail_prob, NULL, context$grid_spacing)
+  is.null(plan) || any(is.na(plan$residue_locations))
 }
 
 # Whether one row of a context with an ordered prior keeps the deferral of a
-# row mixture: a row without an ordered term does; a row with one only when
-# the combination that the context builds for it (.prior_density_context_density())
-# defers its grid (.prior_linear_density_defers_grid()), which a recipe offset,
-# applied to the built grid, prevents.
+# row mixture: only a row with an ordered term whose combination, as the
+# context builds it (.prior_density_context_density()), defers its grid
+# (.prior_linear_density_defers_grid()), which a recipe offset, applied to the
+# built grid, prevents; such a mixture defers only when every row does.
 .prior_density_context_row_defers <- function(context, row){
 
   standardized <- .prior_density_context_standardized_weights(context, row)
@@ -1030,10 +1034,8 @@
   .bt_formula_require_multiplier_laws(canonical, standardized)
   weights <- standardized[standardized != 0]
   groups <- .prior_linear_weight_groups(canonical$prior_list, weights)
-  if(!any(vapply(groups, function(group) is.prior.ordered(group$prior), logical(1)))){
-    return(TRUE)
-  }
-  if(!is.null(offset)){
+  if(!any(vapply(groups, function(group) is.prior.ordered(group$prior), logical(1))) ||
+     !is.null(offset)){
     return(FALSE)
   }
   plan <- .prior_linear_combination_plan(canonical$prior_list, weights, context$n_grid,

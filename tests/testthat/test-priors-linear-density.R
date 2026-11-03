@@ -4608,8 +4608,30 @@ test_that("ordered levels without atoms build their numerical grid only for grid
   })
   deferred_rows <- .prior_density_from_context_rows(context, rows)
   expect_s3_class(deferred_rows$density, "prior_linear_density_deferred")
+  expect_identical(deferred_rows$n_grid, eager_rows$n_grid)
+  expect_identical(deferred_rows$points, eager_rows$points)
   expect_identical(prior_density_ordinate(deferred_rows, .3), prior_density_ordinate(eager_rows, .3))
   expect_identical(.prior_linear_density_materialize(deferred_rows), eager_rows)
+
+  # a row whose every source is a rounding residue (a uniform range of 64
+  # representable values) is a point: such rows, a row without an ordered term
+  # beside an ordered prior, and contexts without one build at once with that atom
+  residue_eps <- .Machine$double.eps
+  residue <- list(x = prior("uniform", list(1, 1 + 64 * residue_eps)), y = prior("normal", list(0, 1)),
+                  g = zero_scaled$g)
+  residue_cases <- list(
+    list(priors = c("x", "g"), rows = rbind(c(x = 1, "g[1]" = 0, "g[2]" = 0),
+                                            c(x = 1, "g[1]" = 0, "g[2]" = 0))),
+    list(priors = c("x", "y"), rows = rbind(c(x = 1, y = 0), c(x = 1, y = 0))),
+    list(priors = c("x", "y"), rows = rbind(c(x = 1, y = 0), c(x = 0, y = 1)))
+  )
+  for(case in residue_cases){
+    residue_context <- .prior_density_build_context(residue[case$priors], colnames(case$rows), n_grid = 256L)
+    residue_density <- .prior_density_from_context_rows(residue_context, case$rows)
+    expect_false(inherits(residue_density$density, "prior_linear_density_deferred"))
+    expect_identical(residue_density, eager_rows_of(residue_context, case$rows))
+    expect_gt(nrow(residue_density$points), 0L)
+  }
 })
 
 # A small fitted object whose formula parameter is standardized (x), with one
