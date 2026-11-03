@@ -745,8 +745,11 @@ e.g. the prior density of a formula `marginal_posterior()` level) whose
 structure has no point mass (only continuous priors, no numeric multiplier,
 every row with finite and nonzero weights that passes the checks of its build
 (source maps, multiplier laws, its products) and keeps a continuous source on
-the grid (an additive source, or a product whose linear part and multiplier
-both keep one; a row of rounding residues is a point), no constant output map;
+the grid (an additive source, or a product with a structural route whose
+linear part and multiplier both keep one, since the numerical product of a
+product without one turns a collapsing range into an atom; a row of rounding
+residues is a point), no constant output map and a valid output-map
+declaration;
 an ordered prior is continuous with
 a continuous total and Dirichlet allocations, the default Dirichlet(1, ...)
 included, while a fixed allocation can make a level the point 0; the rows

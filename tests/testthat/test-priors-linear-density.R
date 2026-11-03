@@ -4662,6 +4662,30 @@ test_that("ordered levels without atoms build their numerical grid only for grid
   expect_s3_class(infinite_eager, "error")
   expect_error(.prior_density_from_context_rows(scalar_context, infinite_rows),
                conditionMessage(infinite_eager), fixed = TRUE)
+  bad_map <- list(fun = identity, inv = identity, jac = function(x) rep(1, length(x)),
+                  output_support = c(1, -1))
+  bad_map_eager <- tryCatch(local({
+    local_mocked_bindings(.prior_density_rows_atom_free = function(...) FALSE)
+    .prior_density_from_context_rows(scalar_context, scalar_rows, output_transformation = bad_map)
+  }), error = identity)
+  expect_s3_class(bad_map_eager, "error")
+  expect_error(.prior_density_from_context_rows(scalar_context, scalar_rows, output_transformation = bad_map),
+               conditionMessage(bad_map_eager), fixed = TRUE)
+
+  # a product without a structural route (a log source) is the numerical
+  # product of its factors' grids, whose range here underflows to the atom 0:
+  # such rows build at once with that atom
+  tiny_product <- list(x = prior("uniform", list(1, 2)), sigma = prior("uniform", list(1e-200, 2e-200)))
+  attr(tiny_product$x, "multiply_by") <- "sigma"
+  tiny_product_rows <- rbind(c(x = 1e-200, sigma = 0), c(x = 1e-200, sigma = 0))
+  tiny_product_context <- .prior_density_build_context(tiny_product, colnames(tiny_product_rows), n_grid = 256L)
+  tiny_product_density <- .prior_density_from_context_rows(tiny_product_context, tiny_product_rows,
+                                                           source_transforms = c(x = "log"))
+  expect_false(inherits(tiny_product_density$density, "prior_linear_density_deferred"))
+  expect_identical(tiny_product_density, local({
+    local_mocked_bindings(.prior_density_rows_atom_free = function(...) FALSE)
+    .prior_density_from_context_rows(tiny_product_context, tiny_product_rows, source_transforms = c(x = "log"))
+  }))
 })
 
 # A small fitted object whose formula parameter is standardized (x), with one

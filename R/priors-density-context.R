@@ -979,6 +979,12 @@
   if(!all(nonzero)){
     return(FALSE)
   }
+  # the declaration of an output map, which its build checks at once
+  if(!is.null(output_transformation) &&
+     inherits(tryCatch(.density.prior_transformation_functions(output_transformation),
+                       error = function(e) e), "error")){
+    return(FALSE)
+  }
   if(any(vapply(context$prior_list, is.prior.ordered, logical(1)))){
     if(!is.null(output_transformation) || any(!is.na(source_transforms))){
       return(FALSE)
@@ -997,10 +1003,10 @@
 # checks of its eager build (.prior_density_context_density(): finite weights,
 # the source maps, the multiplier laws, and the refusals of its products,
 # .prior_linear_product_group_multiplier()) and keeps a continuous component
-# on the grid: an additive source, or a product whose linear part and
-# multiplier both keep one (a row whose every source is a rounding residue, a
-# range the grid coordinates cannot resolve, is built as a point). A failing
-# check is an error.
+# on the grid: an additive source, or a product with a structural route whose
+# linear part and multiplier both keep one (a row whose every source is a
+# rounding residue, a range the grid coordinates cannot resolve, is built as a
+# point). A failing check is an error.
 .prior_density_context_row_valid <- function(context, row, source_transforms = NULL){
 
   if(any(!is.finite(row))){
@@ -1032,6 +1038,13 @@
     multiplier <- product_group$multiplier
     linear_keeps     <- keeps_source(product_group$prior_list, product_group$weights)
     multiplier_keeps <- keeps_source(canonical$prior_list[multiplier], stats::setNames(1, multiplier))
+    # a product without a structural route is the numerical product of its
+    # factors' grids, which turns a range that collapses into an atom
+    route <- .prior_density_route_linear(canonical$prior_list, product_group$weights,
+                                         source_transforms[names(product_group$weights)], context$n_grid)
+    if(.prior_density_route_has_leaf(route, "unknown")){
+      return(FALSE)
+    }
     continuous <- continuous || (linear_keeps && multiplier_keeps)
   }
   continuous
