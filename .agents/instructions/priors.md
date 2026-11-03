@@ -748,8 +748,8 @@ every row with finite and nonzero weights that passes the checks of its build
 the grid (an additive source, or a product with a structural route whose
 linear part and multiplier both keep one, since the numerical product of a
 product without one turns a collapsing range into an atom; a row of rounding
-residues is a point), no constant output map and a valid output-map
-declaration;
+residues is a point), no output map but the affine one with valid
+coefficients, as for a linear combination below;
 an ordered prior is continuous with
 a continuous total and Dirichlet allocations, the default Dirichlet(1, ...)
 included, while a fixed allocation can make a level the point 0; the rows

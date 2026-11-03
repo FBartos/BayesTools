@@ -4671,6 +4671,27 @@ test_that("ordered levels without atoms build their numerical grid only for grid
   expect_s3_class(bad_map_eager, "error")
   expect_error(.prior_density_from_context_rows(scalar_context, scalar_rows, output_transformation = bad_map),
                conditionMessage(bad_map_eager), fixed = TRUE)
+  # only the affine map with valid coefficients keeps the deferral; every other
+  # map (a custom map with a non-callable component, an unknown name, an
+  # invalid coefficient) is applied, and refused, at once
+  for(map in list(list(transformation = list(fun = 0, inv = identity, jac = function(x) rep(1, length(x))),
+                       arguments = NULL),
+                  list(transformation = "not_a_map", arguments = NULL),
+                  list(transformation = "lin", arguments = list(a = "invalid", b = 1)))){
+    map_eager <- tryCatch(local({
+      local_mocked_bindings(.prior_density_rows_atom_free = function(...) FALSE)
+      .prior_density_from_context_rows(scalar_context, scalar_rows, output_transformation = map$transformation,
+                                       output_transformation_arguments = map$arguments)
+    }), error = identity)
+    expect_s3_class(map_eager, "error")
+    expect_error(.prior_density_from_context_rows(scalar_context, scalar_rows,
+                                                  output_transformation = map$transformation,
+                                                  output_transformation_arguments = map$arguments),
+                 conditionMessage(map_eager), fixed = TRUE)
+  }
+  affine_rows <- .prior_density_from_context_rows(scalar_context, scalar_rows, output_transformation = "lin",
+                                                  output_transformation_arguments = list(a = 1, b = 2))
+  expect_s3_class(affine_rows$density, "prior_linear_density_deferred")
 
   # a product without a structural route (a log source) is the numerical
   # product of its factors' grids, whose range here underflows to the atom 0:

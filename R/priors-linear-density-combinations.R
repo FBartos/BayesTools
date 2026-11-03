@@ -1635,13 +1635,8 @@
       return(FALSE)
     }
   }
-  if(is.null(output_transformation)){
-    return(TRUE)
-  }
-  a <- output_transformation_arguments[["a"]]
-  identical(output_transformation, "lin") &&
-    (is.null(a) || (is.numeric(a) && length(a) == 1L && is.finite(a))) &&
-    .prior_density_atom_free_transformation(output_transformation, output_transformation_arguments)
+  is.null(output_transformation) ||
+    .prior_density_affine_output_map(output_transformation, output_transformation_arguments)
 }
 
 # The additive plan of a combination (.prior_linear_additive_plan()), NULL with

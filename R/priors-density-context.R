@@ -927,6 +927,22 @@
   )
 }
 
+# Whether an output map is the affine 'lin' map with valid coefficients
+# (finite numeric 'a', finite nonzero 'b', their defaults 0 and 1, and no other
+# argument), whose image of a grid is atom-free and fails on no value.
+.prior_density_affine_output_map <- function(transformation, arguments){
+
+  if(!identical(transformation, "lin") ||
+     !(is.null(arguments) || (is.list(arguments) && length(arguments) == 0L) ||
+       (is.list(arguments) && !is.null(names(arguments)) &&
+          all(names(arguments) %in% c("a", "b")) && !anyDuplicated(names(arguments))))){
+    return(FALSE)
+  }
+  a <- arguments[["a"]]
+  (is.null(a) || (is.numeric(a) && length(a) == 1L && is.finite(a))) &&
+    .prior_density_atom_free_transformation(transformation, arguments)
+}
+
 # Whether an output transformation leaves a measure without atoms: any but a
 # constant map ('lin' or 'exp_lin' with b = 0; arguments that do not decide it
 # are refused).
@@ -979,10 +995,12 @@
   if(!all(nonzero)){
     return(FALSE)
   }
-  # the declaration of an output map, which its build checks at once
+  # an output map applies to the built grid: as for a combination, only an
+  # affine one with valid coefficients keeps the deferral (a nonlinear map can
+  # warn or fail on grid values, and other declarations are checked when the
+  # map is applied)
   if(!is.null(output_transformation) &&
-     inherits(tryCatch(.density.prior_transformation_functions(output_transformation),
-                       error = function(e) e), "error")){
+     !.prior_density_affine_output_map(output_transformation, output_transformation_arguments)){
     return(FALSE)
   }
   if(any(vapply(context$prior_list, is.prior.ordered, logical(1)))){
