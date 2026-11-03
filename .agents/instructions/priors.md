@@ -761,8 +761,10 @@ holds one exact display grid per row product component: its `density` field
 keeps the builder's arguments and a cache, and the grid is built on the first
 read of a grid field (plots without a given range, grid heights and
 refinement, transformations of the density). Ordinates, exact heights and
-region probabilities evaluate the recorded route and never build it; the
-atoms (none), continuous mass (1) and grid size are exact without it.
+region probabilities that the recorded route resolves never build it (the
+numerical fallback of a combination without a structural route reads, and so
+builds, the grid); the atoms (none), continuous mass (1) and grid size are
+exact without it.
 
 A linear combination without a product group defers its numerical grid in the
 same way when its build is noticeable, a large grid
