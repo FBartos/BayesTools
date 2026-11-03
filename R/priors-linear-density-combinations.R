@@ -640,21 +640,35 @@
   )
 }
 
-# Whether the steps of an ordered level's build before its product quadrature
-# succeed (.prior_ordered_linear_distribution() with the combination's spacing
-# 'dx' and grid size): the level's allocation share, and the total's grid,
-# which refuses a range that is not finite or collapses, a spacing the range
-# cannot hold, or knots that do not differ. A warning counts as a failure, so
-# that the build gives it at once; a product of shares has no single share.
-.prior_ordered_level_prebuilds <- function(group, dx, n_grid, tail_prob){
+# The size of the grid an ordered level keeps in its combination's grid, after
+# the steps of its build before the product quadrature
+# (.prior_ordered_linear_distribution() with the combination's spacing 'dx'
+# and grid size), NULL when one of them fails or warns (the build then gives
+# it at once) or when the level is not deferred: the share, and the total's
+# grid, which refuses a range that is not finite or collapses, a spacing the
+# range cannot hold, or knots that do not differ. A Beta share's product grid
+# (.prior_linear_density_route_product()) has at most 1024 values over the
+# product range and keeps that size unless .prior_linear_density_on_spacing()
+# resamples it to the combination's grid; a share that is a fixed nonzero point
+# scales the total's grid, which is cheap and not deferred; a zero share is the
+# point 0.
+.prior_ordered_level_grid_size <- function(group, dx, n_grid, tail_prob){
 
   tryCatch({
     share <- .prior_ordered_linear_share(group$prior, group$weights, group$indices)
-    if(!identical(share$type, "point") || share$scale != 0){
-      .prior_ordered_total_linear_distribution(group$prior$total, dx, n_grid, tail_prob)
+    if(identical(share$type, "point") && share$scale == 0){
+      return(1L)
     }
-    TRUE
-  }, warning = function(w) FALSE, error = function(e) FALSE)
+    if(!identical(share$type, "beta")){
+      return(NULL)
+    }
+    total <- .prior_ordered_total_linear_distribution(group$prior$total, dx, n_grid, tail_prob)
+    product_size  <- min(max(16L, n_grid), .prior_linear_density_product_grid())
+    product_range <- range(outer(.prior_linear_density_range(total),
+                                 .prior_ordered_linear_share_range(share, tail_prob)))
+    product_dx    <- diff(product_range) / (product_size - 1L)
+    if(abs(product_dx - dx) <= .prior_linear_density_grid_tol() * dx) product_size else as.integer(n_grid)
+  }, warning = function(w) NULL, error = function(e) NULL)
 }
 
 .prior_ordered_total_linear_measure_check <- function(total){
@@ -1553,7 +1567,8 @@
 # structural route of a combination with an ordered level is known and has no
 # atom (a level whose share is identically zero is the point 0) and no product
 # of shares, the steps of the level's build before its product quadrature
-# succeed at once (.prior_ordered_level_prebuilds()), no source
+# succeed at once and the built grid has the plan's size
+# (.prior_ordered_level_grid_size()), no source
 # transformation, and no output map but an affine one, none with an ordered
 # level (a nonlinear map can warn or fail on the values of the grid, an affine
 # map's values can collapse, and a constant map turns the measure into an
@@ -1597,11 +1612,20 @@
       return(FALSE)
     }
     # the steps of the build before the product quadrature run now, so that
-    # their refusals stay at construction
+    # their refusals stay at construction; they also give the grid size each
+    # level keeps, and the built grid's size (the largest, a continuous scalar
+    # source keeping the plan's) must be the plan's, which the deferred
+    # density reports
+    sizes <- 1L
     for(group in plan$groups[on_grid][ordered]){
-      if(!.prior_ordered_level_prebuilds(group, plan$dx, plan$n_grid, tail_prob)){
+      size <- .prior_ordered_level_grid_size(group, plan$dx, plan$n_grid, tail_prob)
+      if(is.null(size)){
         return(FALSE)
       }
+      sizes <- c(sizes, size)
+    }
+    if(all(ordered) && max(sizes) != plan$n_grid){
+      return(FALSE)
     }
   }
   if(is.null(output_transformation)){

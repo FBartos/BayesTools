@@ -770,11 +770,15 @@ one. With an ordered level the structural route is known, has no atom (a level
 whose share is identically zero is the point 0) and every ordered term is one
 allocation share of one slice (a product of shares, whose quadrature can
 resolve no value, builds at once), there is no output map (an affine map can
-collapse the grid's values), and the steps of the level's build before its
-product quadrature run at once (`.prior_ordered_level_prebuilds()`: the share
-and the total's grid at the combination's spacing, which refuses a range that
-is not finite or collapses, a spacing the range cannot hold, or knots that do
-not differ), so their refusals and warnings stay at construction. A nonlinear
+collapse the grid's values), every ordered term is a Beta share (a share that
+is a fixed nonzero point scales the total's grid, which is cheap, and builds at
+once), the steps of the level's build before its product quadrature run at
+once (`.prior_ordered_level_grid_size()`: the share and the total's grid at the
+combination's spacing, which refuses a range that is not finite or collapses,
+a spacing the range cannot hold, or knots that do not differ), so their
+refusals and warnings stay at construction, and the built grid's size, which
+the deferred density reports, is the plan's (a product grid of at most 1024
+values keeps its size unless it is resampled to the combination's spacing). A nonlinear
 map can warn or fail on grid values, so it builds at once, as does every
 smaller grid without an ordered level, which is cheap and keeps the numerical
 diagnostics that only a built grid has. Grid attributes such as `product_grid_resolution`

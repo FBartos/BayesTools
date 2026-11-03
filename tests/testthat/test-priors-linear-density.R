@@ -4489,6 +4489,22 @@ test_that("ordered levels without atoms build their numerical grid only for grid
     expect_identical(builds, 1L)
   }
 
+  # the grid size a deferred density reports is the built grid's at any grid
+  # size; full totals (fixed shares of 1), whose capped product grids keep
+  # their size, build at once
+  for(n_grid in c(1023L, 1025L, 2047L)){
+    for(weights in list(c("mu_shape[1]" = 1), c(mu_intercept = 1, "mu_shape[2]" = 1))){
+      expect_identical(.prior_linear_combination_density(priors, weights, n_grid = n_grid)$n_grid,
+                       .prior_linear_combination_density(priors, weights, n_grid = n_grid, .defer = FALSE)$n_grid)
+    }
+  }
+  uniform_total <- prior_factor_levels(prior_ordered(prior("uniform", list(0, 1))), c("lo", "mid", "hi"))
+  two_totals <- list(g = uniform_total, h = uniform_total)
+  two_weights <- c("g[1]" = 1, "g[2]" = 1, "h[1]" = 1, "h[2]" = 1)
+  two_density <- .prior_linear_combination_density(two_totals, two_weights, n_grid = 2047L)
+  expect_identical(two_density$n_grid,
+                   .prior_linear_combination_density(two_totals, two_weights, n_grid = 2047L, .defer = FALSE)$n_grid)
+
   # a fixed allocation (a share can be 0), a total with atoms, and a product of
   # shares (the difference of the two levels), whose quadrature can resolve no
   # value, build at once
@@ -4574,10 +4590,11 @@ test_that("ordered levels without atoms build their numerical grid only for grid
   }
 
   # the design rows of the levels (a marginal_posterior() level) defer as well
+  # (each coefficient is one Beta share; both together are the total)
   context <- .prior_density_build_context(priors, c("mu_intercept", "mu_shape[1]", "mu_shape[2]"),
                                           n_grid = 256L)
   rows <- rbind(c(mu_intercept = 1, "mu_shape[1]" = 1, "mu_shape[2]" = 0),
-                c(mu_intercept = 1, "mu_shape[1]" = 1, "mu_shape[2]" = 1))
+                c(mu_intercept = 1, "mu_shape[1]" = 0, "mu_shape[2]" = 1))
   eager_rows <- local({
     local_mocked_bindings(.prior_density_rows_atom_free = function(...) FALSE)
     .prior_density_from_context_rows(context, rows)
