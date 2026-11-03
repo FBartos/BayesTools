@@ -4504,6 +4504,13 @@ test_that("ordered levels without atoms build their numerical grid only for grid
   two_density <- .prior_linear_combination_density(two_totals, two_weights, n_grid = 2047L)
   expect_identical(two_density$n_grid,
                    .prior_linear_combination_density(two_totals, two_weights, n_grid = 2047L, .defer = FALSE)$n_grid)
+  # a product grid whose spacing differs from the combination's by about the
+  # resampling tolerance, where the built grid's rounding decides, builds at once
+  boundary <- c("g[1]" = 341 * (1 + sqrt(.Machine$double.eps) + 32 * .Machine$double.eps))
+  boundary_density <- .prior_linear_combination_density(two_totals["g"], boundary, n_grid = 1025L)
+  expect_false(inherits(boundary_density$density, "prior_linear_density_deferred"))
+  expect_identical(boundary_density$n_grid,
+                   .prior_linear_combination_density(two_totals["g"], boundary, n_grid = 1025L, .defer = FALSE)$n_grid)
 
   # a fixed allocation (a share can be 0), a total with atoms, and a product of
   # shares (the difference of the two levels), whose quadrature can resolve no

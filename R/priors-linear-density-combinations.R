@@ -667,7 +667,14 @@
     product_range <- range(outer(.prior_linear_density_range(total),
                                  .prior_ordered_linear_share_range(share, tail_prob)))
     product_dx    <- diff(product_range) / (product_size - 1L)
-    if(abs(product_dx - dx) <= .prior_linear_density_grid_tol() * dx) product_size else as.integer(n_grid)
+    # the build compares the median spacing of the built grid, which can round
+    # to the other side of the tolerance when the spacings are close to it: such
+    # a level builds at once
+    gap <- abs(product_dx - dx) / (.prior_linear_density_grid_tol() * dx)
+    if(gap > 0.5 && gap < 2){
+      return(NULL)
+    }
+    if(gap <= 0.5) product_size else as.integer(n_grid)
   }, warning = function(w) NULL, error = function(e) NULL)
 }
 

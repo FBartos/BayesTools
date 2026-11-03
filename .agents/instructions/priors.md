@@ -778,7 +778,8 @@ combination's spacing, which refuses a range that is not finite or collapses,
 a spacing the range cannot hold, or knots that do not differ), so their
 refusals and warnings stay at construction, and the built grid's size, which
 the deferred density reports, is the plan's (a product grid of at most 1024
-values keeps its size unless it is resampled to the combination's spacing). A nonlinear
+values keeps its size unless it is resampled to the combination's spacing, and a
+spacing within a factor of two of the resampling tolerance builds at once). A nonlinear
 map can warn or fail on grid values, so it builds at once, as does every
 smaller grid without an ordered level, which is cheap and keeps the numerical
 diagnostics that only a built grid has. Grid attributes such as `product_grid_resolution`
