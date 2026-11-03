@@ -431,8 +431,10 @@ bayestools_review_new_snapshots <- function(root, review = testthat::snapshot_re
 
   review_root <- tempfile("bayestools-new-snapshot-review-")
   on.exit(unlink(review_root, recursive = TRUE), add = TRUE)
-  snaps    <- normalizePath(file.path(root, "_snaps"), winslash = "/", mustWork = TRUE)
-  relative <- substring(normalizePath(changes$baseline, winslash = "/", mustWork = FALSE), nchar(snaps) + 2L)
+  # candidates are listed under this exact prefix; normalising it would expand
+  # short (Windows) or symlinked (macOS) temp paths of existing files only
+  snaps    <- file.path(root, "_snaps")
+  relative <- substring(changes$baseline, nchar(snaps) + 2L)
   staged_baseline  <- file.path(review_root, "_snaps", relative)
   staged_candidate <- bayestools_snapshot_candidate_path(staged_baseline)
   read_bytes <- function(file) {
