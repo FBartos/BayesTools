@@ -4556,6 +4556,23 @@ test_that("ordered levels without atoms build their numerical grid only for grid
   expect_identical(zero_density, eager_rows_of(zero_context, zero_rows))
   expect_identical(zero_density$points$x, 0)
 
+  # a row whose multiplier also enters with its own weight is refused by its
+  # build, with or without an ordered prior in the context, so it refuses at once
+  for(with_ordered in c(TRUE, FALSE)){
+    dependent <- list(x = prior("normal", list(0, 1)), sigma = prior("normal", list(0, 1)))
+    attr(dependent$x, "multiply_by") <- "sigma"
+    dependent_rows <- rbind(c(x = 1, sigma = 1), c(x = 0, sigma = 1))
+    if(with_ordered){
+      dependent$g <- zero_scaled$g
+      dependent_rows <- cbind(dependent_rows, "g[1]" = c(0, 1), "g[2]" = c(0, 0))
+    }
+    dependent_context <- .prior_density_build_context(dependent, colnames(dependent_rows), n_grid = 256L)
+    dependent_eager <- tryCatch(eager_rows_of(dependent_context, dependent_rows), error = identity)
+    expect_s3_class(dependent_eager, "error")
+    expect_error(.prior_density_from_context_rows(dependent_context, dependent_rows),
+                 conditionMessage(dependent_eager), fixed = TRUE)
+  }
+
   # the design rows of the levels (a marginal_posterior() level) defer as well
   context <- .prior_density_build_context(priors, c("mu_intercept", "mu_shape[1]", "mu_shape[2]"),
                                           n_grid = 256L)

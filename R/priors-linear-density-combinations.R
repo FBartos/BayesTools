@@ -1626,6 +1626,41 @@
                               source_transforms, grid_spacing)
 }
 
+# The prior of the multiplier of a product group of a combination ('split' from
+# .prior_linear_split_multiply_groups()), after its structural refusals: a
+# multiplier without a scalar prior of its own, a nested product, and a
+# multiplier that also enters with its own weight.
+.prior_linear_product_group_multiplier <- function(prior_list, split, product_group){
+
+  multiplier <- product_group$multiplier
+  if(!multiplier %in% names(prior_list)){
+    stop("No prior distribution was found for 'multiply_by' parameter '", multiplier, "'.", call. = FALSE)
+  }
+  multiplier_prior <- prior_list[[multiplier]]
+  if(is.null(multiplier_prior) || !is.prior(multiplier_prior)){
+    stop("The 'multiply_by' parameter '", multiplier, "' does not have a supported prior distribution.", call. = FALSE)
+  }
+  if(!is.null(attr(multiplier_prior, "multiply_by"))){
+    stop("Nested 'multiply_by' prior densities are not supported.", call. = FALSE)
+  }
+  if(.prior_linear_prior_dimension(multiplier_prior) != 1L){
+    stop("The 'multiply_by' parameter '", multiplier, "' must have a scalar prior distribution.", call. = FALSE)
+  }
+  # The product and the multiplier's own term share one random variable,
+  # so they cannot be convolved as independent components.
+  multiplier_columns <- .prior_linear_prior_columns(multiplier, multiplier_prior)
+  if(any(split$additive_weights[intersect(multiplier_columns, names(split$additive_weights))] != 0)){
+    stop(
+      "The prior density of this linear combination is unavailable because '",
+      multiplier, "' enters it both as the 'multiply_by' scale of other ",
+      "coefficients and with its own weight, which makes the terms dependent. ",
+      "Evaluate the terms separately.",
+      call. = FALSE
+    )
+  }
+  multiplier_prior
+}
+
 # The combination with its numerical grid, for validated arguments ('weights'
 # without zeros, 'source_transforms' named by the weights). '.plan' is the
 # .prior_linear_additive_plan() of its additive part when the caller has it.
@@ -1648,32 +1683,8 @@
   )
   if(length(split$product_groups) > 0){
     for(product_group in split$product_groups){
-      multiplier <- product_group$multiplier
-      if(!multiplier %in% names(prior_list)){
-        stop("No prior distribution was found for 'multiply_by' parameter '", multiplier, "'.", call. = FALSE)
-      }
-      multiplier_prior <- prior_list[[multiplier]]
-      if(is.null(multiplier_prior) || !is.prior(multiplier_prior)){
-        stop("The 'multiply_by' parameter '", multiplier, "' does not have a supported prior distribution.", call. = FALSE)
-      }
-      if(!is.null(attr(multiplier_prior, "multiply_by"))){
-        stop("Nested 'multiply_by' prior densities are not supported.", call. = FALSE)
-      }
-      if(.prior_linear_prior_dimension(multiplier_prior) != 1L){
-        stop("The 'multiply_by' parameter '", multiplier, "' must have a scalar prior distribution.", call. = FALSE)
-      }
-      # The product and the multiplier's own term share one random variable,
-      # so they cannot be convolved as independent components.
-      multiplier_columns <- .prior_linear_prior_columns(multiplier, multiplier_prior)
-      if(any(split$additive_weights[intersect(multiplier_columns, names(split$additive_weights))] != 0)){
-        stop(
-          "The prior density of this linear combination is unavailable because '",
-          multiplier, "' enters it both as the 'multiply_by' scale of other ",
-          "coefficients and with its own weight, which makes the terms dependent. ",
-          "Evaluate the terms separately.",
-          call. = FALSE
-        )
-      }
+      multiplier       <- product_group$multiplier
+      multiplier_prior <- .prior_linear_product_group_multiplier(prior_list, split, product_group)
 
       if(is.prior.none(multiplier_prior) || is.prior.point(multiplier_prior)){
         k <- if(is.prior.none(multiplier_prior)) 0 else multiplier_prior$parameters$location

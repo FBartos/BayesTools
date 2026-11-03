@@ -945,7 +945,8 @@
 
 # Whether a row mixture of a prior-density context is free of point masses
 # by its structure: every prior of the context is continuous, every row has a
-# nonzero standardized weight (a row without one is the point at zero), and
+# nonzero standardized weight (a row without one is the point at zero) and
+# passes the structural checks of its build (.prior_density_context_row_valid()), and
 # the output transformation is not a constant map. With an ordered prior the
 # rows have no source or output map and defer only when the combination of
 # every row defers (.prior_linear_density_defers_grid()), whose build then
@@ -971,7 +972,7 @@
   }
   nonzero <- tryCatch(
     vapply(seq_len(nrow(rows)), function(row_i){
-      length(.prior_density_context_standardized_weights(context, rows[row_i, ])) > 0L
+      .prior_density_context_row_valid(context, rows[row_i, ])
     }, logical(1)),
     error = function(e) FALSE
   )
@@ -990,6 +991,28 @@
     }
   }
   .prior_density_atom_free_transformation(output_transformation, output_transformation_arguments)
+}
+
+# Whether a row of a context has a nonzero combination that passes the
+# structural checks of its eager build (.prior_density_context_density(): the
+# multiplier laws, and the refusals of its products,
+# .prior_linear_product_group_multiplier()); a failing check is an error.
+.prior_density_context_row_valid <- function(context, row){
+
+  standardized <- .prior_density_context_standardized_weights(context, row)
+  if(length(standardized) == 0L){
+    return(FALSE)
+  }
+  canonical <- .bt_formula_context_canonical(context, standardized)
+  attr(standardized, "formula_recipe_offset") <- NULL
+  attr(standardized, "formula_contribution_transforms") <- NULL
+  .bt_formula_require_multiplier_laws(canonical, standardized)
+  weights <- standardized[standardized != 0]
+  split <- .prior_linear_split_multiply_groups(canonical$prior_list, weights)
+  for(product_group in split$product_groups){
+    .prior_linear_product_group_multiplier(canonical$prior_list, split, product_group)
+  }
+  TRUE
 }
 
 # Whether one row of a context with an ordered prior keeps the deferral of a

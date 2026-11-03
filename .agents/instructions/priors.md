@@ -784,9 +784,11 @@ context (`.prior_density_from_context()`) defers the same grid with its own
 provenance record and builds it, with its diagnostics, on the first read.
 
 What deferral keeps at construction: the structural refusals (atoms, unknown
-routes such as ordered terms sharing a random allocation, products of shares,
-output maps and numeric multipliers build at once) and, for an ordered level,
-the steps of its build before the product quadrature. A numerical-
+routes such as ordered terms sharing a random allocation, and missing, nested
+or dependent multipliers, which every design row checks) and, for an ordered
+level, the steps of its build before the product quadrature; products of
+shares and output maps of ordered levels, and row mixtures with a numeric
+multiplier, build at once. A numerical-
 representability refusal of the remaining grid steps (resampling, scaling,
 convolving or mixing grids at extreme scale ratios or over ranges of a few
 representable values, or a quadrature that resolves no value) is raised when
