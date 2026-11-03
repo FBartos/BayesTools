@@ -1560,7 +1560,9 @@
 # atom). Every other combination is built at once, as is a small one without
 # an ordered level, which is cheap and keeps its numerical diagnostics. Grid
 # attributes (e.g. 'product_grid_resolution') belong to the built grid
-# (.prior_linear_density_materialize()).
+# (.prior_linear_density_materialize()). A numerical-representability refusal
+# of the later grid steps (scaling, resampling, convolution at extreme scales)
+# is raised when the deferred grid is built, as for every deferred grid.
 .prior_linear_density_defers_grid <- function(plan, prior_list, n_grid, tail_prob, output_transformation,
                                               output_transformation_arguments){
 

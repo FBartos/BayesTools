@@ -783,6 +783,17 @@ builder that mixes or refines grids passes `.defer = FALSE`. The density of a
 context (`.prior_density_from_context()`) defers the same grid with its own
 provenance record and builds it, with its diagnostics, on the first read.
 
+What deferral keeps at construction: the structural refusals (atoms, unknown
+routes such as ordered terms sharing a random allocation, products of shares,
+output maps and numeric multipliers build at once) and, for an ordered level,
+the steps of its build before the product quadrature. A numerical-
+representability refusal of the remaining grid steps (resampling, scaling,
+convolving or mixing grids at extreme scale ratios or over ranges of a few
+representable values, or a quadrature that resolves no value) is raised when
+the grid is first built, on its first read, as for every deferred grid;
+ordinates, heights and region probabilities of such inputs keep their own
+route checks (maintainer decision, 2026-11-03).
+
 Heights and region probabilities require recorded provenance (the
 `adaptive_evaluation` attribute naming the prior measure): a density grid
 without it has no error control and cannot be refined, so it is used for
