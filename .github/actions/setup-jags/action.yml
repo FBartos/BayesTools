@@ -17,27 +17,16 @@ inputs:
 runs:
   using: composite
   steps:
-    - name: Cache JAGS (Windows)
-      if: runner.os == 'Windows'
-      uses: actions/cache@v6
-      with:
-        path: C:\Program Files\JAGS
-        key: ${{ runner.os }}-jags-4.3.1
-        restore-keys: |
-          ${{ runner.os }}-jags-
-
+    # The installer also registers JAGS, which rjags looks up at run time, so a
+    # cached copy of the files alone is not enough.
     - name: Install JAGS (Windows)
       if: runner.os == 'Windows'
       shell: cmd
       run: |
-        if not exist "C:\Program Files\JAGS\JAGS-4.3.1\bin\jags-terminal.exe" (
-          echo "JAGS not found in cache, downloading and installing..."
-          curl -o jags-installer.exe -L https://sourceforge.net/projects/mcmc-jags/files/JAGS/4.x/Windows/JAGS-4.3.1.exe/download
-          jags-installer.exe /S
-          del jags-installer.exe
-        ) else (
-          echo "JAGS found in cache, skipping installation"
-        )
+        curl --retry 3 -o jags-installer.exe -L https://sourceforge.net/projects/mcmc-jags/files/JAGS/4.x/Windows/JAGS-4.3.1.exe/download
+        jags-installer.exe /S
+        del jags-installer.exe
+        if not exist "C:\Program Files\JAGS\JAGS-4.3.1\x64\bin\jags-terminal.exe" exit /b 1
 
     # The short path keeps spaces out of the compiler and linker flags.
     - name: Set JAGS environment variables (Windows)
@@ -46,7 +35,7 @@ runs:
       run: |
         "JAGS_ROOT=/c/progra~1/JAGS/JAGS-4.3.1" >> $env:GITHUB_ENV
         "JAGS_MAJOR_VERSION=4" >> $env:GITHUB_ENV
-        "C:\Program Files\JAGS\JAGS-4.3.1\bin" >> $env:GITHUB_PATH
+        "C:\Program Files\JAGS\JAGS-4.3.1\x64\bin" >> $env:GITHUB_PATH
 
     - name: Install JAGS (Linux)
       if: runner.os == 'Linux'
@@ -118,4 +107,5 @@ runs:
         command -v jags
         test -f /usr/local/lib/JAGS/modules-4/basemod.so
         test -f /usr/local/lib/JAGS/modules-4/bugs.so
-        ls -l /usr/local/lib/libjags*.dylib
+        ls -l /usr/local/lib/libjags*.dylib /usr/local/lib/JAGS/modules-4/basemod.so
+        otool -L /usr/local/lib/libjags*.dylib

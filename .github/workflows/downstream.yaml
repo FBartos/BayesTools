@@ -48,7 +48,11 @@ jobs:
             package <- read.dcf("DESCRIPTION", fields = "Package")[1, 1]
             db <- utils::available.packages(repos = c(CRAN = "https://cloud.r-project.org"))
             dependents <- tools::package_dependencies(package, db = db, reverse = TRUE, which = "all")[[1]]
-            packages <- paste0("[", paste0('"', sort(dependents), '"', collapse = ", "), "]")
+            packages <- if (length(dependents) == 0L) {
+              "[]"
+            } else {
+              paste0("[", paste0('"', sort(dependents), '"', collapse = ", "), "]")
+            }
           } else {
             stop("Unknown downstream source '", Sys.getenv("SOURCE"), "'.", call. = FALSE)
           }
