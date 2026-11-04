@@ -1,24 +1,28 @@
 name: pkgdown
 
+# master and release tags publish the release site; development publishes the
+# development site under /dev/.
 on:
   push:
-    branches:
-      - main
-      - master
-    tags:
-      - '*'
+    branches: [master, development]
+    tags: ['*']
+  workflow_dispatch:
+
+# Deployments push to gh-pages one at a time.
+concurrency:
+  group: pkgdown-deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: write
 
 jobs:
   build:
-    runs-on: ${{ matrix.config.os }}
+    runs-on: windows-latest
+    timeout-minutes: 120
     env:
       BAYESTOOLS_VIGNETTE_REFIT: "false"
-    strategy:
-      fail-fast: false
-      matrix:
-        config:
-          - {os: windows-latest, r: '4.6'}
-
+      PKGDOWN_DEV_MODE: ${{ github.ref == 'refs/heads/development' && 'devel' || 'release' }}
     steps:
       - uses: actions/checkout@v7
 
@@ -26,9 +30,14 @@ jobs:
         id: setup-r
         uses: r-lib/actions/setup-r@v2
         with:
-          r-version: ${{ matrix.config.r }}
+          r-version: '4.6'
 
-      # Cache R packages
+      - name: Setup Pandoc
+        uses: r-lib/actions/setup-pandoc@v2
+
+      - name: Set up JAGS
+        uses: ./.github/actions/setup-jags
+
       - name: Cache R packages
         uses: actions/cache@v6
         with:
@@ -37,44 +46,6 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-r-${{ steps.setup-r.outputs.installed-r-version }}-cache-v2-
 
-      # Cache JAGS installation (Windows)
-      - name: Cache JAGS (Windows)
-        if: runner.os == 'Windows'
-        uses: actions/cache@v6
-        with:
-          path: C:\Program Files\JAGS
-          key: ${{ runner.os }}-jags-4.3.1
-          restore-keys: |
-            ${{ runner.os }}-jags-
-
-      # Install JAGS on Windows
-      - name: Install JAGS (Windows)
-        if: runner.os == 'Windows'
-        shell: cmd
-        run: |
-          if not exist "C:\Program Files\JAGS\JAGS-4.3.1\bin\jags-terminal.exe" (
-            echo "JAGS not found in cache, downloading and installing..."
-            curl -o jags-installer.exe -L https://sourceforge.net/projects/mcmc-jags/files/JAGS/4.x/Windows/JAGS-4.3.1.exe/download
-            jags-installer.exe /S
-            del jags-installer.exe
-          ) else (
-            echo "JAGS found in cache, skipping installation"
-          )
-
-      # Set JAGS environment variables on Windows
-      - name: Set JAGS environment variables (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          "JAGS_ROOT=C:\Program Files\JAGS\JAGS-4.3.1" >> $env:GITHUB_ENV
-          "JAGS_MAJOR_VERSION=4" >> $env:GITHUB_ENV
-          "PATH=C:\Program Files\JAGS\JAGS-4.3.1\bin;$env:PATH" >> $env:GITHUB_ENV
-
-      # Install Pandoc
-      - name: Setup Pandoc
-        uses: r-lib/actions/setup-pandoc@v2
-
-      # Install the package and its dependencies
       - name: Install required packages
         run: |
           options(repos = c(CRAN = "https://cloud.r-project.org"))

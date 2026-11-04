@@ -1,0 +1,121 @@
+name: Set up JAGS 4
+description: >
+  Installs JAGS 4 for BayesTools and the BayesToolsVerse packages, which
+  support JAGS 4.x only, and exports the variables their build scripts read.
+  Used by the workflows of BayesTools (./.github/actions/setup-jags) and of the
+  dependent packages (FBartos/BayesTools/.github/actions/setup-jags@development).
+
+inputs:
+  automake:
+    description: >
+      Also install GNU automake on macOS: R CMD check --as-cran regenerates a
+      package's configure script with autoreconf, and the runner has autoconf
+      but not automake.
+    required: false
+    default: "false"
+
+runs:
+  using: composite
+  steps:
+    - name: Cache JAGS (Windows)
+      if: runner.os == 'Windows'
+      uses: actions/cache@v6
+      with:
+        path: C:\Program Files\JAGS
+        key: ${{ runner.os }}-jags-4.3.1
+        restore-keys: |
+          ${{ runner.os }}-jags-
+
+    - name: Install JAGS (Windows)
+      if: runner.os == 'Windows'
+      shell: cmd
+      run: |
+        if not exist "C:\Program Files\JAGS\JAGS-4.3.1\bin\jags-terminal.exe" (
+          echo "JAGS not found in cache, downloading and installing..."
+          curl -o jags-installer.exe -L https://sourceforge.net/projects/mcmc-jags/files/JAGS/4.x/Windows/JAGS-4.3.1.exe/download
+          jags-installer.exe /S
+          del jags-installer.exe
+        ) else (
+          echo "JAGS found in cache, skipping installation"
+        )
+
+    # The short path keeps spaces out of the compiler and linker flags.
+    - name: Set JAGS environment variables (Windows)
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: |
+        "JAGS_ROOT=/c/progra~1/JAGS/JAGS-4.3.1" >> $env:GITHUB_ENV
+        "JAGS_MAJOR_VERSION=4" >> $env:GITHUB_ENV
+        "C:\Program Files\JAGS\JAGS-4.3.1\bin" >> $env:GITHUB_PATH
+
+    - name: Install JAGS (Linux)
+      if: runner.os == 'Linux'
+      shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y jags
+
+    # Homebrew's jags formula installs JAGS 5, so the official universal
+    # (x86_64 + arm64) JAGS 4.3.2 package is used instead.
+    - name: Cache JAGS installer (macOS)
+      if: runner.os == 'macOS'
+      uses: actions/cache@v6
+      with:
+        path: ~/jags-installer
+        key: ${{ runner.os }}-jags-pkg-4.3.2
+
+    # The package installs into /usr/local (library, JAGS headers, jags.pc,
+    # jags binary). Nothing is installed with Homebrew: it no longer has bottles
+    # for Intel macOS and builds formulae such as gcc from source past the job
+    # timeout.
+    - name: Install JAGS (macOS)
+      if: runner.os == 'macOS'
+      shell: bash
+      run: |
+        # Remove a Homebrew jags first: on Intel runners Homebrew also links
+        # into /usr/local, where the package installs JAGS 4.3.2.
+        if brew list --formula jags > /dev/null 2>&1; then
+          brew uninstall --ignore-dependencies jags
+        fi
+        mkdir -p ~/jags-installer
+        if [ ! -f ~/jags-installer/JAGS-4.3.2.pkg ]; then
+          echo "JAGS installer not found in cache, downloading..."
+          curl --retry 3 --fail -L -o ~/jags-installer/JAGS-4.3.2.pkg \
+            https://sourceforge.net/projects/mcmc-jags/files/JAGS/4.x/Mac%20OS%20X/JAGS-4.3.2.pkg/download
+        fi
+        sudo installer -pkg ~/jags-installer/JAGS-4.3.2.pkg -target /
+
+    # Built from the GNU release (plain Perl scripts, no compiler involved).
+    - name: Install automake (macOS)
+      if: runner.os == 'macOS' && inputs.automake == 'true'
+      shell: bash
+      run: |
+        curl --retry 3 --fail -L -o "$RUNNER_TEMP/automake-1.18.1.tar.gz" \
+          https://ftp.gnu.org/gnu/automake/automake-1.18.1.tar.gz
+        tar -xzf "$RUNNER_TEMP/automake-1.18.1.tar.gz" -C "$RUNNER_TEMP"
+        cd "$RUNNER_TEMP/automake-1.18.1"
+        ./configure --prefix="$RUNNER_TEMP/automake" > /dev/null
+        make install > /dev/null
+        echo "$RUNNER_TEMP/automake/bin" >> "$GITHUB_PATH"
+        "$RUNNER_TEMP/automake/bin/aclocal" --version | head -n 1
+
+    # Point pkg-config at the JAGS 4.3.2 installation; the configure scripts
+    # reject any JAGS major version other than 4 with a clear message.
+    - name: Set JAGS environment variables (macOS)
+      if: runner.os == 'macOS'
+      shell: bash
+      run: |
+        echo "PKG_CONFIG_PATH=/usr/local/lib/pkgconfig" >> "$GITHUB_ENV"
+        echo "DYLD_FALLBACK_LIBRARY_PATH=/usr/local/lib${DYLD_FALLBACK_LIBRARY_PATH:+:$DYLD_FALLBACK_LIBRARY_PATH}" >> "$GITHUB_ENV"
+        if command -v pkg-config > /dev/null 2>&1; then
+          echo "pkg-config reports JAGS $(PKG_CONFIG_PATH=/usr/local/lib/pkgconfig pkg-config --modversion jags)"
+        fi
+
+    - name: Verify JAGS runtime files (macOS)
+      if: runner.os == 'macOS'
+      shell: bash
+      run: |
+        command -v jags
+        test -f /usr/local/lib/JAGS/modules-4/basemod.so
+        test -f /usr/local/lib/JAGS/modules-4/bugs.so
+        ls -l /usr/local/lib/libjags*.dylib
