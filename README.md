@@ -7,7 +7,7 @@
 
 [![R-CMD-check](https://github.com/FBartos/BayesTools/workflows/R-CMD-check/badge.svg)](https://github.com/FBartos/BayesTools/actions)
 [![Codecov test
-coverage](https://codecov.io/gh/FBartos/BayesTools/branch/master/graph/badge.svg)](https://app.codecov.io/gh/FBartos/BayesTools?branch=master)
+coverage](https://codecov.io/gh/FBartos/BayesTools/branch/development/graph/badge.svg)](https://app.codecov.io/gh/FBartos/BayesTools?branch=development)
 [![CRAN_Status_Badge](https://www.r-pkg.org/badges/version/BayesTools)](https://cran.r-project.org/package=BayesTools)
 <!-- badges: end -->
 
@@ -48,7 +48,7 @@ And the development version from [GitHub](https://github.com/) with:
 
 ``` r
 # install.packages("devtools")
-devtools::install_github("FBartos/BayesTools")
+devtools::install_github("FBartos/BayesTools@development")
 ```
 
 ## Prior Distributions
