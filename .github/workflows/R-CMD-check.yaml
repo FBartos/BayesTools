@@ -18,8 +18,9 @@ jobs:
           - {os: windows-latest, r: '4.6'}
           - {os: ubuntu-latest, r: '4.6'}
           - {os: macos-15-intel, r: '4.6'}
+          - {os: macos-latest, r: '4.6'}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Setup R
         id: setup-r
@@ -30,19 +31,19 @@ jobs:
       - name: Setup Pandoc
         uses: r-lib/actions/setup-pandoc@v2
 
-      # Cache R packages
+      # Cache R packages; the two macOS runners differ in architecture only
       - name: Cache R packages
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: ${{ env.R_LIBS_USER }}
-          key: ${{ runner.os }}-r-${{ steps.setup-r.outputs.installed-r-version }}-cache-v2-${{ hashFiles('**/DESCRIPTION') }}
+          key: ${{ runner.os }}-${{ runner.arch }}-r-${{ steps.setup-r.outputs.installed-r-version }}-cache-v2-${{ hashFiles('**/DESCRIPTION') }}
           restore-keys: |
-            ${{ runner.os }}-r-${{ steps.setup-r.outputs.installed-r-version }}-cache-v2-
+            ${{ runner.os }}-${{ runner.arch }}-r-${{ steps.setup-r.outputs.installed-r-version }}-cache-v2-
 
       # Cache system dependencies
       - name: Cache system dependencies
         if: runner.os == 'Linux'
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: /var/cache/apt
           key: ${{ runner.os }}-apt-${{ hashFiles('.github/workflows/R-CMD-check.yaml') }}
@@ -52,7 +53,7 @@ jobs:
       # Cache JAGS installation (Windows)
       - name: Cache JAGS (Windows)
         if: runner.os == 'Windows'
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: C:\Program Files\JAGS
           key: ${{ runner.os }}-jags-4.3.1
@@ -64,7 +65,7 @@ jobs:
       # package is used instead.
       - name: Cache JAGS installer (macOS)
         if: runner.os == 'macOS'
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: ~/jags-installer
           key: ${{ runner.os }}-jags-pkg-4.3.2
@@ -216,7 +217,7 @@ jobs:
 
       - name: Upload check results
         if: failure()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
-          name: ${{ runner.os }}-r${{ matrix.config.r }}-results
+          name: ${{ runner.os }}-${{ runner.arch }}-r${{ matrix.config.r }}-results
           path: check
