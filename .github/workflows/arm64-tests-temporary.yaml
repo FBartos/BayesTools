@@ -1,0 +1,13 @@
+name: arm64-tests-temporary
+
+# Temporary: the Apple silicon test job of post-merge on this pull request.
+# Removed before the pull request is ready for review.
+on:
+  pull_request:
+    branches: [development]
+
+jobs:
+  tests:
+    uses: ./.github/workflows/R-test.yaml
+    with:
+      matrix: '[{"os": "macos-latest", "r": "4.6"}]'
