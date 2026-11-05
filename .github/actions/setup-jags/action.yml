@@ -8,9 +8,10 @@ description: >
 inputs:
   automake:
     description: >
-      Also install GNU automake on macOS: R CMD check --as-cran regenerates a
-      package's configure script with autoreconf, and the runner has autoconf
-      but not automake.
+      Also install GNU automake (and autoconf where missing) on macOS: R CMD
+      check --as-cran regenerates a package's configure script with
+      autoreconf, and the macOS runners lack automake (the Apple silicon ones
+      also autoconf).
     required: false
     default: "false"
 
@@ -54,9 +55,9 @@ runs:
         key: ${{ runner.os }}-jags-pkg-4.3.2
 
     # The package installs into /usr/local (library, JAGS headers, jags.pc,
-    # jags binary). Nothing is installed with Homebrew: it no longer has bottles
-    # for Intel macOS and builds formulae such as gcc from source past the job
-    # timeout.
+    # jags binary). JAGS is not installed with Homebrew: it no longer has
+    # bottles for Intel macOS and builds formulae such as gcc from source past
+    # the job timeout.
     - name: Install JAGS (macOS)
       if: runner.os == 'macOS'
       shell: bash
@@ -74,11 +75,21 @@ runs:
         fi
         sudo installer -pkg ~/jags-installer/JAGS-4.3.2.pkg -target /
 
-    # Built from the GNU release (plain Perl scripts, no compiler involved).
-    - name: Install automake (macOS)
+    # The Intel runners have autoconf; the Apple silicon ones get it from
+    # Homebrew, which has bottles there and installs outside /usr/local.
+    # automake is built from its GNU release (plain Perl scripts, no compiler
+    # involved).
+    - name: Install autoconf and automake (macOS)
       if: runner.os == 'macOS' && inputs.automake == 'true'
       shell: bash
+      env:
+        HOMEBREW_NO_AUTO_UPDATE: "1"
+        HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK: "1"
       run: |
+        if ! command -v autoconf > /dev/null 2>&1; then
+          brew install autoconf
+        fi
+        autoconf --version | head -n 1
         curl --retry 3 --fail -L -o "$RUNNER_TEMP/automake-1.18.1.tar.gz" \
           https://ftp.gnu.org/gnu/automake/automake-1.18.1.tar.gz
         tar -xzf "$RUNNER_TEMP/automake-1.18.1.tar.gz" -C "$RUNNER_TEMP"
