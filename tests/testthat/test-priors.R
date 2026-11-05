@@ -15,8 +15,8 @@ skip_if_not_test_profile("visual")
 #
 # SKIP CONDITIONS:
 #   - skip_on_os(c("mac", "linux", "solaris")): Multivariate sampling tests
-#     (orthonormal, meandif priors only) and draws of truncated priors whose
-#     histogram counts move with the last bits of the quantile functions
+#     (orthonormal, meandif priors only) and a histogram whose bar heights
+#     fall on the rounding boundary of base-graphics coordinates
 #   - Note: Pure R tests - can run on CRAN
 #
 # MODELS/FIXTURES:
@@ -123,8 +123,8 @@ test_that("Exponential prior distribution works", {
 
 test_that("Truncated exponential prior draws match their histogram", {
 
-  # truncated draws come from the quantile function, whose last bits differ
-  # across OSes (Apple silicon), which moves draws between histogram bins
+  # bar heights fall on the rounding boundary of the SVG coordinates, where
+  # base graphics rounds differently across OSes (Apple silicon)
   skip_on_os(c("mac", "linux", "solaris"))
   vdiffr::expect_doppelganger("prior-exp-2", function()test_prior(prior("exp", list(2), list(1, 3))))
 

@@ -159,9 +159,17 @@
 # R reads decimal text by accumulating its digits and the power of ten in long
 # double. Where long double is double (Apple silicon), some doubles have no
 # decimal text of up to 17 significant digits that reads back as them; their
-# hexadecimal literal reads back exactly on every platform.
+# hexadecimal literal reads back exactly on every platform. R scales a
+# hexadecimal literal by a power of two that overflows below 2^-1022, so a
+# subnormal value is written as its multiple of 2^-1074 on the 2^-1022 scale.
 .hypothesis_exact_number_label <- function(x) {
 
+  if(x != 0 && abs(x) < .Machine$double.xmin){
+    units  <- abs(x) * 2^1022 * 2^52
+    digits <- (units %/% 16^(12:0)) %% 16
+    return(paste0(if(x < 0) "-", "0x0.",
+                  paste(c(0:9, letters[1:6])[digits + 1], collapse = ""), "p-1022"))
+  }
   sprintf("%a", x)
 }
 

@@ -185,6 +185,14 @@ is available explicitly with `reporter = "llm"`.
   base R and single-model probabilities with their declared and inferred values;
   finite value mutations must fail these numeric oracles. Structured row
   metadata retains the declared SD/quantile blanks of inclusion rows.
+- Bit identity holds only on one platform: R's random numbers, libm, JAGS
+  draws, base-graphics coordinates, and compiled code whose multiply-adds the
+  compiler fuses (Apple silicon) differ in the last bits elsewhere, and where
+  R's long double is double (Apple silicon) R reads some 16- and 17-digit
+  decimal literals as a neighbouring double. Compare such values with a
+  justified tolerance (write exact literals in hexadecimal), read JAGS
+  constants with `.JAGS_read_number()`, and compare affected snapshots on
+  Windows only (`skip_on_os(c("mac", "linux", "solaris"))`).
 - Do not add redundant matrices, samples, fits, or assertions for coverage
   alone.
 - A test that checks many elements (rows, levels, grid points) makes each check

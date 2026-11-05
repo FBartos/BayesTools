@@ -18,7 +18,7 @@ cat("hist counts:", paste(hist(draws, breaks = 50, plot = FALSE)$counts, collaps
 
 cat("\n== ordered singular-allocation prior curve ==\n")
 common <- new.env()
-withr::with_dir("tests/testthat", sys.source("common-functions.R", envir = common))
+sys.source("tests/testthat/common-functions.R", envir = common)
 fixture <- common$ordered_plot_test_fixture(prior("normal", list(0, 1)))
 cat("draws digest:", hex(sum(fixture$draws)), "\n")
 p <- plot_posterior(samples = fixture$samples, parameter = "mu_f", prior = TRUE,

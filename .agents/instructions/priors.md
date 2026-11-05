@@ -229,7 +229,9 @@ agree - keep at least one test that compiles the real model.
 
 Numeric constants of emitted prior syntax are round-trip literals
 (`.JAGS_prior_number()`: the `as.character()` text where it parses back to the
-same double, otherwise the shortest of 16 and 17 significant digits), so that
+same double, otherwise the shortest of 16 and 17 significant digits), checked
+with the C library's `strtod()` that JAGS uses (`.JAGS_read_number()`), not
+`as.numeric()`, which can differ in the last bit on Apple silicon, so that
 the draws of an atom equal its declared location exactly; the ordered paths
 write 17-digit literals. JAGS cannot bound `dunif`: a truncated uniform prior is
 emitted as the uniform on the intersection of its range and truncation, without
