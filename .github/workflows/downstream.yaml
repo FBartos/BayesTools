@@ -101,15 +101,17 @@ jobs:
         with:
           path: upstream
 
+      # The possibly empty spec goes last: setup-r-dependencies would read an
+      # empty first line as an empty package name.
       - name: Install R dependencies
         uses: r-lib/actions/setup-r-dependencies@v2
         with:
           working-directory: dependent
           dependencies: '"all"'
           extra-packages: |
-            ${{ steps.bayestools.outputs.pak-spec }}
             local::../upstream
             any::rcmdcheck
+            ${{ steps.bayestools.outputs.pak-spec }}
 
       # The dependents' own packages must pass cleanly; a CRAN release only has
       # to keep checking without errors, since its notes and warnings predate
