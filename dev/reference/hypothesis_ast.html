@@ -5,7 +5,11 @@ An explicit vs comparison requires two nonempty statements.
 hypothesis_render() renders that tree with token-safe quoting.
 hypothesis_symbols() returns exact parameter roots or an occurrence table.
 Quoted reserved names and ordinary identifiers retain their exact identity;
-numeric labels preserve the parsed values when rendered and parsed again.
+numeric labels preserve the parsed values when rendered and parsed again (a
+value that no decimal text of up to 17 significant digits reads back as, as
+some do where R has no extended-precision long double, is rendered as a
+hexadecimal literal; such a subnormal value is refused with
+BayesTools_hypothesis_statement).
 hypothesis_rewrite() replaces only exact symbol roots. Function names,
 literals, level labels, and longer identifiers are never edited.
 hypothesis_resolve() resolves every occurrence through
@@ -38,7 +42,7 @@ component); both are also BayesTools_parameter_resolution_error.'><meta name="ro
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-danger" data-toggle="tooltip" data-placement="bottom" title="In-development version">0.4.0</span>
+        <span class="version label label-danger" data-toggle="tooltip" data-placement="bottom" title="In-development version">0.4.0.9001</span>
       </span>
     </div>
 
@@ -92,7 +96,11 @@ An explicit <code>vs</code> comparison requires two nonempty statements.
 <code>hypothesis_render()</code> renders that tree with token-safe quoting.
 <code>hypothesis_symbols()</code> returns exact parameter roots or an occurrence table.
 Quoted reserved names and ordinary identifiers retain their exact identity;
-numeric labels preserve the parsed values when rendered and parsed again.</p>
+numeric labels preserve the parsed values when rendered and parsed again (a
+value that no decimal text of up to 17 significant digits reads back as, as
+some do where R has no extended-precision long double, is rendered as a
+hexadecimal literal; such a subnormal value is refused with
+<code>BayesTools_hypothesis_statement</code>).</p>
 <p><code>hypothesis_rewrite()</code> replaces only exact symbol roots. Function names,
 literals, level labels, and longer identifiers are never edited.
 <code>hypothesis_resolve()</code> resolves every occurrence through
