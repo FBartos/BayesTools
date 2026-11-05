@@ -2035,7 +2035,7 @@ test_that("weightfunction marginal CCDFs preserve extreme upper tails", {
 test_that("the literal of a numeric constant is the shortest text that parses back", {
 
   # the rule: the as.character() text where it parses back, otherwise the
-  # shortest of 16 and 17 significant digits that does
+  # shortest of 16 and 17 significant digits that does, read as JAGS reads it
   expect_identical(.JAGS_prior_number(0.5), "0.5")
   expect_identical(.JAGS_prior_number(c(0, 1, -2.5, 100, 1e5, 1e-5, 0.1)), c("0", "1", "-2.5", "100", "1e+05", "1e-05", "0.1"))
   expect_identical(.JAGS_prior_number(1/3), "0.3333333333333333")
@@ -2044,7 +2044,11 @@ test_that("the literal of a numeric constant is the shortest text that parses ba
   expect_identical(.JAGS_prior_number("expression"), "expression")
   expect_identical(.JAGS_prior_number(numeric()), character())
   hard <- c(1/3, 2/3, 0.1 + 0.2, 1e8 + 1e-7, pi, -exp(1), sqrt(2) * 1e10, 1e-300 / 3, 1e22 + 1e6, 123456789.123456789, 5L)
-  expect_identical(as.numeric(.JAGS_prior_number(hard)), as.numeric(hard))
+  expect_identical(.JAGS_read_number(.JAGS_prior_number(hard)), as.numeric(hard))
+  # as.numeric() reads some of these texts as neighbouring doubles where R's
+  # long double is double (Apple silicon); JAGS reads them as strtod() does
+  expect_identical(.JAGS_read_number(c("1.9599639845400538", "123456789.12345679", "1e-300", "0x1p-2", "1 ", "")),
+                   c(0x1.f5c0331eeff83p+0, 0x1.d6f34547e6b75p+26, 0x1.56e1fc2f8f359p-997, 0.25, NA, NA))
 })
 
 test_that("numeric constants are written with a decimal point under options(OutDec)", {
@@ -2055,7 +2059,7 @@ test_that("numeric constants are written with a decimal point under options(OutD
   # as.character() writes "0,5" here, which as.numeric() reads as NA with a warning
   expect_no_warning(written <- .JAGS_prior_number(numbers))
   expect_identical(written, reference)
-  expect_identical(as.numeric(written), numbers)
+  expect_identical(.JAGS_read_number(written), numbers)
 
   syntax_comma <- NULL
   expect_no_warning(syntax_comma <- JAGS_add_priors("model{}", list(
@@ -2078,7 +2082,7 @@ test_that("numeric constants of the emitted JAGS syntax parse back to the declar
     pattern <- gsub("<num>", number, pattern, fixed = TRUE)
     matches <- regmatches(syntax, regexec(pattern, syntax, perl = TRUE))[[1]]
     expect_gt(length(matches), 1L)
-    as.numeric(matches[-1])
+    .JAGS_read_number(matches[-1])
   }
 
   # a spike at 1/3 is sampled as the declared atom; 0.5 keeps its text

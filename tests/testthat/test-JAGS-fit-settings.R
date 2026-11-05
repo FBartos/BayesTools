@@ -187,14 +187,19 @@ test_that("JAGS chain seeds do not overlap across adjacent seeds and keep the in
     vapply(inits, function(chain_inits) chain_inits[[".RNG.name"]], character(1)),
     rep("base::Super-Duper", 3)
   )
-  # Values printed from 40b07c5 with 17 significant digits (exact round trip).
-  expect_identical(
+  # Values printed from 40b07c5 with 17 significant digits. The generator's
+  # normal deviates (qnorm()) differ in the last bit where the compiler fuses
+  # multiply-adds (Apple silicon), as can R's reading of 17-digit literals
+  # where its long double is double, so the stream is pinned to 1e-13.
+  expect_equal(
     vapply(inits, function(chain_inits) chain_inits[["mu"]], numeric(1)),
-    c(-0.59103110258436842, -1.516553097081865, -1.1590583625324684)
+    c(-0.59103110258436842, -1.516553097081865, -1.1590583625324684),
+    tolerance = 1e-13
   )
-  expect_identical(
+  expect_equal(
     vapply(inits, function(chain_inits) chain_inits[["sigma"]], numeric(1)),
-    c(1.5327481321762879, 0.29530333655215796, 1.3229858936207395)
+    c(1.5327481321762879, 0.29530333655215796, 1.3229858936207395),
+    tolerance = 1e-13
   )
 })
 

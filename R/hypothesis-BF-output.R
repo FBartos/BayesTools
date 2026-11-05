@@ -123,24 +123,46 @@
   # Keep familiar short labels when they preserve the exact parsed value; a
   # value whose fixed notation is long (1e-300, 1e22) uses the shortest
   # scientific notation that preserves it.
+  x <- as.numeric(x)
+  fixed <- NULL
   for(digits in 7:17){
     label <- format(x, digits = digits, trim = TRUE, scientific = FALSE,
                     decimal.mark = ".")
-    if(identical(as.numeric(label), as.numeric(x))){
+    if(identical(.hypothesis_read_number(label), x)){
+      fixed <- label
       break
     }
   }
-  if(nchar(label) <= 20L){
-    return(label)
+  if(!is.null(fixed) && nchar(fixed) <= 20L){
+    return(fixed)
   }
   for(digits in 1:17){
     scientific <- format(x, digits = digits, trim = TRUE, scientific = TRUE,
                          decimal.mark = ".")
-    if(identical(as.numeric(scientific), as.numeric(x))){
+    if(identical(.hypothesis_read_number(scientific), x)){
       return(scientific)
     }
   }
-  label
+  if(!is.null(fixed)){
+    return(fixed)
+  }
+  .hypothesis_exact_number_label(x)
+}
+
+# Hypothesis text is read by R's parser, which reads a number as as.numeric()
+# does, so a label must read back with as.numeric() on this platform.
+.hypothesis_read_number <- function(text) {
+
+  as.numeric(text)
+}
+
+# R reads decimal text by accumulating its digits and the power of ten in long
+# double. Where long double is double (Apple silicon), some doubles have no
+# decimal text of up to 17 significant digits that reads back as them; their
+# hexadecimal literal reads back exactly on every platform.
+.hypothesis_exact_number_label <- function(x) {
+
+  sprintf("%a", x)
 }
 
 

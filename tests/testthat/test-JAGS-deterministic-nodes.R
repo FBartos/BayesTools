@@ -780,8 +780,11 @@ test_that("cumulative omega replay refuses overflowing positive Gamma totals", {
     dimnames = list(NULL, paste0("omega[", 1:3, "]"))))
   fit <- .parameter_catalog_test_fit(coda::mcmc.list(coda::mcmc(monitored)), list(bias = prior))
   # Preserve the existing divide-then-cumulative arithmetic, whose rounded
-  # 7/9 value differs from a single direct division by one ulp.
-  expected <- rev(cumsum(rev(c(2, 3, 4) / 9)))
+  # 7/9 value differs from a single direct division by one ulp; the reference
+  # weight is the literal 1, and the sums add in double precision as JAGS
+  # sum() does (base cumsum() may accumulate in long double).
+  expected <- c(1, 3 / 9 + 4 / 9, 4 / 9)
+  expect_false(expected[[2L]] == 7 / 9)
   expected <- matrix(expected[c(1, 2, 3, 2, 1)], 1L)
   expect_equal(unname(JAGS_evaluate_deterministic(fit, draws, nodes = "omega")), expected, tolerance = 0)
   invalid <- draws; invalid[,] <- 1e308

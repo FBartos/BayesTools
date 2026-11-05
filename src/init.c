@@ -21,6 +21,7 @@ extern SEXP BayesTools_invgamma_r(SEXP n, SEXP shape, SEXP scale);
 extern SEXP BayesTools_structured_cholesky(SEXP rho, SEXP coordinates, SEXP equicorrelation);
 extern SEXP BayesTools_draw_fingerprint(SEXP x);
 extern SEXP BayesTools_native_range_environment(void);
+extern SEXP BayesTools_decimal_read(SEXP text);
 
 static const R_CallMethodDef callMethods[] = {
   {"BayesTools_lkj_cholesky_from_u", (DL_FUNC) &BayesTools_lkj_cholesky_from_u, 2},
@@ -43,6 +44,7 @@ static const R_CallMethodDef callMethods[] = {
   {"BayesTools_structured_cholesky", (DL_FUNC) &BayesTools_structured_cholesky, 3},
   {"BayesTools_draw_fingerprint",    (DL_FUNC) &BayesTools_draw_fingerprint,    1},
   {"BayesTools_native_range_environment", (DL_FUNC) &BayesTools_native_range_environment, 0},
+  {"BayesTools_decimal_read",        (DL_FUNC) &BayesTools_decimal_read,        1},
   {NULL, NULL, 0}
 };
 

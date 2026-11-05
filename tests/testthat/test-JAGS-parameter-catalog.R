@@ -6531,10 +6531,14 @@ test_that("actual extreme LKJ primitives fail with numerical provenance", {
   expect_identical(condition$eta, 1e-300)
   expect_identical(condition$failed_draws, 1:16)
   expect_identical(condition$n_failed, 16L)
+  # the message prints eta with 17 significant digits: R reads the literal
+  # 1e-300 as a neighbouring double where its long double is double (Apple
+  # silicon), whose text is 9.9999999999999936e-301
   expect_identical(conditionMessage(condition), paste0(
     "LKJ prior sampling for block '", block$random_term$block_name,
     "' is numerically unavailable: primitive '", correlation$primitive_names[[1L]],
-    "' produced 16 nonfinite or out-of-support draws outside (0, 1) at K = 2 and eta = 1e-300. Choose a concentration whose primitive draws remain representable inside this interval."))
+    "' produced 16 nonfinite or out-of-support draws outside (0, 1) at K = 2 and eta = ",
+    format(1e-300, digits = 17), ". Choose a concentration whose primitive draws remain representable inside this interval."))
   # The same producer used by transform_prior_samples(), requesting primitives only.
   expect_error(.generate_transformed_prior_samples(
     prior_list = block$formula_result$prior_list, column_names = correlation$primitive_names,

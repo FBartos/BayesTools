@@ -375,6 +375,10 @@ test_that("a divided linear statement compiles to the correctly rounded threshol
              error = identity)
   }
   shifted <- function(threshold) paste0("(mu_fac[A] + mu_fac[B]) / 3 + 0.25 > ", threshold)
+  # the literal threshold c of the compiled '.BayesTools_linear_target > -c'
+  compiled <- function(target){
+    -target$hypothesis$statements[[1L]]$left$expression$right$arguments[[1L]]$value
+  }
 
   # -0.42 / 3 does not multiply back to -0.42, yet it is the correctly rounded
   # quotient, as in any floating-point division
@@ -385,9 +389,20 @@ test_that("a divided linear statement compiles to the correctly rounded threshol
   target <- tryCatch(hypothesis_linear_target(levels, shifted(0.11), "mu_fac"), error = identity)
   expect_false(inherits(target, "error"))
   if(!inherits(target, "error")){
+    expect_identical(compiled(target), -0.42 / 3)
     expect_identical(hypothesis_render(target$hypothesis),
       paste(".BayesTools_linear_target >", .hypothesis_number_label(-0.42 / 3)))
   }
+  # the threshold is kept where no decimal text reads back as it (as some
+  # doubles where R's long double is double, on Apple silicon)
+  local({
+    local_mocked_bindings(.hypothesis_read_number = function(text){
+      if(grepl("0x", text, fixed = TRUE)) as.numeric(text) else NA_real_
+    })
+    target <- hypothesis_linear_target(levels, shifted(0.11), "mu_fac")
+    expect_match(hypothesis_render(target$hypothesis), "0x", fixed = TRUE)
+    expect_identical(compiled(target), -0.42 / 3)
+  })
 
   # the two-decimal thresholds of the statement compile: these 13 of the 201 are
   # the ones whose quotient does not multiply back to the numerator, which the

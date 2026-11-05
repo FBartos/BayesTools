@@ -211,9 +211,13 @@
         "'."
       )
     }
+    # JAGS sum() adds in double precision from the first element on, while
+    # base sum() may accumulate in long double: the totals are accumulated as
+    # JAGS does, so the weights are the generated syntax's on every platform
+    jags_sum <- function(x) Reduce(`+`, x)
     for(draw in seq_len(n)){
       eta <- free[draw, ]
-      total <- sum(eta)
+      total <- jags_sum(eta)
       if(!is.finite(total) || total <= 0){
         .prior_numerical_signal("cumulative weight normalization", "gamma", "natural", draw,
           paste0("The finite positive Gamma auxiliary total for '",
@@ -224,7 +228,7 @@
       # others are the sums of the standardized auxiliaries from their bin on
       omega[draw, 1L] <- 1
       for(bin in 2:J){
-        omega[draw, bin] <- sum(std_eta[bin:J])
+        omega[draw, bin] <- jags_sum(std_eta[bin:J])
       }
     }
     return(omega)

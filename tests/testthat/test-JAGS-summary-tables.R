@@ -1273,11 +1273,17 @@ test_that("Summary tables for all saved models", {
     runjags_samples <- runjags_estimates_table(fit, return_samples = TRUE)
     expect_summary_matches_samples(runjags_summary, runjags_samples,
                                    probs = numeric())
-    test_reference_table_stochastic(
-      runjags_summary,
-      paste0(model_name, "_runjags_estimates.txt"),
-      info_msg = paste0("Runjags estimates mismatch for ", model_name)
-    )
+    # In the reference draws of fit_marginal_ss, every draw includes x_cont1,
+    # so its inclusion error/SD and R-hat are missing. JAGS draws differ
+    # across OSes (Apple silicon draws exclude the term a few times), so this
+    # table is compared on Windows only.
+    if (model_name != "fit_marginal_ss" || identical(.Platform$OS.type, "windows")) {
+      test_reference_table_stochastic(
+        runjags_summary,
+        paste0(model_name, "_runjags_estimates.txt"),
+        info_msg = paste0("Runjags estimates mismatch for ", model_name)
+      )
+    }
 
   }
 })

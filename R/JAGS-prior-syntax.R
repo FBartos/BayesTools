@@ -616,10 +616,11 @@ JAGS_add_priors           <- function(syntax, prior_list){
 # The text of a numeric constant of the emitted JAGS syntax. A constant that
 # JAGS reads as another double is sampled as another value than the one the
 # prior declares (an atom would no longer equal its declared location), so the
-# text of as.character() (15 significant digits) is kept where it parses back to
+# text of as.character() (15 significant digits) is kept where it reads back to
 # the same double, and otherwise the shortest of 16 and 17 significant digits
-# that does is used (sprintf() always writes the '.' decimal mark). Text (an
-# expression) is returned as it is.
+# that does is used (sprintf() always writes the '.' decimal mark). The text is
+# read back as JAGS reads it (.JAGS_read_number()), not with as.numeric().
+# Text (an expression) is returned as it is.
 .JAGS_prior_number <- function(value){
 
   if(!is.numeric(value)){
@@ -635,17 +636,26 @@ JAGS_add_priors           <- function(syntax, prior_list){
        nzchar(decimal_mark) && !identical(decimal_mark, ".")){
       text <- gsub(decimal_mark, ".", text, fixed = TRUE)
     }
-    if(!is.finite(x) || identical(as.numeric(text), x)){
+    if(!is.finite(x) || identical(.JAGS_read_number(text), x)){
       return(text)
     }
     for(digits in 16:17){
       text <- sprintf(paste0("%.", digits, "g"), x)
-      if(identical(as.numeric(text), x)){
+      if(identical(.JAGS_read_number(text), x)){
         break
       }
     }
     text
   }, character(1), USE.NAMES = FALSE)
+}
+
+# The doubles JAGS reads from the text of numeric constants: the C library's
+# strtod(), which rounds correctly. as.numeric() can differ in the last digit
+# where R's long double is double (Apple silicon); see src/r-decimal-read.c.
+.JAGS_read_number <- function(text){
+
+  .BayesTools_require_native("decimal-reading")
+  .Call("BayesTools_decimal_read", as.character(text), PACKAGE = "BayesTools")
 }
 # The publication-bias role of every component of a bias mixture, shared by the
 # syntax, initial-value, and monitor emitters.

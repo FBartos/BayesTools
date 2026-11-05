@@ -206,11 +206,12 @@
   }
   parameter <- plan[["parameter"]]
   points    <- unique(values)
+  labels    <- vapply(points, .hypothesis_number_label, character(1))
   point     <- .hypothesis_model_plan_random_sd_points(
     plan            = plan,
     hypothesis      = hypothesis_rewrite(
       hypothesis_parse(sprintf(
-        "theta = %.17g vs theta != %.17g", points, points
+        "theta = %s vs theta != %s", labels, labels
       )),
       c(theta = parameter)
     ),
@@ -330,7 +331,7 @@
         stop("Internal error: expected a point statement on a variance.",
              call. = FALSE)
       )
-      paste("theta", operator, sprintf("%.17g", sqrt(side[["value"]])))
+      paste("theta", operator, .hypothesis_number_label(sqrt(side[["value"]])))
     }, character(1))
     if (isTRUE(statement[["explicit"]])) {
       paste(sides[[1L]], "vs", sides[[2L]])

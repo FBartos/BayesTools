@@ -20,7 +20,8 @@ skip_if_not_test_profile(c("visual", "visual-fixture"))
 #   - skip_if_not_installed("vdiffr"): For visual tests
 #   - skip_if_not_visual_fixture_tests(): For visual tests using pre-fitted models
 #   - skip_if_no_fits(): For tests using pre-fitted models
-#   - skip_on_os(): Multivariate sampling differs across OSes
+#   - skip_on_os(): Multivariate sampling differs across OSes, as do the last
+#     bits of prior draws and of base-graphics device coordinates
 #
 # MODELS/FIXTURES:
 #   - fit_summary0, fit_summary1, fit_orthonormal_0, fit_orthonormal_1
@@ -37,7 +38,6 @@ test_that("ordered level plots preserve declared curves atoms and custom styles"
   fixtures <- list(
     raw_custom = fixed$samples,
     pretransformed_custom = transform_factor_samples(fixed$samples),
-    singular_allocation = ordered_plot_test_fixture(prior("normal", list(0, 1)))$samples,
     intrinsic_gamma = ordered_plot_test_fixture(prior("gamma", list(.5, 1)))$samples,
     zero_share = ordered_plot_test_fixture(prior("normal", list(0, 1)), c(0, .3, .7))$samples,
     point_fixed = ordered_plot_test_fixture(prior("point", list(2)), c(.2, .3, .5))$samples,
@@ -61,6 +61,20 @@ test_that("ordered level plots preserve declared curves atoms and custom styles"
       }
     }
   }
+})
+
+test_that("ordered singular-allocation plots preserve declared curves", {
+
+  # the prior curve's points at its zero boundary follow the last bits of the
+  # prior draws, which differ across OSes (Apple silicon)
+  skip_on_os(c("mac", "linux", "solaris"))
+  samples <- ordered_plot_test_fixture(prior("normal", list(0, 1)))$samples
+  args <- list(samples = samples, parameter = "mu_f", prior = TRUE,
+    n_points = 64L, n_samples = 128L)
+  vdiffr::expect_doppelganger("ordered-singular_allocation-base",
+    function() do.call(plot_posterior, c(args, plot_type = "base")))
+  vdiffr::expect_doppelganger("ordered-singular_allocation-ggplot",
+    do.call(plot_posterior, c(args, plot_type = "ggplot")))
 })
 
 test_that("ordered direct mixed-total displays retain declared spike atoms", {
@@ -153,24 +167,40 @@ test_that("ordered direct default omits only the reference level", {
   })
 })
 
-test_that("ordered model estimates have prior and posterior visual coverage", {
+ordered_model_plot_inputs <- function(){
   models <- lapply(c(.5, 1), function(sd){
     fixture <- ordered_plot_test_fixture(prior("normal", list(0, sd)))
     list(fit = fixture$fit, marglik = bridgesampling_object(0), prior_weights = 1,
       fit_summary = JAGS_estimates_table(fixture$fit, remove_diagnostics = TRUE))
   })
   models <- models_inference(models)
-  inference <- ensemble_inference(models, "mu_f", list(c(FALSE, FALSE)))
-  mixed <- mix_posteriors(models, "mu_f", is_null_list = list(c(FALSE, FALSE)), n_samples = 200L, seed = 178)
+  list(
+    models    = models,
+    inference = ensemble_inference(models, "mu_f", list(c(FALSE, FALSE))),
+    mixed     = mix_posteriors(models, "mu_f", is_null_list = list(c(FALSE, FALSE)), n_samples = 200L, seed = 178)
+  )
+}
+
+test_that("ordered model estimates have prior and posterior visual coverage", {
+  inputs <- ordered_model_plot_inputs()
   for(prior in c(FALSE, TRUE)){
-    vdiffr::expect_doppelganger(paste0("ordered-models-prior-", prior, "-base"), function(){
-      graphics::par(mfrow = c(3, 1))
-      plot_models(models, mixed, inference, "mu_f", prior = prior)
-    })
-    plots <- plot_models(models, mixed, inference, "mu_f", prior = prior, plot_type = "ggplot")
+    plots <- plot_models(inputs$models, inputs$mixed, inputs$inference, "mu_f", prior = prior, plot_type = "ggplot")
     for(level in c(1L, 3L)){
       vdiffr::expect_doppelganger(paste0("ordered-models-prior-", prior, "-level", level, "-ggplot"), plots[[level]])
     }
+  }
+})
+
+test_that("ordered model estimates have base-graphics visual coverage", {
+  # the dotted zero line ends at the top of the device, at 0 plus the rounding
+  # of base graphics, which differs across OSes (Apple silicon)
+  skip_on_os(c("mac", "linux", "solaris"))
+  inputs <- ordered_model_plot_inputs()
+  for(prior in c(FALSE, TRUE)){
+    vdiffr::expect_doppelganger(paste0("ordered-models-prior-", prior, "-base"), function(){
+      graphics::par(mfrow = c(3, 1))
+      plot_models(inputs$models, inputs$mixed, inputs$inference, "mu_f", prior = prior)
+    })
   }
 })
 

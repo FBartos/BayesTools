@@ -204,8 +204,13 @@ test_that("LKJ Cholesky, correlation, and partial-correlation nodes reproduce th
   # K = 3: 9 Cholesky cells, 9 correlation cells, and 3 partial correlations.
   expect_length(unlist(result$nodes$coordinates[g]), 21L)
   # The Cholesky factor comes from the module's own kernel, R = L L' sums the
-  # products in the module's order, and cpc = 2 u - 1: all bit-identical.
-  expect_identical(unname(result$rebuilt), unname(result$monitored))
+  # products in the module's order, and cpc = 2 u - 1: all bit-identical where
+  # the compiled module rounds each operation. A compiler may fuse the module's
+  # multiply-adds (Apple silicon), which rounds once less; the entries are at
+  # most one in magnitude and sums of at most K = 3 products, so they then
+  # agree within a few units of 2^-52.
+  expect_identical(dimnames(result$rebuilt), dimnames(result$monitored))
+  expect_lt(max(abs(result$rebuilt - result$monitored)), 4 * .Machine$double.eps)
 
   registry <- BayesTools:::.bt_deterministic_nodes_fit(fit)
   for(node in registry[result$nodes$node]){
