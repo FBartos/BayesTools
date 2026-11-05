@@ -2809,7 +2809,10 @@ test_that("exact-zero means retain pure SD rescaling and nonzero subtraction-cen
     term$sd_parameter_names, setup$formula_result$formula_scale, "mu",
     random_term = term, source_data = df_centered
   )
-  expect_identical(A[1L, 2L], -mean(df_centered$xc) / stats::sd(df_centered$xc))
+  # The standardization computes the mean and SD with na.rm = TRUE; where R's
+  # long double is double (Apple silicon), sd() with and without na.rm can
+  # differ in the last bit.
+  expect_identical(A[1L, 2L], -mean(df_centered$xc, na.rm = TRUE) / stats::sd(df_centered$xc, na.rm = TRUE))
   expect_true(A[1L, 2L] != 0)
   densities <- posterior_metadata(mixed, "prior_densities")
   expect_null(densities[["mu__xREx__id_intercept"]])

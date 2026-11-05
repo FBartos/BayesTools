@@ -585,11 +585,11 @@ hypothesis_normalize_level_references <- function(text){
   # used only when needed to reproduce the exact double.
   for(digits in 15:17){
     label <- sprintf(paste0("%.", digits, "g"), x)
-    if(identical(as.numeric(label), x)){
+    if(identical(.hypothesis_read_number(label), x)){
       return(label)
     }
   }
-  label
+  .hypothesis_exact_number_label(x)
 }
 
 .hypothesis_region_has_negated_equality <- function(expr, negated = FALSE){

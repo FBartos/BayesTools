@@ -1,3 +1,7 @@
+# development version
+### Fixes
+- on Apple silicon, numeric constants in generated JAGS models and the values of compiled hypotheses are exact
+
 # version 0.4.0
 ### Breaking changes
 - requires R >= 4.3.0 and the `reformulas` package; BayesTools now compiles a JAGS module (inverse-gamma, moment, inverse-moment, and LKJ distributions) and requires JAGS 4.x (>= 4.3.0), including its headers and libraries for installation from source

@@ -212,7 +212,8 @@ BayesTools_load_JAGS_module <- function(quiet = TRUE, warn = TRUE){
     "BayesTools_invgamma_r",
     "BayesTools_structured_cholesky",
     "BayesTools_draw_fingerprint",
-    "BayesTools_native_range_environment"
+    "BayesTools_native_range_environment",
+    "BayesTools_decimal_read"
   )
 }
 

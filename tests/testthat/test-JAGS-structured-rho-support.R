@@ -566,18 +566,20 @@ test_that("native structured Cholesky aliases match the R reference and fail at 
   )
   expect_equal(native_cs, native_cs_lower, tolerance = 0)
 
+  # The compiler may fuse the native kernel's multiply-adds (Apple silicon),
+  # which rounds once less than the R reference: the Cholesky factors of these
+  # well-conditioned 4 x 4 correlation matrices (entries of magnitude at most
+  # one) then agree within a few units of 2^-52.
   for(draw in seq_along(rho)){
-    expect_equal(
-      native_cs[draw, , ],
-      BayesTools:::.bt_random_effect_structured_subset_cholesky(
-        structure = "hcs",
-        columns = coordinates,
-        rho = rho[draw],
-        global_n_columns = 4L
-      ),
-      tolerance = 0,
-      info = paste("cs draw", draw)
+    reference <- BayesTools:::.bt_random_effect_structured_subset_cholesky(
+      structure = "hcs",
+      columns = coordinates,
+      rho = rho[draw],
+      global_n_columns = 4L
     )
+    expect_identical(attributes(native_cs[draw, , ]), attributes(reference))
+    expect_lt(max(abs(native_cs[draw, , ] - reference)), 32 * .Machine$double.eps,
+              label = paste("cs draw", draw))
   }
 
   native_ar <- BayesTools:::.bt_random_effect_native_structured_cholesky(

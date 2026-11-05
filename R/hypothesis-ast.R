@@ -12,7 +12,11 @@
 #' `hypothesis_render()` renders that tree with token-safe quoting.
 #' `hypothesis_symbols()` returns exact parameter roots or an occurrence table.
 #' Quoted reserved names and ordinary identifiers retain their exact identity;
-#' numeric labels preserve the parsed values when rendered and parsed again.
+#' numeric labels preserve the parsed values when rendered and parsed again (a
+#' value that no decimal text of up to 17 significant digits reads back as, as
+#' some do where R has no extended-precision long double, is rendered as a
+#' hexadecimal literal; such a subnormal value is refused with
+#' \code{BayesTools_hypothesis_statement}).
 #'
 #' `hypothesis_rewrite()` replaces only exact symbol roots. Function names,
 #' literals, level labels, and longer identifiers are never edited.

@@ -160,8 +160,16 @@ test_that("hypothesis rendering preserves numeric values exactly", {
 
   values <- c(0.123456789, 123456789.123, pi, 1 + .Machine$double.eps,
               .Machine$double.xmin, .Machine$double.xmax)
-  for(value in values){
-    literal <- sprintf("%.17g", value)
+  # Where R's long double is double (Apple silicon), R reads some 17-digit
+  # decimal text as a neighbouring double (that of DBL_MAX overflows), so only
+  # the literals R reads as the value are written; the hexadecimal literal is
+  # read exactly on every platform.
+  literals <- unlist(lapply(values, function(value){
+    literal <- c(sprintf("%.17g", value), sprintf("%a", value))
+    literal[as.numeric(literal) %in% value]
+  }))
+  expect_true(all(sprintf("%a", values) %in% literals))
+  for(literal in literals){
     for(hypothesis in c(paste("theta =", literal),
                         paste("theta >", literal),
                         paste("theta +", literal, "> 0"))){
@@ -184,7 +192,7 @@ test_that("hypothesis rendering preserves numeric values exactly", {
 test_that("hypothesis labels use scientific notation where fixed notation is long", {
 
   label <- BayesTools:::.hypothesis_number_label
-  for(value in c(1e-300, -1e-300, 1e300, 1e22, 1.7976931348623157e308, 2.5e-100)){
+  for(value in c(1e-300, -1e-300, 1e300, 1e22, .Machine$double.xmax, 2.5e-100)){
     expect_lt(nchar(label(value)), 25L)
     expect_identical(as.numeric(label(value)), value)
   }
@@ -203,6 +211,39 @@ test_that("hypothesis labels use scientific notation where fixed notation is lon
     expect_identical(hypothesis_render(ast), hypothesis)
     expect_lt(nchar(ast$statements[[1L]]$right$label), 25L)
     expect_identical(hypothesis_parse(hypothesis_render(ast)), ast)
+  }
+})
+
+test_that("labels without a decimal text that reads back use the hexadecimal literal", {
+
+  # Where R's long double is double (Apple silicon), R reads some doubles from
+  # no decimal text of up to 17 significant digits; a reader that refuses
+  # decimal text makes every value such a double.
+  local_mocked_bindings(.hypothesis_read_number = function(text){
+    if(grepl("0x", text, fixed = TRUE)) as.numeric(text) else NA_real_
+  })
+  for(value in c(-0.42 / 3, 0.25, 1e-300, .Machine$double.xmax)){
+    label <- .hypothesis_number_label(value)
+    expect_identical(label, sprintf("%a", value))
+    expect_identical(as.numeric(label), value)
+  }
+  # R cannot read the hexadecimal literal of a subnormal value, which is refused
+  for(value in c(2^-1074, -.Machine$double.xmin / 3)){
+    expect_error(.hypothesis_number_label(value), class = "BayesTools_hypothesis_statement")
+  }
+  expect_error(.hypothesis_number_label(2^-1074), paste0(
+    "The hypothesis value 4.9406564584124654e-324 is subnormal, and no text of ",
+    "it reads back as the same double on this platform. Restate the hypothesis ",
+    "with a value that is 0 or at least '.Machine$double.xmin' in magnitude."),
+    fixed = TRUE)
+  for(hypothesis in c("theta > 0x1.1eb851eb851ebp-3", "theta = -0x1.1eb851eb851ebp-3",
+                      "theta + 0x1.1eb851eb851ebp-3 > 0")){
+    ast <- hypothesis_parse(hypothesis)
+    rendered <- hypothesis_render(ast)
+    expect_match(rendered, "0x", fixed = TRUE)
+    reparsed <- hypothesis_parse(rendered)
+    expect_identical(reparsed$statements[[1L]]$left$value, ast$statements[[1L]]$left$value)
+    expect_identical(reparsed$statements[[1L]]$left$expression, ast$statements[[1L]]$left$expression)
   }
 })
 

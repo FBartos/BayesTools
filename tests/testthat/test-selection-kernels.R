@@ -1759,17 +1759,19 @@ test_that("global breaks must contain the step-selection breaks exactly, as the 
 test_that("the cumulative-weight evaluator returns the literal 1 for the reference bin", {
 
   wf <- prior_weightfunction("one-sided", c(.025, .5), wf_cumulative(c(1, 1, 1)))
-  eta <- c(0.096, 2.027, 2.881)
-  standardized <- eta / sum(eta)
+  eta <- c(0.7, 0.2, 0.4)
+  # the generated syntax adds as JAGS sum() does, in double precision from the
+  # first element on (base sum() may accumulate in long double)
+  standardized <- eta / ((eta[1L] + eta[2L]) + eta[3L])
   # the sum of the standardized auxiliaries is one plus one rounding error here
-  expect_false(sum(standardized) == 1)
+  expect_false((standardized[1L] + standardized[2L]) + standardized[3L] == 1)
 
   omega <- JAGS_marglik_parameters(
     stats::setNames(eta, paste0("eta[", 1:3, "]")),
     list(omega = wf)
   )$omega
   expect_identical(omega[[1L]], 1)
-  expect_identical(omega[-1L], c(sum(standardized[2:3]), standardized[3]))
+  expect_identical(omega[-1L], c(standardized[2L] + standardized[3L], standardized[3L]))
 })
 
 test_that("a context's per-row p-hacking forms take precedence over the branch metadata", {
@@ -1845,7 +1847,7 @@ test_that("generated p-hacking constants read back as the doubles the evaluators
     spec <- .bt_dnode_phacking_spec(list(.selection_branch_info(prior)))
     lines <- strsplit(.bt_dnode_phacking_emit_branch(spec, 1L), "\n", fixed = TRUE)[[1L]]
     lines <- lines[nzchar(lines)]
-    numbers <- as.numeric(vapply(tail(lines, 6L), function(line){
+    numbers <- .JAGS_read_number(vapply(tail(lines, 6L), function(line){
       tail(strsplit(line, " ", fixed = TRUE)[[1L]], 1L)
     }, character(1)))
     expect_identical(
