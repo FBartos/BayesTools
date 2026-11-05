@@ -1,25 +1,46 @@
 name: R-CMD-check
 
+# Pushes and pull requests check the CI platforms; weekly.yaml and
+# release-check.yaml call this workflow for further R versions and platforms.
 on:
   push:
-    branches: [main, master, pre-release]
+    branches: [master, development]
   pull_request:
-    branches: [main, master, pre-release]
+    branches: [master, development]
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      matrix:
+        description: JSON list of runner configurations, each {"os", "r"}.
+        type: string
+        required: true
+      ref:
+        description: Git ref to check; empty checks the triggering ref.
+        type: string
+        default: ""
+
+# A called workflow sees the caller's github.workflow: the literal prefix keeps
+# two workflows called by one caller apart, github.workflow keeps the callers
+# (and a direct run) apart.
+concurrency:
+  group: R-CMD-check-${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  build:
+  check:
+    name: check (${{ matrix.config.os }}, R ${{ matrix.config.r }})
     runs-on: ${{ matrix.config.os }}
+    timeout-minutes: 120
     env:
       BAYESTOOLS_VIGNETTE_REFIT: "false"
     strategy:
       fail-fast: false
       matrix:
-        config:
-          - {os: windows-latest, r: '4.6'}
-          - {os: ubuntu-latest, r: '4.6'}
-          - {os: macos-15-intel, r: '4.6'}
+        config: ${{ fromJSON(inputs.matrix || '[{"os":"windows-latest","r":"4.6"},{"os":"ubuntu-latest","r":"4.6"},{"os":"macos-latest","r":"4.6"}]') }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
 
       - name: Setup R
         id: setup-r
@@ -30,50 +51,30 @@ jobs:
       - name: Setup Pandoc
         uses: r-lib/actions/setup-pandoc@v2
 
-      # Cache R packages
+      - name: Set up JAGS
+        uses: ./.github/actions/setup-jags
+
+      # Cache R packages; the macOS runners differ in architecture only
       - name: Cache R packages
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: ${{ env.R_LIBS_USER }}
-          key: ${{ runner.os }}-r-${{ steps.setup-r.outputs.installed-r-version }}-cache-v2-${{ hashFiles('**/DESCRIPTION') }}
+          key: ${{ runner.os }}-${{ runner.arch }}-r-${{ steps.setup-r.outputs.installed-r-version }}-cache-v2-${{ hashFiles('**/DESCRIPTION') }}
           restore-keys: |
-            ${{ runner.os }}-r-${{ steps.setup-r.outputs.installed-r-version }}-cache-v2-
+            ${{ runner.os }}-${{ runner.arch }}-r-${{ steps.setup-r.outputs.installed-r-version }}-cache-v2-
 
-      # Cache system dependencies
       - name: Cache system dependencies
         if: runner.os == 'Linux'
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: /var/cache/apt
           key: ${{ runner.os }}-apt-${{ hashFiles('.github/workflows/R-CMD-check.yaml') }}
           restore-keys: |
             ${{ runner.os }}-apt-
 
-      # Cache JAGS installation (Windows)
-      - name: Cache JAGS (Windows)
-        if: runner.os == 'Windows'
-        uses: actions/cache@v5
-        with:
-          path: C:\Program Files\JAGS
-          key: ${{ runner.os }}-jags-4.3.1
-          restore-keys: |
-            ${{ runner.os }}-jags-
-
-      # Cache the JAGS 4.3.2 installer (macOS). BayesTools requires JAGS 4.x;
-      # Homebrew's jags formula installs JAGS 5, so the official universal
-      # package is used instead.
-      - name: Cache JAGS installer (macOS)
-        if: runner.os == 'macOS'
-        uses: actions/cache@v5
-        with:
-          path: ~/jags-installer
-          key: ${{ runner.os }}-jags-pkg-4.3.2
-
-      # Install JAGS and system dependencies on Linux
       - name: Install System Dependencies (Linux)
         if: runner.os == 'Linux'
         run: |
-          sudo apt-get update
           sudo apt-get install -y \
             libssl-dev \
             libuv1-dev \
@@ -86,61 +87,8 @@ jobs:
             libpng-dev \
             libtiff5-dev \
             libjpeg-dev \
-            libcairo2-dev \
-            jags
+            libcairo2-dev
 
-      # Install JAGS on Windows
-      - name: Install JAGS (Windows)
-        if: runner.os == 'Windows'
-        shell: cmd
-        run: |
-          if not exist "C:\Program Files\JAGS\JAGS-4.3.1\bin\jags-terminal.exe" (
-            echo "JAGS not found in cache, downloading and installing..."
-            curl -o jags-installer.exe -L https://sourceforge.net/projects/mcmc-jags/files/JAGS/4.x/Windows/JAGS-4.3.1.exe/download
-            jags-installer.exe /S
-            del jags-installer.exe
-          ) else (
-            echo "JAGS found in cache, skipping installation"
-          )
-
-      # Set JAGS environment variables on Windows
-      - name: Set JAGS environment variables (Windows)
-        if: runner.os == 'Windows'
-        shell: cmd
-        run: |
-          echo JAGS_ROOT=C:\Program Files\JAGS\JAGS-4.3.1>> %GITHUB_ENV%
-          echo JAGS_MAJOR_VERSION=4>> %GITHUB_ENV%
-          echo PATH=C:\Program Files\JAGS\JAGS-4.3.1\bin;%PATH%>> %GITHUB_ENV%
-
-      # Install JAGS 4.3.2 on macOS from the official universal package, which
-      # installs into /usr/local (library, JAGS headers, jags.pc, jags binary)
-      - name: Install JAGS (macOS)
-        if: runner.os == 'macOS'
-        run: |
-          # Remove a Homebrew jags first: on Intel runners Homebrew also links
-          # into /usr/local, where the package installs JAGS 4.3.2.
-          if brew list --formula jags > /dev/null 2>&1; then
-            brew uninstall --ignore-dependencies jags
-          fi
-          mkdir -p ~/jags-installer
-          if [ ! -f ~/jags-installer/JAGS-4.3.2.pkg ]; then
-            echo "JAGS installer not found in cache, downloading..."
-            curl --retry 3 --fail -L -o ~/jags-installer/JAGS-4.3.2.pkg \
-              https://sourceforge.net/projects/mcmc-jags/files/JAGS/4.x/Mac%20OS%20X/JAGS-4.3.2.pkg/download
-          fi
-          sudo installer -pkg ~/jags-installer/JAGS-4.3.2.pkg -target /
-
-      # Point pkg-config at the JAGS 4.3.2 installation; configure rejects any
-      # JAGS major version other than 4 with a clear message
-      - name: Set Environment Variables (macOS)
-        if: runner.os == 'macOS'
-        run: |
-          echo "PKG_CONFIG_PATH=/usr/local/lib/pkgconfig" >> $GITHUB_ENV
-          if command -v pkg-config > /dev/null 2>&1; then
-            echo "pkg-config reports JAGS $(PKG_CONFIG_PATH=/usr/local/lib/pkgconfig pkg-config --modversion jags)"
-          fi
-
-      # Install the package
       - name: Install the required packages
         run: |
           options(repos = c(CRAN = "https://cloud.r-project.org"))
@@ -187,7 +135,6 @@ jobs:
 
       # The built package ships only CRAN's smoke test; R-tests runs the profiles.
       - name: Check
-        if: runner.os != 'Windows'
         env:
           _R_CHECK_CRAN_INCOMING_REMOTE_: false
           AGENT: 1
@@ -199,24 +146,25 @@ jobs:
             check_dir   = "check")
         shell: Rscript {0}
 
-      - name: Check
-        if: runner.os == 'Windows'
-        env:
-          _R_CHECK_CRAN_INCOMING_REMOTE_: false
-          AGENT: 1
-          JAGS_ROOT: "/c/progra~1/JAGS/JAGS-4.3.1"
-          JAGS_MAJOR_VERSION: 4
+      # A binary the maintainer can install to try a pull request.
+      - name: Build Windows binary
+        if: runner.os == 'Windows' && github.event_name == 'pull_request'
         run: |
-          options(crayon.enabled = TRUE)
-          rcmdcheck::rcmdcheck(
-            args        = c("--no-manual", "--as-cran"),
-            error_on    = "warning",
-            check_dir   = "check")
+          dir.create("binary")
+          pkgbuild::build(binary = TRUE, dest_path = "binary")
         shell: Rscript {0}
+
+      - name: Upload Windows binary
+        if: runner.os == 'Windows' && github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v7
+        with:
+          name: BayesTools-windows-binary
+          path: binary/*.zip
+          retention-days: 14
 
       - name: Upload check results
         if: failure()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
-          name: ${{ runner.os }}-r${{ matrix.config.r }}-results
+          name: ${{ runner.os }}-${{ runner.arch }}-r${{ matrix.config.r }}-results
           path: check

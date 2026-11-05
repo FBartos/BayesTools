@@ -615,9 +615,36 @@ test_that("Windows builds select only JAGS 4.x installations", {
   list.files(workflow_dir, pattern = "\\.ya?ml$", full.names = TRUE)
 }
 
+.layout_action_files <- function(){
+
+  action_dir <- .layout_repository_file(".github", "actions")
+  skip_if_not(
+    dir.exists(action_dir),
+    "Repository action sources are not available in this installed-package context."
+  )
+
+  list.files(action_dir, pattern = "^action\\.ya?ml$", full.names = TRUE, recursive = TRUE)
+}
+
+test_that("every CI workflow installs JAGS through the shared setup-jags action", {
+
+  # The action (also used by the dependent packages) is the one place that
+  # installs JAGS; a workflow that runs jobs must not install it by itself.
+  setup_jags <- "uses: (\\./|FBartos/BayesTools/)\\.github/actions/setup-jags(@|\\s*$)"
+  for(path in .layout_workflow_files()){
+    workflow <- readLines(path, warn = FALSE, encoding = "UTF-8")
+    if(!any(grepl("^\\s*runs-on:", workflow))){
+      next
+    }
+    expect_true(any(grepl(setup_jags, workflow)), info = basename(path))
+    expect_false(any(grepl("jags-installer|apt-get install.*\\bjags\\b|JAGS-4\\.3\\.[0-9]+\\.exe", workflow, perl = TRUE)), info = basename(path))
+  }
+})
+
 test_that("macOS CI builds against a cached JAGS 4 installer, never Homebrew's jags", {
 
-  for(path in .layout_workflow_files()){
+  installs <- 0L
+  for(path in c(.layout_workflow_files(), .layout_action_files())){
     workflow <- readLines(path, warn = FALSE, encoding = "UTF-8")
     expect_false(any(grepl("brew install jags", workflow, fixed = TRUE)), info = basename(path))
 
@@ -627,6 +654,7 @@ test_that("macOS CI builds against a cached JAGS 4 installer, never Homebrew's j
     if(length(install) == 0L){
       next
     }
+    installs <- installs + 1L
 
     cache <- steps[step_names %in% "Cache JAGS installer (macOS)"]
     expect_length(cache, 1L)
@@ -645,6 +673,8 @@ test_that("macOS CI builds against a cached JAGS 4 installer, never Homebrew's j
       )
     }
   }
+
+  expect_identical(installs, 1L)
 })
 
 test_that("CI installs BayesTools in a process that has loaded no packages", {

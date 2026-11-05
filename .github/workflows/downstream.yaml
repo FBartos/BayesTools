@@ -1,0 +1,144 @@
+name: downstream
+
+# Checks the packages that depend on the calling repository's package against
+# its checked-out source: the development branches of the BayesToolsVerse
+# dependents (weekly) or the CRAN releases of all CRAN reverse dependencies
+# (release-check). Other BayesToolsVerse packages call it as
+# FBartos/BayesTools/.github/workflows/downstream.yaml@development.
+on:
+  workflow_call:
+    inputs:
+      source:
+        description: "'development' checks the development branches of `dependents`; 'cran' checks the CRAN releases of all CRAN reverse dependencies."
+        type: string
+        required: true
+      dependents:
+        description: JSON list of FBartos repositories checked when source is 'development'.
+        type: string
+        default: '["RoBMA", "RoBSA", "RoBTT"]'
+      ref:
+        description: Git ref of the calling repository to check against; empty uses the triggering ref.
+        type: string
+        default: ""
+
+jobs:
+  dependents:
+    runs-on: ubuntu-latest
+    outputs:
+      packages: ${{ steps.list.outputs.packages }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
+
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: '4.6'
+          use-public-rspm: true
+
+      - name: List the dependent packages
+        id: list
+        env:
+          SOURCE: ${{ inputs.source }}
+          DEPENDENTS: ${{ inputs.dependents }}
+        run: |
+          if (identical(Sys.getenv("SOURCE"), "development")) {
+            packages <- Sys.getenv("DEPENDENTS")
+          } else if (identical(Sys.getenv("SOURCE"), "cran")) {
+            package <- read.dcf("DESCRIPTION", fields = "Package")[1, 1]
+            db <- utils::available.packages(repos = c(CRAN = "https://cloud.r-project.org"))
+            dependents <- tools::package_dependencies(package, db = db, reverse = TRUE, which = "all")[[1]]
+            packages <- if (length(dependents) == 0L) {
+              "[]"
+            } else {
+              paste0("[", paste0('"', sort(dependents), '"', collapse = ", "), "]")
+            }
+          } else {
+            stop("Unknown downstream source '", Sys.getenv("SOURCE"), "'.", call. = FALSE)
+          }
+          message("Dependent packages: ", packages)
+          cat("packages=", packages, "\n", sep = "", file = Sys.getenv("GITHUB_OUTPUT"), append = TRUE)
+        shell: Rscript {0}
+
+  check:
+    needs: dependents
+    if: needs.dependents.outputs.packages != '[]'
+    name: ${{ matrix.package }} (${{ inputs.source }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        package: ${{ fromJSON(needs.dependents.outputs.packages) }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
+          path: upstream
+
+      - name: Get the dependent's source
+        env:
+          SOURCE: ${{ inputs.source }}
+          PACKAGE: ${{ matrix.package }}
+        run: |
+          if [ "$SOURCE" = development ]; then
+            git clone --depth 1 --branch development "https://github.com/FBartos/$PACKAGE.git" dependent
+          else
+            mkdir cran
+            Rscript -e "utils::download.packages('$PACKAGE', destdir = 'cran', type = 'source', repos = 'https://cloud.r-project.org')"
+            tar -xzf cran/"$PACKAGE"_*.tar.gz -C cran
+            mv cran/"$PACKAGE" dependent
+          fi
+
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: '4.6'
+          use-public-rspm: true
+
+      - uses: r-lib/actions/setup-pandoc@v2
+
+      - name: Set up JAGS
+        uses: FBartos/BayesTools/.github/actions/setup-jags@development
+
+      # An upstream package that requires BayesTools development (RoBMA) needs
+      # it installed too; for BayesTools itself the spec is empty.
+      - name: Resolve BayesTools source
+        id: bayestools
+        uses: FBartos/BayesTools/.github/actions/bayestools-source@development
+        with:
+          path: upstream
+
+      - name: Install R dependencies
+        uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          working-directory: dependent
+          dependencies: '"all"'
+          extra-packages: |
+            ${{ steps.bayestools.outputs.pak-spec }}
+            local::../upstream
+            any::rcmdcheck
+
+      # The dependents' own packages must pass cleanly; a CRAN release only has
+      # to keep checking without errors, since its notes and warnings predate
+      # this change.
+      - name: Check
+        env:
+          _R_CHECK_CRAN_INCOMING_REMOTE_: false
+          _R_CHECK_FORCE_SUGGESTS_: false
+          ERROR_ON: ${{ inputs.source == 'development' && 'warning' || 'error' }}
+        run: |
+          options(crayon.enabled = TRUE)
+          rcmdcheck::rcmdcheck(
+            path        = "dependent",
+            args        = c("--no-manual", "--ignore-vignettes"),
+            build_args  = c("--no-build-vignettes"),
+            error_on    = Sys.getenv("ERROR_ON"),
+            check_dir   = "check")
+        shell: Rscript {0}
+
+      - name: Upload check results
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: downstream-${{ matrix.package }}-${{ inputs.source }}-results
+          path: check
