@@ -28,9 +28,9 @@ jobs:
         [{"os": "macos-latest", "r": "4.6"},
          {"os": "macos-15-intel", "r": "4.6"}]
 
-  # RoBSA and RoBTT join once their development branches support BayesTools 0.4.
+  # RoBSA joins once its development branch supports BayesTools 0.4.
   downstream:
     uses: ./.github/workflows/downstream.yaml
     with:
       source: development
-      dependents: '["RoBMA"]'
+      dependents: '["RoBMA", "RoBTT"]'
