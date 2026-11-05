@@ -2,7 +2,7 @@ name: downstream
 
 # Checks the packages that depend on the calling repository's package against
 # its checked-out source: the development branches of the BayesToolsVerse
-# dependents (weekly) or the CRAN releases of all CRAN reverse dependencies
+# dependents (post-merge) or the CRAN releases of all CRAN reverse dependencies
 # (release-check). Other BayesToolsVerse packages call it as
 # FBartos/BayesTools/.github/workflows/downstream.yaml@development.
 on:
@@ -16,10 +16,6 @@ on:
         description: JSON list of FBartos repositories checked when source is 'development'.
         type: string
         default: '["RoBMA", "RoBSA", "RoBTT"]'
-      ref:
-        description: Git ref of the calling repository to check against; empty uses the triggering ref.
-        type: string
-        default: ""
 
 jobs:
   dependents:
@@ -28,8 +24,6 @@ jobs:
       packages: ${{ steps.list.outputs.packages }}
     steps:
       - uses: actions/checkout@v7
-        with:
-          ref: ${{ inputs.ref }}
 
       - uses: r-lib/actions/setup-r@v2
         with:
@@ -73,7 +67,6 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ inputs.ref }}
           path: upstream
 
       - name: Get the dependent's source
