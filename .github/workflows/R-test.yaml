@@ -1,7 +1,7 @@
 name: R-tests
 
-# Runs the full developer profile (`all`). weekly.yaml calls this workflow for
-# the macOS runners.
+# Runs the full developer profile (`all`). post-merge.yaml calls this workflow
+# for the macOS runners.
 on:
   push:
     branches: [master, development]
@@ -14,10 +14,6 @@ on:
         description: JSON list of runner configurations, each {"os", "r"}.
         type: string
         required: true
-      ref:
-        description: Git ref to test; empty tests the triggering ref.
-        type: string
-        default: ""
 
 # A called workflow sees the caller's github.workflow: the literal prefix keeps
 # two workflows called by one caller apart, github.workflow keeps the callers
@@ -37,8 +33,6 @@ jobs:
         config: ${{ fromJSON(inputs.matrix || '[{"os":"windows-latest","r":"4.6"},{"os":"ubuntu-latest","r":"4.6"}]') }}
     steps:
       - uses: actions/checkout@v7
-        with:
-          ref: ${{ inputs.ref }}
 
       - name: Setup R
         id: setup-r
