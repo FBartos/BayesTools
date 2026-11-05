@@ -227,14 +227,15 @@ test_that("labels without a decimal text that reads back use the hexadecimal lit
     expect_identical(label, sprintf("%a", value))
     expect_identical(as.numeric(label), value)
   }
-  # R cannot scale 0x1p-1074, so subnormal values use the 2^-1022 scale
-  for(value in c(2^-1074, -2^-1074, .Machine$double.xmin / 3, .Machine$double.xmin - 2^-1074)){
-    label <- .hypothesis_number_label(value)
-    expect_match(label, "^-?0x0\\.[0-9a-f]{13}p-1022$")
-    expect_identical(as.numeric(label), value)
-    expect_identical(eval(parse(text = label)[[1L]]), value)
+  # R cannot read the hexadecimal literal of a subnormal value, which is refused
+  for(value in c(2^-1074, -.Machine$double.xmin / 3)){
+    expect_error(.hypothesis_number_label(value), class = "BayesTools_hypothesis_statement")
   }
-  expect_identical(.hypothesis_number_label(2^-1074), "0x0.0000000000001p-1022")
+  expect_error(.hypothesis_number_label(2^-1074), paste0(
+    "The hypothesis value 4.9406564584124654e-324 is subnormal, and no text of ",
+    "it reads back as the same double on this platform. Restate the hypothesis ",
+    "with a value that is 0 or at least '.Machine$double.xmin' in magnitude."),
+    fixed = TRUE)
   for(hypothesis in c("theta > 0x1.1eb851eb851ebp-3", "theta = -0x1.1eb851eb851ebp-3",
                       "theta + 0x1.1eb851eb851ebp-3 > 0")){
     ast <- hypothesis_parse(hypothesis)

@@ -77,7 +77,8 @@ Quoted reserved names and ordinary identifiers retain their exact identity;
 numeric labels preserve the parsed values when rendered and parsed again (a
 value that no decimal text of up to 17 significant digits reads back as, as
 some do where R has no extended-precision long double, is rendered as a
-hexadecimal literal).
+hexadecimal literal; such a subnormal value is refused with
+\code{BayesTools_hypothesis_statement}).
 
 \code{hypothesis_rewrite()} replaces only exact symbol roots. Function names,
 literals, level labels, and longer identifiers are never edited.
