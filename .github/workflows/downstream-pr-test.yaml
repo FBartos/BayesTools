@@ -1,0 +1,13 @@
+name: downstream-pr-test
+
+# TEMPORARY: exercises the RoBTT downstream check on this pull request; removed before merging.
+on:
+  pull_request:
+    branches: [development]
+
+jobs:
+  downstream:
+    uses: ./.github/workflows/downstream.yaml
+    with:
+      source: development
+      dependents: '["RoBTT"]'
