@@ -69,6 +69,14 @@ jobs:
         with:
           path: upstream
 
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: '4.6'
+          use-public-rspm: true
+
+      - uses: r-lib/actions/setup-pandoc@v2
+
+      # The CRAN branch downloads with Rscript, so R must be set up first.
       - name: Get the dependent's source
         env:
           SOURCE: ${{ inputs.source }}
@@ -82,13 +90,6 @@ jobs:
             tar -xzf cran/"$PACKAGE"_*.tar.gz -C cran
             mv cran/"$PACKAGE" dependent
           fi
-
-      - uses: r-lib/actions/setup-r@v2
-        with:
-          r-version: '4.6'
-          use-public-rspm: true
-
-      - uses: r-lib/actions/setup-pandoc@v2
 
       - name: Set up JAGS
         uses: FBartos/BayesTools/.github/actions/setup-jags@development
