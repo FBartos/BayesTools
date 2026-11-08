@@ -127,7 +127,7 @@ jobs:
           }
         shell: Rscript {0}
 
-      # The built package ships only CRAN's smoke test; R-tests runs the profiles.
+      # The built package ships only CRAN's smoke test; R-unit-tests runs the profiles.
       - name: Check
         env:
           _R_CHECK_CRAN_INCOMING_REMOTE_: false

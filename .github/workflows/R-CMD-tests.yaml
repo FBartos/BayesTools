@@ -1,4 +1,4 @@
-name: R-tests
+name: R-unit-tests
 
 # Runs the full developer profile (`all`). post-merge.yaml calls this workflow
 # for the macOS runners.
@@ -19,7 +19,7 @@ on:
 # two workflows called by one caller apart, github.workflow keeps the callers
 # (and a direct run) apart.
 concurrency:
-  group: R-tests-${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  group: R-unit-tests-${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -57,7 +57,7 @@ jobs:
         uses: actions/cache@v6
         with:
           path: /var/cache/apt
-          key: ${{ runner.os }}-apt-${{ hashFiles('.github/workflows/R-test.yaml') }}
+          key: ${{ runner.os }}-apt-${{ hashFiles('.github/workflows/R-CMD-tests.yaml') }}
           restore-keys: |
             ${{ runner.os }}-apt-
 
