@@ -41,7 +41,7 @@ jobs:
           } else if (identical(Sys.getenv("SOURCE"), "cran")) {
             package <- read.dcf("DESCRIPTION", fields = "Package")[1, 1]
             version <- package_version(read.dcf("DESCRIPTION", fields = "Version")[1, 1])
-            db <- utils::available.packages(repos = c(CRAN = "https://cloud.r-project.org"))
+            db <- utils::available.packages(repos = c(CRAN = "https://cran.r-project.org"))
             dependents <- tools::package_dependencies(package, db = db, reverse = TRUE, which = "all")[[1]]
             # A release that pins this package below the checked version cannot be
             # installed with it, so there is nothing to check.
@@ -103,7 +103,7 @@ jobs:
             git clone --depth 1 --branch development "https://github.com/FBartos/$PACKAGE.git" dependent
           else
             mkdir cran
-            Rscript -e "utils::download.packages('$PACKAGE', destdir = 'cran', type = 'source', repos = 'https://cloud.r-project.org')"
+            Rscript -e "utils::download.packages('$PACKAGE', destdir = 'cran', type = 'source', repos = 'https://cran.r-project.org')"
             tar -xzf cran/"$PACKAGE"_*.tar.gz -C cran
             mv cran/"$PACKAGE" dependent
           fi
@@ -139,6 +139,8 @@ jobs:
           _R_CHECK_CRAN_INCOMING_REMOTE_: false
           _R_CHECK_FORCE_SUGGESTS_: false
           ERROR_ON: ${{ inputs.source == 'development' && 'warning' || 'error' }}
+          # A CRAN release is checked as CRAN checks it, skipping its developer tests.
+          NOT_CRAN: ${{ inputs.source == 'cran' && 'false' || 'true' }}
         run: |
           options(crayon.enabled = TRUE)
           rcmdcheck::rcmdcheck(
