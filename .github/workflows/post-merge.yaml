@@ -22,15 +22,14 @@ jobs:
          {"os": "macos-15-intel", "r": "4.6"}]
 
   tests:
-    uses: ./.github/workflows/R-test.yaml
+    uses: ./.github/workflows/R-CMD-tests.yaml
     with:
       matrix: >-
         [{"os": "macos-latest", "r": "4.6"},
          {"os": "macos-15-intel", "r": "4.6"}]
 
-  # RoBSA joins once its development branch supports BayesTools 0.4.
   downstream:
     uses: ./.github/workflows/downstream.yaml
     with:
       source: development
-      dependents: '["RoBMA", "RoBTT"]'
+      dependents: '["RoBMA", "RoBSA", "RoBTT"]'

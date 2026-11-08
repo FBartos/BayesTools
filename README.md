@@ -4,11 +4,11 @@
 # BayesTools
 
 <!-- badges: start -->
-
-[![R-CMD-check](https://github.com/FBartos/BayesTools/actions/workflows/R-CMD-check.yaml/badge.svg?branch=development)](https://github.com/FBartos/BayesTools/actions)
-[![Codecov test
-coverage](https://codecov.io/gh/FBartos/BayesTools/branch/development/graph/badge.svg)](https://app.codecov.io/gh/FBartos/BayesTools?branch=development)
-[![CRAN_Status_Badge](https://www.r-pkg.org/badges/version/BayesTools)](https://cran.r-project.org/package=BayesTools)
+[![R-CMD-check](https://github.com/FBartos/BayesTools/actions/workflows/R-CMD-check.yaml/badge.svg?branch=development)](https://github.com/FBartos/BayesTools/actions/workflows/R-CMD-check.yaml)
+[![R-unit-tests](https://github.com/FBartos/BayesTools/actions/workflows/R-CMD-tests.yaml/badge.svg?branch=development)](https://github.com/FBartos/BayesTools/actions/workflows/R-CMD-tests.yaml)
+[![test-coverage](https://github.com/FBartos/BayesTools/actions/workflows/test-coverage.yaml/badge.svg?branch=development)](https://github.com/FBartos/BayesTools/actions/workflows/test-coverage.yaml)
+[![Codecov](https://codecov.io/gh/FBartos/BayesTools/branch/development/graph/badge.svg)](https://app.codecov.io/gh/FBartos/BayesTools?branch=development)
+[![CRAN status](https://www.r-pkg.org/badges/version/BayesTools)](https://CRAN.R-project.org/package=BayesTools)
 <!-- badges: end -->
 
 The goal of BayesTools is to provide functions that simplify building R

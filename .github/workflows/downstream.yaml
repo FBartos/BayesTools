@@ -9,7 +9,7 @@ on:
   workflow_call:
     inputs:
       source:
-        description: "'development' checks the development branches of `dependents`; 'cran' checks the CRAN releases of all CRAN reverse dependencies."
+        description: "'development' checks the development branches of `dependents`; 'cran' checks the CRAN releases of all CRAN reverse dependencies not pinned below the checked version."
         type: string
         required: true
       dependents:
@@ -40,8 +40,25 @@ jobs:
             packages <- Sys.getenv("DEPENDENTS")
           } else if (identical(Sys.getenv("SOURCE"), "cran")) {
             package <- read.dcf("DESCRIPTION", fields = "Package")[1, 1]
+            version <- package_version(read.dcf("DESCRIPTION", fields = "Version")[1, 1])
             db <- utils::available.packages(repos = c(CRAN = "https://cloud.r-project.org"))
             dependents <- tools::package_dependencies(package, db = db, reverse = TRUE, which = "all")[[1]]
+            # A release that pins this package below the checked version cannot be
+            # installed with it, so there is nothing to check.
+            pinned_below <- function(dependent) {
+              fields <- db[dependent, c("Depends", "Imports", "LinkingTo", "Suggests", "Enhances")]
+              fields <- fields[!is.na(fields)]
+              pins   <- regmatches(fields, regexec(
+                paste0("\\b", package, "\\s*\\(\\s*(<=?)\\s*([^)[:space:]]+)\\s*\\)"), fields))
+              any(vapply(pins, function(pin) {
+                length(pin) == 3L && !do.call(pin[[2]], list(version, package_version(pin[[3]])))
+              }, logical(1)))
+            }
+            pinned <- vapply(dependents, pinned_below, logical(1))
+            if (any(pinned)) {
+              message("Skipped, pinned below ", package, " ", version, ": ", paste(dependents[pinned], collapse = ", "))
+            }
+            dependents <- dependents[!pinned]
             packages <- if (length(dependents) == 0L) {
               "[]"
             } else {
