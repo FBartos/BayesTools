@@ -1,0 +1,31 @@
+name: Resolve the BayesTools source
+description: >
+  For a package that imports BayesTools, returns the pak spec to install:
+  the CRAN release when it satisfies the package's `BayesTools (>= x)`
+  import, otherwise the BayesTools development branch; empty for a package
+  that does not import BayesTools. Needs R on the PATH.
+
+inputs:
+  path:
+    description: Root of the package whose DESCRIPTION is read.
+    required: false
+    default: "."
+  development-spec:
+    description: pak spec of the BayesTools development source.
+    required: false
+    default: github::FBartos/BayesTools@development
+
+outputs:
+  pak-spec:
+    description: pak spec to pass to setup-r-dependencies.
+    value: ${{ steps.resolve.outputs.pak_spec }}
+
+runs:
+  using: composite
+  steps:
+    - id: resolve
+      shell: bash
+      working-directory: ${{ inputs.path }}
+      env:
+        BAYESTOOLS_PAK_SPEC: ${{ inputs.development-spec }}
+      run: Rscript "$GITHUB_ACTION_PATH/resolve.R"
