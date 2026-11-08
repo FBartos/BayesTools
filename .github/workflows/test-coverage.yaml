@@ -1,86 +1,54 @@
 name: test-coverage
 
+# Coverage reruns the full developer profile under instrumentation; it reports
+# development's coverage after each merge and does not gate pull requests.
 on:
   push:
-    branches: [main, master, pre-release]
-  pull_request:
-    branches: [main, master, pre-release]
+    branches: [development]
+  workflow_dispatch:
+
+concurrency:
+  group: test-coverage-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  build:
-    runs-on: ${{ matrix.config.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        config:
-          - {os: windows-latest, r: '4.6'}
-
+  coverage:
+    runs-on: windows-latest
+    timeout-minutes: 240
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Setup R
         id: setup-r
         uses: r-lib/actions/setup-r@v2
         with:
-          r-version: ${{ matrix.config.r }}
+          r-version: '4.6'
 
       - name: Setup Pandoc
         uses: r-lib/actions/setup-pandoc@v2
 
-      # Cache R packages
+      - name: Set up JAGS
+        uses: ./.github/actions/setup-jags
+
       - name: Cache R packages
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: ${{ env.R_LIBS_USER }}
           key: ${{ runner.os }}-r-${{ steps.setup-r.outputs.installed-r-version }}-cache-v2-${{ hashFiles('**/DESCRIPTION') }}
           restore-keys: |
             ${{ runner.os }}-r-${{ steps.setup-r.outputs.installed-r-version }}-cache-v2-
 
-      # Cache JAGS installation (Windows)
-      - name: Cache JAGS (Windows)
-        if: runner.os == 'Windows'
-        uses: actions/cache@v5
-        with:
-          path: C:\Program Files\JAGS
-          key: ${{ runner.os }}-jags-4.3.1
-          restore-keys: |
-            ${{ runner.os }}-jags-
-
-      # Install JAGS on Windows
-      - name: Install JAGS (Windows)
-        if: runner.os == 'Windows'
-        shell: cmd
-        run: |
-          if not exist "C:\Program Files\JAGS\JAGS-4.3.1\bin\jags-terminal.exe" (
-            echo "JAGS not found in cache, downloading and installing..."
-            curl -o jags-installer.exe -L https://sourceforge.net/projects/mcmc-jags/files/JAGS/4.x/Windows/JAGS-4.3.1.exe/download
-            jags-installer.exe /S
-            del jags-installer.exe
-          ) else (
-            echo "JAGS found in cache, skipping installation"
-          )
-
-      # Set JAGS environment variables on Windows
-      - name: Set JAGS environment variables (Windows)
-        if: runner.os == 'Windows'
-        shell: cmd
-        run: |
-          echo JAGS_ROOT=C:\Program Files\JAGS\JAGS-4.3.1>> %GITHUB_ENV%
-          echo JAGS_MAJOR_VERSION=4>> %GITHUB_ENV%
-          echo PATH=C:\Program Files\JAGS\JAGS-4.3.1\bin;%PATH%>> %GITHUB_ENV%
-
-      # Install the package
       - name: Install the required packages
         run: |
           options(repos = c(CRAN = "https://cloud.r-project.org"))
-          
+
           # Check installation without loading namespaces: loading RoBMA would
           # load a cached BayesTools DLL that the installation step cannot
           # replace on Windows while this process holds it.
           required_packages <- c('devtools', 'rcmdcheck', 'BayesFactor', 'RoBMA', 'runjags', 'rjags', 'rstan', 'scales', 'vdiffr', 'testthat', 'covr', 'knitr', 'rmarkdown', 'lme4')
           is_installed <- nzchar(vapply(required_packages, function(package) system.file(package = package), character(1)))
           missing_packages <- required_packages[!is_installed]
-          
+
           if (length(missing_packages) > 0) {
             cat("Installing missing packages:", paste(missing_packages, collapse = ", "), "\n")
             install.packages(missing_packages)
@@ -107,8 +75,6 @@ jobs:
           NOT_CRAN: "true"
           VDIFFR_RUN_TESTS: "true"
           AGENT: "1"
-          JAGS_ROOT: "/c/progra~1/JAGS/JAGS-4.3.1"
-          JAGS_MAJOR_VERSION: 4
         run: |
           # Run source-tree tests against covr's already-loaded instrumented
           # package. Using devtools::test() here reloads the source tree through
