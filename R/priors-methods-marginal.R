@@ -41,6 +41,9 @@ mcdf.prior   <- function(x, q, ...){
 
   .check_q(as.vector(q))
   .check_prior(prior)
+  if(is.prior.R2(prior)){
+    return(.bt_R2_prior_method(prior, "mcdf", q))
+  }
 
   if(is.prior.spike_and_slab(prior)){
 
@@ -113,6 +116,9 @@ mccdf.prior  <- function(x, q, ...){
 
   .check_q(as.vector(q))
   .check_prior(prior)
+  if(is.prior.R2(prior)){
+    return(.bt_R2_prior_method(prior, "mccdf", q))
+  }
 
   if(is.prior.spike_and_slab(prior)){
 
@@ -193,6 +199,9 @@ mlpdf.prior  <- function(x, y, ...){
 # (mpdf() evaluates the same density).
 .prior_marginal_lpdf <- function(prior, x, method){
 
+  if(is.prior.R2(prior)){
+    return(.bt_R2_prior_method(prior, "mlpdf", x))
+  }
   if(is.prior.spike_and_slab(prior)){
 
     stop(sprintf("No %s are implemented for spike and slab priors.", method), call. = FALSE)
@@ -266,7 +275,9 @@ mpdf.prior   <- function(x, y, ...){
   .check_x(as.vector(x))
   .check_prior(prior)
 
-  if(is.prior.simple(prior)){
+  if(is.prior.R2(prior)){
+    lik <- .bt_R2_prior_method(prior, "mpdf", x)
+  }else if(is.prior.simple(prior)){
     lik <- .prior_simple_pdf(prior, x)
   }else{
     log_lik <- .prior_marginal_lpdf(prior, x, "mpdf")
@@ -282,6 +293,9 @@ mquant.prior <- function(x, p, ...){
 
   .check_p(p, log.p = FALSE)
   .check_prior(prior)
+  if(is.prior.R2(prior)){
+    return(.bt_R2_prior_method(prior, "mquant", p))
+  }
 
   if(is.prior.spike_and_slab(prior)){
 

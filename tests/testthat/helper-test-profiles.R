@@ -103,6 +103,8 @@ bayestools_test_profile_contexts <- list(
     "prior-density-ordinate",
     "prior-ordered",
     "priors-R2",
+    "priors-R2-density",
+    "priors-R2-methods",
     "prior-ordered-direct-display",
     "prior-ordered-interactions",
     "hypothesis-ordered-interactions",

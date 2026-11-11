@@ -132,6 +132,44 @@ formula_prior_list <- list(
   "__R2"    = budget
 )
 
+\dontrun{
+# ANCOVA: compare the models with and without the factor f
+set.seed(1)
+data <- data.frame(f = factor(rep(c("a", "b", "c"), each = 20)), x = rnorm(60))
+data$y <- 0.5 * (data$f == "b") + 0.3 * data$x + rnorm(60)
+
+fit_model <- function(formula){
+  arguments <- list(
+    model_syntax = "model{ for(i in 1:N){ y[i] ~ dnorm(mu[i], 1 / pow(sigma, 2)) } }",
+    data = list(y = data$y, N = nrow(data)),
+    prior_list = list(sigma = prior("invgamma", list(1, 1))),
+    formula_list = list(mu = formula),
+    formula_data_list = list(mu = data),
+    formula_prior_list = list(mu = formula_prior_list)
+  )
+  fit <- do.call(JAGS_fit, arguments)
+  marglik <- do.call(JAGS_bridgesampling, c(list(fit = fit,
+    log_posterior = function(parameters, data){
+      sum(dnorm(data$y, parameters[["mu"]], parameters[["sigma"]], log = TRUE))
+    }), arguments[-1]))
+  list(fit = fit, marglik = marglik, prior_weights = 1)
+}
+
+# the same budget in both models: without f, x receives the whole budget
+models <- models_inference(list(fit_model(~ x), fit_model(~ x + f)))
+inference <- ensemble_inference(models, parameters = "mu_f",
+  is_null_list = list(mu_f = c(TRUE, FALSE)), conditional = FALSE)
+inference$mu_f$BF
+
+# posterior summaries in residual-SD units, with factor levels
+runjags_estimates_table(models[[2]]$fit, transform_factors = TRUE)
+
+# implied prior distributions: the total R-squared and a coefficient
+priors <- attr(models[[2]]$fit, "prior_list")
+plot(priors$mu_R2)
+plot(priors$mu_x)
+}
+
 }
 \seealso{
 \code{\link[=JAGS_formula]{JAGS_formula()}}, \code{\link[=prior_factor]{prior_factor()}}
