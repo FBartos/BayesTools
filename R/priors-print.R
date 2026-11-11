@@ -69,6 +69,8 @@ print.prior <- function(x, short_name = FALSE, parameter_names = FALSE, plot = F
 
   if(is.prior.none(x)){
     output <- .print.prior.none(x, short_name, parameter_names, plot, digits_estimates, silent)
+  }else if(is.prior.R2(x)){
+    output <- .print.prior.R2(x, short_name, digits_estimates)
   }else if(is.prior.ordered(x) && !is.prior.mixture(x)){
     # a mixture of bound ordered containers also carries the ordered class
     output <- .print.prior.ordered(x, short_name, parameter_names, plot, digits_estimates, silent, inline)
@@ -152,6 +154,27 @@ print.selection_model <- function(x, ...){
     "  Sources are resolved when model data are bound.\n"
   ))
   invisible(x)
+}
+
+# An R2 term prints its budget: the law, the Beta shapes of the total R-squared
+# in the model, and the term's Dirichlet concentration out of the total.
+.print.prior.R2             <- function(x, short_name, digits_estimates){
+
+  law <- switch(x$law, exact = "exact", normal = "normal", laplace = "Laplace")
+  if(!isTRUE(x$bound)){
+    return(paste0("R2 ", law, ": budget '", x$budget$name, "', alpha = ", format(round(x$alpha, digits_estimates))))
+  }
+  round_value <- function(value) format(round(value, digits_estimates))
+  share <- if(x$n_units > 1L){
+    paste0(round_value(sum(x$shapes$alpha[x$units])), " of ", round_value(x$shapes$A))
+  }else{
+    "1 of 1"
+  }
+  if(short_name){
+    return(paste0("R2 ", law, "(", round_value(x$shapes$a), ", ", round_value(x$shapes$b), "; ", share, ")"))
+  }
+  paste0("R2 ", law, ": R2 ~ Beta(", round_value(x$shapes$a), ", ", round_value(x$shapes$b),
+    "), allocation ", share)
 }
 
 .print.prior.ordered        <- function(x, short_name, parameter_names, plot, digits_estimates, silent, inline = FALSE){

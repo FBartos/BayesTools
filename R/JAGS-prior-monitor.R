@@ -43,6 +43,10 @@ JAGS_to_monitor             <- function(prior_list){
 
       monitor <- c(monitor, .JAGS_monitor.PP(prior_list[[i]]))
 
+    }else if(is.prior.R2(prior_list[[i]])){
+
+      monitor <- c(monitor, .JAGS_monitor.R2(prior_list[[i]], names(prior_list)[i]))
+
     }else if(is.prior.spike_and_slab(prior_list[[i]])){
 
       monitor <- c(monitor, .JAGS_monitor.spike_and_slab(prior_list[[i]], names(prior_list)[i]))

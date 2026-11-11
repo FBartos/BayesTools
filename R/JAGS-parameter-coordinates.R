@@ -302,7 +302,10 @@
   if(length(prior_list) == 0L){
     return(character())
   }
-  unique(unlist(lapply(prior_list, function(prior){
+  unique(unlist(Map(function(prior, parameter_name){
+    if(is.prior.R2(prior)){
+      return(.bt_R2_direction_name(parameter_name))
+    }
     if(is.prior.ordered(prior)){
       return(vapply(
         .prior_ordered_dirichlet_records(prior),
@@ -318,7 +321,7 @@
       return(private)
     }
     character()
-  }), use.names = FALSE))
+  }, prior_list, names(prior_list)), use.names = FALSE))
 }
 
 # A point prior whose location is an expression is a deterministic function
