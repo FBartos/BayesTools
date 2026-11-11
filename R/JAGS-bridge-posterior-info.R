@@ -57,6 +57,10 @@
 
       add_parameter <- .JAGS_bridgesampling_posterior_info.PP(prior_list[[i]])
 
+    }else if(is.prior.R2(prior_list[[i]])){
+
+      add_parameter <- .JAGS_bridgesampling_posterior_info.R2(prior_list[[i]], names(prior_list)[i])
+
     }else if(is.prior.ordered(prior_list[[i]])){
 
       add_parameter_info <- .JAGS_bridgesampling_posterior_info.ordered(
@@ -95,6 +99,17 @@
   attr(parameters, "ub") <- parameters_ub
 
   return(parameters)
+}
+# The bridge coordinates of an R-squared budget term are its direction
+# coordinates; its coefficients are deterministic, and the budget total and
+# allocation are ordinary priors of the formula.
+.JAGS_bridgesampling_posterior_info.R2             <- function(prior, parameter_name){
+
+  .bt_R2_require_bound(prior, parameter_name)
+  parameter <- .bt_R2_direction_coordinates(prior, parameter_name)
+  attr(parameter, "lb") <- stats::setNames(rep(-Inf, length(parameter)), parameter)
+  attr(parameter, "ub") <- stats::setNames(rep(Inf, length(parameter)), parameter)
+  parameter
 }
 .JAGS_bridgesampling_posterior_info.simple         <- function(prior, parameter_name){
 
