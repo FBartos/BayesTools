@@ -1898,32 +1898,38 @@ JAGS_formula_prior_density <- function(
     row_weights[[model]] <- weights
     # a combination of dependent parameters of an R-squared budget (or of the
     # coded coefficients of an R2 factor) has no prior-density law, but it is
-    # absolutely continuous on the real line: no atoms and the support R
+    # absolutely continuous on the real line: such an evaluation row has no
+    # atoms and the support R, while the other rows keep their atoms
     R2_refusal <- NULL
+    R2_rows <- logical(nrow(weights))
     for(row in seq_len(nrow(weights))){
-      R2_refusal <- tryCatch(.bt_R2_check_linear_combination(record$prior_list, weights[row, ]),
+      refusal <- tryCatch(.bt_R2_check_linear_combination(record$prior_list, weights[row, ]),
         BayesTools_formula_measure_unavailable = function(condition) condition)
-      if(inherits(R2_refusal, "condition")) break
-      R2_refusal <- NULL
-    }
-    if(!is.null(R2_refusal)){
-      if(is.finite(record$prior_log_probability)){
-        prior_available <- FALSE
-        prior_reason <- conditionMessage(R2_refusal)
-        prior_cause <- R2_refusal$reason
-        prior_diagnostics <- R2_refusal$diagnostics
+      if(inherits(refusal, "condition")){
+        R2_rows[[row]] <- TRUE
+        if(is.null(R2_refusal)) R2_refusal <- refusal
       }
+    }
+    if(!is.null(R2_refusal) && is.finite(record$prior_log_probability)){
+      prior_available <- FALSE
+      prior_reason <- conditionMessage(R2_refusal)
+      prior_cause <- R2_refusal$reason
+      prior_diagnostics <- R2_refusal$diagnostics
+    }
+    R2_support <- .posterior_support_new(c(-Inf, Inf), source = "formula_contribution", type = "interval")
+    if(all(R2_rows)){
       if(is.finite(state$posterior_log_model_probabilities[[model]])){
         continuous <- TRUE
         model_atoms[[model]] <- data.frame(x = numeric(), mass = numeric(), log_mass = numeric())
-        model_supports[[model]] <- .posterior_support_new(c(-Inf, Inf), source = "formula_contribution",
-          type = "interval")
+        model_supports[[model]] <- R2_support
       }
       next
     }
+    routed_rows <- which(!R2_rows)
     context_builder <- function(priors, conditional = TRUE){
       if(identical(recipe_type, "contribution_affine")) return(.bt_formula_contribution_context(record, prefix, n_grid, priors,
-        colnames(weights)[colSums(weights != 0) > 0], condition_event = if(conditional) record$condition_event))
+        colnames(weights)[colSums(weights[routed_rows, , drop = FALSE] != 0) > 0],
+        condition_event = if(conditional) record$condition_event))
       event <- if(conditional) record$condition_event
       .bt_formula_prior_density_context_raw_sources(
         .prior_density_build_context(priors, colnames(weights), n_grid = n_grid,
@@ -1952,11 +1958,12 @@ JAGS_formula_prior_density <- function(
       }
       next
     }
-    routes <- lapply(seq_len(nrow(weights)), function(row){
+    routes <- lapply(routed_rows, function(row){
       build_route(context, row)
     })
     point_certificates <- lapply(routes, .bt_formula_route_atom_certificate)
-    point_model <- all(vapply(point_certificates, function(certificate) identical(certificate$type, "point"), logical(1)))
+    point_model <- !any(R2_rows) &&
+      all(vapply(point_certificates, function(certificate) identical(certificate$type, "point"), logical(1)))
     if(point_model) point_declarations[[model]] <- vapply(point_certificates, `[[`, numeric(1), "location")
     numerical_reasons <- Filter(Negate(is.null), lapply(routes, .bt_formula_route_numerical_scale_reason))
     if(is.finite(record$prior_log_probability) && length(numerical_reasons)){
@@ -1994,6 +2001,12 @@ JAGS_formula_prior_density <- function(
         .posterior_atoms_plan_total_indicator(plan, component, owner))
       component_context <- context_builder(component_priors, conditional = FALSE)
       for(row in seq_len(nrow(weights))){
+        if(R2_rows[[row]]){
+          continuous <- TRUE
+          supports[[length(supports) + 1L]] <- R2_support
+          this_component_supports[[length(this_component_supports) + 1L]] <- R2_support
+          next
+        }
         route <- build_route(component_context, row)
         numerical_reason <- .bt_formula_route_numerical_scale_reason(route)
         if(!is.null(numerical_reason)){

@@ -142,3 +142,35 @@ test_that("original-scale summaries of R2 terms keep posteriors and refuse depen
   slope <- as_mixed_posteriors(fit, parameters = "mu_x", transform_scaled = TRUE)
   expect_silent(plot_posterior(slope, "mu_x", prior = TRUE))
 })
+
+test_that("contribution rows refused for budget dependence keep the atoms of the other rows", {
+
+  skip_if_not_installed("rjags")
+  skip_if_not_installed("runjags")
+  set.seed(31)
+  data <- data.frame(x = stats::rnorm(30), z = stats::rnorm(30))
+  data$y <- 0.3 * data$x + stats::rnorm(30)
+  budget <- prior_R2(alpha = c(x = 1, z = 1), a = 1, b = 3, law = "exact", convention = "common",
+    concentration = "inherited", sigma = 1)
+  fit <- JAGS_fit(
+    model_syntax = "model{ for(i in 1:N){ y[i] ~ dnorm(mu[i], 1 / pow(sigma, 2)) } }",
+    data = list(y = data$y, N = nrow(data)), prior_list = list(sigma = prior("invgamma", list(1, 1))),
+    formula_list = list(mu = ~ x + z), formula_data_list = list(mu = data),
+    formula_prior_list = list(mu = list(intercept = prior("spike", list(0)), "__R2" = budget)),
+    chains = 1, adapt = 100, burnin = 100, sample = 200, seed = 31, silent = TRUE)
+  samples <- as_mixed_posteriors(fit, c("mu_intercept", "mu_x", "mu_z"))
+
+  # rows (x, z) = (0, 0) point at zero; (1, 0) and (0, 1) one term each;
+  # (1, 1) two dependent terms: no prior density, atom-free on the real line
+  row <- marginal_posterior(samples, "mu_intercept", formula = ~ 1 + x + z,
+    at = list(x = c(0, 1), z = c(0, 1)), prior_samples = TRUE)$intercept
+  atoms <- .posterior_atoms_get(row)
+  expect_identical(unname(atoms$locations), matrix(0))
+  expect_equal(atoms$mass, 0.25)
+  support <- .bt_meta_get(row, "support")
+  expect_identical(support$bounds, c(-Inf, Inf))
+  expect_identical(support$points, 0)
+  unavailable <- .bt_meta_get(row, "measure_unavailable")
+  expect_identical(unavailable$measure, "prior_density")
+  expect_s3_class(unavailable$diagnostics[[1L]], "BayesTools_R2_combination_unavailable")
+})
