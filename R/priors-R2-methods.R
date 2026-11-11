@@ -132,12 +132,18 @@
 # the consumers report the measure as unavailable.
 .bt_R2_linear_density_unavailable <- function(parameter){
 
-  .bt_formula_density_stop(
-    paste0("The prior density of a linear combination involving '", parameter,
-           "' is unavailable: the terms of an R-squared budget are dependent through the budget. ",
-           "Use the marginal prior methods of the term (e.g., 'mpdf()') or prior draws."),
-    reason = "unsupported_contribution_measure", prior_family = "R2"
-  )
+  message <- paste0("The prior density of a linear combination involving '", parameter,
+    "' is unavailable: the terms of an R-squared budget are dependent through the budget. ",
+    "Use the marginal prior methods of the term (e.g., 'mpdf()') or prior draws.")
+  .bt_formula_density_stop(message, reason = "unsupported_contribution_measure", prior_family = "R2",
+    diagnostics = .bt_R2_combination_diagnostics(message))
+}
+
+# The diagnostics of an unavailable R2 combination that draw metadata keep
+# (measure_unavailable), so that consumers recognize the cause.
+.bt_R2_combination_diagnostics <- function(message){
+  structure(list(message = message, call = NULL),
+    class = c("BayesTools_R2_combination_unavailable", "condition"))
 }
 
 # The groups of a linear combination are convolved as independent terms:
@@ -168,6 +174,19 @@
     }
   }
   invisible(TRUE)
+}
+
+# The check of .bt_R2_check_linear_groups() on a whole combination (named
+# weights of the coordinates of 'prior_list').
+.bt_R2_check_linear_combination <- function(prior_list, weights){
+
+  weights <- weights[is.finite(weights) & weights != 0]
+  if(length(weights) == 0L || !any(vapply(prior_list, function(prior){
+    is.prior.R2(prior) || .bt_R2_is_budget_prior(prior)
+  }, logical(1)))){
+    return(invisible(TRUE))
+  }
+  .bt_R2_check_linear_groups(.prior_linear_weight_groups(prior_list, weights))
 }
 
 # Dispatcher of the distribution methods of an R2 term prior.

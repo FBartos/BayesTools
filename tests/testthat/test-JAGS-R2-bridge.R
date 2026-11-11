@@ -107,3 +107,38 @@ test_that("coefficient-only draws and out-of-support budget states are handled",
   row[grepl("prior_par_eta", names(row))][1] <- -1
   expect_error(values(row), class = "BayesTools_marglik_out_of_support")
 })
+
+test_that("original-scale summaries of R2 terms keep posteriors and refuse dependent prior densities", {
+
+  skip_if_not_installed("rjags")
+  skip_if_not_installed("runjags")
+  set.seed(31)
+  data <- data.frame(f = factor(rep(c("a", "b", "c"), each = 10)), x = stats::rnorm(30, 2, 3), z = stats::rnorm(30))
+  data$y <- 0.5 * (data$f == "b") + 0.1 * data$x + stats::rnorm(30)
+  budget <- prior_R2(alpha = c(x = 1, z = 1, f = 1), a = 1, b = 3, law = "exact", convention = "common",
+    concentration = "inherited", sigma = "sigma", contrast = "orthonormal")
+  fit <- JAGS_fit(
+    model_syntax = "model{ for(i in 1:N){ y[i] ~ dnorm(mu[i], 1 / pow(sigma, 2)) } }",
+    data = list(y = data$y, N = nrow(data)), prior_list = list(sigma = prior("invgamma", list(1, 1))),
+    formula_list = list(mu = ~ x + z + f), formula_data_list = list(mu = data),
+    formula_scale_list = list(mu = list(x = TRUE, z = TRUE)),
+    formula_prior_list = list(mu = list(intercept = prior("normal", list(0, 5)), "__R2" = budget)),
+    chains = 1, adapt = 100, burnin = 100, sample = 200, seed = 31, silent = TRUE)
+
+  # terms of one budget are dependent: their sum has no product-form density
+  expect_error(JAGS_formula_prior_density(fit, "mu", weights = c(mu_x = 1, mu_z = 1)),
+    class = "BayesTools_formula_measure_unavailable")
+  expect_s3_class(JAGS_formula_prior_density(fit, "mu", weights = c(mu_x = 1)), "prior_linear_density")
+
+  # an orthonormal R2 factor on the original scale keeps its posterior and
+  # declares its prior density unavailable; the plot draws the posterior only
+  levels <- as_mixed_posteriors(fit, parameters = "mu_f", transform_scaled = TRUE)
+  expect_s3_class(levels, "mixed_posteriors")
+  unavailable <- .bt_meta_get(levels$mu_f, "measure_unavailable")
+  expect_identical(unique(unavailable$measure), "prior_density")
+  grDevices::pdf(NULL)
+  on.exit(grDevices::dev.off(), add = TRUE)
+  expect_warning(plot_posterior(levels, "mu_f", prior = TRUE), class = "BayesTools_prior_curve_unavailable")
+  slope <- as_mixed_posteriors(fit, parameters = "mu_x", transform_scaled = TRUE)
+  expect_silent(plot_posterior(slope, "mu_x", prior = TRUE))
+})

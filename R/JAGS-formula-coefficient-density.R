@@ -1896,6 +1896,31 @@ JAGS_formula_prior_density <- function(
       if(identical(transform$output_transforms[[coefficient]], "exp")) output_transform <- "exp"
     }
     row_weights[[model]] <- weights
+    # a combination of dependent parameters of an R-squared budget (or of the
+    # coded coefficients of an R2 factor) has no prior-density law, but it is
+    # absolutely continuous on the real line: no atoms and the support R
+    R2_refusal <- NULL
+    for(row in seq_len(nrow(weights))){
+      R2_refusal <- tryCatch(.bt_R2_check_linear_combination(record$prior_list, weights[row, ]),
+        BayesTools_formula_measure_unavailable = function(condition) condition)
+      if(inherits(R2_refusal, "condition")) break
+      R2_refusal <- NULL
+    }
+    if(!is.null(R2_refusal)){
+      if(is.finite(record$prior_log_probability)){
+        prior_available <- FALSE
+        prior_reason <- conditionMessage(R2_refusal)
+        prior_cause <- R2_refusal$reason
+        prior_diagnostics <- R2_refusal$diagnostics
+      }
+      if(is.finite(state$posterior_log_model_probabilities[[model]])){
+        continuous <- TRUE
+        model_atoms[[model]] <- data.frame(x = numeric(), mass = numeric(), log_mass = numeric())
+        model_supports[[model]] <- .posterior_support_new(c(-Inf, Inf), source = "formula_contribution",
+          type = "interval")
+      }
+      next
+    }
     context_builder <- function(priors, conditional = TRUE){
       if(identical(recipe_type, "contribution_affine")) return(.bt_formula_contribution_context(record, prefix, n_grid, priors,
         colnames(weights)[colSums(weights != 0) > 0], condition_event = if(conditional) record$condition_event))

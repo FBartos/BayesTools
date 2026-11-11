@@ -194,3 +194,21 @@ test_that("R2 conditions carry their documented classes and complete messages", 
   expect_identical(conditionMessage(condition),
     "The R-squared budget prior is unavailable before JAGS_formula() binds it to a formula design.")
 })
+
+test_that("the linear-combination density builder checks the whole combination", {
+
+  set.seed(4)
+  data <- data.frame(x = stats::rnorm(24), z = stats::rnorm(24))
+  budget <- prior_R2(alpha = c(x = 1, z = 1), a = 1, b = 3, law = "exact", convention = "common",
+    concentration = "inherited", sigma = "sigma")
+  priors <- c(JAGS_formula(~ x + z, "mu", data, list(intercept = prior("normal", list(0, 1)), "__R2" = budget))$prior_list,
+    list(sigma = prior("invgamma", list(2, 1))))
+  # the coefficient enters a product group with its 'multiply_by' (sigma), the
+  # budget total an additive group: still one dependent combination
+  expect_error(.prior_linear_combination_density(priors, c(mu_x = 1, mu_R2 = 1)),
+    class = "BayesTools_formula_measure_unavailable")
+  expect_error(.prior_linear_combination_density(priors, c(mu_x = 1, mu_z = 1)),
+    class = "BayesTools_formula_measure_unavailable")
+  density <- .prior_linear_combination_density(priors, c(mu_x = 1, mu_intercept = 1))
+  expect_s3_class(density, "prior_linear_density")
+})

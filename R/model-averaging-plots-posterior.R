@@ -179,8 +179,18 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
     .bt_linear_weight_space(samples[[parameter]])
     # a prior law that only JAGS evaluates (expression() parameters) is not a
     # refusal of the plot: the posterior is drawn without the prior curve
-    if(prior) .bt_formula_measure_check(samples[[parameter]], "prior_density",
-                                        except = "expression_prior_law_unavailable")
+    if(prior) tryCatch(
+      .bt_formula_measure_check(samples[[parameter]], "prior_density",
+                                except = "expression_prior_law_unavailable"),
+      BayesTools_formula_measure_unavailable = function(condition){
+        # the prior density of an R2 budget term on a transformed scale is
+        # unavailable (its terms are dependent): the posterior is drawn alone
+        if(!inherits(condition$diagnostics, "BayesTools_R2_combination_unavailable")) stop(condition)
+        .plot_data_warn_prior_curve_unavailable(parameter,
+          reason = "the terms of its R-squared budget are dependent through the budget",
+          remedy = "plot the prior on the model scale ('transform_scaled = FALSE') to draw it")
+        prior <<- FALSE
+      })
   }
 
   # handle transform_scaled: check for pre-computed prior densities
