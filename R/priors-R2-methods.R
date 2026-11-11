@@ -126,6 +126,50 @@
   invisible(NULL)
 }
 
+# The classed refusal of the linear-combination densities (formula prior
+# densities, transformed and scaled prior densities, contexts of plots and
+# hypotheses) for R2 budget parameters: a formula-measure condition, so that
+# the consumers report the measure as unavailable.
+.bt_R2_linear_density_unavailable <- function(parameter){
+
+  .bt_formula_density_stop(
+    paste0("The prior density of a linear combination involving '", parameter,
+           "' is unavailable: the terms of an R-squared budget are dependent through the budget. ",
+           "Use the marginal prior methods of the term (e.g., 'mpdf()') or prior draws."),
+    reason = "unsupported_contribution_measure", prior_family = "R2"
+  )
+}
+
+# The groups of a linear combination are convolved as independent terms:
+# parameters of one R-squared budget (its terms, total, and allocation) are
+# dependent, and so are the coded coefficients of an R2 factor (combinations
+# of its levels have their marginal methods instead). A single R2 scalar term,
+# combined with terms outside its budget, keeps its exact marginal law.
+.bt_R2_check_linear_groups <- function(groups){
+
+  budget <- vapply(groups, function(group){
+    prior <- group$prior
+    if(is.prior.R2(prior)){
+      return(prior$total_name)
+    }
+    if(.bt_R2_is_budget_prior(prior)){
+      return(sub("_allocation$", "", group$parameter))
+    }
+    NA_character_
+  }, character(1))
+  shared <- unique(budget[!is.na(budget) & duplicated(budget)])
+  if(length(shared) > 0L){
+    .bt_R2_linear_density_unavailable(names(groups)[budget %in% shared][1L])
+  }
+  for(group in groups[!is.na(budget)]){
+    # several coded coefficients of a term (or of the allocation) are dependent
+    if(is.prior.vector(group$prior) || length(group$weights) > 1L){
+      .bt_R2_linear_density_unavailable(group$parameter)
+    }
+  }
+  invisible(TRUE)
+}
+
 # Dispatcher of the distribution methods of an R2 term prior.
 .bt_R2_prior_method <- function(prior, method, value = NULL, ...){
 

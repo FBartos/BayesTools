@@ -143,3 +143,54 @@ test_that("public tail and log-density methods keep representable tails", {
   expect_true(is.finite(lpdf(prior, 1e100 * spec$scale)))
   expect_equal(mlpdf(prior, 1e100 * spec$scale), .bt_R2_functional_log_pdf(spec, 1e100 * spec$scale))
 })
+
+test_that("linear-combination densities refuse dependent parameters of one budget", {
+
+  set.seed(4)
+  data <- data.frame(f = factor(rep(c("a", "b", "c"), each = 8)), x = stats::rnorm(24), z = stats::rnorm(24),
+                     w = stats::rnorm(24))
+  budget <- prior_R2(alpha = c(x = 1, z = 1, f = 1), a = 1, b = 3, law = "exact", convention = "common",
+    concentration = "inherited", sigma = "sigma", contrast = "orthonormal")
+  priors <- JAGS_formula(~ x + z + f + w, "mu", data, list(intercept = prior("normal", list(0, 1)),
+    w = prior("normal", list(0, 1)), "__R2" = budget))$prior_list
+  check <- function(weights) .bt_R2_check_linear_groups(.prior_linear_weight_groups(priors, weights))
+
+  condition <- expect_error(check(c(mu_x = 1, mu_z = 1)), class = "BayesTools_formula_measure_unavailable")
+  expect_identical(conditionMessage(condition), paste0(
+    "The prior density of a linear combination involving 'mu_x' is unavailable: the terms of an R-squared ",
+    "budget are dependent through the budget. Use the marginal prior methods of the term (e.g., 'mpdf()') or prior draws."))
+  expect_identical(condition$prior_family, "R2")
+  expect_identical(condition$reason, "unsupported_contribution_measure")
+  expect_error(check(c(mu_x = 1, mu_R2 = 1)), class = "BayesTools_formula_measure_unavailable")
+  expect_error(check(c("mu_f[1]" = 1)), class = "BayesTools_formula_measure_unavailable")
+  # a single R2 coefficient with a term outside the budget is a sum of independent terms
+  expect_invisible(check(c(mu_x = 2, mu_w = 1)))
+})
+
+test_that("R2 conditions carry their documented classes and complete messages", {
+
+  set.seed(4)
+  data <- data.frame(f = factor(rep(c("a", "b", "c"), times = c(4, 8, 12))), x = stats::rnorm(24))
+  budget <- prior_R2(alpha = c(x = 1, f = 1), a = 1, b = 2, law = "exact", convention = "common",
+    concentration = "inherited", sigma = "sigma", contrast = "orthonormal")
+  condition <- expect_error(JAGS_formula(~ x + f, "mu", data,
+    list(intercept = prior("normal", list(0, 1)), x = prior("normal", list(0, 1)), "__R2" = budget)),
+    class = "BayesTools_R2_invalid")
+  expect_s3_class(condition, "BayesTools_R2_condition")
+  expect_null(conditionCall(condition))
+  expect_identical(conditionMessage(condition), paste0(
+    "The formula term 'x' belongs to the R-squared budget 'R2' and cannot have its own prior. Remove its prior, ",
+    "or give it a point prior at zero (prior(\"spike\", list(0)) or prior_none()) to exclude it from the model and the budget."))
+
+  prior <- JAGS_formula(~ x + f, "mu", data, list(intercept = prior("normal", list(0, 1)), "__R2" = budget))$prior_list$mu_f
+  condition <- expect_error(mpdf(prior, 0.1), class = "BayesTools_R2_density_unavailable")
+  expect_s3_class(condition, "BayesTools_R2_unavailable")
+  expect_identical(conditionMessage(condition), paste0(
+    "The levels of the R-squared budget term 'f' have different marginal prior distributions (unequal cell counts or ",
+    "allocations), so there is no common marginal. Use rng() for the joint distribution of the levels."))
+
+  stub <- .bt_R2_term_stub(budget, "x", "x", "continuous")
+  condition <- expect_error(var(stub), class = "BayesTools_R2_unbound")
+  expect_identical(conditionMessage(condition),
+    "The R-squared budget prior is unavailable before JAGS_formula() binds it to a formula design.")
+})

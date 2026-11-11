@@ -166,7 +166,6 @@
     if(length(present) == 0){
       next
     }
-
     groups[[parameter]] <- list(
       parameter = parameter,
       prior     = prior,
@@ -1351,8 +1350,10 @@
   if(length(groups) == 0){
     return(NULL)
   }
-  # the groups of a grid are convolved as independent terms
+  # the groups of a grid are convolved as independent terms; the terms of an
+  # R-squared budget are dependent through the budget
   .prior_ordered_check_independent_groups(groups)
+  .bt_R2_check_linear_groups(groups)
 
   if(is.null(source_transforms)){
     source_transforms <- rep(NA_character_, length(weights))

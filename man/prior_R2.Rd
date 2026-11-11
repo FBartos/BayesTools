@@ -84,7 +84,10 @@ A formula prior list declares budgets with the entry
 \code{"__R2" = prior_R2(...)}, or \code{"__R2" = list(prior_R2(...), ...)}
 for several budgets (for example, a budget for compulsory covariates and a
 separate budget for the tested terms, whose R-squared is then the
-incremental partial R-squared of the tested terms). Every term named in a
+incremental partial R-squared of the tested terms when their design blocks
+are orthogonal to the covariates; with correlated blocks it is the share of
+the tested terms' own signal variance, not their partial R-squared). Every
+term named in a
 budget's \code{alpha} must not have its own prior in the list, except a
 point prior at zero (\code{prior("spike", list(0))} or
 \code{prior_none()}), which excludes it from the model and from the
@@ -119,7 +122,29 @@ computed with denominator \eqn{n} in the fitted data; unequal cell counts
 therefore weight the levels of a factor by their frequencies. With
 treatment contrasts, the intercept prior applies to the reference level
 rather than to the grand mean.
+
+The R2 term priors that \code{JAGS_formula()} binds support the prior
+methods (\code{rng()}, \code{mpdf()}, \code{mcdf()}, \code{mquant()},
+\code{mean()}, \code{var()}, \code{plot()}) of single coefficients, and of
+factor levels under the exact law, by deterministic quadrature over the
+budget. The prior densities of combinations of several parameters of one
+budget, ordinates at a point (Savage-Dickey ratios and point hypotheses),
+level marginals of the kernels with three or more levels, and levels with
+unequal marginals (unequal cell counts) are unavailable.
 }
+\section{Conditions}{
+
+Invalid budgets and bindings stop with \code{BayesTools_R2_invalid};
+unavailable results with \code{BayesTools_R2_unavailable} (with
+\code{BayesTools_R2_unbound} for a term prior used before
+\code{JAGS_formula()} binds it, and \code{BayesTools_R2_density_unavailable}
+for an implied distribution); a coefficient state outside the support of
+the budget with \code{BayesTools_R2_invalid_state} (also
+\code{BayesTools_marglik_out_of_support}). All inherit
+\code{BayesTools_R2_condition}. Linear combinations of several parameters of
+one budget stop with \code{BayesTools_formula_measure_unavailable}.
+}
+
 \examples{
 budget <- prior_R2(
   alpha = c(x = 1, f = 1), a = 1, b = 1, law = "exact",
