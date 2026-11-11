@@ -302,6 +302,13 @@ is.R2_budget <- function(x){
     class = unique(c(class, "BayesTools_R2_condition", "error", "condition"))))
 }
 
+# A coefficient state outside the support of the budget (a total outside
+# [0, 1) or invalid allocation coordinates): bridge sampling treats it as a
+# state of zero density.
+.bt_R2_stop_state <- function(message){
+  .bt_R2_stop(message, class = c("BayesTools_R2_invalid_state", "BayesTools_marglik_out_of_support"))
+}
+
 .bt_R2_unavailable <- function(message, class = NULL){
   .bt_R2_stop(message, class = c(class, "BayesTools_R2_unavailable"))
 }
@@ -748,8 +755,7 @@ is.prior.R2_factor <- function(x){
     eta <- lookup$draws[, spec$eta, drop = FALSE]
     eta_sum <- rowSums(eta)
     if(any(!is.finite(eta)) || any(eta < 0) || any(!is.finite(eta_sum)) || any(eta_sum <= 0)){
-      .bt_R2_stop("R-squared budget allocation gamma coordinates must be finite and nonnegative with positive row sums.",
-        class = "BayesTools_R2_invalid_state")
+      .bt_R2_stop_state("R-squared budget allocation gamma coordinates must be finite and nonnegative with positive row sums.")
     }
     allocation <- (eta / eta_sum)[, spec$units, drop = FALSE]
   }else{
@@ -760,7 +766,7 @@ is.prior.R2_factor <- function(x){
   }
   z <- lookup$draws[, spec$directions, drop = FALSE]
   if(any(!is.finite(total)) || any(total < 0 | total >= 1)){
-    .bt_R2_stop("R-squared budget totals must lie in [0, 1).", class = "BayesTools_R2_invalid_state")
+    .bt_R2_stop_state("R-squared budget totals must lie in [0, 1).")
   }
   W <- total / (1 - total)
   if(identical(spec$law, "exact")){

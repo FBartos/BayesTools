@@ -49,13 +49,25 @@
   node <- .bt_dnode_R2_coefficient(parameter_name, prior)
   budget_priors <- .bt_R2_budget_prior_list(prior)
   function(samples){
-    lookup <- .bt_deterministic_row_lookup(samples, budget_priors)
-    values <- .bt_deterministic_node_evaluate(node, lookup)
-    if(is.null(values)){
-      .bt_JAGS_marglik_missing_columns("'samples' does not contain all monitored R-squared budget parameters.")
+    sample_names <- names(samples)
+    if(all(node$dependencies %in% sample_names)){
+      lookup <- .bt_deterministic_row_lookup(samples, budget_priors)
+      return(as.vector(.bt_deterministic_node_evaluate(node, lookup)))
     }
-    as.vector(values)
+    # without the budget primitives, the monitored coefficients are the state
+    if(all(node$coordinates %in% sample_names)){
+      return(unname(as.numeric(unlist(samples[node$coordinates], use.names = FALSE))))
+    }
+    .bt_JAGS_marglik_missing_columns("'samples' does not contain all monitored R-squared budget parameters.")
   }
+}
+
+# Whether a draw determines the coefficients of a term: either all
+# primitives of its node or all of its monitored coefficients.
+.bt_R2_values_available <- function(prior, parameter_name, sample_names){
+
+  node <- .bt_dnode_R2_coefficient(parameter_name, prior)
+  all(node$dependencies %in% sample_names) || all(node$coordinates %in% sample_names)
 }
 
 .JAGS_marglik_parameters.R2 <- function(samples, prior, parameter_name){

@@ -86,3 +86,24 @@ test_that("the fixed linear predictor of a bridge draw ignores the budget priors
   expected <- 0.3 + sigma * (info$data$mu_data_x * coefficients$mu_x + info$data$mu_data_f %*% coefficients$mu_f)
   expect_equal(as.vector(value), as.vector(expected), tolerance = 1e-12)
 })
+
+test_that("coefficient-only draws and out-of-support budget states are handled", {
+
+  priors <- .R2_bridge_priors("exact")
+  values <- .bt_JAGS_marglik_compile_R2_parameter_values(priors$mu_x, "mu_x")
+
+  # a monitored coefficient with an extra direction coordinate but no budget
+  for(row in list(c(mu_x = 0.4, prior_par_z_mu_x = -1), list(mu_x = 0.4, prior_par_z_mu_x = -1))){
+    expect_equal(values(row), 0.4)
+    expect_true(.bt_R2_values_available(priors$mu_x, "mu_x", names(row)))
+  }
+  expect_false(.bt_R2_values_available(priors$mu_x, "mu_x", "prior_par_z_mu_x"))
+  expect_error(values(c(prior_par_z_mu_x = -1)), class = "BayesTools_missing_monitored_columns")
+
+  row <- .R2_bridge_row(priors)
+  row[["mu_R2"]] <- 1
+  expect_error(values(row), class = "BayesTools_marglik_out_of_support")
+  row <- .R2_bridge_row(priors)
+  row[grepl("prior_par_eta", names(row))][1] <- -1
+  expect_error(values(row), class = "BayesTools_marglik_out_of_support")
+})
