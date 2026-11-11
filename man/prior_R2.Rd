@@ -61,8 +61,10 @@ when the budget contains a factor term.}
 
 \item{name}{name of the budget. The total R-squared is the formula
 parameter \code{<parameter>_<name>} and the allocation the formula
-parameter \code{<parameter>_<name>_allocation}. Several budgets of one
-formula need distinct names.}
+parameter \code{<parameter>_<name>_allocation}, whose elements follow the
+retained terms in the order of the formula (for the kernels, the coded
+coefficients of each term in turn). Several budgets of one formula need
+distinct names.}
 }
 \value{
 \code{prior_R2} returns an object of class
