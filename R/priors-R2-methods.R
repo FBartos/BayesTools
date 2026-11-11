@@ -92,10 +92,8 @@
   budget_priors <- .bt_R2_budget_prior_list(prior)
   if(prior$n_units > 1L){
     gammas <- vapply(shapes$alpha, function(alpha) stats::rgamma(n, shape = alpha), numeric(n))
-    gammas <- matrix(gammas, nrow = n)
-    allocation <- gammas / rowSums(gammas)
-    colnames(allocation) <- paste0(prior$allocation_name, "[", seq_len(prior$n_units), "]")
-    draws <- cbind(draws, allocation)
+    gammas <- matrix(gammas, nrow = n, dimnames = list(NULL, .bt_R2_allocation_eta_coordinates(prior)))
+    draws <- cbind(draws, gammas)
   }
   directions <- matrix(.bt_R2_direction_rng(prior$law, n * prior$d), nrow = n)
   colnames(directions) <- .bt_R2_direction_coordinates(prior, parameter_name)
@@ -184,7 +182,8 @@
     gammas <- matrix(vapply(shapes$alpha, function(alpha) stats::rgamma(n, shape = alpha), numeric(n)), nrow = n)
     allocation <- gammas / rowSums(gammas)
     colnames(allocation) <- paste0(allocation_name, "[", seq_len(n_units), "]")
-    draws <- cbind(draws, allocation)
+    colnames(gammas) <- paste0(.JAGS_prior_dirichlet_eta_name(allocation_name), "[", seq_len(n_units), "]")
+    draws <- cbind(draws, allocation, gammas)
   }
   for(term_name in names(terms)){
     directions <- matrix(.bt_R2_direction_rng(terms[[term_name]]$law, n * terms[[term_name]]$d), nrow = n)
@@ -202,7 +201,9 @@
     total_name <- if(identical(role, "allocation")) sub("_allocation$", "", param_name) else param_name
     draws <- .bt_R2_budget_registry_draws(registry, prior_list, total_name, n)
     columns <- if(identical(role, "allocation")){
-      paste0(param_name, "[", seq_len(prior$parameters[["K"]]), "]")
+      K <- prior$parameters[["K"]]
+      c(paste0(param_name, "[", seq_len(K), "]"),
+        paste0(.JAGS_prior_dirichlet_eta_name(param_name), "[", seq_len(K), "]"))
     }else{
       param_name
     }
