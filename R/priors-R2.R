@@ -352,8 +352,24 @@ is.R2_budget <- function(x){
   if(is.prior.none(prior)){
     return(TRUE)
   }
-  is.prior.point(prior) && !is.prior.factor(prior) && !.is_prior_expression(prior) &&
-    isTRUE(prior$parameters[["location"]] == 0)
+  location <- prior$parameters[["location"]]
+  is.prior.point(prior) && !.is_prior_expression(prior) && is.numeric(location) &&
+    length(location) >= 1L && all(location == 0)
+}
+
+# An excluded factor term keeps a zero spike coded by the budget's contrast
+# (a scalar spike or prior_none() is not a factor prior).
+.bt_R2_exclusion_prior <- function(prior, budget, term, type){
+
+  if(!identical(type, "factor") || is.prior.factor(prior)){
+    return(prior)
+  }
+  if(is.null(budget$contrast)){
+    .bt_R2_stop(paste0("The factor term '", term, "' of the R-squared budget '", budget$name,
+      "' is excluded by a scalar point prior; give it a factor spike (prior_factor(\"spike\", list(0), contrast = ...)) ",
+      "or set the budget's 'contrast'."))
+  }
+  prior_factor("spike", list(0), contrast = budget$contrast, prior_weights = .prior_model_weight(prior))
 }
 
 # Assigns the formula terms to the budgets. Retained budget terms get an
@@ -370,6 +386,7 @@ is.R2_budget <- function(x){
       declared <- names(budget$alpha)[match(term_keys[[i]], budget_keys)]
       if(term %in% names(prior_list)){
         if(.bt_R2_is_exclusion_prior(prior_list[[term]])){
+          prior_list[[term]] <- .bt_R2_exclusion_prior(prior_list[[term]], budget, term, model_terms_type[[term]])
           next
         }
         .bt_R2_stop(paste0("The formula term '", term, "' belongs to the R-squared budget '", budget$name,
@@ -510,20 +527,24 @@ is.R2_budget <- function(x){
       X <- model_matrix[, columns, drop = FALSE]
       metric <- .bt_R2_metric(X)
       d <- ncol(X)
+      label <- gsub("__xXx__", ":", term, fixed = TRUE)
+      scales <- sqrt(diag(metric))
+      if(any(!is.finite(scales)) || any(scales <= 0)){
+        .bt_R2_stop(paste0("A design column of the R-squared budget term '", label,
+          "' is constant after centering; its signal variance cannot carry a share of the budget."))
+      }
       if(identical(budget$law, "exact")){
-        R <- tryCatch(chol(metric), error = function(e) NULL)
-        if(is.null(R) || min(diag(R)) <= sqrt(.Machine$double.eps) * max(1, max(diag(R)))){
-          .bt_R2_stop(paste0("The design of the R-squared budget term '", gsub("__xXx__", ":", term, fixed = TRUE),
+        # rank is judged on the correlation matrix, so that it does not depend
+        # on the units of the predictors
+        correlation <- metric / (scales %o% scales)
+        R_correlation <- tryCatch(chol(correlation), error = function(e) NULL)
+        if(is.null(R_correlation) || min(diag(R_correlation)) <= sqrt(.Machine$double.eps)){
+          .bt_R2_stop(paste0("The design of the R-squared budget term '", label,
             "' is rank deficient after centering; the exact law needs linearly independent centered columns."))
         }
-        map <- backsolve(R, diag(d))
+        map <- backsolve(sweep(R_correlation, 2, scales, "*"), diag(d))
         units <- 1L
       }else{
-        scales <- sqrt(diag(metric))
-        if(any(!is.finite(scales)) || any(scales <= 0)){
-          .bt_R2_stop(paste0("A design column of the R-squared budget term '", gsub("__xXx__", ":", term, fixed = TRUE),
-            "' is constant after centering; the kernel laws need positive column variances."))
-        }
         map <- diag(1 / scales, nrow = d)
         units <- d
       }
@@ -567,6 +588,18 @@ is.R2_budget <- function(x){
     }
   }
   prior_list
+}
+
+# The total and allocation priors that the coefficient node of a term reads.
+.bt_R2_budget_prior_list <- function(prior){
+
+  .bt_R2_require_bound(prior)
+  out <- list()
+  out[[prior$total_name]] <- prior("beta", list(alpha = prior$shapes$a, beta = prior$shapes$b))
+  if(prior$n_units > 1L){
+    out[[prior$allocation_name]] <- prior("dirichlet", list(alpha = prior$shapes$alpha))
+  }
+  out
 }
 
 .bt_R2_unit_labels <- function(unit_term, maps){
@@ -646,7 +679,7 @@ is.prior.R2_factor <- function(x){
     .bt_R2_coefficient_names(prior, parameter_name),
     dependencies = c(
       prior$total_name,
-      .bt_R2_allocation_coordinates(prior),
+      if(prior$n_units > 1L) .bt_R2_allocation_eta_coordinates(prior),
       .bt_R2_direction_coordinates(prior, parameter_name)
     ),
     parameter = parameter_name,
@@ -659,6 +692,7 @@ is.prior.R2_factor <- function(x){
       total_name      = prior$total_name,
       allocation_name = prior$allocation_name,
       directions      = .bt_R2_direction_coordinates(prior, parameter_name),
+      eta             = if(prior$n_units > 1L) .bt_R2_allocation_eta_coordinates(prior) else character(),
       coefficients    = .bt_R2_coefficient_names(prior, parameter_name)
     )
   )
@@ -705,15 +739,19 @@ is.prior.R2_factor <- function(x){
     return(NULL)
   }
   if(spec$n_units > 1L){
-    allocation <- .bt_random_effect_dirichlet_draws(
-      parameter_name = spec$allocation_name,
-      posterior = lookup$draws,
-      prior_list = lookup$prior_list
-    )
-    if(is.null(allocation)){
+    # the allocation is normalized from its gamma coordinates (the declared
+    # dependencies), so that a replay with changed coordinates never reads
+    # stale normalized weights
+    if(!all(spec$eta %in% colnames(lookup$draws))){
       return(NULL)
     }
-    allocation <- allocation[, spec$units, drop = FALSE]
+    eta <- lookup$draws[, spec$eta, drop = FALSE]
+    eta_sum <- rowSums(eta)
+    if(any(!is.finite(eta)) || any(eta < 0) || any(!is.finite(eta_sum)) || any(eta_sum <= 0)){
+      .bt_R2_stop("R-squared budget allocation gamma coordinates must be finite and nonnegative with positive row sums.",
+        class = "BayesTools_R2_invalid_state")
+    }
+    allocation <- (eta / eta_sum)[, spec$units, drop = FALSE]
   }else{
     allocation <- matrix(1, nrow = lookup$n, ncol = 1L)
   }

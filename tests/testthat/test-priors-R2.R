@@ -237,3 +237,62 @@ test_that("coefficient nodes reproduce the coefficient laws and the exact signal
     }
   }
 })
+
+test_that("factor terms are excluded by scalar or factor zero spikes", {
+
+  data <- .R2_test_data()
+  budget <- .R2_test_budget()
+  for(exclusion in list(prior("spike", list(0)), prior_none(), prior_factor("spike", list(0), contrast = "orthonormal"))){
+    info <- JAGS_formula(~ x + f, "mu", data,
+      list(intercept = prior("normal", list(0, 1)), f = exclusion, "__R2" = budget))
+    expect_true(is.prior.point(info$prior_list$mu_f) && is.prior.factor(info$prior_list$mu_f))
+    expect_true(is.prior.orthonormal(info$prior_list$mu_f))
+    expect_identical(info$prior_list$mu_x$n_units, 1L)
+  }
+  expect_error(JAGS_formula(~ x + f, "mu", data,
+    list(intercept = prior("normal", list(0, 1)), f = prior("spike", list(0)),
+         "__R2" = .R2_test_budget(contrast = NULL))),
+    "is excluded by a scalar point prior", fixed = TRUE)
+})
+
+test_that("the coefficient law does not depend on the units of the predictors", {
+
+  data <- .R2_test_data()
+  small <- data
+  small$x <- small$x * 1e-9
+  priors <- list(intercept = prior("normal", list(0, 1)), "__R2" = .R2_test_budget())
+  original <- JAGS_formula(~ x + f, "mu", data, priors)$prior_list$mu_x
+  rescaled <- JAGS_formula(~ x + f, "mu", small, priors)$prior_list$mu_x
+  expect_equal(rescaled$map * 1e-9, original$map, tolerance = 1e-12)
+
+  constant <- data
+  constant$x <- 1
+  expect_error(JAGS_formula(~ x + f, "mu", constant, priors), "is constant after centering", fixed = TRUE)
+})
+
+test_that("coefficient nodes replay from exactly their declared dependencies", {
+
+  data <- .R2_test_data()
+  info <- JAGS_formula(~ x + f, "mu", data,
+    list(intercept = prior("normal", list(0, 1)), "__R2" = .R2_test_budget(law = "normal")))
+  priors <- info$prior_list
+  draws <- .generate_prior_sample_matrix(priors, 5L, seed = 7)
+  for(term in c("mu_x", "mu_f")){
+    node <- .bt_dnode_R2_coefficient(term, priors[[term]])
+    expect_true(all(grepl("prior_par_eta_mu_R2_allocation", node$dependencies[grepl("allocation", node$dependencies)])))
+    reduced <- draws[, node$dependencies, drop = FALSE]
+    values <- .bt_deterministic_node_evaluate(node, .bt_deterministic_lookup(reduced, priors))
+    expect_equal(unname(values), unname(draws[, node$coordinates, drop = FALSE]), tolerance = 1e-13)
+
+    # changed gamma coordinates with stale normalized weights: the replay uses the coordinates
+    changed <- draws
+    eta <- grep("prior_par_eta", colnames(changed))
+    changed[, eta] <- changed[, eta] * rep(c(9, 1, 1), each = nrow(changed))
+    replay <- .bt_deterministic_node_evaluate(node, .bt_deterministic_lookup(changed, priors))
+    phi <- changed[, eta] / rowSums(changed[, eta])
+    W <- changed[, "mu_R2"] / (1 - changed[, "mu_R2"])
+    z <- changed[, .bt_R2_direction_coordinates(priors[[term]], term), drop = FALSE]
+    expected <- sqrt(W * phi[, priors[[term]]$units, drop = FALSE]) * sweep(z, 2, diag(priors[[term]]$map), "*")
+    expect_equal(unname(replay), unname(expected), tolerance = 1e-13)
+  }
+})

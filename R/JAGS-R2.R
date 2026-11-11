@@ -5,18 +5,6 @@
 # the formula and contribute their own densities. The coefficients are the
 # registered 'R2_coefficient' node evaluated on the draw.
 
-# The total and allocation priors that the coefficient node of a term reads.
-.bt_R2_budget_prior_list <- function(prior){
-
-  .bt_R2_require_bound(prior)
-  out <- list()
-  out[[prior$total_name]] <- prior("beta", list(alpha = prior$shapes$a, beta = prior$shapes$b))
-  if(prior$n_units > 1L){
-    out[[prior$allocation_name]] <- prior("dirichlet", list(alpha = prior$shapes$alpha))
-  }
-  out
-}
-
 .bt_R2_direction_values <- function(samples, prior, parameter_name, signal = TRUE){
 
   names_z <- .bt_R2_direction_coordinates(prior, parameter_name)
