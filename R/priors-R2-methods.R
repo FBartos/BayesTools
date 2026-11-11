@@ -68,10 +68,11 @@
   rows <- .bt_R2_marginal_rows(prior)
   rows <- rows[rowSums(abs(rows)) > 0, , drop = FALSE]
   specs <- lapply(seq_len(nrow(rows)), function(i) .bt_R2_term_functional(prior, rows[i, ]))
-  keys <- vapply(specs, function(spec) c(spec$scale, spec$alpha), numeric(2))
-  keys <- matrix(keys, nrow = 2)
-  if(ncol(keys) > 1L && (max(abs(keys[1, ] - keys[1, 1])) > 1e-10 * keys[1, 1] ||
-                         max(abs(keys[2, ] - keys[2, 1])) > 1e-12 * keys[2, 1])){
+  scales <- vapply(specs, `[[`, numeric(1), "scale")
+  # the allocation shape of the units (absent with a single unit)
+  shapes <- vapply(specs, function(spec) if(spec$n_units > 1L) spec$alpha else 1, numeric(1))
+  if(length(specs) > 1L && (max(abs(scales - scales[1L])) > 1e-10 * scales[1L] ||
+                            max(abs(shapes - shapes[1L])) > 1e-12 * shapes[1L])){
     .bt_R2_unavailable(paste0(
       "The levels of the R-squared budget term '", gsub("__xXx__", ":", prior$term, fixed = TRUE),
       "' have different marginal prior distributions (unequal cell counts or allocations), so there is no common marginal. ",
@@ -136,9 +137,9 @@
     method,
     rng = .bt_R2_rng(prior, value, ...),
     cdf = , mcdf = .bt_R2_functional_cdf(.bt_R2_marginal_spec(prior), as.vector(value)),
-    ccdf = , mccdf = 1 - .bt_R2_functional_cdf(.bt_R2_marginal_spec(prior), as.vector(value)),
+    ccdf = , mccdf = .bt_R2_functional_cdf(.bt_R2_marginal_spec(prior), as.vector(value), lower.tail = FALSE),
     pdf = , mpdf = .bt_R2_functional_pdf(.bt_R2_marginal_spec(prior), as.vector(value)),
-    lpdf = , mlpdf = log(.bt_R2_functional_pdf(.bt_R2_marginal_spec(prior), as.vector(value))),
+    lpdf = , mlpdf = .bt_R2_functional_log_pdf(.bt_R2_marginal_spec(prior), as.vector(value)),
     quant = , mquant = .bt_R2_functional_quantile(.bt_R2_marginal_spec(prior), as.vector(value)),
     mean = if(prior$shapes$b > 1 / 2) 0 else NaN,
     var = {

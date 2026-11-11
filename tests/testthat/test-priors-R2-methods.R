@@ -114,3 +114,32 @@ test_that("joint prior draws keep the budget shared across terms", {
   signal_f <- rowSums((beta_f %*% priors$mu_f$metric) * beta_f)
   expect_equal(signal_f, W * draws[, "mu_R2_allocation[2]"], tolerance = 1e-10)
 })
+
+test_that("a single-term budget has the marginal of its unit without an allocation", {
+
+  set.seed(4)
+  data <- data.frame(f = factor(rep(c("a", "b", "c"), each = 8)), x = stats::rnorm(24))
+  budget <- prior_R2(alpha = c(f = 1), a = 1, b = 3, law = "exact", convention = "common",
+    concentration = "inherited", sigma = "sigma", contrast = "orthonormal")
+  prior <- JAGS_formula(~ f, "mu", data, list(intercept = prior("normal", list(0, 1)), "__R2" = budget))$prior_list$mu_f
+  expect_identical(prior$n_units, 1L)
+  expect_true(all(is.finite(mpdf(prior, c(-0.5, 0.5)))))
+  expect_equal(var(prior), .bt_R2_functional_variance(.bt_R2_marginal_spec(prior)))
+  expect_length(range(prior), 2L)
+})
+
+test_that("public tail and log-density methods keep representable tails", {
+
+  set.seed(4)
+  data <- data.frame(x = stats::rnorm(24))
+  budget <- prior_R2(alpha = c(x = 1), a = 1, b = 2, law = "exact", convention = "common",
+    concentration = "inherited", sigma = "sigma")
+  prior <- JAGS_formula(~ x, "mu", data, list(intercept = prior("normal", list(0, 1)), "__R2" = budget))$prior_list$mu_x
+  spec <- .bt_R2_marginal_spec(prior)
+  far <- 1e5 * spec$scale
+  expect_equal(ccdf(prior, far), .bt_R2_functional_cdf(spec, far, lower.tail = FALSE))
+  expect_gt(ccdf(prior, far), 0)
+  expect_equal(mccdf(prior, far), ccdf(prior, far))
+  expect_true(is.finite(lpdf(prior, 1e100 * spec$scale)))
+  expect_equal(mlpdf(prior, 1e100 * spec$scale), .bt_R2_functional_log_pdf(spec, 1e100 * spec$scale))
+})

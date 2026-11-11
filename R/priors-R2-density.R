@@ -324,34 +324,48 @@
 
 # Accepted difference between the log integrals of the steps h and 2 h: the
 # double-exponential error is about squared by halving the step, so a
-# difference of 1e-6 leaves an error of order 1e-12 at the step h.
-.bt_R2_density_de_tolerance <- 1e-6
+# difference of 1e-5 (the error of the step 2 h) leaves an error of order
+# 1e-10 at the step h. Far below the double range of exp(), the difference is
+# taken relative to the size of the log value, whose own rounding is larger.
+.bt_R2_density_de_tolerance <- 1e-5
 
-# Nodes on a piece of length L > 0 (tanh-sinh): distances of each node from the
-# two ends and the log quadrature weights, for the steps h and 2 h (the nodes of
-# 2 h are every second node).
-.bt_R2_density_de_finite <- function(L, h = 1 / 16, limit = 6){
+# Accepted share (on the log scale) of the integrand at the outermost nodes of
+# a piece: a larger share means that the fixed limits of the rule truncate
+# mass, whatever the step.
+.bt_R2_density_de_truncation <- -30
+
+# Nodes of a piece of length 'len' (a vector, one piece per row) whose left end
+# is the origin of the distance d. With exponent s < 1 the distance is
+# d = len * w^(1 / s), w in (0, 1), which turns an integrable singularity
+# d^(s - 1) at the left end into a regular integrand in w; s = 1 is the plain
+# tanh-sinh rule. Returns log(d), log(len - d) and the log weights (rows:
+# pieces; columns: nodes), and the nodes of the step 2 h.
+.bt_R2_density_de_piece <- function(len, s = 1, h = 1 / 8, limit = 4){
 
   t <- seq(-limit, limit, by = h)
-  s <- pi * sinh(t)
-  log_g <- stats::plogis(s, log.p = TRUE)
-  log_g1 <- stats::plogis(-s, log.p = TRUE)
+  z <- pi * sinh(t)
+  log_g <- stats::plogis(z, log.p = TRUE)
+  log_g1 <- stats::plogis(-z, log.p = TRUE)
+  log_len <- log(len)
+  log_d_unit <- log_g / s
+  log_rest_unit <- log(-expm1(log_d_unit))
+  log_rest_unit[!is.finite(log_rest_unit)] <- log_g1[!is.finite(log_rest_unit)] - log(s)
   list(
-    from_lower = L * exp(log_g),
-    from_upper = L * exp(log_g1),
-    log_weight = log(L) + log_g + log_g1 + log(pi * cosh(t)) + log(h),
+    log_d      = outer(log_len, log_d_unit, "+"),
+    log_rest   = outer(log_len, log_rest_unit, "+"),
+    log_weight = outer(log_len, -log(s) + log_g / s + log_g1 + log(pi * cosh(t)) + log(h), "+"),
     coarse     = seq_along(t) %% 2L == 1L
   )
 }
 
-# Nodes on (start, Inf) (exp-sinh): distances from 'start' and log weights.
-.bt_R2_density_de_infinite <- function(h = 1 / 16, limit = 4.5){
+# Nodes of (start, Inf) (exp-sinh), one row per value of 'start'.
+.bt_R2_density_de_tail <- function(start, h = 1 / 8, limit = 4.5){
 
   t <- seq(-limit, limit, by = h)
-  s <- pi / 2 * sinh(t)
+  z <- pi / 2 * sinh(t)
   list(
-    from_lower = exp(s),
-    log_weight = s + log(pi / 2 * cosh(t)) + log(h),
+    e          = outer(start, exp(z), "+"),
+    log_weight = matrix(z + log(pi / 2 * cosh(t)) + log(h), length(start), length(t), byrow = TRUE),
     coarse     = seq_along(t) %% 2L == 1L
   )
 }
@@ -363,10 +377,10 @@
   if(q == 1){
     return(-p * e - lbeta(p, q))
   }
-  log_one_minus <- if(is.null(log_e)){
-    log(-expm1(-e))
-  }else{
-    ifelse(log_e < -30, log_e - e / 2, log(-expm1(-e)))
+  log_one_minus <- log(-expm1(-e))
+  if(!is.null(log_e)){
+    small <- log_e < -30
+    log_one_minus[small] <- (log_e - e / 2)[small]
   }
   -p * e + (q - 1) * log_one_minus - lbeta(p, q)
 }
@@ -380,88 +394,170 @@
 .bt_R2_density_logsumexp_rows <- function(m){
 
   m[!is.finite(m)] <- -Inf
-  top <- apply(m, 1L, max)
+  top <- .bt_R2_density_row_max(m)
   out <- rep(-Inf, nrow(m))
   ok <- is.finite(top)
   out[ok] <- top[ok] + log(rowSums(exp(m[ok, , drop = FALSE] - top[ok])))
   out
 }
 
+# Row maxima of a matrix without NA values.
+.bt_R2_density_row_max <- function(m){
+  m[cbind(seq_len(nrow(m)), max.col(m, ties.method = "first"))]
+}
+
+# Location (mean) and scale (SD) of log(S) of S ~ Beta(p, q), and of log(W) of
+# W ~ BetaPrime(a, b).
+.bt_R2_density_log_moments <- function(shapes, prime){
+
+  if(prime){
+    c(digamma(shapes[1L]) - digamma(shapes[2L]), sqrt(trigamma(shapes[1L]) + trigamma(shapes[2L])))
+  }else{
+    c(digamma(shapes[1L]) - digamma(sum(shapes)), sqrt(trigamma(shapes[1L]) - trigamma(sum(shapes))))
+  }
+}
+
+# Break points of the distance e in (0, end) at the features of a factor
+# located at e = centre with scale 'scale': the centre, and centre +- 1, 4 and
+# 12 scales when the factor is narrower than the O(1) pieces (so that a
+# concentrated factor is never missed between the nodes).
+.bt_R2_density_feature_breaks <- function(centre, scale){
+
+  steps <- if(scale < 1 / 2) c(0, -1, 1, -4, 4, -12, 12) else 0
+  outer(centre, steps * scale, "+")
+}
+
 # log h(u) for a vector u: 'first' is the Beta shrinker c(p, q) of the share
 # (or the squared projection), 'second' a Beta shrinker c(p, q) or, with
-# 'prime', the BetaPrime shapes c(a, b) of W. All values of u are evaluated
-# together on matrices of nodes. Returns the log density and the indices whose
-# quadrature error (fine against coarse step) exceeds the tolerance.
+# 'prime', the BetaPrime shapes c(a, b) of W. The integral over the distance
+# e from the end that the second factor (exact) or the share (kernels) makes
+# singular is split at the features of both factors; its end pieces take the
+# power substitution of their singular end, and its last piece is infinite for
+# the kernels. Returns the log density and the indices whose quadrature fails
+# its step-halving or truncation check.
 .bt_R2_density_log_product <- function(u, first, second, prime){
 
   out <- rep(-Inf, length(u))
-  fine <- coarse <- matrix(-Inf, length(u), 0L)
-  add_piece <- function(log_f, nodes){
-    fine   <<- cbind(fine, .bt_R2_density_logsumexp_rows(log_f))
-    coarse <<- cbind(coarse, .bt_R2_density_logsumexp_rows(log_f[, nodes$coarse, drop = FALSE]) + log(2))
+  inside <- which(is.finite(u) & (prime | u < 0))
+  if(length(inside) == 0L){
+    return(list(log = out, failed = integer()))
   }
-  if(!prime){
-    # l in [u, 0] with distances -l and l - u from its ends; support u < 0
-    inside <- which(is.finite(u) & u < 0)
-    if(length(inside) == 0L){
-      return(list(log = out, failed = integer()))
+  v <- u[inside]
+  n <- length(v)
+  first_moments <- .bt_R2_density_log_moments(first, FALSE)
+  second_moments <- .bt_R2_density_log_moments(second, prime)
+  if(prime){
+    # e = tau - u: the share log(S) = -e, W = exp(u + e)
+    end <- rep(Inf, n)
+    centres <- cbind(.bt_R2_density_feature_breaks(rep(-first_moments[1L], n), first_moments[2L]),
+                     .bt_R2_density_feature_breaks(second_moments[1L] - v, second_moments[2L]), 1)
+    left_exponent <- min(first[2L], 1)
+    log_f <- function(log_e, log_rest, e){
+      .bt_R2_density_log_beta_at(e, first[1L], first[2L], log_e) +
+        .bt_R2_density_log_betaprime_at(v + e, second[1L], second[2L])
     }
-    unit <- .bt_R2_density_de_finite(1)
-    L <- -u[inside]
-    log_f <- .bt_R2_density_log_beta_at(L %o% unit$from_upper, first[1L], first[2L]) +
-      .bt_R2_density_log_beta_at(L %o% unit$from_lower, second[1L], second[2L]) +
-      outer(log(L), unit$log_weight, "+")
-    fine <- coarse <- matrix(-Inf, length(inside), 0L)
-    add_piece(log_f, unit)
   }else{
-    # tau = log(W) in (u, Inf) at distance e = tau - u from the singular end of
-    # the share; pieces end at the share's transition (e = 1) and past the mode
-    # region of W (tau = log(a / b) + 1), so that their features sit at their ends
-    inside <- which(is.finite(u))
-    if(length(inside) == 0L){
-      return(list(log = out, failed = integer()))
+    # e = l - u in (0, -u): log(S2) = -e, log(S1) = -(-u - e)
+    end <- -v
+    centres <- cbind(.bt_R2_density_feature_breaks(end + first_moments[1L], first_moments[2L]),
+                     .bt_R2_density_feature_breaks(rep(-second_moments[1L], n), second_moments[2L]),
+                     1, end - 1)
+    left_exponent <- min(second[2L], 1)
+    right_exponent <- min(first[2L], 1)
+    log_f <- function(log_e, log_rest, e){
+      .bt_R2_density_log_beta_at(e, second[1L], second[2L], log_e) +
+        .bt_R2_density_log_beta_at(exp(log_rest), first[1L], first[2L], log_rest)
     }
-    v <- u[inside]
-    unit <- .bt_R2_density_de_finite(1)
-    tail <- .bt_R2_density_de_infinite()
-    cut <- pmax(2, log(second[1L] / second[2L]) - v + 1)
-    piece <- function(e, log_weight){
-      .bt_R2_density_log_beta_at(e, first[1L], first[2L]) +
-        .bt_R2_density_log_betaprime_at(v + e, second[1L], second[2L]) + log_weight
+  }
+  # sorted interior break points of each row, padded by repeating the last
+  # one (zero-length pieces carry no mass)
+  centres[!(centres > 0 & centres < end)] <- NA
+  breaks <- matrix(unlist(lapply(seq_len(n), function(i){
+    row <- sort(unique(centres[i, !is.na(centres[i, ])]))
+    if(length(row) == 0L) row <- if(prime) 1 else end[i] / 2
+    c(row, rep(row[length(row)], ncol(centres) - length(row)))
+  })), nrow = n, byrow = TRUE)
+
+  fine <- coarse <- truncated <- matrix(-Inf, n, 0L)
+  add <- function(values, weights, coarse_nodes){
+    terms <- values + weights
+    total <- .bt_R2_density_logsumexp_rows(terms)
+    k <- ncol(terms)
+    edge <- terms[, c(1:3, (k - 2):k), drop = FALSE]
+    edge[!is.finite(edge)] <- -Inf
+    edge <- .bt_R2_density_row_max(edge)
+    fine <<- cbind(fine, total)
+    coarse <<- cbind(coarse, .bt_R2_density_logsumexp_rows(terms[, coarse_nodes, drop = FALSE]) + log(2))
+    truncated <<- cbind(truncated, ifelse(is.finite(total), edge - total, -Inf))
+  }
+  starts <- cbind(0, breaks)
+  stops <- cbind(breaks, end)
+  for(k in seq_len(ncol(starts))){
+    lo <- starts[, k]
+    hi <- stops[, k]
+    if(k == ncol(starts) && prime){
+      nodes <- .bt_R2_density_de_tail(lo)
+      e <- nodes$e
+      add(log_f(log(e), NULL, e), nodes$log_weight, nodes$coarse)
+      next
     }
-    fine <- coarse <- matrix(-Inf, length(inside), 0L)
-    ones <- rep(1, length(v))
-    add_piece(piece(ones %o% unit$from_lower, ones %o% unit$log_weight), unit)
-    L <- cut - 1
-    add_piece(piece(1 + L %o% unit$from_lower, outer(log(L), unit$log_weight, "+")), unit)
-    add_piece(piece(cut + ones %o% tail$from_lower, ones %o% tail$log_weight), tail)
+    len <- pmax(hi - lo, 0)
+    if(k == 1L){
+      # singular left end: distance from 0
+      nodes <- .bt_R2_density_de_piece(len, left_exponent)
+      log_e <- nodes$log_d
+      e <- exp(log_e)
+      log_rest <- log(end - e)
+    }else if(k == ncol(starts)){
+      # singular right end (exact): distance from the end
+      nodes <- .bt_R2_density_de_piece(len, right_exponent)
+      log_rest <- nodes$log_d
+      e <- end - exp(log_rest)
+      log_e <- log(e)
+    }else{
+      nodes <- .bt_R2_density_de_piece(len, 1)
+      e <- lo + exp(nodes$log_d)
+      log_e <- log(e)
+      log_rest <- log(end - e)
+    }
+    add(log_f(log_e, log_rest, e), nodes$log_weight, nodes$coarse)
   }
   fine_total <- .bt_R2_density_logsumexp_rows(fine)
   coarse_total <- .bt_R2_density_logsumexp_rows(coarse)
+  relevant <- fine > fine_total + .bt_R2_density_de_truncation
+  truncation <- rowSums(relevant & truncated > .bt_R2_density_de_truncation) > 0
   out[inside] <- fine_total
-  # values below the double range of exp() are zero whatever their rounding
-  failed <- inside[(!is.finite(fine_total) | abs(fine_total - coarse_total) > .bt_R2_density_de_tolerance) &
-    !(fine_total < -745 & coarse_total < -745)]
-  list(log = out, failed = failed)
+  # Below the double range of exp() (log h < -745) a value carries no mass of
+  # an integral of size one and needs only relative accuracy; the break points
+  # bracket the modes of both factors, so that such a value is not a missed
+  # peak (whose quadrature would not reach the double range).
+  difference <- abs(fine_total - coarse_total)
+  tolerance <- ifelse(fine_total < -745, 1e-3 * abs(fine_total), .bt_R2_density_de_tolerance)
+  failed <- inside[!is.finite(fine_total) | truncation | difference > tolerance]
+  list(log = out, failed = failed, difference = difference, truncation = truncation)
 }
 
 # log h(u) for a vector u, with stats::integrate() for the values whose
-# double-exponential quadrature does not meet its tolerance.
+# double-exponential quadrature fails its checks (over the log distance from
+# the singular end, so that no end of the range is singular).
 .bt_R2_density_log_h <- function(u, first, second, prime, tolerance){
 
   quadrature <- .bt_R2_density_log_product(u, first, second, prime)
   out <- quadrature$log
+  first_moments <- .bt_R2_density_log_moments(first, FALSE)
+  second_moments <- .bt_R2_density_log_moments(second, prime)
   for(i in quadrature$failed){
-    # integrated over the log distance from the singular end (prime: tau - u
-    # in (0, Inf)), or the logit position in (u, 0), so that no end of the
-    # integration range is singular
     out[i] <- if(prime){
       log_f <- function(s){
         e <- exp(s)
-        s + .bt_R2_density_log_beta_at(e, first[1L], first[2L], s) +
+        out <- s + .bt_R2_density_log_beta_at(e, first[1L], first[2L], s) +
           .bt_R2_density_log_betaprime_at(u[i] + e, second[1L], second[2L])
+        # a share of exp(-e) with e beyond the double range has no mass
+        out[!is.finite(e)] <- -Inf
+        out
       }
-      .bt_R2_density_integrate(log_f, -Inf, Inf, c(0, log(max(1, log(second[1L] / second[2L]) - u[i]))), tolerance,
+      centres <- c(-first_moments[1L], second_moments[1L] - u[i])
+      .bt_R2_density_integrate(log_f, -Inf, Inf, c(0, log(centres[centres > 0])), tolerance,
                                "log signal-to-noise ratio of the unit")
     }else{
       L <- -u[i]
@@ -472,7 +568,10 @@
           .bt_R2_density_log_beta_at(L * exp(log_g1), first[1L], first[2L], log(L) + log_g1) +
           .bt_R2_density_log_beta_at(L * exp(log_g), second[1L], second[2L], log(L) + log_g)
       }
-      .bt_R2_density_integrate(log_f, -Inf, Inf, 0, tolerance, "log share of the unit")
+      centres <- c(L + first_moments[1L], -second_moments[1L])
+      centres <- centres[centres > 0 & centres < L]
+      .bt_R2_density_integrate(log_f, -Inf, Inf, c(0, stats::qlogis(centres / L)), tolerance,
+                               "log share of the unit")
     }
   }
   out
@@ -607,19 +706,41 @@
 
 .bt_R2_functional_pdf <- function(spec, x){
 
+  exp(.bt_R2_functional_log_pdf(spec, x))
+}
+
+# The log density, finite also where the density underflows.
+.bt_R2_functional_log_pdf <- function(spec, x){
+
   x   <- as.numeric(x)
-  y   <- abs(x) / spec$scale
+  y   <- .bt_R2_density_standardize(abs(x), spec$scale)
   out <- rep(NA_real_, length(x))
-  out[!is.na(x) & is.infinite(y)] <- 0
-  zero <- which(!is.na(y) & y == 0)
+  out[!is.na(x) & is.infinite(x)] <- -Inf
+  zero <- which(!is.na(x) & x == 0)
   if(length(zero) > 0L){
-    out[zero] <- .bt_R2_density_zero(spec) / spec$scale
+    out[zero] <- log(.bt_R2_density_zero(spec)) - log(spec$scale)
   }
-  positive <- which(!is.na(y) & is.finite(y) & y > 0)
+  positive <- which(!is.na(x) & is.finite(x) & x != 0)
   out[positive] <- .bt_R2_density_unique_map(y[positive], function(z){
-    exp(.bt_R2_density_log(spec, z, "pdf"))
-  }) / spec$scale
+    .bt_R2_density_log(spec, z, "pdf")
+  }) - log(spec$scale)
   out
+}
+
+# x / scale for the law of scale 1; a nonzero finite value whose quotient is
+# not a positive finite double (underflow or overflow) is refused rather than
+# taken for the origin or for infinity.
+.bt_R2_density_standardize <- function(x, scale){
+
+  y <- x / scale
+  unrepresentable <- !is.na(x) & is.finite(x) & x != 0 & (y == 0 | !is.finite(y))
+  if(any(unrepresentable)){
+    .bt_R2_density_stop_unavailable(paste0(
+      "The R-squared functional distribution is unavailable at values whose ratio to the scale of the ",
+      "coefficient is not representable as a positive finite double (e.g., ", format(x[unrepresentable][1L]),
+      " with scale ", format(scale), ")."))
+  }
+  y
 }
 
 # Evaluates 'f' once per distinct value of 'y' (values within a relative 1e-12
@@ -635,7 +756,8 @@
 
 .bt_R2_functional_cdf <- function(spec, q, lower.tail = TRUE){
 
-  u     <- as.numeric(q) / spec$scale
+  q     <- as.numeric(q)
+  u     <- sign(q) * .bt_R2_density_standardize(abs(q), spec$scale)
   upper <- rep(NA_real_, length(u))
   upper[!is.na(u) & is.infinite(u)] <- 0
   upper[!is.na(u) & u == 0]         <- 1 / 2

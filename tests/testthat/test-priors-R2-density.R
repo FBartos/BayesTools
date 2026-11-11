@@ -530,3 +530,43 @@ test_that("two-level laws through the log-product density match the nested integ
     rel.tol = 1e-9)$value
   expect_equal(mass, 1, tolerance = 1e-7)
 })
+
+test_that("the log-product density matches analytic convolutions for concentrated and small shapes", {
+
+  # share ~ Uniform(0, 1): h(u) = e^u B(a - 1, b + 1) / B(a, b) P(W' > e^u), W' ~ BetaPrime(a - 1, b + 1)
+  uniform_share <- function(u, a, b){
+    u + lbeta(a - 1, b + 1) - lbeta(a, b) + stats::pbeta(1 / (1 + exp(-u)), a - 1, b + 1, lower.tail = FALSE, log.p = TRUE)
+  }
+  for(shapes in list(c(1e6, 1e6), c(3, 2), c(40, 0.8))){
+    u <- c(-3, -0.5, 0, 0.7)
+    computed <- .bt_R2_density_log_h(u, c(1, 1), shapes, TRUE, 1e-10)
+    reference <- uniform_share(u, shapes[1L], shapes[2L])
+    # values within the double range of exp() to 1e-9; far below it (log h
+    # about -1.2e5 at u = 0.7 in the concentrated case) relative accuracy only
+    within <- reference > -745
+    expect_equal_each(computed[within], reference[within], tolerance = 1e-9)
+    expect_true(all(abs(computed[!within] / reference[!within] - 1) < 1e-6))
+  }
+
+  # second factor Beta(p2, 1): h(u) = p2 e^(p2 u) B(p1 - p2, q1) / B(p1, q1) P(S > e^u), S ~ Beta(p1 - p2, q1)
+  power_second <- function(u, p1, q1, p2){
+    log(p2) + p2 * u + lbeta(p1 - p2, q1) - lbeta(p1, q1) + stats::pbeta(exp(u), p1 - p2, q1, lower.tail = FALSE, log.p = TRUE)
+  }
+  for(first in list(c(1.5, 0.02), c(1.5, 0.3), c(50, 2))){
+    u <- c(-4, -1, -0.1)
+    computed <- .bt_R2_density_log_h(u, first, c(0.5, 1), FALSE, 1e-10)
+    expect_equal_each(computed, power_second(u, first[1L], first[2L], 0.5), tolerance = 1e-9)
+  }
+})
+
+test_that("tails and log densities stay accurate where they underflow on the probability scale", {
+
+  spec <- .bt_R2_functional_spec("exact", a = 1, b = 2, scale = 1)
+  # P(X > y) = pbeta(1 / (1 + y^2); b, a) / 2 and log f(y) = (2a - 1) log y - (a + b) log(1 + y^2) - lbeta(a, b)
+  expect_equal(.bt_R2_functional_cdf(spec, 1e5, lower.tail = FALSE), stats::pbeta(1 / (1 + 1e10), 2, 1) / 2,
+    tolerance = 1e-10)
+  expect_equal(.bt_R2_functional_log_pdf(spec, 1e100), log(1e100) - 3 * 2 * log(1e100) - lbeta(1, 2), tolerance = 1e-12)
+  expect_error(.bt_R2_functional_pdf(.bt_R2_functional_spec("exact", a = 0.25, b = 2, scale = 1e100), 1e-300),
+    class = "BayesTools_R2_density_unavailable")
+  expect_equal(.bt_R2_functional_pdf(.bt_R2_functional_spec("exact", a = 0.25, b = 2, scale = 1e100), 0), Inf)
+})
