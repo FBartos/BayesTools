@@ -482,8 +482,12 @@
   )
   prior_density <- posterior_metadata(samples[[parameter]], "prior_density")
   ordered <- identical(plan[["selected"]][["entry"]][["source"]], "ordered")
-  noun    <- if (ordered) "ordered quantity" else "random-effect quantity"
-  nouns   <- if (ordered) "ordered quantities" else "random-effect quantities"
+  R2      <- ordered && .bt_R2_quantity_rows(
+    selected[["entry"]][["selection"]][["quantities"]],
+    attr(provider[["fit"]], "prior_list", exact = TRUE)
+  )[[1L]]
+  noun    <- if (R2) "R-squared budget quantity" else if (ordered) "ordered quantity" else "random-effect quantity"
+  nouns   <- if (R2) "R-squared budget quantities" else if (ordered) "ordered quantities" else "random-effect quantities"
   plan[["draws"]]         <- list(samples = samples, posterior = samples[[parameter]])
   plan[["prior_density"]] <- prior_density
   # Region probabilities need a prior density with deterministic provenance;
@@ -609,11 +613,15 @@
   fit        <- provider[["fit"]]
   quantity   <- selected[["entry"]][["selection"]][["quantities"]]
   key        <- quantity[["extraction_key"]][[1L]]
-  if (identical(key[["type"]], "ordered_allocation")) {
+  if (key[["type"]] %in% c("ordered_allocation", "R2_share")) {
     return(NULL)
   }
   prior_list <- attr(fit, "prior_list", exact = TRUE)
   owner      <- .bt_ordered_quantity_owner(quantity, prior_list)
+  # the total of an R-squared budget has its own Beta prior in the model
+  if (is.null(owner)) {
+    return(NULL)
+  }
   total      <- prior_list[[owner]][["total"]]
   label      <- selected[["spec"]][["label"]]
   if (is.prior.point(total) && !.is_prior_expression(total)) {

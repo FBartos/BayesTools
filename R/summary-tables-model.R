@@ -104,7 +104,9 @@
 #' coordinate, but they are not catalog quantities and do not select one in
 #' [parameter_catalog_resolve()], hypotheses, or plots (the shares of the
 #' ordered-factor allocations, which the table shows as \code{<term>[share:
-#' <level>]}, are catalog quantities).
+#' <level>]}, and the shares of the terms of R-squared budgets, shown as
+#' \code{<budget>[share: <term>]} in place of the budget's allocation
+#' coordinates, are catalog quantities).
 #' Internal latent and realized group-coefficient coordinates
 #' are omitted when \code{transform_scaled = TRUE}, including in \code{"raw"}
 #' mode, because those coordinates remain on the fitted standardized scale.
@@ -832,6 +834,19 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
         }
       }
     }
+  }
+
+  # R-squared budgets show the share of each retained term after the budget
+  # total, in place of the allocation coordinates (raw summaries show the
+  # coordinates)
+  if(!identical(random_effects_summary, "raw")){
+    R2_shares <- .bt_JAGS_estimates_R2_shares(
+      model_samples     = model_samples,
+      raw_model_samples = raw_model_samples,
+      prior_list        = prior_list
+    )
+    model_samples <- R2_shares$model_samples
+    created_parts <- c(created_parts, R2_shares$created)
   }
 
   # untransformed ordered-factor priors show their total and allocation

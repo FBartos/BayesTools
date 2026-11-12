@@ -704,6 +704,10 @@ parameter_labels <- function(x, style = c("selector", "table", "plot", "warning"
 # attribute; names are never matched against other formula parameters.
 .bt_label_parts_prior <- function(parameter, prior){
 
+  R2_total <- .bt_R2_total_prior_label_parts(parameter, prior)
+  if(!is.null(R2_total)){
+    return(list(coordinates = parameter, parts = list(R2_total)))
+  }
   formula_parameter <- .bt_label_formula_parameter(prior)
   factor_prior <- .bt_parameter_catalog_factor_prior(parameter, prior)
   if(!is.null(factor_prior) &&
@@ -1016,6 +1020,10 @@ parameter_labels <- function(x, style = c("selector", "table", "plot", "warning"
 # coefficient), such as its inclusion row or its column in prior summaries.
 .bt_label_parts_term <- function(parameter, prior){
 
+  R2_total <- .bt_R2_total_prior_label_parts(parameter, prior)
+  if(!is.null(R2_total)){
+    return(R2_total)
+  }
   formula_parameter <- .bt_label_formula_parameter(prior)
   random_parts <- .bt_label_parts_random_term(parameter, prior, formula_parameter)
   if(!is.null(random_parts)){

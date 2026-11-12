@@ -305,6 +305,9 @@
   if(identical(key$type, "ordered_allocation")){
     return(key$parameter)
   }
+  if(!identical(key$type, "coordinate")){
+    return(NULL)
+  }
 
   .bt_ordered_total_owner(prior_list, key$dependencies)
 }

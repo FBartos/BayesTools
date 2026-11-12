@@ -142,7 +142,15 @@ versions (\code{term_ordered_total}) remain aliases. Each share of a random
 allocation of an ordered term is a derived quantity,
 \verb{<parameter>_ordered_allocation[<level>]} displayed as \code{term[share: level]}
 (support [0, 1], the Beta marginal of the Dirichlet prior); its earlier
-labels (\code{term_ordered_allocation[level]}) are aliases. The level names of transformed summaries,
+labels (\code{term_ordered_allocation[level]}) are aliases. The total of an
+R-squared budget (\code{\link[=prior_R2]{prior_R2()}}) is the quantity of its total coordinate
+\verb{<parameter>_<name>} displayed as \verb{<name>\{total\}} (support [0, 1], the
+Beta prior of the model), and each retained term of a budget that retains
+two or more terms has a derived share quantity
+\verb{<parameter>_<name>_allocation[<term>]} displayed as \verb{<name>[share: <term>]}
+(support [0, 1], the Beta marginal of the Dirichlet allocation summed over
+the term's allocation units); the allocation coordinates of a budget are
+backend coordinates. The level names of transformed summaries,
 \verb{<parameter>[dif: level]}, and the row labels those summaries display,
 \verb{(formula) term[dif: level]} and \code{term[dif: level]}, are aliases of the
 level quantity. JAGS

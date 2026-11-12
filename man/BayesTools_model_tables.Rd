@@ -394,7 +394,9 @@ backend coordinates shown for inspection: their labels describe the
 coordinate, but they are not catalog quantities and do not select one in
 \code{\link[=parameter_catalog_resolve]{parameter_catalog_resolve()}}, hypotheses, or plots (the shares of the
 ordered-factor allocations, which the table shows as \code{<term>[share:
-<level>]}, are catalog quantities).
+<level>]}, and the shares of the terms of R-squared budgets, shown as
+\code{<budget>[share: <term>]} in place of the budget's allocation
+coordinates, are catalog quantities).
 Internal latent and realized group-coefficient coordinates
 are omitted when \code{transform_scaled = TRUE}, including in \code{"raw"}
 mode, because those coordinates remain on the fitted standardized scale.}

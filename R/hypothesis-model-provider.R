@@ -528,16 +528,21 @@ hypothesis_provider.BayesTools_fit <- function(object, ...){
     )
   }
 
-  # totals and shares of ordered terms: sampled or derived quantities with a
-  # bracket-free root, tested on their own mixed posteriors by the route of the
-  # random-effect quantities
+  # totals and shares of ordered terms and of R-squared budgets: sampled or
+  # derived quantities with a bracket-free root, tested on their own mixed
+  # posteriors by the route of the random-effect quantities
+  R2_rows <- .bt_R2_quantity_rows(quantities, prior_list)
   ordered <- which(
     public & quantities[["status"]] != "unavailable" &
-      .bt_ordered_quantity_rows(quantities, prior_list)
+      (.bt_ordered_quantity_rows(quantities, prior_list) | R2_rows)
   )
   for(row in ordered){
     quantity <- as.list(quantities[row, , drop = FALSE])
-    root     <- .bt_ordered_hypothesis_root(quantities[row, , drop = FALSE])
+    root     <- if(R2_rows[[row]]){
+      .bt_R2_hypothesis_root(quantities[row, , drop = FALSE])
+    }else{
+      .bt_ordered_hypothesis_root(quantities[row, , drop = FALSE])
+    }
     add_entry(
       quantity          = quantity,
       parameter         = root,
@@ -815,6 +820,10 @@ hypothesis_provider.BayesTools_fit <- function(object, ...){
   quantity   <- quantities[match(entry[["quantity_id"]], quantities[["quantity_id"]]), , drop = FALSE]
   prior_list <- attr(fit, "prior_list", exact = TRUE)
   owner      <- .bt_ordered_quantity_owner(quantity, prior_list)
+  # the totals and shares of R-squared budgets have no ordered term
+  if(is.null(owner)){
+    return(NULL)
+  }
 
   prior_list[[owner]][["total"]]
 }
@@ -886,7 +895,7 @@ hypothesis_provider.BayesTools_fit <- function(object, ...){
           },
           status   = quantity[["status"]],
           quantity = if(identical(entry[["source"]], "ordered")){
-            if(identical(quantity[["extraction_key"]][[1L]][["type"]], "ordered_allocation")){
+            if(quantity[["extraction_key"]][[1L]][["type"]] %in% c("ordered_allocation", "R2_share")){
               "share"
             }else{
               "total"

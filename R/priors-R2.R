@@ -74,7 +74,11 @@
 #' \code{R2 = prior_R2(...)}. The name of the entry names the budget: the
 #' total R-squared is the formula parameter \code{<parameter>_<name>}
 #' (displayed as \code{<name>{total}}), and the share of the budget allocated
-#' to a retained term is displayed as \code{<name>[share: <term>]}. The name
+#' to a retained term is displayed as \code{<name>[share: <term>]}; both are
+#' quantities of [parameter_catalog()] that the estimates tables show and
+#' \code{hypothesis_BF()} tests (e.g., \code{"R2{total} > 0.1"} or
+#' \code{"R2[share: f] > 0.5"}), with the Beta prior of the total in the model
+#' and the Beta marginal of the share under the allocation. The name
 #' must be a valid JAGS node name that contains no \code{"intercept"} and is
 #' not a term label. Several budgets are several entries (for example, a
 #' budget for compulsory covariates and a separate budget for the tested
