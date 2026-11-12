@@ -34,7 +34,8 @@ Beta prior). Other mixtures are not supported.}
 \item{allocation}{Dirichlet prior allocating the budget of the full
 candidate model to \code{terms},
 \code{prior("dirichlet", list(alpha = ...))} with one concentration per
-entry of \code{terms}, in their order. \code{NULL} (default) is the flat
+entry of \code{terms}, in their order, or named by the terms (then matched
+to them by name). \code{NULL} (default) is the flat
 allocation, a concentration of 1 for every term. A budget of one term
 takes no allocation (a Dirichlet prior has at least two concentrations): its
 term has the concentration 1, which the kernel laws give to each of its
@@ -205,8 +206,25 @@ the null. The prior methods of the term priors (\code{rng()},
 \code{mcdf()}, \code{mquant()}, \code{mean()}, \code{var()},
 \code{plot()}) include the atom at zero of a closed term (\code{mpdf()}
 is the density of the continuous part), and those of the total entry the
-atom at zero of the budget null. Prior laws that enumerate the gate
-configurations (densities, plots) are available for up to 16 gated terms.
+atom at zero of the budget null. These prior laws sum over the gate
+configurations through their open concentrations, exactly and without a
+limit on the number of gated terms (the configurations are aggregated into
+at most 65536 distinct states, which few distinct concentrations keep
+small). A shared Beta(a, b) inclusion rate \eqn{\theta} is the node
+\code{<parameter>_<name>_rate} and the catalog quantity
+\code{<name>\{inclusion rate\}}, drawn given the gates as
+\eqn{\theta | S \sim} Beta(\eqn{a + s}, \eqn{b + K - s}) with \eqn{s} of
+the \eqn{K} gates open (without changing the sampler of the gates); its
+prior is Beta(a, b), or, when the gate prior is conditioned on a nonempty
+configuration, the law of \eqn{\theta} given that condition. Condition
+events over several terms (and the total) of one gated budget, as in
+\code{as_mixed_posteriors(conditional = ...)}, use their exact joint prior
+law. The point mass at zero of a gated coefficient or a total is the
+exclusion of its term or the null of the budget, tested by the inclusion
+Bayes factors of \code{runjags_inference_table()} (or, for a total, the
+region hypothesis \code{"<name>\{total\} > 0"}); the atom at one of a share
+(its term is the only open term) is tested by region hypotheses such as
+\code{"<name>[share: x] >= 1"}.
 Bridge sampling of a gated or spiked budget is unavailable (the
 fit is itself the model average) and stops with
 \code{BayesTools_R2_gated_unavailable}.

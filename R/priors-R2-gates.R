@@ -80,6 +80,9 @@
     .bt_R2_stop(paste0("The inclusion probabilities of the gates are numerically degenerate: the conditional ",
       "probabilities of the gates given a nonempty configuration cannot be computed."))
   }
+  # with every gate before it closed, the last gate is open (exactly; the
+  # ratio above rounds)
+  p[[K]] <- 1
 
   pmin(1, p)
 }

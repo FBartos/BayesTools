@@ -548,9 +548,19 @@
   zero_alternative <- zero_boundary[["alternative"]]
   point_mass_advice <- provider[["random_point_mass_advice"]]
   # the atom of an R-squared share at one (its term is the only open term) is
-  # not an inclusion event: only region hypotheses test it
-  if (R2 && identical(selected[["entry"]][["selection"]][["quantities"]][["extraction_key"]][[1L]][["type"]], "R2_share")) {
+  # not an inclusion event: only region hypotheses test it; the atom at zero
+  # of a gated coefficient or of a budget total is the exclusion of its term
+  # (the null of its budget), whose evidence is its inclusion Bayes factor
+  # (the conditional route has no exact ordinate at zero)
+  R2_type <- if (R2) selected[["entry"]][["selection"]][["quantities"]][["extraction_key"]][[1L]][["type"]]
+  if (R2 && identical(R2_type, "R2_share")) {
     point_mass_advice <- "Use a region or directional hypothesis."
+  } else if (R2) {
+    point_mass_advice <- paste0(
+      "The point mass at zero is the exclusion of the term (or the null of the budget): its evidence is the ",
+      "inclusion Bayes factor of runjags_inference_table(), which a region hypothesis excluding zero ",
+      "(e.g., 'R2{total} > 0' for a budget named R2) also gives for a budget total."
+    )
   }
   point_mass_reason <- paste0(
     "Point-null Bayes factors at %s are unavailable for ", noun,
@@ -566,12 +576,33 @@
       prior_ordinate_status(prior_density, value, labels = label_value)[["condition"]],
       "BayesTools_point_mass_at_null"
     )
+    # a bounded R-squared quantity (a share, a total, an inclusion rate) at a
+    # bound that is no atom: the posterior density of the draws has no exact
+    # ordinate on the boundary of the support
+    support <- plan[["support"]]
+    R2_boundary <- R2 && length(support) == 2L &&
+      (value <= support[[1L]] || value >= support[[2L]]) && !identical(
+        prior_ordinate_status(prior_density, value, labels = label_value)[["condition"]],
+        "BayesTools_point_mass_at_null"
+      )
     target <- .hypothesis_model_plan_target(
       value         = value,
       label         = label_value,
       prior_density = prior_density,
       atoms         = posterior_metadata(samples[[parameter]], "atoms"),
-      refusal       = if (!is.null(zero_boundary) && value == 0 && !point_mass) {
+      refusal       = if (R2_boundary) {
+        c(
+          .hypothesis_model_refusal(
+            paste0(
+              "Point-null Bayes factors are unavailable for ", noun, " '", label, "' at ",
+              format(value, digits = 15L, trim = TRUE), " because the value is a bound of its support, ",
+              "where the posterior density of the draws has no exact ordinate. Use a region or directional hypothesis."
+            ),
+            "target"
+          ),
+          list(value_specific = TRUE)
+        )
+      } else if (!is.null(zero_boundary) && value == 0 && !point_mass) {
         c(
           .hypothesis_model_refusal(
             paste0(

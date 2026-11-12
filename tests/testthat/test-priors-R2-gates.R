@@ -185,7 +185,12 @@ test_that("gated budgets fit with inclusion summaries, catalog quantities and re
   expect_identical(inclusion$quantities$support[[1L]]$points, c(0, 1))
   expect_equal(as.numeric(as.matrix(parameter_draws(fit, inclusion))), unname(open[, 1]))
 
-  expect_error(hypothesis_BF_model(fit, "R2{total} = 0"), class = "BayesTools_point_mass_at_null")
+  # the atom of the total is the budget null: its evidence is the inclusion
+  # Bayes factor (the region excluding zero gives it as well)
+  expect_error(hypothesis_BF_model(fit, "R2{total} = 0"), "inclusion Bayes factor of runjags_inference_table()",
+    fixed = TRUE, class = "BayesTools_point_mass_at_null")
+  # a bound of a share that is no atom has no exact posterior ordinate
+  expect_error(hypothesis_BF_model(fit, "R2[share: x] = 0"), "is a bound of its support", fixed = TRUE)
   # the atom of a share at one is not an inclusion event
   expect_error(hypothesis_BF_model(fit, "R2[share: x] = 1"), "Use a region or directional hypothesis.",
     fixed = TRUE, class = "BayesTools_point_mass_at_null")
@@ -390,6 +395,205 @@ test_that("draws of gated budgets are extracted beyond the analytic limits and f
     chains = 1, adapt = 100, burnin = 100, sample = 200, seed = 9, silent = TRUE)
   mixed <- as_mixed_posteriors(fit, parameters = c("mu_v1", "mu_R2"))
   expect_length(mixed$mu_v1, 200)
-  expect_null(.bt_meta_get(mixed$mu_v1, "prior_density"))
+  expect_equal(.bt_meta_get(mixed$mu_v1, "prior_density")$points$p, 0.5)
   expect_true(inherits(runjags_inference_table(fit), "BayesTools_table"))
+})
+
+test_that("the prior laws of gated budgets aggregate the configurations exactly", {
+
+  # reference: every configuration of the gates with its Beta total and the
+  # functional of the term in that model
+  reference <- function(core, term, q_total, q_term, prior){
+    K <- core$gates$K
+    grid <- as.matrix(expand.grid(rep(list(c(FALSE, TRUE)), K)))
+    p_gate <- .bt_R2_gate_configuration_probability(core$gates, grid)
+    on <- if(is.null(core$gates$spike)) 1 else core$gates$spike$p
+    ungated <- core$terms[core$term_gate == 0L]
+    total <- (1 - on) * (q_total >= 0)
+    coefficient <- (1 - on) * (q_term >= 0)
+    for(i in seq_len(nrow(grid))){
+      open <- c(ungated, core$gates$gated[grid[i, ]])
+      prob <- on * p_gate[[i]]
+      if(length(open) == 0L){
+        total <- total + prob * (q_total >= 0)
+        coefficient <- coefficient + prob * (q_term >= 0)
+        next
+      }
+      units <- core$unit_term %in% open
+      alpha <- core$unit_alpha
+      if(identical(core$concentration, "fixed_total")) alpha[units] <- alpha[units] * core$fixed_total / sum(alpha[units])
+      A <- sum(alpha[units])
+      A_ref <- if(identical(core$concentration, "fixed_total")) core$fixed_total else core$A_reference
+      shapes <- switch(core$convention, common = c(core$a, core$b), linked = c(A, core$b),
+                       conditioning = c(core$a - (A_ref - A), core$b + (A_ref - A)))
+      total <- total + prob * stats::pbeta(q_total, shapes[1], shapes[2])
+      if(term %in% open){
+        model <- prior
+        model$core <- NULL
+        model$shapes <- list(a = shapes[1], b = shapes[2], alpha = alpha, A = A)
+        model$n_units <- sum(units)
+        coefficient <- coefficient + prob * .bt_R2_functional_cdf(.bt_R2_term_functional(model, 1), q_term)
+      }else{
+        coefficient <- coefficient + prob * (q_term >= 0)
+      }
+    }
+    list(total = total, coefficient = coefficient)
+  }
+  q_total <- c(0, 0.2, 0.7)
+  q_term <- c(-0.5, 0, 0.8)
+  designs <- list(
+    list(inclusion = prior("beta", list(2, 3)), total = .R2_spike(0.6), convention = "common", concentration = "inherited"),
+    list(inclusion = list(x = prior("spike", list(0.3)), f = prior("spike", list(0.6))), total = .R2_spike(0.7),
+         convention = "conditioning", concentration = "inherited"),
+    list(inclusion = prior("spike", list(0.4)), total = prior("beta", list(3.5, 2)), convention = "linked", concentration = "fixed_total")
+  )
+  for(design in designs){
+    budget <- .R2_gate_budget(inclusion = design$inclusion, convention = design$convention,
+      concentration = design$concentration, total = if(identical(design$convention, "conditioning")) .R2_spike(0.7, prior("beta", list(4, 2))) else design$total)
+    priors <- .R2_gate_bind(budget)
+    expected <- reference(priors$mu_R2, "x", q_total, q_term, priors$mu_x)
+    expect_equal(mcdf(priors$mu_R2, q_total), expected$total, tolerance = 1e-12)
+    expect_equal(mcdf(priors$mu_x, q_term), expected$coefficient, tolerance = 1e-10)
+  }
+
+  # 30 gated terms with equal concentrations: 30 open states (one per number
+  # of open gates), and the laws are available
+  set.seed(1)
+  wide <- as.data.frame(matrix(stats::rnorm(40 * 30), 40, 30, dimnames = list(NULL, paste0("v", 1:30))))
+  expect_error(prior_R2(terms = names(wide), total = .R2_spike(0.5, prior("beta", list(1, 1))), law = "exact",
+    convention = "linked", concentration = "inherited", sigma = 1, inclusion = prior("beta", list(1, 1))),
+    "must equal the total concentration of the full model, 30", fixed = TRUE)
+  many <- prior_R2(terms = names(wide), total = .R2_spike(0.5, prior("beta", list(30, 1))), law = "exact",
+    convention = "linked", concentration = "inherited", sigma = 1, inclusion = prior("beta", list(1, 1)))
+  priors <- JAGS_formula(stats::reformulate(names(wide)), "mu", wide, list(intercept = prior("normal", list(0, 1)), R2 = many))$prior_list
+  states <- .bt_R2_core_states(priors$mu_R2)
+  expect_length(states$prob, 30L)
+  expect_equal(sum(states$prob), 0.5)
+  # linked: given s open terms the total is Beta(s, 1), and s is uniform on
+  # 1..30 under the truncated beta-binomial law
+  expect_equal(mean(priors$mu_R2), 0.5 * mean((1:30) / (1:30 + 1)), tolerance = 1e-12)
+  expect_true(is.finite(mcdf(priors$mu_v1, 0.1)))
+
+  # many distinct concentrations: the number of states is limited
+  set.seed(2)
+  distinct <- prior_R2(terms = names(wide)[1:17], total = prior("beta", list(1, 1)),
+    allocation = prior("dirichlet", list(alpha = sqrt(c(2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59)))),
+    law = "exact", convention = "common", concentration = "inherited", sigma = 1, inclusion = prior("spike", list(0.5)))
+  priors <- JAGS_formula(stats::reformulate(names(wide)[1:17]), "mu", wide, list(intercept = prior("normal", list(0, 1)), R2 = distinct))$prior_list
+  expect_error(mcdf(priors$mu_R2, 0.5), "distinct states", class = "BayesTools_R2_density_unavailable")
+})
+
+test_that("factor levels, named allocations and the last truncated gate", {
+
+  # ungated factor levels: the catalog law of a level is its R2 law
+  set.seed(3)
+  data <- .R2_gate_data()
+  priors <- JAGS_formula(~ x + f, "mu", data, list(intercept = prior("normal", list(0, 1)),
+    R2 = prior_R2(terms = c("x", "f"), total = prior("beta", list(1, 2)), law = "exact", convention = "common",
+      concentration = "inherited", sigma = 1, contrast = "orthonormal")))$prior_list
+  key <- list(type = "factor_level", dependencies = c("mu_f[1]", "mu_f[2]"), weights = contr.orthonormal(3)[2, ])
+  law <- .bt_R2_quantity_law(structure(list(), prior_list = priors), key)
+  expect_equal(mcdf(law, c(-0.3, 0.4)), mcdf(priors$mu_f, c(-0.3, 0.4)), tolerance = 1e-10)
+  expect_equal(var(law), var(priors$mu_f), tolerance = 1e-10)
+
+  # named concentrations follow the terms
+  named <- prior_R2(terms = c("x", "f"), total = prior("beta", list(1, 2)),
+    allocation = prior("dirichlet", list(alpha = c(f = 5, x = 1))), law = "exact", convention = "common",
+    concentration = "inherited", sigma = 1, contrast = "orthonormal")
+  expect_equal(named$alpha, c(x = 1, f = 5))
+  expect_error(prior_R2(terms = c("x", "f"), total = prior("beta", list(1, 2)),
+    allocation = prior("dirichlet", list(alpha = c(f = 5, z = 1))), law = "exact", convention = "common",
+    concentration = "inherited", sigma = 1), "must be the terms, each once", fixed = TRUE)
+
+  # given every earlier gate closed, the last gate opens with probability one
+  gates <- .R2_gate_bind(.R2_gate_budget(inclusion = prior("beta", list(2, 3)), total = .R2_spike(0.5)))$mu_R2$gates
+  expect_identical(gates$p_trunc[[3L]], 1)
+})
+
+test_that("gated laws keep distinct states, conditioned slabs and dependent members apart", {
+
+  set.seed(5)
+  data <- data.frame(x = stats::rnorm(30), z = stats::rnorm(30), w = stats::rnorm(30))
+  bind <- function(budget, formula = ~ x + z){
+    JAGS_formula(formula, "mu", data, list(intercept = prior("normal", list(0, 1)), R2 = budget))$prior_list
+  }
+
+  # close raw concentrations with different shapes are different states
+  close <- prior_R2(terms = c("x", "z"), total = prior("beta", list(1e14 + 2, 2)),
+    allocation = prior("dirichlet", list(alpha = c(1e14, 1e14 + 1))), law = "exact", convention = "conditioning",
+    concentration = "inherited", sigma = 1, inclusion = prior("spike", list(0.5)))
+  q <- 1e-14
+  expected <- 0.25 + 0.25 * (stats::pbeta(q, 1, 1e14 + 3) + stats::pbeta(q, 2, 1e14 + 2) + stats::pbeta(q, 1e14 + 2, 2))
+  expect_equal(mcdf(bind(close)$mu_R2, q), expected, tolerance = 1e-10)
+
+  # a core conditioned on a pattern: given x and z open (flat allocation,
+  # common Beta(2, 4) total) x has the variance E[W] / 2 * scale^2 of the
+  # model x + z, half of that given z closed, and its draws follow the pattern
+  plain <- prior_R2(terms = c("x", "z"), total = prior("beta", list(2, 4)), law = "exact", convention = "common",
+    concentration = "inherited", sigma = 1, inclusion = prior("spike", list(0.5)))
+  conditioned <- function(prior, flags){
+    prior$core <- .bt_R2_condition_core(prior$core, flags)
+    prior
+  }
+  both <- conditioned(bind(plain)$mu_x, c(x = TRUE, z = TRUE))
+  draws <- rng(both, 40000)
+  expect_true(all(draws != 0))
+  expect_equal(stats::var(draws), var(both), tolerance = 0.05)
+  alone <- conditioned(bind(plain)$mu_x, c(x = TRUE, z = FALSE))
+  expect_equal(var(alone), 2 * var(both), tolerance = 1e-8)
+  # given z closed, the conditioning total of x alone is Beta(1, 1.25): mean 0
+  small <- prior_R2(terms = c("x", "z"), total = prior("beta", list(2, 0.25)), law = "exact", convention = "conditioning",
+    concentration = "inherited", sigma = 1, inclusion = prior("spike", list(0.5)))
+  expect_identical(mean(bind(small)$mu_x), NaN)
+  expect_identical(mean(conditioned(bind(small)$mu_x, c(z = FALSE))), 0)
+
+  # the joint prior draws of a conditioned prior list follow the pattern
+  priors <- bind(plain)
+  options <- .condition_event_model_options(priors, .condition_event(priors, c("mu_x", "mu_z"), "AND"))
+  expect_equal(options$event_probability, 0.25)
+  samples <- .generate_prior_sample_matrix(options$prior_lists[[1L]], 2000, column_names = c("mu_x", "mu_z", "mu_R2"), seed = 1)
+  expect_true(all(samples[, "mu_x"] != 0 & samples[, "mu_z"] != 0 & samples[, "mu_R2"] > 0))
+
+  # a closed factor keeps its coded coefficients and a closed budget samples
+  # no total, in the joint draws of the options of an event
+  ff <- data.frame(f = factor(rep(c("a", "b", "c"), each = 10)), x = stats::rnorm(30))
+  gated_f <- prior_R2(terms = c("x", "f"), total = prior("beta", list(2, 4)), law = "exact", convention = "common",
+    concentration = "inherited", sigma = 1, contrast = "orthonormal",
+    inclusion = list(x = prior("spike", list(0.5)), f = prior("spike", list(0.5))))
+  priors_f <- JAGS_formula(~ x + f, "mu", ff, list(intercept = prior("normal", list(0, 1)), R2 = gated_f))$prior_list
+  either <- .condition_event_model_options(priors_f, .condition_event(priors_f, c("mu_x", "mu_f"), "OR"))
+  for(option in either$prior_lists){
+    sampled <- .generate_prior_sample_matrix(option, 100, column_names = c("mu_x", "mu_f[1]", "mu_f[2]", "mu_R2"), seed = 1)
+    expect_false(anyNA(sampled))
+  }
+  single <- prior_R2(terms = "x", total = prior("beta", list(2, 4)), law = "exact", convention = "common",
+    concentration = "inherited", sigma = 1, inclusion = list(x = prior("spike", list(0.5))))
+  priors_x <- JAGS_formula(~ x, "mu", ff, list(intercept = prior("normal", list(0, 1)), R2 = single))$prior_list
+  priors_x$theta <- prior_spike_and_slab(prior("normal", list(0, 1)), prior_inclusion = prior("spike", list(0.5)))
+  closed <- .condition_event_model_options(priors_x, .condition_event(priors_x, c("mu_x", "theta"), "OR"))$prior_lists[[1L]]
+  expect_true(all(.generate_prior_sample_matrix(closed, 100, column_names = c("mu_x", "mu_R2", "theta"), seed = 1)[, "mu_R2"] == 0))
+
+  # the shape of the inclusion rate keeps a tiny second shape
+  tiny <- prior_R2(terms = c("x", "z"), total = prior("beta", list(2, 4)), law = "exact", convention = "common",
+    concentration = "inherited", sigma = 1, inclusion = prior("beta", list(0.1, 1e-6)))
+  expect_match(.bt_R2_core_syntax(bind(tiny)$mu_R2), "1e-06 + (2 - sum(mu_R2_gate[1:2])))", fixed = TRUE)
+
+  # event probabilities need no concentrations (18 distinct concentrations
+  # exceed the states of the laws, not those of the gates)
+  wide <- as.data.frame(matrix(stats::rnorm(30 * 18), 30, 18, dimnames = list(NULL, paste0("v", 1:18))))
+  distinct <- prior_R2(terms = names(wide), total = prior("beta", list(1, 1)),
+    allocation = prior("dirichlet", list(alpha = 2^(0:17))), law = "exact", convention = "common",
+    concentration = "inherited", sigma = 1, inclusion = prior("spike", list(0.5)))
+  many <- JAGS_formula(stats::reformulate(names(wide)), "mu", wide, list(intercept = prior("normal", list(0, 1)), R2 = distinct))$prior_list
+  expect_equal(.condition_event_model_options(many, .condition_event(many, "mu_v1", "AND"))$event_probability, 0.5)
+
+  # given z open, the other members of a shared-rate budget are dependent:
+  # combinations of them have no product law
+  shared <- prior_R2(terms = c("x", "z", "w"), total = prior("beta", list(2, 2)), law = "exact", convention = "common",
+    concentration = "inherited", sigma = 1, inclusion = prior("beta", list(1, 1)))
+  priors <- bind(shared, ~ x + z + w)
+  context <- .prior_density_build_context(priors[c("mu_x", "mu_z", "mu_w", "mu_R2")], c("mu_x", "mu_z", "mu_w"),
+    conditional = "mu_z")
+  expect_error(.prior_density_from_context(context, c(mu_x = 1, mu_z = 0, mu_w = 1)),
+    class = "BayesTools_formula_measure_unavailable")
 })
