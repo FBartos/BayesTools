@@ -1390,18 +1390,19 @@ is.prior.R2_budget <- function(x){
        weights = unname(betas$weights))
 }
 
-# The root x of sum(w * pbeta(x, a, b)) = mass, at or below the median of the
-# normalized mixture: bracketed by the component quantiles at the level of the
-# mass and solved on the logit scale (relative precision near zero), with
-# the bracket widened through the subnormal range when a component quantile
-# underflows; unavailable below the double range.
+# The root x in (0, 1/2] of sum(w * pbeta(x, a, b)) = mass (the caller
+# checks that the mixture reaches the mass by 1/2): bracketed by the
+# component quantiles at the level of the mass, capped at 1/2, and solved on
+# the logit scale (relative precision near zero), with the bracket widened
+# through the subnormal range when a component quantile underflows;
+# unavailable below the double range.
 .bt_R2_beta_mixture_lower_root <- function(a, b, w, mass){
 
   # (the inverse logit as exp(u) / (1 + exp(u)) below zero keeps subnormal
   # values that 1 / (1 + exp(-u)) underflows)
   inverse <- function(u) if(u < 0) exp(u) / (1 + exp(u)) else 1 - exp(-u) / (1 + exp(-u))
   f <- function(u) sum(w * stats::pbeta(inverse(u), a, b)) - mass
-  ends <- stats::qlogis(range(stats::qbeta(min(max(mass / sum(w), 0), 1), a, b)))
+  ends <- pmin(stats::qlogis(range(stats::qbeta(min(max(mass / sum(w), 0), 1), a, b))), 0)
   lowest <- log(.Machine$double.xmin) - 52 * log(2)
   if(!is.finite(ends[[1L]])){
     ends[[1L]] <- stats::qlogis(.Machine$double.xmin)
@@ -1410,9 +1411,6 @@ is.prior.R2_budget <- function(x){
       .bt_R2_unavailable("The quantile of the gated R-squared budget total is beyond the double range.",
         class = "BayesTools_R2_density_unavailable")
     }
-  }
-  if(!is.finite(ends[[2L]])){
-    ends[[2L]] <- 0
   }
   f_ends <- c(f(ends[[1L]]), f(ends[[2L]]))
   if(f_ends[[1L]] >= 0) return(inverse(ends[[1L]]))
@@ -1463,10 +1461,10 @@ is.prior.R2_budget <- function(x){
       if(length(w) == 1L || max(ends) <= min(ends)){
         return(ends[[1L]])
       }
-      # above the median of the continuous part the complement 1 - r is
-      # solved (its shapes swapped, its mass 1 - p), so that a quantile next
-      # to one rounds to its nearest double
-      if(level > 1 / 2){
+      # a root above one half is solved as the complement 1 - r (shapes
+      # swapped, mass 1 - p), so that a quantile next to one rounds to its
+      # nearest double; either root then lies in (0, 1/2]
+      if(sum(w * stats::pbeta(1 / 2, a, b)) < p - components$atom){
         return(1 - .bt_R2_beta_mixture_lower_root(b, a, w, 1 - p))
       }
       .bt_R2_beta_mixture_lower_root(a, b, w, p - components$atom)
