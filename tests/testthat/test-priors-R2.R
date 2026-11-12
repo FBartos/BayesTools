@@ -426,3 +426,13 @@ test_that("a budget without terms takes the formula's terms, equivalently to exp
   expect_error(bind(list(R2 = prior_R2(model = R2_model(convention = "linked")))),
     "must equal the total concentration of the full model, 3 for this budget 'R2'", fixed = TRUE)
 })
+
+test_that("one-term budgets keep small rescaled concentrations and print their rules", {
+
+  data <- .R2_test_data()
+  tiny <- prior_R2("f", allocation = R2_dirichlet(0.01), model = R2_model(law = "normal", concentration = "fixed_total", sigma = 1))
+  priors <- JAGS_formula(~ f, "mu", data, list(intercept = prior("normal", list(0, 1)), R2 = tiny))$prior_list
+  expect_equal(unname(priors$mu_R2_allocation$parameters$alpha), c(0.005, 0.005))
+  expect_output(print(tiny), "concentration 0.01 of the single term (shared by its coded coefficients", fixed = TRUE)
+  expect_output(print(prior_R2(inclusion = list(x = prior("spike", list(0.1))))), "x: 0.1 (terms matched", fixed = TRUE)
+})

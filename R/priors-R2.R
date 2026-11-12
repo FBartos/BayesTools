@@ -781,7 +781,11 @@ print.BayesTools_R2_budget <- function(x, ...){
     }
     cat("  inclusion:  ", gates, "\n", sep = "")
   }else if(is.list(x$inclusion_spec) && !is.prior(x$inclusion_spec)){
-    cat("  inclusion:  ", paste0(names(x$inclusion_spec), collapse = ", "), " gated (resolved when the formula binds the budget)\n", sep = "")
+    laws <- lapply(seq_along(x$inclusion_spec), function(i){
+      .bt_R2_probability_law(x$inclusion_spec[[i]], "'inclusion'")
+    })
+    cat("  inclusion:  ", paste0(names(x$inclusion_spec), ": ", vapply(laws, law_text, character(1)), collapse = ", "),
+        " (terms matched when the formula binds the budget)\n", sep = "")
   }else if(is.prior(x$inclusion_spec)){
     law <- .bt_R2_probability_law(x$inclusion_spec, "'inclusion'")
     cat("  inclusion:  every term with ", if(identical(law$type, "spike")) paste0("probability ", format(law$p)) else
@@ -791,7 +795,10 @@ print.BayesTools_R2_budget <- function(x, ...){
     cat("  allocation: ", allocation, ", ", allocation_rule, "\n", sep = "")
   }else{
     cat("  allocation: concentration ", format(x$alpha), " of the single term",
-        if(!identical(x$law, "exact")) " (each coded coefficient under the kernel laws)", "\n", sep = "")
+        if(!identical(x$law, "exact")){
+          if(identical(x$concentration, "fixed_total")) " (shared by its coded coefficients under the kernel laws)" else
+            " (of each coded coefficient under the kernel laws)"
+        }, "\n", sep = "")
   }
   cat("  scale:      ", scale, "\n", sep = "")
   cat("  contrast:   ", x$contrast, " (factor terms only)\n", sep = "")
@@ -1172,7 +1179,7 @@ is.R2_budget <- function(x){
       attr(total_prior, "R2_budget") <- list(name = budget$name, role = "total", law = budget$law)
       prior_list[[budget$name]] <- total_prior
       if(n_units > 1L){
-        allocation_prior <- prior("dirichlet", list(alpha = shapes$alpha))
+        allocation_prior <- .bt_R2_dirichlet_prior(shapes$alpha)
         attr(allocation_prior, "R2_budget") <- list(name = budget$name, role = "allocation", law = budget$law,
           units = .bt_R2_unit_labels(unit_term, maps))
         prior_list[[paste0(budget$name, "_allocation")]] <- allocation_prior
@@ -1226,8 +1233,19 @@ is.R2_budget <- function(x){
   out <- list()
   out[[prior$total_name]] <- prior("beta", list(alpha = prior$shapes$a, beta = prior$shapes$b))
   if(prior$n_units > 1L){
-    out[[prior$allocation_name]] <- prior("dirichlet", list(alpha = prior$shapes$alpha))
+    out[[prior$allocation_name]] <- .bt_R2_dirichlet_prior(prior$shapes$alpha)
   }
+  out
+}
+
+# The Dirichlet prior of the concentrations of the units of a model: the
+# declared concentrations of R2_dirichlet() are at least 0.01, but the
+# rescaling of fixed_total and the kernel units can give smaller (positive)
+# concentrations, which the bound allocation keeps.
+.bt_R2_dirichlet_prior <- function(alpha){
+
+  out <- prior("dirichlet", list(alpha = pmax(alpha, 0.01)))
+  out$parameters$alpha <- alpha
   out
 }
 
