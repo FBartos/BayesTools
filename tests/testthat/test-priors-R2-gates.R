@@ -250,7 +250,8 @@ test_that("gated budgets are exact at the edges of their laws", {
   draws <- .bt_R2_core_draws(core, 40000)
   on <- draws[, "mu_R2"] > 0
   expect_gt(stats::ks.test(draws[on, "mu_R2"], stats::pbeta, 2, 2)$p.value, 1e-3)
-  expect_match(.bt_R2_core_syntax(core), "prior_par_eta_mu_R2_allocation[1] ~ dgamma(ifelse(mu_R2_indicator * mu_R2_gate[1] > 0, 2 / (", fixed = TRUE)
+  # (one gate and one unit are scalar nodes)
+  expect_match(.bt_R2_core_syntax(core), "prior_par_eta_mu_R2_allocation ~ dgamma(ifelse(mu_R2_indicator * mu_R2_gate > 0, 2 / (", fixed = TRUE)
 
   # tiny inclusion probabilities keep the truncated law (no cancellation)
   tiny <- .bt_R2_gate_truncated_probabilities(list(type = "fixed", pi = c(1e-20, 1e-20)), 2L)
@@ -762,4 +763,31 @@ test_that("mixed posteriors keep the atoms of gated coefficients, budget inclusi
   expect_true(all(atoms$locations == 0))
   expect_equal(sum(atoms$mass), 0.5 + 0.5 * mean(mixed$mu_x[model == 1] == 0))
   expect_true(abs(mean(mixed$mu_x[model == 1] == 0) - closed_x) < 0.05)
+})
+
+test_that("a budget with one gated term names its gate and allocation coordinates as scalars", {
+
+  skip_if_not_installed("rjags")
+  skip_if_not_installed("runjags")
+  set.seed(13)
+  data <- data.frame(x = stats::rnorm(40), z = stats::rnorm(40))
+  data$y <- 0.4 * data$x + stats::rnorm(40)
+  # (JAGS names a vector of length one by its scalar name)
+  budget <- prior_R2(inclusion = list(z = prior("spike", list(0.5))), model = R2_model(sigma = 1))
+  priors <- JAGS_formula(~ x + z, "mu", data, list(intercept = prior("normal", list(0, 5)), R2 = budget))$prior_list
+  expect_identical(priors$mu_z$gating$gate_names, "mu_R2_gate")
+  expect_match(.bt_R2_core_syntax(priors$mu_R2), "mu_R2_gate ~ dbern(0.5)", fixed = TRUE)
+  fit <- JAGS_fit(
+    model_syntax = "model{ for(i in 1:N){ y[i] ~ dnorm(mu[i], 1 / pow(sigma, 2)) } }",
+    data = list(y = data$y, N = nrow(data)), prior_list = list(sigma = prior("invgamma", list(1, 1))),
+    formula_list = list(mu = ~ x + z), formula_data_list = list(mu = data),
+    formula_prior_list = list(mu = list(intercept = prior("normal", list(0, 5)), R2 = budget)),
+    chains = 1, adapt = 200, burnin = 200, sample = 1000, seed = 13, silent = TRUE)
+  post <- as.matrix(.fit_to_posterior(fit))
+  expect_true(all(c("mu_R2_gate", "mu_R2_open") %in% colnames(post)))
+  table <- runjags_estimates_table(fit)
+  expect_equal(table["(mu) z (inclusion)", "Mean"], mean(post[, "mu_R2_gate"]))
+  z <- as_mixed_posteriors(fit, "mu_z")$mu_z
+  expect_equal(.posterior_atoms_get(z)$mass, mean(post[, "mu_z"] == 0))
+  expect_s3_class(hypothesis_BF_model(fit, "R2[share: x] > 0.5"), "data.frame")
 })

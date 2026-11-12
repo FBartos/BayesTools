@@ -267,11 +267,13 @@ is.prior.R2_budget <- function(x){
     variable   = paste0(T, "_variable"),
     indicator  = if(!is.null(core$gates$spike) || (core$gates$K > 0L && core$gates$all_gated)) paste0(T, "_indicator"),
     inclusion  = if(identical(core$gates$spike$type, "beta")) paste0(T, "_inclusion"),
-    gates      = if(core$gates$K > 0L) paste0(T, "_gate[", seq_len(core$gates$K), "]"),
-    open       = if(core$gates$K > 0L) paste0(T, "_open[", seq_len(core$gates$K), "]"),
+    # (JAGS names a vector of length one by its scalar name: one gate or one
+    # unit is a scalar node)
+    gates      = if(core$gates$K > 0L) .bt_dnode_prior_vector_names(paste0(T, "_gate"), core$gates$K),
+    open       = if(core$gates$K > 0L) .bt_dnode_prior_vector_names(paste0(T, "_open"), core$gates$K),
     allocation = if(core$n_units > 1L) paste0(core$allocation_name, "[", seq_len(core$n_units), "]"),
-    eta        = paste0(.JAGS_prior_dirichlet_eta_name(if(core$n_units > 1L) core$allocation_name else paste0(T, "_allocation")),
-                        "[", seq_len(core$n_units), "]"),
+    eta        = .bt_dnode_prior_vector_names(.JAGS_prior_dirichlet_eta_name(
+      if(core$n_units > 1L) core$allocation_name else paste0(T, "_allocation")), core$n_units),
     H          = if(identical(core$convention, "linked")) paste0("prior_par_H_", T),
     rate       = if(.bt_R2_core_has_rate(core)) paste0(T, "_rate"),
     rate_u     = if(.bt_R2_core_has_rate(core)) paste0(T, "_rate_u")
@@ -307,10 +309,12 @@ is.prior.R2_budget <- function(x){
   gates <- core$gates
   num <- .JAGS_prior_number
   lines <- character()
+  # the number of open gates among the first k (a single gate is a scalar)
+  gate_sum <- function(k) if(gates$K == 1L) nodes$gates[[1L]] else paste0("sum(", core$total_name, "_gate[1:", k, "])")
 
   # the gates, each given the number of open gates before it
   for(t in seq_len(gates$K)){
-    s <- if(t == 1L) "0" else paste0("sum(", core$total_name, "_gate[1:", t - 1L, "])")
+    s <- if(t == 1L) "0" else gate_sum(t - 1L)
     lines <- c(lines, paste0(nodes$gates[[t]], " ~ dbern(", .bt_R2_gate_probability_syntax(gates, t, s), ")"))
   }
   # the budget indicator: the spike-and-slab total, or any gate open
@@ -322,12 +326,12 @@ is.prior.R2_budget <- function(x){
       lines <- c(lines, paste0(nodes$indicator, " ~ dbern(", num(gates$spike$p), ")"))
     }
   }else if(!is.null(nodes$indicator)){
-    lines <- c(lines, paste0(nodes$indicator, " <- step(sum(", core$total_name, "_gate[1:", gates$K, "]) - 0.5)"))
+    lines <- c(lines, paste0(nodes$indicator, " <- step(", gate_sum(gates$K), " - 0.5)"))
   }
 
   # the shared inclusion rate given the gates
   if(!is.null(nodes$rate)){
-    s_all <- paste0("sum(", core$total_name, "_gate[1:", gates$K, "])")
+    s_all <- gate_sum(gates$K)
     lines <- c(lines, paste0(nodes$rate_u, " ~ dunif(0, 1)"),
                paste0(nodes$rate, " <- qbeta(", nodes$rate_u, ", ", num(gates$law$a), " + ", s_all, ", ",
                       num(gates$law$b), " + (", gates$K, " - ", s_all, "))"))
