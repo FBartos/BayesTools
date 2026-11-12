@@ -208,6 +208,15 @@ test_that("gated budgets fit with inclusion summaries, catalog quantities and re
   expect_error(parameter_prior_density(fit, parameter_catalog_resolve(catalog, alias = "f[a]")),
     class = "BayesTools_R2_density_unavailable")
 
+  # predictions use the realized coefficients, zero for closed terms
+  draws <- .extract_posterior_samples(fit, as_list = FALSE)
+  f_closed <- draws[, "mu_R2_indicator"] * draws[, "mu_R2_gate[3]"] == 0
+  expect_true(any(f_closed & draws[, "mu_x"] != 0) && any(draws[, "mu_R2_indicator"] == 0))
+  newdata <- data[c(1, 11, 21), ]
+  prediction <- JAGS_predict_formula(fit, parameter = "mu", data = newdata)$mean
+  expected <- t(draws[, "mu_intercept"] + draws[, "mu_x"] %o% newdata$x + draws[, "mu_z"] %o% newdata$z)
+  expect_equal(unname(prediction[, f_closed]), unname(expected[, f_closed]), tolerance = 1e-10)
+
   expect_error(do.call(JAGS_bridgesampling, c(list(fit = fit, log_posterior = function(parameters, data) 0), args[-1])),
     class = "BayesTools_R2_gated_unavailable")
 })
