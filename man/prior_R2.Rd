@@ -106,7 +106,9 @@ and the Beta marginal of the share under the allocation. The name
 must be a valid JAGS node name that contains no \code{"intercept"}, does
 not end in a suffix of the nodes that BayesTools generates
 (\code{"_ordered"}, \code{"_indicator"}, \code{"_inclusion"},
-\code{"_variable"}, \code{"_allocation"}), and is not a term label.
+\code{"_variable"}, \code{"_allocation"}, \code{"_gate"}, \code{"_open"},
+\code{"_rate"}, \code{"_rate_u"}), and neither it nor the names of its
+nodes is a term label.
 Several budgets are several entries (for example, a
 budget for compulsory covariates and a separate budget for the tested
 terms, whose R-squared is then the incremental partial R-squared of the

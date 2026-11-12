@@ -220,8 +220,20 @@ is.prior.R2_budget <- function(x){
     allocation = if(core$n_units > 1L) paste0(core$allocation_name, "[", seq_len(core$n_units), "]"),
     eta        = paste0(.JAGS_prior_dirichlet_eta_name(if(core$n_units > 1L) core$allocation_name else paste0(T, "_allocation")),
                         "[", seq_len(core$n_units), "]"),
-    H          = if(identical(core$convention, "linked")) paste0("prior_par_H_", T)
+    H          = if(identical(core$convention, "linked")) paste0("prior_par_H_", T),
+    rate       = if(.bt_R2_core_has_rate(core)) paste0(T, "_rate"),
+    rate_u     = if(.bt_R2_core_has_rate(core)) paste0(T, "_rate_u")
   )
+}
+
+# Whether a core has a shared Beta inclusion rate theta, a node drawn given the
+# gates: theta | S ~ Beta(a + s, b + K - s), with s the number of open gates.
+# It is the quantile of an independent uniform at that Beta law, so it does not
+# feed back into the collapsed sampler of the gates (whose law integrates
+# theta out); under a spike-and-slab total the gates keep their slab law when
+# the spike is selected, and so does theta.
+.bt_R2_core_has_rate <- function(core){
+  core$gates$K > 0L && identical(core$gates$law$type, "shared")
 }
 
 # Open flag of every unit as a JAGS expression ("1" for an always open unit).
@@ -261,6 +273,13 @@ is.prior.R2_budget <- function(x){
     lines <- c(lines, paste0(nodes$indicator, " <- step(sum(", core$total_name, "_gate[1:", gates$K, "]) - 0.5)"))
   }
 
+  # the shared inclusion rate given the gates
+  if(!is.null(nodes$rate)){
+    s_all <- paste0("sum(", core$total_name, "_gate[1:", gates$K, "])")
+    lines <- c(lines, paste0(nodes$rate_u, " ~ dunif(0, 1)"),
+               paste0(nodes$rate, " <- qbeta(", nodes$rate_u, ", ", num(gates$law$a), " + ", s_all, ", ",
+                      num(gates$law$b), " + (", gates$K, " - ", s_all, "))"))
+  }
   # the open flag of every gated term (its gate times the budget indicator of
   # a spike-and-slab total): the inclusion of the term
   for(t in seq_len(gates$K)){
@@ -310,7 +329,7 @@ is.prior.R2_budget <- function(x){
 .bt_R2_core_monitor <- function(core){
 
   nodes <- .bt_R2_core_nodes(core)
-  c(nodes$total, nodes$indicator, nodes$inclusion,
+  c(nodes$total, nodes$indicator, nodes$inclusion, nodes$rate,
     if(core$gates$K > 0L) paste0(core$total_name, c("_gate", "_open")),
     if(core$n_units > 1L) core$allocation_name,
     sub("\\[.*$", "", nodes$eta[[1L]]), nodes$H,
@@ -325,6 +344,9 @@ is.prior.R2_budget <- function(x){
   init <- list()
   if(core$gates$K > 0L){
     init[[paste0(core$total_name, "_gate")]] <- rep(1, core$gates$K)
+  }
+  if(!is.null(nodes$rate_u)){
+    init[[nodes$rate_u]] <- stats::runif(1)
   }
   if(!is.null(core$gates$spike)){
     init[[nodes$indicator]] <- 1
@@ -399,6 +421,10 @@ is.prior.R2_budget <- function(x){
   for(t in seq_len(gates$K)){
     columns[[nodes$gates[[t]]]] <- g[, t]
     columns[[nodes$open[[t]]]] <- g[, t] * indicator
+  }
+  if(!is.null(nodes$rate)){
+    s <- rowSums(g)
+    columns[[nodes$rate]] <- stats::rbeta(n, gates$law$a + s, gates$law$b + (gates$K - s))
   }
   if(core$n_units > 1L){
     allocation <- open * eta / (open_eta + (open_eta == 0))
@@ -691,6 +717,36 @@ is.prior.R2_budget <- function(x){
   }
   core <- prior_list[[coordinate]]
   if(is.prior.R2_budget(core)) core
+}
+
+# The prior law of the shared inclusion rate theta of a core: its Beta(a, b)
+# hyperprior, and under the truncation of a spiked budget whose terms are all
+# gated the law of theta given a nonempty configuration,
+# Beta(theta; a, b) (1 - (1 - theta)^K) / (1 - c) with c = B(a, b + K) / B(a, b),
+# which is the mixture over the first open gate j + 1 (j = 0, ..., K - 1) of
+# Beta(a + 1, b + j) with the weights B(a + 1, b + j) / (B(a, b) (1 - c)).
+.bt_R2_core_rate_law <- function(core){
+
+  law <- core$gates$law
+  if(!core$gates$truncated){
+    return(prior("beta", list(alpha = law$a, beta = law$b)))
+  }
+  j <- seq_len(core$gates$K) - 1
+  log_w <- lbeta(law$a + 1, law$b + j) - lbeta(law$a, law$b)
+  .bt_R2_mixture(lapply(j, function(first) prior("beta", list(alpha = law$a + 1, beta = law$b + first))),
+                 exp(log_w - max(log_w)), rep(FALSE, length(j)))
+}
+
+# The gated core whose shared inclusion rate is the coordinate 'coordinate'.
+.bt_R2_rate_core <- function(prior_list, coordinate){
+
+  if(length(coordinate) != 1L){
+    return(NULL)
+  }
+  for(core in prior_list[vapply(prior_list, is.prior.R2_budget, logical(1))]){
+    if(identical(.bt_R2_core_nodes(core)$rate, coordinate)) return(core)
+  }
+  NULL
 }
 
 # The gated core whose budget indicator is the coordinate 'coordinate'.
@@ -1009,6 +1065,9 @@ is.prior.R2_budget <- function(x){
     }
     if(!is.null(.bt_R2_indicator_core(prior_list, key$dependencies))){
       return(.posterior_support_from_prior(.bt_R2_bernoulli_law(0.5), source = "catalog"))
+    }
+    if(!is.null(.bt_R2_rate_core(prior_list, key$dependencies))){
+      return(.posterior_support_from_prior(continuous, source = "catalog"))
     }
   }
   owner <- .bt_R2_gated_term_owner(prior_list, key$dependencies)

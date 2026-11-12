@@ -95,7 +95,9 @@
 #' must be a valid JAGS node name that contains no \code{"intercept"}, does
 #' not end in a suffix of the nodes that BayesTools generates
 #' (\code{"_ordered"}, \code{"_indicator"}, \code{"_inclusion"},
-#' \code{"_variable"}, \code{"_allocation"}), and is not a term label.
+#' \code{"_variable"}, \code{"_allocation"}, \code{"_gate"}, \code{"_open"},
+#' \code{"_rate"}, \code{"_rate_u"}), and neither it nor the names of its
+#' nodes is a term label.
 #' Several budgets are several entries (for example, a
 #' budget for compulsory covariates and a separate budget for the tested
 #' terms, whose R-squared is then the incremental partial R-squared of the
@@ -614,6 +616,11 @@ is.R2_budget <- function(x){
 # ---------------------------------------------------------------------------
 # Formula binding
 
+# Suffixes of the nodes generated for budgets and other priors, which a budget
+# name cannot end in.
+.bt_R2_generated_suffixes <- c("_ordered", "_indicator", "_inclusion", "_variable", "_allocation",
+                               "_gate", "_open", "_rate", "_rate_u")
+
 # The entries of a formula prior list that are R-squared budgets.
 .bt_R2_budget_entries <- function(prior_list){
 
@@ -652,8 +659,9 @@ is.R2_budget <- function(x){
       .bt_R2_stop(paste0("The name of the R-squared budget '", name, "' cannot contain 'intercept'."))
     }
     # the suffixes of the nodes that BayesTools generates for other priors
-    # (ordered totals and allocations, mixture indicators, allocations)
-    reserved <- c("_ordered", "_indicator", "_inclusion", "_variable", "_allocation")
+    # (ordered totals and allocations, mixture indicators, allocations) and
+    # for gated budgets (gates, open flags, the shared inclusion rate)
+    reserved <- .bt_R2_generated_suffixes
     if(any(endsWith(name, reserved))){
       .bt_R2_stop(paste0("The name of the R-squared budget '", name, "' cannot end in ",
         paste0("'", reserved, "'", collapse = ", "), ", which name generated nodes."))
@@ -661,6 +669,11 @@ is.R2_budget <- function(x){
     if(.bt_R2_term_key(name) %in% term_names){
       .bt_R2_stop(paste0("The R-squared budget '", name, "' is named like a formula term; ",
         "a budget is an entry of the formula prior list under a name that is not a term."))
+    }
+    generated <- paste0(name, .bt_R2_generated_suffixes)
+    if(any(.bt_R2_term_key(generated) %in% term_names)){
+      .bt_R2_stop(paste0("The nodes of the R-squared budget '", name, "' would be named like the formula term '",
+        generated[.bt_R2_term_key(generated) %in% term_names][1L], "'; rename the budget."))
     }
   }
   budgets <- entries

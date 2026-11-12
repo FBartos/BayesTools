@@ -81,14 +81,21 @@
     )
   }), names(records))
   # the budget indicator of a gated or spiked budget is the inclusion of its
-  # total
+  # total; a shared Beta rate of its gates is its inclusion rate
   for(record in records){
-    indicator <- if(!is.null(record$core)) .bt_R2_core_nodes(record$core)$indicator
-    if(!is.null(indicator)){
-      parts[[indicator]] <- .bt_label_parts(
+    nodes <- if(!is.null(record$core)) .bt_R2_core_nodes(record$core)
+    if(!is.null(nodes$indicator)){
+      parts[[nodes$indicator]] <- .bt_label_parts(
         components        = paste0(record$name, "{total} (inclusion)"),
         formula_parameter = record$parameter,
-        selector          = indicator
+        selector          = nodes$indicator
+      )
+    }
+    if(!is.null(nodes$rate)){
+      parts[[nodes$rate]] <- .bt_label_parts(
+        components        = paste0(record$name, "{inclusion rate}"),
+        formula_parameter = record$parameter,
+        selector          = nodes$rate
       )
     }
   }
