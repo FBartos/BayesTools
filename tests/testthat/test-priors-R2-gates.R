@@ -673,6 +673,12 @@ test_that("gated totals and coefficients keep their quantiles near zero and thei
   # a gated term beside an ungated term leaves the total a Beta(1e9, 2)
   priors <- bind(prior_R2(total = prior("beta", list(1e9, 2)), inclusion = list(z = prior("spike", list(0.5)))), ~ x + z)
   expect_gt(var(priors$mu_R2), 0)
+  concentrated <- bind(prior_R2(total = prior("beta", list(1e105, 1e105)),
+    inclusion = list(z = prior("spike", list(0.5)))), ~ x + z)
+  expect_equal(var(concentrated$mu_R2) / (0.25 / (2e105 + 1)), 1, tolerance = 1e-10)
+  # a continuous part of 1e-20 keeps the upper end of the total
+  tiny <- bind(prior_R2(inclusion = prior("spike", list(1e-20))))
+  expect_identical(mquant(tiny$mu_R2, 1), 1)
   expect_equal(var(priors$mu_R2) / (1e9 * 2 / ((1e9 + 2)^2 * (1e9 + 3))), 1, tolerance = 1e-8)
   # a coefficient scale of 1e20 (design values of 1e-20): Beta(1, 1) total,
   # P(X <= q) = 3/4 + (q^2 / (1 + q^2)) / 4 for q > 0 with unit sigma
@@ -794,21 +800,39 @@ test_that("formula atoms resolve the scale that multiplies gated R2 coefficients
   # the slope is s times the gated R2 coefficient, with s zero in one
   # component of its mixture: the prediction at x = 1 is the intercept 5
   # whenever the gate is closed or s is zero
-  fit <- JAGS_fit(
-    model_syntax = "model{ for(i in 1:N){ y[i] ~ dnorm(mu[i], 1) } }",
-    data = list(y = data$y, N = nrow(data)),
-    prior_list = list(s = prior_mixture(list(prior("spike", list(0)), prior("normal", list(1, 0.2), list(0, Inf))),
-                                        is_null = c(TRUE, FALSE))),
-    formula_list = list(mu = ~ x), formula_data_list = list(mu = data),
-    formula_prior_list = list(mu = list(intercept = prior("spike", list(5)),
-      R2 = prior_R2(inclusion = prior("spike", list(0.5)), model = R2_model(sigma = "s")))),
-    chains = 1, adapt = 200, burnin = 200, sample = 1000, seed = 12, silent = TRUE)
+  fit_with <- function(s_prior, scale = list()){
+    JAGS_fit(
+      model_syntax = "model{ for(i in 1:N){ y[i] ~ dnorm(mu[i], 1) } }",
+      data = list(y = data$y, N = nrow(data)), prior_list = list(s = s_prior),
+      formula_list = list(mu = ~ x), formula_data_list = list(mu = data), formula_scale_list = list(mu = scale),
+      formula_prior_list = list(mu = list(intercept = prior("spike", list(5)),
+        R2 = prior_R2(inclusion = prior("spike", list(0.5)), model = R2_model(sigma = "s")))),
+      chains = 1, adapt = 200, burnin = 200, sample = 1000, seed = 12, silent = TRUE)
+  }
+  fit <- fit_with(prior_mixture(list(prior("spike", list(0)), prior("normal", list(1, 0.2), list(0, Inf))),
+                                is_null = c(TRUE, FALSE)))
   post <- as.matrix(.fit_to_posterior(fit))
   samples <- as_mixed_posteriors(fit, c("mu_intercept", "mu_x", "s"))
   row <- marginal_posterior(samples, "mu_intercept", formula = ~ 1 + x, at = list(x = 1), prior_samples = TRUE)$intercept
   atoms <- .posterior_atoms_get(row)
   expect_equal(unname(atoms$locations[, 1]), 5)
   expect_equal(atoms$mass, mean(post[, "mu_x"] == 0 | post[, "s"] == 0))
+
+  # the fitted coefficient itself is not scaled by s: on the original scale of
+  # a scaled predictor its atom is the closed gate only
+  scaled <- fit_with(prior_mixture(list(prior("spike", list(0)), prior("normal", list(1, 0.2), list(0, Inf))),
+                                   is_null = c(TRUE, FALSE)), scale = list(x = TRUE))
+  post <- as.matrix(.fit_to_posterior(scaled))
+  slope <- as_mixed_posteriors(scaled, "mu_x", transform_scaled = TRUE)$mu_x
+  expect_equal(.posterior_atoms_get(slope)$mass, mean(post[, "mu_x"] == 0))
+
+  # a discrete multiplier (its zero state is not resolved by the plan) leaves
+  # the prediction without an atom certificate instead of declaring it
+  # atom-free
+  bernoulli <- fit_with(prior("bernoulli", list(0.5)))
+  samples <- as_mixed_posteriors(bernoulli, c("mu_intercept", "mu_x", "s"))
+  row <- marginal_posterior(samples, "mu_intercept", formula = ~ 1 + x, at = list(x = 1), prior_samples = TRUE)$intercept
+  expect_true("atoms" %in% .bt_meta_get(row, "measure_unavailable")$measure)
 })
 
 test_that("a budget with one gated term names its gate and allocation coordinates as scalars", {

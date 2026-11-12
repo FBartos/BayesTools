@@ -1421,8 +1421,9 @@ is.prior.R2_budget <- function(x){
     mquant = vapply(as.numeric(value), function(p){
       if(is.na(p)) return(NA_real_)
       if(p < 0 || p > 1) .bt_R2_stop("Quantiles need probabilities in [0, 1].")
+      # (the upper end first: a tiny continuous part can round the atom to 1)
+      if(p >= 1) return(if(length(w) > 0L && any(w > 0)) 1 else 0)
       if(p <= components$atom) return(0)
-      if(p >= 1) return(1)
       # the quantile of the Beta mixture lies between the Beta quantiles at the
       # level of its normalized continuous part (exact for one component);
       # it is solved on the logit scale, which keeps the relative precision
@@ -1448,7 +1449,7 @@ is.prior.R2_budget <- function(x){
       # totals)
       mu <- a / (a + b)
       m <- sum(w * mu)
-      sum(w * (a * b / ((a + b)^2 * (a + b + 1)) + (mu - m)^2)) + components$atom * m^2
+      sum(w * (mu * (b / (a + b)) / (a + b + 1) + (mu - m)^2)) + components$atom * m^2
     },
     .bt_R2_unavailable(paste0("The '", method, "' method is unavailable for the total of a gated R-squared budget."))
   )

@@ -1927,10 +1927,13 @@ JAGS_formula_prior_density <- function(
     R2_columns <- unlist(R2_all_columns, use.names = FALSE)
     R2_gated_columns <- R2_owner_columns(record$gate_plan$R2_gated)
     # the residual scale that multiplies the coefficients of an R2 term (its
-    # 'multiply_by'): "nonzero" (a number or a parameter with no point mass at
-    # zero), "zero" (a point at zero) or "unknown" (a mixture whose components
-    # the plan does not resolve)
+    # 'multiply_by') in a formula contribution: "nonzero" (a number or a
+    # parameter with a continuous prior, no point mass at zero), "zero" (a
+    # point at zero) or "unknown" (a discrete prior or a mixture whose
+    # components the plan does not resolve); a coefficient recipe reads the
+    # fitted coefficients themselves, which the multiplier does not scale
     R2_multiplier_state <- function(owner, priors){
+      if(!identical(recipe_type, "contribution_affine")) return("nonzero")
       multiplier <- attr(record$prior_list[[owner]], "multiply_by", exact = TRUE)
       if(is.null(multiplier)) return("nonzero")
       if(is.numeric(multiplier)) return(if(all(multiplier != 0)) "nonzero" else "zero")
@@ -1938,7 +1941,7 @@ JAGS_formula_prior_density <- function(
       if(is.null(prior) || is.prior.mixture(prior) || is.prior.spike_and_slab(prior)) return("unknown")
       location <- .posterior_atoms_point_location(prior, 1L)
       if(!is.null(location)) return(if(all(location != 0)) "nonzero" else "zero")
-      if(is.prior.simple(prior)) "nonzero" else "unknown"
+      if(is.prior.simple(prior) && !is.prior.discrete(prior)) "nonzero" else "unknown"
     }
     R2_gated_rows <- vapply(seq_len(nrow(weights)), function(row){
       any(weights[row, unlist(R2_gated_columns, use.names = FALSE)] != 0)

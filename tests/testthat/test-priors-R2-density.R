@@ -600,6 +600,11 @@ test_that("extreme shapes keep the exact tail, the series range and concentrated
   # very unequal shapes: a = 1, b = 1e20 gives log((b / (a + b))^b / (a + b)) - lbeta(1, b) = -1 + log(b) - ...
   expect_equal(.bt_R2_density_log_betaprime_mode(1, 1e20), -log1p(1e20) - 1e20 * log1p(1e-20) + log(1e20),
     tolerance = 1e-12)
+  # (a ratio of shapes beyond the double range: log(a / (4 pi)) / 2 - ... with
+  # a = 1/2, b -> Inf: 0.5 log(0.5) - 0.5 - 0.5 log(pi))
+  expect_equal(.bt_R2_density_log_betaprime_mode(0.5, 1e308), 0.5 * log(0.5) - 0.5 - 0.5 * log(pi), tolerance = 1e-10)
+  spec <- .bt_R2_functional_spec("normal", a = 0.5, b = 1e308, scale = 1)
+  expect_equal(.bt_R2_functional_cdf(spec, 1e-154, lower.tail = FALSE), 0.0622676800748362, tolerance = 1e-6)
   # (reference by high-precision integration of the normal kernel law)
   spec <- .bt_R2_functional_spec("normal", a = 1, b = 1e20, scale = 1)
   expect_equal(.bt_R2_functional_cdf(spec, 1e-11, lower.tail = FALSE), 0.434061722697292438, tolerance = 1e-8)

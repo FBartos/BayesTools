@@ -235,6 +235,11 @@
   hi     <- nodes[-1L]
   probes <- Map(.bt_R2_density_probes, lo, hi)
   values <- split(log_f(unlist(probes)), rep(seq_along(probes), lengths(probes)))
+  if(anyNA(unlist(values)) || any(unlist(values) == Inf)){
+    .bt_R2_density_stop_unavailable(paste0(
+      "The R-squared functional density was rejected by diagnostics: the integrand over the ", level,
+      " is not finite. Use less extreme shapes or evaluate the distribution by simulation."))
+  }
   log_ref <- vapply(values, max, numeric(1))
   if(!is.finite(max(log_ref))){
     return(-Inf)
@@ -441,8 +446,13 @@
 .bt_R2_density_log_betaprime_mode <- function(a, b){
 
   if(min(a, b) <= 10){
-    # (log1p forms keep a small share of very unequal shapes)
-    return(-a * log1p(b / a) - b * log1p(a / b) - lbeta(a, b))
+    # (log1p forms keep a small share of very unequal shapes; log(1 + x / y)
+    # of a ratio beyond the double range is log(x) - log(y))
+    log1p_ratio <- function(x, y){
+      ratio <- x / y
+      if(is.finite(ratio) && ratio < 1e300) log1p(ratio) else log(x) - log(y) + log1p(y / x)
+    }
+    return(-a * log1p_ratio(b, a) - b * log1p_ratio(a, b) - lbeta(a, b))
   }
   stirling <- function(x) 1 / (12 * x) - 1 / (360 * x^3) + 1 / (1260 * x^5)
   (log(a) + log(b) - log(a + b) - log(2 * pi)) / 2 - stirling(a) - stirling(b) + stirling(a + b)
