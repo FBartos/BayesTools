@@ -174,7 +174,13 @@ Beta(a, b) (\code{"common"}), Beta(\eqn{A_S}, b) (\code{"linked"}, sampled
 as term signals \eqn{g_t G_t / H} with \eqn{G_t} Gamma(\eqn{\alpha_t}) and
 \eqn{H} Gamma(b)) or Beta(\eqn{a - (A - A_S)}, \eqn{b + (A - A_S)})
 (\code{"conditioning"}), and \code{"fixed_total"} rescales the
-concentrations of the open units. With gates only, the empty configuration
+concentrations of the open units. The model \eqn{S} is the formula of the
+fit with the closed terms excluded, as a point prior at zero excludes them:
+the coded columns of the open terms do not change. A closed main effect
+therefore leaves its interactions coded as in the full formula (in
+\code{~ f * x} with \code{x} closed, \code{f:x} keeps its coded columns of
+the full formula, not the slopes in every level of \code{f} of a refit of
+\code{~ f + f:x}). With gates only, the empty configuration
 is the budget null, with prior probability \eqn{\prod_t (1 - \pi_t)} (or
 its beta-binomial value). A spike-and-slab total makes the null its own
 event with the spike weight \eqn{\pi_0}: when every term is gated, the gate

@@ -436,3 +436,21 @@ test_that("one-term budgets keep small rescaled concentrations and print their r
   expect_output(print(tiny), "concentration 0.01 of the single term (shared by its coded coefficients", fixed = TRUE)
   expect_output(print(prior_R2(inclusion = list(x = prior("spike", list(0.1))))), "x: 0.1 (terms matched", fixed = TRUE)
 })
+
+test_that("invalid budget specifications stop with BayesTools_R2_invalid", {
+
+  expect_error(prior_R2(total = prior("normal", list(0, 1))), class = "BayesTools_R2_invalid")
+  expect_error(prior_R2(terms = 1), class = "BayesTools_R2_invalid")
+  expect_error(prior_R2(allocation = prior("dirichlet", list(alpha = c(1, 1)))), class = "BayesTools_R2_invalid")
+  expect_error(prior_R2(inclusion = prior("normal", list(0, 1))), class = "BayesTools_R2_invalid")
+  expect_error(prior_R2(model = list(law = "exact")), class = "BayesTools_R2_invalid")
+  expect_error(prior_R2(terms = c("x", "x")), class = "BayesTools_R2_invalid")
+  expect_error(prior_R2(terms = c("x", "z"), inclusion = list(x = prior("spike", list(0.5)), x = prior("spike", list(0.5)))),
+    class = "BayesTools_R2_invalid")
+  expect_error(R2_dirichlet(-1), class = "BayesTools_R2_invalid")
+  expect_error(R2_dirichlet(c(x = 1, x = 2)), class = "BayesTools_R2_invalid")
+  expect_error(R2_model(law = "student"), class = "BayesTools_R2_invalid")
+  expect_error(check_R2_model(list()), class = "BayesTools_R2_invalid")
+  # every one is also an R2 condition
+  expect_error(prior_R2(total = prior("normal", list(0, 1))), class = "BayesTools_R2_condition")
+})

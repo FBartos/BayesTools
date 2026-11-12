@@ -171,7 +171,13 @@
 #' as term signals \eqn{g_t G_t / H} with \eqn{G_t} Gamma(\eqn{\alpha_t}) and
 #' \eqn{H} Gamma(b)) or Beta(\eqn{a - (A - A_S)}, \eqn{b + (A - A_S)})
 #' (\code{"conditioning"}), and \code{"fixed_total"} rescales the
-#' concentrations of the open units. With gates only, the empty configuration
+#' concentrations of the open units. The model \eqn{S} is the formula of the
+#' fit with the closed terms excluded, as a point prior at zero excludes them:
+#' the coded columns of the open terms do not change. A closed main effect
+#' therefore leaves its interactions coded as in the full formula (in
+#' \code{~ f * x} with \code{x} closed, \code{f:x} keeps its coded columns of
+#' the full formula, not the slopes in every level of \code{f} of a refit of
+#' \code{~ f + f:x}). With gates only, the empty configuration
 #' is the budget null, with prior probability \eqn{\prod_t (1 - \pi_t)} (or
 #' its beta-binomial value). A spike-and-slab total makes the null its own
 #' event with the spike weight \eqn{\pi_0}: when every term is gated, the gate
@@ -302,13 +308,15 @@
 prior_R2 <- function(terms = NULL, total = prior("beta", list(1, 1)), allocation = R2_dirichlet(),
                      inclusion = NULL, model = R2_model()){
 
-  check_R2_model(model)
-  if(!is.null(terms)){
-    terms <- .bt_R2_check_terms(terms)
-  }
-  shapes <- .bt_R2_check_total(total)
-  .bt_R2_check_allocation_spec(allocation)
-  .bt_R2_check_inclusion(inclusion, terms)
+  shapes <- .bt_R2_validated({
+    check_R2_model(model)
+    if(!is.null(terms)){
+      terms <- .bt_R2_check_terms(terms)
+    }
+    .bt_R2_check_allocation_spec(allocation)
+    .bt_R2_check_inclusion(inclusion, terms)
+    .bt_R2_check_total(total)
+  })
 
   output <- list(
     terms         = terms,
@@ -343,8 +351,10 @@ prior_R2 <- function(terms = NULL, total = prior("beta", list(1, 1)), allocation
 .bt_R2_resolve_budget <- function(budget, terms){
 
   budget$terms <- terms
-  budget$alpha <- stats::setNames(.bt_R2_allocation_alpha(budget$allocation, terms, positional = !budget$implicit), terms)
-  budget$inclusion <- .bt_R2_check_inclusion(budget$inclusion_spec, terms)
+  .bt_R2_validated({
+    budget$alpha <- stats::setNames(.bt_R2_allocation_alpha(budget$allocation, terms, positional = !budget$implicit), terms)
+    budget$inclusion <- .bt_R2_check_inclusion(budget$inclusion_spec, terms)
+  })
 
   # the full-model total concentration is known here unless a kernel law
   # inherits the concentrations (then it needs the term dimensions)
@@ -435,20 +445,22 @@ R2_model <- function(law = "exact", convention = "common", concentration = "inhe
 check_R2_model <- function(model, name = "model"){
 
   fields <- c("law", "convention", "concentration", "sigma", "contrast")
-  if(!is.list(model) || !inherits(model, "R2_model") || !identical(names(model), fields)){
-    stop(paste0("'", name, "' must be a specification from 'R2_model()'."), call. = FALSE)
-  }
-  check_char(model$law, "law", allow_values = .bt_R2_laws, allow_NA = FALSE)
-  check_char(model$convention, "convention", allow_values = .bt_R2_conventions, allow_NA = FALSE)
-  check_char(model$concentration, "concentration", allow_values = .bt_R2_concentrations, allow_NA = FALSE)
-  check_char(model$contrast, "contrast", allow_values = .bt_R2_contrasts, allow_NA = FALSE)
-  sigma <- model$sigma
-  if(is.character(sigma)){
-    check_char(sigma, "sigma", allow_NA = FALSE)
-    .bt_check_jags_node_name(sigma, "sigma")
-  }else{
-    check_real(sigma, "sigma", lower = 0, allow_bound = FALSE, allow_NA = FALSE)
-  }
+  .bt_R2_validated({
+    if(!is.list(model) || !inherits(model, "R2_model") || !identical(names(model), fields)){
+      stop(paste0("'", name, "' must be a specification from 'R2_model()'."), call. = FALSE)
+    }
+    check_char(model$law, "law", allow_values = .bt_R2_laws, allow_NA = FALSE)
+    check_char(model$convention, "convention", allow_values = .bt_R2_conventions, allow_NA = FALSE)
+    check_char(model$concentration, "concentration", allow_values = .bt_R2_concentrations, allow_NA = FALSE)
+    check_char(model$contrast, "contrast", allow_values = .bt_R2_contrasts, allow_NA = FALSE)
+    sigma <- model$sigma
+    if(is.character(sigma)){
+      check_char(sigma, "sigma", allow_NA = FALSE)
+      .bt_check_jags_node_name(sigma, "sigma")
+    }else{
+      check_real(sigma, "sigma", lower = 0, allow_bound = FALSE, allow_NA = FALSE)
+    }
+  })
   invisible(model)
 }
 
@@ -493,7 +505,7 @@ print.R2_model <- function(x, ...){
 #' @export
 R2_dirichlet <- function(alpha = NULL){
 
-  if(!is.null(alpha)){
+  if(!is.null(alpha)) .bt_R2_validated({
     check_real(alpha, "alpha", lower = 0.01, allow_bound = TRUE, check_length = 0, allow_NA = FALSE)
     if(any(!is.finite(alpha))){
       stop("The 'alpha' argument must be finite.", call. = FALSE)
@@ -507,7 +519,7 @@ R2_dirichlet <- function(alpha = NULL){
         stop("'alpha' names each term once.", call. = FALSE)
       }
     }
-  }
+  })
 
   structure(list(alpha = alpha), class = "R2_dirichlet")
 }
@@ -824,6 +836,18 @@ is.R2_budget <- function(x){
 .bt_R2_stop <- function(message, class = "BayesTools_R2_invalid"){
   stop(structure(list(message = message, call = NULL),
     class = unique(c(class, "BayesTools_R2_condition", "error", "condition"))))
+}
+
+# Evaluates the validation 'expr' of a budget specification so that every
+# invalid input stops with BayesTools_R2_invalid: plain errors of the shared
+# argument checks keep their message; classed conditions pass unchanged.
+.bt_R2_validated <- function(expr){
+  tryCatch(expr, error = function(condition){
+    if(!identical(class(condition), c("simpleError", "error", "condition"))){
+      stop(condition)
+    }
+    .bt_R2_stop(conditionMessage(condition))
+  })
 }
 
 # A coefficient state outside the support of the budget (a total outside
@@ -1204,6 +1228,10 @@ is.R2_budget <- function(x){
     for(term in budget_terms){
       this_prior <- prior_list[[term]]
       this_prior$bound <- TRUE
+      # the key of the term in the budget (and in its core) is its prior-list
+      # name, with interactions encoded as in the formula prior list ("x:z"
+      # is "x__xXx__z"); 'declared' keeps the label of the budget
+      this_prior$term <- term
       if(is.prior.vector(this_prior)){
         this_prior$parameters <- list(K = maps[[term]]$d)
       }
