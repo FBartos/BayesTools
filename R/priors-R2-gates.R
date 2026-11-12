@@ -1317,7 +1317,10 @@ is.prior.R2_budget <- function(x){
       event_rule  = "AND"
     )
   }
-  if(identical(key$type, "R2_open")){
+  if(identical(key$type, "R2_open") ||
+     (identical(key$type, "coordinate") && !is.null(.bt_R2_indicator_core(prior_list, key$dependencies)))){
+    # the inclusion of a term, or of the budget (its indicator): the 0/1
+    # draws are their own gate state
     return(list(kind = "inclusion", chain_gates = key$dependencies[[1L]], component_gates = character(),
                 parent_gates = character(), event_gates = character(), event_rule = "AND"))
   }

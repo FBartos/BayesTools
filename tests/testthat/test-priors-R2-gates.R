@@ -615,3 +615,151 @@ test_that("gate shapes keep tiny rates and conditioned supports drop impossible 
     list(type = "coordinate", dependencies = "mu_R2"))
   expect_identical(support$points, 0)
 })
+
+test_that("gate probabilities stay exact for tiny probabilities and huge rate shapes", {
+
+  set.seed(3)
+  data <- data.frame(x = stats::rnorm(20), z = stats::rnorm(20))
+  bind <- function(budget, formula = ~ x + z){
+    JAGS_formula(formula, "mu", data, list(intercept = prior("normal", list(0, 1)), R2 = budget))$prior_list$mu_R2
+  }
+  # two gates with probability p under a spike-and-slab total with weight 1/2:
+  # each term is open with probability p / (1 - (1 - p)^2) / 2 -> 1/4
+  for(p in c(1e-16, 2^-54, 1e-20)){
+    core <- bind(prior_R2(total = .R2_spike(0.5), inclusion = prior("spike", list(p))))
+    marginals <- .bt_R2_gate_marginals(core$gates, core$terms)
+    expect_equal(unname(marginals$open), c(1, 1) / (4 - 2 * p), tolerance = 1e-14)
+    expect_equal(mcdf(core, c(0, 1)), c(0.5, 1))
+  }
+  # a shared rate concentrated at 1/2: one gate open with probability 1/2
+  core <- bind(prior_R2(total = .R2_spike(0.5), inclusion = prior("beta", list(1e16, 1e16))), ~ x)
+  expect_equal(.bt_R2_gate_configuration_probability(utils::modifyList(core$gates, list(truncated = FALSE)),
+    matrix(FALSE, 1, 1)), 0.5)
+  # the product form equals the beta-binomial law at ordinary shapes
+  gates <- list(K = 4L, law = list(type = "shared", a = 2, b = 3), truncated = FALSE)
+  open <- as.matrix(expand.grid(rep(list(c(FALSE, TRUE)), 4)))
+  expect_equal(.bt_R2_gate_configuration_probability(gates, open),
+    exp(lbeta(2 + rowSums(open), 3 + 4 - rowSums(open)) - lbeta(2, 3)), tolerance = 1e-14)
+  expect_equal(.bt_R2_gate_truncated_probabilities(gates$law, 4L)[1:3],
+    vapply(1:3, function(t) (2 / (5 + t - 1)) / (1 - exp(lbeta(2, 3 + 4) - lbeta(2, 3 + t - 1))), numeric(1)),
+    tolerance = 1e-14)
+})
+
+test_that("gated totals and coefficients keep their quantiles near zero and their variance", {
+
+  data <- data.frame(x = rep(c(-1, 1), 8), z = rep(c(-1, -1, 1, 1), 4))
+  bind <- function(budget, formula = ~ x){
+    JAGS_formula(formula, "mu", data, list(intercept = prior("normal", list(0, 1)), R2 = budget))$prior_list
+  }
+  # one gate with probability 1/2 and a Beta(0.01, 1) total: F(r) = 1/2 + r^0.01 / 2
+  priors <- bind(prior_R2(total = prior("beta", list(0.01, 1)), inclusion = prior("spike", list(0.5)),
+    model = R2_model(sigma = 1)))
+  expect_equal(mquant(priors$mu_R2, 0.75), 2^-100, tolerance = 1e-10)
+  # the coefficient (unit design variance): P(X <= q) = 3/4 + q^0.02 / 4 for small q > 0
+  q <- mquant(priors$mu_x, 0.8)
+  expect_equal(q, 0.2^50, tolerance = 1e-8)
+  expect_equal(mcdf(priors$mu_x, q), 0.8, tolerance = 1e-10)
+  expect_equal(mquant(priors$mu_x, 0.2), -0.2^50, tolerance = 1e-8)
+  # a gated term beside an ungated term leaves the total a Beta(1e9, 2)
+  priors <- bind(prior_R2(total = prior("beta", list(1e9, 2)), inclusion = list(z = prior("spike", list(0.5)))), ~ x + z)
+  expect_equal(var(priors$mu_R2), 1e9 * 2 / ((1e9 + 2)^2 * (1e9 + 3)), tolerance = 1e-10)
+  # one gate with probability 1/4 and a Beta(2, 3) total (mean 0.4, variance
+  # 0.04): 0.25 * 0.04 + 0.25 * 0.75 * 0.4^2
+  expect_equal(var(bind(prior_R2(total = prior("beta", list(2, 3)), inclusion = prior("spike", list(0.25))))$mu_R2),
+    0.25 * 0.04 + 0.25 * 0.75 * 0.4^2, tolerance = 1e-12)
+})
+
+test_that("gated interaction terms are keyed by their prior-list names", {
+
+  set.seed(4)
+  data <- data.frame(x = stats::rnorm(40), z = stats::rnorm(40), f = factor(rep(c("a", "b"), 20)))
+  data$y <- 0.6 * data$x * data$z + stats::rnorm(40)
+  gated <- prior_R2(inclusion = prior("spike", list(0.5)), model = R2_model(sigma = 1))
+  priors <- JAGS_formula(~ x * z, "mu", data, list(intercept = prior("normal", list(0, 1)), R2 = gated))$prior_list
+  expect_identical(priors$mu_x__xXx__z$term, "x__xXx__z")
+  expect_identical(priors$mu_x__xXx__z$declared, "x:z")
+  expect_output(print(priors$mu_x__xXx__z), "included with probability 0.5", fixed = TRUE)
+  expect_equal(mcdf(priors$mu_x__xXx__z, 0), 0.75)
+  factor <- JAGS_formula(~ f * x, "mu", data, list(intercept = prior("normal", list(0, 1)), R2 = gated))$prior_list
+  expect_equal(mcdf(factor$mu_f__xXx__x, 0), 0.75)
+
+  skip_if_not_installed("rjags")
+  skip_if_not_installed("runjags")
+  fit <- JAGS_fit(
+    model_syntax = "model{ for(i in 1:N){ y[i] ~ dnorm(mu[i], 1 / pow(sigma, 2)) } }",
+    data = list(y = data$y, N = nrow(data)), prior_list = list(sigma = prior("invgamma", list(1, 1))),
+    formula_list = list(mu = ~ x * z), formula_data_list = list(mu = data),
+    formula_prior_list = list(mu = list(intercept = prior("normal", list(0, 5)), R2 = gated)),
+    chains = 1, adapt = 200, burnin = 200, sample = 1000, seed = 4, silent = TRUE)
+  post <- as.matrix(.fit_to_posterior(fit))
+  table <- runjags_estimates_table(fit)
+  expect_true(all(c("(mu) x:z (inclusion)", "(mu) R2[share: x:z]") %in% rownames(table)))
+  expect_equal(table["(mu) x:z (inclusion)", "Mean"], mean(post[, "mu_x__xXx__z"] != 0))
+  inference <- runjags_inference_table(fit)
+  expect_equal(inference["(mu) x:z", "prior_prob"], 0.5)
+  expect_equal(inference["(mu) x:z", "post_prob"], mean(post[, "mu_x__xXx__z"] != 0))
+  expect_s3_class(hypothesis_BF_model(fit, "R2[share: x:z] > 0.5"), "data.frame")
+  conditioned <- as_mixed_posteriors(fit, parameters = "mu_x__xXx__z", conditional = "mu_x__xXx__z")
+  expect_true(all(conditioned$mu_x__xXx__z != 0))
+})
+
+test_that("mixed posteriors keep the atoms of gated coefficients, budget inclusion and model averages", {
+
+  skip_if_not_installed("rjags")
+  skip_if_not_installed("runjags")
+  set.seed(11)
+  data <- data.frame(x = 3 + 2 * stats::rnorm(40), z = -1 + stats::rnorm(40))
+  data$y <- 0.2 * data$x + stats::rnorm(40)
+  fit_args <- list(
+    model_syntax = "model{ for(i in 1:N){ y[i] ~ dnorm(mu[i], 1 / pow(sigma, 2)) } }",
+    data = list(y = data$y, N = nrow(data)), prior_list = list(sigma = prior("invgamma", list(1, 1))),
+    formula_list = list(mu = ~ x + z), formula_data_list = list(mu = data),
+    formula_scale_list = list(mu = list(x = TRUE, z = TRUE)),
+    chains = 1, adapt = 200, burnin = 200, sample = 2000, silent = TRUE)
+  gated <- prior_R2(inclusion = list(x = prior("spike", list(0.5)), z = prior("spike", list(0.5))))
+  fit <- do.call(JAGS_fit, c(fit_args, list(seed = 1,
+    formula_prior_list = list(mu = list(intercept = prior("spike", list(0)), R2 = gated)))))
+  post <- as.matrix(.fit_to_posterior(fit))
+  closed_x <- mean(post[, "mu_x"] == 0)
+  both_closed <- mean(post[, "mu_x"] == 0 & post[, "mu_z"] == 0)
+
+  # a gated coefficient keeps the atom of its gate on the original scale
+  original <- as_mixed_posteriors(fit, "mu_x", transform_scaled = TRUE)$mu_x
+  atoms <- .posterior_atoms_get(original)
+  expect_equal(unname(atoms$locations[, 1]), 0)
+  expect_equal(atoms$mass, closed_x)
+  expect_identical(.bt_meta_get(original, "support")$points, 0)
+
+  # a prediction weighting two gated terms is zero when both are closed
+  samples <- as_mixed_posteriors(fit, c("mu_intercept", "mu_x", "mu_z"))
+  row <- marginal_posterior(samples, "mu_intercept", formula = ~ 1 + x + z, at = list(x = 1, z = 1),
+    prior_samples = TRUE)$intercept
+  atoms <- .posterior_atoms_get(row)
+  expect_equal(unname(atoms$locations[, 1]), 0)
+  expect_equal(atoms$mass, both_closed)
+
+  # the inclusion of the budget is an atomic quantity with its own plot
+  selection <- parameter_catalog_resolve(parameter_catalog(fit), "R2{total} (inclusion)")
+  inclusion <- parameter_mixed_posterior(fit, selection)
+  atoms <- .posterior_atoms_get(inclusion)
+  expect_equal(unname(atoms$locations[, 1]), c(0, 1))
+  expect_equal(atoms$mass, c(both_closed, 1 - both_closed))
+  grDevices::pdf(NULL)
+  on.exit(grDevices::dev.off(), add = TRUE)
+  expect_silent(plot_posterior(list(inclusion = inclusion), "inclusion", prior = TRUE))
+
+  # a model average keeps the within-model exclusions of the gates
+  null_fit <- do.call(JAGS_fit, c(fit_args, list(seed = 2,
+    formula_prior_list = list(mu = list(intercept = prior("spike", list(0)), x = prior("spike", list(0)),
+                                        z = prior("spike", list(0)))))))
+  mixed <- mix_posteriors(model_list = list(list(fit = fit, marglik = bridgesampling_object(-50), prior_weights = 1),
+                                            list(fit = null_fit, marglik = bridgesampling_object(-50), prior_weights = 1)),
+                          parameters = "mu_x", is_null_list = list(mu_x = c(FALSE, TRUE)), seed = 1, n_samples = 4000)
+  # (equal marginal likelihoods: each model has posterior probability 1/2;
+  # the gated model contributes its closed draws among the mixed draws)
+  atoms <- .posterior_atoms_get(mixed$mu_x)
+  model <- .bt_meta_get(mixed$mu_x, "component")
+  expect_true(all(atoms$locations == 0))
+  expect_equal(sum(atoms$mass), 0.5 + 0.5 * mean(mixed$mu_x[model == 1] == 0))
+  expect_true(abs(mean(mixed$mu_x[model == 1] == 0) - closed_x) < 0.05)
+})

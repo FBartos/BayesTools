@@ -1534,7 +1534,7 @@ JAGS_formula_prior_density <- function(
   }), use.names = FALSE))
   gate_plan <- if(all(gate_columns %in% colnames(values))){
     raw <- .bt_formula_raw_children(values, record_priors)
-    .posterior_atoms_formula_plan(raw, record_priors)
+    .posterior_atoms_formula_plan(raw, record_priors, R2_gates = TRUE)
   }else NULL
   if(!is.null(gate_plan)) gate_plan$draw_index <- as.integer(draw_index)
   # the random-effect blocks the original-scale SDs of the samples are derived from
@@ -1899,7 +1899,12 @@ JAGS_formula_prior_density <- function(
     # a combination of dependent parameters of an R-squared budget (or of the
     # coded coefficients of an R2 factor) has no prior-density law, but it is
     # absolutely continuous on the real line: such an evaluation row has no
-    # atoms and the support R, while the other rows keep their atoms
+    # atoms and the support R, while the other rows keep their atoms. The terms
+    # of a gated budget are closed in some components of the gate plan, where
+    # their coefficients are exactly zero; in the others they are open, and
+    # an open R2 coefficient (absolutely continuous, also jointly with the
+    # other open coefficients of its budget, and independent of the other
+    # parameters) makes every row that weights it absolutely continuous.
     R2_refusal <- NULL
     R2_rows <- logical(nrow(weights))
     for(row in seq_len(nrow(weights))){
@@ -1910,6 +1915,19 @@ JAGS_formula_prior_density <- function(
         if(is.null(R2_refusal)) R2_refusal <- refusal
       }
     }
+    # the coefficient columns of the R2 terms, and of the gated R2 terms of the
+    # gate plan
+    R2_owner_columns <- function(owners){
+      lapply(stats::setNames(nm = owners), function(owner){
+        intersect(.prior_linear_prior_columns(owner, record$prior_list[[owner]]), colnames(weights))
+      })
+    }
+    R2_columns <- unlist(R2_owner_columns(names(record$prior_list)[vapply(record$prior_list, is.prior.R2, logical(1))]),
+      use.names = FALSE)
+    R2_gated_columns <- R2_owner_columns(record$gate_plan$R2_gated)
+    R2_gated_rows <- vapply(seq_len(nrow(weights)), function(row){
+      any(weights[row, unlist(R2_gated_columns, use.names = FALSE)] != 0)
+    }, logical(1))
     if(!is.null(R2_refusal) && is.finite(record$prior_log_probability)){
       prior_available <- FALSE
       prior_reason <- conditionMessage(R2_refusal)
@@ -1917,7 +1935,7 @@ JAGS_formula_prior_density <- function(
       prior_diagnostics <- R2_refusal$diagnostics
     }
     R2_support <- .posterior_support_new(c(-Inf, Inf), source = "formula_contribution", type = "interval")
-    if(all(R2_rows)){
+    if(all(R2_rows) && !any(R2_gated_rows)){
       if(is.finite(state$posterior_log_model_probabilities[[model]])){
         continuous <- TRUE
         model_atoms[[model]] <- data.frame(x = numeric(), mass = numeric(), log_mass = numeric())
@@ -1926,9 +1944,9 @@ JAGS_formula_prior_density <- function(
       next
     }
     routed_rows <- which(!R2_rows)
-    context_builder <- function(priors, conditional = TRUE){
+    context_builder <- function(priors, conditional = TRUE, rows = routed_rows, row_weights = weights){
       if(identical(recipe_type, "contribution_affine")) return(.bt_formula_contribution_context(record, prefix, n_grid, priors,
-        colnames(weights)[colSums(weights[routed_rows, , drop = FALSE] != 0) > 0],
+        colnames(row_weights)[colSums(row_weights[rows, , drop = FALSE] != 0) > 0],
         condition_event = if(conditional) record$condition_event))
       event <- if(conditional) record$condition_event
       .bt_formula_prior_density_context_raw_sources(
@@ -1936,11 +1954,11 @@ JAGS_formula_prior_density <- function(
           conditional = event$conditional, conditional_rule = if(is.null(event$conditional_rule)) "AND" else event$conditional_rule,
           condition_event = event), colnames(weights))
     }
-    build_route <- function(context, row){
-      .prior_density_route_context(context, weights[row, ], source_transforms,
+    build_route <- function(context, row, row_weights = weights){
+      .prior_density_route_context(context, row_weights[row, ], source_transforms,
         output_transform, NULL)
     }
-    context <- tryCatch(context_builder(record$prior_list),
+    context <- if(length(routed_rows)) tryCatch(context_builder(record$prior_list),
       BayesTools_formula_measure_unavailable = function(e) e)
     if(inherits(context, "BayesTools_formula_measure_unavailable")){
       detail <- if(is.null(context$detail)) conditionMessage(context) else context$detail
@@ -1999,15 +2017,27 @@ JAGS_formula_prior_density <- function(
       for(owner in colnames(plan$components)) component_priors[[owner]] <- .posterior_atoms_component_prior(
         component_priors[[owner]], plan$components[component, owner], FALSE,
         .posterior_atoms_plan_total_indicator(plan, component, owner))
-      component_context <- context_builder(component_priors, conditional = FALSE)
+      # the coefficients of the gated R2 terms closed in this component are
+      # exactly zero: they leave the evaluation rows
+      component_weights <- weights
+      component_R2_rows <- R2_rows
+      closed <- record$gate_plan$R2_gated[plan$components[component, record$gate_plan$R2_gated] == 1L]
+      if(length(record$gate_plan$R2_gated)){
+        component_weights[, unlist(R2_gated_columns[closed], use.names = FALSE)] <- 0
+        component_R2_rows <- R2_rows & !R2_gated_rows |
+          rowSums(component_weights[, R2_columns, drop = FALSE] != 0) > 0
+      }
+      component_rows <- which(!component_R2_rows)
+      component_context <- if(length(component_rows)) context_builder(component_priors, conditional = FALSE,
+        rows = component_rows, row_weights = component_weights)
       for(row in seq_len(nrow(weights))){
-        if(R2_rows[[row]]){
+        if(component_R2_rows[[row]]){
           continuous <- TRUE
           supports[[length(supports) + 1L]] <- R2_support
           this_component_supports[[length(this_component_supports) + 1L]] <- R2_support
           next
         }
-        route <- build_route(component_context, row)
+        route <- build_route(component_context, row, component_weights)
         numerical_reason <- .bt_formula_route_numerical_scale_reason(route)
         if(!is.null(numerical_reason)){
           atom_reason <- support_reason <- numerical_reason

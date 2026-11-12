@@ -964,6 +964,58 @@ posterior_atoms_free <- function(x){
   })
 }
 
+# The within-model atoms of the gated R-squared budget terms of a model
+# average: the zero vector (every coefficient of a closed term is exactly
+# zero), with the frequency of the closed draws of the model; NULL for the
+# other priors, and NULL when no prior is a gated R2 term.
+.posterior_atoms_R2_gate_components <- function(priors, draws, component, column_names = NULL){
+
+  priors <- as.list(priors)
+  gated <- vapply(priors, function(prior) is.prior.R2(prior) && .bt_R2_term_is_gated(prior), logical(1))
+  if(!any(gated) || is.null(draws)){
+    return(NULL)
+  }
+  draws <- as.matrix(draws)
+  if(nrow(draws) != length(component)){
+    return(NULL)
+  }
+  lapply(seq_along(priors), function(i){
+    rows <- component == i
+    if(!gated[[i]] || !any(rows)){
+      return(NULL)
+    }
+    closed <- mean(rowSums(draws[rows, , drop = FALSE] != 0) == 0)
+    if(closed <= 0){
+      return(NULL)
+    }
+    .posterior_atoms_new(locations = matrix(0, 1L, ncol(draws)), mass = closed,
+                         column_names = column_names, source = "posterior_draws")
+  })
+}
+
+# Combines within-model atom declarations of different kinds (each prior has
+# at most one).
+.posterior_atoms_merge_components <- function(...){
+
+  declarations <- Filter(Negate(is.null), list(...))
+  if(length(declarations) == 0L){
+    return(NULL)
+  }
+  out <- declarations[[1L]]
+  for(other in declarations[-1L]){
+    for(i in seq_along(out)){
+      if(is.null(out[[i]])) out[i] <- list(other[[i]])
+    }
+  }
+  out
+}
+
+# The point location of a gated R2 term of a formula plan in its component
+# 'row': zero when the term is closed there, NULL (continuous) when open.
+.posterior_atoms_R2_plan_location <- function(plan, row, parameter, n_columns){
+  if(plan$components[row, parameter] == 1L) rep(0, n_columns) else NULL
+}
+
 # Posterior atoms of a mixture or spike-and-slab parameter of a single fit
 # from the posterior component index of its draws (an index into the prior's
 # component list). 'point_locations' and 'null_location' declare the points of
@@ -1084,7 +1136,7 @@ posterior_atoms_free <- function(x){
   prior_entry
 }
 
-.posterior_atoms_formula_plan <- function(samples, prior_list){
+.posterior_atoms_formula_plan <- function(samples, prior_list, R2_gates = FALSE){
 
   parameter_names <- intersect(names(prior_list), names(samples))
   if(length(parameter_names) == 0L){
@@ -1092,9 +1144,18 @@ posterior_atoms_free <- function(x){
   }
 
   if(inherits(samples, "as_mixed_posteriors")){
+    # with 'R2_gates', the terms of a gated R-squared budget have two
+    # components: closed (1, every coefficient exactly zero) and open (2)
+    R2_gated <- if(R2_gates) parameter_names[vapply(prior_list[parameter_names], function(prior){
+      is.prior.R2(prior) && .bt_R2_term_is_gated(prior)
+    }, logical(1))] else character()
     # the component of each draw: of an ordered prior's total, or of a
     # mixture or spike-and-slab prior (one component otherwise)
     indicators <- lapply(parameter_names, function(parameter){
+      if(parameter %in% R2_gated){
+        values <- as.matrix(samples[[parameter]])
+        return(ifelse(rowSums(values != 0) == 0, 1L, 2L))
+      }
       total_component <- .bt_meta_get(samples[[parameter]], "ordered_total_component")
       if(!is.null(total_component)){
         return(as.integer(total_component))
@@ -1119,7 +1180,8 @@ posterior_atoms_free <- function(x){
       components = indicators[rows, , drop = FALSE],
       probabilities = probabilities,
       index = match(keys, unique_keys),
-      model_mixture = FALSE
+      model_mixture = FALSE,
+      R2_gated = R2_gated
     ))
   }
 
@@ -1265,7 +1327,7 @@ posterior_atoms_free <- function(x){
     model <- rep(attr(ordered,"model",exact=TRUE),each=length(ordered))
     return(.bt_ordered_projection_atoms(states,column_name,model,attr(ordered,"probabilities",exact=TRUE)))
   }
-  plan <- .posterior_atoms_formula_plan(samples, prior_list)
+  plan <- .posterior_atoms_formula_plan(samples, prior_list, R2_gates = TRUE)
   if(is.null(plan)){
     return(NULL)
   }
@@ -1282,9 +1344,12 @@ posterior_atoms_free <- function(x){
     return(NULL)
   }
   missing_owners <- setdiff(active_owners, colnames(plan$components))
+  # (the gated terms of an R2 budget are components of a single-fit plan;
+  # without them their closed draws are not known)
   ordinary <- vapply(prior_list[missing_owners], function(prior){
     is.prior(prior) && !is.prior.mixture(prior) &&
-      !is.prior.spike_and_slab(prior) && !is.prior.ordered(prior)
+      !is.prior.spike_and_slab(prior) && !is.prior.ordered(prior) &&
+      !(is.prior.R2(prior) && .bt_R2_term_is_gated(prior))
   }, logical(1))
   if(!all(ordinary)){
     return(NULL)
@@ -1301,6 +1366,11 @@ posterior_atoms_free <- function(x){
       parameter_columns <- colnames(weights) == parameter |
         startsWith(colnames(weights), paste0(parameter, "["))
       if(!any(parameter_columns)){
+        next
+      }
+      if(parameter %in% plan$R2_gated){
+        location <- .posterior_atoms_R2_plan_location(plan, component_i, parameter, sum(parameter_columns))
+        if(!is.null(location)) coefficient_locations[parameter_columns] <- location
         next
       }
       component_prior <- if(parameter %in% missing_owners){
@@ -1396,6 +1466,11 @@ posterior_atoms_free <- function(x){
       columns <- colnames(design) == parameter |
         startsWith(colnames(design), paste0(parameter, "["))
       if(!any(columns)) next
+      if(parameter %in% plan$R2_gated){
+        point <- .posterior_atoms_R2_plan_location(plan, i, parameter, sum(columns))
+        if(!is.null(point)) component_locations[columns] <- point
+        next
+      }
       component_prior <- .posterior_atoms_component_prior(
         prior_list[[parameter]], plan$components[i, parameter], plan$model_mixture,
         total_component = .posterior_atoms_plan_total_indicator(plan, i, parameter)
@@ -1542,7 +1617,7 @@ posterior_atoms_free <- function(x){
       }, logical(1))]
       raw <- as_mixed_posteriors(model, unique(c(contributors, intersect(conditional, names(prior_list)))),
         conditional, conditional_rule, transform_scaled = FALSE, n_prior_samples = n_grid)
-      plan <- .posterior_atoms_formula_plan(raw, prior_list)
+      plan <- .posterior_atoms_formula_plan(raw, prior_list, R2_gates = TRUE)
       if(!is.null(plan)){
         atoms <- .posterior_atoms_joint_linear(prior_list, plan, weights,
           source_transforms = transform$source_transforms, output_transforms = transform$output_transforms,
