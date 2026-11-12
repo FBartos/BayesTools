@@ -30,49 +30,23 @@
 #'
 #' @param terms character vector of the formula term labels of the budget in
 #' the full candidate model (e.g., \code{c("x", "f", "x:f")}; \code{"x:f"} and
-#' \code{"f:x"} name the same term). Terms of the budget that a model's
-#' formula does not contain are deleted, and the budget is redistributed in
-#' full to the retained terms.
+#' \code{"f:x"} name the same term), or \code{NULL} (default) for every
+#' fixed-effect term of the formula that has no prior of its own and that no
+#' other budget names (at most one budget of a formula; a term with a point
+#' prior at zero stays in it, excluded from the model). Terms of the budget
+#' that a model's formula does not contain are deleted, and the budget is
+#' redistributed in full to the retained terms.
 #' @param total Beta prior on the total R-squared of the full candidate model,
-#' \code{prior("beta", list(alpha = a, beta = b))}, or a spike-and-slab prior
-#' with that Beta slab,
+#' \code{prior("beta", list(alpha = a, beta = b))} (default Beta(1, 1)), or a
+#' spike-and-slab prior with that Beta slab,
 #' \code{prior_spike_and_slab(prior("beta", ...), prior_inclusion = ...)},
 #' whose spike is zero signal in the budget (the budget null) and whose
 #' inclusion prior is a probability prior (\code{prior("spike", list(p))} or a
 #' Beta prior). Other mixtures are not supported.
-#' @param allocation Dirichlet prior allocating the budget of the full
-#' candidate model to \code{terms},
-#' \code{prior("dirichlet", list(alpha = ...))} with one concentration per
-#' entry of \code{terms}, in their order, or named by the terms (then matched
-#' to them by name). \code{NULL} (default) is the flat
-#' allocation, a concentration of 1 for every term. A budget of one term
-#' takes no allocation (a Dirichlet prior has at least two concentrations): its
-#' term has the concentration 1, which the kernel laws give to each of its
-#' coded coefficients.
-#' @param law coefficient law: \code{"exact"} allocates squared signal
-#' magnitudes exactly, with a fair sign for one-column terms and a uniform
-#' direction in the term's coefficient space (in the empirical design metric)
-#' for multi-column terms; \code{"normal"} is the normal kernel of the R2D2M2
-#' prior and \code{"laplace"} the double-exponential kernel of the R2D2
-#' prior, both allocating the budget over the individual coded coefficients,
-#' each with the concentration of its term.
-#' @param convention how a model derives the Beta shapes of its total from
-#' \code{total} = Beta(a, b) of the full candidate model, with \eqn{A} the
-#' total concentration of the full model and \eqn{A_M} the total
-#' concentration retained by model \eqn{M}: \code{"common"} uses Beta(a, b)
-#' in every model; \code{"linked"} uses Beta(\eqn{A_M}, b), so the first shape
-#' of \code{total} must equal \eqn{A}; \code{"conditioning"} keeps
-#' \eqn{a_M - A_M} and \eqn{a_M + b_M} equal to \eqn{a - A} and \eqn{a + b}.
-#' @param concentration concentrations of the retained units:
-#' \code{"inherited"} keeps the concentrations of \code{allocation};
-#' \code{"fixed_total"} rescales them in every model to the sum of the
-#' concentrations of \code{allocation}.
-#' @param sigma residual standard deviation that multiplies the coefficients,
-#' as the \code{"multiply_by"} attribute of a formula prior: the name of a
-#' parameter of the model (e.g., \code{"sigma"}) or a positive number.
-#' @param contrast contrast of the factor terms of the budget:
-#' \code{"orthonormal"}, \code{"meandif"}, or \code{"treatment"}. Required
-#' when the budget contains a factor term.
+#' @param allocation Dirichlet allocation of the budget of the full candidate
+#' model to its terms, from [R2_dirichlet()] (default flat: concentration 1
+#' for every term). A budget of one term has the single concentration of its
+#' term, which the linked convention and the kernel laws use.
 #' @param inclusion inclusion gates of the terms, which make one fit average
 #' over the models of the budget: \code{NULL} (default) for no gates; one
 #' probability prior for every term, \code{prior("spike", list(p))} for a
@@ -82,6 +56,11 @@
 #' listed terms (the other terms are always included). A Beta prior in the
 #' list is marginally its mean probability for its term; a shared rate needs
 #' the single-prior form.
+#' @param model the fixed model choices of the budget, from [R2_model()]:
+#' the coefficient law, the cross-model convention and concentration, the
+#' residual scale \code{sigma} and the factor contrast (defaults: exact law,
+#' common convention, inherited concentrations, \code{"sigma"}, orthonormal
+#' contrasts).
 #'
 #' @details
 #' A formula prior list declares a budget with an entry such as
@@ -116,9 +95,11 @@
 #' its term's concentration) the prior is
 #' \deqn{r \sim \textrm{Beta}(a_M, b_M), \quad W = r / (1 - r), \quad
 #' \phi \sim \textrm{Dirichlet}(\alpha_M),}
-#' with \eqn{(a_M, b_M)} given by \code{convention} and \eqn{\alpha_M} by
-#' \code{concentration}. With \code{convention = "linked"}, the first shape of
-#' \code{total} must equal the total concentration \eqn{A} of the full model:
+#' with \eqn{(a_M, b_M)} given by the \code{convention} and \eqn{\alpha_M} by
+#' the \code{concentration} of \code{model}. With \code{convention = "linked"},
+#' the first shape of \code{total} must equal the total concentration
+#' \eqn{A} of the full model (the default total is not changed: the error
+#' names the required total):
 #' the sum of the concentrations of \code{allocation} for the exact law or
 #' with \code{concentration = "fixed_total"}, and the sum of the
 #' concentrations times the numbers of coded coefficients of the terms for
@@ -150,6 +131,14 @@
 #' therefore weight the levels of a factor by their frequencies. With
 #' treatment contrasts, the intercept prior applies to the reference level
 #' rather than to the grand mean.
+#'
+#' A budget without \code{terms} takes the terms of each formula it binds to,
+#' so that formula is its full candidate model. This is what a single fit
+#' with inclusion gates needs; models of a model space fitted separately
+#' under the \code{"linked"} or \code{"conditioning"} convention or with
+#' \code{concentration = "fixed_total"} need explicit \code{terms} naming
+#' the full model, because without them each fit is its own full model.
+#' Random-effect terms are never part of a budget without \code{terms}.
 #'
 #' The R2 term priors that \code{JAGS_formula()} binds support the prior
 #' methods (\code{rng()}, \code{mpdf()}, \code{mcdf()}, \code{mquant()},
@@ -233,15 +222,15 @@
 #' \code{"BayesTools_R2_budget"}.
 #'
 #' @examples
+#' # the defaults: every term of the formula without its own prior, a
+#' # uniform total R-squared, a flat allocation, exact allocation
+#' prior_R2()
+#'
 #' budget <- prior_R2(
-#'   terms         = c("x", "f"),
-#'   total         = prior("beta", list(alpha = 1, beta = 1)),
-#'   allocation    = prior("dirichlet", list(alpha = c(1, 1))),
-#'   law           = "exact",
-#'   convention    = "common",
-#'   concentration = "inherited",
-#'   sigma         = "sigma",
-#'   contrast      = "orthonormal"
+#'   terms      = c("x", "f"),
+#'   total      = prior("beta", list(alpha = 1, beta = 1)),
+#'   allocation = R2_dirichlet(c(x = 1, f = 2)),
+#'   model      = R2_model(law = "exact", convention = "common")
 #' )
 #' budget
 #'
@@ -292,12 +281,10 @@
 #' # one fit averaging over the models of the budget: a shared inclusion rate
 #' # (beta-binomial model prior) and a spike-and-slab total for the budget null
 #' gated <- prior_R2(
-#'   terms = c("x", "f"),
-#'   total = prior_spike_and_slab(prior("beta", list(1, 1)),
-#'                                prior_inclusion = prior("spike", list(0.5))),
-#'   law = "exact", convention = "common", concentration = "inherited",
-#'   sigma = "sigma", contrast = "meandif",
-#'   inclusion = prior("beta", list(1, 1))
+#'   total     = prior_spike_and_slab(prior("beta", list(1, 1)),
+#'                                    prior_inclusion = prior("spike", list(0.5))),
+#'   inclusion = prior("beta", list(1, 1)),
+#'   model     = R2_model(contrast = "meandif")
 #' )
 #' fit <- JAGS_fit(
 #'   model_syntax = "model{ for(i in 1:N){ y[i] ~ dnorm(mu[i], 1 / pow(sigma, 2)) } }",
@@ -310,68 +297,237 @@
 #' runjags_estimates_table(fit, conditional = TRUE)
 #' }
 #'
-#' @seealso [JAGS_formula()], [prior_factor()]
+#' @seealso [R2_model()], [R2_dirichlet()], [JAGS_formula()], [prior_factor()]
 #' @export
-prior_R2 <- function(terms, total, allocation = NULL, law, convention, concentration, sigma,
-                     contrast = NULL, inclusion = NULL){
+prior_R2 <- function(terms = NULL, total = prior("beta", list(1, 1)), allocation = R2_dirichlet(),
+                     inclusion = NULL, model = R2_model()){
 
-  required <- c(terms = missing(terms), total = missing(total), law = missing(law),
-                convention = missing(convention),
-                concentration = missing(concentration), sigma = missing(sigma))
-  if(any(required)){
-    stop("The ", paste0("'", names(required)[required], "'", collapse = ", "),
-         " argument", if(sum(required) > 1) "s are" else " is",
-         " required: the R-squared budget prior has no default for ",
-         if(sum(required) > 1) "them" else "it", ".", call. = FALSE)
+  check_R2_model(model)
+  if(!is.null(terms)){
+    terms <- .bt_R2_check_terms(terms)
+  }
+  shapes <- .bt_R2_check_total(total)
+  .bt_R2_check_allocation_spec(allocation)
+  .bt_R2_check_inclusion(inclusion, terms)
+
+  output <- list(
+    terms         = terms,
+    alpha         = NULL,
+    a             = shapes[["a"]],
+    b             = shapes[["b"]],
+    total_inclusion = shapes[["inclusion"]],
+    inclusion     = NULL,
+    allocation    = allocation,
+    inclusion_spec = inclusion,
+    implicit      = is.null(terms),
+    law           = model$law,
+    convention    = model$convention,
+    concentration = model$concentration,
+    sigma         = model$sigma,
+    contrast      = model$contrast,
+    model         = model,
+    name          = NULL
+  )
+  class(output) <- c("BayesTools_R2_budget", "list")
+  if(is.null(terms)){
+    return(output)
   }
 
-  check_char(law, "law", allow_values = .bt_R2_laws, allow_NA = FALSE)
-  check_char(convention, "convention", allow_values = .bt_R2_conventions, allow_NA = FALSE)
-  check_char(concentration, "concentration", allow_values = .bt_R2_concentrations, allow_NA = FALSE)
-  check_char(contrast, "contrast", allow_values = .bt_R2_contrasts, allow_NULL = TRUE, allow_NA = FALSE)
+  .bt_R2_resolve_budget(output, terms)
+}
 
-  terms <- .bt_R2_check_terms(terms)
-  shapes <- .bt_R2_check_total(total)
-  alpha <- stats::setNames(.bt_R2_check_allocation(allocation, terms), terms)
-  inclusion <- .bt_R2_check_inclusion(inclusion, terms)
+# The budget 'budget' over the terms 'terms' (given to prior_R2() or resolved
+# when JAGS_formula() binds a budget without terms): the concentrations of the
+# allocation and the inclusion gates of the terms, and the checks of the
+# shapes that the concentrations decide.
+.bt_R2_resolve_budget <- function(budget, terms){
 
+  budget$terms <- terms
+  budget$alpha <- stats::setNames(.bt_R2_allocation_alpha(budget$allocation, terms, positional = !budget$implicit), terms)
+  budget$inclusion <- .bt_R2_check_inclusion(budget$inclusion_spec, terms)
+
+  # the full-model total concentration is known here unless a kernel law
+  # inherits the concentrations (then it needs the term dimensions)
+  if(identical(budget$convention, "linked") &&
+     (identical(budget$law, "exact") || identical(budget$concentration, "fixed_total"))){
+    .bt_R2_check_linked_shape(budget, sum(budget$alpha))
+  }
+  alpha <- budget$alpha
+  if(identical(budget$convention, "conditioning") && identical(budget$concentration, "inherited") &&
+     identical(budget$law, "exact") && budget$a - sum(alpha) + min(alpha) <= 0){
+    .bt_R2_stop(paste0("The 'conditioning' convention needs a - sum(alpha) + min(alpha) > 0, with a the first shape of ",
+         "'total' and alpha the concentrations of 'allocation', so that every model has a positive first shape",
+         if(!is.null(budget$name)) paste0(" (budget '", budget$name, "')"), "."))
+  }
+
+  budget
+}
+
+#' @title Fixed model choices of an R-squared budget prior
+#'
+#' @description \code{R2_model()} declares the fixed choices of a
+#' [prior_R2()] budget: the coefficient law, how a model of a model space
+#' derives its prior from the full candidate model, the residual scale, and
+#' the factor contrast. These are fixed model choices, not parameters with
+#' prior distributions; one specification can serve several budgets.
+#'
+#' @param law coefficient law: \code{"exact"} (default) allocates squared
+#' signal magnitudes exactly, with a fair sign for one-column terms and a
+#' uniform direction in the term's coefficient space (in the empirical design
+#' metric) for multi-column terms; \code{"normal"} is the normal kernel of the
+#' R2D2M2 prior and \code{"laplace"} the double-exponential kernel of the R2D2
+#' prior, both allocating the budget over the individual coded coefficients,
+#' each with the concentration of its term.
+#' @param convention how a model derives the Beta shapes of its total from
+#' the \code{total} = Beta(a, b) of the full candidate model, with \eqn{A} the
+#' total concentration of the full model and \eqn{A_M} the total concentration
+#' retained by model \eqn{M}: \code{"common"} (default) uses Beta(a, b) in
+#' every model; \code{"linked"} uses Beta(\eqn{A_M}, b), so the first shape of
+#' \code{total} must equal \eqn{A}; \code{"conditioning"} keeps
+#' \eqn{a_M - A_M} and \eqn{a_M + b_M} equal to \eqn{a - A} and \eqn{a + b}.
+#' @param concentration concentrations of the retained units:
+#' \code{"inherited"} (default) keeps the concentrations of the allocation;
+#' \code{"fixed_total"} rescales them in every model to the sum of the
+#' concentrations of the allocation.
+#' @param sigma residual standard deviation that multiplies the coefficients,
+#' as the \code{"multiply_by"} attribute of a formula prior: the name of a
+#' parameter of the model (default \code{"sigma"}) or a positive number.
+#' @param contrast contrast of the factor terms of the budget:
+#' \code{"orthonormal"} (default), \code{"meandif"}, or \code{"treatment"};
+#' used only when the budget contains a factor term.
+#' @param model an R-squared budget specification to validate.
+#' @param name argument name used in validation messages.
+#' @param x an R-squared budget specification.
+#' @param ... additional arguments, currently unused.
+#'
+#' @return \code{R2_model()} returns an object of class \code{"R2_model"}
+#' with the five choices; \code{check_R2_model()} and \code{print()} return
+#' their validated input invisibly.
+#'
+#' @examples
+#' model <- R2_model(law = "normal", convention = "linked")
+#' model
+#' # one specification for two budgets of a formula prior list
+#' list(
+#'   covariates = prior_R2(terms = c("age", "sex"), model = model,
+#'                         total = prior("beta", list(2, 2))),
+#'   tested     = prior_R2(terms = "treatment", model = model)
+#' )
+#'
+#' @seealso [prior_R2()], [R2_dirichlet()]
+#' @export
+R2_model <- function(law = "exact", convention = "common", concentration = "inherited",
+                     sigma = "sigma", contrast = "orthonormal"){
+
+  output <- structure(list(
+    law           = law,
+    convention    = convention,
+    concentration = concentration,
+    sigma         = sigma,
+    contrast      = contrast
+  ), class = "R2_model")
+  check_R2_model(output)
+  output
+}
+
+#' @rdname R2_model
+#' @export
+check_R2_model <- function(model, name = "model"){
+
+  fields <- c("law", "convention", "concentration", "sigma", "contrast")
+  if(!is.list(model) || !inherits(model, "R2_model") || !identical(names(model), fields)){
+    stop(paste0("'", name, "' must be a specification from 'R2_model()'."), call. = FALSE)
+  }
+  check_char(model$law, "law", allow_values = .bt_R2_laws, allow_NA = FALSE)
+  check_char(model$convention, "convention", allow_values = .bt_R2_conventions, allow_NA = FALSE)
+  check_char(model$concentration, "concentration", allow_values = .bt_R2_concentrations, allow_NA = FALSE)
+  check_char(model$contrast, "contrast", allow_values = .bt_R2_contrasts, allow_NA = FALSE)
+  sigma <- model$sigma
   if(is.character(sigma)){
     check_char(sigma, "sigma", allow_NA = FALSE)
     .bt_check_jags_node_name(sigma, "sigma")
   }else{
     check_real(sigma, "sigma", lower = 0, allow_bound = FALSE, allow_NA = FALSE)
   }
+  invisible(model)
+}
 
-  output <- list(
-    terms         = terms,
-    alpha         = alpha,
-    a             = shapes[["a"]],
-    b             = shapes[["b"]],
-    total_inclusion = shapes[["inclusion"]],
-    inclusion     = inclusion,
-    law           = law,
-    convention    = convention,
-    concentration = concentration,
-    sigma         = sigma,
-    contrast      = contrast,
-    name          = NULL
-  )
-  class(output) <- c("BayesTools_R2_budget", "list")
+#' @rdname R2_model
+#' @export
+print.R2_model <- function(x, ...){
 
-  # the full-model total concentration is known here unless a kernel law
-  # inherits the concentrations (then it needs the term dimensions)
-  if(identical(convention, "linked") &&
-     (identical(law, "exact") || identical(concentration, "fixed_total"))){
-    .bt_R2_check_linked_shape(output, sum(alpha))
+  check_R2_model(x, "x")
+  cat("R-squared budget model\n")
+  cat("  law:           ", x$law, "\n", sep = "")
+  cat("  convention:    ", x$convention, "\n", sep = "")
+  cat("  concentration: ", x$concentration, "\n", sep = "")
+  cat("  sigma:         ", if(is.character(x$sigma)) paste0("'", x$sigma, "'") else format(x$sigma), "\n", sep = "")
+  cat("  contrast:      ", x$contrast, " (factor terms only)\n", sep = "")
+  invisible(x)
+}
+
+#' @title Dirichlet allocation of an R-squared budget
+#'
+#' @description \code{R2_dirichlet()} specifies the Dirichlet allocation of a
+#' [prior_R2()] budget over its terms, with one concentration per term.
+#'
+#' @param alpha \code{NULL} (default) for the flat allocation (concentration 1
+#' for every term, sized when the budget binds its terms); a single value for
+#' a symmetric allocation; a vector named by the terms of the budget, which it
+#' must cover exactly; or an unnamed vector in the order of the explicit
+#' \code{terms} of the budget. A budget of one term takes a single value, its
+#' term's concentration (which the linked convention and the kernel laws
+#' use). Each value must be finite and at least \code{0.01}.
+#' @param x an allocation specification.
+#' @param ... additional arguments, currently unused.
+#'
+#' @return \code{R2_dirichlet()} returns an object of class
+#' \code{"R2_dirichlet"}.
+#'
+#' @examples
+#' R2_dirichlet()                      # flat
+#' R2_dirichlet(0.5)                   # symmetric, sparser allocations
+#' R2_dirichlet(c(x = 1, f = 2))       # per term
+#'
+#' @seealso [prior_R2()], [R2_model()]
+#' @export
+R2_dirichlet <- function(alpha = NULL){
+
+  if(!is.null(alpha)){
+    check_real(alpha, "alpha", lower = 0.01, allow_bound = TRUE, check_length = 0, allow_NA = FALSE)
+    if(any(!is.finite(alpha))){
+      stop("The 'alpha' argument must be finite.", call. = FALSE)
+    }
+    labels <- names(alpha)
+    if(!is.null(labels)){
+      if(anyNA(labels) || any(!nzchar(trimws(labels)))){
+        stop("The concentrations in 'alpha' must be all named by terms or all unnamed.", call. = FALSE)
+      }
+      if(anyDuplicated(.bt_R2_term_key(trimws(labels)))){
+        stop("'alpha' names each term once.", call. = FALSE)
+      }
+    }
   }
-  if(identical(convention, "conditioning") && identical(concentration, "inherited") &&
-     identical(law, "exact") && output$a - sum(alpha) + min(alpha) <= 0){
-    stop("The 'conditioning' convention needs a - sum(alpha) + min(alpha) > 0, with a the first shape of ",
-         "'total' and alpha the concentrations of 'allocation', so that every model has a positive first shape.",
-         call. = FALSE)
-  }
 
-  output
+  structure(list(alpha = alpha), class = "R2_dirichlet")
+}
+
+#' @rdname R2_dirichlet
+#' @export
+print.R2_dirichlet <- function(x, ...){
+
+  alpha <- x$alpha
+  cat("R-squared budget allocation: ",
+    if(is.null(alpha)){
+      "flat Dirichlet (concentration 1 for every term)"
+    }else if(length(alpha) == 1L && is.null(names(alpha))){
+      paste0("symmetric Dirichlet (concentration ", format(alpha), " for every term)")
+    }else if(is.null(names(alpha))){
+      paste0("Dirichlet(", paste(format(alpha), collapse = ", "), ") in the order of the terms")
+    }else{
+      paste0("Dirichlet(", paste0(names(alpha), " = ", format(alpha), collapse = ", "), ")")
+    }, "\n", sep = "")
+  invisible(x)
 }
 
 .bt_R2_check_terms <- function(terms){
@@ -476,10 +632,17 @@ prior_R2 <- function(terms, total, allocation = NULL, law, convention, concentra
     stop("'inclusion' names each term once; duplicated: ",
          paste0("'", names(inclusion)[duplicated(keys)], "'", collapse = ", "), ".", call. = FALSE)
   }
+  # without explicit terms the names are checked when the budget binds
+  if(is.null(terms)){
+    for(i in seq_along(inclusion)){
+      .bt_R2_probability_law(inclusion[[i]], paste0("The inclusion prior of '", names(inclusion)[[i]], "'"))
+    }
+    return(invisible(NULL))
+  }
   position <- match(keys, .bt_R2_term_key(terms))
   if(anyNA(position)){
-    stop("'inclusion' names terms that are not in 'terms': ",
-         paste0("'", names(inclusion)[is.na(position)], "'", collapse = ", "), ".", call. = FALSE)
+    .bt_R2_stop(paste0("'inclusion' names terms that are not terms of the budget: ",
+         paste0("'", names(inclusion)[is.na(position)], "'", collapse = ", "), "."))
   }
   laws <- lapply(seq_along(inclusion), function(i){
     .bt_R2_probability_law(inclusion[[i]], paste0("The inclusion prior of '", terms[[position[[i]]]], "'"))
@@ -489,44 +652,47 @@ prior_R2 <- function(terms, total, allocation = NULL, law, convention, concentra
   list(form = "terms", laws = laws[terms[sort(position)]])
 }
 
-# The concentrations of the allocation prior of the budget, one per term (the
-# flat Dirichlet for NULL).
-.bt_R2_check_allocation <- function(allocation, terms){
+# The allocation of a budget is an R2_dirichlet() specification.
+.bt_R2_check_allocation_spec <- function(allocation){
 
-  if(is.null(allocation)){
+  if(!inherits(allocation, "R2_dirichlet")){
+    stop("'allocation' must be an allocation from 'R2_dirichlet()' (e.g., R2_dirichlet(c(x = 1, f = 2))); ",
+         "prior(\"dirichlet\", ...) is not accepted for a budget.", call. = FALSE)
+  }
+  invisible(allocation)
+}
+
+# The concentrations of the allocation of a budget, one per term: flat for
+# NULL, a single value for every term, per-term values matched by name (they
+# must cover the terms exactly), or values in the order of explicit terms
+# ('positional').
+.bt_R2_allocation_alpha <- function(allocation, terms, positional = TRUE){
+
+  alpha <- allocation$alpha
+  if(is.null(alpha)){
     return(rep(1, length(terms)))
   }
-  if(!is.prior(allocation) || !is.prior.simplex(allocation) ||
-     !identical(allocation[["distribution"]], "dirichlet") || is.prior.mixture(allocation)){
-    stop("'allocation' must be NULL or a Dirichlet prior, prior(\"dirichlet\", list(alpha = ...)), ",
-         "with one concentration per entry of 'terms'.", call. = FALSE)
-  }
-  if(.is_prior_expression(allocation)){
-    stop("The Dirichlet prior 'allocation' must have numeric concentrations; expressions are not supported.", call. = FALSE)
-  }
-  alpha <- allocation$parameters[["alpha"]]
-  if(length(terms) == 1L){
-    stop("A budget of one term takes no 'allocation': its term has the concentration 1.", call. = FALSE)
-  }
-  if(length(alpha) != length(terms)){
-    stop("The Dirichlet prior 'allocation' has ", length(alpha),
-         " concentrations, but 'terms' has ", length(terms), " term(s).", call. = FALSE)
-  }
-  # named concentrations are matched to the terms; unnamed ones are positional
   labels <- names(alpha)
+  if(is.null(labels) && length(alpha) == 1L){
+    return(rep(as.numeric(alpha), length(terms)))
+  }
   if(!is.null(labels)){
-    if(anyNA(labels) || any(!nzchar(trimws(labels)))){
-      stop("The concentrations of the Dirichlet prior 'allocation' must be all named by the terms or all unnamed.",
-           call. = FALSE)
-    }
     keys <- .bt_R2_term_key(trimws(labels))
     position <- match(.bt_R2_term_key(terms), keys)
-    if(anyDuplicated(keys) || anyNA(position)){
-      stop("The names of the concentrations of the Dirichlet prior 'allocation' must be the terms, each once; ",
-           "terms: ", paste0("'", terms, "'", collapse = ", "), "; names: ",
-           paste0("'", labels, "'", collapse = ", "), ".", call. = FALSE)
+    if(length(keys) != length(terms) || anyNA(position)){
+      .bt_R2_stop(paste0("The concentrations of 'allocation' must be named by the terms of the budget, each once; ",
+        "terms: ", paste0("'", terms, "'", collapse = ", "), "; names: ",
+        paste0("'", labels, "'", collapse = ", "), "."))
     }
-    alpha <- alpha[position]
+    return(as.numeric(alpha[position]))
+  }
+  if(!positional){
+    .bt_R2_stop(paste0("Unnamed concentrations of 'allocation' need the explicit 'terms' of the budget; ",
+      "name them by the terms (", paste0("'", terms, "'", collapse = ", "), ") or give one value for every term."))
+  }
+  if(length(alpha) != length(terms)){
+    .bt_R2_stop(paste0("'allocation' has ", length(alpha), " concentrations, but 'terms' has ",
+      length(terms), " term(s)."))
   }
 
   as.numeric(alpha)
@@ -565,9 +731,18 @@ print.BayesTools_R2_budget <- function(x, ...){
     linked       = paste0("in the full model; Beta(A_M, ", format(x$b), ") in a model with retained concentration A_M"),
     conditioning = "in the full model; a - A and a + b kept in every model"
   )
-  allocation <- paste0("Dirichlet(", paste(format(x$alpha), collapse = ", "), ")")
+  allocation <- if(!is.null(x$alpha)){
+    paste0("Dirichlet(", paste(format(x$alpha), collapse = ", "), ")")
+  }else if(is.null(x$allocation$alpha)){
+    "flat Dirichlet"
+  }else if(length(x$allocation$alpha) == 1L && is.null(names(x$allocation$alpha))){
+    paste0("symmetric Dirichlet(", format(x$allocation$alpha), ")")
+  }else{
+    paste0("Dirichlet(", paste0(names(x$allocation$alpha), " = ", format(x$allocation$alpha), collapse = ", "), ")")
+  }
   allocation_rule <- if(identical(x$concentration, "fixed_total")){
-    paste0("retained concentrations rescaled to sum to ", format(sum(x$alpha)), " in every model")
+    paste0("retained concentrations rescaled to sum to ",
+           if(is.null(x$alpha)) "their full-model total" else format(sum(x$alpha)), " in every model")
   }else{
     "retained terms keep their concentrations"
   }
@@ -581,7 +756,11 @@ print.BayesTools_R2_budget <- function(x, ...){
   }
 
   cat("R-squared budget prior", if(!is.null(x$name)) paste0(" '", x$name, "'"), " (", law_label, ")\n", sep = "")
-  cat("  terms:      ", paste(x$terms, collapse = ", "), "\n", sep = "")
+  cat("  terms:      ", if(is.null(x$terms)){
+    "every formula term without its own prior (resolved when the formula binds the budget)"
+  }else{
+    paste0(paste(x$terms, collapse = ", "), if(isTRUE(x$implicit)) " (resolved from the formula)")
+  }, "\n", sep = "")
   cat("  total:      ", total, " ", total_rule, "\n", sep = "")
   if(!is.null(x$total_inclusion)){
     cat("  spike:      zero signal in the budget with probability ",
@@ -601,14 +780,21 @@ print.BayesTools_R2_budget <- function(x, ...){
         if(length(x$inclusion$laws) < length(x$terms)) "; other terms always included")
     }
     cat("  inclusion:  ", gates, "\n", sep = "")
+  }else if(is.list(x$inclusion_spec) && !is.prior(x$inclusion_spec)){
+    cat("  inclusion:  ", paste0(names(x$inclusion_spec), collapse = ", "), " gated (resolved when the formula binds the budget)\n", sep = "")
+  }else if(is.prior(x$inclusion_spec)){
+    law <- .bt_R2_probability_law(x$inclusion_spec, "'inclusion'")
+    cat("  inclusion:  every term with ", if(identical(law$type, "spike")) paste0("probability ", format(law$p)) else
+      paste0("a shared rate ~ ", law_text(law), " (beta-binomial model prior)"), "\n", sep = "")
   }
-  if(length(x$terms) > 1L){
+  if(is.null(x$terms) || length(x$terms) > 1L){
     cat("  allocation: ", allocation, ", ", allocation_rule, "\n", sep = "")
+  }else{
+    cat("  allocation: concentration ", format(x$alpha), " of the single term",
+        if(!identical(x$law, "exact")) " (each coded coefficient under the kernel laws)", "\n", sep = "")
   }
   cat("  scale:      ", scale, "\n", sep = "")
-  if(!is.null(x$contrast)){
-    cat("  contrast:   ", x$contrast, "\n", sep = "")
-  }
+  cat("  contrast:   ", x$contrast, " (factor terms only)\n", sep = "")
   invisible(x)
 }
 
@@ -675,8 +861,11 @@ is.R2_budget <- function(x){
 # The budgets of a formula prior list ('entries', the entries that are
 # budgets), each named by its entry (NULL when there are none). An entry name
 # names the budget's nodes, so it must be a JAGS node name that is neither a
-# formula term nor a term of a budget.
-.bt_R2_formula_budgets <- function(entries, model_terms){
+# formula term nor a term of a budget. A budget without terms (at most one)
+# takes every fixed-effect term of the formula that has no prior of its own in
+# 'prior_list' (a point prior at zero keeps the term in the budget, excluded
+# from the model) and that no other budget names.
+.bt_R2_formula_budgets <- function(entries, model_terms, prior_list = list()){
 
   if(length(entries) == 0L){
     return(NULL)
@@ -688,6 +877,26 @@ is.R2_budget <- function(x){
   if(anyDuplicated(budget_names)){
     .bt_R2_stop(paste0("The R-squared budgets of a formula need distinct names; duplicated: ",
       paste0("'", unique(budget_names[duplicated(budget_names)]), "'", collapse = ", "), "."))
+  }
+  implicit <- budget_names[vapply(entries, function(budget) is.null(budget$terms), logical(1))]
+  if(length(implicit) > 1L){
+    .bt_R2_stop(paste0("At most one R-squared budget of a formula can take the formula's terms without 'terms'; ",
+      "name the terms of the budgets ", paste0("'", implicit, "'", collapse = ", "), "."))
+  }
+  if(length(implicit) == 1L){
+    claimed <- unlist(lapply(entries[setdiff(budget_names, implicit)], function(budget) .bt_R2_term_key(budget$terms)))
+    candidates <- setdiff(model_terms, "intercept")
+    own <- vapply(candidates, function(term){
+      term %in% names(prior_list) && !.bt_R2_is_exclusion_prior(prior_list[[term]])
+    }, logical(1))
+    terms <- candidates[!own & !.bt_R2_term_key(candidates) %in% claimed]
+    if(length(terms) == 0L){
+      .bt_R2_stop(paste0("The R-squared budget '", implicit, "' has no terms: every term of the formula has its own ",
+        "prior or belongs to another budget."))
+    }
+    budget <- entries[[implicit]]
+    budget$name <- implicit
+    entries[[implicit]] <- .bt_R2_resolve_budget(budget, gsub("__xXx__", ":", terms, fixed = TRUE))
   }
   term_keys <- unlist(lapply(entries, function(budget) .bt_R2_term_key(budget$terms)))
   if(anyDuplicated(term_keys)){
@@ -746,11 +955,6 @@ is.R2_budget <- function(x){
   if(!identical(type, "factor") || is.prior.factor(prior)){
     return(prior)
   }
-  if(is.null(budget$contrast)){
-    .bt_R2_stop(paste0("The factor term '", term, "' of the R-squared budget '", budget$name,
-      "' is excluded by a scalar point prior; give it a factor spike (prior_factor(\"spike\", list(0), contrast = ...)) ",
-      "or set the budget's 'contrast'."))
-  }
   prior_factor("spike", list(0), contrast = budget$contrast, prior_weights = .prior_model_weight(prior))
 }
 
@@ -775,12 +979,7 @@ is.R2_budget <- function(x){
           "' and cannot have its own prior. Remove its prior, or give it a point prior at zero ",
           "(prior(\"spike\", list(0)) or prior_none()) to exclude it from the model and the budget."))
       }
-      type <- model_terms_type[[term]]
-      if(identical(type, "factor") && is.null(budget$contrast)){
-        .bt_R2_stop(paste0("The R-squared budget '", budget$name, "' contains the factor term '", term,
-          "' and therefore needs a 'contrast' (\"orthonormal\", \"meandif\", or \"treatment\")."))
-      }
-      prior_list[[term]] <- .bt_R2_term_stub(budget, term, declared, type)
+      prior_list[[term]] <- .bt_R2_term_stub(budget, term, declared, model_terms_type[[term]])
     }
   }
   prior_list

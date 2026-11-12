@@ -23,13 +23,32 @@ skip_if_not_test_profile("unit")
   )
   overrides <- list(...)
   arguments[names(overrides)] <- overrides
-  do.call(prior_R2, arguments)
+  do.call(.R2_prior, arguments)
 }
 
-test_that("prior_R2() requires every undecided choice and validates its arguments", {
+test_that("prior_R2() has defaults, takes its fixed choices from R2_model() and validates its arguments", {
 
-  expect_error(prior_R2(terms = "x", total = .R2_beta(1, 1), law = "exact", sigma = "sigma"),
-    "The 'convention', 'concentration' arguments are required", fixed = TRUE)
+  # the defaults: every formula term, Beta(1, 1), a flat allocation, the
+  # exact law with the common convention and inherited concentrations
+  default <- prior_R2()
+  expect_null(default$terms)
+  expect_identical(default[c("a", "b", "law", "convention", "concentration", "sigma", "contrast")],
+    list(a = 1, b = 1, law = "exact", convention = "common", concentration = "inherited", sigma = "sigma",
+         contrast = "orthonormal"))
+  expect_output(print(default), "every formula term without its own prior (resolved when the formula binds the budget)", fixed = TRUE)
+  expect_output(print(default), "allocation: flat Dirichlet", fixed = TRUE)
+  expect_error(prior_R2(model = list(law = "exact")), "'model' must be a specification from 'R2_model()'", fixed = TRUE)
+  expect_error(prior_R2(law = "exact"), "unused argument")
+  expect_error(R2_model(law = "student"), "law", fixed = TRUE)
+  expect_error(R2_model(sigma = -1), "sigma")
+  expect_error(R2_model(contrast = "treatment2"), "contrast")
+  model <- R2_model(law = "normal", convention = "linked", sigma = 2)
+  expect_identical(check_R2_model(model), model)
+  expect_output(print(model), "convention:    linked", fixed = TRUE)
+  expect_error(prior_R2(allocation = prior("dirichlet", list(alpha = c(1, 1)))), "'R2_dirichlet()'", fixed = TRUE)
+  expect_error(R2_dirichlet(0), "alpha")
+  expect_error(R2_dirichlet(c(x = 1, x = 2)), "names each term once", fixed = TRUE)
+  expect_output(print(R2_dirichlet(0.5)), "symmetric Dirichlet (concentration 0.5 for every term)", fixed = TRUE)
   expect_error(.R2_test_budget(law = "student"), "law", fixed = TRUE)
   expect_error(.R2_test_budget(terms = c(1, 2)), "'terms' must be a character vector", fixed = TRUE)
   expect_error(.R2_test_budget(terms = c("x:f", "f:x", "z")), "duplicated: 'f:x'", fixed = TRUE)
@@ -40,11 +59,19 @@ test_that("prior_R2() requires every undecided choice and validates its argument
   expect_error(.R2_test_budget(total = prior("beta", list(1, 1), list(0, 0.5))), "cannot be truncated", fixed = TRUE)
   expect_error(.R2_test_budget(total = prior("beta", list(0.01, 1), list(1e-9, 1))), "cannot be truncated", fixed = TRUE)
   expect_equal(.R2_test_budget(total = prior("beta", list(alpha = c(shape = 2), beta = 3)))[c("a", "b")], list(a = 2, b = 3))
-  expect_error(.R2_test_budget(terms = "x", allocation = .R2_dirichlet(1, 1), contrast = NULL),
-    "A budget of one term takes no 'allocation'", fixed = TRUE)
+  expect_error(.R2_test_budget(terms = "x", allocation = .R2_dirichlet(1, 1)),
+    "'allocation' has 2 concentrations, but 'terms' has 1 term(s)", fixed = TRUE)
   expect_error(.R2_test_budget(allocation = .R2_dirichlet(1, 1)), "has 2 concentrations, but 'terms' has 3", fixed = TRUE)
-  expect_error(.R2_test_budget(allocation = prior("normal", list(0, 1))),
-    "'allocation' must be NULL or a Dirichlet prior", fixed = TRUE)
+  # allocations: symmetric, named (matched to the terms, covering them), one term
+  expect_equal(prior_R2(terms = c("x", "f"), allocation = R2_dirichlet(0.5))$alpha, c(x = 0.5, f = 0.5))
+  expect_equal(prior_R2(terms = c("x", "f"), allocation = R2_dirichlet(c(f = 3, x = 1)))$alpha, c(x = 1, f = 3))
+  expect_error(prior_R2(terms = c("x", "f"), allocation = R2_dirichlet(c(x = 1))), "each once", fixed = TRUE)
+  expect_equal(prior_R2(terms = "x", allocation = R2_dirichlet(2))$alpha, c(x = 2))
+  # a one-term linked budget has its own concentration as the full-model total
+  linked_one <- prior_R2(terms = "x", total = .R2_beta(2, 3), allocation = R2_dirichlet(2), model = R2_model(convention = "linked"))
+  expect_equal(linked_one$a, 2)
+  expect_error(prior_R2(terms = "x", allocation = R2_dirichlet(2), model = R2_model(convention = "linked")),
+    "must equal the total concentration of the full model, 2", fixed = TRUE)
   expect_error(.R2_test_budget(sigma = -1), "sigma")
   expect_error(.R2_test_budget(convention = "conditioning", total = .R2_beta(1, 1), terms = c("x", "f"),
     allocation = .R2_dirichlet(1, 2)), "a - sum(alpha) + min(alpha) > 0", fixed = TRUE)
@@ -149,9 +176,10 @@ test_that("excluded, conflicting and unsupported budget terms are handled explic
   expect_error(JAGS_formula(~ x + f, "mu", data,
     list(intercept = prior("normal", list(0, 1)), x = prior("normal", list(0, 1)), R2 = budget)),
     class = "BayesTools_R2_invalid")
-  expect_error(JAGS_formula(~ x + f, "mu", data,
-    list(intercept = prior("normal", list(0, 1)), R2 = .R2_test_budget(contrast = NULL))),
-    "needs a 'contrast'", fixed = TRUE)
+  # the contrast of the factor terms defaults to orthonormal
+  orthonormal <- JAGS_formula(~ x + f, "mu", data,
+    list(intercept = prior("normal", list(0, 1)), R2 = .R2_test_budget(contrast = NULL)))$prior_list
+  expect_true(is.prior.orthonormal(orthonormal$mu_f))
   other <- .R2_test_budget(terms = "x", allocation = NULL)
   expect_error(JAGS_formula(~ x + f, "mu", data,
     list(intercept = prior("normal", list(0, 1)), R2 = budget, other = other)),
@@ -305,10 +333,11 @@ test_that("factor terms are excluded by scalar or factor zero spikes", {
     expect_true(is.prior.orthonormal(info$prior_list$mu_f))
     expect_identical(info$prior_list$mu_x$n_units, 1L)
   }
-  expect_error(JAGS_formula(~ x + f, "mu", data,
-    list(intercept = prior("normal", list(0, 1)), f = prior("spike", list(0)),
-         R2 = .R2_test_budget(contrast = NULL))),
-    "is excluded by a scalar point prior", fixed = TRUE)
+  # a scalar zero spike excludes a factor term with the budget's contrast
+  # (orthonormal by default)
+  default_contrast <- JAGS_formula(~ x + f, "mu", data,
+    list(intercept = prior("normal", list(0, 1)), f = prior("spike", list(0)), R2 = .R2_test_budget(contrast = NULL)))
+  expect_true(is.prior.orthonormal(default_contrast$prior_list$mu_f))
 })
 
 test_that("the coefficient law does not depend on the units of the predictors", {
@@ -351,4 +380,49 @@ test_that("coefficient nodes replay from exactly their declared dependencies", {
     expected <- sqrt(W * phi[, priors[[term]]$units, drop = FALSE]) * sweep(z, 2, diag(priors[[term]]$map), "*")
     expect_equal(unname(replay), unname(expected), tolerance = 1e-13)
   }
+})
+
+test_that("a budget without terms takes the formula's terms, equivalently to explicit terms", {
+
+  data <- .R2_test_data()
+  bind <- function(prior_list, formula = ~ x + z + f){
+    JAGS_formula(formula, "mu", data, c(list(intercept = prior("normal", list(0, 1))), prior_list))$prior_list
+  }
+  syntax <- function(priors) .JAGS_add_priors.fun(priors)
+
+  # every term without its own prior; a zero spike keeps a term, excluded
+  implicit <- bind(list(x = prior("normal", list(0, 1)), z = prior("spike", list(0)),
+                        R2 = prior_R2(allocation = R2_dirichlet(c(f = 2, z = 1)))))
+  explicit <- bind(list(x = prior("normal", list(0, 1)), z = prior("spike", list(0)),
+                        R2 = prior_R2(terms = c("z", "f"), allocation = R2_dirichlet(c(1, 2)))))
+  expect_identical(syntax(implicit), syntax(explicit))
+  expect_identical(implicit$mu_f$budget$terms, c("z", "f"))
+  expect_equal(implicit$mu_f$budget$alpha, explicit$mu_f$budget$alpha)
+  expect_true(is.prior.point(implicit$mu_z))
+  expect_match(print(implicit$mu_f, silent = TRUE), "(budget 'R2': z, f)", fixed = TRUE)
+  expect_output(print(implicit$mu_f$budget), "z, f (resolved from the formula)", fixed = TRUE)
+
+  # the allocation forms are equivalent; a budget without terms needs named
+  # or single concentrations, and its named lists are checked at binding
+  flat <- syntax(bind(list(R2 = prior_R2())))
+  expect_identical(flat, syntax(bind(list(R2 = prior_R2(allocation = R2_dirichlet(1))))))
+  expect_identical(flat, syntax(bind(list(R2 = prior_R2(terms = c("x", "z", "f"), allocation = R2_dirichlet(c(1, 1, 1)))))))
+  expect_error(bind(list(R2 = prior_R2(allocation = R2_dirichlet(c(1, 2, 3))))), "need the explicit 'terms'", fixed = TRUE)
+  expect_error(bind(list(R2 = prior_R2(allocation = R2_dirichlet(c(x = 1, z = 2))))), "each once", fixed = TRUE)
+  expect_error(bind(list(R2 = prior_R2(inclusion = list(w = prior("spike", list(0.5)))))),
+    "'inclusion' names terms that are not terms of the budget: 'w'", fixed = TRUE)
+  gated <- bind(list(R2 = prior_R2(inclusion = list(z = prior("spike", list(0.5))))))
+  expect_identical(unname(gated$mu_R2$term_gate), c(0L, 1L, 0L))
+
+  # a budget without terms takes the terms that no other budget names; at most
+  # one, and not an empty one
+  two <- bind(list(cov = prior_R2(terms = "x"), R2 = prior_R2()))
+  expect_identical(two$mu_z$budget$terms, c("z", "f"))
+  expect_identical(two$mu_x$budget$name, "cov")
+  expect_error(bind(list(R2 = prior_R2(), other = prior_R2())), "At most one R-squared budget", fixed = TRUE)
+  expect_error(bind(list(x = prior("normal", list(0, 1)), R2 = prior_R2()), ~ x), "has no terms", fixed = TRUE)
+
+  # linked: the default total names the required first shape at binding
+  expect_error(bind(list(R2 = prior_R2(model = R2_model(convention = "linked")))),
+    "must equal the total concentration of the full model, 3 for this budget 'R2'", fixed = TRUE)
 })

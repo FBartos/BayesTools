@@ -8,7 +8,7 @@ skip_if_not_test_profile("unit")
 }
 .R2_gate_budget <- function(inclusion = prior("beta", list(1, 1)), total = prior("beta", list(1.5, 2)),
                             convention = "common", law = "exact", concentration = "inherited"){
-  prior_R2(terms = c("x", "z", "f"), total = total, allocation = prior("dirichlet", list(alpha = c(1, 0.5, 2))),
+  .R2_prior(terms = c("x", "z", "f"), total = total, allocation = prior("dirichlet", list(alpha = c(1, 0.5, 2))),
     law = law, convention = convention, concentration = concentration, sigma = 1, contrast = "orthonormal",
     inclusion = inclusion)
 }
@@ -37,7 +37,7 @@ test_that("prior_R2() accepts spike-and-slab totals and inclusion gates and vali
   expect_error(.R2_gate_budget(total = prior_spike_and_slab(prior("normal", list(0, 1)))), "'total' must be a Beta prior", fixed = TRUE)
   expect_error(.R2_gate_budget(inclusion = prior("spike", list(1))), "strictly between 0 and 1", fixed = TRUE)
   expect_error(.R2_gate_budget(inclusion = prior("normal", list(0, 1))), "must be a probability prior", fixed = TRUE)
-  expect_error(.R2_gate_budget(inclusion = list(w = prior("spike", list(0.5)))), "not in 'terms': 'w'", fixed = TRUE)
+  expect_error(.R2_gate_budget(inclusion = list(w = prior("spike", list(0.5)))), "not terms of the budget: 'w'", fixed = TRUE)
   expect_error(.R2_gate_budget(inclusion = list(prior("spike", list(0.5)))), "named by the term labels", fixed = TRUE)
 })
 
@@ -192,7 +192,7 @@ test_that("gated budgets fit with inclusion summaries, catalog quantities and re
   # a bound of a share that is no atom has no exact posterior ordinate
   expect_error(hypothesis_BF_model(fit, "R2[share: x] = 0"), "is a bound of its support", fixed = TRUE)
   # the atom of a share at one is not an inclusion event
-  expect_error(hypothesis_BF_model(fit, "R2[share: x] = 1"), "Use a region or directional hypothesis.",
+  expect_error(hypothesis_BF_model(fit, "R2[share: x] = 1"), "the region hypothesis '(mu) R2[share: x] >= 1'",
     fixed = TRUE, class = "BayesTools_point_mass_at_null")
   region <- hypothesis_BF_model(fit, "R2{total} > 0.1")
   prior_prob <- 0.5 * stats::pbeta(0.1, 1.5, 2, lower.tail = FALSE)
@@ -244,7 +244,7 @@ test_that("gated budgets are exact at the edges of their laws", {
   set.seed(3)
   # fixed_total with one retained unit: the linked total is Beta(total, b)
   data <- .R2_gate_data()
-  budget <- prior_R2(terms = c("x", "z"), total = .R2_spike(0.6, prior("beta", list(2, 2))), law = "exact",
+  budget <- .R2_prior(terms = c("x", "z"), total = .R2_spike(0.6, prior("beta", list(2, 2))), law = "exact",
     convention = "linked", concentration = "fixed_total", sigma = 1, inclusion = prior("spike", list(0.5)))
   core <- JAGS_formula(~ x, "mu", data, list(intercept = prior("normal", list(0, 1)), R2 = budget))$prior_list$mu_R2
   draws <- .bt_R2_core_draws(core, 40000)
@@ -259,7 +259,7 @@ test_that("gated budgets are exact at the edges of their laws", {
   # supports need no configurations; the laws of 17 gated terms with equal
   # concentrations have 17 open states
   wide <- as.data.frame(matrix(stats::rnorm(40 * 17), 40, 17, dimnames = list(NULL, paste0("v", 1:17))))
-  many <- prior_R2(terms = names(wide), total = .R2_spike(0.5, prior("beta", list(1, 1))), law = "exact",
+  many <- .R2_prior(terms = names(wide), total = .R2_spike(0.5, prior("beta", list(1, 1))), law = "exact",
     convention = "common", concentration = "inherited", sigma = 1, inclusion = prior("spike", list(0.5)))
   priors <- JAGS_formula(stats::reformulate(names(wide)), "mu", wide, list(intercept = prior("normal", list(0, 1)), R2 = many))$prior_list
   support <- .bt_R2_quantity_support(structure(list(), prior_list = priors), list(type = "coordinate", dependencies = "mu_R2"))
@@ -282,7 +282,7 @@ test_that("gated budgets are exact at the edges of their laws", {
   expect_identical(mean(spiked$mu_f), 0)
   set.seed(4)
   unequal <- data.frame(f = factor(rep(c("a", "b", "c"), times = c(4, 8, 12))), x = stats::rnorm(24))
-  plain <- prior_R2(terms = c("x", "f"), total = prior("beta", list(1, 2)), law = "exact", convention = "common",
+  plain <- .R2_prior(terms = c("x", "f"), total = prior("beta", list(1, 2)), law = "exact", convention = "common",
     concentration = "inherited", sigma = 1, contrast = "orthonormal")
   expect_identical(mean(JAGS_formula(~ x + f, "mu", unequal, list(intercept = prior("normal", list(0, 1)), R2 = plain))$prior_list$mu_f), 0)
 
@@ -308,7 +308,7 @@ test_that("conditioning on gated quantities and their scales is explicit", {
     formula_list = list(mu = ~ x + z + f), formula_data_list = list(mu = data),
     formula_scale_list = list(mu = list(x = TRUE, z = TRUE)),
     formula_prior_list = list(mu = list(intercept = prior("normal", list(0, 5)),
-      R2 = prior_R2(terms = c("x", "z", "f"), total = .R2_spike(0.5, prior("beta", list(1, 2))), law = "exact",
+      R2 = .R2_prior(terms = c("x", "z", "f"), total = .R2_spike(0.5, prior("beta", list(1, 2))), law = "exact",
         convention = "common", concentration = "inherited", sigma = "sigma", contrast = "orthonormal",
         inclusion = prior("beta", list(1, 1))))),
     chains = 1, adapt = 200, burnin = 200, sample = 1000, seed = 8, silent = TRUE)
@@ -354,8 +354,9 @@ test_that("conditioning on gated quantities and their scales is explicit", {
   either <- as_mixed_posteriors(fit, parameters = c("mu_R2", "theta"), conditional = c("mu_R2", "theta"), conditional_rule = "OR")$mu_R2
   expect_equal(.bt_meta_get(either, "prior_density")$points$p, 1 / 3, tolerance = 1e-10)
   # a linked slab is a mixture of Beta totals: flattened beside the atom
-  linked <- .R2_gate_bind(.R2_gate_budget(convention = "linked", total = .R2_spike(0.5, prior("beta", list(3.5, 2)))))$mu_R2
-  law <- .bt_R2_total_law_given(linked, 2 / 3)
+  linked <- .R2_gate_bind(.R2_gate_budget(convention = "linked", total = .R2_spike(0.5, prior("beta", list(3.5, 2)))))
+  linked$theta <- prior_spike_and_slab(prior("normal", list(0, 1)), prior_inclusion = prior("spike", list(0.5)))
+  law <- .bt_R2_conditioned_law(linked, .condition_event(linked, c("mu_R2", "theta"), "OR"), "mu_R2")
   expect_true(is.prior.mixture(law))
   weights <- vapply(law, `[[`, numeric(1), "prior_weights")
   atom <- vapply(law, is.prior.point, logical(1))
@@ -376,7 +377,7 @@ test_that("draws of gated budgets are extracted beyond the analytic limits and f
     data = list(y = data$y, N = nrow(data)), prior_list = list(sigma = prior("invgamma", list(1, 1))),
     formula_list = list(mu = ~ x + g), formula_data_list = list(mu = data),
     formula_prior_list = list(mu = list(intercept = prior("normal", list(0, 5)),
-      R2 = prior_R2(terms = c("x", "g"), total = prior("beta", list(1, 2)), law = "exact", convention = "common",
+      R2 = .R2_prior(terms = c("x", "g"), total = prior("beta", list(1, 2)), law = "exact", convention = "common",
         concentration = "inherited", sigma = "sigma", contrast = "orthonormal", inclusion = prior("spike", list(0.5))))),
     chains = 1, adapt = 100, burnin = 100, sample = 300, seed = 9, silent = TRUE)
   expect_s3_class(as_mixed_posteriors(fit, parameters = "mu_g", conditional = "mu_g")$mu_g, "mixed_posteriors")
@@ -385,7 +386,7 @@ test_that("draws of gated budgets are extracted beyond the analytic limits and f
   # enumeration of the configurations
   wide <- as.data.frame(matrix(stats::rnorm(40 * 17), 40, 17, dimnames = list(NULL, paste0("v", 1:17))))
   wide$y <- stats::rnorm(40)
-  many <- prior_R2(terms = paste0("v", 1:17), total = prior("beta", list(1, 1)), law = "exact",
+  many <- .R2_prior(terms = paste0("v", 1:17), total = prior("beta", list(1, 1)), law = "exact",
     convention = "common", concentration = "inherited", sigma = "sigma", inclusion = prior("spike", list(0.5)))
   fit <- JAGS_fit(
     model_syntax = "model{ for(i in 1:N){ y[i] ~ dnorm(mu[i], 1 / pow(sigma, 2)) } }",
@@ -460,10 +461,10 @@ test_that("the prior laws of gated budgets aggregate the configurations exactly"
   # of open gates), and the laws are available
   set.seed(1)
   wide <- as.data.frame(matrix(stats::rnorm(40 * 30), 40, 30, dimnames = list(NULL, paste0("v", 1:30))))
-  expect_error(prior_R2(terms = names(wide), total = .R2_spike(0.5, prior("beta", list(1, 1))), law = "exact",
+  expect_error(.R2_prior(terms = names(wide), total = .R2_spike(0.5, prior("beta", list(1, 1))), law = "exact",
     convention = "linked", concentration = "inherited", sigma = 1, inclusion = prior("beta", list(1, 1))),
     "must equal the total concentration of the full model, 30", fixed = TRUE)
-  many <- prior_R2(terms = names(wide), total = .R2_spike(0.5, prior("beta", list(30, 1))), law = "exact",
+  many <- .R2_prior(terms = names(wide), total = .R2_spike(0.5, prior("beta", list(30, 1))), law = "exact",
     convention = "linked", concentration = "inherited", sigma = 1, inclusion = prior("beta", list(1, 1)))
   priors <- JAGS_formula(stats::reformulate(names(wide)), "mu", wide, list(intercept = prior("normal", list(0, 1)), R2 = many))$prior_list
   states <- .bt_R2_core_states(priors$mu_R2)
@@ -476,7 +477,7 @@ test_that("the prior laws of gated budgets aggregate the configurations exactly"
 
   # many distinct concentrations: the number of states is limited
   set.seed(2)
-  distinct <- prior_R2(terms = names(wide)[1:17], total = prior("beta", list(1, 1)),
+  distinct <- .R2_prior(terms = names(wide)[1:17], total = prior("beta", list(1, 1)),
     allocation = prior("dirichlet", list(alpha = sqrt(c(2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59)))),
     law = "exact", convention = "common", concentration = "inherited", sigma = 1, inclusion = prior("spike", list(0.5)))
   priors <- JAGS_formula(stats::reformulate(names(wide)[1:17]), "mu", wide, list(intercept = prior("normal", list(0, 1)), R2 = distinct))$prior_list
@@ -489,7 +490,7 @@ test_that("factor levels, named allocations and the last truncated gate", {
   set.seed(3)
   data <- .R2_gate_data()
   priors <- JAGS_formula(~ x + f, "mu", data, list(intercept = prior("normal", list(0, 1)),
-    R2 = prior_R2(terms = c("x", "f"), total = prior("beta", list(1, 2)), law = "exact", convention = "common",
+    R2 = .R2_prior(terms = c("x", "f"), total = prior("beta", list(1, 2)), law = "exact", convention = "common",
       concentration = "inherited", sigma = 1, contrast = "orthonormal")))$prior_list
   key <- list(type = "factor_level", dependencies = c("mu_f[1]", "mu_f[2]"), weights = contr.orthonormal(3)[2, ])
   law <- .bt_R2_quantity_law(structure(list(), prior_list = priors), key)
@@ -497,13 +498,13 @@ test_that("factor levels, named allocations and the last truncated gate", {
   expect_equal(var(law), var(priors$mu_f), tolerance = 1e-10)
 
   # named concentrations follow the terms
-  named <- prior_R2(terms = c("x", "f"), total = prior("beta", list(1, 2)),
+  named <- .R2_prior(terms = c("x", "f"), total = prior("beta", list(1, 2)),
     allocation = prior("dirichlet", list(alpha = c(f = 5, x = 1))), law = "exact", convention = "common",
     concentration = "inherited", sigma = 1, contrast = "orthonormal")
   expect_equal(named$alpha, c(x = 1, f = 5))
-  expect_error(prior_R2(terms = c("x", "f"), total = prior("beta", list(1, 2)),
+  expect_error(.R2_prior(terms = c("x", "f"), total = prior("beta", list(1, 2)),
     allocation = prior("dirichlet", list(alpha = c(f = 5, z = 1))), law = "exact", convention = "common",
-    concentration = "inherited", sigma = 1), "must be the terms, each once", fixed = TRUE)
+    concentration = "inherited", sigma = 1), "each once", fixed = TRUE)
 
   # given every earlier gate closed, the last gate opens with probability one
   gates <- .R2_gate_bind(.R2_gate_budget(inclusion = prior("beta", list(2, 3)), total = .R2_spike(0.5)))$mu_R2$gates
@@ -519,7 +520,7 @@ test_that("gated laws keep distinct states, conditioned slabs and dependent memb
   }
 
   # close raw concentrations with different shapes are different states
-  close <- prior_R2(terms = c("x", "z"), total = prior("beta", list(1e14 + 2, 2)),
+  close <- .R2_prior(terms = c("x", "z"), total = prior("beta", list(1e14 + 2, 2)),
     allocation = prior("dirichlet", list(alpha = c(1e14, 1e14 + 1))), law = "exact", convention = "conditioning",
     concentration = "inherited", sigma = 1, inclusion = prior("spike", list(0.5)))
   q <- 1e-14
@@ -529,7 +530,7 @@ test_that("gated laws keep distinct states, conditioned slabs and dependent memb
   # a core conditioned on a pattern: given x and z open (flat allocation,
   # common Beta(2, 4) total) x has the variance E[W] / 2 * scale^2 of the
   # model x + z, half of that given z closed, and its draws follow the pattern
-  plain <- prior_R2(terms = c("x", "z"), total = prior("beta", list(2, 4)), law = "exact", convention = "common",
+  plain <- .R2_prior(terms = c("x", "z"), total = prior("beta", list(2, 4)), law = "exact", convention = "common",
     concentration = "inherited", sigma = 1, inclusion = prior("spike", list(0.5)))
   conditioned <- function(prior, flags){
     prior$core <- .bt_R2_condition_core(prior$core, flags)
@@ -542,7 +543,7 @@ test_that("gated laws keep distinct states, conditioned slabs and dependent memb
   alone <- conditioned(bind(plain)$mu_x, c(x = TRUE, z = FALSE))
   expect_equal(var(alone), 2 * var(both), tolerance = 1e-8)
   # given z closed, the conditioning total of x alone is Beta(1, 1.25): mean 0
-  small <- prior_R2(terms = c("x", "z"), total = prior("beta", list(2, 0.25)), law = "exact", convention = "conditioning",
+  small <- .R2_prior(terms = c("x", "z"), total = prior("beta", list(2, 0.25)), law = "exact", convention = "conditioning",
     concentration = "inherited", sigma = 1, inclusion = prior("spike", list(0.5)))
   expect_identical(mean(bind(small)$mu_x), NaN)
   expect_identical(mean(conditioned(bind(small)$mu_x, c(z = FALSE))), 0)
@@ -557,7 +558,7 @@ test_that("gated laws keep distinct states, conditioned slabs and dependent memb
   # a closed factor keeps its coded coefficients and a closed budget samples
   # no total, in the joint draws of the options of an event
   ff <- data.frame(f = factor(rep(c("a", "b", "c"), each = 10)), x = stats::rnorm(30))
-  gated_f <- prior_R2(terms = c("x", "f"), total = prior("beta", list(2, 4)), law = "exact", convention = "common",
+  gated_f <- .R2_prior(terms = c("x", "f"), total = prior("beta", list(2, 4)), law = "exact", convention = "common",
     concentration = "inherited", sigma = 1, contrast = "orthonormal",
     inclusion = list(x = prior("spike", list(0.5)), f = prior("spike", list(0.5))))
   priors_f <- JAGS_formula(~ x + f, "mu", ff, list(intercept = prior("normal", list(0, 1)), R2 = gated_f))$prior_list
@@ -566,7 +567,7 @@ test_that("gated laws keep distinct states, conditioned slabs and dependent memb
     sampled <- .generate_prior_sample_matrix(option, 100, column_names = c("mu_x", "mu_f[1]", "mu_f[2]", "mu_R2"), seed = 1)
     expect_false(anyNA(sampled))
   }
-  single <- prior_R2(terms = "x", total = prior("beta", list(2, 4)), law = "exact", convention = "common",
+  single <- .R2_prior(terms = "x", total = prior("beta", list(2, 4)), law = "exact", convention = "common",
     concentration = "inherited", sigma = 1, inclusion = list(x = prior("spike", list(0.5))))
   priors_x <- JAGS_formula(~ x, "mu", ff, list(intercept = prior("normal", list(0, 1)), R2 = single))$prior_list
   priors_x$theta <- prior_spike_and_slab(prior("normal", list(0, 1)), prior_inclusion = prior("spike", list(0.5)))
@@ -574,14 +575,14 @@ test_that("gated laws keep distinct states, conditioned slabs and dependent memb
   expect_true(all(.generate_prior_sample_matrix(closed, 100, column_names = c("mu_x", "mu_R2", "theta"), seed = 1)[, "mu_R2"] == 0))
 
   # the shape of the inclusion rate keeps a tiny second shape
-  tiny <- prior_R2(terms = c("x", "z"), total = prior("beta", list(2, 4)), law = "exact", convention = "common",
+  tiny <- .R2_prior(terms = c("x", "z"), total = prior("beta", list(2, 4)), law = "exact", convention = "common",
     concentration = "inherited", sigma = 1, inclusion = prior("beta", list(0.1, 1e-6)))
   expect_match(.bt_R2_core_syntax(bind(tiny)$mu_R2), "1e-06 + (2 - sum(mu_R2_gate[1:2])))", fixed = TRUE)
 
   # event probabilities need no concentrations (18 distinct concentrations
   # exceed the states of the laws, not those of the gates)
   wide <- as.data.frame(matrix(stats::rnorm(30 * 18), 30, 18, dimnames = list(NULL, paste0("v", 1:18))))
-  distinct <- prior_R2(terms = names(wide), total = prior("beta", list(1, 1)),
+  distinct <- .R2_prior(terms = names(wide), total = prior("beta", list(1, 1)),
     allocation = prior("dirichlet", list(alpha = 2^(0:17))), law = "exact", convention = "common",
     concentration = "inherited", sigma = 1, inclusion = prior("spike", list(0.5)))
   many <- JAGS_formula(stats::reformulate(names(wide)), "mu", wide, list(intercept = prior("normal", list(0, 1)), R2 = distinct))$prior_list
@@ -589,11 +590,28 @@ test_that("gated laws keep distinct states, conditioned slabs and dependent memb
 
   # given z open, the other members of a shared-rate budget are dependent:
   # combinations of them have no product law
-  shared <- prior_R2(terms = c("x", "z", "w"), total = prior("beta", list(2, 2)), law = "exact", convention = "common",
+  shared <- .R2_prior(terms = c("x", "z", "w"), total = prior("beta", list(2, 2)), law = "exact", convention = "common",
     concentration = "inherited", sigma = 1, inclusion = prior("beta", list(1, 1)))
   priors <- bind(shared, ~ x + z + w)
   context <- .prior_density_build_context(priors[c("mu_x", "mu_z", "mu_w", "mu_R2")], c("mu_x", "mu_z", "mu_w"),
     conditional = "mu_z")
   expect_error(.prior_density_from_context(context, c(mu_x = 1, mu_z = 0, mu_w = 1)),
     class = "BayesTools_formula_measure_unavailable")
+})
+
+test_that("gate shapes keep tiny rates and conditioned supports drop impossible atoms", {
+
+  set.seed(2)
+  data <- data.frame(x = stats::rnorm(30))
+  tiny <- prior_R2(terms = "x", total = prior("beta", list(2, 2)), inclusion = prior("beta", list(2^-53, 2^-52)))
+  core <- JAGS_formula(~ x, "mu", data, list(intercept = prior("normal", list(0, 1)), R2 = tiny))$prior_list$mu_R2
+  expect_equal(mcdf(core, 0), 2 / 3)
+  expect_equal(mean(core), 1 / 6)
+  on <- .bt_R2_condition_core(core, flags = logical(), total = TRUE)
+  support <- .bt_R2_quantity_support(structure(list(), prior_list = list(mu_R2 = on)),
+    list(type = "coordinate", dependencies = "mu_R2"))
+  expect_length(support$points, 0L)
+  support <- .bt_R2_quantity_support(structure(list(), prior_list = list(mu_R2 = core)),
+    list(type = "coordinate", dependencies = "mu_R2"))
+  expect_identical(support$points, 0)
 })

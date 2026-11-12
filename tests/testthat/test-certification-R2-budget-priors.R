@@ -3,7 +3,7 @@ skip_if_not_installed("rjags")
 skip_if_not_installed("runjags")
 skip_if_not_installed("bridgesampling")
 
-# Bayes factors of R-squared budget priors (prior_R2()) against the
+# Bayes factors of R-squared budget priors (.R2_prior()) against the
 # intercept-only model in a balanced design with mutually orthogonal centered
 # term blocks: continuous x and z and a three-level factor f (orthonormal
 # contrasts). With a flat intercept and p(sigma) proportional to 1/sigma, the
@@ -165,7 +165,7 @@ R2_cert_fit <- function(terms, budget, seed){
 }
 
 R2_cert_budget <- function(alpha, law, a = 1, b = 2, convention = "common"){
-  prior_R2(terms = names(alpha), total = prior("beta", list(if(identical(convention, "linked")) sum(alpha) else a, b)),
+  .R2_prior(terms = names(alpha), total = prior("beta", list(if(identical(convention, "linked")) sum(alpha) else a, b)),
     allocation = if(length(alpha) > 1L) prior("dirichlet", list(alpha = unname(alpha))),
     law = law, convention = convention, concentration = "inherited", sigma = "sigma", contrast = "orthonormal")
 }
@@ -269,7 +269,7 @@ test_that("one gated fit reproduces the model average of its submodels", {
   # configuration the budget is the prior of that model as a separate fit;
   # the reference posterior combines it with the independent quadrature
   # Bayes factors of the separate models
-  gated <- prior_R2(terms = c("x", "z"),
+  gated <- .R2_prior(terms = c("x", "z"),
     total = prior_spike_and_slab(prior("beta", list(1, 2)), prior_inclusion = prior("spike", list(0.5))),
     allocation = prior("dirichlet", list(alpha = c(1, 0.5))), law = "exact", convention = "common",
     concentration = "inherited", sigma = "sigma", inclusion = prior("beta", list(1, 1)))

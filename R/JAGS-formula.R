@@ -399,7 +399,7 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
   # unbound R2 term priors before the defaults fill the remaining terms (see
   # R/priors-R2.R)
   R2_entries <- .bt_R2_budget_entries(prior_list)
-  R2_budgets <- .bt_R2_formula_budgets(prior_list[R2_entries], model_terms)
+  R2_budgets <- .bt_R2_formula_budgets(prior_list[R2_entries], model_terms, prior_list[!R2_entries])
   prior_list <- prior_list[!R2_entries]
   if(!is.null(R2_budgets)){
     if(length(parsed_random_effects) > 0L){

@@ -12,7 +12,7 @@ skip_if_not_test_profile("unit")
                                a = 1, b = 2, convention = "common"){
   set.seed(4)
   data <- data.frame(f = factor(rep(c("a", "b", "c"), times = n_per)), x = stats::rnorm(sum(n_per)))
-  budget <- prior_R2(terms = names(alpha), total = prior("beta", list(if(convention == "linked") sum(alpha) else a, b)),
+  budget <- .R2_prior(terms = names(alpha), total = prior("beta", list(if(convention == "linked") sum(alpha) else a, b)),
     allocation = prior("dirichlet", list(alpha = unname(alpha))), law = law,
     convention = convention, concentration = "inherited", sigma = "sigma", contrast = contrast)
   info <- JAGS_formula(~ x + f, "mu", data, list(intercept = prior("normal", list(0, 1)), R2 = budget))
@@ -78,7 +78,7 @@ test_that("unavailable marginals refuse with classed conditions", {
   treatment <- .R2_methods_priors(law = "laplace", contrast = "treatment")$mu_f
   expect_true(all(is.finite(mpdf(treatment, c(-0.3, 0.3)))))
 
-  unbound <- prior_R2(terms = "x", total = prior("beta", list(1, 1)), law = "exact", convention = "common",
+  unbound <- .R2_prior(terms = "x", total = prior("beta", list(1, 1)), law = "exact", convention = "common",
     concentration = "inherited", sigma = "sigma")
   stub <- .bt_R2_term_stub(unbound, "x", "x", "continuous")
   expect_error(mpdf(stub, 0), class = "BayesTools_R2_unbound")
@@ -87,7 +87,7 @@ test_that("unavailable marginals refuse with classed conditions", {
 test_that("R2 term priors print their budget", {
 
   priors <- .R2_methods_priors(convention = "linked")
-  expect_identical(print(priors$mu_x, silent = TRUE), "R2 exact: R2 ~ Beta(2, 2), allocation 1 of 2")
+  expect_identical(print(priors$mu_x, silent = TRUE), "R2 exact: R2 ~ Beta(2, 2), allocation 1 of 2 (budget 'R2': x, f)")
   expect_identical(print(priors$mu_x, silent = TRUE, short_name = TRUE), "R2 exact(2, 2; 1 of 2)")
   expect_output(print(priors$mu_f), "R2 exact: R2 ~ Beta(2, 2), allocation 1 of 2", fixed = TRUE)
 })
@@ -120,7 +120,7 @@ test_that("a single-term budget has the marginal of its unit without an allocati
 
   set.seed(4)
   data <- data.frame(f = factor(rep(c("a", "b", "c"), each = 8)), x = stats::rnorm(24))
-  budget <- prior_R2(terms = "f", total = prior("beta", list(1, 3)), law = "exact", convention = "common",
+  budget <- .R2_prior(terms = "f", total = prior("beta", list(1, 3)), law = "exact", convention = "common",
     concentration = "inherited", sigma = "sigma", contrast = "orthonormal")
   prior <- JAGS_formula(~ f, "mu", data, list(intercept = prior("normal", list(0, 1)), R2 = budget))$prior_list$mu_f
   expect_identical(prior$n_units, 1L)
@@ -133,7 +133,7 @@ test_that("public tail and log-density methods keep representable tails", {
 
   set.seed(4)
   data <- data.frame(x = stats::rnorm(24))
-  budget <- prior_R2(terms = "x", total = prior("beta", list(1, 2)), law = "exact", convention = "common",
+  budget <- .R2_prior(terms = "x", total = prior("beta", list(1, 2)), law = "exact", convention = "common",
     concentration = "inherited", sigma = "sigma")
   prior <- JAGS_formula(~ x, "mu", data, list(intercept = prior("normal", list(0, 1)), R2 = budget))$prior_list$mu_x
   spec <- .bt_R2_marginal_spec(prior)
@@ -150,7 +150,7 @@ test_that("linear-combination densities refuse dependent parameters of one budge
   set.seed(4)
   data <- data.frame(f = factor(rep(c("a", "b", "c"), each = 8)), x = stats::rnorm(24), z = stats::rnorm(24),
                      w = stats::rnorm(24))
-  budget <- prior_R2(terms = c("x", "z", "f"), total = prior("beta", list(1, 3)), law = "exact", convention = "common",
+  budget <- .R2_prior(terms = c("x", "z", "f"), total = prior("beta", list(1, 3)), law = "exact", convention = "common",
     concentration = "inherited", sigma = "sigma", contrast = "orthonormal")
   priors <- JAGS_formula(~ x + z + f + w, "mu", data, list(intercept = prior("normal", list(0, 1)),
     w = prior("normal", list(0, 1)), R2 = budget))$prior_list
@@ -172,7 +172,7 @@ test_that("R2 conditions carry their documented classes and complete messages", 
 
   set.seed(4)
   data <- data.frame(f = factor(rep(c("a", "b", "c"), times = c(4, 8, 12))), x = stats::rnorm(24))
-  budget <- prior_R2(terms = c("x", "f"), total = prior("beta", list(1, 2)), law = "exact", convention = "common",
+  budget <- .R2_prior(terms = c("x", "f"), total = prior("beta", list(1, 2)), law = "exact", convention = "common",
     concentration = "inherited", sigma = "sigma", contrast = "orthonormal")
   condition <- expect_error(JAGS_formula(~ x + f, "mu", data,
     list(intercept = prior("normal", list(0, 1)), x = prior("normal", list(0, 1)), R2 = budget)),
@@ -200,7 +200,7 @@ test_that("the linear-combination density builder checks the whole combination",
 
   set.seed(4)
   data <- data.frame(x = stats::rnorm(24), z = stats::rnorm(24))
-  budget <- prior_R2(terms = c("x", "z"), total = prior("beta", list(1, 3)), law = "exact", convention = "common",
+  budget <- .R2_prior(terms = c("x", "z"), total = prior("beta", list(1, 3)), law = "exact", convention = "common",
     concentration = "inherited", sigma = "sigma")
   priors <- c(JAGS_formula(~ x + z, "mu", data, list(intercept = prior("normal", list(0, 1)), R2 = budget))$prior_list,
     list(sigma = prior("invgamma", list(2, 1))))

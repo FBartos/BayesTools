@@ -7,7 +7,7 @@ skip_if_not_test_profile("unit")
   set.seed(41)
   data <- data.frame(f = factor(rep(c("a", "b", "c"), each = 10)), x = stats::rnorm(30), z = stats::rnorm(30))
   data$y <- 0.5 * (data$f == "b") + 0.3 * data$x + stats::rnorm(30)
-  budget <- prior_R2(terms = terms, total = prior("beta", list(1.5, 3)), allocation = allocation, law = law,
+  budget <- .R2_prior(terms = terms, total = prior("beta", list(1.5, 3)), allocation = allocation, law = law,
     convention = "common", concentration = "inherited", sigma = "sigma", contrast = "orthonormal")
   JAGS_fit(
     model_syntax = "model{ for(i in 1:N){ y[i] ~ dnorm(mu[i], 1 / pow(sigma, 2)) } }",
@@ -127,7 +127,7 @@ test_that("share densities and budget names are safe at the edges", {
 
   set.seed(41)
   data <- data.frame(x = stats::rnorm(20), z = stats::rnorm(20))
-  budget <- prior_R2(terms = c("x", "z"), total = prior("beta", list(1, 1)),
+  budget <- .R2_prior(terms = c("x", "z"), total = prior("beta", list(1, 1)),
     allocation = prior("dirichlet", list(alpha = c(1e16, 1))), law = "exact",
     convention = "common", concentration = "inherited", sigma = "sigma")
   info <- JAGS_formula(~ x + z, "mu", data, list(intercept = prior("normal", list(0, 1)), R2 = budget))

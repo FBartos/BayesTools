@@ -3,7 +3,7 @@ skip_if_not_test_profile("unit")
 .R2_bridge_priors <- function(law){
   set.seed(5)
   data <- data.frame(f = factor(rep(c("a", "b", "c"), each = 6)), x = stats::rnorm(18))
-  budget <- prior_R2(terms = c("x", "f"), total = prior("beta", list(1.5, 2)),
+  budget <- .R2_prior(terms = c("x", "f"), total = prior("beta", list(1.5, 2)),
     allocation = prior("dirichlet", list(alpha = c(1, 0.5))), law = law, convention = "common",
     concentration = "inherited", sigma = "sigma", contrast = "meandif")
   info <- JAGS_formula(~ x + f, "mu", data, list(intercept = prior("normal", list(0, 1)), R2 = budget))
@@ -76,7 +76,7 @@ test_that("the fixed linear predictor of a bridge draw ignores the budget priors
 
   set.seed(5)
   data <- data.frame(f = factor(rep(c("a", "b", "c"), each = 6)), x = stats::rnorm(18))
-  budget <- prior_R2(terms = c("x", "f"), total = prior("beta", list(1.5, 2)),
+  budget <- .R2_prior(terms = c("x", "f"), total = prior("beta", list(1.5, 2)),
     allocation = prior("dirichlet", list(alpha = c(1, 0.5))), law = "exact", convention = "common",
     concentration = "inherited", sigma = "sigma", contrast = "meandif")
   info <- JAGS_formula(~ x + f, "mu", data, list(intercept = prior("normal", list(0, 1)), R2 = budget))
@@ -117,7 +117,7 @@ test_that("original-scale summaries of R2 terms keep posteriors and refuse depen
   set.seed(31)
   data <- data.frame(f = factor(rep(c("a", "b", "c"), each = 10)), x = stats::rnorm(30, 2, 3), z = stats::rnorm(30))
   data$y <- 0.5 * (data$f == "b") + 0.1 * data$x + stats::rnorm(30)
-  budget <- prior_R2(terms = c("x", "z", "f"), total = prior("beta", list(1, 3)), law = "exact", convention = "common",
+  budget <- .R2_prior(terms = c("x", "z", "f"), total = prior("beta", list(1, 3)), law = "exact", convention = "common",
     concentration = "inherited", sigma = "sigma", contrast = "orthonormal")
   fit <- JAGS_fit(
     model_syntax = "model{ for(i in 1:N){ y[i] ~ dnorm(mu[i], 1 / pow(sigma, 2)) } }",
@@ -152,7 +152,7 @@ test_that("contribution rows refused for budget dependence keep the atoms of the
   set.seed(31)
   data <- data.frame(x = stats::rnorm(30), z = stats::rnorm(30))
   data$y <- 0.3 * data$x + stats::rnorm(30)
-  budget <- prior_R2(terms = c("x", "z"), total = prior("beta", list(1, 3)), law = "exact", convention = "common",
+  budget <- .R2_prior(terms = c("x", "z"), total = prior("beta", list(1, 3)), law = "exact", convention = "common",
     concentration = "inherited", sigma = 1)
   fit <- JAGS_fit(
     model_syntax = "model{ for(i in 1:N){ y[i] ~ dnorm(mu[i], 1 / pow(sigma, 2)) } }",

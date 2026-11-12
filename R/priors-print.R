@@ -178,8 +178,11 @@ print.selection_model <- function(x, ...){
     return(paste0("R2 ", law, "(", round_value(x$shapes$a), ", ", round_value(x$shapes$b), "; ", share, ")",
       if(!is.null(gated)) " gated"))
   }
+  # the terms of the budget (resolved from the formula for a budget without
+  # explicit terms)
+  terms <- paste(gsub("__xXx__", ":", x$budget$terms, fixed = TRUE), collapse = ", ")
   paste0("R2 ", law, ": R2 ~ Beta(", round_value(x$shapes$a), ", ", round_value(x$shapes$b),
-    "), allocation ", share, gated)
+    "), allocation ", share, gated, " (budget '", x$budget$name, "': ", terms, ")")
 }
 
 # The core of a gated or spiked budget prints its total: zero with the

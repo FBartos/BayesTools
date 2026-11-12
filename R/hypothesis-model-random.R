@@ -554,7 +554,11 @@
   # (the conditional route has no exact ordinate at zero)
   R2_type <- if (R2) selected[["entry"]][["selection"]][["quantities"]][["extraction_key"]][[1L]][["type"]]
   if (R2 && identical(R2_type, "R2_share")) {
-    point_mass_advice <- "Use a region or directional hypothesis."
+    # the qualified label names the share in every fit
+    point_mass_advice <- paste0(
+      "Test the atom at one (the term is the only open term) with the region hypothesis '", label,
+      " >= 1', whose Bayes factor is the posterior to prior odds of the atom."
+    )
   } else if (R2) {
     point_mass_advice <- paste0(
       "The point mass at zero is the exclusion of the term (or the null of the budget): its evidence is the ",

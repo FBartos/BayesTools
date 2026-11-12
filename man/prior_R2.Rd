@@ -5,70 +5,35 @@
 \title{R-squared variance-budget prior for formula terms}
 \usage{
 prior_R2(
-  terms,
-  total,
-  allocation = NULL,
-  law,
-  convention,
-  concentration,
-  sigma,
-  contrast = NULL,
-  inclusion = NULL
+  terms = NULL,
+  total = prior("beta", list(1, 1)),
+  allocation = R2_dirichlet(),
+  inclusion = NULL,
+  model = R2_model()
 )
 }
 \arguments{
 \item{terms}{character vector of the formula term labels of the budget in
 the full candidate model (e.g., \code{c("x", "f", "x:f")}; \code{"x:f"} and
-\code{"f:x"} name the same term). Terms of the budget that a model's
-formula does not contain are deleted, and the budget is redistributed in
-full to the retained terms.}
+\code{"f:x"} name the same term), or \code{NULL} (default) for every
+fixed-effect term of the formula that has no prior of its own and that no
+other budget names (at most one budget of a formula; a term with a point
+prior at zero stays in it, excluded from the model). Terms of the budget
+that a model's formula does not contain are deleted, and the budget is
+redistributed in full to the retained terms.}
 
 \item{total}{Beta prior on the total R-squared of the full candidate model,
-\code{prior("beta", list(alpha = a, beta = b))}, or a spike-and-slab prior
-with that Beta slab,
+\code{prior("beta", list(alpha = a, beta = b))} (default Beta(1, 1)), or a
+spike-and-slab prior with that Beta slab,
 \code{prior_spike_and_slab(prior("beta", ...), prior_inclusion = ...)},
 whose spike is zero signal in the budget (the budget null) and whose
 inclusion prior is a probability prior (\code{prior("spike", list(p))} or a
 Beta prior). Other mixtures are not supported.}
 
-\item{allocation}{Dirichlet prior allocating the budget of the full
-candidate model to \code{terms},
-\code{prior("dirichlet", list(alpha = ...))} with one concentration per
-entry of \code{terms}, in their order, or named by the terms (then matched
-to them by name). \code{NULL} (default) is the flat
-allocation, a concentration of 1 for every term. A budget of one term
-takes no allocation (a Dirichlet prior has at least two concentrations): its
-term has the concentration 1, which the kernel laws give to each of its
-coded coefficients.}
-
-\item{law}{coefficient law: \code{"exact"} allocates squared signal
-magnitudes exactly, with a fair sign for one-column terms and a uniform
-direction in the term's coefficient space (in the empirical design metric)
-for multi-column terms; \code{"normal"} is the normal kernel of the R2D2M2
-prior and \code{"laplace"} the double-exponential kernel of the R2D2
-prior, both allocating the budget over the individual coded coefficients,
-each with the concentration of its term.}
-
-\item{convention}{how a model derives the Beta shapes of its total from
-\code{total} = Beta(a, b) of the full candidate model, with \eqn{A} the
-total concentration of the full model and \eqn{A_M} the total
-concentration retained by model \eqn{M}: \code{"common"} uses Beta(a, b)
-in every model; \code{"linked"} uses Beta(\eqn{A_M}, b), so the first shape
-of \code{total} must equal \eqn{A}; \code{"conditioning"} keeps
-\eqn{a_M - A_M} and \eqn{a_M + b_M} equal to \eqn{a - A} and \eqn{a + b}.}
-
-\item{concentration}{concentrations of the retained units:
-\code{"inherited"} keeps the concentrations of \code{allocation};
-\code{"fixed_total"} rescales them in every model to the sum of the
-concentrations of \code{allocation}.}
-
-\item{sigma}{residual standard deviation that multiplies the coefficients,
-as the \code{"multiply_by"} attribute of a formula prior: the name of a
-parameter of the model (e.g., \code{"sigma"}) or a positive number.}
-
-\item{contrast}{contrast of the factor terms of the budget:
-\code{"orthonormal"}, \code{"meandif"}, or \code{"treatment"}. Required
-when the budget contains a factor term.}
+\item{allocation}{Dirichlet allocation of the budget of the full candidate
+model to its terms, from \code{\link[=R2_dirichlet]{R2_dirichlet()}} (default flat: concentration 1
+for every term). A budget of one term has the single concentration of its
+term, which the linked convention and the kernel laws use.}
 
 \item{inclusion}{inclusion gates of the terms, which make one fit average
 over the models of the budget: \code{NULL} (default) for no gates; one
@@ -79,6 +44,12 @@ of probability priors named by term labels for independent gates of the
 listed terms (the other terms are always included). A Beta prior in the
 list is marginally its mean probability for its term; a shared rate needs
 the single-prior form.}
+
+\item{model}{the fixed model choices of the budget, from \code{\link[=R2_model]{R2_model()}}:
+the coefficient law, the cross-model convention and concentration, the
+residual scale \code{sigma} and the factor contrast (defaults: exact law,
+common convention, inherited concentrations, \code{"sigma"}, orthonormal
+contrasts).}
 }
 \value{
 \code{prior_R2} returns an object of class
@@ -127,9 +98,11 @@ model \eqn{M} with retained allocation units \eqn{u} (the terms for
 its term's concentration) the prior is
 \deqn{r \sim \textrm{Beta}(a_M, b_M), \quad W = r / (1 - r), \quad
 \phi \sim \textrm{Dirichlet}(\alpha_M),}
-with \eqn{(a_M, b_M)} given by \code{convention} and \eqn{\alpha_M} by
-\code{concentration}. With \code{convention = "linked"}, the first shape of
-\code{total} must equal the total concentration \eqn{A} of the full model:
+with \eqn{(a_M, b_M)} given by the \code{convention} and \eqn{\alpha_M} by
+the \code{concentration} of \code{model}. With \code{convention = "linked"},
+the first shape of \code{total} must equal the total concentration
+\eqn{A} of the full model (the default total is not changed: the error
+names the required total):
 the sum of the concentrations of \code{allocation} for the exact law or
 with \code{concentration = "fixed_total"}, and the sum of the
 concentrations times the numbers of coded coefficients of the terms for
@@ -161,6 +134,14 @@ computed with denominator \eqn{n} in the fitted data; unequal cell counts
 therefore weight the levels of a factor by their frequencies. With
 treatment contrasts, the intercept prior applies to the reference level
 rather than to the grand mean.
+
+A budget without \code{terms} takes the terms of each formula it binds to,
+so that formula is its full candidate model. This is what a single fit
+with inclusion gates needs; models of a model space fitted separately
+under the \code{"linked"} or \code{"conditioning"} convention or with
+\code{concentration = "fixed_total"} need explicit \code{terms} naming
+the full model, because without them each fit is its own full model.
+Random-effect terms are never part of a budget without \code{terms}.
 
 The R2 term priors that \code{JAGS_formula()} binds support the prior
 methods (\code{rng()}, \code{mpdf()}, \code{mcdf()}, \code{mquant()},
@@ -243,15 +224,15 @@ one budget stop with \code{BayesTools_formula_measure_unavailable}.
 }
 
 \examples{
+# the defaults: every term of the formula without its own prior, a
+# uniform total R-squared, a flat allocation, exact allocation
+prior_R2()
+
 budget <- prior_R2(
-  terms         = c("x", "f"),
-  total         = prior("beta", list(alpha = 1, beta = 1)),
-  allocation    = prior("dirichlet", list(alpha = c(1, 1))),
-  law           = "exact",
-  convention    = "common",
-  concentration = "inherited",
-  sigma         = "sigma",
-  contrast      = "orthonormal"
+  terms      = c("x", "f"),
+  total      = prior("beta", list(alpha = 1, beta = 1)),
+  allocation = R2_dirichlet(c(x = 1, f = 2)),
+  model      = R2_model(law = "exact", convention = "common")
 )
 budget
 
@@ -302,12 +283,10 @@ plot(priors$mu_x)
 # one fit averaging over the models of the budget: a shared inclusion rate
 # (beta-binomial model prior) and a spike-and-slab total for the budget null
 gated <- prior_R2(
-  terms = c("x", "f"),
-  total = prior_spike_and_slab(prior("beta", list(1, 1)),
-                               prior_inclusion = prior("spike", list(0.5))),
-  law = "exact", convention = "common", concentration = "inherited",
-  sigma = "sigma", contrast = "meandif",
-  inclusion = prior("beta", list(1, 1))
+  total     = prior_spike_and_slab(prior("beta", list(1, 1)),
+                                   prior_inclusion = prior("spike", list(0.5))),
+  inclusion = prior("beta", list(1, 1)),
+  model     = R2_model(contrast = "meandif")
 )
 fit <- JAGS_fit(
   model_syntax = "model{ for(i in 1:N){ y[i] ~ dnorm(mu[i], 1 / pow(sigma, 2)) } }",
@@ -322,5 +301,5 @@ runjags_estimates_table(fit, conditional = TRUE)
 
 }
 \seealso{
-\code{\link[=JAGS_formula]{JAGS_formula()}}, \code{\link[=prior_factor]{prior_factor()}}
+\code{\link[=R2_model]{R2_model()}}, \code{\link[=R2_dirichlet]{R2_dirichlet()}}, \code{\link[=JAGS_formula]{JAGS_formula()}}, \code{\link[=prior_factor]{prior_factor()}}
 }
