@@ -160,8 +160,10 @@
 # when p is negligible against q (and 1), p log(q) + p (p - 1) / (2 q) when q
 # dominates p (and 1), the difference of log-gamma values otherwise.
 .bt_R2_density_lgamma_ratio <- function(q, p){
-  if(p < 1e-8 * min(1, q)) return(p * digamma(q))
-  if(q > 1e10 * max(1, p)) return(p * log(q) + p * (p - 1) / (2 * q))
+  # (digamma(q) = digamma(q + 1) - 1 / q, so that a tiny q does not overflow
+  # digamma(); the correction of a dominant q without squaring p)
+  if(p < 1e-8 * min(1, q)) return(p * digamma(q + 1) - p / q)
+  if(q > 1e10 * max(1, p)) return(p * log(q) + p * ((p - 1) / (2 * q)))
   lgamma(q + p) - lgamma(q)
 }
 

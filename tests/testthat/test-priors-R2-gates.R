@@ -691,6 +691,13 @@ test_that("gated totals and coefficients keep their quantiles near zero and thei
   expect_error(prior_R2(inclusion = prior("beta", list(1e308, 1e308))), class = "BayesTools_R2_invalid")
   expect_error(prior_R2(total = prior("beta", list(1e308, 1e308))), class = "BayesTools_R2_invalid")
   expect_equal(.bt_R2_log_fraction(c(1, 1e300, 1e-300), c(1, 1e300, 1)), c(log(0.5), log(0.5), log(1e-300) - log1p(1e-300)))
+  # a quantile in the subnormal range: 0.5 Beta(0.01, 1) + 0.5 Beta(0.02, 1)
+  # at 0.00032, i.e. t + t^2 = 2 p with t = r^0.01
+  linked <- bind(prior_R2(total = prior("beta", list(0.02, 1)), allocation = R2_dirichlet(0.01),
+    inclusion = list(z = prior("spike", list(0.5))), model = R2_model(convention = "linked")), ~ x + z)
+  # (a subnormal double has about four significant digits there)
+  t <- (-1 + sqrt(1 + 8 * 0.00032)) / 2
+  expect_equal(log(mquant(linked$mu_R2, 0.00032)), 100 * log(t), tolerance = 1e-5)
   # a continuous part of 1e-20 keeps the upper end of the total
   tiny <- bind(prior_R2(inclusion = prior("spike", list(1e-20))))
   expect_identical(mquant(tiny$mu_R2, 1), 1)
@@ -914,5 +921,22 @@ test_that("formula atoms of R2 coefficients combined with expression priors are 
   row <- marginal_posterior(samples, "mu_intercept", formula = ~ 1 + x + z, at = list(x = 1, z = 1),
     prior_samples = TRUE)$intercept
   expect_true(all(abs(row) < 1e-12))
+  expect_true("atoms" %in% .bt_meta_get(row, "measure_unavailable")$measure)
+
+  # an R2 term whose scale depends on another budget's coefficient: the
+  # prediction mu_z - abs(mu_z / mu_x) mu_x at x = -1, z = 1 is zero when the
+  # signs agree, even beside an open R2 coefficient with a resolved scale
+  dependent <- JAGS_fit(
+    model_syntax = "model{ for(i in 1:N){ y[i] ~ dnorm(mu[i], 1) } }",
+    data = list(y = data$y, N = nrow(data)),
+    prior_list = list(s = prior("point", list(expression(abs(mu_z / mu_x))))),
+    formula_list = list(mu = ~ x + z), formula_data_list = list(mu = data),
+    formula_prior_list = list(mu = list(intercept = prior("spike", list(0)),
+      Rx = prior_R2(terms = "x", model = R2_model(sigma = "s")),
+      Rz = prior_R2(terms = "z", model = R2_model(sigma = 1)))),
+    chains = 1, adapt = 100, burnin = 100, sample = 500, seed = 14, silent = TRUE)
+  samples <- as_mixed_posteriors(dependent, c("mu_intercept", "mu_x", "mu_z", "s"))
+  row <- marginal_posterior(samples, "mu_intercept", formula = ~ 1 + x + z, at = list(x = -1, z = 1),
+    prior_samples = TRUE)$intercept
   expect_true("atoms" %in% .bt_meta_get(row, "measure_unavailable")$measure)
 })

@@ -2079,10 +2079,13 @@ JAGS_formula_prior_density <- function(
         use.names = FALSE)] <- 0
       nonzero_columns <- unlist(R2_all_columns[R2_owners[multipliers == "nonzero"]], use.names = FALSE)
       unknown_columns <- unlist(R2_all_columns[R2_owners[multipliers == "unknown"]], use.names = FALSE)
+      # (every weighted summand must be resolved and independent: an R2
+      # coefficient with an unresolved multiplier, or a dependent parameter,
+      # disqualifies the row even beside an open R2 coefficient)
       weighted_R2 <- rowSums(component_weights[, R2_columns, drop = FALSE] != 0) > 0
-      component_R2_rows <- !expression_rows & rowSums(component_weights[, nonzero_columns, drop = FALSE] != 0) > 0
-      unknown_rows <- !component_R2_rows & (rowSums(component_weights[, unknown_columns, drop = FALSE] != 0) > 0 |
-        (expression_rows & weighted_R2))
+      unknown_rows <- rowSums(component_weights[, unknown_columns, drop = FALSE] != 0) > 0 |
+        (expression_rows & weighted_R2)
+      component_R2_rows <- !unknown_rows & rowSums(component_weights[, nonzero_columns, drop = FALSE] != 0) > 0
       if(any(unknown_rows)){
         atoms_available <- support_available <- FALSE
         atom_reason <- support_reason <- paste0("The atoms of a formula contribution are unavailable: it combines an ",

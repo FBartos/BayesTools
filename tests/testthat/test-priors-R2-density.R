@@ -619,6 +619,13 @@ test_that("extreme shapes keep the exact tail, the series range and concentrated
   expect_equal(.bt_R2_functional_cdf(spec, exp(-400), lower.tail = FALSE), 0.25, tolerance = 1e-10)
   spec <- .bt_R2_functional_spec("exact", a = 1e300, b = 1, scale = 1)
   expect_equal(.bt_R2_functional_cdf(spec, exp(400), lower.tail = FALSE) / (exp(log(1e300) - 800) / 2), 1, tolerance = 1e-8)
+  # subnormal shapes (digamma(q) overflows, p / q does not): P(X > x) =
+  # (1 - P(B <= r)) / 2 with log P(B <= r) = p log r + log(Gamma(p + q) / (Gamma(q) Gamma(p + 1)))
+  spec <- .bt_R2_functional_spec("exact", a = 1e-320, b = 1e-310, scale = 1)
+  expect_equal(.bt_R2_functional_cdf(spec, exp(-400), lower.tail = FALSE) / 4.9999443354e-11, 1, tolerance = 1e-8)
+  # a dominant first shape with a huge second: the tail underflows to zero
+  spec <- .bt_R2_functional_spec("exact", a = 1e200, b = 1e155, scale = 1)
+  expect_identical(.bt_R2_functional_cdf(spec, exp(400), lower.tail = FALSE), 0)
   # 2 b overflows where the log density is a double: log(2 b) - (b + 1) log(5)
   spec <- .bt_R2_functional_spec("exact", a = 1, b = 1e308, scale = 1)
   expect_equal(.bt_R2_functional_log_pdf(spec, 2), log(1e308) + log(2) - (1e308 + 1) * log(5), tolerance = 1e-12)
