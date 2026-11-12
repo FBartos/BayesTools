@@ -613,6 +613,15 @@ test_that("extreme shapes keep the exact tail, the series range and concentrated
   spec <- .bt_R2_functional_spec("exact", a = 1e-20, b = 3, scale = 1)
   expect_equal(.bt_R2_functional_cdf(spec, exp(-400), lower.tail = FALSE) / (1e-20 * (800 - 1.5) / 2), 1, tolerance = 1e-8)
   expect_equal(.bt_R2_density_log_pbeta(-1000, 1e-20, 1, lower.tail = FALSE), log(1e-17), tolerance = 1e-10)
+  # comparable tiny shapes (the Beta law is nearly atoms at 0 and 1) and a
+  # huge second shape of the series: P(X > x) = 1/4 and a 3.67e-48 / 2 tail
+  spec <- .bt_R2_functional_spec("exact", a = 1e-20, b = 1e-20, scale = 1)
+  expect_equal(.bt_R2_functional_cdf(spec, exp(-400), lower.tail = FALSE), 0.25, tolerance = 1e-10)
+  spec <- .bt_R2_functional_spec("exact", a = 1e300, b = 1, scale = 1)
+  expect_equal(.bt_R2_functional_cdf(spec, exp(400), lower.tail = FALSE) / (exp(log(1e300) - 800) / 2), 1, tolerance = 1e-8)
+  # 2 b overflows where the log density is a double: log(2 b) - (b + 1) log(5)
+  spec <- .bt_R2_functional_spec("exact", a = 1, b = 1e308, scale = 1)
+  expect_equal(.bt_R2_functional_log_pdf(spec, 2), log(1e308) + log(2) - (1e308 + 1) * log(5), tolerance = 1e-12)
   # (reference by high-precision integration of the normal kernel law)
   spec <- .bt_R2_functional_spec("normal", a = 1, b = 1e20, scale = 1)
   expect_equal(.bt_R2_functional_cdf(spec, 1e-11, lower.tail = FALSE), 0.434061722697292438, tolerance = 1e-8)

@@ -898,4 +898,21 @@ test_that("formula atoms of R2 coefficients combined with expression priors are 
     prior_samples = TRUE)$intercept
   expect_true(all(row == 0))
   expect_true("atoms" %in% .bt_meta_get(row, "measure_unavailable")$measure)
+
+  # the same dependence through a coefficient multiplied by the R2
+  # coefficient: z = -1 * mu_x
+  z_prior <- prior("point", list(-1))
+  attr(z_prior, "multiply_by") <- "mu_x"
+  multiplied <- JAGS_fit(
+    model_syntax = "model{ for(i in 1:N){ y[i] ~ dnorm(mu[i], 1) } }",
+    data = list(y = data$y, N = nrow(data)),
+    formula_list = list(mu = ~ x + z), formula_data_list = list(mu = data),
+    formula_prior_list = list(mu = list(intercept = prior("spike", list(0)), z = z_prior,
+      R2 = prior_R2(terms = "x", model = R2_model(sigma = 1)))),
+    chains = 1, adapt = 100, burnin = 100, sample = 500, seed = 14, silent = TRUE)
+  samples <- as_mixed_posteriors(multiplied, c("mu_intercept", "mu_x", "mu_z"))
+  row <- marginal_posterior(samples, "mu_intercept", formula = ~ 1 + x + z, at = list(x = 1, z = 1),
+    prior_samples = TRUE)$intercept
+  expect_true(all(abs(row) < 1e-12))
+  expect_true("atoms" %in% .bt_meta_get(row, "measure_unavailable")$measure)
 })

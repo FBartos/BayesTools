@@ -1938,21 +1938,36 @@ JAGS_formula_prior_density <- function(
       if(is.null(multiplier)) return("nonzero")
       if(is.numeric(multiplier)) return(if(all(multiplier != 0)) "nonzero" else "zero")
       prior <- priors[[multiplier]]
-      if(is.null(prior) || is.prior.mixture(prior) || is.prior.spike_and_slab(prior)) return("unknown")
+      # (a coefficient or an expression as the multiplier is not resolved)
+      if(is.null(prior) || multiplier %in% coefficient_owners || has_expression(prior) ||
+         is.prior.mixture(prior) || is.prior.spike_and_slab(prior)) return("unknown")
       location <- .posterior_atoms_point_location(prior, 1L)
       if(!is.null(location)) return(if(all(location != 0)) "nonzero" else "zero")
       # (a point whose location is an expression is resolved by nothing here)
       if(is.prior.simple(prior) && !is.prior.discrete(prior) && !is.prior.point(prior)) "nonzero" else "unknown"
     }
-    # the columns of the parameters whose priors are expressions of other
-    # parameters (possibly of the R2 coefficients): a row that weights them is
-    # not a sum of independent parts, so an open R2 coefficient does not make
-    # it continuous
-    expression_columns <- unlist(lapply(setdiff(names(record$prior_list), R2_owners), function(owner){
+    # the columns of the other parameters that may depend on the R2
+    # coefficients: priors with expressions (also inside mixtures), and
+    # coefficients multiplied by a parameter that is not certified independent
+    # (a coefficient, a parameter with an expression prior, or one outside
+    # the record). A row that weights them is not a sum of independent parts,
+    # so an open R2 coefficient does not make it continuous.
+    has_expression <- function(prior){
+      isTRUE(tryCatch(.bt_prior_has_expression(prior), error = function(e) TRUE))
+    }
+    coefficient_owners <- names(record$prior_list)[vapply(names(record$prior_list), function(owner){
+      length(intersect(.prior_linear_prior_columns(owner, record$prior_list[[owner]]), colnames(weights))) > 0L
+    }, logical(1))]
+    dependent_owner <- function(owner){
       prior <- record$prior_list[[owner]]
-      if(is.prior(prior) && isTRUE(tryCatch(.is_prior_expression(prior), error = function(e) TRUE))){
-        intersect(.prior_linear_prior_columns(owner, prior), colnames(weights))
-      }
+      if(has_expression(prior)) return(TRUE)
+      multiplier <- attr(prior, "multiply_by", exact = TRUE)
+      if(is.null(multiplier) || is.numeric(multiplier)) return(FALSE)
+      multiplier %in% coefficient_owners || !multiplier %in% names(record$prior_list) ||
+        has_expression(record$prior_list[[multiplier]])
+    }
+    expression_columns <- unlist(lapply(setdiff(coefficient_owners, R2_owners), function(owner){
+      if(dependent_owner(owner)) intersect(.prior_linear_prior_columns(owner, record$prior_list[[owner]]), colnames(weights))
     }), use.names = FALSE)
     expression_rows <- rowSums(weights[, expression_columns, drop = FALSE] != 0) > 0
     R2_gated_rows <- vapply(seq_len(nrow(weights)), function(row){

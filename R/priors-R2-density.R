@@ -147,14 +147,22 @@
   }
   out   <- numeric(length(log_x))
   out[direct] <- stats::pbeta(exp(log_x[direct]), p, q, lower.tail = lower.tail, log.p = TRUE)
-  # (the normalizer -log(p B(p, q)) = lgamma(p + q) - lgamma(q) - lgamma(p + 1)
-  # is of order p; for a tiny p its first-order term p (digamma(q) -
-  # digamma(1)), as p + q and p + 1 round; it is added to p log(x) before
-  # anything larger; the complement by expm1())
-  normalizer  <- if(p < 1e-8) p * (digamma(q) - digamma(1)) else (lgamma(p + q) - lgamma(q)) - lgamma(p + 1)
+  # (the normalizer -log(p B(p, q)) = log(Gamma(q + p) / Gamma(q)) -
+  # lgamma(p + 1), each part without rounding p + q or p + 1; it is added to
+  # p log(x) before anything larger; the complement by expm1())
+  normalizer  <- .bt_R2_density_lgamma_ratio(q, p) - (if(p < 1e-8) p * digamma(1) else lgamma(p + 1))
   lower       <- p * log_x[series] + normalizer
   out[series] <- if(lower.tail) lower else log(-expm1(lower))
   out
+}
+
+# log(Gamma(q + p) / Gamma(q)) for p, q > 0 where q + p rounds: p digamma(q)
+# when p is negligible against q (and 1), p log(q) + p (p - 1) / (2 q) when q
+# dominates p (and 1), the difference of log-gamma values otherwise.
+.bt_R2_density_lgamma_ratio <- function(q, p){
+  if(p < 1e-8 * min(1, q)) return(p * digamma(q))
+  if(q > 1e10 * max(1, p)) return(p * log(q) + p * (p - 1) / (2 * q))
+  lgamma(q + p) - lgamma(q)
 }
 
 # The base of the exact law, sqrt(W) times a fair sign, at y >= 0 (vectorized):
@@ -178,9 +186,11 @@
     # y^(2a - 1) (1 + y^2)^-(a + b) = y^-(2b + 1) (1 + y^-2)^-(a + b) for y > 1,
     # where (a + b) log1p(y^-2) is (a + b) y^-2 once y^-2 nears the double
     # range (it can still be large for huge shapes)
+    # (the shape products first, as 2 a or 2 b can overflow where the log
+    # density itself is a double)
     scaled <- ifelse(inv2 > 1e-200, (base$a + base$b) * lfar, exp(log(base$a + base$b) - 2 * ly))
-    out[finite] <- ifelse(far, -(2 * base$b + 1) * ly - scaled,
-                          (2 * base$a - 1) * ly + (base$a + base$b) * log_1r) - lbeta(base$a, base$b)
+    out[finite] <- ifelse(far, -ly - 2 * (base$b * ly) - scaled,
+                          2 * (base$a * ly) - ly + (base$a + base$b) * log_1r) - lbeta(base$a, base$b)
   }else if(what == "central"){
     out[finite] <- .bt_R2_density_log_pbeta(log_r, base$a, base$b)
     out[y == Inf] <- 0
