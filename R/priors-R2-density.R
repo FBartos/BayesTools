@@ -150,7 +150,12 @@
   # (the normalizer -log(p B(p, q)) = log(Gamma(q + p) / Gamma(q)) -
   # lgamma(p + 1), each part without rounding p + q or p + 1; it is added to
   # p log(x) before anything larger; the complement by expm1())
-  normalizer  <- .bt_R2_density_lgamma_ratio(q, p) - (if(p < 1e-8) p * digamma(1) else lgamma(p + 1))
+  normalizer  <- .bt_R2_density_series_normalizer(p, q)
+  if(!is.finite(normalizer)){
+    .bt_R2_density_stop_unavailable(paste0(
+      "The R-squared functional distribution needs the normalizer of a Beta(", format(p), ", ", format(q),
+      ") series beyond the double range. Use less extreme shapes or evaluate the distribution by simulation."))
+  }
   lower       <- p * log_x[series] + normalizer
   out[series] <- if(lower.tail) lower else log(-expm1(lower))
   out
@@ -165,6 +170,26 @@
   if(p < 1e-8 * min(1, q)) return(p * digamma(q + 1) - p / q)
   if(q > 1e10 * max(1, p)) return(p * log(q) + p * ((p - 1) / (2 * q)))
   lgamma(q + p) - lgamma(q)
+}
+
+# The normalizer -log(p B(p, q)) of the Beta series: by the log-gamma ratio
+# where p + q or p + 1 round (a tiny p, a dominant q), and by lbeta()
+# otherwise (comparable shapes, also beyond the range of lgamma(p + q)).
+.bt_R2_density_series_normalizer <- function(p, q){
+  if(p < 1e-8 * min(1, q)) return(.bt_R2_density_lgamma_ratio(q, p) - p * digamma(1))
+  if(q > 1e10 * max(1, p)) return(.bt_R2_density_lgamma_ratio(q, p) - lgamma(p + 1))
+  -log(p) - lbeta(p, q)
+}
+
+# The sum of log-density terms (a list of equal-length vectors) without an
+# intermediate overflow where the sum is a double: the positive parts first,
+# then the negative ones, so that the partial sums only decrease.
+.bt_R2_density_sum_terms <- function(terms){
+  out <- Reduce(`+`, lapply(terms, function(term) pmax(term, 0)))
+  for(term in terms){
+    out <- out + pmin(term, 0)
+  }
+  out
 }
 
 # The base of the exact law, sqrt(W) times a fair sign, at y >= 0 (vectorized):
@@ -191,8 +216,10 @@
     # (the shape products first, as 2 a or 2 b can overflow where the log
     # density itself is a double)
     scaled <- ifelse(inv2 > 1e-200, (base$a + base$b) * lfar, exp(log(base$a + base$b) - 2 * ly))
-    out[finite] <- ifelse(far, -ly - 2 * (base$b * ly) - scaled,
-                          2 * (base$a * ly) - ly + (base$a + base$b) * log_1r) - lbeta(base$a, base$b)
+    norm   <- rep(-lbeta(base$a, base$b), length(ly))
+    out[finite] <- ifelse(far,
+      .bt_R2_density_sum_terms(list(norm, -(base$b * ly), -(base$b * ly), -ly, -scaled)),
+      .bt_R2_density_sum_terms(list(norm, base$a * ly, base$a * ly, -ly, base$a * log_1r, base$b * log_1r)))
   }else if(what == "central"){
     out[finite] <- .bt_R2_density_log_pbeta(log_r, base$a, base$b)
     out[y == Inf] <- 0

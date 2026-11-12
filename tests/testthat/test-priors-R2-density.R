@@ -626,6 +626,13 @@ test_that("extreme shapes keep the exact tail, the series range and concentrated
   # a dominant first shape with a huge second: the tail underflows to zero
   spec <- .bt_R2_functional_spec("exact", a = 1e200, b = 1e155, scale = 1)
   expect_identical(.bt_R2_functional_cdf(spec, exp(400), lower.tail = FALSE), 0)
+  # comparable shapes beyond the range of lgamma(p + q): the tail underflows
+  spec <- .bt_R2_functional_spec("exact", a = 1e307, b = 1e307, scale = 1)
+  expect_identical(.bt_R2_functional_cdf(spec, exp(400), lower.tail = FALSE), 0)
+  # both shapes large: the log density is a double although 2 b log(y) is not
+  # (reference by high-precision calculation)
+  spec <- .bt_R2_functional_spec("exact", a = 4e307, b = 4e307, scale = 1)
+  expect_equal(.bt_R2_functional_log_pdf(spec, 10), -1.2955105946298148e308, tolerance = 1e-10)
   # 2 b overflows where the log density is a double: log(2 b) - (b + 1) log(5)
   spec <- .bt_R2_functional_spec("exact", a = 1, b = 1e308, scale = 1)
   expect_equal(.bt_R2_functional_log_pdf(spec, 2), log(1e308) + log(2) - (1e308 + 1) * log(5), tolerance = 1e-12)

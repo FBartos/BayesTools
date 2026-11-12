@@ -1434,8 +1434,9 @@ is.prior.R2_budget <- function(x){
         return(ends[[1L]])
       }
       # (the inverse logit as exp(u) / (1 + exp(u)) below zero keeps subnormal
-      # values that 1 / (1 + exp(-u)) underflows)
-      inverse <- function(u) if(u < 0) exp(u) / (1 + exp(u)) else 1 / (1 + exp(-u))
+      # values that 1 / (1 + exp(-u)) underflows, and as 1 - exp(-u) / (1 +
+      # exp(-u)) above zero keeps the doubles nearest below one)
+      inverse <- function(u) if(u < 0) exp(u) / (1 + exp(u)) else 1 - exp(-u) / (1 + exp(-u))
       f <- function(u) sum(w * stats::pbeta(inverse(u), a, b)) - (p - components$atom)
       ends <- stats::qlogis(range(ends))
       # a component quantile that underflows to 0 (or rounds to 1) widens the

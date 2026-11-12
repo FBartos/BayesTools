@@ -698,6 +698,11 @@ test_that("gated totals and coefficients keep their quantiles near zero and thei
   # (a subnormal double has about four significant digits there)
   t <- (-1 + sqrt(1 + 8 * 0.00032)) / 2
   expect_equal(log(mquant(linked$mu_R2, 0.00032)), 100 * log(t), tolerance = 1e-5)
+  # a quantile next to one: 0.75 Beta(1, 0.02) + 0.25 Beta(4, 0.02) at 0.52
+  # is about 1 - 0.655 2^-53, whose nearest double is 1 - 2^-53
+  upper <- bind(prior_R2(total = prior("beta", list(4, 0.02)), allocation = R2_dirichlet(c(x = 1, z = 3)),
+    inclusion = list(z = prior("spike", list(0.25))), model = R2_model(convention = "linked")), ~ x + z)
+  expect_identical(mquant(upper$mu_R2, 0.52), 1 - 2^-53)
   # a continuous part of 1e-20 keeps the upper end of the total
   tiny <- bind(prior_R2(inclusion = prior("spike", list(1e-20))))
   expect_identical(mquant(tiny$mu_R2, 1), 1)
