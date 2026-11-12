@@ -69,12 +69,17 @@
     if(identical(law$type, "shared")){
       # P(g_t = 1 | none before) / P(some of t..K open | none before) under BB
       first <- law$a / (law$a + law$b + t - 1)
-      none <- exp(lbeta(law$a, law$b + K) - lbeta(law$a, law$b + t - 1))
-      first / (1 - none)
+      some <- -expm1(lbeta(law$a, law$b + K) - lbeta(law$a, law$b + t - 1))
+      first / some
     }else{
-      law$pi[[t]] / (1 - prod(1 - law$pi[t:K]))
+      # 1 - prod(1 - pi) computed without cancellation
+      law$pi[[t]] / -expm1(sum(log1p(-law$pi[t:K])))
     }
   }, numeric(1))
+  if(any(!is.finite(p)) || any(p > 1 + 1e-10) || any(p <= 0)){
+    .bt_R2_stop(paste0("The inclusion probabilities of the gates are numerically degenerate: the conditional ",
+      "probabilities of the gates given a nonempty configuration cannot be computed."))
+  }
 
   pmin(1, p)
 }
@@ -211,6 +216,7 @@ is.prior.R2_budget <- function(x){
     indicator  = if(!is.null(core$gates$spike) || (core$gates$K > 0L && core$gates$all_gated)) paste0(T, "_indicator"),
     inclusion  = if(identical(core$gates$spike$type, "beta")) paste0(T, "_inclusion"),
     gates      = if(core$gates$K > 0L) paste0(T, "_gate[", seq_len(core$gates$K), "]"),
+    open       = if(core$gates$K > 0L) paste0(T, "_open[", seq_len(core$gates$K), "]"),
     allocation = if(core$n_units > 1L) paste0(core$allocation_name, "[", seq_len(core$n_units), "]"),
     eta        = paste0(.JAGS_prior_dirichlet_eta_name(if(core$n_units > 1L) core$allocation_name else paste0(T, "_allocation")),
                         "[", seq_len(core$n_units), "]"),
@@ -255,6 +261,11 @@ is.prior.R2_budget <- function(x){
     lines <- c(lines, paste0(nodes$indicator, " <- step(sum(", core$total_name, "_gate[1:", gates$K, "]) - 0.5)"))
   }
 
+  # the open flag of every gated term (its gate times the budget indicator of
+  # a spike-and-slab total): the inclusion of the term
+  for(t in seq_len(gates$K)){
+    lines <- c(lines, paste0(nodes$open[[t]], " <- ", if(!is.null(gates$spike)) paste0(nodes$indicator, " * "), nodes$gates[[t]]))
+  }
   open <- .bt_R2_core_unit_open_syntax(core, nodes)
   open_alpha <- paste0("(", paste0(open, " * ", vapply(core$unit_alpha, num, character(1)), collapse = " + "), ")")
   any_open <- paste0("step(", paste0(open, collapse = " + "), " - 0.5)")
@@ -262,7 +273,7 @@ is.prior.R2_budget <- function(x){
   # allocation gamma coordinates (shapes rescaled per configuration under
   # fixed_total; a closed unit keeps its declared shape)
   for(u in seq_len(core$n_units)){
-    shape <- if(identical(core$concentration, "fixed_total") && core$n_units > 1L){
+    shape <- if(identical(core$concentration, "fixed_total")){
       paste0("ifelse(", open[[u]], " > 0, ", num(core$unit_alpha[[u]] * core$fixed_total), " / (", open_alpha,
              " + equals(", open_alpha, ", 0)), ", num(core$unit_alpha[[u]]), ")")
     }else{
@@ -300,7 +311,7 @@ is.prior.R2_budget <- function(x){
 
   nodes <- .bt_R2_core_nodes(core)
   c(nodes$total, nodes$indicator, nodes$inclusion,
-    if(core$gates$K > 0L) paste0(core$total_name, "_gate"),
+    if(core$gates$K > 0L) paste0(core$total_name, c("_gate", "_open")),
     if(core$n_units > 1L) core$allocation_name,
     sub("\\[.*$", "", nodes$eta[[1L]]), nodes$H,
     if(!identical(core$convention, "linked")) nodes$variable)
@@ -360,7 +371,7 @@ is.prior.R2_budget <- function(x){
   any_open <- as.numeric(rowSums(open) > 0)
 
   shape <- matrix(core$unit_alpha, n, core$n_units, byrow = TRUE)
-  if(identical(core$concentration, "fixed_total") && core$n_units > 1L){
+  if(identical(core$concentration, "fixed_total")){
     rescaled <- shape * core$fixed_total / ifelse(open_alpha > 0, open_alpha, 1)
     shape <- ifelse(open > 0, rescaled, shape)
   }
@@ -387,6 +398,7 @@ is.prior.R2_budget <- function(x){
   columns <- c(columns, out)
   for(t in seq_len(gates$K)){
     columns[[nodes$gates[[t]]]] <- g[, t]
+    columns[[nodes$open[[t]]]] <- g[, t] * indicator
   }
   if(core$n_units > 1L){
     allocation <- open * eta / (open_eta + (open_eta == 0))
@@ -667,7 +679,16 @@ is.prior.R2_budget <- function(x){
   if(!inherits(spec, "BayesTools_R2_functional_mixture")){
     return(.bt_R2_functional_log_pdf(spec, x))
   }
-  log(.bt_R2_spec_pdf(spec, x))
+  # log-sum-exp of the weighted component log densities
+  x <- as.numeric(x)
+  terms <- vapply(seq_along(spec$specs), function(k){
+    log(spec$weights[[k]]) + .bt_R2_functional_log_pdf(spec$specs[[k]], x)
+  }, numeric(length(x)))
+  terms <- matrix(terms, nrow = length(x))
+  top <- apply(terms, 1, max)
+  out <- top + log(rowSums(exp(terms - ifelse(is.finite(top), top, 0))))
+  out[!is.finite(top)] <- top[!is.finite(top)]
+  out
 }
 
 .bt_R2_spec_quantile <- function(spec, p){
@@ -718,13 +739,29 @@ is.prior.R2_budget <- function(x){
 # budget.
 .bt_R2_gated_term_rng <- function(prior, n){
 
-  draws <- .bt_R2_core_draws(prior$core, n)
-  directions <- matrix(.bt_R2_direction_rng(prior$law, n * prior$d), nrow = n)
-  colnames(directions) <- .bt_R2_direction_coordinates(prior, "R2_term")
-  draws <- cbind(draws, directions)
-  node <- .bt_dnode_R2_coefficient("R2_term", prior)
-
-  .bt_deterministic_node_evaluate(node, .bt_deterministic_lookup(draws, .bt_R2_budget_prior_list(prior)))
+  draw <- function(m){
+    draws <- .bt_R2_core_draws(prior$core, m)
+    directions <- matrix(.bt_R2_direction_rng(prior$law, m * prior$d), nrow = m)
+    colnames(directions) <- .bt_R2_direction_coordinates(prior, "R2_term")
+    draws <- cbind(draws, directions)
+    node <- .bt_dnode_R2_coefficient("R2_term", prior)
+    values <- .bt_deterministic_node_evaluate(node, .bt_deterministic_lookup(draws, .bt_R2_budget_prior_list(prior)))
+    list(values = matrix(values, nrow = m), open = .bt_R2_term_open_draws(prior, draws))
+  }
+  if(!isTRUE(prior$gated_slab)){
+    return(draw(n)$values)
+  }
+  # the continuous part of the term, given that it is open
+  out <- matrix(numeric(), 0L, prior$d)
+  for(attempt in seq_len(1000L)){
+    batch <- draw(max(n, 1000L))
+    out <- rbind(out, batch$values[batch$open == 1, , drop = FALSE])
+    if(nrow(out) >= n){
+      return(out[seq_len(n), , drop = FALSE])
+    }
+  }
+  .bt_R2_unavailable("The R-squared budget term is open with too small a prior probability to sample it given inclusion.",
+    class = "BayesTools_R2_density_unavailable")
 }
 
 # The plot of a gated term: the continuous part and the atom at zero.
@@ -740,23 +777,12 @@ is.prior.R2_budget <- function(x){
 # ---------------------------------------------------------------------------
 # Mixed posteriors of gated budgets.
 
-# The mixed posterior of the realized total of a gated or spiked budget: the
-# mixed posterior of its catalog quantity (atom at zero, prior density).
-.bt_R2_as_mixed_total <- function(fit, parameter, conditional = FALSE){
-
-  selection <- parameter_catalog_resolve(parameter_catalog(fit), alias = parameter)
-  out <- parameter_mixed_posterior(fit, selection, conditional = isTRUE(conditional))
-  attr(out, "parameter") <- parameter
-
-  out
-}
-
 # The open flag of a gated term per draw from its gate and budget indicator.
 .bt_R2_term_open_draws <- function(prior, samples){
 
   gate <- prior$core$term_gate[[prior$term]]
   indicator <- if(!is.null(prior$gating$indicator)) samples[, prior$gating$indicator] else rep(1, nrow(samples))
-  indicator * (if(gate > 0L) samples[, prior$gating$gate_names[[gate]]] else 1)
+  as.numeric(indicator * (if(gate > 0L) samples[, prior$gating$gate_names[[gate]]] else 1))
 }
 
 # The atom at zero of the coefficients of a gated term (the term closed): the
@@ -766,6 +792,10 @@ is.prior.R2_budget <- function(x){
   open <- .bt_R2_term_open_draws(prior, model_samples)
   columns <- if(is.null(dim(samples))) parameter else colnames(samples)
   closed <- mean(open == 0)
+  # conditioned on its inclusion the term has no atom
+  if(closed == 0){
+    return(samples)
+  }
   atoms <- .posterior_atoms_new(
     locations = matrix(0, nrow = 1L, ncol = length(columns), dimnames = list("location", columns)),
     mass = closed,
@@ -782,4 +812,279 @@ is.prior.R2_budget <- function(x){
   }
 
   samples
+}
+
+# ---------------------------------------------------------------------------
+# Structural supports, gate plans and prior laws of the quantities of gated
+# budgets (no configuration enumeration for supports and plans).
+
+# The gated R2 term (prior-list name) that owns the coordinates 'dependencies'
+# (NULL when they are not all coordinates of one gated term).
+.bt_R2_gated_term_owner <- function(prior_list, dependencies){
+
+  if(length(dependencies) == 0L){
+    return(NULL)
+  }
+  for(parameter in names(prior_list)){
+    prior <- prior_list[[parameter]]
+    if(is.prior.R2(prior) && .bt_R2_term_is_gated(prior) &&
+       all(dependencies %in% .bt_R2_coefficient_names(prior, parameter))){
+      return(parameter)
+    }
+  }
+  NULL
+}
+
+# The column whose draws are 1 where the gated term 'prior' is open (its open
+# node, or the budget indicator of an ungated term of a spiked budget); NULL
+# for a term that is always open.
+.bt_R2_term_open_column <- function(prior){
+
+  nodes <- .bt_R2_core_nodes(prior$core)
+  gate <- prior$core$term_gate[[prior$term]]
+  if(gate > 0L) nodes$open[[gate]] else if(!is.null(prior$core$gates$spike)) nodes$indicator
+}
+
+# Whether the term 'term' (a core term name) can be the only open term: every
+# other term is gated.
+.bt_R2_core_term_can_be_alone <- function(core, term){
+  all(core$term_gate[setdiff(core$terms, term)] > 0L)
+}
+
+# The structural support of a quantity of a gated or spiked budget (NULL for
+# other quantities).
+.bt_R2_quantity_support <- function(object, key){
+
+  prior_list <- attr(object, "prior_list", exact = TRUE)
+  continuous <- prior("beta", list(1, 1))
+  if(identical(key$type, "R2_open")){
+    return(.posterior_support_from_prior(.bt_R2_bernoulli_law(0.5), source = "catalog"))
+  }
+  if(identical(key$type, "R2_share")){
+    record <- .bt_R2_budget_records(prior_list)[[key$total]]
+    if(is.null(record$core)){
+      return(NULL)
+    }
+    alone <- .bt_R2_core_term_can_be_alone(record$core, record$terms[[key$term]]$key)
+    return(.posterior_support_from_prior(if(alone){
+      .bt_R2_mixture(list(prior("spike", list(1)), continuous), c(0.5, 0.5), c(FALSE, FALSE))
+    }else{
+      continuous
+    }, source = "catalog"))
+  }
+  if(!key$type %in% c("coordinate", "factor_level")){
+    return(NULL)
+  }
+  if(identical(key$type, "coordinate") && length(key$dependencies) == 1L){
+    core <- .bt_R2_gated_total_core(prior_list, key$dependencies)
+    if(!is.null(core)){
+      null <- !is.null(.bt_R2_core_nodes(core)$indicator)
+      return(.posterior_support_from_prior(if(null){
+        .bt_R2_mixture(list(prior("spike", list(0)), continuous), c(0.5, 0.5), c(TRUE, FALSE))
+      }else{
+        continuous
+      }, source = "catalog"))
+    }
+    if(!is.null(.bt_R2_indicator_core(prior_list, key$dependencies))){
+      return(.posterior_support_from_prior(.bt_R2_bernoulli_law(0.5), source = "catalog"))
+    }
+  }
+  owner <- .bt_R2_gated_term_owner(prior_list, key$dependencies)
+  if(!is.null(owner) && !is.null(.bt_R2_term_open_column(prior_list[[owner]]))){
+    return(.posterior_support_new(c(-Inf, Inf), points = 0, source = "catalog", type = "mixed"))
+  }
+
+  NULL
+}
+
+# The prior law of a coefficient of a gated term: the atom at zero of the
+# closed term and its continuous part given that it is open. Scalar
+# coefficients only; the levels and coded coefficients of a gated factor have
+# no catalog density.
+.bt_R2_gated_coefficient_law <- function(prior_list, key, conditional = FALSE){
+
+  owner <- .bt_R2_gated_term_owner(prior_list, key$dependencies)
+  if(is.null(owner)){
+    return(NULL)
+  }
+  prior <- prior_list[[owner]]
+  if(prior$d > 1L || !identical(key$type, "coordinate")){
+    .bt_R2_unavailable(paste0(
+      "The catalog prior density of the levels or coded coefficients of the gated R-squared budget factor '",
+      gsub("__xXx__", ":", prior$term, fixed = TRUE), "' is unavailable; use the marginal methods of the term prior ",
+      "(e.g., 'mcdf()') or its plot."), class = "BayesTools_R2_density_unavailable")
+  }
+  spec <- .bt_R2_marginal_spec(prior)
+  slab <- .bt_prior_without_multiply_by(prior)
+  slab$gated_slab <- TRUE
+  if(spec$atom <= 0 || isTRUE(conditional)){
+    return(slab)
+  }
+
+  .bt_R2_mixture(list(prior("spike", list(0)), slab), c(spec$atom, 1 - spec$atom), c(TRUE, FALSE))
+}
+
+# The gate plan of a quantity of a gated or spiked budget: the point plan of
+# a gated coefficient (atom at zero when its term is closed), the inclusion
+# plan of an inclusion quantity, and the plan of a share (atom at one when its
+# term is the only open term, undefined when it is closed). NULL otherwise.
+.bt_R2_gate_plan <- function(fit, quantity){
+
+  key <- quantity$extraction_key[[1L]]
+  prior_list <- attr(fit, "prior_list", exact = TRUE)
+  point_plan <- function(owner, indicator, on){
+    plan_prior <- prior_spike_and_slab(prior("beta", list(1, 1)), prior_inclusion = prior("spike", list(on)))
+    list(
+      kind        = "point",
+      origin      = "prior",
+      owner       = owner,
+      prior       = plan_prior,
+      locations   = vapply(attr(plan_prior, "components"), function(component) if(component == "null") 0 else NA_real_, numeric(1)),
+      prior_probabilities = .bt_prior_component_probabilities(plan_prior),
+      indicator   = indicator,
+      unknown     = FALSE,
+      chain_gates = character(),
+      event_components = attr(plan_prior, "components") == "alternative",
+      event_reason     = NULL,
+      event_gates = indicator,
+      event_rule  = "AND"
+    )
+  }
+  if(identical(key$type, "R2_open")){
+    return(list(kind = "inclusion", chain_gates = key$dependencies[[1L]], component_gates = character(),
+                parent_gates = character(), event_gates = character(), event_rule = "AND"))
+  }
+  if(identical(key$type, "R2_share")){
+    record <- .bt_R2_budget_records(prior_list)[[key$total]]
+    if(is.null(record$core)){
+      return(NULL)
+    }
+    return(list(kind = "R2_share", record = record, term = key$term, chain_gates = character(),
+                event_gates = character(), event_rule = "AND"))
+  }
+  if(!key$type %in% c("coordinate", "factor_level")){
+    return(NULL)
+  }
+  owner <- .bt_R2_gated_term_owner(prior_list, key$dependencies)
+  if(!is.null(owner)){
+    prior <- prior_list[[owner]]
+    column <- .bt_R2_term_open_column(prior)
+    if(is.null(column)){
+      return(NULL)
+    }
+    marginals <- .bt_R2_gate_marginals(prior$core$gates, prior$core$terms)
+    return(point_plan(owner, column, marginals$open[[prior$term]]))
+  }
+
+  NULL
+}
+
+# The per-draw states of an R2 share plan: an atom at one where its term is
+# the only open term; undefined where it is closed.
+.bt_R2_share_states <- function(plan, n, model_samples){
+
+  open <- .bt_R2_record_open(plan$record, model_samples)
+  if(is.null(open)){
+    return(list(atom = rep(NA_real_, n), defined = rep(TRUE, n), event = NULL, known = FALSE))
+  }
+  alone <- open[, plan$term] == 1 & rowSums(open) == 1
+  list(atom = ifelse(alone, 1, NA_real_), defined = open[, plan$term] == 1, event = NULL, known = TRUE)
+}
+
+# ---------------------------------------------------------------------------
+# Prior methods of the realized total of a gated or spiked budget (the core
+# entry): an atom at zero and a mixture of Beta totals.
+
+.bt_R2_core_total_components <- function(core){
+
+  configurations <- .bt_R2_core_configurations(core)
+  shapes <- do.call(rbind, lapply(configurations$configurations, function(configuration){
+    s <- .bt_R2_core_configuration_shapes(core, configuration$open)
+    c(s$a, s$b)
+  }))
+  list(atom = configurations$null, shapes = shapes,
+       weights = vapply(configurations$configurations, `[[`, numeric(1), "prob"))
+}
+
+.bt_R2_core_method <- function(prior, method, value = NULL, ...){
+
+  if(identical(method, "rng")){
+    nodes <- .bt_R2_core_nodes(prior)
+    return(unname(.bt_R2_core_draws(prior, value)[, nodes$total]))
+  }
+  if(method %in% c("cdf", "ccdf", "pdf", "lpdf", "quant")){
+    method <- paste0("m", method)
+  }
+  components <- .bt_R2_core_total_components(prior)
+  a <- components$shapes[, 1L]
+  b <- components$shapes[, 2L]
+  w <- components$weights
+  cdf <- function(q, lower.tail = TRUE){
+    q <- as.numeric(q)
+    continuous <- vapply(q, function(v) sum(w * stats::pbeta(v, a, b, lower.tail = lower.tail)), numeric(1))
+    continuous + if(lower.tail) components$atom * (q >= 0) else components$atom * (q < 0)
+  }
+  switch(
+    method,
+    mcdf  = cdf(value),
+    mccdf = cdf(value, lower.tail = FALSE),
+    mpdf  = vapply(as.numeric(value), function(v) sum(w * stats::dbeta(v, a, b)), numeric(1)),
+    mlpdf = vapply(as.numeric(value), function(v){
+      terms <- log(w) + stats::dbeta(v, a, b, log = TRUE)
+      top <- max(terms)
+      if(is.finite(top)) top + log(sum(exp(terms - top))) else top
+    }, numeric(1)),
+    mquant = vapply(as.numeric(value), function(p){
+      if(is.na(p)) return(NA_real_)
+      if(p < 0 || p > 1) .bt_R2_stop("Quantiles need probabilities in [0, 1].")
+      if(p <= components$atom) return(0)
+      if(p >= 1) return(1)
+      stats::uniroot(function(x) cdf(x) - p, c(0, 1), tol = 1e-12)$root
+    }, numeric(1)),
+    mean = sum(w * a / (a + b)),
+    var = {
+      second <- sum(w * a * (a + 1) / ((a + b) * (a + b + 1)))
+      second - sum(w * a / (a + b))^2
+    },
+    .bt_R2_unavailable(paste0("The '", method, "' method is unavailable for the total of a gated R-squared budget."))
+  )
+}
+
+# The mixed posterior of the realized total of a gated or spiked budget from
+# the (conditioned) draws: its prior law, the mixed support with the atom at
+# zero, and the posterior mass of the atom.
+.bt_R2_as_mixed_total <- function(model_samples, core, parameter){
+
+  law <- .bt_R2_core_total_law(core)
+  samples <- .as_mixed_posteriors.simple(model_samples, law, parameter)
+  attr(samples, "prior_list") <- law
+  if(!is.null(.bt_R2_core_nodes(core)$indicator) && any(samples == 0)){
+    closed <- mean(samples == 0)
+    samples <- .posterior_atoms_set(samples, .posterior_atoms_new(
+      locations = matrix(0, nrow = 1L, ncol = 1L, dimnames = list("location", parameter)),
+      mass = closed, column_names = parameter, source = "posterior_indicator",
+      component_probabilities = c(1 - closed, closed)
+    ))
+    samples <- .posterior_support_set(samples,
+      .posterior_support_new(c(0, 1), points = 0, source = "prior_list", type = "mixed"))
+  }
+
+  samples
+}
+
+# The prior mean of a term's coefficients: zero when the second Beta shape of
+# the total exceeds 1/2 in every model where the term is open (each
+# coefficient is symmetric about zero), NaN otherwise. No marginal density is
+# needed.
+.bt_R2_term_mean <- function(prior){
+
+  if(!.bt_R2_term_is_gated(prior)){
+    return(if(prior$shapes$b > 1 / 2) 0 else NaN)
+  }
+  configurations <- Filter(function(configuration) prior$term %in% configuration$open,
+                           .bt_R2_core_configurations(prior$core)$configurations)
+  b <- vapply(configurations, function(configuration){
+    .bt_R2_core_configuration_shapes(prior$core, configuration$open)$b
+  }, numeric(1))
+  if(all(b > 1 / 2)) 0 else NaN
 }

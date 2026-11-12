@@ -208,6 +208,15 @@
   }
 
   prior <- prior_list[[label]]
+  # a term of a gated R-squared budget: the draws where it is open; the total
+  # of a gated budget: the draws where the budget is on
+  if(is.prior.R2(prior) && .bt_R2_term_is_gated(prior)){
+    return(.bt_R2_term_open_draws(prior, model_samples) == 1)
+  }
+  if(is.prior.R2_budget(prior)){
+    indicator <- .bt_R2_core_nodes(prior)$indicator
+    return(if(is.null(indicator)) rep(TRUE, nrow(model_samples)) else model_samples[, indicator] == 1)
+  }
   if(is.prior.ordered(prior)){
     total <- prior$total
     if(is.prior.mixture(total)){

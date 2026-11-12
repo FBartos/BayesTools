@@ -188,7 +188,13 @@ prior under the slab is conditioned on a nonempty configuration,
 no conditioning is needed. The gates are sampled exactly as a sequence of
 Bernoulli nodes, each with its probability given the gates before it, so
 the number of gated terms is not limited. The realized total is zero under
-the null. Bridge sampling of a gated or spiked budget is unavailable (the
+the null. The prior methods of the term priors (\code{rng()},
+\code{mcdf()}, \code{mquant()}, \code{mean()}, \code{var()},
+\code{plot()}) include the atom at zero of a closed term (\code{mpdf()}
+is the density of the continuous part), and those of the total entry the
+atom at zero of the budget null. Prior laws that enumerate the gate
+configurations (densities, plots) are available for up to 16 gated terms.
+Bridge sampling of a gated or spiked budget is unavailable (the
 fit is itself the model average) and stops with
 \code{BayesTools_R2_gated_unavailable}.
 }

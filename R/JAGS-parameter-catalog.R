@@ -54,7 +54,9 @@
 #' displayed as `<term> (inclusion)`, with the Bernoulli prior of its marginal
 #' inclusion probability; and a share is undefined (`"allocation_active"`) on
 #' the draws where its term is closed, with the prior of the share given that
-#' the term is open. The level names of transformed summaries,
+#' the term is open. The scalar coefficients of a gated term have an atom at
+#' zero (the term closed) and are tested on these quantities; the levels and
+#' coded coefficients of a gated factor have no catalog prior density. The level names of transformed summaries,
 #' `<parameter>[dif: level]`, and the row labels those summaries display,
 #' `(formula) term[dif: level]` and `term[dif: level]`, are aliases of the
 #' level quantity. JAGS
@@ -4858,16 +4860,14 @@ parameter_transform_jacobian <- function(values, transform){
     return(.posterior_support_point(quantity$fixed_value, source = "catalog"))
   }
   key <- quantity$extraction_key[[1L]]
-  if(identical(key$type, "R2_share")){
-    found <- .bt_R2_share_record(attr(object, "prior_list", exact = TRUE), key)
-    if(is.null(found$record$core)){
-      return(.posterior_support_new(c(0, 1), source = "catalog", type = "interval"))
-    }
-    return(.posterior_support_from_prior(.bt_R2_share_prior_law(found), source = "catalog"))
+  # the supports of the quantities of R-squared budgets are structural (no
+  # configuration of a gated budget is enumerated)
+  R2_support <- .bt_R2_quantity_support(object, key)
+  if(!is.null(R2_support)){
+    return(R2_support)
   }
-  R2_law <- .bt_R2_quantity_law(object, key)
-  if(!is.null(R2_law)){
-    return(.posterior_support_from_prior(R2_law, source = "catalog"))
+  if(identical(key$type, "R2_share")){
+    return(.posterior_support_new(c(0, 1), source = "catalog", type = "interval"))
   }
   if(identical(key$type, "ordered_allocation") || identical(key$type, "coordinate")){
     ordered <- .bt_ordered_quantity_support(object, key)

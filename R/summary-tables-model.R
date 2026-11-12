@@ -858,7 +858,9 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
     model_samples     <- R2_budgets$model_samples
     created_parts     <- c(created_parts, R2_budgets$created)
     inclusion_columns <- c(inclusion_columns, R2_budgets$inclusion_columns)
-    warnings          <- c(warnings, R2_budgets$warnings)
+    if(length(R2_budgets$warnings)){
+      warnings <- c(warnings, R2_budgets$warnings)
+    }
   }
 
   # untransformed ordered-factor priors show their total and allocation

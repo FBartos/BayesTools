@@ -157,7 +157,9 @@ every gated term has an inclusion quantity \verb{<parameter>_<name>_gate[<term>]
 displayed as \verb{<term> (inclusion)}, with the Bernoulli prior of its marginal
 inclusion probability; and a share is undefined (\code{"allocation_active"}) on
 the draws where its term is closed, with the prior of the share given that
-the term is open. The level names of transformed summaries,
+the term is open. The scalar coefficients of a gated term have an atom at
+zero (the term closed) and are tested on these quantities; the levels and
+coded coefficients of a gated factor have no catalog prior density. The level names of transformed summaries,
 \verb{<parameter>[dif: level]}, and the row labels those summaries display,
 \verb{(formula) term[dif: level]} and \code{term[dif: level]}, are aliases of the
 level quantity. JAGS

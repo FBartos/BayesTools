@@ -213,7 +213,7 @@
     pdf = , mpdf = .bt_R2_spec_pdf(.bt_R2_marginal_spec(prior), as.vector(value)),
     lpdf = , mlpdf = .bt_R2_spec_log_pdf(.bt_R2_marginal_spec(prior), as.vector(value)),
     quant = , mquant = .bt_R2_spec_quantile(.bt_R2_marginal_spec(prior), as.vector(value)),
-    mean = .bt_R2_spec_mean(.bt_R2_marginal_spec(prior)),
+    mean = .bt_R2_term_mean(prior),
     var = .bt_R2_spec_variance(.bt_R2_marginal_spec(prior)),
     stop("Internal R2 prior method '", method, "' is unknown.", call. = FALSE)
   )

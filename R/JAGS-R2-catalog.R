@@ -64,7 +64,7 @@
     identical(attr(prior, "R2_budget", exact = TRUE)$role, "allocation")
   }, logical(1))],
     unlist(lapply(prior_list[vapply(prior_list, is.prior.R2_budget, logical(1))], function(core){
-      c(if(core$n_units > 1L) core$allocation_name, if(core$gates$K > 0L) paste0(core$total_name, "_gate"))
+      c(if(core$n_units > 1L) core$allocation_name, if(core$gates$K > 0L) paste0(core$total_name, c("_gate", "_open")))
     }), use.names = FALSE))
 }
 
@@ -191,7 +191,7 @@
       if(gate == 0L){
         next
       }
-      dependencies <- c(nodes$gates[[gate]], if(!is.null(core$gates$spike)) nodes$indicator)
+      dependencies <- nodes$open[[gate]]
       position <- match(dependencies, coordinates$coordinate_name)
       if(anyNA(position)){
         next
@@ -345,12 +345,18 @@
 .bt_R2_quantity_rows <- function(quantities, prior_list){
 
   totals <- names(.bt_R2_budget_records(prior_list))
+  # the scalar coefficients of gated terms (their atom at zero needs the
+  # catalog law)
+  gated <- unlist(lapply(names(prior_list), function(parameter){
+    prior <- prior_list[[parameter]]
+    if(is.prior.R2(prior) && .bt_R2_term_is_gated(prior) && prior$d == 1L) parameter
+  }), use.names = FALSE)
   vapply(seq_len(nrow(quantities)), function(i){
     key <- quantities$extraction_key[[i]]
     identical(quantities$provider[[i]], "BayesTools") &&
       (identical(key$type, "R2_share") ||
          (identical(key$type, "coordinate") && length(key$dependencies) == 1L &&
-            key$dependencies %in% totals))
+            key$dependencies %in% c(totals, gated)))
   }, logical(1))
 }
 
@@ -567,8 +573,14 @@
     marginals <- .bt_R2_gate_marginals(core$gates, core$terms)
     return(.bt_R2_bernoulli_law(marginals$open[[record$terms[[key$term]]$key]]))
   }
-  if(!identical(key$type, "coordinate") || length(key$dependencies) != 1L){
+  if(identical(key$type, "factor_level")){
+    return(.bt_R2_gated_coefficient_law(prior_list, key, conditional))
+  }
+  if(!identical(key$type, "coordinate")){
     return(NULL)
+  }
+  if(length(key$dependencies) != 1L){
+    return(.bt_R2_gated_coefficient_law(prior_list, key, conditional))
   }
   core <- .bt_R2_gated_total_core(prior_list, key$dependencies)
   if(!is.null(core)){
@@ -579,7 +591,7 @@
     return(.bt_R2_bernoulli_law(.bt_R2_gate_marginals(core$gates, core$terms)$budget))
   }
 
-  NULL
+  .bt_R2_gated_coefficient_law(prior_list, key, conditional)
 }
 
 # The point plan of the realized total of a gated or spiked budget: an atom at

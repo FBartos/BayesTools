@@ -191,6 +191,71 @@ test_that("gated budgets fit with inclusion summaries, catalog quantities and re
   post_prob <- mean(post[, "mu_R2"] > 0.1)
   expect_equal(as.numeric(region$BF), (post_prob / (1 - post_prob)) / (prior_prob / (1 - prior_prob)), tolerance = 1e-8)
 
+  # gated coefficients: an atom at zero in the catalog law, conditional
+  # posteriors on the open draws, and region tests with the atom
+  coefficient <- parameter_catalog_resolve(catalog, alias = "x")
+  expect_equal(parameter_prior_density(fit, coefficient)$points$p, 1 - 0.5 * 0.5 / 0.75)
+  conditional_x <- parameter_mixed_posterior(fit, coefficient, conditional = TRUE)
+  expect_equal(length(conditional_x), sum(open[, 1] == 1))
+  expect_equal(length(as_mixed_posteriors(fit, parameters = "mu_x", conditional = "mu_x")$mu_x), sum(open[, 1] == 1))
+  region_x <- hypothesis_BF_model(fit, "x > 0.1")
+  prior_prob <- mccdf(attr(fit, "prior_list")$mu_x, 0.1)
+  post_prob <- mean(post[, "mu_x"] > 0.1)
+  expect_equal(as.numeric(region_x$BF), (post_prob / (1 - post_prob)) / (prior_prob / (1 - prior_prob)), tolerance = 1e-4)
+  expect_error(parameter_prior_density(fit, parameter_catalog_resolve(catalog, alias = "f[a]")),
+    class = "BayesTools_R2_density_unavailable")
+
   expect_error(do.call(JAGS_bridgesampling, c(list(fit = fit, log_posterior = function(parameters, data) 0), args[-1])),
     class = "BayesTools_R2_gated_unavailable")
+})
+
+test_that("gated budgets are exact at the edges of their laws", {
+
+  set.seed(3)
+  # fixed_total with one retained unit: the linked total is Beta(total, b)
+  data <- .R2_gate_data()
+  budget <- prior_R2(terms = c("x", "z"), total = .R2_spike(0.6, prior("beta", list(2, 2))), law = "exact",
+    convention = "linked", concentration = "fixed_total", sigma = 1, inclusion = prior("spike", list(0.5)))
+  core <- JAGS_formula(~ x, "mu", data, list(intercept = prior("normal", list(0, 1)), R2 = budget))$prior_list$mu_R2
+  draws <- .bt_R2_core_draws(core, 40000)
+  on <- draws[, "mu_R2"] > 0
+  expect_gt(stats::ks.test(draws[on, "mu_R2"], stats::pbeta, 2, 2)$p.value, 1e-3)
+  expect_match(.bt_R2_core_syntax(core), "prior_par_eta_mu_R2_allocation[1] ~ dgamma(ifelse(mu_R2_indicator * mu_R2_gate[1] > 0, 2 / (", fixed = TRUE)
+
+  # tiny inclusion probabilities keep the truncated law (no cancellation)
+  tiny <- .bt_R2_gate_truncated_probabilities(list(type = "fixed", pi = c(1e-20, 1e-20)), 2L)
+  expect_equal(tiny, c(0.5, 1))
+
+  # supports need no enumeration of the configurations (17 gated terms)
+  wide <- as.data.frame(matrix(stats::rnorm(40 * 17), 40, 17, dimnames = list(NULL, paste0("v", 1:17))))
+  many <- prior_R2(terms = names(wide), total = .R2_spike(0.5, prior("beta", list(1, 1))), law = "exact",
+    convention = "common", concentration = "inherited", sigma = 1, inclusion = prior("spike", list(0.5)))
+  priors <- JAGS_formula(stats::reformulate(names(wide)), "mu", wide, list(intercept = prior("normal", list(0, 1)), R2 = many))$prior_list
+  support <- .bt_R2_quantity_support(structure(list(), prior_list = priors), list(type = "coordinate", dependencies = "mu_R2"))
+  expect_identical(support$points, 0)
+  expect_error(.bt_R2_core_total_law(priors$mu_R2), class = "BayesTools_R2_density_unavailable")
+
+  # the total of a gated budget has prior methods with its atom at zero
+  spiked <- .R2_gate_bind(.R2_gate_budget(total = .R2_spike(0.6)))
+  total <- spiked$mu_R2
+  expect_equal(mcdf(total, 0), 0.4)
+  draws <- rng(total, 100000)
+  expect_equal(mean(draws == 0), 0.4, tolerance = 0.01)
+  expect_equal(mean(total), mean(draws), tolerance = 0.01)
+  expect_equal(var(total), stats::var(draws), tolerance = 0.02)
+  expect_equal(mquant(total, 0.3), 0)
+
+  # log densities of gated terms do not underflow; the mean needs no marginal
+  expect_true(is.finite(mlpdf(spiked$mu_x, 1e100)))
+  expect_identical(mean(spiked$mu_f), 0)
+  set.seed(4)
+  unequal <- data.frame(f = factor(rep(c("a", "b", "c"), times = c(4, 8, 12))), x = stats::rnorm(24))
+  plain <- prior_R2(terms = c("x", "f"), total = prior("beta", list(1, 2)), law = "exact", convention = "common",
+    concentration = "inherited", sigma = 1, contrast = "orthonormal")
+  expect_identical(mean(JAGS_formula(~ x + f, "mu", unequal, list(intercept = prior("normal", list(0, 1)), R2 = plain))$prior_list$mu_f), 0)
+
+  # a sample-based plot draws the continuous part given inclusion
+  grDevices::pdf(NULL)
+  on.exit(grDevices::dev.off(), add = TRUE)
+  expect_silent(plot(spiked$mu_x, force_samples = TRUE))
 })

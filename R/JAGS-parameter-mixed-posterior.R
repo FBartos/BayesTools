@@ -892,6 +892,8 @@ parameter_gate_states <- function(fit, selection, draws = NULL){
   if(!is.null(ordered)) return(ordered)
   R2_total <- .bt_R2_total_point_plan(fit, quantity)
   if(!is.null(R2_total)) return(R2_total)
+  R2_plan <- .bt_R2_gate_plan(fit, quantity)
+  if(!is.null(R2_plan)) return(R2_plan)
   if(identical(key$type, "ordered_allocation")){
     return(.bt_ordered_share_plan(fit, key))
   }
@@ -1035,6 +1037,10 @@ parameter_gate_states <- function(fit, selection, draws = NULL){
   if(identical(plan$kind, "ordered_share")){
     if(is.null(model_samples)) model_samples <- as.matrix(.fit_to_posterior(fit))
     return(.bt_ordered_share_states(plan, n, model_samples, with_event))
+  }
+  if(identical(plan$kind, "R2_share")){
+    if(is.null(model_samples)) model_samples <- as.matrix(.fit_to_posterior(fit))
+    return(.bt_R2_share_states(plan, n, model_samples))
   }
   gate_columns <- unique(c(
     plan$chain_gates, plan$component_gates, plan$parent_gates

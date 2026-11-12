@@ -203,6 +203,9 @@ rng.prior   <- function(x, n, ...){
   if(is.prior.R2(prior)){
     return(.bt_R2_prior_method(prior, "rng", n, transform_factor_samples = transform_factor_samples))
   }
+  if(is.prior.R2_budget(prior)){
+    return(.bt_R2_core_method(prior, "rng", n))
+  }
   if(!is.null(dots[["sample_components"]])){
     check_bool(dots[["sample_components"]], "sample_components")
     sample_components <- dots[["sample_components"]]
@@ -480,6 +483,9 @@ cdf.prior   <- function(x, q, ...){
   if(is.prior.R2(prior)){
     return(.bt_R2_prior_method(prior, "cdf", q))
   }
+  if(is.prior.R2_budget(prior)){
+    return(.bt_R2_core_method(prior, "cdf", q))
+  }
 
   if(is.prior.spike_and_slab(prior)){
 
@@ -522,6 +528,9 @@ ccdf.prior  <- function(x, q, ...){
   .check_prior(prior)
   if(is.prior.R2(prior)){
     return(.bt_R2_prior_method(prior, "ccdf", q))
+  }
+  if(is.prior.R2_budget(prior)){
+    return(.bt_R2_core_method(prior, "ccdf", q))
   }
 
   if(is.prior.spike_and_slab(prior)){
@@ -573,6 +582,9 @@ lpdf.prior  <- function(x, y, ...){
 
   if(is.prior.R2(prior)){
     return(.bt_R2_prior_method(prior, "lpdf", x))
+  }
+  if(is.prior.R2_budget(prior)){
+    return(.bt_R2_core_method(prior, "lpdf", x))
   }
   if(is.prior.spike_and_slab(prior)){
 
@@ -662,6 +674,8 @@ pdf.prior   <- function(x, y, ...){
 
   if(is.prior.R2(prior)){
     lik <- .bt_R2_prior_method(prior, "pdf", x)
+  }else if(is.prior.R2_budget(prior)){
+    lik <- .bt_R2_core_method(prior, "pdf", x)
   }else if(is.prior.simple(prior)){
     lik <- .prior_simple_pdf(prior, x)
   }else{
@@ -680,6 +694,9 @@ quant.prior <- function(x, p, ...){
   .check_prior(prior)
   if(is.prior.R2(prior)){
     return(.bt_R2_prior_method(prior, "quant", p))
+  }
+  if(is.prior.R2_budget(prior)){
+    return(.bt_R2_core_method(prior, "quant", p))
   }
 
   if(is.prior.spike_and_slab(prior)){
