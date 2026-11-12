@@ -787,11 +787,18 @@ is.prior.R2_budget <- function(x){
 
 # The atom at zero of the coefficients of a gated term (the term closed): the
 # posterior mass of the closed draws and the mixed support with the point 0.
-.bt_R2_set_gated_atoms <- function(samples, model_samples, parameter, prior){
+.bt_R2_set_gated_atoms <- function(samples, model_samples, parameter, prior, conditioned = FALSE){
 
   open <- .bt_R2_term_open_draws(prior, model_samples)
   columns <- if(is.null(dim(samples))) parameter else colnames(samples)
   closed <- mean(open == 0)
+  # the prior density of a scalar coefficient (its atom at zero, or its
+  # continuous part when its inclusion is conditioned)
+  if(prior$d == 1L){
+    prior_list <- stats::setNames(list(prior), parameter)
+    samples <- .bt_R2_set_prior_density(samples, .bt_R2_gated_coefficient_law(
+      prior_list, list(type = "coordinate", dependencies = parameter), conditional = conditioned))
+  }
   # conditioned on its inclusion the term has no atom
   if(closed == 0){
     return(samples)
@@ -1053,9 +1060,9 @@ is.prior.R2_budget <- function(x){
 # The mixed posterior of the realized total of a gated or spiked budget from
 # the (conditioned) draws: its prior law, the mixed support with the atom at
 # zero, and the posterior mass of the atom.
-.bt_R2_as_mixed_total <- function(model_samples, core, parameter){
+.bt_R2_as_mixed_total <- function(model_samples, core, parameter, conditioned = FALSE){
 
-  law <- .bt_R2_core_total_law(core)
+  law <- .bt_R2_core_total_law(core, conditional = conditioned)
   samples <- .as_mixed_posteriors.simple(model_samples, law, parameter)
   attr(samples, "prior_list") <- law
   if(!is.null(.bt_R2_core_nodes(core)$indicator) && any(samples == 0)){
@@ -1069,7 +1076,7 @@ is.prior.R2_budget <- function(x){
       .posterior_support_new(c(0, 1), points = 0, source = "prior_list", type = "mixed"))
   }
 
-  samples
+  .bt_R2_set_prior_density(samples, law)
 }
 
 # The prior mean of a term's coefficients: zero when the second Beta shape of
@@ -1087,4 +1094,72 @@ is.prior.R2_budget <- function(x){
     .bt_R2_core_configuration_shapes(prior$core, configuration$open)$b
   }, numeric(1))
   if(all(b > 1 / 2)) 0 else NaN
+}
+
+# ---------------------------------------------------------------------------
+# Condition events of gated budgets on the prior side.
+
+# The gated budget (its total name) of a prior-list entry: a gated term or the
+# total entry; NULL otherwise.
+.bt_R2_condition_budget <- function(prior){
+
+  if(is.prior.R2(prior) && .bt_R2_term_is_gated(prior)){
+    return(prior$core$total_name)
+  }
+  if(is.prior.R2_budget(prior)){
+    return(prior$total_name)
+  }
+  NULL
+}
+
+# The prior options of the inclusion event of a gated term (closed: its atom
+# at zero; open: its continuous part) or of a gated total (the budget null;
+# the budget on), with their prior probabilities. NULL for other priors.
+.bt_R2_condition_options <- function(prior){
+
+  if(is.prior.R2(prior) && .bt_R2_term_is_gated(prior)){
+    open <- .bt_R2_gate_marginals(prior$core$gates, prior$core$terms)$open[[prior$term]]
+    slab <- prior
+    slab$gated_slab <- TRUE
+    return(Filter(function(option) option$probability > 0, list(
+      list(prior = prior("spike", list(0)), probability = 1 - open, alternative = FALSE),
+      list(prior = slab, probability = open, alternative = TRUE)
+    )))
+  }
+  if(is.prior.R2_budget(prior)){
+    on <- .bt_R2_gate_marginals(prior$gates, prior$terms)$budget
+    return(Filter(function(option) option$probability > 0, list(
+      list(prior = prior("spike", list(0)), probability = 1 - on, alternative = FALSE),
+      list(prior = .bt_R2_core_total_law(prior, conditional = TRUE), probability = on, alternative = TRUE)
+    )))
+  }
+  NULL
+}
+
+# The inclusion events of several terms of one gated budget are dependent
+# (shared rate, truncation, spike); a condition on more than one of them is
+# unavailable.
+.bt_R2_check_condition_families <- function(prior_list, names){
+
+  budgets <- unlist(lapply(names, function(name) .bt_R2_condition_budget(prior_list[[name]])), use.names = FALSE)
+  if(anyDuplicated(budgets)){
+    .bt_R2_gated_unavailable("Conditioning on the inclusion of several terms (or the total) of one gated budget")
+  }
+  invisible(TRUE)
+}
+
+# The prior density of a mixed posterior of a gated quantity, on the
+# conditioning event when its own inclusion is conditioned.
+.bt_R2_set_prior_density <- function(samples, law){
+
+  if(is.null(law)){
+    return(samples)
+  }
+  density <- .bt_parameter_prior_density_scalar(law, n_grid = .prior_linear_density_default_grid(),
+                                                tail_prob = .prior_linear_density_tail_prob())
+  attr(samples, "prior_list") <- law
+  if(!is.null(density)){
+    samples <- .bt_meta_set(samples, "prior_density", density)
+  }
+  samples
 }

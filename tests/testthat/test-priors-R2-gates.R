@@ -259,3 +259,49 @@ test_that("gated budgets are exact at the edges of their laws", {
   on.exit(grDevices::dev.off(), add = TRUE)
   expect_silent(plot(spiked$mu_x, force_samples = TRUE))
 })
+
+test_that("conditioning on gated quantities and their scales is explicit", {
+
+  skip_if_not_installed("rjags")
+  skip_if_not_installed("runjags")
+  set.seed(8)
+  data <- .R2_gate_data()
+  data$x <- data$x * 2
+  data$y <- 0.8 * (data$f == "b") + 0.25 * data$x + stats::rnorm(30)
+  fit <- JAGS_fit(
+    model_syntax = "model{ for(i in 1:N){ y[i] ~ dnorm(mu[i], 1 / pow(sigma, 2)) } }",
+    data = list(y = data$y, N = nrow(data)),
+    prior_list = list(sigma = prior("invgamma", list(1, 1)),
+                      theta = prior_spike_and_slab(prior("normal", list(0, 1)), prior_inclusion = prior("spike", list(0.5)))),
+    formula_list = list(mu = ~ x + z + f), formula_data_list = list(mu = data),
+    formula_scale_list = list(mu = list(x = TRUE, z = TRUE)),
+    formula_prior_list = list(mu = list(intercept = prior("normal", list(0, 5)),
+      R2 = prior_R2(terms = c("x", "z", "f"), total = .R2_spike(0.5, prior("beta", list(1, 2))), law = "exact",
+        convention = "common", concentration = "inherited", sigma = "sigma", contrast = "orthonormal",
+        inclusion = prior("beta", list(1, 1))))),
+    chains = 1, adapt = 200, burnin = 200, sample = 1000, seed = 8, silent = TRUE)
+
+  # a gated coefficient is tested on the fitted scale of its predictor
+  expect_error(hypothesis_BF_model(fit, "x > 0.1", transform_scaled = TRUE), "Test it with 'transform_scaled = FALSE'", fixed = TRUE)
+  expect_s3_class(hypothesis_BF_model(fit, "x > 0.1"), "data.frame")
+
+  # the prior side of an event across independent priors; several terms of
+  # one budget are dependent and refused
+  priors <- attr(fit, "prior_list")
+  open <- .bt_R2_gate_marginals(priors$mu_R2$gates, priors$mu_R2$terms)$open[["x"]]
+  options <- .condition_event_model_options(priors, .condition_event(priors, c("mu_x", "theta"), "OR"))
+  expect_equal(options$event_probability, 1 - (1 - open) * 0.5)
+  expect_error(as_mixed_posteriors(fit, parameters = c("mu_x", "mu_z"), conditional = c("mu_x", "mu_z")),
+    class = "BayesTools_R2_gated_unavailable")
+
+  # mixed posteriors carry the prior density with the atom (or the continuous
+  # part when the quantity's own inclusion is conditioned)
+  total <- as_mixed_posteriors(fit, parameters = "mu_R2")$mu_R2
+  expect_equal(.bt_meta_get(total, "prior_density")$points$p, 0.5)
+  conditioned <- as_mixed_posteriors(fit, parameters = "mu_R2", conditional = "mu_R2")$mu_R2
+  expect_true(all(conditioned > 0))
+  expect_equal(nrow(.bt_meta_get(conditioned, "prior_density")$points), 0L)
+  marginal <- marginal_posterior(as_mixed_posteriors(fit, parameters = "mu_R2"), parameter = "mu_R2",
+    use_formula = FALSE, prior_samples = TRUE)
+  expect_equal(.bt_meta_get(marginal, "prior_density")$points$p, 0.5)
+})

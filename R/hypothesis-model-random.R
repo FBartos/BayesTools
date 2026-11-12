@@ -617,6 +617,21 @@
     return(NULL)
   }
   prior_list <- attr(fit, "prior_list", exact = TRUE)
+  # a coefficient of a gated R-squared budget term is tested on the scale of
+  # its catalog law: the fitted scale of the predictors
+  R2_term <- .bt_R2_gated_term_owner(prior_list, key[["dependencies"]])
+  if (!is.null(R2_term) && isTRUE(plan[["transform_scaled"]]) &&
+      !identical(JAGS_formula_coefficient_route(fit, quantity[["formula_parameter"]], key[["dependencies"]][[1L]])[["type"]],
+                 "identity")) {
+    return(.hypothesis_model_refusal(
+      paste0(
+        "The coefficient '", selected[["spec"]][["label"]], "' of a gated R-squared budget term is defined on ",
+        "the fitted scale of the predictors: the scale transformation changes it, so it has no original-scale ",
+        "counterpart with the atom of its gate. Test it with 'transform_scaled = FALSE'."
+      ),
+      "target"
+    ))
+  }
   owner      <- .bt_ordered_quantity_owner(quantity, prior_list)
   # the total of an R-squared budget has its own Beta prior in the model
   if (is.null(owner)) {

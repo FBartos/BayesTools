@@ -373,6 +373,21 @@
   }
 
   prior <- prior_list[[family[["name"]]]]
+  R2_options <- .bt_R2_condition_options(prior)
+  if(!is.null(R2_options)){
+    return(lapply(R2_options, function(option){
+      values <- rep(option[["alternative"]], length(labels))
+      names(values) <- labels
+      list(
+        family      = family[["name"]],
+        prior       = option[["prior"]],
+        probability = option[["probability"]],
+        log_probability = log(option[["probability"]]),
+        values      = values,
+        replace     = TRUE
+      )
+    }))
+  }
   options <- if(is.prior.ordered(prior)){
     lapply(.prior_density_condition_component(prior$total),function(option){
       total <- option$prior
@@ -431,6 +446,7 @@
   if(length(families) == 0L){
     return(NULL)
   }
+  .bt_R2_check_condition_families(prior_list, names(families))
 
   options <- lapply(families, function(family){
     .condition_event_family_options(prior_list, family)
