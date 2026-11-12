@@ -1449,13 +1449,13 @@ is.prior.R2_budget <- function(x){
       # totals)
       # (weights normalized with the atom; the spread between the components
       # and the atom at zero as pairwise differences of their means, so that
-      # one component has none whatever its rounded weight; the shapes enter
-      # through their ratio, as their sum and its square can overflow)
+      # one component has none whatever its rounded weight; the variance of a
+      # component as ratios, as the square of the shape sum can overflow)
       total <- components$atom + sum(w)
       p <- c(components$atom, w) / total
-      r <- b / a
-      mu <- 1 / (1 + r)
-      within <- mu * (r / (1 + r)) * (1 / a) / (1 + r + 1 / a)
+      # (the shape sum is a finite double, .bt_R2_check_beta_sum())
+      mu <- a / (a + b)
+      within <- mu * (b / (a + b)) / (a + b + 1)
       means <- c(0, mu)
       spread <- outer(means, means, "-")^2
       sum(p[-1L] * within) + sum(outer(p, p) * spread) / 2

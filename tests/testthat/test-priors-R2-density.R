@@ -608,7 +608,10 @@ test_that("extreme shapes keep the exact tail, the series range and concentrated
   # an upper tail of order 1e-18: pbeta() while x is representable, and the
   # series normalizer of a first shape 1e-20 without cancellation
   spec <- .bt_R2_functional_spec("exact", a = 1e-20, b = 1, scale = 1)
-  expect_equal(.bt_R2_functional_cdf(spec, exp(-150), lower.tail = FALSE), 1.5e-18, tolerance = 1e-10)
+  expect_equal(.bt_R2_functional_cdf(spec, exp(-150), lower.tail = FALSE) / 1.5e-18, 1, tolerance = 1e-8)
+  # below the double range with a second shape 3: P(X > x) = p (-log r - (digamma(3) - digamma(1))) / 2
+  spec <- .bt_R2_functional_spec("exact", a = 1e-20, b = 3, scale = 1)
+  expect_equal(.bt_R2_functional_cdf(spec, exp(-400), lower.tail = FALSE) / (1e-20 * (800 - 1.5) / 2), 1, tolerance = 1e-8)
   expect_equal(.bt_R2_density_log_pbeta(-1000, 1e-20, 1, lower.tail = FALSE), log(1e-17), tolerance = 1e-10)
   # (reference by high-precision integration of the normal kernel law)
   spec <- .bt_R2_functional_spec("normal", a = 1, b = 1e20, scale = 1)

@@ -683,6 +683,10 @@ test_that("gated totals and coefficients keep their quantiles near zero and thei
     list(intercept = prior("normal", list(0, 1)), R2 = prior_R2(total = prior("beta", list(1e105, 1e105)),
       inclusion = list(z1 = prior("spike", list(0.1)), z2 = prior("spike", list(0.1)), z3 = prior("spike", list(0.1))))))$prior_list
   expect_equal(var(three$mu_R2) / (0.25 / (2e105 + 1)), 1, tolerance = 1e-10)
+  # subnormal shapes keep the variance of the Beta total (1/4 up to 2e-310)
+  subnormal <- bind(prior_R2(total = prior("beta", list(1e-310, 1e-310)),
+    inclusion = list(z = prior("spike", list(0.5)))), ~ x + z)
+  expect_equal(var(subnormal$mu_R2), 0.25)
   # shapes whose sum is not a double are refused
   expect_error(prior_R2(inclusion = prior("beta", list(1e308, 1e308))), class = "BayesTools_R2_invalid")
   expect_error(prior_R2(total = prior("beta", list(1e308, 1e308))), class = "BayesTools_R2_invalid")
@@ -871,4 +875,27 @@ test_that("a budget with one gated term names its gate and allocation coordinate
   z <- as_mixed_posteriors(fit, "mu_z")$mu_z
   expect_equal(.posterior_atoms_get(z)$mass, mean(post[, "mu_z"] == 0))
   expect_s3_class(hypothesis_BF_model(fit, "R2[share: x] > 0.5"), "data.frame")
+})
+
+test_that("formula atoms of R2 coefficients combined with expression priors are not certified", {
+
+  skip_if_not_installed("rjags")
+  skip_if_not_installed("runjags")
+  set.seed(14)
+  data <- data.frame(x = stats::rnorm(40), z = stats::rnorm(40))
+  data$y <- 0.3 * (data$x - data$z) + stats::rnorm(40)
+  # the coefficient of z is the expression -mu_x: the prediction at x = z = 1
+  # is identically zero, which no independence argument can certify
+  fit <- JAGS_fit(
+    model_syntax = "model{ for(i in 1:N){ y[i] ~ dnorm(mu[i], 1) } }",
+    data = list(y = data$y, N = nrow(data)),
+    formula_list = list(mu = ~ x + z), formula_data_list = list(mu = data),
+    formula_prior_list = list(mu = list(intercept = prior("spike", list(0)), z = prior("point", list(expression(-mu_x))),
+      R2 = prior_R2(terms = "x", model = R2_model(sigma = 1)))),
+    chains = 1, adapt = 100, burnin = 100, sample = 500, seed = 14, silent = TRUE)
+  samples <- as_mixed_posteriors(fit, c("mu_intercept", "mu_x", "mu_z"))
+  row <- marginal_posterior(samples, "mu_intercept", formula = ~ 1 + x + z, at = list(x = 1, z = 1),
+    prior_samples = TRUE)$intercept
+  expect_true(all(row == 0))
+  expect_true("atoms" %in% .bt_meta_get(row, "measure_unavailable")$measure)
 })

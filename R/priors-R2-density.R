@@ -147,9 +147,12 @@
   }
   out   <- numeric(length(log_x))
   out[direct] <- stats::pbeta(exp(log_x[direct]), p, q, lower.tail = lower.tail, log.p = TRUE)
-  # (the normalizer -log(p B(p, q)) as log-gamma differences of order p, not
-  # as a difference of large values; the complement by expm1())
-  lower       <- p * log_x[series] + lgamma(p + q) - lgamma(p + 1) - lgamma(q)
+  # (the normalizer -log(p B(p, q)) = lgamma(p + q) - lgamma(q) - lgamma(p + 1)
+  # is of order p; for a tiny p its first-order term p (digamma(q) -
+  # digamma(1)), as p + q and p + 1 round; it is added to p log(x) before
+  # anything larger; the complement by expm1())
+  normalizer  <- if(p < 1e-8) p * (digamma(q) - digamma(1)) else (lgamma(p + q) - lgamma(q)) - lgamma(p + 1)
+  lower       <- p * log_x[series] + normalizer
   out[series] <- if(lower.tail) lower else log(-expm1(lower))
   out
 }

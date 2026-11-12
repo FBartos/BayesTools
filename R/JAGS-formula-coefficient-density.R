@@ -1944,6 +1944,17 @@ JAGS_formula_prior_density <- function(
       # (a point whose location is an expression is resolved by nothing here)
       if(is.prior.simple(prior) && !is.prior.discrete(prior) && !is.prior.point(prior)) "nonzero" else "unknown"
     }
+    # the columns of the parameters whose priors are expressions of other
+    # parameters (possibly of the R2 coefficients): a row that weights them is
+    # not a sum of independent parts, so an open R2 coefficient does not make
+    # it continuous
+    expression_columns <- unlist(lapply(setdiff(names(record$prior_list), R2_owners), function(owner){
+      prior <- record$prior_list[[owner]]
+      if(is.prior(prior) && isTRUE(tryCatch(.is_prior_expression(prior), error = function(e) TRUE))){
+        intersect(.prior_linear_prior_columns(owner, prior), colnames(weights))
+      }
+    }), use.names = FALSE)
+    expression_rows <- rowSums(weights[, expression_columns, drop = FALSE] != 0) > 0
     R2_gated_rows <- vapply(seq_len(nrow(weights)), function(row){
       any(weights[row, unlist(R2_gated_columns, use.names = FALSE)] != 0)
     }, logical(1))
@@ -1957,7 +1968,7 @@ JAGS_formula_prior_density <- function(
     # log-intercept formula, is positive)
     R2_support <- .posterior_support_new(if(identical(output_transform, "exp")) c(0, Inf) else c(-Inf, Inf),
       source = "formula_contribution", type = "interval")
-    if(all(R2_rows) && !any(R2_gated_rows) &&
+    if(all(R2_rows) && !any(R2_gated_rows) && !any(expression_rows) &&
        all(vapply(R2_owners, R2_multiplier_state, character(1), priors = record$prior_list) == "nonzero")){
       if(is.finite(state$posterior_log_model_probabilities[[model]])){
         continuous <- TRUE
@@ -2053,12 +2064,15 @@ JAGS_formula_prior_density <- function(
         use.names = FALSE)] <- 0
       nonzero_columns <- unlist(R2_all_columns[R2_owners[multipliers == "nonzero"]], use.names = FALSE)
       unknown_columns <- unlist(R2_all_columns[R2_owners[multipliers == "unknown"]], use.names = FALSE)
-      component_R2_rows <- rowSums(component_weights[, nonzero_columns, drop = FALSE] != 0) > 0
-      unknown_rows <- !component_R2_rows & rowSums(component_weights[, unknown_columns, drop = FALSE] != 0) > 0
+      weighted_R2 <- rowSums(component_weights[, R2_columns, drop = FALSE] != 0) > 0
+      component_R2_rows <- !expression_rows & rowSums(component_weights[, nonzero_columns, drop = FALSE] != 0) > 0
+      unknown_rows <- !component_R2_rows & (rowSums(component_weights[, unknown_columns, drop = FALSE] != 0) > 0 |
+        (expression_rows & weighted_R2))
       if(any(unknown_rows)){
         atoms_available <- support_available <- FALSE
-        atom_reason <- support_reason <- paste0("The atoms of a formula contribution are unavailable: the scale that ",
-          "multiplies an R-squared budget term has a point mass in a mixture prior.")
+        atom_reason <- support_reason <- paste0("The atoms of a formula contribution are unavailable: it combines an ",
+          "R-squared budget term with a scale or a parameter whose prior law is not resolved (a point mass in a mixture ",
+          "or a discrete prior, or an expression of other parameters).")
         atom_cause <- support_cause <- "unsupported_contribution_measure"
       }
       component_rows <- which(!component_R2_rows & !unknown_rows)
