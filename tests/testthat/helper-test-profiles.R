@@ -56,6 +56,7 @@ bayestools_test_profile_contexts <- list(
     "interpret",
     "JAGS-bridge-compiler",
     "JAGS-R2-bridge",
+    "JAGS-R2-catalog",
     "JAGS-bridge-marginal-random",
     "JAGS-bridgesampling-wrapper",
     "JAGS-convergence",
