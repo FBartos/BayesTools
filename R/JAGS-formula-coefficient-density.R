@@ -1941,7 +1941,8 @@ JAGS_formula_prior_density <- function(
       if(is.null(prior) || is.prior.mixture(prior) || is.prior.spike_and_slab(prior)) return("unknown")
       location <- .posterior_atoms_point_location(prior, 1L)
       if(!is.null(location)) return(if(all(location != 0)) "nonzero" else "zero")
-      if(is.prior.simple(prior) && !is.prior.discrete(prior)) "nonzero" else "unknown"
+      # (a point whose location is an expression is resolved by nothing here)
+      if(is.prior.simple(prior) && !is.prior.discrete(prior) && !is.prior.point(prior)) "nonzero" else "unknown"
     }
     R2_gated_rows <- vapply(seq_len(nrow(weights)), function(row){
       any(weights[row, unlist(R2_gated_columns, use.names = FALSE)] != 0)

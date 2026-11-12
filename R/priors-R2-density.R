@@ -130,16 +130,16 @@
 }
 
 # log P(B <= x), or log P(B > x), of B ~ Beta(p, q) at x = exp(log_x) <= 1 for a
-# vector of log_x. Below exp(-200) the lower tail is x^p / (p B(p, q)) up to a
-# relative error of order |q - 1| x (the next term of its series), which stays
-# finite where x itself underflows; it is used only where that error is below
-# exp(-30). Elsewhere x is evaluated directly while it is a normal double, and
+# vector of log_x: pbeta() while x is a normal double; where x underflows, the
+# lower tail x^p / (p B(p, q)) up to a relative error of order |q - 1| x (the
+# next term of its series), used only where that error is below exp(-30);
 # beyond that the probability is unavailable.
 .bt_R2_density_log_pbeta <- function(log_x, p, q, lower.tail = TRUE){
 
-  small  <- log_x < -200
-  series <- small & (q == 1 | log(abs(q - 1)) + log_x < -30)
-  direct <- !series & log_x >= log(.Machine$double.xmin)
+  # pbeta() while x is a normal double; below, the leading term of the
+  # series where its next term is negligible
+  direct <- log_x >= log(.Machine$double.xmin)
+  series <- !direct & (q == 1 | log(abs(q - 1)) + log_x < -30)
   if(any(!series & !direct)){
     .bt_R2_density_stop_unavailable(paste0(
       "The R-squared functional distribution needs a Beta(", format(p), ", ", format(q), ") probability below ",
@@ -147,8 +147,10 @@
   }
   out   <- numeric(length(log_x))
   out[direct] <- stats::pbeta(exp(log_x[direct]), p, q, lower.tail = lower.tail, log.p = TRUE)
-  lower       <- p * log_x[series] - log(p) - lbeta(p, q)
-  out[series] <- if(lower.tail) lower else log1p(-exp(lower))
+  # (the normalizer -log(p B(p, q)) as log-gamma differences of order p, not
+  # as a difference of large values; the complement by expm1())
+  lower       <- p * log_x[series] + lgamma(p + q) - lgamma(p + 1) - lgamma(q)
+  out[series] <- if(lower.tail) lower else log(-expm1(lower))
   out
 }
 

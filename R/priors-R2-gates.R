@@ -80,11 +80,11 @@
   sum(log1p(-law$pi[t:K]))
 }
 
-# log(x / (x + y)) for x, y > 0 without cancellation: the difference of the
-# logs when the fraction is small, log1p() of the complement when it is near
-# one (both stay accurate for very unequal x and y).
+# log(x / (x + y)) for x, y > 0 without cancellation and without forming
+# x + y: log(x / y) - log1p(x / y) when the fraction is small, -log1p(y / x)
+# when it is near one (both stay accurate for very unequal x and y).
 .bt_R2_log_fraction <- function(x, y){
-  ifelse(x < y, log(x) - log(x + y), log1p(-y / (x + y)))
+  ifelse(x < y, log(x) - log(y) - log1p(x / y), -log1p(y / x))
 }
 
 # The probability of a nonempty configuration of the gates before the spike,
@@ -1447,9 +1447,18 @@ is.prior.R2_budget <- function(x){
       # the atom at zero and the Beta components around the mixture mean (no
       # difference of raw second moments, which cancels for concentrated
       # totals)
-      mu <- a / (a + b)
-      m <- sum(w * mu)
-      sum(w * (mu * (b / (a + b)) / (a + b + 1) + (mu - m)^2)) + components$atom * m^2
+      # (weights normalized with the atom; the spread between the components
+      # and the atom at zero as pairwise differences of their means, so that
+      # one component has none whatever its rounded weight; the shapes enter
+      # through their ratio, as their sum and its square can overflow)
+      total <- components$atom + sum(w)
+      p <- c(components$atom, w) / total
+      r <- b / a
+      mu <- 1 / (1 + r)
+      within <- mu * (r / (1 + r)) * (1 / a) / (1 + r + 1 / a)
+      means <- c(0, mu)
+      spread <- outer(means, means, "-")^2
+      sum(p[-1L] * within) + sum(outer(p, p) * spread) / 2
     },
     .bt_R2_unavailable(paste0("The '", method, "' method is unavailable for the total of a gated R-squared budget."))
   )

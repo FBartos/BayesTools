@@ -605,6 +605,11 @@ test_that("extreme shapes keep the exact tail, the series range and concentrated
   expect_equal(.bt_R2_density_log_betaprime_mode(0.5, 1e308), 0.5 * log(0.5) - 0.5 - 0.5 * log(pi), tolerance = 1e-10)
   spec <- .bt_R2_functional_spec("normal", a = 0.5, b = 1e308, scale = 1)
   expect_equal(.bt_R2_functional_cdf(spec, 1e-154, lower.tail = FALSE), 0.0622676800748362, tolerance = 1e-6)
+  # an upper tail of order 1e-18: pbeta() while x is representable, and the
+  # series normalizer of a first shape 1e-20 without cancellation
+  spec <- .bt_R2_functional_spec("exact", a = 1e-20, b = 1, scale = 1)
+  expect_equal(.bt_R2_functional_cdf(spec, exp(-150), lower.tail = FALSE), 1.5e-18, tolerance = 1e-10)
+  expect_equal(.bt_R2_density_log_pbeta(-1000, 1e-20, 1, lower.tail = FALSE), log(1e-17), tolerance = 1e-10)
   # (reference by high-precision integration of the normal kernel law)
   spec <- .bt_R2_functional_spec("normal", a = 1, b = 1e20, scale = 1)
   expect_equal(.bt_R2_functional_cdf(spec, 1e-11, lower.tail = FALSE), 0.434061722697292438, tolerance = 1e-8)

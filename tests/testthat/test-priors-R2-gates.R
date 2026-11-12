@@ -676,6 +676,17 @@ test_that("gated totals and coefficients keep their quantiles near zero and thei
   concentrated <- bind(prior_R2(total = prior("beta", list(1e105, 1e105)),
     inclusion = list(z = prior("spike", list(0.5)))), ~ x + z)
   expect_equal(var(concentrated$mu_R2) / (0.25 / (2e105 + 1)), 1, tolerance = 1e-10)
+  # three gated terms beside an ungated one: the merged states keep one Beta
+  # component whatever the rounding of its weight
+  three <- JAGS_formula(~ x + z1 + z2 + z3, "mu", data.frame(x = rep(c(-1, 1), 8), z1 = rep(c(-1, -1, 1, 1), 4),
+      z2 = rep(c(1, -1, -1, 1), 4), z3 = rep(c(-1, -1, -1, -1, 1, 1, 1, 1), 2)),
+    list(intercept = prior("normal", list(0, 1)), R2 = prior_R2(total = prior("beta", list(1e105, 1e105)),
+      inclusion = list(z1 = prior("spike", list(0.1)), z2 = prior("spike", list(0.1)), z3 = prior("spike", list(0.1))))))$prior_list
+  expect_equal(var(three$mu_R2) / (0.25 / (2e105 + 1)), 1, tolerance = 1e-10)
+  # shapes whose sum is not a double are refused
+  expect_error(prior_R2(inclusion = prior("beta", list(1e308, 1e308))), class = "BayesTools_R2_invalid")
+  expect_error(prior_R2(total = prior("beta", list(1e308, 1e308))), class = "BayesTools_R2_invalid")
+  expect_equal(.bt_R2_log_fraction(c(1, 1e300, 1e-300), c(1, 1e300, 1)), c(log(0.5), log(0.5), log(1e-300) - log1p(1e-300)))
   # a continuous part of 1e-20 keeps the upper end of the total
   tiny <- bind(prior_R2(inclusion = prior("spike", list(1e-20))))
   expect_identical(mquant(tiny$mu_R2, 1), 1)

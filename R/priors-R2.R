@@ -592,7 +592,10 @@ print.R2_dirichlet <- function(x, ...){
     stop("The Beta prior 'total' cannot be truncated.", call. = FALSE)
   }
 
-  c(a = unname(total$parameters[["alpha"]]), b = unname(total$parameters[["beta"]]))
+  a <- unname(total$parameters[["alpha"]])
+  b <- unname(total$parameters[["beta"]])
+  .bt_R2_check_beta_sum(a, b, "'total'")
+  c(a = a, b = b)
 }
 
 # The law of an inclusion probability: a fixed probability in (0, 1) (a spike
@@ -617,8 +620,18 @@ print.R2_dirichlet <- function(x, ...){
   }
   a <- unname(prior$parameters[["alpha"]])
   b <- unname(prior$parameters[["beta"]])
+  .bt_R2_check_beta_sum(a, b, what)
 
   list(type = "beta", a = a, b = b, p = a / (a + b))
+}
+
+# The shapes of a Beta law of a budget enter its laws through their sum (the
+# gate probabilities, the moments): it must be a finite double.
+.bt_R2_check_beta_sum <- function(a, b, what){
+  if(is.numeric(a) && is.numeric(b) && length(a) == 1L && length(b) == 1L && !is.finite(a + b + 1)){
+    stop(what, " has Beta shapes whose sum exceeds the double range.", call. = FALSE)
+  }
+  invisible(TRUE)
 }
 
 # The inclusion gates of the budget terms: NULL (no gates), one probability
