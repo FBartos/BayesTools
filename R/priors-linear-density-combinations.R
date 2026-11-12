@@ -1286,6 +1286,11 @@
     return(Inf)
   }
 
+  # (the scale of a gated R2 term is that of its continuous part, as for a
+  # spike-and-slab prior: its quartiles can both lie in the atom at zero)
+  if(is.prior.R2(prior) && .bt_R2_term_is_gated(prior)){
+    prior$gated_slab <- TRUE
+  }
   quartiles <- mquant(prior, c(.25, .75))
   scales <- vapply(seq_along(weights), function(i){
     source_quartiles <- if(identical(transforms[i], "log")) log(quartiles) else quartiles

@@ -62,19 +62,38 @@
   )
 }
 
+# The log probability that the gates t..K are all closed given that the gates
+# before t are closed, under the gate law before the spike (t = 1: the log
+# probability of the empty configuration). Under a shared Beta(a, b) rate it is
+# the product over the closed gates j = t - 1, ..., K - 1 of the beta-binomial
+# conditionals (b + j) / (a + b + j) = 1 - a / (a + b + j), summed in logs
+# without differences of large lbeta() values (which lose huge shapes).
+.bt_R2_gate_log_closed_from <- function(law, K, t = 1L){
+
+  if(t > K){
+    return(0)
+  }
+  if(identical(law$type, "shared")){
+    j <- (t - 1):(K - 1)
+    return(sum(log1p(-law$a / (law$a + law$b + j))))
+  }
+  sum(log1p(-law$pi[t:K]))
+}
+
+# The probability of a nonempty configuration of the gates before the spike,
+# 1 - P(empty), computed without cancellation (tiny gate probabilities keep
+# their value).
+.bt_R2_gate_nonempty_probability <- function(gates){
+  -expm1(.bt_R2_gate_log_closed_from(gates$law, gates$K))
+}
+
 # P(gate t open | gates 1..t-1 closed, at least one gate open), t = 1..K.
 .bt_R2_gate_truncated_probabilities <- function(law, K){
 
   p <- vapply(seq_len(K), function(t){
-    if(identical(law$type, "shared")){
-      # P(g_t = 1 | none before) / P(some of t..K open | none before) under BB
-      first <- law$a / (law$a + law$b + (t - 1))
-      some <- -expm1(lbeta(law$a, law$b + K) - lbeta(law$a, law$b + (t - 1)))
-      first / some
-    }else{
-      # 1 - prod(1 - pi) computed without cancellation
-      law$pi[[t]] / -expm1(sum(log1p(-law$pi[t:K])))
-    }
+    first <- if(identical(law$type, "shared")) law$a / (law$a + law$b + (t - 1)) else law$pi[[t]]
+    # P(some of t..K open | none before), without cancellation
+    first / -expm1(.bt_R2_gate_log_closed_from(law, K, t))
   }, numeric(1))
   if(any(!is.finite(p)) || any(p > 1 + 1e-10) || any(p <= 0)){
     .bt_R2_stop(paste0("The inclusion probabilities of the gates are numerically degenerate: the conditional ",
@@ -122,22 +141,54 @@
   regular
 }
 
-# Prior probability of the gate configurations 'open' (a logical matrix, one
-# row per configuration of the K gates) under the gate law, before the spike:
-# the probability that exactly these gates are open.
+# The probability that gate t is closed given 's' open gates before it, before
+# the spike and the truncation: under a shared rate (b + t - 1 - s) / (a + b +
+# t - 1), not 1 minus the open probability (which cancels when it is near 1).
+.bt_R2_gate_closed_probability <- function(gates, t, s){
+
+  if(identical(gates$law$type, "shared")){
+    return((gates$law$b + (t - 1 - s)) / (gates$law$a + gates$law$b + (t - 1)))
+  }
+  rep(1 - gates$law$pi[[t]], length(s))
+}
+
+# The log prior probability of the gate configurations 'open' (a logical
+# matrix, one row per configuration of the K gates) under the gate law,
+# before the spike and the truncation: the probability that exactly these
+# gates are open. Under a shared rate it depends only on the number s of open
+# gates (exchangeable), the product of the sequential beta-binomial
+# conditionals with the open gates first, summed in logs without differences
+# of large lbeta() values.
+.bt_R2_gate_log_configuration_probability <- function(gates, open){
+
+  open <- matrix(as.logical(open), ncol = gates$K)
+  if(!identical(gates$law$type, "shared")){
+    log_open <- matrix(log(gates$law$pi), nrow(open), gates$K, byrow = TRUE)
+    log_closed <- matrix(log1p(-gates$law$pi), nrow(open), gates$K, byrow = TRUE)
+    return(rowSums(ifelse(open, log_open, log_closed)))
+  }
+  a <- gates$law$a
+  b <- gates$law$b
+  K <- gates$K
+  s <- rowSums(open)
+  by_s <- vapply(0:K, function(count){
+    i <- seq_len(count) - 1
+    j <- seq_len(K - count) - 1
+    sum(log1p(-b / (a + b + i))) + sum(log1p(-(a + count) / (a + b + count + j)))
+  }, numeric(1))
+
+  by_s[s + 1L]
+}
+
+# Prior probability of the gate configurations 'open' (see above), with the
+# truncation of a spiked budget whose terms are all gated (the empty
+# configuration then has probability zero under the slab).
 .bt_R2_gate_configuration_probability <- function(gates, open){
 
   open <- matrix(as.logical(open), ncol = gates$K)
-  s <- rowSums(open)
-  base <- if(identical(gates$law$type, "shared")){
-    exp(lbeta(gates$law$a + s, gates$law$b + (gates$K - s)) - lbeta(gates$law$a, gates$law$b))
-  }else{
-    apply(open, 1, function(row) prod(ifelse(row, gates$law$pi, 1 - gates$law$pi)))
-  }
+  base <- exp(.bt_R2_gate_log_configuration_probability(gates, open))
   if(gates$truncated){
-    empty <- .bt_R2_gate_configuration_probability(
-      utils::modifyList(gates, list(truncated = FALSE)), matrix(FALSE, 1, gates$K))
-    base <- ifelse(s == 0, 0, base / (1 - empty))
+    base <- ifelse(rowSums(open) == 0, 0, base / .bt_R2_gate_nonempty_probability(gates))
   }
 
   base
@@ -152,14 +203,12 @@
   if(gates$K > 0L){
     pi <- gates$law$pi
     if(gates$truncated){
-      empty <- .bt_R2_gate_configuration_probability(
-        utils::modifyList(gates, list(truncated = FALSE)), matrix(FALSE, 1, gates$K))
-      pi <- pi / (1 - empty)
+      pi <- pi / .bt_R2_gate_nonempty_probability(gates)
     }
     open[gates$gated] <- on_spike * pi
   }
   budget <- if(gates$K > 0L && gates$all_gated && is.null(gates$spike)){
-    1 - .bt_R2_gate_configuration_probability(gates, matrix(FALSE, 1, gates$K))
+    .bt_R2_gate_nonempty_probability(gates)
   }else{
     on_spike
   }
@@ -579,7 +628,8 @@ is.prior.R2_budget <- function(x){
       terms = pmin(2, states$terms + 1),
       prob  = states$prob * p_open
     )
-    closed <- if(!isTRUE(force)) utils::modifyList(states, list(prob = states$prob * (1 - p_open)))
+    closed <- if(!isTRUE(force)) utils::modifyList(states, list(prob = states$prob *
+      .bt_R2_gate_closed_probability(gates, t, states$s)))
     branches <- Filter(Negate(is.null), list(open, closed))
     states <- .bt_R2_states_merge(if(length(branches) == 2L) Map(c, open, closed) else branches[[1L]], shared, core)
   }
@@ -589,9 +639,7 @@ is.prior.R2_budget <- function(x){
   prob <- states$prob[keep]
   if(gates$truncated){
     # the gate prior under the slab is conditioned on a nonempty configuration
-    none <- .bt_R2_gate_configuration_probability(utils::modifyList(gates, list(truncated = FALSE)),
-                                                  matrix(FALSE, 1, gates$K))
-    prob <- prob / (1 - none)
+    prob <- prob / .bt_R2_gate_nonempty_probability(gates)
     empty_mass <- 0
   }
   mass <- if(is.null(pattern)) 1 else pattern$mass
@@ -771,7 +819,10 @@ is.prior.R2_budget <- function(x){
     return(prior("beta", list(alpha = law$a, beta = law$b)))
   }
   j <- seq_len(core$gates$K) - 1
-  log_w <- lbeta(law$a + 1, law$b + j) - lbeta(law$a, law$b)
+  # B(a + 1, b + j) / B(a, b): the first j gates closed and gate j + 1 open,
+  # as products of the sequential conditionals (no lbeta() differences)
+  log_w <- vapply(j, function(first) .bt_R2_gate_log_configuration_probability(
+    list(law = law, K = first + 1L), matrix(c(rep(FALSE, first), TRUE), nrow = 1L)), numeric(1))
   .bt_R2_mixture(lapply(j, function(first) prior("beta", list(alpha = law$a + 1, beta = law$b + first))),
                  exp(log_w - max(log_w)), rep(FALSE, length(j)))
 }
@@ -906,22 +957,43 @@ is.prior.R2_budget <- function(x){
   p <- as.numeric(p)
   below <- .bt_R2_spec_cdf(spec, -.Machine$double.xmin)
   at <- below + spec$atom
+  W <- sum(spec$weights)
   vapply(p, function(prob){
     if(is.na(prob)) return(NA_real_)
     if(prob < 0 || prob > 1) .bt_R2_stop("The R-squared functional quantile needs probabilities in [0, 1].")
     if(prob == 0) return(-Inf)
     if(prob == 1) return(Inf)
-    if(prob > below && prob <= at) return(0)
-    # bracket from the component quantiles of the continuous part
-    level <- min(max(prob, 1e-12), 1 - 1e-12)
-    ends <- vapply(spec$specs, function(component){
-      .bt_R2_functional_quantile(component, c(min(level, 1 - level) / 2, 1 - min(level, 1 - level) / 2))
-    }, numeric(2))
-    lower <- min(ends[1L, ], -1e-12)
-    upper <- max(ends[2L, ], 1e-12)
-    while(.bt_R2_spec_cdf(spec, lower) > prob) lower <- 2 * lower - 1
-    while(.bt_R2_spec_cdf(spec, upper) < prob) upper <- 2 * upper + 1
-    stats::uniroot(function(x) .bt_R2_spec_cdf(spec, x) - prob, c(lower, upper), tol = 1e-12)$root
+    if(prob >= below && prob <= at) return(0)
+    # the continuous part is a mixture of symmetric laws without atoms, so
+    # the quantile lies between the component quantiles at the level of the
+    # normalized continuous part; it is solved on log|x|, so that quantiles
+    # near zero keep their relative precision
+    side <- if(prob > at) 1 else -1
+    level <- if(side > 0) (prob - spec$atom) / W else prob / W
+    # (a level at the median of the continuous part is the atom itself)
+    if((side > 0 && level <= 1 / 2) || (side < 0 && level >= 1 / 2)) return(0)
+    if(level >= 1) return(Inf)
+    if(level <= 0) return(-Inf)
+    ends <- abs(vapply(spec$specs, .bt_R2_functional_quantile, numeric(1), p = level))
+    finite <- ends[is.finite(ends) & ends > 0]
+    unavailable <- function(){
+      .bt_R2_unavailable("The quantile of the gated R-squared budget term is outside the representable range.",
+        class = "BayesTools_R2_density_unavailable")
+    }
+    if(length(finite) == 0L) unavailable()
+    f <- function(u) side * (.bt_R2_spec_cdf(spec, side * exp(u)) - prob)
+    lo <- log(min(finite))
+    hi <- log(max(finite))
+    # a component quantile that underflows or overflows widens the bracket
+    while(any(ends == 0) && f(lo) > 0 && lo > log(.Machine$double.xmin)) lo <- max(lo - 10, log(.Machine$double.xmin))
+    while(any(!is.finite(ends)) && f(hi) < 0 && hi < log(.Machine$double.xmax)) hi <- min(hi + 10, log(.Machine$double.xmax))
+    f_lo <- f(lo)
+    f_hi <- f(hi)
+    # the bracket is exact, so outside the range only where it was widened
+    if((f_lo > 0 && any(ends == 0)) || (f_hi < 0 && any(!is.finite(ends)))) unavailable()
+    if(hi - lo <= 0 || f_lo >= 0) return(side * exp(lo))
+    if(f_hi <= 0) return(side * exp(hi))
+    side * exp(stats::uniroot(f, c(lo, hi), f.lower = f_lo, f.upper = f_hi, tol = 1e-13)$root)
   }, numeric(1))
 }
 
@@ -1335,12 +1407,32 @@ is.prior.R2_budget <- function(x){
       if(p < 0 || p > 1) .bt_R2_stop("Quantiles need probabilities in [0, 1].")
       if(p <= components$atom) return(0)
       if(p >= 1) return(1)
-      stats::uniroot(function(x) cdf(x) - p, c(0, 1), tol = 1e-12)$root
+      # the quantile of the Beta mixture lies between the Beta quantiles at the
+      # level of its normalized continuous part (exact for one component);
+      # it is solved on the logit scale, which keeps the relative precision
+      # of quantiles near 0 and 1
+      level <- min(max((p - components$atom) / sum(w), 0), 1)
+      ends <- stats::qbeta(level, a, b)
+      if(length(w) == 1L || max(ends) <= min(ends)){
+        return(ends[[1L]])
+      }
+      ends <- stats::qlogis(ends)
+      if(any(!is.finite(ends))){
+        ends <- pmin(pmax(ends, stats::qlogis(.Machine$double.xmin)), stats::qlogis(1 - .Machine$double.neg.eps))
+      }
+      root <- stats::uniroot(function(u){
+        sum(w * stats::pbeta(stats::plogis(u), a, b)) - (p - components$atom)
+      }, range(ends), tol = 1e-13)$root
+      stats::plogis(root)
     }, numeric(1)),
     mean = sum(w * a / (a + b)),
     var = {
-      second <- sum(w * a * (a + 1) / ((a + b) * (a + b + 1)))
-      second - sum(w * a / (a + b))^2
+      # the atom at zero and the Beta components around the mixture mean (no
+      # difference of raw second moments, which cancels for concentrated
+      # totals)
+      mu <- a / (a + b)
+      m <- sum(w * mu)
+      sum(w * (a * b / ((a + b)^2 * (a + b + 1)) + (mu - m)^2)) + components$atom * m^2
     },
     .bt_R2_unavailable(paste0("The '", method, "' method is unavailable for the total of a gated R-squared budget."))
   )
