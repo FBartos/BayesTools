@@ -186,6 +186,9 @@ test_that("gated budgets fit with inclusion summaries, catalog quantities and re
   expect_equal(as.numeric(as.matrix(parameter_draws(fit, inclusion))), unname(open[, 1]))
 
   expect_error(hypothesis_BF_model(fit, "R2{total} = 0"), class = "BayesTools_point_mass_at_null")
+  # the atom of a share at one is not an inclusion event
+  expect_error(hypothesis_BF_model(fit, "R2[share: x] = 1"), "Use a region or directional hypothesis.",
+    fixed = TRUE, class = "BayesTools_point_mass_at_null")
   region <- hypothesis_BF_model(fit, "R2{total} > 0.1")
   prior_prob <- 0.5 * stats::pbeta(0.1, 1.5, 2, lower.tail = FALSE)
   post_prob <- mean(post[, "mu_R2"] > 0.1)

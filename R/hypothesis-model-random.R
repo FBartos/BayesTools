@@ -546,10 +546,16 @@
     provider[["random"]][["zero_boundary"]](selected)
   }
   zero_alternative <- zero_boundary[["alternative"]]
+  point_mass_advice <- provider[["random_point_mass_advice"]]
+  # the atom of an R-squared share at one (its term is the only open term) is
+  # not an inclusion event: only region hypotheses test it
+  if (R2 && identical(selected[["entry"]][["selection"]][["quantities"]][["extraction_key"]][[1L]][["type"]], "R2_share")) {
+    point_mass_advice <- "Use a region or directional hypothesis."
+  }
   point_mass_reason <- paste0(
     "Point-null Bayes factors at %s are unavailable for ", noun,
     " '%s' because its prior has a point mass at %s. ",
-    gsub("%", "%%", provider[["random_point_mass_advice"]], fixed = TRUE)
+    gsub("%", "%%", point_mass_advice, fixed = TRUE)
   )
   plan[["targets"]] <- lapply(seq_len(nrow(refs)), function(i) {
     value  <- refs[["value"]][[i]]
