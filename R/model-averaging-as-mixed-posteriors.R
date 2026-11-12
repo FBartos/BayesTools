@@ -163,7 +163,7 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
       # the realized total of a gated or spiked R-squared budget (an atom at
       # zero): the mixed posterior of its catalog quantity
       out[[temp_parameter]] <- .bt_R2_as_mixed_total(model_samples, temp_prior, temp_parameter,
-        included = .bt_R2_conditioned_inclusion(priors, condition_event, temp_parameter))
+        law = .bt_R2_conditioned_law(priors, condition_event, temp_parameter))
 
     }else{
       stop("The posterior samples cannot be mixed: unsupported prior distributions.")
@@ -172,7 +172,7 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
     if(is.prior.R2(temp_prior) && .bt_R2_term_is_gated(temp_prior)){
       out[[temp_parameter]] <- .bt_R2_set_gated_atoms(out[[temp_parameter]], original_model_samples,
                                                        temp_parameter, temp_prior,
-                                                       included = .bt_R2_conditioned_inclusion(priors, condition_event, temp_parameter))
+                                                       law = .bt_R2_conditioned_law(priors, condition_event, temp_parameter))
     }
 
     # add formula relevant information

@@ -233,6 +233,10 @@
     is.prior.R2(prior) && isTRUE(prior$bound) && identical(prior$total_name, total_name)
   }, logical(1))]
   core <- prior_list[[total_name]]
+  if(!is.prior.R2_budget(core) && length(terms) > 0L && .bt_R2_term_is_gated(terms[[1L]])){
+    # the total entry replaced (e.g., by a point in a condition event)
+    core <- terms[[1L]]$core
+  }
   if(is.prior.R2_budget(core)){
     draws <- .bt_R2_core_draws(core, n)
     for(term_name in names(terms)){

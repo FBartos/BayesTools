@@ -373,21 +373,6 @@
   }
 
   prior <- prior_list[[family[["name"]]]]
-  R2_options <- .bt_R2_condition_options(prior)
-  if(!is.null(R2_options)){
-    return(lapply(R2_options, function(option){
-      values <- rep(option[["alternative"]], length(labels))
-      names(values) <- labels
-      list(
-        family      = family[["name"]],
-        prior       = option[["prior"]],
-        probability = option[["probability"]],
-        log_probability = log(option[["probability"]]),
-        values      = values,
-        replace     = TRUE
-      )
-    }))
-  }
   options <- if(is.prior.ordered(prior)){
     lapply(.prior_density_condition_component(prior$total),function(option){
       total <- option$prior
@@ -446,12 +431,15 @@
   if(length(families) == 0L){
     return(NULL)
   }
-  .bt_R2_check_condition_families(prior_list, names(families))
-
-  options <- lapply(families, function(family){
+  # the labels of one gated R-squared budget form one joint family (see
+  # R/priors-R2-gates.R); the other families are independent
+  R2_joint <- .bt_R2_condition_joint_options(prior_list, families)
+  plain <- families[!names(families) %in% R2_joint$members]
+  options <- lapply(plain, function(family){
     .condition_event_family_options(prior_list, family)
   })
-  names(options) <- names(families)
+  names(options) <- names(plain)
+  options <- c(options, R2_joint$options)
 
   option_grid <- expand.grid(lapply(options, seq_along))
   keep <- logical(nrow(option_grid))
@@ -462,10 +450,10 @@
   for(i in seq_len(nrow(option_grid))){
     values <- logical(length(event[["conditional"]]))
     names(values) <- event[["conditional"]]
-    probabilities <- numeric(length(families))
-    log_probabilities <- numeric(length(families))
+    probabilities <- numeric(length(options))
+    log_probabilities <- numeric(length(options))
 
-    for(j in seq_along(families)){
+    for(j in seq_along(options)){
       option <- options[[j]][[option_grid[i, j]]]
       values[names(option[["values"]])] <- option[["values"]]
       probabilities[j] <- option[["probability"]]
@@ -498,9 +486,16 @@
 
   prior_lists <- lapply(seq_len(nrow(option_grid)), function(i){
     model_prior_list <- prior_list
-    for(j in seq_along(families)){
+    for(j in seq_along(options)){
       option <- options[[j]][[option_grid[i, j]]]
-      if(isTRUE(option[["replace"]])){
+      if(!is.null(option[["replacements"]])){
+        for(member in names(option[["replacements"]])){
+          model_prior_list[[member]] <- .prior_density_copy_parent_attributes(
+            component = option[["replacements"]][[member]],
+            parent    = prior_list[[member]]
+          )
+        }
+      }else if(isTRUE(option[["replace"]])){
         family_name <- option[["family"]]
         model_prior_list[[family_name]] <- .prior_density_copy_parent_attributes(
           component = option[["prior"]],

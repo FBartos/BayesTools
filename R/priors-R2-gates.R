@@ -369,6 +369,9 @@ is.prior.R2_budget <- function(x){
 # of the configuration, the realized total and the gated allocation.
 .bt_R2_core_draws <- function(core, n){
 
+  if(!is.null(core$pattern)){
+    return(.bt_R2_core_pattern_draws(core, n))
+  }
   nodes <- .bt_R2_core_nodes(core)
   gates <- core$gates
   out <- list()
@@ -440,6 +443,39 @@ is.prior.R2_budget <- function(x){
   }
 
   do.call(cbind, columns)
+}
+
+# Joint prior draws of a core conditioned on a pattern of open flags (a
+# condition event, see .bt_R2_condition_core()): the draws of the pattern.
+.bt_R2_core_pattern_draws <- function(core, n){
+
+  pattern <- core$pattern
+  free <- core
+  free$pattern <- NULL
+  nodes <- .bt_R2_core_nodes(free)
+  out <- NULL
+  for(attempt in seq_len(1000L)){
+    draws <- .bt_R2_core_draws(free, max(n, 1000L))
+    indicator <- if(!is.null(free$gates$spike)) draws[, nodes$indicator] else rep(1, nrow(draws))
+    open <- vapply(free$terms, function(term){
+      gate <- free$term_gate[[term]]
+      indicator * (if(gate > 0L) draws[, nodes$gates[[gate]]] else 1)
+    }, numeric(nrow(draws)))
+    open <- matrix(open, nrow = nrow(draws), dimnames = list(NULL, free$terms))
+    keep <- rep(TRUE, nrow(draws))
+    for(term in names(pattern$flags)){
+      keep <- keep & open[, term] == as.numeric(pattern$flags[[term]])
+    }
+    if(!is.na(pattern$total)){
+      keep <- keep & (rowSums(open) > 0) == pattern$total
+    }
+    out <- rbind(out, draws[keep, , drop = FALSE])
+    if(NROW(out) >= n){
+      return(out[seq_len(n), , drop = FALSE])
+    }
+  }
+  .bt_R2_unavailable("The condition event of the R-squared budget has too small a prior probability to sample its draws.",
+    class = "BayesTools_R2_density_unavailable")
 }
 
 # The open flag of every unit of a term's budget from the gate and indicator
@@ -955,18 +991,25 @@ is.prior.R2_budget <- function(x){
 
 # The atom at zero of the coefficients of a gated term (the term closed): the
 # posterior mass of the closed draws and the mixed support with the point 0.
-.bt_R2_set_gated_atoms <- function(samples, model_samples, parameter, prior, included = NULL){
+# 'law' is the prior law of the coefficient given the condition event (NULL:
+# its unconditional law).
+.bt_R2_set_gated_atoms <- function(samples, model_samples, parameter, prior, law = NULL){
 
   open <- .bt_R2_term_open_draws(prior, model_samples)
   columns <- if(is.null(dim(samples))) parameter else colnames(samples)
   closed <- mean(open == 0)
   # the prior density of a scalar coefficient given the conditioning event
-  # (factor terms have no catalog density; a law that needs more
-  # configurations than the analytic limit leaves the draws without one)
+  # (factor terms have no catalog density here; a law with too many states
+  # leaves the draws without one)
   if(prior$d == 1L && !is.prior.factor(prior)){
     law <- tryCatch({
-      prior_list <- stats::setNames(list(prior), parameter)
-      .bt_R2_coefficient_law_given(prior_list, parameter, included)
+      if(is.null(law)){
+        .bt_R2_gated_coefficient_law(stats::setNames(list(prior), parameter),
+                                     list(type = "coordinate", dependencies = parameter))
+      }else{
+        # evaluate the law now so that an unavailable law leaves no density
+        .bt_R2_check_law(law)
+      }
     }, BayesTools_R2_density_unavailable = function(condition) NULL)
     samples <- .bt_R2_set_prior_density(samples, law)
   }
@@ -1235,9 +1278,9 @@ is.prior.R2_budget <- function(x){
 # The mixed posterior of the realized total of a gated or spiked budget from
 # the (conditioned) draws: its prior law, the mixed support with the atom at
 # zero, and the posterior mass of the atom.
-.bt_R2_as_mixed_total <- function(model_samples, core, parameter, included = NULL){
+.bt_R2_as_mixed_total <- function(model_samples, core, parameter, law = NULL){
 
-  law <- tryCatch(.bt_R2_total_law_given(core, included),
+  law <- tryCatch(if(is.null(law)) .bt_R2_core_total_law(core) else law,
                   BayesTools_R2_density_unavailable = function(condition) NULL)
   samples <- .as_mixed_posteriors.simple(model_samples, if(is.null(law)) prior("beta", list(1, 1)) else law, parameter)
   attr(samples, "prior_list") <- if(is.null(law)) core else law
@@ -1294,40 +1337,131 @@ is.prior.R2_budget <- function(x){
   NULL
 }
 
-# The prior options of the inclusion event of a gated term (closed: its atom
-# at zero; open: its continuous part) or of a gated total (the budget null;
-# the budget on), with their prior probabilities. NULL for other priors.
-.bt_R2_condition_options <- function(prior){
+# The labels of a condition event that belong to one gated budget are
+# dependent (shared rate, truncation, spike): they form one joint family whose
+# options are the truth patterns of their open flags (a term open; the budget
+# on for its total), each with its exact joint prior probability, and whose
+# prior lists replace every entry of the budget (labelled or not) by its prior
+# with the core conditioned on the pattern (a term closed by the pattern is a
+# point at zero): the laws, the draws and the dependence of the entries all
+# follow the pattern. Families of different budgets and other priors stay
+# independent.
 
-  if(is.prior.R2(prior) && .bt_R2_term_is_gated(prior)){
-    open <- .bt_R2_gate_marginals(prior$core$gates, prior$core$terms)$open[[prior$term]]
-    slab <- prior
-    slab$gated_slab <- TRUE
-    return(Filter(function(option) option$probability > 0, list(
-      list(prior = prior("spike", list(0)), probability = 1 - open, alternative = FALSE),
-      list(prior = slab, probability = open, alternative = TRUE)
-    )))
-  }
-  if(is.prior.R2_budget(prior)){
-    on <- .bt_R2_gate_marginals(prior$gates, prior$terms)$budget
-    return(Filter(function(option) option$probability > 0, list(
-      list(prior = prior("spike", list(0)), probability = 1 - on, alternative = FALSE),
-      list(prior = .bt_R2_core_total_law(prior, conditional = TRUE), probability = on, alternative = TRUE)
-    )))
-  }
-  NULL
+# The prior-list names of the entries of the gated budget 'total_name'.
+.bt_R2_budget_members <- function(prior_list, total_name){
+
+  names(prior_list)[vapply(prior_list, function(prior){
+    identical(.bt_R2_condition_budget(prior), total_name)
+  }, logical(1))]
 }
 
-# The inclusion events of several terms of one gated budget are dependent
-# (shared rate, truncation, spike); a condition on more than one of them is
-# unavailable.
-.bt_R2_check_condition_families <- function(prior_list, names){
+# The probability of a pattern of a gated budget: 'flags', the open flags of
+# labelled terms (named by core term names), and 'total', the budget-on flag
+# (NA when it is not labelled). With the spike, every term is closed and the
+# budget off; otherwise the ungated terms are open and the gated terms follow
+# their gates. It needs the gate law only (no concentrations).
+.bt_R2_pattern_mass <- function(core, flags, total = NA){
 
-  budgets <- unlist(lapply(names, function(name) .bt_R2_condition_budget(prior_list[[name]])), use.names = FALSE)
-  if(anyDuplicated(budgets)){
-    .bt_R2_gated_unavailable("Conditioning on the inclusion of several terms (or the total) of one gated budget")
+  core$pattern <- NULL
+  on <- if(is.null(core$gates$spike)) 1 else core$gates$spike$p
+  off <- if(!any(flags) && !isTRUE(total)) 1 - on else 0
+  gated <- core$term_gate[names(flags)] > 0L
+  if(!all(flags[!gated])){
+    return(off)
   }
-  invisible(TRUE)
+  states <- .bt_R2_core_states(core, fixed = flags[gated], concentrations = FALSE)
+
+  off + (if(!isFALSE(total)) sum(states$prob) else 0) + (if(!isTRUE(total)) states$empty else 0)
+}
+
+# The core 'core' conditioned on the pattern ('flags', 'total').
+.bt_R2_condition_core <- function(core, flags, total = NA){
+
+  core$pattern <- NULL
+  core$pattern <- list(flags = flags, total = total, mass = .bt_R2_pattern_mass(core, flags, total))
+  core
+}
+
+# The priors of the entries 'members' of a gated budget given the pattern
+# ('flags', 'total').
+.bt_R2_pattern_laws <- function(prior_list, members, core, flags, total){
+
+  conditioned <- .bt_R2_condition_core(core, flags, total)
+  laws <- lapply(members, function(member){
+    prior <- prior_list[[member]]
+    if(is.prior.R2_budget(prior)){
+      on <- if(isFALSE(total)) 0 else .bt_R2_pattern_mass(core, flags, TRUE)
+      return(if(on > 0) .bt_R2_condition_core(prior, flags, total) else prior("spike", list(0)))
+    }
+    term <- prior$term
+    open <- if(term %in% names(flags)) as.numeric(flags[[term]]) else
+      .bt_R2_pattern_mass(core, c(flags, stats::setNames(TRUE, term)), total)
+    if(open <= 0){
+      # a closed factor keeps its coded coefficients (a factor point)
+      return(if(is.prior.factor(prior)) prior_factor("spike", list(0), contrast = prior$budget$contrast) else
+        prior("spike", list(0)))
+    }
+    prior$core <- conditioned
+    prior
+  })
+  names(laws) <- members
+
+  laws
+}
+
+# The joint condition families of the gated budgets of 'families' (the
+# families of a condition event): list(members, options), with 'members' the
+# family names they replace and 'options' one list of options per budget in
+# the format of .condition_event_family_options(), with 'replacements' (the
+# priors of every entry of the budget given the pattern).
+.bt_R2_condition_joint_options <- function(prior_list, families){
+
+  budgets <- vapply(names(families), function(name){
+    budget <- .bt_R2_condition_budget(prior_list[[name]])
+    if(is.null(budget)) NA_character_ else budget
+  }, character(1))
+  out <- list(members = character(), options = list())
+  for(budget in unique(budgets[!is.na(budgets)])){
+    labelled <- names(families)[budgets %in% budget]
+    core <- prior_list[[budget]]
+    if(!is.prior.R2_budget(core)){
+      core <- prior_list[[labelled[[1L]]]]$core
+    }
+    core$pattern <- NULL
+    members <- .bt_R2_budget_members(prior_list, budget)
+    term_of <- vapply(labelled, function(name){
+      prior <- prior_list[[name]]
+      if(is.prior.R2_budget(prior)) NA_character_ else prior$term
+    }, character(1))
+    grid <- as.matrix(expand.grid(rep(list(c(FALSE, TRUE)), length(labelled))))
+    options <- list()
+    for(i in seq_len(nrow(grid))){
+      pattern <- grid[i, ]
+      flags <- stats::setNames(pattern[!is.na(term_of)], term_of[!is.na(term_of)])
+      total <- if(any(is.na(term_of))) pattern[is.na(term_of)][[1L]] else NA
+      mass <- .bt_R2_pattern_mass(core, flags, total)
+      if(!(mass > 0)){
+        next
+      }
+      values <- unlist(lapply(seq_along(labelled), function(j){
+        labels <- unique(families[[labelled[[j]]]][["labels"]])
+        stats::setNames(rep(pattern[[j]], length(labels)), labels)
+      }))
+      options[[length(options) + 1L]] <- list(
+        family       = budget,
+        prior        = NULL,
+        probability  = mass,
+        log_probability = log(mass),
+        values       = values,
+        replace      = TRUE,
+        replacements = .bt_R2_pattern_laws(prior_list, members, core, flags, total)
+      )
+    }
+    out$members <- c(out$members, labelled)
+    out$options[[budget]] <- options
+  }
+
+  out
 }
 
 # The prior density of a mixed posterior of a gated quantity, on the
@@ -1346,61 +1480,175 @@ is.prior.R2_budget <- function(x){
   samples
 }
 
-# The probability that the gated quantity 'parameter' (a gated term or a
-# total) is included given the conditioning event of as_mixed_posteriors():
-# NULL when the event does not involve it (its priors are independent of the
-# other conditioned priors), 1 when the event implies its inclusion (its own
-# label alone or under 'AND'), and P(included) / P(event) under 'OR' with
-# other labels (its inclusion implies the event).
-.bt_R2_conditioned_inclusion <- function(prior_list, condition_event, parameter){
+# The prior law of the gated quantity 'parameter' (a gated term or a total)
+# given the condition event of as_mixed_posteriors(): NULL when the event does
+# not involve its budget (it is independent of the other conditioned priors),
+# and otherwise the mixture over the options of the event of its law in each
+# option, decomposed into the atom at zero (merged) and the continuous parts
+# (a slab of the term, the Beta components of the total), on the residual-SD
+# scale of the catalog laws.
+.bt_R2_conditioned_law <- function(prior_list, condition_event, parameter){
 
-  conditional <- condition_event[["conditional"]]
-  if(!parameter %in% conditional){
+  budget <- .bt_R2_condition_budget(prior_list[[parameter]])
+  families <- condition_event[["families"]]
+  involved <- vapply(names(families), function(name){
+    identical(.bt_R2_condition_budget(prior_list[[name]]), budget)
+  }, logical(1))
+  if(is.null(budget) || !any(involved)){
     return(NULL)
   }
-  if(length(conditional) == 1L || identical(condition_event[["conditional_rule"]], "AND")){
-    return(1)
+  options <- .condition_event_model_options(prior_list, condition_event)
+  components <- list()
+  weights <- numeric()
+  atom <- 0
+  for(i in seq_along(options$prior_lists)){
+    law <- options$prior_lists[[i]][[parameter]]
+    weight <- options$weights[[i]]
+    if(is.prior.point(law)){
+      atom <- atom + weight
+    }else if(is.prior.R2_budget(law)){
+      total <- .bt_R2_core_total_components(law)
+      atom <- atom + weight * total$atom
+      for(k in seq_along(total$weights)){
+        components[[length(components) + 1L]] <- prior("beta", list(alpha = total$shapes[k, 1L], beta = total$shapes[k, 2L]))
+        weights <- c(weights, weight * total$weights[[k]])
+      }
+    }else{
+      closed <- .bt_R2_term_states(law)$atom
+      atom <- atom + weight * closed
+      if(closed < 1){
+        slab <- .bt_prior_without_multiply_by(law)
+        slab$gated_slab <- TRUE
+        slab$prior_weights <- 1
+        components[[length(components) + 1L]] <- slab
+        weights <- c(weights, weight * (1 - closed))
+      }
+    }
   }
-  prior <- prior_list[[parameter]]
-  on <- if(is.prior.R2_budget(prior)){
-    .bt_R2_gate_marginals(prior$gates, prior$terms)$budget
+
+  .bt_R2_mixture(c(list(prior("spike", list(0))), components), c(atom, weights),
+                 c(TRUE, rep(FALSE, length(components))))
+}
+
+# A conditioned law whose slab components need the states of their budget:
+# the states are computed once so that a law beyond the state limit is
+# refused here (BayesTools_R2_density_unavailable).
+.bt_R2_check_law <- function(law){
+
+  parts <- if(is.prior.mixture(law)) unclass(law) else list(law)
+  for(part in parts){
+    if(is.prior.R2(part) && .bt_R2_term_is_gated(part)){
+      .bt_R2_term_states(part)
+    }
+  }
+  law
+}
+
+# A law whose R2 coefficient components evaluate the densities of prior-density
+# grids by interpolation (.bt_R2_spec_log_pdf_grid()) and cache their
+# quantiles: every exact point is a deterministic quadrature over the budget
+# (nested for factor levels), while prior-density grids, their refinements
+# for region probabilities and their ranges need thousands of points. The
+# cache is an environment shared by the copies of the law.
+.bt_R2_grid_law <- function(law){
+
+  if(is.prior.R2(law)){
+    law$grid_interpolation <- new.env(parent = emptyenv())
+    return(law)
+  }
+  if(is.prior.mixture(law)){
+    for(k in seq_along(law)){
+      if(is.prior.R2(law[[k]])) law[[k]]$grid_interpolation <- new.env(parent = emptyenv())
+    }
+  }
+  law
+}
+
+# The log density of the continuous part of a (symmetric) R2 coefficient law
+# 'spec' for prior-density grids: a cubic spline in log |x| through the exact
+# log density at 256 nodes uniform in log |x| (the log densities of these laws
+# are smooth in log |x|, power laws near zero and in the tails), cached in
+# 'cache' and rebuilt when the values leave its domain. The domain extends
+# the values by a factor of 10 on both sides, within 1e-8 to 1e8 times the
+# scale of the law; zero, values outside the domain and the first short
+# vectors are exact.
+.bt_R2_spec_log_pdf_grid <- function(spec, x, cache = new.env(parent = emptyenv())){
+
+  x <- as.numeric(x)
+  y <- abs(x)
+  out <- rep(NA_real_, length(x))
+  scale <- if(inherits(spec, "BayesTools_R2_functional_mixture")){
+    max(vapply(spec$specs, `[[`, numeric(1), "scale"))
   }else{
-    .bt_R2_gate_marginals(prior$core$gates, prior$core$terms)$open[[prior$term]]
+    spec$scale
   }
-  event <- .condition_event_model_options(prior_list, condition_event)$event_probability
-
-  min(1, on / event)
+  inner <- !is.na(y) & is.finite(y) & y > scale * 1e-8 & y < scale * 1e8
+  if(is.null(cache$spline) && length(unique(y[inner])) < 32L){
+    inner[] <- FALSE
+  }
+  if(any(inner)){
+    limits <- range(y[inner])
+    if(is.null(cache$spline) || limits[[1L]] < cache$lower || limits[[2L]] > cache$upper){
+      lower <- max(min(limits[[1L]], cache$lower) / 10, scale * 1e-8)
+      upper <- min(max(limits[[2L]], cache$upper) * 10, scale * 1e8)
+      cache$spline <- .bt_R2_log_pdf_spline(spec, lower, upper)
+      cache$lower  <- lower
+      cache$upper  <- upper
+    }
+    if(is.null(cache$spline)){
+      inner[] <- FALSE
+    }
+  }
+  if(any(inner)){
+    out[inner] <- cache$spline(log(y[inner]))
+  }
+  exact <- !inner & !is.na(x)
+  if(any(exact)){
+    out[exact] <- .bt_R2_spec_log_pdf(spec, x[exact])
+  }
+  out
 }
 
-# The law of a gated total given an inclusion probability 'included' (NULL:
-# the prior law; 1: the law given the budget on; otherwise the mixture with
-# the atom at zero of weight 1 - included).
-.bt_R2_total_law_given <- function(core, included = NULL){
+# The spline of the log density of 'spec' in log |x| on [lower, upper]: 256
+# nodes uniform in log |x|, validated at every midpoint between nodes (the
+# exact log density there within 1e-6) and refined by adding the midpoints as
+# nodes (up to three times); NULL when it does not validate, and the
+# densities are then evaluated exactly.
+.bt_R2_log_pdf_spline <- function(spec, lower, upper){
 
-  if(is.null(included)){
-    return(.bt_R2_core_total_law(core))
+  log_nodes <- seq(log(lower), log(upper), length.out = 256L)
+  log_f <- .bt_R2_spec_log_pdf(spec, exp(log_nodes))
+  for(round in seq_len(4L)){
+    finite <- is.finite(log_f)
+    if(!all(finite)){
+      return(NULL)
+    }
+    spline <- stats::splinefun(log_nodes, log_f, method = "fmm")
+    log_mid <- (log_nodes[-1L] + log_nodes[-length(log_nodes)]) / 2
+    log_f_mid <- .bt_R2_spec_log_pdf(spec, exp(log_mid))
+    if(all(is.finite(log_f_mid)) && max(abs(spline(log_mid) - log_f_mid)) <= 1e-6){
+      return(spline)
+    }
+    if(round == 4L){
+      return(NULL)
+    }
+    order <- order(c(log_nodes, log_mid))
+    log_nodes <- c(log_nodes, log_mid)[order]
+    log_f <- c(log_f, log_f_mid)[order]
   }
-  if(included >= 1){
-    return(.bt_R2_core_total_law(core, conditional = TRUE))
-  }
-  # the Beta components of the slab, flattened beside the atom at zero
-  components <- .bt_R2_core_total_components(core)
-  betas <- .bt_R2_beta_components(components$shapes, components$weights)
-  .bt_R2_mixture(c(list(prior("spike", list(0))), betas$components),
-                 c(1 - included, included * betas$weights / sum(betas$weights)),
-                 c(TRUE, rep(FALSE, length(betas$weights))))
+  NULL
 }
 
-# The law of a scalar gated coefficient given an inclusion probability.
-.bt_R2_coefficient_law_given <- function(prior_list, parameter, included = NULL){
+# The quantiles of an R2 coefficient law, cached in 'cache' by probability.
+.bt_R2_spec_quantile_cached <- function(spec, p, cache){
 
-  key <- list(type = "coordinate", dependencies = parameter)
-  if(is.null(included)){
-    return(.bt_R2_gated_coefficient_law(prior_list, key))
+  if(is.null(cache$quantiles)){
+    cache$quantiles <- numeric()
   }
-  slab <- .bt_R2_gated_coefficient_law(prior_list, key, conditional = TRUE)
-  if(included >= 1){
-    return(slab)
+  keys <- formatC(p, digits = 17L, format = "g")
+  missing <- !keys %in% names(cache$quantiles)
+  if(any(missing)){
+    cache$quantiles[keys[missing]] <- .bt_R2_spec_quantile(spec, p[missing])
   }
-  .bt_R2_mixture(list(prior("spike", list(0)), slab), c(1 - included, included), c(TRUE, FALSE))
+  unname(cache$quantiles[keys])
 }

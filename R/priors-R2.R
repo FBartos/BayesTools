@@ -1001,7 +1001,7 @@ is.R2_budget <- function(x){
 # The Beta total and Dirichlet allocation priors that a budget adds to a
 # formula prior list (they are parameters of the formula, not terms).
 .bt_R2_is_budget_prior <- function(prior){
-  !is.null(attr(prior, "R2_budget", exact = TRUE))
+  !is.null(attr(prior, "R2_budget", exact = TRUE)) && !is.prior.point(prior)
 }
 
 .bt_R2_require_bound <- function(prior, parameter_name = NULL){
