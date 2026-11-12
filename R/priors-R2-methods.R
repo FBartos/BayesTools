@@ -63,8 +63,21 @@
 }
 
 # One common marginal of the term's rows, or a refusal when the rows differ.
+# The law of one linear combination of the coefficients ('functional_L', see
+# .bt_R2_functional_law()) is that combination's own law.
 .bt_R2_marginal_spec <- function(prior){
 
+  if(!is.null(prior$functional_L)){
+    if(.bt_R2_term_is_gated(prior)){
+      spec <- .bt_R2_term_gated_specs(prior, prior$functional_L)
+      if(isTRUE(prior$gated_slab)){
+        spec$weights <- spec$weights / sum(spec$weights)
+        spec$atom <- 0
+      }
+      return(spec)
+    }
+    return(.bt_R2_term_functional(prior, prior$functional_L))
+  }
   rows <- .bt_R2_marginal_rows(prior)
   rows <- rows[rowSums(abs(rows)) > 0, , drop = FALSE]
   specs <- lapply(seq_len(nrow(rows)), function(i) .bt_R2_term_functional(prior, rows[i, ]))
@@ -116,6 +129,9 @@
 .bt_R2_rng <- function(prior, n, transform_factor_samples = TRUE){
 
   values <- if(.bt_R2_term_is_gated(prior)) .bt_R2_gated_term_rng(prior, n) else .bt_R2_term_rng(prior, n)
+  if(!is.null(prior$functional_L)){
+    return(as.vector(matrix(values, nrow = n) %*% prior$functional_L))
+  }
   if(!is.prior.factor(prior)){
     return(as.vector(values))
   }
@@ -210,9 +226,21 @@
     rng = .bt_R2_rng(prior, value, ...),
     cdf = , mcdf = .bt_R2_spec_cdf(.bt_R2_marginal_spec(prior), as.vector(value)),
     ccdf = , mccdf = .bt_R2_spec_cdf(.bt_R2_marginal_spec(prior), as.vector(value), lower.tail = FALSE),
-    pdf = , mpdf = .bt_R2_spec_pdf(.bt_R2_marginal_spec(prior), as.vector(value)),
-    lpdf = , mlpdf = .bt_R2_spec_log_pdf(.bt_R2_marginal_spec(prior), as.vector(value)),
-    quant = , mquant = .bt_R2_spec_quantile(.bt_R2_marginal_spec(prior), as.vector(value)),
+    pdf = , mpdf = if(is.environment(prior$grid_interpolation)){
+      exp(.bt_R2_spec_log_pdf_grid(.bt_R2_marginal_spec(prior), as.vector(value), prior$grid_interpolation))
+    }else{
+      .bt_R2_spec_pdf(.bt_R2_marginal_spec(prior), as.vector(value))
+    },
+    lpdf = , mlpdf = if(is.environment(prior$grid_interpolation)){
+      .bt_R2_spec_log_pdf_grid(.bt_R2_marginal_spec(prior), as.vector(value), prior$grid_interpolation)
+    }else{
+      .bt_R2_spec_log_pdf(.bt_R2_marginal_spec(prior), as.vector(value))
+    },
+    quant = , mquant = if(is.environment(prior$grid_interpolation)){
+      .bt_R2_spec_quantile_cached(.bt_R2_marginal_spec(prior), as.vector(value), prior$grid_interpolation)
+    }else{
+      .bt_R2_spec_quantile(.bt_R2_marginal_spec(prior), as.vector(value))
+    },
     mean = .bt_R2_term_mean(prior),
     var = .bt_R2_spec_variance(.bt_R2_marginal_spec(prior)),
     stop("Internal R2 prior method '", method, "' is unknown.", call. = FALSE)

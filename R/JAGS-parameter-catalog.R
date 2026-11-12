@@ -937,7 +937,8 @@ parameter_prior_density.BayesTools_fit <- function(
   }
   R2_law <- .bt_R2_quantity_law(object, key, conditional)
   if(!is.null(R2_law)){
-    out <- .bt_parameter_prior_density_scalar(R2_law, n_grid = n_grid, tail_prob = tail_prob)
+    out <- .bt_parameter_prior_density_scalar(.bt_R2_grid_law(R2_law), n_grid = n_grid,
+                                              tail_prob = tail_prob)
     if(!is.null(out)){
       attr(out, "parameter_prior_density") <- c(
         list(quantity_id = quantity$quantity_id, source = "fitted_parameter_map"),

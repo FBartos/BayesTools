@@ -205,8 +205,21 @@ test_that("gated budgets fit with inclusion summaries, catalog quantities and re
   prior_prob <- mccdf(attr(fit, "prior_list")$mu_x, 0.1)
   post_prob <- mean(post[, "mu_x"] > 0.1)
   expect_equal(as.numeric(region_x$BF), (post_prob / (1 - post_prob)) / (prior_prob / (1 - prior_prob)), tolerance = 1e-4)
-  expect_error(parameter_prior_density(fit, parameter_catalog_resolve(catalog, alias = "f[a]")),
-    class = "BayesTools_R2_density_unavailable")
+  # factor levels: the atom of the closed term and the law of each level
+  level <- parameter_prior_density(fit, parameter_catalog_resolve(catalog, alias = "f[a]"))
+  expect_equal(level$points$p, 1 - 0.5 * 0.5 / 0.75)
+  expect_s3_class(hypothesis_BF_model(fit, "f[a] > 0.2"), "data.frame")
+
+  # the shared inclusion rate: Beta(1 + s, 1 + 3 - s) given s open gates, its
+  # prior the Beta(1, 1) rate given a nonempty configuration
+  rate <- parameter_catalog_resolve(catalog, alias = "R2{inclusion rate}")
+  expect_equal(table["(mu) R2{inclusion rate}", "Mean"], mean(post[, "mu_R2_rate"]))
+  s <- rowSums(post[, c("mu_R2_gate[1]", "mu_R2_gate[2]", "mu_R2_gate[3]")])
+  expect_equal(mean(post[, "mu_R2_rate"]), mean((1 + s) / 5), tolerance = 0.02)
+  rate_density <- parameter_prior_density(fit, rate)
+  at <- rate_density$density$x[c(200, 600)]
+  expect_equal(rate_density$density$y[c(200, 600)],
+    ((1 - (1 - at)^3)) / (1 - 1 / 4), tolerance = 1e-3)
 
   # predictions use the realized coefficients, zero for closed terms
   draws <- .extract_posterior_samples(fit, as_list = FALSE)

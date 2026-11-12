@@ -351,19 +351,31 @@
 # R-squared budgets.
 .bt_R2_quantity_rows <- function(quantities, prior_list){
 
-  totals <- names(.bt_R2_budget_records(prior_list))
+  records <- .bt_R2_budget_records(prior_list)
+  # the totals and the shared inclusion rates of gated budgets
+  totals <- c(names(records), unlist(lapply(records, function(record){
+    if(!is.null(record$core)) .bt_R2_core_nodes(record$core)$rate
+  }), use.names = FALSE))
   # the scalar coefficients of gated terms (their atom at zero needs the
-  # catalog law)
+  # catalog law) and the levels of R2 factor terms (the law of each level)
   gated <- unlist(lapply(names(prior_list), function(parameter){
     prior <- prior_list[[parameter]]
-    if(is.prior.R2(prior) && .bt_R2_term_is_gated(prior) && prior$d == 1L) parameter
+    if(is.prior.R2(prior) && .bt_R2_term_is_gated(prior) && prior$d == 1L && !is.prior.factor(prior)) parameter
+  }), use.names = FALSE)
+  factors <- names(prior_list)[vapply(prior_list, function(prior){
+    is.prior.R2(prior) && is.prior.factor(prior)
+  }, logical(1))]
+  levels <- unlist(lapply(factors, function(parameter){
+    .bt_R2_coefficient_names(prior_list[[parameter]], parameter)
   }), use.names = FALSE)
   vapply(seq_len(nrow(quantities)), function(i){
     key <- quantities$extraction_key[[i]]
     identical(quantities$provider[[i]], "BayesTools") &&
       (identical(key$type, "R2_share") ||
          (identical(key$type, "coordinate") && length(key$dependencies) == 1L &&
-            key$dependencies %in% c(totals, gated)))
+            key$dependencies %in% c(totals, gated)) ||
+         (identical(key$type, "factor_level") && length(key$dependencies) > 0L &&
+            all(key$dependencies %in% levels)))
   }, logical(1))
 }
 
@@ -581,13 +593,13 @@
     return(.bt_R2_bernoulli_law(marginals$open[[record$terms[[key$term]]$key]]))
   }
   if(identical(key$type, "factor_level")){
-    return(.bt_R2_gated_coefficient_law(prior_list, key, conditional))
+    return(.bt_R2_level_law(prior_list, key, conditional))
   }
   if(!identical(key$type, "coordinate")){
     return(NULL)
   }
   if(length(key$dependencies) != 1L){
-    return(.bt_R2_gated_coefficient_law(prior_list, key, conditional))
+    return(.bt_R2_level_law(prior_list, key, conditional))
   }
   core <- .bt_R2_gated_total_core(prior_list, key$dependencies)
   if(!is.null(core)){
@@ -597,8 +609,27 @@
   if(!is.null(core)){
     return(.bt_R2_bernoulli_law(.bt_R2_gate_marginals(core$gates, core$terms)$budget))
   }
+  core <- .bt_R2_rate_core(prior_list, key$dependencies)
+  if(!is.null(core)){
+    return(.bt_R2_core_rate_law(core))
+  }
 
   .bt_R2_gated_coefficient_law(prior_list, key, conditional)
+}
+
+# The prior law of a factor level (or a coded coefficient of a factor) of an
+# R2 term, gated or not (NULL for other quantities).
+.bt_R2_level_law <- function(prior_list, key, conditional = FALSE){
+
+  owner <- .bt_R2_term_owner(prior_list, key$dependencies)
+  if(is.null(owner)){
+    return(NULL)
+  }
+  if(.bt_R2_term_is_gated(prior_list[[owner]])){
+    return(.bt_R2_gated_coefficient_law(prior_list, key, conditional))
+  }
+
+  .bt_R2_functional_law(prior_list[[owner]], owner, key)
 }
 
 # The point plan of the realized total of a gated or spiked budget: an atom at

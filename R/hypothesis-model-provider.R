@@ -462,11 +462,12 @@ hypothesis_provider.BayesTools_fit <- function(object, ...){
     for(row in seq_len(nrow(fixed_rows))){
       map_row <- fixed_rows[row, , drop = FALSE]
       term    <- map_row[["term"]]
-      # the coefficients of a gated R-squared budget term have an atom at zero:
-      # they are tested on their catalog quantities with the R-squared
-      # quantities below
-      gated <- prior_list[[map_row[["jags_name"]]]]
-      if(is.prior.R2(gated) && .bt_R2_term_is_gated(gated)){
+      # the coefficients of a gated R-squared budget term (an atom at zero)
+      # and the levels of an R-squared budget factor (the law of each level)
+      # are tested on their catalog quantities with the R-squared quantities
+      # below
+      R2_term <- prior_list[[map_row[["jags_name"]]]]
+      if(is.prior.R2(R2_term) && (.bt_R2_term_is_gated(R2_term) || is.prior.factor(R2_term))){
         next
       }
       coordinate_rows <- which(

@@ -1122,30 +1122,67 @@ is.prior.R2_budget <- function(x){
 }
 
 # The prior law of a coefficient of a gated term: the atom at zero of the
-# closed term and its continuous part given that it is open. Scalar
-# coefficients only; the levels and coded coefficients of a gated factor have
-# no catalog density.
+# closed term and its continuous part given that it is open. A factor level
+# (or a coded coefficient) is the linear combination of the term's
+# coefficients of its catalog key.
 .bt_R2_gated_coefficient_law <- function(prior_list, key, conditional = FALSE){
 
   owner <- .bt_R2_gated_term_owner(prior_list, key$dependencies)
   if(is.null(owner)){
     return(NULL)
   }
-  prior <- prior_list[[owner]]
-  if(prior$d > 1L || !identical(key$type, "coordinate")){
-    .bt_R2_unavailable(paste0(
-      "The catalog prior density of the levels or coded coefficients of the gated R-squared budget factor '",
-      gsub("__xXx__", ":", prior$term, fixed = TRUE), "' is unavailable; use the marginal methods of the term prior ",
-      "(e.g., 'mcdf()') or its plot."), class = "BayesTools_R2_density_unavailable")
+  slab <- .bt_R2_functional_law(prior_list[[owner]], owner, key)
+  if(is.prior.point(slab)){
+    return(slab)
   }
-  spec <- .bt_R2_marginal_spec(prior)
-  slab <- .bt_prior_without_multiply_by(prior)
   slab$gated_slab <- TRUE
-  if(spec$atom <= 0 || isTRUE(conditional)){
+  atom <- .bt_R2_term_states(slab)$atom
+  if(atom <= 0 || isTRUE(conditional)){
     return(slab)
   }
 
-  .bt_R2_mixture(list(prior("spike", list(0)), slab), c(spec$atom, 1 - spec$atom), c(TRUE, FALSE))
+  .bt_R2_mixture(list(prior("spike", list(0)), slab), c(atom, 1 - atom), c(TRUE, FALSE))
+}
+
+# The bound R2 term (prior-list name) whose coefficients include all the
+# coordinates 'dependencies' (NULL otherwise).
+.bt_R2_term_owner <- function(prior_list, dependencies){
+
+  if(length(dependencies) == 0L){
+    return(NULL)
+  }
+  for(parameter in names(prior_list)){
+    prior <- prior_list[[parameter]]
+    if(is.prior.R2(prior) && isTRUE(prior$bound) &&
+       all(dependencies %in% .bt_R2_coefficient_names(prior, parameter))){
+      return(parameter)
+    }
+  }
+  NULL
+}
+
+# The scalar prior law, in residual-SD units (the fitted coordinates), of the
+# linear combination of the coefficients of the R2 term 'parameter' that a
+# catalog key declares (a coordinate, or a factor level with its weights):
+# the term prior restricted to that combination ('functional_L'), whose
+# methods give the combination's own law (an exact law for any combination; a
+# kernel law for single coded coefficients). A combination that vanishes is a
+# point at zero.
+.bt_R2_functional_law <- function(prior, parameter, key){
+
+  coefficients <- .bt_R2_coefficient_names(prior, parameter)
+  weights <- if(is.null(key$weights)) rep(1, length(key$dependencies)) else as.numeric(key$weights)
+  L <- numeric(prior$d)
+  L[match(key$dependencies, coefficients)] <- weights
+  if(all(L == 0)){
+    return(prior("spike", list(0)))
+  }
+  law <- .bt_prior_without_multiply_by(prior)
+  law$functional_L <- L
+  attr(law, "factor_design") <- NULL
+  class(law) <- c("prior", "prior.simple", "prior.R2")
+
+  law
 }
 
 # The gate plan of a quantity of a gated or spiked budget: the point plan of
@@ -1471,7 +1508,7 @@ is.prior.R2_budget <- function(x){
   if(is.null(law)){
     return(samples)
   }
-  density <- .bt_parameter_prior_density_scalar(law, n_grid = .prior_linear_density_default_grid(),
+  density <- .bt_parameter_prior_density_scalar(.bt_R2_grid_law(law), n_grid = .prior_linear_density_default_grid(),
                                                 tail_prob = .prior_linear_density_tail_prob())
   attr(samples, "prior_list") <- law
   if(!is.null(density)){
