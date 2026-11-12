@@ -633,6 +633,8 @@ test_that("extreme shapes keep the exact tail, the series range and concentrated
   # (reference by high-precision calculation)
   spec <- .bt_R2_functional_spec("exact", a = 4e307, b = 4e307, scale = 1)
   expect_equal(.bt_R2_functional_log_pdf(spec, 10), -1.2955105946298148e308, tolerance = 1e-10)
+  # and at the mode, where those terms cancel to 352.87 (400-digit reference)
+  expect_equal(.bt_R2_functional_log_pdf(spec, 1), 352.8744468316613124, tolerance = 1e-12)
   # 2 b overflows where the log density is a double: log(2 b) - (b + 1) log(5)
   spec <- .bt_R2_functional_spec("exact", a = 1, b = 1e308, scale = 1)
   expect_equal(.bt_R2_functional_log_pdf(spec, 2), log(1e308) + log(2) - (1e308 + 1) * log(5), tolerance = 1e-12)

@@ -1390,6 +1390,36 @@ is.prior.R2_budget <- function(x){
        weights = unname(betas$weights))
 }
 
+# The root x of sum(w * pbeta(x, a, b)) = mass, at or below the median of the
+# normalized mixture: bracketed by the component quantiles at the level of the
+# mass and solved on the logit scale (relative precision near zero), with
+# the bracket widened through the subnormal range when a component quantile
+# underflows; unavailable below the double range.
+.bt_R2_beta_mixture_lower_root <- function(a, b, w, mass){
+
+  # (the inverse logit as exp(u) / (1 + exp(u)) below zero keeps subnormal
+  # values that 1 / (1 + exp(-u)) underflows)
+  inverse <- function(u) if(u < 0) exp(u) / (1 + exp(u)) else 1 - exp(-u) / (1 + exp(-u))
+  f <- function(u) sum(w * stats::pbeta(inverse(u), a, b)) - mass
+  ends <- stats::qlogis(range(stats::qbeta(min(max(mass / sum(w), 0), 1), a, b)))
+  lowest <- log(.Machine$double.xmin) - 52 * log(2)
+  if(!is.finite(ends[[1L]])){
+    ends[[1L]] <- stats::qlogis(.Machine$double.xmin)
+    while(f(ends[[1L]]) > 0 && ends[[1L]] > lowest) ends[[1L]] <- max(ends[[1L]] - 4, lowest)
+    if(f(ends[[1L]]) > 0){
+      .bt_R2_unavailable("The quantile of the gated R-squared budget total is beyond the double range.",
+        class = "BayesTools_R2_density_unavailable")
+    }
+  }
+  if(!is.finite(ends[[2L]])){
+    ends[[2L]] <- 0
+  }
+  f_ends <- c(f(ends[[1L]]), f(ends[[2L]]))
+  if(f_ends[[1L]] >= 0) return(inverse(ends[[1L]]))
+  if(f_ends[[2L]] <= 0) return(inverse(ends[[2L]]))
+  inverse(stats::uniroot(f, ends, f.lower = f_ends[[1L]], f.upper = f_ends[[2L]], tol = 1e-13)$root)
+}
+
 .bt_R2_core_method <- function(prior, method, value = NULL, ...){
 
   if(identical(method, "rng")){
@@ -1433,32 +1463,13 @@ is.prior.R2_budget <- function(x){
       if(length(w) == 1L || max(ends) <= min(ends)){
         return(ends[[1L]])
       }
-      # (the inverse logit as exp(u) / (1 + exp(u)) below zero keeps subnormal
-      # values that 1 / (1 + exp(-u)) underflows, and as 1 - exp(-u) / (1 +
-      # exp(-u)) above zero keeps the doubles nearest below one)
-      inverse <- function(u) if(u < 0) exp(u) / (1 + exp(u)) else 1 - exp(-u) / (1 + exp(-u))
-      f <- function(u) sum(w * stats::pbeta(inverse(u), a, b)) - (p - components$atom)
-      ends <- stats::qlogis(range(ends))
-      # a component quantile that underflows to 0 (or rounds to 1) widens the
-      # bracket through the subnormal range (or to the largest double below 1)
-      lowest <- log(.Machine$double.xmin) - 52 * log(2)
-      if(!is.finite(ends[[1L]])){
-        ends[[1L]] <- stats::qlogis(.Machine$double.xmin)
-        while(f(ends[[1L]]) > 0 && ends[[1L]] > lowest) ends[[1L]] <- max(ends[[1L]] - 4, lowest)
-        if(f(ends[[1L]]) > 0){
-          .bt_R2_unavailable("The quantile of the gated R-squared budget total is below the double range.",
-            class = "BayesTools_R2_density_unavailable")
-        }
+      # above the median of the continuous part the complement 1 - r is
+      # solved (its shapes swapped, its mass 1 - p), so that a quantile next
+      # to one rounds to its nearest double
+      if(level > 1 / 2){
+        return(1 - .bt_R2_beta_mixture_lower_root(b, a, w, 1 - p))
       }
-      if(!is.finite(ends[[2L]])){
-        ends[[2L]] <- stats::qlogis(1 - .Machine$double.neg.eps)
-        if(f(ends[[2L]]) < 0) return(inverse(ends[[2L]]))
-      }
-      f_ends <- c(f(ends[[1L]]), f(ends[[2L]]))
-      if(f_ends[[1L]] >= 0) return(inverse(ends[[1L]]))
-      if(f_ends[[2L]] <= 0) return(inverse(ends[[2L]]))
-      root <- stats::uniroot(f, ends, f.lower = f_ends[[1L]], f.upper = f_ends[[2L]], tol = 1e-13)$root
-      inverse(root)
+      .bt_R2_beta_mixture_lower_root(a, b, w, p - components$atom)
     }, numeric(1)),
     mean = sum(w * a / (a + b)),
     var = {

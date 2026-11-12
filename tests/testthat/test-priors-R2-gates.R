@@ -703,6 +703,10 @@ test_that("gated totals and coefficients keep their quantiles near zero and thei
   upper <- bind(prior_R2(total = prior("beta", list(4, 0.02)), allocation = R2_dirichlet(c(x = 1, z = 3)),
     inclusion = list(z = prior("spike", list(0.25))), model = R2_model(convention = "linked")), ~ x + z)
   expect_identical(mquant(upper$mu_R2, 0.52), 1 - 2^-53)
+  # (and at 0.525 about 1 - 0.388 2^-53, whose nearest double is 1)
+  expect_identical(mquant(upper$mu_R2, 0.525), 1)
+  # (the CDF rises by about 1e9 per unit there: one double of 1.1e-16 moves it by 1.2e-7)
+  expect_equal(mcdf(upper$mu_R2, mquant(upper$mu_R2, 0.3)), 0.3, tolerance = 1e-6)
   # a continuous part of 1e-20 keeps the upper end of the total
   tiny <- bind(prior_R2(inclusion = prior("spike", list(1e-20))))
   expect_identical(mquant(tiny$mu_R2, 1), 1)
