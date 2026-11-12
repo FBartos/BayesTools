@@ -61,6 +61,10 @@
 
       add_parameter <- .JAGS_bridgesampling_posterior_info.R2(prior_list[[i]], names(prior_list)[i])
 
+    }else if(is.prior.R2_budget(prior_list[[i]])){
+
+      .bt_R2_gated_unavailable("Bridge sampling")
+
     }else if(is.prior.ordered(prior_list[[i]])){
 
       add_parameter_info <- .JAGS_bridgesampling_posterior_info.ordered(
@@ -106,6 +110,9 @@
 .JAGS_bridgesampling_posterior_info.R2             <- function(prior, parameter_name){
 
   .bt_R2_require_bound(prior, parameter_name)
+  if(!is.null(prior$gating)){
+    .bt_R2_gated_unavailable("Bridge sampling")
+  }
   parameter <- .bt_R2_direction_coordinates(prior, parameter_name)
   attr(parameter, "lb") <- stats::setNames(rep(-Inf, length(parameter)), parameter)
   attr(parameter, "ub") <- stats::setNames(rep(Inf, length(parameter)), parameter)

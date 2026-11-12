@@ -12,7 +12,8 @@ prior_R2(
   convention,
   concentration,
   sigma,
-  contrast = NULL
+  contrast = NULL,
+  inclusion = NULL
 )
 }
 \arguments{
@@ -23,8 +24,12 @@ formula does not contain are deleted, and the budget is redistributed in
 full to the retained terms.}
 
 \item{total}{Beta prior on the total R-squared of the full candidate model,
-\code{prior("beta", list(alpha = a, beta = b))}. Spike-and-slab and mixture
-totals are not supported yet.}
+\code{prior("beta", list(alpha = a, beta = b))}, or a spike-and-slab prior
+with that Beta slab,
+\code{prior_spike_and_slab(prior("beta", ...), prior_inclusion = ...)},
+whose spike is zero signal in the budget (the budget null) and whose
+inclusion prior is a probability prior (\code{prior("spike", list(p))} or a
+Beta prior). Other mixtures are not supported.}
 
 \item{allocation}{Dirichlet prior allocating the budget of the full
 candidate model to \code{terms},
@@ -63,6 +68,16 @@ parameter of the model (e.g., \code{"sigma"}) or a positive number.}
 \item{contrast}{contrast of the factor terms of the budget:
 \code{"orthonormal"}, \code{"meandif"}, or \code{"treatment"}. Required
 when the budget contains a factor term.}
+
+\item{inclusion}{inclusion gates of the terms, which make one fit average
+over the models of the budget: \code{NULL} (default) for no gates; one
+probability prior for every term, \code{prior("spike", list(p))} for a
+common fixed inclusion probability or \code{prior("beta", list(a, b))} for
+a shared inclusion rate (a beta-binomial prior over the models); or a list
+of probability priors named by term labels for independent gates of the
+listed terms (the other terms are always included). A Beta prior in the
+list is marginally its mean probability for its term; a shared rate needs
+the single-prior form.}
 }
 \value{
 \code{prior_R2} returns an object of class
@@ -152,6 +167,30 @@ budget. The prior densities of combinations of several parameters of one
 budget, ordinates at a point (Savage-Dickey ratios and point hypotheses),
 level marginals of the kernels with three or more levels, and levels with
 unequal marginals (unequal cell counts) are unavailable.
+
+With \code{inclusion} gates or a spike-and-slab \code{total}, one fit
+averages over the models of the budget. A configuration \eqn{S} of open
+terms (the open gated terms and the ungated terms) is a model, and given
+\eqn{S} the coefficients follow exactly the prior of model \eqn{S} as a
+separate fit under the same \code{convention}, \code{concentration} and
+\code{law}: the allocation is redistributed over the open terms (a gate of
+a kernel term closes all its coded coefficients), the total is
+Beta(a, b) (\code{"common"}), Beta(\eqn{A_S}, b) (\code{"linked"}, sampled
+as term signals \eqn{g_t G_t / H} with \eqn{G_t} Gamma(\eqn{\alpha_t}) and
+\eqn{H} Gamma(b)) or Beta(\eqn{a - (A - A_S)}, \eqn{b + (A - A_S)})
+(\code{"conditioning"}), and \code{"fixed_total"} rescales the
+concentrations of the open units. With gates only, the empty configuration
+is the budget null, with prior probability \eqn{\prod_t (1 - \pi_t)} (or
+its beta-binomial value). A spike-and-slab total makes the null its own
+event with the spike weight \eqn{\pi_0}: when every term is gated, the gate
+prior under the slab is conditioned on a nonempty configuration,
+\eqn{P(S) = (1 - \pi_0) \pi(S) / (1 - \pi(\emptyset))}; with an ungated term
+no conditioning is needed. The gates are sampled exactly as a sequence of
+Bernoulli nodes, each with its probability given the gates before it, so
+the number of gated terms is not limited. The realized total is zero under
+the null. Bridge sampling of a gated or spiked budget is unavailable (the
+fit is itself the model average) and stops with
+\code{BayesTools_R2_gated_unavailable}.
 }
 \section{Conditions}{
 
@@ -222,6 +261,26 @@ runjags_estimates_table(models[[2]]$fit, transform_factors = TRUE)
 priors <- attr(models[[2]]$fit, "prior_list")
 plot(priors$mu_R2)
 plot(priors$mu_x)
+
+# one fit averaging over the models of the budget: a shared inclusion rate
+# (beta-binomial model prior) and a spike-and-slab total for the budget null
+gated <- prior_R2(
+  terms = c("x", "f"),
+  total = prior_spike_and_slab(prior("beta", list(1, 1)),
+                               prior_inclusion = prior("spike", list(0.5))),
+  law = "exact", convention = "common", concentration = "inherited",
+  sigma = "sigma", contrast = "meandif",
+  inclusion = prior("beta", list(1, 1))
+)
+fit <- JAGS_fit(
+  model_syntax = "model{ for(i in 1:N){ y[i] ~ dnorm(mu[i], 1 / pow(sigma, 2)) } }",
+  data = list(y = data$y, N = nrow(data)),
+  prior_list = list(sigma = prior("invgamma", list(1, 1))),
+  formula_list = list(mu = ~ x + f), formula_data_list = list(mu = data),
+  formula_prior_list = list(mu = list(intercept = prior("normal", list(0, 10)), R2 = gated))
+)
+runjags_inference_table(fit)   # inclusion of the budget and of each term
+runjags_estimates_table(fit, conditional = TRUE)
 }
 
 }

@@ -199,6 +199,10 @@ JAGS_get_inits            <- function(prior_list, chains, seed){
 
       temp_inits <- c(temp_inits, .JAGS_init.R2(prior_list[[i]], names(prior_list)[i]))
 
+    }else if(is.prior.R2_budget(prior_list[[i]])){
+
+      temp_inits <- c(temp_inits, .bt_R2_core_inits(prior_list[[i]]))
+
     }else if(is.prior.spike_and_slab(prior_list[[i]])){
 
       temp_inits <- c(temp_inits, .JAGS_init.spike_and_slab(prior_list[[i]], names(prior_list)[i]))

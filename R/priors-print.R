@@ -71,6 +71,8 @@ print.prior <- function(x, short_name = FALSE, parameter_names = FALSE, plot = F
     output <- .print.prior.none(x, short_name, parameter_names, plot, digits_estimates, silent)
   }else if(is.prior.R2(x)){
     output <- .print.prior.R2(x, short_name, digits_estimates)
+  }else if(is.prior.R2_budget(x)){
+    output <- .print.prior.R2_budget(x, short_name, digits_estimates)
   }else if(is.prior.ordered(x) && !is.prior.mixture(x)){
     # a mixture of bound ordered containers also carries the ordered class
     output <- .print.prior.ordered(x, short_name, parameter_names, plot, digits_estimates, silent, inline)
@@ -170,11 +172,28 @@ print.selection_model <- function(x, ...){
   }else{
     "1 of 1"
   }
+  gated <- if(!is.null(x$core)) paste0(", included with probability ",
+    round_value(.bt_R2_gate_marginals(x$core$gates, x$core$terms)$open[[x$term]]))
   if(short_name){
-    return(paste0("R2 ", law, "(", round_value(x$shapes$a), ", ", round_value(x$shapes$b), "; ", share, ")"))
+    return(paste0("R2 ", law, "(", round_value(x$shapes$a), ", ", round_value(x$shapes$b), "; ", share, ")",
+      if(!is.null(gated)) " gated"))
   }
   paste0("R2 ", law, ": R2 ~ Beta(", round_value(x$shapes$a), ", ", round_value(x$shapes$b),
-    "), allocation ", share)
+    "), allocation ", share, gated)
+}
+
+# The core of a gated or spiked budget prints its total: zero with the
+# probability of the budget null, the Beta slab of the full model otherwise.
+.print.prior.R2_budget      <- function(x, short_name, digits_estimates){
+
+  round_value <- function(value) format(round(value, digits_estimates))
+  null <- 1 - .bt_R2_gate_marginals(x$gates, x$terms)$budget
+  slab <- paste0("Beta(", round_value(x$shapes$a), ", ", round_value(x$shapes$b), ")")
+  if(short_name){
+    return(paste0("R2 gated(", round_value(null), "; ", slab, ")"))
+  }
+  paste0("R2 gated budget '", x$name, "': R2 = 0 with probability ", round_value(null),
+    ", R2 ~ ", slab, " in the full model")
 }
 
 .print.prior.ordered        <- function(x, short_name, parameter_names, plot, digits_estimates, silent, inline = FALSE){

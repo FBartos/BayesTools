@@ -79,6 +79,15 @@
       "Use rng() for the joint distribution of the levels."),
       class = "BayesTools_R2_density_unavailable")
   }
+  if(.bt_R2_term_is_gated(prior)){
+    spec <- .bt_R2_term_gated_specs(prior, rows[1L, ])
+    # the plotted continuous part of a gated term, given that it is open
+    if(isTRUE(prior$gated_slab)){
+      spec$weights <- spec$weights / sum(spec$weights)
+      spec$atom <- 0
+    }
+    return(spec)
+  }
   specs[[1L]]
 }
 
@@ -106,7 +115,7 @@
 
 .bt_R2_rng <- function(prior, n, transform_factor_samples = TRUE){
 
-  values <- .bt_R2_term_rng(prior, n)
+  values <- if(.bt_R2_term_is_gated(prior)) .bt_R2_gated_term_rng(prior, n) else .bt_R2_term_rng(prior, n)
   if(!is.prior.factor(prior)){
     return(as.vector(values))
   }
@@ -199,16 +208,13 @@
   switch(
     method,
     rng = .bt_R2_rng(prior, value, ...),
-    cdf = , mcdf = .bt_R2_functional_cdf(.bt_R2_marginal_spec(prior), as.vector(value)),
-    ccdf = , mccdf = .bt_R2_functional_cdf(.bt_R2_marginal_spec(prior), as.vector(value), lower.tail = FALSE),
-    pdf = , mpdf = .bt_R2_functional_pdf(.bt_R2_marginal_spec(prior), as.vector(value)),
-    lpdf = , mlpdf = .bt_R2_functional_log_pdf(.bt_R2_marginal_spec(prior), as.vector(value)),
-    quant = , mquant = .bt_R2_functional_quantile(.bt_R2_marginal_spec(prior), as.vector(value)),
-    mean = if(prior$shapes$b > 1 / 2) 0 else NaN,
-    var = {
-      variance <- .bt_R2_functional_variance(.bt_R2_marginal_spec(prior))
-      if(is.finite(variance)) variance else NaN
-    },
+    cdf = , mcdf = .bt_R2_spec_cdf(.bt_R2_marginal_spec(prior), as.vector(value)),
+    ccdf = , mccdf = .bt_R2_spec_cdf(.bt_R2_marginal_spec(prior), as.vector(value), lower.tail = FALSE),
+    pdf = , mpdf = .bt_R2_spec_pdf(.bt_R2_marginal_spec(prior), as.vector(value)),
+    lpdf = , mlpdf = .bt_R2_spec_log_pdf(.bt_R2_marginal_spec(prior), as.vector(value)),
+    quant = , mquant = .bt_R2_spec_quantile(.bt_R2_marginal_spec(prior), as.vector(value)),
+    mean = .bt_R2_spec_mean(.bt_R2_marginal_spec(prior)),
+    var = .bt_R2_spec_variance(.bt_R2_marginal_spec(prior)),
     stop("Internal R2 prior method '", method, "' is unknown.", call. = FALSE)
   )
 }
@@ -226,6 +232,17 @@
   terms <- prior_list[vapply(prior_list, function(prior){
     is.prior.R2(prior) && isTRUE(prior$bound) && identical(prior$total_name, total_name)
   }, logical(1))]
+  core <- prior_list[[total_name]]
+  if(is.prior.R2_budget(core)){
+    draws <- .bt_R2_core_draws(core, n)
+    for(term_name in names(terms)){
+      directions <- matrix(.bt_R2_direction_rng(terms[[term_name]]$law, n * terms[[term_name]]$d), nrow = n)
+      colnames(directions) <- .bt_R2_direction_coordinates(terms[[term_name]], term_name)
+      draws <- cbind(draws, directions)
+    }
+    assign(total_name, draws, envir = registry)
+    return(draws)
+  }
   budget <- prior_list[vapply(prior_list, .bt_R2_is_budget_prior, logical(1)) &
     names(prior_list) == total_name]
   if(length(terms) > 0L){
@@ -260,6 +277,10 @@
 
 .bt_R2_prior_sample_columns <- function(prior, param_name, prior_list, n, registry){
 
+  if(is.prior.R2_budget(prior)){
+    draws <- .bt_R2_budget_registry_draws(registry, prior_list, param_name, n)
+    return(draws[, !grepl("^prior_par_z_", colnames(draws)), drop = FALSE])
+  }
   if(.bt_R2_is_budget_prior(prior)){
     role <- attr(prior, "R2_budget", exact = TRUE)$role
     total_name <- if(identical(role, "allocation")) sub("_allocation$", "", param_name) else param_name

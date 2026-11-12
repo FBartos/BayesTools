@@ -150,7 +150,14 @@ two or more terms has a derived share quantity
 \verb{<parameter>_<name>_allocation[<term>]} displayed as \verb{<name>[share: <term>]}
 (support [0, 1], the Beta marginal of the Dirichlet allocation summed over
 the term's allocation units); the allocation coordinates of a budget are
-backend coordinates. The level names of transformed summaries,
+backend coordinates. For a budget with inclusion gates or a spike-and-slab
+total, the total has an atom at zero (the budget null) and the inclusion
+event of the budget indicator, displayed \verb{<name>\{total\} (inclusion)};
+every gated term has an inclusion quantity \verb{<parameter>_<name>_gate[<term>]}
+displayed as \verb{<term> (inclusion)}, with the Bernoulli prior of its marginal
+inclusion probability; and a share is undefined (\code{"allocation_active"}) on
+the draws where its term is closed, with the prior of the share given that
+the term is open. The level names of transformed summaries,
 \verb{<parameter>[dif: level]}, and the row labels those summaries display,
 \verb{(formula) term[dif: level]} and \code{term[dif: level]}, are aliases of the
 level quantity. JAGS

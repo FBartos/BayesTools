@@ -92,6 +92,10 @@ JAGS_marglik_parameters                <- function(samples, prior_list){
 
       parameters <- c(parameters, .JAGS_marglik_parameters.R2(samples, prior_list[[i]], names(prior_list)[i]))
 
+    }else if(is.prior.R2_budget(prior_list[[i]])){
+
+      .bt_R2_gated_unavailable("The marginal likelihood")
+
     }else if(is.prior.ordered(prior_list[[i]])){
 
       parameters <- c(parameters, .JAGS_marglik_parameters.ordered(samples, prior_list[[i]], names(prior_list)[i]))

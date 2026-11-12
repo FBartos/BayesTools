@@ -260,3 +260,43 @@ test_that("model averaging over budget submodels reproduces the inclusion Bayes 
   expect_s3_class(mixed$mu_z, "mixed_posteriors")
   expect_true(all(mixed$mu_R2 >= 0 & mixed$mu_R2 < 1))
 })
+
+test_that("one gated fit reproduces the model average of its submodels", {
+
+  # inclusion gates with a shared Beta(1, 1) rate and a spike-and-slab total
+  # (null weight 1/2): the prior over the configurations of x and z is
+  # P(none) = 1/2, P(x) = P(z) = 1/8, P(x, z) = 1/4, and given each
+  # configuration the budget is the prior of that model as a separate fit;
+  # the reference posterior combines it with the independent quadrature
+  # Bayes factors of the separate models
+  gated <- prior_R2(terms = c("x", "z"),
+    total = prior_spike_and_slab(prior("beta", list(1, 2)), prior_inclusion = prior("spike", list(0.5))),
+    allocation = prior("dirichlet", list(alpha = c(1, 0.5))), law = "exact", convention = "common",
+    concentration = "inherited", sigma = "sigma", inclusion = prior("beta", list(1, 1)))
+  fit <- JAGS_fit(
+    model_syntax       = "model{ for(i in 1:N){ y[i] ~ dnorm(mu[i], 1 / pow(sigma, 2)) } }",
+    data               = list(y = R2_cert_data$y, N = nrow(R2_cert_data)),
+    prior_list         = list(sigma = prior("lognormal", list(0, 10), truncation = list(lower = 0.01, upper = 100))),
+    formula_list       = list(mu = ~ x + z),
+    formula_data_list  = list(mu = R2_cert_data),
+    formula_prior_list = list(mu = list(intercept = prior("normal", list(0, 100)), R2 = gated)),
+    chains = 4, adapt = 1000, burnin = 2000, sample = 20000, seed = 31, silent = TRUE)
+  draws <- .extract_posterior_samples(fit, as_list = FALSE)
+  open <- draws[, "mu_R2_indicator"] * draws[, c("mu_R2_gate[1]", "mu_R2_gate[2]")]
+  observed <- c(none = mean(rowSums(open) == 0), x = mean(open[, 1] == 1 & open[, 2] == 0),
+                z = mean(open[, 1] == 0 & open[, 2] == 1), xz = mean(rowSums(open) == 2))
+
+  log_BF <- c(
+    none = 0,
+    x  = R2_cert_reference(list(terms = "x", reference = "exact_one", a = 1, b = 2)),
+    z  = R2_cert_reference(list(terms = "z", reference = "exact_one", a = 1, b = 2)),
+    xz = R2_cert_reference(R2_cert_cases[[3]])
+  )
+  log_post <- log(c(1 / 2, 1 / 8, 1 / 8, 1 / 4)) + log_BF
+  expected <- exp(log_post - max(log_post))
+  expected <- expected / sum(expected)
+  cat("\n", sprintf("%-5s single-fit %.4f  model average %.4f\n", names(expected), observed, expected), sep = "")
+  expect_true(all(abs(observed - expected) < 0.02))
+  inference <- runjags_inference_table(fit)
+  expect_equal(inference["(mu) R2{total}", "post_prob"], 1 - observed[["none"]])
+})

@@ -34,8 +34,12 @@
 #' formula does not contain are deleted, and the budget is redistributed in
 #' full to the retained terms.
 #' @param total Beta prior on the total R-squared of the full candidate model,
-#' \code{prior("beta", list(alpha = a, beta = b))}. Spike-and-slab and mixture
-#' totals are not supported yet.
+#' \code{prior("beta", list(alpha = a, beta = b))}, or a spike-and-slab prior
+#' with that Beta slab,
+#' \code{prior_spike_and_slab(prior("beta", ...), prior_inclusion = ...)},
+#' whose spike is zero signal in the budget (the budget null) and whose
+#' inclusion prior is a probability prior (\code{prior("spike", list(p))} or a
+#' Beta prior). Other mixtures are not supported.
 #' @param allocation Dirichlet prior allocating the budget of the full
 #' candidate model to \code{terms},
 #' \code{prior("dirichlet", list(alpha = ...))} with one concentration per
@@ -68,6 +72,15 @@
 #' @param contrast contrast of the factor terms of the budget:
 #' \code{"orthonormal"}, \code{"meandif"}, or \code{"treatment"}. Required
 #' when the budget contains a factor term.
+#' @param inclusion inclusion gates of the terms, which make one fit average
+#' over the models of the budget: \code{NULL} (default) for no gates; one
+#' probability prior for every term, \code{prior("spike", list(p))} for a
+#' common fixed inclusion probability or \code{prior("beta", list(a, b))} for
+#' a shared inclusion rate (a beta-binomial prior over the models); or a list
+#' of probability priors named by term labels for independent gates of the
+#' listed terms (the other terms are always included). A Beta prior in the
+#' list is marginally its mean probability for its term; a shared rate needs
+#' the single-prior form.
 #'
 #' @details
 #' A formula prior list declares a budget with an entry such as
@@ -144,6 +157,30 @@
 #' level marginals of the kernels with three or more levels, and levels with
 #' unequal marginals (unequal cell counts) are unavailable.
 #'
+#' With \code{inclusion} gates or a spike-and-slab \code{total}, one fit
+#' averages over the models of the budget. A configuration \eqn{S} of open
+#' terms (the open gated terms and the ungated terms) is a model, and given
+#' \eqn{S} the coefficients follow exactly the prior of model \eqn{S} as a
+#' separate fit under the same \code{convention}, \code{concentration} and
+#' \code{law}: the allocation is redistributed over the open terms (a gate of
+#' a kernel term closes all its coded coefficients), the total is
+#' Beta(a, b) (\code{"common"}), Beta(\eqn{A_S}, b) (\code{"linked"}, sampled
+#' as term signals \eqn{g_t G_t / H} with \eqn{G_t} Gamma(\eqn{\alpha_t}) and
+#' \eqn{H} Gamma(b)) or Beta(\eqn{a - (A - A_S)}, \eqn{b + (A - A_S)})
+#' (\code{"conditioning"}), and \code{"fixed_total"} rescales the
+#' concentrations of the open units. With gates only, the empty configuration
+#' is the budget null, with prior probability \eqn{\prod_t (1 - \pi_t)} (or
+#' its beta-binomial value). A spike-and-slab total makes the null its own
+#' event with the spike weight \eqn{\pi_0}: when every term is gated, the gate
+#' prior under the slab is conditioned on a nonempty configuration,
+#' \eqn{P(S) = (1 - \pi_0) \pi(S) / (1 - \pi(\emptyset))}; with an ungated term
+#' no conditioning is needed. The gates are sampled exactly as a sequence of
+#' Bernoulli nodes, each with its probability given the gates before it, so
+#' the number of gated terms is not limited. The realized total is zero under
+#' the null. Bridge sampling of a gated or spiked budget is unavailable (the
+#' fit is itself the model average) and stops with
+#' \code{BayesTools_R2_gated_unavailable}.
+#'
 #' @section Conditions:
 #' Invalid budgets and bindings stop with \code{BayesTools_R2_invalid};
 #' unavailable results with \code{BayesTools_R2_unavailable} (with
@@ -214,12 +251,32 @@
 #' priors <- attr(models[[2]]$fit, "prior_list")
 #' plot(priors$mu_R2)
 #' plot(priors$mu_x)
+#'
+#' # one fit averaging over the models of the budget: a shared inclusion rate
+#' # (beta-binomial model prior) and a spike-and-slab total for the budget null
+#' gated <- prior_R2(
+#'   terms = c("x", "f"),
+#'   total = prior_spike_and_slab(prior("beta", list(1, 1)),
+#'                                prior_inclusion = prior("spike", list(0.5))),
+#'   law = "exact", convention = "common", concentration = "inherited",
+#'   sigma = "sigma", contrast = "meandif",
+#'   inclusion = prior("beta", list(1, 1))
+#' )
+#' fit <- JAGS_fit(
+#'   model_syntax = "model{ for(i in 1:N){ y[i] ~ dnorm(mu[i], 1 / pow(sigma, 2)) } }",
+#'   data = list(y = data$y, N = nrow(data)),
+#'   prior_list = list(sigma = prior("invgamma", list(1, 1))),
+#'   formula_list = list(mu = ~ x + f), formula_data_list = list(mu = data),
+#'   formula_prior_list = list(mu = list(intercept = prior("normal", list(0, 10)), R2 = gated))
+#' )
+#' runjags_inference_table(fit)   # inclusion of the budget and of each term
+#' runjags_estimates_table(fit, conditional = TRUE)
 #' }
 #'
 #' @seealso [JAGS_formula()], [prior_factor()]
 #' @export
 prior_R2 <- function(terms, total, allocation = NULL, law, convention, concentration, sigma,
-                     contrast = NULL){
+                     contrast = NULL, inclusion = NULL){
 
   required <- c(terms = missing(terms), total = missing(total), law = missing(law),
                 convention = missing(convention),
@@ -239,6 +296,7 @@ prior_R2 <- function(terms, total, allocation = NULL, law, convention, concentra
   terms <- .bt_R2_check_terms(terms)
   shapes <- .bt_R2_check_total(total)
   alpha <- stats::setNames(.bt_R2_check_allocation(allocation, terms), terms)
+  inclusion <- .bt_R2_check_inclusion(inclusion, terms)
 
   if(is.character(sigma)){
     check_char(sigma, "sigma", allow_NA = FALSE)
@@ -252,6 +310,8 @@ prior_R2 <- function(terms, total, allocation = NULL, law, convention, concentra
     alpha         = alpha,
     a             = shapes[["a"]],
     b             = shapes[["b"]],
+    total_inclusion = shapes[["inclusion"]],
+    inclusion     = inclusion,
     law           = law,
     convention    = convention,
     concentration = concentration,
@@ -295,12 +355,27 @@ prior_R2 <- function(terms, total, allocation = NULL, law, convention, concentra
   terms
 }
 
-# The Beta shapes of the total prior (the only total supported so far).
+# The Beta shapes of the total prior and, for a spike-and-slab total, the law
+# of its inclusion probability.
 .bt_R2_check_total <- function(total){
 
-  if(is.prior(total) && (is.prior.mixture(total) || is.prior.spike_and_slab(total))){
-    stop("'total' must be a Beta prior; spike-and-slab and mixture totals are not supported yet.", call. = FALSE)
+  if(is.prior(total) && is.prior.spike_and_slab(total)){
+    shapes <- .bt_R2_check_beta_total(.get_spike_and_slab_variable(total))
+    inclusion <- .bt_R2_probability_law(.get_spike_and_slab_inclusion(total),
+      "The inclusion prior of the spike-and-slab 'total'")
+    return(list(a = shapes[["a"]], b = shapes[["b"]], inclusion = inclusion))
   }
+  if(is.prior(total) && is.prior.mixture(total)){
+    stop("'total' must be a Beta prior or a spike-and-slab prior with a Beta slab, ",
+         "prior_spike_and_slab(prior(\"beta\", ...)); other mixtures are not supported.", call. = FALSE)
+  }
+  shapes <- .bt_R2_check_beta_total(total)
+
+  list(a = shapes[["a"]], b = shapes[["b"]], inclusion = NULL)
+}
+
+.bt_R2_check_beta_total <- function(total){
+
   if(!is.prior(total) || !identical(total[["distribution"]], "beta") || !is.prior.simple(total)){
     stop("'total' must be a Beta prior on the total R-squared, prior(\"beta\", list(alpha = a, beta = b)).", call. = FALSE)
   }
@@ -313,6 +388,68 @@ prior_R2 <- function(terms, total, allocation = NULL, law, convention, concentra
   }
 
   c(a = unname(total$parameters[["alpha"]]), b = unname(total$parameters[["beta"]]))
+}
+
+# The law of an inclusion probability: a fixed probability in (0, 1) (a spike
+# prior) or a Beta prior, whose mean is its marginal inclusion probability.
+.bt_R2_probability_law <- function(prior, what){
+
+  if(!is.prior(prior) || is.prior.mixture(prior) || !is.prior.simple(prior) || .is_prior_expression(prior)){
+    stop(what, " must be a probability prior: prior(\"spike\", list(p)) or prior(\"beta\", list(a, b)).", call. = FALSE)
+  }
+  if(is.prior.point(prior)){
+    p <- unname(prior$parameters[["location"]])
+    if(!is.numeric(p) || length(p) != 1L || !is.finite(p) || p <= 0 || p >= 1){
+      stop(what, " must be a probability strictly between 0 and 1 (a term that is always included takes no gate).",
+           call. = FALSE)
+    }
+    return(list(type = "spike", p = p))
+  }
+  if(!identical(prior[["distribution"]], "beta") ||
+     !identical(as.numeric(unname(unlist(prior[["truncation"]]))), c(0, 1))){
+    stop(what, " must be a probability prior: prior(\"spike\", list(p)) or an untruncated prior(\"beta\", list(a, b)).",
+         call. = FALSE)
+  }
+  a <- unname(prior$parameters[["alpha"]])
+  b <- unname(prior$parameters[["beta"]])
+
+  list(type = "beta", a = a, b = b, p = a / (a + b))
+}
+
+# The inclusion gates of the budget terms: NULL (no gates), one probability
+# law for every term ("common": a fixed probability, or a shared Beta rate
+# that makes the model prior beta-binomial), or per-term laws ("terms":
+# independent gates with their marginal probabilities; terms not listed are
+# always included).
+.bt_R2_check_inclusion <- function(inclusion, terms){
+
+  if(is.null(inclusion)){
+    return(NULL)
+  }
+  if(is.prior(inclusion)){
+    return(list(form = "common", law = .bt_R2_probability_law(inclusion, "'inclusion'")))
+  }
+  if(!is.list(inclusion) || length(inclusion) == 0L || is.null(names(inclusion)) ||
+     anyNA(names(inclusion)) || any(!nzchar(trimws(names(inclusion))))){
+    stop("'inclusion' must be NULL, one probability prior for every term, or a list of probability priors ",
+         "named by the term labels.", call. = FALSE)
+  }
+  keys <- .bt_R2_term_key(trimws(names(inclusion)))
+  if(anyDuplicated(keys)){
+    stop("'inclusion' names each term once; duplicated: ",
+         paste0("'", names(inclusion)[duplicated(keys)], "'", collapse = ", "), ".", call. = FALSE)
+  }
+  position <- match(keys, .bt_R2_term_key(terms))
+  if(anyNA(position)){
+    stop("'inclusion' names terms that are not in 'terms': ",
+         paste0("'", names(inclusion)[is.na(position)], "'", collapse = ", "), ".", call. = FALSE)
+  }
+  laws <- lapply(seq_along(inclusion), function(i){
+    .bt_R2_probability_law(inclusion[[i]], paste0("The inclusion prior of '", terms[[position[[i]]]], "'"))
+  })
+  names(laws) <- terms[position]
+
+  list(form = "terms", laws = laws[terms[sort(position)]])
 }
 
 # The concentrations of the allocation prior of the budget, one per term (the
@@ -366,6 +503,9 @@ print.BayesTools_R2_budget <- function(x, ...){
     laplace = "Laplace kernel (R2D2)"
   )
   total <- print(prior("beta", list(alpha = x$a, beta = x$b)), silent = TRUE)
+  law_text <- function(law){
+    if(identical(law$type, "spike")) format(law$p) else paste0("Beta(", format(law$a), ", ", format(law$b), ")")
+  }
   total_rule <- switch(
     x$convention,
     common       = "in every model",
@@ -390,6 +530,25 @@ print.BayesTools_R2_budget <- function(x, ...){
   cat("R-squared budget prior", if(!is.null(x$name)) paste0(" '", x$name, "'"), " (", law_label, ")\n", sep = "")
   cat("  terms:      ", paste(x$terms, collapse = ", "), "\n", sep = "")
   cat("  total:      ", total, " ", total_rule, "\n", sep = "")
+  if(!is.null(x$total_inclusion)){
+    cat("  spike:      zero signal in the budget with probability ",
+      if(identical(x$total_inclusion$type, "spike")) format(1 - x$total_inclusion$p) else
+        paste0("1 - ", law_text(x$total_inclusion), " (marginally ", format(1 - x$total_inclusion$p), ")"),
+      "\n", sep = "")
+  }
+  if(!is.null(x$inclusion)){
+    gates <- if(identical(x$inclusion$form, "common")){
+      if(identical(x$inclusion$law$type, "spike")){
+        paste0("every term with probability ", format(x$inclusion$law$p))
+      }else{
+        paste0("every term with a shared rate ~ ", law_text(x$inclusion$law), " (beta-binomial model prior)")
+      }
+    }else{
+      paste0(paste0(names(x$inclusion$laws), ": ", vapply(x$inclusion$laws, law_text, character(1)), collapse = ", "),
+        if(length(x$inclusion$laws) < length(x$terms)) "; other terms always included")
+    }
+    cat("  inclusion:  ", gates, "\n", sep = "")
+  }
   if(length(x$terms) > 1L){
     cat("  allocation: ", allocation, ", ", allocation_rule, "\n", sep = "")
   }
@@ -646,6 +805,26 @@ is.R2_budget <- function(x){
   list(a = shapes[[1]], b = shapes[[2]], alpha = alpha_M, A = A_M)
 }
 
+# Under the conditioning convention every open configuration of a gated
+# budget needs a positive first shape: the smallest retained concentration
+# is that of the ungated terms (always open) or of one gated term.
+.bt_R2_check_gated_shapes <- function(budget, gates, budget_terms, unit_alpha, unit_term, unit_reference){
+
+  if(!identical(budget$convention, "conditioning") || identical(budget$concentration, "fixed_total")){
+    return(invisible(TRUE))
+  }
+  term_alpha <- vapply(budget_terms, function(term) sum(unit_alpha[unit_term == term]), numeric(1))
+  ungated <- setdiff(budget_terms, gates$gated)
+  A_min <- if(length(ungated) > 0L) sum(term_alpha[ungated]) else min(term_alpha[gates$gated])
+  if(budget$a - (unit_reference - A_min) <= 0){
+    .bt_R2_stop(paste0("The R-squared budget '", budget$name, "' gives a nonpositive first Beta shape (",
+      format(budget$a - (unit_reference - A_min)), ") in its smallest open configuration; ",
+      "increase the first shape of 'total' or change the 'convention'."))
+  }
+
+  invisible(TRUE)
+}
+
 # Centered empirical metric of a design block.
 .bt_R2_metric <- function(X){
 
@@ -722,15 +901,34 @@ is.R2_budget <- function(x){
     n_units <- length(unit_alpha)
     total_name <- paste0(parameter, "_", budget$name)
     allocation_name <- if(n_units > 1L) paste0(parameter, "_", budget$name, "_allocation") else NA_character_
+    declared <- vapply(budget_terms, function(term) prior_list[[term]]$declared, character(1))
+    gates <- .bt_R2_gate_structure(budget, budget_terms, declared)
 
-    total_prior <- prior("beta", list(alpha = shapes$a, beta = shapes$b))
-    attr(total_prior, "R2_budget") <- list(name = budget$name, role = "total", law = budget$law)
-    prior_list[[budget$name]] <- total_prior
-    if(n_units > 1L){
-      allocation_prior <- prior("dirichlet", list(alpha = shapes$alpha))
-      attr(allocation_prior, "R2_budget") <- list(name = budget$name, role = "allocation", law = budget$law,
-        units = .bt_R2_unit_labels(unit_term, maps))
-      prior_list[[paste0(budget$name, "_allocation")]] <- allocation_prior
+    if(is.null(gates)){
+      total_prior <- prior("beta", list(alpha = shapes$a, beta = shapes$b))
+      attr(total_prior, "R2_budget") <- list(name = budget$name, role = "total", law = budget$law)
+      prior_list[[budget$name]] <- total_prior
+      if(n_units > 1L){
+        allocation_prior <- prior("dirichlet", list(alpha = shapes$alpha))
+        attr(allocation_prior, "R2_budget") <- list(name = budget$name, role = "allocation", law = budget$law,
+          units = .bt_R2_unit_labels(unit_term, maps))
+        prior_list[[paste0(budget$name, "_allocation")]] <- allocation_prior
+      }
+      gating <- NULL
+    }else{
+      # a gated or spiked budget: one core entry emits the gates, the budget
+      # indicator, the allocation and the total of the open configuration
+      .bt_R2_check_gated_shapes(budget, gates, budget_terms, unit_alpha, unit_term, unit_reference)
+      core <- .bt_R2_core_prior(budget, gates, parameter, budget_terms, unit_term, unit_alpha,
+                                unit_reference, shapes)
+      attr(core, "R2_budget")$units <- .bt_R2_unit_labels(unit_term, maps)
+      prior_list[[budget$name]] <- core
+      nodes <- .bt_R2_core_nodes(core)
+      gating <- list(
+        gate_names = nodes$gates,
+        unit_gate  = unname(core$term_gate[unit_term]),
+        indicator  = if(!is.null(gates$spike)) nodes$indicator
+      )
     }
 
     for(term in budget_terms){
@@ -749,6 +947,9 @@ is.R2_budget <- function(x){
       this_prior$total_name <- total_name
       this_prior$allocation_name <- allocation_name
       this_prior$budget_terms <- budget_terms
+      this_prior$gating <- gating
+      # the core of a gated budget, for the marginal methods of the term
+      this_prior$core <- if(!is.null(gating)) prior_list[[budget$name]]
       prior_list[[term]] <- this_prior
     }
   }
@@ -832,6 +1033,7 @@ is.R2_budget <- function(x){
     dependencies = c(
       prior$total_name,
       if(prior$n_units > 1L) .bt_R2_allocation_eta_coordinates(prior),
+      if(prior$n_units > 1L) c(prior$gating$gate_names, prior$gating$indicator),
       .bt_R2_direction_coordinates(prior, parameter_name)
     ),
     parameter = parameter_name,
@@ -845,6 +1047,7 @@ is.R2_budget <- function(x){
       allocation_name = prior$allocation_name,
       directions      = .bt_R2_direction_coordinates(prior, parameter_name),
       eta             = if(prior$n_units > 1L) .bt_R2_allocation_eta_coordinates(prior) else character(),
+      gating          = prior$gating,
       coefficients    = .bt_R2_coefficient_names(prior, parameter_name)
     )
   )
@@ -901,6 +1104,13 @@ is.R2_budget <- function(x){
     eta_sum <- rowSums(eta)
     if(any(!is.finite(eta)) || any(eta < 0) || any(!is.finite(eta_sum)) || any(eta_sum <= 0)){
       .bt_R2_stop_state("R-squared budget allocation gamma coordinates must be finite and nonnegative with positive row sums.")
+    }
+    if(!is.null(spec$gating)){
+      # the allocation of a gated budget is redistributed over the open units
+      open <- matrix(.bt_R2_unit_open_values(spec$gating, lookup, lookup$n), nrow = lookup$n)
+      eta <- open * eta
+      eta_sum <- rowSums(eta)
+      eta_sum[eta_sum == 0] <- 1
     }
     allocation <- (eta / eta_sum)[, spec$units, drop = FALSE]
   }else{

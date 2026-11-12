@@ -306,6 +306,10 @@
     if(is.prior.R2(prior)){
       return(.bt_R2_direction_name(parameter_name))
     }
+    if(is.prior.R2_budget(prior)){
+      nodes <- .bt_R2_core_nodes(prior)
+      return(c(sub("\\[.*$", "", nodes$eta[[1L]]), nodes$H, nodes$variable))
+    }
     if(is.prior.ordered(prior)){
       return(vapply(
         .prior_ordered_dirichlet_records(prior),

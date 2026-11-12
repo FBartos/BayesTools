@@ -58,6 +58,13 @@ NULL
       model_samples <- model_samples[, !grepl(aux_pattern, colnames(model_samples)), drop = FALSE]
     }
 
+    # private coordinates of a gated R-squared budget
+    if (is.prior.R2_budget(prior_list[[i]])) {
+      nodes <- .bt_R2_core_nodes(prior_list[[i]])
+      model_samples <- model_samples[, !.bt_parameter_coordinates_base(colnames(model_samples)) %in%
+        c(sub("\\[.*$", "", nodes$eta[[1L]]), nodes$H, nodes$variable), drop = FALSE]
+    }
+
     # direction coordinates of R-squared budget terms
     if (is.prior.R2(prior_list[[i]])) {
       model_samples <- model_samples[, !.bt_parameter_coordinates_base(colnames(model_samples)) %in%

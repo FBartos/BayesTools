@@ -35,8 +35,8 @@ test_that("prior_R2() requires every undecided choice and validates its argument
   expect_error(.R2_test_budget(terms = c("x:f", "f:x", "z")), "duplicated: 'f:x'", fixed = TRUE)
   expect_error(.R2_test_budget(terms = c("x", "intercept", "z")), "The intercept cannot be part", fixed = TRUE)
   expect_error(.R2_test_budget(total = prior("normal", list(0, 1))), "'total' must be a Beta prior", fixed = TRUE)
-  expect_error(.R2_test_budget(total = prior_spike_and_slab(.R2_beta(1, 1))),
-    "spike-and-slab and mixture totals are not supported yet", fixed = TRUE)
+  expect_error(.R2_test_budget(total = prior_mixture(list(.R2_beta(1, 1), prior("spike", list(0))), is_null = c(FALSE, TRUE))),
+    "other mixtures are not supported", fixed = TRUE)
   expect_error(.R2_test_budget(total = prior("beta", list(1, 1), list(0, 0.5))), "cannot be truncated", fixed = TRUE)
   expect_error(.R2_test_budget(total = prior("beta", list(0.01, 1), list(1e-9, 1))), "cannot be truncated", fixed = TRUE)
   expect_equal(.R2_test_budget(total = prior("beta", list(alpha = c(shape = 2), beta = 3)))[c("a", "b")], list(a = 2, b = 3))

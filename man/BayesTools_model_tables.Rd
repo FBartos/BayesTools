@@ -396,7 +396,15 @@ coordinate, but they are not catalog quantities and do not select one in
 ordered-factor allocations, which the table shows as \code{<term>[share:
 <level>]}, and the shares of the terms of R-squared budgets, shown as
 \code{<budget>[share: <term>]} in place of the budget's allocation
-coordinates, are catalog quantities).
+coordinates, are catalog quantities). An R-squared budget with inclusion
+gates or a spike-and-slab total shows inclusion rows as spike-and-slab
+priors do (\code{<term> (inclusion)} for every gated term and
+\code{<budget>{total} (inclusion)} for a total that can be zero), the
+shares on the draws where their terms are open, and with
+\code{conditional = TRUE} the coefficients of a gated term (and the total)
+on the draws where the term (the budget) is open;
+\code{runjags_inference_table()} reports their prior and posterior
+inclusion probabilities and inclusion Bayes factors.
 Internal latent and realized group-coefficient coordinates
 are omitted when \code{transform_scaled = TRUE}, including in \code{"raw"}
 mode, because those coordinates remain on the fitted standardized scale.}

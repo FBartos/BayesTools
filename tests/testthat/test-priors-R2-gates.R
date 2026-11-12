@@ -1,0 +1,196 @@
+skip_if_not_test_profile("unit")
+
+# Inclusion gates and spike-and-slab totals of R-squared budgets.
+
+.R2_gate_data <- function(){
+  set.seed(7)
+  data.frame(f = factor(rep(c("a", "b", "c"), each = 10)), x = stats::rnorm(30), z = stats::rnorm(30))
+}
+.R2_gate_budget <- function(inclusion = prior("beta", list(1, 1)), total = prior("beta", list(1.5, 2)),
+                            convention = "common", law = "exact", concentration = "inherited"){
+  prior_R2(terms = c("x", "z", "f"), total = total, allocation = prior("dirichlet", list(alpha = c(1, 0.5, 2))),
+    law = law, convention = convention, concentration = concentration, sigma = 1, contrast = "orthonormal",
+    inclusion = inclusion)
+}
+.R2_gate_bind <- function(budget, formula = ~ x + z + f){
+  JAGS_formula(formula, "mu", .R2_gate_data(), list(intercept = prior("normal", list(0, 1)), R2 = budget))$prior_list
+}
+.R2_spike <- function(p, slab = prior("beta", list(1.5, 2))){
+  prior_spike_and_slab(slab, prior_inclusion = prior("spike", list(p)))
+}
+
+test_that("prior_R2() accepts spike-and-slab totals and inclusion gates and validates them", {
+
+  budget <- .R2_gate_budget(total = .R2_spike(0.6))
+  expect_identical(budget$total_inclusion, list(type = "spike", p = 0.6))
+  expect_identical(budget$inclusion$form, "common")
+  expect_output(print(budget), "spike:      zero signal in the budget with probability 0.4", fixed = TRUE)
+  expect_output(print(budget), "shared rate ~ Beta(1, 1) (beta-binomial model prior)", fixed = TRUE)
+
+  terms <- .R2_gate_budget(inclusion = list(x = prior("spike", list(0.3)), f = prior("beta", list(2, 2))))
+  expect_identical(names(terms$inclusion$laws), c("x", "f"))
+  expect_equal(terms$inclusion$laws$f$p, 0.5)
+  expect_output(print(terms), "x: 0.3, f: Beta(2, 2); other terms always included", fixed = TRUE)
+
+  expect_error(.R2_gate_budget(total = prior_mixture(list(prior("beta", list(1, 1)), prior("spike", list(0))), is_null = c(FALSE, TRUE))),
+    "other mixtures are not supported", fixed = TRUE)
+  expect_error(.R2_gate_budget(total = prior_spike_and_slab(prior("normal", list(0, 1)))), "'total' must be a Beta prior", fixed = TRUE)
+  expect_error(.R2_gate_budget(inclusion = prior("spike", list(1))), "strictly between 0 and 1", fixed = TRUE)
+  expect_error(.R2_gate_budget(inclusion = prior("normal", list(0, 1))), "must be a probability prior", fixed = TRUE)
+  expect_error(.R2_gate_budget(inclusion = list(w = prior("spike", list(0.5)))), "not in 'terms': 'w'", fixed = TRUE)
+  expect_error(.R2_gate_budget(inclusion = list(prior("spike", list(0.5)))), "named by the term labels", fixed = TRUE)
+})
+
+test_that("the gate law is exact: configuration probabilities, truncation and marginals", {
+
+  # shared rate Beta(1, 1): beta-binomial, uniform over sizes
+  gates <- .R2_gate_bind(.R2_gate_budget())$mu_R2$gates
+  grid <- as.matrix(expand.grid(rep(list(c(FALSE, TRUE)), 3)))
+  p <- .bt_R2_gate_configuration_probability(gates, grid)
+  expect_equal(sum(p), 1)
+  expect_equal(p[rowSums(grid) == 0], 1 / 4)
+  expect_equal(unique(round(p[rowSums(grid) == 1], 12)), 1 / 12)
+
+  # with a spike and every term gated the gate prior is conditioned on S nonempty
+  spiked <- .R2_gate_bind(.R2_gate_budget(total = .R2_spike(0.6)))$mu_R2$gates
+  expect_true(spiked$truncated)
+  q <- .bt_R2_gate_configuration_probability(spiked, grid)
+  expect_equal(q[rowSums(grid) == 0], 0)
+  expect_equal(q[rowSums(grid) > 0], p[rowSums(grid) > 0] / (1 - p[rowSums(grid) == 0]))
+  # the sequential conditional probabilities reproduce the truncated law
+  sequential <- apply(grid, 1, function(open){
+    prob <- 1
+    for(t in seq_along(open)){
+      g <- .bt_R2_gate_probability(spiked, t, sum(open[seq_len(t - 1L)]))
+      prob <- prob * if(open[[t]]) g else 1 - g
+    }
+    prob
+  })
+  expect_equal(sequential, q, tolerance = 1e-12)
+  marginals <- .bt_R2_gate_marginals(spiked, c("x", "z", "f"))
+  expect_equal(marginals$budget, 0.6)
+  expect_equal(unname(marginals$open), rep(0.6 * 0.5 / 0.75, 3))
+
+  # per-term gates with an ungated term: no truncation under a spike
+  mixed <- .R2_gate_bind(.R2_gate_budget(inclusion = list(x = prior("spike", list(0.3)), f = prior("beta", list(2, 2))),
+                                        total = .R2_spike(0.7)))$mu_R2
+  expect_false(mixed$gates$truncated)
+  expect_identical(unname(mixed$term_gate), c(1L, 0L, 2L))
+  expect_equal(unname(.bt_R2_gate_marginals(mixed$gates, mixed$terms)$open), c(0.7 * 0.3, 0.7, 0.7 * 0.5))
+})
+
+test_that("the core emits the exact sequential gates, the budget indicator and the gated allocation", {
+
+  priors <- .R2_gate_bind(.R2_gate_budget(total = .R2_spike(0.6)))
+  expect_true(is.prior.R2_budget(priors$mu_R2))
+  expect_null(priors$mu_R2_allocation)
+  syntax <- .JAGS_add_priors.fun(priors)
+  expect_match(syntax, "mu_R2_gate[1] ~ dbern(0.6666666666666666)", fixed = TRUE)
+  expect_match(syntax, "mu_R2_gate[3] ~ dbern(ifelse(sum(mu_R2_gate[1:2]) > 0, (1 + sum(mu_R2_gate[1:2])) / 4, 1))", fixed = TRUE)
+  expect_match(syntax, "mu_R2_indicator ~ dbern(0.6)", fixed = TRUE)
+  expect_match(syntax, "mu_R2 <- mu_R2_variable * step(", fixed = TRUE)
+  expect_true(all(c("mu_R2", "mu_R2_indicator", "mu_R2_gate", "mu_R2_allocation", "prior_par_eta_mu_R2_allocation") %in%
+    JAGS_to_monitor(priors)))
+
+  # linked: term signals g_t eta_t / H; fixed_total: shapes rescaled per configuration
+  linked <- .JAGS_add_priors.fun(.R2_gate_bind(.R2_gate_budget(convention = "linked", total = prior("beta", list(3.5, 2)))))
+  expect_match(linked, "prior_par_H_mu_R2 ~ dgamma(2, 1)", fixed = TRUE)
+  fixed <- .JAGS_add_priors.fun(.R2_gate_bind(.R2_gate_budget(concentration = "fixed_total")))
+  expect_match(fixed, "prior_par_eta_mu_R2_allocation[1] ~ dgamma(ifelse(mu_R2_gate[1] > 0, 3.5 / (", fixed = TRUE)
+})
+
+test_that("prior draws follow the configuration law and the prior of each model", {
+
+  set.seed(1)
+  priors <- .R2_gate_bind(.R2_gate_budget(total = .R2_spike(0.6)))
+  core <- priors$mu_R2
+  draws <- .bt_R2_core_draws(core, 40000)
+  open <- draws[, "mu_R2_indicator"] * draws[, c("mu_R2_gate[1]", "mu_R2_gate[2]", "mu_R2_gate[3]")]
+  configurations <- .bt_R2_core_configurations(core)
+  expect_equal(mean(rowSums(open) == 0), configurations$null, tolerance = 0.02)
+  expect_equal(mean(draws[, "mu_R2"] == 0), configurations$null, tolerance = 0.02)
+  expect_equal(unname(colMeans(open)), unname(.bt_R2_gate_marginals(core$gates, core$terms)$open), tolerance = 0.02)
+
+  # given S = {x, f}, the total and the allocation are those of the model x + f
+  keep <- open[, 1] == 1 & open[, 2] == 0 & open[, 3] == 1
+  expect_equal(stats::ks.test(draws[keep, "mu_R2"], stats::pbeta, 1.5, 2)$p.value > 1e-3, TRUE)
+  phi <- draws[keep, "mu_R2_allocation[1]"]
+  expect_equal(stats::ks.test(phi, stats::pbeta, 1, 2)$p.value > 1e-3, TRUE)
+  expect_equal(draws[keep, "mu_R2_allocation[2]"], rep(0, sum(keep)))
+
+  # linked: Beta(A_S, b) given S
+  linked <- .R2_gate_bind(.R2_gate_budget(convention = "linked", total = prior("beta", list(3.5, 2))))$mu_R2
+  draws <- .bt_R2_core_draws(linked, 40000)
+  keep <- draws[, "mu_R2_gate[1]"] == 1 & draws[, "mu_R2_gate[2]"] == 0 & draws[, "mu_R2_gate[3]"] == 1
+  expect_equal(stats::ks.test(draws[keep, "mu_R2"], stats::pbeta, 3, 2)$p.value > 1e-3, TRUE)
+})
+
+test_that("gated term priors have an atom at zero in their marginal methods", {
+
+  set.seed(2)
+  priors <- .R2_gate_bind(.R2_gate_budget(total = .R2_spike(0.7)))
+  prior <- priors$mu_x
+  closed <- 1 - 0.7 * 0.5 / 0.75
+  expect_equal(mcdf(prior, 0) - mcdf(prior, -1e-12), closed, tolerance = 1e-10)
+  expect_equal(mquant(prior, c(0.5 - closed / 4, 0.5 + closed / 4)), c(0, 0))
+  draws <- rng(prior, 100000)
+  expect_equal(mean(draws == 0), closed, tolerance = 0.01)
+  q <- c(-0.8, 0.4)
+  expect_equal(mcdf(prior, q), vapply(q, function(v) mean(draws <= v), numeric(1)), tolerance = 0.01)
+  expect_equal(var(prior), mean(draws^2), tolerance = 0.03)
+  grDevices::pdf(NULL)
+  on.exit(grDevices::dev.off(), add = TRUE)
+  expect_silent(plot(prior))
+  expect_silent(plot(priors$mu_R2))
+  expect_output(print(priors$mu_R2), "R2 gated budget 'R2': R2 = 0 with probability 0.3, R2 ~ Beta(1.5, 2) in the full model", fixed = TRUE)
+  expect_output(print(prior), "allocation 1 of 3.5, included with probability 0.47", fixed = TRUE)
+})
+
+test_that("gated budgets fit with inclusion summaries, catalog quantities and refuse bridge sampling", {
+
+  skip_if_not_installed("rjags")
+  skip_if_not_installed("runjags")
+  set.seed(5)
+  data <- .R2_gate_data()
+  data$y <- 0.8 * (data$f == "b") + 0.5 * data$x + stats::rnorm(30)
+  budget <- .R2_gate_budget(total = .R2_spike(0.5))
+  args <- list(
+    model_syntax = "model{ for(i in 1:N){ y[i] ~ dnorm(mu[i], 1 / pow(sigma, 2)) } }",
+    data = list(y = data$y, N = nrow(data)), prior_list = list(sigma = prior("invgamma", list(1, 1))),
+    formula_list = list(mu = ~ x + z + f), formula_data_list = list(mu = data),
+    formula_prior_list = list(mu = list(intercept = prior("normal", list(0, 5)), R2 = budget)))
+  fit <- do.call(JAGS_fit, c(args, list(chains = 2, adapt = 200, burnin = 300, sample = 1500, seed = 5, silent = TRUE)))
+  post <- as.matrix(.fit_to_posterior(fit))
+  open <- post[, "mu_R2_indicator"] * post[, c("mu_R2_gate[1]", "mu_R2_gate[2]", "mu_R2_gate[3]")]
+
+  table <- runjags_estimates_table(fit)
+  expect_true(all(c("(mu) x (inclusion)", "(mu) f (inclusion)", "(mu) R2{total} (inclusion)") %in% rownames(table)))
+  expect_false(any(grepl("gate|indicator|allocation", rownames(table))))
+  expect_equal(table["(mu) x (inclusion)", "Mean"], mean(open[, 1]))
+  expect_equal(table["(mu) R2[share: x]", "Mean"], mean((post[, "mu_R2_allocation[1]"])[open[, 1] == 1]))
+  conditional <- runjags_estimates_table(fit, conditional = TRUE)
+  expect_equal(conditional["(mu) x", "Mean"], mean(post[open[, 1] == 1, "mu_x"]))
+
+  inference <- runjags_inference_table(fit)
+  expect_equal(inference["(mu) R2{total}", "prior_prob"], 0.5)
+  expect_equal(inference["(mu) x", "prior_prob"], 0.5 * 0.5 / 0.75)
+  expect_equal(inference["(mu) x", "post_prob"], mean(open[, 1]))
+
+  catalog <- parameter_catalog(fit)
+  total <- parameter_catalog_resolve(catalog, alias = "R2{total}")
+  expect_identical(total$quantities$support[[1L]]$points, 0)
+  share <- parameter_catalog_resolve(catalog, alias = "R2[share: x]")
+  expect_identical(share$quantities$definedness, "allocation_active")
+  inclusion <- parameter_catalog_resolve(catalog, alias = "x (inclusion)")
+  expect_identical(inclusion$quantities$support[[1L]]$points, c(0, 1))
+  expect_equal(as.numeric(as.matrix(parameter_draws(fit, inclusion))), unname(open[, 1]))
+
+  expect_error(hypothesis_BF_model(fit, "R2{total} = 0"), class = "BayesTools_point_mass_at_null")
+  region <- hypothesis_BF_model(fit, "R2{total} > 0.1")
+  prior_prob <- 0.5 * stats::pbeta(0.1, 1.5, 2, lower.tail = FALSE)
+  post_prob <- mean(post[, "mu_R2"] > 0.1)
+  expect_equal(as.numeric(region$BF), (post_prob / (1 - post_prob)) / (prior_prob / (1 - prior_prob)), tolerance = 1e-8)
+
+  expect_error(do.call(JAGS_bridgesampling, c(list(fit = fit, log_posterior = function(parameters, data) 0), args[-1])),
+    class = "BayesTools_R2_gated_unavailable")
+})

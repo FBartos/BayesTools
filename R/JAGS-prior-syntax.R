@@ -71,6 +71,10 @@ JAGS_add_priors           <- function(syntax, prior_list){
 
       syntax_priors <- paste(syntax_priors, .JAGS_prior.R2(prior_list[[i]], names(prior_list)[i]))
 
+    }else if(is.prior.R2_budget(prior_list[[i]])){
+
+      syntax_priors <- paste(syntax_priors, .bt_R2_core_syntax(prior_list[[i]]))
+
     }else if(is.prior.spike_and_slab(prior_list[[i]])){
 
       syntax_priors <- paste(syntax_priors, .JAGS_prior.spike_and_slab(prior_list[[i]], names(prior_list)[i], numeric_literals))

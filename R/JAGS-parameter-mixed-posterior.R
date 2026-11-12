@@ -890,6 +890,8 @@ parameter_gate_states <- function(fit, selection, draws = NULL){
   key <- quantity$extraction_key[[1L]]
   ordered <- .bt_ordered_quantity_plan(fit,quantity)
   if(!is.null(ordered)) return(ordered)
+  R2_total <- .bt_R2_total_point_plan(fit, quantity)
+  if(!is.null(R2_total)) return(R2_total)
   if(identical(key$type, "ordered_allocation")){
     return(.bt_ordered_share_plan(fit, key))
   }
