@@ -304,4 +304,43 @@ test_that("conditioning on gated quantities and their scales is explicit", {
   marginal <- marginal_posterior(as_mixed_posteriors(fit, parameters = "mu_R2"), parameter = "mu_R2",
     use_formula = FALSE, prior_samples = TRUE)
   expect_equal(.bt_meta_get(marginal, "prior_density")$points$p, 0.5)
+  # under 'OR' with an independent prior the budget keeps zero mass 1/3
+  either <- as_mixed_posteriors(fit, parameters = c("mu_R2", "theta"), conditional = c("mu_R2", "theta"), conditional_rule = "OR")$mu_R2
+  expect_equal(.bt_meta_get(either, "prior_density")$points$p, 1 / 3, tolerance = 1e-10)
+})
+
+test_that("draws of gated budgets are extracted beyond the analytic limits and for two-level factors", {
+
+  skip_if_not_installed("rjags")
+  skip_if_not_installed("runjags")
+  set.seed(9)
+  # a two-level orthonormal factor has one coded coefficient
+  data <- data.frame(g = factor(rep(c("a", "b"), each = 15)), x = stats::rnorm(30))
+  data$y <- 0.5 * (data$g == "b") + stats::rnorm(30)
+  fit <- JAGS_fit(
+    model_syntax = "model{ for(i in 1:N){ y[i] ~ dnorm(mu[i], 1 / pow(sigma, 2)) } }",
+    data = list(y = data$y, N = nrow(data)), prior_list = list(sigma = prior("invgamma", list(1, 1))),
+    formula_list = list(mu = ~ x + g), formula_data_list = list(mu = data),
+    formula_prior_list = list(mu = list(intercept = prior("normal", list(0, 5)),
+      R2 = prior_R2(terms = c("x", "g"), total = prior("beta", list(1, 2)), law = "exact", convention = "common",
+        concentration = "inherited", sigma = "sigma", contrast = "orthonormal", inclusion = prior("spike", list(0.5))))),
+    chains = 1, adapt = 100, burnin = 100, sample = 300, seed = 9, silent = TRUE)
+  expect_s3_class(as_mixed_posteriors(fit, parameters = "mu_g", conditional = "mu_g")$mu_g, "mixed_posteriors")
+
+  # 17 gated terms: the fit, its catalog and the extraction of draws need no
+  # enumeration of the configurations
+  wide <- as.data.frame(matrix(stats::rnorm(40 * 17), 40, 17, dimnames = list(NULL, paste0("v", 1:17))))
+  wide$y <- stats::rnorm(40)
+  many <- prior_R2(terms = paste0("v", 1:17), total = prior("beta", list(1, 1)), law = "exact",
+    convention = "common", concentration = "inherited", sigma = "sigma", inclusion = prior("spike", list(0.5)))
+  fit <- JAGS_fit(
+    model_syntax = "model{ for(i in 1:N){ y[i] ~ dnorm(mu[i], 1 / pow(sigma, 2)) } }",
+    data = list(y = wide$y, N = nrow(wide)), prior_list = list(sigma = prior("invgamma", list(1, 1))),
+    formula_list = list(mu = stats::reformulate(paste0("v", 1:17))), formula_data_list = list(mu = wide),
+    formula_prior_list = list(mu = list(intercept = prior("normal", list(0, 5)), R2 = many)),
+    chains = 1, adapt = 100, burnin = 100, sample = 200, seed = 9, silent = TRUE)
+  mixed <- as_mixed_posteriors(fit, parameters = c("mu_v1", "mu_R2"))
+  expect_length(mixed$mu_v1, 200)
+  expect_null(.bt_meta_get(mixed$mu_v1, "prior_density"))
+  expect_true(inherits(runjags_inference_table(fit), "BayesTools_table"))
 })

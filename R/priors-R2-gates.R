@@ -787,17 +787,20 @@ is.prior.R2_budget <- function(x){
 
 # The atom at zero of the coefficients of a gated term (the term closed): the
 # posterior mass of the closed draws and the mixed support with the point 0.
-.bt_R2_set_gated_atoms <- function(samples, model_samples, parameter, prior, conditioned = FALSE){
+.bt_R2_set_gated_atoms <- function(samples, model_samples, parameter, prior, included = NULL){
 
   open <- .bt_R2_term_open_draws(prior, model_samples)
   columns <- if(is.null(dim(samples))) parameter else colnames(samples)
   closed <- mean(open == 0)
-  # the prior density of a scalar coefficient (its atom at zero, or its
-  # continuous part when its inclusion is conditioned)
-  if(prior$d == 1L){
-    prior_list <- stats::setNames(list(prior), parameter)
-    samples <- .bt_R2_set_prior_density(samples, .bt_R2_gated_coefficient_law(
-      prior_list, list(type = "coordinate", dependencies = parameter), conditional = conditioned))
+  # the prior density of a scalar coefficient given the conditioning event
+  # (factor terms have no catalog density; a law that needs more
+  # configurations than the analytic limit leaves the draws without one)
+  if(prior$d == 1L && !is.prior.factor(prior)){
+    law <- tryCatch({
+      prior_list <- stats::setNames(list(prior), parameter)
+      .bt_R2_coefficient_law_given(prior_list, parameter, included)
+    }, BayesTools_R2_density_unavailable = function(condition) NULL)
+    samples <- .bt_R2_set_prior_density(samples, law)
   }
   # conditioned on its inclusion the term has no atom
   if(closed == 0){
@@ -1060,11 +1063,12 @@ is.prior.R2_budget <- function(x){
 # The mixed posterior of the realized total of a gated or spiked budget from
 # the (conditioned) draws: its prior law, the mixed support with the atom at
 # zero, and the posterior mass of the atom.
-.bt_R2_as_mixed_total <- function(model_samples, core, parameter, conditioned = FALSE){
+.bt_R2_as_mixed_total <- function(model_samples, core, parameter, included = NULL){
 
-  law <- .bt_R2_core_total_law(core, conditional = conditioned)
-  samples <- .as_mixed_posteriors.simple(model_samples, law, parameter)
-  attr(samples, "prior_list") <- law
+  law <- tryCatch(.bt_R2_total_law_given(core, included),
+                  BayesTools_R2_density_unavailable = function(condition) NULL)
+  samples <- .as_mixed_posteriors.simple(model_samples, if(is.null(law)) prior("beta", list(1, 1)) else law, parameter)
+  attr(samples, "prior_list") <- if(is.null(law)) core else law
   if(!is.null(.bt_R2_core_nodes(core)$indicator) && any(samples == 0)){
     closed <- mean(samples == 0)
     samples <- .posterior_atoms_set(samples, .posterior_atoms_new(
@@ -1162,4 +1166,59 @@ is.prior.R2_budget <- function(x){
     samples <- .bt_meta_set(samples, "prior_density", density)
   }
   samples
+}
+
+# The probability that the gated quantity 'parameter' (a gated term or a
+# total) is included given the conditioning event of as_mixed_posteriors():
+# NULL when the event does not involve it (its priors are independent of the
+# other conditioned priors), 1 when the event implies its inclusion (its own
+# label alone or under 'AND'), and P(included) / P(event) under 'OR' with
+# other labels (its inclusion implies the event).
+.bt_R2_conditioned_inclusion <- function(prior_list, condition_event, parameter){
+
+  conditional <- condition_event[["conditional"]]
+  if(!parameter %in% conditional){
+    return(NULL)
+  }
+  if(length(conditional) == 1L || identical(condition_event[["conditional_rule"]], "AND")){
+    return(1)
+  }
+  prior <- prior_list[[parameter]]
+  on <- if(is.prior.R2_budget(prior)){
+    .bt_R2_gate_marginals(prior$gates, prior$terms)$budget
+  }else{
+    .bt_R2_gate_marginals(prior$core$gates, prior$core$terms)$open[[prior$term]]
+  }
+  event <- .condition_event_model_options(prior_list, condition_event)$event_probability
+
+  min(1, on / event)
+}
+
+# The law of a gated total given an inclusion probability 'included' (NULL:
+# the prior law; 1: the law given the budget on; otherwise the mixture with
+# the atom at zero of weight 1 - included).
+.bt_R2_total_law_given <- function(core, included = NULL){
+
+  if(is.null(included)){
+    return(.bt_R2_core_total_law(core))
+  }
+  slab <- .bt_R2_core_total_law(core, conditional = TRUE)
+  if(included >= 1){
+    return(slab)
+  }
+  .bt_R2_mixture(list(prior("spike", list(0)), slab), c(1 - included, included), c(TRUE, FALSE))
+}
+
+# The law of a scalar gated coefficient given an inclusion probability.
+.bt_R2_coefficient_law_given <- function(prior_list, parameter, included = NULL){
+
+  key <- list(type = "coordinate", dependencies = parameter)
+  if(is.null(included)){
+    return(.bt_R2_gated_coefficient_law(prior_list, key))
+  }
+  slab <- .bt_R2_gated_coefficient_law(prior_list, key, conditional = TRUE)
+  if(included >= 1){
+    return(slab)
+  }
+  .bt_R2_mixture(list(prior("spike", list(0)), slab), c(1 - included, included), c(TRUE, FALSE))
 }
