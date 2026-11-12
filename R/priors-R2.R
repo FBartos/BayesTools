@@ -41,7 +41,9 @@
 #' \code{prior("dirichlet", list(alpha = ...))} with one concentration per
 #' entry of \code{terms}, in their order. \code{NULL} (default) is the flat
 #' allocation, a concentration of 1 for every term. A budget of one term
-#' needs no allocation.
+#' takes no allocation (a Dirichlet prior has at least two concentrations): its
+#' term has the concentration 1, which the kernel laws give to each of its
+#' coded coefficients.
 #' @param law coefficient law: \code{"exact"} allocates squared signal
 #' magnitudes exactly, with a fair sign for one-column terms and a uniform
 #' direction in the term's coefficient space (in the empirical design metric)
@@ -298,11 +300,12 @@ prior_R2 <- function(terms, total, allocation = NULL, law, convention, concentra
   if(.is_prior_expression(total)){
     stop("The Beta prior 'total' must have numeric shapes; expressions are not supported.", call. = FALSE)
   }
-  if(!isTRUE(all.equal(unname(unlist(total[["truncation"]])), c(0, 1)))){
+  truncation <- unname(unlist(total[["truncation"]]))
+  if(length(truncation) != 2L || !identical(as.numeric(truncation), c(0, 1))){
     stop("The Beta prior 'total' cannot be truncated.", call. = FALSE)
   }
 
-  c(a = total$parameters[["alpha"]], b = total$parameters[["beta"]])
+  c(a = unname(total$parameters[["alpha"]]), b = unname(total$parameters[["beta"]]))
 }
 
 # The concentrations of the allocation prior of the budget, one per term (the
@@ -321,6 +324,9 @@ prior_R2 <- function(terms, total, allocation = NULL, law, convention, concentra
     stop("The Dirichlet prior 'allocation' must have numeric concentrations; expressions are not supported.", call. = FALSE)
   }
   alpha <- allocation$parameters[["alpha"]]
+  if(length(terms) == 1L){
+    stop("A budget of one term takes no 'allocation': its term has the concentration 1.", call. = FALSE)
+  }
   if(length(alpha) != length(terms)){
     stop("The Dirichlet prior 'allocation' has ", length(alpha),
          " concentrations, but 'terms' has ", length(terms), " term(s).", call. = FALSE)
@@ -336,9 +342,9 @@ prior_R2 <- function(terms, total, allocation = NULL, law, convention, concentra
   if(abs(budget$a - A) > sqrt(.Machine$double.eps) * max(1, A)){
     .bt_R2_stop(paste0(
       "With convention = \"linked\", the first shape of 'total' must equal the total concentration of the full model, ",
-      format(A), " for this budget",
+      as.character(A), " for this budget",
       if(!is.null(budget$name)) paste0(" '", budget$name, "'"),
-      "; use total = prior(\"beta\", list(alpha = ", format(A), ", beta = ", format(budget$b), "))."))
+      "; use total = prior(\"beta\", list(alpha = ", as.character(A), ", beta = ", as.character(budget$b), "))."))
   }
   invisible(TRUE)
 }
@@ -595,7 +601,8 @@ is.R2_budget <- function(x){
   }
   full_formula <- stats::reformulate(full_labels)
   model_frame <- stats::model.frame(full_formula, data = data, na.action = stats::na.pass)
-  model_matrix <- stats::model.matrix(full_formula, model_frame)
+  # the package resolves its own contrast functions (namespace-only callers)
+  model_matrix <- .bt_model_matrix(model_frame, full_formula)
   assign <- attr(model_matrix, "assign")
   full_keys <- .bt_R2_term_key(attr(stats::terms(full_formula), "term.labels"))
   vapply(.bt_R2_term_key(declared), function(key){

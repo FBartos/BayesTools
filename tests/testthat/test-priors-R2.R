@@ -38,6 +38,10 @@ test_that("prior_R2() requires every undecided choice and validates its argument
   expect_error(.R2_test_budget(total = prior_spike_and_slab(.R2_beta(1, 1))),
     "spike-and-slab and mixture totals are not supported yet", fixed = TRUE)
   expect_error(.R2_test_budget(total = prior("beta", list(1, 1), list(0, 0.5))), "cannot be truncated", fixed = TRUE)
+  expect_error(.R2_test_budget(total = prior("beta", list(0.01, 1), list(1e-9, 1))), "cannot be truncated", fixed = TRUE)
+  expect_equal(.R2_test_budget(total = prior("beta", list(alpha = c(shape = 2), beta = 3)))[c("a", "b")], list(a = 2, b = 3))
+  expect_error(.R2_test_budget(terms = "x", allocation = .R2_dirichlet(1, 1), contrast = NULL),
+    "A budget of one term takes no 'allocation'", fixed = TRUE)
   expect_error(.R2_test_budget(allocation = .R2_dirichlet(1, 1)), "has 2 concentrations, but 'terms' has 3", fixed = TRUE)
   expect_error(.R2_test_budget(allocation = prior("normal", list(0, 1))),
     "'allocation' must be NULL or a Dirichlet prior", fixed = TRUE)

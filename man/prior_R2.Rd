@@ -31,7 +31,9 @@ candidate model to \code{terms},
 \code{prior("dirichlet", list(alpha = ...))} with one concentration per
 entry of \code{terms}, in their order. \code{NULL} (default) is the flat
 allocation, a concentration of 1 for every term. A budget of one term
-needs no allocation.}
+takes no allocation (a Dirichlet prior has at least two concentrations): its
+term has the concentration 1, which the kernel laws give to each of its
+coded coefficients.}
 
 \item{law}{coefficient law: \code{"exact"} allocates squared signal
 magnitudes exactly, with a fair sign for one-column terms and a uniform
