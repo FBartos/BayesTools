@@ -843,7 +843,7 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
     R2_shares <- .bt_JAGS_estimates_R2_shares(
       model_samples     = model_samples,
       raw_model_samples = raw_model_samples,
-      prior_list        = prior_list
+      prior_list        = attr(fit, "prior_list", exact = TRUE)
     )
     model_samples <- R2_shares$model_samples
     created_parts <- c(created_parts, R2_shares$created)

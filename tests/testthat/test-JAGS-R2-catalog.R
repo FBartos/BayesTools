@@ -74,6 +74,12 @@ test_that("estimates tables show the budget total and the shares of its terms", 
   expect_true(all(c("(mu) R2_allocation[1]", "(mu) R2_allocation[3]") %in% rownames(raw)) ||
               any(grepl("R2_allocation\\[1\\]", rownames(raw))))
 
+  # the display filters act on the quantities: the shares follow their total
+  without_x <- rownames(runjags_estimates_table(fit, remove_parameters = "mu_x"))
+  expect_true(all(c("(mu) R2{total}", "(mu) R2[share: x]", "(mu) R2[share: f]") %in% without_x))
+  without_total <- rownames(runjags_estimates_table(fit, remove_parameters = "mu_R2"))
+  expect_false(any(grepl("R2", without_total)))
+
   # a budget that retains one term allocates it the whole budget: no shares
   single <- .R2_catalog_fit(~ x, sample = 200)
   expect_false(any(grepl("share", rownames(runjags_estimates_table(single)))))
@@ -115,4 +121,30 @@ test_that("model-averaged budget totals keep the label of their quantity", {
     list(fit = fit_xf, marglik = bridgesampling_object(-39), prior_weights = 1)))
   mixed <- mix_posteriors(models, parameters = "mu_R2", is_null_list = list(mu_R2 = c(FALSE, FALSE)), seed = 1)
   expect_identical(rownames(ensemble_estimates_table(mixed, parameters = "mu_R2")), "(mu) R2{total}")
+})
+
+test_that("share densities and budget names are safe at the edges", {
+
+  set.seed(41)
+  data <- data.frame(x = stats::rnorm(20), z = stats::rnorm(20))
+  budget <- prior_R2(terms = c("x", "z"), total = prior("beta", list(1, 1)),
+    allocation = prior("dirichlet", list(alpha = c(1e16, 1))), law = "exact",
+    convention = "common", concentration = "inherited", sigma = "sigma")
+  info <- JAGS_formula(~ x + z, "mu", data, list(intercept = prior("normal", list(0, 1)), R2 = budget))
+  object <- structure(list(), prior_list = info$prior_list)
+  key <- list(type = "R2_share", dependencies = paste0("prior_par_eta_mu_R2_allocation[", 1:2, "]"),
+    total = "mu_R2", term = "mu_x", units = 1L)
+  # the complementary concentration is summed directly: Beta(1e16, 1), not Beta(1e16, 0)
+  # (qbeta warns about its accuracy at such concentrations)
+  density <- suppressWarnings(
+    .bt_parameter_prior_density_R2_share(object, list(quantity_id = "q"), key, n_grid = 256, tail_prob = 1e-6))
+  expect_false(is.null(density))
+
+  # budget names cannot end in the suffixes of generated nodes
+  for(name in c("f_ordered", "x_indicator", "w_inclusion", "w_variable", "w_allocation")){
+    priors <- list(intercept = prior("normal", list(0, 1)))
+    priors[[name]] <- budget
+    expect_error(JAGS_formula(~ x + z, "mu", data, priors), "cannot end in", fixed = TRUE,
+      class = "BayesTools_R2_invalid")
+  }
 })

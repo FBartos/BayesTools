@@ -213,9 +213,9 @@
   prior_list <- attr(object, "prior_list", exact = TRUE)
   found <- .bt_R2_share_record(prior_list, key)
   alpha <- prior_list[[found$record$allocation_name]]$parameters[["alpha"]]
-  share <- sum(alpha[key$units])
+  # the complement is summed directly (no cancellation in sum(alpha) - share)
   out <- .bt_parameter_prior_density_scalar(
-    prior("beta", list(alpha = share, beta = sum(alpha) - share)),
+    prior("beta", list(alpha = sum(alpha[key$units]), beta = sum(alpha[-key$units]))),
     n_grid = n_grid, tail_prob = tail_prob
   )
   if(!is.null(out)){
@@ -260,8 +260,12 @@
 }
 
 # Estimates tables show the share of each retained term of a budget after its
-# total, in place of the allocation coordinates. Returns the samples and the
-# label parts of the created share columns.
+# total, in place of the allocation coordinates. The budgets come from the
+# complete fitted prior list 'prior_list' and the shares from the unfiltered
+# draws, so that the display filters act on the quantities: the shares are
+# shown with their total (all of them, whichever coefficients are shown) and
+# the allocation coordinates never. Returns the samples and the label parts
+# of the created share columns.
 .bt_JAGS_estimates_R2_shares <- function(model_samples, raw_model_samples, prior_list){
 
   created <- list()
@@ -270,13 +274,9 @@
       next
     }
     allocation_columns <- paste0(record$allocation_name, "[", seq_len(record$n_units), "]")
-    present <- colnames(model_samples) %in% allocation_columns
-    if(!any(present)){
-      next
-    }
-    position <- min(which(present))
-    model_samples <- model_samples[, !present, drop = FALSE]
-    if(length(record$terms) < 2L || !all(allocation_columns %in% colnames(raw_model_samples))){
+    model_samples <- model_samples[, !colnames(model_samples) %in% allocation_columns, drop = FALSE]
+    if(length(record$terms) < 2L || !record$total_name %in% colnames(model_samples) ||
+       !all(allocation_columns %in% colnames(raw_model_samples))){
       next
     }
     phi <- raw_model_samples[, allocation_columns, drop = FALSE]
@@ -285,9 +285,7 @@
     }, numeric(nrow(phi)))
     shares <- matrix(shares, nrow = nrow(phi))
     colnames(shares) <- vapply(record$terms, function(term) .bt_R2_share_name(record, term), character(1))
-    if(record$total_name %in% colnames(model_samples)){
-      position <- match(record$total_name, colnames(model_samples)) + 1L
-    }
+    position <- match(record$total_name, colnames(model_samples)) + 1L
     model_samples <- cbind(
       if(position > 1L) model_samples[, seq_len(position - 1L), drop = FALSE],
       shares,

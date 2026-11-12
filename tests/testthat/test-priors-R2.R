@@ -174,7 +174,7 @@ test_that("excluded, conflicting and unsupported budget terms are handled explic
     "must be a valid JAGS node name", fixed = TRUE)
   expect_error(JAGS_formula(~ x + f, "mu", data, list(intercept = prior("normal", list(0, 1)),
     R2 = .R2_test_budget(terms = "f", allocation = NULL), R2_allocation = other)),
-    "clash with their allocation nodes", fixed = TRUE)
+    "cannot end in", fixed = TRUE)
 
   # terms outside every budget keep their own priors; defaults fill only them
   info_mixed <- JAGS_formula(~ x + f + w, "mu", data,

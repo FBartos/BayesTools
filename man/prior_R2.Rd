@@ -88,8 +88,11 @@ quantities of \code{\link[=parameter_catalog]{parameter_catalog()}} that the est
 \code{hypothesis_BF()} tests (e.g., \code{"R2{total} > 0.1"} or
 \code{"R2[share: f] > 0.5"}), with the Beta prior of the total in the model
 and the Beta marginal of the share under the allocation. The name
-must be a valid JAGS node name that contains no \code{"intercept"} and is
-not a term label. Several budgets are several entries (for example, a
+must be a valid JAGS node name that contains no \code{"intercept"}, does
+not end in a suffix of the nodes that BayesTools generates
+(\code{"_ordered"}, \code{"_indicator"}, \code{"_inclusion"},
+\code{"_variable"}, \code{"_allocation"}), and is not a term label.
+Several budgets are several entries (for example, a
 budget for compulsory covariates and a separate budget for the tested
 terms, whose R-squared is then the incremental partial R-squared of the
 tested terms when their design blocks are orthogonal to the covariates;
