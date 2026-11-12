@@ -12,58 +12,78 @@ skip_if_not_test_profile("unit")
   data.frame(f = f, x = x, z = z, w = stats::rnorm(24))
 }
 
+.R2_beta <- function(a, b) prior("beta", list(alpha = a, beta = b))
+.R2_dirichlet <- function(...) prior("dirichlet", list(alpha = c(...)))
+
 .R2_test_budget <- function(...){
-  arguments <- utils::modifyList(list(
-    alpha = c(x = 1, f = 2, z = 1), a = 1, b = 2, law = "exact", convention = "common",
-    concentration = "inherited", sigma = "sigma", contrast = "orthonormal"
-  ), list(...), keep.null = TRUE)
+  arguments <- list(
+    terms = c("x", "f", "z"), total = .R2_beta(1, 2), allocation = .R2_dirichlet(1, 2, 1),
+    law = "exact", convention = "common", concentration = "inherited", sigma = "sigma",
+    contrast = "orthonormal"
+  )
+  overrides <- list(...)
+  arguments[names(overrides)] <- overrides
   do.call(prior_R2, arguments)
 }
 
 test_that("prior_R2() requires every undecided choice and validates its arguments", {
 
-  expect_error(prior_R2(alpha = c(x = 1), a = 1, b = 1, law = "exact", sigma = "sigma"),
+  expect_error(prior_R2(terms = "x", total = .R2_beta(1, 1), law = "exact", sigma = "sigma"),
     "The 'convention', 'concentration' arguments are required", fixed = TRUE)
   expect_error(.R2_test_budget(law = "student"), "law", fixed = TRUE)
-  expect_error(.R2_test_budget(convention = "linked"),
-    "'a' must be NULL with convention = \"linked\"", fixed = TRUE)
-  expect_error(.R2_test_budget(a = NULL), "The 'a' argument is required", fixed = TRUE)
-  expect_error(.R2_test_budget(concentration = "fixed_total"), "The 'total' argument is required", fixed = TRUE)
-  expect_error(.R2_test_budget(total = 2), "'total' applies only", fixed = TRUE)
-  expect_error(.R2_test_budget(alpha = c(1, 2)), "named numeric vector", fixed = TRUE)
-  expect_error(.R2_test_budget(alpha = c("x:f" = 1, "f:x" = 1)), "duplicated: 'f:x'", fixed = TRUE)
-  expect_error(.R2_test_budget(alpha = c(x = 0.001)), "alpha")
+  expect_error(.R2_test_budget(terms = c(1, 2)), "'terms' must be a character vector", fixed = TRUE)
+  expect_error(.R2_test_budget(terms = c("x:f", "f:x", "z")), "duplicated: 'f:x'", fixed = TRUE)
+  expect_error(.R2_test_budget(terms = c("x", "intercept", "z")), "The intercept cannot be part", fixed = TRUE)
+  expect_error(.R2_test_budget(total = prior("normal", list(0, 1))), "'total' must be a Beta prior", fixed = TRUE)
+  expect_error(.R2_test_budget(total = prior_spike_and_slab(.R2_beta(1, 1))),
+    "spike-and-slab and mixture totals are not supported yet", fixed = TRUE)
+  expect_error(.R2_test_budget(total = prior("beta", list(1, 1), list(0, 0.5))), "cannot be truncated", fixed = TRUE)
+  expect_error(.R2_test_budget(allocation = .R2_dirichlet(1, 1)), "has 2 concentrations, but 'terms' has 3", fixed = TRUE)
+  expect_error(.R2_test_budget(allocation = prior("normal", list(0, 1))),
+    "'allocation' must be NULL or a Dirichlet prior", fixed = TRUE)
   expect_error(.R2_test_budget(sigma = -1), "sigma")
-  expect_error(.R2_test_budget(name = "my_intercept"), "cannot contain 'intercept'", fixed = TRUE)
-  expect_error(.R2_test_budget(convention = "conditioning", a = 1, alpha = c(x = 1, f = 2)),
-    "a - sum(alpha) + min(alpha) > 0", fixed = TRUE)
+  expect_error(.R2_test_budget(convention = "conditioning", total = .R2_beta(1, 1), terms = c("x", "f"),
+    allocation = .R2_dirichlet(1, 2)), "a - sum(alpha) + min(alpha) > 0", fixed = TRUE)
+  # a linked total has the full-model total concentration as its first shape
+  expect_error(.R2_test_budget(convention = "linked"),
+    "must equal the total concentration of the full model, 4 for this budget; use total = prior(\"beta\", list(alpha = 4, beta = 2))",
+    fixed = TRUE, class = "BayesTools_R2_invalid")
 
-  budget <- .R2_test_budget(convention = "linked", a = NULL, concentration = "fixed_total", total = 3)
+  budget <- .R2_test_budget(convention = "linked", total = .R2_beta(4, 2), concentration = "fixed_total")
   expect_true(is.R2_budget(budget))
-  expect_null(budget$a)
-  expect_output(print(budget), "R2 ~ Beta(A_M, 2), A_M the retained concentration", fixed = TRUE)
-  expect_output(print(budget), "rescaled to total 3", fixed = TRUE)
+  expect_equal(budget$alpha, c(x = 1, f = 2, z = 1))
+  expect_output(print(budget), "Beta(4, 2) in the full model; Beta(A_M, 2) in a model with retained concentration A_M", fixed = TRUE)
+  expect_output(print(budget), "retained concentrations rescaled to sum to 4 in every model", fixed = TRUE)
+  expect_output(print(.R2_test_budget(sigma = 1)), "coefficients in units of a fixed residual SD of 1", fixed = TRUE)
+
+  # the flat allocation is the default
+  flat <- .R2_test_budget(allocation = NULL)
+  expect_equal(unname(flat$alpha), c(1, 1, 1))
+  expect_output(print(flat), "allocation: Dirichlet(1, 1, 1), retained terms keep their concentrations", fixed = TRUE)
+  expect_equal(unname(.R2_test_budget(terms = "x", allocation = NULL, contrast = NULL)$alpha), 1)
 })
 
 test_that("Beta shapes follow the cross-model conventions", {
 
-  budget <- .R2_test_budget(a = 2, b = 3)
+  budget <- .R2_test_budget(total = .R2_beta(2, 3))
   expect_equal(.bt_R2_model_shapes(budget, c(1, 2), 4), list(a = 2, b = 3, alpha = c(1, 2), A = 3))
 
-  linked <- .R2_test_budget(convention = "linked", a = NULL, b = 3)
+  linked <- .R2_test_budget(convention = "linked", total = .R2_beta(4, 3))
   expect_equal(.bt_R2_model_shapes(linked, c(1, 2), 4)[c("a", "b")], list(a = 3, b = 3))
 
   # a - A and a + b stay at their full-model values (A_ref = 4)
-  conditioning <- .R2_test_budget(convention = "conditioning", a = 5, b = 3)
+  conditioning <- .R2_test_budget(convention = "conditioning", total = .R2_beta(5, 3))
   shapes <- .bt_R2_model_shapes(conditioning, c(1, 2), 4)
   expect_equal(c(shapes$a - shapes$A, shapes$a + shapes$b), c(5 - 4, 5 + 3))
 
-  fixed <- .R2_test_budget(concentration = "fixed_total", total = 6)
+  # fixed_total keeps the sum of the declared concentrations (6)
+  fixed <- .R2_test_budget(concentration = "fixed_total", allocation = .R2_dirichlet(2, 3, 1))
   expect_equal(.bt_R2_model_shapes(fixed, c(1, 2), NA)$alpha, c(2, 4))
   expect_equal(.bt_R2_model_shapes(fixed, 2, NA)$alpha, 6)
 
   # kernel laws count coded coefficients, so feasibility is checked per model
-  infeasible <- .R2_test_budget(law = "normal", convention = "conditioning", a = 1, b = 1, alpha = c(x = 1, f = 1))
+  infeasible <- .R2_test_budget(law = "normal", convention = "conditioning", total = .R2_beta(1, 1),
+    terms = c("x", "f"), allocation = .R2_dirichlet(1, 1))
   expect_error(.bt_R2_model_shapes(infeasible, 1, 4), class = "BayesTools_R2_invalid")
 })
 
@@ -71,7 +91,7 @@ test_that("JAGS_formula() binds a budget with deletion, redistribution and exact
 
   data <- .R2_test_data()
   info <- JAGS_formula(~ x + f, "mu", data,
-    list(intercept = prior("normal", list(0, 1)), "__R2" = .R2_test_budget()))
+    list(intercept = prior("normal", list(0, 1)), R2 = .R2_test_budget()))
   priors <- info$prior_list
   expect_identical(names(priors), c("mu_intercept", "mu_x", "mu_f", "mu_R2", "mu_R2_allocation"))
   expect_true(is.prior.R2(priors$mu_x) && is.prior.simple(priors$mu_x) && !is.prior.factor(priors$mu_x))
@@ -95,7 +115,7 @@ test_that("kernel laws allocate over coded coefficients and scale them by column
 
   data <- .R2_test_data()
   info <- JAGS_formula(~ x + f, "mu", data,
-    list(intercept = prior("normal", list(0, 1)), "__R2" = .R2_test_budget(law = "laplace")))
+    list(intercept = prior("normal", list(0, 1)), R2 = .R2_test_budget(law = "laplace")))
   priors <- info$prior_list
   expect_equal(priors$mu_R2_allocation$parameters$alpha, c(1, 2, 2))
   expect_identical(priors$mu_f$units, 2:3)
@@ -114,34 +134,48 @@ test_that("excluded, conflicting and unsupported budget terms are handled explic
 
   # a spike at zero excludes a term from the model and from the budget
   info <- JAGS_formula(~ x + f, "mu", data,
-    list(intercept = prior("normal", list(0, 1)), x = prior("spike", list(0)), "__R2" = budget))
+    list(intercept = prior("normal", list(0, 1)), x = prior("spike", list(0)), R2 = budget))
   expect_true(is.prior.point(info$prior_list$mu_x))
   expect_null(info$prior_list$mu_R2_allocation)
   expect_identical(info$prior_list$mu_f$n_units, 1L)
   info_none <- JAGS_formula(~ x + f, "mu", data,
-    list(intercept = prior("normal", list(0, 1)), x = prior_none(), "__R2" = budget))
+    list(intercept = prior("normal", list(0, 1)), x = prior_none(), R2 = budget))
   expect_true(is.prior.point(info_none$prior_list$mu_x))
 
   expect_error(JAGS_formula(~ x + f, "mu", data,
-    list(intercept = prior("normal", list(0, 1)), x = prior("normal", list(0, 1)), "__R2" = budget)),
+    list(intercept = prior("normal", list(0, 1)), x = prior("normal", list(0, 1)), R2 = budget)),
     class = "BayesTools_R2_invalid")
   expect_error(JAGS_formula(~ x + f, "mu", data,
-    list(intercept = prior("normal", list(0, 1)), "__R2" = .R2_test_budget(contrast = NULL))),
+    list(intercept = prior("normal", list(0, 1)), R2 = .R2_test_budget(contrast = NULL))),
     "needs a 'contrast'", fixed = TRUE)
+  other <- .R2_test_budget(terms = "x", allocation = NULL)
   expect_error(JAGS_formula(~ x + f, "mu", data,
-    list(intercept = prior("normal", list(0, 1)), "__R2" = list(budget, .R2_test_budget(alpha = c(x = 1), name = "other")))),
+    list(intercept = prior("normal", list(0, 1)), R2 = budget, other = other)),
     "only one R-squared budget", fixed = TRUE)
   expect_error(JAGS_formula(~ x + f, "mu", data,
-    list(intercept = prior("normal", list(0, 1)), "__R2" = list(budget, budget))),
+    list(intercept = prior("normal", list(0, 1)), R2 = budget, R2 = budget)),
     "distinct names", fixed = TRUE)
   expect_error(JAGS_formula(~ x + f, "mu", data,
-    list(intercept = prior("normal", list(0, 1)), "__R2" = "budget")),
-    "must be a prior_R2() budget", fixed = TRUE)
+    list(intercept = prior("normal", list(0, 1)), R2 = list(budget, other))),
+    "Several R-squared budgets are separate entries", fixed = TRUE)
+
+  # the entry name names the budget: a JAGS node name that is not a term
+  expect_error(JAGS_formula(~ x + f, "mu", data, list(intercept = prior("normal", list(0, 1)), x = budget)),
+    "is named like a formula term", fixed = TRUE, class = "BayesTools_R2_invalid")
+  expect_error(JAGS_formula(~ x + f, "mu", data, list(intercept = prior("normal", list(0, 1)), z = budget)),
+    "is named like a formula term", fixed = TRUE)
+  expect_error(JAGS_formula(~ x + f, "mu", data, list(intercept = prior("normal", list(0, 1)), my_intercept = budget)),
+    "cannot contain 'intercept'", fixed = TRUE)
+  expect_error(JAGS_formula(~ x + f, "mu", data, list(intercept = prior("normal", list(0, 1)), "R 2" = budget)),
+    "must be a valid JAGS node name", fixed = TRUE)
+  expect_error(JAGS_formula(~ x + f, "mu", data, list(intercept = prior("normal", list(0, 1)),
+    R2 = .R2_test_budget(terms = "f", allocation = NULL), R2_allocation = other)),
+    "clash with their allocation nodes", fixed = TRUE)
 
   # terms outside every budget keep their own priors; defaults fill only them
   info_mixed <- JAGS_formula(~ x + f + w, "mu", data,
     list(intercept = prior("normal", list(0, 1)), "__default_continuous" = prior("normal", list(0, 2)),
-         "__R2" = budget))
+         R2 = budget))
   expect_false(is.prior.R2(info_mixed$prior_list$mu_w))
   expect_true(is.prior.R2(info_mixed$prior_list$mu_x))
 })
@@ -149,10 +183,10 @@ test_that("excluded, conflicting and unsupported budget terms are handled explic
 test_that("several budgets are bound independently (compulsory covariates)", {
 
   data <- .R2_test_data()
-  compulsory <- .R2_test_budget(alpha = c(z = 1), name = "covariates", contrast = NULL)
-  optional <- .R2_test_budget(alpha = c(x = 1, f = 1), a = 1.5, b = 1, name = "effects")
+  compulsory <- .R2_test_budget(terms = "z", allocation = NULL, contrast = NULL)
+  optional <- .R2_test_budget(terms = c("x", "f"), allocation = NULL, total = .R2_beta(1.5, 1))
   info <- JAGS_formula(~ x + f + z, "mu", data,
-    list(intercept = prior("normal", list(0, 1)), "__R2" = list(compulsory, optional)))
+    list(intercept = prior("normal", list(0, 1)), covariates = compulsory, effects = optional))
   priors <- info$prior_list
   expect_true(all(c("mu_covariates", "mu_effects", "mu_effects_allocation") %in% names(priors)))
   expect_null(priors$mu_covariates_allocation)
@@ -162,24 +196,42 @@ test_that("several budgets are bound independently (compulsory covariates)", {
 
   # the compulsory-only model has no signal from the optional budget
   info_c <- JAGS_formula(~ z, "mu", data,
-    list(intercept = prior("normal", list(0, 1)), "__R2" = list(compulsory, optional)))
+    list(intercept = prior("normal", list(0, 1)), covariates = compulsory, effects = optional))
   expect_false(any(grepl("effects", names(info_c$prior_list))))
 })
 
 test_that("the conditioning convention of a kernel law uses the full declared dimensions", {
 
   data <- .R2_test_data()
-  budget <- .R2_test_budget(law = "normal", convention = "conditioning", a = 6.5, b = 1)
-  info <- JAGS_formula(~ x, "mu", data, list(intercept = prior("normal", list(0, 1)), "__R2" = budget))
+  budget <- .R2_test_budget(law = "normal", convention = "conditioning", total = .R2_beta(6.5, 1))
+  info <- JAGS_formula(~ x, "mu", data, list(intercept = prior("normal", list(0, 1)), R2 = budget))
   # full model units: x (1), f (2 coded coefficients with alpha 2), z (1) => A_ref = 6
   expect_equal(unname(unlist(info$prior_list$mu_R2$parameters)), c(6.5 - (6 - 1), 1 + (6 - 1)))
   expect_error(JAGS_formula(~ x, "mu", data, list(intercept = prior("normal", list(0, 1)),
-    "__R2" = .R2_test_budget(law = "normal", convention = "conditioning", a = 4, b = 1))),
+    R2 = .R2_test_budget(law = "normal", convention = "conditioning", total = .R2_beta(4, 1)))),
     "gives the Beta shapes (-1, 6) in this model", fixed = TRUE)
-  budget_missing <- .R2_test_budget(law = "normal", convention = "conditioning", a = 7, b = 1,
-    alpha = c(x = 1, f = 2, z = 1, v = 1))
-  expect_error(JAGS_formula(~ x, "mu", data, list(intercept = prior("normal", list(0, 1)), "__R2" = budget_missing)),
+  budget_missing <- .R2_test_budget(law = "normal", convention = "conditioning", total = .R2_beta(7, 1),
+    terms = c("x", "f", "z", "v"), allocation = .R2_dirichlet(1, 2, 1, 1))
+  expect_error(JAGS_formula(~ x, "mu", data, list(intercept = prior("normal", list(0, 1)), R2 = budget_missing)),
     "the data lack 'v'", fixed = TRUE)
+})
+
+test_that("the linked convention of a kernel law checks the full-model concentration when binding", {
+
+  data <- .R2_test_data()
+  # full model units: x (1), f (2 coded coefficients with alpha 2), z (1) => A = 6
+  expect_error(JAGS_formula(~ x, "mu", data, list(intercept = prior("normal", list(0, 1)),
+    R2 = .R2_test_budget(law = "normal", convention = "linked", total = .R2_beta(4, 1)))),
+    "the full model, 6 for this budget 'R2'; use total = prior(\"beta\", list(alpha = 6, beta = 1))",
+    fixed = TRUE, class = "BayesTools_R2_invalid")
+  budget <- .R2_test_budget(law = "normal", convention = "linked", total = .R2_beta(6, 1))
+  expect_equal(unname(unlist(JAGS_formula(~ x, "mu", data, list(intercept = prior("normal", list(0, 1)),
+    R2 = budget))$prior_list$mu_R2$parameters)), c(1, 1))
+  expect_equal(unname(unlist(JAGS_formula(~ x + f + z, "mu", data, list(intercept = prior("normal", list(0, 1)),
+    R2 = budget))$prior_list$mu_R2$parameters)), c(6, 1))
+  # with fixed_total, the total concentration is that of the allocation
+  expect_error(.R2_test_budget(law = "normal", convention = "linked", concentration = "fixed_total",
+    total = .R2_beta(6, 1)), "the full model, 4 for this budget", fixed = TRUE)
 })
 
 test_that("budgets refuse random effects and log-intercept formulas", {
@@ -187,13 +239,13 @@ test_that("budgets refuse random effects and log-intercept formulas", {
   data <- .R2_test_data()
   data$g <- factor(rep(1:4, 6))
   expect_error(JAGS_formula(~ x + (1 | g), "mu", data,
-    list(intercept = prior("normal", list(0, 1)), "__R2" = .R2_test_budget(alpha = c(x = 1))),
+    list(intercept = prior("normal", list(0, 1)), R2 = .R2_test_budget(terms = "x", allocation = NULL)),
     prior_random = prior_random(g = random_block(sd = prior("gamma", list(2, 2))))),
     class = "BayesTools_R2_unavailable")
   formula <- ~ x
   attr(formula, "log(intercept)") <- TRUE
   expect_error(JAGS_formula(formula, "mu", data,
-    list(intercept = prior("normal", list(1, 1), list(0, Inf)), "__R2" = .R2_test_budget(alpha = c(x = 1)))),
+    list(intercept = prior("normal", list(1, 1), list(0, Inf)), R2 = .R2_test_budget(terms = "x", allocation = NULL))),
     class = "BayesTools_R2_unavailable")
 })
 
@@ -202,7 +254,7 @@ test_that("coefficient nodes reproduce the coefficient laws and the exact signal
   data <- .R2_test_data()
   for(law in c("exact", "normal", "laplace")){
     info <- JAGS_formula(~ x + f + z, "mu", data,
-      list(intercept = prior("normal", list(0, 1)), "__R2" = .R2_test_budget(law = law)))
+      list(intercept = prior("normal", list(0, 1)), R2 = .R2_test_budget(law = law)))
     priors <- info$prior_list
     draws <- .generate_prior_sample_matrix(priors, 200L, seed = 3)
     W <- draws[, "mu_R2"] / (1 - draws[, "mu_R2"])
@@ -244,14 +296,14 @@ test_that("factor terms are excluded by scalar or factor zero spikes", {
   budget <- .R2_test_budget()
   for(exclusion in list(prior("spike", list(0)), prior_none(), prior_factor("spike", list(0), contrast = "orthonormal"))){
     info <- JAGS_formula(~ x + f, "mu", data,
-      list(intercept = prior("normal", list(0, 1)), f = exclusion, "__R2" = budget))
+      list(intercept = prior("normal", list(0, 1)), f = exclusion, R2 = budget))
     expect_true(is.prior.point(info$prior_list$mu_f) && is.prior.factor(info$prior_list$mu_f))
     expect_true(is.prior.orthonormal(info$prior_list$mu_f))
     expect_identical(info$prior_list$mu_x$n_units, 1L)
   }
   expect_error(JAGS_formula(~ x + f, "mu", data,
     list(intercept = prior("normal", list(0, 1)), f = prior("spike", list(0)),
-         "__R2" = .R2_test_budget(contrast = NULL))),
+         R2 = .R2_test_budget(contrast = NULL))),
     "is excluded by a scalar point prior", fixed = TRUE)
 })
 
@@ -260,7 +312,7 @@ test_that("the coefficient law does not depend on the units of the predictors", 
   data <- .R2_test_data()
   small <- data
   small$x <- small$x * 1e-9
-  priors <- list(intercept = prior("normal", list(0, 1)), "__R2" = .R2_test_budget())
+  priors <- list(intercept = prior("normal", list(0, 1)), R2 = .R2_test_budget())
   original <- JAGS_formula(~ x + f, "mu", data, priors)$prior_list$mu_x
   rescaled <- JAGS_formula(~ x + f, "mu", small, priors)$prior_list$mu_x
   expect_equal(rescaled$map * 1e-9, original$map, tolerance = 1e-12)
@@ -274,7 +326,7 @@ test_that("coefficient nodes replay from exactly their declared dependencies", {
 
   data <- .R2_test_data()
   info <- JAGS_formula(~ x + f, "mu", data,
-    list(intercept = prior("normal", list(0, 1)), "__R2" = .R2_test_budget(law = "normal")))
+    list(intercept = prior("normal", list(0, 1)), R2 = .R2_test_budget(law = "normal")))
   priors <- info$prior_list
   draws <- .generate_prior_sample_matrix(priors, 5L, seed = 7)
   for(term in c("mu_x", "mu_f")){

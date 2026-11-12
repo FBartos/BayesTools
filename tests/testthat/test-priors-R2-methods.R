@@ -12,9 +12,10 @@ skip_if_not_test_profile("unit")
                                a = 1, b = 2, convention = "common"){
   set.seed(4)
   data <- data.frame(f = factor(rep(c("a", "b", "c"), times = n_per)), x = stats::rnorm(sum(n_per)))
-  budget <- prior_R2(alpha = alpha, a = if(convention == "linked") NULL else a, b = b, law = law,
+  budget <- prior_R2(terms = names(alpha), total = prior("beta", list(if(convention == "linked") sum(alpha) else a, b)),
+    allocation = prior("dirichlet", list(alpha = unname(alpha))), law = law,
     convention = convention, concentration = "inherited", sigma = "sigma", contrast = contrast)
-  info <- JAGS_formula(~ x + f, "mu", data, list(intercept = prior("normal", list(0, 1)), "__R2" = budget))
+  info <- JAGS_formula(~ x + f, "mu", data, list(intercept = prior("normal", list(0, 1)), R2 = budget))
   info$prior_list
 }
 
@@ -77,7 +78,7 @@ test_that("unavailable marginals refuse with classed conditions", {
   treatment <- .R2_methods_priors(law = "laplace", contrast = "treatment")$mu_f
   expect_true(all(is.finite(mpdf(treatment, c(-0.3, 0.3)))))
 
-  unbound <- prior_R2(alpha = c(x = 1), a = 1, b = 1, law = "exact", convention = "common",
+  unbound <- prior_R2(terms = "x", total = prior("beta", list(1, 1)), law = "exact", convention = "common",
     concentration = "inherited", sigma = "sigma")
   stub <- .bt_R2_term_stub(unbound, "x", "x", "continuous")
   expect_error(mpdf(stub, 0), class = "BayesTools_R2_unbound")
@@ -119,9 +120,9 @@ test_that("a single-term budget has the marginal of its unit without an allocati
 
   set.seed(4)
   data <- data.frame(f = factor(rep(c("a", "b", "c"), each = 8)), x = stats::rnorm(24))
-  budget <- prior_R2(alpha = c(f = 1), a = 1, b = 3, law = "exact", convention = "common",
+  budget <- prior_R2(terms = "f", total = prior("beta", list(1, 3)), law = "exact", convention = "common",
     concentration = "inherited", sigma = "sigma", contrast = "orthonormal")
-  prior <- JAGS_formula(~ f, "mu", data, list(intercept = prior("normal", list(0, 1)), "__R2" = budget))$prior_list$mu_f
+  prior <- JAGS_formula(~ f, "mu", data, list(intercept = prior("normal", list(0, 1)), R2 = budget))$prior_list$mu_f
   expect_identical(prior$n_units, 1L)
   expect_true(all(is.finite(mpdf(prior, c(-0.5, 0.5)))))
   expect_equal(var(prior), .bt_R2_functional_variance(.bt_R2_marginal_spec(prior)))
@@ -132,9 +133,9 @@ test_that("public tail and log-density methods keep representable tails", {
 
   set.seed(4)
   data <- data.frame(x = stats::rnorm(24))
-  budget <- prior_R2(alpha = c(x = 1), a = 1, b = 2, law = "exact", convention = "common",
+  budget <- prior_R2(terms = "x", total = prior("beta", list(1, 2)), law = "exact", convention = "common",
     concentration = "inherited", sigma = "sigma")
-  prior <- JAGS_formula(~ x, "mu", data, list(intercept = prior("normal", list(0, 1)), "__R2" = budget))$prior_list$mu_x
+  prior <- JAGS_formula(~ x, "mu", data, list(intercept = prior("normal", list(0, 1)), R2 = budget))$prior_list$mu_x
   spec <- .bt_R2_marginal_spec(prior)
   far <- 1e5 * spec$scale
   expect_equal(ccdf(prior, far), .bt_R2_functional_cdf(spec, far, lower.tail = FALSE))
@@ -149,10 +150,10 @@ test_that("linear-combination densities refuse dependent parameters of one budge
   set.seed(4)
   data <- data.frame(f = factor(rep(c("a", "b", "c"), each = 8)), x = stats::rnorm(24), z = stats::rnorm(24),
                      w = stats::rnorm(24))
-  budget <- prior_R2(alpha = c(x = 1, z = 1, f = 1), a = 1, b = 3, law = "exact", convention = "common",
+  budget <- prior_R2(terms = c("x", "z", "f"), total = prior("beta", list(1, 3)), law = "exact", convention = "common",
     concentration = "inherited", sigma = "sigma", contrast = "orthonormal")
   priors <- JAGS_formula(~ x + z + f + w, "mu", data, list(intercept = prior("normal", list(0, 1)),
-    w = prior("normal", list(0, 1)), "__R2" = budget))$prior_list
+    w = prior("normal", list(0, 1)), R2 = budget))$prior_list
   check <- function(weights) .bt_R2_check_linear_groups(.prior_linear_weight_groups(priors, weights))
 
   condition <- expect_error(check(c(mu_x = 1, mu_z = 1)), class = "BayesTools_formula_measure_unavailable")
@@ -171,10 +172,10 @@ test_that("R2 conditions carry their documented classes and complete messages", 
 
   set.seed(4)
   data <- data.frame(f = factor(rep(c("a", "b", "c"), times = c(4, 8, 12))), x = stats::rnorm(24))
-  budget <- prior_R2(alpha = c(x = 1, f = 1), a = 1, b = 2, law = "exact", convention = "common",
+  budget <- prior_R2(terms = c("x", "f"), total = prior("beta", list(1, 2)), law = "exact", convention = "common",
     concentration = "inherited", sigma = "sigma", contrast = "orthonormal")
   condition <- expect_error(JAGS_formula(~ x + f, "mu", data,
-    list(intercept = prior("normal", list(0, 1)), x = prior("normal", list(0, 1)), "__R2" = budget)),
+    list(intercept = prior("normal", list(0, 1)), x = prior("normal", list(0, 1)), R2 = budget)),
     class = "BayesTools_R2_invalid")
   expect_s3_class(condition, "BayesTools_R2_condition")
   expect_null(conditionCall(condition))
@@ -182,7 +183,7 @@ test_that("R2 conditions carry their documented classes and complete messages", 
     "The formula term 'x' belongs to the R-squared budget 'R2' and cannot have its own prior. Remove its prior, ",
     "or give it a point prior at zero (prior(\"spike\", list(0)) or prior_none()) to exclude it from the model and the budget."))
 
-  prior <- JAGS_formula(~ x + f, "mu", data, list(intercept = prior("normal", list(0, 1)), "__R2" = budget))$prior_list$mu_f
+  prior <- JAGS_formula(~ x + f, "mu", data, list(intercept = prior("normal", list(0, 1)), R2 = budget))$prior_list$mu_f
   condition <- expect_error(mpdf(prior, 0.1), class = "BayesTools_R2_density_unavailable")
   expect_s3_class(condition, "BayesTools_R2_unavailable")
   expect_identical(conditionMessage(condition), paste0(
@@ -199,9 +200,9 @@ test_that("the linear-combination density builder checks the whole combination",
 
   set.seed(4)
   data <- data.frame(x = stats::rnorm(24), z = stats::rnorm(24))
-  budget <- prior_R2(alpha = c(x = 1, z = 1), a = 1, b = 3, law = "exact", convention = "common",
+  budget <- prior_R2(terms = c("x", "z"), total = prior("beta", list(1, 3)), law = "exact", convention = "common",
     concentration = "inherited", sigma = "sigma")
-  priors <- c(JAGS_formula(~ x + z, "mu", data, list(intercept = prior("normal", list(0, 1)), "__R2" = budget))$prior_list,
+  priors <- c(JAGS_formula(~ x + z, "mu", data, list(intercept = prior("normal", list(0, 1)), R2 = budget))$prior_list,
     list(sigma = prior("invgamma", list(2, 1))))
   # the coefficient enters a product group with its 'multiply_by' (sigma), the
   # budget total an additive group: still one dependent combination

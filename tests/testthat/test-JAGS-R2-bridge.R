@@ -3,9 +3,10 @@ skip_if_not_test_profile("unit")
 .R2_bridge_priors <- function(law){
   set.seed(5)
   data <- data.frame(f = factor(rep(c("a", "b", "c"), each = 6)), x = stats::rnorm(18))
-  budget <- prior_R2(alpha = c(x = 1, f = 0.5), a = 1.5, b = 2, law = law, convention = "common",
+  budget <- prior_R2(terms = c("x", "f"), total = prior("beta", list(1.5, 2)),
+    allocation = prior("dirichlet", list(alpha = c(1, 0.5))), law = law, convention = "common",
     concentration = "inherited", sigma = "sigma", contrast = "meandif")
-  info <- JAGS_formula(~ x + f, "mu", data, list(intercept = prior("normal", list(0, 1)), "__R2" = budget))
+  info <- JAGS_formula(~ x + f, "mu", data, list(intercept = prior("normal", list(0, 1)), R2 = budget))
   info$prior_list
 }
 
@@ -75,9 +76,10 @@ test_that("the fixed linear predictor of a bridge draw ignores the budget priors
 
   set.seed(5)
   data <- data.frame(f = factor(rep(c("a", "b", "c"), each = 6)), x = stats::rnorm(18))
-  budget <- prior_R2(alpha = c(x = 1, f = 0.5), a = 1.5, b = 2, law = "exact", convention = "common",
+  budget <- prior_R2(terms = c("x", "f"), total = prior("beta", list(1.5, 2)),
+    allocation = prior("dirichlet", list(alpha = c(1, 0.5))), law = "exact", convention = "common",
     concentration = "inherited", sigma = "sigma", contrast = "meandif")
-  info <- JAGS_formula(~ x + f, "mu", data, list(intercept = prior("normal", list(0, 1)), "__R2" = budget))
+  info <- JAGS_formula(~ x + f, "mu", data, list(intercept = prior("normal", list(0, 1)), R2 = budget))
   plan <- .bt_dnode_linear_predictor_fixed_plan(info$formula_design, info$prior_list)
   row <- .R2_bridge_row(info$prior_list)
   coefficients <- .bt_JAGS_bridge_compile_prior_list_evaluator(info$prior_list)$parameters(row)
@@ -115,14 +117,14 @@ test_that("original-scale summaries of R2 terms keep posteriors and refuse depen
   set.seed(31)
   data <- data.frame(f = factor(rep(c("a", "b", "c"), each = 10)), x = stats::rnorm(30, 2, 3), z = stats::rnorm(30))
   data$y <- 0.5 * (data$f == "b") + 0.1 * data$x + stats::rnorm(30)
-  budget <- prior_R2(alpha = c(x = 1, z = 1, f = 1), a = 1, b = 3, law = "exact", convention = "common",
+  budget <- prior_R2(terms = c("x", "z", "f"), total = prior("beta", list(1, 3)), law = "exact", convention = "common",
     concentration = "inherited", sigma = "sigma", contrast = "orthonormal")
   fit <- JAGS_fit(
     model_syntax = "model{ for(i in 1:N){ y[i] ~ dnorm(mu[i], 1 / pow(sigma, 2)) } }",
     data = list(y = data$y, N = nrow(data)), prior_list = list(sigma = prior("invgamma", list(1, 1))),
     formula_list = list(mu = ~ x + z + f), formula_data_list = list(mu = data),
     formula_scale_list = list(mu = list(x = TRUE, z = TRUE)),
-    formula_prior_list = list(mu = list(intercept = prior("normal", list(0, 5)), "__R2" = budget)),
+    formula_prior_list = list(mu = list(intercept = prior("normal", list(0, 5)), R2 = budget)),
     chains = 1, adapt = 100, burnin = 100, sample = 200, seed = 31, silent = TRUE)
 
   # terms of one budget are dependent: their sum has no product-form density
@@ -150,13 +152,13 @@ test_that("contribution rows refused for budget dependence keep the atoms of the
   set.seed(31)
   data <- data.frame(x = stats::rnorm(30), z = stats::rnorm(30))
   data$y <- 0.3 * data$x + stats::rnorm(30)
-  budget <- prior_R2(alpha = c(x = 1, z = 1), a = 1, b = 3, law = "exact", convention = "common",
+  budget <- prior_R2(terms = c("x", "z"), total = prior("beta", list(1, 3)), law = "exact", convention = "common",
     concentration = "inherited", sigma = 1)
   fit <- JAGS_fit(
     model_syntax = "model{ for(i in 1:N){ y[i] ~ dnorm(mu[i], 1 / pow(sigma, 2)) } }",
     data = list(y = data$y, N = nrow(data)), prior_list = list(sigma = prior("invgamma", list(1, 1))),
     formula_list = list(mu = ~ x + z), formula_data_list = list(mu = data),
-    formula_prior_list = list(mu = list(intercept = prior("spike", list(0)), "__R2" = budget)),
+    formula_prior_list = list(mu = list(intercept = prior("spike", list(0)), R2 = budget)),
     chains = 1, adapt = 100, burnin = 100, sample = 200, seed = 31, silent = TRUE)
   samples <- as_mixed_posteriors(fit, c("mu_intercept", "mu_x", "mu_z"))
 

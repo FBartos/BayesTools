@@ -5,66 +5,62 @@
 \title{R-squared variance-budget prior for formula terms}
 \usage{
 prior_R2(
-  alpha,
-  a = NULL,
-  b,
+  terms,
+  total,
+  allocation = NULL,
   law,
   convention,
   concentration,
   sigma,
-  total = NULL,
-  contrast = NULL,
-  name = "R2"
+  contrast = NULL
 )
 }
 \arguments{
-\item{alpha}{named numeric vector of Dirichlet concentrations, one per term
-of the full candidate model. The names are formula term labels (e.g.,
-\code{c(x = 1, f = 1, "x:f" = 1)}). Terms of the budget that a model's
+\item{terms}{character vector of the formula term labels of the budget in
+the full candidate model (e.g., \code{c("x", "f", "x:f")}; \code{"x:f"} and
+\code{"f:x"} name the same term). Terms of the budget that a model's
 formula does not contain are deleted, and the budget is redistributed in
 full to the retained terms.}
 
-\item{a}{first shape of the Beta prior on the total R-squared. Required
-unless \code{convention = "linked"}, which determines it from the retained
-concentrations (and then it must be \code{NULL}). Under
-\code{convention = "conditioning"}, \code{a} and \code{b} are the shapes of
-the full candidate model.}
+\item{total}{Beta prior on the total R-squared of the full candidate model,
+\code{prior("beta", list(alpha = a, beta = b))}. Spike-and-slab and mixture
+totals are not supported yet.}
 
-\item{b}{second shape of the Beta prior on the total R-squared.}
+\item{allocation}{Dirichlet prior allocating the budget of the full
+candidate model to \code{terms},
+\code{prior("dirichlet", list(alpha = ...))} with one concentration per
+entry of \code{terms}, in their order. \code{NULL} (default) is the flat
+allocation, a concentration of 1 for every term. A budget of one term
+needs no allocation.}
 
 \item{law}{coefficient law: \code{"exact"} allocates squared signal
 magnitudes exactly, with a fair sign for one-column terms and a uniform
 direction in the term's coefficient space (in the empirical design metric)
 for multi-column terms; \code{"normal"} is the normal kernel of the R2D2M2
 prior and \code{"laplace"} the double-exponential kernel of the R2D2
-prior, both allocating the budget over the individual coded coefficients.}
+prior, both allocating the budget over the individual coded coefficients,
+each with the concentration of its term.}
 
-\item{convention}{cross-model convention for the Beta shapes in a model
-with retained concentration total \eqn{A_M}: \code{"common"} keeps
-\eqn{(a, b)} in every model; \code{"linked"} uses \eqn{(A_M, b)};
-\code{"conditioning"} keeps \eqn{a_M - A_M} and \eqn{a_M + b_M} equal to
-their values in the full candidate model.}
+\item{convention}{how a model derives the Beta shapes of its total from
+\code{total} = Beta(a, b) of the full candidate model, with \eqn{A} the
+total concentration of the full model and \eqn{A_M} the total
+concentration retained by model \eqn{M}: \code{"common"} uses Beta(a, b)
+in every model; \code{"linked"} uses Beta(\eqn{A_M}, b), so the first shape
+of \code{total} must equal \eqn{A}; \code{"conditioning"} keeps
+\eqn{a_M - A_M} and \eqn{a_M + b_M} equal to \eqn{a - A} and \eqn{a + b}.}
 
 \item{concentration}{concentrations of the retained units:
-\code{"inherited"} keeps the declared values; \code{"fixed_total"}
-rescales them to sum to \code{total} in every model.}
+\code{"inherited"} keeps the concentrations of \code{allocation};
+\code{"fixed_total"} rescales them in every model to the sum of the
+concentrations of \code{allocation}.}
 
-\item{sigma}{residual standard deviation that multiplies the coefficients:
-the name of a parameter of the model (e.g., \code{"sigma"}) or a positive
-number.}
-
-\item{total}{total concentration for \code{concentration = "fixed_total"}.}
+\item{sigma}{residual standard deviation that multiplies the coefficients,
+as the \code{"multiply_by"} attribute of a formula prior: the name of a
+parameter of the model (e.g., \code{"sigma"}) or a positive number.}
 
 \item{contrast}{contrast of the factor terms of the budget:
 \code{"orthonormal"}, \code{"meandif"}, or \code{"treatment"}. Required
 when the budget contains a factor term.}
-
-\item{name}{name of the budget. The total R-squared is the formula
-parameter \code{<parameter>_<name>} and the allocation the formula
-parameter \code{<parameter>_<name>_allocation}, whose elements follow the
-retained terms in the order of the formula (for the kernels, the coded
-coefficients of each term in turn). Several budgets of one formula need
-distinct names.}
 }
 \value{
 \code{prior_R2} returns an object of class
@@ -73,31 +69,47 @@ distinct names.}
 \description{
 Declares a joint prior distribution for the coefficients of
 several formula terms through a budget for the explained variance. The
-total R-squared of the terms is \eqn{r \sim \textrm{Beta}(a, b)}, its
+total R-squared of the terms has the Beta prior \code{total}, its
 signal-to-noise ratio \eqn{W = r / (1 - r)} is allocated to the terms by
-Dirichlet weights, and each term turns its share into coefficients by the
-selected coefficient law. Place the object in a formula prior list under
-the reserved name \code{"__R2"}; see Details.
+the Dirichlet prior \code{allocation}, and each term turns its share into
+coefficients by the selected coefficient law. Place the object in a formula
+prior list under a name that is not a formula term, which names the budget
+(e.g., \code{R2 = prior_R2(...)}); see Details.
 }
 \details{
-A formula prior list declares budgets with the entry
-\code{"__R2" = prior_R2(...)}, or \code{"__R2" = list(prior_R2(...), ...)}
-for several budgets (for example, a budget for compulsory covariates and a
-separate budget for the tested terms, whose R-squared is then the
-incremental partial R-squared of the tested terms when their design blocks
-are orthogonal to the covariates; with correlated blocks it is the share of
-the tested terms' own signal variance, not their partial R-squared). Every
-term named in a
-budget's \code{alpha} must not have its own prior in the list, except a
-point prior at zero (\code{prior("spike", list(0))} or
-\code{prior_none()}), which excludes it from the model and from the
-budget. Terms that no budget names keep their own priors.
+A formula prior list declares a budget with an entry such as
+\code{R2 = prior_R2(...)}. The name of the entry names the budget: the
+total R-squared is the formula parameter \code{<parameter>_<name>}
+(displayed as \code{<name>{total}}), and the share of the budget allocated
+to a retained term is displayed as \code{<name>[share: <term>]}. The name
+must be a valid JAGS node name that contains no \code{"intercept"} and is
+not a term label. Several budgets are several entries (for example, a
+budget for compulsory covariates and a separate budget for the tested
+terms, whose R-squared is then the incremental partial R-squared of the
+tested terms when their design blocks are orthogonal to the covariates;
+with correlated blocks it is the share of the tested terms' own signal
+variance, not their partial R-squared). Every term of a budget must not
+have its own prior in the list, except a point prior at zero
+(\code{prior("spike", list(0))} or \code{prior_none()}), which excludes it
+from the model and from the budget. Terms that no budget names keep their
+own priors.
 
-In a model \eqn{M} with retained allocation units \eqn{u} (the terms for
+\code{total} and \code{allocation} describe the full candidate model. In a
+model \eqn{M} with retained allocation units \eqn{u} (the terms for
 \code{law = "exact"}, the coded coefficients for the kernels, each with
 its term's concentration) the prior is
 \deqn{r \sim \textrm{Beta}(a_M, b_M), \quad W = r / (1 - r), \quad
-\phi \sim \textrm{Dirichlet}(\alpha_M).}
+\phi \sim \textrm{Dirichlet}(\alpha_M),}
+with \eqn{(a_M, b_M)} given by \code{convention} and \eqn{\alpha_M} by
+\code{concentration}. With \code{convention = "linked"}, the first shape of
+\code{total} must equal the total concentration \eqn{A} of the full model:
+the sum of the concentrations of \code{allocation} for the exact law or
+with \code{concentration = "fixed_total"}, and the sum of the
+concentrations times the numbers of coded coefficients of the terms for
+the kernels with inherited concentrations (checked when
+\code{JAGS_formula()} binds the budget, which then needs the data of all
+terms of the budget).
+
 With the centered design block \eqn{X_t} of a term and its empirical metric
 \eqn{G_t = X_t^\top C X_t / n}, the coefficients in residual-SD units are
 \itemize{
@@ -147,16 +159,22 @@ one budget stop with \code{BayesTools_formula_measure_unavailable}.
 
 \examples{
 budget <- prior_R2(
-  alpha = c(x = 1, f = 1), a = 1, b = 1, law = "exact",
-  convention = "common", concentration = "inherited", sigma = "sigma",
-  contrast = "orthonormal"
+  terms         = c("x", "f"),
+  total         = prior("beta", list(alpha = 1, beta = 1)),
+  allocation    = prior("dirichlet", list(alpha = c(1, 1))),
+  law           = "exact",
+  convention    = "common",
+  concentration = "inherited",
+  sigma         = "sigma",
+  contrast      = "orthonormal"
 )
 budget
 
-# formula prior list of a model 'mu ~ x + f'
+# formula prior list of a model 'mu ~ x + f': the entry name 'R2' names
+# the budget
 formula_prior_list <- list(
   intercept = prior("normal", list(0, 10)),
-  "__R2"    = budget
+  R2        = budget
 )
 
 \dontrun{

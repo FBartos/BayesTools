@@ -395,10 +395,12 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
     }
   }
 
-  # R-squared budgets: their terms get unbound R2 term priors before the
-  # defaults fill the remaining terms (see R/priors-R2.R)
-  R2_budgets <- .bt_R2_formula_budgets(prior_list[[.bt_R2_reserved_name]])
-  prior_list[[.bt_R2_reserved_name]] <- NULL
+  # R-squared budgets (the entries named by their budgets): their terms get
+  # unbound R2 term priors before the defaults fill the remaining terms (see
+  # R/priors-R2.R)
+  R2_entries <- .bt_R2_budget_entries(prior_list)
+  R2_budgets <- .bt_R2_formula_budgets(prior_list[R2_entries], model_terms)
+  prior_list <- prior_list[!R2_entries]
   if(!is.null(R2_budgets)){
     if(length(parsed_random_effects) > 0L){
       .bt_R2_unavailable("R-squared budget priors are unavailable in formulas with random effects.")

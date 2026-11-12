@@ -998,9 +998,13 @@
     prior_name  <- if(is.null(prior_names)) "" else prior_names[[i]]
     prior_value <- prior_list[[i]]
 
-    if(identical(prior_name, .bt_R2_reserved_name)){
-      .bt_R2_formula_budgets(prior_value)
+    # an R-squared budget is an entry named by its budget (see prior_R2())
+    if(is.R2_budget(prior_value)){
       next
+    }
+    if(is.list(prior_value) && !is.prior(prior_value) && length(prior_value) > 0L &&
+       all(vapply(prior_value, is.R2_budget, logical(1)))){
+      .bt_R2_stop("Several R-squared budgets are separate entries of the formula prior list, each named by its budget.")
     }
 
     if(prior_name %in% default_prior_names){

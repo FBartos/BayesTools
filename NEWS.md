@@ -1,6 +1,6 @@
 # development version
 ### Features
-- `prior_R2()` adds R-squared variance-budget priors for formula terms: a Beta prior on the total R-squared allocated to the terms by Dirichlet weights, with exact-allocation, R2D2M2 normal, and R2D2 Laplace coefficient laws, cross-model shape conventions, and separate budgets (e.g., for compulsory covariates), supported in fitting, bridge sampling, prediction, summaries, model averaging, and prior plots
+- `prior_R2()` adds R-squared variance-budget priors for formula terms: a Beta prior (`total`) on the total R-squared allocated to the `terms` by a Dirichlet prior (`allocation`, flat by default), with exact-allocation, R2D2M2 normal, and R2D2 Laplace coefficient laws and cross-model shape conventions. A budget is an entry of a formula prior list whose name names it (e.g., `R2 = prior_R2(...)`), and several entries give separate budgets (e.g., for compulsory covariates); budgets are supported in fitting, bridge sampling, prediction, summaries, model averaging, and prior plots
 
 ### Fixes
 - on Apple silicon, numeric constants in generated JAGS models and the values of compiled hypotheses are exact

@@ -143,7 +143,7 @@ R2_cert_fit <- function(terms, budget, seed){
 
   formula <- if(length(terms)) stats::reformulate(terms) else ~ 1
   formula_priors <- list(intercept = prior("normal", list(0, 100)))
-  if(length(terms)) formula_priors[["__R2"]] <- budget
+  if(length(terms)) formula_priors[["R2"]] <- budget
   arguments <- list(
     model_syntax       = "model{ for(i in 1:N){ y[i] ~ dnorm(mu[i], 1 / pow(sigma, 2)) } }",
     data               = list(y = R2_cert_data$y, N = nrow(R2_cert_data)),
@@ -165,8 +165,9 @@ R2_cert_fit <- function(terms, budget, seed){
 }
 
 R2_cert_budget <- function(alpha, law, a = 1, b = 2, convention = "common"){
-  prior_R2(alpha = alpha, a = if(identical(convention, "linked")) NULL else a, b = b, law = law,
-    convention = convention, concentration = "inherited", sigma = "sigma", contrast = "orthonormal")
+  prior_R2(terms = names(alpha), total = prior("beta", list(if(identical(convention, "linked")) sum(alpha) else a, b)),
+    allocation = if(length(alpha) > 1L) prior("dirichlet", list(alpha = unname(alpha))),
+    law = law, convention = convention, concentration = "inherited", sigma = "sigma", contrast = "orthonormal")
 }
 
 R2_cert_cases <- list(
