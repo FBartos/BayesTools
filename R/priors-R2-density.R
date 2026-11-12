@@ -131,14 +131,24 @@
 
 # log P(B <= x), or log P(B > x), of B ~ Beta(p, q) at x = exp(log_x) <= 1 for a
 # vector of log_x. Below exp(-200) the lower tail is x^p / (p B(p, q)) up to a
-# relative error of order x, which stays finite where x itself underflows.
+# relative error of order |q - 1| x (the next term of its series), which stays
+# finite where x itself underflows; it is used only where that error is below
+# exp(-30). Elsewhere x is evaluated directly while it is a normal double, and
+# beyond that the probability is unavailable.
 .bt_R2_density_log_pbeta <- function(log_x, p, q, lower.tail = TRUE){
 
-  small <- log_x < -200
+  small  <- log_x < -200
+  series <- small & (q == 1 | log(abs(q - 1)) + log_x < -30)
+  direct <- !series & log_x >= log(.Machine$double.xmin)
+  if(any(!series & !direct)){
+    .bt_R2_density_stop_unavailable(paste0(
+      "The R-squared functional distribution needs a Beta(", format(p), ", ", format(q), ") probability below ",
+      "the double range. Use less extreme shapes or evaluate the distribution by simulation."))
+  }
   out   <- numeric(length(log_x))
-  out[!small] <- stats::pbeta(exp(log_x[!small]), p, q, lower.tail = lower.tail, log.p = TRUE)
-  lower       <- p * log_x[small] - log(p) - lbeta(p, q)
-  out[small]  <- if(lower.tail) lower else log1p(-exp(lower))
+  out[direct] <- stats::pbeta(exp(log_x[direct]), p, q, lower.tail = lower.tail, log.p = TRUE)
+  lower       <- p * log_x[series] - log(p) - lbeta(p, q)
+  out[series] <- if(lower.tail) lower else log1p(-exp(lower))
   out
 }
 
@@ -151,16 +161,22 @@
   out    <- rep(-Inf, length(y))
   finite <- is.finite(y) & y > 0
   ly     <- log(y[finite])
-  l1p    <- ifelse(y[finite] > 1, 2 * ly + log1p(1 / y[finite]^2), log1p(y[finite]^2))
+  far    <- y[finite] > 1
+  # log r and log(1 - r), r = y^2 / (1 + y^2), without differences of the large
+  # terms 2 log(y) and log(1 + y^2) for y > 1
+  lfar   <- log1p(1 / y[finite]^2)
+  log_r  <- ifelse(far, -lfar, 2 * ly - log1p(y[finite]^2))
+  log_1r <- ifelse(far, -(2 * ly + lfar), -log1p(y[finite]^2))
   if(what == "pdf"){
-    out[finite] <- (2 * base$a - 1) * ly - (base$a + base$b) * l1p - lbeta(base$a, base$b)
+    # y^(2a - 1) (1 + y^2)^-(a + b) = y^-(2b + 1) (1 + y^-2)^-(a + b) for y > 1
+    out[finite] <- ifelse(far, -(2 * base$b + 1) * ly - (base$a + base$b) * lfar,
+                          (2 * base$a - 1) * ly + (base$a + base$b) * log_1r) - lbeta(base$a, base$b)
   }else if(what == "central"){
-    out[finite] <- .bt_R2_density_log_pbeta(2 * ly - l1p, base$a, base$b)
+    out[finite] <- .bt_R2_density_log_pbeta(log_r, base$a, base$b)
     out[y == Inf] <- 0
   }else{
-    near <- y[finite] <= 1
-    out[finite] <- log(1 / 2) + ifelse(near, .bt_R2_density_log_pbeta(2 * ly - l1p, base$a, base$b, lower.tail = FALSE),
-                                       .bt_R2_density_log_pbeta(-l1p, base$b, base$a))
+    out[finite] <- log(1 / 2) + ifelse(!far, .bt_R2_density_log_pbeta(log_r, base$a, base$b, lower.tail = FALSE),
+                                       .bt_R2_density_log_pbeta(log_1r, base$b, base$a))
   }
   out
 }
@@ -222,7 +238,9 @@
   pieces <- vapply(keep, function(i){
     piece <- stats::integrate(function(t) exp(log_f(t) - log_ref[i]), lo[i], hi[i], rel.tol = tolerance,
                               abs.tol = 0, subdivisions = 200L, stop.on.error = FALSE)
-    if(piece$message != "OK" || !is.finite(piece$value)){
+    # the integrand reaches 1 at a probe of the piece, so a zero integral is
+    # a feature that the quadrature missed, not a negligible piece
+    if(piece$message != "OK" || !is.finite(piece$value) || piece$value <= 0){
       .bt_R2_density_stop_unavailable(paste0(
         "The R-squared functional density was rejected by diagnostics: the integration over the ",
         level, " reported '", piece$message, "'. Use less extreme shapes or evaluate the distribution by simulation."))
@@ -287,16 +305,25 @@
   if(base$type == "exact"){
     return(.bt_R2_density_exact_base(base, y, what))
   }
-  log_norm <- lbeta(base$a, base$b)
   jacobian <- if(what == "pdf") -1 / 2 else 0
   log_f <- function(tau){
-    (base$a + jacobian) * tau - (base$a + base$b) * .bt_R2_density_softplus(tau) - log_norm +
+    .bt_R2_density_log_betaprime_at(tau, base$a, base$b) + jacobian * tau +
       .bt_R2_density_kernel(base$type, y * exp(-tau / 2), what)
   }
   # Beyond z_cut the kernel factor is below exp(-60) of its value at 0: the
   # integrand is dead for tau < 2 * log(y / z_cut).
   z_cut <- if(base$type == "normal") 11 else 42
-  .bt_R2_density_integrate(log_f, -Inf, Inf, c(log(base$a / base$b), 2 * log(y), 2 * log(y / z_cut)),
+  # tau = log(W) has its mode near log(a / b) and the standard deviation
+  # sqrt(trigamma(a) + trigamma(b)); a concentrated total (large shapes) makes
+  # that width much smaller than 1, the scale at which the break points
+  # resolve features, so the integral runs over the standardized
+  # t = (tau - centre) / width, with breaks at the bulk of the signal
+  centre <- log(base$a / base$b)
+  width  <- min(1, sqrt(trigamma(base$a) + trigamma(base$b)))
+  log_f_t <- function(t) log_f(centre + width * t) + log(width)
+  # (a ladder of breaks around the bulk keeps every piece next to it short)
+  .bt_R2_density_integrate(log_f_t, -Inf, Inf,
+                           c(0, c(-1, 1) %o% c(1.5, 3, 6, 12, 24), (c(2 * log(y), 2 * log(y / z_cut)) - centre) / width),
                            tolerance, "log signal-to-noise ratio")
 }
 
@@ -387,7 +414,32 @@
 
 # log density of tau = log(W), W ~ BetaPrime(a, b).
 .bt_R2_density_log_betaprime_at <- function(tau, a, b){
-  a * tau - (a + b) * .bt_R2_density_softplus(tau) - lbeta(a, b)
+
+  # centred at the mode tau0 = log(a / b): the log density at the mode plus
+  # a (tau - tau0) - (a + b) (softplus(tau) - softplus(tau0)), whose
+  # difference is log1p(p0 expm1(tau - tau0)) with p0 = a / (a + b) near the
+  # mode, so that large shapes keep the relative precision of the density
+  tau0 <- log(a / b)
+  dt <- tau - tau0
+  near <- abs(dt) <= 1
+  # (keeps the shape of 'tau': vectors and matrices of nodes)
+  difference <- dt
+  difference[near] <- log1p(a / (a + b) * expm1(dt[near]))
+  difference[!near] <- .bt_R2_density_softplus(tau[!near]) - .bt_R2_density_softplus(tau0)
+  .bt_R2_density_log_betaprime_mode(a, b) + a * dt - (a + b) * difference
+}
+
+# The log density of log(W), W ~ BetaPrime(a, b), at its mode log(a / b):
+# a log(a) + b log(b) - (a + b) log(a + b) - lbeta(a, b), which for large
+# shapes is written with the Stirling corrections of the log-gamma functions
+# (the direct form cancels terms of order a + b).
+.bt_R2_density_log_betaprime_mode <- function(a, b){
+
+  if(min(a, b) <= 10){
+    return(a * log(a / (a + b)) + b * log(b / (a + b)) - lbeta(a, b))
+  }
+  stirling <- function(x) 1 / (12 * x) - 1 / (360 * x^3) + 1 / (1260 * x^5)
+  (log(a) + log(b) - log(a + b) - log(2 * pi)) / 2 - stirling(a) - stirling(b) + stirling(a + b)
 }
 
 # Row-wise log-sum-exp of a matrix (-Inf for rows without finite entries).

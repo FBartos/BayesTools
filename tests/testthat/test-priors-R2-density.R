@@ -570,3 +570,31 @@ test_that("tails and log densities stay accurate where they underflow on the pro
     class = "BayesTools_R2_density_unavailable")
   expect_equal(.bt_R2_functional_pdf(.bt_R2_functional_spec("exact", a = 0.25, b = 2, scale = 1e100), 0), Inf)
 })
+
+test_that("extreme shapes keep the exact tail, the series range and concentrated kernels", {
+
+  # exact law, one unit and one column, x > 1: log f(x) = -(2b + 1) log x -
+  # (a + b) log1p(x^-2) - lbeta(a, b), with lbeta(a, 2) = -log(a (a + 1))
+  spec <- .bt_R2_functional_spec("exact", a = 1e16, b = 2, scale = 1)
+  expect_equal(.bt_R2_functional_log_pdf(spec, 1e8),
+    -5 * log(1e8) - (1e16 + 2) * log1p(1e-16) + log(1e16) + log(1e16 + 1), tolerance = 1e-10)
+  # the leading term of the Beta series needs a small (q - 1) x: with a
+  # Beta(1, 1e100) total, P(X > x) = (1 - t)^q / 2 with t = x^2 / (1 + x^2)
+  spec <- .bt_R2_functional_spec("exact", a = 1, b = 1e100, scale = 1)
+  expect_equal(.bt_R2_functional_cdf(spec, 1e-50, lower.tail = FALSE), exp(-1) / 2, tolerance = 1e-10)
+  expect_equal(.bt_R2_functional_cdf(spec, -1e-50), exp(-1) / 2, tolerance = 1e-10)
+  # a total concentrated at R2 = 1/2: the normal kernel is N(0, 1) up to
+  # O(1 / a) (reference by independent high-precision integration)
+  spec <- .bt_R2_functional_spec("normal", a = 1e9, b = 1e9, scale = 1)
+  expect_equal(.bt_R2_functional_pdf(spec, 1), 0.241970724398158, tolerance = 1e-9)
+  expect_equal(.bt_R2_functional_cdf(spec, 1), stats::pnorm(1), tolerance = 1e-8)
+  spec <- .bt_R2_functional_spec("laplace", a = 1e9, b = 1e9, scale = 1)
+  expect_equal(.bt_R2_functional_pdf(spec, 1), sqrt(2) / 2 * exp(-sqrt(2)), tolerance = 1e-7)
+  # the log-BetaPrime density at its mode keeps its precision for large shapes
+  # (the Stirling form above 10 equals the direct form where that is exact,
+  # and for a = b it is log(a / (4 pi)) / 2 - 1 / (8 a) to O(a^-3))
+  expect_equal(.bt_R2_density_log_betaprime_mode(50, 70), 50 * log(50 / 120) + 70 * log(70 / 120) - lbeta(50, 70),
+    tolerance = 1e-12)
+  expect_equal(.bt_R2_density_log_betaprime_mode(1e9, 1e9), log(1e9 / (4 * pi)) / 2 - 1 / 8e9, tolerance = 1e-14)
+  expect_equal(.bt_R2_density_log_betaprime_mode(3, 4), 3 * log(3 / 7) + 4 * log(4 / 7) - lbeta(3, 4))
+})
