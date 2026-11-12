@@ -299,6 +299,9 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
       memo             = .bt_prior_density_memo(model),
       formula_design   = random_designs
     )
+    # the coefficients of R-squared budget terms: their own law, rescaled (with
+    # the atom of a gate), in place of the linear-combination grid
+    prior_densities <- .bt_R2_scaled_prior_densities(prior_densities, priors, formula_scale, condition_event)
     out <- .bt_meta_set(out, "prior_densities", prior_densities)
     out <- .as_mixed_posteriors_mark_random_sd_densities(out, prior_densities, formula_scale)
     out <- .bt_meta_set(out, "prior_context", .prior_density_build_context(

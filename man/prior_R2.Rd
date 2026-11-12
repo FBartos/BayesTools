@@ -165,10 +165,21 @@ The R2 term priors that \code{JAGS_formula()} binds support the prior
 methods (\code{rng()}, \code{mpdf()}, \code{mcdf()}, \code{mquant()},
 \code{mean()}, \code{var()}, \code{plot()}) of single coefficients, and of
 factor levels under the exact law, by deterministic quadrature over the
-budget. The prior densities of combinations of several parameters of one
-budget, ordinates at a point (Savage-Dickey ratios and point hypotheses),
-level marginals of the kernels with three or more levels, and levels with
-unequal marginals (unequal cell counts) are unavailable.
+budget. The levels of a factor term are also catalog quantities
+(\code{\link[=parameter_catalog]{parameter_catalog()}}) with the prior law of each level (any level under
+the exact law, also with unequal cell counts; single coded coefficients
+under the kernels), which \code{parameter_prior_density()} and
+\code{hypothesis_BF()} use. On the original scale of declared predictor
+scales (\code{transform_scaled = TRUE}), a coefficient that the scale
+transformation multiplies by a constant has its rescaled law. The prior
+densities of combinations of several parameters of one budget (an
+original-scale coefficient that combines several fitted coefficients
+among them), ordinates at a point (Savage-Dickey ratios and point
+hypotheses of coefficients) and the common level marginal of the term
+methods for the kernels with three or more levels or for unequal marginals
+are unavailable; point hypotheses at a bound of the support of a share, a
+total or an inclusion rate are refused (the posterior density of the draws
+has no exact ordinate there).
 
 With \code{inclusion} gates or a spike-and-slab \code{total}, one fit
 averages over the models of the budget. A configuration \eqn{S} of open

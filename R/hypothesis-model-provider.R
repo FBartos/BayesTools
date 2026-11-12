@@ -924,6 +924,11 @@ hypothesis_provider.BayesTools_fit <- function(object, ...){
         conditional      = conditional,
         transform_scaled = transform_scaled
       )
+      # a coefficient of an R-squared budget term on the original scale of
+      # its predictor: a constant multiple of the fitted catalog quantity
+      if(isTRUE(transform_scaled)){
+        values <- .bt_R2_original_scale_mixed_posterior(fit, selected[["entry"]][["selection"]], values, conditional)
+      }
       attr(values, "parameter") <- parameter
       out <- list(values)
       names(out) <- parameter

@@ -308,18 +308,32 @@ test_that("conditioning on gated quantities and their scales is explicit", {
         inclusion = prior("beta", list(1, 1))))),
     chains = 1, adapt = 200, burnin = 200, sample = 1000, seed = 8, silent = TRUE)
 
-  # a gated coefficient is tested on the fitted scale of its predictor
-  expect_error(hypothesis_BF_model(fit, "x > 0.1", transform_scaled = TRUE), "Test it with 'transform_scaled = FALSE'", fixed = TRUE)
+  # a gated coefficient on the original scale of its predictor: its fitted
+  # law and draws rescaled, the atom of its gate at zero
+  scale <- 1 / stats::sd(data$x)
+  post <- as.matrix(.fit_to_posterior(fit))
+  original <- hypothesis_BF_model(fit, "x > 0.1", transform_scaled = TRUE)
+  prior_prob <- mccdf(attr(fit, "prior_list")$mu_x, 0.1 / scale)
+  post_prob <- mean(post[, "mu_x"] * scale > 0.1)
+  expect_equal(as.numeric(original$BF), (post_prob / (1 - post_prob)) / (prior_prob / (1 - prior_prob)), tolerance = 1e-4)
   expect_s3_class(hypothesis_BF_model(fit, "x > 0.1"), "data.frame")
 
-  # the prior side of an event across independent priors; several terms of
-  # one budget are dependent and refused
+  # the prior side of an event across independent priors; the terms of one
+  # budget form one joint family with their exact joint law
   priors <- attr(fit, "prior_list")
   open <- .bt_R2_gate_marginals(priors$mu_R2$gates, priors$mu_R2$terms)$open[["x"]]
   options <- .condition_event_model_options(priors, .condition_event(priors, c("mu_x", "theta"), "OR"))
   expect_equal(options$event_probability, 1 - (1 - open) * 0.5)
-  expect_error(as_mixed_posteriors(fit, parameters = c("mu_x", "mu_z"), conditional = c("mu_x", "mu_z")),
-    class = "BayesTools_R2_gated_unavailable")
+  # shared Beta(1, 1) rate, three terms, truncated under the spike 0.5:
+  # P(x and z open) = 0.5 * B(3, 1) / B(1, 1) / (1 - B(1, 4) / B(1, 1))
+  both <- .condition_event_model_options(priors, .condition_event(priors, c("mu_x", "mu_z"), "AND"))
+  expect_equal(both$event_probability, 0.5 * (1 / 3) / (3 / 4), tolerance = 1e-12)
+  joint <- as_mixed_posteriors(fit, parameters = c("mu_x", "mu_z"), conditional = c("mu_x", "mu_z"))
+  expect_equal(length(joint$mu_x), sum(post[, "mu_R2_indicator"] * post[, "mu_R2_gate[1]"] * post[, "mu_R2_gate[2]"]))
+  # an unlabelled term of the budget follows the event: given x open, z is
+  # open with probability B(3, 1) / B(2, 1) = 2/3 (the truncation cancels)
+  given_x <- as_mixed_posteriors(fit, parameters = c("mu_x", "mu_z"), conditional = "mu_x")$mu_z
+  expect_equal(.bt_meta_get(given_x, "prior_density")$points$p, 1 / 3, tolerance = 1e-10)
 
   # mixed posteriors carry the prior density with the atom (or the continuous
   # part when the quantity's own inclusion is conditioned)

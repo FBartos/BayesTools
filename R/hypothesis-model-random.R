@@ -623,17 +623,19 @@
     return(NULL)
   }
   prior_list <- attr(fit, "prior_list", exact = TRUE)
-  # a coefficient of a gated R-squared budget term is tested on the scale of
-  # its catalog law: the fitted scale of the predictors
-  R2_term <- .bt_R2_gated_term_owner(prior_list, key[["dependencies"]])
+  # a coefficient (or factor level) of an R-squared budget term tested on its
+  # catalog law: on the original scale of the predictors when the scale
+  # transformation multiplies it by a constant (its law and draws are
+  # rescaled, with the atom of a gate at zero), refused when the original
+  # coefficient combines several fitted coefficients of the budget
+  R2_term <- .bt_R2_term_owner(prior_list, key[["dependencies"]])
   if (!is.null(R2_term) && isTRUE(plan[["transform_scaled"]]) &&
-      !identical(JAGS_formula_coefficient_route(fit, quantity[["formula_parameter"]], key[["dependencies"]][[1L]])[["type"]],
-                 "identity")) {
+      is.null(.bt_R2_original_scale_factor(fit, prior_list[[R2_term]][["parameter"]], key[["dependencies"]]))) {
     return(.hypothesis_model_refusal(
       paste0(
-        "The coefficient '", selected[["spec"]][["label"]], "' of a gated R-squared budget term is defined on ",
-        "the fitted scale of the predictors: the scale transformation changes it, so it has no original-scale ",
-        "counterpart with the atom of its gate. Test it with 'transform_scaled = FALSE'."
+        "The original-scale coefficient '", selected[["spec"]][["label"]], "' combines several fitted ",
+        "coefficients of an R-squared budget, which are dependent: its prior law is unavailable. ",
+        "Test it with 'transform_scaled = FALSE'."
       ),
       "target"
     ))

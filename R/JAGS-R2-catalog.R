@@ -668,3 +668,170 @@
     event_rule  = "AND"
   )
 }
+
+# The factor by which the scale transformation of the predictors multiplies
+# the coefficients 'dependencies' of an R2 term of the formula parameter
+# 'formula_parameter': 1 when it leaves them unchanged, the weight of a pure
+# rescaling of a single coefficient, and NULL when an original-scale
+# coefficient combines several fitted coefficients.
+.bt_R2_original_scale_factor <- function(fit, formula_parameter, dependencies){
+
+  if(is.null(attr(fit, "formula_scale", exact = TRUE)[[formula_parameter]])){
+    return(1)
+  }
+  routes <- lapply(dependencies, function(dependency){
+    JAGS_formula_coefficient_route(fit, formula_parameter, dependency)
+  })
+  types <- vapply(routes, function(route) route[["type"]], character(1))
+  if(all(types == "identity")){
+    return(1)
+  }
+  # every coefficient multiplied by its own constant: a common constant
+  # multiplies every combination of them
+  factors <- vapply(seq_along(dependencies), function(i){
+    if(identical(types[[i]], "identity")) return(1)
+    weights <- routes[[i]][["weights"]]
+    if(identical(types[[i]], "affine") && length(weights) == 1L && identical(names(weights), dependencies[[i]]) &&
+       is.finite(weights) && weights != 0){
+      return(unname(weights))
+    }
+    NA_real_
+  }, numeric(1))
+  if(anyNA(factors) || max(abs(factors - factors[[1L]])) > 1e-12 * abs(factors[[1L]])){
+    return(NULL)
+  }
+  factors[[1L]]
+}
+
+# The mixed posterior of a coefficient of an R2 term on the original scale of
+# its predictor (see .bt_R2_original_scale_factor()): the draws multiplied by
+# the factor and the prior density of the rescaled catalog law (the atom of a
+# gate stays at zero). Other quantities are returned unchanged.
+.bt_R2_original_scale_mixed_posterior <- function(fit, selection, values, conditional){
+
+  quantity <- selection$quantities[1L, , drop = FALSE]
+  key <- quantity$extraction_key[[1L]]
+  prior_list <- attr(fit, "prior_list", exact = TRUE)
+  if(!key$type %in% c("coordinate", "factor_level")){
+    return(values)
+  }
+  owner <- .bt_R2_term_owner(prior_list, key$dependencies)
+  if(is.null(owner)){
+    return(values)
+  }
+  factor <- .bt_R2_original_scale_factor(fit, prior_list[[owner]]$parameter, key$dependencies)
+  if(is.null(factor)){
+    .bt_R2_unavailable(paste0("The original-scale coefficient '", quantity$canonical_name,
+      "' combines several fitted coefficients of an R-squared budget; its prior law is unavailable."),
+      class = "BayesTools_R2_density_unavailable")
+  }
+  if(factor == 1){
+    return(values)
+  }
+  scaled <- selection
+  weights <- if(is.null(key$weights)) rep(1, length(key$dependencies)) else key$weights
+  scaled$quantities$extraction_key[[1L]]$weights <- weights * factor
+  density <- .bt_parameter_prior_density_quantity_law(fit, scaled,
+    n_grid = .prior_linear_density_default_grid(), tail_prob = .prior_linear_density_tail_prob(),
+    conditional = conditional)
+  # the draws are multiplied by the factor: the metadata that describe values
+  # (support, atoms, prior density) are rescaled with them, the others kept
+  meta <- .bt_meta_container(values)
+  values[] <- as.numeric(values) * factor
+  values <- .bt_meta_refresh(values)
+  support <- meta$support
+  if(!is.null(support)){
+    support$bounds <- sort(support$bounds * factor)
+    if(length(support$points)) support$points <- sort(support$points * factor)
+  }
+  atoms <- meta$atoms
+  if(!is.null(atoms) && length(atoms$locations)){
+    atoms$locations[] <- atoms$locations * factor
+  }
+
+  .bt_meta_assign(values, list(support = support, atoms = atoms, prior_density = density))
+}
+
+# The original-scale factor of the coefficient 'parameter' of the R2 term
+# 'prior' from the declared predictor scales 'formula_scale' (1 when the
+# scale transformation leaves it unchanged, the weight of a pure rescaling,
+# NULL for a combination of several fitted coefficients).
+.bt_R2_formula_scale_factor <- function(formula_scale, prior, parameter){
+
+  prefix <- prior$parameter
+  scale <- formula_scale[[prefix]]
+  spec <- if(!is.null(scale)) attr(scale, "unscale_design", exact = TRUE)
+  if(is.null(spec)){
+    return(1)
+  }
+  transform <- .bt_formula_coefficient_transform(names(spec$multipliers), scale, prefix,
+    log_intercept = isTRUE(attr(scale, "log_intercept", exact = TRUE)))
+  recipe <- transform$prior_recipes[[parameter]]
+  if(is.null(recipe) || !identical(recipe$type, "raw_affine")){
+    return(NULL)
+  }
+  weights <- recipe$weights[recipe$weights != 0]
+  if(length(weights) == 1L && identical(names(weights), parameter) && is.finite(weights)){
+    return(unname(weights))
+  }
+  NULL
+}
+
+# The law of a coefficient multiplied by 'factor': its R2 components restricted
+# to the multiplied combination, its atom at zero unchanged.
+.bt_R2_scale_law <- function(law, factor){
+
+  if(factor == 1){
+    return(law)
+  }
+  scale_part <- function(part){
+    if(is.prior.R2(part)){
+      part$functional_L <- factor * (if(is.null(part$functional_L)) 1 else part$functional_L)
+      class(part) <- c("prior", "prior.simple", "prior.R2")
+    }
+    part
+  }
+  if(!is.prior.mixture(law)){
+    return(scale_part(law))
+  }
+  parts <- lapply(unclass(law), scale_part)
+  weights <- vapply(parts, function(part) part$prior_weights, numeric(1))
+  .bt_R2_mixture(parts, weights, vapply(parts, is.prior.point, logical(1)))
+}
+
+# The transformed prior densities of as_mixed_posteriors() with the scalar
+# coefficients of R2 terms replaced by their own laws on the original scale
+# (given the condition event), when the scale transformation rescales them;
+# the other entries (and a coefficient combined with others) are kept.
+.bt_R2_scaled_prior_densities <- function(prior_densities, prior_list, formula_scale, condition_event){
+
+  for(parameter in names(prior_densities)){
+    prior <- prior_list[[parameter]]
+    if(!is.prior.R2(prior) || !isTRUE(prior$bound) || prior$d != 1L || is.prior.factor(prior)){
+      next
+    }
+    factor <- .bt_R2_formula_scale_factor(formula_scale, prior, parameter)
+    if(is.null(factor)){
+      next
+    }
+    density <- tryCatch({
+      law <- .bt_R2_conditioned_law(prior_list, condition_event, parameter)
+      if(is.null(law)){
+        key <- list(type = "coordinate", dependencies = parameter)
+        law <- if(.bt_R2_term_is_gated(prior)){
+          .bt_R2_gated_coefficient_law(prior_list, key)
+        }else{
+          .bt_R2_functional_law(prior, parameter, key)
+        }
+      }
+      law <- .bt_R2_scale_law(law, factor)
+      .bt_parameter_prior_density_scalar(.bt_R2_grid_law(law), n_grid = .prior_linear_density_default_grid(),
+        tail_prob = .prior_linear_density_tail_prob())
+    }, BayesTools_R2_density_unavailable = function(condition) NULL)
+    if(!is.null(density)){
+      prior_densities[[parameter]] <- density
+    }
+  }
+
+  prior_densities
+}
