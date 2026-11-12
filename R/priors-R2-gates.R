@@ -75,9 +75,16 @@
   }
   if(identical(law$type, "shared")){
     j <- (t - 1):(K - 1)
-    return(sum(log1p(-law$a / (law$a + law$b + j))))
+    return(sum(.bt_R2_log_fraction(law$b + j, law$a)))
   }
   sum(log1p(-law$pi[t:K]))
+}
+
+# log(x / (x + y)) for x, y > 0 without cancellation: the difference of the
+# logs when the fraction is small, log1p() of the complement when it is near
+# one (both stay accurate for very unequal x and y).
+.bt_R2_log_fraction <- function(x, y){
+  ifelse(x < y, log(x) - log(x + y), log1p(-y / (x + y)))
 }
 
 # The probability of a nonempty configuration of the gates before the spike,
@@ -174,7 +181,7 @@
   by_s <- vapply(0:K, function(count){
     i <- seq_len(count) - 1
     j <- seq_len(K - count) - 1
-    sum(log1p(-b / (a + b + i))) + sum(log1p(-(a + count) / (a + b + count + j)))
+    sum(.bt_R2_log_fraction(a + i, b)) + sum(.bt_R2_log_fraction(b + j, a + count))
   }, numeric(1))
 
   by_s[s + 1L]
@@ -959,9 +966,11 @@ is.prior.R2_budget <- function(x){
     return(.bt_R2_functional_quantile(spec, p))
   }
   p <- as.numeric(p)
-  below <- .bt_R2_spec_cdf(spec, -.Machine$double.xmin)
-  at <- below + spec$atom
+  # the continuous part is symmetric about zero (no evaluation near zero,
+  # which a large scale would underflow)
   W <- sum(spec$weights)
+  below <- W / 2
+  at <- below + spec$atom
   vapply(p, function(prob){
     if(is.na(prob)) return(NA_real_)
     if(prob < 0 || prob > 1) .bt_R2_stop("The R-squared functional quantile needs probabilities in [0, 1].")

@@ -597,4 +597,14 @@ test_that("extreme shapes keep the exact tail, the series range and concentrated
     tolerance = 1e-12)
   expect_equal(.bt_R2_density_log_betaprime_mode(1e9, 1e9), log(1e9 / (4 * pi)) / 2 - 1 / 8e9, tolerance = 1e-14)
   expect_equal(.bt_R2_density_log_betaprime_mode(3, 4), 3 * log(3 / 7) + 4 * log(4 / 7) - lbeta(3, 4))
+  # very unequal shapes: a = 1, b = 1e20 gives log((b / (a + b))^b / (a + b)) - lbeta(1, b) = -1 + log(b) - ...
+  expect_equal(.bt_R2_density_log_betaprime_mode(1, 1e20), -log1p(1e20) - 1e20 * log1p(1e-20) + log(1e20),
+    tolerance = 1e-12)
+  # (reference by high-precision integration of the normal kernel law)
+  spec <- .bt_R2_functional_spec("normal", a = 1, b = 1e20, scale = 1)
+  expect_equal(.bt_R2_functional_cdf(spec, 1e-11, lower.tail = FALSE), 0.434061722697292438, tolerance = 1e-8)
+  # y^2 overflows: (a + b) y^-2 = 0.01 still enters the log density
+  spec <- .bt_R2_functional_spec("exact", a = 1e308, b = 2, scale = 1)
+  expect_equal(.bt_R2_functional_log_pdf(spec, 1e155), -5 * log(1e155) - 1e308 / 1e155 / 1e155 + 2 * log(1e308),
+    tolerance = 1e-12)
 })

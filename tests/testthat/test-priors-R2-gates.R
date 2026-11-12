@@ -636,6 +636,15 @@ test_that("gate probabilities stay exact for tiny probabilities and huge rate sh
   core <- bind(prior_R2(total = .R2_spike(0.5), inclusion = prior("beta", list(1e16, 1e16))), ~ x)
   expect_equal(.bt_R2_gate_configuration_probability(utils::modifyList(core$gates, list(truncated = FALSE)),
     matrix(FALSE, 1, 1)), 0.5)
+  # a shared rate near zero, Beta(1, 1e20): each singleton of two gates has
+  # probability about 1e-20, and 1/2 under the slab of a spiked total
+  gates <- list(K = 2L, law = list(type = "shared", a = 1, b = 1e20), truncated = FALSE)
+  singleton <- .bt_R2_gate_configuration_probability(gates, matrix(c(TRUE, FALSE), 1L))
+  expect_equal(singleton / 1e-20, 1, tolerance = 1e-12)
+  core <- bind(prior_R2(total = .R2_spike(0.5), inclusion = prior("beta", list(1, 1e20))))
+  expect_equal(unname(.bt_R2_gate_marginals(core$gates, core$terms)$open), c(0.25, 0.25), tolerance = 1e-12)
+  rate <- .bt_R2_core_rate_law(core)
+  expect_true(all(is.finite(vapply(rate, function(component) component$prior_weights, numeric(1)))))
   # the product form equals the beta-binomial law at ordinary shapes
   gates <- list(K = 4L, law = list(type = "shared", a = 2, b = 3), truncated = FALSE)
   open <- as.matrix(expand.grid(rep(list(c(FALSE, TRUE)), 4)))
@@ -655,15 +664,22 @@ test_that("gated totals and coefficients keep their quantiles near zero and thei
   # one gate with probability 1/2 and a Beta(0.01, 1) total: F(r) = 1/2 + r^0.01 / 2
   priors <- bind(prior_R2(total = prior("beta", list(0.01, 1)), inclusion = prior("spike", list(0.5)),
     model = R2_model(sigma = 1)))
-  expect_equal(mquant(priors$mu_R2, 0.75), 2^-100, tolerance = 1e-10)
+  expect_equal(log(mquant(priors$mu_R2, 0.75)), -100 * log(2), tolerance = 1e-10)
   # the coefficient (unit design variance): P(X <= q) = 3/4 + q^0.02 / 4 for small q > 0
   q <- mquant(priors$mu_x, 0.8)
-  expect_equal(q, 0.2^50, tolerance = 1e-8)
+  expect_equal(log(q), 50 * log(0.2), tolerance = 1e-8)
   expect_equal(mcdf(priors$mu_x, q), 0.8, tolerance = 1e-10)
-  expect_equal(mquant(priors$mu_x, 0.2), -0.2^50, tolerance = 1e-8)
+  expect_equal(log(-mquant(priors$mu_x, 0.2)), 50 * log(0.2), tolerance = 1e-8)
   # a gated term beside an ungated term leaves the total a Beta(1e9, 2)
   priors <- bind(prior_R2(total = prior("beta", list(1e9, 2)), inclusion = list(z = prior("spike", list(0.5)))), ~ x + z)
-  expect_equal(var(priors$mu_R2), 1e9 * 2 / ((1e9 + 2)^2 * (1e9 + 3)), tolerance = 1e-10)
+  expect_gt(var(priors$mu_R2), 0)
+  expect_equal(var(priors$mu_R2) / (1e9 * 2 / ((1e9 + 2)^2 * (1e9 + 3))), 1, tolerance = 1e-8)
+  # a coefficient scale of 1e20 (design values of 1e-20): Beta(1, 1) total,
+  # P(X <= q) = 3/4 + (q^2 / (1 + q^2)) / 4 for q > 0 with unit sigma
+  huge <- JAGS_formula(~ x, "mu", data.frame(x = rep(c(-1e-20, 1e-20), 8)),
+    list(intercept = prior("normal", list(0, 1)), R2 = prior_R2(inclusion = prior("spike", list(0.5)),
+      model = R2_model(sigma = 1))))$prior_list
+  expect_equal(mquant(huge$mu_x, 0.8), 1e20 * sqrt(0.2 / 0.8), tolerance = 1e-8)
   # one gate with probability 1/4 and a Beta(2, 3) total (mean 0.4, variance
   # 0.04): 0.25 * 0.04 + 0.25 * 0.75 * 0.4^2
   expect_equal(var(bind(prior_R2(total = prior("beta", list(2, 3)), inclusion = prior("spike", list(0.25))))$mu_R2),
@@ -757,12 +773,42 @@ test_that("mixed posteriors keep the atoms of gated coefficients, budget inclusi
                                             list(fit = null_fit, marglik = bridgesampling_object(-50), prior_weights = 1)),
                           parameters = "mu_x", is_null_list = list(mu_x = c(FALSE, TRUE)), seed = 1, n_samples = 4000)
   # (equal marginal likelihoods: each model has posterior probability 1/2;
-  # the gated model contributes its closed draws among the mixed draws)
+  # the gated model contributes the closed frequency of its original draws,
+  # also when the mixture allocates it no draw)
   atoms <- .posterior_atoms_get(mixed$mu_x)
-  model <- .bt_meta_get(mixed$mu_x, "component")
   expect_true(all(atoms$locations == 0))
-  expect_equal(sum(atoms$mass), 0.5 + 0.5 * mean(mixed$mu_x[model == 1] == 0))
-  expect_true(abs(mean(mixed$mu_x[model == 1] == 0) - closed_x) < 0.05)
+  expect_equal(sum(atoms$mass), 0.5 + 0.5 * closed_x)
+  single <- mix_posteriors(model_list = list(list(fit = fit, marglik = bridgesampling_object(-50), prior_weights = 1),
+                                             list(fit = null_fit, marglik = bridgesampling_object(-50), prior_weights = 1)),
+                           parameters = "mu_x", is_null_list = list(mu_x = c(FALSE, TRUE)), seed = 1, n_samples = 1)
+  expect_equal(sum(.posterior_atoms_get(single$mu_x)$mass), 0.5 + 0.5 * closed_x)
+})
+
+test_that("formula atoms resolve the scale that multiplies gated R2 coefficients", {
+
+  skip_if_not_installed("rjags")
+  skip_if_not_installed("runjags")
+  set.seed(12)
+  data <- data.frame(x = stats::rnorm(40))
+  data$y <- 5 + 0.3 * data$x + stats::rnorm(40)
+  # the slope is s times the gated R2 coefficient, with s zero in one
+  # component of its mixture: the prediction at x = 1 is the intercept 5
+  # whenever the gate is closed or s is zero
+  fit <- JAGS_fit(
+    model_syntax = "model{ for(i in 1:N){ y[i] ~ dnorm(mu[i], 1) } }",
+    data = list(y = data$y, N = nrow(data)),
+    prior_list = list(s = prior_mixture(list(prior("spike", list(0)), prior("normal", list(1, 0.2), list(0, Inf))),
+                                        is_null = c(TRUE, FALSE))),
+    formula_list = list(mu = ~ x), formula_data_list = list(mu = data),
+    formula_prior_list = list(mu = list(intercept = prior("spike", list(5)),
+      R2 = prior_R2(inclusion = prior("spike", list(0.5)), model = R2_model(sigma = "s")))),
+    chains = 1, adapt = 200, burnin = 200, sample = 1000, seed = 12, silent = TRUE)
+  post <- as.matrix(.fit_to_posterior(fit))
+  samples <- as_mixed_posteriors(fit, c("mu_intercept", "mu_x", "s"))
+  row <- marginal_posterior(samples, "mu_intercept", formula = ~ 1 + x, at = list(x = 1), prior_samples = TRUE)$intercept
+  atoms <- .posterior_atoms_get(row)
+  expect_equal(unname(atoms$locations[, 1]), 5)
+  expect_equal(atoms$mass, mean(post[, "mu_x"] == 0 | post[, "s"] == 0))
 })
 
 test_that("a budget with one gated term names its gate and allocation coordinates as scalars", {

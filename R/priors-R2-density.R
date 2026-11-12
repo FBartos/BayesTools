@@ -163,13 +163,18 @@
   ly     <- log(y[finite])
   far    <- y[finite] > 1
   # log r and log(1 - r), r = y^2 / (1 + y^2), without differences of the large
-  # terms 2 log(y) and log(1 + y^2) for y > 1
-  lfar   <- log1p(1 / y[finite]^2)
+  # terms 2 log(y) and log(1 + y^2) for y > 1 (y^-2 from log(y), as y^2 can
+  # overflow)
+  inv2   <- exp(-2 * ly)
+  lfar   <- log1p(inv2)
   log_r  <- ifelse(far, -lfar, 2 * ly - log1p(y[finite]^2))
   log_1r <- ifelse(far, -(2 * ly + lfar), -log1p(y[finite]^2))
   if(what == "pdf"){
-    # y^(2a - 1) (1 + y^2)^-(a + b) = y^-(2b + 1) (1 + y^-2)^-(a + b) for y > 1
-    out[finite] <- ifelse(far, -(2 * base$b + 1) * ly - (base$a + base$b) * lfar,
+    # y^(2a - 1) (1 + y^2)^-(a + b) = y^-(2b + 1) (1 + y^-2)^-(a + b) for y > 1,
+    # where (a + b) log1p(y^-2) is (a + b) y^-2 once y^-2 nears the double
+    # range (it can still be large for huge shapes)
+    scaled <- ifelse(inv2 > 1e-200, (base$a + base$b) * lfar, exp(log(base$a + base$b) - 2 * ly))
+    out[finite] <- ifelse(far, -(2 * base$b + 1) * ly - scaled,
                           (2 * base$a - 1) * ly + (base$a + base$b) * log_1r) - lbeta(base$a, base$b)
   }else if(what == "central"){
     out[finite] <- .bt_R2_density_log_pbeta(log_r, base$a, base$b)
@@ -436,7 +441,8 @@
 .bt_R2_density_log_betaprime_mode <- function(a, b){
 
   if(min(a, b) <= 10){
-    return(a * log(a / (a + b)) + b * log(b / (a + b)) - lbeta(a, b))
+    # (log1p forms keep a small share of very unequal shapes)
+    return(-a * log1p(b / a) - b * log1p(a / b) - lbeta(a, b))
   }
   stirling <- function(x) 1 / (12 * x) - 1 / (360 * x^3) + 1 / (1260 * x^5)
   (log(a) + log(b) - log(a + b) - log(2 * pi)) / 2 - stirling(a) - stirling(b) + stirling(a + b)

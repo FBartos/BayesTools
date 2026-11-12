@@ -1922,9 +1922,24 @@ JAGS_formula_prior_density <- function(
         intersect(.prior_linear_prior_columns(owner, record$prior_list[[owner]]), colnames(weights))
       })
     }
-    R2_columns <- unlist(R2_owner_columns(names(record$prior_list)[vapply(record$prior_list, is.prior.R2, logical(1))]),
-      use.names = FALSE)
+    R2_owners <- names(record$prior_list)[vapply(record$prior_list, is.prior.R2, logical(1))]
+    R2_all_columns <- R2_owner_columns(R2_owners)
+    R2_columns <- unlist(R2_all_columns, use.names = FALSE)
     R2_gated_columns <- R2_owner_columns(record$gate_plan$R2_gated)
+    # the residual scale that multiplies the coefficients of an R2 term (its
+    # 'multiply_by'): "nonzero" (a number or a parameter with no point mass at
+    # zero), "zero" (a point at zero) or "unknown" (a mixture whose components
+    # the plan does not resolve)
+    R2_multiplier_state <- function(owner, priors){
+      multiplier <- attr(record$prior_list[[owner]], "multiply_by", exact = TRUE)
+      if(is.null(multiplier)) return("nonzero")
+      if(is.numeric(multiplier)) return(if(all(multiplier != 0)) "nonzero" else "zero")
+      prior <- priors[[multiplier]]
+      if(is.null(prior) || is.prior.mixture(prior) || is.prior.spike_and_slab(prior)) return("unknown")
+      location <- .posterior_atoms_point_location(prior, 1L)
+      if(!is.null(location)) return(if(all(location != 0)) "nonzero" else "zero")
+      if(is.prior.simple(prior)) "nonzero" else "unknown"
+    }
     R2_gated_rows <- vapply(seq_len(nrow(weights)), function(row){
       any(weights[row, unlist(R2_gated_columns, use.names = FALSE)] != 0)
     }, logical(1))
@@ -1934,8 +1949,12 @@ JAGS_formula_prior_density <- function(
       prior_cause <- R2_refusal$reason
       prior_diagnostics <- R2_refusal$diagnostics
     }
-    R2_support <- .posterior_support_new(c(-Inf, Inf), source = "formula_contribution", type = "interval")
-    if(all(R2_rows) && !any(R2_gated_rows)){
+    # (an exponentiated output, the original-scale intercept of a
+    # log-intercept formula, is positive)
+    R2_support <- .posterior_support_new(if(identical(output_transform, "exp")) c(0, Inf) else c(-Inf, Inf),
+      source = "formula_contribution", type = "interval")
+    if(all(R2_rows) && !any(R2_gated_rows) &&
+       all(vapply(R2_owners, R2_multiplier_state, character(1), priors = record$prior_list) == "nonzero")){
       if(is.finite(state$posterior_log_model_probabilities[[model]])){
         continuous <- TRUE
         model_atoms[[model]] <- data.frame(x = numeric(), mass = numeric(), log_mass = numeric())
@@ -2017,20 +2036,34 @@ JAGS_formula_prior_density <- function(
       for(owner in colnames(plan$components)) component_priors[[owner]] <- .posterior_atoms_component_prior(
         component_priors[[owner]], plan$components[component, owner], FALSE,
         .posterior_atoms_plan_total_indicator(plan, component, owner))
-      # the coefficients of the gated R2 terms closed in this component are
-      # exactly zero: they leave the evaluation rows
+      # the coefficients of the gated R2 terms closed in this component, and of
+      # the R2 terms whose multiplier is a point at zero in it, are exactly
+      # zero: they leave the evaluation rows; a row that weights an open R2
+      # coefficient with a nonzero multiplier is absolutely continuous; a row
+      # that weights only R2 coefficients with an unresolved multiplier has
+      # no atom certificate
       component_weights <- weights
-      component_R2_rows <- R2_rows
       closed <- record$gate_plan$R2_gated[plan$components[component, record$gate_plan$R2_gated] == 1L]
-      if(length(record$gate_plan$R2_gated)){
-        component_weights[, unlist(R2_gated_columns[closed], use.names = FALSE)] <- 0
-        component_R2_rows <- R2_rows & !R2_gated_rows |
-          rowSums(component_weights[, R2_columns, drop = FALSE] != 0) > 0
+      multipliers <- vapply(R2_owners, R2_multiplier_state, character(1), priors = component_priors)
+      component_weights[, unlist(c(R2_gated_columns[closed], R2_all_columns[R2_owners[multipliers == "zero"]]),
+        use.names = FALSE)] <- 0
+      nonzero_columns <- unlist(R2_all_columns[R2_owners[multipliers == "nonzero"]], use.names = FALSE)
+      unknown_columns <- unlist(R2_all_columns[R2_owners[multipliers == "unknown"]], use.names = FALSE)
+      component_R2_rows <- rowSums(component_weights[, nonzero_columns, drop = FALSE] != 0) > 0
+      unknown_rows <- !component_R2_rows & rowSums(component_weights[, unknown_columns, drop = FALSE] != 0) > 0
+      if(any(unknown_rows)){
+        atoms_available <- support_available <- FALSE
+        atom_reason <- support_reason <- paste0("The atoms of a formula contribution are unavailable: the scale that ",
+          "multiplies an R-squared budget term has a point mass in a mixture prior.")
+        atom_cause <- support_cause <- "unsupported_contribution_measure"
       }
-      component_rows <- which(!component_R2_rows)
+      component_rows <- which(!component_R2_rows & !unknown_rows)
       component_context <- if(length(component_rows)) context_builder(component_priors, conditional = FALSE,
         rows = component_rows, row_weights = component_weights)
       for(row in seq_len(nrow(weights))){
+        if(unknown_rows[[row]]){
+          next
+        }
         if(component_R2_rows[[row]]){
           continuous <- TRUE
           supports[[length(supports) + 1L]] <- R2_support

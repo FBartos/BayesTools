@@ -966,30 +966,33 @@ posterior_atoms_free <- function(x){
 
 # The within-model atoms of the gated R-squared budget terms of a model
 # average: the zero vector (every coefficient of a closed term is exactly
-# zero), with the frequency of the closed draws of the model; NULL for the
-# other priors, and NULL when no prior is a gated R2 term.
-.posterior_atoms_R2_gate_components <- function(priors, draws, component, column_names = NULL){
+# zero), with the frequency of the closed draws among the original draws of
+# each model (its gate and budget indicator); NULL for the other priors and
+# for models without posterior probability, and NULL when no prior is a gated
+# R2 term.
+.posterior_atoms_R2_gate_components <- function(priors, fits, n_columns, column_names = NULL,
+                                                log_post_probs = NULL){
 
   priors <- as.list(priors)
   gated <- vapply(priors, function(prior) is.prior.R2(prior) && .bt_R2_term_is_gated(prior), logical(1))
-  if(!any(gated) || is.null(draws)){
-    return(NULL)
-  }
-  draws <- as.matrix(draws)
-  if(nrow(draws) != length(component)){
+  if(!any(gated)){
     return(NULL)
   }
   lapply(seq_along(priors), function(i){
-    rows <- component == i
-    if(!gated[[i]] || !any(rows)){
+    if(!gated[[i]] || (!is.null(log_post_probs) && !is.finite(log_post_probs[[i]]))){
       return(NULL)
     }
-    closed <- mean(rowSums(draws[rows, , drop = FALSE] != 0) == 0)
+    model_samples <- .extract_posterior_samples(fits[[i]], as_list = FALSE)
+    if(!is.matrix(model_samples)){
+      model_samples <- matrix(model_samples, ncol = 1L)
+      colnames(model_samples) <- fits[[i]]$monitor
+    }
+    closed <- mean(.bt_R2_term_open_draws(priors[[i]], model_samples) == 0)
     if(closed <= 0){
       return(NULL)
     }
-    .posterior_atoms_new(locations = matrix(0, 1L, ncol(draws)), mass = closed,
-                         column_names = column_names, source = "posterior_draws")
+    .posterior_atoms_new(locations = matrix(0, 1L, n_columns), mass = closed,
+                         column_names = column_names, source = "original_R2_gate_posterior_indicator")
   })
 }
 
