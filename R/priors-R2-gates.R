@@ -68,8 +68,8 @@
   p <- vapply(seq_len(K), function(t){
     if(identical(law$type, "shared")){
       # P(g_t = 1 | none before) / P(some of t..K open | none before) under BB
-      first <- law$a / (law$a + law$b + t - 1)
-      some <- -expm1(lbeta(law$a, law$b + K) - lbeta(law$a, law$b + t - 1))
+      first <- law$a / (law$a + law$b + (t - 1))
+      some <- -expm1(lbeta(law$a, law$b + K) - lbeta(law$a, law$b + (t - 1)))
       first / some
     }else{
       # 1 - prod(1 - pi) computed without cancellation
@@ -93,7 +93,7 @@
 
   regular <- if(identical(gates$law$type, "shared")){
     paste0("(", .JAGS_prior_number(gates$law$a), " + ", s, ") / ",
-           .JAGS_prior_number(gates$law$a + gates$law$b + t - 1))
+           .JAGS_prior_number(gates$law$a + gates$law$b + (t - 1)))
   }else{
     .JAGS_prior_number(gates$law$pi[[t]])
   }
@@ -111,7 +111,7 @@
 .bt_R2_gate_probability <- function(gates, t, s){
 
   regular <- if(identical(gates$law$type, "shared")){
-    (gates$law$a + s) / (gates$law$a + gates$law$b + t - 1)
+    (gates$law$a + s) / (gates$law$a + gates$law$b + (t - 1))
   }else{
     rep(gates$law$pi[[t]], length(s))
   }
@@ -130,7 +130,7 @@
   open <- matrix(as.logical(open), ncol = gates$K)
   s <- rowSums(open)
   base <- if(identical(gates$law$type, "shared")){
-    exp(lbeta(gates$law$a + s, gates$law$b + gates$K - s) - lbeta(gates$law$a, gates$law$b))
+    exp(lbeta(gates$law$a + s, gates$law$b + (gates$K - s)) - lbeta(gates$law$a, gates$law$b))
   }else{
     apply(open, 1, function(row) prod(ifelse(row, gates$law$pi, 1 - gates$law$pi)))
   }
@@ -569,7 +569,7 @@ is.prior.R2_budget <- function(x){
   )
   for(t in seq_len(gates$K)){
     term <- gates$gated[[t]]
-    p_open <- if(shared) (gates$law$a + states$s) / (gates$law$a + gates$law$b + t - 1) else gates$law$pi[[t]]
+    p_open <- if(shared) (gates$law$a + states$s) / (gates$law$a + gates$law$b + (t - 1)) else gates$law$pi[[t]]
     force <- if(term %in% names(fixed)) fixed[[term]] else NA
     alpha <- alpha_of(term)
     open <- if(!isFALSE(force)) list(
@@ -1102,7 +1102,7 @@ is.prior.R2_budget <- function(x){
   if(identical(key$type, "coordinate") && length(key$dependencies) == 1L){
     core <- .bt_R2_gated_total_core(prior_list, key$dependencies)
     if(!is.null(core)){
-      null <- !is.null(.bt_R2_core_nodes(core)$indicator)
+      null <- !is.null(.bt_R2_core_nodes(core)$indicator) && .bt_R2_core_can_be_null(core)
       return(.posterior_support_from_prior(if(null){
         .bt_R2_mixture(list(prior("spike", list(0)), continuous), c(0.5, 0.5), c(TRUE, FALSE))
       }else{
@@ -1117,11 +1117,42 @@ is.prior.R2_budget <- function(x){
     }
   }
   owner <- .bt_R2_gated_term_owner(prior_list, key$dependencies)
-  if(!is.null(owner) && !is.null(.bt_R2_term_open_column(prior_list[[owner]]))){
+  if(!is.null(owner) && !is.null(.bt_R2_term_open_column(prior_list[[owner]])) &&
+     .bt_R2_term_can_close(prior_list[[owner]])){
     return(.posterior_support_new(c(-Inf, Inf), points = 0, source = "catalog", type = "mixed"))
+  }
+  if(!is.null(owner) && !is.null(.bt_R2_term_open_column(prior_list[[owner]]))){
+    # a term that the condition pattern keeps open has no atom
+    return(.posterior_support_new(c(-Inf, Inf), source = "catalog", type = "interval"))
   }
 
   NULL
+}
+
+# Whether the budget null (no term open) has a positive probability under the
+# condition pattern of a core (always without a pattern); gate law only.
+.bt_R2_core_can_be_null <- function(core){
+
+  if(is.null(core$pattern)){
+    return(TRUE)
+  }
+  states <- .bt_R2_core_states(core, concentrations = FALSE)
+  states$off + states$empty > 0
+}
+
+# Whether a gated term can be closed under the condition pattern of its core
+# (always without a pattern); gate law only.
+.bt_R2_term_can_close <- function(prior){
+
+  core <- prior$core
+  if(is.null(core$pattern)){
+    return(TRUE)
+  }
+  if(core$term_gate[[prior$term]] == 0L){
+    return(.bt_R2_core_states(core, concentrations = FALSE)$off > 0)
+  }
+  states <- .bt_R2_core_states(core, fixed = stats::setNames(FALSE, prior$term), concentrations = FALSE)
+  states$off + states$empty + sum(states$prob) > 0
 }
 
 # The prior law of a coefficient of a gated term: the atom at zero of the
