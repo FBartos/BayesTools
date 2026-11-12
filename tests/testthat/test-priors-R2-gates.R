@@ -106,9 +106,9 @@ test_that("prior draws follow the configuration law and the prior of each model"
   core <- priors$mu_R2
   draws <- .bt_R2_core_draws(core, 40000)
   open <- draws[, "mu_R2_indicator"] * draws[, c("mu_R2_gate[1]", "mu_R2_gate[2]", "mu_R2_gate[3]")]
-  configurations <- .bt_R2_core_configurations(core)
-  expect_equal(mean(rowSums(open) == 0), configurations$null, tolerance = 0.02)
-  expect_equal(mean(draws[, "mu_R2"] == 0), configurations$null, tolerance = 0.02)
+  states <- .bt_R2_core_states(core)
+  expect_equal(mean(rowSums(open) == 0), states$off + states$empty, tolerance = 0.02)
+  expect_equal(mean(draws[, "mu_R2"] == 0), states$off + states$empty, tolerance = 0.02)
   expect_equal(unname(colMeans(open)), unname(.bt_R2_gate_marginals(core$gates, core$terms)$open), tolerance = 0.02)
 
   # given S = {x, f}, the total and the allocation are those of the model x + f
@@ -238,14 +238,16 @@ test_that("gated budgets are exact at the edges of their laws", {
   tiny <- .bt_R2_gate_truncated_probabilities(list(type = "fixed", pi = c(1e-20, 1e-20)), 2L)
   expect_equal(tiny, c(0.5, 1))
 
-  # supports need no enumeration of the configurations (17 gated terms)
+  # supports need no configurations; the laws of 17 gated terms with equal
+  # concentrations have 17 open states
   wide <- as.data.frame(matrix(stats::rnorm(40 * 17), 40, 17, dimnames = list(NULL, paste0("v", 1:17))))
   many <- prior_R2(terms = names(wide), total = .R2_spike(0.5, prior("beta", list(1, 1))), law = "exact",
     convention = "common", concentration = "inherited", sigma = 1, inclusion = prior("spike", list(0.5)))
   priors <- JAGS_formula(stats::reformulate(names(wide)), "mu", wide, list(intercept = prior("normal", list(0, 1)), R2 = many))$prior_list
   support <- .bt_R2_quantity_support(structure(list(), prior_list = priors), list(type = "coordinate", dependencies = "mu_R2"))
   expect_identical(support$points, 0)
-  expect_error(.bt_R2_core_total_law(priors$mu_R2), class = "BayesTools_R2_density_unavailable")
+  expect_length(.bt_R2_core_states(priors$mu_R2)$prob, 17L)
+  expect_equal(mcdf(priors$mu_R2, 0), 0.5)
 
   # the total of a gated budget has prior methods with its atom at zero
   spiked <- .R2_gate_bind(.R2_gate_budget(total = .R2_spike(0.6)))

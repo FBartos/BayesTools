@@ -435,64 +435,176 @@ is.prior.R2_budget <- function(x){
 }
 
 # ---------------------------------------------------------------------------
-# Prior laws of a gated or spiked budget, by enumeration of the gate
-# configurations (the sampler is not limited; these analytic laws are).
+# Prior laws of a gated or spiked budget. A configuration S of open terms
+# enters every law of the budget only through its summed open concentration
+# A_S (the Beta shapes of the total and, under fixed_total, the rescaling of
+# the concentrations), whether a second term and a second unit are open, and,
+# for a shared Beta rate, the number of open gates (its probability). The
+# configurations are therefore aggregated into such states by an exact forward
+# pass over the gates with the sequential gate law of the sampler, merging
+# equal states; the number of gated terms is not limited, only the number of
+# distinct states (at most K + 1 per open-concentration value with a shared
+# rate, and K + 1 in all when the gated terms have equal concentrations).
 
-.bt_R2_law_max_gates <- 16L
+.bt_R2_law_max_states <- 65536L
 
-# The open configurations of a core with their prior probabilities, and the
-# probability of the budget null.
-.bt_R2_core_configurations <- function(core){
-
-  K <- core$gates$K
-  if(K > .bt_R2_law_max_gates){
-    .bt_R2_unavailable(paste0(
-      "The prior laws of the R-squared budget '", core$name, "' enumerate its gate configurations, ",
-      "which is unavailable for more than ", .bt_R2_law_max_gates, " gated terms."),
-      class = "BayesTools_R2_density_unavailable")
-  }
-  grid <- if(K > 0L) as.matrix(expand.grid(rep(list(c(FALSE, TRUE)), K))) else matrix(FALSE, 1L, 0L)
-  p_gate <- if(K > 0L) .bt_R2_gate_configuration_probability(core$gates, grid) else 1
-  on <- if(is.null(core$gates$spike)) 1 else core$gates$spike$p
-  ungated <- core$terms[core$term_gate == 0L]
-  configurations <- list()
-  null <- 1 - on
-  for(i in seq_len(nrow(grid))){
-    open <- c(ungated, core$gates$gated[grid[i, ]])
-    if(length(open) == 0L){
-      null <- null + on * p_gate[[i]]
-      next
-    }
-    if(on * p_gate[[i]] > 0){
-      configurations[[length(configurations) + 1L]] <- list(open = open, prob = on * p_gate[[i]])
-    }
-  }
-
-  list(configurations = configurations, null = null)
+# The raw concentration of the term 'term' (a core term name): the sum of the
+# concentrations of its units.
+.bt_R2_core_term_alpha <- function(core, term){
+  sum(core$unit_alpha[core$unit_term == term])
 }
 
-# The Beta shapes of the total and the concentrations of the open terms in the
-# configuration with the open terms 'open'.
-.bt_R2_core_configuration_shapes <- function(core, open){
+# The states of the open configurations of a core. 'fixed' (a named logical
+# vector over gated core terms) restricts the configurations to the gates
+# open (TRUE) or closed (FALSE); the result is then the joint law of the
+# configuration and that pattern. 'target' (a core term open in every
+# configuration of the result) is left out of 'A', so that 'A' is the open
+# concentration of the other terms; without 'concentrations', 'A' is not
+# tracked (probabilities of events only). Returns the states with a nonempty
+# open set: their raw open concentration 'A', the number of open units and
+# terms (both capped at 2), the number of open gates 's' (shared rate only)
+# and the absolute probability 'prob' (with the spike weight and the
+# truncation of a spiked budget whose terms are all gated); 'empty', the
+# probability that the gates leave no term open while the spike is on (0
+# under truncation), and 'off', the spike probability. The budget null has
+# the probability off + empty. A core conditioned on a pattern of open flags
+# ('pattern', see .bt_R2_condition_core()) gives the states of the pattern,
+# normalized by its probability.
+.bt_R2_core_states <- function(core, fixed = NULL, target = NULL, concentrations = TRUE){
 
-  units <- core$unit_term %in% open
-  unit_alpha <- core$unit_alpha
-  if(identical(core$concentration, "fixed_total")){
-    unit_alpha[units] <- unit_alpha[units] * core$fixed_total / sum(unit_alpha[units])
-  }
-  A <- sum(unit_alpha[units])
-  shapes <- switch(
-    core$convention,
-    common = c(core$a, core$b),
-    linked = c(A, core$b),
-    conditioning = {
-      A_ref <- if(identical(core$concentration, "fixed_total")) core$fixed_total else core$A_reference
-      c(core$a - (A_ref - A), core$b + (A_ref - A))
+  gates <- core$gates
+  shared <- identical(gates$law$type, "shared")
+  on <- if(is.null(gates$spike)) 1 else gates$spike$p
+  ungated <- core$terms[core$term_gate == 0L]
+  units_of <- function(term) sum(core$unit_term == term)
+  alpha_of <- function(term) if(concentrations && !identical(term, target)) .bt_R2_core_term_alpha(core, term) else 0
+  # the pattern: its gated flags fix the gates (the open flags given the
+  # spike), its ungated flags need the spike open (TRUE) or closed (FALSE)
+  pattern <- core$pattern
+  allow <- c(on = TRUE, empty = TRUE, off = TRUE)
+  if(!is.null(pattern)){
+    flags <- pattern$flags
+    gated_flags <- flags[core$term_gate[names(flags)] > 0L]
+    both <- intersect(names(fixed), names(gated_flags))
+    if(any(fixed[both] != gated_flags[both])){
+      allow[] <- FALSE
     }
+    fixed <- c(fixed, gated_flags[setdiff(names(gated_flags), names(fixed))])
+    spike_open <- all(flags[core$term_gate[names(flags)] == 0L])
+    allow["on"] <- allow[["on"]] && spike_open && !isFALSE(pattern$total)
+    allow["empty"] <- allow[["empty"]] && spike_open && !isTRUE(pattern$total)
+    allow["off"] <- allow[["off"]] && !any(flags) && !isTRUE(pattern$total)
+  }
+  states <- list(
+    s     = 0,
+    A     = sum(vapply(ungated, alpha_of, numeric(1))),
+    units = min(2, sum(vapply(ungated, units_of, numeric(1)))),
+    terms = min(2, length(ungated)),
+    prob  = 1
   )
+  for(t in seq_len(gates$K)){
+    term <- gates$gated[[t]]
+    p_open <- if(shared) (gates$law$a + states$s) / (gates$law$a + gates$law$b + t - 1) else gates$law$pi[[t]]
+    force <- if(term %in% names(fixed)) fixed[[term]] else NA
+    alpha <- alpha_of(term)
+    open <- if(!isFALSE(force)) list(
+      s     = states$s + 1,
+      A     = states$A + alpha,
+      units = pmin(2, states$units + units_of(term)),
+      terms = pmin(2, states$terms + 1),
+      prob  = states$prob * p_open
+    )
+    closed <- if(!isTRUE(force)) utils::modifyList(states, list(prob = states$prob * (1 - p_open)))
+    branches <- Filter(Negate(is.null), list(open, closed))
+    states <- .bt_R2_states_merge(if(length(branches) == 2L) Map(c, open, closed) else branches[[1L]], shared, core)
+  }
+  empty <- states$terms == 0
+  empty_mass <- sum(states$prob[empty])
+  keep <- !empty & states$prob > 0 & allow[["on"]]
+  prob <- states$prob[keep]
+  if(gates$truncated){
+    # the gate prior under the slab is conditioned on a nonempty configuration
+    none <- .bt_R2_gate_configuration_probability(utils::modifyList(gates, list(truncated = FALSE)),
+                                                  matrix(FALSE, 1, gates$K))
+    prob <- prob / (1 - none)
+    empty_mass <- 0
+  }
+  mass <- if(is.null(pattern)) 1 else pattern$mass
 
-  list(a = shapes[[1L]], b = shapes[[2L]], A = A,
-       term_alpha = vapply(open, function(term) sum(unit_alpha[core$unit_term == term]), numeric(1)))
+  list(
+    A     = states$A[keep],
+    units = states$units[keep],
+    terms = states$terms[keep],
+    s     = states$s[keep],
+    prob  = on * prob / mass,
+    empty = if(allow[["empty"]]) on * empty_mass / mass else 0,
+    off   = if(allow[["off"]]) (1 - on) / mass else 0
+  )
+}
+
+# A key that identifies a double exactly (17 significant digits round-trip):
+# states merge only when their concentrations are equal, never when they are
+# merely close (close raw concentrations can give very different shapes).
+.bt_R2_exact_key <- function(x){
+  formatC(x, digits = 17L, format = "g")
+}
+
+# Merges equal states (the number of open gates only under a shared rate,
+# where it sets the probability of the later gates).
+.bt_R2_states_merge <- function(states, shared, core){
+
+  if(!shared){
+    states$s <- rep(0, length(states$prob))
+  }
+  key <- paste(states$s, .bt_R2_exact_key(states$A), states$units, states$terms)
+  first <- !duplicated(key)
+  if(sum(first) > .bt_R2_law_max_states){
+    .bt_R2_unavailable(paste0(
+      "The prior laws of the R-squared budget '", core$name, "' need more than ", .bt_R2_law_max_states,
+      " distinct states of its gate configurations (", sum(first), " at least; the gated terms have many ",
+      "distinct concentrations). Use prior draws instead."),
+      class = "BayesTools_R2_density_unavailable")
+  }
+  group <- match(key, key[first])
+  list(
+    s     = states$s[first],
+    A     = states$A[first],
+    units = states$units[first],
+    terms = states$terms[first],
+    prob  = as.vector(rowsum(states$prob, group, reorder = FALSE))
+  )
+}
+
+# The Beta shapes of the total and the concentration rescaling of the states
+# with the raw open concentrations 'A_raw': list(a, b, A, rescale), A the
+# total concentration of the open units after the rescaling of fixed_total.
+.bt_R2_core_state_shapes <- function(core, A_raw){
+
+  fixed_total <- identical(core$concentration, "fixed_total")
+  A <- if(fixed_total) rep(core$fixed_total, length(A_raw)) else A_raw
+  A_ref <- if(fixed_total) core$fixed_total else core$A_reference
+  a <- switch(core$convention, common = rep(core$a, length(A)), linked = A, conditioning = core$a - (A_ref - A))
+  b <- switch(core$convention, common = , linked = rep(core$b, length(A)), conditioning = core$b + (A_ref - A))
+
+  list(a = a, b = b, A = A, rescale = if(fixed_total) core$fixed_total / A_raw else rep(1, length(A_raw)))
+}
+
+# The probability that the gated budget term 'term' is closed (the budget
+# null or its gate closed) and the open states of the term (with 'target').
+.bt_R2_core_term_states <- function(core, term){
+
+  gated <- core$term_gate[[term]] > 0L
+  open <- .bt_R2_core_states(core, fixed = if(gated) stats::setNames(TRUE, term), target = term)
+  closed <- if(gated){
+    states <- .bt_R2_core_states(core, fixed = stats::setNames(FALSE, term))
+    states$off + states$empty + sum(states$prob)
+  }else{
+    # an ungated term is closed only by the spike (it keeps a configuration
+    # nonempty)
+    open$off
+  }
+
+  list(open = open, closed = closed)
 }
 
 # A finite mixture of priors from components with weights (NULL components
@@ -518,7 +630,7 @@ is.prior.R2_budget <- function(x){
 # Group Beta components with equal shapes.
 .bt_R2_beta_components <- function(shapes, weights){
 
-  key <- paste(signif(shapes[, 1L], 14), signif(shapes[, 2L], 14))
+  key <- paste(.bt_R2_exact_key(shapes[, 1L]), .bt_R2_exact_key(shapes[, 2L]))
   groups <- split(seq_len(nrow(shapes)), factor(key, levels = unique(key)))
   list(
     components = lapply(groups, function(rows) prior("beta", list(alpha = shapes[rows[[1L]], 1L], beta = shapes[rows[[1L]], 2L]))),
@@ -531,18 +643,13 @@ is.prior.R2_budget <- function(x){
 # open configurations; with 'conditional', the law given the budget is on.
 .bt_R2_core_total_law <- function(core, conditional = FALSE){
 
-  configurations <- .bt_R2_core_configurations(core)
-  shapes <- do.call(rbind, lapply(configurations$configurations, function(configuration){
-    s <- .bt_R2_core_configuration_shapes(core, configuration$open)
-    c(s$a, s$b)
-  }))
-  weights <- vapply(configurations$configurations, `[[`, numeric(1), "prob")
-  betas <- .bt_R2_beta_components(shapes, weights)
-  if(conditional || configurations$null <= 0){
+  components <- .bt_R2_core_total_components(core)
+  betas <- .bt_R2_beta_components(components$shapes, components$weights)
+  if(conditional || components$atom <= 0){
     return(.bt_R2_mixture(betas$components, betas$weights, rep(FALSE, length(betas$weights))))
   }
 
-  .bt_R2_mixture(c(list(prior("spike", list(0))), betas$components), c(configurations$null, betas$weights),
+  .bt_R2_mixture(c(list(prior("spike", list(0))), betas$components), c(components$atom, betas$weights),
                  c(TRUE, rep(FALSE, length(betas$weights))))
 }
 
@@ -552,23 +659,14 @@ is.prior.R2_budget <- function(x){
 # term.
 .bt_R2_core_share_law <- function(core, term){
 
-  configurations <- Filter(function(configuration) term %in% configuration$open,
-                           .bt_R2_core_configurations(core)$configurations)
-  components <- list()
-  weights <- numeric()
-  only <- 0
-  shapes <- matrix(numeric(), 0L, 2L)
-  for(configuration in configurations){
-    s <- .bt_R2_core_configuration_shapes(core, configuration$open)
-    alpha <- s$term_alpha[[term]]
-    rest <- sum(s$term_alpha[names(s$term_alpha) != term])
-    if(rest <= 0){
-      only <- only + configuration$prob
-    }else{
-      shapes <- rbind(shapes, c(alpha, rest))
-      weights <- c(weights, configuration$prob)
-    }
-  }
+  states <- .bt_R2_core_term_states(core, term)$open
+  alpha <- .bt_R2_core_term_alpha(core, term)
+  # 'A' is the raw concentration of the other open terms (no cancellation)
+  rescale <- .bt_R2_core_state_shapes(core, states$A + alpha)$rescale
+  alone <- states$terms == 1
+  only <- sum(states$prob[alone])
+  shapes <- cbind(alpha * rescale, states$A * rescale)[!alone, , drop = FALSE]
+  weights <- states$prob[!alone]
   betas <- if(nrow(shapes)) .bt_R2_beta_components(shapes, weights) else list(components = list(), weights = numeric())
 
   .bt_R2_mixture(c(if(only > 0) list(prior("spike", list(1))), betas$components),
@@ -621,30 +719,44 @@ is.prior.R2_budget <- function(x){
 .bt_R2_term_gated_specs <- function(prior, L){
 
   core <- prior$core
-  configurations <- .bt_R2_core_configurations(core)
-  atom <- configurations$null
-  specs <- list()
-  weights <- numeric()
-  for(configuration in configurations$configurations){
-    if(!prior$term %in% configuration$open){
-      atom <- atom + configuration$prob
-      next
-    }
-    shapes <- .bt_R2_core_configuration_shapes(core, configuration$open)
-    open_units <- core$unit_term %in% configuration$open
-    unit_alpha <- core$unit_alpha
-    if(identical(core$concentration, "fixed_total")){
-      unit_alpha[open_units] <- unit_alpha[open_units] * core$fixed_total / sum(unit_alpha[open_units])
-    }
+  found <- .bt_R2_term_states(prior)
+  specs <- lapply(seq_along(found$weights), function(k){
     model <- prior
     model$core <- NULL
-    model$shapes <- list(a = shapes$a, b = shapes$b, alpha = unit_alpha, A = shapes$A)
-    model$n_units <- sum(open_units)
-    specs[[length(specs) + 1L]] <- .bt_R2_term_functional(model, L)
-    weights <- c(weights, configuration$prob)
-  }
+    model$shapes <- list(a = found$a[[k]], b = found$b[[k]], alpha = core$unit_alpha * found$rescale[[k]],
+                         A = found$A[[k]])
+    # two or more open units: the functional needs only whether the term
+    # shares the budget
+    model$n_units <- found$units[[k]]
+    .bt_R2_term_functional(model, L)
+  })
 
-  structure(list(atom = atom, specs = specs, weights = weights), class = "BayesTools_R2_functional_mixture")
+  structure(list(atom = found$atom, specs = specs, weights = found$weights), class = "BayesTools_R2_functional_mixture")
+}
+
+# The open states of a gated term grouped into the distinct models of its
+# coefficients (Beta shapes, concentrations and whether it shares the budget),
+# with their absolute probabilities, and the atom at zero (the term closed).
+.bt_R2_term_states <- function(prior){
+
+  core <- prior$core
+  states <- .bt_R2_core_term_states(core, prior$term)
+  open <- states$open
+  shapes <- .bt_R2_core_state_shapes(core, open$A + .bt_R2_core_term_alpha(core, prior$term))
+  key <- paste(.bt_R2_exact_key(shapes$a), .bt_R2_exact_key(shapes$b), .bt_R2_exact_key(shapes$A),
+               .bt_R2_exact_key(shapes$rescale), open$units)
+  first <- !duplicated(key)
+  group <- match(key, key[first])
+
+  list(
+    atom    = states$closed,
+    a       = shapes$a[first],
+    b       = shapes$b[first],
+    A       = shapes$A[first],
+    rescale = shapes$rescale[first],
+    units   = open$units[first],
+    weights = as.vector(rowsum(open$prob, group, reorder = FALSE))
+  )
 }
 
 .bt_R2_spec_cdf <- function(spec, q, lower.tail = TRUE){
@@ -1007,13 +1119,14 @@ is.prior.R2_budget <- function(x){
 
 .bt_R2_core_total_components <- function(core){
 
-  configurations <- .bt_R2_core_configurations(core)
-  shapes <- do.call(rbind, lapply(configurations$configurations, function(configuration){
-    s <- .bt_R2_core_configuration_shapes(core, configuration$open)
-    c(s$a, s$b)
-  }))
-  list(atom = configurations$null, shapes = shapes,
-       weights = vapply(configurations$configurations, `[[`, numeric(1), "prob"))
+  states <- .bt_R2_core_states(core)
+  shapes <- .bt_R2_core_state_shapes(core, states$A)
+  betas <- .bt_R2_beta_components(cbind(shapes$a, shapes$b), states$prob)
+  list(atom = states$off + states$empty,
+       shapes = do.call(rbind, lapply(betas$components, function(component){
+         c(component$parameters[["alpha"]], component$parameters[["beta"]])
+       })),
+       weights = unname(betas$weights))
 }
 
 .bt_R2_core_method <- function(prior, method, value = NULL, ...){
@@ -1086,18 +1199,24 @@ is.prior.R2_budget <- function(x){
 # The prior mean of a term's coefficients: zero when the second Beta shape of
 # the total exceeds 1/2 in every model where the term is open (each
 # coefficient is symmetric about zero), NaN otherwise. No marginal density is
-# needed.
+# needed, nor the configurations: the second shape is the same in every
+# model (common, linked, fixed_total) or decreases with the open
+# concentration (conditioning), so its smallest value is that of the model
+# with every retained term open that the condition pattern of the core allows
+# (it has a positive probability).
 .bt_R2_term_mean <- function(prior){
 
   if(!.bt_R2_term_is_gated(prior)){
     return(if(prior$shapes$b > 1 / 2) 0 else NaN)
   }
-  configurations <- Filter(function(configuration) prior$term %in% configuration$open,
-                           .bt_R2_core_configurations(prior$core)$configurations)
-  b <- vapply(configurations, function(configuration){
-    .bt_R2_core_configuration_shapes(prior$core, configuration$open)$b
-  }, numeric(1))
-  if(all(b > 1 / 2)) 0 else NaN
+  core <- prior$core
+  flags <- core$pattern$flags
+  open <- if(is.null(flags)) rep(TRUE, core$n_units) else !core$unit_term %in% names(flags)[!flags]
+  if(!any(open)){
+    return(0)
+  }
+  b <- .bt_R2_core_state_shapes(core, sum(core$unit_alpha[open]))$b
+  if(b > 1 / 2) 0 else NaN
 }
 
 # ---------------------------------------------------------------------------
