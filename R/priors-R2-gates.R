@@ -1202,11 +1202,15 @@ is.prior.R2_budget <- function(x){
   if(is.null(included)){
     return(.bt_R2_core_total_law(core))
   }
-  slab <- .bt_R2_core_total_law(core, conditional = TRUE)
   if(included >= 1){
-    return(slab)
+    return(.bt_R2_core_total_law(core, conditional = TRUE))
   }
-  .bt_R2_mixture(list(prior("spike", list(0)), slab), c(1 - included, included), c(TRUE, FALSE))
+  # the Beta components of the slab, flattened beside the atom at zero
+  components <- .bt_R2_core_total_components(core)
+  betas <- .bt_R2_beta_components(components$shapes, components$weights)
+  .bt_R2_mixture(c(list(prior("spike", list(0))), betas$components),
+                 c(1 - included, included * betas$weights / sum(betas$weights)),
+                 c(TRUE, rep(FALSE, length(betas$weights))))
 }
 
 # The law of a scalar gated coefficient given an inclusion probability.

@@ -307,6 +307,14 @@ test_that("conditioning on gated quantities and their scales is explicit", {
   # under 'OR' with an independent prior the budget keeps zero mass 1/3
   either <- as_mixed_posteriors(fit, parameters = c("mu_R2", "theta"), conditional = c("mu_R2", "theta"), conditional_rule = "OR")$mu_R2
   expect_equal(.bt_meta_get(either, "prior_density")$points$p, 1 / 3, tolerance = 1e-10)
+  # a linked slab is a mixture of Beta totals: flattened beside the atom
+  linked <- .R2_gate_bind(.R2_gate_budget(convention = "linked", total = .R2_spike(0.5, prior("beta", list(3.5, 2)))))$mu_R2
+  law <- .bt_R2_total_law_given(linked, 2 / 3)
+  expect_true(is.prior.mixture(law))
+  weights <- vapply(law, `[[`, numeric(1), "prior_weights")
+  atom <- vapply(law, is.prior.point, logical(1))
+  expect_true(sum(!atom) > 1)
+  expect_equal(sum(weights[atom]) / sum(weights), 1 / 3, tolerance = 1e-10)
 })
 
 test_that("draws of gated budgets are extracted beyond the analytic limits and for two-level factors", {
