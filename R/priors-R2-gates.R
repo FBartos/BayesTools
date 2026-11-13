@@ -84,7 +84,10 @@
 # x + y: log(x / y) - log1p(x / y) when the fraction is small, -log1p(y / x)
 # when it is near one (both stay accurate for very unequal x and y).
 .bt_R2_log_fraction <- function(x, y){
-  ifelse(x < y, log(x) - log(y) - log1p(x / y), -log1p(y / x))
+  # (log(x / y) while the ratio is a normal double: one rounding instead of
+  # an error of order eps |log(x)|)
+  ratio <- x / y
+  ifelse(x < y, ifelse(ratio >= .Machine$double.xmin, log(ratio), log(x) - log(y)) - log1p(ratio), -log1p(y / x))
 }
 
 # The probability of a nonempty configuration of the gates before the spike,
@@ -1465,6 +1468,9 @@ is.prior.R2_budget <- function(x){
       # swapped, mass 1 - p), so that a quantile next to one rounds to its
       # nearest double; either root then lies in (0, 1/2]
       if(sum(w * stats::pbeta(1 / 2, a, b)) < p - components$atom){
+        # (a complement root below 2^-54 leaves 1 as the nearest double, also
+        # where the root itself is below the double range)
+        if(sum(w * stats::pbeta(2^-54, b, a)) >= 1 - p) return(1)
         return(1 - .bt_R2_beta_mixture_lower_root(b, a, w, 1 - p))
       }
       .bt_R2_beta_mixture_lower_root(a, b, w, p - components$atom)

@@ -603,6 +603,28 @@ test_that("extreme shapes keep the exact tail, the series range and concentrated
   # (a ratio of shapes beyond the double range: log(a / (4 pi)) / 2 - ... with
   # a = 1/2, b -> Inf: 0.5 log(0.5) - 0.5 - 0.5 log(pi))
   expect_equal(.bt_R2_density_log_betaprime_mode(0.5, 1e308), 0.5 * log(0.5) - 0.5 - 0.5 * log(pi), tolerance = 1e-10)
+  # the log-BetaPrime density away from its mode: unequal shapes in both tails
+  # (the far form opposite in sign to tau - log(a / b), beyond exp(709) of
+  # the base and with |log(a / b)| near 690), near the mode for unequal and
+  # very unequal shapes, and next to the mode of equal huge shapes (2000-bit
+  # references at the same doubles)
+  log_bp <- .bt_R2_density_log_betaprime_at
+  expect_equal(log_bp(-33, 1e-12, 1e16), -74.219882566957992, tolerance = 1e-13)
+  expect_equal(log_bp(28, 1e14, 1e-12), -96.775022185301864, tolerance = 1e-13)
+  expect_equal(log_bp(2 * log(2e-9), 1, 1e300), -3.9999999999999924e282, tolerance = 1e-13)
+  expect_equal(log_bp(2 * log(2e154), 1e300, 1e-22), -50.656872048369003, tolerance = 1e-13)
+  expect_equal(log_bp(log(4) + 1e-9, 4e6, 1e6), 5.8772448826199595, tolerance = 1e-13)
+  expect_equal(log_bp(log(4) + 0.5, 4e6, 1e6), -90179.587058397447, tolerance = 1e-13)
+  expect_equal(log_bp(log(3 / 1e5) + 5, 3, 1e5), -426.66182652423402, tolerance = 1e-13)
+  expect_equal(log_bp(2 * log1p(2^-52), 4e307, 4e307), -1.9721522630525295e276, tolerance = 1e-13)
+  # the density never exceeds its mode
+  near_mode <- log(4) + c(-1, 1) * 2^-50
+  expect_true(all(log_bp(near_mode, 4e6, 1e6) <= .bt_R2_density_log_betaprime_mode(4e6, 1e6)))
+  # unequal shapes this concentrated depend on digits of log(a / b) beyond
+  # the double precision: refused, also through the kernel densities
+  expect_error(log_bp(log(4), 4e30, 1e30), class = "BayesTools_R2_density_unavailable")
+  spec <- .bt_R2_functional_spec("normal", a = 9e100, b = 1e100, scale = 1)
+  expect_error(.bt_R2_functional_pdf(spec, 1.5), class = "BayesTools_R2_density_unavailable")
   spec <- .bt_R2_functional_spec("normal", a = 0.5, b = 1e308, scale = 1)
   expect_equal(.bt_R2_functional_cdf(spec, 1e-154, lower.tail = FALSE), 0.0622676800748362, tolerance = 1e-6)
   # an upper tail of order 1e-18: pbeta() while x is representable, and the

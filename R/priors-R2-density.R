@@ -112,7 +112,22 @@
 # Log density / log tail of the radial law at one x > 0
 
 .bt_R2_density_softplus <- function(x){
-  x * (x > 0) + log1p(exp(-abs(x)))
+  # (pmax() keeps softplus(-Inf) = 0, where x * (x > 0) is NaN)
+  pmax(x, 0) + log1p(exp(-abs(x)))
+}
+
+# e^x - 1 - x for a vector x without the cancellation of expm1(x) - x near
+# zero (its series below |x| = 1, where 19 terms reach the double precision).
+.bt_R2_density_expm1_excess <- function(x){
+  out   <- expm1(x) - x
+  small <- !is.na(x) & abs(x) < 1
+  if(any(small)){
+    s <- x[small]
+    series <- 0
+    for(k in 20:2) series <- (series + 1 / factorial(k)) * s
+    out[small] <- series * s
+  }
+  out
 }
 
 # The unit-variance kernel: log density and log upper tail at z >= 0 (z may be Inf).
@@ -200,12 +215,9 @@
   log_r  <- ifelse(far, -lfar, 2 * ly - log1p(y[finite]^2))
   log_1r <- ifelse(far, -(2 * ly + lfar), -log1p(y[finite]^2))
   if(what == "pdf"){
-    # y^(2a - 1) (1 + y^2)^-(a + b) = y^-(2b + 1) (1 + y^-2)^-(a + b) for y > 1,
-    # where (a + b) log1p(y^-2) is (a + b) y^-2 once y^-2 nears the double
-    # range (it can still be large for huge shapes)
-    # the mode-centred log density of log(W) = 2 log(y), with the Jacobian
-    # 2 / y and the fair sign 1 / 2 (the direct form y^(2a - 1) (1 + y^2)^-(a +
-    # b) / B(a, b) cancels terms of order a + b near the mode)
+    # the log density of log(W) = 2 log(y), with the Jacobian 2 / y and the
+    # fair sign 1 / 2 (the direct form y^(2a - 1) (1 + y^2)^-(a + b) / B(a, b)
+    # cancels terms of order a + b near the mode)
     out[finite] <- .bt_R2_density_log_betaprime_at(2 * ly, base$a, base$b) - ly
   }else if(what == "central"){
     out[finite] <- .bt_R2_density_log_pbeta(log_r, base$a, base$b)
@@ -275,7 +287,8 @@
   if(!is.finite(max(log_ref))){
     return(-Inf)
   }
-  keep <- which(log_ref > max(log_ref) - 50)
+  # (>= keeps the top piece when max(log_ref) - 50 rounds to max(log_ref))
+  keep <- which(log_ref >= max(log_ref) - 50)
   pieces <- vapply(keep, function(i){
     piece <- stats::integrate(function(t) exp(log_f(t) - log_ref[i]), lo[i], hi[i], rel.tol = tolerance,
                               abs.tol = 0, subdivisions = 200L, stop.on.error = FALSE)
@@ -456,22 +469,53 @@
 # log density of tau = log(W), W ~ BetaPrime(a, b).
 .bt_R2_density_log_betaprime_at <- function(tau, a, b){
 
-  # centred at the mode tau0 = log(a / b): with p0 = a / (a + b), q0 = b / (a
-  # + b) and dt = tau - tau0, the log density is the log density at the mode
-  # minus a log(p0 + q0 e^-dt) + b log(p0 e^dt + q0); each logarithm is
-  # log1p(.. expm1(..)) near the mode and its log-domain asymptote beyond
-  # |dt| = 30, so that no two terms of order a + b cancel (very unequal or
-  # very large shapes keep the relative precision of the density; the shape
-  # of 'tau', a vector or a matrix of nodes, is kept)
-  dt <- tau - (log(a) - log(b))
-  log_p0 <- .bt_R2_log_fraction(a, b)
-  log_q0 <- .bt_R2_log_fraction(b, a)
-  log_ab <- log(a) - log(b)
-  A <- ifelse(dt > 30, log_p0 + log1p(exp(-log_ab - dt)),
-         ifelse(dt < -30, log_q0 - dt + log1p(exp(log_ab + dt)), log1p(exp(log_q0) * expm1(-dt))))
-  B <- ifelse(dt > 30, log_p0 + dt + log1p(exp(-log_ab - dt)),
-         ifelse(dt < -30, log_q0 + log1p(exp(log_ab + dt)), log1p(exp(log_p0) * expm1(dt))))
-  .bt_R2_density_log_betaprime_mode(a, b) - a * A - b * B
+  # The log density is a tau - (a + b) log(1 + e^tau) - lbeta(a, b). Within
+  # |dt| <= 30 of the mode tau0 = log(a / b) it is centred there: with p0 =
+  # a / (a + b), q0 = b / (a + b) and E(x) = e^x - 1 - x >= 0, it is the log
+  # density at the mode minus (a + b) log1p(u), u = q0 E(-p0 dt) + p0 E(q0 dt),
+  # where (a + b) u = b E(-p0 dt) + a E(q0 dt): sums of nonnegative terms, so
+  # that the density never exceeds its mode and keeps its relative precision
+  # (the first-order terms of order a + b cancel analytically, not in
+  # rounding). Beyond |dt| = 30 the direct form -lbeta(a, b) - a softplus(-tau)
+  # - b softplus(tau) has no cancellation. The shape of 'tau', a vector or a
+  # matrix of nodes, is kept.
+  ratio <- a / b
+  tau0  <- if(is.finite(ratio) && ratio >= .Machine$double.xmin) log(ratio) else log(a) - log(b)
+  # (p0 and q0 from the ratio of the smaller to the larger shape: a + b can
+  # overflow)
+  if(a >= b){
+    r <- b / a; p0 <- 1 / (1 + r); q0 <- r / (1 + r)
+  }else{
+    r <- a / b; q0 <- 1 / (1 + r); p0 <- r / (1 + r)
+  }
+  # The mode has width 1 / sqrt(H), H = a q0 = a b / (a + b), and the
+  # rounding of tau0 (none for a = b, where tau0 = 0) moves the log density
+  # by about sqrt(H) times that rounding: beyond 1e-6 the density at doubles
+  # depends on digits of log(a / b) that doubles do not hold.
+  if(a != b && a * q0 * (.Machine$double.eps * max(1, abs(tau0)))^2 > 1e-12){
+    .bt_R2_density_stop_unavailable(paste0(
+      "The R-squared functional density of a Beta(", format(a), ", ", format(b), ") total is concentrated ",
+      "beyond double precision. Use less extreme shapes or evaluate the distribution by simulation."))
+  }
+  dt   <- tau - tau0
+  out  <- tau
+  near <- !is.na(dt) & abs(dt) <= 30
+  if(any(near)){
+    excess_p <- .bt_R2_density_expm1_excess(-p0 * dt[near])
+    excess_q <- .bt_R2_density_expm1_excess(q0 * dt[near])
+    u        <- q0 * excess_p + p0 * excess_q
+    # (log1p(u) / u, 1 at u = 0; the shapes multiply last, so that huge
+    # shapes overflow only where the log density does)
+    log1p_u  <- ifelse(u > 1e-8, log1p(u) / pmax(u, 1e-8), 1 - u / 2 + u^2 / 3)
+    out[near] <- .bt_R2_density_log_betaprime_mode(a, b) - (b * (excess_p * log1p_u) + a * (excess_q * log1p_u))
+  }
+  if(any(!near)){
+    # (in units of the largest shape, for the same reason)
+    t <- tau[!near]
+    s <- max(1, a, b)
+    out[!near] <- -s * (lbeta(a, b) / s + (a / s) * .bt_R2_density_softplus(-t) + (b / s) * .bt_R2_density_softplus(t))
+  }
+  out
 }
 
 # The log density of log(W), W ~ BetaPrime(a, b), at its mode log(a / b):
