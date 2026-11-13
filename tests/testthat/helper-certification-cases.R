@@ -41,6 +41,10 @@ bayestools_certification_cases <- function() {
       description = "Fixed, conditional, and marginal predictions of JAGS_predict_formula() against the exact Gaussian posterior.",
       native      = TRUE
     ),
+    `R2-budget-priors` = list(
+      description = "Bridge-sampling Bayes factors of R-squared budget priors in balanced designs against independent quadrature, node parity, predictions, and model averaging.",
+      native      = TRUE
+    ),
     `savage-dickey-ordinates` = list(
       description = "Savage-Dickey Bayes factors at nulls away from the posterior mode against exact conjugate ordinates.",
       native      = TRUE

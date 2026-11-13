@@ -166,7 +166,6 @@
     if(length(present) == 0){
       next
     }
-
     groups[[parameter]] <- list(
       parameter = parameter,
       prior     = prior,
@@ -1287,6 +1286,11 @@
     return(Inf)
   }
 
+  # (the scale of a gated R2 term is that of its continuous part, as for a
+  # spike-and-slab prior: its quartiles can both lie in the atom at zero)
+  if(is.prior.R2(prior) && .bt_R2_term_is_gated(prior)){
+    prior$gated_slab <- TRUE
+  }
   quartiles <- mquant(prior, c(.25, .75))
   scales <- vapply(seq_along(weights), function(i){
     source_quartiles <- if(identical(transforms[i], "log")) log(quartiles) else quartiles
@@ -1351,8 +1355,10 @@
   if(length(groups) == 0){
     return(NULL)
   }
-  # the groups of a grid are convolved as independent terms
+  # the groups of a grid are convolved as independent terms; the terms of an
+  # R-squared budget are dependent through the budget
   .prior_ordered_check_independent_groups(groups)
+  .bt_R2_check_linear_groups(groups)
 
   if(is.null(source_transforms)){
     source_transforms <- rep(NA_character_, length(weights))
@@ -1497,6 +1503,9 @@
   }
   check_int(n_grid, "n_grid", lower = 16)
   check_real(tail_prob, "tail_prob", lower = 0, upper = 0.5, allow_bound = FALSE)
+  # the dependence of R-squared budget parameters is checked on the whole
+  # combination, before it splits into multiplier and additive groups
+  .bt_R2_check_linear_combination(prior_list, weights)
   check_real(grid_spacing, "grid_spacing", lower = 0, allow_bound = FALSE, allow_NULL = TRUE)
 
   weights <- weights[weights != 0]
@@ -1695,6 +1704,7 @@
                                            output_transformation_arguments, grid_spacing,
                                            .record_evaluation = TRUE, .plan = NULL){
 
+  .bt_R2_check_linear_combination(prior_list, weights)
   split <- .prior_linear_split_multiply_groups(prior_list, weights)
   components <- list(
     .prior_linear_additive_combination_density(

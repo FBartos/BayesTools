@@ -39,7 +39,24 @@
 #' allocation of an ordered term is a derived quantity,
 #' `<parameter>_ordered_allocation[<level>]` displayed as `term[share: level]`
 #' (support \[0, 1\], the Beta marginal of the Dirichlet prior); its earlier
-#' labels (`term_ordered_allocation[level]`) are aliases. The level names of transformed summaries,
+#' labels (`term_ordered_allocation[level]`) are aliases. The total of an
+#' R-squared budget ([prior_R2()]) is the quantity of its total coordinate
+#' `<parameter>_<name>` displayed as `<name>{total}` (support \[0, 1\], the
+#' Beta prior of the model), and each retained term of a budget that retains
+#' two or more terms has a derived share quantity
+#' `<parameter>_<name>_allocation[<term>]` displayed as `<name>[share: <term>]`
+#' (support \[0, 1\], the Beta marginal of the Dirichlet allocation summed over
+#' the term's allocation units); the allocation coordinates of a budget are
+#' backend coordinates. For a budget with inclusion gates or a spike-and-slab
+#' total, the total has an atom at zero (the budget null) and the inclusion
+#' event of the budget indicator, displayed `<name>{total} (inclusion)`;
+#' every gated term has an inclusion quantity `<parameter>_<name>_gate[<term>]`
+#' displayed as `<term> (inclusion)`, with the Bernoulli prior of its marginal
+#' inclusion probability; and a share is undefined (`"allocation_active"`) on
+#' the draws where its term is closed, with the prior of the share given that
+#' the term is open. The scalar coefficients of a gated term have an atom at
+#' zero (the term closed) and are tested on these quantities; the levels and
+#' coded coefficients of a gated factor have no catalog prior density. The level names of transformed summaries,
 #' `<parameter>[dif: level]`, and the row labels those summaries display,
 #' `(formula) term[dif: level]` and `term[dif: level]`, are aliases of the
 #' level quantity. JAGS
@@ -824,6 +841,10 @@ parameter_draws.BayesTools_fit <- function(object, selection,
       .bt_parameter_draw_factor_level(key, model_samples)
     }else if(identical(key$type, "ordered_allocation")){
       .bt_parameter_draw_ordered_allocation(object, key, model_samples)
+    }else if(identical(key$type, "R2_share")){
+      .bt_parameter_draw_R2_share(object, key, model_samples)
+    }else if(identical(key$type, "R2_open")){
+      .bt_parameter_draw_R2_open(object, key, model_samples)
     }else{
       .bt_parameter_draw_random_summary(
         fit = object,
@@ -911,6 +932,21 @@ parameter_prior_density.BayesTools_fit <- function(
          call. = FALSE)
   }
   key <- quantity$extraction_key[[1L]]
+  if(identical(key$type, "R2_share")){
+    return(.bt_parameter_prior_density_R2_share(object, quantity, key, n_grid, tail_prob))
+  }
+  R2_law <- .bt_R2_quantity_law(object, key, conditional)
+  if(!is.null(R2_law)){
+    out <- .bt_parameter_prior_density_scalar(.bt_R2_grid_law(R2_law), n_grid = n_grid,
+                                              tail_prob = tail_prob)
+    if(!is.null(out)){
+      attr(out, "parameter_prior_density") <- c(
+        list(quantity_id = quantity$quantity_id, source = "fitted_parameter_map"),
+        if(isTRUE(conditional)) list(conditional = "inclusion")
+      )
+    }
+    return(out)
+  }
   if(identical(key$type, "ordered_allocation") ||
      (identical(key$type, "coordinate") &&
       !is.null(.bt_ordered_total_owner(attr(object, "prior_list", exact = TRUE), key$dependencies)))){
@@ -4732,7 +4768,8 @@ parameter_transform_jacobian <- function(values, transform){
   )
   quantities <- rbind(
     base, factor_map$quantities, random_map$derived,
-    .bt_ordered_share_quantities(coordinates, prior_list)
+    .bt_ordered_share_quantities(coordinates, prior_list),
+    .bt_R2_share_quantities(coordinates, prior_list)
   )
   rownames(quantities) <- NULL
   quantities <- .bt_parameter_catalog_add_support(
@@ -4824,6 +4861,15 @@ parameter_transform_jacobian <- function(values, transform){
     return(.posterior_support_point(quantity$fixed_value, source = "catalog"))
   }
   key <- quantity$extraction_key[[1L]]
+  # the supports of the quantities of R-squared budgets are structural (no
+  # configuration of a gated budget is enumerated)
+  R2_support <- .bt_R2_quantity_support(object, key)
+  if(!is.null(R2_support)){
+    return(R2_support)
+  }
+  if(identical(key$type, "R2_share")){
+    return(.posterior_support_new(c(0, 1), source = "catalog", type = "interval"))
+  }
   if(identical(key$type, "ordered_allocation") || identical(key$type, "coordinate")){
     ordered <- .bt_ordered_quantity_support(object, key)
     if(!is.null(ordered)){
@@ -5272,6 +5318,11 @@ parameter_transform_jacobian <- function(values, transform){
 .bt_parameter_catalog_quantity_definedness <- function(object, quantity){
 
   key <- quantity$extraction_key[[1L]]
+  # the share of a gated term is undefined where the term is closed
+  if(identical(key$type, "R2_share") && length(key$dependencies) > length(key$units) &&
+     !is.null(.bt_R2_budget_records(attr(object, "prior_list", exact = TRUE))[[key$total]]$core)){
+    return("allocation_active")
+  }
   if(!identical(key$type, "random_summary")){
     return("always")
   }
@@ -5313,6 +5364,12 @@ parameter_transform_jacobian <- function(values, transform){
         all(is.finite(key$weights)) &&
         length(key$weights) == length(key$dependencies)
     )
+  }
+  if(identical(key$type, "R2_share")){
+    return(.bt_parameter_catalog_valid_R2_share_key(key))
+  }
+  if(identical(key$type, "R2_open")){
+    return(.bt_parameter_catalog_valid_R2_open_key(key))
   }
   if(identical(key$type, "ordered_allocation")){
     return(

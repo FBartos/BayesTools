@@ -104,7 +104,17 @@
 #' coordinate, but they are not catalog quantities and do not select one in
 #' [parameter_catalog_resolve()], hypotheses, or plots (the shares of the
 #' ordered-factor allocations, which the table shows as \code{<term>[share:
-#' <level>]}, are catalog quantities).
+#' <level>]}, and the shares of the terms of R-squared budgets, shown as
+#' \code{<budget>[share: <term>]} in place of the budget's allocation
+#' coordinates, are catalog quantities). An R-squared budget with inclusion
+#' gates or a spike-and-slab total shows inclusion rows as spike-and-slab
+#' priors do (\code{<term> (inclusion)} for every gated term and
+#' \code{<budget>{total} (inclusion)} for a total that can be zero), the
+#' shares on the draws where their terms are open, and with
+#' \code{conditional = TRUE} the coefficients of a gated term (and the total)
+#' on the draws where the term (the budget) is open;
+#' \code{runjags_inference_table()} reports their prior and posterior
+#' inclusion probabilities and inclusion Bayes factors.
 #' Internal latent and realized group-coefficient coordinates
 #' are omitted when \code{transform_scaled = TRUE}, including in \code{"raw"}
 #' mode, because those coordinates remain on the fitted standardized scale.
@@ -834,6 +844,25 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
     }
   }
 
+  # R-squared budgets show the share of each retained term after the budget
+  # total, in place of the allocation coordinates (raw summaries show the
+  # coordinates)
+  if(!identical(random_effects_summary, "raw")){
+    R2_budgets <- .bt_JAGS_estimates_R2_budgets(
+      model_samples     = model_samples,
+      raw_model_samples = raw_model_samples,
+      prior_list        = attr(fit, "prior_list", exact = TRUE),
+      conditional       = conditional,
+      remove_inclusion  = remove_inclusion
+    )
+    model_samples     <- R2_budgets$model_samples
+    created_parts     <- c(created_parts, R2_budgets$created)
+    inclusion_columns <- c(inclusion_columns, R2_budgets$inclusion_columns)
+    if(length(R2_budgets$warnings)){
+      warnings <- c(warnings, R2_budgets$warnings)
+    }
+  }
+
   # untransformed ordered-factor priors show their total and allocation
   if(!transform_factors){
     ordered <- .bt_JAGS_estimates_ordered_allocations(
@@ -1354,7 +1383,8 @@ runjags_inference_table  <- function(fit, title = NULL, footnotes = NULL, warnin
   if(!any(sapply(prior_list, function(p){
     is.prior.spike_and_slab(p) | is.prior.mixture(p) |
       .bt_is_random_allocation_inclusion_prior(p) |
-      .bt_is_ordered_spike_and_slab_total(p)
+      .bt_is_ordered_spike_and_slab_total(p) |
+      is.prior.R2_budget(p)
   }))){
     runjags_summary <- runjags_inference_empty_table(
       title          = title,
@@ -1594,6 +1624,40 @@ runjags_inference_table  <- function(fit, title = NULL, footnotes = NULL, warnin
       parameter_roles <- c(parameter_roles, "random_inclusion")
       row_labels <- c(row_labels, temp_parameter)
     }
+  }
+
+  # gated and spiked R-squared budgets: the budget and every gated term
+  R2_chains <- if(is.null(model_samples_list)) list(model_samples) else model_samples_list
+  for(row in .bt_R2_inference_rows(prior_list, R2_chains)){
+    temp_prior_prob <- row$prior_prob
+    temp_post_prob  <- mean(unlist(row$indicators, use.names = FALSE))
+    temp_log_BF     <- .inclusion_log_BF.probs(
+      prior_probs = c(null = 1 - temp_prior_prob, alternative = temp_prior_prob),
+      post_probs  = c(null = 1 - temp_post_prob,  alternative = temp_post_prob),
+      is_null     = c(TRUE, FALSE)
+    )
+    temp_BF           <- exp(temp_log_BF)
+    temp_BF_reporting <- .indicator_BF_reporting_value(temp_BF, temp_post_prob, temp_prior_prob,
+                                                       nrow(model_samples), log_BF = temp_log_BF)
+    temp_row <- data.frame(
+      Parameter    = row$parameter,
+      prior_prob   = temp_prior_prob,
+      post_prob    = temp_post_prob,
+      inclusion_BF = temp_BF_reporting$value
+    )
+    if(BF_diagnostics){
+      temp_diagnostics <- .indicator_BF_diagnostics(row$indicators, temp_prior_prob, temp_BF, log_BF = temp_log_BF)
+      temp_row <- cbind(temp_row, .indicator_BF_diagnostic_row(temp_diagnostics)[, BF_diagnostic_columns, drop = FALSE])
+      if(BF_error_diagnostics){
+        temp_label <- .bt_label(row$parts, style = "warning", formula_prefix = formula_prefix)
+        warnings <- c(warnings, .indicator_BF_warnings(temp_label, temp_diagnostics, label = temp_label))
+      }
+    }
+    runjags_summary    <- rbind(runjags_summary, temp_row)
+    BF_bound_operators <- c(BF_bound_operators, temp_BF_reporting$operator)
+    BF_log_values      <- c(BF_log_values, temp_BF_reporting$log_value)
+    parameter_roles    <- c(parameter_roles, "model_inclusion")
+    row_labels         <- c(row_labels, .bt_label(row$parts, style = "table", formula_prefix = formula_prefix))
   }
 
   # store parameter names before removing formula attachments

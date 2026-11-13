@@ -706,6 +706,7 @@ transform_prior_samples <- function(fit, n_samples = 10000, seed = NULL, formula
   }, logical(1))]
   .bt_validate_ordered_shared_allocations(prior_list, bound_only = TRUE)
   allocation_registry <- new.env(parent = emptyenv())
+  R2_registry <- new.env(parent = emptyenv())
 
   if(!is.null(seed)){
     set.seed(seed)
@@ -723,6 +724,9 @@ transform_prior_samples <- function(fit, n_samples = 10000, seed = NULL, formula
       # No effect prior - use zeros
       samples_list[[param_name]] <- matrix(0, nrow = n_samples, ncol = 1)
       colnames(samples_list[[param_name]]) <- param_name
+
+    }else if(is.prior.R2(prior) || .bt_R2_is_budget_prior(prior)){
+      samples_list[[param_name]] <- .bt_R2_prior_sample_columns(prior, param_name, prior_list, n_samples, R2_registry)
 
     }else if(is.prior.factor(prior) || inherits(prior, "prior.factor_mixture") || inherits(prior, "prior.factor_spike_and_slab")){
       samples_list[[param_name]] <- .generate_factor_prior_sample_matrix(

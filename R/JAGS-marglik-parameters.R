@@ -88,6 +88,14 @@ JAGS_marglik_parameters                <- function(samples, prior_list){
 
       parameters <- c(parameters, .JAGS_marglik_parameters.PP(samples, prior_list[[i]]))
 
+    }else if(is.prior.R2(prior_list[[i]])){
+
+      parameters <- c(parameters, .JAGS_marglik_parameters.R2(samples, prior_list[[i]], names(prior_list)[i]))
+
+    }else if(is.prior.R2_budget(prior_list[[i]])){
+
+      .bt_R2_gated_unavailable("The marginal likelihood")
+
     }else if(is.prior.ordered(prior_list[[i]])){
 
       parameters <- c(parameters, .JAGS_marglik_parameters.ordered(samples, prior_list[[i]], names(prior_list)[i]))
@@ -148,6 +156,13 @@ JAGS_marglik_parameters                <- function(samples, prior_list){
   return(parameter)
 }
 .JAGS_marglik_parameter_values          <- function(samples, prior, parameter_names){
+
+  if(is.prior.R2(prior)){
+    return(.bt_JAGS_marglik_compile_R2_parameter_values(
+      prior,
+      .bt_parameter_coordinates_base(parameter_names[[1L]])
+    )(samples))
+  }
 
   if(is.prior.ordered(prior)){
     return(.bt_JAGS_marglik_compile_ordered_parameter_values(

@@ -2084,7 +2084,8 @@ range.prior  <- function(x, quantiles = NULL, ..., na.rm = FALSE){
     "weightfunction" = .005,
     "mnormal"    = .005,
     "mt"         = .010,
-    "dirichlet"  = .005
+    "dirichlet"  = .005,
+    "R2"         = .010
   )
 
 }

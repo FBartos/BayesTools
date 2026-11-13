@@ -179,8 +179,18 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
     .bt_linear_weight_space(samples[[parameter]])
     # a prior law that only JAGS evaluates (expression() parameters) is not a
     # refusal of the plot: the posterior is drawn without the prior curve
-    if(prior) .bt_formula_measure_check(samples[[parameter]], "prior_density",
-                                        except = "expression_prior_law_unavailable")
+    if(prior) tryCatch(
+      .bt_formula_measure_check(samples[[parameter]], "prior_density",
+                                except = "expression_prior_law_unavailable"),
+      BayesTools_formula_measure_unavailable = function(condition){
+        # the prior density of an R2 budget term on a transformed scale is
+        # unavailable (its terms are dependent): the posterior is drawn alone
+        if(!inherits(condition$diagnostics, "BayesTools_R2_combination_unavailable")) stop(condition)
+        .plot_data_warn_prior_curve_unavailable(parameter,
+          reason = "the terms of its R-squared budget are dependent through the budget",
+          remedy = "plot the prior on the model scale ('transform_scaled = FALSE') to draw it")
+        prior <<- FALSE
+      })
   }
 
   # handle transform_scaled: check for pre-computed prior densities
@@ -557,11 +567,24 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
           transformation_arguments  = transformation_arguments,
           transformation_settings   = transformation_settings
         ), BayesTools_formula_measure_unavailable = function(condition){
+          if(identical(condition$prior_family, "R2")){
+            # an R2 budget has no linear-combination prior law: the posterior
+            # is drawn without the prior curve
+            .plot_data_warn_prior_curve_unavailable(parameter,
+              reason = "the terms of its R-squared budget are dependent through the budget",
+              remedy = "plot the prior on the model scale ('transform_scaled = FALSE') to draw it")
+            return(structure(list(), class = "BayesTools_no_prior_curve"))
+          }
           if(!identical(condition$reason, "expression_prior_law_unavailable")) stop(condition)
           NULL
         })
       }
-      if(is.null(plot_data_prior) && transform_scaled && !is.null(prior_densities_transformed) && parameter %in% names(prior_densities_transformed)){
+      no_prior_curve <- inherits(plot_data_prior, "BayesTools_no_prior_curve")
+      if(no_prior_curve){
+        plot_data_prior <- NULL
+        prior <- FALSE
+      }
+      if(!no_prior_curve && is.null(plot_data_prior) && transform_scaled && !is.null(prior_densities_transformed) && parameter %in% names(prior_densities_transformed)){
         plot_data_prior <- .prior_linear_density_to_plot_data(
           prior_densities_transformed[[parameter]],
           n_points                  = n_points,
@@ -573,7 +596,7 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
         )
       }
 
-      if(is.null(plot_data_prior)){
+      if(!no_prior_curve && is.null(plot_data_prior)){
         plot_data_prior <- .plot_data_attached_prior_density(
           samples                   = samples,
           parameter                 = parameter,
@@ -585,7 +608,9 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
         )
       }
 
-      if(is.null(plot_data_prior) &&
+      if(no_prior_curve){
+        # the prior curve is omitted (warned above)
+      }else if(is.null(plot_data_prior) &&
          (.plot_data_samples_without_prior(samples[[parameter]]) || .bt_prior_has_expression(prior_list))){
         # the draws declare no prior (prior_none()) or a prior with expression()
         # parameters (no R-side law), and carry no prior density: the posterior

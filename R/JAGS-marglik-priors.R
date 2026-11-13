@@ -98,6 +98,14 @@ JAGS_marglik_priors                <- function(samples, prior_list){
 
       marglik <- marglik + .JAGS_marglik_priors.PP(samples, prior_list[[i]])
 
+    }else if(is.prior.R2(prior_list[[i]])){
+
+      marglik <- marglik + .JAGS_marglik_priors.R2(samples, prior_list[[i]], names(prior_list)[i])
+
+    }else if(is.prior.R2_budget(prior_list[[i]])){
+
+      .bt_R2_gated_unavailable("The marginal likelihood")
+
     }else if(is.prior.ordered(prior_list[[i]])){
 
       ordered_marglik <- .JAGS_marglik_priors.ordered(
@@ -234,6 +242,10 @@ JAGS_marglik_priors_rows_evaluator <- function(prior_list){
 
   if(is.prior.none(prior_object) || is.prior.point(prior_object)){
     return(function(samples) numeric(nrow(samples)))
+  }
+
+  if(is.prior.R2(prior_object)){
+    return(.bt_JAGS_marglik_compile_R2_prior_rows(prior_object, parameter_name))
   }
 
   if(is.prior.factor(prior_object) &&

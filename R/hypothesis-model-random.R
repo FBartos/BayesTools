@@ -482,8 +482,12 @@
   )
   prior_density <- posterior_metadata(samples[[parameter]], "prior_density")
   ordered <- identical(plan[["selected"]][["entry"]][["source"]], "ordered")
-  noun    <- if (ordered) "ordered quantity" else "random-effect quantity"
-  nouns   <- if (ordered) "ordered quantities" else "random-effect quantities"
+  R2      <- ordered && .bt_R2_quantity_rows(
+    selected[["entry"]][["selection"]][["quantities"]],
+    attr(provider[["fit"]], "prior_list", exact = TRUE)
+  )[[1L]]
+  noun    <- if (R2) "R-squared budget quantity" else if (ordered) "ordered quantity" else "random-effect quantity"
+  nouns   <- if (R2) "R-squared budget quantities" else if (ordered) "ordered quantities" else "random-effect quantities"
   plan[["draws"]]         <- list(samples = samples, posterior = samples[[parameter]])
   plan[["prior_density"]] <- prior_density
   # Region probabilities need a prior density with deterministic provenance;
@@ -542,10 +546,30 @@
     provider[["random"]][["zero_boundary"]](selected)
   }
   zero_alternative <- zero_boundary[["alternative"]]
+  point_mass_advice <- provider[["random_point_mass_advice"]]
+  # the atom of an R-squared share at one (its term is the only open term) is
+  # not an inclusion event: only region hypotheses test it; the atom at zero
+  # of a gated coefficient or of a budget total is the exclusion of its term
+  # (the null of its budget), whose evidence is its inclusion Bayes factor
+  # (the conditional route has no exact ordinate at zero)
+  R2_type <- if (R2) selected[["entry"]][["selection"]][["quantities"]][["extraction_key"]][[1L]][["type"]]
+  if (R2 && identical(R2_type, "R2_share")) {
+    # the qualified label names the share in every fit
+    point_mass_advice <- paste0(
+      "Test the atom at one (the term is the only open term) with the region hypothesis '", label,
+      " >= 1', whose Bayes factor is the posterior to prior odds of the atom."
+    )
+  } else if (R2) {
+    point_mass_advice <- paste0(
+      "The point mass at zero is the exclusion of the term (or the null of the budget): its evidence is the ",
+      "inclusion Bayes factor of runjags_inference_table(), which a region hypothesis excluding zero ",
+      "(e.g., 'R2{total} > 0' for a budget named R2) also gives for a budget total."
+    )
+  }
   point_mass_reason <- paste0(
     "Point-null Bayes factors at %s are unavailable for ", noun,
     " '%s' because its prior has a point mass at %s. ",
-    gsub("%", "%%", provider[["random_point_mass_advice"]], fixed = TRUE)
+    gsub("%", "%%", point_mass_advice, fixed = TRUE)
   )
   plan[["targets"]] <- lapply(seq_len(nrow(refs)), function(i) {
     value  <- refs[["value"]][[i]]
@@ -556,12 +580,33 @@
       prior_ordinate_status(prior_density, value, labels = label_value)[["condition"]],
       "BayesTools_point_mass_at_null"
     )
+    # a bounded R-squared quantity (a share, a total, an inclusion rate) at a
+    # bound that is no atom: the posterior density of the draws has no exact
+    # ordinate on the boundary of the support
+    support <- plan[["support"]]
+    R2_boundary <- R2 && length(support) == 2L &&
+      (value <= support[[1L]] || value >= support[[2L]]) && !identical(
+        prior_ordinate_status(prior_density, value, labels = label_value)[["condition"]],
+        "BayesTools_point_mass_at_null"
+      )
     target <- .hypothesis_model_plan_target(
       value         = value,
       label         = label_value,
       prior_density = prior_density,
       atoms         = posterior_metadata(samples[[parameter]], "atoms"),
-      refusal       = if (!is.null(zero_boundary) && value == 0 && !point_mass) {
+      refusal       = if (R2_boundary) {
+        c(
+          .hypothesis_model_refusal(
+            paste0(
+              "Point-null Bayes factors are unavailable for ", noun, " '", label, "' at ",
+              format(value, digits = 15L, trim = TRUE), " because the value is a bound of its support, ",
+              "where the posterior density of the draws has no exact ordinate. Use a region or directional hypothesis."
+            ),
+            "target"
+          ),
+          list(value_specific = TRUE)
+        )
+      } else if (!is.null(zero_boundary) && value == 0 && !point_mass) {
         c(
           .hypothesis_model_refusal(
             paste0(
@@ -609,11 +654,32 @@
   fit        <- provider[["fit"]]
   quantity   <- selected[["entry"]][["selection"]][["quantities"]]
   key        <- quantity[["extraction_key"]][[1L]]
-  if (identical(key[["type"]], "ordered_allocation")) {
+  if (key[["type"]] %in% c("ordered_allocation", "R2_share")) {
     return(NULL)
   }
   prior_list <- attr(fit, "prior_list", exact = TRUE)
+  # a coefficient (or factor level) of an R-squared budget term tested on its
+  # catalog law: on the original scale of the predictors when the scale
+  # transformation multiplies it by a constant (its law and draws are
+  # rescaled, with the atom of a gate at zero), refused when the original
+  # coefficient combines several fitted coefficients of the budget
+  R2_term <- .bt_R2_term_owner(prior_list, key[["dependencies"]])
+  if (!is.null(R2_term) && isTRUE(plan[["transform_scaled"]]) &&
+      is.null(.bt_R2_original_scale_factor(fit, prior_list[[R2_term]][["parameter"]], key[["dependencies"]]))) {
+    return(.hypothesis_model_refusal(
+      paste0(
+        "The original-scale coefficient '", selected[["spec"]][["label"]], "' combines several fitted ",
+        "coefficients of an R-squared budget, which are dependent: its prior law is unavailable. ",
+        "Test it with 'transform_scaled = FALSE'."
+      ),
+      "target"
+    ))
+  }
   owner      <- .bt_ordered_quantity_owner(quantity, prior_list)
+  # the total of an R-squared budget has its own Beta prior in the model
+  if (is.null(owner)) {
+    return(NULL)
+  }
   total      <- prior_list[[owner]][["total"]]
   label      <- selected[["spec"]][["label"]]
   if (is.prior.point(total) && !.is_prior_expression(total)) {

@@ -998,6 +998,15 @@
     prior_name  <- if(is.null(prior_names)) "" else prior_names[[i]]
     prior_value <- prior_list[[i]]
 
+    # an R-squared budget is an entry named by its budget (see prior_R2())
+    if(is.R2_budget(prior_value)){
+      next
+    }
+    if(is.list(prior_value) && !is.prior(prior_value) && length(prior_value) > 0L &&
+       all(vapply(prior_value, is.R2_budget, logical(1)))){
+      .bt_R2_stop("Several R-squared budgets are separate entries of the formula prior list, each named by its budget.")
+    }
+
     if(prior_name %in% default_prior_names){
       if(is.prior(prior_value) || .JAGS_formula_is_lazy_default_prior(prior_value)){
         next
@@ -1093,6 +1102,9 @@
   for(model_term in model_terms){
     this_prior <- prior_list[[model_term]]
     term_type <- model_terms_type[[model_term]]
+    if(is.prior.R2(this_prior)){
+      next
+    }
     factor_prior <- .bt_prior_is_factor_family(this_prior)
 
     if(factor_prior){
@@ -1213,6 +1225,11 @@
   }
   if(is.prior.ordered(prior)){
     return(FALSE)
+  }
+  # the exact law of an R-squared budget is defined in the design metric, so
+  # it does not depend on the contrast; the coordinatewise kernels do
+  if(is.prior.R2(prior)){
+    return(identical(prior$law, "exact") || isTRUE(one_coordinate))
   }
   if(is.prior.orthonormal(prior) || is.prior.meandif(prior) ||
      .posterior_atoms_is_zero_point(prior)){

@@ -676,9 +676,13 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
       posterior_pair = posterior_pair,
       n_columns = 1L,
       column_names = parameter,
-      component_atoms = .posterior_atoms_bernoulli_components(
-        priors, as.numeric(samples), model_component, parameter,
-        source = "posterior_draws"
+      component_atoms = .posterior_atoms_merge_components(
+        .posterior_atoms_bernoulli_components(
+          priors, as.numeric(samples), model_component, parameter,
+          source = "posterior_draws"
+        ),
+        .posterior_atoms_R2_gate_components(priors, fits, 1L, parameter,
+          log_post_probs = if(!is.null(posterior_pair)) posterior_pair$logs else log(post_probs))
       )
     )
   )
@@ -776,7 +780,9 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
       post_probs,
       posterior_pair = posterior_pair,
       n_columns = K,
-      column_names = colnames(samples)
+      column_names = colnames(samples),
+      component_atoms = .posterior_atoms_R2_gate_components(priors, fits, K, colnames(samples),
+        log_post_probs = if(!is.null(posterior_pair)) posterior_pair$logs else log(post_probs))
     )
   )
   class(samples) <- c("mixed_posteriors", "mixed_posteriors.vector")
@@ -1067,6 +1073,9 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
         .mix_posteriors_ordered_component_atoms(fits, priors, parameter, ncol(samples), colnames(samples),
           log_post_probs = if(!is.null(posterior_pair)) posterior_pair$logs else log(post_probs),
           eligible = if(!is.null(ordered_condition)) ordered_condition$eligible)
+      }else{
+        .posterior_atoms_R2_gate_components(priors, fits, ncol(samples), colnames(samples),
+          log_post_probs = if(!is.null(posterior_pair)) posterior_pair$logs else log(post_probs))
       },
       exclusion_probabilities = if(isTRUE(priors_info[["ordered"]])){
         .mix_posteriors_ordered_exclusion_probabilities(fits, priors, parameter, post_probs,

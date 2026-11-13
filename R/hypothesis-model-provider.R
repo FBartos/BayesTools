@@ -462,6 +462,14 @@ hypothesis_provider.BayesTools_fit <- function(object, ...){
     for(row in seq_len(nrow(fixed_rows))){
       map_row <- fixed_rows[row, , drop = FALSE]
       term    <- map_row[["term"]]
+      # the coefficients of a gated R-squared budget term (an atom at zero)
+      # and the levels of an R-squared budget factor (the law of each level)
+      # are tested on their catalog quantities with the R-squared quantities
+      # below
+      R2_term <- prior_list[[map_row[["jags_name"]]]]
+      if(is.prior.R2(R2_term) && (.bt_R2_term_is_gated(R2_term) || is.prior.factor(R2_term))){
+        next
+      }
       coordinate_rows <- which(
         public &
           quantities[["formula_parameter"]] == formula_parameter &
@@ -528,16 +536,21 @@ hypothesis_provider.BayesTools_fit <- function(object, ...){
     )
   }
 
-  # totals and shares of ordered terms: sampled or derived quantities with a
-  # bracket-free root, tested on their own mixed posteriors by the route of the
-  # random-effect quantities
+  # totals and shares of ordered terms and of R-squared budgets: sampled or
+  # derived quantities with a bracket-free root, tested on their own mixed
+  # posteriors by the route of the random-effect quantities
+  R2_rows <- .bt_R2_quantity_rows(quantities, prior_list)
   ordered <- which(
     public & quantities[["status"]] != "unavailable" &
-      .bt_ordered_quantity_rows(quantities, prior_list)
+      (.bt_ordered_quantity_rows(quantities, prior_list) | R2_rows)
   )
   for(row in ordered){
     quantity <- as.list(quantities[row, , drop = FALSE])
-    root     <- .bt_ordered_hypothesis_root(quantities[row, , drop = FALSE])
+    root     <- if(R2_rows[[row]]){
+      .bt_R2_hypothesis_root(quantities[row, , drop = FALSE])
+    }else{
+      .bt_ordered_hypothesis_root(quantities[row, , drop = FALSE])
+    }
     add_entry(
       quantity          = quantity,
       parameter         = root,
@@ -815,6 +828,10 @@ hypothesis_provider.BayesTools_fit <- function(object, ...){
   quantity   <- quantities[match(entry[["quantity_id"]], quantities[["quantity_id"]]), , drop = FALSE]
   prior_list <- attr(fit, "prior_list", exact = TRUE)
   owner      <- .bt_ordered_quantity_owner(quantity, prior_list)
+  # the totals and shares of R-squared budgets have no ordered term
+  if(is.null(owner)){
+    return(NULL)
+  }
 
   prior_list[[owner]][["total"]]
 }
@@ -886,7 +903,7 @@ hypothesis_provider.BayesTools_fit <- function(object, ...){
           },
           status   = quantity[["status"]],
           quantity = if(identical(entry[["source"]], "ordered")){
-            if(identical(quantity[["extraction_key"]][[1L]][["type"]], "ordered_allocation")){
+            if(quantity[["extraction_key"]][[1L]][["type"]] %in% c("ordered_allocation", "R2_share")){
               "share"
             }else{
               "total"
@@ -907,6 +924,11 @@ hypothesis_provider.BayesTools_fit <- function(object, ...){
         conditional      = conditional,
         transform_scaled = transform_scaled
       )
+      # a coefficient of an R-squared budget term on the original scale of
+      # its predictor: a constant multiple of the fitted catalog quantity
+      if(isTRUE(transform_scaled)){
+        values <- .bt_R2_original_scale_mixed_posterior(fit, selected[["entry"]][["selection"]], values, conditional)
+      }
       attr(values, "parameter") <- parameter
       out <- list(values)
       names(out) <- parameter
