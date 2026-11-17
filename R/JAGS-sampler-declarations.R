@@ -95,11 +95,13 @@
 }
 
 .bt_sampler_gate_table <- function(){
+
   data.frame(node = character(), active = character(), prior = character(),
              branch = integer(), stringsAsFactors = FALSE)
 }
 
 .bt_sampler_declined_table <- function(){
+
   data.frame(prior = character(), branch = integer(), nodes = character(),
              reason = character(), stringsAsFactors = FALSE)
 }
