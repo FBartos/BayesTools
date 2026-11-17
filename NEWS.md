@@ -1,4 +1,7 @@
 # development version
+### Features
+- `JAGS_fit()` can declare publication-bias mixture branches to a gated sampler (`sampler_gates`) and blocks of priors to a factor slice sampler (`sampler_blocks`) of the BayesTools JAGS module
+
 ### Fixes
 - on Apple silicon, numeric constants in generated JAGS models and the values of compiled hypotheses are exact
 
