@@ -5993,6 +5993,36 @@ test_that("declared fits run serially, in parallel, with autofit, and extend aft
   expect_identical(colnames(as.matrix(serial$mcmc)), colnames(as.matrix(plain$mcmc)))
   expect_identical(parameter_catalog(serial), parameter_catalog(plain))
 
+  # 'sampler_blocks' as a function of the combined prior list (here: the
+  # simple continuous scalar priors) gives the fit of the equivalent list:
+  # the same declarations, model text, sampler assignment and draws
+  calls <- 0L
+  select_scalar <- function(priors){
+    calls <<- calls + 1L
+    list(names(priors)[vapply(priors, function(prior){
+      is.prior.simple(prior) && !is.prior.point(prior) && !is.prior.discrete(prior)
+    }, logical(1))])
+  }
+  from_function <- JAGS_fit(model_syntax = syntax, data = data, prior_list = prior_list,
+                            chains = 2, adapt = 100, burnin = 100, sample = 500, seed = 3, silent = TRUE,
+                            sampler_gates = TRUE, sampler_blocks = select_scalar)
+  expect_identical(calls, 1L)
+  expect_declared(from_function, 1000L)
+  expect_identical(attr(from_function, "sampler_declarations"), attr(serial, "sampler_declarations"))
+  expect_identical(from_function$model, serial$model)
+  expect_identical(as.matrix(from_function$mcmc), as.matrix(serial$mcmc))
+  compiled_samplers <- function(fit){
+    environment <- new.env()
+    eval(parse(text = fit$data), envir = environment)
+    .sampler_test_node_samplers(rjags::jags.model(
+      textConnection(fit$model), data = as.list(environment), n.chains = 1, n.adapt = 0, quiet = TRUE
+    ))
+  }
+  samplers <- compiled_samplers(from_function)
+  expect_identical(samplers, compiled_samplers(serial))
+  expect_identical(unname(samplers[c("mu", "tau")]), rep("BayesTools::FactorSlice", 2L))
+  expect_identical(unname(samplers["PET_1"]), "BayesTools::GatedSlice")
+
   parallel_fit <- fit_with(parallel = TRUE, cores = 2)
   expect_declared(parallel_fit, 1000L)
 
@@ -6252,6 +6282,35 @@ model{
     expect_error(run(models[[name]], block = FALSE), models[[name]]$stock, fixed = TRUE, info = name)
   }
 })
+
+test_that("an infinite density of the block at the current state stops the fit", {
+  skip_if_not(isTRUE(BayesTools_load_JAGS_module(quiet = TRUE, warn = FALSE)))
+
+  # JAGS refuses a start with a NaN density when it initializes the model, but
+  # accepts +Inf: the start b2 = 0.8 overflows the precision exp(1000 b2) and
+  # b1 = y makes the likelihood density +Inf
+  markers <- .sampler_test_block_markers(c("b1", "b2"))
+  model <- rjags::jags.model(
+    textConnection(sprintf("
+model{
+  b1 ~ dnorm(0, 1)
+  b2 ~ dnorm(0, 1)
+  precision <- exp(1000 * b2)
+  y ~ dnorm(b1, precision)
+  %s
+}", markers$syntax)),
+    data = c(list(y = 0.8), markers$data), n.chains = 1L, n.adapt = 0, quiet = TRUE,
+    inits = list(b1 = 0.8, b2 = 0.8, .RNG.name = "base::Mersenne-Twister", .RNG.seed = 3)
+  )
+  expect_identical(names(rjags::list.samplers(model)), "BayesTools::FactorSlice")
+  expect_error(
+    rjags::adapt(model, 10, end.adaptation = TRUE, progress.bar = "none"),
+    paste0("Factor slice sampler: failure to calculate the log density of the block at the current state: ",
+           "the summed log density of the block whose first member is this node is +Inf"),
+    fixed = TRUE
+  )
+})
+
 test_that("a gate whose activity depends on its node through a stochastic child is not claimed", {
   skip_if_not(isTRUE(BayesTools_load_JAGS_module(quiet = TRUE, warn = FALSE)))
 

@@ -110,33 +110,37 @@ namespace jags {
         // density (a member may be a stochastic child of another member) plus the
         // likelihood terms of the other stochastic children of the block. A NaN
         // term, a NaN sum (opposite infinities) or a +Inf sum is a failure to
-        // calculate the density and raises a node error (on the node whose term
-        // is NaN, otherwise on the first member), as the stock slice sampler does
-        // through GraphView::logFullConditional(): a NaN is no evidence of zero
-        // density, so rejecting it could silently truncate the target.
+        // calculate the density and raises a node error, as the stock slice
+        // sampler does through GraphView::logFullConditional(): a NaN is no
+        // evidence of zero density, so rejecting it could silently truncate the
+        // target. A NaN term is reported on its node; a NaN or +Inf sum on the
+        // first member, because a module cannot name nodes (JAGS resolves node
+        // names from the model's symbol table when it reports the error).
         double log_full_conditional(char const *where) const
         {
           double out = 0.0;
           for (StochasticNode const *node : _graph->nodes()) {
             const double term = node->logDensity(_chain, PDF_FULL);
-            if (std::isnan(term)) density_failure(node, where);
+            if (std::isnan(term)) density_failure(node, where, "the log density term of this node is NaN");
             out += term;
           }
           for (StochasticNode const *child : _graph->stochasticChildren()) {
             const double term = child->logDensity(_chain, PDF_LIKELIHOOD);
-            if (std::isnan(term)) density_failure(child, where);
+            if (std::isnan(term)) density_failure(child, where, "the log density term of this node is NaN");
             out += term;
           }
           if (std::isnan(out) || out > std::numeric_limits<double>::max()) {
-            density_failure(_graph->nodes()[0], where);
+            density_failure(_graph->nodes()[0], where, std::isnan(out) ?
+              "the summed log density of the block whose first member is this node is NaN" :
+              "the summed log density of the block whose first member is this node is +Inf");
           }
           return out;
         }
 
-        static void density_failure(Node const *node, char const *where)
+        static void density_failure(Node const *node, char const *where, char const *cause)
         {
           throwNodeError(node, std::string(
-            "Factor slice sampler: failure to calculate the log density of the block at ") + where);
+            "Factor slice sampler: failure to calculate the log density of the block at ") + where + ": " + cause);
         }
 
         // log pi_u of a proposal u; sets the node values to g^-1(u) when it is
