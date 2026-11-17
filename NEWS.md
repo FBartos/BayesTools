@@ -1,5 +1,9 @@
 # development version
+### Features
+- `JAGS_extend()` gains `adapt` to set the adaptation of one extension; fits record their adaptation settings in the `adaptation` attribute
+
 ### Fixes
+- extensions by `JAGS_extend()` and the parallel automatic extensions of `JAGS_fit()` adapt for the fit's `adapt` instead of runjags' default of 1000 iterations
 - on Apple silicon, numeric constants in generated JAGS models and the values of compiled hypotheses are exact
 
 # version 0.4.0
