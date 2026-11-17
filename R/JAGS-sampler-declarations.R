@@ -160,9 +160,17 @@
 
 # Gates ---------------------------------------------------------------------------
 
+# Whether a prior gives a sampled continuous node (the samplers take scalar
+# continuous nodes only; a point prior gives a deterministic node).
+.bt_sampler_continuous_prior <- function(prior){
+
+  !is.prior.point(prior) && !is.prior.discrete(prior)
+}
+
 # The stochastic leaves of one weight-function component as its emitter writes
 # them (.bt_dnode_omega_component_syntax()): the binary cumulative ratio, the
-# cumulative Gamma auxiliaries, or the free independent weights.
+# cumulative Gamma auxiliaries, or the free independent weights when their prior
+# is continuous.
 .bt_sampler_weightfunction_leaves <- function(prior, component_id, global_cuts){
 
   node_names <- .weightfunction_component_node_names(
@@ -177,7 +185,7 @@
     }
     return(paste0(node_names$eta, "[", seq_len(J), "]"))
   }
-  if(identical(type, "independent") && J > 1L){
+  if(identical(type, "independent") && J > 1L && .bt_sampler_continuous_prior(prior$weights$prior)){
     name <- if(identical(prior$weights$scale, "log_omega")) node_names$log_omega else node_names$omega_local
     return(paste0(name, "[", 2:J, "]"))
   }
@@ -233,7 +241,7 @@
           .selection_phacking_node_name, character(1),
           component_id = k, names = phacking_spec$names
         ))
-        if(!is.prior.point(phacking$alpha)){
+        if(.bt_sampler_continuous_prior(phacking$alpha)){
           branch$leaves <- c(branch$leaves, .selection_phacking_node_name("alpha", k, phacking_spec$names))
         }
       }
@@ -251,7 +259,7 @@
     branch$active <- paste0("equals(", node$spec$indicator, ", ", k, ")")
     branch$own <- c(branch$own, .JAGS_prior.bias_term_source(prior, term))
     branch$names <- c(branch$names, node$spec$source)
-    if(!is.prior.point(prior[[k]])){
+    if(.bt_sampler_continuous_prior(prior[[k]])){
       branch$leaves <- c(branch$leaves, node$spec$source)
     }
     composition <- c(composition, .bt_deterministic_node_emit(node))

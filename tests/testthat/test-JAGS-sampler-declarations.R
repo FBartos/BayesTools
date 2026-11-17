@@ -203,6 +203,29 @@ test_that("gates are not declared without a bias mixture of several branches or 
   }
 })
 
+test_that("discrete and point leaves of a bias-mixture branch get no gate and no declined row", {
+
+  cases <- list(
+    list(bias = prior_mixture(list(prior_none(), prior_PET("bernoulli", list(0.5))), is_null = c(TRUE, FALSE))),
+    list(bias = prior_mixture(list(prior_none(), prior_PEESE("point", list(0.5))), is_null = c(TRUE, FALSE))),
+    list(bias = prior_mixture(list(prior_none(), prior_phacking(form = "linear", alpha = prior("point", list(0.3)))),
+                              is_null = c(TRUE, FALSE)))
+  )
+  for(prior_list in cases){
+    out <- .declare(prior_list, "model{\n  y ~ dnorm(0, 1)\n}", sampler_gates = TRUE)
+    expect_identical(nrow(out$declarations$gates), 0L)
+    expect_identical(nrow(out$declarations$declined), 0L)
+    expect_false(out$uses_module)
+  }
+  # a continuous branch next to a discrete one keeps its gate
+  prior_list <- list(bias = prior_mixture(
+    list(prior_none(), prior_PET("bernoulli", list(0.5)), prior_PEESE("normal", list(0, 1))),
+    is_null = c(TRUE, FALSE, FALSE)
+  ))
+  out <- .declare(prior_list, "model{\n  y ~ dnorm(PET + PEESE, 1)\n}", sampler_gates = TRUE)
+  expect_identical(.gates(out), c(PEESE_1 = "equals(bias_indicator, 3)"))
+  expect_identical(nrow(out$declarations$declined), 0L)
+})
 test_that("gates are declined when a branch node occurs outside its gated composition", {
 
   bias <- prior_mixture(list(prior_none(), prior_PET("normal", list(0, 1)), .wf_cumulative3()),
