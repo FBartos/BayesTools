@@ -20,7 +20,7 @@ of prior distributions."><meta name="robots" content="noindex"><!-- mathjax --><
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-danger" data-toggle="tooltip" data-placement="bottom" title="In-development version">0.4.0.9001</span>
+        <span class="version label label-danger" data-toggle="tooltip" data-placement="bottom" title="In-development version">0.4.0.9002</span>
       </span>
     </div>
 
@@ -119,7 +119,8 @@ of prior distributions.</p>
 <span>  silent <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  runtime_setup <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/attr.html" class="external-link">attr</a></span><span class="op">(</span><span class="va">fit</span>, <span class="st">"runtime_setup"</span>, exact <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span>,</span>
 <span>  runtime_cache <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/attr.html" class="external-link">attr</a></span><span class="op">(</span><span class="va">fit</span>, <span class="st">"runtime_cache"</span>, exact <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span>,</span>
-<span>  worker_output <span class="op">=</span> <span class="cn">NULL</span></span>
+<span>  worker_output <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  adapt <span class="op">=</span> <span class="cn">NULL</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
 
@@ -171,7 +172,15 @@ be standardized. Defaults to <code>NULL</code> (no standardization).</p></dd>
 
 
 <dt id="arg-adapt">adapt<a class="anchor" aria-label="anchor" href="#arg-adapt"></a></dt>
-<dd><p>number of samples used for adapting the MCMC chains, defaults to <code>500</code></p></dd>
+<dd><p>number of samples used for adapting the MCMC chains, defaults to
+<code>500</code>. In <code>JAGS_extend()</code>, the number of adaptation iterations run
+when the backend builds the sampler from the stored chain states; the default
+<code>NULL</code> uses the setting of the initial fit. A value supplied to
+<code>JAGS_extend()</code> applies to that call only: the returned fit keeps the
+initial setting, which later calls without <code>adapt</code> use again. Fits that
+do not record their initial setting (created before BayesTools stored it)
+are extended with runjags' default of <code>1000</code> iterations, as before,
+with a warning of class <code>BayesTools_adaptation_unrecorded</code>.</p></dd>
 
 
 <dt id="arg-burnin">burnin<a class="anchor" aria-label="anchor" href="#arg-burnin"></a></dt>
@@ -427,14 +436,27 @@ they stop with an error of class <code>BayesTools_refit_required</code> (see
     <p><code>JAGS_fit</code> returns an object of class 'runjags' and 'BayesTools_fit'.
 <code>JAGS_extend</code> continues the backend random-number generator state of the
 existing chains; it does not reseed them.
-Stored parameter and RNG states initialize reconstruction; recompilation can
-reset sampler tuning and follows runjags' adaptation policy. The model is
+Stored parameter and RNG states initialize reconstruction; recompilation
+resets sampler tuning, which runjags adapts again for <code>adapt</code>
+iterations (when the model has adaptive samplers) before sampling, with no
+further burn-in. The model is
 always recompiled from these stored states, never continued from a compiled
 model left in the session, so extending the same object twice, or a saved and
-reloaded copy of it, gives identical draws. Neither function keeps runjags'
+reloaded copy of it, gives identical draws. Within one call, automatic
+extensions continue the sampler compiled by the previous step without
+adapting it again, except parallel workers, which rebuild it for every
+extension. Neither function keeps runjags'
 compiled rjags model (<code>method.options$rjags</code>) in the returned object;
 <code><a href="https://rdrr.io/pkg/runjags/man/run.jags.html" class="external-link">runjags::extend.jags()</a></code> recompiles a model without it, as after
 reloading.</p>
+<p>The <code>adaptation</code> attribute of a fit records the adaptation settings:
+<code>initial</code>, the <code>adapt</code> of <code>JAGS_fit()</code> (<code>NA</code> for fits
+that did not record it), and <code>extensions</code>, a data frame with one row
+per backend extension (automatic extensions of <code>JAGS_fit()</code> and the
+extensions of <code>JAGS_extend()</code>) giving the <code>adapt</code> passed to the
+backend and whether the backend <code>rebuilt</code> the sampler, the only case in
+which it adapts. Warnings of the backend that adaptation was incomplete are
+issued and also kept in the fit's <code>warnings</code> attribute.</p>
     </div>
     <div id="see-also">
     <h2>See also</h2>
