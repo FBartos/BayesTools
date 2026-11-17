@@ -32,7 +32,7 @@ NULL
 JAGS_check_and_list_fit_settings     <- function(chains, adapt, burnin, sample, thin, autofit, parallel, cores, silent, seed, check_mins = list(chains = 1, adapt = 50, burnin = 50, sample = 100, thin = 1), call = ""){
 
   check_int(chains, "chains", lower = check_mins[["chains"]], allow_NA = FALSE, call = call)
-  check_int(adapt,  "adapt",  lower = check_mins[["adapt"]],  allow_NA = FALSE, call = call)
+  .JAGS_check_adapt(adapt, lower = check_mins[["adapt"]], call = call)
   check_int(burnin, "burnin", lower = check_mins[["burnin"]], allow_NA = FALSE, call = call)
   check_int(sample, "sample", lower = check_mins[["sample"]], allow_NA = FALSE, call = call)
   check_int(thin,   "thin",   lower = check_mins[["thin"]],   allow_NA = FALSE, call = call)
@@ -54,6 +54,13 @@ JAGS_check_and_list_fit_settings     <- function(chains, adapt, burnin, sample, 
     silent   = silent,
     seed     = seed
   )))
+}
+
+# 'adapt' of JAGS_fit() and of an extension. runjags counts the adaptation
+# iterations as an integer, so larger values cannot be run.
+.JAGS_check_adapt <- function(adapt, lower = 50, call = ""){
+
+  check_int(adapt, "adapt", lower = lower, upper = .Machine$integer.max, allow_NA = FALSE, call = call)
 }
 
 #' @rdname JAGS_check_and_list

@@ -1525,7 +1525,9 @@ test_that("JAGS_extend validates 'adapt' as JAGS_fit does", {
     autofit = FALSE, parallel = FALSE, cores = 1, silent = TRUE, seed = 1
   )
 
-  for(adapt in list(49, 0, -1, 50.5, NA, NA_real_, Inf, "100", c(100, 200), TRUE)){
+  invalid <- list(49, 0, -1, 50.5, NA, NA_real_, Inf, "100", c(100, 200), TRUE,
+    numeric(0), integer(0), character(0), .Machine$integer.max + 1)
+  for(adapt in invalid){
     initial_error <- tryCatch(fit_settings(adapt), error = conditionMessage)
     extend_error  <- tryCatch(
       JAGS_extend(fit, autofit_control = .jags_extend_test_control(), adapt = adapt),

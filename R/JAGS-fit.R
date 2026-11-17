@@ -1078,8 +1078,10 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
   check_bool(parallel, "parallel", allow_NA = FALSE)
   check_int(cores, "cores", lower = 1, allow_NULL = TRUE, allow_NA = FALSE)
   check_bool(silent, "silent", allow_NA = FALSE)
-  # the minimum of JAGS_check_and_list_fit_settings(), as for JAGS_fit()
-  check_int(adapt, "adapt", lower = 50, allow_NULL = TRUE, allow_NA = FALSE)
+  # Only NULL inherits; any other value is validated as for JAGS_fit().
+  if(!is.null(adapt)){
+    .JAGS_check_adapt(adapt)
+  }
   worker_output <- .JAGS_validate_worker_output(worker_output)
   .JAGS_validate_runtime_setup(runtime_setup)
   .JAGS_validate_runtime_cache(runtime_cache)
