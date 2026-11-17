@@ -5310,7 +5310,6 @@ model{
   }
   ", paste(markers, collapse = "\n  "), "
 }")
-  reference <- .sampler_test_node_samplers(.sampler_test_compile(syntax(character()), data))
   gate <- "BayesTools::GatedSlice"
   block <- "BayesTools::FactorSlice"
 
@@ -5362,21 +5361,49 @@ model{
          observed = "BayesTools_gate_1", declared = c("b1", "x"), claimed = c(b1 = gate))
   )
 
-  for(case in cases){
-    model <- .sampler_test_compile(syntax(case$markers), c(data, .sampler_test_markers_zero(case$observed)))
-    current <- .sampler_test_node_samplers(model)
-    expect_identical(names(current), names(reference), info = case$label)
-    undeclared <- setdiff(names(reference), case$declared)
-    expect_identical(current[undeclared], reference[undeclared], info = case$label)
-    expect_identical(unname(current[names(case$claimed)]), unname(case$claimed), info = case$label)
-    unclaimed <- setdiff(case$declared, names(case$claimed))
-    expect_false(any(current[unclaimed] %in% c(gate, block)), info = case$label)
-    if(!is.null(case$blocks)){
-      samplers <- rjags::list.samplers(model)
-      expect_identical(sum(names(samplers) == block), case$blocks, info = case$label)
+  # The block samplers of the glm module ('glm::Generic') update the
+  # coefficients of a linear predictor jointly and refuse a node with a marker
+  # child, so with glm loaded (earlier blocks of this case load it) an
+  # undeclared coefficient that glm sampled jointly with a declared one gets
+  # another stock sampler. The comparison is exact without glm; with glm,
+  # undeclared nodes keep stock samplers. The session's module state is
+  # restored afterwards.
+  glm_loaded <- "glm" %in% rjags::list.modules()
+  withr::defer({
+    if(glm_loaded){
+      rjags::load.module("glm", quiet = TRUE)
+    }else if("glm" %in% rjags::list.modules()){
+      rjags::unload.module("glm", quiet = TRUE)
     }
-    expect_no_error(rjags::adapt(model, 200, end.adaptation = TRUE, progress.bar = "none"))
-    expect_no_error(stats::update(model, 200, progress.bar = "none"))
+  })
+  for(with_glm in c(FALSE, TRUE)){
+    if(with_glm){
+      rjags::load.module("glm", quiet = TRUE)
+    }else if(glm_loaded){
+      rjags::unload.module("glm", quiet = TRUE)
+    }
+    reference <- .sampler_test_node_samplers(.sampler_test_compile(syntax(character()), data))
+    for(case in cases){
+      label <- paste0(case$label, if(with_glm) " (glm loaded)")
+      model <- .sampler_test_compile(syntax(case$markers), c(data, .sampler_test_markers_zero(case$observed)))
+      current <- .sampler_test_node_samplers(model)
+      expect_identical(names(current), names(reference), info = label)
+      undeclared <- setdiff(names(reference), case$declared)
+      if(with_glm){
+        expect_false(any(current[undeclared] %in% c(gate, block)), info = label)
+      }else{
+        expect_identical(current[undeclared], reference[undeclared], info = label)
+      }
+      expect_identical(unname(current[names(case$claimed)]), unname(case$claimed), info = label)
+      unclaimed <- setdiff(case$declared, names(case$claimed))
+      expect_false(any(current[unclaimed] %in% c(gate, block)), info = label)
+      if(!is.null(case$blocks)){
+        samplers <- rjags::list.samplers(model)
+        expect_identical(sum(names(samplers) == block), case$blocks, info = label)
+      }
+      expect_no_error(rjags::adapt(model, 200, end.adaptation = TRUE, progress.bar = "none"))
+      expect_no_error(stats::update(model, 200, progress.bar = "none"))
+    }
   }
 
   # a marker is an observed node with value 0
