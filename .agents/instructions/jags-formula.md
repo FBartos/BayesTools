@@ -192,10 +192,11 @@ runjags object keeps the markers and their data, so extensions recompile them.
 A marker's density is 0 at 0 whatever its parents, so the posterior does not
 change. The factories `BayesTools::GatedSlice` and `BayesTools::FactorSlice`
 (`src/samplers/`) claim only a node whose marker is observed at 0 and names the
-node itself as its first parent; a declared node that no factory claims keeps a
+node itself as its first parent (and, for a gate, whose node is no ancestor of
+`<active>` through any path); a declared node that no factory claims keeps a
 stock sampler, possibly another one than without the marker, because conjugate
 samplers do not recognize a marker child. Gates are declared only for the
-stochastic leaves of a publication-bias mixture branch whose nodes the final
+continuous, non-point leaves of a publication-bias mixture branch whose nodes the final
 text uses only in the branch's own statements and, multiplied by the branch's
 activity test, in the composition (otherwise the branch is declined with its
 reason). Branches, leaves, node names and activity tests come from the
@@ -208,9 +209,13 @@ Dirichlet allocation weights are refused with
 `BayesTools_sampler_declaration_error`. A fit with a marker requires the
 BayesTools module and package (workers included), and
 `attr(fit, "sampler_declarations")` records the declared and declined items,
-which `JAGS_extend()` keeps. Both samplers report complete adaptation and draw
-only from the chain's JAGS generator. With the defaults the model text and
-data handed to runjags are those of a fit without declarations.
+which `JAGS_extend()` keeps. Both samplers report incomplete adaptation until
+their first update in adaptive mode (runjags' serial method runs the adaptation
+phase only when some sampler asks for it) and draw only from the chain's JAGS
+generator. The factor slice sampler sums the full conditional itself, so a NaN
+density at a proposal rejects it instead of stopping the fit. With the defaults
+the model text and data handed to runjags are those of a fit without
+declarations.
 
 Do not silently repair malformed covariance matrices, alter prior bounds, drop
 formula terms, or substitute a different likelihood target. If a covariance

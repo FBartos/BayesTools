@@ -105,16 +105,41 @@ namespace jags {
           return out;
         }
 
+        // log pi(x | rest) at the current node values: every member's full log
+        // density (a member may be a stochastic child of another member) plus the
+        // likelihood terms of the other stochastic children of the block. It is
+        // summed here because GraphView::logFullConditional() throws on a NaN;
+        // a NaN term returns NaN.
+        double log_full_conditional() const
+        {
+          double out = 0.0;
+          for (StochasticNode const *node : _graph->nodes()) {
+            const double term = node->logDensity(_chain, PDF_FULL);
+            if (std::isnan(term)) return std::numeric_limits<double>::quiet_NaN();
+            out += term;
+          }
+          for (StochasticNode const *child : _graph->stochasticChildren()) {
+            const double term = child->logDensity(_chain, PDF_LIKELIHOOD);
+            if (std::isnan(term)) return std::numeric_limits<double>::quiet_NaN();
+            out += term;
+          }
+          return out;
+        }
+
         // log pi_u of a proposal u; sets the node values to g^-1(u) when it is
-        // representable. A proposal outside the support or with a NaN or +Inf
-        // density has log pi_u = -Inf (rejected; nothing is clamped).
+        // representable. A proposal outside the support, or whose log density has
+        // a NaN term, a NaN sum (opposite infinities) or a +Inf sum, has
+        // log pi_u = -Inf (rejected; nothing is clamped). An error JAGS raises
+        // while setValue() recomputes the deterministic descendants (invalid
+        // parent values) is not caught: it is a model error and stops the fit as
+        // it does with the stock samplers.
         double log_target(std::vector<double> const &u)
         {
           for (unsigned int i = 0; i < _d; ++i) {
             if (!std::isfinite(u[i]) || !to_x(i, u[i], &_x[i])) return negative_infinity;
           }
           _graph->setValue(_x, _chain);
-          const double out = _graph->logFullConditional(_chain) + log_jacobian(u);
+          const double out = log_full_conditional() + log_jacobian(u);
           return std::isnan(out) || out > std::numeric_limits<double>::max() ? negative_infinity : out;
         }
 
@@ -131,7 +156,7 @@ namespace jags {
         {
           std::vector<double> x_start(_d);
           _graph->getValue(x_start, _chain);
-          const double lp0 = _graph->logFullConditional(_chain) + log_jacobian(u);
+          const double lp0 = log_full_conditional() + log_jacobian(u);
           if (!std::isfinite(lp0)) {
             throwNodeError(_graph->nodes()[0],
               "Factor slice sampler: current value of the block has no finite density");
@@ -288,11 +313,13 @@ namespace jags {
           _adapting = false;
         }
 
-        // Correctness never depends on adaptation, and JAGS runs the requested
-        // adaptation phase whatever this returns.
+        // Correctness never depends on adaptation, but runjags' serial method runs
+        // the requested adaptation phase only when some sampler reports that it
+        // still needs adapting: incomplete until one adaptive update, complete
+        // afterwards (unchanged by adaptOff()).
         bool checkAdaptation() const
         {
-          return true;
+          return _n > 0;
         }
       };
     }

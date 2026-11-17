@@ -33,6 +33,7 @@ namespace jags {
         const unsigned int _chain;
         Node const *_active;
         bool _adapting;
+        bool _adapted;  // an update was made in adaptive mode
 
         // Summed log density of the stochastic children of the node, the marker
         // included (the likelihood part of the graph view's full conditional).
@@ -82,7 +83,8 @@ namespace jags {
 
       public:
         GatedSlice(SingletonGraphView const *graph, unsigned int chain, Node const *active)
-          : Slicer(1.0, 10), _graph(graph), _chain(chain), _active(active), _adapting(true)
+          : Slicer(1.0, 10), _graph(graph), _chain(chain), _active(active), _adapting(true),
+            _adapted(false)
         {
           graph->checkFinite(chain);
         }
@@ -109,6 +111,7 @@ namespace jags {
 
         void update(RNG *rng)
         {
+          if (_adapting) _adapted = true;
           if (_active->value(_chain)[0] == 0.0) {
             closed_update(rng);
             return;
@@ -135,11 +138,14 @@ namespace jags {
           Slicer::adaptOff();
         }
 
+        // Incomplete until one update (open or closed) in adaptive mode, complete
+        // afterwards and unchanged by adaptOff(): runjags' serial method runs the
+        // requested adaptation phase only when some sampler still needs adapting.
         // A rarely open gate leaves the width poorly adapted, which costs
         // efficiency only; correctness never depends on adaptation.
         bool checkAdaptation() const
         {
-          return true;
+          return _adapted;
         }
       };
     }

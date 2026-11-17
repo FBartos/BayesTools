@@ -31,8 +31,9 @@ namespace jags {
       insert(new DBTSamplerMarker(gate_marker_name));
       insert(new DBTSamplerMarker(block_marker_name));
       // Process-lifetime sampler factories that this destructor never deletes.
-      // JAGS tries a factory inserted later first, so a block never claims a
-      // node that carries a gate (the block factory also skips such nodes).
+      // JAGS tries a factory inserted later first, so the block factory is tried
+      // before the gated one; a gated node stays out of blocks because the block
+      // factory skips every node with a gate marker.
       insert(gated_slice_factory());
       insert(factor_slice_factory());
     }

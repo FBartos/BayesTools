@@ -17,8 +17,8 @@ namespace jags {
     bool has_gate_marker(StochasticNode *node);
 
     // The <active> node of the single valid dbt_gate marker of `node`, or null
-    // when there is none, more than one, or the <active> node is a deterministic
-    // function of `node` (the update would change its own gate).
+    // when there is none, more than one, or `node` is an ancestor of the <active>
+    // node through any path, stochastic nodes included.
     Node const *gate_activity(StochasticNode *node);
 
     // The block id of the single valid dbt_block marker of `node` (a fixed

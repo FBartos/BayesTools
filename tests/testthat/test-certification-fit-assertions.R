@@ -5476,7 +5476,10 @@ model{
   samplers <- rjags::list.samplers(model)
   expect_identical(sum(names(samplers) == "BayesTools::FactorSlice"), 1L)
   expect_setequal(samplers[[which(names(samplers) == "BayesTools::FactorSlice")]], variables)
-  rjags::adapt(model, n.iter = n_adapt, end.adaptation = TRUE, progress.bar = "none")
+  # the block reports incomplete adaptation until its first adaptive update,
+  # so zero adaptation leaves rjags' adaptation check FALSE (the stock state)
+  adapted <- rjags::adapt(model, n.iter = n_adapt, end.adaptation = TRUE, progress.bar = "none")
+  expect_identical(adapted, n_adapt > 0L)
   stats::update(model, 1000, progress.bar = "none")
   rjags::coda.samples(model, variables, n.iter = n_iter, progress.bar = "none")
 }
@@ -5750,11 +5753,30 @@ model{
     )
   )
 
+  # (4) a member whose scale is another member: s ~ Gamma(3, 2), v | s ~ N(0, 1/s)
+  # (E[v^2] = E[1/s] = 2 / (3 - 1)); wrong when the density of v omits its
+  # normalising constant in s
+  scale_member <- list(
+    syntax = "
+model{
+  s ~ dgamma(3, 2)
+  v ~ dnorm(0, s)
+  %s
+}",
+    data = list(),
+    nodes = c("s", "v"),
+    quantities = c(
+      .sampler_test_scalar_quantities("s", 1.5, 0.75, 3, stats::pgamma(3, 3, 2, lower.tail = FALSE)),
+      list(v_square = list(series = function(x) x[, "v"]^2, target = 1))
+    )
+  )
+
   targets <- list(
     linear = linear,
     narrow = gaussian(0.05, 0.995, c(0.3, -0.2)),
     wide = gaussian(9, 0.9, c(4, -3)),
-    transforms = transforms
+    transforms = transforms,
+    scale_member = scale_member
   )
   for(target_name in names(targets)){
     target <- targets[[target_name]]
@@ -6072,4 +6094,168 @@ test_that("guarded spike-and-slab priors keep stock samplers and refuse blocks",
   expect_stock(fit, "mu_f_ordered_total")
   expect_error(ordered_fit(sampler_blocks = list(c("mu_intercept", "mu_f"))),
                "it is an ordered prior", class = "BayesTools_sampler_declaration_error")
+})
+
+test_that("the new samplers report incomplete adaptation until their first adaptive update", {
+  skip_if_not(isTRUE(BayesTools_load_JAGS_module(quiet = TRUE, warn = FALSE)))
+
+  # models whose only adaptive sampler is a factor slice block or a gated node:
+  # runjags runs the adaptation phase only when rjags::adapt(model, 0) is FALSE
+  block <- paste0("
+model{
+  b1 ~ dnorm(0, 1e-4)
+  b2 ~ dnorm(0, 1e-4)
+  z_sum ~ dnorm(b1 + b2, 100)
+  z_difference ~ dnorm(b1 - b2, 1)
+  ", .sampler_test_block_markers(c("b1", "b2"))$syntax, "
+}")
+  block_data <- c(list(z_sum = 0.5, z_difference = 0.1), .sampler_test_block_markers(c("b1", "b2"))$data)
+  gated <- "
+model{
+  x ~ dnorm(0, 1)
+  y ~ dnorm(x * off, 1)
+  BayesTools_gate_1 ~ dbt_gate(x, off)
+}"
+  gated_data <- list(y = 0.5, off = 0, BayesTools_gate_1 = 0)
+  for(case in list(list(syntax = block, data = block_data, sampler = "BayesTools::FactorSlice"),
+                   list(syntax = gated, data = gated_data, sampler = "BayesTools::GatedSlice"))){
+    model <- .sampler_test_compile(case$syntax, case$data, chains = 2L)
+    expect_identical(names(rjags::list.samplers(model)), case$sampler)
+    expect_false(rjags::adapt(model, 0, end.adaptation = FALSE, progress.bar = "none"))
+    expect_true(rjags::adapt(model, 1, end.adaptation = FALSE, progress.bar = "none"))
+    expect_true(rjags::adapt(model, 0, end.adaptation = TRUE, progress.bar = "none"))
+  }
+})
+
+test_that("a serial extension adapts a factor slice block again", {
+  skip_if_not(isTRUE(BayesTools_load_JAGS_module(quiet = TRUE, warn = FALSE)))
+
+  # the narrow target (sd 0.05, correlation 0.995) needs adapted axes: along the
+  # unit coordinate axes the block moves by about the conditional sd 0.005
+  sd <- 0.05
+  correlation <- 0.995
+  data <- list(z_sum = 0.1, z_difference = 0.5,
+               precision_sum = 1 / (2 * sd^2 * (1 + correlation)),
+               precision_difference = 1 / (2 * sd^2 * (1 - correlation)))
+  fit <- JAGS_fit(
+    model_syntax = "model{\n  z_sum ~ dnorm(b1 + b2, precision_sum)\n  z_difference ~ dnorm(b1 - b2, precision_difference)\n}",
+    data = data,
+    prior_list = list(b1 = prior("normal", list(0, 100)), b2 = prior("normal", list(0, 100))),
+    chains = 2, adapt = 500, burnin = 500, sample = 2000, seed = 8, silent = TRUE,
+    sampler_blocks = list(c("b1", "b2"))
+  )
+  extended <- JAGS_extend(fit, autofit_control = list(
+    max_Rhat = NULL, min_ESS = NULL, max_error = NULL, max_SD_error = NULL,
+    max_time = list(time = 60, unit = "secs"), sample_extend = 2000, restarts = 1, max_extend = 1
+  ), silent = TRUE)
+  expect_identical(JAGS_draw_geometry(extended)$total_draws, 8000L)
+  # the effective sample size of b1 in the fit and in the 2 x 2000 extension draws
+  ess <- function(fit, rows){
+    sum(vapply(fit$mcmc, function(chain){
+      coda::effectiveSize(coda::mcmc(as.matrix(chain)[rows, "b1"]))
+    }, numeric(1)))
+  }
+  ess_fit <- ess(fit, 1:2000)
+  ess_extension <- ess(extended, 2001:4000)
+  # adapted axes give about 3,300 (both 3,419 and 3,268 measured); the unit axes
+  # of an unadapted block give about 20 to 30 per 4,000 draws (the 'narrow'
+  # target at adaptation 0 above, and the review's measurement)
+  if(isTRUE(getOption("BayesTools.sampler_test_print"))) print(c(fit = ess_fit, extension = ess_extension))
+  expect_gt(ess_fit, 1000)
+  expect_gt(ess_extension, 1000)
+})
+
+test_that("factor slice proposals with an undefined density are rejected", {
+  skip_if_not(isTRUE(BayesTools_load_JAGS_module(quiet = TRUE, warn = FALSE)))
+
+  inits <- function(values) lapply(1:4, function(chain){
+    c(values, list(.RNG.name = "base::Mersenne-Twister", .RNG.seed = 40 + chain))
+  })
+  sample_block <- function(syntax, data, values, variables){
+    markers <- .sampler_test_block_markers(variables)
+    model <- rjags::jags.model(
+      textConnection(sprintf(syntax, markers$syntax)), data = c(data, markers$data),
+      n.chains = 4L, n.adapt = 0, quiet = TRUE, inits = inits(values)
+    )
+    expect_identical(names(rjags::list.samplers(model)), "BayesTools::FactorSlice")
+    expect_true(rjags::adapt(model, 500, end.adaptation = TRUE, progress.bar = "none"))
+    stats::update(model, 1000, progress.bar = "none")
+    rjags::coda.samples(model, variables, n.iter = 10000, progress.bar = "none")
+  }
+
+  # (1) exp(1000 b1) - exp(1000 b1) is NaN where exp overflows (b1 > c, c =
+  # log(.Machine$double.xmax) / 1000) and 0 elsewhere: b1 is N(0, 1) truncated
+  # to (-Inf, c] and b2 | y ~ N(y / 2, 1 / 2)
+  c_bound <- log(.Machine$double.xmax) / 1000
+  expect_no_error(samples <- sample_block("
+model{
+  b1 ~ dnorm(0, 1)
+  b2 ~ dnorm(0, 1)
+  m <- exp(1000 * b1) - exp(1000 * b1)
+  y ~ dnorm(m + b2, 1)
+  %s
+}", list(y = 0.8), list(b1 = 0, b2 = 0), c("b1", "b2")))
+  expect_true(all(as.matrix(samples)[, "b1"] <= c_bound))
+  checks <- .sampler_test_mcse_checks(samples, list(
+    b1_mean = list(series = function(x) x[, "b1"], target = -stats::dnorm(c_bound) / stats::pnorm(c_bound)),
+    b2_mean = list(series = function(x) x[, "b2"], target = 0.4)
+  ))
+  .sampler_test_expect_checks(checks, "exp(1000 b1) - exp(1000 b1)")
+
+  # (2) y = 0.5 ~ Beta(s, s), s = exp(1000 x): the density is defined where s
+  # and 2 s are finite (R's and JAGS' dbeta are the same code); b is an
+  # independent N(0, 1) member. E[x] by quadrature over the defined region.
+  # (dbeta warns "NaNs produced" outside the defined region, which the
+  # bisection below locates)
+  log_beta <- function(x) suppressWarnings(stats::dbeta(0.5, exp(1000 * x), exp(1000 * x), log = TRUE))
+  log_target <- function(x) stats::dnorm(x, log = TRUE) + log_beta(x)
+  defined <- function(x) is.finite(log_target(x))
+  lower <- 0
+  upper <- 1
+  for(i in 1:200){
+    middle <- (lower + upper) / 2
+    if(defined(middle)) lower <- middle else upper <- middle
+  }
+  x_max <- lower
+  shift <- log_target(x_max)
+  density <- function(x) exp(log_target(x) - shift)
+  mass <- stats::integrate(density, x_max - 0.1, x_max, rel.tol = 1e-12)$value
+  mean_x <- stats::integrate(function(x) x * density(x), x_max - 0.1, x_max, rel.tol = 1e-12)$value / mass
+  if(isTRUE(getOption("BayesTools.sampler_test_print"))) print(c(x_max = x_max, mean_x = mean_x), digits = 10)
+  expect_no_error(samples <- sample_block("
+model{
+  x ~ dnorm(0, 1)
+  b ~ dnorm(0, 1)
+  shape <- exp(1000 * x)
+  y ~ dbeta(shape, shape)
+  %s
+}", list(y = 0.5), list(x = 0, b = 0), c("x", "b")))
+  checks <- .sampler_test_mcse_checks(samples, list(
+    x_mean = list(series = function(x) x[, "x"], target = mean_x),
+    b_mean = list(series = function(x) x[, "b"], target = 0)
+  ))
+  .sampler_test_expect_checks(checks, "dbeta(exp(1000 x), exp(1000 x))")
+})
+
+test_that("a gate whose activity depends on its node through a stochastic child is not claimed", {
+  skip_if_not(isTRUE(BayesTools_load_JAGS_module(quiet = TRUE, warn = FALSE)))
+
+  # p(x | active = 0) is proportional to dnorm(x) pnorm(-x), the skew-normal
+  # with shape -1, whose mean is -1 / sqrt(pi) = -0.5642
+  syntax <- "
+model{
+  x ~ dnorm(0, 1)
+  active ~ dbern(phi(x))
+  BayesTools_gate_1 ~ dbt_gate(x, active)
+}"
+  model <- .sampler_test_compile(syntax, list(active = 0, BayesTools_gate_1 = 0), chains = 4L, seed = 6L)
+  samplers <- .sampler_test_node_samplers(model)
+  expect_false(samplers[["x"]] %in% c("BayesTools::GatedSlice", "BayesTools::FactorSlice"))
+  rjags::adapt(model, 500, end.adaptation = TRUE, progress.bar = "none")
+  stats::update(model, 1000, progress.bar = "none")
+  samples <- rjags::coda.samples(model, "x", n.iter = 10000, progress.bar = "none")
+  checks <- .sampler_test_mcse_checks(samples, list(
+    x_mean = list(series = function(x) x[, "x"], target = -1 / sqrt(pi))
+  ))
+  .sampler_test_expect_checks(checks, "stochastic gate ancestry")
 })

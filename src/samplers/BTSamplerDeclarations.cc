@@ -35,9 +35,11 @@ namespace jags {
         return isObserved(marker) && marker->length() == 1 && marker->value(0)[0] == 0.0;
       }
 
-      // Whether `target` is reached from `start` through deterministic nodes only,
-      // i.e. whether a change of `target` changes `start` within one update.
-      bool deterministically_depends(Node const *start, Node const *target)
+      // Whether `target` is an ancestor of `start` (or `start` itself) through any
+      // path, stochastic nodes included: an <active> node that depends on the
+      // gated node, even through one of its stochastic children, would make the
+      // closed-gate draw ignore part of the node's full conditional.
+      bool depends_on(Node const *start, Node const *target)
       {
         std::vector<Node const *> stack(1, start);
         std::set<Node const *> visited;
@@ -46,7 +48,6 @@ namespace jags {
           stack.pop_back();
           if (current == target) return true;
           if (!visited.insert(current).second) continue;
-          if (current->randomVariableStatus() != RV_FALSE) continue;
           for (Node const *parent : current->parents()) stack.push_back(parent);
         }
         return false;
@@ -64,7 +65,7 @@ namespace jags {
       if (markers.size() != 1 || !observed_zero(markers[0])) return nullptr;
       Node const *active = markers[0]->parents()[1];
       if (active->length() != 1) return nullptr;
-      if (deterministically_depends(active, node)) return nullptr;
+      if (depends_on(active, node)) return nullptr;
       return active;
     }
 
