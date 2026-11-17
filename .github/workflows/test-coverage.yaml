@@ -34,9 +34,9 @@ jobs:
         uses: actions/cache@v6
         with:
           path: ${{ env.R_LIBS_USER }}
-          key: ${{ runner.os }}-r-${{ steps.setup-r.outputs.installed-r-version }}-cache-v2-${{ hashFiles('**/DESCRIPTION') }}
+          key: ${{ runner.os }}-${{ env.ImageOS }}-r-${{ steps.setup-r.outputs.installed-r-version }}-cache-v2-${{ hashFiles('**/DESCRIPTION') }}
           restore-keys: |
-            ${{ runner.os }}-r-${{ steps.setup-r.outputs.installed-r-version }}-cache-v2-
+            ${{ runner.os }}-${{ env.ImageOS }}-r-${{ steps.setup-r.outputs.installed-r-version }}-cache-v2-
 
       - name: Install the required packages
         run: |
