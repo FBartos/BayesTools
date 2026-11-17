@@ -5771,12 +5771,32 @@ model{
     )
   )
 
+  # (5) a member whose truncation normaliser depends on another member:
+  # m ~ N(0, 1), v | m ~ N(m, 1) T(0,); the normaliser pnorm(m) of v cancels
+  # in the joint density only when the summed density keeps it, so m stays N(0, 1)
+  truncation_member <- list(
+    syntax = "
+model{
+  m ~ dnorm(0, 1)
+  v ~ dnorm(m, 1)T(0,)
+  %s
+}",
+    data = list(),
+    nodes = c("m", "v"),
+    quantities = list(
+      m_mean = list(series = function(x) x[, "m"], target = 0),
+      m_square = list(series = function(x) x[, "m"]^2, target = 1),
+      m_tail = list(series = function(x) as.numeric(x[, "m"] > 1), target = stats::pnorm(-1))
+    )
+  )
+
   targets <- list(
     linear = linear,
     narrow = gaussian(0.05, 0.995, c(0.3, -0.2)),
     wide = gaussian(9, 0.9, c(4, -3)),
     transforms = transforms,
-    scale_member = scale_member
+    scale_member = scale_member,
+    truncation_member = truncation_member
   )
   for(target_name in names(targets)){
     target <- targets[[target_name]]
@@ -5976,11 +5996,23 @@ test_that("declared fits run serially, in parallel, with autofit, and extend aft
   parallel_fit <- fit_with(parallel = TRUE, cores = 2)
   expect_declared(parallel_fit, 1000L)
 
-  # autofit extends at least once (no criterion can be met by 'min_ESS')
-  autofit <- suppressWarnings(fit_with(autofit = TRUE, autofit_control = list(
-    max_Rhat = NULL, min_ESS = 1e6, max_error = NULL, max_SD_error = NULL,
-    max_time = list(time = 60, unit = "secs"), sample_extend = 200, restarts = 1, max_extend = 1
-  )))
+  # autofit extends at least once (no criterion can be met by 'min_ESS'); the
+  # only warning is the 'max_extend' stop, which a silent fit stores on the fit
+  # instead of raising it; no adaptation warning is raised or stored
+  autofit_warnings <- character()
+  autofit <- withCallingHandlers(
+    fit_with(autofit = TRUE, autofit_control = list(
+      max_Rhat = NULL, min_ESS = 1e6, max_error = NULL, max_SD_error = NULL,
+      max_time = list(time = 60, unit = "secs"), sample_extend = 200, restarts = 1, max_extend = 1
+    )),
+    warning = function(w){
+      autofit_warnings <<- c(autofit_warnings, conditionMessage(w))
+      invokeRestart("muffleWarning")
+    }
+  )
+  expect_identical(autofit_warnings, character())
+  expect_identical(attr(autofit, "warnings"),
+                   "The automatic model fitting was terminated due to the 'max_extend' constraint.")
   expect_declared(autofit, 1400L)
 
   control <- list(
@@ -6165,78 +6197,61 @@ test_that("a serial extension adapts a factor slice block again", {
   expect_gt(ess_extension, 1000)
 })
 
-test_that("factor slice proposals with an undefined density are rejected", {
+test_that("a NaN or infinite density at a factor slice proposal stops the fit", {
   skip_if_not(isTRUE(BayesTools_load_JAGS_module(quiet = TRUE, warn = FALSE)))
 
-  inits <- function(values) lapply(1:4, function(chain){
-    c(values, list(.RNG.name = "base::Mersenne-Twister", .RNG.seed = 40 + chain))
-  })
-  sample_block <- function(syntax, data, values, variables){
-    markers <- .sampler_test_block_markers(variables)
-    model <- rjags::jags.model(
-      textConnection(sprintf(syntax, markers$syntax)), data = c(data, markers$data),
-      n.chains = 4L, n.adapt = 0, quiet = TRUE, inits = inits(values)
+  # A NaN (or +Inf) density is a failure to calculate, not zero density:
+  # rejecting such proposals would silently truncate the target (in model 2
+  # the density grows without bound where its computation overflows). The
+  # block stops with a node error, as the stock samplers do without the block.
+  run <- function(model, block){
+    markers <- if(block) .sampler_test_block_markers(model$variables) else list(syntax = "", data = list())
+    compiled <- rjags::jags.model(
+      textConnection(sprintf(model$syntax, markers$syntax)), data = c(model$data, markers$data),
+      n.chains = 4L, n.adapt = 0, quiet = TRUE,
+      inits = lapply(1:4, function(chain){
+        c(model$values, list(.RNG.name = "base::Mersenne-Twister", .RNG.seed = 40 + chain))
+      })
     )
-    expect_identical(names(rjags::list.samplers(model)), "BayesTools::FactorSlice")
-    expect_true(rjags::adapt(model, 500, end.adaptation = TRUE, progress.bar = "none"))
-    stats::update(model, 1000, progress.bar = "none")
-    rjags::coda.samples(model, variables, n.iter = 10000, progress.bar = "none")
+    if(block){
+      expect_identical(names(rjags::list.samplers(compiled)), "BayesTools::FactorSlice")
+    }
+    rjags::adapt(compiled, 500, end.adaptation = TRUE, progress.bar = "none")
+    stats::update(compiled, 1000, progress.bar = "none")
+    rjags::coda.samples(compiled, model$variables, n.iter = 10000, progress.bar = "none")
   }
-
-  # (1) exp(1000 b1) - exp(1000 b1) is NaN where exp overflows (b1 > c, c =
-  # log(.Machine$double.xmax) / 1000) and 0 elsewhere: b1 is N(0, 1) truncated
-  # to (-Inf, c] and b2 | y ~ N(y / 2, 1 / 2)
-  c_bound <- log(.Machine$double.xmax) / 1000
-  expect_no_error(samples <- sample_block("
+  models <- list(
+    # (1) exp(1000 b1) - exp(1000 b1) is NaN where exp overflows (b1 > 0.7098)
+    exp_difference = list(syntax = "
 model{
   b1 ~ dnorm(0, 1)
   b2 ~ dnorm(0, 1)
   m <- exp(1000 * b1) - exp(1000 * b1)
   y ~ dnorm(m + b2, 1)
   %s
-}", list(y = 0.8), list(b1 = 0, b2 = 0), c("b1", "b2")))
-  expect_true(all(as.matrix(samples)[, "b1"] <= c_bound))
-  checks <- .sampler_test_mcse_checks(samples, list(
-    b1_mean = list(series = function(x) x[, "b1"], target = -stats::dnorm(c_bound) / stats::pnorm(c_bound)),
-    b2_mean = list(series = function(x) x[, "b2"], target = 0.4)
-  ))
-  .sampler_test_expect_checks(checks, "exp(1000 b1) - exp(1000 b1)")
-
-  # (2) y = 0.5 ~ Beta(s, s), s = exp(1000 x): the density is defined where s
-  # and 2 s are finite (R's and JAGS' dbeta are the same code); b is an
-  # independent N(0, 1) member. E[x] by quadrature over the defined region.
-  # (dbeta warns "NaNs produced" outside the defined region, which the
-  # bisection below locates)
-  log_beta <- function(x) suppressWarnings(stats::dbeta(0.5, exp(1000 * x), exp(1000 * x), log = TRUE))
-  log_target <- function(x) stats::dnorm(x, log = TRUE) + log_beta(x)
-  defined <- function(x) is.finite(log_target(x))
-  lower <- 0
-  upper <- 1
-  for(i in 1:200){
-    middle <- (lower + upper) / 2
-    if(defined(middle)) lower <- middle else upper <- middle
-  }
-  x_max <- lower
-  shift <- log_target(x_max)
-  density <- function(x) exp(log_target(x) - shift)
-  mass <- stats::integrate(density, x_max - 0.1, x_max, rel.tol = 1e-12)$value
-  mean_x <- stats::integrate(function(x) x * density(x), x_max - 0.1, x_max, rel.tol = 1e-12)$value / mass
-  if(isTRUE(getOption("BayesTools.sampler_test_print"))) print(c(x_max = x_max, mean_x = mean_x), digits = 10)
-  expect_no_error(samples <- sample_block("
+}", data = list(y = 0.8), values = list(b1 = 0, b2 = 0), variables = c("b1", "b2"),
+      # without the block: base::RealSlicer on b1
+      stock = "Failure to calculate log density"),
+    # (2) y = 0.5 ~ Beta(s, s), s = exp(1000 x): the density grows like
+    # exp(500 x) until its calculation overflows
+    beta_overflow = list(syntax = "
 model{
   x ~ dnorm(0, 1)
   b ~ dnorm(0, 1)
   shape <- exp(1000 * x)
   y ~ dbeta(shape, shape)
   %s
-}", list(y = 0.5), list(x = 0, b = 0), c("x", "b")))
-  checks <- .sampler_test_mcse_checks(samples, list(
-    x_mean = list(series = function(x) x[, "x"], target = mean_x),
-    b_mean = list(series = function(x) x[, "b"], target = 0)
-  ))
-  .sampler_test_expect_checks(checks, "dbeta(exp(1000 x), exp(1000 x))")
+}", data = list(y = 0.5), values = list(x = 0, b = 0), variables = c("x", "b"),
+      # without the block: base::RealSlicer on x
+      stock = "Slicer stuck at value with infinite density")
+  )
+  for(name in names(models)){
+    expect_error(run(models[[name]], block = TRUE),
+                 "Factor slice sampler: failure to calculate the log density of the block at a proposal",
+                 fixed = TRUE, info = name)
+    expect_error(run(models[[name]], block = FALSE), models[[name]]$stock, fixed = TRUE, info = name)
+  }
 })
-
 test_that("a gate whose activity depends on its node through a stochastic child is not claimed", {
   skip_if_not(isTRUE(BayesTools_load_JAGS_module(quiet = TRUE, warn = FALSE)))
 

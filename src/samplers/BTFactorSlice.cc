@@ -13,6 +13,7 @@
 #include <limits>
 #include <map>
 #include <memory>
+#include <string>
 #include <vector>
 
 namespace jags {
@@ -107,40 +108,52 @@ namespace jags {
 
         // log pi(x | rest) at the current node values: every member's full log
         // density (a member may be a stochastic child of another member) plus the
-        // likelihood terms of the other stochastic children of the block. It is
-        // summed here because GraphView::logFullConditional() throws on a NaN;
-        // a NaN term returns NaN.
-        double log_full_conditional() const
+        // likelihood terms of the other stochastic children of the block. A NaN
+        // term, a NaN sum (opposite infinities) or a +Inf sum is a failure to
+        // calculate the density and raises a node error (on the node whose term
+        // is NaN, otherwise on the first member), as the stock slice sampler does
+        // through GraphView::logFullConditional(): a NaN is no evidence of zero
+        // density, so rejecting it could silently truncate the target.
+        double log_full_conditional(char const *where) const
         {
           double out = 0.0;
           for (StochasticNode const *node : _graph->nodes()) {
             const double term = node->logDensity(_chain, PDF_FULL);
-            if (std::isnan(term)) return std::numeric_limits<double>::quiet_NaN();
+            if (std::isnan(term)) density_failure(node, where);
             out += term;
           }
           for (StochasticNode const *child : _graph->stochasticChildren()) {
             const double term = child->logDensity(_chain, PDF_LIKELIHOOD);
-            if (std::isnan(term)) return std::numeric_limits<double>::quiet_NaN();
+            if (std::isnan(term)) density_failure(child, where);
             out += term;
+          }
+          if (std::isnan(out) || out > std::numeric_limits<double>::max()) {
+            density_failure(_graph->nodes()[0], where);
           }
           return out;
         }
 
+        static void density_failure(Node const *node, char const *where)
+        {
+          throwNodeError(node, std::string(
+            "Factor slice sampler: failure to calculate the log density of the block at ") + where);
+        }
+
         // log pi_u of a proposal u; sets the node values to g^-1(u) when it is
-        // representable. A proposal outside the support, or whose log density has
-        // a NaN term, a NaN sum (opposite infinities) or a +Inf sum, has
-        // log pi_u = -Inf (rejected; nothing is clamped). An error JAGS raises
+        // representable. A proposal outside the support or with log density -Inf
+        // has log pi_u = -Inf (rejected; nothing is clamped); a NaN or +Inf
+        // density stops the fit (log_full_conditional()). An error JAGS raises
         // while setValue() recomputes the deterministic descendants (invalid
-        // parent values) is not caught: it is a model error and stops the fit as
-        // it does with the stock samplers.
+        // parent values) is not caught either: it is a model error and stops the
+        // fit as it does with the stock samplers.
         double log_target(std::vector<double> const &u)
         {
           for (unsigned int i = 0; i < _d; ++i) {
             if (!std::isfinite(u[i]) || !to_x(i, u[i], &_x[i])) return negative_infinity;
           }
           _graph->setValue(_x, _chain);
-          const double out = log_full_conditional() + log_jacobian(u);
-          return std::isnan(out) || out > std::numeric_limits<double>::max() ? negative_infinity : out;
+          const double out = log_full_conditional("a proposal") + log_jacobian(u);
+          return out;
         }
 
         double log_target_along(std::vector<double> const &u, unsigned int k, double t)
@@ -156,7 +169,7 @@ namespace jags {
         {
           std::vector<double> x_start(_d);
           _graph->getValue(x_start, _chain);
-          const double lp0 = log_full_conditional() + log_jacobian(u);
+          const double lp0 = log_full_conditional("the current state") + log_jacobian(u);
           if (!std::isfinite(lp0)) {
             throwNodeError(_graph->nodes()[0],
               "Factor slice sampler: current value of the block has no finite density");
