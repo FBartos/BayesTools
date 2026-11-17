@@ -182,6 +182,13 @@ the retained fit from the failed attempt. A compiled model is continued only
 within one call: returned fits carry no runjags `method.options$rjags`, and
 `JAGS_extend()` recompiles from the stored chain states, so extending a fit
 and a reloaded copy give identical draws.
+Every backend extension passes `adapt` and `burnin = 0` explicitly, never
+runjags' `extend.jags()` defaults: the `adapt` of the fit, kept in its
+`adaptation` attribute, unless `JAGS_extend(adapt = )` overrides it for that
+call only. The attribute records each extension's `adapt` and whether the
+backend rebuilt the sampler (only then does runjags adapt); a fit without it
+extends with runjags' default and a `BayesTools_adaptation_unrecorded`
+warning.
 
 Do not silently repair malformed covariance matrices, alter prior bounds, drop
 formula terms, or substitute a different likelihood target. If a covariance

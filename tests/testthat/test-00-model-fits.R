@@ -3407,6 +3407,63 @@ test_that("JAGS_extend works correctly", {
     c(serial = expected_draws, parallel = expected_draws)
   )
 
+  # The adaptation of the fit (adapt = 100) reaches runjags for every
+  # extension without 'adapt'; an override applies to its call only.
+  original_extend <- runjags::extend.jags
+  backend_calls <- list()
+  testthat::local_mocked_bindings(
+    extend.jags = function(runjags.object, ...){
+      arguments <- list(...)
+      backend_calls[[length(backend_calls) + 1L]] <<- c(
+        arguments[c("adapt", "burnin", "method")],
+        list(end.state = runjags.object$end.state)
+      )
+      original_extend(runjags.object, ...)
+    },
+    .package = "runjags"
+  )
+  extend_with <- function(fit, ...) JAGS_extend(fit, autofit_control = extend_control, silent = TRUE, ...)
+  explicit <- extend_with(fit_formula, adapt = 100)
+  override <- extend_with(fit_formula, adapt = 400)
+  after    <- extend_with(override)
+  parallel_override <- extend_with(fit_formula, adapt = 400, parallel = TRUE, cores = 2)
+
+  expect_identical(lapply(backend_calls, `[[`, "adapt"), list(100L, 400L, 100L, 400L))
+  expect_identical(lapply(backend_calls, `[[`, "burnin"), rep(list(0), 4))
+  expect_identical(
+    lapply(backend_calls, `[[`, "method"),
+    list("rjags", "rjags", "rjags", "rjparallel")
+  )
+  # the stored chain and generator states start each extension
+  expect_identical(backend_calls[[1L]]$end.state, fit_formula$end.state)
+  expect_identical(backend_calls[[3L]]$end.state, override$end.state)
+
+  no_extensions <- data.frame(adapt = integer(), rebuilt = logical())
+  expect_identical(attr(fit_formula, "adaptation"), list(initial = 100L, extensions = no_extensions))
+  for(fit in list(fit_extended, fit_extended2, explicit)){
+    expect_identical(
+      attr(fit, "adaptation"),
+      list(initial = 100L, extensions = data.frame(adapt = 100L, rebuilt = TRUE))
+    )
+  }
+  expect_identical(
+    attr(after, "adaptation"),
+    list(initial = 100L, extensions = data.frame(adapt = c(400L, 100L), rebuilt = c(TRUE, TRUE)))
+  )
+
+  # the draws: an explicit value equal to the fit's adapts as an omitted one,
+  # and every extension keeps the draws it extends
+  chains <- function(fit) lapply(suppressWarnings(coda::as.mcmc.list(fit)), function(chain){
+    matrix(as.numeric(chain), nrow = nrow(chain), dimnames = list(NULL, colnames(chain)))
+  })
+  expect_identical(chains(explicit), chains(fit_extended))
+  fitted_draws <- chains(fit_formula)
+  n_fitted <- nrow(fitted_draws[[1L]])
+  for(fit in list(fit_extended, fit_extended2, override, parallel_override)){
+    expect_identical(lapply(chains(fit), utils::head, n_fitted), fitted_draws)
+  }
+  expect_identical(lapply(chains(after), utils::head, n_fitted + 1L), chains(override))
+
 })
 
 # ============================================================================ #

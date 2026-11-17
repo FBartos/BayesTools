@@ -12,6 +12,7 @@
 #'   \item{sample}{\code{100}}
 #'   \item{thin}{\code{1}}
 #' }
+#' @param adapt number of samples used for adapting the MCMC chains, defaults to \code{500}
 #' @param skip_sample_extend whether \code{sample_extend}
 #' is allowed to be NULL and skipped in the check
 #'
