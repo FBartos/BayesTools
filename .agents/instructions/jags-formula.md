@@ -203,8 +203,11 @@ reason). Branches, leaves, node names and activity tests come from the
 emitters' node specifications, never from name patterns. A closed gate draws
 its node from the node's own distribution and keeps the previous value when a
 deterministic descendant would not be finite. Blocks expand prior names to
-scalar leaves; spike-and-slab, mixture, ordered, point, discrete, vector,
-inclusion, and random-effect priors other than a plain allocation SD and
+scalar leaves; `sampler_blocks` may be a function of the combined prior list,
+called once in the declaration step, so callers can select formula priors by
+their final names and attributes. A block of fewer than two leaves is declined
+(recorded, not an error); spike-and-slab, mixture, ordered, point, discrete,
+vector, inclusion, and random-effect priors other than a plain allocation SD and
 Dirichlet allocation weights are refused with
 `BayesTools_sampler_declaration_error`. A fit with a marker requires the
 BayesTools module and package (workers included), and
@@ -212,8 +215,10 @@ BayesTools module and package (workers included), and
 which `JAGS_extend()` keeps. Both samplers report incomplete adaptation until
 their first update in adaptive mode (runjags' serial method runs the adaptation
 phase only when some sampler asks for it) and draw only from the chain's JAGS
-generator. The factor slice sampler sums the full conditional itself, so a NaN
-density at a proposal rejects it instead of stopping the fit. With the defaults
+generator. The factor slice sampler sums the full conditional itself and, like
+the stock slice sampler, stops with a node error when the density is NaN or +Inf
+at a proposal or the current state (a NaN is no evidence of zero density, so a
+rejection could silently truncate the target). With the defaults
 the model text and data handed to runjags are those of a fit without
 declarations.
 

@@ -28,20 +28,45 @@
   if(!is.logical(sampler_gates) || length(sampler_gates) != 1L || is.na(sampler_gates)){
     .bt_sampler_declaration_stop("The 'sampler_gates' argument must be TRUE or FALSE.")
   }
-  if(is.null(sampler_blocks)){
+  if(is.null(sampler_blocks) || is.function(sampler_blocks)){
     return(invisible(TRUE))
   }
-  valid_block <- function(block){
-    is.character(block) && length(block) > 0L && !anyNA(block) && all(nzchar(block))
-  }
-  if(!is.list(sampler_blocks) || is.prior(sampler_blocks) || length(sampler_blocks) == 0L ||
-     !all(vapply(sampler_blocks, valid_block, logical(1)))){
+  if(!.bt_sampler_valid_blocks(sampler_blocks)){
     .bt_sampler_declaration_stop(
-      "The 'sampler_blocks' argument must be NULL or a list of character vectors of prior names."
+      "The 'sampler_blocks' argument must be NULL, a list of character vectors of prior names, ",
+      "or a function of the combined prior list that returns such a list or NULL."
     )
   }
 
   invisible(TRUE)
+}
+
+.bt_sampler_valid_blocks <- function(sampler_blocks){
+
+  valid_block <- function(block){
+    is.character(block) && length(block) > 0L && !anyNA(block) && all(nzchar(block))
+  }
+  is.list(sampler_blocks) && !is.prior(sampler_blocks) && length(sampler_blocks) > 0L &&
+    all(vapply(sampler_blocks, valid_block, logical(1)))
+}
+
+# The blocks of 'sampler_blocks': the list itself, or the value of the function
+# called once with the combined prior list (formula priors under their final
+# names, with their attributes), validated like a list given directly.
+.bt_sampler_resolve_blocks <- function(sampler_blocks, prior_list){
+
+  if(!is.function(sampler_blocks)){
+    return(sampler_blocks)
+  }
+  blocks <- sampler_blocks(prior_list)
+  if(!is.null(blocks) && !.bt_sampler_valid_blocks(blocks)){
+    .bt_sampler_declaration_stop(
+      "The 'sampler_blocks' function returned an invalid value; it must return NULL or a list of ",
+      "character vectors of prior names."
+    )
+  }
+
+  blocks
 }
 
 # The sampler declarations of a fit: the model text and data with the marker
@@ -62,16 +87,16 @@
   }else{
     list(declared = .bt_sampler_gate_table(), declined = .bt_sampler_declined_table())
   }
-  blocks <- .bt_sampler_block_declarations(sampler_blocks, prior_list)
+  blocks <- .bt_sampler_block_declarations(.bt_sampler_resolve_blocks(sampler_blocks, prior_list), prior_list)
 
   gate_markers <- if(nrow(gates$declared) > 0L) paste0(.bt_sampler_gate_prefix, seq_len(nrow(gates$declared))) else character()
-  block_markers <- if(nrow(blocks) > 0L) paste0(.bt_sampler_block_prefix, seq_len(nrow(blocks))) else character()
+  block_markers <- if(nrow(blocks$declared) > 0L) paste0(.bt_sampler_block_prefix, seq_len(nrow(blocks$declared))) else character()
   gates$declared$marker <- gate_markers
-  blocks$marker <- block_markers
+  blocks$declared$marker <- block_markers
 
   marker_lines <- c(
     paste0(gate_markers, " ~ dbt_gate(", gates$declared$node, ", ", gates$declared$active, ")", recycle0 = TRUE),
-    paste0(block_markers, " ~ dbt_block(", blocks$node, ", ", blocks$block, ")", recycle0 = TRUE)
+    paste0(block_markers, " ~ dbt_block(", blocks$declared$node, ", ", blocks$declared$block, ")", recycle0 = TRUE)
   )
   markers <- c(gate_markers, block_markers)
   if(length(markers) > 0L){
@@ -87,8 +112,8 @@
     data = data,
     declarations = list(
       gates = gates$declared[, c("marker", "node", "active", "prior", "branch")],
-      blocks = blocks[, c("marker", "node", "block", "prior")],
-      declined = gates$declined
+      blocks = blocks$declared[, c("marker", "node", "block", "prior")],
+      declined = rbind(gates$declined, blocks$declined)
     ),
     uses_module = length(markers) > 0L
   )
@@ -100,10 +125,12 @@
              branch = integer(), stringsAsFactors = FALSE)
 }
 
+# Declined declarations: a gate row names its prior and branch, a block row its
+# block (position in 'sampler_blocks') and its priors; 'nodes' lists the leaves.
 .bt_sampler_declined_table <- function(){
 
-  data.frame(prior = character(), branch = integer(), nodes = character(),
-             reason = character(), stringsAsFactors = FALSE)
+  data.frame(kind = character(), prior = character(), branch = integer(), block = integer(),
+             nodes = character(), reason = character(), stringsAsFactors = FALSE)
 }
 
 # Marker node names are reserved: no data, prior, monitored parameter, or node
@@ -301,7 +328,9 @@
   declared <- .bt_sampler_gate_table()
   declined <- .bt_sampler_declined_table()
   decline <- function(name, branch, reason){
-    declined[nrow(declined) + 1L, ] <<- list(name, as.integer(branch$branch), paste(branch$leaves, collapse = ", "), reason)
+    declined[nrow(declined) + 1L, ] <<- list(
+      "gate", name, as.integer(branch$branch), NA_integer_, paste(branch$leaves, collapse = ", "), reason
+    )
   }
 
   for(name in names(prior_list)){
@@ -415,12 +444,16 @@
 }
 
 # Block declarations: block k lists prior names of the combined prior list,
-# each expanded to its scalar stochastic leaves.
+# each expanded to its scalar stochastic leaves. A block of fewer than two
+# leaves is not declared but recorded as declined (a caller cannot count the
+# leaves of its priors); guarded priors, unknown names and a prior in two
+# blocks are errors.
 .bt_sampler_block_declarations <- function(sampler_blocks, prior_list){
 
   blocks <- data.frame(node = character(), block = integer(), prior = character(), stringsAsFactors = FALSE)
+  declined <- .bt_sampler_declined_table()
   if(is.null(sampler_blocks)){
-    return(blocks)
+    return(list(declared = blocks, declined = declined))
   }
 
   listed <- unlist(sampler_blocks, use.names = FALSE)
@@ -431,6 +464,7 @@
   }
   for(k in seq_along(sampler_blocks)){
     leaves <- character()
+    block <- blocks[0L, ]
     for(name in sampler_blocks[[k]]){
       if(!name %in% names(prior_list)){
         .bt_sampler_declaration_stop(
@@ -444,18 +478,21 @@
         )
       }
       leaves <- c(leaves, expansion$leaves)
-      blocks <- rbind(blocks, data.frame(
+      block <- rbind(block, data.frame(
         node = expansion$leaves, block = rep(k, length(expansion$leaves)),
         prior = rep(name, length(expansion$leaves)), stringsAsFactors = FALSE
       ))
     }
     if(length(leaves) < 2L){
-      .bt_sampler_declaration_stop(
-        "Block ", k, " of 'sampler_blocks' expands to fewer than two sampled nodes."
+      declined[nrow(declined) + 1L, ] <- list(
+        "block", paste(sampler_blocks[[k]], collapse = ", "), NA_integer_, as.integer(k),
+        paste(leaves, collapse = ", "), "the block expands to fewer than two sampled nodes"
       )
+      next
     }
+    blocks <- rbind(blocks, block)
   }
   blocks$block <- as.integer(blocks$block)
 
-  blocks
+  list(declared = blocks, declined = declined)
 }

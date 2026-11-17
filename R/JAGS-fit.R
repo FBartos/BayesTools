@@ -136,14 +136,22 @@
 #'   adaptation. A block may contain simple continuous scalar priors, treatment
 #'   and independent factor priors, a single weight function, PET and PEESE
 #'   priors, and the allocation SD and Dirichlet allocation weights of a
-#'   random-effect variance allocation; it must expand to at least two
-#'   parameters, and a prior may be in one block only. Defaults to \code{NULL}.
+#'   random-effect variance allocation; a prior may be in one block only. A
+#'   block that expands to fewer than two parameters is not declared and is
+#'   recorded as declined. \code{sampler_blocks} may also be a function of one
+#'   argument, the combined prior list (formula priors under their final names
+#'   and with their attributes), called once by \code{JAGS_fit()}, that returns
+#'   \code{NULL} or such a list. Defaults to \code{NULL}.
 #'   Neither \code{sampler_gates} nor \code{sampler_blocks} changes the model or
 #'   its posterior distribution, only the draws. Invalid declarations stop with
 #'   an error of class \code{BayesTools_sampler_declaration_error}. The
-#'   declared and declined items are stored in
-#'   \code{attr(fit, "sampler_declarations")}, which \code{JAGS_extend()}
-#'   keeps.
+#'   declarations are stored in \code{attr(fit, "sampler_declarations")}, which
+#'   \code{JAGS_extend()} keeps: a list of the data frames \code{gates},
+#'   \code{blocks} and \code{declined} (one row per declined gate branch or
+#'   block, with its \code{kind}, \code{prior}, \code{branch} or \code{block},
+#'   \code{nodes} and \code{reason}). A density that cannot be calculated (NaN)
+#'   at a point the factor slice sampler evaluates stops the fit with a JAGS
+#'   error, as with the stock samplers.
 #' @param add_parameters vector of additional parameter names that should be
 #' monitored but were not specified in the \code{prior_list}. Automatic fitting
 #' checks their convergence like that of the other parameters. Fully observed

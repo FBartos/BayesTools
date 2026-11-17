@@ -226,6 +226,7 @@ test_that("discrete and point leaves of a bias-mixture branch get no gate and no
   expect_identical(.gates(out), c(PEESE_1 = "equals(bias_indicator, 3)"))
   expect_identical(nrow(out$declarations$declined), 0L)
 })
+
 test_that("gates are declined when a branch node occurs outside its gated composition", {
 
   bias <- prior_mixture(list(prior_none(), prior_PET("normal", list(0, 1)), .wf_cumulative3()),
@@ -240,7 +241,9 @@ test_that("gates are declined when a branch node occurs outside its gated compos
   # caller syntax naming a leaf or an intermediate of a branch
   out <- .declare(list(bias = bias), "model{\n  y ~ dnorm(PET_1, 1)\n}", sampler_gates = TRUE)
   expect_identical(names(.gates(out)), wf_gates)
+  expect_identical(out$declarations$declined$kind, "gate")
   expect_identical(out$declarations$declined$branch, 2L)
+  expect_identical(out$declarations$declined$block, NA_integer_)
   expect_identical(out$declarations$declined$nodes, "PET_1")
   expect_match(out$declarations$declined$reason, "'PET_1' occurs outside the statements of the mixture", fixed = TRUE)
 
@@ -291,7 +294,8 @@ test_that("reserved marker names and invalid arguments stop with the declaration
   }
   for(value in list(list(), "mu", list(c("mu", NA)), list(character()), list(1:2), list(c("mu", "")))){
     expect_error(.declare(prior_list, sampler_blocks = value),
-                 "The 'sampler_blocks' argument must be NULL or a list of character vectors of prior names.", fixed = TRUE,
+                 paste0("The 'sampler_blocks' argument must be NULL, a list of character vectors of prior names, ",
+                        "or a function of the combined prior list that returns such a list or NULL."), fixed = TRUE,
                  class = "BayesTools_sampler_declaration_error")
   }
   condition <- tryCatch(.declare(prior_list, sampler_gates = NA), error = identity)
@@ -421,7 +425,7 @@ test_that("blocks refuse guarded priors with the declaration error class", {
   expect_block_error("phack", "its prior type is not supported in a block")
 
   # the allocation weights stay allowed next to a spike-and-slab allocation SD
-  expect_identical(.blocks(list(c("mu", "mu__xRE_ALLOCx_tot__weight")))$node,
+  expect_identical(.blocks(list(c("mu", "mu__xRE_ALLOCx_tot__weight")))$declared$node,
                    c("mu", paste0("prior_par_eta_mu__xRE_ALLOCx_tot__weight[", 1:2, "]")))
 
   expect_error(.blocks(list(c("mu", "nope"))),
@@ -435,8 +439,101 @@ test_that("blocks refuse guarded priors with the declaration error class", {
   expect_error(.blocks(list(c("mu", "mu"))),
                "Prior 'mu' appears more than once in 'sampler_blocks'; a prior may be in one block only.", fixed = TRUE,
                class = "BayesTools_sampler_declaration_error")
-  expect_error(.blocks(list("mu")),
-               "Block 1 of 'sampler_blocks' expands to fewer than two sampled nodes.", fixed = TRUE,
+})
+
+test_that("a block of fewer than two sampled nodes is declined, not declared", {
+
+  prior_list <- list(
+    mu = prior("normal", list(0, 1)),
+    tau = prior("normal", list(0, 1), list(0, Inf)),
+    omega = prior_weightfunction("two-sided", c(0.05), wf_fixed(c(1, 0.4)))
+  )
+  model_syntax <- "model{\n  y ~ dnorm(mu, 1 / tau^2)\n}"
+  plain <- .declare(prior_list, model_syntax)
+  for(sampler_blocks in list(list("mu"), list("omega"))){
+    out <- .declare(prior_list, model_syntax, sampler_blocks = sampler_blocks)
+    expect_identical(out$model, plain$model)
+    expect_identical(out$data, plain$data)
+    expect_false(out$uses_module)
+    expect_identical(nrow(out$declarations$blocks), 0L)
+    expect_identical(out$declarations$declined, data.frame(
+      kind = "block", prior = sampler_blocks[[1L]], branch = NA_integer_, block = 1L,
+      nodes = if(identical(sampler_blocks[[1L]], "mu")) "mu" else "",
+      reason = "the block expands to fewer than two sampled nodes", stringsAsFactors = FALSE
+    ))
+  }
+  # a declined block next to a declared one: block ids keep their position
+  out <- .declare(prior_list, model_syntax, sampler_blocks = list("omega", c("mu", "tau")))
+  expect_identical(out$declarations$blocks$node, c("mu", "tau"))
+  expect_identical(out$declarations$blocks$block, c(2L, 2L))
+  expect_identical(out$declarations$blocks$marker, paste0("BayesTools_block_", 1:2))
+  expect_identical(out$declarations$declined$block, 1L)
+  expect_true(grepl("BayesTools_block_1 ~ dbt_block(mu, 2)", out$model, fixed = TRUE))
+  expect_true(out$uses_module)
+  # guarded priors stay errors in a block that would be declined
+  expect_error(.declare(c(prior_list, list(point = prior("point", list(0)))), sampler_blocks = list("point")),
+               "it is a point prior", class = "BayesTools_sampler_declaration_error")
+})
+
+test_that("a function of the combined prior list may select the blocks", {
+
+  set.seed(1)
+  formula_data <- data.frame(x = stats::rnorm(24), g = factor(rep(1:4, 6)), d = factor(rep(1:3, 8)))
+  prior_list <- c(JAGS_formula(
+    formula = ~ 1 + x + (1 | g) + random(1 | d, name = "d", covariance = "diag"),
+    parameter = "mu", data = formula_data,
+    prior_list = list(intercept = prior("normal", list(0, 1)), x = prior("normal", list(0, 1))),
+    prior_random = prior_random(random_variance_allocation(
+      name = "tot", terms = c(g = "g", d = "d"), scale = "total_variance",
+      sd = prior("gamma", list(2, 2)),
+      weights = prior("dirichlet", list(alpha = c(1.5, 2.5)))
+    ))
+  )$prior_list, list(
+    tau = prior("normal", list(0, 1), list(0, Inf)),
+    bias = prior_mixture(list(prior_none(), prior_PET("normal", list(0, 1))), is_null = c(TRUE, FALSE))
+  ))
+  # by attribute: the plain allocation SD and the Dirichlet allocation weights;
+  # by class: the simple scalar priors
+  calls <- 0L
+  by_metadata <- function(priors){
+    calls <<- calls + 1L
+    allocation <- vapply(priors, function(prior){
+      isTRUE(attr(prior, "random_allocation_sd", exact = TRUE)) ||
+        (!is.null(attr(prior, "random_allocation", exact = TRUE)) && identical(prior[["distribution"]], "dirichlet"))
+    }, logical(1))
+    simple <- vapply(priors, function(prior){
+      is.prior.simple(prior) && !is.prior.point(prior) && !is.prior.factor(prior) &&
+        !is.prior.PET(prior) && !is.prior.PEESE(prior) && is.null(attributes(prior)[["random_allocation"]])
+    }, logical(1))
+    list(names(priors)[allocation], names(priors)[simple])
+  }
+  explicit <- list(
+    c("mu__xRE_ALLOCx_tot__allocation_sd", "mu__xRE_ALLOCx_tot__weight"),
+    c("mu_intercept", "mu_x", "tau")
+  )
+  from_function <- .declare(prior_list, sampler_gates = TRUE, sampler_blocks = by_metadata)
+  from_list <- .declare(prior_list, sampler_gates = TRUE, sampler_blocks = explicit)
+  expect_identical(calls, 1L)
+  expect_identical(from_function, from_list)
+  expect_identical(from_function$declarations$blocks$prior[c(1L, 4L)],
+                   c("mu__xRE_ALLOCx_tot__allocation_sd", "mu_intercept"))
+
+  # NULL declares nothing: text and data unchanged
+  plain <- .declare(prior_list)
+  none <- .declare(prior_list, sampler_blocks = function(priors) NULL)
+  expect_identical(none$model, plain$model)
+  expect_identical(none$data, plain$data)
+  expect_false(none$uses_module)
+  expect_identical(nrow(none$declarations$blocks), 0L)
+
+  # invalid values and guarded priors
+  for(value in list(list(), "mu_x", list(c("mu_x", NA)), list(1:2), 1, prior("normal", list(0, 1)))){
+    expect_error(.declare(prior_list, sampler_blocks = function(priors) value),
+                 "The 'sampler_blocks' function returned an invalid value; it must return NULL or a list of character vectors of prior names.",
+                 fixed = TRUE, class = "BayesTools_sampler_declaration_error")
+  }
+  expect_error(.declare(prior_list, sampler_blocks = function(priors) list(c("mu_x", "bias"))),
+               "Prior 'bias' cannot join a block of 'sampler_blocks': it is a mixture prior.", fixed = TRUE,
                class = "BayesTools_sampler_declaration_error")
 })
 
