@@ -30,13 +30,19 @@ jobs:
       - name: Set up JAGS
         uses: ./.github/actions/setup-jags
 
+      # Runner variables such as ImageOS are not in the expression env context.
+      - name: Read runner image
+        id: runner-image
+        shell: bash
+        run: echo "image=$ImageOS" >> "$GITHUB_OUTPUT"
+
       - name: Cache R packages
         uses: actions/cache@v6
         with:
           path: ${{ env.R_LIBS_USER }}
-          key: ${{ runner.os }}-${{ env.ImageOS }}-r-${{ steps.setup-r.outputs.installed-r-version }}-cache-v2-${{ hashFiles('**/DESCRIPTION') }}
+          key: ${{ runner.os }}-${{ steps.runner-image.outputs.image }}-r-${{ steps.setup-r.outputs.installed-r-version }}-cache-v2-${{ hashFiles('**/DESCRIPTION') }}
           restore-keys: |
-            ${{ runner.os }}-${{ env.ImageOS }}-r-${{ steps.setup-r.outputs.installed-r-version }}-cache-v2-
+            ${{ runner.os }}-${{ steps.runner-image.outputs.image }}-r-${{ steps.setup-r.outputs.installed-r-version }}-cache-v2-
 
       - name: Install the required packages
         run: |
