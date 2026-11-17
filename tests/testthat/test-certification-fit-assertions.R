@@ -5229,7 +5229,7 @@ test_that("a fit created in a function does not keep that function's frame", {
   )
 })
 
-test_that("the JAGS module registers its four distributions and two functions", {
+test_that("the JAGS module registers its six distributions and two functions", {
 
   skip_if_not(isTRUE(BayesTools_load_JAGS_module(quiet = TRUE, warn = FALSE)))
   # JAGS compiles (and initializes, without sampling) syntax that uses each of
@@ -5244,10 +5244,144 @@ test_that("the JAGS module registers its four distributions and two functions", 
       c = prior("invgamma", list(2, 1))
     )
   )
-  for(name in c("dbt_lkj_cpc", "dbt_invgamma", "dbt_moment", "dbt_invmoment",
+  # the sampler markers are emitted by JAGS_fit() only; they are added by hand
+  syntax <- sub("\\}[[:space:]]*$", paste0(
+    "BayesTools_gate_1 ~ dbt_gate(a, 1)\n",
+    "BayesTools_block_1 ~ dbt_block(b, 1)\n}"
+  ), syntax)
+  for(name in c("dbt_lkj_cpc", "dbt_invgamma", "dbt_moment", "dbt_invmoment", "dbt_gate", "dbt_block",
                 "bt_lkj_cholesky", "bt_lkj_corr")){
     expect_true(grepl(name, syntax, fixed = TRUE), info = name)
   }
-  model <- rjags::jags.model(textConnection(syntax), n.chains = 1, n.adapt = 0, quiet = TRUE)
+  model <- rjags::jags.model(
+    textConnection(syntax), data = list(BayesTools_gate_1 = 0, BayesTools_block_1 = 0),
+    n.chains = 1, n.adapt = 0, quiet = TRUE
+  )
   expect_s3_class(model, "jags")
+})
+
+# ============================================================================ #
+# Gated and factor slice samplers of the BayesTools JAGS module
+# ============================================================================ #
+#
+# Declarations are observed marker nodes, 'BayesTools_gate_<k> ~
+# dbt_gate(<node>, <active>)' and 'BayesTools_block_<k> ~ dbt_block(<node>, <id>)'
+# with data value 0. These blocks compile hand-written models with rjags.
+
+.sampler_test_node_samplers <- function(model){
+  samplers <- rjags::list.samplers(model)
+  out <- unlist(lapply(seq_along(samplers), function(i){
+    stats::setNames(rep(names(samplers)[i], length(samplers[[i]])), samplers[[i]])
+  }))
+  out[order(names(out))]
+}
+
+.sampler_test_compile <- function(syntax, data, chains = 2L, seed = 1L, n_adapt = 0L){
+  rjags::jags.model(
+    textConnection(syntax), data = data, n.chains = chains, n.adapt = n_adapt, quiet = TRUE,
+    inits = lapply(seq_len(chains), function(chain){
+      list(.RNG.name = "base::Mersenne-Twister", .RNG.seed = seed + chain)
+    })
+  )
+}
+
+.sampler_test_markers_zero <- function(names){
+  stats::setNames(as.list(rep(0, length(names))), names)
+}
+
+test_that("sampler factories claim exactly the nodes their markers declare", {
+  skip_if_not(isTRUE(BayesTools_load_JAGS_module(quiet = TRUE, warn = FALSE)))
+
+  set.seed(1)
+  N <- 20L
+  x1 <- stats::rnorm(N)
+  x2 <- x1 + stats::rnorm(N, 0, 0.3)
+  data <- list(N = N, x1 = x1, x2 = x2, y = 0.5 * x1 - 0.2 * x2 + stats::rnorm(N))
+  syntax <- function(markers) paste0("
+model{
+  ind ~ dcat(c(1, 1))
+  x ~ dnorm(0, 1)T(0,)
+  b1 ~ dnorm(0, 1)
+  b2 ~ dnorm(0, 1)
+  sigma ~ dunif(0.1, 5)
+  m <- x * equals(ind, 2)
+  for(i in 1:N){
+    y[i] ~ dnorm(m + b1 * x1[i] + b2 * x2[i], 1 / sigma^2)
+  }
+  ", paste(markers, collapse = "\n  "), "
+}")
+  reference <- .sampler_test_node_samplers(.sampler_test_compile(syntax(character()), data))
+  gate <- "BayesTools::GatedSlice"
+  block <- "BayesTools::FactorSlice"
+
+  # declared: nodes whose sampler may change; claimed: the expected new samplers
+  cases <- list(
+    list(label = "gate", markers = "BayesTools_gate_1 ~ dbt_gate(x, equals(ind, 2))",
+         observed = "BayesTools_gate_1", declared = "x", claimed = c(x = gate)),
+    list(label = "block of two", markers = c("BayesTools_block_1 ~ dbt_block(b1, 1)", "BayesTools_block_2 ~ dbt_block(b2, 1)"),
+         observed = paste0("BayesTools_block_", 1:2), declared = c("b1", "b2"), claimed = c(b1 = block, b2 = block)),
+    list(label = "block with a doubly bounded member",
+         markers = c("BayesTools_block_1 ~ dbt_block(b1, 1)", "BayesTools_block_2 ~ dbt_block(b2, 1)",
+                     "BayesTools_block_3 ~ dbt_block(sigma, 1)"),
+         observed = paste0("BayesTools_block_", 1:3), declared = c("b1", "b2", "sigma"),
+         claimed = c(b1 = block, b2 = block, sigma = block)),
+    list(label = "two blocks", markers = c("BayesTools_block_1 ~ dbt_block(b1, 1)", "BayesTools_block_2 ~ dbt_block(b2, 1)",
+                                           "BayesTools_block_3 ~ dbt_block(x, 2)", "BayesTools_block_4 ~ dbt_block(sigma, 2)"),
+         observed = paste0("BayesTools_block_", 1:4), declared = c("b1", "b2", "x", "sigma"),
+         claimed = c(b1 = block, b2 = block, x = block, sigma = block), blocks = 2L),
+    list(label = "gate wins over a block",
+         markers = c("BayesTools_gate_1 ~ dbt_gate(x, equals(ind, 2))", "BayesTools_block_1 ~ dbt_block(x, 1)",
+                     "BayesTools_block_2 ~ dbt_block(b1, 1)", "BayesTools_block_3 ~ dbt_block(b2, 1)"),
+         observed = c("BayesTools_gate_1", paste0("BayesTools_block_", 1:3)), declared = c("x", "b1", "b2"),
+         claimed = c(x = gate, b1 = block, b2 = block)),
+    list(label = "block of one", markers = "BayesTools_block_1 ~ dbt_block(b1, 1)",
+         observed = "BayesTools_block_1", declared = "b1", claimed = character()),
+    list(label = "gate leaves a block of one", markers = c("BayesTools_gate_1 ~ dbt_gate(x, equals(ind, 2))",
+                                                             "BayesTools_block_1 ~ dbt_block(x, 1)", "BayesTools_block_2 ~ dbt_block(b1, 1)"),
+         observed = c("BayesTools_gate_1", paste0("BayesTools_block_", 1:2)), declared = c("x", "b1"), claimed = c(x = gate)),
+    list(label = "markers on deterministic expressions",
+         markers = c("BayesTools_block_1 ~ dbt_block(b1 + 0, 1)", "BayesTools_block_2 ~ dbt_block(b2 + 0, 1)",
+                     "BayesTools_gate_1 ~ dbt_gate(x * 1, equals(ind, 2))"),
+         observed = c(paste0("BayesTools_block_", 1:2), "BayesTools_gate_1"), declared = c("b1", "b2", "x"), claimed = character()),
+    list(label = "unobserved markers",
+         markers = c("BayesTools_block_1 ~ dbt_block(b1, 1)", "BayesTools_block_2 ~ dbt_block(b2, 1)",
+                     "BayesTools_gate_1 ~ dbt_gate(x, equals(ind, 2))"),
+         observed = character(), declared = c("b1", "b2", "x"), claimed = character()),
+    list(label = "non-integer block id", markers = c("BayesTools_block_1 ~ dbt_block(b1, 1.5)", "BayesTools_block_2 ~ dbt_block(b2, 1.5)"),
+         observed = paste0("BayesTools_block_", 1:2), declared = c("b1", "b2"), claimed = character()),
+    list(label = "zero block id", markers = c("BayesTools_block_1 ~ dbt_block(b1, 0)", "BayesTools_block_2 ~ dbt_block(b2, 0)"),
+         observed = paste0("BayesTools_block_", 1:2), declared = c("b1", "b2"), claimed = character()),
+    list(label = "block id that is not fixed", markers = c("BayesTools_block_1 ~ dbt_block(b1, ind)", "BayesTools_block_2 ~ dbt_block(b2, ind)"),
+         observed = paste0("BayesTools_block_", 1:2), declared = c("b1", "b2"), claimed = character()),
+    list(label = "gate that depends on its node", markers = "BayesTools_gate_1 ~ dbt_gate(x, step(x - 1))",
+         observed = "BayesTools_gate_1", declared = "x", claimed = character()),
+    list(label = "two gates on one node",
+         markers = c("BayesTools_gate_1 ~ dbt_gate(x, equals(ind, 2))", "BayesTools_gate_2 ~ dbt_gate(x, equals(ind, 1))"),
+         observed = paste0("BayesTools_gate_", 1:2), declared = "x", claimed = character()),
+    list(label = "marker naming the node as its second parent", markers = "BayesTools_gate_1 ~ dbt_gate(b1, x)",
+         observed = "BayesTools_gate_1", declared = c("b1", "x"), claimed = c(b1 = gate))
+  )
+
+  for(case in cases){
+    model <- .sampler_test_compile(syntax(case$markers), c(data, .sampler_test_markers_zero(case$observed)))
+    current <- .sampler_test_node_samplers(model)
+    expect_identical(names(current), names(reference), info = case$label)
+    undeclared <- setdiff(names(reference), case$declared)
+    expect_identical(current[undeclared], reference[undeclared], info = case$label)
+    expect_identical(unname(current[names(case$claimed)]), unname(case$claimed), info = case$label)
+    unclaimed <- setdiff(case$declared, names(case$claimed))
+    expect_false(any(current[unclaimed] %in% c(gate, block)), info = case$label)
+    if(!is.null(case$blocks)){
+      samplers <- rjags::list.samplers(model)
+      expect_identical(sum(names(samplers) == block), case$blocks, info = case$label)
+    }
+    expect_no_error(rjags::adapt(model, 200, end.adaptation = TRUE, progress.bar = "none"))
+    expect_no_error(stats::update(model, 200, progress.bar = "none"))
+  }
+
+  # a marker is an observed node with value 0
+  expect_error(
+    .sampler_test_compile(syntax("BayesTools_gate_1 ~ dbt_gate(x, equals(ind, 2))"), c(data, list(BayesTools_gate_1 = 1))),
+    "inconsistent"
+  )
 })
