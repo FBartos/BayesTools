@@ -488,7 +488,7 @@ test_that("JAGS_extend has no seed argument; the chains continue their stored st
   expect_false("seed" %in% names(formals(JAGS_extend)))
   expect_identical(
     names(formals(JAGS_extend)),
-    c("fit", "autofit_control", "parallel", "cores", "silent", "runtime_setup", "runtime_cache", "worker_output", "adapt")
+    c("fit", "autofit_control", "parallel", "cores", "silent", "runtime_setup", "runtime_cache", "worker_output", "adapt", "runtime_report")
   )
   expect_error(
     JAGS_extend(.jags_extend_test_fit(), autofit_control = .jags_extend_test_control(), seed = 1),

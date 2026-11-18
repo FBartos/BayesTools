@@ -223,7 +223,7 @@ JAGS_with_draws <- function(fit, draws){
   out <- structure(list(original_fit = original, mcmc = draws),
                     class = c("BayesTools_draws_view", "BayesTools_fit"))
   excluded <- c("names", "class", "runtime_setup", "runtime_cache", "runtime_state",
-                 "bayestools_meta", "posterior_density", "posterior_densities",
+                 "runtime_report_callback", "runtime_report", "bayestools_meta", "posterior_density", "posterior_densities",
                  "posterior_ordinate", "posterior_ordinates")
   analysis_attributes <- attributes(fit)
   for(name in setdiff(names(analysis_attributes), excluded)){

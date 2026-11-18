@@ -15,6 +15,8 @@ skip_if_not_test_profile("unit")
   attr(fit, "runtime_setup") <- function(...) stop("Runtime setup must not run.")
   attr(fit, "runtime_cache") <- function(...) stop("Runtime cache must not run.")
   attr(fit, "runtime_state") <- new.env(parent = emptyenv())
+  attr(fit, "runtime_report_callback") <- function(...) stop("Runtime report must not run.")
+  attr(fit, "runtime_report") <- list(list("process 1"))
   fit
 }
 
@@ -48,6 +50,9 @@ test_that("derived views preserve original state and local metadata without samp
   expect_null(attr(view, "runtime_setup"))
   expect_null(attr(view, "runtime_cache"))
   expect_null(attr(view, "runtime_state"))
+  expect_null(attr(view, "runtime_report_callback"))
+  expect_null(attr(view, "runtime_report"))
+  expect_identical(attr(view$original_fit, "runtime_report"), attr(fit, "runtime_report"))
   attr(view, "prior_list") <- list(theta = prior("normal", list(1, 2)))
   renewed <- JAGS_with_draws(view, replacement)
   expect_identical(renewed$original_fit, fit)

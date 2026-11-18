@@ -1232,6 +1232,47 @@ test_that("JAGS_fit works with is_JASP mode", {
 
 })
 
+test_that("runtime reports come from the process of a serial fit and from every parallel worker", {
+
+  skip_if_not_installed("rjags")
+  skip_on_cran()
+
+  set.seed(1)
+  data <- list(y = rnorm(20, 0.5, 1), N = 20)
+  prior_list <- list(mu = prior("normal", list(0, 1)))
+  model_syntax <- "model{
+    for(i in 1:N){
+      y[i] ~ dnorm(mu, 1)
+    }
+  }"
+  report <- function(context){
+
+    list(pid = Sys.getpid(), role = context$role, process_id = context$process_id)
+  }
+  environment(report) <- baseenv()
+  fit_with <- function(...){
+    JAGS_fit(model_syntax = model_syntax, data = data, prior_list = prior_list,
+      chains = 2, adapt = 100, burnin = 100, sample = 200, seed = 1, silent = TRUE,
+      runtime_report = report, ...)
+  }
+
+  serial <- fit_with()
+  expect_identical(attr(serial, "runtime_report"),
+    list(list(list(pid = Sys.getpid(), role = "local", process_id = 1L))))
+  expect_identical(attr(serial, "runtime_report_callback"), report)
+
+  parallel_fit <- fit_with(parallel = TRUE, cores = 2)
+  runs <- attr(parallel_fit, "runtime_report")
+  expect_length(runs, 1L)
+  expect_length(runs[[1L]], 2L)
+  pids <- vapply(runs[[1L]], `[[`, integer(1L), "pid")
+  expect_identical(anyDuplicated(pids), 0L)
+  expect_false(Sys.getpid() %in% pids)
+  expect_identical(vapply(runs[[1L]], `[[`, character(1L), "role"), rep("worker", 2L))
+  expect_identical(vapply(runs[[1L]], `[[`, integer(1L), "process_id"), 1:2)
+  expect_null(attr(parallel_fit, "warnings"))
+})
+
 # ============================================================================ #
 # CENTRALIZED LIVE-FIT TESTS FROM test-JAGS-fit-lm-oracles.R
 # ============================================================================ #

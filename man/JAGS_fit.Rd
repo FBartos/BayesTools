@@ -37,6 +37,7 @@ JAGS_fit(
   worker_output = NULL,
   sampler_gates = FALSE,
   sampler_blocks = NULL,
+  runtime_report = NULL,
   ...
 )
 
@@ -52,7 +53,8 @@ JAGS_extend(
   runtime_setup = attr(fit, "runtime_setup", exact = TRUE),
   runtime_cache = attr(fit, "runtime_cache", exact = TRUE),
   worker_output = NULL,
-  adapt = NULL
+  adapt = NULL,
+  runtime_report = attr(fit, "runtime_report_callback", exact = TRUE)
 )
 }
 \arguments{
@@ -303,6 +305,31 @@ block, with its \code{kind}, \code{prior}, \code{branch} or \code{block},
 \code{nodes} and \code{reason}). A density that cannot be calculated (NaN)
 at a point the factor slice sampler evaluates stops the fit with a JAGS
 error, as with the stock samplers.}
+
+\item{runtime_report}{optional function accepting one \code{context} list,
+as for \code{runtime_setup} but with \code{context$phase = "report"}, that
+reads small values of a process, such as sampler counters. It is called in
+every process that ran chains (the calling process of a serial fit, each
+worker of a parallel fit) after every backend run: the initial run, each
+restart attempt, each automatic extension, each run of the JASP fitting
+path, and each extension of \code{JAGS_extend()}. It must not change
+inference targets or random-number state, must capture only small settings,
+and returns \code{NULL} or a small serializable value. The values of runs
+that do not give the returned fit (failed attempts and failed extensions)
+are dropped; the callback is still called after them, so that
+read-and-clear state starts the next run clean, but not after a worker
+connection failure. The \code{runtime_report} attribute of a fit is the
+list of the kept runs of the call, in order, each a list with one element
+per process (\code{NULL} elements kept in place); it is \code{NULL} when no
+process reported a value, and a fit that failed has none. Callback
+warnings and errors are signalled with the process they came from, leave
+\code{NULL} for that process, and are recorded in the fit's
+\code{warnings} attribute when the run is kept; a failed transport of the
+report leaves \code{NULL} for every process, with one warning. The
+callback is stored as the \code{runtime_report_callback} attribute;
+\code{JAGS_extend()} reuses it and reports only its own runs (the report
+of the extended fit is not carried over). Callback packages must be listed
+in \code{required_packages}. Passing \code{NULL} disables the report.}
 
 \item{...}{additional hidden arguments}
 

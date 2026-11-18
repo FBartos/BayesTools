@@ -14,6 +14,13 @@
   invisible(runtime_cache)
 }
 
+.JAGS_validate_runtime_report <- function(runtime_report){
+
+  if(!is.null(runtime_report) && !is.function(runtime_report)){
+    stop("'runtime_report' must be NULL or a function accepting one context argument.", call. = FALSE)
+  }
+  invisible(runtime_report)
+}
 
 .JAGS_validate_worker_output <- function(worker_output){
 
@@ -312,6 +319,75 @@ JAGS_runtime_cluster_stop <- function(cl){
   )
 
   list(state = state, warnings = messages)
+}
+
+# Runtime reports are small values that a callback reads in every process that
+# ran chains (the calling process of a serial fit, each worker of a parallel
+# fit) after a backend run. The result has one element per process, NULL
+# elements in place, so that positions identify processes. A failed callback
+# leaves NULL for its process; a failed transport leaves NULL for every process.
+.JAGS_run_runtime_report <- function(runtime_report, chains, cl = NULL){
+
+  if(is.null(runtime_report)) return(NULL)
+  processes <- if(is.null(cl)) 1L else length(cl)
+  contexts <- lapply(seq_len(processes), function(process){
+    .JAGS_runtime_context(chains, processes, !is.null(cl), process, "report")
+  })
+  worker <- function(context, callback){
+
+    messages <- character()
+    value <- tryCatch(withCallingHandlers(
+      callback(context),
+      warning = function(condition){
+        messages <<- c(messages, conditionMessage(condition))
+        invokeRestart("muffleWarning")
+      }), error = function(condition){
+        messages <<- c(messages, conditionMessage(condition))
+        NULL
+      })
+    list(value = value, messages = messages)
+  }
+  environment(worker) <- baseenv()
+  results <- tryCatch({
+    if(is.null(cl)) list(worker(contexts[[1L]], runtime_report)) else
+      parallel::clusterApply(cl, contexts, worker, callback = runtime_report)
+  }, error = function(condition){
+    warning("Runtime report could not be completed: ", conditionMessage(condition),
+      call. = FALSE)
+    NULL
+  })
+  if(is.null(results)) return(rep(list(NULL), processes))
+  for(process in seq_along(results)){
+    location <- if(is.null(cl)) "the local process" else paste("worker", process)
+    for(message in results[[process]]$messages){
+      warning("Runtime report in ", location, ": ", message, call. = FALSE)
+    }
+  }
+  lapply(results, `[[`, "value")
+}
+
+# Run the report and keep its warnings, which are signalled as usual, so that
+# the fit that retains the run can also record them.
+.JAGS_capture_runtime_report <- function(runtime_report, chains, cl = NULL){
+
+  messages <- character()
+  values <- withCallingHandlers(
+    .JAGS_run_runtime_report(runtime_report, chains, cl),
+    warning = function(condition){
+      messages <<- c(messages, conditionMessage(condition))
+    }
+  )
+
+  list(values = values, warnings = messages)
+}
+
+# The retained runs of a call, or NULL when no process reported a value.
+.JAGS_runtime_report_value <- function(runs){
+
+  reported <- vapply(runs, function(run){
+    any(!vapply(run, is.null, logical(1L)))
+  }, logical(1L))
+  if(any(reported)) runs else NULL
 }
 
 .JAGS_runtime_context <- function(chains, processes = 1L, parallel = FALSE,

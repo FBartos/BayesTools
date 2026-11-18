@@ -224,6 +224,30 @@
 #' serialization buffers, and the caller's old fitted object consume memory in
 #' addition to active cache storage. Callback packages must be listed in
 #' \code{required_packages}. Passing \code{NULL} disables capture and restore.
+#' @param runtime_report optional function accepting one \code{context} list,
+#' as for \code{runtime_setup} but with \code{context$phase = "report"}, that
+#' reads small values of a process, such as sampler counters. It is called in
+#' every process that ran chains (the calling process of a serial fit, each
+#' worker of a parallel fit) after every backend run: the initial run, each
+#' restart attempt, each automatic extension, each run of the JASP fitting
+#' path, and each extension of \code{JAGS_extend()}. It must not change
+#' inference targets or random-number state, must capture only small settings,
+#' and returns \code{NULL} or a small serializable value. The values of runs
+#' that do not give the returned fit (failed attempts and failed extensions)
+#' are dropped; the callback is still called after them, so that
+#' read-and-clear state starts the next run clean, but not after a worker
+#' connection failure. The \code{runtime_report} attribute of a fit is the
+#' list of the kept runs of the call, in order, each a list with one element
+#' per process (\code{NULL} elements kept in place); it is \code{NULL} when no
+#' process reported a value, and a fit that failed has none. Callback
+#' warnings and errors are signalled with the process they came from, leave
+#' \code{NULL} for that process, and are recorded in the fit's
+#' \code{warnings} attribute when the run is kept; a failed transport of the
+#' report leaves \code{NULL} for every process, with one warning. The
+#' callback is stored as the \code{runtime_report_callback} attribute;
+#' \code{JAGS_extend()} reuses it and reports only its own runs (the report
+#' of the extended fit is not carried over). Callback packages must be listed
+#' in \code{required_packages}. Passing \code{NULL} disables the report.
 #' @param fit a 'BayesTools_fit' object (created by \code{JAGS_fit()} function) to be
 #' extended. A derived-draw view signals
 #' \code{BayesTools_draws_view_sampling_unavailable}, also
@@ -392,6 +416,32 @@ NULL
   )
 }
 
+# The runtime report after one backend run ('result': the run's fit or error).
+# The callback runs after every attempt, so that a consumer with read-and-clear
+# state starts the next attempt clean, but not when the workers are gone; the
+# values and warnings of a run are retained only when the run succeeded.
+.bt_runtime_report_after_run <- function(reports, runtime_report, result,
+                                         chains, cl = NULL){
+
+  if(is.null(runtime_report) ||
+     inherits(result, "BayesTools_JAGS_worker_connection_error")){
+    return(reports)
+  }
+  report <- .JAGS_capture_runtime_report(runtime_report, chains, cl)
+  if(inherits(result, "error")){
+    return(reports)
+  }
+  list(
+    runs     = c(reports$runs, list(report$values)),
+    warnings = c(reports$warnings, report$warnings)
+  )
+}
+
+.bt_runtime_reports_empty <- function(){
+
+  list(runs = list(), warnings = character())
+}
+
 .bt_append_fit_warnings <- function(fit, messages){
 
   if(length(messages) == 0L){
@@ -412,7 +462,7 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
                      add_parameters = NULL, required_packages = NULL,
                      formula_random_prior_list = NULL, formula_random_effects_compile_list = NULL,
                      jags_modules = NULL, runtime_setup = NULL, runtime_cache = NULL, worker_output = NULL,
-                     sampler_gates = FALSE, sampler_blocks = NULL, ...){
+                     sampler_gates = FALSE, sampler_blocks = NULL, runtime_report = NULL, ...){
 
   .check_runjags()
   # A seeded fit leaves the caller's random-number state as it found it.
@@ -432,6 +482,7 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
   check_char(jags_modules, "jags_modules", check_length = 0, allow_NULL = TRUE, allow_NA = FALSE)
   .JAGS_validate_runtime_setup(runtime_setup)
   .JAGS_validate_runtime_cache(runtime_cache)
+  .JAGS_validate_runtime_report(runtime_report)
   .bt_check_sampler_declaration_arguments(sampler_gates, sampler_blocks)
   check_list(formula_list, "formula_list", allow_NULL = TRUE)
   check_list(formula_data_list, "formula_data_list", allow_NULL = is.null(formula_list))
@@ -705,9 +756,16 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
   # incomplete-adaptation warnings of the backend runs that the fit keeps
   adaptation_warnings <- character()
   adaptation <- .bt_adaptation_record(adapt)
+  # the runtime reports of the backend runs that the fit keeps
+  reports <- .bt_runtime_reports_empty()
+  report_run <- function(result){
+    reports <<- .bt_runtime_report_after_run(reports, runtime_report, result,
+      chains, if(parallel) cl else NULL)
+  }
   run_initial <- function(call){
     run <- .bt_collect_adaptation_warnings(
       .JAGS_run_backend(runjags::run.jags, call, parallel))
+    report_run(run$value)
     if(!inherits(run$value, "error")){
       adaptation_warnings <<- run$warnings
     }
@@ -734,6 +792,7 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
           extension_runtime
         ), adapt = adapt, parallel = parallel)
         fit <- run$extension
+        report_run(fit)
         if(!inherits(fit, "error")){
           adaptation <- .bt_adaptation_add_extension(adaptation, adapt, run$rebuilt)
           adaptation_warnings <- c(adaptation_warnings, run$warnings)
@@ -862,6 +921,7 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
         extension_runtime
       ), adapt = adapt, parallel = parallel)
       extension <- run$extension
+      report_run(extension)
 
       if(inherits(extension, "error")){
         warning_message <- paste0(
@@ -930,6 +990,7 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
   fit <- .bt_attach_fit_contract(fit)
 
   attr(fit, "runtime_cache") <- runtime_cache
+  attr(fit, "runtime_report_callback") <- runtime_report
   if(!inherits(fit, "error")){
     if(isTRUE(extension_failed) || isTRUE(captured_after_success)){
       attr(fit, "runtime_state") <- last_valid_runtime_state
@@ -940,6 +1001,8 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
       attr(fit, "runtime_state") <- captured$state
       fit <- .bt_append_fit_warnings(fit, captured$warnings)
     }
+    attr(fit, "runtime_report") <- .JAGS_runtime_report_value(reports$runs)
+    fit <- .bt_append_fit_warnings(fit, reports$warnings)
   }
   return(fit)
 }
@@ -1115,7 +1178,8 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
                         parallel = FALSE, cores = NULL, silent = TRUE,
                         runtime_setup = attr(fit, "runtime_setup", exact = TRUE),
                         runtime_cache = attr(fit, "runtime_cache", exact = TRUE),
-                        worker_output = NULL, adapt = NULL){
+                        worker_output = NULL, adapt = NULL,
+                        runtime_report = attr(fit, "runtime_report_callback", exact = TRUE)){
 
   if(inherits(fit, "BayesTools_draws_view")){
     stop(.bt_draws_view_condition(
@@ -1137,12 +1201,16 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
   worker_output <- .JAGS_validate_worker_output(worker_output)
   .JAGS_validate_runtime_setup(runtime_setup)
   .JAGS_validate_runtime_cache(runtime_cache)
+  .JAGS_validate_runtime_report(runtime_report)
   runtime_state <- attr(fit, "runtime_state", exact = TRUE)
   last_valid_runtime_state <- runtime_state
   # Only the local input copy loses these attributes. Retained snapshots must
-  # never travel inside runjags.object to every extension worker.
+  # never travel inside runjags.object to every extension worker. The input's
+  # runtime report describes earlier runs, not those of this call.
   attr(fit, "runtime_state") <- NULL
   attr(fit, "runtime_cache") <- NULL
+  attr(fit, "runtime_report") <- NULL
+  attr(fit, "runtime_report_callback") <- NULL
   # The backend would continue a compiled model still alive in this session,
   # so that an extension depended on earlier in-memory extensions of the same
   # object. Extending from the stored chain states alone makes it depend only
@@ -1260,6 +1328,7 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
   extension_failed <- FALSE
   last_valid_capture_warnings <- character()
   captured_after_success <- FALSE
+  reports <- .bt_runtime_reports_empty()
 
   while(!converged){
 
@@ -1282,6 +1351,8 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
 
     run <- .bt_run_extension(refit_call, adapt = adapt, parallel = parallel)
     extension <- run$extension
+    reports <- .bt_runtime_report_after_run(reports, runtime_report, extension,
+      chains, if(parallel) cl else NULL)
 
     if(inherits(extension, "error")){
       warning_message <- paste0(
@@ -1357,6 +1428,7 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
   fit <- .bt_attach_fit_contract(fit)
 
   attr(fit, "runtime_cache") <- runtime_cache
+  attr(fit, "runtime_report_callback") <- runtime_report
   if(isTRUE(extension_failed) || isTRUE(captured_after_success)){
     attr(fit, "runtime_state") <- last_valid_runtime_state
     fit <- .bt_append_fit_warnings(fit, last_valid_capture_warnings)
@@ -1366,6 +1438,8 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
     attr(fit, "runtime_state") <- captured$state
     fit <- .bt_append_fit_warnings(fit, captured$warnings)
   }
+  attr(fit, "runtime_report") <- .JAGS_runtime_report_value(reports$runs)
+  fit <- .bt_append_fit_warnings(fit, reports$warnings)
   return(fit)
 }
 

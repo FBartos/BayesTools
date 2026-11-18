@@ -274,3 +274,406 @@ test_that("runtime cache capture warnings are recorded in the fit warnings", {
   expect_null(attr(parallel_fit, "runtime_state", exact = TRUE))
   expect_identical(attr(parallel_fit, "warnings"), c(local_message, dead_message))
 })
+
+# A mocked backend for runtime reports. 'state' scripts the backend failures
+# (the numbers of the failing run.jags and extend.jags calls and their
+# messages, and the number of unconverged checks) and records the calls and the
+# objects passed to the backend. A test mocks the backend once (the mocked
+# fit-contract helpers would leave a second backend fit without a contract) and
+# scripts each scenario on the same state.
+.report_test_script <- function(state, fail_runs = integer(), fail_extensions = integer(),
+                                run_error = "retry probe",
+                                extend_error = "JAGS model compilation failed",
+                                unconverged = 0L, reset_reports = TRUE){
+
+  state$fail_runs <- fail_runs
+  state$fail_extensions <- fail_extensions
+  state$run_error <- run_error
+  state$extend_error <- extend_error
+  state$unconverged <- unconverged
+  state$runs <- state$extensions <- state$checks <- state$cluster_calls <- 0L
+  state$objects <- list()
+  if(reset_reports){
+    state$reports <- 0L
+    state$contexts <- list()
+  }
+  invisible(state)
+}
+
+.report_test_state <- function(...){
+
+  .report_test_script(new.env(parent = emptyenv()), ...)
+}
+
+.report_test_backend <- function(state, env = parent.frame()){
+
+  basic_fit <- contract_test_backend_fit(structure(list(end.state = rep("", 2L)),
+    class = c("runjags", "BayesTools_fit")))
+  testthat::local_mocked_bindings(
+    .JAGS_require_packages = function(...) invisible(NULL),
+    .JAGS_load_modules = function(...) invisible(NULL),
+    .bt_attach_parameter_map = function(fit, ...) fit,
+    .bt_attach_draw_geometry = function(fit, ...) fit,
+    .bt_attach_fit_contract = function(fit, ...) fit,
+    .bt_check_convergence = function(...){
+      state$checks <- state$checks + 1L
+      state$checks > state$unconverged
+    },
+    .JASP_progress_bar_start = function(...) invisible(NULL),
+    .JASP_progress_bar_tick = function(...) invisible(NULL),
+    .package = "BayesTools", .env = env
+  )
+  testthat::local_mocked_bindings(
+    run.jags = function(...){
+      state$runs <- state$runs + 1L
+      if(state$runs %in% state$fail_runs) stop(state$run_error, call. = FALSE)
+      basic_fit
+    },
+    extend.jags = function(runjags.object, ...){
+      state$extensions <- state$extensions + 1L
+      state$objects <- c(state$objects, list(runjags.object))
+      if(state$extensions %in% state$fail_extensions) stop(state$extend_error, call. = FALSE)
+      runjags.object
+    },
+    add.summary = function(fit, ...) fit,
+    .package = "runjags", .env = env
+  )
+  testthat::local_mocked_bindings(
+    makePSOCKcluster = function(cores, ...) as.list(seq_len(cores)),
+    stopCluster = function(cl) invisible(NULL),
+    clusterApply = function(cl, x, fun, callback){
+      expect_identical(environment(fun), baseenv())
+      state$cluster_calls <- state$cluster_calls + 1L
+      lapply(x, fun, callback = callback)
+    },
+    .package = "parallel", .env = env
+  )
+  invisible(state)
+}
+
+# A report callback returning the process label and a call counter.
+.report_test_callback <- function(state){
+
+  force(state)
+  function(context){
+
+    state$reports <- state$reports + 1L
+    state$contexts <- c(state$contexts, list(context))
+    list(process = paste(context$role, context$process_id), call = state$reports)
+  }
+}
+
+.report_test_entry <- function(process, call) list(process = process, call = call)
+
+.report_test_fit <- function(..., chains = 2){
+
+  JAGS_fit("model{ x ~ dnorm(mu, 1) }", data = list(x = 0),
+    prior_list = list(mu = prior("normal", list(0, 1))), chains = chains,
+    adapt = 50, burnin = 50, sample = 100, seed = 1, silent = TRUE, ...)
+}
+
+.report_test_control <- function(restarts = 1, max_extend = 1){
+
+  list(max_Rhat = NULL, min_ESS = NULL, max_error = NULL,
+    max_SD_error = NULL, max_time = NULL, sample_extend = 1,
+    restarts = restarts, max_extend = max_extend, check_indicators = FALSE)
+}
+
+
+test_that("runtime reports collect one element per process of every kept run", {
+
+  skip_if_not_installed("runjags")
+  entry <- .report_test_entry
+  state <- .report_test_backend(.report_test_state())
+  report <- .report_test_callback(state)
+
+  # serial fit: one run, the calling process
+  fit <- .report_test_fit(runtime_report = report)
+  expect_identical(attr(fit, "runtime_report"), list(list(entry("local 1", 1L))))
+  expect_identical(attr(fit, "runtime_report_callback"), report)
+  expect_identical(state$contexts[[1L]], list(phase = "report", role = "local",
+    chains = 2L, processes = 1L, process_id = 1L, process_chains = 2L, parallel = FALSE))
+  expect_identical(state$cluster_calls, 0L)
+
+  # parallel fit: one element per worker, in worker order
+  .report_test_script(state)
+  fit <- .report_test_fit(runtime_report = report, chains = 3, parallel = TRUE, cores = 2)
+  expect_identical(attr(fit, "runtime_report"),
+    list(list(entry("worker 1", 1L), entry("worker 2", 2L))))
+  expect_identical(vapply(state$contexts, `[[`, integer(1L), "process_chains"), c(2L, 1L))
+  expect_identical(state$cluster_calls, 1L)
+
+  # autofit: the initial run and each extension, serial and parallel
+  for(parallel in c(FALSE, TRUE)){
+    .report_test_script(state, unconverged = 2L)
+    fit <- .report_test_fit(runtime_report = report, autofit = TRUE,
+      autofit_control = .report_test_control(max_extend = 5), parallel = parallel, cores = 2)
+    expect_identical(state$extensions, 2L)
+    runs <- attr(fit, "runtime_report")
+    expect_length(runs, 3L)
+    if(parallel){
+      expect_identical(runs[[3L]], list(entry("worker 1", 5L), entry("worker 2", 6L)))
+    }else{
+      expect_identical(runs, lapply(1:3, function(call) list(entry("local 1", call))))
+    }
+  }
+
+  # a callback that returns NULL keeps no report but is stored and called
+  .report_test_script(state, unconverged = 1L)
+  silent_report <- function(context){
+    state$reports <- state$reports + 1L
+    NULL
+  }
+  fit <- .report_test_fit(runtime_report = silent_report, autofit = TRUE,
+    autofit_control = .report_test_control(), parallel = TRUE, cores = 2)
+  expect_identical(state$reports, 4L)
+  expect_false("runtime_report" %in% names(attributes(fit)))
+  expect_identical(attr(fit, "runtime_report_callback"), silent_report)
+})
+
+test_that("runtime reports drop failed attempts and failed extensions but still call the callback", {
+
+  skip_if_not_installed("runjags")
+  entry <- .report_test_entry
+  state <- .report_test_backend(.report_test_state())
+  report <- .report_test_callback(state)
+
+  # a backend failure followed by a restart: the failed attempt's value is
+  # absent, and the counter shows that the callback ran after it
+  for(parallel in c(FALSE, TRUE)){
+    .report_test_script(state, fail_runs = 1L)
+    fit <- .report_test_fit(runtime_report = report, parallel = parallel, cores = 2,
+      autofit_control = .report_test_control(restarts = 2))
+    expect_identical(state$runs, 2L)
+    expected <- if(parallel){
+      list(list(entry("worker 1", 3L), entry("worker 2", 4L)))
+    }else{
+      list(list(entry("local 1", 2L)))
+    }
+    expect_identical(attr(fit, "runtime_report"), expected)
+    expect_identical(attr(fit, "warnings"),
+      "JAGS fitting attempt 1 failed and was restarted: retry probe.")
+  }
+
+  # every attempt failed: an error fit keeps the callback but carries no report
+  .report_test_script(state, fail_runs = 1:2)
+  failed <- .report_test_fit(runtime_report = report,
+    autofit_control = .report_test_control(restarts = 2))
+  expect_s3_class(failed, "error")
+  expect_identical(state$reports, 2L)
+  expect_false("runtime_report" %in% names(attributes(failed)))
+  expect_identical(attr(failed, "runtime_report_callback"), report)
+
+  # a failed automatic extension: the runs before it are kept, its own is not
+  .report_test_script(state, fail_extensions = 2L, unconverged = 10L)
+  expect_warning(
+    fit <- .report_test_fit(runtime_report = report, autofit = TRUE,
+      autofit_control = .report_test_control(max_extend = 5)),
+    "The model extension failed; returning the last valid fit.", fixed = TRUE)
+  expect_identical(state$reports, 3L)
+  expect_identical(attr(fit, "runtime_report"),
+    list(list(entry("local 1", 1L)), list(entry("local 1", 2L))))
+
+  # the same in JAGS_extend(): a call without a successful extension returns
+  # no report (the input's report is not carried over); a later failure keeps
+  # the runs before it
+  .report_test_script(state, fail_extensions = 1L, unconverged = 10L, reset_reports = FALSE)
+  expect_warning(
+    none <- JAGS_extend(fit, autofit_control = .report_test_control(max_extend = 3)),
+    "The model extension failed; returning the last valid fit.", fixed = TRUE)
+  expect_identical(state$reports, 4L)
+  expect_false("runtime_report" %in% names(attributes(none)))
+  expect_identical(attr(none, "runtime_report_callback"), report)
+  .report_test_script(state, fail_extensions = 2L, unconverged = 10L, reset_reports = FALSE)
+  expect_warning(
+    partial <- JAGS_extend(fit, autofit_control = .report_test_control(max_extend = 3)),
+    "The model extension failed; returning the last valid fit.", fixed = TRUE)
+  expect_identical(state$reports, 6L)
+  expect_identical(attr(partial, "runtime_report"), list(list(entry("local 1", 5L))))
+  # neither report attribute travels in the object passed to the backend
+  expect_length(state$objects, 2L)
+  for(object in state$objects){
+    expect_null(attr(object, "runtime_report", exact = TRUE))
+    expect_null(attr(object, "runtime_report_callback", exact = TRUE))
+  }
+})
+
+test_that("runtime reports are not requested from workers after a connection failure", {
+
+  skip_if_not_installed("runjags")
+  entry <- .report_test_entry
+  connection <- "error reading from connection"
+  state <- .report_test_backend(.report_test_state())
+  report <- .report_test_callback(state)
+
+  # the initial run: no report, no retry, an error fit without a report
+  .report_test_script(state, fail_runs = 1L, run_error = connection)
+  failed <- .report_test_fit(runtime_report = report, parallel = TRUE, cores = 2,
+    autofit_control = .report_test_control(restarts = 3))
+  expect_s3_class(failed, "BayesTools_JAGS_worker_connection_error")
+  expect_identical(c(state$runs, state$cluster_calls, state$reports), c(1L, 0L, 0L))
+  expect_false("runtime_report" %in% names(attributes(failed)))
+
+  # an automatic extension and a JAGS_extend() extension: the kept runs remain
+  .report_test_script(state, fail_extensions = 1L, extend_error = connection, unconverged = 10L)
+  expect_warning(
+    fit <- .report_test_fit(runtime_report = report, autofit = TRUE, parallel = TRUE,
+      cores = 2, autofit_control = .report_test_control(max_extend = 3)),
+    "Parallel JAGS worker communication failed", fixed = TRUE)
+  expect_identical(c(state$extensions, state$cluster_calls), c(1L, 1L))
+  expect_identical(attr(fit, "runtime_report"),
+    list(list(entry("worker 1", 1L), entry("worker 2", 2L))))
+  .report_test_script(state, fail_extensions = 1L, extend_error = connection, unconverged = 10L)
+  expect_warning(
+    extended <- JAGS_extend(fit, autofit_control = .report_test_control(),
+      parallel = TRUE, cores = 2),
+    "Parallel JAGS worker communication failed", fixed = TRUE)
+  expect_identical(c(state$extensions, state$cluster_calls, state$reports), c(1L, 0L, 0L))
+  expect_false("runtime_report" %in% names(attributes(extended)))
+})
+
+test_that("JAGS_extend replays the stored report callback, accepts a new one, and NULL disables it", {
+
+  skip_if_not_installed("runjags")
+  entry <- .report_test_entry
+  state <- .report_test_backend(.report_test_state(unconverged = 10L))
+  report <- .report_test_callback(state)
+  fit <- .report_test_fit(runtime_report = report)
+
+  # the stored callback, with the current topology; only this call's runs
+  extended <- JAGS_extend(fit, autofit_control = .report_test_control(max_extend = 2),
+    parallel = TRUE, cores = 2)
+  expect_identical(attr(extended, "runtime_report_callback"), report)
+  expect_identical(attr(extended, "runtime_report"), list(
+    list(entry("worker 1", 2L), entry("worker 2", 3L)),
+    list(entry("worker 1", 4L), entry("worker 2", 5L))))
+  expect_identical(attr(fit, "runtime_report"), list(list(entry("local 1", 1L))))
+  expect_length(state$objects, 2L)
+  for(object in state$objects){
+    expect_null(attr(object, "runtime_report", exact = TRUE))
+    expect_null(attr(object, "runtime_report_callback", exact = TRUE))
+  }
+
+  # a saved and reloaded fit replays its stored callback
+  saved <- unserialize(serialize(fit, NULL))
+  reloaded <- JAGS_extend(saved, autofit_control = .report_test_control())
+  expect_identical(lengths(attr(reloaded, "runtime_report")), 1L)
+  expect_identical(attr(reloaded, "runtime_report")[[1L]][[1L]]$process, "local 1")
+
+  # a new callback replaces the stored one
+  other <- function(context) "other"
+  replaced <- JAGS_extend(fit, autofit_control = .report_test_control(), runtime_report = other)
+  expect_identical(attr(replaced, "runtime_report"), list(list("other")))
+  expect_identical(attr(replaced, "runtime_report_callback"), other)
+
+  # an explicit NULL disables it and removes the input's report
+  reports <- state$reports
+  disabled <- JAGS_extend(fit, autofit_control = .report_test_control(),
+    parallel = TRUE, cores = 2, runtime_report = NULL)
+  expect_identical(state$reports, reports)
+  expect_false(any(c("runtime_report", "runtime_report_callback") %in% names(attributes(disabled))))
+  expect_error(JAGS_extend(fit, autofit_control = .report_test_control(), runtime_report = "report"),
+    "'runtime_report' must be NULL or a function accepting one context argument.", fixed = TRUE)
+})
+
+test_that("runtime report warnings and errors are recorded for kept runs and never lose the fit", {
+
+  skip_if_not_installed("runjags")
+  collect <- function(expr){
+    messages <- character()
+    value <- withCallingHandlers(expr, warning = function(condition){
+      messages <<- c(messages, conditionMessage(condition))
+      invokeRestart("muffleWarning")
+    })
+    list(value = value, messages = messages)
+  }
+  state <- .report_test_backend(.report_test_state())
+
+  # warnings accumulate over the kept runs; a dropped attempt's warning is
+  # signalled but not recorded
+  .report_test_script(state, fail_runs = 1L, unconverged = 1L)
+  warning_report <- function(context){
+    state$reports <- state$reports + 1L
+    warning("Counter read ", state$reports, ".", call. = FALSE)
+    state$reports
+  }
+  run <- collect(.report_test_fit(runtime_report = warning_report, autofit = TRUE,
+    autofit_control = .report_test_control(restarts = 2)))
+  expect_identical(run$messages, paste0("Runtime report in the local process: Counter read ", 1:3, "."))
+  expect_identical(attr(run$value, "runtime_report"), list(list(2L), list(3L)))
+  expect_identical(attr(run$value, "warnings"), c(
+    "JAGS fitting attempt 1 failed and was restarted: retry probe.",
+    paste0("Runtime report in the local process: Counter read ", 2:3, ".")))
+
+  # an error leaves NULL for its process and is recorded once
+  .report_test_script(state, unconverged = 1L)
+  error_report <- function(context){
+    if(context$process_id == 2L || !context$parallel) stop("Counter read failed.", call. = FALSE)
+    context$process_id
+  }
+  run <- collect(.report_test_fit(runtime_report = error_report, autofit = TRUE,
+    autofit_control = .report_test_control()))
+  expect_s3_class(run$value, "BayesTools_fit")
+  expect_false("runtime_report" %in% names(attributes(run$value)))
+  expect_identical(run$messages, rep("Runtime report in the local process: Counter read failed.", 2L))
+  expect_identical(attr(run$value, "warnings"), "Runtime report in the local process: Counter read failed.")
+  run <- collect(.report_test_fit(runtime_report = error_report, parallel = TRUE, cores = 2))
+  expect_identical(attr(run$value, "runtime_report"), list(list(1L, NULL)))
+  expect_identical(attr(run$value, "warnings"), "Runtime report in worker 2: Counter read failed.")
+
+  # a failed transport of the report: NULL per process and one warning
+  testthat::local_mocked_bindings(
+    clusterApply = function(cl, x, fun, callback) stop("error writing to connection", call. = FALSE),
+    .package = "parallel"
+  )
+  run <- collect(.report_test_fit(runtime_report = error_report, parallel = TRUE, cores = 2))
+  expect_s3_class(run$value, "BayesTools_fit")
+  expect_false("runtime_report" %in% names(attributes(run$value)))
+  expect_identical(run$messages, "Runtime report could not be completed: error writing to connection")
+  expect_identical(attr(run$value, "warnings"), run$messages)
+})
+
+test_that("fits without a runtime report are unchanged and never contact the workers for one", {
+
+  skip_if_not_installed("runjags")
+  state <- .report_test_backend(.report_test_state(unconverged = 1L))
+  default <- .report_test_fit(autofit = TRUE, autofit_control = .report_test_control(),
+    parallel = TRUE, cores = 2)
+  calls <- c(state$extensions, state$cluster_calls)
+  .report_test_script(state, unconverged = 1L)
+  explicit <- .report_test_fit(autofit = TRUE, autofit_control = .report_test_control(),
+    parallel = TRUE, cores = 2, runtime_report = NULL)
+  expect_identical(calls, c(1L, 0L))
+  expect_identical(explicit, default)
+  expect_false(any(c("runtime_report", "runtime_report_callback") %in% names(attributes(default))))
+  extended <- JAGS_extend(default, autofit_control = .report_test_control(), parallel = TRUE, cores = 2)
+  expect_false(any(c("runtime_report", "runtime_report_callback") %in% names(attributes(extended))))
+  expect_identical(c(state$extensions, state$cluster_calls), c(2L, 0L))
+})
+
+test_that("the JASP fitting path reports after its initial run and each of its extensions", {
+
+  skip_if_not_installed("runjags")
+  entry <- .report_test_entry
+  state <- .report_test_backend(.report_test_state())
+  report <- .report_test_callback(state)
+  for(parallel in c(FALSE, TRUE)){
+    .report_test_script(state)
+    fit <- .report_test_fit(runtime_report = report, parallel = parallel, cores = 2,
+      is_JASP = TRUE)
+    expect_identical(state$extensions, 5L)
+    runs <- attr(fit, "runtime_report")
+    expect_length(runs, 6L)
+    expect_identical(lengths(runs), rep(if(parallel) 2L else 1L, 6L))
+    expect_identical(runs[[6L]][[1L]], entry(if(parallel) "worker 1" else "local 1",
+      if(parallel) 11L else 6L))
+  }
+
+  # a failed extension makes the fit an error, which carries no report
+  .report_test_script(state, fail_extensions = 3L)
+  failed <- .report_test_fit(runtime_report = report, is_JASP = TRUE)
+  expect_s3_class(failed, "error")
+  expect_identical(state$reports, 4L)
+  expect_false("runtime_report" %in% names(attributes(failed)))
+  expect_identical(attr(failed, "runtime_report_callback"), report)
+})
