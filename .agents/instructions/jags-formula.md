@@ -178,21 +178,7 @@ connections before reporting cleanup failure; do not run the runtime finish
 callback when worker shutdown failed. Explicit worker-output paths are
 call-specific and must not be replayed from a serialized fit.
 After a graceful last-valid-fit return, do not recapture `runtime_state` onto
-the retained fit from the failed attempt.
-The optional `runtime_report` callback (stored as `runtime_report_callback`,
-replayed by `JAGS_extend()` like `runtime_cache`) runs with
-`phase = "report"` in every process that ran chains immediately after every
-backend run (initial run, restart attempts, JASP runs, automatic and
-`JAGS_extend()` extensions), also after a failed run, so that read-and-clear
-consumers start the next attempt clean, but never after a worker connection
-error. Only successful runs enter `attr(fit, "runtime_report")` (one list per
-kept run, one element per process, `NULL` kept in place; `NULL` overall when
-nothing was reported) and only their callback warnings enter the fit's
-`warnings`. It is a separate callback because released consumers reconfigure
-on every non-"start" phase of `runtime_setup`; do not add phases to
-`runtime_setup` or route reports through `runtime_cache`. `JAGS_extend()`
-removes the input's report, so a call without a successful extension returns
-no report; error fits carry none, and fits without the callback are unchanged. A compiled model is continued only
+the retained fit from the failed attempt. A compiled model is continued only
 within one call: returned fits carry no runjags `method.options$rjags`, and
 `JAGS_extend()` recompiles from the stored chain states, so extending a fit
 and a reloaded copy give identical draws.
@@ -203,6 +189,27 @@ call only. The attribute records each extension's `adapt` and whether the
 backend rebuilt the sampler (only then does runjags adapt); a fit without it
 extends with runjags' default and a `BayesTools_adaptation_unrecorded`
 warning.
+
+The optional `runtime_report` callback (stored as `attr(fit, "runtime_report")`,
+replayed by `JAGS_extend()` like `runtime_cache`) runs with
+`phase = "report"` in every process that ran chains immediately after every
+backend run (initial run, restart attempts, JASP runs, automatic and
+`JAGS_extend()` extensions), also after a failed run, so that read-and-clear
+consumers start the next attempt clean, but never after a worker connection
+error. Only successful runs enter `attr(fit, "runtime_report_values")` (one
+list per kept run, one element per process, `NULL` kept in place; `NULL`
+overall when nothing was reported), and only their callback warnings enter
+the fit's `warnings`. A callback error leaves `NULL` for its process; after a
+callback warning the value is kept. Base `attr()` matches names partially:
+`runtime_report` is a prefix of `runtime_report_values`, which is harmless
+only because values are never stored without the callback (the reverse
+naming returned the callback for absent values); read both with
+`exact = TRUE` in package code. It is a separate
+callback because released consumers reconfigure on every non-"start" phase of
+`runtime_setup`; do not add phases to `runtime_setup` or route reports through
+`runtime_cache`. `JAGS_extend()` removes the input's values, so a call without
+a successful extension returns none; error fits carry none, and fits without
+the callback are unchanged.
 
 Sampler declarations (`sampler_gates` and `sampler_blocks` of `JAGS_fit()`,
 `R/JAGS-sampler-declarations.R`) add observed marker nodes

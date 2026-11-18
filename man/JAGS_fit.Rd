@@ -54,7 +54,7 @@ JAGS_extend(
   runtime_cache = attr(fit, "runtime_cache", exact = TRUE),
   worker_output = NULL,
   adapt = NULL,
-  runtime_report = attr(fit, "runtime_report_callback", exact = TRUE)
+  runtime_report = attr(fit, "runtime_report", exact = TRUE)
 )
 }
 \arguments{
@@ -318,18 +318,19 @@ and returns \code{NULL} or a small serializable value. The values of runs
 that do not give the returned fit (failed attempts and failed extensions)
 are dropped; the callback is still called after them, so that
 read-and-clear state starts the next run clean, but not after a worker
-connection failure. The \code{runtime_report} attribute of a fit is the
-list of the kept runs of the call, in order, each a list with one element
-per process (\code{NULL} elements kept in place); it is \code{NULL} when no
-process reported a value, and a fit that failed has none. Callback
-warnings and errors are signalled with the process they came from, leave
-\code{NULL} for that process, and are recorded in the fit's
-\code{warnings} attribute when the run is kept; a failed transport of the
-report leaves \code{NULL} for every process, with one warning. The
-callback is stored as the \code{runtime_report_callback} attribute;
-\code{JAGS_extend()} reuses it and reports only its own runs (the report
-of the extended fit is not carried over). Callback packages must be listed
-in \code{required_packages}. Passing \code{NULL} disables the report.}
+connection failure. The \code{runtime_report_values} attribute of a fit is
+the list of the kept runs of the call, in order, each a list with one
+element per process (\code{NULL} elements kept in place); it is \code{NULL}
+when no process reported a value, and a fit that failed has none. Callback
+warnings and errors are signalled with the process they came from and
+recorded in the fit's \code{warnings} attribute when the run is kept. A
+callback error leaves \code{NULL} for its process; after a warning, the
+value is kept. A failed transport of the report leaves \code{NULL} for every
+process, with one warning. The callback is stored as the
+\code{runtime_report} attribute; \code{JAGS_extend()} reuses it and reports
+only its own runs (the values of the extended fit are not carried over).
+Callback packages must be listed in \code{required_packages}. Passing
+\code{NULL} disables the report.}
 
 \item{...}{additional hidden arguments}
 

@@ -1257,12 +1257,12 @@ test_that("runtime reports come from the process of a serial fit and from every 
   }
 
   serial <- fit_with()
-  expect_identical(attr(serial, "runtime_report"),
+  expect_identical(attr(serial, "runtime_report_values"),
     list(list(list(pid = Sys.getpid(), role = "local", process_id = 1L))))
-  expect_identical(attr(serial, "runtime_report_callback"), report)
+  expect_identical(attr(serial, "runtime_report"), report)
 
   parallel_fit <- fit_with(parallel = TRUE, cores = 2)
-  runs <- attr(parallel_fit, "runtime_report")
+  runs <- attr(parallel_fit, "runtime_report_values")
   expect_length(runs, 1L)
   expect_length(runs[[1L]], 2L)
   pids <- vapply(runs[[1L]], `[[`, integer(1L), "pid")

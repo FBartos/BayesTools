@@ -236,18 +236,19 @@
 #' that do not give the returned fit (failed attempts and failed extensions)
 #' are dropped; the callback is still called after them, so that
 #' read-and-clear state starts the next run clean, but not after a worker
-#' connection failure. The \code{runtime_report} attribute of a fit is the
-#' list of the kept runs of the call, in order, each a list with one element
-#' per process (\code{NULL} elements kept in place); it is \code{NULL} when no
-#' process reported a value, and a fit that failed has none. Callback
-#' warnings and errors are signalled with the process they came from, leave
-#' \code{NULL} for that process, and are recorded in the fit's
-#' \code{warnings} attribute when the run is kept; a failed transport of the
-#' report leaves \code{NULL} for every process, with one warning. The
-#' callback is stored as the \code{runtime_report_callback} attribute;
-#' \code{JAGS_extend()} reuses it and reports only its own runs (the report
-#' of the extended fit is not carried over). Callback packages must be listed
-#' in \code{required_packages}. Passing \code{NULL} disables the report.
+#' connection failure. The \code{runtime_report_values} attribute of a fit is
+#' the list of the kept runs of the call, in order, each a list with one
+#' element per process (\code{NULL} elements kept in place); it is \code{NULL}
+#' when no process reported a value, and a fit that failed has none. Callback
+#' warnings and errors are signalled with the process they came from and
+#' recorded in the fit's \code{warnings} attribute when the run is kept. A
+#' callback error leaves \code{NULL} for its process; after a warning, the
+#' value is kept. A failed transport of the report leaves \code{NULL} for every
+#' process, with one warning. The callback is stored as the
+#' \code{runtime_report} attribute; \code{JAGS_extend()} reuses it and reports
+#' only its own runs (the values of the extended fit are not carried over).
+#' Callback packages must be listed in \code{required_packages}. Passing
+#' \code{NULL} disables the report.
 #' @param fit a 'BayesTools_fit' object (created by \code{JAGS_fit()} function) to be
 #' extended. A derived-draw view signals
 #' \code{BayesTools_draws_view_sampling_unavailable}, also
@@ -990,7 +991,7 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
   fit <- .bt_attach_fit_contract(fit)
 
   attr(fit, "runtime_cache") <- runtime_cache
-  attr(fit, "runtime_report_callback") <- runtime_report
+  attr(fit, "runtime_report") <- runtime_report
   if(!inherits(fit, "error")){
     if(isTRUE(extension_failed) || isTRUE(captured_after_success)){
       attr(fit, "runtime_state") <- last_valid_runtime_state
@@ -1001,7 +1002,7 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
       attr(fit, "runtime_state") <- captured$state
       fit <- .bt_append_fit_warnings(fit, captured$warnings)
     }
-    attr(fit, "runtime_report") <- .JAGS_runtime_report_value(reports$runs)
+    attr(fit, "runtime_report_values") <- .JAGS_runtime_report_value(reports$runs)
     fit <- .bt_append_fit_warnings(fit, reports$warnings)
   }
   return(fit)
@@ -1179,7 +1180,7 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
                         runtime_setup = attr(fit, "runtime_setup", exact = TRUE),
                         runtime_cache = attr(fit, "runtime_cache", exact = TRUE),
                         worker_output = NULL, adapt = NULL,
-                        runtime_report = attr(fit, "runtime_report_callback", exact = TRUE)){
+                        runtime_report = attr(fit, "runtime_report", exact = TRUE)){
 
   if(inherits(fit, "BayesTools_draws_view")){
     stop(.bt_draws_view_condition(
@@ -1209,8 +1210,8 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
   # runtime report describes earlier runs, not those of this call.
   attr(fit, "runtime_state") <- NULL
   attr(fit, "runtime_cache") <- NULL
+  attr(fit, "runtime_report_values") <- NULL
   attr(fit, "runtime_report") <- NULL
-  attr(fit, "runtime_report_callback") <- NULL
   # The backend would continue a compiled model still alive in this session,
   # so that an extension depended on earlier in-memory extensions of the same
   # object. Extending from the stored chain states alone makes it depend only
@@ -1428,7 +1429,7 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
   fit <- .bt_attach_fit_contract(fit)
 
   attr(fit, "runtime_cache") <- runtime_cache
-  attr(fit, "runtime_report_callback") <- runtime_report
+  attr(fit, "runtime_report") <- runtime_report
   if(isTRUE(extension_failed) || isTRUE(captured_after_success)){
     attr(fit, "runtime_state") <- last_valid_runtime_state
     fit <- .bt_append_fit_warnings(fit, last_valid_capture_warnings)
@@ -1438,7 +1439,7 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
     attr(fit, "runtime_state") <- captured$state
     fit <- .bt_append_fit_warnings(fit, captured$warnings)
   }
-  attr(fit, "runtime_report") <- .JAGS_runtime_report_value(reports$runs)
+  attr(fit, "runtime_report_values") <- .JAGS_runtime_report_value(reports$runs)
   fit <- .bt_append_fit_warnings(fit, reports$warnings)
   return(fit)
 }
