@@ -558,6 +558,7 @@ test_that("runtime reports are not requested from workers after a connection fai
   expect_s3_class(failed, "BayesTools_JAGS_worker_connection_error")
   expect_identical(c(state$runs, state$cluster_calls, state$reports), c(1L, 0L, 0L))
   expect_false("runtime_report_values" %in% names(attributes(failed)))
+  expect_identical(attr(failed, "runtime_report"), report)
 
   # an automatic extension and a JAGS_extend() extension: the kept runs remain
   .report_test_script(state, fail_extensions = 1L, extend_error = connection, unconverged = 10L)
