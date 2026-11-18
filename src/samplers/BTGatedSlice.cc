@@ -62,7 +62,12 @@ namespace jags {
         // and a direct draw is an exact Gibbs update. A draw that makes the node or
         // a deterministic descendant non-finite is outside the region where the
         // model is defined and is rejected (independence Metropolis with the
-        // node's distribution as proposal), keeping the previous value.
+        // node's distribution as proposal), keeping the previous value. This is
+        // exact for the gates JAGS_fit() writes: there a non-finite descendant
+        // makes the composed node, and with it the likelihood, undefined. A
+        // hand-written dbt_gate on a node with a descendant that can be
+        // non-finite while the likelihood stays defined would restrict that
+        // node's prior to the region where its descendants are finite.
         void closed_update(RNG *rng)
         {
           StochasticNode *node = _graph->node();

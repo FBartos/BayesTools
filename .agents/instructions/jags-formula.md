@@ -209,7 +209,11 @@ activity test, in the composition (otherwise the branch is declined with its
 reason). Branches, leaves, node names and activity tests come from the
 emitters' node specifications, never from name patterns. A closed gate draws
 its node from the node's own distribution and keeps the previous value when a
-deterministic descendant would not be finite. Blocks expand prior names to
+deterministic descendant would not be finite. That restore is exact for the
+gates `JAGS_fit()` writes: there a non-finite descendant makes the composed
+node, and with it the likelihood, undefined. A hand-written `dbt_gate` on a
+node with a descendant that can be non-finite while the likelihood stays
+defined would restrict that node's prior to the finite region. Blocks expand prior names to
 scalar leaves; `sampler_blocks` may be a function of the combined prior list,
 called once in the declaration step, so callers can select formula priors by
 their final names and attributes. A block of fewer than two leaves is declined
