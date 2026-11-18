@@ -51,7 +51,8 @@ JAGS_extend(
   silent = TRUE,
   runtime_setup = attr(fit, "runtime_setup", exact = TRUE),
   runtime_cache = attr(fit, "runtime_cache", exact = TRUE),
-  worker_output = NULL
+  worker_output = NULL,
+  adapt = NULL
 )
 }
 \arguments{
@@ -82,7 +83,15 @@ be standardized. Defaults to \code{NULL} (no standardization).}
 
 \item{chains}{number of chains to be run, defaults to \code{4}}
 
-\item{adapt}{number of samples used for adapting the MCMC chains, defaults to \code{500}}
+\item{adapt}{number of samples used for adapting the MCMC chains, defaults to
+\code{500}. In \code{JAGS_extend()}, the number of adaptation iterations run
+when the backend builds the sampler from the stored chain states; the default
+\code{NULL} uses the setting of the initial fit. A value supplied to
+\code{JAGS_extend()} applies to that call only: the returned fit keeps the
+initial setting, which later calls without \code{adapt} use again. Fits that
+do not record their initial setting (created before BayesTools stored it)
+are extended with runjags' default of \code{1000} iterations, as before,
+with a warning of class \code{BayesTools_adaptation_unrecorded}.}
 
 \item{burnin}{number of burnin iterations of the MCMC chains, defaults to \code{1000}}
 
@@ -312,14 +321,28 @@ they stop with an error of class \code{BayesTools_refit_required} (see
 \code{JAGS_fit} returns an object of class 'runjags' and 'BayesTools_fit'.
 \code{JAGS_extend} continues the backend random-number generator state of the
 existing chains; it does not reseed them.
-Stored parameter and RNG states initialize reconstruction; recompilation can
-reset sampler tuning and follows runjags' adaptation policy. The model is
+Stored parameter and RNG states initialize reconstruction; recompilation
+resets sampler tuning, which runjags adapts again for \code{adapt}
+iterations (when the model has adaptive samplers) before sampling, with no
+further burn-in. The model is
 always recompiled from these stored states, never continued from a compiled
 model left in the session, so extending the same object twice, or a saved and
-reloaded copy of it, gives identical draws. Neither function keeps runjags'
+reloaded copy of it, gives identical draws. Within one call, automatic
+extensions continue the sampler compiled by the previous step without
+adapting it again, except parallel workers, which rebuild it for every
+extension. Neither function keeps runjags'
 compiled rjags model (\code{method.options$rjags}) in the returned object;
 \code{runjags::extend.jags()} recompiles a model without it, as after
 reloading.
+
+The \code{adaptation} attribute of a fit records the adaptation settings:
+\code{initial}, the \code{adapt} of \code{JAGS_fit()} (\code{NA} for fits
+that did not record it), and \code{extensions}, a data frame with one row
+per backend extension (automatic extensions of \code{JAGS_fit()} and the
+extensions of \code{JAGS_extend()}) giving the \code{adapt} passed to the
+backend and whether the backend \code{rebuilt} the sampler, the only case in
+which it adapts. Warnings of the backend that adaptation was incomplete are
+issued and also kept in the fit's \code{warnings} attribute.
 }
 \description{
 A wrapper around

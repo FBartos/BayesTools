@@ -836,6 +836,7 @@ test_that("JAGS_extend preserves marginalized random-effect metadata", {
   attr(fit, "required_packages") <- character()
   attr(fit, "jags_modules") <- character()
   attr(fit, "add_parameters") <- character()
+  attr(fit, "adaptation") <- .bt_adaptation_record(500L)
   attr(fit, "formula_design") <- list(mu = result$formula_design)
   attr(fit, "parameter_map") <- .bt_build_parameter_map(character())
   fit <- .bt_attach_draw_geometry(fit)
