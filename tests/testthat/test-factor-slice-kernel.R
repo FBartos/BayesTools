@@ -3,8 +3,8 @@ skip_if_not_test_profile("unit")
 # The factor slice kernel header (inst/include/BayesTools/factor_slice_kernel.h)
 # that BayesTools' FactorSlice sampler and RoBMA's block sampler build on. A toy
 # translation unit that includes only the header and the standard library
-# (native/factor_slice_kernel_toy.cpp) is compiled with R's compiler flags,
-# samples a bivariate normal and runs the resolvability check. The draws of FactorSlice itself are certified in
+# (native/factor_slice_kernel_toy.cpp) is compiled with R's compiler flags and
+# samples a bivariate normal. The draws of FactorSlice itself are certified in
 # the 'fit-assertions' case.
 
 .factor_slice_kernel_toy <- function(){
@@ -38,15 +38,6 @@ skip_if_not_test_profile("unit")
                 mean = as.double(mean), sd = as.double(sd), correlation = as.double(correlation),
                 draws = double(2L * n_iter), exhausted = integer(1L))
       list(draws = matrix(out$draws, ncol = 2L), exhausted = out$exhausted)
-    },
-    resolution = function(lower, upper, x, mean, sd){
-      out <- .C(getNativeSymbolInfo("bt_factor_slice_resolution_toy", dll),
-                lower = as.double(lower), upper = as.double(upper), x = as.double(x),
-                mean = as.double(mean), sd = as.double(sd), judged = integer(1L), curvature = double(1L),
-                allowance = double(1L), round_trip = double(1L), resolvable = integer(1L), u_resolution = double(1L),
-                NAOK = TRUE)
-      list(judged = out$judged == 1L, curvature = out$curvature, allowance = out$allowance,
-           round_trip = out$round_trip, resolvable = out$resolvable == 1L, u_resolution = out$u_resolution)
     },
     exp_threshold = function(){
       out <- .C(getNativeSymbolInfo("bt_factor_slice_exp_threshold_toy", dll),
@@ -90,59 +81,8 @@ test_that("the kernel header compiles alone and its slice updates sample a bivar
   }
 })
 
-test_that("the resolvability check judges the grid by curvature", {
+test_that("the back-transforms keep the original quotient exactly while exp() is finite", {
 
   toy <- .factor_slice_kernel_toy()
-
-  # the back-transforms keep the original quotient exactly while exp() is finite
   expect_identical(toy$exp_threshold(), c(finite_at = TRUE, infinite_above = TRUE))
-
-  # the rounding error of the forward transform is not zero at the centre of a
-  # symmetric interval, where both log terms are near zero
-  expect_gte(toy$resolution(-1, 1, 0, 0, 1)$u_resolution, 2 * .Machine$double.eps)
-  expect_gte(toy$resolution(-1e13, 1e13, 0, 0, 1)$u_resolution, 2 * .Machine$double.eps)
-
-  # A normal target N(mean, sd^2) at x: the grid step relative to the local
-  # scale sd, squared, against the tolerance 2.5e-3 (a step of about 0.05 sd).
-  # Stop: a standard normal on (-1e14, 1e14), (-5e14, 5e14) or with a bound
-  # 1e16 away, a normal with sd 1e-5 at 0.5 on (-1e10, 1e10), and normals with
-  # sd 1e-16 or 1e-17 at the centre of (-1, 1). Pass: a standard normal on
-  # (-1e9, 1e9) up to (-1e13, 1e13) or with a bound 1e6 or 1e12 away, also
-  # from a start far in its tail, and the sharp posterior at 0.7 (sd 3.2e-9)
-  # on (0, 1) seen from 0.3, where the first difference is large but the
-  # curvature over the grid step is not.
-  cases <- list(
-    list(lower = -1e9,  upper = 1e9,   x = 0,   mean = 0,   sd = 1,          resolvable = TRUE),
-    list(lower = -2e12, upper = 2e12,  x = 0,   mean = 0,   sd = 1,          resolvable = TRUE),
-    list(lower = -3e12, upper = 3e12,  x = 0,   mean = 0,   sd = 1,          resolvable = TRUE),
-    list(lower = -1e13, upper = 1e13,  x = 0,   mean = 0,   sd = 1,          resolvable = TRUE),
-    list(lower = -1e6,  upper = Inf,   x = 0,   mean = 0,   sd = 1,          resolvable = TRUE),
-    list(lower = -1e12, upper = Inf,   x = 10,  mean = 0,   sd = 1,          resolvable = TRUE),
-    list(lower = -Inf,  upper = 1e6,   x = 0,   mean = 0,   sd = 1,          resolvable = TRUE),
-    list(lower = 0,     upper = 1,     x = 0.3, mean = 0.7, sd = sqrt(1e-17), resolvable = TRUE),
-    list(lower = 0,     upper = 1e308, x = 0.08, mean = 0,  sd = 0.1,        resolvable = TRUE),
-    list(lower = -Inf,  upper = Inf,   x = 0,   mean = 0,   sd = 1e-300,     resolvable = TRUE),
-    list(lower = -1e14, upper = 1e14,  x = 0,   mean = 0,   sd = 1,          resolvable = FALSE),
-    list(lower = -5e14, upper = 5e14,  x = 0,   mean = 0,   sd = 1,          resolvable = FALSE),
-    list(lower = -5e14, upper = 5e14,  x = 0.3, mean = 0,   sd = 1,          resolvable = FALSE),
-    list(lower = -1e16, upper = Inf,   x = 0,   mean = 0,   sd = 1,          resolvable = FALSE),
-    list(lower = -Inf,  upper = 1e16,  x = 0,   mean = 0,   sd = 1,          resolvable = FALSE),
-    list(lower = -1e10, upper = 1e10,  x = 0.5, mean = 0.5, sd = 1e-5,       resolvable = FALSE),
-    list(lower = -1,    upper = 1,     x = 0,   mean = 0,   sd = 1e-16,      resolvable = FALSE),
-    list(lower = -1,    upper = 1,     x = 0,   mean = 0,   sd = 1e-17,      resolvable = FALSE)
-  )
-  results <- lapply(cases, function(case) toy$resolution(case$lower, case$upper, case$x, case$mean, case$sd))
-  table <- data.frame(
-    lower = vapply(cases, `[[`, numeric(1), "lower"), upper = vapply(cases, `[[`, numeric(1), "upper"),
-    x = vapply(cases, `[[`, numeric(1), "x"), sd = vapply(cases, `[[`, numeric(1), "sd"),
-    curvature = vapply(results, `[[`, numeric(1), "curvature"),
-    allowance = vapply(results, `[[`, numeric(1), "allowance"),
-    round_trip = vapply(results, `[[`, numeric(1), "round_trip"),
-    resolvable = vapply(results, `[[`, logical(1), "resolvable")
-  )
-  if(isTRUE(getOption("BayesTools.sampler_test_print"))) print(table, digits = 3)
-  expect_identical(table$resolvable, vapply(cases, `[[`, logical(1), "resolvable"),
-                   info = paste(utils::capture.output(print(table, digits = 3)), collapse = "\n"))
-  # every case with two bounds or one is judged; the identity is not
-  expect_identical(vapply(results, `[[`, logical(1), "judged"), c(rep(TRUE, 9L), FALSE, rep(TRUE, 8L)))
 })

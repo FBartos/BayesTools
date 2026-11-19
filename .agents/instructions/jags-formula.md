@@ -257,38 +257,34 @@ declarations.
 The factor slice algorithm itself is the installed header-only kernel
 `inst/include/BayesTools/factor_slice_kernel.h` (namespace
 `BayesTools::factor_slice`, standard C++ without JAGS or R types; contract at
-its top): `Coordinate` (the member transforms), `resolution()` and
-`resolvable()` (the resolvability check), `slice_along()` (one univariate slice
-update along a direction, templated on the log density and the uniform and
-exponential variate sources) and `Axes` (directions, widths and their
+its top): `Coordinate` (the member transforms), `slice_along()` (one univariate
+slice update along a direction, templated on the log density and the uniform
+and exponential variate sources) and `Axes` (directions, widths and their
 adaptation). `src/samplers/BTFactorSlice.cc` keeps only the JAGS side. RoBMA's
 block sampler builds on the same header through `LinkingTo: BayesTools`, which
 acts at build time: RoBMA picks up a header change only when it is rebuilt.
 The back-transforms are the original quotients wherever `exp(|u|)` is finite
-(half the span when the span overflows) and the log-scale distance from the
-nearer bound only beyond that. Precision limit: the sampler reaches a bounded
-member to about 16 significant digits of its distance from the anchoring bound
-(for an interval, of the smaller distance and of the span near the centre); a
-posterior with features finer than that grid cannot be sampled on this scale.
-Two local, best-effort diagnostics stop its common forms with a "Factor slice
-sampler:" node error, not a guarantee: the resolvability check (the curvature
-of the log full conditional over the grid step, `|f''| h^2` against 2.5e-3,
-and the round trip of the current value), run at construction, at every
-refresh of the axes, at the end of adaptation (raised at the next update) and
-after 50, 100, 200 and every 500 updates during sampling; and a direction whose
-slice interval collapses on ten consecutive updates (a frozen chain; isolated
-collapses are self-transitions). Calibration on a standard normal: bounds
-+-1e13 pass and +-1e14 stop; near the limit a probability can be off in the
-third decimal; a member started exactly on a step of its likelihood stops (a
-false alarm). At the representability limit `to_x()` may also reject a
-representable value (subnormal distances, the one-sided overflow route); such
-a state is then stopped by the collapsed intervals. Its numerical behaviour is
-pinned by FactorSlice's seeded draws: a change must keep them bit-identical
-(compare the draws of the certification case's sampler tests between the two
-builds with `identical()`) unless the algorithm is meant to change.
-`test-factor-slice-kernel.R` compiles a toy that includes only the header,
-samples a bivariate normal and calibrates the check; the installed headers
-enter the fit-cache and certification keys with `src/`.
+and the log-scale distance from the nearer bound only beyond that. Precision
+limit: the sampler holds a bounded member through its distance from the
+anchoring bound (for an interval, the nearer bound; near the centre, the span),
+so it resolves the member to about 16 significant digits of that distance, as
+a double resolves a value to 16 digits of its magnitude. A posterior narrower
+than about 1e-13 of that distance is sampled on a visibly coarse grid, and
+beyond about 1e-15 the chain freezes; this is not detected. Measured on
+development (a standard normal between symmetric bounds, 10,000 draws): bounds
+at 1e13 give 1,969 distinct values with correct moments, 1e14 give 296 distinct
+values with moments within Monte Carlo error, 1e15 give 34 values and an SD 15%
+too small, 1e16 and beyond freeze. Such a bound has no influence on the
+posterior: drop it, or declare the block without the node. A two-sided member
+whose span `upper - lower` is not finite stops the fit at construction with a
+"Factor slice sampler:" node error. An additive constant so large that the log
+densities lose their differences breaks the slice arithmetic itself. Its
+numerical behaviour is pinned by FactorSlice's seeded draws: a change must keep
+them bit-identical (compare the draws of the certification case's sampler tests
+between the two builds with `identical()`) unless the algorithm is meant to
+change. `test-factor-slice-kernel.R` compiles a toy that includes only the
+header and samples a bivariate normal; the installed headers enter the
+fit-cache and certification keys with `src/`.
 
 Do not silently repair malformed covariance matrices, alter prior bounds, drop
 formula terms, or substitute a different likelihood target. If a covariance

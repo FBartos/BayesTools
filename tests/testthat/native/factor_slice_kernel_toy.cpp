@@ -74,28 +74,6 @@ extern "C" void bt_factor_slice_kernel_toy(int const *n_adapt, int const *n_iter
   }
 }
 
-// resolution() and resolvable() for a member with support (lower, upper) at
-// native value x of a normal target N(mean, sd^2) (the log density of the
-// other members is constant), and the coordinate's u_resolution(x).
-extern "C" void bt_factor_slice_resolution_toy(double const *lower, double const *upper, double const *x,
-                                               double const *mean, double const *sd, int *judged, double *curvature,
-                                               double *allowance, double *round_trip, int *resolvable,
-                                               double *u_resolution)
-{
-  const kernel::Coordinate coordinate(*lower, *upper);
-  auto log_density = [&](double value) {
-    const double z = (value - *mean) / *sd;
-    return -0.5 * z * z;
-  };
-  const kernel::Resolution r = kernel::resolution(coordinate, *x, log_density);
-  *judged = r.judged ? 1 : 0;
-  *curvature = r.curvature;
-  *allowance = r.allowance;
-  *round_trip = r.round_trip;
-  *resolvable = kernel::resolvable(coordinate, *x, log_density) ? 1 : 0;
-  *u_resolution = coordinate.u_resolution(*x);
-}
-
 // exp() is finite at the overflow threshold of the back-transforms and
 // overflows at the next double.
 extern "C" void bt_factor_slice_exp_threshold_toy(int *finite_at, int *infinite_above)
