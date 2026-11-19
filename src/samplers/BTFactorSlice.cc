@@ -31,9 +31,27 @@ namespace jags {
       const unsigned int refresh_interval = 50;
       const double width_multiplier = 2.5;
       const double negative_infinity = -std::numeric_limits<double>::infinity();
+      const double log_two = std::log(2.0);
 
       // Coordinate-wise bijection u = g(x) to the real line.
       enum class Transform { identity, lower, interval, upper };
+
+      // log(b - a) for b > a, also when b - a overflows (a and b of opposite
+      // signs near the largest double).
+      double log_difference(double a, double b)
+      {
+        const double difference = b - a;
+        return std::isfinite(difference) ? std::log(difference) : std::log(0.5 * b - 0.5 * a) + log_two;
+      }
+
+      // bound + direction * exp(log_distance) for direction +1 or -1, also when
+      // the distance overflows but the value does not.
+      double from_bound(double bound, double direction, double log_distance)
+      {
+        const double distance = std::exp(log_distance);
+        if (std::isfinite(distance)) return bound + direction * distance;
+        return 2.0 * (0.5 * bound + direction * std::exp(log_distance - log_two));
+      }
 
       class FactorSlice : public MutableSampleMethod
       {
@@ -45,6 +63,7 @@ namespace jags {
         unsigned int _n;
         std::vector<Transform> _transform;
         std::vector<double> _lower, _upper;
+        std::vector<double> _log_span;    // log(upper - lower) of a member with two bounds
         std::vector<double> _mean, _cov;  // running moments of u (row-major covariance)
         std::vector<double> _dirs;        // column k is direction k (row-major d x d)
         std::vector<double> _width;
@@ -53,30 +72,37 @@ namespace jags {
         double to_u(unsigned int i, double x) const
         {
           switch (_transform[i]) {
-          case Transform::lower: return std::log(x - _lower[i]);
-          case Transform::interval: return std::log(x - _lower[i]) - std::log(_upper[i] - x);
-          case Transform::upper: return std::log(_upper[i] - x);
+          case Transform::lower: return log_difference(_lower[i], x);
+          case Transform::interval: return log_difference(_lower[i], x) - log_difference(x, _upper[i]);
+          case Transform::upper: return log_difference(x, _upper[i]);
           default: return x;
           }
         }
 
         // Back-transform; false when the coordinate is not finite or does not lie
         // strictly inside the support (such a proposal has zero density).
+        // A bounded member is placed at its distance from a bound (the nearer
+        // one of two bounds), computed on the log scale, so the only failures
+        // are results that are not representable strictly inside the support:
+        // a distance below half the spacing of doubles at the bound rounds to
+        // the bound, and a value beyond the largest double overflows. Both are
+        // rejected, as is any value on a bound.
         bool to_x(unsigned int i, double u, double *x) const
         {
           double out;
           switch (_transform[i]) {
           case Transform::lower:
-            out = _lower[i] + std::exp(u);
+            out = from_bound(_lower[i], 1.0, u);
             break;
           case Transform::interval:
-            // Evaluate from the nearer bound for accuracy in both tails.
+            // distance (upper - lower) / (1 + exp(-u)) from the lower bound for
+            // u < 0, (upper - lower) / (1 + exp(u)) from the upper bound otherwise
             out = u >= 0.0 ?
-              _upper[i] - (_upper[i] - _lower[i]) / (1.0 + std::exp(u)) :
-              _lower[i] + (_upper[i] - _lower[i]) / (1.0 + std::exp(-u));
+              from_bound(_upper[i], -1.0, _log_span[i] - u - std::log1p(std::exp(-u))) :
+              from_bound(_lower[i], 1.0, _log_span[i] + u - std::log1p(std::exp(u)));
             break;
           case Transform::upper:
-            out = _upper[i] - std::exp(u);
+            out = from_bound(_upper[i], -1.0, u);
             break;
           default:
             out = u;
@@ -92,8 +118,7 @@ namespace jags {
           case Transform::upper:
             return u;
           case Transform::interval:
-            return -std::fabs(u) - 2.0 * std::log1p(std::exp(-std::fabs(u))) +
-              std::log(_upper[i] - _lower[i]);
+            return -std::fabs(u) - 2.0 * std::log1p(std::exp(-std::fabs(u))) + _log_span[i];
           default:
             return 0.0;
           }
@@ -287,7 +312,7 @@ namespace jags {
         FactorSlice(GraphView const *graph, unsigned int chain)
           : _graph(graph), _chain(chain), _d(graph->length()), _adapting(true),
             _mean_initialized(false), _n(0), _transform(_d, Transform::identity),
-            _lower(_d), _upper(_d), _mean(_d, 0.0), _cov(_d * _d, 0.0),
+            _lower(_d), _upper(_d), _log_span(_d, 0.0), _mean(_d, 0.0), _cov(_d * _d, 0.0),
             _dirs(_d * _d, 0.0), _width(_d, 1.0), _x(_d), _point(_d)
         {
           std::vector<StochasticNode *> const &nodes = graph->nodes();
@@ -298,6 +323,7 @@ namespace jags {
             const bool has_upper = std::isfinite(_upper[i]);
             _transform[i] = has_lower && has_upper ? Transform::interval :
               has_lower ? Transform::lower : has_upper ? Transform::upper : Transform::identity;
+            if (_transform[i] == Transform::interval) _log_span[i] = log_difference(_lower[i], _upper[i]);
             _dirs[i * _d + i] = 1.0;
           }
           graph->checkFinite(chain);

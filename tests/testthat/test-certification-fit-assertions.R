@@ -5317,11 +5317,11 @@ test_that("the JAGS module registers its six distributions and two functions", {
   out[order(names(out))]
 }
 
-.sampler_test_compile <- function(syntax, data, chains = 2L, seed = 1L, n_adapt = 0L){
+.sampler_test_compile <- function(syntax, data, chains = 2L, seed = 1L, n_adapt = 0L, inits = list()){
   rjags::jags.model(
     textConnection(syntax), data = data, n.chains = chains, n.adapt = n_adapt, quiet = TRUE,
     inits = lapply(seq_len(chains), function(chain){
-      list(.RNG.name = "base::Mersenne-Twister", .RNG.seed = seed + chain)
+      c(list(.RNG.name = "base::Mersenne-Twister", .RNG.seed = seed + chain), inits)
     })
   )
 }
@@ -5468,7 +5468,8 @@ model{
     ess <- sum(coda::effectiveSize(chains))
     estimate <- mean(values)
     mcse <- stats::sd(values) / sqrt(ess)
-    z <- if(mcse > 0) (estimate - quantity$target) / mcse else if(estimate == quantity$target) 0 else Inf
+    # a chain that never moves has no MCSE (sd 0, ESS 0): it fails the checks
+    z <- if(isTRUE(mcse > 0)) (estimate - quantity$target) / mcse else if(estimate == quantity$target) 0 else Inf
     data.frame(quantity = name, target = quantity$target, estimate = estimate,
                mcse = mcse, ess = ess, z = z, stringsAsFactors = FALSE)
   })
@@ -5511,9 +5512,9 @@ model{
 
 # Draws of a hand-written model whose factor slice block adapts for
 # 'n_adapt' iterations (0: coordinate axes and unit widths throughout).
-.sampler_test_block_samples <- function(syntax, data, variables, n_adapt, n_iter, chains = 4L, seed = 1L){
+.sampler_test_block_samples <- function(syntax, data, variables, n_adapt, n_iter, chains = 4L, seed = 1L, inits = list()){
 
-  model <- .sampler_test_compile(syntax, data, chains = chains, seed = seed)
+  model <- .sampler_test_compile(syntax, data, chains = chains, seed = seed, inits = inits)
   samplers <- rjags::list.samplers(model)
   expect_identical(sum(names(samplers) == "BayesTools::FactorSlice"), 1L)
   expect_setequal(samplers[[which(names(samplers) == "BayesTools::FactorSlice")]], variables)
@@ -5849,6 +5850,59 @@ model{
       )
       checks <- .sampler_test_mcse_checks(samples, target$quantities)
       .sampler_test_expect_checks(checks, paste0(target_name, ", adapt = ", n_adapt))
+    }
+  }
+})
+
+test_that("factor slice blocks sample members whose transformed coordinate is beyond the range of exp()", {
+  skip_if_not(isTRUE(BayesTools_load_JAGS_module(quiet = TRUE, warn = FALSE)))
+
+  # A member with two bounds is sampled on u = log(x - lower) - log(upper - x);
+  # its back-transform must hold wherever x is representable strictly inside the
+  # support, also where |u| exceeds log(.Machine$double.xmax) = 709.78.
+  # (1) Wide intervals: a normal with sd 0.1 truncated to (0, 1e308), a
+  # half-normal, and its mirror on (-1e308, 0); |u| is 711.5 at |x| = 0.1.
+  expect_lt(log(0.1) - log(1e308), -log(.Machine$double.xmax))
+  half_normal_mean <- 0.1 * sqrt(2 / pi)
+  half_normal_variance <- 0.01 * (1 - 2 / pi)
+  normal_quantities <- function(sign) list(
+    x_mean = list(series = function(x) x[, "x"], target = sign * half_normal_mean),
+    x_var  = list(series = function(x) (x[, "x"] - sign * half_normal_mean)^2, target = half_normal_variance),
+    x_tail = list(series = function(x) as.numeric(abs(x[, "x"]) > 0.1), target = 2 * stats::pnorm(-1))
+  )
+  # (2) Unit intervals at subnormal distances from a bound: x ~ U(0, 1) (or
+  # U(-1, 0)) and an observation z = -720 of N(log|x|, 2^2). The prior density
+  # of w = log|x| is exp(w) on w < 0, so w has the posterior N(-716, 2^2)
+  # restricted to w < 0 (358 SDs away); |u| = |w| exceeds 709.78 for 99.9% of
+  # the mass, and |x| stays far above the smallest subnormal, exp(-744.4)
+  # (14 SDs away), so no draw rounds to a bound.
+  log_quantities <- list(
+    w_mean = list(series = function(x) log(abs(x[, "x"])), target = -716),
+    w_var  = list(series = function(x) (log(abs(x[, "x"])) + 716)^2, target = 4),
+    w_tail = list(series = function(x) as.numeric(log(abs(x[, "x"])) > -714), target = stats::pnorm(-1))
+  )
+  cases <- list(
+    lower_wide = list(member = "x ~ dnorm(0, 100)T(0, 1e308)", data = list(), inits = list(),
+                      quantities = normal_quantities(1)),
+    upper_wide = list(member = "x ~ dnorm(0, 100)T(-1e308, 0)", data = list(), inits = list(),
+                      quantities = normal_quantities(-1)),
+    lower_unit = list(member = "x ~ dunif(0, 1)\n  z ~ dnorm(log(x), 0.25)", data = list(z = -720),
+                      inits = list(x = exp(-714)), quantities = log_quantities),
+    upper_unit = list(member = "x ~ dunif(-1, 0)\n  z ~ dnorm(log(-x), 0.25)", data = list(z = -720),
+                      inits = list(x = -exp(-714)), quantities = log_quantities)
+  )
+  # each member shares a block with an ordinary normal
+  markers <- .sampler_test_block_markers(c("x", "b"))
+  for(case_name in names(cases)){
+    case <- cases[[case_name]]
+    syntax <- paste0("model{\n  ", case$member, "\n  b ~ dnorm(0, 1)\n", markers$syntax, "\n}")
+    for(n_adapt in c(0L, 500L)){
+      samples <- .sampler_test_block_samples(
+        syntax, c(case$data, markers$data), variables = c("x", "b"),
+        n_adapt = n_adapt, n_iter = 5000L, seed = 41L, inits = case$inits
+      )
+      checks <- .sampler_test_mcse_checks(samples, case$quantities)
+      .sampler_test_expect_checks(checks, paste0(case_name, ", adapt = ", n_adapt))
     }
   }
 })
