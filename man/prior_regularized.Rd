@@ -61,17 +61,32 @@ conditional variance is \eqn{c^2 s_j^2/(c^2+s_j^2)}, where the shared
 \eqn{c^2} follows an inverse-gamma distribution with shape
 \eqn{\nu/2} and scale \eqn{\nu s^2/2} for \eqn{\nu=} \code{slab_df}
 and \eqn{s=} \code{slab_scale}.
+
+The horseshoe has a continuous density with an infinite peak at zero,
+including with a finite slab. A point hypothesis at zero cannot use
+the Savage-Dickey density ratio. Use explicit point-null models for
+inclusion probabilities. Prior draws within a group retain its common
+scales when forming contrasts. Where an analytic contrast distribution
+is unavailable, the joint prior draws can still be used.
 }
 \examples{
 prior_regularized("ridge", scale = 0.5)
 prior_regularized("lasso", scale = 0.5)
 global <- prior("cauchy", list(0, 0.2), truncation = list(0, Inf))
+intercept <- prior("normal", list(0, 2))
+# All slopes share a global scale.
+all_slopes <- list(intercept = intercept, sh = prior_regularized("horseshoe", global))
+# Only wt and hp share shrinkage; disp has its own Normal prior.
 priors <- list(
-  intercept = prior("normal", list(0, 2)),
+  intercept = intercept, disp = prior("normal", list(0, 0.5)),
   shrinkage = prior_regularized("horseshoe", scale = global,
                                 terms = c("wt", "hp"), slab_scale = 2)
 )
-JAGS_formula(~ wt + hp, "mu", mtcars, prior_list = priors)
+JAGS_formula(~ wt + hp + disp, "mu", mtcars, prior_list = priors)
+# Two groups give wt and hp independent global scales.
+separate <- list(intercept = intercept,
+                 sh_wt = prior_regularized("horseshoe", global, terms = "wt"),
+                 sh_hp = prior_regularized("horseshoe", global, terms = "hp"))
 }
 \references{
 \insertRef{piironen2017ejs_sparsity}{BayesTools}
