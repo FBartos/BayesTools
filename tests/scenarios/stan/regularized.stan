@@ -59,4 +59,3 @@ generated quantities {
     beta = mdivide_right_tri_low((proj + noise)', L)';
   }
 }
-

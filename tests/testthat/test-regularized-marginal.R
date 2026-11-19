@@ -169,4 +169,3 @@ test_that("multi-column shrinkage terms distinguish joint and marginal methods",
   expect_equal(dim(levels), c(5L, 3L))
   expect_true(all(levels[, 1L] == 0))
 })
-

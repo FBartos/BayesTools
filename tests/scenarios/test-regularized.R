@@ -107,4 +107,3 @@ testthat::test_that("regularized regression of Swiss fertility", {
     testthat::expect_lt(max(comparison[, "Rhat"]), 1.02)
   }
 })
-
