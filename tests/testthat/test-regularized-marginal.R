@@ -17,6 +17,14 @@ test_that("horseshoe ordinate evaluation defers the coefficient density grid", {
   # Plot data still request and materialize the same numerical grid.
   eager <- .prior_linear_combination_density(priors, c(mu_wt = 1), n_grid = 32L, .defer = FALSE)
   expect_identical(.prior_linear_density_to_plot_data(linear), .prior_linear_density_to_plot_data(eager))
+
+  # The structural pole also exists when the global prior's tails make the
+  # display quantiles numerically unavailable.
+  heavy <- JAGS_formula(~ wt, "mu", mtcars, list(intercept = prior("point", list(0)),
+    pool = prior_regularized("horseshoe", prior("invgamma", list(.25, .2)))))$prior_list
+  deferred <- .prior_linear_combination_density(heavy, c(mu_wt = 1), n_grid = 32L)
+  expect_identical(prior_density_ordinate(deferred, 0)$behavior, "infinite")
+  expect_equal(as.numeric(.prior_linear_density_region_probability(deferred, positive)), 0.5)
 })
 
 test_that("regularization declarations distinguish fixed widths and learned scales", {

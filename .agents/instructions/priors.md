@@ -800,9 +800,13 @@ refusals and warnings stay at construction, and the built grid's size, which
 the deferred density reports, is the plan's (a product grid of at most 1024
 values keeps its size unless it is resampled to the combination's spacing, and a
 spacing within a factor of two of the resampling tolerance builds at once). A nonlinear
-map can warn or fail on grid values, so it builds at once, as does every
-smaller grid without an ordered level, which is cheap and keeps the numerical
-diagnostics that only a built grid has. Grid attributes such as `product_grid_resolution`
+map can warn or fail on grid values, so it builds at once. Small grids
+without ordered levels or regularized coefficients retain their numerical
+diagnostics at construction. A single untransformed regularized coefficient
+with a nonzero weight and no multiplier defers even selection of the grid:
+the structural ordinate and region probability require no display quantiles.
+Its deferred `n_grid` gives the requested minimum and its materialized grid
+reports the resolved size and spacing. Grid attributes such as `product_grid_resolution`
 belong to the built grid (`.prior_linear_density_materialize()`). A
 builder that mixes or refines grids passes `.defer = FALSE`. The density of a
 context (`.prior_density_from_context()`) defers the same grid with its own

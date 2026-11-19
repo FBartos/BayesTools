@@ -1540,11 +1540,22 @@
   # (atom-free) is built when a grid field is first read; evaluations of the
   # recorded route (ordinates, heights, region probabilities) never read it.
   # A builder that needs the grid at once passes '.defer = FALSE'.
-  plan <- .prior_linear_combination_plan(prior_list, weights, n_grid, tail_prob,
-                                         source_transforms, grid_spacing)
-  if(isTRUE(.record_evaluation) && isTRUE(.defer) &&
+  defer <- isTRUE(.record_evaluation) && isTRUE(.defer)
+  # One untransformed shrinkage coefficient is continuous for every
+  # nonzero weight. Its classification needs neither a tail quantile for
+  # the display range nor an interquartile range for the grid spacing.
+  unplanned <- FALSE
+  if(defer && length(weights) == 1L && all(is.na(source_transforms)) &&
+     is.null(output_transformation) && any(vapply(prior_list, inherits, logical(1), "prior.regularized_term"))){
+    group <- .prior_linear_weight_groups(prior_list, weights)[[1L]]
+    unplanned <- inherits(group$prior, "prior.regularized_term") &&
+      is.null(attr(group$prior, "multiply_by", exact = TRUE))
+  }
+  plan <- if(!unplanned) .prior_linear_combination_plan(prior_list, weights, n_grid, tail_prob,
+                                                        source_transforms, grid_spacing)
+  if(unplanned || (defer &&
      .prior_linear_density_defers_grid(plan, prior_list, n_grid, tail_prob, output_transformation,
-                                       output_transformation_arguments)){
+                                       output_transformation_arguments))){
     arguments <- list(
       prior_list = prior_list,
       weights = weights,
@@ -1557,7 +1568,9 @@
     )
     return(.prior_linear_density_deferred_combination(
       arguments,
-      n_grid = if(is.null(output_transformation)) plan$n_grid else n_grid
+      # For an unplanned grid this records the requested minimum; its
+      # materialized density reports the resolved size and spacing.
+      n_grid = if(unplanned || !is.null(output_transformation)) n_grid else plan$n_grid
     ))
   }
 
