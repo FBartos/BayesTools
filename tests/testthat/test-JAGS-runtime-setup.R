@@ -616,3 +616,111 @@ test_that("runtime cluster workers run without startup files and with the sessio
   }
   expect_identical(parallel::clusterCall(cl, function() 1L), list(1L, 1L))
 })
+
+test_that("runtime reports run in every process that ran chains and keep process positions", {
+
+  message <- "'runtime_report' must be NULL or a function accepting one context argument."
+  expect_error(.JAGS_validate_runtime_report(list()), message, fixed = TRUE)
+  expect_error(JAGS_fit("model{}", runtime_report = "report"), message, fixed = TRUE)
+
+  cluster <- structure(as.list(seq_len(3L)), class = "runtime_test_cluster")
+  applied <- 0L
+  testthat::local_mocked_bindings(
+    clusterApply = function(cl, x, fun, callback){
+      expect_identical(cl, cluster)
+      expect_identical(environment(fun), baseenv())
+      applied <<- applied + 1L
+      lapply(x, fun, callback = callback)
+    },
+    .package = "parallel"
+  )
+  expect_null(.JAGS_run_runtime_report(NULL, 4L, cluster))
+  expect_identical(applied, 0L)
+
+  contexts <- list()
+  callback <- function(context){
+
+    contexts[[length(contexts) + 1L]] <<- context
+    if(context$process_id == 2L) NULL else context$process_id
+  }
+  set.seed(3)
+  original_rng <- .Random.seed
+  expect_identical(.JAGS_run_runtime_report(callback, 4L), list(1L))
+  expect_identical(contexts[[1L]], list(phase = "report", role = "local",
+    chains = 4L, processes = 1L, process_id = 1L, process_chains = 4L,
+    parallel = FALSE))
+  expect_identical(.JAGS_run_runtime_report(callback, 4L, cluster), list(1L, NULL, 3L))
+  expect_identical(applied, 1L)
+  expect_identical(vapply(contexts[2:4], `[[`, character(1L), "role"), rep("worker", 3L))
+  expect_identical(vapply(contexts[2:4], `[[`, character(1L), "phase"), rep("report", 3L))
+  expect_identical(vapply(contexts[2:4], `[[`, integer(1L), "process_chains"), c(2L, 1L, 1L))
+  expect_identical(.Random.seed, original_rng)
+
+  # warnings and errors of the callback are signalled with their process, an
+  # error leaves NULL in place, and the capture wrapper also returns them
+  failing <- function(context){
+
+    if(context$process_id == 1L) warning("Counter read was partial.", call. = FALSE)
+    if(context$process_id == 2L) stop("Counter read failed.", call. = FALSE)
+    context$process_id
+  }
+  expected_messages <- c("Runtime report in worker 1: Counter read was partial.",
+    "Runtime report in worker 2: Counter read failed.")
+  messages <- character()
+  captured <- withCallingHandlers(.JAGS_capture_runtime_report(failing, 3L, cluster),
+    warning = function(condition){
+      messages <<- c(messages, conditionMessage(condition))
+      invokeRestart("muffleWarning")
+    })
+  expect_identical(captured, list(values = list(1L, NULL, 3L), warnings = expected_messages))
+  expect_identical(messages, expected_messages)
+  expect_warning(value <- .JAGS_run_runtime_report(function(context){
+    stop("Counter read failed.", call. = FALSE)
+  }, 1L), "Runtime report in the local process: Counter read failed.", fixed = TRUE)
+  expect_identical(value, list(NULL))
+
+  # a failed transport leaves NULL for every process, with one warning
+  testthat::local_mocked_bindings(
+    clusterApply = function(cl, x, fun, callback) stop("error reading from connection", call. = FALSE),
+    .package = "parallel"
+  )
+  expect_warning(value <- .JAGS_run_runtime_report(callback, 4L, cluster),
+    "Runtime report could not be completed: error reading from connection", fixed = TRUE)
+  expect_identical(value, list(NULL, NULL, NULL))
+
+  # the stored report: the kept runs, or NULL when no process reported a value
+  expect_null(.JAGS_runtime_report_value(list()))
+  expect_null(.JAGS_runtime_report_value(list(list(NULL), list(NULL, NULL))))
+  runs <- list(list(NULL), list(NULL, 2L))
+  expect_identical(.JAGS_runtime_report_value(runs), runs)
+})
+
+test_that("runtime reports reach real worker processes", {
+
+  # skip only when this machine cannot start PSOCK workers at all; a failure
+  # of JAGS_runtime_cluster() itself must fail the test
+  probe <- tryCatch(
+    parallel::makePSOCKcluster(1L, rscript_args = "--vanilla",
+      setup_timeout = 10, timeout = 30),
+    error = function(e) e
+  )
+  if(inherits(probe, "error")){
+    skip(paste("PSOCK workers could not be started:", conditionMessage(probe)))
+  }
+  parallel::stopCluster(probe)
+
+  cl <- JAGS_runtime_cluster(2, packages = "stats")
+  on.exit(JAGS_runtime_cluster_stop(cl), add = TRUE)
+  report <- function(context){
+
+    list(pid = Sys.getpid(), process_id = context$process_id, role = context$role)
+  }
+  environment(report) <- baseenv()
+  values <- .JAGS_run_runtime_report(report, chains = 2L, cl = cl)
+  expect_length(values, 2L)
+  pids <- vapply(values, `[[`, integer(1L), "pid")
+  expect_identical(anyDuplicated(pids), 0L)
+  expect_false(Sys.getpid() %in% pids)
+  expect_identical(vapply(values, `[[`, integer(1L), "process_id"), 1:2)
+  expect_identical(vapply(values, `[[`, character(1L), "role"), rep("worker", 2L))
+})
