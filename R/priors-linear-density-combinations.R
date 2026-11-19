@@ -1551,10 +1551,17 @@
   # needs neither display quantiles nor a numerical grid.
   unplanned <- FALSE
   gate_measure <- NULL
-  if(defer && length(weights) == 1L && !is.null(names(weights)) && all(is.na(source_transforms)) &&
+  if(defer && !is.null(names(weights)) && all(is.na(source_transforms)) &&
      (is.null(output_transformation) || (identical(output_transformation, "lin") &&
        isTRUE(output_transformation_arguments$a == 0) && isTRUE(output_transformation_arguments$b == 1)))){
-    gate_measure <- .bt_regularized_gated_measure(prior_list[[names(weights)[[1L]]]])
+    # A literal point-zero intercept contributes nothing to a level effect.
+    active <- names(weights)
+    zero <- vapply(prior_list[active], function(p){
+      .posterior_atoms_is_zero_point(p) && !is.prior.factor(p) && !is.prior.vector(p) &&
+        is.null(attr(p, "multiply_by", exact = TRUE))
+    }, logical(1))
+    active <- active[!zero]
+    if(length(active) == 1L) gate_measure <- .bt_regularized_gated_measure(prior_list[[active]])
   }
   if(defer &&
      (is.null(output_transformation) || .prior_density_affine_output_map(output_transformation, output_transformation_arguments)) &&
@@ -4248,8 +4255,19 @@
 # density$x just for its range would evaluate every fine-grid ordinate.
 .prior_regularized_plot_range <- function(route, tail_prob){
 
-  if(identical(route$type, "scalar") && inherits(route$prior, "prior.regularized_term")){
-    limits <- route$offset + .prior_linear_scalar_range(route$prior, route$scale, tail_prob, route$source_transform)
+  if(identical(route$type, "mixture") && length(route$components) == 1L && isTRUE(route$weights == 1)){
+    return(.prior_regularized_plot_range(route$components[[1L]], tail_prob))
+  }
+  if(identical(route$type, "scalar")){
+    prior <- route$prior
+    measure <- .bt_regularized_gated_measure(prior)
+    if(!is.null(measure) && is.null(route$source_transform)){
+      slab <- which(vapply(prior, inherits, logical(1), "prior.regularized_term"))
+      prior <- prior[[slab]]
+    }
+    if(!inherits(prior, "prior.regularized_term")) return(NULL)
+    limits <- route$offset + .prior_linear_scalar_range(prior, route$scale, tail_prob, route$source_transform)
+    if(!is.null(measure) && nrow(measure$points)) limits <- range(c(limits, route$offset))
   }else if(identical(route$type, "transform") &&
            .prior_density_affine_output_map(route$transformation, route$arguments)){
     source <- .prior_regularized_plot_range(route$source, tail_prob)

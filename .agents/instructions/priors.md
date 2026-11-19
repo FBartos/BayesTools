@@ -816,6 +816,10 @@ For a single centered direction with one zero spike and one regularized slab,
 the same deferral carries the declared atom location, atom probability and
 continuous mass. The context retains its provenance, and materialization
 checks those masses against the grid built by the ordinary mixture route.
+The default plot range for that direction uses the slab's tail quantiles
+and includes its declared atom. Conditioning down to the single active slab
+retains its quantile range. A fixed zero intercept does not change either
+measure or require a plotting grid.
 Its deferred `n_grid` gives the requested minimum and its materialized grid
 reports the resolved size and spacing. Grid attributes such as `product_grid_resolution`
 belong to the built grid (`.prior_linear_density_materialize()`). A

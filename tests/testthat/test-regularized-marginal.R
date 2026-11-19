@@ -128,7 +128,7 @@ test_that("projected gated factor densities keep their atom and defer their grid
   fit <- JAGS_formula(~ f, "mu", dat, list(intercept = prior("point", list(0)),
     pool = prior_regularized("lasso", scale = .4, contrast = "orthonormal")))
   slope <- fit$prior_list$mu_f
-  direction <- c("mu_f[1]" = -1, "mu_f[2]" = 1)
+  direction <- c(mu_intercept = 1, "mu_f[1]" = -1, "mu_f[2]" = 1)
   region <- list(intervals = matrix(c(0, Inf), 1L), indicator = function(x) x > 0)
   for(inclusion in c(0, .25, 1)){
     gated <- prior_spike_and_slab(slope, prior("point", list(inclusion)))
@@ -152,6 +152,16 @@ test_that("projected gated factor densities keep their atom and defer their grid
       expect_equal(prior_density_ordinate(law, 0)$point_mass, 1 - inclusion)
       expect_equal(as.numeric(.prior_linear_density_region_probability(law, region)), inclusion / 2)
       expect_equal(prior_density_ordinate(law, .2)$log_density, prior_density_ordinate(eager, .2)$log_density)
+      # Both the gated law and the single state conditional on inclusion
+      # use the projected slab's tail quantiles for a default plotting range.
+      conditional <- .prior_density_conditional_context(bound$prior_list, names(direction),
+        conditional = "mu_f", n_grid = 32L)
+      active <- .prior_density_from_context(conditional, direction)
+      plot_law <- .prior_linear_density_to_plot_data(law, n_points = 25)
+      plot_active <- .prior_linear_density_to_plot_data(active, n_points = 25)
+      curves <- function(components) Filter(function(z) length(z$x) > 1L, components)[[1L]]
+      expect_equal(curves(plot_law)$x, curves(plot_active)$x)
+      expect_equal(curves(plot_law)$y, inclusion * curves(plot_active)$y)
       law
     })
     expect_identical(deferred$points, eager$points)
