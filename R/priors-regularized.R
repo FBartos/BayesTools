@@ -37,6 +37,8 @@
 #' inclusion probabilities. Prior draws within a group retain its common
 #' scales when forming contrasts. Where an analytic contrast distribution
 #' is unavailable, the joint prior draws can still be used.
+#' For multi-coefficient factor terms, use the marginal methods such as
+#' `mpdf()` for individual coordinates and `rng()` for joint draws.
 #'
 #' @return With numeric scale and omitted terms, ridge and lasso return
 #' ordinary scalar priors accepted by [prior_spike_and_slab()] and
@@ -124,6 +126,17 @@ prior_regularized <- function(family, scale, terms = NULL, slab_scale = NULL, sl
 is.prior.regularized <- function(x){
 
   inherits(x, "prior.regularized")
+}
+
+.check_regularized_joint_method <- function(prior, method){
+
+  if(inherits(prior, "prior.regularized_term") && is.prior.factor(prior) &&
+     prior$regularization$dimension > 1L){
+    message <- paste0("Joint '", method, "()' is unavailable for this multi-coefficient regularized term. ",
+                      "Use 'm", method, "()' for marginal values or 'rng()' for joint draws.")
+    stop(structure(list(message = message, call = NULL),
+                   class = c("BayesTools_regularized_joint_unavailable", "error", "condition")))
+  }
 }
 
 .print_prior_regularized <- function(x, digits, short_name){

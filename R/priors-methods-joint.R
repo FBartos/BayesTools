@@ -486,6 +486,7 @@ cdf.prior   <- function(x, q, ...){
 
   .check_q(as.vector(q))
   .check_prior(prior)
+  .check_regularized_joint_method(prior, "cdf")
 
   if(is.prior.spike_and_slab(prior)){
 
@@ -526,6 +527,7 @@ ccdf.prior  <- function(x, q, ...){
 
   .check_q(as.vector(q))
   .check_prior(prior)
+  .check_regularized_joint_method(prior, "ccdf")
 
   if(is.prior.spike_and_slab(prior)){
 
@@ -567,6 +569,7 @@ lpdf.prior  <- function(x, y, ...){
 
   .check_x(as.vector(x))
   .check_prior(prior)
+  .check_regularized_joint_method(prior, "lpdf")
 
   .prior_joint_lpdf(prior, x, "lpdf")
 }
@@ -659,6 +662,7 @@ pdf.prior   <- function(x, y, ...){
 
   .check_x(as.vector(x))
   .check_prior(prior)
+  .check_regularized_joint_method(prior, "pdf")
 
   if(is.prior.simple(prior)){
     lik <- .prior_simple_pdf(prior, x)
@@ -676,6 +680,7 @@ quant.prior <- function(x, p, ...){
 
   .check_p(p, log.p = FALSE)
   .check_prior(prior)
+  .check_regularized_joint_method(prior, "quant")
 
   if(is.prior.spike_and_slab(prior)){
 

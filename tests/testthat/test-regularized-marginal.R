@@ -106,3 +106,16 @@ test_that("ridge and lasso resolve the peak under a learned half-Cauchy width", 
     expect_equal(pdf(model$prior_list$mu_wt, x), exact, tolerance = 1e-7)
   }
 })
+test_that("multi-column shrinkage terms distinguish joint and marginal methods", {
+  group <- prior_regularized("ridge", prior("gamma", list(2, 1)))
+  data <- data.frame(g = factor(rep(letters[1:3], 2)))
+  term <- JAGS_formula(~ g, "mu", data, list(intercept = prior("point", list(0)),
+                                            shrinkage = group))$prior_list$mu_g
+  expect_error(pdf(term, c(0, 1)), class = "BayesTools_regularized_joint_unavailable")
+  expect_equal(mpdf(term, 0), dnorm(0))
+  expect_equal(dim(rng(term, 5, transform_factor_samples = FALSE)), c(5L, 2L))
+  levels <- rng(term, 5)
+  expect_equal(dim(levels), c(5L, 3L))
+  expect_true(all(levels[, 1L] == 0))
+})
+

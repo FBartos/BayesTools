@@ -68,6 +68,8 @@ the Savage-Dickey density ratio. Use explicit point-null models for
 inclusion probabilities. Prior draws within a group retain its common
 scales when forming contrasts. Where an analytic contrast distribution
 is unavailable, the joint prior draws can still be used.
+For multi-coefficient factor terms, use the marginal methods such as
+\code{mpdf()} for individual coordinates and \code{rng()} for joint draws.
 }
 \examples{
 prior_regularized("ridge", scale = 0.5)
