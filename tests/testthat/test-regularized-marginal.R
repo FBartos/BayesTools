@@ -86,3 +86,23 @@ test_that("random-global finite-slab horseshoe agrees with the direct scale-mixt
   expect_equal(var(hs), variance, tolerance = 1e-6)
   expect_equal(ccdf(hs, quant(hs, 0.99)), .01, tolerance = 1e-6)
 })
+
+test_that("ridge and lasso resolve the peak under a learned half-Cauchy width", {
+  # In u=log(tau/0.2) coordinates the Gaussian or Laplace kernel's 1/tau
+  # cancels the Jacobian. Integrate on both sides of the kernel transition.
+  x <- 1e-10
+  cuts <- c(-Inf, log(x / .2), 0, Inf)
+  for(family in c("ridge", "lasso")){
+    model <- JAGS_formula(~ wt, "mu", mtcars, list(intercept = prior("point", list(0)),
+      sh = prior_regularized(family, prior("cauchy", list(0, .2), list(0, Inf)))))
+    integrand <- function(u){
+      z <- exp(log(x / .2) - u)
+      kernel <- if(family == "ridge") stats::dnorm(z) else exp(-z) / 2
+      kernel * (2 / (.2 * pi)) * stats::plogis(-2 * u)
+    }
+    exact <- sum(vapply(seq_len(3), function(i){
+      stats::integrate(integrand, cuts[i], cuts[i + 1L], rel.tol = 1e-10)$value
+    }, numeric(1)))
+    expect_equal(pdf(model$prior_list$mu_wt, x), exact, tolerance = 1e-7)
+  }
+})
