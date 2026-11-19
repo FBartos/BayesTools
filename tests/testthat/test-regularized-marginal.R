@@ -41,6 +41,53 @@ test_that("regularization declarations distinguish fixed widths and learned scal
   expect_error(rng(hs, 3), "named 'prior_list'")
 })
 
+test_that("regularized region probabilities integrate small intervals through the pole", {
+  hc <- prior("cauchy", list(0, .2), list(0, Inf))
+  law <- function(group){
+    priors <- JAGS_formula(~ wt, "mu", mtcars, list(intercept = prior("point", list(0)),
+      shrink = group))$prior_list
+    .prior_linear_combination_density(priors, c(mu_wt = 1), n_grid = 32L)
+  }
+  log_mass <- function(d, lo, hi){
+    region <- list(intervals = matrix(c(lo, hi), 1L), indicator = function(x) lo < x & x < hi)
+    attr(.prior_linear_density_region_probability(d, region), "log_mass")
+  }
+  expect_log_mass <- function(actual, expected, absolute_tolerance){
+    expect_lt(abs(actual - expected), absolute_tolerance)
+  }
+  # With a fixed global scale s and half-Cauchy local, the density is
+  # exp(u)*E1(u)/(s*sqrt(2*pi^3)), u=x²/(2s²). At |x|<=2e-12 the omitted
+  # terms O(u*log(u)) are below 1e-20. A ridge with a half-Cauchy width
+  # has exactly the same one-coefficient law.
+  central <- function(x, s){
+    x * (2 - 0.5772156649015329 - 2 * log(x) + log(2 * s^2)) / (s * sqrt(2 * pi^3))
+  }
+  a <- 1e-12
+  b <- 2e-12
+  for(s in c(.35, .2)){
+    d <- law(if(s == .35) prior_regularized("horseshoe", s) else prior_regularized("ridge", hc))
+    expect_log_mass(log_mass(d, a, b), log(central(b, s) - central(a, s)), 1e-8)
+    expect_equal(log_mass(d, -b, -a), log_mass(d, a, b))
+    expect_log_mass(log_mass(d, 0, a), log(central(a, s)), 1e-6)
+    expect_log_mass(log_mass(d, -a, b), log(central(a, s) + central(b, s)), 1e-6)
+    expect_equal(log_mass(d, 0, Inf), -log(2))
+  }
+
+  # Independent reference integrals of the Normal mixture on log width.
+  # Two independent half-Cauchys have log-product density 2v/(pi² sinh v);
+  # for the finite slab, integrate also over chi-square(4) = 4/c².
+  learned <- law(prior_regularized("horseshoe", hc))
+  expect_log_mass(log_mass(learned, 1e-8, 2e-8), log(1.1066614270590066e-6), 1e-8)
+  slab <- law(prior_regularized("horseshoe", .35, slab_scale = 1, slab_df = 4))
+  expect_log_mass(log_mass(slab, 1e-8, 2e-8), log(1.2464104824557918e-7), 1e-8)
+  expect_log_mass(log_mass(slab, 1e-3, 1.1e-3), log(4.3550463195e-4), 1e-7)
+  # The independently computed mass from zero must compose consistently
+  # with a finite interval on the same side of the integrable pole.
+  for(d in list(learned, slab)){
+    expect_log_mass(log_mass(d, 0, b), .model_probability_log_sum(c(log_mass(d, 0, a), log_mass(d, a, b))), 1e-6)
+  }
+})
+
 test_that("learned scale marginal ordinates agree with independent integration", {
   bound <- function(family, scale, ...){
     p <- JAGS_formula(~ wt, "mu", mtcars, list(
