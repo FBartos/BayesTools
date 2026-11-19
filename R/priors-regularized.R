@@ -36,9 +36,10 @@
 #' the Savage-Dickey density ratio. Use explicit point-null models for
 #' inclusion probabilities. Prior draws within a group retain its common
 #' scales when forming contrasts. Where an analytic contrast distribution
-#' is unavailable, the joint prior draws can still be used. In particular,
-#' contrasts of several lasso coefficients sharing a learned scale have a
-#' numerical display grid, with no certified ordinate for a point hypothesis.
+#' is unavailable, the joint prior draws can still be used. Density and
+#' probability calculations for a contrast of two lasso coefficients sharing
+#' a learned scale integrate its conditional convolution over that scale.
+#' For wider shared-lasso contrasts, plots omit unresolved prior curves.
 #' For multi-coefficient factor terms, use the marginal methods such as
 #' `mpdf()` for individual coordinates and `rng()` for joint draws.
 #' A request for their joint density, CDF or quantile raises

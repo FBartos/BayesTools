@@ -17,6 +17,10 @@ the group. Preserve these shared draws in contrasts, mixtures and prior
 predictions. For a classical or regularized horseshoe, zero is a continuous
 infinite-density ordinate and has zero point mass. A product-space point
 component introduces its own inclusion indicator.
+For a weighted contrast of two lasso coefficients in one group, integrate
+the conditional Laplace convolution over its single global scale. Keep the
+repeated-scale limit continuous. Wider unverified shared-lasso product grids
+do not supply display curves; interval hypotheses retain joint prior draws.
 
 Ordinary bound factor mixtures and spikes sample through their exact declared
 factor design. Scalar product components draw independent raw coordinates;

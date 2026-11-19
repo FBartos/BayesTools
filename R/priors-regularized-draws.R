@@ -73,7 +73,9 @@
         "The conditional coefficient scale is unrepresentable", error = TRUE, rng = TRUE)
     }
     out[, j] <- if(identical(spec$family, "lasso")){
-      extraDistr::rlaplace(n, mu = 0, sigma = scale)
+      z <- extraDistr::rlaplace(n, mu = 0, sigma = scale)
+      if(!is.null(spec$contrast_ratio)) z <- z + spec$contrast_ratio * extraDistr::rlaplace(n, mu = 0, sigma = scale)
+      z
     }else{
       stats::rnorm(n, 0, scale)
     }

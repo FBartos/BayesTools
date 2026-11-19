@@ -1043,6 +1043,10 @@
   if(!is.null(regularized)){
     if(!is.null(regularized$reason)) return(FALSE)
     canonical$prior_list <- regularized$prior_list
+    if(!is.null(regularized$weights)){
+      weights <- regularized$weights
+      source_transforms <- NULL
+    }
   }
   split <- .prior_linear_split_multiply_groups(canonical$prior_list, weights)
   for(product_group in split$product_groups){

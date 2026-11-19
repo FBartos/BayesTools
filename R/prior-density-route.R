@@ -570,6 +570,9 @@
     if(!is.null(cause)){
       provenance$cause <- cause
     }
+    if(any(vapply(prior_list, function(p) isTRUE(attr(p, "regularized_lasso_direction", exact = TRUE)), logical(1)))){
+      provenance$unverified_lasso_grid <- TRUE
+    }
     .prior_density_route_unknown(
       reason     = reason,
       provenance = provenance,
@@ -856,6 +859,10 @@
       return(route)
     }
     prior_list <- regularized$prior_list
+    if(!is.null(regularized$weights)){
+      weights <- regularized$weights
+      source_transforms <- stats::setNames(rep(NA_character_, length(weights)), names(weights))
+    }
   }
 
   ordered <- .prior_density_route_ordered_terms(prior_list, weights, source_transforms)
@@ -1989,6 +1996,7 @@
   switch(
     route$type,
     "unknown" = {
+      if(isTRUE(route$provenance$unverified_lasso_grid)) return(TRUE)
       if(is.null(route$recipe)){
         return(FALSE)
       }

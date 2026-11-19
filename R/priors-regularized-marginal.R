@@ -6,6 +6,7 @@
   spec <- prior$regularization
   if(spec$family == "horseshoe") return(Inf)
   kernel <- if(spec$family == "ridge") stats::dnorm(0, log = TRUE) else -log(2)
+  if(!is.null(spec$contrast_ratio)) kernel <- kernel - log1p(spec$contrast_ratio)
   if(is.numeric(spec$scale)) return(kernel - log(spec$multiplier) - log(spec$scale))
   at_zero <- .prior_density_ordinate_primitive(spec$scale, 0)
   if(at_zero$behavior %in% c("regular", "infinite")) return(Inf)
@@ -215,6 +216,23 @@
   peak + log(sum(exp(x - peak)))
 }
 
+.regularized_lasso_log_kernel <- function(z, ratio, density){
+
+  log_kernel <- -log(2) - z
+  if(is.null(ratio)) return(log_kernel)
+  # The density of L1 + r*L2 divides exp(-z) - r*exp(-z/r)
+  # by 2*(1-r^2). Factor the larger exponential and use expm1 for
+  # the difference; the limit of the divided difference at r = 1 is z.
+  ok <- is.finite(z)
+  u <- z[ok]
+  change <- if(ratio == 1) u else
+    -expm1(-u * (1 - ratio) / ratio) * (ratio / (1 - ratio))
+  correction <- if(density) log1p(change) - log1p(ratio) else
+    log1p(change * (ratio / (1 + ratio)))
+  log_kernel[ok] <- log_kernel[ok] + correction
+  log_kernel
+}
+
 # A learned Normal/Laplace width is a single positive scale integral. Put
 # breakpoints at the transition |beta|/tau as well as at the scale prior's
 # quantiles. The adaptive log-coordinate integrator can then resolve the
@@ -235,7 +253,7 @@
     log_value = function(s, index){
       z <- exp(log_x[index] - s$log_scale)
       log_kernel <- if(spec$family == "lasso"){
-        -log(2) - z
+        .regularized_lasso_log_kernel(z, spec$contrast_ratio, density)
       }else if(density) stats::dnorm(z, log = TRUE) else stats::pnorm(-z, log.p = TRUE)
       if(density) log_kernel <- log_kernel - s$log_scale
       log_kernel + s$log_prior
@@ -307,10 +325,12 @@
       if(operation == "variance") return(.regularized_log_sum(rule$log_weight + 2 * rule$log_scale))
       z <- exp(log(value) - rule$log_scale)
       kernel <- if(operation == "density"){
-        if(prior$regularization$family == "lasso") -log(2) - z - rule$log_scale else
+        if(prior$regularization$family == "lasso") .regularized_lasso_log_kernel(
+          z, prior$regularization$contrast_ratio, TRUE) - rule$log_scale else
           stats::dnorm(z, log = TRUE) - rule$log_scale
       }else{
-        if(prior$regularization$family == "lasso") -log(2) - z else
+        if(prior$regularization$family == "lasso") .regularized_lasso_log_kernel(
+          z, prior$regularization$contrast_ratio, FALSE) else
           stats::pnorm(z, lower.tail = FALSE, log.p = TRUE)
       }
       .regularized_log_sum(kernel + rule$log_weight)
@@ -379,5 +399,6 @@
   scale_mean <- if(is.numeric(spec$scale)) spec$scale else mean(spec$scale)
   if(!variance) return(if(is.finite(scale_mean)) 0 else NaN)
   second <- if(is.numeric(spec$scale)) spec$scale^2 else var(spec$scale) + scale_mean^2
-  spec$multiplier^2 * second * if(spec$family == "lasso") 2 else 1
+  variance <- spec$multiplier^2 * second * if(spec$family == "lasso") 2 else 1
+  if(is.null(spec$contrast_ratio)) variance else variance * (1 + spec$contrast_ratio^2)
 }

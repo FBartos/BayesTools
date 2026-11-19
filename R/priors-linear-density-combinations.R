@@ -1515,6 +1515,10 @@
         prior_family = "regularized", sources = regularized$sources)
     }
     prior_list <- regularized$prior_list
+    if(!is.null(regularized$weights)){
+      weights <- regularized$weights
+      source_transforms <- NULL
+    }
   }
 
   expression_sources <- .prior_linear_expression_sources(prior_list, weights)
@@ -1786,6 +1790,12 @@
           multiplier_dist,
           n_grid = n_grid
         )
+        if(any(vapply(product_group$prior_list, function(p){
+          isTRUE(attr(p, "regularized_lasso_direction", exact = TRUE))
+        }, logical(1)))){
+          attr(product, "product_grid_resolution") <- list(resolved = FALSE,
+            cause = "unverified_shared_lasso_grid")
+        }
       }
       components[[length(components) + 1L]] <- product
     }
@@ -4262,7 +4272,8 @@
       .prior_density_route_unresolved_products(route)
     }
     if(draw_curve && unresolved){
-      .prior_linear_density_warn_curve_unavailable()
+      .prior_linear_density_warn_curve_unavailable(shared_lasso =
+        isTRUE(route$provenance$unverified_lasso_grid))
       draw_curve <- FALSE
     }
   }
@@ -4469,13 +4480,16 @@
 # ('posterior_plot') it names 'prior = FALSE' as the remedy.
 .prior_linear_density_warn_curve_unavailable <- function(unresolved_values = NULL, partial = FALSE,
                                                          structural_values = NULL,
-                                                         posterior_plot = FALSE){
+                                                         posterior_plot = FALSE, shared_lasso = FALSE){
 
   warning(structure(
     class = c("BayesTools_prior_curve_unavailable", "BayesTools_plot_condition",
               "warning", "condition"),
     list(
-      message = if(!is.null(unresolved_values) || !is.null(structural_values)) paste0(
+      message = if(shared_lasso) paste0(
+        "The continuous prior curve of this shared-lasso combination has no verified numerical ",
+        "resolution. Use joint prior draws for the contrast."
+      ) else if(!is.null(unresolved_values) || !is.null(structural_values)) paste0(
         "The prior density curve is ", if(partial) "partially unavailable" else "unavailable", ": ",
         if(!is.null(unresolved_values)) paste0(
           "numerical evaluations were unresolved at ", length(unresolved_values),

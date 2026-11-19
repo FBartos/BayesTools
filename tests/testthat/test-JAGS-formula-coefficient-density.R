@@ -71,6 +71,59 @@ test_that("fixed exponential target underflow remains unavailable", {
   ), use.names = FALSE))
 }
 
+test_that("shared-lasso factor contrast plots integrate the conditional convolution", {
+  data <- data.frame(f = factor(rep(letters[1:4], 2)))
+  x <- c(.01, .1, .5, 2)
+  fixed <- JAGS_formula(~ f, "mu", data, list(intercept = prior("point", list(0)),
+    shrink = prior_regularized("lasso", 1, terms = "f")))
+  fixed_weight <- c("mu_f[1]" = 1, "mu_f[2]" = -1)
+  expect_null(.bt_regularized_linear_plan(fixed$prior_list, fixed_weight))
+  split <- JAGS_formula(~ a + b, "mu", data.frame(a = 1:3, b = c(1, 0, 2)), list(
+    intercept = prior("point", list(0)),
+    first = prior_regularized("lasso", prior("gamma", list(2, 4)), terms = "a"),
+    second = prior_regularized("lasso", prior("gamma", list(2, 4)), terms = "b")))
+  expect_null(.bt_regularized_linear_plan(split$prior_list, c(mu_a = 1, mu_b = -1)))
+  for(scale in list(prior("cauchy", list(0, .2), list(0, Inf)), prior("gamma", list(2, 4)))){
+    compiled <- JAGS_formula(~ f, "mu", data, list(intercept = prior("normal", list(0, 1)),
+      shrink = prior_regularized("lasso", scale)))
+    fit <- .formula_coefficient_density_fit(compiled, .formula_coefficient_source_names(compiled))
+    for(weight in c(1, .5)){
+      law <- JAGS_formula_prior_density(fit, "mu", weights = c("mu_f[1]" = 1, "mu_f[2]" = -weight))
+      # Independent integration on the scale itself. For equal scales the
+      # density is (1+u)exp(-u)/(4*tau), for unequal scales a difference
+      # of two exponential densities.
+      reference <- vapply(x, function(value) stats::integrate(function(tau){
+        u <- value / tau
+        kernel <- if(weight == 1) (1 + u) * exp(-u) / 4 else
+          (exp(-u) - weight * exp(-u / weight)) / (2 * (1 - weight^2))
+        kernel * pdf(scale, tau) / tau
+      }, 0, Inf, rel.tol = 1e-10)$value, numeric(1))
+      curve <- ggplot2::ggplot_build(plot(law, plot_type = "ggplot", xlim = c(-2, 2), n_points = 401))$data[[1L]]
+      expect_equal(stats::approx(curve$x, curve$y, x)$y, reference, tolerance = 1e-7)
+      ordinate <- prior_density_ordinate(law, .1)
+      expect_equal(exp(ordinate$log_density), reference[2L], tolerance = 1e-7)
+      region <- list(intervals = matrix(c(.1, Inf), 1L), indicator = function(x) x > .1)
+      tail <- stats::integrate(function(tau){
+        u <- .1 / tau
+        kernel <- if(weight == 1) (2 + u) * exp(-u) / 4 else
+          (exp(-u) - weight^2 * exp(-u / weight)) / (2 * (1 - weight^2))
+        kernel * pdf(scale, tau)
+      }, 0, Inf, rel.tol = 1e-10)$value
+      expect_equal(as.numeric(.prior_linear_density_region_probability(law, region)), tail, tolerance = 1e-7)
+    }
+    expect_identical(prior_density_ordinate(law, 0)$behavior, if(scale$distribution == "t") "infinite" else "regular")
+    # The nearly equal-width convolution has the smooth equal-width limit.
+    near <- JAGS_formula_prior_density(fit, "mu", weights = c("mu_f[1]" = -1, "mu_f[2]" = 1 - 1e-14))
+    equal <- JAGS_formula_prior_density(fit, "mu", weights = c("mu_f[1]" = 1, "mu_f[2]" = 1))
+    expect_equal(prior_density_ordinate(near, .1)$log_density, prior_density_ordinate(equal, .1)$log_density,
+                 tolerance = 1e-12)
+    wider <- JAGS_formula_prior_density(fit, "mu", weights = c("mu_f[1]" = 1, "mu_f[2]" = -1, "mu_f[3]" = 1))
+    expect_warning(plotted <- .prior_linear_density_to_plot_data(wider, x_range = c(-2, 2)),
+                   class = "BayesTools_prior_curve_unavailable")
+    expect_null(plotted$density)
+  }
+})
+
 test_that("fixed transforms require every nonzero induced numeric and factor margin", {
 
   normal <- prior("normal", list(0, 1))

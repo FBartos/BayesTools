@@ -17,9 +17,9 @@
 # A common scale makes even uncorrelated signed coefficients dependent.
 # For ridge and lasso, condition on it by factoring it out of the sum:
 # sum(w_j beta_j) = tau * sum(w_j z_j) with independent normal/Laplace z_j.
-# The conditional Normal route supplies ridge ordinates. Lasso uses the
-# existing product grid for display; a general product has no certified
-# structural ordinate.
+# Ridge uses the conditional Normal route. Two Laplace terms have an
+# analytic conditional convolution. Wider shared-lasso grids have no
+# verified display resolution.
 .bt_regularized_linear_plan <- function(prior_list, weights, source_transforms = NULL){
 
   if(!length(weights) || !any(vapply(prior_list, .bt_has_regularized_term, logical(1)))) return(NULL)
@@ -68,6 +68,22 @@
       !any(vapply(prior_list[owners], .bt_prior_has_expression, logical(1)))
     return(list(reason = message, sources = affected, atom_free = atom_free))
   }
+  # In fitted coefficient units, the sum has the distribution of the
+  # larger absolute weight times (L1 + r*L2), r the smaller-to-larger
+  # ratio. Both independent Laplace directions use the same global scale.
+  if(length(weights) == 2L && length(shared) == 1L &&
+     all(vapply(prior_list[affected], function(p) p$regularization$family == "lasso", logical(1)))){
+    name <- affected[[1L]]
+    projection <- prior_list[[name]]
+    width <- abs(weights)
+    projection$regularization$contrast_ratio <- min(width) / max(width)
+    if(projection$regularization$contrast_ratio == 0) .regularized_numerical_unavailable("contrast scale ratio")
+    projection$regularization$dimension <- 1L
+    class(projection) <- c("prior", "prior.regularized_term", "prior.simple")
+    attributes(projection) <- attributes(projection)[c("names", "class")]
+    return(list(prior_list = stats::setNames(list(projection), name),
+                weights = stats::setNames(max(width), name)))
+  }
   for(name in affected){
     prior <- prior_list[[name]]
     spec <- prior$regularization
@@ -78,6 +94,7 @@
     prior$regularization <- NULL
     class(prior) <- setdiff(class(prior), "prior.regularized_term")
     attr(prior, "multiply_by") <- spec$global_name
+    if(spec$family == "lasso") attr(prior, "regularized_lasso_direction") <- TRUE
     prior_list[[name]] <- prior
     prior_list[[spec$global_name]] <- spec$scale
   }

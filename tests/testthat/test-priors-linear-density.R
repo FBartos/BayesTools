@@ -28,11 +28,9 @@ test_that("linear contrasts retain the shared shrinkage scale of their coefficie
   expect_equal(exp(.prior_density_route_ordinate(route, 0)$log_density),
                log(3) / (2 * sqrt(4 * pi)), tolerance = 1e-9)
   lasso <- bind(prior_regularized("lasso", scale))
-  plan <- .bt_regularized_linear_plan(lasso, weights)$prior_list
-  expect_identical(plan$mu_a$distribution, "laplace")
-  expect_identical(attr(plan$mu_a, "multiply_by"), attr(plan$mu_b, "multiply_by"))
-  expect_identical(plan[[attr(plan$mu_a, "multiply_by")]], scale)
-  expect_identical(.prior_density_route_linear(lasso, weights, NULL)$type, "unknown")
+  route <- .prior_density_route_linear(lasso, weights, NULL)
+  expect_identical(route$type, "scalar")
+  expect_equal(exp(.prior_density_route_ordinate(route, 0)$log_density), log(3) / 8)
 
   # A shared stochastic slab also induces dependence when global shrinkage
   # is fixed. Separate local scales and symmetric signs do not remove it.
