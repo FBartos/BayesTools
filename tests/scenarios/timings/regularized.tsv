@@ -1,4 +1,8 @@
 type	name	elapsed	memory_gb	r_version	platform
+fit	jags_horseshoe	1.550000000	0.483301	4.6.0	Windows/x86_64-w64-mingw32
+fit	jags_lasso	8.450000000	0.538477	4.6.0	Windows/x86_64-w64-mingw32
+fit	jags_regularized_horseshoe	1.780000000	0.491992	4.6.0	Windows/x86_64-w64-mingw32
+fit	jags_ridge	2.300000000	0.524805	4.6.0	Windows/x86_64-w64-mingw32
 fit	stan_horseshoe	8.610000000	0.582617	4.6.0	Windows/x86_64-w64-mingw32
 fit	stan_lasso	7.000000000	0.612988	4.6.0	Windows/x86_64-w64-mingw32
 fit	stan_regularized_horseshoe	10.710000000	0.592480	4.6.0	Windows/x86_64-w64-mingw32
