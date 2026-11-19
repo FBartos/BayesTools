@@ -17,7 +17,9 @@
 # A common scale makes even uncorrelated signed coefficients dependent.
 # For ridge and lasso, condition on it by factoring it out of the sum:
 # sum(w_j beta_j) = tau * sum(w_j z_j) with independent normal/Laplace z_j.
-# The existing product routes then apply on those independent primitives.
+# The conditional Normal route supplies ridge ordinates. Lasso uses the
+# existing product grid for display; a general product has no certified
+# structural ordinate.
 .bt_regularized_linear_plan <- function(prior_list, weights, source_transforms = NULL){
 
   if(!length(weights) || !any(vapply(prior_list, .bt_has_regularized_term, logical(1)))) return(NULL)

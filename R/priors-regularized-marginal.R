@@ -274,7 +274,9 @@
 
   spec <- prior$regularization
   if(spec$family == "horseshoe"){
-    if(is.null(spec$slab_scale)) return(if(variance) Inf else NaN)
+    # The half-Cauchy local scale has no first moment. As for a Cauchy
+    # coefficient, the mean and its centered variance are undefined.
+    if(is.null(spec$slab_scale)) return(NaN)
     if(spec$slab_df <= if(variance) 2 else 1) .regularized_numerical_unavailable("moment")
     if(!variance) return(0)
     return(exp(.regularized_log_integral(prior, 1, "variance")))

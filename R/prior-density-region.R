@@ -269,7 +269,8 @@
     }
     return(.prior_region_atoms(images, probability, region))
   }
-  if(!.prior_region_primitive_supported(prior)){
+  regularized <- inherits(prior, "prior.regularized_term")
+  if(!regularized && !.prior_region_primitive_supported(prior)){
     return(.prior_region_unavailable())
   }
   if(!is.null(source_transform) &&
@@ -303,6 +304,14 @@
   }
   intervals <- .prior_region_check_inverse_intervals(region$intervals, intervals)
   intervals <- .prior_region_intervals(intervals[, 1L], intervals[, 2L])
+  if(regularized){
+    # A scalar route selects one fitted coefficient, including one coordinate
+    # of a factor. Its lower and upper log tails already integrate the scales.
+    log_masses <- .prior_simple_log_interval_mass(prior, intervals[, 1L], intervals[, 2L])
+    if(anyNA(log_masses)) .regularized_numerical_unavailable("region probability")
+    log_mass <- .model_probability_log_sum(log_masses)
+    return(.prior_region_result(exp(log_mass), log_mass = log_mass))
+  }
   .prior_region_result(.prior_region_prior_mass(prior, intervals))
 }
 

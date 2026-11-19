@@ -1577,8 +1577,8 @@
 
 # Whether the grid of a combination is deferred (see .prior_linear_combination_density()):
 # the combination has no product group ('plan' is NULL otherwise), its build is
-# noticeable (a large grid, or an ordered level, whose grid is the route
-# quadrature of up to 1024 product values), and its structure alone fixes the
+# noticeable (a large grid, a regularized coefficient with an integrated
+# density, or an ordered level with up to 1024 product quadratures), and its structure alone fixes the
 # outcome of the build: only continuous scalar priors and ordered priors with a
 # continuous total and Dirichlet allocations set the grid (a rounding residue
 # is a point that shifts it and leaves it without atoms, but not alone), the
@@ -1591,7 +1591,7 @@
 # level (a nonlinear map can warn or fail on the values of the grid, an affine
 # map's values can collapse, and a constant map turns the measure into an
 # atom). Every other combination is built at once, as is a small one without
-# an ordered level, which is cheap and keeps its numerical diagnostics. Grid
+# an ordered level or regularized coefficient, which keeps its numerical diagnostics. Grid
 # attributes (e.g. 'product_grid_resolution') belong to the built grid
 # (.prior_linear_density_materialize()). A numerical-representability refusal
 # of the later grid steps (scaling, resampling, convolution at extreme scales)
@@ -1606,12 +1606,15 @@
   ordered <- vapply(plan$groups[on_grid], function(group){
     is.prior.ordered(group$prior)
   }, logical(1))
+  regularized <- vapply(plan$groups[on_grid], function(group){
+    inherits(group$prior, "prior.regularized_term")
+  }, logical(1))
   continuous <- vapply(plan$groups[on_grid], function(group){
     (is.prior.simple(group$prior) || is.prior.ordered(group$prior)) &&
       .prior_density_continuous_prior(group$prior)
   }, logical(1))
   if(!any(on_grid) || !all(continuous) ||
-     (plan$n_grid < .prior_linear_density_large_grid() && !any(ordered))){
+     (plan$n_grid < .prior_linear_density_large_grid() && !any(ordered) && !any(regularized))){
     return(FALSE)
   }
   if(any(ordered)){

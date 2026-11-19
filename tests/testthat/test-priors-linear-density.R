@@ -32,6 +32,7 @@ test_that("linear contrasts retain the shared shrinkage scale of their coefficie
   expect_identical(plan$mu_a$distribution, "laplace")
   expect_identical(attr(plan$mu_a, "multiply_by"), attr(plan$mu_b, "multiply_by"))
   expect_identical(plan[[attr(plan$mu_a, "multiply_by")]], scale)
+  expect_identical(.prior_density_route_linear(lasso, weights, NULL)$type, "unknown")
 
   # A shared stochastic slab also induces dependence when global shrinkage
   # is fixed. Separate local scales and symmetric signs do not remove it.

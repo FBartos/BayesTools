@@ -1,3 +1,24 @@
+test_that("horseshoe ordinate evaluation defers the coefficient density grid", {
+  group <- prior_regularized("horseshoe", 0.35, slab_scale = 1)
+  priors <- JAGS_formula(~ wt, "mu", mtcars,
+    list(intercept = prior("point", list(0)), pool = group))$prior_list
+  linear <- .prior_linear_combination_density(priors, c(mu_wt = 1), n_grid = 32L)
+  expect_true(.prior_linear_density_is_deferred(linear))
+  expect_identical(prior_density_ordinate(linear, 0)$behavior, "infinite")
+  expect_equal(prior_density_ordinate(linear, 0.4)$log_density, lpdf(priors$mu_wt, 0.4))
+  positive <- list(intervals = matrix(c(0, Inf), 1L), indicator = function(x) x > 0)
+  expect_equal(as.numeric(.prior_linear_density_region_probability(linear, positive)), 0.5)
+  interval <- list(intervals = matrix(c(-0.6, -0.2), 1L),
+                   indicator = function(x) x > -0.6 & x < -0.2)
+  expect_equal(as.numeric(.prior_linear_density_region_probability(linear, interval)),
+               cdf(priors$mu_wt, -0.2) - cdf(priors$mu_wt, -0.6))
+  # Plot data still request and materialize the same numerical grid.
+  eager <- .prior_linear_combination_density(priors, c(mu_wt = 1), n_grid = 32L, .defer = FALSE)
+  expect_identical(.prior_linear_density_to_plot_data(linear), .prior_linear_density_to_plot_data(eager))
+})
+
+skip_if_not_test_profile("unit")
+
 test_that("regularization declarations distinguish fixed widths and learned scales", {
   expect_true(is.prior.simple(prior_regularized("lasso", 0.4)))
   expect_equal(pdf(prior_regularized("ridge", 0.4), 1), dnorm(1, sd = 0.4))
@@ -35,6 +56,8 @@ test_that("learned scale marginal ordinates agree with independent integration",
                "infinite")
   hs <- bound("horseshoe", 0.35)
   expect_equal(pdf(hs, 0), Inf)
+  expect_true(is.nan(mean(hs)))
+  expect_true(is.nan(var(hs)))
   expected <- integrate(function(t) dnorm(1, sd = 0.35 * t) * 2 * dcauchy(t), 0, Inf)
   expect_equal(pdf(hs, 1), expected$value, tolerance = 1e-6)
   finite <- bound("horseshoe", 0.35, slab_scale = 1)
