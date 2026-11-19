@@ -691,6 +691,7 @@
       )
       class(deferred) <- c("prior_linear_density", "prior_density")
       attr(deferred, "weights") <- attr(out, "weights", exact = TRUE)
+      attr(deferred, "regularized_plot_range") <- attr(out, "regularized_plot_range", exact = TRUE)
       attr(deferred, "adaptive_evaluation") <- list(kind = "density_context", arguments = arguments)
       return(deferred)
     }

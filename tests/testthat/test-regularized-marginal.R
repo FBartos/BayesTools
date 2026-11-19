@@ -32,16 +32,20 @@ test_that("automatic shrinkage plot limits do not build the coefficient grid", {
   weights <- c(mu_intercept = 1, mu_wt = -.5)
   tail_prob <- .002
   context <- .prior_density_context(priors, names(priors), tail_prob = tail_prob)
+  testthat::local_mocked_bindings(
+    .prior_linear_combination_grid = function(...) stop("A scalar plot tried to materialize its full prior grid."))
   law <- .prior_density_from_context(context, weights)
   limits <- sort(2 - .5 * mquant(priors$mu_wt, c(tail_prob, 1 - tail_prob)))
   affine <- .prior_linear_combination_density(priors, weights, tail_prob = tail_prob,
     output_transformation = "lin", output_transformation_arguments = list(a = -1, b = -2))
-  testthat::local_mocked_bindings(
-    .prior_linear_combination_grid = function(...) stop("A scalar plot tried to materialize its full prior grid."))
   curve <- .prior_linear_density_to_plot_data(law, n_points = 64)$density
   expect_length(curve$x, 64L)
   expect_equal(range(curve$x), limits)
   expect_equal(curve$y, mpdf(priors$mu_wt, (curve$x - 2) / -.5) / .5)
+  log_point <- .prior_linear_combination_density(priors, weights, tail_prob = tail_prob,
+    source_transforms = c(mu_intercept = "log", mu_wt = NA_character_))
+  expect_equal(range(.prior_linear_density_to_plot_data(log_point, n_points = 20)$density$x),
+               (limits - 2) + log(2))
   expect_equal(range(.prior_linear_density_to_plot_data(affine, n_points = 40)$density$x),
                sort(-1 - 2 * limits))
   displayed <- .prior_linear_density_to_plot_data(law, n_points = 40, x_range = c(2, 3),

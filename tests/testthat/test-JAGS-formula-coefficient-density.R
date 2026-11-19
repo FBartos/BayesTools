@@ -71,6 +71,58 @@ test_that("fixed exponential target underflow remains unavailable", {
   ), use.names = FALSE))
 }
 
+test_that("original-scale shrinkage intercept plots retain point shifts and Gaussian convolution", {
+  data <- data.frame(x = c(1, 3, 5))
+  weight <- -mean(data$x) / stats::sd(data$x)
+  compiled <- function(intercept, slope) {
+    JAGS_formula(~ x, "mu", data, list(intercept = intercept, h = slope), formula_scale = TRUE)
+  }
+  fit <- function(f) .formula_coefficient_density_fit(f, JAGS_to_monitor(f$prior_list))
+
+  # The eager light-tailed convolution loses up to one fine-cell width from
+  # each component when seq(by = dx) stops short of its upper quantile.
+  ordinary <- compiled(prior("normal", list(1, .6)),
+    prior_regularized("ridge", prior("uniform", list(.2, .3))))
+  eager <- .prior_linear_combination_density(ordinary$prior_list,
+    c(mu_intercept = 1, mu_x = weight), tail_prob = .01, n_grid = 128L, .defer = FALSE)
+  deferred <- .prior_linear_combination_density(ordinary$prior_list,
+    c(mu_intercept = 1, mu_x = weight), tail_prob = .01, n_grid = 128L)
+  eager_limits <- range(eager$density$x)
+  cell <- diff(eager$density$x[1:2])
+  testthat::local_mocked_bindings(
+    .prior_linear_combination_grid = function(...) stop("An intercept plot built the full prior grid."))
+  light_curve <- .prior_linear_density_to_plot_data(deferred, n_points = 17)$density
+  expect_lte(max(abs(range(light_curve$x) - eager_limits)), 2 * cell)
+  light_reference <- vapply(light_curve$x, function(x) stats::integrate(function(tau) {
+    stats::dnorm(x, 1, sqrt(.6^2 + (weight * tau)^2)) / .1
+  }, .2, .3, rel.tol = 1e-9)$value, numeric(1))
+  expect_equal(light_curve$y / light_reference, rep(1, length(light_reference)), tolerance = 1e-6)
+
+  slope <- prior_regularized("horseshoe", .35)
+  point <- compiled(prior("point", list(2)), slope)
+  shifted <- JAGS_formula_prior_density(fit(point), "mu", target = "mu_intercept")
+  expect_true(.prior_linear_density_is_deferred(shifted))
+  shifted_curve <- .prior_linear_density_to_plot_data(shifted, n_points = 20)$density
+  expect_equal(shifted_curve$y, mpdf(point$prior_list$mu_x, (shifted_curve$x - 2) / weight) / abs(weight))
+
+  gaussian <- compiled(prior("normal", list(1, .6)), slope)
+  law <- JAGS_formula_prior_density(fit(gaussian), "mu", target = "mu_intercept")
+  expect_true(.prior_linear_density_is_deferred(law))
+  # Given lambda, the intercept is N(1, .6^2 + (w * .35 * lambda)^2).
+  # Integrate over the independent half-Cauchy(1) local directly.
+  reference <- function(x) stats::integrate(function(p) {
+    local <- tanpi(p / 2)
+    stats::dnorm(x, 1, sqrt(.6^2 + (weight * .35 * local)^2))
+  }, 0, 1, rel.tol = 1e-8, abs.tol = 0)$value
+  for(limits in list(NULL, c(-2, 3))){
+    curve <- .prior_linear_density_to_plot_data(law, x_range = limits, n_points = 17)$density
+    expect_gte(length(curve$x), 15)
+    indices <- unique(c(1L, which.max(curve$y), length(curve$x)))
+    expected <- vapply(curve$x[indices], reference, numeric(1))
+    expect_equal(curve$y[indices] / expected, rep(1, length(indices)), tolerance = 1e-5)
+  }
+})
+
 test_that("shared-lasso factor contrast plots integrate the conditional convolution", {
   data <- data.frame(f = factor(rep(letters[1:4], 2)))
   x <- c(.01, .1, .5, 2)

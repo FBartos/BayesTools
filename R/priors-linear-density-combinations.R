@@ -1390,6 +1390,7 @@
     groups            = groups,
     source_transforms = source_transforms,
     residue_locations = residue_locations,
+    target_range      = target_range,
     n_grid            = resolution$n_grid,
     dx                = dx
   )
@@ -1545,15 +1546,19 @@
   # recorded route (ordinates, heights, region probabilities) never read it.
   # A builder that needs the grid at once passes '.defer = FALSE'.
   defer <- isTRUE(.record_evaluation) && isTRUE(.defer)
-  # One untransformed shrinkage coefficient is continuous for every
-  # nonzero weight. Its classification needs neither a tail quantile for
-  # the display range nor an interquartile range for the grid spacing.
+  # One untransformed shrinkage coefficient, possibly shifted by point
+  # terms, is continuous for every nonzero weight. Its classification
+  # needs neither display quantiles nor a numerical grid.
   unplanned <- FALSE
-  if(defer && length(weights) == 1L && all(is.na(source_transforms)) &&
-     is.null(output_transformation) && any(vapply(prior_list, inherits, logical(1), "prior.regularized_term"))){
-    group <- .prior_linear_weight_groups(prior_list, weights)[[1L]]
-    unplanned <- inherits(group$prior, "prior.regularized_term") &&
-      is.null(attr(group$prior, "multiply_by", exact = TRUE))
+  if(defer &&
+     (is.null(output_transformation) || .prior_density_affine_output_map(output_transformation, output_transformation_arguments)) &&
+     any(vapply(prior_list, inherits, logical(1), "prior.regularized_term"))){
+    split <- .prior_linear_split_multiply_groups(prior_list, weights)
+    if(!length(split$product_groups)){
+      parts <- .prior_density_route_scalar_parts(prior_list, split$additive_weights, source_transforms)
+      unplanned <- inherits(parts$group$prior, "prior.regularized_term") &&
+        is.finite(parts$offset) && all(is.na(source_transforms[names(parts$group$weights)]))
+    }
   }
   plan <- if(!unplanned) .prior_linear_combination_plan(prior_list, weights, n_grid, tail_prob,
                                                         source_transforms, grid_spacing)
@@ -1570,12 +1575,23 @@
       output_transformation_arguments = output_transformation_arguments,
       grid_spacing = grid_spacing
     )
-    return(.prior_linear_density_deferred_combination(
+    deferred <- .prior_linear_density_deferred_combination(
       arguments,
       # For an unplanned grid this records the requested minimum; its
       # materialized density reports the resolved size and spacing.
       n_grid = if(unplanned || !is.null(output_transformation)) n_grid else plan$n_grid
-    ))
+    )
+    # For an additive structural curve the component quantiles already gave
+    # the plotting bounds at planning time. Retain those two numbers instead
+    # of evaluating the entire grid to rediscover its range at display time.
+    if(!unplanned && any(vapply(plan$groups, function(g) inherits(g$prior, "prior.regularized_term"), logical(1)))){
+      limits <- plan$target_range
+      if(!is.null(output_transformation)){
+        limits <- sort(.density.prior_transformation_x(limits, output_transformation, output_transformation_arguments))
+      }
+      attr(deferred, "regularized_plot_range") <- limits
+    }
+    return(deferred)
   }
 
   .prior_linear_combination_grid(
@@ -3657,13 +3673,14 @@
   singular <- .prior_density_singular_bounds(multiplier, c(lower, upper))
   probabilities <- c(if(!singular[1L]) 1e-6, 1e-3, .02, .25, .5, .75, .98, 1 - 1e-3,
                      if(!singular[2L]) 1 - 1e-6)
+  quantile_fun <- if(inherits(multiplier, "prior.regularized_term")) mquant else quant
   quantiles <- tryCatch(
-    suppressWarnings(quant(multiplier, probabilities)),
+    suppressWarnings(quantile_fun(multiplier, probabilities)),
     error = function(e) numeric()
   )
   quartiles <- if(any(singular)){
     tryCatch(
-      suppressWarnings(as.numeric(quant(multiplier, c(.25, .75)))),
+      suppressWarnings(as.numeric(quantile_fun(multiplier, c(.25, .75)))),
       error = function(e) c(NA_real_, NA_real_)
     )
   }
@@ -3717,7 +3734,7 @@
   inner <- inner[inside]
   is_peak <- is_peak[inside]
   widths <- widths[inside]
-  if(length(inner) > 0L){
+  if(length(inner) > 0L && !inherits(spec$multiplier, "prior.regularized_term")){
     density <- suppressWarnings(exp(lpdf(spec$multiplier, inner)))
     inner <- inner[is.finite(density)]
     is_peak <- is_peak[is.finite(density)]
@@ -3789,7 +3806,19 @@
      upper - points[length(points)] < minimum_width(points[length(points)], upper)){
     points <- points[-length(points)]
   }
-  c(points, upper)
+  points <- c(points, upper)
+  if(inherits(spec$multiplier, "prior.regularized_term")) points <- .prior_regularized_split_zero(points, peak_width)
+  points
+}
+
+# A shrinkage density may have an integrable pole at zero in the interior
+# of its support. Retain zero in preference to an adjacent breakpoint
+# inside the merge distance used above; open quadrature nodes then approach
+# the pole from either side. Every finite nonzero candidate is in support.
+.prior_regularized_split_zero <- function(points, peak_width){
+
+  spacing <- max(16 * .Machine$double.eps, min(1e-9, peak_width / 2))
+  sort(c(points[abs(points) > spacing], 0))
 }
 
 # The breakpoints of .prior_conditional_normal_breakpoints() for each of the
@@ -3853,7 +3882,7 @@
   index <- index[inside]
   is_peak <- is_peak[inside]
   widths <- widths[inside]
-  if(length(point) > 0L){
+  if(length(point) > 0L && !inherits(spec$multiplier, "prior.regularized_term")){
     density <- suppressWarnings(exp(lpdf(spec$multiplier, point)))
     finite <- is.finite(density)
     point <- point[finite]
@@ -3938,10 +3967,12 @@
 
   point <- point[keep]
   index <- index[keep]
-  unname(split(
+  points <- unname(split(
     c(rep(lower, n), point, rep(upper, n)),
     factor(c(seq_len(n), index, seq_len(n)), levels = seq_len(n))
   ))
+  if(inherits(spec$multiplier, "prior.regularized_term")) points <- Map(.prior_regularized_split_zero, points, peak_width)
+  points
 }
 
 # One budgeted QUADPACK piece. Finite pieces use 21-point rules; infinite ends
@@ -4299,7 +4330,8 @@
       adaptive <- attr(dist, "adaptive_evaluation", exact = TRUE)
       tail_prob <- adaptive$arguments$tail_prob
       if(is.null(tail_prob)) tail_prob <- adaptive$arguments$context$tail_prob
-      if(!is.null(tail_prob)) x_range <- .prior_regularized_plot_range(route, tail_prob)
+      if(structural) x_range <- attr(dist, "regularized_plot_range", exact = TRUE)
+      if(is.null(x_range) && !is.null(tail_prob)) x_range <- .prior_regularized_plot_range(route, tail_prob)
     }
 
     grid <- function(size){

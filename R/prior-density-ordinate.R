@@ -1523,6 +1523,18 @@ prior_density_has_provenance <- function(x){
     return(NULL)
   }
 
+  # A learned ridge coefficient is Normal conditional on its global scale.
+  # Integrate over that scale directly, keeping the independent Gaussian
+  # contribution in the conditional variance.
+  if(inherits(prior, "prior.regularized_term") && identical(prior$regularization$family, "ridge")){
+    spec <- prior$regularization
+    return(list(
+      additive_mean = normal$provenance$mean, additive_sd = normal$provenance$sd,
+      product_mean = 0, product_sd = abs(.prior_linear_fold_scale(other$weights[[1L]], spec$multiplier)),
+      multiplier = spec$scale, bounds = unlist(spec$scale$truncation[c("lower", "upper")], use.names = FALSE),
+      sources = list(additive = names(groups)[gaussian], multiplied = other$parameter, multiplier = spec$global_name)
+    ))
+  }
   list(
     additive_mean = normal$provenance$mean,
     additive_sd   = normal$provenance$sd,
