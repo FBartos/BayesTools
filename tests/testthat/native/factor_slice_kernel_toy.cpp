@@ -73,3 +73,32 @@ extern "C" void bt_factor_slice_kernel_toy(int const *n_adapt, int const *n_iter
     }
   }
 }
+
+// resolvable() for a member with support (lower, upper) at native value x of a
+// normal target N(mean, sd^2) (the log density of the other members is
+// constant); 'max_difference' receives the largest change of the log density
+// the check evaluated.
+extern "C" void bt_factor_slice_resolvable_toy(double const *lower, double const *upper, double const *x,
+                                               double const *mean, double const *sd, int *resolvable,
+                                               double *max_difference)
+{
+  const kernel::Coordinate coordinate(*lower, *upper);
+  const double reference_z = (*x - *mean) / *sd;
+  const double reference = -0.5 * reference_z * reference_z;
+  *max_difference = 0.0;
+  *resolvable = kernel::resolvable(coordinate, *x, [&](double value) {
+    const double z = (value - *mean) / *sd;
+    const double out = -0.5 * z * z;
+    if (std::fabs(out - reference) > *max_difference) *max_difference = std::fabs(out - reference);
+    return out;
+  }) ? 1 : 0;
+}
+
+// exp() is finite at the overflow threshold of the back-transforms and
+// overflows at the next double.
+extern "C" void bt_factor_slice_exp_threshold_toy(int *finite_at, int *infinite_above)
+{
+  const double threshold = kernel::exp_overflow_threshold;
+  *finite_at = std::isfinite(std::exp(threshold)) ? 1 : 0;
+  *infinite_above = std::isfinite(std::exp(std::nextafter(threshold, std::numeric_limits<double>::infinity()))) ? 0 : 1;
+}

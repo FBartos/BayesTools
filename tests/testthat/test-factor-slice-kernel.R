@@ -3,8 +3,8 @@ skip_if_not_test_profile("unit")
 # The factor slice kernel header (inst/include/BayesTools/factor_slice_kernel.h)
 # that BayesTools' FactorSlice sampler and RoBMA's block sampler build on. A toy
 # translation unit that includes only the header and the standard library
-# (native/factor_slice_kernel_toy.cpp) is compiled with R's compiler flags and
-# samples a bivariate normal. The draws of FactorSlice itself are certified in
+# (native/factor_slice_kernel_toy.cpp) is compiled with R's compiler flags,
+# samples a bivariate normal and runs the resolvability check. The draws of FactorSlice itself are certified in
 # the 'fit-assertions' case.
 
 .factor_slice_kernel_toy <- function(){
@@ -31,18 +31,32 @@ skip_if_not_test_profile("unit")
   library_file <- file.path(build_dir, paste0("factor_slice_kernel_toy", .Platform$dynlib.ext))
   dll <- dyn.load(library_file)
   withr::defer(dyn.unload(library_file), envir = parent.frame())
-  function(n_adapt, n_iter, seed, mean, sd, correlation){
-    out <- .C(getNativeSymbolInfo("bt_factor_slice_kernel_toy", dll),
-              n_adapt = as.integer(n_adapt), n_iter = as.integer(n_iter), seed = as.integer(seed),
-              mean = as.double(mean), sd = as.double(sd), correlation = as.double(correlation),
-              draws = double(2L * n_iter), exhausted = integer(1L))
-    list(draws = matrix(out$draws, ncol = 2L), exhausted = out$exhausted)
-  }
+  list(
+    sample = function(n_adapt, n_iter, seed, mean, sd, correlation){
+      out <- .C(getNativeSymbolInfo("bt_factor_slice_kernel_toy", dll),
+                n_adapt = as.integer(n_adapt), n_iter = as.integer(n_iter), seed = as.integer(seed),
+                mean = as.double(mean), sd = as.double(sd), correlation = as.double(correlation),
+                draws = double(2L * n_iter), exhausted = integer(1L))
+      list(draws = matrix(out$draws, ncol = 2L), exhausted = out$exhausted)
+    },
+    resolvable = function(lower, upper, x, mean, sd){
+      out <- .C(getNativeSymbolInfo("bt_factor_slice_resolvable_toy", dll),
+                lower = as.double(lower), upper = as.double(upper), x = as.double(x),
+                mean = as.double(mean), sd = as.double(sd), resolvable = integer(1L), max_difference = double(1L),
+                NAOK = TRUE)
+      list(resolvable = out$resolvable == 1L, max_difference = out$max_difference)
+    },
+    exp_threshold = function(){
+      out <- .C(getNativeSymbolInfo("bt_factor_slice_exp_threshold_toy", dll),
+                finite_at = integer(1L), infinite_above = integer(1L))
+      c(finite_at = out$finite_at == 1L, infinite_above = out$infinite_above == 1L)
+    }
+  )
 }
 
 test_that("the kernel header compiles alone and its slice updates sample a bivariate normal", {
 
-  toy <- .factor_slice_kernel_toy()
+  toy <- .factor_slice_kernel_toy()$sample
 
   # N(m, S) with sd (1, 3) and correlation 0.9; each moment is compared with
   # its exact value in units of its Monte Carlo standard error (sd / sqrt(ESS))
@@ -72,4 +86,34 @@ test_that("the kernel header compiles alone and its slice updates sample a bivar
     # the same seed gives the same chain
     expect_identical(toy(n_adapt = n_adapt, n_iter = 20000L, seed = 7L, mean = m, sd = s, correlation = r), run)
   }
+})
+
+test_that("the resolvability check separates members their coordinate can and cannot resolve", {
+
+  toy <- .factor_slice_kernel_toy()
+
+  # the back-transforms keep the original quotient exactly while exp() is finite
+  expect_identical(toy$exp_threshold(), c(finite_at = TRUE, infinite_above = TRUE))
+
+  # a standard normal (or a normal with sd 1e-5 at 0.5) at its mode: the
+  # coordinate reaches a value to a relative precision of about |u| eps of its
+  # distance from the anchoring bound, so bounds 1e9 or 1e6 away resolve it and
+  # bounds 5e14 or 1e16 away (5e9 for sd 1e-5) do not
+  cases <- list(
+    list(lower = -1e9,  upper = 1e9,  x = 0,    mean = 0,   sd = 1,    resolvable = TRUE),
+    list(lower = -1e6,  upper = Inf,  x = 0,    mean = 0,   sd = 1,    resolvable = TRUE),
+    list(lower = -Inf,  upper = 1e6,  x = 0,    mean = 0,   sd = 1,    resolvable = TRUE),
+    list(lower = 0,     upper = 1,    x = 0.3,  mean = 0.3, sd = 0.1,  resolvable = TRUE),
+    list(lower = 0,     upper = 1e308, x = 0.08, mean = 0,  sd = 0.1,  resolvable = TRUE),
+    list(lower = -Inf,  upper = Inf,  x = 0,    mean = 0,   sd = 1e-300, resolvable = TRUE),
+    list(lower = -5e14, upper = 5e14, x = 0,    mean = 0,   sd = 1,    resolvable = FALSE),
+    list(lower = -5e14, upper = 5e14, x = 0.3,  mean = 0,   sd = 1,    resolvable = FALSE),
+    list(lower = -1e16, upper = Inf,  x = 0,    mean = 0,   sd = 1,    resolvable = FALSE),
+    list(lower = -Inf,  upper = 1e16, x = 0,    mean = 0,   sd = 1,    resolvable = FALSE),
+    list(lower = -1e10, upper = 1e10, x = 0.5,  mean = 0.5, sd = 1e-5, resolvable = FALSE)
+  )
+  results <- vapply(cases, function(case){
+    toy$resolvable(case$lower, case$upper, case$x, case$mean, case$sd)$resolvable
+  }, logical(1))
+  expect_identical(results, vapply(cases, `[[`, logical(1), "resolvable"))
 })

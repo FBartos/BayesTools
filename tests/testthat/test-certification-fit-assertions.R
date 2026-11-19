@@ -5907,6 +5907,85 @@ test_that("factor slice blocks sample members whose transformed coordinate is be
   }
 })
 
+test_that("factor slice blocks sample members far from distant bounds", {
+  skip_if_not(isTRUE(BayesTools_load_JAGS_module(quiet = TRUE, warn = FALSE)))
+
+  # A standard normal truncated to (-1e9, 1e9), or bounded below by -1e6, in a
+  # block with an ordinary normal: the coordinate reaches values to a relative
+  # precision of about |u| eps of their distance from the bounds (here about
+  # 1e-6 and 1e-9), far finer than the posterior. The central mass, the moments
+  # and the partner's moments are checked; a coordinate that cannot resolve the
+  # mode would remove the central mass or freeze the block.
+  quantities <- list(
+    x_mean    = list(series = function(x) x[, "x"], target = 0),
+    x_var     = list(series = function(x) x[, "x"]^2, target = 1),
+    x_central = list(series = function(x) as.numeric(abs(x[, "x"]) <= 1), target = 2 * stats::pnorm(1) - 1),
+    b_mean    = list(series = function(x) x[, "b"], target = 0),
+    b_var     = list(series = function(x) x[, "b"]^2, target = 1)
+  )
+  markers <- .sampler_test_block_markers(c("x", "b"))
+  for(member in c("x ~ dnorm(0, 1)T(-1e9, 1e9)", "x ~ dnorm(0, 1)T(-1e6, )")){
+    syntax <- paste0("model{\n  ", member, "\n  b ~ dnorm(0, 1)\n", markers$syntax, "\n}")
+    for(n_adapt in c(0L, 500L)){
+      samples <- .sampler_test_block_samples(syntax, markers$data, variables = c("x", "b"),
+                                             n_adapt = n_adapt, n_iter = 5000L, seed = 1L)
+      checks <- .sampler_test_mcse_checks(samples, quantities)
+      .sampler_test_expect_checks(checks, paste0(member, ", adapt = ", n_adapt))
+    }
+  }
+})
+
+test_that("a member whose coordinate cannot resolve its posterior stops the fit", {
+  skip_if_not(isTRUE(BayesTools_load_JAGS_module(quiet = TRUE, warn = FALSE)))
+
+  # Bounds so far from where the posterior concentrates that neighbouring
+  # coordinates are farther apart than the posterior is wide: the sampler would
+  # move on a coarse grid or not at all. The resolvability check stops the fit
+  # with a node error at the start of the fit, at a refresh of the axes, or at
+  # the end of adaptation, before any draw is returned.
+  markers <- .sampler_test_block_markers(c("x", "b"))
+  stop_site <- function(member, data, n_adapt, inits = list()){
+    syntax <- paste0("model{\n  ", member, "\n  b ~ dnorm(0, 1)\n", markers$syntax, "\n}")
+    model <- tryCatch(.sampler_test_compile(syntax, c(data, markers$data), chains = 2L, seed = 51L, inits = inits),
+                      error = identity)
+    if(inherits(model, "error")) return(conditionMessage(model))
+    adapted <- tryCatch(rjags::adapt(model, n.iter = n_adapt, end.adaptation = TRUE, progress.bar = "none"),
+                        error = identity)
+    if(inherits(adapted, "error")) return(conditionMessage(adapted))
+    # a failure found when adaptation ends is raised by the first later update
+    updated <- tryCatch(stats::update(model, 1L, progress.bar = "none"), error = identity)
+    if(inherits(updated, "error")) return(conditionMessage(updated))
+    "no error"
+  }
+  message <- function(site) paste0(
+    "Factor slice sampler: the support bounds of this node are too far from where its posterior concentrates ",
+    "for the sampler's scale (found at ", site, "); declare the block without this node"
+  )
+  cases <- list(
+    # a standard normal with symmetric bounds 5e14 away, or bounded below by -1e16
+    list(member = "x ~ dnorm(0, 1)T(-5e14, 5e14)", data = list(), inits = list(), n_adapt = 0L, site = "the start of the fit"),
+    list(member = "x ~ dnorm(0, 1)T(-5e14, 5e14)", data = list(), inits = list(), n_adapt = 500L, site = "the start of the fit"),
+    list(member = "x ~ dnorm(0, 1)T(-1e16, )", data = list(), inits = list(), n_adapt = 0L, site = "the start of the fit"),
+    list(member = "x ~ dnorm(0, 1)T(-1e16, )", data = list(), inits = list(), n_adapt = 500L, site = "the start of the fit"),
+    # a vague uniform location with a posterior SD of 1e-5
+    list(member = "x ~ dunif(-1e10, 1e10)\n  z ~ dnorm(x, 1e10)", data = list(z = 0.5), inits = list(),
+         n_adapt = 0L, site = "the start of the fit"),
+    list(member = "x ~ dunif(-1e10, 1e10)\n  z ~ dnorm(x, 1e10)", data = list(z = 0.5), inits = list(x = 0.5),
+         n_adapt = 500L, site = "the start of the fit"),
+    # a start next to the bound, where the coordinate resolves the target, and
+    # adaptation that carries the member to where it does not
+    list(member = "x ~ dnorm(0, 1)T(-1e16, )", data = list(), inits = list(x = -1e16 + 4), n_adapt = 50L,
+         site = "the end of adaptation"),
+    list(member = "x ~ dnorm(0, 1)T(-1e16, )", data = list(), inits = list(x = -1e16 + 4), n_adapt = 150L,
+         site = "a refresh of the axes during adaptation")
+  )
+  for(case in cases){
+    observed <- stop_site(case$member, case$data, case$n_adapt, case$inits)
+    expect_match(observed, message(case$site), fixed = TRUE,
+                 info = paste0(case$member, ", adapt = ", case$n_adapt, ": ", observed))
+  }
+})
+
 test_that("generated declarations change the samplers of the declared nodes only", {
   skip_if_not(isTRUE(BayesTools_load_JAGS_module(quiet = TRUE, warn = FALSE)))
 

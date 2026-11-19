@@ -2,7 +2,8 @@
 // header-only so that other modules (RoBMA, through LinkingTo: BayesTools) use
 // the same algorithm. Standard C++ only: no JAGS or R types. The numerical
 // behaviour is pinned by FactorSlice: its seeded draws must stay bit-identical
-// when this file changes (see the package's JAGS guidance).
+// when this file changes (see the package's JAGS guidance). A module that links
+// to BayesTools picks up a change of this file only when it is rebuilt.
 //
 // Contract of the pieces (namespace BayesTools::factor_slice):
 //
@@ -10,34 +11,43 @@
 //   (lower, upper), lower < upper, to the real line: identity (no finite
 //   bound), log(x - lower), log(x - lower) - log(upper - x) (two finite
 //   bounds), log(upper - x). to_u(x) is the forward transform; to_x(u, &x) the
-//   inverse, placing x at its distance from a bound (the nearer of two)
-//   computed on the log scale, and false when the result is not finite or not
-//   strictly inside the support (only then: a distance below half the spacing
-//   of doubles at the bound, or a value beyond the largest double);
-//   log_jacobian(u) is log |dx/du|. log_jacobian(coordinates, u) sums it over a
-//   block in member order.
+//   inverse, false when the result is not finite or not strictly inside the
+//   support; log_jacobian(u) is log |dx/du|; log_jacobian(coordinates, u) sums
+//   it over a block in member order. A value is reached to a relative
+//   precision of about |u| eps of its distance from the anchoring bound (to_u
+//   rounds its log terms), so a member whose posterior is narrower than that
+//   cannot be sampled on this scale: resolvable() detects it.
+// - resolvable(coordinate, x, log_density_at_x): whether the doubles of u
+//   around to_u(x) resolve the target at the member's current native value x.
+//   log_density_at_x(value) sets the member to the native value (the other
+//   members unchanged) and returns the log full conditional there; the caller
+//   restores the member afterwards. No random numbers are drawn.
 // - slice_along(u, direction, width, log_density, log_density_at, uniform,
 //   exponential): one univariate slice update (Neal 2003: slice level, random
 //   placement of the initial interval, randomized division of a stepping-out
 //   budget of 10 widths, stepping out, shrinkage) of t -> pi(u + t direction).
-//   log_density is log pi(u); log_density_at(point) sets the caller's state to
-//   the point (in u) and returns log pi there (-Inf outside the support or when
-//   a coordinate does not back-transform); uniform() returns a uniform(0, 1)
-//   variate and exponential() an exponential(1) variate. Draws: one
-//   exponential, then one uniform for the placement, one for the division,
-//   and one per shrinkage step. On acceptance u holds the new point, the
-//   caller's state was last set to it, and the result carries log pi there;
-//   when the interval is exhausted in floating point, u is unchanged, the
-//   caller's state holds the last evaluated point, and the caller restores its
-//   entry state.
+//   Preconditions: log_density is log pi(u) and finite (a NaN exhausts the
+//   interval silently, -Inf accepts any finite point), width is positive and
+//   finite, and direction.size() == u.size(). log_density_at(point) sets the
+//   caller's model to the point (in u) when it is in the support and returns
+//   log pi there (-Inf outside the support or when a coordinate does not
+//   back-transform, possibly without setting the model); uniform() returns a
+//   uniform(0, 1) variate and exponential() an exponential(1) variate. Draws:
+//   one exponential, then one uniform for the placement, one for the division,
+//   and one per shrinkage step. On acceptance u holds the new point, the model
+//   was last set to it, and the returned log density can be reused as the
+//   current value of the next direction. When the interval is exhausted in
+//   floating point, u is unchanged, the model state is unspecified, and the
+//   caller restores its direction-entry snapshot before chaining another
+//   direction.
 // - Axes: the directions (columns of a d x d matrix) and widths of a block,
 //   identity axes and width 1 at the start. adapt(u_start, u) feeds the state
 //   after one update (u_start, the state before it, sets the running mean on
-//   the first call only): running mean and covariance with weight
-//   (n + 1)^-0.7, axes refreshed after 100 updates and then every 50 (cyclic
-//   Jacobi eigenvectors, width 2.5 sqrt(eigenvalue); the old axes stay when an
-//   eigenvalue is not positive and finite). Nothing changes between adapt()
-//   calls.
+//   the first call only) and returns true when the axes were due for a
+//   refresh: running mean and covariance with weight (n + 1)^-0.7, axes
+//   refreshed after 100 updates and then every 50 (cyclic Jacobi eigenvectors,
+//   width 2.5 sqrt(eigenvalue); the old axes stay when an eigenvalue is not
+//   positive and finite). Nothing changes between adapt() calls.
 
 #ifndef BAYESTOOLS_FACTOR_SLICE_KERNEL_H
 #define BAYESTOOLS_FACTOR_SLICE_KERNEL_H
@@ -51,37 +61,51 @@ namespace BayesTools {
   namespace factor_slice {
 
     // Randomized stepping-out limit (Neal 2003, section 4.1).
-    const unsigned int stepping_out_limit = 10;
+    constexpr unsigned int stepping_out_limit = 10;
     // Adaptation: the axes are first refreshed after this many adaptive updates
     // and then every refresh_interval updates.
-    const unsigned int first_refresh = 100;
-    const unsigned int refresh_interval = 50;
-    const double width_multiplier = 2.5;
+    constexpr unsigned int first_refresh = 100;
+    constexpr unsigned int refresh_interval = 50;
+    constexpr double width_multiplier = 2.5;
 
-    // log(b - a) for b > a, also when b - a overflows (a and b of opposite
-    // signs near the largest double).
+    // log(DBL_MAX) rounded down: the largest |u| whose exp(|u|) is finite.
+    // Within it the back-transforms are the original quotients; beyond it they
+    // returned the bound (every such proposal was rejected), and the distance
+    // from the nearer bound is computed on the log scale instead.
+    constexpr double exp_overflow_threshold = 709.782712893383973096;
+    constexpr double log_two = 0.693147180559945309417232121458176568;
+    // Largest change of the log full conditional allowed between the current
+    // value and the values of the neighbouring coordinates (resolvable()).
+    constexpr double resolvability_tolerance = 0.01;
+
+    // log(b - a) for b > a; log(b / 2 - a / 2) + log(2) only when b - a
+    // overflows (a and b of opposite signs near the largest double).
     inline double log_difference(double a, double b)
     {
       const double difference = b - a;
-      return std::isfinite(difference) ? std::log(difference) : std::log(0.5 * b - 0.5 * a) + std::log(2.0);
-    }
-
-    // bound + direction * exp(log_distance) for direction +1 or -1, also when
-    // the distance overflows but the value does not.
-    inline double from_bound(double bound, double direction, double log_distance)
-    {
-      const double distance = std::exp(log_distance);
-      if (std::isfinite(distance)) return bound + direction * distance;
-      return 2.0 * (0.5 * bound + direction * std::exp(log_distance - std::log(2.0)));
+      return std::isfinite(difference) ? std::log(difference) : std::log(0.5 * b - 0.5 * a) + log_two;
     }
 
     enum class Transform { identity, lower, interval, upper };
 
+    // Values that are not representable strictly inside the support are
+    // rejected by to_x(): a distance from the bound below half the spacing of
+    // the doubles there (also a subnormal distance rounded before it is added to
+    // the bound), or a value beyond the largest double (also a one-sided bound
+    // within a factor of two of the largest double, whose overflow route halves
+    // first). These are representability limits; a member whose posterior the
+    // coordinate cannot resolve stops the fit through resolvable().
     class Coordinate
     {
       Transform _transform;
       double _lower, _upper;
       double _log_span;  // log(upper - lower) with two finite bounds, else 0
+
+      static double spacing(double value)
+      {
+        const double magnitude = std::fabs(value);
+        return std::nextafter(magnitude, std::numeric_limits<double>::infinity()) - magnitude;
+      }
 
     public:
       Coordinate(double lower, double upper)
@@ -109,26 +133,55 @@ namespace BayesTools {
         }
       }
 
-      // Results that are not representable strictly inside the support (a
-      // distance below half the spacing of doubles at the bound rounds to the
-      // bound; a value beyond the largest double overflows) are rejected, as is
-      // any value on a bound.
+      // Absolute rounding error of to_u(x), about the spacing of the doubles at
+      // its largest log term; 0 for the identity.
+      double u_resolution(double x) const
+      {
+        switch (_transform) {
+        case Transform::lower: return spacing(log_difference(_lower, x));
+        case Transform::interval: {
+          const double from_lower = spacing(log_difference(_lower, x));
+          const double from_upper = spacing(log_difference(x, _upper));
+          return from_lower > from_upper ? from_lower : from_upper;
+        }
+        case Transform::upper: return spacing(log_difference(x, _upper));
+        default: return 0.0;
+        }
+      }
+
       bool to_x(double u, double *x) const
       {
         double out;
         switch (_transform) {
         case Transform::lower:
-          out = from_bound(_lower, 1.0, u);
+          out = u <= exp_overflow_threshold ? _lower + std::exp(u) :
+            2.0 * (0.5 * _lower + std::exp(u - log_two));
           break;
         case Transform::interval:
-          // distance (upper - lower) / (1 + exp(-u)) from the lower bound for
-          // u < 0, (upper - lower) / (1 + exp(u)) from the upper bound otherwise
-          out = u >= 0.0 ?
-            from_bound(_upper, -1.0, _log_span - u - std::log1p(std::exp(-u))) :
-            from_bound(_lower, 1.0, _log_span + u - std::log1p(std::exp(u)));
+          if (std::fabs(u) <= exp_overflow_threshold) {
+            const double span = _upper - _lower;
+            if (std::isfinite(span)) {
+              // the quotient (upper - lower) / (1 + exp(|u|)) from the nearer bound
+              out = u >= 0.0 ?
+                _upper - span / (1.0 + std::exp(u)) :
+                _lower + span / (1.0 + std::exp(-u));
+            } else {
+              // the same with half the span when the span overflows
+              const double half_span = 0.5 * _upper - 0.5 * _lower;
+              out = u >= 0.0 ?
+                2.0 * (0.5 * _upper - half_span / (1.0 + std::exp(u))) :
+                2.0 * (0.5 * _lower + half_span / (1.0 + std::exp(-u)));
+            }
+          } else {
+            // exp(|u|) overflows: the distance from the nearer bound on the log scale
+            out = u >= 0.0 ?
+              _upper - std::exp(_log_span - u - std::log1p(std::exp(-u))) :
+              _lower + std::exp(_log_span + u - std::log1p(std::exp(u)));
+          }
           break;
         case Transform::upper:
-          out = from_bound(_upper, -1.0, u);
+          out = u <= exp_overflow_threshold ? _upper - std::exp(u) :
+            2.0 * (0.5 * _upper - std::exp(u - log_two));
           break;
         default:
           out = u;
@@ -156,6 +209,39 @@ namespace BayesTools {
       double out = 0.0;
       for (std::size_t i = 0; i < coordinates.size(); ++i) out += coordinates[i].log_jacobian(u[i]);
       return out;
+    }
+
+    // The coordinate resolves the target at the member's native value x when
+    // the value survives the round trip x -> u -> x and the log full
+    // conditional at the round-tripped value, and at the values of the
+    // neighbouring coordinates (the adjacent doubles of u and u -/+ the rounding
+    // error of to_u), differs from its value at x by at most
+    // resolvability_tolerance: the points the sampler can reach are then closer
+    // than the scale on which the target changes. Otherwise the member's support
+    // bounds are too far from where its posterior concentrates for this
+    // coordinate (a representability limit, e.g. a standard normal truncated to
+    // (-5e14, 5e14) or bounded below by -1e16). An identity coordinate, or a
+    // state whose log full conditional is not finite (the sampler's own checks
+    // report that), is not judged. A current value whose u is not finite or that
+    // does not survive the round trip is not resolvable.
+    template <class LogDensityAtX>
+    inline bool resolvable(Coordinate const &coordinate, double x, LogDensityAtX &&log_density_at_x)
+    {
+      if (coordinate.transform() == Transform::identity) return true;
+      const double reference = log_density_at_x(x);
+      if (!std::isfinite(reference)) return true;
+      const double u = coordinate.to_u(x);
+      double value;
+      if (!std::isfinite(u) || !coordinate.to_x(u, &value)) return false;
+      if (!(std::fabs(log_density_at_x(value) - reference) <= resolvability_tolerance)) return false;
+      const double infinity = std::numeric_limits<double>::infinity();
+      const double step = coordinate.u_resolution(x);
+      const double neighbours[4] = { std::nextafter(u, -infinity), std::nextafter(u, infinity), u - step, u + step };
+      for (double neighbour : neighbours) {
+        if (coordinate.to_x(neighbour, &value) &&
+            !(std::fabs(log_density_at_x(value) - reference) <= resolvability_tolerance)) return false;
+      }
+      return true;
     }
 
     struct SliceResult
@@ -286,7 +372,7 @@ namespace BayesTools {
         return out;
       }
 
-      void adapt(std::vector<double> const &u_start, std::vector<double> const &u)
+      bool adapt(std::vector<double> const &u_start, std::vector<double> const &u)
       {
         if (!_mean_initialized) {
           _mean = u_start;
@@ -308,7 +394,11 @@ namespace BayesTools {
             _cov[j * _d + i] = value;
           }
         }
-        if (_n >= first_refresh && (_n - first_refresh) % refresh_interval == 0) refresh();
+        if (_n >= first_refresh && (_n - first_refresh) % refresh_interval == 0) {
+          refresh();
+          return true;
+        }
+        return false;
       }
     };
 

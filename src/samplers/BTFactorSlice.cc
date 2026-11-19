@@ -12,6 +12,7 @@
 #include <sampler/Sampler.h>
 
 #include <cmath>
+#include <exception>
 #include <limits>
 #include <map>
 #include <memory>
@@ -40,6 +41,7 @@ namespace jags {
         std::vector<kernel::Coordinate> _coordinates;
         kernel::Axes _axes;
         std::vector<double> _x;  // scratch
+        std::exception_ptr _deferred_error;  // a failure of the check at adaptOff()
 
         // log pi(x | rest) at the current node values: every member's full log
         // density (a member may be a stochastic child of another member) plus the
@@ -128,16 +130,61 @@ namespace jags {
           return out;
         }
 
+        // Stops the fit when a transformed member's coordinate cannot resolve its
+        // posterior at the current state (kernel::resolvable(): the coordinate
+        // reaches a value only to a relative precision of about |u| eps of its
+        // distance from the anchoring bound, so with bounds far from where the
+        // posterior concentrates the sampler would move on a grid coarser than
+        // the posterior, or not at all, and silently sample a wrong
+        // distribution). A representability limit of the sampler's scale, not a
+        // model error: the block must be declared without the member. Runs at
+        // construction, at every refresh of the axes and at the first
+        // adaptOff(); it draws no random numbers and restores the node values,
+        // so it changes no draw. A member on a bound is left to update().
+        void check_resolution(char const *site)
+        {
+          std::vector<StochasticNode *> const &nodes = _graph->nodes();
+          std::vector<double> x(_d);
+          _graph->getValue(x, _chain);
+          std::vector<double> trial(x);
+          for (unsigned int i = 0; i < _d; ++i) {
+            kernel::Coordinate const &coordinate = _coordinates[i];
+            if (coordinate.transform() == kernel::Transform::identity ||
+                !(x[i] > coordinate.lower() && x[i] < coordinate.upper())) continue;
+            bool ok;
+            try {
+              ok = kernel::resolvable(coordinate, x[i], [&](double value) {
+                trial[i] = value;
+                _graph->setValue(trial, _chain);
+                return log_full_conditional("a resolvability check");
+              });
+            }
+            catch (...) {
+              _graph->setValue(x, _chain);
+              throw;
+            }
+            trial[i] = x[i];
+            _graph->setValue(x, _chain);
+            if (!ok) {
+              throwNodeError(nodes[i], std::string(
+                "Factor slice sampler: the support bounds of this node are too far from where its posterior "
+                "concentrates for the sampler's scale (found at ") + site + "); declare the block without this node");
+            }
+          }
+        }
+
       public:
         FactorSlice(GraphView const *graph, unsigned int chain)
           : _graph(graph), _chain(chain), _d(graph->length()), _adapting(true),
             _coordinates(coordinates(graph, chain)), _axes(_d), _x(_d)
         {
           graph->checkFinite(chain);
+          check_resolution("the start of the fit");
         }
 
         void update(RNG *rng)
         {
+          if (_deferred_error) std::rethrow_exception(_deferred_error);
           std::vector<StochasticNode *> const &nodes = _graph->nodes();
           _graph->getValue(_x, _chain);
           std::vector<double> u(_d);
@@ -150,7 +197,7 @@ namespace jags {
           }
           const std::vector<double> u_start(u);
           for (unsigned int k = 0; k < _d; ++k) slice_along(k, u, rng);
-          if (_adapting) _axes.adapt(u_start, u);
+          if (_adapting && _axes.adapt(u_start, u)) check_resolution("a refresh of the axes during adaptation");
         }
 
         bool isAdaptive() const
@@ -158,9 +205,20 @@ namespace jags {
           return true;
         }
 
+        // JAGS calls adaptOff() repeatedly; the check runs at the first call. JAGS
+        // reports an exception thrown here only as a message (rjags' adapt()
+        // returns normally and the model is deleted), so a failure is raised at
+        // the next update() instead, before any retained draw.
         void adaptOff()
         {
+          if (!_adapting) return;
           _adapting = false;
+          try {
+            check_resolution("the end of adaptation");
+          }
+          catch (...) {
+            _deferred_error = std::current_exception();
+          }
         }
 
         // Correctness never depends on adaptation, but runjags' serial method runs
