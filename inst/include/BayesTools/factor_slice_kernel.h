@@ -18,17 +18,27 @@
 //   stops the fit at construction): such a member cannot be put on this scale.
 //   Precision limit: the sampler holds a bounded member through its distance
 //   from the anchoring bound (for an interval, the nearer bound; near the
-//   centre, the span), so it resolves the member to about 16 significant digits
-//   of that distance, as a double resolves a value to 16 digits of its
-//   magnitude. A posterior narrower than about 1e-13 of that distance is
-//   sampled on a visibly coarse grid, and beyond about 1e-15 the chain freezes;
-//   this is not detected. Measured on development (a standard normal between
-//   symmetric bounds, 10,000 draws): bounds at 1e13 give 1,969 distinct values
-//   with correct moments, 1e14 give 296 distinct values with moments within
-//   Monte Carlo error, 1e15 give 34 values and an SD 15% too small, 1e16 and
-//   beyond freeze. Such a bound has no influence on the posterior: drop it, or
-//   declare the block without the node. An additive constant so large that the
-//   log densities lose their differences breaks the slice arithmetic itself.
+//   centre, the span), so it resolves the member only relative to that
+//   distance: to about 16 significant digits of it near the centre of an
+//   interval and to about 14 to 15 for a one-sided bound or close to a bound
+//   (fewer as |log distance| grows), where a double resolves a value to 16
+//   digits of its magnitude. A posterior much narrower than that distance is
+//   sampled on a coarse grid, with wrong moments or a chain that can freeze;
+//   this is not detected. Measured on development (a standard normal, 10,000
+//   draws): symmetric bounds at 1e13 give 1,969 distinct values with correct
+//   moments, at 1e14 296 with moments within Monte Carlo error, at 1e15 34
+//   and an SD 15% too small, at 1e16 3 to 5 and an SD up to 60% too large
+//   (some chains freeze), at 1e17 a frozen chain; one bound at a distance of
+//   1e12 gives 1,416 distinct values, 1e13 188, 1e14 11, and 1e15 a frozen
+//   chain. For such a member, declare the block without the node; removing
+//   the bound instead is valid only when it excludes no posterior mass. An
+//   additive constant so large that the log densities lose their differences
+//   breaks the slice arithmetic itself.
+//   Far tail: beyond exp_overflow_threshold the back-transform of an interval
+//   reaches values at subnormal distances from a bound, as a one-sided member
+//   always could. A proposal there is evaluated, so a model whose density is
+//   not finite at such a value (a precision 1 / x that overflows, say) stops
+//   the fit with the caller's non-finite density error.
 // - slice_along(u, direction, width, log_density, log_density_at, uniform,
 //   exponential): one univariate slice update (Neal 2003: slice level, random
 //   placement of the initial interval, randomized division of a stepping-out
