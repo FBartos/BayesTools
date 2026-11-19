@@ -58,6 +58,7 @@ bayestools_test_profile_contexts <- list(
     "JAGS-regularized-bridge",
     "regularized-formula",
     "regularized-marginal",
+    "regularized-scale-integration",
     "JAGS-bridge-marginal-random",
     "JAGS-bridgesampling-wrapper",
     "JAGS-convergence",

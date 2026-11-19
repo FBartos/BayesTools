@@ -38,15 +38,9 @@
   prob <- rule$prob
   weight <- rule$weight
   spec <- prior$regularization
-  if(is.prior(spec$scale)){
-    global <- quant(spec$scale, prob)
-    w <- weight
-  }else{
-    global <- spec$scale
-    w <- 1
-  }
-  if(any(!is.finite(global) | global <= 0)) .regularized_numerical_unavailable("scale integral")
-  log_scale <- log(global)
+  global <- .regularized_global_scale_rule(spec$scale, panels, rule, 1)
+  log_scale <- log(global$tau)
+  log_weight <- global$log_weight
   if(variance){
     # c² = nu * slab_scale² / chi-square(nu)
     # Size-bias the slab by c^2: its finite second moment is the
@@ -60,9 +54,94 @@
     # E_lambda[sd² | tau,c] = c² * tau/(tau+c) under half-Cauchy(1).
     log_scale <- log(spec$slab_scale) + (log(spec$slab_df / df) +
       stats::plogis(a - b, log.p = TRUE)) / 2
-    w <- as.vector(outer(w, weight))
+    log_weight <- as.vector(outer(log_weight, log(weight), "+"))
   }
-  list(log_scale = log_scale + log(spec$multiplier), log_weight = log(w))
+  list(log_scale = log_scale + log(spec$multiplier), log_weight = log_weight)
+}
+
+# For a truncated law, adding a very small interior probability to the
+# base CDF at its truncation bound can round back to the bound. Integrate
+# its normalized density directly on positive scale coordinates. The
+# ordinary quartiles locate its mass; verify the integral on each piece
+# against its known probability before using the nodes in a scale mixture.
+.regularized_truncated_scale_rule <- function(prior, panels, power){
+
+  lower <- prior$truncation$lower
+  upper <- prior$truncation$upper
+  cuts <- c(lower, quant(prior, c(.25, .5, .75)), upper)
+  if(any(!is.finite(cuts[1:4])) || any(diff(cuts) <= 0)) .regularized_numerical_unavailable("scale integral")
+  density <- .prior_simple_lpdf_evaluator(prior, purpose = "natural_integral")
+  for(refinement in c(1L, 2L, 4L, 8L)){
+    rule <- .regularized_probability_rule(panels * refinement)
+    p <- rule$prob
+    pieces <- lapply(seq_len(4L), function(i){
+      a <- cuts[i]
+      b <- cuts[i + 1L]
+      if(is.infinite(b)){
+        # The unbounded quartile has stable *upper* base probabilities.
+        # Invert those directly to cover even very heavy polynomial tails.
+        log_tail <- .prior_simple_base_p(prior, a, lower.tail = FALSE, log.p = TRUE) +
+          power * log1p(-p)
+        tau <- .prior_simple_base_q(prior, log_tail, lower.tail = FALSE, log.p = TRUE)
+        if(any(!is.finite(tau) | tau <= a)) .regularized_numerical_unavailable("scale integral")
+        return(list(tau = tau, log_weight = log(rule$weight * power / 4) + (power - 1) * log1p(-p)))
+      }else if(a == 0){
+        tau <- b * p^power
+        log_jacobian <- log(b) + log(power) + (power - 1) * log(p)
+      }else{
+        tau <- a + (b - a) * p
+        log_jacobian <- log(b - a)
+      }
+      if(any(!is.finite(tau) | tau <= a | tau >= b)) .regularized_numerical_unavailable("scale integral")
+      list(tau = tau, log_weight = density(tau) + log(rule$weight) + log_jacobian)
+    })
+    log_prob <- vapply(pieces, function(piece) .regularized_log_sum(piece$log_weight), numeric(1))
+    if(all(is.finite(log_prob)) && max(abs(log_prob + log(4))) <= 1e-8){
+      return(list(tau = unlist(lapply(pieces, `[[`, "tau"), use.names = FALSE),
+                  log_weight = unlist(lapply(pieces, `[[`, "log_weight"), use.names = FALSE)))
+    }
+  }
+  .regularized_numerical_unavailable("scale normalization")
+}
+
+.regularized_global_scale_rule <- function(tau, panels, prob, global_power){
+
+  p <- prob$prob^global_power
+  if(!is.prior(tau)) return(list(tau = tau, log_weight = 0))
+  global_log_weight <- log(global_power * prob$weight) + (global_power - 1) * log(prob$prob)
+  # Inverting a symmetric untruncated CDF at (1+p)/2 rounds tiny
+  # probabilities onto zero. The positive-half quantiles avoid that loss.
+  half <- tau$truncation$lower == 0 && tau$truncation$upper == Inf
+  if(half && identical(tau$distribution, "t") && tau$parameters$location == 0){
+    df <- tau$parameters$df
+    tau <- tau$parameters$scale * if(df == 1){
+      slope <- tanpi(pmin(p, 1 - p) / 2)
+      ifelse(p <= .5, slope, 1 / slope)
+    }else{
+      # t^2/(nu+t^2) ~ Beta(1/2, nu/2). Invert the smaller probability
+      # and use the complementary Beta for the upper half. qf() may map
+      # the lower half back through 1-p and erase positive quantiles.
+      # Grade both tails: a large coefficient can depend on the
+      # upper end of the global-scale distribution. Keep its small
+      # upper-tail probability directly.
+      left <- prob$prob <= .5
+      interior <- 2 * pmin(prob$prob, 1 - prob$prob)
+      tail <- interior^global_power / 2
+      global_log_weight <- log(global_power * prob$weight) + (global_power - 1) * log(interior)
+      u <- numeric(length(p))
+      u[left] <- stats::qbeta(tail[left], .5, df / 2)
+      u[!left] <- stats::qbeta(tail[!left], df / 2, .5)
+      log_odds <- log(u) - log1p(-u)
+      log_odds[!left] <- -log_odds[!left]
+      exp((log(df) + log_odds) / 2)
+    }
+  }else if(half && identical(tau$distribution, "normal") && tau$parameters$mean == 0){
+    tau <- tau$parameters$sd * sqrt(stats::qchisq(p, 1))
+  }else if(!.is_prior_default_range(tau)){
+    return(.regularized_truncated_scale_rule(tau, panels, global_power))
+  }else tau <- quant(tau, p)
+  if(any(!is.finite(tau) | tau <= 0)) .regularized_numerical_unavailable("scale integral")
+  list(tau = tau, log_weight = global_log_weight)
 }
 
 # Craig's angular representation of the Normal upper tail, integrated
@@ -76,32 +155,15 @@
 
   prob <- .regularized_probability_rule(panels)
   spec <- prior$regularization
-  global_power <- if(near_pole) 6 else 2
+  global <- .regularized_global_scale_rule(spec$scale, panels, prob, if(near_pole) 6 else 2)
   angular_power <- if(near_pole) 6 else 3
-  p <- prob$prob^global_power
-  tau <- spec$scale
-  if(is.prior(tau)){
-    # Inverting a symmetric untruncated CDF at (1+p)/2 rounds tiny
-    # probabilities onto zero. The positive-half quantiles avoid that loss.
-    half <- tau$truncation$lower == 0 && tau$truncation$upper == Inf
-    if(half && identical(tau$distribution, "t") && tau$parameters$location == 0){
-      df <- tau$parameters$df
-      tau <- tau$parameters$scale * if(df == 1){
-        slope <- tanpi(pmin(p, 1 - p) / 2)
-        ifelse(p <= .5, slope, 1 / slope)
-      }else sqrt(stats::qf(p, 1, df))
-    }else if(half && identical(tau$distribution, "normal") && tau$parameters$mean == 0){
-      tau <- tau$parameters$sd * sqrt(stats::qchisq(p, 1))
-    }else tau <- quant(tau, p)
-  }
-  if(any(!is.finite(tau) | tau <= 0)) .regularized_numerical_unavailable("scale integral")
   # The derivative is concentrated near theta=0 for coefficients close
   # to the horseshoe pole. Cluster angular nodes there with theta=(pi/2)*p^3.
   log_angle <- -log(sinpi(prob$prob^angular_power / 2)) - log(2) / 2 - log(spec$multiplier)
-  global_weight <- if(is.prior(spec$scale)) global_power * prob$prob^(global_power - 1) * prob$weight else 1
-  list(log_r = as.vector(outer(log_angle, log(tau), "-")),
+  angle_log_weight <- log(angular_power / 2 * prob$weight) + (angular_power - 1) * log(prob$prob)
+  list(log_r = as.vector(outer(log_angle, log(global$tau), "-")),
        log_a = log_angle,
-       log_w = log(as.vector(outer(angular_power / 2 * prob$weight * prob$prob^(angular_power - 1), global_weight))))
+       log_w = as.vector(outer(angle_log_weight, global$log_weight, "+")))
 }
 
 .regularized_horseshoe_log_value <- function(log_x, spec, rule, density){
