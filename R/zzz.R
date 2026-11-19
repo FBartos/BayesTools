@@ -23,6 +23,10 @@
 
 .onUnload <- function(libpath){
 
+  # Finalize unreferenced rjags models first: their samplers run code of this
+  # DLL and must not outlive it.
+  gc()
+
   if(requireNamespace("rjags", quietly = TRUE)){
     tryCatch(
       {

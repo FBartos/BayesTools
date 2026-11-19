@@ -127,6 +127,39 @@
 #'   output. This setting is call-specific and is not retained with the fit;
 #'   supply it again to \code{JAGS_extend()} when needed. Connection failures stop
 #'   automatic fitting retries and preserve the original backend error.
+#' @param sampler_gates whether the branch parameters of a publication-bias
+#'   mixture prior (a [prior_mixture()] of [prior_none()], [prior_PET()],
+#'   [prior_PEESE()], [prior_weightfunction()], [prior_phacking()], and
+#'   [prior_bias()] branches) are declared to the gated sampler of the
+#'   BayesTools JAGS module: while its branch is not selected, a parameter is
+#'   drawn directly from its prior instead of by slice sampling. A branch whose
+#'   nodes the model uses outside the mixture composition (in
+#'   \code{model_syntax}, another prior, or a formula) is not gated. Defaults to
+#'   \code{FALSE}.
+#' @param sampler_blocks optional list of character vectors of names of the
+#'   combined prior list (\code{prior_list} and the formula priors). The scalar
+#'   parameters of the priors of one vector are updated jointly by the factor
+#'   slice sampler of the BayesTools JAGS module, which slice-samples along the
+#'   principal directions of their posterior covariance learned during
+#'   adaptation. A block may contain simple continuous scalar priors, treatment
+#'   and independent factor priors, a single weight function, PET and PEESE
+#'   priors, and the allocation SD and Dirichlet allocation weights of a
+#'   random-effect variance allocation; a prior may be in one block only. A
+#'   block that expands to fewer than two parameters is not declared and is
+#'   recorded as declined. \code{sampler_blocks} may also be a function of one
+#'   argument, the combined prior list (formula priors under their final names
+#'   and with their attributes), called once by \code{JAGS_fit()}, that returns
+#'   \code{NULL} or such a list. Defaults to \code{NULL}.
+#'   Neither \code{sampler_gates} nor \code{sampler_blocks} changes the model or
+#'   its posterior distribution, only the draws. Invalid declarations stop with
+#'   an error of class \code{BayesTools_sampler_declaration_error}. The
+#'   declarations are stored in \code{attr(fit, "sampler_declarations")}, which
+#'   \code{JAGS_extend()} keeps: a list of the data frames \code{gates},
+#'   \code{blocks} and \code{declined} (one row per declined gate branch or
+#'   block, with its \code{kind}, \code{prior}, \code{branch} or \code{block},
+#'   \code{nodes} and \code{reason}). A density that cannot be calculated (NaN)
+#'   at a point the factor slice sampler evaluates stops the fit with a JAGS
+#'   error, as with the stock samplers.
 #' @param add_parameters vector of additional parameter names that should be
 #' monitored but were not specified in the \code{prior_list}. Automatic fitting
 #' checks their convergence like that of the other parameters. Fully observed
@@ -378,7 +411,8 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
                      parallel = FALSE, cores = chains, silent = TRUE, seed = NULL,
                      add_parameters = NULL, required_packages = NULL,
                      formula_random_prior_list = NULL, formula_random_effects_compile_list = NULL,
-                     jags_modules = NULL, runtime_setup = NULL, runtime_cache = NULL, worker_output = NULL, ...){
+                     jags_modules = NULL, runtime_setup = NULL, runtime_cache = NULL, worker_output = NULL,
+                     sampler_gates = FALSE, sampler_blocks = NULL, ...){
 
   .check_runjags()
   # A seeded fit leaves the caller's random-number state as it found it.
@@ -398,6 +432,7 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
   check_char(jags_modules, "jags_modules", check_length = 0, allow_NULL = TRUE, allow_NA = FALSE)
   .JAGS_validate_runtime_setup(runtime_setup)
   .JAGS_validate_runtime_cache(runtime_cache)
+  .bt_check_sampler_declaration_arguments(sampler_gates, sampler_blocks)
   check_list(formula_list, "formula_list", allow_NULL = TRUE)
   check_list(formula_data_list, "formula_data_list", allow_NULL = is.null(formula_list))
   check_list(formula_prior_list, "formula_prior_list", allow_NULL = is.null(formula_list))
@@ -579,10 +614,26 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
     )
   }
 
+  # Sampler declarations: marker nodes in the final model text and their data.
+  # The markers are known only here, so the module requirement is added before
+  # packages and modules are loaded (workers included).
+  sampler_declarations <- .bt_sampler_declarations(
+    model_text = JAGS_add_priors(syntax = model_syntax, prior_list = prior_list),
+    data = data,
+    prior_list = prior_list,
+    add_parameters = add_parameters,
+    sampler_gates = sampler_gates,
+    sampler_blocks = sampler_blocks
+  )
+  if(sampler_declarations$uses_module){
+    jags_modules <- unique(c(jags_modules, "BayesTools"))
+    required_packages <- unique(c(required_packages, "BayesTools"))
+  }
+
   ### create the model call
   model_call <- list(
-    model     = JAGS_add_priors(syntax = model_syntax, prior_list = prior_list),
-    data      = data,
+    model     = sampler_declarations$model,
+    data      = sampler_declarations$data,
     inits     = .JAGS_fit_inits(prior_list, chains = chains, seed = seed),
     monitor   = backend_monitor$monitor,
     n.chains  = chains,
@@ -855,6 +906,7 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
   attr(fit, "jags_modules") <- jags_modules
   attr(fit, "runtime_setup") <- runtime_setup
   attr(fit, "backend_anchor") <- backend_anchor
+  attr(fit, "sampler_declarations") <- sampler_declarations$declarations
   if(!inherits(fit, "error")){
     attr(fit, "adaptation") <- adaptation
     fit <- .bt_append_fit_warnings(fit, c(restart_warnings, adaptation_warnings))
@@ -1098,6 +1150,7 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
   fit <- .bt_fit_without_live_model(fit)
   fitted_parameter_map <- attr(fit, "parameter_map", exact = TRUE)
   backend_anchor     <- attr(fit, "backend_anchor", exact = TRUE)
+  sampler_declarations <- attr(fit, "sampler_declarations", exact = TRUE)
   formula_design     <- attr(fit, "formula_design", exact = TRUE)
 
   coordinates <- .bt_require_fit_contract(fit)
@@ -1290,6 +1343,7 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
   attr(fit, "jags_modules") <- jags_modules
   attr(fit, "runtime_setup") <- runtime_setup
   attr(fit, "backend_anchor") <- backend_anchor
+  attr(fit, "sampler_declarations") <- sampler_declarations
   if(!is.null(formula_scale)){
     attr(fit, "formula_scale") <- formula_scale
   }

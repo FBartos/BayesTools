@@ -65,6 +65,7 @@ bayestools_test_profile_contexts <- list(
     "JAGS-draws-view",
     "JAGS-fit-contract",
     "JAGS-fit-settings",
+    "JAGS-sampler-declarations",
     "JAGS-formula-coefficient-density",
     "JAGS-formula-coefficient-arithmetic",
     "JAGS-formula-contrasts",

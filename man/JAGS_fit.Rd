@@ -35,6 +35,8 @@ JAGS_fit(
   runtime_setup = NULL,
   runtime_cache = NULL,
   worker_output = NULL,
+  sampler_gates = FALSE,
+  sampler_blocks = NULL,
   ...
 )
 
@@ -266,6 +268,41 @@ can interleave. \code{NULL} retains the backend default of discarding worker
 output. This setting is call-specific and is not retained with the fit;
 supply it again to \code{JAGS_extend()} when needed. Connection failures stop
 automatic fitting retries and preserve the original backend error.}
+
+\item{sampler_gates}{whether the branch parameters of a publication-bias
+mixture prior (a \code{\link[=prior_mixture]{prior_mixture()}} of \code{\link[=prior_none]{prior_none()}}, \code{\link[=prior_PET]{prior_PET()}},
+\code{\link[=prior_PEESE]{prior_PEESE()}}, \code{\link[=prior_weightfunction]{prior_weightfunction()}}, \code{\link[=prior_phacking]{prior_phacking()}}, and
+\code{\link[=prior_bias]{prior_bias()}} branches) are declared to the gated sampler of the
+BayesTools JAGS module: while its branch is not selected, a parameter is
+drawn directly from its prior instead of by slice sampling. A branch whose
+nodes the model uses outside the mixture composition (in
+\code{model_syntax}, another prior, or a formula) is not gated. Defaults to
+\code{FALSE}.}
+
+\item{sampler_blocks}{optional list of character vectors of names of the
+combined prior list (\code{prior_list} and the formula priors). The scalar
+parameters of the priors of one vector are updated jointly by the factor
+slice sampler of the BayesTools JAGS module, which slice-samples along the
+principal directions of their posterior covariance learned during
+adaptation. A block may contain simple continuous scalar priors, treatment
+and independent factor priors, a single weight function, PET and PEESE
+priors, and the allocation SD and Dirichlet allocation weights of a
+random-effect variance allocation; a prior may be in one block only. A
+block that expands to fewer than two parameters is not declared and is
+recorded as declined. \code{sampler_blocks} may also be a function of one
+argument, the combined prior list (formula priors under their final names
+and with their attributes), called once by \code{JAGS_fit()}, that returns
+\code{NULL} or such a list. Defaults to \code{NULL}.
+Neither \code{sampler_gates} nor \code{sampler_blocks} changes the model or
+its posterior distribution, only the draws. Invalid declarations stop with
+an error of class \code{BayesTools_sampler_declaration_error}. The
+declarations are stored in \code{attr(fit, "sampler_declarations")}, which
+\code{JAGS_extend()} keeps: a list of the data frames \code{gates},
+\code{blocks} and \code{declined} (one row per declined gate branch or
+block, with its \code{kind}, \code{prior}, \code{branch} or \code{block},
+\code{nodes} and \code{reason}). A density that cannot be calculated (NaN)
+at a point the factor slice sampler evaluates stops the fit with a JAGS
+error, as with the stock samplers.}
 
 \item{...}{additional hidden arguments}
 

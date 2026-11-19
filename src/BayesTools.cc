@@ -5,6 +5,9 @@
 #include "distributions/DBTMoment.h"
 #include "distributions/DBTInvMoment.h"
 #include "functions/BTLKJCholesky.h"
+#include "distributions/DBTSamplerMarker.h"
+#include "samplers/BTGatedSlice.h"
+#include "samplers/BTFactorSlice.h"
 
 namespace jags {
   namespace BayesTools {
@@ -25,6 +28,14 @@ namespace jags {
       insert(new BTLKJCholesky);
       insert(new BTLKJCholeskyOrdered);
       insert(new BTLKJCorr);
+      insert(new DBTSamplerMarker(gate_marker_name));
+      insert(new DBTSamplerMarker(block_marker_name));
+      // Process-lifetime sampler factories that this destructor never deletes.
+      // JAGS tries a factory inserted later first, so the block factory is tried
+      // before the gated one; a gated node stays out of blocks because the block
+      // factory skips every node with a gate marker.
+      insert(gated_slice_factory());
+      insert(factor_slice_factory());
     }
 
     BayesToolsModule::~BayesToolsModule()

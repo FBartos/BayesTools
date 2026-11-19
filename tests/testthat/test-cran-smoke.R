@@ -36,7 +36,9 @@ test_that("the JAGS module compiles, samples, and bridges a minimal model", {
   skip_if_not_installed("bridgesampling")
   expect_true(isTRUE(BayesTools_load_JAGS_module(quiet = TRUE, warn = TRUE)))
 
-  # the priors and the LKJ block use every distribution and function of the module
+  # the priors, the LKJ block, a gate on z (closed: z is drawn from its prior),
+  # and a block of theta and phi use every distribution, function, and sampler
+  # of the module
   prior_list <- list(
     theta = prior("moment", list(mode = .5)),
     phi   = prior("invmoment", list(mode = .5, df = 6)),
@@ -44,16 +46,18 @@ test_that("the JAGS module compiles, samples, and bridges a minimal model", {
   )
   lkj <- JAGS_lkj_corr_cholesky("Omega", K = 3, eta = 1, include_correlation = TRUE)
   ordered <- "Omega_L_ordered[1:9] <- bt_lkj_cholesky_ordered(Omega_lkj_u[1:3], 3, position[1:3])"
+  gate <- "z ~ dnorm(0, 1)\ngate_marker ~ dbt_gate(z, 0)"
 
   fit <- suppressWarnings(JAGS_fit(
-    model_syntax   = paste0("model{\n", lkj$syntax, ordered, "\n}"),
-    data           = list(position = c(3, 1, 2)),
+    model_syntax   = paste0("model{\n", lkj$syntax, ordered, "\n", gate, "\n}"),
+    data           = list(position = c(3, 1, 2), gate_marker = 0),
     prior_list     = prior_list,
     add_parameters = c(lkj$monitor, "Omega_lkj_u", "Omega_L_ordered"),
     chains = 1, adapt = 100, burnin = 100, sample = 500,
-    silent = TRUE, seed = 1
+    silent = TRUE, seed = 1, sampler_blocks = list(c("theta", "phi"))
   ))
   expect_s3_class(fit, "BayesTools_fit")
+  expect_identical(attr(fit, "sampler_declarations")$blocks$node, c("theta", "phi"))
   expect_true("BayesTools" %in% attr(fit, "jags_modules"))
   samples <- as.matrix(fit$mcmc)
   expect_true(all(c("theta", "phi", "sigma") %in% colnames(samples)))

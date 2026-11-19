@@ -523,13 +523,9 @@ JAGS_add_priors           <- function(syntax, prior_list){
     if(any(is_PET)){
       if(sum(is_PET) > 1) stop("Only one PET style publication bias adjustment is allowed.")
 
-      named_prior_PET <- prior_list[[which(is_PET)]]
-      class(named_prior_PET) <- class(named_prior_PET)[!class(named_prior_PET) %in% "prior.PET"]
-      named_prior_PET <- list("PET_1" = named_prior_PET)
-
       syntax <- paste0(
         syntax,
-        .JAGS_add_priors.fun(named_prior_PET),
+        .JAGS_prior.bias_term_source(prior_list, "PET"),
         " ", .bt_deterministic_node_emit(
           .bt_dnode_prior_mixture_bias_term(parameter_name, prior_list, "PET")
         ), "\n"
@@ -538,13 +534,9 @@ JAGS_add_priors           <- function(syntax, prior_list){
     if(any(is_PEESE)){
       if(sum(is_PEESE) > 1) stop("Only one PEESE style publication bias adjustment is allowed.")
 
-      named_prior_PEESE <- prior_list[[which(is_PEESE)]]
-      class(named_prior_PEESE) <- class(named_prior_PEESE)[!class(named_prior_PEESE) %in% "prior.PEESE"]
-      named_prior_PEESE <- list("PEESE_1" = named_prior_PEESE)
-
       syntax <- paste0(
         syntax,
-        .JAGS_add_priors.fun(named_prior_PEESE),
+        .JAGS_prior.bias_term_source(prior_list, "PEESE"),
         " ", .bt_deterministic_node_emit(
           .bt_dnode_prior_mixture_bias_term(parameter_name, prior_list, "PEESE")
         ), "\n"
@@ -571,6 +563,19 @@ JAGS_add_priors           <- function(syntax, prior_list){
   }
 
   return(syntax)
+}
+
+# The prior statement of the PET or PEESE term of a publication-bias mixture,
+# written for its source node ('PET_1', 'PEESE_1'; see
+# .bt_dnode_prior_mixture_bias_term()).
+.JAGS_prior.bias_term_source <- function(prior_list, term){
+
+  is_term <- sapply(prior_list, if(identical(term, "PET")) is.prior.PET else is.prior.PEESE)
+  named_prior <- prior_list[[which(is_term)]]
+  class(named_prior) <- class(named_prior)[!class(named_prior) %in% paste0("prior.", term)]
+  named_prior <- stats::setNames(list(named_prior), paste0(term, "_1"))
+
+  .JAGS_add_priors.fun(named_prior)
 }
 
 
