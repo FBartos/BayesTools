@@ -505,6 +505,8 @@ is.prior.mixture         <- function(x){
   if(!is.prior.orthonormal(prior) && !is.prior.meandif(prior)){
     return(invisible(TRUE))
   }
+  # Every regularized factor kernel is centered at zero by construction.
+  if(inherits(prior, "prior.regularized_term")) return(invisible(TRUE))
 
   center_name <- switch(
     prior[["distribution"]],

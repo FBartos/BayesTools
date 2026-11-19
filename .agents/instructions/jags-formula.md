@@ -15,8 +15,12 @@ JAGS formula binding refuses with the ordered-unavailable condition family.
 Supported mixture or spike-and-slab behavior belongs on the ordered total.
 
 Named `prior_regularized()` groups claim fixed-effect terms before formula
-defaults. Binding uses the fitted design for factor dimensions and one local
-horseshoe scale per fitted coefficient. Keep the shared global and slab nodes
+defaults. Binding uses the fitted factor coding: treatment and independent
+coordinates have separate local scales, while mean-difference and orthonormal
+coordinates form an exchangeable unit per partner column. Use the same unit
+map as random factors. Each centered unit of dimension `d` has one horseshoe
+local scale or one group-lasso variance `W ~ Gamma((d+1)/2, rate=1/2)`.
+The supplied scale is in the fitted contrast coordinates. Keep the shared global and slab nodes
 once per group, including when a term belongs to a product-space mixture.
 The coefficient is sampled in its fitted units. Bridge sampling uses the
 normalized conditional coefficient density and each primitive prior once.

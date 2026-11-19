@@ -11,10 +11,12 @@
     for(term in intersect(labels, model_terms[model_terms_type == "factor"])){
       p <- prior_list[[term]]
       declaration <- attr(p, "regularized_spec", exact = TRUE)
-      if(!is.null(declaration$contrast) && !is.prior.factor(p)){
-        prior_list[[term]] <- prior_factor(p$distribution, p$parameters, truncation = p$truncation,
-          prior_weights = .prior_model_weight(p), contrast = declaration$contrast)
-      }
+      if(is.null(declaration) || is.prior.factor(p)) next
+      contrast <- declaration$contrast
+      if(is.null(contrast)) contrast <- attr(p, "regularized_contrast", exact = TRUE)
+      if(is.null(contrast)) contrast <- "treatment"
+      prior_list[[term]] <- .bt_regularized_term_prior(declaration, term, term, TRUE,
+        contrast, multiplier = 1, prior_weights = .prior_model_weight(p))
     }
     scalar_groups <- !labels %in% c(model_terms, .JAGS_formula_default_prior_names()) &
       vapply(prior_list, function(p) !is.null(attr(p, "regularized_spec", exact = TRUE)), logical(1))
@@ -67,35 +69,40 @@
     contrast <- spec$contrast
     if(is.null(contrast)) contrast <- attr(groups[[group]], "regularized_contrast", exact = TRUE)
     if(is.null(contrast)) contrast <- "treatment"
-    fixed <- is.numeric(spec$scale) && spec$family %in% c("ridge", "lasso")
     for(term in members[[group]]){
       factor_term <- identical(model_terms_type[[term]], "factor")
-      if(factor_term && !contrast %in% c("treatment", "independent") &&
-         !(fixed && identical(spec$family, "ridge") && contrast %in% c("meandif", "orthonormal"))){
-        stop("Regularized factor term '", term, "' requires treatment or independent contrasts.",
-             call. = FALSE)
-      }
-      if(fixed){
-        law <- if(identical(spec$family, "ridge")) "normal" else "laplace"
-        if(factor_term && contrast %in% c("meandif", "orthonormal")) law <- "mnormal"
-        par <- list(0, spec$scale * multiplier)
-        p <- if(factor_term) prior_factor(law, par, contrast = contrast) else prior(law, par)
-      }else{
-        p <- list(
-          distribution = "regularized", parameters = list(),
-          truncation = list(lower = -Inf, upper = Inf), prior_weights = 1,
-          regularization = list(
-            group = group, term = term, family = spec$family, scale = spec$scale,
-            slab_scale = spec$slab_scale, slab_df = spec$slab_df, multiplier = multiplier
-          )
-        )
-        class(p) <- c("prior", "prior.regularized_term", "prior.simple",
-                      if(factor_term) c("prior.factor", paste0("prior.", contrast)))
-      }
-      prior_list[[term]] <- p
+      prior_list[[term]] <- .bt_regularized_term_prior(spec, group, term, factor_term, contrast, multiplier)
     }
   }
   prior_list
+}
+
+.bt_regularized_term_prior <- function(spec, group, term, factor_term, contrast, multiplier, prior_weights = 1){
+
+  centered <- factor_term && contrast %in% c("meandif", "orthonormal")
+  # In an interaction the main-effect priors can supply a different basis
+  # for each factor; only the fitted design can identify its lasso units.
+  needs_lasso_units <- identical(spec$family, "lasso") && factor_term &&
+    (centered || grepl(":", term, fixed = TRUE))
+  if(is.numeric(spec$scale) && spec$family %in% c("ridge", "lasso") && !needs_lasso_units){
+    law <- if(spec$family == "lasso") "laplace" else if(centered) "mnormal" else "normal"
+    parameters <- list(0, spec$scale * multiplier)
+    if(!factor_term) return(prior(law, parameters, prior_weights = prior_weights))
+    p <- prior_factor(law, parameters, contrast = contrast, prior_weights = prior_weights)
+    if(centered && grepl(":", term, fixed = TRUE)) attr(p, "regularized_spec") <- spec
+    return(p)
+  }
+  p <- list(
+    distribution = "regularized", parameters = list(),
+    truncation = list(lower = -Inf, upper = Inf), prior_weights = prior_weights,
+    regularization = list(
+      group = group, term = term, family = spec$family, scale = spec$scale,
+      slab_scale = spec$slab_scale, slab_df = spec$slab_df, multiplier = multiplier
+    )
+  )
+  class(p) <- c("prior", "prior.regularized_term", "prior.simple",
+                if(factor_term) c("prior.factor", paste0("prior.", contrast)))
+  p
 }
 
 # Rebind from the fitted design, including groups inside ordinary mixtures.
@@ -111,13 +118,26 @@
     }
     if(!inherits(prior, "prior.regularized_term")) return(prior)
     spec <- prior$regularization
-    if(is.prior.factor(prior) && any(!attr(prior, "factor_contrasts", exact = TRUE) %in%
-                                     c("contr.treatment", "contr.independent"))){
-      stop("Regularized term '", spec$term,
-           "' uses a fitted factor basis other than treatment or independent contrasts.", call. = FALSE)
-    }
     if(!identical(gsub(":", "__xXx__", spec$term, fixed = TRUE), term)){
       stop("The regularization declaration for '", spec$term, "' cannot be bound to '", term, "'.", call. = FALSE)
+    }
+    d <- if(is.prior.factor(prior)) .get_prior_factor_levels(prior) else 1L
+    spec$dimension <- d
+    units <- NULL
+    if(is.prior.factor(prior)){
+      design <- .factor_term_design_from_metadata(prior)
+      design$factor_contrasts <- attr(prior, "factor_contrasts", exact = TRUE)
+      units <- .bt_factor_exchangeable_units(term, seq_len(d), design)
+    }
+    if(is.null(units) && is.numeric(spec$scale) && identical(spec$family, "lasso") &&
+       (is.prior.treatment(prior) || is.prior.independent(prior))){
+      # A fixed lasso interaction without any centered constituent is the
+      # ordinary product Laplace factor, with no extra scale coordinates.
+      prior$distribution <- "laplace"
+      prior$parameters <- list(location = 0, scale = spec$scale * spec$multiplier)
+      prior$regularization <- NULL
+      class(prior) <- setdiff(class(prior), "prior.regularized_term")
+      return(prior)
     }
     group <- spec$group
     record <- groups[[group]]
@@ -127,14 +147,22 @@
     }
     groups[[group]] <<- list(definition = definition, terms = c(record$terms, term))
     stem <- paste(parameter, group, sep = "_")
-    d <- if(is.prior.factor(prior)) .get_prior_factor_levels(prior) else 1L
-    spec$dimension <- d
     spec$owner <- is.null(record)
     spec$global_name <- if(!is.numeric(spec$scale)) paste0(stem, "_global")
     spec$slab_name <- if(!is.null(spec$slab_scale) && is.finite(spec$slab_scale)) paste0(stem, "_slab2")
     spec$local_names <- if(identical(spec$family, "horseshoe")){
-      paste0(parameter, "_", term, "_local_", seq_len(d))
+      paste0(parameter, "_", term, "_local_", seq_len(if(is.null(units)) d else length(units)))
     }else character()
+    # Ordinary coordinates have their own local scales (the original fitted
+    # declaration). Store the unit map only for actual centered blocks.
+    spec[c("unit_index", "unit_dimension", "unit_centered", "variance_names")] <- NULL
+    if(!is.null(units)){
+      spec$unit_dimension <- vapply(units, function(unit) length(unit$columns), integer(1))
+      spec$unit_index <- integer(d)
+      for(i in seq_along(units)) spec$unit_index[units[[i]]$columns] <- i
+      spec$unit_centered <- rep(TRUE, length(units))
+      if(identical(spec$family, "lasso")) spec$variance_names <- paste0(parameter, "_", term, "_variance_", seq_along(units))
+    }
     prior$regularization <- spec
     prior
   }
@@ -165,6 +193,11 @@
   if(length(spec$local_names)){
     local <- prior("cauchy", list(0, 1), truncation = list(lower = 0))
     primitives[spec$local_names] <- rep(list(local), length(spec$local_names))
+  }
+  if(length(spec$variance_names)){
+    primitives[spec$variance_names] <- lapply(spec$unit_dimension, function(d){
+      prior("gamma", list(shape = (d + 1) / 2, rate = 0.5))
+    })
   }
   primitives
 }
@@ -245,8 +278,11 @@
   coefficient <- if(is.prior.factor(prior)) paste0(name, "[", seq_len(spec$dimension), "]") else name
   log_scale <- paste0("log(", global, ")")
   if(spec$multiplier != 1) log_scale <- paste0("log(", scalar(spec$multiplier), ") + ", log_scale)
-  if(length(spec$local_names)) log_scale <- paste0(log_scale, " + log(", spec$local_names, ")")
-  if(identical(spec$family, "lasso")){
+  unit_index <- spec$unit_index
+  if(is.null(unit_index)) unit_index <- seq_len(spec$dimension)
+  if(length(spec$local_names)) log_scale <- paste0(log_scale, " + log(", spec$local_names[unit_index], ")")
+  if(length(spec$variance_names)) log_scale <- paste0(log_scale, " + 0.5 * log(", spec$variance_names[unit_index], ")")
+  if(identical(spec$family, "lasso") && !length(spec$variance_names)){
     law <- paste0("ddexp(0, exp(-(", log_scale, ")))")
   }else{
     precision <- paste0("exp(-2 * (", log_scale, "))")
