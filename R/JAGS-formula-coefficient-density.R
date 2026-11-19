@@ -2028,14 +2028,17 @@ JAGS_formula_prior_density <- function(
     positive <- which(vapply(state$models, function(record) is.finite(record$prior_log_probability), logical(1)))
     probabilities <- vapply(state$models[positive], `[[`, numeric(1), "prior_probability")
     probabilities <- probabilities / sum(probabilities)
-    dx <- min(vapply(laws[positive], function(law){
-      if(!is.null(law$density) && length(law$density$x) > 1L) diff(law$density$x)[[1L]] else Inf
-    }, numeric(1)))
-    if(!is.finite(dx)) dx <- NA_real_
-    law <- if(length(positive) == 1L) laws[[positive]] else
-      .prior_linear_density_mix(laws[positive], probabilities, dx = dx, n_grid = n_grid)
-    if(length(positive) > 1L) attr(law, "adaptive_evaluation") <- list(kind = "density_mixture",
-      arguments = list(dists = laws[positive], weights = probabilities, n_grid = n_grid))
+    if(length(positive) == 1L){
+      law <- laws[[positive]]
+    }else{
+      dx <- min(vapply(laws[positive], function(law){
+        if(!is.null(law$density) && length(law$density$x) > 1L) diff(law$density$x)[[1L]] else Inf
+      }, numeric(1)))
+      if(!is.finite(dx)) dx <- NA_real_
+      law <- .prior_linear_density_mix(laws[positive], probabilities, dx = dx, n_grid = n_grid)
+      attr(law, "adaptive_evaluation") <- list(kind = "density_mixture",
+        arguments = list(dists = laws[positive], weights = probabilities, n_grid = n_grid))
+    }
     marginal <- .bt_meta_set(marginal, "prior_density", law)
   }else if(!prior_available) marginal <- .bt_formula_measure_mark(marginal, column, "prior_density", prior_reason, cause = prior_cause, diagnostics = prior_diagnostics)
   if(atoms_available){

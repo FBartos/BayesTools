@@ -1,5 +1,20 @@
 skip_if_not_test_profile("unit")
 
+test_that("a single-model transformed prior keeps its deferred grid", {
+  compiled <- JAGS_formula(~ 0 + x, "mu", data.frame(x = c(1, 2, 3)),
+    list(pool = prior_regularized("horseshoe", scale = .3, slab_scale = 1)), formula_scale = TRUE)
+  draws <- .generate_prior_sample_matrix(compiled$prior_list, 12L, seed = 34)
+  fit <- .parameter_catalog_test_fit(coda::mcmc.list(coda::mcmc(draws)), compiled$prior_list,
+    list(mu = compiled$formula_design), list(mu = compiled$formula_scale))
+  testthat::local_mocked_bindings(
+    .prior_linear_combination_grid = function(...) stop("Unexpected display-grid allocation."),
+    .package = "BayesTools")
+  mixed <- as_mixed_posteriors(fit, "mu_x", transform_scaled = TRUE, n_prior_samples = 30L)
+  density <- posterior_metadata(mixed, "prior_densities")[["mu_x"]]
+  expect_true(.prior_linear_density_is_deferred(density))
+  expect_identical(prior_density_ordinate(density, 0)$behavior, "infinite")
+})
+
 test_that("dependency-only expression points retain the existing fresh-sampling refusal", {
   info <- JAGS_formula(~x, "mu", data.frame(x = c(10, 20, 30)),
     list(intercept = prior("normal", list(0, 1)), x = prior("point", list(location = expression(2 * mu_intercept)))), formula_scale = TRUE)
