@@ -4194,6 +4194,27 @@
   refined
 }
 
+# A scalar regularized coefficient already defines the ordinates to draw.
+# Use the deferred grid's own tail probability for its display limits; reading
+# density$x just for its range would evaluate every fine-grid ordinate.
+.prior_regularized_plot_range <- function(route, tail_prob){
+
+  if(identical(route$type, "scalar") && inherits(route$prior, "prior.regularized_term")){
+    limits <- route$offset + .prior_linear_scalar_range(route$prior, route$scale, tail_prob, route$source_transform)
+  }else if(identical(route$type, "transform") &&
+           .prior_density_affine_output_map(route$transformation, route$arguments)){
+    source <- .prior_regularized_plot_range(route$source, tail_prob)
+    if(is.null(source)) return(NULL)
+    limits <- sort(.density.prior_transformation_x(source, route$transformation, route$arguments))
+  }else{
+    return(NULL)
+  }
+  if(any(!is.finite(limits)) || limits[1] == limits[2]){
+    stop("The coefficient's automatic plotting range is not representable. Supply a finite 'xlim'.", call. = FALSE)
+  }
+  limits
+}
+
 .prior_linear_density_to_plot_data <- function(x, n_points = 1000, x_range = NULL,
                                                transformation = NULL,
                                                transformation_arguments = NULL,
@@ -4262,6 +4283,13 @@
     structural <- !is.null(route) && !identical(route$type, "unknown")
     display <- structural && .prior_density_route_has_quadrature(route)
     size <- if(display) min(n_points, .prior_linear_density_display_size()) else n_points
+
+    if(is.null(x_range) && is.null(transformed_x_range) && .prior_linear_density_is_deferred(dist)){
+      adaptive <- attr(dist, "adaptive_evaluation", exact = TRUE)
+      tail_prob <- adaptive$arguments$tail_prob
+      if(is.null(tail_prob)) tail_prob <- adaptive$arguments$context$tail_prob
+      if(!is.null(tail_prob)) x_range <- .prior_regularized_plot_range(route, tail_prob)
+    }
 
     grid <- function(size){
       if(!is.null(transformed_x_range)){

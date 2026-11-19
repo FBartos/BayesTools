@@ -14,7 +14,7 @@ test_that("horseshoe ordinate evaluation defers the coefficient density grid", {
                    indicator = function(x) x > -0.6 & x < -0.2)
   expect_equal(as.numeric(.prior_linear_density_region_probability(linear, interval)),
                cdf(priors$mu_wt, -0.2) - cdf(priors$mu_wt, -0.6))
-  # Plot data still request and materialize the same numerical grid.
+  # The deferred structural curve retains the plotting range of the eager grid.
   eager <- .prior_linear_combination_density(priors, c(mu_wt = 1), n_grid = 32L, .defer = FALSE)
   expect_identical(.prior_linear_density_to_plot_data(linear), .prior_linear_density_to_plot_data(eager))
 
@@ -25,6 +25,34 @@ test_that("horseshoe ordinate evaluation defers the coefficient density grid", {
   deferred <- .prior_linear_combination_density(heavy, c(mu_wt = 1), n_grid = 32L)
   expect_identical(prior_density_ordinate(deferred, 0)$behavior, "infinite")
   expect_equal(as.numeric(.prior_linear_density_region_probability(deferred, positive)), 0.5)
+})
+test_that("automatic shrinkage plot limits do not build the coefficient grid", {
+  pool <- prior_regularized("horseshoe", prior("cauchy", list(0, .2), list(0, Inf)))
+  priors <- JAGS_formula(~ wt, "mu", mtcars, list(intercept = prior("point", list(2)), sh = pool))$prior_list
+  weights <- c(mu_intercept = 1, mu_wt = -.5)
+  tail_prob <- .002
+  context <- .prior_density_context(priors, names(priors), tail_prob = tail_prob)
+  law <- .prior_density_from_context(context, weights)
+  limits <- sort(2 - .5 * mquant(priors$mu_wt, c(tail_prob, 1 - tail_prob)))
+  affine <- .prior_linear_combination_density(priors, weights, tail_prob = tail_prob,
+    output_transformation = "lin", output_transformation_arguments = list(a = -1, b = -2))
+  testthat::local_mocked_bindings(
+    .prior_linear_combination_grid = function(...) stop("A scalar plot tried to materialize its full prior grid."))
+  curve <- .prior_linear_density_to_plot_data(law, n_points = 64)$density
+  expect_length(curve$x, 64L)
+  expect_equal(range(curve$x), limits)
+  expect_equal(curve$y, mpdf(priors$mu_wt, (curve$x - 2) / -.5) / .5)
+  expect_equal(range(.prior_linear_density_to_plot_data(affine, n_points = 40)$density$x),
+               sort(-1 - 2 * limits))
+  displayed <- .prior_linear_density_to_plot_data(law, n_points = 40, x_range = c(2, 3),
+    transformation = "lin", transformation_arguments = list(a = 3, b = -1), transformation_settings = TRUE)
+  expect_equal(range(displayed$density$x), c(2, 3))
+  gg <- ggplot2::ggplot_build(plot(law, plot_type = "ggplot", n_points = 64))
+  expect_equal(range(gg$data[[1L]]$x), limits)
+  grDevices::pdf(NULL)
+  on.exit(grDevices::dev.off(), add = TRUE)
+  expect_invisible(plot(law, n_points = 64))
+  expect_invisible(plot(law, xlim = c(-.5, .5), n_points = 64))
 })
 
 test_that("regularization declarations distinguish fixed widths and learned scales", {
