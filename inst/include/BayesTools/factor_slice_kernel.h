@@ -13,7 +13,9 @@
 //   bounds), log(upper - x). to_u(x) is the forward transform; to_x(u, &x) the
 //   inverse, false when the result is not finite or not strictly inside the
 //   support; log_jacobian(u) is log |dx/du|; log_jacobian(coordinates, u) sums
-//   it over a block in member order.
+//   it over a block in member order. A caller refuses a member with two
+//   finite bounds whose difference upper - lower is not finite (FactorSlice
+//   stops the fit at construction): such a member cannot be put on this scale.
 //   Precision limit: the sampler holds a bounded member through its distance
 //   from the anchoring bound (for an interval, the nearer bound; near the
 //   centre, the span), so it resolves the member to about 16 significant digits
