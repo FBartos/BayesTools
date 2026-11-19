@@ -123,7 +123,8 @@ has been intentionally validated. Do not run `fit` for unrelated plotting,
 summary, documentation, or post-fit changes.
 
 The `model-fit` cache marker hashes what defines the cached objects: the fitting
-test file, the native sources in `src/`, the catalog and registry helpers,
+test file, the native sources in `src/` and the installed headers in
+`inst/include/`, the catalog and registry helpers,
 `DESCRIPTION` without `Version`, `Author`, `Built`, `Packaged`, and the
 publication-only `Repository` and `Date/Publication` fields, and the deparsed code of the
 package functions that the fit generators reach. Reachability is a static,

@@ -157,6 +157,18 @@ test_that("model-fit cache marker hashes only fit-generation sources", {
     normalizePath(unname(source_files[startsWith(names(source_files), "package_src_")]), winslash = "/"),
     normalizePath(native_sources, winslash = "/")
   )
+  # and every installed header, which the native library includes
+  installed_headers <- list.files(
+    testthat::test_path("..", "..", "inst", "include"),
+    pattern = "\\.(h|hpp)$",
+    recursive = TRUE,
+    full.names = TRUE
+  )
+  expect_true("package_include_BayesTools_factor_slice_kernel_h" %in% names(source_files))
+  expect_setequal(
+    normalizePath(unname(source_files[startsWith(names(source_files), "package_include_")]), winslash = "/"),
+    normalizePath(installed_headers, winslash = "/")
+  )
   expect_false("common_functions" %in% names(source_files))
   expect_false("expected_fit_catalog" %in% names(source_files))
   expect_true("test_00_model_fits" %in% names(source_files))

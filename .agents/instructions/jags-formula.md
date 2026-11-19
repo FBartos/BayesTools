@@ -254,6 +254,22 @@ rejection could silently truncate the target). With the defaults
 the model text and data handed to runjags are those of a fit without
 declarations.
 
+The factor slice algorithm itself is the installed header-only kernel
+`inst/include/BayesTools/factor_slice_kernel.h` (namespace
+`BayesTools::factor_slice`, standard C++ without JAGS or R types; contract at
+its top): `Coordinate` (the member transforms with the range-safe inverse),
+`slice_along()` (one univariate slice update along a direction, templated on
+the log density and the uniform and exponential variate sources) and `Axes`
+(directions, widths and their adaptation). `src/samplers/BTFactorSlice.cc` keeps
+only the JAGS side, and RoBMA's block sampler builds on the same header through
+`LinkingTo: BayesTools`, so changing the header changes both samplers. Its
+numerical behaviour is pinned by FactorSlice's seeded draws: a change must keep
+them bit-identical (compare the draws of the certification case's sampler tests
+between the two builds with `identical()`) unless the algorithm is meant to
+change. `test-factor-slice-kernel.R` compiles a toy that includes only the
+header and samples a bivariate normal; the installed headers enter the fit-cache
+and certification keys with `src/`.
+
 Do not silently repair malformed covariance matrices, alter prior bounds, drop
 formula terms, or substitute a different likelihood target. If a covariance
 structure requires intersecting a prior with its mathematical support, make the
