@@ -20,7 +20,7 @@ of prior distributions."><meta name="robots" content="noindex"><!-- mathjax --><
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-danger" data-toggle="tooltip" data-placement="bottom" title="In-development version">0.4.0.9002</span>
+        <span class="version label label-danger" data-toggle="tooltip" data-placement="bottom" title="In-development version">0.4.0.9003</span>
       </span>
     </div>
 
@@ -105,6 +105,8 @@ of prior distributions.</p>
 <span>  runtime_setup <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  runtime_cache <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  worker_output <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  sampler_gates <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  sampler_blocks <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  <span class="va">...</span></span>
 <span><span class="op">)</span></span>
 <span></span>
@@ -412,6 +414,45 @@ can interleave. <code>NULL</code> retains the backend default of discarding work
 output. This setting is call-specific and is not retained with the fit;
 supply it again to <code>JAGS_extend()</code> when needed. Connection failures stop
 automatic fitting retries and preserve the original backend error.</p></dd>
+
+
+<dt id="arg-sampler-gates">sampler_gates<a class="anchor" aria-label="anchor" href="#arg-sampler-gates"></a></dt>
+<dd><p>whether the branch parameters of a publication-bias
+mixture prior (a <code><a href="prior_mixture.html">prior_mixture()</a></code> of <code><a href="prior.html">prior_none()</a></code>, <code><a href="prior_PP.html">prior_PET()</a></code>,
+<code><a href="prior_PP.html">prior_PEESE()</a></code>, <code><a href="prior_weightfunction.html">prior_weightfunction()</a></code>, <code><a href="prior_phacking.html">prior_phacking()</a></code>, and
+<code><a href="prior_bias.html">prior_bias()</a></code> branches) are declared to the gated sampler of the
+BayesTools JAGS module: while its branch is not selected, a parameter is
+drawn directly from its prior instead of by slice sampling. A branch whose
+nodes the model uses outside the mixture composition (in
+<code>model_syntax</code>, another prior, or a formula) is not gated. Defaults to
+<code>FALSE</code>.</p></dd>
+
+
+<dt id="arg-sampler-blocks">sampler_blocks<a class="anchor" aria-label="anchor" href="#arg-sampler-blocks"></a></dt>
+<dd><p>optional list of character vectors of names of the
+combined prior list (<code>prior_list</code> and the formula priors). The scalar
+parameters of the priors of one vector are updated jointly by the factor
+slice sampler of the BayesTools JAGS module, which slice-samples along the
+principal directions of their posterior covariance learned during
+adaptation. A block may contain simple continuous scalar priors, treatment
+and independent factor priors, a single weight function, PET and PEESE
+priors, and the allocation SD and Dirichlet allocation weights of a
+random-effect variance allocation; a prior may be in one block only. A
+block that expands to fewer than two parameters is not declared and is
+recorded as declined. <code>sampler_blocks</code> may also be a function of one
+argument, the combined prior list (formula priors under their final names
+and with their attributes), called once by <code>JAGS_fit()</code>, that returns
+<code>NULL</code> or such a list. Defaults to <code>NULL</code>.
+Neither <code>sampler_gates</code> nor <code>sampler_blocks</code> changes the model or
+its posterior distribution, only the draws. Invalid declarations stop with
+an error of class <code>BayesTools_sampler_declaration_error</code>. The
+declarations are stored in <code>attr(fit, "sampler_declarations")</code>, which
+<code>JAGS_extend()</code> keeps: a list of the data frames <code>gates</code>,
+<code>blocks</code> and <code>declined</code> (one row per declined gate branch or
+block, with its <code>kind</code>, <code>prior</code>, <code>branch</code> or <code>block</code>,
+<code>nodes</code> and <code>reason</code>). A density that cannot be calculated (NaN)
+at a point the factor slice sampler evaluates stops the fit with a JAGS
+error, as with the stock samplers.</p></dd>
 
 
 <dt id="arg--">...<a class="anchor" aria-label="anchor" href="#arg--"></a></dt>
