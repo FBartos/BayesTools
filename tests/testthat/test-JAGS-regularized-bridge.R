@@ -141,7 +141,7 @@ test_that("interaction slices have separate shrinkage primitives and gate whole 
     f = prior_factor("mnormal", list(0, 1), contrast = "orthonormal"),
     g = prior_factor("normal", list(0, 1), contrast = "treatment"))
   for(family in c("lasso", "horseshoe")){
-    priors$shrink <- prior_regularized(family, .5, terms = "f:g", contrast = "orthonormal")
+    priors$shrink <- prior_regularized(family, .5, terms = "f:g")
     bound <- JAGS_formula(~ f*g, "mu", dat, priors)$prior_list
     name <- "mu_f__xXx__g"
     p <- bound[[name]]

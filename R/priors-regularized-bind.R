@@ -71,15 +71,20 @@
     if(is.null(contrast)) contrast <- "treatment"
     for(term in members[[group]]){
       factor_term <- identical(model_terms_type[[term]], "factor")
-      prior_list[[term]] <- .bt_regularized_term_prior(spec, group, term, factor_term, contrast, multiplier)
+      prior_list[[term]] <- .bt_regularized_term_prior(spec, group, term, factor_term, contrast, multiplier,
+        owned = intersect(strsplit(term, ":", fixed = TRUE)[[1L]], members[[group]]))
     }
   }
   prior_list
 }
 
-.bt_regularized_term_prior <- function(spec, group, term, factor_term, contrast, multiplier, prior_weights = 1){
+.bt_regularized_term_prior <- function(spec, group, term, factor_term, contrast, multiplier, prior_weights = 1,
+                                       owned = character()){
 
   centered <- factor_term && contrast %in% c("meandif", "orthonormal")
+  binding <- if(factor_term && grepl(":", term, fixed = TRUE)){
+    list(group = group, requested = spec$contrast, owned = owned)
+  }
   # In an interaction the main-effect priors can supply a different basis
   # for each factor; only the fitted design can identify its lasso units.
   needs_lasso_units <- identical(spec$family, "lasso") && factor_term &&
@@ -89,7 +94,7 @@
     parameters <- list(0, spec$scale * multiplier)
     if(!factor_term) return(prior(law, parameters, prior_weights = prior_weights))
     p <- prior_factor(law, parameters, contrast = contrast, prior_weights = prior_weights)
-    if(centered && grepl(":", term, fixed = TRUE)) attr(p, "regularized_spec") <- spec
+    attr(p, "regularized_factor_binding") <- binding
     return(p)
   }
   p <- list(
@@ -102,7 +107,78 @@
   )
   class(p) <- c("prior", "prior.regularized_term", "prior.simple",
                 if(factor_term) c("prior.factor", paste0("prior.", contrast)))
+  attr(p, "regularized_factor_binding") <- binding
   p
+}
+
+# A term has one factor class for reporting. Its stored design and the
+# separate coding of each constituent define the transformation to cells.
+# Choose a centered class whenever a mixed design requires that transformation.
+.bt_regularized_factor_parts <- function(prior){
+  if(is.prior.mixture(prior)) prior else list(prior)
+}
+
+.bt_regularized_interaction <- function(prior){
+  any(vapply(.bt_regularized_factor_parts(prior), function(p){
+    !is.null(attr(p, "regularized_factor_binding", exact = TRUE))
+  }, logical(1)))
+}
+
+.bt_regularized_resolve_factor <- function(prior, term, contrasts, indicators){
+
+  if(!.bt_regularized_interaction(prior)) return(prior)
+  actual <- sub("^contr\\.", "", contrasts)
+  labels <- paste0("'", names(actual), "' = '", actual, "'", collapse = ", ")
+  conflict <- function(requested, reason, factors){
+    .bt_formula_transform_stop(paste0("Regularized interaction '", term, "' ", reason,
+      ". Its fitted factor codings are ", labels, ". Set the main-effect contrasts to match the request, ",
+      "or omit 'contrast' to inherit their fitted codings."),
+      reason = "regularized_contrast_conflict", terms = term, predictors = factors,
+      requested = requested, factor_contrasts = contrasts)
+  }
+  parts <- .bt_regularized_factor_parts(prior)
+  for(p in parts){
+    binding <- attr(p, "regularized_factor_binding", exact = TRUE)
+    requested <- binding$requested
+    if(is.null(requested)) next
+    if(length(indicators) == length(actual) && requested %in% c("meandif", "orthonormal")){
+      conflict(requested, paste0("codes ", paste0("'", indicators, "'", collapse = " and "),
+        " by level indicators, so it cannot use '", requested, "' contrasts"), indicators)
+    }
+    # A group can supply a main effect and its interactions. A partner
+    # with a separately specified main effect keeps its own coding.
+    owned <- intersect(names(actual), binding$owned)
+    constrained <- setdiff(if(length(owned)) owned else names(actual), indicators)
+    different <- constrained[actual[constrained] != requested]
+    if(length(different)) conflict(requested, paste0("requested '", requested, "' contrasts"), different)
+  }
+  representative <- intersect(c("meandif", "orthonormal", "treatment", "independent"), actual)[1L]
+  if(is.na(representative)) conflict(NULL, "has no supported factor coding", names(actual))
+  reclass <- function(p){
+    old <- .factor_object_contrast_name(p)
+    if(identical(old, paste0("contr.", representative))) return(p)
+    if(is.prior.mixture(p)){
+      for(i in seq_along(p)) p[[i]] <- reclass(p[[i]])
+    }else if(.posterior_atoms_is_zero_point(p) ||
+             (!is.null(attr(p, "regularized_factor_binding", exact = TRUE)) &&
+              p$distribution %in% c("normal", "mnormal"))){
+      # JAGS uses different point/Normal prior objects for centered and
+      # directly coded factors. Recreate the law on the same raw coordinates.
+      point <- is.prior.point(p)
+      family <- if(point) "point" else if(representative %in% c("meandif", "orthonormal")) "mnormal" else "normal"
+      parameters <- if(point) list(0) else list(0, p$parameters$sd)
+      replacement <- prior_factor(family, parameters, contrast = representative,
+                                  prior_weights = .prior_model_weight(p))
+      metadata <- setdiff(names(attributes(p)), c("class", "names"))
+      for(name in metadata) attr(replacement, name) <- attr(p, name, exact = TRUE)
+      return(replacement)
+    }else if(!inherits(p, "prior.regularized_term")){
+      conflict(sub("^contr\\.", "", old), "has an incompatible mixture component", names(actual))
+    }
+    class(p)[class(p) == sub("^contr\\.", "prior.", old)] <- paste0("prior.", representative)
+    p
+  }
+  reclass(prior)
 }
 
 # Rebind from the fitted design, including groups inside ordinary mixtures.

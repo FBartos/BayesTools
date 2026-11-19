@@ -31,6 +31,12 @@
 #' unit. In an interaction the fitted codings of the constituent factors
 #' determine the units. Centered factors form one unit per column
 #' combination of partners coded by treatment contrasts or level indicators.
+#' A group that supplies a factor main effect can use its requested contrast
+#' for that factor while a separately specified partner retains its own coding.
+#' If the group supplies only the interaction, an explicit `contrast` must
+#' match the fitted coding of every constituent that uses a contrast. Omit
+#' `contrast` to inherit a mixed design. Formula-forced level indicators keep
+#' their indicator coding.
 #'
 #' For a unit of dimension \eqn{d}, write \eqn{b} for its vector of coded
 #' coefficients and \eqn{\tau} for the global scale. Ridge gives

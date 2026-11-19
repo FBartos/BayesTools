@@ -65,7 +65,18 @@
     }
     factor_term_contrasts <- vapply(factor_terms, function(term){
       if(term %in% names(prior_list)){
-        contrast <- .factor_object_contrast_name(prior_list[[term]])
+        prior <- prior_list[[term]]
+        contrast <- .factor_object_contrast_name(prior)
+        if(.bt_regularized_interaction(prior)){
+          if(!is.null(direct_contrast)) return(NA_character_)
+          # A previously bound interaction can have a different fitted
+          # coding for each factor. The reporting class cannot supply them.
+          bound <- unique(unlist(lapply(.bt_regularized_factor_parts(prior), function(p){
+            attr(p, "factor_contrasts", exact = TRUE)[factor_name]
+          }), use.names = FALSE))
+          bound <- bound[!is.na(bound)]
+          if(length(bound) == 1L) contrast <- bound
+        }
         if(is.null(contrast)) NA_character_ else contrast
       }else{
         NA_character_

@@ -641,6 +641,13 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
           stop("Unsupported matrix-valued factor contrast metadata.", call. = FALSE)
         }
       }, character(1))
+      if(.is_prior_interaction(this_prior) && .bt_regularized_interaction(this_prior)){
+        actual <- attr(this_prior, "factor_contrasts", exact = TRUE)
+        indicators <- names(actual)[term_factor_codes[names(actual), 1L] == 2L]
+        this_prior <- .bt_regularized_resolve_factor(this_prior, gsub("__xXx__", ":", model_terms[i],
+                                                                    fixed = TRUE), actual, indicators)
+        attr(this_prior, "levels") <- sum(terms_indexes == i) + as.integer(!is.prior.independent(this_prior))
+      }
       # a factor coded by a mean-difference or orthonormal contrast in an
       # interaction needs a prior that does not depend on the coding basis
       .bt_validate_basis_invariant_factor_prior(

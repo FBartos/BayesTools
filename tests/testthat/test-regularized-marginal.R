@@ -82,7 +82,7 @@ test_that("mixed factor directions retain unit identity, support and mixture gat
   args <- list(intercept = prior("point", list(0)),
     f = prior_factor("mnormal", list(0, 1), contrast = "orthonormal"),
     g = prior_factor("normal", list(0, 1), contrast = "treatment"),
-    shrink = prior_regularized("lasso", .5, terms = "f:g", contrast = "orthonormal"))
+    shrink = prior_regularized("lasso", .5, terms = "f:g"))
   term <- "mu_f__xXx__g"
   p <- JAGS_formula(~ f*g, "mu", data, args)$prior_list[[term]]
   w <- stats::setNames(c(3, -4), paste0(term, "[", 3:4, "]"))

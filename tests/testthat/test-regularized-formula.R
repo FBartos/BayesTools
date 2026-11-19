@@ -92,7 +92,7 @@ test_that("centered interactions share only within the fitted partner column", {
       term_name <- paste0("mu_", gsub(":", "__xXx__", term, fixed = TRUE))
       priors <- JAGS_formula(formula, "mu", dat, list(
         intercept = prior("point", list(0)), f = prior_factor("mnormal", list(0, 1), contrast = "orthonormal"),
-        h = h_prior, pool = prior_regularized("lasso", global, terms = "f:h", contrast = "meandif")))$prior_list
+        h = h_prior, pool = prior_regularized("lasso", global, terms = "f:h")))$prior_list
       p <- priors[[term_name]]
       expected <- if(term == "f:h") rep(seq_len(partners), each = dimension) else rep(seq_len(partners), dimension)
       expect_identical(p$regularization$unit_index, expected)
@@ -152,4 +152,68 @@ test_that("regularization membership and node ownership survive product-space bi
   expect_invisible(.bt_regularized_check_fitted_priors(refit$formula_design, refit$prior_list))
   expect_error(.bt_regularized_check_fitted_priors(refit$formula_design, changed),
                class = "BayesTools_refit_required")
+})
+
+test_that("regularized interaction declarations and summaries use the fitted factor bases", {
+  dat <- expand.grid(f = factor(letters[1:3]), h = factor(LETTERS[1:3]))
+  centered <- prior_factor("mnormal", list(0, .4), contrast = "meandif")
+  ordinary <- prior_factor("normal", list(0, .4), contrast = "independent")
+  initial <- list(intercept = prior("point", list(0)), f = centered, h = centered)
+  term <- "mu_f__xXx__h"
+  for(family in c("ridge", "lasso", "horseshoe")){
+    for(scale in list(.3, prior("uniform", list(.2, .6)))){
+      compile <- function(contrast) JAGS_formula(~ f * h, "mu", dat, c(initial,
+        list(pool = prior_regularized(family, scale, terms = "f:h", contrast = contrast))))
+      for(contrast in c("treatment", "orthonormal")){
+        refusal <- expect_error(compile(contrast), class = "BayesTools_formula_transform_unavailable")
+        expect_identical(refusal$reason, "regularized_contrast_conflict")
+        expect_identical(refusal$terms, "f:h")
+        expect_identical(refusal$predictors, c("f", "h"))
+        expect_identical(refusal$factor_contrasts, c(f = "contr.meandif", h = "contr.meandif"))
+      }
+      for(contrast in list(NULL, "meandif")){
+        bound <- compile(contrast)$prior_list[[term]]
+        expect_true(is.prior.meandif(bound))
+        if(family == "ridge" && is.numeric(scale)) expect_identical(bound$distribution, "mnormal")
+      }
+    }
+  }
+  # An explicit request belongs to its own factor main effect. A separately
+  # declared independent partner keeps its coding (an ordinary partner, not
+  # a formula-forced indicator). Asking an interaction-only group to change
+  # this ordinary partner is a contrast conflict.
+  external <- list(intercept = prior("point", list(0)), h = ordinary)
+  pool <- prior_regularized("lasso", .5, terms = c("f", "f:h"), contrast = "orthonormal")
+  fit <- JAGS_formula(~ f * h, "mu", dat, c(external, list(pool = pool)))
+  member <- fit$prior_list[[term]]
+  expect_identical(attr(member, "factor_contrasts"), c(f = "contr.orthonormal", h = "contr.independent"))
+  expect_true(is.prior.orthonormal(member))
+  error <- expect_error(JAGS_formula(~ f * h, "mu", dat, c(external, list(
+    f = prior_factor("mnormal", list(0, 1), contrast = "orthonormal"),
+    sh = prior_regularized("lasso", .5, terms = "f:h", contrast = "orthonormal")))),
+    class = "BayesTools_formula_transform_unavailable")
+  expect_identical(error$predictors, "h")
+
+  # Exercise the same transformation used by the public estimates table.
+  # Plain and gated interaction rows are coded coordinates on input and
+  # correctly labelled level cells on output.
+  mains <- c(external, list(f = prior_factor("mnormal", list(0, 1), contrast = "orthonormal")))
+  inherited <- JAGS_formula(~ f * h, "mu", dat, c(mains, list(
+    sh = prior_regularized("lasso", .5, terms = "f:h"))))$prior_list[[term]]
+  expect_true(is.prior.orthonormal(inherited))
+  inputs <- c(mains, list(`f:h` = prior_mixture(list(prior("point", list(0)), inherited),
+                                                is_null = c(TRUE, FALSE))))
+  mixture <- JAGS_formula(~ f * h, "mu", dat, inputs)$prior_list[[term]]
+  expect_true(is.prior.orthonormal(mixture) && is.prior.orthonormal(mixture[[1L]]) &&
+                is.prior.orthonormal(mixture[[2L]]))
+  design <- kronecker(diag(3), contr.orthonormal(3))
+  for(p in list(member, inherited, mixture)){
+    raw <- matrix(seq_len(24) / 10, 4L, ncol(design),
+      dimnames = list(NULL, .JAGS_prior_factor_names(term, p)))
+    if(is.prior.mixture(p)) raw[c(1, 3), ] <- 0
+    cells <- .transform_factor_contrasts(raw, stats::setNames(list(p), term), transform_factors = TRUE)
+    expect_equal(as.vector(cells), as.vector(raw %*% t(design)))
+    expect_equal(ncol(cells), nrow(design))
+    expect_identical(anyDuplicated(colnames(cells)), 0L)
+  }
 })
