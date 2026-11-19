@@ -81,7 +81,7 @@
 #' describe a level deviation using the fitted contrast matrix. Use
 #' [JAGS_formula_prior_density()] for a particular coefficient or
 #' contrast, and `rng()` for joint draws.
-#' A request for their joint density, CDF or quantile raises
+#' For terms with several coefficients, a joint density, CDF or quantile request raises
 #' `BayesTools_regularized_joint_unavailable`. A marginal calculation that
 #' cannot meet its numerical precision raises
 #' `BayesTools_regularized_marginal_unavailable`.

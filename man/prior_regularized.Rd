@@ -62,6 +62,12 @@ coding place the centered coefficients of a factor in one exchangeable
 unit. In an interaction the fitted codings of the constituent factors
 determine the units. Centered factors form one unit per column
 combination of partners coded by treatment contrasts or level indicators.
+A group that supplies a factor main effect can use its requested contrast
+for that factor while a separately specified partner retains its own coding.
+If the group supplies only the interaction, an explicit \code{contrast} must
+match the fitted coding of every constituent that uses a contrast. Omit
+\code{contrast} to inherit a mixed design. Formula-forced level indicators keep
+their indicator coding.
 
 For a unit of dimension \eqn{d}, write \eqn{b} for its vector of coded
 coefficients and \eqn{\tau} for the global scale. Ridge gives
@@ -106,7 +112,7 @@ For a bound centered factor, the marginal methods such as \code{mpdf()}
 describe a level deviation using the fitted contrast matrix. Use
 \code{\link[=JAGS_formula_prior_density]{JAGS_formula_prior_density()}} for a particular coefficient or
 contrast, and \code{rng()} for joint draws.
-A request for their joint density, CDF or quantile raises
+For terms with several coefficients, a joint density, CDF or quantile request raises
 \code{BayesTools_regularized_joint_unavailable}. A marginal calculation that
 cannot meet its numerical precision raises
 \code{BayesTools_regularized_marginal_unavailable}.
