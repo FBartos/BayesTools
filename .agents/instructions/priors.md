@@ -10,14 +10,17 @@ random-SD rescaling preserves its prior law and why map 17 requires refitting.
 ## Prior Contract
 
 `prior_regularized()` uses ordinary zero-centered normal and Laplace laws
-for fixed-scale ridge and lasso. A prior on the global scale defines a joint
-coefficient law. The horseshoe adds independent standard half-Cauchy local
-scales; its optional Student-t slab has one inverse-gamma variance shared by
-the group. Preserve these shared draws in contrasts, mixtures and prior
+for single fixed-scale coefficients. A prior on the global scale defines a joint
+coefficient law. Use the fitted factor design to resolve shrinkage units as for
+random effects. Within a centered unit of dimension d, group lasso has density
+proportional to exp(-||b||₂ / tau) and one shared Gamma((d+1)/2, rate=1/2)
+variance multiplier. The horseshoe has one standard half-Cauchy local scale per
+unit and its optional slab variance is shared by the entire named group. Keep
+the scale on the coded coefficients for both centered contrasts. Preserve joint draws in contrasts, mixtures and prior
 predictions. For a classical or regularized horseshoe, zero is a continuous
 infinite-density ordinate and has zero point mass. A product-space point
 component introduces its own inclusion indicator.
-For a weighted contrast of two lasso coefficients in one group, integrate
+For a weighted contrast of two coordinate-wise lasso coefficients in one group, integrate
 the conditional Laplace convolution over its single global scale. Keep the
 repeated-scale limit continuous. Wider unverified shared-lasso product grids
 do not supply display curves; interval hypotheses retain joint prior draws.

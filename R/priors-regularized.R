@@ -1,15 +1,16 @@
 #' Shrink regression coefficients towards zero
 #'
-#' @description Ridge uses a zero-mean Normal prior and lasso uses a
-#' zero-location Laplace prior. The horseshoe gives each fitted coefficient
-#' its own standard half-Cauchy local scale. All members of a named group
-#' share the global scale and, when specified, the slab variance.
+#' @description Shrink continuous slopes and factor effects using ridge,
+#' lasso or horseshoe priors. The fitted contrast determines which
+#' coefficients shrink together. All members of a named group share the
+#' global scale and, when specified, the slab variance.
 #'
 #' @param family One of `"ridge"`, `"lasso"`, and `"horseshoe"`.
 #' @param scale A positive number fixing the global scale, or a proper scalar
 #' continuous prior with positive support from which to learn it. The scale
-#' is in fitted coefficient units. For lasso it is the Laplace scale (the
-#' conditional standard deviation is \eqn{\sqrt{2}} times this scale).
+#' is in fitted coefficient units. For a single lasso coefficient it is
+#' the Laplace scale. For a centered factor it scales the Euclidean norm
+#' in the group-lasso density.
 #' @param terms Optional character vector of fixed-effect term labels.
 #' Place a group under its own name in the formula prior list. Omitting
 #' `terms` selects the non-intercept terms without a prior of their own.
@@ -18,18 +19,45 @@
 #' @param slab_scale Positive scale of the Student-t slab for the regularized
 #' horseshoe. The default `NULL` selects the classical horseshoe.
 #' @param slab_df Positive degrees of freedom of the Student-t slab.
-#' @param contrast Optional `"treatment"` or `"independent"` factor coding
-#' for the group's factor terms. With `NULL`, [JAGS_formula()] uses treatment
-#' coding and a calling model can supply its configured factor coding.
+#' @param contrast Optional factor coding, one of `"treatment"`, `"independent"`,
+#' `"meandif"` or `"orthonormal"`. With `NULL`, [JAGS_formula()] uses treatment
+#' coding by default and a calling model can supply its factor coding.
 #' @param x An R object.
 #'
-#' @details Conditional on global scale \eqn{\tau} and local scale
+#' @details A continuous slope is one shrinkage unit. Treatment coding
+#' gives one unit per difference from the reference level. Independent
+#' coding gives one per level coefficient. Mean-difference and orthonormal
+#' coding place the centered coefficients of a factor in one exchangeable
+#' unit. In an interaction the fitted codings of the constituent factors
+#' determine the units. Centered factors form one unit per column
+#' combination of partners coded by treatment contrasts or level indicators.
+#'
+#' For a unit of dimension \eqn{d}, write \eqn{b} for its vector of coded
+#' coefficients and \eqn{\tau} for the global scale. Ridge gives
+#' \eqn{b} a spherical Normal prior with coordinate standard deviation
+#' \eqn{\tau}. Group lasso has density proportional to
+#' \eqn{\tau^{-d}\exp(-\|b\|_2/\tau)}. Equivalently, conditional on one
+#' variance multiplier \eqn{W} with Gamma shape \eqn{(d+1)/2} and rate
+#' \eqn{1/2}, its coordinates are independent Normals with standard
+#' deviation \eqn{\tau\sqrt{W}} \insertCite{casella2010ba_penalized}{BayesTools}.
+#' Each coordinate has variance
+#' \eqn{(d+1)\tau^2} given \eqn{\tau}. A one-dimensional unit has the
+#' ordinary Laplace distribution with scale \eqn{\tau}.
+#'
+#' The horseshoe draws one standard half-Cauchy local scale per unit.
+#' Conditional on global scale \eqn{\tau} and its unit's local scale
 #' \eqn{\lambda_j}, a horseshoe coefficient is Normal with mean zero and
 #' standard deviation \eqn{s_j = \tau\lambda_j}. With a finite slab its
 #' conditional variance is \eqn{c^2 s_j^2/(c^2+s_j^2)}, where the shared
 #' \eqn{c^2} follows an inverse-gamma distribution with shape
 #' \eqn{\nu/2} and scale \eqn{\nu s^2/2} for \eqn{\nu=} `slab_df`
-#' and \eqn{s=} `slab_scale`.
+#' and \eqn{s=} `slab_scale` \insertCite{piironen2017ejs_sparsity}{BayesTools}.
+#'
+#' Both centered codings give exchangeable level deviations. They retain
+#' the scale convention of [prior_factor()]. For a main effect with
+#' \eqn{K} levels the mean-difference contrast matrix is the orthonormal
+#' contrast matrix divided by \eqn{\sqrt{1-1/K}}. Thus the same coded
+#' scale gives larger level deviations under mean-difference coding.
 #'
 #' The horseshoe has a continuous density with an infinite peak at zero,
 #' including with a finite slab. A point hypothesis at zero cannot use
@@ -37,9 +65,12 @@
 #' inclusion probabilities. Prior draws within a group retain its common
 #' scales when forming contrasts. Where an analytic contrast distribution
 #' is unavailable, the joint prior draws can still be used. Density and
-#' probability calculations for a contrast of two lasso coefficients sharing
+#' probability calculations for a contrast of two coordinate-wise lasso coefficients sharing
 #' a learned scale integrate its conditional convolution over that scale.
-#' For wider shared-lasso contrasts, plots omit unresolved prior curves.
+#' Within one centered unit, a linear contrast has the marginal law of
+#' one coded coordinate scaled by the Euclidean length of its weight
+#' vector. For wider coordinate-wise shared-lasso contrasts, plots omit
+#' unresolved prior curves.
 #' For multi-coefficient factor terms, use the marginal methods such as
 #' `mpdf()` for individual coordinates and `rng()` for joint draws.
 #' A request for their joint density, CDF or quantile raises
@@ -52,7 +83,7 @@
 #' [prior_mixture()]. Otherwise the result declares a coefficient group for
 #' [JAGS_formula()]. `is.prior.regularized()` identifies group declarations.
 #'
-#' @references \insertRef{piironen2017ejs_sparsity}{BayesTools}
+#' @references \insertAllCited{}
 #' @examples
 #' prior_regularized("ridge", scale = 0.5)
 #' prior_regularized("lasso", scale = 0.5)
@@ -71,6 +102,13 @@
 #' separate <- list(intercept = intercept,
 #'                  sh_wt = prior_regularized("horseshoe", global, terms = "wt"),
 #'                  sh_hp = prior_regularized("horseshoe", global, terms = "hp"))
+#' # One global scale for Wind and Month. Month has one local horseshoe
+#' # scale for all four of its centered coordinates. Wind has its own.
+#' weather <- transform(airquality, Month = factor(Month))
+#' group <- prior_regularized("horseshoe", global, terms = c("Month", "Wind"),
+#'                            contrast = "meandif")
+#' centered <- JAGS_formula(~ Month + Wind, "mu", weather,
+#'                          prior_list = list(intercept = intercept, sh = group))
 #' @export
 prior_regularized <- function(family, scale, terms = NULL, slab_scale = NULL, slab_df = 4,
                               contrast = NULL){
@@ -78,7 +116,8 @@ prior_regularized <- function(family, scale, terms = NULL, slab_scale = NULL, sl
   check_char(family, "family", allow_values = c("ridge", "lasso", "horseshoe"), allow_NA = FALSE)
   check_char(terms, "terms", check_length = 0, allow_NULL = TRUE, allow_NA = FALSE)
   if(!is.null(contrast)){
-    check_char(contrast, "contrast", allow_values = c("treatment", "independent"), allow_NA = FALSE)
+    check_char(contrast, "contrast", allow_values = c("treatment", "independent", "meandif", "orthonormal"),
+               allow_NA = FALSE)
   }
   if(!is.null(terms) && (!length(terms) || any(!nzchar(terms)) || anyDuplicated(terms) ||
                          any(terms %in% c("intercept", "(Intercept)")))){
@@ -150,12 +189,18 @@ is.prior.regularized <- function(x){
 
   bound <- inherits(x, "prior.regularized_term")
   spec <- if(bound) x$regularization else x
-  label <- switch(spec$family, ridge = "Ridge", lasso = "Lasso",
+  centered <- bound && any(spec$unit_centered)
+  label <- switch(spec$family, ridge = "Ridge", lasso = if(centered) "Group lasso" else "Lasso",
     horseshoe = if(is.null(spec$slab_scale)) "Horseshoe" else "Regularized horseshoe")
   if(short_name) return(label)
   scale <- if(is.prior(spec$scale)) print(spec$scale, digits_estimates = digits, silent = TRUE) else
     format(signif(spec$scale, max(1, digits)))
   entries <- paste0("scale = ", scale)
+  if(centered){
+    entries <- c(entries, paste0("exchangeable units = ", sum(spec$unit_centered)))
+  }else if(!bound && !is.null(spec$contrast)){
+    entries <- c(entries, paste0("contrast = ", spec$contrast))
+  }
   if(bound && !is.null(spec$multiplier) && spec$multiplier != 1){
     entries <- c(entries, paste0("coefficient multiplier = ", spec$multiplier))
   }
