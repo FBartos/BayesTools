@@ -1518,7 +1518,7 @@
     prior_list <- regularized$prior_list
     if(!is.null(regularized$weights)){
       weights <- regularized$weights
-      source_transforms <- NULL
+      if(!is.null(source_transforms)) source_transforms <- stats::setNames(source_transforms[names(weights)], names(weights))
     }
   }
 

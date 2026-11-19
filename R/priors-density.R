@@ -1686,7 +1686,9 @@ density.prior <- function(x,
   # get the samples to estimate density / obtain the density directly
   if(force_samples){
 
-    if(is.na(x$parameters[["K"]]) && !is.null(attr(x, "levels"))){
+    if(inherits(x, "prior.regularized_term")){
+      x$parameters[["K"]] <- x$regularization$dimension
+    }else if(is.na(x$parameters[["K"]]) && !is.null(attr(x, "levels"))){
       x$parameters[["K"]] <- .get_prior_factor_levels(x)
     }else if(is.na(x$parameters[["K"]])){
       x$parameters[["K"]] <- 1

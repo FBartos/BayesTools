@@ -6,6 +6,7 @@
   spec <- prior$regularization
   if(spec$family == "horseshoe") return(Inf)
   kernel <- if(spec$family == "ridge") stats::dnorm(0, log = TRUE) else -log(2)
+  if(!is.null(spec$group_lasso_dimension)) kernel <- .regularized_group_lasso_log_peak(spec$group_lasso_dimension)
   if(!is.null(spec$contrast_ratio)) kernel <- kernel - log1p(spec$contrast_ratio)
   if(is.numeric(spec$scale)) return(kernel - log(spec$multiplier) - log(spec$scale))
   at_zero <- .prior_density_ordinate_primitive(spec$scale, 0)
@@ -216,8 +217,12 @@
   peak + log(sum(exp(x - peak)))
 }
 
-.regularized_lasso_log_kernel <- function(z, ratio, density){
+.regularized_lasso_log_kernel <- function(z, spec, density){
 
+  if(!is.null(spec$group_lasso_dimension)){
+    return(.regularized_group_lasso_log_kernel(z, spec$group_lasso_dimension, density))
+  }
+  ratio <- spec$contrast_ratio
   log_kernel <- -log(2) - z
   if(is.null(ratio)) return(log_kernel)
   # The density of L1 + r*L2 divides exp(-z) - r*exp(-z/r)
@@ -253,7 +258,7 @@
     log_value = function(s, index){
       z <- exp(log_x[index] - s$log_scale)
       log_kernel <- if(spec$family == "lasso"){
-        .regularized_lasso_log_kernel(z, spec$contrast_ratio, density)
+        .regularized_lasso_log_kernel(z, spec, density)
       }else if(density) stats::dnorm(z, log = TRUE) else stats::pnorm(-z, log.p = TRUE)
       if(density) log_kernel <- log_kernel - s$log_scale
       log_kernel + s$log_prior
@@ -291,6 +296,14 @@
 # apparent zero density or a finite ordinate at the pole.
 .regularized_log_integral <- function(prior, x, operation){
 
+  spec <- prior$regularization
+  if(!is.null(spec$group_lasso_dimension) && is.numeric(spec$scale) && operation != "variance"){
+    log_scale <- log(spec$multiplier) + log(spec$scale)
+    result <- .regularized_group_lasso_log_kernel(exp(log(x) - log_scale), spec$group_lasso_dimension,
+      density = operation == "density")
+    if(any(!is.finite(result))) .regularized_numerical_unavailable(operation)
+    return(if(operation == "density") result - log_scale else result)
+  }
   result <- rep(NA_real_, length(x))
   pending <- seq_along(x)
   previous <- result
@@ -326,11 +339,11 @@
       z <- exp(log(value) - rule$log_scale)
       kernel <- if(operation == "density"){
         if(prior$regularization$family == "lasso") .regularized_lasso_log_kernel(
-          z, prior$regularization$contrast_ratio, TRUE) - rule$log_scale else
+          z, prior$regularization, TRUE) - rule$log_scale else
           stats::dnorm(z, log = TRUE) - rule$log_scale
       }else{
         if(prior$regularization$family == "lasso") .regularized_lasso_log_kernel(
-          z, prior$regularization$contrast_ratio, FALSE) else
+          z, prior$regularization, FALSE) else
           stats::pnorm(z, lower.tail = FALSE, log.p = TRUE)
       }
       .regularized_log_sum(kernel + rule$log_weight)
@@ -400,5 +413,6 @@
   if(!variance) return(if(is.finite(scale_mean)) 0 else NaN)
   second <- if(is.numeric(spec$scale)) spec$scale^2 else var(spec$scale) + scale_mean^2
   variance <- spec$multiplier^2 * second * if(spec$family == "lasso") 2 else 1
+  if(!is.null(spec$group_lasso_dimension)) variance <- spec$multiplier^2 * second * (spec$group_lasso_dimension + 1)
   if(is.null(spec$contrast_ratio)) variance else variance * (1 + spec$contrast_ratio^2)
 }

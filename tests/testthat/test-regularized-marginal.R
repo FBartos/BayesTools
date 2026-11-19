@@ -1,5 +1,128 @@
 skip_if_not_test_profile("unit")
 
+test_that("centered regularized level and coefficient laws use their fitted directions", {
+  for(contrast in c("meandif", "orthonormal")){
+    data <- data.frame(g = factor(letters[1:4]))
+    for(family in c("ridge","lasso","horseshoe")){
+      prior_scale <- if(family == "ridge") prior("uniform", list(.4, 1.5)) else .7
+      compiled <- JAGS_formula(~ g, "mu", data, list(intercept = prior("point", list(0)),
+        sh = prior_regularized(family, prior_scale, contrast = contrast)))
+      p <- compiled$prior_list$mu_g
+      design <- attr(p, "factor_design", exact = TRUE)
+      d <- ncol(design)
+      coordinates <- paste0("mu_g[", seq_len(d), "]")
+      norm <- sqrt(sum(design[1, ]^2))
+      level <- .prior_linear_combination_density(compiled$prior_list, stats::setNames(design[1, ], coordinates))
+      coded <- .prior_linear_combination_density(compiled$prior_list, stats::setNames(1, coordinates[1L]))
+      x <- .35
+      expect_equal(prior_density_ordinate(level, x)$log_density, log(mpdf(p, x)), tolerance = 1e-8)
+      expect_equal(prior_density_ordinate(coded, x / norm)$log_density - log(norm),
+                   log(mpdf(p, x)), tolerance = 1e-8)
+      expect_equal(mcdf(p, mquant(p, .75)), .75, tolerance = 1e-7)
+      expect_equal(mccdf(p, x), 1 - mcdf(p, x), tolerance = 1e-8)
+      # Direct Normal--chi-square mixture, independent of the Bessel density
+      # and the integrated density tail of the group-lasso projection.
+      if(family == "lasso"){
+        expected <- function(tau, cdf = FALSE){
+          stats::integrate(function(w){
+            sd <- tau * norm * sqrt(w)
+            stats::dchisq(w, d + 1) * if(cdf) stats::pnorm(x / sd) else stats::dnorm(x / sd) / sd
+          }, 0, Inf, rel.tol = 1e-10)$value
+        }
+        expect_equal(mpdf(p, x), expected(.7), tolerance = 1e-7)
+        expect_equal(mcdf(p, x), expected(.7, TRUE), tolerance = 1e-7)
+        expect_equal(var(p), (d + 1) * (.7 * norm)^2)
+        projected <- .prior_density_route_linear(compiled$prior_list, stats::setNames(design[1, ], coordinates), NULL)$prior
+        set.seed(1923)
+        draws <- rng(projected, 20000)
+        # Sample second moment has Var(X²) = 3 E[W²] - E[W]² on the unit scale.
+        mcse <- (.7 * norm)^2 * sqrt((3 * (d + 1) * (d + 3) - (d + 1)^2) / length(draws))
+        expect_lt(abs(mean(draws^2) - var(p)), 5 * mcse)
+      }
+    }
+  }
+})
+
+test_that("the global group-lasso mixture classifies the pole and integrates interval probabilities", {
+  data <- data.frame(f = factor(letters[1:3]))
+  for(scale in list(prior("cauchy", list(0, .2), list(0, Inf)), prior("gamma", list(2, 4)))){
+    compiled <- JAGS_formula(~ f, "mu", data, list(intercept = prior("point", list(.25)),
+      group = prior_regularized("lasso", scale, contrast = "orthonormal")))
+    w <- c("mu_f[1]" = 3, "mu_f[2]" = -4)
+    l <- .prior_linear_combination_density(compiled$prior_list, w)
+    zero <- prior_density_ordinate(l,0)
+    if(scale$distribution == "t"){
+      expect_identical(zero$behavior, "infinite")
+    }else{
+      # In d=2, the unit density at zero is 1/pi and E[1/tau] = 4.
+      expect_equal(exp(zero$log_density), 4 / (5 * pi), tolerance = 1e-8)
+    }
+    # Direction 3,-4 gives a common coded-scale multiplier of exactly 5.
+    reference <- function(value, tail){
+      stats::integrate(Vectorize(function(t){
+        integral <- stats::integrate(function(w){
+          sd <- 5 * t * sqrt(w)
+          stats::dchisq(w, 3) * if(tail) stats::pnorm(-value / sd) else stats::dnorm(value / sd) / sd
+        }, 0, Inf, rel.tol = 1e-9)$value
+        integral * pdf(scale, t)
+      }), 0, Inf, rel.tol = 1e-8)$value
+    }
+    expect_equal(exp(prior_density_ordinate(l, .4)$log_density), reference(.4,FALSE), tolerance = 2e-6)
+    region <- list(intervals = matrix(c(.4, Inf), 1L), indicator = function(v) v > .4)
+    mass <- as.numeric(.prior_linear_density_region_probability(l, region))
+    expect_equal(mass, reference(.4, TRUE), tolerance = 2e-6)
+    shifted <- .prior_linear_combination_density(compiled$prior_list, c(mu_intercept = 1, w))
+    expect_equal(prior_density_ordinate(shifted, .65)$log_density, prior_density_ordinate(l, .4)$log_density,
+                 tolerance = 1e-7)
+  }
+})
+
+test_that("mixed factor directions retain unit identity, support and mixture gates", {
+  data <- expand.grid(f = factor(letters[1:3]), g = factor(LETTERS[1:3]))
+  args <- list(intercept = prior("point", list(0)),
+    f = prior_factor("mnormal", list(0, 1), contrast = "orthonormal"),
+    g = prior_factor("normal", list(0, 1), contrast = "treatment"),
+    shrink = prior_regularized("lasso", .5, terms = "f:g", contrast = "orthonormal"))
+  term <- "mu_f__xXx__g"
+  p <- JAGS_formula(~ f*g, "mu", data, args)$prior_list[[term]]
+  w <- stats::setNames(c(3, -4), paste0(term, "[", 3:4, "]"))
+  priors <- stats::setNames(list(p), term)
+  route <- .prior_density_route_linear(priors, w, NULL)
+  expect_identical(route$prior$regularization$variance_names, p$regularization$variance_names[2])
+  expect_identical(route$prior$regularization$unit_index, 1L)
+  expect_equal(exp(.prior_density_route_ordinate(route, 0)$log_density), 1 / (2.5 * pi))
+  across <- stats::setNames(c(1, -1), paste0(term, "[", c(1, 4), "]"))
+  outside <- .prior_density_route_linear(priors, across, NULL)
+  expect_identical(outside$type, "unknown")
+  expect_identical(.bt_formula_route_atom_certificate(outside)$type, "atom_free")
+  expect_equal(.bt_formula_route_support(outside)$bounds, c(-Inf, Inf))
+  expect_error(.prior_linear_combination_density(priors, across), class = "BayesTools_formula_measure_unavailable")
+  # A single indicator gates every direction of the factor. It survives
+  # zero-sum contrasts with the original inclusion probability.
+  priors[[term]] <- prior_spike_and_slab(p, prior("point", list(.3)))
+  gated <- .prior_density_route_linear(priors, w, NULL)
+  expect_equal(.prior_density_route_ordinate(gated, 0)$point_mass, .7)
+  expect_equal(exp(.prior_density_route_ordinate(gated, .5)$log_density),
+               .3 * exp(.prior_density_route_ordinate(route, .5)$log_density))
+  gated_across <- .prior_density_route_linear(priors, across, NULL)
+  expect_equal(.prior_density_route_ordinate(gated_across, 0)$point_mass, .7)
+  expect_equal(.bt_formula_route_support(gated_across)$bounds, c(-Inf, Inf))
+})
+
+test_that("group-lasso tails cover high-dimensional centered directions", {
+  for(d in c(12L, 64L)){
+    z <- c(1e-7, .3, 6) * sqrt(d + 1)
+    reference <- vapply(z, function(x){
+      stats::integrate(function(log_w){
+        w <- exp(log_w)
+        exp(stats::pnorm(-x / sqrt(w), log.p = TRUE) + stats::dchisq(w, d + 1, log = TRUE) + log_w)
+      }, log(d + 1) - 30, log(d + 1) + 8, rel.tol = 1e-10, abs.tol = 0)$value
+    }, numeric(1))
+    expect_equal(.regularized_group_lasso_log_kernel(z, d, density = FALSE), log(reference),
+                 tolerance = 1e-8)
+  }
+})
+
 test_that("horseshoe ordinate evaluation defers the coefficient density grid", {
   group <- prior_regularized("horseshoe", 0.35, slab_scale = 1)
   priors <- JAGS_formula(~ wt, "mu", mtcars,

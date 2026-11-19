@@ -1046,7 +1046,7 @@
     canonical$prior_list <- regularized$prior_list
     if(!is.null(regularized$weights)){
       weights <- regularized$weights
-      source_transforms <- NULL
+      if(!is.null(source_transforms)) source_transforms <- stats::setNames(source_transforms[names(weights)], names(weights))
     }
   }
   split <- .prior_linear_split_multiply_groups(canonical$prior_list, weights)

@@ -31,7 +31,7 @@
 mean.prior   <- function(x, ...){
 
   .check_prior(x, "x")
-  if(inherits(x, "prior.regularized_term")) return(.regularized_moment(x, FALSE))
+  if(inherits(x, "prior.regularized_term")) return(.regularized_moment(.bt_regularized_level_prior(x), FALSE))
 
   if(is.prior.spike_and_slab(x)){
 
@@ -226,7 +226,7 @@ var.default <- function(x, ...){
 var.prior   <- function(x, ...){
 
   .check_prior(x, "x")
-  if(inherits(x, "prior.regularized_term")) return(.regularized_moment(x, TRUE))
+  if(inherits(x, "prior.regularized_term")) return(.regularized_moment(.bt_regularized_level_prior(x), TRUE))
 
   if(is.prior.spike_and_slab(x)){
 

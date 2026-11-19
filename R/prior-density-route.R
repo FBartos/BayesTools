@@ -850,8 +850,12 @@
   regularized <- .bt_regularized_linear_plan(prior_list, weights, source_transforms)
   if(!is.null(regularized)){
     if(!is.null(regularized$reason)){
+      # A factor's inclusion indicator still defines a known atom when the
+      # joint continuous contrast of its active units has no density route.
+      expansion <- .prior_density_route_mixture_expansion(prior_list, regularized$sources, n_grid)
+      if(!is.null(expansion)) return(.prior_density_route_expand(expansion, weights, source_transforms, n_grid))
       route <- .prior_density_route_unknown(regularized$reason,
-        list(kind = "regularized_combination_unavailable", sources = regularized$sources))
+        list(kind = "regularized_combination_unavailable", sources = regularized$sources, atom_free = regularized$atom_free))
       if(regularized$atom_free){
         route$additive_measure <- list(type = "atom_free",
           support = .posterior_support_new(c(-Inf, Inf), source = "formula_contribution"))
@@ -861,7 +865,7 @@
     prior_list <- regularized$prior_list
     if(!is.null(regularized$weights)){
       weights <- regularized$weights
-      source_transforms <- stats::setNames(rep(NA_character_, length(weights)), names(weights))
+      source_transforms <- stats::setNames(source_transforms[names(weights)], names(weights))
     }
   }
 

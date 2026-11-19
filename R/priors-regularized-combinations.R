@@ -24,6 +24,8 @@
 
   if(!length(weights) || !any(vapply(prior_list, .bt_has_regularized_term, logical(1)))) return(NULL)
   entries <- .prior_linear_active_entries(prior_list, weights)
+  centered <- .bt_regularized_centered_plan(prior_list, entries, weights, source_transforms)
+  if(!is.null(centered)) return(centered)
   coordinates <- list()
   multipliers <- character()
   for(name in names(entries)){
@@ -53,6 +55,7 @@
     prior <- prior_list[[name]]
     inherits(prior, "prior.regularized_term") &&
       prior$regularization$family %in% c("ridge", "lasso") &&
+      is.null(prior$regularization$group_lasso_dimension) &&
       is.null(attr(prior, "multiply_by", exact = TRUE)) && !name %in% multipliers &&
       !any(!is.na(source_transforms[coordinates[[name]]]))
   }, logical(1))
@@ -75,10 +78,17 @@
      all(vapply(prior_list[affected], function(p) p$regularization$family == "lasso", logical(1)))){
     name <- affected[[1L]]
     projection <- prior_list[[name]]
-    width <- abs(weights)
+    width <- unlist(lapply(affected, function(owner){
+      .prior_linear_fold_scale(abs(weights[coordinates[[owner]]]), prior_list[[owner]]$regularization$multiplier)
+    }), use.names = FALSE)
     projection$regularization$contrast_ratio <- min(width) / max(width)
     if(projection$regularization$contrast_ratio == 0) .regularized_numerical_unavailable("contrast scale ratio")
     projection$regularization$dimension <- 1L
+    projection$regularization$multiplier <- 1
+    projection$regularization$unit_index <- NULL
+    projection$regularization$unit_centered <- NULL
+    projection$regularization$unit_dimension <- NULL
+    projection$regularization$variance_names <- NULL
     class(projection) <- c("prior", "prior.regularized_term", "prior.simple")
     attributes(projection) <- attributes(projection)[c("names", "class")]
     return(list(prior_list = stats::setNames(list(projection), name),
