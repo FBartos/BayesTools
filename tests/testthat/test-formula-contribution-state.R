@@ -15,6 +15,33 @@ test_that("a single-model transformed prior keeps its deferred grid", {
   expect_identical(prior_density_ordinate(density, 0)$behavior, "infinite")
 })
 
+test_that("a singleton conditional shrinkage law keeps its event and defers its grid", {
+  pool <- prior_regularized("ridge", prior("uniform", list(.2, .4)))
+  slab <- JAGS_formula(~ 0 + x, "mu", data.frame(x = 1:3), list(pool = pool))$prior_list$mu_x
+  gate <- prior_mixture(list(prior("point", list(0), prior_weights = 3), slab), is_null = c(TRUE, FALSE))
+  context <- .prior_density_conditional_context(list(mu_x = gate), "mu_x", "mu_x", n_grid = 32L)
+  weights <- c(mu_x = 1)
+  eager <- .prior_density_from_context(context, weights, output_transformation = "lin",
+    output_transformation_arguments = list(a = 0, b = 1), .defer = FALSE)
+  deferred <- local({
+    testthat::local_mocked_bindings(
+      .prior_linear_combination_grid = function(...) stop("Unexpected conditional grid allocation."),
+      .package = "BayesTools")
+    density <- .prior_density_from_context(context, weights, output_transformation = "lin",
+      output_transformation_arguments = list(a = 0, b = 1))
+    expect_true(.prior_linear_density_is_deferred(density))
+    expect_identical(attr(density, "adaptive_evaluation")$arguments$context, context)
+    expect_equal(prior_density_ordinate(density, 0)$point_mass, 0)
+    region <- list(intervals = matrix(c(0, Inf), 1L), indicator = function(x) x > 0)
+    expect_equal(as.numeric(.prior_linear_density_region_probability(density, region)),
+                 as.numeric(.prior_linear_density_region_probability(eager, region)))
+    density
+  })
+  built <- .prior_linear_density_materialize(deferred)
+  expect_identical(built$density, eager$density)
+  expect_identical(built$points, eager$points)
+})
+
 test_that("dependency-only expression points retain the existing fresh-sampling refusal", {
   info <- JAGS_formula(~x, "mu", data.frame(x = c(10, 20, 30)),
     list(intercept = prior("normal", list(0, 1)), x = prior("point", list(location = expression(2 * mu_intercept)))), formula_scale = TRUE)

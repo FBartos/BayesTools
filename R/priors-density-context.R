@@ -552,7 +552,8 @@
 .prior_density_conditional_context_density <- function(context, weights,
                                                        source_transforms = NULL,
                                                        output_transformation = NULL,
-                                                       output_transformation_arguments = NULL){
+                                                       output_transformation_arguments = NULL,
+                                                       .defer = FALSE){
 
   if(!inherits(context, "prior_density_conditional_context")){
     stop("'context' must be a conditional prior density context.", call. = FALSE)
@@ -562,6 +563,13 @@
     stop("No prior models remain after applying the conditional event.", call. = FALSE)
   }
 
+  # Conditioning on a term gate can select a single atom-free shrinkage
+  # law. Its structural route needs no interpolation between models.
+  identity_output <- is.null(output_transformation) || (identical(output_transformation, "lin") &&
+    isTRUE(output_transformation_arguments$a == 0) && isTRUE(output_transformation_arguments$b == 1))
+  defer_single <- .defer && length(context$prior_lists) == 1L &&
+    isTRUE(context$model_weights[[1L]] == 1) && identity_output &&
+    any(vapply(context$prior_lists[[1L]], inherits, logical(1), "prior.regularized_term"))
   dists <- lapply(context$prior_lists, function(prior_list){
     if(!is.null(context$formula_scale) && length(context$formula_scale) > 0){
       component_context <- .prior_density_context(
@@ -576,7 +584,8 @@
       return(.prior_density_context_density(
         context           = component_context,
         weights           = weights,
-        source_transforms = source_transforms
+        source_transforms = source_transforms,
+        .defer            = defer_single
       ))
     }
 
@@ -587,9 +596,10 @@
       tail_prob         = context$tail_prob,
       source_transforms = source_transforms,
       grid_spacing      = context$grid_spacing,
-      .defer            = FALSE
+      .defer            = defer_single
     )
   })
+  if(defer_single && .prior_linear_density_is_deferred(dists[[1L]])) return(dists[[1L]])
 
   dx <- min(vapply(dists, function(dist){
     if(!is.null(dist$density) && length(dist$density$x) > 1){
@@ -674,27 +684,6 @@
       output_transformation_arguments = output_transformation_arguments,
       .defer                          = isTRUE(.defer) && isTRUE(.record_evaluation)
     )
-    if(.prior_linear_density_is_deferred(out)){
-      # the context's own record and numerical diagnostics describe the grid
-      # that is built on its first read
-      arguments <- list(
-        context = context,
-        weights = weights,
-        source_transforms = source_transforms,
-        output_transformation = output_transformation,
-        output_transformation_arguments = output_transformation_arguments
-      )
-      deferred <- list(
-        density = .prior_linear_density_deferred(arguments, "context"),
-        points  = .prior_linear_density_empty_points(),
-        n_grid  = out$n_grid
-      )
-      class(deferred) <- c("prior_linear_density", "prior_density")
-      attr(deferred, "weights") <- attr(out, "weights", exact = TRUE)
-      attr(deferred, "regularized_plot_range") <- attr(out, "regularized_plot_range", exact = TRUE)
-      attr(deferred, "adaptive_evaluation") <- list(kind = "density_context", arguments = arguments)
-      return(deferred)
-    }
   }else if(inherits(context, "prior_density_model_mixture_context")){
     out <- .prior_density_model_mixture_density(
       context                         = context,
@@ -709,10 +698,27 @@
       weights                         = weights,
       source_transforms               = source_transforms,
       output_transformation           = output_transformation,
-      output_transformation_arguments = output_transformation_arguments
+      output_transformation_arguments = output_transformation_arguments,
+      .defer                          = isTRUE(.defer) && isTRUE(.record_evaluation)
     )
   }else{
     stop("Unknown prior density context.", call. = FALSE)
+  }
+  if(.prior_linear_density_is_deferred(out)){
+    # Retain the original context (including its conditioning event) for
+    # both structural evaluations and the grid's eventual materialization.
+    arguments <- list(
+      context = context, weights = weights, source_transforms = source_transforms,
+      output_transformation = output_transformation,
+      output_transformation_arguments = output_transformation_arguments
+    )
+    deferred <- list(density = .prior_linear_density_deferred(arguments, "context"),
+                     points = .prior_linear_density_empty_points(), n_grid = out$n_grid)
+    class(deferred) <- c("prior_linear_density", "prior_density")
+    attr(deferred, "weights") <- attr(out, "weights", exact = TRUE)
+    attr(deferred, "regularized_plot_range") <- attr(out, "regularized_plot_range", exact = TRUE)
+    attr(deferred, "adaptive_evaluation") <- list(kind = "density_context", arguments = arguments)
+    return(deferred)
   }
 
   if(isTRUE(.record_evaluation)){
