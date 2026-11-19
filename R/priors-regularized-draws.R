@@ -8,7 +8,7 @@
 
   if(inherits(prior, "prior.regularized_term")){
     spec <- prior$regularization
-    return(c(spec$global_name, spec$slab_name, spec$local_names))
+    return(c(spec$global_name, spec$slab_name, spec$local_names, spec$variance_names))
   }
   if(is.prior.mixture(prior)){
     return(unique(unlist(lapply(prior, .bt_regularized_auxiliary_names), use.names = FALSE)))
@@ -63,16 +63,17 @@
   global <- if(is.null(spec$global_name)) spec$scale else registry[[spec$global_name]]
   slab <- if(!is.null(spec$slab_name)) registry[[spec$slab_name]]
   coordinates <- .bt_regularized_coefficient_names(prior, name)
+  scales <- .bt_regularized_coefficient_scales(prior, length(coordinates), global, slab,
+    function(key) registry[[key]])
   out <- matrix(NA_real_, nrow = n, ncol = length(coordinates), dimnames = list(NULL, coordinates))
   for(j in seq_along(coordinates)){
-    local <- if(length(spec$local_names)) registry[[spec$local_names[[j]]]] else 1
-    scale <- .bt_regularized_scale(prior, global, local, slab)
+    scale <- scales[[j]]
     failed <- which(!is.finite(scale) | scale <= 0)
     if(length(failed)){
       .prior_numerical_signal("sampling", spec$family, "positive finite", failed,
         "The conditional coefficient scale is unrepresentable", error = TRUE, rng = TRUE)
     }
-    out[, j] <- if(identical(spec$family, "lasso")){
+    out[, j] <- if(identical(spec$family, "lasso") && !length(spec$variance_names)){
       z <- extraDistr::rlaplace(n, mu = 0, sigma = scale)
       if(!is.null(spec$contrast_ratio)) z <- z + spec$contrast_ratio * extraDistr::rlaplace(n, mu = 0, sigma = scale)
       z

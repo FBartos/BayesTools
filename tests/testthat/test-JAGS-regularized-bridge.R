@@ -68,3 +68,110 @@ test_that("factor coefficients and their other group members use the same scale"
   expect_identical(dim(standalone), c(1000L, 2L))
   expect_gt(stats::cor(log(abs(standalone[, 1])), log(abs(standalone[, 2]))), 0.5)
 })
+
+test_that("centered factor bridge densities use a normalized spherical law for each shrinkage unit", {
+  dat <- data.frame(f = factor(rep(letters[1:4], 2)))
+  coefficients <- c(.5, -.6, .3)
+  cn <- paste0("mu_f[", seq_len(3), "]")
+  gamma <- prior("gamma", list(3, 2))
+  for(contrast in c("meandif", "orthonormal")){
+    for(family in c("ridge", "lasso", "horseshoe")){
+      group <- prior_regularized(family, gamma, contrast = contrast,
+        slab_scale = if(family == "horseshoe") 1.5)
+      model <- JAGS_formula(~ f, "mu", dat, list(intercept = prior("point", list(0)), sh = group))
+      priors <- model$prior_list
+      spec <- priors$mu_f$regularization
+      row <- c(stats::setNames(coefficients, cn), stats::setNames(.7, spec$global_name))
+      log_hyper <- stats::dgamma(.7, 3, 2, log = TRUE)
+      width <- .7
+      if(family == "lasso"){
+        expect_length(spec$variance_names, 1L)
+        row[spec$variance_names] <- 1.8
+        # The radial group-lasso law in dimension three uses shape two.
+        log_hyper <- log_hyper + stats::dgamma(1.8, 2, .5, log = TRUE)
+        width <- .7 * sqrt(1.8)
+      }
+      if(family == "horseshoe"){
+        expect_length(spec$local_names, 1L)
+        row[spec$local_names] <- 1.2
+        row[spec$slab_name] <- 1.8
+        log_hyper <- log_hyper + log(2) + stats::dcauchy(1.2, log = TRUE) +
+          stats::dgamma(1 / 1.8, 2, 2 * 1.5^2, log = TRUE) - 2 * log(1.8)
+        width <- 1 / sqrt(1 / (.7 * 1.2)^2 + 1 / 1.8)
+      }
+      expected <- log_hyper + sum(stats::dnorm(coefficients, 0, width, log = TRUE))
+      expect_equal(JAGS_marglik_priors(row, priors), expected)
+      expect_equal(JAGS_marglik_priors_rows(rbind(row, row), priors), rep(expected, 2))
+      expect_equal(JAGS_marglik_parameters(row, priors)$mu_f, coefficients)
+      info <- .JAGS_bridgesampling_posterior_info(priors)
+      expect_setequal(as.character(info), names(row))
+      private <- .bt_parameter_coordinates_private_auxiliaries(priors)
+      expect_setequal(private, setdiff(names(row), cn))
+    }
+  }
+})
+
+test_that("group lasso prior draws have the radial Gamma law and preserve the fitted contrasts", {
+  dat <- data.frame(f = factor(rep(letters[1:4], 2)))
+  group <- prior_regularized("lasso", 0.7, terms = "f", contrast = "meandif")
+  model <- JAGS_formula(~ f, "mu", dat, list(intercept = prior("point", list(0)), sh = group))
+  p <- model$prior_list$mu_f
+  n <- 5000L
+  draws <- .generate_prior_sample_matrix(model$prior_list, n, seed = 183)
+  columns <- .bt_regularized_coefficient_names(p, "mu_f")
+  expect_length(columns, 3L)
+  variance <- draws[, p$regularization$variance_names]
+  z <- draws[, columns] / (0.7 * sqrt(variance))
+  expect_lt(max(abs(crossprod(z) / n - diag(3))), .06)
+  # The joint marginal density is proportional to exp(-||b||/scale).
+  # Its standardized radius follows Gamma(d, 1).
+  radius <- sqrt(rowSums(draws[, columns]^2)) / .7
+  expect_equal(mean(radius < 3), stats::pgamma(3, 3, 1), tolerance = .025)
+  set.seed(731)
+  raw <- rng(p, 50, transform_factor_samples = FALSE)
+  set.seed(731)
+  levels <- rng(p, 50)
+  expect_equal(unname(levels), unname(raw %*% t(attr(p, "factor_design"))))
+  expect_lt(max(abs(rowSums(levels))), 1e-12)
+})
+
+test_that("interaction slices have separate shrinkage primitives and gate whole factor vectors", {
+  dat <- expand.grid(f = factor(letters[1:3]), g = factor(LETTERS[1:3]))
+  priors <- list(intercept = prior("point", list(0)),
+    f = prior_factor("mnormal", list(0, 1), contrast = "orthonormal"),
+    g = prior_factor("normal", list(0, 1), contrast = "treatment"))
+  for(family in c("lasso", "horseshoe")){
+    priors$shrink <- prior_regularized(family, .5, terms = "f:g", contrast = "orthonormal")
+    bound <- JAGS_formula(~ f*g, "mu", dat, priors)$prior_list
+    name <- "mu_f__xXx__g"
+    p <- bound[[name]]
+    s <- p$regularization
+    expect_identical(s$unit_index, c(1L, 1L, 2L, 2L))
+    aux <- if(family == "lasso") s$variance_names else s$local_names
+    expect_length(aux, 2)
+    # Isolate this fixed-global term. The normalized conditionals of the
+    # two contrast slices must read different positive coordinates.
+    term <- bound[name]
+    coef <- c(-.75, -.3, .25, .8)
+    row <- c(stats::setNames(coef, .bt_regularized_coefficient_names(p, name)),
+             stats::setNames(c(.25, 1.5), aux))
+    width <- if(family == "lasso") .5 * sqrt(c(.25, 1.5)) else .5 * c(.25, 1.5)
+    hp <- if(family == "lasso") stats::dgamma(c(.25, 1.5), 1.5, .5, log = TRUE) else
+      log(2) + stats::dcauchy(c(.25, 1.5), log = TRUE)
+    expected <- sum(hp) + sum(stats::dnorm(coef, 0, rep(width, each = 2), log = TRUE))
+    expect_equal(JAGS_marglik_priors(row, term), expected)
+  }
+
+  group <- prior_regularized("lasso", .7, terms = "f", contrast = "meandif")
+  base <- JAGS_formula(~ f, "mu", dat, list(intercept = priors$intercept, shrink = group))$prior_list$mu_f
+  spike <- prior_factor("point", list(0), contrast = "meandif")
+  for(gate in list(prior_spike_and_slab(base), prior_mixture(list(spike, base), is_null = c(TRUE, FALSE)))){
+    model <- JAGS_formula(~ f, "mu", dat, list(intercept = priors$intercept, f = gate))
+    draws <- .generate_prior_sample_matrix(model$prior_list, 1000L, seed = 825)
+    active <- draws[, "mu_f_indicator"] == if(is.prior.spike_and_slab(gate)) 1 else 2
+    prefix <- if(is.prior.spike_and_slab(gate)) "mu_f_variable" else "mu_f_component_2"
+    expected <- draws[, paste0(prefix, "[", 1:2, "]")] * active
+    expect_equal(unname(draws[, paste0("mu_f[", 1:2, "]")]), unname(expected))
+    expect_equal(sum(colnames(draws) == "mu_f_variance_1"), 1)
+  }
+})

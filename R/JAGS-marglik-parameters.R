@@ -256,7 +256,7 @@ JAGS_marglik_parameters                <- function(samples, prior_list){
   check_char(parameter_name, "parameter_name")
 
 
-  if(is.prior.treatment(prior) | is.prior.independent(prior)){
+  if(is.prior.treatment(prior) || is.prior.independent(prior) || inherits(prior, "prior.regularized_term")){
 
     parameter <- list()
     if(.get_prior_factor_levels(prior) == 1){

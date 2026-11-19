@@ -76,6 +76,24 @@ source(testthat::test_path("common-functions.R"))
   )
 }
 
+test_that("averaging centered shrinkage factors retains the joint fitted rows", {
+  group <- prior_regularized("horseshoe", .4, terms = "f", contrast = "meandif")
+  dat <- data.frame(f = factor(rep(letters[1:3], 2)))
+  priors <- JAGS_formula(~ f, "mu", dat,
+    list(intercept = prior("point", list(0)), sh = group))$prior_list
+  models <- lapply(c(1, 100), function(k){
+    x <- k + seq_len(20)
+    samples <- cbind(mu_intercept = 0, x, -x, mu_f_local_1 = 1)
+    colnames(samples)[2:3] <- paste0("mu_f[", 1:2, "]")
+    list(fit = .mock_runjags_fit_for_mixing(samples, priors),
+         marglik = .mock_bridge(0), prior_weights = 1)
+  })
+  out <- mix_posteriors(models, "mu_f", list(mu_f = c(FALSE, FALSE)), seed = 402, n_samples = 80)$mu_f
+  expect_equal(dim(out), c(80L, 2L))
+  expect_equal(as.numeric(out[, 1]), -as.numeric(out[, 2]))
+  expect_true(any(out[, 1] < 100) && any(out[, 1] > 100))
+})
+
 .mock_point_mixing_model <- function(location, logml, prior_weight = 1) {
   posterior <- cbind(
     theta = rep(location, 20),
