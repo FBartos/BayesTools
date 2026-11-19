@@ -67,9 +67,15 @@ including with a finite slab. A point hypothesis at zero cannot use
 the Savage-Dickey density ratio. Use explicit point-null models for
 inclusion probabilities. Prior draws within a group retain its common
 scales when forming contrasts. Where an analytic contrast distribution
-is unavailable, the joint prior draws can still be used.
+is unavailable, the joint prior draws can still be used. In particular,
+contrasts of several lasso coefficients sharing a learned scale have a
+numerical display grid, with no certified ordinate for a point hypothesis.
 For multi-coefficient factor terms, use the marginal methods such as
 \code{mpdf()} for individual coordinates and \code{rng()} for joint draws.
+A request for their joint density, CDF or quantile raises
+\code{BayesTools_regularized_joint_unavailable}. A marginal calculation that
+cannot meet its numerical precision raises
+\code{BayesTools_regularized_marginal_unavailable}.
 }
 \examples{
 prior_regularized("ridge", scale = 0.5)

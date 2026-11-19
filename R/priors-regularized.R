@@ -36,9 +36,15 @@
 #' the Savage-Dickey density ratio. Use explicit point-null models for
 #' inclusion probabilities. Prior draws within a group retain its common
 #' scales when forming contrasts. Where an analytic contrast distribution
-#' is unavailable, the joint prior draws can still be used.
+#' is unavailable, the joint prior draws can still be used. In particular,
+#' contrasts of several lasso coefficients sharing a learned scale have a
+#' numerical display grid, with no certified ordinate for a point hypothesis.
 #' For multi-coefficient factor terms, use the marginal methods such as
 #' `mpdf()` for individual coordinates and `rng()` for joint draws.
+#' A request for their joint density, CDF or quantile raises
+#' `BayesTools_regularized_joint_unavailable`. A marginal calculation that
+#' cannot meet its numerical precision raises
+#' `BayesTools_regularized_marginal_unavailable`.
 #'
 #' @return With numeric scale and omitted terms, ridge and lasso return
 #' ordinary scalar priors accepted by [prior_spike_and_slab()] and
