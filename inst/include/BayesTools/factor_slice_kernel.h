@@ -77,6 +77,13 @@ namespace BayesTools {
     // Largest change of the log full conditional allowed between the current
     // value and the values of the neighbouring coordinates (resolvable()).
     constexpr double resolvability_tolerance = 0.01;
+    // After adaptation, the samplers repeat resolvable() every this many
+    // updates: a member that starts where its coordinate resolves the target
+    // (next to a distant bound) can drift to where it does not. One check costs
+    // a few full-conditional evaluations per member; every 500 updates that is
+    // negligible even for RoBMA's corrected block, which makes only two full
+    // evaluations per update (every 50 would cost it about a quarter of its time).
+    constexpr unsigned int resolvability_interval = 500;
 
     // log(b - a) for b > a; log(b / 2 - a / 2) + log(2) only when b - a
     // overflows (a and b of opposite signs near the largest double).

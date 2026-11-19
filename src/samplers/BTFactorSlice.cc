@@ -38,6 +38,7 @@ namespace jags {
         const unsigned int _chain;
         const unsigned int _d;
         bool _adapting;
+        unsigned int _sampling_updates;  // updates after adaptation
         std::vector<kernel::Coordinate> _coordinates;
         kernel::Axes _axes;
         std::vector<double> _x;  // scratch
@@ -138,8 +139,10 @@ namespace jags {
         // the posterior, or not at all, and silently sample a wrong
         // distribution). A representability limit of the sampler's scale, not a
         // model error: the block must be declared without the member. Runs at
-        // construction, at every refresh of the axes and at the first
-        // adaptOff(); it draws no random numbers and restores the node values,
+        // construction, at every refresh of the axes, at the first adaptOff()
+        // and every kernel::resolvability_interval updates after adaptation (a
+        // member can drift to where its coordinate no longer resolves the
+        // target); it draws no random numbers and restores the node values,
         // so it changes no draw. A member on a bound is left to update().
         void check_resolution(char const *site)
         {
@@ -168,18 +171,18 @@ namespace jags {
             if (!ok) {
               throwNodeError(nodes[i], std::string(
                 "Factor slice sampler: the support bounds of this node are too far from where its posterior "
-                "concentrates for the sampler's scale (found at ") + site + "); declare the block without this node");
+                "concentrates for the sampler's scale (found ") + site + "); declare the block without this node");
             }
           }
         }
 
       public:
         FactorSlice(GraphView const *graph, unsigned int chain)
-          : _graph(graph), _chain(chain), _d(graph->length()), _adapting(true),
+          : _graph(graph), _chain(chain), _d(graph->length()), _adapting(true), _sampling_updates(0),
             _coordinates(coordinates(graph, chain)), _axes(_d), _x(_d)
         {
           graph->checkFinite(chain);
-          check_resolution("the start of the fit");
+          check_resolution("at the start of the fit");
         }
 
         void update(RNG *rng)
@@ -197,7 +200,12 @@ namespace jags {
           }
           const std::vector<double> u_start(u);
           for (unsigned int k = 0; k < _d; ++k) slice_along(k, u, rng);
-          if (_adapting && _axes.adapt(u_start, u)) check_resolution("a refresh of the axes during adaptation");
+          if (_adapting) {
+            if (_axes.adapt(u_start, u)) check_resolution("at a refresh of the axes during adaptation");
+          }
+          else if (++_sampling_updates % kernel::resolvability_interval == 0) {
+            check_resolution("during sampling");
+          }
         }
 
         bool isAdaptive() const
@@ -214,7 +222,7 @@ namespace jags {
           if (!_adapting) return;
           _adapting = false;
           try {
-            check_resolution("the end of adaptation");
+            check_resolution("at the end of adaptation");
           }
           catch (...) {
             _deferred_error = std::current_exception();

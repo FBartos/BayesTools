@@ -272,10 +272,11 @@ support are rejected. A value is reached to a relative precision of about
 too narrow for that precision (bounds far from where it concentrates, e.g. a
 standard normal truncated to (-5e14, 5e14)) stops the fit with a "Factor slice
 sampler:" node error from the resolvability check, which runs at construction,
-at every refresh of the axes and at the end of adaptation (raised at the next
-update). Its numerical behaviour is pinned by FactorSlice's seeded draws: a
-change must keep them bit-identical (compare the draws of the certification
-case's sampler tests between the two builds with `identical()`) unless the
+at every refresh of the axes, at the end of adaptation (raised at the next
+update) and every `resolvability_interval` (500) updates during sampling. Its
+numerical behaviour is pinned by FactorSlice's seeded draws: a change must
+keep them bit-identical (compare the draws of the certification case's sampler
+tests between the two builds with `identical()`) unless the
 algorithm is meant to change. `test-factor-slice-kernel.R` compiles a toy that
 includes only the header, samples a bivariate normal and runs the check; the
 installed headers enter the fit-cache and certification keys with `src/`.
