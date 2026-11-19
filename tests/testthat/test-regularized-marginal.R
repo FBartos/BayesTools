@@ -123,6 +123,44 @@ test_that("group-lasso tails cover high-dimensional centered directions", {
   }
 })
 
+test_that("projected gated factor densities keep their atom and defer their grid", {
+  dat <- data.frame(f = factor(c("A", "B", "C")))
+  fit <- JAGS_formula(~ f, "mu", dat, list(intercept = prior("point", list(0)),
+    pool = prior_regularized("lasso", scale = .4, contrast = "orthonormal")))
+  slope <- fit$prior_list$mu_f
+  direction <- c("mu_f[1]" = -1, "mu_f[2]" = 1)
+  region <- list(intervals = matrix(c(0, Inf), 1L), indicator = function(x) x > 0)
+  for(inclusion in c(0, .25, 1)){
+    gated <- prior_spike_and_slab(slope, prior("point", list(inclusion)))
+    bound <- JAGS_formula(~ f, "mu", dat, list(intercept = prior("point", list(0)), f = gated))
+    context <- .prior_density_context(bound$prior_list, names(direction), n_grid = 32L)
+    eager <- .prior_density_from_context(context, direction, .defer = FALSE)
+    if(inclusion == 0){
+      law <- .prior_density_from_context(context, direction)
+      expect_equal(law$points, data.frame(x = 0, p = 1))
+      expect_null(law$density)
+      next
+    }
+    deferred <- local({
+      testthat::local_mocked_bindings(.prior_linear_combination_grid = function(...){
+        stop("Unexpected display-grid construction for a projected gate.")
+      }, .package = "BayesTools")
+      law <- .prior_density_from_context(context, direction)
+      expect_true(.prior_linear_density_is_deferred(law))
+      expect_identical(attr(law, "adaptive_evaluation")$arguments$context, context)
+      expect_equal(law$density$mass, inclusion)
+      expect_equal(prior_density_ordinate(law, 0)$point_mass, 1 - inclusion)
+      expect_equal(as.numeric(.prior_linear_density_region_probability(law, region)), inclusion / 2)
+      expect_equal(prior_density_ordinate(law, .2)$log_density, prior_density_ordinate(eager, .2)$log_density)
+      law
+    })
+    expect_identical(deferred$points, eager$points)
+    built <- .prior_linear_density_materialize(deferred)
+    expect_identical(built$points, eager$points)
+    expect_identical(built$density, eager$density)
+  }
+})
+
 test_that("horseshoe ordinate evaluation defers the coefficient density grid", {
   group <- prior_regularized("horseshoe", 0.35, slab_scale = 1)
   priors <- JAGS_formula(~ wt, "mu", mtcars,

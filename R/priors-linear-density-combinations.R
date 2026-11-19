@@ -1550,6 +1550,12 @@
   # terms, is continuous for every nonzero weight. Its classification
   # needs neither display quantiles nor a numerical grid.
   unplanned <- FALSE
+  gate_measure <- NULL
+  if(defer && length(weights) == 1L && !is.null(names(weights)) && all(is.na(source_transforms)) &&
+     (is.null(output_transformation) || (identical(output_transformation, "lin") &&
+       isTRUE(output_transformation_arguments$a == 0) && isTRUE(output_transformation_arguments$b == 1)))){
+    gate_measure <- .bt_regularized_gated_measure(prior_list[[names(weights)[[1L]]]])
+  }
   if(defer &&
      (is.null(output_transformation) || .prior_density_affine_output_map(output_transformation, output_transformation_arguments)) &&
      any(vapply(prior_list, inherits, logical(1), "prior.regularized_term"))){
@@ -1560,6 +1566,7 @@
         is.finite(parts$offset) && all(is.na(source_transforms[names(parts$group$weights)]))
     }
   }
+  unplanned <- unplanned || !is.null(gate_measure)
   plan <- if(!unplanned) .prior_linear_combination_plan(prior_list, weights, n_grid, tail_prob,
                                                         source_transforms, grid_spacing)
   if(unplanned || (defer &&
@@ -1579,7 +1586,8 @@
       arguments,
       # For an unplanned grid this records the requested minimum; its
       # materialized density reports the resolved size and spacing.
-      n_grid = if(unplanned || !is.null(output_transformation)) n_grid else plan$n_grid
+      n_grid = if(unplanned || !is.null(output_transformation)) n_grid else plan$n_grid,
+      measure = gate_measure
     )
     # For an additive structural curve the component quantiles already gave
     # the plotting bounds at planning time. Retain those two numbers instead

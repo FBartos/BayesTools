@@ -31,6 +31,25 @@
   inherits(prior, "prior.regularized_term") && is.prior.factor(prior) && any(prior$regularization$unit_centered)
 }
 
+# Exact measure of a single projected centered direction with a zero gate.
+# Other mixtures keep their existing construction, including a pure point.
+.bt_regularized_gated_measure <- function(prior){
+
+  if(!is.prior.mixture(prior) || length(prior) != 2L ||
+     !is.null(attr(prior, "multiply_by", exact = TRUE))) return(NULL)
+  slab <- vapply(prior, function(p){
+    inherits(p, "prior.regularized_term") && isTRUE(p$regularization$unit_centered) &&
+      is.null(attr(p, "multiply_by", exact = TRUE))
+  }, logical(1))
+  spike <- vapply(prior, .posterior_atoms_is_zero_point, logical(1))
+  if(sum(slab) != 1L || sum(spike) != 1L) return(NULL)
+  probability <- .prior_density_ordinate_mixture_weights(prior)
+  if(is.null(probability) || probability[slab] <= 0) return(NULL)
+  points <- if(probability[spike] > 0) data.frame(x = 0, p = unname(probability[spike])) else
+    .prior_linear_density_empty_points()
+  list(points = points, continuous = unname(probability[slab]))
+}
+
 # A factor mixture has one gate for the entire term. Project each component
 # inside that gate. Splitting the term into independently gated directions
 # would change the atom probability.

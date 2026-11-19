@@ -812,6 +812,10 @@ without ordered levels or regularized coefficients retain their numerical
 diagnostics at construction. A single untransformed regularized coefficient
 with a nonzero weight and no multiplier defers even selection of the grid:
 the structural ordinate and region probability require no display quantiles.
+For a single centered direction with one zero spike and one regularized slab,
+the same deferral carries the declared atom location, atom probability and
+continuous mass. The context retains its provenance, and materialization
+checks those masses against the grid built by the ordinary mixture route.
 Its deferred `n_grid` gives the requested minimum and its materialized grid
 reports the resolved size and spacing. Grid attributes such as `product_grid_resolution`
 belong to the built grid (`.prior_linear_density_materialize()`). A
