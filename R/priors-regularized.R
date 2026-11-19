@@ -71,8 +71,10 @@
 #' one coded coordinate scaled by the Euclidean length of its weight
 #' vector. For wider coordinate-wise shared-lasso contrasts, plots omit
 #' unresolved prior curves.
-#' For multi-coefficient factor terms, use the marginal methods such as
-#' `mpdf()` for individual coordinates and `rng()` for joint draws.
+#' For a bound centered factor, the marginal methods such as `mpdf()`
+#' describe a level deviation using the fitted contrast matrix. Use
+#' [JAGS_formula_prior_density()] for a particular coefficient or
+#' contrast, and `rng()` for joint draws.
 #' A request for their joint density, CDF or quantile raises
 #' `BayesTools_regularized_joint_unavailable`. A marginal calculation that
 #' cannot meet its numerical precision raises
@@ -109,6 +111,9 @@
 #'                            contrast = "meandif")
 #' centered <- JAGS_formula(~ Month + Wind, "mu", weather,
 #'                          prior_list = list(intercept = intercept, sh = group))
+#' # Group lasso on the orthonormal month coordinates.
+#' month_lasso <- prior_regularized("lasso", global, terms = "Month",
+#'                                  contrast = "orthonormal")
 #' @export
 prior_regularized <- function(family, scale, terms = NULL, slab_scale = NULL, slab_df = 4,
                               contrast = NULL){

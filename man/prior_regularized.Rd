@@ -102,8 +102,10 @@ Within one centered unit, a linear contrast has the marginal law of
 one coded coordinate scaled by the Euclidean length of its weight
 vector. For wider coordinate-wise shared-lasso contrasts, plots omit
 unresolved prior curves.
-For multi-coefficient factor terms, use the marginal methods such as
-\code{mpdf()} for individual coordinates and \code{rng()} for joint draws.
+For a bound centered factor, the marginal methods such as \code{mpdf()}
+describe a level deviation using the fitted contrast matrix. Use
+\code{\link[=JAGS_formula_prior_density]{JAGS_formula_prior_density()}} for a particular coefficient or
+contrast, and \code{rng()} for joint draws.
 A request for their joint density, CDF or quantile raises
 \code{BayesTools_regularized_joint_unavailable}. A marginal calculation that
 cannot meet its numerical precision raises
@@ -134,6 +136,9 @@ group <- prior_regularized("horseshoe", global, terms = c("Month", "Wind"),
                            contrast = "meandif")
 centered <- JAGS_formula(~ Month + Wind, "mu", weather,
                          prior_list = list(intercept = intercept, sh = group))
+# Group lasso on the orthonormal month coordinates.
+month_lasso <- prior_regularized("lasso", global, terms = "Month",
+                                 contrast = "orthonormal")
 }
 \references{
 \insertAllCited{}
