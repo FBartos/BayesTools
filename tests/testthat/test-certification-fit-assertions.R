@@ -5910,90 +5910,155 @@ test_that("factor slice blocks sample members whose transformed coordinate is be
 test_that("factor slice blocks sample members far from distant bounds", {
   skip_if_not(isTRUE(BayesTools_load_JAGS_module(quiet = TRUE, warn = FALSE)))
 
-  # A standard normal truncated to (-1e9, 1e9), or bounded below by -1e6, in a
-  # block with an ordinary normal: the coordinate reaches values to a relative
-  # precision of about |u| eps of their distance from the bounds (here about
-  # 1e-6 and 1e-9), far finer than the posterior. The central mass, the moments
-  # and the partner's moments are checked; a coordinate that cannot resolve the
-  # mode would remove the central mass or freeze the block.
-  quantities <- list(
-    x_mean    = list(series = function(x) x[, "x"], target = 0),
-    x_var     = list(series = function(x) x[, "x"]^2, target = 1),
-    x_central = list(series = function(x) as.numeric(abs(x[, "x"]) <= 1), target = 2 * stats::pnorm(1) - 1),
-    b_mean    = list(series = function(x) x[, "b"], target = 0),
-    b_var     = list(series = function(x) x[, "b"]^2, target = 1)
-  )
-  markers <- .sampler_test_block_markers(c("x", "b"))
+  # Members whose grid of reachable values is fine enough for their posterior
+  # (the precision limit is about 16 significant digits of the distance from
+  # the anchoring bound): a standard normal on (-1e9, 1e9) up to (-1e13, 1e13),
+  # with a lower bound -1e6, also started far in a tail; a vague uniform
+  # location with a posterior SD of 0.1 started at 3e5; a sharp posterior (SD
+  # 3.2e-9) at 0.7 started at 0.3; a likelihood with a step at 0.25 started off
+  # the step. Each samples its exact moments with an ordinary normal partner;
+  # neither diagnostic (the resolvability check, consecutive collapsed slice
+  # intervals) fires. The isolated collapses of (-1e13, 1e13) are
+  # self-transitions.
   # Seed 1: with seed 47 the partner's variance gave z = -4.02 under adaptation
   # 0 with the lower bound -1e6. Those draws are bit-identical on development
-  # (90fee58), so the transform is not involved; over seeds 1 to 24 the same
-  # z has mean -0.41 and SD 0.90 (largest |z| 1.74), and a control block of two
-  # untransformed normals over 48 seeds shows the same left skew of the
-  # variance estimate (mean z -0.53 and -0.04): a tail event, not a bias.
-  for(member in c("x ~ dnorm(0, 1)T(-1e9, 1e9)", "x ~ dnorm(0, 1)T(-1e6, )")){
-    syntax <- paste0("model{\n  ", member, "\n  b ~ dnorm(0, 1)\n", markers$syntax, "\n}")
+  # (90fee58), so the transform is not involved. Independent repetitions (200
+  # chains with disjoint seeds; neighbouring seeds of this helper share chains,
+  # .RNG.seed = seed + chain) give E[b^2] = 1.0023 +- 0.0021 against 1, which is
+  # consistent with a Monte Carlo tail event at seed 47; it does not exclude a
+  # small bias.
+  standard_normal <- list(
+    x_mean    = list(series = function(x) x[, "x"], target = 0),
+    x_var     = list(series = function(x) x[, "x"]^2, target = 1),
+    x_central = list(series = function(x) as.numeric(abs(x[, "x"]) <= 1), target = 2 * stats::pnorm(1) - 1)
+  )
+  partner <- list(
+    b_mean = list(series = function(x) x[, "b"], target = 0),
+    b_var  = list(series = function(x) x[, "b"]^2, target = 1)
+  )
+  set.seed(1)
+  y <- stats::rnorm(100, mean = 2.5, sd = 1)
+  normal <- function(member, init = list()) list(member = member, data = list(), inits = init, quantities = standard_normal)
+  cases <- list(
+    normal("x ~ dnorm(0, 1)T(-1e9, 1e9)"),
+    normal("x ~ dnorm(0, 1)T(-2e12, 2e12)"),
+    normal("x ~ dnorm(0, 1)T(-3e12, 3e12)"),
+    normal("x ~ dnorm(0, 1)T(-1e13, 1e13)"),
+    normal("x ~ dnorm(0, 1)T(-1e6, )"),
+    normal("x ~ dnorm(0, 1)T(-1e12, )", list(x = 10)),
+    normal("x ~ dnorm(0, 1)T(-1e12, 1e12)", list(x = 6)),
+    normal("x ~ dnorm(0, 1)T(-1e11, 1e11)", list(x = 60)),
+    # the posterior of the location is N(mean(y), 0.1^2) (the prior bounds are
+    # 1e6 away)
+    list(member = "x ~ dunif(-1e6, 1e6)\n  for(i in 1:100){ y[i] ~ dnorm(x, 1) }", data = list(y = y),
+         inits = list(x = 3e5), quantities = list(
+           x_mean = list(series = function(x) x[, "x"], target = mean(y)),
+           x_var  = list(series = function(x) (x[, "x"] - mean(y))^2, target = 0.01))),
+    # density 0.4 below 0.25 and 1.2 above: P(x >= 0.25) = 0.9, E[x] = 0.575,
+    # E[x^2] = 0.4 0.25^3 / 3 + 1.2 (1 - 0.25^3) / 3
+    list(member = "x ~ dunif(0, 1)\n  z ~ dbern(0.25 + 0.5 * step(x - 0.25))", data = list(z = 1),
+         inits = list(x = 0.26), quantities = list(
+           x_mean  = list(series = function(x) x[, "x"], target = 0.575),
+           x_var   = list(series = function(x) x[, "x"]^2, target = 0.4 * 0.25^3 / 3 + 1.2 * (1 - 0.25^3) / 3),
+           x_upper = list(series = function(x) as.numeric(x[, "x"] >= 0.25), target = 0.9)))
+  )
+  markers <- .sampler_test_block_markers(c("x", "b"))
+  for(case in cases){
+    syntax <- paste0("model{\n  ", case$member, "\n  b ~ dnorm(0, 1)\n", markers$syntax, "\n}")
     for(n_adapt in c(0L, 500L)){
-      samples <- .sampler_test_block_samples(syntax, markers$data, variables = c("x", "b"),
-                                             n_adapt = n_adapt, n_iter = 5000L, seed = 1L)
-      checks <- .sampler_test_mcse_checks(samples, quantities)
-      .sampler_test_expect_checks(checks, paste0(member, ", adapt = ", n_adapt))
+      samples <- .sampler_test_block_samples(syntax, c(case$data, markers$data), variables = c("x", "b"),
+                                             n_adapt = n_adapt, n_iter = 5000L, seed = 1L, inits = case$inits)
+      checks <- .sampler_test_mcse_checks(samples, c(case$quantities, partner))
+      .sampler_test_expect_checks(checks, paste0(case$member, ", adapt = ", n_adapt))
     }
   }
+
+  # The sharp posterior N(0.7, 1e-17) on (0, 1) seen from 0.3: the first
+  # difference of the log density over the grid is huge, its curvature is not.
+  # Without adaptation only: adapting on the transient from 0.3 leaves the
+  # partner's moments wrong (SD about 0.2 instead of 1), as on development; that
+  # is outside these diagnostics.
+  syntax <- paste0("model{\n  x ~ dunif(0, 1)\n  z ~ dnorm(x, 1e17)\n  b ~ dnorm(0, 1)\n", markers$syntax, "\n}")
+  samples <- .sampler_test_block_samples(syntax, c(list(z = 0.7), markers$data), variables = c("x", "b"),
+                                         n_adapt = 0L, n_iter = 5000L, seed = 1L, inits = list(x = 0.3))
+  # on the standardized scale (coda's ESS fails for a series with variance 1e-17)
+  checks <- .sampler_test_mcse_checks(samples, c(list(
+    x_mean = list(series = function(x) (x[, "x"] - 0.7) / sqrt(1e-17), target = 0),
+    x_var  = list(series = function(x) ((x[, "x"] - 0.7) / sqrt(1e-17))^2, target = 1)
+  ), partner))
+  .sampler_test_expect_checks(checks, "sharp posterior at 0.7 from 0.3, adapt = 0")
 })
 
 test_that("a member whose coordinate cannot resolve its posterior stops the fit", {
   skip_if_not(isTRUE(BayesTools_load_JAGS_module(quiet = TRUE, warn = FALSE)))
 
-  # Bounds so far from where the posterior concentrates that neighbouring
-  # coordinates are farther apart than the posterior is wide: the sampler would
-  # move on a coarse grid or not at all. The resolvability check stops the fit
-  # with a node error at the start of the fit, at a refresh of the axes, at the
-  # end of adaptation (raised by the next update) or every 500 updates after
-  # adaptation, before any draw of the failing call is returned.
+  # Bounds so far from where the posterior concentrates that the grid of
+  # reachable values is coarse against the posterior. The resolvability check
+  # (curvature over the grid step) stops the fit at the start, at a refresh of
+  # the axes, at the end of adaptation (raised by the next update) or after
+  # 50, 100, 200 and every 500 updates after adaptation; a direction whose
+  # slice interval collapses on ten consecutive updates (a frozen chain) stops
+  # it too. Either way no draw of the failing call is returned. Not asserted:
+  # a member started exactly on a step of its likelihood also stops at the
+  # start (a documented false alarm: the step reads as curvature).
   markers <- .sampler_test_block_markers(c("x", "b"))
-  stop_site <- function(member, data, n_adapt, inits = list()){
+  stop_message <- function(member, data, n_adapt, inits = list(), n_iter = 600L, seed = 51L){
     syntax <- paste0("model{\n  ", member, "\n  b ~ dnorm(0, 1)\n", markers$syntax, "\n}")
-    model <- tryCatch(.sampler_test_compile(syntax, c(data, markers$data), chains = 2L, seed = 51L, inits = inits),
+    model <- tryCatch(.sampler_test_compile(syntax, c(data, markers$data), chains = 2L, seed = seed, inits = inits),
                       error = identity)
     if(inherits(model, "error")) return(conditionMessage(model))
     adapted <- tryCatch(rjags::adapt(model, n.iter = n_adapt, end.adaptation = TRUE, progress.bar = "none"),
                         error = identity)
     if(inherits(adapted, "error")) return(conditionMessage(adapted))
-    # a failure found when adaptation ends is raised by the first later update;
-    # the check after adaptation runs at the 500th update
-    updated <- tryCatch(stats::update(model, 600L, progress.bar = "none"), error = identity)
-    if(inherits(updated, "error")) return(conditionMessage(updated))
+    # a failure found when adaptation ends is raised by the first later update
+    samples <- tryCatch(rjags::coda.samples(model, c("x", "b"), n.iter = n_iter, progress.bar = "none"),
+                        error = identity)
+    if(inherits(samples, "error")) return(conditionMessage(samples))
     "no error"
   }
-  message <- function(site) paste0(
+  resolution_message <- function(site) paste0(
     "Factor slice sampler: the support bounds of this node are too far from where its posterior concentrates ",
-    "for the sampler's scale (found ", site, "); declare the block without this node"
+    "for the sampler's scale (found ", site
   )
-  cases <- list(
-    # a standard normal with symmetric bounds 5e14 away, or bounded below by -1e16
-    list(member = "x ~ dnorm(0, 1)T(-5e14, 5e14)", data = list(), inits = list(), n_adapt = 0L, site = "at the start of the fit"),
-    list(member = "x ~ dnorm(0, 1)T(-5e14, 5e14)", data = list(), inits = list(), n_adapt = 500L, site = "at the start of the fit"),
-    list(member = "x ~ dnorm(0, 1)T(-1e16, )", data = list(), inits = list(), n_adapt = 0L, site = "at the start of the fit"),
-    list(member = "x ~ dnorm(0, 1)T(-1e16, )", data = list(), inits = list(), n_adapt = 500L, site = "at the start of the fit"),
+  collapse_message <- "Factor slice sampler: the slice interval collapsed at the current value on ten updates in a row"
+  start <- list(
+    # a standard normal on (-1e14, 1e14) or (-5e14, 5e14), or bounded below by -1e16
+    list(member = "x ~ dnorm(0, 1)T(-1e14, 1e14)", data = list(), inits = list()),
+    list(member = "x ~ dnorm(0, 1)T(-5e14, 5e14)", data = list(), inits = list()),
+    list(member = "x ~ dnorm(0, 1)T(-1e16, )", data = list(), inits = list()),
     # a vague uniform location with a posterior SD of 1e-5
-    list(member = "x ~ dunif(-1e10, 1e10)\n  z ~ dnorm(x, 1e10)", data = list(z = 0.5), inits = list(),
-         n_adapt = 0L, site = "at the start of the fit"),
-    list(member = "x ~ dunif(-1e10, 1e10)\n  z ~ dnorm(x, 1e10)", data = list(z = 0.5), inits = list(x = 0.5),
-         n_adapt = 500L, site = "at the start of the fit"),
-    # a start next to the bound, where the coordinate resolves the target, and
-    # adaptation that carries the member to where it does not
-    list(member = "x ~ dnorm(0, 1)T(-1e16, )", data = list(), inits = list(x = -1e16 + 4), n_adapt = 50L,
-         site = "at the end of adaptation"),
-    list(member = "x ~ dnorm(0, 1)T(-1e16, )", data = list(), inits = list(x = -1e16 + 4), n_adapt = 150L,
-         site = "at a refresh of the axes during adaptation"),
-    # the same start without adaptation: the member drifts during sampling
-    list(member = "x ~ dnorm(0, 1)T(-1e16, )", data = list(), inits = list(x = -1e16 + 4), n_adapt = 0L,
-         site = "during sampling")
+    list(member = "x ~ dunif(-1e10, 1e10)\n  z ~ dnorm(x, 1e10)", data = list(z = 0.5), inits = list(x = 0.5)),
+    # normals with SD 1e-16 and 1e-17 at the centre of (-1, 1)
+    list(member = "x ~ dnorm(0, 1e32)T(-1, 1)", data = list(), inits = list()),
+    list(member = "x ~ dnorm(0, 1e34)T(-1, 1)", data = list(), inits = list())
   )
-  for(case in cases){
-    observed <- stop_site(case$member, case$data, case$n_adapt, case$inits)
-    expect_match(observed, message(case$site), fixed = TRUE,
-                 info = paste0(case$member, ", adapt = ", case$n_adapt, ": ", observed))
+  for(case in start){
+    for(n_adapt in c(0L, 500L)){
+      observed <- stop_message(case$member, case$data, n_adapt, case$inits)
+      expect_match(observed, resolution_message("at the start of the fit"), fixed = TRUE,
+                   info = paste0(case$member, ", adapt = ", n_adapt, ": ", observed))
+    }
+  }
+  # x | b ~ N(0, exp(-10 b)) on (-1e12, 1e12) from b = -1: resolvable at the
+  # start, but the joint posterior moves b towards 5 and the SD of x below the
+  # grid step (about 0.005), so a later site stops it
+  later <- list(
+    list(n_adapt = 0L, site = "during sampling"),
+    list(n_adapt = 50L, site = "at the end of adaptation"),
+    list(n_adapt = 150L, site = "at a refresh of the axes during adaptation")
+  )
+  for(case in later){
+    observed <- stop_message("x ~ dnorm(0, exp(10 * b))T(-1e12, 1e12)", list(), case$n_adapt,
+                             list(x = 0, b = -1), seed = 72L)
+    expect_match(observed, resolution_message(case$site), fixed = TRUE,
+                 info = paste0("narrowing posterior, adapt = ", case$n_adapt, ": ", observed))
+  }
+  # a start next to a distant bound: the chain freezes, its slice intervals
+  # collapse on every update, and the fit stops after ten of them, also when
+  # fewer than 500 draws are requested
+  for(n_adapt in c(0L, 50L)){
+    observed <- stop_message("x ~ dnorm(0, 1)T(-1e16, )", list(), n_adapt, list(x = -1e16 + 4), n_iter = 499L)
+    expect_match(observed, collapse_message, fixed = TRUE, info = paste0("drift, adapt = ", n_adapt, ": ", observed))
   }
 })
 
