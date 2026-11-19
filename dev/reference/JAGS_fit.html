@@ -20,7 +20,7 @@ of prior distributions."><meta name="robots" content="noindex"><!-- mathjax --><
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-danger" data-toggle="tooltip" data-placement="bottom" title="In-development version">0.4.0.9003</span>
+        <span class="version label label-danger" data-toggle="tooltip" data-placement="bottom" title="In-development version">0.4.0.9004</span>
       </span>
     </div>
 
@@ -107,6 +107,7 @@ of prior distributions.</p>
 <span>  worker_output <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  sampler_gates <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  sampler_blocks <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  runtime_report <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  <span class="va">...</span></span>
 <span><span class="op">)</span></span>
 <span></span>
@@ -122,7 +123,8 @@ of prior distributions.</p>
 <span>  runtime_setup <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/attr.html" class="external-link">attr</a></span><span class="op">(</span><span class="va">fit</span>, <span class="st">"runtime_setup"</span>, exact <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span>,</span>
 <span>  runtime_cache <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/attr.html" class="external-link">attr</a></span><span class="op">(</span><span class="va">fit</span>, <span class="st">"runtime_cache"</span>, exact <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span>,</span>
 <span>  worker_output <span class="op">=</span> <span class="cn">NULL</span>,</span>
-<span>  adapt <span class="op">=</span> <span class="cn">NULL</span></span>
+<span>  adapt <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  runtime_report <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/attr.html" class="external-link">attr</a></span><span class="op">(</span><span class="va">fit</span>, <span class="st">"runtime_report"</span>, exact <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
 
@@ -453,6 +455,34 @@ block, with its <code>kind</code>, <code>prior</code>, <code>branch</code> or <c
 <code>nodes</code> and <code>reason</code>). A density that cannot be calculated (NaN)
 at a point the factor slice sampler evaluates stops the fit with a JAGS
 error, as with the stock samplers.</p></dd>
+
+
+<dt id="arg-runtime-report">runtime_report<a class="anchor" aria-label="anchor" href="#arg-runtime-report"></a></dt>
+<dd><p>optional function accepting one <code>context</code> list,
+as for <code>runtime_setup</code> but with <code>context$phase = "report"</code>, that
+reads small values of a process, such as sampler counters. It is called in
+every process that ran chains (the calling process of a serial fit, each
+worker of a parallel fit) after every backend run: the initial run, each
+restart attempt, each automatic extension, each run of the JASP fitting
+path, and each extension of <code>JAGS_extend()</code>. It must not change
+inference targets or random-number state, must capture only small settings,
+and returns <code>NULL</code> or a small serializable value. The values of runs
+that do not give the returned fit (failed attempts and failed extensions)
+are dropped; the callback is still called after them, so that
+read-and-clear state starts the next run clean, but not after a worker
+connection failure. The <code>runtime_report_values</code> attribute of a fit is
+the list of the kept runs of the call, in order, each a list with one
+element per process (<code>NULL</code> elements kept in place); it is <code>NULL</code>
+when no process reported a value, and a fit that failed has none. Callback
+warnings and errors are signalled with the process they came from and
+recorded in the fit's <code>warnings</code> attribute when the run is kept. A
+callback error leaves <code>NULL</code> for its process; after a warning, the
+value is kept. A failed transport of the report leaves <code>NULL</code> for every
+process, with one warning. The callback is stored as the
+<code>runtime_report</code> attribute; <code>JAGS_extend()</code> reuses it and reports
+only its own runs (the values of the extended fit are not carried over).
+Callback packages must be listed in <code>required_packages</code>. Passing
+<code>NULL</code> disables the report.</p></dd>
 
 
 <dt id="arg--">...<a class="anchor" aria-label="anchor" href="#arg--"></a></dt>
