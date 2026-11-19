@@ -9,6 +9,15 @@ random-SD rescaling preserves its prior law and why map 17 requires refitting.
 
 ## Prior Contract
 
+`prior_regularized()` uses ordinary zero-centered normal and Laplace laws
+for fixed-scale ridge and lasso. A prior on the global scale defines a joint
+coefficient law. The horseshoe adds independent standard half-Cauchy local
+scales; its optional Student-t slab has one inverse-gamma variance shared by
+the group. Preserve these shared draws in contrasts, mixtures and prior
+predictions. For a classical or regularized horseshoe, zero is a continuous
+infinite-density ordinate and has zero point mass. A product-space point
+component introduces its own inclusion indicator.
+
 Ordinary bound factor mixtures and spikes sample through their exact declared
 factor design. Scalar product components draw independent raw coordinates;
 joint mnormal/mt/mpoint retain their joint calls and mt's common scale.

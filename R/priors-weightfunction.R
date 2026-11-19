@@ -828,6 +828,9 @@ wf_independent <- function(prior, scale = "omega"){
     if(family %in% c("gamma", "exp") && parameters[["rate"]] <= k){
       return(Inf)
     }
+    if(family == "laplace" && k * parameters$scale >= 1){
+      return(Inf)
+    }
   }
 
   unavailable <- function(reason){

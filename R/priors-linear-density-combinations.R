@@ -1506,6 +1506,17 @@
     return(.prior_linear_density_transform(dist, output_transformation, output_transformation_arguments, n_grid))
   }
 
+  regularized <- .bt_regularized_linear_plan(prior_list, weights, source_transforms)
+  if(!is.null(regularized)){
+    constant <- .prior_linear_density_constant_location(output_transformation, output_transformation_arguments)
+    if(!is.null(constant)) return(.prior_linear_density_point(constant))
+    if(!is.null(regularized$reason)){
+      .bt_formula_density_stop(regularized$reason, reason = "unsupported_contribution_measure",
+        prior_family = "regularized", sources = regularized$sources)
+    }
+    prior_list <- regularized$prior_list
+  }
+
   expression_sources <- .prior_linear_expression_sources(prior_list, weights)
   if(length(expression_sources) > 0){
     reason <- .prior_linear_expression_reason(expression_sources)

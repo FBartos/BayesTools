@@ -1,0 +1,9 @@
+type	name	elapsed	memory_gb	r_version	platform
+fit	stan_horseshoe	8.610000000	0.582617	4.6.0	Windows/x86_64-w64-mingw32
+fit	stan_lasso	7.000000000	0.612988	4.6.0	Windows/x86_64-w64-mingw32
+fit	stan_regularized_horseshoe	10.710000000	0.592480	4.6.0	Windows/x86_64-w64-mingw32
+fit	stan_ridge	88.560000000	0.518164	4.6.0	Windows/x86_64-w64-mingw32
+text	comparison-horseshoe	0.000000000	0.337305	4.6.0	Windows/x86_64-w64-mingw32
+text	comparison-lasso	0.000000000	0.335645	4.6.0	Windows/x86_64-w64-mingw32
+text	comparison-regularized_horseshoe	0.000000000	0.337598	4.6.0	Windows/x86_64-w64-mingw32
+text	comparison-ridge	0.000000000	0.335059	4.6.0	Windows/x86_64-w64-mingw32

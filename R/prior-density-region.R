@@ -311,7 +311,7 @@
 .prior_region_primitive_supported <- function(prior){
 
   supported <- c(
-    "normal", "lognormal", "t", "gamma", "invgamma", "beta", "exp",
+    "normal", "laplace", "lognormal", "t", "gamma", "invgamma", "beta", "exp",
     "uniform", "moment", "invmoment"
   )
   truncation <- prior$truncation

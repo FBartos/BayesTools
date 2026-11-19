@@ -706,6 +706,7 @@ transform_prior_samples <- function(fit, n_samples = 10000, seed = NULL, formula
   }, logical(1))]
   .bt_validate_ordered_shared_allocations(prior_list, bound_only = TRUE)
   allocation_registry <- new.env(parent = emptyenv())
+  regularized_scales <- new.env(parent = emptyenv())
 
   if(!is.null(seed)){
     set.seed(seed)
@@ -718,6 +719,10 @@ transform_prior_samples <- function(fit, n_samples = 10000, seed = NULL, formula
       # No prior for this parameter - use zeros
       samples_list[[param_name]] <- matrix(0, nrow = n_samples, ncol = 1)
       colnames(samples_list[[param_name]]) <- param_name
+
+    }else if(.bt_has_regularized_term(prior)){
+      samples_list[[param_name]] <- .bt_regularized_draw_columns(
+        prior, param_name, n_samples, regularized_scales)
 
     }else if(is.prior.none(prior)){
       # No effect prior - use zeros
@@ -820,6 +825,9 @@ transform_prior_samples <- function(fit, n_samples = 10000, seed = NULL, formula
 
   # Combine all samples into one matrix
   samples <- do.call(cbind, samples_list)
+  if(length(regularized_scales)){
+    samples <- cbind(samples, do.call(cbind, as.list(regularized_scales)))
+  }
   .prior_numerical_finite(samples, "joint prior")
 
   # Filter to match column_names if provided

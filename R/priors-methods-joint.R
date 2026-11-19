@@ -193,6 +193,18 @@ rng.prior   <- function(x, n, ...){
   .check_n(n)
   .check_prior(prior)
 
+  if(inherits(prior, "prior.regularized_term")){
+    draws <- .bt_regularized_draw_columns(prior, "coefficient", n, new.env(parent = emptyenv()))
+    if(is.prior.factor(prior)){
+      design <- attr(prior, "factor_design", exact = TRUE)
+      if(!identical(list(...)[["transform_factor_samples"]], FALSE) && is.matrix(design)){
+        return(unname(draws %*% t(design)))
+      }
+      return(unname(draws))
+    }
+    return(as.vector(draws))
+  }
+
   dots  <- list(...)
   if(!is.null(dots[["transform_factor_samples"]])){
     check_bool(dots[["transform_factor_samples"]], "transform_factor_samples")
@@ -708,9 +720,12 @@ quant.prior <- function(x, p, ...){
 
 .prior_simple_base_d <- function(prior, x, log = FALSE){
 
+  if(inherits(prior, "prior.regularized_term"))
+    return(.regularized_marginal(prior, x, density = TRUE, log = log))
   switch(
     prior[["distribution"]],
     "normal"    = stats::dnorm(x, mean = prior$parameters[["mean"]], sd = prior$parameters[["sd"]], log = log),
+    "laplace"   = .dlaplace_prior(x, prior$parameters$location, prior$parameters$scale, log = log),
     "lognormal" = stats::dlnorm(x, meanlog = prior$parameters[["meanlog"]], sdlog = prior$parameters[["sdlog"]], log = log),
     "t"         = extraDistr::dlst(x, df = prior$parameters[["df"]], mu = prior$parameters[["location"]], sigma = prior$parameters[["scale"]], log = log),
     "gamma"     = stats::dgamma(x, shape = prior$parameters[["shape"]], rate = prior$parameters[["rate"]], log = log),
@@ -727,9 +742,12 @@ quant.prior <- function(x, p, ...){
 
 .prior_simple_base_p <- function(prior, q, lower.tail = TRUE, log.p = FALSE){
 
+  if(inherits(prior, "prior.regularized_term"))
+    return(.regularized_marginal(prior, q, density = FALSE, log = log.p, lower.tail = lower.tail))
   switch(
     prior[["distribution"]],
     "normal"    = stats::pnorm(q, mean = prior$parameters[["mean"]], sd = prior$parameters[["sd"]], lower.tail = lower.tail, log.p = log.p),
+    "laplace"   = .plaplace_prior(q, prior$parameters$location, prior$parameters$scale, lower.tail, log.p),
     "lognormal" = stats::plnorm(q, meanlog = prior$parameters[["meanlog"]], sdlog = prior$parameters[["sdlog"]], lower.tail = lower.tail, log.p = log.p),
     # stats::pt keeps the requested tail exact; extraDistr's upper tail is 1 - p.
     "t"         = stats::pt((q - prior$parameters[["location"]]) / prior$parameters[["scale"]], df = prior$parameters[["df"]], lower.tail = lower.tail, log.p = log.p),
@@ -747,9 +765,15 @@ quant.prior <- function(x, p, ...){
 
 .prior_simple_base_q <- function(prior, p, lower.tail = TRUE, log.p = FALSE){
 
+  if(inherits(prior, "prior.regularized_term")){
+    if(log.p && any(is.finite(p) & exp(p) == 0)) .regularized_numerical_unavailable("quantile")
+    q <- .regularized_quantile(prior, if(log.p) exp(p) else p)
+    return(if(lower.tail) q else -q)
+  }
   switch(
     prior[["distribution"]],
     "normal"    = stats::qnorm(p, mean = prior$parameters[["mean"]], sd = prior$parameters[["sd"]], lower.tail = lower.tail, log.p = log.p),
+    "laplace"   = .qlaplace_prior(p, prior$parameters$location, prior$parameters$scale, lower.tail, log.p),
     "lognormal" = stats::qlnorm(p, meanlog = prior$parameters[["meanlog"]], sdlog = prior$parameters[["sdlog"]], lower.tail = lower.tail, log.p = log.p),
     "t"         = prior$parameters[["location"]] + prior$parameters[["scale"]] * stats::qt(p, df = prior$parameters[["df"]], lower.tail = lower.tail, log.p = log.p),
     "gamma"     = stats::qgamma(p, shape = prior$parameters[["shape"]], rate = prior$parameters[["rate"]], lower.tail = lower.tail, log.p = log.p),
@@ -769,6 +793,7 @@ quant.prior <- function(x, p, ...){
   switch(
     prior[["distribution"]],
     "normal"    = stats::rnorm(n, mean = prior$parameters[["mean"]], sd = prior$parameters[["sd"]]),
+    "laplace"   = .qlaplace_prior(stats::runif(n), prior$parameters$location, prior$parameters$scale),
     "lognormal" = stats::rlnorm(n, meanlog = prior$parameters[["meanlog"]], sdlog = prior$parameters[["sdlog"]]),
     "t"         = extraDistr::rlst(n, df = prior$parameters[["df"]], mu = prior$parameters[["location"]], sigma = prior$parameters[["scale"]]),
     "gamma"     = stats::rgamma(n, shape = prior$parameters[["shape"]], rate = prior$parameters[["rate"]]),
@@ -1312,6 +1337,7 @@ quant.prior <- function(x, p, ...){
     C1 <- switch(
       prior[["distribution"]],
       "normal"    = stats::pnorm(prior$truncation[["lower"]], mean = prior$parameters[["mean"]], sd = prior$parameters[["sd"]], lower.tail = TRUE, log.p = FALSE),
+      "laplace"   = .prior_simple_base_p(prior, prior$truncation$lower),
       "lognormal" = stats::plnorm(prior$truncation[["lower"]], meanlog = prior$parameters[["meanlog"]], sdlog = prior$parameters[["sdlog"]], lower.tail = TRUE, log.p = FALSE),
       "t"         = extraDistr::plst(prior$truncation[["lower"]], df = prior$parameters[["df"]], mu = prior$parameters[["location"]], sigma = prior$parameters[["scale"]], lower.tail = TRUE, log.p = FALSE),
       "gamma"     = stats::pgamma(prior$truncation[["lower"]], shape = prior$parameters[["shape"]], rate = prior$parameters[["rate"]], lower.tail = TRUE, log.p = FALSE),
@@ -1336,6 +1362,7 @@ quant.prior <- function(x, p, ...){
     C2 <- switch(
       prior[["distribution"]],
       "normal"    = stats::pnorm(prior$truncation[["upper"]], mean = prior$parameters[["mean"]], sd = prior$parameters[["sd"]], lower.tail = TRUE, log.p = FALSE),
+      "laplace"   = .prior_simple_base_p(prior, prior$truncation$upper),
       "lognormal" = stats::plnorm(prior$truncation[["upper"]], meanlog = prior$parameters[["meanlog"]], sdlog = prior$parameters[["sdlog"]], lower.tail = TRUE, log.p = FALSE),
       "t"         = extraDistr::plst(prior$truncation[["upper"]], df = prior$parameters[["df"]], mu = prior$parameters[["location"]], sigma = prior$parameters[["scale"]], lower.tail = TRUE, log.p = FALSE),
       "gamma"     = stats::pgamma(prior$truncation[["upper"]], shape = prior$parameters[["shape"]], rate = prior$parameters[["rate"]], lower.tail = TRUE, log.p = FALSE),
@@ -1609,7 +1636,9 @@ quant.prior <- function(x, p, ...){
 .is_prior_default_range   <- function(prior){
   switch(
     prior[["distribution"]],
+    "regularized" = TRUE,
     "normal"    = is.infinite(prior$truncation[["lower"]])          & is.infinite(prior$truncation[["upper"]]),
+    "laplace"   = is.infinite(prior$truncation$lower) & is.infinite(prior$truncation$upper),
     "lognormal" = prior$truncation[["lower"]] == 0                  & is.infinite(prior$truncation[["upper"]]),
     "t"         = is.infinite(prior$truncation[["lower"]])          & is.infinite(prior$truncation[["upper"]]),
     "gamma"     = prior$truncation[["lower"]] == 0                  & is.infinite(prior$truncation[["upper"]]),

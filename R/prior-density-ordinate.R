@@ -451,6 +451,10 @@ prior_density_has_provenance <- function(x){
 
 .prior_density_ordinate_prior_provenance <- function(prior){
 
+  if(inherits(prior, "prior.regularized_term")){
+    return(list(kind = "regularized_coefficient", family = prior$regularization$family,
+                regularization = prior$regularization, truncation = prior$truncation))
+  }
   list(
     kind       = "primitive",
     family     = if(!is.null(prior$distribution)) prior$distribution else "unknown",
@@ -584,9 +588,18 @@ prior_density_has_provenance <- function(x){
 .prior_density_ordinate_primitive <- function(prior, value){
 
   provenance <- .prior_density_ordinate_prior_provenance(prior)
+  if(inherits(prior, "prior.regularized_term")){
+    height <- if(value == 0) .regularized_zero_log_density(prior) else tryCatch(
+      .regularized_marginal(prior, value, density = TRUE, log = TRUE),
+      BayesTools_regularized_marginal_unavailable = function(e) NA_real_)
+    behavior <- if(is.infinite(value)) "zero" else if(isTRUE(height == Inf)) "infinite" else
+      if(value == 0 && is.na(height)) "unknown" else "regular"
+    return(.prior_density_ordinate_result(value, behavior, height, exact = !is.na(height),
+      method = "scale_mixture", provenance = provenance))
+  }
   family <- prior$distribution
   supported <- c(
-    "normal", "lognormal", "t", "gamma", "invgamma", "beta", "exp",
+    "normal", "laplace", "lognormal", "t", "gamma", "invgamma", "beta", "exp",
     "uniform", "moment", "invmoment", "point", "bernoulli"
   )
   if(!is.character(family) || length(family) != 1L || !family %in% supported ||
@@ -648,6 +661,7 @@ prior_density_has_provenance <- function(x){
   behavior <- switch(
     family,
     "normal" = "regular",
+    "laplace" = "regular",
     "t" = "regular",
     "uniform" = "regular",
     "exp" = "regular",
@@ -2028,6 +2042,7 @@ prior_density_has_provenance <- function(x){
     "beta"    = parameters$alpha,
     "gamma"   = parameters$shape,
     "normal"  = 1,
+    "laplace" = 1,
     "t"       = 1,
     "exp"     = 1,
     "uniform" = 1,
@@ -2136,7 +2151,7 @@ prior_density_has_provenance <- function(x){
     return("zero")
   }
   exponent <- if(b > 0){
-    if(family %in% c("normal", "t")) 1 - b else
+    if(family %in% c("normal", "laplace", "t")) 1 - b else
       if(identical(family, "gamma")) parameters$shape - b else
         if(identical(family, "exp")) 1 - b else
           if(identical(family, "beta")) parameters$alpha - b else

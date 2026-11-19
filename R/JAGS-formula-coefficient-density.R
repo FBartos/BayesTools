@@ -1946,6 +1946,9 @@ JAGS_formula_prior_density <- function(
         prior_reason <- expression_reasons[[1L]]
         prior_cause <- "expression_prior_law_unavailable"
       }
+      regularized_reasons <- Filter(Negate(is.null), lapply(routes,
+        .bt_formula_route_unknown_reason, kind = "regularized_combination_unavailable"))
+      if(length(regularized_reasons)) prior_reason <- regularized_reasons[[1L]]
     }else if(prior_samples && prior_available && is.finite(record$prior_log_probability) &&
              (model_prior_available || point_model)){
       laws[[model]] <- if(length(state$models) == 1L && !is.null(prior_density)) prior_density else

@@ -395,6 +395,8 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
     }
   }
 
+  prior_list <- .bt_regularized_assign_terms(prior_list, model_terms, model_terms_type)
+
   # handle default priors: __default_factor and __default_continuous
   default_factor_prior     <- prior_list[["__default_factor"]]
   default_continuous_prior <- prior_list[["__default_continuous"]]
@@ -694,6 +696,8 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
 
   }
 
+  prior_list <- .bt_regularized_bind_terms(prior_list, parameter)
+
   # compile the random effects
   random_scale_terms <- character()
   random_sd_leaves <- list()
@@ -814,6 +818,7 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
     attr(prior_list[[i]], "parameter") <- parameter
   }
   .bt_validate_ordered_shared_allocations(prior_list)
+  .bt_regularized_validate_roots(prior_list)
   if(.JAGS_prior_list_uses_BayesTools_module(prior_list)){
     jags_modules <- c(jags_modules, "BayesTools")
     required_packages <- c(required_packages, "BayesTools")

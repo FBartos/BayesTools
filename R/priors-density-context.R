@@ -1039,6 +1039,11 @@
   attr(standardized, "formula_contribution_transforms") <- NULL
   .bt_formula_require_multiplier_laws(canonical, standardized)
   weights <- standardized[standardized != 0]
+  regularized <- .bt_regularized_linear_plan(canonical$prior_list, weights, source_transforms)
+  if(!is.null(regularized)){
+    if(!is.null(regularized$reason)) return(FALSE)
+    canonical$prior_list <- regularized$prior_list
+  }
   split <- .prior_linear_split_multiply_groups(canonical$prior_list, weights)
   for(product_group in split$product_groups){
     .prior_linear_product_group_multiplier(canonical$prior_list, split, product_group)

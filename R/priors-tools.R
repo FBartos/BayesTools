@@ -620,10 +620,13 @@ is.prior.mixture         <- function(x){
   fail()
 }
 
-.check_prior <- function(prior, name = "prior", allow_expressions = FALSE){
+.check_prior <- function(prior, name = "prior", allow_expressions = FALSE, allow_regularized = FALSE){
 
   if(!is.prior(prior))
     stop(paste0("The '", name, "' argument must be a valid prior object."), call. = FALSE)
+
+  if(is.prior.regularized(prior) && !allow_regularized)
+    stop("Place the regularization group in the named 'prior_list' of a formula.", call. = FALSE)
 
   if(!allow_expressions && .is_prior_expression(prior))
     stop(paste0("The '", name, "' argument must not contain parameter expressions."), call. = FALSE)

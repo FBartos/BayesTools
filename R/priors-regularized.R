@@ -18,6 +18,9 @@
 #' @param slab_scale Positive scale of the Student-t slab for the regularized
 #' horseshoe. The default `NULL` selects the classical horseshoe.
 #' @param slab_df Positive degrees of freedom of the Student-t slab.
+#' @param contrast Optional `"treatment"` or `"independent"` factor coding
+#' for the group's factor terms. With `NULL`, [JAGS_formula()] uses treatment
+#' coding and a calling model can supply its configured factor coding.
 #' @param x An R object.
 #'
 #' @details Conditional on global scale \eqn{\tau} and local scale
@@ -45,10 +48,13 @@
 #' )
 #' JAGS_formula(~ wt + hp, "mu", mtcars, prior_list = priors)
 #' @export
-prior_regularized <- function(family, scale, terms = NULL, slab_scale = NULL, slab_df = 4){
+prior_regularized <- function(family, scale, terms = NULL, slab_scale = NULL, slab_df = 4,
+                              contrast = NULL){
 
   check_char(family, "family", allow_values = c("ridge", "lasso", "horseshoe"), allow_NA = FALSE)
   check_char(terms, "terms", check_length = 0, allow_NULL = TRUE, allow_NA = FALSE)
+  check_char(contrast, "contrast", allow_values = c("treatment", "independent"),
+             allow_NULL = TRUE, allow_NA = FALSE)
   if(!is.null(terms) && (!length(terms) || any(!nzchar(terms)) || anyDuplicated(terms) ||
                          any(terms %in% c("intercept", "(Intercept)")))){
     stop("Supply distinct non-intercept term labels in 'terms'.", call. = FALSE)
@@ -78,7 +84,7 @@ prior_regularized <- function(family, scale, terms = NULL, slab_scale = NULL, sl
   }else if(!missing(slab_df)){
     stop("Specify 'slab_scale' when supplying 'slab_df'.", call. = FALSE)
   }
-  spec <- structure(list(family = family, terms = terms, scale = scale,
+  spec <- structure(list(family = family, terms = terms, scale = scale, contrast = contrast,
                          slab_scale = slab_scale, slab_df = if(!is.null(slab_scale)) slab_df),
                     class = c("prior", "prior.regularized"))
   if(is.numeric(scale) && is.null(terms) && family != "horseshoe"){

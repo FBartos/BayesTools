@@ -5,7 +5,14 @@
 \alias{is.prior.regularized}
 \title{Shrink regression coefficients towards zero}
 \usage{
-prior_regularized(family, scale, terms = NULL, slab_scale = NULL, slab_df = 4)
+prior_regularized(
+  family,
+  scale,
+  terms = NULL,
+  slab_scale = NULL,
+  slab_df = 4,
+  contrast = NULL
+)
 
 is.prior.regularized(x)
 }
@@ -27,6 +34,10 @@ same scale prior. A multi-column term uses its fitted coefficient basis.}
 horseshoe. The default \code{NULL} selects the classical horseshoe.}
 
 \item{slab_df}{Positive degrees of freedom of the Student-t slab.}
+
+\item{contrast}{Optional \code{"treatment"} or \code{"independent"} factor coding
+for the group's factor terms. With \code{NULL}, \code{\link[=JAGS_formula]{JAGS_formula()}} uses treatment
+coding and a calling model can supply its configured factor coding.}
 
 \item{x}{An R object.}
 }

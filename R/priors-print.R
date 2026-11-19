@@ -44,7 +44,7 @@
 print.prior <- function(x, short_name = FALSE, parameter_names = FALSE, plot = FALSE,
                         digits_estimates = 2, silent = FALSE, ...){
 
-  .check_prior(x, "x", allow_expressions = TRUE)
+  .check_prior(x, "x", allow_expressions = TRUE, allow_regularized = TRUE)
   check_bool(short_name, "short_name")
   check_bool(parameter_names, "parameter_names")
   check_int(digits_estimates, "digits_estimates", lower = 0)
@@ -67,7 +67,9 @@ print.prior <- function(x, short_name = FALSE, parameter_names = FALSE, plot = F
     x <- .prior_expression_to_character(x)
   }
 
-  if(is.prior.none(x)){
+  if(is.prior.regularized(x) || inherits(x, "prior.regularized_term")){
+    output <- .print_prior_regularized(x, digits_estimates, short_name)
+  }else if(is.prior.none(x)){
     output <- .print.prior.none(x, short_name, parameter_names, plot, digits_estimates, silent)
   }else if(is.prior.ordered(x) && !is.prior.mixture(x)){
     # a mixture of bound ordered containers also carries the ordered class
@@ -209,6 +211,7 @@ print.selection_model <- function(x, ...){
     out_name <- switch(
       x[["distribution"]],
       "normal"       = "N",
+      "laplace"      = "L",
       "lognormal"    = "Ln",
       "t"            = "T",
       "Cauchy"       = "C",
@@ -231,6 +234,7 @@ print.selection_model <- function(x, ...){
     out_name <- switch(
       x[["distribution"]],
       "normal"       = "Normal",
+      "laplace"      = "Laplace",
       "lognormal"    = "Lognormal",
       "t"            = "Student-t",
       "Cauchy"       = "Cauchy",

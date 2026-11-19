@@ -844,6 +844,20 @@
     ))
   }
 
+  regularized <- .bt_regularized_linear_plan(prior_list, weights, source_transforms)
+  if(!is.null(regularized)){
+    if(!is.null(regularized$reason)){
+      route <- .prior_density_route_unknown(regularized$reason,
+        list(kind = "regularized_combination_unavailable", sources = regularized$sources))
+      if(regularized$atom_free){
+        route$additive_measure <- list(type = "atom_free",
+          support = .posterior_support_new(c(-Inf, Inf), source = "formula_contribution"))
+      }
+      return(route)
+    }
+    prior_list <- regularized$prior_list
+  }
+
   ordered <- .prior_density_route_ordered_terms(prior_list, weights, source_transforms)
   if(!is.null(ordered)){
     if(!is.null(ordered$reason)){

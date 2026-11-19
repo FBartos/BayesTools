@@ -70,7 +70,11 @@
     }
     return(roots)
   }
-  if(is.prior.PET(prior) || is.prior.PEESE(prior)){
+  if(inherits(prior, "prior.regularized_term")){
+    add(parameter, if(is.prior.factor(prior)) .get_prior_factor_levels(prior) else integer())
+    primitives <- .bt_regularized_primitives(prior)
+    for(name in names(primitives)) append(primitives[[name]], name)
+  }else if(is.prior.PET(prior) || is.prior.PEESE(prior)){
     add(if(is.prior.PET(prior)) "PET" else "PEESE")
   }else if(is.prior.spike_and_slab(prior)){
     append(.get_spike_and_slab_variable(prior), paste0(parameter, "_variable"))

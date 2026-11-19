@@ -2070,7 +2070,9 @@ range.prior  <- function(x, quantiles = NULL, ..., na.rm = FALSE){
 
   switch(
     prior[["distribution"]],
+    "regularized" = .01,
     "normal"    = .005,
+    "laplace"   = .005,
     "lognormal" = .005,
     "t"         = .010,
     "gamma"     = .010,
