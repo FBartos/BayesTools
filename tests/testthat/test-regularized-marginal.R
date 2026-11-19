@@ -1,3 +1,5 @@
+skip_if_not_test_profile("unit")
+
 test_that("horseshoe ordinate evaluation defers the coefficient density grid", {
   group <- prior_regularized("horseshoe", 0.35, slab_scale = 1)
   priors <- JAGS_formula(~ wt, "mu", mtcars,
@@ -16,8 +18,6 @@ test_that("horseshoe ordinate evaluation defers the coefficient density grid", {
   eager <- .prior_linear_combination_density(priors, c(mu_wt = 1), n_grid = 32L, .defer = FALSE)
   expect_identical(.prior_linear_density_to_plot_data(linear), .prior_linear_density_to_plot_data(eager))
 })
-
-skip_if_not_test_profile("unit")
 
 test_that("regularization declarations distinguish fixed widths and learned scales", {
   expect_true(is.prior.simple(prior_regularized("lasso", 0.4)))
@@ -128,6 +128,26 @@ test_that("ridge and lasso resolve the peak under a learned half-Cauchy width", 
     }, numeric(1)))
     expect_equal(pdf(model$prior_list$mu_wt, x), exact, tolerance = 1e-7)
   }
+})
+
+test_that("regularized prior plots produce finite curves on their automatic ranges", {
+  hc <- prior("cauchy", list(0, .2), list(0, Inf))
+  groups <- list(prior_regularized("ridge", hc),
+    prior_regularized("ridge", prior("gamma", list(2, 4))), prior_regularized("lasso", hc),
+    prior_regularized("horseshoe", 0.35), prior_regularized("horseshoe", hc),
+    prior_regularized("horseshoe", hc, slab_scale = 2))
+  for(group in groups){
+    model <- JAGS_formula(~ wt, "mu", mtcars, list(intercept = prior("point", list(0)), sh = group))
+    curve <- ggplot2::ggplot_build(plot(model$prior_list$mu_wt, plot_type = "ggplot", n_points = 64))$data[[1L]]
+    expect_true(all(is.finite(curve$x)) && sum(is.finite(curve$y) & curve$y > 0) >= 60)
+  }
+  # A far-tail bracket used to fail even for an ordinary fitted prior
+  # range, preventing the structural ordinate from being returned.
+  model <- JAGS_formula(~ wt, "mu", mtcars, list(intercept = prior("point", list(0)),
+    sh = prior_regularized("horseshoe", hc)))
+  hs <- model$prior_list$mu_wt
+  expect_equal(ccdf(hs, quant(hs, 1 - 1e-5)), 1e-5, tolerance = 1e-6)
+  expect_identical(prior_density_ordinate(hs, 0)$behavior, "infinite")
 })
 test_that("multi-column shrinkage terms distinguish joint and marginal methods", {
   group <- prior_regularized("ridge", prior("gamma", list(2, 1)))

@@ -181,6 +181,31 @@
   log(.prior_density_quadrature_batch(integrand, breaks))
 }
 
+# With classical half-Cauchy global and local scales their standardized
+# product has log-scale density 2*v/(pi^2*sinh(v)). It follows by
+# integrating the product of their two half-Cauchy densities. Splitting
+# in this single coordinate at the conditional kernel's transition
+# resolves even far-tail probabilities used to bracket a plot quantile.
+.regularized_classical_integral <- function(x, log_scale, density){
+
+  log_x <- log(x)
+  breaks <- lapply(log_x - log_scale, function(transition){
+    sort(unique(c(-Inf, 0, transition, Inf)))
+  })
+  kernel <- function(v, index){
+    magnitude <- abs(v)
+    log_mass <- rep(log(2 / pi^2), length(v))
+    away <- magnitude > 0
+    u <- magnitude[away]
+    log_mass[away] <- log(4 / pi^2) + log(u) - u - log(-expm1(-2 * u))
+    log_sd <- log_scale + v
+    z <- exp(log_x[index] - log_sd)
+    log_kernel <- if(density) stats::dnorm(z, log = TRUE) - log_sd else stats::pnorm(-z, log.p = TRUE)
+    exp(log_mass + log_kernel)
+  }
+  log(.prior_density_quadrature_batch(kernel, breaks))
+}
+
 # Compare refinements on the log scale, so even small tail probabilities
 # must agree to relative precision. A failed computation never supplies an
 # apparent zero density or a finite ordinate at the pole.
@@ -193,6 +218,14 @@
   near_pole <- FALSE
   if(horseshoe){
     s <- prior$regularization$scale
+    if(is.null(prior$regularization$slab_scale) && is.prior(s) && identical(s$distribution, "t") &&
+       s$parameters$df == 1 && s$parameters$location == 0 &&
+       s$truncation$lower == 0 && s$truncation$upper == Inf){
+      log_scale <- log(s$parameters$scale) + log(prior$regularization$multiplier)
+      result <- .regularized_classical_integral(x, log_scale, density = operation == "density")
+      pending <- which(!is.finite(result))
+      if(!length(pending)) return(result)
+    }
     typical <- if(is.prior(s)) quant(s, .5) else s
     near_pole <- min(log(x)) - log(typical) - log(prior$regularization$multiplier) < -9
   }
