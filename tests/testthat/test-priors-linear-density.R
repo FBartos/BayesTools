@@ -9,6 +9,18 @@ test_that("linear contrasts retain the shared shrinkage scale of their coefficie
   }
   weights <- c(mu_a = 1, mu_b = -1)
   ridge <- bind(prior_regularized("ridge", scale))
+  # The original-scale slope of a standardized fit is an affine image of a
+  # single regularized coordinate. Its marginal is continuous even when a
+  # shared scale makes the coordinates jointly dependent.
+  for(family in c("ridge", "lasso", "horseshoe")){
+    priors <- bind(prior_regularized(family, scale))
+    slope <- .prior_density_route_linear(priors, c(mu_a = 1.25), NULL)
+    expect_identical(.bt_formula_route_atom_certificate(slope)$type, "atom_free")
+    expect_equal(.bt_formula_route_support(slope)$bounds, c(-Inf, Inf))
+    priors$mu_a <- prior_spike_and_slab(priors$mu_a)
+    gated <- .prior_density_route_linear(priors, c(mu_a = 1.25), NULL)
+    expect_equal(.prior_density_ordinate_provenance_atoms(.prior_density_route_provenance(gated)), 0)
+  }
   route <- .prior_density_route_linear(ridge, weights, NULL)
   # Conditional on tau, beta_a - beta_b is N(0, 2*tau^2), so its
   # unconditional height at 0 is E[1/tau] / sqrt(4*pi).

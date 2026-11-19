@@ -1632,7 +1632,7 @@ prior_density_has_provenance <- function(x){
   kind <- provenance$kind
   constant <- .prior_density_ordinate_provenance_constant(provenance)
   if(!is.null(constant)) return(c(lower = constant, upper = constant))
-  if(identical(kind, "primitive")){
+  if(identical(kind, "primitive") || identical(kind, "regularized_coefficient")){
     truncation <- provenance$truncation
     if(is.list(truncation)){
       lower <- truncation$lower
@@ -1764,6 +1764,9 @@ prior_density_has_provenance <- function(x){
   kind <- provenance$kind
   constant <- .prior_density_ordinate_provenance_constant(provenance)
   if(!is.null(constant)) return(constant)
+  # Conditional on its positive scales every active shrinkage coefficient is
+  # continuous, including a horseshoe whose marginal density diverges at zero.
+  if(identical(kind, "regularized_coefficient")) return(numeric())
   if(identical(kind, "linear_normal") ||
      (identical(kind, "scale_mixture") && !is.null(provenance$support))){
     # a scale-product route multiplies two continuous terms
