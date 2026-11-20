@@ -657,6 +657,14 @@ test_that("selection backend spec and context helpers expose generic names and r
   )
 
   obs_subset <- selection_context_subset_observations(context, c(2L, 4L))
+  flagged <- context
+  flagged$bias_exempt <- c(TRUE, FALSE, FALSE, TRUE)
+  expect_identical(selection_context_subset_observations(flagged, c(4L, 2L))$bias_exempt,
+                   c(TRUE, FALSE))
+  expect_identical(selection_context_subset_rows(flagged, 2L)$bias_exempt, flagged$bias_exempt)
+  expect_error(selection_context_validate(within(flagged, bias_exempt <- 1:4)), "bias_exempt")
+  expect_error(selection_context_validate(within(flagged, bias_exempt <- c(TRUE, NA))), "bias_exempt")
+  expect_error(selection_context_validate(within(flagged, bias_exempt <- TRUE)), "same length")
   expect_equal(obs_subset$obs_bin, c(2L, 2L))
   expect_equal(obs_subset$yi, c(.2, .3))
   expect_false(identical(obs_subset$native_cache, context$native_cache))
