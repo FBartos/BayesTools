@@ -40,6 +40,7 @@ bayestools_test_profile_contexts <- list(
     "draws-metadata",
     "exported-schemas-and-aliases",
     "factor-interaction-coefficients",
+    "factor-slice-kernel",
     "formula-contribution-state",
     "JAGS-formula-selected-replay",
     "JAGS-formula-point-replay",

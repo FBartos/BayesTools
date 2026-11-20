@@ -1,4 +1,4 @@
-PKG_CPPFLAGS=@JAGS_CFLAGS@ -DR_NO_REMAP
+PKG_CPPFLAGS=@JAGS_CFLAGS@ -I../inst/include -DR_NO_REMAP
 PKG_LIBS=@JAGS_LIBS@ @JAGS_RPATH@ @JRMATH_LIBS@
 
 $(SHLIB): native-sources.o
@@ -19,7 +19,8 @@ native-sources.o: \
 	distributions/DBTSamplerMarker.h \
 	samplers/BTSamplerDeclarations.cc samplers/BTSamplerDeclarations.h \
 	samplers/BTGatedSlice.cc samplers/BTGatedSlice.h \
-	samplers/BTFactorSlice.cc samplers/BTFactorSlice.h
+	samplers/BTFactorSlice.cc samplers/BTFactorSlice.h \
+	../inst/include/BayesTools/factor_slice_kernel.h
 
 BayesTools.o: distributions/DBTLKJCPC.h distributions/DBTInvGamma.h \
 	distributions/DBTMoment.h distributions/DBTInvMoment.h functions/BTLKJCholesky.h \
