@@ -2757,6 +2757,10 @@ test_that("warning ownership distinguishes exact references and expressions", {
   expect_identical(warning_rows(mixed, record("g", "g[B]", "B", value = 0.2)),
                    c("g (1)", "g (2)", "g (4)"))
   expect_identical(.hypothesis_model_table_rows_with_labels(mixed, "g[B]"), 1:4)
+  # a generated complement is read through its region
+  complement <- mixed[3L, , drop = FALSE]
+  complement$Alternative <- "unconstrained"
+  expect_identical(.hypothesis_model_table_rows_with_labels(complement, "g[B]"), 1L)
 
 })
 
