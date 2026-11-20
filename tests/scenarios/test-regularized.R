@@ -233,21 +233,21 @@ testthat::test_that("Shrinkage of Swiss fertility predictors", {
   selectors <- setNames(paste0("mu_", predictors), predictors)
   xlim <- c(-1.5, 1.5)
   for (model in names(fits)) {
-    catalog <- parameter_catalog(fits[[model]])
-    posteriors <- lapply(selectors, function(term) {
-      parameter_mixed_posterior(fits[[model]], parameter_catalog_resolve(catalog, term))
-    })
-    priors <- lapply(posteriors, posterior_metadata, field = "prior_density")
-    stan_curves <- lapply(names(selectors), function(effect) density(draws[[model]][, effect], n = 301))
-    # Mark an unbounded peak with an arrow from the nearest finite grid ordinate.
-    unbounded <- vapply(priors, function(p) prior_density_ordinate(p, 0)$behavior == "infinite", logical(1))
-    prior_height <- vapply(seq_along(priors), function(i) {
-      x <- if (unbounded[i]) 0.01 else 0
-      exp(prior_density_ordinate(priors[[i]], x)$log_density)
-    }, numeric(1))
-    ymax <- ceiling(1.12 * max(prior_height, vapply(stan_curves, function(d) max(d$y), numeric(1)),
-                               vapply(posteriors, function(q) max(density(q)$y), numeric(1))))
     scenario_plot(paste0("distributions-", model), {
+      catalog <- parameter_catalog(fits[[model]])
+      posteriors <- lapply(selectors, function(term) {
+        parameter_mixed_posterior(fits[[model]], parameter_catalog_resolve(catalog, term))
+      })
+      priors <- lapply(posteriors, posterior_metadata, field = "prior_density")
+      stan_curves <- lapply(names(selectors), function(effect) density(draws[[model]][, effect], n = 301))
+      # Mark an unbounded peak with an arrow from the nearest finite grid ordinate.
+      unbounded <- vapply(priors, function(p) prior_density_ordinate(p, 0)$behavior == "infinite", logical(1))
+      prior_height <- vapply(seq_along(priors), function(i) {
+        x <- if (unbounded[i]) 0.01 else 0
+        exp(prior_density_ordinate(priors[[i]], x)$log_density)
+      }, numeric(1))
+      ymax <- ceiling(1.12 * max(prior_height, vapply(stan_curves, function(d) max(d$y), numeric(1)),
+                                 vapply(posteriors, function(q) max(density(q)$y), numeric(1))))
       old_par <- par(no.readonly = TRUE)
       regularized_plot_layout(titles[[model]])
       for (i in seq_along(selectors)) {
