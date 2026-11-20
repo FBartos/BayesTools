@@ -422,8 +422,17 @@
       reason = NULL
     ))
   }
+  # a direct random-effect SD or a scalar structured correlation with a simple
+  # continuous prior is a leaf under its own name
   if(.bt_is_random_effect_prior(prior)){
-    return(reason("it is a random-effect prior other than a plain allocation SD or Dirichlet allocation weights"))
+    if(is.prior.simple(prior) && !is.prior.factor(prior) && !is.prior.vector(prior) &&
+       is.null(attr(prior, "random_summary", exact = TRUE))){
+      return(list(leaves = name, reason = NULL))
+    }
+    return(reason(paste0(
+      "it is a random-effect prior other than a simple continuous scalar prior, ",
+      "a plain allocation SD or Dirichlet allocation weights"
+    )))
   }
   if(is.prior.vector(prior)) return(reason("it is a vector prior"))
 
