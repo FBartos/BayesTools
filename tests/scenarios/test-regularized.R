@@ -70,6 +70,8 @@ testthat::test_that("Shrinkage of Swiss fertility predictors", {
   show_fertility(finite_slab, "horseshoe with a finite slab")
 
   ### Marginal likelihoods and log Bayes factors relative to ridge ----
+  # The Examination local scale mixes slowly in the finite-slab fit. A fresh
+  # set of chains can move its log evidence by several hundredths.
   models <- list(Ridge = ridge, Lasso = lasso, Horseshoe = horseshoe, "Finite-slab horseshoe" = finite_slab)
   bridges <- lapply(models, function(pair) regularized_bridge(pair$name, pair$jags, pair$stan, pair$stan_data))
   scenario_text("model-comparison", regularized_evidence_table(bridges))
