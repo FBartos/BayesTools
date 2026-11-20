@@ -383,8 +383,14 @@ test_that("finite-slab horseshoe moments exist below two slab degrees of freedom
   for(nu in c(1.5, 4)){
     expect_equal(var(bound(.45, nu)), fixed_variance(.45, nu), tolerance = 1e-6, info = nu)
   }
+  # an essentially fixed slab c = s gives s² tau/(tau+s); just above one slab
+  # degree of freedom the slab quantiles underflow and the variance is unavailable
+  expect_equal(var(bound(.45, 1e14)), 1.2^2 * .45 / (.45 + 1.2), tolerance = 1e-8)
+  expect_error(var(bound(.45, 1.02)), class = "BayesTools_regularized_marginal_unavailable")
   expect_identical(mean(bound(.45, .75)), 0)
   expect_true(is.nan(var(bound(.45, .75))))
+  # with slab_df > 1 the mean needs no moment of the global scale
+  expect_identical(mean(bound(prior("t", list(0, .2, 1.0000001), list(0, Inf)), 4)), 0)
 
   # A half-Cauchy global scale, integrated as in the test above.
   global <- prior("cauchy", list(0, 0.2), list(0, Inf))

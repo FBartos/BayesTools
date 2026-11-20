@@ -48,12 +48,15 @@
     # scale, E_lambda[sd² | tau,c] = c * (c * tau/(tau+c)). Size-bias the
     # slab by c: its mean E(c), finite for nu > 1, is the normalizer, and
     # its chi-square degrees of freedom decrease by one.
+    # Just above nu = 1 the lowest quantiles underflow to zero; the variance
+    # is then unavailable rather than integrated over a truncated slab.
     nu <- spec$slab_df
     df <- nu - 1
     chi <- stats::qchisq(prob, df = df)
     if(any(!is.finite(chi) | chi <= 0)) .regularized_numerical_unavailable("variance")
     log_c <- log(spec$slab_scale) + (log(nu) - log(chi)) / 2
-    log_mean_c <- log(spec$slab_scale) + (log(nu) - log(2)) / 2 + lgamma(df / 2) - lgamma(nu / 2)
+    # Gamma((nu-1)/2)/Gamma(nu/2) as a beta function stays exact for large nu.
+    log_mean_c <- log(spec$slab_scale) + (log(nu) - log(2)) / 2 + lbeta(df / 2, 0.5) - lgamma(0.5)
     a <- rep(log_scale, length(log_c))
     b <- rep(log_c, each = length(log_scale))
     log_scale <- (log_mean_c + b + stats::plogis(a - b, log.p = TRUE)) / 2
@@ -413,8 +416,9 @@
     # global scale or one with a finite mean. The mean is zero by symmetry.
     # E(beta²) = E(c² tau/(tau+c)) is infinite for slab_df <= 1.
     if(!variance){
-      fixed_tail <- is.numeric(spec$scale) || is.finite(mean(spec$scale))
-      if(spec$slab_df <= 1 && !fixed_tail) .regularized_numerical_unavailable("moment")
+      if(spec$slab_df > 1 || is.numeric(spec$scale)) return(0)
+      scale_mean <- tryCatch(mean(spec$scale), BayesTools_numerical_unavailable = function(e) NaN)
+      if(!is.finite(scale_mean)) .regularized_numerical_unavailable("moment")
       return(0)
     }
     if(spec$slab_df <= 1) return(NaN)
