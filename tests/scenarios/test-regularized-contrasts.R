@@ -65,36 +65,40 @@ testthat::test_that("Monthly ozone effects under centered shrinkage priors", {
                   scenario_shrinkage_plot(pair$jags, draws, effect_selectors, title))
   }
 
-  ### Fit and compare the same four priors under each coding ----
-  compare_coding <- function(contrast, basis, label) {
+  ### Fit, plot, and bridge one prior under one coding ----
+  bases <- list(meandif = meandif, orthonormal = orthonormal)
+  coding_labels <- c(meandif = "mean-difference", orthonormal = "orthonormal")
+  prior_labels <- c(ridge = "Ridge", lasso = "Group lasso", horseshoe = "Horseshoe",
+                    regularized_horseshoe = "Finite-slab horseshoe")
+  compare_prior <- function(contrast, family, stan_file, slab_scale = NULL) {
+    basis <- bases[[contrast]]
     X <- cbind(basis[as.integer(ozone$Month), ], Wind = ozone$Wind)
     data <- list(N = nrow(X), K = ncol(X), X = X, y = y)
-    # The four month contrasts share local scale 1. Wind uses local scale 2.
-    horseshoe_data <- c(data, list(J = 2L, unit = c(1L, 1L, 1L, 1L, 2L)))
-
-    ridge <- fit_pair(paste0(contrast, "_ridge"), prior_regularized("ridge", global, contrast = contrast),
-                      "ridge.stan", data)
-    show_ozone(ridge, basis, paste("Ridge with", label, "month contrasts"))
-
-    lasso <- fit_pair(paste0(contrast, "_lasso"), prior_regularized("lasso", global, contrast = contrast),
-                      "grouped-lasso.stan", data)
-    show_ozone(lasso, basis, paste("Group lasso with", label, "month contrasts"))
-
-    horseshoe <- fit_pair(paste0(contrast, "_horseshoe"), prior_regularized("horseshoe", global, contrast = contrast),
-                          "horseshoe.stan", horseshoe_data)
-    show_ozone(horseshoe, basis, paste("Horseshoe with", label, "month contrasts"))
-
-    finite_slab <- fit_pair(paste0(contrast, "_regularized_horseshoe"),
-      prior_regularized("horseshoe", global, contrast = contrast, slab_scale = 2, slab_df = 4),
-      "finite-slab-horseshoe.stan", horseshoe_data)
-    show_ozone(finite_slab, basis, paste("Finite-slab horseshoe with", label, "month contrasts"))
-
-    # Compare model evidence within the same coding, using ridge as the reference.
-    models <- list(Ridge = ridge, Lasso = lasso, Horseshoe = horseshoe, "Finite-slab horseshoe" = finite_slab)
-    bridges <- lapply(models, function(pair) regularized_bridge(pair$name, pair$jags, pair$stan, pair$stan_data))
-    scenario_text(paste0("model-comparison-", contrast), regularized_evidence_table(bridges))
+    if (family == "horseshoe") {
+      # One local scale for the month contrasts, another for wind.
+      data <- c(data, list(J = 2L, unit = c(1L, 1L, 1L, 1L, 2L)))
+    }
+    # A finite slab uses the default four degrees of freedom in both engines.
+    shrinkage <- prior_regularized(family, global, contrast = contrast, slab_scale = slab_scale)
+    name <- if (is.null(slab_scale)) family else "regularized_horseshoe"
+    pair <- fit_pair(paste(contrast, name, sep = "_"), shrinkage, stan_file, data)
+    show_ozone(pair, basis, paste(prior_labels[[name]], "with", coding_labels[[contrast]], "month contrasts"))
+    regularized_bridge(pair$name, pair$jags, pair$stan, pair$stan_data)
   }
 
-  compare_coding("meandif", meandif, "mean-difference")
-  compare_coding("orthonormal", orthonormal, "orthonormal")
+  ### Mean-difference contrasts ----
+  md <- list()
+  md$Ridge     <- compare_prior("meandif", "ridge",     "ridge.stan")
+  md$Lasso     <- compare_prior("meandif", "lasso",     "grouped-lasso.stan")
+  md$Horseshoe <- compare_prior("meandif", "horseshoe", "horseshoe.stan")
+  md[["Finite-slab horseshoe"]] <- compare_prior("meandif", "horseshoe", "finite-slab-horseshoe.stan", slab_scale = 2)
+  scenario_text("model-comparison-meandif", regularized_evidence_table(md))
+
+  ### Orthonormal contrasts ----
+  ortho <- list()
+  ortho$Ridge     <- compare_prior("orthonormal", "ridge",     "ridge.stan")
+  ortho$Lasso     <- compare_prior("orthonormal", "lasso",     "grouped-lasso.stan")
+  ortho$Horseshoe <- compare_prior("orthonormal", "horseshoe", "horseshoe.stan")
+  ortho[["Finite-slab horseshoe"]] <- compare_prior("orthonormal", "horseshoe", "finite-slab-horseshoe.stan", slab_scale = 2)
+  scenario_text("model-comparison-orthonormal", regularized_evidence_table(ortho))
 })
