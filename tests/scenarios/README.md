@@ -92,6 +92,11 @@ and SVG baselines.
   relabels draws for it, `scenario_bf_table()` and `scenario_log_bf_bridge()`
   tabulate log Bayes factors by method, and `scenario_prediction_table()`
   merges point predictions and prediction draws with their data rows.
+  For RStan, `scenario_stan_model("ridge.stan")` compiles the file in
+  `stan/` once and reuses it across designs in the same analysis.
+  Passing `scenario_stan_version("ridge.stan")` as the fit's `cache_version`
+  also refits after edits to that Stan program. Use `--refit` after changing
+  data, priors, or fitting functions defined outside the fitting block.
   `scenario_gaussian_logml()` gives a reference log marginal likelihood for
   Gaussian mixed models with N(0, 1) coefficient and half-normal SD priors by
   integrating the coefficients and random effects analytically and

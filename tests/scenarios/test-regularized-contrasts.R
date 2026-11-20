@@ -3,10 +3,10 @@ scenario_start("regularized-contrasts")
 # testthat::test_file("tests/scenarios/test-regularized-contrasts.R")
 
 ### Description
-# Do the daily New York ozone readings differ by month after accounting for
-# wind? Compare May through September at average wind. Each month effect is
-# a deviation from the unweighted mean of the five months. Both ozone and
-# wind are standardized, and the residual SD is fixed at one.
+# How do BayesTools and RStan shrink monthly differences in New York ozone?
+# Compare May through September at average wind. Each month effect is a
+# deviation from the unweighted mean of the five months. This known-variance
+# comparison standardizes ozone and wind and takes the residual SD as 1.
 #
 # BayesTools and RStan use the same prior on the coded coefficients. With
 # either contrast the four month coefficients shrink together. Wind has its

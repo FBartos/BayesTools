@@ -3,11 +3,10 @@ scenario_start("regularized")
 # testthat::test_file("tests/scenarios/test-regularized.R")
 
 ### Description
-# Which predictors of fertility retain an association after shrinkage? Compare
-# four priors on the five slopes using data from 47 Swiss provinces. Fertility
-# and the predictors are standardized, and the residual SD is fixed at 1.
-# For each prior, BayesTools and RStan estimate the same regression. The table
-# and figure show each engine's posterior for the slopes and their shared scale.
+# How do BayesTools and RStan shrink the five fertility slopes in 47 Swiss
+# provinces? Fit the same standardized regression with four priors. Both engines
+# take the residual SD as 1 for this known-variance comparison. Each table
+# and figure shows the resulting slopes and their shared global scale.
 
 testthat::test_that("Shrinkage of Swiss fertility predictors", {
 
@@ -36,7 +35,7 @@ testthat::test_that("Shrinkage of Swiss fertility predictors", {
   stan_columns <- setNames(c("alpha", sprintf("beta[%d]", seq_len(ncol(X))), "tau"), parameters)
   posterior_draws <- function(jags, stan) {
 
-    list(BayesTools = scenario_draws(coda::as.mcmc.list(jags), jags_columns),
+    list(BayesTools = scenario_draws(jags$mcmc, jags_columns),
          RStan      = scenario_draws(rstan::As.mcmc.list(stan), stan_columns))
   }
 

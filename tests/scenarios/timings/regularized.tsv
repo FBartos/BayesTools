@@ -7,7 +7,11 @@ fit	stan_horseshoe	8.610000000	0.582617	4.6.0	Windows/x86_64-w64-mingw32
 fit	stan_lasso	6.970000000	0.612988	4.6.0	Windows/x86_64-w64-mingw32
 fit	stan_regularized_horseshoe	7.560000000	0.592480	4.6.0	Windows/x86_64-w64-mingw32
 fit	stan_ridge	58.430000000	0.518164	4.6.0	Windows/x86_64-w64-mingw32
-text	comparison-horseshoe	0.000000000	0.337305	4.6.0	Windows/x86_64-w64-mingw32
-text	comparison-lasso	0.000000000	0.335645	4.6.0	Windows/x86_64-w64-mingw32
+text	comparison-horseshoe	0.000000000	0.307812	4.6.0	Windows/x86_64-w64-mingw32
+text	comparison-lasso	0.000000000	0.258984	4.6.0	Windows/x86_64-w64-mingw32
 text	comparison-regularized_horseshoe	0.000000000	0.337598	4.6.0	Windows/x86_64-w64-mingw32
-text	comparison-ridge	0.000000000	0.335059	4.6.0	Windows/x86_64-w64-mingw32
+text	comparison-ridge	0.000000000	0.208105	4.6.0	Windows/x86_64-w64-mingw32
+plot	comparison-horseshoe	0.000000000	0.310254	4.6.0	Windows/x86_64-w64-mingw32
+plot	comparison-lasso	0.030000000	0.286523	4.6.0	Windows/x86_64-w64-mingw32
+plot	comparison-regularized_horseshoe	0.000000000	0.362695	4.6.0	Windows/x86_64-w64-mingw32
+plot	comparison-ridge	0.000000000	0.211621	4.6.0	Windows/x86_64-w64-mingw32
