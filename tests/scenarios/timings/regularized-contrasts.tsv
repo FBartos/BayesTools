@@ -84,4 +84,8 @@ plot	distributions-orthonormal_lasso	0.940000000	0.770996	4.6.0	Windows/x86_64-w
 plot	distributions-orthonormal_regularized_horseshoe	3.740000000	0.581934	4.6.0	Windows/x86_64-w64-mingw32
 plot	distributions-orthonormal_ridge	0.890000000	0.771094	4.6.0	Windows/x86_64-w64-mingw32
 plot	july-may-by-coding	0.000000000	0.625293	4.6.0	Windows/x86_64-w64-mingw32
+plot	meandif-lasso-july-posterior	0.500000000	0.485449	4.6.0	Windows/x86_64-w64-mingw32
+plot	meandif-regularized-horseshoe-july-posterior	1.910000000	0.510254	4.6.0	Windows/x86_64-w64-mingw32
+plot	orthonormal-lasso-july-posterior	0.550000000	0.792871	4.6.0	Windows/x86_64-w64-mingw32
+plot	orthonormal-regularized-horseshoe-july-posterior	2.490000000	0.757520	4.6.0	Windows/x86_64-w64-mingw32
 plot	ridge-wind-posterior	0.700000000	0.516016	4.6.0	Windows/x86_64-w64-mingw32

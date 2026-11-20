@@ -42,4 +42,6 @@ plot	distributions-horseshoe	0.140000000	0.405957	4.6.0	Windows/x86_64-w64-mingw
 plot	distributions-lasso	0.670000000	0.406836	4.6.0	Windows/x86_64-w64-mingw32
 plot	distributions-regularized_horseshoe	3.460000000	0.450586	4.6.0	Windows/x86_64-w64-mingw32
 plot	distributions-ridge	0.710000000	0.392871	4.6.0	Windows/x86_64-w64-mingw32
+plot	lasso-education-posterior	0.510000000	0.476660	4.6.0	Windows/x86_64-w64-mingw32
+plot	regularized-horseshoe-education-posterior	1.890000000	0.500098	4.6.0	Windows/x86_64-w64-mingw32
 plot	ridge-education-posterior	0.660000000	0.388086	4.6.0	Windows/x86_64-w64-mingw32
