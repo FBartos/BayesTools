@@ -112,7 +112,7 @@ test_that("interval chains require one target between ordered finite bounds", {
 
   invalid <- c("x < theta < 1", "0 < 1 < 2", "0 < theta > 1", "0 < theta = 1",
                "0 < theta < 1 < 2", "1 <= theta <= 1", "2 < theta < 1",
-               "-Inf < theta < 1", "0 < theta < 1 / 0")
+               "-Inf < theta < 1", "0 < theta < 1 / 0", "mu > 0; & 0 < x < 1")
   for (statement in invalid) {
     expect_error(hypothesis_parse(statement), info = statement)
   }

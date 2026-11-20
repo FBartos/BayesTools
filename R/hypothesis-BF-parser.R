@@ -742,6 +742,11 @@ hypothesis_normalize_level_references <- function(text){
 
   # R handles ordinary expressions. For a chain, split only the outer region
   # operators in precedence order and let R parse its arithmetic operands.
+  # A chain is the only permitted departure from R syntax. Substituting a
+  # chainable binary operator must yield a single syntactically valid expression.
+  syntax <- tryCatch(parse(text = gsub("[<>]=?", "*", text), keep.source = FALSE),
+                     error = function(e) NULL)
+  if(length(syntax) != 1L) stop(expr)
   if(is.null(operators)) operators <- .hypothesis_top_operators(text)
   ops <- vapply(operators, `[[`, character(1), "operator")
   for(op in c("|", "&")){
