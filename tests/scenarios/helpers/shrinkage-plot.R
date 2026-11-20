@@ -31,7 +31,7 @@ scenario_shrinkage_plot <- function(fit, posteriors, selectors, main) {
   graphics::par(cex = 0.95, mar = rep(0, 4), oma = c(2.8, 1.8, 0.4, 0.5))
   graphics::plot.new()
   graphics::text(0.5, 0.72, main, font = 2, cex = 1.25)
-  colours <- c("grey40", "#0072B2", "#D55E00")
+  colours <- c("grey70", "#0072B2", "#D55E00")
   graphics::legend(0.5, 0.25, xjust = 0.5, yjust = 0.5, horiz = TRUE, bty = "n",
                    legend = c("BayesTools prior", "BayesTools posterior", "RStan posterior"),
                    col = colours, lty = c(1, 1, 2), lwd = 2)
@@ -39,13 +39,13 @@ scenario_shrinkage_plot <- function(fit, posteriors, selectors, main) {
   graphics::par(mar = c(2.5, 2.6, 2.2, 0.6), mgp = c(1.6, 0.45, 0), tcl = -0.25)
   for (i in seq_along(effects)) {
     effect <- effects[i]
-    plot_posterior(setNames(mixed[i], effect), effect, prior = TRUE,
-                   main = effect, xlab = "", ylab = "", xlim = xlim, ylim = c(0, ymax),
-                   n_points = n_points, col = colours[2], lwd = 2,
-                   dots_prior = list(col = colours[1], lwd = 2))
+    graphics::plot(priors[[i]], main = effect, xlab = "", ylab = "",
+                   xlim = xlim, ylim = c(0, ymax), n_points = n_points, col = colours[1], lwd = 2)
     if (unbounded[i]) {
       graphics::arrows(0, prior_height[i], 0, ymax, col = colours[1], lwd = 1.5, length = 0.065)
     }
+    plot_posterior(setNames(mixed[i], effect), effect, add = TRUE,
+                   xlim = xlim, n_points = n_points, col = colours[2], lwd = 2)
     graphics::lines(stan_curves[[i]], col = colours[3], lty = 2, lwd = 2)
   }
   graphics::mtext("Density", side = 2, outer = TRUE, line = 0.3)
