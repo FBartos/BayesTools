@@ -74,9 +74,9 @@
     return(.bt_JAGS_bridge_compile_bias_evaluator(prior_object))
   }else if(is.prior.mixture(prior_object)){
     .JAGS_marglik_stop_unsupported_mixture(prior_object)
-  }else if(inherits(prior_object, "prior.regularized_term")){
+  }else if(is.prior.regularized_term(prior_object)){
     density <- .bt_regularized_bridge_density(prior_object, parameter_name)
-    coordinates <- .bt_regularized_coefficient_names(prior_object, parameter_name)
+    coordinates <- .JAGS_prior_coefficient_names(parameter_name, prior_object)
     values <- .bt_JAGS_bridge_compile_parameter_values(prior_object, coordinates)
     return(list(
       log_prior = function(samples) density(.bt_regularized_bridge_row(samples)),

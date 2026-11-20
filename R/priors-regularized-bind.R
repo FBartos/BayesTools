@@ -4,7 +4,7 @@
 .bt_regularized_assign_terms <- function(prior_list, model_terms, model_terms_type){
 
   labels <- names(prior_list)
-  declarations <- vapply(prior_list, inherits, logical(1), "prior.regularized")
+  declarations <- vapply(prior_list, is.prior.regularized, logical(1))
   # Fixed-scale ridge/lasso are ordinary scalar priors when assigned to a
   # parameter. Under a group name the same constructor can supply all slopes.
   if(!is.null(labels)){
@@ -12,11 +12,8 @@
       p <- prior_list[[term]]
       declaration <- attr(p, "regularized_spec", exact = TRUE)
       if(is.null(declaration) || is.prior.factor(p)) next
-      contrast <- declaration$contrast
-      if(is.null(contrast)) contrast <- attr(p, "regularized_contrast", exact = TRUE)
-      if(is.null(contrast)) contrast <- "treatment"
       prior_list[[term]] <- .bt_regularized_term_prior(declaration, term, term, TRUE,
-        contrast, multiplier = 1, prior_weights = .prior_model_weight(p))
+        attr(p, "regularized_contrast", exact = TRUE), multiplier = 1, prior_weights = .prior_model_weight(p))
     }
     scalar_groups <- !labels %in% c(model_terms, .JAGS_formula_default_prior_names()) &
       vapply(prior_list, function(p) !is.null(attr(p, "regularized_spec", exact = TRUE)), logical(1))
@@ -36,7 +33,7 @@
     stop("A regularization group needs a name distinct from the formula terms and defaults.", call. = FALSE)
   }
   specs <- lapply(groups, function(group){
-    if(inherits(group, "prior.regularized")) group else attr(group, "regularized_spec", exact = TRUE)
+    if(is.prior.regularized(group)) group else attr(group, "regularized_spec", exact = TRUE)
   })
   members <- lapply(specs, function(spec){
     if(is.null(spec$terms)) return(NULL)
@@ -66,21 +63,22 @@
     multiplier <- attr(groups[[group]], "regularized_scale_multiplier", exact = TRUE)
     if(is.null(multiplier)) multiplier <- 1
     .regularized_check_positive(multiplier, "regularized_scale_multiplier")
-    contrast <- spec$contrast
-    if(is.null(contrast)) contrast <- attr(groups[[group]], "regularized_contrast", exact = TRUE)
-    if(is.null(contrast)) contrast <- "treatment"
+    fallback_contrast <- attr(groups[[group]], "regularized_contrast", exact = TRUE)
     for(term in members[[group]]){
       factor_term <- identical(model_terms_type[[term]], "factor")
-      prior_list[[term]] <- .bt_regularized_term_prior(spec, group, term, factor_term, contrast, multiplier,
+      prior_list[[term]] <- .bt_regularized_term_prior(spec, group, term, factor_term, fallback_contrast, multiplier,
         owned = intersect(strsplit(term, ":", fixed = TRUE)[[1L]], members[[group]]))
     }
   }
   prior_list
 }
 
-.bt_regularized_term_prior <- function(spec, group, term, factor_term, contrast, multiplier, prior_weights = 1,
+.bt_regularized_term_prior <- function(spec, group, term, factor_term, fallback_contrast, multiplier, prior_weights = 1,
                                        owned = character()){
 
+  contrast <- spec$contrast
+  if(is.null(contrast)) contrast <- fallback_contrast
+  if(is.null(contrast)) contrast <- "treatment"
   centered <- factor_term && contrast %in% c("meandif", "orthonormal")
   binding <- if(factor_term && grepl(":", term, fixed = TRUE)){
     list(group = group, requested = spec$contrast, owned = owned)
@@ -172,7 +170,7 @@
       metadata <- setdiff(names(attributes(p)), c("class", "names"))
       for(name in metadata) attr(replacement, name) <- attr(p, name, exact = TRUE)
       return(replacement)
-    }else if(!inherits(p, "prior.regularized_term")){
+    }else if(!is.prior.regularized_term(p)){
       conflict(sub("^contr\\.", "", old), "has an incompatible mixture component", names(actual))
     }
     class(p)[class(p) == sub("^contr\\.", "prior.", old)] <- paste0("prior.", representative)
@@ -192,7 +190,7 @@
       for(i in seq_along(prior)) prior[[i]] <- bound(prior[[i]], term)
       return(prior)
     }
-    if(!inherits(prior, "prior.regularized_term")) return(prior)
+    if(!is.prior.regularized_term(prior)) return(prior)
     spec <- prior$regularization
     if(!identical(gsub(":", "__xXx__", spec$term, fixed = TRUE), term)){
       stop("The regularization declaration for '", spec$term, "' cannot be bound to '", term, "'.", call. = FALSE)
@@ -246,11 +244,11 @@
   prior_list
 }
 
-.bt_regularized_primitives <- function(prior, shared = TRUE){
+.bt_regularized_primitives <- function(prior, include_shared = prior$regularization$owner){
 
   spec <- prior$regularization
   primitives <- list()
-  if(shared && spec$owner){
+  if(include_shared){
     if(!is.null(spec$global_name)) primitives[[spec$global_name]] <- spec$scale
     if(!is.null(spec$slab_name)){
       shape <- spec$slab_df / 2
@@ -284,7 +282,7 @@
 .bt_regularized_validate_roots <- function(prior_list){
 
   members <- function(p){
-    if(inherits(p, "prior.regularized_term")) return(list(p))
+    if(is.prior.regularized_term(p)) return(list(p))
     if(is.prior.mixture(p)) return(unlist(lapply(p, members), recursive = FALSE, use.names = FALSE))
     list()
   }
@@ -330,14 +328,10 @@
 # law as the fit-level copy, including the ownership of shared scales.
 .bt_regularized_check_fitted_priors <- function(design, fit_priors){
 
-  has_member <- function(p){
-    inherits(p, "prior.regularized_term") ||
-      (is.prior.mixture(p) && any(vapply(p, has_member, logical(1))))
-  }
   for(name in names(design$prior_list)){
     compiled <- design$prior_list[[name]]
     fitted <- fit_priors[[name]]
-    if((has_member(compiled) || has_member(fitted)) &&
+    if((.bt_has_regularized_term(compiled) || .bt_has_regularized_term(fitted)) &&
        !identical(.bt_JAGS_bridge_prior_semantics(compiled), .bt_JAGS_bridge_prior_semantics(fitted))){
       .bt_stop_refit_required("The fitted regularization priors disagree for '", name,
                              "'. Refit the model with the intended group and scale priors.")

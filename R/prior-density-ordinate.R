@@ -451,7 +451,7 @@ prior_density_has_provenance <- function(x){
 
 .prior_density_ordinate_prior_provenance <- function(prior){
 
-  if(inherits(prior, "prior.regularized_term")){
+  if(is.prior.regularized_term(prior)){
     return(list(kind = "regularized_coefficient", family = prior$regularization$family,
                 regularization = prior$regularization, truncation = prior$truncation))
   }
@@ -588,7 +588,7 @@ prior_density_has_provenance <- function(x){
 .prior_density_ordinate_primitive <- function(prior, value){
 
   provenance <- .prior_density_ordinate_prior_provenance(prior)
-  if(inherits(prior, "prior.regularized_term")){
+  if(is.prior.regularized_term(prior)){
     height <- if(value == 0) .regularized_zero_log_density(prior) else tryCatch(
       .regularized_marginal(prior, value, density = TRUE, log = TRUE),
       BayesTools_regularized_marginal_unavailable = function(e) NA_real_)
@@ -1526,7 +1526,7 @@ prior_density_has_provenance <- function(x){
   # A learned ridge coefficient is Normal conditional on its global scale.
   # Integrate over that scale directly, keeping the independent Gaussian
   # contribution in the conditional variance.
-  if(inherits(prior, "prior.regularized_term") && identical(prior$regularization$family, "ridge")){
+  if(is.prior.regularized_term(prior) && identical(prior$regularization$family, "ridge")){
     spec <- prior$regularization
     return(list(
       additive_mean = normal$provenance$mean, additive_sd = normal$provenance$sd,

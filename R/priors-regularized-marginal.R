@@ -238,6 +238,19 @@
   log_kernel
 }
 
+# Conditional density or upper tail given the scale of a ridge or lasso term.
+.regularized_conditional_log_kernel <- function(z, log_scale, spec, density){
+
+  value <- if(spec$family == "lasso"){
+    .regularized_lasso_log_kernel(z, spec, density)
+  }else if(density){
+    stats::dnorm(z, log = TRUE)
+  }else{
+    stats::pnorm(z, lower.tail = FALSE, log.p = TRUE)
+  }
+  if(density) value - log_scale else value
+}
+
 # A learned Normal/Laplace width is a single positive scale integral. Put
 # breakpoints at the transition |beta|/tau as well as at the scale prior's
 # quantiles. The adaptive log-coordinate integrator can then resolve the
@@ -249,19 +262,16 @@
   width <- spec$multiplier
   log_x <- log(x)
   scale_lpdf <- .prior_simple_lpdf_evaluator(scale, purpose = "natural_integral")
-  setup <- .prior_conditional_normal_breakpoint_setup(scale, unlist(scale$truncation, use.names = FALSE))
-  normal <- list(multiplier = scale, bounds = unlist(scale$truncation, use.names = FALSE),
+  bounds <- unlist(scale$truncation, use.names = FALSE)
+  setup <- .prior_conditional_normal_breakpoint_setup(scale, bounds)
+  normal <- list(multiplier = scale, bounds = bounds,
     additive_mean = 0, additive_sd = 0, product_mean = 0, product_sd = width)
   breaks <- lapply(x, function(value) .prior_conditional_normal_breakpoints(normal, value, setup = setup))
   integrand <- list(
     shared = function(tau) list(log_scale = log(tau) + log(width), log_prior = scale_lpdf(tau)),
     log_value = function(s, index){
       z <- exp(log_x[index] - s$log_scale)
-      log_kernel <- if(spec$family == "lasso"){
-        .regularized_lasso_log_kernel(z, spec, density)
-      }else if(density) stats::dnorm(z, log = TRUE) else stats::pnorm(-z, log.p = TRUE)
-      if(density) log_kernel <- log_kernel - s$log_scale
-      log_kernel + s$log_prior
+      .regularized_conditional_log_kernel(z, s$log_scale, spec, density) + s$log_prior
     })
   log(.prior_density_quadrature_batch(integrand, breaks))
 }
@@ -307,22 +317,22 @@
   result <- rep(NA_real_, length(x))
   pending <- seq_along(x)
   previous <- result
-  horseshoe <- prior$regularization$family == "horseshoe" && operation != "variance"
+  horseshoe <- spec$family == "horseshoe" && operation != "variance"
   near_pole <- FALSE
   if(horseshoe){
-    s <- prior$regularization$scale
-    if(is.null(prior$regularization$slab_scale) && is.prior(s) && identical(s$distribution, "t") &&
+    s <- spec$scale
+    if(is.null(spec$slab_scale) && is.prior(s) && identical(s$distribution, "t") &&
        s$parameters$df == 1 && s$parameters$location == 0 &&
        s$truncation$lower == 0 && s$truncation$upper == Inf){
-      log_scale <- log(s$parameters$scale) + log(prior$regularization$multiplier)
+      log_scale <- log(s$parameters$scale) + log(spec$multiplier)
       result <- .regularized_classical_integral(x, log_scale, density = operation == "density")
       pending <- which(!is.finite(result))
       if(!length(pending)) return(result)
     }
     typical <- if(is.prior(s)) quant(s, .5) else s
-    near_pole <- min(log(x)) - log(typical) - log(prior$regularization$multiplier) < -9
+    near_pole <- min(log(x)) - log(typical) - log(spec$multiplier) < -9
   }
-  if(!horseshoe && operation != "variance" && is.prior(prior$regularization$scale)){
+  if(!horseshoe && operation != "variance" && is.prior(spec$scale)){
     result <- .regularized_global_integral(prior, x, density = operation == "density")
     pending <- which(!is.finite(result))
     if(!length(pending)) return(result)
@@ -333,19 +343,11 @@
     rule <- if(horseshoe) .regularized_horseshoe_rule(prior, panels, near_pole) else
       .regularized_scale_rule(prior, panels, variance = operation == "variance")
     estimate <- vapply(x[pending], function(value){
-      if(horseshoe) return(.regularized_horseshoe_log_value(log(value), prior$regularization,
+      if(horseshoe) return(.regularized_horseshoe_log_value(log(value), spec,
         rule, density = operation == "density"))
       if(operation == "variance") return(.regularized_log_sum(rule$log_weight + 2 * rule$log_scale))
       z <- exp(log(value) - rule$log_scale)
-      kernel <- if(operation == "density"){
-        if(prior$regularization$family == "lasso") .regularized_lasso_log_kernel(
-          z, prior$regularization, TRUE) - rule$log_scale else
-          stats::dnorm(z, log = TRUE) - rule$log_scale
-      }else{
-        if(prior$regularization$family == "lasso") .regularized_lasso_log_kernel(
-          z, prior$regularization, FALSE) else
-          stats::pnorm(z, lower.tail = FALSE, log.p = TRUE)
-      }
+      kernel <- .regularized_conditional_log_kernel(z, rule$log_scale, spec, operation == "density")
       .regularized_log_sum(kernel + rule$log_weight)
     }, numeric(1))
     converged <- is.finite(estimate) & is.finite(previous[pending]) &

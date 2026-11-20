@@ -1,12 +1,12 @@
 .bt_has_regularized_term <- function(prior){
 
-  inherits(prior, "prior.regularized_term") ||
+  is.prior.regularized_term(prior) ||
     (is.prior.mixture(prior) && any(vapply(prior, .bt_has_regularized_term, logical(1))))
 }
 
 .bt_regularized_auxiliary_names <- function(prior){
 
-  if(inherits(prior, "prior.regularized_term")){
+  if(is.prior.regularized_term(prior)){
     spec <- prior$regularization
     return(c(spec$global_name, spec$slab_name, spec$local_names, spec$variance_names))
   }
@@ -41,14 +41,13 @@
     values <- .bt_deterministic_node_evaluate(node, .bt_deterministic_lookup(draws))
     return(cbind(values, draws))
   }
-  if(!inherits(prior, "prior.regularized_term")){
+  if(!is.prior.regularized_term(prior)){
     return(.generate_prior_sample_matrix(stats::setNames(list(prior), name), n))
   }
 
   spec <- prior$regularization
   # A term sampled by itself still needs the pool's shared hyperpriors.
-  prior$regularization$owner <- TRUE
-  primitives <- .bt_regularized_primitives(prior)
+  primitives <- .bt_regularized_primitives(prior, include_shared = TRUE)
   for(key in names(primitives)){
     if(!exists(key, envir = registry, inherits = FALSE)){
       draws <- rng(primitives[[key]], n)
@@ -60,10 +59,8 @@
       registry[[key]] <- draws
     }
   }
-  global <- if(is.null(spec$global_name)) spec$scale else registry[[spec$global_name]]
-  slab <- if(!is.null(spec$slab_name)) registry[[spec$slab_name]]
-  coordinates <- .bt_regularized_coefficient_names(prior, name)
-  scales <- .bt_regularized_coefficient_scales(prior, length(coordinates), global, slab,
+  coordinates <- .JAGS_prior_coefficient_names(name, prior)
+  scales <- .bt_regularized_coefficient_scales(prior, length(coordinates),
     function(key) registry[[key]])
   out <- matrix(NA_real_, nrow = n, ncol = length(coordinates), dimnames = list(NULL, coordinates))
   for(j in seq_along(coordinates)){

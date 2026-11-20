@@ -175,7 +175,7 @@ JAGS_get_inits            <- function(prior_list, chains, seed){
 
   for(i in seq_along(prior_list)){
 
-    if(inherits(prior_list[[i]], "prior.regularized_term")){
+    if(is.prior.regularized_term(prior_list[[i]])){
       # Positive scales are initialized from their declared priors; JAGS can
       # initialize the centred, zero-location coefficient at its typical value.
       temp_inits <- c(temp_inits, .JAGS_get_inits.fun(.bt_regularized_primitives(prior_list[[i]])))

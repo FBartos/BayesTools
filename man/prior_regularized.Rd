@@ -2,7 +2,6 @@
 % Please edit documentation in R/priors-regularized.R
 \name{prior_regularized}
 \alias{prior_regularized}
-\alias{is.prior.regularized}
 \title{Shrink regression coefficients towards zero}
 \usage{
 prior_regularized(
@@ -13,8 +12,6 @@ prior_regularized(
   slab_df = 4,
   contrast = NULL
 )
-
-is.prior.regularized(x)
 }
 \arguments{
 \item{family}{One of \code{"ridge"}, \code{"lasso"}, and \code{"horseshoe"}.}
@@ -39,14 +36,13 @@ horseshoe. The default \code{NULL} selects the classical horseshoe.}
 \item{contrast}{Optional factor coding, one of \code{"treatment"}, \code{"independent"},
 \code{"meandif"} or \code{"orthonormal"}. With \code{NULL}, \code{\link[=JAGS_formula]{JAGS_formula()}} uses treatment
 coding by default and a calling model can supply its factor coding.}
-
-\item{x}{An R object.}
 }
 \value{
 With numeric scale and omitted terms, ridge and lasso return
 ordinary scalar priors accepted by \code{\link[=prior_spike_and_slab]{prior_spike_and_slab()}} and
 \code{\link[=prior_mixture]{prior_mixture()}}. Otherwise the result declares a coefficient group for
-\code{\link[=JAGS_formula]{JAGS_formula()}}. \code{is.prior.regularized()} identifies group declarations.
+\code{\link[=JAGS_formula]{JAGS_formula()}}. \code{\link[=is.prior.regularized]{is.prior.regularized()}} identifies group declarations.
+\code{\link[=is.prior.regularized_term]{is.prior.regularized_term()}} identifies coefficient priors bound to a group.
 }
 \description{
 Shrink continuous slopes and factor effects using ridge,

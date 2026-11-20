@@ -67,7 +67,7 @@ print.prior <- function(x, short_name = FALSE, parameter_names = FALSE, plot = F
     x <- .prior_expression_to_character(x)
   }
 
-  if(is.prior.regularized(x) || inherits(x, "prior.regularized_term")){
+  if(is.prior.regularized(x) || is.prior.regularized_term(x)){
     output <- .print_prior_regularized(x, digits_estimates, short_name)
   }else if(is.prior.none(x)){
     output <- .print.prior.none(x, short_name, parameter_names, plot, digits_estimates, silent)

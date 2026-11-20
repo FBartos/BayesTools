@@ -22,7 +22,6 @@
 #' @param contrast Optional factor coding, one of `"treatment"`, `"independent"`,
 #' `"meandif"` or `"orthonormal"`. With `NULL`, [JAGS_formula()] uses treatment
 #' coding by default and a calling model can supply its factor coding.
-#' @param x An R object.
 #'
 #' @details A continuous slope is one shrinkage unit. Treatment coding
 #' gives one unit per difference from the reference level. Independent
@@ -89,7 +88,8 @@
 #' @return With numeric scale and omitted terms, ridge and lasso return
 #' ordinary scalar priors accepted by [prior_spike_and_slab()] and
 #' [prior_mixture()]. Otherwise the result declares a coefficient group for
-#' [JAGS_formula()]. `is.prior.regularized()` identifies group declarations.
+#' [JAGS_formula()]. [is.prior.regularized()] identifies group declarations.
+#' [is.prior.regularized_term()] identifies coefficient priors bound to a group.
 #'
 #' @references \insertAllCited{}
 #' @examples
@@ -137,7 +137,7 @@ prior_regularized <- function(family, scale, terms = NULL, slab_scale = NULL, sl
   if(is.prior(scale)){
     if(!is.prior.simple(scale) || is.prior.factor(scale) || is.prior.discrete(scale) ||
        is.prior.PET(scale) || is.prior.PEESE(scale) || .is_prior_expression(scale) ||
-       inherits(scale, "prior.regularized_term") || !is.null(attr(scale, "multiply_by", exact = TRUE))){
+       is.prior.regularized_term(scale) || !is.null(attr(scale, "multiply_by", exact = TRUE))){
       stop("Supply a positive number or a continuous scalar prior on positive values in 'scale'.", call. = FALSE)
     }
     if(is.prior.point(scale)){
@@ -178,16 +178,9 @@ prior_regularized <- function(family, scale, terms = NULL, slab_scale = NULL, sl
   }
 }
 
-#' @rdname prior_regularized
-#' @export
-is.prior.regularized <- function(x){
-
-  inherits(x, "prior.regularized")
-}
-
 .check_regularized_joint_method <- function(prior, method){
 
-  if(inherits(prior, "prior.regularized_term") && is.prior.factor(prior) &&
+  if(is.prior.regularized_term(prior) && is.prior.factor(prior) &&
      prior$regularization$dimension > 1L){
     message <- paste0("Joint '", method, "()' is unavailable for this multi-coefficient regularized term. ",
                       "Use 'm", method, "()' for marginal values or 'rng()' for joint draws.")
@@ -198,7 +191,7 @@ is.prior.regularized <- function(x){
 
 .print_prior_regularized <- function(x, digits, short_name){
 
-  bound <- inherits(x, "prior.regularized_term")
+  bound <- is.prior.regularized_term(x)
   spec <- if(bound) x$regularization else x
   centered <- bound && any(spec$unit_centered)
   label <- switch(spec$family, ridge = "Ridge", lasso = if(centered) "Group lasso" else "Lasso",

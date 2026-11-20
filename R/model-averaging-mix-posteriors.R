@@ -700,7 +700,7 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
   if(!all(sapply(fits, inherits, what = "runjags") | sapply(fits, inherits, what = "stanfit") | sapply(fits, inherits, what = "null_model")))
     stop("'fits' must be a list of 'runjags' or 'rstan' models")
   vector_prior <- vapply(priors, function(p){
-    is.prior.vector(p) || (inherits(p, "prior.regularized_term") && is.prior.factor(p))
+    is.prior.vector(p) || (is.prior.regularized_term(p) && is.prior.factor(p))
   }, logical(1))
   if(!all(vector_prior | sapply(priors, is.prior.point)))
     stop("'priors' must be a list of vector priors")

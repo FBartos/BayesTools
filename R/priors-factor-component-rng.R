@@ -22,7 +22,7 @@
   if(is.prior.ordered(component)){
     stop("This bound component sampler is unavailable for ordered factor priors.", call. = FALSE)
   }
-  if(inherits(component, "prior.regularized_term")){
+  if(is.prior.regularized_term(component)){
     raw <- rng(component, n, transform_factor_samples = FALSE)
   }else if(is.prior.vector(component)){
     component$parameters[["K"]] <- coefficient_dim

@@ -5,9 +5,8 @@
 .bt_regularized_direction <- function(prior, unit, weights){
 
   spec <- prior$regularization
-  largest <- max(abs(weights))
-  norm <- largest * sqrt(sum((weights / largest)^2))
-  if(!is.finite(norm)) .regularized_numerical_unavailable("direction norm")
+  norm <- if(anyNA(weights)) NA_real_ else .prior_density_ordinate_stable_norm(weights)
+  if(!is.finite(norm) || norm == 0) .regularized_numerical_unavailable("direction norm")
   spec$multiplier <- .prior_linear_fold_scale(norm, spec$multiplier)
   spec$dimension <- 1L
   spec$unit_index <- 1L
@@ -28,7 +27,7 @@
 .bt_has_regularized_centered <- function(prior){
 
   if(is.prior.mixture(prior)) return(any(vapply(prior, .bt_has_regularized_centered, logical(1))))
-  inherits(prior, "prior.regularized_term") && is.prior.factor(prior) && any(prior$regularization$unit_centered)
+  is.prior.regularized_term(prior) && is.prior.factor(prior) && any(prior$regularization$unit_centered)
 }
 
 # Exact measure of a single projected centered direction with a zero gate.
@@ -38,7 +37,7 @@
   if(!is.prior.mixture(prior) || length(prior) != 2L ||
      !is.null(attr(prior, "multiply_by", exact = TRUE))) return(NULL)
   slab <- vapply(prior, function(p){
-    inherits(p, "prior.regularized_term") && isTRUE(p$regularization$unit_centered) &&
+    is.prior.regularized_term(p) && isTRUE(p$regularization$unit_centered) &&
       is.null(attr(p, "multiply_by", exact = TRUE))
   }, logical(1))
   spike <- vapply(prior, .posterior_atoms_is_zero_point, logical(1))
@@ -73,7 +72,7 @@
     if(length(location) > 1L) location <- location[indices]
     return(prior("point", list(sum(weights * location))))
   }
-  if(!inherits(prior, "prior.regularized_term")){
+  if(!is.prior.regularized_term(prior)){
     if(is.prior.vector(prior) && prior$distribution %in% c("mnormal", "mt"))
       return(.prior_linear_vector_scalar_prior(prior, weights))
     return(NULL)
@@ -100,7 +99,7 @@
       .bt_regularized_project_component(entry$prior, indices, w)
     }
     if(is.null(projected)){
-      atom_free <- inherits(entry$prior, "prior.regularized_term") &&
+      atom_free <- is.prior.regularized_term(entry$prior) &&
         !any(!is.na(source_transforms)) && all(vapply(entries, function(e){
           !is.character(attr(e$prior, "multiply_by", exact = TRUE)) && !.bt_prior_has_expression(e$prior)
         }, logical(1)))

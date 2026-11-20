@@ -19,7 +19,7 @@
 
   log_tail <- .laplace_log_tail(q, location, scale)
   complement <- !is.na(q) & if(lower.tail) q > location else q < location
-  log_tail[complement] <- log1p(-exp(log_tail[complement]))
+  log_tail[complement] <- .prior_log1mexp(log_tail[complement])
   if(log.p) log_tail else exp(log_tail)
 }
 

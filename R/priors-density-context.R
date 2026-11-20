@@ -565,11 +565,10 @@
 
   # Conditioning on a term gate can select a single atom-free shrinkage
   # law. Its structural route needs no interpolation between models.
-  identity_output <- is.null(output_transformation) || (identical(output_transformation, "lin") &&
-    isTRUE(output_transformation_arguments$a == 0) && isTRUE(output_transformation_arguments$b == 1))
   defer_single <- .defer && length(context$prior_lists) == 1L &&
-    isTRUE(context$model_weights[[1L]] == 1) && identity_output &&
-    any(vapply(context$prior_lists[[1L]], inherits, logical(1), "prior.regularized_term"))
+    isTRUE(context$model_weights[[1L]] == 1) &&
+    .prior_density_identity_output(output_transformation, output_transformation_arguments) &&
+    any(vapply(context$prior_lists[[1L]], is.prior.regularized_term, logical(1)))
   dists <- lapply(context$prior_lists, function(prior_list){
     if(!is.null(context$formula_scale) && length(context$formula_scale) > 0){
       component_context <- .prior_density_context(
@@ -933,6 +932,12 @@
       all(vapply(allocation$allocations, .prior_density_dirichlet_allocation, logical(1))),
     FALSE
   )
+}
+
+.prior_density_identity_output <- function(transformation, arguments){
+
+  is.null(transformation) ||
+    (identical(transformation, "lin") && isTRUE(arguments$a == 0) && isTRUE(arguments$b == 1))
 }
 
 # Whether an output map is the affine 'lin' map with valid coefficients

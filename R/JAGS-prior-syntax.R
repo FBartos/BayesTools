@@ -52,9 +52,9 @@ JAGS_add_priors           <- function(syntax, prior_list){
 
   for(i in seq_along(prior_list)){
 
-    if(inherits(prior_list[[i]], "prior.regularized")){
+    if(is.prior.regularized(prior_list[[i]])){
       stop("Bind a regularization group in a formula prior list before generating JAGS priors.", call. = FALSE)
-    }else if(inherits(prior_list[[i]], "prior.regularized_term")){
+    }else if(is.prior.regularized_term(prior_list[[i]])){
       syntax_priors <- paste(syntax_priors, .bt_regularized_jags(prior_list[[i]], names(prior_list)[i]))
     }else if(is.prior.weightfunction(prior_list[[i]])){
 

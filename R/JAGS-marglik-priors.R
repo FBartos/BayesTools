@@ -94,7 +94,7 @@ JAGS_marglik_priors                <- function(samples, prior_list){
 
       .JAGS_marglik_stop_unsupported_mixture(prior_list[[i]])
 
-    }else if(inherits(prior_list[[i]], "prior.regularized_term")){
+    }else if(is.prior.regularized_term(prior_list[[i]])){
 
       density <- .bt_regularized_bridge_density(prior_list[[i]], names(prior_list)[[i]])
       marglik <- marglik + density(.bt_regularized_bridge_row(samples))
@@ -237,7 +237,7 @@ JAGS_marglik_priors_rows_evaluator <- function(prior_list){
   force(prior_object)
   force(parameter_name)
 
-  if(inherits(prior_object, "prior.regularized_term")){
+  if(is.prior.regularized_term(prior_object)){
     return(.bt_regularized_bridge_density(prior_object, parameter_name))
   }
   if(is.prior.none(prior_object) || is.prior.point(prior_object)){

@@ -2,7 +2,7 @@
 # alternatives of a gated coefficient that have positive prior probability.
 .bt_regularized_shared_scales <- function(prior){
 
-  if(inherits(prior, "prior.regularized_term")){
+  if(is.prior.regularized_term(prior)){
     spec <- prior$regularization
     return(c(spec$global_name, spec$slab_name))
   }
@@ -53,7 +53,7 @@
   affected <- owners[vapply(scales, function(keys) any(keys %in% shared), logical(1))]
   factorable <- vapply(affected, function(name){
     prior <- prior_list[[name]]
-    inherits(prior, "prior.regularized_term") &&
+    is.prior.regularized_term(prior) &&
       prior$regularization$family %in% c("ridge", "lasso") &&
       is.null(prior$regularization$group_lasso_dimension) &&
       is.null(attr(prior, "multiply_by", exact = TRUE)) && !name %in% multipliers &&
@@ -67,7 +67,7 @@
     # A JAGS expression or a coefficient-valued multiplier could use that
     # same coefficient a second time and cancel this contribution.
     atom_free <- !length(multipliers) && !any(!is.na(source_transforms)) &&
-      any(vapply(prior_list[affected], inherits, logical(1), "prior.regularized_term")) &&
+      any(vapply(prior_list[affected], is.prior.regularized_term, logical(1))) &&
       !any(vapply(prior_list[owners], .bt_prior_has_expression, logical(1)))
     return(list(reason = message, sources = affected, atom_free = atom_free))
   }

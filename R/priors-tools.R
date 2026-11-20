@@ -358,12 +358,16 @@
   return(prior)
 }
 
-#' @title Reports whether x is a a prior object
+#' @title Reports whether x is a prior object
 #'
-#' @description Reports whether x is a a prior object. Note that
-#' point priors inherit the prior.simple property
+#' @description Reports whether x is a prior object. Point priors inherit the
+#' prior.simple property. `is.prior.regularized()` identifies a regularization
+#' group declaration. `is.prior.regularized_term()` identifies a coefficient
+#' prior carrying its group's shrinkage model. Fixed-scale ridge and lasso
+#' coefficients represented by ordinary normal and Laplace priors retain
+#' their ordinary prior types.
 #'
-#' @param x an object of test
+#' @param x An object to test.
 #'
 #' @examples
 #' # create some prior distributions
@@ -401,6 +405,8 @@
 #' @export is.prior.ordered
 #' @export is.prior.spike_and_slab
 #' @export is.prior.mixture
+#' @export is.prior.regularized
+#' @export is.prior.regularized_term
 #' @name is.prior
 NULL
 
@@ -489,6 +495,14 @@ is.prior.meandif         <- function(x){
 is.prior.mixture         <- function(x){
   inherits(x, "prior.mixture")
 }
+#' @rdname is.prior
+is.prior.regularized      <- function(x){
+  inherits(x, "prior.regularized")
+}
+#' @rdname is.prior
+is.prior.regularized_term <- function(x){
+  inherits(x, "prior.regularized_term")
+}
 
 .validate_centered_factor_prior <- function(prior, name = "prior"){
 
@@ -506,7 +520,7 @@ is.prior.mixture         <- function(x){
     return(invisible(TRUE))
   }
   # Every regularized factor kernel is centered at zero by construction.
-  if(inherits(prior, "prior.regularized_term")) return(invisible(TRUE))
+  if(is.prior.regularized_term(prior)) return(invisible(TRUE))
 
   center_name <- switch(
     prior[["distribution"]],

@@ -193,18 +193,6 @@ rng.prior   <- function(x, n, ...){
   .check_n(n)
   .check_prior(prior)
 
-  if(inherits(prior, "prior.regularized_term")){
-    draws <- .bt_regularized_draw_columns(prior, "coefficient", n, new.env(parent = emptyenv()))
-    if(is.prior.factor(prior)){
-      design <- attr(prior, "factor_design", exact = TRUE)
-      if(!identical(list(...)[["transform_factor_samples"]], FALSE) && is.matrix(design)){
-        return(unname(draws %*% t(design)))
-      }
-      return(unname(draws))
-    }
-    return(as.vector(draws))
-  }
-
   dots  <- list(...)
   if(!is.null(dots[["transform_factor_samples"]])){
     check_bool(dots[["transform_factor_samples"]], "transform_factor_samples")
@@ -217,6 +205,14 @@ rng.prior   <- function(x, n, ...){
     sample_components <- dots[["sample_components"]]
   }else{
     sample_components <- FALSE
+  }
+
+  if(is.prior.regularized_term(prior)){
+    draws <- .bt_regularized_draw_columns(prior, "coefficient", n, new.env(parent = emptyenv()))
+    if(!is.prior.factor(prior)) return(as.vector(draws))
+    design <- attr(prior, "factor_design", exact = TRUE)
+    if(transform_factor_samples && is.matrix(design)) draws <- draws %*% t(design)
+    return(unname(draws))
   }
 
   if(is.prior.spike_and_slab(prior)){
@@ -725,7 +721,7 @@ quant.prior <- function(x, p, ...){
 
 .prior_simple_base_d <- function(prior, x, log = FALSE){
 
-  if(inherits(prior, "prior.regularized_term"))
+  if(is.prior.regularized_term(prior))
     return(.regularized_marginal(prior, x, density = TRUE, log = log))
   switch(
     prior[["distribution"]],
@@ -747,7 +743,7 @@ quant.prior <- function(x, p, ...){
 
 .prior_simple_base_p <- function(prior, q, lower.tail = TRUE, log.p = FALSE){
 
-  if(inherits(prior, "prior.regularized_term"))
+  if(is.prior.regularized_term(prior))
     return(.regularized_marginal(prior, q, density = FALSE, log = log.p, lower.tail = lower.tail))
   switch(
     prior[["distribution"]],
@@ -770,7 +766,7 @@ quant.prior <- function(x, p, ...){
 
 .prior_simple_base_q <- function(prior, p, lower.tail = TRUE, log.p = FALSE){
 
-  if(inherits(prior, "prior.regularized_term")){
+  if(is.prior.regularized_term(prior)){
     if(log.p && any(is.finite(p) & exp(p) == 0)) .regularized_numerical_unavailable("quantile")
     q <- .regularized_quantile(prior, if(log.p) exp(p) else p)
     return(if(lower.tail) q else -q)

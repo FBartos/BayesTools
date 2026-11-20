@@ -70,7 +70,7 @@
     }
     return(roots)
   }
-  if(inherits(prior, "prior.regularized_term")){
+  if(is.prior.regularized_term(prior)){
     add(parameter, if(is.prior.factor(prior)) .get_prior_factor_levels(prior) else integer())
     primitives <- .bt_regularized_primitives(prior)
     for(name in names(primitives)) append(primitives[[name]], name)

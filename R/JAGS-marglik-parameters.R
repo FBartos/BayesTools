@@ -256,14 +256,10 @@ JAGS_marglik_parameters                <- function(samples, prior_list){
   check_char(parameter_name, "parameter_name")
 
 
-  if(is.prior.treatment(prior) || is.prior.independent(prior) || inherits(prior, "prior.regularized_term")){
+  if(is.prior.treatment(prior) || is.prior.independent(prior) || is.prior.regularized_term(prior)){
 
     parameter <- list()
-    if(.get_prior_factor_levels(prior) == 1){
-      parameter_names <- parameter_name
-    }else{
-      parameter_names <- paste0(parameter_name, "[", 1:.get_prior_factor_levels(prior), "]")
-    }
+    parameter_names <- .JAGS_prior_factor_names(parameter_name, prior)
     parameter[[parameter_name]] <- .JAGS_marglik_parameter_values(samples, prior, parameter_names)
 
   }else if(is.prior.orthonormal(prior) | is.prior.meandif(prior)){

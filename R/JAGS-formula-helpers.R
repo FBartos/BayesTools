@@ -1166,11 +1166,11 @@
     # A regularized interaction may couple a centered factor's directions
     # independently in each level of a factor that contributes indicators.
     # A purely indicator-coded term has no centered direction to shrink.
-    parts <- if(is.prior.mixture(this_prior)) this_prior else list(this_prior)
+    parts <- .bt_regularized_factor_parts(this_prior)
     if((.bt_regularized_interaction(this_prior) ||
         any(components %in% setdiff(factor_predictors, indicator_factors))) &&
        all(vapply(parts, function(p){
-         inherits(p, "prior.regularized_term") || !is.null(attr(p, "regularized_factor_binding", exact = TRUE)) ||
+         is.prior.regularized_term(p) || !is.null(attr(p, "regularized_factor_binding", exact = TRUE)) ||
            .posterior_atoms_is_zero_point(p)
        }, logical(1)))){
       next
@@ -1226,7 +1226,7 @@
   # The regularization binder conditions every centered factor unit on a
   # single scalar variance, including a centered factor crossed with an
   # independently coded partner.
-  if(inherits(prior, "prior.regularized_term")) return(TRUE)
+  if(is.prior.regularized_term(prior)) return(TRUE)
   if(is.prior.ordered(prior)){
     return(FALSE)
   }

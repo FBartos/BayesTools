@@ -118,7 +118,7 @@ test_that("group lasso prior draws have the radial Gamma law and preserve the fi
   p <- model$prior_list$mu_f
   n <- 5000L
   draws <- .generate_prior_sample_matrix(model$prior_list, n, seed = 183)
-  columns <- .bt_regularized_coefficient_names(p, "mu_f")
+  columns <- .JAGS_prior_coefficient_names("mu_f", p)
   expect_length(columns, 3L)
   variance <- draws[, p$regularization$variance_names]
   z <- draws[, columns] / (0.7 * sqrt(variance))
@@ -153,7 +153,7 @@ test_that("interaction slices have separate shrinkage primitives and gate whole 
     # two contrast slices must read different positive coordinates.
     term <- bound[name]
     coef <- c(-.75, -.3, .25, .8)
-    row <- c(stats::setNames(coef, .bt_regularized_coefficient_names(p, name)),
+    row <- c(stats::setNames(coef, .JAGS_prior_coefficient_names(name, p)),
              stats::setNames(c(.25, 1.5), aux))
     width <- if(family == "lasso") .5 * sqrt(c(.25, 1.5)) else .5 * c(.25, 1.5)
     hp <- if(family == "lasso") stats::dgamma(c(.25, 1.5), 1.5, .5, log = TRUE) else

@@ -319,8 +319,8 @@
   }, priors)
   available <- vapply(names(priors), function(name){
     prior <- priors[[name]]
-    if(inherits(prior, "prior.regularized_term")){
-      return(all(.bt_regularized_coefficient_names(prior, name) %in% sample_names))
+    if(is.prior.regularized_term(prior)){
+      return(all(.JAGS_prior_coefficient_names(name, prior) %in% sample_names))
     }
     if(!is.null(.bt_formula_numeric_point(prior))) return(TRUE)
     if(is.prior.simplex(prior) && identical(prior$distribution, "dirichlet")){

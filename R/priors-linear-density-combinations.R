@@ -1552,8 +1552,7 @@
   unplanned <- FALSE
   gate_measure <- NULL
   if(defer && !is.null(names(weights)) && all(is.na(source_transforms)) &&
-     (is.null(output_transformation) || (identical(output_transformation, "lin") &&
-       isTRUE(output_transformation_arguments$a == 0) && isTRUE(output_transformation_arguments$b == 1)))){
+     .prior_density_identity_output(output_transformation, output_transformation_arguments)){
     # A literal point-zero intercept contributes nothing to a level effect.
     active <- names(weights)
     zero <- vapply(prior_list[active], function(p){
@@ -1565,11 +1564,11 @@
   }
   if(defer &&
      (is.null(output_transformation) || .prior_density_affine_output_map(output_transformation, output_transformation_arguments)) &&
-     any(vapply(prior_list, inherits, logical(1), "prior.regularized_term"))){
+     any(vapply(prior_list, is.prior.regularized_term, logical(1)))){
     split <- .prior_linear_split_multiply_groups(prior_list, weights)
     if(!length(split$product_groups)){
       parts <- .prior_density_route_scalar_parts(prior_list, split$additive_weights, source_transforms)
-      unplanned <- inherits(parts$group$prior, "prior.regularized_term") &&
+      unplanned <- is.prior.regularized_term(parts$group$prior) &&
         is.finite(parts$offset) && all(is.na(source_transforms[names(parts$group$weights)]))
     }
   }
@@ -1599,7 +1598,7 @@
     # For an additive structural curve the component quantiles already gave
     # the plotting bounds at planning time. Retain those two numbers instead
     # of evaluating the entire grid to rediscover its range at display time.
-    if(!unplanned && any(vapply(plan$groups, function(g) inherits(g$prior, "prior.regularized_term"), logical(1)))){
+    if(!unplanned && any(vapply(plan$groups, function(g) is.prior.regularized_term(g$prior), logical(1)))){
       limits <- plan$target_range
       if(!is.null(output_transformation)){
         limits <- sort(.density.prior_transformation_x(limits, output_transformation, output_transformation_arguments))
@@ -1655,7 +1654,7 @@
     is.prior.ordered(group$prior)
   }, logical(1))
   regularized <- vapply(plan$groups[on_grid], function(group){
-    inherits(group$prior, "prior.regularized_term")
+    is.prior.regularized_term(group$prior)
   }, logical(1))
   continuous <- vapply(plan$groups[on_grid], function(group){
     (is.prior.simple(group$prior) || is.prior.ordered(group$prior)) &&
@@ -3688,7 +3687,7 @@
   singular <- .prior_density_singular_bounds(multiplier, c(lower, upper))
   probabilities <- c(if(!singular[1L]) 1e-6, 1e-3, .02, .25, .5, .75, .98, 1 - 1e-3,
                      if(!singular[2L]) 1 - 1e-6)
-  quantile_fun <- if(inherits(multiplier, "prior.regularized_term")) mquant else quant
+  quantile_fun <- if(is.prior.regularized_term(multiplier)) mquant else quant
   quantiles <- tryCatch(
     suppressWarnings(quantile_fun(multiplier, probabilities)),
     error = function(e) numeric()
@@ -3749,7 +3748,7 @@
   inner <- inner[inside]
   is_peak <- is_peak[inside]
   widths <- widths[inside]
-  if(length(inner) > 0L && !inherits(spec$multiplier, "prior.regularized_term")){
+  if(length(inner) > 0L && !is.prior.regularized_term(spec$multiplier)){
     density <- suppressWarnings(exp(lpdf(spec$multiplier, inner)))
     inner <- inner[is.finite(density)]
     is_peak <- is_peak[is.finite(density)]
@@ -3822,7 +3821,7 @@
     points <- points[-length(points)]
   }
   points <- c(points, upper)
-  if(inherits(spec$multiplier, "prior.regularized_term")) points <- .prior_regularized_split_zero(points, peak_width)
+  if(is.prior.regularized_term(spec$multiplier)) points <- .prior_regularized_split_zero(points, peak_width)
   points
 }
 
@@ -3897,7 +3896,7 @@
   index <- index[inside]
   is_peak <- is_peak[inside]
   widths <- widths[inside]
-  if(length(point) > 0L && !inherits(spec$multiplier, "prior.regularized_term")){
+  if(length(point) > 0L && !is.prior.regularized_term(spec$multiplier)){
     density <- suppressWarnings(exp(lpdf(spec$multiplier, point)))
     finite <- is.finite(density)
     point <- point[finite]
@@ -3986,7 +3985,7 @@
     c(rep(lower, n), point, rep(upper, n)),
     factor(c(seq_len(n), index, seq_len(n)), levels = seq_len(n))
   ))
-  if(inherits(spec$multiplier, "prior.regularized_term")) points <- Map(.prior_regularized_split_zero, points, peak_width)
+  if(is.prior.regularized_term(spec$multiplier)) points <- Map(.prior_regularized_split_zero, points, peak_width)
   points
 }
 
@@ -4262,10 +4261,10 @@
     prior <- route$prior
     measure <- .bt_regularized_gated_measure(prior)
     if(!is.null(measure) && is.null(route$source_transform)){
-      slab <- which(vapply(prior, inherits, logical(1), "prior.regularized_term"))
+      slab <- which(vapply(prior, is.prior.regularized_term, logical(1)))
       prior <- prior[[slab]]
     }
-    if(!inherits(prior, "prior.regularized_term")) return(NULL)
+    if(!is.prior.regularized_term(prior)) return(NULL)
     limits <- route$offset + .prior_linear_scalar_range(prior, route$scale, tail_prob, route$source_transform)
     if(!is.null(measure) && nrow(measure$points)) limits <- range(c(limits, route$offset))
   }else if(identical(route$type, "transform") &&

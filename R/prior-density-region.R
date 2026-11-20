@@ -269,7 +269,7 @@
     }
     return(.prior_region_atoms(images, probability, region))
   }
-  regularized <- inherits(prior, "prior.regularized_term")
+  regularized <- is.prior.regularized_term(prior)
   if(!regularized && !.prior_region_primitive_supported(prior)){
     return(.prior_region_unavailable())
   }

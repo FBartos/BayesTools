@@ -53,7 +53,7 @@
 
       .JAGS_marglik_stop_unsupported_mixture(prior_list[[i]])
 
-    }else if(inherits(prior_list[[i]], "prior.regularized_term")){
+    }else if(is.prior.regularized_term(prior_list[[i]])){
 
       add_parameter <- .bt_regularized_bridge_info(prior_list[[i]], names(prior_list)[[i]])
 

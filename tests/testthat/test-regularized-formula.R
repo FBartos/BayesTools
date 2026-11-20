@@ -7,6 +7,14 @@ test_that("formula regularization scopes shared and local scales to their groups
   pool <- prior_regularized("horseshoe", scale = global, slab_scale = 2, slab_df = 4)
   fit <- JAGS_formula(~ x + y + f, "mu", dat, list(intercept = intercept, h = pool))
   priors <- fit$prior_list
+  expect_true(is.prior.regularized(pool))
+  expect_false(is.prior.regularized_term(pool))
+  expect_true(is.prior.regularized_term(priors$mu_x))
+  expect_true(is.prior.regularized_term(priors$mu_f))
+  expect_false(is.prior.regularized(priors$mu_f))
+  expect_false(is.prior.regularized_term(intercept))
+  expect_error(rng(priors$mu_f, 2, transform_factor_samples = NA), "transform_factor_samples")
+  expect_error(rng(priors$mu_x, 2, sample_components = "yes"), "sample_components")
   syntax <- JAGS_add_priors("model {}", priors)
   expect_identical(sum(grepl("mu_h_global ~", strsplit(syntax, "\n")[[1]], fixed = TRUE)), 1L)
   expect_identical(sum(grepl("mu_h_slab2 ~", strsplit(syntax, "\n")[[1]], fixed = TRUE)), 1L)
@@ -119,7 +127,7 @@ test_that("centered interactions share only within the fitted partner column", {
   ordinary <- JAGS_formula(~ f * h, "mu", dat, list(intercept = prior("point", list(0)),
     sh = prior_regularized("lasso", .7, contrast = "treatment")))$prior_list$mu_f__xXx__h
   expect_identical(ordinary$distribution, "laplace")
-  expect_false(inherits(ordinary, "prior.regularized_term"))
+  expect_false(is.prior.regularized_term(ordinary))
 })
 
 test_that("regularization membership and node ownership survive product-space binding", {
