@@ -1686,7 +1686,9 @@ density.prior <- function(x,
   # get the samples to estimate density / obtain the density directly
   if(force_samples){
 
-    if(is.na(x$parameters[["K"]]) && !is.null(attr(x, "levels"))){
+    if(is.prior.regularized_term(x)){
+      x$parameters[["K"]] <- x$regularization$dimension
+    }else if(is.na(x$parameters[["K"]]) && !is.null(attr(x, "levels"))){
       x$parameters[["K"]] <- .get_prior_factor_levels(x)
     }else if(is.na(x$parameters[["K"]])){
       x$parameters[["K"]] <- 1
@@ -2070,7 +2072,9 @@ range.prior  <- function(x, quantiles = NULL, ..., na.rm = FALSE){
 
   switch(
     prior[["distribution"]],
+    "regularized" = .01,
     "normal"    = .005,
+    "laplace"   = .005,
     "lognormal" = .005,
     "t"         = .010,
     "gamma"     = .010,

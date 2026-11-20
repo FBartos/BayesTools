@@ -291,6 +291,15 @@ JAGS_indexed_parameter_vector <- function(row, parameter){
   return(keep[order(indices[keep])])
 }
 
+# JAGS monitors a scalar term by name and a factor by its fitted coefficients.
+.JAGS_prior_coefficient_names <- function(parameter, prior){
+
+  if(is.prior.factor(prior)){
+    return(.JAGS_prior_factor_names(parameter, prior))
+  }
+  parameter
+}
+
 .JAGS_prior_factor_names <- function(parameter, prior){
 
   levels <- .get_prior_factor_levels(prior)

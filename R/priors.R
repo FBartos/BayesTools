@@ -10,6 +10,9 @@
 #'   \code{location} parameter.}
 #'   \item{\code{"normal"}}{for a normal distribution characterized
 #'   by a \code{mean} and \code{sd} parameters.}
+#'   \item{\code{"laplace"}}{for a double exponential distribution with
+#'   \code{location} and positive \code{scale}. Its standard deviation is
+#'   \code{sqrt(2) * scale}.}
 #'   \item{\code{"lognormal"}}{for a lognormal distribution characterized
 #'   by a \code{meanlog} and \code{sdlog} parameters.}
 #'   \item{\code{"cauchy"}}{for a Cauchy distribution characterized
@@ -144,6 +147,8 @@ prior <- function(distribution, parameters, truncation = list(lower = -Inf, uppe
 
   if(distribution %in% c("norm", "normal")){
     distribution <- "normal"
+  }else if(distribution %in% c("laplace", "doubleexponential")){
+    distribution <- "laplace"
   }else if(distribution %in% c("lnorm", "lognormal")){
     distribution <- "lognormal"
   }else if(distribution %in% c("t", "student", "studentt")){

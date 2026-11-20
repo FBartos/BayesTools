@@ -27,7 +27,9 @@ JAGS_to_monitor             <- function(prior_list){
   monitor <- character()
   for(i in seq_along(prior_list)){
 
-    if(is.prior.weightfunction(prior_list[[i]])){
+    if(is.prior.regularized_term(prior_list[[i]])){
+      monitor <- c(monitor, names(prior_list)[i], names(.bt_regularized_primitives(prior_list[[i]])))
+    }else if(is.prior.weightfunction(prior_list[[i]])){
 
       monitor <- c(monitor, .JAGS_monitor.weightfunction(prior_list[[i]]))
 
@@ -256,6 +258,11 @@ JAGS_to_monitor             <- function(prior_list){
   }else{
 
     monitor <- c(paste0(parameter_name, "_indicator"), parameter_name)
+    for(k in seq_along(prior_list)){
+      if(is.prior.regularized_term(prior_list[[k]])){
+        monitor <- c(monitor, names(.bt_regularized_primitives(prior_list[[k]])))
+      }
+    }
   }
 
   return(unique(monitor))

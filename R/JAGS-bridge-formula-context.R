@@ -33,6 +33,9 @@
     attr(fit, "formula_design")
   )
   has_fitted_formula_design <- length(fitted_formula_design) > 0L
+  for(design in fitted_formula_design){
+    .bt_regularized_check_fitted_priors(design, attr(fit, "prior_list", exact = TRUE))
+  }
 
   if(!has_fitted_formula_design){
     # Empty lists name no formula parameter: they are no formula input for a fit

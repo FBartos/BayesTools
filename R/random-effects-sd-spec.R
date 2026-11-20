@@ -709,7 +709,11 @@
   if(!is.function(factor_term_design)){
     stop("Random-effect factor units require the random-effect term design.", call. = FALSE)
   }
-  term_design <- factor_term_design(model_term)
+  .bt_factor_exchangeable_units(model_term, columns, factor_term_design(model_term))
+}
+
+.bt_factor_exchangeable_units <- function(model_term, columns, term_design){
+
   factor_contrasts <- term_design$factor_contrasts
   exchangeable <- factor_contrasts %in% c("contr.orthonormal", "contr.meandif")
   if(!any(exchangeable)){
@@ -743,7 +747,7 @@
        tolerance = 1e-12, check.attributes = FALSE
      ))){
     stop(
-      "Internal error: the design columns of random-effect term '", model_term,
+      "Internal error: the design columns of term '", model_term,
       "' do not match the codings of its factors.",
       call. = FALSE
     )
