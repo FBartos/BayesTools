@@ -254,6 +254,44 @@ rejection could silently truncate the target). With the defaults
 the model text and data handed to runjags are those of a fit without
 declarations.
 
+The factor slice algorithm itself is the installed header-only kernel
+`inst/include/BayesTools/factor_slice_kernel.h` (namespace
+`BayesTools::factor_slice`, standard C++ without JAGS or R types; contract at
+its top): `Coordinate` (the member transforms), `slice_along()` (one univariate
+slice update along a direction, templated on the log density and the uniform
+and exponential variate sources) and `Axes` (directions, widths and their
+adaptation). `src/samplers/BTFactorSlice.cc` keeps only the JAGS side. RoBMA's
+block sampler builds on the same header through `LinkingTo: BayesTools`, which
+acts at build time: RoBMA picks up a header change only when it is rebuilt.
+The back-transforms are the original quotients wherever `exp(|u|)` is finite
+and the log-scale distance from the nearer bound only beyond that; there an
+interval member reaches values at subnormal distances from a bound, as a
+one-sided member always could, and a model whose density is not finite at such
+a value stops the fit with the non-finite density error. Precision limit: the
+sampler holds a bounded member through its distance from the anchoring bound
+(for an interval, the nearer bound; near the centre, the span), so it resolves
+the member only relative to that distance: to about 16 significant digits of it
+near the centre of an interval and to about 14 to 15 for a one-sided bound or
+close to a bound. A posterior much narrower than that distance is sampled on a
+coarse grid, with wrong moments or a chain that can freeze; this is not
+detected. Measured on development (a standard normal, 10,000 draws): symmetric
+bounds at 1e13 give 1,969 distinct values with correct moments, at 1e14 296
+with moments within Monte Carlo error, at 1e15 34 and an SD 15% too small, at
+1e16 3 to 5 and an SD up to 60% too large (some chains freeze), at 1e17 a
+frozen chain; one bound at a distance of 1e12 gives 1,416 distinct values, 1e13
+188, 1e14 11, and 1e15 a frozen chain. For such a member, declare the block
+without the node; removing the bound instead is valid only when it excludes no
+posterior mass. A two-sided member whose span `upper - lower` is not finite
+stops the fit at construction with a "Factor slice sampler:" node error. An
+additive constant so large that the log densities lose their differences
+breaks the slice arithmetic itself. The kernel's
+numerical behaviour is pinned by FactorSlice's seeded draws: a change must keep
+them bit-identical (compare the draws of the certification case's sampler tests
+between the two builds with `identical()`) unless the algorithm is meant to
+change. `test-factor-slice-kernel.R` compiles a toy that includes only the
+header and samples a bivariate normal; the installed headers enter the
+fit-cache and certification keys with `src/`.
+
 Do not silently repair malformed covariance matrices, alter prior bounds, drop
 formula terms, or substitute a different likelihood target. If a covariance
 structure requires intersecting a prior with its mathematical support, make the
