@@ -1,10 +1,15 @@
-Stan post-warmup divergences: 0 
-                      Stan    JAGS   MCSE       z  Stan05  JAGS05  Stan95  JAGS95   Rhat
-intercept          -0.0017  0.0011 0.0015  1.9045 -0.2348 -0.2342  0.2367  0.2394 1.0001
-Agriculture        -0.1209 -0.1216 0.0026 -0.2891 -0.4438 -0.4438  0.1688  0.1673 1.0002
-Examination        -0.2122 -0.2133 0.0024 -0.4496 -0.5313 -0.5326  0.1048  0.0997 1.0001
-Education          -0.4268 -0.4261 0.0029  0.2386 -0.7760 -0.7700 -0.1204 -0.1214 1.0000
-Catholic            0.2256  0.2250 0.0021 -0.2732 -0.0327 -0.0331  0.5057  0.5012 1.0000
-Infant.Mortality    0.2369  0.2374 0.0013  0.3736  0.0156  0.0168  0.4651  0.4646 1.0000
-log(global)        -1.1622 -1.1646 0.0079 -0.3072 -1.8209 -1.8145 -0.4595 -0.4684 1.0011
-P(both within 0.2)  0.3204  0.3200 0.0053 -0.0716  0.0000  0.0000  1.0000  1.0000 1.0000
+       source        parameter estimate median    lCI    uCI
+1  BayesTools        Intercept    0.001  0.000 -0.279  0.285
+2       RStan        Intercept   -0.002 -0.002 -0.280  0.282
+3  BayesTools      Agriculture   -0.122 -0.112 -0.512  0.219
+4       RStan      Agriculture   -0.121 -0.109 -0.515  0.216
+5  BayesTools      Examination   -0.213 -0.212 -0.600  0.171
+6       RStan      Examination   -0.212 -0.211 -0.601  0.176
+7  BayesTools        Education   -0.426 -0.415 -0.845 -0.071
+8       RStan        Education   -0.427 -0.415 -0.847 -0.070
+9  BayesTools         Catholic    0.225  0.219 -0.080  0.560
+10      RStan         Catholic    0.226  0.221 -0.082  0.562
+11 BayesTools Infant.Mortality    0.237  0.235 -0.026  0.509
+12      RStan Infant.Mortality    0.237  0.234 -0.023  0.509
+13 BayesTools     Global scale    0.340  0.308  0.144  0.724
+14      RStan     Global scale    0.342  0.309  0.143  0.737
