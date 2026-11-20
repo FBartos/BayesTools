@@ -737,6 +737,8 @@ JAGS_diagnostics_autocorrelation <- function(fit, parameter, plot_type = "base",
 
   chain <- attr(plot_data, "chain", exact = TRUE)
   iter  <- attr(plot_data, "iter", exact = TRUE)
+  x_range <- attr(plot_data, "iter_range", exact = TRUE)
+  if(is.null(x_range)) x_range <- range(iter)
 
   out   <- list()
 
@@ -747,8 +749,6 @@ JAGS_diagnostics_autocorrelation <- function(fit, parameter, plot_type = "base",
     }else{
       y_range <- ylim
     }
-    x_range <- range(iter)
-
     for(j in seq_along(unique(chain))){
 
       temp_x       <- iter[chain == j]

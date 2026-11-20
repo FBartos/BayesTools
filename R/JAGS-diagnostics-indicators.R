@@ -41,9 +41,10 @@
                                 "' requires at least ", min_size, " retained draw(s) in each chain.")
   }
   shortest <- min(n_draws)
-  default_width <- shortest / max(1L, round(sqrt(shortest)))
+  default_width <- shortest / min(shortest, max(2L, round(sqrt(shortest))))
   rows <- vector("list", length(chains))
   midpoints <- vector("list", length(chains))
+  iter_range <- c(Inf, -Inf)
   for(j in seq_along(chains)){
     samples <- chains[[j]]
     if(!indicator %in% colnames(samples)){
@@ -69,7 +70,9 @@
       batch <- pos %/% batch_size
     }
     draws_by_batch <- split(states, batch)
-    midpoints[[j]] <- as.numeric(tapply(.diagnostics_iterations(samples), batch, mean))
+    iterations <- .diagnostics_iterations(samples)
+    iter_range <- range(iter_range[is.finite(iter_range)], iterations)
+    midpoints[[j]] <- as.numeric(tapply(iterations, batch, mean))
     rows[[j]] <- do.call(rbind, lapply(draws_by_batch, function(z){
       switch(statistic,
         inclusion = mean(z %in% alternative),
@@ -81,6 +84,7 @@
   out <- do.call(rbind, rows)
   colnames(out) <- panel_names
   attr(out, "iter") <- unlist(midpoints, use.names = FALSE)
+  attr(out, "iter_range") <- iter_range
   attr(out, "chain") <- rep(seq_along(chains), lengths(midpoints))
   attr(out, "parameter") <- parameter
   attr(out, "label_parts") <- label_parts
