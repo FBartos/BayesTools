@@ -185,9 +185,15 @@
 .bt_regularized_bind_terms <- function(prior_list, parameter){
 
   groups <- list()
-  bound <- function(prior, term){
+  # 'node' names the emitted coefficient: a mixture writes each component as
+  # its own node (.JAGS_prior.mixture()), so the local scales of components
+  # from different groups stay distinct.
+  bound <- function(prior, term, node = term){
     if(is.prior.mixture(prior)){
-      for(i in seq_along(prior)) prior[[i]] <- bound(prior[[i]], term)
+      for(i in seq_along(prior)){
+        prior[[i]] <- bound(prior[[i]], term,
+                            if(is.prior.spike_and_slab(prior)) node else paste0(node, "_component_", i))
+      }
       return(prior)
     }
     if(!is.prior.regularized_term(prior)) return(prior)
@@ -225,7 +231,7 @@
     spec$global_name <- if(!is.numeric(spec$scale)) paste0(stem, "_global")
     spec$slab_name <- if(!is.null(spec$slab_scale) && is.finite(spec$slab_scale)) paste0(stem, "_slab2")
     spec$local_names <- if(identical(spec$family, "horseshoe")){
-      paste0(parameter, "_", term, "_local_", seq_len(if(is.null(units)) d else length(units)))
+      paste0(parameter, "_", node, "_local_", seq_len(if(is.null(units)) d else length(units)))
     }else character()
     # Ordinary coordinates have their own local scales (the original fitted
     # declaration). Store the unit map only for actual centered blocks.
@@ -235,7 +241,7 @@
       spec$unit_index <- integer(d)
       for(i in seq_along(units)) spec$unit_index[units[[i]]$columns] <- i
       spec$unit_centered <- rep(TRUE, length(units))
-      if(identical(spec$family, "lasso")) spec$variance_names <- paste0(parameter, "_", term, "_variance_", seq_along(units))
+      if(identical(spec$family, "lasso")) spec$variance_names <- paste0(parameter, "_", node, "_variance_", seq_along(units))
     }
     prior$regularization <- spec
     prior

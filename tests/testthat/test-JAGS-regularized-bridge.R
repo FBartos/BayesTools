@@ -172,6 +172,8 @@ test_that("interaction slices have separate shrinkage primitives and gate whole 
     prefix <- if(is.prior.spike_and_slab(gate)) "mu_f_variable" else "mu_f_component_2"
     expected <- draws[, paste0(prefix, "[", 1:2, "]")] * active
     expect_equal(unname(draws[, paste0("mu_f[", 1:2, "]")]), unname(expected))
-    expect_equal(sum(colnames(draws) == "mu_f_variance_1"), 1)
+    # a mixture component is its own node and names its scales after it
+    variance <- if(is.prior.spike_and_slab(gate)) "mu_f_variance_1" else "mu_f_component_2_variance_1"
+    expect_equal(sum(colnames(draws) == variance), 1)
   }
 })

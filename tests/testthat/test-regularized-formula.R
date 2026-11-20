@@ -113,7 +113,12 @@ test_that("centered interactions share only within the fitted partner column", {
       names(priors) <- gsub("__xXx__", ":", names(priors), fixed = TRUE)
       priors[[term]] <- prior_mixture(list(prior("point", list(0)), p), is_null = c(TRUE, FALSE))
       refit <- JAGS_formula(formula, "mu", dat, priors)$prior_list[[term_name]]
-      expect_identical(refit[[2]]$regularization, p$regularization)
+      # the mixture component is its own node and names its variances after it
+      rebound <- refit[[2]]$regularization
+      expect_identical(rebound$variance_names,
+                       sub("_variance_", "_component_2_variance_", p$regularization$variance_names, fixed = TRUE))
+      rebound$variance_names <- p$regularization$variance_names
+      expect_identical(rebound, p$regularization)
     }
   }
   centered <- prior_regularized("horseshoe", global, contrast = "orthonormal")
@@ -144,7 +149,7 @@ test_that("regularization membership and node ownership survive product-space bi
   expect_match(syntax, "mu_x_component_2 ~ dnorm(", fixed = TRUE)
   expect_match(syntax, "mu_y_component_2 ~ dnorm(", fixed = TRUE)
   expect_setequal(JAGS_to_monitor(refit$prior_list), c("mu_intercept", "mu_x", "mu_y", "mu_x_indicator",
-    "mu_y_indicator", "mu_h_global", "mu_x_local_1", "mu_y_local_1"))
+    "mu_y_indicator", "mu_h_global", "mu_x_component_2_local_1", "mu_y_component_2_local_1"))
   submodel <- JAGS_formula(~ y, "mu", dat, list(intercept = intercept, y = gated[[2]]))
   expect_match(JAGS_add_priors("model {}", submodel$prior_list), "mu_h_global ~ dexp(", fixed = TRUE)
 
@@ -160,6 +165,28 @@ test_that("regularization membership and node ownership survive product-space bi
   expect_invisible(.bt_regularized_check_fitted_priors(refit$formula_design, refit$prior_list))
   expect_error(.bt_regularized_check_fitted_priors(refit$formula_design, changed),
                class = "BayesTools_refit_required")
+})
+
+test_that("mixture components from separate groups keep their own local scales", {
+  dat <- data.frame(x = c(-1, 0, 2, 3, 5))
+  intercept <- prior("normal", list(0, 1))
+  member <- function(group, scale){
+    JAGS_formula(~ x, "mu", dat, stats::setNames(list(intercept, prior_regularized("horseshoe", scale)),
+                                                c("intercept", group)))$prior_list$mu_x
+  }
+  first  <- member("first", prior("uniform", list(.2, .8)))
+  second <- member("second", prior("uniform", list(.04, .1)))
+  model <- JAGS_formula(~ x, "mu", dat, list(intercept = intercept,
+    x = prior_mixture(list(first, second), is_null = c(TRUE, FALSE))))
+  syntax <- JAGS_add_priors("model {}", model$prior_list)
+  for(k in 1:2){
+    expect_match(syntax, paste0("mu_x_component_", k, "_local_1 ~"), fixed = TRUE)
+  }
+  expect_setequal(JAGS_to_monitor(model$prior_list), c("mu_intercept", "mu_x", "mu_x_indicator",
+    "mu_first_global", "mu_second_global", "mu_x_component_1_local_1", "mu_x_component_2_local_1"))
+  draws <- .generate_prior_sample_matrix(model$prior_list, 200L, seed = 31)
+  expect_true(all(c("mu_x_component_1_local_1", "mu_x_component_2_local_1") %in% colnames(draws)))
+  expect_true(all(draws[, "mu_second_global"] >= .04 & draws[, "mu_second_global"] <= .1))
 })
 
 test_that("regularized interaction declarations and summaries use the fitted factor bases", {
