@@ -90,6 +90,8 @@ and SVG baselines.
   Scenarios that compare with brms, metafor, ape, or bain need those packages
   installed. The `bain` scenario prints the hypothesis tables from both packages
   for an intercept-only model and a formula regression on the attitude survey.
+  The BayesTools fits use bain's fractional prior on the tested coefficients,
+  including the prior correlation between the two regression slopes.
 
 `scenario_text()` and `scenario_plot()` each reset the random seed to 1 before
 evaluating an artifact. Text under `results/`, SVG files under `_snaps/`, and
