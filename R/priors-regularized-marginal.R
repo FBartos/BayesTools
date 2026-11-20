@@ -44,18 +44,19 @@
   log_scale <- log(global$tau)
   log_weight <- global$log_weight
   if(variance){
-    # c² = nu * slab_scale² / chi-square(nu)
-    # Size-bias the slab by c^2: its finite second moment is the
-    # normalizer, and its chi-square degrees of freedom decrease by two.
-    df <- spec$slab_df - 2
+    # c² = nu * slab_scale² / chi-square(nu). Under the half-Cauchy(1) local
+    # scale, E_lambda[sd² | tau,c] = c * (c * tau/(tau+c)). Size-bias the
+    # slab by c: its mean E(c), finite for nu > 1, is the normalizer, and
+    # its chi-square degrees of freedom decrease by one.
+    nu <- spec$slab_df
+    df <- nu - 1
     chi <- stats::qchisq(prob, df = df)
     if(any(!is.finite(chi) | chi <= 0)) .regularized_numerical_unavailable("variance")
-    log_c <- log(spec$slab_scale) + (log(spec$slab_df) - log(chi)) / 2
+    log_c <- log(spec$slab_scale) + (log(nu) - log(chi)) / 2
+    log_mean_c <- log(spec$slab_scale) + (log(nu) - log(2)) / 2 + lgamma(df / 2) - lgamma(nu / 2)
     a <- rep(log_scale, length(log_c))
     b <- rep(log_c, each = length(log_scale))
-    # E_lambda[sd² | tau,c] = c² * tau/(tau+c) under half-Cauchy(1).
-    log_scale <- log(spec$slab_scale) + (log(spec$slab_df / df) +
-      stats::plogis(a - b, log.p = TRUE)) / 2
+    log_scale <- (log_mean_c + b + stats::plogis(a - b, log.p = TRUE)) / 2
     log_weight <- as.vector(outer(log_weight, log(weight), "+"))
   }
   list(log_scale = log_scale + log(spec$multiplier), log_weight = log_weight)
@@ -407,8 +408,16 @@
     # The half-Cauchy local scale has no first moment. As for a Cauchy
     # coefficient, the mean and its centered variance are undefined.
     if(is.null(spec$slab_scale)) return(NaN)
-    if(spec$slab_df <= if(variance) 2 else 1) .regularized_numerical_unavailable("moment")
-    if(!variance) return(0)
+    # A finite slab caps the conditional SD at c. With slab_df > 1, E(c) bounds
+    # E|beta|; otherwise E|beta| grows only logarithmically in c for a fixed
+    # global scale or one with a finite mean. The mean is zero by symmetry.
+    # E(beta²) = E(c² tau/(tau+c)) is infinite for slab_df <= 1.
+    if(!variance){
+      fixed_tail <- is.numeric(spec$scale) || is.finite(mean(spec$scale))
+      if(spec$slab_df <= 1 && !fixed_tail) .regularized_numerical_unavailable("moment")
+      return(0)
+    }
+    if(spec$slab_df <= 1) return(NaN)
     return(exp(.regularized_log_integral(prior, 1, "variance")))
   }
   scale_mean <- if(is.numeric(spec$scale)) spec$scale else mean(spec$scale)

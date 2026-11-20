@@ -368,6 +368,34 @@ test_that("random-global finite-slab horseshoe agrees with the direct scale-mixt
   expect_equal(ccdf(hs, quant(hs, 0.99)), .01, tolerance = 1e-6)
 })
 
+test_that("finite-slab horseshoe moments exist below two slab degrees of freedom", {
+  bound <- function(scale, slab_df){
+    JAGS_formula(~ wt, "mu", mtcars, list(intercept = prior("point", list(0)),
+      shrink = prior_regularized("horseshoe", scale, slab_scale = 1.2, slab_df = slab_df)))$prior_list$mu_wt
+  }
+  # E(beta²) = E(c² E[tau/(tau+c)]) for c² = nu s²/chi-square(nu), integrated
+  # over c with the density of the chi-square coordinate and its Jacobian.
+  slab_integral <- function(nu, inner){
+    g <- function(c) c^2 * inner(c) * stats::dchisq(nu * 1.2^2 / c^2, nu) * 2 * nu * 1.2^2 / c^3
+    stats::integrate(g, 0, 1, rel.tol = 1e-10)$value + stats::integrate(g, 1, Inf, rel.tol = 1e-10)$value
+  }
+  fixed_variance <- function(tau, nu) slab_integral(nu, function(c) tau / (tau + c))
+  for(nu in c(1.5, 4)){
+    expect_equal(var(bound(.45, nu)), fixed_variance(.45, nu), tolerance = 1e-6, info = nu)
+  }
+  expect_identical(mean(bound(.45, .75)), 0)
+  expect_true(is.nan(var(bound(.45, .75))))
+
+  # A half-Cauchy global scale, integrated as in the test above.
+  global <- prior("cauchy", list(0, 0.2), list(0, Inf))
+  variance <- slab_integral(1.5, function(c){
+    a <- c / 0.2
+    (1 + 2 * a * log(a) / pi) / (1 + a^2)
+  })
+  expect_equal(var(bound(global, 1.5)), variance, tolerance = 1e-6)
+  expect_error(mean(bound(global, .75)), class = "BayesTools_regularized_marginal_unavailable")
+})
+
 test_that("ridge and lasso resolve the peak under a learned half-Cauchy width", {
   # In u=log(tau/0.2) coordinates the Gaussian or Laplace kernel's 1/tau
   # cancels the Jacobian. Integrate on both sides of the kernel transition.
