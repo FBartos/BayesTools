@@ -179,9 +179,10 @@
     density_source <- attr(inclusion_BF, "posterior_density_source", exact = TRUE)
     fallback_warnings <- attr(inclusion_BF, "posterior_density_fallback_warnings", exact = TRUE)
     if(length(fallback_warnings) > 0L) warning(paste(unique(fallback_warnings), collapse = " "), call. = FALSE)
-    method <- if(identical(density_source, "normal")) "Savage-Dickey (normal)" else
-      if(identical(density_method, "precomputed") && identical(density_source, "precomputed"))
-        "Savage-Dickey (precomputed)" else "Savage-Dickey"
+    estimator <- attr(inclusion_BF, "posterior_density_estimator", exact = TRUE)
+    if(is.null(estimator)){
+      estimator <- if(identical(density_source, "exact_support_exclusion")) "exact support exclusion" else density_source
+    }
   }else{
     posterior <- if(is.null(linear)){
       .hypothesis_eval_expression(.hypothesis_side_expression(side), quantity$posterior_draws)
@@ -210,8 +211,9 @@
     numerical_diagnostics <- ratio$diagnostics
     bf_warnings <- NULL
     BF_error <- NA_real_
-    method <- if(identical(density_method, "normal")) "Savage-Dickey (normal)" else "kernel Savage-Dickey"
+    estimator <- density_method
   }
+  method <- paste0("Savage-Dickey (", estimator, ")")
   if(inverse) log_BF <- -log_BF
   log_prior <- as.numeric(log_prior)
   log_posterior <- as.numeric(log_posterior)
@@ -642,7 +644,11 @@
     log_BF    = log_BF,
     prior_numerical_diagnostics = list(left = attr(prior_left, "numerical_diagnostics"),
       right = attr(prior_right, "numerical_diagnostics")),
-    method    = "prior-posterior odds",
+    method    = if(left$type == "unconstrained" || right$type == "unconstrained"){
+      "encompassing prior"
+    }else{
+      "prior-posterior odds"
+    },
     BF_error  = BF_error,
     warning   = warning
   ))
@@ -703,7 +709,7 @@
     log_BF    = log_BF,
     numerical_diagnostics = point_BF$numerical_diagnostics,
     prior_numerical_diagnostics = list(region = attr(region_prior, "numerical_diagnostics")),
-    method    = "transitive Savage-Dickey",
+    method    = paste("transitive", point_BF$method),
     BF_error  = .hypothesis_combine_BF_error_percent(
       point_BF[["BF_error"]],
       region_BF_error

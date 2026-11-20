@@ -518,17 +518,17 @@ test_that("full-rank factor-by-continuous interaction slopes are one quantity pe
         level_test <- hypothesis_BF(
           marginal,
           hypothesis = paste0("`", parameter, "[", level, "]` = 0"),
-          columns    = "all"
+          include_densities = TRUE
         )
         column_test <- hypothesis_BF(
           slopes[, i],
           prior      = prior("normal", list(0, 1)),
           hypothesis = "theta = 0",
           parameter  = "theta",
-          columns    = "all"
+          include_densities = TRUE
         )
-        expect_equal(level_test$prior, stats::dnorm(0), tolerance = 1e-12, info = level_info)
-        expect_equal(level_test$posterior, column_test$posterior, tolerance = 1e-10, info = level_info)
+        expect_equal(level_test$prior_density, stats::dnorm(0), tolerance = 1e-12, info = level_info)
+        expect_equal(level_test$posterior_density, column_test$posterior_density, tolerance = 1e-10, info = level_info)
         expect_equal(level_test$BF, column_test$BF, tolerance = 1e-10, info = level_info)
       }
 

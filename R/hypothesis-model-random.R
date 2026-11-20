@@ -124,7 +124,7 @@
     request   <- attached[["request"]]
   }
 
-  out <- hypothesis_BF.default(
+  out <- .hypothesis_BF_draws(
     posterior      = posterior,
     hypothesis     = hypothesis,
     parameter      = parameter,
@@ -223,7 +223,7 @@
     seed            = seed,
     method          = method,
     density_control = density_control,
-    columns         = c("prior_density", "posterior_density")
+    columns         = columns
   )
   unit_log_ordinate <- vapply(points, function(value) {
     prior_density_ordinate(
@@ -247,7 +247,7 @@
     )
   )
 
-  out <- hypothesis_BF.default(
+  out <- .hypothesis_BF_draws(
     posterior      = posterior,
     hypothesis     = hypothesis,
     parameter      = parameter,
@@ -262,6 +262,9 @@
   # already converted to the variance scale by the point evaluator.
   for(column in intersect(c("prior_density", "posterior_density"), names(out))){
     out[[column]] <- point[[column]][point_index]
+  }
+  if("method" %in% names(out)){
+    out[["method"]] <- paste("transitive", point[["method"]][point_index])
   }
   point_log_BF <- attr(point, "raw_log_BF", exact = TRUE)[point_index]
   point_left  <- vapply(hypothesis[["statements"]], function(statement) {
@@ -367,7 +370,7 @@
   if (nrow(out) != length(values)) {
     stop("Internal error: variance point rows are misaligned.", call. = FALSE)
   }
-  for (column in intersect(c("prior", "posterior", "prior_density", "posterior_density"), names(out))) {
+  for (column in intersect(c("prior_density", "posterior_density"), names(out))) {
     out[[column]] <- out[[column]] / (2 * sqrt(values))
   }
   diagnostics <- attr(out, "numerical_diagnostics", exact = TRUE)
@@ -411,7 +414,7 @@
     selected[["spec"]][["label"]]
   )
 
-  out <- hypothesis_BF.default(
+  out <- .hypothesis_BF_draws(
     posterior      = as.numeric(posterior),
     prior          = prior_values[prior_defined],
     hypothesis     = hypothesis,

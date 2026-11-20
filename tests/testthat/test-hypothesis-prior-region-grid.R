@@ -294,9 +294,9 @@ test_that("interval, union, and negated regions converge on deterministic prior 
     atoms = posterior_atom_attribute()
   )
   out <- hypothesis_BF(posterior, hypothesis = "abs(theta) < 0.1",
-                       parameter = "theta", columns = "all")
+                       parameter = "theta", include_probabilities = TRUE, include_method = TRUE)
   prior_mass <- stats::pnorm(.1) - stats::pnorm(-.1)
-  expect_equal(out[["prior"]], prior_mass / (1 - prior_mass), tolerance = 1e-4)
+  expect_equal(out$prior_prob_alt / out$prior_prob_null, prior_mass / (1 - prior_mass), tolerance = 1e-4)
   expect_equal(out[["method"]], "prior-posterior odds")
 })
 
@@ -409,9 +409,9 @@ test_that("Gaussian-convolution region probabilities use the conditional-normal 
     atoms = posterior_atom_attribute()
   )
   out <- hypothesis_BF(posterior, hypothesis = "theta > 0.5",
-                       parameter = "theta", columns = "all")
+                       parameter = "theta", include_probabilities = TRUE)
   prior_mass <- region_references$normal_cauchy[["theta > 0.5"]]
-  expect_lt(abs(out[["prior"]] - prior_mass / (1 - prior_mass)), 1e-7)
+  expect_lt(abs(out$prior_prob_alt / out$prior_prob_null - prior_mass / (1 - prior_mass)), 1e-7)
 })
 
 test_that("conditional-normal scale-mixture region probabilities match independent references", {
@@ -1301,8 +1301,8 @@ test_that("public positive-unit scalar marginals retain accepted backend region 
   for(value in c(1, 720, 744)){
     statement <- sprintf("theta > %.17g", value)
     direct <- hypothesis_BF(as.numeric(leaf), prior("exp", list(1)), statement,
-      parameter = "theta", columns = "all")
-    marginal <- hypothesis_BF(leaf, hypothesis = statement, parameter = "theta", columns = "all")
+      parameter = "theta")
+    marginal <- hypothesis_BF(leaf, hypothesis = statement, parameter = "theta")
     expect_equal(attr(marginal, "raw_log_BF"), attr(direct, "raw_log_BF"), tolerance = 1e-12)
     side <- hypothesis_parse(statement)$statements[[1L]]$left
     probability <- .hypothesis_prior_density_prob(posterior_metadata(leaf, "prior_density"),

@@ -445,8 +445,10 @@ hypothesis_stop <- function(reason, type = c("target", "fixed", "method",
   if (is.null(metadata)) {
     metadata <- provider[["metadata"]]()
   }
-  ast        <- .hypothesis_model_ast(hypothesis, metadata[["catalog"]])
-  statements <- hypothesis_render(ast)
+  ast <- .hypothesis_model_ast(hypothesis, metadata[["catalog"]])
+  if (inherits(hypothesis, "BayesTools_hypothesis_ast")) {
+    .bt_validate_hypothesis_ast(ast)
+  }
   # A plan is a function of its statement and arguments (and of the object and
   # its metadata, which the cache is of).
   arguments  <- rlang::hash(list(
@@ -454,7 +456,9 @@ hypothesis_stop <- function(reason, type = c("target", "fixed", "method",
     as.numeric(n_samples), metadata
   ))
 
-  lapply(statements, function(statement) {
+  lapply(ast$statements, function(parsed) {
+    statement <- ast
+    statement$statements <- list(parsed)
     .hypothesis_model_plan_cached(
       cache,
       paste("plan", arguments, rlang::hash(statement), sep = "\r"),

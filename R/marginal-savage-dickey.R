@@ -114,7 +114,9 @@
 #' \code{numerical_diagnostics} retain aligned diagnostics; BF formatting uses the
 #' live column carrier, which replacement, arithmetic and Math operations invalidate.
 #'
-#' @return \code{Savage_Dickey_BF} returns a Bayes factor. The prior ordinate
+#' @return \code{Savage_Dickey_BF} returns a Bayes factor. When a stored density
+#' or ordinate supplies its estimator name, the \code{posterior_density_estimator}
+#' attribute records the estimator used at the tested value. The prior ordinate
 #' at the null follows the exactness rule of [hypothesis_BF()] point
 #' hypotheses, with the same condition classes: a prior point mass at the null
 #' value stops with an error of class \code{BayesTools_point_mass_at_null}, a
@@ -318,6 +320,7 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
   warnings <- NULL
   stored_posterior_density <- NULL
   stored_posterior_ordinate <- NULL
+  used_density_metadata <- NULL
   posterior_density_source <- if(isTRUE(normal_approximation)) "normal" else "KDE"
   posterior_density_boundary_reflection <- FALSE
   posterior_density_support_bounds <- NULL
@@ -634,6 +637,7 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
       posterior_height <- stored_posterior_ordinate[["y"]]
       log_posterior_height <- stored_posterior_ordinate$log_y
       posterior_density_source <- "precomputed"
+      used_density_metadata <- stored_posterior_ordinate
       BF_error_percent <- .posterior_ordinate_bf_error_percent(stored_posterior_ordinate)
     }
   }else if(!is.null(stored_posterior_density)){
@@ -659,6 +663,7 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
       )
     }else if(!isTRUE(support_exclusion[["excluded"]])){
       posterior_density_source <- "precomputed"
+      used_density_metadata <- stored_posterior_density
       BF_error_percent <- .posterior_density_bf_error_percent(stored_posterior_density, null_hypothesis)
     }
   }else if(!is.null(component_plan)){
@@ -705,6 +710,16 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
     attr(BF, "BF_error_percent") <- BF_error_percent
   }
   attr(BF, "posterior_density_source") <- posterior_density_source
+  if(!is.null(used_density_metadata)){
+    for(field in c("density_method", "method")){
+      estimator <- used_density_metadata[[field]]
+      if(is.character(estimator) && length(estimator) == 1L && !is.na(estimator) &&
+         nzchar(trimws(estimator)) && trimws(estimator) != "precomputed"){
+        attr(BF, "posterior_density_estimator") <- trimws(estimator)
+        break
+      }
+    }
+  }
   if(isTRUE(posterior_density_boundary_reflection)){
     attr(BF, "posterior_density_boundary_reflection") <- TRUE
   }

@@ -143,8 +143,8 @@ test_that("quoted reserved names and former aliases retain separate draw values"
   expect_identical(.hypothesis_eval_expression(expression, draws), c(2, 2))
   expect_identical(.hypothesis_affine_value(.hypothesis_affine_read(expression, names(draws)), draws), c(2, 2))
   ast <- hypothesis_parse("theta > 0.2")
-  from_ast <- hypothesis_BF(c(-1, 1), prior("normal", list(0, 1)), ast, parameter = "theta", seed = 17, columns = "all")
-  from_text <- hypothesis_BF(c(-1, 1), prior("normal", list(0, 1)), hypothesis_render(ast), parameter = "theta", seed = 17, columns = "all")
+  from_ast <- hypothesis_BF(c(-1, 1), prior("normal", list(0, 1)), ast, parameter = "theta", seed = 17)
+  from_text <- hypothesis_BF(c(-1, 1), prior("normal", list(0, 1)), hypothesis_render(ast), parameter = "theta", seed = 17)
   expect_identical(attr(from_ast, "raw_BF"), attr(from_text, "raw_BF"))
   expect_identical(attr(from_ast, "raw_log_BF"), attr(from_text, "raw_log_BF"))
 })
@@ -266,6 +266,37 @@ test_that("labels without a decimal text that reads back use the hexadecimal lit
     expect_identical(reparsed$statements[[1L]]$left$value, ast$statements[[1L]]$left$value)
     expect_identical(reparsed$statements[[1L]]$left$expression, ast$statements[[1L]]$left$expression)
   }
+})
+
+test_that("hypothesis labels preserve input notation on each side", {
+
+  sides <- function(text){
+    statement <- hypothesis_parse(text)$statements[[1L]]
+    c(statement$left$label, statement$right$label)
+  }
+  expect_identical(sides(" -.10   <=   `mu  vs  x` < 1e-1 "),
+    c("-.10 <= `mu  vs  x` < 1e-1", "not (-.10 <= `mu  vs  x` < 1e-1)"))
+  expect_identical(sides("0.00   ==   f[a  vs  b]"),
+    c("0.00 == f[a  vs  b]", "0.00 != f[a  vs  b]"))
+  expect_identical(sides("1e-1 < (mu)"), c("1e-1 < (mu)", "1e-1 >= (mu)"))
+  expect_identical(sides("((abs(x=mu) < .10))"),
+    c("((abs(x=mu) < .10))", "((abs(x=mu) >= .10))"))
+  expect_identical(sides("f[a  vs  b] < .10   VS    unconstrained"),
+    c("f[a  vs  b] < .10", "unconstrained"))
+  expect_identical(sides("mu >= -.10   &   mu <= .10 vs !(-.10 <= mu <= .10)"),
+    c("mu >= -.10 & mu <= .10", "!(-.10 <= mu <= .10)"))
+})
+
+test_that("expanded factor labels keep the supplied statement around the level", {
+
+  level_label <- .hypothesis_model_level_label
+  expect_identical(level_label("not (-.10 <= f <= .10)", "f", "[A]"),
+                   "not (-.10 <= f[A] <= .10)")
+  expect_identical(level_label("f[a  vs  b] + `f` + f2 + f >= .1", "f", "[A]"),
+                   "f[a  vs  b] + `f[A]` + f2 + f[A] >= .1")
+  expect_identical(level_label("((log(log)) >= 0.00)", "log", "[A]"),
+                   "((log(log[A])) >= 0.00)")
+  expect_identical(level_label("abs(x=x) > .1", "x", "[A]"), "abs(x=x[A]) > .1")
 })
 
 test_that("hypothesis labels render literals with shortest round-trip text", {
@@ -674,7 +705,8 @@ test_that("hypothesis BF consumes validated ASTs without changing results", {
     prior = prior,
     parameter = "theta",
     density_method = "normal",
-    columns = "all"
+    include_densities = TRUE,
+    include_method = TRUE
   )
 
   # raw prior draws: the prior ordinate is an inexact normal estimate
@@ -799,7 +831,7 @@ test_that("bracket whitespace is canonical throughout level-reference trees", {
   fixture <- ordered_plot_test_fixture(prior("normal", list(0, 1)), c(.25, .75),
     levels = c("a", "b", "c"))
   marginal <- marginal_posterior(fixture$samples, "mu_f", use_formula = FALSE, prior_samples = TRUE)
-  run <- function(text) hypothesis_BF(marginal, hypothesis = text, parameter = "mu_f", columns = "all", seed = 17)
+  run <- function(text) hypothesis_BF(marginal, hypothesis = text, parameter = "mu_f", seed = 17)
   expect_identical(attr(run("`mu_f[ b ]` > 0"), "raw_log_BF"),
     attr(run("`mu_f[b]` > 0"), "raw_log_BF"))
   expect_identical(hypothesis_symbols(hypothesis_parse("ordinary_name > 0")), "ordinary_name")

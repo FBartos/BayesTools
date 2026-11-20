@@ -78,22 +78,25 @@
 #' Finite sample and KDE evaluation ranges are not treated as exact support,
 #' so finite point hypotheses outside those ranges use kernel-tail density
 #' estimates.
-#' @param columns output columns. \code{"default"} returns \code{Alternative},
-#' \code{Null}, \code{BF}, and \code{BF_error}. \code{columns = "evidence"}
-#' adds \code{prior_density} and \code{posterior_density} at the tested point,
-#' plus \code{prior_prob_alt}, \code{posterior_prob_alt}, \code{prior_prob_null},
-#' and \code{posterior_prob_null} for the regions in \code{Alternative} and
-#' \code{Null}. Each region probability is its mass under the encompassing
-#' prior or posterior on the selected scale and conditioning event. The
-#' unconstrained side has mass one. Inapplicable entries are \code{NA}.
-#' \code{BF01} inverts the displayed BF and preserves the side labels and
-#' evidence values. \code{"all"} also includes \code{prior}, \code{posterior},
-#' and \code{method}. The
-#' \code{prior} and \code{posterior} columns are diagnostics, not always
-#' probabilities: point tests report density heights, region tests report the ratio
-#' of the two region probabilities (odds for complements), and transitive point-vs-region tests report \code{NA}. The default
-#' \code{BF_error} column is printed as \code{error\%(BF)}. Individual columns
-#' are selected by these column names; other spellings are rejected.
+#' @param include_densities whether to add \code{prior_density} and \code{posterior_density}
+#' when the request contains a point hypothesis. These report the prior and
+#' posterior density at the tested point on its requested scale.
+#' @param include_probabilities whether to add \code{prior_prob_alt}, \code{posterior_prob_alt},
+#' \code{prior_prob_null}, and \code{posterior_prob_null} when the request
+#' contains a region or an explicit \code{unconstrained} side. Each probability
+#' is the mass of the labelled side under the encompassing prior or posterior
+#' on the selected scale and conditioning event. An unconstrained side has
+#' mass one. Inapplicable cells in a mixed table are \code{NA}.
+#' @param include_method whether to add the \code{method} used for each Bayes factor.
+#' Point tests identify the posterior density estimator, for example
+#' \code{"Savage-Dickey (KDE)"}. A precomputed density reports the estimator
+#' recorded by the provider when available. Comparing two regions reports
+#' \code{"prior-posterior odds"}. Comparing a region with \code{unconstrained}
+#' in either direction reports \code{"encompassing prior"}.
+#' All three display options default to \code{FALSE}. The default table contains
+#' \code{Alternative}, \code{Null}, \code{BF}, and \code{BF_error}
+#' (printed as \code{error\%(BF)}). \code{BF01} inverts the displayed Bayes
+#' factor and preserves the hypothesis labels, densities, and probabilities.
 #' @param namespace,component,transform_scaled,conditional,density_control,n_samples
 #' arguments of the method for a fitted model, passed to
 #' [hypothesis_BF_model()], which documents them: the component of the model
@@ -342,7 +345,8 @@ hypothesis_BF.default <- function(posterior, prior = NULL, hypothesis,
                                   parameter = NULL, logBF = FALSE,
                                   BF01 = FALSE, seed = NULL,
                                   density_method = c("KDE", "normal", "precomputed"),
-                                  columns = "default", ...) {
+                                  include_densities = FALSE, include_probabilities = FALSE,
+                                  include_method = FALSE, ...) {
 
   if(...length() > 0L){
     unused <- names(list(...))
@@ -364,6 +368,21 @@ hypothesis_BF.default <- function(posterior, prior = NULL, hypothesis,
   }else{
     hypothesis_parse(hypothesis)
   }
+  columns <- .hypothesis_BF_output_columns(
+    hypothesis_ast, include_densities, include_probabilities, include_method
+  )
+  .hypothesis_BF_draws(
+    posterior = posterior, prior = prior, hypothesis = hypothesis_ast,
+    parameter = parameter, logBF = logBF, BF01 = BF01, seed = seed,
+    density_method = density_method, columns = columns
+  )
+}
+
+
+# The fit engine supplies the same selected columns for every parameter group.
+.hypothesis_BF_draws <- function(posterior, prior = NULL, hypothesis, parameter = NULL,
+                                 logBF, BF01, seed, density_method, columns) {
+
   check_char(parameter, "parameter", check_length = 1, allow_NULL = TRUE,
              allow_NA = FALSE)
   check_bool(logBF, "logBF", allow_NA = FALSE)
@@ -373,15 +392,13 @@ hypothesis_BF.default <- function(posterior, prior = NULL, hypothesis,
   if(!is.null(seed) && !is.finite(seed)){
     stop("'seed' must be finite.", call. = FALSE)
   }
-  check_char(columns, "columns", check_length = 0, allow_NA = FALSE)
   density_method <- .hypothesis_density_method(density_method)
-  columns        <- .hypothesis_BF_output_columns(columns)
   .hypothesis_validate_input_integrity(posterior, prior)
 
   seed_state <- .bt_formula_prediction_seed(seed)
   on.exit(.bt_formula_prediction_restore_seed(seed_state), add = TRUE)
 
-  statements <- hypothesis_ast$statements
+  statements <- hypothesis$statements
   quantities <- .as_hypothesis_quantities(
     posterior  = posterior,
     prior      = prior,
@@ -432,11 +449,10 @@ hypothesis_BF.default <- function(posterior, prior = NULL, hypothesis,
   attr(out, "raw_log_BF") <- log_results
   attr(out, "numerical_diagnostics") <- numerical_diagnostics
   attr(out, "prior_numerical_diagnostics") <- prior_numerical_diagnostics
-  attr(out, "hypothesis_ast") <- hypothesis_ast
+  attr(out, "hypothesis_ast") <- hypothesis
   attr(out, "logBF")    <- logBF
   attr(out, "BF01")     <- BF01
   attr(out, "type")      <- .hypothesis_BF_table_types(colnames(out))
-  attr(out, "footnotes") <- .hypothesis_BF_table_footnotes(colnames(out))
   attr(out, "warnings")  <- warnings
   attr(out, "rownames")  <- TRUE
   class(out) <- c("BayesTools_table", "BayesTools_hypothesis_BF", "data.frame")
@@ -469,7 +485,8 @@ hypothesis_BF.BayesTools_fit <- function(posterior, hypothesis, namespace = NULL
                                          density_method = "KDE",
                                          density_control = NULL,
                                          n_samples = 10000,
-                                         columns = "default", ...){
+                                         include_densities = FALSE, include_probabilities = FALSE,
+                                         include_method = FALSE, ...){
 
   conditional_omitted <- missing(conditional)
   .hypothesis_model_warn_unused_dots(
@@ -491,7 +508,9 @@ hypothesis_BF.BayesTools_fit <- function(posterior, hypothesis, namespace = NULL
     density_method      = density_method,
     density_control     = density_control,
     n_samples           = n_samples,
-    columns             = columns,
+    include_densities   = include_densities,
+    include_probabilities = include_probabilities,
+    include_method      = include_method,
     conditional_omitted = conditional_omitted
   )
 }

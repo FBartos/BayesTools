@@ -75,8 +75,9 @@ hypothesis_parse <- function(hypothesis, catalog = NULL, namespace = NULL,
   if(length(hypothesis) == 0L){
     stop("'hypothesis' must contain at least one statement.", call. = FALSE)
   }
+  aliases <- list(names = character(), refused = NULL)
   if(!is.null(catalog)){
-    hypothesis <- .bt_hypothesis_quote_catalog_aliases(
+    aliases <- .bt_hypothesis_catalog_aliases(
       hypothesis = hypothesis,
       catalog    = catalog,
       namespace  = namespace,
@@ -97,8 +98,9 @@ hypothesis_parse <- function(hypothesis, catalog = NULL, namespace = NULL,
     }
   }
   statements <- lapply(hypothesis, function(statement){
+    quoted <- .bt_hypothesis_quote_statement_aliases(statement, aliases$names, aliases$refused)
     .bt_hypothesis_ast_statement_from_spec(
-      .hypothesis_parse_statement_spec(statement)
+      .hypothesis_parse_statement_spec(quoted$text, statement, quoted$mask)
     )
   })
   out <- list(
@@ -110,7 +112,7 @@ hypothesis_parse <- function(hypothesis, catalog = NULL, namespace = NULL,
   out
 }
 
-.bt_hypothesis_quote_catalog_aliases <- function(
+.bt_hypothesis_catalog_aliases <- function(
     hypothesis, catalog, namespace, component, simplify_names){
 
   .bt_validate_parameter_catalog(catalog)
@@ -162,28 +164,18 @@ hypothesis_parse <- function(hypothesis, catalog = NULL, namespace = NULL,
     nzchar(names) &
       (make.names(names) != names | tolower(names) == "vs")
   ]
-  if(length(names) == 0L){
-    return(hypothesis)
-  }
   names <- names[order(nchar(names), decreasing = TRUE)]
-
-  vapply(
-    hypothesis,
-    .bt_hypothesis_quote_statement_aliases,
-    character(1),
-    aliases = names,
-    refused = refused,
-    USE.NAMES = FALSE
-  )
+  list(names = names, refused = refused)
 }
 
 .bt_hypothesis_quote_statement_aliases <- function(statement, aliases,
                                                    refused = NULL){
 
   n <- nchar(statement, type = "chars")
-  if(n == 0L){
-    return(statement)
+  if(n == 0L || !length(aliases)){
+    return(list(text = statement, mask = statement))
   }
+  mask <- statement
   out <- character()
   i <- 1L
   quote <- ""
@@ -226,6 +218,7 @@ hypothesis_parse <- function(hypothesis, catalog = NULL, namespace = NULL,
     }
     if(!is.null(matched)){
       end <- i + nchar(matched, type = "chars") - 1L
+      substr(mask, i, end) <- strrep("x", end - i + 1L)
       # An alias followed by `[` is the root of a level reference such as
       # `f:g[f=b, g=v]`; quoting only the root would split it from its level.
       level_follows <- grepl(
@@ -244,7 +237,7 @@ hypothesis_parse <- function(hypothesis, catalog = NULL, namespace = NULL,
     i <- i + 1L
   }
 
-  paste0(out, collapse = "")
+  list(text = paste0(out, collapse = ""), mask = mask)
 }
 
 .bt_hypothesis_alias_boundary <- function(statement, start, end){

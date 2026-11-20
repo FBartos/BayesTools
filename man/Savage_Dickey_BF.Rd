@@ -48,7 +48,9 @@ other locations are removed from the continuous posterior ordinate and the
 resulting density is scaled by the remaining continuous mass.}
 }
 \value{
-\code{Savage_Dickey_BF} returns a Bayes factor. The prior ordinate
+\code{Savage_Dickey_BF} returns a Bayes factor. When a stored density
+or ordinate supplies its estimator name, the \code{posterior_density_estimator}
+attribute records the estimator used at the tested value. The prior ordinate
 at the null follows the exactness rule of \code{\link[=hypothesis_BF]{hypothesis_BF()}} point
 hypotheses, with the same condition classes: a prior point mass at the null
 value stops with an error of class \code{BayesTools_point_mass_at_null}, a

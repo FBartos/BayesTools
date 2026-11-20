@@ -274,7 +274,7 @@ test_that("plot_models overall diamond uses the requested factor column", {
 
 test_that("public formatting retains a live carrier's canonical source logs", {
   producer <- hypothesis_BF(c(1, 2, 3), prior("normal", list(0, 1)),
-    "a = 356 vs a != 356", parameter = "a", density_method = "normal", columns = "all")
+    "a = 356 vs a != 356", parameter = "a", density_method = "normal")
   expect_equal(as.numeric(format_BF(producer$BF, logBF = TRUE)), 710, tolerance = 1e-12)
   inverse <- as.numeric(format_BF(producer$BF, BF01 = TRUE))
   expect_gt(inverse, 0)

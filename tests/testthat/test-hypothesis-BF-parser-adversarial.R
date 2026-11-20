@@ -114,7 +114,7 @@ test_that("an unconstrained comparator uses the encompassing distribution of the
   posterior <- data.frame(beta = c(0, 1, 1, 2), gamma = c(0, 1, 2, 2))
   region <- "-0.5 < beta - gamma < 0.5"
   statements <- c(region, paste(region, "vs unconstrained"), paste("unconstrained vs", region))
-  result <- hypothesis_BF(posterior, prior, hypothesis = statements, columns = "evidence")
+  result <- hypothesis_BF(posterior, prior, hypothesis = statements, include_probabilities = TRUE)
 
   # Joint draws place 1/2 of the prior and 3/4 of the posterior inside the interval.
   expect_equal(attr(result, "raw_BF"), c(3, 1.5, 2 / 3))
