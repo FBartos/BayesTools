@@ -9,8 +9,9 @@ scenario_start("bain", width = 220)
 # coefficients. For these lm fits its covariance is vcov(lm) * n / rank,
 # where rank counts independent rows of the full constraint matrix including
 # its right-hand side. The interval contributes two distinct bounds.
-# JAGS updates the matched prior under the Gaussian likelihood. bain uses
-# a normal posterior approximation with the lm estimates and covariance.
+# JAGS updates the matched prior under the Gaussian likelihood and integrates
+# over the residual SD. bain uses the lm estimates and their plug-in covariance
+# for its normal posterior approximation.
 # For a point, bain's Fit and Com are posterior and prior densities. For an
 # inequality or interval they are posterior and prior probabilities. bain
 # estimates interval probabilities by simulation, so even the matched prior
@@ -59,14 +60,14 @@ testthat::test_that("Hypothesis reporting for adjusted department rating slopes"
                            complaints = (complaints - mean(complaints)) / 10,
                            raises = (raises - mean(raises)) / 10)
   regression_lm <- stats::lm(rating ~ complaints + raises, data = departments)
-  regression <- scenario_fit("rating_regression", {
+  fit_regression <- scenario_fit("rating_regression", {
     # The hypotheses give rank three and center (complaints, raises) at (0.5, 0).
     # Factor their joint normal prior as p(raises) * p(complaints | raises).
     slopes <- c("complaints", "raises")
     V <- stats::vcov(regression_lm)[slopes, slopes] * stats::nobs(regression_lm) / 3
     loading <- V["complaints", "raises"] / V["raises", "raises"]
     conditional_sd <- sqrt(V["complaints", "complaints"] - loading * V["complaints", "raises"])
-    fit <- JAGS_fit("model { for (i in 1:N) { rating[i] ~ dnorm(mu[i], pow(sigma, -2)) } }",
+    JAGS_fit("model { for (i in 1:N) { rating[i] ~ dnorm(mu[i], pow(sigma, -2)) } }",
              data = list(rating = departments$rating, N = nrow(departments), loading = loading),
              prior_list = list(sigma = prior("normal", list(0, 1), truncation = list(0, Inf))),
              formula_list = list(mu = ~ complaints + raises),
@@ -76,7 +77,6 @@ testthat::test_that("Hypothesis reporting for adjusted department rating slopes"
                raises = prior("normal", list(0, sqrt(V["raises", "raises"]))),
                complaints = prior("normal", list(expression(0.5 + loading * mu_raises), conditional_sd)))),
              chains = 4, adapt = 1000, burnin = 1000, sample = 5000, seed = 1)
-    list(fit = fit, complaints_prior = prior("normal", list(0.5, sqrt(V["complaints", "complaints"]))))
   })
 
   # H1 asks whether a ten-point improvement in complaint handling predicts
@@ -86,18 +86,20 @@ testthat::test_that("Hypothesis reporting for adjusted department rating slopes"
   # for this test because JAGS declares the complaints prior conditionally.
   # Both packages use continuous priors, so the interval endpoints have zero mass.
   scenario_text("regression-reporting", {
+    set.seed(1)
+    bain_regression <- bain::bain(regression_lm, "complaints > 0.5; raises = 0; -0.1 < raises < 0.1",
+                                  standardize = FALSE)
+    complaints_prior <- prior("normal", list(0.5, sqrt(bain_regression$prior["complaints", "complaints"])))
+    complaints <- parameter_catalog_resolve(parameter_catalog(fit_regression), "mu_complaints")
+    draws <- as.numeric(as.matrix(parameter_draws(fit_regression, complaints)))
     cat("BayesTools\n")
-    complaints <- parameter_catalog_resolve(parameter_catalog(regression$fit), "mu_complaints")
-    draws <- as.numeric(as.matrix(parameter_draws(regression$fit, complaints)))
-    print(hypothesis_BF(draws, regression$complaints_prior, "complaints > 0.5", parameter = "complaints",
+    print(hypothesis_BF(draws, complaints_prior, "complaints > 0.5", parameter = "complaints",
                         include_probabilities = TRUE, include_method = TRUE))
-    print(hypothesis_BF(regression$fit,
+    print(hypothesis_BF(fit_regression,
                         c("raises = 0 vs unconstrained",
                           "-0.1 <= raises <= 0.1", "-0.1 <= raises <= 0.1 vs unconstrained"),
                         include_densities = TRUE, include_probabilities = TRUE, include_method = TRUE))
     cat("\nbain\n")
-    set.seed(1)
-    bain::bain(regression_lm, "complaints > 0.5; raises = 0; -0.1 < raises < 0.1",
-               standardize = FALSE)
+    bain_regression
   })
 })
