@@ -5317,11 +5317,11 @@ test_that("the JAGS module registers its six distributions and two functions", {
   out[order(names(out))]
 }
 
-.sampler_test_compile <- function(syntax, data, chains = 2L, seed = 1L, n_adapt = 0L){
+.sampler_test_compile <- function(syntax, data, chains = 2L, seed = 1L, n_adapt = 0L, inits = list()){
   rjags::jags.model(
     textConnection(syntax), data = data, n.chains = chains, n.adapt = n_adapt, quiet = TRUE,
     inits = lapply(seq_len(chains), function(chain){
-      list(.RNG.name = "base::Mersenne-Twister", .RNG.seed = seed + chain)
+      c(list(.RNG.name = "base::Mersenne-Twister", .RNG.seed = seed + chain), inits)
     })
   )
 }
@@ -5468,7 +5468,8 @@ model{
     ess <- sum(coda::effectiveSize(chains))
     estimate <- mean(values)
     mcse <- stats::sd(values) / sqrt(ess)
-    z <- if(mcse > 0) (estimate - quantity$target) / mcse else if(estimate == quantity$target) 0 else Inf
+    # a chain that never moves has no MCSE (sd 0, ESS 0): it fails the checks
+    z <- if(isTRUE(mcse > 0)) (estimate - quantity$target) / mcse else if(estimate == quantity$target) 0 else Inf
     data.frame(quantity = name, target = quantity$target, estimate = estimate,
                mcse = mcse, ess = ess, z = z, stringsAsFactors = FALSE)
   })
@@ -5511,9 +5512,9 @@ model{
 
 # Draws of a hand-written model whose factor slice block adapts for
 # 'n_adapt' iterations (0: coordinate axes and unit widths throughout).
-.sampler_test_block_samples <- function(syntax, data, variables, n_adapt, n_iter, chains = 4L, seed = 1L){
+.sampler_test_block_samples <- function(syntax, data, variables, n_adapt, n_iter, chains = 4L, seed = 1L, inits = list()){
 
-  model <- .sampler_test_compile(syntax, data, chains = chains, seed = seed)
+  model <- .sampler_test_compile(syntax, data, chains = chains, seed = seed, inits = inits)
   samplers <- rjags::list.samplers(model)
   expect_identical(sum(names(samplers) == "BayesTools::FactorSlice"), 1L)
   expect_setequal(samplers[[which(names(samplers) == "BayesTools::FactorSlice")]], variables)
@@ -5853,6 +5854,112 @@ model{
   }
 })
 
+test_that("factor slice blocks sample members whose transformed coordinate is beyond the range of exp()", {
+  skip_if_not(isTRUE(BayesTools_load_JAGS_module(quiet = TRUE, warn = FALSE)))
+
+  # A member with two bounds is sampled on u = log(x - lower) - log(upper - x);
+  # its back-transform must hold wherever x is representable strictly inside the
+  # support, also where |u| exceeds log(.Machine$double.xmax) = 709.78.
+  # (1) Wide intervals: a normal with sd 0.1 truncated to (0, 1e308), a
+  # half-normal, and its mirror on (-1e308, 0); |u| is 711.5 at |x| = 0.1.
+  expect_lt(log(0.1) - log(1e308), -log(.Machine$double.xmax))
+  half_normal_mean <- 0.1 * sqrt(2 / pi)
+  half_normal_variance <- 0.01 * (1 - 2 / pi)
+  normal_quantities <- function(sign) list(
+    x_mean = list(series = function(x) x[, "x"], target = sign * half_normal_mean),
+    x_var  = list(series = function(x) (x[, "x"] - sign * half_normal_mean)^2, target = half_normal_variance),
+    x_tail = list(series = function(x) as.numeric(abs(x[, "x"]) > 0.1), target = 2 * stats::pnorm(-1))
+  )
+  # (2) Unit intervals at subnormal distances from a bound: x ~ U(0, 1) (or
+  # U(-1, 0)) and an observation z = -720 of N(log|x|, 2^2). The prior density
+  # of w = log|x| is exp(w) on w < 0, so w has the posterior N(-716, 2^2)
+  # restricted to w < 0 (358 SDs away); |u| = |w| exceeds 709.78 for 99.9% of
+  # the mass, and |x| stays far above the smallest subnormal, exp(-744.4)
+  # (14 SDs away), so no draw rounds to a bound.
+  log_quantities <- list(
+    w_mean = list(series = function(x) log(abs(x[, "x"])), target = -716),
+    w_var  = list(series = function(x) (log(abs(x[, "x"])) + 716)^2, target = 4),
+    w_tail = list(series = function(x) as.numeric(log(abs(x[, "x"])) > -714), target = stats::pnorm(-1))
+  )
+  cases <- list(
+    lower_wide = list(member = "x ~ dnorm(0, 100)T(0, 1e308)", data = list(), inits = list(),
+                      quantities = normal_quantities(1)),
+    upper_wide = list(member = "x ~ dnorm(0, 100)T(-1e308, 0)", data = list(), inits = list(),
+                      quantities = normal_quantities(-1)),
+    lower_unit = list(member = "x ~ dunif(0, 1)\n  z ~ dnorm(log(x), 0.25)", data = list(z = -720),
+                      inits = list(x = exp(-714)), quantities = log_quantities),
+    upper_unit = list(member = "x ~ dunif(-1, 0)\n  z ~ dnorm(log(-x), 0.25)", data = list(z = -720),
+                      inits = list(x = -exp(-714)), quantities = log_quantities)
+  )
+  # each member shares a block with an ordinary normal
+  markers <- .sampler_test_block_markers(c("x", "b"))
+  for(case_name in names(cases)){
+    case <- cases[[case_name]]
+    syntax <- paste0("model{\n  ", case$member, "\n  b ~ dnorm(0, 1)\n", markers$syntax, "\n}")
+    for(n_adapt in c(0L, 500L)){
+      samples <- .sampler_test_block_samples(
+        syntax, c(case$data, markers$data), variables = c("x", "b"),
+        n_adapt = n_adapt, n_iter = 5000L, seed = 41L, inits = case$inits
+      )
+      checks <- .sampler_test_mcse_checks(samples, case$quantities)
+      .sampler_test_expect_checks(checks, paste0(case_name, ", adapt = ", n_adapt))
+    }
+  }
+})
+
+test_that("factor slice blocks sample members far from distant bounds", {
+  skip_if_not(isTRUE(BayesTools_load_JAGS_module(quiet = TRUE, warn = FALSE)))
+
+  # A standard normal truncated to (-1e9, 1e9) or (-1e13, 1e13), or bounded
+  # below by -1e6 or -1e12, in a block with an ordinary normal. The sampler
+  # holds each member through its distance from the anchoring bound, to about
+  # 16 significant digits of that distance (here a grid of up to about 0.02
+  # posterior SDs), so the central mass, the moments and the partner's moments
+  # are those of the target; their draws equal development's.
+  # Seed 1: with seed 47 the partner's variance gave z = -4.02 under adaptation
+  # 0 with the lower bound -1e6. Those draws are bit-identical on development
+  # (90fee58), so the transform is not involved. Independent repetitions (200
+  # chains with disjoint seeds; neighbouring seeds of this helper share chains,
+  # .RNG.seed = seed + chain) give E[b^2] = 1.0023 +- 0.0021 against 1, which is
+  # consistent with a Monte Carlo tail event at seed 47; it does not exclude a
+  # small bias.
+  quantities <- list(
+    x_mean    = list(series = function(x) x[, "x"], target = 0),
+    x_var     = list(series = function(x) x[, "x"]^2, target = 1),
+    x_central = list(series = function(x) as.numeric(abs(x[, "x"]) <= 1), target = 2 * stats::pnorm(1) - 1),
+    b_mean    = list(series = function(x) x[, "b"], target = 0),
+    b_var     = list(series = function(x) x[, "b"]^2, target = 1)
+  )
+  markers <- .sampler_test_block_markers(c("x", "b"))
+  members <- c("x ~ dnorm(0, 1)T(-1e9, 1e9)", "x ~ dnorm(0, 1)T(-1e13, 1e13)",
+               "x ~ dnorm(0, 1)T(-1e6, )", "x ~ dnorm(0, 1)T(-1e12, )")
+  for(member in members){
+    syntax <- paste0("model{\n  ", member, "\n  b ~ dnorm(0, 1)\n", markers$syntax, "\n}")
+    for(n_adapt in c(0L, 500L)){
+      samples <- .sampler_test_block_samples(syntax, markers$data, variables = c("x", "b"),
+                                             n_adapt = n_adapt, n_iter = 5000L, seed = 1L)
+      checks <- .sampler_test_mcse_checks(samples, quantities)
+      .sampler_test_expect_checks(checks, paste0(member, ", adapt = ", n_adapt))
+    }
+  }
+})
+
+test_that("a two-sided member whose support span is not finite stops the fit at the start", {
+  skip_if_not(isTRUE(BayesTools_load_JAGS_module(quiet = TRUE, warn = FALSE)))
+
+  # upper - lower overflows for (-1e308, 1e308): the member cannot be held
+  # through its distance from a bound, which the bounds alone decide; a finite
+  # span such as (0, 1e308) samples (the far-tail test above)
+  markers <- .sampler_test_block_markers(c("x", "b"))
+  syntax <- paste0("model{\n  x ~ dnorm(0, 1)T(-1e308, 1e308)\n  b ~ dnorm(0, 1)\n", markers$syntax, "\n}")
+  expect_error(
+    .sampler_test_compile(syntax, markers$data, chains = 2L, seed = 1L),
+    paste0("Factor slice sampler: the support bounds of this node are too wide for the sampler's scale ",
+           "(their difference exceeds the largest double); declare the block without this node"),
+    fixed = TRUE
+  )
+})
+
 test_that("generated declarations change the samplers of the declared nodes only", {
   skip_if_not(isTRUE(BayesTools_load_JAGS_module(quiet = TRUE, warn = FALSE)))
 
@@ -6136,6 +6243,72 @@ test_that("bridge sampling of a fit with a factor slice block matches the exact 
   error <- sqrt(bridgesampling::error_measures(marglik)$re2)
   if(isTRUE(getOption("BayesTools.sampler_test_print"))) print(c(logml = marglik$logml, exact = exact, error = error), digits = 8)
   expect_lt(abs(marglik$logml - exact), max(4 * error, 0.01))
+})
+
+test_that("a block of a random-effect SD and a scalar correlation keeps the posterior of the fit without it", {
+  skip_if_not(isTRUE(BayesTools_load_JAGS_module(quiet = TRUE, warn = FALSE)))
+
+  # y_ij = mu + u_ij + e_ij with a compound-symmetry random effect of the four
+  # time points within eight groups (sd 0.6, correlation 0.5)
+  set.seed(23)
+  n_groups <- 8L
+  n_times <- 4L
+  formula_data <- data.frame(g = factor(rep(seq_len(n_groups), each = n_times)), t = rep(seq_len(n_times), n_groups))
+  covariance <- 0.6^2 * (0.5 + 0.5 * diag(n_times))
+  effects <- as.vector(t(matrix(stats::rnorm(n_groups * n_times), n_groups) %*% chol(covariance)))
+  data <- list(y = 0.3 + effects + stats::rnorm(n_groups * n_times, 0, 0.3))
+  random_names <- c("mu__xREx__g_sd", "mu__xREx__g_rho")
+  random_fit <- function(...){
+    JAGS_fit(
+      model_syntax = "model{\n  for(i in 1:N_mu){\n    y[i] ~ dnorm(mu[i], 1 / pow(0.3, 2))\n  }\n}",
+      data = data, prior_list = list(),
+      formula_list = list(mu = ~ 1 + cs(t | g)), formula_data_list = list(mu = formula_data),
+      formula_prior_list = list(mu = list(intercept = prior("normal", list(0, 1)))),
+      formula_random_prior_list = list(mu = prior_random(g = random_block(
+        sd = prior("normal", list(0, 1), list(0, Inf)),
+        covariance = random_covariance(cor = prior("uniform", list(-0.2, 0.95)), cor_scale = "cor")
+      ))),
+      chains = 4, adapt = 500, burnin = 1000, sample = 10000, seed = 7, silent = TRUE, ...
+    )
+  }
+  plain <- random_fit()
+  declared <- random_fit(sampler_blocks = list(c("mu_intercept", random_names)))
+
+  # the block holds the random-effect SD and correlation under their own names
+  declarations <- attr(declared, "sampler_declarations")
+  expect_identical(declarations$blocks$node, c("mu_intercept", random_names))
+  expect_identical(nrow(declarations$declined), 0L)
+  expect_true(grepl("BayesTools_block_3 ~ dbt_block(mu__xREx__g_rho, 1)", declared$model, fixed = TRUE))
+  environment <- new.env()
+  eval(parse(text = declared$data), envir = environment)
+  model <- rjags::jags.model(textConnection(declared$model), data = as.list(environment),
+                             n.chains = 1, n.adapt = 0, quiet = TRUE)
+  samplers <- rjags::list.samplers(model)
+  expect_identical(sum(names(samplers) == "BayesTools::FactorSlice"), 1L)
+  expect_setequal(samplers[[which(names(samplers) == "BayesTools::FactorSlice")]], c("mu_intercept", random_names))
+  expect_identical(colnames(as.matrix(declared$mcmc)), colnames(as.matrix(plain$mcmc)))
+
+  # posterior means, variances about the plain fit's mean and probabilities
+  # above its median agree with the fit without the block within Monte Carlo
+  # error: each quantity of the declared fit is compared with the plain fit's
+  # estimate in units of the combined Monte Carlo standard error of both
+  plain_samples <- as.matrix(plain$mcmc)
+  quantities <- unlist(lapply(c("mu_intercept", random_names), function(name){
+    center <- mean(plain_samples[, name])
+    .sampler_test_scalar_quantities(name, center, 0, stats::median(plain_samples[, name]), 0)
+  }), recursive = FALSE)
+  plain_checks <- .sampler_test_mcse_checks(plain$mcmc, quantities)
+  declared_checks <- .sampler_test_mcse_checks(declared$mcmc, quantities)
+  checks <- data.frame(
+    quantity = plain_checks$quantity, plain = plain_checks$estimate, declared = declared_checks$estimate,
+    ess_plain = plain_checks$ess, ess = declared_checks$ess,
+    z = (declared_checks$estimate - plain_checks$estimate) / sqrt(plain_checks$mcse^2 + declared_checks$mcse^2)
+  )
+  info <- paste(utils::capture.output(print(checks, digits = 4)), collapse = "\n")
+  if(isTRUE(getOption("BayesTools.sampler_test_print"))) print(checks, digits = 4)
+  expect_true(all(abs(checks$z) <= 4), info = info)
+  expect_true(all(checks$ess >= 100), info = info)
+  expect_true(all(checks$ess_plain >= 100), info = info)
 })
 
 test_that("guarded spike-and-slab priors keep stock samplers and refuse blocks", {

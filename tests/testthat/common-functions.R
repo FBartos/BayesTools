@@ -1133,7 +1133,22 @@ save_fit <- function(fit, name, marglik = NULL, simple_priors = FALSE, vector_pr
     "package_src_",
     gsub("[^A-Za-z0-9]+", "_", relative_paths)
   )
-  package_source_files
+  c(package_source_files, .test_cache_package_include_files())
+}
+
+# The package's installed headers (inst/include) are compiled into its native
+# library as well (the factor slice kernel), so they key what src/ keys.
+.test_cache_package_include_files <- function() {
+  package_include_dir <- file.path(testthat::test_path("..", ".."), "inst", "include")
+  include_files <- list.files(package_include_dir, pattern = "\\.(h|hpp)$", full.names = TRUE, recursive = TRUE)
+  if(length(include_files) == 0L){
+    return(stats::setNames(character(), character()))
+  }
+  relative_paths <- substring(
+    normalizePath(include_files, winslash = "/", mustWork = TRUE),
+    nchar(normalizePath(package_include_dir, winslash = "/", mustWork = TRUE)) + 2L
+  )
+  stats::setNames(include_files, paste0("package_include_", gsub("[^A-Za-z0-9]+", "_", relative_paths)))
 }
 
 # The parse data of an R source file, parsed once per test run. The tests that
