@@ -106,6 +106,18 @@ testthat::test_that("Shrinkage of Swiss fertility predictors", {
   scenario_comparison("comparison-lasso", parameters, posteriors = draws_lasso,
                       main = "Swiss fertility: lasso", show_table = TRUE)
 
+  scenario_plot("lasso-education-posterior", {
+    selection <- parameter_catalog_resolve(parameter_catalog(jags_lasso), "(mu) Education")
+    posterior <- parameter_mixed_posterior(jags_lasso, selection)
+    plot_posterior(list(Education = posterior), "Education", prior = TRUE,
+                   main = "Lasso for the education slope", xlim = c(-1.5, 1.5),
+                   xlab = "Change in standardized fertility per SD of education",
+                   col = "#0072B2", lwd = 2, dots_prior = list(col = "grey70", lwd = 2))
+    lines(density(draws_lasso$RStan[, "Education"]), col = "#D55E00", lty = 2, lwd = 2)
+    legend("topright", c("BayesTools prior", "BayesTools posterior", "RStan posterior"),
+           col = c("grey70", "#0072B2", "#D55E00"), lty = c(1, 1, 2), lwd = 2, bty = "n", cex = 0.9)
+  })
+
   ### Fertility at three levels of education ----
   # Hold the other four predictors at their means. Compare the expected
   # standardized fertility at education one SD below, at, and one SD above its mean.
@@ -160,7 +172,7 @@ testthat::test_that("Shrinkage of Swiss fertility predictors", {
   scenario_comparison("comparison-horseshoe", parameters, posteriors = draws_horseshoe,
                       main = "Swiss fertility: horseshoe", show_table = TRUE)
 
-  ### Finite-slab horseshoe ----
+  ### Regularized horseshoe (finite slab) ----
   # The Student-t slab has scale 2 and four degrees of freedom.
   fit_regularized_horseshoe <- scenario_fit("fit_regularized_horseshoe", {
     fit <- JAGS_fit(likelihood, data_list, prior_list = list(),
@@ -190,6 +202,18 @@ testthat::test_that("Shrinkage of Swiss fertility predictors", {
     RStan = scenario_draws(rstan::As.mcmc.list(stan_regularized_horseshoe), stan_names))
   scenario_comparison("comparison-regularized_horseshoe", parameters, posteriors = draws_regularized_horseshoe,
                       main = "Swiss fertility: horseshoe with a finite slab", show_table = TRUE)
+
+  scenario_plot("regularized-horseshoe-education-posterior", {
+    selection <- parameter_catalog_resolve(parameter_catalog(jags_regularized_horseshoe), "(mu) Education")
+    posterior <- parameter_mixed_posterior(jags_regularized_horseshoe, selection)
+    plot_posterior(list(Education = posterior), "Education", prior = TRUE,
+                   main = "Regularized horseshoe for the education slope", xlim = c(-1.5, 1.5),
+                   xlab = "Change in standardized fertility per SD of education",
+                   col = "#0072B2", lwd = 2, dots_prior = list(col = "grey70", lwd = 2))
+    lines(density(draws_regularized_horseshoe$RStan[, "Education"]), col = "#D55E00", lty = 2, lwd = 2)
+    legend("topright", c("BayesTools prior", "BayesTools posterior", "RStan posterior"),
+           col = c("grey70", "#0072B2", "#D55E00"), lty = c(1, 1, 2), lwd = 2, bty = "n", cex = 0.9)
+  })
 
   ### Evidence for each prior relative to ridge ----
   # The Examination local scale can mix slowly in the finite-slab horseshoe.

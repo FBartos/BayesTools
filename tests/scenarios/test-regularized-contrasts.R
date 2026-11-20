@@ -127,6 +127,18 @@ testthat::test_that("Monthly ozone effects under centered shrinkage priors", {
   scenario_comparison("comparison-meandif_lasso", effects, posteriors = draws_meandif_lasso,
                       main = "Group lasso with mean-difference month contrasts", show_table = TRUE)
 
+  scenario_plot("meandif-lasso-july-posterior", {
+    selection <- parameter_catalog_resolve(parameter_catalog(jags_meandif_lasso), "mu_Month[Jul]")
+    posterior <- parameter_mixed_posterior(jags_meandif_lasso, selection)
+    plot_posterior(list(Jul = posterior), "Jul", prior = TRUE,
+                   main = "Group lasso for July ozone (mean-difference coding)", xlim = c(-1.5, 1.5),
+                   xlab = "July deviation from the five-month mean (standardized ozone)",
+                   col = "#0072B2", lwd = 2, dots_prior = list(col = "grey70", lwd = 2))
+    lines(density(draws_meandif_lasso$RStan[, "Jul"]), col = "#D55E00", lty = 2, lwd = 2)
+    legend("topright", c("BayesTools prior", "BayesTools posterior", "RStan posterior"),
+           col = c("grey70", "#0072B2", "#D55E00"), lty = c(1, 1, 2), lwd = 2, bty = "n", cex = 0.9)
+  })
+
   ### Mean-difference coding / Horseshoe ----
   fit_meandif_horseshoe <- scenario_fit("fit_meandif_horseshoe", {
     fit <- JAGS_fit(likelihood, data_list, prior_list = list(),
@@ -177,7 +189,7 @@ testthat::test_that("Monthly ozone effects under centered shrinkage priors", {
     BayesTools_BF = round(as.data.frame(july_vs_may)$BF10, 2),
     RStan_BF = round(sum(july_higher) / sum(!july_higher), 2)))
 
-  ### Mean-difference coding / Finite-slab horseshoe ----
+  ### Mean-difference coding / Regularized horseshoe (finite slab) ----
   # The Student-t slab has scale 2 and four degrees of freedom.
   fit_meandif_regularized_horseshoe <- scenario_fit("fit_meandif_regularized_horseshoe", {
     fit <- JAGS_fit(likelihood, data_list, prior_list = list(),
@@ -207,6 +219,18 @@ testthat::test_that("Monthly ozone effects under centered shrinkage priors", {
     RStan = stan_month_draws(stan_meandif_regularized_horseshoe, meandif))
   scenario_comparison("comparison-meandif_regularized_horseshoe", effects, posteriors = draws_meandif_regularized_horseshoe,
                       main = "Finite-slab horseshoe with mean-difference month contrasts", show_table = TRUE)
+
+  scenario_plot("meandif-regularized-horseshoe-july-posterior", {
+    selection <- parameter_catalog_resolve(parameter_catalog(jags_meandif_regularized_horseshoe), "mu_Month[Jul]")
+    posterior <- parameter_mixed_posterior(jags_meandif_regularized_horseshoe, selection)
+    plot_posterior(list(Jul = posterior), "Jul", prior = TRUE,
+                   main = "Regularized horseshoe for July ozone (mean-difference coding)", xlim = c(-1.5, 1.5),
+                   xlab = "July deviation from the five-month mean (standardized ozone)",
+                   col = "#0072B2", lwd = 2, dots_prior = list(col = "grey70", lwd = 2))
+    lines(density(draws_meandif_regularized_horseshoe$RStan[, "Jul"]), col = "#D55E00", lty = 2, lwd = 2)
+    legend("topright", c("BayesTools prior", "BayesTools posterior", "RStan posterior"),
+           col = c("grey70", "#0072B2", "#D55E00"), lty = c(1, 1, 2), lwd = 2, bty = "n", cex = 0.9)
+  })
 
   ### Mean-difference coding / Evidence for each prior relative to ridge ----
   scenario_text("bridge-meandif_ridge", fit_meandif_ridge$marglik)
@@ -280,6 +304,18 @@ testthat::test_that("Monthly ozone effects under centered shrinkage priors", {
   scenario_comparison("comparison-orthonormal_lasso", effects, posteriors = draws_orthonormal_lasso,
                       main = "Group lasso with orthonormal month contrasts", show_table = TRUE)
 
+  scenario_plot("orthonormal-lasso-july-posterior", {
+    selection <- parameter_catalog_resolve(parameter_catalog(jags_orthonormal_lasso), "mu_Month[Jul]")
+    posterior <- parameter_mixed_posterior(jags_orthonormal_lasso, selection)
+    plot_posterior(list(Jul = posterior), "Jul", prior = TRUE,
+                   main = "Group lasso for July ozone (orthonormal coding)", xlim = c(-1.5, 1.5),
+                   xlab = "July deviation from the five-month mean (standardized ozone)",
+                   col = "#0072B2", lwd = 2, dots_prior = list(col = "grey70", lwd = 2))
+    lines(density(draws_orthonormal_lasso$RStan[, "Jul"]), col = "#D55E00", lty = 2, lwd = 2)
+    legend("topright", c("BayesTools prior", "BayesTools posterior", "RStan posterior"),
+           col = c("grey70", "#0072B2", "#D55E00"), lty = c(1, 1, 2), lwd = 2, bty = "n", cex = 0.9)
+  })
+
   ### Orthonormal coding / Horseshoe ----
   fit_orthonormal_horseshoe <- scenario_fit("fit_orthonormal_horseshoe", {
     fit <- JAGS_fit(likelihood, data_list, prior_list = list(),
@@ -310,7 +346,7 @@ testthat::test_that("Monthly ozone effects under centered shrinkage priors", {
   scenario_comparison("comparison-orthonormal_horseshoe", effects, posteriors = draws_orthonormal_horseshoe,
                       main = "Horseshoe with orthonormal month contrasts", show_table = TRUE)
 
-  ### Orthonormal coding / Finite-slab horseshoe ----
+  ### Orthonormal coding / Regularized horseshoe (finite slab) ----
   # The Student-t slab has scale 2 and four degrees of freedom.
   fit_orthonormal_regularized_horseshoe <- scenario_fit("fit_orthonormal_regularized_horseshoe", {
     fit <- JAGS_fit(likelihood, data_list, prior_list = list(),
@@ -340,6 +376,18 @@ testthat::test_that("Monthly ozone effects under centered shrinkage priors", {
     RStan = stan_month_draws(stan_orthonormal_regularized_horseshoe, orthonormal))
   scenario_comparison("comparison-orthonormal_regularized_horseshoe", effects, posteriors = draws_orthonormal_regularized_horseshoe,
                       main = "Finite-slab horseshoe with orthonormal month contrasts", show_table = TRUE)
+
+  scenario_plot("orthonormal-regularized-horseshoe-july-posterior", {
+    selection <- parameter_catalog_resolve(parameter_catalog(jags_orthonormal_regularized_horseshoe), "mu_Month[Jul]")
+    posterior <- parameter_mixed_posterior(jags_orthonormal_regularized_horseshoe, selection)
+    plot_posterior(list(Jul = posterior), "Jul", prior = TRUE,
+                   main = "Regularized horseshoe for July ozone (orthonormal coding)", xlim = c(-1.5, 1.5),
+                   xlab = "July deviation from the five-month mean (standardized ozone)",
+                   col = "#0072B2", lwd = 2, dots_prior = list(col = "grey70", lwd = 2))
+    lines(density(draws_orthonormal_regularized_horseshoe$RStan[, "Jul"]), col = "#D55E00", lty = 2, lwd = 2)
+    legend("topright", c("BayesTools prior", "BayesTools posterior", "RStan posterior"),
+           col = c("grey70", "#0072B2", "#D55E00"), lty = c(1, 1, 2), lwd = 2, bty = "n", cex = 0.9)
+  })
 
   ### Orthonormal coding / Evidence for each prior relative to ridge ----
   scenario_text("bridge-orthonormal_ridge", fit_orthonormal_ridge$marglik)
