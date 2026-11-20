@@ -398,12 +398,21 @@ export(wf_fixed)
 export(wf_independent)
 importFrom(Rdpack,reprompt)
 importFrom(grDevices,pdf)
+importFrom(rjags,
+  list.modules,
+  load.pkg.module,
+  unload.module
+)
 importFrom(rlang,.data)
-importFrom(stats,density)
-importFrom(stats,fft)
-importFrom(stats,median)
-importFrom(stats,sd)
-importFrom(stats,setNames)
-importFrom(stats,var)
-importFrom(utils,head)
-importFrom(utils,tail)
+importFrom(stats,
+  density,
+  fft,
+  median,
+  sd,
+  setNames,
+  var
+)
+importFrom(utils,
+  head,
+  tail
+)

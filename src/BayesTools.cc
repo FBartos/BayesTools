@@ -1,5 +1,9 @@
 #include <module/Module.h>
 
+// Check for JAGS version:
+#include <version.h>
+static_assert(JAGS_MAJOR == 4, "The BayesTools package requires rjags version 4-18 and currently will not work with rjags 5 or later");
+
 #include "distributions/DBTLKJCPC.h"
 #include "distributions/DBTInvGamma.h"
 #include "distributions/DBTMoment.h"

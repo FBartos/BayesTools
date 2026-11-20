@@ -1,6 +1,59 @@
+#' @importFrom rjags load.pkg.module unload.module list.modules
+
+# Package environment variables:
+.jags_pkg_env <- new.env(parent = emptyenv())
+.jags_pkg_env$pkgname <- character(0)
+.jags_pkg_env$libname <- character(0)
+.jags_pkg_env$dyn_loaded <- FALSE
+.jags_pkg_env$pkg_compile_flags <- rjags::pkg.compile.flags("ALL")
+
 .BayesTools_private <- new.env(parent = emptyenv())
 
 .onLoad <- function(libname, pkgname){
+
+
+  # Preserve the name of the package for use in .onUnload etc:
+  .jags_pkg_env$pkgname <- pkgname
+  .jags_pkg_env$libname <- libname
+
+  # First try to load rjags (this sets paths on Windows etc):
+  tryCatch({
+    if(!isNamespaceLoaded("rjags")) loadNamespace("rjags")
+  }, error = function(e) {
+    stop("The following error was obtained when loading rjags:\n\t",
+         conditionMessage(e), call.=FALSE)
+  })
+  # Ensure the version of rjags is compatible with what we need:
+  rjags_version <- utils::packageVersion("rjags")
+  if(rjags_version >= "5" && rjags_version < "5.4"){
+    stop("An incompatible version of rjags (", gsub(".","-",rjags_version,fixed=TRUE), ") is installed\n\tPlease install either rjags 4-18 or rjags >= 5-4", call.=FALSE)
+  }
+
+  # Guard against non-present dynlib when running roxygen:
+  if(file.exists(
+    if(nzchar(.Platform$r_arch)){
+      file.path(libname, pkgname, "libs", .Platform$r_arch, paste0(pkgname, .Platform$dynlib.ext))
+    }else{
+      file.path(libname, pkgname, "libs", paste0(pkgname, .Platform$dynlib.ext))
+    }
+  )){
+    tryCatch({
+      # First load the package module, so that rjags can report on any JAGS
+      # version incompatibility:
+      rjags::load.pkg.module(pkgname, libname, .jags_pkg_env$pkg_compile_flags, quiet=TRUE)
+
+      # Then load the dynamic library:
+      library.dynam(pkgname, pkgname, libname)
+      # And set the dyn_loaded flag to TRUE:
+      .jags_pkg_env$dyn_loaded <- TRUE
+
+    }, error = function(e) {
+      if(.jags_pkg_env$pkgname %in% list.modules()){
+        unload.module(.jags_pkg_env$pkgname, quiet=TRUE)
+      }
+      stop("Loading the package module/dynlib failed with the following error:\n\t", conditionMessage(e), call.=FALSE)
+    })
+  }
 
   .BayesTools_private$module_location <- .BayesTools_module_location(libname, pkgname)
   .BayesTools_private$lib_name <- libname
@@ -8,14 +61,6 @@
   .BayesTools_private$native_dll_path <- NULL
   .BayesTools_private$native_dll_loaded_manually <- FALSE
 
-  # rjags partially matches seq(along = ) when it loads and loads modules; R CMD
-  # check reports that as a NOTE of every package whose code check loads this
-  # namespace.
-  old_options <- options(warnPartialMatchArgs = FALSE)
-  on.exit(options(old_options), add = TRUE)
-  if(requireNamespace("rjags", quietly = TRUE)){
-    BayesTools_load_JAGS_module(quiet = TRUE, warn = FALSE)
-  }
 
   .BayesTools_load_native_routines(pkgname = pkgname, libname = libname, warn = FALSE)
   .freeze_fit_backend_fingerprint()
@@ -26,8 +71,12 @@
   if(requireNamespace("rjags", quietly = TRUE)){
     tryCatch(
       {
-        if("BayesTools" %in% rjags::list.modules()){
-          rjags::unload.module("BayesTools", quiet = TRUE)
+        # Ignore if the dynlib failed to load at startup:
+        if(.jags_pkg_env$dyn_loaded){
+          # First unload the JAGS module (silently), if loaded:
+          if(.jags_pkg_env$pkgname %in% list.modules()){
+            unload.module(.jags_pkg_env$pkgname, quiet = TRUE)
+          }
         }
       },
       error = function(e) NULL
@@ -109,7 +158,7 @@ BayesTools_load_JAGS_module <- function(quiet = TRUE, warn = TRUE){
 
   load_error <- NULL
   tryCatch(
-    rjags::load.module("BayesTools", path = path, quiet = quiet),
+    rjags::load.pkg.module(.jags_pkg_env$pkgname, .jags_pkg_env$libname, .jags_pkg_env$pkg_compile_flags, quiet=quiet),
     error = function(e) load_error <<- conditionMessage(e)
   )
 
