@@ -1234,6 +1234,7 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
     }
     JAGS_formula_name_map(fit)
     for(parameter in names(formula_design)){
+      .bt_regularized_check_fitted_priors(formula_design[[parameter]], attr(fit, "prior_list", exact = TRUE))
       .bt_validate_formula_design_replay_schema(
         formula_design[[parameter]],
         context = paste0("JAGS_extend() formula '", parameter, "'")

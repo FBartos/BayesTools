@@ -14,6 +14,25 @@ Mixtures of ordered prior containers retain constructor and RNG support, but
 JAGS formula binding refuses with the ordered-unavailable condition family.
 Supported mixture or spike-and-slab behavior belongs on the ordered total.
 
+Named `prior_regularized()` groups claim fixed-effect terms before formula
+defaults. Binding uses the fitted factor coding: treatment and independent
+coordinates have separate local scales, while mean-difference and orthonormal
+coordinates form an exchangeable unit per partner column. Use the same unit
+map as random factors. Each centered unit of dimension `d` has one horseshoe
+local scale or one group-lasso variance `W ~ Gamma((d+1)/2, rate=1/2)`.
+The supplied scale is in the fitted contrast coordinates. An interaction-only
+group's explicit contrast must agree with the actual non-indicator factor
+codings. If the group owns a constituent main effect, the mismatch check
+applies to its own factors and separately declared partners keep their coding.
+With an omitted contrast use the fitted basis, including for level summaries
+and a product-space zero component.
+Keep the shared global and slab nodes
+once per group, including when a term belongs to a product-space mixture.
+The coefficient is sampled in its fitted units. Bridge sampling uses the
+normalized conditional coefficient density and each primitive prior once.
+Extension and replay require consistent group declarations across the stored
+fit and formula priors.
+
 Unix builds with an explicit JAGS_ROOT or --with-jags-prefix use that prefix's
 headers, libraries and version, preserving explicit include/lib/version overrides.
 They never inherit unrestricted global pkg-config flags or fall back to unrelated

@@ -31,6 +31,7 @@
 mean.prior   <- function(x, ...){
 
   .check_prior(x, "x")
+  if(is.prior.regularized_term(x)) return(.regularized_moment(.bt_regularized_level_prior(x), FALSE))
 
   if(is.prior.spike_and_slab(x)){
 
@@ -50,6 +51,7 @@ mean.prior   <- function(x, ...){
       m <- switch(
         x[["distribution"]],
         "normal"    = x$parameters[["mean"]],
+        "laplace"   = x$parameters$location,
         "lognormal" = exp(x$parameters[["meanlog"]] + x$parameters[["sdlog"]]^2/2),
         "t"         = ifelse(x$parameters[["df"]] > 1, x$parameters[["location"]], NaN),
         "gamma"     = x$parameters[["shape"]] / x$parameters[["rate"]],
@@ -224,6 +226,7 @@ var.default <- function(x, ...){
 var.prior   <- function(x, ...){
 
   .check_prior(x, "x")
+  if(is.prior.regularized_term(x)) return(.regularized_moment(.bt_regularized_level_prior(x), TRUE))
 
   if(is.prior.spike_and_slab(x)){
 
@@ -252,6 +255,7 @@ var.prior   <- function(x, ...){
       var <- switch(
         x[["distribution"]],
         "normal"    = x$parameters[["sd"]]^2,
+        "laplace"   = (sqrt(2) * x$parameters$scale)^2,
         "lognormal" = expm1(x$parameters[["sdlog"]]^2) * exp(2 * x$parameters[["meanlog"]] + x$parameters[["sdlog"]]^2),
         "t"         = ifelse(x$parameters[["df"]] > 2, x$parameters[["scale"]]^2 * x$parameters[["df"]] / (x$parameters[["df"]] - 2), NaN),
         "gamma"     = (x$parameters[["shape"]] / x$parameters[["rate"]]) / x$parameters[["rate"]],

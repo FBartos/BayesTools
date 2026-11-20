@@ -28,6 +28,9 @@ possible options are
 \code{location} parameter.}
 \item{\code{"normal"}}{for a normal distribution characterized
 by a \code{mean} and \code{sd} parameters.}
+\item{\code{"laplace"}}{for a double exponential distribution with
+\code{location} and positive \code{scale}. Its standard deviation is
+\code{sqrt(2) * scale}.}
 \item{\code{"lognormal"}}{for a lognormal distribution characterized
 by a \code{meanlog} and \code{sdlog} parameters.}
 \item{\code{"cauchy"}}{for a Cauchy distribution characterized

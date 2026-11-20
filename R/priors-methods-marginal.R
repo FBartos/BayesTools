@@ -37,7 +37,7 @@
 #' @rdname prior_functions
 mcdf.prior   <- function(x, q, ...){
 
-  prior <- x
+  prior <- .bt_regularized_level_prior(x)
 
   .check_q(as.vector(q))
   .check_prior(prior)
@@ -109,7 +109,7 @@ mcdf.prior   <- function(x, q, ...){
 #' @rdname prior_functions
 mccdf.prior  <- function(x, q, ...){
 
-  prior <- x
+  prior <- .bt_regularized_level_prior(x)
 
   .check_q(as.vector(q))
   .check_prior(prior)
@@ -181,7 +181,7 @@ mccdf.prior  <- function(x, q, ...){
 #' @rdname prior_functions
 mlpdf.prior  <- function(x, y, ...){
 
-  prior <- x
+  prior <- .bt_regularized_level_prior(x)
   x     <- y
 
   .check_x(as.vector(x))
@@ -260,7 +260,7 @@ mlpdf.prior  <- function(x, y, ...){
 #' @rdname prior_functions
 mpdf.prior   <- function(x, y, ...){
 
-  prior <- x
+  prior <- .bt_regularized_level_prior(x)
   x     <- y
 
   .check_x(as.vector(x))
@@ -278,7 +278,7 @@ mpdf.prior   <- function(x, y, ...){
 #' @rdname prior_functions
 mquant.prior <- function(x, p, ...){
 
-  prior <- x
+  prior <- .bt_regularized_level_prior(x)
 
   .check_p(p, log.p = FALSE)
   .check_prior(prior)

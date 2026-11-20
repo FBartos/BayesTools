@@ -323,11 +323,13 @@ test_that("certification cases are registered, outside `all`, and keyed by the c
 })
 
 
-test_that("certification cases that compare with reference baselines key them", {
+test_that("certification cases key their reference baselines and model files", {
 
-  # a case that calls the reference-baseline helpers declares their directories
+  # Reference-table helpers and independently compiled Stan programs both
+  # depend on inputs outside the case's R code.
   for (case in names(bayestools_certification_cases())) {
-    uses_references <- any(grepl("test_reference_", readLines(bayestools_certification_file(case), warn = FALSE)))
+    code <- readLines(bayestools_certification_file(case), warn = FALSE)
+    uses_references <- any(grepl("test_reference_|rstan::stan_model\\(", code))
     directories     <- bayestools_certification_cases()[[case]]$references
     expect_identical(length(directories) > 0L, uses_references, info = case)
     expect_true(all(dir.exists(file.path(testthat::test_path(), "..", directories))), info = case)

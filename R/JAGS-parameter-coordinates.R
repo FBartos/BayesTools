@@ -303,6 +303,9 @@
     return(character())
   }
   unique(unlist(lapply(prior_list, function(prior){
+    if(.bt_has_regularized_term(prior)){
+      return(.bt_regularized_auxiliary_names(prior))
+    }
     if(is.prior.ordered(prior)){
       return(vapply(
         .prior_ordered_dirichlet_records(prior),

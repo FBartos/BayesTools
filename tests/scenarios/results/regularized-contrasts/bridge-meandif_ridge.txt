@@ -1,0 +1,2 @@
+Bridge sampling estimate of the log marginal likelihood: -148.2422
+Estimate obtained in 4 iteration(s) via method "normal".

@@ -53,6 +53,11 @@ NULL
 
     par_name <- names(prior_list)[i]
 
+    if (.bt_has_regularized_term(prior_list[[i]])) {
+      auxiliary <- .bt_regularized_auxiliary_names(prior_list[[i]])
+      model_samples <- model_samples[, !colnames(model_samples) %in% auxiliary, drop = FALSE]
+    }
+
     if (is.prior.simplex(prior_list[[i]])) {
       aux_pattern <- paste0("^", .JAGS_prior_dirichlet_eta_name(par_name), "(\\[|$)")
       model_samples <- model_samples[, !grepl(aux_pattern, colnames(model_samples)), drop = FALSE]
