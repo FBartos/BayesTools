@@ -435,37 +435,33 @@ testthat::test_that("Monthly ozone effects under centered shrinkage priors", {
               orthonormal_lasso = "Group lasso with orthonormal month contrasts",
               orthonormal_horseshoe = "Horseshoe with orthonormal month contrasts",
               orthonormal_regularized_horseshoe = "Finite-slab horseshoe with orthonormal month contrasts")
-  selectors <- setNames(c(paste0("mu_Month[", months, "]"), "mu_Wind"), effects)
-  xlim <- c(-1.5, 1.5)
+  # Month is one centered factor. Colour identifies its levels, line type the engine.
+  # The five levels have a common marginal prior within each coding. Wind is a separate slope.
+  month_colours <- setNames(c("#0072B2", "#D55E00", "#009E73", "#A44A87", "#66552E"), months)
   for (model in names(fits)) {
     scenario_plot(paste0("distributions-", model), {
-      catalog <- parameter_catalog(fits[[model]])
-      posteriors <- lapply(selectors, function(term) {
-        parameter_mixed_posterior(fits[[model]], parameter_catalog_resolve(catalog, term))
-      })
-      priors <- lapply(posteriors, posterior_metadata, field = "prior_density")
-      stan_curves <- lapply(names(selectors), function(effect) density(draws[[model]][, effect], n = 301))
-      # Mark an unbounded peak with an arrow from the nearest finite grid ordinate.
-      unbounded <- vapply(priors, function(p) prior_density_ordinate(p, 0)$behavior == "infinite", logical(1))
-      prior_height <- vapply(seq_along(priors), function(i) {
-        x <- if (unbounded[i]) 0.01 else 0
-        exp(prior_density_ordinate(priors[[i]], x)$log_density)
-      }, numeric(1))
-      ymax <- ceiling(1.12 * max(prior_height, vapply(stan_curves, function(d) max(d$y), numeric(1)),
-                                 vapply(posteriors, function(q) max(density(q)$y), numeric(1))))
+      posterior <- as_mixed_posteriors(fits[[model]], parameters = c("mu_Month", "mu_Wind"))
       old_par <- par(no.readonly = TRUE)
-      regularized_plot_layout(titles[[model]])
-      for (i in seq_along(selectors)) {
-        effect <- names(selectors)[i]
-        plot(priors[[i]], main = effect, xlab = "", ylab = "", xlim = xlim, ylim = c(0, ymax),
-             n_points = 301, col = "grey70", lwd = 2)
-        if (unbounded[i]) arrows(0, prior_height[i], 0, ymax, col = "grey70", lwd = 1.5, length = 0.065)
-        plot_posterior(posteriors[i], effect, add = TRUE, xlim = xlim, n_points = 301, col = "#0072B2", lwd = 2)
-        lines(stan_curves[[i]], col = "#D55E00", lty = 2, lwd = 2)
+      layout(matrix(1:2, nrow = 1), widths = c(1.6, 1))
+      par(mar = c(4, 3.8, 2.3, 0.8), oma = c(2, 0, 4, 0))
+
+      plot_posterior(posterior, "mu_Month", prior = TRUE, main = "Month",
+                     xlab = "Deviation from the five-month mean", ylab = "Density", xlim = c(-1.5, 1.5),
+                     col = unname(month_colours), lwd = 2, dots_prior = list(col = "grey70", lwd = 2),
+                     legend_labels = months, legend_position = "topright")
+      for (month in months) {
+        lines(density(draws[[model]][, month]), col = month_colours[[month]], lty = 2, lwd = 2)
       }
-      mtext("Density", side = 2, outer = TRUE, line = 0.3)
-      mtext("Standardized effect", side = 1, outer = TRUE, line = 0)
-      if (any(unbounded)) mtext("Arrows mark unbounded prior density at zero.", side = 1, outer = TRUE, line = 1.4, cex = 0.8)
+
+      plot_posterior(posterior, "mu_Wind", prior = TRUE, main = "Wind",
+                     xlab = "Slope per SD of wind", ylab = "Density", xlim = c(-1.5, 1.5),
+                     col = "#34495E", lwd = 2, dots_prior = list(col = "grey70", lwd = 2))
+      lines(density(draws[[model]][, "Wind"]), col = "#34495E", lty = 2, lwd = 2)
+      mtext(titles[[model]], side = 3, outer = TRUE, line = 1.8, font = 2)
+      mtext("Grey: prior     Solid: BayesTools posterior     Dashed: RStan posterior",
+            side = 3, outer = TRUE, line = 0.35, cex = 0.85)
+      mtext("Effects are in standard deviations of ozone. The prior densities are unbounded at zero.",
+            side = 1, outer = TRUE, line = 0.35, cex = 0.8)
       par(old_par)
     })
   }
