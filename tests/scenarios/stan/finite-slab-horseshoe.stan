@@ -31,13 +31,13 @@ transformed parameters {
   projected_y = mdivide_left_tri_low(L, X' * (y - alpha));
 }
 model {
-  alpha ~ normal(0, 1);
-  tau ~ cauchy(0, 0.2);
-  lambda ~ cauchy(0, 1);
-  slab_aux ~ inv_gamma(2, 2);  // slab scale 2, df 4
+  target += normal_lpdf(alpha | 0, 1);
+  target += cauchy_lpdf(tau | 0, 0.2) + log(2);
+  target += cauchy_lpdf(lambda | 0, 1) + J * log(2);
+  target += inv_gamma_lpdf(slab_aux | 2, 2);  // slab scale 2, df 4
 
-  // Gaussian likelihood integrated over beta, up to a data-only constant.
-  target += -sum(log(slope_sd)) - sum(log(diagonal(L)))
+  // Normalized Gaussian likelihood integrated over beta.
+  target += -0.5 * N * log(2 * pi()) - sum(log(slope_sd)) - sum(log(diagonal(L)))
             + 0.5 * (dot_self(projected_y) - dot_self(y - alpha));
 }
 generated quantities {

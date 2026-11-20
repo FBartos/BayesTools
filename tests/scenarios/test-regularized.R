@@ -1,111 +1,76 @@
 if (file.exists("helper-scenarios.R")) source("helper-scenarios.R") else source("tests/scenarios/helper-scenarios.R")
 scenario_start("regularized")
+source(file.path(.scenario_config()$root, "helpers", "shrinkage-plot.R"), local = TRUE)
+source(file.path(.scenario_config()$root, "helpers", "regularized-bridge.R"), local = TRUE)
 # testthat::test_file("tests/scenarios/test-regularized.R")
 
 ### Description
 # How do BayesTools and RStan shrink the five fertility slopes in 47 Swiss
-# provinces? Fit the same standardized regression with four priors. Both engines
-# take the residual SD as 1 for this known-variance comparison. Each table
-# and figure shows the resulting slopes and their shared global scale.
+# provinces? Compare the slope distributions and the evidence for each prior
+# in a standardized regression with known residual SD 1.
 
 testthat::test_that("Shrinkage of Swiss fertility predictors", {
 
   dat <- as.data.frame(scale(datasets::swiss))
   slopes <- ~ Agriculture + Examination + Education + Catholic + Infant.Mortality
   X <- model.matrix(slopes, dat)[, -1]
+  y <- dat$Fertility
 
-  likelihood <- "model{
-    for(i in 1:N){
-      y[i] ~ dnorm(mu[i], 1)
-    }
+  ### The same regression in BayesTools and RStan ----
+  likelihood <- "model {
+    for (i in 1:N) { y[i] ~ dnorm(mu[i], 1) }
   }"
-  jags_data <- list(N = nrow(dat), y = dat$Fertility)
-  stan_data <- list(N = nrow(dat), K = ncol(X), X = X, y = dat$Fertility)
-  intercept <- prior("normal", list(0, 1))
   global <- prior("cauchy", list(0, 0.2), truncation = list(0, Inf))
-
-  # The intercept has its own prior. Each of the five slopes shares the global
-  # scale; under a horseshoe each also has its own local scale.
+  stan_data <- list(N = nrow(X), K = ncol(X), X = X, y = y)
+  # Each horseshoe slope has its own local scale.
   horseshoe_data <- c(stan_data, list(J = ncol(X), unit = seq_len(ncol(X))))
 
-  # Match coefficients by predictor name. RStan's beta vector follows the
-  # column order in X. Both fits report their shared global scale as well.
-  parameters <- c("Intercept", colnames(X), "Global scale")
-  jags_columns <- setNames(c("mu_intercept", paste0("mu_", colnames(X)), "mu_shrinkage_global"), parameters)
-  stan_columns <- setNames(c("alpha", sprintf("beta[%d]", seq_len(ncol(X))), "tau"), parameters)
-  posterior_draws <- function(jags, stan) {
-
-    list(BayesTools = scenario_draws(jags$mcmc, jags_columns),
-         RStan      = scenario_draws(rstan::As.mcmc.list(stan), stan_columns))
+  fit_pair <- function(name, shrinkage, file, data = stan_data) {
+    jags <- scenario_fit(paste0("jags_", name), {
+      JAGS_fit(likelihood, data = list(y = y, N = length(y)), prior_list = list(),
+        formula_list = list(mu = slopes), formula_data_list = list(mu = dat),
+        formula_prior_list = list(mu = list(intercept = prior("normal", list(0, 1)), shrinkage = shrinkage)),
+        chains = 3, adapt = 1500, burnin = 3000, sample = 15000, seed = 89211)
+    }, cache_version = regularized_fit_version(likelihood, deparse(slopes), dat, y, shrinkage))
+    stan <- scenario_fit(paste0("stan_", name), {
+      rstan::sampling(scenario_stan_model(file), data = data,
+        chains = 3, cores = 3, warmup = 1500, iter = 6500, seed = 26011, refresh = 0,
+        control = list(adapt_delta = 0.995, max_treedepth = 14))
+    }, cache_version = regularized_fit_version(file, scenario_stan_version(file), data))
+    list(name = name, jags = jags, stan = stan, stan_data = data)
   }
 
-  ### Ridge ----
-  # Each slope has a Normal prior with the shared scale as its SD.
-  ridge <- scenario_fit("jags_ridge", {
-    JAGS_fit(likelihood, jags_data, prior_list = list(),
-             formula_list = list(mu = slopes), formula_data_list = list(mu = dat),
-             formula_prior_list = list(mu = list(
-               intercept = intercept, shrinkage = prior_regularized("ridge", scale = global))),
-             chains = 3, adapt = 1500, burnin = 3000, sample = 15000, seed = 89211)
-  })
-  ridge_stan <- scenario_fit("stan_ridge", {
-    rstan::sampling(scenario_stan_model("ridge.stan"), data = stan_data,
-                    chains = 3, cores = 3, warmup = 1500, iter = 6500, seed = 26011,
-                    control = list(adapt_delta = 0.995, max_treedepth = 14), refresh = 0)
-  }, cache_version = scenario_stan_version("ridge.stan"))
-  scenario_comparison("comparison-ridge", parameters, main = "Swiss fertility: ridge",
-                      posteriors = posterior_draws(ridge, ridge_stan), show_table = TRUE)
+  ### What the tables and figures compare ----
+  slope_priors <- setNames(paste0("mu_", colnames(X)), colnames(X))
+  parameters <- c("Intercept", colnames(X), "Global scale")
+  jags_columns <- setNames(c("mu_intercept", slope_priors, "mu_shrinkage_global"), parameters)
+  stan_columns <- setNames(c("alpha", sprintf("beta[%d]", seq_len(ncol(X))), "tau"), parameters)
+  show_fertility <- function(pair, prior_label) {
+    draws <- list(BayesTools = scenario_draws(pair$jags$mcmc, jags_columns),
+                  RStan = scenario_draws(rstan::As.mcmc.list(pair$stan), stan_columns))
+    title <- paste("Swiss fertility:", prior_label)
+    scenario_comparison(paste0("comparison-", pair$name), parameters, posteriors = draws,
+                        main = title, show_table = TRUE)
+    scenario_plot(paste0("distributions-", pair$name),
+                  scenario_shrinkage_plot(pair$jags, draws, slope_priors, title))
+  }
 
-  ### Lasso ----
-  # Each slope has a Laplace prior with the shared scale.
-  lasso <- scenario_fit("jags_lasso", {
-    JAGS_fit(likelihood, jags_data, prior_list = list(),
-             formula_list = list(mu = slopes), formula_data_list = list(mu = dat),
-             formula_prior_list = list(mu = list(
-               intercept = intercept, shrinkage = prior_regularized("lasso", scale = global))),
-             chains = 3, adapt = 1500, burnin = 3000, sample = 15000, seed = 89211)
-  })
-  lasso_stan <- scenario_fit("stan_lasso", {
-    rstan::sampling(scenario_stan_model("lasso.stan"), data = stan_data,
-                    chains = 3, cores = 3, warmup = 1500, iter = 6500, seed = 26011,
-                    control = list(adapt_delta = 0.995, max_treedepth = 14), refresh = 0)
-  }, cache_version = scenario_stan_version("lasso.stan"))
-  scenario_comparison("comparison-lasso", parameters, main = "Swiss fertility: lasso",
-                      posteriors = posterior_draws(lasso, lasso_stan), show_table = TRUE)
+  ### Four priors on the same five slopes ----
+  ridge <- fit_pair("ridge", prior_regularized("ridge", global), "ridge.stan")
+  show_fertility(ridge, "ridge")
 
-  ### Horseshoe ----
-  # The shared global and slope-specific local scales determine each slope's SD.
-  horseshoe <- scenario_fit("jags_horseshoe", {
-    JAGS_fit(likelihood, jags_data, prior_list = list(),
-             formula_list = list(mu = slopes), formula_data_list = list(mu = dat),
-             formula_prior_list = list(mu = list(
-               intercept = intercept, shrinkage = prior_regularized("horseshoe", scale = global))),
-             chains = 3, adapt = 1500, burnin = 3000, sample = 15000, seed = 89211)
-  })
-  horseshoe_stan <- scenario_fit("stan_horseshoe", {
-    rstan::sampling(scenario_stan_model("horseshoe.stan"), data = horseshoe_data,
-                    chains = 3, cores = 3, warmup = 1500, iter = 6500, seed = 26011,
-                    control = list(adapt_delta = 0.995, max_treedepth = 14), refresh = 0)
-  }, cache_version = scenario_stan_version("horseshoe.stan"))
-  scenario_comparison("comparison-horseshoe", parameters, main = "Swiss fertility: horseshoe",
-                      posteriors = posterior_draws(horseshoe, horseshoe_stan), show_table = TRUE)
+  lasso <- fit_pair("lasso", prior_regularized("lasso", global), "lasso.stan")
+  show_fertility(lasso, "lasso")
 
-  ### Horseshoe with a finite slab ----
-  # A shared Student-t slab (scale 2, 4 degrees of freedom) limits large effects.
-  finite_slab <- scenario_fit("jags_regularized_horseshoe", {
-    JAGS_fit(likelihood, jags_data, prior_list = list(),
-             formula_list = list(mu = slopes), formula_data_list = list(mu = dat),
-             formula_prior_list = list(mu = list(
-               intercept = intercept, shrinkage = prior_regularized("horseshoe", scale = global,
-                                                                    slab_scale = 2, slab_df = 4))),
-             chains = 3, adapt = 1500, burnin = 3000, sample = 15000, seed = 89211)
-  })
-  finite_slab_stan <- scenario_fit("stan_regularized_horseshoe", {
-    rstan::sampling(scenario_stan_model("finite-slab-horseshoe.stan"), data = horseshoe_data,
-                    chains = 3, cores = 3, warmup = 1500, iter = 6500, seed = 26011,
-                    control = list(adapt_delta = 0.995, max_treedepth = 14), refresh = 0)
-  }, cache_version = scenario_stan_version("finite-slab-horseshoe.stan"))
-  scenario_comparison("comparison-regularized_horseshoe", parameters,
-                      main = "Swiss fertility: horseshoe with a finite slab",
-                      posteriors = posterior_draws(finite_slab, finite_slab_stan), show_table = TRUE)
+  horseshoe <- fit_pair("horseshoe", prior_regularized("horseshoe", global), "horseshoe.stan", horseshoe_data)
+  show_fertility(horseshoe, "horseshoe")
+
+  finite_slab <- fit_pair("regularized_horseshoe", prior_regularized("horseshoe", global, slab_scale = 2, slab_df = 4),
+                          "finite-slab-horseshoe.stan", horseshoe_data)
+  show_fertility(finite_slab, "horseshoe with a finite slab")
+
+  ### Marginal likelihoods and log Bayes factors relative to ridge ----
+  models <- list(Ridge = ridge, Lasso = lasso, Horseshoe = horseshoe, "Finite-slab horseshoe" = finite_slab)
+  bridges <- lapply(models, function(pair) regularized_bridge(pair$name, pair$jags, pair$stan, pair$stan_data))
+  scenario_text("model-comparison", regularized_evidence_table(bridges))
 })

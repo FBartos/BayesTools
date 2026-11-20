@@ -10,11 +10,16 @@ parameters {
   vector[K] beta;
 }
 model {
-  alpha ~ normal(0, 1);
-  tau ~ cauchy(0, 0.2);
+  target += normal_lpdf(alpha | 0, 1);
+  target += cauchy_lpdf(tau | 0, 0.2) + log(2);
 
   // The first K-1 columns code month; the last is standardized wind.
-  target += -(K - 1) * log(tau) - norm2(head(beta, K - 1)) / tau;
-  beta[K] ~ double_exponential(0, tau);
-  y ~ normal(alpha + X * beta, 1);
+  // Divide by sphere area times the integral of r^(d-1) exp(-r/tau).
+  {
+    int d = K - 1;
+    target += lgamma(0.5 * d) - log(2) - 0.5 * d * log(pi()) - lgamma(d)
+              - d * log(tau) - norm2(head(beta, d)) / tau;
+  }
+  target += double_exponential_lpdf(beta[K] | 0, tau);
+  target += normal_lpdf(y | alpha + X * beta, 1);
 }

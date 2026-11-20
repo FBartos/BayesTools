@@ -42,7 +42,7 @@ bayestools_certification_cases <- function() {
       native      = TRUE
     ),
     `regularized-priors` = list(
-      description = "Scalar and centered-factor shrinkage posteriors against independent Stan regressions and exact Gaussian ridge integration.",
+      description = "Shrinkage posteriors, log marginal likelihoods and Bayes factors against Stan and an exact Gaussian ridge reference.",
       native      = TRUE,
       references  = "scenarios/stan"
     ),

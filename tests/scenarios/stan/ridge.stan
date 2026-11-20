@@ -13,8 +13,9 @@ transformed parameters {
   vector[K] beta = tau * z;
 }
 model {
-  alpha ~ normal(0, 1);
-  tau ~ cauchy(0, 0.2);
-  z ~ std_normal();
-  y ~ normal(alpha + X * beta, 1);
+  // Keep the normalizing constants for marginal likelihoods.
+  target += normal_lpdf(alpha | 0, 1);
+  target += cauchy_lpdf(tau | 0, 0.2) + log(2);
+  target += std_normal_lpdf(z);
+  target += normal_lpdf(y | alpha + X * beta, 1);
 }

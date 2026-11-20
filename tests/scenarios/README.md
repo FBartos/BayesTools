@@ -31,12 +31,21 @@ plot_scenario_times(functions = c("JAGS_fit", "JAGS_bridgesampling"))
 
 For a BayesTools–RStan comparison, run `test_scenarios(filter = "^regularized$")`
 for Swiss fertility, or `test_scenarios(filter = "^regularized-contrasts$")` for
-monthly ozone. Each prior has a BayesTools fit, its matching model in
-[`stan/`](stan/), and a comparison table and interval plot. The Swiss example
-compares regression coefficients. The ozone example compares the five monthly
-deviations and the wind slope under each factor coding. The separate
-`regularized-priors` certification case compares the fits using Monte Carlo
-standard errors and checks ridge against its exact posterior mean.
+monthly ozone. Each prior has a BayesTools fit and a matching RStan program
+in [`stan/`](stan/). Alongside the estimate table and interval plot, the
+distribution plot overlays the BayesTools prior and both engines' posteriors.
+The Swiss example shows the five fertility slopes. The ozone example shows the
+five month deviations and the wind slope under each factor coding.
+
+The model-comparison tables report each engine's bridge-sampled log marginal
+likelihood and log Bayes factor for each prior relative to ridge on the same
+data and coding. A positive log Bayes factor favors the listed prior.
+The tables include approximate Monte Carlo standard errors. The two month
+codings use the same coded-coefficient scale and imply different prior
+widths for the month deviations, so each has its own ridge reference.
+The `regularized-priors`
+certification case checks the normalized Stan densities, cross-engine agreement,
+and the ridge results against independent numerical integration.
 
 Minimal scenario:
 
