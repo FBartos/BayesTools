@@ -127,11 +127,32 @@ test_that("an unconstrained comparator uses the encompassing distribution of the
 
 test_that("interval chains require one target between ordered finite bounds", {
 
-  invalid <- c("x < theta < 1", "0 < 1 < 2", "0 < theta > 1", "0 < theta = 1",
-               "0 < theta < 1 < 2", "1 <= theta <= 1", "2 < theta < 1",
-               "-Inf < theta < 1", "0 < theta < 1 / 0", "mu > 0; & 0 < x < 1")
-  for (statement in invalid) {
-    expect_error(hypothesis_parse(statement), info = statement)
+  invalid <- c(
+    "x < theta < 1"       = "bounds must be finite numeric constants",
+    "0 < 1 < 2"           = "must have a parameter expression between its bounds",
+    "0 < theta > 1"       = "must point in the same direction",
+    "0 < theta = 1"       = "Equality constraints cannot be combined",
+    "0 < theta < 1 < 2"   = "Could not parse",
+    "1 <= theta <= 1"     = "lower interval bound must be less than the upper bound",
+    "2 < theta < 1"       = "lower interval bound must be less than the upper bound",
+    "-Inf < theta < 1"    = "finite numeric literals",
+    "0 < theta < 1 / 0"   = "must evaluate to one finite numeric value",
+    "mu > 0; & 0 < x < 1" = "Could not parse",
+    # labels and complements are read from the text, so comments are refused
+    "(x > 0) # > comment"         = "cannot contain comments",
+    "0 < x < .8 # comment with >" = "cannot contain comments"
+  )
+  for (statement in names(invalid)) {
+    expect_error(hypothesis_parse(statement), invalid[[statement]], fixed = TRUE, info = statement)
+  }
+  expect_identical(hypothesis_parse("`x # y` > 0")$statements[[1L]]$right$label, "`x # y` <= 0")
+
+  # 'unconstrained' is one whole side, compared with a point or a region
+  for (statement in c("unconstrained", "unconstrained vs unconstrained",
+                      "unconstrained vs x != 0", "x != 0 vs unconstrained")) {
+    expect_error(hypothesis_parse(statement),
+                 "'unconstrained' must be one side of an explicit 'vs' comparison with a point ('=') or a region.",
+                 fixed = TRUE, info = statement)
   }
 })
 

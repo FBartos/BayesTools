@@ -866,7 +866,7 @@ hypothesis_resolve <- function(ast, catalog, namespace = NULL,
     types <- c(statement$left$type, statement$right$type)
     if("unconstrained" %in% types &&
        (!statement$explicit || !any(types %in% c("region", "point")))){
-      stop("'unconstrained' requires an explicit 'vs' comparison with a point or region.",
+      stop("'unconstrained' must be one side of an explicit 'vs' comparison with a point ('=') or a region.",
            call. = FALSE)
     }
     if(!identical(statement$source,

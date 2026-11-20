@@ -497,13 +497,30 @@
     values <- as.character(table[[column]])
     matches <- matches | values %in% labels
     for (i in which(!matches)) {
-      parsed <- hypothesis_parse(values[[i]])
-      references <- hypothesis_symbols(parsed, occurrences = TRUE)
-      matches[[i]] <- matches[[i]] || any(references[["symbol"]] %in% labels)
+      matches[[i]] <- any(.hypothesis_model_label_symbols(values[[i]]) %in% labels)
     }
   }
 
   which(matches)
+}
+
+
+# Symbols of a displayed side label. An unconstrained side references none, a
+# generated complement "not (<region>)" those of its region. A label that does
+# not parse without the fit's catalog (an alias such as `tau2_prop(study)`)
+# matches only by its exact text.
+.hypothesis_model_label_symbols <- function(label) {
+
+  if (is.na(label) || identical(label, "unconstrained")) {
+    return(character())
+  }
+  label  <- sub("^not \\((.*)\\)$", "\\1", label)
+  parsed <- tryCatch(hypothesis_parse(label), error = function(e) NULL)
+  if (is.null(parsed)) {
+    return(character())
+  }
+
+  hypothesis_symbols(parsed, occurrences = TRUE)[["symbol"]]
 }
 
 

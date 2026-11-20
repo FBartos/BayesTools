@@ -127,9 +127,10 @@
 #'
 #' \preformatted{
 #' hypothesis := statement [ "vs" statement ]
-#'             | statement "vs" "unconstrained"
-#'             | "unconstrained" "vs" statement
+#'             | comparand "vs" "unconstrained"
+#'             | "unconstrained" "vs" comparand
 #' statement  := point | region
+#' comparand  := arithmetic ( "=" | "==" ) finite_number | region
 #' point      := arithmetic ( "=" | "==" | "!=" ) finite_number
 #' region     := relation | interval
 #'             | "(" region ")"

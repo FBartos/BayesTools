@@ -2743,6 +2743,21 @@ test_that("warning ownership distinguishes exact references and expressions", {
   attr(expanded, "hypothesis_ast") <- hypothesis_parse(c("g = 0", "g = 0"))
   expect_identical(warning_rows(expanded, record("g", "g[A]", "A")), c("g[A] (1)", "g[A] (2)"))
 
+  # Unconstrained sides and generated complements are display labels, not
+  # statements; an ordinate warning still reaches every point row of a batch.
+  statements <- c("g[B] = 0.2 vs unconstrained", "unconstrained vs g[B] = 0.2",
+                  "-0.2 <= g[B] < 0.4", "g[B] = 0.2")
+  mixed <- data.frame(
+    Alternative = c("g[B] = 0.2", "unconstrained", "-0.2 <= g[B] < 0.4", "g[B] != 0.2"),
+    Null = c("unconstrained", "g[B] = 0.2", "not (-0.2 <= g[B] < 0.4)", "g[B] = 0.2"),
+    row.names = paste0("g (", 1:4, ")"),
+    check.names = FALSE
+  )
+  attr(mixed, "hypothesis_ast") <- hypothesis_parse(statements)
+  expect_identical(warning_rows(mixed, record("g", "g[B]", "B", value = 0.2)),
+                   c("g (1)", "g (2)", "g (4)"))
+  expect_identical(.hypothesis_model_table_rows_with_labels(mixed, "g[B]"), 1:4)
+
 })
 
 

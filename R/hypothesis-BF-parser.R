@@ -188,6 +188,11 @@ hypothesis_normalize_level_references <- function(text){
   brackets <- gregexpr("\\[[^][]*\\]", mask, perl = TRUE)
   matches <- regmatches(mask, brackets)[[1L]]
   regmatches(mask, brackets) <- list(strrep("x", nchar(matches)))
+  # The labels, 'vs', and complements are read from the text, so a comment
+  # would change them; the grammar has none.
+  if(grepl("#", mask, fixed = TRUE)){
+    stop("Hypothesis statements cannot contain comments ('#').", call. = FALSE)
+  }
   spaces <- gregexpr("[[:space:]]+", mask)
   regmatches(original, spaces) <- list(rep(" ", length(regmatches(mask, spaces)[[1L]])))
   mask <- gsub("[[:space:]]+", " ", mask)
@@ -197,7 +202,7 @@ hypothesis_normalize_level_references <- function(text){
   parts <- .hypothesis_split_vs(hypothesis)
   if(any(parts == "unconstrained") &&
      (length(parts) != 2L || all(parts == "unconstrained"))){
-    stop("'unconstrained' requires an explicit 'vs' comparison with a point or region.",
+    stop("'unconstrained' must be one side of an explicit 'vs' comparison with a point ('=') or a region.",
          call. = FALSE)
   }
   left  <- .parse_hypothesis_side(parts[[1L]], labels[[1L]])
