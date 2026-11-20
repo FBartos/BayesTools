@@ -423,12 +423,12 @@
     ))
   }
   # a direct random-effect SD or a scalar structured correlation with a simple
-  # continuous prior is a leaf under its own name
+  # continuous prior is a leaf under its own name (without a summary and
+  # without allocation metadata nothing else carries random-effect metadata)
   if(.bt_is_random_effect_prior(prior)){
     metadata <- .bt_random_effect_metadata(prior)
     if(is.prior.simple(prior) && !is.prior.factor(prior) && !is.prior.vector(prior) &&
-       identical(metadata$summary, "") && !metadata$allocation &&
-       (metadata$raw_sd || metadata$raw_correlation)){
+       identical(metadata$summary, "") && !metadata$allocation){
       return(list(leaves = name, reason = NULL))
     }
     return(reason(paste0(
