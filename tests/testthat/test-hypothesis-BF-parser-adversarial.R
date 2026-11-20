@@ -196,13 +196,14 @@ test_that("constant-left relations use the canonical scalar target", {
     hypothesis_render(reversed),
     "theta < 0 vs theta = 0"
   )
+  # the display labels read parameter-left too
   expect_identical(
     reversed$statements[[1L]]$left$label,
-    "0 > theta"
+    "theta < 0"
   )
   expect_identical(
     reversed$statements[[1L]]$right$label,
-    "0 = theta"
+    "theta = 0"
   )
 
   point_reference <- hypothesis_parse_point_reference(

@@ -42,8 +42,11 @@ comparison uses the encompassing distribution under the same scale and
 conditioning as the constrained side. Its mass is one. The three optional display switches are `include_densities`,
 `include_probabilities`, and `include_method`. Point ordinates and region
 probabilities use the selected prior and posterior distributions. Region
-probabilities follow the displayed sides. Table labels preserve the user's
-spelling and normalize whitespace. For precomputed densities, the method
+probabilities follow the displayed sides. Table labels and refusal messages
+preserve the user's spelling and normalize whitespace; a single relation with a
+constant on the left reads parameter-left (`0 > x` as `x < 0`), while chains,
+`a = b`, and `a - b = 0` keep their form (maintainer decision, 2026-11-20).
+Messages name the statement as written, not its rendered rewrite. For precomputed densities, the method
 label uses the estimator recorded with the ordinate or density used.
 
 ## Stages of `hypothesis_BF_model()`

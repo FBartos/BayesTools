@@ -196,7 +196,8 @@ hypothesis_normalize_level_references <- function(text){
   spaces <- gregexpr("[[:space:]]+", mask)
   regmatches(original, spaces) <- list(rep(" ", length(regmatches(mask, spaces)[[1L]])))
   mask <- gsub("[[:space:]]+", " ", mask)
-  labels <- .hypothesis_split_vs(original, mask)
+  labels <- Map(.hypothesis_parameter_left_label,
+                .hypothesis_split_vs(original, mask), .hypothesis_split_vs(mask, mask))
   hypothesis <- .hypothesis_normalize_level_references(hypothesis)
   .hypothesis_reject_assignment_arrow(hypothesis)
   parts <- .hypothesis_split_vs(hypothesis)
@@ -205,11 +206,11 @@ hypothesis_normalize_level_references <- function(text){
     stop("'unconstrained' must be one side of an explicit 'vs' comparison with a point ('=') or a region.",
          call. = FALSE)
   }
-  left  <- .parse_hypothesis_side(parts[[1L]], labels[[1L]])
+  left  <- .parse_hypothesis_side(parts[[1L]], labels[[1L]]$label)
   right <- if(length(parts) == 2L) {
-    .parse_hypothesis_side(parts[[2L]], labels[[2L]])
+    .parse_hypothesis_side(parts[[2L]], labels[[2L]]$label)
   }else{
-    .hypothesis_complement_side(left, trimws(mask))
+    .hypothesis_complement_side(left, labels[[1L]]$mask)
   }
 
   list(
@@ -218,6 +219,42 @@ hypothesis_normalize_level_references <- function(text){
     right    = right,
     explicit = length(parts) == 2L
   )
+}
+
+
+# The display label of a side keeps its notation, except that one relation
+# with a constant on the left and a parameter expression on the right reads
+# parameter-left ("0 > x" as "x < 0"), each operand as written. 'mask' is the
+# label with quoted names and levels masked, so that it locates the relation.
+.hypothesis_parameter_left_label <- function(label, mask) {
+
+  out <- list(label = label, mask = mask)
+  operators <- .hypothesis_top_operators(mask)
+  if(identical(label, "unconstrained") || length(operators) != 1L){
+    return(out)
+  }
+  relation <- operators[[1L]]
+  flipped  <- switch(relation$operator, "<" = ">", "<=" = ">=", ">" = "<", ">=" = "<=",
+                     "=" = "=", "==" = "==", "!=" = "!=", NULL)
+  lhs <- substr(mask, 1L, relation$start - 1L)
+  rhs <- substring(mask, relation$end + 1L)
+  if(is.null(flipped) || .hypothesis_text_has_symbols(lhs) ||
+     !.hypothesis_text_has_symbols(rhs)){
+    return(out)
+  }
+  flip <- function(text){
+    paste(trimws(substring(text, relation$end + 1L)), flipped,
+          trimws(substr(text, 1L, relation$start - 1L)))
+  }
+
+  list(label = flip(label), mask = flip(mask))
+}
+
+
+.hypothesis_text_has_symbols <- function(text) {
+
+  expression <- tryCatch(parse(text = text, keep.source = FALSE), error = function(e) NULL)
+  length(expression) == 1L && length(all.vars(expression[[1L]])) > 0L
 }
 
 

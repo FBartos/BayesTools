@@ -276,9 +276,14 @@ test_that("hypothesis labels preserve input notation on each side", {
   }
   expect_identical(sides(" -.10   <=   `mu  vs  x` < 1e-1 "),
     c("-.10 <= `mu  vs  x` < 1e-1", "not (-.10 <= `mu  vs  x` < 1e-1)"))
+  # one relation with the constant on the left reads parameter-left
   expect_identical(sides("0.00   ==   f[a  vs  b]"),
-    c("0.00 == f[a  vs  b]", "0.00 != f[a  vs  b]"))
-  expect_identical(sides("1e-1 < (mu)"), c("1e-1 < (mu)", "1e-1 >= (mu)"))
+    c("f[a  vs  b] == 0.00", "f[a  vs  b] != 0.00"))
+  expect_identical(sides("1e-1 < (mu)"), c("(mu) > 1e-1", "(mu) <= 1e-1"))
+  expect_identical(sides("0   > `x < y` vs 0 = `x < y`"), c("`x < y` < 0", "`x < y` = 0"))
+  expect_identical(sides("unconstrained vs .2 = mu"), c("unconstrained", "mu = .2"))
+  expect_identical(sides("mu = nu"), c("mu = nu", "mu != nu"))
+  expect_identical(sides("mu - nu < 0"), c("mu - nu < 0", "mu - nu >= 0"))
   expect_identical(sides("((abs(x=mu) < .10))"),
     c("((abs(x=mu) < .10))", "((abs(x=mu) >= .10))"))
   expect_identical(sides("f[a  vs  b] < .10   VS    unconstrained"),

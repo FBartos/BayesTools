@@ -1,6 +1,6 @@
 # development version
 ### Breaking changes
-- `hypothesis_BF()` and `hypothesis_BF_model()` replace `columns` with `include_densities`, `include_probabilities`, and `include_method`; the `prior` and `posterior` columns are replaced by point densities and region probabilities, and table labels keep the notation of the hypothesis
+- `hypothesis_BF()` and `hypothesis_BF_model()` replace `columns` with `include_densities`, `include_probabilities`, and `include_method`; the `prior` and `posterior` columns are replaced by point densities and region probabilities, and table labels keep the notation of the hypothesis, with a constant on the right of a single relation
 - hypothesis statements cannot contain `#` comments
 
 ### Features
