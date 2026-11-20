@@ -394,7 +394,16 @@ test_that("blocks refuse guarded priors with the declaration error class", {
   }
   summary_sd <- random_prior(sd_prior)
   attr(summary_sd, "random_summary") <- "sd"
+  # simple scalar priors of a variance allocation that are neither its plain SD
+  # nor its Dirichlet weights, with only the allocation metadata or also that of
+  # a direct SD: only the direct SDs and correlations outside an allocation join
+  allocation_only <- sd_prior
+  attr(allocation_only, "random_allocation") <- "tot"
+  allocation_sd_metadata <- random_prior(sd_prior)
+  attr(allocation_sd_metadata, "random_allocation") <- "tot"
   random_guarded <- list(
+    re_allocation = allocation_only,
+    re_allocation_sd_metadata = allocation_sd_metadata,
     re_point = random_prior(prior("point", list(0.3))),
     re_s_s = random_prior(prior_spike_and_slab(sd_prior)),
     re_mix = random_prior(prior_mixture(list(sd_prior, prior("gamma", list(2, 2))))),
@@ -435,6 +444,8 @@ test_that("blocks refuse guarded priors with the declaration error class", {
   expect_block_error("mu__xREx__g_d", random_other)
   expect_block_error("re_vector", random_other)
   expect_block_error("re_summary", random_other)
+  expect_block_error("re_allocation", random_other)
+  expect_block_error("re_allocation_sd_metadata", random_other)
   expect_block_error("re_point", "it is a point prior")
   expect_block_error("re_s_s", "it is a spike-and-slab prior")
   expect_block_error("re_mix", "it is a mixture prior")
