@@ -21,7 +21,9 @@ JAGS_diagnostics(
   short_name = FALSE,
   parameter_names = FALSE,
   formula_prefix = TRUE,
-  ...
+  ...,
+  statistic = "value",
+  batch_size = NULL
 )
 
 JAGS_diagnostics_density(
@@ -48,7 +50,9 @@ JAGS_diagnostics_trace(
   short_name = FALSE,
   parameter_names = FALSE,
   formula_prefix = TRUE,
-  ...
+  ...,
+  statistic = "value",
+  batch_size = NULL
 )
 
 JAGS_diagnostics_autocorrelation(
@@ -116,6 +120,21 @@ printed}
 be printed. Defaults to \code{TRUE}.}
 
 \item{...}{additional arguments}
+
+\item{statistic}{trace quantity. \code{"value"} shows parameter draws.
+\code{"inclusion"} shows the fraction of each batch in the declared
+alternative group. \code{"component"} shows the fraction in each individual
+mixture component, on separate plots, including unvisited components. A
+binary null/alternative decision shows the alternative alone.
+\code{"switching"} shows the fraction of adjacent retained draws in the
+same batch that changed component, including switches within a group.
+The last three statistics use a monitored indicator and need a trace plot.}
+
+\item{batch_size}{optional number of retained draws per batch for an indicator
+trace. An explicit width keeps the final partial batch. By default the
+shortest chain is divided into approximately the square root of its length
+in balanced batches; longer chains use the same approximate width.
+Switching batches need two draws for a defined value.}
 }
 \value{
 \code{diagnostics} returns either \code{NULL} if \code{plot_type = "base"}
@@ -127,6 +146,11 @@ Creates density plots, trace plots, and autocorrelation plots
 for a given parameter of a JAGS model.
 }
 \details{
+Indicator traces place each batch at its mean original iteration
+and keep chains separate. A switching batch with one draw has a missing
+rate. An unavailable indicator diagnostic raises a
+\code{BayesTools_plot_condition}.
+
 The trace shows the retained MCMC iteration of every draw on its
 x axis (thinned chains keep their original positions).
 Autocorrelation uses the retained original iteration positions.

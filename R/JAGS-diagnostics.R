@@ -14,6 +14,23 @@
 #' @param ylim y plotting range
 #' @param lags number of lags to be shown for the autocorrelation plot.
 #' Defaults to \code{30}.
+#' @param statistic trace quantity. \code{"value"} shows parameter draws.
+#' \code{"inclusion"} shows the fraction of each batch in the declared
+#' alternative group. \code{"component"} shows the fraction in each individual
+#' mixture component, on separate plots, including unvisited components. A
+#' binary null/alternative decision shows the alternative alone.
+#' \code{"switching"} shows the fraction of adjacent retained draws in the
+#' same batch that changed component, including switches within a group.
+#' The last three statistics use a monitored indicator and need a trace plot.
+#' @param batch_size optional number of retained draws per batch for an indicator
+#' trace. An explicit width keeps the final partial batch. By default the
+#' shortest chain is divided into approximately the square root of its length
+#' in balanced batches; longer chains use the same approximate width.
+#' Switching batches need two draws for a defined value.
+#' @details Indicator traces place each batch at its mean original iteration
+#' and keep chains separate. A switching batch with one draw has a missing
+#' rate. An unavailable indicator diagnostic raises a
+#' \code{BayesTools_plot_condition}.
 #' @details The trace shows the retained MCMC iteration of every draw on its
 #' x axis (thinned chains keep their original positions).
 #' Autocorrelation uses the retained original iteration positions.
@@ -59,7 +76,8 @@
 JAGS_diagnostics                 <- function(fit, parameter, type, plot_type = "base",
                                              xlim = NULL, ylim = NULL, lags = 30, n_points = 1000,
                                              transformations = NULL, transform_factors = FALSE,
-                                             short_name = FALSE, parameter_names = FALSE, formula_prefix = TRUE, ...){
+                                             short_name = FALSE, parameter_names = FALSE, formula_prefix = TRUE, ...,
+                                             statistic = "value", batch_size = NULL){
 
   if("transform_orthonormal" %in% ...names()){
     stop("The 'transform_orthonormal' argument was removed; use 'transform_factors = TRUE'.",
@@ -74,6 +92,17 @@ JAGS_diagnostics                 <- function(fit, parameter, type, plot_type = "
 
   check_char(type, "type", allow_values = c("density", "trace", "autocorrelation"))
   check_char(plot_type, "plot_type", allow_values = c("base", "ggplot"))
+  check_char(statistic, "statistic", allow_values = c("value", "inclusion", "component", "switching"), allow_NA = FALSE)
+  indicator_trace <- statistic != "value"
+  if(indicator_trace && type != "trace"){
+    .bt_diagnostics_unavailable("Indicator statistics require 'type = \"trace\"'.")
+  }
+  if(!is.null(batch_size) && !indicator_trace){
+    .bt_diagnostics_unavailable("'batch_size' applies only to an indicator trace.")
+  }
+  if(!is.null(batch_size)){
+    check_int(batch_size, "batch_size", lower = if(statistic == "switching") 2 else 1, allow_NA = FALSE)
+  }
   if(type == "autocorrelation"){
     check_int(
       lags,
@@ -102,19 +131,24 @@ JAGS_diagnostics                 <- function(fit, parameter, type, plot_type = "
   .bt_require_fit_contract(fit)
 
   # do not produce diagnostics for a spike prior
-  if(is.prior.point(prior_list[[parameter]])){
+  if(!indicator_trace && is.prior.point(prior_list[[parameter]])){
     message("No diagnostic plots are produced for a spike prior distribution")
     return(NULL)
   }
 
   # a parameter without a prior is not sampled: there are no draws to diagnose
-  if(is.prior.none(prior_list[[parameter]])){
+  if(!indicator_trace && is.prior.none(prior_list[[parameter]])){
     message("No diagnostic plots are produced for a parameter without a prior distribution (prior_none())")
     return(NULL)
   }
 
   # prepare the plot data
-  plot_data <- .diagnostics_plot_data(fit = fit, parameter = parameter, prior_list = prior_list, transformations = transformations, transform_factors = transform_factors)
+  if(indicator_trace){
+    plot_data <- .diagnostics_indicator_data(fit, parameter, prior_list[[parameter]], statistic, batch_size)
+    if(is.null(ylim)) ylim <- c(0, 1)
+  }else{
+    plot_data <- .diagnostics_plot_data(fit = fit, parameter = parameter, prior_list = prior_list, transformations = transformations, transform_factors = transform_factors)
+  }
 
   # columns declared constant by the prior (fixed weightfunction bins) have no
   # density or autocorrelation: with nothing else to show, behave as for a spike
@@ -146,7 +180,9 @@ JAGS_diagnostics                 <- function(fit, parameter, type, plot_type = "
 
   # get default plot settings
   dots      <- list(...)
-  main      <- if(parameter %in% c("alpha", "pi_null")){
+  main      <- if(indicator_trace){
+    if(statistic == "component") paste0(parameter_name, " (", names(plot_data), ")") else parameter_name
+  }else if(parameter %in% c("alpha", "pi_null")){
     parameter
   }else{
     print(display_prior, plot = TRUE, short_name = short_name, parameter_names = parameter_names)
@@ -163,6 +199,10 @@ JAGS_diagnostics                 <- function(fit, parameter, type, plot_type = "
     "trace"           = parameter_name,
     "autocorrelation" = paste0("Autocorrelation(", parameter_name, ")")
   )
+  if(indicator_trace){
+    ylab <- switch(statistic, inclusion = "Inclusion probability",
+                   component = "Component probability", switching = "Fraction switching")
+  }
 
 
   if(is.null(dots[["main"]])) dots$main <-  main
@@ -182,6 +222,7 @@ JAGS_diagnostics                 <- function(fit, parameter, type, plot_type = "
   for(i in seq_along(plot_data)){
 
     temp_dots <- dots
+    if(indicator_trace && length(dots$main) > 1L && is.character(dots$main)) temp_dots$main <- dots$main[i]
 
     temp_dots[["xlab"]] <- if(length(temp_dots[["xlab"]]) > 1) temp_dots[["xlab"]][i] else temp_dots[["xlab"]]
     temp_dots[["ylab"]] <- if(length(temp_dots[["ylab"]]) > 1) temp_dots[["ylab"]][i] else temp_dots[["ylab"]]
@@ -204,7 +245,17 @@ JAGS_diagnostics                 <- function(fit, parameter, type, plot_type = "
       temp_args[["lwd"]]       <- dots[["lwd"]][j]
       temp_args[["lty"]]       <- dots[["lty"]][j]
 
-      if(plot_type == "ggplot"){
+      if(indicator_trace && sum(is.finite(temp_args$plot_data$y)) == 1L){
+        point <- temp_args$plot_data
+        keep <- is.finite(point$y)
+        if(plot_type == "ggplot"){
+          plots[[i]] <- plots[[i]] + ggplot2::geom_point(
+            data = data.frame(x = point$x[keep], y = point$y[keep]),
+            mapping = ggplot2::aes(x = .data$x, y = .data$y), colour = temp_args$col)
+        }else{
+          graphics::points(point$x[keep], point$y[keep], col = temp_args$col, pch = 16)
+        }
+      }else if(plot_type == "ggplot"){
         plots[[i]] <- plots[[i]] + do.call(switch(
           type,
           "density"         = .geom_diagnostics.density,
@@ -228,6 +279,7 @@ JAGS_diagnostics                 <- function(fit, parameter, type, plot_type = "
   if(plot_type == "base"){
     return(invisible())
   }else if(plot_type == "ggplot"){
+    if(indicator_trace) names(plots) <- names(plot_data)
     if(length(plots) == 1){
       plots <- plots[[1]]
     }
@@ -253,10 +305,11 @@ JAGS_diagnostics_density         <- function(fit, parameter, plot_type = "base",
 JAGS_diagnostics_trace           <- function(fit, parameter, plot_type = "base",
                                              ylim = NULL,
                                              transformations = NULL, transform_factors = FALSE,
-                                             short_name = FALSE, parameter_names = FALSE, formula_prefix = TRUE, ...){
+                                             short_name = FALSE, parameter_names = FALSE, formula_prefix = TRUE, ...,
+                                             statistic = "value", batch_size = NULL){
 
   JAGS_diagnostics(fit = fit, parameter = parameter, plot_type = plot_type, type = "trace",
-                   ylim = ylim,
+                   ylim = ylim, statistic = statistic, batch_size = batch_size,
                    transformations = transformations, transform_factors = transform_factors,
                    short_name = short_name, parameter_names = parameter_names, formula_prefix = formula_prefix, ...)
 }
@@ -273,6 +326,15 @@ JAGS_diagnostics_autocorrelation <- function(fit, parameter, plot_type = "base",
                    short_name = short_name, parameter_names = parameter_names, formula_prefix = formula_prefix, ...)
 }
 
+.diagnostics_iterations <- function(chain){
+
+  mcpar <- attr(chain, "mcpar", exact = TRUE)
+  if(is.numeric(mcpar) && length(mcpar) == 3L && all(is.finite(mcpar))){
+    return(seq(from = mcpar[1L], by = mcpar[3L], length.out = nrow(chain)))
+  }
+  seq_len(nrow(chain))
+}
+
 .diagnostics_plot_data                 <- function(fit, parameter, prior_list, transformations, transform_factors){
 
   check_list(transformations, "transformations", allow_NULL = TRUE)
@@ -285,14 +347,7 @@ JAGS_diagnostics_autocorrelation <- function(fit, parameter, plot_type = "base",
   })
   # the retained MCMC iteration of every draw (thinned and started chains
   # keep their original positions)
-  samples_iter  <- lapply(seq_along(model_samples_list), function(i) {
-    mcpar <- attr(model_samples_list[[i]], "mcpar", exact = TRUE)
-    n     <- nrow(model_samples_list[[i]])
-    if(is.numeric(mcpar) && length(mcpar) == 3L && all(is.finite(mcpar))){
-      return(seq(from = mcpar[1L], by = mcpar[3L], length.out = n))
-    }
-    return(seq_len(n))
-  })
+  samples_iter <- lapply(model_samples_list, .diagnostics_iterations)
   model_samples <- do.call(rbind, model_samples_list)
 
   # the transformation of the requested parameter applies to the columns the
