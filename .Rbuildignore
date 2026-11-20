@@ -17,7 +17,6 @@
 ^BayesTools_.*\.tar\.gz$
 (^|/)Rplots\.pdf$
 ^models($|/)
-^src/Makevars$
 ^src/.*\.(dll|o|so)$
 ^doc$
 ^Meta$
