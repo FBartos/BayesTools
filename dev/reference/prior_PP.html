@@ -19,7 +19,7 @@ by the plot function."><meta name="robots" content="noindex"><!-- mathjax --><sc
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-danger" data-toggle="tooltip" data-placement="bottom" title="In-development version">0.4.0.9006</span>
+        <span class="version label label-danger" data-toggle="tooltip" data-placement="bottom" title="In-development version">0.4.0.9007</span>
       </span>
     </div>
 
@@ -101,6 +101,11 @@ possible options are</p><dl><dt><code>"point"</code></dt>
 <dt><code>"normal"</code></dt>
 <dd><p>for a normal distribution characterized
 by a <code>mean</code> and <code>sd</code> parameters.</p></dd>
+
+<dt><code>"laplace"</code></dt>
+<dd><p>for a double exponential distribution with
+<code>location</code> and positive <code>scale</code>. Its standard deviation is
+<code>sqrt(2) * scale</code>.</p></dd>
 
 <dt><code>"lognormal"</code></dt>
 <dd><p>for a lognormal distribution characterized
