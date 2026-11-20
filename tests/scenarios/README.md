@@ -29,6 +29,15 @@ plot_scenario_times("penicillin", unit = "m")
 plot_scenario_times(functions = c("JAGS_fit", "JAGS_bridgesampling"))
 ```
 
+For a BayesTools–RStan comparison, run `test_scenarios(filter = "^regularized$")`
+for Swiss fertility, or `test_scenarios(filter = "^regularized-contrasts$")` for
+monthly ozone. Each prior has a BayesTools fit, its matching model in
+[`stan/`](stan/), and a comparison table and interval plot. The Swiss example
+compares regression coefficients. The ozone example compares the five monthly
+deviations and the wind slope under each factor coding. The separate
+`regularized-priors` certification case compares the fits using Monte Carlo
+standard errors and checks ridge against its exact posterior mean.
+
 Minimal scenario:
 
 ```r

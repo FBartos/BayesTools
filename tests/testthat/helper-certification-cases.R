@@ -8,8 +8,8 @@
 # with --all. 'native' marks a case that runs JAGS, whose key includes the
 # native sources and the JAGS version; a case that reaches a package function
 # calling a native routine includes the native sources without it.
-# 'references' names the directories (relative to tests/) of the reference
-# baselines a case compares with; their reviewed files enter its key.
+# 'references' names directories (relative to tests/) of reference baselines
+# or independent model programs used by a case; their files enter its key.
 bayestools_certification_cases <- function() {
   list(
     `count-marginal-likelihood` = list(
@@ -40,6 +40,11 @@ bayestools_certification_cases <- function() {
     predictions = list(
       description = "Fixed, conditional, and marginal predictions of JAGS_predict_formula() against the exact Gaussian posterior.",
       native      = TRUE
+    ),
+    `regularized-priors` = list(
+      description = "Scalar and centered-factor shrinkage posteriors against independent Stan regressions and exact Gaussian ridge integration.",
+      native      = TRUE,
+      references  = "scenarios/stan"
     ),
     `savage-dickey-ordinates` = list(
       description = "Savage-Dickey Bayes factors at nulls away from the posterior mode against exact conjugate ordinates.",

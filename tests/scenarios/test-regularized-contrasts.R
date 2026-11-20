@@ -1,120 +1,162 @@
 if (file.exists("helper-scenarios.R")) source("helper-scenarios.R") else source("tests/scenarios/helper-scenarios.R")
 scenario_start("regularized-contrasts")
+# testthat::test_file("tests/scenarios/test-regularized-contrasts.R")
 
-# New York daily ozone measurements, May through September 1973.
-# A five-level month effect and a standardized wind slope share a global scale.
-testthat::test_that("shrinkage of monthly ozone effects", {
-  dat <- na.omit(datasets::airquality[c("Ozone", "Month", "Wind")])
-  dat$Month <- factor(dat$Month, labels = month.abb[5:9])
-  dat$Wind <- as.numeric(scale(dat$Wind))
-  dat$Ozone <- as.numeric(scale(dat$Ozone))
-  n_months <- nlevels(dat$Month)
-  conversion <- sqrt(1 - 1 / n_months)
-  # Construct the reference bases from base R, independently of JAGS_formula().
-  helmert <- contr.helmert(n_months)
+### Description
+# Do the daily New York ozone readings differ by month after accounting for
+# wind? Compare May through September at average wind. Each month effect is
+# a deviation from the unweighted mean of the five months. Both ozone and
+# wind are standardized, and the residual SD is fixed at one.
+#
+# BayesTools and RStan use the same prior on the coded coefficients. With
+# either contrast the four month coefficients shrink together. Wind has its
+# own shrinkage unit and shares the global scale with Month.
+
+testthat::test_that("Monthly ozone effects under centered shrinkage priors", {
+
+  ozone <- na.omit(airquality[c("Ozone", "Month", "Wind")])
+  ozone$Ozone <- as.numeric(scale(ozone$Ozone))
+  ozone$Wind  <- as.numeric(scale(ozone$Wind))
+  ozone$Month <- factor(ozone$Month, labels = month.abb[5:9])
+  months <- levels(ozone$Month)
+
+  ### BayesTools regression ----
+  likelihood <- "model {
+    for (i in 1:N) {
+      y[i] ~ dnorm(mu[i], 1)
+    }
+  }"
+  global <- prior("cauchy", list(0, 0.2), truncation = list(0, Inf))
+  fit_ozone <- function(shrinkage) {
+    JAGS_fit(
+      likelihood, data = list(y = ozone$Ozone, N = nrow(ozone)), prior_list = list(),
+      formula_list = list(mu = ~ Month + Wind), formula_data_list = list(mu = ozone),
+      formula_prior_list = list(mu = list(intercept = prior("normal", list(0, 1)), sh = shrinkage)),
+      chains = 3, adapt = 1500, burnin = 3000, sample = 15000, seed = 73429
+    )
+  }
+
+  ### RStan regression ----
+  # Build the same two design matrices independently from base R Helmert
+  # contrasts. The mean-difference rows have unit length, whereas the
+  # orthonormal columns have unit length.
+  helmert <- contr.helmert(months)
   orthonormal <- sweep(helmert, 2, sqrt(colSums(helmert^2)), "/")
-  bases <- list(orthonormal = orthonormal, meandif = orthonormal / conversion)
-  families <- c("ridge", "lasso", "horseshoe", "regularized_horseshoe")
-  stan_file <- file.path(.scenario_config()$root, "stan", "regularized-contrasts.stan")
-  stan_model <- NULL
-  reference <- list()
-  for (contrast in names(bases)) {
-    X <- cbind(bases[[contrast]][as.integer(dat$Month), ], dat$Wind)
-    for (family in families) {
-      key <- paste(contrast, family, sep = "_")
-      reference[[key]] <- scenario_fit(paste0("stan_", key), {
-        if (is.null(stan_model)) {
-          stan_model <- rstan::stan_model(file = stan_file, auto_write = FALSE)
-        }
-        fit <- rstan::sampling(stan_model,
-          data = list(N = nrow(X), K = ncol(X), X = X, y = dat$Ozone,
-                      family = match(family, families)),
-          chains = 3, cores = 3, iter = 6500, warmup = 1500, seed = 6283, refresh = 0,
-          control = list(adapt_delta = 0.995, max_treedepth = 14)
-        )
-        pars <- c("alpha", "beta", "tau", if (family %in% families[3:4]) "lambda")
-        diagnostics <- rstan::get_sampler_params(fit, inc_warmup = FALSE)
-        list(draws = as.array(fit, pars = pars), divergences = sum(vapply(
-          diagnostics, function(chain) sum(chain[, "divergent__"]), numeric(1))))
-      }, cache_version = strtoi(substr(tools::md5sum(stan_file), 1, 7), base = 16L) + 1L)
-    }
+  meandif <- orthonormal / sqrt(1 - 1 / length(months))
+
+  stan_data <- function(basis) {
+    X <- cbind(basis[as.integer(ozone$Month), ], Wind = ozone$Wind)
+    list(N = nrow(X), K = ncol(X), X = X, y = ozone$Ozone)
+  }
+  data_orthonormal <- stan_data(orthonormal)
+  data_meandif     <- stan_data(meandif)
+  # One horseshoe local scale for all four month contrasts, another for wind.
+  local_scales <- list(J = 2L, unit = c(1L, 1L, 1L, 1L, 2L))
+
+  fit_stan <- function(file, data) {
+    rstan::sampling(
+      scenario_stan_model(file), data = data, chains = 3, cores = 3,
+      iter = 6500, warmup = 1500, seed = 6283, refresh = 0,
+      control = list(adapt_delta = 0.995, max_treedepth = 14)
+    )
   }
 
-  intercept <- prior("normal", list(0, 1))
-  prior_group <- function(family, contrast, units = 1) {
-    global <- prior("cauchy", list(0, 0.2 * units), truncation = list(0, Inf))
-    if (family == "regularized_horseshoe") {
-      prior_regularized("horseshoe", global, contrast = contrast, slab_scale = 2 * units, slab_df = 4)
-    } else {
-      prior_regularized(family, global, contrast = contrast)
-    }
-  }
-  for (family in families) {
-    # Holding primitive draws fixed, the same coded scale induces larger
-    # level effects under meandif. Rescale both global and finite slab for
-    # that basis to recover the orthonormal prior on the month effects.
-    level_draws <- function(contrast, units) {
-      term <- JAGS_formula(~ Month, "mu", dat, list(
-        intercept = intercept, sh = prior_group(family, contrast, units)
-      ))$prior_list$mu_Month
-      set.seed(50931)
-      unname(rng(term, 256L))
-    }
-    ortho <- level_draws("orthonormal", 1)
-    testthat::expect_equal(level_draws("meandif", 1) * conversion, ortho, tolerance = 1e-10)
-    testthat::expect_equal(level_draws("meandif", conversion), ortho, tolerance = 1e-10)
+  ### Outcomes to compare ----
+  # BayesTools can report the five month deviations directly. In RStan,
+  # multiply its four month coefficients by the contrast row for each month.
+  # The last coefficient is the change for a one-SD increase in wind.
+  effects <- c(months, "Wind")
+  ozone_posteriors <- function(jags, stan, basis) {
+    jags_levels <- JAGS_estimates_table(jags, transform_factors = TRUE, return_samples = TRUE)
+    jags_columns <- setNames(c(paste0("(mu) Month[dif: ", months, "]"), "(mu) Wind"), effects)
+    beta <- rstan::extract(stan, pars = "beta")$beta
+    stan_levels <- beta[, 1:4] %*% t(basis)
+    colnames(stan_levels) <- months
+    list(BayesTools = scenario_draws(jags_levels, jags_columns),
+         RStan = cbind(stan_levels, Wind = beta[, 5]))
   }
 
-  summarize <- function(draws, columns, C) {
-    values <- lapply(columns, function(id) draws[, , id])
-    names(values) <- names(columns)
-    coefficients <- values[paste0("b", seq_len(ncol(C)))]
-    for (i in seq_len(nrow(C))) {
-      values[[paste0("month[", levels(dat$Month)[i], "]")]] <-
-        Reduce(`+`, Map(`*`, coefficients, C[i, ]))
-    }
-    radius <- sqrt(Reduce(`+`, lapply(coefficients, `^`, 2)))
-    values[["P(month radius < 0.75)"]] <- (radius < 0.75) * 1
-    for (id in intersect(c("global", "month local", "wind local"), names(values))) {
-      values[[paste0("log(", id, ")")]] <- log(values[[id]])
-      values[[id]] <- NULL
-    }
-    t(vapply(values, function(x) {
-      c(mean = mean(x), mcse = posterior::mcse_mean(x), rhat = posterior::rhat(x))
-    }, numeric(3)))
-  }
-  for (contrast in names(bases)) {
-    C <- bases[[contrast]]
-    for (family in families) {
-      key <- paste(contrast, family, sep = "_")
-      jags <- scenario_fit(paste0("jags_", key), {
-        fit <- JAGS_fit("model { for(i in 1:N) { y[i] ~ dnorm(mu[i], 1) } }",
-          data = list(y = dat$Ozone, N = nrow(dat)), prior_list = list(),
-          formula_list = list(mu = ~ Month + Wind), formula_data_list = list(mu = dat),
-          formula_prior_list = list(mu = list(intercept = intercept, sh = prior_group(family, contrast))),
-          chains = 3, adapt = 1500, burnin = 3000, sample = 15000, seed = 73429
-        )
-        aperm(as.array(coda::as.mcmc.list(fit)), c(1, 3, 2))
-      })
-      idx <- seq_len(ncol(C))
-      labels <- c("intercept", paste0("b", idx), "wind", "global")
-      jags_columns <- setNames(c("mu_intercept", sprintf("mu_Month[%d]", idx), "mu_Wind", "mu_sh_global"), labels)
-      stan_columns <- setNames(c("alpha", sprintf("beta[%d]", seq_len(n_months)), "tau"), labels)
-      if (family %in% families[3:4]) {
-        jags_columns <- c(jags_columns, "month local" = "mu_Month_local_1", "wind local" = "mu_Wind_local_1")
-        stan_columns <- c(stan_columns, "month local" = "lambda[1]", "wind local" = "lambda[2]")
-      }
+  ### Mean-difference contrasts ----
 
-      a <- summarize(reference[[key]]$draws, stan_columns, C)
-      b <- summarize(jags, jags_columns, C)
-      se <- sqrt(a[, "mcse"]^2 + b[, "mcse"]^2)
-      z <- (b[, "mean"] - a[, "mean"]) / se
-      table <- cbind(Stan = a[, "mean"], JAGS = b[, "mean"], MCSE = se, z = z,
-                     Rhat = pmax(a[, "rhat"], b[, "rhat"]))
-      scenario_text(paste0("comparison-", key), print(round(table, 4)))
-      testthat::expect_equal(reference[[key]]$divergences, 0)
-      testthat::expect_lt(max(abs(z)), 4.5)
-      testthat::expect_lt(max(table[, "Rhat"]), 1.02)
-    }
-  }
+  jags_ridge_meandif <- scenario_fit("jags_meandif_ridge", {
+    fit_ozone(prior_regularized("ridge", global, contrast = "meandif"))
+  })
+  stan_ridge_meandif <- scenario_fit("stan_meandif_ridge", {
+    fit_stan("ridge.stan", data_meandif)
+  }, cache_version = scenario_stan_version("ridge.stan"))
+  scenario_comparison("comparison-meandif_ridge", effects,
+    posteriors = ozone_posteriors(jags_ridge_meandif, stan_ridge_meandif, meandif),
+    main = "Ridge with mean-difference month contrasts", show_table = TRUE)
+
+  jags_lasso_meandif <- scenario_fit("jags_meandif_lasso", {
+    fit_ozone(prior_regularized("lasso", global, contrast = "meandif"))
+  })
+  stan_lasso_meandif <- scenario_fit("stan_meandif_lasso", {
+    fit_stan("grouped-lasso.stan", data_meandif)
+  }, cache_version = scenario_stan_version("grouped-lasso.stan"))
+  scenario_comparison("comparison-meandif_lasso", effects,
+    posteriors = ozone_posteriors(jags_lasso_meandif, stan_lasso_meandif, meandif),
+    main = "Group lasso with mean-difference month contrasts", show_table = TRUE)
+
+  jags_horseshoe_meandif <- scenario_fit("jags_meandif_horseshoe", {
+    fit_ozone(prior_regularized("horseshoe", global, contrast = "meandif"))
+  })
+  stan_horseshoe_meandif <- scenario_fit("stan_meandif_horseshoe", {
+    fit_stan("horseshoe.stan", c(data_meandif, local_scales))
+  }, cache_version = scenario_stan_version("horseshoe.stan"))
+  scenario_comparison("comparison-meandif_horseshoe", effects,
+    posteriors = ozone_posteriors(jags_horseshoe_meandif, stan_horseshoe_meandif, meandif),
+    main = "Horseshoe with mean-difference month contrasts", show_table = TRUE)
+
+  jags_regularized_horseshoe_meandif <- scenario_fit("jags_meandif_regularized_horseshoe", {
+    fit_ozone(prior_regularized("horseshoe", global, contrast = "meandif", slab_scale = 2, slab_df = 4))
+  })
+  stan_regularized_horseshoe_meandif <- scenario_fit("stan_meandif_regularized_horseshoe", {
+    fit_stan("finite-slab-horseshoe.stan", c(data_meandif, local_scales))
+  }, cache_version = scenario_stan_version("finite-slab-horseshoe.stan"))
+  scenario_comparison("comparison-meandif_regularized_horseshoe", effects,
+    posteriors = ozone_posteriors(jags_regularized_horseshoe_meandif, stan_regularized_horseshoe_meandif, meandif),
+    main = "Finite-slab horseshoe with mean-difference month contrasts", show_table = TRUE)
+
+  ### Orthonormal contrasts ----
+
+  jags_ridge_orthonormal <- scenario_fit("jags_orthonormal_ridge", {
+    fit_ozone(prior_regularized("ridge", global, contrast = "orthonormal"))
+  })
+  stan_ridge_orthonormal <- scenario_fit("stan_orthonormal_ridge", {
+    fit_stan("ridge.stan", data_orthonormal)
+  }, cache_version = scenario_stan_version("ridge.stan"))
+  scenario_comparison("comparison-orthonormal_ridge", effects,
+    posteriors = ozone_posteriors(jags_ridge_orthonormal, stan_ridge_orthonormal, orthonormal),
+    main = "Ridge with orthonormal month contrasts", show_table = TRUE)
+
+  jags_lasso_orthonormal <- scenario_fit("jags_orthonormal_lasso", {
+    fit_ozone(prior_regularized("lasso", global, contrast = "orthonormal"))
+  })
+  stan_lasso_orthonormal <- scenario_fit("stan_orthonormal_lasso", {
+    fit_stan("grouped-lasso.stan", data_orthonormal)
+  }, cache_version = scenario_stan_version("grouped-lasso.stan"))
+  scenario_comparison("comparison-orthonormal_lasso", effects,
+    posteriors = ozone_posteriors(jags_lasso_orthonormal, stan_lasso_orthonormal, orthonormal),
+    main = "Group lasso with orthonormal month contrasts", show_table = TRUE)
+
+  jags_horseshoe_orthonormal <- scenario_fit("jags_orthonormal_horseshoe", {
+    fit_ozone(prior_regularized("horseshoe", global, contrast = "orthonormal"))
+  })
+  stan_horseshoe_orthonormal <- scenario_fit("stan_orthonormal_horseshoe", {
+    fit_stan("horseshoe.stan", c(data_orthonormal, local_scales))
+  }, cache_version = scenario_stan_version("horseshoe.stan"))
+  scenario_comparison("comparison-orthonormal_horseshoe", effects,
+    posteriors = ozone_posteriors(jags_horseshoe_orthonormal, stan_horseshoe_orthonormal, orthonormal),
+    main = "Horseshoe with orthonormal month contrasts", show_table = TRUE)
+
+  jags_regularized_horseshoe_orthonormal <- scenario_fit("jags_orthonormal_regularized_horseshoe", {
+    fit_ozone(prior_regularized("horseshoe", global, contrast = "orthonormal", slab_scale = 2, slab_df = 4))
+  })
+  stan_regularized_horseshoe_orthonormal <- scenario_fit("stan_orthonormal_regularized_horseshoe", {
+    fit_stan("finite-slab-horseshoe.stan", c(data_orthonormal, local_scales))
+  }, cache_version = scenario_stan_version("finite-slab-horseshoe.stan"))
+  scenario_comparison("comparison-orthonormal_regularized_horseshoe", effects,
+    posteriors = ozone_posteriors(jags_regularized_horseshoe_orthonormal, stan_regularized_horseshoe_orthonormal, orthonormal),
+    main = "Finite-slab horseshoe with orthonormal month contrasts", show_table = TRUE)
 })

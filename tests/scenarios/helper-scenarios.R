@@ -206,6 +206,31 @@ scenario_start <- function(name, regenerate = NULL, refit = NULL, update = NULL,
 }
 
 
+# Include the Stan source in the fitted-model cache key. Read lines so that
+# identical programs get the same key in Windows and Unix checkouts.
+scenario_stan_version <- function(file) {
+
+  source <- readLines(file.path(.scenario_config()$root, "stan", file), warn = FALSE)
+  strtoi(substr(digest::digest(source, algo = "sha256"), 1L, 7L), base = 16L) + 1L
+}
+
+
+# Several fits can use the same Stan program with different design matrices.
+scenario_stan_model <- local({
+
+  compiled <- new.env(parent = emptyenv())
+  function(file) {
+
+    key <- paste(file, scenario_stan_version(file))
+    if (is.null(compiled[[key]])) {
+      path <- file.path(.scenario_config()$root, "stan", file)
+      compiled[[key]] <- rstan::stan_model(file = path, auto_write = FALSE)
+    }
+    compiled[[key]]
+  }
+})
+
+
 .scenario_fit_paths <- function(name) {
 
   config <- .scenario_config()

@@ -200,6 +200,7 @@ bayestools_test_profile_contexts <- list(
     "certification-marginal-likelihood",
     "certification-model-averaging",
     "certification-predictions",
+    "certification-regularized-priors",
     "certification-savage-dickey-ordinates",
     "certification-scaled-priors",
     "certification-simplex-priors"
