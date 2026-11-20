@@ -23,7 +23,7 @@
     components <- list(
       .bt_dnode_prior_mixture_component(paste0(parameter, "_variable"), variable)
     )
-    coordinates <- .bt_dnode_prior_mixture_names(parameter, variable)
+    coordinates <- .JAGS_prior_coefficient_names(parameter, variable)
     return(.bt_deterministic_node(
       family = "prior_mixture",
       node = parameter,
@@ -44,7 +44,7 @@
       prior[[k]]
     )
   })
-  coordinates <- .bt_dnode_prior_mixture_names(parameter, prior[[1L]])
+  coordinates <- .JAGS_prior_coefficient_names(parameter, prior[[1L]])
   .bt_deterministic_node(
     family = "prior_mixture",
     node = parameter,
@@ -89,7 +89,7 @@
 
 .bt_dnode_prior_mixture_component <- function(name, prior){
 
-  coordinates <- .bt_dnode_prior_mixture_names(name, prior)
+  coordinates <- .JAGS_prior_coefficient_names(name, prior)
   location <- if(is.prior.point(prior) && !.is_prior_expression(prior)){
     prior$parameters[["location"]]
   }else{
@@ -102,17 +102,6 @@
     location = location,
     dependencies = if(is.null(location)) coordinates else character()
   )
-}
-
-# Coordinate names of a (component) prior: a scalar, or one per coefficient of
-# a factor prior.
-.bt_dnode_prior_mixture_names <- function(name, prior){
-
-  if(is.prior.factor(prior)){
-    return(.JAGS_prior_factor_names(name, prior))
-  }
-
-  name
 }
 
 .bt_dnode_prior_mixture_emit <- function(node){

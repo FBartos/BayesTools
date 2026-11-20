@@ -1,0 +1,4 @@
+  Education BayesTools BayesTools sd  RStan RStan sd
+1        -1      0.453         0.262  0.450    0.268
+2         0      0.000         0.144  0.001    0.146
+3         1     -0.452         0.261 -0.449    0.263

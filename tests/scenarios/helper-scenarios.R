@@ -206,6 +206,31 @@ scenario_start <- function(name, regenerate = NULL, refit = NULL, update = NULL,
 }
 
 
+# Include the Stan source in the fitted-model cache key. Read lines so that
+# identical programs get the same key in Windows and Unix checkouts.
+scenario_stan_version <- function(file) {
+
+  source <- readLines(file.path(.scenario_config()$root, "stan", file), warn = FALSE)
+  strtoi(substr(digest::digest(source, algo = "sha256"), 1L, 7L), base = 16L) + 1L
+}
+
+
+# Several fits can use the same Stan program with different design matrices.
+scenario_stan_model <- local({
+
+  compiled <- new.env(parent = emptyenv())
+  function(file) {
+
+    key <- paste(file, scenario_stan_version(file))
+    if (is.null(compiled[[key]])) {
+      path <- file.path(.scenario_config()$root, "stan", file)
+      compiled[[key]] <- rstan::stan_model(file = path, auto_write = FALSE)
+    }
+    compiled[[key]]
+  }
+})
+
+
 .scenario_fit_paths <- function(name) {
 
   config <- .scenario_config()
@@ -1582,6 +1607,10 @@ scenario_text <- function(name, code) {
       testthat::succeed()
     } else {
       .scenario_write_lines(output, candidate)
+      if (config[["direct"]] && is.null(.scenario_snapshot_context())) {
+        message("Changed scenario table saved for review: ", candidate)
+        return(invisible(value))
+      }
       testthat::expect_equal(
         output,
         expected,
@@ -1732,11 +1761,15 @@ scenario_plot <- function(name, code) {
       testthat::succeed()
     } else {
       .scenario_copy_file(generated, candidate, "plot candidate")
-      testthat::fail(paste0(
-        "Scenario plot '", config[["name"]], "/", name,
-        "' changed. The old snapshot was kept; the new snapshot is at ",
-        candidate, "."
-      ))
+      if (config[["direct"]]) {
+        message("Changed scenario plot saved for review: ", candidate)
+      } else {
+        testthat::fail(paste0(
+          "Scenario plot '", config[["name"]], "/", name,
+          "' changed. The old snapshot was kept; the new snapshot is at ",
+          candidate, "."
+        ))
+      }
     }
 
     return(invisible(NULL))

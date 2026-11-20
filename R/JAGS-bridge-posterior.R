@@ -462,6 +462,8 @@ JAGS_bridgesampling_posterior <- function(posterior, prior_list, add_parameters 
       }
     }else if(is.prior.mixture(prior)){
       .JAGS_marglik_stop_unsupported_mixture(prior)
+    }else if(is.prior.regularized_term(prior)){
+      owned <- c(owned, parameter_name, as.character(.bt_regularized_bridge_info(prior, parameter_name)))
     }else if(is.prior.PET(prior)){
       owned <- c(owned, "PET")
     }else if(is.prior.PEESE(prior)){

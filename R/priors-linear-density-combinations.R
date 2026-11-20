@@ -1390,6 +1390,7 @@
     groups            = groups,
     source_transforms = source_transforms,
     residue_locations = residue_locations,
+    target_range      = target_range,
     n_grid            = resolution$n_grid,
     dx                = dx
   )
@@ -1506,6 +1507,21 @@
     return(.prior_linear_density_transform(dist, output_transformation, output_transformation_arguments, n_grid))
   }
 
+  regularized <- .bt_regularized_linear_plan(prior_list, weights, source_transforms)
+  if(!is.null(regularized)){
+    constant <- .prior_linear_density_constant_location(output_transformation, output_transformation_arguments)
+    if(!is.null(constant)) return(.prior_linear_density_point(constant))
+    if(!is.null(regularized$reason)){
+      .bt_formula_density_stop(regularized$reason, reason = "unsupported_contribution_measure",
+        prior_family = "regularized", sources = regularized$sources)
+    }
+    prior_list <- regularized$prior_list
+    if(!is.null(regularized$weights)){
+      weights <- regularized$weights
+      if(!is.null(source_transforms)) source_transforms <- stats::setNames(source_transforms[names(weights)], names(weights))
+    }
+  }
+
   expression_sources <- .prior_linear_expression_sources(prior_list, weights)
   if(length(expression_sources) > 0){
     reason <- .prior_linear_expression_reason(expression_sources)
@@ -1529,11 +1545,39 @@
   # (atom-free) is built when a grid field is first read; evaluations of the
   # recorded route (ordinates, heights, region probabilities) never read it.
   # A builder that needs the grid at once passes '.defer = FALSE'.
-  plan <- .prior_linear_combination_plan(prior_list, weights, n_grid, tail_prob,
-                                         source_transforms, grid_spacing)
-  if(isTRUE(.record_evaluation) && isTRUE(.defer) &&
+  defer <- isTRUE(.record_evaluation) && isTRUE(.defer)
+  # One untransformed shrinkage coefficient, possibly shifted by point
+  # terms, is continuous for every nonzero weight. Its classification
+  # needs neither display quantiles nor a numerical grid.
+  unplanned <- FALSE
+  gate_measure <- NULL
+  if(defer && !is.null(names(weights)) && all(is.na(source_transforms)) &&
+     .prior_density_identity_output(output_transformation, output_transformation_arguments)){
+    # A literal point-zero intercept contributes nothing to a level effect.
+    active <- names(weights)
+    zero <- vapply(prior_list[active], function(p){
+      .posterior_atoms_is_zero_point(p) && !is.prior.factor(p) && !is.prior.vector(p) &&
+        is.null(attr(p, "multiply_by", exact = TRUE))
+    }, logical(1))
+    active <- active[!zero]
+    if(length(active) == 1L) gate_measure <- .bt_regularized_gated_measure(prior_list[[active]])
+  }
+  if(defer &&
+     (is.null(output_transformation) || .prior_density_affine_output_map(output_transformation, output_transformation_arguments)) &&
+     any(vapply(prior_list, is.prior.regularized_term, logical(1)))){
+    split <- .prior_linear_split_multiply_groups(prior_list, weights)
+    if(!length(split$product_groups)){
+      parts <- .prior_density_route_scalar_parts(prior_list, split$additive_weights, source_transforms)
+      unplanned <- is.prior.regularized_term(parts$group$prior) &&
+        is.finite(parts$offset) && all(is.na(source_transforms[names(parts$group$weights)]))
+    }
+  }
+  unplanned <- unplanned || !is.null(gate_measure)
+  plan <- if(!unplanned) .prior_linear_combination_plan(prior_list, weights, n_grid, tail_prob,
+                                                        source_transforms, grid_spacing)
+  if(unplanned || (defer &&
      .prior_linear_density_defers_grid(plan, prior_list, n_grid, tail_prob, output_transformation,
-                                       output_transformation_arguments)){
+                                       output_transformation_arguments))){
     arguments <- list(
       prior_list = prior_list,
       weights = weights,
@@ -1544,10 +1588,24 @@
       output_transformation_arguments = output_transformation_arguments,
       grid_spacing = grid_spacing
     )
-    return(.prior_linear_density_deferred_combination(
+    deferred <- .prior_linear_density_deferred_combination(
       arguments,
-      n_grid = if(is.null(output_transformation)) plan$n_grid else n_grid
-    ))
+      # For an unplanned grid this records the requested minimum; its
+      # materialized density reports the resolved size and spacing.
+      n_grid = if(unplanned || !is.null(output_transformation)) n_grid else plan$n_grid,
+      measure = gate_measure
+    )
+    # For an additive structural curve the component quantiles already gave
+    # the plotting bounds at planning time. Retain those two numbers instead
+    # of evaluating the entire grid to rediscover its range at display time.
+    if(!unplanned && any(vapply(plan$groups, function(g) is.prior.regularized_term(g$prior), logical(1)))){
+      limits <- plan$target_range
+      if(!is.null(output_transformation)){
+        limits <- sort(.density.prior_transformation_x(limits, output_transformation, output_transformation_arguments))
+      }
+      attr(deferred, "regularized_plot_range") <- limits
+    }
+    return(deferred)
   }
 
   .prior_linear_combination_grid(
@@ -1566,8 +1624,8 @@
 
 # Whether the grid of a combination is deferred (see .prior_linear_combination_density()):
 # the combination has no product group ('plan' is NULL otherwise), its build is
-# noticeable (a large grid, or an ordered level, whose grid is the route
-# quadrature of up to 1024 product values), and its structure alone fixes the
+# noticeable (a large grid, a regularized coefficient with an integrated
+# density, or an ordered level with up to 1024 product quadratures), and its structure alone fixes the
 # outcome of the build: only continuous scalar priors and ordered priors with a
 # continuous total and Dirichlet allocations set the grid (a rounding residue
 # is a point that shifts it and leaves it without atoms, but not alone), the
@@ -1580,7 +1638,7 @@
 # level (a nonlinear map can warn or fail on the values of the grid, an affine
 # map's values can collapse, and a constant map turns the measure into an
 # atom). Every other combination is built at once, as is a small one without
-# an ordered level, which is cheap and keeps its numerical diagnostics. Grid
+# an ordered level or regularized coefficient, which keeps its numerical diagnostics. Grid
 # attributes (e.g. 'product_grid_resolution') belong to the built grid
 # (.prior_linear_density_materialize()). A numerical-representability refusal
 # of the later grid steps (scaling, resampling, convolution at extreme scales)
@@ -1595,12 +1653,15 @@
   ordered <- vapply(plan$groups[on_grid], function(group){
     is.prior.ordered(group$prior)
   }, logical(1))
+  regularized <- vapply(plan$groups[on_grid], function(group){
+    is.prior.regularized_term(group$prior)
+  }, logical(1))
   continuous <- vapply(plan$groups[on_grid], function(group){
     (is.prior.simple(group$prior) || is.prior.ordered(group$prior)) &&
       .prior_density_continuous_prior(group$prior)
   }, logical(1))
   if(!any(on_grid) || !all(continuous) ||
-     (plan$n_grid < .prior_linear_density_large_grid() && !any(ordered))){
+     (plan$n_grid < .prior_linear_density_large_grid() && !any(ordered) && !any(regularized))){
     return(FALSE)
   }
   if(any(ordered)){
@@ -1759,6 +1820,12 @@
           multiplier_dist,
           n_grid = n_grid
         )
+        if(any(vapply(product_group$prior_list, function(p){
+          isTRUE(attr(p, "regularized_lasso_direction", exact = TRUE))
+        }, logical(1)))){
+          attr(product, "product_grid_resolution") <- list(resolved = FALSE,
+            cause = "unverified_shared_lasso_grid")
+        }
       }
       components[[length(components) + 1L]] <- product
     }
@@ -3620,13 +3687,14 @@
   singular <- .prior_density_singular_bounds(multiplier, c(lower, upper))
   probabilities <- c(if(!singular[1L]) 1e-6, 1e-3, .02, .25, .5, .75, .98, 1 - 1e-3,
                      if(!singular[2L]) 1 - 1e-6)
+  quantile_fun <- if(is.prior.regularized_term(multiplier)) mquant else quant
   quantiles <- tryCatch(
-    suppressWarnings(quant(multiplier, probabilities)),
+    suppressWarnings(quantile_fun(multiplier, probabilities)),
     error = function(e) numeric()
   )
   quartiles <- if(any(singular)){
     tryCatch(
-      suppressWarnings(as.numeric(quant(multiplier, c(.25, .75)))),
+      suppressWarnings(as.numeric(quantile_fun(multiplier, c(.25, .75)))),
       error = function(e) c(NA_real_, NA_real_)
     )
   }
@@ -3680,7 +3748,7 @@
   inner <- inner[inside]
   is_peak <- is_peak[inside]
   widths <- widths[inside]
-  if(length(inner) > 0L){
+  if(length(inner) > 0L && !is.prior.regularized_term(spec$multiplier)){
     density <- suppressWarnings(exp(lpdf(spec$multiplier, inner)))
     inner <- inner[is.finite(density)]
     is_peak <- is_peak[is.finite(density)]
@@ -3752,7 +3820,19 @@
      upper - points[length(points)] < minimum_width(points[length(points)], upper)){
     points <- points[-length(points)]
   }
-  c(points, upper)
+  points <- c(points, upper)
+  if(is.prior.regularized_term(spec$multiplier)) points <- .prior_regularized_split_zero(points, peak_width)
+  points
+}
+
+# A shrinkage density may have an integrable pole at zero in the interior
+# of its support. Retain zero in preference to an adjacent breakpoint
+# inside the merge distance used above; open quadrature nodes then approach
+# the pole from either side. Every finite nonzero candidate is in support.
+.prior_regularized_split_zero <- function(points, peak_width){
+
+  spacing <- max(16 * .Machine$double.eps, min(1e-9, peak_width / 2))
+  sort(c(points[abs(points) > spacing], 0))
 }
 
 # The breakpoints of .prior_conditional_normal_breakpoints() for each of the
@@ -3816,7 +3896,7 @@
   index <- index[inside]
   is_peak <- is_peak[inside]
   widths <- widths[inside]
-  if(length(point) > 0L){
+  if(length(point) > 0L && !is.prior.regularized_term(spec$multiplier)){
     density <- suppressWarnings(exp(lpdf(spec$multiplier, point)))
     finite <- is.finite(density)
     point <- point[finite]
@@ -3901,10 +3981,12 @@
 
   point <- point[keep]
   index <- index[keep]
-  unname(split(
+  points <- unname(split(
     c(rep(lower, n), point, rep(upper, n)),
     factor(c(seq_len(n), index, seq_len(n)), levels = seq_len(n))
   ))
+  if(is.prior.regularized_term(spec$multiplier)) points <- Map(.prior_regularized_split_zero, points, peak_width)
+  points
 }
 
 # One budgeted QUADPACK piece. Finite pieces use 21-point rules; infinite ends
@@ -4167,6 +4249,38 @@
   refined
 }
 
+# A scalar regularized coefficient already defines the ordinates to draw.
+# Use the deferred grid's own tail probability for its display limits; reading
+# density$x just for its range would evaluate every fine-grid ordinate.
+.prior_regularized_plot_range <- function(route, tail_prob){
+
+  if(identical(route$type, "mixture") && length(route$components) == 1L && isTRUE(route$weights == 1)){
+    return(.prior_regularized_plot_range(route$components[[1L]], tail_prob))
+  }
+  if(identical(route$type, "scalar")){
+    prior <- route$prior
+    measure <- .bt_regularized_gated_measure(prior)
+    if(!is.null(measure) && is.null(route$source_transform)){
+      slab <- which(vapply(prior, is.prior.regularized_term, logical(1)))
+      prior <- prior[[slab]]
+    }
+    if(!is.prior.regularized_term(prior)) return(NULL)
+    limits <- route$offset + .prior_linear_scalar_range(prior, route$scale, tail_prob, route$source_transform)
+    if(!is.null(measure) && nrow(measure$points)) limits <- range(c(limits, route$offset))
+  }else if(identical(route$type, "transform") &&
+           .prior_density_affine_output_map(route$transformation, route$arguments)){
+    source <- .prior_regularized_plot_range(route$source, tail_prob)
+    if(is.null(source)) return(NULL)
+    limits <- sort(.density.prior_transformation_x(source, route$transformation, route$arguments))
+  }else{
+    return(NULL)
+  }
+  if(any(!is.finite(limits)) || limits[1] == limits[2]){
+    stop("The coefficient's automatic plotting range is not representable. Supply a finite 'xlim'.", call. = FALSE)
+  }
+  limits
+}
+
 .prior_linear_density_to_plot_data <- function(x, n_points = 1000, x_range = NULL,
                                                transformation = NULL,
                                                transformation_arguments = NULL,
@@ -4214,7 +4328,8 @@
       .prior_density_route_unresolved_products(route)
     }
     if(draw_curve && unresolved){
-      .prior_linear_density_warn_curve_unavailable()
+      .prior_linear_density_warn_curve_unavailable(shared_lasso =
+        isTRUE(route$provenance$unverified_lasso_grid))
       draw_curve <- FALSE
     }
   }
@@ -4235,6 +4350,14 @@
     structural <- !is.null(route) && !identical(route$type, "unknown")
     display <- structural && .prior_density_route_has_quadrature(route)
     size <- if(display) min(n_points, .prior_linear_density_display_size()) else n_points
+
+    if(is.null(x_range) && is.null(transformed_x_range) && .prior_linear_density_is_deferred(dist)){
+      adaptive <- attr(dist, "adaptive_evaluation", exact = TRUE)
+      tail_prob <- adaptive$arguments$tail_prob
+      if(is.null(tail_prob)) tail_prob <- adaptive$arguments$context$tail_prob
+      if(structural) x_range <- attr(dist, "regularized_plot_range", exact = TRUE)
+      if(is.null(x_range) && !is.null(tail_prob)) x_range <- .prior_regularized_plot_range(route, tail_prob)
+    }
 
     grid <- function(size){
       if(!is.null(transformed_x_range)){
@@ -4414,13 +4537,16 @@
 # ('posterior_plot') it names 'prior = FALSE' as the remedy.
 .prior_linear_density_warn_curve_unavailable <- function(unresolved_values = NULL, partial = FALSE,
                                                          structural_values = NULL,
-                                                         posterior_plot = FALSE){
+                                                         posterior_plot = FALSE, shared_lasso = FALSE){
 
   warning(structure(
     class = c("BayesTools_prior_curve_unavailable", "BayesTools_plot_condition",
               "warning", "condition"),
     list(
-      message = if(!is.null(unresolved_values) || !is.null(structural_values)) paste0(
+      message = if(shared_lasso) paste0(
+        "The continuous prior curve of this shared-lasso combination has no verified numerical ",
+        "resolution. Use joint prior draws for the contrast."
+      ) else if(!is.null(unresolved_values) || !is.null(structural_values)) paste0(
         "The prior density curve is ", if(partial) "partially unavailable" else "unavailable", ": ",
         if(!is.null(unresolved_values)) paste0(
           "numerical evaluations were unresolved at ", length(unresolved_values),

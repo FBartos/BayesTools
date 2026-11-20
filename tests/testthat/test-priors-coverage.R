@@ -1,5 +1,40 @@
 skip_if_not_test_profile("unit")
 
+test_that("Laplace uses a location and scale across scalar and factor priors", {
+
+  p <- prior("laplace", list(location = -1, scale = 2))
+  expect_identical(p, prior("double exponential", list(-1, 2)))
+  expect_error(prior("laplace", list(0, 0)), "positive")
+  expect_equal(mean(p), -1)
+  expect_equal(var(p), 8)
+  x <- c(-5, -1, 3)
+  expected <- exp(-abs(x + 1) / 2) / 4
+  expect_equal(pdf(p, x), expected)
+  expect_equal(lpdf(p, x), log(expected))
+  expect_equal(cdf(p, x), c(exp(-2) / 2, .5, 1 - exp(-2) / 2))
+  expect_equal(ccdf(p, x), rev(cdf(p, x)))
+  expect_equal(quant(p, cdf(p, x)), x)
+  expect_identical(quant(p, c(0, 1)), c(-Inf, Inf))
+  expect_equal(prior_density_ordinate(p, -1)$log_density, -log(4))
+  expect_equal(JAGS_marglik_priors_rows(cbind(b = x), list(b = p)), log(expected))
+  expect_match(JAGS_add_priors("model{}", list(b = p)), "b ~ ddexp(-1,0.5)", fixed = TRUE)
+  expect_match(print(p, silent = TRUE), "Laplace", fixed = TRUE)
+  expect_equal(mpdf(prior_factor("laplace", list(-1, 2), contrast = "treatment"), x), expected)
+  expect_true(all(is.finite(range(p))))
+
+  # Beyond the representable probability tail, conditioning above 2000 leaves
+  # an exponential excess with mean 2.
+  truncated <- prior("laplace", list(-1, 2), list(2000, Inf))
+  expect_equal(lpdf(truncated, 2002), -log(2) - 1)
+  expect_equal(quant(truncated, .75), 2000 + 2 * log(4))
+  expect_equal(ccdf(truncated, 2002), exp(-1))
+  expect_equal(mean(truncated), 2002)
+  set.seed(2711)
+  draws <- rng(truncated, 1000)
+  expect_true(all(draws >= 2000))
+  expect_lt(abs(mean(draws) - 2002), 5 * 2 / sqrt(length(draws)))
+})
+
 test_that("factor joint quantiles fail clearly instead of returning a function", {
 
   p <- prior_factor("mnormal", list(mean = 0, sd = 1), contrast = "orthonormal")

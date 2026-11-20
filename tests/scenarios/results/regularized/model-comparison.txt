@@ -1,0 +1,9 @@
+                  prior     engine  log_ML log_ML_MCSE log_BF_vs_ridge approx_log_BF_SE
+1                 Ridge BayesTools -59.339       0.003           0.000            0.000
+2                 Ridge      RStan -59.334       0.008           0.000            0.000
+3                 Lasso BayesTools -59.484       0.003          -0.145            0.006
+4                 Lasso      RStan -59.462       0.013          -0.128            0.022
+5             Horseshoe BayesTools -60.129       0.015          -0.790            0.018
+6             Horseshoe      RStan -60.106       0.008          -0.772            0.016
+7 Finite-slab horseshoe BayesTools -59.909       0.017          -0.570            0.020
+8 Finite-slab horseshoe      RStan -59.880       0.009          -0.546            0.017

@@ -21,6 +21,17 @@
 
   return(output)
 }
+.prior_laplace <- function(parameters, truncation){
+
+  parameters <- .check_and_name_parameters(parameters, c("location", "scale"), "Laplace")
+  .check_parameter(parameters$location, "location")
+  .check_parameter(parameters$scale, "scale")
+  .check_parameter_positive(parameters$scale, "scale")
+
+  structure(list(distribution = "laplace", parameters = parameters,
+                 truncation = .check_and_set_truncation(truncation)),
+            class = c("prior", "prior.simple"))
+}
 .prior_lognormal <- function(parameters, truncation){
 
   output <- list()

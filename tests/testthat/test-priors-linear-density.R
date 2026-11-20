@@ -1,5 +1,71 @@
 skip_if_not_test_profile("unit")
 
+test_that("linear contrasts retain the shared shrinkage scale of their coefficients", {
+
+  x <- data.frame(a = c(-1, 0, 1), b = c(0, 1, 1))
+  scale <- prior("uniform", list(1, 3))
+  bind <- function(shrink){
+    JAGS_formula(~ 0 + a + b, "mu", x, prior_list = list(shrink = shrink))$prior_list
+  }
+  weights <- c(mu_a = 1, mu_b = -1)
+  ridge <- bind(prior_regularized("ridge", scale))
+  # The original-scale slope of a standardized fit is an affine image of a
+  # single regularized coordinate. Its marginal is continuous even when a
+  # shared scale makes the coordinates jointly dependent.
+  for(family in c("ridge", "lasso", "horseshoe")){
+    priors <- bind(prior_regularized(family, scale))
+    slope <- .prior_density_route_linear(priors, c(mu_a = 1.25), NULL)
+    expect_identical(.bt_formula_route_atom_certificate(slope)$type, "atom_free")
+    expect_equal(.bt_formula_route_support(slope)$bounds, c(-Inf, Inf))
+    priors$mu_a <- prior_spike_and_slab(priors$mu_a)
+    gated <- .prior_density_route_linear(priors, c(mu_a = 1.25), NULL)
+    expect_equal(.prior_density_ordinate_provenance_atoms(.prior_density_route_provenance(gated)), 0)
+  }
+  route <- .prior_density_route_linear(ridge, weights, NULL)
+  # Conditional on tau, beta_a - beta_b is N(0, 2*tau^2), so its
+  # unconditional height at 0 is E[1/tau] / sqrt(4*pi).
+  expect_identical(route$type, "conditional_normal")
+  expect_equal(exp(.prior_density_route_ordinate(route, 0)$log_density),
+               log(3) / (2 * sqrt(4 * pi)), tolerance = 1e-9)
+  lasso <- bind(prior_regularized("lasso", scale))
+  route <- .prior_density_route_linear(lasso, weights, NULL)
+  expect_identical(route$type, "scalar")
+  expect_equal(exp(.prior_density_route_ordinate(route, 0)$log_density), log(3) / 8)
+
+  # A shared stochastic slab also induces dependence when global shrinkage
+  # is fixed. Separate local scales and symmetric signs do not remove it.
+  for(horseshoe in list(prior_regularized("horseshoe", scale),
+                        prior_regularized("horseshoe", 1, slab_scale = 2))){
+    priors <- bind(horseshoe)
+    expect_error(.prior_linear_combination_density(priors, weights),
+      "share shrinkage scales", class = "BayesTools_formula_measure_unavailable")
+    route <- .prior_density_route_linear(priors, weights, NULL)
+    expect_identical(route$type, "unknown")
+    expect_null(route$recipe)
+    expect_identical(.bt_formula_route_atom_certificate(route)$type, "atom_free")
+    expect_equal(.bt_formula_route_support(route)$bounds, c(-Inf, Inf))
+    expect_null(.bt_regularized_linear_plan(priors, c(mu_a = 1, mu_b = 0)))
+    expect_identical(.prior_density_route_linear(priors, 0 * weights, NULL)$locations, 0)
+  }
+  # With fixed global scale and independent locals there is no shared
+  # random scale. The independence check must allow that combination.
+  expect_null(.bt_regularized_linear_plan(bind(prior_regularized("horseshoe", 1)), weights))
+  separate <- JAGS_formula(~ 0 + a + b, "mu", x, prior_list = list(
+    first = prior_regularized("horseshoe", scale, terms = "a"),
+    second = prior_regularized("horseshoe", scale, terms = "b")
+  ))$prior_list
+  expect_null(.bt_regularized_linear_plan(separate, weights))
+  factor_priors <- JAGS_formula(~ g, "mu", data.frame(g = factor(letters[1:3])), prior_list = list(
+    intercept = prior("point", list(0)), shrink = prior_regularized("horseshoe", scale)
+  ))$prior_list
+  contrast <- c("mu_g[1]" = -1, "mu_g[2]" = 1)
+  expect_error(.prior_linear_combination_density(factor_priors, contrast),
+    class = "BayesTools_formula_measure_unavailable")
+  constant <- .prior_linear_combination_density(factor_priors, contrast,
+    output_transformation = "lin", output_transformation_arguments = list(a = 3, b = 0))
+  expect_identical(constant$points$x, 3)
+})
+
 test_that("bounded conditional-normal prior ordinates retain their numerical error", {
 
   priors <- list(a = prior("normal", list(0, 1)), b = prior("normal", list(0, 1)),

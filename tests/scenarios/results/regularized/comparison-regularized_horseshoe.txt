@@ -1,0 +1,15 @@
+       source        parameter estimate median    lCI    uCI
+1  BayesTools        Intercept   -0.001 -0.001 -0.283  0.283
+2       RStan        Intercept    0.002  0.002 -0.287  0.289
+3  BayesTools      Agriculture   -0.081 -0.036 -0.473  0.174
+4       RStan      Agriculture   -0.085 -0.041 -0.484  0.181
+5  BayesTools      Examination   -0.184 -0.127 -0.714  0.161
+6       RStan      Examination   -0.171 -0.111 -0.702  0.169
+7  BayesTools        Education   -0.459 -0.469 -0.921  0.002
+8       RStan        Education   -0.474 -0.486 -0.925 -0.001
+9  BayesTools         Catholic    0.188  0.162 -0.072  0.576
+10      RStan         Catholic    0.196  0.175 -0.068  0.588
+11 BayesTools Infant.Mortality    0.203  0.195 -0.040  0.526
+12      RStan Infant.Mortality    0.201  0.190 -0.041  0.523
+13 BayesTools     Global scale    0.325  0.239  0.047  1.155
+14      RStan     Global scale    0.348  0.239  0.050  1.266

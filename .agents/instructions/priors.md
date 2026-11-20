@@ -9,6 +9,22 @@ random-SD rescaling preserves its prior law and why map 17 requires refitting.
 
 ## Prior Contract
 
+`prior_regularized()` uses ordinary zero-centered normal and Laplace laws
+for single fixed-scale coefficients. A prior on the global scale defines a joint
+coefficient law. Use the fitted factor design to resolve shrinkage units as for
+random effects. Within a centered unit of dimension d, group lasso has density
+proportional to exp(-||b||₂ / tau) and one shared Gamma((d+1)/2, rate=1/2)
+variance multiplier. The horseshoe has one standard half-Cauchy local scale per
+unit and its optional slab variance is shared by the entire named group. Keep
+the scale on the coded coefficients for both centered contrasts. Preserve joint draws in contrasts, mixtures and prior
+predictions. For a classical or regularized horseshoe, zero is a continuous
+infinite-density ordinate and has zero point mass. A product-space point
+component introduces its own inclusion indicator.
+For a weighted contrast of two coordinate-wise lasso coefficients in one group, integrate
+the conditional Laplace convolution over its single global scale. Keep the
+repeated-scale limit continuous. Wider unverified shared-lasso product grids
+do not supply display curves; interval hypotheses retain joint prior draws.
+
 Ordinary bound factor mixtures and spikes sample through their exact declared
 factor design. Scalar product components draw independent raw coordinates;
 joint mnormal/mt/mpoint retain their joint calls and mt's common scale.
@@ -791,9 +807,21 @@ refusals and warnings stay at construction, and the built grid's size, which
 the deferred density reports, is the plan's (a product grid of at most 1024
 values keeps its size unless it is resampled to the combination's spacing, and a
 spacing within a factor of two of the resampling tolerance builds at once). A nonlinear
-map can warn or fail on grid values, so it builds at once, as does every
-smaller grid without an ordered level, which is cheap and keeps the numerical
-diagnostics that only a built grid has. Grid attributes such as `product_grid_resolution`
+map can warn or fail on grid values, so it builds at once. Small grids
+without ordered levels or regularized coefficients retain their numerical
+diagnostics at construction. A single untransformed regularized coefficient
+with a nonzero weight and no multiplier defers even selection of the grid:
+the structural ordinate and region probability require no display quantiles.
+For a single centered direction with one zero spike and one regularized slab,
+the same deferral carries the declared atom location, atom probability and
+continuous mass. The context retains its provenance, and materialization
+checks those masses against the grid built by the ordinary mixture route.
+The default plot range for that direction uses the slab's tail quantiles
+and includes its declared atom. Conditioning down to the single active slab
+retains its quantile range. A fixed zero intercept does not change either
+measure or require a plotting grid.
+Its deferred `n_grid` gives the requested minimum and its materialized grid
+reports the resolved size and spacing. Grid attributes such as `product_grid_resolution`
 belong to the built grid (`.prior_linear_density_materialize()`). A
 builder that mixes or refines grids passes `.defer = FALSE`. The density of a
 context (`.prior_density_from_context()`) defers the same grid with its own
