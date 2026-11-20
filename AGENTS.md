@@ -32,6 +32,11 @@ Read the guide relevant to the change and maintain it with the implementation:
   scaling, contrasts, random effects, parameter maps, and marginal likelihoods.
 - [Testing](.agents/instructions/testing.md): profiles, fit catalogs, cached
   references, and visual regression.
+- For maintainer scenarios, read the [scenario README](tests/scenarios/README.md).
+  Follow the [Pastes worked example](tests/scenarios/test-pastes.R) for a
+  comparison with another package. Its `scenario_comparison()` call produces
+  the paired table and figure. In BayesToolsVerse, use the shared
+  [scenario authoring and review guidance](../.agents/instructions/validation.md#writing-and-reviewing-comparison-scenarios).
 - [Plotting](.agents/instructions/plotting.md): plot-data and renderer contracts.
 - [Vignettes](.agents/instructions/vignettes.md): precomputed caches,
   regeneration, and citation style.
