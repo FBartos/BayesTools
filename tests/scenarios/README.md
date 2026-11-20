@@ -68,9 +68,11 @@ testthat::test_that("Example analysis remains stable", {
 })
 ```
 
-Sourcing a scenario file directly in an interactive session also reuses fit
-caches, but shows artifact output and immediately creates or replaces its text
-and SVG baselines.
+When you step through a scenario directly in an interactive R console, tables
+and figures appear as you run them. A changed output is saved beside its
+baseline as a `.new.txt` or `.new.svg` candidate and the analysis continues.
+Missing baselines are created by default in this mode. The managed scenario
+runner reports snapshot differences as test failures.
 
 - `scenario_fit()` caches a fit under the ignored `cache/` directory, keyed by
   its normalized fitting call; a changed call refits. The key covers only the

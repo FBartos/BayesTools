@@ -1607,6 +1607,10 @@ scenario_text <- function(name, code) {
       testthat::succeed()
     } else {
       .scenario_write_lines(output, candidate)
+      if (config[["direct"]] && is.null(.scenario_snapshot_context())) {
+        message("Changed scenario table saved for review: ", candidate)
+        return(invisible(value))
+      }
       testthat::expect_equal(
         output,
         expected,
@@ -1757,11 +1761,15 @@ scenario_plot <- function(name, code) {
       testthat::succeed()
     } else {
       .scenario_copy_file(generated, candidate, "plot candidate")
-      testthat::fail(paste0(
-        "Scenario plot '", config[["name"]], "/", name,
-        "' changed. The old snapshot was kept; the new snapshot is at ",
-        candidate, "."
-      ))
+      if (config[["direct"]]) {
+        message("Changed scenario plot saved for review: ", candidate)
+      } else {
+        testthat::fail(paste0(
+          "Scenario plot '", config[["name"]], "/", name,
+          "' changed. The old snapshot was kept; the new snapshot is at ",
+          candidate, "."
+        ))
+      }
     }
 
     return(invisible(NULL))

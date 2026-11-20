@@ -1,6 +1,41 @@
 skip_if_not_test_profile("meta")
 
 
+test_that("direct scenario loops keep changed snapshots and continue; managed runs flag them", {
+
+  helper <- new.env(parent = globalenv())
+  helper$.scenario_state <- new.env(parent = emptyenv())
+  source(testthat::test_path("..", "scenarios", "helper-scenarios.R"), local = helper)
+  helper$.scenario_is_interactive <- function() TRUE
+  helper$.scenario_snapshot_context <- function() NULL
+  withr::local_envvar(c(BAYESTOOLS_SCENARIO_RUNNER = "FALSE", BAYESTOOLS_SCENARIO_UPDATE = "FALSE",
+                        BAYESTOOLS_SCENARIO_REGENERATE = "FALSE"))
+  root <- withr::local_tempdir()
+  dir.create(file.path(root, "_snaps", "demo"), recursive = TRUE)
+  dir.create(file.path(root, "results", "demo"), recursive = TRUE)
+  names <- c("ridge", "lasso", "horseshoe")
+  figures <- file.path(root, "_snaps", "demo", paste0(names, ".svg"))
+  table <- file.path(root, "results", "demo", "estimates.txt")
+  for (path in figures) writeLines("<svg/>", path)
+  writeLines("old table", table)
+
+  helper$scenario_start("demo", root = root, show_output = FALSE)
+  expect_message(helper$scenario_text("estimates", 1), "saved for review")
+  for (name in names) {
+    expect_message(helper$scenario_plot(name, graphics::plot(1:3)), "saved for review")
+  }
+  expect_true(all(file.exists(helper$.scenario_candidate_path(c(figures, table)))))
+  expect_true(all(vapply(figures, function(p) identical(readLines(p), "<svg/>"), logical(1))))
+  expect_identical(readLines(table), "old table")
+  expect_error(helper$scenario_plot("broken", stop("draw failed")), "draw failed")
+
+  withr::local_envvar(c(BAYESTOOLS_SCENARIO_RUNNER = "TRUE"))
+  helper$scenario_start("demo", root = root)
+  expect_failure(helper$scenario_plot("ridge", graphics::plot(1:3)), "changed")
+  expect_failure(helper$scenario_text("estimates", 1), "changed")
+})
+
+
 test_that("quiet LLM reporter counts skips without printing each reason", {
 
   output_path <- tempfile("bayestools-quiet-reporter-", fileext = ".txt")
