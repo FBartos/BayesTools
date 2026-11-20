@@ -89,3 +89,4 @@ plot	meandif-regularized-horseshoe-july-posterior	1.910000000	0.510254	4.6.0	Win
 plot	orthonormal-lasso-july-posterior	0.550000000	0.792871	4.6.0	Windows/x86_64-w64-mingw32
 plot	orthonormal-regularized-horseshoe-july-posterior	2.490000000	0.757520	4.6.0	Windows/x86_64-w64-mingw32
 plot	ridge-wind-posterior	0.700000000	0.516016	4.6.0	Windows/x86_64-w64-mingw32
+plot	month-overlay-meandif-horseshoe	0.490000000	0.473242	4.6.0	Windows/x86_64-w64-mingw32
