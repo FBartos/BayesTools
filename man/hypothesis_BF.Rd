@@ -230,18 +230,20 @@ A transitive ratio with both a numerically zero posterior point ordinate and
 zero posterior region mass is undefined and returns \code{NA} with a warning
 recorded in the result.
 
-The hypothesis language deliberately accepts only a small,
-non-programmable subset of R expressions:
+The hypothesis language accepts arithmetic expressions, logical regions,
+and chained inequalities for intervals:
 
 \preformatted{
 hypothesis := statement [ "vs" statement ]
 statement  := point | region
 point      := arithmetic ( "=" | "==" | "!=" ) finite_number
-region     := relation
+region     := relation | interval
             | "(" region ")"
             | "!" region
             | region ( "&" | "|" ) region
 relation   := arithmetic ( "<" | "<=" | ">" | ">=" ) arithmetic
+interval   := lower ( "<" | "<=" ) arithmetic ( "<" | "<=" ) upper
+            | upper ( ">" | ">=" ) arithmetic ( ">" | ">=" ) lower
 }
 
 Arithmetic expressions may contain parameter identifiers, finite numeric
@@ -254,6 +256,14 @@ another parameter expression. Symbolic right-hand sides are normalized to a
 difference from zero. Relations with a constant on the left and a parameter
 expression on the right are normalized to the equivalent parameter-left
 form.
+
+An interval has two finite constant bounds with the lower below the upper.
+For example, \code{"-0.1 <= mu <= 0.1"} compares practical equivalence
+with its complement, using posterior odds of the interval divided by its
+prior odds. A BF10 above one favors the interval. A strict inequality
+excludes a point mass at that endpoint. An explicit comparison such as
+\code{"-0.1 <= mu <= 0.1 vs mu > 0.1"} compares the interval with the
+upper tail alone.
 
 Equality defines a point hypothesis and may appear only as the top-level
 relation of a statement. It cannot be parenthesized inside, negated, or

@@ -90,6 +90,35 @@ test_that("hypothesis parser implements the documented region grammar", {
 })
 
 
+test_that("interval chains preserve quoted names and boolean precedence", {
+
+  chain <- "!(0 < 2 * `x < y` <= 1 + 1) | 0.25 <= `x < y` < 1"
+  expanded <- paste("!(0 < 2 * `x < y` & 2 * `x < y` <= 1 + 1)",
+                    "| (0.25 <= `x < y` & `x < y` < 1)")
+  parsed <- hypothesis_parse(chain)
+  expect_identical(hypothesis_symbols(parsed), "x < y")
+
+  prior <- data.frame("x < y" = -3:3, check.names = FALSE)
+  posterior <- data.frame("x < y" = c(-3, 0, 0.5, 1, 1), check.names = FALSE)
+  evaluate <- function(hypothesis){
+    attr(hypothesis_BF(posterior, prior, hypothesis = hypothesis), "raw_BF")
+  }
+  expect_equal(evaluate(parsed), evaluate(expanded))
+  expect_equal(evaluate(hypothesis_render(parsed)), evaluate(expanded))
+})
+
+
+test_that("interval chains require one target between ordered finite bounds", {
+
+  invalid <- c("x < theta < 1", "0 < 1 < 2", "0 < theta > 1", "0 < theta = 1",
+               "0 < theta < 1 < 2", "1 <= theta <= 1", "2 < theta < 1",
+               "-Inf < theta < 1", "0 < theta < 1 / 0")
+  for (statement in invalid) {
+    expect_error(hypothesis_parse(statement), info = statement)
+  }
+})
+
+
 test_that("point hypotheses accept literals or symbolic right-hand sides", {
 
   statements <- lapply(

@@ -34,6 +34,10 @@ metadata are in [jags-formula.md](jags-formula.md).
 - `R/hypothesis-model-backends.R`: backend constructor and registry.
 - `R/hypothesis-model-quantities.R`: `hypothesis_quantities()`.
 
+Interval chains such as `-0.1 <= mu < 0.1` use the same Boolean region and
+complement as their two inequalities joined by `&`. The operators determine
+which region receives an endpoint atom.
+
 ## Stages of `hypothesis_BF_model()`
 
 `namespace` selects the provider component (a formula parameter) and

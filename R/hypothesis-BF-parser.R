@@ -336,17 +336,14 @@ hypothesis_normalize_level_references <- function(text){
     stop("Empty hypothesis side.", call. = FALSE)
   }
 
-  relation <- if(.hypothesis_has_boolean(side)){
-    NULL
-  }else{
-    .hypothesis_find_relation(side)
-  }
-  if(!is.null(relation) &&
-     relation[["operator"]] %in% c("=", "==", "!=")){
-    return(.hypothesis_parse_point_side(side, relation))
+  operators <- .hypothesis_top_operators(side)
+  if(length(operators) == 1L &&
+     operators[[1L]]$operator %in% c("=", "==", "!=") &&
+     !.hypothesis_has_boolean(side)){
+    return(.hypothesis_parse_point_side(side, operators[[1L]]))
   }
 
-  expr <- .hypothesis_parse_expression(side)
+  expr <- .hypothesis_parse_region_expression(side, operators)
   if(.hypothesis_condition_has_equality(expr)){
     if(.hypothesis_region_has_negated_equality(expr)){
       stop(
@@ -409,7 +406,7 @@ hypothesis_normalize_level_references <- function(text){
   list(
     type      = "region",
     label     = .hypothesis_display_text(side),
-    condition = side,
+    condition = .hypothesis_expression_text(expr),
     condition_expression = expr,
     simple    = FALSE
   )
@@ -687,14 +684,14 @@ hypothesis_normalize_level_references <- function(text){
 }
 
 
-.hypothesis_find_relation <- function(text) {
+.hypothesis_top_operators <- function(text) {
 
   chars       <- strsplit(text, "", fixed = TRUE)[[1L]]
   quoted      <- .hypothesis_quoted_characters(chars)
   depth       <- 0L
   found       <- list()
-  two_char    <- c("<=", ">=", "==", "!=")
-  one_char    <- c("<", ">", "=")
+  two_char    <- c("<=", ">=", "==", "!=", "&&", "||")
+  one_char    <- c("<", ">", "=", "&", "|")
 
   i <- 1L
   while(i <= length(chars)){
@@ -733,15 +730,62 @@ hypothesis_normalize_level_references <- function(text){
     i <- i + 1L
   }
 
-  if(length(found) == 0L){
-    return(NULL)
+  return(found)
+}
+
+
+.hypothesis_parse_region_expression <- function(text, operators = NULL){
+
+  text <- trimws(text)
+  expr <- tryCatch(.hypothesis_parse_expression(text), error = identity)
+  if(!inherits(expr, "error")) return(expr)
+
+  # R handles ordinary expressions. For a chain, split only the outer region
+  # operators in precedence order and let R parse its arithmetic operands.
+  if(is.null(operators)) operators <- .hypothesis_top_operators(text)
+  ops <- vapply(operators, `[[`, character(1), "operator")
+  for(op in c("|", "&")){
+    split <- tail(which(ops == op), 1L)
+    if(length(split)){
+      at <- operators[[split]]$start
+      return(call(op,
+        .hypothesis_parse_region_expression(substr(text, 1L, at - 1L)),
+        .hypothesis_parse_region_expression(substring(text, at + 1L))))
+    }
   }
-  if(length(found) > 1L){
-    stop("Hypothesis side must contain exactly one top-level relation operator.",
-         call. = FALSE)
+  if(startsWith(text, "!") && !startsWith(text, "!=")){
+    return(call("!", .hypothesis_parse_region_expression(substring(text, 2L))))
+  }
+  if(!length(ops) && startsWith(text, "(") && endsWith(text, ")")){
+    return(call("(", .hypothesis_parse_region_expression(substr(text, 2L, nchar(text) - 1L))))
+  }
+  if(length(ops) != 2L || !all(ops %in% c("<", "<=", ">", ">="))){
+    stop(expr)
   }
 
-  return(found[[1L]])
+  direction <- substr(ops, 1L, 1L)
+  if(direction[[1L]] != direction[[2L]]){
+    stop("Interval inequalities must point in the same direction.", call. = FALSE)
+  }
+  first  <- operators[[1L]]
+  second <- operators[[2L]]
+  lhs    <- .hypothesis_parse_expression(substr(text, 1L, first$start - 1L))
+  target <- .hypothesis_parse_expression(substr(text, first$end + 1L, second$start - 1L))
+  rhs    <- .hypothesis_parse_expression(substring(text, second$end + 1L))
+  if(!length(.hypothesis_expression_symbols(target))){
+    stop("An interval must have a parameter expression between its bounds.", call. = FALSE)
+  }
+  if(length(c(.hypothesis_expression_symbols(lhs), .hypothesis_expression_symbols(rhs)))){
+    stop("Interval bounds must be finite numeric constants.", call. = FALSE)
+  }
+  left_value  <- .hypothesis_parse_number(lhs)
+  right_value <- .hypothesis_parse_number(rhs)
+  ordered <- if(direction[[1L]] == "<") left_value < right_value else left_value > right_value
+  if(!ordered){
+    stop("The lower interval bound must be less than the upper bound.", call. = FALSE)
+  }
+  reverse_first <- switch(ops[[1L]], "<" = ">", "<=" = ">=", ">" = "<", ">=" = "<=")
+  call("&", call(reverse_first, target, lhs), call(ops[[2L]], target, rhs))
 }
 
 

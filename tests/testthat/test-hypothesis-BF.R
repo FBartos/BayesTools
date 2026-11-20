@@ -1792,6 +1792,32 @@ test_that("hypothesis_BF supports interval complements", {
 })
 
 
+test_that("interval chains assign boundary mass and compare the requested regions", {
+
+  draws <- c(-1, 0, 0, 0.25, 0.5, 1, 2, 3)
+  spike_slab <- prior_spike_and_slab(
+    prior("normal", list(0, 1)), prior_inclusion = prior("spike", list(0.6))
+  )
+  statements <- c(
+    "0 <= theta <= 1", "1 >= theta > 0", "0 < theta < 1", "1 > theta >= 0",
+    "!(0 <= theta <= 1)",
+    "0 <= theta <= 1 vs theta > 1", "theta > 1 vs 0 <= theta <= 1"
+  )
+  result <- hypothesis_BF(draws, spike_slab, hypothesis = statements, parameter = "theta")
+
+  # The lower endpoint carries 40% prior mass, and both endpoints occur in the draws.
+  prior_inside <- 0.6 * (stats::pnorm(1) - 0.5) + c(0.4, 0, 0, 0.4)
+  posterior_inside <- c(5, 3, 2, 4) / length(draws)
+  inside_vs_outside <- (posterior_inside / (1 - posterior_inside)) /
+    (prior_inside / (1 - prior_inside))
+  inside_vs_upper <- (posterior_inside[1] / mean(draws > 1)) /
+    (prior_inside[1] / (0.6 * stats::pnorm(1, lower.tail = FALSE)))
+  expect_equal(attr(result, "raw_BF"),
+               c(inside_vs_outside, 1 / inside_vs_outside[1], inside_vs_upper, 1 / inside_vs_upper),
+               tolerance = 1e-12)
+})
+
+
 test_that("hypothesis_BF composes point-vs-region tests by transitivity", {
 
   set.seed(4)
