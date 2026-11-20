@@ -104,11 +104,19 @@ so finite point hypotheses outside those ranges use kernel-tail density
 estimates.}
 
 \item{columns}{output columns. \code{"default"} returns \code{Alternative},
-\code{Null}, \code{BF}, and \code{BF_error}. \code{"all"} also returns
-\code{prior}, \code{posterior}, and \code{method} columns. The
+\code{Null}, \code{BF}, and \code{BF_error}. \code{columns = "evidence"}
+adds \code{prior_density} and \code{posterior_density} at the tested point,
+plus \code{prior_prob_alt}, \code{posterior_prob_alt}, \code{prior_prob_null},
+and \code{posterior_prob_null} for the regions in \code{Alternative} and
+\code{Null}. Each region probability is its mass under the encompassing
+prior or posterior on the selected scale and conditioning event. The
+unconstrained side has mass one. Inapplicable entries are \code{NA}.
+\code{BF01} inverts the displayed BF and preserves the side labels and
+evidence values. \code{"all"} also includes \code{prior}, \code{posterior},
+and \code{method}. The
 \code{prior} and \code{posterior} columns are diagnostics, not always
-probabilities: point tests report density heights, region tests report odds,
-and transitive point-vs-region tests report \code{NA}. The default
+probabilities: point tests report density heights, region tests report the ratio
+of the two region probabilities (odds for complements), and transitive point-vs-region tests report \code{NA}. The default
 \code{BF_error} column is printed as \code{error\%(BF)}. Individual columns
 are selected by these column names; other spellings are rejected.}
 
@@ -235,6 +243,8 @@ and chained inequalities for intervals:
 
 \preformatted{
 hypothesis := statement [ "vs" statement ]
+            | statement "vs" "unconstrained"
+            | "unconstrained" "vs" statement
 statement  := point | region
 point      := arithmetic ( "=" | "==" | "!=" ) finite_number
 region     := relation | interval
@@ -263,7 +273,11 @@ with its complement, using posterior odds of the interval divided by its
 prior odds. A BF10 above one favors the interval. A strict inequality
 excludes a point mass at that endpoint. An explicit comparison such as
 \code{"-0.1 <= mu <= 0.1 vs mu > 0.1"} compares the interval with the
-upper tail alone.
+upper tail alone. Use \code{"-0.1 <= mu <= 0.1 vs unconstrained"}
+to compare the interval with the full model. This BF is the posterior
+probability of the interval divided by its prior probability. Reversing
+the two sides gives the reciprocal. The full model retains the fitted
+prior, parameter support, and conditioning selected for the test.
 
 Equality defines a point hypothesis and may appear only as the top-level
 relation of a statement. It cannot be parenthesized inside, negated, or

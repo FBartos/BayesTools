@@ -108,6 +108,23 @@ test_that("interval chains preserve quoted names and boolean precedence", {
 })
 
 
+test_that("an unconstrained comparator uses the encompassing distribution of the tested expression", {
+
+  prior <- data.frame(beta = c(0, 1, 2, 3), gamma = c(0, 1, 0, 0))
+  posterior <- data.frame(beta = c(0, 1, 1, 2), gamma = c(0, 1, 2, 2))
+  region <- "-0.5 < beta - gamma < 0.5"
+  statements <- c(region, paste(region, "vs unconstrained"), paste("unconstrained vs", region))
+  result <- hypothesis_BF(posterior, prior, hypothesis = statements, columns = "evidence")
+
+  # Joint draws place 1/2 of the prior and 3/4 of the posterior inside the interval.
+  expect_equal(attr(result, "raw_BF"), c(3, 1.5, 2 / 3))
+  expect_equal(result$prior_prob_alt, c(0.5, 0.5, 1))
+  expect_equal(result$posterior_prob_alt, c(0.75, 0.75, 1))
+  expect_equal(result$prior_prob_null, c(0.5, 1, 0.5))
+  expect_equal(result$posterior_prob_null, c(0.25, 1, 0.75))
+})
+
+
 test_that("interval chains require one target between ordered finite bounds", {
 
   invalid <- c("x < theta < 1", "0 < 1 < 2", "0 < theta > 1", "0 < theta = 1",

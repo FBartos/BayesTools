@@ -146,6 +146,39 @@ test_that("the fit method equals the three-step extraction of a coefficient", {
 })
 
 
+test_that("unconstrained comparisons report formula region masses on either side", {
+
+  fit <- .hypothesis_model_test_fit()
+  draws <- as.matrix(fit[[1L]])
+  targets <- c("x", "f[B]", "f[B] - f[C]")
+  regions <- paste("-0.2 <=", targets, "< 0.4")
+  statements <- c(paste(regions, "vs unconstrained"), paste("unconstrained vs", regions))
+  result <- as.data.frame(hypothesis_BF(fit, statements, columns = "evidence", seed = 12,
+                                        n_samples = 400))
+
+  # Two independent standard normal treatment coefficients give the contrast variance 2.
+  prior_sd <- c(1, 1, sqrt(2))
+  prior_mass <- stats::pnorm(0.4, sd = prior_sd) - stats::pnorm(-0.2, sd = prior_sd)
+  values <- cbind(draws[, "mu_x"], draws[, "mu_f[1]"], draws[, "mu_f[1]"] - draws[, "mu_f[2]"])
+  posterior_mass <- colMeans(values >= -0.2 & values < 0.4)
+  unit_mass <- rep(1, length(targets))
+
+  expect_equal(result$prior_prob_alt, c(prior_mass, unit_mass))
+  expect_equal(result$prior_prob_null, c(unit_mass, prior_mass))
+  expect_equal(result$posterior_prob_alt, c(posterior_mass, unit_mass))
+  expect_equal(result$posterior_prob_null, c(unit_mass, posterior_mass))
+  expect_equal(result$BF10, c(posterior_mass / prior_mass, prior_mass / posterior_mass))
+  expect_identical(result$Null[seq_along(targets)], rep("unconstrained", length(targets)))
+  expect_identical(tail(result$Alternative, length(targets)), rep("unconstrained", length(targets)))
+
+  point <- as.data.frame(hypothesis_BF(fit, "f[B] - f[C] = 0.1 vs unconstrained",
+                                       columns = "evidence", density_method = "normal"))
+  expect_equal(point$prior_density, stats::dnorm(0.1, sd = sqrt(2)))
+  expect_equal(point$posterior_density, stats::dnorm(0.1, mean(values[, 3L]), stats::sd(values[, 3L])))
+  expect_equal(point$BF10, point$posterior_density / point$prior_density)
+})
+
+
 test_that("transform_scaled tests coefficients on the original scale", {
 
   fit <- .hypothesis_model_test_fit()
@@ -2463,6 +2496,8 @@ test_that("variance point statements keep their Bayes factor orientation through
     )
     expect_true(warned, info = statement)
     restored <- .hypothesis_model_plan_sd_restore(out, original)
+    expect_equal(restored$prior_density, out$prior_density / (2 * 0.3))
+    expect_equal(restored$posterior_density, out$posterior_density / (2 * 0.3))
     # the densities are those of the variance: the SD densities over 2 * sd
     expect_equal(
       as.numeric(restored[["prior"]]),

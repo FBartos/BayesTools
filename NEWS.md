@@ -1,6 +1,7 @@
 # development version
 ### Features
-- `hypothesis_BF()` accepts chained inequalities for interval hypotheses such as `"-0.1 <= mu <= 0.1"`
+- `hypothesis_BF()` accepts interval hypotheses such as `"-0.1 <= mu <= 0.1"` and explicit comparisons with `unconstrained`
+- `hypothesis_BF()` can report prior and posterior point densities and region probabilities
 - `JAGS_extend()` gains `adapt` to set the adaptation of one extension; fits record their adaptation settings in the `adaptation` attribute
 - `JAGS_fit()` can declare publication-bias mixture branches to a gated sampler (`sampler_gates`) and blocks of priors to a factor slice sampler (`sampler_blocks`) of the BayesTools JAGS module
 - `JAGS_fit()` and `JAGS_extend()` gain `runtime_report`, a callback that collects small values from every process that ran chains, parallel workers included, into the `runtime_report_values` attribute

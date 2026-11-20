@@ -223,7 +223,7 @@
     seed            = seed,
     method          = method,
     density_control = density_control,
-    columns         = "default"
+    columns         = c("prior_density", "posterior_density")
   )
   unit_log_ordinate <- vapply(points, function(value) {
     prior_density_ordinate(
@@ -258,6 +258,11 @@
     density_method = "precomputed"
   )
   point_index <- match(values, points)
+  # Replace the synthetic unit-part ordinates with the SD-based ordinates
+  # already converted to the variance scale by the point evaluator.
+  for(column in intersect(c("prior_density", "posterior_density"), names(out))){
+    out[[column]] <- point[[column]][point_index]
+  }
   point_log_BF <- attr(point, "raw_log_BF", exact = TRUE)[point_index]
   point_left  <- vapply(hypothesis[["statements"]], function(statement) {
     identical(statement[["left"]][["type"]], "point")
@@ -324,6 +329,9 @@
 
     sides <- vapply(c("left", "right"), function(side_name) {
       side <- statement[[side_name]]
+      if(identical(side[["type"]], "unconstrained")){
+        return("unconstrained")
+      }
       operator <- switch(
         side[["type"]],
         point     = "=",
@@ -353,12 +361,13 @@
 .hypothesis_model_plan_sd_restore <- function(out, hypothesis) {
 
   values <- vapply(hypothesis[["statements"]], function(statement) {
-    statement[["left"]][["value"]]
+    side <- if(identical(statement[["left"]][["type"]], "point")) "left" else "right"
+    statement[[side]][["value"]]
   }, numeric(1))
   if (nrow(out) != length(values)) {
     stop("Internal error: variance point rows are misaligned.", call. = FALSE)
   }
-  for (column in intersect(c("prior", "posterior"), names(out))) {
+  for (column in intersect(c("prior", "posterior", "prior_density", "posterior_density"), names(out))) {
     out[[column]] <- out[[column]] / (2 * sqrt(values))
   }
   diagnostics <- attr(out, "numerical_diagnostics", exact = TRUE)

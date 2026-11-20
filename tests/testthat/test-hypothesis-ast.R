@@ -20,6 +20,27 @@ test_that("escaped literal roots preserve statement grammar on roundtrip", {
                 "theta + TRUE > 0", "theta + Inf > 0")) expect_error(hypothesis_parse(text))
 })
 
+test_that("unconstrained is a model only as one whole side of an explicit comparison", {
+
+  statements <- c("unconstrained vs -1 < b <= 1", "b = 0 vs unconstrained")
+  ast <- hypothesis_parse(statements)
+  expect_identical(hypothesis_symbols(ast), "b")
+  expect_identical(hypothesis_render(hypothesis_parse(hypothesis_render(ast))), hypothesis_render(ast))
+
+  # The keyword takes no entry in the catalog, even when a coefficient shares its name.
+  catalog <- .bt_build_parameter_catalog(.bt_build_parameter_coordinates(columns = c("b", "unconstrained")))
+  same_name <- "unconstrained > 0 vs unconstrained"
+  parsed <- hypothesis_parse(same_name, catalog = catalog)
+  expect_identical(hypothesis_symbols(parsed), "unconstrained")
+  expect_identical(hypothesis_symbols(hypothesis_rewrite(parsed, c(unconstrained = "b"))), "b")
+  expect_identical(hypothesis_render(hypothesis_rewrite(parsed, c(unconstrained = "b"))),
+                   "b > 0 vs unconstrained")
+  expect_identical(hypothesis_symbols(hypothesis_parse("`unconstrained` > 0 vs unconstrained")),
+                   "unconstrained")
+  expect_error(hypothesis_parse("unconstrained vs unconstrained"))
+  expect_error(hypothesis_parse("unconstrained"))
+})
+
 test_that("a symbol named vs is quoted so that rendered hypotheses reparse", {
 
   # whitespace-delimited 'vs' (any case) is the statement separator, so a

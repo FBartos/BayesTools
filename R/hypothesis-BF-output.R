@@ -1,8 +1,13 @@
 
 
+.hypothesis_BF_evidence_columns <- c(
+  "prior_density", "posterior_density",
+  "prior_prob_alt", "posterior_prob_alt", "prior_prob_null", "posterior_prob_null"
+)
+
 .hypothesis_BF_row <- function(quantity, result) {
 
-  data.frame(
+  row <- data.frame(
     Alternative  = result[["alternative"]],
     Null         = result[["null"]],
     BF           = as.numeric(result[["BF"]]),
@@ -15,6 +20,11 @@
     check.names  = FALSE,
     stringsAsFactors = FALSE
   )
+  for(column in .hypothesis_BF_evidence_columns){
+    value <- result[[column]]
+    row[[column]] <- if(is.null(value)) NA_real_ else as.numeric(value)
+  }
+  row
 }
 
 
@@ -34,7 +44,7 @@
 .hypothesis_BF_output_columns <- function(columns) {
 
   default <- c("Alternative", "Null", "BF", "BF_error")
-  extra   <- c("prior", "posterior", "method")
+  extra   <- c("prior", "posterior", "method", .hypothesis_BF_evidence_columns)
 
   if(any(columns == "all")){
     if(length(columns) > 1L){
@@ -49,6 +59,9 @@
       return(default)
     }
   }
+  if("evidence" %in% columns){
+    columns <- c(setdiff(columns, "evidence"), .hypothesis_BF_evidence_columns)
+  }
 
   unknown <- setdiff(columns, c(default, extra))
   if(length(unknown) > 0L){
@@ -56,7 +69,7 @@
          paste0("'", unknown, "'", collapse = ", "),
          ". Columns are selected by their names: ",
          paste0("'", c(default, extra), "'", collapse = ", "),
-         ", or 'default' or 'all'.", call. = FALSE)
+         ", or the presets 'default', 'evidence', or 'all'.", call. = FALSE)
   }
 
   unique(c(default, columns))
@@ -74,6 +87,7 @@
     posterior   = "estimate",
     method      = "string"
   )
+  type[.hypothesis_BF_evidence_columns] <- "estimate"
 
   unname(type[columns])
 }
@@ -85,7 +99,7 @@
     return(paste0(
       "Note: 'prior' and 'posterior' are diagnostic values, not always ",
       "probabilities. Point tests report density heights, region tests report ",
-      "odds, and transitive point-vs-region tests report NA."
+      "ratios of region probabilities (odds for complements), and transitive point-vs-region tests report NA."
     ))
   }
 

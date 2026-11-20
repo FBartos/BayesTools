@@ -1408,7 +1408,9 @@ test_that("hypothesis_BF returns compact BayesTools table by default", {
       paste0(
         "Unknown 'columns' value: '", spelling, "'. Columns are selected by ",
         "their names: 'Alternative', 'Null', 'BF', 'BF_error', 'prior', ",
-        "'posterior', 'method', or 'default' or 'all'."
+        "'posterior', 'method', 'prior_density', 'posterior_density', ",
+        "'prior_prob_alt', 'posterior_prob_alt', 'prior_prob_null', ",
+        "'posterior_prob_null', or the presets 'default', 'evidence', or 'all'."
       ),
       fixed = TRUE
     )
@@ -1424,7 +1426,9 @@ test_that("hypothesis_BF returns compact BayesTools table by default", {
 
   expect_equal(
     colnames(detailed),
-    c("Alternative", "Null", "BF", "BF_error", "prior", "posterior", "method")
+    c("Alternative", "Null", "BF", "BF_error", "prior", "posterior", "method",
+      "prior_density", "posterior_density", "prior_prob_alt", "posterior_prob_alt",
+      "prior_prob_null", "posterior_prob_null")
   )
   expect_match(attr(detailed, "footnotes"), "diagnostic values", fixed = TRUE)
   expect_match(attr(detailed, "footnotes"), "not always probabilities",
@@ -1767,6 +1771,34 @@ test_that("hypothesis_BF estimates region BF error for overlapping regions", {
 
   expect_true(any(posterior[["theta"]] > -0.5 & posterior[["theta"]] < 0.5))
   expect_equal(as.numeric(out[["BF_error"]]), expected_error, tolerance = 1e-12)
+})
+
+
+test_that("evidence columns report point densities and probabilities of the labelled regions", {
+
+  draws <- c(-1, 0, .25, .5, 1, 2)
+  distribution <- prior("normal", list(0, 1))
+  statements <- c("theta = 0.2", "0 <= theta <= 1", "theta > 1 vs theta > 0",
+                  "theta = 0.2 vs theta > 1", "theta > 1 vs theta = 0.2")
+  run <- function(BF01) hypothesis_BF(draws, distribution, statements, parameter = "theta",
+    columns = "evidence", density_method = "normal", BF01 = BF01)
+  result <- as.data.frame(run(FALSE))
+  inside <- stats::pnorm(1) - .5
+  tail <- stats::pnorm(1, lower.tail = FALSE)
+  point <- c(1L, 4L, 5L)
+  expect_equal(result$prior_density[point], rep(stats::dnorm(.2), 3))
+  expect_equal(result$posterior_density[point], rep(stats::dnorm(.2, mean(draws), stats::sd(draws)), 3))
+  expect_true(all(is.na(result$prior_density[2:3])))
+  expect_true(all(is.na(result$posterior_density[2:3])))
+  expect_equal(result$prior_prob_alt, c(NA, inside, tail, NA, tail))
+  expect_equal(result$prior_prob_null, c(NA, 1 - inside, .5, tail, NA))
+  expect_equal(result$posterior_prob_alt, c(NA, 4/6, 1/6, NA, 1/6))
+  expect_equal(result$posterior_prob_null, c(NA, 2/6, 4/6, 1/6, NA))
+  reverse <- as.data.frame(run(TRUE))
+  evidence <- c("prior_density", "posterior_density", "prior_prob_alt",
+                "posterior_prob_alt", "prior_prob_null", "posterior_prob_null")
+  expect_identical(result[evidence], reverse[evidence])
+  expect_false(any(c("prior", "posterior", "method") %in% names(result)))
 })
 
 

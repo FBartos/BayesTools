@@ -182,6 +182,11 @@ hypothesis_normalize_level_references <- function(text){
   hypothesis <- .hypothesis_normalize_level_references(hypothesis)
   .hypothesis_reject_assignment_arrow(hypothesis)
   parts <- .hypothesis_split_vs(hypothesis)
+  if(any(parts == "unconstrained") &&
+     (length(parts) != 2L || all(parts == "unconstrained"))){
+    stop("'unconstrained' requires an explicit 'vs' comparison with a point or region.",
+         call. = FALSE)
+  }
   left  <- .parse_hypothesis_side(parts[[1L]])
   right <- if(length(parts) == 2L) {
     .parse_hypothesis_side(parts[[2L]])
@@ -336,6 +341,9 @@ hypothesis_normalize_level_references <- function(text){
     stop("Empty hypothesis side.", call. = FALSE)
   }
 
+  if(identical(side, "unconstrained")){
+    return(list(type = "unconstrained", label = side))
+  }
   operators <- .hypothesis_top_operators(side)
   if(length(operators) == 1L &&
      operators[[1L]]$operator %in% c("=", "==", "!=") &&

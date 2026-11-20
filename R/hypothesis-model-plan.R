@@ -1752,9 +1752,9 @@ posterior_fitted_linear_weights <- function(sample, weights,
   if (!inherits(hypothesis, "BayesTools_hypothesis_ast")) {
     hypothesis <- hypothesis_parse(hypothesis)
   }
-  coefficients <- hypothesis_linear_target_side(
-    hypothesis[["statements"]][[1L]][["left"]], plan[["parameter"]]
-  )[["coefficients"]]
+  statement <- hypothesis[["statements"]][[1L]]
+  side <- if (identical(statement$left$type, "unconstrained")) statement$right else statement$left
+  coefficients <- hypothesis_linear_target_side(side, plan[["parameter"]])[["coefficients"]]
 
   paste(
     "combination", plan[["parameter"]],

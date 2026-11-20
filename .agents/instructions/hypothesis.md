@@ -36,7 +36,11 @@ metadata are in [jags-formula.md](jags-formula.md).
 
 Interval chains such as `-0.1 <= mu < 0.1` use the same Boolean region and
 complement as their two inequalities joined by `&`. The operators determine
-which region receives an endpoint atom.
+which region receives an endpoint atom. An explicit `vs unconstrained`
+comparison uses the encompassing distribution under the same scale and
+conditioning as the constrained side. Its mass is one. The optional evidence
+columns report point ordinates and region probabilities
+under those prior and posterior distributions, keyed to the displayed sides.
 
 ## Stages of `hypothesis_BF_model()`
 
