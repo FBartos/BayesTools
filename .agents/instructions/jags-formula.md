@@ -238,10 +238,12 @@ defined would restrict that node's prior to the finite region. Blocks expand pri
 scalar leaves; `sampler_blocks` may be a function of the combined prior list,
 called once in the declaration step, so callers can select formula priors by
 their final names and attributes. A block of fewer than two leaves is declined
-(recorded, not an error); spike-and-slab, mixture, ordered, point, discrete,
-vector, inclusion, and random-effect priors other than a plain allocation SD and
-Dirichlet allocation weights are refused with
-`BayesTools_sampler_declaration_error`. A fit with a marker requires the
+(recorded, not an error). A random-effect prior joins a block only as a simple
+continuous scalar prior (a direct random-effect SD or a scalar structured
+correlation, a leaf under its own name), a plain allocation SD, or Dirichlet
+allocation weights; spike-and-slab, mixture, ordered, point, discrete, vector,
+inclusion, and other random-effect priors (factor SDs, summary priors) are
+refused with `BayesTools_sampler_declaration_error`. A fit with a marker requires the
 BayesTools module and package (workers included), and
 `attr(fit, "sampler_declarations")` records the declared and declined items,
 which `JAGS_extend()` keeps. Both samplers report incomplete adaptation until

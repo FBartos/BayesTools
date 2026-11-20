@@ -143,8 +143,10 @@
 #'   principal directions of their posterior covariance learned during
 #'   adaptation. A block may contain simple continuous scalar priors, treatment
 #'   and independent factor priors, a single weight function, PET and PEESE
-#'   priors, and the allocation SD and Dirichlet allocation weights of a
-#'   random-effect variance allocation; a prior may be in one block only. A
+#'   priors, direct random-effect SDs and scalar correlations with simple
+#'   continuous scalar priors, and the allocation SD and Dirichlet allocation
+#'   weights of a random-effect variance allocation; a prior may be in one block
+#'   only. A
 #'   block that expands to fewer than two parameters is not declared and is
 #'   recorded as declined. \code{sampler_blocks} may also be a function of one
 #'   argument, the combined prior list (formula priors under their final names

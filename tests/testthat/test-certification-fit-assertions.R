@@ -6245,6 +6245,72 @@ test_that("bridge sampling of a fit with a factor slice block matches the exact 
   expect_lt(abs(marglik$logml - exact), max(4 * error, 0.01))
 })
 
+test_that("a block of a random-effect SD and a scalar correlation keeps the posterior of the fit without it", {
+  skip_if_not(isTRUE(BayesTools_load_JAGS_module(quiet = TRUE, warn = FALSE)))
+
+  # y_ij = mu + u_ij + e_ij with a compound-symmetry random effect of the four
+  # time points within eight groups (sd 0.6, correlation 0.5)
+  set.seed(23)
+  n_groups <- 8L
+  n_times <- 4L
+  formula_data <- data.frame(g = factor(rep(seq_len(n_groups), each = n_times)), t = rep(seq_len(n_times), n_groups))
+  covariance <- 0.6^2 * (0.5 + 0.5 * diag(n_times))
+  effects <- as.vector(t(matrix(stats::rnorm(n_groups * n_times), n_groups) %*% chol(covariance)))
+  data <- list(y = 0.3 + effects + stats::rnorm(n_groups * n_times, 0, 0.3))
+  random_names <- c("mu__xREx__g_sd", "mu__xREx__g_rho")
+  random_fit <- function(...){
+    JAGS_fit(
+      model_syntax = "model{\n  for(i in 1:N_mu){\n    y[i] ~ dnorm(mu[i], 1 / pow(0.3, 2))\n  }\n}",
+      data = data, prior_list = list(),
+      formula_list = list(mu = ~ 1 + cs(t | g)), formula_data_list = list(mu = formula_data),
+      formula_prior_list = list(mu = list(intercept = prior("normal", list(0, 1)))),
+      formula_random_prior_list = list(mu = prior_random(g = random_block(
+        sd = prior("normal", list(0, 1), list(0, Inf)),
+        covariance = random_covariance(cor = prior("uniform", list(-0.2, 0.95)), cor_scale = "cor")
+      ))),
+      chains = 4, adapt = 500, burnin = 1000, sample = 10000, seed = 7, silent = TRUE, ...
+    )
+  }
+  plain <- random_fit()
+  declared <- random_fit(sampler_blocks = list(c("mu_intercept", random_names)))
+
+  # the block holds the random-effect SD and correlation under their own names
+  declarations <- attr(declared, "sampler_declarations")
+  expect_identical(declarations$blocks$node, c("mu_intercept", random_names))
+  expect_identical(nrow(declarations$declined), 0L)
+  expect_true(grepl("BayesTools_block_3 ~ dbt_block(mu__xREx__g_rho, 1)", declared$model, fixed = TRUE))
+  environment <- new.env()
+  eval(parse(text = declared$data), envir = environment)
+  model <- rjags::jags.model(textConnection(declared$model), data = as.list(environment),
+                             n.chains = 1, n.adapt = 0, quiet = TRUE)
+  samplers <- rjags::list.samplers(model)
+  expect_identical(sum(names(samplers) == "BayesTools::FactorSlice"), 1L)
+  expect_setequal(samplers[[which(names(samplers) == "BayesTools::FactorSlice")]], c("mu_intercept", random_names))
+  expect_identical(colnames(as.matrix(declared$mcmc)), colnames(as.matrix(plain$mcmc)))
+
+  # posterior means, variances about the plain fit's mean and probabilities
+  # above its median agree with the fit without the block within Monte Carlo
+  # error: each quantity of the declared fit is compared with the plain fit's
+  # estimate in units of the combined Monte Carlo standard error of both
+  plain_samples <- as.matrix(plain$mcmc)
+  quantities <- unlist(lapply(c("mu_intercept", random_names), function(name){
+    center <- mean(plain_samples[, name])
+    .sampler_test_scalar_quantities(name, center, 0, stats::median(plain_samples[, name]), 0)
+  }), recursive = FALSE)
+  plain_checks <- .sampler_test_mcse_checks(plain$mcmc, quantities)
+  declared_checks <- .sampler_test_mcse_checks(declared$mcmc, quantities)
+  checks <- data.frame(
+    quantity = plain_checks$quantity, plain = plain_checks$estimate, declared = declared_checks$estimate,
+    ess_plain = plain_checks$ess, ess = declared_checks$ess,
+    z = (declared_checks$estimate - plain_checks$estimate) / sqrt(plain_checks$mcse^2 + declared_checks$mcse^2)
+  )
+  info <- paste(utils::capture.output(print(checks, digits = 4)), collapse = "\n")
+  if(isTRUE(getOption("BayesTools.sampler_test_print"))) print(checks, digits = 4)
+  expect_true(all(abs(checks$z) <= 4), info = info)
+  expect_true(all(checks$ess >= 100), info = info)
+  expect_true(all(checks$ess_plain >= 100), info = info)
+})
+
 test_that("guarded spike-and-slab priors keep stock samplers and refuse blocks", {
   skip_if_not(isTRUE(BayesTools_load_JAGS_module(quiet = TRUE, warn = FALSE)))
 
